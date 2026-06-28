@@ -1,4 +1,4 @@
-import type { AudioAnalysis } from "./types.js";
+import type { AudioAnalysis, ChannelAnalysis, ChannelComparison } from "./types.js";
 
 function fmt(n: number, decimals = 2): string {
   return n.toFixed(decimals);
@@ -158,6 +158,86 @@ export function buildReport(analysis: AudioAnalysis): string {
 
   lines.push("");
   lines.push("=== END OF REPORT ===");
+
+  return lines.join("\n");
+}
+
+export function formatMultiChannelReport(channels: ChannelAnalysis[], comparison: ChannelComparison): string {
+  const lines: string[] = [];
+
+  lines.push("=== MULTI-CHANNEL SUMMARY ===");
+  lines.push("");
+
+  // Per-channel summary table
+  const colWidths = {
+    name: Math.max(12, ...channels.map((c) => c.channel.name.length)),
+    rms: 10,
+    peak: 11,
+    dyn: 13,
+    dominant: 14,
+  };
+
+  const header = [
+    "Channel".padEnd(colWidths.name),
+    "RMS dBFS".padEnd(colWidths.rms),
+    "Peak dBFS".padEnd(colWidths.peak),
+    "Dyn Range".padEnd(colWidths.dyn),
+    "Dominant Band",
+  ].join("  ");
+
+  const separator = "-".repeat(header.length);
+
+  lines.push(header);
+  lines.push(separator);
+
+  for (const { channel, analysis } of channels) {
+    const { sox, spectrum } = analysis;
+    const bands = spectrum.bands;
+    const bandEntries = Object.entries(bands) as [keyof typeof bands, number][];
+    const dominantBandKey = bandEntries.reduce((a, b) => (b[1] > a[1] ? b : a))[0];
+    const dominantLabels: Record<string, string> = {
+      subBass: "Sub-bass",
+      bass: "Bass",
+      lowMid: "Low-mid",
+      mid: "Mid",
+      highMid: "High-mid",
+      presence: "Presence",
+      brilliance: "Brilliance",
+    };
+    const dominantLabel = dominantLabels[dominantBandKey] ?? dominantBandKey;
+
+    lines.push([
+      channel.name.padEnd(colWidths.name),
+      fmtDb(sox.rmsDbfs).padEnd(colWidths.rms),
+      fmtDb(sox.peakDbfs).padEnd(colWidths.peak),
+      `${fmt(sox.dynamicRangeDb)} dB`.padEnd(colWidths.dyn),
+      dominantLabel,
+    ].join("  "));
+  }
+
+  lines.push("");
+
+  if (comparison.subBassOffenders.length > 0) {
+    lines.push(`Sub-bass offenders (>-20 dBFS): ${comparison.subBassOffenders.join(", ")}`);
+    lines.push("");
+  }
+
+  if (comparison.maskingPairs.length > 0) {
+    lines.push("Frequency masking detected:");
+    for (const pair of comparison.maskingPairs) {
+      lines.push(`  ${pair.bandName}: ${pair.channelA} ↔ ${pair.channelB} (${fmt(pair.energyDiff)} dB apart)`);
+    }
+    lines.push("");
+  }
+
+  lines.push("Mix band energy:");
+  for (const [band, energy] of Object.entries(comparison.mixBandEnergy)) {
+    const isFiniteEnergy = isFinite(energy);
+    lines.push(`  ${band.padEnd(35)} ${isFiniteEnergy ? fmt(energy) : "-inf"} dBFS`);
+  }
+
+  lines.push("");
+  lines.push("=== END MULTI-CHANNEL SUMMARY ===");
 
   return lines.join("\n");
 }

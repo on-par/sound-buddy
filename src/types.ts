@@ -84,3 +84,29 @@ export interface AudioAnalysis {
   ffprobe: FfprobeResult;
   spectrum: SpectrumResult;
 }
+
+export interface ChannelFile {
+  index: number;
+  name: string;
+  tmpPath: string;
+  needsCleanup: boolean;
+}
+
+export interface ChannelAnalysis {
+  channel: ChannelFile;
+  analysis: AudioAnalysis;
+}
+
+export interface MaskingPair {
+  bandName: string;
+  channelA: string;
+  channelB: string;
+  energyDiff: number;
+}
+
+export interface ChannelComparison {
+  bandRankings: Record<string, string[]>;
+  maskingPairs: MaskingPair[];
+  subBassOffenders: string[];
+  mixBandEnergy: Record<string, number>;
+}
