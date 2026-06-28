@@ -7,7 +7,7 @@ import { analyzeAudio } from "./analyze/index.js";
 import { extractChannels, loadChannelFiles } from "./analyze/channels.js";
 import { compareChannels } from "./analyze/compare.js";
 import { buildReport, buildSummaryTable, formatMultiChannelReport } from "./report.js";
-import { getEngineerRead, analyzeMultiChannel } from "./engineer.js";
+import { getEngineerRead, analyzeMultiChannel, analyzeWithOllama } from "./engineer.js";
 import { startLive } from "./stream/index.js";
 import type { ChannelFile, ChannelAnalysis, AudioAnalysis } from "./types.js";
 
@@ -26,6 +26,9 @@ function parseArgs(argv: string[]): {
   channels?: number[];
   windowSecs: number;
   llmIntervalSecs: number;
+  ollama: boolean;
+  ollamaModel: string;
+  ollamaHost: string;
 } {
   const args = argv.slice(2);
   let file: string | null = null;
@@ -39,6 +42,9 @@ function parseArgs(argv: string[]): {
   let channels: number[] | undefined;
   let windowSecs = 3;
   let llmIntervalSecs = 60;
+  let ollama = false;
+  let ollamaModel = "llama3.2";
+  let ollamaHost = "http://localhost:11434";
 
   for (let i = 0; i < args.length; i++) {
     const a = args[i];
@@ -62,12 +68,18 @@ function parseArgs(argv: string[]): {
       names = args[++i].split(",").map((n) => n.trim());
     } else if (a === "--no-spectrum") {
       noSpectrum = true;
+    } else if (a === "--ollama") {
+      ollama = true;
+    } else if (a === "--ollama-model" && args[i + 1]) {
+      ollamaModel = args[++i];
+    } else if (a === "--ollama-host" && args[i + 1]) {
+      ollamaHost = args[++i];
     } else if (!a.startsWith("--")) {
       file = a;
     }
   }
 
-  return { file, dir, names, noSpectrum, help, live, listDevices, device, channels, windowSecs, llmIntervalSecs };
+  return { file, dir, names, noSpectrum, help, live, listDevices, device, channels, windowSecs, llmIntervalSecs, ollama, ollamaModel, ollamaHost };
 }
 
 function printHelp(): void {
@@ -87,6 +99,9 @@ Options:
   --ch 0,1,2                      Channel indices to capture (for --live, default: 0,1)
   --window <secs>                 Analysis window in seconds (for --live, default: 3)
   --llm-interval <secs>           Seconds between LLM deep-dives (for --live, default: 60, 0=disable)
+  --ollama                        Use Ollama for LLM analysis instead of Pi SDK
+  --ollama-model <name>           Ollama model to use (default: llama3.2)
+  --ollama-host <url>             Ollama host URL (default: http://localhost:11434)
   --help                          Show this help message
 
 Examples:
@@ -224,7 +239,7 @@ async function runListDevices(): Promise<void> {
   });
 }
 
-async function runSingleFile(filePath: string, names: string[]): Promise<void> {
+async function runSingleFile(filePath: string, names: string[], ollama: boolean, ollamaModel: string, ollamaHost: string): Promise<void> {
   console.log(`\nAnalyzing ${filePath}...`);
   console.log("");
 
@@ -255,7 +270,12 @@ async function runSingleFile(filePath: string, names: string[]): Promise<void> {
     console.log("--- Audio Engineer's Read ---");
     console.log("");
     try {
-      await getEngineerRead(report);
+      if (ollama) {
+        const SYSTEM_PROMPT = `You are a professional audio engineer with 20+ years of experience. You are given acoustic measurement data for an audio file. Analyze it deeply: identify EQ imbalances, dynamic range issues, potential mastering problems, stereo image concerns, and anything else a trained ear would flag. Be specific, reference the actual numbers, and give actionable recommendations.`;
+        await analyzeWithOllama(report, SYSTEM_PROMPT, ollamaModel, ollamaHost);
+      } else {
+        await getEngineerRead(report);
+      }
     } catch (err) {
       console.error("\nLLM analysis failed:", err);
       process.exit(1);
@@ -302,7 +322,12 @@ async function runSingleFile(filePath: string, names: string[]): Promise<void> {
   console.log("");
 
   try {
-    await analyzeMultiChannel(analysis, channelAnalyses, comparison);
+    if (ollama) {
+      const MULTI_CHANNEL_SYSTEM_PROMPT = `You are a professional mixing engineer analyzing a multi-track recording from a Midas M32R console. Given the acoustic measurements of each channel and the full mix, identify: frequency masking between channels, problematic EQ buildups, channels that need low-cut or high-cut filters, channels competing in the same frequency range, and give specific actionable EQ/dynamics recommendations per channel. Reference actual dB values.`;
+      await analyzeWithOllama(formatMultiChannelReport(channelAnalyses, comparison), MULTI_CHANNEL_SYSTEM_PROMPT, ollamaModel, ollamaHost);
+    } else {
+      await analyzeMultiChannel(analysis, channelAnalyses, comparison);
+    }
   } catch (err) {
     console.error("\nLLM analysis failed:", err);
   }
@@ -311,7 +336,7 @@ async function runSingleFile(filePath: string, names: string[]): Promise<void> {
   cleanup(channelFiles);
 }
 
-async function runDirectory(dir: string, names: string[]): Promise<void> {
+async function runDirectory(dir: string, names: string[], ollama: boolean, ollamaModel: string, ollamaHost: string): Promise<void> {
   const resolvedDir = resolve(dir);
 
   if (!existsSync(resolvedDir)) {
@@ -356,7 +381,12 @@ async function runDirectory(dir: string, names: string[]): Promise<void> {
   console.log("");
 
   try {
-    await analyzeMultiChannel(null, channelAnalyses, comparison);
+    if (ollama) {
+      const MULTI_CHANNEL_SYSTEM_PROMPT = `You are a professional mixing engineer analyzing a multi-track recording from a Midas M32R console. Given the acoustic measurements of each channel and the full mix, identify: frequency masking between channels, problematic EQ buildups, channels that need low-cut or high-cut filters, channels competing in the same frequency range, and give specific actionable EQ/dynamics recommendations per channel. Reference actual dB values.`;
+      await analyzeWithOllama(formatMultiChannelReport(channelAnalyses, comparison), MULTI_CHANNEL_SYSTEM_PROMPT, ollamaModel, ollamaHost);
+    } else {
+      await analyzeMultiChannel(null, channelAnalyses, comparison);
+    }
   } catch (err) {
     console.error("\nLLM analysis failed:", err);
   }
@@ -394,7 +424,7 @@ async function main(): Promise<void> {
   }
 
   if (opts.dir) {
-    await runDirectory(opts.dir, opts.names);
+    await runDirectory(opts.dir, opts.names, opts.ollama, opts.ollamaModel, opts.ollamaHost);
     return;
   }
 
@@ -404,7 +434,7 @@ async function main(): Promise<void> {
       console.error(`Error: File not found: ${resolved}`);
       process.exit(1);
     }
-    await runSingleFile(resolved, opts.names);
+    await runSingleFile(resolved, opts.names, opts.ollama, opts.ollamaModel, opts.ollamaHost);
   }
 }
 

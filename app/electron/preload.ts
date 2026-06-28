@@ -17,6 +17,8 @@ contextBridge.exposeInMainWorld('soundBuddy', {
 
   triggerLlmAnalysis: (data: unknown) => ipcRenderer.invoke('trigger-llm-analysis', data),
 
+  listOllamaModels: (host?: string) => ipcRenderer.invoke('list-ollama-models', host),
+
   onLiveEvent: (cb: (data: unknown) => void) =>
     ipcRenderer.on('live-event', (_event, d) => cb(d)),
 

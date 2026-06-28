@@ -4,6 +4,7 @@ import {
   ModelRegistry,
   SessionManager,
 } from "@earendil-works/pi-coding-agent";
+import * as http from "http";
 import type { AudioAnalysis, ChannelAnalysis, ChannelComparison } from "./types.js";
 import type { WindowData } from "./stream/types.js";
 
@@ -145,4 +146,79 @@ export async function analyzeMultiChannel(
 
   await session.prompt(prompt);
   process.stdout.write("\n");
+}
+
+export async function analyzeWithOllama(
+  report: string,
+  systemPrompt: string,
+  model: string = "llama3.2",
+  host: string = "http://localhost:11434"
+): Promise<void> {
+  const body = JSON.stringify({
+    model,
+    messages: [
+      { role: "system", content: systemPrompt },
+      { role: "user", content: report },
+    ],
+    stream: true,
+  });
+
+  const url = new URL("/api/chat", host);
+
+  return new Promise((resolve, reject) => {
+    const options = {
+      hostname: url.hostname,
+      port: parseInt(url.port) || 11434,
+      path: url.pathname,
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "content-length": Buffer.byteLength(body),
+      },
+    };
+
+    const req = http.request(options, (res) => {
+      let buffer = "";
+
+      res.on("data", (chunk: Buffer) => {
+        buffer += chunk.toString();
+        const lines = buffer.split("\n");
+        buffer = lines.pop() ?? "";
+
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (!trimmed) continue;
+          try {
+            const json = JSON.parse(trimmed) as { message?: { content: string }; done: boolean };
+            if (!json.done && json.message?.content) {
+              process.stdout.write(json.message.content);
+            }
+            if (json.done) {
+              process.stdout.write("\n");
+              resolve();
+            }
+          } catch {
+            // ignore malformed lines
+          }
+        }
+      });
+
+      res.on("end", () => {
+        process.stdout.write("\n");
+        resolve();
+      });
+
+      res.on("error", (err: Error) => reject(err));
+    });
+
+    req.on("error", (err: NodeJS.ErrnoException) => {
+      if (err.code === "ECONNREFUSED") {
+        console.error("\n⚠️  Ollama not running. Start it with: ollama serve");
+      }
+      reject(err);
+    });
+
+    req.write(body);
+    req.end();
+  });
 }

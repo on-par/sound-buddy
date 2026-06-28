@@ -2,7 +2,7 @@ import { ipcMain, dialog, BrowserWindow } from 'electron';
 import { execFile, spawn, ChildProcess } from 'child_process';
 import { promisify } from 'util';
 import * as path from 'path';
-import * as https from 'https';
+import * as http from 'http';
 
 const execFileAsync = promisify(execFile);
 
@@ -294,37 +294,34 @@ function buildLiveReport(windowData: unknown[]): string {
 async function streamLLM(
   webContents: Electron.WebContents,
   systemPrompt: string,
-  userMessage: string
+  userMessage: string,
+  model: string = 'llama3.2',
+  ollamaHost: string = 'http://localhost:11434'
 ): Promise<void> {
-  const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) {
-    webContents.send('llm-delta', '\n⚠️  Set ANTHROPIC_API_KEY environment variable to enable AI analysis\n');
-    webContents.send('llm-done');
-    return;
-  }
-
   const body = JSON.stringify({
-    model: 'claude-sonnet-4-6',
-    max_tokens: 1024,
+    model,
+    messages: [
+      { role: 'system', content: systemPrompt },
+      { role: 'user', content: userMessage },
+    ],
     stream: true,
-    system: systemPrompt,
-    messages: [{ role: 'user', content: userMessage }],
   });
+
+  const url = new URL('/api/chat', ollamaHost);
 
   return new Promise((resolve, reject) => {
     const options = {
-      hostname: 'api.anthropic.com',
-      path: '/v1/messages',
+      hostname: url.hostname,
+      port: url.port || 11434,
+      path: url.pathname,
       method: 'POST',
       headers: {
-        'x-api-key': apiKey,
-        'anthropic-version': '2023-06-01',
         'content-type': 'application/json',
         'content-length': Buffer.byteLength(body),
       },
     };
 
-    const req = https.request(options, (res: import('http').IncomingMessage) => {
+    const req = http.request(options, (res: import('http').IncomingMessage) => {
       let buffer = '';
 
       res.on('data', (chunk: Buffer) => {
@@ -334,21 +331,22 @@ async function streamLLM(
 
         for (const line of lines) {
           const trimmed = line.trim();
-          if (!trimmed || trimmed === 'data: [DONE]') continue;
-          if (trimmed.startsWith('data: ')) {
-            try {
-              const json = JSON.parse(trimmed.slice(6)) as Record<string, unknown>;
-              if (json['type'] === 'content_block_delta') {
-                const delta = json['delta'] as Record<string, unknown>;
-                if (delta['type'] === 'text_delta' && typeof delta['text'] === 'string') {
-                  if (!webContents.isDestroyed()) {
-                    webContents.send('llm-delta', delta['text']);
-                  }
-                }
+          if (!trimmed) continue;
+          try {
+            const json = JSON.parse(trimmed) as { model: string; message?: { role: string; content: string }; done: boolean };
+            if (!json.done && json.message?.content) {
+              if (!webContents.isDestroyed()) {
+                webContents.send('llm-delta', json.message.content);
               }
-            } catch {
-              // ignore malformed SSE lines
             }
+            if (json.done) {
+              if (!webContents.isDestroyed()) {
+                webContents.send('llm-done');
+              }
+              resolve();
+            }
+          } catch {
+            // ignore malformed lines
           }
         }
       });
@@ -369,9 +367,13 @@ async function streamLLM(
       });
     });
 
-    req.on('error', (err: Error) => {
+    req.on('error', (err: NodeJS.ErrnoException) => {
       if (!webContents.isDestroyed()) {
-        webContents.send('llm-delta', `\n[Network error: ${err.message}]\n`);
+        if (err.code === 'ECONNREFUSED') {
+          webContents.send('llm-delta', '\n⚠️  Ollama not running. Start it with: ollama serve\n');
+        } else {
+          webContents.send('llm-delta', `\n[Network error: ${err.message}]\n`);
+        }
         webContents.send('llm-done');
       }
       reject(err);
@@ -386,7 +388,7 @@ async function streamLLM(
 
 export function registerIpcHandlers(): void {
   // analyze-file
-  ipcMain.handle('analyze-file', async (event, opts: { filePath: string; noSpectrum?: boolean }) => {
+  ipcMain.handle('analyze-file', async (event, opts: { filePath: string; noSpectrum?: boolean; model?: string; ollamaHost?: string }) => {
     const { filePath, noSpectrum } = opts;
     const wc = event.sender;
 
@@ -472,6 +474,8 @@ export function registerIpcHandlers(): void {
     channels?: number[];
     windowSecs: number;
     llmIntervalSecs: number;
+    model?: string;
+    ollamaHost?: string;
   }) => {
     if (liveProcess) {
       liveProcess.kill();
@@ -550,7 +554,7 @@ export function registerIpcHandlers(): void {
         const userMessage = buildLiveReport(snapshot);
 
         try {
-          await streamLLM(wc, systemPrompt, userMessage);
+          await streamLLM(wc, systemPrompt, userMessage, opts.model, opts.ollamaHost);
         } catch {
           // non-fatal
         }
@@ -574,7 +578,7 @@ export function registerIpcHandlers(): void {
   });
 
   // trigger-llm-analysis
-  ipcMain.handle('trigger-llm-analysis', async (event, data: { analysis?: AudioAnalysis; windows?: unknown[]; mode: string }) => {
+  ipcMain.handle('trigger-llm-analysis', async (event, data: { analysis?: AudioAnalysis; windows?: unknown[]; mode: string; model?: string; ollamaHost?: string }) => {
     const wc = event.sender;
 
     const systemPrompt = `You are a professional audio engineer with 20+ years of experience. Analyze the given acoustic measurement data deeply: identify EQ imbalances, dynamic range issues, potential mastering problems, stereo image concerns, and anything else a trained ear would flag. Be specific, reference the actual numbers, and give actionable recommendations.`;
@@ -591,10 +595,40 @@ export function registerIpcHandlers(): void {
     }
 
     try {
-      await streamLLM(wc, systemPrompt, userMessage);
+      await streamLLM(wc, systemPrompt, userMessage, data.model, data.ollamaHost);
       return { success: true };
     } catch (err) {
       return { success: false, error: String(err) };
     }
+  });
+
+  // list-ollama-models
+  ipcMain.handle('list-ollama-models', (_event, host: string = 'http://localhost:11434') => {
+    return new Promise<string[]>((resolve) => {
+      const url = new URL('/api/tags', host);
+      const options = {
+        hostname: url.hostname,
+        port: url.port || 11434,
+        path: url.pathname,
+        method: 'GET',
+      };
+
+      const req = http.request(options, (res: import('http').IncomingMessage) => {
+        let data = '';
+        res.on('data', (chunk: Buffer) => { data += chunk.toString(); });
+        res.on('end', () => {
+          try {
+            const parsed = JSON.parse(data) as { models?: Array<{ name: string; size: number; modified_at: string }> };
+            resolve((parsed.models ?? []).map((m) => m.name));
+          } catch {
+            resolve([]);
+          }
+        });
+        res.on('error', () => resolve([]));
+      });
+
+      req.on('error', () => resolve([]));
+      req.end();
+    });
   });
 }

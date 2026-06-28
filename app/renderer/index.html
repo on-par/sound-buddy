@@ -463,15 +463,80 @@
       text-transform: uppercase;
     }
 
-    #model-chip {
+    #ollama-badge {
       font-size: 9px;
       font-weight: 600;
-      color: var(--accent);
-      background: rgba(0,200,150,0.12);
-      border: 1px solid rgba(0,200,150,0.25);
+      color: var(--muted);
+      background: rgba(102,102,102,0.12);
+      border: 1px solid rgba(102,102,102,0.25);
       border-radius: 3px;
       padding: 2px 6px;
       letter-spacing: 0.03em;
+    }
+
+    #ollama-model-row {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      padding: 8px 14px 4px;
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+
+    #ollama-model {
+      flex: 1;
+      padding: 4px 6px;
+      background: #1a1a1a;
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      color: var(--text);
+      font-size: 11px;
+      outline: none;
+      cursor: pointer;
+      width: auto;
+    }
+
+    #ollama-model:focus { border-color: var(--accent); }
+
+    #ollama-refresh-btn {
+      background: transparent;
+      border: 1px solid var(--border);
+      color: var(--muted);
+      border-radius: 4px;
+      padding: 3px 6px;
+      cursor: pointer;
+      font-size: 12px;
+      line-height: 1;
+      flex-shrink: 0;
+    }
+
+    #ollama-refresh-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+    #ollama-host-row {
+      padding: 4px 14px 8px;
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+
+    #ollama-host {
+      width: 100%;
+      padding: 4px 6px;
+      background: #1a1a1a;
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      color: var(--muted);
+      font-size: 10px;
+      outline: none;
+      font-family: 'SF Mono', Menlo, monospace;
+    }
+
+    #ollama-host:focus { border-color: var(--accent); color: var(--text); }
+
+    #ollama-warning {
+      display: none;
+      padding: 4px 14px 6px;
+      font-size: 10px;
+      color: var(--warning);
     }
 
     #ai-output {
@@ -687,8 +752,18 @@
     <div id="ai-panel">
       <div id="ai-header">
         <span id="ai-title">AI Engineer</span>
-        <span id="model-chip">claude-sonnet-4-6</span>
+        <span id="ollama-badge">via Ollama</span>
       </div>
+      <div id="ollama-model-row">
+        <select id="ollama-model">
+          <option value="llama3.2">llama3.2</option>
+        </select>
+        <button id="ollama-refresh-btn" title="Refresh models">↻</button>
+      </div>
+      <div id="ollama-host-row">
+        <input id="ollama-host" type="text" value="http://localhost:11434" placeholder="Ollama host" />
+      </div>
+      <div id="ollama-warning">⚠ Ollama not detected at localhost:11434</div>
       <div id="ai-output"></div>
       <div id="ai-footer">
         <div id="ai-countdown"></div>
@@ -1419,10 +1494,13 @@ document.getElementById('ai-analyze-btn').addEventListener('click', async () => 
   const sep = out.textContent ? '\n\n' + '─'.repeat(40) + '\n\n' : '';
   appendAI(sep);
 
+  const ollamaModel = document.getElementById('ollama-model').value || 'llama3.2';
+  const ollamaHost = document.getElementById('ollama-host').value || 'http://localhost:11434';
+
   if (currentMode === 'live' && liveWindows.length > 0) {
-    await sb.triggerLlmAnalysis({ mode: 'live', windows: liveWindows });
+    await sb.triggerLlmAnalysis({ mode: 'live', windows: liveWindows, model: ollamaModel, ollamaHost });
   } else if (currentAnalysis) {
-    await sb.triggerLlmAnalysis({ mode: 'file', analysis: currentAnalysis });
+    await sb.triggerLlmAnalysis({ mode: 'file', analysis: currentAnalysis, model: ollamaModel, ollamaHost });
   } else {
     appendAI('[No analysis data — load a file or start live capture first]');
     llmRunning = false;
@@ -1448,10 +1526,41 @@ function showError(msg) {
   showSpinner(false);
 }
 
+// ── Ollama Model Picker ───────────────────────────────────────────────────────
+
+async function loadOllamaModels() {
+  const host = document.getElementById('ollama-host').value || 'http://localhost:11434';
+  const models = await sb.listOllamaModels(host);
+  const sel = document.getElementById('ollama-model');
+  const warning = document.getElementById('ollama-warning');
+
+  if (!models || models.length === 0) {
+    sel.innerHTML = '<option value="llama3.2">llama3.2</option>';
+    warning.style.display = 'block';
+    return;
+  }
+
+  warning.style.display = 'none';
+  const current = sel.value;
+  sel.innerHTML = '';
+  for (const name of models) {
+    const opt = document.createElement('option');
+    opt.value = name;
+    opt.textContent = name;
+    if (name === current) opt.selected = true;
+    sel.appendChild(opt);
+  }
+}
+
+document.getElementById('ollama-refresh-btn').addEventListener('click', () => {
+  loadOllamaModels();
+});
+
 // ── Init ──────────────────────────────────────────────────────────────────────
 
 initCanvas();
 loadDevices();
+loadOllamaModels();
 </script>
 </body>
 </html>
