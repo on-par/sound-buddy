@@ -5,6 +5,7 @@ import {
   SessionManager,
 } from "@earendil-works/pi-coding-agent";
 import type { AudioAnalysis, ChannelAnalysis, ChannelComparison } from "./types.js";
+import type { WindowData } from "./stream/types.js";
 
 const SYSTEM_PROMPT = `You are a professional audio engineer with 20+ years of experience. You are given acoustic measurement data for an audio file. Analyze it deeply: identify EQ imbalances, dynamic range issues, potential mastering problems, stereo image concerns, and anything else a trained ear would flag. Be specific, reference the actual numbers, and give actionable recommendations.`;
 
@@ -77,6 +78,37 @@ async function createSession() {
     authStorage,
     modelRegistry,
   });
+}
+
+export async function analyzeStream(windows: WindowData[], channelNames: string[]): Promise<void> {
+  const { session } = await createSession();
+
+  const windowSecs = windows.length > 1
+    ? (windows[windows.length - 1].ts - windows[0].ts) / (windows.length - 1)
+    : 3;
+
+  const systemPrompt = `You are a professional audio engineer monitoring a live mix from a Midas M32R console. You are given ${windows.length} consecutive ${windowSecs.toFixed(1)}-second analysis windows. Identify trends, flag developing problems (frequency buildup, approaching clipping, dynamic issues), and give real-time mixing recommendations. Be concise — this is live monitoring, not a post-session report.`;
+
+  const summary = windows.map((w) => {
+    const chSummary = w.channels.map((ch) => {
+      const bandStr = Object.entries(ch.bands)
+        .map(([k, v]) => `${k}:${v.toFixed(1)}dB`)
+        .join(", ");
+      return `    ${ch.name}: rms=${ch.rms.toFixed(1)}dBFS peak=${ch.peak.toFixed(1)}dBFS clip=${ch.clipping} centroid=${Math.round(ch.centroid)}Hz [${bandStr}]`;
+    }).join("\n");
+    const maskStr = w.masking.map((m) => `${m.band}:${m.channelA}↔${m.channelB}(${m.diffDb.toFixed(1)}dB)`).join(", ");
+    return `Window ${w.window} (t=${new Date(w.ts * 1000).toISOString()}):\n${chSummary}${maskStr ? `\n    masking: ${maskStr}` : ""}`;
+  }).join("\n\n");
+
+  session.subscribe((event: unknown) => {
+    const e = event as Record<string, unknown>;
+    if (e["type"] === "text_delta" && typeof e["text"] === "string") {
+      process.stdout.write(e["text"]);
+    }
+  });
+
+  await session.prompt(`${systemPrompt}\n\nLive mix data:\n\n${summary}`);
+  process.stdout.write("\n");
 }
 
 export async function getEngineerRead(report: string): Promise<void> {

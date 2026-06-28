@@ -1,11 +1,18 @@
 import { resolve } from "node:path";
 import { existsSync, rmSync } from "node:fs";
+import { spawn } from "node:child_process";
+import { fileURLToPath } from "node:url";
+import { dirname } from "node:path";
 import { analyzeAudio } from "./analyze/index.js";
 import { extractChannels, loadChannelFiles } from "./analyze/channels.js";
 import { compareChannels } from "./analyze/compare.js";
 import { buildReport, buildSummaryTable, formatMultiChannelReport } from "./report.js";
 import { getEngineerRead, analyzeMultiChannel } from "./engineer.js";
+import { startLive } from "./stream/index.js";
 import type { ChannelFile, ChannelAnalysis, AudioAnalysis } from "./types.js";
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const STREAM_SCRIPT = resolve(__dirname, "../scripts/stream.py");
 
 function parseArgs(argv: string[]): {
   file: string | null;
@@ -13,6 +20,12 @@ function parseArgs(argv: string[]): {
   names: string[];
   noSpectrum: boolean;
   help: boolean;
+  live: boolean;
+  listDevices: boolean;
+  device?: string;
+  channels?: number[];
+  windowSecs: number;
+  llmIntervalSecs: number;
 } {
   const args = argv.slice(2);
   let file: string | null = null;
@@ -20,22 +33,41 @@ function parseArgs(argv: string[]): {
   let names: string[] = [];
   let noSpectrum = false;
   let help = false;
+  let live = false;
+  let listDevices = false;
+  let device: string | undefined;
+  let channels: number[] | undefined;
+  let windowSecs = 3;
+  let llmIntervalSecs = 60;
 
   for (let i = 0; i < args.length; i++) {
-    if (args[i] === "--help" || args[i] === "-h") {
+    const a = args[i];
+    if (a === "--help" || a === "-h") {
       help = true;
-    } else if (args[i] === "--dir" && args[i + 1]) {
+    } else if (a === "--live") {
+      live = true;
+    } else if (a === "--list-devices") {
+      listDevices = true;
+    } else if (a === "--device") {
+      device = args[++i];
+    } else if (a === "--ch") {
+      channels = args[++i].split(",").map((s) => parseInt(s.trim(), 10));
+    } else if (a === "--window") {
+      windowSecs = parseFloat(args[++i]);
+    } else if (a === "--llm-interval") {
+      llmIntervalSecs = parseInt(args[++i], 10);
+    } else if (a === "--dir" && args[i + 1]) {
       dir = args[++i];
-    } else if (args[i] === "--names" && args[i + 1]) {
+    } else if (a === "--names" && args[i + 1]) {
       names = args[++i].split(",").map((n) => n.trim());
-    } else if (args[i] === "--no-spectrum") {
+    } else if (a === "--no-spectrum") {
       noSpectrum = true;
-    } else if (!args[i].startsWith("--")) {
-      file = args[i];
+    } else if (!a.startsWith("--")) {
+      file = a;
     }
   }
 
-  return { file, dir, names, noSpectrum, help };
+  return { file, dir, names, noSpectrum, help, live, listDevices, device, channels, windowSecs, llmIntervalSecs };
 }
 
 function printHelp(): void {
@@ -45,10 +77,16 @@ sound-buddy — audio analysis tool
 Usage:
   sound-buddy <file>              Analyze a single audio file (auto-detects multichannel WAV)
   sound-buddy --dir <directory>   Analyze all audio files in a directory as separate channels
+  sound-buddy --live              Real-time analysis from audio device
+  sound-buddy --list-devices      List available audio input devices
 
 Options:
   --names "CH1,CH2,..."           Custom channel names (comma-separated, mapped by index)
   --no-spectrum                   Skip librosa spectrum analysis (faster, use if Python/librosa not installed)
+  --device "NAME"                 Audio device name or index (for --live)
+  --ch 0,1,2                      Channel indices to capture (for --live, default: 0,1)
+  --window <secs>                 Analysis window in seconds (for --live, default: 3)
+  --llm-interval <secs>           Seconds between LLM deep-dives (for --live, default: 60, 0=disable)
   --help                          Show this help message
 
 Examples:
@@ -56,11 +94,14 @@ Examples:
   sound-buddy multitrack_32ch.wav --names "Kick,Snare,HH,OH L,OH R"
   sound-buddy --dir ./session/ --names "Kick,Snare,HH Open"
   sound-buddy --dir ./session/ --no-spectrum
+  sound-buddy --live
+  sound-buddy --live --device "DANTE Virtual Soundcard" --ch 1,3,5,7 --window 3 --llm-interval 60
+  sound-buddy --list-devices
 `);
 }
 
-function cleanup(channels: ChannelFile[]): void {
-  for (const ch of channels) {
+function cleanup(chFiles: ChannelFile[]): void {
+  for (const ch of chFiles) {
     if (ch.needsCleanup) {
       try {
         rmSync(ch.tmpPath);
@@ -133,6 +174,56 @@ function printChannelTable(channelAnalyses: ChannelAnalysis[]): void {
   }
 }
 
+async function runListDevices(): Promise<void> {
+  return new Promise((res, rej) => {
+    const py = spawn("python3", [STREAM_SCRIPT, "--list-devices"], {
+      stdio: ["ignore", "pipe", "inherit"],
+    });
+
+    let output = "";
+    py.stdout.on("data", (chunk: Buffer) => {
+      output += chunk.toString();
+    });
+
+    py.on("close", (code) => {
+      if (code !== 0) {
+        rej(new Error(`stream.py exited with code ${code}`));
+        return;
+      }
+
+      let parsed: { devices?: { index: number; name: string; channels: number; default_sr: number }[] };
+      try {
+        parsed = JSON.parse(output.trim());
+      } catch {
+        rej(new Error("Failed to parse device list"));
+        return;
+      }
+
+      const devs = parsed.devices ?? [];
+      if (devs.length === 0) {
+        console.log("No input devices found.");
+        res();
+        return;
+      }
+
+      const idxW = 5;
+      const nameW = Math.max(4, ...devs.map((d) => d.name.length));
+      const chW = 8;
+
+      const header =
+        "IDX".padEnd(idxW) + "  " + "NAME".padEnd(nameW) + "  " + "CHANNELS".padEnd(chW) + "  " + "SAMPLE RATE";
+      console.log(header);
+      console.log("─".repeat(header.length));
+      for (const d of devs) {
+        console.log(
+          String(d.index).padEnd(idxW) + "  " + d.name.padEnd(nameW) + "  " + String(d.channels).padEnd(chW) + "  " + `${d.default_sr} Hz`
+        );
+      }
+      res();
+    });
+  });
+}
+
 async function runSingleFile(filePath: string, names: string[]): Promise<void> {
   console.log(`\nAnalyzing ${filePath}...`);
   console.log("");
@@ -173,7 +264,6 @@ async function runSingleFile(filePath: string, names: string[]): Promise<void> {
     return;
   }
 
-  // Multi-channel WAV
   console.log(`Detected ${channelCount} channels — entering multi-channel mode`);
   console.log("");
 
@@ -266,7 +356,6 @@ async function runDirectory(dir: string, names: string[]): Promise<void> {
   console.log("");
 
   try {
-    // No mix file available in directory mode — pass null
     await analyzeMultiChannel(null, channelAnalyses, comparison);
   } catch (err) {
     console.error("\nLLM analysis failed:", err);
@@ -276,31 +365,46 @@ async function runDirectory(dir: string, names: string[]): Promise<void> {
 }
 
 async function main(): Promise<void> {
-  const { file, dir, names, help } = parseArgs(process.argv);
+  const opts = parseArgs(process.argv);
 
-  if (help) {
+  if (opts.help) {
     printHelp();
     process.exit(0);
   }
 
-  if (!file && !dir) {
-    console.error("Usage: sound-buddy <file>  OR  sound-buddy --dir <directory>");
+  if (opts.listDevices) {
+    await runListDevices();
+    return;
+  }
+
+  if (opts.live) {
+    await startLive({
+      device: opts.device,
+      channels: opts.channels,
+      windowSecs: opts.windowSecs,
+      llmIntervalSecs: opts.llmIntervalSecs,
+    });
+    return;
+  }
+
+  if (!opts.file && !opts.dir) {
+    console.error("Usage: sound-buddy <file>  OR  sound-buddy --dir <directory>  OR  sound-buddy --live");
     console.error("Run with --help for more options.");
     process.exit(1);
   }
 
-  if (dir) {
-    await runDirectory(dir, names);
+  if (opts.dir) {
+    await runDirectory(opts.dir, opts.names);
     return;
   }
 
-  if (file) {
-    const resolved = resolve(file);
+  if (opts.file) {
+    const resolved = resolve(opts.file);
     if (!existsSync(resolved)) {
       console.error(`Error: File not found: ${resolved}`);
       process.exit(1);
     }
-    await runSingleFile(resolved, names);
+    await runSingleFile(resolved, opts.names);
   }
 }
 
