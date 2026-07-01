@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { Command } from 'commander'
+import { runAnalyze } from './analyze.js'
 
 const program = new Command()
 
@@ -24,9 +25,18 @@ program
   .option('--scene <file>', 'Scene file for diff (pass twice for before/after)', (v, acc: string[]) => { acc.push(v); return acc }, [] as string[])
   .option('--json', 'Output as JSON')
   .option('--no-ai', 'Skip AI analysis')
-  .action((_file, _opts) => {
-    console.error('buddy analyze: not yet implemented')
-    process.exit(1)
+  .action(async (file: string | undefined, opts: { scene: string[]; noAi: boolean }) => {
+    try {
+      const output = await runAnalyze({
+        scenes: opts.scene ?? [],
+        audio: file,
+        noAi: opts.noAi ?? false,
+      })
+      process.stdout.write(output)
+    } catch (err) {
+      console.error((err as Error).message)
+      process.exit(1)
+    }
   })
 
 program
