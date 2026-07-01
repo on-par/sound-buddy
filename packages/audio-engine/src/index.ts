@@ -13,6 +13,7 @@ import type { ChannelFile, ChannelAnalysis, AudioAnalysis } from "./types.js";
 
 // Public library API — consumed by other @sound-buddy packages.
 export { analyzeAudio, extractChannels, loadChannelFiles, compareChannels, formatMultiChannelReport };
+export { cleanup as cleanupChannelFiles };
 export type { AudioAnalysis, ChannelFile, ChannelAnalysis } from "./types.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));

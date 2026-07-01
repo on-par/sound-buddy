@@ -1,5 +1,5 @@
 import { readFileSync, existsSync } from 'node:fs'
-import { resolve } from 'node:path'
+import { resolve, basename } from 'node:path'
 import { parseScene, diffScenes } from '@sound-buddy/scene-inspector'
 import {
   analyzeAudio,
@@ -7,6 +7,7 @@ import {
   loadChannelFiles,
   compareChannels,
   formatMultiChannelReport,
+  cleanupChannelFiles,
 } from '@sound-buddy/audio-engine'
 import type { AudioAnalysis, ChannelAnalysis, ChannelFile } from '@sound-buddy/audio-engine'
 import { analyzeWithClaude } from '@sound-buddy/ai-analyst'
@@ -176,7 +177,7 @@ export async function runAnalyze(
   } else if (file) {
     const resolved = resolve(file)
     if (!existsSync(resolved)) {
-      error('Error: file not found')
+      error(`Error: file not found: ${file}`)
       exit(1)
       return
     }
@@ -197,21 +198,25 @@ export async function runAnalyze(
   }
 
   // --- Formatted report ---------------------------------------------------
+  // Multi-channel runs render the richer report (which already contains the
+  // per-channel table); single mono/stereo files just get the summary table.
   if (channelAnalyses.length > 0) {
-    log('=== Per-Channel Summary ===')
-    printChannelTable(channelAnalyses, log)
-
     if (multiChannel) {
       const comparison = compareChannels(channelAnalyses)
-      log('')
       log(formatMultiChannelReport(channelAnalyses, comparison))
-      log("--- Multi-Channel Engineer's Read ---")
+    } else {
+      log('=== Per-Channel Summary ===')
+      printChannelTable(channelAnalyses, log)
       log('')
     }
   }
 
-  // --- AI insights (supplementary) ---------------------------------------
+  // --- AI insights / engineer's read (supplementary) ---------------------
+  // The heading matches the domain language of each mode; the section is only
+  // emitted when there is something to show, so no empty header is ever left
+  // dangling.
   if (!opts.noAi && (channelAnalyses.length > 0 || diff)) {
+    const heading = multiChannel ? "--- Multi-Channel Engineer's Read ---" : '=== AI Insights ==='
     const input: AnalystInput = {}
     if (diff) input.diff = diff
     if (channelAnalyses.length > 0) {
@@ -231,7 +236,7 @@ export async function runAnalyze(
     try {
       const insights = await analyzeWithClaude(input)
       if (insights.length > 0) {
-        log('=== AI Insights ===')
+        log(heading)
         for (const insight of insights) {
           const tag = insight.severity === 'warning' ? '⚠' : insight.severity === 'suggestion' ? '→' : 'ℹ'
           log(`  ${tag} ${insight.message}`)
@@ -239,7 +244,7 @@ export async function runAnalyze(
         log('')
       }
     } catch (err) {
-      log('=== AI Insights ===')
+      log(heading)
       log(`  (AI analysis unavailable: ${err instanceof Error ? err.message : String(err)})`)
       log('')
     }
@@ -265,7 +270,7 @@ async function collectFile(
     return {
       channels: [
         {
-          channel: { index: 0, name: filePath.split('/').pop() ?? filePath, tmpPath: filePath, needsCleanup: false },
+          channel: { index: 0, name: basename(filePath), tmpPath: filePath, needsCleanup: false },
           analysis,
         },
       ],
@@ -283,8 +288,14 @@ async function collectFile(
     return null
   }
 
-  const channels = await analyzeChannels(channelFiles, error, exit)
-  return channels ? { channels, multiChannel: true } : null
+  // extractChannels writes per-channel temp WAVs (needsCleanup: true); remove
+  // them once every channel has been analyzed, regardless of success/failure.
+  try {
+    const channels = await analyzeChannels(channelFiles, error, exit)
+    return channels ? { channels, multiChannel: true } : null
+  } finally {
+    cleanupChannelFiles(channelFiles)
+  }
 }
 
 /** Analyze a directory of per-channel files. */
@@ -308,7 +319,13 @@ async function collectDirectory(
     return null
   }
 
-  return analyzeChannels(channelFiles, error, exit)
+  // loadChannelFiles may split a multi-channel source into temp WAVs
+  // (needsCleanup: true); remove any it created once analysis is done.
+  try {
+    return await analyzeChannels(channelFiles, error, exit)
+  } finally {
+    cleanupChannelFiles(channelFiles)
+  }
 }
 
 async function analyzeChannels(

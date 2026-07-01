@@ -13,6 +13,7 @@ vi.mock('@sound-buddy/audio-engine', () => ({
   loadChannelFiles: vi.fn(),
   compareChannels: vi.fn(),
   formatMultiChannelReport: vi.fn(),
+  cleanupChannelFiles: vi.fn(),
 }))
 
 vi.mock('@sound-buddy/ai-analyst', () => ({
@@ -32,6 +33,7 @@ import {
   loadChannelFiles,
   compareChannels,
   formatMultiChannelReport,
+  cleanupChannelFiles,
 } from '@sound-buddy/audio-engine'
 import { analyzeWithClaude } from '@sound-buddy/ai-analyst'
 import { runAnalyze } from '../analyze.js'
@@ -188,10 +190,15 @@ describe('buddy analyze — multi-channel WAV', () => {
       index: i,
       name: `CH${i + 1}`,
       tmpPath: `/tmp/ch${i + 1}.wav`,
-      needsCleanup: false,
+      needsCleanup: true,
     }))
     vi.mocked(extractChannels).mockResolvedValue(channelFiles)
     vi.mocked(analyzeAudio).mockResolvedValueOnce(withChannels(32)).mockResolvedValue(withChannels(1))
+    // The multi-channel report owns the per-channel table; echo the names so
+    // the table assertions have something to match.
+    vi.mocked(formatMultiChannelReport).mockImplementation(
+      (chs) => `=== MULTI-CHANNEL SUMMARY ===\n${chs.map((c) => c.channel.name).join('\n')}`
+    )
   })
 
   it('shows a table row for all 32 channels', async () => {
@@ -202,10 +209,27 @@ describe('buddy analyze — multi-channel WAV', () => {
     for (let i = 1; i <= 32; i++) expect(combined).toContain(`CH${i}`)
   })
 
-  it("includes a Multi-Channel Engineer's Read section", async () => {
+  it('renders the per-channel table only once', async () => {
     const t = capture()
     await runAnalyze('/tmp/session.wav', { noAi: true }, t.io)
-    expect(t.out.join('\n')).toMatch(/multi-channel engineer'?s read/i)
+    expect(t.out.join('\n').match(/CH1\b/g) ?? []).toHaveLength(1)
+  })
+
+  it("labels the AI pass as the Multi-Channel Engineer's Read", async () => {
+    const t = capture()
+    await runAnalyze('/tmp/session.wav', {}, t.io) // AI on
+
+    const combined = t.out.join('\n')
+    expect(combined).toMatch(/multi-channel engineer'?s read/i)
+    expect(combined).toContain('CH1 fader increase may cause mix buildup')
+  })
+
+  it('cleans up the extracted per-channel temp files', async () => {
+    const t = capture()
+    await runAnalyze('/tmp/session.wav', { noAi: true }, t.io)
+    expect(cleanupChannelFiles).toHaveBeenCalledTimes(1)
+    const passed = vi.mocked(cleanupChannelFiles).mock.calls[0][0]
+    expect(passed).toHaveLength(32)
   })
 })
 
@@ -216,6 +240,9 @@ describe('buddy analyze — directory', () => {
       { index: 1, name: 'snare.wav', tmpPath: '/tmp/session/snare.wav', needsCleanup: false },
     ])
     vi.mocked(analyzeAudio).mockResolvedValue(withChannels(1))
+    vi.mocked(formatMultiChannelReport).mockImplementation(
+      (chs) => `=== MULTI-CHANNEL SUMMARY ===\n${chs.map((c) => c.channel.name).join('\n')}`
+    )
   })
 
   it('analyzes each file in the directory as a separate channel', async () => {
@@ -245,6 +272,22 @@ describe('buddy analyze — scene diff', () => {
     await runAnalyze(undefined, { scenes: ['only.scn'] }, t.io)
     expect(t.err.join('\n')).toMatch(/exactly two/i)
     expect(t.code).toBe(1)
+  })
+
+  it('rejects more than two --scene files with a non-zero exit', async () => {
+    const t = capture()
+    await runAnalyze(undefined, { scenes: ['a.scn', 'b.scn', 'c.scn'] }, t.io)
+    expect(t.err.join('\n')).toMatch(/exactly two/i)
+    expect(t.code).toBe(1)
+  })
+
+  it('sends both the scene diff and audio to the AI pass when combined', async () => {
+    const t = capture()
+    await runAnalyze('/tmp/mix.wav', { scenes: ['before.scn', 'after.scn'] }, t.io) // AI on
+
+    expect(analyzeWithClaude).toHaveBeenCalledWith(expect.objectContaining({ diff: mockDiff }))
+    const input = vi.mocked(analyzeWithClaude).mock.calls[0][0]
+    expect(input.audio?.channels).toHaveLength(1)
   })
 })
 
