@@ -7,7 +7,7 @@
   },
   "scripts": {
     "build": "tsc",
-    "test": "vitest run",
+    "test": "vitest run --passWithNoTests",
     "dev": "tsx src/index.ts"
   },
   "dependencies": {

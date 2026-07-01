@@ -3,7 +3,7 @@
   "private": true,
   "workspaces": ["packages/*"],
   "scripts": {
-    "build": "npm run build --workspaces",
+    "build": "npm run build -w @sound-buddy/shared -w @sound-buddy/scene-inspector -w @sound-buddy/audio-engine -w @sound-buddy/ai-analyst -w @sound-buddy/cli",
     "test": "npm run test --workspaces --if-present",
     "dev": "npm run dev -w @sound-buddy/cli"
   }
