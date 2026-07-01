@@ -445,8 +445,18 @@ async function main(): Promise<void> {
 // Only run the CLI when this module is executed directly, not when imported
 // as a library (e.g. by @sound-buddy/cli). realpathSync resolves symlinks
 // (e.g. node_modules/.bin) so the comparison matches the module's real path.
-const invokedPath = process.argv[1] ? realpathSync(process.argv[1]) : "";
-if (invokedPath && import.meta.url === pathToFileURL(invokedPath).href) {
+// It runs at import time, so any failure (e.g. a non-resolvable argv[1]) must
+// not crash the importing process — fall back to "not the main module".
+function isMainModule(): boolean {
+  if (!process.argv[1]) return false;
+  try {
+    return import.meta.url === pathToFileURL(realpathSync(process.argv[1])).href;
+  } catch {
+    return false;
+  }
+}
+
+if (isMainModule()) {
   main().catch((err) => {
     console.error("Fatal error:", err);
     process.exit(1);
