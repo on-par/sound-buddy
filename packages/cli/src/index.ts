@@ -25,9 +25,13 @@ program
   .option('--scene <file>', 'Scene file for diff (pass twice for before/after)', (v, acc: string[]) => { acc.push(v); return acc }, [] as string[])
   .option('--json', 'Output as JSON')
   .option('--no-ai', 'Skip AI analysis')
-  .action(async (file: string | undefined, opts: { dir?: string; scene: string[]; ai: boolean }) => {
+  .action(async (file: string | undefined, opts: { dir?: string; scene: string[]; json?: boolean; ai: boolean }) => {
     if (opts.dir) {
       console.error('buddy analyze --dir: not yet implemented')
+      process.exit(1)
+    }
+    if (opts.json) {
+      console.error('buddy analyze --json: not yet implemented')
       process.exit(1)
     }
     try {

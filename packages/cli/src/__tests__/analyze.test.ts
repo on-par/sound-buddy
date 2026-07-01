@@ -18,6 +18,7 @@ vi.mock('@sound-buddy/ai-analyst', () => ({
 
 vi.mock('node:fs', () => ({
   readFileSync: vi.fn(),
+  existsSync: vi.fn(() => true),
 }))
 
 import { readFileSync } from 'node:fs'
@@ -163,6 +164,22 @@ describe('buddy analyze — audio only with Claude', () => {
 
     expect(output).toContain('-9.1')
     expect(output).toContain('-1.9')
+  })
+})
+
+describe('buddy analyze — resilience', () => {
+  it('keeps audio measurements when the AI call fails', async () => {
+    mockAnalyzeWithClaude.mockRejectedValue(new Error('Not implemented'))
+
+    const output = await runAnalyze({
+      scenes: [],
+      audio: 'session.wav',
+      noAi: false,
+    })
+
+    expect(output).toContain('-9.1')
+    expect(output).toContain('AI analysis unavailable')
+    expect(output).toContain('Not implemented')
   })
 })
 

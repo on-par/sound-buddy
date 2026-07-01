@@ -1,4 +1,5 @@
-import { readFileSync } from 'node:fs'
+import { readFileSync, existsSync } from 'node:fs'
+import { basename } from 'node:path'
 import { parseScene, diffScenes } from '@sound-buddy/scene-inspector'
 import { analyzeAudio } from '@sound-buddy/audio-engine'
 import type { AudioAnalysis } from '@sound-buddy/audio-engine'
@@ -24,6 +25,9 @@ export async function runAnalyze(opts: AnalyzeOptions): Promise<string> {
   let diff: SceneDiff | undefined
 
   if (opts.scenes.length === 2) {
+    for (const f of opts.scenes) {
+      if (!existsSync(f)) throw new Error(`buddy analyze: scene file not found: ${f}`)
+    }
     const [contentA, contentB] = opts.scenes.map(f => readFileSync(f, 'utf8'))
     const [sceneA, sceneB] = [parseScene(contentA), parseScene(contentB)]
     diff = diffScenes(sceneA, sceneB)
@@ -39,6 +43,9 @@ export async function runAnalyze(opts: AnalyzeOptions): Promise<string> {
   let audio: AudioAnalysis | undefined
 
   if (opts.audio) {
+    if (!existsSync(opts.audio)) {
+      throw new Error(`buddy analyze: audio file not found: ${opts.audio}`)
+    }
     audio = await analyzeAudio(opts.audio)
 
     lines.push('=== Audio Measurements ===')
@@ -56,26 +63,41 @@ export async function runAnalyze(opts: AnalyzeOptions): Promise<string> {
     if (audio) {
       input.audio = {
         channels: [{
-          name: opts.audio ?? 'main',
+          name: opts.audio ? basename(opts.audio) : 'main',
           rmsDbfs: audio.sox.rmsDbfs,
           peakDbfs: audio.sox.peakDbfs,
           dynamicRangeDb: audio.sox.dynamicRangeDb,
-          dominantBand: 'mid',
+          dominantBand: dominantBand(audio),
         }],
       }
     }
 
-    const insights: Insight[] = await analyzeWithClaude(input)
+    // The AI call is supplementary — if it fails, keep the measurements already
+    // computed above rather than discarding all output.
+    try {
+      const insights: Insight[] = await analyzeWithClaude(input)
 
-    if (insights.length > 0) {
-      lines.push('=== AI Insights ===')
-      for (const insight of insights) {
-        const tag = insight.severity === 'warning' ? '⚠' : insight.severity === 'suggestion' ? '→' : 'ℹ'
-        lines.push(`  ${tag} ${insight.message}`)
+      if (insights.length > 0) {
+        lines.push('=== AI Insights ===')
+        for (const insight of insights) {
+          const tag = insight.severity === 'warning' ? '⚠' : insight.severity === 'suggestion' ? '→' : 'ℹ'
+          lines.push(`  ${tag} ${insight.message}`)
+        }
+        lines.push('')
       }
+    } catch (err) {
+      lines.push(`=== AI Insights ===`)
+      lines.push(`  (AI analysis unavailable: ${err instanceof Error ? err.message : String(err)})`)
       lines.push('')
     }
   }
 
   return lines.join('\n')
+}
+
+/** Pick the loudest frequency band from the analyzed spectrum. */
+function dominantBand(audio: AudioAnalysis): string {
+  const bands = Object.entries(audio.spectrum.bands) as [string, number][]
+  if (bands.length === 0) return 'mid'
+  return bands.reduce((a, b) => (b[1] > a[1] ? b : a))[0]
 }
