@@ -1,0 +1,26 @@
+{
+  "name": "@sound-buddy/cli",
+  "version": "0.1.0",
+  "type": "module",
+  "bin": {
+    "buddy": "./dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "test": "vitest run",
+    "dev": "tsx src/index.ts"
+  },
+  "dependencies": {
+    "@sound-buddy/shared": "*",
+    "@sound-buddy/scene-inspector": "*",
+    "@sound-buddy/audio-engine": "*",
+    "@sound-buddy/ai-analyst": "*",
+    "commander": "^12"
+  },
+  "devDependencies": {
+    "typescript": "^5",
+    "tsx": "^4",
+    "@types/node": "^22",
+    "vitest": "^2"
+  }
+}

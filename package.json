@@ -1,22 +1,10 @@
 {
   "name": "sound-buddy",
-  "version": "0.1.0",
-  "type": "module",
-  "bin": {
-    "sound-buddy": "./dist/index.js"
-  },
+  "private": true,
+  "workspaces": ["packages/*"],
   "scripts": {
-    "build": "tsc",
-    "dev": "tsx src/index.ts",
-    "analyze": "tsx src/index.ts"
-  },
-  "dependencies": {
-    "@earendil-works/pi-coding-agent": "latest",
-    "@earendil-works/pi-ai": "latest"
-  },
-  "devDependencies": {
-    "typescript": "^5",
-    "tsx": "^4",
-    "@types/node": "^22"
+    "build": "npm run build --workspaces",
+    "test": "npm run test --workspaces --if-present",
+    "dev": "npm run dev -w @sound-buddy/cli"
   }
 }
