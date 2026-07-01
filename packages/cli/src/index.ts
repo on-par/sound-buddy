@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { Command } from 'commander'
-import { runAnalyze } from './commands/analyze.js'
+import { runAnalyze } from './analyze.js'
 
 const program = new Command()
 
@@ -25,9 +25,15 @@ program
   .option('--scene <file>', 'Scene file for diff (pass twice for before/after)', (v, acc: string[]) => { acc.push(v); return acc }, [] as string[])
   .option('--json', 'Output as JSON')
   .option('--no-ai', 'Skip AI analysis')
-  .action((file, opts) => {
-    runAnalyze(file, opts).catch((err) => {
-      console.error('Fatal:', err)
+  .action((file: string | undefined, opts: { dir?: string; scene: string[]; json?: boolean; ai: boolean }) => {
+    runAnalyze(file, {
+      scenes: opts.scene ?? [],
+      dir: opts.dir,
+      json: opts.json,
+      // Commander stores the negated `--no-ai` flag under `opts.ai` (default true).
+      noAi: opts.ai === false,
+    }).catch((err) => {
+      console.error(err instanceof Error ? err.message : String(err))
       process.exit(1)
     })
   })

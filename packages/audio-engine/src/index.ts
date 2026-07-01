@@ -1,7 +1,7 @@
 import { resolve } from "node:path";
-import { existsSync, rmSync } from "node:fs";
+import { existsSync, rmSync, realpathSync } from "node:fs";
 import { spawn } from "node:child_process";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { dirname } from "node:path";
 import { analyzeAudio } from "./analyze/index.js";
 import { extractChannels, loadChannelFiles } from "./analyze/channels.js";
@@ -10,6 +10,10 @@ import { buildReport, buildSummaryTable, formatMultiChannelReport } from "./repo
 import { getEngineerRead, analyzeMultiChannel, analyzeWithOllama } from "./engineer.js";
 import { startLive } from "./stream/index.js";
 import type { ChannelFile, ChannelAnalysis, AudioAnalysis } from "./types.js";
+
+// Public library API — consumed by other @sound-buddy packages.
+export { analyzeAudio, extractChannels, loadChannelFiles, compareChannels, formatMultiChannelReport };
+export type { AudioAnalysis, ChannelFile, ChannelAnalysis } from "./types.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const STREAM_SCRIPT = resolve(__dirname, "../scripts/stream.py");
@@ -438,7 +442,23 @@ async function main(): Promise<void> {
   }
 }
 
-main().catch((err) => {
-  console.error("Fatal error:", err);
-  process.exit(1);
-});
+// Only run the CLI when this module is executed directly, not when imported
+// as a library (e.g. by @sound-buddy/cli). realpathSync resolves symlinks
+// (e.g. node_modules/.bin) so the comparison matches the module's real path.
+// It runs at import time, so any failure (e.g. a non-resolvable argv[1]) must
+// not crash the importing process — fall back to "not the main module".
+function isMainModule(): boolean {
+  if (!process.argv[1]) return false;
+  try {
+    return import.meta.url === pathToFileURL(realpathSync(process.argv[1])).href;
+  } catch {
+    return false;
+  }
+}
+
+if (isMainModule()) {
+  main().catch((err) => {
+    console.error("Fatal error:", err);
+    process.exit(1);
+  });
+}
