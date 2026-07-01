@@ -11,6 +11,9 @@ import { getEngineerRead, analyzeMultiChannel, analyzeWithOllama } from "./engin
 import { startLive } from "./stream/index.js";
 import type { ChannelFile, ChannelAnalysis, AudioAnalysis } from "./types.js";
 
+export { analyzeAudio as analyzeFile };
+export type { AudioAnalysis, ChannelAnalysis, ChannelFile };
+
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const STREAM_SCRIPT = resolve(__dirname, "../scripts/stream.py");
 
@@ -438,7 +441,9 @@ async function main(): Promise<void> {
   }
 }
 
-main().catch((err) => {
-  console.error("Fatal error:", err);
-  process.exit(1);
-});
+if (process.argv[1] && fileURLToPath(import.meta.url) === resolve(process.argv[1])) {
+  main().catch((err) => {
+    console.error("Fatal error:", err);
+    process.exit(1);
+  });
+}

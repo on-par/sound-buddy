@@ -1,5 +1,9 @@
 #!/usr/bin/env node
+import { analyzeFile } from '@sound-buddy/audio-engine'
 import { Command } from 'commander'
+
+// Suppress unused warning — analyzeFile will be wired up in subsequent issues
+void analyzeFile
 
 const program = new Command()
 
