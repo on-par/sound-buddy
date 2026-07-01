@@ -1,9 +1,9 @@
 import { readFileSync } from 'node:fs'
 import { parseScene, diffScenes } from '@sound-buddy/scene-inspector'
 import { analyzeAudio } from '@sound-buddy/audio-engine'
+import type { AudioAnalysis } from '@sound-buddy/audio-engine'
 import { analyzeWithClaude } from '@sound-buddy/ai-analyst'
 import type { SceneDiff, AnalystInput, Insight } from '@sound-buddy/shared'
-import type { AudioAnalysis } from '@sound-buddy/audio-engine/dist/types.js'
 
 export interface AnalyzeOptions {
   scenes: string[]
