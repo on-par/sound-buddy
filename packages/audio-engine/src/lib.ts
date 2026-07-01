@@ -1,0 +1,5 @@
+export { analyzeAudio } from './analyze/index.js'
+export { extractChannels, loadChannelFiles } from './analyze/channels.js'
+export { compareChannels } from './analyze/compare.js'
+export { buildReport, buildSummaryTable, formatMultiChannelReport } from './report.js'
+export type { AudioAnalysis, ChannelFile, ChannelAnalysis, ChannelComparison, SoxStats, FrequencyBands, SpectrumResult, FfprobeResult, AudioFormat, AudioStream, MaskingPair } from './types.js'
