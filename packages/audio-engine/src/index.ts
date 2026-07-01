@@ -1,5 +1,5 @@
 import { resolve } from "node:path";
-import { existsSync, rmSync } from "node:fs";
+import { existsSync, rmSync, realpathSync } from "node:fs";
 import { spawn } from "node:child_process";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { dirname } from "node:path";
@@ -443,8 +443,10 @@ async function main(): Promise<void> {
 }
 
 // Only run the CLI when this module is executed directly, not when imported
-// as a library (e.g. by @sound-buddy/cli).
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+// as a library (e.g. by @sound-buddy/cli). realpathSync resolves symlinks
+// (e.g. node_modules/.bin) so the comparison matches the module's real path.
+const invokedPath = process.argv[1] ? realpathSync(process.argv[1]) : "";
+if (invokedPath && import.meta.url === pathToFileURL(invokedPath).href) {
   main().catch((err) => {
     console.error("Fatal error:", err);
     process.exit(1);

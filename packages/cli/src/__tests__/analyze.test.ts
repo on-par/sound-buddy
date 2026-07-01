@@ -166,6 +166,26 @@ describe('buddy analyze — audio only with Claude', () => {
   })
 })
 
+describe('buddy analyze — input validation', () => {
+  it('throws when only one --scene file is provided', async () => {
+    await expect(
+      runAnalyze({ scenes: ['before.scn'], audio: 'session.wav', noAi: false })
+    ).rejects.toThrow(/exactly two/)
+  })
+
+  it('throws when more than two --scene files are provided', async () => {
+    await expect(
+      runAnalyze({ scenes: ['a.scn', 'b.scn', 'c.scn'], noAi: false })
+    ).rejects.toThrow(/exactly two/)
+  })
+
+  it('throws when neither audio nor scenes are provided', async () => {
+    await expect(runAnalyze({ scenes: [], noAi: false })).rejects.toThrow(
+      /provide an audio file/
+    )
+  })
+})
+
 describe('buddy analyze — --no-ai flag', () => {
   it('skips AI call when --no-ai is set', async () => {
     const output = await runAnalyze({

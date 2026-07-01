@@ -25,16 +25,21 @@ program
   .option('--scene <file>', 'Scene file for diff (pass twice for before/after)', (v, acc: string[]) => { acc.push(v); return acc }, [] as string[])
   .option('--json', 'Output as JSON')
   .option('--no-ai', 'Skip AI analysis')
-  .action(async (file: string | undefined, opts: { scene: string[]; noAi: boolean }) => {
+  .action(async (file: string | undefined, opts: { dir?: string; scene: string[]; ai: boolean }) => {
+    if (opts.dir) {
+      console.error('buddy analyze --dir: not yet implemented')
+      process.exit(1)
+    }
     try {
       const output = await runAnalyze({
         scenes: opts.scene ?? [],
         audio: file,
-        noAi: opts.noAi ?? false,
+        // Commander stores the negated `--no-ai` flag under `opts.ai` (default true).
+        noAi: opts.ai === false,
       })
       process.stdout.write(output)
     } catch (err) {
-      console.error((err as Error).message)
+      console.error(err instanceof Error ? err.message : String(err))
       process.exit(1)
     }
   })

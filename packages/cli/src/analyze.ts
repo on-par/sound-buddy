@@ -12,6 +12,13 @@ export interface AnalyzeOptions {
 }
 
 export async function runAnalyze(opts: AnalyzeOptions): Promise<string> {
+  if (opts.scenes.length !== 0 && opts.scenes.length !== 2) {
+    throw new Error('buddy analyze: --scene requires exactly two files (before and after)')
+  }
+  if (!opts.audio && opts.scenes.length === 0) {
+    throw new Error('buddy analyze: provide an audio file and/or two --scene files (see --help)')
+  }
+
   const lines: string[] = []
 
   let diff: SceneDiff | undefined
