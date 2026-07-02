@@ -932,6 +932,7 @@
           <div class="rc-score-section">
             <div id="rc-grade" class="rc-grade">A</div>
             <div class="rc-score-label">Overall Grade</div>
+            <div id="rc-rec-type" class="rc-rec-type" style="font-size:11px;color:var(--muted);margin-top:8px;text-align:center;max-width:180px"></div>
           </div>
 
           <div class="rc-section">
@@ -1765,12 +1766,35 @@ function bandDiffFromOthers(bands, key) {
   return bands[key] - avgOthers;
 }
 
+function analyzeRecordingType(src) {
+  if (src.clipping || src.peak >= -0.5) return { type: 'clipping', label: 'Clipping', note: 'CRITICAL: Signal is clipping. Reduce input gain immediately.' };
+  if (src.peak > -3 && src.rms > -12) return { type: 'hot', label: 'Hot', note: 'Recording level is very hot. Consider reducing gain for safety.' };
+  // Low gain: peak is reasonable but RMS is very low — wide DR means natural dynamics, not compression
+  if (src.peak > -15 && src.rms < -30 && src.dynamicRange != null && src.dynamicRange > 15)
+    return { type: 'low_gain', label: 'Low Recording Gain', note: 'Your mix is fine but your USB recording level is low. Increase the USB output gain on your console to get RMS closer to -18 dBFS.' };
+  if (src.peak < -15 && src.rms < -35)
+    return { type: 'low_gain', label: 'Low Recording Gain', note: 'Both peak and RMS are very low. Increase the USB recording output level on your console.' };
+  if (src.rms < -25) return { type: 'quiet', label: 'Quiet', note: 'Recording is quieter than typical. Consider increasing gain.' };
+  if (src.rms >= -20 && src.rms <= -10 && src.peak > -6) return { type: 'good', label: 'Good Level', note: 'Recording level is healthy.' };
+  return { type: 'normal', label: 'Normal', note: 'Recording level is within typical range.' };
+}
+
 function computeGrade(src) {
   const letters = ['A', 'B', 'C', 'D', 'F'];
   if (src.clipping) return 'F';
 
   let idx = 0;
   const drop = () => { idx = Math.min(idx + 1, letters.length - 1); };
+
+  const recType = analyzeRecordingType(src);
+
+  // Don't penalize grade for low recording gain — that's a setup issue, not a mix issue
+  if (recType.type === 'low_gain') {
+    if (src.dynamicRange != null && src.dynamicRange < 3) drop();
+    const anyBandHot = Object.keys(src.bands).some(k => bandDiffFromOthers(src.bands, k) > 15);
+    if (anyBandHot) drop();
+    return letters[idx];
+  }
 
   if (src.rms < -20 || src.rms > -14) drop();
   if (src.dynamicRange != null && src.dynamicRange < 6) drop();
@@ -1784,22 +1808,27 @@ function computeGrade(src) {
 
 function computeRecommendations(src) {
   const recs = [];
+  const recType = analyzeRecordingType(src);
 
   if (src.clipping) {
     recs.push('CRITICAL: Clipping detected. Reduce input gain immediately.');
   }
 
-  if (src.rms < -25) {
-    recs.push('Your recording is too quiet. Increase input gain or fader levels.');
+  // Smart RMS recommendations based on recording type
+  if (recType.type === 'low_gain') {
+    recs.push(recType.note);
   } else if (src.rms > -10) {
     recs.push('Your recording is too hot. Reduce gain to avoid clipping.');
+  } else if (src.rms < -25 && recType.type !== 'low_gain') {
+    recs.push('Your recording is too quiet. Increase input gain or fader levels.');
   }
 
   if (src.dynamicRange != null && src.dynamicRange < 3) {
     recs.push('Dynamic range is very compressed. Mix may sound lifeless.');
   }
 
-  if (src.bands.subBass > -15) {
+  // Only flag sub-bass if it's genuinely hot (not just relative to very quiet highs)
+  if (src.bands.subBass > -10) {
     recs.push('Too much sub-bass energy. Apply a high-pass filter below 80Hz.');
   }
 
@@ -1872,6 +1901,13 @@ function renderReportCard() {
   const gradeEl = document.getElementById('rc-grade');
   gradeEl.textContent = grade;
   gradeEl.className = 'rc-grade grade-' + grade.toLowerCase();
+
+  // Show recording type assessment
+  const recType = analyzeRecordingType(src);
+  const recTypeEl = document.getElementById('rc-rec-type');
+  if (recTypeEl) {
+    recTypeEl.textContent = recType.label + (recType.note ? ' — ' + recType.note : '');
+  }
 
   const metricsBody = document.getElementById('rc-metrics-body');
   metricsBody.innerHTML = '';
