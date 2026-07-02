@@ -1,103 +1,346 @@
 import { readFileSync, existsSync } from 'node:fs'
-import { basename } from 'node:path'
+import { resolve, basename } from 'node:path'
 import { parseScene, diffScenes } from '@sound-buddy/scene-inspector'
-import { analyzeAudio } from '@sound-buddy/audio-engine'
-import type { AudioAnalysis } from '@sound-buddy/audio-engine'
+import {
+  analyzeAudio,
+  extractChannels,
+  loadChannelFiles,
+  compareChannels,
+  formatMultiChannelReport,
+  cleanupChannelFiles,
+} from '@sound-buddy/audio-engine'
+import type { AudioAnalysis, ChannelAnalysis, ChannelFile } from '@sound-buddy/audio-engine'
 import { analyzeWithClaude } from '@sound-buddy/ai-analyst'
-import type { SceneDiff, AnalystInput, Insight } from '@sound-buddy/shared'
+import type { SceneDiff, AnalystInput } from '@sound-buddy/shared'
 
 export interface AnalyzeOptions {
-  scenes: string[]
-  audio?: string
-  noAi: boolean
+  /** Two .scn files (before/after) for a scene diff. */
+  scenes?: string[]
+  /** Directory of per-channel audio files. */
+  dir?: string
+  /** Emit machine-readable JSON instead of a formatted report. */
+  json?: boolean
+  /** Skip the supplementary AI insights pass. */
+  noAi?: boolean
 }
 
-export async function runAnalyze(opts: AnalyzeOptions): Promise<string> {
-  if (opts.scenes.length !== 0 && opts.scenes.length !== 2) {
-    throw new Error('buddy analyze: --scene requires exactly two files (before and after)')
-  }
-  if (!opts.audio && opts.scenes.length === 0) {
-    throw new Error('buddy analyze: provide an audio file and/or two --scene files (see --help)')
+/** Injectable I/O so the command is testable without touching real stdio. */
+export interface AnalyzeIO {
+  log?: (s: string) => void
+  error?: (s: string) => void
+  exit?: (code: number) => void
+}
+
+const BAND_LABELS: Record<string, string> = {
+  subBass: 'Sub-bass',
+  bass: 'Bass',
+  lowMid: 'Low-mid',
+  mid: 'Mid',
+  highMid: 'High-mid',
+  presence: 'Presence',
+  brilliance: 'Brilliance',
+}
+
+/** Pick the loudest frequency band, mapped to a human label. */
+function dominantBand(bands: AudioAnalysis['spectrum']['bands']): string {
+  const entries = Object.entries(bands) as [string, number][]
+  if (entries.length === 0) return 'mid'
+  const top = entries.reduce((a, b) => (b[1] > a[1] ? b : a))[0]
+  return BAND_LABELS[top] ?? top
+}
+
+function printChannelTable(channelAnalyses: ChannelAnalysis[], log: (s: string) => void): void {
+  const cols = {
+    name: Math.max(10, ...channelAnalyses.map((c) => c.channel.name.length)),
+    rms: 12,
+    peak: 13,
+    dyn: 13,
   }
 
-  const lines: string[] = []
+  const header = [
+    'Channel'.padEnd(cols.name),
+    'RMS dBFS'.padEnd(cols.rms),
+    'Peak dBFS'.padEnd(cols.peak),
+    'Dyn Range'.padEnd(cols.dyn),
+    'Dominant Band',
+  ].join('  ')
 
+  log(header)
+  log('-'.repeat(header.length))
+
+  for (const { channel, analysis } of channelAnalyses) {
+    const { sox, spectrum } = analysis
+    const rmsStr = isFinite(sox.rmsDbfs) ? sox.rmsDbfs.toFixed(2) + ' dBFS' : '-inf dBFS'
+    const peakStr = isFinite(sox.peakDbfs) ? sox.peakDbfs.toFixed(2) + ' dBFS' : '-inf dBFS'
+    const dynStr = sox.dynamicRangeDb.toFixed(2) + ' dB'
+
+    log(
+      [
+        channel.name.padEnd(cols.name),
+        rmsStr.padEnd(cols.rms),
+        peakStr.padEnd(cols.peak),
+        dynStr.padEnd(cols.dyn),
+        dominantBand(spectrum.bands),
+      ].join('  ')
+    )
+  }
+}
+
+function outputJson(
+  channelAnalyses: ChannelAnalysis[],
+  diff: SceneDiff | undefined,
+  log: (s: string) => void
+): void {
+  const channels = channelAnalyses.map(({ channel, analysis }) => ({
+    name: channel.name,
+    rmsDbfs: analysis.sox.rmsDbfs,
+    peakDbfs: analysis.sox.peakDbfs,
+    dynamicRangeDb: analysis.sox.dynamicRangeDb,
+    bands: analysis.spectrum.bands,
+    dominantBand: dominantBand(analysis.spectrum.bands),
+  }))
+  log(JSON.stringify(diff ? { diff, channels } : { channels }, null, 2))
+}
+
+async function analyzeChannelSafe(
+  ch: ChannelFile,
+  error: (s: string) => void
+): Promise<ChannelAnalysis | null> {
+  try {
+    const analysis = await analyzeAudio(ch.tmpPath)
+    return { channel: ch, analysis }
+  } catch (err) {
+    error(`Warning: failed to analyze channel "${ch.name}": ${String(err)}`)
+    return null
+  }
+}
+
+/**
+ * `buddy analyze` — the unified audio/scene analysis command.
+ *
+ * Handles, in any combination:
+ *   - a scene diff from two `--scene` files
+ *   - a single audio file (mono/stereo per-channel summary, or an auto-detected
+ *     multi-channel WAV that is split into per-channel measurements)
+ *   - a `--dir` of per-channel files
+ *   - `--json` machine output
+ *   - a supplementary AI insights pass (skipped with `--no-ai` or `--json`)
+ */
+export async function runAnalyze(
+  file: string | undefined,
+  opts: AnalyzeOptions = {},
+  io: AnalyzeIO = {}
+): Promise<void> {
+  const log = io.log ?? console.log
+  const error = io.error ?? ((s: string) => console.error(s))
+  const exit = io.exit ?? process.exit
+  const scenes = opts.scenes ?? []
+
+  if (scenes.length !== 0 && scenes.length !== 2) {
+    error('buddy analyze: --scene requires exactly two files (before and after)')
+    exit(1)
+    return
+  }
+
+  // --- Scene diff ---------------------------------------------------------
   let diff: SceneDiff | undefined
-
-  if (opts.scenes.length === 2) {
-    for (const f of opts.scenes) {
-      if (!existsSync(f)) throw new Error(`buddy analyze: scene file not found: ${f}`)
+  if (scenes.length === 2) {
+    for (const f of scenes) {
+      if (!existsSync(f)) {
+        error(`buddy analyze: scene file not found: ${f}`)
+        exit(1)
+        return
+      }
     }
-    const [contentA, contentB] = opts.scenes.map(f => readFileSync(f, 'utf8'))
-    const [sceneA, sceneB] = [parseScene(contentA), parseScene(contentB)]
-    diff = diffScenes(sceneA, sceneB)
+    const [contentA, contentB] = scenes.map((f) => readFileSync(f, 'utf8'))
+    diff = diffScenes(parseScene(contentA), parseScene(contentB))
 
-    lines.push('=== Scene Diff ===')
-    lines.push(diff.summary)
-    for (const change of diff.changes) {
-      lines.push(`  ${change.label}: ${change.from} → ${change.to}`)
+    if (!opts.json) {
+      log('=== Scene Diff ===')
+      log(diff.summary)
+      for (const change of diff.changes) {
+        log(`  ${change.label}: ${change.from} → ${change.to}`)
+      }
+      log('')
     }
-    lines.push('')
   }
 
-  let audio: AudioAnalysis | undefined
+  // --- Audio measurements -------------------------------------------------
+  let channelAnalyses: ChannelAnalysis[] = []
+  let multiChannel = false
 
-  if (opts.audio) {
-    if (!existsSync(opts.audio)) {
-      throw new Error(`buddy analyze: audio file not found: ${opts.audio}`)
+  if (opts.dir) {
+    const collected = await collectDirectory(opts.dir, error, exit)
+    if (!collected) return
+    channelAnalyses = collected
+    multiChannel = true
+  } else if (file) {
+    const resolved = resolve(file)
+    if (!existsSync(resolved)) {
+      error(`Error: file not found: ${file}`)
+      exit(1)
+      return
     }
-    audio = await analyzeAudio(opts.audio)
-
-    lines.push('=== Audio Measurements ===')
-    lines.push(`  RMS:           ${audio.sox.rmsDbfs.toFixed(1)} dBFS`)
-    lines.push(`  Peak:          ${audio.sox.peakDbfs.toFixed(1)} dBFS`)
-    lines.push(`  Dynamic Range: ${audio.sox.dynamicRangeDb.toFixed(1)} dB`)
-    lines.push('')
+    const collected = await collectFile(resolved, error, exit)
+    if (!collected) return
+    channelAnalyses = collected.channels
+    multiChannel = collected.multiChannel
+  } else if (scenes.length === 0) {
+    error('Usage: buddy analyze <file>  OR  buddy analyze --dir <directory>  OR  buddy analyze --scene <a> --scene <b>')
+    exit(1)
+    return
   }
 
-  const shouldCallAi = !opts.noAi && (opts.audio || diff)
+  // --- JSON short-circuit -------------------------------------------------
+  if (opts.json) {
+    outputJson(channelAnalyses, diff, log)
+    return
+  }
 
-  if (shouldCallAi) {
+  // --- Formatted report ---------------------------------------------------
+  // Multi-channel runs render the richer report (which already contains the
+  // per-channel table); single mono/stereo files just get the summary table.
+  if (channelAnalyses.length > 0) {
+    if (multiChannel) {
+      const comparison = compareChannels(channelAnalyses)
+      log(formatMultiChannelReport(channelAnalyses, comparison))
+    } else {
+      log('=== Per-Channel Summary ===')
+      printChannelTable(channelAnalyses, log)
+      log('')
+    }
+  }
+
+  // --- AI insights / engineer's read (supplementary) ---------------------
+  // The heading matches the domain language of each mode; the section is only
+  // emitted when there is something to show, so no empty header is ever left
+  // dangling.
+  if (!opts.noAi && (channelAnalyses.length > 0 || diff)) {
+    const heading = multiChannel ? "--- Multi-Channel Engineer's Read ---" : '=== AI Insights ==='
     const input: AnalystInput = {}
     if (diff) input.diff = diff
-    if (audio) {
+    if (channelAnalyses.length > 0) {
       input.audio = {
-        channels: [{
-          name: opts.audio ? basename(opts.audio) : 'main',
-          rmsDbfs: audio.sox.rmsDbfs,
-          peakDbfs: audio.sox.peakDbfs,
-          dynamicRangeDb: audio.sox.dynamicRangeDb,
-          dominantBand: dominantBand(audio),
-        }],
+        channels: channelAnalyses.map(({ channel, analysis }) => ({
+          name: channel.name,
+          rmsDbfs: analysis.sox.rmsDbfs,
+          peakDbfs: analysis.sox.peakDbfs,
+          dynamicRangeDb: analysis.sox.dynamicRangeDb,
+          dominantBand: dominantBand(analysis.spectrum.bands),
+        })),
       }
     }
 
     // The AI call is supplementary — if it fails, keep the measurements already
-    // computed above rather than discarding all output.
+    // printed above rather than discarding all output.
     try {
-      const insights: Insight[] = await analyzeWithClaude(input)
-
+      const insights = await analyzeWithClaude(input)
       if (insights.length > 0) {
-        lines.push('=== AI Insights ===')
+        log(heading)
         for (const insight of insights) {
           const tag = insight.severity === 'warning' ? '⚠' : insight.severity === 'suggestion' ? '→' : 'ℹ'
-          lines.push(`  ${tag} ${insight.message}`)
+          log(`  ${tag} ${insight.message}`)
         }
-        lines.push('')
+        log('')
       }
     } catch (err) {
-      lines.push(`=== AI Insights ===`)
-      lines.push(`  (AI analysis unavailable: ${err instanceof Error ? err.message : String(err)})`)
-      lines.push('')
+      log(heading)
+      log(`  (AI analysis unavailable: ${err instanceof Error ? err.message : String(err)})`)
+      log('')
+    }
+  }
+}
+
+/** Analyze a single file, splitting multi-channel WAVs into per-channel measurements. */
+async function collectFile(
+  filePath: string,
+  error: (s: string) => void,
+  exit: (code: number) => void
+): Promise<{ channels: ChannelAnalysis[]; multiChannel: boolean } | null> {
+  let analysis
+  try {
+    analysis = await analyzeAudio(filePath)
+  } catch (err) {
+    error(`Analysis failed: ${String(err)}`)
+    exit(1)
+    return null
+  }
+
+  if (analysis.ffprobe.stream.channels <= 2) {
+    return {
+      channels: [
+        {
+          channel: { index: 0, name: basename(filePath), tmpPath: filePath, needsCleanup: false },
+          analysis,
+        },
+      ],
+      multiChannel: false,
     }
   }
 
-  return lines.join('\n')
+  // Multi-channel WAV — split into one file per channel.
+  let channelFiles: ChannelFile[]
+  try {
+    channelFiles = await extractChannels(filePath, [])
+  } catch (err) {
+    error(`Failed to extract channels: ${String(err)}`)
+    exit(1)
+    return null
+  }
+
+  // extractChannels writes per-channel temp WAVs (needsCleanup: true); remove
+  // them once every channel has been analyzed, regardless of success/failure.
+  try {
+    const channels = await analyzeChannels(channelFiles, error, exit)
+    return channels ? { channels, multiChannel: true } : null
+  } finally {
+    cleanupChannelFiles(channelFiles)
+  }
 }
 
-/** Pick the loudest frequency band from the analyzed spectrum. */
-function dominantBand(audio: AudioAnalysis): string {
-  const bands = Object.entries(audio.spectrum.bands) as [string, number][]
-  if (bands.length === 0) return 'mid'
-  return bands.reduce((a, b) => (b[1] > a[1] ? b : a))[0]
+/** Analyze a directory of per-channel files. */
+async function collectDirectory(
+  dir: string,
+  error: (s: string) => void,
+  exit: (code: number) => void
+): Promise<ChannelAnalysis[] | null> {
+  let channelFiles: ChannelFile[]
+  try {
+    channelFiles = await loadChannelFiles(dir)
+  } catch (err) {
+    error(`Failed to read directory: ${String(err)}`)
+    exit(1)
+    return null
+  }
+
+  if (channelFiles.length === 0) {
+    error(`No audio files found in: ${dir}`)
+    exit(1)
+    return null
+  }
+
+  // loadChannelFiles may split a multi-channel source into temp WAVs
+  // (needsCleanup: true); remove any it created once analysis is done.
+  try {
+    return await analyzeChannels(channelFiles, error, exit)
+  } finally {
+    cleanupChannelFiles(channelFiles)
+  }
+}
+
+async function analyzeChannels(
+  channelFiles: ChannelFile[],
+  error: (s: string) => void,
+  exit: (code: number) => void
+): Promise<ChannelAnalysis[] | null> {
+  const results = await Promise.all(channelFiles.map((ch) => analyzeChannelSafe(ch, error)))
+  const channelAnalyses = results.filter((r): r is ChannelAnalysis => r !== null)
+
+  if (channelAnalyses.length === 0) {
+    error('All channel analyses failed.')
+    exit(1)
+    return null
+  }
+
+  return channelAnalyses
 }
