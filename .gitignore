@@ -5,3 +5,5 @@ dist/
 *.tsbuildinfo
 .env
 .DS_Store
+test-results/
+playwright-report/
