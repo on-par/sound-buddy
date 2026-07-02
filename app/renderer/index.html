@@ -250,6 +250,18 @@
     .select-wrap select:focus { border-color:var(--gold-500); box-shadow:var(--glow-focus); }
     .select-wrap select:disabled { opacity:0.45; cursor:not-allowed; }
     .select-caret { position:absolute; right:10px; pointer-events:none; color:var(--text-tertiary); display:flex; }
+    .select-row { display:flex; align-items:center; gap:8px; width:100%; }
+    .select-row .select-wrap { flex:1; min-width:0; }
+    .ghost-btn {
+      flex:none; height:var(--control-h); padding:0 14px; background:var(--surface);
+      color:var(--text-secondary); border:1px solid var(--border-default);
+      border-radius:var(--radius-md); font:var(--fw-medium) var(--fs-body-sm)/1 var(--font-sans);
+      cursor:pointer; outline:none; transition:var(--transition-control); white-space:nowrap;
+    }
+    .ghost-btn:hover { color:var(--text-primary); border-color:var(--gold-500); }
+    .ghost-btn:disabled { opacity:0.45; cursor:not-allowed; }
+    .device-hint { margin:6px 0 0; font:var(--fw-medium) var(--fs-label)/1.4 var(--font-sans); color:var(--text-tertiary); }
+    .device-hint.is-error { color:var(--issue-text); }
 
     /* Slider */
     .slider { display:flex; flex-direction:column; gap:8px; }
@@ -476,11 +488,15 @@
         <div class="tab-content" id="tab-live">
           <label class="select-label">
             <span>Input Device</span>
-            <div class="select-wrap">
-              <select id="device-select"><option value="">Loading devices…</option></select>
-              <span class="select-caret" data-icon="chevron-down"></span>
+            <div class="select-row">
+              <div class="select-wrap">
+                <select id="device-select"><option value="">Loading devices…</option></select>
+                <span class="select-caret" data-icon="chevron-down"></span>
+              </div>
+              <button type="button" id="device-refresh-btn" class="ghost-btn" title="Re-scan input devices">Refresh</button>
             </div>
           </label>
+          <p id="device-hint" class="device-hint" style="display:none"></p>
 
           <div class="slider">
             <div class="slider-head"><span class="lbl">Window</span><span class="val" id="window-secs-label">3.0s</span></div>
@@ -915,14 +931,46 @@ document.getElementById('llm-interval').addEventListener('input', (e) => {
   document.getElementById('llm-interval-label').textContent = v === 0 ? 'Off' : v + 's';
 });
 
+function setDeviceHint(text, isError) {
+  const hint = document.getElementById('device-hint');
+  if (!hint) return;
+  if (!text) { hint.style.display = 'none'; hint.textContent = ''; return; }
+  hint.textContent = text;
+  hint.classList.toggle('is-error', !!isError);
+  hint.style.display = 'block';
+}
+
 async function loadDevices() {
-  const result = await sb.listDevices();
   const sel = document.getElementById('device-select');
+  const btn = document.getElementById('device-refresh-btn');
+  if (btn) btn.disabled = true;
+  sel.innerHTML = '<option value="">Scanning…</option>';
+  setDeviceHint('');
+
+  const result = await sb.listDevices();
   sel.innerHTML = '';
-  if (!result.success || !result.devices || result.devices.length === 0) {
-    sel.innerHTML = '<option value="">No devices found</option>';
+
+  if (result.micAccess === 'denied' || result.micAccess === 'restricted') {
+    sel.innerHTML = '<option value="">Microphone access blocked</option>';
+    setDeviceHint('Sound Buddy is blocked from the microphone. Enable it in System Settings ▸ Privacy & Security ▸ Microphone, then click Refresh.', true);
+    if (btn) btn.disabled = false;
     return;
   }
+
+  if (!result.success) {
+    sel.innerHTML = '<option value="">Could not list devices</option>';
+    setDeviceHint(result.error || 'Failed to enumerate input devices.', true);
+    if (btn) btn.disabled = false;
+    return;
+  }
+
+  if (!result.devices || result.devices.length === 0) {
+    sel.innerHTML = '<option value="">No input devices found</option>';
+    setDeviceHint('No microphone or audio interface is connected. Plug one in and click Refresh. (Mac desktops have no built-in mic.)', false);
+    if (btn) btn.disabled = false;
+    return;
+  }
+
   const def = document.createElement('option');
   def.value = ''; def.textContent = 'Default Device';
   sel.appendChild(def);
@@ -932,7 +980,17 @@ async function loadDevices() {
     opt.textContent = `${d.index}: ${d.name} (${d.channels}ch, ${d.default_sr}Hz)`;
     sel.appendChild(opt);
   }
+  // Devices exist. If macOS hasn't been asked yet, it'll prompt on Start.
+  setDeviceHint(
+    result.micAccess === 'not-determined'
+      ? 'macOS will ask for microphone permission the first time you start capture.'
+      : '',
+    false,
+  );
+  if (btn) btn.disabled = false;
 }
+
+document.getElementById('device-refresh-btn').addEventListener('click', () => loadDevices());
 
 document.getElementById('live-start-btn').addEventListener('click', async () => {
   const device = document.getElementById('device-select').value || undefined;

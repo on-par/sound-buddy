@@ -1,4 +1,4 @@
-import { ipcMain, dialog, BrowserWindow, app } from 'electron';
+import { ipcMain, dialog, BrowserWindow, app, systemPreferences } from 'electron';
 import { execFile, spawn, ChildProcess } from 'child_process';
 import { promisify } from 'util';
 import * as path from 'path';
@@ -40,6 +40,36 @@ function pythonBin(): string {
 
 let liveProcess: ChildProcess | null = null;
 let liveIntervalTimer: NodeJS.Timeout | null = null;
+
+// ─── Microphone (Core Audio) permission ─────────────────────────────────────
+type MicAccess = 'granted' | 'denied' | 'not-determined' | 'restricted' | 'unknown';
+
+// macOS gates Core Audio microphone capture behind TCC. Device *enumeration*
+// works without it, but capture (start-live) yields silence unless the app holds
+// the grant — and the Python child that actually records is attributed to this
+// app as the responsible process.
+//
+// `prompt` controls whether an undecided ('not-determined') state triggers the
+// system permission dialog. Listing devices only *reads* the status (no dialog,
+// so opening the Live tab never surprises the user or blocks automation); the
+// dialog is requested lazily from start-live, when the user actively records.
+async function ensureMicrophoneAccess(prompt: boolean): Promise<MicAccess> {
+  if (process.platform !== 'darwin') return 'granted';
+  const status = systemPreferences.getMediaAccessStatus('microphone');
+  if (status === 'granted') return 'granted';
+  if (status === 'not-determined') {
+    if (!prompt) return 'not-determined';
+    try {
+      const granted = await systemPreferences.askForMediaAccess('microphone');
+      log(`microphone access ${granted ? 'granted' : 'denied'} by user`);
+      return granted ? 'granted' : 'denied';
+    } catch (err) {
+      logWarn(`microphone access request failed: ${String(err)}`);
+      return 'unknown';
+    }
+  }
+  return status as MicAccess; // 'denied' | 'restricted'
+}
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -397,7 +427,11 @@ export function registerIpcHandlers(): void {
 
   // list-devices
   ipcMain.handle('list-devices', async () => {
-    return new Promise<{ success: boolean; devices?: unknown[]; error?: string }>((resolve) => {
+    // Read (don't prompt for) the Core Audio permission alongside enumeration.
+    // Enumeration works without the grant; reporting the status lets the renderer
+    // distinguish a blocked mic from genuinely absent input hardware.
+    const micAccess = await ensureMicrophoneAccess(false);
+    return new Promise<{ success: boolean; devices?: unknown[]; error?: string; micAccess: MicAccess }>((resolve) => {
       let output = '';
       let errOutput = '';
       const py = spawn(pythonBin(), [STREAM_SCRIPT, '--list-devices'], {
@@ -411,22 +445,22 @@ export function registerIpcHandlers(): void {
       py.on('close', (code) => {
         if (code !== 0 && !output.trim()) {
           logError(`list-devices: stream.py exited with code ${code}`, errOutput.trim() || undefined);
-          resolve({ success: false, error: `stream.py exited with code ${code}` });
+          resolve({ success: false, error: `stream.py exited with code ${code}`, micAccess });
           return;
         }
         try {
           const parsed = JSON.parse(output.trim()) as { devices?: unknown[] };
           if (errOutput.trim()) logWarn(`list-devices stderr: ${errOutput.trim()}`);
-          resolve({ success: true, devices: parsed.devices ?? [] });
+          resolve({ success: true, devices: parsed.devices ?? [], micAccess });
         } catch (err) {
           logError('list-devices: failed to parse device list', errOutput.trim() || err);
-          resolve({ success: false, error: 'Failed to parse device list' });
+          resolve({ success: false, error: 'Failed to parse device list', micAccess });
         }
       });
 
       py.on('error', (err) => {
         logError(`list-devices: failed to spawn ${pythonBin()}`, err);
-        resolve({ success: false, error: err.message });
+        resolve({ success: false, error: err.message, micAccess });
       });
     });
   });
@@ -462,6 +496,20 @@ export function registerIpcHandlers(): void {
     windowSecs: number;
     llmIntervalSecs: number;
   }) => {
+    // Refuse to "record" silence: a denied Core Audio grant means stream.py
+    // captures nothing. This is the user-initiated moment, so prompt if the
+    // permission hasn't been decided yet, then block if it isn't granted.
+    const micAccess = await ensureMicrophoneAccess(true);
+    if (micAccess !== 'granted') {
+      logWarn(`start-live blocked: microphone access is "${micAccess}"`);
+      return {
+        success: false,
+        micAccess,
+        error:
+          'Microphone access is not granted. Enable it in System Settings ▸ Privacy & Security ▸ Microphone, then try again.',
+      };
+    }
+
     if (liveProcess) {
       liveProcess.kill();
       liveProcess = null;

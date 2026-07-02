@@ -26,6 +26,13 @@ mac:
   category: public.app-category.music
   # macOS 26 (Tahoe) or newer. Written to Info.plist as LSMinimumSystemVersion.
   minimumSystemVersion: "26.0"
+  # Required for Core Audio microphone capture on the Live tab. Without this key
+  # macOS silently denies input access (and won't show the permission prompt),
+  # so attached microphones never appear / can't be recorded.
+  extendInfo:
+    NSMicrophoneUsageDescription: >-
+      Sound Buddy needs microphone access to capture and analyze live audio
+      from your input device.
   # Unsigned — no Apple Developer ID required. Gatekeeper shows an
   # "unidentified developer" warning on first launch; right-click → Open once
   # (or `xattr -dr com.apple.quarantine "/Applications/Sound Buddy.app"`).
