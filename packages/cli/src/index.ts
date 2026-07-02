@@ -1,9 +1,6 @@
 #!/usr/bin/env node
-import { analyzeFile } from '@sound-buddy/audio-engine'
 import { Command } from 'commander'
-
-// Suppress unused warning — analyzeFile will be wired up in subsequent issues
-void analyzeFile
+import { runAnalyze } from './analyze.js'
 
 const program = new Command()
 
@@ -28,9 +25,27 @@ program
   .option('--scene <file>', 'Scene file for diff (pass twice for before/after)', (v, acc: string[]) => { acc.push(v); return acc }, [] as string[])
   .option('--json', 'Output as JSON')
   .option('--no-ai', 'Skip AI analysis')
-  .action((_file, _opts) => {
-    console.error('buddy analyze: not yet implemented')
-    process.exit(1)
+  .action(async (file: string | undefined, opts: { dir?: string; scene: string[]; json?: boolean; ai: boolean }) => {
+    if (opts.dir) {
+      console.error('buddy analyze --dir: not yet implemented')
+      process.exit(1)
+    }
+    if (opts.json) {
+      console.error('buddy analyze --json: not yet implemented')
+      process.exit(1)
+    }
+    try {
+      const output = await runAnalyze({
+        scenes: opts.scene ?? [],
+        audio: file,
+        // Commander stores the negated `--no-ai` flag under `opts.ai` (default true).
+        noAi: opts.ai === false,
+      })
+      process.stdout.write(output)
+    } catch (err) {
+      console.error(err instanceof Error ? err.message : String(err))
+      process.exit(1)
+    }
   })
 
 program
