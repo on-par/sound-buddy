@@ -65,7 +65,7 @@ const emptyDiff: SceneDiff = {
 beforeEach(() => {
   vi.resetAllMocks()
   mockExistsSync.mockReturnValue(true)
-  mockReadFileSync.mockReturnValue('#4.0# "Scene" "" %000000000 1\n' as unknown as Buffer)
+  mockReadFileSync.mockReturnValue('#4.0# "Scene" "" %000000000 1\n')
 })
 
 describe('runDiff', () => {
