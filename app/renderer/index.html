@@ -540,6 +540,219 @@
       color: var(--muted);
       margin-left: auto;
     }
+
+    /* ── Report Card ─────────────────────────────────────────────── */
+    #reportcard-view {
+      display: none;
+      flex: 1;
+      flex-direction: column;
+      overflow: hidden;
+      background: var(--bg);
+    }
+
+    #reportcard-view.active { display: flex; }
+
+    #reportcard-toolbar {
+      display: flex;
+      justify-content: flex-end;
+      padding: 10px 20px;
+      border-bottom: 1px solid var(--border);
+      background: var(--panel);
+      flex-shrink: 0;
+    }
+
+    #reportcard-scroll {
+      flex: 1;
+      overflow-y: auto;
+      padding: 28px 20px;
+      display: flex;
+      justify-content: center;
+    }
+
+    #report-card {
+      width: 100%;
+      max-width: 760px;
+    }
+
+    .rc-empty {
+      color: var(--muted);
+      text-align: center;
+      padding: 80px 20px;
+      font-size: 14px;
+    }
+
+    .rc-header {
+      text-align: center;
+      margin-bottom: 24px;
+      padding-bottom: 16px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .rc-header h1 {
+      font-size: 20px;
+      letter-spacing: 0.04em;
+      color: var(--text);
+      margin-bottom: 6px;
+    }
+
+    .rc-meta {
+      display: flex;
+      justify-content: center;
+      gap: 16px;
+      font-size: 12px;
+      color: var(--muted);
+    }
+
+    .rc-score-section {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 32px;
+    }
+
+    .rc-grade {
+      font-size: 56px;
+      font-weight: 800;
+      line-height: 1;
+      width: 120px;
+      height: 120px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border: 4px solid currentColor;
+    }
+
+    .rc-grade.grade-a { color: var(--accent); }
+    .rc-grade.grade-b { color: #6bd97a; }
+    .rc-grade.grade-c { color: var(--warning); }
+    .rc-grade.grade-d { color: #ff8a3d; }
+    .rc-grade.grade-f { color: var(--danger); }
+
+    .rc-score-label {
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: var(--muted);
+    }
+
+    .rc-section { margin-bottom: 28px; }
+
+    .rc-section h2 {
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: var(--muted);
+      margin-bottom: 12px;
+      padding-bottom: 6px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .rc-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+
+    .rc-table th {
+      text-align: left;
+      padding: 6px 8px;
+      color: var(--muted);
+      font-weight: 600;
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    .rc-table td {
+      padding: 8px;
+      border-top: 1px solid var(--border);
+      color: var(--text);
+    }
+
+    .rc-status {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 10px;
+      font-size: 10px;
+      font-weight: 700;
+      text-transform: uppercase;
+    }
+
+    .rc-status.good { background: rgba(0,200,150,0.15); color: var(--accent); }
+    .rc-status.warn { background: rgba(245,166,35,0.15); color: var(--warning); }
+    .rc-status.bad  { background: rgba(231,76,60,0.15); color: var(--danger); }
+
+    .rc-band-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 8px;
+      font-size: 11px;
+    }
+
+    .rc-band-label { width: 84px; flex-shrink: 0; color: var(--text); }
+    .rc-band-track { flex: 1; height: 14px; background: #191919; border-radius: 3px; overflow: hidden; }
+    .rc-band-fill { height: 100%; border-radius: 3px; }
+    .rc-band-fill.good { background: var(--accent); }
+    .rc-band-fill.warn { background: var(--warning); }
+    .rc-band-fill.bad  { background: var(--danger); }
+    .rc-band-val { width: 60px; text-align: right; font-variant-numeric: tabular-nums; color: var(--muted); flex-shrink: 0; }
+    .rc-band-status { width: 84px; text-align: right; flex-shrink: 0; font-size: 10px; color: var(--muted); }
+    .rc-band-status.warn { color: var(--warning); }
+    .rc-band-status.bad  { color: var(--danger); }
+
+    #rc-recommendations { list-style: none; display: flex; flex-direction: column; gap: 8px; }
+
+    #rc-recommendations li {
+      padding: 10px 12px;
+      background: var(--panel);
+      border-left: 3px solid var(--accent);
+      border-radius: 4px;
+      font-size: 12px;
+      line-height: 1.5;
+      color: var(--text);
+    }
+
+    #rc-recommendations li.critical { border-left-color: var(--danger); }
+
+    /* ── Print (Report Card export) ──────────────────────────────── */
+    @media print {
+      body * { visibility: hidden !important; }
+      #report-card, #report-card * { visibility: visible !important; }
+
+      html, body { background: #fff !important; overflow: visible !important; }
+
+      #report-card {
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 100%;
+        max-width: none;
+        margin: 0;
+        padding: 12px;
+        background: #fff !important;
+      }
+
+      .rc-header, .rc-header h1, .rc-meta,
+      .rc-section h2, .rc-table td, .rc-table th,
+      .rc-band-label, .rc-band-val, .rc-band-status,
+      .rc-score-label, #rc-recommendations li {
+        color: #000 !important;
+      }
+
+      .rc-header, .rc-section h2 { border-color: #ccc !important; }
+      .rc-table td { border-color: #ccc !important; }
+
+      .rc-grade { border-color: #000 !important; color: #000 !important; }
+
+      .rc-status { background: #eee !important; color: #000 !important; border: 1px solid #999; }
+      .rc-band-track { background: #eee !important; }
+      .rc-band-fill { background: #333 !important; }
+
+      #rc-recommendations li {
+        background: #f5f5f5 !important;
+        border-left-color: #000 !important;
+      }
+      #rc-recommendations li.critical { border-left-color: #000 !important; font-weight: 700; }
+    }
   </style>
 </head>
 <body>
@@ -554,6 +767,7 @@
       <button class="mode-tab active" data-mode="file">File</button>
       <button class="mode-tab" data-mode="dir">Directory</button>
       <button class="mode-tab" data-mode="live">Live</button>
+      <button class="mode-tab" data-mode="reportcard">Report Card</button>
     </div>
     <div id="header-right">
       <div id="live-indicator">
@@ -697,6 +911,50 @@
     </div>
 
   </div><!-- /#body -->
+
+  <!-- ── Report Card View ── -->
+  <div id="reportcard-view">
+    <div id="reportcard-toolbar">
+      <button class="btn btn-outline" id="reportcard-print-btn">Export PDF</button>
+    </div>
+    <div id="reportcard-scroll">
+      <div id="report-card">
+        <div id="rc-empty" class="rc-empty">No analysis yet. Analyze a file first, then check the Report Card.</div>
+        <div id="rc-content" style="display:none">
+          <div class="rc-header">
+            <h1>Sound Buddy Report Card</h1>
+            <div class="rc-meta">
+              <span id="rc-filename">—</span>
+              <span id="rc-date">—</span>
+            </div>
+          </div>
+
+          <div class="rc-score-section">
+            <div id="rc-grade" class="rc-grade">A</div>
+            <div class="rc-score-label">Overall Grade</div>
+          </div>
+
+          <div class="rc-section">
+            <h2>Metrics</h2>
+            <table class="rc-table" id="rc-metrics-table">
+              <thead><tr><th>Metric</th><th>Value</th><th>Status</th></tr></thead>
+              <tbody id="rc-metrics-body"></tbody>
+            </table>
+          </div>
+
+          <div class="rc-section">
+            <h2>Frequency Band Breakdown</h2>
+            <div id="rc-bands"></div>
+          </div>
+
+          <div class="rc-section">
+            <h2>Recommendations</h2>
+            <ul id="rc-recommendations"></ul>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
 </div><!-- /#root -->
 
 <script>
@@ -1107,8 +1365,16 @@ document.querySelectorAll('.mode-tab').forEach(tab => {
     document.querySelectorAll('.mode-tab').forEach(t => t.classList.remove('active'));
     tab.classList.add('active');
 
-    document.querySelectorAll('.tab-content').forEach(tc => tc.classList.remove('active'));
-    document.getElementById(`tab-${mode}`).classList.add('active');
+    if (mode === 'reportcard') {
+      document.getElementById('body').style.display = 'none';
+      document.getElementById('reportcard-view').classList.add('active');
+      renderReportCard();
+    } else {
+      document.getElementById('reportcard-view').classList.remove('active');
+      document.getElementById('body').style.display = 'flex';
+      document.querySelectorAll('.tab-content').forEach(tc => tc.classList.remove('active'));
+      document.getElementById(`tab-${mode}`).classList.add('active');
+    }
 
     currentMode = mode;
   });
@@ -1429,6 +1695,263 @@ document.getElementById('ai-analyze-btn').addEventListener('click', async () => 
     btn.disabled = false;
     btn.textContent = 'Analyze with AI';
   }
+});
+
+// ── Report Card ───────────────────────────────────────────────────────────────
+
+const RC_BAND_INFO = {
+  subBass:    { label: 'Sub-bass',   freq: '20-60 Hz' },
+  bass:       { label: 'Bass',       freq: '60-250 Hz' },
+  lowMid:     { label: 'Low-mid',    freq: '250-500 Hz' },
+  mid:        { label: 'Mid',        freq: '500Hz-2kHz' },
+  highMid:    { label: 'High-mid',   freq: '2-4kHz' },
+  presence:   { label: 'Presence',   freq: '4-6kHz' },
+  brilliance: { label: 'Brilliance', freq: '6-20kHz' },
+};
+
+function getReportCardSource() {
+  if (currentAnalysis) {
+    const { sox, spectrum, ffprobe } = currentAnalysis;
+    return {
+      filename: (ffprobe.format.filename || '').split('/').pop() || 'Untitled',
+      rms: sox.rmsDbfs,
+      peak: sox.peakDbfs,
+      dynamicRange: sox.dynamicRangeDb,
+      clipping: sox.clipping,
+      centroid: spectrum.spectralCentroid,
+      bands: {
+        subBass: spectrum.bands.subBass,
+        bass: spectrum.bands.bass,
+        lowMid: spectrum.bands.lowMid,
+        mid: spectrum.bands.mid,
+        highMid: spectrum.bands.highMid,
+        presence: spectrum.bands.presence,
+        brilliance: spectrum.bands.brilliance,
+      },
+    };
+  }
+
+  if (liveWindows.length > 0) {
+    const win = liveWindows[liveWindows.length - 1];
+    const ch = win.channels && win.channels[0];
+    if (ch) {
+      return {
+        filename: `Live capture — ${ch.name || 'Main'} (window #${win.window})`,
+        rms: ch.rms,
+        peak: ch.peak,
+        dynamicRange: null,
+        clipping: ch.clipping,
+        centroid: ch.centroid,
+        bands: {
+          subBass: ch.bands.sub_bass,
+          bass: ch.bands.bass,
+          lowMid: ch.bands.low_mid,
+          mid: ch.bands.mid,
+          highMid: ch.bands.high_mid,
+          presence: ch.bands.presence,
+          brilliance: ch.bands.brilliance,
+        },
+      };
+    }
+  }
+
+  return null;
+}
+
+function bandDiffFromOthers(bands, key) {
+  const keys = Object.keys(bands);
+  const others = keys.filter(k => k !== key).map(k => bands[k]);
+  const avgOthers = others.reduce((a, b) => a + b, 0) / others.length;
+  return bands[key] - avgOthers;
+}
+
+function computeGrade(src) {
+  const letters = ['A', 'B', 'C', 'D', 'F'];
+  if (src.clipping) return 'F';
+
+  let idx = 0;
+  const drop = () => { idx = Math.min(idx + 1, letters.length - 1); };
+
+  if (src.rms < -20 || src.rms > -14) drop();
+  if (src.dynamicRange != null && src.dynamicRange < 6) drop();
+
+  const anyBandHot = Object.keys(src.bands).some(k => bandDiffFromOthers(src.bands, k) > 10);
+  if (anyBandHot) drop();
+
+  return letters[idx];
+}
+
+function computeRecommendations(src) {
+  const recs = [];
+
+  if (src.clipping) {
+    recs.push('CRITICAL: Clipping detected. Reduce input gain immediately.');
+  }
+
+  if (src.rms < -25) {
+    recs.push('Your recording is too quiet. Increase input gain or fader levels.');
+  } else if (src.rms > -10) {
+    recs.push('Your recording is too hot. Reduce gain to avoid clipping.');
+  }
+
+  if (src.dynamicRange != null && src.dynamicRange < 3) {
+    recs.push('Dynamic range is very compressed. Mix may sound lifeless.');
+  }
+
+  if (src.bands.subBass > -15) {
+    recs.push('Too much sub-bass energy. Apply a high-pass filter below 80Hz.');
+  }
+
+  for (const k of Object.keys(src.bands)) {
+    const diff = bandDiffFromOthers(src.bands, k);
+    if (diff > 6) {
+      const info = RC_BAND_INFO[k];
+      recs.push(`Too much energy in ${info.label} (${info.freq}). Cut ${Math.min(diff, 10).toFixed(1)} dB around this range.`);
+    }
+  }
+
+  if (src.bands.brilliance < -40) {
+    recs.push('Mix lacks air and brightness. Boost 2-3 dB above 8kHz.');
+  }
+
+  if (recs.length === 0) {
+    recs.push('Great job! No major issues detected — levels and balance are solid.');
+  }
+
+  return recs.slice(0, 5);
+}
+
+function rcRmsStatus(rms) {
+  if (rms >= -18 && rms <= -16) return 'good';
+  if (rms >= -20 && rms <= -14) return 'warn';
+  return 'bad';
+}
+
+function rcPeakStatus(peak, clipping) {
+  if (clipping || peak > -1) return 'bad';
+  if (peak > -3) return 'warn';
+  return 'good';
+}
+
+function rcDrStatus(dr) {
+  if (dr == null) return 'warn';
+  if (dr >= 6) return 'good';
+  if (dr >= 3) return 'warn';
+  return 'bad';
+}
+
+function rcCentroidStatus(c) {
+  if (!c) return 'warn';
+  if (c >= 500 && c <= 4000) return 'good';
+  return 'warn';
+}
+
+function rcStatusLabel(status) {
+  return status === 'good' ? 'Good' : (status === 'warn' ? 'Check' : 'Issue');
+}
+
+function renderReportCard() {
+  const src = getReportCardSource();
+  const empty = document.getElementById('rc-empty');
+  const content = document.getElementById('rc-content');
+
+  if (!src) {
+    empty.style.display = 'block';
+    content.style.display = 'none';
+    return;
+  }
+
+  empty.style.display = 'none';
+  content.style.display = 'block';
+
+  document.getElementById('rc-filename').textContent = src.filename;
+  document.getElementById('rc-date').textContent = new Date().toLocaleString();
+
+  const grade = computeGrade(src);
+  const gradeEl = document.getElementById('rc-grade');
+  gradeEl.textContent = grade;
+  gradeEl.className = 'rc-grade grade-' + grade.toLowerCase();
+
+  const metricsBody = document.getElementById('rc-metrics-body');
+  metricsBody.innerHTML = '';
+  const metrics = [
+    { name: 'RMS Level', value: fmt(src.rms) + ' dBFS', status: rcRmsStatus(src.rms) },
+    { name: 'Peak Level', value: fmt(src.peak) + ' dBFS', status: rcPeakStatus(src.peak, src.clipping) },
+    { name: 'Dynamic Range', value: src.dynamicRange != null ? fmt(src.dynamicRange) + ' dB' : '—', status: rcDrStatus(src.dynamicRange) },
+    { name: 'Clipping', value: src.clipping ? 'Detected' : 'None', status: src.clipping ? 'bad' : 'good' },
+    { name: 'Spectral Centroid', value: src.centroid ? fmtHz(src.centroid) : '—', status: rcCentroidStatus(src.centroid) },
+  ];
+  for (const m of metrics) {
+    const tr = document.createElement('tr');
+    const nameTd = document.createElement('td');
+    nameTd.textContent = m.name;
+    const valTd = document.createElement('td');
+    valTd.textContent = m.value;
+    const statusTd = document.createElement('td');
+    const badge = document.createElement('span');
+    badge.className = 'rc-status ' + m.status;
+    badge.textContent = rcStatusLabel(m.status);
+    statusTd.appendChild(badge);
+    tr.appendChild(nameTd);
+    tr.appendChild(valTd);
+    tr.appendChild(statusTd);
+    metricsBody.appendChild(tr);
+  }
+
+  const bandsEl = document.getElementById('rc-bands');
+  bandsEl.innerHTML = '';
+  for (const k of Object.keys(src.bands)) {
+    const db = src.bands[k];
+    const diff = bandDiffFromOthers(src.bands, k);
+    let status = 'good', statusText = 'Balanced';
+    if (diff > 6) { status = 'bad'; statusText = 'Too Hot'; }
+    else if (diff < -12) { status = 'warn'; statusText = 'Too Quiet'; }
+
+    const clampedDb = Math.max(DB_MIN, Math.min(DB_MAX, db));
+    const frac = (clampedDb - DB_MIN) / (DB_MAX - DB_MIN);
+    const info = RC_BAND_INFO[k];
+
+    const row = document.createElement('div');
+    row.className = 'rc-band-row';
+
+    const label = document.createElement('span');
+    label.className = 'rc-band-label';
+    label.textContent = info.label;
+
+    const track = document.createElement('span');
+    track.className = 'rc-band-track';
+    const fill = document.createElement('span');
+    fill.className = 'rc-band-fill ' + status;
+    fill.style.width = (frac * 100).toFixed(1) + '%';
+    track.appendChild(fill);
+
+    const val = document.createElement('span');
+    val.className = 'rc-band-val';
+    val.textContent = fmt(db) + ' dB';
+
+    const statusEl = document.createElement('span');
+    statusEl.className = 'rc-band-status ' + status;
+    statusEl.textContent = statusText;
+
+    row.appendChild(label);
+    row.appendChild(track);
+    row.appendChild(val);
+    row.appendChild(statusEl);
+    bandsEl.appendChild(row);
+  }
+
+  const recsEl = document.getElementById('rc-recommendations');
+  recsEl.innerHTML = '';
+  for (const r of computeRecommendations(src)) {
+    const li = document.createElement('li');
+    if (r.startsWith('CRITICAL')) li.classList.add('critical');
+    li.textContent = r;
+    recsEl.appendChild(li);
+  }
+}
+
+document.getElementById('reportcard-print-btn').addEventListener('click', () => {
+  window.print();
 });
 
 // ── UI Helpers ────────────────────────────────────────────────────────────────
