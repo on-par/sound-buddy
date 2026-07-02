@@ -6,1358 +6,790 @@
     content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'" />
   <title>Sound Buddy</title>
   <style>
-    /* ── Reset & Base ──────────────────────────────────────────── */
-    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-
+    /* ════════════════════════════════════════════════════════════════
+       Sound Buddy — Design System tokens (imported from claude.ai/design
+       "Sound Buddy macOS wireframe"). Dark-first, King Midas gold accent.
+       ════════════════════════════════════════════════════════════════ */
     :root {
-      --bg:      #0d0d0d;
-      --panel:   #141414;
-      --border:  #1e1e1e;
-      --accent:  #00c896;
-      --warning: #f5a623;
-      --danger:  #e74c3c;
-      --text:    #e0e0e0;
-      --muted:   #666;
-      --panel-w: 240px;
-      --ai-w:    300px;
-      --hdr-h:   48px;
+      /* Neutral ramp */
+      --neutral-1000:#08090B; --neutral-950:#0B0C0F; --neutral-900:#101217;
+      --neutral-850:#15181E;  --neutral-800:#1B1F26; --neutral-750:#22262F;
+      --neutral-700:#2B303A;  --neutral-600:#3A404C; --neutral-500:#565D6B;
+      --neutral-400:#7A828F;  --neutral-300:#A2AAB6; --neutral-200:#C9CFD8;
+      --neutral-100:#E6E9EE;  --neutral-50:#F5F7FA;
+
+      /* Surfaces */
+      --bg-app:var(--neutral-950); --bg-panel:var(--neutral-900); --bg-panel-2:var(--neutral-850);
+      --surface:var(--neutral-800); --surface-raised:var(--neutral-750);
+      --surface-inset:var(--neutral-1000); --surface-hover:var(--neutral-750); --surface-active:var(--neutral-700);
+
+      /* Borders */
+      --border-subtle:rgba(255,255,255,0.055); --border-default:rgba(255,255,255,0.09);
+      --border-strong:rgba(255,255,255,0.15); --border-focus:var(--gold-500);
+
+      /* Text */
+      --text-primary:var(--neutral-100); --text-secondary:var(--neutral-300);
+      --text-tertiary:var(--neutral-400); --text-muted:var(--neutral-500);
+      --text-on-accent:#1A1500; --text-on-solid:#08090B;
+
+      /* Primary — King Midas gold */
+      --gold-300:#F7D97E; --gold-400:#F3CA5E; --gold-500:#EBB93C; --gold-600:#D19E22; --gold-700:#A87C15;
+      --gold-tint:rgba(235,185,60,0.14); --gold-tint-soft:rgba(235,185,60,0.08);
+      --gold-text:#F3CA5E; --gold-glow:rgba(235,185,60,0.28);
+      --primary:var(--gold-500); --primary-hover:var(--gold-400); --primary-active:var(--gold-600);
+      --on-primary:var(--text-on-accent);
+
+      /* Secondary — Azure */
+      --azure-300:#8FC0FF; --azure-400:#6FA8F5; --azure-500:#4C93F0; --azure-600:#3577D6;
+      --azure-tint:rgba(76,147,240,0.14); --azure-text:#7DB0F7;
+
+      /* Semantic */
+      --good-500:#33B85A; --good-text:#57D77C; --good-tint:rgba(51,184,90,0.15); --good-border:rgba(51,184,90,0.35);
+      --check-500:#E8862E; --check-text:#F2A65A; --check-tint:rgba(232,134,46,0.15); --check-border:rgba(232,134,46,0.35);
+      --issue-500:#E5484D; --issue-text:#F26D71; --issue-tint:rgba(229,72,77,0.15); --issue-border:rgba(229,72,77,0.35);
+      --info-500:var(--azure-500); --info-text:var(--azure-text); --info-tint:var(--azure-tint); --info-border:rgba(76,147,240,0.35);
+
+      /* Grades */
+      --grade-a:#57D77C; --grade-b:#9AD05A; --grade-c:var(--gold-400); --grade-d:#F2A65A; --grade-f:#F26D71;
+
+      /* Spectral band ramp */
+      --band-sub:#4C63D2; --band-bass:#3D82D6; --band-low-mid:#2BA2C9; --band-mid:#23BBA6;
+      --band-high-mid:#5FC96F; --band-presence:#D9B23E; --band-brilliance:#EC8B3E;
+
+      /* Meters */
+      --meter-track:var(--neutral-1000); --meter-good:var(--good-500); --meter-hot:var(--check-500);
+      --meter-clip:var(--issue-500); --meter-idle:var(--neutral-700);
+      --gridline:rgba(255,255,255,0.05); --gridline-label:rgba(255,255,255,0.22);
+
+      /* Type */
+      --font-sans:'Geist',-apple-system,BlinkMacSystemFont,'Segoe UI',system-ui,sans-serif;
+      --font-mono:'Geist Mono','SF Mono',ui-monospace,'Menlo','Consolas',monospace;
+      --fw-light:300; --fw-regular:400; --fw-medium:500; --fw-semibold:600; --fw-bold:700; --fw-black:800;
+      --fs-display:56px; --fs-h1:28px; --fs-h2:20px; --fs-h3:16px;
+      --fs-body-lg:15px; --fs-body:14px; --fs-body-sm:13px; --fs-label:12px; --fs-micro:11px;
+      --fs-data-xl:32px; --fs-data-lg:20px; --fs-data:14px; --fs-data-sm:12px;
+      --lh-tight:1.1; --lh-snug:1.28; --lh-normal:1.5; --lh-relaxed:1.65;
+      --tracking-tight:-0.02em; --tracking-snug:-0.01em; --tracking-normal:0;
+      --tracking-label:0.01em; --tracking-caps:0.06em;
+
+      /* Spacing / sizing */
+      --header-h:52px; --panel-w:260px; --ai-panel-w:320px;
+      --control-h-sm:28px; --control-h:36px; --control-h-lg:44px;
+
+      /* Radius */
+      --radius-xs:4px; --radius-sm:6px; --radius-md:8px; --radius-lg:12px;
+      --radius-xl:16px; --radius-2xl:20px; --radius-pill:999px; --radius-full:50%;
+
+      /* Elevation */
+      --shadow-sm:0 1px 2px rgba(0,0,0,0.40); --shadow-md:0 4px 14px rgba(0,0,0,0.38); --shadow-lg:0 14px 40px rgba(0,0,0,0.48);
+      --highlight-top:inset 0 1px 0 rgba(255,255,255,0.05);
+      --elevation-panel:var(--highlight-top),var(--shadow-sm);
+      --elevation-card:var(--highlight-top),0 2px 8px rgba(0,0,0,0.32);
+      --elevation-popover:var(--highlight-top),0 12px 32px rgba(0,0,0,0.52);
+      --elevation-canvas:inset 0 0 0 1px rgba(255,255,255,0.04),inset 0 1px 24px rgba(0,0,0,0.55);
+      --glow-gold:0 0 0 4px var(--gold-tint);
+      --glow-focus:0 0 0 3px var(--gold-tint),0 0 0 1px var(--gold-500);
+
+      /* Motion */
+      --dur-instant:80ms; --dur-fast:120ms; --dur-base:180ms; --dur-slow:280ms; --dur-pulse:1400ms;
+      --ease-out:cubic-bezier(0.22,1,0.36,1); --ease-in-out:cubic-bezier(0.45,0,0.15,1);
+      --transition-control:color var(--dur-fast) var(--ease-out),background-color var(--dur-fast) var(--ease-out),border-color var(--dur-fast) var(--ease-out),box-shadow var(--dur-fast) var(--ease-out),transform var(--dur-fast) var(--ease-out);
+      --transition-meter:width var(--dur-base) var(--ease-out),background-color var(--dur-base) var(--ease-out);
     }
 
-    html, body {
-      height: 100%;
-      background: var(--bg);
-      color: var(--text);
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-      font-size: 13px;
-      overflow: hidden;
-      user-select: none;
-      -webkit-user-select: none;
+    /* ── Base ─────────────────────────────────────────────────────── */
+    *,*::before,*::after { box-sizing:border-box; margin:0; padding:0; }
+    html { -webkit-font-smoothing:antialiased; -moz-osx-font-smoothing:grayscale; text-rendering:optimizeLegibility; }
+    html,body { height:100%; }
+    body {
+      background:var(--bg-app); color:var(--text-primary);
+      font:var(--fw-regular) var(--fs-body)/var(--lh-normal) var(--font-sans);
+      letter-spacing:var(--tracking-snug);
+      overflow:hidden; user-select:none; -webkit-user-select:none;
+    }
+    ::selection { background:var(--gold-tint); }
+    :where(button,a,input,select,[tabindex]):focus-visible { outline:none; box-shadow:var(--glow-focus); }
+    ::-webkit-scrollbar { width:8px; height:8px; }
+    ::-webkit-scrollbar-thumb { background:var(--neutral-700); border-radius:4px; }
+    ::-webkit-scrollbar-track { background:transparent; }
+    .mono { font-family:var(--font-mono); font-variant-numeric:tabular-nums; }
+
+    @media (prefers-reduced-motion:reduce) {
+      *,*::before,*::after { animation-duration:.01ms!important; animation-iteration-count:1!important; transition-duration:.01ms!important; }
     }
 
-    /* ── Layout ─────────────────────────────────────────────────── */
-    #root {
-      display: flex;
-      flex-direction: column;
-      height: 100vh;
-    }
+    /* ── App shell ────────────────────────────────────────────────── */
+    #root { display:flex; flex-direction:column; height:100vh; }
 
     /* Header */
     #header {
-      display: flex;
-      align-items: center;
-      height: var(--hdr-h);
-      background: var(--panel);
-      border-bottom: 1px solid var(--border);
-      padding: 0 16px;
-      gap: 12px;
-      -webkit-app-region: drag;
-      flex-shrink: 0;
+      display:flex; align-items:center; gap:18px; height:var(--header-h); padding:0 16px;
+      background:var(--bg-panel); border-bottom:1px solid var(--border-subtle);
+      flex-shrink:0; -webkit-app-region:drag;
     }
+    #logo { display:flex; align-items:center; gap:10px; -webkit-app-region:no-drag; }
+    #logo-dot { width:11px; height:11px; border-radius:50%; background:var(--gold-500); box-shadow:0 0 12px var(--gold-glow); flex-shrink:0; }
+    #logo-text { font:var(--fw-semibold) 15px/1 var(--font-sans); letter-spacing:0.04em; text-transform:uppercase; color:var(--text-primary); }
+    #logo-text b { color:var(--gold-text); font-weight:var(--fw-semibold); }
+    .header-div { width:1px; height:22px; background:var(--border-default); -webkit-app-region:no-drag; }
 
-    #logo {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      -webkit-app-region: no-drag;
-    }
-
-    #logo-dot {
-      width: 10px; height: 10px;
-      border-radius: 50%;
-      background: var(--accent);
-      box-shadow: 0 0 6px var(--accent);
-    }
-
-    #logo-text {
-      font-size: 14px;
-      font-weight: 700;
-      letter-spacing: 0.08em;
-      color: var(--accent);
-    }
-
-    #mode-tabs {
-      display: flex;
-      gap: 4px;
-      margin-left: 16px;
-      -webkit-app-region: no-drag;
-    }
-
+    /* Tab bar */
+    #mode-tabs { display:inline-flex; gap:2px; padding:3px; background:var(--surface-inset);
+      border-radius:var(--radius-md); border:1px solid var(--border-subtle); -webkit-app-region:no-drag; }
     .mode-tab {
-      padding: 5px 14px;
-      border-radius: 4px;
-      border: 1px solid var(--border);
-      background: transparent;
-      color: var(--muted);
-      cursor: pointer;
-      font-size: 12px;
-      font-weight: 500;
-      letter-spacing: 0.04em;
-      transition: all 0.15s;
+      display:inline-flex; align-items:center; gap:6px; height:30px; padding:0 12px;
+      background:transparent; color:var(--text-tertiary); border:none; border-radius:var(--radius-sm);
+      font:var(--fw-medium) var(--fs-label)/1 var(--font-sans); letter-spacing:var(--tracking-label);
+      cursor:pointer; transition:var(--transition-control); white-space:nowrap;
     }
+    .mode-tab:hover { color:var(--text-secondary); }
+    .mode-tab.active { background:var(--surface-raised); color:var(--gold-text);
+      font-weight:var(--fw-semibold); box-shadow:var(--highlight-top),var(--shadow-sm); }
+    .mode-tab svg { flex-shrink:0; }
 
-    .mode-tab:hover { color: var(--text); border-color: #333; }
+    #header-right { margin-left:auto; display:flex; align-items:center; gap:14px; -webkit-app-region:no-drag; }
+    #live-indicator { display:none; align-items:center; gap:8px; font:var(--fw-semibold) 11px/1 var(--font-sans); letter-spacing:0.06em; color:var(--text-secondary); }
+    #live-indicator .pulse { width:8px; height:8px; border-radius:50%; background:var(--issue-500); box-shadow:0 0 8px rgba(229,72,77,0.6); }
+    #live-indicator .live-txt { color:var(--issue-text); }
+    #window-badge { color:var(--text-muted); font-family:var(--font-mono); }
 
-    .mode-tab.active {
-      background: var(--accent);
-      border-color: var(--accent);
-      color: #000;
-      font-weight: 600;
+    @keyframes sbpulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:.45;transform:scale(.6)} }
+    .sb-pulse { animation:sbpulse var(--dur-pulse) var(--ease-in-out) infinite; }
+    @keyframes sbspin { to{transform:rotate(360deg)} }
+    @keyframes sbcaret { 0%,49%{opacity:1} 50%,100%{opacity:0} }
+    @keyframes sblivem { 0%,100%{opacity:1} 50%{opacity:.85} }
+    .sb-live-meters { animation:sblivem 1.2s ease-in-out infinite; }
+
+    /* Workspace */
+    #workspace { display:flex; flex:1; overflow:hidden; }
+
+    /* Side panels */
+    .side-panel { display:flex; flex-direction:column; flex-shrink:0; background:var(--bg-panel); overflow:hidden; }
+    #source-panel { width:var(--panel-w); border-right:1px solid var(--border-default); }
+    #ai-panel { width:var(--ai-panel-w); border-left:1px solid var(--border-default); }
+    .panel-head {
+      display:flex; align-items:center; justify-content:space-between; padding:14px 16px;
+      border-bottom:1px solid var(--border-subtle); flex-shrink:0;
     }
+    .panel-title { font:var(--fw-semibold) var(--fs-micro)/1 var(--font-sans); letter-spacing:var(--tracking-caps); text-transform:uppercase; color:var(--text-tertiary); }
+    .panel-body { flex:1; overflow-y:auto; padding:16px; display:flex; flex-direction:column; gap:16px; }
+    .panel-footer { padding:14px; border-top:1px solid var(--border-subtle); flex-shrink:0; }
 
-    #header-right {
-      margin-left: auto;
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      -webkit-app-region: no-drag;
-    }
+    .tab-content { display:none; flex-direction:column; gap:16px; }
+    .tab-content.active { display:flex; }
 
-    #live-indicator {
-      display: none;
-      align-items: center;
-      gap: 6px;
-      font-size: 11px;
-      color: var(--accent);
-      font-weight: 600;
-    }
+    .section-label { font:var(--fw-semibold) var(--fs-micro)/1 var(--font-sans); letter-spacing:var(--tracking-caps); text-transform:uppercase; color:var(--text-muted); }
+    .hairline { height:1px; background:var(--border-subtle); }
 
-    #live-indicator .pulse {
-      width: 8px; height: 8px;
-      border-radius: 50%;
-      background: var(--danger);
-      animation: pulse 1.2s ease-in-out infinite;
-    }
-
-    @keyframes pulse {
-      0%, 100% { opacity: 1; transform: scale(1); }
-      50%       { opacity: 0.4; transform: scale(0.7); }
-    }
-
-    /* Body */
-    #body {
-      display: flex;
-      flex: 1;
-      overflow: hidden;
-    }
-
-    /* ── Source Panel ────────────────────────────────────────────── */
-    #source-panel {
-      width: var(--panel-w);
-      flex-shrink: 0;
-      background: var(--panel);
-      border-right: 1px solid var(--border);
-      display: flex;
-      flex-direction: column;
-      overflow: hidden;
-    }
-
-    .panel-header {
-      padding: 12px 14px 8px;
-      font-size: 10px;
-      font-weight: 700;
-      letter-spacing: 0.1em;
-      color: var(--muted);
-      text-transform: uppercase;
-      border-bottom: 1px solid var(--border);
-    }
-
-    .tab-content {
-      display: none;
-      flex-direction: column;
-      flex: 1;
-      padding: 14px;
-      gap: 12px;
-      overflow-y: auto;
-    }
-
-    .tab-content.active { display: flex; }
-
-    /* Drop zones */
+    /* Dropzone */
     .dropzone {
-      border: 1.5px dashed #333;
-      border-radius: 8px;
-      padding: 24px 12px;
-      text-align: center;
-      cursor: pointer;
-      transition: all 0.15s;
-      color: var(--muted);
-      font-size: 12px;
-      line-height: 1.6;
+      display:flex; flex-direction:column; align-items:center; justify-content:center; gap:10px;
+      padding:30px 16px; text-align:center; cursor:pointer; border-radius:var(--radius-lg);
+      border:1.5px dashed var(--border-strong); background:transparent; color:var(--text-tertiary);
+      transition:var(--transition-control);
     }
+    .dropzone:hover { border-color:var(--gold-500); color:var(--gold-text); }
+    .dropzone.dragover { border-color:var(--gold-500); background:var(--gold-tint-soft); color:var(--gold-text); box-shadow:var(--glow-gold); }
+    .dropzone.loaded { border:1px solid var(--border-default); border-style:solid; padding:18px 16px; background:var(--surface); box-shadow:var(--highlight-top); cursor:pointer; }
+    .dz-icon { display:flex; align-items:center; justify-content:center; width:44px; height:44px; border-radius:var(--radius-md); background:var(--surface-raised); color:var(--text-tertiary); flex-shrink:0; }
+    .dropzone:hover .dz-icon, .dropzone.dragover .dz-icon { color:var(--gold-text); }
+    .dropzone.loaded .dz-icon { background:var(--gold-tint); color:var(--gold-text); }
+    .dz-title { font:var(--fw-semibold) var(--fs-body-sm)/1.3 var(--font-sans); color:var(--text-secondary); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:100%; }
+    .dropzone.loaded .dz-title { color:var(--text-primary); }
+    .dz-hint { font:var(--fw-regular) var(--fs-label)/1.3 var(--font-sans); color:var(--text-muted); }
+    .dz-meta { font:var(--fw-regular) var(--fs-micro)/1.3 var(--font-mono); color:var(--text-muted); }
+    .dz-body { display:flex; flex-direction:column; gap:3px; align-items:center; min-width:0; width:100%; }
 
-    .dropzone:hover, .dropzone.dragover {
-      border-color: var(--accent);
-      color: var(--accent);
-      background: rgba(0, 200, 150, 0.05);
-    }
+    /* Info rows */
+    .info-group { display:flex; flex-direction:column; gap:8px; }
+    .info-row { display:flex; justify-content:space-between; align-items:baseline; gap:8px; }
+    .info-label { font:var(--fw-regular) var(--fs-label)/1 var(--font-sans); color:var(--text-tertiary); white-space:nowrap; flex-shrink:0; }
+    .info-value { font:var(--fw-medium) var(--fs-data-sm)/1 var(--font-mono); font-variant-numeric:tabular-nums; color:var(--text-secondary); white-space:nowrap; text-align:right; }
+    .info-value.good { color:var(--good-text); }
+    .info-value.check { color:var(--check-text); }
+    .info-value.issue { color:var(--issue-text); }
 
-    .dropzone-icon {
-      font-size: 28px;
-      margin-bottom: 8px;
-      display: block;
-    }
-
-    /* File info */
-    #file-info, #dir-info {
-      display: none;
-      flex-direction: column;
-      gap: 6px;
-    }
-
-    .info-row {
-      display: flex;
-      justify-content: space-between;
-      gap: 6px;
-      font-size: 11px;
-    }
-
-    .info-label {
-      color: var(--muted);
-      flex-shrink: 0;
-    }
-
-    .info-value {
-      color: var(--text);
-      text-align: right;
-      word-break: break-all;
-      font-variant-numeric: tabular-nums;
-    }
-
-    .info-value.clip { color: var(--danger); font-weight: 600; }
-    .info-value.warn { color: var(--warning); }
-
-    .file-list {
-      list-style: none;
-      display: flex;
-      flex-direction: column;
-      gap: 3px;
-      max-height: 200px;
-      overflow-y: auto;
-    }
-
-    .file-list li {
-      font-size: 11px;
-      color: var(--muted);
-      padding: 4px 6px;
-      border-radius: 3px;
-      cursor: pointer;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-    }
-
-    .file-list li:hover { background: #1e1e1e; color: var(--text); }
+    /* Dir file list */
+    .dir-list { display:flex; flex-direction:column; gap:2px; max-height:220px; overflow-y:auto; }
+    .dir-item { display:flex; align-items:center; justify-content:space-between; gap:8px; padding:6px 8px; border-radius:var(--radius-sm); background:var(--surface); }
+    .dir-name { font:var(--fw-regular) var(--fs-label)/1 var(--font-mono); color:var(--text-secondary); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .dir-fmt { font:var(--fw-semibold) 9px/1 var(--font-mono); letter-spacing:0.05em; color:var(--text-muted); background:var(--surface-raised); border:1px solid var(--border-subtle); border-radius:var(--radius-xs); padding:2px 5px; flex-shrink:0; }
 
     /* Buttons */
     .btn {
-      padding: 8px 16px;
-      border-radius: 5px;
-      border: none;
-      cursor: pointer;
-      font-size: 12px;
-      font-weight: 600;
-      letter-spacing: 0.04em;
-      transition: all 0.15s;
+      display:inline-flex; align-items:center; justify-content:center; gap:8px;
+      height:var(--control-h); padding:0 16px; width:auto;
+      font:var(--fw-medium) var(--fs-body-sm)/1 var(--font-sans); letter-spacing:var(--tracking-label);
+      border:1px solid transparent; border-radius:var(--radius-md); cursor:pointer;
+      transition:var(--transition-control); white-space:nowrap;
     }
+    .btn:active:not(:disabled) { transform:scale(0.975); }
+    .btn:disabled { opacity:0.45; cursor:not-allowed; }
+    .btn.full { width:100%; }
+    .btn.sm { height:var(--control-h-sm); padding:0 12px; font-size:var(--fs-label); gap:6px; }
+    .btn-primary { background:var(--primary); color:var(--on-primary); font-weight:var(--fw-semibold); }
+    .btn-primary:hover:not(:disabled) { background:var(--primary-hover); }
+    .btn-secondary { background:var(--surface-raised); color:var(--text-primary); border-color:var(--border-default); box-shadow:var(--highlight-top); font-weight:var(--fw-medium); }
+    .btn-secondary:hover:not(:disabled) { background:var(--surface-hover); border-color:var(--border-strong); }
+    .btn-ghost { background:transparent; color:var(--text-secondary); font-weight:var(--fw-medium); }
+    .btn-ghost:hover:not(:disabled) { background:var(--surface-raised); color:var(--text-primary); }
+    .btn-danger { background:var(--issue-500); color:#fff; font-weight:var(--fw-semibold); }
+    .btn-danger:hover:not(:disabled) { background:var(--issue-text); }
 
-    .btn-accent {
-      background: var(--accent);
-      color: #000;
+    /* Select */
+    .select-label { display:flex; flex-direction:column; gap:6px; width:100%; }
+    .select-label > span { font:var(--fw-medium) var(--fs-label)/1 var(--font-sans); color:var(--text-tertiary); letter-spacing:var(--tracking-label); }
+    .select-wrap { position:relative; display:flex; align-items:center; }
+    .select-wrap select {
+      appearance:none; -webkit-appearance:none; width:100%; height:var(--control-h);
+      padding:0 34px 0 12px; background:var(--surface); color:var(--text-primary);
+      border:1px solid var(--border-default); border-radius:var(--radius-md);
+      font:var(--fw-medium) var(--fs-body-sm)/1 var(--font-sans);
+      box-shadow:var(--highlight-top); cursor:pointer; outline:none; transition:var(--transition-control);
     }
+    .select-wrap select:focus { border-color:var(--gold-500); box-shadow:var(--glow-focus); }
+    .select-wrap select:disabled { opacity:0.45; cursor:not-allowed; }
+    .select-caret { position:absolute; right:10px; pointer-events:none; color:var(--text-tertiary); display:flex; }
 
-    .btn-accent:hover { background: #00dba8; }
-    .btn-accent:active { transform: scale(0.97); }
-    .btn-accent:disabled { background: #333; color: var(--muted); cursor: not-allowed; transform: none; }
-
-    .btn-danger {
-      background: var(--danger);
-      color: #fff;
+    /* Slider */
+    .slider { display:flex; flex-direction:column; gap:8px; }
+    .slider-head { display:flex; justify-content:space-between; align-items:baseline; }
+    .slider-head .lbl { font:var(--fw-medium) var(--fs-label)/1 var(--font-sans); color:var(--text-tertiary); }
+    .slider-head .val { font:var(--fw-medium) var(--fs-data-sm)/1 var(--font-mono); font-variant-numeric:tabular-nums; color:var(--gold-text); }
+    .sb-slider { -webkit-appearance:none; appearance:none; width:100%; height:6px; border-radius:var(--radius-pill); outline:none; cursor:pointer; }
+    .sb-slider::-webkit-slider-thumb {
+      -webkit-appearance:none; appearance:none; width:16px; height:16px; border-radius:50%;
+      background:var(--gold-400); border:2px solid var(--bg-panel); box-shadow:0 1px 3px rgba(0,0,0,0.5);
+      cursor:pointer; transition:transform var(--dur-fast) var(--ease-out),box-shadow var(--dur-fast) var(--ease-out);
     }
+    .sb-slider::-webkit-slider-thumb:hover { transform:scale(1.15); box-shadow:0 0 0 4px var(--gold-tint); }
 
-    .btn-danger:hover { background: #ff5c4d; }
+    /* Spectrum panel */
+    #spectrum-panel { flex:1; display:flex; flex-direction:column; min-width:0; overflow:hidden; }
+    #spectrum-header { display:flex; align-items:center; gap:20px; padding:11px 20px; border-bottom:1px solid var(--border-subtle); background:var(--bg-panel); flex-shrink:0; min-height:52px; }
+    #spectrum-title { font:var(--fw-semibold) var(--fs-micro)/1 var(--font-sans); letter-spacing:var(--tracking-caps); text-transform:uppercase; color:var(--text-tertiary); }
+    #stats-row { margin-left:auto; display:none; gap:26px; }
+    .stat { display:flex; flex-direction:column; gap:3px; align-items:flex-start; }
+    .stat .stat-label { font:var(--fw-medium) var(--fs-micro)/1 var(--font-sans); letter-spacing:var(--tracking-caps); text-transform:uppercase; color:var(--text-tertiary); }
+    .stat .stat-val { display:inline-flex; align-items:baseline; gap:4px; }
+    .stat .stat-num { font:var(--fw-medium) var(--fs-data)/1 var(--font-mono); font-variant-numeric:tabular-nums; letter-spacing:var(--tracking-snug); color:var(--text-primary); }
+    .stat .stat-num.good { color:var(--good-text); } .stat .stat-num.check { color:var(--check-text); } .stat .stat-num.issue { color:var(--issue-text); }
+    .stat .stat-unit { font:var(--fw-medium) var(--fs-label)/1 var(--font-mono); color:var(--text-tertiary); }
 
-    .btn-outline {
-      background: transparent;
-      border: 1px solid var(--border);
-      color: var(--text);
-    }
+    #spectrum-body { flex:1; padding:24px; overflow:auto; background:var(--bg-app); display:flex; flex-direction:column; }
+    .spectrum-empty { flex:1; min-height:360px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:14px; color:var(--text-muted); text-align:center; }
+    .spectrum-empty p { font:var(--fw-regular) var(--fs-body)/1 var(--font-sans); margin:0; }
+    .spectrum-empty .spin { width:34px; height:34px; border-radius:50%; border:3px solid var(--surface-raised); border-top-color:var(--gold-500); animation:sbspin 0.8s linear infinite; }
+    .spectrum-empty .sub { font:var(--fw-regular) var(--fs-label)/1 var(--font-mono); color:var(--text-muted); }
+    .meter-card { background:var(--surface-inset); border:1px solid var(--border-subtle); border-radius:var(--radius-xl); box-shadow:var(--elevation-canvas); padding:20px 26px; }
+    .live-ch { padding:14px 0; }
+    .live-ch + .live-ch { border-top:1px solid var(--border-subtle); }
+    .live-ch-head { display:flex; align-items:baseline; gap:10px; margin-bottom:10px; }
+    .live-ch-name { font:var(--fw-semibold) var(--fs-body-sm)/1 var(--font-sans); color:var(--text-primary); }
+    .live-ch-name.clip { color:var(--issue-text); }
+    .live-ch-meta { font:var(--fw-regular) var(--fs-micro)/1 var(--font-mono); color:var(--text-muted); }
+    .live-ch-clip { margin-left:auto; font:var(--fw-semibold) var(--fs-micro)/1 var(--font-sans); color:var(--issue-text); letter-spacing:0.06em; }
 
-    .btn-outline:hover { border-color: var(--accent); color: var(--accent); }
+    /* BandMeter */
+    .bm { display:flex; flex-direction:column; }
+    .bm-scale { position:relative; height:14px; margin-left:116px; margin-right:56px; }
+    .bm-scale span { position:absolute; transform:translateX(-50%); font:var(--fw-medium) 9px/1 var(--font-mono); color:var(--gridline-label); white-space:nowrap; }
+    .bm-row { display:flex; align-items:center; gap:10px; height:30px; }
+    .bm-labelcol { width:108px; flex-shrink:0; text-align:right; }
+    .bm-name { font:var(--fw-medium) var(--fs-label)/1.15 var(--font-sans); color:var(--text-secondary); }
+    .bm-name.loud { font-weight:var(--fw-semibold); color:var(--text-primary); }
+    .bm-range { font:var(--fw-regular) 9.5px/1.2 var(--font-mono); color:var(--text-muted); margin-top:2px; }
+    .bm-track { flex:1; position:relative; height:14px; background:var(--meter-track); border-radius:var(--radius-sm); overflow:hidden; box-shadow:inset 0 0 0 1px var(--border-subtle); }
+    .bm-grid { position:absolute; top:0; bottom:0; width:1px; background:var(--gridline); }
+    .bm-fill { position:absolute; left:0; top:0; bottom:0; border-radius:var(--radius-sm); transition:var(--transition-meter); }
+    .bm-fill.loud { box-shadow:0 0 8px -1px var(--gold-glow); }
+    .bm-val { width:52px; flex-shrink:0; text-align:right; font:var(--fw-medium) var(--fs-data-sm)/1 var(--font-mono); font-variant-numeric:tabular-nums; color:var(--text-muted); }
+    .bm-val.hot { color:var(--text-primary); }
+    .bm-centroid { position:relative; height:0; margin:3px 56px 3px 116px; border-top:1.5px dashed var(--azure-400); }
+    .bm-centroid span { position:absolute; right:0; top:-8px; font:var(--fw-medium) 9px/1 var(--font-mono); color:var(--azure-text); background:var(--surface-inset); padding:2px 5px; border-radius:var(--radius-xs); }
 
-    /* Sliders */
-    .slider-row {
-      display: flex;
-      flex-direction: column;
-      gap: 5px;
-    }
+    /* AI panel */
+    #model-chip { display:inline-flex; align-items:center; gap:5px; font:var(--fw-medium) 10px/1 var(--font-mono); color:var(--gold-text); background:var(--gold-tint); border:1px solid var(--gold-600); border-radius:var(--radius-xs); padding:3px 7px; }
+    #ai-output { flex:1; overflow-y:auto; padding:16px; font:var(--fw-regular) var(--fs-body-sm)/var(--lh-relaxed) var(--font-sans); color:var(--text-secondary); white-space:pre-wrap; word-break:break-word; }
+    #ai-output.placeholder { color:var(--text-muted); font-style:italic; }
+    #ai-output .caret { display:inline-block; width:7px; height:15px; margin-left:1px; background:var(--gold-500); vertical-align:text-bottom; animation:sbcaret 1s steps(1) infinite; }
+    #ai-panel .panel-body { padding:0; }
+    #ai-countdown { font:var(--fw-regular) var(--fs-label)/1.3 var(--font-sans); color:var(--text-muted); text-align:center; margin-bottom:8px; min-height:0; }
+    #ai-countdown:empty { display:none; }
+    #ai-countdown .cd-num { font-family:var(--font-mono); color:var(--gold-text); }
 
-    .slider-label {
-      display: flex;
-      justify-content: space-between;
-      font-size: 11px;
-      color: var(--muted);
-    }
+    /* ── Report Card ──────────────────────────────────────────────── */
+    #reportcard-view { display:none; flex:1; flex-direction:column; overflow:hidden; background:var(--bg-app); }
+    #reportcard-view.active { display:flex; }
+    #rc-toolbar { display:flex; align-items:center; justify-content:space-between; padding:10px 22px; border-bottom:1px solid var(--border-subtle); background:var(--bg-panel); flex-shrink:0; }
+    #rc-toolbar .panel-title { }
+    #rc-scroll { flex:1; overflow-y:auto; padding:32px 22px; display:flex; justify-content:center; }
+    #report-card { width:100%; max-width:760px; }
+    .rc-empty { flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:16px; color:var(--text-muted); text-align:center; padding:80px 20px; }
+    .rc-empty .t1 { font:var(--fw-medium) var(--fs-body)/1 var(--font-sans); color:var(--text-tertiary); }
+    .rc-empty .t2 { font:var(--fw-regular) var(--fs-body-sm)/1 var(--font-sans); }
 
-    .slider-label span:last-child {
-      color: var(--text);
-      font-weight: 600;
-    }
+    .rc-header { text-align:center; margin-bottom:26px; padding-bottom:20px; border-bottom:1px solid var(--border-subtle); }
+    .rc-header h1 { font:var(--fw-semibold) var(--fs-h1)/1.2 var(--font-sans); letter-spacing:var(--tracking-tight); color:var(--text-primary); margin:0 0 8px; }
+    .rc-meta { display:flex; justify-content:center; gap:14px; font:var(--fw-regular) var(--fs-label)/1 var(--font-mono); color:var(--text-muted); }
+    .rc-score { display:flex; flex-direction:column; align-items:center; gap:12px; margin-bottom:34px; }
+    .grade-ring { position:relative; width:168px; height:168px; }
+    .grade-ring svg { display:block; transform:rotate(-90deg); }
+    .grade-ring .center { position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; }
+    .grade-ring .letter { font:var(--fw-bold) 76px/1 var(--font-sans); letter-spacing:-0.03em; }
+    .grade-ring .score { font:var(--fw-medium) var(--fs-micro)/1 var(--font-mono); color:var(--text-tertiary); margin-top:4px; }
+    .grade-ring .score .slash { opacity:0.6; }
+    .rc-ring-label { font:var(--fw-medium) var(--fs-micro)/1 var(--font-sans); letter-spacing:var(--tracking-caps); text-transform:uppercase; color:var(--text-tertiary); }
+    .rc-rectype { display:inline-flex; align-items:center; gap:8px; padding:5px 12px; border-radius:var(--radius-pill); max-width:420px; }
+    .rc-rectype .txt { font:var(--fw-medium) var(--fs-body-sm)/1.35 var(--font-sans); }
 
-    input[type=range] {
-      -webkit-appearance: none;
-      width: 100%;
-      height: 4px;
-      border-radius: 2px;
-      background: #1e1e1e;
-      outline: none;
-    }
+    .rc-section { margin-bottom:30px; }
+    .rc-section:last-child { margin-bottom:0; }
+    .rc-section h2 { font:var(--fw-semibold) var(--fs-micro)/1 var(--font-sans); letter-spacing:var(--tracking-caps); text-transform:uppercase; color:var(--text-tertiary); margin:0 0 14px; padding-bottom:10px; border-bottom:1px solid var(--border-subtle); }
 
-    input[type=range]::-webkit-slider-thumb {
-      -webkit-appearance: none;
-      width: 14px; height: 14px;
-      border-radius: 50%;
-      background: var(--accent);
-      cursor: pointer;
-    }
+    .metric-table { width:100%; border-collapse:collapse; }
+    .metric-table th { padding:0 8px 8px; font:var(--fw-semibold) var(--fs-micro)/1 var(--font-sans); letter-spacing:var(--tracking-caps); text-transform:uppercase; color:var(--text-muted); text-align:left; }
+    .metric-table th:last-child { text-align:right; }
+    .metric-table td { padding:10px 8px; border-top:1px solid var(--border-subtle); vertical-align:middle; }
+    .metric-table td:last-child { text-align:right; }
+    .mt-metric { font:var(--fw-medium) var(--fs-body-sm)/1.3 var(--font-sans); color:var(--text-primary); }
+    .mt-note { display:block; font:var(--fw-regular) var(--fs-micro)/1.3 var(--font-sans); color:var(--text-muted); margin-top:2px; }
+    .mt-value { font:var(--fw-medium) var(--fs-data-sm)/1 var(--font-mono); font-variant-numeric:tabular-nums; color:var(--text-secondary); }
+    .mt-value .unit { color:var(--text-muted); margin-left:3px; }
 
-    select {
-      width: 100%;
-      padding: 6px 8px;
-      background: #1a1a1a;
-      border: 1px solid var(--border);
-      border-radius: 4px;
-      color: var(--text);
-      font-size: 12px;
-      outline: none;
-      cursor: pointer;
-    }
+    /* Status pill */
+    .pill { display:inline-flex; align-items:center; gap:5px; padding:3px 10px; border-radius:var(--radius-pill); font:var(--fw-semibold) var(--fs-label)/1 var(--font-sans); letter-spacing:var(--tracking-caps); white-space:nowrap; }
+    .pill.sm { padding:2px 8px; font-size:var(--fs-micro); }
+    .pill.good { background:var(--good-tint); border:1px solid var(--good-border); color:var(--good-text); }
+    .pill.check { background:var(--check-tint); border:1px solid var(--check-border); color:var(--check-text); }
+    .pill.issue { background:var(--issue-tint); border:1px solid var(--issue-border); color:var(--issue-text); }
+    .pill.info { background:var(--info-tint); border:1px solid var(--info-border); color:var(--info-text); }
 
-    select:focus { border-color: var(--accent); }
+    .rc-bands { background:var(--surface); border:1px solid var(--border-subtle); border-radius:var(--radius-lg); padding:16px 20px; box-shadow:var(--elevation-card); }
+    .rc-band-row { display:flex; align-items:center; gap:8px; }
+    .rc-band-row .bm { flex:1; min-width:0; }
+    .rc-band-verdict { width:74px; flex-shrink:0; text-align:right; font:var(--fw-medium) 10px/1 var(--font-sans); }
+    .rc-band-verdict.hot { color:var(--check-text); } .rc-band-verdict.quiet { color:var(--text-muted); } .rc-band-verdict.ok { color:var(--good-text); }
 
-    /* ── Spectrum Panel ──────────────────────────────────────────── */
-    #spectrum-panel {
-      flex: 1;
-      display: flex;
-      flex-direction: column;
-      overflow: hidden;
-      min-width: 0;
-    }
+    .rc-recs { display:flex; flex-direction:column; gap:10px; }
+    .rc-rec { display:flex; gap:12px; padding:13px 15px; background:var(--surface); border:1px solid var(--border-subtle); border-left:3px solid var(--gold-500); border-radius:var(--radius-md); box-shadow:var(--elevation-card); }
+    .rc-rec.critical { border-left-color:var(--issue-500); }
+    .rc-rec-icon { flex-shrink:0; margin-top:1px; color:var(--gold-text); }
+    .rc-rec.critical .rc-rec-icon { color:var(--issue-text); }
+    .rc-rec-text { font:var(--fw-regular) var(--fs-body-sm)/1.55 var(--font-sans); color:var(--text-secondary); }
+    .rc-rec-badge { display:inline; font:var(--fw-semibold) 9px/1 var(--font-sans); letter-spacing:0.06em; text-transform:uppercase; color:var(--issue-text); background:var(--issue-tint); border:1px solid var(--issue-border); border-radius:var(--radius-xs); padding:2px 6px; margin-right:8px; }
 
-    #spectrum-header {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      padding: 10px 16px;
-      border-bottom: 1px solid var(--border);
-      background: var(--panel);
-      flex-shrink: 0;
-    }
-
-    #spectrum-title {
-      font-size: 10px;
-      font-weight: 700;
-      letter-spacing: 0.1em;
-      color: var(--muted);
-      text-transform: uppercase;
-    }
-
-    #stats-row {
-      display: flex;
-      gap: 16px;
-      font-size: 11px;
-      font-variant-numeric: tabular-nums;
-    }
-
-    .stat-item {
-      display: flex;
-      gap: 5px;
-      align-items: center;
-    }
-
-    .stat-label { color: var(--muted); }
-    .stat-value { color: var(--text); font-weight: 600; }
-    .stat-value.clip { color: var(--danger); }
-    .stat-value.warn { color: var(--warning); }
-
-    #canvas-wrapper {
-      flex: 1;
-      position: relative;
-      overflow: hidden;
-      padding: 16px;
-    }
-
-    #spectrum-canvas {
-      display: block;
-      width: 100%;
-      height: 100%;
-    }
-
-    #canvas-placeholder {
-      position: absolute;
-      inset: 0;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      gap: 12px;
-      color: var(--muted);
-      pointer-events: none;
-    }
-
-    #canvas-placeholder .big-icon {
-      font-size: 48px;
-      opacity: 0.3;
-    }
-
-    #canvas-placeholder p {
-      font-size: 13px;
-      opacity: 0.5;
-    }
-
-    #spinner {
-      display: none;
-      position: absolute;
-      inset: 0;
-      align-items: center;
-      justify-content: center;
-      background: rgba(13,13,13,0.7);
-    }
-
-    .spin {
-      width: 32px; height: 32px;
-      border: 3px solid var(--border);
-      border-top-color: var(--accent);
-      border-radius: 50%;
-      animation: spin 0.8s linear infinite;
-    }
-
-    @keyframes spin {
-      to { transform: rotate(360deg); }
-    }
-
-    /* ── AI Panel ────────────────────────────────────────────────── */
-    #ai-panel {
-      width: var(--ai-w);
-      flex-shrink: 0;
-      background: var(--panel);
-      border-left: 1px solid var(--border);
-      display: flex;
-      flex-direction: column;
-      overflow: hidden;
-    }
-
-    #ai-header {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: 12px 14px 8px;
-      border-bottom: 1px solid var(--border);
-      flex-shrink: 0;
-    }
-
-    #ai-title {
-      font-size: 10px;
-      font-weight: 700;
-      letter-spacing: 0.1em;
-      color: var(--muted);
-      text-transform: uppercase;
-    }
-
-    #model-chip {
-      font-size: 9px;
-      font-weight: 600;
-      color: var(--accent);
-      background: rgba(0,200,150,0.12);
-      border: 1px solid rgba(0,200,150,0.25);
-      border-radius: 3px;
-      padding: 2px 6px;
-      letter-spacing: 0.03em;
-    }
-
-    #ai-output {
-      flex: 1;
-      overflow-y: auto;
-      padding: 14px;
-      font-family: 'SF Mono', 'Menlo', 'Monaco', 'Consolas', monospace;
-      font-size: 11.5px;
-      line-height: 1.65;
-      color: var(--text);
-      white-space: pre-wrap;
-      word-break: break-word;
-    }
-
-    #ai-output:empty::before {
-      content: 'AI analysis will appear here.\nClick "Analyze" after loading a file.';
-      color: var(--muted);
-      font-style: italic;
-      font-family: -apple-system, BlinkMacSystemFont, sans-serif;
-    }
-
-    /* Scrollbar */
-    #ai-output::-webkit-scrollbar { width: 4px; }
-    #ai-output::-webkit-scrollbar-track { background: transparent; }
-    #ai-output::-webkit-scrollbar-thumb { background: #2a2a2a; border-radius: 2px; }
-    #ai-output::-webkit-scrollbar-thumb:hover { background: #3a3a3a; }
-
-    #ai-footer {
-      padding: 10px 14px;
-      border-top: 1px solid var(--border);
-      display: flex;
-      flex-direction: column;
-      gap: 8px;
-      flex-shrink: 0;
-    }
-
-    #ai-countdown {
-      font-size: 11px;
-      color: var(--muted);
-      text-align: center;
-    }
-
-    #ai-analyze-btn {
-      width: 100%;
-    }
-
-    /* ── Misc ────────────────────────────────────────────────────── */
-    .section-label {
-      font-size: 10px;
-      font-weight: 700;
-      letter-spacing: 0.08em;
-      color: var(--muted);
-      text-transform: uppercase;
-      margin-top: 4px;
-    }
-
-    .divider {
-      height: 1px;
-      background: var(--border);
-    }
-
-    /* Window counter badge */
-    #window-badge {
-      display: none;
-      font-size: 10px;
-      color: var(--muted);
-      margin-left: auto;
-    }
-
-    /* ── Report Card ─────────────────────────────────────────────── */
-    #reportcard-view {
-      display: none;
-      flex: 1;
-      flex-direction: column;
-      overflow: hidden;
-      background: var(--bg);
-    }
-
-    #reportcard-view.active { display: flex; }
-
-    #reportcard-toolbar {
-      display: flex;
-      justify-content: flex-end;
-      padding: 10px 20px;
-      border-bottom: 1px solid var(--border);
-      background: var(--panel);
-      flex-shrink: 0;
-    }
-
-    #reportcard-scroll {
-      flex: 1;
-      overflow-y: auto;
-      padding: 28px 20px;
-      display: flex;
-      justify-content: center;
-    }
-
-    #report-card {
-      width: 100%;
-      max-width: 760px;
-    }
-
-    .rc-empty {
-      color: var(--muted);
-      text-align: center;
-      padding: 80px 20px;
-      font-size: 14px;
-    }
-
-    .rc-header {
-      text-align: center;
-      margin-bottom: 24px;
-      padding-bottom: 16px;
-      border-bottom: 1px solid var(--border);
-    }
-
-    .rc-header h1 {
-      font-size: 20px;
-      letter-spacing: 0.04em;
-      color: var(--text);
-      margin-bottom: 6px;
-    }
-
-    .rc-meta {
-      display: flex;
-      justify-content: center;
-      gap: 16px;
-      font-size: 12px;
-      color: var(--muted);
-    }
-
-    .rc-score-section {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      gap: 8px;
-      margin-bottom: 32px;
-    }
-
-    .rc-grade {
-      font-size: 56px;
-      font-weight: 800;
-      line-height: 1;
-      width: 120px;
-      height: 120px;
-      border-radius: 50%;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      border: 4px solid currentColor;
-    }
-
-    .rc-grade.grade-a { color: var(--accent); }
-    .rc-grade.grade-b { color: #6bd97a; }
-    .rc-grade.grade-c { color: var(--warning); }
-    .rc-grade.grade-d { color: #ff8a3d; }
-    .rc-grade.grade-f { color: var(--danger); }
-
-    .rc-score-label {
-      font-size: 11px;
-      text-transform: uppercase;
-      letter-spacing: 0.1em;
-      color: var(--muted);
-    }
-
-    .rc-section { margin-bottom: 28px; }
-
-    .rc-section h2 {
-      font-size: 11px;
-      text-transform: uppercase;
-      letter-spacing: 0.1em;
-      color: var(--muted);
-      margin-bottom: 12px;
-      padding-bottom: 6px;
-      border-bottom: 1px solid var(--border);
-    }
-
-    .rc-table { width: 100%; border-collapse: collapse; font-size: 12px; }
-
-    .rc-table th {
-      text-align: left;
-      padding: 6px 8px;
-      color: var(--muted);
-      font-weight: 600;
-      font-size: 10px;
-      text-transform: uppercase;
-      letter-spacing: 0.05em;
-    }
-
-    .rc-table td {
-      padding: 8px;
-      border-top: 1px solid var(--border);
-      color: var(--text);
-    }
-
-    .rc-status {
-      display: inline-block;
-      padding: 2px 8px;
-      border-radius: 10px;
-      font-size: 10px;
-      font-weight: 700;
-      text-transform: uppercase;
-    }
-
-    .rc-status.good { background: rgba(0,200,150,0.15); color: var(--accent); }
-    .rc-status.warn { background: rgba(245,166,35,0.15); color: var(--warning); }
-    .rc-status.bad  { background: rgba(231,76,60,0.15); color: var(--danger); }
-
-    .rc-band-row {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      margin-bottom: 8px;
-      font-size: 11px;
-    }
-
-    .rc-band-label { width: 84px; flex-shrink: 0; color: var(--text); }
-    .rc-band-track { flex: 1; height: 14px; background: #191919; border-radius: 3px; overflow: hidden; }
-    .rc-band-fill { height: 100%; border-radius: 3px; }
-    .rc-band-fill.good { background: var(--accent); }
-    .rc-band-fill.warn { background: var(--warning); }
-    .rc-band-fill.bad  { background: var(--danger); }
-    .rc-band-val { width: 60px; text-align: right; font-variant-numeric: tabular-nums; color: var(--muted); flex-shrink: 0; }
-    .rc-band-status { width: 84px; text-align: right; flex-shrink: 0; font-size: 10px; color: var(--muted); }
-    .rc-band-status.warn { color: var(--warning); }
-    .rc-band-status.bad  { color: var(--danger); }
-
-    #rc-recommendations { list-style: none; display: flex; flex-direction: column; gap: 8px; }
-
-    #rc-recommendations li {
-      padding: 10px 12px;
-      background: var(--panel);
-      border-left: 3px solid var(--accent);
-      border-radius: 4px;
-      font-size: 12px;
-      line-height: 1.5;
-      color: var(--text);
-    }
-
-    #rc-recommendations li.critical { border-left-color: var(--danger); }
-
-    /* ── Print (Report Card export) ──────────────────────────────── */
+    /* ── Print (Export PDF) ───────────────────────────────────────── */
     @media print {
-      body * { visibility: hidden !important; }
-      #report-card, #report-card * { visibility: visible !important; }
-
-      html, body { background: #fff !important; overflow: visible !important; }
-
-      #report-card {
-        position: absolute;
-        left: 0;
-        top: 0;
-        width: 100%;
-        max-width: none;
-        margin: 0;
-        padding: 12px;
-        background: #fff !important;
-      }
-
-      .rc-header, .rc-header h1, .rc-meta,
-      .rc-section h2, .rc-table td, .rc-table th,
-      .rc-band-label, .rc-band-val, .rc-band-status,
-      .rc-score-label, #rc-recommendations li {
-        color: #000 !important;
-      }
-
-      .rc-header, .rc-section h2 { border-color: #ccc !important; }
-      .rc-table td { border-color: #ccc !important; }
-
-      .rc-grade { border-color: #000 !important; color: #000 !important; }
-
-      .rc-status { background: #eee !important; color: #000 !important; border: 1px solid #999; }
-      .rc-band-track { background: #eee !important; }
-      .rc-band-fill { background: #333 !important; }
-
-      #rc-recommendations li {
-        background: #f5f5f5 !important;
-        border-left-color: #000 !important;
-      }
-      #rc-recommendations li.critical { border-left-color: #000 !important; font-weight: 700; }
+      body * { visibility:hidden !important; }
+      #report-card, #report-card * { visibility:visible !important; }
+      html, body { background:#fff !important; overflow:visible !important; }
+      #report-card { position:absolute; left:0; top:0; width:100%; max-width:none; margin:0; padding:12px; background:#fff !important; }
+      .rc-header h1, .rc-meta, .rc-section h2, .mt-metric, .mt-value, .rc-rec-text, .rc-band-verdict, .rc-ring-label, .rc-empty { color:#000 !important; }
+      .rc-header, .rc-section h2 { border-color:#ccc !important; }
+      .metric-table td, .metric-table th { border-color:#ccc !important; color:#111 !important; }
+      .rc-bands, .rc-rec { background:#f7f7f7 !important; box-shadow:none !important; }
+      .rc-rec { border-left-color:#000 !important; }
     }
   </style>
 </head>
 <body>
 <div id="root">
-  <!-- ── Header ── -->
+  <!-- ══ Header ══ -->
   <div id="header">
     <div id="logo">
       <div id="logo-dot"></div>
-      <span id="logo-text">SOUND BUDDY</span>
+      <span id="logo-text">Sound<b> Buddy</b></span>
     </div>
-    <div id="mode-tabs">
-      <button class="mode-tab active" data-mode="file">File</button>
-      <button class="mode-tab" data-mode="dir">Directory</button>
-      <button class="mode-tab" data-mode="live">Live</button>
-      <button class="mode-tab" data-mode="reportcard">Report Card</button>
+    <div class="header-div"></div>
+    <div id="mode-tabs" role="tablist">
+      <button class="mode-tab active" data-mode="file" data-icon="file-audio">File</button>
+      <button class="mode-tab" data-mode="dir" data-icon="folder">Directory</button>
+      <button class="mode-tab" data-mode="live" data-icon="radio">Live</button>
+      <button class="mode-tab" data-mode="reportcard" data-icon="clipboard-check">Report Card</button>
     </div>
     <div id="header-right">
       <div id="live-indicator">
-        <div class="pulse"></div>
-        <span>LIVE</span>
+        <div class="pulse sb-pulse"></div>
+        <span class="live-txt">LIVE</span>
+        <span id="window-badge"></span>
       </div>
-      <span id="window-badge"></span>
     </div>
   </div>
 
-  <!-- ── Body ── -->
-  <div id="body">
-
-    <!-- ── Source Panel ── -->
-    <div id="source-panel">
-      <div class="panel-header">Source</div>
-
-      <!-- FILE TAB -->
-      <div class="tab-content active" id="tab-file">
-        <div class="dropzone" id="file-dropzone">
-          <span class="dropzone-icon">🎵</span>
-          <strong>Drop audio file here</strong><br/>
-          or click to browse
-        </div>
-
-        <div id="file-info">
-          <div class="section-label">File</div>
-          <div class="info-row"><span class="info-label">Name</span><span class="info-value" id="fi-name">—</span></div>
-          <div class="info-row"><span class="info-label">Format</span><span class="info-value" id="fi-fmt">—</span></div>
-          <div class="info-row"><span class="info-label">Duration</span><span class="info-value" id="fi-dur">—</span></div>
-          <div class="info-row"><span class="info-label">Sample Rate</span><span class="info-value" id="fi-sr">—</span></div>
-          <div class="info-row"><span class="info-label">Bit Depth</span><span class="info-value" id="fi-bd">—</span></div>
-          <div class="info-row"><span class="info-label">Channels</span><span class="info-value" id="fi-ch">—</span></div>
-          <div class="divider"></div>
-          <div class="section-label">Dynamics</div>
-          <div class="info-row"><span class="info-label">Peak</span><span class="info-value" id="fi-peak">—</span></div>
-          <div class="info-row"><span class="info-label">RMS</span><span class="info-value" id="fi-rms">—</span></div>
-          <div class="info-row"><span class="info-label">Dyn Range</span><span class="info-value" id="fi-dr">—</span></div>
-          <div class="info-row"><span class="info-label">Clipping</span><span class="info-value" id="fi-clip">—</span></div>
-        </div>
-
-        <button class="btn btn-accent" id="analyze-btn" disabled>Analyze</button>
-      </div>
-
-      <!-- DIR TAB -->
-      <div class="tab-content" id="tab-dir">
-        <div class="dropzone" id="dir-dropzone">
-          <span class="dropzone-icon">📁</span>
-          <strong>Drop folder here</strong><br/>
-          or click to browse
-        </div>
-
-        <div id="dir-info">
-          <div class="section-label">Files</div>
-          <ul class="file-list" id="dir-file-list"></ul>
-        </div>
-
-        <button class="btn btn-accent" id="analyze-dir-btn" disabled>Analyze All</button>
-      </div>
-
-      <!-- LIVE TAB -->
-      <div class="tab-content" id="tab-live">
-        <div class="section-label">Input Device</div>
-        <select id="device-select">
-          <option value="">Loading devices…</option>
-        </select>
-
-        <div class="slider-row">
-          <div class="slider-label">
-            <span>Window</span>
-            <span id="window-secs-label">3s</span>
+  <!-- ══ Workspace (File / Directory / Live) ══ -->
+  <div id="workspace">
+    <!-- Source panel -->
+    <aside id="source-panel" class="side-panel">
+      <div class="panel-head"><span class="panel-title">Source</span></div>
+      <div class="panel-body">
+        <!-- FILE -->
+        <div class="tab-content active" id="tab-file">
+          <div class="dropzone" id="file-dropzone">
+            <div class="dz-icon" data-icon="file-audio"></div>
+            <div class="dz-body">
+              <span class="dz-title">Drop audio file here</span>
+              <span class="dz-hint">or click to browse</span>
+            </div>
           </div>
-          <input type="range" id="window-secs" min="1" max="10" step="0.5" value="3" />
-        </div>
+          <p class="dz-hint" style="text-align:center">Supports wav · aif · aiff · flac · mp3 · ogg · m4a</p>
 
-        <div class="slider-row">
-          <div class="slider-label">
-            <span>LLM Interval</span>
-            <span id="llm-interval-label">60s</span>
-          </div>
-          <input type="range" id="llm-interval" min="0" max="300" step="10" value="60" />
-        </div>
-
-        <div style="display:flex;gap:8px;">
-          <button class="btn btn-accent" id="live-start-btn" style="flex:1">Start</button>
-          <button class="btn btn-danger" id="live-stop-btn" style="flex:1;display:none">Stop</button>
-        </div>
-
-        <div id="live-status" style="font-size:11px;color:var(--muted);text-align:center;display:none"></div>
-      </div>
-    </div>
-
-    <!-- ── Spectrum Panel ── -->
-    <div id="spectrum-panel">
-      <div id="spectrum-header">
-        <span id="spectrum-title">Spectrum / Meters</span>
-        <div id="stats-row">
-          <div class="stat-item">
-            <span class="stat-label">RMS</span>
-            <span class="stat-value" id="stat-rms">—</span>
-          </div>
-          <div class="stat-item">
-            <span class="stat-label">Peak</span>
-            <span class="stat-value" id="stat-peak">—</span>
-          </div>
-          <div class="stat-item">
-            <span class="stat-label">DR</span>
-            <span class="stat-value" id="stat-dr">—</span>
-          </div>
-          <div class="stat-item">
-            <span class="stat-label">Clip</span>
-            <span class="stat-value" id="stat-clip">—</span>
-          </div>
-          <div class="stat-item">
-            <span class="stat-label">Centroid</span>
-            <span class="stat-value" id="stat-centroid">—</span>
-          </div>
-        </div>
-      </div>
-      <div id="canvas-wrapper">
-        <canvas id="spectrum-canvas"></canvas>
-        <div id="canvas-placeholder">
-          <span class="big-icon">📊</span>
-          <p>Load a file or start live capture to see spectrum</p>
-        </div>
-        <div id="spinner"><div class="spin"></div></div>
-      </div>
-    </div>
-
-    <!-- ── AI Panel ── -->
-    <div id="ai-panel">
-      <div id="ai-header">
-        <span id="ai-title">AI Engineer</span>
-        <span id="model-chip">claude-sonnet-4-6</span>
-      </div>
-      <div id="ai-output"></div>
-      <div id="ai-footer">
-        <div id="ai-countdown"></div>
-        <button class="btn btn-outline" id="ai-analyze-btn">Analyze with AI</button>
-      </div>
-    </div>
-
-  </div><!-- /#body -->
-
-  <!-- ── Report Card View ── -->
-  <div id="reportcard-view">
-    <div id="reportcard-toolbar">
-      <button class="btn btn-outline" id="reportcard-print-btn">Export PDF</button>
-    </div>
-    <div id="reportcard-scroll">
-      <div id="report-card">
-        <div id="rc-empty" class="rc-empty">No analysis yet. Analyze a file first, then check the Report Card.</div>
-        <div id="rc-content" style="display:none">
-          <div class="rc-header">
-            <h1>Sound Buddy Report Card</h1>
-            <div class="rc-meta">
-              <span id="rc-filename">—</span>
-              <span id="rc-date">—</span>
+          <div id="file-info" style="display:none; flex-direction:column; gap:16px;">
+            <div class="info-group">
+              <span class="section-label">File</span>
+              <div class="info-row"><span class="info-label">Format</span><span class="info-value" id="fi-fmt">—</span></div>
+              <div class="info-row"><span class="info-label">Duration</span><span class="info-value" id="fi-dur">—</span></div>
+              <div class="info-row"><span class="info-label">Sample rate</span><span class="info-value" id="fi-sr">—</span></div>
+              <div class="info-row"><span class="info-label">Bit depth</span><span class="info-value" id="fi-bd">—</span></div>
+              <div class="info-row"><span class="info-label">Channels</span><span class="info-value" id="fi-ch">—</span></div>
+            </div>
+            <div class="hairline"></div>
+            <div class="info-group">
+              <span class="section-label">Dynamics</span>
+              <div class="info-row"><span class="info-label">Peak</span><span class="info-value" id="fi-peak">—</span></div>
+              <div class="info-row"><span class="info-label">RMS</span><span class="info-value" id="fi-rms">—</span></div>
+              <div class="info-row"><span class="info-label">Dyn range</span><span class="info-value" id="fi-dr">—</span></div>
+              <div class="info-row"><span class="info-label">Clipping</span><span class="info-value" id="fi-clip">—</span></div>
             </div>
           </div>
 
-          <div class="rc-score-section">
-            <div id="rc-grade" class="rc-grade">A</div>
-            <div class="rc-score-label">Overall Grade</div>
-            <div id="rc-rec-type" class="rc-rec-type" style="font-size:11px;color:var(--muted);margin-top:8px;text-align:center;max-width:180px"></div>
+          <button class="btn btn-primary full" id="analyze-btn" data-icon="waveform" disabled>Analyze</button>
+        </div>
+
+        <!-- DIR -->
+        <div class="tab-content" id="tab-dir">
+          <div class="dropzone" id="dir-dropzone">
+            <div class="dz-icon" data-icon="folder"></div>
+            <div class="dz-body">
+              <span class="dz-title">Drop a folder here</span>
+              <span class="dz-hint">or click to browse</span>
+            </div>
+          </div>
+          <div id="dir-info" style="display:none; flex-direction:column; gap:8px;">
+            <span class="section-label">Files</span>
+            <div class="dir-list" id="dir-file-list"></div>
+          </div>
+          <button class="btn btn-primary full" id="analyze-dir-btn" data-icon="waveform" disabled>Analyze All</button>
+        </div>
+
+        <!-- LIVE -->
+        <div class="tab-content" id="tab-live">
+          <label class="select-label">
+            <span>Input Device</span>
+            <div class="select-wrap">
+              <select id="device-select"><option value="">Loading devices…</option></select>
+              <span class="select-caret" data-icon="chevron-down"></span>
+            </div>
+          </label>
+
+          <div class="slider">
+            <div class="slider-head"><span class="lbl">Window</span><span class="val" id="window-secs-label">3.0s</span></div>
+            <input type="range" class="sb-slider" id="window-secs" min="1" max="10" step="0.5" value="3" />
+          </div>
+          <div class="slider">
+            <div class="slider-head"><span class="lbl">LLM Interval</span><span class="val" id="llm-interval-label">60s</span></div>
+            <input type="range" class="sb-slider" id="llm-interval" min="0" max="300" step="10" value="60" />
           </div>
 
+          <div class="hairline"></div>
+          <button class="btn btn-primary full" id="live-start-btn" data-icon="play">Start Capture</button>
+          <button class="btn btn-danger full" id="live-stop-btn" data-icon="square" style="display:none">Stop Capture</button>
+          <div id="live-status" style="display:none; font:var(--fw-regular) var(--fs-label)/1.3 var(--font-sans); color:var(--text-muted); text-align:center"></div>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Spectrum / Meters -->
+    <section id="spectrum-panel">
+      <div id="spectrum-header">
+        <span id="spectrum-title">Spectrum · Meters</span>
+        <div id="stats-row">
+          <div class="stat"><span class="stat-label">RMS</span><span class="stat-val"><span class="stat-num" id="stat-rms">—</span><span class="stat-unit">dBFS</span></span></div>
+          <div class="stat"><span class="stat-label">Peak</span><span class="stat-val"><span class="stat-num" id="stat-peak">—</span><span class="stat-unit">dBFS</span></span></div>
+          <div class="stat"><span class="stat-label">DR</span><span class="stat-val"><span class="stat-num" id="stat-dr">—</span><span class="stat-unit">dB</span></span></div>
+          <div class="stat"><span class="stat-label">Clip</span><span class="stat-val"><span class="stat-num" id="stat-clip">—</span></span></div>
+          <div class="stat"><span class="stat-label">Centroid</span><span class="stat-val"><span class="stat-num" id="stat-centroid">—</span><span class="stat-unit">Hz</span></span></div>
+        </div>
+      </div>
+      <div id="spectrum-body"></div>
+    </section>
+
+    <!-- AI Engineer -->
+    <aside id="ai-panel" class="side-panel">
+      <div class="panel-head">
+        <span class="panel-title">AI Engineer</span>
+        <span id="model-chip"><span data-icon="sparkles"></span>your provider</span>
+      </div>
+      <div class="panel-body"><div id="ai-output" class="placeholder">AI feedback appears here after you analyze.</div></div>
+      <div class="panel-footer">
+        <div id="ai-countdown"></div>
+        <button class="btn btn-secondary full" id="ai-analyze-btn" data-icon="sparkles">Analyze with AI</button>
+      </div>
+    </aside>
+  </div>
+
+  <!-- ══ Report Card ══ -->
+  <div id="reportcard-view">
+    <div id="rc-toolbar">
+      <span class="panel-title">Report Card</span>
+      <button class="btn btn-secondary sm" id="reportcard-print-btn" data-icon="download" disabled>Export PDF</button>
+    </div>
+    <div id="rc-scroll">
+      <div id="report-card">
+        <div id="rc-empty" class="rc-empty">
+          <span data-icon="clipboard-check" data-size="46"></span>
+          <span class="t1">No analysis yet</span>
+          <span class="t2">Analyze a file first to generate a report card.</span>
+          <button class="btn btn-ghost sm" id="rc-gofile-btn" data-icon="file-audio">Go to File tab</button>
+        </div>
+        <div id="rc-content" style="display:none">
+          <div class="rc-header">
+            <h1>Sound Buddy Report Card</h1>
+            <div class="rc-meta"><span id="rc-filename">—</span><span>·</span><span id="rc-date">—</span></div>
+          </div>
+          <div class="rc-score">
+            <div id="rc-ring"></div>
+            <div class="rc-rectype pill" id="rc-rec-type"></div>
+          </div>
           <div class="rc-section">
             <h2>Metrics</h2>
-            <table class="rc-table" id="rc-metrics-table">
+            <table class="metric-table">
               <thead><tr><th>Metric</th><th>Value</th><th>Status</th></tr></thead>
               <tbody id="rc-metrics-body"></tbody>
             </table>
           </div>
-
           <div class="rc-section">
             <h2>Frequency Band Breakdown</h2>
-            <div id="rc-bands"></div>
+            <div class="rc-bands" id="rc-bands"></div>
           </div>
-
           <div class="rc-section">
             <h2>Recommendations</h2>
-            <ul id="rc-recommendations"></ul>
+            <div class="rc-recs" id="rc-recommendations"></div>
           </div>
         </div>
       </div>
     </div>
   </div>
-</div><!-- /#root -->
+</div>
 
 <script>
 'use strict';
 
-// ── Helpers ──────────────────────────────────────────────────────────────────
+/* ══ Lucide icon subset (from the design system) ══ */
+const ICON_PATHS = {
+  waveform:'M2 12h2l2-7 3 15 3-11 2 6 2-3h4',
+  activity:'M22 12h-4l-3 9L9 3l-3 9H2',
+  disc:'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zm0 6a3 3 0 1 0 0 6 3 3 0 0 0 0-6z',
+  'file-audio':'M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8zM14 2v6h6M8 15a2 2 0 0 0 2 2M14 15a2 2 0 0 1-2 2M11 13v6',
+  folder:'M4 20a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h5l2 3h7a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2z',
+  radio:'M12 12m-2 0a2 2 0 1 0 4 0 2 2 0 1 0-4 0M4.9 19.1a10 10 0 0 1 0-14.2M7.8 16.2a6 6 0 0 1 0-8.4M16.2 7.8a6 6 0 0 1 0 8.4M19.1 4.9a10 10 0 0 1 0 14.2',
+  'clipboard-check':'M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2M9 5a2 2 0 0 0 2 2h2a2 2 0 0 0 2-2M9 5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2M9 14l2 2 4-4',
+  check:'M20 6 9 17l-5-5',
+  'alert-triangle':'M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0zM12 9v4M12 17h.01',
+  x:'M18 6 6 18M6 6l12 12',
+  info:'M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20zM12 16v-4M12 8h.01',
+  play:'M6 3l14 9-14 9z',
+  square:'M5 5h14v14H5z',
+  sparkles:'M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9zM19 3v4M21 5h-4M5 17v4M7 19H3',
+  upload:'M12 15V3M7 8l5-5 5 5M4 15v4a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-4',
+  download:'M12 3v12M7 10l5 5 5-5M4 15v4a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-4',
+  'chevron-down':'M6 9l6 6 6-6',
+};
 
+function iconSvg(name, size = 16, opts = {}) {
+  const d = ICON_PATHS[name];
+  if (!d) return '';
+  const stroke = opts.stroke || 'currentColor';
+  const sw = opts.strokeWidth || 1.75;
+  const segs = d.split('M').filter(Boolean).map(s => `<path d="M${s}"/>`).join('');
+  return `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="${stroke}" stroke-width="${sw}" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;display:block" aria-hidden="true">${segs}</svg>`;
+}
+
+// Hydrate every element carrying a data-icon attribute (static markup).
+function hydrateIcons(root = document) {
+  root.querySelectorAll('[data-icon]').forEach(el => {
+    const name = el.getAttribute('data-icon');
+    const size = parseInt(el.getAttribute('data-size') || '', 10) || 16;
+    // For button/tab labels, prepend the icon before the text once.
+    if (el.dataset.iconDone) return;
+    el.insertAdjacentHTML('afterbegin', iconSvg(name, size));
+    el.dataset.iconDone = '1';
+  });
+}
+
+/* ══ App state ══ */
 const sb = window.soundBuddy;
 
 let currentMode = 'file';
 let currentAnalysis = null;
 let currentFilePath = null;
 let currentDirPath = null;
-let currentDirFiles = [];
 let liveRunning = false;
 let liveWindows = [];
 let liveCountdownTimer = null;
 let liveCountdownSecs = 0;
 let llmRunning = false;
-let canvas, ctx;
+let aiStreamStarted = false;
 
-function fmt(n, d = 1) {
-  if (!isFinite(n)) return '-∞';
-  return n.toFixed(d);
-}
+/* ══ Formatting helpers ══ */
+function fmt(n, d = 1) { if (!isFinite(n)) return '-∞'; return n.toFixed(d); }
+function fmtHz(hz) { if (hz >= 1000) return (hz / 1000).toFixed(1) + ' kHz'; return Math.round(hz) + ' Hz'; }
+function fmtDur(s) { const m = Math.floor(s / 60); const sec = (s % 60).toFixed(1).padStart(4, '0'); return `${m}:${sec}`; }
 
-function fmtHz(hz) {
-  if (hz >= 1000) return (hz / 1000).toFixed(1) + ' kHz';
-  return Math.round(hz) + ' Hz';
-}
-
-function fmtDur(s) {
-  const m = Math.floor(s / 60);
-  const sec = (s % 60).toFixed(1).padStart(4, '0');
-  return `${m}:${sec}`;
-}
-
-// ── Canvas ────────────────────────────────────────────────────────────────────
-
-function initCanvas() {
-  canvas = document.getElementById('spectrum-canvas');
-  ctx = canvas.getContext('2d');
-  resizeCanvas();
-  window.addEventListener('resize', resizeCanvas);
-}
-
-function resizeCanvas() {
-  const wrapper = document.getElementById('canvas-wrapper');
-  const dpr = window.devicePixelRatio || 1;
-  canvas.width = wrapper.clientWidth * dpr;
-  canvas.height = wrapper.clientHeight * dpr;
-  ctx.scale(dpr, dpr);
-  canvas.style.width = wrapper.clientWidth + 'px';
-  canvas.style.height = wrapper.clientHeight + 'px';
-
-  if (currentAnalysis) {
-    drawSpectrum(currentAnalysis.spectrum, currentAnalysis.sox);
-  } else if (liveWindows.length > 0) {
-    drawLiveWindow(liveWindows[liveWindows.length - 1]);
-  }
-}
-
+/* ══ Band metadata / meter geometry ══ */
+const DB_MIN = -72, DB_MAX = -3;
+const GRID = [-60, -48, -36, -24, -12, -6];
 const BAND_META = [
-  { key: 'subBass',    label: 'Sub Bass',   range: '20-60 Hz' },
-  { key: 'bass',       label: 'Bass',        range: '60-250 Hz' },
-  { key: 'lowMid',     label: 'Low Mid',     range: '250-500 Hz' },
-  { key: 'mid',        label: 'Mid',         range: '500-2 kHz' },
-  { key: 'highMid',    label: 'High Mid',    range: '2-4 kHz' },
-  { key: 'presence',   label: 'Presence',    range: '4-6 kHz' },
-  { key: 'brilliance', label: 'Brilliance',  range: '6-20 kHz' },
+  { key: 'subBass',    label: 'Sub Bass',   range: '20–60 Hz',    color: 'var(--band-sub)' },
+  { key: 'bass',       label: 'Bass',        range: '60–250 Hz',   color: 'var(--band-bass)' },
+  { key: 'lowMid',     label: 'Low Mid',     range: '250–500 Hz',  color: 'var(--band-low-mid)' },
+  { key: 'mid',        label: 'Mid',         range: '500 Hz–2 kHz',color: 'var(--band-mid)' },
+  { key: 'highMid',    label: 'High Mid',    range: '2–4 kHz',     color: 'var(--band-high-mid)' },
+  { key: 'presence',   label: 'Presence',    range: '4–6 kHz',     color: 'var(--band-presence)' },
+  { key: 'brilliance', label: 'Brilliance',  range: '6–20 kHz',    color: 'var(--band-brilliance)' },
 ];
+// live-event band keys are snake_case
+const LIVE_BAND_KEYS = ['sub_bass', 'bass', 'low_mid', 'mid', 'high_mid', 'presence', 'brilliance'];
 
-const DB_MIN = -72;
-const DB_MAX = -3;
+function toPct(db) { const c = Math.max(DB_MIN, Math.min(DB_MAX, db)); return (c - DB_MIN) / (DB_MAX - DB_MIN) * 100; }
 
-function drawSpectrum(spectrum, sox) {
-  const W = canvas.width / (window.devicePixelRatio || 1);
-  const H = canvas.height / (window.devicePixelRatio || 1);
+function levelColor(db) { return db > -24 ? 'var(--meter-good)' : db > -36 ? 'var(--meter-hot)' : 'var(--meter-idle)'; }
 
-  ctx.clearRect(0, 0, W, H);
+// One band-meter row. opts: { showScale, showGrid, colorBy:'band'|'level', color, loudest }
+function bandMeterHTML(label, range, db, opts = {}) {
+  const pct = toPct(db);
+  const fill = opts.colorBy === 'level' ? levelColor(db) : (opts.color || 'var(--gold-500)');
+  const dim = db <= -60;
+  const loud = !!opts.loudest;
+  const grid = (opts.showGrid || opts.showScale)
+    ? GRID.map(g => `<span class="bm-grid" style="left:${toPct(g)}%"></span>`).join('') : '';
+  const scale = opts.showScale
+    ? `<div class="bm-scale">${GRID.map(g => `<span style="left:${toPct(g)}%">${g}</span>`).join('')}</div>` : '';
+  const rangeHTML = range ? `<div class="bm-range">${range}</div>` : '';
+  return `<div class="bm">${scale}
+    <div class="bm-row">
+      <div class="bm-labelcol"><div class="bm-name${loud ? ' loud' : ''}">${label}</div>${rangeHTML}</div>
+      <div class="bm-track">${grid}<div class="bm-fill${loud ? ' loud' : ''}" style="width:${pct}%;background:${fill};opacity:${dim ? 0.5 : 1}"></div></div>
+      <div class="bm-val${db > -24 ? ' hot' : ''}">${isFinite(db) ? db.toFixed(1) : '-∞'}</div>
+    </div>
+  </div>`;
+}
 
-  const LABEL_W = 88;
-  const VAL_W = 54;
-  const barAreaW = W - LABEL_W - VAL_W - 24;
-  const nBands = BAND_META.length;
-  const rowH = Math.min(Math.floor((H - 32) / nBands), 52);
-  const totalH = rowH * nBands;
-  const startY = Math.floor((H - totalH) / 2);
+/* ══ Spectrum panel rendering ══ */
+function setSpectrumState(state, opts = {}) {
+  const body = document.getElementById('spectrum-body');
+  const statsRow = document.getElementById('stats-row');
+  statsRow.style.display = state === 'populated' ? 'flex' : 'none';
 
-  // Find loudest band
+  if (state === 'empty') {
+    body.innerHTML = `<div class="spectrum-empty">${iconSvg('waveform', 44)}<p>${opts.text || 'Load a file to see the spectrum'}</p></div>`;
+  } else if (state === 'loading') {
+    body.innerHTML = `<div class="spectrum-empty"><span class="spin"></span><p>Analyzing audio…</p><p class="sub">Computing dynamics + 7-band spectrum</p></div>`;
+  } else if (state === 'error') {
+    body.innerHTML = `<div class="spectrum-empty" style="color:var(--issue-text)">${iconSvg('alert-triangle', 40)}<p>Analysis failed</p><p class="sub" style="max-width:340px;color:var(--text-tertiary)">${opts.text || 'Couldn’t decode the audio stream.'}</p></div>`;
+  }
+}
+
+function renderSpectrum(spectrum) {
+  const body = document.getElementById('spectrum-body');
+  document.getElementById('stats-row').style.display = 'flex';
+
   const bandVals = BAND_META.map(b => spectrum.bands[b.key]);
-  const maxVal = Math.max(...bandVals);
-  const loudestIdx = bandVals.indexOf(maxVal);
+  const loudestIdx = bandVals.indexOf(Math.max(...bandVals));
 
-  // Grid lines
-  const gridLevels = [-60, -48, -36, -24, -12, -6];
-  ctx.strokeStyle = 'rgba(255,255,255,0.04)';
-  ctx.lineWidth = 1;
-  for (const db of gridLevels) {
-    const x = LABEL_W + 12 + ((db - DB_MIN) / (DB_MAX - DB_MIN)) * barAreaW;
-    ctx.beginPath();
-    ctx.moveTo(x, startY - 8);
-    ctx.lineTo(x, startY + totalH + 4);
-    ctx.stroke();
-
-    ctx.fillStyle = 'rgba(255,255,255,0.18)';
-    ctx.font = '9px -apple-system, sans-serif';
-    ctx.textAlign = 'center';
-    ctx.fillText(db + 'dB', x, startY - 12);
-  }
-
-  BAND_META.forEach((band, i) => {
-    const db = spectrum.bands[band.key];
-    const y = startY + i * rowH;
-    const barH = Math.max(rowH - 8, 12);
-    const barY = y + (rowH - barH) / 2;
-    const isLoudest = i === loudestIdx;
-
-    // Bar fill fraction
-    const clampedDb = Math.max(DB_MIN, Math.min(DB_MAX, db));
-    const frac = (clampedDb - DB_MIN) / (DB_MAX - DB_MIN);
-    const barW = frac * barAreaW;
-
-    // Bar color
-    let barColor;
-    if (db > -24) barColor = '#00c896';
-    else if (db > -36) barColor = '#f5a623';
-    else barColor = '#333';
-
-    // Background track
-    ctx.fillStyle = '#191919';
-    ctx.beginPath();
-    roundRect(ctx, LABEL_W + 12, barY, barAreaW, barH, 3);
-    ctx.fill();
-
-    // Bar
-    if (barW > 0) {
-      ctx.fillStyle = barColor;
-      ctx.beginPath();
-      roundRect(ctx, LABEL_W + 12, barY, barW, barH, 3);
-      ctx.fill();
-    }
-
-    // Glow for active bars
-    if (db > -36) {
-      ctx.shadowColor = barColor;
-      ctx.shadowBlur = 6;
-      ctx.fillStyle = barColor;
-      ctx.beginPath();
-      roundRect(ctx, LABEL_W + 12, barY, barW, barH, 3);
-      ctx.fill();
-      ctx.shadowBlur = 0;
-    }
-
-    // Loudest triangle marker
-    if (isLoudest && barW > 4) {
-      const tx = LABEL_W + 12 + barW + 4;
-      const ty = barY + barH / 2;
-      ctx.fillStyle = '#fff';
-      ctx.beginPath();
-      ctx.moveTo(tx, ty - 4);
-      ctx.lineTo(tx + 6, ty);
-      ctx.lineTo(tx, ty + 4);
-      ctx.closePath();
-      ctx.fill();
-    }
-
-    // Label
-    ctx.fillStyle = isLoudest ? '#fff' : 'rgba(255,255,255,0.5)';
-    ctx.font = isLoudest ? 'bold 11px -apple-system, sans-serif' : '11px -apple-system, sans-serif';
-    ctx.textAlign = 'right';
-    ctx.fillText(band.label, LABEL_W, barY + barH / 2 + 4);
-
-    // Range
-    ctx.fillStyle = 'rgba(255,255,255,0.25)';
-    ctx.font = '9px -apple-system, sans-serif';
-    ctx.textAlign = 'right';
-    ctx.fillText(band.range, LABEL_W, barY + barH / 2 + 14);
-
-    // dB value
-    const valX = LABEL_W + 12 + barAreaW + 8;
-    ctx.fillStyle = db > -24 ? '#00c896' : (db > -36 ? '#f5a623' : 'rgba(255,255,255,0.35)');
-    ctx.font = 'bold 11px SF Mono, Menlo, monospace';
-    ctx.textAlign = 'left';
-    ctx.fillText(fmt(db) + ' dB', valX, barY + barH / 2 + 4);
-  });
-
-  // Spectral centroid line
-  if (spectrum.spectralCentroid > 0) {
-    const logMin = Math.log10(20);
-    const logMax = Math.log10(20000);
-    const logC = Math.log10(Math.max(20, spectrum.spectralCentroid));
-    const cx = LABEL_W + 12 + ((logC - logMin) / (logMax - logMin)) * barAreaW;
-
-    ctx.strokeStyle = 'rgba(0,200,150,0.3)';
-    ctx.lineWidth = 1;
-    ctx.setLineDash([3, 4]);
-    ctx.beginPath();
-    ctx.moveTo(cx, startY);
-    ctx.lineTo(cx, startY + totalH);
-    ctx.stroke();
-    ctx.setLineDash([]);
-  }
-}
-
-function drawLiveWindow(win) {
-  const W = canvas.width / (window.devicePixelRatio || 1);
-  const H = canvas.height / (window.devicePixelRatio || 1);
-
-  ctx.clearRect(0, 0, W, H);
-
-  if (!win || !win.channels || win.channels.length === 0) return;
-
-  const nCh = win.channels.length;
-  const LABEL_W = 70;
-  const VAL_W = 54;
-  const barAreaW = W - LABEL_W - VAL_W - 24;
-  const BAND_KEYS = ['sub_bass', 'bass', 'low_mid', 'mid', 'high_mid', 'presence', 'brilliance'];
-  const BAND_LABELS = ['Sub', 'Bass', 'Lo-Mid', 'Mid', 'Hi-Mid', 'Pres', 'Brill'];
-
-  const nBands = BAND_KEYS.length;
-  const chSectionH = Math.floor((H - 20) / nCh);
-  const bandH = Math.min(Math.floor((chSectionH - 24) / nBands), 28);
-
-  win.channels.forEach((ch, chIdx) => {
-    const sectionY = 10 + chIdx * chSectionH;
-
-    // Channel label
-    ctx.fillStyle = ch.clipping ? '#e74c3c' : '#00c896';
-    ctx.font = 'bold 11px -apple-system, sans-serif';
-    ctx.textAlign = 'left';
-    ctx.fillText(ch.name, 0, sectionY + 12);
-
-    const rmsStr = fmt(ch.rms) + ' dB';
-    const peakStr = fmt(ch.peak) + ' dB';
-    ctx.fillStyle = 'rgba(255,255,255,0.4)';
-    ctx.font = '9px -apple-system, sans-serif';
-    ctx.fillText(`RMS:${rmsStr} Pk:${peakStr}`, 0, sectionY + 22);
-
-    if (ch.clipping) {
-      ctx.fillStyle = '#e74c3c';
-      ctx.font = 'bold 9px -apple-system, sans-serif';
-      ctx.fillText('CLIP!', W - 30, sectionY + 12);
-    }
-
-    const bandsY = sectionY + 28;
-    const bandVals = BAND_KEYS.map(k => ch.bands[k] ?? -120);
-    const maxVal = Math.max(...bandVals);
-    const loudestBandIdx = bandVals.indexOf(maxVal);
-
-    BAND_KEYS.forEach((bk, bi) => {
-      const db = ch.bands[bk] ?? -120;
-      const by = bandsY + bi * bandH;
-      const bh = Math.max(bandH - 3, 8);
-
-      const clampedDb = Math.max(DB_MIN, Math.min(DB_MAX, db));
-      const frac = (clampedDb - DB_MIN) / (DB_MAX - DB_MIN);
-      const bw = frac * barAreaW;
-
-      let barColor;
-      if (db > -24) barColor = '#00c896';
-      else if (db > -36) barColor = '#f5a623';
-      else barColor = '#2a2a2a';
-
-      // Track
-      ctx.fillStyle = '#191919';
-      ctx.beginPath();
-      roundRect(ctx, LABEL_W, by, barAreaW, bh, 2);
-      ctx.fill();
-
-      // Bar
-      if (bw > 0) {
-        ctx.fillStyle = barColor;
-        ctx.beginPath();
-        roundRect(ctx, LABEL_W, by, bw, bh, 2);
-        ctx.fill();
-      }
-
-      // Label
-      ctx.fillStyle = bi === loudestBandIdx ? '#fff' : 'rgba(255,255,255,0.4)';
-      ctx.font = '9px -apple-system, sans-serif';
-      ctx.textAlign = 'right';
-      ctx.fillText(BAND_LABELS[bi], LABEL_W - 4, by + bh / 2 + 3);
-
-      // Value
-      ctx.fillStyle = db > -24 ? '#00c896' : 'rgba(255,255,255,0.3)';
-      ctx.font = '9px SF Mono, Menlo, monospace';
-      ctx.textAlign = 'left';
-      ctx.fillText(fmt(db, 0), LABEL_W + barAreaW + 4, by + bh / 2 + 3);
+  let rows = '';
+  BAND_META.forEach((b, i) => {
+    rows += bandMeterHTML(b.label, b.range, spectrum.bands[b.key], {
+      color: b.color, showScale: i === 0, showGrid: true, loudest: i === loudestIdx,
     });
+    if (b.key === 'mid' && spectrum.spectralCentroid > 0) {
+      rows += `<div class="bm-centroid"><span>Centroid · ${fmtHz(spectrum.spectralCentroid)}</span></div>`;
+    }
   });
+  body.innerHTML = `<div class="meter-card">${rows}</div>`;
 }
 
-function roundRect(c, x, y, w, h, r) {
-  if (w < 2 * r) r = w / 2;
-  if (h < 2 * r) r = h / 2;
-  c.beginPath();
-  c.moveTo(x + r, y);
-  c.arcTo(x + w, y, x + w, y + h, r);
-  c.arcTo(x + w, y + h, x, y + h, r);
-  c.arcTo(x, y + h, x, y, r);
-  c.arcTo(x, y, x + w, y, r);
-  c.closePath();
+function renderLiveMeters(win) {
+  const body = document.getElementById('spectrum-body');
+  if (!win || !win.channels || win.channels.length === 0) {
+    setSpectrumState('empty', { text: 'Waiting for live audio…' });
+    return;
+  }
+  document.getElementById('stats-row').style.display = 'flex';
+
+  let html = '';
+  win.channels.forEach(ch => {
+    const bandVals = LIVE_BAND_KEYS.map(k => ch.bands[k] ?? -120);
+    const loudestIdx = bandVals.indexOf(Math.max(...bandVals));
+    let rows = '';
+    BAND_META.forEach((b, i) => {
+      rows += bandMeterHTML(b.label, b.range, ch.bands[LIVE_BAND_KEYS[i]] ?? -120, {
+        color: b.color, showScale: i === 0, showGrid: true, loudest: i === loudestIdx,
+      });
+    });
+    html += `<div class="live-ch">
+      <div class="live-ch-head">
+        <span class="live-ch-name${ch.clipping ? ' clip' : ''}">${ch.name || 'Channel'}</span>
+        <span class="live-ch-meta">RMS ${fmt(ch.rms)} · Peak ${fmt(ch.peak)} dBFS</span>
+        ${ch.clipping ? '<span class="live-ch-clip">CLIP</span>' : ''}
+      </div>${rows}
+    </div>`;
+  });
+  body.innerHTML = `<div class="meter-card sb-live-meters">${html}</div>`;
 }
 
-// ── Stats Row ─────────────────────────────────────────────────────────────────
-
+/* ══ Stats row ══ */
+function setStat(id, value, tone) {
+  const el = document.getElementById(id);
+  el.textContent = value;
+  el.className = 'stat-num' + (tone ? ' ' + tone : '');
+}
 function updateStatsRow(sox, spectrum) {
-  const rmsEl = document.getElementById('stat-rms');
-  const peakEl = document.getElementById('stat-peak');
-  const drEl = document.getElementById('stat-dr');
-  const clipEl = document.getElementById('stat-clip');
-  const centEl = document.getElementById('stat-centroid');
-
-  rmsEl.textContent = fmt(sox.rmsDbfs) + ' dBFS';
-  rmsEl.className = 'stat-value' + (sox.rmsDbfs > -6 ? ' warn' : '');
-
-  peakEl.textContent = fmt(sox.peakDbfs) + ' dBFS';
-  peakEl.className = 'stat-value' + (sox.peakDbfs > -1 ? ' clip' : '');
-
-  drEl.textContent = fmt(sox.dynamicRangeDb) + ' dB';
-  drEl.className = 'stat-value' + (sox.dynamicRangeDb < 6 ? ' warn' : '');
-
-  if (sox.clipping) {
-    clipEl.textContent = 'YES';
-    clipEl.className = 'stat-value clip';
-  } else {
-    clipEl.textContent = 'No';
-    clipEl.className = 'stat-value';
-  }
-
-  if (spectrum && spectrum.spectralCentroid) {
-    centEl.textContent = fmtHz(spectrum.spectralCentroid);
-  } else {
-    centEl.textContent = '—';
-  }
+  setStat('stat-rms', fmt(sox.rmsDbfs), sox.rmsDbfs > -6 ? 'check' : '');
+  setStat('stat-peak', fmt(sox.peakDbfs), sox.peakDbfs > -1 ? 'issue' : '');
+  setStat('stat-dr', fmt(sox.dynamicRangeDb), sox.dynamicRangeDb < 6 ? 'check' : '');
+  setStat('stat-clip', sox.clipping ? 'YES' : 'No', sox.clipping ? 'issue' : '');
+  document.getElementById('stat-centroid').textContent = spectrum && spectrum.spectralCentroid ? Math.round(spectrum.spectralCentroid).toLocaleString() : '—';
 }
-
 function updateLiveStatsRow(ch) {
-  const rmsEl = document.getElementById('stat-rms');
-  const peakEl = document.getElementById('stat-peak');
-  const drEl = document.getElementById('stat-dr');
-  const clipEl = document.getElementById('stat-clip');
-  const centEl = document.getElementById('stat-centroid');
-
-  rmsEl.textContent = fmt(ch.rms) + ' dBFS';
-  rmsEl.className = 'stat-value' + (ch.rms > -6 ? ' warn' : '');
-
-  peakEl.textContent = fmt(ch.peak) + ' dBFS';
-  peakEl.className = 'stat-value' + (ch.peak > -1 ? ' clip' : '');
-
-  drEl.textContent = '—';
-
-  if (ch.clipping) {
-    clipEl.textContent = 'CLIP!';
-    clipEl.className = 'stat-value clip';
-  } else {
-    clipEl.textContent = 'No';
-    clipEl.className = 'stat-value';
-  }
-
-  centEl.textContent = fmtHz(ch.centroid || 0);
+  setStat('stat-rms', fmt(ch.rms), ch.rms > -6 ? 'check' : '');
+  setStat('stat-peak', fmt(ch.peak), ch.peak > -1 ? 'issue' : '');
+  setStat('stat-dr', '—', '');
+  setStat('stat-clip', ch.clipping ? 'CLIP' : 'No', ch.clipping ? 'issue' : '');
+  document.getElementById('stat-centroid').textContent = ch.centroid ? Math.round(ch.centroid).toLocaleString() : '—';
 }
 
-// ── File Info Panel ───────────────────────────────────────────────────────────
-
+/* ══ File info panel ══ */
 function populateFileInfo(analysis) {
-  const { sox, ffprobe, spectrum } = analysis;
+  const { sox, ffprobe } = analysis;
   const { format, stream } = ffprobe;
 
-  const name = format.filename.split('/').pop() || format.filename;
-  document.getElementById('fi-name').textContent = name;
-  document.getElementById('fi-fmt').textContent = `${format.formatName} / ${stream.codecName}`;
+  document.getElementById('fi-fmt').textContent = `${format.formatName} · ${stream.codecName}`;
   document.getElementById('fi-dur').textContent = fmtDur(format.durationSeconds);
   document.getElementById('fi-sr').textContent = fmtHz(stream.sampleRate);
   document.getElementById('fi-bd').textContent = stream.bitDepth ? `${stream.bitDepth}-bit` : 'lossy';
-  document.getElementById('fi-ch').textContent = `${stream.channels} (${stream.channelLayout})`;
+  document.getElementById('fi-ch').textContent = `${stream.channels} · ${stream.channelLayout}`;
 
   const peakEl = document.getElementById('fi-peak');
   peakEl.textContent = fmt(sox.peakDbfs) + ' dBFS';
-  peakEl.className = 'info-value' + (sox.peakDbfs > -1 ? ' clip' : '');
+  peakEl.className = 'info-value' + (sox.peakDbfs > -1 ? ' issue' : ' good');
 
   const rmsEl = document.getElementById('fi-rms');
   rmsEl.textContent = fmt(sox.rmsDbfs) + ' dBFS';
-  rmsEl.className = 'info-value' + (sox.rmsDbfs > -6 ? ' warn' : '');
+  rmsEl.className = 'info-value' + (sox.rmsDbfs > -6 ? ' check' : ' good');
 
-  document.getElementById('fi-dr').textContent = fmt(sox.dynamicRangeDb) + ' dB';
+  const drEl = document.getElementById('fi-dr');
+  drEl.textContent = fmt(sox.dynamicRangeDb) + ' dB';
+  drEl.className = 'info-value' + (sox.dynamicRangeDb < 6 ? ' check' : '');
 
   const clipEl = document.getElementById('fi-clip');
-  if (sox.clipping) {
-    clipEl.textContent = 'YES ⚠';
-    clipEl.className = 'info-value clip';
-  } else {
-    clipEl.textContent = 'No';
-    clipEl.className = 'info-value';
-  }
+  clipEl.textContent = sox.clipping ? 'YES' : 'No';
+  clipEl.className = 'info-value' + (sox.clipping ? ' issue' : ' good');
 
   document.getElementById('file-info').style.display = 'flex';
 }
 
-// ── Mode Tabs ─────────────────────────────────────────────────────────────────
-
+/* ══ Mode tabs ══ */
 document.querySelectorAll('.mode-tab').forEach(tab => {
   tab.addEventListener('click', () => {
     const mode = tab.dataset.mode;
@@ -1367,157 +799,117 @@ document.querySelectorAll('.mode-tab').forEach(tab => {
     tab.classList.add('active');
 
     if (mode === 'reportcard') {
-      document.getElementById('body').style.display = 'none';
+      document.getElementById('workspace').style.display = 'none';
       document.getElementById('reportcard-view').classList.add('active');
       renderReportCard();
     } else {
       document.getElementById('reportcard-view').classList.remove('active');
-      document.getElementById('body').style.display = 'flex';
+      document.getElementById('workspace').style.display = 'flex';
       document.querySelectorAll('.tab-content').forEach(tc => tc.classList.remove('active'));
       document.getElementById(`tab-${mode}`).classList.add('active');
+      syncSpectrumForMode(mode);
     }
-
     currentMode = mode;
   });
 });
 
-// ── File Mode ─────────────────────────────────────────────────────────────────
-
-const fileDropzone = document.getElementById('file-dropzone');
-
-fileDropzone.addEventListener('click', async () => {
-  const fp = await sb.openFileDialog();
-  if (fp) loadFile(fp);
-});
-
-fileDropzone.addEventListener('dragover', (e) => {
-  e.preventDefault();
-  fileDropzone.classList.add('dragover');
-});
-
-fileDropzone.addEventListener('dragleave', () => {
-  fileDropzone.classList.remove('dragover');
-});
-
-fileDropzone.addEventListener('drop', (e) => {
-  e.preventDefault();
-  fileDropzone.classList.remove('dragover');
-  const files = e.dataTransfer?.files;
-  if (files && files.length > 0) {
-    loadFile(files[0].path);
+function syncSpectrumForMode(mode) {
+  const title = document.getElementById('spectrum-title');
+  if (mode === 'live') {
+    title.textContent = liveRunning ? 'Live Meters' : 'Spectrum · Meters';
+    if (liveRunning && liveWindows.length > 0) renderLiveMeters(liveWindows[liveWindows.length - 1]);
+    else setSpectrumState('empty', { text: 'Start live capture to see the meters' });
+  } else {
+    title.textContent = 'Spectrum · Meters';
+    if (currentAnalysis) renderSpectrum(currentAnalysis.spectrum);
+    else setSpectrumState('empty', { text: mode === 'dir' ? 'Analyze the folder to see the spectrum' : 'Load a file to see the spectrum' });
   }
+}
+
+/* ══ File mode ══ */
+const fileDropzone = document.getElementById('file-dropzone');
+fileDropzone.addEventListener('click', async () => { const fp = await sb.openFileDialog(); if (fp) loadFile(fp); });
+fileDropzone.addEventListener('dragover', (e) => { e.preventDefault(); fileDropzone.classList.add('dragover'); });
+fileDropzone.addEventListener('dragleave', () => fileDropzone.classList.remove('dragover'));
+fileDropzone.addEventListener('drop', (e) => {
+  e.preventDefault(); fileDropzone.classList.remove('dragover');
+  const files = e.dataTransfer?.files;
+  if (files && files.length > 0) loadFile(files[0].path);
 });
 
+// Global (used by smoke test + menu-open).
 function loadFile(fp) {
   currentFilePath = fp;
   const name = fp.split('/').pop() || fp;
-  fileDropzone.innerHTML = `<span class="dropzone-icon">🎵</span><strong>${name}</strong><br/><small style="color:var(--muted)">${fp}</small>`;
+  fileDropzone.classList.add('loaded');
+  fileDropzone.innerHTML =
+    `<div class="dz-icon" data-icon="file-audio"></div>
+     <div class="dz-body"><span class="dz-title">${name}</span><span class="dz-meta">${fp}</span></div>`;
+  hydrateIcons(fileDropzone);
   document.getElementById('analyze-btn').disabled = false;
   document.getElementById('file-info').style.display = 'none';
 }
 
-document.getElementById('analyze-btn').addEventListener('click', () => {
-  if (!currentFilePath) return;
-  runFileAnalysis(currentFilePath);
-});
+document.getElementById('analyze-btn').addEventListener('click', () => { if (currentFilePath) runFileAnalysis(currentFilePath); });
 
 async function runFileAnalysis(fp) {
-  showSpinner(true);
-  hidePlaceholder();
+  setSpectrumState('loading');
   document.getElementById('analyze-btn').disabled = true;
 
   const result = await sb.analyzeFile({ filePath: fp });
 
-  showSpinner(false);
   document.getElementById('analyze-btn').disabled = false;
 
   if (!result.success || !result.data) {
-    showError(result.error || 'Analysis failed');
+    setSpectrumState('error', { text: result.error || 'Analysis failed' });
     return;
   }
 
   currentAnalysis = result.data;
+  document.getElementById('analyze-btn').innerHTML = iconSvg('waveform', 16) + 'Re-analyze';
   populateFileInfo(currentAnalysis);
   updateStatsRow(currentAnalysis.sox, currentAnalysis.spectrum);
-  drawSpectrum(currentAnalysis.spectrum, currentAnalysis.sox);
-  hidePlaceholder();
+  renderSpectrum(currentAnalysis.spectrum);
+  document.getElementById('reportcard-print-btn').disabled = false;
 }
 
-// ── Directory Mode ────────────────────────────────────────────────────────────
-
+/* ══ Directory mode ══ */
 const dirDropzone = document.getElementById('dir-dropzone');
-
-dirDropzone.addEventListener('click', async () => {
-  const dp = await sb.openDirDialog();
-  if (dp) loadDir(dp);
-});
-
-dirDropzone.addEventListener('dragover', (e) => {
-  e.preventDefault();
-  dirDropzone.classList.add('dragover');
-});
-
-dirDropzone.addEventListener('dragleave', () => {
-  dirDropzone.classList.remove('dragover');
-});
-
+dirDropzone.addEventListener('click', async () => { const dp = await sb.openDirDialog(); if (dp) loadDir(dp); });
+dirDropzone.addEventListener('dragover', (e) => { e.preventDefault(); dirDropzone.classList.add('dragover'); });
+dirDropzone.addEventListener('dragleave', () => dirDropzone.classList.remove('dragover'));
 dirDropzone.addEventListener('drop', (e) => {
-  e.preventDefault();
-  dirDropzone.classList.remove('dragover');
-  const items = e.dataTransfer?.items;
-  if (items) {
-    for (const item of items) {
-      const entry = item.webkitGetAsEntry?.();
-      if (entry?.isDirectory) {
-        // Use the file path
-        const files = e.dataTransfer.files;
-        if (files.length > 0) {
-          loadDir(files[0].path);
-        }
-        return;
-      }
-    }
-  }
-  // Fallback: try files[0].path
+  e.preventDefault(); dirDropzone.classList.remove('dragover');
   const files = e.dataTransfer?.files;
-  if (files && files.length > 0) {
-    loadDir(files[0].path);
-  }
+  if (files && files.length > 0) loadDir(files[0].path);
 });
 
 function loadDir(dp) {
   currentDirPath = dp;
   const name = dp.split('/').pop() || dp;
-  dirDropzone.innerHTML = `<span class="dropzone-icon">📁</span><strong>${name}</strong>`;
+  dirDropzone.classList.add('loaded');
+  dirDropzone.innerHTML =
+    `<div class="dz-icon" data-icon="folder"></div>
+     <div class="dz-body"><span class="dz-title">${name}</span><span class="dz-meta">${dp}</span></div>`;
+  hydrateIcons(dirDropzone);
 
-  // List audio files in dir
-  const EXTS = ['wav', 'aif', 'aiff', 'flac', 'mp3', 'ogg', 'm4a'];
-  // We can't list dir contents directly in renderer — use a known list from the path
   document.getElementById('dir-info').style.display = 'flex';
   const list = document.getElementById('dir-file-list');
-  list.innerHTML = `<li style="color:var(--muted)"><em>Directory loaded: ${dp}</em></li><li style="color:var(--muted);font-size:10px">Supported: ${EXTS.join(', ')}</li>`;
-
+  list.innerHTML =
+    `<div class="dir-item"><span class="dir-name">Directory loaded</span></div>
+     <div class="dir-item"><span class="dir-name">Supported: wav, aif, aiff, flac, mp3, ogg, m4a</span></div>`;
   document.getElementById('analyze-dir-btn').disabled = false;
-  currentDirFiles = [dp]; // Placeholder — actual file listing happens in main process
 }
 
 document.getElementById('analyze-dir-btn').addEventListener('click', () => {
   if (!currentDirPath) return;
-  runDirAnalysis(currentDirPath);
+  aiAppend(`\n[Directory analysis: sends the directory to the CLI pipeline.\nFor full multi-channel analysis, run: sound-buddy --dir "${currentDirPath}"]\n`);
 });
 
-async function runDirAnalysis(dp) {
-  // For directory mode: analyze the directory path as a single analysis
-  // (The real multi-channel analysis requires the CLI — we send as a "directory" signal)
-  appendAI(`\n[Directory analysis: This mode sends the directory to the CLI pipeline.\nFor full multi-channel analysis, use the CLI: sound-buddy --dir "${dp}"]\n`);
-}
-
-// ── Live Mode ─────────────────────────────────────────────────────────────────
-
+/* ══ Live mode ══ */
 document.getElementById('window-secs').addEventListener('input', (e) => {
   document.getElementById('window-secs-label').textContent = parseFloat(e.target.value).toFixed(1) + 's';
 });
-
 document.getElementById('llm-interval').addEventListener('input', (e) => {
   const v = parseInt(e.target.value);
   document.getElementById('llm-interval-label').textContent = v === 0 ? 'Off' : v + 's';
@@ -1527,17 +919,13 @@ async function loadDevices() {
   const result = await sb.listDevices();
   const sel = document.getElementById('device-select');
   sel.innerHTML = '';
-
   if (!result.success || !result.devices || result.devices.length === 0) {
     sel.innerHTML = '<option value="">No devices found</option>';
     return;
   }
-
-  const defaultOpt = document.createElement('option');
-  defaultOpt.value = '';
-  defaultOpt.textContent = 'Default Device';
-  sel.appendChild(defaultOpt);
-
+  const def = document.createElement('option');
+  def.value = ''; def.textContent = 'Default Device';
+  sel.appendChild(def);
   for (const d of result.devices) {
     const opt = document.createElement('option');
     opt.value = String(d.index);
@@ -1555,121 +943,95 @@ document.getElementById('live-start-btn').addEventListener('click', async () => 
   liveWindows = [];
 
   document.getElementById('live-start-btn').style.display = 'none';
-  document.getElementById('live-stop-btn').style.display = 'inline-block';
+  document.getElementById('live-stop-btn').style.display = 'inline-flex';
   document.getElementById('live-indicator').style.display = 'flex';
   document.getElementById('live-status').style.display = 'block';
   document.getElementById('live-status').textContent = 'Connecting…';
-
-  hidePlaceholder();
+  document.getElementById('spectrum-title').textContent = 'Live Meters';
+  setSpectrumState('empty', { text: 'Waiting for live audio…' });
 
   const result = await sb.startLive({ device, windowSecs, llmIntervalSecs });
 
   if (!result.success) {
     stopLive();
-    showError(result.error || 'Failed to start live capture');
+    setSpectrumState('error', { text: result.error || 'Failed to start live capture' });
   } else {
-    document.getElementById('live-status').textContent = `Capturing ${windowSecs}s windows`;
+    document.getElementById('live-status').textContent = `Capturing ${windowSecs.toFixed(1)}s windows`;
     startLiveCountdown(llmIntervalSecs);
   }
 });
 
-document.getElementById('live-stop-btn').addEventListener('click', () => {
-  stopLive();
-});
+document.getElementById('live-stop-btn').addEventListener('click', () => stopLive());
 
 async function stopLive() {
   liveRunning = false;
   clearLiveCountdown();
   await sb.stopLive();
-
-  document.getElementById('live-start-btn').style.display = 'inline-block';
+  document.getElementById('live-start-btn').style.display = 'inline-flex';
   document.getElementById('live-stop-btn').style.display = 'none';
   document.getElementById('live-indicator').style.display = 'none';
   document.getElementById('live-status').style.display = 'none';
-  document.getElementById('window-badge').style.display = 'none';
   document.getElementById('window-badge').textContent = '';
+  document.getElementById('spectrum-title').textContent = 'Spectrum · Meters';
 }
 
 function startLiveCountdown(intervalSecs) {
-  if (intervalSecs <= 0) {
-    document.getElementById('ai-countdown').textContent = '';
-    return;
-  }
+  if (intervalSecs <= 0) { document.getElementById('ai-countdown').textContent = ''; return; }
   liveCountdownSecs = intervalSecs;
   clearLiveCountdown();
   liveCountdownTimer = setInterval(() => {
     liveCountdownSecs--;
+    const cd = document.getElementById('ai-countdown');
     if (liveCountdownSecs <= 0) {
       liveCountdownSecs = intervalSecs;
-      document.getElementById('ai-countdown').textContent = 'AI analyzing…';
+      cd.textContent = 'AI analyzing…';
     } else {
-      document.getElementById('ai-countdown').textContent = `Next AI analysis in ${liveCountdownSecs}s`;
+      cd.innerHTML = `Next AI analysis in <span class="cd-num">${liveCountdownSecs}s</span>`;
     }
   }, 1000);
 }
-
 function clearLiveCountdown() {
-  if (liveCountdownTimer) {
-    clearInterval(liveCountdownTimer);
-    liveCountdownTimer = null;
-  }
+  if (liveCountdownTimer) { clearInterval(liveCountdownTimer); liveCountdownTimer = null; }
   document.getElementById('ai-countdown').textContent = '';
 }
 
-// ── IPC Event Listeners ───────────────────────────────────────────────────────
-
+/* ══ IPC event listeners ══ */
 sb.onLiveEvent((data) => {
   if (!data || data.error) {
-    if (data?.error) showError(`Live error: ${data.error}`);
+    if (data?.error) setSpectrumState('error', { text: `Live error: ${data.error}` });
     return;
   }
-
   liveWindows.push(data);
   if (liveWindows.length > 10) liveWindows.shift();
 
-  // Draw
-  drawLiveWindow(data);
+  if (currentMode === 'live') renderLiveMeters(data);
+  if (data.channels && data.channels.length > 0) updateLiveStatsRow(data.channels[0]);
 
-  // Stats from first channel
-  if (data.channels && data.channels.length > 0) {
-    updateLiveStatsRow(data.channels[0]);
-  }
-
-  // Window counter
   const badge = document.getElementById('window-badge');
-  badge.style.display = 'block';
   badge.textContent = `Window #${data.window}`;
 });
 
-sb.onAnalysisResult((data) => {
-  if (data.type === 'stats' && data.data) {
-    currentAnalysis = data.data;
-  }
-});
+sb.onAnalysisResult((data) => { if (data.type === 'stats' && data.data) currentAnalysis = data.data; });
 
 sb.onMenuOpenFile((fp) => {
-  // Switch to file mode
   document.querySelector('.mode-tab[data-mode="file"]').click();
   loadFile(fp);
   runFileAnalysis(fp);
 });
 
-// LLM streaming
-sb.onLlmDelta((text) => {
-  appendAI(text);
-});
-
+sb.onLlmDelta((text) => aiAppend(text));
 sb.onLlmDone(() => {
   llmRunning = false;
-  document.getElementById('ai-analyze-btn').disabled = false;
-  document.getElementById('ai-analyze-btn').textContent = 'Analyze with AI';
-  appendAI('\n');
+  const btn = document.getElementById('ai-analyze-btn');
+  btn.disabled = false;
+  btn.innerHTML = iconSvg('sparkles', 16) + 'Re-analyze with AI';
+  aiAppend('\n');
 });
 
-// ── AI Panel ──────────────────────────────────────────────────────────────────
-
-function appendAI(text) {
+/* ══ AI panel ══ */
+function aiAppend(text) {
   const out = document.getElementById('ai-output');
+  if (!aiStreamStarted) { out.classList.remove('placeholder'); out.textContent = ''; aiStreamStarted = true; }
   out.textContent += text;
   out.scrollTop = out.scrollHeight;
 }
@@ -1680,26 +1042,24 @@ document.getElementById('ai-analyze-btn').addEventListener('click', async () => 
 
   const btn = document.getElementById('ai-analyze-btn');
   btn.disabled = true;
-  btn.textContent = 'Analyzing…';
+  btn.innerHTML = iconSvg('sparkles', 16) + 'Analyzing…';
 
   const out = document.getElementById('ai-output');
-  const sep = out.textContent ? '\n\n' + '─'.repeat(40) + '\n\n' : '';
-  appendAI(sep);
+  if (aiStreamStarted && out.textContent) aiAppend('\n\n' + '─'.repeat(36) + '\n\n');
 
   if (currentMode === 'live' && liveWindows.length > 0) {
     await sb.triggerLlmAnalysis({ mode: 'live', windows: liveWindows });
   } else if (currentAnalysis) {
     await sb.triggerLlmAnalysis({ mode: 'file', analysis: currentAnalysis });
   } else {
-    appendAI('[No analysis data — load a file or start live capture first]');
+    aiAppend('[No analysis data — load a file or start live capture first]');
     llmRunning = false;
     btn.disabled = false;
-    btn.textContent = 'Analyze with AI';
+    btn.innerHTML = iconSvg('sparkles', 16) + 'Analyze with AI';
   }
 });
 
-// ── Report Card ───────────────────────────────────────────────────────────────
-
+/* ══ Report Card ══ */
 const RC_BAND_INFO = {
   subBass:    { label: 'Sub-bass',   freq: '20-60 Hz' },
   bass:       { label: 'Bass',       freq: '60-250 Hz' },
@@ -1715,47 +1075,25 @@ function getReportCardSource() {
     const { sox, spectrum, ffprobe } = currentAnalysis;
     return {
       filename: (ffprobe.format.filename || '').split('/').pop() || 'Untitled',
-      rms: sox.rmsDbfs,
-      peak: sox.peakDbfs,
-      dynamicRange: sox.dynamicRangeDb,
-      clipping: sox.clipping,
-      centroid: spectrum.spectralCentroid,
-      bands: {
-        subBass: spectrum.bands.subBass,
-        bass: spectrum.bands.bass,
-        lowMid: spectrum.bands.lowMid,
-        mid: spectrum.bands.mid,
-        highMid: spectrum.bands.highMid,
-        presence: spectrum.bands.presence,
-        brilliance: spectrum.bands.brilliance,
-      },
+      rms: sox.rmsDbfs, peak: sox.peakDbfs, dynamicRange: sox.dynamicRangeDb,
+      clipping: sox.clipping, centroid: spectrum.spectralCentroid,
+      bands: { ...spectrum.bands },
     };
   }
-
   if (liveWindows.length > 0) {
     const win = liveWindows[liveWindows.length - 1];
     const ch = win.channels && win.channels[0];
     if (ch) {
       return {
         filename: `Live capture — ${ch.name || 'Main'} (window #${win.window})`,
-        rms: ch.rms,
-        peak: ch.peak,
-        dynamicRange: null,
-        clipping: ch.clipping,
-        centroid: ch.centroid,
+        rms: ch.rms, peak: ch.peak, dynamicRange: null, clipping: ch.clipping, centroid: ch.centroid,
         bands: {
-          subBass: ch.bands.sub_bass,
-          bass: ch.bands.bass,
-          lowMid: ch.bands.low_mid,
-          mid: ch.bands.mid,
-          highMid: ch.bands.high_mid,
-          presence: ch.bands.presence,
-          brilliance: ch.bands.brilliance,
+          subBass: ch.bands.sub_bass, bass: ch.bands.bass, lowMid: ch.bands.low_mid, mid: ch.bands.mid,
+          highMid: ch.bands.high_mid, presence: ch.bands.presence, brilliance: ch.bands.brilliance,
         },
       };
     }
   }
-
   return null;
 }
 
@@ -1767,71 +1105,62 @@ function bandDiffFromOthers(bands, key) {
 }
 
 function analyzeRecordingType(src) {
-  if (src.clipping || src.peak >= -0.5) return { type: 'clipping', label: 'Clipping', note: 'CRITICAL: Signal is clipping. Reduce input gain immediately.' };
-  if (src.peak > -3 && src.rms > -12) return { type: 'hot', label: 'Hot', note: 'Recording level is very hot. Consider reducing gain for safety.' };
-  // Low gain: peak is reasonable but RMS is very low — wide DR means natural dynamics, not compression
+  if (src.clipping || src.peak >= -0.5) return { type: 'clipping', label: 'Clipping', note: 'Signal is clipping. Reduce input gain immediately.', tone: 'issue' };
+  if (src.peak > -3 && src.rms > -12) return { type: 'hot', label: 'Hot', note: 'Recording level is very hot. Consider reducing gain.', tone: 'check' };
   if (src.peak > -15 && src.rms < -30 && src.dynamicRange != null && src.dynamicRange > 15)
-    return { type: 'low_gain', label: 'Low Recording Gain', note: 'Your mix is fine but your USB recording level is low. Increase the USB output gain on your console to get RMS closer to -18 dBFS.' };
+    return { type: 'low_gain', label: 'Low Recording Gain', note: 'Mix is fine but USB record level is low. Raise console USB output toward -18 dBFS RMS.', tone: 'check' };
   if (src.peak < -15 && src.rms < -35)
-    return { type: 'low_gain', label: 'Low Recording Gain', note: 'Both peak and RMS are very low. Increase the USB recording output level on your console.' };
-  if (src.rms < -25) return { type: 'quiet', label: 'Quiet', note: 'Recording is quieter than typical. Consider increasing gain.' };
-  if (src.rms >= -20 && src.rms <= -10 && src.peak > -6) return { type: 'good', label: 'Good Level', note: 'Recording level is healthy.' };
-  return { type: 'normal', label: 'Normal', note: 'Recording level is within typical range.' };
+    return { type: 'low_gain', label: 'Low Recording Gain', note: 'Peak and RMS are very low. Increase the USB recording output level.', tone: 'check' };
+  if (src.rms < -25) return { type: 'quiet', label: 'Quiet', note: 'Recording is quieter than typical. Consider more gain.', tone: 'check' };
+  if (src.rms >= -20 && src.rms <= -10 && src.peak > -6) return { type: 'good', label: 'Good Level', note: 'Recording level is healthy.', tone: 'good' };
+  return { type: 'normal', label: 'Normal', note: 'Recording level is within typical range.', tone: 'info' };
 }
 
 function computeGrade(src) {
   const letters = ['A', 'B', 'C', 'D', 'F'];
   if (src.clipping) return 'F';
-
   let idx = 0;
   const drop = () => { idx = Math.min(idx + 1, letters.length - 1); };
-
   const recType = analyzeRecordingType(src);
-
-  // Don't penalize grade for low recording gain — that's a setup issue, not a mix issue
   if (recType.type === 'low_gain') {
     if (src.dynamicRange != null && src.dynamicRange < 3) drop();
-    const anyBandHot = Object.keys(src.bands).some(k => bandDiffFromOthers(src.bands, k) > 15);
-    if (anyBandHot) drop();
+    if (Object.keys(src.bands).some(k => bandDiffFromOthers(src.bands, k) > 15)) drop();
     return letters[idx];
   }
-
   if (src.rms < -20 || src.rms > -14) drop();
   if (src.dynamicRange != null && src.dynamicRange < 6) drop();
-
-  // Only drop grade for extreme band imbalance (>15 dB above average of others)
-  const anyBandHot = Object.keys(src.bands).some(k => bandDiffFromOthers(src.bands, k) > 15);
-  if (anyBandHot) drop();
-
+  if (Object.keys(src.bands).some(k => bandDiffFromOthers(src.bands, k) > 15)) drop();
   return letters[idx];
+}
+
+// Ring arc score, kept within the letter grade's band so the two agree.
+function computeScore(src) {
+  const grade = computeGrade(src);
+  const bands = { A: [90, 99], B: [80, 89], C: [70, 79], D: [60, 69], F: [38, 55] };
+  let score = 100;
+  const rt = analyzeRecordingType(src);
+  if (src.clipping) score -= 45;
+  if (rt.type !== 'low_gain') {
+    if (src.rms < -20 || src.rms > -14) score -= 9;
+    if (src.rms < -25 || src.rms > -10) score -= 7;
+  }
+  if (src.dynamicRange != null) { if (src.dynamicRange < 3) score -= 15; else if (src.dynamicRange < 6) score -= 8; }
+  let maxDiff = 0;
+  for (const k of Object.keys(src.bands)) maxDiff = Math.max(maxDiff, bandDiffFromOthers(src.bands, k));
+  if (maxDiff > 15) score -= 14; else if (maxDiff > 12) score -= 7;
+  const [lo, hi] = bands[grade];
+  return Math.round(Math.max(lo, Math.min(hi, score)));
 }
 
 function computeRecommendations(src) {
   const recs = [];
   const recType = analyzeRecordingType(src);
-
-  if (src.clipping) {
-    recs.push('CRITICAL: Clipping detected. Reduce input gain immediately.');
-  }
-
-  // Smart RMS recommendations based on recording type
-  if (recType.type === 'low_gain') {
-    recs.push(recType.note);
-  } else if (src.rms > -10) {
-    recs.push('Your recording is too hot. Reduce gain to avoid clipping.');
-  } else if (src.rms < -25 && recType.type !== 'low_gain') {
-    recs.push('Your recording is too quiet. Increase input gain or fader levels.');
-  }
-
-  if (src.dynamicRange != null && src.dynamicRange < 3) {
-    recs.push('Dynamic range is very compressed. Mix may sound lifeless.');
-  }
-
-  // Only flag sub-bass if it's genuinely hot (not just relative to very quiet highs)
-  if (src.bands.subBass > -10) {
-    recs.push('Too much sub-bass energy. Apply a high-pass filter below 80Hz.');
-  }
-
+  if (src.clipping) recs.push('CRITICAL: Clipping detected. Reduce input gain immediately.');
+  if (recType.type === 'low_gain') recs.push(recType.note);
+  else if (src.rms > -10) recs.push('Your recording is too hot. Reduce gain to avoid clipping.');
+  else if (src.rms < -25 && recType.type !== 'low_gain') recs.push('Your recording is too quiet. Increase input gain or fader levels.');
+  if (src.dynamicRange != null && src.dynamicRange < 3) recs.push('Dynamic range is very compressed. Mix may sound lifeless.');
+  if (src.bands.subBass > -10) recs.push('Too much sub-bass energy. Apply a high-pass filter below 80Hz.');
   for (const k of Object.keys(src.bands)) {
     const diff = bandDiffFromOthers(src.bands, k);
     if (diff > 12) {
@@ -1839,178 +1168,112 @@ function computeRecommendations(src) {
       recs.push(`Too much energy in ${info.label} (${info.freq}). Cut ${Math.min(diff, 10).toFixed(1)} dB around this range.`);
     }
   }
-
-  if (src.bands.brilliance < -40) {
-    recs.push('Mix lacks air and brightness. Boost 2-3 dB above 8kHz.');
-  }
-
-  if (recs.length === 0) {
-    recs.push('Great job! No major issues detected — levels and balance are solid.');
-  }
-
+  if (src.bands.brilliance < -40) recs.push('Mix lacks air and brightness. Boost 2-3 dB above 8kHz.');
+  if (recs.length === 0) recs.push('Great job! No major issues detected — levels and balance are solid.');
   return recs.slice(0, 5);
 }
 
-function rcRmsStatus(rms) {
-  if (rms >= -18 && rms <= -16) return 'good';
-  if (rms >= -20 && rms <= -14) return 'warn';
-  return 'bad';
+function rcRmsStatus(rms) { if (rms >= -18 && rms <= -16) return 'good'; if (rms >= -20 && rms <= -14) return 'check'; return 'issue'; }
+function rcPeakStatus(peak, clipping) { if (clipping || peak > -1) return 'issue'; if (peak > -3) return 'check'; return 'good'; }
+function rcDrStatus(dr) { if (dr == null) return 'check'; if (dr >= 6) return 'good'; if (dr >= 3) return 'check'; return 'issue'; }
+function rcCentroidStatus(c) { if (!c) return 'check'; if (c >= 500 && c <= 4000) return 'good'; return 'check'; }
+function pillLabel(tone) { return tone === 'good' ? 'Good' : tone === 'check' ? 'Check' : tone === 'issue' ? 'Issue' : 'Info'; }
+function pillIcon(tone) { return tone === 'good' ? 'check' : tone === 'issue' ? 'x' : tone === 'info' ? 'info' : 'alert-triangle'; }
+function statusPillHTML(tone, label) {
+  return `<span class="pill sm ${tone}">${iconSvg(pillIcon(tone), 11, { strokeWidth: 2.25 })}${label || pillLabel(tone)}</span>`;
 }
 
-function rcPeakStatus(peak, clipping) {
-  if (clipping || peak > -1) return 'bad';
-  if (peak > -3) return 'warn';
-  return 'good';
-}
-
-function rcDrStatus(dr) {
-  if (dr == null) return 'warn';
-  if (dr >= 6) return 'good';
-  if (dr >= 3) return 'warn';
-  return 'bad';
-}
-
-function rcCentroidStatus(c) {
-  if (!c) return 'warn';
-  if (c >= 500 && c <= 4000) return 'good';
-  return 'warn';
-}
-
-function rcStatusLabel(status) {
-  return status === 'good' ? 'Good' : (status === 'warn' ? 'Check' : 'Issue');
+function gradeRingHTML(grade, score) {
+  const px = 168, stroke = 8;
+  const r = (px - stroke) / 2;
+  const c = 2 * Math.PI * r;
+  const dash = Math.max(0, Math.min(100, score)) / 100 * c;
+  const color = `var(--grade-${grade.toLowerCase()})`;
+  return `<div class="grade-ring" style="width:${px}px;height:${px}px">
+    <svg width="${px}" height="${px}">
+      <circle cx="${px / 2}" cy="${px / 2}" r="${r}" fill="none" stroke="var(--surface-inset)" stroke-width="${stroke}"/>
+      <circle cx="${px / 2}" cy="${px / 2}" r="${r}" fill="none" stroke="${color}" stroke-width="${stroke}"
+        stroke-linecap="round" stroke-dasharray="${dash} ${c}"
+        style="transition:stroke-dasharray var(--dur-slow) var(--ease-out);filter:drop-shadow(0 0 6px color-mix(in srgb, ${color} 40%, transparent))"/>
+    </svg>
+    <div class="center">
+      <span class="letter" style="color:${color}">${grade}</span>
+      <span class="score">${score}<span class="slash">/100</span></span>
+    </div>
+  </div>
+  <span class="rc-ring-label">Overall Grade</span>`;
 }
 
 function renderReportCard() {
   const src = getReportCardSource();
   const empty = document.getElementById('rc-empty');
   const content = document.getElementById('rc-content');
+  const printBtn = document.getElementById('reportcard-print-btn');
 
   if (!src) {
-    empty.style.display = 'block';
+    empty.style.display = 'flex';
     content.style.display = 'none';
+    printBtn.disabled = true;
     return;
   }
-
   empty.style.display = 'none';
   content.style.display = 'block';
+  printBtn.disabled = false;
 
   document.getElementById('rc-filename').textContent = src.filename;
   document.getElementById('rc-date').textContent = new Date().toLocaleString();
 
   const grade = computeGrade(src);
-  const gradeEl = document.getElementById('rc-grade');
-  gradeEl.textContent = grade;
-  gradeEl.className = 'rc-grade grade-' + grade.toLowerCase();
+  const score = computeScore(src);
+  document.getElementById('rc-ring').innerHTML = gradeRingHTML(grade, score);
 
-  // Show recording type assessment
   const recType = analyzeRecordingType(src);
-  const recTypeEl = document.getElementById('rc-rec-type');
-  if (recTypeEl) {
-    recTypeEl.textContent = recType.label + (recType.note ? ' — ' + recType.note : '');
-  }
+  const rt = document.getElementById('rc-rec-type');
+  rt.className = 'rc-rectype pill ' + recType.tone;
+  rt.innerHTML = `${iconSvg(pillIcon(recType.tone), 13)}<span class="txt">${recType.label} — ${recType.note}</span>`;
 
-  const metricsBody = document.getElementById('rc-metrics-body');
-  metricsBody.innerHTML = '';
+  // Metrics
   const metrics = [
-    { name: 'RMS Level', value: fmt(src.rms) + ' dBFS', status: rcRmsStatus(src.rms) },
-    { name: 'Peak Level', value: fmt(src.peak) + ' dBFS', status: rcPeakStatus(src.peak, src.clipping) },
-    { name: 'Dynamic Range', value: src.dynamicRange != null ? fmt(src.dynamicRange) + ' dB' : '—', status: rcDrStatus(src.dynamicRange) },
-    { name: 'Clipping', value: src.clipping ? 'Detected' : 'None', status: src.clipping ? 'bad' : 'good' },
-    { name: 'Spectral Centroid', value: src.centroid ? fmtHz(src.centroid) : '—', status: rcCentroidStatus(src.centroid) },
+    { name: 'Peak Level', note: 'Sample peak', value: fmt(src.peak), unit: 'dBFS', tone: rcPeakStatus(src.peak, src.clipping) },
+    { name: 'RMS Level', note: 'Integrated loudness', value: fmt(src.rms), unit: 'dBFS', tone: rcRmsStatus(src.rms) },
+    { name: 'Dynamic Range', value: src.dynamicRange != null ? fmt(src.dynamicRange) : '—', unit: src.dynamicRange != null ? 'dB' : '', tone: rcDrStatus(src.dynamicRange) },
+    { name: 'Clipping', value: src.clipping ? 'Yes' : 'None', unit: '', tone: src.clipping ? 'issue' : 'good' },
+    { name: 'Spectral Centroid', value: src.centroid ? Math.round(src.centroid).toLocaleString() : '—', unit: src.centroid ? 'Hz' : '', tone: rcCentroidStatus(src.centroid) },
   ];
-  for (const m of metrics) {
-    const tr = document.createElement('tr');
-    const nameTd = document.createElement('td');
-    nameTd.textContent = m.name;
-    const valTd = document.createElement('td');
-    valTd.textContent = m.value;
-    const statusTd = document.createElement('td');
-    const badge = document.createElement('span');
-    badge.className = 'rc-status ' + m.status;
-    badge.textContent = rcStatusLabel(m.status);
-    statusTd.appendChild(badge);
-    tr.appendChild(nameTd);
-    tr.appendChild(valTd);
-    tr.appendChild(statusTd);
-    metricsBody.appendChild(tr);
-  }
+  document.getElementById('rc-metrics-body').innerHTML = metrics.map(m =>
+    `<tr>
+      <td><span class="mt-metric">${m.name}</span>${m.note ? `<span class="mt-note">${m.note}</span>` : ''}</td>
+      <td><span class="mt-value">${m.value}${m.unit ? `<span class="unit">${m.unit}</span>` : ''}</span></td>
+      <td>${statusPillHTML(m.tone)}</td>
+    </tr>`).join('');
 
-  const bandsEl = document.getElementById('rc-bands');
-  bandsEl.innerHTML = '';
-  for (const k of Object.keys(src.bands)) {
-    const db = src.bands[k];
-    const diff = bandDiffFromOthers(src.bands, k);
-    let status = 'good', statusText = 'Balanced';
-    if (diff > 12) { status = 'bad'; statusText = 'Too Hot'; }
-    else if (diff < -15) { status = 'warn'; statusText = 'Too Quiet'; }
+  // Band breakdown
+  document.getElementById('rc-bands').innerHTML = BAND_META.map(b => {
+    const db = src.bands[b.key];
+    const diff = bandDiffFromOthers(src.bands, b.key);
+    let vc = 'ok', vt = 'Balanced';
+    if (diff > 12) { vc = 'hot'; vt = 'Too Hot'; }
+    else if (diff < -15) { vc = 'quiet'; vt = 'Too Quiet'; }
+    return `<div class="rc-band-row">${bandMeterHTML(b.label, b.range, db, { colorBy: 'level' })}<span class="rc-band-verdict ${vc}">${vt}</span></div>`;
+  }).join('');
 
-    const clampedDb = Math.max(DB_MIN, Math.min(DB_MAX, db));
-    const frac = (clampedDb - DB_MIN) / (DB_MAX - DB_MIN);
-    const info = RC_BAND_INFO[k];
-
-    const row = document.createElement('div');
-    row.className = 'rc-band-row';
-
-    const label = document.createElement('span');
-    label.className = 'rc-band-label';
-    label.textContent = info.label;
-
-    const track = document.createElement('span');
-    track.className = 'rc-band-track';
-    const fill = document.createElement('span');
-    fill.className = 'rc-band-fill ' + status;
-    fill.style.width = (frac * 100).toFixed(1) + '%';
-    track.appendChild(fill);
-
-    const val = document.createElement('span');
-    val.className = 'rc-band-val';
-    val.textContent = fmt(db) + ' dB';
-
-    const statusEl = document.createElement('span');
-    statusEl.className = 'rc-band-status ' + status;
-    statusEl.textContent = statusText;
-
-    row.appendChild(label);
-    row.appendChild(track);
-    row.appendChild(val);
-    row.appendChild(statusEl);
-    bandsEl.appendChild(row);
-  }
-
-  const recsEl = document.getElementById('rc-recommendations');
-  recsEl.innerHTML = '';
-  for (const r of computeRecommendations(src)) {
-    const li = document.createElement('li');
-    if (r.startsWith('CRITICAL')) li.classList.add('critical');
-    li.textContent = r;
-    recsEl.appendChild(li);
-  }
+  // Recommendations
+  document.getElementById('rc-recommendations').innerHTML = computeRecommendations(src).map(r => {
+    const critical = r.startsWith('CRITICAL');
+    const text = critical ? r.replace(/^CRITICAL:\s*/, '') : r;
+    return `<div class="rc-rec${critical ? ' critical' : ''}">
+      <span class="rc-rec-icon">${iconSvg(critical ? 'alert-triangle' : 'check', 16)}</span>
+      <span class="rc-rec-text">${critical ? '<span class="rc-rec-badge">Critical</span>' : ''}${text}</span>
+    </div>`;
+  }).join('');
 }
 
-document.getElementById('reportcard-print-btn').addEventListener('click', () => {
-  window.print();
-});
+document.getElementById('reportcard-print-btn').addEventListener('click', () => window.print());
+document.getElementById('rc-gofile-btn').addEventListener('click', () => document.querySelector('.mode-tab[data-mode="file"]').click());
 
-// ── UI Helpers ────────────────────────────────────────────────────────────────
-
-function showSpinner(visible) {
-  document.getElementById('spinner').style.display = visible ? 'flex' : 'none';
-}
-
-function hidePlaceholder() {
-  document.getElementById('canvas-placeholder').style.display = 'none';
-}
-
-function showError(msg) {
-  document.getElementById('canvas-placeholder').style.display = 'flex';
-  document.getElementById('canvas-placeholder').innerHTML =
-    `<span class="big-icon" style="color:var(--danger)">⚠</span><p style="color:var(--danger)">${msg}</p>`;
-  showSpinner(false);
-}
-
-// ── Init ──────────────────────────────────────────────────────────────────────
-
-initCanvas();
+/* ══ Init ══ */
+hydrateIcons(document);
+setSpectrumState('empty', { text: 'Load a file to see the spectrum' });
 loadDevices();
 </script>
 </body>

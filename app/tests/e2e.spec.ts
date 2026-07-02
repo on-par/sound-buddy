@@ -86,7 +86,7 @@ test.describe('Sound Buddy E2E', () => {
   });
 
   test('app launches and shows header', async () => {
-    await expect(window.locator('#logo-text')).toHaveText('SOUND BUDDY');
+    await expect(window.locator('#logo-text')).toHaveText('Sound Buddy');
     await expect(window.locator('.mode-tab[data-mode="file"]')).toBeVisible();
     await expect(window.locator('.mode-tab[data-mode="dir"]')).toBeVisible();
     await expect(window.locator('.mode-tab[data-mode="live"]')).toBeVisible();
@@ -127,7 +127,8 @@ test.describe('Sound Buddy E2E', () => {
     await window.locator('#analyze-btn').click();
 
     await expect(window.locator('#file-info')).toBeVisible();
-    await expect(window.locator('#fi-name')).toHaveText('silence.wav');
+    // The redesign shows the loaded file name in the dropzone title, not a separate row.
+    await expect(window.locator('#file-dropzone .dz-title')).toHaveText('silence.wav');
 
     await window.locator('.mode-tab[data-mode="reportcard"]').click();
     await expect(window.locator('#rc-content')).toBeVisible();
@@ -138,13 +139,15 @@ test.describe('Sound Buddy E2E', () => {
     await window.locator('.mode-tab[data-mode="reportcard"]').click();
     await expect(window.locator('#rc-content')).toBeVisible();
 
-    const grade = (await window.locator('#rc-grade').textContent())?.trim();
+    // Grade is now rendered as an SVG ring with the letter in the center.
+    const grade = (await window.locator('#rc-ring .letter').textContent())?.trim();
     expect(['A', 'B', 'C', 'D', 'F']).toContain(grade);
 
-    const metricNames = await window.locator('#rc-metrics-body tr td:first-child').allTextContents();
-    expect(metricNames).toEqual(['RMS Level', 'Peak Level', 'Dynamic Range', 'Clipping', 'Spectral Centroid']);
+    // Peak Level leads the metrics table in the redesign (clipping is the headline metric).
+    const metricNames = await window.locator('#rc-metrics-body tr td:first-child .mt-metric').allTextContents();
+    expect(metricNames).toEqual(['Peak Level', 'RMS Level', 'Dynamic Range', 'Clipping', 'Spectral Centroid']);
 
-    const recCount = await window.locator('#rc-recommendations li').count();
+    const recCount = await window.locator('#rc-recommendations .rc-rec').count();
     expect(recCount).toBeGreaterThanOrEqual(1);
   });
 });

@@ -1,15 +1,42 @@
-import { ipcMain, dialog, BrowserWindow } from 'electron';
+import { ipcMain, dialog, BrowserWindow, app } from 'electron';
 import { execFile, spawn, ChildProcess } from 'child_process';
 import { promisify } from 'util';
 import * as path from 'path';
-import * as https from 'https';
+import * as fs from 'fs';
+import { log, logWarn, logError } from './logger';
+import { streamNarrative } from './llm';
 
 const execFileAsync = promisify(execFile);
 
-// Resolve paths relative to the repo root (three levels up from app/dist/electron/)
+// Dev repo root (three levels up from app/dist/electron/). Only meaningful when
+// running from a checkout — inside a packaged .app this points into the bundle.
 const REPO_ROOT = path.resolve(__dirname, '..', '..', '..');
-const SPECTRUM_SCRIPT = path.join(REPO_ROOT, 'scripts', 'spectrum.py');
-const STREAM_SCRIPT = path.join(REPO_ROOT, 'scripts', 'stream.py');
+
+// The Python scripts ship as extraResources (Contents/Resources/scripts) in a
+// packaged .app; in dev they live in the monorepo.
+const SCRIPTS_DIR = app.isPackaged
+  ? path.join(process.resourcesPath, 'scripts')
+  : path.join(REPO_ROOT, 'packages', 'audio-engine', 'scripts');
+const SPECTRUM_SCRIPT = path.join(SCRIPTS_DIR, 'spectrum.py');
+const STREAM_SCRIPT = path.join(SCRIPTS_DIR, 'stream.py');
+
+// The audio-engine scripts need librosa/soundfile/sounddevice/scipy, which the
+// system `python3` usually lacks (and Homebrew's is externally-managed). Prefer,
+// in order: an explicit override, the per-user venv created by
+// scripts/setup-macos.sh, the dev repo .venv, then bare `python3`. Resolved
+// lazily so app.setName()/userData is applied before we read it.
+let cachedPython: string | undefined;
+function pythonBin(): string {
+  if (cachedPython) return cachedPython;
+  const candidates = [
+    process.env.SOUND_BUDDY_PYTHON,
+    path.join(app.getPath('userData'), 'venv', 'bin', 'python3'),
+    path.join(REPO_ROOT, '.venv', 'bin', 'python3'),
+  ].filter((p): p is string => Boolean(p));
+  cachedPython = candidates.find((p) => fs.existsSync(p)) ?? 'python3';
+  log(`python interpreter: ${cachedPython}`);
+  return cachedPython;
+}
 
 let liveProcess: ChildProcess | null = null;
 let liveIntervalTimer: NodeJS.Timeout | null = null;
@@ -91,6 +118,15 @@ function parseField(output: string, label: string): number {
   return parseFloat(match[1]);
 }
 
+// Some sox stat fields are omitted for degenerate input — e.g. pure silence
+// (all-zero amplitude) prints no "Volume adjustment:" line. Fall back instead
+// of crashing the whole analysis.
+function parseFieldOptional(output: string, label: string, fallback: number): number {
+  const escaped = label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const match = output.match(new RegExp(`${escaped}\\s+([\\-\\d.]+)`));
+  return match ? parseFloat(match[1]) : fallback;
+}
+
 function amplitudeToDbfs(amplitude: number): number {
   if (amplitude <= 0) return -Infinity;
   return 20 * Math.log10(amplitude);
@@ -121,7 +157,9 @@ async function runSox(filePath: string): Promise<SoxStats> {
   const meanDelta = parseField(stderr, 'Mean    delta:');
   const rmsDelta = parseField(stderr, 'RMS     delta:');
   const roughFrequency = parseField(stderr, 'Rough   frequency:');
-  const volumeAdjustment = parseField(stderr, 'Volume adjustment:');
+  // Omitted by sox for silent/all-zero audio; there is no meaningful gain to
+  // normalise to, so fall back to 1.0 (no adjustment).
+  const volumeAdjustment = parseFieldOptional(stderr, 'Volume adjustment:', 1.0);
 
   const peakAmplitude = Math.max(Math.abs(maximumAmplitude), Math.abs(minimumAmplitude));
   const rmsDbfs = amplitudeToDbfs(rmsAmplitude);
@@ -211,7 +249,7 @@ async function runFfprobe(filePath: string): Promise<FfprobeResult> {
 // ─── SPECTRUM ─────────────────────────────────────────────────────────────────
 
 async function runSpectrum(filePath: string): Promise<SpectrumResult> {
-  const { stdout } = await execFileAsync('python3', [SPECTRUM_SCRIPT, filePath], {
+  const { stdout } = await execFileAsync(pythonBin(), [SPECTRUM_SCRIPT, filePath], {
     encoding: 'utf8',
     maxBuffer: 1024 * 1024,
   });
@@ -297,90 +335,31 @@ async function streamLLM(
   systemPrompt: string,
   userMessage: string
 ): Promise<void> {
-  const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) {
-    webContents.send('llm-delta', '\n⚠️  Set ANTHROPIC_API_KEY environment variable to enable AI analysis\n');
-    webContents.send('llm-done');
-    return;
+  const send = (channel: string, ...args: unknown[]): void => {
+    if (!webContents.isDestroyed()) webContents.send(channel, ...args);
+  };
+
+  // Route through pi so the narrative uses whatever provider the user configured
+  // (ChatGPT/Codex sub, Claude sub, Copilot, an API key, or local Ollama).
+  const outcome = await streamNarrative((text) => send('llm-delta', text), systemPrompt, userMessage);
+
+  if (!outcome.ok) {
+    if (outcome.reason === 'no-provider') {
+      logWarn('LLM analysis skipped: no pi provider configured');
+      send(
+        'llm-delta',
+        '\n⚠️  No AI provider configured. Run `pi` then `/login` to connect your own ' +
+          'ChatGPT/Codex, Claude, or Copilot subscription — or a local Ollama model (offline). ' +
+          'Optionally set SOUND_BUDDY_LLM_PROVIDER / SOUND_BUDDY_LLM_MODEL to pick one.\n',
+      );
+    } else {
+      logError(`LLM narrative error: ${outcome.reason}`);
+      send('llm-delta', `\n[AI error: ${outcome.reason}]\n`);
+    }
+  } else {
+    log(`LLM narrative ok via ${outcome.provider ?? '?'}/${outcome.model ?? '?'}`);
   }
-
-  const body = JSON.stringify({
-    model: 'claude-sonnet-4-6',
-    max_tokens: 1024,
-    stream: true,
-    system: systemPrompt,
-    messages: [{ role: 'user', content: userMessage }],
-  });
-
-  return new Promise((resolve, reject) => {
-    const options = {
-      hostname: 'api.anthropic.com',
-      path: '/v1/messages',
-      method: 'POST',
-      headers: {
-        'x-api-key': apiKey,
-        'anthropic-version': '2023-06-01',
-        'content-type': 'application/json',
-        'content-length': Buffer.byteLength(body),
-      },
-    };
-
-    const req = https.request(options, (res: import('http').IncomingMessage) => {
-      let buffer = '';
-
-      res.on('data', (chunk: Buffer) => {
-        buffer += chunk.toString();
-        const lines = buffer.split('\n');
-        buffer = lines.pop() ?? '';
-
-        for (const line of lines) {
-          const trimmed = line.trim();
-          if (!trimmed || trimmed === 'data: [DONE]') continue;
-          if (trimmed.startsWith('data: ')) {
-            try {
-              const json = JSON.parse(trimmed.slice(6)) as Record<string, unknown>;
-              if (json['type'] === 'content_block_delta') {
-                const delta = json['delta'] as Record<string, unknown>;
-                if (delta['type'] === 'text_delta' && typeof delta['text'] === 'string') {
-                  if (!webContents.isDestroyed()) {
-                    webContents.send('llm-delta', delta['text']);
-                  }
-                }
-              }
-            } catch {
-              // ignore malformed SSE lines
-            }
-          }
-        }
-      });
-
-      res.on('end', () => {
-        if (!webContents.isDestroyed()) {
-          webContents.send('llm-done');
-        }
-        resolve();
-      });
-
-      res.on('error', (err: Error) => {
-        if (!webContents.isDestroyed()) {
-          webContents.send('llm-delta', `\n[API error: ${err.message}]\n`);
-          webContents.send('llm-done');
-        }
-        reject(err);
-      });
-    });
-
-    req.on('error', (err: Error) => {
-      if (!webContents.isDestroyed()) {
-        webContents.send('llm-delta', `\n[Network error: ${err.message}]\n`);
-        webContents.send('llm-done');
-      }
-      reject(err);
-    });
-
-    req.write(body);
-    req.end();
-  });
+  send('llm-done');
 }
 
 // ─── IPC HANDLERS ─────────────────────────────────────────────────────────────
@@ -407,9 +386,11 @@ export function registerIpcHandlers(): void {
 
       const analysis: AudioAnalysis = { filePath, sox, ffprobe, spectrum };
       wc.send('analysis-result', { type: 'stats', data: analysis });
+      log(`analyze-file ok: ${filePath}`);
       return { success: true, data: analysis };
     } catch (err) {
       const message = String(err);
+      logError(`analyze-file failed for ${filePath}`, err);
       return { success: false, error: message };
     }
   });
@@ -418,26 +399,33 @@ export function registerIpcHandlers(): void {
   ipcMain.handle('list-devices', async () => {
     return new Promise<{ success: boolean; devices?: unknown[]; error?: string }>((resolve) => {
       let output = '';
-      const py = spawn('python3', [STREAM_SCRIPT, '--list-devices'], {
+      let errOutput = '';
+      const py = spawn(pythonBin(), [STREAM_SCRIPT, '--list-devices'], {
         stdio: ['ignore', 'pipe', 'pipe'],
       });
 
       py.stdout.on('data', (chunk: Buffer) => { output += chunk.toString(); });
+      // stderr was previously piped but never read (lost errors + risked backpressure).
+      py.stderr.on('data', (chunk: Buffer) => { errOutput += chunk.toString(); });
 
       py.on('close', (code) => {
         if (code !== 0 && !output.trim()) {
+          logError(`list-devices: stream.py exited with code ${code}`, errOutput.trim() || undefined);
           resolve({ success: false, error: `stream.py exited with code ${code}` });
           return;
         }
         try {
           const parsed = JSON.parse(output.trim()) as { devices?: unknown[] };
+          if (errOutput.trim()) logWarn(`list-devices stderr: ${errOutput.trim()}`);
           resolve({ success: true, devices: parsed.devices ?? [] });
-        } catch {
+        } catch (err) {
+          logError('list-devices: failed to parse device list', errOutput.trim() || err);
           resolve({ success: false, error: 'Failed to parse device list' });
         }
       });
 
       py.on('error', (err) => {
+        logError(`list-devices: failed to spawn ${pythonBin()}`, err);
         resolve({ success: false, error: err.message });
       });
     });
@@ -489,13 +477,20 @@ export function registerIpcHandlers(): void {
       args.push('');
     }
 
-    const py = spawn('python3', [STREAM_SCRIPT, ...args], {
+    const py = spawn(pythonBin(), [STREAM_SCRIPT, ...args], {
       stdio: ['ignore', 'pipe', 'pipe'],
     });
+    log(`start-live: spawned stream.py (device="${opts.device ?? ''}" window=${opts.windowSecs}s llmInterval=${opts.llmIntervalSecs}s)`);
 
     liveProcess = py;
     const wc = event.sender;
     const windowCollector: unknown[] = [];
+
+    // stderr was previously piped but never read (lost errors + risked backpressure).
+    py.stderr.on('data', (chunk: Buffer) => {
+      const text = chunk.toString().trim();
+      if (text) logWarn(`start-live stderr: ${text}`);
+    });
 
     let lineBuffer = '';
     py.stdout.on('data', (chunk: Buffer) => {
@@ -524,6 +519,7 @@ export function registerIpcHandlers(): void {
     });
 
     py.on('error', (err: Error) => {
+      logError('start-live: stream.py process error', err);
       if (!wc.isDestroyed()) {
         wc.send('live-event', { error: err.message });
       }
@@ -531,8 +527,13 @@ export function registerIpcHandlers(): void {
 
     py.on('close', (code: number | null) => {
       liveProcess = null;
-      if (!wc.isDestroyed() && code !== 0 && code !== null) {
-        wc.send('live-event', { error: `stream.py exited with code ${code}` });
+      if (code !== 0 && code !== null) {
+        logError(`start-live: stream.py exited with code ${code}`);
+        if (!wc.isDestroyed()) {
+          wc.send('live-event', { error: `stream.py exited with code ${code}` });
+        }
+      } else {
+        log('start-live: stream.py closed cleanly');
       }
     });
 
@@ -595,6 +596,7 @@ export function registerIpcHandlers(): void {
       await streamLLM(wc, systemPrompt, userMessage);
       return { success: true };
     } catch (err) {
+      logError(`trigger-llm-analysis failed (mode=${data.mode})`, err);
       return { success: false, error: String(err) };
     }
   });

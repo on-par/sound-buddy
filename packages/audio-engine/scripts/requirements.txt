@@ -1,0 +1,17 @@
+# Python runtime dependencies for Sound Buddy's audio-engine scripts.
+#
+# spectrum.py — offline frequency-band / spectral analysis
+# stream.py   — live capture + real-time analysis
+#
+# Install into a virtualenv:
+#   python3 -m venv .venv && source .venv/bin/activate
+#   pip install -r packages/audio-engine/scripts/requirements.txt
+#
+# The Electron app invokes `python3` from PATH, so that interpreter must have
+# these installed (activate the venv before launching, or point the app at it).
+
+numpy>=1.24
+scipy>=1.10
+librosa>=0.10        # spectrum.py: STFT, spectral centroid/rolloff
+soundfile>=0.12      # librosa I/O backend for wav/flac/aiff
+sounddevice>=0.4     # stream.py: live audio capture
