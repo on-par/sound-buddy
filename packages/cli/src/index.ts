@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { Command } from 'commander'
 import { runAnalyze } from './analyze.js'
+import { runDiff } from './diff.js'
 
 const program = new Command()
 
@@ -13,9 +14,11 @@ program
   .command('diff <file1> <file2>')
   .description('Diff two M32R .scn scene files')
   .option('--json', 'Output as JSON')
-  .action((_file1, _file2, _opts) => {
-    console.error('buddy diff: not yet implemented')
-    process.exit(1)
+  .action(async (file1: string, file2: string, opts: { json?: boolean }) => {
+    const result = await runDiff(file1, file2, opts)
+    if (result.stdout) process.stdout.write(result.stdout)
+    if (result.stderr) process.stderr.write(result.stderr + '\n')
+    process.exit(result.exitCode)
   })
 
 program
