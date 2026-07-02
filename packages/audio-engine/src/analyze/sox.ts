@@ -24,12 +24,16 @@ function amplitudeToDbfs(amplitude: number): number {
 }
 
 export async function runSox(filePath: string): Promise<SoxStats> {
-  // sox writes stat output to stderr
+  // sox writes stat output to stderr, but exit code varies by platform/version:
+  // some versions exit 0 (success) with stderr populated, others exit non-zero.
+  // We need to capture stderr in both cases.
   let stderr = "";
   try {
-    await execFileAsync("sox", [filePath, "-n", "stat"], { encoding: "utf8" });
+    const result = await execFileAsync("sox", [filePath, "-n", "stat"], { encoding: "utf8" });
+    // sox succeeded — stderr is on the resolved value
+    stderr = result.stderr ?? "";
   } catch (err: unknown) {
-    // sox stat exits with code 2 and writes to stderr — this is normal
+    // sox exited non-zero — stderr is on the error object
     const e = err as { stderr?: string; stdout?: string };
     stderr = e.stderr ?? "";
     if (!stderr) {
@@ -37,23 +41,28 @@ export async function runSox(filePath: string): Promise<SoxStats> {
     }
   }
 
-  const output = stderr;
+  let output = stderr;
+
+  // Some sox versions omit fields for silent/duplicate channels. Make parsing resilient.
+  function safeParseField(label: string): number | undefined {
+    try { return parseField(output, label); } catch { return undefined; }
+  }
 
   const samplesRead = parseField(output, "Samples read:");
   const lengthSeconds = parseField(output, "Length (seconds):");
-  const scaledBy = parseField(output, "Scaled by:");
-  const maximumAmplitude = parseField(output, "Maximum amplitude:");
-  const minimumAmplitude = parseField(output, "Minimum amplitude:");
-  const midlineAmplitude = parseField(output, "Midline amplitude:");
-  const meanNorm = parseField(output, "Mean    norm:");
-  const meanAmplitude = parseField(output, "Mean    amplitude:");
-  const rmsAmplitude = parseField(output, "RMS     amplitude:");
-  const maximumDelta = parseField(output, "Maximum delta:");
-  const minimumDelta = parseField(output, "Minimum delta:");
-  const meanDelta = parseField(output, "Mean    delta:");
-  const rmsDelta = parseField(output, "RMS     delta:");
-  const roughFrequency = parseField(output, "Rough   frequency:");
-  const volumeAdjustment = parseField(output, "Volume adjustment:");
+  const scaledBy = safeParseField("Scaled by:") ?? 0;
+  const maximumAmplitude = safeParseField("Maximum amplitude:") ?? 0;
+  const minimumAmplitude = safeParseField("Minimum amplitude:") ?? 0;
+  const midlineAmplitude = safeParseField("Midline amplitude:") ?? 0;
+  const meanNorm = safeParseField("Mean    norm:") ?? 0;
+  const meanAmplitude = safeParseField("Mean    amplitude:") ?? 0;
+  const rmsAmplitude = safeParseField("RMS     amplitude:") ?? 0;
+  const maximumDelta = safeParseField("Maximum delta:") ?? 0;
+  const minimumDelta = safeParseField("Minimum delta:") ?? 0;
+  const meanDelta = safeParseField("Mean    delta:") ?? 0;
+  const rmsDelta = safeParseField("RMS     delta:") ?? 0;
+  const roughFrequency = safeParseField("Rough   frequency:") ?? 0;
+  const volumeAdjustment = safeParseField("Volume adjustment:") ?? 1.0;
 
   const peakAmplitude = Math.max(Math.abs(maximumAmplitude), Math.abs(minimumAmplitude));
   const rmsDbfs = amplitudeToDbfs(rmsAmplitude);

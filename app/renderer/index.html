@@ -1775,7 +1775,8 @@ function computeGrade(src) {
   if (src.rms < -20 || src.rms > -14) drop();
   if (src.dynamicRange != null && src.dynamicRange < 6) drop();
 
-  const anyBandHot = Object.keys(src.bands).some(k => bandDiffFromOthers(src.bands, k) > 10);
+  // Only drop grade for extreme band imbalance (>15 dB above average of others)
+  const anyBandHot = Object.keys(src.bands).some(k => bandDiffFromOthers(src.bands, k) > 15);
   if (anyBandHot) drop();
 
   return letters[idx];
@@ -1804,7 +1805,7 @@ function computeRecommendations(src) {
 
   for (const k of Object.keys(src.bands)) {
     const diff = bandDiffFromOthers(src.bands, k);
-    if (diff > 6) {
+    if (diff > 12) {
       const info = RC_BAND_INFO[k];
       recs.push(`Too much energy in ${info.label} (${info.freq}). Cut ${Math.min(diff, 10).toFixed(1)} dB around this range.`);
     }
@@ -1904,8 +1905,8 @@ function renderReportCard() {
     const db = src.bands[k];
     const diff = bandDiffFromOthers(src.bands, k);
     let status = 'good', statusText = 'Balanced';
-    if (diff > 6) { status = 'bad'; statusText = 'Too Hot'; }
-    else if (diff < -12) { status = 'warn'; statusText = 'Too Quiet'; }
+    if (diff > 12) { status = 'bad'; statusText = 'Too Hot'; }
+    else if (diff < -15) { status = 'warn'; statusText = 'Too Quiet'; }
 
     const clampedDb = Math.max(DB_MIN, Math.min(DB_MAX, db));
     const frac = (clampedDb - DB_MIN) / (DB_MAX - DB_MIN);

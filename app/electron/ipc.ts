@@ -99,7 +99,8 @@ function amplitudeToDbfs(amplitude: number): number {
 async function runSox(filePath: string): Promise<SoxStats> {
   let stderr = '';
   try {
-    await execFileAsync('sox', [filePath, '-n', 'stat'], { encoding: 'utf8' });
+    const result = await execFileAsync('sox', [filePath, '-n', 'stat'], { encoding: 'utf8' });
+    stderr = result.stderr ?? '';
   } catch (err: unknown) {
     const e = err as { stderr?: string };
     stderr = e.stderr ?? '';

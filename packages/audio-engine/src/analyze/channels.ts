@@ -41,9 +41,12 @@ export async function extractChannels(inputFile: string, names: string[] = []): 
     const name = names[i] ?? `CH${String(i + 1).padStart(2, "0")}`;
     const tmpPath = join(tmp, `${prefix}-ch${i}.wav`);
 
+    // -map_channel was removed in ffmpeg 7+. Use -filter_channelmap / -af pan instead.
+    // pan stereo: left channel = source channel i+1, right = same (duplicates to stereo)
+    // For mono output, use -af pan=mono|c0=c{i+1}
     await execFileAsync("ffmpeg", [
       "-i", inputFile,
-      "-map_channel", `0.0.${i}`,
+      "-filter:a", `pan=mono|c0=c${i + 1}`,
       "-y",
       tmpPath,
     ]);
