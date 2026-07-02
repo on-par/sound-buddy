@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
-import { diffScenes } from '../index'
-import type { Scene } from '@sound-buddy/shared'
+import { diffScenes } from '../index.js'
+import type { Scene, SceneChange } from '@sound-buddy/shared'
 
 function makeScene(overrides: Partial<Scene> = {}): Scene {
   return {
@@ -45,7 +45,7 @@ describe('diffScenes', () => {
       ),
     })
     const result = diffScenes(sceneA, sceneB)
-    const change = result.changes.find(c => c.path === 'channels[0].mix.on')
+    const change = result.changes.find((c: SceneChange) => c.path === 'channels[0].mix.on')
     expect(change).toBeDefined()
     expect(change).toMatchObject({
       path: 'channels[0].mix.on',
@@ -67,7 +67,7 @@ describe('diffScenes', () => {
       ),
     })
     const result = diffScenes(sceneA, sceneB)
-    const change = result.changes.find(c => c.path === 'channels[6].mix.fader')
+    const change = result.changes.find((c: SceneChange) => c.path === 'channels[6].mix.fader')
     expect(change).toBeDefined()
     expect(change).toMatchObject({
       path: 'channels[6].mix.fader',
@@ -85,7 +85,7 @@ describe('diffScenes', () => {
       ),
     })
     const result = diffScenes(sceneA, sceneB)
-    const change = result.changes.find(c => c.path === 'dcas[5].on')
+    const change = result.changes.find((c: SceneChange) => c.path === 'dcas[5].on')
     expect(change).toBeDefined()
     expect(change).toMatchObject({
       path: 'dcas[5].on',
