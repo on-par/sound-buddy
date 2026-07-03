@@ -169,6 +169,9 @@ test.describe('Sound Buddy E2E', () => {
 
     // The old horizontal band meters are no longer the file-view spectrum.
     await expect(window.locator('#spectrum-body .bm-track')).toHaveCount(0);
+
+    // Header label matches the rendered visualization.
+    await expect(window.locator('#spectrum-title')).toHaveText('Spectrum · Curve');
   });
 
   test('missing spectrum curve degrades to band meters without error', async () => {
@@ -183,6 +186,8 @@ test.describe('Sound Buddy E2E', () => {
     });
     await expect(window.locator('#spectrum-body .meter-card')).toBeVisible();
     await expect(window.locator('#spectrum-body svg.sb-spectrum-curve')).toHaveCount(0);
+    // Header falls back to the meters label so it matches the fallback view.
+    await expect(window.locator('#spectrum-title')).toHaveText('Spectrum · Meters');
     expect(errors).toEqual([]);
   });
 

@@ -3,10 +3,12 @@
 # plus the app build + Playwright e2e (which CI does not run headlessly).
 #
 #   ./scripts/verify.sh            # install (ci) + lint + build + unit tests + app e2e
-#   ./scripts/verify.sh --fast     # skip the clean npm ci (reuse node_modules)
-#   ./scripts/verify.sh --no-e2e   # skip the app build + Playwright e2e (fast gate)
+#   ./scripts/verify.sh --fast     # skip the clean npm ci ONLY (reuse node_modules); still runs e2e
+#   ./scripts/verify.sh --no-e2e   # skip the app build + Playwright e2e
 #
-# Flags may be combined, e.g. `./scripts/verify.sh --fast --no-e2e`.
+# The two flags are independent — combine them for the quickest gate (reuse deps,
+# no e2e): `./scripts/verify.sh --fast --no-e2e`. Note `--fast` assumes app deps
+# are already installed; on a fresh checkout run without it (or `npm ci --prefix app`).
 set -euo pipefail
 
 cd "$(dirname "$0")/.."

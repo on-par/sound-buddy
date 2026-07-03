@@ -755,6 +755,10 @@ function setSpectrumState(state, opts = {}) {
   }
 }
 
+// Panel-header labels. The static markup seeds `curve`; the render paths below
+// keep the header in sync with what's actually drawn (curve vs. fallback meters).
+const SPECTRUM_TITLE = { curve: 'Spectrum · Curve', meters: 'Spectrum · Meters' };
+
 /* ── EQ spectrum curve (PRD 02) ─────────────────────────────────────────────
  * A FabFilter Pro-Q–style analyzer: log-frequency X, auto-ranged dB Y, gold
  * curve with a gradient fill, band-range tints, and the centroid marker. */
@@ -857,28 +861,35 @@ function spectrumCurveSVG(curve, centroid) {
         <stop offset="0" style="stop-color:var(--gold-500)" stop-opacity="0.34"/>
         <stop offset="1" style="stop-color:var(--gold-500)" stop-opacity="0"/>
       </linearGradient>
+      <clipPath id="sb-spectrum-plot"><rect x="${x0}" y="${y0}" width="${x1 - x0}" height="${y1 - y0}"/></clipPath>
     </defs>
     ${tints}
     ${yGrid}
     ${xGrid}
     <line class="sb-axis-base" x1="${x0}" y1="${y1}" x2="${x1}" y2="${y1}"/>
-    <path class="sb-curve-fill" d="${area}" fill="url(#sb-spectrum-fill)"/>
-    <path class="sb-curve-line" d="${line}"/>
+    <g clip-path="url(#sb-spectrum-plot)">
+      <path class="sb-curve-fill" d="${area}" fill="url(#sb-spectrum-fill)"/>
+      <path class="sb-curve-line" d="${line}"/>
+    </g>
     ${centroidMark}
   </svg>`;
 }
 
 function renderSpectrum(spectrum) {
   const body = document.getElementById('spectrum-body');
+  const title = document.getElementById('spectrum-title');
   document.getElementById('stats-row').style.display = 'flex';
 
   // Preferred view: the EQ frequency-response curve. Degrade gracefully to the
-  // 7-band meters when no curve is available (e.g. --no-spectrum).
+  // 7-band meters when no curve is available (e.g. --no-spectrum). Keep the
+  // header label matched to whichever visualization is actually drawn.
   const svg = spectrum ? spectrumCurveSVG(spectrum.curve, spectrum.spectralCentroid) : '';
   if (svg) {
+    title.textContent = SPECTRUM_TITLE.curve;
     body.innerHTML = `<div class="spectrum-chart">${svg}</div>`;
     return;
   }
+  title.textContent = SPECTRUM_TITLE.meters;
   renderBandMeters(spectrum);
 }
 
@@ -1006,11 +1017,13 @@ document.querySelectorAll('.mode-tab').forEach(tab => {
 function syncSpectrumForMode(mode) {
   const title = document.getElementById('spectrum-title');
   if (mode === 'live') {
-    title.textContent = liveRunning ? 'Live Meters' : 'Spectrum · Meters';
+    title.textContent = liveRunning ? 'Live Meters' : SPECTRUM_TITLE.meters;
     if (liveRunning && liveWindows.length > 0) renderLiveMeters(liveWindows[liveWindows.length - 1]);
     else setSpectrumState('empty', { text: 'Start live capture to see the meters' });
   } else {
-    title.textContent = 'Spectrum · Curve';
+    // renderSpectrum sets the header to match what it draws (curve vs meters);
+    // seed the curve label for the pre-analysis empty state.
+    title.textContent = SPECTRUM_TITLE.curve;
     if (currentAnalysis) renderSpectrum(currentAnalysis.spectrum);
     else setSpectrumState('empty', { text: mode === 'dir' ? 'Analyze the folder to see the spectrum' : 'Load a file to see the spectrum' });
   }
@@ -1206,7 +1219,7 @@ async function stopLive() {
   document.getElementById('live-indicator').style.display = 'none';
   document.getElementById('live-status').style.display = 'none';
   document.getElementById('window-badge').textContent = '';
-  document.getElementById('spectrum-title').textContent = 'Spectrum · Meters';
+  document.getElementById('spectrum-title').textContent = SPECTRUM_TITLE.meters;
 }
 
 function startLiveCountdown(intervalSecs) {
