@@ -57,14 +57,31 @@ export function getSettings(): AppSettings {
 
 /** Merge and persist a partial update; returns the new settings. */
 export function updateSettings(patch: Partial<AppSettings>): AppSettings {
-  const current = getSettings();
-  const next: AppSettings = { ...current, ...patch };
+  // Persist the patch over the FILE contents (layered on defaults) — never over
+  // getSettings()'s env-resolved view. Otherwise a transient env override (e.g.
+  // SOUND_BUDDY_AI_ENABLED=1) would be baked permanently into settings.json,
+  // silently defeating the "AI off by default" contract after the env var is
+  // removed. Env overrides stay transient (read-time only).
+  let file: Partial<AppSettings> = {};
   try {
-    fs.writeFileSync(settingsPath(), JSON.stringify(next, null, 2));
+    const p = settingsPath();
+    if (fs.existsSync(p)) file = JSON.parse(fs.readFileSync(p, 'utf8')) as Partial<AppSettings>;
+  } catch (err) {
+    logWarn(`could not read settings.json before update: ${String(err)}`);
+  }
+
+  const persisted: AppSettings = {
+    aiEnabled: file.aiEnabled ?? DEFAULTS.aiEnabled,
+    idealProfile: file.idealProfile ?? DEFAULTS.idealProfile,
+    ...patch,
+  };
+  try {
+    fs.writeFileSync(settingsPath(), JSON.stringify(persisted, null, 2));
   } catch (err) {
     logWarn(`could not write settings.json: ${String(err)}`);
   }
-  return next;
+  // Return the effective settings (env overrides still apply for reads).
+  return getSettings();
 }
 
 /** Convenience: is AI/LLM analysis currently allowed? */
