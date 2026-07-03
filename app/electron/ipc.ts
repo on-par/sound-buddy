@@ -5,6 +5,7 @@ import * as path from 'path';
 import * as fs from 'fs';
 import { log, logWarn, logError } from './logger';
 import { streamNarrative } from './llm';
+import { getSettings } from './settings';
 
 const execFileAsync = promisify(execFile);
 
@@ -138,6 +139,21 @@ interface FfprobeResult {
   };
 }
 
+interface SpectrumCurve {
+  freqs: number[];
+  db: number[];
+}
+interface SpectrumFrame {
+  t: number;
+  db: number[];
+  rms: number;
+  class: string;
+}
+interface SpectrumSegment {
+  class: string;
+  start: number;
+  end: number;
+}
 interface SpectrumResult {
   bands: {
     subBass: number;
@@ -151,6 +167,11 @@ interface SpectrumResult {
   spectralCentroid: number;
   spectralRolloff85: number;
   dynamicRange: number;
+  // Additive fields (PRD 02–04); carried through to the renderer.
+  curve?: SpectrumCurve;
+  frames?: SpectrumFrame[];
+  segments?: SpectrumSegment[];
+  contentType?: string;
 }
 
 interface AudioAnalysis {
@@ -319,9 +340,13 @@ async function runSpectrum(filePath: string): Promise<SpectrumResult> {
     spectral_centroid: number;
     spectral_rolloff_85: number;
     dynamic_range: number;
+    curve?: SpectrumCurve;
+    frames?: SpectrumFrame[];
+    segments?: SpectrumSegment[];
+    content_type?: string;
   };
 
-  return {
+  const result: SpectrumResult = {
     bands: {
       subBass: raw.bands.sub_bass,
       bass: raw.bands.bass,
@@ -335,6 +360,11 @@ async function runSpectrum(filePath: string): Promise<SpectrumResult> {
     spectralRolloff85: raw.spectral_rolloff_85,
     dynamicRange: raw.dynamic_range,
   };
+  if (raw.curve) result.curve = raw.curve;
+  if (raw.frames) result.frames = raw.frames;
+  if (raw.segments) result.segments = raw.segments;
+  if (raw.content_type) result.contentType = raw.content_type;
+  return result;
 }
 
 // ─── LLM ──────────────────────────────────────────────────────────────────────
@@ -396,7 +426,14 @@ async function streamLLM(
   const outcome = await streamNarrative((text) => send('llm-delta', text), systemPrompt, userMessage);
 
   if (!outcome.ok) {
-    if (outcome.reason === 'no-provider') {
+    if (outcome.reason === 'disabled') {
+      logWarn('LLM analysis skipped: AI is disabled in settings');
+      send(
+        'llm-delta',
+        '\n⚠️  AI analysis is turned off. Enable it in settings ' +
+          '(settings.json "aiEnabled": true, or SOUND_BUDDY_AI_ENABLED=1) to use the AI Engineer.\n',
+      );
+    } else if (outcome.reason === 'no-provider') {
       logWarn('LLM analysis skipped: no pi provider configured');
       send(
         'llm-delta',
@@ -417,6 +454,10 @@ async function streamLLM(
 // ─── IPC HANDLERS ─────────────────────────────────────────────────────────────
 
 export function registerIpcHandlers(): void {
+  // get-settings — read app-behavior flags (AI on/off, ideal profile). The
+  // renderer reads this at boot to hide AI affordances when disabled.
+  ipcMain.handle('get-settings', () => getSettings());
+
   // analyze-file
   ipcMain.handle('analyze-file', async (event, opts: { filePath: string; noSpectrum?: boolean }) => {
     const { filePath, noSpectrum } = opts;
@@ -615,7 +656,7 @@ export function registerIpcHandlers(): void {
       liveIntervalTimer = null;
     }
 
-    if (opts.llmIntervalSecs > 0) {
+    if (opts.llmIntervalSecs > 0 && getSettings().aiEnabled) {
       liveIntervalTimer = setInterval(async () => {
         if (windowCollector.length === 0 || wc.isDestroyed()) return;
         const snapshot = [...windowCollector];

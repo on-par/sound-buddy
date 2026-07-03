@@ -68,6 +68,42 @@ export interface FrequencyBands {
   brilliance: number;
 }
 
+/**
+ * Fine-grained whole-file frequency response on a fixed log-spaced grid
+ * (~1/6-octave, 20 Hz–20 kHz). `freqs[i]` is the center frequency (Hz) and
+ * `db[i]` its level (dB). See PRD 02.
+ */
+export interface SpectrumCurve {
+  freqs: number[];
+  db: number[];
+}
+
+/**
+ * A time-sampled snapshot of the spectrum curve (PRD 03). `db` is on the same
+ * grid as {@link SpectrumCurve}. `class` is the content classification for the
+ * window centered at `t` (PRD 04).
+ */
+export interface SpectrumFrame {
+  /** Window center time, seconds. */
+  t: number;
+  /** Level per grid point (dB), same grid as SpectrumCurve.freqs. */
+  db: number[];
+  /** Mean RMS of the window, dB. */
+  rms: number;
+  /** Content class of this window. */
+  class: ContentClass;
+}
+
+export type ContentClass = "speech" | "music" | "silence" | "unknown";
+export type ContentType = "speech" | "music" | "mixed" | "silence";
+
+/** A contiguous run of same-class frames (PRD 04). */
+export interface SpectrumSegment {
+  class: ContentClass;
+  start: number;
+  end: number;
+}
+
 export interface SpectrumResult {
   bands: FrequencyBands;
   /** Spectral centroid in Hz */
@@ -76,6 +112,14 @@ export interface SpectrumResult {
   spectralRolloff85: number;
   /** Dynamic range computed from RMS (dB) */
   dynamicRange: number;
+  /** Fine-grained whole-file frequency response (PRD 02). Optional for back-compat. */
+  curve?: SpectrumCurve;
+  /** Time-sampled spectrum snapshots (PRD 03). Optional for back-compat. */
+  frames?: SpectrumFrame[];
+  /** Contiguous same-class segments (PRD 04). Optional for back-compat. */
+  segments?: SpectrumSegment[];
+  /** Overall content classification (PRD 04). Optional for back-compat. */
+  contentType?: ContentType;
 }
 
 export interface AudioAnalysis {

@@ -146,6 +146,9 @@
     /* Header */
     #header {
       display:flex; align-items:center; gap:18px; height:var(--header-h); padding:0 16px;
+      /* Clear the macOS traffic-light cluster (hiddenInset) so the logo isn't
+         squashed underneath the close/minimize/maximize buttons. */
+      padding-left:82px;
       background:var(--bg-panel); border-bottom:1px solid var(--border-subtle);
       flex-shrink:0; -webkit-app-region:drag;
     }
@@ -189,6 +192,10 @@
     .side-panel { display:flex; flex-direction:column; flex-shrink:0; background:var(--bg-panel); overflow:hidden; }
     #source-panel { width:var(--panel-w); border-right:1px solid var(--border-default); }
     #ai-panel { width:var(--ai-panel-w); border-left:1px solid var(--border-default); }
+    /* AI is off by default (PRD 01): hide every AI affordance. The center
+       spectrum panel is flex:1 so it reflows to fill the freed space. */
+    body.ai-disabled #ai-panel { display:none; }
+    body.ai-disabled .ai-only { display:none !important; }
     .panel-head {
       display:flex; align-items:center; justify-content:space-between; padding:14px 16px;
       border-bottom:1px solid var(--border-subtle); flex-shrink:0;
@@ -427,7 +434,7 @@
     }
   </style>
 </head>
-<body>
+<body class="ai-disabled">
 <div id="root">
   <!-- ══ Update banner ══ -->
   <div id="update-banner" role="status">
@@ -531,7 +538,7 @@
             <div class="slider-head"><span class="lbl">Window</span><span class="val" id="window-secs-label">3.0s</span></div>
             <input type="range" class="sb-slider" id="window-secs" min="1" max="10" step="0.5" value="3" />
           </div>
-          <div class="slider">
+          <div class="slider ai-only">
             <div class="slider-head"><span class="lbl">LLM Interval</span><span class="val" id="llm-interval-label">60s</span></div>
             <input type="range" class="sb-slider" id="llm-interval" min="0" max="300" step="10" value="60" />
           </div>
@@ -1024,7 +1031,9 @@ document.getElementById('device-refresh-btn').addEventListener('click', () => lo
 document.getElementById('live-start-btn').addEventListener('click', async () => {
   const device = document.getElementById('device-select').value || undefined;
   const windowSecs = parseFloat(document.getElementById('window-secs').value);
-  const llmIntervalSecs = parseInt(document.getElementById('llm-interval').value);
+  // When AI is off, force the LLM interval to 0 so no countdown or auto-analysis
+  // is armed (the backend also refuses to arm it — belt and suspenders).
+  const llmIntervalSecs = aiEnabled ? parseInt(document.getElementById('llm-interval').value) : 0;
 
   liveRunning = true;
   liveWindows = [];
@@ -1389,6 +1398,18 @@ document.getElementById('rc-gofile-btn').addEventListener('click', () => documen
 })();
 
 /* ══ Init ══ */
+// AI is off by default. Body starts with .ai-disabled (no flash of the AI
+// panel); reveal AI affordances only if the user has opted in. The AI code
+// stays fully wired in — this only toggles UI visibility.
+let aiEnabled = false;
+(async () => {
+  try {
+    const s = await sb.getSettings();
+    aiEnabled = !!(s && s.aiEnabled);
+  } catch { aiEnabled = false; }
+  document.body.classList.toggle('ai-disabled', !aiEnabled);
+})();
+
 hydrateIcons(document);
 setSpectrumState('empty', { text: 'Load a file to see the spectrum' });
 loadDevices();

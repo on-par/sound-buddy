@@ -48,9 +48,12 @@ test('smoke: exercise all flows and collect errors', async () => {
   await win.locator('#analyze-btn').click().catch(() => {});
   await win.waitForTimeout(2500);
 
-  // 3. AI analysis (no API key → should warn+degrade gracefully, not crash)
-  await win.locator('#ai-analyze-btn').click().catch(() => {});
-  await win.waitForTimeout(1200);
+  // 3. AI analysis. AI is OFF by default now (PRD 01), so the AI panel/button is
+  // hidden — only exercise the AI path when a dev has opted in (panel visible).
+  if (await win.locator('#ai-analyze-btn').isVisible().catch(() => false)) {
+    await win.locator('#ai-analyze-btn').click().catch(() => {});
+    await win.waitForTimeout(1200);
+  }
 
   // 4. Report card render
   await win.locator('.mode-tab[data-mode="reportcard"]').click();

@@ -2,7 +2,23 @@ import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
 import { join, dirname } from "node:path";
-import type { SpectrumResult } from "../types.js";
+import type {
+  SpectrumResult,
+  SpectrumFrame,
+  SpectrumSegment,
+  ContentClass,
+  ContentType,
+} from "../types.js";
+
+const CONTENT_CLASSES: ContentClass[] = ["speech", "music", "silence", "unknown"];
+const CONTENT_TYPES: ContentType[] = ["speech", "music", "mixed", "silence"];
+
+function asContentClass(v: string | undefined): ContentClass {
+  return CONTENT_CLASSES.includes(v as ContentClass) ? (v as ContentClass) : "unknown";
+}
+function asContentType(v: string | undefined): ContentType | undefined {
+  return CONTENT_TYPES.includes(v as ContentType) ? (v as ContentType) : undefined;
+}
 
 const execFileAsync = promisify(execFile);
 
@@ -26,6 +42,11 @@ interface RawSpectrumOutput {
   spectral_centroid: number;
   spectral_rolloff_85: number;
   dynamic_range: number;
+  // Additive fields (PRD 02–04). Older spectrum.py builds omit them.
+  curve?: { freqs: number[]; db: number[] };
+  frames?: Array<{ t: number; db: number[]; rms: number; class: string }>;
+  segments?: Array<{ class: string; start: number; end: number }>;
+  content_type?: string;
 }
 
 export async function runSpectrum(filePath: string): Promise<SpectrumResult> {
@@ -36,7 +57,7 @@ export async function runSpectrum(filePath: string): Promise<SpectrumResult> {
 
   const raw: RawSpectrumOutput = JSON.parse(stdout);
 
-  return {
+  const result: SpectrumResult = {
     bands: {
       subBass: raw.bands.sub_bass,
       bass: raw.bands.bass,
@@ -50,4 +71,20 @@ export async function runSpectrum(filePath: string): Promise<SpectrumResult> {
     spectralRolloff85: raw.spectral_rolloff_85,
     dynamicRange: raw.dynamic_range,
   };
+
+  if (raw.curve) result.curve = { freqs: raw.curve.freqs, db: raw.curve.db };
+  if (raw.frames) {
+    result.frames = raw.frames.map(
+      (f): SpectrumFrame => ({ t: f.t, db: f.db, rms: f.rms, class: asContentClass(f.class) }),
+    );
+  }
+  if (raw.segments) {
+    result.segments = raw.segments.map(
+      (s): SpectrumSegment => ({ class: asContentClass(s.class), start: s.start, end: s.end }),
+    );
+  }
+  const ct = asContentType(raw.content_type);
+  if (ct) result.contentType = ct;
+
+  return result;
 }

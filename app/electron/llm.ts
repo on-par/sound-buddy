@@ -25,12 +25,16 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { app } from 'electron';
 import { logWarn } from './logger';
+import { isAiEnabled } from './settings';
 
 export interface NarrativeOutcome {
   ok: boolean;
   provider?: string;
   model?: string;
-  /** 'no-provider' when nothing is configured; otherwise an error string. */
+  /**
+   * 'disabled' when AI is turned off in settings (default), 'no-provider' when
+   * AI is enabled but nothing is configured; otherwise an error string.
+   */
   reason?: string;
 }
 
@@ -62,6 +66,10 @@ export async function streamNarrative(
   systemPrompt: string,
   userMessage: string,
 ): Promise<NarrativeOutcome> {
+  // Master AI switch (off by default). Keeps every provider path wired in but
+  // short-circuits before any subprocess/network call when AI is disabled.
+  if (!isAiEnabled()) return { ok: false, reason: 'disabled' };
+
   const cfg = readConfig();
   if (!cfg.provider) return { ok: false, reason: 'no-provider' };
 
