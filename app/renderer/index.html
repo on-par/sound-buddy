@@ -395,6 +395,25 @@
     .sb-centroid-line { stroke:var(--azure-400); stroke-width:1.25; stroke-dasharray:4 4; opacity:0.85; }
     .sb-centroid-label { font:var(--fw-medium) 10px/1 var(--font-mono); fill:var(--azure-text); text-anchor:middle; }
 
+    /* Time-sampled spectrogram + scrubber (PRD 03). Sits under the PRD 02 curve;
+       clicking a column redraws that curve for the selected frame. */
+    .spectro-scrub { flex-shrink:0; margin-top:16px; background:var(--surface-inset); border:1px solid var(--border-subtle); border-radius:var(--radius-xl); box-shadow:var(--elevation-canvas); padding:14px 18px 12px; }
+    .spectro-head { display:flex; align-items:baseline; gap:12px; margin-bottom:8px; }
+    .spectro-title { font:var(--fw-semibold) var(--fs-micro)/1 var(--font-sans); letter-spacing:var(--tracking-caps); text-transform:uppercase; color:var(--text-tertiary); }
+    .scrub-readout { font:var(--fw-medium) var(--fs-micro)/1 var(--font-mono); color:var(--gold-text); font-variant-numeric:tabular-nums; }
+    .scrub-reset { margin-left:auto; display:inline-flex; align-items:center; gap:5px; -webkit-app-region:no-drag; cursor:pointer;
+      font:var(--fw-medium) var(--fs-micro)/1 var(--font-sans); color:var(--text-tertiary);
+      background:var(--surface-raised); border:1px solid var(--border-subtle); border-radius:var(--radius-sm); padding:5px 9px; }
+    .scrub-reset:hover { color:var(--gold-text); border-color:var(--gold-600); }
+    .scrub-reset.active { color:var(--gold-text); border-color:var(--gold-600); background:var(--gold-tint); }
+    .scrub-reset svg { width:11px; height:11px; }
+    .spectro-heat { width:100%; border-radius:var(--radius-sm); overflow:hidden; box-shadow:inset 0 0 0 1px var(--border-subtle); cursor:pointer; }
+    .spectro-heat svg { display:block; width:100%; height:104px; }
+    .hm-col { fill:transparent; pointer-events:none; }
+    .hm-col.sel { fill:rgba(235,185,60,0.14); stroke:var(--gold-500); stroke-width:1.5; vector-effect:non-scaling-stroke; }
+    .spectro-axis { display:flex; justify-content:space-between; margin-top:6px; font:var(--fw-regular) 9.5px/1 var(--font-mono); color:var(--text-muted); }
+    .spectro-hint { font:var(--fw-regular) 10px/1 var(--font-mono); color:var(--text-muted); margin-left:auto; }
+
     /* AI panel */
     #model-chip { display:inline-flex; align-items:center; gap:5px; font:var(--fw-medium) 10px/1 var(--font-mono); color:var(--gold-text); background:var(--gold-tint); border:1px solid var(--gold-600); border-radius:var(--radius-xs); padding:3px 7px; }
     #ai-output { flex:1; overflow-y:auto; padding:16px; font:var(--fw-regular) var(--fs-body-sm)/var(--lh-relaxed) var(--font-sans); color:var(--text-secondary); white-space:pre-wrap; word-break:break-word; }
@@ -483,6 +502,16 @@
     .rc-band-verdict { width:74px; flex-shrink:0; text-align:right; font:var(--fw-medium) 10px/1 var(--font-sans); }
     .rc-band-verdict.hot { color:var(--check-text); } .rc-band-verdict.quiet { color:var(--text-muted); } .rc-band-verdict.ok { color:var(--good-text); }
 
+    /* Report-card "Spectrum Over Time" (PRD 03) */
+    .rc-heatmap { border-radius:var(--radius-sm); overflow:hidden; box-shadow:inset 0 0 0 1px var(--border-subtle); margin-bottom:14px; }
+    .rc-heatmap svg { display:block; width:100%; height:84px; }
+    .rc-frame-curves { display:grid; grid-template-columns:repeat(3, 1fr); gap:12px; }
+    .rc-frame { background:var(--surface); border:1px solid var(--border-subtle); border-radius:var(--radius-lg); padding:10px 12px; box-shadow:var(--elevation-card); }
+    .rc-frame-head { display:flex; align-items:baseline; justify-content:space-between; gap:6px; margin-bottom:6px; }
+    .rc-frame-tag { font:var(--fw-semibold) 10px/1 var(--font-sans); letter-spacing:0.04em; text-transform:uppercase; color:var(--gold-text); }
+    .rc-frame-t { font:var(--fw-regular) 9.5px/1 var(--font-mono); color:var(--text-muted); }
+    .rc-frame-curve svg { display:block; width:100%; height:70px; }
+
     .rc-recs { display:flex; flex-direction:column; gap:10px; }
     .rc-rec { display:flex; gap:12px; padding:13px 15px; background:var(--surface); border:1px solid var(--border-subtle); border-left:3px solid var(--gold-500); border-radius:var(--radius-md); box-shadow:var(--elevation-card); }
     .rc-rec.critical { border-left-color:var(--issue-500); }
@@ -500,8 +529,10 @@
       .rc-header h1, .rc-meta, .rc-section h2, .mt-metric, .mt-value, .rc-rec-text, .rc-band-verdict, .rc-ring-label, .rc-empty { color:#000 !important; }
       .rc-header, .rc-section h2 { border-color:#ccc !important; }
       .metric-table td, .metric-table th { border-color:#ccc !important; color:#111 !important; }
-      .rc-bands, .rc-rec { background:#f7f7f7 !important; box-shadow:none !important; }
+      .rc-bands, .rc-rec, .rc-frame { background:#f7f7f7 !important; box-shadow:none !important; }
+      .rc-frame-tag { color:#000 !important; }
       .rc-rec { border-left-color:#000 !important; }
+      .rc-heatmap svg, .rc-frame-curve svg { -webkit-print-color-adjust:exact; print-color-adjust:exact; }
     }
     /* ── Ideal profile (PRD 05) ──────────────────────────────────────── */
     #ideal-profile-wrap { display:none; align-items:center; gap:8px; margin-left:14px; flex-shrink:0; }
@@ -766,6 +797,11 @@
           <div class="rc-section">
             <h2>Frequency Band Breakdown</h2>
             <div class="rc-bands" id="rc-bands"></div>
+          </div>
+          <div class="rc-section" id="rc-frames-section" style="display:none">
+            <h2>Spectrum Over Time</h2>
+            <div class="rc-heatmap" id="rc-heatmap"></div>
+            <div class="rc-frame-curves" id="rc-frame-curves"></div>
           </div>
           <div class="rc-section">
             <h2>Recommendations</h2>
@@ -1153,9 +1189,9 @@ function renderSpectrum(spectrum) {
   document.getElementById('stats-row').style.display = 'flex';
 
   // Preferred view: the EQ frequency-response curve with the selected ideal
-  // target overlaid (PRD 05). Degrade gracefully to the 7-band meters when no
-  // curve is available (e.g. --no-spectrum). Keep the header label matched to
-  // whichever visualization is actually drawn.
+  // target overlaid (PRD 05). The time-sampled spectrogram + scrubber sit under
+  // it and redraw #spectrum-chart for the selected frame (PRD 03). Degrade
+  // gracefully to the 7-band meters when no curve is available (e.g. --no-spectrum).
   if (ipHasCurve(spectrum)) {
     const profile = activeProfile(spectrum);
     const target = levelMatchedTarget(spectrum.curve, profile);
@@ -1163,8 +1199,14 @@ function renderSpectrum(spectrum) {
     if (svg) {
       const cmp = ipCompare(spectrum.curve, profile);
       title.textContent = SPECTRUM_TITLE.curve;
-      body.innerHTML = `<div class="spectrum-chart">${svg}</div>` + spectrumLegendHTML(profile, cmp);
+      // The curve chart is the "main curve"; the legend + match score sit directly
+      // beneath it, and the time-sampled spectrogram + scrubber sit under that and
+      // redraw #spectrum-chart for the selected frame (PRD 03).
+      body.innerHTML = `<div class="spectrum-chart" id="spectrum-chart">${svg}</div>`
+        + spectrumLegendHTML(profile, cmp)
+        + buildFramesSectionHTML(spectrum);
       updateIdealProfileVisibility(spectrum);
+      if (Array.isArray(spectrum.frames) && spectrum.frames.length) initSpectrogram(spectrum);
       return;
     }
   }
@@ -1207,6 +1249,157 @@ function scheduleLiveMeters(win) {
     pendingLiveWin = null;
     if (w && currentMode === 'live') renderLiveMeters(w);
   });
+}
+
+/* ── Time-sampled spectrum: spectrogram heatmap + scrubber (PRD 03) ──
+ * The whole-file curve (PRD 02) is rendered by spectrumCurveSVG above; the
+ * scrubber redraws that same #spectrum-chart for a chosen frame. */
+const HEAT_MIN = -78, HEAT_MAX = -12; // spectral-level window for the heat ramp
+// Continuous quiet→gold→bright ramp (dark ≈ app bg → King Midas gold → warm white).
+const HEAT_STOPS = [
+  [0.0,  [0x08, 0x09, 0x0b]],
+  [0.4,  [0x8a, 0x5a, 0x16]],
+  [0.75, [0xeb, 0xb9, 0x3c]],
+  [1.0,  [0xff, 0xf2, 0xd6]],
+];
+function normHeat(db) { return Math.max(0, Math.min(1, (db - HEAT_MIN) / (HEAT_MAX - HEAT_MIN))); }
+function heatColor(db) {
+  const t = normHeat(db);
+  for (let i = 1; i < HEAT_STOPS.length; i++) {
+    const [t1, c1] = HEAT_STOPS[i];
+    if (t <= t1) {
+      const [t0, c0] = HEAT_STOPS[i - 1];
+      const f = (t - t0) / (t1 - t0 || 1);
+      const ch = j => Math.round(c0[j] + (c1[j] - c0[j]) * f);
+      return `rgb(${ch(0)},${ch(1)},${ch(2)})`;
+    }
+  }
+  const last = HEAT_STOPS[HEAT_STOPS.length - 1][1];
+  return `rgb(${last[0]},${last[1]},${last[2]})`;
+}
+const CLASS_LABEL = { speech: 'Speech', music: 'Music', silence: 'Silence', unknown: '—' };
+function classLabel(c) { return CLASS_LABEL[c] || '—'; }
+
+// time → (columns) × frequency ↑ (rows, high freq on top) heatmap of the frames.
+function heatmapSVG(frames, opts = {}) {
+  const interactive = opts.interactive !== false;
+  const nF = frames.length;
+  const nB = frames[0].db.length;
+  let cells = '';
+  for (let x = 0; x < nF; x++) {
+    const db = frames[x].db;
+    for (let y = 0; y < nB; y++) {
+      const b = nB - 1 - y; // row 0 = highest frequency
+      cells += `<rect x="${x}" y="${y}" width="1.02" height="1.02" fill="${heatColor(db[b])}" shape-rendering="crispEdges"/>`;
+    }
+  }
+  let cols = '';
+  if (interactive) {
+    for (let x = 0; x < nF; x++) cols += `<rect class="hm-col" x="${x}" y="0" width="1" height="${nB}" data-i="${x}"/>`;
+  }
+  return `<svg viewBox="0 0 ${nF} ${nB}" preserveAspectRatio="none" role="img" aria-label="Time-frequency spectrogram">${cells}${cols}</svg>`;
+}
+
+// Compact sparkline of one frame's dB grid, for the report-card thumbnails.
+// (The analysis view uses the full PRD 02 spectrumCurveSVG; these stay small.)
+function miniCurveSVG(db) {
+  const VW = 600, VH = 150, padT = 8, padB = 10, ih = VH - padT - padB;
+  const n = db.length;
+  const xf = i => (n <= 1 ? VW / 2 : (i / (n - 1)) * VW);
+  const yf = v => padT + (1 - normHeat(v)) * ih;
+  let line = '', area = `M0 ${padT + ih}`;
+  for (let i = 0; i < n; i++) {
+    const X = xf(i).toFixed(1), Y = yf(db[i]).toFixed(1);
+    line += (i ? 'L' : 'M') + X + ' ' + Y + ' ';
+    area += ` L${X} ${Y}`;
+  }
+  area += ` L${VW} ${padT + ih} Z`;
+  return `<svg viewBox="0 0 ${VW} ${VH}" preserveAspectRatio="none" role="img" aria-label="Frame spectral curve">
+    <path d="${area}" fill="var(--gold-tint)" stroke="none"/>
+    <path d="${line}" fill="none" stroke="var(--gold-500)" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"/>
+  </svg>`;
+}
+
+function timeAxisHTML(frames) {
+  const n = frames.length;
+  if (n <= 1) return `<div class="spectro-axis"><span>${fmtDur(frames[0] ? frames[0].t : 0)}</span></div>`;
+  const mid = frames[Math.floor(n / 2)];
+  return `<div class="spectro-axis"><span>${fmtDur(frames[0].t)}</span><span>${fmtDur(mid.t)}</span><span>${fmtDur(frames[n - 1].t)}</span></div>`;
+}
+
+// The spectrogram strip + scrubber under the curve. Empty string when frames are
+// absent, so the curve renders alone without error.
+function buildFramesSectionHTML(spectrum) {
+  const frames = spectrum.frames;
+  if (!Array.isArray(frames) || frames.length === 0) return '';
+  const single = frames.length === 1;
+  return `<div class="spectro-scrub">
+    <div class="spectro-head">
+      <span class="spectro-title">Spectrogram · time →</span>
+      <span id="scrub-readout" class="scrub-readout">Whole-file average</span>
+      <span class="spectro-hint">${single ? 'single frame — short file' : 'click a column to scrub'}</span>
+      <button id="scrub-reset" class="scrub-reset" type="button">${iconSvg('play', 11)}Average</button>
+    </div>
+    <div id="spectrum-heatmap" class="spectro-heat">${heatmapSVG(frames)}</div>
+    ${timeAxisHTML(frames)}
+  </div>`;
+}
+
+/* Scrubber state — redraws the PRD 02 curve (#spectrum-chart) for a frame. */
+let sgState = null;
+function initSpectrogram(spectrum) {
+  // Preserve the scrubbed frame across DOM rebuilds of the SAME analysis (e.g.
+  // leaving the file tab and returning). A new analysis resets to the average.
+  const carry = sgState && sgState.spectrum === spectrum
+    && sgState.selected != null && sgState.selected < spectrum.frames.length
+    ? sgState.selected : null;
+  sgState = { spectrum, frames: spectrum.frames, selected: carry };
+  const heat = document.getElementById('spectrum-heatmap');
+  if (heat) heat.addEventListener('click', (e) => {
+    const box = heat.getBoundingClientRect();
+    if (box.width <= 0) return;
+    const nF = sgState.frames.length;
+    const i = Math.max(0, Math.min(nF - 1, Math.floor(((e.clientX - box.left) / box.width) * nF)));
+    selectFrame(i);
+  });
+  const reset = document.getElementById('scrub-reset');
+  if (reset) reset.addEventListener('click', () => selectFrame(null));
+  if (carry != null) renderScrub(); // restore a carried scrub; the average curve is already drawn
+}
+function selectFrame(i) {
+  if (!sgState) return;
+  sgState.selected = i;
+  renderScrub();
+}
+function renderScrub() {
+  if (!sgState) return;
+  const { spectrum, frames, selected } = sgState;
+  const isAvg = selected == null;
+  // Reuse PRD 02's renderer: average = whole-file curve; a frame swaps in its db
+  // on the same freq grid. spectrumCurveSVG returns '' if the curve is unusable.
+  const curve = isAvg ? spectrum.curve : { freqs: spectrum.curve.freqs, db: frames[selected].db };
+  const chart = document.getElementById('spectrum-chart');
+  if (chart) {
+    // Keep the ideal target overlaid (PRD 05) while scrubbing. The target stays
+    // level-matched to the whole-file curve so it reads as a fixed reference the
+    // per-frame measured curve moves against.
+    const target = levelMatchedTarget(spectrum.curve, activeProfile(spectrum));
+    const svg = spectrumCurveSVG(curve, spectrum.spectralCentroid, target);
+    if (svg) chart.innerHTML = svg;
+  }
+  const readout = document.getElementById('scrub-readout');
+  if (readout) {
+    if (isAvg) readout.textContent = 'Whole-file average';
+    else {
+      const f = frames[selected];
+      readout.textContent = `t = ${fmtDur(f.t)} · ${classLabel(f.class)} · RMS ${fmt(f.rms)} dB`;
+    }
+  }
+  const reset = document.getElementById('scrub-reset');
+  if (reset) reset.classList.toggle('active', !isAvg);
+  const heat = document.getElementById('spectrum-heatmap');
+  if (heat) heat.querySelectorAll('.hm-col').forEach(c =>
+    c.classList.toggle('sel', !isAvg && parseInt(c.dataset.i, 10) === selected));
 }
 
 function renderLiveMeters(win) {
@@ -1800,6 +1993,8 @@ function getReportCardSource() {
       curve: spectrum.curve || null,
       contentType: spectrum.contentType || null,
       segments: spectrum.segments || null,
+      // Time-sampled snapshots (PRD 03) for the "Spectrum Over Time" section.
+      frames: spectrum.frames,
     };
   }
   if (liveWindows.length > 0) {
@@ -2073,6 +2268,9 @@ function renderReportCard() {
     return `<div class="rc-band-row">${bandMeterHTML(b.label, b.range, db, { colorBy: 'level' })}<span class="rc-band-verdict ${vc}">${vt}</span></div>`;
   }).join('');
 
+  // Spectrum over time (heatmap thumbnail + representative frame curves)
+  renderReportCardFrames(src);
+
   // Recommendations
   document.getElementById('rc-recommendations').innerHTML = computeRecommendations(src).map(r => {
     const critical = r.startsWith('CRITICAL');
@@ -2080,6 +2278,41 @@ function renderReportCard() {
     return `<div class="rc-rec${critical ? ' critical' : ''}">
       <span class="rc-rec-icon">${iconSvg(critical ? 'alert-triangle' : 'check', 16)}</span>
       <span class="rc-rec-text">${critical ? '<span class="rc-rec-badge">Critical</span>' : ''}${text}</span>
+    </div>`;
+  }).join('');
+}
+
+// Report-card "Spectrum Over Time": a static heatmap thumbnail + start/middle/
+// loudest representative frame curves. Hidden when the analysis has no frames
+// (e.g. a live capture), so the card still prints cleanly.
+function renderReportCardFrames(src) {
+  const section = document.getElementById('rc-frames-section');
+  const frames = src.frames;
+  if (!Array.isArray(frames) || frames.length === 0) {
+    section.style.display = 'none';
+    return;
+  }
+  section.style.display = 'block';
+
+  document.getElementById('rc-heatmap').innerHTML = heatmapSVG(frames, { interactive: false });
+
+  const n = frames.length;
+  let loudest = 0;
+  for (let i = 1; i < n; i++) if (frames[i].rms > frames[loudest].rms) loudest = i;
+  const picks = [
+    { i: 0, tag: 'Start' },
+    { i: Math.floor(n / 2), tag: 'Middle' },
+    { i: loudest, tag: 'Loudest' },
+  ];
+  // Collapse duplicate indices (short files) so we never show the same frame twice.
+  const seen = new Set();
+  const unique = picks.filter(p => (seen.has(p.i) ? false : seen.add(p.i)));
+
+  document.getElementById('rc-frame-curves').innerHTML = unique.map(p => {
+    const f = frames[p.i];
+    return `<div class="rc-frame">
+      <div class="rc-frame-head"><span class="rc-frame-tag">${p.tag}</span><span class="rc-frame-t">${fmtDur(f.t)} · ${classLabel(f.class)}</span></div>
+      <div class="rc-frame-curve">${miniCurveSVG(f.db)}</div>
     </div>`;
   }).join('');
 }

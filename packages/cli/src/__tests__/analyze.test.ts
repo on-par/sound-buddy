@@ -87,6 +87,11 @@ const mockAnalysis: AudioAnalysis = {
     spectralCentroid: 1800,
     spectralRolloff85: 4500,
     dynamicRange: 7.17,
+    curve: { freqs: [20, 200, 2000, 20000], db: [-30, -18, -16, -35] },
+    frames: [
+      { t: 0.0, db: [-32, -20, -18, -36], rms: -18.2, class: 'music' },
+      { t: 0.5, db: [-28, -16, -14, -34], rms: -14.1, class: 'music' },
+    ],
     contentType: 'speech',
     segments: [
       { class: 'speech', start: 0, end: 0.6 },
@@ -180,6 +185,18 @@ describe('buddy analyze — single file', () => {
     expect(ch).toHaveProperty('rmsDbfs')
     expect(ch).toHaveProperty('peakDbfs')
     expect(ch).toHaveProperty('bands')
+  })
+
+  it('includes the whole-file curve and time-sampled frames in --json (PRD 02/03)', async () => {
+    const t = capture()
+    await runAnalyze('/tmp/mix.wav', { json: true }, t.io)
+
+    const ch = JSON.parse(t.out.join('')).channels[0]
+    expect(Array.isArray(ch.frames)).toBe(true)
+    expect(ch.frames).toHaveLength(2)
+    expect(ch.frames[0]).toMatchObject({ t: 0, class: 'music' })
+    expect(Array.isArray(ch.frames[0].db)).toBe(true)
+    expect(ch.curve).toMatchObject({ freqs: expect.any(Array), db: expect.any(Array) })
   })
 
   it('includes speech/music classification (segments + contentType) in --json output', async () => {

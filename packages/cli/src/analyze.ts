@@ -100,6 +100,10 @@ function outputJson(
       dynamicRangeDb: analysis.sox.dynamicRangeDb,
       bands: spectrum.bands,
       dominantBand: dominantBand(spectrum.bands),
+      // Whole-file frequency response (PRD 02) and time-sampled snapshots (PRD 03).
+      // Optional on SpectrumResult for back-compat, so only emit when present.
+      ...(spectrum.curve ? { curve: spectrum.curve } : {}),
+      ...(spectrum.frames ? { frames: spectrum.frames } : {}),
       // Speech/music delineation (PRD 04). Emitted only when the classifier ran
       // (older spectrum.py builds omit these), so the shape stays back-compatible.
       ...(spectrum.contentType ? { contentType: spectrum.contentType } : {}),
