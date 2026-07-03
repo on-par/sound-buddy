@@ -791,14 +791,21 @@ function ipDefaultForContentType(ct) { switch (ct) { case 'speech': return 'spee
 function ipCompare(curve, profile) {
   if (!curve || !Array.isArray(curve.db) || curve.db.length !== profile.dbOffsets.length) return null;
   const mMean = ipFiniteMean(curve.db), tMean = ipFiniteMean(profile.dbOffsets);
-  const deviation = curve.db.map((db, i) => (Number.isFinite(db) ? db - mMean : 0) - (profile.dbOffsets[i] - tMean));
+  // Silent (non-finite) bins are excluded from scoring, not counted on-target.
+  const valid = new Array(curve.db.length);
+  const deviation = curve.db.map((db, i) => {
+    const ok = Number.isFinite(db);
+    valid[i] = ok;
+    return ok ? (db - mMean) - (profile.dbOffsets[i] - tMean) : 0;
+  });
   let wsum = 0, wtot = 0;
-  deviation.forEach((d, i) => { const w = IP_POINT_WEIGHTS[i] ?? 1; wsum += w * d * d; wtot += w; });
-  const wrms = wtot > 0 ? Math.sqrt(wsum / wtot) : 0;
+  deviation.forEach((d, i) => { if (!valid[i]) return; const w = IP_POINT_WEIGHTS[i] ?? 1; wsum += w * d * d; wtot += w; });
+  if (wtot === 0) return null; // no real spectral content to compare against
+  const wrms = Math.sqrt(wsum / wtot);
   const matchScore = Math.round(Math.max(0, Math.min(100, 100 - IP_PENALTY_PER_DB * wrms)));
   const bands = IP_BANDS.map(({ band, label, lo, hi }) => {
     const vals = [];
-    IP_GRID_FREQS.forEach((f, i) => { if (f >= lo && f < hi) vals.push(deviation[i]); });
+    IP_GRID_FREQS.forEach((f, i) => { if (f >= lo && f < hi && valid[i]) vals.push(deviation[i]); });
     return { band, label, deviation: vals.length ? ipFiniteMean(vals) : 0 };
   });
   let topOver = null, topUnder = null;
@@ -814,7 +821,8 @@ function activeProfile(spectrum) {
   return IP_BY_ID.get(id) || IP_BY_ID.get('flat');
 }
 function ipHasCurve(spectrum) {
-  return !!(spectrum && spectrum.curve && Array.isArray(spectrum.curve.db) && spectrum.curve.db.length >= 2);
+  const c = spectrum && spectrum.curve;
+  return !!(c && Array.isArray(c.db) && Array.isArray(c.freqs) && c.freqs.length === c.db.length && c.db.length >= 2);
 }
 
 /* ══ Spectrum curve + dashed target overlay (PRD 02 substrate + PRD 05 overlay) ══ */
@@ -848,6 +856,7 @@ function renderSpectrumCurve(spectrum) {
   }
 
   const measuredPts = curve.freqs.map((f, i) => Number.isFinite(curve.db[i]) ? `${xOf(f).toFixed(1)},${yOf(curve.db[i]).toFixed(1)}` : null).filter(Boolean);
+  if (measuredPts.length < 2) return ''; // no real curve to draw (all-silent/degenerate)
   const targetPts = curve.freqs.map((f, i) => `${xOf(f).toFixed(1)},${yOf(targetDisp[i]).toFixed(1)}`);
   const measuredPath = 'M' + measuredPts.join(' L');
   const targetPath = 'M' + targetPts.join(' L');

@@ -79,6 +79,20 @@ describe("compareToProfile", () => {
     expect(far.matchScore).toBeLessThan(near.matchScore);
   });
 
+  it("excludes silent (non-finite) bins from scoring rather than counting them on-target", () => {
+    // A near-target mix, but with a handful of −Infinity sub-bass bins (real
+    // silence) plus a real +8 dB bump. The silent bins must not inflate the score.
+    const measured = music.dbOffsets.map((v, i) => (i < 4 ? -Infinity : v - 42 + (i === 20 ? 8 : 0)));
+    const cmp = compareToProfile({ freqs: GRID_FREQS, db: measured }, music)!;
+    expect(cmp.matchScore).toBeLessThan(100);
+    expect(cmp.matchScore).toBeGreaterThan(0);
+  });
+
+  it("returns null when the measured curve has no finite bins", () => {
+    const measured = GRID_FREQS.map(() => -Infinity);
+    expect(compareToProfile({ freqs: GRID_FREQS, db: measured }, flat)).toBeNull();
+  });
+
   it("flags the most over- and under-target bands", () => {
     // Push presence (4–6 kHz) well above target, sub-bass well below.
     const measured = GRID_FREQS.map((f) => {

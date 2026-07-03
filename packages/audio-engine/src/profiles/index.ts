@@ -211,28 +211,35 @@ export function compareToProfile(
   const measuredMean = finiteMean(curve.db);
   const targetMean = finiteMean(profile.dbOffsets);
 
+  // Per-point deviation, tracking which measured bins are real. Silent bins
+  // (−inf/NaN floors, e.g. no sub-bass in a speech file) are EXCLUDED from
+  // scoring rather than counted as an on-target 0 — otherwise a fully silent
+  // file would score a perfect 100.
+  const valid: boolean[] = new Array(curve.db.length);
   const deviation = curve.db.map((db, i) => {
-    const m = Number.isFinite(db) ? db - measuredMean : 0;
-    const t = profile.dbOffsets[i] - targetMean;
-    return m - t;
+    const ok = Number.isFinite(db);
+    valid[i] = ok;
+    return ok ? (db - measuredMean) - (profile.dbOffsets[i] - targetMean) : 0;
   });
 
-  // Weighted RMS of the deviation → match score.
+  // Weighted RMS over the valid bins → match score.
   let wsum = 0;
   let wtot = 0;
   deviation.forEach((d, i) => {
+    if (!valid[i]) return;
     const w = POINT_WEIGHTS[i] ?? 1;
     wsum += w * d * d;
     wtot += w;
   });
-  const wrms = wtot > 0 ? Math.sqrt(wsum / wtot) : 0;
+  if (wtot === 0) return null; // no real spectral content to compare against
+  const wrms = Math.sqrt(wsum / wtot);
   const matchScore = Math.round(Math.max(0, Math.min(100, 100 - PENALTY_PER_DB * wrms)));
 
-  // Per-band mean deviation for the report card.
+  // Per-band mean deviation for the report card (valid bins only).
   const bands: BandDeviation[] = BANDS.map(({ band, label, lo, hi }) => {
     const vals: number[] = [];
     GRID_FREQS.forEach((f, i) => {
-      if (f >= lo && f < hi) vals.push(deviation[i]);
+      if (f >= lo && f < hi && valid[i]) vals.push(deviation[i]);
     });
     return { band, label, deviation: vals.length ? finiteMean(vals) : 0 };
   });
