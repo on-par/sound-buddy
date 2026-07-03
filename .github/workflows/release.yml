@@ -1,17 +1,20 @@
 name: Release
 
-# Publishes a macOS (Apple Silicon) build to GitHub Releases whenever a
-# v* tag is pushed. The release asset is a plain .zip of the .app — download,
-# unzip, and drag Sound Buddy.app to /Applications. macOS 26 (Tahoe) or newer.
+# Builds the macOS (Apple Silicon) .app on a v* tag and publishes it to the
+# PUBLIC download repo (on-par/sound-buddy-releases) so this source repo can stay
+# private. The build always uploads a workflow artifact; publishing to the public
+# repo needs a RELEASES_TOKEN secret (a fine-grained PAT with contents:write on
+# on-par/sound-buddy-releases). Without that secret the build still runs and the
+# zip can be grabbed from the run's artifacts / published manually.
 on:
   push:
     tags:
       - 'v*'
-  # Allow building a release on demand from the Actions tab.
+  # Allow building on demand from the Actions tab.
   workflow_dispatch:
 
-permissions:
-  contents: write
+env:
+  RELEASES_TOKEN: ${{ secrets.RELEASES_TOKEN }}
 
 jobs:
   release:
@@ -43,9 +46,20 @@ jobs:
       - name: Build macOS zip
         run: npm run dist --prefix app
 
-      - name: Publish release
+      # Always available from the run, even when no publish token is configured.
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: sound-buddy-macos-arm64
+          path: app/release/*-arm64-mac.zip
+
+      - name: Publish to public releases repo
+        if: ${{ env.RELEASES_TOKEN != '' }}
         uses: softprops/action-gh-release@v2
         with:
+          repository: on-par/sound-buddy-releases
+          token: ${{ secrets.RELEASES_TOKEN }}
+          tag_name: ${{ github.ref_name }}
           files: |
             app/release/*-arm64-mac.zip
           fail_on_unmatched_files: true

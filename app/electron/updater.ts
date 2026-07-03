@@ -5,7 +5,10 @@ import { log, logWarn } from './logger';
 // Developer ID signature + notarization). We ask the GitHub Releases API for the
 // latest tag and, if it's newer than the running build, tell the renderer to
 // show a banner whose button opens the release page in the browser.
-const REPO = 'on-par/sound-buddy';
+//
+// Downloads live in a separate PUBLIC repo so the source can stay private; a
+// public repo is what makes the anonymous Releases API + zip downloads work.
+const REPO = 'on-par/sound-buddy-releases';
 const LATEST_RELEASE_API = `https://api.github.com/repos/${REPO}/releases/latest`;
 const RELEASES_PAGE = `https://github.com/${REPO}/releases/latest`;
 

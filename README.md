@@ -14,9 +14,9 @@ npx @sound-buddy/cli analyze --scene before.scn --scene after.scn --audio record
 
 ### Electron Desktop App
 
-**Download (recommended):** grab the latest `.zip` from
-[Releases](https://github.com/on-par/sound-buddy/releases/latest), unzip, and drag
-**Sound Buddy.app** to `/Applications`. The app is **fully self-contained** — `sox`,
+**Download (recommended):** grab the latest `.zip` from the public download repo,
+[on-par/sound-buddy-releases](https://github.com/on-par/sound-buddy-releases/releases/latest),
+unzip, and drag **Sound Buddy.app** to `/Applications`. The app is **fully self-contained** — `sox`,
 `ffmpeg`/`ffprobe`, and a Python runtime with the audio libraries are bundled inside, so
 there's no Homebrew or `pip` setup. Apple Silicon (M1+), macOS 26+. First launch:
 right-click → **Open** (unsigned build). It also checks Releases for newer versions and
@@ -76,6 +76,17 @@ With nothing configured, the panel shows a hint and the rest of the app is unaff
 npm run build    # build all packages
 npm test         # run all tests (40 tests)
 ```
+
+### Releasing the macOS app
+
+Downloads are distributed from the **public** repo
+[`on-par/sound-buddy-releases`](https://github.com/on-par/sound-buddy-releases) so this
+source repo stays private. Bump `app/package.json`, then push a `vX.Y.Z` tag: the `Release`
+workflow builds the self-contained `.app` on an Apple Silicon runner and publishes it to
+that public repo. Cross-repo publishing needs a repository secret **`RELEASES_TOKEN`** (a
+fine-grained PAT with `contents: write` on `on-par/sound-buddy-releases`); without it the
+build still runs and the zip is available as a workflow artifact to publish manually via
+`gh release create <tag> <zip> -R on-par/sound-buddy-releases`.
 
 ## License
 
