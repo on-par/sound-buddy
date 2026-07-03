@@ -459,11 +459,17 @@ export function registerIpcHandlers(): void {
   ipcMain.handle('get-settings', () => getSettings());
 
   // update-settings — persist a partial settings patch (e.g. the ideal EQ
-  // profile the user picks in the spectrum header, PRD 05). Returns the merged
-  // settings so the renderer stays in sync.
-  ipcMain.handle('update-settings', (_event, patch: Record<string, unknown>) =>
-    updateSettings(patch as Partial<ReturnType<typeof getSettings>>),
-  );
+  // profile the user picks in the spectrum header, PRD 05). Only known,
+  // type-checked keys are accepted so a stray patch can't pollute settings.json.
+  // Returns the merged settings so the renderer stays in sync.
+  ipcMain.handle('update-settings', (_event, patch: Record<string, unknown>) => {
+    const clean: Partial<ReturnType<typeof getSettings>> = {};
+    if (patch && typeof patch === 'object') {
+      if (typeof patch.aiEnabled === 'boolean') clean.aiEnabled = patch.aiEnabled;
+      if (typeof patch.idealProfile === 'string') clean.idealProfile = patch.idealProfile;
+    }
+    return updateSettings(clean);
+  });
 
   // analyze-file
   ipcMain.handle('analyze-file', async (event, opts: { filePath: string; noSpectrum?: boolean }) => {
