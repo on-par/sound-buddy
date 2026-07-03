@@ -91,14 +91,21 @@ function outputJson(
   diff: SceneDiff | undefined,
   log: (s: string) => void
 ): void {
-  const channels = channelAnalyses.map(({ channel, analysis }) => ({
-    name: channel.name,
-    rmsDbfs: analysis.sox.rmsDbfs,
-    peakDbfs: analysis.sox.peakDbfs,
-    dynamicRangeDb: analysis.sox.dynamicRangeDb,
-    bands: analysis.spectrum.bands,
-    dominantBand: dominantBand(analysis.spectrum.bands),
-  }))
+  const channels = channelAnalyses.map(({ channel, analysis }) => {
+    const { spectrum } = analysis
+    return {
+      name: channel.name,
+      rmsDbfs: analysis.sox.rmsDbfs,
+      peakDbfs: analysis.sox.peakDbfs,
+      dynamicRangeDb: analysis.sox.dynamicRangeDb,
+      bands: spectrum.bands,
+      dominantBand: dominantBand(spectrum.bands),
+      // Speech/music delineation (PRD 04). Emitted only when the classifier ran
+      // (older spectrum.py builds omit these), so the shape stays back-compatible.
+      ...(spectrum.contentType ? { contentType: spectrum.contentType } : {}),
+      ...(spectrum.segments ? { segments: spectrum.segments } : {}),
+    }
+  })
   log(JSON.stringify(diff ? { diff, channels } : { channels }, null, 2))
 }
 
