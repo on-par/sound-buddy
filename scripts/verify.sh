@@ -1,49 +1,59 @@
 #!/usr/bin/env bash
 # Run the full verification suite locally, mirroring .github/workflows/ci.yml
-# (plus the Electron app build, which CI does not currently typecheck).
+# (install → build → lint → test) plus an Electron end-to-end run that CI skips
+# (it needs sox/ffprobe/python + a real Electron launch).
 #
-#   ./scripts/verify.sh            # install (ci) + build + lint + test + app build
-#   ./scripts/verify.sh --fast     # skip the clean npm ci (reuse node_modules)
-#   ./scripts/verify.sh --e2e      # also run the Playwright/Electron e2e suite
-#
-# --no-e2e is the default (e2e needs a built app + display and is opt-in), so the
-# fast path here is "no e2e" — pass --e2e to include it.
+#   ./scripts/verify.sh            # full: install + build + lint + test + e2e
+#   ./scripts/verify.sh --no-e2e   # everything except the Electron e2e run
+#   ./scripts/verify.sh --fast     # build + lint + test only (skip clean install + e2e)
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
 FAST=0
-E2E=0
+E2E=1
 for arg in "$@"; do
   case "$arg" in
-    --fast) FAST=1 ;;
-    --e2e) E2E=1 ;;
+    --fast)   FAST=1; E2E=0 ;;
     --no-e2e) E2E=0 ;;
     *) echo "unknown flag: $arg" >&2; exit 2 ;;
   esac
 done
 
 if [[ "$FAST" -eq 0 ]]; then
-  echo "==> npm ci (root + app)"
+  echo "==> npm ci (workspaces)"
   npm ci
+  echo "==> npm ci (app)"
   npm ci --prefix app
 fi
 
 echo "==> build (tsc, all workspaces)"
 npm run build
 
-echo "==> lint (packages + app)"
+echo "==> lint (workspaces + app tsc)"
 npm run lint
 
-echo "==> test (workspaces)"
+echo "==> test (vitest, all workspaces)"
 npm test
 
-echo "==> build app (electron tsc)"
-npm run build --prefix app
-
 if [[ "$E2E" -eq 1 ]]; then
-  echo "==> e2e (playwright/electron)"
-  npm run test:e2e --prefix app
+  # The e2e runs launch the real Electron app. The smoke spec analyzes a fixture
+  # with real tools, so it needs sox + ffprobe + python3 + installed app deps. On
+  # a box missing any of them (fresh checkout, CI without media tools) skip with a
+  # warning rather than failing the whole gate — build/lint/test above already
+  # passed. Use --no-e2e to skip explicitly.
+  missing=""
+  for tool in sox ffprobe python3; do
+    command -v "$tool" >/dev/null 2>&1 || missing="$missing $tool"
+  done
+  [[ -d app/node_modules ]] || missing="$missing app-deps"
+  if [[ -n "$missing" ]]; then
+    echo "==> e2e SKIPPED — missing:$missing (run without --no-e2e once available)"
+  else
+    echo "==> e2e (Electron — smoke + stubbed UI flows incl. ideal-profile overlay)"
+    npm run build --prefix app
+    ( cd app && npx playwright test tests/smoke.spec.ts tests/e2e.spec.ts )
+  fi
 fi
 
 echo "✓ verify passed"

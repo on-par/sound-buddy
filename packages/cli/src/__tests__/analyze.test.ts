@@ -87,6 +87,11 @@ const mockAnalysis: AudioAnalysis = {
     spectralCentroid: 1800,
     spectralRolloff85: 4500,
     dynamicRange: 7.17,
+    contentType: 'speech',
+    segments: [
+      { class: 'speech', start: 0, end: 0.6 },
+      { class: 'music', start: 0.6, end: 1.0 },
+    ],
   },
 }
 
@@ -175,6 +180,17 @@ describe('buddy analyze — single file', () => {
     expect(ch).toHaveProperty('rmsDbfs')
     expect(ch).toHaveProperty('peakDbfs')
     expect(ch).toHaveProperty('bands')
+  })
+
+  it('includes speech/music classification (segments + contentType) in --json output', async () => {
+    const t = capture()
+    await runAnalyze('/tmp/mix.wav', { json: true }, t.io)
+
+    const parsed = JSON.parse(t.out.join(''))
+    const ch = parsed.channels[0]
+    expect(ch.contentType).toBe('speech')
+    expect(Array.isArray(ch.segments)).toBe(true)
+    expect(ch.segments[0]).toMatchObject({ class: 'speech', start: 0, end: 0.6 })
   })
 
   it('does not call the AI pass in --json mode', async () => {

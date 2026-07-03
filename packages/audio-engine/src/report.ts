@@ -1,4 +1,24 @@
-import type { AudioAnalysis, ChannelAnalysis, ChannelComparison } from "./types.js";
+import type { AudioAnalysis, ChannelAnalysis, ChannelComparison, ContentType } from "./types.js";
+
+/** Human label for a detected content type (PRD 04). */
+function contentTypeLabel(ct: ContentType): string {
+  switch (ct) {
+    case "speech": return "Speech";
+    case "music": return "Music";
+    case "mixed": return "Mixed (speech + music)";
+    case "silence": return "Silence";
+  }
+}
+
+/** What the content-aware thresholds optimize for a given content type (PRD 04). */
+function contentTypeTarget(ct: ContentType): string {
+  switch (ct) {
+    case "speech": return "intelligibility / presence";
+    case "music": return "full-range balance";
+    case "mixed": return "mixed content";
+    case "silence": return "n/a";
+  }
+}
 
 function fmt(n: number, decimals = 2): string {
   return n.toFixed(decimals);
@@ -107,6 +127,12 @@ export function buildReport(analysis: AudioAnalysis): string {
   // --- Computed Observations ---
   lines.push("[ COMPUTED OBSERVATIONS ]");
 
+  // Content type (PRD 04) — drives the content-aware thresholds below.
+  const contentType = spectrum.contentType;
+  if (contentType) {
+    lines.push(`  . Content type: ${contentTypeLabel(contentType)} -- thresholds tuned for ${contentTypeTarget(contentType)}`);
+  }
+
   // Loudness
   if (sox.rmsDbfs > -6) {
     lines.push(`  ! Loudness: Very hot -- RMS at ${fmtDb(sox.rmsDbfs)}, potential over-compression`);
@@ -149,11 +175,20 @@ export function buildReport(analysis: AudioAnalysis): string {
   // Sub-bass mud check
   if (bands.subBass > bands.bass - 3) {
     lines.push(`  ! Sub-bass: Sub (${fmt(bands.subBass)} dB) nearly equals or exceeds bass (${fmt(bands.bass)} dB) -- possible mud/rumble`);
+  } else if (contentType === "speech" && bands.subBass > bands.mid - 12) {
+    // Speech carries little useful sub-bass energy — significant sub relative to
+    // the voice band usually means rumble / handling / plosive noise.
+    lines.push(`  ! Sub-bass (speech): ${fmt(bands.subBass)} dB is high for voice -- consider a high-pass below 80 Hz to clean up rumble`);
   }
 
-  // Presence/air
-  if (bands.presence < bands.mid - 12) {
-    lines.push(`  ! Presence dip: ${fmt(bands.presence)} dB vs mid ${fmt(bands.mid)} dB -- may sound recessed/dull`);
+  // Presence/air. Speech leans on the presence band for intelligibility, so a
+  // dip is flagged sooner (8 dB). Every other content type keeps the original
+  // 12 dB threshold — content-awareness only *adds* sensitivity for speech, it
+  // never suppresses a dip warning that the content-agnostic report would show.
+  const presenceDipThreshold = contentType === "speech" ? 8 : 12;
+  if (bands.presence < bands.mid - presenceDipThreshold) {
+    const symptom = contentType === "speech" ? "unintelligible/dull" : "recessed/dull";
+    lines.push(`  ! Presence dip: ${fmt(bands.presence)} dB vs mid ${fmt(bands.mid)} dB -- may sound ${symptom}`);
   }
 
   lines.push("");
@@ -269,6 +304,10 @@ export function buildSummaryTable(analysis: AudioAnalysis): string {
     ["Spectral Centroid", fmtHz(spectrum.spectralCentroid)],
     ["Rolloff 85%", fmtHz(spectrum.spectralRolloff85)],
   ];
+
+  if (spectrum.contentType) {
+    rows.push(["Content Type", contentTypeLabel(spectrum.contentType)]);
+  }
 
   const labelWidth = Math.max(...rows.map(([l]) => l.length)) + 2;
   const lines = rows.map(([label, value]) => {
