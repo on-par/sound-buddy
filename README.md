@@ -81,12 +81,22 @@ npm test         # run all tests (40 tests)
 
 Downloads are distributed from the **public** repo
 [`on-par/sound-buddy-releases`](https://github.com/on-par/sound-buddy-releases) so this
-source repo stays private. Bump `app/package.json`, then push a `vX.Y.Z` tag: the `Release`
-workflow builds the self-contained `.app` on an Apple Silicon runner and publishes it to
-that public repo. Cross-repo publishing needs a repository secret **`RELEASES_TOKEN`** (a
-fine-grained PAT with `contents: write` on `on-par/sound-buddy-releases`); without it the
-build still runs and the zip is available as a workflow artifact to publish manually via
-`gh release create <tag> <zip> -R on-par/sound-buddy-releases`.
+source repo stays private. To cut a release, just run:
+
+```bash
+scripts/release.sh            # patch bump (0.2.1 -> 0.2.2)
+scripts/release.sh minor      # or: minor / major / an explicit x.y.z
+scripts/release.sh --dry-run  # preflight + gate only, no changes
+```
+
+It bumps the version, runs the gate, builds the self-contained `.app`, tags this repo, and
+publishes the zip to the public repo — using your local `gh` auth, so there's no token to
+store. Needs the build tools on your machine (`brew install sox ffmpeg dylibbundler`).
+
+CI mirror (optional): pushing a `vX.Y.Z` tag also runs the `Release` workflow, which builds
+the same zip and uploads it as a workflow artifact; it additionally publishes to the public
+repo only if a **`RELEASES_TOKEN`** secret (fine-grained PAT, `contents: write` on the
+releases repo) is configured.
 
 ## License
 

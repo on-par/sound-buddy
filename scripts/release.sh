@@ -1,0 +1,135 @@
+#!/usr/bin/env bash
+#
+# Publish a new self-contained macOS release of Sound Buddy to the PUBLIC
+# download repo (on-par/sound-buddy-releases).
+#
+# No stored tokens, no CI secret — it uses your local `gh` auth. It bumps the
+# version, builds the self-contained .app, tags the source repo, and publishes
+# the zip to the public repo.
+#
+# Usage:
+#   scripts/release.sh              # patch bump  (0.2.1 -> 0.2.2)
+#   scripts/release.sh minor        # minor bump  (0.2.1 -> 0.3.0)
+#   scripts/release.sh major        # major bump  (0.2.1 -> 1.0.0)
+#   scripts/release.sh 0.5.0        # explicit version
+#   scripts/release.sh patch --dry-run   # do everything except mutate/publish
+#   scripts/release.sh --yes        # skip the confirmation prompt
+#
+set -euo pipefail
+
+PUBLIC_REPO="on-par/sound-buddy-releases"
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+APP="$ROOT/app"
+
+# ── Args ─────────────────────────────────────────────────────────────────────
+BUMP="patch"
+DRY_RUN=0
+ASSUME_YES=0
+for arg in "$@"; do
+  case "$arg" in
+    --dry-run) DRY_RUN=1 ;;
+    --yes|-y)  ASSUME_YES=1 ;;
+    patch|minor|major) BUMP="$arg" ;;
+    [0-9]*.[0-9]*.[0-9]*) BUMP="$arg" ;;
+    *) echo "error: unknown argument '$arg'" >&2; exit 2 ;;
+  esac
+done
+
+say() { printf '\033[1;34m==>\033[0m %s\n' "$*"; }
+die() { printf '\033[1;31merror:\033[0m %s\n' "$*" >&2; exit 1; }
+
+# ── Preflight ────────────────────────────────────────────────────────────────
+say "Checking prerequisites"
+for tool in gh node npm git sox ffmpeg ffprobe dylibbundler curl; do
+  command -v "$tool" >/dev/null 2>&1 || die "missing '$tool'. Build tools: brew install sox ffmpeg dylibbundler"
+done
+gh auth status >/dev/null 2>&1 || die "not logged in to GitHub — run: gh auth login"
+gh repo view "$PUBLIC_REPO" >/dev/null 2>&1 || die "can't reach $PUBLIC_REPO (permissions?)"
+
+if [[ -n "$(git -C "$ROOT" status --porcelain)" ]]; then
+  die "working tree is dirty — commit or stash first (a release should be a clean bump)"
+fi
+
+CURRENT="$(node -p "require('$APP/package.json').version")"
+# Compute the next version with pure semver math — writes nothing.
+NEXT="$(node -e '
+  const cur = require(process.argv[1]).version;
+  const bump = process.argv[2];
+  if (/^[0-9]+\.[0-9]+\.[0-9]+$/.test(bump)) { console.log(bump); process.exit(0); }
+  let [a, b, c] = cur.split(".").map(Number);
+  if (bump === "major") { a++; b = 0; c = 0; }
+  else if (bump === "minor") { b++; c = 0; }
+  else { c++; }
+  console.log(`${a}.${b}.${c}`);
+' "$APP/package.json" "$BUMP")"
+TAG="v$NEXT"
+
+say "Current version : $CURRENT"
+say "New version     : $NEXT   (tag $TAG)"
+say "Publishes to    : https://github.com/$PUBLIC_REPO/releases/tag/$TAG"
+
+if gh release view "$TAG" -R "$PUBLIC_REPO" >/dev/null 2>&1; then
+  die "release $TAG already exists on $PUBLIC_REPO"
+fi
+
+# ── Quality gate ─────────────────────────────────────────────────────────────
+say "Running gate (build, lint, test)"
+( cd "$ROOT" && npm run build >/dev/null && npm run lint >/dev/null && npm test >/dev/null ) \
+  || die "gate failed — fix build/lint/test before releasing"
+say "Gate passed"
+
+if [[ "$DRY_RUN" == 1 ]]; then
+  say "Dry run — stopping before version bump / build / publish."
+  exit 0
+fi
+
+if [[ "$ASSUME_YES" != 1 ]]; then
+  printf '\033[1;33mRelease %s to %s? [y/N] \033[0m' "$TAG" "$PUBLIC_REPO"
+  read -r reply
+  [[ "$reply" =~ ^[Yy]$ ]] || die "aborted"
+fi
+
+# ── Bump, build, verify ──────────────────────────────────────────────────────
+say "Bumping version to $NEXT"
+( cd "$APP" && npm version "$NEXT" --no-git-tag-version --allow-same-version >/dev/null )
+# npm version touches package.json (and package-lock.json if present).
+
+say "Building self-contained app (this takes a minute)"
+( cd "$APP" && npm run dist >/dev/null )
+
+ZIP="$APP/release/Sound Buddy-$NEXT-arm64-mac.zip"
+[[ -f "$ZIP" ]] || die "expected zip not found: $ZIP"
+# Sanity: the bundle must actually be self-contained.
+APP_RES="$APP/release/mac-arm64/Sound Buddy.app/Contents/Resources"
+[[ -x "$APP_RES/bin/sox" && -x "$APP_RES/python/bin/python3" ]] || die "bundle is missing sox/python — build problem"
+say "Built $(basename "$ZIP") ($(du -h "$ZIP" | cut -f1))"
+
+# ── Tag the source repo ──────────────────────────────────────────────────────
+say "Committing + tagging the source repo"
+git -C "$ROOT" add "$APP/package.json" "$APP/package-lock.json"
+git -C "$ROOT" commit -q -m "release: $TAG"
+git -C "$ROOT" tag "$TAG"
+git -C "$ROOT" push -q origin HEAD
+git -C "$ROOT" push -q origin "$TAG"
+
+# ── Publish to the public download repo ──────────────────────────────────────
+say "Publishing to $PUBLIC_REPO"
+NOTES="$(cat <<EOF
+Self-contained macOS build (Apple Silicon) — bundles the audio toolchain
+(sox, ffmpeg/ffprobe) and a Python runtime, so there's no setup.
+
+## Download & install
+1. Download \`Sound.Buddy-$NEXT-arm64-mac.zip\` below, unzip, drag **Sound Buddy.app** to **/Applications**.
+2. First launch: right-click → **Open** (unsigned build). Or:
+   \`xattr -dr com.apple.quarantine "/Applications/Sound Buddy.app"\`
+
+## Requirements
+- **Apple Silicon (M1 or newer)** — arm64 only.
+- **macOS 26 (Tahoe) or newer.**
+EOF
+)"
+gh release create "$TAG" "$ZIP" -R "$PUBLIC_REPO" \
+  --title "Sound Buddy $TAG (macOS Apple Silicon)" \
+  --notes "$NOTES"
+
+say "Done → https://github.com/$PUBLIC_REPO/releases/tag/$TAG"
