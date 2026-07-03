@@ -67,7 +67,16 @@ export async function checkForUpdates(win: BrowserWindow | null, silent: boolean
     return;
   }
 
-  if (latest && isNewer(latest.version, current)) {
+  if (!latest) {
+    // Couldn't determine the latest release (offline, or a private repo returning
+    // 404 to anonymous requests). Don't claim "up to date" — say so on a manual check.
+    if (!silent && win && !win.isDestroyed()) {
+      win.webContents.send('update-status', { state: 'error' });
+    }
+    return;
+  }
+
+  if (isNewer(latest.version, current)) {
     log(`update available: ${current} → ${latest.version}`);
     if (win && !win.isDestroyed()) win.webContents.send('update-available', latest);
     return;
