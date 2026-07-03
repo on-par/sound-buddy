@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # Run the full verification suite locally, mirroring .github/workflows/ci.yml
-# (install → build → lint → test) plus an Electron end-to-end smoke run that CI
-# skips (it needs sox/ffprobe/python + a real Electron launch).
+# (install → build → lint → test) plus the Electron end-to-end suite that CI
+# skips (it needs a real Electron launch, and the smoke run needs sox/ffprobe/python).
 #
-#   ./scripts/verify.sh            # full: install + build + lint + test + e2e smoke
-#   ./scripts/verify.sh --no-e2e   # everything except the Electron e2e smoke
+#   ./scripts/verify.sh            # full: install + build + lint + test + app e2e
+#   ./scripts/verify.sh --no-e2e   # everything except the Electron e2e
 #   ./scripts/verify.sh --fast     # build + lint + test only (skip clean install + e2e)
 set -euo pipefail
 
@@ -27,33 +27,41 @@ if [[ "$FAST" -eq 0 ]]; then
   npm ci --prefix app
 fi
 
+# Build before lint: workspaces cross-reference each other's dist/ type
+# declarations, so `tsc --noEmit` only resolves after a build (CI order too).
 echo "==> build (tsc, all workspaces)"
 npm run build
 
 echo "==> lint (workspaces + app tsc)"
 npm run lint
 
-echo "==> test (vitest, all workspaces)"
+echo "==> test (unit, all workspaces)"
 npm test
 
 if [[ "$E2E" -eq 1 ]]; then
-  # The smoke run launches the real Electron app and analyzes a fixture, so it
-  # needs sox + ffprobe + python3 + installed app deps. On a box missing any of
-  # them (fresh checkout, CI without media tools) skip with a warning rather than
-  # failing the whole gate — build/lint/test above already passed. Use --no-e2e
-  # to skip explicitly.
-  missing=""
-  for tool in sox ffprobe python3; do
-    command -v "$tool" >/dev/null 2>&1 || missing="$missing $tool"
-  done
-  [[ -d app/node_modules ]] || missing="$missing app-deps"
-  if [[ -n "$missing" ]]; then
-    echo "==> e2e smoke SKIPPED — missing:$missing (run without --no-e2e once available)"
+  # The e2e suite launches the real Electron app. The smoke spec additionally
+  # analyzes a fixture through sox + ffprobe + python3; when those are missing
+  # (fresh box, CI without media tools) run only the stubbed specs rather than
+  # failing the gate. App deps are required to build dist/electron at all.
+  if [[ ! -d app/node_modules ]]; then
+    echo "==> e2e SKIPPED — app deps not installed (run without --fast, or: npm ci --prefix app)"
   else
-    echo "==> e2e smoke (Electron — real sox/ffprobe/python)"
+    echo "==> build app (tsc → dist/electron)"
     npm run build --prefix app
-    ( cd app && npx playwright test tests/smoke.spec.ts )
+    missing=""
+    for tool in sox ffprobe python3; do
+      command -v "$tool" >/dev/null 2>&1 || missing="$missing $tool"
+    done
+    if [[ -n "$missing" ]]; then
+      echo "==> e2e: smoke SKIPPED (missing:$missing) — running stubbed specs only"
+      ( cd app && npx playwright test tests/e2e.spec.ts )
+    else
+      echo "==> e2e (full Playwright suite — real sox/ffprobe/python)"
+      npm run test:e2e --prefix app
+    fi
   fi
+else
+  echo "==> skipping app e2e (--no-e2e / --fast)"
 fi
 
 echo "✓ verify passed"

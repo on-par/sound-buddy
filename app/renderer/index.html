@@ -349,6 +349,19 @@
     .bm-centroid { position:relative; height:0; margin:3px 56px 3px 116px; border-top:1.5px dashed var(--azure-400); }
     .bm-centroid span { position:absolute; right:0; top:-8px; font:var(--fw-medium) 9px/1 var(--font-mono); color:var(--azure-text); background:var(--surface-inset); padding:2px 5px; border-radius:var(--radius-xs); }
 
+    /* Spectrum curve (EQ analyzer, PRD 02) */
+    .spectrum-chart { flex:1; min-height:340px; display:flex; align-items:center; background:var(--surface-inset); border:1px solid var(--border-subtle); border-radius:var(--radius-xl); box-shadow:var(--elevation-canvas); padding:18px 20px; }
+    .spectrum-chart svg { width:100%; height:auto; display:block; }
+    .sb-band-tint { opacity:0.06; }
+    .sb-grid-line { stroke:var(--gridline); stroke-width:1; }
+    .sb-axis-base { stroke:var(--border-default); stroke-width:1; }
+    .sb-x-label { font:var(--fw-medium) 11px/1 var(--font-mono); fill:var(--gridline-label); text-anchor:middle; }
+    .sb-y-label { font:var(--fw-medium) 11px/1 var(--font-mono); fill:var(--gridline-label); text-anchor:end; }
+    .sb-curve-fill { stroke:none; }
+    .sb-curve-line { fill:none; stroke:var(--gold-500); stroke-width:2.25; stroke-linejoin:round; stroke-linecap:round; filter:drop-shadow(0 0 5px var(--gold-glow)); }
+    .sb-centroid-line { stroke:var(--azure-400); stroke-width:1.25; stroke-dasharray:4 4; opacity:0.85; }
+    .sb-centroid-label { font:var(--fw-medium) 10px/1 var(--font-mono); fill:var(--azure-text); text-anchor:middle; }
+
     /* AI panel */
     #model-chip { display:inline-flex; align-items:center; gap:5px; font:var(--fw-medium) 10px/1 var(--font-mono); color:var(--gold-text); background:var(--gold-tint); border:1px solid var(--gold-600); border-radius:var(--radius-xs); padding:3px 7px; }
     #ai-output { flex:1; overflow-y:auto; padding:16px; font:var(--fw-regular) var(--fs-body-sm)/var(--lh-relaxed) var(--font-sans); color:var(--text-secondary); white-space:pre-wrap; word-break:break-word; }
@@ -579,7 +592,7 @@
     <!-- Spectrum / Meters -->
     <section id="spectrum-panel">
       <div id="spectrum-header">
-        <span id="spectrum-title">Spectrum · Meters</span>
+        <span id="spectrum-title">Spectrum · Curve</span>
         <div id="stats-row">
           <div class="stat"><span class="stat-label">RMS</span><span class="stat-val"><span class="stat-num" id="stat-rms">—</span><span class="stat-unit">dBFS</span></span></div>
           <div class="stat"><span class="stat-label">Peak</span><span class="stat-val"><span class="stat-num" id="stat-peak">—</span><span class="stat-unit">dBFS</span></span></div>
@@ -722,13 +735,13 @@ function fmtDur(s) { const m = Math.floor(s / 60); const sec = (s % 60).toFixed(
 const DB_MIN = -72, DB_MAX = -3;
 const GRID = [-60, -48, -36, -24, -12, -6];
 const BAND_META = [
-  { key: 'subBass',    label: 'Sub Bass',   range: '20–60 Hz',    color: 'var(--band-sub)' },
-  { key: 'bass',       label: 'Bass',        range: '60–250 Hz',   color: 'var(--band-bass)' },
-  { key: 'lowMid',     label: 'Low Mid',     range: '250–500 Hz',  color: 'var(--band-low-mid)' },
-  { key: 'mid',        label: 'Mid',         range: '500 Hz–2 kHz',color: 'var(--band-mid)' },
-  { key: 'highMid',    label: 'High Mid',    range: '2–4 kHz',     color: 'var(--band-high-mid)' },
-  { key: 'presence',   label: 'Presence',    range: '4–6 kHz',     color: 'var(--band-presence)' },
-  { key: 'brilliance', label: 'Brilliance',  range: '6–20 kHz',    color: 'var(--band-brilliance)' },
+  { key: 'subBass',    label: 'Sub Bass',   range: '20–60 Hz',    color: 'var(--band-sub)',        lo: 20,   hi: 60    },
+  { key: 'bass',       label: 'Bass',        range: '60–250 Hz',   color: 'var(--band-bass)',       lo: 60,   hi: 250   },
+  { key: 'lowMid',     label: 'Low Mid',     range: '250–500 Hz',  color: 'var(--band-low-mid)',    lo: 250,  hi: 500   },
+  { key: 'mid',        label: 'Mid',         range: '500 Hz–2 kHz',color: 'var(--band-mid)',        lo: 500,  hi: 2000  },
+  { key: 'highMid',    label: 'High Mid',    range: '2–4 kHz',     color: 'var(--band-high-mid)',   lo: 2000, hi: 4000  },
+  { key: 'presence',   label: 'Presence',    range: '4–6 kHz',     color: 'var(--band-presence)',   lo: 4000, hi: 6000  },
+  { key: 'brilliance', label: 'Brilliance',  range: '6–20 kHz',    color: 'var(--band-brilliance)', lo: 6000, hi: 20000 },
 ];
 // live-event band keys are snake_case
 const LIVE_BAND_KEYS = ['sub_bass', 'bass', 'low_mid', 'mid', 'high_mid', 'presence', 'brilliance'];
@@ -772,10 +785,146 @@ function setSpectrumState(state, opts = {}) {
   }
 }
 
+// Panel-header labels. The static markup seeds `curve`; the render paths below
+// keep the header in sync with what's actually drawn (curve vs. fallback meters).
+const SPECTRUM_TITLE = { curve: 'Spectrum · Curve', meters: 'Spectrum · Meters' };
+
+/* ── EQ spectrum curve (PRD 02) ─────────────────────────────────────────────
+ * A FabFilter Pro-Q–style analyzer: log-frequency X, auto-ranged dB Y, gold
+ * curve with a gradient fill, band-range tints, and the centroid marker. */
+const CURVE_VB = { w: 900, h: 440, ml: 52, mr: 16, mt: 18, mb: 34 };
+const X_TICKS = [
+  { f: 20, label: '20' }, { f: 50, label: '50' }, { f: 100, label: '100' },
+  { f: 200, label: '200' }, { f: 500, label: '500' }, { f: 1000, label: '1k' },
+  { f: 2000, label: '2k' }, { f: 5000, label: '5k' }, { f: 10000, label: '10k' },
+  { f: 20000, label: '20k' },
+];
+const CURVE_FMIN = 20, CURVE_FMAX = 20000;
+
+// "Nice" evenly-spaced axis ticks spanning [lo, hi].
+function niceTicks(lo, hi, count = 5) {
+  const span = hi - lo;
+  if (!(span > 0)) return [Math.round(lo)];
+  const raw = span / count;
+  const mag = Math.pow(10, Math.floor(Math.log10(raw)));
+  const norm = raw / mag;
+  const step = (norm < 1.5 ? 1 : norm < 3 ? 2 : norm < 7 ? 5 : 10) * mag;
+  const first = Math.ceil(lo / step) * step;
+  const ticks = [];
+  for (let v = first; v <= hi + step * 1e-6; v += step) ticks.push(Math.round(v * 10) / 10);
+  return ticks;
+}
+
+// Catmull-Rom → cubic Bézier for a smooth curve through all points.
+function smoothPath(pts) {
+  if (pts.length < 2) return pts.length ? `M${pts[0].x},${pts[0].y}` : '';
+  let d = `M${pts[0].x.toFixed(2)},${pts[0].y.toFixed(2)}`;
+  for (let i = 0; i < pts.length - 1; i++) {
+    const p0 = pts[i - 1] || pts[i], p1 = pts[i], p2 = pts[i + 1], p3 = pts[i + 2] || p2;
+    const c1x = p1.x + (p2.x - p0.x) / 6, c1y = p1.y + (p2.y - p0.y) / 6;
+    const c2x = p2.x - (p3.x - p1.x) / 6, c2y = p2.y - (p3.y - p1.y) / 6;
+    d += `C${c1x.toFixed(2)},${c1y.toFixed(2)} ${c2x.toFixed(2)},${c2y.toFixed(2)} ${p2.x.toFixed(2)},${p2.y.toFixed(2)}`;
+  }
+  return d;
+}
+
+// Build the analyzer SVG from a { freqs, db } curve. Returns '' if unusable.
+function spectrumCurveSVG(curve, centroid) {
+  if (!curve || !Array.isArray(curve.freqs) || !Array.isArray(curve.db)) return '';
+  const n = Math.min(curve.freqs.length, curve.db.length);
+  const raw = [];
+  for (let i = 0; i < n; i++) {
+    const f = curve.freqs[i], db = curve.db[i];
+    if (isFinite(f) && f > 0 && isFinite(db)) raw.push({ f, db });
+  }
+  if (raw.length < 2) return '';
+
+  const { w, h, ml, mr, mt, mb } = CURVE_VB;
+  const x0 = ml, x1 = w - mr, y0 = mt, y1 = h - mb;
+  const logMin = Math.log10(CURVE_FMIN), logSpan = Math.log10(CURVE_FMAX) - logMin;
+  const xForFreq = f => x0 + (Math.log10(Math.max(CURVE_FMIN, Math.min(CURVE_FMAX, f))) - logMin) / logSpan * (x1 - x0);
+
+  // Auto-range Y to the curve with padding; widen a degenerate (flat) range.
+  const dbs = raw.map(p => p.db);
+  let dMin = Math.min(...dbs), dMax = Math.max(...dbs);
+  if (dMax - dMin < 1) { dMin -= 6; dMax += 6; }
+  const pad = Math.max(3, (dMax - dMin) * 0.08);
+  const lo = dMin - pad, hi = dMax + pad;
+  const yForDb = db => y1 - (db - lo) / (hi - lo) * (y1 - y0);
+
+  const pts = raw.map(p => ({ x: xForFreq(p.f), y: yForDb(p.db) }));
+
+  // Band-range tints along the x axis.
+  const tints = BAND_META.map(b => {
+    const bx0 = xForFreq(b.lo), bx1 = xForFreq(b.hi);
+    return `<rect class="sb-band-tint" x="${bx0.toFixed(1)}" y="${y0}" width="${(bx1 - bx0).toFixed(1)}" height="${y1 - y0}" fill="${b.color}"/>`;
+  }).join('');
+
+  // Horizontal dB gridlines + labels.
+  const yGrid = niceTicks(lo, hi, 5).filter(v => v > lo && v < hi).map(v => {
+    const y = yForDb(v).toFixed(1);
+    return `<line class="sb-grid-line" x1="${x0}" y1="${y}" x2="${x1}" y2="${y}"/>`
+      + `<text class="sb-y-label" x="${x0 - 8}" y="${(+y + 4).toFixed(1)}">${v}</text>`;
+  }).join('');
+
+  // Vertical frequency gridlines + labels.
+  const xGrid = X_TICKS.map(t => {
+    const x = xForFreq(t.f).toFixed(1);
+    return `<line class="sb-grid-line" x1="${x}" y1="${y0}" x2="${x}" y2="${y1}"/>`
+      + `<text class="sb-x-label" x="${x}" y="${y1 + 22}">${t.label}</text>`;
+  }).join('');
+
+  const line = smoothPath(pts);
+  const area = `${line} L${pts[pts.length - 1].x.toFixed(2)},${y1} L${pts[0].x.toFixed(2)},${y1} Z`;
+
+  // Spectral-centroid marker.
+  let centroidMark = '';
+  if (isFinite(centroid) && centroid >= CURVE_FMIN && centroid <= CURVE_FMAX) {
+    const cx = xForFreq(centroid).toFixed(1);
+    centroidMark = `<line class="sb-centroid-line" x1="${cx}" y1="${y0}" x2="${cx}" y2="${y1}"/>`
+      + `<text class="sb-centroid-label" x="${cx}" y="${y0 + 12}">${fmtHz(centroid)}</text>`;
+  }
+
+  return `<svg class="sb-spectrum-curve" viewBox="0 0 ${w} ${h}" role="img" aria-label="Frequency response curve">
+    <defs>
+      <linearGradient id="sb-spectrum-fill" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0" style="stop-color:var(--gold-500)" stop-opacity="0.34"/>
+        <stop offset="1" style="stop-color:var(--gold-500)" stop-opacity="0"/>
+      </linearGradient>
+      <clipPath id="sb-spectrum-plot"><rect x="${x0}" y="${y0}" width="${x1 - x0}" height="${y1 - y0}"/></clipPath>
+    </defs>
+    ${tints}
+    ${yGrid}
+    ${xGrid}
+    <line class="sb-axis-base" x1="${x0}" y1="${y1}" x2="${x1}" y2="${y1}"/>
+    <g clip-path="url(#sb-spectrum-plot)">
+      <path class="sb-curve-fill" d="${area}" fill="url(#sb-spectrum-fill)"/>
+      <path class="sb-curve-line" d="${line}"/>
+    </g>
+    ${centroidMark}
+  </svg>`;
+}
+
 function renderSpectrum(spectrum) {
   const body = document.getElementById('spectrum-body');
+  const title = document.getElementById('spectrum-title');
   document.getElementById('stats-row').style.display = 'flex';
 
+  // Preferred view: the EQ frequency-response curve. Degrade gracefully to the
+  // 7-band meters when no curve is available (e.g. --no-spectrum). Keep the
+  // header label matched to whichever visualization is actually drawn.
+  const svg = spectrum ? spectrumCurveSVG(spectrum.curve, spectrum.spectralCentroid) : '';
+  if (svg) {
+    title.textContent = SPECTRUM_TITLE.curve;
+    body.innerHTML = `<div class="spectrum-chart">${svg}</div>`;
+    return;
+  }
+  title.textContent = SPECTRUM_TITLE.meters;
+  renderBandMeters(spectrum);
+}
+
+function renderBandMeters(spectrum) {
+  const body = document.getElementById('spectrum-body');
   const bandVals = BAND_META.map(b => spectrum.bands[b.key]);
   const loudestIdx = bandVals.indexOf(Math.max(...bandVals));
 
@@ -898,11 +1047,13 @@ document.querySelectorAll('.mode-tab').forEach(tab => {
 function syncSpectrumForMode(mode) {
   const title = document.getElementById('spectrum-title');
   if (mode === 'live') {
-    title.textContent = liveRunning ? 'Live Meters' : 'Spectrum · Meters';
+    title.textContent = liveRunning ? 'Live Meters' : SPECTRUM_TITLE.meters;
     if (liveRunning && liveWindows.length > 0) renderLiveMeters(liveWindows[liveWindows.length - 1]);
     else setSpectrumState('empty', { text: 'Start live capture to see the meters' });
   } else {
-    title.textContent = 'Spectrum · Meters';
+    // renderSpectrum sets the header to match what it draws (curve vs meters);
+    // seed the curve label for the pre-analysis empty state.
+    title.textContent = SPECTRUM_TITLE.curve;
     if (currentAnalysis) renderSpectrum(currentAnalysis.spectrum);
     else setSpectrumState('empty', { text: mode === 'dir' ? 'Analyze the folder to see the spectrum' : 'Load a file to see the spectrum' });
   }
@@ -1098,7 +1249,7 @@ async function stopLive() {
   document.getElementById('live-indicator').style.display = 'none';
   document.getElementById('live-status').style.display = 'none';
   document.getElementById('window-badge').textContent = '';
-  document.getElementById('spectrum-title').textContent = 'Spectrum · Meters';
+  document.getElementById('spectrum-title').textContent = SPECTRUM_TITLE.meters;
 }
 
 function startLiveCountdown(intervalSecs) {
