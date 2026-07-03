@@ -5,6 +5,22 @@ import * as path from 'path';
 let electronApp: ElectronApplication;
 let window: Page;
 
+// A 48-point log-spaced frequency-response curve (20 Hz–20 kHz), tilted bass-heavy
+// so the acceptance "curve is higher at low frequencies" holds. Mirrors the shape
+// spectrum.py emits so the renderer is exercised the same way as in production.
+const CURVE = (() => {
+  const N = 48;
+  const freqs: number[] = [];
+  const db: number[] = [];
+  for (let i = 0; i < N; i++) {
+    const f = 20 * Math.pow(20000 / 20, i / (N - 1));
+    freqs.push(Math.round(f));
+    // ~ -18 dB at 20 Hz sloping down to ~ -48 dB at 20 kHz, with a little ripple.
+    db.push(-18 - 30 * (i / (N - 1)) + Math.sin(i / 2) * 1.5);
+  }
+  return { freqs, db };
+})();
+
 const FAKE_ANALYSIS = {
   filePath: '/fake/test-fixtures/silence.wav',
   sox: {
@@ -62,13 +78,10 @@ const FAKE_ANALYSIS = {
     spectralCentroid: 1200,
     spectralRolloff85: 4000,
     dynamicRange: 12,
-    // Whole-file curve (PRD 02) + classification (PRD 04) so the ideal-profile
-    // overlay + comparison (PRD 05) have real input. 48-pt geomspace(20,20k).
+    curve: CURVE,
+    // Classification (PRD 04) so the ideal-profile overlay + comparison (PRD 05)
+    // default from content type.
     contentType: 'speech',
-    curve: {
-      freqs: Array.from({ length: 48 }, (_, i) => 20 * Math.pow(1000, i / 47)),
-      db: Array.from({ length: 48 }, (_, i) => -30 + Math.sin(i / 4) * 5),
-    },
   },
 };
 
@@ -145,6 +158,45 @@ test.describe('Sound Buddy E2E', () => {
     await expect(window.locator('#rc-empty')).toBeHidden();
   });
 
+  test('spectrum panel renders the frequency-response curve', async () => {
+    await window.locator('.mode-tab[data-mode="file"]').click();
+
+    // The analyzer SVG with the gold curve path is present.
+    const svg = window.locator('#spectrum-body svg.sb-spectrum-curve');
+    await expect(svg).toBeVisible();
+    await expect(svg.locator('path.sb-curve-line')).toHaveCount(1);
+
+    // Logarithmic frequency X axis labeled with decade markers.
+    const xLabels = await svg.locator('text.sb-x-label').allTextContents();
+    for (const l of ['20', '100', '1k', '10k']) expect(xLabels).toContain(l);
+
+    // Vertical axis is labeled in dB (auto-ranged numeric ticks).
+    expect(await svg.locator('text.sb-y-label').count()).toBeGreaterThanOrEqual(1);
+
+    // The old horizontal band meters are no longer the file-view spectrum.
+    await expect(window.locator('#spectrum-body .bm-track')).toHaveCount(0);
+
+    // Header label matches the rendered visualization.
+    await expect(window.locator('#spectrum-title')).toHaveText('Spectrum · Curve');
+  });
+
+  test('missing spectrum curve degrades to band meters without error', async () => {
+    // Render a spectrum with no `curve` — the fallback path must not throw.
+    const errors: string[] = [];
+    window.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
+    await window.evaluate(() => {
+      (window as unknown as { renderSpectrum: (s: unknown) => void }).renderSpectrum({
+        bands: { subBass: -20, bass: -18, lowMid: -22, mid: -16, highMid: -25, presence: -30, brilliance: -35 },
+        spectralCentroid: 1200,
+      });
+    });
+    await expect(window.locator('#spectrum-body .meter-card')).toBeVisible();
+    await expect(window.locator('#spectrum-body svg.sb-spectrum-curve')).toHaveCount(0);
+    // Header falls back to the meters label so it matches the fallback view.
+    await expect(window.locator('#spectrum-title')).toHaveText('Spectrum · Meters');
+    expect(errors).toEqual([]);
+  });
+
   test('report card renders grade, metrics table, and recommendations', async () => {
     await window.locator('.mode-tab[data-mode="reportcard"]').click();
     await expect(window.locator('#rc-content')).toBeVisible();
@@ -162,20 +214,24 @@ test.describe('Sound Buddy E2E', () => {
   });
 
   test('spectrum overlays a dashed ideal target, defaulting from content type', async () => {
+    // Cycle back through the file tab so the real analysis (with its curve) is
+    // re-rendered — the prior test left the panel on the curve-less meters path.
+    await window.locator('.mode-tab[data-mode="reportcard"]').click();
     await window.locator('.mode-tab[data-mode="file"]').click();
 
-    // The measured curve and the dashed target are both drawn.
-    await expect(window.locator('.spectrum-curve')).toBeVisible();
-    await expect(window.locator('.spectrum-curve .sc-measured')).toBeVisible();
-    await expect(window.locator('.spectrum-curve .sc-target')).toBeVisible();
+    // The dashed ideal target is overlaid on the analyzer curve.
+    const svg = window.locator('#spectrum-body svg.sb-spectrum-curve');
+    await expect(svg).toBeVisible();
+    await expect(svg.locator('path.sb-curve-line')).toHaveCount(1);
+    await expect(svg.locator('path.sb-target-line')).toHaveCount(1);
 
     // Speech content ⇒ the default target is the speech profile.
     await expect(window.locator('#ideal-profile-wrap')).toBeVisible();
     await expect(window.locator('#ideal-profile-select')).toHaveValue('');
-    await expect(window.locator('.sc-legend')).toContainText('Speech / podcast');
+    await expect(window.locator('.spectrum-legend')).toContainText('Speech / podcast');
 
     // A match score is shown on the curve legend.
-    await expect(window.locator('.sc-legend .score .num')).toHaveText(/^\d{1,3}$/);
+    await expect(window.locator('.spectrum-legend .sl-score .num')).toHaveText(/^\d{1,3}$/);
   });
 
   test('choosing a profile overrides the default and shows the WAV stub disabled', async () => {
@@ -187,7 +243,7 @@ test.describe('Sound Buddy E2E', () => {
     await expect(wavOption).toBeDisabled();
 
     await window.locator('#ideal-profile-select').selectOption('flat');
-    await expect(window.locator('.sc-legend')).toContainText('Flat / neutral');
+    await expect(window.locator('.spectrum-legend')).toContainText('Flat / neutral');
 
     // Report card reflects the override with a match score + deviation curve.
     await window.locator('.mode-tab[data-mode="reportcard"]').click();
