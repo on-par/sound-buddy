@@ -182,8 +182,10 @@ export function buildReport(analysis: AudioAnalysis): string {
   }
 
   // Presence/air. Speech leans on the presence band for intelligibility, so a
-  // dip is flagged sooner; full-range music tolerates a gentler high-mid roll.
-  const presenceDipThreshold = contentType === "speech" ? 8 : contentType === "music" ? 15 : 12;
+  // dip is flagged sooner (8 dB). Every other content type keeps the original
+  // 12 dB threshold — content-awareness only *adds* sensitivity for speech, it
+  // never suppresses a dip warning that the content-agnostic report would show.
+  const presenceDipThreshold = contentType === "speech" ? 8 : 12;
   if (bands.presence < bands.mid - presenceDipThreshold) {
     const symptom = contentType === "speech" ? "unintelligible/dull" : "recessed/dull";
     lines.push(`  ! Presence dip: ${fmt(bands.presence)} dB vs mid ${fmt(bands.mid)} dB -- may sound ${symptom}`);
