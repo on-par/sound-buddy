@@ -305,6 +305,39 @@
     }
     .sb-slider::-webkit-slider-thumb:hover { transform:scale(1.15); box-shadow:0 0 0 4px var(--gold-tint); }
 
+    /* Segmented toggle (Monitor / Record) */
+    .seg-label { font:var(--fw-medium) var(--fs-label)/1 var(--font-sans); color:var(--text-tertiary); letter-spacing:var(--tracking-label); margin-bottom:6px; }
+    .segmented { display:flex; gap:4px; padding:4px; background:var(--surface-inset); border:1px solid var(--border-subtle); border-radius:var(--radius-lg); }
+    .segmented button { flex:1; height:var(--control-h-sm); border:none; border-radius:var(--radius-md); background:transparent; color:var(--text-secondary); font:var(--fw-medium) var(--fs-label)/1 var(--font-sans); cursor:pointer; display:inline-flex; align-items:center; justify-content:center; gap:6px; transition:background-color var(--dur-fast) var(--ease-out),color var(--dur-fast) var(--ease-out); }
+    .segmented button:hover { color:var(--text-primary); }
+    .segmented button.active { background:var(--surface-raised); color:var(--text-primary); box-shadow:var(--highlight-top); }
+    .segmented button.active[data-mode="record"] { color:var(--issue-text); }
+
+    /* Record folder row */
+    .record-row { display:flex; align-items:center; gap:8px; }
+    .record-path { flex:1; min-width:0; font:var(--fw-regular) var(--fs-micro)/1.3 var(--font-mono); color:var(--text-muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+
+    /* Channel configuration */
+    .chcfg-head { display:flex; align-items:baseline; justify-content:space-between; margin-bottom:8px; }
+    .chcfg-head .lbl { font:var(--fw-medium) var(--fs-label)/1 var(--font-sans); color:var(--text-tertiary); letter-spacing:var(--tracking-label); }
+    .chcfg-head .cap { font:var(--fw-regular) var(--fs-micro)/1 var(--font-mono); color:var(--text-muted); }
+    .chcfg-list { display:flex; flex-direction:column; gap:6px; }
+    .chcfg-row { display:flex; align-items:center; gap:6px; }
+    .chcfg-row select { flex:1; min-width:0; height:var(--control-h-sm); padding:0 8px; border-radius:var(--radius-md); background:var(--surface-raised); color:var(--text-primary); border:1px solid var(--border-default); font:var(--fw-medium) var(--fs-label)/1 var(--font-sans); }
+    .chcfg-row select:focus { border-color:var(--gold-500); box-shadow:var(--glow-focus); outline:none; }
+    .chcfg-row select.chcfg-kind { flex:0 0 96px; }
+    .chcfg-x { flex:0 0 auto; width:var(--control-h-sm); height:var(--control-h-sm); border:1px solid var(--border-subtle); border-radius:var(--radius-md); background:transparent; color:var(--text-muted); cursor:pointer; font-size:15px; line-height:1; }
+    .chcfg-x:hover:not(:disabled) { color:var(--issue-text); border-color:var(--issue-500); }
+    .chcfg-x:disabled { opacity:0.35; cursor:not-allowed; }
+    .chcfg-add { margin-top:8px; }
+    .chcfg-add:disabled { opacity:0.45; cursor:not-allowed; }
+
+    /* Recording indicator + recording offer banner */
+    #live-indicator .rec-dot { width:8px; height:8px; border-radius:50%; background:var(--issue-500); box-shadow:0 0 8px rgba(229,72,77,0.6); }
+    .rec-offer { display:flex; align-items:center; gap:10px; margin-top:10px; padding:12px 14px; background:var(--surface-inset); border:1px solid var(--border-subtle); border-radius:var(--radius-lg); }
+    .rec-offer .ro-text { flex:1; min-width:0; font:var(--fw-regular) var(--fs-label)/1.3 var(--font-sans); color:var(--text-secondary); }
+    .rec-offer .ro-text b { color:var(--text-primary); font-weight:var(--fw-semibold); }
+
     /* Spectrum panel */
     #spectrum-panel { flex:1; display:flex; flex-direction:column; min-width:0; overflow:hidden; }
     #spectrum-header { display:flex; align-items:center; gap:20px; padding:11px 20px; border-bottom:1px solid var(--border-subtle); background:var(--bg-panel); flex-shrink:0; min-height:52px; }
@@ -605,6 +638,35 @@
           </label>
           <p id="device-hint" class="device-hint" style="display:none"></p>
 
+          <!-- Monitor vs Record -->
+          <div>
+            <div class="seg-label">Mode</div>
+            <div class="segmented" id="live-mode">
+              <button type="button" data-mode="monitor" class="active" data-icon="activity">Monitor</button>
+              <button type="button" data-mode="record" data-icon="circle">Record</button>
+            </div>
+          </div>
+
+          <!-- Record folder (record mode only) -->
+          <div class="record-row" id="record-folder-row" style="display:none">
+            <button type="button" id="record-folder-btn" class="ghost-btn" title="Choose recording folder">Folder…</button>
+            <span class="record-path" id="record-folder-path">~/Music/Sound Buddy</span>
+          </div>
+
+          <!-- Channel configuration -->
+          <div id="chcfg">
+            <div class="chcfg-head">
+              <span class="lbl">Channels</span>
+              <span class="cap" id="chcfg-cap"></span>
+            </div>
+            <div class="chcfg-list" id="chcfg-list"></div>
+            <button type="button" class="btn btn-secondary sm chcfg-add" id="chcfg-add" data-icon="plus">Add channel</button>
+          </div>
+
+          <div class="slider">
+            <div class="slider-head"><span class="lbl">Meter rate</span><span class="val" id="interval-label">100 ms</span></div>
+            <input type="range" class="sb-slider" id="meter-interval" min="50" max="500" step="10" value="100" />
+          </div>
           <div class="slider">
             <div class="slider-head"><span class="lbl">Window</span><span class="val" id="window-secs-label">3.0s</span></div>
             <input type="range" class="sb-slider" id="window-secs" min="1" max="10" step="0.5" value="3" />
@@ -618,6 +680,10 @@
           <button class="btn btn-primary full" id="live-start-btn" data-icon="play">Start Capture</button>
           <button class="btn btn-danger full" id="live-stop-btn" data-icon="square" style="display:none">Stop Capture</button>
           <div id="live-status" style="display:none; font:var(--fw-regular) var(--fs-label)/1.3 var(--font-sans); color:var(--text-muted); text-align:center"></div>
+          <div id="rec-offer" class="rec-offer" style="display:none">
+            <span class="ro-text" id="rec-offer-text"></span>
+            <button type="button" class="btn btn-secondary sm" id="rec-offer-btn" data-icon="waveform">Analyze</button>
+          </div>
         </div>
       </div>
     </aside>
@@ -733,6 +799,8 @@ const ICON_PATHS = {
   upload:'M12 15V3M7 8l5-5 5 5M4 15v4a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-4',
   download:'M12 3v12M7 10l5 5 5-5M4 15v4a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-4',
   'chevron-down':'M6 9l6 6 6-6',
+  circle:'M12 12m-9 0a9 9 0 1 0 18 0 9 9 0 1 0-18 0',
+  plus:'M12 5v14M5 12h14',
 };
 
 function iconSvg(name, size = 16, opts = {}) {
@@ -767,6 +835,10 @@ let liveRunning = false;
 let liveWindows = [];
 let liveCountdownTimer = null;
 let liveCountdownSecs = 0;
+let liveDevices = [];          // last device list (for channel-count lookup)
+let liveMode = 'monitor';      // 'monitor' | 'record'
+let recordDir = '';            // chosen recording folder ('' = default ~/Music/Sound Buddy)
+let channelConfig = [];        // configured strips: { kind:'mono'|'stereo', a:idx, b:idx }
 let llmRunning = false;
 let aiStreamStarted = false;
 let idealProfileId = ''; // active ideal EQ profile; '' = auto by content type (PRD 05)
@@ -1120,6 +1192,23 @@ function renderBandMeters(spectrum) {
   if (wrap) wrap.style.display = 'none';
 }
 
+// Coalesce live renders: meter ticks arrive up to ~20/s (and a window tick can
+// land in the same burst), but the meter panel only needs to repaint once per
+// animation frame. Keep the latest event and rebuild at most once per frame.
+let pendingLiveWin = null;
+let liveRenderScheduled = false;
+function scheduleLiveMeters(win) {
+  pendingLiveWin = win;
+  if (liveRenderScheduled) return;
+  liveRenderScheduled = true;
+  requestAnimationFrame(() => {
+    liveRenderScheduled = false;
+    const w = pendingLiveWin;
+    pendingLiveWin = null;
+    if (w && currentMode === 'live') renderLiveMeters(w);
+  });
+}
+
 function renderLiveMeters(win) {
   const body = document.getElementById('spectrum-body');
   if (!win || !win.channels || win.channels.length === 0) {
@@ -1329,6 +1418,130 @@ document.getElementById('llm-interval').addEventListener('input', (e) => {
   const v = parseInt(e.target.value);
   document.getElementById('llm-interval-label').textContent = v === 0 ? 'Off' : v + 's';
 });
+document.getElementById('meter-interval').addEventListener('input', (e) => {
+  const ms = parseInt(e.target.value);
+  document.getElementById('interval-label').textContent = `${ms} ms · ${Math.round(1000 / ms)}/s`;
+});
+
+/* ── Monitor / Record toggle ── */
+document.querySelectorAll('#live-mode button').forEach((b) => {
+  b.addEventListener('click', () => {
+    liveMode = b.dataset.mode;
+    document.querySelectorAll('#live-mode button').forEach((x) => x.classList.toggle('active', x === b));
+    document.getElementById('record-folder-row').style.display = liveMode === 'record' ? 'flex' : 'none';
+    hydrateIcons(document.getElementById('live-mode'));
+  });
+});
+
+document.getElementById('record-folder-btn').addEventListener('click', async () => {
+  const dir = await sb.openDirDialog();
+  if (dir) {
+    recordDir = dir;
+    document.getElementById('record-folder-path').textContent = dir;
+  }
+});
+
+/* ── Channel configuration ── */
+// The selected device's max input channels (0 = default device / unknown).
+function selectedDeviceChannels() {
+  const val = document.getElementById('device-select').value;
+  if (val === '') {
+    // Default device: fall back to the max across enumerated inputs so the
+    // picker still offers something sensible.
+    return liveDevices.reduce((m, d) => Math.max(m, d.channels || 0), 0) || 2;
+  }
+  const dev = liveDevices.find((d) => String(d.index) === val);
+  return dev ? dev.channels : 2;
+}
+
+// Total device channels consumed by the current config (mono=1, stereo=2).
+function usedChannelCount() {
+  return channelConfig.reduce((n, s) => n + (s.kind === 'stereo' ? 2 : 1), 0);
+}
+
+// Reset the config to the device default: first ≤2 channels as mono strips.
+function resetChannelConfig() {
+  const n = selectedDeviceChannels();
+  channelConfig = [];
+  for (let i = 0; i < Math.min(2, n); i++) channelConfig.push({ kind: 'mono', a: i, b: (i + 1) % Math.max(n, 1) });
+  renderChannelConfig();
+}
+
+function channelOptions(selected, max, compact = false) {
+  let html = '';
+  // Compact (numeric-only) labels for the two stereo legs, which share the row
+  // with the kind select; roomy "Ch N" for the single mono select.
+  const label = (i) => (compact ? `${i + 1}` : `Ch ${i + 1}`);
+  for (let i = 0; i < max; i++) html += `<option value="${i}"${i === selected ? ' selected' : ''}>${label(i)}</option>`;
+  return html;
+}
+
+function renderChannelConfig() {
+  const n = selectedDeviceChannels();
+  const list = document.getElementById('chcfg-list');
+  document.getElementById('chcfg-cap').textContent = `${usedChannelCount()} / ${n} used`;
+
+  list.innerHTML = '';
+  channelConfig.forEach((strip, idx) => {
+    const row = document.createElement('div');
+    row.className = 'chcfg-row';
+    const stereo = strip.kind === 'stereo';
+    const stereoSel = stereo
+      ? `<select class="chcfg-leg" data-idx="${idx}" data-field="b" title="Right leg">${channelOptions(strip.b, n, true)}</select>`
+      : '';
+    row.innerHTML =
+      `<select class="chcfg-kind" data-idx="${idx}" data-field="kind">
+         <option value="mono"${!stereo ? ' selected' : ''}>Mono</option>
+         <option value="stereo"${stereo ? ' selected' : ''}>Stereo</option>
+       </select>
+       <select${stereo ? ' class="chcfg-leg" title="Left leg"' : ''} data-idx="${idx}" data-field="a">${channelOptions(strip.a, n, stereo)}</select>
+       ${stereoSel}
+       <button type="button" class="chcfg-x" data-idx="${idx}" title="Remove strip"${channelConfig.length <= 1 ? ' disabled' : ''}>×</button>`;
+    list.appendChild(row);
+  });
+
+  list.querySelectorAll('select').forEach((sel) => {
+    sel.addEventListener('change', (e) => {
+      const { idx, field } = e.target.dataset;
+      const strip = channelConfig[idx];
+      if (field === 'kind') {
+        strip.kind = e.target.value;
+        if (strip.kind === 'stereo' && (strip.b == null || strip.b === strip.a)) {
+          strip.b = Math.min(strip.a + 1, n - 1);
+        }
+      } else {
+        strip[field] = parseInt(e.target.value);
+      }
+      renderChannelConfig();
+    });
+  });
+  list.querySelectorAll('.chcfg-x').forEach((btn) => {
+    btn.addEventListener('click', (e) => {
+      channelConfig.splice(parseInt(e.target.dataset.idx), 1);
+      renderChannelConfig();
+    });
+  });
+
+  // Disable "Add" once every device channel is spoken for.
+  document.getElementById('chcfg-add').disabled = usedChannelCount() >= n;
+  hydrateIcons(document.getElementById('chcfg'));
+}
+
+document.getElementById('chcfg-add').addEventListener('click', () => {
+  const n = selectedDeviceChannels();
+  const next = Math.min(usedChannelCount(), n - 1);
+  channelConfig.push({ kind: 'mono', a: next, b: Math.min(next + 1, n - 1) });
+  renderChannelConfig();
+});
+
+// Build the stream.py channel tokens ("N" mono, "N-M" stereo) from the config.
+// A stereo strip whose two legs collapsed to the same channel (possible on the
+// last device channel) degrades to a mono token rather than a bogus "N-N" pair.
+function channelTokens() {
+  return channelConfig.map((s) =>
+    s.kind === 'stereo' && s.a !== s.b ? `${s.a}-${s.b}` : `${s.a}`,
+  );
+}
 
 function setDeviceHint(text, isError) {
   const hint = document.getElementById('device-hint');
@@ -1348,6 +1561,7 @@ async function loadDevices() {
 
   const result = await sb.listDevices();
   sel.innerHTML = '';
+  liveDevices = [];
 
   if (result.micAccess === 'denied' || result.micAccess === 'restricted') {
     sel.innerHTML = '<option value="">Microphone access blocked</option>';
@@ -1370,6 +1584,7 @@ async function loadDevices() {
     return;
   }
 
+  liveDevices = result.devices;
   const def = document.createElement('option');
   def.value = ''; def.textContent = 'Default Device';
   sel.appendChild(def);
@@ -1387,35 +1602,49 @@ async function loadDevices() {
     false,
   );
   if (btn) btn.disabled = false;
+
+  // Seed the channel picker from the (default) device's channel count.
+  resetChannelConfig();
 }
 
 document.getElementById('device-refresh-btn').addEventListener('click', () => loadDevices());
+// Switching devices re-seeds the channel config to that device's channel count.
+document.getElementById('device-select').addEventListener('change', () => resetChannelConfig());
 
 document.getElementById('live-start-btn').addEventListener('click', async () => {
   const device = document.getElementById('device-select').value || undefined;
   const windowSecs = parseFloat(document.getElementById('window-secs').value);
+  const intervalSecs = parseInt(document.getElementById('meter-interval').value) / 1000;
   // When AI is off, force the LLM interval to 0 so no countdown or auto-analysis
   // is armed (the backend also refuses to arm it — belt and suspenders).
   const llmIntervalSecs = aiEnabled ? parseInt(document.getElementById('llm-interval').value) : 0;
+  const channels = channelTokens();
 
   liveRunning = true;
   liveWindows = [];
 
+  document.getElementById('rec-offer').style.display = 'none';
   document.getElementById('live-start-btn').style.display = 'none';
   document.getElementById('live-stop-btn').style.display = 'inline-flex';
   document.getElementById('live-indicator').style.display = 'flex';
+  document.querySelector('#live-indicator .live-txt').textContent = liveMode === 'record' ? 'REC' : 'LIVE';
   document.getElementById('live-status').style.display = 'block';
   document.getElementById('live-status').textContent = 'Connecting…';
   document.getElementById('spectrum-title').textContent = 'Live Meters';
   setSpectrumState('empty', { text: 'Waiting for live audio…' });
 
-  const result = await sb.startLive({ device, windowSecs, llmIntervalSecs });
+  const result = await sb.startLive({
+    device, channels, windowSecs, intervalSecs, llmIntervalSecs,
+    mode: liveMode, recordDir: recordDir || undefined,
+  });
 
   if (!result.success) {
     stopLive();
     setSpectrumState('error', { text: result.error || 'Failed to start live capture' });
   } else {
-    document.getElementById('live-status').textContent = `Capturing ${windowSecs.toFixed(1)}s windows`;
+    const rate = Math.round(1 / intervalSecs);
+    document.getElementById('live-status').textContent =
+      liveMode === 'record' ? `Recording · meters ${rate}/s` : `Monitoring · meters ${rate}/s`;
     startLiveCountdown(llmIntervalSecs);
   }
 });
@@ -1425,14 +1654,38 @@ document.getElementById('live-stop-btn').addEventListener('click', () => stopLiv
 async function stopLive() {
   liveRunning = false;
   clearLiveCountdown();
-  await sb.stopLive();
+  const result = await sb.stopLive();
   document.getElementById('live-start-btn').style.display = 'inline-flex';
   document.getElementById('live-stop-btn').style.display = 'none';
   document.getElementById('live-indicator').style.display = 'none';
   document.getElementById('live-status').style.display = 'none';
   document.getElementById('window-badge').textContent = '';
   document.getElementById('spectrum-title').textContent = SPECTRUM_TITLE.meters;
+
+  // If a recording was captured, offer to analyze it in the File tab.
+  if (result && result.recordPath) {
+    lastRecordPath = result.recordPath;
+    const name = result.recordPath.split('/').pop();
+    // Build with a text node for the filename so a path can never inject markup.
+    const text = document.getElementById('rec-offer-text');
+    text.textContent = 'Saved ';
+    const b = document.createElement('b');
+    b.textContent = name;
+    text.appendChild(b);
+    text.appendChild(document.createTextNode('. Analyze it?'));
+    document.getElementById('rec-offer').style.display = 'flex';
+    hydrateIcons(document.getElementById('rec-offer'));
+  }
 }
+
+let lastRecordPath = null;
+document.getElementById('rec-offer-btn').addEventListener('click', () => {
+  if (!lastRecordPath) return;
+  document.getElementById('rec-offer').style.display = 'none';
+  document.querySelector('.mode-tab[data-mode="file"]').click();
+  loadFile(lastRecordPath);
+  runFileAnalysis(lastRecordPath);
+});
 
 function startLiveCountdown(intervalSecs) {
   if (intervalSecs <= 0) { document.getElementById('ai-countdown').textContent = ''; return; }
@@ -1460,14 +1713,19 @@ sb.onLiveEvent((data) => {
     if (data?.error) setSpectrumState('error', { text: `Live error: ${data.error}` });
     return;
   }
-  liveWindows.push(data);
-  if (liveWindows.length > 10) liveWindows.shift();
 
-  if (currentMode === 'live') renderLiveMeters(data);
+  // Every event (fast meter ticks + slower window ticks) drives the live view,
+  // coalesced to one repaint per animation frame.
+  if (currentMode === 'live') scheduleLiveMeters(data);
   if (data.channels && data.channels.length > 0) updateLiveStatsRow(data.channels[0]);
 
-  const badge = document.getElementById('window-badge');
-  badge.textContent = `Window #${data.window}`;
+  // Only the heavier window ticks (which carry masking + window #) accumulate as
+  // LLM trend context and feed the report card.
+  if (data.type === 'window' || typeof data.window === 'number') {
+    liveWindows.push(data);
+    if (liveWindows.length > 10) liveWindows.shift();
+    document.getElementById('window-badge').textContent = `Window #${data.window}`;
+  }
 });
 
 sb.onAnalysisResult((data) => { if (data.type === 'stats' && data.data) currentAnalysis = data.data; });

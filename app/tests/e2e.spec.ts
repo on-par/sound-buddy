@@ -96,11 +96,26 @@ test.describe('Sound Buddy E2E', () => {
     window = await electronApp.firstWindow();
     await window.waitForLoadState('domcontentloaded');
 
-    // Real analysis requires sox/ffprobe/python3 + scripts/spectrum.py on PATH.
-    // Stub the main-process IPC handler so the happy path is testable anywhere.
+    // Real analysis/capture require sox/ffprobe/python3 + a mic on PATH. Stub the
+    // main-process IPC handlers so the happy paths are testable anywhere.
     await electronApp.evaluate(({ ipcMain }, analysis) => {
       ipcMain.removeHandler('analyze-file');
       ipcMain.handle('analyze-file', () => ({ success: true, data: analysis }));
+
+      // A fake 8-channel interface so the channel picker has something to offer.
+      ipcMain.removeHandler('list-devices');
+      ipcMain.handle('list-devices', () => ({
+        success: true,
+        micAccess: 'granted',
+        devices: [{ index: 0, name: 'Fake 8ch Interface', channels: 8, default_sr: 48000 }],
+      }));
+
+      // Capture the args start-live was called with, and pretend a recording was
+      // produced so stop-live can offer it.
+      ipcMain.removeHandler('start-live');
+      ipcMain.handle('start-live', () => ({ success: true }));
+      ipcMain.removeHandler('stop-live');
+      ipcMain.handle('stop-live', () => ({ success: true, recordPath: '/tmp/sound-buddy-20260702-101500.wav' }));
     }, FAKE_ANALYSIS);
   });
 
@@ -250,5 +265,63 @@ test.describe('Sound Buddy E2E', () => {
     await expect(window.locator('#rc-profile-section')).toBeVisible();
     await expect(window.locator('#rc-profile .rcp-score .num')).toHaveText(/^\d{1,3}$/);
     await expect(window.locator('#rc-profile .rcp-dev svg')).toBeVisible();
+  });
+
+  test.describe('Live capture (PRD 06)', () => {
+    test.beforeEach(async () => {
+      await window.locator('.mode-tab[data-mode="live"]').click();
+      await expect(window.locator('#tab-live')).toHaveClass(/active/);
+      // Re-enumerate against the stubbed 8-channel device (the boot-time scan
+      // ran before the stub was installed).
+      await window.locator('#device-refresh-btn').click();
+      await expect(window.locator('#chcfg-list .chcfg-row')).toHaveCount(2);
+    });
+
+    test('Monitor/Record toggle reveals the recording folder', async () => {
+      const folderRow = window.locator('#record-folder-row');
+      await expect(folderRow).toBeHidden();
+
+      await window.locator('#live-mode button[data-mode="record"]').click();
+      await expect(folderRow).toBeVisible();
+
+      await window.locator('#live-mode button[data-mode="monitor"]').click();
+      await expect(folderRow).toBeHidden();
+    });
+
+    test('channel picker adds up to the device channel count, with mono/stereo', async () => {
+      const rows = window.locator('#chcfg-list .chcfg-row');
+      await expect(rows).toHaveCount(2);
+      await expect(window.locator('#chcfg-cap')).toHaveText('2 / 8 used');
+
+      // Add a third mono strip.
+      await window.locator('#chcfg-add').click();
+      await expect(rows).toHaveCount(3);
+
+      // Make the first strip stereo — a second channel select appears in the row.
+      await rows.first().locator('select[data-field="kind"]').selectOption('stereo');
+      await expect(rows.first().locator('select[data-field="b"]')).toBeVisible();
+      await expect(window.locator('#chcfg-cap')).toHaveText('4 / 8 used');
+
+      // Remove a strip.
+      await rows.nth(2).locator('.chcfg-x').click();
+      await expect(rows).toHaveCount(2);
+    });
+
+    test('recording offers to analyze the WAV on stop', async () => {
+      await window.locator('#live-mode button[data-mode="record"]').click();
+      await window.locator('#live-start-btn').click();
+      await expect(window.locator('#live-stop-btn')).toBeVisible();
+      await expect(window.locator('#live-indicator .live-txt')).toHaveText('REC');
+
+      await window.locator('#live-stop-btn').click();
+      const offer = window.locator('#rec-offer');
+      await expect(offer).toBeVisible();
+      await expect(offer).toContainText('sound-buddy-20260702-101500.wav');
+
+      // Accept the offer → jumps to the File tab and analyzes the recording.
+      await window.locator('#rec-offer-btn').click();
+      await expect(window.locator('#tab-file')).toHaveClass(/active/);
+      await expect(window.locator('#file-dropzone .dz-title')).toHaveText('sound-buddy-20260702-101500.wav');
+    });
   });
 });

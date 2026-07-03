@@ -1,16 +1,41 @@
 #!/usr/bin/env python3
 """
-Usage: python3 scripts/stream.py [device_name_or_index] [window_secs] [channel_indices_comma_sep]
-       python3 scripts/stream.py --list-devices
+Live capture + real-time analysis.
 
-Outputs one JSON line per analysis window to stdout.
+Usage:
+  python3 scripts/stream.py [device] [window_secs] [channels] [options]
+  python3 scripts/stream.py --list-devices
 
-Dependencies: pip install sounddevice numpy scipy
+Positional args (all optional):
+  device        device name or index (empty = default input)
+  window_secs   heavy analysis-window length in seconds (default 3.0)
+  channels      channel configuration (see below; default = first ≤2 device channels)
+
+Options:
+  --interval S  meter cadence in seconds (default 0.1) — how often lightweight
+                level/spectrum updates are emitted, independent of window_secs
+  --record PATH write captured audio to a WAV at PATH (24-bit PCM, all device
+                channels). Finalized on SIGINT/SIGTERM so a killed capture still
+                yields a valid file.
+
+Channel configuration grammar (comma-separated groups):
+  N        a mono strip on device channel N
+  N-M      a stereo strip on the device-channel pair N and M (metered as L+R mean)
+  e.g. "0,1-2,4" → mono ch0, stereo pair ch1+ch2, mono ch4
+
+Output: JSON lines on stdout.
+  {"type":"meter",  "ts":…, "channels":[…]}                            — every --interval
+  {"type":"window", "window":N, "ts":…, "channels":[…], "masking":[…]} — every window_secs
+The "window" events carry the heavier context used by the (gated) LLM path.
+
+Dependencies: pip install sounddevice numpy scipy soundfile
 """
 
 import sys
 import json
 import time
+import queue
+import signal
 import threading
 import numpy as np
 from collections import deque
@@ -33,6 +58,14 @@ BANDS = [
 ]
 
 MASKING_THRESHOLD_DB = 3.0
+
+# Shortest trailing slice a meter tick analyses. Long enough to resolve the
+# sub-bass band (≈50 ms for 20 Hz) with margin; kept small so meters stay snappy.
+METER_WINDOW_SECS = 0.2
+
+# How long a clip stays latched on the live meter after the last clipped sample,
+# so a transient clip is visible rather than flashing for one meter slice.
+CLIP_HOLD_SECS = 1.5
 
 
 def list_devices():
@@ -66,6 +99,45 @@ def find_device(name_or_index: str):
     return None
 
 
+def parse_channel_groups(channels_arg: str, n_device_channels: int) -> list[dict]:
+    """
+    Parse the channel-configuration grammar into a list of strip groups.
+
+    Returns groups like {"kind": "mono"|"stereo", "indices": [i] | [l, r],
+    "name": str}. Raises ValueError on malformed tokens or out-of-range indices.
+    """
+    if not channels_arg:
+        indices = list(range(min(2, n_device_channels)))
+        return [{"kind": "mono", "indices": [i], "name": f"CH{i+1:02d}"} for i in indices]
+
+    groups: list[dict] = []
+    for token in channels_arg.split(","):
+        token = token.strip()
+        if not token:
+            continue
+        if "-" in token:
+            parts = token.split("-")
+            if len(parts) != 2:
+                raise ValueError(f"invalid stereo group: {token!r}")
+            l, r = int(parts[0]), int(parts[1])
+            groups.append({
+                "kind": "stereo",
+                "indices": [l, r],
+                "name": f"CH{l+1:02d}+CH{r+1:02d}",
+            })
+        else:
+            i = int(token)
+            groups.append({"kind": "mono", "indices": [i], "name": f"CH{i+1:02d}"})
+
+    for g in groups:
+        for ci in g["indices"]:
+            if ci < 0 or ci >= n_device_channels:
+                raise ValueError(
+                    f"device has {n_device_channels} channels; requested index {ci}"
+                )
+    return groups
+
+
 def compute_band_rms_db(freqs, power_spectrum, low, high):
     mask = (freqs >= low) & (freqs < high)
     if not np.any(mask):
@@ -73,66 +145,80 @@ def compute_band_rms_db(freqs, power_spectrum, low, high):
     band_power = np.mean(power_spectrum[mask])
     if band_power <= 0:
         return -120.0
-    # power_spectrum is already |X|^2/N style; convert to dBFS assuming full-scale = 1.0
     return float(10.0 * np.log10(band_power + 1e-12))
 
 
-def analyze_window(frames: np.ndarray, sample_rate: int, channel_indices: list[int], channel_names: list[str]) -> dict:
+def analyze_signal(sig: np.ndarray, sample_rate: int, cols: np.ndarray | None = None) -> dict:
     """
-    frames: shape (n_samples, n_device_channels) float32 in [-1, 1]
+    Per-strip acoustic metrics for one collapsed signal.
+
+    `sig` is the collapsed (L+R mean) signal used for level/spectrum. `cols` is
+    the raw per-channel matrix for the strip; peak and clipping are taken from the
+    hottest individual channel so a single clipping leg of a stereo pair is still
+    flagged (averaging would mask it). Defaults to `sig` for a mono strip.
     """
-    n_samples = frames.shape[0]
-    n_fft = 4096
-    hop = 1024
+    rms = float(np.sqrt(np.mean(sig ** 2))) if sig.size else 0.0
+    peak_src = sig if cols is None else cols
+    peak = float(np.max(np.abs(peak_src))) if peak_src.size else 0.0
+    clipping = bool(peak >= 0.999)
 
-    channels_out = []
+    rms_db = float(20.0 * np.log10(rms + 1e-12))
+    peak_db = float(20.0 * np.log10(peak + 1e-12))
 
-    for ci, ch_idx in enumerate(channel_indices):
-        ch_name = channel_names[ci] if ci < len(channel_names) else f"CH{ch_idx+1:02d}"
-        ch_data = frames[:, ch_idx].astype(np.float64)
-
-        # Amplitude stats
-        rms = float(np.sqrt(np.mean(ch_data ** 2)))
-        peak = float(np.max(np.abs(ch_data)))
-        clipping = bool(peak >= 0.999)
-
-        rms_db = float(20.0 * np.log10(rms + 1e-12))
-        peak_db = float(20.0 * np.log10(peak + 1e-12))
-
-        # FFT via scipy to get power spectrum for band analysis
-        freqs, t_stft, Zxx = scipy_signal.stft(ch_data, fs=sample_rate, nperseg=n_fft, noverlap=n_fft - hop)
+    # STFT power spectrum for band analysis. nperseg adapts to short meter
+    # windows so a 0.2 s slice doesn't error out.
+    nperseg = min(4096, sig.size)
+    if nperseg >= 32:
+        hop = max(1, nperseg // 4)
+        freqs, _t, Zxx = scipy_signal.stft(
+            sig, fs=sample_rate, nperseg=nperseg, noverlap=nperseg - hop
+        )
         power = np.mean(np.abs(Zxx) ** 2, axis=1)
+    else:
+        freqs = np.array([0.0])
+        power = np.array([0.0])
 
-        bands = {}
-        for band_name, low, high in BANDS:
-            bands[band_name] = compute_band_rms_db(freqs, power, low, high)
+    bands = {name: compute_band_rms_db(freqs, power, low, high) for name, low, high in BANDS}
 
-        # Spectral centroid
-        power_nz = power.copy()
-        power_nz[power_nz < 0] = 0
-        total_power = np.sum(power_nz)
-        if total_power > 0:
-            centroid = float(np.sum(freqs * power_nz) / total_power)
-        else:
-            centroid = 0.0
-
-        # Spectral rolloff at 85%
+    power_nz = np.clip(power, 0, None)
+    total_power = float(np.sum(power_nz))
+    if total_power > 0:
+        centroid = float(np.sum(freqs * power_nz) / total_power)
         cumulative = np.cumsum(power_nz)
-        rolloff_idx = np.searchsorted(cumulative, 0.85 * total_power)
+        rolloff_idx = int(np.searchsorted(cumulative, 0.85 * total_power))
         rolloff = float(freqs[min(rolloff_idx, len(freqs) - 1)])
+    else:
+        centroid = 0.0
+        rolloff = 0.0
 
+    return {
+        "bands": bands,
+        "rms": rms_db,
+        "peak": peak_db,
+        "clipping": clipping,
+        "centroid": centroid,
+        "rolloff": rolloff,
+    }
+
+
+def analyze_groups(frames: np.ndarray, sample_rate: int, groups: list[dict]) -> list[dict]:
+    """One channel entry per configured strip (mono channel or stereo pair)."""
+    channels_out = []
+    for g in groups:
+        cols = frames[:, g["indices"]].astype(np.float64)
+        sig = cols[:, 0] if cols.shape[1] == 1 else cols.mean(axis=1)
+        metrics = analyze_signal(sig, sample_rate, cols=cols)
         channels_out.append({
-            "index": ch_idx,
-            "name": ch_name,
-            "bands": bands,
-            "rms": rms_db,
-            "peak": peak_db,
-            "clipping": clipping,
-            "centroid": centroid,
-            "rolloff": rolloff,
+            "index": g["indices"][0],
+            "name": g["name"],
+            "kind": g["kind"],
+            **metrics,
         })
+    return channels_out
 
-    # Masking pairs: channels within MASKING_THRESHOLD_DB in any band
+
+def compute_masking(channels_out: list[dict]) -> list[dict]:
+    """Pairs of strips within MASKING_THRESHOLD_DB in any band (potential masking)."""
     masking = []
     for band_name, _, _ in BANDS:
         for i in range(len(channels_out)):
@@ -147,33 +233,108 @@ def analyze_window(frames: np.ndarray, sample_rate: int, channel_indices: list[i
                         "channelB": channels_out[j]["name"],
                         "diffDb": round(diff, 2),
                     })
+    return masking
 
-    return {"channels": channels_out, "masking": masking}
 
-
-def stream_live(device_index, window_secs: float, channel_indices: list[int], channel_names: list[str]):
+def stream_live(device_index, window_secs: float, groups: list[dict],
+                interval_secs: float, record_path):
     dev_info = sd.query_devices(device_index)
     sample_rate = int(dev_info["default_samplerate"])
     n_device_channels = dev_info["max_input_channels"]
 
-    # Validate requested channels against device
-    for ci in channel_indices:
-        if ci >= n_device_channels:
-            print(json.dumps({"error": f"device has only {n_device_channels} channels; requested index {ci}"}), flush=True)
-            sys.exit(1)
-
     window_samples = int(window_secs * sample_rate)
-    buffer = deque(maxlen=window_samples)
+    meter_samples = max(1, int(METER_WINDOW_SECS * sample_rate))
+
+    # Analysis ring buffer of raw blocks (not per-frame), guarded by `lock`.
+    # Keeping whole blocks lets the audio callback do one cheap append and lets
+    # trailing() copy only the tail it needs instead of the entire window.
+    blocks: deque[np.ndarray] = deque()
+    buffered_samples = 0
     lock = threading.Lock()
-    window_counter = [0]
-    ready_event = threading.Event()
+
+    # Optional recorder: all device channels, 24-bit PCM. Opened lazily so a
+    # monitor-only run never touches the disk.
+    recorder = None
+    recorder_lock = threading.Lock()
+    if record_path:
+        import soundfile as sf
+        recorder = sf.SoundFile(
+            record_path, mode="w", samplerate=sample_rate,
+            channels=n_device_channels, subtype="PCM_24",
+        )
+
+    stop = threading.Event()
+
+    def finalize():
+        stop.set()
+        with recorder_lock:
+            if recorder is not None and not recorder.closed:
+                recorder.close()
+
+    # Electron stops capture with SIGTERM; the default handler skips `finally`,
+    # so register explicitly to guarantee the WAV header is finalized.
+    def _on_signal(*_args):
+        finalize()
+        sys.exit(0)
+    signal.signal(signal.SIGTERM, _on_signal)
+    signal.signal(signal.SIGINT, _on_signal)
+
+    # The PortAudio callback runs on a real-time thread: it must not block on
+    # disk I/O or do heavy work. It only copies the block onto a queue; a writer
+    # thread drains the queue to disk and into the analysis ring buffer.
+    audio_q: "queue.Queue[np.ndarray | None]" = queue.Queue()
 
     def audio_callback(indata, frames, time_info, status):
+        audio_q.put(np.array(indata, dtype=np.float32, copy=True))
+
+    def writer_loop():
+        nonlocal buffered_samples
+        while True:
+            block = audio_q.get()
+            if block is None:
+                return
+            if recorder is not None:
+                with recorder_lock:
+                    if not recorder.closed:
+                        recorder.write(block)
+            with lock:
+                blocks.append(block)
+                buffered_samples += block.shape[0]
+                # Trim from the front, keeping at least a full window.
+                while blocks and buffered_samples - blocks[0].shape[0] >= window_samples:
+                    buffered_samples -= blocks.popleft().shape[0]
+
+    writer = threading.Thread(target=writer_loop, daemon=True)
+    writer.start()
+
+    def trailing(n_samples: int) -> np.ndarray:
+        # Gather only the tail blocks that cover n_samples, minimizing the copy
+        # and the time spent holding the lock.
         with lock:
-            for frame in indata:
-                buffer.append(frame.copy())
-            if len(buffer) >= window_samples:
-                ready_event.set()
+            if not blocks:
+                return np.empty((0, n_device_channels), dtype=np.float32)
+            picked = []
+            total = 0
+            for block in reversed(blocks):
+                picked.append(block)
+                total += block.shape[0]
+                if total >= n_samples:
+                    break
+            data = np.concatenate(list(reversed(picked)), axis=0)
+        if data.shape[0] > n_samples:
+            data = data[-n_samples:]
+        return data
+
+    # Latch a clip for CLIP_HOLD_SECS so a transient clip stays visible instead of
+    # flashing for one 0.2 s meter slice.
+    clip_hold: dict[str, float] = {}
+
+    def apply_clip_hold(channels_out: list[dict], now: float):
+        for ch in channels_out:
+            if ch["clipping"]:
+                clip_hold[ch["name"]] = now
+            elif now - clip_hold.get(ch["name"], -1e9) < CLIP_HOLD_SECS:
+                ch["clipping"] = True
 
     with sd.InputStream(
         device=device_index,
@@ -182,24 +343,53 @@ def stream_live(device_index, window_secs: float, channel_indices: list[int], ch
         dtype="float32",
         callback=audio_callback,
     ):
-        while True:
-            ready_event.wait()
-            ready_event.clear()
+        window_counter = 0
+        ticks_per_window = max(1, round(window_secs / interval_secs))
+        tick = 0
+        next_tick = time.monotonic()
 
-            with lock:
-                frames = np.array(list(buffer), dtype=np.float32)
-                # Clear buffer so next window is fresh
-                buffer.clear()
+        while not stop.is_set():
+            next_tick += interval_secs
+            now = time.monotonic()
+            # If a slow tick left us more than one interval behind, resync to now
+            # instead of busy-spinning to "catch up" (which would flood stdout).
+            if now - next_tick > interval_secs:
+                next_tick = now
+            sleep = next_tick - now
+            if sleep > 0:
+                time.sleep(sleep)
 
-            window_counter[0] += 1
-            result = analyze_window(frames, sample_rate, channel_indices, channel_names)
-            out = {
-                "window": window_counter[0],
+            frames = trailing(meter_samples)
+            if frames.shape[0] < 2:
+                continue
+
+            # Lightweight meter tick — the real-time view.
+            channels_out = analyze_groups(frames, sample_rate, groups)
+            apply_clip_hold(channels_out, time.monotonic())
+            print(json.dumps({
+                "type": "meter",
                 "ts": time.time(),
-                "channels": result["channels"],
-                "masking": result["masking"],
-            }
-            print(json.dumps(out), flush=True)
+                "channels": channels_out,
+            }), flush=True)
+
+            # Heavier window tick — trend context for the (gated) LLM path.
+            tick += 1
+            if tick >= ticks_per_window:
+                tick = 0
+                window_counter += 1
+                win_frames = trailing(window_samples)
+                win_channels = analyze_groups(win_frames, sample_rate, groups)
+                print(json.dumps({
+                    "type": "window",
+                    "window": window_counter,
+                    "ts": time.time(),
+                    "channels": win_channels,
+                    "masking": compute_masking(win_channels),
+                }), flush=True)
+
+    audio_q.put(None)  # let the writer thread exit
+
+    finalize()
 
 
 def main():
@@ -209,9 +399,26 @@ def main():
         list_devices()
         return
 
-    device_arg = args[0] if len(args) > 0 else ""
-    window_secs = float(args[1]) if len(args) > 1 and args[1] else 3.0
-    channels_arg = args[2] if len(args) > 2 and args[2] else ""
+    # Split optional flags from positional args.
+    interval_secs = 0.1
+    record_path = None
+    positional: list[str] = []
+    i = 0
+    while i < len(args):
+        a = args[i]
+        if a == "--interval" and i + 1 < len(args):
+            interval_secs = float(args[i + 1]); i += 2
+        elif a == "--record" and i + 1 < len(args):
+            record_path = args[i + 1]; i += 2
+        else:
+            positional.append(a); i += 1
+
+    device_arg = positional[0] if len(positional) > 0 else ""
+    window_secs = float(positional[1]) if len(positional) > 1 and positional[1] else 3.0
+    channels_arg = positional[2] if len(positional) > 2 and positional[2] else ""
+
+    if interval_secs <= 0:
+        interval_secs = 0.1
 
     if device_arg:
         device_index = find_device(device_arg)
@@ -232,15 +439,14 @@ def main():
     dev_info = sd.query_devices(device_index)
     n_device_channels = dev_info["max_input_channels"]
 
-    if channels_arg:
-        channel_indices = [int(c.strip()) for c in channels_arg.split(",")]
-    else:
-        channel_indices = list(range(min(2, n_device_channels)))
-
-    channel_names = [f"CH{i+1:02d}" for i in channel_indices]
+    try:
+        groups = parse_channel_groups(channels_arg, n_device_channels)
+    except ValueError as e:
+        print(json.dumps({"error": str(e)}), flush=True)
+        sys.exit(1)
 
     try:
-        stream_live(device_index, window_secs, channel_indices, channel_names)
+        stream_live(device_index, window_secs, groups, interval_secs, record_path)
     except KeyboardInterrupt:
         sys.exit(0)
 
