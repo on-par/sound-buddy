@@ -38,6 +38,23 @@ npm run lint
 echo "==> test (unit, all workspaces)"
 npm test
 
+# Python analysis helpers (stream.py). Requires numpy + scipy; sounddevice is
+# stubbed by the test. Skipped with a note if no suitable interpreter is found.
+PYTHON="${SOUND_BUDDY_PYTHON:-}"
+if [[ -z "$PYTHON" ]]; then
+  for cand in ./.venv/bin/python3 python3; do
+    if command -v "$cand" >/dev/null 2>&1 && "$cand" -c 'import numpy, scipy' >/dev/null 2>&1; then
+      PYTHON="$cand"; break
+    fi
+  done
+fi
+if [[ -n "$PYTHON" ]]; then
+  echo "==> python tests (stream.py) via $PYTHON"
+  "$PYTHON" packages/audio-engine/scripts/test_stream.py
+else
+  echo "==> python tests skipped (no interpreter with numpy+scipy)"
+fi
+
 if [[ "$E2E" -eq 1 ]]; then
   # The e2e suite launches the real Electron app. The smoke spec additionally
   # analyzes a fixture through sox + ffprobe + python3; when those are missing

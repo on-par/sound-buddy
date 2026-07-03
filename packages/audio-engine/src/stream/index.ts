@@ -2,7 +2,7 @@ import { spawn } from "node:child_process";
 import { createInterface } from "node:readline";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
-import type { WindowData, LiveState } from "./types.js";
+import type { WindowData, LiveEvent, LiveState } from "./types.js";
 import { render } from "./display.js";
 import { analyzeStream } from "../engineer.js";
 
@@ -12,6 +12,10 @@ export interface LiveOptions {
   channelNames?: string[];
   windowSecs: number;
   llmIntervalSecs: number;
+  // Meter cadence in seconds (lightweight real-time updates). Default 0.1.
+  intervalSecs?: number;
+  // When set, stream.py records all device channels to this WAV path.
+  recordPath?: string;
 }
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -29,6 +33,13 @@ export async function startLive(opts: LiveOptions): Promise<void> {
     args.push(opts.channels.join(","));
   } else {
     args.push("");
+  }
+
+  if (opts.intervalSecs && opts.intervalSecs > 0) {
+    args.push("--interval", String(opts.intervalSecs));
+  }
+  if (opts.recordPath) {
+    args.push("--record", opts.recordPath);
   }
 
   const py = spawn("python3", [STREAM_SCRIPT, ...args], {
@@ -95,13 +106,27 @@ export async function startLive(opts: LiveOptions): Promise<void> {
       process.exit(1);
     }
 
-    const win = data as unknown as WindowData;
-    windowNum = win.window;
+    const ev = data as unknown as LiveEvent;
 
-    state.currentWindow = win;
-    state.windows.push(win);
-    if (state.windows.length > MAX_WINDOWS) {
-      state.windows.shift();
+    // Meter ticks drive the real-time display; only the heavier window ticks
+    // (which carry masking) accumulate as LLM trend context. Carry the last
+    // window's masking forward on meter ticks so the MASKING ALERTS section
+    // isn't blanked ~10×/s between windows.
+    if (ev.type === "meter") {
+      state.currentWindow = {
+        window: windowNum,
+        ts: ev.ts,
+        channels: ev.channels,
+        masking: state.currentWindow?.masking ?? [],
+      };
+    } else {
+      const win = ev as WindowData;
+      windowNum = win.window;
+      state.currentWindow = win;
+      state.windows.push(win);
+      if (state.windows.length > MAX_WINDOWS) {
+        state.windows.shift();
+      }
     }
 
     render(state, deviceLabel, windowNum, opts.windowSecs, secondsUntilLlm());
