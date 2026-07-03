@@ -305,6 +305,39 @@
     }
     .sb-slider::-webkit-slider-thumb:hover { transform:scale(1.15); box-shadow:0 0 0 4px var(--gold-tint); }
 
+    /* Segmented toggle (Monitor / Record) */
+    .seg-label { font:var(--fw-medium) var(--fs-label)/1 var(--font-sans); color:var(--text-tertiary); letter-spacing:var(--tracking-label); margin-bottom:6px; }
+    .segmented { display:flex; gap:4px; padding:4px; background:var(--surface-inset); border:1px solid var(--border-subtle); border-radius:var(--radius-lg); }
+    .segmented button { flex:1; height:var(--control-h-sm); border:none; border-radius:var(--radius-md); background:transparent; color:var(--text-secondary); font:var(--fw-medium) var(--fs-label)/1 var(--font-sans); cursor:pointer; display:inline-flex; align-items:center; justify-content:center; gap:6px; transition:background-color var(--dur-fast) var(--ease-out),color var(--dur-fast) var(--ease-out); }
+    .segmented button:hover { color:var(--text-primary); }
+    .segmented button.active { background:var(--surface-raised); color:var(--text-primary); box-shadow:var(--highlight-top); }
+    .segmented button.active[data-mode="record"] { color:var(--issue-text); }
+
+    /* Record folder row */
+    .record-row { display:flex; align-items:center; gap:8px; }
+    .record-path { flex:1; min-width:0; font:var(--fw-regular) var(--fs-micro)/1.3 var(--font-mono); color:var(--text-muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+
+    /* Channel configuration */
+    .chcfg-head { display:flex; align-items:baseline; justify-content:space-between; margin-bottom:8px; }
+    .chcfg-head .lbl { font:var(--fw-medium) var(--fs-label)/1 var(--font-sans); color:var(--text-tertiary); letter-spacing:var(--tracking-label); }
+    .chcfg-head .cap { font:var(--fw-regular) var(--fs-micro)/1 var(--font-mono); color:var(--text-muted); }
+    .chcfg-list { display:flex; flex-direction:column; gap:6px; }
+    .chcfg-row { display:flex; align-items:center; gap:6px; }
+    .chcfg-row select { flex:1; min-width:0; height:var(--control-h-sm); padding:0 8px; border-radius:var(--radius-md); background:var(--surface-raised); color:var(--text-primary); border:1px solid var(--border-default); font:var(--fw-medium) var(--fs-label)/1 var(--font-sans); }
+    .chcfg-row select:focus { border-color:var(--gold-500); box-shadow:var(--glow-focus); outline:none; }
+    .chcfg-row select.chcfg-kind { flex:0 0 96px; }
+    .chcfg-x { flex:0 0 auto; width:var(--control-h-sm); height:var(--control-h-sm); border:1px solid var(--border-subtle); border-radius:var(--radius-md); background:transparent; color:var(--text-muted); cursor:pointer; font-size:15px; line-height:1; }
+    .chcfg-x:hover:not(:disabled) { color:var(--issue-text); border-color:var(--issue-500); }
+    .chcfg-x:disabled { opacity:0.35; cursor:not-allowed; }
+    .chcfg-add { margin-top:8px; }
+    .chcfg-add:disabled { opacity:0.45; cursor:not-allowed; }
+
+    /* Recording indicator + recording offer banner */
+    #live-indicator .rec-dot { width:8px; height:8px; border-radius:50%; background:var(--issue-500); box-shadow:0 0 8px rgba(229,72,77,0.6); }
+    .rec-offer { display:flex; align-items:center; gap:10px; margin-top:10px; padding:12px 14px; background:var(--surface-inset); border:1px solid var(--border-subtle); border-radius:var(--radius-lg); }
+    .rec-offer .ro-text { flex:1; min-width:0; font:var(--fw-regular) var(--fs-label)/1.3 var(--font-sans); color:var(--text-secondary); }
+    .rec-offer .ro-text b { color:var(--text-primary); font-weight:var(--fw-semibold); }
+
     /* Spectrum panel */
     #spectrum-panel { flex:1; display:flex; flex-direction:column; min-width:0; overflow:hidden; }
     #spectrum-header { display:flex; align-items:center; gap:20px; padding:11px 20px; border-bottom:1px solid var(--border-subtle); background:var(--bg-panel); flex-shrink:0; min-height:52px; }
@@ -501,6 +534,39 @@
       .rc-rec { border-left-color:#000 !important; }
       .rc-heatmap svg, .rc-frame-curve svg { -webkit-print-color-adjust:exact; print-color-adjust:exact; }
     }
+    /* ── Ideal profile (PRD 05) ──────────────────────────────────────── */
+    #ideal-profile-wrap { display:none; align-items:center; gap:8px; margin-left:14px; flex-shrink:0; }
+    #ideal-profile-wrap .ipw-label { font:var(--fw-semibold) var(--fs-micro)/1 var(--font-sans); letter-spacing:var(--tracking-caps); text-transform:uppercase; color:var(--text-tertiary); white-space:nowrap; }
+    #ideal-profile-wrap .select-wrap select { height:var(--control-h-sm); padding:0 30px 0 10px; font:var(--fw-medium) var(--fs-label)/1 var(--font-sans); }
+    #ideal-profile-wrap .select-caret { right:9px; }
+
+    /* Dashed ideal-target overlay on the analyzer curve + its legend/score */
+    .sb-target-line { fill:none; stroke:var(--text-tertiary); stroke-width:1.75; stroke-dasharray:6 5; stroke-linejoin:round; stroke-linecap:round; opacity:0.9; }
+    .spectrum-legend { display:flex; gap:18px; align-items:center; margin-top:12px; padding:0 4px; }
+    .spectrum-legend .sl-item { display:flex; align-items:center; gap:7px; font:var(--fw-regular) var(--fs-label)/1 var(--font-sans); color:var(--text-tertiary); }
+    .spectrum-legend .sl-swatch { width:18px; height:0; flex-shrink:0; }
+    .spectrum-legend .sl-swatch.measured { border-top:2.5px solid var(--gold-500); }
+    .spectrum-legend .sl-swatch.target { border-top:2px dashed var(--text-tertiary); }
+    .spectrum-legend .sl-score { margin-left:auto; display:flex; align-items:baseline; gap:5px; }
+    .spectrum-legend .sl-score .num { font:var(--fw-semibold) var(--fs-body-lg)/1 var(--font-mono); color:var(--text-primary); }
+    .spectrum-legend .sl-score .cap { font:var(--fw-medium) var(--fs-micro)/1 var(--font-sans); letter-spacing:var(--tracking-caps); text-transform:uppercase; color:var(--text-muted); }
+
+    /* Report card — ideal profile match */
+    #rc-profile-section .rc-profile { display:flex; flex-direction:column; gap:14px; background:var(--surface); border:1px solid var(--border-subtle); border-radius:var(--radius-lg); padding:16px 20px; box-shadow:var(--elevation-card); }
+    .rcp-head { display:flex; align-items:center; justify-content:space-between; gap:12px; }
+    .rcp-head .rcp-name { font:var(--fw-medium) var(--fs-body)/1.2 var(--font-sans); color:var(--text-secondary); }
+    .rcp-score { display:flex; align-items:baseline; gap:6px; }
+    .rcp-score .num { font:var(--fw-semibold) 22px/1 var(--font-mono); }
+    .rcp-score .slash { font:var(--fw-regular) var(--fs-label)/1 var(--font-mono); color:var(--text-muted); }
+    .rcp-regions { display:flex; flex-wrap:wrap; gap:8px; }
+    .rcp-region { display:flex; align-items:center; gap:6px; padding:5px 10px; border-radius:var(--radius-md); border:1px solid var(--border-subtle); background:var(--surface-inset); font:var(--fw-regular) var(--fs-label)/1 var(--font-sans); color:var(--text-tertiary); }
+    .rcp-region.over { border-left:3px solid var(--meter-hot, #E0A33C); }
+    .rcp-region.under { border-left:3px solid var(--band-mid, #23BBA6); }
+    .rcp-region b { color:var(--text-secondary); font-weight:var(--fw-semibold); }
+    .rcp-dev svg { display:block; width:100%; height:auto; }
+    .rcp-dev .zero { stroke:var(--border-strong); stroke-width:1; stroke-dasharray:2 3; }
+    .rcp-dev .devbar-over { fill:var(--meter-hot, #E0A33C); opacity:0.8; }
+    .rcp-dev .devbar-under { fill:var(--band-mid, #23BBA6); opacity:0.8; }
   </style>
 </head>
 <body class="ai-disabled">
@@ -603,6 +669,35 @@
           </label>
           <p id="device-hint" class="device-hint" style="display:none"></p>
 
+          <!-- Monitor vs Record -->
+          <div>
+            <div class="seg-label">Mode</div>
+            <div class="segmented" id="live-mode">
+              <button type="button" data-mode="monitor" class="active" data-icon="activity">Monitor</button>
+              <button type="button" data-mode="record" data-icon="circle">Record</button>
+            </div>
+          </div>
+
+          <!-- Record folder (record mode only) -->
+          <div class="record-row" id="record-folder-row" style="display:none">
+            <button type="button" id="record-folder-btn" class="ghost-btn" title="Choose recording folder">Folder…</button>
+            <span class="record-path" id="record-folder-path">~/Music/Sound Buddy</span>
+          </div>
+
+          <!-- Channel configuration -->
+          <div id="chcfg">
+            <div class="chcfg-head">
+              <span class="lbl">Channels</span>
+              <span class="cap" id="chcfg-cap"></span>
+            </div>
+            <div class="chcfg-list" id="chcfg-list"></div>
+            <button type="button" class="btn btn-secondary sm chcfg-add" id="chcfg-add" data-icon="plus">Add channel</button>
+          </div>
+
+          <div class="slider">
+            <div class="slider-head"><span class="lbl">Meter rate</span><span class="val" id="interval-label">100 ms</span></div>
+            <input type="range" class="sb-slider" id="meter-interval" min="50" max="500" step="10" value="100" />
+          </div>
           <div class="slider">
             <div class="slider-head"><span class="lbl">Window</span><span class="val" id="window-secs-label">3.0s</span></div>
             <input type="range" class="sb-slider" id="window-secs" min="1" max="10" step="0.5" value="3" />
@@ -616,6 +711,10 @@
           <button class="btn btn-primary full" id="live-start-btn" data-icon="play">Start Capture</button>
           <button class="btn btn-danger full" id="live-stop-btn" data-icon="square" style="display:none">Stop Capture</button>
           <div id="live-status" style="display:none; font:var(--fw-regular) var(--fs-label)/1.3 var(--font-sans); color:var(--text-muted); text-align:center"></div>
+          <div id="rec-offer" class="rec-offer" style="display:none">
+            <span class="ro-text" id="rec-offer-text"></span>
+            <button type="button" class="btn btn-secondary sm" id="rec-offer-btn" data-icon="waveform">Analyze</button>
+          </div>
         </div>
       </div>
     </aside>
@@ -630,6 +729,13 @@
           <div class="stat"><span class="stat-label">DR</span><span class="stat-val"><span class="stat-num" id="stat-dr">—</span><span class="stat-unit">dB</span></span></div>
           <div class="stat"><span class="stat-label">Clip</span><span class="stat-val"><span class="stat-num" id="stat-clip">—</span></span></div>
           <div class="stat"><span class="stat-label">Centroid</span><span class="stat-val"><span class="stat-num" id="stat-centroid">—</span><span class="stat-unit">Hz</span></span></div>
+        </div>
+        <div id="ideal-profile-wrap">
+          <span class="ipw-label">Ideal</span>
+          <div class="select-wrap">
+            <select id="ideal-profile-select" aria-label="Ideal EQ profile"></select>
+            <span class="select-caret" data-icon="chevron-down"></span>
+          </div>
         </div>
       </div>
       <div id="spectrum-body"></div>
@@ -676,6 +782,10 @@
               <div class="rc-ribbon" id="rc-ribbon"></div>
               <div class="rc-ribbon-legend" id="rc-ribbon-legend"></div>
             </div>
+          </div>
+          <div class="rc-section" id="rc-profile-section" style="display:none">
+            <h2>Ideal Profile Match</h2>
+            <div class="rc-profile" id="rc-profile"></div>
           </div>
           <div class="rc-section">
             <h2>Metrics</h2>
@@ -725,6 +835,8 @@ const ICON_PATHS = {
   upload:'M12 15V3M7 8l5-5 5 5M4 15v4a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-4',
   download:'M12 3v12M7 10l5 5 5-5M4 15v4a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-4',
   'chevron-down':'M6 9l6 6 6-6',
+  circle:'M12 12m-9 0a9 9 0 1 0 18 0 9 9 0 1 0-18 0',
+  plus:'M12 5v14M5 12h14',
 };
 
 function iconSvg(name, size = 16, opts = {}) {
@@ -759,8 +871,13 @@ let liveRunning = false;
 let liveWindows = [];
 let liveCountdownTimer = null;
 let liveCountdownSecs = 0;
+let liveDevices = [];          // last device list (for channel-count lookup)
+let liveMode = 'monitor';      // 'monitor' | 'record'
+let recordDir = '';            // chosen recording folder ('' = default ~/Music/Sound Buddy)
+let channelConfig = [];        // configured strips: { kind:'mono'|'stereo', a:idx, b:idx }
 let llmRunning = false;
 let aiStreamStarted = false;
+let idealProfileId = ''; // active ideal EQ profile; '' = auto by content type (PRD 05)
 
 /* ══ Formatting helpers ══ */
 function fmt(n, d = 1) { if (!isFinite(n)) return '-∞'; return n.toFixed(d); }
@@ -783,6 +900,110 @@ const BAND_META = [
 const LIVE_BAND_KEYS = ['sub_bass', 'bass', 'low_mid', 'mid', 'high_mid', 'presence', 'brilliance'];
 
 function toPct(db) { const c = Math.max(DB_MIN, Math.min(DB_MAX, db)); return (c - DB_MIN) / (DB_MAX - DB_MIN) * 100; }
+
+/* ══ Ideal EQ profiles + comparison (PRD 05) ══
+   Hand-mirror of packages/audio-engine/src/profiles/index.ts. The renderer is a
+   bundler-free static page, so — as with the mirrored types in electron/ipc.ts —
+   this copy is kept in sync by hand; the authoritative, unit-tested version lives
+   in the audio-engine package. Comparison is level-invariant (mean-subtraction). */
+const IP_GRID_POINTS = 48;
+const IP_GRID_FREQS = Array.from({ length: IP_GRID_POINTS }, (_, i) => 20 * Math.pow(1000, i / (IP_GRID_POINTS - 1)));
+const IP_LOG2 = (f) => Math.log2(f);
+const IP_CLAMP01 = (x) => Math.max(0, Math.min(1, x));
+function ipBell(centerHz, gainDb, bw) { return (f) => gainDb * Math.exp(-0.5 * Math.pow((IP_LOG2(f) - IP_LOG2(centerHz)) / bw, 2)); }
+function ipLowShelf(cornerHz, gainDb, widthOct = 1.5) { return (f) => { const t = IP_CLAMP01((IP_LOG2(cornerHz) - IP_LOG2(f)) / (2 * widthOct) + 0.5); return gainDb * (t * t * (3 - 2 * t)); }; }
+function ipHighShelf(cornerHz, gainDb, widthOct = 1.5) { return (f) => { const t = IP_CLAMP01((IP_LOG2(f) - IP_LOG2(cornerHz)) / (2 * widthOct) + 0.5); return gainDb * (t * t * (3 - 2 * t)); }; }
+function ipShape(...terms) { return IP_GRID_FREQS.map(f => Math.round(terms.reduce((a, t) => a + t(f), 0) * 100) / 100); }
+const IP_PROFILES = [
+  { id: 'flat', label: 'Flat / neutral', description: 'Neutral reference — no target tilt.', freqs: IP_GRID_FREQS, dbOffsets: IP_GRID_FREQS.map(() => 0) },
+  { id: 'music-fullrange', label: 'Music (full-range)', description: 'Balanced mix: gentle low warmth and a soft presence lift.', freqs: IP_GRID_FREQS, dbOffsets: ipShape(ipLowShelf(120, 3, 1.5), ipBell(4500, 2.5, 1.1), ipHighShelf(12000, -1.5, 1.2)) },
+  { id: 'speech-podcast', label: 'Speech / podcast', description: 'Intelligibility: high-pass tilt, 2–5 kHz presence bump.', freqs: IP_GRID_FREQS, dbOffsets: ipShape(ipLowShelf(110, -6, 1.4), ipBell(3000, 4, 1.0), ipHighShelf(9000, -2, 1.2)) },
+  { id: 'broadcast', label: 'Broadcast (speech)', description: 'Loudness-normalized speech: controlled lows, gentle presence.', freqs: IP_GRID_FREQS, dbOffsets: ipShape(ipLowShelf(140, -8, 1.2), ipBell(2500, 2.5, 1.1), ipHighShelf(10000, -3, 1.2)) },
+];
+const IP_BY_ID = new Map(IP_PROFILES.map(p => [p.id, p]));
+const IP_BANDS = [
+  { band: 'subBass', label: 'Sub-bass', lo: 20, hi: 60 },
+  { band: 'bass', label: 'Bass', lo: 60, hi: 250 },
+  { band: 'lowMid', label: 'Low-mid', lo: 250, hi: 500 },
+  { band: 'mid', label: 'Mid', lo: 500, hi: 2000 },
+  { band: 'highMid', label: 'High-mid', lo: 2000, hi: 4000 },
+  { band: 'presence', label: 'Presence', lo: 4000, hi: 6000 },
+  { band: 'brilliance', label: 'Brilliance', lo: 6000, hi: 20000 },
+];
+const IP_POINT_WEIGHTS = IP_GRID_FREQS.map(f => (f >= 200 && f <= 6000) ? 1 : (f < 200 ? 0.5 : 0.6));
+const IP_PENALTY_PER_DB = 4;
+function ipFiniteMean(xs) { let s = 0, n = 0; for (const x of xs) { if (Number.isFinite(x)) { s += x; n++; } } return n > 0 ? s / n : 0; }
+function ipDefaultForContentType(ct) { switch (ct) { case 'speech': return 'speech-podcast'; case 'music': case 'mixed': return 'music-fullrange'; default: return 'flat'; } }
+function ipCompare(curve, profile) {
+  if (!curve || !Array.isArray(curve.db) || curve.db.length !== profile.dbOffsets.length) return null;
+  const mMean = ipFiniteMean(curve.db), tMean = ipFiniteMean(profile.dbOffsets);
+  // Silent (non-finite) bins are excluded from scoring, not counted on-target.
+  const valid = new Array(curve.db.length);
+  const deviation = curve.db.map((db, i) => {
+    const ok = Number.isFinite(db);
+    valid[i] = ok;
+    return ok ? (db - mMean) - (profile.dbOffsets[i] - tMean) : 0;
+  });
+  let wsum = 0, wtot = 0;
+  deviation.forEach((d, i) => { if (!valid[i]) return; const w = IP_POINT_WEIGHTS[i] ?? 1; wsum += w * d * d; wtot += w; });
+  if (wtot === 0) return null; // no real spectral content to compare against
+  const wrms = Math.sqrt(wsum / wtot);
+  const matchScore = Math.round(Math.max(0, Math.min(100, 100 - IP_PENALTY_PER_DB * wrms)));
+  const bands = IP_BANDS.map(({ band, label, lo, hi }) => {
+    const vals = [];
+    IP_GRID_FREQS.forEach((f, i) => { if (f >= lo && f < hi && valid[i]) vals.push(deviation[i]); });
+    return { band, label, deviation: vals.length ? ipFiniteMean(vals) : 0 };
+  });
+  let topOver = null, topUnder = null;
+  for (const b of bands) {
+    if (b.deviation > 0 && (!topOver || b.deviation > topOver.deviation)) topOver = b;
+    if (b.deviation < 0 && (!topUnder || b.deviation < topUnder.deviation)) topUnder = b;
+  }
+  return { profileId: profile.id, deviation, matchScore, bands, topOver, topUnder };
+}
+/** Resolve the profile to compare against: an explicit pick, else auto by content type. */
+function activeProfile(spectrum) {
+  const id = idealProfileId || ipDefaultForContentType(spectrum && spectrum.contentType);
+  return IP_BY_ID.get(id) || IP_BY_ID.get('flat');
+}
+function ipHasCurve(spectrum) {
+  const c = spectrum && spectrum.curve;
+  return !!(c && Array.isArray(c.db) && Array.isArray(c.freqs) && c.freqs.length === c.db.length && c.db.length >= 2);
+}
+
+/* Level-match a profile's relative dbOffsets onto the measured curve's mean so
+   the dashed target sits at the same level as the measured curve (PRD 05). */
+function levelMatchedTarget(curve, profile) {
+  const mMean = ipFiniteMean(curve.db), tMean = ipFiniteMean(profile.dbOffsets);
+  return profile.dbOffsets.map(v => v + (mMean - tMean));
+}
+
+/* Populate + wire the ideal-profile dropdown (once, at boot). */
+function initIdealProfileSelect() {
+  const sel = document.getElementById('ideal-profile-select');
+  if (!sel) return;
+  sel.innerHTML =
+    `<option value="">Auto (by content)</option>` +
+    IP_PROFILES.map(p => `<option value="${p.id}">${p.label}</option>`).join('') +
+    `<option value="__wav" disabled>Load ideal mix (WAV)… (coming soon)</option>`;
+  sel.value = idealProfileId;
+  sel.addEventListener('change', async () => {
+    if (sel.value === '__wav') { sel.value = idealProfileId; return; }
+    idealProfileId = sel.value;
+    try { await sb.updateSettings({ idealProfile: idealProfileId }); } catch { /* non-fatal */ }
+    if (currentAnalysis) renderSpectrum(currentAnalysis.spectrum);
+    if (currentMode === 'reportcard') renderReportCard();
+  });
+}
+
+/* Show the header dropdown only when a curve is on screen (file/dir mode). */
+function updateIdealProfileVisibility(spectrum) {
+  const wrap = document.getElementById('ideal-profile-wrap');
+  if (!wrap) return;
+  wrap.style.display = (ipHasCurve(spectrum) && currentMode !== 'live') ? 'flex' : 'none';
+  const sel = document.getElementById('ideal-profile-select');
+  if (sel) sel.value = idealProfileId;
+}
 
 function levelColor(db) { return db > -24 ? 'var(--meter-good)' : db > -36 ? 'var(--meter-hot)' : 'var(--meter-idle)'; }
 
@@ -811,11 +1032,13 @@ function setSpectrumState(state, opts = {}) {
   const body = document.getElementById('spectrum-body');
   const statsRow = document.getElementById('stats-row');
   statsRow.style.display = state === 'populated' ? 'flex' : 'none';
+  const ipWrap = document.getElementById('ideal-profile-wrap');
+  if (ipWrap) ipWrap.style.display = 'none';
 
   if (state === 'empty') {
     body.innerHTML = `<div class="spectrum-empty">${iconSvg('waveform', 44)}<p>${opts.text || 'Load a file to see the spectrum'}</p></div>`;
   } else if (state === 'loading') {
-    body.innerHTML = `<div class="spectrum-empty"><span class="spin"></span><p>Analyzing audio…</p><p class="sub">Computing dynamics + 7-band spectrum</p></div>`;
+    body.innerHTML = `<div class="spectrum-empty"><span class="spin"></span><p>Analyzing audio…</p><p class="sub">Computing dynamics + spectrum curve</p></div>`;
   } else if (state === 'error') {
     body.innerHTML = `<div class="spectrum-empty" style="color:var(--issue-text)">${iconSvg('alert-triangle', 40)}<p>Analysis failed</p><p class="sub" style="max-width:340px;color:var(--text-tertiary)">${opts.text || 'Couldn’t decode the audio stream.'}</p></div>`;
   }
@@ -864,14 +1087,17 @@ function smoothPath(pts) {
   return d;
 }
 
-// Build the analyzer SVG from a { freqs, db } curve. Returns '' if unusable.
-function spectrumCurveSVG(curve, centroid) {
+// Build the analyzer SVG from a { freqs, db } curve. `targetDb` (optional, same
+// grid as curve, already level-matched) overlays a dashed ideal target (PRD 05).
+// Returns '' if unusable.
+function spectrumCurveSVG(curve, centroid, targetDb) {
   if (!curve || !Array.isArray(curve.freqs) || !Array.isArray(curve.db)) return '';
+  const hasTarget = Array.isArray(targetDb) && targetDb.length >= curve.db.length;
   const n = Math.min(curve.freqs.length, curve.db.length);
   const raw = [];
   for (let i = 0; i < n; i++) {
     const f = curve.freqs[i], db = curve.db[i];
-    if (isFinite(f) && f > 0 && isFinite(db)) raw.push({ f, db });
+    if (isFinite(f) && f > 0 && isFinite(db)) raw.push({ f, db, t: hasTarget ? targetDb[i] : null });
   }
   if (raw.length < 2) return '';
 
@@ -880,8 +1106,10 @@ function spectrumCurveSVG(curve, centroid) {
   const logMin = Math.log10(CURVE_FMIN), logSpan = Math.log10(CURVE_FMAX) - logMin;
   const xForFreq = f => x0 + (Math.log10(Math.max(CURVE_FMIN, Math.min(CURVE_FMAX, f))) - logMin) / logSpan * (x1 - x0);
 
-  // Auto-range Y to the curve with padding; widen a degenerate (flat) range.
+  // Auto-range Y to the curve (and the target, so the dashed overlay never
+  // clips) with padding; widen a degenerate (flat) range.
   const dbs = raw.map(p => p.db);
+  if (hasTarget) for (const p of raw) if (isFinite(p.t)) dbs.push(p.t);
   let dMin = Math.min(...dbs), dMax = Math.max(...dbs);
   if (dMax - dMin < 1) { dMin -= 6; dMax += 6; }
   const pad = Math.max(3, (dMax - dMin) * 0.08);
@@ -889,6 +1117,9 @@ function spectrumCurveSVG(curve, centroid) {
   const yForDb = db => y1 - (db - lo) / (hi - lo) * (y1 - y0);
 
   const pts = raw.map(p => ({ x: xForFreq(p.f), y: yForDb(p.db) }));
+  const targetPath = hasTarget
+    ? smoothPath(raw.filter(p => isFinite(p.t)).map(p => ({ x: xForFreq(p.f), y: yForDb(p.t) })))
+    : '';
 
   // Band-range tints along the x axis.
   const tints = BAND_META.map(b => {
@@ -935,10 +1166,21 @@ function spectrumCurveSVG(curve, centroid) {
     <line class="sb-axis-base" x1="${x0}" y1="${y1}" x2="${x1}" y2="${y1}"/>
     <g clip-path="url(#sb-spectrum-plot)">
       <path class="sb-curve-fill" d="${area}" fill="url(#sb-spectrum-fill)"/>
+      ${targetPath ? `<path class="sb-target-line" d="${targetPath}"/>` : ''}
       <path class="sb-curve-line" d="${line}"/>
     </g>
     ${centroidMark}
   </svg>`;
+}
+
+// Legend + match score shown beneath the analyzer curve (PRD 05).
+function spectrumLegendHTML(profile, cmp) {
+  const score = cmp ? `<span class="sl-score"><span class="num">${cmp.matchScore}</span><span class="cap">Match</span></span>` : '';
+  return `<div class="spectrum-legend">
+    <span class="sl-item"><span class="sl-swatch measured"></span>Measured</span>
+    <span class="sl-item"><span class="sl-swatch target"></span>Target · ${profile.label}${idealProfileId ? '' : ' (auto)'}</span>
+    ${score}
+  </div>`;
 }
 
 function renderSpectrum(spectrum) {
@@ -946,17 +1188,27 @@ function renderSpectrum(spectrum) {
   const title = document.getElementById('spectrum-title');
   document.getElementById('stats-row').style.display = 'flex';
 
-  // Preferred view: the EQ frequency-response curve. Degrade gracefully to the
-  // 7-band meters when no curve is available (e.g. --no-spectrum). Keep the
-  // header label matched to whichever visualization is actually drawn.
-  const svg = spectrum ? spectrumCurveSVG(spectrum.curve, spectrum.spectralCentroid) : '';
-  if (svg) {
-    title.textContent = SPECTRUM_TITLE.curve;
-    // The curve chart is the "main curve"; the time-sampled spectrogram + scrubber
-    // sit under it and redraw #spectrum-chart for the selected frame (PRD 03).
-    body.innerHTML = `<div class="spectrum-chart" id="spectrum-chart">${svg}</div>` + buildFramesSectionHTML(spectrum);
-    if (Array.isArray(spectrum.frames) && spectrum.frames.length) initSpectrogram(spectrum);
-    return;
+  // Preferred view: the EQ frequency-response curve with the selected ideal
+  // target overlaid (PRD 05). The time-sampled spectrogram + scrubber sit under
+  // it and redraw #spectrum-chart for the selected frame (PRD 03). Degrade
+  // gracefully to the 7-band meters when no curve is available (e.g. --no-spectrum).
+  if (ipHasCurve(spectrum)) {
+    const profile = activeProfile(spectrum);
+    const target = levelMatchedTarget(spectrum.curve, profile);
+    const svg = spectrumCurveSVG(spectrum.curve, spectrum.spectralCentroid, target);
+    if (svg) {
+      const cmp = ipCompare(spectrum.curve, profile);
+      title.textContent = SPECTRUM_TITLE.curve;
+      // The curve chart is the "main curve"; the legend + match score sit directly
+      // beneath it, and the time-sampled spectrogram + scrubber sit under that and
+      // redraw #spectrum-chart for the selected frame (PRD 03).
+      body.innerHTML = `<div class="spectrum-chart" id="spectrum-chart">${svg}</div>`
+        + spectrumLegendHTML(profile, cmp)
+        + buildFramesSectionHTML(spectrum);
+      updateIdealProfileVisibility(spectrum);
+      if (Array.isArray(spectrum.frames) && spectrum.frames.length) initSpectrogram(spectrum);
+      return;
+    }
   }
   title.textContent = SPECTRUM_TITLE.meters;
   renderBandMeters(spectrum);
@@ -977,6 +1229,26 @@ function renderBandMeters(spectrum) {
     }
   });
   body.innerHTML = `<div class="meter-card">${rows}</div>`;
+  // No whole-file curve in the meters fallback, so the target dropdown is moot.
+  const wrap = document.getElementById('ideal-profile-wrap');
+  if (wrap) wrap.style.display = 'none';
+}
+
+// Coalesce live renders: meter ticks arrive up to ~20/s (and a window tick can
+// land in the same burst), but the meter panel only needs to repaint once per
+// animation frame. Keep the latest event and rebuild at most once per frame.
+let pendingLiveWin = null;
+let liveRenderScheduled = false;
+function scheduleLiveMeters(win) {
+  pendingLiveWin = win;
+  if (liveRenderScheduled) return;
+  liveRenderScheduled = true;
+  requestAnimationFrame(() => {
+    liveRenderScheduled = false;
+    const w = pendingLiveWin;
+    pendingLiveWin = null;
+    if (w && currentMode === 'live') renderLiveMeters(w);
+  });
 }
 
 /* ── Time-sampled spectrum: spectrogram heatmap + scrubber (PRD 03) ──
@@ -1108,7 +1380,11 @@ function renderScrub() {
   const curve = isAvg ? spectrum.curve : { freqs: spectrum.curve.freqs, db: frames[selected].db };
   const chart = document.getElementById('spectrum-chart');
   if (chart) {
-    const svg = spectrumCurveSVG(curve, spectrum.spectralCentroid);
+    // Keep the ideal target overlaid (PRD 05) while scrubbing. The target stays
+    // level-matched to the whole-file curve so it reads as a fixed reference the
+    // per-frame measured curve moves against.
+    const target = levelMatchedTarget(spectrum.curve, activeProfile(spectrum));
+    const svg = spectrumCurveSVG(curve, spectrum.spectralCentroid, target);
     if (svg) chart.innerHTML = svg;
   }
   const readout = document.getElementById('scrub-readout');
@@ -1133,6 +1409,8 @@ function renderLiveMeters(win) {
     return;
   }
   document.getElementById('stats-row').style.display = 'flex';
+  const ipWrap = document.getElementById('ideal-profile-wrap');
+  if (ipWrap) ipWrap.style.display = 'none'; // no whole-file curve in live mode
 
   let html = '';
   win.channels.forEach(ch => {
@@ -1333,6 +1611,130 @@ document.getElementById('llm-interval').addEventListener('input', (e) => {
   const v = parseInt(e.target.value);
   document.getElementById('llm-interval-label').textContent = v === 0 ? 'Off' : v + 's';
 });
+document.getElementById('meter-interval').addEventListener('input', (e) => {
+  const ms = parseInt(e.target.value);
+  document.getElementById('interval-label').textContent = `${ms} ms · ${Math.round(1000 / ms)}/s`;
+});
+
+/* ── Monitor / Record toggle ── */
+document.querySelectorAll('#live-mode button').forEach((b) => {
+  b.addEventListener('click', () => {
+    liveMode = b.dataset.mode;
+    document.querySelectorAll('#live-mode button').forEach((x) => x.classList.toggle('active', x === b));
+    document.getElementById('record-folder-row').style.display = liveMode === 'record' ? 'flex' : 'none';
+    hydrateIcons(document.getElementById('live-mode'));
+  });
+});
+
+document.getElementById('record-folder-btn').addEventListener('click', async () => {
+  const dir = await sb.openDirDialog();
+  if (dir) {
+    recordDir = dir;
+    document.getElementById('record-folder-path').textContent = dir;
+  }
+});
+
+/* ── Channel configuration ── */
+// The selected device's max input channels (0 = default device / unknown).
+function selectedDeviceChannels() {
+  const val = document.getElementById('device-select').value;
+  if (val === '') {
+    // Default device: fall back to the max across enumerated inputs so the
+    // picker still offers something sensible.
+    return liveDevices.reduce((m, d) => Math.max(m, d.channels || 0), 0) || 2;
+  }
+  const dev = liveDevices.find((d) => String(d.index) === val);
+  return dev ? dev.channels : 2;
+}
+
+// Total device channels consumed by the current config (mono=1, stereo=2).
+function usedChannelCount() {
+  return channelConfig.reduce((n, s) => n + (s.kind === 'stereo' ? 2 : 1), 0);
+}
+
+// Reset the config to the device default: first ≤2 channels as mono strips.
+function resetChannelConfig() {
+  const n = selectedDeviceChannels();
+  channelConfig = [];
+  for (let i = 0; i < Math.min(2, n); i++) channelConfig.push({ kind: 'mono', a: i, b: (i + 1) % Math.max(n, 1) });
+  renderChannelConfig();
+}
+
+function channelOptions(selected, max, compact = false) {
+  let html = '';
+  // Compact (numeric-only) labels for the two stereo legs, which share the row
+  // with the kind select; roomy "Ch N" for the single mono select.
+  const label = (i) => (compact ? `${i + 1}` : `Ch ${i + 1}`);
+  for (let i = 0; i < max; i++) html += `<option value="${i}"${i === selected ? ' selected' : ''}>${label(i)}</option>`;
+  return html;
+}
+
+function renderChannelConfig() {
+  const n = selectedDeviceChannels();
+  const list = document.getElementById('chcfg-list');
+  document.getElementById('chcfg-cap').textContent = `${usedChannelCount()} / ${n} used`;
+
+  list.innerHTML = '';
+  channelConfig.forEach((strip, idx) => {
+    const row = document.createElement('div');
+    row.className = 'chcfg-row';
+    const stereo = strip.kind === 'stereo';
+    const stereoSel = stereo
+      ? `<select class="chcfg-leg" data-idx="${idx}" data-field="b" title="Right leg">${channelOptions(strip.b, n, true)}</select>`
+      : '';
+    row.innerHTML =
+      `<select class="chcfg-kind" data-idx="${idx}" data-field="kind">
+         <option value="mono"${!stereo ? ' selected' : ''}>Mono</option>
+         <option value="stereo"${stereo ? ' selected' : ''}>Stereo</option>
+       </select>
+       <select${stereo ? ' class="chcfg-leg" title="Left leg"' : ''} data-idx="${idx}" data-field="a">${channelOptions(strip.a, n, stereo)}</select>
+       ${stereoSel}
+       <button type="button" class="chcfg-x" data-idx="${idx}" title="Remove strip"${channelConfig.length <= 1 ? ' disabled' : ''}>×</button>`;
+    list.appendChild(row);
+  });
+
+  list.querySelectorAll('select').forEach((sel) => {
+    sel.addEventListener('change', (e) => {
+      const { idx, field } = e.target.dataset;
+      const strip = channelConfig[idx];
+      if (field === 'kind') {
+        strip.kind = e.target.value;
+        if (strip.kind === 'stereo' && (strip.b == null || strip.b === strip.a)) {
+          strip.b = Math.min(strip.a + 1, n - 1);
+        }
+      } else {
+        strip[field] = parseInt(e.target.value);
+      }
+      renderChannelConfig();
+    });
+  });
+  list.querySelectorAll('.chcfg-x').forEach((btn) => {
+    btn.addEventListener('click', (e) => {
+      channelConfig.splice(parseInt(e.target.dataset.idx), 1);
+      renderChannelConfig();
+    });
+  });
+
+  // Disable "Add" once every device channel is spoken for.
+  document.getElementById('chcfg-add').disabled = usedChannelCount() >= n;
+  hydrateIcons(document.getElementById('chcfg'));
+}
+
+document.getElementById('chcfg-add').addEventListener('click', () => {
+  const n = selectedDeviceChannels();
+  const next = Math.min(usedChannelCount(), n - 1);
+  channelConfig.push({ kind: 'mono', a: next, b: Math.min(next + 1, n - 1) });
+  renderChannelConfig();
+});
+
+// Build the stream.py channel tokens ("N" mono, "N-M" stereo) from the config.
+// A stereo strip whose two legs collapsed to the same channel (possible on the
+// last device channel) degrades to a mono token rather than a bogus "N-N" pair.
+function channelTokens() {
+  return channelConfig.map((s) =>
+    s.kind === 'stereo' && s.a !== s.b ? `${s.a}-${s.b}` : `${s.a}`,
+  );
+}
 
 function setDeviceHint(text, isError) {
   const hint = document.getElementById('device-hint');
@@ -1352,6 +1754,7 @@ async function loadDevices() {
 
   const result = await sb.listDevices();
   sel.innerHTML = '';
+  liveDevices = [];
 
   if (result.micAccess === 'denied' || result.micAccess === 'restricted') {
     sel.innerHTML = '<option value="">Microphone access blocked</option>';
@@ -1374,6 +1777,7 @@ async function loadDevices() {
     return;
   }
 
+  liveDevices = result.devices;
   const def = document.createElement('option');
   def.value = ''; def.textContent = 'Default Device';
   sel.appendChild(def);
@@ -1391,35 +1795,49 @@ async function loadDevices() {
     false,
   );
   if (btn) btn.disabled = false;
+
+  // Seed the channel picker from the (default) device's channel count.
+  resetChannelConfig();
 }
 
 document.getElementById('device-refresh-btn').addEventListener('click', () => loadDevices());
+// Switching devices re-seeds the channel config to that device's channel count.
+document.getElementById('device-select').addEventListener('change', () => resetChannelConfig());
 
 document.getElementById('live-start-btn').addEventListener('click', async () => {
   const device = document.getElementById('device-select').value || undefined;
   const windowSecs = parseFloat(document.getElementById('window-secs').value);
+  const intervalSecs = parseInt(document.getElementById('meter-interval').value) / 1000;
   // When AI is off, force the LLM interval to 0 so no countdown or auto-analysis
   // is armed (the backend also refuses to arm it — belt and suspenders).
   const llmIntervalSecs = aiEnabled ? parseInt(document.getElementById('llm-interval').value) : 0;
+  const channels = channelTokens();
 
   liveRunning = true;
   liveWindows = [];
 
+  document.getElementById('rec-offer').style.display = 'none';
   document.getElementById('live-start-btn').style.display = 'none';
   document.getElementById('live-stop-btn').style.display = 'inline-flex';
   document.getElementById('live-indicator').style.display = 'flex';
+  document.querySelector('#live-indicator .live-txt').textContent = liveMode === 'record' ? 'REC' : 'LIVE';
   document.getElementById('live-status').style.display = 'block';
   document.getElementById('live-status').textContent = 'Connecting…';
   document.getElementById('spectrum-title').textContent = 'Live Meters';
   setSpectrumState('empty', { text: 'Waiting for live audio…' });
 
-  const result = await sb.startLive({ device, windowSecs, llmIntervalSecs });
+  const result = await sb.startLive({
+    device, channels, windowSecs, intervalSecs, llmIntervalSecs,
+    mode: liveMode, recordDir: recordDir || undefined,
+  });
 
   if (!result.success) {
     stopLive();
     setSpectrumState('error', { text: result.error || 'Failed to start live capture' });
   } else {
-    document.getElementById('live-status').textContent = `Capturing ${windowSecs.toFixed(1)}s windows`;
+    const rate = Math.round(1 / intervalSecs);
+    document.getElementById('live-status').textContent =
+      liveMode === 'record' ? `Recording · meters ${rate}/s` : `Monitoring · meters ${rate}/s`;
     startLiveCountdown(llmIntervalSecs);
   }
 });
@@ -1429,14 +1847,38 @@ document.getElementById('live-stop-btn').addEventListener('click', () => stopLiv
 async function stopLive() {
   liveRunning = false;
   clearLiveCountdown();
-  await sb.stopLive();
+  const result = await sb.stopLive();
   document.getElementById('live-start-btn').style.display = 'inline-flex';
   document.getElementById('live-stop-btn').style.display = 'none';
   document.getElementById('live-indicator').style.display = 'none';
   document.getElementById('live-status').style.display = 'none';
   document.getElementById('window-badge').textContent = '';
   document.getElementById('spectrum-title').textContent = SPECTRUM_TITLE.meters;
+
+  // If a recording was captured, offer to analyze it in the File tab.
+  if (result && result.recordPath) {
+    lastRecordPath = result.recordPath;
+    const name = result.recordPath.split('/').pop();
+    // Build with a text node for the filename so a path can never inject markup.
+    const text = document.getElementById('rec-offer-text');
+    text.textContent = 'Saved ';
+    const b = document.createElement('b');
+    b.textContent = name;
+    text.appendChild(b);
+    text.appendChild(document.createTextNode('. Analyze it?'));
+    document.getElementById('rec-offer').style.display = 'flex';
+    hydrateIcons(document.getElementById('rec-offer'));
+  }
 }
+
+let lastRecordPath = null;
+document.getElementById('rec-offer-btn').addEventListener('click', () => {
+  if (!lastRecordPath) return;
+  document.getElementById('rec-offer').style.display = 'none';
+  document.querySelector('.mode-tab[data-mode="file"]').click();
+  loadFile(lastRecordPath);
+  runFileAnalysis(lastRecordPath);
+});
 
 function startLiveCountdown(intervalSecs) {
   if (intervalSecs <= 0) { document.getElementById('ai-countdown').textContent = ''; return; }
@@ -1464,14 +1906,19 @@ sb.onLiveEvent((data) => {
     if (data?.error) setSpectrumState('error', { text: `Live error: ${data.error}` });
     return;
   }
-  liveWindows.push(data);
-  if (liveWindows.length > 10) liveWindows.shift();
 
-  if (currentMode === 'live') renderLiveMeters(data);
+  // Every event (fast meter ticks + slower window ticks) drives the live view,
+  // coalesced to one repaint per animation frame.
+  if (currentMode === 'live') scheduleLiveMeters(data);
   if (data.channels && data.channels.length > 0) updateLiveStatsRow(data.channels[0]);
 
-  const badge = document.getElementById('window-badge');
-  badge.textContent = `Window #${data.window}`;
+  // Only the heavier window ticks (which carry masking + window #) accumulate as
+  // LLM trend context and feed the report card.
+  if (data.type === 'window' || typeof data.window === 'number') {
+    liveWindows.push(data);
+    if (liveWindows.length > 10) liveWindows.shift();
+    document.getElementById('window-badge').textContent = `Window #${data.window}`;
+  }
 });
 
 sb.onAnalysisResult((data) => { if (data.type === 'stats' && data.data) currentAnalysis = data.data; });
@@ -1541,7 +1988,9 @@ function getReportCardSource() {
       rms: sox.rmsDbfs, peak: sox.peakDbfs, dynamicRange: sox.dynamicRangeDb,
       clipping: sox.clipping, centroid: spectrum.spectralCentroid,
       bands: { ...spectrum.bands },
-      // Speech/music delineation (PRD 04) — absent on older analyses / live capture.
+      // Whole-file curve (PRD 05) + speech/music delineation (PRD 04) — absent on
+      // older analyses / live capture.
+      curve: spectrum.curve || null,
       contentType: spectrum.contentType || null,
       segments: spectrum.segments || null,
       // Time-sampled snapshots (PRD 03) for the "Spectrum Over Time" section.
@@ -1720,6 +2169,39 @@ function gradeRingHTML(grade, score) {
   <span class="rc-ring-label">Overall Grade</span>`;
 }
 
+/* ── Ideal profile match (PRD 05) ── */
+function fmtDev(d) { return (d >= 0 ? '+' : '') + d.toFixed(1) + ' dB'; }
+function deviationMiniCurve(dev) {
+  const W = 700, H = 64, padL = 4, padT = 4;
+  const plotW = W - padL * 2, mid = H / 2;
+  const maxAbs = Math.max(3, ...dev.map(d => Math.abs(d)));
+  const bw = plotW / dev.length;
+  const bars = dev.map((d, i) => {
+    const x = padL + i * bw;
+    const h = Math.abs(d) / maxAbs * (mid - padT);
+    const y = d >= 0 ? mid - h : mid;
+    const cls = d >= 0 ? 'devbar-over' : 'devbar-under';
+    return `<rect class="${cls}" x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${Math.max(1, bw - 1).toFixed(1)}" height="${Math.max(0.5, h).toFixed(1)}"/>`;
+  }).join('');
+  return `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Per-frequency deviation from the ideal target">
+    <line class="zero" x1="${padL}" y1="${mid}" x2="${padL + plotW}" y2="${mid}"/>${bars}</svg>`;
+}
+function renderProfileMatch(profile, cmp) {
+  const el = document.getElementById('rc-profile');
+  const color = cmp.matchScore >= 85 ? 'var(--grade-a)' : cmp.matchScore >= 70 ? 'var(--grade-b)' : cmp.matchScore >= 55 ? 'var(--grade-c)' : 'var(--grade-d)';
+  let regions = '';
+  if (cmp.topOver && cmp.topOver.deviation >= 1) regions += `<span class="rcp-region over">Over · <b>${cmp.topOver.label}</b> ${fmtDev(cmp.topOver.deviation)}</span>`;
+  if (cmp.topUnder && cmp.topUnder.deviation <= -1) regions += `<span class="rcp-region under">Under · <b>${cmp.topUnder.label}</b> ${fmtDev(cmp.topUnder.deviation)}</span>`;
+  if (!regions) regions = `<span class="rcp-region">Well matched across the spectrum.</span>`;
+  el.innerHTML = `
+    <div class="rcp-head">
+      <span class="rcp-name">Target: ${profile.label}${idealProfileId ? '' : ' <span style="color:var(--text-muted)">(auto)</span>'}</span>
+      <span class="rcp-score"><span class="num" style="color:${color}">${cmp.matchScore}</span><span class="slash">/100</span></span>
+    </div>
+    <div class="rcp-regions">${regions}</div>
+    <div class="rcp-dev">${deviationMiniCurve(cmp.deviation)}</div>`;
+}
+
 function renderReportCard() {
   const src = getReportCardSource();
   const empty = document.getElementById('rc-empty');
@@ -1749,6 +2231,17 @@ function renderReportCard() {
   rt.innerHTML = `${iconSvg(pillIcon(recType.tone), 13)}<span class="txt">${recType.label} — ${recType.note}</span>`;
 
   renderContentType(src);
+
+  // Ideal profile match (PRD 05) — only when a whole-file curve is available.
+  const profSection = document.getElementById('rc-profile-section');
+  if (ipHasCurve(src)) {
+    const profile = activeProfile(src);
+    const cmp = ipCompare(src.curve, profile);
+    if (cmp) { profSection.style.display = ''; renderProfileMatch(profile, cmp); }
+    else profSection.style.display = 'none';
+  } else {
+    profSection.style.display = 'none';
+  }
 
   // Metrics
   const metrics = [
@@ -1866,8 +2359,10 @@ let aiEnabled = false;
   try {
     const s = await sb.getSettings();
     aiEnabled = !!(s && s.aiEnabled);
+    if (s && typeof s.idealProfile === 'string') idealProfileId = s.idealProfile;
   } catch { aiEnabled = false; }
   document.body.classList.toggle('ai-disabled', !aiEnabled);
+  initIdealProfileSelect();
 })();
 
 hydrateIcons(document);

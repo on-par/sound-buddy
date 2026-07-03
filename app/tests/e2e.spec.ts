@@ -92,6 +92,9 @@ const FAKE_ANALYSIS = {
     dynamicRange: 12,
     curve: CURVE,
     frames: FRAMES,
+    // Classification (PRD 04) so the ideal-profile overlay + comparison (PRD 05)
+    // default from content type.
+    contentType: 'speech',
   },
 };
 
@@ -104,17 +107,35 @@ const SHORT_ANALYSIS = {
 
 test.describe('Sound Buddy E2E', () => {
   test.beforeAll(async () => {
+    // Isolate the app's userData so persisting the ideal-profile choice (PRD 05)
+    // writes to a throwaway settings.json rather than the developer's real one.
+    const userDataDir = path.join(__dirname, '..', 'test-results', 'e2e-userdata');
     electronApp = await electron.launch({
-      args: [path.join(__dirname, '..', 'dist', 'electron', 'main.js')],
+      args: [path.join(__dirname, '..', 'dist', 'electron', 'main.js'), `--user-data-dir=${userDataDir}`],
     });
     window = await electronApp.firstWindow();
     await window.waitForLoadState('domcontentloaded');
 
-    // Real analysis requires sox/ffprobe/python3 + scripts/spectrum.py on PATH.
-    // Stub the main-process IPC handler so the happy path is testable anywhere.
+    // Real analysis/capture require sox/ffprobe/python3 + a mic on PATH. Stub the
+    // main-process IPC handlers so the happy paths are testable anywhere.
     await electronApp.evaluate(({ ipcMain }, analysis) => {
       ipcMain.removeHandler('analyze-file');
       ipcMain.handle('analyze-file', () => ({ success: true, data: analysis }));
+
+      // A fake 8-channel interface so the channel picker has something to offer.
+      ipcMain.removeHandler('list-devices');
+      ipcMain.handle('list-devices', () => ({
+        success: true,
+        micAccess: 'granted',
+        devices: [{ index: 0, name: 'Fake 8ch Interface', channels: 8, default_sr: 48000 }],
+      }));
+
+      // Capture the args start-live was called with, and pretend a recording was
+      // produced so stop-live can offer it.
+      ipcMain.removeHandler('start-live');
+      ipcMain.handle('start-live', () => ({ success: true }));
+      ipcMain.removeHandler('stop-live');
+      ipcMain.handle('stop-live', () => ({ success: true, recordPath: '/tmp/sound-buddy-20260702-101500.wav' }));
     }, FAKE_ANALYSIS);
   });
 
@@ -300,5 +321,102 @@ test.describe('Sound Buddy E2E', () => {
     await window.locator('.mode-tab[data-mode="reportcard"]').click();
     await expect(window.locator('#rc-frames-section')).toBeVisible();
     await expect(window.locator('#rc-frame-curves .rc-frame')).toHaveCount(1);
+  });
+
+  test('spectrum overlays a dashed ideal target, defaulting from content type', async () => {
+    // Cycle back through the file tab so the real analysis (with its curve) is
+    // re-rendered — the prior test left the panel on the curve-less meters path.
+    await window.locator('.mode-tab[data-mode="reportcard"]').click();
+    await window.locator('.mode-tab[data-mode="file"]').click();
+
+    // The dashed ideal target is overlaid on the analyzer curve.
+    const svg = window.locator('#spectrum-body svg.sb-spectrum-curve');
+    await expect(svg).toBeVisible();
+    await expect(svg.locator('path.sb-curve-line')).toHaveCount(1);
+    await expect(svg.locator('path.sb-target-line')).toHaveCount(1);
+
+    // Speech content ⇒ the default target is the speech profile.
+    await expect(window.locator('#ideal-profile-wrap')).toBeVisible();
+    await expect(window.locator('#ideal-profile-select')).toHaveValue('');
+    await expect(window.locator('.spectrum-legend')).toContainText('Speech / podcast');
+
+    // A match score is shown on the curve legend.
+    await expect(window.locator('.spectrum-legend .sl-score .num')).toHaveText(/^\d{1,3}$/);
+  });
+
+  test('choosing a profile overrides the default and shows the WAV stub disabled', async () => {
+    await window.locator('.mode-tab[data-mode="file"]').click();
+
+    // The "Load ideal mix (WAV)…" option exists but is disabled (coming soon).
+    const wavOption = window.locator('#ideal-profile-select option[value="__wav"]');
+    await expect(wavOption).toHaveText(/Load ideal mix \(WAV\)/);
+    await expect(wavOption).toBeDisabled();
+
+    await window.locator('#ideal-profile-select').selectOption('flat');
+    await expect(window.locator('.spectrum-legend')).toContainText('Flat / neutral');
+
+    // Report card reflects the override with a match score + deviation curve.
+    await window.locator('.mode-tab[data-mode="reportcard"]').click();
+    await expect(window.locator('#rc-profile-section')).toBeVisible();
+    await expect(window.locator('#rc-profile .rcp-score .num')).toHaveText(/^\d{1,3}$/);
+    await expect(window.locator('#rc-profile .rcp-dev svg')).toBeVisible();
+  });
+
+  test.describe('Live capture (PRD 06)', () => {
+    test.beforeEach(async () => {
+      await window.locator('.mode-tab[data-mode="live"]').click();
+      await expect(window.locator('#tab-live')).toHaveClass(/active/);
+      // Re-enumerate against the stubbed 8-channel device (the boot-time scan
+      // ran before the stub was installed).
+      await window.locator('#device-refresh-btn').click();
+      await expect(window.locator('#chcfg-list .chcfg-row')).toHaveCount(2);
+    });
+
+    test('Monitor/Record toggle reveals the recording folder', async () => {
+      const folderRow = window.locator('#record-folder-row');
+      await expect(folderRow).toBeHidden();
+
+      await window.locator('#live-mode button[data-mode="record"]').click();
+      await expect(folderRow).toBeVisible();
+
+      await window.locator('#live-mode button[data-mode="monitor"]').click();
+      await expect(folderRow).toBeHidden();
+    });
+
+    test('channel picker adds up to the device channel count, with mono/stereo', async () => {
+      const rows = window.locator('#chcfg-list .chcfg-row');
+      await expect(rows).toHaveCount(2);
+      await expect(window.locator('#chcfg-cap')).toHaveText('2 / 8 used');
+
+      // Add a third mono strip.
+      await window.locator('#chcfg-add').click();
+      await expect(rows).toHaveCount(3);
+
+      // Make the first strip stereo — a second channel select appears in the row.
+      await rows.first().locator('select[data-field="kind"]').selectOption('stereo');
+      await expect(rows.first().locator('select[data-field="b"]')).toBeVisible();
+      await expect(window.locator('#chcfg-cap')).toHaveText('4 / 8 used');
+
+      // Remove a strip.
+      await rows.nth(2).locator('.chcfg-x').click();
+      await expect(rows).toHaveCount(2);
+    });
+
+    test('recording offers to analyze the WAV on stop', async () => {
+      await window.locator('#live-mode button[data-mode="record"]').click();
+      await window.locator('#live-start-btn').click();
+      await expect(window.locator('#live-stop-btn')).toBeVisible();
+      await expect(window.locator('#live-indicator .live-txt')).toHaveText('REC');
+
+      await window.locator('#live-stop-btn').click();
+      const offer = window.locator('#rec-offer');
+      await expect(offer).toBeVisible();
+      await expect(offer).toContainText('sound-buddy-20260702-101500.wav');
+
+      // Accept the offer → jumps to the File tab and analyzes the recording.
+      await window.locator('#rec-offer-btn').click();
+      await expect(window.locator('#tab-file')).toHaveClass(/active/);
+      await expect(window.locator('#file-dropzone .dz-title')).toHaveText('sound-buddy-20260702-101500.wav');
+    });
   });
 });

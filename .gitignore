@@ -10,3 +10,4 @@ playwright-report/
 .venv/
 release/
 .build-cache/
+__pycache__/

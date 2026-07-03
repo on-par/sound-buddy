@@ -3,6 +3,9 @@ import { contextBridge, ipcRenderer } from 'electron';
 contextBridge.exposeInMainWorld('soundBuddy', {
   getSettings: () => ipcRenderer.invoke('get-settings'),
 
+  updateSettings: (patch: { aiEnabled?: boolean; idealProfile?: string }) =>
+    ipcRenderer.invoke('update-settings', patch),
+
   analyzeFile: (opts: { filePath: string; noSpectrum?: boolean }) =>
     ipcRenderer.invoke('analyze-file', opts),
 
@@ -12,8 +15,15 @@ contextBridge.exposeInMainWorld('soundBuddy', {
 
   openDirDialog: () => ipcRenderer.invoke('open-dir-dialog'),
 
-  startLive: (opts: { device?: string; channels?: number[]; windowSecs: number; llmIntervalSecs: number }) =>
-    ipcRenderer.invoke('start-live', opts),
+  startLive: (opts: {
+    device?: string;
+    channels?: string[];
+    windowSecs: number;
+    intervalSecs?: number;
+    llmIntervalSecs: number;
+    mode?: 'monitor' | 'record';
+    recordDir?: string;
+  }) => ipcRenderer.invoke('start-live', opts),
 
   stopLive: () => ipcRenderer.invoke('stop-live'),
 
