@@ -1,7 +1,8 @@
-import { app, BrowserWindow, Menu, dialog } from 'electron';
+import { app, BrowserWindow, Menu, dialog, ipcMain } from 'electron';
 import * as path from 'path';
 import { registerIpcHandlers } from './ipc';
 import { initLogging, attachWindowLogging, log } from './logger';
+import { checkForUpdates, openReleasePage } from './updater';
 
 // Deterministic app name so logs land in ~/Library/Logs/SoundBuddy (not "Electron").
 app.setName('SoundBuddy');
@@ -35,6 +36,11 @@ function createWindow(): void {
 
   attachWindowLogging(mainWindow);
   mainWindow.loadFile(path.join(__dirname, '../../renderer/index.html'));
+
+  // Quiet background update check shortly after the UI is ready.
+  mainWindow.webContents.once('did-finish-load', () => {
+    void checkForUpdates(mainWindow, true);
+  });
 
   mainWindow.on('closed', () => {
     mainWindow = null;
@@ -104,6 +110,17 @@ function buildMenu(): void {
         { role: 'selectAll' },
       ],
     },
+    {
+      label: 'Help',
+      submenu: [
+        {
+          label: 'Check for Updates…',
+          click: () => {
+            void checkForUpdates(mainWindow, false);
+          },
+        },
+      ],
+    },
   ];
 
   const menu = Menu.buildFromTemplate(template);
@@ -114,6 +131,11 @@ app.whenReady().then(() => {
   augmentPathForGuiLaunch();
   initLogging();
   registerIpcHandlers();
+
+  // Manual update check + "Download" button (opens the release page in browser).
+  ipcMain.handle('check-for-updates', () => checkForUpdates(mainWindow, false));
+  ipcMain.handle('open-release-page', (_event, url?: string) => openReleasePage(url));
+
   createWindow();
   log('main window created');
 

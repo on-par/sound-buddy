@@ -13,8 +13,19 @@ npx @sound-buddy/cli analyze --scene before.scn --scene after.scn --audio record
 ```
 
 ### Electron Desktop App
+
+**Download (recommended):** grab the latest `.zip` from
+[Releases](https://github.com/on-par/sound-buddy/releases/latest), unzip, and drag
+**Sound Buddy.app** to `/Applications`. The app is **fully self-contained** — `sox`,
+`ffmpeg`/`ffprobe`, and a Python runtime with the audio libraries are bundled inside, so
+there's no Homebrew or `pip` setup. Apple Silicon (M1+), macOS 26+. First launch:
+right-click → **Open** (unsigned build). It also checks Releases for newer versions and
+shows a **Download** banner when one is available (Help ▸ Check for Updates… to check
+manually).
+
+**From source (dev):**
 ```bash
-cd app && npm install && npm run dev
+cd app && npm install && npm run dev   # dev uses PATH sox/ffprobe + a local venv
 ```
 
 ## Packages
@@ -29,11 +40,18 @@ cd app && npm install && npm run dev
 
 ## Requirements
 
+The **downloaded app bundles everything** — no external tools needed. The items below are
+only for the **CLI** and **building from source**:
+
 - Node.js 20+
 - `sox` — `brew install sox`
 - `ffmpeg/ffprobe` — `brew install ffmpeg`
 - Python 3 + librosa — `pip install librosa numpy`
 - [Ollama](https://ollama.ai) (for local LLM analysis, optional)
+
+Building the macOS app locally additionally needs `dylibbundler` (`brew install
+dylibbundler`); `app/build/afterPack.js` bundles the native tools + a relocatable Python
+into the `.app`.
 
 ## AI narrative (optional)
 

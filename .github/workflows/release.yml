@@ -24,6 +24,10 @@ jobs:
         with:
           node-version: '22'
 
+      # Build-time tools the afterPack hook bundles into the .app.
+      - name: Install bundling tools (sox, ffmpeg, dylibbundler)
+        run: brew install sox ffmpeg dylibbundler
+
       - name: Install workspace dependencies
         run: npm ci
 

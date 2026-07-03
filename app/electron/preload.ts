@@ -32,5 +32,13 @@ contextBridge.exposeInMainWorld('soundBuddy', {
   onMenuOpenFile: (cb: (filePath: string) => void) =>
     ipcRenderer.on('menu-open-file', (_event, fp) => cb(fp)),
 
+  // Updates
+  checkForUpdates: () => ipcRenderer.invoke('check-for-updates'),
+  openReleasePage: (url?: string) => ipcRenderer.invoke('open-release-page', url),
+  onUpdateAvailable: (cb: (info: { version: string; url: string; notes: string }) => void) =>
+    ipcRenderer.on('update-available', (_event, info) => cb(info)),
+  onUpdateStatus: (cb: (status: { state: string; version?: string }) => void) =>
+    ipcRenderer.on('update-status', (_event, s) => cb(s)),
+
   removeAllListeners: (ch: string) => ipcRenderer.removeAllListeners(ch),
 });

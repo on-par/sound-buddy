@@ -20,6 +20,25 @@ const SCRIPTS_DIR = app.isPackaged
 const SPECTRUM_SCRIPT = path.join(SCRIPTS_DIR, 'spectrum.py');
 const STREAM_SCRIPT = path.join(SCRIPTS_DIR, 'stream.py');
 
+// Native helpers (sox, ffprobe) are bundled at Contents/Resources/bin in a
+// packaged .app (see build/afterPack.js). In dev they come from PATH. Resolving
+// to the bundled copy means the app never depends on a Homebrew install.
+const BUNDLED_BIN_DIR = app.isPackaged ? path.join(process.resourcesPath, 'bin') : null;
+function toolBin(name: string): string {
+  if (BUNDLED_BIN_DIR) {
+    const bundled = path.join(BUNDLED_BIN_DIR, name);
+    if (fs.existsSync(bundled)) return bundled;
+  }
+  return name; // fall back to PATH (dev / unbundled)
+}
+
+// Env for spawned Python: prepend the bundled bin dir so librosa/audioread can
+// find the bundled ffmpeg (m4a/aac decode) without a system install.
+function childEnv(): NodeJS.ProcessEnv {
+  if (!BUNDLED_BIN_DIR) return process.env;
+  return { ...process.env, PATH: `${BUNDLED_BIN_DIR}${path.delimiter}${process.env.PATH ?? ''}` };
+}
+
 // The audio-engine scripts need librosa/soundfile/sounddevice/scipy, which the
 // system `python3` usually lacks (and Homebrew's is externally-managed). Prefer,
 // in order: an explicit override, the per-user venv created by
@@ -30,6 +49,8 @@ function pythonBin(): string {
   if (cachedPython) return cachedPython;
   const candidates = [
     process.env.SOUND_BUDDY_PYTHON,
+    // Bundled relocatable interpreter (Contents/Resources/python) — packaged apps.
+    app.isPackaged ? path.join(process.resourcesPath, 'python', 'bin', 'python3') : undefined,
     path.join(app.getPath('userData'), 'venv', 'bin', 'python3'),
     path.join(REPO_ROOT, '.venv', 'bin', 'python3'),
   ].filter((p): p is string => Boolean(p));
@@ -165,7 +186,7 @@ function amplitudeToDbfs(amplitude: number): number {
 async function runSox(filePath: string): Promise<SoxStats> {
   let stderr = '';
   try {
-    const result = await execFileAsync('sox', [filePath, '-n', 'stat'], { encoding: 'utf8' });
+    const result = await execFileAsync(toolBin('sox'), [filePath, '-n', 'stat'], { encoding: 'utf8' });
     stderr = result.stderr ?? '';
   } catch (err: unknown) {
     const e = err as { stderr?: string };
@@ -208,7 +229,7 @@ async function runSox(filePath: string): Promise<SoxStats> {
 // ─── FFPROBE ──────────────────────────────────────────────────────────────────
 
 async function runFfprobe(filePath: string): Promise<FfprobeResult> {
-  const { stdout } = await execFileAsync('ffprobe', [
+  const { stdout } = await execFileAsync(toolBin('ffprobe'), [
     '-v', 'quiet',
     '-print_format', 'json',
     '-show_format',
@@ -282,6 +303,7 @@ async function runSpectrum(filePath: string): Promise<SpectrumResult> {
   const { stdout } = await execFileAsync(pythonBin(), [SPECTRUM_SCRIPT, filePath], {
     encoding: 'utf8',
     maxBuffer: 1024 * 1024,
+    env: childEnv(),
   });
 
   const raw = JSON.parse(stdout) as {
@@ -436,6 +458,7 @@ export function registerIpcHandlers(): void {
       let errOutput = '';
       const py = spawn(pythonBin(), [STREAM_SCRIPT, '--list-devices'], {
         stdio: ['ignore', 'pipe', 'pipe'],
+        env: childEnv(),
       });
 
       py.stdout.on('data', (chunk: Buffer) => { output += chunk.toString(); });
@@ -527,6 +550,7 @@ export function registerIpcHandlers(): void {
 
     const py = spawn(pythonBin(), [STREAM_SCRIPT, ...args], {
       stdio: ['ignore', 'pipe', 'pipe'],
+      env: childEnv(),
     });
     log(`start-live: spawned stream.py (device="${opts.device ?? ''}" window=${opts.windowSecs}s llmInterval=${opts.llmIntervalSecs}s)`);
 
