@@ -460,6 +460,29 @@ test.describe('Sound Buddy E2E', () => {
       await expect(loud).toHaveCount(1);
       await expect(loud).toHaveAttribute('data-band', 'mid');
       await expect(window.locator('.live-ch[data-ch="0"] .veq-bar.dim')).toHaveAttribute('data-band', 'brilliance');
+
+      // Numeric per-band readouts ride the bars; > -24 dBFS is emphasized hot.
+      const vals = window.locator('.live-ch[data-ch="0"] .veq-val');
+      await expect(vals).toHaveCount(7);
+      await expect(vals.nth(3)).toHaveText('-12.0');
+      await expect(vals.nth(3)).toHaveClass(/hot/);
+      await expect(vals.nth(1)).not.toHaveClass(/hot/); // bass at -30
+      await expect(vals.nth(6)).toHaveClass(/dim/);     // brilliance at the floor
+    });
+
+    test('silence gets no loudest-band emphasis', async () => {
+      const silent = LIVE_CHANNELS.map(ch => ({
+        ...ch,
+        bands: Object.fromEntries(Object.keys(ch.bands).map(k => [k, -120])),
+      }));
+      await sendLiveTick(silent);
+      await expect(window.locator('.veq-bar.dim')).toHaveCount(14); // all bands idle...
+      await expect(window.locator('.veq-bar.loud')).toHaveCount(0); // ...none "loudest"
+      await expect(window.locator('.veq-label.loud')).toHaveCount(0);
+
+      // Signal returns → emphasis comes back.
+      await sendLiveTick(LIVE_CHANNELS);
+      await expect(window.locator('.live-ch[data-ch="0"] .veq-bar.loud')).toHaveAttribute('data-band', 'mid');
     });
 
     test('each channel has its own independent arc and loudest band', async () => {
@@ -477,6 +500,11 @@ test.describe('Sound Buddy E2E', () => {
       const midBar = window.locator('.live-ch[data-ch="0"] .veq-bar[data-band="mid"]');
       await expect(midBar).toHaveClass(/loud/);
       const before = parseFloat(await midBar.evaluate(el => (el as HTMLElement).style.height));
+      const arcLine = window.locator('.live-ch[data-ch="0"] .sb-curve-line');
+      const arcBefore = await arcLine.getAttribute('d');
+      // Mark the SVG node so we can prove the tick patches it rather than
+      // rebuilding it (bars/arc keep their nodes → CSS transitions run).
+      await window.locator('.live-ch[data-ch="0"] .sb-spectrum-curve').evaluate(el => el.setAttribute('data-marker', 'kept'));
 
       // Vocals goes bass-heavy: the mid bar shrinks and emphasis moves to bass.
       const next = [
@@ -487,6 +515,9 @@ test.describe('Sound Buddy E2E', () => {
       await expect(window.locator('.live-ch[data-ch="0"] .veq-bar.loud')).toHaveAttribute('data-band', 'bass');
       const after = parseFloat(await midBar.evaluate(el => (el as HTMLElement).style.height));
       expect(after).toBeLessThan(before);
+      // Arc re-shaped with the bars, on the same SVG node.
+      await expect(arcLine).not.toHaveAttribute('d', arcBefore as string);
+      await expect(window.locator('.live-ch[data-ch="0"] .sb-spectrum-curve')).toHaveAttribute('data-marker', 'kept');
     });
 
     test('recording offers to analyze the WAV on stop', async () => {
