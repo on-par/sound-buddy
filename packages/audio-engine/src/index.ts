@@ -16,6 +16,18 @@ export { analyzeAudio, extractChannels, loadChannelFiles, compareChannels, forma
 export { cleanup as cleanupChannelFiles };
 export type { AudioAnalysis, ChannelFile, ChannelAnalysis } from "./types.js";
 
+// Ideal EQ profiles + level-invariant comparison (PRD 05).
+export {
+  PROFILES,
+  GRID_FREQS,
+  GRID_POINTS,
+  getProfile,
+  defaultProfileForContentType,
+  compareToProfile,
+  PENALTY_PER_DB,
+} from "./profiles/index.js";
+export type { IdealProfile, ProfileComparison, BandDeviation } from "./profiles/index.js";
+
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const STREAM_SCRIPT = resolve(__dirname, "../scripts/stream.py");
 
