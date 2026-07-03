@@ -116,7 +116,7 @@ git -C "$ROOT" push -q origin "$TAG"
 say "Publishing to $PUBLIC_REPO"
 NOTES="$(cat <<EOF
 Self-contained macOS build (Apple Silicon) — bundles the audio toolchain
-(sox, ffmpeg/ffprobe) and a Python runtime, so there's no setup.
+(sox, ffmpeg/ffprobe) and a Python runtime, so there is no setup.
 
 ## Download & install
 1. Download \`Sound.Buddy-$NEXT-arm64-mac.zip\` below, unzip, drag **Sound Buddy.app** to **/Applications**.

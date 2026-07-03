@@ -397,6 +397,31 @@
     .rc-rectype { display:inline-flex; align-items:center; gap:8px; padding:5px 12px; border-radius:var(--radius-pill); max-width:420px; }
     .rc-rectype .txt { font:var(--fw-medium) var(--fs-body-sm)/1.35 var(--font-sans); }
 
+    /* Content type — speech/music delineation (PRD 04) */
+    .rc-contenttype { display:inline-flex; align-items:center; gap:7px; padding:4px 12px; border-radius:var(--radius-pill); font:var(--fw-semibold) var(--fs-label)/1 var(--font-sans); letter-spacing:var(--tracking-caps); text-transform:uppercase; }
+    .rc-contenttype .dot { width:8px; height:8px; border-radius:50%; flex-shrink:0; }
+    .rc-contenttype.speech  { background:var(--azure-tint); border:1px solid var(--info-border); color:var(--azure-text); }
+    .rc-contenttype.music   { background:var(--gold-tint); border:1px solid color-mix(in srgb, var(--gold-500) 35%, transparent); color:var(--gold-text); }
+    .rc-contenttype.mixed   { background:var(--good-tint); border:1px solid var(--good-border); color:var(--good-text); }
+    .rc-contenttype.silence { background:var(--surface-raised); border:1px solid var(--border-subtle); color:var(--text-muted); }
+    /* Per-class segment fills, shared by the ribbon and legend swatches. */
+    .seg-speech  { background:var(--azure-500); }
+    .seg-music   { background:var(--gold-500); }
+    .seg-silence { background:var(--neutral-700); }
+    /* Unknown gets a hatched fill so it stays distinct from flat silence. */
+    .seg-unknown { background:repeating-linear-gradient(45deg, var(--neutral-600) 0 3px, var(--neutral-800) 3px 6px); }
+
+    /* Timeline ribbon — segment classes in file order */
+    .rc-ribbon-wrap { width:100%; max-width:420px; display:flex; flex-direction:column; gap:8px; }
+    .rc-ribbon { display:flex; width:100%; height:14px; border-radius:var(--radius-sm); overflow:hidden; border:1px solid var(--border-subtle); background:var(--surface-inset); }
+    /* No min-width floor: widths are proportional flex-basis that sum to 100%,
+       so a file with hundreds of segments still fills the ribbon exactly rather
+       than overflowing (and clipping the tail) under overflow:hidden. */
+    .rc-ribbon .seg { height:100%; min-width:0; }
+    .rc-ribbon-legend { display:flex; justify-content:center; flex-wrap:wrap; gap:14px; font:var(--fw-medium) var(--fs-micro)/1 var(--font-sans); color:var(--text-muted); }
+    .rc-ribbon-legend .lg { display:inline-flex; align-items:center; gap:5px; }
+    .rc-ribbon-legend .sw { width:9px; height:9px; border-radius:2px; flex-shrink:0; }
+
     .rc-section { margin-bottom:30px; }
     .rc-section:last-child { margin-bottom:0; }
     .rc-section h2 { font:var(--fw-semibold) var(--fs-micro)/1 var(--font-sans); letter-spacing:var(--tracking-caps); text-transform:uppercase; color:var(--text-tertiary); margin:0 0 14px; padding-bottom:10px; border-bottom:1px solid var(--border-subtle); }
@@ -615,6 +640,11 @@
           <div class="rc-score">
             <div id="rc-ring"></div>
             <div class="rc-rectype pill" id="rc-rec-type"></div>
+            <div class="rc-contenttype" id="rc-content-type" style="display:none"></div>
+            <div class="rc-ribbon-wrap" id="rc-ribbon-wrap" style="display:none">
+              <div class="rc-ribbon" id="rc-ribbon"></div>
+              <div class="rc-ribbon-legend" id="rc-ribbon-legend"></div>
+            </div>
           </div>
           <div class="rc-section">
             <h2>Metrics</h2>
@@ -1325,6 +1355,9 @@ function getReportCardSource() {
       rms: sox.rmsDbfs, peak: sox.peakDbfs, dynamicRange: sox.dynamicRangeDb,
       clipping: sox.clipping, centroid: spectrum.spectralCentroid,
       bands: { ...spectrum.bands },
+      // Speech/music delineation (PRD 04) — absent on older analyses / live capture.
+      contentType: spectrum.contentType || null,
+      segments: spectrum.segments || null,
     };
   }
   if (liveWindows.length > 0) {
@@ -1349,6 +1382,54 @@ function bandDiffFromOthers(bands, key) {
   const others = keys.filter(k => k !== key).map(k => bands[k]);
   const avgOthers = others.reduce((a, b) => a + b, 0) / others.length;
   return bands[key] - avgOthers;
+}
+
+/* ══ Content type — speech/music delineation (PRD 04) ══ */
+const CONTENT_TYPE_LABELS = { speech: 'Speech', music: 'Music', mixed: 'Mixed', silence: 'Silence' };
+const SEG_CLASS_LABELS = { speech: 'Speech', music: 'Music', silence: 'Silence', unknown: 'Unknown' };
+
+function fmtClock(s) {
+  if (!isFinite(s) || s < 0) return '0:00';
+  const m = Math.floor(s / 60);
+  const sec = Math.floor(s % 60);
+  return `${m}:${String(sec).padStart(2, '0')}`;
+}
+
+// Populate the content-type pill + timeline ribbon. Both hide when the analysis
+// predates the classifier (older files, live capture) so nothing empty renders.
+function renderContentType(src) {
+  const pill = document.getElementById('rc-content-type');
+  const ribbonWrap = document.getElementById('rc-ribbon-wrap');
+  const ribbon = document.getElementById('rc-ribbon');
+  const legend = document.getElementById('rc-ribbon-legend');
+
+  const label = src.contentType ? CONTENT_TYPE_LABELS[src.contentType] : null;
+  if (!label) {
+    pill.style.display = 'none';
+  } else {
+    pill.style.display = 'inline-flex';
+    pill.className = 'rc-contenttype ' + src.contentType;
+    pill.textContent = label;
+  }
+
+  const segs = Array.isArray(src.segments) ? src.segments.filter(s => s && s.end > s.start) : [];
+  const span = segs.length > 0 ? segs[segs.length - 1].end - segs[0].start : 0;
+  if (segs.length === 0 || !(span > 0)) {
+    ribbonWrap.style.display = 'none';
+    return;
+  }
+  ribbonWrap.style.display = 'flex';
+
+  const segClass = (c) => (SEG_CLASS_LABELS[c] ? c : 'unknown');
+  ribbon.innerHTML = segs.map(s => {
+    const cls = segClass(s.class);
+    const pct = ((s.end - s.start) / span) * 100;
+    return `<span class="seg seg-${cls}" style="width:${pct}%" title="${SEG_CLASS_LABELS[cls]} · ${fmtClock(s.start)}–${fmtClock(s.end)}"></span>`;
+  }).join('');
+
+  const present = [...new Set(segs.map(s => segClass(s.class)))];
+  legend.innerHTML = present.map(c =>
+    `<span class="lg"><span class="sw seg-${c}"></span>${SEG_CLASS_LABELS[c]}</span>`).join('');
 }
 
 function analyzeRecordingType(src) {
@@ -1478,6 +1559,8 @@ function renderReportCard() {
   const rt = document.getElementById('rc-rec-type');
   rt.className = 'rc-rectype pill ' + recType.tone;
   rt.innerHTML = `${iconSvg(pillIcon(recType.tone), 13)}<span class="txt">${recType.label} — ${recType.note}</span>`;
+
+  renderContentType(src);
 
   // Metrics
   const metrics = [
