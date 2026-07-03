@@ -325,7 +325,7 @@
     .chcfg-row { display:flex; align-items:center; gap:6px; }
     .chcfg-row select { flex:1; min-width:0; height:var(--control-h-sm); padding:0 8px; border-radius:var(--radius-md); background:var(--surface-raised); color:var(--text-primary); border:1px solid var(--border-default); font:var(--fw-medium) var(--fs-label)/1 var(--font-sans); }
     .chcfg-row select:focus { border-color:var(--gold-500); box-shadow:var(--glow-focus); outline:none; }
-    .chcfg-kind { flex:0 0 76px; }
+    .chcfg-row select.chcfg-kind { flex:0 0 96px; }
     .chcfg-x { flex:0 0 auto; width:var(--control-h-sm); height:var(--control-h-sm); border:1px solid var(--border-subtle); border-radius:var(--radius-md); background:transparent; color:var(--text-muted); cursor:pointer; font-size:15px; line-height:1; }
     .chcfg-x:hover:not(:disabled) { color:var(--issue-text); border-color:var(--issue-500); }
     .chcfg-x:disabled { opacity:0.35; cursor:not-allowed; }
@@ -1285,9 +1285,12 @@ function resetChannelConfig() {
   renderChannelConfig();
 }
 
-function channelOptions(selected, max) {
+function channelOptions(selected, max, compact = false) {
   let html = '';
-  for (let i = 0; i < max; i++) html += `<option value="${i}"${i === selected ? ' selected' : ''}>Ch ${i + 1}</option>`;
+  // Compact (numeric-only) labels for the two stereo legs, which share the row
+  // with the kind select; roomy "Ch N" for the single mono select.
+  const label = (i) => (compact ? `${i + 1}` : `Ch ${i + 1}`);
+  for (let i = 0; i < max; i++) html += `<option value="${i}"${i === selected ? ' selected' : ''}>${label(i)}</option>`;
   return html;
 }
 
@@ -1300,15 +1303,16 @@ function renderChannelConfig() {
   channelConfig.forEach((strip, idx) => {
     const row = document.createElement('div');
     row.className = 'chcfg-row';
-    const stereoSel = strip.kind === 'stereo'
-      ? `<select data-idx="${idx}" data-field="b">${channelOptions(strip.b, n)}</select>`
+    const stereo = strip.kind === 'stereo';
+    const stereoSel = stereo
+      ? `<select class="chcfg-leg" data-idx="${idx}" data-field="b" title="Right leg">${channelOptions(strip.b, n, true)}</select>`
       : '';
     row.innerHTML =
       `<select class="chcfg-kind" data-idx="${idx}" data-field="kind">
-         <option value="mono"${strip.kind === 'mono' ? ' selected' : ''}>Mono</option>
-         <option value="stereo"${strip.kind === 'stereo' ? ' selected' : ''}>Stereo</option>
+         <option value="mono"${!stereo ? ' selected' : ''}>Mono</option>
+         <option value="stereo"${stereo ? ' selected' : ''}>Stereo</option>
        </select>
-       <select data-idx="${idx}" data-field="a">${channelOptions(strip.a, n)}</select>
+       <select${stereo ? ' class="chcfg-leg" title="Left leg"' : ''} data-idx="${idx}" data-field="a">${channelOptions(strip.a, n, stereo)}</select>
        ${stereoSel}
        <button type="button" class="chcfg-x" data-idx="${idx}" title="Remove strip"${channelConfig.length <= 1 ? ' disabled' : ''}>×</button>`;
     list.appendChild(row);
