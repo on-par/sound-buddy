@@ -62,13 +62,23 @@ const FAKE_ANALYSIS = {
     spectralCentroid: 1200,
     spectralRolloff85: 4000,
     dynamicRange: 12,
+    // Whole-file curve (PRD 02) + classification (PRD 04) so the ideal-profile
+    // overlay + comparison (PRD 05) have real input. 48-pt geomspace(20,20k).
+    contentType: 'speech',
+    curve: {
+      freqs: Array.from({ length: 48 }, (_, i) => 20 * Math.pow(1000, i / 47)),
+      db: Array.from({ length: 48 }, (_, i) => -30 + Math.sin(i / 4) * 5),
+    },
   },
 };
 
 test.describe('Sound Buddy E2E', () => {
   test.beforeAll(async () => {
+    // Isolate the app's userData so persisting the ideal-profile choice (PRD 05)
+    // writes to a throwaway settings.json rather than the developer's real one.
+    const userDataDir = path.join(__dirname, '..', 'test-results', 'e2e-userdata');
     electronApp = await electron.launch({
-      args: [path.join(__dirname, '..', 'dist', 'electron', 'main.js')],
+      args: [path.join(__dirname, '..', 'dist', 'electron', 'main.js'), `--user-data-dir=${userDataDir}`],
     });
     window = await electronApp.firstWindow();
     await window.waitForLoadState('domcontentloaded');
@@ -149,5 +159,40 @@ test.describe('Sound Buddy E2E', () => {
 
     const recCount = await window.locator('#rc-recommendations .rc-rec').count();
     expect(recCount).toBeGreaterThanOrEqual(1);
+  });
+
+  test('spectrum overlays a dashed ideal target, defaulting from content type', async () => {
+    await window.locator('.mode-tab[data-mode="file"]').click();
+
+    // The measured curve and the dashed target are both drawn.
+    await expect(window.locator('.spectrum-curve')).toBeVisible();
+    await expect(window.locator('.spectrum-curve .sc-measured')).toBeVisible();
+    await expect(window.locator('.spectrum-curve .sc-target')).toBeVisible();
+
+    // Speech content ⇒ the default target is the speech profile.
+    await expect(window.locator('#ideal-profile-wrap')).toBeVisible();
+    await expect(window.locator('#ideal-profile-select')).toHaveValue('');
+    await expect(window.locator('.sc-legend')).toContainText('Speech / podcast');
+
+    // A match score is shown on the curve legend.
+    await expect(window.locator('.sc-legend .score .num')).toHaveText(/^\d{1,3}$/);
+  });
+
+  test('choosing a profile overrides the default and shows the WAV stub disabled', async () => {
+    await window.locator('.mode-tab[data-mode="file"]').click();
+
+    // The "Load ideal mix (WAV)…" option exists but is disabled (coming soon).
+    const wavOption = window.locator('#ideal-profile-select option[value="__wav"]');
+    await expect(wavOption).toHaveText(/Load ideal mix \(WAV\)/);
+    await expect(wavOption).toBeDisabled();
+
+    await window.locator('#ideal-profile-select').selectOption('flat');
+    await expect(window.locator('.sc-legend')).toContainText('Flat / neutral');
+
+    // Report card reflects the override with a match score + deviation curve.
+    await window.locator('.mode-tab[data-mode="reportcard"]').click();
+    await expect(window.locator('#rc-profile-section')).toBeVisible();
+    await expect(window.locator('#rc-profile .rcp-score .num')).toHaveText(/^\d{1,3}$/);
+    await expect(window.locator('#rc-profile .rcp-dev svg')).toBeVisible();
   });
 });

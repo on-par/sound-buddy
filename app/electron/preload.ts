@@ -3,6 +3,9 @@ import { contextBridge, ipcRenderer } from 'electron';
 contextBridge.exposeInMainWorld('soundBuddy', {
   getSettings: () => ipcRenderer.invoke('get-settings'),
 
+  updateSettings: (patch: { aiEnabled?: boolean; idealProfile?: string }) =>
+    ipcRenderer.invoke('update-settings', patch),
+
   analyzeFile: (opts: { filePath: string; noSpectrum?: boolean }) =>
     ipcRenderer.invoke('analyze-file', opts),
 

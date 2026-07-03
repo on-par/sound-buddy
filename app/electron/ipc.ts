@@ -5,7 +5,7 @@ import * as path from 'path';
 import * as fs from 'fs';
 import { log, logWarn, logError } from './logger';
 import { streamNarrative } from './llm';
-import { getSettings } from './settings';
+import { getSettings, updateSettings } from './settings';
 
 const execFileAsync = promisify(execFile);
 
@@ -457,6 +457,13 @@ export function registerIpcHandlers(): void {
   // get-settings — read app-behavior flags (AI on/off, ideal profile). The
   // renderer reads this at boot to hide AI affordances when disabled.
   ipcMain.handle('get-settings', () => getSettings());
+
+  // update-settings — persist a partial settings patch (e.g. the ideal EQ
+  // profile the user picks in the spectrum header, PRD 05). Returns the merged
+  // settings so the renderer stays in sync.
+  ipcMain.handle('update-settings', (_event, patch: Record<string, unknown>) =>
+    updateSettings(patch as Partial<ReturnType<typeof getSettings>>),
+  );
 
   // analyze-file
   ipcMain.handle('analyze-file', async (event, opts: { filePath: string; noSpectrum?: boolean }) => {

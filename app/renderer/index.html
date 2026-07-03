@@ -432,6 +432,44 @@
       .rc-bands, .rc-rec { background:#f7f7f7 !important; box-shadow:none !important; }
       .rc-rec { border-left-color:#000 !important; }
     }
+    /* ── Ideal profile (PRD 05) ──────────────────────────────────────── */
+    #ideal-profile-wrap { display:none; align-items:center; gap:8px; margin-left:14px; flex-shrink:0; }
+    #ideal-profile-wrap .ipw-label { font:var(--fw-semibold) var(--fs-micro)/1 var(--font-sans); letter-spacing:var(--tracking-caps); text-transform:uppercase; color:var(--text-tertiary); white-space:nowrap; }
+    #ideal-profile-wrap .select-wrap select { height:var(--control-h-sm); padding:0 30px 0 10px; font:var(--fw-medium) var(--fs-label)/1 var(--font-sans); }
+    #ideal-profile-wrap .select-caret { right:9px; }
+
+    /* Spectrum curve + dashed target overlay */
+    .spectrum-curve { background:var(--surface-inset); border:1px solid var(--border-subtle); border-radius:var(--radius-xl); box-shadow:var(--elevation-canvas); padding:16px 18px 12px; margin-bottom:16px; }
+    .spectrum-curve svg { display:block; width:100%; height:auto; }
+    .sc-grid-line { stroke:var(--border-subtle); stroke-width:1; }
+    .sc-axis-label { fill:var(--text-muted); font:var(--fw-regular) 9px/1 var(--font-mono); }
+    .sc-measured { fill:none; stroke:var(--gold-500); stroke-width:2; stroke-linejoin:round; stroke-linecap:round; }
+    .sc-measured-fill { fill:var(--gold-500); opacity:0.07; }
+    .sc-target { fill:none; stroke:var(--text-tertiary); stroke-width:1.5; stroke-dasharray:5 4; stroke-linejoin:round; }
+    .sc-legend { display:flex; gap:18px; align-items:center; margin-top:8px; padding-top:8px; border-top:1px solid var(--border-subtle); }
+    .sc-legend .item { display:flex; align-items:center; gap:7px; font:var(--fw-regular) var(--fs-label)/1 var(--font-sans); color:var(--text-tertiary); }
+    .sc-legend .swatch { width:18px; height:0; border-top:2px solid var(--gold-500); }
+    .sc-legend .swatch.dashed { border-top:2px dashed var(--text-tertiary); }
+    .sc-legend .score { margin-left:auto; display:flex; align-items:baseline; gap:5px; }
+    .sc-legend .score .num { font:var(--fw-semibold) var(--fs-body-lg)/1 var(--font-mono); color:var(--text-primary); }
+    .sc-legend .score .cap { font:var(--fw-medium) var(--fs-micro)/1 var(--font-sans); letter-spacing:var(--tracking-caps); text-transform:uppercase; color:var(--text-muted); }
+
+    /* Report card — ideal profile match */
+    #rc-profile-section .rc-profile { display:flex; flex-direction:column; gap:14px; background:var(--surface); border:1px solid var(--border-subtle); border-radius:var(--radius-lg); padding:16px 20px; box-shadow:var(--elevation-card); }
+    .rcp-head { display:flex; align-items:center; justify-content:space-between; gap:12px; }
+    .rcp-head .rcp-name { font:var(--fw-medium) var(--fs-body)/1.2 var(--font-sans); color:var(--text-secondary); }
+    .rcp-score { display:flex; align-items:baseline; gap:6px; }
+    .rcp-score .num { font:var(--fw-semibold) 22px/1 var(--font-mono); }
+    .rcp-score .slash { font:var(--fw-regular) var(--fs-label)/1 var(--font-mono); color:var(--text-muted); }
+    .rcp-regions { display:flex; flex-wrap:wrap; gap:8px; }
+    .rcp-region { display:flex; align-items:center; gap:6px; padding:5px 10px; border-radius:var(--radius-md); border:1px solid var(--border-subtle); background:var(--surface-inset); font:var(--fw-regular) var(--fs-label)/1 var(--font-sans); color:var(--text-tertiary); }
+    .rcp-region.over { border-left:3px solid var(--meter-hot, #E0A33C); }
+    .rcp-region.under { border-left:3px solid var(--band-mid, #23BBA6); }
+    .rcp-region b { color:var(--text-secondary); font-weight:var(--fw-semibold); }
+    .rcp-dev svg { display:block; width:100%; height:auto; }
+    .rcp-dev .zero { stroke:var(--border-strong); stroke-width:1; stroke-dasharray:2 3; }
+    .rcp-dev .devbar-over { fill:var(--meter-hot, #E0A33C); opacity:0.8; }
+    .rcp-dev .devbar-under { fill:var(--band-mid, #23BBA6); opacity:0.8; }
   </style>
 </head>
 <body class="ai-disabled">
@@ -562,6 +600,13 @@
           <div class="stat"><span class="stat-label">Clip</span><span class="stat-val"><span class="stat-num" id="stat-clip">—</span></span></div>
           <div class="stat"><span class="stat-label">Centroid</span><span class="stat-val"><span class="stat-num" id="stat-centroid">—</span><span class="stat-unit">Hz</span></span></div>
         </div>
+        <div id="ideal-profile-wrap">
+          <span class="ipw-label">Ideal</span>
+          <div class="select-wrap">
+            <select id="ideal-profile-select" aria-label="Ideal EQ profile"></select>
+            <span class="select-caret" data-icon="chevron-down"></span>
+          </div>
+        </div>
       </div>
       <div id="spectrum-body"></div>
     </section>
@@ -602,6 +647,10 @@
           <div class="rc-score">
             <div id="rc-ring"></div>
             <div class="rc-rectype pill" id="rc-rec-type"></div>
+          </div>
+          <div class="rc-section" id="rc-profile-section" style="display:none">
+            <h2>Ideal Profile Match</h2>
+            <div class="rc-profile" id="rc-profile"></div>
           </div>
           <div class="rc-section">
             <h2>Metrics</h2>
@@ -682,6 +731,7 @@ let liveCountdownTimer = null;
 let liveCountdownSecs = 0;
 let llmRunning = false;
 let aiStreamStarted = false;
+let idealProfileId = ''; // active ideal EQ profile; '' = auto by content type (PRD 05)
 
 /* ══ Formatting helpers ══ */
 function fmt(n, d = 1) { if (!isFinite(n)) return '-∞'; return n.toFixed(d); }
@@ -704,6 +754,148 @@ const BAND_META = [
 const LIVE_BAND_KEYS = ['sub_bass', 'bass', 'low_mid', 'mid', 'high_mid', 'presence', 'brilliance'];
 
 function toPct(db) { const c = Math.max(DB_MIN, Math.min(DB_MAX, db)); return (c - DB_MIN) / (DB_MAX - DB_MIN) * 100; }
+
+/* ══ Ideal EQ profiles + comparison (PRD 05) ══
+   Hand-mirror of packages/audio-engine/src/profiles/index.ts. The renderer is a
+   bundler-free static page, so — as with the mirrored types in electron/ipc.ts —
+   this copy is kept in sync by hand; the authoritative, unit-tested version lives
+   in the audio-engine package. Comparison is level-invariant (mean-subtraction). */
+const IP_GRID_POINTS = 48;
+const IP_GRID_FREQS = Array.from({ length: IP_GRID_POINTS }, (_, i) => 20 * Math.pow(1000, i / (IP_GRID_POINTS - 1)));
+const IP_LOG2 = (f) => Math.log2(f);
+const IP_CLAMP01 = (x) => Math.max(0, Math.min(1, x));
+function ipBell(centerHz, gainDb, bw) { return (f) => gainDb * Math.exp(-0.5 * Math.pow((IP_LOG2(f) - IP_LOG2(centerHz)) / bw, 2)); }
+function ipLowShelf(cornerHz, gainDb, widthOct = 1.5) { return (f) => { const t = IP_CLAMP01((IP_LOG2(cornerHz) - IP_LOG2(f)) / (2 * widthOct) + 0.5); return gainDb * (t * t * (3 - 2 * t)); }; }
+function ipHighShelf(cornerHz, gainDb, widthOct = 1.5) { return (f) => { const t = IP_CLAMP01((IP_LOG2(f) - IP_LOG2(cornerHz)) / (2 * widthOct) + 0.5); return gainDb * (t * t * (3 - 2 * t)); }; }
+function ipShape(...terms) { return IP_GRID_FREQS.map(f => Math.round(terms.reduce((a, t) => a + t(f), 0) * 100) / 100); }
+const IP_PROFILES = [
+  { id: 'flat', label: 'Flat / neutral', description: 'Neutral reference — no target tilt.', freqs: IP_GRID_FREQS, dbOffsets: IP_GRID_FREQS.map(() => 0) },
+  { id: 'music-fullrange', label: 'Music (full-range)', description: 'Balanced mix: gentle low warmth and a soft presence lift.', freqs: IP_GRID_FREQS, dbOffsets: ipShape(ipLowShelf(120, 3, 1.5), ipBell(4500, 2.5, 1.1), ipHighShelf(12000, -1.5, 1.2)) },
+  { id: 'speech-podcast', label: 'Speech / podcast', description: 'Intelligibility: high-pass tilt, 2–5 kHz presence bump.', freqs: IP_GRID_FREQS, dbOffsets: ipShape(ipLowShelf(110, -6, 1.4), ipBell(3000, 4, 1.0), ipHighShelf(9000, -2, 1.2)) },
+  { id: 'broadcast', label: 'Broadcast (speech)', description: 'Loudness-normalized speech: controlled lows, gentle presence.', freqs: IP_GRID_FREQS, dbOffsets: ipShape(ipLowShelf(140, -8, 1.2), ipBell(2500, 2.5, 1.1), ipHighShelf(10000, -3, 1.2)) },
+];
+const IP_BY_ID = new Map(IP_PROFILES.map(p => [p.id, p]));
+const IP_BANDS = [
+  { band: 'subBass', label: 'Sub-bass', lo: 20, hi: 60 },
+  { band: 'bass', label: 'Bass', lo: 60, hi: 250 },
+  { band: 'lowMid', label: 'Low-mid', lo: 250, hi: 500 },
+  { band: 'mid', label: 'Mid', lo: 500, hi: 2000 },
+  { band: 'highMid', label: 'High-mid', lo: 2000, hi: 4000 },
+  { band: 'presence', label: 'Presence', lo: 4000, hi: 6000 },
+  { band: 'brilliance', label: 'Brilliance', lo: 6000, hi: 20000 },
+];
+const IP_POINT_WEIGHTS = IP_GRID_FREQS.map(f => (f >= 200 && f <= 6000) ? 1 : (f < 200 ? 0.5 : 0.6));
+const IP_PENALTY_PER_DB = 4;
+function ipFiniteMean(xs) { let s = 0, n = 0; for (const x of xs) { if (Number.isFinite(x)) { s += x; n++; } } return n > 0 ? s / n : 0; }
+function ipDefaultForContentType(ct) { switch (ct) { case 'speech': return 'speech-podcast'; case 'music': case 'mixed': return 'music-fullrange'; default: return 'flat'; } }
+function ipCompare(curve, profile) {
+  if (!curve || !Array.isArray(curve.db) || curve.db.length !== profile.dbOffsets.length) return null;
+  const mMean = ipFiniteMean(curve.db), tMean = ipFiniteMean(profile.dbOffsets);
+  const deviation = curve.db.map((db, i) => (Number.isFinite(db) ? db - mMean : 0) - (profile.dbOffsets[i] - tMean));
+  let wsum = 0, wtot = 0;
+  deviation.forEach((d, i) => { const w = IP_POINT_WEIGHTS[i] ?? 1; wsum += w * d * d; wtot += w; });
+  const wrms = wtot > 0 ? Math.sqrt(wsum / wtot) : 0;
+  const matchScore = Math.round(Math.max(0, Math.min(100, 100 - IP_PENALTY_PER_DB * wrms)));
+  const bands = IP_BANDS.map(({ band, label, lo, hi }) => {
+    const vals = [];
+    IP_GRID_FREQS.forEach((f, i) => { if (f >= lo && f < hi) vals.push(deviation[i]); });
+    return { band, label, deviation: vals.length ? ipFiniteMean(vals) : 0 };
+  });
+  let topOver = null, topUnder = null;
+  for (const b of bands) {
+    if (b.deviation > 0 && (!topOver || b.deviation > topOver.deviation)) topOver = b;
+    if (b.deviation < 0 && (!topUnder || b.deviation < topUnder.deviation)) topUnder = b;
+  }
+  return { profileId: profile.id, deviation, matchScore, bands, topOver, topUnder };
+}
+/** Resolve the profile to compare against: an explicit pick, else auto by content type. */
+function activeProfile(spectrum) {
+  const id = idealProfileId || ipDefaultForContentType(spectrum && spectrum.contentType);
+  return IP_BY_ID.get(id) || IP_BY_ID.get('flat');
+}
+function ipHasCurve(spectrum) {
+  return !!(spectrum && spectrum.curve && Array.isArray(spectrum.curve.db) && spectrum.curve.db.length >= 2);
+}
+
+/* ══ Spectrum curve + dashed target overlay (PRD 02 substrate + PRD 05 overlay) ══ */
+function ipXScale(f, padL, plotW) { const lo = Math.log2(20), hi = Math.log2(20000); return padL + (Math.log2(Math.max(20, Math.min(20000, f))) - lo) / (hi - lo) * plotW; }
+function renderSpectrumCurve(spectrum) {
+  if (!ipHasCurve(spectrum)) return '';
+  const curve = spectrum.curve;
+  const profile = activeProfile(spectrum);
+  const cmp = ipCompare(curve, profile);
+
+  const W = 700, H = 220, padL = 8, padR = 8, padT = 10, padB = 20;
+  const plotW = W - padL - padR, plotH = H - padT - padB;
+
+  // Level-match the (relative) target to the measured curve's mean for display.
+  const mMean = ipFiniteMean(curve.db), tMean = ipFiniteMean(profile.dbOffsets);
+  const targetDisp = profile.dbOffsets.map(v => v + (mMean - tMean));
+
+  const finite = curve.db.filter(Number.isFinite);
+  let yMax = Math.max(...finite, ...targetDisp) + 3;
+  let yMin = Math.min(...finite, ...targetDisp) - 3;
+  if (!isFinite(yMax) || !isFinite(yMin) || yMax - yMin < 6) { const c = isFinite(mMean) ? mMean : -30; yMax = c + 12; yMin = c - 12; }
+  const yOf = (db) => padT + (yMax - db) / (yMax - yMin) * plotH;
+  const xOf = (f) => ipXScale(f, padL, plotW);
+
+  const ticks = [20, 50, 100, 200, 500, 1000, 2000, 5000, 10000, 20000];
+  let grid = '';
+  for (const t of ticks) {
+    const x = xOf(t).toFixed(1);
+    grid += `<line class="sc-grid-line" x1="${x}" y1="${padT}" x2="${x}" y2="${padT + plotH}"/>`;
+    grid += `<text class="sc-axis-label" x="${x}" y="${H - 6}" text-anchor="middle">${t >= 1000 ? (t / 1000) + 'k' : t}</text>`;
+  }
+
+  const measuredPts = curve.freqs.map((f, i) => Number.isFinite(curve.db[i]) ? `${xOf(f).toFixed(1)},${yOf(curve.db[i]).toFixed(1)}` : null).filter(Boolean);
+  const targetPts = curve.freqs.map((f, i) => `${xOf(f).toFixed(1)},${yOf(targetDisp[i]).toFixed(1)}`);
+  const measuredPath = 'M' + measuredPts.join(' L');
+  const targetPath = 'M' + targetPts.join(' L');
+  const baseY = (padT + plotH).toFixed(1);
+  const fillPath = `${measuredPath} L${xOf(curve.freqs[curve.freqs.length - 1]).toFixed(1)},${baseY} L${xOf(curve.freqs[0]).toFixed(1)},${baseY} Z`;
+
+  const scoreHTML = cmp ? `<div class="score"><span class="num">${cmp.matchScore}</span><span class="cap">Match</span></div>` : '';
+  return `<div class="spectrum-curve">
+    <svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Whole-file spectrum curve with dashed ideal target overlay">
+      ${grid}
+      <path class="sc-measured-fill" d="${fillPath}"/>
+      <path class="sc-target" d="${targetPath}"/>
+      <path class="sc-measured" d="${measuredPath}"/>
+    </svg>
+    <div class="sc-legend">
+      <span class="item"><span class="swatch"></span>Measured</span>
+      <span class="item"><span class="swatch dashed"></span>Target · ${profile.label}</span>
+      ${scoreHTML}
+    </div>
+  </div>`;
+}
+
+/* Populate + wire the ideal-profile dropdown (once, at boot). */
+function initIdealProfileSelect() {
+  const sel = document.getElementById('ideal-profile-select');
+  if (!sel) return;
+  sel.innerHTML =
+    `<option value="">Auto (by content)</option>` +
+    IP_PROFILES.map(p => `<option value="${p.id}">${p.label}</option>`).join('') +
+    `<option value="__wav" disabled>Load ideal mix (WAV)… (coming soon)</option>`;
+  sel.value = idealProfileId;
+  sel.addEventListener('change', async () => {
+    if (sel.value === '__wav') { sel.value = idealProfileId; return; }
+    idealProfileId = sel.value;
+    try { await sb.updateSettings({ idealProfile: idealProfileId }); } catch { /* non-fatal */ }
+    if (currentAnalysis) renderSpectrum(currentAnalysis.spectrum);
+    if (currentMode === 'reportcard') renderReportCard();
+  });
+}
+
+/* Show the header dropdown only when a curve is on screen (file/dir mode). */
+function updateIdealProfileVisibility(spectrum) {
+  const wrap = document.getElementById('ideal-profile-wrap');
+  if (!wrap) return;
+  wrap.style.display = (ipHasCurve(spectrum) && currentMode !== 'live') ? 'flex' : 'none';
+  const sel = document.getElementById('ideal-profile-select');
+  if (sel) sel.value = idealProfileId;
+}
 
 function levelColor(db) { return db > -24 ? 'var(--meter-good)' : db > -36 ? 'var(--meter-hot)' : 'var(--meter-idle)'; }
 
@@ -732,11 +924,13 @@ function setSpectrumState(state, opts = {}) {
   const body = document.getElementById('spectrum-body');
   const statsRow = document.getElementById('stats-row');
   statsRow.style.display = state === 'populated' ? 'flex' : 'none';
+  const ipWrap = document.getElementById('ideal-profile-wrap');
+  if (ipWrap) ipWrap.style.display = 'none';
 
   if (state === 'empty') {
     body.innerHTML = `<div class="spectrum-empty">${iconSvg('waveform', 44)}<p>${opts.text || 'Load a file to see the spectrum'}</p></div>`;
   } else if (state === 'loading') {
-    body.innerHTML = `<div class="spectrum-empty"><span class="spin"></span><p>Analyzing audio…</p><p class="sub">Computing dynamics + 7-band spectrum</p></div>`;
+    body.innerHTML = `<div class="spectrum-empty"><span class="spin"></span><p>Analyzing audio…</p><p class="sub">Computing dynamics + spectrum curve</p></div>`;
   } else if (state === 'error') {
     body.innerHTML = `<div class="spectrum-empty" style="color:var(--issue-text)">${iconSvg('alert-triangle', 40)}<p>Analysis failed</p><p class="sub" style="max-width:340px;color:var(--text-tertiary)">${opts.text || 'Couldn’t decode the audio stream.'}</p></div>`;
   }
@@ -758,7 +952,8 @@ function renderSpectrum(spectrum) {
       rows += `<div class="bm-centroid"><span>Centroid · ${fmtHz(spectrum.spectralCentroid)}</span></div>`;
     }
   });
-  body.innerHTML = `<div class="meter-card">${rows}</div>`;
+  body.innerHTML = renderSpectrumCurve(spectrum) + `<div class="meter-card">${rows}</div>`;
+  updateIdealProfileVisibility(spectrum);
 }
 
 function renderLiveMeters(win) {
@@ -768,6 +963,8 @@ function renderLiveMeters(win) {
     return;
   }
   document.getElementById('stats-row').style.display = 'flex';
+  const ipWrap = document.getElementById('ideal-profile-wrap');
+  if (ipWrap) ipWrap.style.display = 'none'; // no whole-file curve in live mode
 
   let html = '';
   win.channels.forEach(ch => {
@@ -1174,6 +1371,7 @@ function getReportCardSource() {
       rms: sox.rmsDbfs, peak: sox.peakDbfs, dynamicRange: sox.dynamicRangeDb,
       clipping: sox.clipping, centroid: spectrum.spectralCentroid,
       bands: { ...spectrum.bands },
+      curve: spectrum.curve, contentType: spectrum.contentType,
     };
   }
   if (liveWindows.length > 0) {
@@ -1300,6 +1498,39 @@ function gradeRingHTML(grade, score) {
   <span class="rc-ring-label">Overall Grade</span>`;
 }
 
+/* ── Ideal profile match (PRD 05) ── */
+function fmtDev(d) { return (d >= 0 ? '+' : '') + d.toFixed(1) + ' dB'; }
+function deviationMiniCurve(dev) {
+  const W = 700, H = 64, padL = 4, padT = 4;
+  const plotW = W - padL * 2, mid = H / 2;
+  const maxAbs = Math.max(3, ...dev.map(d => Math.abs(d)));
+  const bw = plotW / dev.length;
+  const bars = dev.map((d, i) => {
+    const x = padL + i * bw;
+    const h = Math.abs(d) / maxAbs * (mid - padT);
+    const y = d >= 0 ? mid - h : mid;
+    const cls = d >= 0 ? 'devbar-over' : 'devbar-under';
+    return `<rect class="${cls}" x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${Math.max(1, bw - 1).toFixed(1)}" height="${Math.max(0.5, h).toFixed(1)}"/>`;
+  }).join('');
+  return `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Per-frequency deviation from the ideal target">
+    <line class="zero" x1="${padL}" y1="${mid}" x2="${padL + plotW}" y2="${mid}"/>${bars}</svg>`;
+}
+function renderProfileMatch(profile, cmp) {
+  const el = document.getElementById('rc-profile');
+  const color = cmp.matchScore >= 85 ? 'var(--grade-a)' : cmp.matchScore >= 70 ? 'var(--grade-b)' : cmp.matchScore >= 55 ? 'var(--grade-c)' : 'var(--grade-d)';
+  let regions = '';
+  if (cmp.topOver && cmp.topOver.deviation >= 1) regions += `<span class="rcp-region over">Over · <b>${cmp.topOver.label}</b> ${fmtDev(cmp.topOver.deviation)}</span>`;
+  if (cmp.topUnder && cmp.topUnder.deviation <= -1) regions += `<span class="rcp-region under">Under · <b>${cmp.topUnder.label}</b> ${fmtDev(cmp.topUnder.deviation)}</span>`;
+  if (!regions) regions = `<span class="rcp-region">Well matched across the spectrum.</span>`;
+  el.innerHTML = `
+    <div class="rcp-head">
+      <span class="rcp-name">Target: ${profile.label}${idealProfileId ? '' : ' <span style="color:var(--text-muted)">(auto)</span>'}</span>
+      <span class="rcp-score"><span class="num" style="color:${color}">${cmp.matchScore}</span><span class="slash">/100</span></span>
+    </div>
+    <div class="rcp-regions">${regions}</div>
+    <div class="rcp-dev">${deviationMiniCurve(cmp.deviation)}</div>`;
+}
+
 function renderReportCard() {
   const src = getReportCardSource();
   const empty = document.getElementById('rc-empty');
@@ -1327,6 +1558,17 @@ function renderReportCard() {
   const rt = document.getElementById('rc-rec-type');
   rt.className = 'rc-rectype pill ' + recType.tone;
   rt.innerHTML = `${iconSvg(pillIcon(recType.tone), 13)}<span class="txt">${recType.label} — ${recType.note}</span>`;
+
+  // Ideal profile match (PRD 05) — only when a whole-file curve is available.
+  const profSection = document.getElementById('rc-profile-section');
+  if (ipHasCurve(src)) {
+    const profile = activeProfile(src);
+    const cmp = ipCompare(src.curve, profile);
+    if (cmp) { profSection.style.display = ''; renderProfileMatch(profile, cmp); }
+    else profSection.style.display = 'none';
+  } else {
+    profSection.style.display = 'none';
+  }
 
   // Metrics
   const metrics = [
@@ -1406,8 +1648,10 @@ let aiEnabled = false;
   try {
     const s = await sb.getSettings();
     aiEnabled = !!(s && s.aiEnabled);
+    if (s && typeof s.idealProfile === 'string') idealProfileId = s.idealProfile;
   } catch { aiEnabled = false; }
   document.body.classList.toggle('ai-disabled', !aiEnabled);
+  initIdealProfileSelect();
 })();
 
 hydrateIcons(document);
