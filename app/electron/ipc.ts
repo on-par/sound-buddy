@@ -66,6 +66,12 @@ let liveIntervalTimer: NodeJS.Timeout | null = null;
 // stop-live can offer to open it in the File tab. null in Monitor mode.
 let liveRecordPath: string | null = null;
 
+// A finalized WAV with any real audio is comfortably larger than this; a
+// header-only file (zero captured frames) is only a few dozen bytes. Used to
+// avoid offering an empty recording. Even ~15 ms of 2-channel 24-bit audio at
+// 48 kHz is > 4 KB.
+const MIN_RECORDING_BYTES = 4096;
+
 // Default folder for Record-mode captures when the renderer doesn't pass one:
 // ~/Music/Sound Buddy, created on demand.
 function defaultRecordDir(): string {
@@ -590,6 +596,10 @@ export function registerIpcHandlers(): void {
     // Optional output folder for Record mode (defaults to ~/Music/Sound Buddy).
     recordDir?: string;
   }) => {
+    // Clear any stale record path up front so a failed/aborted start (e.g. mic
+    // denied below) can't leave a prior capture's WAV to be offered on stop.
+    liveRecordPath = null;
+
     // Refuse to "record" silence: a denied Core Audio grant means stream.py
     // captures nothing. This is the user-initiated moment, so prompt if the
     // permission hasn't been decided yet, then block if it isn't granted.
@@ -624,7 +634,6 @@ export function registerIpcHandlers(): void {
     }
 
     // Record mode: derive an output path and tell stream.py to capture to it.
-    liveRecordPath = null;
     if (opts.mode === 'record') {
       try {
         liveRecordPath = buildRecordPath(opts.recordDir);
@@ -732,24 +741,35 @@ export function registerIpcHandlers(): void {
     const recPath = liveRecordPath;
     liveRecordPath = null;
 
+    let closedCleanly = false;
     if (proc) {
       // SIGTERM triggers stream.py's signal handler, which closes the WAV and
       // finalizes its header. Wait for the child to actually exit before we
-      // inspect the file, so we never offer a half-written recording.
-      await new Promise<void>((resolve) => {
-        let done = false;
-        const finish = () => { if (!done) { done = true; resolve(); } };
-        proc.once('close', finish);
-        proc.kill();
-        setTimeout(finish, 2000); // safety net if the child hangs
+      // inspect the file, so we never offer a half-written recording. If it
+      // doesn't exit in time, force-kill it (so the mic is released and the
+      // process isn't orphaned) and don't offer the possibly-truncated file.
+      closedCleanly = await new Promise<boolean>((resolve) => {
+        let settled = false;
+        const settle = (ok: boolean) => { if (!settled) { settled = true; resolve(ok); } };
+        proc.once('close', () => settle(true));
+        proc.kill(); // SIGTERM
+        setTimeout(() => {
+          if (!settled) {
+            logWarn('stop-live: stream.py did not exit in time; sending SIGKILL');
+            try { proc.kill('SIGKILL'); } catch { /* already gone */ }
+          }
+          settle(false);
+        }, 2000);
       });
     }
 
-    // Only offer the recording if stream.py produced a non-empty file.
+    // Only offer the recording if the child finalized the WAV cleanly and it
+    // holds real audio. soundfile writes a header at open, so the file is always
+    // a few dozen bytes even with zero captured frames — require more than that.
     let recordPath: string | null = null;
-    if (recPath) {
+    if (recPath && closedCleanly) {
       try {
-        if (fs.statSync(recPath).size > 0) recordPath = recPath;
+        if (fs.statSync(recPath).size > MIN_RECORDING_BYTES) recordPath = recPath;
       } catch {
         // no file written (record failed to start, or captured nothing)
       }

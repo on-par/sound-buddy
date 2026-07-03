@@ -34,6 +34,7 @@ Dependencies: pip install sounddevice numpy scipy soundfile
 import sys
 import json
 import time
+import queue
 import signal
 import threading
 import numpy as np
@@ -61,6 +62,10 @@ MASKING_THRESHOLD_DB = 3.0
 # Shortest trailing slice a meter tick analyses. Long enough to resolve the
 # sub-bass band (≈50 ms for 20 Hz) with margin; kept small so meters stay snappy.
 METER_WINDOW_SECS = 0.2
+
+# How long a clip stays latched on the live meter after the last clipped sample,
+# so a transient clip is visible rather than flashing for one meter slice.
+CLIP_HOLD_SECS = 1.5
 
 
 def list_devices():
@@ -133,14 +138,6 @@ def parse_channel_groups(channels_arg: str, n_device_channels: int) -> list[dict
     return groups
 
 
-def group_signal(frames: np.ndarray, group: dict) -> np.ndarray:
-    """Collapse a group's device channels into one analysis signal (L+R mean)."""
-    cols = frames[:, group["indices"]].astype(np.float64)
-    if cols.shape[1] == 1:
-        return cols[:, 0]
-    return cols.mean(axis=1)
-
-
 def compute_band_rms_db(freqs, power_spectrum, low, high):
     mask = (freqs >= low) & (freqs < high)
     if not np.any(mask):
@@ -151,10 +148,18 @@ def compute_band_rms_db(freqs, power_spectrum, low, high):
     return float(10.0 * np.log10(band_power + 1e-12))
 
 
-def analyze_signal(sig: np.ndarray, sample_rate: int) -> dict:
-    """Per-strip acoustic metrics for one collapsed signal."""
+def analyze_signal(sig: np.ndarray, sample_rate: int, cols: np.ndarray | None = None) -> dict:
+    """
+    Per-strip acoustic metrics for one collapsed signal.
+
+    `sig` is the collapsed (L+R mean) signal used for level/spectrum. `cols` is
+    the raw per-channel matrix for the strip; peak and clipping are taken from the
+    hottest individual channel so a single clipping leg of a stereo pair is still
+    flagged (averaging would mask it). Defaults to `sig` for a mono strip.
+    """
     rms = float(np.sqrt(np.mean(sig ** 2))) if sig.size else 0.0
-    peak = float(np.max(np.abs(sig))) if sig.size else 0.0
+    peak_src = sig if cols is None else cols
+    peak = float(np.max(np.abs(peak_src))) if peak_src.size else 0.0
     clipping = bool(peak >= 0.999)
 
     rms_db = float(20.0 * np.log10(rms + 1e-12))
@@ -200,7 +205,9 @@ def analyze_groups(frames: np.ndarray, sample_rate: int, groups: list[dict]) -> 
     """One channel entry per configured strip (mono channel or stereo pair)."""
     channels_out = []
     for g in groups:
-        metrics = analyze_signal(group_signal(frames, g), sample_rate)
+        cols = frames[:, g["indices"]].astype(np.float64)
+        sig = cols[:, 0] if cols.shape[1] == 1 else cols.mean(axis=1)
+        metrics = analyze_signal(sig, sample_rate, cols=cols)
         channels_out.append({
             "index": g["indices"][0],
             "name": g["name"],
@@ -237,7 +244,12 @@ def stream_live(device_index, window_secs: float, groups: list[dict],
 
     window_samples = int(window_secs * sample_rate)
     meter_samples = max(1, int(METER_WINDOW_SECS * sample_rate))
-    buffer = deque(maxlen=window_samples)
+
+    # Analysis ring buffer of raw blocks (not per-frame), guarded by `lock`.
+    # Keeping whole blocks lets the audio callback do one cheap append and lets
+    # trailing() copy only the tail it needs instead of the entire window.
+    blocks: deque[np.ndarray] = deque()
+    buffered_samples = 0
     lock = threading.Lock()
 
     # Optional recorder: all device channels, 24-bit PCM. Opened lazily so a
@@ -267,24 +279,62 @@ def stream_live(device_index, window_secs: float, groups: list[dict],
     signal.signal(signal.SIGTERM, _on_signal)
     signal.signal(signal.SIGINT, _on_signal)
 
+    # The PortAudio callback runs on a real-time thread: it must not block on
+    # disk I/O or do heavy work. It only copies the block onto a queue; a writer
+    # thread drains the queue to disk and into the analysis ring buffer.
+    audio_q: "queue.Queue[np.ndarray | None]" = queue.Queue()
+
     def audio_callback(indata, frames, time_info, status):
-        block = np.asarray(indata, dtype=np.float32)
-        with lock:
-            for frame in block:
-                buffer.append(frame.copy())
-        if recorder is not None:
-            with recorder_lock:
-                if not recorder.closed:
-                    recorder.write(block)
+        audio_q.put(np.array(indata, dtype=np.float32, copy=True))
+
+    def writer_loop():
+        nonlocal buffered_samples
+        while True:
+            block = audio_q.get()
+            if block is None:
+                return
+            if recorder is not None:
+                with recorder_lock:
+                    if not recorder.closed:
+                        recorder.write(block)
+            with lock:
+                blocks.append(block)
+                buffered_samples += block.shape[0]
+                # Trim from the front, keeping at least a full window.
+                while blocks and buffered_samples - blocks[0].shape[0] >= window_samples:
+                    buffered_samples -= blocks.popleft().shape[0]
+
+    writer = threading.Thread(target=writer_loop, daemon=True)
+    writer.start()
 
     def trailing(n_samples: int) -> np.ndarray:
+        # Gather only the tail blocks that cover n_samples, minimizing the copy
+        # and the time spent holding the lock.
         with lock:
-            if not buffer:
+            if not blocks:
                 return np.empty((0, n_device_channels), dtype=np.float32)
-            data = np.array(list(buffer), dtype=np.float32)
+            picked = []
+            total = 0
+            for block in reversed(blocks):
+                picked.append(block)
+                total += block.shape[0]
+                if total >= n_samples:
+                    break
+            data = np.concatenate(list(reversed(picked)), axis=0)
         if data.shape[0] > n_samples:
             data = data[-n_samples:]
         return data
+
+    # Latch a clip for CLIP_HOLD_SECS so a transient clip stays visible instead of
+    # flashing for one 0.2 s meter slice.
+    clip_hold: dict[str, float] = {}
+
+    def apply_clip_hold(channels_out: list[dict], now: float):
+        for ch in channels_out:
+            if ch["clipping"]:
+                clip_hold[ch["name"]] = now
+            elif now - clip_hold.get(ch["name"], -1e9) < CLIP_HOLD_SECS:
+                ch["clipping"] = True
 
     with sd.InputStream(
         device=device_index,
@@ -300,7 +350,12 @@ def stream_live(device_index, window_secs: float, groups: list[dict],
 
         while not stop.is_set():
             next_tick += interval_secs
-            sleep = next_tick - time.monotonic()
+            now = time.monotonic()
+            # If a slow tick left us more than one interval behind, resync to now
+            # instead of busy-spinning to "catch up" (which would flood stdout).
+            if now - next_tick > interval_secs:
+                next_tick = now
+            sleep = next_tick - now
             if sleep > 0:
                 time.sleep(sleep)
 
@@ -310,6 +365,7 @@ def stream_live(device_index, window_secs: float, groups: list[dict],
 
             # Lightweight meter tick — the real-time view.
             channels_out = analyze_groups(frames, sample_rate, groups)
+            apply_clip_hold(channels_out, time.monotonic())
             print(json.dumps({
                 "type": "meter",
                 "ts": time.time(),
@@ -330,6 +386,8 @@ def stream_live(device_index, window_secs: float, groups: list[dict],
                     "channels": win_channels,
                     "masking": compute_masking(win_channels),
                 }), flush=True)
+
+    audio_q.put(None)  # let the writer thread exit
 
     finalize()
 

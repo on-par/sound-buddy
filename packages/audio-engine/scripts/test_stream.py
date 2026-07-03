@@ -88,6 +88,15 @@ class AnalyzeGroups(unittest.TestCase):
         out = stream.analyze_groups(frames, self.sr, stream.parse_channel_groups("0", 2))
         self.assertTrue(out[0]["clipping"])
 
+    def test_stereo_single_leg_clipping_flagged(self):
+        # Left leg clips, right leg is quiet: the L+R mean would hide it, but
+        # peak/clip is taken from the hottest individual channel.
+        full = np.ones(int(0.2 * self.sr), dtype=np.float32)
+        frames = np.stack([full, self.tone * 0.01], axis=1)
+        out = stream.analyze_groups(frames, self.sr, stream.parse_channel_groups("0-1", 2))
+        self.assertTrue(out[0]["clipping"])
+        self.assertAlmostEqual(out[0]["peak"], 0.0, delta=0.2)
+
     def test_short_window_does_not_crash(self):
         frames = np.zeros((16, 2), dtype=np.float32)
         out = stream.analyze_groups(frames, self.sr, stream.parse_channel_groups("0", 2))

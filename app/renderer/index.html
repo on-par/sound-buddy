@@ -1012,6 +1012,23 @@ function renderBandMeters(spectrum) {
   body.innerHTML = `<div class="meter-card">${rows}</div>`;
 }
 
+// Coalesce live renders: meter ticks arrive up to ~20/s (and a window tick can
+// land in the same burst), but the meter panel only needs to repaint once per
+// animation frame. Keep the latest event and rebuild at most once per frame.
+let pendingLiveWin = null;
+let liveRenderScheduled = false;
+function scheduleLiveMeters(win) {
+  pendingLiveWin = win;
+  if (liveRenderScheduled) return;
+  liveRenderScheduled = true;
+  requestAnimationFrame(() => {
+    liveRenderScheduled = false;
+    const w = pendingLiveWin;
+    pendingLiveWin = null;
+    if (w && currentMode === 'live') renderLiveMeters(w);
+  });
+}
+
 function renderLiveMeters(win) {
   const body = document.getElementById('spectrum-body');
   if (!win || !win.channels || win.channels.length === 0) {
@@ -1332,8 +1349,12 @@ document.getElementById('chcfg-add').addEventListener('click', () => {
 });
 
 // Build the stream.py channel tokens ("N" mono, "N-M" stereo) from the config.
+// A stereo strip whose two legs collapsed to the same channel (possible on the
+// last device channel) degrades to a mono token rather than a bogus "N-N" pair.
 function channelTokens() {
-  return channelConfig.map((s) => (s.kind === 'stereo' ? `${s.a}-${s.b}` : `${s.a}`));
+  return channelConfig.map((s) =>
+    s.kind === 'stereo' && s.a !== s.b ? `${s.a}-${s.b}` : `${s.a}`,
+  );
 }
 
 function setDeviceHint(text, isError) {
@@ -1459,7 +1480,13 @@ async function stopLive() {
   if (result && result.recordPath) {
     lastRecordPath = result.recordPath;
     const name = result.recordPath.split('/').pop();
-    document.getElementById('rec-offer-text').innerHTML = `Saved <b>${name}</b>. Analyze it?`;
+    // Build with a text node for the filename so a path can never inject markup.
+    const text = document.getElementById('rec-offer-text');
+    text.textContent = 'Saved ';
+    const b = document.createElement('b');
+    b.textContent = name;
+    text.appendChild(b);
+    text.appendChild(document.createTextNode('. Analyze it?'));
     document.getElementById('rec-offer').style.display = 'flex';
     hydrateIcons(document.getElementById('rec-offer'));
   }
@@ -1501,8 +1528,9 @@ sb.onLiveEvent((data) => {
     return;
   }
 
-  // Every event (fast meter ticks + slower window ticks) drives the live view.
-  if (currentMode === 'live') renderLiveMeters(data);
+  // Every event (fast meter ticks + slower window ticks) drives the live view,
+  // coalesced to one repaint per animation frame.
+  if (currentMode === 'live') scheduleLiveMeters(data);
   if (data.channels && data.channels.length > 0) updateLiveStatsRow(data.channels[0]);
 
   // Only the heavier window ticks (which carry masking + window #) accumulate as

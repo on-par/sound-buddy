@@ -109,9 +109,16 @@ export async function startLive(opts: LiveOptions): Promise<void> {
     const ev = data as unknown as LiveEvent;
 
     // Meter ticks drive the real-time display; only the heavier window ticks
-    // (which carry masking) accumulate as LLM trend context.
+    // (which carry masking) accumulate as LLM trend context. Carry the last
+    // window's masking forward on meter ticks so the MASKING ALERTS section
+    // isn't blanked ~10×/s between windows.
     if (ev.type === "meter") {
-      state.currentWindow = { window: windowNum, ts: ev.ts, channels: ev.channels, masking: [] };
+      state.currentWindow = {
+        window: windowNum,
+        ts: ev.ts,
+        channels: ev.channels,
+        masking: state.currentWindow?.masking ?? [],
+      };
     } else {
       const win = ev as WindowData;
       windowNum = win.window;
