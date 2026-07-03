@@ -62,6 +62,29 @@ function pythonBin(): string {
 
 let liveProcess: ChildProcess | null = null;
 let liveIntervalTimer: NodeJS.Timeout | null = null;
+// Path of the WAV the current/last capture recorded to (Record mode), so
+// stop-live can offer to open it in the File tab. null in Monitor mode.
+let liveRecordPath: string | null = null;
+
+// Default folder for Record-mode captures when the renderer doesn't pass one:
+// ~/Music/Sound Buddy, created on demand.
+function defaultRecordDir(): string {
+  return path.join(app.getPath('music'), 'Sound Buddy');
+}
+
+// Build a timestamped WAV path inside the chosen (or default) folder. The dir
+// is created if missing; the main process owns the path so it can hand it back
+// to the renderer on stop.
+function buildRecordPath(dir?: string): string {
+  const target = dir && dir.trim() ? dir : defaultRecordDir();
+  fs.mkdirSync(target, { recursive: true });
+  const now = new Date();
+  const p = (n: number) => String(n).padStart(2, '0');
+  const stamp =
+    `${now.getFullYear()}${p(now.getMonth() + 1)}${p(now.getDate())}` +
+    `-${p(now.getHours())}${p(now.getMinutes())}${p(now.getSeconds())}`;
+  return path.join(target, `sound-buddy-${stamp}.wav`);
+}
 
 // ─── Microphone (Core Audio) permission ─────────────────────────────────────
 type MicAccess = 'granted' | 'denied' | 'not-determined' | 'restricted' | 'unknown';
@@ -556,9 +579,16 @@ export function registerIpcHandlers(): void {
   // start-live
   ipcMain.handle('start-live', async (event, opts: {
     device?: string;
-    channels?: number[];
+    // Channel-config tokens: "N" (mono) or "N-M" (stereo pair), e.g. ["0","1-2"].
+    channels?: string[];
     windowSecs: number;
+    // Real-time meter cadence in seconds (default 0.1 in stream.py).
+    intervalSecs?: number;
     llmIntervalSecs: number;
+    // "monitor" (default) = live view only; "record" = also stream to WAV.
+    mode?: 'monitor' | 'record';
+    // Optional output folder for Record mode (defaults to ~/Music/Sound Buddy).
+    recordDir?: string;
   }) => {
     // Refuse to "record" silence: a denied Core Audio grant means stream.py
     // captures nothing. This is the user-initiated moment, so prompt if the
@@ -589,11 +619,27 @@ export function registerIpcHandlers(): void {
       args.push('');
     }
 
+    if (opts.intervalSecs && opts.intervalSecs > 0) {
+      args.push('--interval', String(opts.intervalSecs));
+    }
+
+    // Record mode: derive an output path and tell stream.py to capture to it.
+    liveRecordPath = null;
+    if (opts.mode === 'record') {
+      try {
+        liveRecordPath = buildRecordPath(opts.recordDir);
+        args.push('--record', liveRecordPath);
+      } catch (err) {
+        logError('start-live: could not prepare recording folder', err);
+        return { success: false, error: `Could not prepare recording folder: ${String(err)}` };
+      }
+    }
+
     const py = spawn(pythonBin(), [STREAM_SCRIPT, ...args], {
       stdio: ['ignore', 'pipe', 'pipe'],
       env: childEnv(),
     });
-    log(`start-live: spawned stream.py (device="${opts.device ?? ''}" window=${opts.windowSecs}s llmInterval=${opts.llmIntervalSecs}s)`);
+    log(`start-live: spawned stream.py (device="${opts.device ?? ''}" window=${opts.windowSecs}s interval=${opts.intervalSecs ?? 0.1}s mode=${opts.mode ?? 'monitor'} llmInterval=${opts.llmIntervalSecs}s)`);
 
     liveProcess = py;
     const wc = event.sender;
@@ -676,16 +722,39 @@ export function registerIpcHandlers(): void {
   });
 
   // stop-live
-  ipcMain.handle('stop-live', () => {
+  ipcMain.handle('stop-live', async () => {
     if (liveIntervalTimer) {
       clearInterval(liveIntervalTimer);
       liveIntervalTimer = null;
     }
-    if (liveProcess) {
-      liveProcess.kill();
-      liveProcess = null;
+    const proc = liveProcess;
+    liveProcess = null;
+    const recPath = liveRecordPath;
+    liveRecordPath = null;
+
+    if (proc) {
+      // SIGTERM triggers stream.py's signal handler, which closes the WAV and
+      // finalizes its header. Wait for the child to actually exit before we
+      // inspect the file, so we never offer a half-written recording.
+      await new Promise<void>((resolve) => {
+        let done = false;
+        const finish = () => { if (!done) { done = true; resolve(); } };
+        proc.once('close', finish);
+        proc.kill();
+        setTimeout(finish, 2000); // safety net if the child hangs
+      });
     }
-    return { success: true };
+
+    // Only offer the recording if stream.py produced a non-empty file.
+    let recordPath: string | null = null;
+    if (recPath) {
+      try {
+        if (fs.statSync(recPath).size > 0) recordPath = recPath;
+      } catch {
+        // no file written (record failed to start, or captured nothing)
+      }
+    }
+    return { success: true, recordPath };
   });
 
   // trigger-llm-analysis
