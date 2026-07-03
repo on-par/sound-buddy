@@ -21,6 +21,18 @@ const CURVE = (() => {
   return { freqs, db };
 })();
 
+// Six time-sampled frames on the same 48-point grid as CURVE (PRD 03), so the
+// heatmap renders >1 column and the scrubber has frames to select.
+const FRAMES = Array.from({ length: 6 }, (_, i) => ({
+  t: i * 2,
+  // A per-frame ripple whose phase shifts with i, so each frame has a distinct
+  // spectral *shape* (not just a uniform dB offset the auto-ranged curve would
+  // normalize away) — the scrubber redraw is then observable in the path data.
+  db: CURVE.db.map((d, k) => d + Math.sin(k / 4 + i) * 6),
+  rms: -18 + i,
+  class: i % 2 === 0 ? 'music' : 'speech',
+}));
+
 const FAKE_ANALYSIS = {
   filePath: '/fake/test-fixtures/silence.wav',
   sox: {
@@ -79,7 +91,15 @@ const FAKE_ANALYSIS = {
     spectralRolloff85: 4000,
     dynamicRange: 12,
     curve: CURVE,
+    frames: FRAMES,
   },
+};
+
+// A single-frame analysis (short file): the heatmap collapses to one column and
+// the report card shows a single representative frame, without error.
+const SHORT_ANALYSIS = {
+  ...FAKE_ANALYSIS,
+  spectrum: { ...FAKE_ANALYSIS.spectrum, frames: [{ t: 0, db: CURVE.db, rms: -18, class: 'music' }] },
 };
 
 test.describe('Sound Buddy E2E', () => {
@@ -174,6 +194,46 @@ test.describe('Sound Buddy E2E', () => {
     await expect(window.locator('#spectrum-title')).toHaveText('Spectrum · Curve');
   });
 
+  test('time-sampled spectrogram scrubber redraws the PRD 02 curve', async () => {
+    await window.locator('.mode-tab[data-mode="file"]').click();
+
+    // Heatmap strip under the curve: one column per frame (6 in the fixture).
+    await expect(window.locator('#spectrum-heatmap svg')).toBeVisible();
+    await expect(window.locator('#spectrum-heatmap .hm-col')).toHaveCount(6);
+    await expect(window.locator('#scrub-readout')).toHaveText('Whole-file average');
+
+    // Clicking a time column redraws the main curve for that frame.
+    const avgPath = await window.locator('#spectrum-chart path.sb-curve-line').getAttribute('d');
+    await window.locator('#spectrum-heatmap').click({ position: { x: 20, y: 40 } });
+    await expect(window.locator('#scrub-readout')).toContainText('t =');
+    await expect(window.locator('#spectrum-heatmap .hm-col.sel')).toHaveCount(1);
+    const framePath = await window.locator('#spectrum-chart path.sb-curve-line').getAttribute('d');
+    expect(framePath).not.toBe(avgPath);
+
+    // "▶ Average" reset restores the whole-file curve exactly.
+    await window.locator('#scrub-reset').click();
+    await expect(window.locator('#scrub-readout')).toHaveText('Whole-file average');
+    await expect(window.locator('#spectrum-heatmap .hm-col.sel')).toHaveCount(0);
+    expect(await window.locator('#spectrum-chart path.sb-curve-line').getAttribute('d')).toBe(avgPath);
+  });
+
+  test('scrubbed frame survives leaving and returning to the file tab', async () => {
+    await window.locator('.mode-tab[data-mode="file"]').click();
+    await window.locator('#spectrum-heatmap').click({ position: { x: 20, y: 40 } });
+    const scrubbed = await window.locator('#scrub-readout').textContent();
+    expect(scrubbed).toContain('t =');
+
+    // Round-trip through another tab and back — the selection must persist.
+    await window.locator('.mode-tab[data-mode="reportcard"]').click();
+    await window.locator('.mode-tab[data-mode="file"]').click();
+    await expect(window.locator('#scrub-readout')).toHaveText(scrubbed!.trim());
+    await expect(window.locator('#spectrum-heatmap .hm-col.sel')).toHaveCount(1);
+
+    // Reset so later tests start from the average state.
+    await window.locator('#scrub-reset').click();
+    await expect(window.locator('#scrub-readout')).toHaveText('Whole-file average');
+  });
+
   test('missing spectrum curve degrades to band meters without error', async () => {
     // Render a spectrum with no `curve` — the fallback path must not throw.
     const errors: string[] = [];
@@ -205,5 +265,40 @@ test.describe('Sound Buddy E2E', () => {
 
     const recCount = await window.locator('#rc-recommendations .rc-rec').count();
     expect(recCount).toBeGreaterThanOrEqual(1);
+  });
+
+  test('report card shows a heatmap thumbnail and representative frame curves', async () => {
+    await window.locator('.mode-tab[data-mode="reportcard"]').click();
+    await expect(window.locator('#rc-content')).toBeVisible();
+
+    await expect(window.locator('#rc-frames-section')).toBeVisible();
+    await expect(window.locator('#rc-heatmap svg')).toBeVisible();
+    // start / middle / loudest representative frames.
+    await expect(window.locator('#rc-frame-curves .rc-frame')).toHaveCount(3);
+    await expect(window.locator('#rc-frame-curves .rc-frame-tag').first()).toHaveText('Start');
+  });
+
+  test('short file falls back to a single frame without error', async () => {
+    // Re-stub the handler to return a single-frame (short-file) analysis.
+    await electronApp.evaluate(({ ipcMain }, analysis) => {
+      ipcMain.removeHandler('analyze-file');
+      ipcMain.handle('analyze-file', () => ({ success: true, data: analysis }));
+    }, SHORT_ANALYSIS);
+
+    await window.locator('.mode-tab[data-mode="file"]').click();
+    const fixturePath = path.join(__dirname, 'fixtures', 'silence.wav');
+    await window.evaluate((fp) => {
+      (window as unknown as { loadFile: (p: string) => void }).loadFile(fp);
+    }, fixturePath);
+    await window.locator('#analyze-btn').click();
+
+    // Heatmap collapses to a single column; the scrubber still starts on average.
+    await expect(window.locator('#spectrum-heatmap .hm-col')).toHaveCount(1);
+    await expect(window.locator('#scrub-readout')).toHaveText('Whole-file average');
+
+    // Report card renders with a single representative frame, no error.
+    await window.locator('.mode-tab[data-mode="reportcard"]').click();
+    await expect(window.locator('#rc-frames-section')).toBeVisible();
+    await expect(window.locator('#rc-frame-curves .rc-frame')).toHaveCount(1);
   });
 });
