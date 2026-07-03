@@ -402,6 +402,124 @@ test.describe('Sound Buddy E2E', () => {
       await expect(rows).toHaveCount(2);
     });
 
+    // Two live channels with distinct spectral shapes: Vocals is mid-heavy,
+    // Band is bass-heavy. Band keys are snake_case (LIVE_BAND_KEYS).
+    const LIVE_CHANNELS = [
+      { name: 'Vocals', rms: -18, peak: -6, clipping: false, centroid: 2400,
+        bands: { sub_bass: -58, bass: -30, low_mid: -24, mid: -12, high_mid: -20, presence: -28, brilliance: -80 } },
+      { name: 'Band', rms: -22, peak: -9, clipping: false, centroid: 300,
+        bands: { sub_bass: -20, bass: -10, low_mid: -26, mid: -30, high_mid: -34, presence: -40, brilliance: -50 } },
+    ];
+
+    // Live meter ticks arrive over the 'live-event' channel from the main
+    // process; push one directly so the meters render without a real capture.
+    async function sendLiveTick(channels: unknown) {
+      await electronApp.evaluate(({ BrowserWindow }, chs) => {
+        BrowserWindow.getAllWindows()[0].webContents.send('live-event', { type: 'meter', channels: chs });
+      }, channels);
+    }
+
+    test('live channels render as vertical-bar EQs with the shared analyzer arc', async () => {
+      await sendLiveTick(LIVE_CHANNELS);
+
+      await expect(window.locator('#spectrum-title')).toHaveText('Spectrum · Live EQ');
+      const channels = window.locator('.sb-live-meters .live-ch');
+      await expect(channels).toHaveCount(2);
+      await expect(channels.first().locator('.live-ch-name')).toHaveText('Vocals');
+      await expect(channels.nth(1).locator('.live-ch-name')).toHaveText('Band');
+
+      // 7 upright bars per channel, ordered low→high left→right.
+      const bars = channels.first().locator('.veq-bar');
+      await expect(bars).toHaveCount(7);
+      await expect(bars.first()).toHaveAttribute('data-band', 'subBass');
+      await expect(bars.last()).toHaveAttribute('data-band', 'brilliance');
+      const lefts = await bars.evaluateAll(els => els.map(el => parseFloat((el as HTMLElement).style.left)));
+      for (let i = 1; i < lefts.length; i++) expect(lefts[i]).toBeGreaterThan(lefts[i - 1]);
+
+      // The arc is the same component as the whole-mix quality view
+      // (spectrumCurveSVG → .sb-spectrum-curve), one per channel, and its SVG
+      // carries the dB reference scale; band labels sit under the bars.
+      await expect(window.locator('.live-ch .sb-spectrum-curve')).toHaveCount(2);
+      await expect(channels.first().locator('.sb-y-label').first()).toBeAttached();
+      await expect(channels.first().locator('.veq-label')).toHaveCount(7);
+      await expect(channels.first().locator('.veq-label').first()).toHaveText('Sub Bass');
+    });
+
+    test('bar height tracks level; loudest band is emphasized; silent bands dim', async () => {
+      await sendLiveTick(LIVE_CHANNELS);
+      await expect(window.locator('.live-ch[data-ch="0"] .veq-bar')).toHaveCount(7);
+
+      const heightOf = async (band: string) =>
+        parseFloat(await window.locator(`.live-ch[data-ch="0"] .veq-bar[data-band="${band}"]`).evaluate(el => (el as HTMLElement).style.height));
+      const mid = await heightOf('mid'), bass = await heightOf('bass'), sub = await heightOf('subBass'), brill = await heightOf('brilliance');
+      expect(mid).toBeGreaterThan(bass);       // -12 dB taller than -30 dB
+      expect(bass).toBeGreaterThan(sub);       // -30 dB taller than -58 dB
+      expect(brill).toBe(0);                   // ≤ DB_MIN clamps to the floor (min-height keeps it visible)
+
+      const loud = window.locator('.live-ch[data-ch="0"] .veq-bar.loud');
+      await expect(loud).toHaveCount(1);
+      await expect(loud).toHaveAttribute('data-band', 'mid');
+      await expect(window.locator('.live-ch[data-ch="0"] .veq-bar.dim')).toHaveAttribute('data-band', 'brilliance');
+
+      // Numeric per-band readouts ride the bars; > -24 dBFS is emphasized hot.
+      const vals = window.locator('.live-ch[data-ch="0"] .veq-val');
+      await expect(vals).toHaveCount(7);
+      await expect(vals.nth(3)).toHaveText('-12.0');
+      await expect(vals.nth(3)).toHaveClass(/hot/);
+      await expect(vals.nth(1)).not.toHaveClass(/hot/); // bass at -30
+      await expect(vals.nth(6)).toHaveClass(/dim/);     // brilliance at the floor
+    });
+
+    test('silence gets no loudest-band emphasis', async () => {
+      const silent = LIVE_CHANNELS.map(ch => ({
+        ...ch,
+        bands: Object.fromEntries(Object.keys(ch.bands).map(k => [k, -120])),
+      }));
+      await sendLiveTick(silent);
+      await expect(window.locator('.veq-bar.dim')).toHaveCount(14); // all bands idle...
+      await expect(window.locator('.veq-bar.loud')).toHaveCount(0); // ...none "loudest"
+      await expect(window.locator('.veq-label.loud')).toHaveCount(0);
+
+      // Signal returns → emphasis comes back.
+      await sendLiveTick(LIVE_CHANNELS);
+      await expect(window.locator('.live-ch[data-ch="0"] .veq-bar.loud')).toHaveAttribute('data-band', 'mid');
+    });
+
+    test('each channel has its own independent arc and loudest band', async () => {
+      await sendLiveTick(LIVE_CHANNELS);
+      // Bass-heavy channel emphasizes bass, not mid.
+      await expect(window.locator('.live-ch[data-ch="1"] .veq-bar.loud')).toHaveAttribute('data-band', 'bass');
+      // The two arcs are drawn from their own band values → different paths.
+      const paths = await window.locator('.live-ch .sb-curve-line').evaluateAll(els => els.map(e => e.getAttribute('d')));
+      expect(paths).toHaveLength(2);
+      expect(paths[0]).not.toBe(paths[1]);
+    });
+
+    test('a new tick updates bars and arc in place', async () => {
+      await sendLiveTick(LIVE_CHANNELS);
+      const midBar = window.locator('.live-ch[data-ch="0"] .veq-bar[data-band="mid"]');
+      await expect(midBar).toHaveClass(/loud/);
+      const before = parseFloat(await midBar.evaluate(el => (el as HTMLElement).style.height));
+      const arcLine = window.locator('.live-ch[data-ch="0"] .sb-curve-line');
+      const arcBefore = await arcLine.getAttribute('d');
+      // Mark the SVG node so we can prove the tick patches it rather than
+      // rebuilding it (bars/arc keep their nodes → CSS transitions run).
+      await window.locator('.live-ch[data-ch="0"] .sb-spectrum-curve').evaluate(el => el.setAttribute('data-marker', 'kept'));
+
+      // Vocals goes bass-heavy: the mid bar shrinks and emphasis moves to bass.
+      const next = [
+        { ...LIVE_CHANNELS[0], bands: { ...LIVE_CHANNELS[0].bands, mid: -40, bass: -8 } },
+        LIVE_CHANNELS[1],
+      ];
+      await sendLiveTick(next);
+      await expect(window.locator('.live-ch[data-ch="0"] .veq-bar.loud')).toHaveAttribute('data-band', 'bass');
+      const after = parseFloat(await midBar.evaluate(el => (el as HTMLElement).style.height));
+      expect(after).toBeLessThan(before);
+      // Arc re-shaped with the bars, on the same SVG node.
+      await expect(arcLine).not.toHaveAttribute('d', arcBefore as string);
+      await expect(window.locator('.live-ch[data-ch="0"] .sb-spectrum-curve')).toHaveAttribute('data-marker', 'kept');
+    });
+
     test('recording offers to analyze the WAV on stop', async () => {
       await window.locator('#live-mode button[data-mode="record"]').click();
       await window.locator('#live-start-btn').click();
