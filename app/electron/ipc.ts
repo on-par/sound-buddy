@@ -70,15 +70,10 @@ function pythonBin(): string {
 
 let liveProcess: ChildProcess | null = null;
 let liveIntervalTimer: NodeJS.Timeout | null = null;
-// Path of the WAV the current/last capture recorded to (Record mode), so
-// stop-live can offer to open it in the File tab. null in Monitor mode.
-let liveRecordPath: string | null = null;
-
-// A finalized WAV with any real audio is comfortably larger than this; a
-// header-only file (zero captured frames) is only a few dozen bytes. Used to
-// avoid offering an empty recording. Even ~15 ms of 2-channel 24-bit audio at
-// 48 kHz is > 4 KB.
-const MIN_RECORDING_BYTES = 4096;
+// Directory of the current/last multitrack session (Record mode) — per-strip
+// stems + session.json — so stop-live can hand it back to the renderer. null in
+// Monitor mode.
+let liveSessionDir: string | null = null;
 
 // Default folder for Record-mode captures when the renderer doesn't pass one:
 // ~/Music/Sound Buddy, created on demand.
@@ -86,18 +81,29 @@ function defaultRecordDir(): string {
   return path.join(app.getPath('music'), 'Sound Buddy');
 }
 
-// Build a timestamped WAV path inside the chosen (or default) folder. The dir
-// is created if missing; the main process owns the path so it can hand it back
-// to the renderer on stop.
-function buildRecordPath(dir?: string): string {
-  const target = dir && dir.trim() ? dir : defaultRecordDir();
-  fs.mkdirSync(target, { recursive: true });
+// A timestamp like 20260703-143207-512, stable within one capture. Milliseconds
+// keep two captures started in the same second from colliding on one folder.
+function captureStamp(): string {
   const now = new Date();
   const p = (n: number) => String(n).padStart(2, '0');
-  const stamp =
+  return (
     `${now.getFullYear()}${p(now.getMonth() + 1)}${p(now.getDate())}` +
-    `-${p(now.getHours())}${p(now.getMinutes())}${p(now.getSeconds())}`;
-  return path.join(target, `sound-buddy-${stamp}.wav`);
+    `-${p(now.getHours())}${p(now.getMinutes())}${p(now.getSeconds())}` +
+    `-${String(now.getMilliseconds()).padStart(3, '0')}`
+  );
+}
+
+// Compute a timestamped session *folder* path inside the chosen (or default)
+// record folder — stream.py fills it with one stem WAV per armed strip and a
+// session.json, and creates the folder itself when capture actually starts.
+// Only the shared parent is created here (so a bad recordDir surfaces a friendly
+// error up front); the per-capture child is left to stream.py so a failed or
+// aborted start never leaves an empty session folder behind. The main process
+// owns the path so stop-live can hand the folder back once session.json exists.
+function buildSessionDir(dir?: string): string {
+  const target = dir && dir.trim() ? dir : defaultRecordDir();
+  fs.mkdirSync(target, { recursive: true });
+  return path.join(target, `sound-buddy-${captureStamp()}`);
 }
 
 // ─── Microphone (Core Audio) permission ─────────────────────────────────────
@@ -619,14 +625,17 @@ export function registerIpcHandlers(): void {
     // Real-time meter cadence in seconds (default 0.1 in stream.py).
     intervalSecs?: number;
     llmIntervalSecs: number;
-    // "monitor" (default) = live view only; "record" = also stream to WAV.
+    // "monitor" (default) = live view only; "record" = also capture a session.
     mode?: 'monitor' | 'record';
     // Optional output folder for Record mode (defaults to ~/Music/Sound Buddy).
     recordDir?: string;
+    // Record mode: which strips to arm as session stems, as channel-config
+    // tokens (e.g. ['0', '2-3']). Omitted ⇒ stream.py arms all configured strips.
+    arm?: string[];
   }) => {
-    // Clear any stale record path up front so a failed/aborted start (e.g. mic
-    // denied below) can't leave a prior capture's WAV to be offered on stop.
-    liveRecordPath = null;
+    // Clear any stale session dir up front so a failed/aborted start (e.g. mic
+    // denied below) can't leave a prior capture's folder to be offered on stop.
+    liveSessionDir = null;
 
     // Refuse to "record" silence: a denied Core Audio grant means stream.py
     // captures nothing. This is the user-initiated moment, so prompt if the
@@ -661,11 +670,16 @@ export function registerIpcHandlers(): void {
       args.push('--interval', String(opts.intervalSecs));
     }
 
-    // Record mode: derive an output path and tell stream.py to capture to it.
+    // Record mode: derive a session folder and tell stream.py to capture one
+    // stem per armed strip into it (plus session.json). Arm tokens select which
+    // strips; omitted ⇒ stream.py arms all configured strips.
     if (opts.mode === 'record') {
       try {
-        liveRecordPath = buildRecordPath(opts.recordDir);
-        args.push('--record', liveRecordPath);
+        liveSessionDir = buildSessionDir(opts.recordDir);
+        args.push('--session-dir', liveSessionDir);
+        if (opts.arm && opts.arm.length > 0) {
+          args.push('--arm', opts.arm.join(','));
+        }
       } catch (err) {
         logError('start-live: could not prepare recording folder', err);
         return { success: false, error: `Could not prepare recording folder: ${String(err)}` };
@@ -766,16 +780,16 @@ export function registerIpcHandlers(): void {
     }
     const proc = liveProcess;
     liveProcess = null;
-    const recPath = liveRecordPath;
-    liveRecordPath = null;
+    const sessionDirPath = liveSessionDir;
+    liveSessionDir = null;
 
     let closedCleanly = false;
     if (proc) {
-      // SIGTERM triggers stream.py's signal handler, which closes the WAV and
-      // finalizes its header. Wait for the child to actually exit before we
-      // inspect the file, so we never offer a half-written recording. If it
-      // doesn't exit in time, force-kill it (so the mic is released and the
-      // process isn't orphaned) and don't offer the possibly-truncated file.
+      // SIGTERM triggers stream.py's signal handler, which closes every stem
+      // header and writes session.json. Wait for the child to actually exit
+      // before we inspect the folder, so we never offer a half-written session.
+      // If it doesn't exit in time, force-kill it (so the mic is released and the
+      // process isn't orphaned) and don't offer the possibly-incomplete session.
       closedCleanly = await new Promise<boolean>((resolve) => {
         let settled = false;
         const settle = (ok: boolean) => { if (!settled) { settled = true; resolve(ok); } };
@@ -791,18 +805,21 @@ export function registerIpcHandlers(): void {
       });
     }
 
-    // Only offer the recording if the child finalized the WAV cleanly and it
-    // holds real audio. soundfile writes a header at open, so the file is always
-    // a few dozen bytes even with zero captured frames — require more than that.
-    let recordPath: string | null = null;
-    if (recPath && closedCleanly) {
+    // Only offer the session if the child finalized cleanly and actually wrote a
+    // manifest — session.json is the completion marker (stream.py writes it last,
+    // after every stem header is closed), so its presence means the folder holds
+    // a coherent, movable session.
+    let sessionDir: string | null = null;
+    if (sessionDirPath && closedCleanly) {
       try {
-        if (fs.statSync(recPath).size > MIN_RECORDING_BYTES) recordPath = recPath;
+        if (fs.statSync(path.join(sessionDirPath, 'session.json')).isFile()) {
+          sessionDir = sessionDirPath;
+        }
       } catch {
-        // no file written (record failed to start, or captured nothing)
+        // no manifest written (record failed to start, or captured nothing)
       }
     }
-    return { success: true, recordPath };
+    return { success: true, sessionDir };
   });
 
   // trigger-llm-analysis

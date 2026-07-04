@@ -14,18 +14,25 @@ export interface LiveOptions {
   llmIntervalSecs: number;
   // Meter cadence in seconds (lightweight real-time updates). Default 0.1.
   intervalSecs?: number;
-  // When set, stream.py records all device channels to this WAV path.
+  // When set, stream.py records all device channels to this single WAV path.
   recordPath?: string;
+  // When set, stream.py records a multitrack session (one stem WAV per armed
+  // strip + session.json) into this directory, forwarded as --session-dir.
+  sessionDir?: string;
+  // Which strips to arm for the session, as channel-config tokens (e.g.
+  // ["0", "2-3"]), forwarded as --arm. Omitted ⇒ stream.py arms all strips.
+  armTokens?: string[];
 }
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const STREAM_SCRIPT = resolve(__dirname, "../../scripts/stream.py");
 const MAX_WINDOWS = 10;
 
-export async function startLive(opts: LiveOptions): Promise<void> {
+// Map live options to stream.py's CLI argv. Pure (no spawn) so the arg mapping —
+// including the record/session/arm branches — is unit-testable.
+export function buildStreamArgs(opts: LiveOptions): string[] {
   const args: string[] = [];
-  if (opts.device) args.push(opts.device);
-  else args.push("");
+  args.push(opts.device ? opts.device : "");
 
   args.push(String(opts.windowSecs));
 
@@ -41,6 +48,17 @@ export async function startLive(opts: LiveOptions): Promise<void> {
   if (opts.recordPath) {
     args.push("--record", opts.recordPath);
   }
+  if (opts.sessionDir) {
+    args.push("--session-dir", opts.sessionDir);
+  }
+  if (opts.armTokens && opts.armTokens.length > 0) {
+    args.push("--arm", opts.armTokens.join(","));
+  }
+  return args;
+}
+
+export async function startLive(opts: LiveOptions): Promise<void> {
+  const args = buildStreamArgs(opts);
 
   const py = spawn("python3", [STREAM_SCRIPT, ...args], {
     stdio: ["ignore", "pipe", "inherit"],
