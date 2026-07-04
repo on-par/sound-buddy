@@ -381,6 +381,29 @@
     .rec-offer .ro-text { flex:1; min-width:0; font:var(--fw-regular) var(--fs-label)/1.3 var(--font-sans); color:var(--text-secondary); }
     .rec-offer .ro-text b { color:var(--text-primary); font-weight:var(--fw-semibold); }
 
+    /* Virtual Soundcheck (#46): session/routing panel + per-track meters. */
+    .sc-session-name { font:var(--fw-medium) var(--fs-label)/1.3 var(--font-sans); color:var(--text-primary); word-break:break-all; }
+    .sc-tracks { display:flex; flex-direction:column; gap:6px; margin:6px 0; }
+    .sc-empty { font:var(--fw-regular) var(--fs-micro)/1.3 var(--font-sans); color:var(--text-muted); }
+    .sc-track { display:flex; align-items:center; gap:6px; }
+    .sc-track-name { flex:1 1 60px; min-width:0; font:var(--fw-medium) var(--fs-label)/1 var(--font-sans); color:var(--text-primary); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .sc-badge { flex:0 0 auto; font:var(--fw-semibold) var(--fs-micro)/1 var(--font-sans); color:var(--text-muted); border:1px solid var(--border-subtle); border-radius:var(--radius-sm); padding:1px 5px; letter-spacing:0.04em; text-transform:uppercase; }
+    .sc-route { flex:0 0 auto; height:var(--control-h-sm); padding:0 6px; border-radius:var(--radius-md); background:var(--surface-raised); color:var(--text-primary); border:1px solid var(--border-default); font:var(--fw-medium) var(--fs-label)/1 var(--font-sans); }
+    .sc-route:disabled { opacity:0.5; cursor:not-allowed; }
+    .sc-master { display:flex; align-items:center; gap:8px; font:var(--fw-regular) var(--fs-label)/1 var(--font-sans); color:var(--text-secondary); cursor:pointer; }
+    .sc-notice { padding:8px 10px; border-radius:var(--radius-md); background:var(--surface-inset); border:1px solid var(--border-default); color:var(--text-secondary); font:var(--fw-regular) var(--fs-micro)/1.3 var(--font-sans); }
+    .sc-elapsed { text-align:center; font:var(--fw-regular) var(--fs-label)/1 var(--font-mono); color:var(--text-muted); }
+    .sc-status { padding:8px 10px; border-radius:var(--radius-md); border:1px solid var(--issue-500); color:var(--issue-text); font:var(--fw-regular) var(--fs-micro)/1.3 var(--font-sans); text-align:center; }
+    .sc-meter { padding:10px 0; }
+    .sc-meter + .sc-meter { border-top:1px solid var(--border-subtle); }
+    .sc-meter-head { display:flex; align-items:baseline; gap:10px; margin-bottom:6px; }
+    .sc-meter-name { font:var(--fw-semibold) var(--fs-body-sm)/1 var(--font-sans); color:var(--text-primary); }
+    .sc-meter-val { font:var(--fw-regular) var(--fs-micro)/1 var(--font-mono); color:var(--text-muted); }
+    .sc-meter-clip { margin-left:auto; font:var(--fw-semibold) var(--fs-micro)/1 var(--font-sans); color:var(--issue-text); letter-spacing:0.06em; }
+    .sc-meter-bar { height:8px; border-radius:var(--radius-sm); background:var(--surface-raised); overflow:hidden; }
+    .sc-meter-fill { height:100%; background:var(--gold-500); transition:width var(--dur-base) var(--ease-out); }
+    .sc-meter.clip .sc-meter-fill { background:var(--issue-500); }
+
     /* Spectrum panel */
     #spectrum-panel { flex:1; display:flex; flex-direction:column; min-width:0; overflow:hidden; }
     #spectrum-header { display:flex; align-items:center; gap:20px; padding:11px 20px; border-bottom:1px solid var(--border-subtle); background:var(--bg-panel); flex-shrink:0; min-height:52px; }
@@ -664,6 +687,7 @@
       <button class="mode-tab active" data-mode="file" data-icon="file-audio">File</button>
       <button class="mode-tab" data-mode="dir" data-icon="folder">Directory</button>
       <button class="mode-tab" data-mode="live" data-icon="radio">Live</button>
+      <button class="mode-tab" data-mode="soundcheck" data-icon="sliders">Soundcheck</button>
       <button class="mode-tab" data-mode="reportcard" data-icon="clipboard-check">Report Card</button>
     </div>
     <div id="header-right">
@@ -821,6 +845,35 @@
             <button type="button" class="btn btn-secondary sm" id="rec-offer-btn" data-icon="folder">Open folder</button>
           </div>
         </div>
+
+        <!-- Virtual Soundcheck (#46): load a recorded session, route each track to
+             an output, and play it back with per-track meters. -->
+        <div class="tab-content" id="tab-soundcheck">
+          <button type="button" class="btn btn-secondary full" id="sc-choose-btn" data-icon="folder">Choose session folder…</button>
+          <div id="sc-session-name" class="sc-session-name" style="display:none"></div>
+          <div class="hairline"></div>
+          <label class="select-label">
+            <span>Output Device</span>
+            <div class="select-row">
+              <div class="select-wrap">
+                <select id="sc-device-select"><option value="">Default output</option></select>
+                <span class="select-caret" data-icon="chevron-down"></span>
+              </div>
+            </div>
+          </label>
+          <div class="chcfg-head"><span class="lbl">Tracks &amp; routing</span></div>
+          <div id="sc-tracks" class="sc-tracks"><div class="sc-empty">Choose a session folder to load its tracks.</div></div>
+          <label class="sc-master">
+            <input type="checkbox" id="sc-master-toggle" />
+            <span>Master mixdown (stereo)</span>
+          </label>
+          <div id="sc-mixdown-notice" class="sc-notice" style="display:none"></div>
+          <div class="hairline"></div>
+          <button class="btn btn-primary full" id="sc-play-btn" data-icon="play" disabled>Play</button>
+          <button class="btn btn-danger full" id="sc-stop-btn" data-icon="square" style="display:none">Stop</button>
+          <div id="sc-elapsed" class="sc-elapsed" style="display:none"></div>
+          <div id="sc-status" class="sc-status" role="alert" style="display:none"></div>
+        </div>
       </div>
     </aside>
 
@@ -939,6 +992,8 @@
 <script src="collapse-state.js"></script>
 <!-- Pure per-strip record-arm helpers (window.armState, #43). -->
 <script src="arm-state.js"></script>
+<!-- Pure virtual-soundcheck routing helpers (window.playbackRouting, #46). -->
+<script src="playback-routing.js"></script>
 <script>
 'use strict';
 
@@ -1878,12 +1933,211 @@ document.querySelectorAll('.mode-tab').forEach(tab => {
   });
 });
 
+/* ── Virtual Soundcheck (#46) ── */
+let scManifest = null;      // loaded session.json manifest
+let scSessionDir = null;    // chosen session folder
+let scRoutes = [];          // per-track output channel arrays ([c] mono / [l,r] stereo)
+let scDeviceChannels = 0;   // channel count of the selected output device (0 = default)
+let scDevicesLoaded = false;
+let scPlaying = false;
+
+function scTime(s) {
+  if (!isFinite(s) || s < 0) s = 0;
+  const m = Math.floor(s / 60), sec = Math.floor(s % 60);
+  return `${m}:${sec < 10 ? '0' : ''}${sec}`;
+}
+function scShowStatus(msg) { const s = document.getElementById('sc-status'); s.textContent = msg; s.style.display = 'block'; }
+function scHideStatus() { document.getElementById('sc-status').style.display = 'none'; }
+
+async function scLoadDevices() {
+  const sel = document.getElementById('sc-device-select');
+  try {
+    const result = await sb.listOutputDevices();
+    const devices = (result && result.devices) || [];
+    sel.innerHTML = '<option value="">Default output</option>'
+      + devices.map((d) => `<option value="${d.index}" data-ch="${d.channels}">${escapeHtml(d.name)} (${d.channels}ch)</option>`).join('');
+  } catch (err) {
+    sel.innerHTML = '<option value="">Default output</option>';
+  }
+  scDevicesLoaded = true;
+  scSyncDeviceChannels();
+}
+function scSyncDeviceChannels() {
+  const sel = document.getElementById('sc-device-select');
+  const opt = sel.options[sel.selectedIndex];
+  scDeviceChannels = opt && opt.dataset.ch ? parseInt(opt.dataset.ch, 10) : 0;
+  scRenderTracks();
+  scUpdateMixdownNotice();
+  scUpdateGuard();
+}
+
+async function scChooseSession() {
+  const dir = await sb.openDirDialog();
+  if (!dir) return;
+  const result = await sb.readSession(dir);
+  if (!result || !result.success) { scShowStatus((result && result.error) || 'Could not read that session.'); return; }
+  scHideStatus();
+  scSessionDir = dir;
+  scManifest = result.manifest;
+  scRoutes = window.playbackRouting.defaultRoutes(scManifest.tracks);
+  const nameEl = document.getElementById('sc-session-name');
+  nameEl.textContent = dir.split('/').pop();
+  nameEl.style.display = 'block';
+  scRenderTracks();
+  scUpdateMixdownNotice();
+  scUpdateGuard();
+}
+
+// Output-channel options up to the device's channel count (min 2 so a
+// default-output session can still address a stereo pair before enumeration).
+function scChannelOptions(selectedBase, kind) {
+  const max = Math.max(scDeviceChannels || 2, kind === 'stereo' ? 2 : 1);
+  let html = '';
+  if (kind === 'stereo') {
+    for (let c = 0; c + 1 < max; c++) html += `<option value="${c}"${c === selectedBase ? ' selected' : ''}>Ch ${c + 1}-${c + 2}</option>`;
+  } else {
+    for (let c = 0; c < max; c++) html += `<option value="${c}"${c === selectedBase ? ' selected' : ''}>Ch ${c + 1}</option>`;
+  }
+  return html;
+}
+
+function scRenderTracks() {
+  const wrap = document.getElementById('sc-tracks');
+  if (!scManifest || !scManifest.tracks || !scManifest.tracks.length) {
+    wrap.innerHTML = '<div class="sc-empty">Choose a session folder to load its tracks.</div>';
+    return;
+  }
+  wrap.innerHTML = scManifest.tracks.map((t, i) => {
+    const stereo = t.kind === 'stereo';
+    const r = scRoutes[i] || [0];
+    const label = t.label || `Track ${i + 1}`;
+    return `<div class="sc-track" data-idx="${i}">
+      <span class="sc-track-name" title="${escapeHtml(label)}">${escapeHtml(label)}</span>
+      <span class="sc-badge">${stereo ? 'Stereo' : 'Mono'}</span>
+      <select class="sc-route" data-idx="${i}" data-kind="${stereo ? 'stereo' : 'mono'}"${scPlaying ? ' disabled' : ''}>${scChannelOptions(r[0], t.kind)}</select>
+    </div>`;
+  }).join('');
+  wrap.querySelectorAll('.sc-route').forEach((sel) => {
+    sel.addEventListener('change', (e) => {
+      const i = parseInt(e.target.dataset.idx, 10);
+      const base = parseInt(e.target.value, 10);
+      scRoutes[i] = e.target.dataset.kind === 'stereo' ? [base, base + 1] : [base];
+      scUpdateMixdownNotice();
+      scUpdateGuard();
+    });
+  });
+}
+
+function scUpdateMixdownNotice() {
+  const notice = document.getElementById('sc-mixdown-notice');
+  if (!scManifest) { notice.style.display = 'none'; return; }
+  const master = document.getElementById('sc-master-toggle').checked;
+  // Default output (unknown channel count) → let the backend decide and report a
+  // `mixdown` event; only pre-warn when a concrete device is too small, or master.
+  const tooSmall = scDeviceChannels > 0 && window.playbackRouting.needsMixdown(scRoutes, scDeviceChannels, false);
+  if (master || tooSmall) {
+    const req = window.playbackRouting.requiredChannels(scRoutes);
+    notice.textContent = master
+      ? 'Playing a stereo master mixdown.'
+      : `The selected output has ${scDeviceChannels} channels but the routing needs ${req} — playback folds to a stereo master mixdown.`;
+    notice.style.display = 'block';
+  } else {
+    notice.style.display = 'none';
+  }
+}
+
+function scUpdateGuard() {
+  document.getElementById('sc-play-btn').disabled = !(scManifest && scDevicesLoaded && !scPlaying);
+}
+
+async function scPlay() {
+  if (!scManifest) return;
+  scHideStatus();
+  const master = document.getElementById('sc-master-toggle').checked;
+  const deviceVal = document.getElementById('sc-device-select').value;
+  const result = await sb.startPlayback({
+    sessionDir: scSessionDir,
+    device: deviceVal || undefined,
+    route: window.playbackRouting.routeSpec(scRoutes),
+    master: master || undefined,
+  });
+  if (result && result.success === false) { scShowStatus(result.error || 'Could not start playback.'); return; }
+  scPlaying = true;
+  document.getElementById('sc-play-btn').style.display = 'none';
+  document.getElementById('sc-stop-btn').style.display = 'inline-flex';
+  const el = document.getElementById('sc-elapsed');
+  el.style.display = 'block'; el.textContent = '0:00 / 0:00';
+  scRenderTracks(); // disable routing selects while playing
+  scUpdateGuard();
+  setSpectrumState('empty', { text: 'Buffering…' });
+}
+
+async function scStop() {
+  await sb.stopPlayback();
+  scResetTransport();
+}
+
+function scResetTransport() {
+  scPlaying = false;
+  document.getElementById('sc-play-btn').style.display = 'inline-flex';
+  document.getElementById('sc-stop-btn').style.display = 'none';
+  document.getElementById('sc-elapsed').style.display = 'none';
+  scRenderTracks();
+  scUpdateGuard();
+  if (currentMode === 'soundcheck') setSpectrumState('empty', { text: 'Load a session and press Play to see per-track meters' });
+}
+
+function scRenderMeters(tracks) {
+  const body = document.getElementById('spectrum-body');
+  body.innerHTML = '<div class="meter-card sb-live-meters">' + (tracks || []).map((t) => {
+    const rms = Number.isFinite(t.rms) ? t.rms : -120;
+    const pct = Math.max(0, Math.min(100, (rms + 60) / 60 * 100));
+    return `<div class="sc-meter${t.clipping ? ' clip' : ''}">
+      <div class="sc-meter-head">
+        <span class="sc-meter-name">${escapeHtml(t.label || 'Track')}</span>
+        <span class="sc-meter-val">RMS ${fmt(t.rms)} · Peak ${fmt(t.peak)} dBFS</span>
+        ${t.clipping ? '<span class="sc-meter-clip">CLIP</span>' : ''}
+      </div>
+      <div class="sc-meter-bar"><div class="sc-meter-fill" style="width:${pct.toFixed(1)}%"></div></div>
+    </div>`;
+  }).join('') + '</div>';
+}
+
+document.getElementById('sc-choose-btn').addEventListener('click', scChooseSession);
+document.getElementById('sc-device-select').addEventListener('change', scSyncDeviceChannels);
+document.getElementById('sc-master-toggle').addEventListener('change', scUpdateMixdownNotice);
+document.getElementById('sc-play-btn').addEventListener('click', scPlay);
+document.getElementById('sc-stop-btn').addEventListener('click', scStop);
+
+sb.onPlaybackEvent((data) => {
+  if (!data) return;
+  if (data.error) { scShowStatus(String(data.error)); scResetTransport(); return; }
+  if (data.type === 'mixdown') {
+    if (data.active) {
+      const notice = document.getElementById('sc-mixdown-notice');
+      notice.textContent = `Stereo master mixdown — routing needed ${data.requiredChannels} channels, device has ${data.outputChannels}.`;
+      notice.style.display = 'block';
+    }
+  } else if (data.type === 'progress') {
+    if (currentMode === 'soundcheck' && scPlaying) document.getElementById('sc-elapsed').textContent = `${scTime(data.elapsed)} / ${scTime(data.duration)}`;
+  } else if (data.type === 'level') {
+    if (currentMode === 'soundcheck' && scPlaying) scRenderMeters(data.tracks);
+  } else if (data.type === 'ended') {
+    scResetTransport();
+  }
+});
+
+scLoadDevices(); // populate the output picker at startup
+
 function syncSpectrumForMode(mode) {
   const title = document.getElementById('spectrum-title');
   if (mode === 'live') {
     title.textContent = SPECTRUM_TITLE.live;
     if (liveRunning && liveWindows.length > 0) renderLiveMeters(liveWindows[liveWindows.length - 1]);
     else setSpectrumState('empty', { text: 'Start live capture to see the meters' });
+  } else if (mode === 'soundcheck') {
+    title.textContent = 'Soundcheck · Meters';
+    if (!scPlaying) setSpectrumState('empty', { text: 'Load a session and press Play to see per-track meters' });
   } else {
     // renderSpectrum sets the header to match what it draws (curve vs meters);
     // seed the curve label for the pre-analysis empty state.

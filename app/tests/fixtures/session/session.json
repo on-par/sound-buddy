@@ -1,0 +1,7 @@
+{
+  "sampleRate": 48000,
+  "tracks": [
+    { "id": "t1", "label": "Kick", "kind": "mono", "sourceChannels": [0], "file": "01-kick.wav", "frames": 48000 },
+    { "id": "t2", "label": "OH", "kind": "stereo", "sourceChannels": [2, 3], "file": "02-oh.wav", "frames": 48000 }
+  ]
+}

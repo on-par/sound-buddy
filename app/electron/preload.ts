@@ -58,6 +58,9 @@ contextBridge.exposeInMainWorld('soundBuddy', {
 
   stopPlayback: () => ipcRenderer.invoke('stop-playback'),
 
+  // Read a captured session's session.json manifest for the Soundcheck UI (#46).
+  readSession: (sessionDir: string) => ipcRenderer.invoke('read-session', sessionDir),
+
   onPlaybackEvent: (cb: (data: unknown) => void) =>
     ipcRenderer.on('playback-event', (_event, d) => cb(d)),
 
