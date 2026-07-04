@@ -38,6 +38,15 @@ npm run lint
 echo "==> test (unit, all workspaces)"
 npm test
 
+# The Electron app is not an npm workspace, so its Vitest suite (settings, IPC
+# helpers) runs separately. Needs app deps; skipped with a note when absent.
+if [[ -d app/node_modules ]]; then
+  echo "==> test (unit, app)"
+  npm test --prefix app
+else
+  echo "==> app unit tests SKIPPED — app deps not installed (run without --fast, or: npm ci --prefix app)"
+fi
+
 # Python analysis helpers (stream.py). Requires numpy + scipy; sounddevice is
 # stubbed by the test. Skipped with a note if no suitable interpreter is found.
 PYTHON="${SOUND_BUDDY_PYTHON:-}"

@@ -6,6 +6,12 @@ contextBridge.exposeInMainWorld('soundBuddy', {
   updateSettings: (patch: { aiEnabled?: boolean; idealProfile?: string }) =>
     ipcRenderer.invoke('update-settings', patch),
 
+  // Capture rigs (#36) — backend only for now; the Live-tab UI arrives in #37.
+  listRigs: () => ipcRenderer.invoke('list-rigs'),
+  saveRig: (rig: unknown) => ipcRenderer.invoke('save-rig', rig),
+  deleteRig: (id: string) => ipcRenderer.invoke('delete-rig', id),
+  setActiveRig: (id: string | null) => ipcRenderer.invoke('set-active-rig', id),
+
   analyzeFile: (opts: { filePath: string; noSpectrum?: boolean }) =>
     ipcRenderer.invoke('analyze-file', opts),
 

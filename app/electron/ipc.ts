@@ -5,7 +5,15 @@ import * as path from 'path';
 import * as fs from 'fs';
 import { log, logWarn, logError } from './logger';
 import { streamNarrative } from './llm';
-import { getSettings, updateSettings } from './settings';
+import {
+  getSettings,
+  updateSettings,
+  listRigs,
+  upsertRig,
+  deleteRig,
+  setActiveRig,
+  type CaptureRig,
+} from './settings';
 
 const execFileAsync = promisify(execFile);
 
@@ -499,6 +507,13 @@ export function registerIpcHandlers(): void {
     }
     return updateSettings(clean);
   });
+
+  // Capture rigs (#36) — thin wrappers over the pure CRUD helpers in settings.ts,
+  // which own validation and the layered-persistence discipline. No UI yet (#37).
+  ipcMain.handle('list-rigs', () => listRigs());
+  ipcMain.handle('save-rig', (_event, rig: CaptureRig) => upsertRig(rig));
+  ipcMain.handle('delete-rig', (_event, id: string) => deleteRig(id));
+  ipcMain.handle('set-active-rig', (_event, id: string | null) => setActiveRig(id));
 
   // analyze-file
   ipcMain.handle('analyze-file', async (event, opts: { filePath: string; noSpectrum?: boolean }) => {
