@@ -442,6 +442,16 @@
     .live-ch.collapsed .live-ch-head { margin-bottom:0; }
     .live-ch.collapsed .veq, .live-ch.collapsed .veq-labels { display:none; }
     .live-meters-toolbar { display:flex; gap:8px; margin-bottom:14px; }
+    /* Named channel groups (#41): group headers in the live board + row assignment. */
+    .live-group-head { display:flex; align-items:center; gap:8px; padding:10px 0 6px; margin-top:8px; border-bottom:1px solid var(--border-subtle); }
+    .live-group-head:first-child { margin-top:0; }
+    .live-group-name { font:var(--fw-semibold) var(--fs-micro)/1 var(--font-sans); letter-spacing:var(--tracking-caps); text-transform:uppercase; color:var(--text-tertiary); }
+    .live-group-fold { background:none; border:none; padding:0 2px; color:var(--text-muted); cursor:pointer; font-size:10px; line-height:1; transition:transform var(--dur-base) var(--ease-out); }
+    .live-group-fold:hover { color:var(--text-primary); }
+    .live-group-head.collapsed .live-group-fold { transform:rotate(-90deg); }
+    .live-group-head.ungrouped { border-bottom-style:dashed; }
+    .live-group-empty { padding:6px 0; font:var(--fw-regular) var(--fs-micro)/1 var(--font-sans); color:var(--text-muted); }
+    .chcfg-group { flex:0 0 auto; max-width:92px; height:var(--control-h-sm); padding:0 6px; border-radius:var(--radius-md); background:var(--surface-raised); color:var(--text-primary); border:1px solid var(--border-default); font:var(--fw-medium) var(--fs-label)/1 var(--font-sans); }
 
     /* Live vertical-bar EQ: shared analyzer arc + per-band vertical bars.
        .veq-bars is inset to the SVG plot area (inline, from CURVE_VB) so each
@@ -815,6 +825,7 @@
                   <button type="button" class="ghost-btn sm" id="arm-all-btn" title="Arm every strip for recording">Arm all</button>
                   <button type="button" class="ghost-btn sm" id="disarm-all-btn" title="Disarm every strip">Disarm all</button>
                 </span>
+                <button type="button" class="ghost-btn sm" id="new-group-btn" title="Create a named channel group">+ Group</button>
               </span>
             </div>
             <div class="chcfg-list" id="chcfg-list"></div>
@@ -992,6 +1003,8 @@
 <script src="collapse-state.js"></script>
 <!-- Pure per-strip record-arm helpers (window.armState, #43). -->
 <script src="arm-state.js"></script>
+<!-- Pure named-channel-group helpers (window.groupState, #41). -->
+<script src="group-state.js"></script>
 <!-- Pure virtual-soundcheck routing helpers (window.playbackRouting, #46). -->
 <script src="playback-routing.js"></script>
 <script>
@@ -1055,6 +1068,10 @@ let liveWindows = [];
 // incoming meter window never silently re-expands a folded strip.
 let liveCollapsed = new Set();
 function isStripCollapsed(idx) { return window.collapseState.isCollapsed(liveCollapsed, idx); }
+// Named channel groups (#41): [{ name, members:[stripIndex,…] }]. Organizational
+// only — strips render under their group's header in the live board and a group
+// header folds all its members. Persisted into the active rig.
+let channelGroups = [];
 let lastLiveChannels = null;   // channels from the most recent meter tick (for #39 label fallbacks)
 let lastPlaceholderNamesKey = null; // last backend name set pushed to config-row placeholders (#39)
 let liveCountdownTimer = null;
@@ -1772,19 +1789,51 @@ function renderLiveMeters(win) {
     refreshChannelLabelPlaceholders(win.channels);
   }
 
-  // Patch in place while the channel list shape is unchanged (bar heights get
-  // real CSS transitions); rebuild only when it changes.
-  const wrap = body.querySelector('.sb-live-meters');
-  if (wrap && wrap.children.length === win.channels.length) {
-    win.channels.forEach((ch, i) => patchLiveChannel(wrap.children[i], ch, i));
+  // Patch in place while the strip set is unchanged (bar heights keep their CSS
+  // transitions); rebuild only when the shape changes. Match by .live-ch COUNT so
+  // interleaved group headers (#41) don't force a rebuild, and address strips by
+  // data-ch since grouping reorders them. Grouping is fixed during a capture
+  // (config is locked, #38), so the arrangement is stable across ticks.
+  const stripEls = body.querySelectorAll('.sb-live-meters .live-ch');
+  if (stripEls.length === win.channels.length) {
+    win.channels.forEach((ch, i) => {
+      const el = body.querySelector(`.sb-live-meters .live-ch[data-ch="${i}"]`);
+      if (el) patchLiveChannel(el, ch, i);
+    });
     return;
   }
   body.innerHTML = `<div class="live-meters-toolbar">`
     + `<button type="button" class="ghost-btn" id="live-collapse-all">Collapse all</button>`
     + `<button type="button" class="ghost-btn" id="live-expand-all">Expand all</button>`
     + `</div>`
-    + `<div class="meter-card sb-live-meters">${win.channels.map(veqChannelHTML).join('')}</div>`;
+    + `<div class="meter-card sb-live-meters">${liveMetersHTML(win.channels)}</div>`;
   body.querySelectorAll('.sb-live-meters .live-ch-name').forEach(wireLiveNameEdit);
+  applyLiveCollapsed();
+}
+
+// Live board strip HTML grouped under named-group headers (#41); ungrouped strips
+// fall into a trailing default section. Strips keep their original channel index
+// as data-ch so patching/labels/arming stay index-addressed. With no groups this
+// is just the flat strip list (backward-compatible with #40).
+function liveMetersHTML(channels) {
+  const n = channels.length;
+  let html = '';
+  const rendered = new Set();
+  channelGroups.forEach((grp, g) => {
+    html += `<div class="live-group-head" data-group="${g}">`
+      + `<button type="button" class="live-group-fold" aria-label="Collapse or expand group" title="Collapse / expand group">▾</button>`
+      + `<span class="live-group-name">${escapeHtml(grp.name)}</span></div>`;
+    const members = grp.members.filter((m) => m < n);
+    if (!members.length) html += `<div class="live-group-empty">No strips assigned</div>`;
+    members.forEach((m) => { html += veqChannelHTML(channels[m], m); rendered.add(m); });
+  });
+  const ung = [];
+  for (let i = 0; i < n; i++) if (!rendered.has(i)) ung.push(i);
+  if (channelGroups.length && ung.length) {
+    html += `<div class="live-group-head ungrouped" data-group="-1"><span class="live-group-name">Ungrouped</span></div>`;
+  }
+  ung.forEach((i) => { html += veqChannelHTML(channels[i], i); });
+  return html;
 }
 
 // Collapse controls (#40). One delegated listener on #spectrum-body survives the
@@ -1794,15 +1843,36 @@ function renderLiveMeters(win) {
 function applyLiveCollapsed() {
   const wrap = document.querySelector('#spectrum-body .sb-live-meters');
   if (!wrap) return;
-  Array.from(wrap.children).forEach((el) => {
+  wrap.querySelectorAll('.live-ch').forEach((el) => {
     const idx = parseInt(el.dataset.ch, 10);
     const collapsed = isStripCollapsed(idx);
     el.classList.toggle('collapsed', collapsed);
     const btn = el.querySelector('.live-ch-fold');
     if (btn) btn.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
   });
+  // A group header reads collapsed when all its members are (#41).
+  wrap.querySelectorAll('.live-group-head[data-group]').forEach((head) => {
+    const g = parseInt(head.dataset.group, 10);
+    if (g < 0) return;
+    const members = (channelGroups[g] && channelGroups[g].members) || [];
+    const allCollapsed = members.length > 0 && members.every((m) => isStripCollapsed(m));
+    head.classList.toggle('collapsed', allCollapsed);
+    const btn = head.querySelector('.live-group-fold');
+    if (btn) btn.setAttribute('aria-expanded', allCollapsed ? 'false' : 'true');
+  });
 }
 document.getElementById('spectrum-body').addEventListener('click', (e) => {
+  // Group header fold (#41): collapse/expand every member strip at once.
+  const gfold = e.target.closest('.live-group-fold');
+  if (gfold) {
+    const g = parseInt(gfold.closest('.live-group-head').dataset.group, 10);
+    const members = (channelGroups[g] && channelGroups[g].members) || [];
+    const allCollapsed = members.length > 0 && members.every((m) => isStripCollapsed(m));
+    const target = !allCollapsed; // collapse the group unless it's already fully collapsed
+    members.forEach((m) => { if (isStripCollapsed(m) !== target) liveCollapsed = window.collapseState.toggle(liveCollapsed, m); });
+    applyLiveCollapsed();
+    return;
+  }
   const fold = e.target.closest('.live-ch-fold');
   if (fold) {
     const idx = parseInt(fold.closest('.live-ch').dataset.ch, 10);
@@ -2268,6 +2338,13 @@ document.getElementById('disarm-all-btn').addEventListener('click', () => {
   channelConfig = window.armState.setAllArmed(channelConfig, false);
   renderChannelConfig();
 });
+document.getElementById('new-group-btn').addEventListener('click', async () => {
+  const name = await rigDialog({ title: 'New group', value: '', confirmLabel: 'Create', withInput: true });
+  const trimmed = (name || '').trim();
+  if (!trimmed) return;
+  channelGroups = window.groupState.addGroup(channelGroups, trimmed.slice(0, 40));
+  renderChannelConfig();
+});
 
 document.getElementById('record-folder-btn').addEventListener('click', async () => {
   const dir = await sb.openDirDialog();
@@ -2328,6 +2405,7 @@ function renderChannelConfig() {
     row.className = 'chcfg-row';
     const stereo = strip.kind === 'stereo';
     const armed = window.armState.isArmed(strip);
+    const grpOf = window.groupState.groupOf(channelGroups, idx);
     const stereoSel = stereo
       ? `<select class="chcfg-leg" data-idx="${idx}" data-field="b" title="Right leg">${channelOptions(strip.b, n, true)}</select>`
       : '';
@@ -2341,6 +2419,7 @@ function renderChannelConfig() {
        <select${stereo ? ' class="chcfg-leg" title="Left leg"' : ''} data-idx="${idx}" data-field="a">${channelOptions(strip.a, n, stereo)}</select>
        ${stereoSel}
        <input type="text" class="chcfg-label" data-idx="${idx}" value="${escapeHtml(strip.label || '')}" placeholder="${placeholder}" title="Strip name" aria-label="Strip name" spellcheck="false" maxlength="${MAX_LABEL_LEN}" />
+       ${channelGroups.length ? `<select class="chcfg-group" data-idx="${idx}" title="Assign to group" aria-label="Assign strip to group"><option value="-1"${grpOf === -1 ? ' selected' : ''}>Ungrouped</option>${channelGroups.map((g, gi) => `<option value="${gi}"${grpOf === gi ? ' selected' : ''}>${escapeHtml(g.name)}</option>`).join('')}</select>` : ''}
        <button type="button" class="chcfg-x" data-idx="${idx}" title="Remove strip"${channelConfig.length <= 1 ? ' disabled' : ''}>×</button>`;
     list.appendChild(row);
   });
@@ -2379,7 +2458,19 @@ function renderChannelConfig() {
   });
   list.querySelectorAll('.chcfg-x').forEach((btn) => {
     btn.addEventListener('click', (e) => {
-      channelConfig.splice(parseInt(e.target.dataset.idx), 1);
+      const rmIdx = parseInt(e.target.dataset.idx);
+      channelConfig.splice(rmIdx, 1);
+      // Drop the removed strip from any group and shift higher indices down so no
+      // dangling reference remains (#41).
+      channelGroups = window.groupState.pruneStrip(channelGroups, rmIdx);
+      renderChannelConfig();
+    });
+  });
+  // Assign a strip to a group (or Ungrouped) from its row select (#41).
+  list.querySelectorAll('.chcfg-group').forEach((sel) => {
+    sel.addEventListener('change', (e) => {
+      const i = parseInt(e.target.dataset.idx, 10);
+      channelGroups = window.groupState.assign(channelGroups, i, parseInt(e.target.value, 10));
       renderChannelConfig();
     });
   });
@@ -2414,7 +2505,7 @@ function setCaptureControlsLocked(locked) {
   const set = (el) => { if (el) { el.disabled = locked; el.setAttribute('aria-disabled', String(locked)); } };
   ['device-select', 'device-refresh-btn', 'record-folder-btn', 'chcfg-add',
     'meter-interval', 'window-secs', 'llm-interval', 'rig-select',
-    'arm-all-btn', 'disarm-all-btn'].forEach((id) => set(document.getElementById(id)));
+    'arm-all-btn', 'disarm-all-btn', 'new-group-btn'].forEach((id) => set(document.getElementById(id)));
   document.querySelectorAll('#live-mode button').forEach(set);
   document.querySelectorAll('#chcfg-list select, #chcfg-list .chcfg-x, #chcfg-list .chcfg-arm').forEach(set);
   const tab = document.getElementById('tab-live');
@@ -2724,6 +2815,8 @@ function captureCurrentRig(name, id) {
       if (label) strip.label = label;
       return strip;
     }),
+    // Named channel groups (#41) — organizational only; members are strip indices.
+    groups: channelGroups.map((g) => ({ name: g.name, members: g.members.slice() })),
     mode: liveMode,
     recordDir: recordDir,
     intervalMs: parseInt(document.getElementById('meter-interval').value, 10),
@@ -2755,6 +2848,11 @@ function applyRig(rig) {
 
   const clamp = window.rigReconcile.clampChannelConfig(rig.channelConfig || [], selectedDeviceChannels());
   channelConfig = clamp.config.length ? clamp.config : [{ kind: 'mono', a: 0, b: 0 }];
+  // Hydrate named groups (#41), dropping any member index beyond the (possibly
+  // clamped) strip count so no group references a strip that isn't there.
+  channelGroups = (rig.groups || []).map((g) => ({
+    name: g.name, members: (g.members || []).filter((m) => m < channelConfig.length),
+  }));
   renderChannelConfig();
   if (clamp.adjusted) {
     notice = notice
