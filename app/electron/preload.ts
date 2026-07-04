@@ -6,6 +6,20 @@ contextBridge.exposeInMainWorld('soundBuddy', {
   updateSettings: (patch: { aiEnabled?: boolean; idealProfile?: string }) =>
     ipcRenderer.invoke('update-settings', patch),
 
+  // AI provider settings (#76). getLlmConfig never returns key material — just
+  // a hasApiKey flag; saveLlmConfig takes the pasted key one way (to main).
+  getLlmConfig: () => ipcRenderer.invoke('llm-get-config'),
+  saveLlmConfig: (patch: {
+    provider?: string;
+    model?: string;
+    ollamaHost?: string;
+    apiBaseUrl?: string;
+    apiKey?: string;
+  }) => ipcRenderer.invoke('llm-save-config', patch),
+  detectOllama: (host?: string) => ipcRenderer.invoke('llm-detect-ollama', host),
+  testLlmProvider: (opts: { provider: string; apiKey?: string; apiBaseUrl?: string }) =>
+    ipcRenderer.invoke('llm-test-provider', opts),
+
   // Capture rigs (#36) — backend only for now; the Live-tab UI arrives in #37.
   listRigs: () => ipcRenderer.invoke('list-rigs'),
   saveRig: (rig: unknown) => ipcRenderer.invoke('save-rig', rig),

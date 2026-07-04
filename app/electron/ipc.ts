@@ -4,7 +4,8 @@ import { promisify } from 'util';
 import * as path from 'path';
 import * as fs from 'fs';
 import { log, logWarn, logError } from './logger';
-import { streamNarrative } from './llm';
+import { probeOllama, streamNarrative, testHostedProvider } from './llm';
+import { getPublicLlmConfig, saveLlmConfig, type LlmConfigPatch } from './llm-config';
 import {
   getSettings,
   updateSettings,
@@ -573,6 +574,37 @@ export function registerIpcHandlers(): void {
     }
     return updateSettings(clean);
   });
+
+  // AI provider settings (#76). The renderer only ever sees the public view —
+  // the API key crosses the bridge once (renderer → main, on save/test) and the
+  // stored ciphertext never crosses back.
+  ipcMain.handle('llm-get-config', () => getPublicLlmConfig());
+
+  ipcMain.handle('llm-save-config', (_event, patch: LlmConfigPatch) => {
+    const clean: LlmConfigPatch = {};
+    if (patch && typeof patch === 'object') {
+      if (typeof patch.provider === 'string') clean.provider = patch.provider;
+      if (typeof patch.model === 'string') clean.model = patch.model;
+      if (typeof patch.ollamaHost === 'string') clean.ollamaHost = patch.ollamaHost;
+      if (typeof patch.apiBaseUrl === 'string') clean.apiBaseUrl = patch.apiBaseUrl;
+      if (typeof patch.apiKey === 'string') clean.apiKey = patch.apiKey;
+    }
+    try {
+      return { ok: true, config: saveLlmConfig(clean) };
+    } catch (err) {
+      return { ok: false, reason: err instanceof Error ? err.message : String(err) };
+    }
+  });
+
+  // Auto-detect a local Ollama and list its models (settings screen, #76).
+  ipcMain.handle('llm-detect-ollama', (_event, host?: string) => probeOllama(host));
+
+  // "Test connection" for the API-key tab (#76).
+  ipcMain.handle(
+    'llm-test-provider',
+    (_event, opts: { provider: string; apiKey?: string; apiBaseUrl?: string }) =>
+      testHostedProvider(opts && typeof opts === 'object' ? opts : { provider: '' }),
+  );
 
   // Capture rigs (#36) — thin wrappers over the pure CRUD helpers in settings.ts,
   // which own validation and the layered-persistence discipline. No UI yet (#37).
