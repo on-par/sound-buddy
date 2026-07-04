@@ -9,5 +9,6 @@
     "outDir": "dist",
     "rootDir": "."
   },
-  "include": ["electron/**/*"]
+  "include": ["electron/**/*"],
+  "exclude": ["electron/**/*.test.ts"]
 }

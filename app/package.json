@@ -9,6 +9,7 @@
     "lint": "tsc --noEmit",
     "start": "npm run build && electron dist/electron/main.js",
     "dev": "tsc && electron dist/electron/main.js",
+    "test": "vitest run --passWithNoTests",
     "test:e2e": "npx playwright test --config=playwright.config.ts",
     "dist": "npm run build && electron-builder",
     "dist:dir": "npm run build && electron-builder --dir"
@@ -19,6 +20,7 @@
     "electron": "^31.0.0",
     "electron-builder": "^24.13.3",
     "playwright": "^1.61.1",
-    "typescript": "^5"
+    "typescript": "^5",
+    "vitest": "^2.1.9"
   }
 }
