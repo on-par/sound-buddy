@@ -228,4 +228,62 @@ test.describe.serial('Rigs — save / load / switch', () => {
     await expect(win.locator('#rig-select')).toBeEnabled();
     await expect(win.locator('#rig-saveas-btn')).toBeEnabled();
   });
+
+  // Capture-config lock (#38).
+  async function stubCapture(success: boolean) {
+    await app.evaluate(({ ipcMain }, ok) => {
+      ipcMain.removeHandler('start-live');
+      ipcMain.handle('start-live', () => ({ success: ok, error: ok ? undefined : 'mic denied' }));
+      ipcMain.removeHandler('stop-live');
+      ipcMain.handle('stop-live', () => ({ success: true }));
+    }, success);
+    await win.reload();
+    await win.waitForLoadState('domcontentloaded');
+    await win.locator('.mode-tab[data-mode="live"]').click();
+  }
+
+  test('capture-config controls lock on Start and re-enable on Stop', async () => {
+    await stubCapture(true);
+    const locked = ['#device-select', '#device-refresh-btn', '#record-folder-btn', '#chcfg-add',
+      '#meter-interval', '#window-secs', '#llm-interval'];
+
+    await win.locator('#live-start-btn').click();
+    for (const sel of locked) {
+      await expect(win.locator(sel)).toBeDisabled();
+      await expect(win.locator(sel)).toHaveAttribute('aria-disabled', 'true');
+    }
+    await expect(win.locator('#live-mode button').first()).toBeDisabled();
+    await expect(win.locator('#chcfg-list select').first()).toBeDisabled();
+    await expect(win.locator('#capture-locked-note')).toBeVisible();
+
+    await win.locator('#live-stop-btn').click();
+    for (const sel of locked) {
+      await expect(win.locator(sel)).toBeEnabled();
+      await expect(win.locator(sel)).toHaveAttribute('aria-disabled', 'false');
+    }
+    await expect(win.locator('#live-mode button').first()).toBeEnabled();
+    await expect(win.locator('#capture-locked-note')).toBeHidden();
+  });
+
+  test('a failed Start re-enables the config controls (no stuck lock)', async () => {
+    await stubCapture(false);
+    await win.locator('#live-start-btn').click();
+    // startLive resolves { success:false } → stopLive() runs → controls unlocked.
+    await expect(win.locator('#device-select')).toBeEnabled();
+    await expect(win.locator('#chcfg-add')).toBeEnabled();
+    await expect(win.locator('#meter-interval')).toBeEnabled();
+    await expect(win.locator('#capture-locked-note')).toBeHidden();
+    await expect(win.locator('#live-start-btn')).toBeVisible();
+  });
+
+  test('locking survives a channel-config re-render', async () => {
+    await stubCapture(true);
+    await win.locator('#live-start-btn').click();
+    await expect(win.locator('#chcfg-list select').first()).toBeDisabled();
+    // Force a re-render (rebuilds the chcfg rows) mid-capture; new controls must stay locked.
+    await win.evaluate(() => (window as unknown as { renderChannelConfig: () => void }).renderChannelConfig());
+    await expect(win.locator('#chcfg-list select').first()).toBeDisabled();
+    await expect(win.locator('#chcfg-list select').first()).toHaveAttribute('aria-disabled', 'true');
+    await win.locator('#live-stop-btn').click();
+  });
 });

@@ -348,6 +348,18 @@
     .chcfg-x:disabled { opacity:0.35; cursor:not-allowed; }
     .chcfg-add { margin-top:8px; }
     .chcfg-add:disabled { opacity:0.45; cursor:not-allowed; }
+    /* Capture lock (#38): while a capture runs, config controls freeze (stream.py
+       can't honor mid-session changes) and a quiet caption explains why. */
+    .capture-locked-note { display:none; align-items:center; gap:6px; font:var(--fw-regular) var(--fs-micro)/1.3 var(--font-sans); color:var(--text-muted); margin:4px 0; }
+    #tab-live.capture-locked .capture-locked-note { display:flex; }
+    #tab-live.capture-locked #device-select:disabled,
+    #tab-live.capture-locked #device-refresh-btn:disabled,
+    #tab-live.capture-locked #record-folder-btn:disabled,
+    #tab-live.capture-locked #live-mode button:disabled,
+    #tab-live.capture-locked #chcfg-add:disabled,
+    #tab-live.capture-locked #chcfg-list select:disabled,
+    #tab-live.capture-locked #chcfg-list .chcfg-x:disabled,
+    #tab-live.capture-locked .sb-slider:disabled { opacity:0.5; cursor:not-allowed; }
 
     /* Recording indicator + recording offer banner */
     #live-indicator .rec-dot { width:8px; height:8px; border-radius:50%; background:var(--issue-500); box-shadow:0 0 8px rgba(229,72,77,0.6); }
@@ -777,6 +789,7 @@
             <input type="range" class="sb-slider" id="llm-interval" min="0" max="300" step="10" value="60" />
           </div>
 
+          <div class="capture-locked-note" id="capture-locked-note" role="note">Settings locked while capturing</div>
           <div class="hairline"></div>
           <button class="btn btn-primary full" id="live-start-btn" data-icon="play">Start Capture</button>
           <button class="btn btn-danger full" id="live-stop-btn" data-icon="square" style="display:none">Stop Capture</button>
@@ -2077,6 +2090,26 @@ function renderChannelConfig() {
   // Disable "Add" once every device channel is spoken for.
   document.getElementById('chcfg-add').disabled = usedChannelCount() >= n;
   hydrateIcons(document.getElementById('chcfg'));
+  // Re-assert the capture lock (#38): this re-render rebuilt the chcfg controls,
+  // which must stay frozen while a capture is running.
+  if (liveRunning) setCaptureControlsLocked(true);
+}
+
+// Lock/unlock every capture-config control while a capture runs (#38). stream.py
+// is spawned with a fixed device/channels/mode/dirs set and can't honor a
+// mid-session change, so freezing avoids corrupting the take. Idempotent, and
+// re-selects the live-rendered .chcfg-* children each call. Locks a broad
+// `#chcfg-list select` (a mono strip's channel select carries no .chcfg-leg
+// class) while leaving the label input editable. The rig picker has its own lock
+// (setRigControlsEnabled) but is guarded here too, defensively.
+function setCaptureControlsLocked(locked) {
+  const set = (el) => { if (el) { el.disabled = locked; el.setAttribute('aria-disabled', String(locked)); } };
+  ['device-select', 'device-refresh-btn', 'record-folder-btn', 'chcfg-add',
+    'meter-interval', 'window-secs', 'llm-interval', 'rig-select'].forEach((id) => set(document.getElementById(id)));
+  document.querySelectorAll('#live-mode button').forEach(set);
+  document.querySelectorAll('#chcfg-list select, #chcfg-list .chcfg-x').forEach(set);
+  const tab = document.getElementById('tab-live');
+  if (tab) tab.classList.toggle('capture-locked', locked);
 }
 
 document.getElementById('chcfg-add').addEventListener('click', () => {
@@ -2175,6 +2208,7 @@ document.getElementById('live-start-btn').addEventListener('click', async () => 
   liveRunning = true;
   liveWindows = [];
   setRigControlsEnabled(false);
+  setCaptureControlsLocked(true); // freeze device/mode/folder/channels/sliders (#38)
 
   document.getElementById('rec-offer').style.display = 'none';
   document.getElementById('live-start-btn').style.display = 'none';
@@ -2207,6 +2241,7 @@ document.getElementById('live-stop-btn').addEventListener('click', () => stopLiv
 async function stopLive() {
   liveRunning = false;
   setRigControlsEnabled(true);
+  setCaptureControlsLocked(false); // re-enable config (also the failed-Start path) (#38)
   clearLiveCountdown();
   const result = await sb.stopLive();
   document.getElementById('live-start-btn').style.display = 'inline-flex';
