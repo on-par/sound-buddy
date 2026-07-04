@@ -1,4 +1,4 @@
-import { ipcMain, dialog, BrowserWindow, app, systemPreferences } from 'electron';
+import { ipcMain, dialog, BrowserWindow, app, systemPreferences, shell } from 'electron';
 import { execFile, spawn, ChildProcess } from 'child_process';
 import { promisify } from 'util';
 import * as path from 'path';
@@ -855,6 +855,18 @@ export function registerIpcHandlers(): void {
       }
     }
     return { success: true, sessionDir };
+  });
+
+  // reveal-path — open a captured session folder in the OS file manager (#43).
+  // openPath opens the folder itself; returns '' on success or an error string.
+  ipcMain.handle('reveal-path', async (_event, targetPath: string) => {
+    if (!targetPath || typeof targetPath !== 'string') return { success: false, error: 'no path' };
+    const err = await shell.openPath(targetPath);
+    if (err) {
+      logWarn(`reveal-path: ${err}`);
+      return { success: false, error: err };
+    }
+    return { success: true };
   });
 
   // start-playback — virtual soundcheck (#45). Spawn playback.py to play a

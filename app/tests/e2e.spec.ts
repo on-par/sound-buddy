@@ -641,19 +641,76 @@ test.describe('Sound Buddy E2E', () => {
       await expect(window.locator('.live-ch[data-ch="0"] .sb-spectrum-curve')).toHaveAttribute('data-marker', 'kept');
     });
 
-    test('record mode captures a session and stops cleanly', async () => {
+    test('record mode captures a session and offers to reveal the folder (#43)', async () => {
+      await electronApp.evaluate(({ ipcMain }) => {
+        ipcMain.removeHandler('reveal-path');
+        ipcMain.handle('reveal-path', (_e, p) => {
+          (globalThis as Record<string, unknown>).__revealed = p; return { success: true };
+        });
+      });
       await window.locator('#live-mode button[data-mode="record"]').click();
+      await window.locator('#arm-all-btn').click(); // normalize armed state
       await window.locator('#live-start-btn').click();
       await expect(window.locator('#live-stop-btn')).toBeVisible();
       await expect(window.locator('#live-indicator .live-txt')).toHaveText('REC');
 
       await window.locator('#live-stop-btn').click();
-      // Stop returns to the idle state. stop-live now yields a session folder
-      // rather than a single WAV, so the legacy single-file "Analyze it?" offer
-      // no longer fires — the session banner/analyze flow arrives with the UI in
-      // #43. Guard the interim: the offer must not appear.
       await expect(window.locator('#live-start-btn')).toBeVisible();
+      // stop-live returns a sessionDir (stubbed) → the session offer appears and
+      // "Open folder" reveals that dir via reveal-path.
+      await expect(window.locator('#rec-offer')).toBeVisible();
+      await expect(window.locator('#rec-offer-text')).toContainText('Session saved');
+      await window.locator('#rec-offer-btn').click();
+      const revealed = await electronApp.evaluate(() => (globalThis as Record<string, unknown>).__revealed);
+      expect(revealed).toBe('/tmp/sound-buddy-20260702-101500');
       await expect(window.locator('#rec-offer')).toBeHidden();
+    });
+
+    test('Record mode with nothing armed blocks Start with a hint (#43)', async () => {
+      await window.locator('#live-mode button[data-mode="record"]').click();
+      await window.locator('#disarm-all-btn').click();
+      await expect(window.locator('#arm-count')).toContainText('0 /');
+      await window.locator('#live-start-btn').click();
+      // No capture spawned: hint shown, Start still visible, Stop hidden.
+      await expect(window.locator('#arm-hint')).toBeVisible();
+      await expect(window.locator('#arm-hint')).toContainText('Arm at least one strip');
+      await expect(window.locator('#live-start-btn')).toBeVisible();
+      await expect(window.locator('#live-stop-btn')).toBeHidden();
+      // Re-arm → Start works and the hint clears.
+      await window.locator('#arm-all-btn').click();
+      await window.locator('#live-start-btn').click();
+      await expect(window.locator('#live-stop-btn')).toBeVisible();
+      await expect(window.locator('#arm-hint')).toBeHidden();
+      await window.locator('#live-stop-btn').click();
+    });
+
+    test('Record passes only the armed strips as arm tokens (#43)', async () => {
+      await electronApp.evaluate(({ ipcMain }) => {
+        ipcMain.removeHandler('start-live');
+        ipcMain.handle('start-live', (_e, opts) => {
+          (globalThis as Record<string, unknown>).__start = opts; return { success: true };
+        });
+      });
+      await window.locator('#live-mode button[data-mode="record"]').click();
+      await window.locator('#arm-all-btn').click();
+      const arms = window.locator('#chcfg-list .chcfg-arm');
+      const total = await arms.count();
+      await arms.first().click(); // disarm strip 0
+      await expect(arms.first()).toHaveAttribute('aria-pressed', 'false');
+
+      await window.locator('#live-start-btn').click();
+      await expect(window.locator('#live-stop-btn')).toBeVisible();
+      const opts = (await electronApp.evaluate(
+        () => (globalThis as Record<string, unknown>).__start,
+      )) as { arm?: string[] };
+      expect(opts.arm).toBeDefined();
+      expect(opts.arm!.length).toBe(total - 1); // exactly one strip disarmed
+      await window.locator('#live-stop-btn').click();
+      // Restore the plain success stub for any later tests.
+      await electronApp.evaluate(({ ipcMain }) => {
+        ipcMain.removeHandler('start-live');
+        ipcMain.handle('start-live', () => ({ success: true }));
+      });
     });
   });
 });
