@@ -946,6 +946,7 @@ let currentDirPath = null;
 let liveRunning = false;
 let liveWindows = [];
 let lastLiveChannels = null;   // channels from the most recent meter tick (for #39 label fallbacks)
+let lastPlaceholderNamesKey = null; // last backend name set pushed to config-row placeholders (#39)
 let liveCountdownTimer = null;
 let liveCountdownSecs = 0;
 let liveDevices = [];          // last device list (for channel-count lookup)
@@ -965,6 +966,10 @@ function escapeHtml(s) {
 }
 // Resolve a strip's display name: label → backend name → "Ch N" (see #39).
 function stripLabel(strip, ch, index) { return window.rigReconcile.resolveStripLabel(strip, ch, index); }
+const MAX_LABEL_LEN = 40; // shared cap for both label entry points (config row + live header)
+// The backend live channel for a strip index (or null before any tick), so the
+// label fallback resolves the same way from every call site (#39).
+function liveChannelAt(idx) { return lastLiveChannels ? lastLiveChannels[idx] : null; }
 function fmt(n, d = 1) { if (!isFinite(n)) return '-∞'; return n.toFixed(d); }
 function fmtHz(hz) { if (hz >= 1000) return (hz / 1000).toFixed(1) + ' kHz'; return Math.round(hz) + ' Hz'; }
 function fmtDur(s) { const m = Math.floor(s / 60); const sec = (s % 60).toFixed(1).padStart(4, '0'); return `${m}:${sec}`; }
@@ -1637,10 +1642,15 @@ function renderLiveMeters(win) {
   if (ipWrap) ipWrap.style.display = 'none'; // no whole-file curve in live mode
 
   // Once real channels arrive, remember them so label fallbacks (#39) can resolve
-  // the backend device name, and preview it in each config row's placeholder —
-  // updated in place so a value the engineer is typing (and focus) are untouched.
+  // the backend device name, and preview it in each config row's placeholder.
+  // Backend names are effectively static per session, so only touch the DOM when
+  // the name set actually changes rather than on every hot metering tick.
   lastLiveChannels = win.channels;
-  refreshChannelLabelPlaceholders(win.channels);
+  const namesKey = win.channels.map((c) => (c && c.name) || '').join('');
+  if (namesKey !== lastPlaceholderNamesKey) {
+    lastPlaceholderNamesKey = namesKey;
+    refreshChannelLabelPlaceholders(win.channels);
+  }
 
   // Patch in place while the channel list shape is unchanged (bar heights get
   // real CSS transitions); rebuild only when it changes.
@@ -1658,24 +1668,26 @@ function renderLiveMeters(win) {
 // keeps the config rows and the persisted rig in sync via renderChannelConfig().
 function wireLiveNameEdit(nameEl) {
   const idx = parseInt(nameEl.closest('.live-ch').dataset.ch, 10);
+  // Snapshot the displayed text when the edit begins. Committing only when the
+  // text actually changed means a plain focus→blur (or an Escape that restores
+  // the snapshot) is a no-op, so the resolved fallback is never pinned as an
+  // explicit label — the field keeps following the device name / "Ch N".
+  let original = nameEl.textContent;
+  nameEl.addEventListener('focus', () => { original = nameEl.textContent; });
   const commit = () => {
     const strip = channelConfig[idx];
-    if (!strip) return;
-    const text = nameEl.textContent.trim();
-    strip.label = text;
-    // Reflect the resolved name immediately (empty label falls back to the
-    // device name / Ch N) and refresh the config row inputs to match.
-    nameEl.textContent = stripLabel(strip, lastLiveChannels ? lastLiveChannels[idx] : null, idx);
+    if (!strip || nameEl.textContent === original) return;
+    strip.label = nameEl.textContent.trim().slice(0, MAX_LABEL_LEN);
+    // Reflect the resolved name (empty label falls back to the device name /
+    // Ch N) and refresh the config row inputs to match.
+    nameEl.textContent = stripLabel(strip, liveChannelAt(idx), idx);
+    original = nameEl.textContent;
     renderChannelConfig();
   };
   nameEl.addEventListener('blur', commit);
   nameEl.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') { e.preventDefault(); nameEl.blur(); }
-    else if (e.key === 'Escape') {
-      e.preventDefault();
-      nameEl.textContent = stripLabel(channelConfig[idx], lastLiveChannels ? lastLiveChannels[idx] : null, idx);
-      nameEl.blur();
-    }
+    else if (e.key === 'Escape') { e.preventDefault(); nameEl.textContent = original; nameEl.blur(); }
   });
 }
 
@@ -1954,7 +1966,7 @@ function renderChannelConfig() {
        </select>
        <select${stereo ? ' class="chcfg-leg" title="Left leg"' : ''} data-idx="${idx}" data-field="a">${channelOptions(strip.a, n, stereo)}</select>
        ${stereoSel}
-       <input type="text" class="chcfg-label" data-idx="${idx}" value="${escapeHtml(strip.label || '')}" placeholder="${placeholder}" title="Strip name" aria-label="Strip name" spellcheck="false" maxlength="40" />
+       <input type="text" class="chcfg-label" data-idx="${idx}" value="${escapeHtml(strip.label || '')}" placeholder="${placeholder}" title="Strip name" aria-label="Strip name" spellcheck="false" maxlength="${MAX_LABEL_LEN}" />
        <button type="button" class="chcfg-x" data-idx="${idx}" title="Remove strip"${channelConfig.length <= 1 ? ' disabled' : ''}>×</button>`;
     list.appendChild(row);
   });
@@ -1987,7 +1999,7 @@ function renderChannelConfig() {
       // unless the engineer is mid-edit there.
       const liveName = document.querySelector(`.sb-live-meters .live-ch[data-ch="${idx}"] .live-ch-name`);
       if (liveName && document.activeElement !== liveName) {
-        liveName.textContent = stripLabel(strip, lastLiveChannels ? lastLiveChannels[idx] : null, parseInt(idx, 10));
+        liveName.textContent = stripLabel(strip, liveChannelAt(parseInt(idx, 10)), parseInt(idx, 10));
       }
     });
   });
@@ -2289,7 +2301,11 @@ function captureCurrentRig(name, id) {
     deviceName: deviceName,
     channelConfig: channelConfig.map((s) => {
       const strip = { kind: s.kind, a: s.a, b: s.b };
-      if (s.label != null) strip.label = s.label;
+      // Normalize the label once, at the persistence boundary, so both entry
+      // points (config row + inline header) round-trip an identical stored value
+      // and an all-whitespace label is dropped rather than saved (#39).
+      const label = typeof s.label === 'string' ? s.label.trim().slice(0, MAX_LABEL_LEN) : '';
+      if (label) strip.label = label;
       return strip;
     }),
     mode: liveMode,

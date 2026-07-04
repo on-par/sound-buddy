@@ -537,6 +537,20 @@ test.describe('Sound Buddy E2E', () => {
       await expect(heads.nth(1)).toHaveText('SL Vox');
       await expect(heads.first()).toHaveText('USB Audio 1');
 
+      // Focusing an unlabeled header and blurring without typing must NOT pin the
+      // resolved fallback as an explicit label (would freeze the device name).
+      await heads.first().click();
+      await heads.nth(1).click(); // blur strip 0 by focusing elsewhere
+      await expect(rowLabels.first()).toHaveValue('');
+
+      // Escape cancels an in-progress inline rename (label stays unset).
+      await heads.first().click();
+      await window.keyboard.press('ControlOrMeta+A');
+      await window.keyboard.type('Discarded');
+      await window.keyboard.press('Escape');
+      await expect(heads.first()).toHaveText('USB Audio 1');
+      await expect(rowLabels.first()).toHaveValue('');
+
       // Labels are display-only: the stream.py channel tokens never carry them.
       const clean = [{ ...LIVE_CHANNELS[0], name: 'Ch 1' }, { ...LIVE_CHANNELS[1], name: 'Ch 2' }];
       await sendLiveTick(clean);
