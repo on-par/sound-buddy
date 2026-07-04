@@ -869,6 +869,21 @@ export function registerIpcHandlers(): void {
     return { success: true };
   });
 
+  // read-session — load a captured session's session.json manifest so the
+  // Virtual Soundcheck UI (#46) can list its tracks. Read-only, renderer-driven.
+  ipcMain.handle('read-session', async (_event, sessionDir: string) => {
+    if (!sessionDir || typeof sessionDir !== 'string') return { success: false, error: 'No session directory provided.' };
+    try {
+      const raw = fs.readFileSync(path.join(sessionDir, 'session.json'), 'utf8');
+      const manifest = JSON.parse(raw);
+      if (!manifest || !Array.isArray(manifest.tracks)) return { success: false, error: 'session.json has no tracks.' };
+      return { success: true, manifest };
+    } catch (err) {
+      logWarn(`read-session: ${(err as Error).message}`);
+      return { success: false, error: `Could not read session.json: ${(err as Error).message}` };
+    }
+  });
+
   // start-playback — virtual soundcheck (#45). Spawn playback.py to play a
   // captured session's stems through the chosen output device with per-track
   // routing (or a stereo master fold when the device is too small / master is
