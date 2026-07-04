@@ -17,6 +17,10 @@ contextBridge.exposeInMainWorld('soundBuddy', {
 
   listDevices: () => ipcRenderer.invoke('list-devices'),
 
+  // Playback (output) devices for virtual-soundcheck (#44). No micAccess field —
+  // choosing an output interface doesn't require the microphone grant.
+  listOutputDevices: () => ipcRenderer.invoke('list-output-devices'),
+
   openFileDialog: () => ipcRenderer.invoke('open-file-dialog'),
 
   openDirDialog: () => ipcRenderer.invoke('open-dir-dialog'),

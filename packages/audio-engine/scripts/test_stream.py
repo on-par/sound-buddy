@@ -7,6 +7,7 @@ Requires numpy + scipy. `sounddevice` is stubbed so the tests run on hosts
 without PortAudio (e.g. CI), since stream.py imports it at module load.
 """
 
+import io
 import os
 import sys
 import time
@@ -14,6 +15,7 @@ import json
 import types
 import shutil
 import signal
+import contextlib
 import tempfile
 import subprocess
 import unittest
@@ -389,6 +391,61 @@ class InputStream:
         self._thread.join(timeout=1)
         return False
 '''
+
+
+class DeviceEnumeration(unittest.TestCase):
+    """Output enumeration (#44) mirrors input enumeration over one device table:
+    an input-only, an output-only, and a duplex device."""
+
+    DEVICES = [
+        {"name": "Built-in Microphone", "max_input_channels": 2,
+         "max_output_channels": 0, "default_samplerate": 48000.0},
+        {"name": "Built-in Output", "max_input_channels": 0,
+         "max_output_channels": 2, "default_samplerate": 44100.0},
+        {"name": "Scarlett 18i20", "max_input_channels": 18,
+         "max_output_channels": 20, "default_samplerate": 48000.0},
+    ]
+
+    def setUp(self):
+        self._orig = getattr(stream.sd, "query_devices", None)
+        stream.sd.query_devices = lambda *a, **k: self.DEVICES
+
+    def tearDown(self):
+        stream.sd.query_devices = self._orig
+
+    def test_output_list_excludes_input_only(self):
+        out = stream._enumerate_devices("max_output_channels")
+        self.assertEqual([d["name"] for d in out], ["Built-in Output", "Scarlett 18i20"])
+
+    def test_channels_reflect_max_output(self):
+        out = stream._enumerate_devices("max_output_channels")
+        # channels mirrors max_output_channels; index is the position in the full
+        # device table (2 for the duplex device, past the excluded input-only one).
+        self.assertEqual(out[0], {"index": 1, "name": "Built-in Output",
+                                  "channels": 2, "default_sr": 44100})
+        self.assertEqual(out[1], {"index": 2, "name": "Scarlett 18i20",
+                                  "channels": 20, "default_sr": 48000})
+
+    def test_input_list_still_filters_on_max_input(self):
+        out = stream._enumerate_devices("max_input_channels")
+        self.assertEqual([d["name"] for d in out],
+                         ["Built-in Microphone", "Scarlett 18i20"])
+        self.assertEqual(out[0]["channels"], 2)
+
+    def test_empty_when_no_output_devices(self):
+        stream.sd.query_devices = lambda *a, **k: [
+            {"name": "Mic Only", "max_input_channels": 1,
+             "max_output_channels": 0, "default_samplerate": 48000.0},
+        ]
+        self.assertEqual(stream._enumerate_devices("max_output_channels"), [])
+
+    def test_list_output_devices_prints_devices_envelope(self):
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            stream.list_output_devices()
+        payload = json.loads(buf.getvalue())
+        self.assertEqual([d["name"] for d in payload["devices"]],
+                         ["Built-in Output", "Scarlett 18i20"])
 
 
 if __name__ == "__main__":

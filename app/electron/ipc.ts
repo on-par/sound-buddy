@@ -494,6 +494,59 @@ async function streamLLM(
   send('llm-done');
 }
 
+// ─── Device enumeration ─────────────────────────────────────────────────────
+
+export interface DeviceListResult {
+  success: boolean;
+  devices?: unknown[];
+  error?: string;
+}
+
+// Spawn stream.py with an enumeration flag and resolve the parsed device list.
+// Shared by list-devices and list-output-devices: same stdout/stderr collection,
+// close/error handling, and JSON-parse guard. Callers layer on any extra fields
+// (e.g. list-devices' micAccess). Never rejects — enumeration failures surface as
+// { success: false, error } so the renderer can degrade gracefully. `label`
+// prefixes log lines so the two callers stay distinguishable.
+export function enumerateDevices(
+  flag: '--list-devices' | '--list-output-devices',
+  label: string,
+): Promise<DeviceListResult> {
+  return new Promise<DeviceListResult>((resolve) => {
+    let output = '';
+    let errOutput = '';
+    const py = spawn(pythonBin(), [STREAM_SCRIPT, flag], {
+      stdio: ['ignore', 'pipe', 'pipe'],
+      env: childEnv(),
+    });
+
+    py.stdout.on('data', (chunk: Buffer) => { output += chunk.toString(); });
+    // stderr was previously piped but never read (lost errors + risked backpressure).
+    py.stderr.on('data', (chunk: Buffer) => { errOutput += chunk.toString(); });
+
+    py.on('close', (code) => {
+      if (code !== 0 && !output.trim()) {
+        logError(`${label}: stream.py exited with code ${code}`, errOutput.trim() || undefined);
+        resolve({ success: false, error: `stream.py exited with code ${code}` });
+        return;
+      }
+      try {
+        const parsed = JSON.parse(output.trim()) as { devices?: unknown[] };
+        if (errOutput.trim()) logWarn(`${label} stderr: ${errOutput.trim()}`);
+        resolve({ success: true, devices: parsed.devices ?? [] });
+      } catch (err) {
+        logError(`${label}: failed to parse device list`, errOutput.trim() || err);
+        resolve({ success: false, error: 'Failed to parse device list' });
+      }
+    });
+
+    py.on('error', (err) => {
+      logError(`${label}: failed to spawn ${pythonBin()}`, err);
+      resolve({ success: false, error: err.message });
+    });
+  });
+}
+
 // ─── IPC HANDLERS ─────────────────────────────────────────────────────────────
 
 export function registerIpcHandlers(): void {
@@ -557,40 +610,15 @@ export function registerIpcHandlers(): void {
     // Enumeration works without the grant; reporting the status lets the renderer
     // distinguish a blocked mic from genuinely absent input hardware.
     const micAccess = await ensureMicrophoneAccess(false);
-    return new Promise<{ success: boolean; devices?: unknown[]; error?: string; micAccess: MicAccess }>((resolve) => {
-      let output = '';
-      let errOutput = '';
-      const py = spawn(pythonBin(), [STREAM_SCRIPT, '--list-devices'], {
-        stdio: ['ignore', 'pipe', 'pipe'],
-        env: childEnv(),
-      });
-
-      py.stdout.on('data', (chunk: Buffer) => { output += chunk.toString(); });
-      // stderr was previously piped but never read (lost errors + risked backpressure).
-      py.stderr.on('data', (chunk: Buffer) => { errOutput += chunk.toString(); });
-
-      py.on('close', (code) => {
-        if (code !== 0 && !output.trim()) {
-          logError(`list-devices: stream.py exited with code ${code}`, errOutput.trim() || undefined);
-          resolve({ success: false, error: `stream.py exited with code ${code}`, micAccess });
-          return;
-        }
-        try {
-          const parsed = JSON.parse(output.trim()) as { devices?: unknown[] };
-          if (errOutput.trim()) logWarn(`list-devices stderr: ${errOutput.trim()}`);
-          resolve({ success: true, devices: parsed.devices ?? [], micAccess });
-        } catch (err) {
-          logError('list-devices: failed to parse device list', errOutput.trim() || err);
-          resolve({ success: false, error: 'Failed to parse device list', micAccess });
-        }
-      });
-
-      py.on('error', (err) => {
-        logError(`list-devices: failed to spawn ${pythonBin()}`, err);
-        resolve({ success: false, error: err.message, micAccess });
-      });
-    });
+    const result = await enumerateDevices('--list-devices', 'list-devices');
+    return { ...result, micAccess };
   });
+
+  // list-output-devices — playback devices for the virtual-soundcheck output
+  // picker (#44). Mirrors list-devices but carries no micAccess: choosing an
+  // output interface doesn't touch the microphone grant.
+  ipcMain.handle('list-output-devices', () =>
+    enumerateDevices('--list-output-devices', 'list-output-devices'));
 
   // open-file-dialog
   ipcMain.handle('open-file-dialog', async () => {

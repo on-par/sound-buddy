@@ -5,6 +5,7 @@ Live capture + real-time analysis.
 Usage:
   python3 scripts/stream.py [device] [window_secs] [channels] [options]
   python3 scripts/stream.py --list-devices
+  python3 scripts/stream.py --list-output-devices
 
 Positional args (all optional):
   device        device name or index (empty = default input)
@@ -83,18 +84,30 @@ METER_WINDOW_SECS = 0.2
 CLIP_HOLD_SECS = 1.5
 
 
-def list_devices():
+def _enumerate_devices(channel_key: str) -> list[dict]:
+    """Devices exposing at least one channel on `channel_key`
+    ("max_input_channels" or "max_output_channels"), reporting that count as
+    `channels`. Input and output enumeration are mirror images over the same
+    PortAudio device table, so they share this walk."""
     devs = sd.query_devices()
     out = []
     for i, d in enumerate(devs):
-        if d["max_input_channels"] > 0:
+        if d[channel_key] > 0:
             out.append({
                 "index": i,
                 "name": d["name"],
-                "channels": d["max_input_channels"],
+                "channels": d[channel_key],
                 "default_sr": int(d["default_samplerate"]),
             })
-    print(json.dumps({"devices": out}), flush=True)
+    return out
+
+
+def list_devices():
+    print(json.dumps({"devices": _enumerate_devices("max_input_channels")}), flush=True)
+
+
+def list_output_devices():
+    print(json.dumps({"devices": _enumerate_devices("max_output_channels")}), flush=True)
 
 
 def find_device(name_or_index: str):
@@ -581,6 +594,10 @@ def main():
 
     if args and args[0] == "--list-devices":
         list_devices()
+        return
+
+    if args and args[0] == "--list-output-devices":
+        list_output_devices()
         return
 
     # Split optional flags from positional args.
