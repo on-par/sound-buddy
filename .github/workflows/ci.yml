@@ -42,11 +42,12 @@ jobs:
         with:
           python-version: '3.12'
 
-      - name: Python audio-engine tests (stream.py)
-        # sounddevice is stubbed by the test, so PortAudio isn't needed here.
+      - name: Python audio-engine tests (stream.py + playback.py)
+        # sounddevice is stubbed by the tests, so PortAudio isn't needed here.
         # numpy + scipy cover the analysis helpers; soundfile is needed so the
-        # session-recording + SIGTERM stem tests run rather than skip.
+        # session-recording/playback + SIGTERM stem tests run rather than skip.
         run: |
           python -m pip install --upgrade pip
           pip install numpy scipy soundfile
           python packages/audio-engine/scripts/test_stream.py
+          python packages/audio-engine/scripts/test_playback.py

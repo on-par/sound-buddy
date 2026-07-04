@@ -60,6 +60,8 @@ fi
 if [[ -n "$PYTHON" ]]; then
   echo "==> python tests (stream.py) via $PYTHON"
   "$PYTHON" packages/audio-engine/scripts/test_stream.py
+  echo "==> python tests (playback.py) via $PYTHON"
+  "$PYTHON" packages/audio-engine/scripts/test_playback.py
 else
   echo "==> python tests skipped (no interpreter with numpy+scipy)"
 fi

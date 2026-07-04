@@ -40,6 +40,23 @@ contextBridge.exposeInMainWorld('soundBuddy', {
 
   stopLive: () => ipcRenderer.invoke('stop-live'),
 
+  // Virtual-soundcheck playback (#45). Play a captured session's stems through
+  // an output device with per-track routing (or a stereo master fold). Events
+  // (mixdown/progress/level/ended) arrive on the `playback-event` channel.
+  startPlayback: (opts: {
+    sessionDir: string;
+    device?: string;
+    // Routing spec mapping track → output channel(s), e.g. "0:0,1:2-3".
+    route?: string;
+    intervalSecs?: number;
+    master?: boolean;
+  }) => ipcRenderer.invoke('start-playback', opts),
+
+  stopPlayback: () => ipcRenderer.invoke('stop-playback'),
+
+  onPlaybackEvent: (cb: (data: unknown) => void) =>
+    ipcRenderer.on('playback-event', (_event, d) => cb(d)),
+
   triggerLlmAnalysis: (data: unknown) => ipcRenderer.invoke('trigger-llm-analysis', data),
 
   onLiveEvent: (cb: (data: unknown) => void) =>

@@ -16,6 +16,19 @@ export { analyzeAudio, extractChannels, loadChannelFiles, compareChannels, forma
 export { cleanup as cleanupChannelFiles };
 export type { AudioAnalysis, ChannelFile, ChannelAnalysis } from "./types.js";
 
+// Multitrack session playback (output path) — #45.
+export { buildPlaybackArgs, startPlayback } from "./playback/index.js";
+export type { PlaybackOptions, PlaybackHandle } from "./playback/index.js";
+export type {
+  PlaybackEvent,
+  MixdownEvent,
+  ProgressEvent,
+  PlaybackLevelEvent,
+  PlaybackTrackLevel,
+  EndedEvent,
+  PlaybackErrorEvent,
+} from "./playback/types.js";
+
 // Ideal EQ profiles + level-invariant comparison (PRD 05).
 export {
   PROFILES,
