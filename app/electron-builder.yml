@@ -11,6 +11,8 @@ afterPack: build/afterPack.js
 files:
   - dist/**/*
   - renderer/**/*
+  # Colocated Vitest specs (e.g. renderer/*.test.ts) are dev-only — never ship them.
+  - "!renderer/**/*.test.*"
   - package.json
 asar: true
 # The Python analysis scripts must live OUTSIDE the asar archive — an external

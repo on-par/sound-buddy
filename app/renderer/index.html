@@ -289,8 +289,22 @@
     }
     .ghost-btn:hover { color:var(--text-primary); border-color:var(--gold-500); }
     .ghost-btn:disabled { opacity:0.45; cursor:not-allowed; }
+    .ghost-btn.sm { height:var(--control-h-sm); padding:0 10px; font:var(--fw-medium) var(--fs-label)/1 var(--font-sans); }
     .device-hint { margin:6px 0 0; font:var(--fw-medium) var(--fs-label)/1.4 var(--font-sans); color:var(--text-tertiary); }
     .device-hint.is-error { color:var(--issue-text); }
+
+    /* Rig picker (saved capture setups) */
+    .rig-bar { display:flex; flex-direction:column; gap:8px; }
+    .rig-actions { display:flex; gap:6px; }
+    .rig-actions .ghost-btn { flex:1; padding:0 6px; }
+    /* Name / confirm dialog for Save As… / Rename / Delete */
+    .rig-dialog { position:fixed; inset:0; z-index:100; display:flex; align-items:center; justify-content:center; background:rgba(0,0,0,0.55); }
+    .rig-dialog-card { width:min(340px,calc(100vw - 48px)); display:flex; flex-direction:column; gap:14px; padding:20px; background:var(--bg-panel); border:1px solid var(--border-default); border-radius:var(--radius-lg); box-shadow:0 12px 40px rgba(0,0,0,0.5); }
+    .rig-dialog-title { font:var(--fw-semibold) var(--fs-body)/1.2 var(--font-sans); color:var(--text-primary); }
+    .rig-dialog-msg { font:var(--fw-regular) var(--fs-label)/1.4 var(--font-sans); color:var(--text-secondary); }
+    .rig-dialog-input { height:var(--control-h); padding:0 12px; background:var(--surface); color:var(--text-primary); border:1px solid var(--border-default); border-radius:var(--radius-md); font:var(--fw-regular) var(--fs-body-sm)/1 var(--font-sans); outline:none; }
+    .rig-dialog-input:focus { border-color:var(--gold-500); box-shadow:var(--glow-focus); }
+    .rig-dialog-actions { display:flex; justify-content:flex-end; gap:8px; }
 
     /* Slider */
     .slider { display:flex; flex-direction:column; gap:8px; }
@@ -676,6 +690,27 @@
 
         <!-- LIVE -->
         <div class="tab-content" id="tab-live">
+          <!-- Saved capture setups ("rigs"): pick one to restore device, channels,
+               mode, folder and slider cadences; Save / Save As… / Rename / Delete. -->
+          <div id="rig-bar" class="rig-bar">
+            <label class="select-label">
+              <span>Rig</span>
+              <div class="select-row">
+                <div class="select-wrap">
+                  <select id="rig-select"><option value="">No saved rigs</option></select>
+                  <span class="select-caret" data-icon="chevron-down"></span>
+                </div>
+              </div>
+            </label>
+            <div class="rig-actions">
+              <button type="button" id="rig-save-btn" class="ghost-btn sm" title="Update the selected rig">Save</button>
+              <button type="button" id="rig-saveas-btn" class="ghost-btn sm" title="Save the current setup as a new rig">Save As…</button>
+              <button type="button" id="rig-rename-btn" class="ghost-btn sm" title="Rename the selected rig">Rename</button>
+              <button type="button" id="rig-delete-btn" class="ghost-btn sm" title="Delete the selected rig">Delete</button>
+            </div>
+          </div>
+          <div class="hairline"></div>
+
           <label class="select-label">
             <span>Input Device</span>
             <div class="select-row">
@@ -832,6 +867,23 @@
   </div>
 </div>
 
+<!-- Rig name / confirm dialog. Electron's renderer has no window.prompt/confirm,
+     so Save As…, Rename and Delete drive this small inline modal instead. -->
+<div id="rig-dialog" class="rig-dialog" style="display:none" role="dialog" aria-modal="true" aria-labelledby="rig-dialog-title">
+  <div class="rig-dialog-card">
+    <div class="rig-dialog-title" id="rig-dialog-title"></div>
+    <div class="rig-dialog-msg" id="rig-dialog-msg" style="display:none"></div>
+    <input type="text" id="rig-dialog-input" class="rig-dialog-input" placeholder="Rig name" autocomplete="off" spellcheck="false" />
+    <div class="rig-dialog-actions">
+      <button type="button" id="rig-dialog-cancel" class="btn btn-secondary sm">Cancel</button>
+      <button type="button" id="rig-dialog-ok" class="btn btn-primary sm">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- Pure rig ↔ hardware reconciliation helpers (window.rigReconcile). Loaded as
+     a classic script before the inline app script so it's ready at boot. -->
+<script src="rig-reconcile.js"></script>
 <script>
 'use strict';
 
@@ -1761,13 +1813,16 @@ document.getElementById('meter-interval').addEventListener('input', (e) => {
 });
 
 /* ── Monitor / Record toggle ── */
+// Apply a capture mode to the UI (used by both the toggle and applyRig, so the
+// two paths can't diverge).
+function setLiveMode(mode) {
+  liveMode = mode === 'record' ? 'record' : 'monitor';
+  document.querySelectorAll('#live-mode button').forEach((x) => x.classList.toggle('active', x.dataset.mode === liveMode));
+  document.getElementById('record-folder-row').style.display = liveMode === 'record' ? 'flex' : 'none';
+  hydrateIcons(document.getElementById('live-mode'));
+}
 document.querySelectorAll('#live-mode button').forEach((b) => {
-  b.addEventListener('click', () => {
-    liveMode = b.dataset.mode;
-    document.querySelectorAll('#live-mode button').forEach((x) => x.classList.toggle('active', x === b));
-    document.getElementById('record-folder-row').style.display = liveMode === 'record' ? 'flex' : 'none';
-    hydrateIcons(document.getElementById('live-mode'));
-  });
+  b.addEventListener('click', () => setLiveMode(b.dataset.mode));
 });
 
 document.getElementById('record-folder-btn').addEventListener('click', async () => {
@@ -1959,6 +2014,7 @@ document.getElementById('live-start-btn').addEventListener('click', async () => 
 
   liveRunning = true;
   liveWindows = [];
+  setRigControlsEnabled(false);
 
   document.getElementById('rec-offer').style.display = 'none';
   document.getElementById('live-start-btn').style.display = 'none';
@@ -1990,6 +2046,7 @@ document.getElementById('live-stop-btn').addEventListener('click', () => stopLiv
 
 async function stopLive() {
   liveRunning = false;
+  setRigControlsEnabled(true);
   clearLiveCountdown();
   const result = await sb.stopLive();
   document.getElementById('live-start-btn').style.display = 'inline-flex';
@@ -2024,6 +2081,276 @@ document.getElementById('rec-offer-btn').addEventListener('click', () => {
   document.querySelector('.mode-tab[data-mode="file"]').click();
   loadFile(lastRecordPath);
   runFileAnalysis(lastRecordPath);
+});
+
+/* ══ Rigs — save / load / switch capture setups (#37, persisted via #36) ══ */
+let rigList = []; // last-loaded CaptureRig[]
+
+// Show (or clear) the muted status line under the Start button.
+function setLiveStatus(text) {
+  const ls = document.getElementById('live-status');
+  if (!ls) return;
+  if (!text) { ls.style.display = 'none'; ls.textContent = ''; return; }
+  ls.textContent = text;
+  ls.style.display = 'block';
+}
+
+// Rig persistence can reject (settings.json unwritable — writeSettingsFile
+// rethrows), so every CRUD call routes failures here rather than leaving the
+// picker silently out of sync with an unhandled rejection.
+function rigError(action, err) {
+  console.error(`rig ${action} failed:`, err);
+  setLiveStatus(`Could not ${action} rig — check that Sound Buddy can write its settings.`);
+}
+
+// Lock the rig picker while a capture is running: applyRig mutates the device,
+// channels, mode and sliders, which would desync the UI from the live stream.
+function setRigControlsEnabled(enabled) {
+  document.getElementById('rig-select').disabled = !enabled;
+  document.getElementById('rig-save-btn').disabled = !enabled;
+  document.getElementById('rig-saveas-btn').disabled = !enabled;
+  if (enabled) {
+    updateRigButtons();
+  } else {
+    document.getElementById('rig-rename-btn').disabled = true;
+    document.getElementById('rig-delete-btn').disabled = true;
+  }
+}
+
+// Set a slider's value programmatically and refresh its label by replaying the
+// same 'input' event its listener already handles — no duplicated label logic.
+function setSliderVal(id, value) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.value = value;
+  el.dispatchEvent(new Event('input'));
+}
+
+// Small inline modal used in place of window.prompt/confirm (unavailable in the
+// Electron renderer). Resolves to the entered string (input mode), true (confirm
+// mode OK), or null (cancel / Esc / backdrop).
+function rigDialog(opts) {
+  const dlg = document.getElementById('rig-dialog');
+  const input = document.getElementById('rig-dialog-input');
+  const okBtn = document.getElementById('rig-dialog-ok');
+  const cancelBtn = document.getElementById('rig-dialog-cancel');
+  const msgEl = document.getElementById('rig-dialog-msg');
+  const withInput = opts.withInput !== false;
+
+  document.getElementById('rig-dialog-title').textContent = opts.title || '';
+  if (opts.msg) { msgEl.textContent = opts.msg; msgEl.style.display = 'block'; }
+  else { msgEl.textContent = ''; msgEl.style.display = 'none'; }
+  input.style.display = withInput ? 'block' : 'none';
+  input.value = opts.value || '';
+  okBtn.textContent = opts.confirmLabel || 'OK';
+  dlg.style.display = 'flex';
+  if (withInput) { input.focus(); input.select(); } else { okBtn.focus(); }
+
+  return new Promise((resolve) => {
+    function cleanup() {
+      dlg.style.display = 'none';
+      okBtn.removeEventListener('click', onOk);
+      cancelBtn.removeEventListener('click', onCancel);
+      dlg.removeEventListener('click', onBackdrop);
+      document.removeEventListener('keydown', onKey);
+    }
+    function onOk() { const v = withInput ? input.value : true; cleanup(); resolve(v); }
+    function onCancel() { cleanup(); resolve(null); }
+    function onBackdrop(e) { if (e.target === dlg) onCancel(); }
+    function onKey(e) {
+      if (e.key === 'Escape') onCancel();
+      else if (e.key === 'Enter' && withInput) onOk();
+    }
+    okBtn.addEventListener('click', onOk);
+    cancelBtn.addEventListener('click', onCancel);
+    dlg.addEventListener('click', onBackdrop);
+    document.addEventListener('keydown', onKey);
+  });
+}
+
+function populateRigSelect(rigs, selectedId) {
+  const sel = document.getElementById('rig-select');
+  sel.innerHTML = '';
+  const placeholder = document.createElement('option');
+  placeholder.value = '';
+  placeholder.textContent = rigs.length ? 'Unsaved setup' : 'No saved rigs';
+  sel.appendChild(placeholder);
+  for (const r of rigs) {
+    const opt = document.createElement('option');
+    opt.value = r.id;
+    opt.textContent = r.name;
+    sel.appendChild(opt);
+  }
+  sel.value = selectedId || '';
+}
+
+function updateRigButtons() {
+  const hasSel = document.getElementById('rig-select').value !== '';
+  document.getElementById('rig-rename-btn').disabled = !hasSel;
+  document.getElementById('rig-delete-btn').disabled = !hasSel;
+}
+
+// Snapshot the current Live-tab setup into a CaptureRig. Device is stored BY
+// NAME (from the selected liveDevices entry) so it survives index reordering;
+// '' means the Default Device. Any per-channel label (#39) is preserved.
+function captureCurrentRig(name, id) {
+  const val = document.getElementById('device-select').value;
+  let deviceName = '';
+  if (val !== '') {
+    const dev = liveDevices.find((d) => String(d.index) === val);
+    deviceName = dev ? dev.name : '';
+  }
+  const rig = {
+    name: name,
+    deviceName: deviceName,
+    channelConfig: channelConfig.map((s) => {
+      const strip = { kind: s.kind, a: s.a, b: s.b };
+      if (s.label != null) strip.label = s.label;
+      return strip;
+    }),
+    mode: liveMode,
+    recordDir: recordDir,
+    intervalMs: parseInt(document.getElementById('meter-interval').value, 10),
+    windowSecs: parseFloat(document.getElementById('window-secs').value),
+    llmIntervalMs: parseInt(document.getElementById('llm-interval').value, 10) * 1000,
+  };
+  if (id) rig.id = id;
+  return rig;
+}
+
+// Restore a rig into the Live tab: mode, folder, sliders, then reconcile the
+// device by name and clamp channels to whatever the resolved device exposes.
+// Surfaces a non-fatal notice in #live-status and never auto-starts capture.
+function applyRig(rig) {
+  if (!rig) return;
+
+  setLiveMode(rig.mode);
+
+  recordDir = rig.recordDir || '';
+  document.getElementById('record-folder-path').textContent = recordDir || '~/Music/Sound Buddy';
+
+  setSliderVal('meter-interval', rig.intervalMs);
+  setSliderVal('window-secs', rig.windowSecs);
+  setSliderVal('llm-interval', Math.round((rig.llmIntervalMs || 0) / 1000));
+
+  const rec = window.rigReconcile.reconcileRigDevice(rig.deviceName, liveDevices);
+  document.getElementById('device-select').value = rec.index;
+  let notice = rec.found ? '' : `Rig device "${rig.deviceName}" not found — select a device.`;
+
+  const clamp = window.rigReconcile.clampChannelConfig(rig.channelConfig || [], selectedDeviceChannels());
+  channelConfig = clamp.config.length ? clamp.config : [{ kind: 'mono', a: 0, b: 0 }];
+  renderChannelConfig();
+  if (clamp.adjusted) {
+    notice = notice
+      ? notice + ' Some channels were out of range and were clamped.'
+      : 'Some rig channels were out of range for this device and were clamped.';
+  }
+  setLiveStatus(notice);
+}
+
+// Prompt for a name, capture the current setup as a NEW rig, and select it.
+async function rigSaveAs() {
+  const name = await rigDialog({ title: 'Save rig as…', value: '', confirmLabel: 'Save', withInput: true });
+  if (name == null) return;
+  const trimmed = name.trim();
+  if (!trimmed) return;
+  const prevIds = new Set(rigList.map((r) => r.id));
+  try {
+    const settings = await sb.saveRig(captureCurrentRig(trimmed));
+    rigList = settings.rigs || [];
+    const created = rigList.find((r) => !prevIds.has(r.id));
+    const newId = created ? created.id : (rigList.find((r) => r.name === trimmed) || {}).id || '';
+    if (newId) await sb.setActiveRig(newId);
+    populateRigSelect(rigList, newId);
+    updateRigButtons();
+    setLiveStatus(`Saved "${trimmed}".`);
+  } catch (err) { rigError('save', err); }
+}
+
+async function initRigs() {
+  let activeRigId = null;
+  try {
+    // getSettings() already returns both the saved rigs and the active id, so a
+    // single read seeds the picker (one IPC round trip, and a failure can't wipe
+    // an already-loaded list).
+    const settings = await sb.getSettings();
+    rigList = (settings && settings.rigs) || [];
+    activeRigId = settings && settings.activeRigId ? settings.activeRigId : null;
+  } catch { rigList = []; }
+  const active = rigList.some((r) => r.id === activeRigId) ? activeRigId : '';
+  populateRigSelect(rigList, active);
+  updateRigButtons();
+  if (active) applyRig(rigList.find((r) => r.id === active));
+}
+
+// Selecting a rig restores it and records it as active; the placeholder clears
+// the active selection without touching the current setup.
+document.getElementById('rig-select').addEventListener('change', async (e) => {
+  const id = e.target.value;
+  updateRigButtons();
+  try {
+    await sb.setActiveRig(id || null);
+  } catch (err) { rigError('select', err); return; }
+  if (!id) return;
+  const rig = rigList.find((r) => r.id === id);
+  if (rig) applyRig(rig);
+});
+
+// Save: update the selected rig in place; with nothing selected, fall back to
+// Save As so the button is never a no-op.
+document.getElementById('rig-save-btn').addEventListener('click', async () => {
+  const id = document.getElementById('rig-select').value;
+  if (!id) { await rigSaveAs(); return; }
+  const existing = rigList.find((r) => r.id === id);
+  try {
+    const settings = await sb.saveRig(captureCurrentRig(existing ? existing.name : 'Rig', id));
+    rigList = settings.rigs || [];
+    await sb.setActiveRig(id);
+    populateRigSelect(rigList, id);
+    updateRigButtons();
+    setLiveStatus(`Saved "${existing ? existing.name : 'rig'}".`);
+  } catch (err) { rigError('save', err); }
+});
+
+document.getElementById('rig-saveas-btn').addEventListener('click', () => rigSaveAs());
+
+// Rename changes only the name, leaving the captured setup untouched.
+document.getElementById('rig-rename-btn').addEventListener('click', async () => {
+  const id = document.getElementById('rig-select').value;
+  if (!id) return;
+  const existing = rigList.find((r) => r.id === id);
+  if (!existing) return;
+  const name = await rigDialog({ title: 'Rename rig', value: existing.name, confirmLabel: 'Rename', withInput: true });
+  if (name == null) return;
+  const trimmed = name.trim();
+  if (!trimmed) return;
+  try {
+    const settings = await sb.saveRig({ ...existing, name: trimmed });
+    rigList = settings.rigs || [];
+    populateRigSelect(rigList, id);
+    updateRigButtons();
+  } catch (err) { rigError('rename', err); }
+});
+
+// Delete removes the rig; the backend clears activeRigId if it was the active
+// one, so the picker falls back to the placeholder (no rig applied).
+document.getElementById('rig-delete-btn').addEventListener('click', async () => {
+  const id = document.getElementById('rig-select').value;
+  if (!id) return;
+  const existing = rigList.find((r) => r.id === id);
+  const ok = await rigDialog({
+    title: 'Delete rig',
+    msg: `Delete "${existing ? existing.name : 'this rig'}"? This can't be undone.`,
+    confirmLabel: 'Delete',
+    withInput: false,
+  });
+  if (!ok) return;
+  try {
+    const settings = await sb.deleteRig(id);
+    rigList = settings.rigs || [];
+    populateRigSelect(rigList, settings.activeRigId || '');
+    updateRigButtons();
+  } catch (err) { rigError('delete', err); }
 });
 
 function startLiveCountdown(intervalSecs) {
@@ -2513,7 +2840,9 @@ let aiEnabled = false;
 
 hydrateIcons(document);
 setSpectrumState('empty', { text: 'Load a file to see the spectrum' });
-loadDevices();
+// Load devices first so a saved rig can reconcile its device by name and clamp
+// channels against the real device list; then apply the active rig (if any).
+loadDevices().then(initRigs, initRigs);
 </script>
 </body>
 </html>
