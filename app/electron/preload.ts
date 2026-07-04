@@ -40,6 +40,10 @@ contextBridge.exposeInMainWorld('soundBuddy', {
 
   stopLive: () => ipcRenderer.invoke('stop-live'),
 
+  // Reveal a captured session folder in the OS file manager (#43). Paves the way
+  // for "Open in Virtual Soundcheck" (epic #35); for now it opens the folder.
+  revealPath: (targetPath: string) => ipcRenderer.invoke('reveal-path', targetPath),
+
   // Virtual-soundcheck playback (#45). Play a captured session's stems through
   // an output device with per-track routing (or a stereo master fold). Events
   // (mixdown/progress/level/ended) arrive on the `playback-event` channel.

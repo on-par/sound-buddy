@@ -335,6 +335,20 @@
     .chcfg-head { display:flex; align-items:baseline; justify-content:space-between; margin-bottom:8px; }
     .chcfg-head .lbl { font:var(--fw-medium) var(--fs-label)/1 var(--font-sans); color:var(--text-tertiary); letter-spacing:var(--tracking-label); }
     .chcfg-head .cap { font:var(--fw-regular) var(--fs-micro)/1 var(--font-mono); color:var(--text-muted); }
+    .chcfg-head-right { display:flex; align-items:center; gap:8px; }
+    /* Record arming (#43): per-strip REC-arm toggle + Arm/Disarm all + count,
+       shown only in Record mode (#tab-live.capture-record). */
+    .arm-controls { display:none; align-items:center; gap:6px; }
+    #tab-live.capture-record .arm-controls { display:flex; }
+    .arm-count { font:var(--fw-regular) var(--fs-micro)/1 var(--font-mono); color:var(--text-muted); }
+    .arm-hint { margin-top:8px; padding:8px 10px; border-radius:var(--radius-md); background:var(--surface-inset); border:1px solid var(--issue-500); color:var(--issue-text); font:var(--fw-regular) var(--fs-micro)/1.3 var(--font-sans); text-align:center; }
+    .chcfg-arm { display:none; flex:0 0 auto; width:var(--control-h-sm); height:var(--control-h-sm); align-items:center; justify-content:center; padding:0; border:1px solid var(--border-subtle); border-radius:var(--radius-md); background:transparent; cursor:pointer; }
+    #tab-live.capture-record .chcfg-arm { display:inline-flex; }
+    .chcfg-arm::before { content:''; width:8px; height:8px; border-radius:50%; background:var(--text-muted); transition:background var(--dur-base) var(--ease-out), box-shadow var(--dur-base) var(--ease-out); }
+    .chcfg-arm[aria-pressed="true"] { border-color:var(--issue-500); }
+    .chcfg-arm[aria-pressed="true"]::before { background:var(--issue-500); box-shadow:0 0 6px -1px var(--issue-500); }
+    .chcfg-arm:disabled { opacity:0.4; cursor:not-allowed; }
+    .live-ch-arm { display:inline-block; width:7px; height:7px; border-radius:50%; background:var(--issue-500); box-shadow:0 0 6px -1px var(--issue-500); align-self:center; }
     .chcfg-list { display:flex; flex-direction:column; gap:6px; }
     .chcfg-row { display:flex; align-items:center; gap:6px; }
     .chcfg-row select { flex:1; min-width:0; height:var(--control-h-sm); padding:0 8px; border-radius:var(--radius-md); background:var(--surface-raised); color:var(--text-primary); border:1px solid var(--border-default); font:var(--fw-medium) var(--fs-label)/1 var(--font-sans); }
@@ -770,7 +784,14 @@
           <div id="chcfg">
             <div class="chcfg-head">
               <span class="lbl">Channels</span>
-              <span class="cap" id="chcfg-cap"></span>
+              <span class="chcfg-head-right">
+                <span class="cap" id="chcfg-cap"></span>
+                <span class="arm-controls">
+                  <span class="arm-count" id="arm-count"></span>
+                  <button type="button" class="ghost-btn sm" id="arm-all-btn" title="Arm every strip for recording">Arm all</button>
+                  <button type="button" class="ghost-btn sm" id="disarm-all-btn" title="Disarm every strip">Disarm all</button>
+                </span>
+              </span>
             </div>
             <div class="chcfg-list" id="chcfg-list"></div>
             <button type="button" class="btn btn-secondary sm chcfg-add" id="chcfg-add" data-icon="plus">Add channel</button>
@@ -794,9 +815,10 @@
           <button class="btn btn-primary full" id="live-start-btn" data-icon="play">Start Capture</button>
           <button class="btn btn-danger full" id="live-stop-btn" data-icon="square" style="display:none">Stop Capture</button>
           <div id="live-status" style="display:none; font:var(--fw-regular) var(--fs-label)/1.3 var(--font-sans); color:var(--text-muted); text-align:center"></div>
+          <div id="arm-hint" class="arm-hint" role="alert" style="display:none"></div>
           <div id="rec-offer" class="rec-offer" style="display:none">
             <span class="ro-text" id="rec-offer-text"></span>
-            <button type="button" class="btn btn-secondary sm" id="rec-offer-btn" data-icon="waveform">Analyze</button>
+            <button type="button" class="btn btn-secondary sm" id="rec-offer-btn" data-icon="folder">Open folder</button>
           </div>
         </div>
       </div>
@@ -915,6 +937,8 @@
 <script src="rig-reconcile.js"></script>
 <!-- Pure per-strip collapse/fold state helpers (window.collapseState, #40). -->
 <script src="collapse-state.js"></script>
+<!-- Pure per-strip record-arm helpers (window.armState, #43). -->
+<script src="arm-state.js"></script>
 <script>
 'use strict';
 
@@ -1611,6 +1635,7 @@ function veqChannelHTML(ch, idx) {
   return `<div class="live-ch${collapsed ? ' collapsed' : ''}" data-ch="${idx}">
     <div class="live-ch-head">
       <button type="button" class="live-ch-fold" aria-label="Collapse or expand strip" aria-expanded="${collapsed ? 'false' : 'true'}" title="Collapse / expand strip">▾</button>
+      ${liveMode === 'record' && window.armState.isArmed(channelConfig[idx]) ? '<span class="live-ch-arm" title="Armed for recording"></span>' : ''}
       <span class="live-ch-name${ch.clipping ? ' clip' : ''}" contenteditable="true" spellcheck="false" role="textbox" aria-label="Channel name — click to rename" title="Click to rename">${escapeHtml(displayName)}</span>
       <span class="live-ch-meta">RMS ${fmt(ch.rms)} · Peak ${fmt(ch.peak)} dBFS</span>
       ${ch.clipping ? '<span class="live-ch-clip">CLIP</span>' : ''}
@@ -1968,10 +1993,26 @@ function setLiveMode(mode) {
   liveMode = mode === 'record' ? 'record' : 'monitor';
   document.querySelectorAll('#live-mode button').forEach((x) => x.classList.toggle('active', x.dataset.mode === liveMode));
   document.getElementById('record-folder-row').style.display = liveMode === 'record' ? 'flex' : 'none';
+  // Arm controls (#43) are only meaningful in Record mode.
+  document.getElementById('tab-live').classList.toggle('capture-record', liveMode === 'record');
+  hideArmHint();
+  renderChannelConfig();
   hydrateIcons(document.getElementById('live-mode'));
 }
+// Inline "arm at least one strip" hint near the Start button (#43).
+function showArmHint(msg) { const h = document.getElementById('arm-hint'); h.textContent = msg; h.style.display = 'block'; }
+function hideArmHint() { const h = document.getElementById('arm-hint'); if (h) h.style.display = 'none'; }
 document.querySelectorAll('#live-mode button').forEach((b) => {
   b.addEventListener('click', () => setLiveMode(b.dataset.mode));
+});
+document.getElementById('arm-all-btn').addEventListener('click', () => {
+  channelConfig = window.armState.setAllArmed(channelConfig, true);
+  hideArmHint();
+  renderChannelConfig();
+});
+document.getElementById('disarm-all-btn').addEventListener('click', () => {
+  channelConfig = window.armState.setAllArmed(channelConfig, false);
+  renderChannelConfig();
 });
 
 document.getElementById('record-folder-btn').addEventListener('click', async () => {
@@ -2004,7 +2045,7 @@ function usedChannelCount() {
 function resetChannelConfig() {
   const n = selectedDeviceChannels();
   channelConfig = [];
-  for (let i = 0; i < Math.min(2, n); i++) channelConfig.push({ kind: 'mono', a: i, b: (i + 1) % Math.max(n, 1) });
+  for (let i = 0; i < Math.min(2, n); i++) channelConfig.push({ kind: 'mono', a: i, b: (i + 1) % Math.max(n, 1), armed: true });
   renderChannelConfig();
 }
 
@@ -2032,12 +2073,14 @@ function renderChannelConfig() {
     const row = document.createElement('div');
     row.className = 'chcfg-row';
     const stereo = strip.kind === 'stereo';
+    const armed = window.armState.isArmed(strip);
     const stereoSel = stereo
       ? `<select class="chcfg-leg" data-idx="${idx}" data-field="b" title="Right leg">${channelOptions(strip.b, n, true)}</select>`
       : '';
     const placeholder = escapeHtml(stripLabel(null, liveChs ? liveChs[idx] : null, idx));
     row.innerHTML =
-      `<select class="chcfg-kind" data-idx="${idx}" data-field="kind">
+      `<button type="button" class="chcfg-arm" data-idx="${idx}" aria-pressed="${armed}" aria-label="${armed ? 'Disarm' : 'Arm'} strip for recording" title="${armed ? 'Armed for recording — click to disarm' : 'Disarmed — click to arm'}"></button>
+       <select class="chcfg-kind" data-idx="${idx}" data-field="kind">
          <option value="mono"${!stereo ? ' selected' : ''}>Mono</option>
          <option value="stereo"${stereo ? ' selected' : ''}>Stereo</option>
        </select>
@@ -2086,6 +2129,17 @@ function renderChannelConfig() {
       renderChannelConfig();
     });
   });
+  // Per-strip record-arm toggle (#43): flip the strip's armed flag and re-render
+  // (updates the aria-pressed dot + the armed count).
+  list.querySelectorAll('.chcfg-arm').forEach((btn) => {
+    btn.addEventListener('click', (e) => {
+      const i = parseInt(e.currentTarget.dataset.idx, 10);
+      channelConfig[i].armed = !window.armState.isArmed(channelConfig[i]);
+      renderChannelConfig();
+    });
+  });
+  const armCountEl = document.getElementById('arm-count');
+  if (armCountEl) armCountEl.textContent = `${armedCount()} / ${channelConfig.length} armed`;
 
   // Disable "Add" once every device channel is spoken for.
   document.getElementById('chcfg-add').disabled = usedChannelCount() >= n;
@@ -2105,9 +2159,10 @@ function renderChannelConfig() {
 function setCaptureControlsLocked(locked) {
   const set = (el) => { if (el) { el.disabled = locked; el.setAttribute('aria-disabled', String(locked)); } };
   ['device-select', 'device-refresh-btn', 'record-folder-btn', 'chcfg-add',
-    'meter-interval', 'window-secs', 'llm-interval', 'rig-select'].forEach((id) => set(document.getElementById(id)));
+    'meter-interval', 'window-secs', 'llm-interval', 'rig-select',
+    'arm-all-btn', 'disarm-all-btn'].forEach((id) => set(document.getElementById(id)));
   document.querySelectorAll('#live-mode button').forEach(set);
-  document.querySelectorAll('#chcfg-list select, #chcfg-list .chcfg-x').forEach(set);
+  document.querySelectorAll('#chcfg-list select, #chcfg-list .chcfg-x, #chcfg-list .chcfg-arm').forEach(set);
   const tab = document.getElementById('tab-live');
   if (tab) tab.classList.toggle('capture-locked', locked);
 }
@@ -2115,18 +2170,17 @@ function setCaptureControlsLocked(locked) {
 document.getElementById('chcfg-add').addEventListener('click', () => {
   const n = selectedDeviceChannels();
   const next = Math.min(usedChannelCount(), n - 1);
-  channelConfig.push({ kind: 'mono', a: next, b: Math.min(next + 1, n - 1) });
+  channelConfig.push({ kind: 'mono', a: next, b: Math.min(next + 1, n - 1), armed: true });
   renderChannelConfig();
 });
 
 // Build the stream.py channel tokens ("N" mono, "N-M" stereo) from the config.
 // A stereo strip whose two legs collapsed to the same channel (possible on the
 // last device channel) degrades to a mono token rather than a bogus "N-N" pair.
-function channelTokens() {
-  return channelConfig.map((s) =>
-    s.kind === 'stereo' && s.a !== s.b ? `${s.a}-${s.b}` : `${s.a}`,
-  );
-}
+function channelTokens() { return window.armState.allTokens(channelConfig); }
+// Armed subset of channelTokens() — what Record mode captures as session stems (#43).
+function armedTokens() { return window.armState.armedTokens(channelConfig); }
+function armedCount() { return window.armState.armedCount(channelConfig); }
 
 function setDeviceHint(text, isError) {
   const hint = document.getElementById('device-hint');
@@ -2205,6 +2259,13 @@ document.getElementById('live-start-btn').addEventListener('click', async () => 
   const llmIntervalSecs = aiEnabled ? parseInt(document.getElementById('llm-interval').value) : 0;
   const channels = channelTokens();
 
+  // Record mode with nothing armed would spawn an empty session — block it (#43).
+  if (liveMode === 'record' && armedCount() === 0) {
+    showArmHint('Arm at least one strip to record.');
+    return;
+  }
+  hideArmHint();
+
   liveRunning = true;
   liveWindows = [];
   setRigControlsEnabled(false);
@@ -2223,6 +2284,8 @@ document.getElementById('live-start-btn').addEventListener('click', async () => 
   const result = await sb.startLive({
     device, channels, windowSecs, intervalSecs, llmIntervalSecs,
     mode: liveMode, recordDir: recordDir || undefined,
+    // Record mode: capture only the armed strips as session stems (#43).
+    arm: liveMode === 'record' ? armedTokens() : undefined,
   });
 
   if (!result.success) {
@@ -2253,29 +2316,29 @@ async function stopLive() {
   // a tab switch during the stop-live await isn't clobbered.
   if (currentMode === 'live') document.getElementById('spectrum-title').textContent = SPECTRUM_TITLE.liveStopped;
 
-  // If a recording was captured, offer to analyze it in the File tab.
-  if (result && result.recordPath) {
-    lastRecordPath = result.recordPath;
-    const name = result.recordPath.split('/').pop();
-    // Build with a text node for the filename so a path can never inject markup.
+  // A Record capture writes a session folder of per-strip stems + session.json
+  // (#42); offer to reveal it (#43). Paves the way for "Open in Virtual
+  // Soundcheck" (epic #35); for now the action opens the folder.
+  if (result && result.sessionDir) {
+    lastSessionDir = result.sessionDir;
+    const name = result.sessionDir.split('/').pop();
+    // Build with a text node for the folder name so a path can never inject markup.
     const text = document.getElementById('rec-offer-text');
-    text.textContent = 'Saved ';
+    text.textContent = 'Session saved ';
     const b = document.createElement('b');
     b.textContent = name;
     text.appendChild(b);
-    text.appendChild(document.createTextNode('. Analyze it?'));
+    text.appendChild(document.createTextNode('.'));
     document.getElementById('rec-offer').style.display = 'flex';
     hydrateIcons(document.getElementById('rec-offer'));
   }
 }
 
-let lastRecordPath = null;
+let lastSessionDir = null;
 document.getElementById('rec-offer-btn').addEventListener('click', () => {
-  if (!lastRecordPath) return;
+  if (!lastSessionDir) return;
   document.getElementById('rec-offer').style.display = 'none';
-  document.querySelector('.mode-tab[data-mode="file"]').click();
-  loadFile(lastRecordPath);
-  runFileAnalysis(lastRecordPath);
+  sb.revealPath(lastSessionDir);
 });
 
 /* ══ Rigs — save / load / switch capture setups (#37, persisted via #36) ══ */
