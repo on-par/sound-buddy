@@ -193,4 +193,34 @@ describe('layered-persistence discipline', () => {
     expect(f.idealProfile).toBe('broadcast');
     expect(f.rigs).toHaveLength(1);
   });
+
+  it('preserves unknown top-level keys across a rig write (forward compat)', () => {
+    writeFile({ aiEnabled: false, idealProfile: '', rigs: [], futureKey: 'keep-me' });
+    upsertRig(makeRig());
+    expect(readFile().futureKey).toBe('keep-me');
+  });
+});
+
+describe('robustness against a corrupted settings.json', () => {
+  it('treats a non-array "rigs" value as empty rather than throwing', () => {
+    writeFile({ aiEnabled: false, idealProfile: '', rigs: { not: 'an array' } });
+    expect(listRigs()).toEqual([]);
+    expect(getSettings().rigs).toEqual([]);
+    // A save still works and repairs the shape.
+    const after = upsertRig(makeRig());
+    expect(after.rigs).toHaveLength(1);
+    expect(Array.isArray(readFile().rigs)).toBe(true);
+  });
+
+  it('returns a fresh array for the empty default (no shared-reference aliasing)', () => {
+    const first = listRigs();
+    first.push(makeRig() as unknown as CaptureRig);
+    // Mutating the returned array must not leak into the next read.
+    expect(listRigs()).toEqual([]);
+  });
+
+  it('throws a clear error when saveRig is handed a null/undefined rig', () => {
+    // The preload types the IPC arg as unknown, so null can reach upsertRig.
+    expect(() => upsertRig(null as unknown as Omit<CaptureRig, 'id'>)).toThrow(/name is required/);
+  });
 });

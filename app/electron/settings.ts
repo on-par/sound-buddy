@@ -87,21 +87,34 @@ function readSettingsFile(context: string): Partial<AppSettings> {
 }
 
 /**
- * Persist the file layer verbatim (rigs and flags), preserving fields not being
- * changed. Callers pass the mutated file view — never getSettings()'s
- * env-resolved view — so transient env overrides stay read-time only.
+ * The rigs array from a raw file view, defaulting to a fresh empty array when
+ * the key is absent or corrupted (hand-edited to a non-array). Always returns a
+ * new array for the default case so callers can never mutate a shared default.
+ */
+function fileRigs(file: Partial<AppSettings>): CaptureRig[] {
+  return Array.isArray(file.rigs) ? file.rigs : [];
+}
+
+/**
+ * Persist the file layer, preserving any fields not being changed — including
+ * unknown top-level keys a future version may add. Callers pass the mutated file
+ * view — never getSettings()'s env-resolved view — so transient env overrides
+ * stay read-time only. Rethrows a write failure so a lost save surfaces to the
+ * caller instead of resolving as a silent success.
  */
 function writeSettingsFile(file: Partial<AppSettings>): void {
   const persisted: AppSettings = {
+    ...file,
     aiEnabled: file.aiEnabled ?? DEFAULTS.aiEnabled,
     idealProfile: file.idealProfile ?? DEFAULTS.idealProfile,
-    rigs: file.rigs ?? DEFAULTS.rigs,
+    rigs: fileRigs(file),
     activeRigId: file.activeRigId ?? DEFAULTS.activeRigId,
   };
   try {
     fs.writeFileSync(settingsPath(), JSON.stringify(persisted, null, 2));
   } catch (err) {
     logWarn(`could not write settings.json: ${String(err)}`);
+    throw err;
   }
 }
 
@@ -122,7 +135,7 @@ export function getSettings(): AppSettings {
     idealProfile:
       process.env.SOUND_BUDDY_IDEAL_PROFILE?.trim() || file.idealProfile || DEFAULTS.idealProfile,
     // Rigs have no env layer — they are pure persisted data.
-    rigs: file.rigs ?? DEFAULTS.rigs,
+    rigs: fileRigs(file),
     activeRigId: file.activeRigId ?? DEFAULTS.activeRigId,
   };
 }
@@ -153,7 +166,7 @@ export function isAiEnabled(): boolean {
 
 /** All saved rigs, in stored order (env overrides don't touch rigs). */
 export function listRigs(): CaptureRig[] {
-  return readSettingsFile('for listRigs').rigs ?? DEFAULTS.rigs;
+  return fileRigs(readSettingsFile('for listRigs'));
 }
 
 /** Find one rig by id, or undefined. */
@@ -166,15 +179,15 @@ export function getRig(id: string): CaptureRig | undefined {
  * settings. A rig without an id gets a freshly generated one. Requires a
  * non-empty `name`; a missing name throws (minimal validation).
  */
-export function upsertRig(rig: Partial<CaptureRig> & Omit<CaptureRig, 'id'>): AppSettings {
-  if (!rig.name || typeof rig.name !== 'string') {
+export function upsertRig(rig: Omit<CaptureRig, 'id'> & { id?: string }): AppSettings {
+  if (rig == null || typeof rig !== 'object' || typeof rig.name !== 'string' || rig.name === '') {
     throw new Error('upsertRig: rig.name is required');
   }
   const id = rig.id && typeof rig.id === 'string' ? rig.id : randomUUID();
   const next: CaptureRig = { ...rig, id };
 
   const file = readSettingsFile('before upsertRig');
-  const rigs = [...(file.rigs ?? DEFAULTS.rigs)];
+  const rigs = [...fileRigs(file)];
   const idx = rigs.findIndex((r) => r.id === id);
   if (idx >= 0) rigs[idx] = next;
   else rigs.push(next);
@@ -189,11 +202,12 @@ export function upsertRig(rig: Partial<CaptureRig> & Omit<CaptureRig, 'id'>): Ap
  */
 export function deleteRig(id: string): AppSettings {
   const file = readSettingsFile('before deleteRig');
-  const rigs = (file.rigs ?? DEFAULTS.rigs).filter((r) => r.id !== id);
-  const activeRigId =
-    (file.activeRigId ?? DEFAULTS.activeRigId) === id
-      ? null
-      : (file.activeRigId ?? DEFAULTS.activeRigId);
+  const current = fileRigs(file);
+  // Unknown id — nothing to remove, so skip the write entirely.
+  if (!current.some((r) => r.id === id)) return getSettings();
+
+  const rigs = current.filter((r) => r.id !== id);
+  const activeRigId = file.activeRigId === id ? null : (file.activeRigId ?? DEFAULTS.activeRigId);
 
   writeSettingsFile({ ...file, rigs, activeRigId });
   return getSettings();
@@ -205,7 +219,7 @@ export function deleteRig(id: string): AppSettings {
  */
 export function setActiveRig(id: string | null): AppSettings {
   const file = readSettingsFile('before setActiveRig');
-  const rigs = file.rigs ?? DEFAULTS.rigs;
+  const rigs = fileRigs(file);
   if (id !== null && !rigs.some((r) => r.id === id)) {
     // Unknown id — leave the selection untouched.
     return getSettings();
