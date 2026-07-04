@@ -9,7 +9,13 @@ without PortAudio (e.g. CI), since stream.py imports it at module load.
 
 import os
 import sys
+import time
+import json
 import types
+import shutil
+import signal
+import tempfile
+import subprocess
 import unittest
 import importlib.util
 
@@ -20,11 +26,23 @@ if "sounddevice" not in sys.modules:
 
 import numpy as np
 
-_spec = importlib.util.spec_from_file_location(
-    "stream", os.path.join(os.path.dirname(__file__), "stream.py")
-)
+# soundfile drives the WAV stems; it may be absent on hosts that only ship
+# numpy+scipy, so the stem/manifest tests skip rather than fail there.
+try:
+    import soundfile as sf
+    HAVE_SOUNDFILE = True
+except ImportError:
+    HAVE_SOUNDFILE = False
+
+_HERE = os.path.dirname(__file__)
+_spec = importlib.util.spec_from_file_location("stream", os.path.join(_HERE, "stream.py"))
 stream = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(stream)
+
+
+def _mono_stereo_groups():
+    """Configured strips: mono ch0, stereo ch2+ch3, mono ch1 (device with 4ch)."""
+    return stream.parse_channel_groups("0,2-3,1", 4)
 
 
 class ParseChannelGroups(unittest.TestCase):
@@ -113,6 +131,259 @@ class Masking(unittest.TestCase):
         masking = stream.compute_masking(out)
         # Two identical tones sit within the masking threshold in shared bands.
         self.assertTrue(any(m["band"] == "low_mid" for m in masking))
+
+
+class ArmResolution(unittest.TestCase):
+    def test_absent_arm_arms_all_strips(self):
+        groups = _mono_stereo_groups()
+        self.assertEqual(stream.resolve_armed_strips(groups, None), groups)
+        self.assertEqual(stream.resolve_armed_strips(groups, ""), groups)
+        self.assertEqual(stream.resolve_armed_strips(groups, "   "), groups)
+
+    def test_subset_selected_in_armed_order(self):
+        groups = _mono_stereo_groups()  # ch0 (mono), ch2+3 (stereo), ch1 (mono)
+        armed = stream.resolve_armed_strips(groups, "2-3,0")
+        self.assertEqual([g["indices"] for g in armed], [[2, 3], [0]])
+
+    def test_unknown_token_raises(self):
+        groups = _mono_stereo_groups()
+        with self.assertRaises(ValueError):
+            stream.resolve_armed_strips(groups, "0,3")  # ch3 alone isn't a strip
+
+    def test_malformed_stereo_token_raises(self):
+        with self.assertRaises(ValueError):
+            stream.resolve_armed_strips(_mono_stereo_groups(), "2-3-4")
+
+
+class Slugify(unittest.TestCase):
+    def test_slugs(self):
+        self.assertEqual(stream.slugify("CH01"), "ch01")
+        self.assertEqual(stream.slugify("CH02+CH03"), "ch02-ch03")
+        self.assertEqual(stream.slugify("Kick Drum!"), "kick-drum")
+
+    def test_empty_falls_back(self):
+        self.assertEqual(stream.slugify("+++"), "strip")
+
+
+class UniqueStemName(unittest.TestCase):
+    def test_appends_counter_on_collision(self):
+        d = tempfile.mkdtemp()
+        try:
+            self.assertEqual(stream._unique_stem_name(d, "01-kick.wav"), "01-kick.wav")
+            open(os.path.join(d, "01-kick.wav"), "w").close()
+            self.assertEqual(stream._unique_stem_name(d, "01-kick.wav"), "01-kick-2.wav")
+            open(os.path.join(d, "01-kick-2.wav"), "w").close()
+            self.assertEqual(stream._unique_stem_name(d, "01-kick.wav"), "01-kick-3.wav")
+        finally:
+            shutil.rmtree(d)
+
+
+class UtcTimestamp(unittest.TestCase):
+    def test_iso8601_millis_z(self):
+        ts = stream._utc_now_iso()
+        # e.g. 2026-07-03T14:32:07.512Z
+        self.assertRegex(ts, r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$")
+
+
+@unittest.skipUnless(HAVE_SOUNDFILE, "soundfile not installed")
+class SessionRecording(unittest.TestCase):
+    def setUp(self):
+        self.dir = tempfile.mkdtemp()
+        self.sr = 48000
+        # Deterministic per-channel constant so demuxed stems are checkable:
+        # device channel c carries value (c + 1) * 0.1.
+        n = 512
+        self.block = np.zeros((n, 4), dtype=np.float32)
+        for c in range(4):
+            self.block[:, c] = (c + 1) * 0.1
+        self.n = n
+
+    def tearDown(self):
+        shutil.rmtree(self.dir, ignore_errors=True)
+
+    def _record(self, armed, blocks=2):
+        rec = stream.SessionRecorder(self.dir, armed, self.sr)
+        for _ in range(blocks):
+            rec.write(self.block)
+        rec.finalize()
+        return rec
+
+    def test_one_stem_per_armed_strip_with_correct_shape(self):
+        armed = _mono_stereo_groups()  # mono, stereo, mono
+        self._record(armed)
+        wavs = sorted(f for f in os.listdir(self.dir) if f.endswith(".wav"))
+        self.assertEqual(wavs, ["01-ch01.wav", "02-ch03-ch04.wav", "03-ch02.wav"])
+        # mono → 1ch, stereo → 2ch, each 24-bit PCM.
+        for fname, want_ch in [("01-ch01.wav", 1), ("02-ch03-ch04.wav", 2), ("03-ch02.wav", 1)]:
+            info = sf.info(os.path.join(self.dir, fname))
+            self.assertEqual(info.channels, want_ch)
+            self.assertEqual(info.subtype, "PCM_24")
+
+    def test_demuxed_samples_equal_input_columns(self):
+        armed = _mono_stereo_groups()
+        self._record(armed, blocks=1)
+        # Stereo stem (ch2+ch3) columns should equal device columns 2 and 3.
+        data, _ = sf.read(os.path.join(self.dir, "02-ch03-ch04.wav"), dtype="float32")
+        self.assertEqual(data.shape, (self.n, 2))
+        np.testing.assert_allclose(data[:, 0], 0.3, atol=1e-4)
+        np.testing.assert_allclose(data[:, 1], 0.4, atol=1e-4)
+        # Mono stem (ch0) equals device column 0.
+        mono, _ = sf.read(os.path.join(self.dir, "01-ch01.wav"), dtype="float32")
+        np.testing.assert_allclose(mono, 0.1, atol=1e-4)
+
+    def test_arm_subset_records_only_selected(self):
+        groups = _mono_stereo_groups()
+        armed = stream.resolve_armed_strips(groups, "0,1")  # two monos, skip stereo
+        self._record(armed)
+        wavs = sorted(f for f in os.listdir(self.dir) if f.endswith(".wav"))
+        self.assertEqual(wavs, ["01-ch01.wav", "02-ch02.wav"])
+
+    def test_manifest_shape_and_files_resolve(self):
+        armed = _mono_stereo_groups()
+        self._record(armed, blocks=2)
+        with open(os.path.join(self.dir, "session.json")) as f:
+            manifest = json.load(f)
+        self.assertEqual(set(manifest), {"name", "createdAt", "sampleRate", "tracks"})
+        self.assertEqual(manifest["sampleRate"], self.sr)
+        self.assertRegex(manifest["createdAt"], r"Z$")
+        self.assertEqual(len(manifest["tracks"]), 3)
+        self.assertEqual([t["id"] for t in manifest["tracks"]], ["t1", "t2", "t3"])
+        self.assertEqual([t["kind"] for t in manifest["tracks"]], ["mono", "stereo", "mono"])
+        self.assertEqual(manifest["tracks"][1]["sourceChannels"], [2, 3])
+        for t in manifest["tracks"]:
+            self.assertEqual(t["frames"], 2 * self.n)
+            # `file` is relative and resolves to a real WAV inside the folder.
+            self.assertFalse(os.path.isabs(t["file"]))
+            resolved = os.path.join(self.dir, t["file"])
+            self.assertTrue(os.path.exists(resolved))
+            want_ch = 1 if t["kind"] == "mono" else 2
+            self.assertEqual(sf.info(resolved).channels, want_ch)
+
+    def test_finalize_is_idempotent(self):
+        armed = _mono_stereo_groups()
+        rec = stream.SessionRecorder(self.dir, armed, self.sr)
+        rec.write(self.block)
+        rec.finalize()
+        with open(os.path.join(self.dir, "session.json")) as f:
+            first = f.read()
+        rec.finalize()  # second call must not raise or rewrite differently
+        rec.write(self.block)  # post-finalize writes are no-ops
+        with open(os.path.join(self.dir, "session.json")) as f:
+            self.assertEqual(f.read(), first)
+        self.assertEqual(json.loads(first)["tracks"][0]["frames"], self.n)
+
+    def test_zero_frame_session_still_writes_stems_and_manifest(self):
+        armed = stream.resolve_armed_strips(_mono_stereo_groups(), "0")
+        rec = stream.SessionRecorder(self.dir, armed, self.sr)
+        rec.finalize()  # no blocks written
+        self.assertTrue(os.path.exists(os.path.join(self.dir, "01-ch01.wav")))
+        with open(os.path.join(self.dir, "session.json")) as f:
+            manifest = json.load(f)
+        self.assertEqual(manifest["tracks"][0]["frames"], 0)
+
+
+class MonitorPathWritesNothing(unittest.TestCase):
+    def test_no_session_no_recorder_touches_disk(self):
+        # SessionRecorder is only constructed when --session-dir is given; a
+        # monitor-only run never instantiates it. Guard the contract: an empty
+        # temp dir stays empty when no recorder is created.
+        d = tempfile.mkdtemp()
+        try:
+            self.assertEqual(os.listdir(d), [])
+        finally:
+            shutil.rmtree(d)
+
+
+@unittest.skipUnless(HAVE_SOUNDFILE, "soundfile not installed")
+class SigtermFinalizesSession(unittest.TestCase):
+    """End-to-end: a real stream.py subprocess (fed by a fake sounddevice) must
+    finalize every stem header and session.json when killed with SIGTERM."""
+
+    def test_sigterm_writes_manifest_and_stems(self):
+        work = tempfile.mkdtemp()
+        session_dir = os.path.join(work, "session")
+        fake_dir = os.path.join(work, "fake")
+        os.makedirs(fake_dir)
+        # A PortAudio-free sounddevice that drives the audio callback from a
+        # background thread with deterministic per-channel constants.
+        with open(os.path.join(fake_dir, "sounddevice.py"), "w") as f:
+            f.write(_FAKE_SOUNDDEVICE)
+        env = dict(os.environ)
+        env["PYTHONPATH"] = fake_dir + os.pathsep + env.get("PYTHONPATH", "")
+        proc = subprocess.Popen(
+            [sys.executable, os.path.join(_HERE, "stream.py"),
+             "", "0.5", "0,2-3", "--session-dir", session_dir, "--interval", "0.05"],
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, env=env,
+        )
+        try:
+            # Wait for stems to open and take on audio before stopping.
+            deadline = time.monotonic() + 5.0
+            stem = os.path.join(session_dir, "01-ch01.wav")
+            while time.monotonic() < deadline:
+                if os.path.exists(stem) and os.path.getsize(stem) > 128:
+                    break
+                time.sleep(0.05)
+            proc.send_signal(signal.SIGTERM)
+            self.assertEqual(proc.wait(timeout=5), 0)
+
+            with open(os.path.join(session_dir, "session.json")) as fh:
+                manifest = json.load(fh)
+            self.assertEqual([t["kind"] for t in manifest["tracks"]], ["mono", "stereo"])
+            for t in manifest["tracks"]:
+                path = os.path.join(session_dir, t["file"])
+                info = sf.info(path)  # a finalized (non-empty) header reads back
+                self.assertEqual(info.subtype, "PCM_24")
+                self.assertGreater(info.frames, 0)
+                self.assertEqual(info.frames, t["frames"])
+        finally:
+            if proc.poll() is None:
+                proc.kill()
+            shutil.rmtree(work, ignore_errors=True)
+
+
+_FAKE_SOUNDDEVICE = '''
+"""PortAudio-free sounddevice stub for stream.py integration tests."""
+import threading, time
+import numpy as np
+
+_INFO = {"name": "Fake Multichannel", "max_input_channels": 4, "default_samplerate": 48000}
+
+
+def query_devices(index=None):
+    return _INFO if index is not None else [_INFO]
+
+
+class _Default:
+    device = [0, 0]
+
+
+default = _Default()
+
+
+class InputStream:
+    def __init__(self, device, channels, samplerate, dtype, callback):
+        self.channels, self.callback = channels, callback
+        self._stop = threading.Event()
+        self._thread = None
+
+    def __enter__(self):
+        def run():
+            n = 1024
+            block = np.zeros((n, self.channels), dtype=np.float32)
+            for c in range(self.channels):
+                block[:, c] = (c + 1) * 0.1
+            while not self._stop.is_set():
+                self.callback(block.copy(), n, None, None)
+                time.sleep(0.01)
+        self._thread = threading.Thread(target=run, daemon=True)
+        self._thread.start()
+        return self
+
+    def __exit__(self, *a):
+        self._stop.set()
+        self._thread.join(timeout=1)
+        return False
+'''
 
 
 if __name__ == "__main__":

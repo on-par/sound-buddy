@@ -14,14 +14,26 @@ Positional args (all optional):
 Options:
   --interval S  meter cadence in seconds (default 0.1) — how often lightweight
                 level/spectrum updates are emitted, independent of window_secs
-  --record PATH write captured audio to a WAV at PATH (24-bit PCM, all device
-                channels). Finalized on SIGINT/SIGTERM so a killed capture still
-                yields a valid file.
+  --record PATH write captured audio to a single interleaved WAV at PATH (24-bit
+                PCM, all device channels). Finalized on SIGINT/SIGTERM so a killed
+                capture still yields a valid file.
+  --session-dir PATH
+                record a multitrack session into PATH: one 24-bit PCM stem WAV per
+                armed strip (mono→1ch, stereo→2ch), demuxed from the device stream,
+                plus a session.json manifest (see below). Finalized on SIGINT/SIGTERM.
+  --arm TOKENS  which strips to record in a --session-dir session, as channel-config
+                tokens matched against the configured strips (e.g. "0,2-3"). Defaults
+                to all configured strips. Tokens not matching a configured strip error.
 
 Channel configuration grammar (comma-separated groups):
   N        a mono strip on device channel N
   N-M      a stereo strip on the device-channel pair N and M (metered as L+R mean)
   e.g. "0,1-2,4" → mono ch0, stereo pair ch1+ch2, mono ch4
+
+session.json (written at the --session-dir root on finalize) is the multitrack
+contract consumed downstream: { name, createdAt (UTC ISO-8601), sampleRate, tracks[] }
+where each track carries { id, label, kind, sourceChannels, file, frames }. `file`
+is relative to the session dir so the folder stays movable.
 
 Output: JSON lines on stdout.
   {"type":"meter",  "ts":…, "channels":[…]}                            — every --interval
@@ -31,6 +43,8 @@ The "window" events carry the heavier context used by the (gated) LLM path.
 Dependencies: pip install sounddevice numpy scipy soundfile
 """
 
+import os
+import re
 import sys
 import json
 import time
@@ -39,6 +53,7 @@ import signal
 import threading
 import numpy as np
 from collections import deque
+from datetime import datetime, timezone
 
 try:
     import sounddevice as sd
@@ -136,6 +151,144 @@ def parse_channel_groups(channels_arg: str, n_device_channels: int) -> list[dict
                     f"device has {n_device_channels} channels; requested index {ci}"
                 )
     return groups
+
+
+def resolve_armed_strips(groups: list[dict], arm_arg: str | None) -> list[dict]:
+    """
+    Which configured strips to record in a session, in armed order.
+
+    `arm_arg` reuses the channel-config grammar; each token is matched against a
+    configured strip by its device indices (mono "N" → [N], stereo "N-M" → [N, M]).
+    Absent/empty ⇒ all configured strips. Raises ValueError on a token that is
+    malformed or doesn't match any configured strip.
+    """
+    if not arm_arg or not arm_arg.strip():
+        return list(groups)
+
+    by_indices = {tuple(g["indices"]): g for g in groups}
+    armed: list[dict] = []
+    for token in arm_arg.split(","):
+        token = token.strip()
+        if not token:
+            continue
+        if "-" in token:
+            parts = token.split("-")
+            if len(parts) != 2:
+                raise ValueError(f"invalid arm token: {token!r}")
+            key = (int(parts[0]), int(parts[1]))
+        else:
+            key = (int(token),)
+        g = by_indices.get(key)
+        if g is None:
+            raise ValueError(f"armed strip not configured: {token!r}")
+        armed.append(g)
+    return armed
+
+
+def slugify(label: str) -> str:
+    """Filename-safe slug of a strip label (e.g. "CH02+CH03" → "ch02-ch03")."""
+    slug = re.sub(r"[^a-zA-Z0-9]+", "-", label).strip("-").lower()
+    return slug or "strip"
+
+
+def _unique_stem_name(session_dir: str, base: str) -> str:
+    """`base` (an "NN-slug.wav"), suffixed -2/-3/… if that name is already taken."""
+    name = base
+    stem = base[:-4] if base.endswith(".wav") else base
+    n = 2
+    while os.path.exists(os.path.join(session_dir, name)):
+        name = f"{stem}-{n}.wav"
+        n += 1
+    return name
+
+
+def _utc_now_iso() -> str:
+    """UTC timestamp as ISO-8601 with millisecond precision, e.g. 2026-07-03T14:32:07.512Z."""
+    dt = datetime.now(timezone.utc)
+    return dt.strftime("%Y-%m-%dT%H:%M:%S.") + f"{dt.microsecond // 1000:03d}Z"
+
+
+def write_session_manifest(session_dir: str, created_at: str, sample_rate: int,
+                           strip_writers: list[dict], frames: int) -> None:
+    """Emit session.json at the session-dir root. `file` paths are dir-relative."""
+    manifest = {
+        "name": os.path.basename(os.path.normpath(session_dir)) or "session",
+        "createdAt": created_at,
+        "sampleRate": int(sample_rate),
+        "tracks": [
+            {
+                "id": sw["id"],
+                "label": sw["label"],
+                "kind": sw["group"]["kind"],
+                "sourceChannels": list(sw["group"]["indices"]),
+                "file": sw["file"],
+                "frames": int(frames),
+            }
+            for sw in strip_writers
+        ],
+    }
+    with open(os.path.join(session_dir, "session.json"), "w") as f:
+        json.dump(manifest, f, indent=2)
+
+
+class SessionRecorder:
+    """
+    One --session-dir multitrack session: a PCM_24 stem WAV per armed strip plus a
+    session.json manifest.
+
+    Thread-safe. The writer thread calls write() as blocks arrive while the finalize
+    path (normal exit or the SIGTERM/SIGINT handler) calls finalize(); an internal
+    lock serializes stem close vs write, and the manifest is emitted exactly once
+    (finalize() is idempotent). Stems open eagerly at construction so every manifest
+    `file` resolves to a real WAV even for a zero-frame session.
+    """
+
+    def __init__(self, session_dir: str, armed_groups: list[dict], sample_rate: int,
+                 created_at: str | None = None):
+        import soundfile as sf
+        self.session_dir = session_dir
+        self.sample_rate = int(sample_rate)
+        self.created_at = created_at or _utc_now_iso()
+        self.frames = 0
+        self._lock = threading.Lock()
+        self._finalized = False
+
+        os.makedirs(session_dir, exist_ok=True)
+        self.tracks: list[dict] = []
+        for idx, g in enumerate(armed_groups):
+            fname = _unique_stem_name(session_dir, f"{idx + 1:02d}-{slugify(g['name'])}.wav")
+            writer = sf.SoundFile(
+                os.path.join(session_dir, fname), mode="w", samplerate=self.sample_rate,
+                channels=len(g["indices"]), subtype="PCM_24",
+            )
+            self.tracks.append({
+                "id": f"t{idx + 1}", "label": g["name"], "group": g,
+                "file": fname, "writer": writer,
+            })
+
+    def write(self, block: np.ndarray) -> None:
+        """Demux `block` into every stem (same column-select as analyze_groups) and
+        advance the shared frame counter. A no-op once finalized."""
+        with self._lock:
+            if self._finalized:
+                return
+            for t in self.tracks:
+                t["writer"].write(block[:, t["group"]["indices"]])
+            self.frames += block.shape[0]
+
+    def finalize(self) -> None:
+        """Close every stem header and emit session.json. Idempotent + signal-safe."""
+        with self._lock:
+            if self._finalized:
+                return
+            self._finalized = True
+            for t in self.tracks:
+                if not t["writer"].closed:
+                    t["writer"].close()
+            write_session_manifest(
+                self.session_dir, self.created_at, self.sample_rate,
+                self.tracks, self.frames,
+            )
 
 
 def compute_band_rms_db(freqs, power_spectrum, low, high):
@@ -237,7 +390,9 @@ def compute_masking(channels_out: list[dict]) -> list[dict]:
 
 
 def stream_live(device_index, window_secs: float, groups: list[dict],
-                interval_secs: float, record_path):
+                interval_secs: float, record_path,
+                session_dir: str | None = None,
+                armed_groups: list[dict] | None = None):
     dev_info = sd.query_devices(device_index)
     sample_rate = int(dev_info["default_samplerate"])
     n_device_channels = dev_info["max_input_channels"]
@@ -252,16 +407,25 @@ def stream_live(device_index, window_secs: float, groups: list[dict],
     buffered_samples = 0
     lock = threading.Lock()
 
-    # Optional recorder: all device channels, 24-bit PCM. Opened lazily so a
-    # monitor-only run never touches the disk.
+    # Recording is opened lazily so a monitor-only run never touches the disk.
+    # Two independent, optional sinks: a single interleaved WAV (--record, guarded
+    # by recorder_lock) and a per-strip session (--session-dir → a SessionRecorder,
+    # self-guarded). The callback thread writes; the finalize path (normal exit or
+    # the signal handler) closes and — for a session — writes session.json.
     recorder = None
     recorder_lock = threading.Lock()
+    session = None
+
     if record_path:
         import soundfile as sf
         recorder = sf.SoundFile(
             record_path, mode="w", samplerate=sample_rate,
             channels=n_device_channels, subtype="PCM_24",
         )
+
+    if session_dir:
+        armed = armed_groups if armed_groups is not None else groups
+        session = SessionRecorder(session_dir, armed, sample_rate)
 
     stop = threading.Event()
 
@@ -270,6 +434,8 @@ def stream_live(device_index, window_secs: float, groups: list[dict],
         with recorder_lock:
             if recorder is not None and not recorder.closed:
                 recorder.close()
+        if session is not None:
+            session.finalize()
 
     # Electron stops capture with SIGTERM; the default handler skips `finally`,
     # so register explicitly to guarantee the WAV header is finalized.
@@ -297,6 +463,8 @@ def stream_live(device_index, window_secs: float, groups: list[dict],
                 with recorder_lock:
                     if not recorder.closed:
                         recorder.write(block)
+            if session is not None:
+                session.write(block)
             with lock:
                 blocks.append(block)
                 buffered_samples += block.shape[0]
@@ -402,6 +570,8 @@ def main():
     # Split optional flags from positional args.
     interval_secs = 0.1
     record_path = None
+    session_dir = None
+    arm_arg = None
     positional: list[str] = []
     i = 0
     while i < len(args):
@@ -410,6 +580,10 @@ def main():
             interval_secs = float(args[i + 1]); i += 2
         elif a == "--record" and i + 1 < len(args):
             record_path = args[i + 1]; i += 2
+        elif a == "--session-dir" and i + 1 < len(args):
+            session_dir = args[i + 1]; i += 2
+        elif a == "--arm" and i + 1 < len(args):
+            arm_arg = args[i + 1]; i += 2
         else:
             positional.append(a); i += 1
 
@@ -445,8 +619,17 @@ def main():
         print(json.dumps({"error": str(e)}), flush=True)
         sys.exit(1)
 
+    armed_groups = None
+    if session_dir:
+        try:
+            armed_groups = resolve_armed_strips(groups, arm_arg)
+        except ValueError as e:
+            print(json.dumps({"error": str(e)}), flush=True)
+            sys.exit(1)
+
     try:
-        stream_live(device_index, window_secs, groups, interval_secs, record_path)
+        stream_live(device_index, window_secs, groups, interval_secs, record_path,
+                    session_dir, armed_groups)
     except KeyboardInterrupt:
         sys.exit(0)
 
