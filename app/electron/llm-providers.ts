@@ -67,8 +67,12 @@ export function isHostedProvider(p: string | undefined): p is HostedProviderId {
   return p === 'openai' || p === 'anthropic' || p === 'google' || p === 'custom';
 }
 
+// Only the "custom" provider honors a base-URL override — a stale apiBaseUrl
+// left in llm.json (e.g. after switching custom → OpenAI) must never receive
+// a known provider's key.
 function baseFor(provider: HostedProviderId, baseUrl?: string): string {
-  const base = (baseUrl || HOSTED_PROVIDERS[provider].defaultBaseUrl).replace(/\/+$/, '');
+  const base = (provider === 'custom' ? baseUrl || '' : HOSTED_PROVIDERS[provider].defaultBaseUrl)
+    .replace(/\/+$/, '');
   if (!base) throw new Error('custom provider requires a base URL');
   return base;
 }

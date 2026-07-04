@@ -48,6 +48,11 @@ describe('buildModelsRequest', () => {
   it('throws when custom has no base URL', () => {
     expect(() => buildModelsRequest('custom', 'k')).toThrow(/base URL/);
   });
+
+  it('ignores a stale base URL for known providers — the key only ever goes to the real host', () => {
+    const spec = buildModelsRequest('openai', 'sk-live', 'http://evil.example.com');
+    expect(spec.url).toBe('https://api.openai.com/v1/models');
+  });
 });
 
 describe('buildChatRequest', () => {
