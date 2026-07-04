@@ -153,34 +153,27 @@ def parse_channel_groups(channels_arg: str, n_device_channels: int) -> list[dict
     return groups
 
 
-def resolve_armed_strips(groups: list[dict], arm_arg: str | None) -> list[dict]:
+def resolve_armed_strips(groups: list[dict], arm_arg: str | None,
+                         n_device_channels: int) -> list[dict]:
     """
     Which configured strips to record in a session, in armed order.
 
-    `arm_arg` reuses the channel-config grammar; each token is matched against a
-    configured strip by its device indices (mono "N" → [N], stereo "N-M" → [N, M]).
-    Absent/empty ⇒ all configured strips. Raises ValueError on a token that is
-    malformed or doesn't match any configured strip.
+    `arm_arg` is parsed with the same channel-config grammar as the strip layout
+    (via parse_channel_groups, so token validation stays in one place); each
+    requested strip is matched against a configured strip by its device indices
+    (mono "N" → [N], stereo "N-M" → [N, M]). Absent/empty ⇒ all configured strips.
+    Raises ValueError on a malformed token or one that isn't a configured strip.
     """
     if not arm_arg or not arm_arg.strip():
         return list(groups)
 
+    requested = parse_channel_groups(arm_arg, n_device_channels)
     by_indices = {tuple(g["indices"]): g for g in groups}
     armed: list[dict] = []
-    for token in arm_arg.split(","):
-        token = token.strip()
-        if not token:
-            continue
-        if "-" in token:
-            parts = token.split("-")
-            if len(parts) != 2:
-                raise ValueError(f"invalid arm token: {token!r}")
-            key = (int(parts[0]), int(parts[1]))
-        else:
-            key = (int(token),)
-        g = by_indices.get(key)
+    for rg in requested:
+        g = by_indices.get(tuple(rg["indices"]))
         if g is None:
-            raise ValueError(f"armed strip not configured: {token!r}")
+            raise ValueError(f"armed strip not configured: {rg['name']}")
         armed.append(g)
     return armed
 
@@ -437,14 +430,6 @@ def stream_live(device_index, window_secs: float, groups: list[dict],
         if session is not None:
             session.finalize()
 
-    # Electron stops capture with SIGTERM; the default handler skips `finally`,
-    # so register explicitly to guarantee the WAV header is finalized.
-    def _on_signal(*_args):
-        finalize()
-        sys.exit(0)
-    signal.signal(signal.SIGTERM, _on_signal)
-    signal.signal(signal.SIGINT, _on_signal)
-
     # The PortAudio callback runs on a real-time thread: it must not block on
     # disk I/O or do heavy work. It only copies the block onto a queue; a writer
     # thread drains the queue to disk and into the analysis ring buffer.
@@ -459,12 +444,20 @@ def stream_live(device_index, window_secs: float, groups: list[dict],
             block = audio_q.get()
             if block is None:
                 return
-            if recorder is not None:
-                with recorder_lock:
-                    if not recorder.closed:
-                        recorder.write(block)
-            if session is not None:
-                session.write(block)
+            try:
+                if recorder is not None:
+                    with recorder_lock:
+                        if not recorder.closed:
+                            recorder.write(block)
+                if session is not None:
+                    session.write(block)
+            except Exception as e:
+                # A write failure (disk full, I/O error) would otherwise kill
+                # this daemon thread silently and freeze the capture. Surface it
+                # and stop so the main loop finalizes what was captured.
+                print(json.dumps({"error": f"recording write failed: {e}"}), flush=True)
+                stop.set()
+                return
             with lock:
                 blocks.append(block)
                 buffered_samples += block.shape[0]
@@ -474,6 +467,31 @@ def stream_live(device_index, window_secs: float, groups: list[dict],
 
     writer = threading.Thread(target=writer_loop, daemon=True)
     writer.start()
+
+    # Stopping (normal exit or Electron's SIGTERM) must flush blocks already
+    # queued to the writer *before* closing headers, or the buffered tail is
+    # dropped from every stem. shutdown() sends the end-of-input sentinel, waits
+    # (bounded, so a wedged writer can't hang the stop) for the drain, then
+    # finalizes. Idempotent, and registered only after the writer exists so an
+    # early signal can't reference it.
+    shutting_down = threading.Event()
+
+    def shutdown():
+        if shutting_down.is_set():
+            return
+        shutting_down.set()
+        stop.set()
+        audio_q.put(None)         # end-of-input sentinel
+        writer.join(timeout=1.5)  # let the writer flush the queued tail
+        finalize()
+
+    # Electron stops capture with SIGTERM; the default handler skips `finally`,
+    # so register explicitly to guarantee every header is finalized on stop.
+    def _on_signal(*_args):
+        shutdown()
+        sys.exit(0)
+    signal.signal(signal.SIGTERM, _on_signal)
+    signal.signal(signal.SIGINT, _on_signal)
 
     def trailing(n_samples: int) -> np.ndarray:
         # Gather only the tail blocks that cover n_samples, minimizing the copy
@@ -555,9 +573,7 @@ def stream_live(device_index, window_secs: float, groups: list[dict],
                     "masking": compute_masking(win_channels),
                 }), flush=True)
 
-    audio_q.put(None)  # let the writer thread exit
-
-    finalize()
+    shutdown()  # drain the queued tail, then finalize
 
 
 def main():
@@ -622,7 +638,7 @@ def main():
     armed_groups = None
     if session_dir:
         try:
-            armed_groups = resolve_armed_strips(groups, arm_arg)
+            armed_groups = resolve_armed_strips(groups, arm_arg, n_device_channels)
         except ValueError as e:
             print(json.dumps({"error": str(e)}), flush=True)
             sys.exit(1)

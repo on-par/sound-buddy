@@ -130,12 +130,16 @@ test.describe('Sound Buddy E2E', () => {
         devices: [{ index: 0, name: 'Fake 8ch Interface', channels: 8, default_sr: 48000 }],
       }));
 
-      // Capture the args start-live was called with, and pretend a recording was
-      // produced so stop-live can offer it.
+      // Record mode now captures a multitrack session: stop-live returns the
+      // session *folder* (once session.json exists), not a single WAV. The
+      // Live-tab session UI lands in #43, so stop just completes cleanly here.
       ipcMain.removeHandler('start-live');
       ipcMain.handle('start-live', () => ({ success: true }));
       ipcMain.removeHandler('stop-live');
-      ipcMain.handle('stop-live', () => ({ success: true, recordPath: '/tmp/sound-buddy-20260702-101500.wav' }));
+      ipcMain.handle('stop-live', () => ({
+        success: true,
+        sessionDir: '/tmp/sound-buddy-20260702-101500',
+      }));
     }, FAKE_ANALYSIS);
   });
 
@@ -520,21 +524,19 @@ test.describe('Sound Buddy E2E', () => {
       await expect(window.locator('.live-ch[data-ch="0"] .sb-spectrum-curve')).toHaveAttribute('data-marker', 'kept');
     });
 
-    test('recording offers to analyze the WAV on stop', async () => {
+    test('record mode captures a session and stops cleanly', async () => {
       await window.locator('#live-mode button[data-mode="record"]').click();
       await window.locator('#live-start-btn').click();
       await expect(window.locator('#live-stop-btn')).toBeVisible();
       await expect(window.locator('#live-indicator .live-txt')).toHaveText('REC');
 
       await window.locator('#live-stop-btn').click();
-      const offer = window.locator('#rec-offer');
-      await expect(offer).toBeVisible();
-      await expect(offer).toContainText('sound-buddy-20260702-101500.wav');
-
-      // Accept the offer → jumps to the File tab and analyzes the recording.
-      await window.locator('#rec-offer-btn').click();
-      await expect(window.locator('#tab-file')).toHaveClass(/active/);
-      await expect(window.locator('#file-dropzone .dz-title')).toHaveText('sound-buddy-20260702-101500.wav');
+      // Stop returns to the idle state. stop-live now yields a session folder
+      // rather than a single WAV, so the legacy single-file "Analyze it?" offer
+      // no longer fires — the session banner/analyze flow arrives with the UI in
+      // #43. Guard the interim: the offer must not appear.
+      await expect(window.locator('#live-start-btn')).toBeVisible();
+      await expect(window.locator('#rec-offer')).toBeHidden();
     });
   });
 });

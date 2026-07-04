@@ -136,23 +136,28 @@ class Masking(unittest.TestCase):
 class ArmResolution(unittest.TestCase):
     def test_absent_arm_arms_all_strips(self):
         groups = _mono_stereo_groups()
-        self.assertEqual(stream.resolve_armed_strips(groups, None), groups)
-        self.assertEqual(stream.resolve_armed_strips(groups, ""), groups)
-        self.assertEqual(stream.resolve_armed_strips(groups, "   "), groups)
+        self.assertEqual(stream.resolve_armed_strips(groups, None, 4), groups)
+        self.assertEqual(stream.resolve_armed_strips(groups, "", 4), groups)
+        self.assertEqual(stream.resolve_armed_strips(groups, "   ", 4), groups)
 
     def test_subset_selected_in_armed_order(self):
         groups = _mono_stereo_groups()  # ch0 (mono), ch2+3 (stereo), ch1 (mono)
-        armed = stream.resolve_armed_strips(groups, "2-3,0")
+        armed = stream.resolve_armed_strips(groups, "2-3,0", 4)
         self.assertEqual([g["indices"] for g in armed], [[2, 3], [0]])
 
     def test_unknown_token_raises(self):
         groups = _mono_stereo_groups()
         with self.assertRaises(ValueError):
-            stream.resolve_armed_strips(groups, "0,3")  # ch3 alone isn't a strip
+            stream.resolve_armed_strips(groups, "0,3", 4)  # ch3 alone isn't a strip
 
     def test_malformed_stereo_token_raises(self):
         with self.assertRaises(ValueError):
-            stream.resolve_armed_strips(_mono_stereo_groups(), "2-3-4")
+            stream.resolve_armed_strips(_mono_stereo_groups(), "2-3-4", 4)
+
+    def test_out_of_range_arm_token_raises(self):
+        # Reuses parse_channel_groups' range validation: ch9 exceeds the device.
+        with self.assertRaises(ValueError):
+            stream.resolve_armed_strips(_mono_stereo_groups(), "9", 4)
 
 
 class Slugify(unittest.TestCase):
@@ -233,7 +238,7 @@ class SessionRecording(unittest.TestCase):
 
     def test_arm_subset_records_only_selected(self):
         groups = _mono_stereo_groups()
-        armed = stream.resolve_armed_strips(groups, "0,1")  # two monos, skip stereo
+        armed = stream.resolve_armed_strips(groups, "0,1", 4)  # two monos, skip stereo
         self._record(armed)
         wavs = sorted(f for f in os.listdir(self.dir) if f.endswith(".wav"))
         self.assertEqual(wavs, ["01-ch01.wav", "02-ch02.wav"])
@@ -273,7 +278,7 @@ class SessionRecording(unittest.TestCase):
         self.assertEqual(json.loads(first)["tracks"][0]["frames"], self.n)
 
     def test_zero_frame_session_still_writes_stems_and_manifest(self):
-        armed = stream.resolve_armed_strips(_mono_stereo_groups(), "0")
+        armed = stream.resolve_armed_strips(_mono_stereo_groups(), "0", 4)
         rec = stream.SessionRecorder(self.dir, armed, self.sr)
         rec.finalize()  # no blocks written
         self.assertTrue(os.path.exists(os.path.join(self.dir, "01-ch01.wav")))

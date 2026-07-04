@@ -81,25 +81,29 @@ function defaultRecordDir(): string {
   return path.join(app.getPath('music'), 'Sound Buddy');
 }
 
-// A timestamp like 20260703-143207, stable within one capture.
+// A timestamp like 20260703-143207-512, stable within one capture. Milliseconds
+// keep two captures started in the same second from colliding on one folder.
 function captureStamp(): string {
   const now = new Date();
   const p = (n: number) => String(n).padStart(2, '0');
   return (
     `${now.getFullYear()}${p(now.getMonth() + 1)}${p(now.getDate())}` +
-    `-${p(now.getHours())}${p(now.getMinutes())}${p(now.getSeconds())}`
+    `-${p(now.getHours())}${p(now.getMinutes())}${p(now.getSeconds())}` +
+    `-${String(now.getMilliseconds()).padStart(3, '0')}`
   );
 }
 
-// Build (and create) a timestamped session *folder* inside the chosen (or
-// default) record folder — stream.py fills it with one stem WAV per armed strip
-// and a session.json. The main process owns the path so stop-live can hand the
-// folder back once session.json exists.
+// Compute a timestamped session *folder* path inside the chosen (or default)
+// record folder — stream.py fills it with one stem WAV per armed strip and a
+// session.json, and creates the folder itself when capture actually starts.
+// Only the shared parent is created here (so a bad recordDir surfaces a friendly
+// error up front); the per-capture child is left to stream.py so a failed or
+// aborted start never leaves an empty session folder behind. The main process
+// owns the path so stop-live can hand the folder back once session.json exists.
 function buildSessionDir(dir?: string): string {
   const target = dir && dir.trim() ? dir : defaultRecordDir();
-  const sessionDir = path.join(target, `sound-buddy-${captureStamp()}`);
-  fs.mkdirSync(sessionDir, { recursive: true });
-  return sessionDir;
+  fs.mkdirSync(target, { recursive: true });
+  return path.join(target, `sound-buddy-${captureStamp()}`);
 }
 
 // ─── Microphone (Core Audio) permission ─────────────────────────────────────
