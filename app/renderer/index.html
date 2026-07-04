@@ -383,6 +383,17 @@
     .live-ch-meta { font:var(--fw-regular) var(--fs-micro)/1 var(--font-mono); color:var(--text-muted); }
     .live-ch-clip { margin-left:auto; font:var(--fw-semibold) var(--fs-micro)/1 var(--font-sans); color:var(--issue-text); letter-spacing:0.06em; }
 
+    /* Per-strip collapse (#40): a chevron folds a strip to just its header
+       (name + RMS/peak + clip), hiding the arc + bars. Header is the compact
+       one-line summary, so collapsing only hides .veq / .veq-labels. */
+    .live-ch-fold { align-self:center; background:none; border:none; padding:0 2px; margin:-2px 2px -2px -2px; color:var(--text-muted); cursor:pointer; font-size:10px; line-height:1; transition:transform var(--dur-base) var(--ease-out); }
+    .live-ch-fold:hover { color:var(--text-primary); }
+    .live-ch.collapsed .live-ch-fold { transform:rotate(-90deg); }
+    .live-ch.collapsed { padding:8px 0; }
+    .live-ch.collapsed .live-ch-head { margin-bottom:0; }
+    .live-ch.collapsed .veq, .live-ch.collapsed .veq-labels { display:none; }
+    .live-meters-toolbar { display:flex; gap:8px; margin-bottom:14px; }
+
     /* Live vertical-bar EQ: shared analyzer arc + per-band vertical bars.
        .veq-bars is inset to the SVG plot area (inline, from CURVE_VB) so each
        bar sits exactly under its band tint on the arc's log-frequency axis. */
@@ -889,6 +900,8 @@
 <!-- Pure rig ↔ hardware reconciliation helpers (window.rigReconcile). Loaded as
      a classic script before the inline app script so it's ready at boot. -->
 <script src="rig-reconcile.js"></script>
+<!-- Pure per-strip collapse/fold state helpers (window.collapseState, #40). -->
+<script src="collapse-state.js"></script>
 <script>
 'use strict';
 
@@ -945,6 +958,11 @@ let currentFilePath = null;
 let currentDirPath = null;
 let liveRunning = false;
 let liveWindows = [];
+// Per-strip collapsed state (#40), keyed by strip index. In-memory only for this
+// slice (persisting into the rig is deferred). Read on every repaint so an
+// incoming meter window never silently re-expands a folded strip.
+let liveCollapsed = new Set();
+function isStripCollapsed(idx) { return window.collapseState.isCollapsed(liveCollapsed, idx); }
 let lastLiveChannels = null;   // channels from the most recent meter tick (for #39 label fallbacks)
 let lastPlaceholderNamesKey = null; // last backend name set pushed to config-row placeholders (#39)
 let liveCountdownTimer = null;
@@ -1576,8 +1594,10 @@ function veqChannelHTML(ch, idx) {
   const labels = VEQ_BANDS.map((b, i) =>
     `<span class="veq-label${i === loudestIdx ? ' loud' : ''}" style="left:${b.center}%">${b.label}</span>`).join('');
   const displayName = stripLabel(channelConfig[idx], ch, idx);
-  return `<div class="live-ch" data-ch="${idx}">
+  const collapsed = isStripCollapsed(idx);
+  return `<div class="live-ch${collapsed ? ' collapsed' : ''}" data-ch="${idx}">
     <div class="live-ch-head">
+      <button type="button" class="live-ch-fold" aria-label="Collapse or expand strip" aria-expanded="${collapsed ? 'false' : 'true'}" title="Collapse / expand strip">▾</button>
       <span class="live-ch-name${ch.clipping ? ' clip' : ''}" contenteditable="true" spellcheck="false" role="textbox" aria-label="Channel name — click to rename" title="Click to rename">${escapeHtml(displayName)}</span>
       <span class="live-ch-meta">RMS ${fmt(ch.rms)} · Peak ${fmt(ch.peak)} dBFS</span>
       ${ch.clipping ? '<span class="live-ch-clip">CLIP</span>' : ''}
@@ -1593,6 +1613,13 @@ function veqChannelHTML(ch, idx) {
 // so the CSS transitions actually animate, and the arc SVG keeps its static
 // grid/tint/label nodes — only the curve path `d`s and the centroid change.
 function patchLiveChannel(el, ch, idx) {
+  // Re-assert collapsed state on every patch so a new window keeps folded strips
+  // folded (#40). The header — name, RMS/peak, clip — is never hidden, so a
+  // collapsed strip still reflects live level and clipping below.
+  const collapsed = isStripCollapsed(idx);
+  el.classList.toggle('collapsed', collapsed);
+  const foldBtn = el.querySelector('.live-ch-fold');
+  if (foldBtn) foldBtn.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
   const curve = liveBandCurve(ch.bands);
   const loudestIdx = veqLoudestIdx(curve.db);
   const name = el.querySelector('.live-ch-name');
@@ -1659,9 +1686,46 @@ function renderLiveMeters(win) {
     win.channels.forEach((ch, i) => patchLiveChannel(wrap.children[i], ch, i));
     return;
   }
-  body.innerHTML = `<div class="meter-card sb-live-meters">${win.channels.map(veqChannelHTML).join('')}</div>`;
+  body.innerHTML = `<div class="live-meters-toolbar">`
+    + `<button type="button" class="ghost-btn" id="live-collapse-all">Collapse all</button>`
+    + `<button type="button" class="ghost-btn" id="live-expand-all">Expand all</button>`
+    + `</div>`
+    + `<div class="meter-card sb-live-meters">${win.channels.map(veqChannelHTML).join('')}</div>`;
   body.querySelectorAll('.sb-live-meters .live-ch-name').forEach(wireLiveNameEdit);
 }
+
+// Collapse controls (#40). One delegated listener on #spectrum-body survives the
+// meter card's rebuilds and covers the per-strip chevrons plus the toolbar's
+// Collapse all / Expand all. Toggling only rewrites .collapsed on the existing
+// DOM (no full re-render), so it's instant and doesn't disturb the rAF repaint.
+function applyLiveCollapsed() {
+  const wrap = document.querySelector('#spectrum-body .sb-live-meters');
+  if (!wrap) return;
+  Array.from(wrap.children).forEach((el) => {
+    const idx = parseInt(el.dataset.ch, 10);
+    const collapsed = isStripCollapsed(idx);
+    el.classList.toggle('collapsed', collapsed);
+    const btn = el.querySelector('.live-ch-fold');
+    if (btn) btn.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+  });
+}
+document.getElementById('spectrum-body').addEventListener('click', (e) => {
+  const fold = e.target.closest('.live-ch-fold');
+  if (fold) {
+    const idx = parseInt(fold.closest('.live-ch').dataset.ch, 10);
+    liveCollapsed = window.collapseState.toggle(liveCollapsed, idx);
+    applyLiveCollapsed();
+    return;
+  }
+  if (e.target.closest('#live-collapse-all')) {
+    const n = (lastLiveChannels || []).length;
+    liveCollapsed = window.collapseState.collapseAll(Array.from({ length: n }, (_, i) => i));
+    applyLiveCollapsed();
+  } else if (e.target.closest('#live-expand-all')) {
+    liveCollapsed = window.collapseState.expandAll();
+    applyLiveCollapsed();
+  }
+});
 
 // Make a live meter header name click-to-edit (#39): commit on blur/Enter into
 // the matching channelConfig strip's label, Escape cancels. Writing the label

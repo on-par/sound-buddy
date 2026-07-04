@@ -449,6 +449,66 @@ test.describe('Sound Buddy E2E', () => {
       await expect(channels.first().locator('.veq-label').first()).toHaveText('Sub Bass');
     });
 
+    // Per-strip collapse / fold (#40).
+    test('collapse a single strip hides its bands; others stay expanded', async () => {
+      await sendLiveTick(LIVE_CHANNELS);
+      await window.locator('#live-expand-all').click(); // normalize from any prior test
+      const ch0 = window.locator('.live-ch[data-ch="0"]');
+      const ch1 = window.locator('.live-ch[data-ch="1"]');
+      await expect(ch0.locator('.veq')).toBeVisible();
+
+      await ch0.locator('.live-ch-fold').click();
+      await expect(ch0).toHaveClass(/collapsed/);
+      await expect(ch0.locator('.veq')).toBeHidden();
+      await expect(ch0.locator('.veq-labels')).toBeHidden();
+      // The header summary (name + RMS/peak) stays visible when collapsed.
+      await expect(ch0.locator('.live-ch-name')).toBeVisible();
+      await expect(ch0.locator('.live-ch-meta')).toBeVisible();
+      // The other strip is untouched.
+      await expect(ch1).not.toHaveClass(/collapsed/);
+      await expect(ch1.locator('.veq')).toBeVisible();
+
+      await ch0.locator('.live-ch-fold').click(); // toggles back open
+      await expect(ch0).not.toHaveClass(/collapsed/);
+      await expect(ch0.locator('.veq')).toBeVisible();
+    });
+
+    test('Collapse all then expand one leaves the rest collapsed', async () => {
+      await sendLiveTick(LIVE_CHANNELS);
+      await window.locator('#live-collapse-all').click();
+      await expect(window.locator('.sb-live-meters .live-ch.collapsed')).toHaveCount(2);
+
+      await window.locator('.live-ch[data-ch="0"] .live-ch-fold').click();
+      await expect(window.locator('.live-ch[data-ch="0"]')).not.toHaveClass(/collapsed/);
+      await expect(window.locator('.live-ch[data-ch="1"]')).toHaveClass(/collapsed/);
+
+      await window.locator('#live-expand-all').click();
+      await expect(window.locator('.sb-live-meters .live-ch.collapsed')).toHaveCount(0);
+    });
+
+    test('collapsed strip still reflects clipping, and stays collapsed across repaints', async () => {
+      await sendLiveTick(LIVE_CHANNELS);
+      await window.locator('#live-expand-all').click();
+      const ch0 = window.locator('.live-ch[data-ch="0"]');
+      await ch0.locator('.live-ch-fold').click();
+      await expect(ch0).toHaveClass(/collapsed/);
+
+      // A new window reporting clipping on channel 0 must light the clip dot
+      // without re-expanding the strip.
+      const clipping = LIVE_CHANNELS.map((c, i) => (i === 0 ? { ...c, clipping: true } : c));
+      await sendLiveTick(clipping);
+      await expect(ch0.locator('.live-ch-name')).toHaveClass(/clip/);
+      await expect(ch0.locator('.live-ch-clip')).toBeVisible();
+      await expect(ch0).toHaveClass(/collapsed/);
+      await expect(ch0.locator('.veq')).toBeHidden();
+
+      // Several more repaints — still collapsed.
+      await sendLiveTick(LIVE_CHANNELS);
+      await sendLiveTick(LIVE_CHANNELS);
+      await expect(ch0).toHaveClass(/collapsed/);
+      await window.locator('#live-expand-all').click(); // leave clean for later tests
+    });
+
     test('bar height tracks level; loudest band is emphasized; silent bands dim', async () => {
       await sendLiveTick(LIVE_CHANNELS);
       await expect(window.locator('.live-ch[data-ch="0"] .veq-bar')).toHaveCount(7);
