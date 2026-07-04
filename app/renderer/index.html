@@ -1813,13 +1813,16 @@ document.getElementById('meter-interval').addEventListener('input', (e) => {
 });
 
 /* ── Monitor / Record toggle ── */
+// Apply a capture mode to the UI (used by both the toggle and applyRig, so the
+// two paths can't diverge).
+function setLiveMode(mode) {
+  liveMode = mode === 'record' ? 'record' : 'monitor';
+  document.querySelectorAll('#live-mode button').forEach((x) => x.classList.toggle('active', x.dataset.mode === liveMode));
+  document.getElementById('record-folder-row').style.display = liveMode === 'record' ? 'flex' : 'none';
+  hydrateIcons(document.getElementById('live-mode'));
+}
 document.querySelectorAll('#live-mode button').forEach((b) => {
-  b.addEventListener('click', () => {
-    liveMode = b.dataset.mode;
-    document.querySelectorAll('#live-mode button').forEach((x) => x.classList.toggle('active', x === b));
-    document.getElementById('record-folder-row').style.display = liveMode === 'record' ? 'flex' : 'none';
-    hydrateIcons(document.getElementById('live-mode'));
-  });
+  b.addEventListener('click', () => setLiveMode(b.dataset.mode));
 });
 
 document.getElementById('record-folder-btn').addEventListener('click', async () => {
@@ -2011,6 +2014,7 @@ document.getElementById('live-start-btn').addEventListener('click', async () => 
 
   liveRunning = true;
   liveWindows = [];
+  setRigControlsEnabled(false);
 
   document.getElementById('rec-offer').style.display = 'none';
   document.getElementById('live-start-btn').style.display = 'none';
@@ -2042,6 +2046,7 @@ document.getElementById('live-stop-btn').addEventListener('click', () => stopLiv
 
 async function stopLive() {
   liveRunning = false;
+  setRigControlsEnabled(true);
   clearLiveCountdown();
   const result = await sb.stopLive();
   document.getElementById('live-start-btn').style.display = 'inline-flex';
@@ -2088,6 +2093,28 @@ function setLiveStatus(text) {
   if (!text) { ls.style.display = 'none'; ls.textContent = ''; return; }
   ls.textContent = text;
   ls.style.display = 'block';
+}
+
+// Rig persistence can reject (settings.json unwritable — writeSettingsFile
+// rethrows), so every CRUD call routes failures here rather than leaving the
+// picker silently out of sync with an unhandled rejection.
+function rigError(action, err) {
+  console.error(`rig ${action} failed:`, err);
+  setLiveStatus(`Could not ${action} rig — check that Sound Buddy can write its settings.`);
+}
+
+// Lock the rig picker while a capture is running: applyRig mutates the device,
+// channels, mode and sliders, which would desync the UI from the live stream.
+function setRigControlsEnabled(enabled) {
+  document.getElementById('rig-select').disabled = !enabled;
+  document.getElementById('rig-save-btn').disabled = !enabled;
+  document.getElementById('rig-saveas-btn').disabled = !enabled;
+  if (enabled) {
+    updateRigButtons();
+  } else {
+    document.getElementById('rig-rename-btn').disabled = true;
+    document.getElementById('rig-delete-btn').disabled = true;
+  }
 }
 
 // Set a slider's value programmatically and refresh its label by replaying the
@@ -2197,10 +2224,7 @@ function captureCurrentRig(name, id) {
 function applyRig(rig) {
   if (!rig) return;
 
-  liveMode = rig.mode === 'record' ? 'record' : 'monitor';
-  document.querySelectorAll('#live-mode button').forEach((x) => x.classList.toggle('active', x.dataset.mode === liveMode));
-  document.getElementById('record-folder-row').style.display = liveMode === 'record' ? 'flex' : 'none';
-  hydrateIcons(document.getElementById('live-mode'));
+  setLiveMode(rig.mode);
 
   recordDir = rig.recordDir || '';
   document.getElementById('record-folder-path').textContent = recordDir || '~/Music/Sound Buddy';
@@ -2231,21 +2255,26 @@ async function rigSaveAs() {
   const trimmed = name.trim();
   if (!trimmed) return;
   const prevIds = new Set(rigList.map((r) => r.id));
-  const settings = await sb.saveRig(captureCurrentRig(trimmed));
-  rigList = settings.rigs || [];
-  const created = rigList.find((r) => !prevIds.has(r.id));
-  const newId = created ? created.id : (rigList.find((r) => r.name === trimmed) || {}).id || '';
-  if (newId) await sb.setActiveRig(newId);
-  populateRigSelect(rigList, newId);
-  updateRigButtons();
-  setLiveStatus(`Saved "${trimmed}".`);
+  try {
+    const settings = await sb.saveRig(captureCurrentRig(trimmed));
+    rigList = settings.rigs || [];
+    const created = rigList.find((r) => !prevIds.has(r.id));
+    const newId = created ? created.id : (rigList.find((r) => r.name === trimmed) || {}).id || '';
+    if (newId) await sb.setActiveRig(newId);
+    populateRigSelect(rigList, newId);
+    updateRigButtons();
+    setLiveStatus(`Saved "${trimmed}".`);
+  } catch (err) { rigError('save', err); }
 }
 
 async function initRigs() {
   let activeRigId = null;
   try {
-    rigList = (await sb.listRigs()) || [];
+    // getSettings() already returns both the saved rigs and the active id, so a
+    // single read seeds the picker (one IPC round trip, and a failure can't wipe
+    // an already-loaded list).
     const settings = await sb.getSettings();
+    rigList = (settings && settings.rigs) || [];
     activeRigId = settings && settings.activeRigId ? settings.activeRigId : null;
   } catch { rigList = []; }
   const active = rigList.some((r) => r.id === activeRigId) ? activeRigId : '';
@@ -2259,8 +2288,10 @@ async function initRigs() {
 document.getElementById('rig-select').addEventListener('change', async (e) => {
   const id = e.target.value;
   updateRigButtons();
-  if (!id) { await sb.setActiveRig(null); return; }
-  await sb.setActiveRig(id);
+  try {
+    await sb.setActiveRig(id || null);
+  } catch (err) { rigError('select', err); return; }
+  if (!id) return;
   const rig = rigList.find((r) => r.id === id);
   if (rig) applyRig(rig);
 });
@@ -2271,12 +2302,14 @@ document.getElementById('rig-save-btn').addEventListener('click', async () => {
   const id = document.getElementById('rig-select').value;
   if (!id) { await rigSaveAs(); return; }
   const existing = rigList.find((r) => r.id === id);
-  const settings = await sb.saveRig(captureCurrentRig(existing ? existing.name : 'Rig', id));
-  rigList = settings.rigs || [];
-  populateRigSelect(rigList, id);
-  await sb.setActiveRig(id);
-  updateRigButtons();
-  setLiveStatus(`Saved "${existing ? existing.name : 'rig'}".`);
+  try {
+    const settings = await sb.saveRig(captureCurrentRig(existing ? existing.name : 'Rig', id));
+    rigList = settings.rigs || [];
+    await sb.setActiveRig(id);
+    populateRigSelect(rigList, id);
+    updateRigButtons();
+    setLiveStatus(`Saved "${existing ? existing.name : 'rig'}".`);
+  } catch (err) { rigError('save', err); }
 });
 
 document.getElementById('rig-saveas-btn').addEventListener('click', () => rigSaveAs());
@@ -2291,10 +2324,12 @@ document.getElementById('rig-rename-btn').addEventListener('click', async () => 
   if (name == null) return;
   const trimmed = name.trim();
   if (!trimmed) return;
-  const settings = await sb.saveRig({ ...existing, name: trimmed });
-  rigList = settings.rigs || [];
-  populateRigSelect(rigList, id);
-  updateRigButtons();
+  try {
+    const settings = await sb.saveRig({ ...existing, name: trimmed });
+    rigList = settings.rigs || [];
+    populateRigSelect(rigList, id);
+    updateRigButtons();
+  } catch (err) { rigError('rename', err); }
 });
 
 // Delete removes the rig; the backend clears activeRigId if it was the active
@@ -2310,10 +2345,12 @@ document.getElementById('rig-delete-btn').addEventListener('click', async () => 
     withInput: false,
   });
   if (!ok) return;
-  const settings = await sb.deleteRig(id);
-  rigList = settings.rigs || [];
-  populateRigSelect(rigList, settings.activeRigId || '');
-  updateRigButtons();
+  try {
+    const settings = await sb.deleteRig(id);
+    rigList = settings.rigs || [];
+    populateRigSelect(rigList, settings.activeRigId || '');
+    updateRigButtons();
+  } catch (err) { rigError('delete', err); }
 });
 
 function startLiveCountdown(intervalSecs) {
