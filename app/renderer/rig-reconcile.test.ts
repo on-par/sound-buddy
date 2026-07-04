@@ -3,7 +3,7 @@ import { describe, it, expect } from 'vitest';
 // The reconciler is a plain classic script (window.rigReconcile in the browser,
 // module.exports under Node) so it can be exercised here without a DOM.
 // eslint-disable-next-line @typescript-eslint/no-var-requires
-const { reconcileRigDevice, clampChannelConfig } = require('./rig-reconcile.js') as {
+const { reconcileRigDevice, clampChannelConfig, resolveStripLabel } = require('./rig-reconcile.js') as {
   reconcileRigDevice: (
     deviceName: string,
     devices: Array<{ index: number; name: string; channels: number }>,
@@ -12,6 +12,11 @@ const { reconcileRigDevice, clampChannelConfig } = require('./rig-reconcile.js')
     channelConfig: Array<{ kind: string; a: number; b: number; label?: string }>,
     maxChannels: number,
   ) => { config: Array<{ kind: string; a: number; b: number; label?: string }>; adjusted: boolean };
+  resolveStripLabel: (
+    strip: { label?: string } | null,
+    ch: { name?: string } | null,
+    index: number,
+  ) => string;
 };
 
 const DEVICES = [
@@ -112,5 +117,34 @@ describe('clampChannelConfig', () => {
     );
     expect(out.config).toEqual([{ kind: 'stereo', a: 0, b: 0 }]);
     expect(out.adjusted).toBe(false);
+  });
+});
+
+describe('resolveStripLabel', () => {
+  const CH = { name: 'USB Audio 3' };
+
+  it('uses a non-empty label verbatim (trimmed), over the device name', () => {
+    expect(resolveStripLabel({ label: 'Kick' }, CH, 0)).toBe('Kick');
+    expect(resolveStripLabel({ label: '  SL Vox  ' }, CH, 0)).toBe('SL Vox');
+  });
+
+  it('falls back to the backend device name when the label is empty', () => {
+    expect(resolveStripLabel({ label: '' }, CH, 0)).toBe('USB Audio 3');
+    expect(resolveStripLabel({}, CH, 0)).toBe('USB Audio 3');
+  });
+
+  it('treats a whitespace-only label as empty', () => {
+    expect(resolveStripLabel({ label: '   ' }, CH, 0)).toBe('USB Audio 3');
+  });
+
+  it('falls back to "Ch N" (index + 1) with no label and no backend name', () => {
+    expect(resolveStripLabel({ label: '' }, null, 4)).toBe('Ch 5');
+    expect(resolveStripLabel({}, { name: '' }, 0)).toBe('Ch 1');
+    expect(resolveStripLabel({}, { name: '   ' }, 2)).toBe('Ch 3');
+  });
+
+  it('tolerates a null strip and a non-finite index', () => {
+    expect(resolveStripLabel(null, CH, 0)).toBe('USB Audio 3');
+    expect(resolveStripLabel(null, null, NaN as unknown as number)).toBe('Ch 1');
   });
 });
