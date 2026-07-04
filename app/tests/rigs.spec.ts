@@ -196,6 +196,40 @@ test.describe.serial('Rigs — save / load / switch', () => {
     await expect(restored.nth(1)).toHaveValue('SL Vox');
   });
 
+  test('named groups round-trip through a rig save + relaunch (#41)', async () => {
+    await stubDevices(app, EIGHT_CH);
+    await win.reload();
+    await win.waitForLoadState('domcontentloaded');
+    await win.locator('.mode-tab[data-mode="live"]').click();
+    await win.locator('#device-refresh-btn').click();
+    await win.locator('#device-select').selectOption('0');
+    await expect(win.locator('#chcfg-list .chcfg-row')).toHaveCount(2);
+
+    // Create a group and assign both strips to it.
+    await win.locator('#new-group-btn').click();
+    await win.locator('#rig-dialog-input').fill('Drums');
+    await win.locator('#rig-dialog-ok').click();
+    await win.locator('.chcfg-row').nth(0).locator('.chcfg-group').selectOption({ label: 'Drums' });
+    await win.locator('.chcfg-row').nth(1).locator('.chcfg-group').selectOption({ label: 'Drums' });
+
+    // Save as an active rig; the persisted rig carries the group + members.
+    await win.locator('#rig-saveas-btn').click();
+    await win.locator('#rig-dialog-input').fill('Grouped Board');
+    await win.locator('#rig-dialog-ok').click();
+    await expect(win.locator('#rig-select option:checked')).toHaveText('Grouped Board');
+    const rigs = await win.evaluate(() => (window as unknown as { soundBuddy: { listRigs: () => Promise<unknown[]> } }).soundBuddy.listRigs());
+    const saved = (rigs as Array<{ name: string; groups?: unknown }>).find((r) => r.name === 'Grouped Board');
+    expect(saved!.groups).toEqual([{ name: 'Drums', members: [0, 1] }]);
+
+    // Relaunch: the active rig restores group membership (both rows show Drums).
+    await app.close();
+    ({ app, win } = await launch(EIGHT_CH));
+    await expect(win.locator('#rig-select option:checked')).toHaveText('Grouped Board');
+    const groups = win.locator('#chcfg-list .chcfg-row .chcfg-group');
+    await expect(groups.nth(0)).toHaveValue('0');
+    await expect(groups.nth(1)).toHaveValue('0');
+  });
+
   test('deleting a rig removes it from the picker and from listRigs()', async () => {
     await win.locator('#rig-select').selectOption({ label: 'Big Board' });
     await win.locator('#rig-delete-btn').click();
