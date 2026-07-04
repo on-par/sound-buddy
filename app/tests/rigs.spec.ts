@@ -161,6 +161,41 @@ test.describe.serial('Rigs — save / load / switch', () => {
     await expect(win.locator('#chcfg-list .chcfg-row')).toHaveCount(2);
   });
 
+  test('per-channel labels round-trip through a rig save + relaunch (#39)', async () => {
+    // Back to the 8-channel interface for a clean two-strip default config.
+    await stubDevices(app, EIGHT_CH);
+    await win.reload();
+    await win.waitForLoadState('domcontentloaded');
+    await win.locator('.mode-tab[data-mode="live"]').click();
+    await win.locator('#device-refresh-btn').click();
+    // Pick the real device before labelling (a device change re-seeds the config).
+    await win.locator('#device-select').selectOption('0');
+    await expect(win.locator('#chcfg-list .chcfg-row')).toHaveCount(2);
+
+    // Name both strips, then save as a new, active rig.
+    const labels = win.locator('#chcfg-list .chcfg-row .chcfg-label');
+    await labels.nth(0).fill('Kick');
+    await labels.nth(1).fill('SL Vox');
+    await win.locator('#rig-saveas-btn').click();
+    await win.locator('#rig-dialog-input').fill('Labeled Board');
+    await win.locator('#rig-dialog-ok').click();
+    await expect(win.locator('#rig-select option:checked')).toHaveText('Labeled Board');
+
+    // The persisted rig carries the labels in its channelConfig.
+    const rigs = await win.evaluate(() => (window as any).soundBuddy.listRigs());
+    const saved = rigs.find((r: any) => r.name === 'Labeled Board');
+    expect(saved.channelConfig[0]).toMatchObject({ label: 'Kick' });
+    expect(saved.channelConfig[1]).toMatchObject({ label: 'SL Vox' });
+
+    // Relaunch: the active rig restores the labels into the config inputs.
+    await app.close();
+    ({ app, win } = await launch(EIGHT_CH));
+    await expect(win.locator('#rig-select option:checked')).toHaveText('Labeled Board');
+    const restored = win.locator('#chcfg-list .chcfg-row .chcfg-label');
+    await expect(restored.nth(0)).toHaveValue('Kick');
+    await expect(restored.nth(1)).toHaveValue('SL Vox');
+  });
+
   test('deleting a rig removes it from the picker and from listRigs()', async () => {
     await win.locator('#rig-select').selectOption({ label: 'Big Board' });
     await win.locator('#rig-delete-btn').click();

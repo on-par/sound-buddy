@@ -340,6 +340,9 @@
     .chcfg-row select { flex:1; min-width:0; height:var(--control-h-sm); padding:0 8px; border-radius:var(--radius-md); background:var(--surface-raised); color:var(--text-primary); border:1px solid var(--border-default); font:var(--fw-medium) var(--fs-label)/1 var(--font-sans); }
     .chcfg-row select:focus { border-color:var(--gold-500); box-shadow:var(--glow-focus); outline:none; }
     .chcfg-row select.chcfg-kind { flex:0 0 96px; }
+    .chcfg-row .chcfg-label { flex:1 1 84px; min-width:0; height:var(--control-h-sm); padding:0 8px; border-radius:var(--radius-md); background:var(--surface-raised); color:var(--text-primary); border:1px solid var(--border-default); font:var(--fw-medium) var(--fs-label)/1 var(--font-sans); outline:none; }
+    .chcfg-row .chcfg-label::placeholder { color:var(--text-muted); font-weight:var(--fw-regular); }
+    .chcfg-row .chcfg-label:focus { border-color:var(--gold-500); box-shadow:var(--glow-focus); }
     .chcfg-x { flex:0 0 auto; width:var(--control-h-sm); height:var(--control-h-sm); border:1px solid var(--border-subtle); border-radius:var(--radius-md); background:transparent; color:var(--text-muted); cursor:pointer; font-size:15px; line-height:1; }
     .chcfg-x:hover:not(:disabled) { color:var(--issue-text); border-color:var(--issue-500); }
     .chcfg-x:disabled { opacity:0.35; cursor:not-allowed; }
@@ -373,7 +376,9 @@
     .live-ch { padding:14px 0; }
     .live-ch + .live-ch { border-top:1px solid var(--border-subtle); }
     .live-ch-head { display:flex; align-items:baseline; gap:10px; margin-bottom:10px; }
-    .live-ch-name { font:var(--fw-semibold) var(--fs-body-sm)/1 var(--font-sans); color:var(--text-primary); }
+    .live-ch-name { font:var(--fw-semibold) var(--fs-body-sm)/1 var(--font-sans); color:var(--text-primary); border-radius:var(--radius-sm); padding:2px 4px; margin:-2px -4px; outline:none; cursor:text; }
+    .live-ch-name:hover { background:var(--surface-raised); }
+    .live-ch-name:focus { background:var(--surface-raised); box-shadow:var(--glow-focus); }
     .live-ch-name.clip { color:var(--issue-text); }
     .live-ch-meta { font:var(--fw-regular) var(--fs-micro)/1 var(--font-mono); color:var(--text-muted); }
     .live-ch-clip { margin-left:auto; font:var(--fw-semibold) var(--fs-micro)/1 var(--font-sans); color:var(--issue-text); letter-spacing:0.06em; }
@@ -940,6 +945,7 @@ let currentFilePath = null;
 let currentDirPath = null;
 let liveRunning = false;
 let liveWindows = [];
+let lastLiveChannels = null;   // channels from the most recent meter tick (for #39 label fallbacks)
 let liveCountdownTimer = null;
 let liveCountdownSecs = 0;
 let liveDevices = [];          // last device list (for channel-count lookup)
@@ -951,6 +957,14 @@ let aiStreamStarted = false;
 let idealProfileId = ''; // active ideal EQ profile; '' = auto by content type (PRD 05)
 
 /* ══ Formatting helpers ══ */
+// Escape user-entered text (channel labels, #39) before it lands in innerHTML.
+function escapeHtml(s) {
+  return String(s == null ? '' : s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+// Resolve a strip's display name: label → backend name → "Ch N" (see #39).
+function stripLabel(strip, ch, index) { return window.rigReconcile.resolveStripLabel(strip, ch, index); }
 function fmt(n, d = 1) { if (!isFinite(n)) return '-∞'; return n.toFixed(d); }
 function fmtHz(hz) { if (hz >= 1000) return (hz / 1000).toFixed(1) + ' kHz'; return Math.round(hz) + ' Hz'; }
 function fmtDur(s) { const m = Math.floor(s / 60); const sec = (s % 60).toFixed(1).padStart(4, '0'); return `${m}:${sec}`; }
@@ -1556,9 +1570,10 @@ function veqChannelHTML(ch, idx) {
   }).join('');
   const labels = VEQ_BANDS.map((b, i) =>
     `<span class="veq-label${i === loudestIdx ? ' loud' : ''}" style="left:${b.center}%">${b.label}</span>`).join('');
+  const displayName = stripLabel(channelConfig[idx], ch, idx);
   return `<div class="live-ch" data-ch="${idx}">
     <div class="live-ch-head">
-      <span class="live-ch-name${ch.clipping ? ' clip' : ''}">${ch.name || 'Channel'}</span>
+      <span class="live-ch-name${ch.clipping ? ' clip' : ''}" contenteditable="true" spellcheck="false" role="textbox" aria-label="Channel name — click to rename" title="Click to rename">${escapeHtml(displayName)}</span>
       <span class="live-ch-meta">RMS ${fmt(ch.rms)} · Peak ${fmt(ch.peak)} dBFS</span>
       ${ch.clipping ? '<span class="live-ch-clip">CLIP</span>' : ''}
     </div>
@@ -1576,7 +1591,9 @@ function patchLiveChannel(el, ch, idx) {
   const curve = liveBandCurve(ch.bands);
   const loudestIdx = veqLoudestIdx(curve.db);
   const name = el.querySelector('.live-ch-name');
-  name.textContent = ch.name || 'Channel';
+  // Don't clobber the field while the engineer is renaming it in place (#39);
+  // the live tick keeps flowing but their caret/text stays put until they commit.
+  if (document.activeElement !== name) name.textContent = stripLabel(channelConfig[idx], ch, idx);
   name.classList.toggle('clip', !!ch.clipping);
   el.querySelector('.live-ch-meta').textContent = `RMS ${fmt(ch.rms)} · Peak ${fmt(ch.peak)} dBFS`;
   const clipEl = el.querySelector('.live-ch-clip');
@@ -1619,6 +1636,12 @@ function renderLiveMeters(win) {
   const ipWrap = document.getElementById('ideal-profile-wrap');
   if (ipWrap) ipWrap.style.display = 'none'; // no whole-file curve in live mode
 
+  // Once real channels arrive, remember them so label fallbacks (#39) can resolve
+  // the backend device name, and preview it in each config row's placeholder —
+  // updated in place so a value the engineer is typing (and focus) are untouched.
+  lastLiveChannels = win.channels;
+  refreshChannelLabelPlaceholders(win.channels);
+
   // Patch in place while the channel list shape is unchanged (bar heights get
   // real CSS transitions); rebuild only when it changes.
   const wrap = body.querySelector('.sb-live-meters');
@@ -1627,6 +1650,43 @@ function renderLiveMeters(win) {
     return;
   }
   body.innerHTML = `<div class="meter-card sb-live-meters">${win.channels.map(veqChannelHTML).join('')}</div>`;
+  body.querySelectorAll('.sb-live-meters .live-ch-name').forEach(wireLiveNameEdit);
+}
+
+// Make a live meter header name click-to-edit (#39): commit on blur/Enter into
+// the matching channelConfig strip's label, Escape cancels. Writing the label
+// keeps the config rows and the persisted rig in sync via renderChannelConfig().
+function wireLiveNameEdit(nameEl) {
+  const idx = parseInt(nameEl.closest('.live-ch').dataset.ch, 10);
+  const commit = () => {
+    const strip = channelConfig[idx];
+    if (!strip) return;
+    const text = nameEl.textContent.trim();
+    strip.label = text;
+    // Reflect the resolved name immediately (empty label falls back to the
+    // device name / Ch N) and refresh the config row inputs to match.
+    nameEl.textContent = stripLabel(strip, lastLiveChannels ? lastLiveChannels[idx] : null, idx);
+    renderChannelConfig();
+  };
+  nameEl.addEventListener('blur', commit);
+  nameEl.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); nameEl.blur(); }
+    else if (e.key === 'Escape') {
+      e.preventDefault();
+      nameEl.textContent = stripLabel(channelConfig[idx], lastLiveChannels ? lastLiveChannels[idx] : null, idx);
+      nameEl.blur();
+    }
+  });
+}
+
+// Sync the channel-config label placeholders to the latest backend channel
+// names without rebuilding the rows (which would steal focus mid-type). Values
+// stay put; only the greyed placeholder previews the resolved fallback (#39).
+function refreshChannelLabelPlaceholders(channels) {
+  document.querySelectorAll('#chcfg-list .chcfg-label').forEach((inp) => {
+    const idx = parseInt(inp.dataset.idx, 10);
+    inp.placeholder = stripLabel(null, channels ? channels[idx] : null, idx);
+  });
 }
 
 /* ══ Stats row ══ */
@@ -1873,6 +1933,11 @@ function renderChannelConfig() {
   const list = document.getElementById('chcfg-list');
   document.getElementById('chcfg-cap').textContent = `${usedChannelCount()} / ${n} used`;
 
+  // Backend channel names from the most recent live tick seed each label's
+  // placeholder, so an unnamed strip previews the same fallback (#39) the live
+  // header will show — device name if known, else "Ch N".
+  const liveChs = lastLiveChannels;
+
   list.innerHTML = '';
   channelConfig.forEach((strip, idx) => {
     const row = document.createElement('div');
@@ -1881,6 +1946,7 @@ function renderChannelConfig() {
     const stereoSel = stereo
       ? `<select class="chcfg-leg" data-idx="${idx}" data-field="b" title="Right leg">${channelOptions(strip.b, n, true)}</select>`
       : '';
+    const placeholder = escapeHtml(stripLabel(null, liveChs ? liveChs[idx] : null, idx));
     row.innerHTML =
       `<select class="chcfg-kind" data-idx="${idx}" data-field="kind">
          <option value="mono"${!stereo ? ' selected' : ''}>Mono</option>
@@ -1888,6 +1954,7 @@ function renderChannelConfig() {
        </select>
        <select${stereo ? ' class="chcfg-leg" title="Left leg"' : ''} data-idx="${idx}" data-field="a">${channelOptions(strip.a, n, stereo)}</select>
        ${stereoSel}
+       <input type="text" class="chcfg-label" data-idx="${idx}" value="${escapeHtml(strip.label || '')}" placeholder="${placeholder}" title="Strip name" aria-label="Strip name" spellcheck="false" maxlength="40" />
        <button type="button" class="chcfg-x" data-idx="${idx}" title="Remove strip"${channelConfig.length <= 1 ? ' disabled' : ''}>×</button>`;
     list.appendChild(row);
   });
@@ -1905,6 +1972,23 @@ function renderChannelConfig() {
         strip[field] = parseInt(e.target.value);
       }
       renderChannelConfig();
+    });
+  });
+  // Live-bind each label input to its strip without re-rendering the list (that
+  // would steal focus mid-type). The live meter header picks the new label up on
+  // the next tick via stripLabel(); persistence rides captureCurrentRig().
+  list.querySelectorAll('.chcfg-label').forEach((inp) => {
+    inp.addEventListener('input', (e) => {
+      const idx = e.target.dataset.idx;
+      const strip = channelConfig[idx];
+      if (!strip) return;
+      strip.label = e.target.value;
+      // Reflect on the live header now (rather than waiting for the next tick),
+      // unless the engineer is mid-edit there.
+      const liveName = document.querySelector(`.sb-live-meters .live-ch[data-ch="${idx}"] .live-ch-name`);
+      if (liveName && document.activeElement !== liveName) {
+        liveName.textContent = stripLabel(strip, lastLiveChannels ? lastLiveChannels[idx] : null, parseInt(idx, 10));
+      }
     });
   });
   list.querySelectorAll('.chcfg-x').forEach((btn) => {

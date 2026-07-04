@@ -499,6 +499,49 @@ test.describe('Sound Buddy E2E', () => {
       expect(paths[0]).not.toBe(paths[1]);
     });
 
+    test('per-channel labels: config rename, live-header inline edit, and fallback (#39)', async () => {
+      // Two backend channels that carry device names → the fallback path.
+      const named = [
+        { ...LIVE_CHANNELS[0], name: 'USB Audio 1' },
+        { ...LIVE_CHANNELS[1], name: 'USB Audio 2' },
+      ];
+      await sendLiveTick(named);
+      const heads = window.locator('.sb-live-meters .live-ch-name');
+      const rowLabels = window.locator('#chcfg-list .chcfg-row .chcfg-label');
+
+      // With no label yet, the header shows the backend device name, and the
+      // config input previews it as a placeholder (not a value).
+      await expect(heads.first()).toHaveText('USB Audio 1');
+      await expect(rowLabels.first()).toHaveValue('');
+      await expect(rowLabels.first()).toHaveAttribute('placeholder', 'USB Audio 1');
+
+      // Rename from the channel config → the live header reflects it immediately.
+      await rowLabels.first().fill('Kick');
+      await expect(heads.first()).toHaveText('Kick');
+
+      // Clearing the label falls back to the backend device name.
+      await rowLabels.first().fill('');
+      await expect(heads.first()).toHaveText('USB Audio 1');
+
+      // Inline-edit the second strip's header → the config row's label input
+      // (rebuilt from the channelConfig strip) reflects the write-back.
+      await heads.nth(1).click();
+      await window.keyboard.press('ControlOrMeta+A');
+      await window.keyboard.type('SL Vox');
+      await window.keyboard.press('Enter');
+      await expect(heads.nth(1)).toHaveText('SL Vox');
+      await expect(rowLabels.nth(1)).toHaveValue('SL Vox');
+
+      // A fresh tick keeps the committed label (patch must not clobber it).
+      await sendLiveTick(named);
+      await expect(heads.nth(1)).toHaveText('SL Vox');
+      await expect(heads.first()).toHaveText('USB Audio 1');
+
+      // Labels are display-only: the stream.py channel tokens never carry them.
+      const clean = [{ ...LIVE_CHANNELS[0], name: 'Ch 1' }, { ...LIVE_CHANNELS[1], name: 'Ch 2' }];
+      await sendLiveTick(clean);
+    });
+
     test('a new tick updates bars and arc in place', async () => {
       await sendLiveTick(LIVE_CHANNELS);
       const midBar = window.locator('.live-ch[data-ch="0"] .veq-bar[data-band="mid"]');
