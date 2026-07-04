@@ -118,6 +118,17 @@ describe('enumerateDevices', () => {
     await expect(p).resolves.toEqual({ success: false, error: 'stream.py exited with code 1' });
   });
 
+  it('names the signal when the process is killed (code === null)', async () => {
+    const proc = fakeProc();
+    spawnMock.mockReturnValueOnce(proc);
+    const p = enumerateDevices('--list-output-devices', 'list-output-devices');
+    proc.emit('close', null, 'SIGKILL');
+    await expect(p).resolves.toEqual({
+      success: false,
+      error: 'stream.py terminated by signal SIGKILL',
+    });
+  });
+
   it('fails cleanly on unparseable stdout', async () => {
     const proc = fakeProc();
     spawnMock.mockReturnValueOnce(proc);

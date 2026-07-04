@@ -524,10 +524,13 @@ export function enumerateDevices(
     // stderr was previously piped but never read (lost errors + risked backpressure).
     py.stderr.on('data', (chunk: Buffer) => { errOutput += chunk.toString(); });
 
-    py.on('close', (code) => {
+    py.on('close', (code, signal) => {
       if (code !== 0 && !output.trim()) {
-        logError(`${label}: stream.py exited with code ${code}`, errOutput.trim() || undefined);
-        resolve({ success: false, error: `stream.py exited with code ${code}` });
+        // A signal kill (OOM, SIGTERM on app quit) reports code === null; name the
+        // signal instead of surfacing a bare "exited with code null" to the picker.
+        const reason = code === null ? `terminated by signal ${signal}` : `exited with code ${code}`;
+        logError(`${label}: stream.py ${reason}`, errOutput.trim() || undefined);
+        resolve({ success: false, error: `stream.py ${reason}` });
         return;
       }
       try {
