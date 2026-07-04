@@ -871,4 +871,71 @@ test.describe('Sound Buddy E2E', () => {
       await expect(board.locator('.live-group-head.ungrouped')).toHaveCount(0);
     });
   });
+  test.describe('AI provider settings (#76)', () => {
+    test.beforeAll(async () => {
+      // The dialog probes Ollama and (on demand) a hosted provider over the
+      // network — stub both so the flow is testable anywhere. Config
+      // persistence (llm-save-config / llm-get-config) stays REAL: the Ollama
+      // path never touches safeStorage, and userData is isolated.
+      await electronApp.evaluate(({ ipcMain }) => {
+        ipcMain.removeHandler('llm-detect-ollama');
+        ipcMain.handle('llm-detect-ollama', () => ({ ok: true, models: ['llama3.2', 'qwen3:8b'] }));
+        ipcMain.removeHandler('llm-test-provider');
+        ipcMain.handle('llm-test-provider', (_e: unknown, opts: { apiKey?: string }) =>
+          opts && opts.apiKey === 'sk-good'
+            ? { ok: true }
+            : { ok: false, reason: 'Authentication failed (HTTP 401) — check your key' });
+      });
+    });
+
+    test.afterEach(async () => {
+      // Close the dialog if a failed assertion left it open.
+      await window.evaluate(() => {
+        (document.getElementById('ai-dialog') as HTMLElement).style.display = 'none';
+      });
+    });
+
+    test('gear opens the dialog on the Ollama tab with detected models', async () => {
+      await window.locator('#ai-settings-btn').click();
+      await expect(window.locator('#ai-dialog')).toBeVisible();
+      await expect(window.locator('#ai-tab-btn-ollama')).toHaveClass(/active/);
+      await expect(window.locator('#ai-ollama-status')).toContainText('Ollama detected — 2 models');
+      await expect(window.locator('#ai-ollama-model option')).toHaveCount(2);
+    });
+
+    test('API-key tab: custom provider reveals the base URL field', async () => {
+      await window.locator('#ai-settings-btn').click();
+      await window.locator('#ai-tab-btn-hosted').click();
+      await expect(window.locator('#ai-baseurl-field')).toBeHidden();
+      await window.locator('#ai-provider').selectOption('custom');
+      await expect(window.locator('#ai-baseurl-field')).toBeVisible();
+      await window.locator('#ai-provider').selectOption('anthropic');
+      await expect(window.locator('#ai-baseurl-field')).toBeHidden();
+    });
+
+    test('test connection reports success and failure immediately', async () => {
+      await window.locator('#ai-settings-btn').click();
+      await window.locator('#ai-tab-btn-hosted').click();
+      await window.locator('#ai-api-key').fill('sk-bad');
+      await window.locator('#ai-test-btn').click();
+      await expect(window.locator('#ai-test-result')).toHaveClass(/err/);
+      await expect(window.locator('#ai-test-result')).toContainText('check your key');
+      await window.locator('#ai-api-key').fill('sk-good');
+      await window.locator('#ai-test-btn').click();
+      await expect(window.locator('#ai-test-result')).toHaveClass(/ok/);
+    });
+
+    test('saving the Ollama path persists llm.json and updates the provider chip', async () => {
+      await window.locator('#ai-settings-btn').click();
+      await window.locator('#ai-ollama-model').selectOption('qwen3:8b');
+      await window.locator('#ai-dialog-save').click();
+      await expect(window.locator('#ai-dialog')).toBeHidden();
+      // Enable-AI defaulted on for a first-time connect, so the panel is live.
+      await expect(window.locator('#model-chip-text')).toHaveText('ollama · qwen3:8b');
+      // Round-trip: reopening shows the saved model still selected.
+      await window.locator('#ai-settings-btn').click();
+      await expect(window.locator('#ai-ollama-model')).toHaveValue('qwen3:8b');
+      await window.locator('#ai-dialog-cancel').click();
+    });
+  });
 });
