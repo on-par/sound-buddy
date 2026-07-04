@@ -306,6 +306,27 @@
     .rig-dialog-input:focus { border-color:var(--gold-500); box-shadow:var(--glow-focus); }
     .rig-dialog-actions { display:flex; justify-content:flex-end; gap:8px; }
 
+    /* AI provider settings dialog (#76) — same overlay pattern as .rig-dialog */
+    #ai-settings-btn { display:flex; align-items:center; justify-content:center; width:30px; height:30px; padding:0; background:transparent; border:none; border-radius:var(--radius-sm); color:var(--text-secondary); cursor:pointer; }
+    #ai-settings-btn:hover { color:var(--text-primary); background:var(--surface); }
+    .ai-dialog-card { width:min(440px,calc(100vw - 48px)); }
+    .ai-dialog-sub { font:var(--fw-regular) var(--fs-label)/1.4 var(--font-sans); color:var(--text-secondary); margin-top:-6px; }
+    .ai-tabs { display:flex; gap:6px; }
+    .ai-tab { flex:1; height:var(--control-h); border:1px solid var(--border-default); border-radius:var(--radius-md); background:var(--surface); color:var(--text-secondary); font:var(--fw-medium) var(--fs-body-sm)/1 var(--font-sans); cursor:pointer; }
+    .ai-tab.active { border-color:var(--gold-600); background:var(--gold-tint); color:var(--gold-text); }
+    .ai-tabpane { display:flex; flex-direction:column; gap:12px; }
+    .ai-field { display:flex; flex-direction:column; gap:5px; }
+    .ai-field-label { font:var(--fw-medium) var(--fs-label)/1 var(--font-sans); color:var(--text-tertiary); letter-spacing:var(--tracking-label); }
+    .ai-field .select-wrap select { width:100%; }
+    .ai-status { font:var(--fw-regular) var(--fs-label)/1.4 var(--font-sans); color:var(--text-secondary); }
+    .ai-status a { color:var(--gold-text); }
+    .ai-status.ok { color:var(--good-text); }
+    .ai-status.err { color:var(--issue-text); }
+    .ai-test-row { display:flex; align-items:center; gap:10px; }
+    .ai-test-row .ai-status { flex:1; min-width:0; }
+    .ai-enable-row { display:flex; align-items:center; gap:8px; font:var(--fw-regular) var(--fs-body-sm)/1 var(--font-sans); color:var(--text-primary); cursor:pointer; user-select:none; }
+    .ai-enable-row input { accent-color:var(--gold-500); }
+
     /* Slider */
     .slider { display:flex; flex-direction:column; gap:8px; }
     .slider-head { display:flex; justify-content:space-between; align-items:baseline; }
@@ -701,6 +722,7 @@
       <button class="mode-tab" data-mode="reportcard" data-icon="clipboard-check">Report Card</button>
     </div>
     <div id="header-right">
+      <button type="button" id="ai-settings-btn" data-icon="settings" data-size="17" aria-label="AI settings" title="AI settings"></button>
       <div id="live-indicator">
         <div class="pulse sb-pulse"></div>
         <span class="live-txt">LIVE</span>
@@ -914,7 +936,7 @@
     <aside id="ai-panel" class="side-panel">
       <div class="panel-head">
         <span class="panel-title">AI Engineer</span>
-        <span id="model-chip"><span data-icon="sparkles"></span>your provider</span>
+        <span id="model-chip"><span data-icon="sparkles"></span><span id="model-chip-text">your provider</span></span>
       </div>
       <div class="panel-body"><div id="ai-output" class="placeholder">AI feedback appears here after you analyze.</div></div>
       <div class="panel-footer">
@@ -982,6 +1004,68 @@
   </div>
 </div>
 
+<!-- AI provider settings (#76). One screen, two paths: local Ollama (default)
+     or a pasted API key. The key goes renderer → main once and never back. -->
+<div id="ai-dialog" class="rig-dialog" style="display:none" role="dialog" aria-modal="true" aria-labelledby="ai-dialog-title">
+  <div class="rig-dialog-card ai-dialog-card">
+    <div class="rig-dialog-title" id="ai-dialog-title">AI Engineer</div>
+    <div class="ai-dialog-sub">Works with the AI you already have — use your local Ollama, or paste a key you already pay for.</div>
+    <div class="ai-tabs" role="tablist">
+      <button type="button" class="ai-tab active" id="ai-tab-btn-ollama" role="tab" aria-selected="true">I have Ollama</button>
+      <button type="button" class="ai-tab" id="ai-tab-btn-hosted" role="tab" aria-selected="false">I have an API key</button>
+    </div>
+    <div class="ai-tabpane" id="ai-tab-ollama">
+      <label class="ai-field">
+        <span class="ai-field-label">Endpoint</span>
+        <input type="text" id="ai-ollama-host" class="rig-dialog-input" placeholder="http://localhost:11434" autocomplete="off" spellcheck="false" />
+      </label>
+      <div class="ai-status" id="ai-ollama-status">Looking for Ollama…</div>
+      <label class="ai-field">
+        <span class="ai-field-label">Model</span>
+        <div class="select-wrap">
+          <select id="ai-ollama-model" aria-label="Ollama model"></select>
+          <span class="select-caret" data-icon="chevron-down"></span>
+        </div>
+      </label>
+    </div>
+    <div class="ai-tabpane" id="ai-tab-hosted" style="display:none">
+      <label class="ai-field">
+        <span class="ai-field-label">Provider</span>
+        <div class="select-wrap">
+          <select id="ai-provider" aria-label="Provider">
+            <option value="openai">OpenAI</option>
+            <option value="anthropic">Anthropic</option>
+            <option value="google">Google</option>
+            <option value="custom">Custom (OpenAI-compatible)</option>
+          </select>
+          <span class="select-caret" data-icon="chevron-down"></span>
+        </div>
+      </label>
+      <label class="ai-field" id="ai-baseurl-field" style="display:none">
+        <span class="ai-field-label">Base URL</span>
+        <input type="text" id="ai-base-url" class="rig-dialog-input" placeholder="https://my-endpoint.example.com" autocomplete="off" spellcheck="false" />
+      </label>
+      <label class="ai-field">
+        <span class="ai-field-label">API key</span>
+        <input type="password" id="ai-api-key" class="rig-dialog-input" placeholder="Paste your API key" autocomplete="off" spellcheck="false" />
+      </label>
+      <label class="ai-field">
+        <span class="ai-field-label">Model</span>
+        <input type="text" id="ai-hosted-model" class="rig-dialog-input" placeholder="gpt-4o-mini" autocomplete="off" spellcheck="false" />
+      </label>
+    </div>
+    <div class="ai-test-row">
+      <button type="button" id="ai-test-btn" class="btn btn-secondary sm">Test connection</button>
+      <span class="ai-status" id="ai-test-result" role="status"></span>
+    </div>
+    <label class="ai-enable-row"><input type="checkbox" id="ai-enable-toggle" />Enable AI analysis</label>
+    <div class="rig-dialog-actions">
+      <button type="button" id="ai-dialog-cancel" class="btn btn-secondary sm">Cancel</button>
+      <button type="button" id="ai-dialog-save" class="btn btn-primary sm">Save</button>
+    </div>
+  </div>
+</div>
+
 <!-- Rig name / confirm dialog. Electron's renderer has no window.prompt/confirm,
      so Save As…, Rename and Delete drive this small inline modal instead. -->
 <div id="rig-dialog" class="rig-dialog" style="display:none" role="dialog" aria-modal="true" aria-labelledby="rig-dialog-title">
@@ -1029,6 +1113,7 @@ const ICON_PATHS = {
   upload:'M12 15V3M7 8l5-5 5 5M4 15v4a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-4',
   download:'M12 3v12M7 10l5 5 5-5M4 15v4a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-4',
   'chevron-down':'M6 9l6 6 6-6',
+  settings:'M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2zM12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z',
   circle:'M12 12m-9 0a9 9 0 1 0 18 0 9 9 0 1 0-18 0',
   plus:'M12 5v14M5 12h14',
 };
@@ -3437,6 +3522,194 @@ document.getElementById('rc-gofile-btn').addEventListener('click', () => documen
   document.getElementById('update-dismiss-btn').addEventListener('click', () => banner.classList.remove('show'));
 })();
 
+/* ══ AI provider settings (#76) ══ */
+// One screen, two paths: local Ollama (default tab — privacy-first) or a
+// pasted API key. Saving writes llm.json via main (the key is encrypted with
+// safeStorage there and never comes back to this process).
+const AI_MODEL_HINTS = { openai: 'gpt-4o-mini', anthropic: 'claude-sonnet-4-6', google: 'gemini-2.0-flash', custom: 'model-name' };
+
+let aiDialogTab = 'ollama';
+let aiDetectSeq = 0; // stale-response guard for endpoint edits
+
+function aiEl(id) { return document.getElementById(id); }
+
+function updateModelChip(cfg) {
+  const el = aiEl('model-chip-text');
+  if (!el) return;
+  el.textContent = cfg && cfg.provider ? `${cfg.provider} · ${cfg.model || 'default model'}` : 'your provider';
+}
+
+function setAiTab(tab) {
+  aiDialogTab = tab;
+  aiEl('ai-tab-btn-ollama').classList.toggle('active', tab === 'ollama');
+  aiEl('ai-tab-btn-hosted').classList.toggle('active', tab === 'hosted');
+  aiEl('ai-tab-btn-ollama').setAttribute('aria-selected', String(tab === 'ollama'));
+  aiEl('ai-tab-btn-hosted').setAttribute('aria-selected', String(tab === 'hosted'));
+  aiEl('ai-tab-ollama').style.display = tab === 'ollama' ? 'flex' : 'none';
+  aiEl('ai-tab-hosted').style.display = tab === 'hosted' ? 'flex' : 'none';
+  setAiTestResult('', '');
+}
+
+function setAiTestResult(text, kind) {
+  const el = aiEl('ai-test-result');
+  el.textContent = text;
+  el.className = 'ai-status' + (kind ? ` ${kind}` : '');
+}
+
+// `html` must be a static template — dynamic strings (error reasons) go
+// through the `text` option instead so they can never inject markup.
+function setOllamaStatus(html, kind, text) {
+  const el = aiEl('ai-ollama-status');
+  if (text !== undefined) el.textContent = text;
+  else el.innerHTML = html;
+  el.className = 'ai-status' + (kind ? ` ${kind}` : '');
+  const link = el.querySelector('a');
+  if (link) link.addEventListener('click', (e) => { e.preventDefault(); sb.openReleasePage(link.href); });
+}
+
+// Probe the endpoint and fill the model dropdown. `preferModel` keeps the saved
+// selection when it's still available.
+async function detectOllamaInto(preferModel) {
+  const seq = ++aiDetectSeq;
+  const host = aiEl('ai-ollama-host').value.trim();
+  setOllamaStatus('Looking for Ollama…', '');
+  const sel = aiEl('ai-ollama-model');
+  let res;
+  try { res = await sb.detectOllama(host || undefined); }
+  catch (err) { res = { ok: false, reason: String(err) }; }
+  if (seq !== aiDetectSeq) return; // a newer probe superseded this one
+  sel.innerHTML = '';
+  if (res && res.ok) {
+    const models = res.models || [];
+    for (const m of models) {
+      const opt = document.createElement('option');
+      opt.value = m; opt.textContent = m;
+      sel.appendChild(opt);
+    }
+    sel.disabled = models.length === 0;
+    if (preferModel && models.includes(preferModel)) sel.value = preferModel;
+    if (models.length) {
+      setOllamaStatus(`Ollama detected — ${models.length} model${models.length === 1 ? '' : 's'} available.`, 'ok');
+    } else {
+      setOllamaStatus('Ollama is running but has no models — run <code>ollama pull llama3.2</code> first.', 'err');
+    }
+  } else {
+    sel.disabled = true;
+    if (res && res.reason === 'not-running') {
+      setOllamaStatus('Ollama not detected — <a href="https://ollama.com/download">install it from ollama.com</a>, then relaunch it.', 'err');
+    } else {
+      setOllamaStatus('', 'err', `Could not reach Ollama: ${res && res.reason ? res.reason : 'unknown error'}`);
+    }
+  }
+}
+
+function syncHostedFields() {
+  const provider = aiEl('ai-provider').value;
+  aiEl('ai-baseurl-field').style.display = provider === 'custom' ? 'flex' : 'none';
+  aiEl('ai-hosted-model').placeholder = AI_MODEL_HINTS[provider] || 'model-name';
+}
+
+async function openAiSettings() {
+  let cfg = null;
+  try { cfg = await sb.getLlmConfig(); } catch { cfg = null; }
+  cfg = cfg || { provider: '', model: '', ollamaHost: '', apiBaseUrl: '', hasApiKey: false };
+
+  aiEl('ai-ollama-host').value = cfg.ollamaHost || '';
+  aiEl('ai-base-url').value = cfg.apiBaseUrl || '';
+  aiEl('ai-api-key').value = '';
+  aiEl('ai-api-key').placeholder = cfg.hasApiKey ? '••••••••••  (saved — paste to replace)' : 'Paste your API key';
+  const hosted = cfg.provider && cfg.provider !== 'ollama';
+  if (hosted) {
+    const known = ['openai', 'anthropic', 'google', 'custom'].includes(cfg.provider);
+    aiEl('ai-provider').value = known ? cfg.provider : 'custom';
+    aiEl('ai-hosted-model').value = cfg.model || '';
+  } else {
+    aiEl('ai-hosted-model').value = '';
+  }
+  syncHostedFields();
+  // First open (nothing configured) lands on the Ollama tab — privacy-first.
+  setAiTab(hosted ? 'hosted' : 'ollama');
+  aiEl('ai-enable-toggle').checked = cfg.provider ? aiEnabled : true;
+
+  aiEl('ai-dialog').style.display = 'flex';
+  detectOllamaInto(cfg.provider === 'ollama' ? cfg.model : undefined);
+}
+
+function closeAiSettings() {
+  aiEl('ai-dialog').style.display = 'none';
+}
+
+async function testAiConnection() {
+  const btn = aiEl('ai-test-btn');
+  btn.disabled = true;
+  setAiTestResult('Testing…', '');
+  try {
+    if (aiDialogTab === 'ollama') {
+      await detectOllamaInto(aiEl('ai-ollama-model').value || undefined);
+      const ok = !aiEl('ai-ollama-model').disabled;
+      setAiTestResult(ok ? 'Connected ✓' : 'Not connected', ok ? 'ok' : 'err');
+    } else {
+      const res = await sb.testLlmProvider({
+        provider: aiEl('ai-provider').value,
+        apiKey: aiEl('ai-api-key').value || undefined,
+        apiBaseUrl: aiEl('ai-base-url').value.trim() || undefined,
+      });
+      if (res && res.ok) setAiTestResult('Connected ✓', 'ok');
+      else setAiTestResult(res && res.reason ? res.reason : 'Connection failed', 'err');
+    }
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+async function saveAiSettings() {
+  const patch = aiDialogTab === 'ollama'
+    ? {
+        provider: 'ollama',
+        model: aiEl('ai-ollama-model').value || '',
+        ollamaHost: aiEl('ai-ollama-host').value.trim(),
+      }
+    : {
+        provider: aiEl('ai-provider').value,
+        model: aiEl('ai-hosted-model').value.trim(),
+        apiBaseUrl: aiEl('ai-base-url').value.trim(),
+        // Empty field = keep the already-saved key (never an implicit clear).
+        ...(aiEl('ai-api-key').value ? { apiKey: aiEl('ai-api-key').value } : {}),
+      };
+
+  let res;
+  try { res = await sb.saveLlmConfig(patch); }
+  catch (err) { res = { ok: false, reason: String(err) }; }
+  if (!res || !res.ok) {
+    setAiTestResult(res && res.reason ? res.reason : 'Could not save settings', 'err');
+    return;
+  }
+  updateModelChip(res.config);
+
+  const enable = aiEl('ai-enable-toggle').checked;
+  try {
+    await sb.updateSettings({ aiEnabled: enable });
+    aiEnabled = enable;
+    document.body.classList.toggle('ai-disabled', !aiEnabled);
+  } catch { /* non-fatal — provider config itself was saved */ }
+  closeAiSettings();
+}
+
+(() => {
+  aiEl('ai-settings-btn').addEventListener('click', openAiSettings);
+  aiEl('ai-tab-btn-ollama').addEventListener('click', () => setAiTab('ollama'));
+  aiEl('ai-tab-btn-hosted').addEventListener('click', () => setAiTab('hosted'));
+  aiEl('ai-provider').addEventListener('change', syncHostedFields);
+  aiEl('ai-ollama-host').addEventListener('change', () => detectOllamaInto(aiEl('ai-ollama-model').value || undefined));
+  aiEl('ai-test-btn').addEventListener('click', testAiConnection);
+  aiEl('ai-dialog-save').addEventListener('click', saveAiSettings);
+  aiEl('ai-dialog-cancel').addEventListener('click', closeAiSettings);
+  aiEl('ai-dialog').addEventListener('click', (e) => { if (e.target === aiEl('ai-dialog')) closeAiSettings(); });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && aiEl('ai-dialog').style.display !== 'none') closeAiSettings();
+  });
+})();
+
 /* ══ Init ══ */
 // AI is off by default. Body starts with .ai-disabled (no flash of the AI
 // panel); reveal AI affordances only if the user has opted in. The AI code
@@ -3450,6 +3723,8 @@ let aiEnabled = false;
   } catch { aiEnabled = false; }
   document.body.classList.toggle('ai-disabled', !aiEnabled);
   initIdealProfileSelect();
+  // Show the connected provider in the AI panel chip (#76).
+  try { updateModelChip(await sb.getLlmConfig()); } catch { /* chip keeps its default */ }
 })();
 
 hydrateIcons(document);
