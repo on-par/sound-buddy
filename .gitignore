@@ -11,3 +11,4 @@ playwright-report/
 release/
 .build-cache/
 __pycache__/
+.orchestrator/
