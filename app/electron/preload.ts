@@ -29,6 +29,9 @@ contextBridge.exposeInMainWorld('soundBuddy', {
     llmIntervalSecs: number;
     mode?: 'monitor' | 'record';
     recordDir?: string;
+    // Record mode: which strips to arm as session stems, as channel-config
+    // tokens (e.g. ['0', '2-3']). Omitted ⇒ all configured strips are armed.
+    arm?: string[];
   }) => ipcRenderer.invoke('start-live', opts),
 
   stopLive: () => ipcRenderer.invoke('stop-live'),
