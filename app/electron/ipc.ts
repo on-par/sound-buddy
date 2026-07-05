@@ -469,34 +469,38 @@ async function streamLLM(
     if (!webContents.isDestroyed()) webContents.send(channel, ...args);
   };
 
-  // Route through pi so the narrative uses whatever provider the user configured
-  // (ChatGPT/Codex sub, Claude sub, Copilot, an API key, or local Ollama).
-  const outcome = await streamNarrative((text) => send('llm-delta', text), systemPrompt, userMessage);
+  // Stream via whatever the user connected in AI settings (#76): local Ollama,
+  // a pasted API key (direct HTTPS), or a pi subscription login.
+  try {
+    const outcome = await streamNarrative((text) => send('llm-delta', text), systemPrompt, userMessage);
 
-  if (!outcome.ok) {
-    if (outcome.reason === 'disabled') {
-      logWarn('LLM analysis skipped: AI is disabled in settings');
-      send(
-        'llm-delta',
-        '\n⚠️  AI analysis is turned off. Enable it in settings ' +
-          '(settings.json "aiEnabled": true, or SOUND_BUDDY_AI_ENABLED=1) to use the AI Engineer.\n',
-      );
-    } else if (outcome.reason === 'no-provider') {
-      logWarn('LLM analysis skipped: no pi provider configured');
-      send(
-        'llm-delta',
-        '\n⚠️  No AI provider configured. Run `pi` then `/login` to connect your own ' +
-          'ChatGPT/Codex, Claude, or Copilot subscription — or a local Ollama model (offline). ' +
-          'Optionally set SOUND_BUDDY_LLM_PROVIDER / SOUND_BUDDY_LLM_MODEL to pick one.\n',
-      );
+    if (!outcome.ok) {
+      if (outcome.reason === 'disabled') {
+        logWarn('LLM analysis skipped: AI is disabled in settings');
+        send(
+          'llm-delta',
+          '\n⚠️  AI analysis is turned off. Open AI settings (the gear icon) and ' +
+            'check "Enable AI analysis" to use the AI Engineer.\n',
+        );
+      } else if (outcome.reason === 'no-provider') {
+        logWarn('LLM analysis skipped: no provider configured');
+        send(
+          'llm-delta',
+          '\n⚠️  No AI provider connected. Open AI settings (the gear icon) to use ' +
+            'your local Ollama or paste an API key.\n',
+        );
+      } else {
+        logError(`LLM narrative error: ${outcome.reason}`);
+        send('llm-delta', `\n[AI error: ${outcome.reason}]\n`);
+      }
     } else {
-      logError(`LLM narrative error: ${outcome.reason}`);
-      send('llm-delta', `\n[AI error: ${outcome.reason}]\n`);
+      log(`LLM narrative ok via ${outcome.provider ?? '?'}/${outcome.model ?? '?'}`);
     }
-  } else {
-    log(`LLM narrative ok via ${outcome.provider ?? '?'}/${outcome.model ?? '?'}`);
+  } finally {
+    // Always release the renderer's "Analyzing…" state — a missed 'llm-done'
+    // wedges the AI button until app restart.
+    send('llm-done');
   }
-  send('llm-done');
 }
 
 // ─── Device enumeration ─────────────────────────────────────────────────────

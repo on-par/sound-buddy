@@ -67,6 +67,17 @@ export function isHostedProvider(p: string | undefined): p is HostedProviderId {
   return p === 'openai' || p === 'anthropic' || p === 'google' || p === 'custom';
 }
 
+/**
+ * Normalize a user-typed endpoint ("localhost:11434", "box:80/") to a URL with
+ * an explicit scheme. Without one, `new URL('localhost:11434')` parses
+ * "localhost:" as the *protocol* and connects to the wrong place entirely.
+ */
+export function normalizeHostUrl(host: string): string {
+  const trimmed = host.trim().replace(/\/+$/, '');
+  if (!trimmed) return trimmed;
+  return /^https?:\/\//i.test(trimmed) ? trimmed : `http://${trimmed}`;
+}
+
 // Only the "custom" provider honors a base-URL override — a stale apiBaseUrl
 // left in llm.json (e.g. after switching custom → OpenAI) must never receive
 // a known provider's key.
@@ -191,6 +202,27 @@ export function extractDelta(kind: StreamKind, data: unknown): string | null {
       return typeof delta === 'string' && delta ? delta : null;
     }
   }
+}
+
+/**
+ * Extract an in-stream error from one parsed SSE payload, or null when the
+ * event isn't an error. Providers can fail AFTER the 200 (Anthropic
+ * `overloaded_error`, OpenAI-compatible `{error:{…}}` objects) — a stream that
+ * ends on one of these must not be reported as a successful narrative.
+ */
+export function extractStreamError(kind: StreamKind, data: unknown): string | null {
+  if (data == null || typeof data !== 'object') return null;
+  const d = data as Record<string, any>;
+  if (kind === 'anthropic-sse') {
+    if (d.type === 'error') return d.error?.message || d.error?.type || 'provider error';
+    return null;
+  }
+  // openai-sse + google-sse both surface `{ error: {...} }` payloads.
+  if (d.error) {
+    if (typeof d.error === 'string') return d.error;
+    return d.error.message || d.error.status || 'provider error';
+  }
+  return null;
 }
 
 /**

@@ -16,6 +16,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { app, safeStorage } from 'electron';
 import { logWarn } from './logger';
+import { normalizeHostUrl } from './llm-providers';
 
 /** The persisted file shape (all optional — absent keys fall back at read). */
 export interface LlmConfigFile {
@@ -26,6 +27,9 @@ export interface LlmConfigFile {
   apiBaseUrl?: string;
   /** safeStorage ciphertext, base64. Never the key itself. */
   apiKeyEnc?: string;
+  /** Which provider the stored key was pasted for — a key is never sent to a
+   *  different provider's endpoint. */
+  apiKeyProvider?: string;
   piBin?: string;
 }
 
@@ -45,6 +49,8 @@ export interface PublicLlmConfig {
   ollamaHost: string;
   apiBaseUrl: string;
   hasApiKey: boolean;
+  /** Provider the stored key belongs to ('' when no key). */
+  apiKeyProvider: string;
 }
 
 export const DEFAULT_OLLAMA_HOST = 'http://localhost:11434';
@@ -93,12 +99,15 @@ export function getLlmConfig(): LlmConfig {
 export function getPublicLlmConfig(): PublicLlmConfig {
   const cfg = getLlmConfig();
   const file = readLlmFile('for public read');
+  const envKey = Boolean(process.env.SOUND_BUDDY_LLM_API_KEY?.trim());
   return {
     provider: cfg.provider || '',
     model: cfg.model || '',
     ollamaHost: cfg.ollamaHost || DEFAULT_OLLAMA_HOST,
     apiBaseUrl: cfg.apiBaseUrl || '',
-    hasApiKey: Boolean(process.env.SOUND_BUDDY_LLM_API_KEY?.trim() || file.apiKeyEnc),
+    hasApiKey: envKey || Boolean(file.apiKeyEnc),
+    // An env key is a dev override that applies to whatever provider is active.
+    apiKeyProvider: envKey ? cfg.provider || '' : file.apiKeyEnc ? file.apiKeyProvider || '' : '',
   };
 }
 
@@ -124,7 +133,7 @@ export function saveLlmConfig(patch: LlmConfigPatch): PublicLlmConfig {
   if (typeof patch.provider === 'string') next.provider = patch.provider.trim();
   if (typeof patch.model === 'string') next.model = patch.model.trim();
   if (typeof patch.ollamaHost === 'string') {
-    next.ollamaHost = patch.ollamaHost.trim() || DEFAULT_OLLAMA_HOST;
+    next.ollamaHost = normalizeHostUrl(patch.ollamaHost) || DEFAULT_OLLAMA_HOST;
   }
   if (typeof patch.apiBaseUrl === 'string') next.apiBaseUrl = patch.apiBaseUrl.trim();
 
@@ -132,6 +141,7 @@ export function saveLlmConfig(patch: LlmConfigPatch): PublicLlmConfig {
     const key = patch.apiKey.trim();
     if (!key) {
       delete next.apiKeyEnc;
+      delete next.apiKeyProvider;
     } else {
       if (!safeStorage.isEncryptionAvailable()) {
         throw new Error(
@@ -139,6 +149,7 @@ export function saveLlmConfig(patch: LlmConfigPatch): PublicLlmConfig {
         );
       }
       next.apiKeyEnc = safeStorage.encryptString(key).toString('base64');
+      next.apiKeyProvider = next.provider || '';
     }
   }
 
@@ -148,16 +159,19 @@ export function saveLlmConfig(patch: LlmConfigPatch): PublicLlmConfig {
 
 /**
  * The decrypted API key for main-process use only (env override first). Returns
- * undefined when no key is stored or the ciphertext can't be decrypted (e.g.
- * llm.json copied from another machine — the Keychain entry doesn't travel).
+ * undefined when no key is stored, when the ciphertext can't be decrypted (e.g.
+ * llm.json copied from another machine — the Keychain entry doesn't travel), or
+ * when `forProvider` is given and the stored key was pasted for a DIFFERENT
+ * provider — a key must never be sent to another provider's endpoint.
  */
-export function getApiKey(): string | undefined {
+export function getApiKey(forProvider?: string): string | undefined {
   const env = process.env.SOUND_BUDDY_LLM_API_KEY?.trim();
-  if (env) return env;
-  const enc = readLlmFile('for key read').apiKeyEnc;
-  if (!enc) return undefined;
+  if (env) return env; // dev override — trusted for whatever provider is active
+  const file = readLlmFile('for key read');
+  if (!file.apiKeyEnc) return undefined;
+  if (forProvider && file.apiKeyProvider && file.apiKeyProvider !== forProvider) return undefined;
   try {
-    return safeStorage.decryptString(Buffer.from(enc, 'base64'));
+    return safeStorage.decryptString(Buffer.from(file.apiKeyEnc, 'base64'));
   } catch (err) {
     logWarn(`could not decrypt stored API key: ${String(err)}`);
     return undefined;

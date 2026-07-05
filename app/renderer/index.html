@@ -3530,6 +3530,7 @@ const AI_MODEL_HINTS = { openai: 'gpt-4o-mini', anthropic: 'claude-sonnet-4-6', 
 
 let aiDialogTab = 'ollama';
 let aiDetectSeq = 0; // stale-response guard for endpoint edits
+let aiSavedCfg = null; // last-loaded public config (drives key placeholder + provider preservation)
 
 function aiEl(id) { return document.getElementById(id); }
 
@@ -3568,7 +3569,9 @@ function setOllamaStatus(html, kind, text) {
 }
 
 // Probe the endpoint and fill the model dropdown. `preferModel` keeps the saved
-// selection when it's still available.
+// selection when it's still available. Returns the probe result (null when a
+// newer probe superseded this one) so Test connection can judge reachability
+// directly instead of inferring it from widget state.
 async function detectOllamaInto(preferModel) {
   const seq = ++aiDetectSeq;
   const host = aiEl('ai-ollama-host').value.trim();
@@ -3577,7 +3580,7 @@ async function detectOllamaInto(preferModel) {
   let res;
   try { res = await sb.detectOllama(host || undefined); }
   catch (err) { res = { ok: false, reason: String(err) }; }
-  if (seq !== aiDetectSeq) return; // a newer probe superseded this one
+  if (seq !== aiDetectSeq) return null; // a newer probe superseded this one
   sel.innerHTML = '';
   if (res && res.ok) {
     const models = res.models || [];
@@ -3601,29 +3604,50 @@ async function detectOllamaInto(preferModel) {
       setOllamaStatus('', 'err', `Could not reach Ollama: ${res && res.reason ? res.reason : 'unknown error'}`);
     }
   }
+  return res;
 }
 
 function syncHostedFields() {
   const provider = aiEl('ai-provider').value;
   aiEl('ai-baseurl-field').style.display = provider === 'custom' ? 'flex' : 'none';
   aiEl('ai-hosted-model').placeholder = AI_MODEL_HINTS[provider] || 'model-name';
+  // A stored key only counts for the provider it was pasted for — switching the
+  // dropdown means a new key is needed (main enforces this; the placeholder
+  // just keeps the UI honest about it).
+  const keySaved = aiSavedCfg && aiSavedCfg.hasApiKey && aiSavedCfg.apiKeyProvider === provider;
+  aiEl('ai-api-key').placeholder = keySaved ? '••••••••••  (saved — paste to replace)' : 'Paste your API key';
 }
 
 async function openAiSettings() {
   let cfg = null;
   try { cfg = await sb.getLlmConfig(); } catch { cfg = null; }
-  cfg = cfg || { provider: '', model: '', ollamaHost: '', apiBaseUrl: '', hasApiKey: false };
+  cfg = cfg || { provider: '', model: '', ollamaHost: '', apiBaseUrl: '', hasApiKey: false, apiKeyProvider: '' };
+  aiSavedCfg = cfg;
 
   aiEl('ai-ollama-host').value = cfg.ollamaHost || '';
   aiEl('ai-base-url').value = cfg.apiBaseUrl || '';
   aiEl('ai-api-key').value = '';
-  aiEl('ai-api-key').placeholder = cfg.hasApiKey ? '••••••••••  (saved — paste to replace)' : 'Paste your API key';
   const hosted = cfg.provider && cfg.provider !== 'ollama';
+  const providerSel = aiEl('ai-provider');
+  // Drop any previously injected pass-through option before repopulating.
+  const injected = providerSel.querySelector('option[data-passthrough]');
+  if (injected) injected.remove();
   if (hosted) {
-    const known = ['openai', 'anthropic', 'google', 'custom'].includes(cfg.provider);
-    aiEl('ai-provider').value = known ? cfg.provider : 'custom';
+    if ([...providerSel.options].some((o) => o.value === cfg.provider)) {
+      providerSel.value = cfg.provider;
+    } else {
+      // A pre-#76 pi provider ("copilot", …). Keep it selectable as-is so a
+      // no-change Save can never silently rewrite a working config to "custom".
+      const opt = document.createElement('option');
+      opt.value = cfg.provider;
+      opt.textContent = `${cfg.provider} (via pi login)`;
+      opt.dataset.passthrough = '1';
+      providerSel.appendChild(opt);
+      providerSel.value = cfg.provider;
+    }
     aiEl('ai-hosted-model').value = cfg.model || '';
   } else {
+    providerSel.value = 'openai';
     aiEl('ai-hosted-model').value = '';
   }
   syncHostedFields();
@@ -3645,8 +3669,10 @@ async function testAiConnection() {
   setAiTestResult('Testing…', '');
   try {
     if (aiDialogTab === 'ollama') {
-      await detectOllamaInto(aiEl('ai-ollama-model').value || undefined);
-      const ok = !aiEl('ai-ollama-model').disabled;
+      const res = await detectOllamaInto(aiEl('ai-ollama-model').value || undefined);
+      // res.ok = reachable — a running Ollama with zero models is still connected
+      // (the status line above already says to pull one).
+      const ok = !!(res && res.ok);
       setAiTestResult(ok ? 'Connected ✓' : 'Not connected', ok ? 'ok' : 'err');
     } else {
       const res = await sb.testLlmProvider({
@@ -3663,19 +3689,33 @@ async function testAiConnection() {
 }
 
 async function saveAiSettings() {
-  const patch = aiDialogTab === 'ollama'
-    ? {
-        provider: 'ollama',
-        model: aiEl('ai-ollama-model').value || '',
-        ollamaHost: aiEl('ai-ollama-host').value.trim(),
-      }
-    : {
-        provider: aiEl('ai-provider').value,
-        model: aiEl('ai-hosted-model').value.trim(),
-        apiBaseUrl: aiEl('ai-base-url').value.trim(),
-        // Empty field = keep the already-saved key (never an implicit clear).
-        ...(aiEl('ai-api-key').value ? { apiKey: aiEl('ai-api-key').value } : {}),
-      };
+  let patch;
+  if (aiDialogTab === 'ollama') {
+    patch = {
+      provider: 'ollama',
+      model: aiEl('ai-ollama-model').value || '',
+      ollamaHost: aiEl('ai-ollama-host').value.trim(),
+    };
+  } else {
+    const provider = aiEl('ai-provider').value;
+    const model = aiEl('ai-hosted-model').value.trim();
+    // Direct hosted providers hard-require a model (there is no server-side
+    // default); pi pass-through providers supply their own.
+    if (!model && provider in AI_MODEL_HINTS) {
+      setAiTestResult(`Enter a model name first (e.g. ${AI_MODEL_HINTS[provider]}).`, 'err');
+      aiEl('ai-hosted-model').focus();
+      return;
+    }
+    patch = {
+      provider,
+      model,
+      // The base URL only means something for "custom" — never persist a stale
+      // one against a known provider.
+      apiBaseUrl: provider === 'custom' ? aiEl('ai-base-url').value.trim() : '',
+      // Empty field = keep the already-saved key (never an implicit clear).
+      ...(aiEl('ai-api-key').value ? { apiKey: aiEl('ai-api-key').value } : {}),
+    };
+  }
 
   let res;
   try { res = await sb.saveLlmConfig(patch); }

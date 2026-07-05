@@ -32,8 +32,10 @@ import {
   buildModelsRequest,
   createSseParser,
   extractDelta,
+  extractStreamError,
   friendlyHttpError,
   isHostedProvider,
+  normalizeHostUrl,
   type HostedProviderId,
   type HttpRequestSpec,
 } from './llm-providers';
@@ -71,15 +73,22 @@ export async function streamNarrative(
     );
   }
 
-  // Hosted provider with a pasted key → talk to the provider directly. Without
-  // a key (e.g. a pre-#76 config, or "copilot"), fall through to pi.
+  // Hosted provider with a pasted key → talk to the provider directly.
   if (isHostedProvider(cfg.provider)) {
-    const apiKey = getApiKey();
+    const apiKey = getApiKey(cfg.provider);
     if (apiKey) {
       if (!cfg.model) {
         return { ok: false, reason: 'No model configured — pick one in AI settings.' };
       }
       return streamHosted(onDelta, systemPrompt, userMessage, cfg.provider, apiKey, cfg.model, cfg.apiBaseUrl);
+    }
+    // No usable key. "openai"/"anthropic" can still ride a pre-#76 pi login,
+    // but pi has no "custom"/"google" providers — surface the real problem.
+    if (cfg.provider === 'custom' || cfg.provider === 'google') {
+      return {
+        ok: false,
+        reason: `No API key saved for ${cfg.provider} — open AI settings (the gear icon) and paste one.`,
+      };
     }
   }
 
@@ -104,7 +113,15 @@ function streamOllama(
     ],
     stream: true,
   });
-  const url = new URL('/api/chat', host);
+  // A malformed host must resolve {ok:false}, never reject — a rejection here
+  // propagates to trigger-llm-analysis, which then skips 'llm-done' and leaves
+  // the renderer's AI button stuck on "Analyzing…".
+  let url: URL;
+  try {
+    url = new URL('/api/chat', normalizeHostUrl(host));
+  } catch {
+    return Promise.resolve({ ok: false, reason: `Invalid Ollama endpoint: ${host}` });
+  }
   const transport = url.protocol === 'https:' ? https : http;
 
   return new Promise<NarrativeOutcome>((resolve) => {
@@ -223,6 +240,11 @@ function transportFor(url: URL): typeof http | typeof https {
  * All three wire dialects (OpenAI / Anthropic / Google) are SSE `data:` lines;
  * llm-providers.ts owns the per-provider request shape and delta extraction.
  */
+// Socket-inactivity timeout for the narrative stream. Generous — first-token
+// latency on a busy provider can be long — but a black-holed connection must
+// not hang the AI panel forever.
+const STREAM_IDLE_TIMEOUT_MS = 60_000;
+
 function streamHosted(
   onDelta: (text: string) => void,
   systemPrompt: string,
@@ -232,15 +254,23 @@ function streamHosted(
   model: string,
   apiBaseUrl?: string,
 ): Promise<NarrativeOutcome> {
+  // Both the request shaping and the URL parse can throw on a malformed
+  // user-saved base URL; either must resolve {ok:false}, never reject (a
+  // rejection skips 'llm-done' and wedges the renderer's AI button).
   let spec: ReturnType<typeof buildChatRequest>;
+  let url: URL;
   try {
     spec = buildChatRequest(provider, apiKey, model, systemPrompt, userMessage, apiBaseUrl);
+    url = new URL(spec.url);
   } catch (err) {
     return Promise.resolve({ ok: false, reason: String(err instanceof Error ? err.message : err) });
   }
-  const url = new URL(spec.url);
 
   return new Promise<NarrativeOutcome>((resolve) => {
+    let settled = false;
+    const settle = (outcome: NarrativeOutcome): void => {
+      if (!settled) { settled = true; resolve(outcome); }
+    };
     const req = transportFor(url).request(
       {
         hostname: url.hostname,
@@ -248,18 +278,29 @@ function streamHosted(
         path: url.pathname + url.search,
         method: spec.method,
         headers: { ...spec.headers, 'content-length': Buffer.byteLength(spec.body || '') },
+        timeout: STREAM_IDLE_TIMEOUT_MS,
       },
       (res) => {
         const status = res.statusCode || 0;
         if (status < 200 || status >= 300) {
           let body = '';
           res.on('data', (chunk: Buffer) => { body += chunk.toString(); });
-          res.on('end', () => resolve({ ok: false, reason: friendlyHttpError(provider, status, body) }));
+          res.on('end', () => settle({ ok: false, reason: friendlyHttpError(provider, status, body) }));
+          res.on('error', (err: Error) => settle({ ok: false, reason: err.message }));
           return;
         }
         const parser = createSseParser((payload) => {
           try {
-            const delta = extractDelta(spec.kind, JSON.parse(payload));
+            const json = JSON.parse(payload) as unknown;
+            // Providers can fail after the 200 (e.g. Anthropic overloaded_error
+            // mid-stream) — surface it instead of reporting a truncated success.
+            const streamError = extractStreamError(spec.kind, json);
+            if (streamError) {
+              settle({ ok: false, reason: streamError });
+              req.destroy();
+              return;
+            }
+            const delta = extractDelta(spec.kind, json);
             if (delta) onDelta(delta);
           } catch {
             // ignore malformed SSE payloads
@@ -268,12 +309,16 @@ function streamHosted(
         res.on('data', (chunk: Buffer) => parser.feed(chunk.toString()));
         res.on('end', () => {
           parser.flush();
-          resolve({ ok: true, provider, model });
+          settle({ ok: true, provider, model });
         });
-        res.on('error', (err: Error) => resolve({ ok: false, reason: err.message }));
+        res.on('error', (err: Error) => settle({ ok: false, reason: err.message }));
       },
     );
-    req.on('error', (err: Error) => resolve({ ok: false, reason: err.message }));
+    req.on('timeout', () => {
+      settle({ ok: false, reason: `${provider} stopped responding (no data for ${STREAM_IDLE_TIMEOUT_MS / 1000}s)` });
+      req.destroy();
+    });
+    req.on('error', (err: Error) => settle({ ok: false, reason: err.message }));
     if (spec.body) req.write(spec.body);
     req.end();
   });
@@ -324,7 +369,7 @@ function probeRequest(spec: HttpRequestSpec): Promise<{ status: number; body: st
  * the settings screen calls this on open (auto-detect) and on "Test connection".
  */
 export async function probeOllama(host?: string): Promise<ProbeResult> {
-  const base = (host?.trim() || DEFAULT_OLLAMA_HOST).replace(/\/+$/, '');
+  const base = normalizeHostUrl(host || '') || DEFAULT_OLLAMA_HOST;
   try {
     const { status, body } = await probeRequest({ url: `${base}/api/tags`, method: 'GET', headers: {} });
     if (status !== 200) return { ok: false, reason: `Ollama answered HTTP ${status} at ${base}` };
@@ -354,7 +399,10 @@ export async function testHostedProvider(opts: {
   if (!isHostedProvider(opts.provider)) {
     return { ok: false, reason: `unknown provider: ${opts.provider}` };
   }
-  const apiKey = opts.apiKey?.trim() || getApiKey();
+  // The stored-key fallback is scoped to the provider it was pasted for — a
+  // saved OpenAI key must not be transmitted to Anthropic just because the
+  // user flipped the dropdown before testing.
+  const apiKey = opts.apiKey?.trim() || getApiKey(opts.provider);
   if (!apiKey) return { ok: false, reason: 'Paste an API key first.' };
 
   let spec: HttpRequestSpec;

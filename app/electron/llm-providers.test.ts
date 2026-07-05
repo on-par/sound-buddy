@@ -3,9 +3,11 @@ import {
   buildModelsRequest,
   buildChatRequest,
   extractDelta,
+  extractStreamError,
   friendlyHttpError,
   createSseParser,
   isHostedProvider,
+  normalizeHostUrl,
 } from './llm-providers';
 
 describe('isHostedProvider', () => {
@@ -152,5 +154,34 @@ describe('createSseParser', () => {
     expect(got).toEqual([]);
     p.flush();
     expect(got).toEqual(['{"tail":true}']);
+  });
+});
+
+describe('normalizeHostUrl', () => {
+  it('prepends http:// to a scheme-less host (localhost:11434 would parse as protocol "localhost:")', () => {
+    expect(normalizeHostUrl('localhost:11434')).toBe('http://localhost:11434');
+    expect(normalizeHostUrl('box.local:11434/')).toBe('http://box.local:11434');
+  });
+
+  it('leaves explicit schemes alone and strips trailing slashes', () => {
+    expect(normalizeHostUrl('http://localhost:11434/')).toBe('http://localhost:11434');
+    expect(normalizeHostUrl('HTTPS://box:443')).toBe('HTTPS://box:443');
+    expect(normalizeHostUrl('  ')).toBe('');
+  });
+});
+
+describe('extractStreamError', () => {
+  it('anthropic-sse: surfaces in-stream error events, ignores normal events', () => {
+    expect(
+      extractStreamError('anthropic-sse', { type: 'error', error: { type: 'overloaded_error', message: 'Overloaded' } }),
+    ).toBe('Overloaded');
+    expect(extractStreamError('anthropic-sse', { type: 'content_block_delta', delta: { text: 'hi' } })).toBeNull();
+  });
+
+  it('openai/google-sse: surfaces {error:{message}} payloads', () => {
+    expect(extractStreamError('openai-sse', { error: { message: 'rate limited' } })).toBe('rate limited');
+    expect(extractStreamError('google-sse', { error: { status: 'RESOURCE_EXHAUSTED' } })).toBe('RESOURCE_EXHAUSTED');
+    expect(extractStreamError('openai-sse', { choices: [{ delta: { content: 'hi' } }] })).toBeNull();
+    expect(extractStreamError('openai-sse', null)).toBeNull();
   });
 });

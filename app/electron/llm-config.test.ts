@@ -61,6 +61,7 @@ describe('getPublicLlmConfig defaults', () => {
       ollamaHost: DEFAULT_OLLAMA_HOST,
       apiBaseUrl: '',
       hasApiKey: false,
+      apiKeyProvider: '',
     });
   });
 });
@@ -128,6 +129,36 @@ describe('env layering', () => {
     process.env.SOUND_BUDDY_LLM_API_KEY = 'sk-env';
     expect(getApiKey()).toBe('sk-env');
     expect(getPublicLlmConfig().hasApiKey).toBe(true);
+  });
+});
+
+describe('key ↔ provider scoping', () => {
+  it('records which provider a key was pasted for and scopes getApiKey to it', () => {
+    saveLlmConfig({ provider: 'openai', apiKey: 'sk-live' });
+    expect(getPublicLlmConfig().apiKeyProvider).toBe('openai');
+    expect(getApiKey('openai')).toBe('sk-live');
+    // The OpenAI key must never be handed out for Anthropic's endpoint.
+    expect(getApiKey('anthropic')).toBeUndefined();
+    // Unscoped read (no provider asked) still works for main-process use.
+    expect(getApiKey()).toBe('sk-live');
+  });
+
+  it('clearing the key also clears its provider binding', () => {
+    saveLlmConfig({ provider: 'openai', apiKey: 'sk-live' });
+    saveLlmConfig({ apiKey: '' });
+    expect(getPublicLlmConfig().apiKeyProvider).toBe('');
+  });
+
+  it('the env override applies to whatever provider asks (dev escape hatch)', () => {
+    process.env.SOUND_BUDDY_LLM_API_KEY = 'sk-env';
+    expect(getApiKey('anthropic')).toBe('sk-env');
+    expect(getApiKey('google')).toBe('sk-env');
+  });
+});
+
+describe('ollamaHost normalization on save', () => {
+  it('prepends http:// to a scheme-less host so it can never parse as a protocol', () => {
+    expect(saveLlmConfig({ ollamaHost: 'localhost:11434' }).ollamaHost).toBe('http://localhost:11434');
   });
 });
 
