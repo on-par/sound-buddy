@@ -1,3 +1,6 @@
+// Copyright (c) 2026 Patrick Robinson (on-par). All rights reserved.
+// Licensed under the Sound Buddy Desktop Application License (app/LICENSE).
+
 import { ipcMain, dialog, BrowserWindow, app, systemPreferences, shell } from 'electron';
 import { execFile, spawn, ChildProcess } from 'child_process';
 import { promisify } from 'util';

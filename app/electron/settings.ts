@@ -1,3 +1,6 @@
+// Copyright (c) 2026 Patrick Robinson (on-par). All rights reserved.
+// Licensed under the Sound Buddy Desktop Application License (app/LICENSE).
+
 // Persisted app settings — a small JSON file in the app's user-data dir.
 //
 //   ~/Library/Application Support/SoundBuddy/settings.json

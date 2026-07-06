@@ -1,3 +1,6 @@
+// Copyright (c) 2026 Patrick Robinson (on-par). All rights reserved.
+// Licensed under the Sound Buddy Desktop Application License (app/LICENSE).
+
 // Pure, framework-free helpers for the capture-rig strip config: reconciling a
 // saved rig (#36) against the hardware currently attached, and resolving a
 // strip's display label (#39). Kept in a standalone classic script so the logic

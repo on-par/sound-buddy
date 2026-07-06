@@ -1,3 +1,6 @@
+// Copyright (c) 2026 Patrick Robinson (on-par). All rights reserved.
+// Licensed under the Sound Buddy Desktop Application License (app/LICENSE).
+
 import { app, BrowserWindow } from 'electron';
 import * as fs from 'fs';
 import * as path from 'path';
