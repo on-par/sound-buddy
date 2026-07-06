@@ -17,6 +17,7 @@ import {
   setActiveRig,
   type CaptureRig,
 } from './settings';
+import { getLicenseState, activateLicense, removeLicense, isEntitled } from './license';
 
 const execFileAsync = promisify(execFile);
 
@@ -471,6 +472,19 @@ async function streamLLM(
     if (!webContents.isDestroyed()) webContents.send(channel, ...args);
   };
 
+  // The AI narrative is a Pro feature (#54). The gate lives here (main process)
+  // so both entry points — the analyze button and the live LLM timer — are
+  // covered even if the renderer's UI gating is bypassed.
+  if (!isEntitled('ai-narrative')) {
+    logWarn('LLM analysis skipped: AI narrative requires a Pro license');
+    send(
+      'llm-delta',
+      '\n🔒 The AI Engineer is a Pro feature. Enter your license key (Help ▸ License…) to unlock it.\n',
+    );
+    send('llm-done');
+    return;
+  }
+
   // Route through pi so the narrative uses whatever provider the user configured
   // (ChatGPT/Codex sub, Claude sub, Copilot, an API key, or local Ollama).
   const outcome = await streamNarrative((text) => send('llm-delta', text), systemPrompt, userMessage);
@@ -576,6 +590,13 @@ export function registerIpcHandlers(): void {
     }
     return updateSettings(clean);
   });
+
+  // License (#54) — offline validation only; none of these touch the network.
+  // get-license re-verifies the stored key on every call, so expiry/grace roll
+  // over naturally without a restart.
+  ipcMain.handle('get-license', () => getLicenseState());
+  ipcMain.handle('activate-license', (_event, key: string) => activateLicense(String(key ?? '')));
+  ipcMain.handle('remove-license', () => removeLicense());
 
   // Capture rigs (#36) — thin wrappers over the pure CRUD helpers in settings.ts,
   // which own validation and the layered-persistence discipline. No UI yet (#37).
