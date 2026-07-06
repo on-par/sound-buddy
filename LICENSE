@@ -1,0 +1,35 @@
+Sound Buddy — Licensing Overview
+================================
+
+Copyright (c) 2026 Patrick Robinson (on-par)
+
+This repository is dual-licensed. Which license applies depends on which part
+of the tree the code lives in:
+
+1. Desktop application — proprietary (source-available)
+
+   Everything under app/ — the Electron desktop app and the packaged
+   application built from it — is licensed under the Sound Buddy Desktop
+   Application License. See app/LICENSE. In short: the source may be read,
+   but the application may only be used with a valid license key, and it may
+   not be redistributed.
+
+2. Packages — MIT
+
+   Everything under packages/ is licensed under the MIT License. See the
+   LICENSE file in each package:
+
+     packages/shared            @sound-buddy/shared
+     packages/scene-inspector   @sound-buddy/scene-inspector
+     packages/audio-engine      @sound-buddy/audio-engine
+     packages/ai-analyst        @sound-buddy/ai-analyst
+     packages/cli               @sound-buddy/cli
+
+Anything else in this repository (build scripts, CI configuration,
+documentation) that does not carry its own license notice is covered by the
+Sound Buddy Desktop Application License in app/LICENSE.
+
+Third-party software bundled with or used by Sound Buddy (including sox,
+FFmpeg, the relocatable Python runtime, and Python libraries such as librosa,
+numpy, and scipy) remains under its own respective licenses; nothing in this
+repository's licenses alters them.

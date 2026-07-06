@@ -100,4 +100,14 @@ releases repo) is configured.
 
 ## License
 
-MIT
+Sound Buddy is dual-licensed:
+
+- **Desktop app (`app/`)** — proprietary, source-available, under the
+  [Sound Buddy Desktop Application License](app/LICENSE). Using the app requires a
+  valid license key (issued on purchase); redistribution is not permitted.
+- **Packages (`packages/*`)** — [MIT](packages/shared/LICENSE): `@sound-buddy/shared`,
+  `@sound-buddy/scene-inspector`, `@sound-buddy/audio-engine`, `@sound-buddy/ai-analyst`,
+  and `@sound-buddy/cli`. Each package carries its own MIT `LICENSE` file.
+
+See [LICENSE](LICENSE) at the repo root for the overview. Bundled third-party tools
+(sox, FFmpeg, the Python runtime and libraries) remain under their own licenses.

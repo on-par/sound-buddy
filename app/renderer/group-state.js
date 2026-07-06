@@ -1,3 +1,6 @@
+// Copyright (c) 2026 Patrick Robinson (on-par). All rights reserved.
+// Licensed under the Sound Buddy Desktop Application License (app/LICENSE).
+
 // Pure, framework-free helpers for named channel groups (#41). A group is
 // { name, members: [stripIndex, …] }; a strip belongs to at most one group.
 // Membership is keyed by strip index and is pruned/remapped when a strip is

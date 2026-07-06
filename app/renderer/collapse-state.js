@@ -1,3 +1,6 @@
+// Copyright (c) 2026 Patrick Robinson (on-par). All rights reserved.
+// Licensed under the Sound Buddy Desktop Application License (app/LICENSE).
+
 // Pure, framework-free helpers for per-strip collapse state on the live meter
 // board (#40). Collapsed strips are held as a Set of stable strip ids; every
 // mutation returns a NEW Set so the renderer can swap state atomically and the
