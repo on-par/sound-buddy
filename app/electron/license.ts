@@ -1,3 +1,6 @@
+// Copyright (c) 2026 Patrick Robinson (on-par). All rights reserved.
+// Licensed under the Sound Buddy Desktop Application License (app/LICENSE).
+
 // License key validation + feature gating (#54) — offline-first, no phone-home.
 //
 //   ~/Library/Application Support/SoundBuddy/license.json

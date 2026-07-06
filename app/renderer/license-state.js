@@ -1,3 +1,6 @@
+// Copyright (c) 2026 Patrick Robinson (on-par). All rights reserved.
+// Licensed under the Sound Buddy Desktop Application License (app/LICENSE).
+
 // Pure license/entitlement helpers for the renderer (#54): which features a
 // LicenseState unlocks, what the header badge should read, and the grace-period
 // banner copy. Kept in a standalone classic script so the logic is
