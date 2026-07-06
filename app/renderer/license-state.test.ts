@@ -41,9 +41,9 @@ describe('badge', () => {
     expect(badge({ tier: 'free', status: 'expired' })).toEqual({ label: 'FREE', pro: false, grace: false });
   });
 
-  it('PRO for valid, PRO+grace flag while in grace', () => {
+  it('PRO for valid, PRO · GRACE while in grace', () => {
     expect(badge({ tier: 'pro', status: 'valid' })).toEqual({ label: 'PRO', pro: true, grace: false });
-    expect(badge({ tier: 'pro', status: 'grace' })).toEqual({ label: 'PRO', pro: true, grace: true });
+    expect(badge({ tier: 'pro', status: 'grace' })).toEqual({ label: 'PRO · GRACE', pro: true, grace: true });
   });
 });
 

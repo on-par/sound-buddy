@@ -14,6 +14,14 @@ vi.mock('electron', () => ({
 }));
 vi.mock('./logger', () => ({ log: vi.fn(), logWarn: vi.fn(), logError: vi.fn() }));
 vi.mock('./llm', () => ({ streamNarrative: vi.fn() }));
+// Playback is Pro-gated (#54); these tests cover the spawn/stream mechanics,
+// so entitle everything. license.test.ts owns the gate itself.
+vi.mock('./license', () => ({
+  isEntitled: () => true,
+  getLicenseState: () => ({ tier: 'pro', status: 'valid' }),
+  activateLicense: vi.fn(),
+  removeLicense: vi.fn(),
+}));
 
 const spawnMock = vi.fn();
 vi.mock('child_process', () => ({

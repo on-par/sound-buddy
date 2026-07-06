@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { generateKeyPairSync, sign as cryptoSign, KeyObject } from 'crypto';
+import { generateKeyPairSync, KeyObject } from 'crypto';
 
 // Point Electron's userData at a per-test temp dir so license.json lands in
 // real JSON we can assert against (same harness as settings.test.ts).
@@ -18,8 +18,10 @@ import {
   activateLicense,
   removeLicense,
   isEntitled,
+  licensePublicKey,
   GRACE_DAYS,
 } from './license';
+import { signLicenseKey } from '../tests/license-fixture';
 
 const licenseFile = () => path.join(userDataDir, 'license.json');
 
@@ -32,11 +34,9 @@ function b64url(buf: Buffer): string {
   return buf.toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 }
 
-/** Sign a license key the way scripts/license-keygen.mjs does. */
+/** Sign a license key with this file's test keypair (shared fixture signer). */
 function makeKey(payload: Record<string, unknown>, priv: KeyObject = testPriv): string {
-  const payloadBytes = Buffer.from(JSON.stringify(payload));
-  const sig = cryptoSign(null, payloadBytes, priv);
-  return `SB1.${b64url(payloadBytes)}.${b64url(sig)}`;
+  return signLicenseKey(payload, priv);
 }
 
 const NOW = new Date('2026-07-05T12:00:00Z');
@@ -53,6 +53,16 @@ beforeEach(() => {
 afterEach(() => {
   delete process.env.SOUND_BUDDY_LICENSE_PUBKEY;
   fs.rmSync(userDataDir, { recursive: true, force: true });
+});
+
+describe('licensePublicKey', () => {
+  it('parses the embedded public key when no env override is set', () => {
+    // Guards the production-key swap: a bad paste of EMBEDDED_PUBLIC_KEY_PEM
+    // would reject every real customer key while all other tests stay green
+    // (they verify against throwaway test keypairs via the env override).
+    delete process.env.SOUND_BUDDY_LICENSE_PUBKEY;
+    expect(licensePublicKey().asymmetricKeyType).toBe('ed25519');
+  });
 });
 
 describe('verifyLicenseKey', () => {

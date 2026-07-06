@@ -3523,7 +3523,7 @@ function applyLicenseState(state) {
   const b = window.licenseState.badge(licenseCurrent);
 
   const badgeEl = document.getElementById('license-badge');
-  badgeEl.textContent = b.grace ? 'PRO · GRACE' : b.label;
+  badgeEl.textContent = b.label;
   badgeEl.classList.toggle('pro', b.pro);
   badgeEl.classList.toggle('grace', b.grace);
 
@@ -3550,7 +3550,9 @@ function licenseStatusLine(state) {
   }
   if (state.status === 'grace') return window.licenseState.graceBannerText(state) || 'License expired — grace period active.';
   if (state.status === 'expired') return 'License expired — back on the free tier. Renew to restore Pro features.';
-  return 'License key could not be validated.';
+  // Invalid: surface the specific reason the validator computed (bad paste vs
+  // wrong product vs issuance bug) rather than a generic shrug.
+  return 'License key could not be validated' + (state.error ? ': ' + state.error : '') + '.';
 }
 
 function openLicenseDialog() {
@@ -3614,11 +3616,28 @@ function openLicenseDialog() {
   });
 
   document.getElementById('license-remove-btn').addEventListener('click', async () => {
-    const state = await sb.removeLicense();
+    let state;
+    try {
+      state = await sb.removeLicense();
+    } catch (err) {
+      // The main process rethrows a failed delete — don't pretend the key is
+      // gone (it would come back on the next read).
+      errEl.textContent = 'Could not remove the license: ' + String(err);
+      errEl.style.display = 'block';
+      return;
+    }
     applyLicenseState(state);
     document.getElementById('license-dialog-status').textContent = licenseStatusLine(state);
     document.getElementById('license-remove-btn').style.display = 'none';
   });
+
+  // Entitlement is time-based (expiry, grace) and the main process re-verifies
+  // on every read — poll so a lapse mid-session updates the badge/banner/locks
+  // instead of leaving stale Pro UI until a restart. Local file read + Ed25519
+  // verify: cheap enough to do every minute.
+  setInterval(async () => {
+    try { applyLicenseState(await sb.getLicense()); } catch { /* keep last state */ }
+  }, 60_000);
 })();
 
 /* ══ Updates ══ */
@@ -3663,10 +3682,11 @@ let aiEnabled = false;
     if (s && typeof s.idealProfile === 'string') idealProfileId = s.idealProfile;
   } catch { aiEnabled = false; }
   document.body.classList.toggle('ai-disabled', !aiEnabled);
-  initIdealProfileSelect();
   // License (#54): body starts .not-pro (no flash of Pro UI); reveal Pro
-  // surfaces only once the stored key verifies offline.
+  // surfaces once the stored key verifies offline. Runs before the remaining
+  // boot steps so a throw in them can't leave a licensed user locked.
   try { applyLicenseState(await sb.getLicense()); } catch { applyLicenseState(null); }
+  initIdealProfileSelect();
 })();
 
 hydrateIcons(document);

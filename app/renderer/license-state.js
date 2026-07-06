@@ -35,10 +35,13 @@
    */
   function badge(state) {
     var pro = !!state && state.tier === 'pro';
+    var grace = pro && state.status === 'grace';
     return {
-      label: pro ? 'PRO' : 'FREE',
+      // The label IS the displayed copy — the renderer must not recompose it,
+      // or the tested value and the shown value drift apart.
+      label: grace ? 'PRO · GRACE' : pro ? 'PRO' : 'FREE',
       pro: pro,
-      grace: pro && state.status === 'grace',
+      grace: grace,
     };
   }
 

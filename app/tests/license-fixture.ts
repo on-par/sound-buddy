@@ -4,7 +4,7 @@
 // The app verifies against the matching public key via the
 // SOUND_BUDDY_LICENSE_PUBKEY env override — pass LICENSE_ENV to electron.launch.
 
-import { generateKeyPairSync, sign as cryptoSign } from 'crypto';
+import { generateKeyPairSync, sign as cryptoSign, type KeyObject } from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -19,10 +19,19 @@ function b64url(buf: Buffer): string {
   return buf.toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 }
 
-/** Sign a license key (format: SB1.<b64url payload>.<b64url signature>). */
-export function makeLicenseKey(payload: Record<string, unknown>): string {
+/**
+ * Sign a license key with an explicit private key (format:
+ * SB1.<b64url payload>.<b64url signature>). The single test-side signer —
+ * unit tests bring their own keypairs, the e2e fixtures use this run's.
+ */
+export function signLicenseKey(payload: Record<string, unknown>, privKey: KeyObject): string {
   const payloadBytes = Buffer.from(JSON.stringify(payload));
-  return `SB1.${b64url(payloadBytes)}.${b64url(cryptoSign(null, payloadBytes, privateKey))}`;
+  return `SB1.${b64url(payloadBytes)}.${b64url(cryptoSign(null, payloadBytes, privKey))}`;
+}
+
+/** Sign a license key with this test run's fixture keypair. */
+export function makeLicenseKey(payload: Record<string, unknown>): string {
+  return signLicenseKey(payload, privateKey);
 }
 
 /**

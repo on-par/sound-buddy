@@ -76,9 +76,15 @@ function licensePath(): string {
   return path.join(app.getPath('userData'), 'license.json');
 }
 
-/** Resolve the verification key: env override (tests/e2e) or the embedded key. */
-function publicKey(): KeyObject {
-  const env = process.env.SOUND_BUDDY_LICENSE_PUBKEY?.trim();
+/**
+ * Resolve the verification key: env override (tests/e2e — dev builds only, so
+ * the shipped .app can't be pointed at a self-signed keypair) or the embedded
+ * key. Exported so a test can prove the embedded PEM actually parses — a bad
+ * paste of the production key would otherwise reject every real license while
+ * the suite stays green against test keypairs.
+ */
+export function licensePublicKey(): KeyObject {
+  const env = !app.isPackaged && process.env.SOUND_BUDDY_LICENSE_PUBKEY?.trim();
   if (env) {
     if (env.includes('BEGIN PUBLIC KEY')) return createPublicKey(env);
     return createPublicKey({ key: Buffer.from(env, 'base64'), format: 'der', type: 'spki' });
@@ -112,7 +118,7 @@ export function verifyLicenseKey(key: string, now: Date = new Date()): LicenseSt
   const sigBytes = fromBase64Url(parts[2]);
   try {
     // Ed25519: algorithm is implied by the key; pass null for the digest.
-    if (!cryptoVerify(null, payloadBytes, publicKey(), sigBytes)) {
+    if (!cryptoVerify(null, payloadBytes, licensePublicKey(), sigBytes)) {
       return invalid('Invalid signature');
     }
   } catch (err) {
@@ -192,12 +198,17 @@ export function activateLicense(key: string, now: Date = new Date()): LicenseSta
   return state;
 }
 
-/** Remove the stored key, reverting to the free tier. User data is untouched. */
+/**
+ * Remove the stored key, reverting to the free tier. User data is untouched.
+ * Rethrows a delete failure (EPERM/EBUSY — force only suppresses ENOENT) so
+ * the UI can't report "removed" while the key is still stored.
+ */
 export function removeLicense(): LicenseState {
   try {
     fs.rmSync(licensePath(), { force: true });
   } catch (err) {
     logWarn(`could not remove license.json: ${String(err)}`);
+    throw err;
   }
   return { ...FREE_STATE };
 }
