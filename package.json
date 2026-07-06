@@ -1,7 +1,7 @@
 {
   "name": "sound-buddy",
   "private": true,
-  "license": "SEE LICENSE IN LICENSE",
+  "license": "MIT",
   "workspaces": ["packages/*"],
   "scripts": {
     "build": "npm run build -w @sound-buddy/shared -w @sound-buddy/scene-inspector -w @sound-buddy/audio-engine -w @sound-buddy/ai-analyst -w @sound-buddy/cli",

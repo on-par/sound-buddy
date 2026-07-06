@@ -14,10 +14,11 @@ of the tree the code lives in:
    but the application may only be used with a valid license key, and it may
    not be redistributed.
 
-2. Packages — MIT
+2. Everything else — MIT
 
-   Everything under packages/ is licensed under the MIT License. See the
-   LICENSE file in each package:
+   Everything in this repository outside app/ is licensed under the MIT
+   License (reproduced below). That includes the packages under packages/ —
+   each of which also carries its own copy of the MIT License —
 
      packages/shared            @sound-buddy/shared
      packages/scene-inspector   @sound-buddy/scene-inspector
@@ -25,11 +26,35 @@ of the tree the code lives in:
      packages/ai-analyst        @sound-buddy/ai-analyst
      packages/cli               @sound-buddy/cli
 
-Anything else in this repository (build scripts, CI configuration,
-documentation) that does not carry its own license notice is covered by the
-Sound Buddy Desktop Application License in app/LICENSE.
+   as well as the build and release scripts, CI configuration, shared
+   TypeScript configuration, and documentation, so the MIT packages can be
+   built and reused outside this repository.
 
 Third-party software bundled with or used by Sound Buddy (including sox,
 FFmpeg, the relocatable Python runtime, and Python libraries such as librosa,
 numpy, and scipy) remains under its own respective licenses; nothing in this
 repository's licenses alters them.
+
+----------------------------------------------------------------------
+
+MIT License
+
+Copyright (c) 2026 Patrick Robinson (on-par)
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
