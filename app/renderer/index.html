@@ -200,6 +200,55 @@
        spectrum panel is flex:1 so it reflows to fill the freed space. */
     body.ai-disabled #ai-panel { display:none; }
     body.ai-disabled .ai-only { display:none !important; }
+
+    /* ── License gating (#54) ─────────────────────────────────────────
+       body.not-pro = no active Pro license. Gated surfaces (Live tab,
+       Soundcheck tab, AI panel body) collapse to an upgrade card
+       (.pro-gate) and their tabs carry a small lock glyph. The free tier
+       keeps the full report card — the app is never locked. Body starts
+       with .not-pro (no flash of Pro UI); boot removes it once the stored
+       key verifies. */
+    .pro-gate { display:none; flex-direction:column; align-items:center; gap:8px; padding:22px 12px; text-align:center; }
+    .pro-gate .pg-icon { color:var(--text-muted); }
+    .pro-gate .pg-title { font:var(--fw-semibold) var(--fs-body-sm)/1.3 var(--font-sans); color:var(--text-primary); }
+    .pro-gate .pg-msg { font:var(--fw-regular) var(--fs-label)/1.45 var(--font-sans); color:var(--text-secondary); }
+    .pro-gate .pg-link { background:none; border:none; padding:0; cursor:pointer; color:var(--gold-text); font:var(--fw-medium) var(--fs-label)/1.3 var(--font-sans); text-decoration:underline; text-underline-offset:2px; }
+    .pro-gate .pg-link:hover { filter:brightness(1.1); }
+    .mode-tab .tab-lock { display:none; margin-left:2px; color:var(--text-muted); }
+    body.not-pro .mode-tab .tab-lock { display:inline-flex; }
+    body.not-pro #tab-live > :not(.pro-gate),
+    body.not-pro #tab-soundcheck > :not(.pro-gate) { display:none !important; }
+    body.not-pro #tab-live .pro-gate,
+    body.not-pro #tab-soundcheck .pro-gate { display:flex; }
+    body.not-pro #ai-panel .panel-body,
+    body.not-pro #ai-panel .panel-footer { display:none; }
+    body.not-pro #ai-panel .pro-gate { display:flex; }
+
+    /* Free/Pro badge in the header (click to manage the license). */
+    #license-badge {
+      display:inline-flex; align-items:center; gap:5px; height:22px; padding:0 9px;
+      border-radius:999px; border:1px solid var(--border-default); background:var(--surface-inset);
+      color:var(--text-secondary); font:var(--fw-semibold) 10px/1 var(--font-sans);
+      letter-spacing:0.08em; cursor:pointer; -webkit-app-region:no-drag;
+    }
+    #license-badge:hover { color:var(--text-primary); }
+    #license-badge.pro { color:var(--gold-text); border-color:var(--gold-500); background:var(--gold-tint, rgba(243,202,94,0.14)); }
+    #license-badge.grace { color:var(--issue-text); border-color:var(--issue-500); background:transparent; }
+
+    /* Grace-period banner — same visual language as the update banner. */
+    #license-banner {
+      display:none; align-items:center; gap:10px; padding:8px 14px; flex-shrink:0;
+      background:var(--gold-tint, rgba(243,202,94,0.14));
+      border-bottom:1px solid var(--gold-500, #EBB93C);
+      font:var(--fw-medium) var(--fs-body-sm)/1.3 var(--font-sans); color:var(--gold-text, #F3CA5E);
+    }
+    #license-banner.show { display:flex; }
+    #license-banner .lb-text { flex:1; min-width:0; }
+
+    /* License dialog status lines. */
+    .lic-status { font:var(--fw-regular) var(--fs-label)/1.4 var(--font-sans); color:var(--text-secondary); }
+    .lic-status.ok { color:var(--gold-text); }
+    .lic-status.err { color:var(--issue-text); }
     .panel-head {
       display:flex; align-items:center; justify-content:space-between; padding:14px 16px;
       border-bottom:1px solid var(--border-subtle); flex-shrink:0;
@@ -681,7 +730,7 @@
     .rcp-dev .devbar-under { fill:var(--band-mid, #23BBA6); opacity:0.8; }
   </style>
 </head>
-<body class="ai-disabled">
+<body class="ai-disabled not-pro">
 <div id="root">
   <!-- ══ Update banner ══ -->
   <div id="update-banner" role="status">
@@ -689,6 +738,13 @@
     <span id="update-banner-text">A new version is available.</span>
     <button type="button" id="update-download-btn" class="ub-btn">Download</button>
     <button type="button" id="update-dismiss-btn" class="ub-x" aria-label="Dismiss">✕</button>
+  </div>
+  <!-- ══ License grace banner (#54) ══ -->
+  <div id="license-banner" role="status">
+    <span data-icon="alert-triangle" class="ub-icon"></span>
+    <span class="lb-text" id="license-banner-text"></span>
+    <button type="button" id="license-banner-manage" class="ub-btn">Manage…</button>
+    <button type="button" id="license-banner-dismiss" class="ub-x" aria-label="Dismiss">✕</button>
   </div>
   <!-- ══ Header ══ -->
   <div id="header">
@@ -700,11 +756,12 @@
     <div id="mode-tabs" role="tablist">
       <button class="mode-tab active" data-mode="file" data-icon="file-audio">File</button>
       <button class="mode-tab" data-mode="dir" data-icon="folder">Directory</button>
-      <button class="mode-tab" data-mode="live" data-icon="radio">Live</button>
-      <button class="mode-tab" data-mode="soundcheck" data-icon="sliders">Soundcheck</button>
+      <button class="mode-tab" data-mode="live" data-icon="radio">Live<span class="tab-lock" data-icon="lock" data-size="11"></span></button>
+      <button class="mode-tab" data-mode="soundcheck" data-icon="sliders">Soundcheck<span class="tab-lock" data-icon="lock" data-size="11"></span></button>
       <button class="mode-tab" data-mode="reportcard" data-icon="clipboard-check">Report Card</button>
     </div>
     <div id="header-right">
+      <button type="button" id="license-badge" title="License — click to manage">FREE</button>
       <div id="live-indicator">
         <div class="pulse sb-pulse"></div>
         <span class="live-txt">LIVE</span>
@@ -770,6 +827,14 @@
 
         <!-- LIVE -->
         <div class="tab-content" id="tab-live">
+          <!-- Pro gate (#54): shown instead of the live controls (incl. rigs)
+               when no active Pro license. -->
+          <div class="pro-gate">
+            <span class="pg-icon" data-icon="lock" data-size="22"></span>
+            <span class="pg-title">Live monitoring is a Pro feature</span>
+            <span class="pg-msg">Capture and monitor multi-channel audio in real time, with saved rigs.</span>
+            <button type="button" class="pg-link" data-license-open>Upgrade — enter a license key</button>
+          </div>
           <!-- Saved capture setups ("rigs"): pick one to restore device, channels,
                mode, folder and slider cadences; Save / Save As… / Rename / Delete. -->
           <div id="rig-bar" class="rig-bar">
@@ -864,6 +929,14 @@
         <!-- Virtual Soundcheck (#46): load a recorded session, route each track to
              an output, and play it back with per-track meters. -->
         <div class="tab-content" id="tab-soundcheck">
+          <!-- Pro gate (#54): shown instead of the soundcheck controls when no
+               active Pro license. -->
+          <div class="pro-gate">
+            <span class="pg-icon" data-icon="lock" data-size="22"></span>
+            <span class="pg-title">Virtual soundcheck is a Pro feature</span>
+            <span class="pg-msg">Play back a captured session through your console and mix without the band.</span>
+            <button type="button" class="pg-link" data-license-open>Upgrade — enter a license key</button>
+          </div>
           <button type="button" class="btn btn-secondary full" id="sc-choose-btn" data-icon="folder">Choose session folder…</button>
           <div id="sc-session-name" class="sc-session-name" style="display:none"></div>
           <div class="hairline"></div>
@@ -919,6 +992,14 @@
       <div class="panel-head">
         <span class="panel-title">AI Engineer</span>
         <span id="model-chip"><span data-icon="sparkles"></span>your provider</span>
+      </div>
+      <!-- Pro gate (#54): the AI panel body collapses to this when AI is
+           enabled but no Pro license is active. -->
+      <div class="pro-gate">
+        <span class="pg-icon" data-icon="lock" data-size="22"></span>
+        <span class="pg-title">The AI Engineer is a Pro feature</span>
+        <span class="pg-msg">Streaming mix feedback from your own AI provider — local or your API key.</span>
+        <button type="button" class="pg-link" data-license-open>Upgrade — enter a license key</button>
       </div>
       <div class="panel-body"><div id="ai-output" class="placeholder">AI feedback appears here after you analyze.</div></div>
       <div class="panel-footer">
@@ -1000,6 +1081,23 @@
   </div>
 </div>
 
+<!-- License entry/status dialog (#54) — opened from the header badge, the
+     Help ▸ License… menu item, and every "Upgrade" link. Validation is fully
+     offline (Ed25519 signature in the main process); no network call, ever. -->
+<div id="license-dialog" class="rig-dialog" style="display:none" role="dialog" aria-modal="true" aria-labelledby="license-dialog-title">
+  <div class="rig-dialog-card">
+    <div class="rig-dialog-title" id="license-dialog-title">License</div>
+    <div class="lic-status" id="license-dialog-status">Free tier — full report card included.</div>
+    <input type="text" id="license-key-input" class="rig-dialog-input" placeholder="Paste your license key (SB1.…)" autocomplete="off" spellcheck="false" />
+    <div class="lic-status err" id="license-dialog-error" style="display:none" role="alert"></div>
+    <div class="rig-dialog-actions">
+      <button type="button" id="license-remove-btn" class="btn btn-secondary sm" style="display:none">Remove key</button>
+      <button type="button" id="license-close-btn" class="btn btn-secondary sm">Close</button>
+      <button type="button" id="license-activate-btn" class="btn btn-primary sm">Activate</button>
+    </div>
+  </div>
+</div>
+
 <!-- Pure rig ↔ hardware reconciliation helpers (window.rigReconcile). Loaded as
      a classic script before the inline app script so it's ready at boot. -->
 <script src="rig-reconcile.js"></script>
@@ -1011,6 +1109,8 @@
 <script src="group-state.js"></script>
 <!-- Pure virtual-soundcheck routing helpers (window.playbackRouting, #46). -->
 <script src="playback-routing.js"></script>
+<!-- Pure license/entitlement helpers (window.licenseState, #54). -->
+<script src="license-state.js"></script>
 <script>
 'use strict';
 
@@ -1035,6 +1135,7 @@ const ICON_PATHS = {
   'chevron-down':'M6 9l6 6 6-6',
   circle:'M12 12m-9 0a9 9 0 1 0 18 0 9 9 0 1 0-18 0',
   plus:'M12 5v14M5 12h14',
+  lock:'M5 11h14a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2zM7 11V7a5 5 0 0 1 10 0v4',
 };
 
 function iconSvg(name, size = 16, opts = {}) {
@@ -3411,6 +3512,134 @@ function renderReportCardFrames(src) {
 document.getElementById('reportcard-print-btn').addEventListener('click', () => window.print());
 document.getElementById('rc-gofile-btn').addEventListener('click', () => document.querySelector('.mode-tab[data-mode="file"]').click());
 
+/* ══ License (#54) ══ */
+// Free/Pro state comes from the main process (offline Ed25519 validation);
+// the pure display/entitlement rules live in license-state.js. Activating a
+// key mid-session applies immediately — no restart.
+let licenseCurrent = null;
+
+function applyLicenseState(state) {
+  licenseCurrent = state || { tier: 'free', status: 'none' };
+  const b = window.licenseState.badge(licenseCurrent);
+
+  const badgeEl = document.getElementById('license-badge');
+  badgeEl.textContent = b.label;
+  badgeEl.classList.toggle('pro', b.pro);
+  badgeEl.classList.toggle('grace', b.grace);
+
+  // The single gating hook: every Pro surface keys off body.not-pro in CSS.
+  document.body.classList.toggle('not-pro', !b.pro);
+
+  const banner = document.getElementById('license-banner');
+  const graceText = window.licenseState.graceBannerText(licenseCurrent);
+  if (graceText) {
+    document.getElementById('license-banner-text').textContent = graceText;
+    banner.classList.add('show');
+  } else {
+    banner.classList.remove('show');
+  }
+}
+
+function licenseStatusLine(state) {
+  if (!state || state.status === 'none') return 'Free tier — full report card included.';
+  if (state.status === 'valid') {
+    const who = state.email ? ` (${state.email})` : '';
+    if (state.kind === 'lifetime') return `Pro — lifetime license${who}.`;
+    const until = state.expiresAt ? ` until ${new Date(state.expiresAt).toLocaleDateString()}` : '';
+    return `Pro — active${until}${who}.`;
+  }
+  if (state.status === 'grace') return window.licenseState.graceBannerText(state) || 'License expired — grace period active.';
+  if (state.status === 'expired') return 'License expired — back on the free tier. Renew to restore Pro features.';
+  // Invalid: surface the specific reason the validator computed (bad paste vs
+  // wrong product vs issuance bug) rather than a generic shrug.
+  return 'License key could not be validated' + (state.error ? ': ' + state.error : '') + '.';
+}
+
+function openLicenseDialog() {
+  const dlg = document.getElementById('license-dialog');
+  document.getElementById('license-dialog-status').textContent = licenseStatusLine(licenseCurrent);
+  document.getElementById('license-remove-btn').style.display =
+    licenseCurrent && licenseCurrent.tier === 'pro' ? 'inline-flex' : 'none';
+  const errEl = document.getElementById('license-dialog-error');
+  errEl.style.display = 'none';
+  errEl.textContent = '';
+  const input = document.getElementById('license-key-input');
+  input.value = '';
+  dlg.style.display = 'flex';
+  input.focus();
+}
+
+(function initLicense() {
+  const dlg = document.getElementById('license-dialog');
+  const input = document.getElementById('license-key-input');
+  const errEl = document.getElementById('license-dialog-error');
+  const close = () => { dlg.style.display = 'none'; };
+
+  document.getElementById('license-badge').addEventListener('click', openLicenseDialog);
+  document.getElementById('license-banner-manage').addEventListener('click', openLicenseDialog);
+  document.getElementById('license-banner-dismiss').addEventListener('click', () =>
+    document.getElementById('license-banner').classList.remove('show'));
+  document.querySelectorAll('[data-license-open]').forEach((el) =>
+    el.addEventListener('click', openLicenseDialog));
+  sb.onOpenLicenseDialog(openLicenseDialog);
+
+  document.getElementById('license-close-btn').addEventListener('click', close);
+  dlg.addEventListener('click', (e) => { if (e.target === dlg) close(); });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && dlg.style.display !== 'none') close();
+  });
+
+  document.getElementById('license-activate-btn').addEventListener('click', async () => {
+    const key = input.value.trim();
+    if (!key) { input.focus(); return; }
+    let state;
+    try {
+      state = await sb.activateLicense(key);
+    } catch (err) {
+      errEl.textContent = 'Could not save the license: ' + String(err);
+      errEl.style.display = 'block';
+      return;
+    }
+    if (state && state.tier === 'pro') {
+      // Unlocks immediately — no restart (acceptance criterion).
+      applyLicenseState(state);
+      close();
+    } else {
+      // Invalid/expired key: clear messaging, nothing is locked, and any
+      // previously stored key is left untouched by the main process.
+      errEl.textContent = licenseStatusLine(state);
+      errEl.style.display = 'block';
+    }
+  });
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') document.getElementById('license-activate-btn').click();
+  });
+
+  document.getElementById('license-remove-btn').addEventListener('click', async () => {
+    let state;
+    try {
+      state = await sb.removeLicense();
+    } catch (err) {
+      // The main process rethrows a failed delete — don't pretend the key is
+      // gone (it would come back on the next read).
+      errEl.textContent = 'Could not remove the license: ' + String(err);
+      errEl.style.display = 'block';
+      return;
+    }
+    applyLicenseState(state);
+    document.getElementById('license-dialog-status').textContent = licenseStatusLine(state);
+    document.getElementById('license-remove-btn').style.display = 'none';
+  });
+
+  // Entitlement is time-based (expiry, grace) and the main process re-verifies
+  // on every read — poll so a lapse mid-session updates the badge/banner/locks
+  // instead of leaving stale Pro UI until a restart. Local file read + Ed25519
+  // verify: cheap enough to do every minute.
+  setInterval(async () => {
+    try { applyLicenseState(await sb.getLicense()); } catch { /* keep last state */ }
+  }, 60_000);
+})();
+
 /* ══ Updates ══ */
 (function initUpdates() {
   const banner = document.getElementById('update-banner');
@@ -3453,6 +3682,10 @@ let aiEnabled = false;
     if (s && typeof s.idealProfile === 'string') idealProfileId = s.idealProfile;
   } catch { aiEnabled = false; }
   document.body.classList.toggle('ai-disabled', !aiEnabled);
+  // License (#54): body starts .not-pro (no flash of Pro UI); reveal Pro
+  // surfaces once the stored key verifies offline. Runs before the remaining
+  // boot steps so a throw in them can't leave a licensed user locked.
+  try { applyLicenseState(await sb.getLicense()); } catch { applyLicenseState(null); }
   initIdealProfileSelect();
 })();
 

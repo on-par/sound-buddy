@@ -122,6 +122,15 @@ function buildMenu(): void {
             void checkForUpdates(mainWindow, false);
           },
         },
+        { type: 'separator' },
+        {
+          // License entry/status (#54) — the renderer owns the dialog; the
+          // header badge opens the same one.
+          label: 'License…',
+          click: () => {
+            mainWindow?.webContents.send('open-license-dialog');
+          },
+        },
       ],
     },
   ];
