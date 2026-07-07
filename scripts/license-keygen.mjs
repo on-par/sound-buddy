@@ -3,8 +3,8 @@
 //
 //   node scripts/license-keygen.mjs gen [outdir]
 //     Generate an Ed25519 keypair (license-priv.pem / license-pub.pem).
-//     The PRIVATE key must NEVER be committed — it lives with the Paddle
-//     webhook (issuance is a separate issue). Paste the PUBLIC key into
+//     The PRIVATE key must NEVER be committed — it lives with the Stripe
+//     checkout webhook (#56). Paste the PUBLIC key into
 //     EMBEDDED_PUBLIC_KEY_PEM in app/electron/license.ts.
 //
 //   node scripts/license-keygen.mjs sign <priv.pem> [--kind subscription|lifetime]
