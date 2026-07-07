@@ -1,0 +1,14 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  // Static landing page deployed to Cloudflare Workers (Workers Builds).
+  // The build is configured in the Cloudflare dashboard:
+  //   root directory = site/, build = `npm ci && npm run build`, Node 22.
+  // This file only drives the `npx wrangler deploy` step (Worker name + assets).
+  "name": "sound-buddy",
+  "compatibility_date": "2026-07-01",
+  "assets": {
+    "directory": "./dist",
+    // Single-page marketing site — unknown paths fall back to the landing page.
+    "not_found_handling": "single-page-application"
+  }
+}
