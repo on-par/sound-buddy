@@ -12,3 +12,4 @@ release/
 .build-cache/
 __pycache__/
 .orchestrator/
+.factory/
