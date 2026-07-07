@@ -14,6 +14,8 @@ files:
   # Colocated Vitest specs (e.g. renderer/*.test.ts) are dev-only — never ship them.
   - "!renderer/**/*.test.*"
   - package.json
+  # package.json declares "SEE LICENSE IN LICENSE" — the file must ship with it.
+  - LICENSE
 asar: true
 # The Python analysis scripts must live OUTSIDE the asar archive — an external
 # `python3` process can't read files inside app.asar. They land at

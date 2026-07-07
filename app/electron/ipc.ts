@@ -1,3 +1,6 @@
+// Copyright (c) 2026 Patrick Robinson (on-par). All rights reserved.
+// Licensed under the Sound Buddy Desktop Application License (app/LICENSE).
+
 import { ipcMain, dialog, BrowserWindow, app, systemPreferences, shell } from 'electron';
 import { execFile, spawn, ChildProcess } from 'child_process';
 import { promisify } from 'util';
@@ -15,6 +18,7 @@ import {
   setActiveRig,
   type CaptureRig,
 } from './settings';
+import { getLicenseState, activateLicense, removeLicense, isEntitled } from './license';
 
 const execFileAsync = promisify(execFile);
 
@@ -469,6 +473,19 @@ async function streamLLM(
     if (!webContents.isDestroyed()) webContents.send(channel, ...args);
   };
 
+  // The AI narrative is a Pro feature (#54). The gate lives here (main process)
+  // so both entry points — the analyze button and the live LLM timer — are
+  // covered even if the renderer's UI gating is bypassed.
+  if (!isEntitled('ai-narrative')) {
+    logWarn('LLM analysis skipped: AI narrative requires a Pro license');
+    send(
+      'llm-delta',
+      '\n🔒 The AI Engineer is a Pro feature. Enter your license key (Help ▸ License…) to unlock it.\n',
+    );
+    send('llm-done');
+    return;
+  }
+
   // Stream via whatever the user connected in AI settings (#76): local Ollama,
   // a pasted API key (direct HTTPS), or a pi subscription login.
   try {
@@ -610,11 +627,26 @@ export function registerIpcHandlers(): void {
       testHostedProvider(opts && typeof opts === 'object' ? opts : { provider: '' }),
   );
 
+  // License (#54) — offline validation only; none of these touch the network.
+  // get-license re-verifies the stored key on every call, so expiry/grace roll
+  // over naturally without a restart.
+  ipcMain.handle('get-license', () => getLicenseState());
+  ipcMain.handle('activate-license', (_event, key: string) => activateLicense(String(key ?? '')));
+  ipcMain.handle('remove-license', () => removeLicense());
+
   // Capture rigs (#36) — thin wrappers over the pure CRUD helpers in settings.ts,
-  // which own validation and the layered-persistence discipline. No UI yet (#37).
+  // which own validation and the layered-persistence discipline. Reads stay
+  // ungated so a lapsed license keeps saved rigs accessible (#54: user data is
+  // never locked); writes are Pro, matching the renderer's gate.
   ipcMain.handle('list-rigs', () => listRigs());
-  ipcMain.handle('save-rig', (_event, rig: CaptureRig) => upsertRig(rig));
-  ipcMain.handle('delete-rig', (_event, id: string) => deleteRig(id));
+  ipcMain.handle('save-rig', (_event, rig: CaptureRig) => {
+    if (!isEntitled('saved-rigs')) throw new Error('Saving rigs requires a Pro license');
+    return upsertRig(rig);
+  });
+  ipcMain.handle('delete-rig', (_event, id: string) => {
+    if (!isEntitled('saved-rigs')) throw new Error('Editing rigs requires a Pro license');
+    return deleteRig(id);
+  });
   ipcMain.handle('set-active-rig', (_event, id: string | null) => setActiveRig(id));
 
   // analyze-file
@@ -704,6 +736,12 @@ export function registerIpcHandlers(): void {
     // tokens (e.g. ['0', '2-3']). Omitted ⇒ stream.py arms all configured strips.
     arm?: string[];
   }) => {
+    // Live monitoring is a Pro feature (#54) — enforce in the main process so
+    // the gate holds even if the renderer's CSS gating is bypassed.
+    if (!isEntitled('live-monitoring')) {
+      return { success: false, error: 'Live monitoring requires a Pro license.' };
+    }
+
     // Clear any stale session dir up front so a failed/aborted start (e.g. mic
     // denied below) can't leave a prior capture's folder to be offered on stop.
     liveSessionDir = null;
@@ -827,6 +865,10 @@ export function registerIpcHandlers(): void {
     if (opts.llmIntervalSecs > 0 && getSettings().aiEnabled) {
       liveIntervalTimer = setInterval(async () => {
         if (windowCollector.length === 0 || wc.isDestroyed()) return;
+        // Entitlement can lapse mid-capture (grace period ending). Skip the
+        // tick silently — streamLLM's lock message is for explicit requests;
+        // repeating it every interval would spam the AI panel.
+        if (!isEntitled('ai-narrative')) return;
         const snapshot = [...windowCollector];
 
         const systemPrompt = `You are a professional audio engineer monitoring a live mix. You are given consecutive analysis windows. Identify trends, flag developing problems (frequency buildup, approaching clipping, dynamic issues), and give real-time mixing recommendations. Be concise — this is live monitoring.`;
@@ -938,6 +980,11 @@ export function registerIpcHandlers(): void {
     // Force the stereo master mixdown fold even on a big-enough device.
     master?: boolean;
   }) => {
+    // Virtual soundcheck is a Pro feature (#54) — enforced here as well as in
+    // the renderer. Reading a session manifest stays free (data never locks).
+    if (!isEntitled('virtual-soundcheck')) {
+      return { success: false, error: 'Virtual soundcheck requires a Pro license.' };
+    }
     if (!opts.sessionDir) {
       return { success: false, error: 'No session directory provided.' };
     }

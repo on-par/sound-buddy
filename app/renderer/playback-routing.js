@@ -1,3 +1,6 @@
+// Copyright (c) 2026 Patrick Robinson (on-par). All rights reserved.
+// Licensed under the Sound Buddy Desktop Application License (app/LICENSE).
+
 // Pure, framework-free routing helpers for the Virtual Soundcheck screen (#46).
 // A "route" is a per-track output assignment: a mono track maps to one output
 // channel [c], a stereo track to a pair [l, r]. These build the playback.py

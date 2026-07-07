@@ -1,3 +1,6 @@
+// Copyright (c) 2026 Patrick Robinson (on-par). All rights reserved.
+// Licensed under the Sound Buddy Desktop Application License (app/LICENSE).
+
 // Persisted LLM provider config — the file behind the AI settings screen (#76).
 //
 //   ~/Library/Application Support/SoundBuddy/llm.json

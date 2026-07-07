@@ -1,0 +1,180 @@
+---
+// Report-card mockup — faithful to app/renderer/index.html #report-card markup
+// and styles, so the landing page shows the real "aha moment". Static sample
+// data for a worship service. Framework-agnostic HTML/CSS — ports verbatim.
+const SCORE = 86;
+const GRADE_LETTER = 'B';
+const GRADE_COLOR = 'var(--grade-b)'; // B+
+const RADIUS = 76;
+const CIRC = 2 * Math.PI * RADIUS;
+const DASH = (SCORE / 100) * CIRC;
+
+const metrics = [
+  { name: 'Integrated loudness', note: 'LUFS, whole service', value: '-16.2', unit: 'LUFS', pill: 'check', pillText: 'Quiet' },
+  { name: 'True peak', note: 'dBTP, max sample', value: '-1.3', unit: 'dBTP', pill: 'good', pillText: 'Safe' },
+  { name: 'Dynamic range', note: 'LRA', value: '11.4', unit: 'dB', pill: 'good', pillText: 'Good' },
+  { name: 'Speech intelligibility', note: 'STI estimate', value: '78', unit: '%', pill: 'good', pillText: 'Good' },
+  { name: 'Bass balance', note: 'vs. mids', value: '+2.1', unit: 'dB', pill: 'check', pillText: 'Hot' },
+  { name: 'Stereo width', note: 'correlation', value: '92', unit: '%', pill: 'good', pillText: 'Wide' },
+];
+
+// Spectrum ribbon — segment proportions (sum to 1) in file order.
+const ribbon = [
+  { cls: 'seg-speech', w: 18 },
+  { cls: 'seg-music', w: 26 },
+  { cls: 'seg-silence', w: 6 },
+  { cls: 'seg-speech', w: 14 },
+  { cls: 'seg-music', w: 22 },
+  { cls: 'seg-silence', w: 4 },
+  { cls: 'seg-music', w: 10 },
+];
+
+const bands = [
+  { name: 'Sub', verdict: 'ok', text: 'Ok' },
+  { name: 'Bass', verdict: 'hot', text: 'Hot' },
+  { name: 'Low-mid', verdict: 'ok', text: 'Ok' },
+  { name: 'Mid', verdict: 'ok', text: 'Ok' },
+  { name: 'High-mid', verdict: 'quiet', text: 'Quiet' },
+  { name: 'Presence', verdict: 'ok', text: 'Ok' },
+  { name: 'Brilliance', verdict: 'ok', text: 'Ok' },
+];
+---
+
+<section class="rc card" aria-label="Sample report card">
+  <div class="rc-header">
+    <h1>Sunday Service — 2026-07-05 10:30</h1>
+    <div class="rc-meta">
+      <span class="mono">48.0 kHz · 64 min · 18 ch</span>
+      <span class="rc-contenttype mixed"><span class="dot"></span>Mixed</span>
+    </div>
+  </div>
+
+  <div class="rc-score">
+    <div class="grade-ring" style={`--grade-color:${GRADE_COLOR}`}>
+      <svg width="168" height="168" viewBox="0 0 168 168" aria-hidden="true">
+        <circle cx="84" cy="84" r={RADIUS} fill="none" stroke="var(--surface-inset)" stroke-width="10" />
+        <circle
+          cx="84" cy="84" r={RADIUS} fill="none" stroke={GRADE_COLOR}
+          stroke-width="10" stroke-linecap="round"
+          stroke-dasharray={`${DASH.toFixed(1)} ${(CIRC - DASH).toFixed(1)}`}
+          transform="rotate(-90 84 84)"
+        />
+      </svg>
+      <div class="center">
+        <span class="letter" style={`color:${GRADE_COLOR}`}>{GRADE_LETTER}</span>
+        <span class="score mono"><span class="val">{SCORE}</span><span class="slash">/</span>100</span>
+      </div>
+    </div>
+    <span class="rc-ring-label">Overall mix grade</span>
+  </div>
+
+  <div class="rc-ribbon-wrap" style="margin: 0 auto 30px;">
+    <div class="rc-ribbon" role="img" aria-label="Content timeline: speech, music, silence">
+      {ribbon.map((s) => <div class={`seg ${s.cls}`} style={`flex:${s.w}`}></div>)}
+    </div>
+    <div class="rc-ribbon-legend">
+      <span class="lg"><span class="sw seg-speech"></span>Speech</span>
+      <span class="lg"><span class="sw seg-music"></span>Music</span>
+      <span class="lg"><span class="sw seg-silence"></span>Silence</span>
+    </div>
+  </div>
+
+  <div class="rc-section">
+    <h2>Mix metrics</h2>
+    <table class="metric-table">
+      <thead>
+        <tr><th>Metric</th><th>Status</th><th>Value</th></tr>
+      </thead>
+      <tbody>
+        {metrics.map((m) => (
+          <tr>
+            <td>
+              <div class="mt-metric">{m.name}</div>
+              <span class="mt-note">{m.note}</span>
+            </td>
+            <td><span class={`pill sm ${m.pill}`}>{m.pillText}</span></td>
+            <td class="mt-value mono">{m.value}<span class="unit">{m.unit}</span></td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  </div>
+
+  <div class="rc-section">
+    <h2>Spectral balance</h2>
+    <div class="rc-bands">
+      {bands.map((b) => (
+        <div class="rc-band-row">
+          <span class="bm mono">{b.name}</span>
+          <span class={`rc-band-verdict ${b.verdict}`}>{b.text}</span>
+        </div>
+      ))}
+    </div>
+  </div>
+</section>
+
+<style>
+  .rc { padding: 28px 30px 32px; }
+  .rc-header { text-align: center; margin-bottom: 26px; padding-bottom: 20px; border-bottom: 1px solid var(--border-subtle); }
+  .rc-header h1 { font: var(--fw-semibold) var(--fs-h1)/1.2 var(--font-sans); letter-spacing: var(--tracking-tight); color: var(--text-primary); margin: 0 0 8px; }
+  .rc-meta { display: flex; justify-content: center; gap: 14px; font: var(--fw-regular) var(--fs-label)/1 var(--font-mono); color: var(--text-muted); flex-wrap: wrap; }
+
+  .rc-score { display: flex; flex-direction: column; align-items: center; gap: 12px; margin-bottom: 30px; }
+  .grade-ring { position: relative; width: 168px; height: 168px; }
+  .grade-ring .center { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+  .grade-ring .letter { font: var(--fw-bold) 76px/1 var(--font-sans); letter-spacing: -0.03em; }
+  .grade-ring .score { font: var(--fw-medium) var(--fs-micro)/1 var(--font-mono); color: var(--text-tertiary); margin-top: 4px; }
+  .grade-ring .score .slash { opacity: 0.6; }
+  .rc-ring-label { font: var(--fw-medium) var(--fs-micro)/1 var(--font-sans); letter-spacing: var(--tracking-caps); text-transform: uppercase; color: var(--text-tertiary); }
+
+  .rc-contenttype { display: inline-flex; align-items: center; gap: 7px; padding: 4px 12px; border-radius: var(--radius-pill); font: var(--fw-semibold) var(--fs-label)/1 var(--font-sans); letter-spacing: var(--tracking-caps); text-transform: uppercase; }
+  .rc-contenttype .dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+  .rc-contenttype.mixed { background: var(--good-tint); border: 1px solid var(--good-border); color: var(--good-text); }
+  .rc-contenttype.mixed .dot { background: var(--good-500); }
+
+  .seg-speech { background: var(--azure-500); }
+  .seg-music { background: var(--gold-500); }
+  .seg-silence { background: var(--neutral-700); }
+
+  .rc-ribbon-wrap { width: 100%; max-width: 420px; display: flex; flex-direction: column; gap: 8px; }
+  .rc-ribbon { display: flex; width: 100%; height: 14px; border-radius: var(--radius-sm); overflow: hidden; border: 1px solid var(--border-subtle); background: var(--surface-inset); }
+  .rc-ribbon .seg { height: 100%; min-width: 0; }
+  .rc-ribbon-legend { display: flex; justify-content: center; flex-wrap: wrap; gap: 14px; font: var(--fw-medium) var(--fs-micro)/1 var(--font-sans); color: var(--text-muted); }
+  .rc-ribbon-legend .lg { display: inline-flex; align-items: center; gap: 5px; }
+  .rc-ribbon-legend .sw { width: 9px; height: 9px; border-radius: 2px; flex-shrink: 0; }
+
+  .rc-section { margin-bottom: 30px; }
+  .rc-section:last-child { margin-bottom: 0; }
+  .rc-section h2 { font: var(--fw-semibold) var(--fs-micro)/1 var(--font-sans); letter-spacing: var(--tracking-caps); text-transform: uppercase; color: var(--text-tertiary); margin: 0 0 14px; padding-bottom: 10px; border-bottom: 1px solid var(--border-subtle); }
+
+  .metric-table { width: 100%; border-collapse: collapse; }
+  .metric-table th { padding: 0 8px 8px; font: var(--fw-semibold) var(--fs-micro)/1 var(--font-sans); letter-spacing: var(--tracking-caps); text-transform: uppercase; color: var(--text-muted); text-align: left; }
+  .metric-table th:nth-child(2) { text-align: center; }
+  .metric-table th:last-child { text-align: right; }
+  .metric-table td { padding: 10px 8px; border-top: 1px solid var(--border-subtle); vertical-align: middle; }
+  .metric-table td:nth-child(2) { text-align: center; }
+  .metric-table td:last-child { text-align: right; }
+  .mt-metric { font: var(--fw-medium) var(--fs-body-sm)/1.3 var(--font-sans); color: var(--text-primary); }
+  .mt-note { display: block; font: var(--fw-regular) var(--fs-micro)/1.3 var(--font-sans); color: var(--text-muted); margin-top: 2px; }
+  .mt-value { font: var(--fw-medium) var(--fs-data-sm)/1 var(--font-mono); font-variant-numeric: tabular-nums; color: var(--text-secondary); }
+  .mt-value .unit { color: var(--text-muted); margin-left: 3px; }
+
+  .pill { display: inline-flex; align-items: center; gap: 5px; padding: 3px 10px; border-radius: var(--radius-pill); font: var(--fw-semibold) var(--fs-label)/1 var(--font-sans); letter-spacing: var(--tracking-caps); white-space: nowrap; }
+  .pill.sm { padding: 2px 8px; font-size: var(--fs-micro); }
+  .pill.good { background: var(--good-tint); border: 1px solid var(--good-border); color: var(--good-text); }
+  .pill.check { background: var(--check-tint); border: 1px solid var(--check-border); color: var(--check-text); }
+  .pill.issue { background: var(--issue-tint); border: 1px solid var(--issue-border); color: var(--issue-text); }
+
+  .rc-bands { background: var(--surface); border: 1px solid var(--border-subtle); border-radius: var(--radius-lg); padding: 16px 20px; box-shadow: var(--elevation-card); display: flex; flex-direction: column; gap: 10px; }
+  .rc-band-row { display: flex; align-items: center; gap: 8px; }
+  .rc-band-row .bm { flex: 1; min-width: 0; font-size: var(--fs-data-sm); color: var(--text-secondary); }
+  .rc-band-verdict { width: 74px; flex-shrink: 0; text-align: right; font: var(--fw-medium) 10px/1 var(--font-sans); }
+  .rc-band-verdict.hot { color: var(--check-text); }
+  .rc-band-verdict.quiet { color: var(--text-muted); }
+  .rc-band-verdict.ok { color: var(--good-text); }
+
+  @media (max-width: 560px) {
+    .rc { padding: 20px 16px 24px; }
+    .metric-table td:nth-child(2), .metric-table th:nth-child(2) { display: none; }
+  }
+</style>

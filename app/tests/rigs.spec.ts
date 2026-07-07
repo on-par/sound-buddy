@@ -2,6 +2,7 @@ import { test, expect, type ElectronApplication, type Page } from '@playwright/t
 import { _electron as electron } from 'playwright';
 import * as path from 'path';
 import * as fs from 'fs';
+import { LICENSE_ENV, seedProLicense } from './license-fixture';
 
 // Rig save/load/switch (#37). Rig persistence + IPC (#36) run for REAL against an
 // isolated settings.json (a throwaway --user-data-dir), so these specs exercise
@@ -22,7 +23,12 @@ async function stubDevices(app: ElectronApplication, devices: unknown) {
 }
 
 async function launch(devices: unknown): Promise<{ app: ElectronApplication; win: Page }> {
-  const app = await electron.launch({ args: [MAIN, `--user-data-dir=${USER_DATA}`] });
+  // Rigs are a Pro feature (#54): seed a license so the Live-tab UI is unlocked.
+  seedProLicense(USER_DATA);
+  const app = await electron.launch({
+    args: [MAIN, `--user-data-dir=${USER_DATA}`],
+    env: { ...process.env, ...LICENSE_ENV },
+  });
   const win = await app.firstWindow();
   await win.waitForLoadState('domcontentloaded');
   // Stub then reload so the boot-time loadDevices() sees the fake interface.

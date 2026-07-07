@@ -1,3 +1,6 @@
+// Copyright (c) 2026 Patrick Robinson (on-par). All rights reserved.
+// Licensed under the Sound Buddy Desktop Application License (app/LICENSE).
+
 // Pure provider metadata for the hosted (API-key) LLM path — no Electron, no
 // I/O, so the request-shaping and stream-parsing logic is unit-testable.
 //

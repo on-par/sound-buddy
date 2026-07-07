@@ -1,3 +1,6 @@
+// Copyright (c) 2026 Patrick Robinson (on-par). All rights reserved.
+// Licensed under the Sound Buddy Desktop Application License (app/LICENSE).
+
 // Pure, framework-free helpers for per-strip record arming (#43). A strip is
 // "armed" unless its `armed` flag is explicitly false (default-armed), so config
 // built before this story still records every strip. Kept as a classic script so

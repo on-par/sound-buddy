@@ -1,6 +1,7 @@
 import { test, expect, type ElectronApplication, type Page } from '@playwright/test';
 import { _electron as electron } from 'playwright';
 import * as path from 'path';
+import { LICENSE_ENV, seedProLicense } from './license-fixture';
 
 let electronApp: ElectronApplication;
 let window: Page;
@@ -110,8 +111,12 @@ test.describe('Sound Buddy E2E', () => {
     // Isolate the app's userData so persisting the ideal-profile choice (PRD 05)
     // writes to a throwaway settings.json rather than the developer's real one.
     const userDataDir = path.join(__dirname, '..', 'test-results', 'e2e-userdata');
+    // Live/soundcheck flows are Pro features (#54): seed a license so their UI
+    // is unlocked. The dedicated license.spec.ts covers the free tier + gating.
+    seedProLicense(userDataDir);
     electronApp = await electron.launch({
       args: [path.join(__dirname, '..', 'dist', 'electron', 'main.js'), `--user-data-dir=${userDataDir}`],
+      env: { ...process.env, ...LICENSE_ENV },
     });
     window = await electronApp.firstWindow();
     await window.waitForLoadState('domcontentloaded');

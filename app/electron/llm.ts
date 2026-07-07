@@ -1,3 +1,6 @@
+// Copyright (c) 2026 Patrick Robinson (on-par). All rights reserved.
+// Licensed under the Sound Buddy Desktop Application License (app/LICENSE).
+
 // LLM narrative provider for the optional "AI Engineer" panel.
 //
 // Two backends, chosen by the configured provider:

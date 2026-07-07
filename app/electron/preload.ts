@@ -1,3 +1,6 @@
+// Copyright (c) 2026 Patrick Robinson (on-par). All rights reserved.
+// Licensed under the Sound Buddy Desktop Application License (app/LICENSE).
+
 import { contextBridge, ipcRenderer } from 'electron';
 
 contextBridge.exposeInMainWorld('soundBuddy', {
@@ -19,6 +22,14 @@ contextBridge.exposeInMainWorld('soundBuddy', {
   detectOllama: (host?: string) => ipcRenderer.invoke('llm-detect-ollama', host),
   testLlmProvider: (opts: { provider: string; apiKey?: string; apiBaseUrl?: string }) =>
     ipcRenderer.invoke('llm-test-provider', opts),
+
+  // License (#54) — offline key validation + feature gating. Free/Pro state
+  // drives the renderer's lock icons, badge, and grace banner.
+  getLicense: () => ipcRenderer.invoke('get-license'),
+  activateLicense: (key: string) => ipcRenderer.invoke('activate-license', key),
+  removeLicense: () => ipcRenderer.invoke('remove-license'),
+  onOpenLicenseDialog: (cb: () => void) =>
+    ipcRenderer.on('open-license-dialog', () => cb()),
 
   // Capture rigs (#36) — backend only for now; the Live-tab UI arrives in #37.
   listRigs: () => ipcRenderer.invoke('list-rigs'),

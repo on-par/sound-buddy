@@ -1,3 +1,6 @@
+// Copyright (c) 2026 Patrick Robinson (on-par). All rights reserved.
+// Licensed under the Sound Buddy Desktop Application License (app/LICENSE).
+
 import { app, BrowserWindow, Menu, dialog, ipcMain } from 'electron';
 import * as path from 'path';
 import { registerIpcHandlers } from './ipc';
@@ -117,6 +120,15 @@ function buildMenu(): void {
           label: 'Check for Updates…',
           click: () => {
             void checkForUpdates(mainWindow, false);
+          },
+        },
+        { type: 'separator' },
+        {
+          // License entry/status (#54) — the renderer owns the dialog; the
+          // header badge opens the same one.
+          label: 'License…',
+          click: () => {
+            mainWindow?.webContents.send('open-license-dialog');
           },
         },
       ],

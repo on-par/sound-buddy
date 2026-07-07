@@ -1,0 +1,84 @@
+Sound Buddy Desktop Application License
+=======================================
+
+Copyright (c) 2026 Patrick Robinson (on-par). All rights reserved.
+
+This license governs the Sound Buddy desktop application: all source code,
+assets, and configuration in the app/ directory of the Sound Buddy repository,
+and any packaged application built from them (together, the "Software"). The
+packages under packages/ in the same repository are separately licensed under
+the MIT License and are not covered by this license.
+
+1. Definitions
+
+   "Licensor" means Patrick Robinson (on-par).
+
+   "License Key" means a key issued by the Licensor — for example, after a
+   purchase through the Licensor's designated payment provider — that
+   identifies a valid license to use the Software.
+
+2. Source availability
+
+   The Licensor may make the source code of the Software available for
+   reading and reference. Availability of the source code does not grant any
+   right to use, copy, modify, or redistribute the Software except as
+   expressly stated in this license.
+
+3. License grant
+
+   Subject to the terms of this license, the holder of a valid License Key is
+   granted a personal, non-exclusive, non-transferable, non-sublicensable
+   license to install and use the Software, and to modify it for their own
+   internal use, on devices they own or control.
+
+4. Evaluation
+
+   The Licensor may offer the Software for trial or evaluation use without a
+   License Key. Any such use is limited to evaluating the Software and is
+   subject to the restrictions in section 5. Unless and until the Licensor
+   makes License Keys generally available for purchase, use of the Software
+   without a License Key is deemed evaluation use permitted under this
+   section.
+
+5. Restrictions
+
+   Except as expressly permitted by this license or in writing by the
+   Licensor, you may not:
+
+   (a) redistribute, sell, resell, rent, lease, sublicense, publish, or
+       otherwise make the Software, or any modified version of it, available
+       to any third party;
+
+   (b) use the Software without a valid License Key, other than evaluation
+       use offered by the Licensor under section 4;
+
+   (c) remove, disable, or circumvent any License Key check or other
+       licensing mechanism in the Software, or distribute anything that does;
+
+   (d) use the Software's source code to build a competing product.
+
+6. Third-party components
+
+   The Software bundles third-party components (including sox, FFmpeg, a
+   Python runtime, and Python libraries) that remain under their own
+   licenses. Nothing in this license alters or restricts the rights granted
+   by those licenses.
+
+7. Termination
+
+   This license terminates automatically if you breach it. Upon termination
+   you must stop using the Software and destroy all copies in your
+   possession. Sections 8 and 9 survive termination.
+
+8. Disclaimer of warranty
+
+   THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+   IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+   FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
+
+9. Limitation of liability
+
+   IN NO EVENT SHALL THE LICENSOR BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+   LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+   FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+   DEALINGS IN THE SOFTWARE.
