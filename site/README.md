@@ -33,25 +33,19 @@ npm run verify   # astro check + build + link smoke
 
 ## Deploy
 
-Cloudflare Pages, driven by `.github/workflows/deploy-site.yml` (build + verify on
-PRs; deploy on push to `main`). Required repo secrets:
+Cloudflare Workers Builds (the Cloudflare Git integration) builds and deploys
+this site on every push. It's configured in the Cloudflare dashboard — Workers
+Builds does **not** read build settings from `wrangler.jsonc`, so the dashboard
+config is authoritative:
 
-- `CLOUDFLARE_API_TOKEN` — Pages-scoped API token
-- `CLOUDFLARE_ACCOUNT_ID` — Cloudflare account ID
-
-Create the `sound-buddy` Pages project in the Cloudflare dashboard before the first
-run, or let `cloudflare/pages-action` create it on first deploy.
-
-### Switching to the Cloudflare Git integration instead
-
-If you'd rather not use the action, connect the repo in the Cloudflare dashboard
-directly and set:
-
-- **Build command:** `npm run build`
-- **Build output directory:** `dist`
 - **Root directory:** `site`
+- **Build command:** `npm ci && npm run build`
+- **Deploy command:** `npx wrangler deploy` (reads `site/wrangler.jsonc`)
+- **Node version:** 22
 
-Then delete `.github/workflows/deploy-site.yml`.
+`site/wrangler.jsonc` drives only the deploy step (Worker name `sound-buddy`,
+static assets from `./dist`, SPA fallback). No GitHub Actions workflow or repo
+secrets are involved.
 
 ## Porting to a future SaaS-lite
 
