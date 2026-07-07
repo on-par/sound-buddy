@@ -17,6 +17,14 @@
 // A `subscription` key past `expiresAt` keeps Pro for a 7-day grace period
 // (with a banner), then reverts to the free tier. User data is never locked.
 //
+// TRIAL (#61): on first launch — no key, no prior trial — we stamp
+// `trialStartedAt` into the same license.json and grant full Pro for 14 days so
+// a new user feels the workflow before the paywall. A paid key always outranks
+// the trial; once it lapses the app drops to the free tier (report card stays
+// free, an upgrade card appears). Re-trial prevention is the local timestamp
+// only (issue non-goal) — activate/remove preserve it so buy→remove can't reset
+// the clock, but there is no server-side tracking.
+//
 // This is a $9/mo product, not enterprise DRM — the design optimizes for zero
 // friction for paying users, not for defeating a determined pirate.
 
@@ -40,6 +48,11 @@ MCowBQYDK2VwAyEADAAF8d47qtdei8k1oP9b/7N8SlrhcABssKew3QBwUs8=
 /** Days a subscription key stays Pro after `expiresAt` (with a banner). */
 export const GRACE_DAYS = 7;
 
+/** Days of full Pro access granted by the first-launch trial (#61). */
+export const TRIAL_DAYS = 14;
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
 const KEY_PREFIX = 'SB1';
 
 export type LicenseKind = 'subscription' | 'lifetime';
@@ -60,12 +73,14 @@ interface LicensePayload {
  */
 export interface LicenseState {
   tier: 'free' | 'pro';
-  status: 'none' | 'valid' | 'grace' | 'expired' | 'invalid';
+  status: 'none' | 'valid' | 'grace' | 'expired' | 'invalid' | 'trial' | 'trial-expired';
   kind?: LicenseKind;
   email?: string;
   expiresAt?: string;
   /** Present only while status === 'grace'. */
   graceEndsAt?: string;
+  /** Present while status === 'trial' or 'trial-expired' (#61). */
+  trialEndsAt?: string;
   /** Human-readable reason when status === 'invalid'. */
   error?: string;
 }
@@ -161,28 +176,94 @@ export function verifyLicenseKey(key: string, now: Date = new Date()): LicenseSt
   return { tier: 'free', status: 'expired', ...base };
 }
 
-/** Read the stored key from license.json ('' when absent/unreadable). */
-function readStoredKey(): string {
+/** The parsed license.json — a paid key and/or a first-launch trial stamp. */
+interface LicenseStore {
+  key?: string;
+  /** ISO 8601 timestamp of the first-launch trial start (#61). */
+  trialStartedAt?: string;
+}
+
+/** Read license.json ({} when absent/unreadable/corrupt — never throws). */
+function readStore(): LicenseStore {
   try {
     const p = licensePath();
-    if (!fs.existsSync(p)) return '';
-    const parsed = JSON.parse(fs.readFileSync(p, 'utf8')) as { key?: unknown };
-    return typeof parsed?.key === 'string' ? parsed.key : '';
+    if (!fs.existsSync(p)) return {};
+    const parsed = JSON.parse(fs.readFileSync(p, 'utf8')) as LicenseStore;
+    if (parsed == null || typeof parsed !== 'object') return {};
+    return {
+      key: typeof parsed.key === 'string' ? parsed.key : undefined,
+      trialStartedAt: typeof parsed.trialStartedAt === 'string' ? parsed.trialStartedAt : undefined,
+    };
   } catch (err) {
     logWarn(`could not read license.json: ${String(err)}`);
-    return '';
+    return {};
   }
 }
 
+/** Write license.json, dropping empty fields. Rethrows on failure. */
+function writeStore(store: LicenseStore): void {
+  const out: LicenseStore = {};
+  if (store.key) out.key = store.key;
+  if (store.trialStartedAt) out.trialStartedAt = store.trialStartedAt;
+  fs.writeFileSync(licensePath(), JSON.stringify(out, null, 2));
+}
+
 /**
- * The current license state: stored key re-verified offline on every read.
- * No stored key ⇒ free tier ({ status: 'none' }) — the app works fully
- * without a license (report card only).
+ * Trial is disabled only via a dev-only env override (tests/e2e) so a suite can
+ * exercise the deterministic free tier — a shipped .app always offers it.
+ */
+function trialDisabled(): boolean {
+  return !app.isPackaged && !!process.env.SOUND_BUDDY_DISABLE_TRIAL;
+}
+
+/** Resolve the trial state from a stored `trialStartedAt`, or null if none. */
+function trialState(trialStartedAt: string | undefined, now: Date): LicenseState | null {
+  if (!trialStartedAt || trialDisabled()) return null;
+  const startMs = Date.parse(trialStartedAt);
+  if (Number.isNaN(startMs)) return null; // corrupt stamp ⇒ ignore the trial
+  const endMs = startMs + TRIAL_DAYS * DAY_MS;
+  const trialEndsAt = new Date(endMs).toISOString();
+  if (now.getTime() < endMs) return { tier: 'pro', status: 'trial', trialEndsAt };
+  return { tier: 'free', status: 'trial-expired', trialEndsAt };
+}
+
+/**
+ * The current license state, re-derived offline on every read. Precedence:
+ * a paid key granting Pro (valid/grace) always wins; otherwise the first-launch
+ * trial (active ⇒ Pro, lapsed ⇒ trial-expired free); otherwise a lapsed/invalid
+ * key's messaging; otherwise free ({ status: 'none' }). The app works fully
+ * unlicensed (report card only).
  */
 export function getLicenseState(now: Date = new Date()): LicenseState {
-  const key = readStoredKey();
-  if (!key) return { ...FREE_STATE };
-  return verifyLicenseKey(key, now);
+  const store = readStore();
+  const keyState = store.key ? verifyLicenseKey(store.key, now) : null;
+  if (keyState && keyState.tier === 'pro') return keyState;
+
+  const trial = trialState(store.trialStartedAt, now);
+  if (trial) return trial;
+
+  if (keyState) return keyState; // invalid/expired paid key — keep its messaging
+  return { ...FREE_STATE };
+}
+
+/**
+ * Start the first-launch trial (#61) if the user has neither a stored key nor a
+ * prior trial stamp. Idempotent — a second launch (or a returning user) is a
+ * no-op. Call once at app startup, before the renderer reads the license.
+ * Never throws: a write failure just means the trial isn't offered this launch.
+ */
+export function ensureTrialStarted(now: Date = new Date()): LicenseState {
+  if (!trialDisabled()) {
+    const store = readStore();
+    if (!store.key && !store.trialStartedAt) {
+      try {
+        writeStore({ ...store, trialStartedAt: now.toISOString() });
+      } catch (err) {
+        logWarn(`could not start trial (license.json write failed): ${String(err)}`);
+      }
+    }
+  }
+  return getLicenseState(now);
 }
 
 /**
@@ -195,7 +276,8 @@ export function activateLicense(key: string, now: Date = new Date()): LicenseSta
   const state = verifyLicenseKey(key, now);
   if (state.tier !== 'pro') return state;
   try {
-    fs.writeFileSync(licensePath(), JSON.stringify({ key: key.trim() }, null, 2));
+    // Preserve any trial stamp so buy→remove can't reset the trial clock (#61).
+    writeStore({ ...readStore(), key: key.trim() });
   } catch (err) {
     logWarn(`could not write license.json: ${String(err)}`);
     throw err;
@@ -204,18 +286,23 @@ export function activateLicense(key: string, now: Date = new Date()): LicenseSta
 }
 
 /**
- * Remove the stored key, reverting to the free tier. User data is untouched.
- * Rethrows a delete failure (EPERM/EBUSY — force only suppresses ENOENT) so
- * the UI can't report "removed" while the key is still stored.
+ * Remove the stored key, reverting to whatever the key was masking — a still
+ * active/expired trial (#61) or the free tier. User data is untouched. The
+ * trial stamp is kept (re-trial prevention), so with no trial the file is
+ * deleted outright; with one it's rewritten to just the stamp. Rethrows a
+ * write/delete failure (EPERM/EBUSY — force only suppresses ENOENT) so the UI
+ * can't report "removed" while the key is still stored.
  */
-export function removeLicense(): LicenseState {
+export function removeLicense(now: Date = new Date()): LicenseState {
+  const { trialStartedAt } = readStore();
   try {
-    fs.rmSync(licensePath(), { force: true });
+    if (trialStartedAt) writeStore({ trialStartedAt });
+    else fs.rmSync(licensePath(), { force: true });
   } catch (err) {
     logWarn(`could not remove license.json: ${String(err)}`);
     throw err;
   }
-  return { ...FREE_STATE };
+  return getLicenseState(now);
 }
 
 /**

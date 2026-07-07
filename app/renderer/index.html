@@ -234,6 +234,9 @@
     #license-badge:hover { color:var(--text-primary); }
     #license-badge.pro { color:var(--gold-text); border-color:var(--gold-500); background:var(--gold-tint, rgba(243,202,94,0.14)); }
     #license-badge.grace { color:var(--issue-text); border-color:var(--issue-500); background:transparent; }
+    /* Trial countdown (#61): the "Pro trial — X days left" pill. Subtler than a
+       paid PRO badge — normal tracking so the longer copy reads cleanly. */
+    #license-badge.trial { color:var(--gold-text); border-color:var(--gold-500); background:transparent; letter-spacing:0.02em; }
 
     /* Grace-period banner — same visual language as the update banner. */
     #license-banner {
@@ -244,6 +247,17 @@
     }
     #license-banner.show { display:flex; }
     #license-banner .lb-text { flex:1; min-width:0; }
+
+    /* Trial nudge / upgrade banner (#61) — same visual language, its own element
+       so it can coexist with the grace banner's markup. */
+    #trial-banner {
+      display:none; align-items:center; gap:10px; padding:8px 14px; flex-shrink:0;
+      background:var(--gold-tint, rgba(243,202,94,0.14));
+      border-bottom:1px solid var(--gold-500, #EBB93C);
+      font:var(--fw-medium) var(--fs-body-sm)/1.3 var(--font-sans); color:var(--gold-text, #F3CA5E);
+    }
+    #trial-banner.show { display:flex; }
+    #trial-banner .lb-text { flex:1; min-width:0; }
 
     /* License dialog status lines. */
     .lic-status { font:var(--fw-regular) var(--fs-label)/1.4 var(--font-sans); color:var(--text-secondary); }
@@ -767,6 +781,13 @@
     <span class="lb-text" id="license-banner-text"></span>
     <button type="button" id="license-banner-manage" class="ub-btn">Manage…</button>
     <button type="button" id="license-banner-dismiss" class="ub-x" aria-label="Dismiss">✕</button>
+  </div>
+  <!-- ══ Trial nudge / upgrade banner (#61) ══ -->
+  <div id="trial-banner" role="status">
+    <span data-icon="sparkles" class="ub-icon"></span>
+    <span class="lb-text" id="trial-banner-text"></span>
+    <button type="button" id="trial-banner-start" class="ub-btn">Start subscription</button>
+    <button type="button" id="trial-banner-dismiss" class="ub-x" aria-label="Dismiss">✕</button>
   </div>
   <!-- ══ Header ══ -->
   <div id="header">
@@ -3607,28 +3628,73 @@ let licenseCurrent = null;
 
 function applyLicenseState(state) {
   licenseCurrent = state || { tier: 'free', status: 'none' };
-  const b = window.licenseState.badge(licenseCurrent);
+  const ls = window.licenseState;
+  const b = ls.badge(licenseCurrent);
 
   const badgeEl = document.getElementById('license-badge');
-  badgeEl.textContent = b.label;
+  // During the trial the countdown IS the badge copy (#61); the pure helper
+  // owns the exact string so it can't drift from what's under test.
+  const trialText = ls.trialBadgeText(licenseCurrent);
+  badgeEl.textContent = trialText || b.label;
   badgeEl.classList.toggle('pro', b.pro);
   badgeEl.classList.toggle('grace', b.grace);
+  badgeEl.classList.toggle('trial', b.trial);
 
   // The single gating hook: every Pro surface keys off body.not-pro in CSS.
   document.body.classList.toggle('not-pro', !b.pro);
 
   const banner = document.getElementById('license-banner');
-  const graceText = window.licenseState.graceBannerText(licenseCurrent);
+  const graceText = ls.graceBannerText(licenseCurrent);
   if (graceText) {
     document.getElementById('license-banner-text').textContent = graceText;
     banner.classList.add('show');
   } else {
     banner.classList.remove('show');
   }
+
+  renderTrialBanner(licenseCurrent);
+}
+
+// The day-3 / day-11 nudge and the day-14 upgrade card (#61). Dismissals are
+// per-milestone in localStorage so a nudge shows once, not every launch.
+function trialDismissed(id) {
+  try { return localStorage.getItem('sb-trial-dismiss-' + id) === '1'; } catch { return false; }
+}
+function dismissTrial(id) {
+  try { localStorage.setItem('sb-trial-dismiss-' + id, '1'); } catch { /* private mode: banner just returns next launch */ }
+}
+
+function renderTrialBanner(state) {
+  const el = document.getElementById('trial-banner');
+  const textEl = document.getElementById('trial-banner-text');
+  let msg = null;
+  let id = null;
+  if (state.status === 'trial') {
+    const nudge = window.licenseState.trialNudge(state);
+    if (nudge) { msg = nudge.text; id = nudge.milestone; }
+  } else if (state.status === 'trial-expired') {
+    msg = 'Your 14-day Pro trial has ended — the report card stays free. Start a subscription to reunlock live monitoring, saved rigs & virtual soundcheck.';
+    id = 'expired';
+  }
+  if (msg && id && !trialDismissed(id)) {
+    textEl.textContent = msg;
+    el.dataset.dismissId = id;
+    el.classList.add('show');
+  } else {
+    el.classList.remove('show');
+  }
 }
 
 function licenseStatusLine(state) {
   if (!state || state.status === 'none') return 'Free tier — full report card included.';
+  if (state.status === 'trial') {
+    const days = window.licenseState.trialDaysLeft(state);
+    const left = days ? `${days} ${days === 1 ? 'day' : 'days'} left` : 'active';
+    return `Pro trial — ${left}. Start a subscription to keep Pro when it ends.`;
+  }
+  if (state.status === 'trial-expired') {
+    return 'Your Pro trial has ended — the report card stays free. Start a subscription to reunlock Pro features.';
+  }
   if (state.status === 'valid') {
     const who = state.email ? ` (${state.email})` : '';
     if (state.kind === 'lifetime') return `Pro — lifetime license${who}.`;
@@ -3666,6 +3732,15 @@ function openLicenseDialog() {
   document.getElementById('license-banner-manage').addEventListener('click', openLicenseDialog);
   document.getElementById('license-banner-dismiss').addEventListener('click', () =>
     document.getElementById('license-banner').classList.remove('show'));
+
+  // Trial banner (#61): "Start subscription" opens the license dialog; the ✕
+  // dismisses this milestone for good (so it doesn't nag every launch).
+  document.getElementById('trial-banner-start').addEventListener('click', openLicenseDialog);
+  document.getElementById('trial-banner-dismiss').addEventListener('click', () => {
+    const tb = document.getElementById('trial-banner');
+    if (tb.dataset.dismissId) dismissTrial(tb.dataset.dismissId);
+    tb.classList.remove('show');
+  });
   document.querySelectorAll('[data-license-open]').forEach((el) =>
     el.addEventListener('click', openLicenseDialog));
   sb.onOpenLicenseDialog(openLicenseDialog);
