@@ -7,7 +7,8 @@ import { promisify } from 'util';
 import * as path from 'path';
 import * as fs from 'fs';
 import { log, logWarn, logError } from './logger';
-import { streamNarrative } from './llm';
+import { probeOllama, streamNarrative, testHostedProvider } from './llm';
+import { getPublicLlmConfig, saveLlmConfig, type LlmConfigPatch } from './llm-config';
 import {
   getSettings,
   updateSettings,
@@ -485,34 +486,38 @@ async function streamLLM(
     return;
   }
 
-  // Route through pi so the narrative uses whatever provider the user configured
-  // (ChatGPT/Codex sub, Claude sub, Copilot, an API key, or local Ollama).
-  const outcome = await streamNarrative((text) => send('llm-delta', text), systemPrompt, userMessage);
+  // Stream via whatever the user connected in AI settings (#76): local Ollama,
+  // a pasted API key (direct HTTPS), or a pi subscription login.
+  try {
+    const outcome = await streamNarrative((text) => send('llm-delta', text), systemPrompt, userMessage);
 
-  if (!outcome.ok) {
-    if (outcome.reason === 'disabled') {
-      logWarn('LLM analysis skipped: AI is disabled in settings');
-      send(
-        'llm-delta',
-        '\n⚠️  AI analysis is turned off. Enable it in settings ' +
-          '(settings.json "aiEnabled": true, or SOUND_BUDDY_AI_ENABLED=1) to use the AI Engineer.\n',
-      );
-    } else if (outcome.reason === 'no-provider') {
-      logWarn('LLM analysis skipped: no pi provider configured');
-      send(
-        'llm-delta',
-        '\n⚠️  No AI provider configured. Run `pi` then `/login` to connect your own ' +
-          'ChatGPT/Codex, Claude, or Copilot subscription — or a local Ollama model (offline). ' +
-          'Optionally set SOUND_BUDDY_LLM_PROVIDER / SOUND_BUDDY_LLM_MODEL to pick one.\n',
-      );
+    if (!outcome.ok) {
+      if (outcome.reason === 'disabled') {
+        logWarn('LLM analysis skipped: AI is disabled in settings');
+        send(
+          'llm-delta',
+          '\n⚠️  AI analysis is turned off. Open AI settings (the gear icon) and ' +
+            'check "Enable AI analysis" to use the AI Engineer.\n',
+        );
+      } else if (outcome.reason === 'no-provider') {
+        logWarn('LLM analysis skipped: no provider configured');
+        send(
+          'llm-delta',
+          '\n⚠️  No AI provider connected. Open AI settings (the gear icon) to use ' +
+            'your local Ollama or paste an API key.\n',
+        );
+      } else {
+        logError(`LLM narrative error: ${outcome.reason}`);
+        send('llm-delta', `\n[AI error: ${outcome.reason}]\n`);
+      }
     } else {
-      logError(`LLM narrative error: ${outcome.reason}`);
-      send('llm-delta', `\n[AI error: ${outcome.reason}]\n`);
+      log(`LLM narrative ok via ${outcome.provider ?? '?'}/${outcome.model ?? '?'}`);
     }
-  } else {
-    log(`LLM narrative ok via ${outcome.provider ?? '?'}/${outcome.model ?? '?'}`);
+  } finally {
+    // Always release the renderer's "Analyzing…" state — a missed 'llm-done'
+    // wedges the AI button until app restart.
+    send('llm-done');
   }
-  send('llm-done');
 }
 
 // ─── Device enumeration ─────────────────────────────────────────────────────
@@ -590,6 +595,37 @@ export function registerIpcHandlers(): void {
     }
     return updateSettings(clean);
   });
+
+  // AI provider settings (#76). The renderer only ever sees the public view —
+  // the API key crosses the bridge once (renderer → main, on save/test) and the
+  // stored ciphertext never crosses back.
+  ipcMain.handle('llm-get-config', () => getPublicLlmConfig());
+
+  ipcMain.handle('llm-save-config', (_event, patch: LlmConfigPatch) => {
+    const clean: LlmConfigPatch = {};
+    if (patch && typeof patch === 'object') {
+      if (typeof patch.provider === 'string') clean.provider = patch.provider;
+      if (typeof patch.model === 'string') clean.model = patch.model;
+      if (typeof patch.ollamaHost === 'string') clean.ollamaHost = patch.ollamaHost;
+      if (typeof patch.apiBaseUrl === 'string') clean.apiBaseUrl = patch.apiBaseUrl;
+      if (typeof patch.apiKey === 'string') clean.apiKey = patch.apiKey;
+    }
+    try {
+      return { ok: true, config: saveLlmConfig(clean) };
+    } catch (err) {
+      return { ok: false, reason: err instanceof Error ? err.message : String(err) };
+    }
+  });
+
+  // Auto-detect a local Ollama and list its models (settings screen, #76).
+  ipcMain.handle('llm-detect-ollama', (_event, host?: string) => probeOllama(host));
+
+  // "Test connection" for the API-key tab (#76).
+  ipcMain.handle(
+    'llm-test-provider',
+    (_event, opts: { provider: string; apiKey?: string; apiBaseUrl?: string }) =>
+      testHostedProvider(opts && typeof opts === 'object' ? opts : { provider: '' }),
+  );
 
   // License (#54) — offline validation only; none of these touch the network.
   // get-license re-verifies the stored key on every call, so expiry/grace roll

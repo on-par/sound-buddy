@@ -42,24 +42,32 @@ test('smoke: exercise all flows and collect errors', async () => {
     await win.waitForTimeout(120);
   }
 
-  // 2. Load + analyze a real fixture (real sox/ffprobe/python — surfaces missing tools)
+  // 2. AI provider settings dialog (#76): open via the gear, let the real
+  // Ollama auto-detect run (connection-refused is a handled state), close.
+  await win.locator('#ai-settings-btn').click();
+  await win.waitForTimeout(600);
+  await win.locator('#ai-tab-btn-hosted').click();
+  await win.waitForTimeout(120);
+  await win.locator('#ai-dialog-cancel').click();
+
+  // 3. Load + analyze a real fixture (real sox/ffprobe/python — surfaces missing tools)
   const fixture = path.join(__dirname, 'fixtures', 'silence.wav');
   await win.evaluate((fp) => (window as unknown as { loadFile: (p: string) => void }).loadFile(fp), fixture);
   await win.locator('#analyze-btn').click().catch(() => {});
   await win.waitForTimeout(2500);
 
-  // 3. AI analysis. AI is OFF by default now (PRD 01), so the AI panel/button is
+  // 4. AI analysis. AI is OFF by default now (PRD 01), so the AI panel/button is
   // hidden — only exercise the AI path when a dev has opted in (panel visible).
   if (await win.locator('#ai-analyze-btn').isVisible().catch(() => false)) {
     await win.locator('#ai-analyze-btn').click().catch(() => {});
     await win.waitForTimeout(1200);
   }
 
-  // 4. Report card render
+  // 5. Report card render
   await win.locator('.mode-tab[data-mode="reportcard"]').click();
   await win.waitForTimeout(400);
 
-  // 5. Live: enumerate devices (real python stream.py)
+  // 6. Live: enumerate devices (real python stream.py)
   await win.locator('.mode-tab[data-mode="live"]').click();
   await win.waitForTimeout(1500);
 
