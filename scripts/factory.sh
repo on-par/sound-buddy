@@ -80,9 +80,14 @@ go/no-go plan, then proceed immediately. Auto-fix only high-confidence review
 findings; for uncertain findings apply the conservative default and note the
 deferral in the PR body instead of asking. Never pause for permission or input —
 nobody is watching this session. Stop at a green, ready-for-review PR — do NOT
-merge (the factory handles merging). If and ONLY IF you hit something genuinely
-ambiguous that is unsafe to default, print a line starting exactly with
-"ESCALATE:" followed by the question, then STOP working and end your turn.
+merge (the factory handles merging). CRITICAL: your session terminates the moment
+you end your turn, so NEVER end your turn after an intermediate step (reviews,
+verify, commits). Before ending, run this checklist and keep working until every
+item is true: (1) branch $br is pushed to origin, (2) an open PR exists with
+"Closes #$n" in its body, (3) CI on the PR is green, (4) the PR is marked ready
+for review. If and ONLY IF you hit something genuinely ambiguous that is unsafe
+to default, print a line starting exactly with "ESCALATE:" followed by the
+question, then STOP working and end your turn.
 EOF
 }
 
