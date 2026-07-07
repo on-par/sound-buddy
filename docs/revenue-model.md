@@ -15,7 +15,7 @@ Related: [#63 GTM epic](https://github.com/on-par/sound-buddy/issues/63) ·
 | Plan | Price | Who it's for |
 |------|-------|--------------|
 | Monthly | **$9/month** | The impulse buy — low-friction entry, below a Spotify family plan |
-| Annual | **$79/year** | The church budget buy — maps to the annual expense cycle; 2 months free vs monthly |
+| Annual | **$79/year** | The church budget buy — maps to the annual expense cycle; saves $29 vs monthly (~3 months free) |
 
 **Rationale and anchors:**
 
@@ -26,6 +26,11 @@ Related: [#63 GTM epic](https://github.com/on-par/sound-buddy/issues/63) ·
   buying behaviors (see principle 4 below).
 - Ship the agreed prices first; a pricing experimentation framework is explicitly out of
   scope for year one.
+- **Not yet modeled: the Lifetime / Founding License SKU (#90).** The app's license
+  validation already supports a `lifetime` key kind as a limited launch mechanic, but it
+  has no agreed price and no treatment in the scenarios, refund reserve, or MRR formula
+  below (which values lifetime sales at $0). Price it and fold it into this model before
+  it ships.
 
 ## Cost structure
 
@@ -37,8 +42,10 @@ Related: [#63 GTM epic](https://github.com/on-par/sound-buddy/issues/63) ·
 | Stripe processing | 2.9% + $0.30/transaction | Plus ~0.5% Stripe Tax where registered |
 | Apple Developer account | $99/year | Total, not per user |
 
-- **Marginal cost per paid user: ~$2.60/year** (the Stripe fee on a $79 annual purchase).
-- **Gross margin: ~96%.**
+- **Marginal cost per paid user: ~$2.60/year** for an annual buyer (the Stripe fee on a
+  $79 purchase). A monthly subscriber costs more: 12 × (2.9% × $9 + $0.30) ≈
+  **$6.73/year**, i.e. ~94% margin on the $9 tier.
+- **Gross margin: ~96%** on annual, ~94% on monthly.
 
 Zero inference cost is a **structural pricing moat**, not just a feature: competitors
 who serve inference have costs that scale with usage; ours don't. That is why we can
@@ -66,6 +73,9 @@ sit at 1/15th of MxU's price and still run a ~96% margin.
 
 - "Mixed" in the base case = 125 annual + 50 monthly-annualized. Monthly churn is
   modeled at 30% by month 6 with 4.2 average months of retention.
+- The optimistic scenario models **all 350 users at the annual price** (350 × $79 =
+  $27,650); it is not the base-case mix scaled up. Applying the base case's
+  annual/monthly ratio to 350 users would give a materially lower gross.
 - Net = gross minus Stripe fees (~$2.59 per annual transaction; 2.9% + $0.30 per
   monthly transaction).
 
@@ -106,12 +116,19 @@ those milestones — they are pacing guides, not commitments.
 
 MRR is computed as (monthly active × $9) + (annual active × $79 / 12), per #66.
 
-**Reconciliation note:** the month-12 MRR target is a stretch relative to the scenario
-table. Even the optimistic scenario (350 paid users) implies roughly $2,300–$2,550 MRR
-at year end depending on mix; $3,000 MRR requires beating the optimistic case on
-downloads or conversion. Treat $3,000 as the stretch goal and the base case
-(~$1,300 MRR at month 12) as the plan-of-record floor. If actuals track the base case,
-that is on plan.
+**Reconciliation note:** the #66 MRR milestones are stretch targets relative to the
+scenario table — at both ends of the year:
+
+- **Month 3:** 500 downloads × 7% conversion = ~35 paid users, which yields at most
+  ~$315 MRR (all-monthly) or ~$230 (all-annual). The $500 milestone is not reachable
+  under the doc's own funnel assumptions; missing it at month 3 is **not** by itself
+  the sub-3%-conversion signal that triggers the funnel investigation.
+- **Month 12:** even the optimistic scenario (350 paid users) implies roughly
+  $2,300–$2,550 MRR at year end depending on mix; $3,000 requires beating the
+  optimistic case on downloads or conversion.
+
+Treat the milestone column as the stretch goal and the base case (~$1,300 MRR at
+month 12) as the plan-of-record floor. If actuals track the base case, that is on plan.
 
 ## Key financial principles
 
@@ -131,6 +148,26 @@ that is on plan.
 - **30-day full refund, no questions asked.**
 - **Reserve: 5% of gross revenue** held against refunds.
 - Expected refund rate: **<5%**, based on comparable indie Mac apps.
+
+## Known inconsistencies to reconcile
+
+The figures above are recorded verbatim from the 2026-07-04 consensus. Recomputing the
+model from its own stated assumptions surfaces contradictions that need an explicit
+decision (owner: Patrick) rather than a silent rewrite:
+
+1. **Base-case gross vs monthly retention.** $13,825 values all 175 users at
+   $79/year (175 × $79), but the stated 4.2-month average retention prices the 50
+   monthly users at ~$37.80 each (50 × $9 × 4.2 ≈ $1,890, not $3,950). Honoring the
+   retention assumption gives ~$11,765 gross.
+2. **The churn assumption is not internally coherent.** 30% *monthly* churn implies
+   ~3.3 average months of retention; 30% *cumulative by month 6* implies ~17 months.
+   Neither reading produces the stated 4.2 months. Pick one definition.
+3. **The churn alarm is below the modeled churn.** The >5%-monthly-churn signal
+   (from #66) is permanently tripped by the model's own ~30% assumption — as written,
+   the plan-of-record always alarms. The threshold or the assumption needs to move.
+4. **Base-case net (~$13,180) is not reproducible** from the stated fee model
+   (recomputed fees are ~$442–$570, implying net ~$13,255–$13,383). Document the fee
+   derivation or adjust the figure.
 
 ## Caveats and boundaries
 
