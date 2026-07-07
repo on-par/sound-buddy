@@ -55,6 +55,9 @@ into the `.app`.
 
 ## AI narrative (optional)
 
+**Works with the AI you already have.** Sound Buddy never proxies AI or charges for
+inference — you bring your own, either a local Ollama or an API key you already pay for.
+
 The Report Card (score, metrics, recommendations) is fully deterministic and needs **no
 AI**. The optional "AI Engineer" prose narrative is powered by a provider you choose, set in
 `~/Library/Application Support/SoundBuddy/llm.json` (or the `SOUND_BUDDY_LLM_PROVIDER` /

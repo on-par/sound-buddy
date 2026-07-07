@@ -27,6 +27,11 @@ if [[ "$FAST" -eq 0 ]]; then
   npm ci --prefix app
 fi
 
+# Positioning-consistency guard (#80): the locked brand phrase must appear
+# verbatim on every surface. No deps, so run it up front — fails fast on copy drift.
+echo "==> positioning check (locked brand phrase)"
+node scripts/check-positioning.mjs
+
 # Build before lint: workspaces cross-reference each other's dist/ type
 # declarations, so `tsc --noEmit` only resolves after a build (CI order too).
 echo "==> build (tsc, all workspaces)"
