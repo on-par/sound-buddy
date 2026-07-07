@@ -5,7 +5,8 @@
 //
 //   ~/Library/Application Support/SoundBuddy/license.json
 //
-// A license key is a Paddle-issued signed payload the app verifies LOCALLY with
+// A license key is a signed payload — issued by the Stripe checkout webhook
+// (#56) — the app verifies LOCALLY with
 // an embedded Ed25519 public key — no network call on launch, ever (privacy
 // stance). Key format (versioned):
 //
@@ -26,9 +27,10 @@ import { app } from 'electron';
 import { logWarn } from './logger';
 
 /**
- * DEV public key — the production Paddle signing keypair replaces this before
- * checkout ships (key issuance is out of scope here, see the Paddle webhook
- * issue). Generate a pair + sign test keys with scripts/license-keygen.mjs.
+ * DEV public key — the production signing keypair replaces this before
+ * checkout ships (key issuance is out of scope here, see #56, the Stripe
+ * checkout + license provisioning webhook). Generate a pair + sign test keys
+ * with scripts/license-keygen.mjs.
  * Override for tests/e2e via SOUND_BUDDY_LICENSE_PUBKEY (PEM, or base64 SPKI DER).
  */
 const EMBEDDED_PUBLIC_KEY_PEM = `-----BEGIN PUBLIC KEY-----
