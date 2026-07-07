@@ -57,6 +57,19 @@ wt_for()     { echo "$WT_PARENT/sound-buddy-factory-$1"; }
 
 stopped() { [ -e "$STOP_FILE" ]; }
 
+# Serialize critical sections. Lanes run concurrently, and git worktree/branch
+# ops on the main repo contend on .git locks — every such op takes GIT_LOCK.
+GIT_LOCK="$STATE/git.lock"
+with_lock() { local lock="$1"; shift
+  local waited=0
+  until mkdir "$lock" 2>/dev/null; do
+    sleep 5; waited=$((waited+5))
+    [ "$waited" -ge 1800 ] && { echo "lock $lock stuck >30m" >&2; return 1; }
+  done
+  trap "rmdir '$lock' 2>/dev/null || true" RETURN
+  "$@"
+}
+
 # ---------- worker prompt (headless: never wait for input) ----------
 prompt_for() { local n="$1" br="$2"
   cat <<EOF | tr '\n' ' '
@@ -86,10 +99,10 @@ cmd_ship() { local n="$1"
     log_event skip "$n" "open PR already exists for issue"; return 0
   fi
 
-  git -C "$REPO" fetch origin -q
-  git -C "$REPO" worktree remove --force "$wt" 2>/dev/null || true
-  git -C "$REPO" branch -D "$br" 2>/dev/null || true
-  git -C "$REPO" worktree add -b "$br" "$wt" origin/main >/dev/null
+  # NB: callers invoke cmd_ship under `|| rc=$?`, which disables errexit in
+  # here — every step below must handle its own failure explicitly.
+  with_lock "$GIT_LOCK" setup_worktree "$br" "$wt" \
+    || { log_event fail "$n" "worktree setup failed for $br"; return 14; }
 
   log_event start "$n" "headless worker started on $br (model $MODEL, log $log)"
   local rc=0
@@ -111,20 +124,17 @@ cmd_ship() { local n="$1"
 
 pr_for_branch() { gh pr list --repo "$GH_REPO" --state open --head "$1" --json number --jq '.[0].number' | grep .; }
 
-# ---------- merge (globally serialized) ----------
-with_merge_lock() {
-  local waited=0
-  until mkdir "$MERGE_LOCK" 2>/dev/null; do
-    sleep 5; waited=$((waited+5))
-    [ "$waited" -ge 1800 ] && { echo "merge lock stuck >30m" >&2; return 1; }
-  done
-  trap 'rmdir "$MERGE_LOCK" 2>/dev/null || true' RETURN
-  "$@"
+setup_worktree() { local br="$1" wt="$2"
+  git -C "$REPO" fetch origin -q || return 1
+  git -C "$REPO" worktree remove --force "$wt" 2>/dev/null || true
+  git -C "$REPO" branch -D "$br" 2>/dev/null || true
+  git -C "$REPO" worktree add -b "$br" "$wt" origin/main >/dev/null
 }
 
+# ---------- merge (globally serialized) ----------
 do_land() { local n="$1"
   local br wt pr ms; br="$(branch_for "$n")"; wt="$(wt_for "$n")"
-  git -C "$REPO" fetch origin -q
+  git -C "$REPO" fetch origin -q || true
   pr="$(pr_for_branch "$br" || true)"
   [ -z "$pr" ] && { log_event fail "$n" "land: no open PR for $br"; return 4; }
   timeout 600 gh pr checks "$pr" --repo "$GH_REPO" --watch --fail-fast >/dev/null 2>&1 || true
@@ -142,12 +152,16 @@ do_land() { local n="$1"
   gh pr merge "$pr" --squash --delete-branch --repo "$GH_REPO" \
     || { log_event fail "$n" "merge failed for PR #$pr"; return 5; }
   log_event merged "$n" "squash-merged $br (PR #$pr)"
-  git -C "$REPO" worktree remove --force "$wt" 2>/dev/null || true
-  git -C "$REPO" worktree prune
+  with_lock "$GIT_LOCK" cleanup_worktree "$wt" || true
   return 0
 }
 
-cmd_land() { with_merge_lock do_land "$1"; }
+cleanup_worktree() { local wt="$1"
+  git -C "$REPO" worktree remove --force "$wt" 2>/dev/null || true
+  git -C "$REPO" worktree prune
+}
+
+cmd_land() { with_lock "$MERGE_LOCK" do_land "$1"; }
 
 # Wait until the issue's PR is merged — by us (FACTORY_MERGE=1) or by a human.
 wait_landed() { local n="$1"
