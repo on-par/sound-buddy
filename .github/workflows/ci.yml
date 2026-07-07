@@ -17,6 +17,11 @@ jobs:
           node-version: '22'
           cache: 'npm'
 
+      # Locked brand phrase must be verbatim across surfaces (#80). No deps —
+      # fail fast on copy drift before the heavier install/build steps.
+      - name: Positioning check
+        run: node scripts/check-positioning.mjs
+
       - name: Install dependencies
         run: npm ci
 
