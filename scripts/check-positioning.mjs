@@ -1,48 +1,60 @@
 #!/usr/bin/env node
-// Positioning-consistency guard (#80). "Works with the AI you already have" is a
-// locked brand philosophy, not a tagline to paraphrase — Clara owns the wording.
-// This script is the single source of truth for that phrase: it asserts the exact
-// string appears verbatim on every surface that uses it, and that retired
-// paraphrases don't creep back in. Wired into scripts/verify.sh and CI.
+// Positioning-consistency guard (#80, #79). Our brand philosophy lines are locked
+// wording, not taglines to paraphrase — Clara owns them. This script is the single
+// source of truth for each locked phrase: it asserts the exact string appears
+// verbatim on every surface that uses it, and that retired paraphrases don't creep
+// back in. Wired into scripts/verify.sh and CI.
 import { readFile } from 'node:fs/promises';
 
 const repoRoot = new URL('../', import.meta.url);
 
-// THE locked phrase. Change it here and nowhere else; every surface must match.
-const PHRASE = 'Works with the AI you already have';
-
-// Surfaces that must contain the phrase verbatim (as a substring — trailing
-// punctuation or an em-dash continuation is fine, paraphrasing is not).
-const REQUIRED = [
-  'site/src/pages/index.astro', // landing — trust section
-  'app/renderer/index.html',    // app — AI provider settings
-  'README.md',                  // docs — architecture overview
-];
-
-// Retired paraphrases that must not reappear on user-facing product surfaces.
-// (Internal strategy docs like docs/revenue-model.md may still discuss the
-// "bring your own AI" concept in their own words — this only guards the phrase's
-// canonical placements.)
-const FORBIDDEN = [
-  { text: 'Works with your existing AI', in: ['site/src/pages/index.astro', 'app/renderer/index.html'] },
+// THE locked phrases. Change wording here and nowhere else; every listed surface
+// must match verbatim (as a substring — trailing punctuation or an em-dash
+// continuation is fine, paraphrasing is not). `forbidden` lists retired
+// paraphrases that must not reappear on the named user-facing product surfaces.
+// (Internal strategy docs may still discuss a concept in their own words — this
+// only guards each phrase's canonical placements.)
+const LOCKED = [
+  {
+    phrase: 'Works with the AI you already have',
+    required: [
+      'site/src/pages/index.astro', // landing — trust section
+      'app/renderer/index.html',    // app — AI provider settings
+      'README.md',                  // docs — architecture overview
+    ],
+    forbidden: [
+      { text: 'Works with your existing AI', in: ['site/src/pages/index.astro', 'app/renderer/index.html'] },
+    ],
+  },
+  {
+    phrase: 'Your audio never leaves your machine',
+    required: [
+      'site/src/pages/index.astro', // landing — privacy callout (headline-level)
+      'app/renderer/index.html',    // app — AI settings privacy note
+      'README.md',                  // docs — top-level positioning
+    ],
+    forbidden: [],
+  },
 ];
 
 const problems = [];
 
-for (const rel of REQUIRED) {
-  const body = await readFile(new URL(rel, repoRoot), 'utf8').catch(() => null);
-  if (body === null) {
-    problems.push(`missing surface: ${rel}`);
-  } else if (!body.includes(PHRASE)) {
-    problems.push(`${rel}: locked phrase "${PHRASE}" not found verbatim`);
-  }
-}
-
-for (const { text, in: files } of FORBIDDEN) {
-  for (const rel of files) {
+for (const { phrase, required, forbidden } of LOCKED) {
+  for (const rel of required) {
     const body = await readFile(new URL(rel, repoRoot), 'utf8').catch(() => null);
-    if (body !== null && body.includes(text)) {
-      problems.push(`${rel}: retired paraphrase "${text}" — use "${PHRASE}"`);
+    if (body === null) {
+      problems.push(`missing surface: ${rel}`);
+    } else if (!body.includes(phrase)) {
+      problems.push(`${rel}: locked phrase "${phrase}" not found verbatim`);
+    }
+  }
+
+  for (const { text, in: files } of forbidden) {
+    for (const rel of files) {
+      const body = await readFile(new URL(rel, repoRoot), 'utf8').catch(() => null);
+      if (body !== null && body.includes(text)) {
+        problems.push(`${rel}: retired paraphrase "${text}" — use "${phrase}"`);
+      }
     }
   }
 }
@@ -53,4 +65,5 @@ if (problems.length > 0) {
   process.exit(1);
 }
 
-console.log(`✓ positioning consistent — "${PHRASE}" verbatim across ${REQUIRED.length} surfaces`);
+const summary = LOCKED.map((l) => `"${l.phrase}"`).join(', ');
+console.log(`✓ positioning consistent — ${summary} verbatim across their surfaces`);

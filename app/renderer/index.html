@@ -364,6 +364,7 @@
     #ai-settings-btn:hover { color:var(--text-primary); background:var(--surface); }
     .ai-dialog-card { width:min(440px,calc(100vw - 48px)); }
     .ai-dialog-sub { font:var(--fw-regular) var(--fs-label)/1.4 var(--font-sans); color:var(--text-secondary); margin-top:-6px; }
+    .ai-dialog-note { font:var(--fw-regular) var(--fs-label)/1.4 var(--font-sans); color:var(--text-tertiary); margin:2px 0 0; }
     .ai-tabs { display:flex; gap:6px; }
     .ai-tab { flex:1; height:var(--control-h); border:1px solid var(--border-default); border-radius:var(--radius-md); background:var(--surface); color:var(--text-secondary); font:var(--fw-medium) var(--fs-body-sm)/1 var(--font-sans); cursor:pointer; }
     .ai-tab.active { border-color:var(--gold-600); background:var(--gold-tint); color:var(--gold-text); }
@@ -1148,6 +1149,7 @@
       <button type="button" id="ai-dialog-cancel" class="btn btn-secondary sm">Cancel</button>
       <button type="button" id="ai-dialog-save" class="btn btn-primary sm">Save</button>
     </div>
+    <p class="ai-dialog-note">Your audio never leaves your machine — analysis runs on-device, and only the measurements go to the provider you choose.</p>
   </div>
 </div>
 

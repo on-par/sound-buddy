@@ -2,6 +2,8 @@
 
 Audio analysis and coaching tool for church sound engineers. Analyze recordings, get report cards, and receive actionable EQ recommendations.
 
+**Your audio never leaves your machine.** Analysis runs fully local on your Mac — no cloud uploads, no accounts, no telemetry.
+
 ## Quick Start
 
 ### CLI
