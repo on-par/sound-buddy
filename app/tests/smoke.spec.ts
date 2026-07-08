@@ -17,7 +17,9 @@ test('smoke: exercise all flows and collect errors', async () => {
 
   const app: ElectronApplication = await electron.launch({
     args: [path.join(__dirname, '..', 'dist', 'electron', 'main.js')],
-    env: { ...process.env, SB_LOG_FILE: LOG_FILE },
+    // Suppress the first-run onboarding overlay (#69) so its scrim doesn't
+    // intercept the tab/analyze clicks this smoke run makes on a fresh profile.
+    env: { ...process.env, SB_LOG_FILE: LOG_FILE, SOUND_BUDDY_DISABLE_ONBOARDING: '1' },
   });
 
   // Main-process stdout/stderr

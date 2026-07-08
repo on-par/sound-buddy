@@ -25,6 +25,12 @@ extraResources:
     to: scripts
     filter:
       - "**/*"
+  # First-run onboarding demo recording (#69). Ships outside the asar so the
+  # external sox/ffprobe processes can read it (same rationale as scripts).
+  - from: assets
+    to: assets
+    filter:
+      - "**/*"
 mac:
   # Ship a plain .zip of the .app — this is what lands on the GitHub release and
   # is the intended download. Apple Silicon (M1+) only; universal/x64 not built.

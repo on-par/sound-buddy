@@ -26,8 +26,14 @@ test('packaged app analyzes a file with no external tools on PATH', async () => 
   const app: ElectronApplication = await electron.launch({
     executablePath: exe,
     args: [],
-    // Clean-machine PATH: only the OS defaults, nothing from Homebrew.
-    env: { PATH: '/usr/bin:/bin:/usr/sbin:/sbin', HOME: process.env.HOME || os.homedir() },
+    // Clean-machine PATH: only the OS defaults, nothing from Homebrew. Suppress
+    // the first-run onboarding overlay (#69) so its scrim doesn't block the
+    // analyze click that proves the bundled sox/ffprobe/python all run.
+    env: {
+      PATH: '/usr/bin:/bin:/usr/sbin:/sbin',
+      HOME: process.env.HOME || os.homedir(),
+      SOUND_BUDDY_DISABLE_ONBOARDING: '1',
+    },
   });
   app.process().stdout?.on('data', (d) => mainOut.push(d.toString()));
   app.process().stderr?.on('data', (d) => mainOut.push(d.toString()));

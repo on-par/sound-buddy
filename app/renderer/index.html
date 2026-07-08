@@ -373,6 +373,16 @@
     .rig-dialog-input:focus { border-color:var(--gold-500); box-shadow:var(--glow-focus); }
     .rig-dialog-actions { display:flex; justify-content:flex-end; gap:8px; }
 
+    /* First-run onboarding welcome (#69) — reuses the .rig-dialog scrim. */
+    .onboarding-card { width:min(440px,calc(100vw - 48px)); gap:16px; text-align:center; align-items:center; padding:28px 26px; }
+    .onboarding-mark { color:var(--gold-500); line-height:0; }
+    .onboarding-title { font:var(--fw-semibold) var(--fs-h2)/1.2 var(--font-sans); color:var(--text-primary); margin:0; }
+    .onboarding-copy { font:var(--fw-regular) var(--fs-body)/1.55 var(--font-sans); color:var(--text-secondary); margin:0; }
+    .onboarding-actions { display:flex; gap:10px; width:100%; margin-top:4px; }
+    .onboarding-actions .btn { flex:1; justify-content:center; }
+    .onboarding-progress { display:flex; align-items:center; justify-content:center; gap:10px; min-height:var(--control-h); color:var(--text-secondary); font:var(--fw-regular) var(--fs-body-sm)/1 var(--font-sans); }
+    .onboarding-progress .spin { width:18px; height:18px; border-radius:50%; border:2px solid var(--surface-raised); border-top-color:var(--gold-500); animation:sbspin 0.8s linear infinite; }
+
     /* AI provider settings dialog (#76) — same overlay pattern as .rig-dialog */
     #ai-settings-btn, #storage-settings-btn { display:flex; align-items:center; justify-content:center; width:30px; height:30px; padding:0; background:transparent; border:none; border-radius:var(--radius-sm); color:var(--text-secondary); cursor:pointer; }
     #ai-settings-btn:hover, #storage-settings-btn:hover { color:var(--text-primary); background:var(--surface); }
@@ -795,6 +805,22 @@
     <span class="lb-text" id="trial-banner-text"></span>
     <button type="button" id="trial-banner-start" class="ub-btn">Start subscription</button>
     <button type="button" id="trial-banner-dismiss" class="ub-x" aria-label="Dismiss">✕</button>
+  </div>
+  <!-- ══ First-run onboarding welcome (#69) ══ -->
+  <div id="onboarding-dialog" class="rig-dialog" style="display:none" role="dialog" aria-modal="true" aria-labelledby="onboarding-title">
+    <div class="rig-dialog-card onboarding-card">
+      <div class="onboarding-mark" data-icon="waveform" aria-hidden="true"></div>
+      <h2 id="onboarding-title" class="onboarding-title">Welcome to Sound Buddy</h2>
+      <p class="onboarding-copy" id="onboarding-copy">Sound Buddy scores your mix and hands back a clear report card — an overall grade, level and dynamics readouts, and the EQ moves that matter. No setup, no settings, and no audio gear required to get started. Run your first analysis on a sample recording and see your report card in seconds.</p>
+      <div class="onboarding-actions" id="onboarding-actions">
+        <button type="button" id="onboarding-skip" class="btn btn-secondary">Skip for now</button>
+        <button type="button" id="onboarding-run" class="btn btn-primary" data-icon="waveform">Run your first analysis</button>
+      </div>
+      <div class="onboarding-progress" id="onboarding-progress" style="display:none">
+        <span class="spin"></span>
+        <span id="onboarding-progress-text">Analyzing your first recording…</span>
+      </div>
+    </div>
   </div>
   <!-- ══ Header ══ -->
   <div id="header">
@@ -1252,6 +1278,8 @@
 <script src="playback-routing.js"></script>
 <!-- Pure license/entitlement helpers (window.licenseState, #54). -->
 <script src="license-state.js"></script>
+<!-- Pure first-run onboarding gate (window.onboardingState, #69). -->
+<script src="onboarding-state.js"></script>
 <script>
 'use strict';
 
@@ -3264,6 +3292,81 @@ sb.onMenuOpenFile((fp) => {
   runFileAnalysis(fp);
 });
 
+/* ══ First-run onboarding (#69) ══
+   The guided path from launch to first report card. On a genuine first launch a
+   welcome overlay appears whose primary CTA analyzes a bundled demo recording
+   through the normal File pipeline, then reveals the report card — no settings,
+   no file picker, no audio gear. Shows exactly once, gated by window.onboardingState
+   + localStorage (mirrors the trial banner's dismiss idiom). */
+async function initOnboarding() {
+  const dlg = document.getElementById('onboarding-dialog');
+  if (!dlg || !window.onboardingState) return;
+  // Dev/e2e escape hatch (SOUND_BUDDY_DISABLE_ONBOARDING): skip the overlay so
+  // automated specs can drive the UI without the modal scrim in the way. The
+  // overlay is display:none until here, so awaiting the flag causes no flash.
+  try { if (sb.isOnboardingDisabled && (await sb.isOnboardingDisabled())) return; } catch { /* no bridge → show */ }
+  if (!onboardingState.shouldShowOnboarding(window.localStorage)) return;
+
+  const actions = document.getElementById('onboarding-actions');
+  const progress = document.getElementById('onboarding-progress');
+  const copy = document.getElementById('onboarding-copy');
+  const runBtn = document.getElementById('onboarding-run');
+  const skipBtn = document.getElementById('onboarding-skip');
+
+  function close() {
+    // Seen once — completing or skipping both retire the flow for good.
+    onboardingState.markOnboardingSeen(window.localStorage);
+    dlg.style.display = 'none';
+  }
+  function showProgress() { actions.style.display = 'none'; progress.style.display = 'flex'; }
+  function showActions() { progress.style.display = 'none'; actions.style.display = 'flex'; }
+
+  async function runFirstAnalysis() {
+    showProgress();
+    let demo = null;
+    try { demo = await sb.getDemoAudio(); } catch { demo = null; }
+
+    // No bundled demo (e.g. asset missing) — never dead-end: retire onboarding
+    // and hand the user the normal file picker on the File tab instead.
+    if (!demo) {
+      close();
+      document.querySelector('.mode-tab[data-mode="file"]').click();
+      try { const fp = await sb.openFileDialog(); if (fp) { loadFile(fp); runFileAnalysis(fp); } } catch { /* user cancelled */ }
+      return;
+    }
+
+    // Route through the File tab so the shared analysis pipeline + spectrum
+    // render fire exactly as a normal run; the overlay's spinner is the progress
+    // indicator meanwhile. On success, reveal the report card automatically.
+    document.querySelector('.mode-tab[data-mode="file"]').click();
+    loadFile(demo);
+    await runFileAnalysis(demo);
+
+    if (!currentAnalysis) {
+      // Analysis failed (error surfaced in the File view). Surface the reason in
+      // the always-visible copy line (the progress row is about to be hidden),
+      // relabel the CTA, and let the user retry or skip.
+      if (copy) copy.textContent = 'That didn’t work — the analysis couldn’t finish. Try again, or skip for now.';
+      runBtn.textContent = 'Try again';
+      showActions();
+      return;
+    }
+    close();
+    document.querySelector('.mode-tab[data-mode="reportcard"]').click();
+  }
+
+  runBtn.addEventListener('click', () => { void runFirstAnalysis(); });
+  skipBtn.addEventListener('click', close);
+  // Escape / backdrop click = skip (still counts as seen — one-time by design),
+  // but not while the first analysis is mid-flight.
+  dlg.addEventListener('click', (e) => { if (e.target === dlg && progress.style.display === 'none') close(); });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && dlg.style.display !== 'none' && progress.style.display === 'none') close();
+  });
+
+  dlg.style.display = 'flex';
+}
+
 sb.onLlmDelta((text) => aiAppend(text));
 sb.onLlmDone(() => {
   llmRunning = false;
@@ -4199,6 +4302,9 @@ setSpectrumState('empty', { text: 'Load a file to see the spectrum' });
 // Load devices first so a saved rig can reconcile its device by name and clamp
 // channels against the real device list; then apply the active rig (if any).
 loadDevices().then(initRigs, initRigs);
+
+// First-run onboarding (#69): show the welcome overlay on a genuine first launch.
+void initOnboarding();
 </script>
 </body>
 </html>

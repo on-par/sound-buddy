@@ -36,6 +36,15 @@ const SPECTRUM_SCRIPT = path.join(SCRIPTS_DIR, 'spectrum.py');
 const STREAM_SCRIPT = path.join(SCRIPTS_DIR, 'stream.py');
 const PLAYBACK_SCRIPT = path.join(SCRIPTS_DIR, 'playback.py');
 
+// Bundled demo recording for the first-run onboarding flow (#69). Like the
+// Python scripts it must live OUTSIDE the asar archive so the external
+// sox/ffprobe processes can read it — it ships as extraResources
+// (Contents/Resources/assets) in a packaged .app; in dev it lives under app/assets.
+const APP_ROOT = path.resolve(__dirname, '..', '..');
+const DEMO_AUDIO = app.isPackaged
+  ? path.join(process.resourcesPath, 'assets', 'demo.wav')
+  : path.join(APP_ROOT, 'assets', 'demo.wav');
+
 // Native helpers (sox, ffprobe) are bundled at Contents/Resources/bin in a
 // packaged .app (see build/afterPack.js). In dev they come from PATH. Resolving
 // to the bundled copy means the app never depends on a Homebrew install.
@@ -714,6 +723,20 @@ export function registerIpcHandlers(): void {
       return { success: false, error: message };
     }
   });
+
+  // get-demo-audio — path to the bundled demo recording the first-run onboarding
+  // flow (#69) analyzes with one click. Returns null if the asset is missing so
+  // the renderer can fall back to the file picker rather than erroring.
+  ipcMain.handle('get-demo-audio', () => {
+    return fs.existsSync(DEMO_AUDIO) ? DEMO_AUDIO : null;
+  });
+
+  // onboarding-disabled — dev/e2e switch (SOUND_BUDDY_DISABLE_ONBOARDING) that
+  // suppresses the first-run welcome overlay (#69) so the e2e harness can drive a
+  // deterministic UI without the modal scrim intercepting clicks. Mirrors the
+  // SOUND_BUDDY_DISABLE_TRIAL switch honored by license.ts. The overlay stays
+  // hidden until this resolves at boot, so there's no scrim flash either way.
+  ipcMain.handle('onboarding-disabled', () => process.env.SOUND_BUDDY_DISABLE_ONBOARDING === '1');
 
   // list-devices
   ipcMain.handle('list-devices', async () => {
