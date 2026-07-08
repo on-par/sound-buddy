@@ -122,12 +122,48 @@ cmd_ship() { local n="$1"
   if [ "$rc" -ne 0 ]; then log_event fail "$n" "worker exited rc=$rc (see $log)"; return 12; fi
 
   local pr; pr="$(pr_for_branch "$br" || true)"
-  if [ -z "$pr" ]; then log_event fail "$n" "worker finished but no PR found for $br"; return 13; fi
+  if [ -z "$pr" ]; then
+    # Self-heal: workers sometimes end their session after committing but
+    # before push/PR. If completed work exists, finish those steps for them.
+    pr="$(recover_pr "$n" "$br" "$wt" || true)"
+    if [ -z "$pr" ]; then
+      log_event fail "$n" "worker finished but no PR and no recoverable work for $br"; return 13
+    fi
+    log_event recovered "$n" "factory pushed branch and opened PR #$pr on worker's behalf"
+  fi
   log_event ready "$n" "PR #$pr ready for review"
   return 0
 }
 
 pr_for_branch() { gh pr list --repo "$GH_REPO" --state open --head "$1" --json number --jq '.[0].number' | grep .; }
+
+# If the worktree holds a clean commit ahead of origin/main but no PR exists,
+# push the branch and open a house-format PR. Echoes the PR number on success.
+recover_pr() { local n="$1" br="$2" wt="$3"
+  [ -d "$wt" ] || return 1
+  [ -n "$(git -C "$wt" status --porcelain)" ] && return 1   # dirty = unfinished, don't ship
+  [ -z "$(git -C "$wt" log --oneline origin/main..HEAD 2>/dev/null)" ] && return 1
+  git -C "$wt" push -u origin "$br" >/dev/null 2>&1 || return 1
+  local title stat
+  title="$(gh issue view "$n" --repo "$GH_REPO" --json title --jq .title)"
+  stat="$(git -C "$wt" diff --stat "origin/main...HEAD" | tail -12)"
+  gh pr create --repo "$GH_REPO" --head "$br" --title "$title (#$n)" --body "## Summary
+Implements #$n. Built autonomously by the software factory; the worker session
+ended after committing but before opening the PR, so the factory pushed the
+branch and opened this PR from the completed worktree.
+
+## Changes
+\`\`\`
+$stat
+\`\`\`
+
+## Testing
+Worker ran the ship-it verify/review pipeline before committing (see
+.factory/logs/issue-$n.log). CI runs the standard gate on this PR.
+
+Closes #$n" >/dev/null 2>&1 || return 1
+  pr_for_branch "$br"
+}
 
 setup_worktree() { local br="$1" wt="$2"
   git -C "$REPO" fetch origin -q || return 1
