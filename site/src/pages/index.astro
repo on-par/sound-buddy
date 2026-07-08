@@ -1,9 +1,14 @@
 ---
 import Layout from '../layouts/Layout.astro';
 import ReportCard from '../components/ReportCard.astro';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 
 const DOWNLOAD_URL = 'https://github.com/on-par/sound-buddy-releases/releases/latest';
 const REPO_URL = 'https://github.com/on-par/sound-buddy';
+const APP_VERSION = JSON.parse(
+  readFileSync(join(process.cwd(), '../app/package.json'), 'utf8'),
+).version;
 
 const steps = [
   { n: '1', title: 'Record your service', body: 'Capture every channel straight from your interface — up to 32 inputs, stems saved per strip.' },
@@ -84,7 +89,7 @@ const tiers = [
           <a class="btn btn-primary btn-lg" href={DOWNLOAD_URL} rel="noopener">Download for Mac</a>
           <a class="btn btn-ghost btn-lg" href="#how">See how it works</a>
         </div>
-        <p class="hero-fine mono">Apple Silicon · macOS 26+ · v0.6.0</p>
+        <p class="hero-fine mono">Apple Silicon · macOS 26+ · v{APP_VERSION}</p>
       </div>
       <div class="hero-visual">
         <ReportCard />
