@@ -9,9 +9,13 @@ import {
 } from "./index.js";
 
 describe("ideal profiles", () => {
-  it("ships flat, music-fullrange, speech-podcast, broadcast on the 48-pt grid", () => {
+  it("ships flat, music-fullrange, speech-podcast, broadcast, worship-service on the 48-pt grid", () => {
     const ids = PROFILES.map((p) => p.id).sort();
-    expect(ids).toEqual(["broadcast", "flat", "music-fullrange", "speech-podcast"]);
+    expect(ids).toEqual(["broadcast", "flat", "music-fullrange", "speech-podcast", "worship-service"]);
+    const worship = getProfile("worship-service")!;
+    expect(worship.freqs).toEqual(GRID_FREQS);
+    expect(worship.freqs).toHaveLength(GRID_POINTS);
+    expect(worship.dbOffsets).toHaveLength(GRID_POINTS);
     for (const p of PROFILES) {
       expect(p.freqs).toHaveLength(GRID_POINTS);
       expect(p.dbOffsets).toHaveLength(GRID_POINTS);
@@ -34,8 +38,8 @@ describe("ideal profiles", () => {
 
   it("maps content type to the right default profile", () => {
     expect(defaultProfileForContentType("speech")).toBe("speech-podcast");
-    expect(defaultProfileForContentType("music")).toBe("music-fullrange");
-    expect(defaultProfileForContentType("mixed")).toBe("music-fullrange");
+    expect(defaultProfileForContentType("music")).toBe("worship-service");
+    expect(defaultProfileForContentType("mixed")).toBe("worship-service");
     expect(defaultProfileForContentType("silence")).toBe("flat");
     expect(defaultProfileForContentType(undefined)).toBe("flat");
   });

@@ -99,6 +99,34 @@ const FAKE_ANALYSIS = {
   },
 };
 
+const WORSHIP_SERVICE_ANALYSIS = {
+  ...FAKE_ANALYSIS,
+  sox: {
+    ...FAKE_ANALYSIS.sox,
+    rmsDbfs: -26.76,
+    peakDbfs: -6.21,
+    dynamicRangeDb: 20.55,
+  },
+  spectrum: {
+    ...FAKE_ANALYSIS.spectrum,
+    contentType: 'mixed',
+  },
+};
+
+const WORSHIP_MUSIC_ANALYSIS = {
+  ...WORSHIP_SERVICE_ANALYSIS,
+  sox: {
+    ...WORSHIP_SERVICE_ANALYSIS.sox,
+    rmsDbfs: -27.8,
+    peakDbfs: -11.5,
+    dynamicRangeDb: 16.3,
+  },
+  spectrum: {
+    ...WORSHIP_SERVICE_ANALYSIS.spectrum,
+    contentType: 'music',
+  },
+};
+
 // A single-frame analysis (short file): the heatmap collapses to one column and
 // the report card shows a single representative frame, without error.
 const SHORT_ANALYSIS = {
@@ -295,6 +323,42 @@ test.describe('Sound Buddy E2E', () => {
 
     const recCount = await window.locator('#rc-recommendations .rc-rec').count();
     expect(recCount).toBeGreaterThanOrEqual(1);
+  });
+
+  test('worship service recordings avoid the false quiet report-card verdict', async () => {
+    await electronApp.evaluate(({ ipcMain }, analysis) => {
+      ipcMain.removeHandler('analyze-file');
+      ipcMain.handle('analyze-file', () => ({ success: true, data: analysis }));
+    }, WORSHIP_SERVICE_ANALYSIS);
+
+    await window.locator('.mode-tab[data-mode="file"]').click();
+    const fixturePath = path.join(__dirname, 'fixtures', 'silence.wav');
+    await window.evaluate((fp) => {
+      (window as unknown as { loadFile: (p: string) => void }).loadFile(fp);
+    }, fixturePath);
+    await window.locator('#analyze-btn').click();
+
+    await window.locator('.mode-tab[data-mode="reportcard"]').click();
+    await expect(window.locator('#rc-rec-type')).toContainText('Dynamic Service');
+    await expect(window.locator('#rc-rec-type')).not.toContainText('Quiet');
+    await expect(window.locator('#rc-recommendations')).not.toContainText('too quiet');
+
+    await window.locator('.mode-tab[data-mode="file"]').click();
+    await expect(window.locator('.spectrum-legend')).toContainText('Worship service');
+
+    await electronApp.evaluate(({ ipcMain }, analysis) => {
+      ipcMain.removeHandler('analyze-file');
+      ipcMain.handle('analyze-file', () => ({ success: true, data: analysis }));
+    }, WORSHIP_MUSIC_ANALYSIS);
+
+    await window.evaluate((fp) => {
+      (window as unknown as { loadFile: (p: string) => void }).loadFile(fp);
+    }, fixturePath);
+    await window.locator('#analyze-btn').click();
+
+    await window.locator('.mode-tab[data-mode="reportcard"]').click();
+    await expect(window.locator('#rc-rec-type')).toContainText('Dynamic Service');
+    await expect(window.locator('#rc-recommendations')).not.toContainText('too quiet');
   });
 
   test('report card shows a heatmap thumbnail and representative frame curves', async () => {

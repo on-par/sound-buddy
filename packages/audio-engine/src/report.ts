@@ -14,10 +14,19 @@ function contentTypeLabel(ct: ContentType): string {
 function contentTypeTarget(ct: ContentType): string {
   switch (ct) {
     case "speech": return "intelligibility / presence";
-    case "music": return "full-range balance";
-    case "mixed": return "mixed content";
+    case "music": return "worship service reference";
+    case "mixed": return "worship service reference";
     case "silence": return "n/a";
   }
+}
+
+function isDynamicServiceRecording(sox: AudioAnalysis["sox"], contentType: ContentType | undefined): boolean {
+  return (
+    (contentType === "music" || contentType === "mixed") &&
+    sox.peakDbfs > -12 &&
+    sox.dynamicRangeDb > 15 &&
+    sox.rmsDbfs < -25
+  );
 }
 
 function fmt(n: number, decimals = 2): string {
@@ -138,6 +147,8 @@ export function buildReport(analysis: AudioAnalysis): string {
     lines.push(`  ! Loudness: Very hot -- RMS at ${fmtDb(sox.rmsDbfs)}, potential over-compression`);
   } else if (sox.rmsDbfs > -12) {
     lines.push(`  . Loudness: Moderately loud -- RMS at ${fmtDb(sox.rmsDbfs)}`);
+  } else if (isDynamicServiceRecording(sox, contentType)) {
+    lines.push(`  . Loudness: Dynamic service -- peaks are healthy; quiet sections are lowering whole-file RMS (${fmtDb(sox.rmsDbfs)})`);
   } else if (sox.rmsDbfs < -20) {
     lines.push(`  . Loudness: Quiet mix -- RMS at ${fmtDb(sox.rmsDbfs)}, may need level boost`);
   } else {
