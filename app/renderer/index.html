@@ -3948,7 +3948,7 @@ function renderReportCard() {
   // Metrics
   const metrics = [
     { name: 'Peak Level', note: 'Sample peak', value: fmt(src.peak), unit: 'dBFS', tone: rcPeakStatus(src.peak, src.clipping) },
-    { name: 'RMS Level', note: 'Integrated loudness', value: fmt(src.rms), unit: 'dBFS', tone: rcRmsStatus(src.rms) },
+    { name: 'RMS Level', note: 'Average level (RMS)', value: fmt(src.rms), unit: 'dBFS', tone: rcRmsStatus(src.rms) },
     { name: 'Dynamic Range', value: src.dynamicRange != null ? fmt(src.dynamicRange) : '—', unit: src.dynamicRange != null ? 'dB' : '', tone: rcDrStatus(src.dynamicRange) },
     { name: 'Clipping', value: src.clipping ? 'Yes' : 'None', unit: '', tone: src.clipping ? 'issue' : 'good' },
     { name: 'Spectral Centroid', value: src.centroid ? Math.round(src.centroid).toLocaleString() : '—', unit: src.centroid ? 'Hz' : '', tone: rcCentroidStatus(src.centroid) },
