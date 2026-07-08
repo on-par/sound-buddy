@@ -52,11 +52,24 @@ export interface CaptureRig {
   llmIntervalMs?: number;
 }
 
+export interface CustomIdealProfile {
+  id: string;
+  label: string;
+  description: string;
+  freqs: number[];
+  dbOffsets: number[];
+  source?: 'manual' | 'analysis';
+  createdAt?: string;
+  updatedAt?: string;
+}
+
 export interface AppSettings {
   /** Master switch for all AI/LLM analysis. Default false (off). */
   aiEnabled: boolean;
   /** Selected ideal EQ profile id (PRD 05). Empty = auto by content type. */
   idealProfile: string;
+  /** User-authored ideal EQ curves for analysis/report comparison. */
+  customIdealProfiles: CustomIdealProfile[];
   /**
    * Folder where recordings, stems, and captured sessions are stored (#91).
    * Empty = the platform default (`~/Music/Sound Buddy`), resolved by the main
@@ -74,6 +87,7 @@ export interface AppSettings {
 const DEFAULTS: AppSettings = {
   aiEnabled: false,
   idealProfile: '',
+  customIdealProfiles: [],
   storageDir: '',
   rigs: [],
   activeRigId: null,
@@ -107,6 +121,10 @@ function fileRigs(file: Partial<AppSettings>): CaptureRig[] {
   return Array.isArray(file.rigs) ? file.rigs : [];
 }
 
+function fileCustomIdealProfiles(file: Partial<AppSettings>): CustomIdealProfile[] {
+  return Array.isArray(file.customIdealProfiles) ? file.customIdealProfiles : [];
+}
+
 /**
  * Persist the file layer, preserving any fields not being changed — including
  * unknown top-level keys a future version may add. Callers pass the mutated file
@@ -119,6 +137,7 @@ function writeSettingsFile(file: Partial<AppSettings>): void {
     ...file,
     aiEnabled: file.aiEnabled ?? DEFAULTS.aiEnabled,
     idealProfile: file.idealProfile ?? DEFAULTS.idealProfile,
+    customIdealProfiles: fileCustomIdealProfiles(file),
     storageDir: file.storageDir ?? DEFAULTS.storageDir,
     rigs: fileRigs(file),
     activeRigId: file.activeRigId ?? DEFAULTS.activeRigId,
@@ -147,6 +166,7 @@ export function getSettings(): AppSettings {
     aiEnabled: envAi ?? file.aiEnabled ?? DEFAULTS.aiEnabled,
     idealProfile:
       process.env.SOUND_BUDDY_IDEAL_PROFILE?.trim() || file.idealProfile || DEFAULTS.idealProfile,
+    customIdealProfiles: fileCustomIdealProfiles(file),
     storageDir:
       process.env.SOUND_BUDDY_STORAGE_DIR?.trim() || file.storageDir || DEFAULTS.storageDir,
     // Rigs have no env layer — they are pure persisted data.

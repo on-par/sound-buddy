@@ -333,6 +333,18 @@ test.describe('Sound Buddy E2E', () => {
   });
 
   test('spectrum overlays a dashed ideal target, defaulting from content type', async () => {
+    await electronApp.evaluate(({ ipcMain }, analysis) => {
+      ipcMain.removeHandler('analyze-file');
+      ipcMain.handle('analyze-file', () => ({ success: true, data: analysis }));
+    }, FAKE_ANALYSIS);
+
+    await window.locator('.mode-tab[data-mode="file"]').click();
+    const fixturePath = path.join(__dirname, 'fixtures', 'silence.wav');
+    await window.evaluate((fp) => {
+      (window as unknown as { loadFile: (p: string) => void }).loadFile(fp);
+    }, fixturePath);
+    await window.locator('#analyze-btn').click();
+
     // Cycle back through the file tab so the real analysis (with its curve) is
     // re-rendered — the prior test left the panel on the curve-less meters path.
     await window.locator('.mode-tab[data-mode="reportcard"]').click();
@@ -353,20 +365,26 @@ test.describe('Sound Buddy E2E', () => {
     await expect(window.locator('.spectrum-legend .sl-score .num')).toHaveText(/^\d{1,3}$/);
   });
 
-  test('choosing a profile overrides the default and shows the WAV stub disabled', async () => {
+  test('creates a custom ideal curve from the current analysis', async () => {
     await window.locator('.mode-tab[data-mode="file"]').click();
-
-    // The "Load ideal mix (WAV)…" option exists but is disabled (coming soon).
-    const wavOption = window.locator('#ideal-profile-select option[value="__wav"]');
-    await expect(wavOption).toHaveText(/Load ideal mix \(WAV\)/);
-    await expect(wavOption).toBeDisabled();
 
     await window.locator('#ideal-profile-select').selectOption('flat');
     await expect(window.locator('.spectrum-legend')).toContainText('Flat / neutral');
 
+    await window.locator('#ideal-curve-edit-btn').click();
+    await expect(window.locator('#curve-dialog')).toBeVisible();
+    await window.locator('#curve-name').fill('Sanctuary reference');
+    await window.locator('#curve-capture-btn').click();
+    await expect(window.locator('#curve-dialog')).toBeHidden();
+
+    await expect(window.locator('#ideal-profile-select')).toHaveValue(/^custom:/);
+    await expect(window.locator('#ideal-profile-select')).toContainText('Sanctuary reference');
+    await expect(window.locator('.spectrum-legend')).toContainText('Sanctuary reference');
+
     // Report card reflects the override with a match score + deviation curve.
     await window.locator('.mode-tab[data-mode="reportcard"]').click();
     await expect(window.locator('#rc-profile-section')).toBeVisible();
+    await expect(window.locator('#rc-profile')).toContainText('Sanctuary reference');
     await expect(window.locator('#rc-profile .rcp-score .num')).toHaveText(/^\d{1,3}$/);
     await expect(window.locator('#rc-profile .rcp-dev svg')).toBeVisible();
   });
