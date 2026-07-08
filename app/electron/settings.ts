@@ -58,7 +58,7 @@ export interface AppSettings {
   /** Selected ideal EQ profile id (PRD 05). Empty = auto by content type. */
   idealProfile: string;
   /**
-   * Folder where recordings, stems, sessions, and report cards are stored (#91).
+   * Folder where recordings, stems, and captured sessions are stored (#91).
    * Empty = the platform default (`~/Music/Sound Buddy`), resolved by the main
    * process. There is deliberately no size/count/duration cap on this folder —
    * storage is the user's own disk (#68). Users who want sync/backup point this

@@ -613,12 +613,12 @@ export function registerIpcHandlers(): void {
   // against a quota or used to gate recording. Reports the effective folder
   // (configured storageDir or the ~/Music/Sound Buddy default) so the UI can
   // show the real path even before the user has chosen one.
-  ipcMain.handle('get-storage-usage', () => {
+  ipcMain.handle('get-storage-usage', async () => {
     const dir = defaultRecordDir();
     const isDefault = !getSettings().storageDir?.trim();
     let bytes = 0;
     try {
-      bytes = dirSizeBytes(dir);
+      bytes = await dirSizeBytes(dir);
     } catch (err) {
       logWarn(`get-storage-usage: ${String(err)}`);
     }

@@ -1182,14 +1182,14 @@
   </div>
 </div>
 
-<!-- Storage settings dialog (#91). Choose where recordings, stems, sessions and
-     report cards live, and see how much disk they use. There is no cap — the
-     usage figure is informational only. Point the folder inside an iCloud/
-     Dropbox/Drive folder for sync; that's the whole cloud story for MVP. -->
+<!-- Storage settings dialog (#91). Choose where recordings, stems and captured
+     sessions live, and see how much disk they use. There is no cap — the usage
+     figure is informational only. Point the folder inside an iCloud/Dropbox/
+     Drive folder for sync; that's the whole cloud story for MVP. -->
 <div id="storage-dialog" class="rig-dialog" style="display:none" role="dialog" aria-modal="true" aria-labelledby="storage-dialog-title">
   <div class="rig-dialog-card storage-dialog-card">
     <div class="rig-dialog-title" id="storage-dialog-title">Storage</div>
-    <div class="ai-dialog-sub">Where Sound Buddy keeps your recordings, stems, sessions, and report cards.</div>
+    <div class="ai-dialog-sub">Where Sound Buddy keeps your recordings, stems, and captured sessions.</div>
     <label class="ai-field">
       <span>Storage folder</span>
       <div class="storage-path-row">
@@ -4082,51 +4082,53 @@ async function saveAiSettings() {
 
 /* ══ Storage settings (#91) ══ */
 // Sound Buddy has no usage caps — this dialog just lets the user pick where
-// recordings live and shows disk usage informationally. `storagePendingDir` is
-// the folder chosen in this session before Save: null = unchanged, '' = reset to
-// the platform default, a path = a custom folder. `storageDefaultPath` labels the
-// default so the reset action can preview it.
+// recordings live and shows disk usage informationally. State (never DOM
+// read-back) drives what's shown: `storageDefaultPath` is the platform default
+// reported by main, and `storagePendingDir` is the folder chosen this session
+// before Save — null = unchanged, '' = reset to default, a path = a custom
+// folder. `effectiveStoragePath()` folds those into the one path to display; the
+// reset action is offered whenever that path isn't the default. Reuses `aiEl`.
 let storagePendingDir = null;
 let storageDefaultPath = '~/Music/Sound Buddy';
+let storageLoadedPath = storageDefaultPath; // path persisted before this session
 
-function el(id) { return document.getElementById(id); }
+function effectiveStoragePath() {
+  if (storagePendingDir === '') return storageDefaultPath;
+  if (storagePendingDir) return storagePendingDir;
+  return storageLoadedPath;
+}
 
 function renderStoragePath() {
-  // Show the pending choice if any, else fall back to the current label.
-  if (storagePendingDir === '') el('storage-path').textContent = storageDefaultPath;
-  else if (storagePendingDir) el('storage-path').textContent = storagePendingDir;
-  // Reset button: offer it whenever the effective folder isn't the default.
-  const showReset = storagePendingDir
-    ? storagePendingDir !== storageDefaultPath
-    : el('storage-path').textContent !== storageDefaultPath && el('storage-path').textContent !== '';
-  el('storage-reset-btn').style.display = showReset ? '' : 'none';
+  const current = effectiveStoragePath();
+  aiEl('storage-path').textContent = current;
+  aiEl('storage-reset-btn').style.display = current === storageDefaultPath ? 'none' : '';
 }
 
 async function openStorageSettings() {
   storagePendingDir = null;
-  el('storage-usage').textContent = 'Calculating disk usage…';
-  el('storage-path').textContent = storageDefaultPath;
-  el('storage-reset-btn').style.display = 'none';
-  el('storage-dialog').style.display = 'flex';
+  storageLoadedPath = storageDefaultPath;
+  aiEl('storage-usage').textContent = 'Calculating disk usage…';
+  renderStoragePath();
+  aiEl('storage-dialog').style.display = 'flex';
   try {
     const u = await sb.getStorageUsage();
     if (u) {
       if (u.defaultPath) storageDefaultPath = u.defaultPath;
-      el('storage-path').textContent = u.path || storageDefaultPath;
-      el('storage-usage').textContent = u.exists
+      storageLoadedPath = u.path || storageDefaultPath;
+      aiEl('storage-usage').textContent = u.exists
         ? `Using ${u.human} on this Mac — no limit.`
         : 'Nothing recorded yet — no limit on how much you can store.';
-      el('storage-reset-btn').style.display = u.isDefault ? 'none' : '';
+      renderStoragePath();
     } else {
-      el('storage-usage').textContent = '';
+      aiEl('storage-usage').textContent = '';
     }
   } catch {
-    el('storage-usage').textContent = '';
+    aiEl('storage-usage').textContent = '';
   }
 }
 
 function closeStorageSettings() {
-  el('storage-dialog').style.display = 'none';
+  aiEl('storage-dialog').style.display = 'none';
 }
 
 async function chooseStorageFolder() {
@@ -4145,14 +4147,14 @@ async function saveStorageSettings() {
 }
 
 (() => {
-  el('storage-settings-btn').addEventListener('click', openStorageSettings);
-  el('storage-change-btn').addEventListener('click', chooseStorageFolder);
-  el('storage-reset-btn').addEventListener('click', () => { storagePendingDir = ''; renderStoragePath(); });
-  el('storage-save-btn').addEventListener('click', saveStorageSettings);
-  el('storage-cancel-btn').addEventListener('click', closeStorageSettings);
-  el('storage-dialog').addEventListener('click', (e) => { if (e.target === el('storage-dialog')) closeStorageSettings(); });
+  aiEl('storage-settings-btn').addEventListener('click', openStorageSettings);
+  aiEl('storage-change-btn').addEventListener('click', chooseStorageFolder);
+  aiEl('storage-reset-btn').addEventListener('click', () => { storagePendingDir = ''; renderStoragePath(); });
+  aiEl('storage-save-btn').addEventListener('click', saveStorageSettings);
+  aiEl('storage-cancel-btn').addEventListener('click', closeStorageSettings);
+  aiEl('storage-dialog').addEventListener('click', (e) => { if (e.target === aiEl('storage-dialog')) closeStorageSettings(); });
   document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape' && el('storage-dialog').style.display !== 'none') closeStorageSettings();
+    if (e.key === 'Escape' && aiEl('storage-dialog').style.display !== 'none') closeStorageSettings();
   });
 })();
 

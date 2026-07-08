@@ -6,7 +6,8 @@
 // how much disk a folder is using so Settings can show it informationally; the
 // number is never compared against a limit or used to gate a feature.
 
-import * as fs from 'fs';
+import { promises as fsp } from 'fs';
+import type { Dirent } from 'fs';
 import * as path from 'path';
 
 /**
@@ -16,26 +17,32 @@ import * as path from 'path';
  * stat'd (permissions, a race with a delete) are skipped rather than throwing,
  * so a single unreadable file never breaks the Settings display. Purely
  * informational: the result is shown to the user, never enforced as a quota.
+ *
+ * Async on purpose: "unlimited recordings" means this folder can hold tens of GB
+ * across thousands of files, and the README suggests pointing it inside an
+ * iCloud/Dropbox/Drive folder where a stat can be slow. A synchronous walk would
+ * block the Electron main thread and freeze the window; the async walk yields.
  */
-export function dirSizeBytes(dir: string): number {
-  let total = 0;
-  let entries: fs.Dirent[];
+export async function dirSizeBytes(dir: string): Promise<number> {
+  let entries: Dirent[];
   try {
-    entries = fs.readdirSync(dir, { withFileTypes: true });
+    entries = await fsp.readdir(dir, { withFileTypes: true });
   } catch {
     // Missing or unreadable folder — treat as empty.
     return 0;
   }
+  let total = 0;
   for (const entry of entries) {
     const full = path.join(dir, entry.name);
     try {
       if (entry.isDirectory()) {
-        total += dirSizeBytes(full);
+        total += await dirSizeBytes(full);
       } else if (entry.isFile()) {
-        total += fs.statSync(full).size;
+        total += (await fsp.stat(full)).size;
       }
       // Symlinks and other special entries are ignored — we only count real
-      // files that live inside the storage folder itself.
+      // files that live inside the storage folder itself (isDirectory()/isFile()
+      // are both false for a symlink under withFileTypes, so cycles are safe).
     } catch {
       // Entry vanished or is unreadable — skip it, keep summing the rest.
     }
@@ -50,10 +57,16 @@ export function dirSizeBytes(dir: string): number {
 export function formatBytes(bytes: number): string {
   if (!Number.isFinite(bytes) || bytes <= 0) return '0 B';
   const units = ['B', 'KB', 'MB', 'GB', 'TB', 'PB'];
-  const exp = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1);
-  const value = bytes / 1024 ** exp;
-  // Whole bytes read cleanly; larger units get one decimal unless it rounds up
-  // to a whole number (avoid a stray "2.0 GB").
-  const rounded = exp === 0 ? String(bytes) : (Math.round(value * 10) / 10).toString();
+  let exp = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1);
+  let value = Math.round((bytes / 1024 ** exp) * 10) / 10;
+  // Rounding can push a value at the top of a range up to 1024 (e.g. 1 MB − 1 B
+  // rounds to "1024 KB"); promote it to the next unit so it reads "1 MB".
+  if (value >= 1024 && exp < units.length - 1) {
+    exp += 1;
+    value = Math.round((bytes / 1024 ** exp) * 10) / 10;
+  }
+  // Whole bytes read cleanly; larger units carry one decimal (dropped when it's
+  // a whole number, so "2 GB" not "2.0 GB").
+  const rounded = exp === 0 ? String(bytes) : value.toString();
   return `${rounded} ${units[exp]}`;
 }

@@ -19,6 +19,14 @@ describe('formatBytes', () => {
     expect(formatBytes(1.4 * 1024 * 1024 * 1024)).toBe('1.4 GB');
   });
 
+  it('promotes a value that rounds up to 1024 into the next unit', () => {
+    // 1 MB − 1 byte: 1023.999… KB must read "1 MB", not "1024 KB".
+    expect(formatBytes(1024 * 1024 - 1)).toBe('1 MB');
+    expect(formatBytes(1024 * 1024 * 1024 - 1)).toBe('1 GB');
+    // A value genuinely below the promotion threshold stays in its unit.
+    expect(formatBytes(1023 * 1024)).toBe('1023 KB');
+  });
+
   it('guards against negative / non-finite input', () => {
     expect(formatBytes(-5)).toBe('0 B');
     expect(formatBytes(NaN)).toBe('0 B');
@@ -35,31 +43,31 @@ describe('dirSizeBytes', () => {
     fs.rmSync(dir, { recursive: true, force: true });
   });
 
-  it('returns 0 for a folder that does not exist', () => {
-    expect(dirSizeBytes(path.join(dir, 'nope'))).toBe(0);
+  it('returns 0 for a folder that does not exist', async () => {
+    expect(await dirSizeBytes(path.join(dir, 'nope'))).toBe(0);
   });
 
-  it('returns 0 for an empty folder', () => {
-    expect(dirSizeBytes(dir)).toBe(0);
+  it('returns 0 for an empty folder', async () => {
+    expect(await dirSizeBytes(dir)).toBe(0);
   });
 
-  it('sums file sizes across nested subfolders', () => {
+  it('sums file sizes across nested subfolders', async () => {
     fs.writeFileSync(path.join(dir, 'a.wav'), Buffer.alloc(100));
     const sub = path.join(dir, 'session-1');
     fs.mkdirSync(sub);
     fs.writeFileSync(path.join(sub, 'stem1.wav'), Buffer.alloc(250));
     fs.writeFileSync(path.join(sub, 'stem2.wav'), Buffer.alloc(150));
-    expect(dirSizeBytes(dir)).toBe(500);
+    expect(await dirSizeBytes(dir)).toBe(500);
   });
 
-  it('does not follow symlinks out of the folder', () => {
+  it('does not follow symlinks out of the folder', async () => {
     const outside = fs.mkdtempSync(path.join(os.tmpdir(), 'sb-outside-'));
     fs.writeFileSync(path.join(outside, 'big.wav'), Buffer.alloc(9999));
     try {
       fs.symlinkSync(outside, path.join(dir, 'link'));
       // The symlink itself is neither a real file nor a directory entry we
       // descend into, so its target's bytes are not counted.
-      expect(dirSizeBytes(dir)).toBe(0);
+      expect(await dirSizeBytes(dir)).toBe(0);
     } finally {
       fs.rmSync(outside, { recursive: true, force: true });
     }
