@@ -1,0 +1,38 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  // Dedicated Stripe / licensing API Worker (#107). Isolated from the marketing
+  // site (site/wrangler.jsonc, which stays assets-only): this Worker owns the
+  // /api/stripe/*, /activate and /api/license endpoints and is deployed on its
+  // own. Later stories (#123 epic) fill in the handlers and real bindings.
+  "name": "sound-buddy-api",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-07-01",
+  // No `compatibility_flags: ["nodejs_compat"]` on purpose — the licensing/Stripe
+  // code targets Web Crypto and the standard fetch runtime, so the Node compat
+  // shim is unnecessary weight. Add it only if a later story genuinely needs it.
+
+  // Custom-domain routes. The real zone id is wired out-of-band at deploy time
+  // (H4); build and test never deploy, so these are inert here.
+  "routes": [
+    { "pattern": "soundbuddy.online/api/stripe/*", "zone_name": "soundbuddy.online" },
+    { "pattern": "soundbuddy.online/api/license", "zone_name": "soundbuddy.online" },
+    { "pattern": "soundbuddy.online/activate", "zone_name": "soundbuddy.online" }
+  ],
+
+  // Bindings later stories fill. The KV namespace `id` is set out-of-band (H4);
+  // the placeholder below is intentionally not a real namespace id.
+  "kv_namespaces": [
+    { "binding": "LICENSE_KV", "id": "REPLACE_WITH_LICENSE_KV_ID" }
+  ],
+
+  // Non-secret configuration. FOUNDING_CAP is the founding-license count cap;
+  // FROM_EMAIL is the transactional sender; APP_ORIGIN is the desktop app's
+  // activation origin. Secrets (STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET,
+  // LICENSE_SIGNING_PRIVATE_KEY, RESEND_API_KEY) are set out-of-band (H4) via
+  // `wrangler secret put` and never appear in this file.
+  "vars": {
+    "FOUNDING_CAP": "300",
+    "FROM_EMAIL": "hello@soundbuddy.online",
+    "APP_ORIGIN": "https://soundbuddy.online"
+  }
+}
