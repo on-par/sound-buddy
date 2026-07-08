@@ -10,11 +10,42 @@
 //
 // Nothing here touches the DOM or IPC — every function is a pure function of the
 // report-card source object built by getReportCardSource(). Behaviour is frozen:
-// thresholds, rules, and outputs match the pre-extraction inline code exactly.
-// Changing any threshold belongs to the config work (#131), not here.
+// thresholds, rules, and outputs match the pre-extraction inline code exactly —
+// with one deliberate exception owned by #131: the RMS status pill's "good"
+// window was widened to the grade's full acceptable band, so a passing grade no
+// longer shows a non-"good" RMS pill (see CONFIG.rms and rcRmsStatus).
 
 (function (root) {
   'use strict';
+
+  // #131 — the single source of truth for the grading thresholds shared by the
+  // letter grade, the ring score, and the report-card status pills, so each of
+  // those numbers lives in exactly one place. Change a value and both the grade
+  // and its matching pill move together (proven by grading.test.js). Copy-only
+  // recommendation cutoffs (e.g. the sub-bass / brilliance advice wording) stay
+  // inline in computeRecommendations — they shape phrasing, not the grade or the
+  // pills, and reconciling them is out of scope for #131.
+  const CONFIG = {
+    // RMS "average level" in dBFS. [acceptableMin, acceptableMax] is the band
+    // the grade treats as passing (no deduction); the pill calls it "good".
+    // Outside that band but within [quietEdge, hotEdge] is a single-tier miss
+    // (grade drops one letter, pill says "check"); beyond the edges is worse
+    // (extra score penalty, pill says "issue"). These tiers are what keep the
+    // pill and the grade agreeing in direction.
+    rms: { acceptableMin: -20, acceptableMax: -14, quietEdge: -25, hotEdge: -10 },
+    // Sample peak in dBFS. Above issueAbove reads as clipping-adjacent ("issue");
+    // above checkAbove is hot but usable ("check"); otherwise "good".
+    peak: { issueAbove: -1, checkAbove: -3 },
+    // Dynamic range in dB. >= good is healthy; >= check is compressed-but-okay;
+    // below check is very compressed (grade drops, pill says "issue").
+    dynamicRange: { good: 6, check: 3 },
+    // Per-band level vs. the mean of the other bands, in dB. hotDiff is the
+    // recommendation/score threshold; severeHotDiff drops the letter grade;
+    // quietDiff flags a band sitting well below the others in the UI.
+    bandBalance: { hotDiff: 12, severeHotDiff: 15, quietDiff: -15 },
+    // Spectral centroid in Hz — the "good" tonal-balance window for the pill.
+    centroid: { min: 500, max: 4000 },
+  };
 
   // Band label + frequency metadata used to phrase the "too much energy in X"
   // recommendation. Grading-only — the renderer's own band table lives inline.
@@ -45,7 +76,7 @@
     if (src.peak < -15 && src.rms < -35)
       return { type: 'low_gain', label: 'Low Recording Gain', note: 'Peak and RMS are very low. Increase the USB recording output level.', tone: 'check' };
     if (src.rms < -25) return { type: 'quiet', label: 'Quiet', note: 'Recording is quieter than typical. Consider more gain.', tone: 'check' };
-    if (src.rms >= -20 && src.rms <= -10 && src.peak > -6) return { type: 'good', label: 'Good Level', note: 'Recording level is healthy.', tone: 'good' };
+    if (src.rms >= CONFIG.rms.acceptableMin && src.rms <= CONFIG.rms.hotEdge && src.peak > -6) return { type: 'good', label: 'Good Level', note: 'Recording level is healthy.', tone: 'good' };
     return { type: 'normal', label: 'Normal', note: 'Recording level is within typical range.', tone: 'info' };
   }
 
@@ -56,14 +87,14 @@
     const drop = () => { idx = Math.min(idx + 1, letters.length - 1); };
     const recType = analyzeRecordingType(src);
     if (recType.type === 'low_gain') {
-      if (src.dynamicRange != null && src.dynamicRange < 3) drop();
-      if (Object.keys(src.bands).some(k => bandDiffFromOthers(src.bands, k) > 15)) drop();
+      if (src.dynamicRange != null && src.dynamicRange < CONFIG.dynamicRange.check) drop();
+      if (Object.keys(src.bands).some(k => bandDiffFromOthers(src.bands, k) > CONFIG.bandBalance.severeHotDiff)) drop();
       return letters[idx];
     }
     const rmsExempt = recType.type === 'dynamic_service';
-    if (!rmsExempt && (src.rms < -20 || src.rms > -14)) drop();
-    if (src.dynamicRange != null && src.dynamicRange < 6) drop();
-    if (Object.keys(src.bands).some(k => bandDiffFromOthers(src.bands, k) > 15)) drop();
+    if (!rmsExempt && (src.rms < CONFIG.rms.acceptableMin || src.rms > CONFIG.rms.acceptableMax)) drop();
+    if (src.dynamicRange != null && src.dynamicRange < CONFIG.dynamicRange.good) drop();
+    if (Object.keys(src.bands).some(k => bandDiffFromOthers(src.bands, k) > CONFIG.bandBalance.severeHotDiff)) drop();
     return letters[idx];
   }
 
@@ -75,13 +106,13 @@
     const rt = analyzeRecordingType(src);
     if (src.clipping) score -= 45;
     if (rt.type !== 'low_gain' && rt.type !== 'dynamic_service') {
-      if (src.rms < -20 || src.rms > -14) score -= 9;
-      if (src.rms < -25 || src.rms > -10) score -= 7;
+      if (src.rms < CONFIG.rms.acceptableMin || src.rms > CONFIG.rms.acceptableMax) score -= 9;
+      if (src.rms < CONFIG.rms.quietEdge || src.rms > CONFIG.rms.hotEdge) score -= 7;
     }
-    if (src.dynamicRange != null) { if (src.dynamicRange < 3) score -= 15; else if (src.dynamicRange < 6) score -= 8; }
+    if (src.dynamicRange != null) { if (src.dynamicRange < CONFIG.dynamicRange.check) score -= 15; else if (src.dynamicRange < CONFIG.dynamicRange.good) score -= 8; }
     let maxDiff = 0;
     for (const k of Object.keys(src.bands)) maxDiff = Math.max(maxDiff, bandDiffFromOthers(src.bands, k));
-    if (maxDiff > 15) score -= 14; else if (maxDiff > 12) score -= 7;
+    if (maxDiff > CONFIG.bandBalance.severeHotDiff) score -= 14; else if (maxDiff > CONFIG.bandBalance.hotDiff) score -= 7;
     const [lo, hi] = bands[grade];
     return Math.round(Math.max(lo, Math.min(hi, score)));
   }
@@ -93,11 +124,11 @@
     if (recType.type === 'low_gain' || recType.type === 'dynamic_service') recs.push(recType.note);
     else if (src.rms > -10) recs.push('Your recording is too hot. Reduce gain to avoid clipping.');
     else if (src.rms < -25 && recType.type !== 'low_gain') recs.push('Your recording is too quiet. Increase input gain or fader levels.');
-    if (src.dynamicRange != null && src.dynamicRange < 3) recs.push('Dynamic range is very compressed. Mix may sound lifeless.');
+    if (src.dynamicRange != null && src.dynamicRange < CONFIG.dynamicRange.check) recs.push('Dynamic range is very compressed. Mix may sound lifeless.');
     if (src.bands.subBass > -10) recs.push('Too much sub-bass energy. Apply a high-pass filter below 80Hz.');
     for (const k of Object.keys(src.bands)) {
       const diff = bandDiffFromOthers(src.bands, k);
-      if (diff > 12) {
+      if (diff > CONFIG.bandBalance.hotDiff) {
         const info = RC_BAND_INFO[k];
         recs.push(`Too much energy in ${info.label} (${info.freq}). Cut ${Math.min(diff, 10).toFixed(1)} dB around this range.`);
       }
@@ -107,13 +138,55 @@
     return recs.slice(0, 5);
   }
 
+  // Report-card metric status pills. rcRmsStatus shares the RMS band with the
+  // grade so the two never contradict: the acceptable band the grade treats as
+  // passing reads "good"; any level the grade deducts for (out of band) reads
+  // "issue" — mirroring the grade's single in-band / out-of-band RMS test.
+  // Before #131 the pill's "good" window (-18..-16) was narrower than the
+  // grade's acceptable band, so a passing grade could still show a yellow pill;
+  // that is the visible contradiction this issue resolves. We keep the pill a
+  // faithful two-way mirror of the grade rather than adding an intermediate
+  // "check" tier, so no previously-flagged level is silently downgraded.
+  function rcRmsStatus(rms) {
+    const c = CONFIG.rms;
+    if (rms >= c.acceptableMin && rms <= c.acceptableMax) return 'good';
+    return 'issue';
+  }
+
+  function rcPeakStatus(peak, clipping) {
+    const c = CONFIG.peak;
+    if (clipping || peak > c.issueAbove) return 'issue';
+    if (peak > c.checkAbove) return 'check';
+    return 'good';
+  }
+
+  function rcDrStatus(dr) {
+    const c = CONFIG.dynamicRange;
+    if (dr == null) return 'check';
+    if (dr >= c.good) return 'good';
+    if (dr >= c.check) return 'check';
+    return 'issue';
+  }
+
+  function rcCentroidStatus(centroid) {
+    const c = CONFIG.centroid;
+    if (!centroid) return 'check';
+    if (centroid >= c.min && centroid <= c.max) return 'good';
+    return 'check';
+  }
+
   var api = {
+    CONFIG: CONFIG,
     RC_BAND_INFO: RC_BAND_INFO,
     bandDiffFromOthers: bandDiffFromOthers,
     analyzeRecordingType: analyzeRecordingType,
     computeGrade: computeGrade,
     computeScore: computeScore,
     computeRecommendations: computeRecommendations,
+    rcRmsStatus: rcRmsStatus,
+    rcPeakStatus: rcPeakStatus,
+    rcDrStatus: rcDrStatus,
+    rcCentroidStatus: rcCentroidStatus,
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.grading = api;
