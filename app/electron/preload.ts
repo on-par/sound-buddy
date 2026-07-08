@@ -44,6 +44,13 @@ contextBridge.exposeInMainWorld('soundBuddy', {
   analyzeFile: (opts: { filePath: string; noSpectrum?: boolean }) =>
     ipcRenderer.invoke('analyze-file', opts),
 
+  // Path to the bundled demo recording for the first-run onboarding flow (#69).
+  // Resolves to null when the asset is absent so the renderer can fall back.
+  getDemoAudio: () => ipcRenderer.invoke('get-demo-audio'),
+
+  // Dev/e2e switch (SOUND_BUDDY_DISABLE_ONBOARDING) for the first-run overlay (#69).
+  isOnboardingDisabled: () => ipcRenderer.invoke('onboarding-disabled'),
+
   listDevices: () => ipcRenderer.invoke('list-devices'),
 
   // Playback (output) devices for virtual-soundcheck (#44). No micAccess field —

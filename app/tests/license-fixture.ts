@@ -10,9 +10,16 @@ import * as path from 'path';
 
 const { publicKey, privateKey } = generateKeyPairSync('ed25519');
 
-/** Spread into electron.launch's env so the app trusts this run's keypair. */
+/**
+ * Spread into electron.launch's env so the app trusts this run's keypair. Also
+ * suppresses the first-run onboarding overlay (#69) — its modal scrim would
+ * otherwise intercept the tab/button clicks these specs make on a fresh
+ * --user-data-dir. onboarding.spec.ts deliberately omits this to exercise the
+ * overlay for real.
+ */
 export const LICENSE_ENV = {
   SOUND_BUDDY_LICENSE_PUBKEY: publicKey.export({ type: 'spki', format: 'der' }).toString('base64'),
+  SOUND_BUDDY_DISABLE_ONBOARDING: '1',
 };
 
 /**
