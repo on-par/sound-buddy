@@ -8,6 +8,7 @@ const env = {
   FOUNDING_CAP: "300",
   FROM_EMAIL: "hello@example.test",
   APP_ORIGIN: "https://example.test",
+  STRIPE_WEBHOOK_SECRET: "whsec_test_dummy",
 } satisfies Env;
 
 // Cloudflare passes an ExecutionContext; the scaffold never uses it.
@@ -32,8 +33,9 @@ describe("worker router", () => {
   });
 
   it("declared-but-unimplemented routes are reachable (501, not 404)", async () => {
+    // /api/stripe/webhook is now implemented (#108); its behaviour is covered in
+    // webhook.test.ts. The remaining placeholders still answer 501.
     for (const [method, path] of [
-      ["POST", "/api/stripe/webhook"],
       ["GET", "/api/license"],
       ["GET", "/activate"],
     ] as const) {
