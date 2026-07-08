@@ -1328,6 +1328,8 @@
 <script src="license-state.js"></script>
 <!-- Pure copy/tone/dismissal logic for the post-report-card upgrade card (window.upgradeMomentum, #58). -->
 <script src="upgrade-momentum.js"></script>
+<!-- Pure custom ideal-curve builder (window.idealProfile). -->
+<script src="ideal-profile.js"></script>
 <!-- Pure first-run onboarding gate (window.onboardingState, #69). -->
 <script src="onboarding-state.js"></script>
 <script>
@@ -1409,6 +1411,10 @@ let channelConfig = [];        // configured strips: { kind:'mono'|'stereo', a:i
 let llmRunning = false;
 let aiStreamStarted = false;
 let idealProfileId = ''; // active ideal EQ profile; '' = auto by content type (PRD 05)
+// A user-defined ideal curve captured from a good-sounding reference file, or
+// null when on a built-in/auto target. Selected via the '__custom' sentinel in
+// idealProfileId. { label, dbOffsets[48] }; freqs are the shared IP_GRID_FREQS.
+let customIdealProfile = null;
 
 /* ══ Formatting helpers ══ */
 // Escape user-entered text (channel labels, #39) before it lands in innerHTML.
@@ -1509,6 +1515,11 @@ function ipCompare(curve, profile) {
 /** Resolve the profile to compare against: an explicit pick, else auto by content type. */
 function activeProfile(spectrum) {
   const id = idealProfileId || ipDefaultForContentType(spectrum && spectrum.contentType);
+  if (id === '__custom' && customIdealProfile) {
+    // The user's reference curve. freqs are the shared grid; only the shape is
+    // persisted, so the comparator (level-invariant) treats it like a built-in.
+    return { id: '__custom', label: customIdealProfile.label, description: 'From your reference file', freqs: IP_GRID_FREQS, dbOffsets: customIdealProfile.dbOffsets };
+  }
   return IP_BY_ID.get(id) || IP_BY_ID.get('flat');
 }
 function ipHasCurve(spectrum) {
@@ -1523,19 +1534,56 @@ function levelMatchedTarget(curve, profile) {
   return profile.dbOffsets.map(v => v + (mMean - tMean));
 }
 
-/* Populate + wire the ideal-profile dropdown (once, at boot). */
+/* Populate the ideal-profile dropdown from current state. Re-run after a custom
+   curve is set/reset and from updateIdealProfileVisibility so the "Set ideal from
+   current file" action appears only when a curve is on screen. The change listener
+   is attached once in initIdealProfileSelect. */
+function rebuildIdealProfileOptions() {
+  const sel = document.getElementById('ideal-profile-select');
+  if (!sel) return;
+  const hasCurve = !!(currentAnalysis && ipHasCurve(currentAnalysis.spectrum));
+  const custom = customIdealProfile;
+  const opts =
+    `<option value="">Auto (by content)</option>` +
+    IP_PROFILES.map(p => `<option value="${p.id}">${p.label}</option>`).join('') +
+    (custom ? `<option value="__custom">Custom · ${escapeHtml(custom.label)}</option>` : '') +
+    (hasCurve ? `<option value="__set">Set ideal from current file…</option>` : '') +
+    (custom ? `<option value="__reset">Reset to original</option>` : '');
+  sel.innerHTML = opts;
+  // A stored '__custom' selection with no curve to back it falls back to Auto.
+  sel.value = idealProfileId === '__custom' && !custom ? '' : idealProfileId;
+}
+
+/* Wire the ideal-profile dropdown once at boot. */
 function initIdealProfileSelect() {
   const sel = document.getElementById('ideal-profile-select');
   if (!sel) return;
-  sel.innerHTML =
-    `<option value="">Auto (by content)</option>` +
-    IP_PROFILES.map(p => `<option value="${p.id}">${p.label}</option>`).join('') +
-    `<option value="__wav" disabled>Load ideal mix (WAV)… (coming soon)</option>`;
-  sel.value = idealProfileId;
+  rebuildIdealProfileOptions();
   sel.addEventListener('change', async () => {
-    if (sel.value === '__wav') { sel.value = idealProfileId; return; }
-    idealProfileId = sel.value;
-    try { await sb.updateSettings({ idealProfile: idealProfileId }); } catch { /* non-fatal */ }
+    const v = sel.value;
+    if (v === '__set') {
+      // Capture the good-sounding file on screen as the ideal target shape.
+      const src = getReportCardSource();
+      if (src && ipHasCurve(src)) {
+        const built = window.idealProfile.customProfileFromCurve(src.curve, 'Like ' + (src.filename || 'this file'));
+        if (built) {
+          customIdealProfile = { label: built.label, dbOffsets: built.dbOffsets };
+          idealProfileId = '__custom';
+          try { await sb.updateSettings({ customIdealProfile, idealProfile: '__custom' }); } catch { /* non-fatal */ }
+        }
+      }
+      rebuildIdealProfileOptions();
+    } else if (v === '__reset') {
+      // Recall the original: clear the custom curve and return to Auto.
+      customIdealProfile = null;
+      idealProfileId = '';
+      try { await sb.updateSettings({ customIdealProfile: null, idealProfile: '' }); } catch { /* non-fatal */ }
+      rebuildIdealProfileOptions();
+    } else {
+      idealProfileId = v; // '', a built-in id, or '__custom'
+      try { await sb.updateSettings({ idealProfile: idealProfileId }); } catch { /* non-fatal */ }
+    }
+    sel.value = idealProfileId === '__custom' && !customIdealProfile ? '' : idealProfileId;
     if (currentAnalysis) renderSpectrum(currentAnalysis.spectrum);
     if (currentMode === 'reportcard') renderReportCard();
   });
@@ -1546,8 +1594,7 @@ function updateIdealProfileVisibility(spectrum) {
   const wrap = document.getElementById('ideal-profile-wrap');
   if (!wrap) return;
   wrap.style.display = (ipHasCurve(spectrum) && currentMode !== 'live') ? 'flex' : 'none';
-  const sel = document.getElementById('ideal-profile-select');
-  if (sel) sel.value = idealProfileId;
+  rebuildIdealProfileOptions();
 }
 
 function levelColor(db) { return db > -24 ? 'var(--meter-good)' : db > -36 ? 'var(--meter-hot)' : 'var(--meter-idle)'; }
@@ -4412,6 +4459,10 @@ let aiEnabled = false;
     const s = await sb.getSettings();
     aiEnabled = !!(s && s.aiEnabled);
     if (s && typeof s.idealProfile === 'string') idealProfileId = s.idealProfile;
+    // Hydrate a saved custom ideal curve (validated by the main process on write).
+    if (s && s.customIdealProfile && Array.isArray(s.customIdealProfile.dbOffsets)) {
+      customIdealProfile = { label: String(s.customIdealProfile.label || 'Custom'), dbOffsets: s.customIdealProfile.dbOffsets };
+    }
   } catch { aiEnabled = false; }
   document.body.classList.toggle('ai-disabled', !aiEnabled);
   // License (#54): body starts .not-pro (no flash of Pro UI); reveal Pro
