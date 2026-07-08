@@ -25,6 +25,8 @@ if [[ "$FAST" -eq 0 ]]; then
   npm ci
   echo "==> npm ci (app)"
   npm ci --prefix app
+  echo "==> npm ci (worker)"
+  npm ci --prefix worker
 fi
 
 # Positioning-consistency guard (#80): the locked brand phrase must appear
@@ -69,6 +71,16 @@ if [[ -n "$PYTHON" ]]; then
   "$PYTHON" packages/audio-engine/scripts/test_playback.py
 else
   echo "==> python tests skipped (no interpreter with numpy+scipy)"
+fi
+
+# The Stripe / licensing API Worker (worker/, #107) is a standalone package like
+# site/ — not an npm workspace. It verifies independently (typecheck + vitest).
+# Skipped with a note if its deps aren't installed (e.g. a --fast run).
+if [[ -d worker/node_modules ]]; then
+  echo "==> verify (worker: typecheck + tests)"
+  npm run verify --prefix worker
+else
+  echo "==> worker verify SKIPPED — deps not installed (cd worker && npm ci)"
 fi
 
 if [[ "$E2E" -eq 1 ]]; then

@@ -79,3 +79,26 @@ jobs:
 
       - name: Verify (check + build + link smoke)
         run: npm run verify
+
+  # The Stripe / licensing API Worker (worker/, #107) is a standalone package
+  # like site/ — not an npm workspace and not coupled to the app/ or site/
+  # builds. It verifies independently: tsc typecheck → vitest routing tests.
+  worker:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: worker
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: worker/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Verify (typecheck + tests)
+        run: npm run verify
