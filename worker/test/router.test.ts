@@ -8,7 +8,6 @@ const env = {
   FOUNDING_CAP: "300",
   FROM_EMAIL: "hello@example.test",
   APP_ORIGIN: "https://example.test",
-  STRIPE_SECRET_KEY: "sk_test_dummy",
   STRIPE_WEBHOOK_SECRET: "whsec_test_dummy",
 } satisfies Env;
 

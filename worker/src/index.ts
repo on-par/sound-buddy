@@ -26,8 +26,6 @@ export interface Env {
   FROM_EMAIL: string;
   /** Desktop app activation origin. */
   APP_ORIGIN: string;
-  /** Stripe secret API key (secret; `wrangler secret put`). */
-  STRIPE_SECRET_KEY: string;
   /** Stripe webhook signing secret `whsec_…` (secret; `wrangler secret put`). */
   STRIPE_WEBHOOK_SECRET: string;
 }

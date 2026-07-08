@@ -34,7 +34,6 @@ function makeEnv(kv: KVNamespace): Env {
     FOUNDING_CAP: "300",
     FROM_EMAIL: "hello@example.test",
     APP_ORIGIN: "https://example.test",
-    STRIPE_SECRET_KEY: "sk_test_dummy",
     STRIPE_WEBHOOK_SECRET: WEBHOOK_SECRET,
   } satisfies Env;
 }

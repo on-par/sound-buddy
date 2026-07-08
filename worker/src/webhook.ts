@@ -21,6 +21,15 @@ import { json } from "./http";
  */
 const PROCESSED_EVENT_TTL_SECONDS = 30 * 24 * 60 * 60;
 
+// Signature verification needs a Stripe instance but never calls the API, so the
+// client carries a placeholder key and no HTTP client — this keeps the story
+// scoped to the one secret it touches (STRIPE_WEBHOOK_SECRET). The real
+// STRIPE_SECRET_KEY is added to Env by the first API-calling handler
+// (#110/#111). Both the client and the SubtleCrypto provider are stateless, so
+// they are built once at module scope rather than per request.
+const stripe = new Stripe("sb_webhook_verification_only");
+const cryptoProvider = Stripe.createSubtleCryptoProvider();
+
 /** KV key for a processed event id. `sess:<id>` (one-time flows) lands in #111. */
 const eventKey = (id: string): string => `evt:${id}`;
 
@@ -79,10 +88,6 @@ export async function handleStripeWebhook(
   // The raw body string is required verbatim for signature verification.
   const body = await request.text();
 
-  const stripe = new Stripe(env.STRIPE_SECRET_KEY, {
-    httpClient: Stripe.createFetchHttpClient(),
-  });
-
   let event: Stripe.Event;
   try {
     event = await stripe.webhooks.constructEventAsync(
@@ -90,7 +95,7 @@ export async function handleStripeWebhook(
       signature,
       env.STRIPE_WEBHOOK_SECRET,
       undefined,
-      Stripe.createSubtleCryptoProvider(),
+      cryptoProvider,
     );
   } catch {
     // Bad signature or malformed payload. Do not log the body or signature.
@@ -98,6 +103,12 @@ export async function handleStripeWebhook(
     return json({ error: "invalid_signature" }, 400);
   }
 
+  // De-duplicate on the event id. KV has no atomic compare-and-set, so this
+  // check-then-record is best-effort: two deliveries of the same event racing
+  // inside the process→record window could both dispatch. That is acceptable
+  // here because the money-critical guard is defence-in-depth in the downstream
+  // handlers — the checkout flow keys idempotency on `sess:<session.id>` (#111)
+  // so a license is minted at most once regardless of this window.
   const key = eventKey(event.id);
   if ((await env.LICENSE_KV.get(key)) !== null) {
     console.log(
