@@ -19,6 +19,10 @@
   // Everything else (the full report card) is free: the funnel, not the product.
   var PRO_FEATURES = ['saved-rigs', 'live-monitoring', 'virtual-soundcheck', 'ai-narrative'];
 
+  // Length of the first-launch trial — must mirror TRIAL_DAYS in license.ts (#61).
+  var TRIAL_DAYS = 14;
+  var DAY_MS = 24 * 60 * 60 * 1000;
+
   /**
    * Feature gate, renderer side. Free features are always entitled; Pro
    * features need state.tier === 'pro' (covers both valid and in-grace).
@@ -32,20 +36,68 @@
   }
 
   /**
-   * Header badge model: label + whether to style it as in-grace.
+   * Header badge model: label + whether to style it as in-grace/trial. During a
+   * trial the countdown copy comes from trialBadgeText() — this label is the
+   * fallback if that returns null (e.g. clock skew), never a recomposed string.
    * @param {{tier?:string,status?:string}|null} state
-   * @returns {{label:string, pro:boolean, grace:boolean}}
+   * @returns {{label:string, pro:boolean, grace:boolean, trial:boolean}}
    */
   function badge(state) {
     var pro = !!state && state.tier === 'pro';
     var grace = pro && state.status === 'grace';
+    var trial = pro && state.status === 'trial';
     return {
       // The label IS the displayed copy — the renderer must not recompose it,
       // or the tested value and the shown value drift apart.
-      label: grace ? 'PRO · GRACE' : pro ? 'PRO' : 'FREE',
+      label: grace ? 'PRO · GRACE' : trial ? 'PRO · TRIAL' : pro ? 'PRO' : 'FREE',
       pro: pro,
       grace: grace,
+      trial: trial,
     };
+  }
+
+  /**
+   * Whole days of trial left (ceiling, min 1 while active), or null when the
+   * state isn't an active trial.
+   * @param {{status?:string, trialEndsAt?:string}|null} state
+   * @param {Date} [now]
+   * @returns {number|null}
+   */
+  function trialDaysLeft(state, now) {
+    if (!state || state.status !== 'trial' || !state.trialEndsAt) return null;
+    var endMs = Date.parse(state.trialEndsAt);
+    if (isNaN(endMs)) return null;
+    var ms = endMs - (now instanceof Date ? now : new Date()).getTime();
+    if (ms <= 0) return null;
+    return Math.max(1, Math.ceil(ms / DAY_MS));
+  }
+
+  /**
+   * Subtle header countdown copy during the trial, or null when not trialing.
+   * @param {{status?:string, trialEndsAt?:string}|null} state
+   * @param {Date} [now]
+   * @returns {string|null}
+   */
+  function trialBadgeText(state, now) {
+    var days = trialDaysLeft(state, now);
+    if (days === null) return null;
+    return 'Pro trial — ' + days + (days === 1 ? ' day left' : ' days left');
+  }
+
+  /**
+   * The gentle day-3 / day-11 subscription nudge (#61), or null when no nudge is
+   * due. `milestone` scopes the per-user dismissal so each nudge shows once.
+   * @param {{status?:string, trialEndsAt?:string}|null} state
+   * @param {Date} [now]
+   * @returns {{milestone:string, text:string}|null}
+   */
+  function trialNudge(state, now) {
+    var days = trialDaysLeft(state, now);
+    if (days === null) return null;
+    var elapsed = TRIAL_DAYS - days; // days is a ceiling, so elapsed is a floor
+    var milestone = elapsed >= 11 ? 'day11' : elapsed >= 3 ? 'day3' : null;
+    if (!milestone) return null;
+    return { milestone: milestone, text: 'Enjoying Pro? Start your subscription to keep it.' };
   }
 
   /**
@@ -79,10 +131,14 @@
 
   var api = {
     PRO_FEATURES: PRO_FEATURES,
+    TRIAL_DAYS: TRIAL_DAYS,
     isEntitled: isEntitled,
     badge: badge,
     graceDaysLeft: graceDaysLeft,
     graceBannerText: graceBannerText,
+    trialDaysLeft: trialDaysLeft,
+    trialBadgeText: trialBadgeText,
+    trialNudge: trialNudge,
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.licenseState = api;

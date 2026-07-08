@@ -6,6 +6,7 @@ import * as path from 'path';
 import { registerIpcHandlers } from './ipc';
 import { initLogging, attachWindowLogging, log } from './logger';
 import { checkForUpdates, openReleasePage } from './updater';
+import { ensureTrialStarted } from './license';
 
 // Deterministic app name so logs land in ~/Library/Logs/SoundBuddy (not "Electron").
 app.setName('SoundBuddy');
@@ -142,6 +143,9 @@ function buildMenu(): void {
 app.whenReady().then(() => {
   augmentPathForGuiLaunch();
   initLogging();
+  // Start the 14-day Pro trial on first launch (#61) before the renderer reads
+  // the license, so a new user boots straight into Pro (no free-tier flash).
+  ensureTrialStarted();
   registerIpcHandlers();
 
   // Manual update check + "Download" button (opens the release page in browser).

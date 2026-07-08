@@ -15,6 +15,28 @@ export const LICENSE_ENV = {
   SOUND_BUDDY_LICENSE_PUBKEY: publicKey.export({ type: 'spki', format: 'der' }).toString('base64'),
 };
 
+/**
+ * Trust this run's keypair AND suppress the first-launch trial (#61) so a spec
+ * can exercise the deterministic free tier — otherwise a fresh --user-data-dir
+ * boots straight into the 14-day Pro trial. Dev-only env, honored by the
+ * unpackaged app the e2e harness launches.
+ */
+export const NO_TRIAL_ENV = { ...LICENSE_ENV, SOUND_BUDDY_DISABLE_TRIAL: '1' };
+
+/**
+ * Seed a license.json whose trial started `startedDaysAgo` days ago (#61) —
+ * negative/small values give an active trial, ≥14 an expired one. Lets a spec
+ * reach the trial states without waiting real days.
+ */
+export function seedTrial(userDataDir: string, startedDaysAgo: number): void {
+  fs.mkdirSync(userDataDir, { recursive: true });
+  const startedAt = new Date(Date.now() - startedDaysAgo * 24 * 60 * 60 * 1000).toISOString();
+  fs.writeFileSync(
+    path.join(userDataDir, 'license.json'),
+    JSON.stringify({ trialStartedAt: startedAt }, null, 2),
+  );
+}
+
 function b64url(buf: Buffer): string {
   return buf.toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 }

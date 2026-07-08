@@ -2,12 +2,14 @@ import { test, expect, type ElectronApplication, type Page } from '@playwright/t
 import { _electron as electron } from 'playwright';
 import * as path from 'path';
 import * as fs from 'fs';
-import { LICENSE_ENV, makeLicenseKey, seedProLicense } from './license-fixture';
+import { NO_TRIAL_ENV, makeLicenseKey, seedProLicense } from './license-fixture';
 
 // License gating (#54), run for REAL against an isolated license.json in a
 // throwaway --user-data-dir: free tier locks (badge, tab locks, upgrade cards),
 // key entry unlocks mid-session without a restart, invalid/expired keys show
 // clear messaging without locking anything, and grace shows the banner.
+// The first-launch trial (#61) is suppressed here (NO_TRIAL_ENV) so the free
+// tier is deterministic; trial.spec.ts covers the trial itself.
 
 const MAIN = path.join(__dirname, '..', 'dist', 'electron', 'main.js');
 const USER_DATA = path.join(__dirname, '..', 'test-results', 'license-userdata');
@@ -19,7 +21,7 @@ let win: Page;
 async function launch(): Promise<void> {
   app = await electron.launch({
     args: [MAIN, `--user-data-dir=${USER_DATA}`],
-    env: { ...process.env, ...LICENSE_ENV },
+    env: { ...process.env, ...NO_TRIAL_ENV },
   });
   win = await app.firstWindow();
   await win.waitForLoadState('domcontentloaded');

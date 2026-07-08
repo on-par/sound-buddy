@@ -17,9 +17,11 @@ import {
   getLicenseState,
   activateLicense,
   removeLicense,
+  ensureTrialStarted,
   isEntitled,
   licensePublicKey,
   GRACE_DAYS,
+  TRIAL_DAYS,
 } from './license';
 import { signLicenseKey } from '../tests/license-fixture';
 
@@ -179,6 +181,80 @@ describe('license store (license.json)', () => {
     expect(getLicenseState(NOW).tier).toBe('free');
     fs.writeFileSync(licenseFile(), JSON.stringify({ key: 42 }));
     expect(getLicenseState(NOW)).toEqual({ tier: 'free', status: 'none' });
+  });
+});
+
+describe('first-launch trial (#61)', () => {
+  const readStore = () => JSON.parse(fs.readFileSync(licenseFile(), 'utf8'));
+  const days = (n: number) => new Date(NOW.getTime() + n * DAY_MS);
+
+  it('stamps trialStartedAt on first launch and grants Pro for 14 days', () => {
+    const state = ensureTrialStarted(NOW);
+    expect(state).toMatchObject({ tier: 'pro', status: 'trial' });
+    expect(readStore()).toEqual({ trialStartedAt: NOW.toISOString() });
+    // trialEndsAt is exactly TRIAL_DAYS out.
+    expect(Date.parse(state.trialEndsAt!)).toBe(NOW.getTime() + TRIAL_DAYS * DAY_MS);
+    // Every Pro feature is unlocked during the trial.
+    expect(isEntitled('live-monitoring', NOW)).toBe(true);
+  });
+
+  it('is idempotent — a second launch does not reset the clock', () => {
+    ensureTrialStarted(NOW);
+    ensureTrialStarted(days(5)); // returning user, 5 days in
+    expect(readStore()).toEqual({ trialStartedAt: NOW.toISOString() });
+    expect(getLicenseState(days(5)).status).toBe('trial');
+  });
+
+  it('rolls to trial-expired (free) once 14 days elapse, report card still free', () => {
+    ensureTrialStarted(NOW);
+    expect(getLicenseState(days(TRIAL_DAYS - 1)).status).toBe('trial');
+    const after = getLicenseState(days(TRIAL_DAYS + 1));
+    expect(after).toMatchObject({ tier: 'free', status: 'trial-expired' });
+    for (const f of ['saved-rigs', 'live-monitoring', 'virtual-soundcheck', 'ai-narrative']) {
+      expect(isEntitled(f, days(TRIAL_DAYS + 1))).toBe(false);
+    }
+    expect(isEntitled('report-card', days(TRIAL_DAYS + 1))).toBe(true);
+  });
+
+  it('does not start a trial when a key is already stored', () => {
+    activateLicense(makeKey({ kind: 'lifetime' }), NOW);
+    const state = ensureTrialStarted(NOW);
+    expect(state).toMatchObject({ tier: 'pro', status: 'valid', kind: 'lifetime' });
+    expect(readStore().trialStartedAt).toBeUndefined();
+  });
+
+  it('a paid Pro key outranks an active trial', () => {
+    ensureTrialStarted(NOW);
+    activateLicense(makeKey({ kind: 'subscription', expiresAt: future }), NOW);
+    // Stored alongside the trial stamp, but the key wins.
+    expect(readStore().trialStartedAt).toBe(NOW.toISOString());
+    expect(getLicenseState(NOW)).toMatchObject({ status: 'valid', kind: 'subscription' });
+  });
+
+  it('activate then remove keeps the trial stamp — no re-trial exploit', () => {
+    ensureTrialStarted(NOW);
+    activateLicense(makeKey({ kind: 'lifetime' }), NOW);
+    const state = removeLicense(days(TRIAL_DAYS + 1));
+    // Trial has since expired: removing the key drops to trial-expired, not a
+    // fresh trial, and the stamp survives so a re-launch can't restart it.
+    expect(state.status).toBe('trial-expired');
+    expect(readStore()).toEqual({ trialStartedAt: NOW.toISOString() });
+    expect(ensureTrialStarted(days(TRIAL_DAYS + 2)).status).toBe('trial-expired');
+  });
+
+  it('a corrupt trialStartedAt is ignored (free), never a crash', () => {
+    fs.writeFileSync(licenseFile(), JSON.stringify({ trialStartedAt: 'not-a-date' }));
+    expect(getLicenseState(NOW)).toEqual({ tier: 'free', status: 'none' });
+  });
+
+  it('SOUND_BUDDY_DISABLE_TRIAL suppresses the trial for deterministic tests', () => {
+    process.env.SOUND_BUDDY_DISABLE_TRIAL = '1';
+    try {
+      expect(ensureTrialStarted(NOW)).toEqual({ tier: 'free', status: 'none' });
+      expect(fs.existsSync(licenseFile())).toBe(false);
+    } finally {
+      delete process.env.SOUND_BUDDY_DISABLE_TRIAL;
+    }
   });
 });
 
