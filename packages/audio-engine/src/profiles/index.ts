@@ -122,6 +122,17 @@ export const PROFILES: IdealProfile[] = [
     ),
   },
   {
+    id: "worship-service",
+    label: "Worship service",
+    description: "Reference target captured from a full worship service mix.",
+    freqs: GRID_FREQS,
+    dbOffsets: [
+      3.0, 3.0, 3.0, 15.0, 15.0, 18, 18, 18, 18, 18, 16.0, 13.5, 11.0, 11.5, 12.5, 10.5, 8.0,
+      8.5, 9.0, 8.0, 5.5, 4.0, 2.5, 7.0, 6.5, 5.5, 6.0, 2.0, 2.0, 1.0, -1.5, -3.0, -6.0, -8.0,
+      -10.0, -13.5, -15.5, -14.0, -14.0, -14.5, -17.0, -17.0, -17.0, -18, -18, -18, -18, -18,
+    ],
+  },
+  {
     id: "speech-podcast",
     label: "Speech / podcast",
     description: "Intelligibility: high-pass tilt, 2–5 kHz presence bump.",
@@ -153,7 +164,7 @@ export function getProfile(id: string | undefined | null): IdealProfile | undefi
 
 /**
  * Default profile id for a content classification (PRD 04 → 05). Speech maps to
- * the podcast target, music to the full-range target, everything else to flat.
+ * the podcast target, music/mixed to the worship-service target, everything else to flat.
  */
 export function defaultProfileForContentType(ct: ContentType | undefined): string {
   switch (ct) {
@@ -161,7 +172,7 @@ export function defaultProfileForContentType(ct: ContentType | undefined): strin
       return "speech-podcast";
     case "music":
     case "mixed":
-      return "music-fullrange";
+      return "worship-service";
     default:
       return "flat";
   }

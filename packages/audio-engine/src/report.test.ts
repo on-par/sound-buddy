@@ -9,6 +9,7 @@ import type { AudioAnalysis, ContentType, FrequencyBands } from "./types.js";
 function makeAnalysis(opts: {
   contentType?: ContentType;
   bands?: Partial<FrequencyBands>;
+  sox?: Partial<AudioAnalysis["sox"]>;
 } = {}): AudioAnalysis {
   const bands: FrequencyBands = {
     subBass: -30,
@@ -42,6 +43,7 @@ function makeAnalysis(opts: {
       peakDbfs: -3,
       dynamicRangeDb: 13,
       clipping: false,
+      ...opts.sox,
     },
     ffprobe: {
       format: {
@@ -80,12 +82,29 @@ describe("buildReport — content type (PRD 04)", () => {
     expect(buildReport(makeAnalysis({ contentType: "music" }))).toContain("Content type: Music");
   });
 
+  it("describes music and mixed content as tuned for the worship-service target", () => {
+    expect(buildReport(makeAnalysis({ contentType: "music" }))).toContain("thresholds tuned for worship service reference");
+    expect(buildReport(makeAnalysis({ contentType: "mixed" }))).toContain("thresholds tuned for worship service reference");
+  });
+
+  it("does not call high-dynamic worship recordings quiet just because whole-file RMS is low", () => {
+    const sox = { rmsDbfs: -26.76, peakDbfs: -6.21, dynamicRangeDb: 20.55 };
+
+    const mixedReport = buildReport(makeAnalysis({ contentType: "mixed", sox }));
+    expect(mixedReport).toContain("Dynamic service");
+    expect(mixedReport).not.toContain("Quiet mix");
+
+    const musicReport = buildReport(makeAnalysis({ contentType: "music", sox: { ...sox, peakDbfs: -11.5 } }));
+    expect(musicReport).toContain("Dynamic service");
+    expect(musicReport).not.toContain("Quiet mix");
+  });
+
   it("omits the content-type line when the classifier did not run", () => {
     expect(buildReport(makeAnalysis())).not.toContain("Content type:");
   });
 
   it("flags a presence dip for speech that music tolerates (tighter speech threshold)", () => {
-    // presence sits 10 dB under mid: past the speech threshold (8), under music's (15).
+    // presence sits 10 dB under mid: past the speech threshold (8), under music's (12).
     const bands = { mid: -8, presence: -18 };
     expect(buildReport(makeAnalysis({ contentType: "speech", bands }))).toContain("Presence dip");
     expect(buildReport(makeAnalysis({ contentType: "music", bands }))).not.toContain("Presence dip");

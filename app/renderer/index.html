@@ -1505,6 +1505,7 @@ function ipShape(...terms) { return IP_GRID_FREQS.map(f => Math.round(terms.redu
 const IP_PROFILES = [
   { id: 'flat', label: 'Flat / neutral', description: 'Neutral reference — no target tilt.', freqs: IP_GRID_FREQS, dbOffsets: IP_GRID_FREQS.map(() => 0) },
   { id: 'music-fullrange', label: 'Music (full-range)', description: 'Balanced mix: gentle low warmth and a soft presence lift.', freqs: IP_GRID_FREQS, dbOffsets: ipShape(ipLowShelf(120, 3, 1.5), ipBell(4500, 2.5, 1.1), ipHighShelf(12000, -1.5, 1.2)) },
+  { id: 'worship-service', label: 'Worship service', description: 'Reference target captured from a full worship service mix.', freqs: IP_GRID_FREQS, dbOffsets: [3.0, 3.0, 3.0, 15.0, 15.0, 18, 18, 18, 18, 18, 16.0, 13.5, 11.0, 11.5, 12.5, 10.5, 8.0, 8.5, 9.0, 8.0, 5.5, 4.0, 2.5, 7.0, 6.5, 5.5, 6.0, 2.0, 2.0, 1.0, -1.5, -3.0, -6.0, -8.0, -10.0, -13.5, -15.5, -14.0, -14.0, -14.5, -17.0, -17.0, -17.0, -18, -18, -18, -18, -18] },
   { id: 'speech-podcast', label: 'Speech / podcast', description: 'Intelligibility: high-pass tilt, 2–5 kHz presence bump.', freqs: IP_GRID_FREQS, dbOffsets: ipShape(ipLowShelf(110, -6, 1.4), ipBell(3000, 4, 1.0), ipHighShelf(9000, -2, 1.2)) },
   { id: 'broadcast', label: 'Broadcast (speech)', description: 'Loudness-normalized speech: controlled lows, gentle presence.', freqs: IP_GRID_FREQS, dbOffsets: ipShape(ipLowShelf(140, -8, 1.2), ipBell(2500, 2.5, 1.1), ipHighShelf(10000, -3, 1.2)) },
 ];
@@ -1521,7 +1522,7 @@ const IP_BANDS = [
 const IP_POINT_WEIGHTS = IP_GRID_FREQS.map(f => (f >= 200 && f <= 6000) ? 1 : (f < 200 ? 0.5 : 0.6));
 const IP_PENALTY_PER_DB = 4;
 function ipFiniteMean(xs) { let s = 0, n = 0; for (const x of xs) { if (Number.isFinite(x)) { s += x; n++; } } return n > 0 ? s / n : 0; }
-function ipDefaultForContentType(ct) { switch (ct) { case 'speech': return 'speech-podcast'; case 'music': case 'mixed': return 'music-fullrange'; default: return 'flat'; } }
+function ipDefaultForContentType(ct) { switch (ct) { case 'speech': return 'speech-podcast'; case 'music': case 'mixed': return 'worship-service'; default: return 'flat'; } }
 function customProfileId(value) { return String(value || '').startsWith('custom:') ? String(value).slice(7) : ''; }
 function ipCompare(curve, profile) {
   if (!curve || !Array.isArray(curve.db) || curve.db.length !== profile.dbOffsets.length) return null;
@@ -3765,6 +3766,8 @@ function renderContentType(src) {
 function analyzeRecordingType(src) {
   if (src.clipping || src.peak >= -0.5) return { type: 'clipping', label: 'Clipping', note: 'Signal is clipping. Reduce input gain immediately.', tone: 'issue' };
   if (src.peak > -3 && src.rms > -12) return { type: 'hot', label: 'Hot', note: 'Recording level is very hot. Consider reducing gain.', tone: 'check' };
+  if ((src.contentType === 'mixed' || src.contentType === 'music') && src.peak > -12 && src.dynamicRange != null && src.dynamicRange > 15 && src.rms < -25)
+    return { type: 'dynamic_service', label: 'Dynamic Service', note: 'Peaks are healthy; quiet sections are lowering whole-file RMS.', tone: 'info' };
   if (src.peak > -15 && src.rms < -30 && src.dynamicRange != null && src.dynamicRange > 15)
     return { type: 'low_gain', label: 'Low Recording Gain', note: 'Mix is fine but USB record level is low. Raise console USB output toward -18 dBFS RMS.', tone: 'check' };
   if (src.peak < -15 && src.rms < -35)
@@ -3785,7 +3788,8 @@ function computeGrade(src) {
     if (Object.keys(src.bands).some(k => bandDiffFromOthers(src.bands, k) > 15)) drop();
     return letters[idx];
   }
-  if (src.rms < -20 || src.rms > -14) drop();
+  const rmsExempt = recType.type === 'dynamic_service';
+  if (!rmsExempt && (src.rms < -20 || src.rms > -14)) drop();
   if (src.dynamicRange != null && src.dynamicRange < 6) drop();
   if (Object.keys(src.bands).some(k => bandDiffFromOthers(src.bands, k) > 15)) drop();
   return letters[idx];
@@ -3798,7 +3802,7 @@ function computeScore(src) {
   let score = 100;
   const rt = analyzeRecordingType(src);
   if (src.clipping) score -= 45;
-  if (rt.type !== 'low_gain') {
+  if (rt.type !== 'low_gain' && rt.type !== 'dynamic_service') {
     if (src.rms < -20 || src.rms > -14) score -= 9;
     if (src.rms < -25 || src.rms > -10) score -= 7;
   }
@@ -3814,7 +3818,7 @@ function computeRecommendations(src) {
   const recs = [];
   const recType = analyzeRecordingType(src);
   if (src.clipping) recs.push('CRITICAL: Clipping detected. Reduce input gain immediately.');
-  if (recType.type === 'low_gain') recs.push(recType.note);
+  if (recType.type === 'low_gain' || recType.type === 'dynamic_service') recs.push(recType.note);
   else if (src.rms > -10) recs.push('Your recording is too hot. Reduce gain to avoid clipping.');
   else if (src.rms < -25 && recType.type !== 'low_gain') recs.push('Your recording is too quiet. Increase input gain or fader levels.');
   if (src.dynamicRange != null && src.dynamicRange < 3) recs.push('Dynamic range is very compressed. Mix may sound lifeless.');
