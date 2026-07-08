@@ -10,8 +10,8 @@ header required.
 
 ## Status
 
-Scaffold (#107): routing and config only. The health check is implemented; the
-Stripe webhook, license, and activation routes are declared and return `501`
+Scaffold (#107) plus the Stripe webhook (#108). The health check and the webhook
+are implemented; the license and activation routes are declared and return `501`
 until later stories fill them in.
 
 ## Routes
@@ -19,12 +19,30 @@ until later stories fill them in.
 | Method | Path                   | Status                             |
 | ------ | ---------------------- | ---------------------------------- |
 | GET    | `/api/stripe/health`   | `200` — liveness probe             |
-| POST   | `/api/stripe/webhook`  | `501` — placeholder (later story)  |
+| POST   | `/api/stripe/webhook`  | `200` — verify + idempotency (#108)|
 | GET    | `/api/license`         | `501` — placeholder (later story)  |
 | GET    | `/activate`            | `501` — placeholder (later story)  |
 | _any_  | anything else          | `404`                              |
 
 A known path with the wrong method returns `405` with an `Allow` header.
+
+## Webhook (`POST /api/stripe/webhook`)
+
+Verifies the `Stripe-Signature` header asynchronously with Web Crypto
+(`constructEventAsync` + `createSubtleCryptoProvider` — the Workers runtime has
+no Node `crypto`), then de-duplicates events through KV so a replayed event never
+double-mints a license:
+
+- Missing signature header → `400` (no dispatch, no KV write).
+- Bad signature / unparseable body → `400` (no dispatch, no KV write).
+- First sight of `evt:<id>` → dispatch to the per-event handler, record a small
+  marker in `LICENSE_KV` with a 30-day TTL, → `200`.
+- Already-seen `evt:<id>` → `200` no-op (no dispatch).
+
+Per-event handler bodies (license minting, subscription lifecycle, …) land in
+downstream stories (#110/#111/#118/#119); this endpoint ships verification,
+idempotency, and the dispatch skeleton. A handler that throws propagates as a
+`500` so Stripe retries — the marker is written only after a handler returns.
 
 ## Config & bindings
 

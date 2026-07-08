@@ -8,6 +8,9 @@
 // material, signed `SB1.` license strings, webhook payload bodies, or KV values.
 // `wrangler tail` / Logpush capture logs. Log event ids/types and outcomes only.
 
+import { json } from "./http";
+import { handleStripeWebhook } from "./webhook";
+
 /**
  * Environment bindings declared in wrangler.jsonc. Secret values
  * (STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET, LICENSE_SIGNING_PRIVATE_KEY,
@@ -23,6 +26,10 @@ export interface Env {
   FROM_EMAIL: string;
   /** Desktop app activation origin. */
   APP_ORIGIN: string;
+  /** Stripe secret API key (secret; `wrangler secret put`). */
+  STRIPE_SECRET_KEY: string;
+  /** Stripe webhook signing secret `whsec_…` (secret; `wrangler secret put`). */
+  STRIPE_WEBHOOK_SECRET: string;
 }
 
 type RouteHandler = (
@@ -36,16 +43,6 @@ interface Route {
   path: string;
   handler: RouteHandler;
 }
-
-const json = (
-  body: unknown,
-  status = 200,
-  headers: Record<string, string> = {},
-): Response =>
-  new Response(JSON.stringify(body), {
-    status,
-    headers: { "content-type": "application/json; charset=utf-8", ...headers },
-  });
 
 /** Liveness probe — no bindings, no secrets, always 200. */
 const health: RouteHandler = () => json({ status: "ok", service: "sound-buddy-api" });
@@ -62,7 +59,7 @@ const notImplemented: RouteHandler = () =>
 // handlers without touching the dispatcher below.
 const routes: Route[] = [
   { method: "GET", path: "/api/stripe/health", handler: health },
-  { method: "POST", path: "/api/stripe/webhook", handler: notImplemented },
+  { method: "POST", path: "/api/stripe/webhook", handler: handleStripeWebhook },
   { method: "GET", path: "/api/license", handler: notImplemented },
   { method: "GET", path: "/activate", handler: notImplemented },
 ];
