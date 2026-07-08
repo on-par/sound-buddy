@@ -15,12 +15,14 @@ vi.mock('electron', () => ({
 import {
   getSettings,
   updateSettings,
+  normalizeCustomIdealProfile,
   listRigs,
   getRig,
   upsertRig,
   deleteRig,
   setActiveRig,
   type CaptureRig,
+  type CustomIdealProfile,
 } from './settings';
 
 const settingsFile = () => path.join(userDataDir, 'settings.json');
@@ -42,6 +44,9 @@ function makeRig(over: Partial<CaptureRig> = {}): Omit<CaptureRig, 'id'> {
   };
 }
 
+/** A 48-point dbOffsets array (the ideal-profile grid length). */
+const makeOffsets = (fill = 0): number[] => Array.from({ length: 48 }, (_, i) => fill + (i % 7));
+
 beforeEach(() => {
   userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'sb-settings-'));
   delete process.env.SOUND_BUDDY_AI_ENABLED;
@@ -60,6 +65,7 @@ describe('getSettings defaults', () => {
     expect(s.activeRigId).toBeNull();
     expect(s.aiEnabled).toBe(false);
     expect(s.idealProfile).toBe('');
+    expect(s.customIdealProfile).toBeNull();
   });
 
   it('defaults rigs when settings.json has no "rigs" key, preserving other fields', () => {
@@ -262,5 +268,91 @@ describe('robustness against a corrupted settings.json', () => {
   it('throws a clear error when saveRig is handed a null/undefined rig', () => {
     // The preload types the IPC arg as unknown, so null can reach upsertRig.
     expect(() => upsertRig(null as unknown as Omit<CaptureRig, 'id'>)).toThrow(/name is required/);
+  });
+});
+
+describe('normalizeCustomIdealProfile', () => {
+  it('returns undefined for an absent value (no-op signal)', () => {
+    expect(normalizeCustomIdealProfile(undefined)).toBeUndefined();
+  });
+
+  it('returns null to signal an explicit clear', () => {
+    expect(normalizeCustomIdealProfile(null)).toBeNull();
+  });
+
+  it('validates and rounds a well-formed custom curve', () => {
+    const out = normalizeCustomIdealProfile({
+      label: '  Like foo.wav  ',
+      dbOffsets: makeOffsets(0).map((n) => n + 0.004),
+    }) as CustomIdealProfile;
+    expect(out).not.toBeNull();
+    expect(out.label).toBe('Like foo.wav'); // trimmed
+    expect(out.dbOffsets).toHaveLength(48);
+    // Rounded to 2 decimals.
+    expect(out.dbOffsets[0]).toBe(0);
+    expect(out.dbOffsets[1]).toBe(1);
+  });
+
+  it.each([
+    ['non-object', 'string'],
+    ['missing label', { dbOffsets: makeOffsets() }],
+    ['empty label', { label: '   ', dbOffsets: makeOffsets() }],
+    ['missing dbOffsets', { label: 'x' }],
+    ['non-array dbOffsets', { label: 'x', dbOffsets: 'nope' }],
+    ['wrong grid length', { label: 'x', dbOffsets: [1, 2, 3] }],
+    ['non-finite offset', { label: 'x', dbOffsets: makeOffsets().map((n, i) => (i === 5 ? Infinity : n)) }],
+    ['NaN offset', { label: 'x', dbOffsets: makeOffsets().map((n, i) => (i === 5 ? NaN : n)) }],
+  ])('treats %s as a no-op (undefined, nothing persisted)', (_name, value: unknown) => {
+    expect(normalizeCustomIdealProfile(value)).toBeUndefined();
+  });
+});
+
+describe('customIdealProfile persistence', () => {
+  it('persists a custom curve and reads it back', () => {
+    const after = updateSettings({
+      customIdealProfile: { label: 'Like service.wav', dbOffsets: makeOffsets() },
+      idealProfile: '__custom',
+    });
+    expect(after.customIdealProfile).toEqual({ label: 'Like service.wav', dbOffsets: makeOffsets() });
+    expect(after.idealProfile).toBe('__custom');
+    expect(getSettings().customIdealProfile?.label).toBe('Like service.wav');
+    expect(readFile().customIdealProfile.label).toBe('Like service.wav');
+  });
+
+  it('clears the custom curve when passed null', () => {
+    updateSettings({ customIdealProfile: { label: 'x', dbOffsets: makeOffsets() } });
+    expect(updateSettings({ customIdealProfile: null }).customIdealProfile).toBeNull();
+    expect(readFile().customIdealProfile).toBeNull();
+  });
+
+  it('is not touched by an env override (pure persisted data, like rigs)', () => {
+    updateSettings({ customIdealProfile: { label: 'keep', dbOffsets: makeOffsets() } });
+    process.env.SOUND_BUDDY_IDEAL_PROFILE = 'broadcast';
+    // An env-driven read doesn't disturb the persisted custom curve.
+    expect(getSettings().idealProfile).toBe('broadcast');
+    expect(getSettings().customIdealProfile?.label).toBe('keep');
+    expect(readFile().customIdealProfile.label).toBe('keep');
+  });
+
+  it('survives a rigs write without being disturbed', () => {
+    updateSettings({ customIdealProfile: { label: 'keep', dbOffsets: makeOffsets() } });
+    upsertRig(makeRig());
+    expect(readFile().customIdealProfile.label).toBe('keep');
+    expect(readFile().rigs).toHaveLength(1);
+  });
+
+  it('repairs a corrupted customIdealProfile on read (non-array offsets → null)', () => {
+    writeFile({ aiEnabled: false, idealProfile: '__custom', customIdealProfile: { label: 'bad', dbOffsets: 'nope' } });
+    expect(getSettings().customIdealProfile).toBeNull();
+    // A subsequent write repairs the shape on disk.
+    upsertRig(makeRig());
+    expect(readFile().customIdealProfile).toBeNull();
+    expect(Array.isArray(readFile().rigs)).toBe(true);
+  });
+
+  it('preserves unknown top-level keys across a custom-curve write', () => {
+    writeFile({ aiEnabled: false, idealProfile: '', futureKey: 'keep-me' });
+    updateSettings({ customIdealProfile: { label: 'x', dbOffsets: makeOffsets() } });
+    expect(readFile().futureKey).toBe('keep-me');
   });
 });

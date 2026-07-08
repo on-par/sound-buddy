@@ -12,6 +12,7 @@ import { getPublicLlmConfig, saveLlmConfig, type LlmConfigPatch } from './llm-co
 import {
   getSettings,
   updateSettings,
+  normalizeCustomIdealProfile,
   listRigs,
   upsertRig,
   deleteRig,
@@ -610,6 +611,13 @@ export function registerIpcHandlers(): void {
     if (patch && typeof patch === 'object') {
       if (typeof patch.aiEnabled === 'boolean') clean.aiEnabled = patch.aiEnabled;
       if (typeof patch.idealProfile === 'string') clean.idealProfile = patch.idealProfile;
+      // Custom ideal curve captured from a reference file. `normalizeCustomIdealProfile`
+      // returns undefined for a malformed/absent value (no-op), null to clear, or a
+      // validated object to store — so a stray patch can't corrupt settings.json.
+      if ('customIdealProfile' in patch) {
+        const norm = normalizeCustomIdealProfile(patch.customIdealProfile);
+        if (norm !== undefined) clean.customIdealProfile = norm;
+      }
       // Storage location (#91). Trimmed; an empty string resets to the platform
       // default (~/Music/Sound Buddy). No size/count limit is ever applied.
       if (typeof patch.storageDir === 'string') clean.storageDir = patch.storageDir.trim();

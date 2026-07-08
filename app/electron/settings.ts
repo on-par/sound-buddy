@@ -52,11 +52,29 @@ export interface CaptureRig {
   llmIntervalMs?: number;
 }
 
+/**
+ * A user-defined ideal EQ curve captured from a good-sounding reference file
+ * (the "Use this file as my ideal" flow). `dbOffsets` is a level-invariant
+ * relative shape on the same 48-point log-frequency grid (20 Hz–20 kHz) as the
+ * built-in `IP_PROFILES` in the renderer and `packages/audio-engine/src/profiles`.
+ * The grid frequencies are fixed, so only the shape + a label are persisted.
+ */
+export interface CustomIdealProfile {
+  label: string;
+  dbOffsets: number[];
+}
+
 export interface AppSettings {
   /** Master switch for all AI/LLM analysis. Default false (off). */
   aiEnabled: boolean;
   /** Selected ideal EQ profile id (PRD 05). Empty = auto by content type. */
   idealProfile: string;
+  /**
+   * A user-defined ideal curve captured from a reference file, or null when the
+   * user is on a built-in/auto target. Selected by setting `idealProfile` to the
+   * sentinel `'__custom'`. Default null. Pure persisted data — no env layer.
+   */
+  customIdealProfile: CustomIdealProfile | null;
   /**
    * Folder where recordings, stems, and captured sessions are stored (#91).
    * Empty = the platform default (`~/Music/Sound Buddy`), resolved by the main
@@ -74,10 +92,18 @@ export interface AppSettings {
 const DEFAULTS: AppSettings = {
   aiEnabled: false,
   idealProfile: '',
+  customIdealProfile: null,
   storageDir: '',
   rigs: [],
   activeRigId: null,
 };
+
+/**
+ * Length of the ideal-profile frequency grid (20 Hz–20 kHz, log-spaced). Mirrors
+ * `GRID_POINTS` in `packages/audio-engine/src/profiles/index.ts` and `IP_GRID_POINTS`
+ * in the renderer — the custom curve must sit on this same grid to compare.
+ */
+const CUSTOM_PROFILE_GRID_POINTS = 48;
 
 function settingsPath(): string {
   return path.join(app.getPath('userData'), 'settings.json');
@@ -108,6 +134,16 @@ function fileRigs(file: Partial<AppSettings>): CaptureRig[] {
 }
 
 /**
+ * The custom ideal curve from a raw file view, validated, or null when the key
+ * is absent or corrupted (hand-edited to a non-object, wrong grid length, or
+ * non-finite offsets). Mirrors {@link fileRigs}'s "repair on read" discipline so
+ * a damaged settings.json can't feed a broken curve into the comparator.
+ */
+function fileCustomProfile(file: Partial<AppSettings>): CustomIdealProfile | null {
+  return normalizeCustomIdealProfile(file.customIdealProfile) ?? null;
+}
+
+/**
  * Persist the file layer, preserving any fields not being changed — including
  * unknown top-level keys a future version may add. Callers pass the mutated file
  * view — never getSettings()'s env-resolved view — so transient env overrides
@@ -119,6 +155,7 @@ function writeSettingsFile(file: Partial<AppSettings>): void {
     ...file,
     aiEnabled: file.aiEnabled ?? DEFAULTS.aiEnabled,
     idealProfile: file.idealProfile ?? DEFAULTS.idealProfile,
+    customIdealProfile: fileCustomProfile(file),
     storageDir: file.storageDir ?? DEFAULTS.storageDir,
     rigs: fileRigs(file),
     activeRigId: file.activeRigId ?? DEFAULTS.activeRigId,
@@ -152,7 +189,38 @@ export function getSettings(): AppSettings {
     // Rigs have no env layer — they are pure persisted data.
     rigs: fileRigs(file),
     activeRigId: file.activeRigId ?? DEFAULTS.activeRigId,
+    // The custom ideal curve is pure persisted data — no env layer.
+    customIdealProfile: fileCustomProfile(file),
   };
+}
+
+/**
+ * Validate a `customIdealProfile` patch value into a clean {@link CustomIdealProfile},
+ * or signal intent to the caller:
+ *   - `undefined` → the key was absent / malformed; caller treats it as a no-op
+ *     (never persists garbage and never clears a good value by accident).
+ *   - `null`      → the caller passed null explicitly; clear the stored curve.
+ *   - object      → a validated `{ label, dbOffsets }` (48 finite numbers, trimmed
+ *     non-empty label) safe to persist.
+ *
+ * The grid length (48) and finite-offset checks match the renderer's
+ * `customProfileFromCurve` so a curve built there round-trips unchanged.
+ */
+export function normalizeCustomIdealProfile(value: unknown): CustomIdealProfile | null | undefined {
+  if (value === undefined) return undefined;
+  if (value === null) return null;
+  if (typeof value !== 'object') return undefined;
+  const v = value as Record<string, unknown>;
+  const label = typeof v.label === 'string' ? v.label.trim() : '';
+  const offsets = v.dbOffsets;
+  if (label === '') return undefined;
+  if (!Array.isArray(offsets) || offsets.length !== CUSTOM_PROFILE_GRID_POINTS) return undefined;
+  const dbOffsets: number[] = [];
+  for (const x of offsets) {
+    if (typeof x !== 'number' || !Number.isFinite(x)) return undefined;
+    dbOffsets.push(Math.round(x * 100) / 100);
+  }
+  return { label, dbOffsets };
 }
 
 /** Merge and persist a partial update; returns the new settings. */
