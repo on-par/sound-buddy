@@ -9,8 +9,9 @@
 // which loads it via <script src> and reads it off window.upgradeMomentum.
 //
 // The card only ever renders for a free (non-Pro) user who has just seen their
-// report card — the renderer keys visibility off body.not-pro (the same single
-// gate as every other Pro surface, #54). This module owns only what to say.
+// report card — the renderer gates visibility on shouldShowForLicense() below
+// (the same non-Pro condition that drives body.not-pro, #54). This module owns
+// only what to say and when to fall silent (the 7-day dismissal).
 
 (function (root) {
   'use strict';
@@ -29,14 +30,13 @@
     { plan: 'annual', label: 'Best value $79/yr', primary: false },
   ];
 
-  // The locked next-step actions shown beside the free result. Each maps a Pro
-  // feature (mirrors PRO_FEATURES in license-state.js) to the one-line hint from
-  // Iris's wireframe direction. Order is the funnel order: see change → save →
-  // coach.
+  // The locked next-step actions shown beside the free result — each a Pro
+  // capability with the one-line hint from Iris's wireframe direction. Order is
+  // the funnel order: see change → save → coach.
   var ACTIONS = [
-    { feature: 'saved-rigs', title: 'See what changed week to week', hint: 'Saved rigs track every mix over time.' },
-    { feature: 'saved-rigs', title: 'Save this rig as your baseline', hint: 'Capture profiles you can compare against.' },
-    { feature: 'live-monitoring', title: 'Get ongoing coaching during live monitoring', hint: 'Real-time feedback on the Live tab.' },
+    { title: 'See what changed week to week', hint: 'Saved rigs track every mix over time.' },
+    { title: 'Save this rig as your baseline', hint: 'Capture profiles you can compare against.' },
+    { title: 'Get ongoing coaching during live monitoring', hint: 'Real-time feedback on the Live tab.' },
   ];
 
   // Trust copy under the CTAs (#58) — the AI is always the user's own, local or

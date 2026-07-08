@@ -3700,6 +3700,10 @@ function renderReportCard() {
     empty.style.display = 'flex';
     content.style.display = 'none';
     printBtn.disabled = true;
+    // No card to improve on — never leave the upgrade card beside the empty
+    // state (e.g. after a live capture clears the last analysis).
+    lastReportGrade = null;
+    renderUpgradeMomentum();
     return;
   }
   empty.style.display = 'none';
@@ -3794,9 +3798,12 @@ function dismissUpgradeMomentum() {
 
 function renderUpgradeMomentum() {
   const el = document.getElementById('rc-upgrade');
-  if (!el) return;
   const um = window.upgradeMomentum;
+  // Guard the module load (sibling onboarding code guards likewise) and wait
+  // for the license to resolve — never flash the card before we know the tier.
+  if (!el || !um) return;
   const show = lastReportGrade !== null
+    && licenseCurrent !== null
     && um.shouldShowForLicense(licenseCurrent)
     && !um.isDismissed(upgradeMomentumDismissedAt());
   if (!show) { el.hidden = true; return; }
@@ -3820,7 +3827,10 @@ function renderUpgradeMomentum() {
   ).join('');
   cta.querySelectorAll('[data-checkout-plan]').forEach((btn) =>
     btn.addEventListener('click', () => {
-      try { sb.openCheckout(btn.dataset.checkoutPlan); } catch { /* checkout unavailable — no-op */ }
+      // openCheckout returns a Promise (ipcRenderer.invoke); swallow both a
+      // synchronous throw (preload missing) and an async rejection so a failed
+      // open never surfaces as an unhandled rejection.
+      try { sb.openCheckout(btn.dataset.checkoutPlan)?.catch(() => {}); } catch { /* preload missing */ }
     }));
 
   document.getElementById('rcu-trust').textContent = um.TRUST_COPY;
