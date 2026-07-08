@@ -644,7 +644,36 @@
     #rc-toolbar { display:flex; align-items:center; justify-content:space-between; padding:10px 22px; border-bottom:1px solid var(--border-subtle); background:var(--bg-panel); flex-shrink:0; }
     #rc-toolbar .panel-title { }
     #rc-scroll { flex:1; overflow-y:auto; padding:32px 22px; display:flex; justify-content:center; }
-    #report-card { width:100%; max-width:760px; }
+    /* Report card + "Keep improving" card sit side by side (#58), centered as a
+       pair; the upgrade card wraps below the report on narrow windows. When the
+       upgrade card is hidden the report re-centers on its own (justify:center). */
+    #rc-layout { display:flex; flex-wrap:wrap; gap:28px; align-items:flex-start; justify-content:center; width:100%; max-width:1108px; }
+    #report-card { flex:1 1 620px; width:100%; max-width:760px; min-width:0; }
+
+    /* ── "Keep improving" momentum card (#58) ───────────────────────── */
+    #rc-upgrade {
+      flex:1 1 288px; max-width:320px; align-self:flex-start;
+      position:sticky; top:0;
+      display:flex; flex-direction:column; gap:16px;
+      padding:20px; border-radius:var(--radius-lg);
+      background:var(--surface); border:1px solid var(--border-subtle);
+      box-shadow:var(--elevation-card);
+    }
+    #rc-upgrade[hidden] { display:none; }
+    .rcu-head { display:flex; flex-direction:column; gap:6px; }
+    .rcu-heading { font:var(--fw-semibold) var(--fs-body)/1.25 var(--font-sans); color:var(--text-primary); }
+    .rcu-sub { font:var(--fw-regular) var(--fs-body-sm)/1.5 var(--font-sans); color:var(--text-secondary); }
+    .rcu-actions { list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:12px; }
+    .rcu-action { display:flex; gap:10px; align-items:flex-start; }
+    .rcu-action .rcu-lock { flex-shrink:0; margin-top:1px; color:var(--text-muted); }
+    .rcu-action .rcu-atext { display:flex; flex-direction:column; gap:2px; min-width:0; }
+    .rcu-action .rcu-atitle { font:var(--fw-medium) var(--fs-body-sm)/1.35 var(--font-sans); color:var(--text-primary); }
+    .rcu-action .rcu-ahint { font:var(--fw-regular) var(--fs-label)/1.4 var(--font-sans); color:var(--text-muted); }
+    .rcu-cta { display:flex; flex-direction:column; gap:8px; }
+    .rcu-btn { width:100%; }
+    .rcu-trust { margin:0; font:var(--fw-regular) var(--fs-label)/1.45 var(--font-sans); color:var(--text-muted); text-align:center; }
+    .rcu-later { align-self:center; background:none; border:none; padding:2px 4px; cursor:pointer; color:var(--text-muted); font:var(--fw-medium) var(--fs-label)/1.3 var(--font-sans); -webkit-app-region:no-drag; }
+    .rcu-later:hover { color:var(--text-secondary); }
     .rc-empty { flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:16px; color:var(--text-muted); text-align:center; padding:80px 20px; }
     .rc-empty .t1 { font:var(--fw-medium) var(--fs-body)/1 var(--font-sans); color:var(--text-tertiary); }
     .rc-empty .t2 { font:var(--fw-regular) var(--fs-body-sm)/1 var(--font-sans); }
@@ -740,6 +769,8 @@
       #report-card, #report-card * { visibility:visible !important; }
       html, body { background:#fff !important; overflow:visible !important; }
       #report-card { position:absolute; left:0; top:0; width:100%; max-width:none; margin:0; padding:12px; background:#fff !important; }
+      /* The upgrade card never appears on an exported PDF (#58). */
+      #rc-upgrade { display:none !important; }
       .rc-header h1, .rc-meta, .rc-section h2, .mt-metric, .mt-value, .rc-rec-text, .rc-band-verdict, .rc-ring-label, .rc-empty { color:#000 !important; }
       .rc-header, .rc-section h2 { border-color:#ccc !important; }
       .metric-table td, .metric-table th { border-color:#ccc !important; color:#111 !important; }
@@ -1094,6 +1125,7 @@
       <button class="btn btn-secondary sm" id="reportcard-print-btn" data-icon="download" disabled>Export PDF</button>
     </div>
     <div id="rc-scroll">
+      <div id="rc-layout">
       <div id="report-card">
         <div id="rc-empty" class="rc-empty">
           <span data-icon="clipboard-check" data-size="46"></span>
@@ -1140,6 +1172,22 @@
             <div class="rc-recs" id="rc-recommendations"></div>
           </div>
         </div>
+      </div>
+      <!-- ══ "Keep improving" momentum card (#58) ══
+           Beside the finished free report card, never over it. Shown only to a
+           free (non-Pro) user, after a card renders, and only when not dismissed
+           for the 7-day conversion window. Copy/tone come from window.upgradeMomentum
+           (score-aware). CTAs open hosted Stripe checkout via sb.openCheckout. -->
+      <aside id="rc-upgrade" hidden aria-label="Upgrade to Pro">
+        <div class="rcu-head">
+          <span class="rcu-heading" id="rcu-heading"></span>
+          <span class="rcu-sub" id="rcu-sub"></span>
+        </div>
+        <ul class="rcu-actions" id="rcu-actions"></ul>
+        <div class="rcu-cta" id="rcu-cta"></div>
+        <p class="rcu-trust" id="rcu-trust"></p>
+        <button type="button" class="rcu-later" id="rcu-later">Maybe later</button>
+      </aside>
       </div>
     </div>
   </div>
@@ -1278,6 +1326,8 @@
 <script src="playback-routing.js"></script>
 <!-- Pure license/entitlement helpers (window.licenseState, #54). -->
 <script src="license-state.js"></script>
+<!-- Pure copy/tone/dismissal logic for the post-report-card upgrade card (window.upgradeMomentum, #58). -->
+<script src="upgrade-momentum.js"></script>
 <!-- Pure first-run onboarding gate (window.onboardingState, #69). -->
 <script src="onboarding-state.js"></script>
 <script>
@@ -3650,6 +3700,10 @@ function renderReportCard() {
     empty.style.display = 'flex';
     content.style.display = 'none';
     printBtn.disabled = true;
+    // No card to improve on — never leave the upgrade card beside the empty
+    // state (e.g. after a live capture clears the last analysis).
+    lastReportGrade = null;
+    renderUpgradeMomentum();
     return;
   }
   empty.style.display = 'none';
@@ -3718,7 +3772,75 @@ function renderReportCard() {
       <span class="rc-rec-text">${critical ? '<span class="rc-rec-badge">Critical</span>' : ''}${text}</span>
     </div>`;
   }).join('');
+
+  // Post-report-card upgrade moment (#58): the "Keep improving" card is score-
+  // aware, so it needs this render's grade. It manages its own visibility
+  // (free-only, once-per-7-day dismissal).
+  lastReportGrade = grade;
+  renderUpgradeMomentum();
 }
+
+/* ══ "Keep improving" momentum card (#58) ══
+   Beside the finished free report card, never over it. Copy/tone come from the
+   pure window.upgradeMomentum module; this owns only the DOM + dismissal store.
+   Shown when: a report card has rendered, the user is free (non-Pro), and no
+   "Maybe later" dismissal is active for the 7-day conversion window. */
+const RCU_DISMISS_KEY = 'sb-upgrade-momentum-dismissed-at';
+let lastReportGrade = null;
+
+function upgradeMomentumDismissedAt() {
+  try { return localStorage.getItem(RCU_DISMISS_KEY); } catch { return null; }
+}
+function dismissUpgradeMomentum() {
+  try { localStorage.setItem(RCU_DISMISS_KEY, String(Date.now())); }
+  catch { /* private mode: the card simply returns next launch */ }
+}
+
+function renderUpgradeMomentum() {
+  const el = document.getElementById('rc-upgrade');
+  const um = window.upgradeMomentum;
+  // Guard the module load (sibling onboarding code guards likewise) and wait
+  // for the license to resolve — never flash the card before we know the tier.
+  if (!el || !um) return;
+  const show = lastReportGrade !== null
+    && licenseCurrent !== null
+    && um.shouldShowForLicense(licenseCurrent)
+    && !um.isDismissed(upgradeMomentumDismissedAt());
+  if (!show) { el.hidden = true; return; }
+
+  const tone = um.toneForGrade(lastReportGrade);
+  document.getElementById('rcu-heading').textContent = tone.heading;
+  document.getElementById('rcu-sub').textContent = tone.sub;
+
+  document.getElementById('rcu-actions').innerHTML = um.ACTIONS.map(a =>
+    `<li class="rcu-action">
+      <span class="rcu-lock">${iconSvg('lock', 15)}</span>
+      <span class="rcu-atext">
+        <span class="rcu-atitle">${escapeHtml(a.title)}</span>
+        <span class="rcu-ahint">${escapeHtml(a.hint)}</span>
+      </span>
+    </li>`).join('');
+
+  const cta = document.getElementById('rcu-cta');
+  cta.innerHTML = um.PLANS.map(p =>
+    `<button type="button" class="btn ${p.primary ? 'btn-primary' : 'btn-secondary'} rcu-btn" data-checkout-plan="${escapeHtml(p.plan)}">${escapeHtml(p.label)}</button>`
+  ).join('');
+  cta.querySelectorAll('[data-checkout-plan]').forEach((btn) =>
+    btn.addEventListener('click', () => {
+      // openCheckout returns a Promise (ipcRenderer.invoke); swallow both a
+      // synchronous throw (preload missing) and an async rejection so a failed
+      // open never surfaces as an unhandled rejection.
+      try { sb.openCheckout(btn.dataset.checkoutPlan)?.catch(() => {}); } catch { /* preload missing */ }
+    }));
+
+  document.getElementById('rcu-trust').textContent = um.TRUST_COPY;
+  el.hidden = false;
+}
+
+document.getElementById('rcu-later').addEventListener('click', () => {
+  dismissUpgradeMomentum();
+  document.getElementById('rc-upgrade').hidden = true;
+});
 
 // Report-card "Spectrum Over Time": a static heatmap thumbnail + start/middle/
 // loudest representative frame curves. Hidden when the analysis has no frames
@@ -3791,6 +3913,10 @@ function applyLicenseState(state) {
   }
 
   renderTrialBanner(licenseCurrent);
+
+  // Activating/removing a key mid-session flips whether the upgrade card belongs
+  // on the report (#58) — re-evaluate so it hides the instant a user goes Pro.
+  renderUpgradeMomentum();
 }
 
 // The day-3 / day-11 nudge and the day-14 upgrade card (#61). Dismissals are
