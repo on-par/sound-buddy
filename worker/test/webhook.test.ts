@@ -35,6 +35,7 @@ function makeEnv(kv: KVNamespace): Env {
     FROM_EMAIL: "hello@example.test",
     APP_ORIGIN: "https://example.test",
     STRIPE_WEBHOOK_SECRET: WEBHOOK_SECRET,
+    LICENSE_SIGNING_PRIVATE_KEY: "",
   } satisfies Env;
 }
 
