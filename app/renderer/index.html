@@ -784,6 +784,17 @@
     #ideal-profile-wrap .ipw-label { font:var(--fw-semibold) var(--fs-micro)/1 var(--font-sans); letter-spacing:var(--tracking-caps); text-transform:uppercase; color:var(--text-tertiary); white-space:nowrap; }
     #ideal-profile-wrap .select-wrap select { height:var(--control-h-sm); padding:0 30px 0 10px; font:var(--fw-medium) var(--fs-label)/1 var(--font-sans); }
     #ideal-profile-wrap .select-caret { right:9px; }
+    #ideal-curve-edit-btn { display:flex; align-items:center; justify-content:center; width:28px; height:28px; padding:0; background:var(--surface); color:var(--text-secondary); border:1px solid var(--border-subtle); border-radius:var(--radius-md); cursor:pointer; transition:var(--transition-control); }
+    #ideal-curve-edit-btn:hover { color:var(--gold-text); border-color:var(--border-default); background:var(--surface-raised); }
+    .curve-dialog-card { width:min(560px,calc(100vw - 48px)); }
+    .curve-editor-grid { display:grid; grid-template-columns:1fr; gap:10px; margin-top:4px; }
+    .curve-row { display:grid; grid-template-columns:92px 1fr 66px; align-items:center; gap:10px; }
+    .curve-row label { font:var(--fw-medium) var(--fs-label)/1.25 var(--font-sans); color:var(--text-secondary); }
+    .curve-row input[type="number"] { height:28px; padding:0 8px; background:var(--surface); color:var(--text-primary); border:1px solid var(--border-default); border-radius:var(--radius-md); font:var(--fw-medium) var(--fs-label)/1 var(--font-mono); outline:none; }
+    .curve-row input[type="number"]:focus { border-color:var(--gold-500); box-shadow:var(--glow-focus); }
+    .curve-dialog-actions { display:flex; justify-content:space-between; align-items:center; gap:8px; }
+    .curve-dialog-actions .right { display:flex; gap:8px; }
+    #curve-capture-btn:disabled, #curve-delete-btn:disabled { opacity:0.45; cursor:not-allowed; }
 
     /* Dashed ideal-target overlay on the analyzer curve + its legend/score */
     .sb-target-line { fill:none; stroke:var(--text-tertiary); stroke-width:1.75; stroke-dasharray:6 5; stroke-linejoin:round; stroke-linecap:round; opacity:0.9; }
@@ -1091,6 +1102,7 @@
             <select id="ideal-profile-select" aria-label="Ideal EQ profile"></select>
             <span class="select-caret" data-icon="chevron-down"></span>
           </div>
+          <button type="button" id="ideal-curve-edit-btn" data-icon="settings" data-size="15" aria-label="Create or edit ideal curve" title="Create or edit ideal curve"></button>
         </div>
       </div>
       <div id="spectrum-body"></div>
@@ -1282,6 +1294,32 @@
   </div>
 </div>
 
+<!-- Ideal curve editor. User-authored targets are saved in settings.json and
+     compared with the same level-invariant PRD 05 scoring as built-ins. -->
+<div id="curve-dialog" class="rig-dialog" style="display:none" role="dialog" aria-modal="true" aria-labelledby="curve-dialog-title">
+  <div class="rig-dialog-card curve-dialog-card">
+    <div class="rig-dialog-title" id="curve-dialog-title">Ideal Curve</div>
+    <div class="ai-dialog-sub">Shape the target Sound Buddy compares this file against. Values are relative dB offsets, not loudness.</div>
+    <label class="ai-field">
+      <span class="ai-field-label">Name</span>
+      <input type="text" id="curve-name" class="rig-dialog-input" placeholder="Sunday morning target" autocomplete="off" spellcheck="false" maxlength="60" />
+    </label>
+    <div class="curve-editor-grid" id="curve-editor-grid"></div>
+    <div class="ai-test-row">
+      <button type="button" id="curve-capture-btn" class="btn btn-secondary sm" data-icon="waveform">Use current analysis</button>
+      <span class="ai-status" id="curve-status" role="status"></span>
+    </div>
+    <div class="curve-dialog-actions">
+      <button type="button" id="curve-delete-btn" class="btn btn-secondary sm" data-icon="x">Delete</button>
+      <div class="right">
+        <button type="button" id="curve-reset-btn" class="btn btn-secondary sm">Reset flat</button>
+        <button type="button" id="curve-cancel-btn" class="btn btn-secondary sm">Cancel</button>
+        <button type="button" id="curve-save-btn" class="btn btn-primary sm">Save curve</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- Rig name / confirm dialog. Electron's renderer has no window.prompt/confirm,
      so Save As…, Rename and Delete drive this small inline modal instead. -->
 <div id="rig-dialog" class="rig-dialog" style="display:none" role="dialog" aria-modal="true" aria-labelledby="rig-dialog-title">
@@ -1330,6 +1368,8 @@
 <script src="upgrade-momentum.js"></script>
 <!-- Pure first-run onboarding gate (window.onboardingState, #69). -->
 <script src="onboarding-state.js"></script>
+<!-- Pure custom ideal-curve helpers (window.idealCurves). -->
+<script src="ideal-curves.js"></script>
 <script>
 'use strict';
 
@@ -1409,6 +1449,9 @@ let channelConfig = [];        // configured strips: { kind:'mono'|'stereo', a:i
 let llmRunning = false;
 let aiStreamStarted = false;
 let idealProfileId = ''; // active ideal EQ profile; '' = auto by content type (PRD 05)
+let customIdealProfiles = [];
+let curveEditorId = null;
+let curveEditorBands = null;
 
 /* ══ Formatting helpers ══ */
 // Escape user-entered text (channel labels, #39) before it lands in innerHTML.
@@ -1479,6 +1522,7 @@ const IP_POINT_WEIGHTS = IP_GRID_FREQS.map(f => (f >= 200 && f <= 6000) ? 1 : (f
 const IP_PENALTY_PER_DB = 4;
 function ipFiniteMean(xs) { let s = 0, n = 0; for (const x of xs) { if (Number.isFinite(x)) { s += x; n++; } } return n > 0 ? s / n : 0; }
 function ipDefaultForContentType(ct) { switch (ct) { case 'speech': return 'speech-podcast'; case 'music': case 'mixed': return 'music-fullrange'; default: return 'flat'; } }
+function customProfileId(value) { return String(value || '').startsWith('custom:') ? String(value).slice(7) : ''; }
 function ipCompare(curve, profile) {
   if (!curve || !Array.isArray(curve.db) || curve.db.length !== profile.dbOffsets.length) return null;
   const mMean = ipFiniteMean(curve.db), tMean = ipFiniteMean(profile.dbOffsets);
@@ -1508,6 +1552,11 @@ function ipCompare(curve, profile) {
 }
 /** Resolve the profile to compare against: an explicit pick, else auto by content type. */
 function activeProfile(spectrum) {
+  const customId = customProfileId(idealProfileId);
+  if (customId) {
+    const custom = customIdealProfiles.find(p => p.id === customId);
+    if (custom) return { ...custom, source: 'custom' };
+  }
   const id = idealProfileId || ipDefaultForContentType(spectrum && spectrum.contentType);
   return IP_BY_ID.get(id) || IP_BY_ID.get('flat');
 }
@@ -1527,13 +1576,21 @@ function levelMatchedTarget(curve, profile) {
 function initIdealProfileSelect() {
   const sel = document.getElementById('ideal-profile-select');
   if (!sel) return;
+  const customOptions = customIdealProfiles.length
+    ? `<optgroup label="Custom">${customIdealProfiles.map(p => `<option value="custom:${escapeHtml(p.id)}">${escapeHtml(p.label)}</option>`).join('')}</optgroup>`
+    : '';
   sel.innerHTML =
     `<option value="">Auto (by content)</option>` +
     IP_PROFILES.map(p => `<option value="${p.id}">${p.label}</option>`).join('') +
-    `<option value="__wav" disabled>Load ideal mix (WAV)… (coming soon)</option>`;
+    customOptions +
+    `<option value="__new">Create new curve…</option>`;
   sel.value = idealProfileId;
+  if (sel.value !== idealProfileId) {
+    idealProfileId = '';
+    sel.value = '';
+  }
   sel.addEventListener('change', async () => {
-    if (sel.value === '__wav') { sel.value = idealProfileId; return; }
+    if (sel.value === '__new') { sel.value = idealProfileId; openCurveEditor(); return; }
     idealProfileId = sel.value;
     try { await sb.updateSettings({ idealProfile: idealProfileId }); } catch { /* non-fatal */ }
     if (currentAnalysis) renderSpectrum(currentAnalysis.spectrum);
@@ -1548,6 +1605,153 @@ function updateIdealProfileVisibility(spectrum) {
   wrap.style.display = (ipHasCurve(spectrum) && currentMode !== 'live') ? 'flex' : 'none';
   const sel = document.getElementById('ideal-profile-select');
   if (sel) sel.value = idealProfileId;
+}
+
+function refreshIdealProfileSelect() {
+  const sel = document.getElementById('ideal-profile-select');
+  if (!sel) return;
+  const old = sel.cloneNode(false);
+  sel.replaceWith(old);
+  initIdealProfileSelect();
+}
+
+function curveEl(id) { return document.getElementById(id); }
+function selectedCustomProfile() {
+  const id = customProfileId(idealProfileId);
+  return id ? customIdealProfiles.find(p => p.id === id) || null : null;
+}
+
+function curveEditorProfileBase() {
+  const custom = selectedCustomProfile();
+  if (custom) return custom;
+  if (idealProfileId && IP_BY_ID.has(idealProfileId)) return IP_BY_ID.get(idealProfileId);
+  return activeProfile(currentAnalysis && currentAnalysis.spectrum);
+}
+
+function setCurveStatus(text, kind) {
+  const el = curveEl('curve-status');
+  if (!el) return;
+  el.textContent = text || '';
+  el.className = 'ai-status' + (kind ? ` ${kind}` : '');
+}
+
+function setCurveEditorBands(values) {
+  curveEditorBands = values.map(v => window.idealCurves.clampDb(v));
+  curveEditorBands.forEach((v, i) => {
+    const range = document.querySelector(`.curve-band-range[data-i="${i}"]`);
+    const num = document.querySelector(`.curve-band-num[data-i="${i}"]`);
+    if (range) range.value = String(v);
+    if (num) num.value = v.toFixed(1);
+  });
+}
+
+function renderCurveEditorRows() {
+  const grid = curveEl('curve-editor-grid');
+  if (!grid || !window.idealCurves) return;
+  grid.innerHTML = BAND_META.map((b, i) => `
+    <div class="curve-row">
+      <label for="curve-band-${i}">${escapeHtml(b.label)}</label>
+      <input id="curve-band-${i}" class="sb-slider curve-band-range" data-i="${i}" type="range" min="-12" max="12" step="0.5" />
+      <input class="curve-band-num" data-i="${i}" type="number" min="-12" max="12" step="0.5" aria-label="${escapeHtml(b.label)} offset dB" />
+    </div>`).join('');
+  grid.querySelectorAll('.curve-band-range').forEach((input) => {
+    input.addEventListener('input', (e) => {
+      const i = parseInt(e.target.dataset.i, 10);
+      curveEditorBands[i] = window.idealCurves.clampDb(e.target.value);
+      const num = document.querySelector(`.curve-band-num[data-i="${i}"]`);
+      if (num) num.value = curveEditorBands[i].toFixed(1);
+    });
+  });
+  grid.querySelectorAll('.curve-band-num').forEach((input) => {
+    input.addEventListener('input', (e) => {
+      const i = parseInt(e.target.dataset.i, 10);
+      curveEditorBands[i] = window.idealCurves.clampDb(e.target.value);
+      const range = document.querySelector(`.curve-band-range[data-i="${i}"]`);
+      if (range) range.value = String(curveEditorBands[i]);
+    });
+  });
+}
+
+function openCurveEditor() {
+  if (!window.idealCurves) return;
+  renderCurveEditorRows();
+  const custom = selectedCustomProfile();
+  const base = curveEditorProfileBase();
+  curveEditorId = custom ? custom.id : null;
+  curveEl('curve-dialog-title').textContent = custom ? 'Edit Ideal Curve' : 'Create Ideal Curve';
+  curveEl('curve-name').value = custom ? custom.label : `Copy of ${base ? base.label : 'Flat / neutral'}`;
+  curveEl('curve-delete-btn').disabled = !custom;
+  curveEl('curve-capture-btn').disabled = !(currentAnalysis && ipHasCurve(currentAnalysis.spectrum));
+  setCurveStatus('', '');
+  setCurveEditorBands(window.idealCurves.bandOffsetsFromProfile(base, IP_GRID_FREQS));
+  curveEl('curve-dialog').style.display = 'flex';
+  curveEl('curve-name').focus();
+  curveEl('curve-name').select();
+}
+
+function closeCurveEditor() {
+  curveEl('curve-dialog').style.display = 'none';
+}
+
+async function persistCustomIdealProfiles(nextProfiles, nextIdealProfile) {
+  customIdealProfiles = window.idealCurves.normalizeProfiles(nextProfiles, IP_GRID_FREQS);
+  idealProfileId = nextIdealProfile;
+  try {
+    await sb.updateSettings({ customIdealProfiles, idealProfile: idealProfileId });
+  } catch {
+    setCurveStatus('Could not save curve settings.', 'err');
+    return false;
+  }
+  refreshIdealProfileSelect();
+  if (currentAnalysis) renderSpectrum(currentAnalysis.spectrum);
+  if (currentMode === 'reportcard') renderReportCard();
+  return true;
+}
+
+async function saveCurveEditor() {
+  const name = curveEl('curve-name').value.trim();
+  if (!name) {
+    setCurveStatus('Name the curve first.', 'err');
+    curveEl('curve-name').focus();
+    return;
+  }
+  const existing = selectedCustomProfile();
+  const profile = window.idealCurves.profileFromBands(curveEditorBands, IP_GRID_FREQS, {
+    id: curveEditorId || (existing && existing.id),
+    label: name,
+    description: 'Custom ideal curve',
+    createdAt: existing && existing.createdAt,
+  });
+  const next = window.idealCurves.upsertProfile(customIdealProfiles, profile);
+  if (await persistCustomIdealProfiles(next, `custom:${profile.id}`)) closeCurveEditor();
+}
+
+async function captureCurrentCurveAsIdeal() {
+  const name = curveEl('curve-name').value.trim() || 'Current analysis target';
+  if (!(currentAnalysis && ipHasCurve(currentAnalysis.spectrum))) {
+    setCurveStatus('Analyze a file with spectrum data first.', 'err');
+    return;
+  }
+  const existing = selectedCustomProfile();
+  const profile = window.idealCurves.profileFromMeasuredCurve(currentAnalysis.spectrum.curve, IP_GRID_FREQS, {
+    id: curveEditorId || (existing && existing.id),
+    label: name,
+    createdAt: existing && existing.createdAt,
+  });
+  if (!profile) {
+    setCurveStatus('This analysis cannot be used as a target.', 'err');
+    return;
+  }
+  setCurveEditorBands(window.idealCurves.bandOffsetsFromProfile(profile, IP_GRID_FREQS));
+  const next = window.idealCurves.upsertProfile(customIdealProfiles, profile);
+  if (await persistCustomIdealProfiles(next, `custom:${profile.id}`)) closeCurveEditor();
+}
+
+async function deleteCurveEditor() {
+  const custom = selectedCustomProfile();
+  if (!custom) return;
+  const next = window.idealCurves.deleteProfile(customIdealProfiles, custom.id);
+  if (await persistCustomIdealProfiles(next, '')) closeCurveEditor();
 }
 
 function levelColor(db) { return db > -24 ? 'var(--meter-good)' : db > -36 ? 'var(--meter-hot)' : 'var(--meter-idle)'; }
@@ -1742,9 +1946,10 @@ function spectrumCurveSVG(curve, centroid, targetDb, opts = {}) {
 // Legend + match score shown beneath the analyzer curve (PRD 05).
 function spectrumLegendHTML(profile, cmp) {
   const score = cmp ? `<span class="sl-score"><span class="num">${cmp.matchScore}</span><span class="cap">Match</span></span>` : '';
+  const label = escapeHtml(profile.label);
   return `<div class="spectrum-legend">
     <span class="sl-item"><span class="sl-swatch measured"></span>Measured</span>
-    <span class="sl-item"><span class="sl-swatch target"></span>Target · ${profile.label}${idealProfileId ? '' : ' (auto)'}</span>
+    <span class="sl-item"><span class="sl-swatch target"></span>Target · ${label}${idealProfileId ? '' : ' (auto)'}</span>
     ${score}
   </div>`;
 }
@@ -3677,13 +3882,14 @@ function deviationMiniCurve(dev) {
 function renderProfileMatch(profile, cmp) {
   const el = document.getElementById('rc-profile');
   const color = cmp.matchScore >= 85 ? 'var(--grade-a)' : cmp.matchScore >= 70 ? 'var(--grade-b)' : cmp.matchScore >= 55 ? 'var(--grade-c)' : 'var(--grade-d)';
+  const label = escapeHtml(profile.label);
   let regions = '';
   if (cmp.topOver && cmp.topOver.deviation >= 1) regions += `<span class="rcp-region over">Over · <b>${cmp.topOver.label}</b> ${fmtDev(cmp.topOver.deviation)}</span>`;
   if (cmp.topUnder && cmp.topUnder.deviation <= -1) regions += `<span class="rcp-region under">Under · <b>${cmp.topUnder.label}</b> ${fmtDev(cmp.topUnder.deviation)}</span>`;
   if (!regions) regions = `<span class="rcp-region">Well matched across the spectrum.</span>`;
   el.innerHTML = `
     <div class="rcp-head">
-      <span class="rcp-name">Target: ${profile.label}${idealProfileId ? '' : ' <span style="color:var(--text-muted)">(auto)</span>'}</span>
+      <span class="rcp-name">Target: ${label}${idealProfileId ? '' : ' <span style="color:var(--text-muted)">(auto)</span>'}</span>
       <span class="rcp-score"><span class="num" style="color:${color}">${cmp.matchScore}</span><span class="slash">/100</span></span>
     </div>
     <div class="rcp-regions">${regions}</div>
@@ -4388,6 +4594,22 @@ async function saveStorageSettings() {
 })();
 
 (() => {
+  curveEl('ideal-curve-edit-btn').addEventListener('click', openCurveEditor);
+  curveEl('curve-save-btn').addEventListener('click', saveCurveEditor);
+  curveEl('curve-capture-btn').addEventListener('click', captureCurrentCurveAsIdeal);
+  curveEl('curve-delete-btn').addEventListener('click', deleteCurveEditor);
+  curveEl('curve-reset-btn').addEventListener('click', () => setCurveEditorBands(BAND_META.map(() => 0)));
+  curveEl('curve-cancel-btn').addEventListener('click', closeCurveEditor);
+  curveEl('curve-dialog').addEventListener('click', (e) => { if (e.target === curveEl('curve-dialog')) closeCurveEditor(); });
+  curveEl('curve-name').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') saveCurveEditor();
+  });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && curveEl('curve-dialog').style.display !== 'none') closeCurveEditor();
+  });
+})();
+
+(() => {
   aiEl('ai-settings-btn').addEventListener('click', openAiSettings);
   aiEl('ai-tab-btn-ollama').addEventListener('click', () => setAiTab('ollama'));
   aiEl('ai-tab-btn-hosted').addEventListener('click', () => setAiTab('hosted'));
@@ -4412,6 +4634,9 @@ let aiEnabled = false;
     const s = await sb.getSettings();
     aiEnabled = !!(s && s.aiEnabled);
     if (s && typeof s.idealProfile === 'string') idealProfileId = s.idealProfile;
+    customIdealProfiles = window.idealCurves
+      ? window.idealCurves.normalizeProfiles(s && s.customIdealProfiles, IP_GRID_FREQS)
+      : [];
   } catch { aiEnabled = false; }
   document.body.classList.toggle('ai-disabled', !aiEnabled);
   // License (#54): body starts .not-pro (no flash of Pro UI); reveal Pro

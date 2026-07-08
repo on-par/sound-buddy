@@ -6,7 +6,12 @@ import { contextBridge, ipcRenderer } from 'electron';
 contextBridge.exposeInMainWorld('soundBuddy', {
   getSettings: () => ipcRenderer.invoke('get-settings'),
 
-  updateSettings: (patch: { aiEnabled?: boolean; idealProfile?: string; storageDir?: string }) =>
+  updateSettings: (patch: {
+    aiEnabled?: boolean;
+    idealProfile?: string;
+    customIdealProfiles?: unknown[];
+    storageDir?: string;
+  }) =>
     ipcRenderer.invoke('update-settings', patch),
 
   // Storage location + disk usage (#91). Informational only — Sound Buddy caps

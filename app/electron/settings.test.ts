@@ -74,6 +74,44 @@ describe('getSettings defaults', () => {
   it('defaults storageDir to "" (platform default) when unset', () => {
     expect(getSettings().storageDir).toBe('');
   });
+
+  it('defaults customIdealProfiles to [] when unset', () => {
+    expect(getSettings().customIdealProfiles).toEqual([]);
+  });
+});
+
+describe('customIdealProfiles', () => {
+  const curve = {
+    id: 'sunday',
+    label: 'Sunday target',
+    description: 'Main room reference',
+    freqs: [20, 1000, 20000],
+    dbOffsets: [-2, 1, -1],
+    source: 'manual' as const,
+  };
+
+  it('persists user-authored ideal curves and selected custom profile', () => {
+    const after = updateSettings({
+      idealProfile: 'custom:sunday',
+      customIdealProfiles: [curve],
+    });
+    expect(after.idealProfile).toBe('custom:sunday');
+    expect(after.customIdealProfiles).toEqual([curve]);
+    expect(readFile().customIdealProfiles).toEqual([curve]);
+  });
+
+  it('treats a corrupted customIdealProfiles value as empty', () => {
+    writeFile({ customIdealProfiles: { nope: true } });
+    expect(getSettings().customIdealProfiles).toEqual([]);
+  });
+
+  it('rig writes preserve custom curve settings', () => {
+    updateSettings({ idealProfile: 'custom:sunday', customIdealProfiles: [curve] });
+    upsertRig(makeRig());
+    const f = readFile();
+    expect(f.idealProfile).toBe('custom:sunday');
+    expect(f.customIdealProfiles).toEqual([curve]);
+  });
 });
 
 describe('storageDir (#91 — no usage caps, configurable location)', () => {
