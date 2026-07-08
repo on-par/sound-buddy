@@ -222,14 +222,13 @@ describe('status pills', () => {
         expect(grading.rcRmsStatus(rms)).toBe('good');
       }
     });
-    it('calls an out-of-band but not-extreme level "check"', () => {
-      for (const rms of [-25, -22, -21, -13, -11, -10]) {
-        expect(grading.rcRmsStatus(rms)).toBe('check');
+    it('calls any out-of-band level "issue", mirroring the grade\'s RMS deduction', () => {
+      // The pill tracks the grade's single in-band/out-of-band test, so every
+      // level the grade deducts for reads "issue" — matching the pre-#131
+      // out-of-band behaviour (nothing is silently downgraded to a milder pill).
+      for (const rms of [-30, -25, -22, -21, -13, -11, -10, -5]) {
+        expect(grading.rcRmsStatus(rms)).toBe('issue');
       }
-    });
-    it('calls a level beyond the quiet/hot edges "issue"', () => {
-      expect(grading.rcRmsStatus(-30)).toBe('issue');
-      expect(grading.rcRmsStatus(-5)).toBe('issue');
     });
   });
 
@@ -290,7 +289,7 @@ describe('status pills', () => {
       grading.CONFIG.rms.acceptableMax = -16; // now -15 is above the band
       try {
         expect(grading.computeGrade(makeSrc({ rms }))).toBe('B'); // grade drops
-        expect(grading.rcRmsStatus(rms)).toBe('check'); // pill follows
+        expect(grading.rcRmsStatus(rms)).toBe('issue'); // pill follows
       } finally {
         grading.CONFIG.rms.acceptableMax = original;
       }

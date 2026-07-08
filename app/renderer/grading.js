@@ -12,16 +12,19 @@
 // report-card source object built by getReportCardSource(). Behaviour is frozen:
 // thresholds, rules, and outputs match the pre-extraction inline code exactly —
 // with one deliberate exception owned by #131: the RMS status pill's "good"
-// window was widened to the grade's full acceptable band so the pill and the
-// grade can never disagree in direction (see CONFIG.rms and rcRmsStatus).
+// window was widened to the grade's full acceptable band, so a passing grade no
+// longer shows a non-"good" RMS pill (see CONFIG.rms and rcRmsStatus).
 
 (function (root) {
   'use strict';
 
-  // #131 — the single source of truth for every grading threshold. Both the
-  // letter grade / ring score AND the report-card status pills read from here,
-  // so a number lives in exactly one place. Change a value and both the grade
-  // and its matching pill move together (proven by grading.test.js).
+  // #131 — the single source of truth for the grading thresholds shared by the
+  // letter grade, the ring score, and the report-card status pills, so each of
+  // those numbers lives in exactly one place. Change a value and both the grade
+  // and its matching pill move together (proven by grading.test.js). Copy-only
+  // recommendation cutoffs (e.g. the sub-bass / brilliance advice wording) stay
+  // inline in computeRecommendations — they shape phrasing, not the grade or the
+  // pills, and reconciling them is out of scope for #131.
   const CONFIG = {
     // RMS "average level" in dBFS. [acceptableMin, acceptableMax] is the band
     // the grade treats as passing (no deduction); the pill calls it "good".
@@ -135,16 +138,18 @@
     return recs.slice(0, 5);
   }
 
-  // Report-card metric status pills. These share CONFIG with the grade so the
-  // two never contradict: an RMS value the grade treats as passing (in the
-  // acceptable band) reads "good" on the pill; an out-of-band value the grade
-  // penalises reads "check"/"issue". Before #131 the pill's "good" window was
-  // narrower than the grade's acceptable band, so a passing grade could still
-  // show a yellow pill — the visible contradiction this issue resolves.
+  // Report-card metric status pills. rcRmsStatus shares the RMS band with the
+  // grade so the two never contradict: the acceptable band the grade treats as
+  // passing reads "good"; any level the grade deducts for (out of band) reads
+  // "issue" — mirroring the grade's single in-band / out-of-band RMS test.
+  // Before #131 the pill's "good" window (-18..-16) was narrower than the
+  // grade's acceptable band, so a passing grade could still show a yellow pill;
+  // that is the visible contradiction this issue resolves. We keep the pill a
+  // faithful two-way mirror of the grade rather than adding an intermediate
+  // "check" tier, so no previously-flagged level is silently downgraded.
   function rcRmsStatus(rms) {
     const c = CONFIG.rms;
     if (rms >= c.acceptableMin && rms <= c.acceptableMax) return 'good';
-    if (rms >= c.quietEdge && rms <= c.hotEdge) return 'check';
     return 'issue';
   }
 
