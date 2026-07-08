@@ -6,8 +6,12 @@ import { contextBridge, ipcRenderer } from 'electron';
 contextBridge.exposeInMainWorld('soundBuddy', {
   getSettings: () => ipcRenderer.invoke('get-settings'),
 
-  updateSettings: (patch: { aiEnabled?: boolean; idealProfile?: string }) =>
+  updateSettings: (patch: { aiEnabled?: boolean; idealProfile?: string; storageDir?: string }) =>
     ipcRenderer.invoke('update-settings', patch),
+
+  // Storage location + disk usage (#91). Informational only — Sound Buddy caps
+  // nothing; this reports where recordings live and how much disk they use.
+  getStorageUsage: () => ipcRenderer.invoke('get-storage-usage'),
 
   // AI provider settings (#76). getLlmConfig never returns key material — just
   // a hasApiKey flag; saveLlmConfig takes the pasted key one way (to main).

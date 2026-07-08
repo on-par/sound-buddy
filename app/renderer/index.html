@@ -374,8 +374,15 @@
     .rig-dialog-actions { display:flex; justify-content:flex-end; gap:8px; }
 
     /* AI provider settings dialog (#76) — same overlay pattern as .rig-dialog */
-    #ai-settings-btn { display:flex; align-items:center; justify-content:center; width:30px; height:30px; padding:0; background:transparent; border:none; border-radius:var(--radius-sm); color:var(--text-secondary); cursor:pointer; }
-    #ai-settings-btn:hover { color:var(--text-primary); background:var(--surface); }
+    #ai-settings-btn, #storage-settings-btn { display:flex; align-items:center; justify-content:center; width:30px; height:30px; padding:0; background:transparent; border:none; border-radius:var(--radius-sm); color:var(--text-secondary); cursor:pointer; }
+    #ai-settings-btn:hover, #storage-settings-btn:hover { color:var(--text-primary); background:var(--surface); }
+    /* Storage dialog (#91) */
+    .storage-dialog-card { width:min(460px,calc(100vw - 48px)); }
+    .storage-path-row { display:flex; align-items:center; gap:10px; margin-top:4px; }
+    .storage-path { flex:1; min-width:0; font:var(--fw-regular) var(--fs-label)/1.4 var(--font-mono,monospace); color:var(--text-primary); word-break:break-all; }
+    .storage-usage { font:var(--fw-regular) var(--fs-label)/1.4 var(--font-sans); color:var(--text-secondary); margin-top:10px; }
+    .storage-unlimited { font:var(--fw-medium) var(--fs-label)/1.4 var(--font-sans); color:var(--text-primary); margin:12px 0 0; }
+    .storage-note { font:var(--fw-regular) var(--fs-label)/1.4 var(--font-sans); color:var(--text-tertiary); margin:6px 0 0; }
     .ai-dialog-card { width:min(440px,calc(100vw - 48px)); }
     .ai-dialog-sub { font:var(--fw-regular) var(--fs-label)/1.4 var(--font-sans); color:var(--text-secondary); margin-top:-6px; }
     .ai-dialog-note { font:var(--fw-regular) var(--fs-label)/1.4 var(--font-sans); color:var(--text-tertiary); margin:2px 0 0; }
@@ -804,6 +811,7 @@
       <button class="mode-tab" data-mode="reportcard" data-icon="clipboard-check">Report Card</button>
     </div>
     <div id="header-right">
+      <button type="button" id="storage-settings-btn" data-icon="hard-drive" data-size="17" aria-label="Storage settings" title="Storage settings"></button>
       <button type="button" id="ai-settings-btn" data-icon="settings" data-size="17" aria-label="AI settings" title="AI settings"></button>
       <button type="button" id="license-badge" title="License — click to manage">FREE</button>
       <div id="live-indicator">
@@ -1174,6 +1182,32 @@
   </div>
 </div>
 
+<!-- Storage settings dialog (#91). Choose where recordings, stems and captured
+     sessions live, and see how much disk they use. There is no cap — the usage
+     figure is informational only. Point the folder inside an iCloud/Dropbox/
+     Drive folder for sync; that's the whole cloud story for MVP. -->
+<div id="storage-dialog" class="rig-dialog" style="display:none" role="dialog" aria-modal="true" aria-labelledby="storage-dialog-title">
+  <div class="rig-dialog-card storage-dialog-card">
+    <div class="rig-dialog-title" id="storage-dialog-title">Storage</div>
+    <div class="ai-dialog-sub">Where Sound Buddy keeps your recordings, stems, and captured sessions.</div>
+    <label class="ai-field">
+      <span>Storage folder</span>
+      <div class="storage-path-row">
+        <span class="storage-path" id="storage-path">~/Music/Sound Buddy</span>
+        <button type="button" id="storage-change-btn" class="btn btn-secondary sm" data-icon="folder">Change…</button>
+      </div>
+    </label>
+    <p class="storage-usage" id="storage-usage">Calculating disk usage…</p>
+    <p class="storage-unlimited">Unlimited recordings. Stored on your machine.</p>
+    <p class="storage-note" id="storage-note">Record and analyze as much as you want — no limits on any tier. New recordings are saved here; anything you've already recorded stays in its current folder.</p>
+    <div class="rig-dialog-actions">
+      <button type="button" id="storage-reset-btn" class="btn btn-secondary sm" style="display:none">Use default</button>
+      <button type="button" id="storage-cancel-btn" class="btn btn-secondary sm">Cancel</button>
+      <button type="button" id="storage-save-btn" class="btn btn-primary sm">Save</button>
+    </div>
+  </div>
+</div>
+
 <!-- Rig name / confirm dialog. Electron's renderer has no window.prompt/confirm,
      so Save As…, Rename and Delete drive this small inline modal instead. -->
 <div id="rig-dialog" class="rig-dialog" style="display:none" role="dialog" aria-modal="true" aria-labelledby="rig-dialog-title">
@@ -1244,6 +1278,7 @@ const ICON_PATHS = {
   circle:'M12 12m-9 0a9 9 0 1 0 18 0 9 9 0 1 0-18 0',
   plus:'M12 5v14M5 12h14',
   lock:'M5 11h14a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2zM7 11V7a5 5 0 0 1 10 0v4',
+  'hard-drive':'M22 12H2M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11zM6 16h.01M10 16h.01',
 };
 
 function iconSvg(name, size = 16, opts = {}) {
@@ -4044,6 +4079,84 @@ async function saveAiSettings() {
   } catch { /* non-fatal — provider config itself was saved */ }
   closeAiSettings();
 }
+
+/* ══ Storage settings (#91) ══ */
+// Sound Buddy has no usage caps — this dialog just lets the user pick where
+// recordings live and shows disk usage informationally. State (never DOM
+// read-back) drives what's shown: `storageDefaultPath` is the platform default
+// reported by main, and `storagePendingDir` is the folder chosen this session
+// before Save — null = unchanged, '' = reset to default, a path = a custom
+// folder. `effectiveStoragePath()` folds those into the one path to display; the
+// reset action is offered whenever that path isn't the default. Reuses `aiEl`.
+let storagePendingDir = null;
+let storageDefaultPath = '~/Music/Sound Buddy';
+let storageLoadedPath = storageDefaultPath; // path persisted before this session
+
+function effectiveStoragePath() {
+  if (storagePendingDir === '') return storageDefaultPath;
+  if (storagePendingDir) return storagePendingDir;
+  return storageLoadedPath;
+}
+
+function renderStoragePath() {
+  const current = effectiveStoragePath();
+  aiEl('storage-path').textContent = current;
+  aiEl('storage-reset-btn').style.display = current === storageDefaultPath ? 'none' : '';
+}
+
+async function openStorageSettings() {
+  storagePendingDir = null;
+  storageLoadedPath = storageDefaultPath;
+  aiEl('storage-usage').textContent = 'Calculating disk usage…';
+  renderStoragePath();
+  aiEl('storage-dialog').style.display = 'flex';
+  try {
+    const u = await sb.getStorageUsage();
+    if (u) {
+      if (u.defaultPath) storageDefaultPath = u.defaultPath;
+      storageLoadedPath = u.path || storageDefaultPath;
+      aiEl('storage-usage').textContent = u.exists
+        ? `Using ${u.human} on this Mac — no limit.`
+        : 'Nothing recorded yet — no limit on how much you can store.';
+      renderStoragePath();
+    } else {
+      aiEl('storage-usage').textContent = '';
+    }
+  } catch {
+    aiEl('storage-usage').textContent = '';
+  }
+}
+
+function closeStorageSettings() {
+  aiEl('storage-dialog').style.display = 'none';
+}
+
+async function chooseStorageFolder() {
+  const dir = await sb.openDirDialog();
+  if (!dir) return;
+  storagePendingDir = dir;
+  renderStoragePath();
+}
+
+async function saveStorageSettings() {
+  if (storagePendingDir !== null) {
+    try { await sb.updateSettings({ storageDir: storagePendingDir }); }
+    catch { /* non-fatal — the folder is still usable next launch */ }
+  }
+  closeStorageSettings();
+}
+
+(() => {
+  aiEl('storage-settings-btn').addEventListener('click', openStorageSettings);
+  aiEl('storage-change-btn').addEventListener('click', chooseStorageFolder);
+  aiEl('storage-reset-btn').addEventListener('click', () => { storagePendingDir = ''; renderStoragePath(); });
+  aiEl('storage-save-btn').addEventListener('click', saveStorageSettings);
+  aiEl('storage-cancel-btn').addEventListener('click', closeStorageSettings);
+  aiEl('storage-dialog').addEventListener('click', (e) => { if (e.target === aiEl('storage-dialog')) closeStorageSettings(); });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && aiEl('storage-dialog').style.display !== 'none') closeStorageSettings();
+  });
+})();
 
 (() => {
   aiEl('ai-settings-btn').addEventListener('click', openAiSettings);

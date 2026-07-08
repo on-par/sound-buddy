@@ -35,6 +35,17 @@ const LOCKED = [
     ],
     forbidden: [],
   },
+  {
+    // #91 — Sound Buddy has no usage caps on any tier. This line locks that in
+    // so it can't drift via pricing copy or gating implementation.
+    phrase: 'Unlimited recordings. Stored on your machine.',
+    required: [
+      'site/src/pages/index.astro', // landing — privacy callout
+      'app/renderer/index.html',    // app — Storage settings dialog
+      'README.md',                  // docs — top-level positioning
+    ],
+    forbidden: [],
+  },
 ];
 
 const problems = [];

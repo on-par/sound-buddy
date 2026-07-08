@@ -19,6 +19,7 @@ import {
   type CaptureRig,
 } from './settings';
 import { getLicenseState, activateLicense, removeLicense, isEntitled } from './license';
+import { dirSizeBytes, formatBytes } from './storage';
 
 const execFileAsync = promisify(execFile);
 
@@ -84,10 +85,18 @@ let playbackProcess: ChildProcess | null = null;
 // Monitor mode.
 let liveSessionDir: string | null = null;
 
-// Default folder for Record-mode captures when the renderer doesn't pass one:
-// ~/Music/Sound Buddy, created on demand.
-function defaultRecordDir(): string {
+// The built-in fallback storage folder — used when the user has not chosen one
+// (settings.storageDir === '') and as the label default in the UI.
+function platformDefaultStorageDir(): string {
   return path.join(app.getPath('music'), 'Sound Buddy');
+}
+
+// Default folder for Record-mode captures when the renderer doesn't pass one:
+// the user-configured storage folder (#91), falling back to ~/Music/Sound Buddy.
+// Created on demand by buildSessionDir. There is no cap on how much this folder
+// holds — storage is the user's own disk.
+function defaultRecordDir(): string {
+  return getSettings().storageDir?.trim() || platformDefaultStorageDir();
 }
 
 // A timestamp like 20260703-143207-512, stable within one capture. Milliseconds
@@ -592,8 +601,35 @@ export function registerIpcHandlers(): void {
     if (patch && typeof patch === 'object') {
       if (typeof patch.aiEnabled === 'boolean') clean.aiEnabled = patch.aiEnabled;
       if (typeof patch.idealProfile === 'string') clean.idealProfile = patch.idealProfile;
+      // Storage location (#91). Trimmed; an empty string resets to the platform
+      // default (~/Music/Sound Buddy). No size/count limit is ever applied.
+      if (typeof patch.storageDir === 'string') clean.storageDir = patch.storageDir.trim();
     }
     return updateSettings(clean);
+  });
+
+  // get-storage-usage — where recordings live and how much disk they use (#91).
+  // Purely informational: the byte count is shown in Settings, never compared
+  // against a quota or used to gate recording. Reports the effective folder
+  // (configured storageDir or the ~/Music/Sound Buddy default) so the UI can
+  // show the real path even before the user has chosen one.
+  ipcMain.handle('get-storage-usage', async () => {
+    const dir = defaultRecordDir();
+    const isDefault = !getSettings().storageDir?.trim();
+    let bytes = 0;
+    try {
+      bytes = await dirSizeBytes(dir);
+    } catch (err) {
+      logWarn(`get-storage-usage: ${String(err)}`);
+    }
+    return {
+      path: dir,
+      isDefault,
+      defaultPath: platformDefaultStorageDir(),
+      bytes,
+      human: formatBytes(bytes),
+      exists: fs.existsSync(dir),
+    };
   });
 
   // AI provider settings (#76). The renderer only ever sees the public view —
