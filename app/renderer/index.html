@@ -1370,6 +1370,8 @@
 <script src="onboarding-state.js"></script>
 <!-- Pure custom ideal-curve helpers (window.idealCurves). -->
 <script src="ideal-curves.js"></script>
+<!-- Pure grading engine — grade/score/recommendations (window.grading, #130). -->
+<script src="grading.js"></script>
 <script>
 'use strict';
 
@@ -3664,15 +3666,9 @@ document.getElementById('ai-analyze-btn').addEventListener('click', async () => 
 });
 
 /* ══ Report Card ══ */
-const RC_BAND_INFO = {
-  subBass:    { label: 'Sub-bass',   freq: '20-60 Hz' },
-  bass:       { label: 'Bass',       freq: '60-250 Hz' },
-  lowMid:     { label: 'Low-mid',    freq: '250-500 Hz' },
-  mid:        { label: 'Mid',        freq: '500Hz-2kHz' },
-  highMid:    { label: 'High-mid',   freq: '2-4kHz' },
-  presence:   { label: 'Presence',   freq: '4-6kHz' },
-  brilliance: { label: 'Brilliance', freq: '6-20kHz' },
-};
+// Grading (grade/score/recommendations + recording-type + band-diff) lives in
+// the pure, unit-tested grading.js module (#130); the renderer calls through
+// window.grading below.
 
 function getReportCardSource() {
   if (currentAnalysis) {
@@ -3706,13 +3702,6 @@ function getReportCardSource() {
     }
   }
   return null;
-}
-
-function bandDiffFromOthers(bands, key) {
-  const keys = Object.keys(bands);
-  const others = keys.filter(k => k !== key).map(k => bands[k]);
-  const avgOthers = others.reduce((a, b) => a + b, 0) / others.length;
-  return bands[key] - avgOthers;
 }
 
 /* ══ Content type — speech/music delineation (PRD 04) ══ */
@@ -3761,78 +3750,6 @@ function renderContentType(src) {
   const present = [...new Set(segs.map(s => segClass(s.class)))];
   legend.innerHTML = present.map(c =>
     `<span class="lg"><span class="sw seg-${c}"></span>${SEG_CLASS_LABELS[c]}</span>`).join('');
-}
-
-function analyzeRecordingType(src) {
-  if (src.clipping || src.peak >= -0.5) return { type: 'clipping', label: 'Clipping', note: 'Signal is clipping. Reduce input gain immediately.', tone: 'issue' };
-  if (src.peak > -3 && src.rms > -12) return { type: 'hot', label: 'Hot', note: 'Recording level is very hot. Consider reducing gain.', tone: 'check' };
-  if ((src.contentType === 'mixed' || src.contentType === 'music') && src.peak > -12 && src.dynamicRange != null && src.dynamicRange > 15 && src.rms < -25)
-    return { type: 'dynamic_service', label: 'Dynamic Service', note: 'Peaks are healthy; quiet sections are lowering whole-file RMS.', tone: 'info' };
-  if (src.peak > -15 && src.rms < -30 && src.dynamicRange != null && src.dynamicRange > 15)
-    return { type: 'low_gain', label: 'Low Recording Gain', note: 'Mix is fine but USB record level is low. Raise console USB output toward -18 dBFS RMS.', tone: 'check' };
-  if (src.peak < -15 && src.rms < -35)
-    return { type: 'low_gain', label: 'Low Recording Gain', note: 'Peak and RMS are very low. Increase the USB recording output level.', tone: 'check' };
-  if (src.rms < -25) return { type: 'quiet', label: 'Quiet', note: 'Recording is quieter than typical. Consider more gain.', tone: 'check' };
-  if (src.rms >= -20 && src.rms <= -10 && src.peak > -6) return { type: 'good', label: 'Good Level', note: 'Recording level is healthy.', tone: 'good' };
-  return { type: 'normal', label: 'Normal', note: 'Recording level is within typical range.', tone: 'info' };
-}
-
-function computeGrade(src) {
-  const letters = ['A', 'B', 'C', 'D', 'F'];
-  if (src.clipping) return 'F';
-  let idx = 0;
-  const drop = () => { idx = Math.min(idx + 1, letters.length - 1); };
-  const recType = analyzeRecordingType(src);
-  if (recType.type === 'low_gain') {
-    if (src.dynamicRange != null && src.dynamicRange < 3) drop();
-    if (Object.keys(src.bands).some(k => bandDiffFromOthers(src.bands, k) > 15)) drop();
-    return letters[idx];
-  }
-  const rmsExempt = recType.type === 'dynamic_service';
-  if (!rmsExempt && (src.rms < -20 || src.rms > -14)) drop();
-  if (src.dynamicRange != null && src.dynamicRange < 6) drop();
-  if (Object.keys(src.bands).some(k => bandDiffFromOthers(src.bands, k) > 15)) drop();
-  return letters[idx];
-}
-
-// Ring arc score, kept within the letter grade's band so the two agree.
-function computeScore(src) {
-  const grade = computeGrade(src);
-  const bands = { A: [90, 99], B: [80, 89], C: [70, 79], D: [60, 69], F: [38, 55] };
-  let score = 100;
-  const rt = analyzeRecordingType(src);
-  if (src.clipping) score -= 45;
-  if (rt.type !== 'low_gain' && rt.type !== 'dynamic_service') {
-    if (src.rms < -20 || src.rms > -14) score -= 9;
-    if (src.rms < -25 || src.rms > -10) score -= 7;
-  }
-  if (src.dynamicRange != null) { if (src.dynamicRange < 3) score -= 15; else if (src.dynamicRange < 6) score -= 8; }
-  let maxDiff = 0;
-  for (const k of Object.keys(src.bands)) maxDiff = Math.max(maxDiff, bandDiffFromOthers(src.bands, k));
-  if (maxDiff > 15) score -= 14; else if (maxDiff > 12) score -= 7;
-  const [lo, hi] = bands[grade];
-  return Math.round(Math.max(lo, Math.min(hi, score)));
-}
-
-function computeRecommendations(src) {
-  const recs = [];
-  const recType = analyzeRecordingType(src);
-  if (src.clipping) recs.push('CRITICAL: Clipping detected. Reduce input gain immediately.');
-  if (recType.type === 'low_gain' || recType.type === 'dynamic_service') recs.push(recType.note);
-  else if (src.rms > -10) recs.push('Your recording is too hot. Reduce gain to avoid clipping.');
-  else if (src.rms < -25 && recType.type !== 'low_gain') recs.push('Your recording is too quiet. Increase input gain or fader levels.');
-  if (src.dynamicRange != null && src.dynamicRange < 3) recs.push('Dynamic range is very compressed. Mix may sound lifeless.');
-  if (src.bands.subBass > -10) recs.push('Too much sub-bass energy. Apply a high-pass filter below 80Hz.');
-  for (const k of Object.keys(src.bands)) {
-    const diff = bandDiffFromOthers(src.bands, k);
-    if (diff > 12) {
-      const info = RC_BAND_INFO[k];
-      recs.push(`Too much energy in ${info.label} (${info.freq}). Cut ${Math.min(diff, 10).toFixed(1)} dB around this range.`);
-    }
-  }
-  if (src.bands.brilliance < -40) recs.push('Mix lacks air and brightness. Boost 2-3 dB above 8kHz.');
-  if (recs.length === 0) recs.push('Great job! No major issues detected — levels and balance are solid.');
-  return recs.slice(0, 5);
 }
 
 function rcRmsStatus(rms) { if (rms >= -18 && rms <= -16) return 'good'; if (rms >= -20 && rms <= -14) return 'check'; return 'issue'; }
@@ -3923,11 +3840,11 @@ function renderReportCard() {
   document.getElementById('rc-filename').textContent = src.filename;
   document.getElementById('rc-date').textContent = new Date().toLocaleString();
 
-  const grade = computeGrade(src);
-  const score = computeScore(src);
+  const grade = grading.computeGrade(src);
+  const score = grading.computeScore(src);
   document.getElementById('rc-ring').innerHTML = gradeRingHTML(grade, score);
 
-  const recType = analyzeRecordingType(src);
+  const recType = grading.analyzeRecordingType(src);
   const rt = document.getElementById('rc-rec-type');
   rt.className = 'rc-rectype pill ' + recType.tone;
   rt.innerHTML = `${iconSvg(pillIcon(recType.tone), 13)}<span class="txt">${recType.label} — ${recType.note}</span>`;
@@ -3963,7 +3880,7 @@ function renderReportCard() {
   // Band breakdown
   document.getElementById('rc-bands').innerHTML = BAND_META.map(b => {
     const db = src.bands[b.key];
-    const diff = bandDiffFromOthers(src.bands, b.key);
+    const diff = grading.bandDiffFromOthers(src.bands, b.key);
     let vc = 'ok', vt = 'Balanced';
     if (diff > 12) { vc = 'hot'; vt = 'Too Hot'; }
     else if (diff < -15) { vc = 'quiet'; vt = 'Too Quiet'; }
@@ -3974,7 +3891,7 @@ function renderReportCard() {
   renderReportCardFrames(src);
 
   // Recommendations
-  document.getElementById('rc-recommendations').innerHTML = computeRecommendations(src).map(r => {
+  document.getElementById('rc-recommendations').innerHTML = grading.computeRecommendations(src).map(r => {
     const critical = r.startsWith('CRITICAL');
     const text = critical ? r.replace(/^CRITICAL:\s*/, '') : r;
     return `<div class="rc-rec${critical ? ' critical' : ''}">
