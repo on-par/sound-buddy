@@ -35,6 +35,10 @@ contextBridge.exposeInMainWorld('soundBuddy', {
   onOpenLicenseDialog: (cb: () => void) =>
     ipcRenderer.on('open-license-dialog', () => cb()),
 
+  // Upgrade checkout (#58) — open the hosted Stripe checkout for a plan
+  // ('monthly' | 'annual') in the user's browser. No card data touches the app.
+  openCheckout: (plan: 'monthly' | 'annual') => ipcRenderer.invoke('open-checkout', plan),
+
   // Capture rigs (#36) — backend only for now; the Live-tab UI arrives in #37.
   listRigs: () => ipcRenderer.invoke('list-rigs'),
   saveRig: (rig: unknown) => ipcRenderer.invoke('save-rig', rig),

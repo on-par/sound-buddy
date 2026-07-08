@@ -1,11 +1,12 @@
 // Copyright (c) 2026 Patrick Robinson (on-par). All rights reserved.
 // Licensed under the Sound Buddy Desktop Application License (app/LICENSE).
 
-import { app, BrowserWindow, Menu, dialog, ipcMain } from 'electron';
+import { app, BrowserWindow, Menu, dialog, ipcMain, shell } from 'electron';
 import * as path from 'path';
 import { registerIpcHandlers } from './ipc';
 import { initLogging, attachWindowLogging, log } from './logger';
 import { checkForUpdates, openReleasePage } from './updater';
+import { checkoutUrl } from './checkout';
 import { ensureTrialStarted } from './license';
 
 // Deterministic app name so logs land in ~/Library/Logs/SoundBuddy (not "Electron").
@@ -151,6 +152,13 @@ app.whenReady().then(() => {
   // Manual update check + "Download" button (opens the release page in browser).
   ipcMain.handle('check-for-updates', () => checkForUpdates(mainWindow, false));
   ipcMain.handle('open-release-page', (_event, url?: string) => openReleasePage(url));
+
+  // Upgrade CTA (#58): open the hosted Stripe checkout for a plan in the user's
+  // browser. Sound Buddy never handles card data; the real Payment Links are
+  // provisioned in #56 (checkout.ts holds the placeholder/override mapping).
+  ipcMain.handle('open-checkout', (_event, plan?: string) => {
+    void shell.openExternal(checkoutUrl(plan));
+  });
 
   createWindow();
   log('main window created');
