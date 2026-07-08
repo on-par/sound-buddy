@@ -3752,10 +3752,9 @@ function renderContentType(src) {
     `<span class="lg"><span class="sw seg-${c}"></span>${SEG_CLASS_LABELS[c]}</span>`).join('');
 }
 
-function rcRmsStatus(rms) { if (rms >= -18 && rms <= -16) return 'good'; if (rms >= -20 && rms <= -14) return 'check'; return 'issue'; }
-function rcPeakStatus(peak, clipping) { if (clipping || peak > -1) return 'issue'; if (peak > -3) return 'check'; return 'good'; }
-function rcDrStatus(dr) { if (dr == null) return 'check'; if (dr >= 6) return 'good'; if (dr >= 3) return 'check'; return 'issue'; }
-function rcCentroidStatus(c) { if (!c) return 'check'; if (c >= 500 && c <= 4000) return 'good'; return 'check'; }
+// Metric status pills read their thresholds from the shared grading CONFIG
+// (#131) via window.grading, so the pill and the letter grade can never
+// disagree — the classifiers themselves live in grading.js.
 function pillLabel(tone) { return tone === 'good' ? 'Good' : tone === 'check' ? 'Check' : tone === 'issue' ? 'Issue' : 'Info'; }
 function pillIcon(tone) { return tone === 'good' ? 'check' : tone === 'issue' ? 'x' : tone === 'info' ? 'info' : 'alert-triangle'; }
 function statusPillHTML(tone, label) {
@@ -3864,11 +3863,11 @@ function renderReportCard() {
 
   // Metrics
   const metrics = [
-    { name: 'Peak Level', note: 'Sample peak', value: fmt(src.peak), unit: 'dBFS', tone: rcPeakStatus(src.peak, src.clipping) },
-    { name: 'RMS Level', note: 'Average level (RMS)', value: fmt(src.rms), unit: 'dBFS', tone: rcRmsStatus(src.rms) },
-    { name: 'Dynamic Range', value: src.dynamicRange != null ? fmt(src.dynamicRange) : '—', unit: src.dynamicRange != null ? 'dB' : '', tone: rcDrStatus(src.dynamicRange) },
+    { name: 'Peak Level', note: 'Sample peak', value: fmt(src.peak), unit: 'dBFS', tone: grading.rcPeakStatus(src.peak, src.clipping) },
+    { name: 'RMS Level', note: 'Average level (RMS)', value: fmt(src.rms), unit: 'dBFS', tone: grading.rcRmsStatus(src.rms) },
+    { name: 'Dynamic Range', value: src.dynamicRange != null ? fmt(src.dynamicRange) : '—', unit: src.dynamicRange != null ? 'dB' : '', tone: grading.rcDrStatus(src.dynamicRange) },
     { name: 'Clipping', value: src.clipping ? 'Yes' : 'None', unit: '', tone: src.clipping ? 'issue' : 'good' },
-    { name: 'Spectral Centroid', value: src.centroid ? Math.round(src.centroid).toLocaleString() : '—', unit: src.centroid ? 'Hz' : '', tone: rcCentroidStatus(src.centroid) },
+    { name: 'Spectral Centroid', value: src.centroid ? Math.round(src.centroid).toLocaleString() : '—', unit: src.centroid ? 'Hz' : '', tone: grading.rcCentroidStatus(src.centroid) },
   ];
   document.getElementById('rc-metrics-body').innerHTML = metrics.map(m =>
     `<tr>
@@ -3882,8 +3881,8 @@ function renderReportCard() {
     const db = src.bands[b.key];
     const diff = grading.bandDiffFromOthers(src.bands, b.key);
     let vc = 'ok', vt = 'Balanced';
-    if (diff > 12) { vc = 'hot'; vt = 'Too Hot'; }
-    else if (diff < -15) { vc = 'quiet'; vt = 'Too Quiet'; }
+    if (diff > grading.CONFIG.bandBalance.hotDiff) { vc = 'hot'; vt = 'Too Hot'; }
+    else if (diff < grading.CONFIG.bandBalance.quietDiff) { vc = 'quiet'; vt = 'Too Quiet'; }
     return `<div class="rc-band-row">${bandMeterHTML(b.label, b.range, db, { colorBy: 'level' })}<span class="rc-band-verdict ${vc}">${vt}</span></div>`;
   }).join('');
 
