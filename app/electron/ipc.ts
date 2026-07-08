@@ -274,7 +274,10 @@ function amplitudeToDbfs(amplitude: number): number {
   return 20 * Math.log10(amplitude);
 }
 
-async function runSox(filePath: string): Promise<SoxStats> {
+// Exported for the parser drift-guard test (#150), which asserts these copies
+// stay equivalent to the @sound-buddy/audio-engine parsers until the
+// duplication is removed (#151). Not part of the app's runtime surface.
+export async function runSox(filePath: string): Promise<SoxStats> {
   let stderr = '';
   try {
     const result = await execFileAsync(toolBin('sox'), [filePath, '-n', 'stat'], { encoding: 'utf8' });
@@ -319,7 +322,7 @@ async function runSox(filePath: string): Promise<SoxStats> {
 
 // ─── FFPROBE ──────────────────────────────────────────────────────────────────
 
-async function runFfprobe(filePath: string): Promise<FfprobeResult> {
+export async function runFfprobe(filePath: string): Promise<FfprobeResult> {
   const { stdout } = await execFileAsync(toolBin('ffprobe'), [
     '-v', 'quiet',
     '-print_format', 'json',
@@ -390,7 +393,7 @@ async function runFfprobe(filePath: string): Promise<FfprobeResult> {
 
 // ─── SPECTRUM ─────────────────────────────────────────────────────────────────
 
-async function runSpectrum(filePath: string): Promise<SpectrumResult> {
+export async function runSpectrum(filePath: string): Promise<SpectrumResult> {
   const { stdout } = await execFileAsync(pythonBin(), [SPECTRUM_SCRIPT, filePath], {
     encoding: 'utf8',
     maxBuffer: 1024 * 1024,

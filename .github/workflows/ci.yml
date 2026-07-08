@@ -17,6 +17,10 @@ jobs:
           node-version: '22'
           cache: 'npm'
 
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
       # Locked brand phrase must be verbatim across surfaces (#80). No deps —
       # fail fast on copy drift before the heavier install/build steps.
       - name: Positioning check
@@ -27,6 +31,18 @@ jobs:
 
       - name: Install app dependencies
         run: npm ci --prefix app
+
+      # Media tools + Python analysis deps must be present BEFORE the Vitest
+      # steps: the fixture parser tests (#150) shell out to sox/ffprobe and the
+      # spectrum + drift-guard tests run spectrum.py via librosa. Without these
+      # the tests skip; with them they execute and assert real numbers in CI.
+      # librosa is pinned so the fixture band values stay stable across runs.
+      - name: Install media + Python analysis tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y sox ffmpeg
+          python -m pip install --upgrade pip
+          pip install numpy scipy soundfile "librosa==0.11.0"
 
       - name: Build
         run: npm run build
@@ -40,20 +56,13 @@ jobs:
       - name: Test
         run: npm test
 
-      - name: Test app (Vitest — settings/IPC)
+      - name: Test app (Vitest — settings/IPC + parser drift guard)
         run: npm test --prefix app
-
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
 
       - name: Python audio-engine tests (stream.py + playback.py)
         # sounddevice is stubbed by the tests, so PortAudio isn't needed here.
-        # numpy + scipy cover the analysis helpers; soundfile is needed so the
-        # session-recording/playback + SIGTERM stem tests run rather than skip.
+        # numpy + scipy + soundfile were installed above alongside librosa.
         run: |
-          python -m pip install --upgrade pip
-          pip install numpy scipy soundfile
           python packages/audio-engine/scripts/test_stream.py
           python packages/audio-engine/scripts/test_playback.py
 
