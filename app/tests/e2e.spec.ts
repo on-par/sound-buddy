@@ -353,15 +353,29 @@ test.describe('Sound Buddy E2E', () => {
     await expect(window.locator('.spectrum-legend .sl-score .num')).toHaveText(/^\d{1,3}$/);
   });
 
-  test('choosing a profile overrides the default and shows the WAV stub disabled', async () => {
+  test('choosing a profile overrides the default; custom curve can be set and reset', async () => {
     await window.locator('.mode-tab[data-mode="file"]').click();
 
-    // The "Load ideal mix (WAV)…" option exists but is disabled (coming soon).
-    const wavOption = window.locator('#ideal-profile-select option[value="__wav"]');
-    await expect(wavOption).toHaveText(/Load ideal mix \(WAV\)/);
-    await expect(wavOption).toBeDisabled();
+    const sel = window.locator('#ideal-profile-select');
 
-    await window.locator('#ideal-profile-select').selectOption('flat');
+    // The "Set ideal from current file…" action is offered when a curve is on
+    // screen (replaces the old disabled "Load ideal mix (WAV)…" stub).
+    await expect(sel.locator('option[value="__set"]')).toHaveText(/Set ideal from current file/);
+
+    // Capture the current file's curve as the ideal target.
+    await sel.selectOption('__set');
+    await expect(sel).toHaveValue('__custom');
+    await expect(sel.locator('option[value="__custom"]')).toHaveText(/Custom · Like silence\.wav/);
+    await expect(window.locator('.spectrum-legend')).toContainText('Like silence.wav');
+
+    // Reset to original: the custom curve clears and the dropdown returns to Auto.
+    await expect(sel.locator('option[value="__reset"]')).toHaveCount(1);
+    await sel.selectOption('__reset');
+    await expect(sel).toHaveValue('');
+    await expect(sel.locator('option[value="__custom"]')).toHaveCount(0);
+
+    // A built-in pick overrides the auto target.
+    await sel.selectOption('flat');
     await expect(window.locator('.spectrum-legend')).toContainText('Flat / neutral');
 
     // Report card reflects the override with a match score + deviation curve.
