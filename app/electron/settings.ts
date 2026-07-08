@@ -57,6 +57,14 @@ export interface AppSettings {
   aiEnabled: boolean;
   /** Selected ideal EQ profile id (PRD 05). Empty = auto by content type. */
   idealProfile: string;
+  /**
+   * Folder where recordings, stems, sessions, and report cards are stored (#91).
+   * Empty = the platform default (`~/Music/Sound Buddy`), resolved by the main
+   * process. There is deliberately no size/count/duration cap on this folder —
+   * storage is the user's own disk (#68). Users who want sync/backup point this
+   * inside a folder their cloud client already syncs (iCloud/Dropbox/Drive).
+   */
+  storageDir: string;
   /** Saved capture setups. Default []. */
   rigs: CaptureRig[];
   /** Id of the currently selected rig, or null when none. Default null. */
@@ -66,6 +74,7 @@ export interface AppSettings {
 const DEFAULTS: AppSettings = {
   aiEnabled: false,
   idealProfile: '',
+  storageDir: '',
   rigs: [],
   activeRigId: null,
 };
@@ -110,6 +119,7 @@ function writeSettingsFile(file: Partial<AppSettings>): void {
     ...file,
     aiEnabled: file.aiEnabled ?? DEFAULTS.aiEnabled,
     idealProfile: file.idealProfile ?? DEFAULTS.idealProfile,
+    storageDir: file.storageDir ?? DEFAULTS.storageDir,
     rigs: fileRigs(file),
     activeRigId: file.activeRigId ?? DEFAULTS.activeRigId,
   };
@@ -137,6 +147,8 @@ export function getSettings(): AppSettings {
     aiEnabled: envAi ?? file.aiEnabled ?? DEFAULTS.aiEnabled,
     idealProfile:
       process.env.SOUND_BUDDY_IDEAL_PROFILE?.trim() || file.idealProfile || DEFAULTS.idealProfile,
+    storageDir:
+      process.env.SOUND_BUDDY_STORAGE_DIR?.trim() || file.storageDir || DEFAULTS.storageDir,
     // Rigs have no env layer — they are pure persisted data.
     rigs: fileRigs(file),
     activeRigId: file.activeRigId ?? DEFAULTS.activeRigId,

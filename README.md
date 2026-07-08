@@ -4,6 +4,8 @@ Audio analysis and coaching tool for church sound engineers. Analyze recordings,
 
 **Your audio never leaves your machine.** Analysis runs fully local on your Mac — no cloud uploads, no accounts, no telemetry.
 
+**Unlimited recordings. Stored on your machine.** No usage caps on any tier — no recording-count, length, or storage limits. Recordings live in a folder you choose (Settings ▸ Storage); point it inside iCloud Drive, Dropbox, or Google Drive if you want your own sync.
+
 ## Quick Start
 
 ### CLI

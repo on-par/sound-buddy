@@ -46,6 +46,7 @@ beforeEach(() => {
   userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'sb-settings-'));
   delete process.env.SOUND_BUDDY_AI_ENABLED;
   delete process.env.SOUND_BUDDY_IDEAL_PROFILE;
+  delete process.env.SOUND_BUDDY_STORAGE_DIR;
 });
 
 afterEach(() => {
@@ -68,6 +69,45 @@ describe('getSettings defaults', () => {
     expect(s.activeRigId).toBeNull();
     expect(s.aiEnabled).toBe(true);
     expect(s.idealProfile).toBe('broadcast');
+  });
+
+  it('defaults storageDir to "" (platform default) when unset', () => {
+    expect(getSettings().storageDir).toBe('');
+  });
+});
+
+describe('storageDir (#91 — no usage caps, configurable location)', () => {
+  it('persists a chosen storage folder and reads it back', () => {
+    const after = updateSettings({ storageDir: '/Volumes/Recordings/Sound Buddy' });
+    expect(after.storageDir).toBe('/Volumes/Recordings/Sound Buddy');
+    expect(getSettings().storageDir).toBe('/Volumes/Recordings/Sound Buddy');
+    expect(readFile().storageDir).toBe('/Volumes/Recordings/Sound Buddy');
+  });
+
+  it('lets an empty string reset to the platform default', () => {
+    updateSettings({ storageDir: '/tmp/custom' });
+    expect(updateSettings({ storageDir: '' }).storageDir).toBe('');
+  });
+
+  it('applies SOUND_BUDDY_STORAGE_DIR as a read-time override of the file', () => {
+    updateSettings({ storageDir: '/tmp/from-file' });
+    process.env.SOUND_BUDDY_STORAGE_DIR = '/tmp/from-env';
+    expect(getSettings().storageDir).toBe('/tmp/from-env');
+  });
+
+  it('never bakes the storageDir env override into a subsequent write', () => {
+    updateSettings({ storageDir: '/tmp/from-file' });
+    process.env.SOUND_BUDDY_STORAGE_DIR = '/tmp/from-env';
+    upsertRig(makeRig());
+    // The file keeps the persisted value, not the transient env override.
+    expect(readFile().storageDir).toBe('/tmp/from-file');
+    expect(getSettings().storageDir).toBe('/tmp/from-env');
+  });
+
+  it('survives a rigs write without being disturbed', () => {
+    updateSettings({ storageDir: '/tmp/keep' });
+    upsertRig(makeRig());
+    expect(readFile().storageDir).toBe('/tmp/keep');
   });
 });
 

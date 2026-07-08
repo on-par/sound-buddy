@@ -943,4 +943,55 @@ test.describe('Sound Buddy E2E', () => {
       await window.locator('#ai-dialog-cancel').click();
     });
   });
+
+  // Storage settings (#91) — configurable location + informational disk usage,
+  // and the locked "no usage caps" copy. The folder picker is a native dialog,
+  // so stub open-dir-dialog to drive the change-folder flow deterministically.
+  test.describe('Storage settings (#91)', () => {
+    test.afterEach(async () => {
+      await window.evaluate(() => {
+        (document.getElementById('storage-dialog') as HTMLElement).style.display = 'none';
+      });
+    });
+
+    test('the header button opens the dialog with the no-caps copy and disk usage', async () => {
+      await window.locator('#storage-settings-btn').click();
+      await expect(window.locator('#storage-dialog')).toBeVisible();
+      await expect(window.locator('#storage-dialog .storage-unlimited')).toHaveText(
+        'Unlimited recordings. Stored on your machine.',
+      );
+      // Usage line resolves from the informational IPC (never a limit).
+      await expect(window.locator('#storage-usage')).toContainText('no limit');
+      await expect(window.locator('#storage-path')).not.toHaveText('');
+      await window.locator('#storage-cancel-btn').click();
+      await expect(window.locator('#storage-dialog')).toBeHidden();
+    });
+
+    test('choosing a folder persists storageDir and survives a reopen', async () => {
+      const chosen = '/tmp/sb-e2e-storage';
+      await electronApp.evaluate(({ ipcMain }, dir) => {
+        ipcMain.removeHandler('open-dir-dialog');
+        ipcMain.handle('open-dir-dialog', () => dir);
+      }, chosen);
+
+      await window.locator('#storage-settings-btn').click();
+      await window.locator('#storage-change-btn').click();
+      await expect(window.locator('#storage-path')).toHaveText(chosen);
+      await window.locator('#storage-save-btn').click();
+      await expect(window.locator('#storage-dialog')).toBeHidden();
+
+      // Reopen: get-storage-usage reflects the persisted folder.
+      await window.locator('#storage-settings-btn').click();
+      await expect(window.locator('#storage-path')).toHaveText(chosen);
+      // Now that a custom folder is set, the reset action is offered.
+      await expect(window.locator('#storage-reset-btn')).toBeVisible();
+      await window.locator('#storage-cancel-btn').click();
+
+      // Restore the default so later specs (and reruns) see a clean setting.
+      await electronApp.evaluate(({ ipcMain }) => {
+        ipcMain.removeHandler('open-dir-dialog');
+      });
+      await window.evaluate(() => (window as any).soundBuddy.updateSettings({ storageDir: '' }));
+    });
+  });
 });
