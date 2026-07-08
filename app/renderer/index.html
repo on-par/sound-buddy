@@ -1534,24 +1534,37 @@ function levelMatchedTarget(curve, profile) {
   return profile.dbOffsets.map(v => v + (mMean - tMean));
 }
 
+/* The persisted idealProfile id, with the '__custom' sentinel reconciled: a
+   '__custom' selection with no backing custom curve falls back to '' (Auto).
+   The persistence layer enforces this invariant on read/write, so this is a
+   defensive guard for any transient in-memory state. */
+function resolvedIdealProfileId() {
+  return idealProfileId === '__custom' && !customIdealProfile ? '' : idealProfileId;
+}
+
 /* Populate the ideal-profile dropdown from current state. Re-run after a custom
    curve is set/reset and from updateIdealProfileVisibility so the "Set ideal from
    current file" action appears only when a curve is on screen. The change listener
-   is attached once in initIdealProfileSelect. */
+   is attached once in initIdealProfileSelect. Rebuilding innerHTML is gated on the
+   option set actually changing (curve availability + custom label) so a routine
+   re-render only does the cheap sel.value sync the original code did. */
+let lastIdealOptionsKey = null;
 function rebuildIdealProfileOptions() {
   const sel = document.getElementById('ideal-profile-select');
   if (!sel) return;
   const hasCurve = !!(currentAnalysis && ipHasCurve(currentAnalysis.spectrum));
   const custom = customIdealProfile;
-  const opts =
-    `<option value="">Auto (by content)</option>` +
-    IP_PROFILES.map(p => `<option value="${p.id}">${p.label}</option>`).join('') +
-    (custom ? `<option value="__custom">Custom · ${escapeHtml(custom.label)}</option>` : '') +
-    (hasCurve ? `<option value="__set">Set ideal from current file…</option>` : '') +
-    (custom ? `<option value="__reset">Reset to original</option>` : '');
-  sel.innerHTML = opts;
-  // A stored '__custom' selection with no curve to back it falls back to Auto.
-  sel.value = idealProfileId === '__custom' && !custom ? '' : idealProfileId;
+  const key = (hasCurve ? 1 : 0) + '|' + (custom ? custom.label : '');
+  if (key !== lastIdealOptionsKey) {
+    sel.innerHTML =
+      `<option value="">Auto (by content)</option>` +
+      IP_PROFILES.map(p => `<option value="${p.id}">${p.label}</option>`).join('') +
+      (custom ? `<option value="__custom">Custom · ${escapeHtml(custom.label)}</option>` : '') +
+      (hasCurve ? `<option value="__set">Set ideal from current file…</option>` : '') +
+      (custom ? `<option value="__reset">Reset to original</option>` : '');
+    lastIdealOptionsKey = key;
+  }
+  sel.value = resolvedIdealProfileId();
 }
 
 /* Wire the ideal-profile dropdown once at boot. */
@@ -1583,7 +1596,7 @@ function initIdealProfileSelect() {
       idealProfileId = v; // '', a built-in id, or '__custom'
       try { await sb.updateSettings({ idealProfile: idealProfileId }); } catch { /* non-fatal */ }
     }
-    sel.value = idealProfileId === '__custom' && !customIdealProfile ? '' : idealProfileId;
+    sel.value = resolvedIdealProfileId();
     if (currentAnalysis) renderSpectrum(currentAnalysis.spectrum);
     if (currentMode === 'reportcard') renderReportCard();
   });
@@ -1791,7 +1804,7 @@ function spectrumLegendHTML(profile, cmp) {
   const score = cmp ? `<span class="sl-score"><span class="num">${cmp.matchScore}</span><span class="cap">Match</span></span>` : '';
   return `<div class="spectrum-legend">
     <span class="sl-item"><span class="sl-swatch measured"></span>Measured</span>
-    <span class="sl-item"><span class="sl-swatch target"></span>Target · ${profile.label}${idealProfileId ? '' : ' (auto)'}</span>
+    <span class="sl-item"><span class="sl-swatch target"></span>Target · ${escapeHtml(profile.label)}${idealProfileId ? '' : ' (auto)'}</span>
     ${score}
   </div>`;
 }
@@ -3730,7 +3743,7 @@ function renderProfileMatch(profile, cmp) {
   if (!regions) regions = `<span class="rcp-region">Well matched across the spectrum.</span>`;
   el.innerHTML = `
     <div class="rcp-head">
-      <span class="rcp-name">Target: ${profile.label}${idealProfileId ? '' : ' <span style="color:var(--text-muted)">(auto)</span>'}</span>
+      <span class="rcp-name">Target: ${escapeHtml(profile.label)}${idealProfileId ? '' : ' <span style="color:var(--text-muted)">(auto)</span>'}</span>
       <span class="rcp-score"><span class="num" style="color:${color}">${cmp.matchScore}</span><span class="slash">/100</span></span>
     </div>
     <div class="rcp-regions">${regions}</div>

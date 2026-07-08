@@ -355,4 +355,28 @@ describe('customIdealProfile persistence', () => {
     updateSettings({ customIdealProfile: { label: 'x', dbOffsets: makeOffsets() } });
     expect(readFile().futureKey).toBe('keep-me');
   });
+
+  it('reconciles an orphaned __custom id to Auto when the custom curve is missing on read', () => {
+    // A corrupted settings.json (bad dbOffsets) is repaired to null; the stale
+    // '__custom' id must not survive — it would make the renderer score against
+    // flat while the dropdown shows Auto.
+    writeFile({ aiEnabled: false, idealProfile: '__custom', customIdealProfile: { label: 'bad', dbOffsets: 'nope' } });
+    expect(getSettings().idealProfile).toBe('');
+    expect(getSettings().customIdealProfile).toBeNull();
+  });
+
+  it('reconciles an orphaned __custom id when a null patch clears the curve', () => {
+    updateSettings({ customIdealProfile: { label: 'x', dbOffsets: makeOffsets() }, idealProfile: '__custom' });
+    // A future caller that clears the curve without pairing idealProfile:'' is
+    // still repaired at the persistence boundary.
+    const after = updateSettings({ customIdealProfile: null });
+    expect(after.customIdealProfile).toBeNull();
+    expect(after.idealProfile).toBe('');
+    expect(readFile().idealProfile).toBe('');
+  });
+
+  it('keeps __custom when a custom curve is present', () => {
+    updateSettings({ customIdealProfile: { label: 'x', dbOffsets: makeOffsets() }, idealProfile: '__custom' });
+    expect(getSettings().idealProfile).toBe('__custom');
+  });
 });

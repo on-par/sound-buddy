@@ -151,11 +151,12 @@ function fileCustomProfile(file: Partial<AppSettings>): CustomIdealProfile | nul
  * caller instead of resolving as a silent success.
  */
 function writeSettingsFile(file: Partial<AppSettings>): void {
+  const customIdealProfile = fileCustomProfile(file);
   const persisted: AppSettings = {
     ...file,
     aiEnabled: file.aiEnabled ?? DEFAULTS.aiEnabled,
-    idealProfile: file.idealProfile ?? DEFAULTS.idealProfile,
-    customIdealProfile: fileCustomProfile(file),
+    idealProfile: reconcileIdealProfile(file.idealProfile ?? DEFAULTS.idealProfile, customIdealProfile),
+    customIdealProfile,
     storageDir: file.storageDir ?? DEFAULTS.storageDir,
     rigs: fileRigs(file),
     activeRigId: file.activeRigId ?? DEFAULTS.activeRigId,
@@ -166,6 +167,18 @@ function writeSettingsFile(file: Partial<AppSettings>): void {
     logWarn(`could not write settings.json: ${String(err)}`);
     throw err;
   }
+}
+
+/**
+ * Enforce the invariant that `idealProfile === '__custom'` only stands when a
+ * custom curve actually exists. A corrupted settings.json, or a patch that
+ * clears the curve without resetting the id, can otherwise orphan `'__custom'`,
+ * which the renderer would resolve to the flat fallback while hiding the
+ * "(auto)" suffix — a visible dropdown-vs-report-card mismatch. Returning `''`
+ * re-aligns the selection with the auto-by-content-type path.
+ */
+function reconcileIdealProfile(idealProfile: string, custom: CustomIdealProfile | null): string {
+  return idealProfile === '__custom' && !custom ? '' : idealProfile;
 }
 
 function envBool(name: string): boolean | undefined {
@@ -180,17 +193,20 @@ export function getSettings(): AppSettings {
 
   const envAi = envBool('SOUND_BUDDY_AI_ENABLED');
 
+  const customIdealProfile = fileCustomProfile(file);
   return {
     aiEnabled: envAi ?? file.aiEnabled ?? DEFAULTS.aiEnabled,
-    idealProfile:
+    idealProfile: reconcileIdealProfile(
       process.env.SOUND_BUDDY_IDEAL_PROFILE?.trim() || file.idealProfile || DEFAULTS.idealProfile,
+      customIdealProfile,
+    ),
     storageDir:
       process.env.SOUND_BUDDY_STORAGE_DIR?.trim() || file.storageDir || DEFAULTS.storageDir,
     // Rigs have no env layer — they are pure persisted data.
     rigs: fileRigs(file),
     activeRigId: file.activeRigId ?? DEFAULTS.activeRigId,
     // The custom ideal curve is pure persisted data — no env layer.
-    customIdealProfile: fileCustomProfile(file),
+    customIdealProfile,
   };
 }
 
