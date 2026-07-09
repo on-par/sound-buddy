@@ -259,6 +259,37 @@ describe('status pills', () => {
     });
   });
 
+  describe('rcMetricTarget (#132)', () => {
+    it('renders each metric target from its CONFIG threshold', () => {
+      // Every string is derived from CONFIG — these expectations mirror the
+      // default thresholds asserted in the CONFIG single-source test above.
+      expect(grading.rcMetricTarget('peak')).toBe('≤ -3 dBFS'); // CONFIG.peak.checkAbove
+      expect(grading.rcMetricTarget('rms')).toBe('-20 to -14 dBFS'); // acceptable band
+      expect(grading.rcMetricTarget('dynamicRange')).toBe('≥ 6 dB'); // CONFIG.dynamicRange.good
+      expect(grading.rcMetricTarget('centroid')).toBe('500 to 4,000 Hz'); // centroid window
+    });
+
+    it('returns null for a metric with no target in CONFIG', () => {
+      // Clipping (and any unknown key) has no defined target → the card shows an
+      // explicit "—" rather than fabricating a range.
+      expect(grading.rcMetricTarget('clipping')).toBeNull();
+      expect(grading.rcMetricTarget('nonsense')).toBeNull();
+    });
+
+    it('reads targets from CONFIG — moving a threshold moves the displayed target', () => {
+      // Single-source proof for the displayed target: change the config value and
+      // the target string follows, with no edit to the render code. Restore after.
+      const original = grading.CONFIG.rms.acceptableMax;
+      grading.CONFIG.rms.acceptableMax = -12;
+      try {
+        expect(grading.rcMetricTarget('rms')).toBe('-20 to -12 dBFS');
+      } finally {
+        grading.CONFIG.rms.acceptableMax = original;
+      }
+      expect(grading.rcMetricTarget('rms')).toBe('-20 to -14 dBFS');
+    });
+  });
+
   describe('grade / pill direction agreement (#131)', () => {
     // The contradiction #131 fixes: a "good" RMS pill must never coincide with
     // an RMS-driven grade deduction, and vice versa. Sweep the RMS axis holding

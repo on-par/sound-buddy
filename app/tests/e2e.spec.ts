@@ -321,6 +321,13 @@ test.describe('Sound Buddy E2E', () => {
     const metricNames = await window.locator('#rc-metrics-body tr td:first-child .mt-metric').allTextContents();
     expect(metricNames).toEqual(['Peak Level', 'RMS Level', 'Dynamic Range', 'Clipping', 'Spectral Centroid']);
 
+    // Each row shows its config-sourced target beside the value (#132). RMS reads
+    // the acceptable band; Clipping has no config target so it renders an em dash.
+    const targets = await window.locator('#rc-metrics-body tr .mt-target').allTextContents();
+    expect(targets).toHaveLength(5);
+    expect(targets[1]).toBe('-20 to -14 dBFS'); // RMS Level
+    expect(targets[3]).toBe('—'); // Clipping — no target in config
+
     const recCount = await window.locator('#rc-recommendations .rc-rec').count();
     expect(recCount).toBeGreaterThanOrEqual(1);
   });

@@ -175,6 +175,25 @@
     return 'check';
   }
 
+  // #132 — the config-derived "good" target shown beside each measured metric on
+  // the report card, turning an opaque pill into an actionable one. Every string
+  // is read from CONFIG (never hardcoded in the renderer): change a threshold and
+  // the target text moves with the grade and its pill. The bounds mirror exactly
+  // what each pill classifier above treats as "good": the RMS acceptable band,
+  // the peak's "check" ceiling, the DR "good" floor, and the centroid window.
+  // Metrics with no target in CONFIG (e.g. Clipping) return null, so the card
+  // shows an explicit "—" rather than a fabricated range.
+  function rcMetricTarget(key) {
+    const c = CONFIG;
+    switch (key) {
+      case 'peak':         return '≤ ' + c.peak.checkAbove + ' dBFS';
+      case 'rms':          return c.rms.acceptableMin + ' to ' + c.rms.acceptableMax + ' dBFS';
+      case 'dynamicRange': return '≥ ' + c.dynamicRange.good + ' dB';
+      case 'centroid':     return c.centroid.min.toLocaleString() + ' to ' + c.centroid.max.toLocaleString() + ' Hz';
+      default:             return null;
+    }
+  }
+
   var api = {
     CONFIG: CONFIG,
     RC_BAND_INFO: RC_BAND_INFO,
@@ -187,6 +206,7 @@
     rcPeakStatus: rcPeakStatus,
     rcDrStatus: rcDrStatus,
     rcCentroidStatus: rcCentroidStatus,
+    rcMetricTarget: rcMetricTarget,
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.grading = api;
