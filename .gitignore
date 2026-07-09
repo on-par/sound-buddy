@@ -12,3 +12,7 @@ release/
 .build-cache/
 __pycache__/
 .orchestrator/
+# License key material (#124) — private keys must never be committed. `gen`
+# also refuses to write into a git tree; this is belt-and-suspenders.
+*.pem
+SoundBuddy-keys/
