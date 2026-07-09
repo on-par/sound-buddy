@@ -6,6 +6,7 @@ import { execFile, spawn, ChildProcess } from 'child_process';
 import { promisify } from 'util';
 import * as path from 'path';
 import * as fs from 'fs';
+import { pathToFileURL } from 'url';
 import { log, logWarn, logError } from './logger';
 import { probeOllama, streamNarrative, testHostedProvider } from './llm';
 import { getPublicLlmConfig, saveLlmConfig, type LlmConfigPatch } from './llm-config';
@@ -780,6 +781,14 @@ export function registerIpcHandlers(): void {
     });
     return filePaths[0] ?? null;
   });
+
+  // Playback transport (#180) — a file:// URL an <audio> element can load
+  // directly. The sandboxed preload's `url` polyfill lacks pathToFileURL, so
+  // this goes through the main process (which has the real Node module). Null
+  // when the file is gone (moved/deleted since analysis) so the renderer never
+  // points <audio> at a dead path and logs a resource-load error.
+  ipcMain.handle('to-file-url', (_event, filePath: string) =>
+    fs.existsSync(filePath) ? pathToFileURL(filePath).href : null);
 
   // start-live
   ipcMain.handle('start-live', async (event, opts: {

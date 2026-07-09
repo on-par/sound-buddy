@@ -217,6 +217,11 @@ test.describe('Sound Buddy E2E', () => {
     await expect(window.locator('#rc-content')).toBeHidden();
   });
 
+  test('playback transport is absent (disabled/idle) before any analysis is loaded (#180)', async () => {
+    await window.locator('.mode-tab[data-mode="file"]').click();
+    await expect(window.locator('#spectro-play-btn')).toHaveCount(0);
+  });
+
   test('analyzing a file populates the report card', async () => {
     await window.locator('.mode-tab[data-mode="file"]').click();
 
@@ -350,6 +355,81 @@ test.describe('Sound Buddy E2E', () => {
     // Reset so later tests start from the average state.
     await window.locator('#scrub-reset').click();
     await expect(window.locator('#scrub-readout')).toHaveText('Whole-file average');
+  });
+
+  test.describe('playback transport (#180)', () => {
+    // Unlike the other fixtures, playback needs the *real* fixture file on disk
+    // (analyze-file is stubbed and never reads it) so the renderer's <audio>
+    // element has something to actually decode and play.
+    const realFixturePath = path.join(__dirname, 'fixtures', 'silence.wav'); // 1.00s, real WAV
+
+    test.afterAll(async () => {
+      // Restore the default fake-path fixture so later tests start fresh.
+      await electronApp.evaluate(({ ipcMain }, analysis) => {
+        ipcMain.removeHandler('analyze-file');
+        ipcMain.handle('analyze-file', () => ({ success: true, data: analysis }));
+      }, FAKE_ANALYSIS);
+      await window.locator('.mode-tab[data-mode="file"]').click();
+      await window.evaluate((fp) => {
+        (window as unknown as { loadFile: (p: string) => void }).loadFile(fp);
+      }, realFixturePath);
+      await window.locator('#analyze-btn').click();
+    });
+
+    test('play, pause, seek via spectrogram, and end-of-file all drive the playhead + time readout', async () => {
+      // The fixture's stock FRAMES span 0-10s (built for the fake 1s-duration
+      // metadata, never actually played). Real playback needs frame timestamps
+      // that fit inside the *real* fixture's actual 1.00s duration, or seeking
+      // to a frame lands past the end and clamps to exactly `duration` — which
+      // Chromium treats as reaching the end and re-fires `ended`.
+      const playbackFrames = FAKE_ANALYSIS.spectrum.frames.map((f, i) => ({ ...f, t: i * 0.15 }));
+      await electronApp.evaluate(({ ipcMain }, analysis) => {
+        ipcMain.removeHandler('analyze-file');
+        ipcMain.handle('analyze-file', () => ({ success: true, data: analysis }));
+      }, { ...FAKE_ANALYSIS, filePath: realFixturePath, spectrum: { ...FAKE_ANALYSIS.spectrum, frames: playbackFrames } });
+
+      await window.locator('.mode-tab[data-mode="file"]').click();
+      await window.evaluate((fp) => {
+        (window as unknown as { loadFile: (p: string) => void }).loadFile(fp);
+      }, realFixturePath);
+      await window.locator('#analyze-btn').click();
+
+      const playBtn = window.locator('#spectro-play-btn');
+      const time = window.locator('#spectro-time');
+
+      // Idle state: Play icon, elapsed 0:00 against the real 1-second duration.
+      await expect(playBtn).toBeVisible();
+      await expect(playBtn).toHaveAttribute('aria-label', 'Play');
+      await expect(time).toHaveText('0:00 / 0:01');
+
+      // Play — the button flips to Pause and playback starts.
+      await playBtn.click();
+      await expect(playBtn).toHaveAttribute('aria-label', 'Pause');
+      await expect(playBtn).toHaveClass(/playing/);
+
+      // The 1-second fixture runs to completion on its own: end-of-file resets
+      // the playhead to the start and returns the transport to idle Play.
+      await expect(playBtn).toHaveAttribute('aria-label', 'Play', { timeout: 5000 });
+      await expect(playBtn).not.toHaveClass(/playing/);
+      await expect(time).toHaveText(/^0:00 \//);
+
+      // Seeking via the spectrogram column moves the playhead without resuming
+      // playback (the button stays in the idle Play state). Frame index 4 of 6
+      // (t=0.6s) is comfortably inside the 1s duration.
+      const heat = window.locator('#spectrum-heatmap');
+      const box = await heat.boundingBox();
+      await heat.click({ position: { x: Math.round(box!.width * (4.5 / 6)), y: 40 } });
+      await expect(window.locator('#spectrum-heatmap .hm-col.sel')).toHaveCount(1);
+      await expect(window.locator('#scrub-readout')).toContainText('t = 0:00.6');
+      await expect(playBtn).toHaveAttribute('aria-label', 'Play');
+      const playhead = window.locator('#spectro-playhead');
+      await expect(playhead).toBeVisible();
+      const left = await playhead.evaluate((el) => (el as HTMLElement).style.left);
+      expect(left).not.toBe('0%');
+
+      // Reset the scrub selection so later tests start from the average state.
+      await window.locator('#scrub-reset').click();
+    });
   });
 
   test('missing spectrum curve degrades to the same uniform-width bars without error', async () => {
