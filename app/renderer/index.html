@@ -730,6 +730,7 @@
     .mt-note { display:block; font:var(--fw-regular) var(--fs-micro)/1.3 var(--font-sans); color:var(--text-muted); margin-top:2px; }
     .mt-value { font:var(--fw-medium) var(--fs-data-sm)/1 var(--font-mono); font-variant-numeric:tabular-nums; color:var(--text-secondary); }
     .mt-value .unit { color:var(--text-muted); margin-left:3px; }
+    .mt-target { font:var(--fw-regular) var(--fs-data-sm)/1 var(--font-mono); font-variant-numeric:tabular-nums; color:var(--text-muted); white-space:nowrap; }
 
     /* Status pill */
     .pill { display:inline-flex; align-items:center; gap:5px; padding:3px 10px; border-radius:var(--radius-pill); font:var(--fw-semibold) var(--fs-label)/1 var(--font-sans); letter-spacing:var(--tracking-caps); white-space:nowrap; }
@@ -1166,7 +1167,7 @@
           <div class="rc-section">
             <h2>Metrics</h2>
             <table class="metric-table">
-              <thead><tr><th>Metric</th><th>Value</th><th>Status</th></tr></thead>
+              <thead><tr><th>Metric</th><th>Value</th><th>Target</th><th>Status</th></tr></thead>
               <tbody id="rc-metrics-body"></tbody>
             </table>
           </div>
@@ -3862,17 +3863,22 @@ function renderReportCard() {
   }
 
   // Metrics
+  // Target = the config-sourced "good" range for the metric (#132), read from
+  // grading.rcMetricTarget so a threshold change moves the displayed target with
+  // the grade. Metrics with no target in config (Clipping), or with no measured
+  // value (DR/Centroid absent), get null → the row renders an explicit "—".
   const metrics = [
-    { name: 'Peak Level', note: 'Sample peak', value: fmt(src.peak), unit: 'dBFS', tone: grading.rcPeakStatus(src.peak, src.clipping) },
-    { name: 'RMS Level', note: 'Average level (RMS)', value: fmt(src.rms), unit: 'dBFS', tone: grading.rcRmsStatus(src.rms) },
-    { name: 'Dynamic Range', value: src.dynamicRange != null ? fmt(src.dynamicRange) : '—', unit: src.dynamicRange != null ? 'dB' : '', tone: grading.rcDrStatus(src.dynamicRange) },
-    { name: 'Clipping', value: src.clipping ? 'Yes' : 'None', unit: '', tone: src.clipping ? 'issue' : 'good' },
-    { name: 'Spectral Centroid', value: src.centroid ? Math.round(src.centroid).toLocaleString() : '—', unit: src.centroid ? 'Hz' : '', tone: grading.rcCentroidStatus(src.centroid) },
+    { name: 'Peak Level', note: 'Sample peak', value: fmt(src.peak), unit: 'dBFS', tone: grading.rcPeakStatus(src.peak, src.clipping), target: grading.rcMetricTarget('peak') },
+    { name: 'RMS Level', note: 'Average level (RMS)', value: fmt(src.rms), unit: 'dBFS', tone: grading.rcRmsStatus(src.rms), target: grading.rcMetricTarget('rms') },
+    { name: 'Dynamic Range', value: src.dynamicRange != null ? fmt(src.dynamicRange) : '—', unit: src.dynamicRange != null ? 'dB' : '', tone: grading.rcDrStatus(src.dynamicRange), target: src.dynamicRange != null ? grading.rcMetricTarget('dynamicRange') : null },
+    { name: 'Clipping', value: src.clipping ? 'Yes' : 'None', unit: '', tone: src.clipping ? 'issue' : 'good', target: grading.rcMetricTarget('clipping') },
+    { name: 'Spectral Centroid', value: src.centroid ? Math.round(src.centroid).toLocaleString() : '—', unit: src.centroid ? 'Hz' : '', tone: grading.rcCentroidStatus(src.centroid), target: src.centroid ? grading.rcMetricTarget('centroid') : null },
   ];
   document.getElementById('rc-metrics-body').innerHTML = metrics.map(m =>
     `<tr>
       <td><span class="mt-metric">${m.name}</span>${m.note ? `<span class="mt-note">${m.note}</span>` : ''}</td>
       <td><span class="mt-value">${m.value}${m.unit ? `<span class="unit">${m.unit}</span>` : ''}</span></td>
+      <td><span class="mt-target">${m.target || '—'}</span></td>
       <td>${statusPillHTML(m.tone)}</td>
     </tr>`).join('');
 
