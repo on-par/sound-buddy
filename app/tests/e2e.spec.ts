@@ -238,6 +238,32 @@ test.describe('Sound Buddy E2E', () => {
     await expect(window.locator('#rc-empty')).toBeHidden();
   });
 
+  test('report card and spectrum share one screen after analysis (#177)', async () => {
+    // The post-analysis screen no longer hides the spectrum for the report card:
+    // with the Report Card tab active, both the spectrum curve and the report
+    // card content are visible simultaneously — no tab switch to see one or the
+    // other. The Source panel folds away (body.rc-active) so both get room.
+    await window.locator('.mode-tab[data-mode="file"]').click();
+    const fixturePath = path.join(__dirname, 'fixtures', 'silence.wav');
+    await window.evaluate((fp) => {
+      (window as unknown as { loadFile: (p: string) => void }).loadFile(fp);
+    }, fixturePath);
+    await expect(window.locator('#analyze-btn')).toBeEnabled();
+    await window.locator('#analyze-btn').click();
+
+    await window.locator('.mode-tab[data-mode="reportcard"]').click();
+
+    // The report card is rendered…
+    await expect(window.locator('#rc-content')).toBeVisible();
+    // …and the spectrum curve is still on screen beside it, not hidden.
+    await expect(window.locator('#spectrum-body svg.sb-spectrum-curve')).toBeVisible();
+    // The workspace was not swapped out (#177): it stays in the layout, and the
+    // Source panel is collapsed to give the two views room.
+    await expect(window.locator('#workspace')).toBeVisible();
+    await expect(window.locator('body')).toHaveClass(/rc-active/);
+    await expect(window.locator('#source-panel')).toBeHidden();
+  });
+
   test('spectrum panel renders the frequency-response curve', async () => {
     await window.locator('.mode-tab[data-mode="file"]').click();
 

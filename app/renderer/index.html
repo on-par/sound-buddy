@@ -77,7 +77,7 @@
       --tracking-label:0.01em; --tracking-caps:0.06em;
 
       /* Spacing / sizing */
-      --header-h:52px; --panel-w:260px; --ai-panel-w:320px;
+      --header-h:52px; --panel-w:260px; --ai-panel-w:320px; --rc-panel-w:640px;
       --control-h-sm:28px; --control-h:36px; --control-h-lg:44px;
 
       /* Radius */
@@ -191,6 +191,24 @@
 
     /* Workspace */
     #workspace { display:flex; flex:1; overflow:hidden; }
+
+    /* Analysis stage (#177): the workspace and report card share one screen
+       after analysis instead of swapping for each other. The stage is a row;
+       the report card occupies a right column (hidden until .active) while the
+       spectrum stays visible beside it. body.rc-active (Report Card tab) folds
+       the Source panel away so the spectrum and the card both get real room.
+       Narrow windows stack the two vertically so neither clips. */
+    #stage { display:flex; flex:1; overflow:hidden; }
+    body.rc-active #source-panel { display:none; }
+    /* The report card is the post-analysis focus surface; fold the AI Engineer
+       panel away too so the spectrum and card share the full width and the curve
+       stays readable at any window width (the card + AI panel alone are 960px
+       of fixed neighbors — without this the spectrum would be squeezed, #177). */
+    body.rc-active #ai-panel { display:none; }
+    @media (max-width:1000px) {
+      body.rc-active #stage { flex-direction:column; }
+      body.rc-active #reportcard-view { width:100%; flex:1; }
+    }
 
     /* Side panels */
     .side-panel { display:flex; flex-direction:column; flex-shrink:0; background:var(--bg-panel); overflow:hidden; }
@@ -639,7 +657,7 @@
     #ai-countdown .cd-num { font-family:var(--font-mono); color:var(--gold-text); }
 
     /* ── Report Card ──────────────────────────────────────────────── */
-    #reportcard-view { display:none; flex:1; flex-direction:column; overflow:hidden; background:var(--bg-app); }
+    #reportcard-view { display:none; width:var(--rc-panel-w); flex-shrink:0; flex-direction:column; overflow:hidden; background:var(--bg-app); }
     #reportcard-view.active { display:flex; }
     #rc-toolbar { display:flex; align-items:center; justify-content:space-between; padding:10px 22px; border-bottom:1px solid var(--border-subtle); background:var(--bg-panel); flex-shrink:0; }
     #rc-toolbar .panel-title { }
@@ -909,6 +927,8 @@
     </div>
   </div>
 
+  <!-- ══ Stage (#177): workspace + report card share one screen ══ -->
+  <div id="stage">
   <!-- ══ Workspace (File / Directory / Live) ══ -->
   <div id="workspace">
     <!-- Source panel -->
@@ -1226,6 +1246,7 @@
       </div>
     </div>
   </div>
+  </div><!-- /#stage -->
 </div>
 
 <!-- AI provider settings (#76). One screen, two paths: local Ollama (default)
@@ -2544,19 +2565,30 @@ document.querySelectorAll('.mode-tab').forEach(tab => {
 
     document.querySelectorAll('.mode-tab').forEach(t => t.classList.remove('active'));
     tab.classList.add('active');
+    // Set currentMode before the mode-specific work so a throw inside it (e.g.
+    // renderReportCard on an unexpected analysis shape) can't leave currentMode
+    // stale and lock the user out of navigating back via the same-tab guard (#177).
+    currentMode = mode;
 
     if (mode === 'reportcard') {
-      document.getElementById('workspace').style.display = 'none';
+      // #177: the report card now shares the screen with the spectrum instead
+      // of replacing the workspace. #workspace stays visible (CSS lays the two
+      // out side by side via #stage; body.rc-active folds the Source panel
+      // away so both get room). The .active toggle is retained so existing
+      // DOM assertions keep holding. syncSpectrumForMode keeps the spectrum in
+      // the right state beside the card — otherwise a stale Live/Soundcheck
+      // spectrum (or pre-analysis empty state) would show next to the grade.
+      document.body.classList.add('rc-active');
       document.getElementById('reportcard-view').classList.add('active');
+      syncSpectrumForMode('reportcard');
       renderReportCard();
     } else {
+      document.body.classList.remove('rc-active');
       document.getElementById('reportcard-view').classList.remove('active');
-      document.getElementById('workspace').style.display = 'flex';
       document.querySelectorAll('.tab-content').forEach(tc => tc.classList.remove('active'));
       document.getElementById(`tab-${mode}`).classList.add('active');
       syncSpectrumForMode(mode);
     }
-    currentMode = mode;
   });
 });
 
