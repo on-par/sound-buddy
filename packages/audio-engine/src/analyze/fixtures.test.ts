@@ -86,7 +86,11 @@ describe.skipIf(!HAS_FFPROBE)("ffprobe parser (fixture)", () => {
 });
 
 describe.skipIf(!HAS_LIBROSA)("spectrum parser (fixture)", () => {
-  it("tone.wav: seven band values, energy concentrated in the mid band", async () => {
+  // spectrum.py's cold librosa import alone can exceed vitest's 5 s default
+  // on a fresh CI runner; give each spawn generous headroom.
+  const SPECTRUM_TIMEOUT = 60_000;
+
+  it("tone.wav: seven band values, energy concentrated in the mid band", { timeout: SPECTRUM_TIMEOUT }, async () => {
     const sp = await runSpectrum(TONE);
     const b = sp.bands;
     // A 1 kHz tone lands in the mid band (500–2000 Hz); every other band sits
@@ -106,7 +110,7 @@ describe.skipIf(!HAS_LIBROSA)("spectrum parser (fixture)", () => {
     expect(sp.spectralRolloff85).toBeCloseTo(1020.5, 0);
   });
 
-  it("silence.wav: all seven bands near the noise floor and roughly equal", async () => {
+  it("silence.wav: all seven bands near the noise floor and roughly equal", { timeout: SPECTRUM_TIMEOUT }, async () => {
     const sp = await runSpectrum(SILENCE);
     const vals = Object.values(sp.bands);
     // No tone → the bands collapse to a flat, low floor.
