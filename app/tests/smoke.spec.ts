@@ -1,4 +1,4 @@
-import { test, type ElectronApplication, type Page } from '@playwright/test';
+import { test, expect, type ElectronApplication, type Page } from '@playwright/test';
 import { _electron as electron } from 'playwright';
 import * as path from 'path';
 import * as fs from 'fs';
@@ -91,4 +91,22 @@ test('smoke: exercise all flows and collect errors', async () => {
   } else {
     console.log(`\n=== LOG FILE: ${LOG_FILE} === (not created!)`);
   }
+
+  // ── Gate ────────────────────────────────────────────────────────────────
+  // The report above prints first (even on failure), so the cause is always
+  // visible. Now turn the collected errors into a hard gate: a genuinely
+  // broken pipeline must fail the smoke run, not just log.
+  //
+  // Fires locally via ./scripts/verify.sh — NOT in CI, which runs Vitest, not
+  // Playwright (see scripts/verify.sh + CLAUDE.md).
+  //
+  // The happy-path run on silence.wav produces zero renderer/page errors, so we
+  // assert strictly empty — no allowlist. Handled error states (e.g. Ollama
+  // connection-refused #76, analysis error surfaces #148/#125) log to the
+  // renderer as warnings or are caught, not emitted as console errors, so they
+  // don't trip this gate. If a known-benign renderer error ever appears, add a
+  // narrow, inline-documented allowlist filter here rather than loosening the
+  // assertion. Warnings and main-process stdout stay log-only (too noisy).
+  expect(pageErrors, 'uncaught page errors during smoke run').toEqual([]);
+  expect(rendererErrors, 'renderer console errors during smoke run').toEqual([]);
 });
