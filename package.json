@@ -7,6 +7,10 @@
     "build": "npm run build -w @sound-buddy/shared -w @sound-buddy/scene-inspector -w @sound-buddy/audio-engine -w @sound-buddy/ai-analyst -w @sound-buddy/cli",
     "lint": "npm run lint --workspaces --if-present && npm run lint --prefix app",
     "test": "npm run test --workspaces --if-present",
+    "test:coverage": "npm run test:coverage --workspaces --if-present && npm run test:coverage --prefix app",
     "dev": "npm run dev -w @sound-buddy/cli"
+  },
+  "devDependencies": {
+    "@vitest/coverage-v8": "^2.1.9"
   }
 }
