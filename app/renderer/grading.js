@@ -169,7 +169,10 @@
       deductions.push({
         rule: 'Dynamic range too low',
         measured: src.dynamicRange.toFixed(1) + ' dB',
-        target: '≥ ' + CONFIG.dynamicRange.good + ' dB',
+        // Same config-sourced target the metrics table shows (#132), so the
+        // breakdown and the DR metric row can never disagree. (The low_gain
+        // branch above can't reuse it — its floor is the relaxed .check value.)
+        target: rcMetricTarget('dynamicRange'),
         letterImpact: 'Drops one letter',
       });
     }

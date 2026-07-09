@@ -766,9 +766,12 @@
 
     /* ── Why this grade — per-deduction breakdown (#133) ───────────── */
     .rc-why { display:flex; flex-direction:column; gap:10px; }
-    .rc-why-row { display:flex; align-items:center; gap:12px; padding:12px 15px; background:var(--surface); border:1px solid var(--border-subtle); border-left:3px solid var(--issue-500); border-radius:var(--radius-md); box-shadow:var(--elevation-card); }
+    /* A deduction reads as a warning (gold, like a recommendation); the clipping
+       forced-F is critical (issue red) — same tone split as .rc-rec / .critical. */
+    .rc-why-row { display:flex; align-items:center; gap:12px; padding:12px 15px; background:var(--surface); border:1px solid var(--border-subtle); border-left:3px solid var(--gold-500); border-radius:var(--radius-md); box-shadow:var(--elevation-card); }
     .rc-why-row.forced-f { border-left-color:var(--issue-500); }
-    .rc-why-icon { flex-shrink:0; color:var(--issue-text); display:flex; }
+    .rc-why-icon { flex-shrink:0; color:var(--gold-text); display:flex; }
+    .rc-why-row.forced-f .rc-why-icon { color:var(--issue-text); }
     .rc-why-body { flex:1; min-width:0; }
     .rc-why-rule { font:var(--fw-medium) var(--fs-body-sm)/1.3 var(--font-sans); color:var(--text-primary); }
     .rc-why-detail { display:block; margin-top:3px; font:var(--fw-regular) var(--fs-data-sm)/1.4 var(--font-mono); font-variant-numeric:tabular-nums; color:var(--text-muted); }
@@ -3915,17 +3918,18 @@ function renderReportCard() {
         <span class="rc-why-none-text">No deductions — this recording met every grading rule.</span>
       </div>`;
   } else {
-    why.innerHTML = explain.deductions.map(d => {
-      const forcedF = d.letterImpact === 'Automatic F';
-      return `<div class="rc-why-row${forcedF ? ' forced-f' : ''}">
-        <span class="rc-why-icon">${iconSvg(forcedF ? 'alert-triangle' : 'info', 18)}</span>
+    // Clipping is the only rule that forces an automatic F, and when it fires
+    // it is the sole deduction (grading short-circuits) — so the authoritative
+    // explain.clipping flag marks the forced-F row, no display-string sniffing.
+    why.innerHTML = explain.deductions.map(d =>
+      `<div class="rc-why-row${explain.clipping ? ' forced-f' : ''}">
+        <span class="rc-why-icon">${iconSvg(explain.clipping ? 'alert-triangle' : 'info', 18)}</span>
         <span class="rc-why-body">
           <span class="rc-why-rule">${escapeHtml(d.rule)}</span>
           <span class="rc-why-detail"><span class="measured">${escapeHtml(d.measured)}</span> · target ${escapeHtml(d.target)}</span>
         </span>
         <span class="rc-why-impact">${escapeHtml(d.letterImpact)}</span>
-      </div>`;
-    }).join('');
+      </div>`).join('');
   }
 
   // Band breakdown
