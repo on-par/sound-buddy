@@ -440,6 +440,89 @@ test.describe('Sound Buddy E2E', () => {
       // Reset the scrub selection so later tests start from the average state.
       await window.locator('#scrub-reset').click();
     });
+
+    test('band bars, curve overlay, and window-average readout update in real time during playback (AW-4, #179)', async () => {
+      const playbackFrames = FAKE_ANALYSIS.spectrum.frames.map((f, i) => ({ ...f, t: i * 0.15 }));
+      await electronApp.evaluate(({ ipcMain }, analysis) => {
+        ipcMain.removeHandler('analyze-file');
+        ipcMain.handle('analyze-file', () => ({ success: true, data: analysis }));
+      }, { ...FAKE_ANALYSIS, filePath: realFixturePath, spectrum: { ...FAKE_ANALYSIS.spectrum, frames: playbackFrames } });
+
+      await window.locator('.mode-tab[data-mode="file"]').click();
+      await window.evaluate((fp) => {
+        (window as unknown as { loadFile: (p: string) => void }).loadFile(fp);
+      }, realFixturePath);
+      await window.locator('#analyze-btn').click();
+
+      const playBtn = window.locator('#spectro-play-btn');
+      const readout = window.locator('#scrub-readout');
+      const bars = () => window.locator('#spectrum-chart .veq-bar')
+        .evaluateAll((els) => els.map((el) => (el as HTMLElement).style.height));
+
+      await expect(readout).toHaveText('Whole-file average');
+      await expect(window.locator('#spectrum-chart .eq-target-svg')).toBeVisible();
+      const idleHeights = await bars();
+
+      // Play — the bars start animating against the (still-visible, static)
+      // level-matched target curve, and the readout switches to a live
+      // class + rolling window-average, sourced from spectrum.frames.
+      await playBtn.click();
+      await expect(playBtn).toHaveClass(/playing/);
+      await expect(readout).toContainText('Window avg', { timeout: 2000 });
+      await expect(window.locator('#spectrum-chart .eq-target-svg')).toBeVisible();
+
+      // At least one bar height changed from the whole-file average — the
+      // real-time per-frame values are actually driving the bars, not a no-op.
+      await expect.poll(async () => {
+        const live = await bars();
+        return live.some((h, i) => h !== idleHeights[i]);
+      }, { timeout: 2000 }).toBe(true);
+
+      // The 1-second fixture runs to completion on its own: end-of-file returns
+      // the bars and readout to the whole-file average state and drops the
+      // real-time overlay (mirrors the pause path, since both call stopPlaybackBandLoop).
+      await expect(playBtn).toHaveAttribute('aria-label', 'Play', { timeout: 5000 });
+      await expect(readout).not.toContainText('Window avg');
+      await expect(readout).toHaveText('Whole-file average');
+    });
+
+    test('scrubbing the heatmap while playing seeks without leaving a stale pinned frame (#179)', async () => {
+      const playbackFrames = FAKE_ANALYSIS.spectrum.frames.map((f, i) => ({ ...f, t: i * 0.15 }));
+      await electronApp.evaluate(({ ipcMain }, analysis) => {
+        ipcMain.removeHandler('analyze-file');
+        ipcMain.handle('analyze-file', () => ({ success: true, data: analysis }));
+      }, { ...FAKE_ANALYSIS, filePath: realFixturePath, spectrum: { ...FAKE_ANALYSIS.spectrum, frames: playbackFrames } });
+
+      await window.locator('.mode-tab[data-mode="file"]').click();
+      await window.evaluate((fp) => {
+        (window as unknown as { loadFile: (p: string) => void }).loadFile(fp);
+      }, realFixturePath);
+      await window.locator('#analyze-btn').click();
+
+      const playBtn = window.locator('#spectro-play-btn');
+      const readout = window.locator('#scrub-readout');
+      const playhead = window.locator('#spectro-playhead');
+
+      await playBtn.click();
+      await expect(playBtn).toHaveClass(/playing/);
+
+      // Click a heatmap column while the file is actively playing — this must
+      // seek (the playhead jumps) without pinning a static frame the way the
+      // same click would while paused (#179): a pin here would go stale the
+      // instant playback advances past it, and show the WRONG frame's stats
+      // once the user pauses, rather than wherever they actually paused.
+      const heat = window.locator('#spectrum-heatmap');
+      const box = await heat.boundingBox();
+      await heat.click({ position: { x: Math.round(box!.width * (2.5 / 6)), y: 40 } });
+      const seekedLeft = await playhead.evaluate((el) => (el as HTMLElement).style.left);
+      expect(seekedLeft).not.toBe('0%');
+
+      // Pausing right after must return to the whole-file average — not the
+      // clicked column's static readout — proving no stale pin was left behind.
+      await playBtn.click();
+      await expect(playBtn).toHaveAttribute('aria-label', 'Play');
+      await expect(readout).toHaveText('Whole-file average');
+    });
   });
 
   test('missing spectrum curve degrades to the same uniform-width bars without error', async () => {
