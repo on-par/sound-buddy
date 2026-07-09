@@ -59,6 +59,28 @@ jobs:
       - name: Test app (Vitest — settings/IPC + parser drift guard)
         run: npm test --prefix app
 
+      # Coverage is GATED: thresholds live in each vitest.config.ts as a
+      # ratchet a couple points below the current baseline, so this step fails
+      # the build if coverage drops below the floor. The upload still runs on
+      # failure (`if: always()`) so the HTML report is downloadable to inspect
+      # what regressed. Raise the floors in the configs as coverage grows.
+      # Re-runs the same suites as the Test steps above with --coverage; the
+      # redundancy is intentional so a clean test pass and the coverage gate
+      # stay independent signals.
+      - name: Test coverage (gated)
+        run: npm run test:coverage
+
+      - name: Upload coverage reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage
+          path: |
+            packages/*/coverage/
+            app/coverage/
+          if-no-files-found: ignore
+          retention-days: 14
+
       - name: Python audio-engine tests (stream.py + playback.py)
         # sounddevice is stubbed by the tests, so PortAudio isn't needed here.
         # numpy + scipy + soundfile were installed above alongside librosa.

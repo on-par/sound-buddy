@@ -4,9 +4,12 @@ dist/
 *.d.ts
 *.tsbuildinfo
 .env
+.env.local
+.env.*.local
 .DS_Store
 test-results/
 playwright-report/
+coverage/
 .venv/
 release/
 .build-cache/
