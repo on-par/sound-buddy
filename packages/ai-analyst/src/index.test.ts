@@ -115,6 +115,40 @@ describe('analyzeWithClaude', () => {
     }
   })
 
+  it('rejects with a handled ParseError when the model returns non-JSON', async () => {
+    process.env.ANTHROPIC_API_KEY = 'test-key'
+    mockCreate.mockResolvedValueOnce({
+      content: [
+        {
+          type: 'text',
+          text: 'Sorry, I could not analyze that audio right now.',
+        },
+      ],
+    })
+
+    const { analyzeWithClaude } = await import('./index.js')
+    await expect(analyzeWithClaude({ audio: sampleAudio })).rejects.toThrow(
+      /ParseError: AI response was not valid JSON/
+    )
+  })
+
+  it('rejects with a handled ParseError when the JSON is not an array', async () => {
+    process.env.ANTHROPIC_API_KEY = 'test-key'
+    mockCreate.mockResolvedValueOnce({
+      content: [
+        {
+          type: 'text',
+          text: JSON.stringify({ message: 'not an array' }),
+        },
+      ],
+    })
+
+    const { analyzeWithClaude } = await import('./index.js')
+    await expect(analyzeWithClaude({ audio: sampleAudio })).rejects.toThrow(
+      /ParseError: AI response was not a JSON array of insights/
+    )
+  })
+
   it('references specific channels when given diff + audio', async () => {
     process.env.ANTHROPIC_API_KEY = 'test-key'
     mockCreate.mockResolvedValueOnce({
