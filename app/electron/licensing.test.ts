@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import * as fs from 'fs';
 import * as path from 'path';
+import { execFileSync } from 'child_process';
 import { fileURLToPath } from 'url';
 
 // Guards the dual-license structure (#55): the Electron app is proprietary,
@@ -74,5 +75,61 @@ describe.runIf(hasMonorepo)('repo-wide dual-license structure', () => {
     expect(readme).toMatch(/proprietary/i);
     expect(readme).toContain('app/LICENSE');
     expect(readme).toContain('MIT');
+  });
+});
+
+// Key-material guard (#124): no git-tracked file may contain an armored
+// private-key block. The production signing key (#56) lives only with the
+// Stripe webhook; scripts/license-keygen.mjs refuses to write one into a
+// checkout and .gitignore ignores *.pem — this backstops both, so a stray
+// commit of key material fails the suite before it can ship.
+//
+// The needle is assembled from fragments so THIS file never itself contains a
+// literal armor header (which the scan below would otherwise flag on itself).
+const BEGIN = 'BEG' + 'IN';
+const PRIV = 'PRIVATE' + ' KEY';
+const PRIVATE_KEY_ARMOR = new RegExp(`${BEGIN} (?:[A-Z0-9]+ )*${PRIV}`);
+
+/** True if `text` contains an armored private-key block header (PKCS#8, OpenSSH, RSA/EC). */
+function hasPrivateKeyBlock(text: string): boolean {
+  return PRIVATE_KEY_ARMOR.test(text);
+}
+
+// Skip known-binary tracked fixtures (audio, images, fonts) — they never carry
+// PEM armor and decoding them as utf8 is wasted work.
+const BINARY_EXT = /\.(wav|flac|mp3|aiff|png|jpe?g|gif|ico|icns|pdf|zip|woff2?|ttf|otf)$/i;
+
+describe.runIf(hasMonorepo)('key-material guard (#124)', () => {
+  it('detects armored private-key blocks (and ignores public keys / prose)', () => {
+    const pkcs8 = [`-----${BEGIN} ${PRIV}-----`, 'MIIBVQ...', `-----END ${PRIV}-----`].join('\n');
+    const openssh = `-----${BEGIN} OPENSSH ${PRIV}-----\n...`;
+    const rsa = `-----${BEGIN} RSA ${PRIV}-----\n...`;
+    expect(hasPrivateKeyBlock(pkcs8)).toBe(true);
+    expect(hasPrivateKeyBlock(openssh)).toBe(true);
+    expect(hasPrivateKeyBlock(rsa)).toBe(true);
+    expect(hasPrivateKeyBlock(`-----${BEGIN} PUBLIC KEY-----`)).toBe(false);
+    expect(hasPrivateKeyBlock('rotate the private key stored with the webhook')).toBe(false);
+  });
+
+  it('no git-tracked file contains a private-key block', () => {
+    const tracked = execFileSync('git', ['ls-files', '-z'], { cwd: repoRoot, encoding: 'utf8' })
+      .split('\0')
+      .filter(Boolean);
+    const offenders: string[] = [];
+    for (const rel of tracked) {
+      if (BINARY_EXT.test(rel)) continue;
+      const abs = path.join(repoRoot, rel);
+      let stat: fs.Stats;
+      try {
+        stat = fs.statSync(abs);
+      } catch {
+        continue; // tracked-but-absent (deleted, submodule gitlink) — nothing to read
+      }
+      if (!stat.isFile() || stat.size > 1_000_000) continue;
+      if (hasPrivateKeyBlock(fs.readFileSync(abs, 'utf8'))) offenders.push(rel);
+    }
+    expect(offenders, `tracked files contain private-key material: ${offenders.join(', ')}`).toEqual(
+      []
+    );
   });
 });
