@@ -52,7 +52,27 @@ export async function analyzeWithClaude(input: AnalystInput): Promise<Insight[]>
   })
 
   const text = response.content.find((b) => b.type === 'text')?.text ?? '[]'
-  return JSON.parse(text) as Insight[]
+  return parseInsights(text)
+}
+
+/**
+ * Parse the model's text response into insights. The model can occasionally
+ * return prose or malformed JSON instead of the requested array; guard against
+ * that so a bad response surfaces as a handled, descriptive error the caller can
+ * show in the AI panel rather than an uncaught crash (#152).
+ */
+function parseInsights(text: string): Insight[] {
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(text)
+  } catch (err) {
+    const detail = err instanceof Error ? err.message : String(err)
+    throw new Error(`ParseError: AI response was not valid JSON: ${detail}`)
+  }
+  if (!Array.isArray(parsed)) {
+    throw new Error('ParseError: AI response was not a JSON array of insights')
+  }
+  return parsed as Insight[]
 }
 
 export async function analyzeWithClaudeStream(
