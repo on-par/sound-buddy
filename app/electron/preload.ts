@@ -6,6 +6,11 @@ import { contextBridge, ipcRenderer } from 'electron';
 contextBridge.exposeInMainWorld('soundBuddy', {
   getSettings: () => ipcRenderer.invoke('get-settings'),
 
+  // Playback transport (#180) — a file:// URL an <audio> element can load
+  // directly. Computed in the main process: the sandboxed preload's `url`
+  // polyfill lacks pathToFileURL.
+  toFileUrl: (filePath: string) => ipcRenderer.invoke('to-file-url', filePath),
+
   updateSettings: (patch: {
     aiEnabled?: boolean;
     idealProfile?: string;
