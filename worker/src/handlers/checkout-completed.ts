@@ -65,21 +65,10 @@ function defaultStripe(env: Env): Stripe {
   });
 }
 
-/** Resolve an object-or-id reference to its id string. */
-function idOf(ref: string | { id: string } | null | undefined): string | undefined {
-  if (!ref) return undefined;
-  return typeof ref === "string" ? ref : ref.id;
-}
-
 /** Email from the Checkout Session payload, if present (no API call). */
 function emailFromSession(session: Stripe.Checkout.Session): string | undefined {
   const email = session.customer_details?.email ?? session.customer_email;
-  if (typeof email === "string" && email) return email;
-
-  // Keep parity with invoice-paid's object-or-id helper for Stripe refs. The
-  // customer id is not required to retrieve the session, but validating the
-  // field shape here keeps this helper tolerant of expanded or id-only payloads.
-  return idOf(session.customer) === undefined ? undefined : undefined;
+  return typeof email === "string" && email ? email : undefined;
 }
 
 /**
