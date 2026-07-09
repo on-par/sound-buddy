@@ -8,14 +8,12 @@ import {
   type InvoicePaidDeps,
 } from "../src/handlers/invoice-paid";
 import { eventHandlers, handleStripeWebhook } from "../src/webhook";
-import { importVerifyKey, verifyLicenseKey } from "../src/license-sign";
 import type { Env } from "../src/index";
 
-// A throwaway signing keypair, generated exactly as scripts/license-keygen.mjs
-// does (ed25519 → pkcs8/spki PEM). The real production key (H3) is never used.
-const { publicKey, privateKey } = generateKeyPairSync("ed25519");
+// A throwaway signing key, generated exactly as scripts/license-keygen.mjs does
+// (ed25519 → pkcs8 PEM). The real production key (H3) is never used.
+const { privateKey } = generateKeyPairSync("ed25519");
 const PKCS8_PEM = privateKey.export({ type: "pkcs8", format: "pem" }).toString();
-const SPKI_PEM = publicKey.export({ type: "spki", format: "pem" }).toString();
 
 /** In-memory KV double backed by a Map, exposing the two methods we use. */
 function makeKv(): { kv: KVNamespace; store: Map<string, string> } {
@@ -148,11 +146,10 @@ describe("invoice.paid handler (#110)", () => {
     expectNoSignedKeyInKv(store);
   });
 
-  it("mints a key that verifies against license.ts logic with the right claims", async () => {
-    // Capture the minted key by spying on the KV write is not enough (only the
-    // hash is stored). Instead, mint through the same path and verify the record
-    // reflects the payload; the key's byte-level correctness is proven in
-    // license-sign.test.ts. Here we assert the end-to-end expiry/email contract.
+  it("records the end-to-end expiry/email contract from the payload", async () => {
+    // Only the key's hash is stored (sign-on-demand), so the observable contract
+    // is the record's period end + email; the key's byte-level correctness is
+    // proven in license-sign.test.ts.
     const { kv, store } = makeKv();
     const env = makeEnv(kv);
     const periodEnd = "2027-06-30T12:00:00.000Z";
@@ -170,12 +167,6 @@ describe("invoice.paid handler (#110)", () => {
     const record = readRecord(store, "sub_claims");
     expect(record.periodEnd).toBe(periodEnd);
     expect(record.email).toBe("engineer@example.test");
-    // Sanity: the verify helper + keypair are wired (a future key would verify).
-    const verifyKey = await importVerifyKey(SPKI_PEM);
-    expect(verifyKey).toBeTruthy();
-    await expect(verifyLicenseKey("not-a-key", verifyKey)).resolves.toMatchObject({
-      tier: "free",
-    });
   });
 
   it("expands the customer + subscription via the API when the payload omits them", async () => {
@@ -211,6 +202,38 @@ describe("invoice.paid handler (#110)", () => {
     expect(record.email).toBe("expanded@example.test");
     expect(record.periodEnd).toBe("2028-03-15T00:00:00.000Z");
     expectNoSignedKeyInKv(store);
+  });
+
+  it("uses the FURTHEST-OUT item period end when expanding a multi-item subscription", async () => {
+    // Staggered billing anchors: the whole subscription is entitled through the
+    // latest item end, not items.data[0]. Picking the first would expire early.
+    const { kv, store } = makeKv();
+    const env = makeEnv(kv);
+    const getStripe: InvoicePaidDeps["getStripe"] = () =>
+      ({
+        subscriptions: {
+          retrieve: async () => ({
+            items: {
+              data: [
+                { current_period_end: unix("2027-01-15T00:00:00.000Z") },
+                { current_period_end: unix("2027-02-01T00:00:00.000Z") },
+              ],
+            },
+          }),
+        },
+      }) as unknown as Stripe;
+
+    await handleInvoicePaid(
+      invoicePaidEvent("evt_multi", {
+        subscription: "sub_multi",
+        lines: [{ subscription: "sub_multi" }], // no period → forces subscription expansion
+      }),
+      env,
+      ctx,
+      { getStripe },
+    );
+
+    expect(readRecord(store, "sub_multi").periodEnd).toBe("2027-02-01T00:00:00.000Z");
   });
 
   it("does not expand when the payload already carries email and period end", async () => {

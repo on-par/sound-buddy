@@ -104,6 +104,26 @@ function periodEndFromLines(
   return latest;
 }
 
+/**
+ * Furthest-out `current_period_end` (unix seconds) across a subscription's
+ * items — the API-expansion counterpart of {@link periodEndFromLines}. Items can
+ * bill on staggered anchors, so the *latest* end is the period the whole
+ * subscription is entitled through; taking `items.data[0]` alone would expire a
+ * multi-item subscription early. Undefined when no item carries an end.
+ */
+function periodEndFromSubscription(
+  subscription: Stripe.Subscription,
+): number | undefined {
+  let latest: number | undefined;
+  for (const item of subscription.items?.data ?? []) {
+    const end = item.current_period_end;
+    if (typeof end === "number" && (latest === undefined || end > latest)) {
+      latest = end;
+    }
+  }
+  return latest;
+}
+
 /** Email from the invoice payload, if present (no API call). */
 function emailFromInvoice(invoice: Stripe.Invoice): string | undefined {
   if (typeof invoice.customer_email === "string" && invoice.customer_email) {
@@ -159,7 +179,7 @@ export async function handleInvoicePaid(
   let periodEndUnix = periodEndFromLines(invoice, subscriptionId);
   if (periodEndUnix === undefined) {
     const subscription = await stripeClient().subscriptions.retrieve(subscriptionId);
-    periodEndUnix = subscription.items.data[0]?.current_period_end;
+    periodEndUnix = periodEndFromSubscription(subscription);
   }
   if (typeof periodEndUnix !== "number" || Number.isNaN(periodEndUnix)) {
     throw new Error(
