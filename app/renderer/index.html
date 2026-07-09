@@ -2289,14 +2289,21 @@ function initSpectrogram(spectrum) {
  * switches) so playback isn't interrupted by unrelated DOM rebuilds. */
 let sbAudio = null;
 let sbAudioPath = null;
+// Bumped on every ensurePlaybackAudio call so a call superseded by a newer one
+// (e.g. two analyses started in quick succession) can't win the toFileUrl race
+// and stomp sbAudio/sbAudioPath with a stale file's data after a fresher call
+// already committed.
+let sbGeneration = 0;
 async function ensurePlaybackAudio(filePath) {
   if (sbAudioPath === filePath) return sbAudio;
-  if (sbAudio) { sbAudio.pause(); sbAudio.src = ''; }
+  const gen = ++sbGeneration;
   // toFileUrl is IPC-backed (sandboxed preload can't reach Node's pathToFileURL
   // directly), so this crosses a round-trip before the <audio> element exists.
+  const url = await sb.toFileUrl(filePath);
+  if (gen !== sbGeneration) return sbAudio; // superseded — a newer call already won
+  if (sbAudio) { sbAudio.pause(); sbAudio.src = ''; }
   // Null when the file is gone (moved/deleted since analysis) — leave sbAudio
   // unset rather than pointing <audio> at a dead path.
-  const url = await sb.toFileUrl(filePath);
   sbAudio = url ? new Audio(url) : null;
   sbAudioPath = filePath;
   if (sbAudio) {
@@ -2305,6 +2312,9 @@ async function ensurePlaybackAudio(filePath) {
     sbAudio.addEventListener('play', updateTransportButton);
     sbAudio.addEventListener('pause', updateTransportButton);
     sbAudio.addEventListener('ended', onPlaybackEnded);
+    // An undecodable source (e.g. some AIFF variants sox/ffprobe accept but
+    // Chromium's <audio> can't) fails quietly instead of an uncaught rejection.
+    sbAudio.addEventListener('error', updateTransportButton);
   }
   return sbAudio;
 }
@@ -2313,10 +2323,17 @@ function pauseTransportAudio() {
 }
 async function initPlaybackTransport(filePath) {
   if (!filePath || !document.getElementById('spectro-play-btn')) return;
-  const audio = await ensurePlaybackAudio(filePath);
+  await ensurePlaybackAudio(filePath);
   const btn = document.getElementById('spectro-play-btn'); // re-query: DOM may have rebuilt while awaiting
   if (!btn) return;
-  btn.addEventListener('click', () => { if (!audio) return; if (audio.paused) audio.play(); else audio.pause(); });
+  // Reads the live sbAudio/sbAudioPath at click time rather than closing over
+  // this call's result, so a superseded call's listener still controls
+  // whichever file actually won ensurePlaybackAudio's race.
+  btn.addEventListener('click', () => {
+    if (!sbAudio) return;
+    if (sbAudio.paused) sbAudio.play().catch(() => updateTransportButton());
+    else sbAudio.pause();
+  });
   updateTransportButton();
   updatePlaybackReadout();
 }
@@ -2352,7 +2369,11 @@ function onPlaybackEnded() {
 }
 function seekPlayback(t) {
   if (!sbAudio) return;
-  sbAudio.currentTime = t;
+  // Clamp below the real duration: setting currentTime AT duration reads back
+  // as "reached the end" to Chromium, which re-fires 'ended' and immediately
+  // snaps back to 0 — seeking near the final frame would silently undo itself.
+  const duration = playbackDuration();
+  sbAudio.currentTime = duration > 0 ? Math.min(t, Math.max(0, duration - 0.05)) : t;
   updatePlaybackReadout();
 }
 function selectFrame(i) {

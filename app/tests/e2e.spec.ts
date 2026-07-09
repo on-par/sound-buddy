@@ -427,6 +427,16 @@ test.describe('Sound Buddy E2E', () => {
       const left = await playhead.evaluate((el) => (el as HTMLElement).style.left);
       expect(left).not.toBe('0%');
 
+      // Seeking at/past the real duration must clamp instead of landing exactly
+      // on it — Chromium treats currentTime === duration as end-of-file and
+      // immediately re-fires 'ended', which would otherwise snap the seek back
+      // to 0 and silently undo it (the bug this clamp exists to prevent).
+      await window.evaluate(() => (window as unknown as { seekPlayback: (t: number) => void }).seekPlayback(999));
+      await expect(playBtn).toHaveAttribute('aria-label', 'Play');
+      const leftAfterOverseek = await playhead.evaluate((el) => (el as HTMLElement).style.left);
+      expect(leftAfterOverseek).not.toBe('0%');
+      expect(parseFloat(leftAfterOverseek)).toBeGreaterThan(80);
+
       // Reset the scrub selection so later tests start from the average state.
       await window.locator('#scrub-reset').click();
     });
