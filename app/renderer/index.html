@@ -764,6 +764,23 @@
     .rc-rec-text { font:var(--fw-regular) var(--fs-body-sm)/1.55 var(--font-sans); color:var(--text-secondary); }
     .rc-rec-badge { display:inline; font:var(--fw-semibold) 9px/1 var(--font-sans); letter-spacing:0.06em; text-transform:uppercase; color:var(--issue-text); background:var(--issue-tint); border:1px solid var(--issue-border); border-radius:var(--radius-xs); padding:2px 6px; margin-right:8px; }
 
+    /* ── Why this grade — per-deduction breakdown (#133) ───────────── */
+    .rc-why { display:flex; flex-direction:column; gap:10px; }
+    /* A deduction reads as a warning (gold, like a recommendation); the clipping
+       forced-F is critical (issue red) — same tone split as .rc-rec / .critical. */
+    .rc-why-row { display:flex; align-items:center; gap:12px; padding:12px 15px; background:var(--surface); border:1px solid var(--border-subtle); border-left:3px solid var(--gold-500); border-radius:var(--radius-md); box-shadow:var(--elevation-card); }
+    .rc-why-row.forced-f { border-left-color:var(--issue-500); }
+    .rc-why-icon { flex-shrink:0; color:var(--gold-text); display:flex; }
+    .rc-why-row.forced-f .rc-why-icon { color:var(--issue-text); }
+    .rc-why-body { flex:1; min-width:0; }
+    .rc-why-rule { font:var(--fw-medium) var(--fs-body-sm)/1.3 var(--font-sans); color:var(--text-primary); }
+    .rc-why-detail { display:block; margin-top:3px; font:var(--fw-regular) var(--fs-data-sm)/1.4 var(--font-mono); font-variant-numeric:tabular-nums; color:var(--text-muted); }
+    .rc-why-detail .measured { color:var(--issue-text); }
+    .rc-why-impact { flex-shrink:0; text-align:right; font:var(--fw-medium) 10px/1.2 var(--font-sans); letter-spacing:0.02em; text-transform:uppercase; color:var(--text-tertiary); white-space:nowrap; }
+    .rc-why-none { display:flex; align-items:center; gap:12px; padding:13px 15px; background:var(--good-tint); border:1px solid var(--good-border); border-left:3px solid var(--good-text); border-radius:var(--radius-md); }
+    .rc-why-none .rc-why-icon { color:var(--good-text); }
+    .rc-why-none-text { font:var(--fw-regular) var(--fs-body-sm)/1.5 var(--font-sans); color:var(--text-secondary); }
+
     /* ── Print (Export PDF) ───────────────────────────────────────── */
     @media print {
       body * { visibility:hidden !important; }
@@ -772,12 +789,13 @@
       #report-card { position:absolute; left:0; top:0; width:100%; max-width:none; margin:0; padding:12px; background:#fff !important; }
       /* The upgrade card never appears on an exported PDF (#58). */
       #rc-upgrade { display:none !important; }
-      .rc-header h1, .rc-meta, .rc-section h2, .mt-metric, .mt-value, .rc-rec-text, .rc-band-verdict, .rc-ring-label, .rc-empty { color:#000 !important; }
+      .rc-header h1, .rc-meta, .rc-section h2, .mt-metric, .mt-value, .rc-rec-text, .rc-band-verdict, .rc-ring-label, .rc-empty, .rc-why-rule, .rc-why-none-text { color:#000 !important; }
       .rc-header, .rc-section h2 { border-color:#ccc !important; }
       .metric-table td, .metric-table th { border-color:#ccc !important; color:#111 !important; }
-      .rc-bands, .rc-rec, .rc-frame { background:#f7f7f7 !important; box-shadow:none !important; }
+      .rc-bands, .rc-rec, .rc-frame, .rc-why-row, .rc-why-none { background:#f7f7f7 !important; box-shadow:none !important; }
       .rc-frame-tag { color:#000 !important; }
-      .rc-rec { border-left-color:#000 !important; }
+      .rc-rec, .rc-why-row, .rc-why-none { border-left-color:#000 !important; }
+      .rc-why-detail, .rc-why-detail .measured, .rc-why-impact { color:#333 !important; }
       .rc-heatmap svg, .rc-frame-curve svg { -webkit-print-color-adjust:exact; print-color-adjust:exact; }
     }
     /* ── Ideal profile (PRD 05) ──────────────────────────────────────── */
@@ -1170,6 +1188,10 @@
               <thead><tr><th>Metric</th><th>Value</th><th>Target</th><th>Status</th></tr></thead>
               <tbody id="rc-metrics-body"></tbody>
             </table>
+          </div>
+          <div class="rc-section">
+            <h2>Why This Grade</h2>
+            <div class="rc-why" id="rc-why"></div>
           </div>
           <div class="rc-section">
             <h2>Frequency Band Breakdown</h2>
@@ -3881,6 +3903,34 @@ function renderReportCard() {
       <td><span class="mt-target">${m.target || '—'}</span></td>
       <td>${statusPillHTML(m.tone)}</td>
     </tr>`).join('');
+
+  // Why this grade (#133) — the per-deduction breakdown, straight from the pure
+  // grading module so it can never disagree with the letter it explains. Each
+  // deduction names the rule, its measured value vs. the config target, and the
+  // letter impact; an empty list renders an explicit positive "no deductions"
+  // state (never a blank box).
+  const explain = grading.explainGrade(src);
+  const why = document.getElementById('rc-why');
+  if (explain.deductions.length === 0) {
+    why.innerHTML =
+      `<div class="rc-why-none">
+        <span class="rc-why-icon">${iconSvg('check', 18)}</span>
+        <span class="rc-why-none-text">No deductions — this recording met every grading rule.</span>
+      </div>`;
+  } else {
+    // Clipping is the only rule that forces an automatic F, and when it fires
+    // it is the sole deduction (grading short-circuits) — so the authoritative
+    // explain.clipping flag marks the forced-F row, no display-string sniffing.
+    why.innerHTML = explain.deductions.map(d =>
+      `<div class="rc-why-row${explain.clipping ? ' forced-f' : ''}">
+        <span class="rc-why-icon">${iconSvg(explain.clipping ? 'alert-triangle' : 'info', 18)}</span>
+        <span class="rc-why-body">
+          <span class="rc-why-rule">${escapeHtml(d.rule)}</span>
+          <span class="rc-why-detail"><span class="measured">${escapeHtml(d.measured)}</span> · target ${escapeHtml(d.target)}</span>
+        </span>
+        <span class="rc-why-impact">${escapeHtml(d.letterImpact)}</span>
+      </div>`).join('');
+  }
 
   // Band breakdown
   document.getElementById('rc-bands').innerHTML = BAND_META.map(b => {

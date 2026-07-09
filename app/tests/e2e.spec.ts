@@ -127,6 +127,14 @@ const WORSHIP_MUSIC_ANALYSIS = {
   },
 };
 
+// A source that violates exactly the RMS and DR rules (#133): whole-file RMS
+// below the acceptable band and a compressed dynamic range, everything else
+// clean. Grades a C with a two-item "Why this grade" breakdown.
+const DEDUCTING_ANALYSIS = {
+  ...FAKE_ANALYSIS,
+  sox: { ...FAKE_ANALYSIS.sox, rmsDbfs: -26, dynamicRangeDb: 4 },
+};
+
 // A single-frame analysis (short file): the heatmap collapses to one column and
 // the report card shows a single representative frame, without error.
 const SHORT_ANALYSIS = {
@@ -330,6 +338,55 @@ test.describe('Sound Buddy E2E', () => {
 
     const recCount = await window.locator('#rc-recommendations .rc-rec').count();
     expect(recCount).toBeGreaterThanOrEqual(1);
+  });
+
+  test('"Why this grade" shows the positive no-deductions state for a clean grade (#133)', async () => {
+    // The default fixture grades an A (in-band RMS, healthy DR, balanced bands),
+    // so the breakdown is the explicit positive state — never a blank box.
+    await window.locator('.mode-tab[data-mode="reportcard"]').click();
+    await expect(window.locator('#rc-content')).toBeVisible();
+    await expect(window.locator('#rc-why .rc-why-none')).toBeVisible();
+    await expect(window.locator('#rc-why')).toContainText('No deductions');
+    await expect(window.locator('#rc-why .rc-why-row')).toHaveCount(0);
+  });
+
+  test('"Why this grade" lists exactly the rules that fired, measured vs target (#133)', async () => {
+    // RMS below the acceptable band + a compressed DR → exactly two deductions,
+    // each naming the rule, its measured value, and the config-sourced target.
+    await electronApp.evaluate(({ ipcMain }, analysis) => {
+      ipcMain.removeHandler('analyze-file');
+      ipcMain.handle('analyze-file', () => ({ success: true, data: analysis }));
+    }, DEDUCTING_ANALYSIS);
+
+    const fixturePath = path.join(__dirname, 'fixtures', 'silence.wav');
+    await window.locator('.mode-tab[data-mode="file"]').click();
+    await window.evaluate((fp) => {
+      (window as unknown as { loadFile: (p: string) => void }).loadFile(fp);
+    }, fixturePath);
+    await window.locator('#analyze-btn').click();
+
+    await window.locator('.mode-tab[data-mode="reportcard"]').click();
+    const rows = window.locator('#rc-why .rc-why-row');
+    await expect(rows).toHaveCount(2);
+    await expect(rows.nth(0)).toContainText('RMS out of band');
+    await expect(rows.nth(0)).toContainText('-26.0 dBFS');
+    await expect(rows.nth(0)).toContainText('-20 to -14 dBFS');
+    await expect(rows.nth(1)).toContainText('Dynamic range too low');
+    await expect(rows.nth(1)).toContainText('≥ 6 dB');
+    // With deductions present, the positive state is absent.
+    await expect(window.locator('#rc-why .rc-why-none')).toHaveCount(0);
+
+    // Restore the default clean fixture and re-render so later tests start fresh.
+    await electronApp.evaluate(({ ipcMain }, analysis) => {
+      ipcMain.removeHandler('analyze-file');
+      ipcMain.handle('analyze-file', () => ({ success: true, data: analysis }));
+    }, FAKE_ANALYSIS);
+    await window.locator('.mode-tab[data-mode="file"]').click();
+    await window.evaluate((fp) => {
+      (window as unknown as { loadFile: (p: string) => void }).loadFile(fp);
+    }, fixturePath);
+    await window.locator('#analyze-btn').click();
+    await window.locator('.mode-tab[data-mode="reportcard"]').click();
   });
 
   test('worship service recordings avoid the false quiet report-card verdict', async () => {
