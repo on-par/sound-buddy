@@ -13,6 +13,7 @@
 import Stripe from "stripe";
 import type { Env } from "./index";
 import { json } from "./http";
+import { handleCheckoutCompleted } from "./handlers/checkout-completed";
 import { handleInvoicePaid } from "./handlers/invoice-paid";
 
 /**
@@ -31,7 +32,7 @@ const PROCESSED_EVENT_TTL_SECONDS = 30 * 24 * 60 * 60;
 const stripe = new Stripe("sb_webhook_verification_only");
 const cryptoProvider = Stripe.createSubtleCryptoProvider();
 
-/** KV key for a processed event id. `sess:<id>` (one-time flows) lands in #111. */
+/** KV key for a processed event id. `sess:<id>` is the founding flow's session marker. */
 const eventKey = (id: string): string => `evt:${id}`;
 
 /**
@@ -45,17 +46,15 @@ export type EventHandler = (
 ) => Promise<void> | void;
 
 /**
- * Dispatch table keyed by Stripe event type. #111/#118/#119 register their
- * handlers here alongside `invoice.paid`. An event whose type has no handler is
- * a deliberate no-op: this endpoint receives event types it does not care about,
- * and acknowledging them (200) is correct so Stripe stops retrying.
- *
- * Note `checkout.session.completed` is intentionally absent — subscription
- * minting is owned solely by `invoice.paid` (#110); minting on the checkout
- * event too would double-mint the initial period.
+ * Dispatch table keyed by Stripe event type. Checkout events are registered for
+ * the founding one-time flow, but that handler mints only payment-mode lifetime
+ * sessions and ignores subscription-mode sessions. `invoice.paid` remains the
+ * sole subscription mint path, so the initial period cannot double-mint.
  */
 export const eventHandlers: Record<string, EventHandler> = {
   "invoice.paid": handleInvoicePaid,
+  "checkout.session.completed": handleCheckoutCompleted,
+  "checkout.session.async_payment_succeeded": handleCheckoutCompleted,
 };
 
 interface WebhookDeps {
@@ -114,7 +113,7 @@ export async function handleStripeWebhook(
   // check-then-record is best-effort: two deliveries of the same event racing
   // inside the process→record window could both dispatch. That is acceptable
   // here because the money-critical guard is defence-in-depth in the downstream
-  // handlers — the checkout flow keys idempotency on `sess:<session.id>` (#111)
+  // handlers — the checkout flow keys idempotency on `sess:<session.id>`
   // so a license is minted at most once regardless of this window.
   const key = eventKey(event.id);
   if ((await env.LICENSE_KV.get(key)) !== null) {
