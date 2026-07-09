@@ -220,6 +220,65 @@ describe('explainGrade (#133)', () => {
     expect(deductions).toEqual([]);
   });
 
+  // #136 — the DR rule is skipped for live captures (dynamicRange == null), but
+  // that skip must be DISCLOSED, not silent: explainGrade reports it in
+  // notMeasured so the card can tell the user the grade used fewer metrics.
+  describe('unmeasured-rule disclosure (#136)', () => {
+    it('discloses the skipped DR rule when dynamic range is null', () => {
+      const { deductions, notMeasured } = grading.explainGrade(makeSrc({ dynamicRange: null }));
+      // Still no deduction — the rule did not drop a letter, it simply did not run.
+      expect(deductions).toEqual([]);
+      expect(notMeasured).toEqual([
+        {
+          rule: 'Dynamic range',
+          measured: 'Not measured',
+          note: 'Live capture — dynamic range needs a finished file',
+          letterImpact: 'Rule skipped — graded on fewer metrics',
+        },
+      ]);
+    });
+
+    it('reports no skipped rules when dynamic range is measured', () => {
+      expect(grading.explainGrade(makeSrc()).notMeasured).toEqual([]);
+      expect(grading.explainGrade(makeSrc({ dynamicRange: 4 })).notMeasured).toEqual([]);
+    });
+
+    it('discloses the skip on the low-gain path too (own rule set, DR still absent)', () => {
+      // A live low-gain take still has no DR; the disclosure must survive the
+      // low_gain branch's separate return, not just the normal path. With DR
+      // absent, low_gain is reached via the very-low peak/RMS route.
+      const src = makeSrc({ peak: -20, rms: -40, dynamicRange: null });
+      expect(grading.analyzeRecordingType(src).type).toBe('low_gain');
+      expect(grading.explainGrade(src).notMeasured).toEqual([
+        {
+          rule: 'Dynamic range',
+          measured: 'Not measured',
+          note: 'Live capture — dynamic range needs a finished file',
+          letterImpact: 'Rule skipped — graded on fewer metrics',
+        },
+      ]);
+    });
+
+    it('reports no skipped rules for a clipping source (the forced F ran no other rule)', () => {
+      // Clipping forces F for live and file alike, so nothing diverged — claiming
+      // "graded on fewer metrics" would misattribute the F. notMeasured stays empty.
+      const { grade, notMeasured } = grading.explainGrade(makeSrc({ clipping: true, dynamicRange: null }));
+      expect(grade).toBe('F');
+      expect(notMeasured).toEqual([]);
+    });
+
+    it('grades a live capture and an identical file the same, but only the file is silent', () => {
+      // Acceptance criterion: a live (DR null) and file (DR present) source with
+      // otherwise identical metrics must not diverge silently. Here the grades
+      // match AND the live one discloses the skipped rule — no hidden difference.
+      const file = makeSrc({ dynamicRange: 10 });
+      const live = makeSrc({ dynamicRange: null });
+      expect(grading.computeGrade(live)).toBe(grading.computeGrade(file));
+      expect(grading.explainGrade(file).notMeasured).toEqual([]);
+      expect(grading.explainGrade(live).notMeasured.length).toBe(1);
+    });
+  });
+
   it('is deterministic — same input yields the same ordered list every call', () => {
     const src = makeSrc({ rms: -22, dynamicRange: 4, bands: { ...flatBands(-30), mid: -8 } });
     const a = grading.explainGrade(src);

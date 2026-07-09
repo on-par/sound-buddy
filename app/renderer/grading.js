@@ -110,10 +110,38 @@
   // threshold moves both the grade and the reason shown for it. Returns
   // { grade, clipping, deductions } where deductions is a deterministic list for
   // a fixed input; an empty list is the honest "no deductions" (clean) state.
+  // #136 — the honest complement to the deduction list: grading rules that were
+  // SKIPPED because the metric could not be measured for this source. Live
+  // captures carry dynamicRange == null (real DR needs a finished file for sox to
+  // measure crest over time; a live window only has an instantaneous peak/RMS),
+  // so computeGrade/computeScore silently omit the DR rule — a live capture is
+  // graded on fewer rules than an identical file. That silent divergence is the
+  // trust hole this issue closes: explainGrade surfaces the omission here so the
+  // card can disclose "DR was not measured; the grade uses fewer metrics" instead
+  // of implying every rule ran. Each entry mirrors a deduction's shape (rule /
+  // measured / target) so the renderer reuses the same row layout, but note
+  // explains why the metric is absent and letterImpact states the rule was not
+  // applied (so it reads as disclosure, never as a penalty).
+  function skippedRules(src) {
+    const skipped = [];
+    if (src.dynamicRange == null) {
+      skipped.push({
+        rule: 'Dynamic range',
+        measured: 'Not measured',
+        note: 'Live capture — dynamic range needs a finished file',
+        letterImpact: 'Rule skipped — graded on fewer metrics',
+      });
+    }
+    return skipped;
+  }
+
   function explainGrade(src) {
     // Clipping short-circuits to an automatic F with a single clipping
     // deduction — mirroring computeGrade's src.clipping early return, which
     // never evaluates the other rules. The breakdown reflects that exactly.
+    // notMeasured is empty here: clipping alone forces the F (a file clips to F
+    // too), so no rule was skipped in a way that changed the outcome — disclosing
+    // "graded on fewer metrics" would misattribute a forced F.
     if (src.clipping) {
       return {
         grade: 'F',
@@ -124,6 +152,7 @@
           target: 'No clipping',
           letterImpact: 'Automatic F',
         }],
+        notMeasured: [],
       };
     }
 
@@ -151,7 +180,7 @@
         });
       }
       if (maxBandDiff > CONFIG.bandBalance.severeHotDiff) deductions.push(bandImbalanceDeduction());
-      return { grade: computeGrade(src), clipping: false, deductions };
+      return { grade: computeGrade(src), clipping: false, deductions, notMeasured: skippedRules(src) };
     }
 
     // Dynamic-service recordings are RMS-exempt (a quiet whole-file RMS is
@@ -178,7 +207,7 @@
     }
     if (maxBandDiff > CONFIG.bandBalance.severeHotDiff) deductions.push(bandImbalanceDeduction());
 
-    return { grade: computeGrade(src), clipping: false, deductions };
+    return { grade: computeGrade(src), clipping: false, deductions, notMeasured: skippedRules(src) };
   }
 
   // Ring arc score, kept within the letter grade's band so the two agree.
