@@ -28,6 +28,12 @@ export interface Env {
   APP_ORIGIN: string;
   /** Stripe webhook signing secret `whsec_…` (secret; `wrangler secret put`). */
   STRIPE_WEBHOOK_SECRET: string;
+  /**
+   * Ed25519 license signing key, pkcs8 PEM (secret; H3/H4, `wrangler secret
+   * put`). Imported non-extractable via `importSigningKey` (#109); the PEM must
+   * not be referenced after import and is never logged.
+   */
+  LICENSE_SIGNING_PRIVATE_KEY: string;
 }
 
 type RouteHandler = (
