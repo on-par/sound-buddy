@@ -9,16 +9,17 @@
     "build": "tsc",
     "lint": "tsc --noEmit",
     "test": "vitest run --passWithNoTests",
+    "test:coverage": "vitest run --passWithNoTests --coverage",
     "dev": "tsx src/index.ts"
   },
   "dependencies": {
-    "@earendil-works/pi-coding-agent": "latest",
-    "@earendil-works/pi-ai": "latest"
+    "@earendil-works/pi-ai": "latest",
+    "@earendil-works/pi-coding-agent": "latest"
   },
   "devDependencies": {
-    "typescript": "^5",
-    "tsx": "^4",
     "@types/node": "^22",
+    "tsx": "^4",
+    "typescript": "^5",
     "vitest": "^2"
   }
 }
