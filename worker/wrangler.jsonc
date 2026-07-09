@@ -33,6 +33,11 @@
   "vars": {
     "FOUNDING_CAP": "300",
     "FROM_EMAIL": "hello@soundbuddy.online",
-    "APP_ORIGIN": "https://soundbuddy.online"
+    "APP_ORIGIN": "https://soundbuddy.online",
+    // Signing-key id stamped into every minted key's `kid` claim (#109/#110).
+    // Informational only — the app verifies against its embedded public key and
+    // never gates on `kid` — so this value can change on a key rotation without
+    // invalidating already-issued keys. Bump when the signing key rotates.
+    "LICENSE_SIGNING_KID": "sb-sign-2026-07"
   }
 }
