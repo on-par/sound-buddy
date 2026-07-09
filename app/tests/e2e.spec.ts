@@ -485,6 +485,44 @@ test.describe('Sound Buddy E2E', () => {
       await expect(readout).not.toContainText('Window avg');
       await expect(readout).toHaveText('Whole-file average');
     });
+
+    test('scrubbing the heatmap while playing seeks without leaving a stale pinned frame (#179)', async () => {
+      const playbackFrames = FAKE_ANALYSIS.spectrum.frames.map((f, i) => ({ ...f, t: i * 0.15 }));
+      await electronApp.evaluate(({ ipcMain }, analysis) => {
+        ipcMain.removeHandler('analyze-file');
+        ipcMain.handle('analyze-file', () => ({ success: true, data: analysis }));
+      }, { ...FAKE_ANALYSIS, filePath: realFixturePath, spectrum: { ...FAKE_ANALYSIS.spectrum, frames: playbackFrames } });
+
+      await window.locator('.mode-tab[data-mode="file"]').click();
+      await window.evaluate((fp) => {
+        (window as unknown as { loadFile: (p: string) => void }).loadFile(fp);
+      }, realFixturePath);
+      await window.locator('#analyze-btn').click();
+
+      const playBtn = window.locator('#spectro-play-btn');
+      const readout = window.locator('#scrub-readout');
+      const playhead = window.locator('#spectro-playhead');
+
+      await playBtn.click();
+      await expect(playBtn).toHaveClass(/playing/);
+
+      // Click a heatmap column while the file is actively playing — this must
+      // seek (the playhead jumps) without pinning a static frame the way the
+      // same click would while paused (#179): a pin here would go stale the
+      // instant playback advances past it, and show the WRONG frame's stats
+      // once the user pauses, rather than wherever they actually paused.
+      const heat = window.locator('#spectrum-heatmap');
+      const box = await heat.boundingBox();
+      await heat.click({ position: { x: Math.round(box!.width * (2.5 / 6)), y: 40 } });
+      const seekedLeft = await playhead.evaluate((el) => (el as HTMLElement).style.left);
+      expect(seekedLeft).not.toBe('0%');
+
+      // Pausing right after must return to the whole-file average — not the
+      // clicked column's static readout — proving no stale pin was left behind.
+      await playBtn.click();
+      await expect(playBtn).toHaveAttribute('aria-label', 'Play');
+      await expect(readout).toHaveText('Whole-file average');
+    });
   });
 
   test('missing spectrum curve degrades to the same uniform-width bars without error', async () => {

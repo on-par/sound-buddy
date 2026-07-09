@@ -2075,6 +2075,29 @@ function veqBarsAndLabelsHTML(cols, dbArray, loudestIdx) {
     `<span class="veq-label${i === loudestIdx ? ' loud' : ''}" style="left:${b.center}%">${b.label}</span>`).join('');
   return { bars, labels };
 }
+// Patch existing bar/value/label DOM in place (the update-time counterpart of
+// veqBarsAndLabelsHTML above) — shared by the Live-tab per-channel patch
+// (patchLiveChannel) and the playback-band repaint (renderPlaybackBands, AW-4)
+// so height/value transitions animate via CSS instead of restarting on every
+// repaint, and the two paint paths can't drift out of sync with each other.
+function patchBarsAndLabels(container, dbArray) {
+  const loudestIdx = veqLoudestIdx(dbArray);
+  const vals = container.querySelectorAll('.veq-val');
+  container.querySelectorAll('.veq-bar').forEach((bar, i) => {
+    const v = veqBandView(dbArray[i]);
+    bar.style.height = v.pct.toFixed(2) + '%';
+    bar.classList.toggle('loud', i === loudestIdx);
+    bar.classList.toggle('dim', v.dim);
+    const val = vals[i];
+    if (val) {
+      val.textContent = v.val;
+      val.style.bottom = veqValBottom(v.pct) + '%';
+      val.classList.toggle('hot', v.hot);
+      val.classList.toggle('dim', v.dim);
+    }
+  });
+  container.querySelectorAll('.veq-label').forEach((lb, i) => lb.classList.toggle('loud', i === loudestIdx));
+}
 // Dashed target line connecting each band's target level at its column
 // center — an SVG overlay (viewBox 0 0 100 100 matches the bar percentages
 // directly) so it still reads as "the curve you're chasing" over the bars.
@@ -2274,8 +2297,13 @@ function initSpectrogram(spectrum) {
     if (box.width <= 0) return;
     const nF = sgState.frames.length;
     const i = Math.max(0, Math.min(nF - 1, Math.floor(((e.clientX - box.left) / box.width) * nF)));
-    selectFrame(i);
     seekPlayback(sgState.frames[i].t);
+    // Only pin a static frame when playback isn't actively driving the bars
+    // (AW-4, #179) — while playing, renderPlaybackBands already reflects
+    // wherever the seek landed on its very next tick, and pinning here too
+    // would leave a stale sgState.selected that's wrong the moment playback
+    // later advances past it and the user pauses.
+    if (!sbAudio || sbAudio.paused) selectFrame(i);
   });
   const reset = document.getElementById('scrub-reset');
   if (reset) reset.addEventListener('click', () => selectFrame(null));
@@ -2442,35 +2470,23 @@ function windowAverageRms(frames, t, windowSec) {
   for (const f of frames) if (f.t <= t && f.t > t - windowSec && Number.isFinite(f.rms)) { sum += f.rms; n++; }
   return n ? sum / n : null;
 }
-// Patch the AW-2 bars/readouts in place (mirrors patchLiveChannel below) so
-// height/value transitions actually animate instead of restarting on every
-// repaint — the target-curve overlay (already in the DOM from the initial
-// eqBarsHTML build) is untouched, so the comparison stays visible throughout.
-function patchEqBars(chart, bandDb) {
-  const loudestIdx = veqLoudestIdx(bandDb);
-  const vals = chart.querySelectorAll('.veq-val');
-  chart.querySelectorAll('.veq-bar').forEach((bar, i) => {
-    const v = veqBandView(bandDb[i]);
-    bar.style.height = v.pct.toFixed(2) + '%';
-    bar.classList.toggle('loud', i === loudestIdx);
-    bar.classList.toggle('dim', v.dim);
-    const val = vals[i];
-    if (val) {
-      val.textContent = v.val;
-      val.style.bottom = veqValBottom(v.pct) + '%';
-      val.classList.toggle('hot', v.hot);
-      val.classList.toggle('dim', v.dim);
-    }
-  });
-  chart.querySelectorAll('.veq-label').forEach((lb, i) => lb.classList.toggle('loud', i === loudestIdx));
-}
+// Last frame index actually painted by renderPlaybackBands — skips repaint
+// work on ticks where the playhead hasn't crossed into a new frame yet
+// (frames are typically 100ms+ apart, so most of the ~60/s rAF ticks would
+// otherwise recompute and repatch identical output). Reset to -1 whenever a
+// playback session (re)starts, so the first tick after a stopPlaybackBandLoop
+// repaint (e.g. resuming right where a previous session left off, landing on
+// the same frame index) always repaints instead of trusting a stale match.
+let lastRenderedFrameIndex = -1;
 function renderPlaybackBands(t) {
   if (!sgState || !sgState.frames || !sgState.frames.length) return;
-  const chart = document.getElementById('spectrum-chart');
-  if (!chart) return;
   const { spectrum, frames } = sgState;
   const i = frameIndexAtTime(frames, t, playbackDuration());
-  patchEqBars(chart, bandLevelsFromCurve({ freqs: spectrum.curve.freqs, db: frames[i].db }));
+  if (i === lastRenderedFrameIndex) return;
+  lastRenderedFrameIndex = i;
+  const chart = document.getElementById('spectrum-chart');
+  if (!chart) return;
+  patchBarsAndLabels(chart, bandLevelsFromCurve({ freqs: spectrum.curve.freqs, db: frames[i].db }));
   const avg = windowAverageRms(frames, t, PLAYBACK_AVG_WINDOW_SEC);
   const readout = document.getElementById('scrub-readout');
   if (readout) readout.textContent = classLabel(frames[i].class) + (avg != null ? ` · Window avg ${fmt(avg)} dB` : '');
@@ -2480,6 +2496,7 @@ function renderPlaybackBands(t) {
 let playbackAnimHandle = null;
 function startPlaybackBandLoop() {
   if (playbackAnimHandle != null || !sbAudio || !sgState || !sgState.frames || !sgState.frames.length) return;
+  lastRenderedFrameIndex = -1;
   const tick = () => {
     if (!sbAudio || sbAudio.paused || sbAudio.ended) { playbackAnimHandle = null; return; }
     renderPlaybackBands(sbAudio.currentTime);
@@ -2487,7 +2504,14 @@ function startPlaybackBandLoop() {
   };
   playbackAnimHandle = requestAnimationFrame(tick);
 }
-function stopPlaybackBandLoop() {
+function stopPlaybackBandLoop(evt) {
+  // 'pause' fires asynchronously (a queued task per the HTML media spec), so
+  // the outgoing sbAudio.pause() in ensurePlaybackAudio can still deliver its
+  // event after a newer file's Audio instance has already become the global
+  // sbAudio and started its own loop. Ignore stale instances' events so they
+  // can't cancel a newer file's live loop out from under it (evt is absent
+  // for the direct calls from onPlaybackEnded/tick, which always mean it now).
+  if (evt && evt.target !== sbAudio) return;
   if (playbackAnimHandle != null) { cancelAnimationFrame(playbackAnimHandle); playbackAnimHandle = null; }
   renderScrub(); // whole-file (or carried scrub) state — dismisses the realtime overlay
 }
@@ -2574,7 +2598,6 @@ function patchLiveChannel(el, ch, idx) {
   const foldBtn = el.querySelector('.live-ch-fold');
   if (foldBtn) foldBtn.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
   const curve = liveBandCurve(ch.bands);
-  const loudestIdx = veqLoudestIdx(curve.db);
   const name = el.querySelector('.live-ch-name');
   // Don't clobber the field while the engineer is renaming it in place (#39);
   // the live tick keeps flowing but their caret/text stays put until they commit.
@@ -2596,19 +2619,7 @@ function patchLiveChannel(el, ch, idx) {
     chart.innerHTML = arc ? arc.svg : '';
   }
 
-  const vals = el.querySelectorAll('.veq-val');
-  el.querySelectorAll('.veq-bar').forEach((bar, i) => {
-    const v = veqBandView(curve.db[i]);
-    bar.style.height = v.pct.toFixed(2) + '%';
-    bar.classList.toggle('loud', i === loudestIdx);
-    bar.classList.toggle('dim', v.dim);
-    const val = vals[i];
-    val.textContent = v.val;
-    val.style.bottom = veqValBottom(v.pct) + '%';
-    val.classList.toggle('hot', v.hot);
-    val.classList.toggle('dim', v.dim);
-  });
-  el.querySelectorAll('.veq-label').forEach((lb, i) => lb.classList.toggle('loud', i === loudestIdx));
+  patchBarsAndLabels(el, curve.db);
 }
 
 function renderLiveMeters(win) {
