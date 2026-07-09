@@ -2310,7 +2310,9 @@ async function ensurePlaybackAudio(filePath) {
     sbAudio.addEventListener('timeupdate', updatePlaybackReadout);
     sbAudio.addEventListener('loadedmetadata', updatePlaybackReadout);
     sbAudio.addEventListener('play', updateTransportButton);
+    sbAudio.addEventListener('play', startPlaybackBandLoop);
     sbAudio.addEventListener('pause', updateTransportButton);
+    sbAudio.addEventListener('pause', stopPlaybackBandLoop);
     sbAudio.addEventListener('ended', onPlaybackEnded);
     // An undecodable source (e.g. some AIFF variants sox/ffprobe accept but
     // Chromium's <audio> can't) fails quietly instead of an uncaught rejection.
@@ -2366,6 +2368,7 @@ function onPlaybackEnded() {
   sbAudio.currentTime = 0;
   updatePlaybackReadout();
   updateTransportButton();
+  stopPlaybackBandLoop(); // some UAs fire 'pause' too, but don't rely on it — this is idempotent
 }
 function seekPlayback(t) {
   if (!sbAudio) return;
@@ -2411,6 +2414,82 @@ function renderScrub() {
   const heat = document.getElementById('spectrum-heatmap');
   if (heat) heat.querySelectorAll('.hm-col').forEach(c =>
     c.classList.toggle('sel', !isAvg && parseInt(c.dataset.i, 10) === selected));
+}
+
+/* ── Realtime band values during playback (AW-4, #179) ──
+ * Sourced entirely from spectrum.frames — the same per-window data the
+ * spectrogram/scrubber already carry — so nothing is re-analyzed. Driven by a
+ * dedicated rAF loop (started on 'play', stopped on 'pause'/'ended') rather
+ * than the audio element's 'timeupdate' (which Chromium throttles to a few
+ * Hz), so the loop itself is naturally capped at one repaint per animation
+ * frame — the same guarantee scheduleLiveMeters/renderLiveMeters give the
+ * Live tab, just achieved by controlling the paint cadence directly instead
+ * of coalescing bursty external ticks. */
+const PLAYBACK_AVG_WINDOW_SEC = 0.5; // trailing window for the "window avg" readout
+
+// Nearest frame for a playback position — the same t→x proportion the
+// heatmap playhead uses (updatePlaybackReadout), so the animated bars always
+// match the frame the playhead is currently over.
+function frameIndexAtTime(frames, t, total) {
+  if (!(total > 0)) return 0;
+  return Math.max(0, Math.min(frames.length - 1, Math.floor((t / total) * frames.length)));
+}
+// Mean of frame.rms over the trailing [t - windowSec, t] window — "the
+// average level over the current playback window" — reusing each frame's
+// already-computed RMS rather than deriving a new figure.
+function windowAverageRms(frames, t, windowSec) {
+  let sum = 0, n = 0;
+  for (const f of frames) if (f.t <= t && f.t > t - windowSec && Number.isFinite(f.rms)) { sum += f.rms; n++; }
+  return n ? sum / n : null;
+}
+// Patch the AW-2 bars/readouts in place (mirrors patchLiveChannel below) so
+// height/value transitions actually animate instead of restarting on every
+// repaint — the target-curve overlay (already in the DOM from the initial
+// eqBarsHTML build) is untouched, so the comparison stays visible throughout.
+function patchEqBars(chart, bandDb) {
+  const loudestIdx = veqLoudestIdx(bandDb);
+  const vals = chart.querySelectorAll('.veq-val');
+  chart.querySelectorAll('.veq-bar').forEach((bar, i) => {
+    const v = veqBandView(bandDb[i]);
+    bar.style.height = v.pct.toFixed(2) + '%';
+    bar.classList.toggle('loud', i === loudestIdx);
+    bar.classList.toggle('dim', v.dim);
+    const val = vals[i];
+    if (val) {
+      val.textContent = v.val;
+      val.style.bottom = veqValBottom(v.pct) + '%';
+      val.classList.toggle('hot', v.hot);
+      val.classList.toggle('dim', v.dim);
+    }
+  });
+  chart.querySelectorAll('.veq-label').forEach((lb, i) => lb.classList.toggle('loud', i === loudestIdx));
+}
+function renderPlaybackBands(t) {
+  if (!sgState || !sgState.frames || !sgState.frames.length) return;
+  const chart = document.getElementById('spectrum-chart');
+  if (!chart) return;
+  const { spectrum, frames } = sgState;
+  const i = frameIndexAtTime(frames, t, playbackDuration());
+  patchEqBars(chart, bandLevelsFromCurve({ freqs: spectrum.curve.freqs, db: frames[i].db }));
+  const avg = windowAverageRms(frames, t, PLAYBACK_AVG_WINDOW_SEC);
+  const readout = document.getElementById('scrub-readout');
+  if (readout) readout.textContent = classLabel(frames[i].class) + (avg != null ? ` · Window avg ${fmt(avg)} dB` : '');
+  const heat = document.getElementById('spectrum-heatmap');
+  if (heat) heat.querySelectorAll('.hm-col').forEach(c => c.classList.toggle('sel', parseInt(c.dataset.i, 10) === i));
+}
+let playbackAnimHandle = null;
+function startPlaybackBandLoop() {
+  if (playbackAnimHandle != null || !sbAudio || !sgState || !sgState.frames || !sgState.frames.length) return;
+  const tick = () => {
+    if (!sbAudio || sbAudio.paused || sbAudio.ended) { playbackAnimHandle = null; return; }
+    renderPlaybackBands(sbAudio.currentTime);
+    playbackAnimHandle = requestAnimationFrame(tick);
+  };
+  playbackAnimHandle = requestAnimationFrame(tick);
+}
+function stopPlaybackBandLoop() {
+  if (playbackAnimHandle != null) { cancelAnimationFrame(playbackAnimHandle); playbackAnimHandle = null; }
+  renderScrub(); // whole-file (or carried scrub) state — dismisses the realtime overlay
 }
 
 /* ── Live vertical-bar EQ ──
