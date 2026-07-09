@@ -611,12 +611,10 @@
     .bm-fill.loud { box-shadow:0 0 8px -1px var(--gold-glow); }
     .bm-val { width:52px; flex-shrink:0; text-align:right; font:var(--fw-medium) var(--fs-data-sm)/1 var(--font-mono); font-variant-numeric:tabular-nums; color:var(--text-muted); }
     .bm-val.hot { color:var(--text-primary); }
-    .bm-centroid { position:relative; height:0; margin:3px 56px 3px 116px; border-top:1.5px dashed var(--azure-400); }
-    .bm-centroid span { position:absolute; right:0; top:-8px; font:var(--fw-medium) 9px/1 var(--font-mono); color:var(--azure-text); background:var(--surface-inset); padding:2px 5px; border-radius:var(--radius-xs); }
 
-    /* Spectrum curve (EQ analyzer, PRD 02) */
-    .spectrum-chart { flex:1; min-height:340px; display:flex; align-items:center; background:var(--surface-inset); border:1px solid var(--border-subtle); border-radius:var(--radius-xl); box-shadow:var(--elevation-canvas); padding:18px 20px; }
-    .spectrum-chart svg { width:100%; height:auto; display:block; }
+    /* Spectrum curve (EQ analyzer, PRD 02) — spectrumCurveSVG still backs the
+       Live-tab arc (#30); report-card frame previews use their own miniCurveSVG. */
+    .spectrum-chart { flex:1; min-height:340px; display:flex; align-items:flex-start; gap:10px; background:var(--surface-inset); border:1px solid var(--border-subtle); border-radius:var(--radius-xl); box-shadow:var(--elevation-canvas); padding:18px 20px; }
     .sb-band-tint { opacity:0.06; }
     .sb-grid-line { stroke:var(--gridline); stroke-width:1; }
     .sb-axis-base { stroke:var(--border-default); stroke-width:1; }
@@ -626,6 +624,23 @@
     .sb-curve-line { fill:none; stroke:var(--gold-500); stroke-width:2.25; stroke-linejoin:round; stroke-linecap:round; filter:drop-shadow(0 0 5px var(--gold-glow)); }
     .sb-centroid-line { stroke:var(--azure-400); stroke-width:1.25; stroke-dasharray:4 4; opacity:0.85; }
     .sb-centroid-label { font:var(--fw-medium) 10px/1 var(--font-mono); fill:var(--azure-text); text-anchor:middle; }
+
+    /* Uniform-width EQ bars for the analysis spectrum view (AW-2, #178): a row
+       of 7 equal-width vertical bars, one per BAND_META band — the "normal
+       graphic EQ" reading that the log-frequency arc's non-uniform band tints
+       and the old horizontal meter rows didn't give. Reuses .veq-bar/.veq-val/
+       .veq-label styling + loud/dim/hot semantics from the Live-tab EQ (#30);
+       geometry here is even-width columns instead of log-frequency position.
+       Used by both the curve path (renderSpectrum) and the meter fallback
+       (renderBandMeters) so the two stay visually consistent. */
+    .eq-yaxis { position:relative; width:28px; flex-shrink:0; height:280px; }
+    .eq-yaxis span { position:absolute; right:0; transform:translateY(50%); font:var(--fw-medium) 9px/1 var(--font-mono); color:var(--gridline-label); white-space:nowrap; }
+    .eq-main { flex:1; min-width:0; display:flex; flex-direction:column; }
+    .eq-plot { position:relative; height:280px; }
+    .eq-plot .veq-bars { inset:0; }
+    .eq-grid { position:absolute; left:0; right:0; height:1px; background:var(--gridline); }
+    .eq-target-svg { position:absolute; inset:0; width:100%; height:100%; pointer-events:none; overflow:visible; }
+    .eq-centroid { margin-top:8px; padding:0 4px; font:var(--fw-regular) var(--fs-micro)/1 var(--font-mono); color:var(--azure-text); }
 
     /* Time-sampled spectrogram + scrubber (PRD 03). Sits under the PRD 02 curve;
        clicking a column redraws that curve for the selected frame. */
@@ -2001,32 +2016,107 @@ function spectrumLegendHTML(profile, cmp) {
   </div>`;
 }
 
+/* ── Uniform-width EQ bars (AW-2, #178) ──
+ * 7 equal-width columns, one per BAND_META band — unlike VEQ_BANDS (#30),
+ * which sizes each bar to its band's log-frequency span so it sits under the
+ * arc's tint, these columns are all the same width, like a hardware graphic
+ * EQ. Shared by renderSpectrum's curve path and renderBandMeters' fallback so
+ * the analysis view reads the same regardless of which data is available. */
+const EQ_GAP = 1.4; // % inset per side, mirrors #30's VEQ_GAP
+const EQ_COLS = BAND_META.map((b, i) => {
+  const w = 100 / BAND_META.length;
+  return { key: b.key, label: b.label, color: b.color, range: b.range, left: (i * w + EQ_GAP).toFixed(3), width: (w - 2 * EQ_GAP).toFixed(3), center: (i * w + w / 2).toFixed(3) };
+});
+// Bucket a fine {freqs, db} curve into 7 BAND_META band levels (mean dB of
+// samples whose freq falls within [lo, hi]) — for contexts that only carry
+// the full-resolution curve (scrub frames, the level-matched target) rather
+// than spectrum.bands' precomputed per-band levels.
+function bandLevelsFromCurve(curve) {
+  return BAND_META.map(b => {
+    let sum = 0, n = 0;
+    curve.freqs.forEach((f, i) => {
+      if (Number.isFinite(f) && f >= b.lo && f <= b.hi && Number.isFinite(curve.db[i])) { sum += curve.db[i]; n++; }
+    });
+    return n ? sum / n : -120;
+  });
+}
+// spectrum.bands' per-band levels, floored to silence (-120) for any missing
+// or non-finite entry — mirrors liveBandCurve's same guard (#30) so a stale
+// or partial analysis payload degrades gracefully instead of rendering
+// "NaN"/"-Infinity" or throwing inside veqBandView's db.toFixed(1).
+function bandDbFromSpectrum(spectrum) {
+  const bands = spectrum.bands || {};
+  return BAND_META.map(b => { const v = bands[b.key]; return Number.isFinite(v) ? v : -120; });
+}
+// Bars + value readouts + labels shared by the Live-tab per-channel EQ (#30,
+// veqChannelHTML) and these analysis-view bars — geometry (cols) and levels
+// (dbArray) differ, everything else (loud/dim/hot styling, markup shape) is
+// identical. cols entries with a `range` get a title tooltip on their bar.
+function veqBarsAndLabelsHTML(cols, dbArray, loudestIdx) {
+  const bars = cols.map((b, i) => {
+    const v = veqBandView(dbArray[i]);
+    const cls = 'veq-bar' + (i === loudestIdx ? ' loud' : '') + (v.dim ? ' dim' : '');
+    return `<div class="${cls}" data-band="${b.key}" style="left:${b.left}%;width:${b.width}%;height:${v.pct.toFixed(2)}%;background:${b.color}"${b.range ? ` title="${b.range}"` : ''}></div>`
+      + `<div class="veq-val${v.hot ? ' hot' : ''}${v.dim ? ' dim' : ''}" style="left:${b.center}%;bottom:${veqValBottom(v.pct)}%">${v.val}</div>`;
+  }).join('');
+  const labels = cols.map((b, i) =>
+    `<span class="veq-label${i === loudestIdx ? ' loud' : ''}" style="left:${b.center}%">${b.label}</span>`).join('');
+  return { bars, labels };
+}
+// Dashed target line connecting each band's target level at its column
+// center — an SVG overlay (viewBox 0 0 100 100 matches the bar percentages
+// directly) so it still reads as "the curve you're chasing" over the bars.
+function eqTargetLineSVG(targetBandDb) {
+  const pts = EQ_COLS.map((b, i) => `${b.center},${(100 - toPct(targetBandDb[i])).toFixed(2)}`);
+  return `<svg class="eq-target-svg" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
+    <path class="sb-target-line" style="vector-effect:non-scaling-stroke" d="M${pts.join(' L')}"/>
+  </svg>`;
+}
+function eqCentroidHTML(spectrum) {
+  return spectrum.spectralCentroid > 0 ? `<div class="eq-centroid">Centroid · ${fmtHz(spectrum.spectralCentroid)}</div>` : '';
+}
+// bandDb: 7 levels in BAND_META order. targetDb (optional): same shape,
+// overlaid as the dashed target line.
+function eqBarsHTML(bandDb, targetDb) {
+  const loudestIdx = veqLoudestIdx(bandDb);
+  const { bars, labels } = veqBarsAndLabelsHTML(EQ_COLS, bandDb, loudestIdx);
+  const grid = GRID.map(g => `<div class="eq-grid" style="bottom:${toPct(g)}%"></div>`).join('');
+  const yAxis = GRID.map(g => `<span style="bottom:${toPct(g)}%">${g}</span>`).join('');
+  const targetSvg = Array.isArray(targetDb) && targetDb.length === EQ_COLS.length ? eqTargetLineSVG(targetDb) : '';
+  return `<div class="eq-yaxis">${yAxis}</div>
+    <div class="eq-main">
+      <div class="eq-plot">${grid}<div class="veq-bars">${bars}</div>${targetSvg}</div>
+      <div class="veq-labels">${labels}</div>
+    </div>`;
+}
+
 function renderSpectrum(spectrum) {
   const body = document.getElementById('spectrum-body');
   const title = document.getElementById('spectrum-title');
   document.getElementById('stats-row').style.display = 'flex';
 
-  // Preferred view: the EQ frequency-response curve with the selected ideal
-  // target overlaid (PRD 05). The time-sampled spectrogram + scrubber sit under
-  // it and redraw #spectrum-chart for the selected frame (PRD 03). Degrade
-  // gracefully to the 7-band meters when no curve is available (e.g. --no-spectrum).
+  // Preferred view: uniform EQ bars (AW-2) with the selected ideal target
+  // overlaid (PRD 05). The time-sampled spectrogram + scrubber sit under it
+  // and redraw #spectrum-chart for the selected frame (PRD 03). Degrade
+  // gracefully to the same bar view driven by spectrum.bands directly when no
+  // curve is available (e.g. --no-spectrum) — see renderBandMeters.
   if (ipHasCurve(spectrum)) {
     const profile = activeProfile(spectrum);
     const target = levelMatchedTarget(spectrum.curve, profile);
-    const svg = spectrumCurveSVG(spectrum.curve, spectrum.spectralCentroid, target);
-    if (svg) {
-      const cmp = ipCompare(spectrum.curve, profile);
-      title.textContent = SPECTRUM_TITLE.curve;
-      // The curve chart is the "main curve"; the legend + match score sit directly
-      // beneath it, and the time-sampled spectrogram + scrubber sit under that and
-      // redraw #spectrum-chart for the selected frame (PRD 03).
-      body.innerHTML = `<div class="spectrum-chart" id="spectrum-chart">${svg}</div>`
-        + spectrumLegendHTML(profile, cmp)
-        + buildFramesSectionHTML(spectrum);
-      updateIdealProfileVisibility(spectrum);
-      if (Array.isArray(spectrum.frames) && spectrum.frames.length) initSpectrogram(spectrum);
-      return;
-    }
+    const cmp = ipCompare(spectrum.curve, profile);
+    const bandDb = bandDbFromSpectrum(spectrum);
+    const targetBandDb = bandLevelsFromCurve({ freqs: spectrum.curve.freqs, db: target });
+    title.textContent = SPECTRUM_TITLE.curve;
+    // The bar chart is the "main curve"; the legend + match score sit directly
+    // beneath it, and the time-sampled spectrogram + scrubber sit under that and
+    // redraw #spectrum-chart for the selected frame (PRD 03).
+    body.innerHTML = `<div class="spectrum-chart" id="spectrum-chart" role="img" aria-label="Frequency band levels">${eqBarsHTML(bandDb, targetBandDb)}</div>`
+      + spectrumLegendHTML(profile, cmp)
+      + eqCentroidHTML(spectrum)
+      + buildFramesSectionHTML(spectrum);
+    updateIdealProfileVisibility(spectrum);
+    if (Array.isArray(spectrum.frames) && spectrum.frames.length) initSpectrogram(spectrum);
+    return;
   }
   title.textContent = SPECTRUM_TITLE.meters;
   renderBandMeters(spectrum);
@@ -2034,19 +2124,9 @@ function renderSpectrum(spectrum) {
 
 function renderBandMeters(spectrum) {
   const body = document.getElementById('spectrum-body');
-  const bandVals = BAND_META.map(b => spectrum.bands[b.key]);
-  const loudestIdx = bandVals.indexOf(Math.max(...bandVals));
-
-  let rows = '';
-  BAND_META.forEach((b, i) => {
-    rows += bandMeterHTML(b.label, b.range, spectrum.bands[b.key], {
-      color: b.color, showScale: i === 0, showGrid: true, loudest: i === loudestIdx,
-    });
-    if (b.key === 'mid' && spectrum.spectralCentroid > 0) {
-      rows += `<div class="bm-centroid"><span>Centroid · ${fmtHz(spectrum.spectralCentroid)}</span></div>`;
-    }
-  });
-  body.innerHTML = `<div class="meter-card">${rows}</div>`;
+  const bandDb = bandDbFromSpectrum(spectrum);
+  body.innerHTML = `<div class="spectrum-chart" id="spectrum-chart" role="img" aria-label="Frequency band levels">${eqBarsHTML(bandDb)}</div>`
+    + eqCentroidHTML(spectrum);
   // No whole-file curve in the meters fallback, so the target dropdown is moot.
   const wrap = document.getElementById('ideal-profile-wrap');
   if (wrap) wrap.style.display = 'none';
@@ -2193,17 +2273,18 @@ function renderScrub() {
   if (!sgState) return;
   const { spectrum, frames, selected } = sgState;
   const isAvg = selected == null;
-  // Reuse PRD 02's renderer: average = whole-file curve; a frame swaps in its db
-  // on the same freq grid. spectrumCurveSVG returns '' if the curve is unusable.
-  const curve = isAvg ? spectrum.curve : { freqs: spectrum.curve.freqs, db: frames[selected].db };
+  // Redraw the AW-2 bars: average = spectrum.bands (same values the initial
+  // render used); a frame buckets its own db onto the whole-file freq grid.
+  const bandDb = isAvg ? bandDbFromSpectrum(spectrum)
+    : bandLevelsFromCurve({ freqs: spectrum.curve.freqs, db: frames[selected].db });
   const chart = document.getElementById('spectrum-chart');
   if (chart) {
     // Keep the ideal target overlaid (PRD 05) while scrubbing. The target stays
     // level-matched to the whole-file curve so it reads as a fixed reference the
-    // per-frame measured curve moves against.
+    // per-frame measured bars move against.
     const target = levelMatchedTarget(spectrum.curve, activeProfile(spectrum));
-    const svg = spectrumCurveSVG(curve, spectrum.spectralCentroid, target);
-    if (svg) chart.innerHTML = svg;
+    const targetBandDb = bandLevelsFromCurve({ freqs: spectrum.curve.freqs, db: target });
+    chart.innerHTML = eqBarsHTML(bandDb, targetBandDb);
   }
   const readout = document.getElementById('scrub-readout');
   if (readout) {
@@ -2272,14 +2353,7 @@ function veqArcSVG(curve, centroid, idx, wantPaths) {
 function veqChannelHTML(ch, idx) {
   const curve = liveBandCurve(ch.bands);
   const loudestIdx = veqLoudestIdx(curve.db);
-  const bars = VEQ_BANDS.map((b, i) => {
-    const v = veqBandView(curve.db[i]);
-    const cls = 'veq-bar' + (i === loudestIdx ? ' loud' : '') + (v.dim ? ' dim' : '');
-    return `<div class="${cls}" data-band="${b.key}" style="left:${b.left}%;width:${b.width}%;height:${v.pct.toFixed(2)}%;background:${b.color}"></div>`
-      + `<div class="veq-val${v.hot ? ' hot' : ''}${v.dim ? ' dim' : ''}" style="left:${b.center}%;bottom:${veqValBottom(v.pct)}%">${v.val}</div>`;
-  }).join('');
-  const labels = VEQ_BANDS.map((b, i) =>
-    `<span class="veq-label${i === loudestIdx ? ' loud' : ''}" style="left:${b.center}%">${b.label}</span>`).join('');
+  const { bars, labels } = veqBarsAndLabelsHTML(VEQ_BANDS, curve.db, loudestIdx);
   const displayName = stripLabel(channelConfig[idx], ch, idx);
   const collapsed = isStripCollapsed(idx);
   return `<div class="live-ch${collapsed ? ' collapsed' : ''}" data-ch="${idx}">

@@ -255,8 +255,8 @@ test.describe('Sound Buddy E2E', () => {
 
     // The report card is rendered…
     await expect(window.locator('#rc-content')).toBeVisible();
-    // …and the spectrum curve is still on screen beside it, not hidden.
-    await expect(window.locator('#spectrum-body svg.sb-spectrum-curve')).toBeVisible();
+    // …and the spectrum bars are still on screen beside it, not hidden.
+    await expect(window.locator('#spectrum-body .veq-bar').first()).toBeVisible();
     // The workspace was not swapped out (#177): it stays in the layout, and the
     // Source panel is collapsed to give the two views room.
     await expect(window.locator('#workspace')).toBeVisible();
@@ -264,20 +264,27 @@ test.describe('Sound Buddy E2E', () => {
     await expect(window.locator('#source-panel')).toBeHidden();
   });
 
-  test('spectrum panel renders the frequency-response curve', async () => {
+  test('spectrum panel renders uniform-width EQ bars (AW-2, #178)', async () => {
     await window.locator('.mode-tab[data-mode="file"]').click();
 
-    // The analyzer SVG with the gold curve path is present.
-    const svg = window.locator('#spectrum-body svg.sb-spectrum-curve');
-    await expect(svg).toBeVisible();
-    await expect(svg.locator('path.sb-curve-line')).toHaveCount(1);
+    // Seven upright bars, one per frequency band, laid out left (lowest) to right.
+    const bars = window.locator('#spectrum-chart .veq-bar');
+    await expect(bars).toHaveCount(7);
+    const boxes = await bars.evaluateAll(els => els.map(el => (el as HTMLElement).getBoundingClientRect()));
+    for (let i = 1; i < boxes.length; i++) expect(boxes[i].left).toBeGreaterThan(boxes[i - 1].left);
 
-    // Logarithmic frequency X axis labeled with decade markers.
-    const xLabels = await svg.locator('text.sb-x-label').allTextContents();
-    for (const l of ['20', '100', '1k', '10k']) expect(xLabels).toContain(l);
+    // Every bar has the same width.
+    const widths = boxes.map(b => Math.round(b.width));
+    for (const w of widths) expect(w).toBe(widths[0]);
 
-    // Vertical axis is labeled in dB (auto-ranged numeric ticks).
-    expect(await svg.locator('text.sb-y-label').count()).toBeGreaterThanOrEqual(1);
+    // Each bar keeps its existing per-band color (distinct across the 7 bands).
+    const colors = await bars.evaluateAll(els => els.map(el => getComputedStyle(el as HTMLElement).backgroundColor));
+    expect(new Set(colors).size).toBe(7);
+
+    // Band-name labels replace the old frequency-decade axis, low → high.
+    await expect(window.locator('#spectrum-chart .veq-label')).toHaveCount(7);
+    await expect(window.locator('#spectrum-chart .veq-label').first()).toHaveText('Sub Bass');
+    await expect(window.locator('#spectrum-chart .veq-label').last()).toHaveText('Brilliance');
 
     // The old horizontal band meters are no longer the file-view spectrum.
     await expect(window.locator('#spectrum-body .bm-track')).toHaveCount(0);
@@ -286,27 +293,46 @@ test.describe('Sound Buddy E2E', () => {
     await expect(window.locator('#spectrum-title')).toHaveText('Spectrum · Curve');
   });
 
-  test('time-sampled spectrogram scrubber redraws the PRD 02 curve', async () => {
+  test('EQ bar height reflects the measured band level', async () => {
     await window.locator('.mode-tab[data-mode="file"]').click();
 
-    // Heatmap strip under the curve: one column per frame (6 in the fixture).
+    // FAKE_ANALYSIS.spectrum.bands: mid (-16) is the loudest of the 7; brilliance
+    // (-35) is quieter but still above DIM_DB (-60), so nothing is dimmed here.
+    const mid = window.locator('#spectrum-chart .veq-bar[data-band="mid"]');
+    const brilliance = window.locator('#spectrum-chart .veq-bar[data-band="brilliance"]');
+    const midH = parseFloat(await mid.evaluate(el => (el as HTMLElement).style.height));
+    const brillianceH = parseFloat(await brilliance.evaluate(el => (el as HTMLElement).style.height));
+    expect(midH).toBeGreaterThan(brillianceH);
+    await expect(mid).toHaveClass(/loud/);
+    await expect(window.locator('#spectrum-chart .veq-bar.dim')).toHaveCount(0);
+  });
+
+  test('time-sampled spectrogram scrubber redraws the AW-2 bars', async () => {
+    await window.locator('.mode-tab[data-mode="file"]').click();
+
+    // Heatmap strip under the bars: one column per frame (6 in the fixture).
     await expect(window.locator('#spectrum-heatmap svg')).toBeVisible();
     await expect(window.locator('#spectrum-heatmap .hm-col')).toHaveCount(6);
     await expect(window.locator('#scrub-readout')).toHaveText('Whole-file average');
 
-    // Clicking a time column redraws the main curve for that frame.
-    const avgPath = await window.locator('#spectrum-chart path.sb-curve-line').getAttribute('d');
+    const barHeights = () => window.locator('#spectrum-chart .veq-bar')
+      .evaluateAll(els => els.map(el => (el as HTMLElement).style.height));
+
+    // Clicking a time column redraws the bars for that frame.
+    const avgHeights = await barHeights();
     await window.locator('#spectrum-heatmap').click({ position: { x: 20, y: 40 } });
     await expect(window.locator('#scrub-readout')).toContainText('t =');
     await expect(window.locator('#spectrum-heatmap .hm-col.sel')).toHaveCount(1);
-    const framePath = await window.locator('#spectrum-chart path.sb-curve-line').getAttribute('d');
-    expect(framePath).not.toBe(avgPath);
+    const frameHeights = await barHeights();
+    expect(frameHeights).not.toEqual(avgHeights);
+    // Still 7 uniform-width bars — the scrub redraw stays within AW-2's model.
+    await expect(window.locator('#spectrum-chart .veq-bar')).toHaveCount(7);
 
-    // "▶ Average" reset restores the whole-file curve exactly.
+    // "▶ Average" reset restores the whole-file bars exactly.
     await window.locator('#scrub-reset').click();
     await expect(window.locator('#scrub-readout')).toHaveText('Whole-file average');
     await expect(window.locator('#spectrum-heatmap .hm-col.sel')).toHaveCount(0);
-    expect(await window.locator('#spectrum-chart path.sb-curve-line').getAttribute('d')).toBe(avgPath);
+    expect(await barHeights()).toEqual(avgHeights);
   });
 
   test('scrubbed frame survives leaving and returning to the file tab', async () => {
@@ -326,8 +352,9 @@ test.describe('Sound Buddy E2E', () => {
     await expect(window.locator('#scrub-readout')).toHaveText('Whole-file average');
   });
 
-  test('missing spectrum curve degrades to band meters without error', async () => {
-    // Render a spectrum with no `curve` — the fallback path must not throw.
+  test('missing spectrum curve degrades to the same uniform-width bars without error', async () => {
+    // Render a spectrum with no `curve` — the fallback path must not throw, and
+    // (AW-2) must render the same bar visualization as the curve path.
     const errors: string[] = [];
     window.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
     await window.evaluate(() => {
@@ -336,7 +363,10 @@ test.describe('Sound Buddy E2E', () => {
         spectralCentroid: 1200,
       });
     });
-    await expect(window.locator('#spectrum-body .meter-card')).toBeVisible();
+    const bars = window.locator('#spectrum-chart .veq-bar');
+    await expect(bars).toHaveCount(7);
+    const widths = await bars.evaluateAll(els => els.map(el => Math.round((el as HTMLElement).getBoundingClientRect().width)));
+    for (const w of widths) expect(w).toBe(widths[0]);
     await expect(window.locator('#spectrum-body svg.sb-spectrum-curve')).toHaveCount(0);
     // Header falls back to the meters label so it matches the fallback view.
     await expect(window.locator('#spectrum-title')).toHaveText('Spectrum · Meters');
@@ -504,11 +534,9 @@ test.describe('Sound Buddy E2E', () => {
     await window.locator('.mode-tab[data-mode="reportcard"]').click();
     await window.locator('.mode-tab[data-mode="file"]').click();
 
-    // The dashed ideal target is overlaid on the analyzer curve.
-    const svg = window.locator('#spectrum-body svg.sb-spectrum-curve');
-    await expect(svg).toBeVisible();
-    await expect(svg.locator('path.sb-curve-line')).toHaveCount(1);
-    await expect(svg.locator('path.sb-target-line')).toHaveCount(1);
+    // The measured bars remain, with the dashed ideal target overlaid on top.
+    await expect(window.locator('#spectrum-chart .veq-bar')).toHaveCount(7);
+    await expect(window.locator('#spectrum-chart path.sb-target-line')).toHaveCount(1);
 
     // Speech content ⇒ the default target is the speech profile.
     await expect(window.locator('#ideal-profile-wrap')).toBeVisible();
