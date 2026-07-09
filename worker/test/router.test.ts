@@ -9,7 +9,9 @@ const env = {
   FROM_EMAIL: "hello@example.test",
   APP_ORIGIN: "https://example.test",
   STRIPE_WEBHOOK_SECRET: "whsec_test_dummy",
+  STRIPE_SECRET_KEY: "sk_test_dummy",
   LICENSE_SIGNING_PRIVATE_KEY: "",
+  LICENSE_SIGNING_KID: "test-kid",
 } satisfies Env;
 
 // Cloudflare passes an ExecutionContext; the scaffold never uses it.

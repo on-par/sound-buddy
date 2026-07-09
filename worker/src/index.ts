@@ -29,11 +29,25 @@ export interface Env {
   /** Stripe webhook signing secret `whsec_…` (secret; `wrangler secret put`). */
   STRIPE_WEBHOOK_SECRET: string;
   /**
+   * Stripe REST API key `sk_…` / `rk_…` (secret; H4, `wrangler secret put`).
+   * Used by the `invoice.paid` handler (#110) to expand the customer /
+   * subscription when the webhook payload lacks an email or period end. Never
+   * logged.
+   */
+  STRIPE_SECRET_KEY: string;
+  /**
    * Ed25519 license signing key, pkcs8 PEM (secret; H3/H4, `wrangler secret
    * put`). Imported non-extractable via `importSigningKey` (#109); the PEM must
    * not be referenced after import and is never logged.
    */
   LICENSE_SIGNING_PRIVATE_KEY: string;
+  /**
+   * Signing-key id stamped into every minted key's `kid` claim (#109). Purely
+   * informational — the app verifies against its embedded public key and never
+   * gates on `kid` — but stable so keys can be traced to a signing key and a
+   * future rotation stays auditable. Non-secret; set in wrangler `vars`.
+   */
+  LICENSE_SIGNING_KID: string;
 }
 
 type RouteHandler = (

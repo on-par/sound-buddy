@@ -13,6 +13,7 @@
 import Stripe from "stripe";
 import type { Env } from "./index";
 import { json } from "./http";
+import { handleInvoicePaid } from "./handlers/invoice-paid";
 
 /**
  * KV marker TTL for processed events. Stripe retries a webhook for up to ~3
@@ -44,12 +45,18 @@ export type EventHandler = (
 ) => Promise<void> | void;
 
 /**
- * Dispatch table keyed by Stripe event type. Empty for now — #110/#111/#118/#119
- * register their handlers here. An event whose type has no handler is a
- * deliberate no-op: this endpoint receives event types it does not care about,
+ * Dispatch table keyed by Stripe event type. #111/#118/#119 register their
+ * handlers here alongside `invoice.paid`. An event whose type has no handler is
+ * a deliberate no-op: this endpoint receives event types it does not care about,
  * and acknowledging them (200) is correct so Stripe stops retrying.
+ *
+ * Note `checkout.session.completed` is intentionally absent — subscription
+ * minting is owned solely by `invoice.paid` (#110); minting on the checkout
+ * event too would double-mint the initial period.
  */
-export const eventHandlers: Record<string, EventHandler> = {};
+export const eventHandlers: Record<string, EventHandler> = {
+  "invoice.paid": handleInvoicePaid,
+};
 
 interface WebhookDeps {
   /** Dispatch table; injectable so tests can observe handler invocation. */
