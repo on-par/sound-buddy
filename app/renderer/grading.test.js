@@ -143,6 +143,134 @@ describe('computeGrade', () => {
   });
 });
 
+describe('explainGrade (#133)', () => {
+  // The per-deduction breakdown behind the letter. Its invariant: the deductions
+  // returned are exactly the rules computeGrade deducted for — same guards, same
+  // order — so these tests double as a cross-check that the two never diverge.
+
+  it('lists exactly the two rules that fired — RMS and DR — and nothing else', () => {
+    const src = makeSrc({ rms: -22, dynamicRange: 4 });
+    const { grade, clipping, deductions } = grading.explainGrade(src);
+    expect(grade).toBe('C'); // two drops from A
+    expect(clipping).toBe(false);
+    expect(deductions).toEqual([
+      { rule: 'RMS out of band', measured: '-22.0 dBFS', target: '-20 to -14 dBFS', letterImpact: 'Drops one letter' },
+      { rule: 'Dynamic range too low', measured: '4.0 dB', target: '≥ 6 dB', letterImpact: 'Drops one letter' },
+    ]);
+  });
+
+  it('states clipping forced an automatic F, with only the clipping deduction', () => {
+    // Clipping short-circuits (like computeGrade), so no other rule is evaluated.
+    const { grade, clipping, deductions } = grading.explainGrade(
+      makeSrc({ clipping: true, rms: -40, dynamicRange: 1 }),
+    );
+    expect(grade).toBe('F');
+    expect(clipping).toBe(true);
+    expect(deductions).toEqual([
+      { rule: 'Clipping', measured: 'Clipping detected', target: 'No clipping', letterImpact: 'Automatic F' },
+    ]);
+  });
+
+  it('returns an empty deduction list for a clean recording (the "no deductions" state)', () => {
+    const { grade, clipping, deductions } = grading.explainGrade(makeSrc());
+    expect(grade).toBe('A');
+    expect(clipping).toBe(false);
+    expect(deductions).toEqual([]);
+  });
+
+  it('reports a band imbalance with the worst offender\'s diff and the severe target', () => {
+    const bands = { ...flatBands(-30), mid: -8 }; // mid diff = +22
+    const { deductions } = grading.explainGrade(makeSrc({ bands }));
+    expect(deductions).toEqual([
+      { rule: 'Band imbalance', measured: '+22.0 dB', target: '≤ +15 dB vs. other bands', letterImpact: 'Drops one letter' },
+    ]);
+  });
+
+  it('exempts RMS on a dynamic service — no RMS deduction despite out-of-band RMS', () => {
+    const src = makeSrc({ contentType: 'music', peak: -8, dynamicRange: 20, rms: -30 });
+    expect(grading.analyzeRecordingType(src).type).toBe('dynamic_service');
+    const { grade, deductions } = grading.explainGrade(src);
+    expect(grade).toBe('A');
+    expect(deductions).toEqual([]);
+  });
+
+  describe('low_gain path (own rule set)', () => {
+    it('ignores RMS and shows no deduction for a well-balanced low-gain take', () => {
+      const src = makeSrc({ peak: -10, rms: -33, dynamicRange: 20, contentType: 'speech' });
+      expect(grading.analyzeRecordingType(src).type).toBe('low_gain');
+      const { grade, deductions } = grading.explainGrade(src);
+      expect(grade).toBe('A');
+      expect(deductions).toEqual([]);
+    });
+
+    it('uses the relaxed DR floor (≥ 3 dB) for a compressed low-gain take', () => {
+      const src = makeSrc({ peak: -20, rms: -40, dynamicRange: 2 });
+      expect(grading.analyzeRecordingType(src).type).toBe('low_gain');
+      const { grade, deductions } = grading.explainGrade(src);
+      expect(grade).toBe('B');
+      expect(deductions).toEqual([
+        { rule: 'Dynamic range too low', measured: '2.0 dB', target: '≥ 3 dB', letterImpact: 'Drops one letter' },
+      ]);
+    });
+  });
+
+  it('omits the DR rule entirely when dynamic range is null', () => {
+    const { grade, deductions } = grading.explainGrade(makeSrc({ dynamicRange: null }));
+    expect(grade).toBe('A');
+    expect(deductions).toEqual([]);
+  });
+
+  it('is deterministic — same input yields the same ordered list every call', () => {
+    const src = makeSrc({ rms: -22, dynamicRange: 4, bands: { ...flatBands(-30), mid: -8 } });
+    const a = grading.explainGrade(src);
+    const b = grading.explainGrade(src);
+    expect(a).toEqual(b);
+    // Fixed order: RMS, then DR, then band imbalance.
+    expect(a.deductions.map(d => d.rule)).toEqual([
+      'RMS out of band', 'Dynamic range too low', 'Band imbalance',
+    ]);
+  });
+
+  it('agrees with computeGrade across the rule matrix (deduction count vs. letters dropped)', () => {
+    const letters = ['A', 'B', 'C', 'D', 'F'];
+    const cases = [
+      {},
+      { rms: -22 },
+      { rms: -13 },
+      { dynamicRange: 4 },
+      { rms: -22, dynamicRange: 4 },
+      { bands: { ...flatBands(-30), mid: -8 } },
+      { dynamicRange: null },
+      { contentType: 'music', peak: -8, dynamicRange: 20, rms: -30 },
+      { peak: -20, rms: -40, dynamicRange: 2 },
+    ];
+    for (const over of cases) {
+      const src = makeSrc(over);
+      const { grade, deductions } = grading.explainGrade(src);
+      expect(grade).toBe(grading.computeGrade(src));
+      // Each non-clipping deduction drops exactly one letter from A.
+      expect(letters.indexOf(grade)).toBe(deductions.length);
+    }
+  });
+
+  it('reads targets from CONFIG — moving a threshold moves the reason shown', () => {
+    const src = makeSrc({ rms: -15 }); // in the default band → no RMS deduction
+    expect(grading.explainGrade(src).deductions).toEqual([]);
+
+    const original = grading.CONFIG.rms.acceptableMax;
+    grading.CONFIG.rms.acceptableMax = -16; // now -15 is above the band
+    try {
+      const { deductions } = grading.explainGrade(src);
+      expect(deductions).toEqual([
+        { rule: 'RMS out of band', measured: '-15.0 dBFS', target: '-20 to -16 dBFS', letterImpact: 'Drops one letter' },
+      ]);
+    } finally {
+      grading.CONFIG.rms.acceptableMax = original;
+    }
+    expect(grading.explainGrade(src).deductions).toEqual([]);
+  });
+});
+
 describe('computeScore', () => {
   const BANDS = { A: [90, 99], B: [80, 89], C: [70, 79], D: [60, 69], F: [38, 55] };
 

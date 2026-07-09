@@ -98,6 +98,86 @@
     return letters[idx];
   }
 
+  // #133 — the per-deduction breakdown behind the letter grade. explainGrade
+  // walks the EXACT same rules as computeGrade, in the same order, and records
+  // one entry per rule that fired: the rule, the measured value, the config
+  // target it missed, and its impact on the letter. This is the data the report
+  // card's "Why this grade" section renders, turning an opaque letter into an
+  // auditable list. Invariant: the deductions returned here are precisely the
+  // rules computeGrade deducted for — same guards, same order — so the breakdown
+  // can never claim a deduction the grade didn't take (or omit one it did).
+  // Every target string is read from CONFIG (single source, #131), so moving a
+  // threshold moves both the grade and the reason shown for it. Returns
+  // { grade, clipping, deductions } where deductions is a deterministic list for
+  // a fixed input; an empty list is the honest "no deductions" (clean) state.
+  function explainGrade(src) {
+    // Clipping short-circuits to an automatic F with a single clipping
+    // deduction — mirroring computeGrade's src.clipping early return, which
+    // never evaluates the other rules. The breakdown reflects that exactly.
+    if (src.clipping) {
+      return {
+        grade: 'F',
+        clipping: true,
+        deductions: [{
+          rule: 'Clipping',
+          measured: 'Clipping detected',
+          target: 'No clipping',
+          letterImpact: 'Automatic F',
+        }],
+      };
+    }
+
+    const deductions = [];
+    const recType = analyzeRecordingType(src);
+    const maxBandDiff = Object.keys(src.bands).reduce(
+      (m, k) => Math.max(m, bandDiffFromOthers(src.bands, k)), 0,
+    );
+    const bandImbalanceDeduction = () => ({
+      rule: 'Band imbalance',
+      measured: '+' + maxBandDiff.toFixed(1) + ' dB',
+      target: '≤ +' + CONFIG.bandBalance.severeHotDiff + ' dB vs. other bands',
+      letterImpact: 'Drops one letter',
+    });
+
+    if (recType.type === 'low_gain') {
+      // Low-gain takes carry their own rule set (RMS ignored, DR floor relaxed
+      // to the "check" threshold), matching computeGrade's low_gain branch.
+      if (src.dynamicRange != null && src.dynamicRange < CONFIG.dynamicRange.check) {
+        deductions.push({
+          rule: 'Dynamic range too low',
+          measured: src.dynamicRange.toFixed(1) + ' dB',
+          target: '≥ ' + CONFIG.dynamicRange.check + ' dB',
+          letterImpact: 'Drops one letter',
+        });
+      }
+      if (maxBandDiff > CONFIG.bandBalance.severeHotDiff) deductions.push(bandImbalanceDeduction());
+      return { grade: computeGrade(src), clipping: false, deductions };
+    }
+
+    // Dynamic-service recordings are RMS-exempt (a quiet whole-file RMS is
+    // expected when peaks are healthy), matching computeGrade's rmsExempt.
+    const rmsExempt = recType.type === 'dynamic_service';
+    if (!rmsExempt && (src.rms < CONFIG.rms.acceptableMin || src.rms > CONFIG.rms.acceptableMax)) {
+      deductions.push({
+        rule: 'RMS out of band',
+        measured: src.rms.toFixed(1) + ' dBFS',
+        target: rcMetricTarget('rms'),
+        letterImpact: 'Drops one letter',
+      });
+    }
+    if (src.dynamicRange != null && src.dynamicRange < CONFIG.dynamicRange.good) {
+      deductions.push({
+        rule: 'Dynamic range too low',
+        measured: src.dynamicRange.toFixed(1) + ' dB',
+        target: '≥ ' + CONFIG.dynamicRange.good + ' dB',
+        letterImpact: 'Drops one letter',
+      });
+    }
+    if (maxBandDiff > CONFIG.bandBalance.severeHotDiff) deductions.push(bandImbalanceDeduction());
+
+    return { grade: computeGrade(src), clipping: false, deductions };
+  }
+
   // Ring arc score, kept within the letter grade's band so the two agree.
   function computeScore(src) {
     const grade = computeGrade(src);
@@ -200,6 +280,7 @@
     bandDiffFromOthers: bandDiffFromOthers,
     analyzeRecordingType: analyzeRecordingType,
     computeGrade: computeGrade,
+    explainGrade: explainGrade,
     computeScore: computeScore,
     computeRecommendations: computeRecommendations,
     rcRmsStatus: rcRmsStatus,
