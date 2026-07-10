@@ -15,6 +15,7 @@ import type { Env } from "./index";
 import { json } from "./http";
 import { handleCheckoutCompleted } from "./handlers/checkout-completed";
 import { handleInvoicePaid } from "./handlers/invoice-paid";
+import { handleInvoicePaymentFailed } from "./handlers/invoice-payment-failed";
 
 /**
  * KV marker TTL for processed events. Stripe retries a webhook for up to ~3
@@ -53,6 +54,7 @@ export type EventHandler = (
  */
 export const eventHandlers: Record<string, EventHandler> = {
   "invoice.paid": handleInvoicePaid,
+  "invoice.payment_failed": handleInvoicePaymentFailed,
   "checkout.session.completed": handleCheckoutCompleted,
   "checkout.session.async_payment_succeeded": handleCheckoutCompleted,
 };
