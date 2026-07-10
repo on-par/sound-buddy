@@ -1,0 +1,233 @@
+[
+  {
+    "name": "clean pass (A)",
+    "case": "clean_pass_a",
+    "source": {
+      "rms": -17,
+      "peak": -6,
+      "dynamicRange": 10,
+      "clipping": false,
+      "centroid": 2000,
+      "contentType": null,
+      "bands": {
+        "subBass": -30,
+        "bass": -30,
+        "lowMid": -30,
+        "mid": -30,
+        "highMid": -30,
+        "presence": -30,
+        "brilliance": -30
+      }
+    },
+    "expected": {
+      "grade": "A",
+      "score": 99,
+      "recommendations": ["Great job! No major issues detected — levels and balance are solid."],
+      "deductions": [],
+      "notMeasured": []
+    }
+  },
+  {
+    "name": "clipping (F)",
+    "case": "clipping_f",
+    "source": {
+      "rms": -17,
+      "peak": -6,
+      "dynamicRange": 10,
+      "clipping": true,
+      "centroid": 2000,
+      "contentType": null,
+      "bands": {
+        "subBass": -30,
+        "bass": -30,
+        "lowMid": -30,
+        "mid": -30,
+        "highMid": -30,
+        "presence": -30,
+        "brilliance": -30
+      }
+    },
+    "expected": {
+      "grade": "F",
+      "score": 55,
+      "recommendations": ["CRITICAL: Clipping detected. Reduce input gain immediately."],
+      "deductions": [
+        {
+          "rule": "Clipping",
+          "measured": "Clipping detected",
+          "target": "No clipping",
+          "letterImpact": "Automatic F"
+        }
+      ],
+      "notMeasured": []
+    }
+  },
+  {
+    "name": "RMS out-of-band drop",
+    "case": "rms_out_of_band_drop",
+    "source": {
+      "rms": -22,
+      "peak": -6,
+      "dynamicRange": 10,
+      "clipping": false,
+      "centroid": 2000,
+      "contentType": null,
+      "bands": {
+        "subBass": -30,
+        "bass": -30,
+        "lowMid": -30,
+        "mid": -30,
+        "highMid": -30,
+        "presence": -30,
+        "brilliance": -30
+      }
+    },
+    "expected": {
+      "grade": "B",
+      "score": 89,
+      "recommendations": ["Great job! No major issues detected — levels and balance are solid."],
+      "deductions": [
+        {
+          "rule": "RMS out of band",
+          "measured": "-22.0 dBFS",
+          "target": "-20 to -14 dBFS",
+          "letterImpact": "Drops one letter"
+        }
+      ],
+      "notMeasured": []
+    }
+  },
+  {
+    "name": "dynamic range too low drop",
+    "case": "dynamic_range_too_low_drop",
+    "source": {
+      "rms": -17,
+      "peak": -6,
+      "dynamicRange": 4,
+      "clipping": false,
+      "centroid": 2000,
+      "contentType": null,
+      "bands": {
+        "subBass": -30,
+        "bass": -30,
+        "lowMid": -30,
+        "mid": -30,
+        "highMid": -30,
+        "presence": -30,
+        "brilliance": -30
+      }
+    },
+    "expected": {
+      "grade": "B",
+      "score": 89,
+      "recommendations": ["Great job! No major issues detected — levels and balance are solid."],
+      "deductions": [
+        {
+          "rule": "Dynamic range too low",
+          "measured": "4.0 dB",
+          "target": "≥ 6 dB",
+          "letterImpact": "Drops one letter"
+        }
+      ],
+      "notMeasured": []
+    }
+  },
+  {
+    "name": "band imbalance drop",
+    "case": "band_imbalance_drop",
+    "source": {
+      "rms": -17,
+      "peak": -6,
+      "dynamicRange": 10,
+      "clipping": false,
+      "centroid": 2000,
+      "contentType": null,
+      "bands": {
+        "subBass": -30,
+        "bass": -30,
+        "lowMid": -30,
+        "mid": -8,
+        "highMid": -30,
+        "presence": -30,
+        "brilliance": -30
+      }
+    },
+    "expected": {
+      "grade": "B",
+      "score": 86,
+      "recommendations": ["Too much energy in Mid (500Hz-2kHz). Cut 10.0 dB around this range."],
+      "deductions": [
+        {
+          "rule": "Band imbalance",
+          "measured": "+22.0 dB",
+          "target": "≤ +15 dB vs. other bands",
+          "letterImpact": "Drops one letter"
+        }
+      ],
+      "notMeasured": []
+    }
+  },
+  {
+    "name": "low gain path",
+    "case": "low_gain_path",
+    "source": {
+      "rms": -33,
+      "peak": -10,
+      "dynamicRange": 20,
+      "clipping": false,
+      "centroid": 2000,
+      "contentType": "speech",
+      "bands": {
+        "subBass": -30,
+        "bass": -30,
+        "lowMid": -30,
+        "mid": -30,
+        "highMid": -30,
+        "presence": -30,
+        "brilliance": -30
+      }
+    },
+    "expected": {
+      "grade": "A",
+      "score": 99,
+      "recommendations": ["Mix is fine but USB record level is low. Raise console USB output toward -18 dBFS RMS."],
+      "deductions": [],
+      "notMeasured": []
+    }
+  },
+  {
+    "name": "dynamic range null live",
+    "case": "dynamic_range_null_live",
+    "source": {
+      "rms": -17,
+      "peak": -6,
+      "dynamicRange": null,
+      "clipping": false,
+      "centroid": 2000,
+      "contentType": null,
+      "bands": {
+        "subBass": -30,
+        "bass": -30,
+        "lowMid": -30,
+        "mid": -30,
+        "highMid": -30,
+        "presence": -30,
+        "brilliance": -30
+      }
+    },
+    "expected": {
+      "grade": "A",
+      "score": 99,
+      "recommendations": ["Great job! No major issues detected — levels and balance are solid."],
+      "deductions": [],
+      "notMeasured": [
+        {
+          "rule": "Dynamic range",
+          "measured": "Not measured",
+          "note": "Live capture — dynamic range needs a finished file",
+          "letterImpact": "Rule skipped — graded on fewer metrics"
+        }
+      ]
+    }
+  }
+]
