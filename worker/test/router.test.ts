@@ -35,16 +35,14 @@ describe("worker router", () => {
     expect(res.status).toBe(404);
   });
 
-  it("declared-but-unimplemented routes are reachable (501, not 404)", async () => {
-    // /api/stripe/webhook is now implemented (#108); its behaviour is covered in
-    // webhook.test.ts. The remaining placeholders still answer 501.
-    for (const [method, path] of [
-      ["GET", "/api/license"],
-      ["GET", "/activate"],
-    ] as const) {
-      const res = await call(method, path);
-      expect(res.status, `${method} ${path}`).toBe(501);
-    }
+  it("GET /activate (no session_id) is reachable and returns HTML", async () => {
+    // /api/stripe/webhook (#108), /api/license and /activate (#112) are now
+    // implemented; their behaviour is covered in webhook.test.ts,
+    // license.test.ts and activate.test.ts respectively. This is just a smoke
+    // check that the route is wired.
+    const res = await call("GET", "/activate");
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toBe("text/html; charset=utf-8");
   });
 
   it("wrong method on a known path is 405 with an Allow header", async () => {

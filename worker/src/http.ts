@@ -12,3 +12,14 @@ export const json = (
     status,
     headers: { "content-type": "application/json; charset=utf-8", ...headers },
   });
+
+/** HTML response with the standard content-type and optional extra headers. */
+export const html = (
+  body: string,
+  status = 200,
+  headers: Record<string, string> = {},
+): Response =>
+  new Response(body, {
+    status,
+    headers: { "content-type": "text/html; charset=utf-8", ...headers },
+  });
