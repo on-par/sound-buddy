@@ -9,6 +9,9 @@ on:
 jobs:
   ci:
     runs-on: ubuntu-latest
+    # Historical runs finish in ~3 min; this bounds a stuck step (e.g. an apt
+    # mirror stall) so it fails fast instead of hanging for hours unnoticed.
+    timeout-minutes: 12
     steps:
       - uses: actions/checkout@v4
 
@@ -43,10 +46,20 @@ jobs:
       # spectrum + drift-guard tests run spectrum.py via librosa. Without these
       # the tests skip; with them they execute and assert real numbers in CI.
       # librosa is pinned so the fixture band values stay stable across runs.
-      - name: Install media + Python analysis tools
+      #
+      # sox/ffmpeg are cached (~30 transitive codec packages) — an apt mirror
+      # stall once left this step hanging for 15+ min on a cache miss; the
+      # timeout below now fails it fast instead.
+      - name: Install media tools (sox, ffmpeg)
+        uses: awalsh128/cache-apt-pkgs-action@553a35bb8ebd9fcabcb1c9451aa4c98e1b4ca8a9 # v1.6.3
+        timeout-minutes: 6
+        with:
+          packages: sox ffmpeg
+          version: 1.0
+
+      - name: Install Python analysis tools
+        timeout-minutes: 4
         run: |
-          sudo apt-get update
-          sudo apt-get install -y sox ffmpeg
           python -m pip install --upgrade pip
           pip install numpy scipy soundfile "librosa==0.11.0"
 
@@ -167,6 +180,7 @@ jobs:
   # smoke (guards the footer legal links and download URL).
   site:
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     defaults:
       run:
         working-directory: site
@@ -193,6 +207,7 @@ jobs:
   # before this job's own `npm ci` resolves it.
   worker:
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     defaults:
       run:
         working-directory: worker
