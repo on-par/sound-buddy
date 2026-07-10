@@ -12,6 +12,7 @@ const env = {
   STRIPE_SECRET_KEY: "sk_test_dummy",
   LICENSE_SIGNING_PRIVATE_KEY: "",
   LICENSE_SIGNING_KID: "test-kid",
+  LICENSE_PUBLIC_KEY: "",
 } satisfies Env;
 
 // Cloudflare passes an ExecutionContext; the scaffold never uses it.

@@ -16,6 +16,8 @@
   "routes": [
     { "pattern": "soundbuddy.online/api/stripe/*", "zone_name": "soundbuddy.online" },
     { "pattern": "soundbuddy.online/api/license", "zone_name": "soundbuddy.online" },
+    // Sub-path of /api/license — the exact-match pattern above does NOT cover it.
+    { "pattern": "soundbuddy.online/api/license/refresh", "zone_name": "soundbuddy.online" },
     { "pattern": "soundbuddy.online/activate", "zone_name": "soundbuddy.online" }
   ],
 
@@ -38,6 +40,11 @@
     // Informational only — the app verifies against its embedded public key and
     // never gates on `kid` — so this value can change on a key rotation without
     // invalidating already-issued keys. Bump when the signing key rotates.
-    "LICENSE_SIGNING_KID": "sb-sign-2026-07"
+    "LICENSE_SIGNING_KID": "sb-sign-2026-07",
+    // Ed25519 license verify key, spki PEM (#113) — the public counterpart of
+    // LICENSE_SIGNING_PRIVATE_KEY, mirroring the key embedded in the app. Public
+    // keys are not secret, so this is a var, not `wrangler secret put`. The real
+    // deploy-time value is wired out-of-band (H4); build/test never deploy.
+    "LICENSE_PUBLIC_KEY": "REPLACE_WITH_LICENSE_PUBLIC_KEY_SPKI_PEM"
   }
 }
