@@ -47,6 +47,22 @@
     return (groups || []).concat([{ name: name, members: [] }]);
   }
 
+  /**
+   * Drop group g entirely. Its members simply become ungrouped — membership is
+   * keyed by absence, so no strip index or channelConfig entry is touched.
+   * Returns a NEW array.
+   */
+  function removeGroup(groups, g) {
+    return (groups || []).filter(function (_grp, i) { return i !== g; });
+  }
+
+  /** Rename group g, leaving its members untouched. Returns a NEW array. */
+  function renameGroup(groups, g, name) {
+    return (groups || []).map(function (grp, i) {
+      return i === g ? { name: name, members: (grp.members || []).slice() } : grp;
+    });
+  }
+
   /** Strip indices to render in the ungrouped section, in order, for a strip count. */
   function ungrouped(groups, count) {
     var out = [];
@@ -54,7 +70,7 @@
     return out;
   }
 
-  var api = { groupOf: groupOf, assign: assign, pruneStrip: pruneStrip, addGroup: addGroup, ungrouped: ungrouped };
+  var api = { groupOf: groupOf, assign: assign, pruneStrip: pruneStrip, addGroup: addGroup, removeGroup: removeGroup, renameGroup: renameGroup, ungrouped: ungrouped };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.groupState = api;
 })(typeof globalThis !== 'undefined' ? globalThis : this);
