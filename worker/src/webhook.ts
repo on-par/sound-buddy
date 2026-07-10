@@ -13,9 +13,11 @@
 import Stripe from "stripe";
 import type { Env } from "./index";
 import { json } from "./http";
+import { handleChargeRefunded } from "./handlers/charge-refunded";
 import { handleCheckoutCompleted } from "./handlers/checkout-completed";
 import { handleInvoicePaid } from "./handlers/invoice-paid";
 import { handleInvoicePaymentFailed } from "./handlers/invoice-payment-failed";
+import { handleSubscriptionDeleted } from "./handlers/subscription-deleted";
 
 /**
  * KV marker TTL for processed events. Stripe retries a webhook for up to ~3
@@ -53,6 +55,8 @@ export type EventHandler = (
  * sole subscription mint path, so the initial period cannot double-mint.
  */
 export const eventHandlers: Record<string, EventHandler> = {
+  "charge.refunded": handleChargeRefunded,
+  "customer.subscription.deleted": handleSubscriptionDeleted,
   "invoice.paid": handleInvoicePaid,
   "invoice.payment_failed": handleInvoicePaymentFailed,
   "checkout.session.completed": handleCheckoutCompleted,
