@@ -33,10 +33,13 @@ function makeEnv(kv: KVNamespace): Env {
     LICENSE_KV: kv,
     FOUNDING_CAP: "300",
     FROM_EMAIL: "hello@example.test",
+    SUPPORT_EMAIL: "support@example.test",
+    CUSTOMER_PORTAL_URL: "https://portal.example.test",
     APP_ORIGIN: "https://example.test",
     STRIPE_WEBHOOK_SECRET: WEBHOOK_SECRET,
     STRIPE_SECRET_KEY: "sk_test_unused",
     LICENSE_SIGNING_PRIVATE_KEY: "",
+    RESEND_API_KEY: "re_test_unused",
     LICENSE_SIGNING_KID: "test-kid",
     LICENSE_PUBLIC_KEY: "",
   } satisfies Env;

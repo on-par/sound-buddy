@@ -11,8 +11,8 @@ header required.
 ## Status
 
 Scaffold (#107), the Stripe webhook (#108), founding + subscription minting
-(#110/#111), and the sign-on-demand license fetch + activation page (#112) are
-all implemented.
+(#110/#111), the sign-on-demand license fetch + activation page (#112), and
+best-effort license email delivery (#114) are all implemented.
 
 ## Routes
 
@@ -75,11 +75,16 @@ fallback directly.
   `/activate`.
 - **KV** `LICENSE_KV` — namespace id is set out-of-band (H4); the checked-in
   value is a placeholder.
-- **Vars** `FOUNDING_CAP`, `FROM_EMAIL`, `APP_ORIGIN`.
+- **Vars** `FOUNDING_CAP`, `FROM_EMAIL`, `SUPPORT_EMAIL`,
+  `CUSTOMER_PORTAL_URL`, `APP_ORIGIN`.
 
 **Secrets** (`STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`,
 `LICENSE_SIGNING_PRIVATE_KEY`, `RESEND_API_KEY`) are **never** stored in this
 repo — they are provisioned with `wrangler secret put` (H4).
+
+Subscription and founding mints email the key via Resend after the key is
+stored. Delivery is best-effort: a send failure is logged and never fails the
+webhook; `/activate` remains the redundant key-delivery path.
 
 ### Security note (normative)
 

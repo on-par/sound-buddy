@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { generateKeyPairSync } from "node:crypto";
 import Stripe from "stripe";
 import {
@@ -32,10 +32,13 @@ function makeEnv(kv: KVNamespace): Env {
     LICENSE_KV: kv,
     FOUNDING_CAP: "300",
     FROM_EMAIL: "hello@example.test",
+    SUPPORT_EMAIL: "support@example.test",
+    CUSTOMER_PORTAL_URL: "https://portal.example.test",
     APP_ORIGIN: "https://example.test",
     STRIPE_WEBHOOK_SECRET: "whsec_unused",
     STRIPE_SECRET_KEY: "sk_test_unused",
     LICENSE_SIGNING_PRIVATE_KEY: PKCS8_PEM,
+    RESEND_API_KEY: "re_test_unused",
     LICENSE_SIGNING_KID: "test-kid",
     LICENSE_PUBLIC_KEY: "",
   } satisfies Env;
@@ -45,6 +48,14 @@ const ctx = {
   waitUntil: () => {},
   passThroughOnException: () => {},
 } as unknown as ExecutionContext;
+
+beforeEach(() => {
+  vi.stubGlobal("fetch", vi.fn(async () => ({ ok: true, status: 200 })));
+});
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
 
 interface CheckoutOverrides {
   type?: "checkout.session.completed" | "checkout.session.async_payment_succeeded";
@@ -111,6 +122,39 @@ describe("checkout completed handler (#111)", () => {
     expect(record.kind).toBe("lifetime");
     expect(record.email).toBe("a@b.c");
     expect(record.latestKeyHash).toMatch(/^[0-9a-f]{64}$/);
+    expectNoSignedKeyInKv(store);
+  });
+
+  it("Scenario: founding mint triggers a key email", async () => {
+    const { kv, store } = makeKv();
+    const env = makeEnv(kv);
+    const sendEmail = vi.fn(async () => ({ ok: true }));
+
+    await handleCheckoutCompleted(
+      checkoutEvent("evt_founder_email", {
+        mode: "payment",
+        paymentStatus: "paid",
+        email: "founder@example.test",
+        sessionId: "cs_founder_email",
+      }),
+      env,
+      ctx,
+      { sendEmail },
+    );
+
+    expect(sendEmail).toHaveBeenCalledTimes(1);
+    const [calledEnv, params] = sendEmail.mock.calls[0] as unknown as Parameters<
+      NonNullable<CheckoutCompletedDeps["sendEmail"]>
+    >;
+    expect(calledEnv).toBe(env);
+    expect(params).toMatchObject({
+      to: "founder@example.test",
+      kind: "lifetime",
+    });
+    expect(params.key).toMatch(/^SB1\./);
+    expect(readSessionRecord(store, "cs_founder_email").latestKeyHash).toMatch(
+      /^[0-9a-f]{64}$/,
+    );
     expectNoSignedKeyInKv(store);
   });
 
@@ -296,6 +340,44 @@ describe("checkout completed idempotency through the webhook (#111)", () => {
       minted.latestKeyHash,
     );
     expect([...store.keys()].filter((k) => k.startsWith("sess:"))).toHaveLength(1);
+    expectNoSignedKeyInKv(store);
+  });
+
+  it("Scenario: email failure does not fail the webhook", async () => {
+    const { kv, store } = makeKv();
+    const env = { ...makeEnv(kv), STRIPE_WEBHOOK_SECRET: WEBHOOK_SECRET };
+    const sendEmail = vi.fn(async () => {
+      throw new Error("resend down");
+    });
+
+    const body = JSON.stringify(
+      checkoutEvent("evt_checkout_email_failure", {
+        type: "checkout.session.completed",
+        sessionId: "cs_email_failure",
+      }),
+    );
+    const signature = signer.webhooks.generateTestHeaderString({
+      payload: body,
+      secret: WEBHOOK_SECRET,
+    });
+    const post = () =>
+      new Request("https://sound-buddy-api.test/api/stripe/webhook", {
+        method: "POST",
+        body,
+        headers: { "stripe-signature": signature },
+      });
+
+    const res = await handleStripeWebhook(post(), env, ctx, {
+      handlers: {
+        "checkout.session.completed": (event, handlerEnv, handlerCtx) =>
+          handleCheckoutCompleted(event, handlerEnv, handlerCtx, { sendEmail }),
+      },
+    });
+
+    expect(res.status).toBe(200);
+    expect(sendEmail).toHaveBeenCalledTimes(1);
+    const record = readSessionRecord(store, "cs_email_failure");
+    expect(record.latestKeyHash).toMatch(/^[0-9a-f]{64}$/);
     expectNoSignedKeyInKv(store);
   });
 });

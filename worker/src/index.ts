@@ -27,6 +27,10 @@ export interface Env {
   FOUNDING_CAP: string;
   /** Transactional email sender address. */
   FROM_EMAIL: string;
+  /** Support contact shown in transactional email. */
+  SUPPORT_EMAIL: string;
+  /** Stripe Customer Portal login URL shown in transactional email. */
+  CUSTOMER_PORTAL_URL: string;
   /** Desktop app activation origin. */
   APP_ORIGIN: string;
   /** Stripe webhook signing secret `whsec_…` (secret; `wrangler secret put`). */
@@ -44,6 +48,8 @@ export interface Env {
    * not be referenced after import and is never logged.
    */
   LICENSE_SIGNING_PRIVATE_KEY: string;
+  /** Resend API key for transactional license email (secret; `wrangler secret put`). */
+  RESEND_API_KEY: string;
   /**
    * Signing-key id stamped into every minted key's `kid` claim (#109). Purely
    * informational — the app verifies against its embedded public key and never

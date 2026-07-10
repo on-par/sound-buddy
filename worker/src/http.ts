@@ -23,3 +23,14 @@ export const html = (
     status,
     headers: { "content-type": "text/html; charset=utf-8", ...headers },
   });
+
+/** Escape the five HTML-significant characters — safe for both attribute and
+ * text-node contexts. */
+export function escapeHtml(input: string): string {
+  return input
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
