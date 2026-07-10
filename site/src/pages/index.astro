@@ -1,6 +1,10 @@
 ---
 import Layout from '../layouts/Layout.astro';
 import ReportCard from '../components/ReportCard.astro';
+import { Image } from 'astro:assets';
+import reportCardShot from '../assets/screenshots/report-card.png';
+import liveCaptureShot from '../assets/screenshots/live-capture.png';
+import momentumShot from '../assets/screenshots/momentum.png';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
@@ -18,19 +22,19 @@ const steps = [
 
 const proof = [
   {
-    src: '/screenshots/report-card.png',
+    src: reportCardShot,
     alt: 'Sound Buddy report card screen showing a B grade, ideal-profile match, and spectral bands',
     title: 'The real report card',
     body: 'Not a mockup — the actual grade, target match, and band-by-band breakdown you get after dropping in a recording.',
   },
   {
-    src: '/screenshots/live-capture.png',
+    src: liveCaptureShot,
     alt: 'Sound Buddy live tab showing real-time vocal and band spectrum with RMS, peak, and clip readouts',
     title: 'Catch it mid-service',
     body: 'Live spectrum and level meters flag a hot bass or buried vocal while there\'s still time to ride a fader — not Monday morning.',
   },
   {
-    src: '/screenshots/momentum.png',
+    src: momentumShot,
     alt: 'Sound Buddy report card with an upgrade panel offering to save the mix as a repeatable baseline',
     title: 'Turn one good mix into every mix',
     body: 'After the grade, Sound Buddy offers to save the rig as a baseline so next Sunday starts from this Sunday\'s win, not from zero.',
@@ -174,7 +178,9 @@ const tiers = [
       <div class="proof-grid">
         {proof.map((p) => (
           <div class="proof-item card">
-            <img class="proof-img" src={p.src} alt={p.alt} loading="lazy" />
+            <div class="proof-img-frame">
+              <Image class="proof-img" src={p.src} alt={p.alt} width={700} loading="lazy" />
+            </div>
             <div class="proof-caption">
               <h3>{p.title}</h3>
               <p>{p.body}</p>
@@ -324,7 +330,8 @@ const tiers = [
   .proof { background: var(--bg-panel-2); }
   .proof-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px; margin-top: 36px; }
   .proof-item { padding: 0; overflow: hidden; }
-  .proof-img { display: block; width: 100%; aspect-ratio: 16 / 11; object-fit: cover; object-position: top; border-bottom: 1px solid var(--border-subtle); }
+  .proof-img-frame { position: relative; aspect-ratio: 16 / 11; overflow: hidden; border-bottom: 1px solid var(--border-subtle); }
+  .proof-img { position: absolute; inset: 0; display: block; width: 100%; height: 100%; object-fit: cover; object-position: top; }
   .proof-caption { padding: 20px 22px 24px; }
   .proof-caption h3 { font: var(--fw-semibold) var(--fs-h3)/var(--lh-snug) var(--font-sans); color: var(--text-primary); margin-bottom: 8px; }
   .proof-caption p { font: var(--fw-regular) var(--fs-body-sm)/var(--lh-normal) var(--font-sans); color: var(--text-tertiary); }
