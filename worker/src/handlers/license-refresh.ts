@@ -23,6 +23,14 @@
 // implements the normative hardened spec as written and does NOT modify
 // `invoice-paid.ts`; the interaction is a follow-up decision for Patrick.
 //
+// The same class of tension also reaches here via `handleGetLicense`
+// (license.ts, #112): it mints subscription keys sign-on-demand but never
+// writes a `sub:<id>` record, so a subscriber who fetches their first key via
+// GET /api/license before `invoice.paid` lands can hold a key the record
+// never reflects — the identical "presented key isn't KV's latest" failure
+// mode as the renewal case above, just via a different entry point. Non-goal
+// per spec: do not change `handleGetLicense` in this PR either.
+//
 // SECURITY: never log the presented or minted `SB1.` string, key material,
 // email, or KV values. Log outcomes only.
 
@@ -165,7 +173,12 @@ export async function handleRefreshLicense(
   }
 
   // 6. Rate-limit per sub. Now that the signature is verified, this KV write
-  // is attacker-bounded to real subscription ids.
+  // is attacker-bounded to real subscription ids. Ordering note (see PR body):
+  // this runs before the step 7 supersede check, so a validly-signed but
+  // already-superseded key (e.g. leaked, or simply last cycle's rotated-out
+  // key) can still consume the real subscriber's rate-limit budget for up to
+  // the 60-day staleness window. Left as specified — reordering would deviate
+  // from the normative, Patrick-approved step ordering above — deferred.
   if (!(await withinRateLimit(env, sub))) {
     return json({ error: "rate_limited" }, 429);
   }
