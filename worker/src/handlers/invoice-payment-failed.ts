@@ -38,22 +38,21 @@ export async function handleInvoicePaymentFailed(
 ): Promise<void> {
   const invoice = event.data.object as Stripe.Invoice;
 
-  let stripe: Stripe | undefined;
-  const stripeClient = (): Stripe =>
-    (stripe ??= (deps.getStripe ?? defaultStripe)(env));
-
   let email = emailFromInvoice(invoice);
   if (email === undefined) {
     const customerId = idOf(invoice.customer);
     if (customerId) {
-      const customer = await stripeClient().customers.retrieve(customerId);
+      const customer = await (deps.getStripe ?? defaultStripe)(
+        env,
+      ).customers.retrieve(customerId);
       if (!customer.deleted) email = customer.email ?? undefined;
     }
   }
 
   const send = deps.sendEmail ?? sendDunningEmail;
+  let sent = false;
   try {
-    await send(env, { to: email });
+    sent = (await send(env, { to: email })).ok;
   } catch {
     console.error(
       `invoice.payment_failed ${event.id}: dunning email delivery threw — ignored`,
@@ -61,9 +60,10 @@ export async function handleInvoicePaymentFailed(
   }
 
   const subscriptionId = idOf(invoice.parent?.subscription_details?.subscription);
+  const outcome = sent ? "sent dunning email" : "dunning email not sent";
   console.log(
     subscriptionId
-      ? `invoice.payment_failed ${event.id}: sent dunning email for ${subscriptionId}`
-      : `invoice.payment_failed ${event.id}: sent dunning email`,
+      ? `invoice.payment_failed ${event.id}: ${outcome} for ${subscriptionId}`
+      : `invoice.payment_failed ${event.id}: ${outcome}`,
   );
 }
