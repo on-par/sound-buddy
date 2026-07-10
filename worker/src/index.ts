@@ -1,8 +1,8 @@
 // Stripe / licensing API Worker (#107) — routing & config scaffold.
 //
-// This is the foundation the Stripe launch epic (#123) builds on. Only the
-// health check is implemented; the webhook, license and activation routes are
-// declared here so later stories have a home, and currently answer 501.
+// This is the foundation the Stripe launch epic (#123) builds on: health check,
+// webhook (#108), and the license fetch + activation page (#112) are wired up
+// here.
 //
 // SECURITY (normative — 2026-07-08 keypair review): never log private key
 // material, signed `SB1.` license strings, webhook payload bodies, or KV values.
@@ -10,6 +10,8 @@
 
 import { json } from "./http";
 import { handleStripeWebhook } from "./webhook";
+import { handleGetLicense } from "./handlers/license";
+import { handleActivate } from "./handlers/activate";
 
 /**
  * Environment bindings declared in wrangler.jsonc. Secret values
@@ -65,21 +67,13 @@ interface Route {
 /** Liveness probe — no bindings, no secrets, always 200. */
 const health: RouteHandler = () => json({ status: "ok", service: "sound-buddy-api" });
 
-/**
- * Placeholder for routes whose behaviour is delivered by later stories. Kept as
- * a distinct 501 (rather than 404) so the route surface is discoverable and
- * integration tests can tell "not wired yet" apart from "no such route".
- */
-const notImplemented: RouteHandler = () =>
-  json({ error: "not_implemented" }, 501);
-
 // Exact-path routes. Kept as a flat table so later stories append their own
 // handlers without touching the dispatcher below.
 const routes: Route[] = [
   { method: "GET", path: "/api/stripe/health", handler: health },
   { method: "POST", path: "/api/stripe/webhook", handler: handleStripeWebhook },
-  { method: "GET", path: "/api/license", handler: notImplemented },
-  { method: "GET", path: "/activate", handler: notImplemented },
+  { method: "GET", path: "/api/license", handler: handleGetLicense },
+  { method: "GET", path: "/activate", handler: handleActivate },
 ];
 
 export async function handleRequest(

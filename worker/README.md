@@ -10,9 +10,9 @@ header required.
 
 ## Status
 
-Scaffold (#107) plus the Stripe webhook (#108). The health check and the webhook
-are implemented; the license and activation routes are declared and return `501`
-until later stories fill them in.
+Scaffold (#107), the Stripe webhook (#108), founding + subscription minting
+(#110/#111), and the sign-on-demand license fetch + activation page (#112) are
+all implemented.
 
 ## Routes
 
@@ -20,8 +20,8 @@ until later stories fill them in.
 | ------ | ---------------------- | ---------------------------------- |
 | GET    | `/api/stripe/health`   | `200` — liveness probe             |
 | POST   | `/api/stripe/webhook`  | `200` — verify + idempotency (#108)|
-| GET    | `/api/license`         | `501` — placeholder (later story)  |
-| GET    | `/activate`            | `501` — placeholder (later story)  |
+| GET    | `/api/license`         | `200`/`202`/`4xx`/`410`/`429` (#112) |
+| GET    | `/activate`            | `200` — self-contained HTML (#112) |
 | _any_  | anything else          | `404`                              |
 
 A known path with the wrong method returns `405` with an `Allow` header.
@@ -43,6 +43,28 @@ Per-event handler bodies (license minting, subscription lifecycle, …) land in
 downstream stories (#110/#111/#118/#119); this endpoint ships verification,
 idempotency, and the dispatch skeleton. A handler that throws propagates as a
 `500` so Stripe retries — the marker is written only after a handler returns.
+
+## License fetch (`GET /api/license`) and activation page (`GET /activate`)
+
+Sign-on-demand: entitlement is derived fresh from Stripe on every call (never
+from the `sess:`/`sub:` KV records), and a fresh key is signed on every
+successful call, so a buyer can fetch their key immediately after checkout —
+even before the webhook above has landed.
+
+`GET /api/license?session_id=<cs_…>`:
+
+- Missing `session_id` → `400`.
+- Rate-limited (per session id, best-effort) → `429`.
+- Unknown/malformed session id, or a Stripe-side lookup error → `404`.
+- Older than the 48h fetch window → `410`.
+- Purchase still plausibly in flight → `202 { status: "pending" }`.
+- Terminally not entitled → `402`.
+- Paid/entitled → `200 { key }` — a freshly minted `SB1.` key.
+
+`GET /activate?session_id=<cs_…>` renders a self-contained HTML page (no
+external assets) whose inline script polls `/api/license` and shows the key,
+a pending spinner, or an email-check fallback. No `session_id` renders the
+fallback directly.
 
 ## Config & bindings
 
