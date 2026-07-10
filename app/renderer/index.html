@@ -458,20 +458,19 @@
     #tab-live.capture-record .arm-controls { display:flex; }
     .arm-count { font:var(--fw-regular) var(--fs-micro)/1 var(--font-mono); color:var(--text-muted); }
     .arm-hint { margin-top:8px; padding:8px 10px; border-radius:var(--radius-md); background:var(--surface-inset); border:1px solid var(--issue-500); color:var(--issue-text); font:var(--fw-regular) var(--fs-micro)/1.3 var(--font-sans); text-align:center; }
-    .chcfg-arm { display:none; flex:0 0 auto; width:var(--control-h-sm); height:var(--control-h-sm); align-items:center; justify-content:center; padding:0; border:1px solid var(--border-subtle); border-radius:var(--radius-md); background:transparent; cursor:pointer; }
+    /* Shared arm-toggle look for both the left rail's .chcfg-arm and the
+       workspace's .live-ch-arm (#191) — same dot-in-a-box, only the presence
+       gating differs: .chcfg-arm is CSS-gated (#tab-live.capture-record), while
+       .live-ch-arm lives outside #tab-live and is JS-gated instead. */
+    .chcfg-arm, .live-ch-arm { flex:0 0 auto; width:var(--control-h-sm); height:var(--control-h-sm); align-items:center; justify-content:center; align-self:center; padding:0; border:1px solid var(--border-subtle); border-radius:var(--radius-md); background:transparent; cursor:pointer; }
+    .chcfg-arm { display:none; }
     #tab-live.capture-record .chcfg-arm { display:inline-flex; }
-    .chcfg-arm::before { content:''; width:8px; height:8px; border-radius:50%; background:var(--text-muted); transition:background var(--dur-base) var(--ease-out), box-shadow var(--dur-base) var(--ease-out); }
-    .chcfg-arm[aria-pressed="true"] { border-color:var(--issue-500); }
-    .chcfg-arm[aria-pressed="true"]::before { background:var(--issue-500); box-shadow:0 0 6px -1px var(--issue-500); }
-    .chcfg-arm:disabled { opacity:0.4; cursor:not-allowed; }
-    /* Workspace arm controls (#191): per-track toggle in the track header + the
-       toolbar's Arm all / Disarm all + count. The workspace sits outside #tab-live
-       (sibling of the <aside>), so presence/lock are JS-gated, not CSS-gated. */
-    .live-ch-arm { display:inline-flex; flex:0 0 auto; width:var(--control-h-sm); height:var(--control-h-sm); align-items:center; justify-content:center; align-self:center; padding:0; border:1px solid var(--border-subtle); border-radius:var(--radius-md); background:transparent; cursor:pointer; }
-    .live-ch-arm::before { content:''; width:8px; height:8px; border-radius:50%; background:var(--text-muted); transition:background var(--dur-base) var(--ease-out), box-shadow var(--dur-base) var(--ease-out); }
-    .live-ch-arm[aria-pressed="true"] { border-color:var(--issue-500); }
-    .live-ch-arm[aria-pressed="true"]::before { background:var(--issue-500); box-shadow:0 0 6px -1px var(--issue-500); }
-    .live-ch-arm:disabled { opacity:0.4; cursor:not-allowed; }
+    .live-ch-arm { display:inline-flex; }
+    .chcfg-arm::before, .live-ch-arm::before { content:''; width:8px; height:8px; border-radius:50%; background:var(--text-muted); transition:background var(--dur-base) var(--ease-out), box-shadow var(--dur-base) var(--ease-out); }
+    .chcfg-arm[aria-pressed="true"], .live-ch-arm[aria-pressed="true"] { border-color:var(--issue-500); }
+    .chcfg-arm[aria-pressed="true"]::before, .live-ch-arm[aria-pressed="true"]::before { background:var(--issue-500); box-shadow:0 0 6px -1px var(--issue-500); }
+    .chcfg-arm:disabled, .live-ch-arm:disabled { opacity:0.4; cursor:not-allowed; }
+    /* Workspace toolbar's Arm all / Disarm all + count (#191), Record mode only. */
     .live-ws-arm { display:flex; align-items:center; gap:6px; margin-left:auto; }
     .chcfg-list { display:flex; flex-direction:column; gap:6px; }
     .chcfg-row { display:flex; align-items:center; gap:6px; }
@@ -2583,6 +2582,7 @@ function veqChannelHTML(ch, idx, deviceChannels) {
   const strip = channelConfig[idx];
   const displayName = stripLabel(strip, ch, idx);
   const collapsed = isStripCollapsed(idx);
+  const armed = window.armState.isArmed(strip);
   // Inline track definition (#189): the same { kind, a, b } strip the left
   // rail's chcfg row edits, rendered right in the header so an engineer never
   // has to leave the workspace to define a track. Disabled mid-capture like
@@ -2617,7 +2617,7 @@ function veqChannelHTML(ch, idx, deviceChannels) {
     <div class="live-ch-head">
       <button type="button" class="live-ch-fold" aria-label="Collapse or expand strip" aria-expanded="${collapsed ? 'false' : 'true'}" title="Collapse / expand strip">▾</button>
       ${liveMode === 'record'
-        ? `<button type="button" class="live-ch-arm" data-idx="${idx}" aria-pressed="${window.armState.isArmed(channelConfig[idx])}" aria-label="${window.armState.isArmed(channelConfig[idx]) ? 'Disarm' : 'Arm'} track for recording" title="${window.armState.isArmed(channelConfig[idx]) ? 'Armed for recording — click to disarm' : 'Disarmed — click to arm'}"${liveRunning ? ' disabled' : ''}></button>`
+        ? `<button type="button" class="live-ch-arm" data-idx="${idx}" aria-pressed="${armed}" aria-label="${armed ? 'Disarm' : 'Arm'} track for recording" title="${armed ? 'Armed for recording — click to disarm' : 'Disarmed — click to arm'}"${liveRunning ? ' disabled' : ''}></button>`
         : ''}
       <span class="live-ch-name${ch.clipping ? ' clip' : ''}" contenteditable="true" spellcheck="false" role="textbox" aria-label="Channel name — click to rename" title="Click to rename">${escapeHtml(displayName)}</span>
       ${defHTML}
@@ -2692,7 +2692,7 @@ function liveWorkspaceToolbarHTML() {
   // it). New unique IDs since the left rail keeps its own until Story E.
   const armHTML = liveMode === 'record'
     ? `<span class="live-ws-arm">`
-      + `<span class="arm-count" id="live-ws-arm-count">${window.armState.armedCount(channelConfig)} / ${channelConfig.length} armed</span>`
+      + `<span class="arm-count" id="live-ws-arm-count">${armedCount()} / ${channelConfig.length} armed</span>`
       + `<button type="button" class="ghost-btn sm" id="live-ws-arm-all"${liveRunning ? ' disabled' : ''} title="Arm every track for recording">Arm all</button>`
       + `<button type="button" class="ghost-btn sm" id="live-ws-disarm-all"${liveRunning ? ' disabled' : ''} title="Disarm every track">Disarm all</button>`
       + `</span>`
