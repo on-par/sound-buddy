@@ -78,18 +78,18 @@ const tiers = [
   <section class="hero">
     <div class="container hero-grid">
       <div class="hero-copy">
-        <span class="eyebrow">Built for worship services</span>
-        <h1>See your mix. Score it. Improve it.</h1>
+        <span class="eyebrow">For church FOH volunteers &amp; worship engineers</span>
+        <h1>Know what to fix before next Sunday.</h1>
         <p class="hero-lede">
-          Sound Buddy records your service, grades the mix, and shows you exactly what to fix —
-          loudness, dynamics, spectral balance, and speech clarity. Runs fully on your Mac.
-          Your audio never leaves your machine.
+          Drop in a recording of last service and Sound Buddy grades the mix, then names exactly
+          what to change before next Sunday — loudness, dynamics, spectral balance, and speech
+          clarity. Runs fully on your Mac; your audio never leaves your machine.
         </p>
         <div class="hero-cta">
-          <a class="btn btn-primary btn-lg" href={DOWNLOAD_URL} rel="noopener">Download for Mac</a>
+          <a class="btn btn-primary btn-lg" href={DOWNLOAD_URL} rel="noopener">Download free — grade Sunday's mix</a>
           <a class="btn btn-ghost btn-lg" href="#how">See how it works</a>
         </div>
-        <p class="hero-fine mono">Apple Silicon · macOS 26+ · v{APP_VERSION}</p>
+        <p class="hero-fine mono">Local-first · No account for your first report card · Apple Silicon · macOS 26+ · v{APP_VERSION}</p>
       </div>
       <div class="hero-visual">
         <ReportCard />
@@ -356,7 +356,6 @@ const tiers = [
   /* ── Responsive ── */
   @media (max-width: 920px) {
     .hero-grid { grid-template-columns: 1fr; gap: 40px; }
-    .hero-visual { order: -1; }
     .hero-visual :global(.rc) { max-width: 100%; }
     .rc-showcase-grid { grid-template-columns: 1fr; gap: 40px; }
     .tiers { grid-template-columns: 1fr; max-width: 460px; margin-left: auto; margin-right: auto; }
