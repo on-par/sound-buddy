@@ -205,17 +205,13 @@ describe("checkout completed handler (#111)", () => {
     expectNoSignedKeyInKv(store);
   });
 
-  it("expands the Checkout Session via the API when the payload omits email", async () => {
+  it("looks up the customer via the API when the payload omits email", async () => {
     const { kv, store } = makeKv();
     const env = makeEnv(kv);
-    const sessionsRetrieve = vi.fn(async () => ({
-      customer_details: { email: "expanded@example.test" },
-      customer_email: null,
-      customer: "cus_x",
-    }));
+    const customersRetrieve = vi.fn(async () => ({ email: "expanded@example.test" }));
     const getStripe: CheckoutCompletedDeps["getStripe"] = () =>
       ({
-        checkout: { sessions: { retrieve: sessionsRetrieve } },
+        customers: { retrieve: customersRetrieve },
       }) as unknown as Stripe;
 
     await handleCheckoutCompleted(
@@ -229,15 +225,13 @@ describe("checkout completed handler (#111)", () => {
       { getStripe },
     );
 
-    expect(sessionsRetrieve).toHaveBeenCalledWith("cs_expand", {
-      expand: ["customer_details"],
-    });
+    expect(customersRetrieve).toHaveBeenCalledWith("cus_x");
     const record = readSessionRecord(store, "cs_expand");
     expect(record.email).toBe("expanded@example.test");
     expectNoSignedKeyInKv(store);
   });
 
-  it("does not expand when the payload already carries email", async () => {
+  it("does not look up the customer when the payload already carries email", async () => {
     const { kv } = makeKv();
     const env = makeEnv(kv);
     const getStripe = vi.fn(() => {

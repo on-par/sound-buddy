@@ -43,7 +43,7 @@ export const sessionRecordKey = (sessionId: string): string =>
 
 /** Injectable seams so tests never hit the live Stripe API. */
 export interface CheckoutCompletedDeps {
-  /** Build the Stripe client used for Checkout Session expansion. */
+  /** Build the Stripe client used for the customer email lookup. */
   getStripe?: (env: Env) => Stripe;
 }
 
@@ -65,6 +65,12 @@ function defaultStripe(env: Env): Stripe {
   });
 }
 
+/** Resolve an object-or-id reference to its id string. */
+function idOf(ref: string | { id: string } | null | undefined): string | undefined {
+  if (!ref) return undefined;
+  return typeof ref === "string" ? ref : ref.id;
+}
+
 /** Email from the Checkout Session payload, if present (no API call). */
 function emailFromSession(session: Stripe.Checkout.Session): string | undefined {
   const email = session.customer_details?.email ?? session.customer_email;
@@ -78,8 +84,8 @@ function emailFromSession(session: Stripe.Checkout.Session): string | undefined 
  * pair that can share a session id (KV has no atomic compare-and-set).
  *
  * Subscription-mode sessions are acknowledged without minting. Any thrown error
- * (missing signing key, Stripe expansion failure) propagates so the webhook
- * returns 500 and Stripe retries — the event is not marked processed.
+ * (missing signing key, Stripe customer lookup failure) propagates so the
+ * webhook returns 500 and Stripe retries — the event is not marked processed.
  */
 export async function handleCheckoutCompleted(
   event: Stripe.Event,
@@ -117,10 +123,11 @@ export async function handleCheckoutCompleted(
 
   let email = emailFromSession(session);
   if (email === undefined) {
-    const full = await stripeClient().checkout.sessions.retrieve(session.id, {
-      expand: ["customer_details"],
-    });
-    email = emailFromSession(full);
+    const customerId = idOf(session.customer);
+    if (customerId) {
+      const customer = await stripeClient().customers.retrieve(customerId);
+      if (!customer.deleted) email = customer.email ?? undefined;
+    }
   }
 
   // Mint in memory: the key itself is never persisted (sign-on-demand). Its hash
