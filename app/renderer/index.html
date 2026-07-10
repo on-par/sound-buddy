@@ -464,7 +464,15 @@
     .chcfg-arm[aria-pressed="true"] { border-color:var(--issue-500); }
     .chcfg-arm[aria-pressed="true"]::before { background:var(--issue-500); box-shadow:0 0 6px -1px var(--issue-500); }
     .chcfg-arm:disabled { opacity:0.4; cursor:not-allowed; }
-    .live-ch-arm { display:inline-block; width:7px; height:7px; border-radius:50%; background:var(--issue-500); box-shadow:0 0 6px -1px var(--issue-500); align-self:center; }
+    /* Workspace arm controls (#191): per-track toggle in the track header + the
+       toolbar's Arm all / Disarm all + count. The workspace sits outside #tab-live
+       (sibling of the <aside>), so presence/lock are JS-gated, not CSS-gated. */
+    .live-ch-arm { display:inline-flex; flex:0 0 auto; width:var(--control-h-sm); height:var(--control-h-sm); align-items:center; justify-content:center; align-self:center; padding:0; border:1px solid var(--border-subtle); border-radius:var(--radius-md); background:transparent; cursor:pointer; }
+    .live-ch-arm::before { content:''; width:8px; height:8px; border-radius:50%; background:var(--text-muted); transition:background var(--dur-base) var(--ease-out), box-shadow var(--dur-base) var(--ease-out); }
+    .live-ch-arm[aria-pressed="true"] { border-color:var(--issue-500); }
+    .live-ch-arm[aria-pressed="true"]::before { background:var(--issue-500); box-shadow:0 0 6px -1px var(--issue-500); }
+    .live-ch-arm:disabled { opacity:0.4; cursor:not-allowed; }
+    .live-ws-arm { display:flex; align-items:center; gap:6px; margin-left:auto; }
     .chcfg-list { display:flex; flex-direction:column; gap:6px; }
     .chcfg-row { display:flex; align-items:center; gap:6px; }
     .chcfg-row select { flex:1; min-width:0; height:var(--control-h-sm); padding:0 8px; border-radius:var(--radius-md); background:var(--surface-raised); color:var(--text-primary); border:1px solid var(--border-default); font:var(--fw-medium) var(--fs-label)/1 var(--font-sans); }
@@ -2608,7 +2616,9 @@ function veqChannelHTML(ch, idx, deviceChannels) {
   return `<div class="live-ch${collapsed ? ' collapsed' : ''}${ch.idle ? ' idle' : ''}" data-ch="${idx}">
     <div class="live-ch-head">
       <button type="button" class="live-ch-fold" aria-label="Collapse or expand strip" aria-expanded="${collapsed ? 'false' : 'true'}" title="Collapse / expand strip">▾</button>
-      ${liveMode === 'record' && window.armState.isArmed(channelConfig[idx]) ? '<span class="live-ch-arm" title="Armed for recording"></span>' : ''}
+      ${liveMode === 'record'
+        ? `<button type="button" class="live-ch-arm" data-idx="${idx}" aria-pressed="${window.armState.isArmed(channelConfig[idx])}" aria-label="${window.armState.isArmed(channelConfig[idx]) ? 'Disarm' : 'Arm'} track for recording" title="${window.armState.isArmed(channelConfig[idx]) ? 'Armed for recording — click to disarm' : 'Disarmed — click to arm'}"${liveRunning ? ' disabled' : ''}></button>`
+        : ''}
       <span class="live-ch-name${ch.clipping ? ' clip' : ''}" contenteditable="true" spellcheck="false" role="textbox" aria-label="Channel name — click to rename" title="Click to rename">${escapeHtml(displayName)}</span>
       ${defHTML}
       ${groupHTML}
@@ -2676,12 +2686,24 @@ function liveWorkspaceToolbarHTML() {
   // + New group (#190) mirrors the left rail's #new-group-btn: it names a group
   // via the shared dialog and pushes it onto channelGroups. Disabled mid-capture
   // like every other config control (#38).
+  // Arm all / Disarm all + armed count (#191): the workspace equivalent of the
+  // left rail's #arm-all-btn / #disarm-all-btn / #arm-count, Record mode only
+  // (JS-gated — the workspace sits outside #tab-live, so CSS gating can't reach
+  // it). New unique IDs since the left rail keeps its own until Story E.
+  const armHTML = liveMode === 'record'
+    ? `<span class="live-ws-arm">`
+      + `<span class="arm-count" id="live-ws-arm-count">${window.armState.armedCount(channelConfig)} / ${channelConfig.length} armed</span>`
+      + `<button type="button" class="ghost-btn sm" id="live-ws-arm-all"${liveRunning ? ' disabled' : ''} title="Arm every track for recording">Arm all</button>`
+      + `<button type="button" class="ghost-btn sm" id="live-ws-disarm-all"${liveRunning ? ' disabled' : ''} title="Disarm every track">Disarm all</button>`
+      + `</span>`
+    : '';
   return `<div class="live-meters-toolbar">`
     + `<button type="button" class="ghost-btn" id="live-ws-add"${addDisabled ? ' disabled' : ''}>+ Add track</button>`
     + `<button type="button" class="ghost-btn" id="live-ws-new-group"${liveRunning ? ' disabled' : ''} title="Create a named channel group">+ New group</button>`
     + `<span class="cap" id="live-ws-cap">${used} / ${total} used</span>`
     + `<button type="button" class="ghost-btn" id="live-collapse-all">Collapse all</button>`
     + `<button type="button" class="ghost-btn" id="live-expand-all">Expand all</button>`
+    + armHTML
     + `</div>`;
 }
 
@@ -2817,6 +2839,28 @@ document.getElementById('spectrum-body').addEventListener('click', (e) => {
   // Workspace per-row remove (#188): same body as the left rail's .chcfg-x.
   const rmBtn = e.target.closest('.live-ch-x');
   if (rmBtn) { removeChannelStrip(parseInt(rmBtn.closest('.live-ch').dataset.ch, 10)); return; }
+  // Workspace per-track arm toggle (#191): same body as the left rail's .chcfg-arm.
+  const armBtn = e.target.closest('.live-ch-arm');
+  if (armBtn) {
+    const idx = parseInt(armBtn.closest('.live-ch').dataset.ch, 10);
+    channelConfig[idx].armed = !window.armState.isArmed(channelConfig[idx]);
+    hideArmHint();
+    renderChannelConfig();
+    return;
+  }
+  // Workspace Arm all / Disarm all (#191): same body as the left rail's
+  // #arm-all-btn / #disarm-all-btn.
+  if (e.target.closest('#live-ws-arm-all')) {
+    channelConfig = window.armState.setAllArmed(channelConfig, true);
+    hideArmHint();
+    renderChannelConfig();
+    return;
+  }
+  if (e.target.closest('#live-ws-disarm-all')) {
+    channelConfig = window.armState.setAllArmed(channelConfig, false);
+    renderChannelConfig();
+    return;
+  }
   // Group header rename / delete (#190): reuse the shared group dialog/handlers.
   const gRename = e.target.closest('.live-group-rename');
   if (gRename) { renameChannelGroup(parseInt(gRename.closest('.live-group-head').dataset.group, 10)); return; }
@@ -3539,12 +3583,16 @@ function setCaptureControlsLocked(locked) {
   const set = (el) => { if (el) { el.disabled = locked; el.setAttribute('aria-disabled', String(locked)); } };
   ['device-select', 'device-refresh-btn', 'record-folder-btn', 'chcfg-add',
     'meter-interval', 'window-secs', 'llm-interval', 'rig-select',
-    'arm-all-btn', 'disarm-all-btn', 'new-group-btn', 'live-ws-add', 'live-ws-new-group'].forEach((id) => set(document.getElementById(id)));
+    'arm-all-btn', 'disarm-all-btn', 'new-group-btn', 'live-ws-add', 'live-ws-new-group',
+    'live-ws-arm-all', 'live-ws-disarm-all'].forEach((id) => set(document.getElementById(id)));
   document.querySelectorAll('#live-mode button').forEach(set);
   document.querySelectorAll('#chcfg-list select, #chcfg-list .chcfg-x, #chcfg-list .chcfg-arm').forEach(set);
   // Workspace track rows (#188): Add track (above) + each row's remove, read-only
   // while a capture is running (mirrors the left rail's own lock).
   document.querySelectorAll('#spectrum-body .live-ch-x').forEach(set);
+  // Workspace per-track arm toggle (#191), frozen mid-capture with the rest —
+  // the workspace is outside #tab-live, so this explicit sweep is required.
+  document.querySelectorAll('#spectrum-body .live-ch-arm').forEach(set);
   // Inline track definition (#189): kind toggle + source picker(s), frozen mid-
   // capture same as the left rail's chcfg row (stream.py can't honor a
   // mid-session channel change). veqChannelHTML already stamps `disabled` at

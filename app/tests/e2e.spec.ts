@@ -1085,6 +1085,90 @@ test.describe('Sound Buddy E2E', () => {
       });
     });
 
+    // Workspace arm controls (#191): the record-arm cluster relocated from the
+    // left rail onto the main-pane track workspace, Record mode only. Drives
+    // #spectrum-body's controls directly and cross-checks the left rail's
+    // #arm-count/#arm-hint stay in sync (they share channelConfig via
+    // renderChannelConfig()).
+    test.describe('Workspace arm controls (#191)', () => {
+      test('per-track toggle and toolbar cluster render only in Record mode', async () => {
+        // Force Monitor explicitly — an earlier test in this describe may have
+        // left liveMode as 'record'.
+        await window.locator('#live-mode button[data-mode="monitor"]').click();
+        await expect(window.locator('#spectrum-body .live-ch-arm')).toHaveCount(0);
+        await expect(window.locator('#live-ws-arm-all')).toHaveCount(0);
+        await expect(window.locator('#live-ws-disarm-all')).toHaveCount(0);
+        await expect(window.locator('#live-ws-arm-count')).toHaveCount(0);
+
+        await window.locator('#live-mode button[data-mode="record"]').click();
+        await expect(window.locator('#spectrum-body .live-ch-arm')).toHaveCount(2);
+        await expect(window.locator('#live-ws-arm-all')).toBeVisible();
+        await expect(window.locator('#live-ws-disarm-all')).toBeVisible();
+        await expect(window.locator('#live-ws-arm-count')).toContainText('2 / 2 armed');
+
+        // Switching back to Monitor removes them again (JS-gated, not CSS).
+        await window.locator('#live-mode button[data-mode="monitor"]').click();
+        await expect(window.locator('#spectrum-body .live-ch-arm')).toHaveCount(0);
+        await expect(window.locator('#live-ws-arm-all')).toHaveCount(0);
+      });
+
+      test('arming a single track from the workspace flips aria-pressed and stays in sync with the left rail', async () => {
+        await window.locator('#live-mode button[data-mode="record"]').click();
+        const wsArm = window.locator('#spectrum-body .live-ch-arm').first();
+        await expect(wsArm).toHaveAttribute('aria-pressed', 'true');
+
+        await wsArm.click(); // disarm
+        await expect(wsArm).toHaveAttribute('aria-pressed', 'false');
+        await expect(window.locator('#live-ws-arm-count')).toContainText('1 / 2 armed');
+        await expect(window.locator('#arm-count')).toContainText('1 / 2 armed');
+
+        await wsArm.click(); // re-arm
+        await expect(wsArm).toHaveAttribute('aria-pressed', 'true');
+        await expect(window.locator('#live-ws-arm-count')).toContainText('2 / 2 armed');
+        await expect(window.locator('#arm-count')).toContainText('2 / 2 armed');
+      });
+
+      test('workspace Arm all / Disarm all mirror the left rail', async () => {
+        await window.locator('#live-mode button[data-mode="record"]').click();
+        const arms = window.locator('#spectrum-body .live-ch-arm');
+
+        await window.locator('#live-ws-disarm-all').click();
+        for (const arm of await arms.all()) await expect(arm).toHaveAttribute('aria-pressed', 'false');
+        await expect(window.locator('#live-ws-arm-count')).toContainText('0 / 2 armed');
+        await expect(window.locator('#arm-count')).toContainText('0 / 2 armed');
+
+        await window.locator('#live-ws-arm-all').click();
+        for (const arm of await arms.all()) await expect(arm).toHaveAttribute('aria-pressed', 'true');
+        await expect(window.locator('#live-ws-arm-count')).toContainText('2 / 2 armed');
+        await expect(window.locator('#arm-count')).toContainText('2 / 2 armed');
+      });
+
+      test('starting with nothing armed is blocked from the workspace controls too', async () => {
+        await window.locator('#live-mode button[data-mode="record"]').click();
+        await window.locator('#live-ws-disarm-all').click();
+        await window.locator('#live-start-btn').click();
+        await expect(window.locator('#arm-hint')).toBeVisible();
+        await expect(window.locator('#arm-hint')).toContainText('Arm at least one strip');
+        await expect(window.locator('#live-start-btn')).toBeVisible();
+        await expect(window.locator('#live-stop-btn')).toBeHidden();
+      });
+
+      test('workspace arm controls lock while a capture is running', async () => {
+        await window.locator('#live-mode button[data-mode="record"]').click();
+        await window.locator('#live-start-btn').click();
+        await expect(window.locator('#live-stop-btn')).toBeVisible();
+        await sendLiveTick(LIVE_CHANNELS);
+
+        const arms = window.locator('#spectrum-body .live-ch-arm');
+        await expect(arms).toHaveCount(2);
+        for (const arm of await arms.all()) await expect(arm).toBeDisabled();
+        await expect(window.locator('#live-ws-arm-all')).toBeDisabled();
+        await expect(window.locator('#live-ws-disarm-all')).toBeDisabled();
+
+        await window.locator('#live-stop-btn').click();
+      });
+    });
+
     // Persistent main-pane track workspace (#188): configured tracks render in
     // #spectrum-body the moment the Live tab is active, idle or capturing, with
     // Add/remove available right there (not just the left rail). Runs last in
