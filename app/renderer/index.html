@@ -817,8 +817,13 @@
        forced-F is critical (issue red) — same tone split as .rc-rec / .critical. */
     .rc-why-row { display:flex; align-items:center; gap:12px; padding:12px 15px; background:var(--surface); border:1px solid var(--border-subtle); border-left:3px solid var(--gold-500); border-radius:var(--radius-md); box-shadow:var(--elevation-card); }
     .rc-why-row.forced-f { border-left-color:var(--issue-500); }
+    /* #136 — a skipped-rule disclosure (e.g. DR not measured on a live capture):
+       neutral info accent, not the gold of a real deduction, since no letter dropped. */
+    .rc-why-row.rc-why-skip { border-left-color:var(--info-500); }
     .rc-why-icon { flex-shrink:0; color:var(--gold-text); display:flex; }
     .rc-why-row.forced-f .rc-why-icon { color:var(--issue-text); }
+    .rc-why-row.rc-why-skip .rc-why-icon { color:var(--info-text); }
+    .rc-why-row.rc-why-skip .rc-why-detail .measured { color:var(--info-text); }
     .rc-why-body { flex:1; min-width:0; }
     .rc-why-rule { font:var(--fw-medium) var(--fs-body-sm)/1.3 var(--font-sans); color:var(--text-primary); }
     .rc-why-detail { display:block; margin-top:3px; font:var(--fw-regular) var(--fs-data-sm)/1.4 var(--font-mono); font-variant-numeric:tabular-nums; color:var(--text-muted); }
@@ -4259,7 +4264,7 @@ function renderReportCard() {
   const metrics = [
     { name: 'Peak Level', note: 'Sample peak', value: fmt(src.peak), unit: 'dBFS', tone: grading.rcPeakStatus(src.peak, src.clipping), target: grading.rcMetricTarget('peak') },
     { name: 'RMS Level', note: 'Average level (RMS)', value: fmt(src.rms), unit: 'dBFS', tone: grading.rcRmsStatus(src.rms), target: grading.rcMetricTarget('rms') },
-    { name: 'Dynamic Range', value: src.dynamicRange != null ? fmt(src.dynamicRange) : '—', unit: src.dynamicRange != null ? 'dB' : '', tone: grading.rcDrStatus(src.dynamicRange), target: src.dynamicRange != null ? grading.rcMetricTarget('dynamicRange') : null },
+    { name: 'Dynamic Range', note: src.dynamicRange != null ? null : 'Not measured for live capture', value: src.dynamicRange != null ? fmt(src.dynamicRange) : '—', unit: src.dynamicRange != null ? 'dB' : '', tone: grading.rcDrStatus(src.dynamicRange), target: src.dynamicRange != null ? grading.rcMetricTarget('dynamicRange') : null },
     { name: 'Clipping', value: src.clipping ? 'Yes' : 'None', unit: '', tone: src.clipping ? 'issue' : 'good', target: grading.rcMetricTarget('clipping') },
     { name: 'Spectral Centroid', value: src.centroid ? Math.round(src.centroid).toLocaleString() : '—', unit: src.centroid ? 'Hz' : '', tone: grading.rcCentroidStatus(src.centroid), target: src.centroid ? grading.rcMetricTarget('centroid') : null },
   ];
@@ -4278,25 +4283,51 @@ function renderReportCard() {
   // state (never a blank box).
   const explain = grading.explainGrade(src);
   const why = document.getElementById('rc-why');
-  if (explain.deductions.length === 0) {
+  // Clipping is the only rule that forces an automatic F, and when it fires it is
+  // the sole deduction (grading short-circuits) — so the authoritative
+  // explain.clipping flag marks the forced-F row, no display-string sniffing.
+  const deductionRows = explain.deductions.map(d =>
+    `<div class="rc-why-row${explain.clipping ? ' forced-f' : ''}">
+      <span class="rc-why-icon">${iconSvg(explain.clipping ? 'alert-triangle' : 'info', 18)}</span>
+      <span class="rc-why-body">
+        <span class="rc-why-rule">${escapeHtml(d.rule)}</span>
+        <span class="rc-why-detail"><span class="measured">${escapeHtml(d.measured)}</span> · target ${escapeHtml(d.target)}</span>
+      </span>
+      <span class="rc-why-impact">${escapeHtml(d.letterImpact)}</span>
+    </div>`);
+  // #136 — disclose any grading rule that was skipped because its metric wasn't
+  // measured (live captures have no dynamic range). Rendered as a neutral "info"
+  // disclosure, not a deduction: it never dropped a letter, but the grade used
+  // fewer metrics and the user must be told rather than left to assume the DR
+  // rule ran. This is what keeps a live grade from silently diverging from a
+  // file grade. The rows come straight from the pure grading module, so they
+  // can never claim a skip the grade didn't take.
+  const notMeasuredRows = (explain.notMeasured || []).map(n =>
+    `<div class="rc-why-row rc-why-skip">
+      <span class="rc-why-icon">${iconSvg('info', 18)}</span>
+      <span class="rc-why-body">
+        <span class="rc-why-rule">${escapeHtml(n.rule)}</span>
+        <span class="rc-why-detail"><span class="measured">${escapeHtml(n.measured)}</span> · ${escapeHtml(n.note)}</span>
+      </span>
+      <span class="rc-why-impact">${escapeHtml(n.letterImpact)}</span>
+    </div>`);
+  if (deductionRows.length === 0 && notMeasuredRows.length === 0) {
     why.innerHTML =
       `<div class="rc-why-none">
         <span class="rc-why-icon">${iconSvg('check', 18)}</span>
         <span class="rc-why-none-text">No deductions — this recording met every grading rule.</span>
       </div>`;
+  } else if (deductionRows.length === 0) {
+    // No deductions among the rules that ran, but at least one rule was skipped —
+    // lead with the honest positive, then disclose what wasn't measured. Never
+    // the unqualified "met every grading rule" (a rule didn't run).
+    why.innerHTML =
+      `<div class="rc-why-none">
+        <span class="rc-why-icon">${iconSvg('check', 18)}</span>
+        <span class="rc-why-none-text">No deductions among the metrics that were measured.</span>
+      </div>` + notMeasuredRows.join('');
   } else {
-    // Clipping is the only rule that forces an automatic F, and when it fires
-    // it is the sole deduction (grading short-circuits) — so the authoritative
-    // explain.clipping flag marks the forced-F row, no display-string sniffing.
-    why.innerHTML = explain.deductions.map(d =>
-      `<div class="rc-why-row${explain.clipping ? ' forced-f' : ''}">
-        <span class="rc-why-icon">${iconSvg(explain.clipping ? 'alert-triangle' : 'info', 18)}</span>
-        <span class="rc-why-body">
-          <span class="rc-why-rule">${escapeHtml(d.rule)}</span>
-          <span class="rc-why-detail"><span class="measured">${escapeHtml(d.measured)}</span> · target ${escapeHtml(d.target)}</span>
-        </span>
-        <span class="rc-why-impact">${escapeHtml(d.letterImpact)}</span>
-      </div>`).join('');
+    why.innerHTML = deductionRows.join('') + notMeasuredRows.join('');
   }
 
   // Band breakdown
