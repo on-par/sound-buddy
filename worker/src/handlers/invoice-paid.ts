@@ -63,14 +63,14 @@ async function sha256Hex(input: string): Promise<string> {
 }
 
 /** Default Stripe client for the Workers runtime (fetch-based HTTP). */
-function defaultStripe(env: Env): Stripe {
+export function defaultStripe(env: Env): Stripe {
   return new Stripe(env.STRIPE_SECRET_KEY, {
     httpClient: Stripe.createFetchHttpClient(),
   });
 }
 
 /** Resolve an object-or-id reference to its id string. */
-function idOf(ref: string | { id: string } | null | undefined): string | undefined {
+export function idOf(ref: string | { id: string } | null | undefined): string | undefined {
   if (!ref) return undefined;
   return typeof ref === "string" ? ref : ref.id;
 }
@@ -128,7 +128,7 @@ function periodEndFromSubscription(
 }
 
 /** Email from the invoice payload, if present (no API call). */
-function emailFromInvoice(invoice: Stripe.Invoice): string | undefined {
+export function emailFromInvoice(invoice: Stripe.Invoice): string | undefined {
   if (typeof invoice.customer_email === "string" && invoice.customer_email) {
     return invoice.customer_email;
   }

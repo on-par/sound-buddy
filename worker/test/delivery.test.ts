@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { sendLicenseEmail } from "../src/delivery";
+import { sendDunningEmail, sendLicenseEmail } from "../src/delivery";
 import type { Env } from "../src/index";
 
 function makeEnv(overrides: Partial<Env> = {}): Env {
@@ -153,6 +153,45 @@ describe("license email delivery (#114)", () => {
       sendLicenseEmail(
         makeEnv({ RESEND_API_KEY: "" }),
         { to: "buyer@example.test", key: "SB1.no.secret", kind: "lifetime" },
+        { fetch: fetchMock as unknown as typeof fetch },
+      ),
+    ).resolves.toEqual({ ok: false });
+
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("dunning email delivery (#118)", () => {
+  it("Scenario: sends via Resend with the right shape", async () => {
+    const env = makeEnv();
+    const fetchMock = vi.fn(async () => ({ ok: true, status: 200 }));
+
+    const result = await sendDunningEmail(
+      env,
+      { to: "a@b.c" },
+      { fetch: fetchMock as unknown as typeof fetch },
+    );
+
+    expect(result).toEqual({ ok: true });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const calls = fetchMock.mock.calls as unknown as [string, RequestInit][];
+    expect(calls[0][0]).toBe("https://api.resend.com/emails");
+
+    const body = requestBody(fetchMock);
+    expect(body.from).toBe(env.FROM_EMAIL);
+    expect(body.to).toEqual(["a@b.c"]);
+    expect(body.subject).toBe("Your Sound Buddy payment didn't go through");
+    expect(body.text).toContain(env.CUSTOMER_PORTAL_URL);
+    expect(body.html).toContain(env.CUSTOMER_PORTAL_URL);
+  });
+
+  it("Scenario: no recipient is skipped", async () => {
+    const fetchMock = vi.fn(async () => ({ ok: true, status: 200 }));
+
+    await expect(
+      sendDunningEmail(
+        makeEnv(),
+        { to: undefined },
         { fetch: fetchMock as unknown as typeof fetch },
       ),
     ).resolves.toEqual({ ok: false });
