@@ -7,6 +7,7 @@ import {
   type SubscriptionRecord,
   type InvoicePaidDeps,
 } from "../src/handlers/invoice-paid";
+import { handleCheckoutCompleted } from "../src/handlers/checkout-completed";
 import { eventHandlers, handleStripeWebhook } from "../src/webhook";
 import type { Env } from "../src/index";
 
@@ -292,9 +293,12 @@ describe("invoice.paid handler (#110)", () => {
 });
 
 describe("dispatch wiring (#110)", () => {
-  it("registers invoice.paid — and NOT checkout.session.completed (no double-mint)", () => {
+  it("registers invoice.paid and checkout founding payment events", () => {
     expect(eventHandlers["invoice.paid"]).toBe(handleInvoicePaid);
-    expect(eventHandlers["checkout.session.completed"]).toBeUndefined();
+    expect(eventHandlers["checkout.session.completed"]).toBe(handleCheckoutCompleted);
+    expect(eventHandlers["checkout.session.async_payment_succeeded"]).toBe(
+      handleCheckoutCompleted,
+    );
   });
 });
 
