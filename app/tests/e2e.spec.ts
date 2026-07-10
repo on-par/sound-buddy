@@ -159,6 +159,14 @@ async function loadAndAnalyze(fp: string) {
   }, fp);
 }
 
+// Commit a new name into a workspace track header (contenteditable .live-ch-name).
+async function renameHeader(head: ReturnType<Page['locator']>, value: string) {
+  await head.click();
+  await window.keyboard.press('ControlOrMeta+A');
+  await window.keyboard.type(value);
+  await window.keyboard.press('Enter');
+}
+
 test.describe('Sound Buddy E2E', () => {
   test.beforeAll(async () => {
     // Isolate the app's userData so persisting the ideal-profile choice (PRD 05)
@@ -737,7 +745,19 @@ test.describe('Sound Buddy E2E', () => {
       // Re-enumerate against the stubbed 8-channel device (the boot-time scan
       // ran before the stub was installed).
       await window.locator('#device-refresh-btn').click();
-      await expect(window.locator('#chcfg-list .chcfg-row')).toHaveCount(2);
+      await expect(window.locator('#spectrum-body .live-ch')).toHaveCount(2);
+    });
+
+    // The rail's channel list/add/group/arm controls now live solely in the
+    // workspace (#192) — the rail keeps only capture setup + transport.
+    test('the left rail is slimmed to capture setup + transport', async () => {
+      await expect(window.locator('#chcfg')).toHaveCount(0);
+      await expect(window.locator('#arm-all-btn')).toHaveCount(0);
+      await expect(window.locator('#rig-bar')).toBeVisible();
+      await expect(window.locator('#device-select')).toBeVisible();
+      await expect(window.locator('#live-mode')).toBeVisible();
+      await expect(window.locator('#meter-interval')).toBeVisible();
+      await expect(window.locator('#live-start-btn')).toBeVisible();
     });
 
     test('Monitor/Record toggle reveals the recording folder', async () => {
@@ -752,21 +772,21 @@ test.describe('Sound Buddy E2E', () => {
     });
 
     test('channel picker adds up to the device channel count, with mono/stereo', async () => {
-      const rows = window.locator('#chcfg-list .chcfg-row');
+      const rows = window.locator('#spectrum-body .live-ch');
       await expect(rows).toHaveCount(2);
-      await expect(window.locator('#chcfg-cap')).toHaveText('2 / 8 used');
+      await expect(window.locator('#live-ws-cap')).toHaveText('2 / 8 used');
 
       // Add a third mono strip.
-      await window.locator('#chcfg-add').click();
+      await window.locator('#live-ws-add').click();
       await expect(rows).toHaveCount(3);
 
       // Make the first strip stereo — a second channel select appears in the row.
-      await rows.first().locator('select[data-field="kind"]').selectOption('stereo');
-      await expect(rows.first().locator('select[data-field="b"]')).toBeVisible();
-      await expect(window.locator('#chcfg-cap')).toHaveText('4 / 8 used');
+      await rows.first().locator('.live-ch-kind').selectOption('stereo');
+      await expect(rows.first().locator('.live-ch-src[data-field="b"]')).toBeVisible();
+      await expect(window.locator('#live-ws-cap')).toHaveText('4 / 8 used');
 
       // Remove a strip.
-      await rows.nth(2).locator('.chcfg-x').click();
+      await rows.nth(2).locator('.live-ch-x').click();
       await expect(rows).toHaveCount(2);
     });
 
@@ -931,7 +951,13 @@ test.describe('Sound Buddy E2E', () => {
       expect(paths[0]).not.toBe(paths[1]);
     });
 
-    test('per-channel labels: config rename, live-header inline edit, and fallback (#39)', async () => {
+    test('per-channel labels: workspace inline rename and fallback (#39)', async () => {
+      // A running capture keeps the tick-rendered board live-patched rather than
+      // resynced to idle placeholders (which carry no device name) on every
+      // renderChannelConfig() triggered by a label commit.
+      await window.locator('#live-start-btn').click();
+      await expect(window.locator('#live-stop-btn')).toBeVisible();
+
       // Two backend channels that carry device names → the fallback path.
       const named = [
         { ...LIVE_CHANNELS[0], name: 'USB Audio 1' },
@@ -939,30 +965,25 @@ test.describe('Sound Buddy E2E', () => {
       ];
       await sendLiveTick(named);
       const heads = window.locator('.sb-live-meters .live-ch-name');
-      const rowLabels = window.locator('#chcfg-list .chcfg-row .chcfg-label');
 
-      // With no label yet, the header shows the backend device name, and the
-      // config input previews it as a placeholder (not a value).
+      // With no label set, the header falls back to the backend device name.
       await expect(heads.first()).toHaveText('USB Audio 1');
-      await expect(rowLabels.first()).toHaveValue('');
-      await expect(rowLabels.first()).toHaveAttribute('placeholder', 'USB Audio 1');
 
-      // Rename from the channel config → the live header reflects it immediately.
-      await rowLabels.first().fill('Kick');
+      // Inline-edit the header (contenteditable) → the strip's label is set
+      // immediately.
+      await renameHeader(heads.first(), 'Kick');
       await expect(heads.first()).toHaveText('Kick');
 
-      // Clearing the label falls back to the backend device name.
-      await rowLabels.first().fill('');
+      // Clearing the label falls back to the backend device name again.
+      await heads.first().click();
+      await window.keyboard.press('ControlOrMeta+A');
+      await window.keyboard.press('Delete');
+      await window.keyboard.press('Enter');
       await expect(heads.first()).toHaveText('USB Audio 1');
 
-      // Inline-edit the second strip's header → the config row's label input
-      // (rebuilt from the channelConfig strip) reflects the write-back.
-      await heads.nth(1).click();
-      await window.keyboard.press('ControlOrMeta+A');
-      await window.keyboard.type('SL Vox');
-      await window.keyboard.press('Enter');
+      // Inline-edit the second strip's header.
+      await renameHeader(heads.nth(1), 'SL Vox');
       await expect(heads.nth(1)).toHaveText('SL Vox');
-      await expect(rowLabels.nth(1)).toHaveValue('SL Vox');
 
       // A fresh tick keeps the committed label (patch must not clobber it).
       await sendLiveTick(named);
@@ -970,22 +991,27 @@ test.describe('Sound Buddy E2E', () => {
       await expect(heads.first()).toHaveText('USB Audio 1');
 
       // Focusing an unlabeled header and blurring without typing must NOT pin the
-      // resolved fallback as an explicit label (would freeze the device name).
+      // resolved fallback as an explicit label — a later device-name change still
+      // flows through.
       await heads.first().click();
       await heads.nth(1).click(); // blur strip 0 by focusing elsewhere
-      await expect(rowLabels.first()).toHaveValue('');
+      const renamed = [{ ...named[0], name: 'USB Audio 1 (renamed)' }, named[1]];
+      await sendLiveTick(renamed);
+      await expect(heads.first()).toHaveText('USB Audio 1 (renamed)');
 
       // Escape cancels an in-progress inline rename (label stays unset).
       await heads.first().click();
       await window.keyboard.press('ControlOrMeta+A');
       await window.keyboard.type('Discarded');
       await window.keyboard.press('Escape');
-      await expect(heads.first()).toHaveText('USB Audio 1');
-      await expect(rowLabels.first()).toHaveValue('');
+      await expect(heads.first()).toHaveText('USB Audio 1 (renamed)');
 
       // Labels are display-only: the stream.py channel tokens never carry them.
       const clean = [{ ...LIVE_CHANNELS[0], name: 'Ch 1' }, { ...LIVE_CHANNELS[1], name: 'Ch 2' }];
       await sendLiveTick(clean);
+
+      await window.locator('#live-stop-btn').click();
+      await expect(window.locator('#live-start-btn')).toBeVisible();
     });
 
     test('a new tick updates bars and arc in place', async () => {
@@ -1021,7 +1047,7 @@ test.describe('Sound Buddy E2E', () => {
         });
       });
       await window.locator('#live-mode button[data-mode="record"]').click();
-      await window.locator('#arm-all-btn').click(); // normalize armed state
+      await window.locator('#live-ws-arm-all').click(); // normalize armed state
       await window.locator('#live-start-btn').click();
       await expect(window.locator('#live-stop-btn')).toBeVisible();
       await expect(window.locator('#live-indicator .live-txt')).toHaveText('REC');
@@ -1040,8 +1066,8 @@ test.describe('Sound Buddy E2E', () => {
 
     test('Record mode with nothing armed blocks Start with a hint (#43)', async () => {
       await window.locator('#live-mode button[data-mode="record"]').click();
-      await window.locator('#disarm-all-btn').click();
-      await expect(window.locator('#arm-count')).toContainText('0 /');
+      await window.locator('#live-ws-disarm-all').click();
+      await expect(window.locator('#live-ws-arm-count')).toContainText('0 /');
       await window.locator('#live-start-btn').click();
       // No capture spawned: hint shown, Start still visible, Stop hidden.
       await expect(window.locator('#arm-hint')).toBeVisible();
@@ -1049,7 +1075,7 @@ test.describe('Sound Buddy E2E', () => {
       await expect(window.locator('#live-start-btn')).toBeVisible();
       await expect(window.locator('#live-stop-btn')).toBeHidden();
       // Re-arm → Start works and the hint clears.
-      await window.locator('#arm-all-btn').click();
+      await window.locator('#live-ws-arm-all').click();
       await window.locator('#live-start-btn').click();
       await expect(window.locator('#live-stop-btn')).toBeVisible();
       await expect(window.locator('#arm-hint')).toBeHidden();
@@ -1064,8 +1090,8 @@ test.describe('Sound Buddy E2E', () => {
         });
       });
       await window.locator('#live-mode button[data-mode="record"]').click();
-      await window.locator('#arm-all-btn').click();
-      const arms = window.locator('#chcfg-list .chcfg-arm');
+      await window.locator('#live-ws-arm-all').click();
+      const arms = window.locator('#spectrum-body .live-ch-arm');
       const total = await arms.count();
       await arms.first().click(); // disarm strip 0
       await expect(arms.first()).toHaveAttribute('aria-pressed', 'false');
@@ -1085,11 +1111,9 @@ test.describe('Sound Buddy E2E', () => {
       });
     });
 
-    // Workspace arm controls (#191): the record-arm cluster relocated from the
-    // left rail onto the main-pane track workspace, Record mode only. Drives
-    // #spectrum-body's controls directly and cross-checks the left rail's
-    // #arm-count/#arm-hint stay in sync (they share channelConfig via
-    // renderChannelConfig()).
+    // Workspace arm controls (#191): the record-arm cluster lives on the
+    // main-pane track workspace, Record mode only. Drives #spectrum-body's
+    // controls directly.
     test.describe('Workspace arm controls (#191)', () => {
       test('per-track toggle and toolbar cluster render only in Record mode', async () => {
         // Force Monitor explicitly — an earlier test in this describe may have
@@ -1112,7 +1136,7 @@ test.describe('Sound Buddy E2E', () => {
         await expect(window.locator('#live-ws-arm-all')).toHaveCount(0);
       });
 
-      test('arming a single track from the workspace flips aria-pressed and stays in sync with the left rail', async () => {
+      test('arming a single track from the workspace flips aria-pressed', async () => {
         await window.locator('#live-mode button[data-mode="record"]').click();
         const wsArm = window.locator('#spectrum-body .live-ch-arm').first();
         await expect(wsArm).toHaveAttribute('aria-pressed', 'true');
@@ -1120,27 +1144,23 @@ test.describe('Sound Buddy E2E', () => {
         await wsArm.click(); // disarm
         await expect(wsArm).toHaveAttribute('aria-pressed', 'false');
         await expect(window.locator('#live-ws-arm-count')).toContainText('1 / 2 armed');
-        await expect(window.locator('#arm-count')).toContainText('1 / 2 armed');
 
         await wsArm.click(); // re-arm
         await expect(wsArm).toHaveAttribute('aria-pressed', 'true');
         await expect(window.locator('#live-ws-arm-count')).toContainText('2 / 2 armed');
-        await expect(window.locator('#arm-count')).toContainText('2 / 2 armed');
       });
 
-      test('workspace Arm all / Disarm all mirror the left rail', async () => {
+      test('workspace Arm all / Disarm all', async () => {
         await window.locator('#live-mode button[data-mode="record"]').click();
         const arms = window.locator('#spectrum-body .live-ch-arm');
 
         await window.locator('#live-ws-disarm-all').click();
         for (const arm of await arms.all()) await expect(arm).toHaveAttribute('aria-pressed', 'false');
         await expect(window.locator('#live-ws-arm-count')).toContainText('0 / 2 armed');
-        await expect(window.locator('#arm-count')).toContainText('0 / 2 armed');
 
         await window.locator('#live-ws-arm-all').click();
         for (const arm of await arms.all()) await expect(arm).toHaveAttribute('aria-pressed', 'true');
         await expect(window.locator('#live-ws-arm-count')).toContainText('2 / 2 armed');
-        await expect(window.locator('#arm-count')).toContainText('2 / 2 armed');
       });
 
       test('starting with nothing armed is blocked from the workspace controls too', async () => {
@@ -1193,22 +1213,18 @@ test.describe('Sound Buddy E2E', () => {
         await expect(window.locator('#spectrum-body .sb-live-meters .live-ch.collapsed')).toHaveCount(0);
       });
 
-      test('workspace Add track stays in parity with the left rail', async () => {
+      test('workspace Add track adds a strip', async () => {
         await window.locator('#live-ws-add').click();
         await expect(window.locator('#spectrum-body .sb-live-meters .live-ch')).toHaveCount(3);
-        await expect(window.locator('#chcfg-list .chcfg-row')).toHaveCount(3);
         await expect(window.locator('#live-ws-cap')).toHaveText('3 / 8 used');
-        await expect(window.locator('#chcfg-cap')).toHaveText('3 / 8 used');
       });
 
-      test('a workspace row remove prunes the strip and stays in parity with the left rail', async () => {
-        // removeChannelStrip() is the exact function the left rail's .chcfg-x
-        // calls (pruneStrip unit-tested in group-state.test.ts) — the workspace
-        // remove routes through the same path, so parity here also proves no
-        // dangling group reference survives the removal.
+      test('a workspace row remove prunes the strip', async () => {
+        // removeChannelStrip() is the function .live-ch-x calls (pruneStrip
+        // unit-tested in group-state.test.ts) — this also proves no dangling
+        // group reference survives the removal.
         await window.locator('.sb-live-meters .live-ch .live-ch-x').first().click();
         await expect(window.locator('#spectrum-body .sb-live-meters .live-ch')).toHaveCount(1);
-        await expect(window.locator('#chcfg-list .chcfg-row')).toHaveCount(1);
       });
 
       test('removing every track reveals the "Add your first track" empty state', async () => {
@@ -1233,7 +1249,6 @@ test.describe('Sound Buddy E2E', () => {
         for (let i = 0; i < 6; i++) await window.locator('#live-ws-add').click(); // 2 → 8
         await expect(window.locator('#live-ws-cap')).toHaveText('8 / 8 used');
         await expect(window.locator('#live-ws-add')).toBeDisabled();
-        await expect(window.locator('#chcfg-add')).toBeDisabled();
       });
 
       test('workspace Add / remove are read-only while a capture is running', async () => {
@@ -1249,10 +1264,10 @@ test.describe('Sound Buddy E2E', () => {
   });
 
   // Inline track definition (#189): the workspace header's own kind toggle +
-  // source picker(s), editing the same channelConfig[idx] strip the left rail
-  // does. A dedicated describe (own reload-driven beforeEach, mirroring "Named
-  // channel groups (#41)") rather than nesting under "Live capture (PRD 06)" —
-  // that describe's tests mutate channelConfig/strip kind in ways later tests
+  // source picker(s), editing channelConfig[idx] directly. A dedicated
+  // describe (own reload-driven beforeEach, mirroring "Named channel groups
+  // (#41)") rather than nesting under "Live capture (PRD 06)" — that
+  // describe's tests mutate channelConfig/strip kind in ways later tests
   // there depend on, so isolating here avoids adding another order dependency.
   test.describe('Inline track definition (#189)', () => {
     test.beforeEach(async () => {
@@ -1260,17 +1275,13 @@ test.describe('Sound Buddy E2E', () => {
       await window.waitForLoadState('domcontentloaded');
       await window.locator('.mode-tab[data-mode="live"]').click();
       await window.locator('#device-refresh-btn').click();
-      await expect(window.locator('#chcfg-list .chcfg-row')).toHaveCount(2);
+      await expect(window.locator('#spectrum-body .live-ch')).toHaveCount(2);
     });
 
     test('header label still round-trips with the definition cluster present', async () => {
       const ch0 = window.locator('.live-ch[data-ch="0"]');
-      await ch0.locator('.live-ch-name').click();
-      await window.keyboard.press('ControlOrMeta+A');
-      await window.keyboard.type('Kick');
-      await window.keyboard.press('Enter');
+      await renameHeader(ch0.locator('.live-ch-name'), 'Kick');
       await expect(ch0.locator('.live-ch-name')).toHaveText('Kick');
-      await expect(window.locator('#chcfg-list .chcfg-row').first().locator('.chcfg-label')).toHaveValue('Kick');
     });
 
     test('toggling the header kind select to stereo reveals a second source picker, defaulted to the next free channel', async () => {
@@ -1280,10 +1291,6 @@ test.describe('Sound Buddy E2E', () => {
       await expect(ch0.locator('.live-ch-src')).toHaveCount(2);
       await expect(ch0.locator('.live-ch-src').nth(0)).toHaveValue('0');
       await expect(ch0.locator('.live-ch-src').nth(1)).toHaveValue('1');
-      // Left rail stays in sync — both rails route the switch through the same
-      // window.rigKind.switchKind() helper so they can't drift.
-      await expect(window.locator('#chcfg-list .chcfg-row').first().locator('select[data-field="kind"]')).toHaveValue('stereo');
-      await expect(window.locator('#chcfg-list .chcfg-row').first().locator('select[data-field="b"]')).toHaveValue('1');
     });
 
     test('toggling back to mono collapses to a single source picker, preserving the source channel', async () => {
@@ -1296,14 +1303,12 @@ test.describe('Sound Buddy E2E', () => {
       await ch0.locator('.live-ch-kind').selectOption('mono');
       await expect(ch0.locator('.live-ch-src')).toHaveCount(1);
       await expect(ch0.locator('.live-ch-src')).toHaveValue('2');
-      await expect(window.locator('#chcfg-list .chcfg-row').first().locator('select[data-field="kind"]')).toHaveValue('mono');
     });
 
-    test('setting a source channel from the header updates the strip and stays in parity with the left rail', async () => {
+    test('setting a source channel from the header updates the strip', async () => {
       const ch0 = window.locator('.live-ch[data-ch="0"]');
       await ch0.locator('.live-ch-src[data-field="a"]').selectOption('5');
       await expect(ch0.locator('.live-ch-src[data-field="a"]')).toHaveValue('5');
-      await expect(window.locator('#chcfg-list .chcfg-row').first().locator('select[data-field="a"]')).toHaveValue('5');
     });
 
     test('the source picker is bounded by the device channel count', async () => {
@@ -1316,7 +1321,7 @@ test.describe('Sound Buddy E2E', () => {
         }));
       });
       await window.locator('#device-refresh-btn').click();
-      await expect(window.locator('#chcfg-list .chcfg-row')).toHaveCount(2);
+      await expect(window.locator('#spectrum-body .live-ch')).toHaveCount(2);
       await expect(window.locator('.live-ch[data-ch="0"] .live-ch-src option')).toHaveCount(4);
 
       // Restore the 8ch stub other tests in the file rely on.
@@ -1451,7 +1456,7 @@ test.describe('Sound Buddy E2E', () => {
       }, CH);
     }
     async function makeGroup(name: string) {
-      await window.locator('#new-group-btn').click();
+      await window.locator('#live-ws-new-group').click();
       await window.locator('#rig-dialog-input').fill(name);
       await window.locator('#rig-dialog-ok').click();
     }
@@ -1463,7 +1468,7 @@ test.describe('Sound Buddy E2E', () => {
 
     test('create a group, assign a strip, and it renders grouped in the live board', async () => {
       await makeGroup('Drums');
-      await window.locator('.chcfg-row').nth(0).locator('.chcfg-group').selectOption({ label: 'Drums' });
+      await window.locator('#spectrum-body .live-ch').nth(0).locator('.live-ch-group').selectOption({ label: 'Drums' });
       await tick();
       const board = window.locator('#spectrum-body .sb-live-meters');
       await expect(board.locator('.live-group-head')).toHaveCount(2); // Drums + Ungrouped
@@ -1475,7 +1480,7 @@ test.describe('Sound Buddy E2E', () => {
 
     test('collapsing a group folds all its members, leaving others alone', async () => {
       await makeGroup('Drums');
-      await window.locator('.chcfg-row').nth(0).locator('.chcfg-group').selectOption({ label: 'Drums' });
+      await window.locator('#spectrum-body .live-ch').nth(0).locator('.live-ch-group').selectOption({ label: 'Drums' });
       await tick();
       await window.locator('.live-group-fold').first().click();
       await expect(window.locator('#spectrum-body .live-ch[data-ch="0"]')).toHaveClass(/collapsed/);
@@ -1484,13 +1489,13 @@ test.describe('Sound Buddy E2E', () => {
 
     test('removing a strip from config drops it from its group (no dangling ref)', async () => {
       await makeGroup('Drums');
-      await window.locator('.chcfg-row').nth(0).locator('.chcfg-group').selectOption({ label: 'Drums' });
-      await window.locator('.chcfg-row').nth(1).locator('.chcfg-group').selectOption({ label: 'Drums' });
-      await window.locator('.chcfg-row').nth(0).locator('.chcfg-x').click(); // remove strip 0
-      // One row remains; former strip 1 remapped to index 0 and is STILL in Drums
-      // (value "0" = group index of Drums) — no dangling reference to strip 0.
-      await expect(window.locator('.chcfg-row')).toHaveCount(1);
-      await expect(window.locator('.chcfg-row').nth(0).locator('.chcfg-group')).toHaveValue('0');
+      await window.locator('#spectrum-body .live-ch').nth(0).locator('.live-ch-group').selectOption({ label: 'Drums' });
+      await window.locator('#spectrum-body .live-ch').nth(1).locator('.live-ch-group').selectOption({ label: 'Drums' });
+      await window.locator('#spectrum-body .live-ch').nth(0).locator('.live-ch-x').click(); // remove strip 0
+      // One strip remains; former strip 1 remapped to index 0 and is STILL in
+      // Drums (value "0" = group index of Drums) — no dangling ref to strip 0.
+      await expect(window.locator('#spectrum-body .live-ch')).toHaveCount(1);
+      await expect(window.locator('#spectrum-body .live-ch').nth(0).locator('.live-ch-group')).toHaveValue('0');
       // Live board (one channel now) renders the survivor under Drums, no Ungrouped.
       await electronApp.evaluate(({ BrowserWindow }, chs) => {
         BrowserWindow.getAllWindows()[0].webContents.send('live-event', { type: 'meter', channels: chs });

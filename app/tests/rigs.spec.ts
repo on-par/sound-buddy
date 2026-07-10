@@ -68,7 +68,7 @@ test.describe.serial('Rigs — save / load / switch', () => {
       set('window-secs', '5');
       set('llm-interval', '120');
     });
-    await win.locator('.chcfg-kind').first().selectOption('stereo');
+    await win.locator('.live-ch-kind').first().selectOption('stereo');
 
     await win.locator('#rig-saveas-btn').click();
     await expect(win.locator('#rig-dialog')).toBeVisible();
@@ -164,7 +164,7 @@ test.describe.serial('Rigs — save / load / switch', () => {
     await expect(win.locator('#rig-select option:checked')).toHaveText('Big Board');
     await expect(win.locator('#live-status')).toContainText('out of range');
     // Both strips still render (nothing thrown); the stereo legs were clamped.
-    await expect(win.locator('#chcfg-list .chcfg-row')).toHaveCount(2);
+    await expect(win.locator('#spectrum-body .live-ch')).toHaveCount(2);
   });
 
   test('per-channel labels round-trip through a rig save + relaunch (#39)', async () => {
@@ -176,12 +176,19 @@ test.describe.serial('Rigs — save / load / switch', () => {
     await win.locator('#device-refresh-btn').click();
     // Pick the real device before labelling (a device change re-seeds the config).
     await win.locator('#device-select').selectOption('0');
-    await expect(win.locator('#chcfg-list .chcfg-row')).toHaveCount(2);
+    await expect(win.locator('#spectrum-body .live-ch')).toHaveCount(2);
 
-    // Name both strips, then save as a new, active rig.
-    const labels = win.locator('#chcfg-list .chcfg-row .chcfg-label');
-    await labels.nth(0).fill('Kick');
-    await labels.nth(1).fill('SL Vox');
+    // Name both strips (contenteditable workspace header), then save as a new,
+    // active rig.
+    const names = win.locator('#spectrum-body .live-ch .live-ch-name');
+    async function renameHeader(idx: number, value: string) {
+      await names.nth(idx).click();
+      await win.keyboard.press('ControlOrMeta+A');
+      await win.keyboard.type(value);
+      await win.keyboard.press('Enter');
+    }
+    await renameHeader(0, 'Kick');
+    await renameHeader(1, 'SL Vox');
     await win.locator('#rig-saveas-btn').click();
     await win.locator('#rig-dialog-input').fill('Labeled Board');
     await win.locator('#rig-dialog-ok').click();
@@ -193,13 +200,13 @@ test.describe.serial('Rigs — save / load / switch', () => {
     expect(saved.channelConfig[0]).toMatchObject({ label: 'Kick' });
     expect(saved.channelConfig[1]).toMatchObject({ label: 'SL Vox' });
 
-    // Relaunch: the active rig restores the labels into the config inputs.
+    // Relaunch: the active rig restores the labels into the workspace headers.
     await app.close();
     ({ app, win } = await launch(EIGHT_CH));
     await expect(win.locator('#rig-select option:checked')).toHaveText('Labeled Board');
-    const restored = win.locator('#chcfg-list .chcfg-row .chcfg-label');
-    await expect(restored.nth(0)).toHaveValue('Kick');
-    await expect(restored.nth(1)).toHaveValue('SL Vox');
+    const restored = win.locator('#spectrum-body .live-ch .live-ch-name');
+    await expect(restored.nth(0)).toHaveText('Kick');
+    await expect(restored.nth(1)).toHaveText('SL Vox');
   });
 
   test('named groups round-trip through a rig save + relaunch (#41)', async () => {
@@ -209,14 +216,14 @@ test.describe.serial('Rigs — save / load / switch', () => {
     await win.locator('.mode-tab[data-mode="live"]').click();
     await win.locator('#device-refresh-btn').click();
     await win.locator('#device-select').selectOption('0');
-    await expect(win.locator('#chcfg-list .chcfg-row')).toHaveCount(2);
+    await expect(win.locator('#spectrum-body .live-ch')).toHaveCount(2);
 
     // Create a group and assign both strips to it.
-    await win.locator('#new-group-btn').click();
+    await win.locator('#live-ws-new-group').click();
     await win.locator('#rig-dialog-input').fill('Drums');
     await win.locator('#rig-dialog-ok').click();
-    await win.locator('.chcfg-row').nth(0).locator('.chcfg-group').selectOption({ label: 'Drums' });
-    await win.locator('.chcfg-row').nth(1).locator('.chcfg-group').selectOption({ label: 'Drums' });
+    await win.locator('#spectrum-body .live-ch').nth(0).locator('.live-ch-group').selectOption({ label: 'Drums' });
+    await win.locator('#spectrum-body .live-ch').nth(1).locator('.live-ch-group').selectOption({ label: 'Drums' });
 
     // Save as an active rig; the persisted rig carries the group + members.
     await win.locator('#rig-saveas-btn').click();
@@ -227,11 +234,11 @@ test.describe.serial('Rigs — save / load / switch', () => {
     const saved = (rigs as Array<{ name: string; groups?: unknown }>).find((r) => r.name === 'Grouped Board');
     expect(saved!.groups).toEqual([{ name: 'Drums', members: [0, 1] }]);
 
-    // Relaunch: the active rig restores group membership (both rows show Drums).
+    // Relaunch: the active rig restores group membership (both strips show Drums).
     await app.close();
     ({ app, win } = await launch(EIGHT_CH));
     await expect(win.locator('#rig-select option:checked')).toHaveText('Grouped Board');
-    const groups = win.locator('#chcfg-list .chcfg-row .chcfg-group');
+    const groups = win.locator('#spectrum-body .live-ch .live-ch-group');
     await expect(groups.nth(0)).toHaveValue('0');
     await expect(groups.nth(1)).toHaveValue('0');
   });
@@ -284,7 +291,7 @@ test.describe.serial('Rigs — save / load / switch', () => {
 
   test('capture-config controls lock on Start and re-enable on Stop', async () => {
     await stubCapture(true);
-    const locked = ['#device-select', '#device-refresh-btn', '#record-folder-btn', '#chcfg-add',
+    const locked = ['#device-select', '#device-refresh-btn', '#record-folder-btn',
       '#meter-interval', '#window-secs', '#llm-interval'];
 
     await win.locator('#live-start-btn').click();
@@ -293,7 +300,12 @@ test.describe.serial('Rigs — save / load / switch', () => {
       await expect(win.locator(sel)).toHaveAttribute('aria-disabled', 'true');
     }
     await expect(win.locator('#live-mode button').first()).toBeDisabled();
-    await expect(win.locator('#chcfg-list select').first()).toBeDisabled();
+    await expect(win.locator('#spectrum-body .live-ch-kind').first()).toBeDisabled();
+    // The workspace toolbar's Add track is rebuilt (not just re-flagged) by
+    // Start's renderLiveWorkspace() call, which runs AFTER setCaptureControlsLocked()
+    // — the rebuilt markup bakes in `disabled` (via defDisabled) but not
+    // aria-disabled, so only `disabled` is asserted here.
+    await expect(win.locator('#live-ws-add')).toBeDisabled();
     await expect(win.locator('#capture-locked-note')).toBeVisible();
 
     await win.locator('#live-stop-btn').click();
@@ -302,6 +314,7 @@ test.describe.serial('Rigs — save / load / switch', () => {
       await expect(win.locator(sel)).toHaveAttribute('aria-disabled', 'false');
     }
     await expect(win.locator('#live-mode button').first()).toBeEnabled();
+    await expect(win.locator('#live-ws-add')).toBeEnabled();
     await expect(win.locator('#capture-locked-note')).toBeHidden();
   });
 
@@ -309,21 +322,29 @@ test.describe.serial('Rigs — save / load / switch', () => {
     await stubCapture(false);
     await win.locator('#live-start-btn').click();
     // startLive resolves { success:false } → stopLive() runs → controls unlocked.
+    // (A failed start also swaps #spectrum-body to the error state, so the
+    // workspace toolbar itself is gone — nothing there left to assert on.)
     await expect(win.locator('#device-select')).toBeEnabled();
-    await expect(win.locator('#chcfg-add')).toBeEnabled();
     await expect(win.locator('#meter-interval')).toBeEnabled();
     await expect(win.locator('#capture-locked-note')).toBeHidden();
     await expect(win.locator('#live-start-btn')).toBeVisible();
   });
 
-  test('locking survives a channel-config re-render', async () => {
+  test('the capture lock re-asserts idempotently on every config-changed callback', async () => {
     await stubCapture(true);
     await win.locator('#live-start-btn').click();
-    await expect(win.locator('#chcfg-list select').first()).toBeDisabled();
-    // Force a re-render (rebuilds the chcfg rows) mid-capture; new controls must stay locked.
+    // Start's renderLiveWorkspace() rebuilds the pane right after the initial
+    // lock, so only `disabled` (baked into the rebuilt markup) is guaranteed
+    // yet — see the aria-disabled note on the Start/Stop test above.
+    await expect(win.locator('#spectrum-body .live-ch-kind').first()).toBeDisabled();
+    // Every mutator (arm/rename/group/kind change) funnels through
+    // renderChannelConfig() as its "config changed" callback; while a capture
+    // is running it doesn't rebuild the workspace pane (that's owned by the
+    // rAF tick, #188) but must re-assert the lock without erroring. With no
+    // further rebuild after this point, aria-disabled now holds too.
     await win.evaluate(() => (window as unknown as { renderChannelConfig: () => void }).renderChannelConfig());
-    await expect(win.locator('#chcfg-list select').first()).toBeDisabled();
-    await expect(win.locator('#chcfg-list select').first()).toHaveAttribute('aria-disabled', 'true');
+    await expect(win.locator('#spectrum-body .live-ch-kind').first()).toBeDisabled();
+    await expect(win.locator('#spectrum-body .live-ch-kind').first()).toHaveAttribute('aria-disabled', 'true');
     await win.locator('#live-stop-btn').click();
   });
 });
