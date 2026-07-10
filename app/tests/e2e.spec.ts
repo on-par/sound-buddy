@@ -142,6 +142,23 @@ const SHORT_ANALYSIS = {
   spectrum: { ...FAKE_ANALYSIS.spectrum, frames: [{ t: 0, db: CURVE.db, rms: -18, class: 'music' }] },
 };
 
+// Loads a fixture and runs analysis directly via the globals index.html exposes
+// for exactly this purpose (see the "Global (used by smoke test + menu-open)"
+// comment above loadFile in the source). Needed for every load after the very
+// first successful analysis of the run: once a report card is showing,
+// #file-dropzone/#analyze-btn live inside #rc-empty, which flips to
+// display:none in favor of #rc-content (#203) — so they're no longer
+// clickable. This mirrors the app's own "File > Open File…" menu action
+// (sb.onMenuOpenFile), which is the only remaining production path that loads
+// a new file once a report card is already on screen.
+async function loadAndAnalyze(fp: string) {
+  await window.evaluate((filePath) => {
+    const w = window as unknown as { loadFile: (p: string) => void; runFileAnalysis: (p: string) => Promise<void> };
+    w.loadFile(filePath);
+    return w.runFileAnalysis(filePath);
+  }, fp);
+}
+
 test.describe('Sound Buddy E2E', () => {
   test.beforeAll(async () => {
     // Isolate the app's userData so persisting the ideal-profile choice (PRD 05)
@@ -190,40 +207,44 @@ test.describe('Sound Buddy E2E', () => {
 
   test('app launches and shows header', async () => {
     await expect(window.locator('#logo-text')).toHaveText('Sound Buddy');
-    await expect(window.locator('.mode-tab[data-mode="file"]')).toBeVisible();
     await expect(window.locator('.mode-tab[data-mode="dir"]')).toBeVisible();
     await expect(window.locator('.mode-tab[data-mode="live"]')).toBeVisible();
     await expect(window.locator('.mode-tab[data-mode="reportcard"]')).toBeVisible();
   });
 
   test('tab navigation shows the corresponding panel', async () => {
-    await window.locator('.mode-tab[data-mode="file"]').click();
-    await expect(window.locator('#tab-file')).toHaveClass(/active/);
+    // The app boots on the Report Card tab (#203) — the file-loading dropzone
+    // now lives inside its empty state, not a standalone File tab.
+    await expect(window.locator('#reportcard-view')).toHaveClass(/active/);
+    await expect(window.locator('#rc-empty')).toBeVisible();
     await expect(window.locator('#file-dropzone')).toBeVisible();
+
+    await window.locator('.mode-tab[data-mode="dir"]').click();
+    await expect(window.locator('#reportcard-view')).not.toHaveClass(/active/);
+    await expect(window.locator('#tab-dir')).toHaveClass(/active/);
 
     await window.locator('.mode-tab[data-mode="reportcard"]').click();
     await expect(window.locator('#reportcard-view')).toHaveClass(/active/);
     await expect(window.locator('#rc-empty')).toBeVisible();
-
-    await window.locator('.mode-tab[data-mode="file"]').click();
-    await expect(window.locator('#reportcard-view')).not.toHaveClass(/active/);
-    await expect(window.locator('#tab-file')).toHaveClass(/active/);
   });
 
   test('report card shows empty state before any analysis', async () => {
     await window.locator('.mode-tab[data-mode="reportcard"]').click();
     await expect(window.locator('#rc-empty')).toBeVisible();
-    await expect(window.locator('#rc-empty')).toContainText('No analysis yet');
+    // The empty state is the file-loading form itself now (#203), not a
+    // placeholder message pointing at a separate File tab.
+    await expect(window.locator('#file-dropzone')).toContainText('Drop audio file here');
+    await expect(window.locator('#analyze-btn')).toBeDisabled();
     await expect(window.locator('#rc-content')).toBeHidden();
   });
 
   test('playback transport is absent (disabled/idle) before any analysis is loaded (#180)', async () => {
-    await window.locator('.mode-tab[data-mode="file"]').click();
+    await window.locator('.mode-tab[data-mode="reportcard"]').click();
     await expect(window.locator('#spectro-play-btn')).toHaveCount(0);
   });
 
   test('analyzing a file populates the report card', async () => {
-    await window.locator('.mode-tab[data-mode="file"]').click();
+    await window.locator('.mode-tab[data-mode="reportcard"]').click();
 
     // Load the fixture path directly, bypassing the native file-picker dialog.
     const fixturePath = path.join(__dirname, 'fixtures', 'silence.wav');
@@ -234,13 +255,12 @@ test.describe('Sound Buddy E2E', () => {
     await expect(window.locator('#analyze-btn')).toBeEnabled();
     await window.locator('#analyze-btn').click();
 
-    await expect(window.locator('#file-info')).toBeVisible();
-    // The redesign shows the loaded file name in the dropzone title, not a separate row.
-    await expect(window.locator('#file-dropzone .dz-title')).toHaveText('silence.wav');
-
-    await window.locator('.mode-tab[data-mode="reportcard"]').click();
+    // Success flips the empty state (dropzone/Analyze form) over to the
+    // rendered card (#203) — no separate tab switch needed to see it, and the
+    // filename now shows in the card's own header instead of the dropzone.
     await expect(window.locator('#rc-content')).toBeVisible();
     await expect(window.locator('#rc-empty')).toBeHidden();
+    await expect(window.locator('#rc-filename')).toHaveText('silence.wav');
   });
 
   test('report card and spectrum share one screen after analysis (#177)', async () => {
@@ -248,15 +268,12 @@ test.describe('Sound Buddy E2E', () => {
     // with the Report Card tab active, both the spectrum curve and the report
     // card content are visible simultaneously — no tab switch to see one or the
     // other. The Source panel folds away (body.rc-active) so both get room.
-    await window.locator('.mode-tab[data-mode="file"]').click();
-    const fixturePath = path.join(__dirname, 'fixtures', 'silence.wav');
-    await window.evaluate((fp) => {
-      (window as unknown as { loadFile: (p: string) => void }).loadFile(fp);
-    }, fixturePath);
-    await expect(window.locator('#analyze-btn')).toBeEnabled();
-    await window.locator('#analyze-btn').click();
-
     await window.locator('.mode-tab[data-mode="reportcard"]').click();
+    // A prior test already produced a report card, which hides the
+    // dropzone/Analyze button behind #rc-content — load this file directly
+    // via the globals instead (see loadAndAnalyze).
+    const fixturePath = path.join(__dirname, 'fixtures', 'silence.wav');
+    await loadAndAnalyze(fixturePath);
 
     // The report card is rendered…
     await expect(window.locator('#rc-content')).toBeVisible();
@@ -270,7 +287,7 @@ test.describe('Sound Buddy E2E', () => {
   });
 
   test('spectrum panel renders uniform-width EQ bars (AW-2, #178)', async () => {
-    await window.locator('.mode-tab[data-mode="file"]').click();
+    await window.locator('.mode-tab[data-mode="reportcard"]').click();
 
     // Seven upright bars, one per frequency band, laid out left (lowest) to right.
     const bars = window.locator('#spectrum-chart .veq-bar');
@@ -299,7 +316,7 @@ test.describe('Sound Buddy E2E', () => {
   });
 
   test('EQ bar height reflects the measured band level', async () => {
-    await window.locator('.mode-tab[data-mode="file"]').click();
+    await window.locator('.mode-tab[data-mode="reportcard"]').click();
 
     // FAKE_ANALYSIS.spectrum.bands: mid (-16) is the loudest of the 7; brilliance
     // (-35) is quieter but still above DIM_DB (-60), so nothing is dimmed here.
@@ -313,7 +330,7 @@ test.describe('Sound Buddy E2E', () => {
   });
 
   test('time-sampled spectrogram scrubber redraws the AW-2 bars', async () => {
-    await window.locator('.mode-tab[data-mode="file"]').click();
+    await window.locator('.mode-tab[data-mode="reportcard"]').click();
 
     // Heatmap strip under the bars: one column per frame (6 in the fixture).
     await expect(window.locator('#spectrum-heatmap svg')).toBeVisible();
@@ -340,15 +357,15 @@ test.describe('Sound Buddy E2E', () => {
     expect(await barHeights()).toEqual(avgHeights);
   });
 
-  test('scrubbed frame survives leaving and returning to the file tab', async () => {
-    await window.locator('.mode-tab[data-mode="file"]').click();
+  test('scrubbed frame survives leaving and returning to the report card tab', async () => {
+    await window.locator('.mode-tab[data-mode="reportcard"]').click();
     await window.locator('#spectrum-heatmap').click({ position: { x: 20, y: 40 } });
     const scrubbed = await window.locator('#scrub-readout').textContent();
     expect(scrubbed).toContain('t =');
 
     // Round-trip through another tab and back — the selection must persist.
+    await window.locator('.mode-tab[data-mode="dir"]').click();
     await window.locator('.mode-tab[data-mode="reportcard"]').click();
-    await window.locator('.mode-tab[data-mode="file"]').click();
     await expect(window.locator('#scrub-readout')).toHaveText(scrubbed!.trim());
     await expect(window.locator('#spectrum-heatmap .hm-col.sel')).toHaveCount(1);
 
@@ -369,11 +386,8 @@ test.describe('Sound Buddy E2E', () => {
         ipcMain.removeHandler('analyze-file');
         ipcMain.handle('analyze-file', () => ({ success: true, data: analysis }));
       }, FAKE_ANALYSIS);
-      await window.locator('.mode-tab[data-mode="file"]').click();
-      await window.evaluate((fp) => {
-        (window as unknown as { loadFile: (p: string) => void }).loadFile(fp);
-      }, realFixturePath);
-      await window.locator('#analyze-btn').click();
+      await window.locator('.mode-tab[data-mode="reportcard"]').click();
+      await loadAndAnalyze(realFixturePath);
     });
 
     test('play, pause, seek via spectrogram, and end-of-file all drive the playhead + time readout', async () => {
@@ -388,11 +402,8 @@ test.describe('Sound Buddy E2E', () => {
         ipcMain.handle('analyze-file', () => ({ success: true, data: analysis }));
       }, { ...FAKE_ANALYSIS, filePath: realFixturePath, spectrum: { ...FAKE_ANALYSIS.spectrum, frames: playbackFrames } });
 
-      await window.locator('.mode-tab[data-mode="file"]').click();
-      await window.evaluate((fp) => {
-        (window as unknown as { loadFile: (p: string) => void }).loadFile(fp);
-      }, realFixturePath);
-      await window.locator('#analyze-btn').click();
+      await window.locator('.mode-tab[data-mode="reportcard"]').click();
+      await loadAndAnalyze(realFixturePath);
 
       const playBtn = window.locator('#spectro-play-btn');
       const time = window.locator('#spectro-time');
@@ -448,11 +459,8 @@ test.describe('Sound Buddy E2E', () => {
         ipcMain.handle('analyze-file', () => ({ success: true, data: analysis }));
       }, { ...FAKE_ANALYSIS, filePath: realFixturePath, spectrum: { ...FAKE_ANALYSIS.spectrum, frames: playbackFrames } });
 
-      await window.locator('.mode-tab[data-mode="file"]').click();
-      await window.evaluate((fp) => {
-        (window as unknown as { loadFile: (p: string) => void }).loadFile(fp);
-      }, realFixturePath);
-      await window.locator('#analyze-btn').click();
+      await window.locator('.mode-tab[data-mode="reportcard"]').click();
+      await loadAndAnalyze(realFixturePath);
 
       const playBtn = window.locator('#spectro-play-btn');
       const readout = window.locator('#scrub-readout');
@@ -493,11 +501,8 @@ test.describe('Sound Buddy E2E', () => {
         ipcMain.handle('analyze-file', () => ({ success: true, data: analysis }));
       }, { ...FAKE_ANALYSIS, filePath: realFixturePath, spectrum: { ...FAKE_ANALYSIS.spectrum, frames: playbackFrames } });
 
-      await window.locator('.mode-tab[data-mode="file"]').click();
-      await window.evaluate((fp) => {
-        (window as unknown as { loadFile: (p: string) => void }).loadFile(fp);
-      }, realFixturePath);
-      await window.locator('#analyze-btn').click();
+      await window.locator('.mode-tab[data-mode="reportcard"]').click();
+      await loadAndAnalyze(realFixturePath);
 
       const playBtn = window.locator('#spectro-play-btn');
       const readout = window.locator('#scrub-readout');
@@ -588,13 +593,9 @@ test.describe('Sound Buddy E2E', () => {
     }, DEDUCTING_ANALYSIS);
 
     const fixturePath = path.join(__dirname, 'fixtures', 'silence.wav');
-    await window.locator('.mode-tab[data-mode="file"]').click();
-    await window.evaluate((fp) => {
-      (window as unknown as { loadFile: (p: string) => void }).loadFile(fp);
-    }, fixturePath);
-    await window.locator('#analyze-btn').click();
-
     await window.locator('.mode-tab[data-mode="reportcard"]').click();
+    await loadAndAnalyze(fixturePath);
+
     const rows = window.locator('#rc-why .rc-why-row');
     await expect(rows).toHaveCount(2);
     await expect(rows.nth(0)).toContainText('RMS out of band');
@@ -610,12 +611,7 @@ test.describe('Sound Buddy E2E', () => {
       ipcMain.removeHandler('analyze-file');
       ipcMain.handle('analyze-file', () => ({ success: true, data: analysis }));
     }, FAKE_ANALYSIS);
-    await window.locator('.mode-tab[data-mode="file"]').click();
-    await window.evaluate((fp) => {
-      (window as unknown as { loadFile: (p: string) => void }).loadFile(fp);
-    }, fixturePath);
-    await window.locator('#analyze-btn').click();
-    await window.locator('.mode-tab[data-mode="reportcard"]').click();
+    await loadAndAnalyze(fixturePath);
   });
 
   test('worship service recordings avoid the false quiet report-card verdict', async () => {
@@ -624,19 +620,16 @@ test.describe('Sound Buddy E2E', () => {
       ipcMain.handle('analyze-file', () => ({ success: true, data: analysis }));
     }, WORSHIP_SERVICE_ANALYSIS);
 
-    await window.locator('.mode-tab[data-mode="file"]').click();
-    const fixturePath = path.join(__dirname, 'fixtures', 'silence.wav');
-    await window.evaluate((fp) => {
-      (window as unknown as { loadFile: (p: string) => void }).loadFile(fp);
-    }, fixturePath);
-    await window.locator('#analyze-btn').click();
-
     await window.locator('.mode-tab[data-mode="reportcard"]').click();
+    const fixturePath = path.join(__dirname, 'fixtures', 'silence.wav');
+    await loadAndAnalyze(fixturePath);
+
     await expect(window.locator('#rc-rec-type')).toContainText('Dynamic Service');
     await expect(window.locator('#rc-rec-type')).not.toContainText('Quiet');
     await expect(window.locator('#rc-recommendations')).not.toContainText('too quiet');
 
-    await window.locator('.mode-tab[data-mode="file"]').click();
+    // .spectrum-legend lives in the shared spectrum panel beside the report
+    // card, not a separate File tab (#203) — no navigation needed to see it.
     await expect(window.locator('.spectrum-legend')).toContainText('Worship service');
 
     await electronApp.evaluate(({ ipcMain }, analysis) => {
@@ -644,12 +637,8 @@ test.describe('Sound Buddy E2E', () => {
       ipcMain.handle('analyze-file', () => ({ success: true, data: analysis }));
     }, WORSHIP_MUSIC_ANALYSIS);
 
-    await window.evaluate((fp) => {
-      (window as unknown as { loadFile: (p: string) => void }).loadFile(fp);
-    }, fixturePath);
-    await window.locator('#analyze-btn').click();
+    await loadAndAnalyze(fixturePath);
 
-    await window.locator('.mode-tab[data-mode="reportcard"]').click();
     await expect(window.locator('#rc-rec-type')).toContainText('Dynamic Service');
     await expect(window.locator('#rc-recommendations')).not.toContainText('too quiet');
   });
@@ -672,19 +661,15 @@ test.describe('Sound Buddy E2E', () => {
       ipcMain.handle('analyze-file', () => ({ success: true, data: analysis }));
     }, SHORT_ANALYSIS);
 
-    await window.locator('.mode-tab[data-mode="file"]').click();
+    await window.locator('.mode-tab[data-mode="reportcard"]').click();
     const fixturePath = path.join(__dirname, 'fixtures', 'silence.wav');
-    await window.evaluate((fp) => {
-      (window as unknown as { loadFile: (p: string) => void }).loadFile(fp);
-    }, fixturePath);
-    await window.locator('#analyze-btn').click();
+    await loadAndAnalyze(fixturePath);
 
     // Heatmap collapses to a single column; the scrubber still starts on average.
     await expect(window.locator('#spectrum-heatmap .hm-col')).toHaveCount(1);
     await expect(window.locator('#scrub-readout')).toHaveText('Whole-file average');
 
     // Report card renders with a single representative frame, no error.
-    await window.locator('.mode-tab[data-mode="reportcard"]').click();
     await expect(window.locator('#rc-frames-section')).toBeVisible();
     await expect(window.locator('#rc-frame-curves .rc-frame')).toHaveCount(1);
   });
@@ -695,17 +680,18 @@ test.describe('Sound Buddy E2E', () => {
       ipcMain.handle('analyze-file', () => ({ success: true, data: analysis }));
     }, FAKE_ANALYSIS);
 
-    await window.locator('.mode-tab[data-mode="file"]').click();
-    const fixturePath = path.join(__dirname, 'fixtures', 'silence.wav');
-    await window.evaluate((fp) => {
-      (window as unknown as { loadFile: (p: string) => void }).loadFile(fp);
-    }, fixturePath);
-    await window.locator('#analyze-btn').click();
-
-    // Cycle back through the file tab so the real analysis (with its curve) is
-    // re-rendered — the prior test left the panel on the curve-less meters path.
     await window.locator('.mode-tab[data-mode="reportcard"]').click();
-    await window.locator('.mode-tab[data-mode="file"]').click();
+    const fixturePath = path.join(__dirname, 'fixtures', 'silence.wav');
+    await loadAndAnalyze(fixturePath);
+
+    // Cycle away and back through another mode so the real analysis (with its
+    // curve) is re-rendered — the prior test left the panel on the curve-less
+    // meters path. 'dir' and 'reportcard' both route spectrum rendering
+    // through the same syncSpectrumForMode → renderSpectrum path the old File
+    // tab used, so this reproduces the original round trip now that File is
+    // gone (#203).
+    await window.locator('.mode-tab[data-mode="dir"]').click();
+    await window.locator('.mode-tab[data-mode="reportcard"]').click();
 
     // The measured bars remain, with the dashed ideal target overlaid on top.
     await expect(window.locator('#spectrum-chart .veq-bar')).toHaveCount(7);
@@ -721,7 +707,7 @@ test.describe('Sound Buddy E2E', () => {
   });
 
   test('creates a custom ideal curve from the current analysis', async () => {
-    await window.locator('.mode-tab[data-mode="file"]').click();
+    await window.locator('.mode-tab[data-mode="reportcard"]').click();
 
     await window.locator('#ideal-profile-select').selectOption('flat');
     await expect(window.locator('.spectrum-legend')).toContainText('Flat / neutral');
@@ -1365,6 +1351,14 @@ test.describe('Sound Buddy E2E', () => {
       await expect(window.locator('#ai-tab-btn-ollama')).toHaveClass(/active/);
       await expect(window.locator('#ai-ollama-status')).toContainText('Ollama detected — 2 models');
       await expect(window.locator('#ai-ollama-model option')).toHaveCount(2);
+    });
+
+    // #202: the installed app version is visible somewhere in Settings — this
+    // dialog (opened by the header gear icon) is the closest thing to one
+    // today (#204 tracks unifying it with Storage settings under real tabs).
+    test('shows the installed app version', async () => {
+      await window.locator('#ai-settings-btn').click();
+      await expect(window.locator('#ai-dialog-version')).toContainText(/Sound Buddy \d+\.\d+\.\d+/);
     });
 
     test('API-key tab: custom provider reveals the base URL field', async () => {

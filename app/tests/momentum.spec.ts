@@ -20,7 +20,15 @@ const USER_DATA = path.join(__dirname, '..', 'test-results', 'momentum-userdata'
 const FAKE_ANALYSIS = {
   filePath: '/fake/momentum.wav',
   sox: { rmsDbfs: -18, peakDbfs: -0.5, dynamicRangeDb: 12, clipping: true },
-  ffprobe: { format: { filename: '/fake/momentum.wav' } },
+  // #203: runFileAnalysis's success path now always runs populateFileInfo
+  // (which reads ffprobe.stream) before flipping the Report Card tab from the
+  // empty state to the rendered card — a fixture missing `stream` used to get
+  // away with it because the old flow re-triggered the render via a real File
+  // → Report Card tab switch instead of relying on runFileAnalysis to finish.
+  ffprobe: {
+    format: { filename: '/fake/momentum.wav', formatName: 'wav' },
+    stream: { codecName: 'pcm_s16le', channels: 2, channelLayout: 'stereo', sampleRate: 48000, bitDepth: 16 },
+  },
   spectrum: {
     bands: { subBass: -20, bass: -18, lowMid: -22, mid: -16, highMid: -25, presence: -30, brilliance: -35 },
     spectralCentroid: 1200,
@@ -50,7 +58,9 @@ async function launch(): Promise<void> {
 }
 
 async function analyzeAndOpenReportCard(): Promise<void> {
-  await win.locator('.mode-tab[data-mode="file"]').click();
+  // The File tab is gone (#203) — file loading now lives in the Report Card
+  // tab's empty state, which is also the default landing tab.
+  await win.locator('.mode-tab[data-mode="reportcard"]').click();
   await win.evaluate(() => {
     (window as unknown as { loadFile: (p: string) => void }).loadFile('/fake/momentum.wav');
   });
@@ -124,8 +134,9 @@ test.describe.serial('Upgrade momentum card (#58)', () => {
     await win.locator('#rcu-later').click();
     await expect(win.locator('#rc-upgrade')).toBeHidden();
 
-    // Leaving and returning to the report card keeps it dismissed.
-    await win.locator('.mode-tab[data-mode="file"]').click();
+    // Leaving and returning to the report card keeps it dismissed. (No
+    // standalone File tab to leave to anymore, #203 — any other tab works.)
+    await win.locator('.mode-tab[data-mode="dir"]').click();
     await win.locator('.mode-tab[data-mode="reportcard"]').click();
     await expect(win.locator('#rc-content')).toBeVisible();
     await expect(win.locator('#rc-upgrade')).toBeHidden();

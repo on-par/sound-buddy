@@ -314,15 +314,6 @@
     .dz-meta { font:var(--fw-regular) var(--fs-micro)/1.3 var(--font-mono); color:var(--text-muted); }
     .dz-body { display:flex; flex-direction:column; gap:3px; align-items:center; min-width:0; width:100%; }
 
-    /* Info rows */
-    .info-group { display:flex; flex-direction:column; gap:8px; }
-    .info-row { display:flex; justify-content:space-between; align-items:baseline; gap:8px; }
-    .info-label { font:var(--fw-regular) var(--fs-label)/1 var(--font-sans); color:var(--text-tertiary); white-space:nowrap; flex-shrink:0; }
-    .info-value { font:var(--fw-medium) var(--fs-data-sm)/1 var(--font-mono); font-variant-numeric:tabular-nums; color:var(--text-secondary); white-space:nowrap; text-align:right; }
-    .info-value.good { color:var(--good-text); }
-    .info-value.check { color:var(--check-text); }
-    .info-value.issue { color:var(--issue-text); }
-
     /* Dir file list */
     .dir-list { display:flex; flex-direction:column; gap:2px; max-height:220px; overflow-y:auto; }
     .dir-item { display:flex; align-items:center; justify-content:space-between; gap:8px; padding:6px 8px; border-radius:var(--radius-sm); background:var(--surface); }
@@ -414,6 +405,7 @@
     .ai-dialog-card { width:min(440px,calc(100vw - 48px)); }
     .ai-dialog-sub { font:var(--fw-regular) var(--fs-label)/1.4 var(--font-sans); color:var(--text-secondary); margin-top:-6px; }
     .ai-dialog-note { font:var(--fw-regular) var(--fs-label)/1.4 var(--font-sans); color:var(--text-tertiary); margin:2px 0 0; }
+    .ai-dialog-version { font:var(--fw-regular) var(--fs-micro)/1.4 var(--font-mono); color:var(--text-muted); margin:6px 0 0; text-align:center; }
     .ai-tabs { display:flex; gap:6px; }
     .ai-tab { flex:1; height:var(--control-h); border:1px solid var(--border-default); border-radius:var(--radius-md); background:var(--surface); color:var(--text-secondary); font:var(--fw-medium) var(--fs-body-sm)/1 var(--font-sans); cursor:pointer; }
     .ai-tab.active { border-color:var(--gold-600); background:var(--gold-tint); color:var(--gold-text); }
@@ -728,6 +720,10 @@
     .rc-empty { flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:16px; color:var(--text-muted); text-align:center; padding:80px 20px; }
     .rc-empty .t1 { font:var(--fw-medium) var(--fs-body)/1 var(--font-sans); color:var(--text-tertiary); }
     .rc-empty .t2 { font:var(--fw-regular) var(--fs-body-sm)/1 var(--font-sans); }
+    /* File input moved onto the Report Card empty state (#203) — was the
+       standalone File tab. Constrained to a form-like column instead of the
+       full report-card width. */
+    .rc-empty-load { display:flex; flex-direction:column; gap:14px; width:100%; max-width:320px; }
 
     .rc-header { text-align:center; margin-bottom:26px; padding-bottom:20px; border-bottom:1px solid var(--border-subtle); }
     .rc-header h1 { font:var(--fw-semibold) var(--fs-h1)/1.2 var(--font-sans); letter-spacing:var(--tracking-tight); color:var(--text-primary); margin:0 0 8px; }
@@ -895,7 +891,7 @@
     .rcp-dev .devbar-under { fill:var(--band-mid, #23BBA6); opacity:0.8; }
   </style>
 </head>
-<body class="ai-disabled not-pro">
+<body class="ai-disabled not-pro rc-active">
 <div id="root">
   <!-- ══ Update banner ══ -->
   <div id="update-banner" role="status">
@@ -942,11 +938,10 @@
     </div>
     <div class="header-div"></div>
     <div id="mode-tabs" role="tablist">
-      <button class="mode-tab active" data-mode="file" data-icon="file-audio">File</button>
       <button class="mode-tab" data-mode="dir" data-icon="folder">Directory</button>
       <button class="mode-tab" data-mode="live" data-icon="radio">Live<span class="tab-lock" data-icon="lock" data-size="11"></span></button>
       <button class="mode-tab" data-mode="soundcheck" data-icon="sliders">Soundcheck<span class="tab-lock" data-icon="lock" data-size="11"></span></button>
-      <button class="mode-tab" data-mode="reportcard" data-icon="clipboard-check">Report Card</button>
+      <button class="mode-tab active" data-mode="reportcard" data-icon="clipboard-check">Report Card</button>
     </div>
     <div id="header-right">
       <button type="button" id="storage-settings-btn" data-icon="hard-drive" data-size="17" aria-label="Storage settings" title="Storage settings"></button>
@@ -968,39 +963,6 @@
     <aside id="source-panel" class="side-panel">
       <div class="panel-head"><span class="panel-title">Source</span></div>
       <div class="panel-body">
-        <!-- FILE -->
-        <div class="tab-content active" id="tab-file">
-          <div class="dropzone" id="file-dropzone">
-            <div class="dz-icon" data-icon="file-audio"></div>
-            <div class="dz-body">
-              <span class="dz-title">Drop audio file here</span>
-              <span class="dz-hint">or click to browse</span>
-            </div>
-          </div>
-          <p class="dz-hint" style="text-align:center">Supports wav · aif · aiff · flac · mp3 · ogg · m4a</p>
-
-          <div id="file-info" style="display:none; flex-direction:column; gap:16px;">
-            <div class="info-group">
-              <span class="section-label">File</span>
-              <div class="info-row"><span class="info-label">Format</span><span class="info-value" id="fi-fmt">—</span></div>
-              <div class="info-row"><span class="info-label">Duration</span><span class="info-value" id="fi-dur">—</span></div>
-              <div class="info-row"><span class="info-label">Sample rate</span><span class="info-value" id="fi-sr">—</span></div>
-              <div class="info-row"><span class="info-label">Bit depth</span><span class="info-value" id="fi-bd">—</span></div>
-              <div class="info-row"><span class="info-label">Channels</span><span class="info-value" id="fi-ch">—</span></div>
-            </div>
-            <div class="hairline"></div>
-            <div class="info-group">
-              <span class="section-label">Dynamics</span>
-              <div class="info-row"><span class="info-label">Peak</span><span class="info-value" id="fi-peak">—</span></div>
-              <div class="info-row"><span class="info-label">RMS</span><span class="info-value" id="fi-rms">—</span></div>
-              <div class="info-row"><span class="info-label">Dyn range</span><span class="info-value" id="fi-dr">—</span></div>
-              <div class="info-row"><span class="info-label">Clipping</span><span class="info-value" id="fi-clip">—</span></div>
-            </div>
-          </div>
-
-          <button class="btn btn-primary full" id="analyze-btn" data-icon="waveform" disabled>Analyze</button>
-        </div>
-
         <!-- DIR -->
         <div class="tab-content" id="tab-dir">
           <div class="dropzone" id="dir-dropzone">
@@ -1203,7 +1165,7 @@
   </div>
 
   <!-- ══ Report Card ══ -->
-  <div id="reportcard-view">
+  <div id="reportcard-view" class="active">
     <div id="rc-toolbar">
       <span class="panel-title">Report Card</span>
       <button class="btn btn-secondary sm" id="reportcard-print-btn" data-icon="download" disabled>Export PDF</button>
@@ -1212,10 +1174,18 @@
       <div id="rc-layout">
       <div id="report-card">
         <div id="rc-empty" class="rc-empty">
-          <span data-icon="clipboard-check" data-size="46"></span>
-          <span class="t1">No analysis yet</span>
-          <span class="t2">Analyze a file first to generate a report card.</span>
-          <button class="btn btn-ghost sm" id="rc-gofile-btn" data-icon="file-audio">Go to File tab</button>
+          <div class="rc-empty-load">
+            <div class="dropzone" id="file-dropzone">
+              <div class="dz-icon" data-icon="file-audio"></div>
+              <div class="dz-body">
+                <span class="dz-title">Drop audio file here</span>
+                <span class="dz-hint">or click to browse</span>
+              </div>
+            </div>
+            <p class="dz-hint" style="text-align:center">Supports wav · aif · aiff · flac · mp3 · ogg · m4a</p>
+
+            <button class="btn btn-primary full" id="analyze-btn" data-icon="waveform" disabled>Analyze</button>
+          </div>
         </div>
         <div id="rc-content" style="display:none">
           <div class="rc-header">
@@ -1342,6 +1312,7 @@
       <button type="button" id="ai-dialog-save" class="btn btn-primary sm">Save</button>
     </div>
     <p class="ai-dialog-note">Your audio never leaves your machine — analysis runs on-device, and only the measurements go to the provider you choose.</p>
+    <p class="ai-dialog-version" id="ai-dialog-version"></p>
   </div>
 </div>
 
@@ -1505,7 +1476,7 @@ function hydrateIcons(root = document) {
 /* ══ App state ══ */
 const sb = window.soundBuddy;
 
-let currentMode = 'file';
+let currentMode = 'reportcard';
 let currentAnalysis = null;
 let currentFilePath = null;
 let currentDirPath = null;
@@ -2872,36 +2843,6 @@ function updateLiveStatsRow(ch) {
   document.getElementById('stat-centroid').textContent = ch.centroid ? Math.round(ch.centroid).toLocaleString() : '—';
 }
 
-/* ══ File info panel ══ */
-function populateFileInfo(analysis) {
-  const { sox, ffprobe } = analysis;
-  const { format, stream } = ffprobe;
-
-  document.getElementById('fi-fmt').textContent = `${format.formatName} · ${stream.codecName}`;
-  document.getElementById('fi-dur').textContent = fmtDur(format.durationSeconds);
-  document.getElementById('fi-sr').textContent = fmtHz(stream.sampleRate);
-  document.getElementById('fi-bd').textContent = stream.bitDepth ? `${stream.bitDepth}-bit` : 'lossy';
-  document.getElementById('fi-ch').textContent = `${stream.channels} · ${stream.channelLayout}`;
-
-  const peakEl = document.getElementById('fi-peak');
-  peakEl.textContent = fmt(sox.peakDbfs) + ' dBFS';
-  peakEl.className = 'info-value' + (sox.peakDbfs > -1 ? ' issue' : ' good');
-
-  const rmsEl = document.getElementById('fi-rms');
-  rmsEl.textContent = fmt(sox.rmsDbfs) + ' dBFS';
-  rmsEl.className = 'info-value' + (sox.rmsDbfs > -6 ? ' check' : ' good');
-
-  const drEl = document.getElementById('fi-dr');
-  drEl.textContent = fmt(sox.dynamicRangeDb) + ' dB';
-  drEl.className = 'info-value' + (sox.dynamicRangeDb < 6 ? ' check' : '');
-
-  const clipEl = document.getElementById('fi-clip');
-  clipEl.textContent = sox.clipping ? 'YES' : 'No';
-  clipEl.className = 'info-value' + (sox.clipping ? ' issue' : ' good');
-
-  document.getElementById('file-info').style.display = 'flex';
-}
-
 /* ══ Mode tabs ══ */
 document.querySelectorAll('.mode-tab').forEach(tab => {
   tab.addEventListener('click', () => {
@@ -3179,7 +3120,6 @@ function loadFile(fp) {
      <div class="dz-body"><span class="dz-title">${name}</span><span class="dz-meta">${fp}</span></div>`;
   hydrateIcons(fileDropzone);
   document.getElementById('analyze-btn').disabled = false;
-  document.getElementById('file-info').style.display = 'none';
 }
 
 document.getElementById('analyze-btn').addEventListener('click', () => { if (currentFilePath) runFileAnalysis(currentFilePath); });
@@ -3200,10 +3140,13 @@ async function runFileAnalysis(fp) {
 
   currentAnalysis = result.data;
   document.getElementById('analyze-btn').innerHTML = iconSvg('waveform', 16) + 'Re-analyze';
-  populateFileInfo(currentAnalysis);
   updateStatsRow(currentAnalysis.sox, currentAnalysis.spectrum);
   renderSpectrum(currentAnalysis.spectrum);
   document.getElementById('reportcard-print-btn').disabled = false;
+  // File input now lives in the Report Card tab's empty state (#203) — flip
+  // it over to the rendered card the moment analysis succeeds instead of
+  // leaving the dropzone showing behind a result nobody switched to see.
+  if (currentMode === 'reportcard') renderReportCard();
 }
 
 /* ══ Directory mode ══ */
@@ -3981,7 +3924,7 @@ sb.onLiveEvent((data) => {
 sb.onAnalysisResult((data) => { if (data.type === 'stats' && data.data) currentAnalysis = data.data; });
 
 sb.onMenuOpenFile((fp) => {
-  document.querySelector('.mode-tab[data-mode="file"]').click();
+  document.querySelector('.mode-tab[data-mode="reportcard"]').click();
   loadFile(fp);
   runFileAnalysis(fp);
 });
@@ -4021,32 +3964,32 @@ async function initOnboarding() {
     try { demo = await sb.getDemoAudio(); } catch { demo = null; }
 
     // No bundled demo (e.g. asset missing) — never dead-end: retire onboarding
-    // and hand the user the normal file picker on the File tab instead.
+    // and hand the user the normal file picker on the Report Card tab instead.
     if (!demo) {
       close();
-      document.querySelector('.mode-tab[data-mode="file"]').click();
+      document.querySelector('.mode-tab[data-mode="reportcard"]').click();
       try { const fp = await sb.openFileDialog(); if (fp) { loadFile(fp); runFileAnalysis(fp); } } catch { /* user cancelled */ }
       return;
     }
 
-    // Route through the File tab so the shared analysis pipeline + spectrum
-    // render fire exactly as a normal run; the overlay's spinner is the progress
-    // indicator meanwhile. On success, reveal the report card automatically.
-    document.querySelector('.mode-tab[data-mode="file"]').click();
+    // Route through the Report Card tab so the shared analysis pipeline +
+    // spectrum render fire exactly as a normal run; the overlay's spinner is
+    // the progress indicator meanwhile. runFileAnalysis flips to the rendered
+    // card on success.
+    document.querySelector('.mode-tab[data-mode="reportcard"]').click();
     loadFile(demo);
     await runFileAnalysis(demo);
 
     if (!currentAnalysis) {
-      // Analysis failed (error surfaced in the File view). Surface the reason in
-      // the always-visible copy line (the progress row is about to be hidden),
-      // relabel the CTA, and let the user retry or skip.
+      // Analysis failed (error surfaced in the spectrum panel). Surface the
+      // reason in the always-visible copy line (the progress row is about to
+      // be hidden), relabel the CTA, and let the user retry or skip.
       if (copy) copy.textContent = 'That didn’t work — the analysis couldn’t finish. Try again, or skip for now.';
       runBtn.textContent = 'Try again';
       showActions();
       return;
     }
     close();
-    document.querySelector('.mode-tab[data-mode="reportcard"]').click();
   }
 
   runBtn.addEventListener('click', () => { void runFirstAnalysis(); });
@@ -4473,7 +4416,6 @@ function renderReportCardFrames(src) {
 }
 
 document.getElementById('reportcard-print-btn').addEventListener('click', () => window.print());
-document.getElementById('rc-gofile-btn').addEventListener('click', () => document.querySelector('.mode-tab[data-mode="file"]').click());
 
 /* ══ License (#54) ══ */
 // Free/Pro state comes from the main process (offline Ed25519 validation);
@@ -4826,6 +4768,14 @@ async function openAiSettings() {
 
   aiEl('ai-dialog').style.display = 'flex';
   detectOllamaInto(cfg.provider === 'ollama' ? cfg.model : undefined);
+
+  // #202: show the installed app version. No dedicated Settings modal exists
+  // yet (tracked in #204) — this dialog is the one opened by the header's
+  // gear icon, so it's the closest thing to "Settings" today.
+  const versionEl = aiEl('ai-dialog-version');
+  if (versionEl) {
+    try { versionEl.textContent = `Sound Buddy ${await sb.getAppVersion()}`; } catch { versionEl.textContent = ''; }
+  }
 }
 
 function closeAiSettings() {

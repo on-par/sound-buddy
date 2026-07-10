@@ -601,6 +601,10 @@ export function enumerateDevices(
 // ─── IPC HANDLERS ─────────────────────────────────────────────────────────────
 
 export function registerIpcHandlers(): void {
+  // get-app-version — the installed app version (from package.json / the
+  // packaged .app's Info.plist), shown in the AI Engineer dialog (#202).
+  ipcMain.handle('get-app-version', () => app.getVersion());
+
   // get-settings — read app-behavior flags (AI on/off, ideal profile). The
   // renderer reads this at boot to hide AI affordances when disabled.
   ipcMain.handle('get-settings', () => getSettings());

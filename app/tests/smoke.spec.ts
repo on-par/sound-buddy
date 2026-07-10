@@ -38,8 +38,9 @@ test('smoke: exercise all flows and collect errors', async () => {
   win.on('pageerror', (err) => pageErrors.push(`${err.name}: ${err.message}`));
 
   // ── Exercise flows ───────────────────────────────────────────────────────
-  // 1. Tab navigation
-  for (const mode of ['file', 'dir', 'live', 'reportcard', 'file']) {
+  // 1. Tab navigation (no standalone File tab anymore — its dropzone lives on
+  // the Report Card tab, which is the default landing tab, #203).
+  for (const mode of ['dir', 'live', 'reportcard']) {
     await win.locator(`.mode-tab[data-mode="${mode}"]`).click();
     await win.waitForTimeout(120);
   }
