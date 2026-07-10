@@ -2587,7 +2587,7 @@ function veqValBottom(pct) { return Math.min(pct, 90).toFixed(2); }
 function veqArcSVG(curve, centroid, idx, wantPaths) {
   return spectrumCurveSVG(curve, centroid, null, { uid: `live${idx}`, vbH: VEQ_VB_H, yMin: DB_MIN, yMax: DB_MAX, wantPaths });
 }
-function veqChannelHTML(ch, idx) {
+function veqChannelHTML(ch, idx, deviceChannels) {
   const curve = liveBandCurve(ch.bands);
   const loudestIdx = veqLoudestIdx(curve.db);
   const { bars, labels } = veqBarsAndLabelsHTML(VEQ_BANDS, curve.db, loudestIdx);
@@ -2599,7 +2599,7 @@ function veqChannelHTML(ch, idx) {
   // has to leave the workspace to define a track. Disabled mid-capture like
   // every other config control (#38).
   const stereo = !!(strip && strip.kind === 'stereo');
-  const n = selectedDeviceChannels();
+  const n = deviceChannels;
   const defDisabled = liveRunning ? ' disabled' : '';
   const defHTML = `<span class="live-ch-def">
       <select class="live-ch-kind" data-idx="${idx}" aria-label="Mono or stereo"${defDisabled}>
@@ -2761,6 +2761,9 @@ function renderLiveWorkspace() {
 // is just the flat strip list (backward-compatible with #40).
 function liveMetersHTML(channels) {
   const n = channels.length;
+  // Computed once per rebuild (#189) rather than per strip inside
+  // veqChannelHTML — same value for every row in this render pass.
+  const deviceChannels = selectedDeviceChannels();
   let html = '';
   const rendered = new Set();
   channelGroups.forEach((grp, g) => {
@@ -2769,14 +2772,14 @@ function liveMetersHTML(channels) {
       + `<span class="live-group-name">${escapeHtml(grp.name)}</span></div>`;
     const members = grp.members.filter((m) => m < n);
     if (!members.length) html += `<div class="live-group-empty">No strips assigned</div>`;
-    members.forEach((m) => { html += veqChannelHTML(channels[m], m); rendered.add(m); });
+    members.forEach((m) => { html += veqChannelHTML(channels[m], m, deviceChannels); rendered.add(m); });
   });
   const ung = [];
   for (let i = 0; i < n; i++) if (!rendered.has(i)) ung.push(i);
   if (channelGroups.length && ung.length) {
     html += `<div class="live-group-head ungrouped" data-group="-1"><span class="live-group-name">Ungrouped</span></div>`;
   }
-  ung.forEach((i) => { html += veqChannelHTML(channels[i], i); });
+  ung.forEach((i) => { html += veqChannelHTML(channels[i], i, deviceChannels); });
   return html;
 }
 
