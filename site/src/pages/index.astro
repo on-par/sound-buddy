@@ -257,7 +257,7 @@ const tiers = [
         <a href="/privacy">Privacy</a>
         <a href={`mailto:support@soundbuddy.online`}>Support</a>
       </nav>
-      <p class="footer-meta mono">© 2026 On Par · Built for worship teams</p>
+      <p class="footer-meta mono">© {new Date().getFullYear()} <a href="https://onpardev.com" rel="noopener">On PAR Dev</a> · Built for worship teams</p>
     </div>
   </footer>
 </Layout>
@@ -352,6 +352,8 @@ const tiers = [
   .footer-nav { display: flex; gap: 20px; margin-left: auto; font: var(--fw-medium) var(--fs-body-sm)/1 var(--font-sans); color: var(--text-tertiary); }
   .footer-nav a:hover { color: var(--text-primary); }
   .footer-meta { font-size: var(--fs-micro); color: var(--text-muted); }
+  .footer-meta a { color: inherit; text-decoration: none; }
+  .footer-meta a:hover { color: var(--text-primary); }
 
   /* ── Responsive ── */
   @media (max-width: 920px) {
