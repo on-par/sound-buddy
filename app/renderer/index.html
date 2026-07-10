@@ -554,6 +554,16 @@
     .live-ch-name:focus { background:var(--surface-raised); box-shadow:var(--glow-focus); }
     .live-ch-name.clip { color:var(--issue-text); }
     .live-ch-meta { font:var(--fw-regular) var(--fs-micro)/1 var(--font-mono); color:var(--text-muted); }
+    /* Inline track definition (#189): kind toggle + source picker(s) riding the
+       workspace header, right next to the name — reuses the chcfg-* control
+       tokens (sizing, tone) so it reads as one design system, just denser. */
+    .live-ch-def { display:flex; align-items:center; gap:4px; align-self:center; }
+    .live-ch-def select { flex:0 0 auto; height:var(--control-h-sm); padding:0 6px; border-radius:var(--radius-md); background:var(--surface-raised); color:var(--text-secondary); border:1px solid var(--border-subtle); font:var(--fw-medium) var(--fs-micro)/1 var(--font-sans); }
+    .live-ch-def select:focus { border-color:var(--gold-500); box-shadow:var(--glow-focus); outline:none; }
+    .live-ch-def select:disabled { opacity:0.4; cursor:not-allowed; }
+    .live-ch-kind { width:68px; }
+    .live-ch-src { width:64px; }
+    .live-ch-src.leg { width:40px; font-family:var(--font-mono); text-align:center; }
     .live-ch-clip { font:var(--fw-semibold) var(--fs-micro)/1 var(--font-sans); color:var(--issue-text); letter-spacing:0.06em; }
     /* Workspace per-row remove (#188): rides every strip — idle placeholder or
        live — right-aligned in the head; the clip badge sits just left of it. */
@@ -1435,6 +1445,9 @@
 <script src="collapse-state.js"></script>
 <!-- Pure per-strip record-arm helpers (window.armState, #43). -->
 <script src="arm-state.js"></script>
+<!-- Pure mono/stereo kind-switch helper (window.rigKind, #189), shared by the
+     left-rail row and the workspace header definition cluster. -->
+<script src="rig-kind.js"></script>
 <!-- Pure named-channel-group helpers (window.groupState, #41). -->
 <script src="group-state.js"></script>
 <!-- Pure persistent-track-workspace helpers (window.trackWorkspace, #188). -->
@@ -2578,8 +2591,24 @@ function veqChannelHTML(ch, idx) {
   const curve = liveBandCurve(ch.bands);
   const loudestIdx = veqLoudestIdx(curve.db);
   const { bars, labels } = veqBarsAndLabelsHTML(VEQ_BANDS, curve.db, loudestIdx);
-  const displayName = stripLabel(channelConfig[idx], ch, idx);
+  const strip = channelConfig[idx];
+  const displayName = stripLabel(strip, ch, idx);
   const collapsed = isStripCollapsed(idx);
+  // Inline track definition (#189): the same { kind, a, b } strip the left
+  // rail's chcfg row edits, rendered right in the header so an engineer never
+  // has to leave the workspace to define a track. Disabled mid-capture like
+  // every other config control (#38).
+  const stereo = !!(strip && strip.kind === 'stereo');
+  const n = selectedDeviceChannels();
+  const defDisabled = liveRunning ? ' disabled' : '';
+  const defHTML = `<span class="live-ch-def">
+      <select class="live-ch-kind" data-idx="${idx}" aria-label="Mono or stereo"${defDisabled}>
+        <option value="mono"${!stereo ? ' selected' : ''}>Mono</option>
+        <option value="stereo"${stereo ? ' selected' : ''}>Stereo</option>
+      </select>
+      <select class="live-ch-src${stereo ? ' leg' : ''}" data-idx="${idx}" data-field="a" aria-label="${stereo ? 'Left source channel' : 'Source channel'}" title="${stereo ? 'Left source channel' : 'Source channel'}"${defDisabled}>${channelOptions(strip ? strip.a : 0, n, stereo)}</select>
+      ${stereo ? `<select class="live-ch-src leg" data-idx="${idx}" data-field="b" aria-label="Right source channel" title="Right source channel"${defDisabled}>${channelOptions(strip.b, n, true)}</select>` : ''}
+    </span>`;
   // The workspace remove control (#188) rides every strip — idle or live — so
   // it stays present-but-disabled through a capture (read-only while running)
   // rather than disappearing. Unlike the left rail's .chcfg-x, it's allowed
@@ -2589,6 +2618,7 @@ function veqChannelHTML(ch, idx) {
       <button type="button" class="live-ch-fold" aria-label="Collapse or expand strip" aria-expanded="${collapsed ? 'false' : 'true'}" title="Collapse / expand strip">▾</button>
       ${liveMode === 'record' && window.armState.isArmed(channelConfig[idx]) ? '<span class="live-ch-arm" title="Armed for recording"></span>' : ''}
       <span class="live-ch-name${ch.clipping ? ' clip' : ''}" contenteditable="true" spellcheck="false" role="textbox" aria-label="Channel name — click to rename" title="Click to rename">${escapeHtml(displayName)}</span>
+      ${defHTML}
       <span class="live-ch-meta">${ch.idle ? 'Idle' : `RMS ${fmt(ch.rms)} · Peak ${fmt(ch.peak)} dBFS`}</span>
       ${ch.clipping ? '<span class="live-ch-clip">CLIP</span>' : ''}
       <button type="button" class="live-ch-x" title="Remove track" aria-label="Remove track"${liveRunning ? ' disabled' : ''}>×</button>
@@ -2810,6 +2840,30 @@ document.getElementById('spectrum-body').addEventListener('click', (e) => {
   } else if (e.target.closest('#live-expand-all')) {
     liveCollapsed = window.collapseState.expandAll();
     applyLiveCollapsed();
+  }
+});
+
+// Inline track definition (#189): the header's kind toggle + source picker(s)
+// fire 'change' (not 'click'), so they need their own delegated listener —
+// same delegation rationale as the click handler above, so the wiring
+// survives renderLiveWorkspace()/renderLiveMeters() rebuilding the pane.
+// Routes through renderChannelConfig() (not a bare renderLiveWorkspace()) so
+// the left rail, group/arm counts, and the workspace all stay in sync.
+document.getElementById('spectrum-body').addEventListener('change', (e) => {
+  const kindSel = e.target.closest('.live-ch-kind');
+  if (kindSel) {
+    const idx = parseInt(kindSel.dataset.idx, 10);
+    if (!channelConfig[idx]) return;
+    channelConfig[idx] = window.rigKind.switchKind(channelConfig[idx], e.target.value, selectedDeviceChannels());
+    renderChannelConfig();
+    return;
+  }
+  const srcSel = e.target.closest('.live-ch-src');
+  if (srcSel) {
+    const idx = parseInt(srcSel.dataset.idx, 10);
+    if (!channelConfig[idx]) return;
+    channelConfig[idx][srcSel.dataset.field] = parseInt(e.target.value, 10);
+    renderChannelConfig();
   }
 });
 
@@ -3393,10 +3447,7 @@ function renderChannelConfig() {
       const { idx, field } = e.target.dataset;
       const strip = channelConfig[idx];
       if (field === 'kind') {
-        strip.kind = e.target.value;
-        if (strip.kind === 'stereo' && (strip.b == null || strip.b === strip.a)) {
-          strip.b = Math.min(strip.a + 1, n - 1);
-        }
+        channelConfig[idx] = window.rigKind.switchKind(strip, e.target.value, n);
       } else {
         strip[field] = parseInt(e.target.value);
       }
@@ -3472,6 +3523,11 @@ function setCaptureControlsLocked(locked) {
   // Workspace track rows (#188): Add track (above) + each row's remove, read-only
   // while a capture is running (mirrors the left rail's own lock).
   document.querySelectorAll('#spectrum-body .live-ch-x').forEach(set);
+  // Inline track definition (#189): kind toggle + source picker(s), frozen mid-
+  // capture same as the left rail's chcfg row (stream.py can't honor a
+  // mid-session channel change). veqChannelHTML already stamps `disabled` at
+  // build time; this re-asserts it after any re-render triggered while running.
+  document.querySelectorAll('#spectrum-body .live-ch-kind, #spectrum-body .live-ch-src').forEach(set);
   const tab = document.getElementById('tab-live');
   if (tab) tab.classList.toggle('capture-locked', locked);
 }
