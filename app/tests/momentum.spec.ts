@@ -20,15 +20,7 @@ const USER_DATA = path.join(__dirname, '..', 'test-results', 'momentum-userdata'
 const FAKE_ANALYSIS = {
   filePath: '/fake/momentum.wav',
   sox: { rmsDbfs: -18, peakDbfs: -0.5, dynamicRangeDb: 12, clipping: true },
-  // #203: runFileAnalysis's success path now always runs populateFileInfo
-  // (which reads ffprobe.stream) before flipping the Report Card tab from the
-  // empty state to the rendered card — a fixture missing `stream` used to get
-  // away with it because the old flow re-triggered the render via a real File
-  // → Report Card tab switch instead of relying on runFileAnalysis to finish.
-  ffprobe: {
-    format: { filename: '/fake/momentum.wav', formatName: 'wav' },
-    stream: { codecName: 'pcm_s16le', channels: 2, channelLayout: 'stereo', sampleRate: 48000, bitDepth: 16 },
-  },
+  ffprobe: { format: { filename: '/fake/momentum.wav' } },
   spectrum: {
     bands: { subBass: -20, bass: -18, lowMid: -22, mid: -16, highMid: -25, presence: -30, brilliance: -35 },
     spectralCentroid: 1200,
@@ -66,7 +58,8 @@ async function analyzeAndOpenReportCard(): Promise<void> {
   });
   await expect(win.locator('#analyze-btn')).toBeEnabled();
   await win.locator('#analyze-btn').click();
-  await win.locator('.mode-tab[data-mode="reportcard"]').click();
+  // No further tab click needed — runFileAnalysis flips the empty state to
+  // the rendered card itself once analysis succeeds (#203).
   await expect(win.locator('#rc-content')).toBeVisible();
 }
 
