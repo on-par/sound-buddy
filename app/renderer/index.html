@@ -584,6 +584,18 @@
     .live-group-head.collapsed .live-group-fold { transform:rotate(-90deg); }
     .live-group-head.ungrouped { border-bottom-style:dashed; }
     .live-group-empty { padding:6px 0; font:var(--fw-regular) var(--fs-micro)/1 var(--font-sans); color:var(--text-muted); }
+    /* Group header rename/delete (#190): quiet text buttons, right-aligned. */
+    .live-group-rename { margin-left:auto; }
+    .live-group-rename, .live-group-del { background:none; border:none; padding:0 4px; cursor:pointer; color:var(--text-muted);
+      font:var(--fw-medium) var(--fs-micro)/1 var(--font-sans); letter-spacing:var(--tracking-caps); text-transform:uppercase; }
+    .live-group-rename:hover:not(:disabled) { color:var(--text-primary); }
+    .live-group-del:hover:not(:disabled) { color:var(--issue-text); }
+    .live-group-rename:disabled, .live-group-del:disabled { opacity:0.4; cursor:not-allowed; }
+    /* Per-track group assignment select (#190): styled like the inline def selects. */
+    .live-ch-group { flex:0 0 auto; height:var(--control-h-sm); padding:0 6px; border-radius:var(--radius-md); background:var(--surface-raised);
+      color:var(--text-secondary); border:1px solid var(--border-subtle); font:var(--fw-medium) var(--fs-micro)/1 var(--font-sans); align-self:center; }
+    .live-ch-group:focus { border-color:var(--gold-500); box-shadow:var(--glow-focus); outline:none; }
+    .live-ch-group:disabled { opacity:0.4; cursor:not-allowed; }
     .chcfg-group { flex:0 0 auto; max-width:92px; height:var(--control-h-sm); padding:0 6px; border-radius:var(--radius-md); background:var(--surface-raised); color:var(--text-primary); border:1px solid var(--border-default); font:var(--fw-medium) var(--fs-label)/1 var(--font-sans); }
 
     /* Live vertical-bar EQ: shared analyzer arc + per-band vertical bars.
@@ -2578,6 +2590,17 @@ function veqChannelHTML(ch, idx, deviceChannels) {
       <select class="live-ch-src${stereo ? ' leg' : ''}" data-idx="${idx}" data-field="a" aria-label="${stereo ? 'Left source channel' : 'Source channel'}" title="${stereo ? 'Left source channel' : 'Source channel'}"${defDisabled}>${channelOptions(strip ? strip.a : 0, n, stereo)}</select>
       ${stereo ? `<select class="live-ch-src leg" data-idx="${idx}" data-field="b" aria-label="Right source channel" title="Right source channel"${defDisabled}>${channelOptions(strip.b, n, true)}</select>` : ''}
     </span>`;
+  // Per-track group assignment (#190): only meaningful once a group exists, so
+  // it mirrors the left rail's chcfg-group select — Ungrouped plus every group,
+  // writing through window.groupState with its exclusive-membership rules.
+  // Disabled mid-capture like the rest of the config (#38).
+  const grpOf = window.groupState.groupOf(channelGroups, idx);
+  const groupHTML = channelGroups.length
+    ? `<select class="live-ch-group" data-idx="${idx}" aria-label="Assign track to group" title="Assign to group"${defDisabled}>`
+      + `<option value="-1"${grpOf === -1 ? ' selected' : ''}>Ungrouped</option>`
+      + channelGroups.map((grp, gi) => `<option value="${gi}"${grpOf === gi ? ' selected' : ''}>${escapeHtml(grp.name)}</option>`).join('')
+      + `</select>`
+    : '';
   // The workspace remove control (#188) rides every strip — idle or live — so
   // it stays present-but-disabled through a capture (read-only while running)
   // rather than disappearing. Unlike the left rail's .chcfg-x, it's allowed
@@ -2588,6 +2611,7 @@ function veqChannelHTML(ch, idx, deviceChannels) {
       ${liveMode === 'record' && window.armState.isArmed(channelConfig[idx]) ? '<span class="live-ch-arm" title="Armed for recording"></span>' : ''}
       <span class="live-ch-name${ch.clipping ? ' clip' : ''}" contenteditable="true" spellcheck="false" role="textbox" aria-label="Channel name — click to rename" title="Click to rename">${escapeHtml(displayName)}</span>
       ${defHTML}
+      ${groupHTML}
       <span class="live-ch-meta">${ch.idle ? 'Idle' : `RMS ${fmt(ch.rms)} · Peak ${fmt(ch.peak)} dBFS`}</span>
       ${ch.clipping ? '<span class="live-ch-clip">CLIP</span>' : ''}
       <button type="button" class="live-ch-x" title="Remove track" aria-label="Remove track"${liveRunning ? ' disabled' : ''}>×</button>
@@ -2649,8 +2673,12 @@ function liveWorkspaceToolbarHTML() {
   const total = selectedDeviceChannels();
   const used = usedChannelCount();
   const addDisabled = !window.trackWorkspace.addEnabled(used, total, liveRunning);
+  // + New group (#190) mirrors the left rail's #new-group-btn: it names a group
+  // via the shared dialog and pushes it onto channelGroups. Disabled mid-capture
+  // like every other config control (#38).
   return `<div class="live-meters-toolbar">`
     + `<button type="button" class="ghost-btn" id="live-ws-add"${addDisabled ? ' disabled' : ''}>+ Add track</button>`
+    + `<button type="button" class="ghost-btn" id="live-ws-new-group"${liveRunning ? ' disabled' : ''} title="Create a named channel group">+ New group</button>`
     + `<span class="cap" id="live-ws-cap">${used} / ${total} used</span>`
     + `<button type="button" class="ghost-btn" id="live-collapse-all">Collapse all</button>`
     + `<button type="button" class="ghost-btn" id="live-expand-all">Expand all</button>`
@@ -2738,7 +2766,9 @@ function liveMetersHTML(channels) {
   channelGroups.forEach((grp, g) => {
     html += `<div class="live-group-head" data-group="${g}">`
       + `<button type="button" class="live-group-fold" aria-label="Collapse or expand group" title="Collapse / expand group">▾</button>`
-      + `<span class="live-group-name">${escapeHtml(grp.name)}</span></div>`;
+      + `<span class="live-group-name">${escapeHtml(grp.name)}</span>`
+      + `<button type="button" class="live-group-rename" aria-label="Rename group" title="Rename group"${liveRunning ? ' disabled' : ''}>Rename</button>`
+      + `<button type="button" class="live-group-del" aria-label="Delete group" title="Delete group"${liveRunning ? ' disabled' : ''}>Delete</button></div>`;
     const members = grp.members.filter((m) => m < n);
     if (!members.length) html += `<div class="live-group-empty">No strips assigned</div>`;
     members.forEach((m) => { html += veqChannelHTML(channels[m], m, deviceChannels); rendered.add(m); });
@@ -2782,9 +2812,16 @@ document.getElementById('spectrum-body').addEventListener('click', (e) => {
   // both rails stay in sync. Delegated (rather than re-wired per render) so it
   // survives renderLiveWorkspace()/renderLiveMeters() rebuilding the pane.
   if (e.target.closest('#live-ws-add')) { addChannelStrip(); return; }
+  // Workspace + New group (#190): same effect as the left rail's #new-group-btn.
+  if (e.target.closest('#live-ws-new-group')) { createChannelGroup(); return; }
   // Workspace per-row remove (#188): same body as the left rail's .chcfg-x.
   const rmBtn = e.target.closest('.live-ch-x');
   if (rmBtn) { removeChannelStrip(parseInt(rmBtn.closest('.live-ch').dataset.ch, 10)); return; }
+  // Group header rename / delete (#190): reuse the shared group dialog/handlers.
+  const gRename = e.target.closest('.live-group-rename');
+  if (gRename) { renameChannelGroup(parseInt(gRename.closest('.live-group-head').dataset.group, 10)); return; }
+  const gDel = e.target.closest('.live-group-del');
+  if (gDel) { deleteChannelGroup(parseInt(gDel.closest('.live-group-head').dataset.group, 10)); return; }
   // Group header fold (#41): collapse/expand every member strip at once.
   const gfold = e.target.closest('.live-group-fold');
   if (gfold) {
@@ -2835,6 +2872,15 @@ document.getElementById('spectrum-body').addEventListener('change', (e) => {
     const idx = parseInt(srcSel.dataset.idx, 10);
     if (!channelConfig[idx]) return;
     channelConfig[idx][srcSel.dataset.field] = parseInt(e.target.value, 10);
+    renderChannelConfig();
+    return;
+  }
+  // Per-track group assignment (#190): write through groupState with its
+  // exclusive-membership rules, then re-render both rails.
+  const grpSel = e.target.closest('.live-ch-group');
+  if (grpSel) {
+    const idx = parseInt(grpSel.dataset.idx, 10);
+    channelGroups = window.groupState.assign(channelGroups, idx, parseInt(e.target.value, 10));
     renderChannelConfig();
   }
 });
@@ -3278,13 +3324,45 @@ document.getElementById('disarm-all-btn').addEventListener('click', () => {
   channelConfig = window.armState.setAllArmed(channelConfig, false);
   renderChannelConfig();
 });
-document.getElementById('new-group-btn').addEventListener('click', async () => {
+// Name a new group via the shared dialog and push it onto channelGroups (#41).
+// Shared by the left rail's #new-group-btn and the workspace toolbar's
+// #live-ws-new-group (#190) so both entry points push through one code path.
+async function createChannelGroup() {
   const name = await rigDialog({ title: 'New group', value: '', confirmLabel: 'Create', withInput: true });
   const trimmed = (name || '').trim();
   if (!trimmed) return;
   channelGroups = window.groupState.addGroup(channelGroups, trimmed.slice(0, 40));
   renderChannelConfig();
-});
+}
+document.getElementById('new-group-btn').addEventListener('click', createChannelGroup);
+
+// Rename group g in place via the shared dialog, leaving its members untouched
+// (#190). Reached from the workspace group header's rename control.
+async function renameChannelGroup(g) {
+  const grp = channelGroups[g];
+  if (!grp) return;
+  const name = await rigDialog({ title: 'Rename group', value: grp.name, confirmLabel: 'Rename', withInput: true });
+  const trimmed = (name || '').trim();
+  if (!trimmed) return;
+  channelGroups = window.groupState.renameGroup(channelGroups, g, trimmed.slice(0, 40));
+  renderChannelConfig();
+}
+
+// Delete group g (#190). Its members fall back to Ungrouped — channelConfig is
+// untouched, so no track is lost. Confirmed via the shared dialog.
+async function deleteChannelGroup(g) {
+  const grp = channelGroups[g];
+  if (!grp) return;
+  const ok = await rigDialog({
+    title: 'Delete group',
+    msg: `Delete "${grp.name}"? Its tracks move to Ungrouped.`,
+    confirmLabel: 'Delete',
+    withInput: false,
+  });
+  if (!ok) return;
+  channelGroups = window.groupState.removeGroup(channelGroups, g);
+  renderChannelConfig();
+}
 
 document.getElementById('record-folder-btn').addEventListener('click', async () => {
   const dir = await sb.openDirDialog();
@@ -3461,7 +3539,7 @@ function setCaptureControlsLocked(locked) {
   const set = (el) => { if (el) { el.disabled = locked; el.setAttribute('aria-disabled', String(locked)); } };
   ['device-select', 'device-refresh-btn', 'record-folder-btn', 'chcfg-add',
     'meter-interval', 'window-secs', 'llm-interval', 'rig-select',
-    'arm-all-btn', 'disarm-all-btn', 'new-group-btn', 'live-ws-add'].forEach((id) => set(document.getElementById(id)));
+    'arm-all-btn', 'disarm-all-btn', 'new-group-btn', 'live-ws-add', 'live-ws-new-group'].forEach((id) => set(document.getElementById(id)));
   document.querySelectorAll('#live-mode button').forEach(set);
   document.querySelectorAll('#chcfg-list select, #chcfg-list .chcfg-x, #chcfg-list .chcfg-arm').forEach(set);
   // Workspace track rows (#188): Add track (above) + each row's remove, read-only
@@ -3471,7 +3549,9 @@ function setCaptureControlsLocked(locked) {
   // capture same as the left rail's chcfg row (stream.py can't honor a
   // mid-session channel change). veqChannelHTML already stamps `disabled` at
   // build time; this re-asserts it after any re-render triggered while running.
-  document.querySelectorAll('#spectrum-body .live-ch-kind, #spectrum-body .live-ch-src').forEach(set);
+  document.querySelectorAll('#spectrum-body .live-ch-kind, #spectrum-body .live-ch-src, #spectrum-body .live-ch-group').forEach(set);
+  // Group header rename/delete controls (#190), frozen mid-capture with the rest.
+  document.querySelectorAll('#spectrum-body .live-group-rename, #spectrum-body .live-group-del').forEach(set);
   const tab = document.getElementById('tab-live');
   if (tab) tab.classList.toggle('capture-locked', locked);
 }
