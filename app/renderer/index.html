@@ -2324,7 +2324,7 @@ async function ensurePlaybackAudio(filePath) {
   // directly), so this crosses a round-trip before the <audio> element exists.
   const url = await sb.toFileUrl(filePath);
   if (gen !== sbGeneration) return sbAudio; // superseded — a newer call already won
-  if (sbAudio) { sbAudio.pause(); sbAudio.src = ''; }
+  releasePlaybackAudio();
   // Null when the file is gone (moved/deleted since analysis) — leave sbAudio
   // unset rather than pointing <audio> at a dead path.
   sbAudio = url ? new Audio(url) : null;
@@ -2345,6 +2345,13 @@ async function ensurePlaybackAudio(filePath) {
 }
 function pauseTransportAudio() {
   if (sbAudio && !sbAudio.paused) sbAudio.pause();
+}
+// Shared "let go of the current <audio> element" step used both when swapping
+// to a new file (ensurePlaybackAudio) and when clearing back to no file (#206),
+// so the pause+src-clear+null teardown only lives in one place.
+function releasePlaybackAudio() {
+  if (sbAudio) { sbAudio.pause(); sbAudio.src = ''; }
+  sbAudio = null;
 }
 async function initPlaybackTransport(filePath) {
   if (!filePath || !document.getElementById('spectro-play-btn')) return;
@@ -3160,6 +3167,9 @@ function syncSpectrumForMode(mode) {
 
 /* ══ File mode ══ */
 const fileDropzone = document.getElementById('file-dropzone');
+// Captured before loadFile()/Clear ever swap in a filename, so Clear can restore
+// this exact resting markup instead of hand-duplicating it (#206).
+const fileDropzoneDefaultHTML = fileDropzone.innerHTML;
 fileDropzone.addEventListener('click', async () => { const fp = await sb.openFileDialog(); if (fp) loadFile(fp); });
 fileDropzone.addEventListener('dragover', (e) => { e.preventDefault(); fileDropzone.classList.add('dragover'); });
 fileDropzone.addEventListener('dragleave', () => fileDropzone.classList.remove('dragover'));
@@ -4495,26 +4505,23 @@ document.getElementById('reportcard-print-btn').addEventListener('click', () => 
 // relaunch needed.
 document.getElementById('reportcard-clear-btn').addEventListener('click', () => {
   if (!currentAnalysis) return;
-  // Don't let the cleared file's playback bleed through the empty state (#180),
-  // and release the <audio> so a re-load of the SAME file starts at 0:00 instead
-  // of resuming at its last scrub position (ensurePlaybackAudio keys on
-  // sbAudioPath === filePath).
-  pauseTransportAudio();
-  if (sbAudio) { sbAudio.src = ''; }
-  sbAudio = null;
+  // Release the <audio> element so a re-load of the SAME file starts at 0:00
+  // instead of resuming at its last scrub position (ensurePlaybackAudio keys
+  // on sbAudioPath === filePath).
+  releasePlaybackAudio();
   sbAudioPath = null;
   sbGeneration++; // invalidate any in-flight ensurePlaybackAudio
   currentAnalysis = null;
   currentFilePath = null;
+  // A finished live-capture session's rolling buffer would otherwise make
+  // getReportCardSource() fall through to that stale live card instead of the
+  // empty state (#206) — but leave an actively-running session's buffer alone
+  // so its live meters don't blip empty.
+  if (!liveRunning) liveWindows = [];
   // Restore the dropzone to its "browse for a file" resting state so the next
   // load starts from a clean slate (loadFile swaps in the loaded filename).
   fileDropzone.classList.remove('loaded');
-  fileDropzone.innerHTML =
-    `<div class="dz-icon" data-icon="file-audio"></div>
-     <div class="dz-body">
-       <span class="dz-title">Drop audio file here</span>
-       <span class="dz-hint">or click to browse</span>
-     </div>`;
+  fileDropzone.innerHTML = fileDropzoneDefaultHTML;
   hydrateIcons(fileDropzone);
   const analyzeBtn = document.getElementById('analyze-btn');
   analyzeBtn.disabled = true;
