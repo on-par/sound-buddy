@@ -47,13 +47,34 @@ const ctx = {
   passThroughOnException: () => {},
 } as unknown as ExecutionContext;
 
-/** Build a `charge.refunded` event with refund details by default. */
-function chargeRefundedEvent(id: string, created = 1_790_000_000): Stripe.Event {
+/**
+ * Build a `charge.refunded` event. `purchaseCreated` (the charge's original
+ * creation time) is deliberately distinct from `refundCreated` (the refund's
+ * own timestamp) and `eventCreated` (webhook emission time), so a test
+ * asserting on `refundedAt` proves which field the handler actually used.
+ * Pass `refundCreated: null` to omit the field from the refund object
+ * entirely (exercises the fallback to `eventCreated`).
+ */
+function chargeRefundedEvent(
+  id: string,
+  {
+    purchaseCreated = 1_780_000_000,
+    refundCreated = 1_790_000_050,
+    eventCreated = 1_790_000_100,
+  }: {
+    purchaseCreated?: number;
+    refundCreated?: number | null;
+    eventCreated?: number;
+  } = {},
+): Stripe.Event {
+  const refund: Record<string, unknown> = { reason: "requested_by_customer" };
+  if (refundCreated !== null) refund.created = refundCreated;
+
   return {
     id,
     object: "event",
     type: "charge.refunded",
-    created,
+    created: eventCreated,
     data: {
       object: {
         id: "ch_1",
@@ -61,9 +82,9 @@ function chargeRefundedEvent(id: string, created = 1_790_000_000): Stripe.Event 
         amount: 19900,
         amount_refunded: 19900,
         currency: "usd",
-        created,
+        created: purchaseCreated,
         receipt_email: "a@b.c",
-        refunds: { data: [{ reason: "requested_by_customer" }] },
+        refunds: { data: [refund] },
       },
     },
   } as unknown as Stripe.Event;
@@ -101,11 +122,29 @@ describe("charge.refunded handler (#119)", () => {
       currency: "usd",
       reason: "requested_by_customer",
       email: "a@b.c",
-      refundedAt: new Date(1_790_000_000 * 1000).toISOString(),
+      refundedAt: new Date(1_790_000_050 * 1000).toISOString(),
     });
     expect([...store.keys()].filter((key) => key.startsWith("sub:"))).toHaveLength(0);
     expect([...store.keys()].filter((key) => key.startsWith("sess:"))).toHaveLength(0);
     expectNoSignedKeyInKv(store);
+  });
+
+  it("Scenario: refundedAt falls back to the event's created time when the refund object omits one", async () => {
+    const { kv, store } = makeKv();
+    const env = makeEnv(kv);
+
+    await handleChargeRefunded(
+      chargeRefundedEvent("evt_refund_no_refund_created", {
+        purchaseCreated: 1_780_000_000,
+        refundCreated: null,
+        eventCreated: 1_790_000_100,
+      }),
+      env,
+      ctx,
+    );
+
+    const record = JSON.parse(store.get("refund:ch_1")!) as RefundRecord;
+    expect(record.refundedAt).toBe(new Date(1_790_000_100 * 1000).toISOString());
   });
 
   it("Scenario: duplicate events record once", async () => {

@@ -40,7 +40,8 @@ export async function handleChargeRefunded(
   _ctx: ExecutionContext,
 ): Promise<void> {
   const charge = event.data.object as Stripe.Charge;
-  const reason = charge.refunds?.data?.[0]?.reason ?? undefined;
+  const refund = charge.refunds?.data?.[0];
+  const reason = refund?.reason ?? undefined;
   const email = charge.receipt_email ?? charge.billing_details?.email ?? undefined;
 
   const record: RefundRecord = {
@@ -50,7 +51,12 @@ export async function handleChargeRefunded(
     ...(reason ? { reason } : {}),
     ...(email ? { email } : {}),
     followUp: true,
-    refundedAt: new Date((charge.created ?? event.created) * 1000).toISOString(),
+    // `charge.created` is the charge's original creation time, not the
+    // refund time, and is always present — it would win an `?? event.created`
+    // fallback and silently misdate every refund. The refund object's own
+    // `created` is the actual refund timestamp; `event.created` (when Stripe
+    // emitted this webhook) is the next-best fallback if it's absent.
+    refundedAt: new Date((refund?.created ?? event.created) * 1000).toISOString(),
   };
 
   await env.LICENSE_KV.put(refundRecordKey(charge.id), JSON.stringify(record));
