@@ -5,6 +5,7 @@
 // outcome/status only because `wrangler tail` / Logpush capture logs.
 
 import type { Env } from "./index";
+import { escapeHtml } from "./http";
 import type { LicenseKind } from "./license-sign";
 
 export interface SendLicenseEmailParams {
@@ -20,15 +21,6 @@ export interface SendLicenseEmailParams {
 /** Injectable seam so tests never hit the network. Defaults to the global fetch. */
 export interface DeliveryDeps {
   fetch?: typeof fetch;
-}
-
-function escapeHtml(value: string): string {
-  return value
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
 }
 
 function buildLicenseEmail(

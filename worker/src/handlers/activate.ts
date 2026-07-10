@@ -13,18 +13,7 @@
 // text directly. Never log request query strings.
 
 import type { Env } from "../index";
-import { html } from "../http";
-
-/** Escape the five HTML-significant characters — safe for both attribute and
- * text-node contexts. */
-function escapeHtml(input: string): string {
-  return input
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
-}
+import { escapeHtml, html } from "../http";
 
 const PAGE_STYLE = `
   :root { color-scheme: light dark; }
