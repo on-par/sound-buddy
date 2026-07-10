@@ -16,7 +16,7 @@
 import Stripe from "stripe";
 import type { Env } from "../index";
 import { json } from "../http";
-import { importSigningKey, mintLicenseKey, type LicenseKind } from "../license-sign";
+import { importSigningKey, mintLicenseKey } from "../license-sign";
 
 /** Injectable seams so tests never hit the live Stripe API or wall clock. */
 export interface LicenseDeps {
@@ -60,9 +60,17 @@ function periodEndFromSubscription(
 /** Best-effort per-session rate limit: KV has no atomic CAS, so a request that
  * races another read-increment-write on the same session id could both slip
  * through — acceptable here since this only throttles repeat fetches, it is
- * not a security boundary. */
+ * not a security boundary. The cap must comfortably exceed the /activate
+ * page's own poll budget (up to 16 requests across its 30s/2s poll loop) so a
+ * legitimate still-processing purchase never gets rate-limited into the
+ * page's fallback UI before its own timeout. */
 const RATE_LIMIT_WINDOW_SECONDS = 60;
-const RATE_LIMIT_MAX_REQUESTS = 10;
+const RATE_LIMIT_MAX_REQUESTS = 20;
+
+/** Longest plausible Stripe Checkout Session id — real ids are well under this;
+ * rejecting oversized values up front avoids handing an unbounded attacker
+ * string to the KV rate-limit key (KV keys are capped at 512 bytes) or Stripe. */
+const MAX_SESSION_ID_LENGTH = 200;
 
 /** Resolves `true` when the request is within the per-session rate limit. */
 async function withinRateLimit(env: Env, sessionId: string): Promise<boolean> {
@@ -130,13 +138,21 @@ async function resolveEntitlement(
   if (session.mode === "subscription") {
     const subscriptionId = idOf(session.subscription);
     if (!subscriptionId) {
-      return session.status === "open" ? "pending" : "not_paid";
+      // Symmetric with the payment-mode check above: Stripe attaches the
+      // subscription id as soon as the session completes, but that can lag
+      // the session's own status by a beat (read-after-write consistency), so
+      // treat anything short of the session's own terminal expiry as pending
+      // rather than risk terminally denying an about-to-be-entitled buyer.
+      return session.status === "expired" ? "not_paid" : "pending";
     }
 
     const subscription = await stripeClient().subscriptions.retrieve(subscriptionId);
     if (ENTITLED_SUBSCRIPTION_STATUSES.has(subscription.status)) {
       const periodEndUnix = periodEndFromSubscription(subscription);
-      if (typeof periodEndUnix !== "number") return "not_paid";
+      // An entitled subscription with no derivable period end is a transient
+      // data gap, not a denial — retry rather than terminally refuse someone
+      // who is, in fact, a paying subscriber.
+      if (typeof periodEndUnix !== "number") return "pending";
       const email = await resolveEmail(session, stripeClient);
       return {
         kind: "subscription",
@@ -170,6 +186,11 @@ export async function handleGetLicense(
   if (!sessionId) {
     return json({ error: "missing_session_id" }, 400);
   }
+  if (sessionId.length > MAX_SESSION_ID_LENGTH) {
+    // Longer than any real Stripe session id could ever be — treat exactly
+    // like an unknown session rather than handing it to KV/Stripe.
+    return json({ error: "unknown_session" }, 404);
+  }
 
   if (!(await withinRateLimit(env, sessionId))) {
     return json({ error: "rate_limited" }, 429);
@@ -191,7 +212,14 @@ export async function handleGetLicense(
     return json({ error: "window_expired" }, 410);
   }
 
-  const entitlement = await resolveEntitlement(session, stripeClient);
+  let entitlement: Entitlement | "pending" | "not_paid";
+  try {
+    entitlement = await resolveEntitlement(session, stripeClient);
+  } catch {
+    // Subscription/customer expansion failed (deleted resource, transient
+    // Stripe error). Same refusal shape as an unknown session — no details leak.
+    return json({ error: "unknown_session" }, 404);
+  }
   if (entitlement === "pending") {
     return json({ status: "pending" }, 202);
   }
@@ -203,7 +231,7 @@ export async function handleGetLicense(
   // log the returned string or any key material.
   const signingKey = await importSigningKey(env.LICENSE_SIGNING_PRIVATE_KEY);
   const key = await mintLicenseKey(signingKey, {
-    kind: entitlement.kind as LicenseKind,
+    kind: entitlement.kind,
     kid: env.LICENSE_SIGNING_KID,
     ...(entitlement.email ? { email: entitlement.email } : {}),
     ...(entitlement.kind === "subscription"

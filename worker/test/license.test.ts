@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { generateKeyPairSync } from "node:crypto";
 import Stripe from "stripe";
 import { handleGetLicense, type LicenseDeps } from "../src/handlers/license";
@@ -51,7 +51,7 @@ const request = (sessionId?: string): Request =>
 
 interface StubStripeOverrides {
   session?: Record<string, unknown> | (() => never);
-  subscription?: Record<string, unknown>;
+  subscription?: Record<string, unknown> | (() => never);
   customer?: Record<string, unknown>;
 }
 
@@ -67,7 +67,10 @@ function stubStripe(o: StubStripeOverrides = {}): LicenseDeps["getStripe"] {
         },
       },
       subscriptions: {
-        retrieve: async () => o.subscription ?? {},
+        retrieve: async () => {
+          if (typeof o.subscription === "function") return o.subscription();
+          return o.subscription ?? {};
+        },
       },
       customers: {
         retrieve: async () => o.customer ?? { email: undefined },
@@ -220,6 +223,97 @@ describe("GET /api/license (#112)", () => {
     expect(bodyText).not.toContain("No such checkout session");
   });
 
+  it("Scenario: an oversized session_id refuses as unknown, never reaching KV/Stripe", async () => {
+    const { kv } = makeKv();
+    const env = makeEnv(kv);
+    const getStripe = vi.fn(() => {
+      throw new Error("should not build a Stripe client");
+    });
+
+    const res = await handleGetLicense(request("cs_" + "x".repeat(250)), env, ctx, {
+      getStripe: getStripe as unknown as LicenseDeps["getStripe"],
+      now: () => NOW,
+    });
+
+    expect(res.status).toBe(404);
+    expect(getStripe).not.toHaveBeenCalled();
+  });
+
+  it("Scenario: a failing subscription lookup refuses as unknown without leaking the Stripe error", async () => {
+    const { kv, store } = makeKv();
+    const env = makeEnv(kv);
+    const getStripe = stubStripe({
+      session: {
+        id: "cs_sub_error",
+        mode: "subscription",
+        status: "complete",
+        created: unix("2026-07-09T11:00:00.000Z"),
+        subscription: "sub_gone",
+      },
+      subscription: () => {
+        throw new Error("No such subscription: sub_gone");
+      },
+    });
+
+    const res = await handleGetLicense(request("cs_sub_error"), env, ctx, {
+      getStripe,
+      now: () => NOW,
+    });
+
+    expect(res.status).toBe(404);
+    const bodyText = await res.text();
+    expect(bodyText).not.toContain("SB1.");
+    expect(bodyText).not.toContain("No such subscription");
+    for (const value of store.values()) expect(value).not.toContain("SB1.");
+  });
+
+  it("Scenario: entitled subscription with no derivable period end returns 202 pending, not a terminal refusal", async () => {
+    const { kv } = makeKv();
+    const env = makeEnv(kv);
+    const getStripe = stubStripe({
+      session: {
+        id: "cs_sub_no_period",
+        mode: "subscription",
+        status: "complete",
+        created: unix("2026-07-09T11:00:00.000Z"),
+        subscription: "sub_no_period",
+      },
+      subscription: { status: "active", items: { data: [] } },
+    });
+
+    const res = await handleGetLicense(request("cs_sub_no_period"), env, ctx, {
+      getStripe,
+      now: () => NOW,
+    });
+
+    expect(res.status).toBe(202);
+    const body = await res.json();
+    expect(body).toEqual({ status: "pending" });
+  });
+
+  it("Scenario: subscription-mode session completed but not yet carrying a subscription id is pending, not terminal", async () => {
+    const { kv } = makeKv();
+    const env = makeEnv(kv);
+    const getStripe = stubStripe({
+      session: {
+        id: "cs_sub_lag",
+        mode: "subscription",
+        status: "complete", // completed, but Stripe hasn't attached the subscription id yet
+        created: unix("2026-07-09T11:00:00.000Z"),
+        subscription: null,
+      },
+    });
+
+    const res = await handleGetLicense(request("cs_sub_lag"), env, ctx, {
+      getStripe,
+      now: () => NOW,
+    });
+
+    expect(res.status).toBe(202);
+    const body = await res.json();
+    expect(body).toEqual({ status: "pending" });
+  });
+
   it("Scenario: pending payment-mode session returns 202 with no key", async () => {
     const { kv } = makeKv();
     const env = makeEnv(kv);
@@ -317,7 +411,7 @@ describe("GET /api/license (#112)", () => {
     });
 
     let last!: Response;
-    for (let i = 0; i < 11; i++) {
+    for (let i = 0; i < 21; i++) {
       last = await handleGetLicense(request("cs_hot"), env, ctx, {
         getStripe,
         now: () => NOW,
