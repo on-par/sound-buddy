@@ -1,14 +1,12 @@
 // Copyright (c) 2026 Patrick Robinson (on-par). All rights reserved.
 // Licensed under the Sound Buddy Desktop Application License (app/LICENSE).
 
-// Pure, framework-free helper for the mono↔stereo kind switch shared by the
-// left-rail channel config rows and the workspace track header (#189). Kept
-// in a standalone classic script so the logic is unit-testable (Vitest) yet
-// shared verbatim with the renderer, which loads it via <script src> and
-// reads it off window.rigKind.
+// Pure, framework-free helper for the mono↔stereo kind switch used by the
+// workspace track header (#189). Kept in a standalone classic script so the
+// logic is unit-testable (Vitest) yet shared verbatim with the renderer,
+// which loads it via <script src> and reads it off window.rigKind.
 //
-// Nothing here touches the DOM — inputs in, a fresh strip out — so both
-// rails drive the transition through one code path and can't drift.
+// Nothing here touches the DOM — inputs in, a fresh strip out.
 
 (function (root) {
   'use strict';
