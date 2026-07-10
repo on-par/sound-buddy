@@ -16,6 +16,27 @@ const steps = [
   { n: '3', title: 'Get your report card', body: 'A letter grade plus the exact things to fix. Virtual soundcheck lets you replay the room as separate tracks.' },
 ];
 
+const proof = [
+  {
+    src: '/screenshots/report-card.png',
+    alt: 'Sound Buddy report card screen showing a B grade, ideal-profile match, and spectral bands',
+    title: 'The real report card',
+    body: 'Not a mockup — the actual grade, target match, and band-by-band breakdown you get after dropping in a recording.',
+  },
+  {
+    src: '/screenshots/live-capture.png',
+    alt: 'Sound Buddy live tab showing real-time vocal and band spectrum with RMS, peak, and clip readouts',
+    title: 'Catch it mid-service',
+    body: 'Live spectrum and level meters flag a hot bass or buried vocal while there\'s still time to ride a fader — not Monday morning.',
+  },
+  {
+    src: '/screenshots/momentum.png',
+    alt: 'Sound Buddy report card with an upgrade panel offering to save the mix as a repeatable baseline',
+    title: 'Turn one good mix into every mix',
+    body: 'After the grade, Sound Buddy offers to save the rig as a baseline so next Sunday starts from this Sunday\'s win, not from zero.',
+  },
+];
+
 const tiers = [
   {
     name: 'Free',
@@ -66,7 +87,7 @@ const tiers = [
       </a>
       <nav class="header-nav" aria-label="Primary">
         <a href="#how">How it works</a>
-        <a href="#report-card">Report card</a>
+        <a href="#proof">See it in action</a>
         <a href="#pricing">Pricing</a>
         <a href={REPO_URL} rel="noopener">GitHub</a>
       </nav>
@@ -141,26 +162,25 @@ const tiers = [
     </div>
   </section>
 
-  <!-- ── Report card showcase ───────────────────────────────────── -->
-  <section id="report-card" class="section rc-showcase">
-    <div class="container rc-showcase-grid">
-      <div class="rc-showcase-copy">
-        <span class="eyebrow">The aha moment</span>
-        <h2 class="h2">A letter grade for the whole service — and the levers to pull.</h2>
-        <p class="lede">
-          Every service gets a grade, a content timeline (speech, music, silence), and a metric
-          table that points at what to change next week. Bass running hot? Speech buried?
-          Sound Buddy names it, so you can fix it.
-        </p>
-        <ul class="rc-bullets">
-          <li>Loudness, true peak &amp; dynamic range against real targets</li>
-          <li>Spectral balance across seven bands</li>
-          <li>Speech-intelligibility estimate for the spoken word</li>
-          <li>Virtual soundcheck — replay the room as separate stems</li>
-        </ul>
-      </div>
-      <div class="rc-showcase-visual">
-        <ReportCard />
+  <!-- ── Product proof ──────────────────────────────────────────── -->
+  <section id="proof" class="section proof">
+    <div class="container">
+      <span class="eyebrow">The aha moment</span>
+      <h2 class="h2">This is the actual app — not a stylized mockup.</h2>
+      <p class="lede">
+        A letter grade for the whole service, live meters while it's happening, and a nudge to
+        keep the win going next week. Three real screens, three real moments.
+      </p>
+      <div class="proof-grid">
+        {proof.map((p) => (
+          <div class="proof-item card">
+            <img class="proof-img" src={p.src} alt={p.alt} loading="lazy" />
+            <div class="proof-caption">
+              <h3>{p.title}</h3>
+              <p>{p.body}</p>
+            </div>
+          </div>
+        ))}
       </div>
     </div>
   </section>
@@ -300,14 +320,14 @@ const tiers = [
   .step h3 { font: var(--fw-semibold) var(--fs-h2)/var(--lh-snug) var(--font-sans); color: var(--text-primary); margin-bottom: 8px; }
   .step p { font: var(--fw-regular) var(--fs-body-sm)/var(--lh-normal) var(--font-sans); color: var(--text-tertiary); }
 
-  /* ── Report card showcase ── */
-  .rc-showcase { background: var(--bg-panel-2); }
-  .rc-showcase-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 56px; align-items: center; }
-  .rc-bullets { list-style: none; margin-top: 22px; display: flex; flex-direction: column; gap: 12px; }
-  .rc-bullets li { position: relative; padding-left: 24px; font: var(--fw-regular) var(--fs-body-sm)/var(--lh-normal) var(--font-sans); color: var(--text-secondary); }
-  .rc-bullets li::before { content: ''; position: absolute; left: 0; top: 8px; width: 8px; height: 8px; border-radius: 50%; background: var(--gold-500); }
-  .rc-showcase-visual { display: flex; justify-content: center; }
-  .rc-showcase-visual :global(.rc) { width: 100%; max-width: 480px; box-shadow: var(--shadow-lg); }
+  /* ── Product proof ── */
+  .proof { background: var(--bg-panel-2); }
+  .proof-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px; margin-top: 36px; }
+  .proof-item { padding: 0; overflow: hidden; }
+  .proof-img { display: block; width: 100%; aspect-ratio: 16 / 11; object-fit: cover; object-position: top; border-bottom: 1px solid var(--border-subtle); }
+  .proof-caption { padding: 20px 22px 24px; }
+  .proof-caption h3 { font: var(--fw-semibold) var(--fs-h3)/var(--lh-snug) var(--font-sans); color: var(--text-primary); margin-bottom: 8px; }
+  .proof-caption p { font: var(--fw-regular) var(--fs-body-sm)/var(--lh-normal) var(--font-sans); color: var(--text-tertiary); }
 
   /* ── Pricing ── */
   .pricing { background: var(--bg-app); }
@@ -359,7 +379,7 @@ const tiers = [
   @media (max-width: 920px) {
     .hero-grid { grid-template-columns: 1fr; gap: 40px; }
     .hero-visual :global(.rc) { max-width: 100%; }
-    .rc-showcase-grid { grid-template-columns: 1fr; gap: 40px; }
+    .proof-grid { grid-template-columns: 1fr; gap: 20px; }
     .tiers { grid-template-columns: 1fr; max-width: 460px; margin-left: auto; margin-right: auto; }
     .sysreq-grid { grid-template-columns: 1fr; gap: 32px; }
   }
