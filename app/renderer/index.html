@@ -696,6 +696,7 @@
     #reportcard-view.active { display:flex; }
     #rc-toolbar { display:flex; align-items:center; justify-content:space-between; padding:10px 22px; border-bottom:1px solid var(--border-subtle); background:var(--bg-panel); flex-shrink:0; }
     #rc-toolbar .panel-title { }
+    .rc-toolbar-actions { display:flex; align-items:center; gap:8px; }
     #rc-scroll { flex:1; overflow-y:auto; padding:32px 22px; display:flex; justify-content:center; }
     /* Report card + "Keep improving" card sit side by side (#58), centered as a
        pair; the upgrade card wraps below the report on narrow windows. When the
@@ -1176,7 +1177,10 @@
   <div id="reportcard-view" class="active">
     <div id="rc-toolbar">
       <span class="panel-title">Report Card</span>
-      <button class="btn btn-secondary sm" id="reportcard-print-btn" data-icon="download" disabled>Export PDF</button>
+      <div class="rc-toolbar-actions">
+        <button class="btn btn-secondary sm" id="reportcard-clear-btn" data-icon="x" disabled>Clear</button>
+        <button class="btn btn-secondary sm" id="reportcard-print-btn" data-icon="download" disabled>Export PDF</button>
+      </div>
     </div>
     <div id="rc-scroll">
       <div id="rc-layout">
@@ -3183,6 +3187,9 @@ async function runFileAnalysis(fp) {
   pauseTransportAudio(); // don't let a previous file's playback bleed through the loading state (#180)
   setSpectrumState('loading');
   document.getElementById('analyze-btn').disabled = true;
+  // Disable Clear while an analysis is in flight so it can't null currentAnalysis
+  // mid-run and then have this continuation re-set it + flip the card back (#206).
+  document.getElementById('reportcard-clear-btn').disabled = true;
 
   const result = await sb.analyzeFile({ filePath: fp });
 
@@ -3190,6 +3197,7 @@ async function runFileAnalysis(fp) {
 
   if (!result.success || !result.data) {
     setSpectrumState('error', { text: result.error || 'Analysis failed' });
+    document.getElementById('reportcard-clear-btn').disabled = !currentAnalysis;
     return;
   }
 
@@ -3198,6 +3206,7 @@ async function runFileAnalysis(fp) {
   updateStatsRow(currentAnalysis.sox, currentAnalysis.spectrum);
   renderSpectrum(currentAnalysis.spectrum);
   document.getElementById('reportcard-print-btn').disabled = false;
+  document.getElementById('reportcard-clear-btn').disabled = !currentAnalysis;
   // File input now lives in the Report Card tab's empty state (#203) — flip
   // it over to the rendered card the moment analysis succeeds instead of
   // leaving the dropzone showing behind a result nobody switched to see.
@@ -4257,11 +4266,13 @@ function renderReportCard() {
   const empty = document.getElementById('rc-empty');
   const content = document.getElementById('rc-content');
   const printBtn = document.getElementById('reportcard-print-btn');
+  const clearBtn = document.getElementById('reportcard-clear-btn');
 
   if (!src) {
     empty.style.display = 'flex';
     content.style.display = 'none';
     printBtn.disabled = true;
+    clearBtn.disabled = true;
     // No card to improve on — never leave the upgrade card beside the empty
     // state (e.g. after a live capture clears the last analysis).
     lastReportGrade = null;
@@ -4271,6 +4282,10 @@ function renderReportCard() {
   empty.style.display = 'none';
   content.style.display = 'block';
   printBtn.disabled = false;
+  // Clear only makes sense when the card is backed by a file analysis — a
+  // live-capture card (currentAnalysis null, liveWindows populated) has no
+  // file to clear, so leaving Clear enabled would no-op/flicker (#206).
+  clearBtn.disabled = !currentAnalysis;
 
   document.getElementById('rc-filename').textContent = src.filename;
   document.getElementById('rc-date').textContent = new Date().toLocaleString();
@@ -4473,6 +4488,40 @@ function renderReportCardFrames(src) {
 }
 
 document.getElementById('reportcard-print-btn').addEventListener('click', () => window.print());
+
+// #206: once a report card is showing, the file-loading dropzone is hidden
+// behind it (it only lives in the empty state). Clear resets to that empty
+// state so a different file can be loaded in-window — no menu navigation or
+// relaunch needed.
+document.getElementById('reportcard-clear-btn').addEventListener('click', () => {
+  if (!currentAnalysis) return;
+  // Don't let the cleared file's playback bleed through the empty state (#180),
+  // and release the <audio> so a re-load of the SAME file starts at 0:00 instead
+  // of resuming at its last scrub position (ensurePlaybackAudio keys on
+  // sbAudioPath === filePath).
+  pauseTransportAudio();
+  if (sbAudio) { sbAudio.src = ''; }
+  sbAudio = null;
+  sbAudioPath = null;
+  sbGeneration++; // invalidate any in-flight ensurePlaybackAudio
+  currentAnalysis = null;
+  currentFilePath = null;
+  // Restore the dropzone to its "browse for a file" resting state so the next
+  // load starts from a clean slate (loadFile swaps in the loaded filename).
+  fileDropzone.classList.remove('loaded');
+  fileDropzone.innerHTML =
+    `<div class="dz-icon" data-icon="file-audio"></div>
+     <div class="dz-body">
+       <span class="dz-title">Drop audio file here</span>
+       <span class="dz-hint">or click to browse</span>
+     </div>`;
+  hydrateIcons(fileDropzone);
+  const analyzeBtn = document.getElementById('analyze-btn');
+  analyzeBtn.disabled = true;
+  analyzeBtn.innerHTML = iconSvg('waveform', 16) + 'Analyze';
+  setSpectrumState('empty');
+  renderReportCard(); // flips #rc-content → #rc-empty (when no live card remains)
+});
 
 /* ══ License (#54) ══ */
 // Free/Pro state comes from the main process (offline Ed25519 validation);
