@@ -2591,7 +2591,7 @@ function veqChannelHTML(ch, idx) {
       <span class="live-ch-name${ch.clipping ? ' clip' : ''}" contenteditable="true" spellcheck="false" role="textbox" aria-label="Channel name — click to rename" title="Click to rename">${escapeHtml(displayName)}</span>
       <span class="live-ch-meta">${ch.idle ? 'Idle' : `RMS ${fmt(ch.rms)} · Peak ${fmt(ch.peak)} dBFS`}</span>
       ${ch.clipping ? '<span class="live-ch-clip">CLIP</span>' : ''}
-      <button type="button" class="live-ch-x" data-idx="${idx}" title="Remove track" aria-label="Remove track"${liveRunning ? ' disabled' : ''}>×</button>
+      <button type="button" class="live-ch-x" title="Remove track" aria-label="Remove track"${liveRunning ? ' disabled' : ''}>×</button>
     </div>
     <div class="veq">
       <div class="veq-chart">${veqArcSVG(curve, ch.centroid, idx)}</div>
@@ -2622,7 +2622,10 @@ function patchLiveChannel(el, ch, idx) {
   const removeBtn = el.querySelector('.live-ch-x');
   if (removeBtn) removeBtn.disabled = liveRunning;
   const clipEl = el.querySelector('.live-ch-clip');
-  if (ch.clipping && !clipEl) el.querySelector('.live-ch-head').insertAdjacentHTML('beforeend', '<span class="live-ch-clip">CLIP</span>');
+  // Insert just before the remove button (#188) so CLIP lands in the same spot
+  // whether it was there on the first tick (static template order) or shows up
+  // later — .live-ch-x carries the head's margin-left:auto right-alignment.
+  if (ch.clipping && !clipEl) removeBtn.insertAdjacentHTML('beforebegin', '<span class="live-ch-clip">CLIP</span>');
   else if (!ch.clipping && clipEl) clipEl.remove();
 
   const arc = veqArcSVG(curve, ch.centroid, idx, true);
@@ -2799,7 +2802,9 @@ document.getElementById('spectrum-body').addEventListener('click', (e) => {
     return;
   }
   if (e.target.closest('#live-collapse-all')) {
-    const n = (lastLiveChannels || []).length;
+    // Count the strips actually on screen (#188) rather than lastLiveChannels,
+    // which stays null/stale in the idle workspace until a real tick lands.
+    const n = document.querySelectorAll('#spectrum-body .sb-live-meters .live-ch').length;
     liveCollapsed = window.collapseState.collapseAll(Array.from({ length: n }, (_, i) => i));
     applyLiveCollapsed();
   } else if (e.target.closest('#live-expand-all')) {
@@ -3558,6 +3563,14 @@ document.getElementById('live-start-btn').addEventListener('click', async () => 
   const llmIntervalSecs = aiEnabled ? parseInt(document.getElementById('llm-interval').value) : 0;
   const channels = channelTokens();
 
+  // No configured tracks (#188): the workspace remove can drive channelConfig
+  // to zero, but stream.py silently falls back to its first device channels
+  // when given an empty channel list — block Start rather than start a
+  // capture the UI just showed as empty.
+  if (channelConfig.length === 0) {
+    showArmHint('Add at least one track before starting capture.');
+    return;
+  }
   // Record mode with nothing armed would spawn an empty session — block it (#43).
   if (liveMode === 'record' && armedCount() === 0) {
     showArmHint('Arm at least one strip to record.');

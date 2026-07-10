@@ -879,6 +879,10 @@ test.describe('Sound Buddy E2E', () => {
       await expect(ch0.locator('.live-ch-clip')).toBeVisible();
       await expect(ch0).toHaveClass(/collapsed/);
       await expect(ch0.locator('.veq')).toBeHidden();
+      // The CLIP badge appearing on a later tick must land in the same spot as
+      // one present from the first tick — just before the remove control (#188).
+      const headChildren = await ch0.locator('.live-ch-head > *').evaluateAll((els) => els.map((e) => e.className));
+      expect(headChildren.indexOf('live-ch-clip')).toBeLessThan(headChildren.indexOf('live-ch-x'));
 
       // Several more repaints — still collapsed.
       await sendLiveTick(LIVE_CHANNELS);
@@ -1110,6 +1114,15 @@ test.describe('Sound Buddy E2E', () => {
         await expect(window.locator('#live-ws-cap')).toHaveText('2 / 8 used');
       });
 
+      test('Collapse all folds idle placeholder rows before any live tick has arrived', async () => {
+        // Collapse all sizes itself off the strips actually on screen, not the
+        // (still-null pre-tick) lastLiveChannels — regression coverage (#188).
+        await window.locator('#live-collapse-all').click();
+        await expect(window.locator('#spectrum-body .sb-live-meters .live-ch.collapsed')).toHaveCount(2);
+        await window.locator('#live-expand-all').click();
+        await expect(window.locator('#spectrum-body .sb-live-meters .live-ch.collapsed')).toHaveCount(0);
+      });
+
       test('workspace Add track stays in parity with the left rail', async () => {
         await window.locator('#live-ws-add').click();
         await expect(window.locator('#spectrum-body .sb-live-meters .live-ch')).toHaveCount(3);
@@ -1136,6 +1149,14 @@ test.describe('Sound Buddy E2E', () => {
         await expect(window.locator('#spectrum-body')).toContainText('Add your first track');
         await expect(window.locator('#live-ws-add')).toBeVisible();
         await expect(window.locator('#live-ws-add')).toBeEnabled();
+
+        // Start Capture must refuse an empty config rather than let stream.py
+        // silently fall back to its own default channels (#188).
+        await window.locator('#live-start-btn').click();
+        await expect(window.locator('#arm-hint')).toBeVisible();
+        await expect(window.locator('#arm-hint')).toContainText('Add at least one track');
+        await expect(window.locator('#live-start-btn')).toBeVisible();
+        await expect(window.locator('#live-stop-btn')).toBeHidden();
       });
 
       test('workspace Add disables at the device channel cap', async () => {
