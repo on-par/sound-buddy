@@ -19,3 +19,6 @@ __pycache__/
 # also refuses to write into a git tree; this is belt-and-suspenders.
 *.pem
 SoundBuddy-keys/
+
+# Playwright MCP snapshot cache
+.playwright-mcp/
