@@ -28,13 +28,17 @@
   ],
 
   // Non-secret configuration. FOUNDING_CAP is the founding-license count cap;
-  // FROM_EMAIL is the transactional sender; APP_ORIGIN is the desktop app's
-  // activation origin. Secrets (STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET,
+  // FROM_EMAIL is the transactional sender; SUPPORT_EMAIL is the support contact
+  // shown in license email; CUSTOMER_PORTAL_URL is the Stripe Customer Portal
+  // link shown in license email; APP_ORIGIN is the desktop app's activation
+  // origin. Secrets (STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET,
   // LICENSE_SIGNING_PRIVATE_KEY, RESEND_API_KEY) are set out-of-band (H4) via
   // `wrangler secret put` and never appear in this file.
   "vars": {
     "FOUNDING_CAP": "300",
     "FROM_EMAIL": "hello@soundbuddy.online",
+    "SUPPORT_EMAIL": "support@soundbuddy.online",
+    "CUSTOMER_PORTAL_URL": "REPLACE_WITH_STRIPE_CUSTOMER_PORTAL_URL",
     "APP_ORIGIN": "https://soundbuddy.online",
     // Signing-key id stamped into every minted key's `kid` claim (#109/#110).
     // Informational only — the app verifies against its embedded public key and

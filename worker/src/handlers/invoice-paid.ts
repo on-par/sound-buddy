@@ -21,6 +21,7 @@
 
 import Stripe from "stripe";
 import type { Env } from "../index";
+import { sendLicenseEmail } from "../delivery";
 import { importSigningKey, mintLicenseKey } from "../license-sign";
 
 /**
@@ -46,6 +47,8 @@ export const subscriptionRecordKey = (subscriptionId: string): string =>
 export interface InvoicePaidDeps {
   /** Build the Stripe client used for customer/subscription expansion. */
   getStripe?: (env: Env) => Stripe;
+  /** Best-effort license-key email delivery; injectable so tests never hit Resend. */
+  sendEmail?: typeof sendLicenseEmail;
 }
 
 /** Lowercase-hex SHA-256 of a string, via Web Crypto (no Node `crypto`). */
@@ -152,6 +155,7 @@ export async function handleInvoicePaid(
   deps: InvoicePaidDeps = {},
 ): Promise<void> {
   const invoice = event.data.object as Stripe.Invoice;
+  const send = deps.sendEmail ?? sendLicenseEmail;
 
   const subscriptionId = subscriptionIdOf(invoice);
   if (!subscriptionId) {
@@ -208,6 +212,12 @@ export async function handleInvoicePaid(
     subscriptionRecordKey(subscriptionId),
     JSON.stringify(record),
   );
+
+  try {
+    await send(env, { to: email, key, kind: "subscription", expiresAt });
+  } catch {
+    console.error(`invoice.paid ${event.id}: license email delivery threw — ignored`);
+  }
 
   console.log(
     `invoice.paid ${event.id}: minted subscription key for ${subscriptionId} (expires ${expiresAt})`,

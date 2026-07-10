@@ -21,6 +21,7 @@
 
 import Stripe from "stripe";
 import type { Env } from "../index";
+import { sendLicenseEmail } from "../delivery";
 import { importSigningKey, mintLicenseKey } from "../license-sign";
 
 /**
@@ -45,6 +46,8 @@ export const sessionRecordKey = (sessionId: string): string =>
 export interface CheckoutCompletedDeps {
   /** Build the Stripe client used for the customer email lookup. */
   getStripe?: (env: Env) => Stripe;
+  /** Best-effort license-key email delivery; injectable so tests never hit Resend. */
+  sendEmail?: typeof sendLicenseEmail;
 }
 
 /** Lowercase-hex SHA-256 of a string, via Web Crypto (no Node `crypto`). */
@@ -94,6 +97,7 @@ export async function handleCheckoutCompleted(
   deps: CheckoutCompletedDeps = {},
 ): Promise<void> {
   const session = event.data.object as Stripe.Checkout.Session;
+  const send = deps.sendEmail ?? sendLicenseEmail;
 
   if (session.mode !== "payment") {
     console.log(
@@ -147,6 +151,12 @@ export async function handleCheckoutCompleted(
       kind: "lifetime",
     } satisfies SessionRecord),
   );
+
+  try {
+    await send(env, { to: email, key, kind: "lifetime" });
+  } catch {
+    console.error(`${event.type} ${event.id}: license email delivery threw — ignored`);
+  }
 
   console.log(
     `${event.type} ${event.id}: minted lifetime key for session ${session.id}`,

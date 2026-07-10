@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { generateKeyPairSync } from "node:crypto";
 import Stripe from "stripe";
 import {
@@ -33,10 +33,13 @@ function makeEnv(kv: KVNamespace): Env {
     LICENSE_KV: kv,
     FOUNDING_CAP: "300",
     FROM_EMAIL: "hello@example.test",
+    SUPPORT_EMAIL: "support@example.test",
+    CUSTOMER_PORTAL_URL: "https://portal.example.test",
     APP_ORIGIN: "https://example.test",
     STRIPE_WEBHOOK_SECRET: "whsec_unused",
     STRIPE_SECRET_KEY: "sk_test_unused",
     LICENSE_SIGNING_PRIVATE_KEY: PKCS8_PEM,
+    RESEND_API_KEY: "re_test_unused",
     LICENSE_SIGNING_KID: "test-kid",
     LICENSE_PUBLIC_KEY: "",
   } satisfies Env;
@@ -46,6 +49,14 @@ const ctx = {
   waitUntil: () => {},
   passThroughOnException: () => {},
 } as unknown as ExecutionContext;
+
+beforeEach(() => {
+  vi.stubGlobal("fetch", vi.fn(async () => ({ ok: true, status: 200 })));
+});
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
 
 /** Unix seconds for an ISO instant. */
 const unix = (iso: string): number => Math.floor(Date.parse(iso) / 1000);
@@ -169,6 +180,42 @@ describe("invoice.paid handler (#110)", () => {
     const record = readRecord(store, "sub_claims");
     expect(record.periodEnd).toBe(periodEnd);
     expect(record.email).toBe("engineer@example.test");
+  });
+
+  it("Scenario: subscription mint triggers a key email", async () => {
+    const { kv, store } = makeKv();
+    const env = makeEnv(kv);
+    const sendEmail = vi.fn(async () => ({ ok: true }));
+
+    await handleInvoicePaid(
+      invoicePaidEvent("evt_email", {
+        subscription: "sub_email",
+        customerEmail: "a@b.c",
+        lines: [
+          {
+            subscription: "sub_email",
+            periodEnd: unix("2027-01-01T00:00:00.000Z"),
+          },
+        ],
+      }),
+      env,
+      ctx,
+      { sendEmail },
+    );
+
+    expect(sendEmail).toHaveBeenCalledTimes(1);
+    const [calledEnv, params] = sendEmail.mock.calls[0] as unknown as Parameters<
+      NonNullable<InvoicePaidDeps["sendEmail"]>
+    >;
+    expect(calledEnv).toBe(env);
+    expect(params).toMatchObject({
+      to: "a@b.c",
+      kind: "subscription",
+      expiresAt: "2027-01-01T00:00:00.000Z",
+    });
+    expect(params.key).toMatch(/^SB1\./);
+    expect(readRecord(store, "sub_email").latestKeyHash).toMatch(/^[0-9a-f]{64}$/);
+    expectNoSignedKeyInKv(store);
   });
 
   it("expands the customer + subscription via the API when the payload omits them", async () => {
@@ -343,6 +390,50 @@ describe("invoice.paid idempotency through the webhook (#110)", () => {
     // Same single record — the replay never re-minted (hash unchanged).
     expect(readRecord(store, "sub_1").latestKeyHash).toBe(minted.latestKeyHash);
     expect([...store.keys()].filter((k) => k.startsWith("sub:"))).toHaveLength(1);
+    expectNoSignedKeyInKv(store);
+  });
+
+  it("Scenario: email failure does not fail the webhook", async () => {
+    const { kv, store } = makeKv();
+    const env = { ...makeEnv(kv), STRIPE_WEBHOOK_SECRET: WEBHOOK_SECRET };
+    const sendEmail = vi.fn(async () => {
+      throw new Error("resend down");
+    });
+
+    const body = JSON.stringify(
+      invoicePaidEvent("evt_email_failure", {
+        subscription: "sub_email_failure",
+        customerEmail: "a@b.c",
+        lines: [
+          {
+            subscription: "sub_email_failure",
+            periodEnd: unix("2027-09-01T00:00:00.000Z"),
+          },
+        ],
+      }),
+    );
+    const signature = signer.webhooks.generateTestHeaderString({
+      payload: body,
+      secret: WEBHOOK_SECRET,
+    });
+    const post = () =>
+      new Request("https://sound-buddy-api.test/api/stripe/webhook", {
+        method: "POST",
+        body,
+        headers: { "stripe-signature": signature },
+      });
+
+    const res = await handleStripeWebhook(post(), env, ctx, {
+      handlers: {
+        "invoice.paid": (event, handlerEnv, handlerCtx) =>
+          handleInvoicePaid(event, handlerEnv, handlerCtx, { sendEmail }),
+      },
+    });
+
+    expect(res.status).toBe(200);
+    expect(sendEmail).toHaveBeenCalledTimes(1);
+    const record = readRecord(store, "sub_email_failure");
+    expect(record.latestKeyHash).toMatch(/^[0-9a-f]{64}$/);
     expectNoSignedKeyInKv(store);
   });
 });
