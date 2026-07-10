@@ -879,6 +879,10 @@ test.describe('Sound Buddy E2E', () => {
       await expect(ch0.locator('.live-ch-clip')).toBeVisible();
       await expect(ch0).toHaveClass(/collapsed/);
       await expect(ch0.locator('.veq')).toBeHidden();
+      // The CLIP badge appearing on a later tick must land in the same spot as
+      // one present from the first tick — just before the remove control (#188).
+      const headChildren = await ch0.locator('.live-ch-head > *').evaluateAll((els) => els.map((e) => e.className));
+      expect(headChildren.indexOf('live-ch-clip')).toBeLessThan(headChildren.indexOf('live-ch-x'));
 
       // Several more repaints — still collapsed.
       await sendLiveTick(LIVE_CHANNELS);
@@ -889,6 +893,10 @@ test.describe('Sound Buddy E2E', () => {
 
     test('bar height tracks level; loudest band is emphasized; silent bands dim', async () => {
       await sendLiveTick(LIVE_CHANNELS);
+      // The persistent workspace (#188) already shows 7 idle-placeholder bars
+      // before this tick lands, so a bare bar-count check wouldn't wait for the
+      // real data — wait on the name (idle placeholders read "Ch 1") first.
+      await expect(window.locator('.live-ch[data-ch="0"] .live-ch-name')).toHaveText('Vocals');
       await expect(window.locator('.live-ch[data-ch="0"] .veq-bar')).toHaveCount(7);
 
       const heightOf = async (band: string) =>
@@ -1088,6 +1096,84 @@ test.describe('Sound Buddy E2E', () => {
       await electronApp.evaluate(({ ipcMain }) => {
         ipcMain.removeHandler('start-live');
         ipcMain.handle('start-live', () => ({ success: true }));
+      });
+    });
+
+    // Persistent main-pane track workspace (#188): configured tracks render in
+    // #spectrum-body the moment the Live tab is active, idle or capturing, with
+    // Add/remove available right there (not just the left rail). Runs last in
+    // this describe — it starts/stops a capture, which (pre-existing behavior)
+    // leaves #spectrum-title reading "…Stopped" until the next real mode
+    // change, so it must not run ahead of the earlier tick-based tests that
+    // assert that title's text.
+    test.describe('Persistent track workspace (#188)', () => {
+      test('configured tracks render as idle placeholders, not the "start capture" copy', async () => {
+        const tracks = window.locator('#spectrum-body .sb-live-meters .live-ch');
+        await expect(tracks).toHaveCount(2);
+        await expect(window.locator('#spectrum-body')).not.toContainText('Start live capture to see the meters');
+        await expect(window.locator('#live-ws-cap')).toHaveText('2 / 8 used');
+      });
+
+      test('Collapse all folds idle placeholder rows before any live tick has arrived', async () => {
+        // Collapse all sizes itself off the strips actually on screen, not the
+        // (still-null pre-tick) lastLiveChannels — regression coverage (#188).
+        await window.locator('#live-collapse-all').click();
+        await expect(window.locator('#spectrum-body .sb-live-meters .live-ch.collapsed')).toHaveCount(2);
+        await window.locator('#live-expand-all').click();
+        await expect(window.locator('#spectrum-body .sb-live-meters .live-ch.collapsed')).toHaveCount(0);
+      });
+
+      test('workspace Add track stays in parity with the left rail', async () => {
+        await window.locator('#live-ws-add').click();
+        await expect(window.locator('#spectrum-body .sb-live-meters .live-ch')).toHaveCount(3);
+        await expect(window.locator('#chcfg-list .chcfg-row')).toHaveCount(3);
+        await expect(window.locator('#live-ws-cap')).toHaveText('3 / 8 used');
+        await expect(window.locator('#chcfg-cap')).toHaveText('3 / 8 used');
+      });
+
+      test('a workspace row remove prunes the strip and stays in parity with the left rail', async () => {
+        // removeChannelStrip() is the exact function the left rail's .chcfg-x
+        // calls (pruneStrip unit-tested in group-state.test.ts) — the workspace
+        // remove routes through the same path, so parity here also proves no
+        // dangling group reference survives the removal.
+        await window.locator('.sb-live-meters .live-ch .live-ch-x').first().click();
+        await expect(window.locator('#spectrum-body .sb-live-meters .live-ch')).toHaveCount(1);
+        await expect(window.locator('#chcfg-list .chcfg-row')).toHaveCount(1);
+      });
+
+      test('removing every track reveals the "Add your first track" empty state', async () => {
+        const removeBtn = window.locator('.sb-live-meters .live-ch .live-ch-x').first();
+        await removeBtn.click();
+        await removeBtn.click();
+        await expect(window.locator('#spectrum-body .sb-live-meters')).toHaveCount(0);
+        await expect(window.locator('#spectrum-body')).toContainText('Add your first track');
+        await expect(window.locator('#live-ws-add')).toBeVisible();
+        await expect(window.locator('#live-ws-add')).toBeEnabled();
+
+        // Start Capture must refuse an empty config rather than let stream.py
+        // silently fall back to its own default channels (#188).
+        await window.locator('#live-start-btn').click();
+        await expect(window.locator('#arm-hint')).toBeVisible();
+        await expect(window.locator('#arm-hint')).toContainText('Add at least one track');
+        await expect(window.locator('#live-start-btn')).toBeVisible();
+        await expect(window.locator('#live-stop-btn')).toBeHidden();
+      });
+
+      test('workspace Add disables at the device channel cap', async () => {
+        for (let i = 0; i < 6; i++) await window.locator('#live-ws-add').click(); // 2 → 8
+        await expect(window.locator('#live-ws-cap')).toHaveText('8 / 8 used');
+        await expect(window.locator('#live-ws-add')).toBeDisabled();
+        await expect(window.locator('#chcfg-add')).toBeDisabled();
+      });
+
+      test('workspace Add / remove are read-only while a capture is running', async () => {
+        await window.locator('#live-start-btn').click();
+        await expect(window.locator('#live-ws-add')).toBeDisabled();
+        await expect(window.locator('.sb-live-meters .live-ch .live-ch-x').first()).toBeDisabled();
+        await expect(window.locator('#capture-locked-note')).toBeVisible();
+
+        await window.locator('#live-stop-btn').click();
+        await expect(window.locator('#live-ws-add')).toBeEnabled();
       });
     });
   });

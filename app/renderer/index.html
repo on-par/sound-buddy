@@ -554,7 +554,12 @@
     .live-ch-name:focus { background:var(--surface-raised); box-shadow:var(--glow-focus); }
     .live-ch-name.clip { color:var(--issue-text); }
     .live-ch-meta { font:var(--fw-regular) var(--fs-micro)/1 var(--font-mono); color:var(--text-muted); }
-    .live-ch-clip { margin-left:auto; font:var(--fw-semibold) var(--fs-micro)/1 var(--font-sans); color:var(--issue-text); letter-spacing:0.06em; }
+    .live-ch-clip { font:var(--fw-semibold) var(--fs-micro)/1 var(--font-sans); color:var(--issue-text); letter-spacing:0.06em; }
+    /* Workspace per-row remove (#188): rides every strip — idle placeholder or
+       live — right-aligned in the head; the clip badge sits just left of it. */
+    .live-ch-x { margin-left:auto; flex:0 0 auto; width:var(--control-h-sm); height:var(--control-h-sm); border:1px solid var(--border-subtle); border-radius:var(--radius-md); background:transparent; color:var(--text-muted); cursor:pointer; font-size:15px; line-height:1; }
+    .live-ch-x:hover:not(:disabled) { color:var(--issue-text); border-color:var(--issue-500); }
+    .live-ch-x:disabled { opacity:0.35; cursor:not-allowed; }
 
     /* Per-strip collapse (#40): a chevron folds a strip to just its header
        (name + RMS/peak + clip), hiding the arc + bars. Header is the compact
@@ -565,7 +570,9 @@
     .live-ch.collapsed { padding:8px 0; }
     .live-ch.collapsed .live-ch-head { margin-bottom:0; }
     .live-ch.collapsed .veq, .live-ch.collapsed .veq-labels { display:none; }
-    .live-meters-toolbar { display:flex; gap:8px; margin-bottom:14px; }
+    .live-meters-toolbar { display:flex; align-items:center; gap:8px; margin-bottom:14px; }
+    /* Workspace toolbar cap (#188): mirrors the left rail's #chcfg-cap. */
+    .live-meters-toolbar .cap { font:var(--fw-regular) var(--fs-micro)/1 var(--font-mono); color:var(--text-muted); margin-right:auto; }
     /* Named channel groups (#41): group headers in the live board + row assignment. */
     .live-group-head { display:flex; align-items:center; gap:8px; padding:10px 0 6px; margin-top:8px; border-bottom:1px solid var(--border-subtle); }
     .live-group-head:first-child { margin-top:0; }
@@ -1430,6 +1437,8 @@
 <script src="arm-state.js"></script>
 <!-- Pure named-channel-group helpers (window.groupState, #41). -->
 <script src="group-state.js"></script>
+<!-- Pure persistent-track-workspace helpers (window.trackWorkspace, #188). -->
+<script src="track-workspace.js"></script>
 <!-- Pure virtual-soundcheck routing helpers (window.playbackRouting, #46). -->
 <script src="playback-routing.js"></script>
 <!-- Pure license/entitlement helpers (window.licenseState, #54). -->
@@ -2571,13 +2580,18 @@ function veqChannelHTML(ch, idx) {
   const { bars, labels } = veqBarsAndLabelsHTML(VEQ_BANDS, curve.db, loudestIdx);
   const displayName = stripLabel(channelConfig[idx], ch, idx);
   const collapsed = isStripCollapsed(idx);
-  return `<div class="live-ch${collapsed ? ' collapsed' : ''}" data-ch="${idx}">
+  // The workspace remove control (#188) rides every strip — idle or live — so
+  // it stays present-but-disabled through a capture (read-only while running)
+  // rather than disappearing. Unlike the left rail's .chcfg-x, it's allowed
+  // down to zero strips so the empty state stays reachable.
+  return `<div class="live-ch${collapsed ? ' collapsed' : ''}${ch.idle ? ' idle' : ''}" data-ch="${idx}">
     <div class="live-ch-head">
       <button type="button" class="live-ch-fold" aria-label="Collapse or expand strip" aria-expanded="${collapsed ? 'false' : 'true'}" title="Collapse / expand strip">▾</button>
       ${liveMode === 'record' && window.armState.isArmed(channelConfig[idx]) ? '<span class="live-ch-arm" title="Armed for recording"></span>' : ''}
       <span class="live-ch-name${ch.clipping ? ' clip' : ''}" contenteditable="true" spellcheck="false" role="textbox" aria-label="Channel name — click to rename" title="Click to rename">${escapeHtml(displayName)}</span>
-      <span class="live-ch-meta">RMS ${fmt(ch.rms)} · Peak ${fmt(ch.peak)} dBFS</span>
+      <span class="live-ch-meta">${ch.idle ? 'Idle' : `RMS ${fmt(ch.rms)} · Peak ${fmt(ch.peak)} dBFS`}</span>
       ${ch.clipping ? '<span class="live-ch-clip">CLIP</span>' : ''}
+      <button type="button" class="live-ch-x" title="Remove track" aria-label="Remove track"${liveRunning ? ' disabled' : ''}>×</button>
     </div>
     <div class="veq">
       <div class="veq-chart">${veqArcSVG(curve, ch.centroid, idx)}</div>
@@ -2595,6 +2609,7 @@ function patchLiveChannel(el, ch, idx) {
   // collapsed strip still reflects live level and clipping below.
   const collapsed = isStripCollapsed(idx);
   el.classList.toggle('collapsed', collapsed);
+  el.classList.toggle('idle', !!ch.idle); // a real tick landing on a prior idle placeholder graduates it
   const foldBtn = el.querySelector('.live-ch-fold');
   if (foldBtn) foldBtn.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
   const curve = liveBandCurve(ch.bands);
@@ -2603,9 +2618,14 @@ function patchLiveChannel(el, ch, idx) {
   // the live tick keeps flowing but their caret/text stays put until they commit.
   if (document.activeElement !== name) name.textContent = stripLabel(channelConfig[idx], ch, idx);
   name.classList.toggle('clip', !!ch.clipping);
-  el.querySelector('.live-ch-meta').textContent = `RMS ${fmt(ch.rms)} · Peak ${fmt(ch.peak)} dBFS`;
+  el.querySelector('.live-ch-meta').textContent = ch.idle ? 'Idle' : `RMS ${fmt(ch.rms)} · Peak ${fmt(ch.peak)} dBFS`;
+  const removeBtn = el.querySelector('.live-ch-x');
+  if (removeBtn) removeBtn.disabled = liveRunning;
   const clipEl = el.querySelector('.live-ch-clip');
-  if (ch.clipping && !clipEl) el.querySelector('.live-ch-head').insertAdjacentHTML('beforeend', '<span class="live-ch-clip">CLIP</span>');
+  // Insert just before the remove button (#188) so CLIP lands in the same spot
+  // whether it was there on the first tick (static template order) or shows up
+  // later — .live-ch-x carries the head's margin-left:auto right-alignment.
+  if (ch.clipping && !clipEl) removeBtn.insertAdjacentHTML('beforebegin', '<span class="live-ch-clip">CLIP</span>');
   else if (!ch.clipping && clipEl) clipEl.remove();
 
   const arc = veqArcSVG(curve, ch.centroid, idx, true);
@@ -2620,6 +2640,22 @@ function patchLiveChannel(el, ch, idx) {
   }
 
   patchBarsAndLabels(el, curve.db);
+}
+
+// Shared by the idle workspace and the running live board (#188): one toolbar
+// carries Add track + a used/total count, plus Collapse/Expand all, so the
+// pane reads the same whether idle or mid-capture. Add is disabled at the
+// device channel cap or while a capture is running (config is locked, #38).
+function liveWorkspaceToolbarHTML() {
+  const total = selectedDeviceChannels();
+  const used = usedChannelCount();
+  const addDisabled = !window.trackWorkspace.addEnabled(used, total, liveRunning);
+  return `<div class="live-meters-toolbar">`
+    + `<button type="button" class="ghost-btn" id="live-ws-add"${addDisabled ? ' disabled' : ''}>+ Add track</button>`
+    + `<span class="cap" id="live-ws-cap">${used} / ${total} used</span>`
+    + `<button type="button" class="ghost-btn" id="live-collapse-all">Collapse all</button>`
+    + `<button type="button" class="ghost-btn" id="live-expand-all">Expand all</button>`
+    + `</div>`;
 }
 
 function renderLiveMeters(win) {
@@ -2656,11 +2692,35 @@ function renderLiveMeters(win) {
     });
     return;
   }
-  body.innerHTML = `<div class="live-meters-toolbar">`
-    + `<button type="button" class="ghost-btn" id="live-collapse-all">Collapse all</button>`
-    + `<button type="button" class="ghost-btn" id="live-expand-all">Expand all</button>`
-    + `</div>`
+  body.innerHTML = liveWorkspaceToolbarHTML()
     + `<div class="meter-card sb-live-meters">${liveMetersHTML(win.channels)}</div>`;
+  body.querySelectorAll('.sb-live-meters .live-ch-name').forEach(wireLiveNameEdit);
+  applyLiveCollapsed();
+}
+
+// Persistent idle track workspace (#188): the center pane renders
+// channelConfig as track lanes the moment the Live tab is active, not only
+// once capture starts. Idle lanes are synthetic all-floor channels rendered
+// through the same veqChannelHTML/liveMetersHTML path the running board uses,
+// so grouping (#41) and per-strip collapse (#40) keep working for free. Shares
+// liveWorkspaceToolbarHTML() with renderLiveMeters so Add/remove read
+// consistently whether idle or (locked) mid-capture.
+function renderLiveWorkspace() {
+  const body = document.getElementById('spectrum-body');
+  document.getElementById('stats-row').style.display = 'none';
+  const ipWrap = document.getElementById('ideal-profile-wrap');
+  if (ipWrap) ipWrap.style.display = 'none';
+
+  const toolbar = liveWorkspaceToolbarHTML();
+
+  if (window.trackWorkspace.isEmpty(channelConfig.length)) {
+    body.innerHTML = toolbar
+      + `<div class="spectrum-empty live-ws-empty">${iconSvg('waveform', 44)}<p>Add your first track to get started</p></div>`;
+    return;
+  }
+
+  const idleChannels = channelConfig.map(() => window.trackWorkspace.idleChannel(LIVE_BAND_KEYS));
+  body.innerHTML = toolbar + `<div class="meter-card sb-live-meters idle">${liveMetersHTML(idleChannels)}</div>`;
   body.querySelectorAll('.sb-live-meters .live-ch-name').forEach(wireLiveNameEdit);
   applyLiveCollapsed();
 }
@@ -2716,6 +2776,13 @@ function applyLiveCollapsed() {
   });
 }
 document.getElementById('spectrum-body').addEventListener('click', (e) => {
+  // Workspace Add track (#188): same body as the left rail's #chcfg-add, so
+  // both rails stay in sync. Delegated (rather than re-wired per render) so it
+  // survives renderLiveWorkspace()/renderLiveMeters() rebuilding the pane.
+  if (e.target.closest('#live-ws-add')) { addChannelStrip(); return; }
+  // Workspace per-row remove (#188): same body as the left rail's .chcfg-x.
+  const rmBtn = e.target.closest('.live-ch-x');
+  if (rmBtn) { removeChannelStrip(parseInt(rmBtn.closest('.live-ch').dataset.ch, 10)); return; }
   // Group header fold (#41): collapse/expand every member strip at once.
   const gfold = e.target.closest('.live-group-fold');
   if (gfold) {
@@ -2735,7 +2802,9 @@ document.getElementById('spectrum-body').addEventListener('click', (e) => {
     return;
   }
   if (e.target.closest('#live-collapse-all')) {
-    const n = (lastLiveChannels || []).length;
+    // Count the strips actually on screen (#188) rather than lastLiveChannels,
+    // which stays null/stale in the idle workspace until a real tick lands.
+    const n = document.querySelectorAll('#spectrum-body .sb-live-meters .live-ch').length;
     liveCollapsed = window.collapseState.collapseAll(Array.from({ length: n }, (_, i) => i));
     applyLiveCollapsed();
   } else if (e.target.closest('#live-expand-all')) {
@@ -3072,8 +3141,11 @@ function syncSpectrumForMode(mode) {
   const title = document.getElementById('spectrum-title');
   if (mode === 'live') {
     title.textContent = SPECTRUM_TITLE.live;
+    // Persistent track workspace (#188): the pane renders channelConfig as
+    // track rows the moment the Live tab is shown, idle or capturing — the
+    // running board only takes over once real windows have actually arrived.
     if (liveRunning && liveWindows.length > 0) renderLiveMeters(liveWindows[liveWindows.length - 1]);
-    else setSpectrumState('empty', { text: 'Start live capture to see the meters' });
+    else renderLiveWorkspace();
   } else if (mode === 'soundcheck') {
     title.textContent = 'Soundcheck · Meters';
     if (!scPlaying) setSpectrumState('empty', { text: 'Load a session and press Play to see per-track meters' });
@@ -3242,6 +3314,28 @@ function usedChannelCount() {
   return channelConfig.reduce((n, s) => n + (s.kind === 'stereo' ? 2 : 1), 0);
 }
 
+// Push a new mono strip onto channelConfig and re-render (#188). Shared by the
+// left rail's #chcfg-add and the workspace's #live-ws-add so both rails push
+// through one code path and can't drift.
+function addChannelStrip() {
+  const n = selectedDeviceChannels();
+  const next = Math.min(usedChannelCount(), n - 1);
+  channelConfig.push({ kind: 'mono', a: next, b: Math.min(next + 1, n - 1), armed: true });
+  renderChannelConfig();
+}
+
+// Remove a strip and re-render (#188). Shared by the left rail's .chcfg-x and
+// the workspace's .live-ch-x. Unlike the left rail (which disables remove at
+// channelConfig.length <= 1), callers may drive this down to zero strips so
+// the workspace empty state stays reachable.
+function removeChannelStrip(idx) {
+  channelConfig.splice(idx, 1);
+  // Drop the removed strip from any group and shift higher indices down so no
+  // dangling reference remains (#41).
+  channelGroups = window.groupState.pruneStrip(channelGroups, idx);
+  renderChannelConfig();
+}
+
 // Reset the config to the device default: first ≤2 channels as mono strips.
 function resetChannelConfig() {
   const n = selectedDeviceChannels();
@@ -3327,14 +3421,7 @@ function renderChannelConfig() {
     });
   });
   list.querySelectorAll('.chcfg-x').forEach((btn) => {
-    btn.addEventListener('click', (e) => {
-      const rmIdx = parseInt(e.target.dataset.idx);
-      channelConfig.splice(rmIdx, 1);
-      // Drop the removed strip from any group and shift higher indices down so no
-      // dangling reference remains (#41).
-      channelGroups = window.groupState.pruneStrip(channelGroups, rmIdx);
-      renderChannelConfig();
-    });
+    btn.addEventListener('click', (e) => removeChannelStrip(parseInt(e.target.dataset.idx, 10)));
   });
   // Assign a strip to a group (or Ungrouped) from its row select (#41).
   list.querySelectorAll('.chcfg-group').forEach((sel) => {
@@ -3362,6 +3449,10 @@ function renderChannelConfig() {
   // Re-assert the capture lock (#38): this re-render rebuilt the chcfg controls,
   // which must stay frozen while a capture is running.
   if (liveRunning) setCaptureControlsLocked(true);
+  // Keep the persistent workspace in sync with the left rail (#188): any
+  // left-rail add/remove re-renders the workspace too, so the two rails never
+  // drift. Only while idle — a running capture owns the pane via renderLiveMeters.
+  if (currentMode === 'live' && !liveRunning) renderLiveWorkspace();
 }
 
 // Lock/unlock every capture-config control while a capture runs (#38). stream.py
@@ -3375,19 +3466,17 @@ function setCaptureControlsLocked(locked) {
   const set = (el) => { if (el) { el.disabled = locked; el.setAttribute('aria-disabled', String(locked)); } };
   ['device-select', 'device-refresh-btn', 'record-folder-btn', 'chcfg-add',
     'meter-interval', 'window-secs', 'llm-interval', 'rig-select',
-    'arm-all-btn', 'disarm-all-btn', 'new-group-btn'].forEach((id) => set(document.getElementById(id)));
+    'arm-all-btn', 'disarm-all-btn', 'new-group-btn', 'live-ws-add'].forEach((id) => set(document.getElementById(id)));
   document.querySelectorAll('#live-mode button').forEach(set);
   document.querySelectorAll('#chcfg-list select, #chcfg-list .chcfg-x, #chcfg-list .chcfg-arm').forEach(set);
+  // Workspace track rows (#188): Add track (above) + each row's remove, read-only
+  // while a capture is running (mirrors the left rail's own lock).
+  document.querySelectorAll('#spectrum-body .live-ch-x').forEach(set);
   const tab = document.getElementById('tab-live');
   if (tab) tab.classList.toggle('capture-locked', locked);
 }
 
-document.getElementById('chcfg-add').addEventListener('click', () => {
-  const n = selectedDeviceChannels();
-  const next = Math.min(usedChannelCount(), n - 1);
-  channelConfig.push({ kind: 'mono', a: next, b: Math.min(next + 1, n - 1), armed: true });
-  renderChannelConfig();
-});
+document.getElementById('chcfg-add').addEventListener('click', addChannelStrip);
 
 // Build the stream.py channel tokens ("N" mono, "N-M" stereo) from the config.
 // A stereo strip whose two legs collapsed to the same channel (possible on the
@@ -3474,6 +3563,14 @@ document.getElementById('live-start-btn').addEventListener('click', async () => 
   const llmIntervalSecs = aiEnabled ? parseInt(document.getElementById('llm-interval').value) : 0;
   const channels = channelTokens();
 
+  // No configured tracks (#188): the workspace remove can drive channelConfig
+  // to zero, but stream.py silently falls back to its first device channels
+  // when given an empty channel list — block Start rather than start a
+  // capture the UI just showed as empty.
+  if (channelConfig.length === 0) {
+    showArmHint('Add at least one track before starting capture.');
+    return;
+  }
   // Record mode with nothing armed would spawn an empty session — block it (#43).
   if (liveMode === 'record' && armedCount() === 0) {
     showArmHint('Arm at least one strip to record.');
@@ -3494,7 +3591,10 @@ document.getElementById('live-start-btn').addEventListener('click', async () => 
   document.getElementById('live-status').style.display = 'block';
   document.getElementById('live-status').textContent = 'Connecting…';
   document.getElementById('spectrum-title').textContent = SPECTRUM_TITLE.live;
-  setSpectrumState('empty', { text: 'Waiting for live audio…' });
+  // Keep the persistent workspace up (#188) rather than blanking the pane —
+  // it now reads read-only (Add/remove locked) until the first real window
+  // arrives and the running board takes over.
+  renderLiveWorkspace();
 
   const result = await sb.startLive({
     device, channels, windowSecs, intervalSecs, llmIntervalSecs,
