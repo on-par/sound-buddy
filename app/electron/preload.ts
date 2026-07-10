@@ -4,6 +4,8 @@
 import { contextBridge, ipcRenderer } from 'electron';
 
 contextBridge.exposeInMainWorld('soundBuddy', {
+  getAppVersion: () => ipcRenderer.invoke('get-app-version'),
+
   getSettings: () => ipcRenderer.invoke('get-settings'),
 
   // Playback transport (#180) — a file:// URL an <audio> element can load

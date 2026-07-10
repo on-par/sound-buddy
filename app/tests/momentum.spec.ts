@@ -50,13 +50,16 @@ async function launch(): Promise<void> {
 }
 
 async function analyzeAndOpenReportCard(): Promise<void> {
-  await win.locator('.mode-tab[data-mode="file"]').click();
+  // The File tab is gone (#203) — file loading now lives in the Report Card
+  // tab's empty state, which is also the default landing tab.
+  await win.locator('.mode-tab[data-mode="reportcard"]').click();
   await win.evaluate(() => {
     (window as unknown as { loadFile: (p: string) => void }).loadFile('/fake/momentum.wav');
   });
   await expect(win.locator('#analyze-btn')).toBeEnabled();
   await win.locator('#analyze-btn').click();
-  await win.locator('.mode-tab[data-mode="reportcard"]').click();
+  // No further tab click needed — runFileAnalysis flips the empty state to
+  // the rendered card itself once analysis succeeds (#203).
   await expect(win.locator('#rc-content')).toBeVisible();
 }
 
@@ -124,8 +127,9 @@ test.describe.serial('Upgrade momentum card (#58)', () => {
     await win.locator('#rcu-later').click();
     await expect(win.locator('#rc-upgrade')).toBeHidden();
 
-    // Leaving and returning to the report card keeps it dismissed.
-    await win.locator('.mode-tab[data-mode="file"]').click();
+    // Leaving and returning to the report card keeps it dismissed. (No
+    // standalone File tab to leave to anymore, #203 — any other tab works.)
+    await win.locator('.mode-tab[data-mode="dir"]').click();
     await win.locator('.mode-tab[data-mode="reportcard"]').click();
     await expect(win.locator('#rc-content')).toBeVisible();
     await expect(win.locator('#rc-upgrade')).toBeHidden();

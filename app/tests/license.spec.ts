@@ -55,7 +55,7 @@ test.describe.serial('License gating (#54)', () => {
     await expect(win.locator('#tab-soundcheck .pro-gate')).toBeVisible();
     await expect(win.locator('#sc-play-btn')).toBeHidden();
 
-    // The free funnel is untouched: File tab + Report Card fully work.
+    // The free funnel is untouched: file input + Report Card fully work.
     await win.locator('.mode-tab[data-mode="reportcard"]').click();
     await expect(win.locator('#reportcard-view')).toBeVisible();
   });
