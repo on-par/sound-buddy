@@ -193,10 +193,67 @@ export async function mintLicenseKey(
   return `${KEY_PREFIX}.${toBase64Url(payloadBytes)}.${toBase64Url(new Uint8Array(signature))}`;
 }
 
+// --- hashing --------------------------------------------------------------
+
+/** Lowercase-hex SHA-256 of a string, via Web Crypto (no Node `crypto`). */
+export async function sha256Hex(input: string): Promise<string> {
+  const digest = await crypto.subtle.digest(
+    "SHA-256",
+    new TextEncoder().encode(input),
+  );
+  return Array.from(new Uint8Array(digest))
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+}
+
 // --- verify (parity helper) ---------------------------------------------------
 
 function invalid(error: string): VerifyResult {
   return { tier: "free", status: "invalid", error };
+}
+
+/**
+ * Verify a `SB1.` key's Ed25519 signature against `publicKey` and return its
+ * parsed payload — or `null` on any format/encoding/signature failure. Unlike
+ * {@link verifyLicenseKey} this does NOT gate on expiry: #113's refresh
+ * endpoint must accept expired keys (that's exactly when refresh matters) and
+ * needs `sub` from the payload, which `verifyLicenseKey`'s result omits.
+ * Never throws.
+ */
+export async function verifySignedPayload(
+  key: string,
+  publicKey: CryptoKey,
+): Promise<LicensePayload | null> {
+  const trimmed = typeof key === "string" ? key.trim() : "";
+  if (!trimmed) return null;
+
+  const parts = trimmed.split(".");
+  if (parts.length !== 3 || parts[0] !== KEY_PREFIX) return null;
+
+  let payloadBytes: Uint8Array;
+  let sigBytes: Uint8Array;
+  try {
+    payloadBytes = fromBase64Url(parts[1]);
+    sigBytes = fromBase64Url(parts[2]);
+  } catch {
+    return null;
+  }
+
+  let ok = false;
+  try {
+    ok = await crypto.subtle.verify("Ed25519", publicKey, sigBytes, payloadBytes);
+  } catch {
+    return null;
+  }
+  if (!ok) return null;
+
+  try {
+    const payload = JSON.parse(new TextDecoder().decode(payloadBytes)) as LicensePayload;
+    if (payload == null || typeof payload !== "object") return null;
+    return payload;
+  } catch {
+    return null;
+  }
 }
 
 /**

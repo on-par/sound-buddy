@@ -11,6 +11,7 @@
 import { json } from "./http";
 import { handleStripeWebhook } from "./webhook";
 import { handleGetLicense } from "./handlers/license";
+import { handleRefreshLicense } from "./handlers/license-refresh";
 import { handleActivate } from "./handlers/activate";
 
 /**
@@ -50,6 +51,13 @@ export interface Env {
    * future rotation stays auditable. Non-secret; set in wrangler `vars`.
    */
   LICENSE_SIGNING_KID: string;
+  /**
+   * Ed25519 license verify key, spki PEM (#113) — the same public key embedded
+   * in the app. Public keys are not secret; set in wrangler `vars`, not via
+   * `wrangler secret put`. Used by `/api/license/refresh` to verify a
+   * presented key's signature before any KV/Stripe lookup.
+   */
+  LICENSE_PUBLIC_KEY: string;
 }
 
 type RouteHandler = (
@@ -73,6 +81,7 @@ const routes: Route[] = [
   { method: "GET", path: "/api/stripe/health", handler: health },
   { method: "POST", path: "/api/stripe/webhook", handler: handleStripeWebhook },
   { method: "GET", path: "/api/license", handler: handleGetLicense },
+  { method: "POST", path: "/api/license/refresh", handler: handleRefreshLicense },
   { method: "GET", path: "/activate", handler: handleActivate },
 ];
 

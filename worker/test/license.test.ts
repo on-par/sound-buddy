@@ -33,6 +33,7 @@ function makeEnv(kv: KVNamespace): Env {
     STRIPE_SECRET_KEY: "sk_test_unused",
     LICENSE_SIGNING_PRIVATE_KEY: PKCS8_PEM,
     LICENSE_SIGNING_KID: "test-kid",
+    LICENSE_PUBLIC_KEY: SPKI_PEM,
   } satisfies Env;
 }
 
