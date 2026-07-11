@@ -7,6 +7,7 @@ import { registerIpcHandlers } from './ipc';
 import { initLogging, attachWindowLogging, log } from './logger';
 import { checkForUpdates, openReleasePage } from './updater';
 import { checkoutUrl } from './checkout';
+import { openFeedback } from './feedback';
 import { ensureTrialStarted } from './license';
 import { maybeRefreshLicense } from './license-refresh';
 
@@ -134,6 +135,12 @@ function buildMenu(): void {
             mainWindow?.webContents.send('open-license-dialog');
           },
         },
+        {
+          label: 'Send Feedback…',
+          click: () => {
+            void openFeedback();
+          },
+        },
       ],
     },
   ];
@@ -164,6 +171,7 @@ app.whenReady().then(() => {
   ipcMain.handle('open-checkout', (_event, plan?: string) => {
     void shell.openExternal(checkoutUrl(plan));
   });
+  ipcMain.handle('open-feedback', () => openFeedback());
 
   createWindow();
   log('main window created');

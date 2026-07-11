@@ -55,6 +55,9 @@ contextBridge.exposeInMainWorld('soundBuddy', {
   // ('monthly' | 'annual') in the user's browser. No card data touches the app.
   openCheckout: (plan: 'monthly' | 'annual') => ipcRenderer.invoke('open-checkout', plan),
 
+  // Feedback mailto (#143) — opens the user's mail client; the app sends nothing.
+  openFeedback: () => ipcRenderer.invoke('open-feedback'),
+
   // Capture rigs (#36) — backend only for now; the Live-tab UI arrives in #37.
   listRigs: () => ipcRenderer.invoke('list-rigs'),
   saveRig: (rig: unknown) => ipcRenderer.invoke('save-rig', rig),
