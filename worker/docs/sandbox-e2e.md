@@ -66,5 +66,10 @@ npm run test:e2e:sandbox
 
 ## 5. Capture the run
 
-Paste the terminal summary (pass/fail counts, not full output — vitest never
-prints key material) into the PR's Testing section.
+Paste only the terminal **summary line** (pass/fail counts) into the PR's
+Testing section — never the full output. A *failed* assertion can still print
+a raw value in its diff (e.g. if a `toBe`/`toMatch` check on a key ever
+regresses back to comparing a raw string — the suite is written to compare
+booleans instead specifically to avoid this, see the comments in
+`sandbox.e2e.test.ts`), so treat any failure output as sensitive and redact
+before sharing rather than assuming it's safe.

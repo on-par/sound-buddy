@@ -205,7 +205,11 @@ describe.skipIf(!hasSandboxEnv())("Stripe sandbox e2e (#121)", () => {
         const res = await api.getLicense(config.seedSubscriptionSessionId!);
         expect(res.status).toBe(200);
         const { key } = (await res.json()) as { key: string };
-        expect(key).toMatch(/^SB1\./);
+        // Boolean-ified assertion (not `toMatch`/`toBe` on the raw string):
+        // a failed toMatch/toBe prints the actual value in the diff, which
+        // would leak a live sandbox key into the terminal / any pasted
+        // output. See worker/docs/sandbox-e2e.md's security note.
+        expect(key.startsWith("SB1.")).toBe(true);
 
         const verified = await verifyKey(config, key);
         expect(verified.tier).toBe("pro");
@@ -305,7 +309,9 @@ describe.skipIf(!hasSandboxEnv())("Stripe sandbox e2e (#121)", () => {
         const refreshRes = await api.refresh(seedKey);
         expect(refreshRes.status).toBe(200);
         const { key: refreshedKey } = (await refreshRes.json()) as { key: string };
-        expect(refreshedKey).not.toBe(seedKey);
+        // Boolean-ified (see the matching comment above): avoids printing
+        // either raw key in a failure diff.
+        expect(refreshedKey === seedKey).toBe(false);
         const refreshedVerified = await verifyKey(config, refreshedKey);
         expect(refreshedVerified.tier).toBe("pro");
         expect(refreshedVerified.status).toBe("valid");
