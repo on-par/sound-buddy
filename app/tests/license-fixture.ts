@@ -31,6 +31,18 @@ export const LICENSE_ENV = {
 export const NO_TRIAL_ENV = { ...LICENSE_ENV, SOUND_BUDDY_DISABLE_TRIAL: '1' };
 
 /**
+ * Trust this run's keypair AND kill the #117 auto-refresh so a matrix spec's
+ * zero-network assertion is airtight and deterministic for every Pro/
+ * subscription state — otherwise a subscription in or near grace fires a real
+ * outbound refresh call on launch. Refresh itself is #117's concern (its own
+ * license-refresh.test.ts covers it), not this matrix.
+ */
+export const MATRIX_ENV = { ...LICENSE_ENV, SOUND_BUDDY_DISABLE_LICENSE_REFRESH: '1' };
+
+/** MATRIX_ENV plus the trial kill-switch, for the deterministic free state. */
+export const MATRIX_FREE_ENV = { ...MATRIX_ENV, SOUND_BUDDY_DISABLE_TRIAL: '1' };
+
+/**
  * Seed a license.json whose trial started `startedDaysAgo` days ago (#61) —
  * negative/small values give an active trial, ≥14 an expired one. Lets a spec
  * reach the trial states without waiting real days.
@@ -77,4 +89,15 @@ export function seedProLicense(
     path.join(userDataDir, 'license.json'),
     JSON.stringify({ key: makeLicenseKey(payload) }, null, 2),
   );
+}
+
+/**
+ * Write a license.json for a `subscription` key expiring `expiresDaysFromNow`
+ * days from now (fractional/negative allowed) — positive ⇒ valid, a small
+ * negative within GRACE_DAYS ⇒ grace, a large negative ⇒ past-grace/expired.
+ * Lets the entitlement matrix reach every subscription state deterministically.
+ */
+export function seedSubscription(userDataDir: string, expiresDaysFromNow: number): void {
+  const expiresAt = new Date(Date.now() + expiresDaysFromNow * 24 * 60 * 60 * 1000).toISOString();
+  seedProLicense(userDataDir, { kind: 'subscription', email: 'e2e@test.local', expiresAt });
 }
