@@ -27,12 +27,12 @@ jobs:
     permissions:
       contents: read
       security-events: write # only exercised if GHAS is enabled on this repo
-      actions: read # codeql-action v3 checks the Actions cache for an overlay-base database
+      actions: read # codeql-action checks the Actions cache for an overlay-base database
     steps:
       - uses: actions/checkout@v4
 
       - name: Initialize CodeQL
-        uses: github/codeql-action/init@v3
+        uses: github/codeql-action/init@v4
         with:
           languages: javascript-typescript
           # `paths` / `paths-ignore` aren't `init` action inputs — they're
@@ -43,7 +43,7 @@ jobs:
       # straight from source (build-mode: none), so there's no autobuild step.
 
       - name: Perform CodeQL analysis
-        uses: github/codeql-action/analyze@v3
+        uses: github/codeql-action/analyze@v4
         with:
           category: '/language:javascript-typescript'
           output: codeql-results
