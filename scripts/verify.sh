@@ -34,6 +34,19 @@ fi
 echo "==> positioning check (locked brand phrase)"
 node scripts/check-positioning.mjs
 
+# Secret scanning (#221): catches a real committed credential locally before
+# it ever reaches CI. .gitleaks.toml allowlists known fake test-fixture
+# placeholders by literal value. No deps beyond the gitleaks binary; skipped
+# with a note if it isn't installed (CI always has it — see ci.yml).
+# Keep this invocation in sync with the "secrets" job in ci.yml (same flags,
+# same config) so local and CI results match.
+if command -v gitleaks >/dev/null 2>&1; then
+  echo "==> secret scan (gitleaks)"
+  gitleaks detect --source . --no-git --config .gitleaks.toml --redact -v
+else
+  echo "==> secret scan SKIPPED — gitleaks not installed (brew install gitleaks)"
+fi
+
 # Build before lint: workspaces cross-reference each other's dist/ type
 # declarations, so `tsc --noEmit` only resolves after a build (CI order too).
 echo "==> build (tsc, all workspaces)"
@@ -79,6 +92,8 @@ fi
 if [[ -d worker/node_modules ]]; then
   echo "==> verify (worker: typecheck + tests)"
   npm run verify --prefix worker
+  echo "==> test coverage (worker, gated)"
+  npm run test:coverage --prefix worker
 else
   echo "==> worker verify SKIPPED — deps not installed (cd worker && npm ci)"
 fi

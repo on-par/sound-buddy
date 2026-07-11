@@ -1,7 +1,6 @@
 import { describe, it, expect } from 'vitest';
 
 // playback-routing is a plain classic script (window.playbackRouting / module.exports).
-// eslint-disable-next-line @typescript-eslint/no-var-requires
 const { defaultRoutes, routeSpec, requiredChannels, needsMixdown } = require('./playback-routing.js') as {
   defaultRoutes: (tracks: Array<{ kind?: string }> | null) => number[][];
   routeSpec: (routes: number[][] | null) => string;

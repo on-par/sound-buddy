@@ -21,7 +21,7 @@
   function hasSeenOnboarding(storage) {
     try {
       return !!(storage && typeof storage.getItem === 'function' && storage.getItem(KEY) === '1');
-    } catch (e) {
+    } catch {
       return false;
     }
   }
@@ -35,7 +35,7 @@
   function markOnboardingSeen(storage) {
     try {
       if (storage && typeof storage.setItem === 'function') storage.setItem(KEY, '1');
-    } catch (e) {
+    } catch {
       /* private-mode / disabled storage — nothing we can persist, so no-op */
     }
   }

@@ -81,7 +81,7 @@ async function createSession() {
   });
 }
 
-export async function analyzeStream(windows: WindowData[], channelNames: string[]): Promise<void> {
+export async function analyzeStream(windows: WindowData[], _channelNames: string[]): Promise<void> {
   const { session } = await createSession();
 
   const windowSecs = windows.length > 1

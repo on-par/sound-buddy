@@ -2,7 +2,6 @@ import { describe, it, expect } from 'vitest';
 
 // The helpers are a plain classic script (window.licenseState in the browser,
 // module.exports under Node) so they can be exercised here without a DOM.
-// eslint-disable-next-line @typescript-eslint/no-var-requires
 const { PRO_FEATURES, TRIAL_DAYS, isEntitled, badge, graceDaysLeft, graceBannerText, trialDaysLeft, trialBadgeText, trialNudge } =
   require('./license-state.js') as {
     PRO_FEATURES: string[];

@@ -133,3 +133,58 @@ jobs:
 
       - name: Verify (typecheck + tests)
         run: npm run verify
+
+      # Coverage is GATED: thresholds live in vitest.config.ts as a ratchet a
+      # few points below the current baseline, so this step fails the build if
+      # coverage drops below the floor. Re-runs the same suite as the Verify
+      # step above with --coverage; the redundancy mirrors the root workflow's
+      # test / test:coverage split, keeping a clean pass and the coverage gate
+      # as independent signals.
+      - name: Test coverage (gated)
+        run: npm run test:coverage
+
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-worker
+          path: worker/coverage/
+          if-no-files-found: ignore
+          retention-days: 14
+
+  # Secret scanning (#221) — nothing else in this workflow catches a real
+  # committed credential before it reaches main. Installs the gitleaks binary
+  # directly rather than the `gitleaks/gitleaks-action` wrapper, which
+  # requires a GITLEAKS_LICENSE for organization-owned repos; the OSS binary
+  # itself is free and needs no license. Pinned to a specific version (with a
+  # checksum check) for deterministic, reproducible results across runs.
+  # `.gitleaks.toml` at the repo root extends gitleaks' default ruleset and
+  # allowlists known fake test-fixture placeholders by literal value — see
+  # that file for what's excluded and why.
+  #
+  # NOTE: this job isn't yet wired into a required-status-checks branch
+  # protection ruleset — the repo's ruleset/branch-protection API is gated
+  # behind a GitHub plan upgrade (403 "Upgrade to GitHub Pro or make this
+  # repository public"), so it can't be configured from here. Follow-up once
+  # that access is available.
+  #
+  # Keep the `gitleaks detect` invocation below in sync with the one in
+  # scripts/verify.sh (same flags, same config) so local and CI results match.
+  secrets:
+    runs-on: ubuntu-latest
+    env:
+      GITLEAKS_VERSION: '8.30.1'
+      GITLEAKS_SHA256: '551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install gitleaks
+        run: |
+          curl -sSL -o gitleaks.tar.gz \
+            "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          echo "${GITLEAKS_SHA256}  gitleaks.tar.gz" | sha256sum -c -
+          tar -xzf gitleaks.tar.gz gitleaks
+          chmod +x gitleaks
+
+      - name: Scan for secrets
+        run: ./gitleaks detect --source . --no-git --config .gitleaks.toml --redact -v

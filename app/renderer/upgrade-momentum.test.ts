@@ -3,7 +3,6 @@ import { describe, it, expect } from 'vitest';
 // upgrade-momentum.js is a plain classic script (window.upgradeMomentum in the
 // browser, module.exports under Node) so its pure copy/tone/dismissal logic is
 // exercised here without a DOM.
-// eslint-disable-next-line @typescript-eslint/no-var-requires
 const { DISMISS_DAYS, PLANS, ACTIONS, TRUST_COPY, toneForGrade, shouldShowForLicense, isDismissed } =
   require('./upgrade-momentum.js') as {
     DISMISS_DAYS: number;

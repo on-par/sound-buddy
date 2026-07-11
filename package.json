@@ -2,15 +2,21 @@
   "name": "sound-buddy",
   "private": true,
   "license": "MIT",
-  "workspaces": ["packages/*"],
+  "workspaces": [
+    "packages/*"
+  ],
   "scripts": {
     "build": "npm run build -w @sound-buddy/shared -w @sound-buddy/scene-inspector -w @sound-buddy/audio-engine -w @sound-buddy/ai-analyst -w @sound-buddy/cli",
-    "lint": "npm run lint --workspaces --if-present && npm run lint --prefix app",
+    "lint": "npm run lint --workspaces --if-present && npm run lint --prefix app && eslint . --max-warnings 0",
     "test": "npm run test --workspaces --if-present",
     "test:coverage": "npm run test:coverage --workspaces --if-present; s=$?; npm run test:coverage --prefix app; a=$?; test $s -eq 0 && test $a -eq 0",
     "dev": "npm run dev -w @sound-buddy/cli"
   },
   "devDependencies": {
-    "@vitest/coverage-v8": "^2.1.9"
+    "@eslint/js": "^10.0.1",
+    "@vitest/coverage-v8": "^4.1.10",
+    "eslint": "^10.7.0",
+    "globals": "^17.7.0",
+    "typescript-eslint": "^8.63.0"
   }
 }

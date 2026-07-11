@@ -279,14 +279,14 @@ function amplitudeToDbfs(amplitude: number): number {
 // stay equivalent to the @sound-buddy/audio-engine parsers until the
 // duplication is removed (#151). Not part of the app's runtime surface.
 export async function runSox(filePath: string): Promise<SoxStats> {
-  let stderr = '';
+  let stderr: string;
   try {
     const result = await execFileAsync(toolBin('sox'), [filePath, '-n', 'stat'], { encoding: 'utf8' });
     stderr = result.stderr ?? '';
   } catch (err: unknown) {
     const e = err as { stderr?: string };
     stderr = e.stderr ?? '';
-    if (!stderr) throw new Error(`sox failed: ${String(err)}`);
+    if (!stderr) throw new Error(`sox failed: ${String(err)}`, { cause: err });
   }
 
   const samplesRead = parseField(stderr, 'Samples read:');
