@@ -276,7 +276,7 @@ async function runListDevices(): Promise<void> {
 // sequences (CWE-117 log injection).
 function logLlmFailure(err: unknown): void {
   const detail = err instanceof Error ? (err.stack ?? err.message) : String(err);
-  console.error(`\nLLM analysis failed:`, JSON.stringify(detail));
+  console.error("\nLLM analysis failed:", JSON.stringify(detail));
 }
 
 async function runSingleFile(filePath: string, names: string[], ollama: boolean, ollamaModel: string, ollamaHost: string): Promise<void> {
