@@ -133,3 +133,21 @@ jobs:
 
       - name: Verify (typecheck + tests)
         run: npm run verify
+
+      # Coverage is GATED: thresholds live in vitest.config.ts as a ratchet a
+      # few points below the current baseline, so this step fails the build if
+      # coverage drops below the floor. Re-runs the same suite as the Verify
+      # step above with --coverage; the redundancy mirrors the root workflow's
+      # test / test:coverage split, keeping a clean pass and the coverage gate
+      # as independent signals.
+      - name: Test coverage (gated)
+        run: npm run test:coverage
+
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-worker
+          path: worker/coverage/
+          if-no-files-found: ignore
+          retention-days: 14

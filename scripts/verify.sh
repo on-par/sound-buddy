@@ -79,6 +79,8 @@ fi
 if [[ -d worker/node_modules ]]; then
   echo "==> verify (worker: typecheck + tests)"
   npm run verify --prefix worker
+  echo "==> test coverage (worker, gated)"
+  npm run test:coverage --prefix worker
 else
   echo "==> worker verify SKIPPED — deps not installed (cd worker && npm ci)"
 fi

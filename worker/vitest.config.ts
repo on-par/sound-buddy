@@ -11,6 +11,10 @@ export default defineConfig({
       provider: "v8",
       include: ["src/**/*.ts"],
       exclude: ["test/**", "**/dist/**", "**/*.config.{ts,js,mjs}"],
+      // Ratchet floors set a few points below the current baseline (~94/79/93/94
+      // statements/branches/functions/lines) so this gates real regressions
+      // without being a constant false alarm. Raise them as coverage grows.
+      thresholds: { statements: 90, branches: 75, functions: 90, lines: 90 },
     },
   },
 });
