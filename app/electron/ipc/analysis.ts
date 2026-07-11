@@ -407,13 +407,7 @@ export function registerAnalysisHandlers(): void {
   // read. Write-only; the renderer computes grade/score, main stamps the ISO date
   // and writes. A failure (permissions, full disk) is logged and swallowed: the
   // report card must still display, so this never throws back to the renderer.
-  ipcMain.handle('save-analysis-summary', async (_event, payload: {
-    sourceFilename: string;
-    gradeLetter: string;
-    score: number;
-    recordingType: string;
-    topFixes: string[];
-  }) => {
+  ipcMain.handle('save-analysis-summary', async (_event, payload: Omit<AnalysisSummary, 'date'>) => {
     try {
       const summary: AnalysisSummary = {
         date: new Date().toISOString(),

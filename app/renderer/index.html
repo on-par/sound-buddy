@@ -4192,7 +4192,7 @@ function persistAnalysisSummary() {
       score: grading.computeScore(src),
       recordingType: grading.analyzeRecordingType(src).label,
       topFixes: grading.computeRecommendations(src).slice(0, 3),
-    });
+    }).catch((err) => console.warn('persistAnalysisSummary failed', err));
   } catch (err) {
     console.warn('persistAnalysisSummary failed', err);
   }

@@ -252,6 +252,12 @@ export async function launchApp(): Promise<{ electronApp: ElectronApplication; w
       success: true,
       sessionDir: '/tmp/sound-buddy-20260702-101500',
     }));
+
+    // save-analysis-summary (#146) writes under the platform Music folder,
+    // which --user-data-dir does NOT isolate — stub it so e2e runs (which fire
+    // this on every loadAndAnalyze) never touch the developer's real disk.
+    ipcMain.removeHandler('save-analysis-summary');
+    ipcMain.handle('save-analysis-summary', () => ({ success: true }));
   }, FAKE_ANALYSIS));
 
   return { electronApp, window };
