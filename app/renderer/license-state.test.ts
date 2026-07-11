@@ -2,18 +2,31 @@ import { describe, it, expect } from 'vitest';
 
 // The helpers are a plain classic script (window.licenseState in the browser,
 // module.exports under Node) so they can be exercised here without a DOM.
-const { PRO_FEATURES, TRIAL_DAYS, isEntitled, badge, graceDaysLeft, graceBannerText, trialDaysLeft, trialBadgeText, trialNudge } =
-  require('./license-state.js') as {
-    PRO_FEATURES: string[];
-    TRIAL_DAYS: number;
-    isEntitled: (state: unknown, feature: string) => boolean;
-    badge: (state: unknown) => { label: string; pro: boolean; grace: boolean; trial: boolean };
-    graceDaysLeft: (state: unknown, now?: Date) => number | null;
-    graceBannerText: (state: unknown, now?: Date) => string | null;
-    trialDaysLeft: (state: unknown, now?: Date) => number | null;
-    trialBadgeText: (state: unknown, now?: Date) => string | null;
-    trialNudge: (state: unknown, now?: Date) => { milestone: string; text: string } | null;
-  };
+const {
+  PRO_FEATURES,
+  TRIAL_DAYS,
+  GRACE_DAYS,
+  isEntitled,
+  badge,
+  graceDaysLeft,
+  graceBannerText,
+  trialDaysLeft,
+  trialBadgeText,
+  trialNudge,
+  isInRefreshWindow,
+} = require('./license-state.js') as {
+  PRO_FEATURES: string[];
+  TRIAL_DAYS: number;
+  GRACE_DAYS: number;
+  isEntitled: (state: unknown, feature: string) => boolean;
+  badge: (state: unknown) => { label: string; pro: boolean; grace: boolean; trial: boolean };
+  graceDaysLeft: (state: unknown, now?: Date) => number | null;
+  graceBannerText: (state: unknown, now?: Date) => string | null;
+  trialDaysLeft: (state: unknown, now?: Date) => number | null;
+  trialBadgeText: (state: unknown, now?: Date) => string | null;
+  trialNudge: (state: unknown, now?: Date) => { milestone: string; text: string } | null;
+  isInRefreshWindow: (state: unknown, now?: Date) => boolean;
+};
 
 const NOW = new Date('2026-07-05T12:00:00Z');
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -117,5 +130,39 @@ describe('grace helpers', () => {
     expect(graceBannerText(graceState(0.5), NOW)).toContain('1 more day');
     expect(graceBannerText({ tier: 'pro', status: 'valid' }, NOW)).toBeNull();
     expect(graceBannerText(null, NOW)).toBeNull();
+  });
+});
+
+describe('isInRefreshWindow (#117)', () => {
+  const DAY_MS = 24 * 60 * 60 * 1000;
+
+  it('is true for a subscription in grace', () => {
+    expect(isInRefreshWindow({ kind: 'subscription', status: 'grace' }, NOW)).toBe(true);
+  });
+
+  it('is true for a subscription valid but within GRACE_DAYS of expiry', () => {
+    const expiresAt = new Date(NOW.getTime() + (GRACE_DAYS - 1) * DAY_MS).toISOString();
+    expect(isInRefreshWindow({ kind: 'subscription', status: 'valid', expiresAt }, NOW)).toBe(true);
+  });
+
+  it('is false for a subscription valid and far from expiry', () => {
+    const expiresAt = new Date(NOW.getTime() + 30 * DAY_MS).toISOString();
+    expect(isInRefreshWindow({ kind: 'subscription', status: 'valid', expiresAt }, NOW)).toBe(false);
+  });
+
+  it('is false for lifetime, trial, expired, invalid, none, and null', () => {
+    expect(isInRefreshWindow({ kind: 'lifetime', status: 'valid' }, NOW)).toBe(false);
+    expect(isInRefreshWindow({ status: 'trial' }, NOW)).toBe(false);
+    expect(isInRefreshWindow({ kind: 'subscription', status: 'expired' }, NOW)).toBe(false);
+    expect(isInRefreshWindow({ kind: 'subscription', status: 'invalid' }, NOW)).toBe(false);
+    expect(isInRefreshWindow({ status: 'none' }, NOW)).toBe(false);
+    expect(isInRefreshWindow(null, NOW)).toBe(false);
+  });
+
+  it('is false when expiresAt is missing or unparseable', () => {
+    expect(isInRefreshWindow({ kind: 'subscription', status: 'valid' }, NOW)).toBe(false);
+    expect(
+      isInRefreshWindow({ kind: 'subscription', status: 'valid', expiresAt: 'nonsense' }, NOW),
+    ).toBe(false);
   });
 });

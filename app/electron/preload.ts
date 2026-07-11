@@ -44,6 +44,10 @@ contextBridge.exposeInMainWorld('soundBuddy', {
   getLicense: () => ipcRenderer.invoke('get-license'),
   activateLicense: (key: string) => ipcRenderer.invoke('activate-license', key),
   removeLicense: () => ipcRenderer.invoke('remove-license'),
+  // Automatic license refresh (#117) — the manual "Refresh license" button and
+  // the paywall-evaluation trigger both call this; the launch trigger fires
+  // from the main process directly.
+  refreshLicense: () => ipcRenderer.invoke('refresh-license'),
   onOpenLicenseDialog: (cb: () => void) =>
     ipcRenderer.on('open-license-dialog', () => cb()),
 

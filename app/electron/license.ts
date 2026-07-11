@@ -51,7 +51,7 @@ export const GRACE_DAYS = 7;
 /** Days of full Pro access granted by the first-launch trial (#61). */
 export const TRIAL_DAYS = 14;
 
-const DAY_MS = 24 * 60 * 60 * 1000;
+export const DAY_MS = 24 * 60 * 60 * 1000;
 
 const KEY_PREFIX = 'SB1';
 
@@ -313,4 +313,11 @@ export function removeLicense(now: Date = new Date()): LicenseState {
 export function isEntitled(feature: string, now: Date = new Date()): boolean {
   if (!PRO_FEATURES.has(feature)) return true;
   return getLicenseState(now).tier === 'pro';
+}
+
+/** The raw stored license key string, or undefined when none is stored. Used by
+ *  license-refresh.ts (#117) to present the current credential to the Worker —
+ *  the only place the app sends it anywhere. */
+export function getStoredKey(): string | undefined {
+  return readStore().key;
 }

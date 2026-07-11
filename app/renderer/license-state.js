@@ -23,6 +23,10 @@
   var TRIAL_DAYS = 14;
   var DAY_MS = 24 * 60 * 60 * 1000;
 
+  // Grace window after a subscription's expiresAt — must mirror GRACE_DAYS in
+  // license.ts, and the automatic license-refresh window it doubles as (#117).
+  var GRACE_DAYS = 7;
+
   /**
    * Feature gate, renderer side. Free features are always entitled; Pro
    * features need state.tier === 'pro' (covers both valid and in-grace).
@@ -129,9 +133,29 @@
     return 'Your license has expired — Pro features stay unlocked for ' + days + ' more ' + unit + '. Renew to keep them.';
   }
 
+  /**
+   * True when a subscription is due for an automatic license refresh (#117):
+   * already in grace, or valid but within GRACE_DAYS of expiresAt. Mirrors
+   * shouldAutoRefresh() in app/electron/license-refresh.ts — kept here (not
+   * duplicated inline in index.html) so the renderer's paywall-evaluation
+   * trigger shares one tested definition of the window.
+   * @param {{kind?:string, status?:string, expiresAt?:string}|null} state
+   * @param {Date} [now]
+   * @returns {boolean}
+   */
+  function isInRefreshWindow(state, now) {
+    if (!state || state.kind !== 'subscription') return false;
+    if (state.status === 'grace') return true;
+    if (state.status !== 'valid') return false;
+    var expiresMs = Date.parse(state.expiresAt || '');
+    if (isNaN(expiresMs)) return false;
+    return expiresMs - (now instanceof Date ? now : new Date()).getTime() <= GRACE_DAYS * DAY_MS;
+  }
+
   var api = {
     PRO_FEATURES: PRO_FEATURES,
     TRIAL_DAYS: TRIAL_DAYS,
+    GRACE_DAYS: GRACE_DAYS,
     isEntitled: isEntitled,
     badge: badge,
     graceDaysLeft: graceDaysLeft,
@@ -139,6 +163,7 @@
     trialDaysLeft: trialDaysLeft,
     trialBadgeText: trialBadgeText,
     trialNudge: trialNudge,
+    isInRefreshWindow: isInRefreshWindow,
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.licenseState = api;
