@@ -24,7 +24,7 @@ lives in two places:
   `packages/audio-engine/src/profiles/profiles.test.ts`.
 - **Renderer copy:** `IP_PROFILES` + `ipCompare` at `app/renderer/index.html:1505`,
   a **hand-maintained mirror** (the renderer is a bundler-free static page, so — like
-  the mirrored types in `app/electron/ipc.ts` — it keeps its own inline copy).
+  the mirrored types in `app/electron/ipc/analysis.ts` — it keeps its own inline copy).
 
 Two problems motivated the spike:
 
@@ -107,7 +107,7 @@ equality against the engine's exported `PROFILES` — matching `id`, `label`,
 
 Why a test and **not** a shared module: the renderer is intentionally bundler-free
 (a static page loaded directly by Electron), which is exactly why the profile table is
-hand-mirrored today — the same rationale documented for the `electron/ipc.ts` type
+hand-mirrored today — the same rationale documented for the `electron/ipc/analysis.ts` type
 mirror. A shared import would force a bundling/copy step the renderer deliberately
 avoids. A drift test gets the safety (CI fails the instant the copies diverge) at a
 fraction of the cost and risk.

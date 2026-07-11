@@ -114,7 +114,10 @@ if [[ "$E2E" -eq 1 ]]; then
     done
     if [[ -n "$missing" ]]; then
       echo "==> e2e: smoke SKIPPED (missing:$missing) — running stubbed specs only"
-      ( cd app && npx playwright test tests/e2e.spec.ts )
+      # e2e.spec.ts was split by user flow into tests/e2e/*.spec.ts (#225); all
+      # of them stub analyze-file/list-devices/start-live/stop-live like the
+      # original single file did, so the whole directory is still tool-free.
+      ( cd app && npx playwright test tests/e2e/ )
     else
       echo "==> e2e (full Playwright suite — real sox/ffprobe/python)"
       npm run test:e2e --prefix app
