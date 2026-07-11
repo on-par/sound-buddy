@@ -26,11 +26,62 @@ Related: [#63 GTM epic](https://github.com/on-par/sound-buddy/issues/63) ·
   buying behaviors (see principle 4 below).
 - Ship the agreed prices first; a pricing experimentation framework is explicitly out of
   scope for year one.
-- **Not yet modeled: the Lifetime / Founding License SKU (#90).** The app's license
-  validation already supports a `lifetime` key kind as a limited launch mechanic, but it
-  has no agreed price and no treatment in the scenarios, refund reserve, or MRR formula
-  below (which values lifetime sales at $0). Price it and fold it into this model before
-  it ships.
+- **Founding License (limited launch SKU, #90): $199 one-time.** A capped founder-launch
+  mechanic, not a permanent tier — modeled separately below (see "Founding License"). It
+  is a one-time cash injection, not recurring revenue, so it stays **out of the MRR
+  formula** (which still values lifetime sales at $0) and is tracked as a launch-runway
+  line instead.
+
+## Founding License — limited launch SKU (#90)
+
+The Founding License is a $199 one-time purchase that grants the exact same Pro feature
+set permanently via a non-expiring `lifetime` license key. The mechanism is already
+shipped (license `kind`, #54; Stripe payment-mode mint + email, #56/#111/#112/#114);
+this section adds only the financial treatment. It is a limited founder-launch mechanic
+that sunsets after launch — not a permanent always-available lifetime tier.
+
+**Price rationale.** The price is anchored on the real annual number ($79/yr, which
+nets ~$76.41 after 2.9% + $0.30), not $9/month.
+
+| Avg subscriber lifetime | Gross LTV | Net LTV (after Stripe) |
+|---|---|---|
+| 2 years | $158 | ~$153 |
+| 3 years | $237 | ~$229 |
+| 4 years | $316 | ~$306 |
+
+$199 nets ~$192.93 (2.9% + $0.30), which breakevens against a ~2.5-year subscriber.
+Below ~$150 we are underwater against even modest 2-year retention; above ~$250 it stops
+reading as an obvious founder deal next to $79/yr. $199 = 2.5× annual, a clean "skip
+2.5 years of payments, keep it forever" pitch, with cash up front when the project most
+needs runway. Final number approved by Patrick.
+
+**Cap and ceiling.** The SKU is capped at the first **300 Founding Members**. That is the
+chosen sunset trigger — a cap, not an open-ended window. The ceiling is 300 × $199 =
+**$59,700 gross / ~$57,900 net** (300 × ~$192.93 ≈ $57,879). This is a one-time figure,
+tracked as a launch-runway line and deliberately **excluded from MRR/ARR** (which values
+lifetime at $0).
+
+**Cannibalization assumptions.** These are planning estimates, not measurements:
+
+- Founding buyers split into two types: **incremental** (would not have subscribed at
+  all → pure upside) and **substitution** (would otherwise have bought an annual sub →
+  recurring revenue converted to one-time).
+- **Planning assumption: 50% substitution** — an estimate with no telemetry behind it.
+- Worked at the full 300-unit cap: ~150 incremental buyers ≈ **~$28,940 net** of pure
+  upside; ~150 substitution buyers convert ~150 × $79 = **~$11,850/yr gross** annual
+  recurring (~$11,460 net) into ~150 × $192.93 = **~$28,940 one-time net cash**. The
+  trade favors up-front cash when average subscriber retention is **under 2.5 years**
+  and favors leaving them on annual beyond that — the same breakeven as the price
+  rationale.
+- **The cap bounds the downside:** because the SKU is capped at 300 and sunsets after
+  launch, total cannibalization is bounded (≤300 subs' worth, non-recurring). This is
+  why "the cap also bounds subscription cannibalization."
+
+**Reconciliation with the rest of the model.** The MRR formula below is unchanged:
+`MRR = (monthly active × $9) + (annual active × $79 / 12)`. It still values lifetime at
+$0. Founding revenue is a separate one-time launch line, not folded into MRR or the
+scenario table. The **5% refund reserve** and 30-day refund policy apply to founding
+gross unchanged: 300 × $199 implies a ~$2,985 reserve at the cap.
 
 ## Cost structure
 
