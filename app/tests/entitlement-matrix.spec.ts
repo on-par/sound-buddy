@@ -8,7 +8,8 @@ import { MATRIX_ENV, MATRIX_FREE_ENV, seedTrial, seedSubscription, seedProLicens
 // for REAL, asserting BOTH halves of the gate hold together — the renderer
 // hides Pro features AND the main process independently re-checks entitlement
 // before doing privileged work (so a patched renderer can't just flip a CSS
-// class to unlock Pro) — plus a zero-network guarantee for every state.
+// class to unlock Pro) — plus a renderer-side zero-network guard for every
+// state (see the caveat on the `win.on('request', ...)` hook in launch()).
 // license.spec.ts / trial.spec.ts already cover the free tier, key entry, and
 // trial flows interactively; this spec is the cross-cutting matrix over all
 // eight states, driven directly through window.soundBuddy rather than clicks.
@@ -32,6 +33,14 @@ async function launch(env: Record<string, string>): Promise<void> {
   });
   win = await app.firstWindow();
   requests = [];
+  // Renderer-side network guard only — Playwright's CDP hook covers the page's
+  // own fetch/XHR/resource loads, NOT the Node `fetch()` #117's auto-refresh
+  // makes from the Electron *main* process (license-refresh.ts's doRefresh),
+  // which never surfaces as a page request here. That call is suppressed at
+  // its source by MATRIX_ENV's SOUND_BUDDY_DISABLE_LICENSE_REFRESH kill-switch
+  // (asserted by license-refresh.ts's own license-refresh.test.ts, not here) —
+  // this listener instead catches any *other* accidental renderer-side
+  // network activity (analytics, font/asset CDNs, stray XHRs) during boot.
   win.on('request', (r) => {
     const u = r.url();
     if (u.startsWith('http://') || u.startsWith('https://')) requests.push(u);

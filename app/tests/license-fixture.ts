@@ -98,10 +98,6 @@ export function seedProLicense(
  * Lets the entitlement matrix reach every subscription state deterministically.
  */
 export function seedSubscription(userDataDir: string, expiresDaysFromNow: number): void {
-  fs.mkdirSync(userDataDir, { recursive: true });
   const expiresAt = new Date(Date.now() + expiresDaysFromNow * 24 * 60 * 60 * 1000).toISOString();
-  fs.writeFileSync(
-    path.join(userDataDir, 'license.json'),
-    JSON.stringify({ key: makeLicenseKey({ kind: 'subscription', email: 'e2e@test.local', expiresAt }) }, null, 2),
-  );
+  seedProLicense(userDataDir, { kind: 'subscription', email: 'e2e@test.local', expiresAt });
 }
