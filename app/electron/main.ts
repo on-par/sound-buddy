@@ -7,6 +7,7 @@ import { registerIpcHandlers } from './ipc';
 import { initLogging, attachWindowLogging, log } from './logger';
 import { checkForUpdates, openReleasePage } from './updater';
 import { checkoutUrl } from './checkout';
+import { captureGuideUrl } from './capture-guide';
 import { openFeedback, revealDiagnosticLog } from './feedback';
 import { ensureTrialStarted } from './license';
 import { maybeRefreshLicense } from './license-refresh';
@@ -172,6 +173,11 @@ app.whenReady().then(() => {
     void shell.openExternal(checkoutUrl(plan));
   });
   ipcMain.handle('open-feedback', () => openFeedback());
+  // Capture guidance (#142): "Grade your own service" panel's "Read the full
+  // guide" CTA opens the hosted docs page in the user's browser.
+  ipcMain.handle('open-capture-guide', () => {
+    void shell.openExternal(captureGuideUrl());
+  });
   ipcMain.handle('reveal-diagnostics', () => revealDiagnosticLog());
 
   createWindow();

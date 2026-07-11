@@ -415,6 +415,13 @@
     .ai-dialog-sub { font:var(--fw-regular) var(--fs-label)/1.4 var(--font-sans); color:var(--text-secondary); margin-top:-6px; }
     .ai-dialog-note { font:var(--fw-regular) var(--fs-label)/1.4 var(--font-sans); color:var(--text-tertiary); margin:2px 0 0; }
     .ai-dialog-version { font:var(--fw-regular) var(--fs-micro)/1.4 var(--font-mono); color:var(--text-muted); margin:6px 0 0; text-align:center; }
+    /* "Grade your own service" guide dialog (#142) */
+    .guide-dialog-card { width:min(480px,calc(100vw - 48px)); }
+    .guide-list { display:flex; flex-direction:column; gap:10px; }
+    .guide-item { display:flex; gap:12px; padding:12px 14px; background:var(--surface); border:1px solid var(--border-subtle); border-radius:var(--radius-md); }
+    .guide-item-num { flex-shrink:0; width:22px; height:22px; display:flex; align-items:center; justify-content:center; border-radius:50%; background:var(--gold-tint); color:var(--gold-text); font:var(--fw-semibold) var(--fs-label)/1 var(--font-sans); }
+    .guide-item-text { font:var(--fw-regular) var(--fs-body-sm)/1.5 var(--font-sans); color:var(--text-secondary); }
+    .guide-item-text strong { color:var(--text-primary); font-weight:var(--fw-semibold); }
     .ai-tabs { display:flex; gap:6px; }
     .ai-tab { flex:1; height:var(--control-h); border:1px solid var(--border-default); border-radius:var(--radius-md); background:var(--surface); color:var(--text-secondary); font:var(--fw-medium) var(--fs-body-sm)/1 var(--font-sans); cursor:pointer; }
     .ai-tab.active { border-color:var(--gold-600); background:var(--gold-tint); color:var(--gold-text); }
@@ -1186,6 +1193,7 @@
         <button class="btn btn-secondary sm" id="reportcard-clear-btn" data-icon="x" disabled>Clear</button>
         <button class="btn btn-secondary sm" id="reportcard-feedback-btn" data-icon="info">Send Feedback</button>
         <button class="btn btn-secondary sm" id="reportcard-print-btn" data-icon="download" disabled>Export PDF</button>
+        <button class="btn btn-secondary sm" id="grade-own-btn" data-icon="waveform" disabled>Grade your own service</button>
       </div>
     </div>
     <div id="rc-scroll">
@@ -1352,6 +1360,35 @@
   </div>
 </div>
 
+<!-- Guided path to grading a real service (#142). Entry point is the toolbar's
+     "Grade your own service" button, enabled in lockstep with Export PDF once a
+     report card has rendered. Never auto-opens — only shows on click, so it
+     can't cover the #69 welcome overlay or an e2e run. -->
+<div id="guide-dialog" class="rig-dialog" style="display:none" role="dialog" aria-modal="true" aria-labelledby="guide-dialog-title">
+  <div class="rig-dialog-card guide-dialog-card">
+    <div class="rig-dialog-title" id="guide-dialog-title">Grade your own service</div>
+    <div class="ai-dialog-sub">Recording a real service takes no special gear — pick whichever of these fits your setup.</div>
+    <div class="guide-list">
+      <div class="guide-item">
+        <span class="guide-item-num">1</span>
+        <span class="guide-item-text"><strong>Record to a USB stick on your console/mixer.</strong> Most digital mixers can record the main mix (or every channel) straight to a USB drive — start it before the service, stop it after, then drop the file in.</span>
+      </div>
+      <div class="guide-item">
+        <span class="guide-item-num">2</span>
+        <span class="guide-item-text"><strong>Capture on a laptop with a DAW or audio interface.</strong> Connect the board's output (or an interface) to a laptop and record into any DAW (or free tool); export a WAV/AIFF and analyze it.</span>
+      </div>
+      <div class="guide-item">
+        <span class="guide-item-num">3</span>
+        <span class="guide-item-text"><strong>Pull the audio from your livestream recording.</strong> If you already stream or record the service to video, extract the audio track from that file and grade it — no extra hardware at all.</span>
+      </div>
+    </div>
+    <div class="rig-dialog-actions">
+      <button type="button" id="guide-dialog-close" class="btn btn-secondary sm">Close</button>
+      <button type="button" id="guide-dialog-open-site" class="btn btn-primary sm" data-icon="external-link">Read the full guide</button>
+    </div>
+  </div>
+</div>
+
 <!-- Storage settings dialog (#91). Choose where recordings, stems and captured
      sessions live, and see how much disk they use. There is no cap — the usage
      figure is informational only. Point the folder inside an iCloud/Dropbox/
@@ -1491,6 +1528,7 @@ const ICON_PATHS = {
   lock:'M5 11h14a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2zM7 11V7a5 5 0 0 1 10 0v4',
   'hard-drive':'M22 12H2M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11zM6 16h.01M10 16h.01',
   clock:'M12 12m-10 0a10 10 0 1 0 20 0 10 10 0 1 0-20 0M12 6v6l4 2',
+  'external-link':'M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6M15 3h6v6M10 14 21 3',
 };
 
 function iconSvg(name, size = 16, opts = {}) {
@@ -3340,6 +3378,7 @@ async function runFileAnalysis(fp) {
   updateStatsRow(currentAnalysis.sox, currentAnalysis.spectrum);
   renderSpectrum(currentAnalysis.spectrum);
   document.getElementById('reportcard-print-btn').disabled = false;
+  document.getElementById('grade-own-btn').disabled = false;
   document.getElementById('reportcard-clear-btn').disabled = !currentAnalysis;
   // File input now lives in the Report Card tab's empty state (#203) — flip
   // it over to the rendered card the moment analysis succeeds instead of
@@ -4431,10 +4470,12 @@ function renderReportCardFromHistory(summary) {
   const content = document.getElementById('rc-content');
   const printBtn = document.getElementById('reportcard-print-btn');
   const clearBtn = document.getElementById('reportcard-clear-btn');
+  const gradeOwnBtn = document.getElementById('grade-own-btn');
 
   empty.style.display = 'none';
   content.style.display = 'block';
   printBtn.disabled = false;
+  gradeOwnBtn.disabled = false;
   // No file backs this card — there is nothing for Clear to release (#206).
   clearBtn.disabled = true;
 
@@ -4481,11 +4522,13 @@ function renderReportCard() {
   const content = document.getElementById('rc-content');
   const printBtn = document.getElementById('reportcard-print-btn');
   const clearBtn = document.getElementById('reportcard-clear-btn');
+  const gradeOwnBtn = document.getElementById('grade-own-btn');
 
   if (!src) {
     empty.style.display = 'flex';
     content.style.display = 'none';
     printBtn.disabled = true;
+    gradeOwnBtn.disabled = true;
     clearBtn.disabled = true;
     // No card to improve on — never leave the upgrade card beside the empty
     // state (e.g. after a live capture clears the last analysis).
@@ -4496,6 +4539,7 @@ function renderReportCard() {
   empty.style.display = 'none';
   content.style.display = 'block';
   printBtn.disabled = false;
+  gradeOwnBtn.disabled = false;
   // Clear only makes sense when the card is backed by a file analysis — a
   // live-capture card (currentAnalysis null, liveWindows populated) has no
   // file to clear, so leaving Clear enabled would no-op/flicker (#206).
@@ -5395,6 +5439,31 @@ function sendFeedback() {
   aiEl('feedback-dialog').addEventListener('click', (e) => { if (e.target === aiEl('feedback-dialog')) closeFeedbackDialog(); });
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape' && aiEl('feedback-dialog').style.display !== 'none') closeFeedbackDialog();
+  });
+})();
+
+/* ══ Guided path to grading a real service (#142) ══ */
+function openGuideDialog() {
+  aiEl('guide-dialog').style.display = 'flex';
+}
+
+function closeGuideDialog() {
+  aiEl('guide-dialog').style.display = 'none';
+}
+
+(() => {
+  document.getElementById('grade-own-btn').addEventListener('click', openGuideDialog);
+  aiEl('guide-dialog-close').addEventListener('click', closeGuideDialog);
+  aiEl('guide-dialog-open-site').addEventListener('click', () => {
+    // openCaptureGuide returns a Promise (ipcRenderer.invoke); swallow both a
+    // synchronous throw (preload missing) and an async rejection so a failed
+    // open never surfaces as an unhandled rejection (mirrors openCheckout).
+    try { sb.openCaptureGuide()?.catch(() => {}); } catch { /* preload missing */ }
+    closeGuideDialog();
+  });
+  aiEl('guide-dialog').addEventListener('click', (e) => { if (e.target === aiEl('guide-dialog')) closeGuideDialog(); });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && aiEl('guide-dialog').style.display !== 'none') closeGuideDialog();
   });
 })();
 
