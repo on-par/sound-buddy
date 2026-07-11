@@ -38,6 +38,8 @@ node scripts/check-positioning.mjs
 # it ever reaches CI. .gitleaks.toml allowlists known fake test-fixture
 # placeholders by literal value. No deps beyond the gitleaks binary; skipped
 # with a note if it isn't installed (CI always has it — see ci.yml).
+# Keep this invocation in sync with the "secrets" job in ci.yml (same flags,
+# same config) so local and CI results match.
 if command -v gitleaks >/dev/null 2>&1; then
   echo "==> secret scan (gitleaks)"
   gitleaks detect --source . --no-git --config .gitleaks.toml --redact -v

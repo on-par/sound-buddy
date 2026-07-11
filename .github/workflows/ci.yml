@@ -161,6 +161,15 @@ jobs:
   # `.gitleaks.toml` at the repo root extends gitleaks' default ruleset and
   # allowlists known fake test-fixture placeholders by literal value — see
   # that file for what's excluded and why.
+  #
+  # NOTE: this job isn't yet wired into a required-status-checks branch
+  # protection ruleset — the repo's ruleset/branch-protection API is gated
+  # behind a GitHub plan upgrade (403 "Upgrade to GitHub Pro or make this
+  # repository public"), so it can't be configured from here. Follow-up once
+  # that access is available.
+  #
+  # Keep the `gitleaks detect` invocation below in sync with the one in
+  # scripts/verify.sh (same flags, same config) so local and CI results match.
   secrets:
     runs-on: ubuntu-latest
     env:
