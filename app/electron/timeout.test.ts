@@ -15,4 +15,21 @@ describe('execFileWithTimeout', () => {
     const { stdout } = await execFileWithTimeout('echo', ['ok'], { encoding: 'utf8' }, 'echo test', 5_000);
     expect(stdout.trim()).toBe('ok');
   });
+
+  // Cancellation (#125) — an aborted run must reject as an AbortError, not be
+  // mislabeled a SubprocessTimeoutError (both surface `killed: true`).
+  it('rejects with an AbortError, not a SubprocessTimeoutError, when aborted', async () => {
+    const controller = new AbortController();
+    const run = execFileWithTimeout(
+      'sleep',
+      ['5'],
+      { encoding: 'utf8', signal: controller.signal },
+      'sleep test',
+      60_000,
+    );
+    setTimeout(() => controller.abort(), 50);
+
+    await expect(run).rejects.not.toBeInstanceOf(SubprocessTimeoutError);
+    await expect(run).rejects.toMatchObject({ code: 'ABORT_ERR' });
+  });
 });
