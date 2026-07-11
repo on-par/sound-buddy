@@ -8,7 +8,18 @@
 
 import { promises as fsp } from 'fs';
 import type { Dirent } from 'fs';
+import { randomUUID } from 'crypto';
 import * as path from 'path';
+
+export interface AnalysisSummary {
+  /** ISO 8601 timestamp of when the analysis completed. */
+  date: string;
+  sourceFilename: string;
+  gradeLetter: string;
+  score: number;
+  recordingType: string;
+  topFixes: string[];
+}
 
 /**
  * Total size in bytes of every file under `dir`, walked recursively. Returns 0
@@ -48,6 +59,27 @@ export async function dirSizeBytes(dir: string): Promise<number> {
     }
   }
   return total;
+}
+
+/**
+ * Write one discrete summary record under `historyDir`, creating the folder
+ * (recursively) if missing — mirrors dirSizeBytes treating a missing storage dir
+ * as a normal cold-start state, not an error. One file per analysis (never an
+ * append-to-shared-array read-modify-write) so concurrent/rapid analyses can
+ * never clobber each other and each record is individually addressable (#147).
+ * Filename derives from the record's own ISO date (colons/dots swapped for '-'
+ * so it is filesystem-safe) plus a short random suffix to stay unique within the
+ * same millisecond. Returns the absolute path written.
+ */
+export async function saveAnalysisSummary(
+  historyDir: string,
+  summary: AnalysisSummary,
+): Promise<string> {
+  await fsp.mkdir(historyDir, { recursive: true });
+  const stamp = summary.date.replace(/[:.]/g, '-');
+  const file = path.join(historyDir, `${stamp}-${randomUUID().slice(0, 8)}.json`);
+  await fsp.writeFile(file, JSON.stringify(summary, null, 2));
+  return file;
 }
 
 /**

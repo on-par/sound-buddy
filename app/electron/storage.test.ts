@@ -3,7 +3,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 
-import { dirSizeBytes, formatBytes } from './storage';
+import { dirSizeBytes, formatBytes, saveAnalysisSummary, type AnalysisSummary } from './storage';
 
 describe('formatBytes', () => {
   it('renders bytes with no decimal', () => {
@@ -71,5 +71,65 @@ describe('dirSizeBytes', () => {
     } finally {
       fs.rmSync(outside, { recursive: true, force: true });
     }
+  });
+});
+
+describe('saveAnalysisSummary', () => {
+  let dir = '';
+  let summary: AnalysisSummary;
+
+  beforeEach(() => {
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'sb-storage-'));
+    summary = {
+      date: '2026-07-11T15:30:45.123Z',
+      sourceFilename: 'sermon.wav',
+      gradeLetter: 'B',
+      score: 84,
+      recordingType: 'Music',
+      topFixes: ['Reduce low mids', 'Raise speech presence'],
+    };
+  });
+
+  afterEach(() => {
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+
+  it('creates the history folder if missing and returns a real file path', async () => {
+    const historyDir = path.join(dir, 'history');
+
+    const file = await saveAnalysisSummary(historyDir, summary);
+
+    expect(fs.existsSync(historyDir)).toBe(true);
+    expect(fs.statSync(file).isFile()).toBe(true);
+  });
+
+  it('writes the summary record contents as JSON', async () => {
+    const file = await saveAnalysisSummary(path.join(dir, 'history'), summary);
+
+    const parsed = JSON.parse(fs.readFileSync(file, 'utf8')) as AnalysisSummary;
+    expect(Number.isNaN(Date.parse(parsed.date))).toBe(false);
+    expect(parsed).toEqual(summary);
+    expect(typeof parsed.score).toBe('number');
+    expect(Array.isArray(parsed.topFixes)).toBe(true);
+  });
+
+  it('writes one discrete JSON file per analysis', async () => {
+    const historyDir = path.join(dir, 'history');
+    const second: AnalysisSummary = {
+      ...summary,
+      date: '2026-07-11T15:30:45.124Z',
+      sourceFilename: 'worship.wav',
+      gradeLetter: 'A',
+      score: 95,
+    };
+
+    const firstFile = await saveAnalysisSummary(historyDir, summary);
+    const secondFile = await saveAnalysisSummary(historyDir, second);
+    const files = fs.readdirSync(historyDir).filter((name) => name.endsWith('.json'));
+
+    expect(files).toHaveLength(2);
+    expect(firstFile).not.toBe(secondFile);
+    expect(JSON.parse(fs.readFileSync(firstFile, 'utf8'))).toMatchObject({ sourceFilename: 'sermon.wav' });
+    expect(JSON.parse(fs.readFileSync(secondFile, 'utf8'))).toMatchObject({ sourceFilename: 'worship.wav' });
   });
 });

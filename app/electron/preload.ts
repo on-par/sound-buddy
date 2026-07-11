@@ -70,6 +70,16 @@ contextBridge.exposeInMainWorld('soundBuddy', {
   analyzeFile: (opts: { filePath: string; noSpectrum?: boolean }) =>
     ipcRenderer.invoke('analyze-file', opts),
 
+  // Persist a report-card summary after a successful analysis (#146). Fire-and-
+  // forget from the renderer's perspective; failures are logged in main.
+  saveAnalysisSummary: (summary: {
+    sourceFilename: string;
+    gradeLetter: string;
+    score: number;
+    recordingType: string;
+    topFixes: string[];
+  }) => ipcRenderer.invoke('save-analysis-summary', summary),
+
   // Cancel (#125) — aborts the in-flight analyze-file run for this renderer.
   cancelAnalysis: () => ipcRenderer.invoke('cancel-analysis'),
   onAnalysisProgress: (cb: (data: { stage?: string; status: string }) => void) =>

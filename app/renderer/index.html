@@ -3303,6 +3303,7 @@ async function runFileAnalysis(fp) {
   }
 
   currentAnalysis = result.data;
+  persistAnalysisSummary();
   document.getElementById('analyze-btn').innerHTML = iconSvg('waveform', 16) + 'Re-analyze';
   updateStatsRow(currentAnalysis.sox, currentAnalysis.spectrum);
   renderSpectrum(currentAnalysis.spectrum);
@@ -4175,6 +4176,26 @@ function getReportCardSource() {
     }
   }
   return null;
+}
+
+// Persist a discrete report-card summary for the recent-services list (#147).
+// Fire-and-forget: never block or fail the report card on a storage error
+// (main logs and swallows). Only called from the file-analysis success path, so
+// it runs once per completed analysis and never for live-capture cards.
+function persistAnalysisSummary() {
+  try {
+    const src = getReportCardSource();
+    if (!src || !currentAnalysis) return; // file analyses only
+    sb.saveAnalysisSummary({
+      sourceFilename: src.filename,
+      gradeLetter: grading.computeGrade(src),
+      score: grading.computeScore(src),
+      recordingType: grading.analyzeRecordingType(src).label,
+      topFixes: grading.computeRecommendations(src).slice(0, 3),
+    });
+  } catch (err) {
+    console.warn('persistAnalysisSummary failed', err);
+  }
 }
 
 /* ══ Content type — speech/music delineation (PRD 04) ══ */
