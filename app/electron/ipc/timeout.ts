@@ -20,7 +20,7 @@ export class SubprocessTimeoutError extends Error {
 export async function execFileWithTimeout(
   bin: string,
   args: string[],
-  options: { encoding: 'utf8'; maxBuffer?: number; env?: NodeJS.ProcessEnv },
+  options: { encoding: 'utf8'; maxBuffer?: number; env?: NodeJS.ProcessEnv; signal?: AbortSignal },
   stage: string,
   timeoutMs: number,
 ): Promise<{ stdout: string; stderr: string }> {
@@ -32,7 +32,10 @@ export async function execFileWithTimeout(
     });
     return { stdout: result.stdout ?? '', stderr: result.stderr ?? '' };
   } catch (err) {
-    const e = err as { killed?: boolean };
+    const e = err as { killed?: boolean; name?: string; code?: string };
+    // An abort (user cancellation) surfaces as `killed: true` too — check it
+    // first so a cancellation isn't mislabeled a SubprocessTimeoutError.
+    if (e.name === 'AbortError' || e.code === 'ABORT_ERR' || options.signal?.aborted) throw err;
     if (e.killed) throw new SubprocessTimeoutError(stage, timeoutMs);
     throw err;
   }

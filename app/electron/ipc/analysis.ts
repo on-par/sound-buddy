@@ -129,20 +129,21 @@ function amplitudeToDbfs(amplitude: number): number {
 // Exported for the parser drift-guard test (#150), which asserts these copies
 // stay equivalent to the @sound-buddy/audio-engine parsers until the
 // duplication is removed (#151). Not part of the app's runtime surface.
-export async function runSox(filePath: string): Promise<SoxStats> {
+export async function runSox(filePath: string, signal?: AbortSignal): Promise<SoxStats> {
   let stderr: string;
   try {
     const result = await execFileWithTimeout(
       toolBin('sox'),
       [filePath, '-n', 'stat'],
-      { encoding: 'utf8' },
+      { encoding: 'utf8', signal },
       'sox stat',
       SOX_TIMEOUT_MS,
     );
     stderr = result.stderr ?? '';
   } catch (err: unknown) {
     if (err instanceof SubprocessTimeoutError) throw err;
-    const e = err as { stderr?: string };
+    const e = err as { name?: string; code?: string; stderr?: string };
+    if (e.name === 'AbortError' || e.code === 'ABORT_ERR') throw err;
     stderr = e.stderr ?? '';
     if (!stderr) throw new Error(`sox failed: ${String(err)}`, { cause: err });
   }
@@ -181,14 +182,14 @@ export async function runSox(filePath: string): Promise<SoxStats> {
 
 // ─── FFPROBE ──────────────────────────────────────────────────────────────────
 
-export async function runFfprobe(filePath: string): Promise<FfprobeResult> {
+export async function runFfprobe(filePath: string, signal?: AbortSignal): Promise<FfprobeResult> {
   const { stdout } = await execFileWithTimeout(toolBin('ffprobe'), [
     '-v', 'quiet',
     '-print_format', 'json',
     '-show_format',
     '-show_streams',
     filePath,
-  ], { encoding: 'utf8' }, 'ffprobe', FFPROBE_TIMEOUT_MS);
+  ], { encoding: 'utf8', signal }, 'ffprobe', FFPROBE_TIMEOUT_MS);
 
   const raw = JSON.parse(stdout) as {
     streams?: Array<{
@@ -252,7 +253,7 @@ export async function runFfprobe(filePath: string): Promise<FfprobeResult> {
 
 // ─── SPECTRUM ─────────────────────────────────────────────────────────────────
 
-export async function runSpectrum(filePath: string): Promise<SpectrumResult> {
+export async function runSpectrum(filePath: string, signal?: AbortSignal): Promise<SpectrumResult> {
   const { stdout } = await execFileWithTimeout(
     pythonBin(),
     [SPECTRUM_SCRIPT, filePath],
@@ -260,6 +261,7 @@ export async function runSpectrum(filePath: string): Promise<SpectrumResult> {
       encoding: 'utf8',
       maxBuffer: 1024 * 1024,
       env: childEnv(),
+      signal,
     },
     'spectrum analysis',
     SPECTRUM_TIMEOUT_MS,
@@ -307,24 +309,55 @@ export async function runSpectrum(filePath: string): Promise<SpectrumResult> {
 
 // ─── IPC HANDLERS ─────────────────────────────────────────────────────────────
 
+// One in-flight run per renderer (webContents id), so a Cancel click aborts
+// the run started by that same renderer.
+const inFlight = new Map<number, AbortController>();
+
+function isAbortError(err: unknown): boolean {
+  const e = err as { name?: string; code?: string } | null;
+  return e?.name === 'AbortError' || e?.code === 'ABORT_ERR';
+}
+
 export function registerAnalysisHandlers(): void {
   // analyze-file
   ipcMain.handle('analyze-file', async (event, opts: { filePath: string; noSpectrum?: boolean }) => {
     const { filePath, noSpectrum } = opts;
     const wc = event.sender;
+    const controller = new AbortController();
+    inFlight.set(wc.id, controller);
+    const { signal } = controller;
+
+    // Stage progress (#125): all three stages genuinely run in parallel
+    // (Promise.all below), so report them starting together and check each
+    // off independently as its subprocess returns — no fake 1→2→3 march.
+    const send = (data: { stage?: string; status: string }) => {
+      if (!wc.isDestroyed()) wc.send('analysis-progress', data);
+    };
+    send({ stage: 'reading', status: 'start' });
+    send({ stage: 'levels', status: 'start' });
+    send({ stage: 'spectrum', status: 'start' });
+
+    const track = async <T>(stage: string, p: Promise<T>): Promise<T> => {
+      const result = await p;
+      send({ stage, status: 'done' });
+      return result;
+    };
 
     try {
       const [sox, ffprobe, spectrum] = await Promise.all([
-        runSox(filePath),
-        runFfprobe(filePath),
+        track('levels', runSox(filePath, signal)),
+        track('reading', runFfprobe(filePath, signal)),
         noSpectrum
-          ? Promise.resolve<SpectrumResult>({
-              bands: { subBass: -120, bass: -120, lowMid: -120, mid: -120, highMid: -120, presence: -120, brilliance: -120 },
-              spectralCentroid: 0,
-              spectralRolloff85: 0,
-              dynamicRange: 0,
-            })
-          : runSpectrum(filePath),
+          ? track(
+              'spectrum',
+              Promise.resolve<SpectrumResult>({
+                bands: { subBass: -120, bass: -120, lowMid: -120, mid: -120, highMid: -120, presence: -120, brilliance: -120 },
+                spectralCentroid: 0,
+                spectralRolloff85: 0,
+                dynamicRange: 0,
+              }),
+            )
+          : track('spectrum', runSpectrum(filePath, signal)),
       ]);
 
       const analysis: AudioAnalysis = { filePath, sox, ffprobe, spectrum };
@@ -332,10 +365,25 @@ export function registerAnalysisHandlers(): void {
       log(`analyze-file ok: ${filePath}`);
       return { success: true, data: analysis };
     } catch (err) {
+      if (isAbortError(err) || signal.aborted) {
+        log(`analyze-file cancelled: ${filePath}`);
+        send({ status: 'cancelled' });
+        return { success: false, cancelled: true };
+      }
       const message = String(err);
       logError(`analyze-file failed for ${filePath}`, err);
       return { success: false, error: message };
+    } finally {
+      inFlight.delete(wc.id);
     }
+  });
+
+  // cancel-analysis — aborts the in-flight run started by this renderer, if any.
+  ipcMain.handle('cancel-analysis', (event) => {
+    const controller = inFlight.get(event.sender.id);
+    if (!controller) return { success: false };
+    controller.abort();
+    return { success: true };
   });
 
   // get-demo-audio — path to the bundled demo recording the first-run onboarding

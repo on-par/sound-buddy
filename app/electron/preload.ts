@@ -64,6 +64,11 @@ contextBridge.exposeInMainWorld('soundBuddy', {
   analyzeFile: (opts: { filePath: string; noSpectrum?: boolean }) =>
     ipcRenderer.invoke('analyze-file', opts),
 
+  // Cancel (#125) — aborts the in-flight analyze-file run for this renderer.
+  cancelAnalysis: () => ipcRenderer.invoke('cancel-analysis'),
+  onAnalysisProgress: (cb: (data: { stage?: string; status: string }) => void) =>
+    ipcRenderer.on('analysis-progress', (_event, d) => cb(d)),
+
   // Path to the bundled demo recording for the first-run onboarding flow (#69).
   // Resolves to null when the asset is absent so the renderer can fall back.
   getDemoAudio: () => ipcRenderer.invoke('get-demo-audio'),

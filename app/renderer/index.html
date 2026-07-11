@@ -520,6 +520,14 @@
     .spectrum-empty p { font:var(--fw-regular) var(--fs-body)/1 var(--font-sans); margin:0; }
     .spectrum-empty .spin { width:34px; height:34px; border-radius:50%; border:3px solid var(--surface-raised); border-top-color:var(--gold-500); animation:sbspin 0.8s linear infinite; }
     .spectrum-empty .sub { font:var(--fw-regular) var(--fs-label)/1 var(--font-mono); color:var(--text-muted); }
+    .stage-stepper { display:flex; flex-direction:column; gap:10px; align-items:flex-start; }
+    .stage-row { display:flex; align-items:center; gap:10px; font:var(--fw-medium) var(--fs-label)/1 var(--font-sans); color:var(--text-muted); }
+    .stage-row .stage-icon { width:16px; height:16px; display:flex; align-items:center; justify-content:center; flex-shrink:0; }
+    .stage-row .stage-spin { width:14px; height:14px; border-radius:50%; border:2px solid var(--surface-raised); border-top-color:var(--gold-500); animation:sbspin 0.8s linear infinite; }
+    .stage-row .stage-check { display:none; color:var(--good-text); }
+    .stage-row.done { color:var(--text-primary); }
+    .stage-row.done .stage-spin { display:none; }
+    .stage-row.done .stage-check { display:flex; }
     .meter-card { background:var(--surface-inset); border:1px solid var(--border-subtle); border-radius:var(--radius-xl); box-shadow:var(--elevation-canvas); padding:20px 26px; }
     .live-ch { padding:14px 0; }
     .live-ch + .live-ch { border-top:1px solid var(--border-subtle); }
@@ -1838,7 +1846,22 @@ function setSpectrumState(state, opts = {}) {
   if (state === 'empty') {
     body.innerHTML = `<div class="spectrum-empty">${iconSvg('waveform', 44)}<p>${opts.text || 'Load a file to see the spectrum'}</p></div>`;
   } else if (state === 'loading') {
-    body.innerHTML = `<div class="spectrum-empty"><span class="spin"></span><p>Analyzing audio…</p><p class="sub">Computing dynamics + spectrum curve</p></div>`;
+    const stageRow = (stage, label) =>
+      `<div class="stage-row" data-stage="${stage}">
+        <span class="stage-icon"><span class="stage-spin"></span><span class="stage-check">${iconSvg('check', 14)}</span></span>
+        <span class="stage-label">${label}</span>
+      </div>`;
+    body.innerHTML = `<div class="spectrum-empty">
+      <p>Analyzing audio…</p>
+      <div class="stage-stepper">
+        ${stageRow('reading', 'Reading file')}
+        ${stageRow('levels', 'Measuring levels')}
+        ${stageRow('spectrum', 'Analyzing spectrum')}
+      </div>
+      <button type="button" id="analysis-cancel-btn" class="btn btn-secondary sm" data-icon="x">Cancel</button>
+    </div>`;
+    hydrateIcons(body);
+    document.getElementById('analysis-cancel-btn').addEventListener('click', () => { void sb.cancelAnalysis(); });
   } else if (state === 'error') {
     body.innerHTML = `<div class="spectrum-empty" style="color:var(--issue-text)">${iconSvg('alert-triangle', 40)}<p>Analysis failed</p><p class="sub" style="max-width:340px;color:var(--text-tertiary)">${opts.text || 'Couldn’t decode the audio stream.'}</p></div>`;
   }
@@ -3223,6 +3246,16 @@ function loadFile(fp) {
 
 document.getElementById('analyze-btn').addEventListener('click', () => { if (currentFilePath) runFileAnalysis(currentFilePath); });
 
+// Coarse stage progress (#125) — the three stages run in parallel, so this
+// just checks off each stage's row as its subprocess returns. Registered
+// once at module scope; setSpectrumState('loading') (re)renders the rows
+// each run, so there's nothing stale to clear between runs.
+sb.onAnalysisProgress((data) => {
+  if (!data.stage || data.status !== 'done') return;
+  const row = document.querySelector(`#spectrum-body .stage-row[data-stage="${data.stage}"]`);
+  if (row) row.classList.add('done');
+});
+
 async function runFileAnalysis(fp) {
   pauseTransportAudio(); // don't let a previous file's playback bleed through the loading state (#180)
   setSpectrumState('loading');
@@ -3234,6 +3267,15 @@ async function runFileAnalysis(fp) {
   const result = await sb.analyzeFile({ filePath: fp });
 
   document.getElementById('analyze-btn').disabled = false;
+
+  if (result.cancelled) {
+    // Cancelled mid-run — return to the pre-analysis idle state (no report
+    // card, no stuck spinner). Keep currentFilePath so the user can retry
+    // without re-picking the file; currentAnalysis is left untouched.
+    setSpectrumState('empty');
+    document.getElementById('reportcard-clear-btn').disabled = !currentAnalysis;
+    return;
+  }
 
   if (!result.success || !result.data) {
     setSpectrumState('error', { text: result.error || 'Analysis failed' });
