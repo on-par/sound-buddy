@@ -1383,6 +1383,7 @@
     <input type="text" id="license-key-input" class="rig-dialog-input" placeholder="Paste your license key (SB1.…)" autocomplete="off" spellcheck="false" />
     <div class="lic-status err" id="license-dialog-error" style="display:none" role="alert"></div>
     <div class="rig-dialog-actions">
+      <button type="button" id="license-refresh-btn" class="btn btn-secondary sm" style="display:none">Refresh license</button>
       <button type="button" id="license-remove-btn" class="btn btn-secondary sm" style="display:none">Remove key</button>
       <button type="button" id="license-close-btn" class="btn btn-secondary sm">Close</button>
       <button type="button" id="license-activate-btn" class="btn btn-primary sm">Activate</button>
@@ -4521,8 +4522,31 @@ document.getElementById('reportcard-clear-btn').addEventListener('click', () => 
 // key mid-session applies immediately — no restart.
 let licenseCurrent = null;
 
+// Paywall-evaluation refresh trigger (#117): once per session, the first time
+// we observe a subscription in its refresh window, kick the automatic check.
+// Mirrors main.ts's shouldAutoRefresh() window (subscription in grace, or
+// valid but within GRACE_DAYS of expiresAt) without a shared module — a
+// polling loop isn't needed since applyLicenseState already runs on every
+// getLicense() read.
+let refreshKicked = false;
+const LICENSE_REFRESH_WINDOW_DAYS = 7;
+const LICENSE_REFRESH_WINDOW_MS = LICENSE_REFRESH_WINDOW_DAYS * 24 * 60 * 60 * 1000;
+
+function isInLicenseRefreshWindow(state) {
+  if (!state || state.kind !== 'subscription') return false;
+  if (state.status === 'grace') return true;
+  if (state.status !== 'valid') return false;
+  const expiresMs = Date.parse(state.expiresAt || '');
+  if (Number.isNaN(expiresMs)) return false;
+  return expiresMs - Date.now() <= LICENSE_REFRESH_WINDOW_MS;
+}
+
 function applyLicenseState(state) {
   licenseCurrent = state || { tier: 'free', status: 'none' };
+  if (!refreshKicked && isInLicenseRefreshWindow(licenseCurrent)) {
+    refreshKicked = true;
+    void sb.refreshLicense().then((s) => { if (s) applyLicenseState(s); });
+  }
   const ls = window.licenseState;
   const b = ls.badge(licenseCurrent);
 
@@ -4607,11 +4631,21 @@ function licenseStatusLine(state) {
   return 'License key could not be validated' + (state.error ? ': ' + state.error : '') + '.';
 }
 
+// Only a Pro subscription has anything to refresh — lifetime/trial users
+// never see the button (#117).
+function updateLicenseRefreshBtnVisibility() {
+  document.getElementById('license-refresh-btn').style.display =
+    licenseCurrent && licenseCurrent.tier === 'pro' && licenseCurrent.kind === 'subscription'
+      ? 'inline-flex'
+      : 'none';
+}
+
 function openLicenseDialog() {
   const dlg = document.getElementById('license-dialog');
   document.getElementById('license-dialog-status').textContent = licenseStatusLine(licenseCurrent);
   document.getElementById('license-remove-btn').style.display =
     licenseCurrent && licenseCurrent.tier === 'pro' ? 'inline-flex' : 'none';
+  updateLicenseRefreshBtnVisibility();
   const errEl = document.getElementById('license-dialog-error');
   errEl.style.display = 'none';
   errEl.textContent = '';
@@ -4664,6 +4698,7 @@ function openLicenseDialog() {
     if (state && state.tier === 'pro') {
       // Unlocks immediately — no restart (acceptance criterion).
       applyLicenseState(state);
+      updateLicenseRefreshBtnVisibility();
       close();
     } else {
       // Invalid/expired key: clear messaging, nothing is locked, and any
@@ -4690,6 +4725,21 @@ function openLicenseDialog() {
     applyLicenseState(state);
     document.getElementById('license-dialog-status').textContent = licenseStatusLine(state);
     document.getElementById('license-remove-btn').style.display = 'none';
+    updateLicenseRefreshBtnVisibility();
+  });
+
+  // Manual "Refresh license" button (#117) — same silent-failure contract as
+  // the automatic triggers; no error dialog, just an updated status line.
+  document.getElementById('license-refresh-btn').addEventListener('click', async () => {
+    let state;
+    try {
+      state = await sb.refreshLicense();
+    } catch {
+      return; // network call is best-effort; keep the current state on screen
+    }
+    applyLicenseState(state);
+    document.getElementById('license-dialog-status').textContent = licenseStatusLine(state);
+    updateLicenseRefreshBtnVisibility();
   });
 
   // Entitlement is time-based (expiry, grace) and the main process re-verifies

@@ -8,6 +8,7 @@ import { initLogging, attachWindowLogging, log } from './logger';
 import { checkForUpdates, openReleasePage } from './updater';
 import { checkoutUrl } from './checkout';
 import { ensureTrialStarted } from './license';
+import { maybeRefreshLicense } from './license-refresh';
 
 // Deterministic app name so logs land in ~/Library/Logs/SoundBuddy (not "Electron").
 app.setName('SoundBuddy');
@@ -148,6 +149,10 @@ app.whenReady().then(() => {
   // the license, so a new user boots straight into Pro (no free-tier flash).
   ensureTrialStarted();
   registerIpcHandlers();
+  // Automatic license refresh (#117), fire-and-forget on every launch — only
+  // makes a request when a subscription key is within 7 days of expiry or
+  // already in grace; never delays window creation.
+  void maybeRefreshLicense();
 
   // Manual update check + "Download" button (opens the release page in browser).
   ipcMain.handle('check-for-updates', () => checkForUpdates(mainWindow, false));
