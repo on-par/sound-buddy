@@ -188,6 +188,10 @@ export function buildChatRequest(
  */
 export function extractDelta(kind: StreamKind, data: unknown): string | null {
   if (data == null || typeof data !== 'object') return null;
+  // Every provider's SSE payload shape differs and is checked defensively
+  // below (optional chaining + typeof guards) rather than modeled — `any`
+  // is the pragmatic type for an untyped, provider-varying JSON blob.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const d = data as Record<string, any>;
   switch (kind) {
     case 'anthropic-sse': {
@@ -197,6 +201,7 @@ export function extractDelta(kind: StreamKind, data: unknown): string | null {
     case 'google-sse': {
       const parts = d.candidates?.[0]?.content?.parts;
       if (!Array.isArray(parts)) return null;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const text = parts.map((p: any) => (typeof p?.text === 'string' ? p.text : '')).join('');
       return text || null;
     }
@@ -215,6 +220,8 @@ export function extractDelta(kind: StreamKind, data: unknown): string | null {
  */
 export function extractStreamError(kind: StreamKind, data: unknown): string | null {
   if (data == null || typeof data !== 'object') return null;
+  // Same untyped, provider-varying SSE payload as extractDelta() above.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const d = data as Record<string, any>;
   if (kind === 'anthropic-sse') {
     if (d.type === 'error') return d.error?.message || d.error?.type || 'provider error';
@@ -240,6 +247,8 @@ export function friendlyHttpError(
 ): string {
   let message = '';
   try {
+    // Non-2xx bodies are untyped JSON that varies per provider (see above).
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const parsed = JSON.parse(body) as Record<string, any>;
     message =
       parsed.error?.message || parsed.message || (typeof parsed.error === 'string' ? parsed.error : '');

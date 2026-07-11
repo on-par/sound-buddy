@@ -2,7 +2,6 @@ import { describe, it, expect } from 'vitest';
 
 // arm-state is a plain classic script (window.armState / module.exports) so the
 // arm/token rules are exercised without a DOM.
-// eslint-disable-next-line @typescript-eslint/no-var-requires
 const { stripToken, isArmed, allTokens, armedTokens, armedCount, setAllArmed } = require('./arm-state.js') as {
   stripToken: (s: Strip) => string;
   isArmed: (s: Strip | null) => boolean;

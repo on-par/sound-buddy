@@ -4,7 +4,6 @@ vi.useFakeTimers();
 vi.setSystemTime(new Date('2026-07-08T12:00:00Z'));
 
 // ideal-curves is a plain classic script (window.idealCurves / module.exports).
-// eslint-disable-next-line @typescript-eslint/no-var-requires
 const curves = require('./ideal-curves.js') as {
   normalizeProfiles: (raw: unknown, freqs: number[]) => CustomProfile[];
   bandOffsetsFromProfile: (profile: CustomProfile, freqs: number[]) => number[];

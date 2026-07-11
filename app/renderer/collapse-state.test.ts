@@ -2,7 +2,6 @@ import { describe, it, expect } from 'vitest';
 
 // collapse-state is a plain classic script (window.collapseState in the browser,
 // module.exports under Node) so the pure fold logic is exercised without a DOM.
-// eslint-disable-next-line @typescript-eslint/no-var-requires
 const { isCollapsed, toggle, collapseAll, expandAll } = require('./collapse-state.js') as {
   isCollapsed: (set: Set<number> | null, id: number) => boolean;
   toggle: (set: Set<number> | null, id: number) => Set<number>;

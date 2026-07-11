@@ -3,7 +3,6 @@ import { describe, it, expect } from 'vitest';
 // onboarding-state is a plain classic script (window.onboardingState in the
 // browser, module.exports under Node) so the first-run gate is exercised without
 // a DOM. A tiny in-memory Storage stand-in stands in for localStorage.
-// eslint-disable-next-line @typescript-eslint/no-var-requires
 const { KEY, hasSeenOnboarding, shouldShowOnboarding, markOnboardingSeen } = require('./onboarding-state.js') as {
   KEY: string;
   hasSeenOnboarding: (storage: unknown) => boolean;

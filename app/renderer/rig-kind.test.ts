@@ -2,7 +2,6 @@ import { describe, it, expect } from 'vitest';
 
 // rig-kind is a plain classic script (window.rigKind in the browser,
 // module.exports under Node) so it can be exercised here without a DOM.
-// eslint-disable-next-line @typescript-eslint/no-var-requires
 const { switchKind } = require('./rig-kind.js') as {
   switchKind: (
     strip: { kind: string; a: number; b: number; label?: string; armed?: boolean } | null,

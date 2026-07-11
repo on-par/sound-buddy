@@ -67,7 +67,7 @@ function parseInsights(text: string): Insight[] {
     parsed = JSON.parse(text)
   } catch (err) {
     const detail = err instanceof Error ? err.message : String(err)
-    throw new Error(`ParseError: AI response was not valid JSON: ${detail}`)
+    throw new Error(`ParseError: AI response was not valid JSON: ${detail}`, { cause: err })
   }
   if (!Array.isArray(parsed)) {
     throw new Error('ParseError: AI response was not a JSON array of insights')
