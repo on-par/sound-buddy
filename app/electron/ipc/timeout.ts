@@ -17,6 +17,14 @@ export class SubprocessTimeoutError extends Error {
   }
 }
 
+// Shared abort-detection predicate (#125) — the single source of truth for
+// "was this rejection caused by an AbortSignal", reused by every caller that
+// needs to tell a user cancellation apart from a genuine failure.
+export function isAbortError(err: unknown): boolean {
+  const e = err as { name?: string; code?: string } | null | undefined;
+  return e?.name === 'AbortError' || e?.code === 'ABORT_ERR';
+}
+
 export async function execFileWithTimeout(
   bin: string,
   args: string[],
@@ -32,10 +40,10 @@ export async function execFileWithTimeout(
     });
     return { stdout: result.stdout ?? '', stderr: result.stderr ?? '' };
   } catch (err) {
-    const e = err as { killed?: boolean; name?: string; code?: string };
+    const e = err as { killed?: boolean };
     // An abort (user cancellation) surfaces as `killed: true` too — check it
     // first so a cancellation isn't mislabeled a SubprocessTimeoutError.
-    if (e.name === 'AbortError' || e.code === 'ABORT_ERR' || options.signal?.aborted) throw err;
+    if (isAbortError(err) || options.signal?.aborted) throw err;
     if (e.killed) throw new SubprocessTimeoutError(stage, timeoutMs);
     throw err;
   }

@@ -12,6 +12,7 @@ import { toolBin, pythonBin, childEnv, SPECTRUM_SCRIPT, DEMO_AUDIO } from './sha
 import {
   execFileWithTimeout,
   SubprocessTimeoutError,
+  isAbortError,
   SOX_TIMEOUT_MS,
   FFPROBE_TIMEOUT_MS,
   SPECTRUM_TIMEOUT_MS,
@@ -142,8 +143,8 @@ export async function runSox(filePath: string, signal?: AbortSignal): Promise<So
     stderr = result.stderr ?? '';
   } catch (err: unknown) {
     if (err instanceof SubprocessTimeoutError) throw err;
-    const e = err as { name?: string; code?: string; stderr?: string };
-    if (e.name === 'AbortError' || e.code === 'ABORT_ERR') throw err;
+    if (isAbortError(err)) throw err;
+    const e = err as { stderr?: string };
     stderr = e.stderr ?? '';
     if (!stderr) throw new Error(`sox failed: ${String(err)}`, { cause: err });
   }
@@ -313,16 +314,17 @@ export async function runSpectrum(filePath: string, signal?: AbortSignal): Promi
 // the run started by that same renderer.
 const inFlight = new Map<number, AbortController>();
 
-function isAbortError(err: unknown): boolean {
-  const e = err as { name?: string; code?: string } | null;
-  return e?.name === 'AbortError' || e?.code === 'ABORT_ERR';
-}
-
 export function registerAnalysisHandlers(): void {
   // analyze-file
   ipcMain.handle('analyze-file', async (event, opts: { filePath: string; noSpectrum?: boolean }) => {
     const { filePath, noSpectrum } = opts;
     const wc = event.sender;
+    // Supersede any run still in flight for this renderer (e.g. a second
+    // analyze-file triggered via File > Open while one is running) instead of
+    // silently overwriting its AbortController and orphaning it — the
+    // superseded run's own catch block below sees the abort and resolves
+    // cleanly as `cancelled`.
+    inFlight.get(wc.id)?.abort();
     const controller = new AbortController();
     inFlight.set(wc.id, controller);
     const { signal } = controller;
@@ -365,16 +367,21 @@ export function registerAnalysisHandlers(): void {
       log(`analyze-file ok: ${filePath}`);
       return { success: true, data: analysis };
     } catch (err) {
-      if (isAbortError(err) || signal.aborted) {
+      if (isAbortError(err)) {
+        // No terminal progress event here: the renderer that started this
+        // specific run already learns of the cancellation from this
+        // invoke()'s own resolution (`result.cancelled`) — a stage-keyed
+        // 'done'/'start' event has nowhere to attach without a stage.
         log(`analyze-file cancelled: ${filePath}`);
-        send({ status: 'cancelled' });
         return { success: false, cancelled: true };
       }
       const message = String(err);
       logError(`analyze-file failed for ${filePath}`, err);
       return { success: false, error: message };
     } finally {
-      inFlight.delete(wc.id);
+      // Only clear this run's own entry — a supersede above may already have
+      // replaced it with a newer run's controller.
+      if (inFlight.get(wc.id) === controller) inFlight.delete(wc.id);
     }
   });
 
