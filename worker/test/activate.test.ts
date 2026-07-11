@@ -55,6 +55,24 @@ describe("GET /activate (#112)", () => {
     expect(body).toContain("cs_test_123");
   });
 
+  it("Scenario: a failed/exhausted poll surfaces an error state, not an infinite spinner (#140)", async () => {
+    // The page is self-contained: the same markup renders regardless of how
+    // the poll resolves, and the inline script picks a branch client-side.
+    // This asserts the terminal error branch — shown when /api/license gives
+    // up or errors on a bad/exhausted session_id — is present with a next
+    // step, not just the initial pending spinner.
+    const res = await handleActivate(request("?session_id=cs_test_exhausted"), env, ctx);
+
+    const body = await res.text();
+    expect(body).toContain('id="fallback"');
+    expect(body).toContain("We couldn't confirm this checkout");
+    expect(body).toContain("your license key will also be emailed to you");
+    expect(body).toContain("contact support");
+    // The fallback panel isn't shown by default — the poll's terminal branches
+    // (200/202-timeout/error, see activate.ts's showFallback()) reveal it.
+    expect(body).toMatch(/id="fallback" style="display:\s*none"/);
+  });
+
   it("Scenario: a crafted session_id is HTML-escaped, not injected raw", async () => {
     const malicious = '"><script>alert(1)</script>';
     const res = await handleActivate(
