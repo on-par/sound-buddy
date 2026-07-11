@@ -15,14 +15,14 @@
     "test:e2e:sandbox": "node --env-file=../.env.local scripts/e2e-sandbox.mjs"
   },
   "devDependencies": {
-    "@cloudflare/workers-types": "^4.20250109.0",
-    "@types/node": "^22.20.1",
+    "@cloudflare/workers-types": "^5.20260711.1",
+    "@types/node": "^26.1.1",
     "@vitest/coverage-v8": "^4.1.10",
     "typescript": "^5.6.0",
     "vitest": "^4.1.10",
-    "wrangler": "^4.0.0"
+    "wrangler": "^4.110.0"
   },
   "dependencies": {
-    "stripe": "^22.3.0"
+    "stripe": "^22.3.1"
   }
 }
