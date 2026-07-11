@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Patrick Robinson (on-par). All rights reserved.
 // Licensed under the Sound Buddy Desktop Application License (app/LICENSE).
 
-import { app, BrowserWindow } from 'electron';
+import { app, BrowserWindow, dialog } from 'electron';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -55,6 +55,37 @@ export function logError(msg: string, err?: unknown): void {
   write('ERROR', detail ? `${msg}: ${detail}` : msg);
 }
 
+/**
+ * Fatal main-process error (#153): log it FIRST so the crash is captured before
+ * any UI, then give the user an honest crash dialog with the log-file path and a
+ * way to restart or quit — instead of limping on in an unknown state.
+ */
+export function handleUncaughtException(err: unknown): void {
+  write('FATAL', `uncaughtException: ${err instanceof Error ? (err.stack ?? err.message) : String(err)}`);
+
+  // Skip the blocking modal in automated/e2e runs so a crash fails the run
+  // instead of hanging forever on showMessageBoxSync with no one to click.
+  if (process.env.SOUND_BUDDY_DISABLE_CRASH_DIALOG === '1') {
+    app.exit(1);
+    return;
+  }
+
+  const choice = dialog.showMessageBoxSync({
+    type: 'error',
+    title: 'Sound Buddy crashed',
+    message: 'Sound Buddy hit an unexpected error and needs to close.',
+    detail: `A diagnostic log was saved to:\n${getLogFilePath()}`,
+    buttons: ['Restart', 'Quit'],
+    defaultId: 0,
+    cancelId: 1,
+  });
+
+  if (choice === 0) {
+    app.relaunch();
+  }
+  app.exit(1);
+}
+
 /** Initialize the log file + process-level crash handlers. Call once, early. */
 export function initLogging(): string {
   // SB_LOG_FILE overrides the location (handy for CI / watching in a fixed spot).
@@ -76,9 +107,7 @@ export function initLogging(): string {
   write('INFO', `─── Sound Buddy started (pid ${process.pid}, electron ${process.versions.electron}) ───`);
   write('INFO', `log file: ${logFilePath}`);
 
-  process.on('uncaughtException', (err) => {
-    write('FATAL', `uncaughtException: ${err?.stack ?? String(err)}`);
-  });
+  process.on('uncaughtException', handleUncaughtException);
   process.on('unhandledRejection', (reason) => {
     write('ERROR', `unhandledRejection: ${reason instanceof Error ? reason.stack : String(reason)}`);
   });
