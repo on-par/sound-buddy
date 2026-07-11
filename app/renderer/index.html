@@ -907,9 +907,9 @@
     #rc-profile-section .rc-profile { display:flex; flex-direction:column; gap:14px; background:var(--surface); border:1px solid var(--border-subtle); border-radius:var(--radius-lg); padding:16px 20px; box-shadow:var(--elevation-card); }
     .rcp-head { display:flex; align-items:center; justify-content:space-between; gap:12px; }
     .rcp-head .rcp-name { font:var(--fw-medium) var(--fs-body)/1.2 var(--font-sans); color:var(--text-secondary); }
-    .rcp-score { display:flex; align-items:baseline; gap:6px; }
-    .rcp-score .num { font:var(--fw-semibold) 22px/1 var(--font-mono); }
-    .rcp-score .slash { font:var(--fw-regular) var(--fs-label)/1 var(--font-mono); color:var(--text-muted); }
+    .rcp-score { display:flex; align-items:baseline; gap:5px; }
+    .rcp-score .num { font:var(--fw-medium) 13px/1 var(--font-mono); color:var(--text-secondary); }
+    .rcp-score .cap { font:var(--fw-regular) var(--fs-micro)/1 var(--font-sans); letter-spacing:var(--tracking-caps); text-transform:uppercase; color:var(--text-muted); }
     .rcp-regions { display:flex; flex-wrap:wrap; gap:8px; }
     .rcp-region { display:flex; align-items:center; gap:6px; padding:5px 10px; border-radius:var(--radius-md); border:1px solid var(--border-subtle); background:var(--surface-inset); font:var(--fw-regular) var(--fs-label)/1 var(--font-sans); color:var(--text-tertiary); }
     .rcp-region.over { border-left:3px solid var(--meter-hot, #E0A33C); }
@@ -1229,7 +1229,7 @@
             </div>
           </div>
           <div class="rc-section" id="rc-profile-section" style="display:none">
-            <h2>Ideal Profile Match</h2>
+            <h2>Tonal balance vs target</h2>
             <div class="rc-profile" id="rc-profile"></div>
           </div>
           <div class="rc-section" id="rc-metrics-section">
@@ -4451,7 +4451,6 @@ function deviationMiniCurve(dev) {
 }
 function renderProfileMatch(profile, cmp) {
   const el = document.getElementById('rc-profile');
-  const color = cmp.matchScore >= 85 ? 'var(--grade-a)' : cmp.matchScore >= 70 ? 'var(--grade-b)' : cmp.matchScore >= 55 ? 'var(--grade-c)' : 'var(--grade-d)';
   const label = escapeHtml(profile.label);
   let regions = '';
   if (cmp.topOver && cmp.topOver.deviation >= 1) regions += `<span class="rcp-region over">Over · <b>${cmp.topOver.label}</b> ${fmtDev(cmp.topOver.deviation)}</span>`;
@@ -4460,7 +4459,7 @@ function renderProfileMatch(profile, cmp) {
   el.innerHTML = `
     <div class="rcp-head">
       <span class="rcp-name">Target: ${label}${idealProfileId ? '' : ' <span style="color:var(--text-muted)">(auto)</span>'}</span>
-      <span class="rcp-score"><span class="num" style="color:${color}">${cmp.matchScore}</span><span class="slash">/100</span></span>
+      <span class="rcp-score"><span class="num">${cmp.matchScore}</span><span class="cap">/100 closeness</span></span>
     </div>
     <div class="rcp-regions">${regions}</div>
     <div class="rcp-dev">${deviationMiniCurve(cmp.deviation)}</div>`;
