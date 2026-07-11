@@ -1,0 +1,11 @@
+{
+  // Solution-style root config (#237): compiles nothing (files: []) — each
+  // workspace builds from its own tsconfig, most extending tsconfig.base.json.
+  // `strict` is restated here (not just inherited) so tooling that reads this
+  // file without resolving `extends` still sees the repo's strictness.
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "strict": true
+  },
+  "files": []
+}
