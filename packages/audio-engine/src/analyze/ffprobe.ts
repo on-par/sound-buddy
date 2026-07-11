@@ -1,8 +1,5 @@
-import { execFile } from "node:child_process";
-import { promisify } from "node:util";
 import type { FfprobeResult, AudioStream, AudioFormat } from "../types.js";
-
-const execFileAsync = promisify(execFile);
+import { execFileWithTimeout, FFPROBE_TIMEOUT_MS } from "./timeout.js";
 
 interface RawFfprobeStream {
   codec_type?: string;
@@ -33,7 +30,7 @@ interface RawFfprobeOutput {
 }
 
 export async function runFfprobe(filePath: string): Promise<FfprobeResult> {
-  const { stdout } = await execFileAsync(
+  const { stdout } = await execFileWithTimeout(
     "ffprobe",
     [
       "-v", "quiet",
@@ -42,7 +39,9 @@ export async function runFfprobe(filePath: string): Promise<FfprobeResult> {
       "-show_streams",
       filePath,
     ],
-    { encoding: "utf8" }
+    { encoding: "utf8" },
+    "ffprobe",
+    FFPROBE_TIMEOUT_MS,
   );
 
   const raw: RawFfprobeOutput = JSON.parse(stdout);
