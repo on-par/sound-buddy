@@ -1169,6 +1169,7 @@
       <span class="panel-title">Report Card</span>
       <div class="rc-toolbar-actions">
         <button class="btn btn-secondary sm" id="reportcard-clear-btn" data-icon="x" disabled>Clear</button>
+        <button class="btn btn-secondary sm" id="reportcard-feedback-btn" data-icon="info">Send Feedback</button>
         <button class="btn btn-secondary sm" id="reportcard-print-btn" data-icon="download" disabled>Export PDF</button>
       </div>
     </div>
@@ -4523,6 +4524,9 @@ function renderReportCardFrames(src) {
 }
 
 document.getElementById('reportcard-print-btn').addEventListener('click', () => window.print());
+document.getElementById('reportcard-feedback-btn').addEventListener('click', () => {
+  void window.soundBuddy.openFeedback();
+});
 
 // #206: once a report card is showing, the file-loading dropzone is hidden
 // behind it (it only lives in the empty state). Clear resets to that empty
