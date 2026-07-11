@@ -5157,6 +5157,7 @@ async function saveStorageSettings() {
 // are visible before the mail client opens.
 const FEEDBACK_DIAG_REVEALED_TEXT = 'Your log file is now selected in Finder — drag it into the email before sending. It never leaves your machine unless you attach it.';
 const FEEDBACK_DIAG_MISSING_TEXT = 'No diagnostic log exists yet — try again after using the app.';
+const FEEDBACK_DIAG_ERROR_TEXT = 'Could not reveal your log file — try unchecking and checking the box again.';
 
 function openFeedbackDialog() {
   aiEl('feedback-attach-diagnostics').checked = false;
@@ -5179,10 +5180,15 @@ async function onFeedbackAttachToggle() {
   }
   let r;
   try { r = await window.soundBuddy.revealDiagnostics(); }
-  catch { r = { revealed: false }; }
+  catch { r = null; }
   // The checkbox may have been unchecked again while the reveal was in flight.
   if (!checkbox.checked) return;
-  hint.textContent = r && r.revealed ? FEEDBACK_DIAG_REVEALED_TEXT : FEEDBACK_DIAG_MISSING_TEXT;
+  // Distinguish "no log file yet" (r.missing) from an unexpected IPC/main-process
+  // failure (r is null/malformed) — mislabeling the latter as "no log yet" would
+  // send the user chasing app activity instead of retrying the checkbox.
+  if (r && r.revealed) hint.textContent = FEEDBACK_DIAG_REVEALED_TEXT;
+  else if (r && r.missing) hint.textContent = FEEDBACK_DIAG_MISSING_TEXT;
+  else hint.textContent = FEEDBACK_DIAG_ERROR_TEXT;
   hint.style.display = '';
 }
 
