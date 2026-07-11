@@ -7,8 +7,10 @@
 
 import { ipcMain } from 'electron';
 import * as fs from 'fs';
+import * as path from 'path';
 import { log, logError } from '../logger';
-import { toolBin, pythonBin, childEnv, SPECTRUM_SCRIPT, DEMO_AUDIO } from './shared';
+import { saveAnalysisSummary, type AnalysisSummary } from '../storage';
+import { toolBin, pythonBin, childEnv, SPECTRUM_SCRIPT, DEMO_AUDIO, defaultRecordDir } from './shared';
 import {
   execFileWithTimeout,
   SubprocessTimeoutError,
@@ -398,5 +400,30 @@ export function registerAnalysisHandlers(): void {
   // the renderer can fall back to the file picker rather than erroring.
   ipcMain.handle('get-demo-audio', () => {
     return fs.existsSync(DEMO_AUDIO) ? DEMO_AUDIO : null;
+  });
+
+  // save-analysis-summary (#146) — persist a small report-card summary under the
+  // configured storage folder so the recent-services list (#147) has a history to
+  // read. Write-only; the renderer computes grade/score, main stamps the ISO date
+  // and writes. A failure (permissions, full disk) is logged and swallowed: the
+  // report card must still display, so this never throws back to the renderer.
+  ipcMain.handle('save-analysis-summary', async (_event, payload: Omit<AnalysisSummary, 'date'>) => {
+    try {
+      const summary: AnalysisSummary = {
+        date: new Date().toISOString(),
+        sourceFilename: String(payload?.sourceFilename ?? ''),
+        gradeLetter: String(payload?.gradeLetter ?? ''),
+        score: Number(payload?.score ?? 0),
+        recordingType: String(payload?.recordingType ?? ''),
+        topFixes: Array.isArray(payload?.topFixes) ? payload.topFixes.map(String) : [],
+      };
+      const historyDir = path.join(defaultRecordDir(), 'history');
+      const file = await saveAnalysisSummary(historyDir, summary);
+      log(`saved analysis summary: ${file}`);
+      return { success: true };
+    } catch (err) {
+      logError('save-analysis-summary failed', err);
+      return { success: false, error: String(err) };
+    }
   });
 }
