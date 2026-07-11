@@ -27,6 +27,7 @@ jobs:
     permissions:
       contents: read
       security-events: write # only exercised if GHAS is enabled on this repo
+      actions: read # codeql-action v3 checks the Actions cache for an overlay-base database
     steps:
       - uses: actions/checkout@v4
 
