@@ -181,6 +181,12 @@ function streamOllama(
           : err.message,
       });
     });
+    // `body` is the analysis report built from the user's own audio
+    // measurements, POSTed to the user-configured Ollama server (or a hosted
+    // AI provider the user opted into with their own key). Sending it is the
+    // feature (#54 AI narrative), not exfiltration — no audio data leaves the
+    // machine without explicit user configuration (CLAUDE.md).
+    // codeql[js/file-access-to-http]
     req.write(body);
     req.end();
   });

@@ -1,0 +1,84 @@
+name: CodeQL
+
+# SAST scanning (#223): packages/*, app/, and worker/ JavaScript/TypeScript.
+# site/ (static Astro marketing site) is out of scope per the issue — low-value
+# SAST target.
+#
+# This org is on the GitHub Free plan and GitHub Advanced Security isn't
+# enabled for this private repo, so uploading SARIF to the Security tab isn't
+# available yet (that API 403s without GHAS). `upload: never` below keeps the
+# job from failing on that and instead writes plain SARIF that the next step
+# gates on directly, so this still works as a real PR check today. If GHAS is
+# ever enabled for this repo, flip `upload` to `always` (or drop the input —
+# that's the default) to also get Security-tab annotations.
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: '30 3 * * 1' # Mondays 03:30 UTC
+  workflow_dispatch:
+
+jobs:
+  analyze:
+    name: CodeQL analyze (javascript-typescript)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write # only exercised if GHAS is enabled on this repo
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: javascript-typescript
+          paths:
+            - packages
+            - app
+            - worker
+          paths-ignore:
+            - '**/node_modules/**'
+            - '**/dist/**'
+            - '**/coverage/**'
+            - '**/.venv/**'
+            - 'site/**'
+
+      # JS/TS analysis doesn't require a compiled build — CodeQL extracts
+      # straight from source (build-mode: none), so there's no autobuild step.
+
+      - name: Perform CodeQL analysis
+        uses: github/codeql-action/analyze@v3
+        with:
+          category: '/language:javascript-typescript'
+          output: codeql-results
+          upload: never
+
+      - name: Fail the check on any (unsuppressed) finding
+        run: |
+          total=0
+          shopt -s nullglob
+          for f in codeql-results/*.sarif; do
+            # Inline `// codeql[rule-id]` suppression comments (documented,
+            # reviewed false-positive dismissals) mark a result's
+            # "suppressions" array in the SARIF instead of removing it —
+            # only count results that aren't suppressed.
+            count=$(jq '[.runs[].results[] | select((.suppressions // []) | length == 0)] | length' "$f")
+            echo "$f: $count unsuppressed finding(s)"
+            total=$((total + count))
+          done
+          echo "Total unsuppressed CodeQL findings: $total"
+          if [ "$total" -gt 0 ]; then
+            echo "::error::CodeQL found $total unsuppressed finding(s) — see the uploaded SARIF artifact for detail."
+            exit 1
+          fi
+
+      - name: Upload SARIF as a workflow artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: codeql-results
+          path: codeql-results
+          retention-days: 14
+          if-no-files-found: ignore

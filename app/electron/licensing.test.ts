@@ -126,6 +126,10 @@ describe.runIf(hasMonorepo)('key-material guard (#124)', () => {
         continue; // tracked-but-absent (deleted, submodule gitlink) — nothing to read
       }
       if (!stat.isFile() || stat.size > 1_000_000) continue;
+      // Not exploitable: this is a synchronous, single-process CI/local test
+      // reading files from the developer's own checkout — there is no
+      // adversary positioned to swap the file between the stat and the read.
+      // codeql[js/file-system-race]
       if (hasPrivateKeyBlock(fs.readFileSync(abs, 'utf8'))) offenders.push(rel);
     }
     expect(offenders, `tracked files contain private-key material: ${offenders.join(', ')}`).toEqual(
