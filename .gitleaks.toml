@@ -1,0 +1,29 @@
+# Gitleaks secret-scanning config (#221).
+#
+# Extends gitleaks' built-in default ruleset (`[extend] useDefault = true`)
+# rather than replacing it, so new upstream rules keep applying automatically.
+#
+# The allowlist below covers known, non-functional placeholder values already
+# committed as test fixtures. Each entry is a literal-value regex, not a path
+# or directory exclude — a real credential accidentally committed anywhere,
+# including inside a test file, still fails the scan. Add a new entry here
+# only for a specific fixture literal that's a confirmed false positive; do
+# not widen these to prefix/wildcard patterns.
+title = "sound-buddy gitleaks config"
+
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Fake Stripe/Resend credentials used to satisfy the worker Env type in tests (see makeEnv() in worker/test/delivery.test.ts and its siblings). Not live keys — no rotation needed."
+regexes = [
+  '''re_test_unused''',
+  '''sk_test_unused''',
+  '''whsec_unused''',
+]
+
+[[allowlists]]
+description = "Fake minted license-key literal used in a worker delivery test scenario (worker/test/delivery.test.ts). Real SB1. license keys are base64url payload+signature triples; this is a plain English placeholder, not key material."
+regexes = [
+  '''SB1\.throw\.key''',
+]
