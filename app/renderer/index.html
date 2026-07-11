@@ -4524,28 +4524,21 @@ let licenseCurrent = null;
 
 // Paywall-evaluation refresh trigger (#117): once per session, the first time
 // we observe a subscription in its refresh window, kick the automatic check.
-// Mirrors main.ts's shouldAutoRefresh() window (subscription in grace, or
-// valid but within GRACE_DAYS of expiresAt) without a shared module — a
-// polling loop isn't needed since applyLicenseState already runs on every
-// getLicense() read.
+// The window predicate lives in license-state.js (isInRefreshWindow, shared +
+// unit-tested) so it can't silently drift from the main process's own
+// shouldAutoRefresh() — a polling loop isn't needed since applyLicenseState
+// already runs on every getLicense() read.
 let refreshKicked = false;
-const LICENSE_REFRESH_WINDOW_DAYS = 7;
-const LICENSE_REFRESH_WINDOW_MS = LICENSE_REFRESH_WINDOW_DAYS * 24 * 60 * 60 * 1000;
-
-function isInLicenseRefreshWindow(state) {
-  if (!state || state.kind !== 'subscription') return false;
-  if (state.status === 'grace') return true;
-  if (state.status !== 'valid') return false;
-  const expiresMs = Date.parse(state.expiresAt || '');
-  if (Number.isNaN(expiresMs)) return false;
-  return expiresMs - Date.now() <= LICENSE_REFRESH_WINDOW_MS;
-}
 
 function applyLicenseState(state) {
   licenseCurrent = state || { tier: 'free', status: 'none' };
-  if (!refreshKicked && isInLicenseRefreshWindow(licenseCurrent)) {
+  if (!refreshKicked && window.licenseState.isInRefreshWindow(licenseCurrent)) {
     refreshKicked = true;
-    void sb.refreshLicense().then((s) => { if (s) applyLicenseState(s); });
+    // Best-effort: refreshLicense() is itself never-throw on the main-process
+    // side, but the IPC round-trip can still reject — don't leave an
+    // unhandled rejection. Un-set the guard on that rare failure so the next
+    // getLicense() poll can retry instead of never checking again this session.
+    void sb.refreshLicense().then((s) => { if (s) applyLicenseState(s); }).catch(() => { refreshKicked = false; });
   }
   const ls = window.licenseState;
   const b = ls.badge(licenseCurrent);

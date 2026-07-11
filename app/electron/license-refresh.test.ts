@@ -280,4 +280,58 @@ describe('maybeRefreshLicense', () => {
 
     expect(state).toEqual(before);
   });
+
+  it('does not overwrite a still-valid current state when the returned key fails verification', async () => {
+    const expiresAt = new Date(NOW.getTime() + 5 * DAY_MS).toISOString();
+    activateLicense(makeKey({ kind: 'subscription', expiresAt }), NOW);
+    const before = getLicenseState(NOW);
+    expect(before).toMatchObject({ tier: 'pro', status: 'valid' });
+
+    // Syntactically present but garbage — verifyLicenseKey resolves it to
+    // { tier: 'free', status: 'invalid' } rather than throwing.
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ key: 'SB1.not-a-real-payload.not-a-real-signature' }),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const state = await maybeRefreshLicense({}, NOW);
+
+    expect(state).toEqual(before);
+    expect(getLicenseState(NOW)).toEqual(before);
+  });
+
+  it('dedupes concurrent calls into a single in-flight network request', async () => {
+    const expiresAt = new Date(NOW.getTime() + 5 * DAY_MS).toISOString();
+    activateLicense(makeKey({ kind: 'subscription', expiresAt }), NOW);
+
+    const newerExpiresAt = new Date(NOW.getTime() + 35 * DAY_MS).toISOString();
+    const newerKey = makeKey({ kind: 'subscription', expiresAt: newerExpiresAt });
+    let resolveFetch: (v: unknown) => void = () => {};
+    const fetchMock = vi.fn().mockReturnValue(
+      new Promise((resolve) => {
+        resolveFetch = resolve;
+      }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    // Simulates the main-process launch trigger and the renderer's forced
+    // paywall-evaluation/manual trigger landing in the same tick.
+    const p1 = maybeRefreshLicense({}, NOW);
+    const p2 = maybeRefreshLicense({ force: true }, NOW);
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    resolveFetch({ ok: true, status: 200, json: async () => ({ key: newerKey }) });
+
+    const [s1, s2] = await Promise.all([p1, p2]);
+    expect(s1).toEqual(s2);
+    expect(s1.expiresAt).toBe(newerExpiresAt);
+
+    // A subsequent call after the in-flight request settles starts a fresh one.
+    const fetchMock2 = vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => ({ key: newerKey }) });
+    vi.stubGlobal('fetch', fetchMock2);
+    await maybeRefreshLicense({ force: true }, NOW);
+    expect(fetchMock2).toHaveBeenCalledTimes(1);
+  });
 });

@@ -51,13 +51,20 @@ export function shouldAutoRefresh(state: LicenseState, now: Date): boolean {
   return expiresMs - now.getTime() <= GRACE_DAYS * DAY_MS;
 }
 
+// Dedupes concurrent calls (the main-process launch trigger and a renderer's
+// forced manual/paywall trigger can land in the same tick) into a single
+// in-flight network request — both callers await the same result instead of
+// firing two refresh POSTs for the same key.
+let inFlight: Promise<LicenseState> | null = null;
+
 /**
  * The single entry point: fetch and activate a renewed key when due. Never
  * throws — every failure path (disabled, no key, out of window, offline,
- * timeout, a non-200, a body without a usable key, an activation error)
- * silently falls back to the current offline-derived state, which already
- * handles expiry/grace/messaging. `force: true` (the manual button) bypasses
- * the 7-day window but still requires a stored `subscription` key.
+ * timeout, a non-200, a body without a usable key, a key that fails
+ * verification, an activation error) silently falls back to the current
+ * offline-derived state, which already handles expiry/grace/messaging.
+ * `force: true` (the manual button) bypasses the 7-day window but still
+ * requires a stored `subscription` key.
  */
 export async function maybeRefreshLicense(
   opts: { force?: boolean } = {},
@@ -75,6 +82,15 @@ export async function maybeRefreshLicense(
     return current;
   }
 
+  if (inFlight) return inFlight;
+  inFlight = doRefresh(key, current, now).finally(() => {
+    inFlight = null;
+  });
+  return inFlight;
+}
+
+/** The network call + activation, isolated so `maybeRefreshLicense` can dedupe it. */
+async function doRefresh(key: string, current: LicenseState, now: Date): Promise<LicenseState> {
   try {
     const res = await fetch(refreshUrl(), {
       method: 'POST',
@@ -84,16 +100,23 @@ export async function maybeRefreshLicense(
     });
     if (!res.ok) {
       logWarn(`license refresh: server responded ${res.status}`);
-      return getLicenseState(now);
+      return current;
     }
     const body = (await res.json()) as { key?: unknown };
     if (typeof body?.key !== 'string' || !body.key) {
       logWarn('license refresh: response had no usable key');
-      return getLicenseState(now);
+      return current;
     }
-    return activateLicense(body.key, now);
+    // A response key that fails offline verification (bad signature, corrupt
+    // payload, wrong keypair) must not overwrite a still-valid current state.
+    const activated = activateLicense(body.key, now);
+    if (activated.tier !== 'pro') {
+      logWarn(`license refresh: returned key did not verify (${activated.status})`);
+      return current;
+    }
+    return activated;
   } catch (err) {
     logWarn(`license refresh failed: ${String(err)}`);
-    return getLicenseState(now);
+    return current;
   }
 }
