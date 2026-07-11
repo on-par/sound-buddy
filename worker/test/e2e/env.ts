@@ -52,6 +52,16 @@ export function hasSandboxEnv(): boolean {
   return REQUIRED_VARS.every((name) => Boolean(process.env[name]));
 }
 
+/** `Number(...) || DEFAULT` would silently discard an intentional `0` (a
+ * legitimately fully-exhausted cap) — use the env value whenever it parses
+ * to a finite number, falling back to the default only when unset/unparseable. */
+function foundingCapFromEnv(): number {
+  const raw = process.env.FOUNDING_CAP;
+  if (raw === undefined || raw === "") return DEFAULT_FOUNDING_CAP;
+  const parsed = Number(raw);
+  return Number.isFinite(parsed) ? parsed : DEFAULT_FOUNDING_CAP;
+}
+
 function requireEnv(name: string): string {
   const value = process.env[name];
   if (!value) {
@@ -75,7 +85,7 @@ export function loadSandboxConfig(): SandboxConfig {
     foundingPriceId: process.env.SANDBOX_FOUNDING_PRICE_ID || DEFAULT_FOUNDING_PRICE_ID,
     foundingPaymentLinkId:
       process.env.SANDBOX_FOUNDING_PAYMENT_LINK_ID || DEFAULT_FOUNDING_PAYMENT_LINK_ID,
-    foundingCap: Number(process.env.FOUNDING_CAP) || DEFAULT_FOUNDING_CAP,
+    foundingCap: foundingCapFromEnv(),
     seedSubscriptionSessionId: process.env.SANDBOX_SEED_SESSION_ID || undefined,
     seedFoundingSessionId: process.env.SANDBOX_SEED_FOUNDING_SESSION_ID || undefined,
   };

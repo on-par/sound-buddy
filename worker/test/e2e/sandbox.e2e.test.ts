@@ -246,13 +246,16 @@ describe.skipIf(!hasSandboxEnv())("Stripe sandbox e2e (#121)", () => {
         : undefined;
       const initialPeriodEnd = initialInvoice?.lines?.data?.[0]?.period?.end;
 
+      // `advance` must be called exactly once per clock — Stripe rejects a
+      // second `advance` while one is still in flight, so only `retrieve` is
+      // polled below.
+      await stripe.testHelpers.testClocks.advance(clock.id, {
+        frozen_time: now + 32 * 24 * 60 * 60, // +1 month (32d covers every calendar month)
+      });
       const advanced = await pollUntil(
         async () => {
-          const advancing = await stripe.testHelpers.testClocks.advance(clock.id, {
-            frozen_time: now + 32 * 24 * 60 * 60, // +1 month (32d covers every calendar month)
-          });
           const polled = await stripe.testHelpers.testClocks.retrieve(clock.id);
-          return polled.status === "ready" ? polled : (advancing.status === "ready" ? advancing : undefined);
+          return polled.status === "ready" ? polled : undefined;
         },
         { timeoutMs: 120_000, intervalMs: 5_000 },
       );
