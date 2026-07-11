@@ -3,7 +3,13 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 
-import { dirSizeBytes, formatBytes, saveAnalysisSummary, type AnalysisSummary } from './storage';
+import {
+  dirSizeBytes,
+  formatBytes,
+  saveAnalysisSummary,
+  listAnalysisSummaries,
+  type AnalysisSummary,
+} from './storage';
 
 describe('formatBytes', () => {
   it('renders bytes with no decimal', () => {
@@ -131,5 +137,96 @@ describe('saveAnalysisSummary', () => {
     expect(firstFile).not.toBe(secondFile);
     expect(JSON.parse(fs.readFileSync(firstFile, 'utf8'))).toMatchObject({ sourceFilename: 'sermon.wav' });
     expect(JSON.parse(fs.readFileSync(secondFile, 'utf8'))).toMatchObject({ sourceFilename: 'worship.wav' });
+  });
+});
+
+describe('listAnalysisSummaries', () => {
+  let dir = '';
+  let base: AnalysisSummary;
+
+  beforeEach(() => {
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'sb-storage-'));
+    base = {
+      date: '2026-07-11T15:30:45.123Z',
+      sourceFilename: 'sermon.wav',
+      gradeLetter: 'B',
+      score: 84,
+      recordingType: 'Music',
+      topFixes: ['Reduce low mids', 'Raise speech presence'],
+    };
+  });
+
+  afterEach(() => {
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+
+  it('returns [] for a missing history dir', async () => {
+    expect(await listAnalysisSummaries(path.join(dir, 'nope'))).toEqual([]);
+  });
+
+  it('returns [] for an empty history dir', async () => {
+    const historyDir = path.join(dir, 'history');
+    fs.mkdirSync(historyDir);
+    expect(await listAnalysisSummaries(historyDir)).toEqual([]);
+  });
+
+  it('round-trips saved records, newest-first by date', async () => {
+    const historyDir = path.join(dir, 'history');
+    const older = { ...base, date: '2026-07-10T09:00:00.000Z', sourceFilename: 'older.wav' };
+    const newest = { ...base, date: '2026-07-11T20:00:00.000Z', sourceFilename: 'newest.wav' };
+    const middle = { ...base, date: '2026-07-11T09:00:00.000Z', sourceFilename: 'middle.wav' };
+
+    // Written out of chronological order — the sort must key off `date`, not
+    // write order or filesystem mtime.
+    await saveAnalysisSummary(historyDir, older);
+    await saveAnalysisSummary(historyDir, newest);
+    await saveAnalysisSummary(historyDir, middle);
+
+    const result = await listAnalysisSummaries(historyDir);
+    expect(result.map((r) => r.sourceFilename)).toEqual(['newest.wav', 'middle.wav', 'older.wav']);
+  });
+
+  it('caps at 10 most recent, excluding older records', async () => {
+    const historyDir = path.join(dir, 'history');
+    const records: AnalysisSummary[] = Array.from({ length: 13 }, (_, i) => ({
+      ...base,
+      // Explicit ISO dates spaced a day apart — deterministic ordering, no wall
+      // clock. Index 0 is the oldest, index 12 the newest.
+      date: `2026-07-${String(i + 1).padStart(2, '0')}T00:00:00.000Z`,
+      sourceFilename: `file-${i}.wav`,
+    }));
+
+    for (const r of records) await saveAnalysisSummary(historyDir, r);
+
+    const result = await listAnalysisSummaries(historyDir);
+    expect(result).toHaveLength(10);
+    // The 10 newest are index 12 down to index 3; indices 0-2 (oldest 3) are excluded.
+    expect(result.map((r) => r.sourceFilename)).toEqual(
+      Array.from({ length: 10 }, (_, i) => `file-${12 - i}.wav`),
+    );
+    expect(result.some((r) => r.sourceFilename === 'file-0.wav')).toBe(false);
+  });
+
+  it('skips a corrupt/non-JSON file without throwing', async () => {
+    const historyDir = path.join(dir, 'history');
+    await saveAnalysisSummary(historyDir, base);
+    fs.writeFileSync(path.join(historyDir, 'garbage.json'), 'not valid json {{{');
+
+    const result = await listAnalysisSummaries(historyDir);
+    expect(result).toEqual([base]);
+  });
+
+  it('skips a well-formed-JSON file that is not a real AnalysisSummary', async () => {
+    const historyDir = path.join(dir, 'history');
+    await saveAnalysisSummary(historyDir, base);
+    // Each of these parses fine but isn't a usable record: null, an array, an
+    // object missing a required field, and a field with the wrong type.
+    fs.writeFileSync(path.join(historyDir, 'null.json'), 'null');
+    fs.writeFileSync(path.join(historyDir, 'array.json'), '[]');
+    fs.writeFileSync(path.join(historyDir, 'missing-grade.json'), JSON.stringify({ ...base, gradeLetter: undefined }));
+    fs.writeFileSync(path.join(historyDir, 'wrong-type.json'), JSON.stringify({ ...base, score: '84' }));
+
+    const result = await listAnalysisSummaries(historyDir);
+    expect(result).toEqual([base]);
   });
 });

@@ -80,6 +80,10 @@ contextBridge.exposeInMainWorld('soundBuddy', {
     topFixes: string[];
   }) => ipcRenderer.invoke('save-analysis-summary', summary),
 
+  // Last 10 persisted report-card summaries, newest-first, for the Recent
+  // Services list (#147).
+  listAnalysisSummaries: () => ipcRenderer.invoke('list-analysis-summaries'),
+
   // Cancel (#125) — aborts the in-flight analyze-file run for this renderer.
   cancelAnalysis: () => ipcRenderer.invoke('cancel-analysis'),
   onAnalysisProgress: (cb: (data: { stage?: string; status: string }) => void) =>

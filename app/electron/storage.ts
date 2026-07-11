@@ -21,6 +21,23 @@ export interface AnalysisSummary {
   topFixes: string[];
 }
 
+// A parsed history file can be syntactically valid JSON (`null`, an array, an
+// object from an older/future schema) without being a real AnalysisSummary —
+// guards listAnalysisSummaries against handing the renderer a record it can't
+// safely read fields off of.
+function isAnalysisSummary(value: unknown): value is AnalysisSummary {
+  if (!value || typeof value !== 'object') return false;
+  const v = value as Record<string, unknown>;
+  return (
+    typeof v.date === 'string' &&
+    typeof v.sourceFilename === 'string' &&
+    typeof v.gradeLetter === 'string' &&
+    typeof v.score === 'number' &&
+    typeof v.recordingType === 'string' &&
+    Array.isArray(v.topFixes)
+  );
+}
+
 /**
  * Total size in bytes of every file under `dir`, walked recursively. Returns 0
  * when the folder does not exist yet (nothing recorded) — a missing storage dir
@@ -80,6 +97,53 @@ export async function saveAnalysisSummary(
   const file = path.join(historyDir, `${stamp}-${randomUUID().slice(0, 8)}.json`);
   await fsp.writeFile(file, JSON.stringify(summary, null, 2));
   return file;
+}
+
+/**
+ * The `limit` most recent summary records under `historyDir`, newest-first by
+ * the record's own `date` field (ISO 8601 strings sort chronologically) — never
+ * filesystem mtime, which a sync tool or backup restore can reorder. Powers the
+ * recent-services list (#147). Mirrors dirSizeBytes/saveAnalysisSummary treating
+ * a missing folder as cold start, not an error. Each file is read and parsed in
+ * its own try/catch so one corrupt or mid-write record (saveAnalysisSummary
+ * writes one file per analysis, so a concurrent write is always a distinct
+ * file, but a partial write from a crash is still possible) is skipped rather
+ * than failing the whole list.
+ */
+export async function listAnalysisSummaries(
+  historyDir: string,
+  limit = 10,
+): Promise<AnalysisSummary[]> {
+  let entries: Dirent[];
+  try {
+    entries = await fsp.readdir(historyDir, { withFileTypes: true });
+  } catch {
+    return [];
+  }
+
+  const records: { summary: AnalysisSummary; filename: string }[] = [];
+  for (const entry of entries) {
+    if (!entry.isFile() || !entry.name.endsWith('.json')) continue;
+    try {
+      const raw = await fsp.readFile(path.join(historyDir, entry.name), 'utf8');
+      const summary = JSON.parse(raw) as AnalysisSummary;
+      // JSON.parse succeeding doesn't mean the shape is right — a record from
+      // a future/older schema or a manual edit could parse fine as `null`, an
+      // array, or an object missing fields the renderer assumes are there.
+      if (!isAnalysisSummary(summary)) continue;
+      records.push({ summary, filename: entry.name });
+    } catch {
+      // Corrupt or partially-written file — skip it, keep the rest.
+    }
+  }
+
+  records.sort((a, b) => {
+    const aKey = a.summary?.date || a.filename;
+    const bKey = b.summary?.date || b.filename;
+    return aKey < bKey ? 1 : aKey > bKey ? -1 : 0;
+  });
+
+  return records.slice(0, limit).map((r) => r.summary);
 }
 
 /**

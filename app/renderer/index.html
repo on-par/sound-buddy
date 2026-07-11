@@ -322,6 +322,13 @@
     .dir-name { font:var(--fw-regular) var(--fs-label)/1 var(--font-mono); color:var(--text-secondary); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
     .dir-fmt { font:var(--fw-semibold) 9px/1 var(--font-mono); letter-spacing:0.05em; color:var(--text-muted); background:var(--surface-raised); border:1px solid var(--border-subtle); border-radius:var(--radius-xs); padding:2px 5px; flex-shrink:0; }
 
+    /* Recent services list (#147) */
+    .recent-row { cursor:pointer; }
+    .recent-row:hover { background:var(--surface-raised); }
+    .recent-grade { font:var(--fw-bold) var(--fs-label)/1 var(--font-mono); flex-shrink:0; width:1.2em; text-align:center; }
+    .recent-date { font:var(--fw-regular) var(--fs-micro)/1 var(--font-sans); color:var(--text-muted); flex-shrink:0; white-space:nowrap; }
+    .recent-empty { text-align:center; padding:12px 0; }
+
     /* Buttons */
     .btn {
       display:inline-flex; align-items:center; justify-content:center; gap:8px;
@@ -957,6 +964,7 @@
       <button class="mode-tab" data-mode="dir" data-icon="folder">Directory</button>
       <button class="mode-tab" data-mode="live" data-icon="radio">Live<span class="tab-lock" data-icon="lock" data-size="11"></span></button>
       <button class="mode-tab" data-mode="soundcheck" data-icon="sliders">Soundcheck<span class="tab-lock" data-icon="lock" data-size="11"></span></button>
+      <button class="mode-tab" data-mode="recent" data-icon="clock">Recent</button>
       <button class="mode-tab active" data-mode="reportcard" data-icon="clipboard-check">Report Card</button>
     </div>
     <div id="header-right">
@@ -1115,6 +1123,13 @@
           <div id="sc-elapsed" class="sc-elapsed" style="display:none"></div>
           <div id="sc-status" class="sc-status" role="alert" style="display:none"></div>
         </div>
+
+        <!-- RECENT (#147) — last 10 persisted report-card summaries, newest-first. -->
+        <div class="tab-content" id="tab-recent">
+          <span class="section-label">Recent Services</span>
+          <div class="dir-list" id="recent-list"></div>
+          <p class="dz-hint recent-empty" id="recent-empty" style="display:none">No analyses yet — analyze a file to build your history.</p>
+        </div>
       </div>
     </aside>
 
@@ -1208,18 +1223,18 @@
             <h2>Ideal Profile Match</h2>
             <div class="rc-profile" id="rc-profile"></div>
           </div>
-          <div class="rc-section">
+          <div class="rc-section" id="rc-metrics-section">
             <h2>Metrics</h2>
             <table class="metric-table">
               <thead><tr><th>Metric</th><th>Value</th><th>Target</th><th>Status</th></tr></thead>
               <tbody id="rc-metrics-body"></tbody>
             </table>
           </div>
-          <div class="rc-section">
+          <div class="rc-section" id="rc-why-section">
             <h2>Why This Grade</h2>
             <div class="rc-why" id="rc-why"></div>
           </div>
-          <div class="rc-section">
+          <div class="rc-section" id="rc-bands-section">
             <h2>Frequency Band Breakdown</h2>
             <div class="rc-bands" id="rc-bands"></div>
           </div>
@@ -1475,6 +1490,7 @@ const ICON_PATHS = {
   plus:'M12 5v14M5 12h14',
   lock:'M5 11h14a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2zM7 11V7a5 5 0 0 1 10 0v4',
   'hard-drive':'M22 12H2M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11zM6 16h.01M10 16h.01',
+  clock:'M12 12m-10 0a10 10 0 1 0 20 0 10 10 0 1 0-20 0M12 6v6l4 2',
 };
 
 function iconSvg(name, size = 16, opts = {}) {
@@ -1507,6 +1523,10 @@ let currentFilePath = null;
 let currentDirPath = null;
 let liveRunning = false;
 let liveWindows = [];
+// A stored report-card summary loaded from the Recent Services list (#147).
+// Set by loadHistoryEntry(); renderReportCard() renders it via a reduced,
+// summary-only card when set and no live/file analysis is backing the card.
+let historyEntry = null;
 // Per-strip collapsed state (#40), keyed by strip index. In-memory only for this
 // slice (persisting into the rig is deferred). Read on every repaint so an
 // incoming meter window never silently re-expands a folded strip.
@@ -3016,6 +3036,9 @@ document.querySelectorAll('.mode-tab').forEach(tab => {
       document.querySelectorAll('.tab-content').forEach(tc => tc.classList.remove('active'));
       document.getElementById(`tab-${mode}`).classList.add('active');
       syncSpectrumForMode(mode);
+      // Reload on every visit (not just once) so a just-completed analysis
+      // shows up without an app restart (#147).
+      if (mode === 'recent') renderRecentServices();
     }
   });
 });
@@ -3228,6 +3251,13 @@ function syncSpectrumForMode(mode) {
   } else if (mode === 'soundcheck') {
     title.textContent = 'Soundcheck · Meters';
     if (!scPlaying) setSpectrumState('empty', { text: 'Load a session and press Play to see per-track meters' });
+  } else if (mode === 'recent') {
+    // Recent (#147) has no file-loading UI of its own — a tailored message
+    // instead of the generic "Load a file…" copy the fallback branch below
+    // would otherwise show (misleading here, since there's nothing to load).
+    title.textContent = SPECTRUM_TITLE.curve;
+    if (currentAnalysis) renderSpectrum(currentAnalysis.spectrum);
+    else setSpectrumState('empty', { text: 'Select a recent analysis to load its report card' });
   } else {
     // renderSpectrum sets the header to match what it draws (curve vs meters);
     // seed the curve label for the pre-analysis empty state.
@@ -3303,6 +3333,8 @@ async function runFileAnalysis(fp) {
   }
 
   currentAnalysis = result.data;
+  // A fresh analysis always wins over a loaded history entry (#147).
+  historyEntry = null;
   persistAnalysisSummary();
   document.getElementById('analyze-btn').innerHTML = iconSvg('waveform', 16) + 'Re-analyze';
   updateStatsRow(currentAnalysis.sox, currentAnalysis.spectrum);
@@ -3618,6 +3650,8 @@ document.getElementById('live-start-btn').addEventListener('click', async () => 
 
   liveRunning = true;
   liveWindows = [];
+  // A live capture always wins over a loaded history entry (#147).
+  historyEntry = null;
   setRigControlsEnabled(false);
   setCaptureControlsLocked(true); // freeze device/mode/folder/channels/sliders (#38)
 
@@ -4198,6 +4232,77 @@ function persistAnalysisSummary() {
   }
 }
 
+/* ══ Recent Services (#147) — last 10 persisted summaries ══ */
+// The summaries backing the currently-rendered #recent-list, indexed the same
+// as the rows, so a row click reads its record straight from here instead of
+// re-fetching.
+let recentSummaries = [];
+
+async function renderRecentServices() {
+  const list = document.getElementById('recent-list');
+  const empty = document.getElementById('recent-empty');
+
+  let res;
+  try {
+    res = await sb.listAnalysisSummaries();
+  } catch (err) {
+    console.warn('listAnalysisSummaries failed', err);
+    res = null;
+  }
+
+  // Main already caps this list to 10 (listAnalysisSummaries); slice defensively
+  // so the renderer never shows more even if that contract changes.
+  recentSummaries = (res && res.success && Array.isArray(res.summaries)) ? res.summaries.slice(0, 10) : [];
+
+  if (recentSummaries.length === 0) {
+    list.innerHTML = '';
+    empty.style.display = 'block';
+    return;
+  }
+  empty.style.display = 'none';
+
+  list.innerHTML = recentSummaries.map((s, i) => {
+    // gradeLetter is read back off a disk-stored record (#147) — escape it even
+    // in this attribute position, not just as text content, so a crafted record
+    // (e.g. a shared/synced storage folder written to by another install)
+    // can't break out of the style attribute and inject markup.
+    const safeGrade = escapeHtml(s.gradeLetter);
+    return `
+    <div class="dir-item recent-row" data-idx="${i}">
+      <span class="recent-grade" style="color:var(--grade-${(s.gradeLetter || '').toLowerCase().replace(/[^a-z]/g, '')})">${safeGrade}</span>
+      <span class="dir-name">${escapeHtml(s.sourceFilename)}</span>
+      <span class="recent-date">${escapeHtml(new Date(s.date).toLocaleString())}</span>
+    </div>`;
+  }).join('');
+
+  list.querySelectorAll('.recent-row').forEach((row) => {
+    row.addEventListener('click', () => loadHistoryEntry(recentSummaries[parseInt(row.dataset.idx, 10)]));
+  });
+}
+
+// Loads a stored summary into the report card view without re-running any
+// analysis — the row's record is all the report card ever reads (#147).
+function loadHistoryEntry(summary) {
+  pauseTransportAudio(); // don't leave a previous file's playback running behind the summary card
+  historyEntry = summary;
+  // A history entry always wins over whatever was previously on the card, so
+  // the summary-only branch in renderReportCard() is guaranteed to fire
+  // regardless of what was showing before this click.
+  currentAnalysis = null;
+  currentFilePath = null;
+  if (!liveRunning) liveWindows = [];
+  // Restore the file dropzone to its resting state too — otherwise it would
+  // still show a previously-loaded file as "loaded" with Re-analyze enabled,
+  // and clicking it would silently no-op on the now-null currentFilePath.
+  fileDropzone.classList.remove('loaded');
+  fileDropzone.innerHTML = fileDropzoneDefaultHTML;
+  hydrateIcons(fileDropzone);
+  const analyzeBtn = document.getElementById('analyze-btn');
+  analyzeBtn.disabled = true;
+  analyzeBtn.innerHTML = iconSvg('waveform', 16) + 'Analyze';
+  document.querySelector('.mode-tab[data-mode="reportcard"]').click();
+}
+
 /* ══ Content type — speech/music delineation (PRD 04) ══ */
 const CONTENT_TYPE_LABELS = { speech: 'Speech', music: 'Music', mixed: 'Mixed', silence: 'Silence' };
 const SEG_CLASS_LABELS = { speech: 'Speech', music: 'Music', silence: 'Silence', unknown: 'Unknown' };
@@ -4260,7 +4365,13 @@ function gradeRingHTML(grade, score) {
   const r = (px - stroke) / 2;
   const c = 2 * Math.PI * r;
   const dash = Math.max(0, Math.min(100, score)) / 100 * c;
-  const color = `var(--grade-${grade.toLowerCase()})`;
+  // grade can now come from a disk-stored history record (#147), not just the
+  // app's own computeGrade() output — strip to letters only for the CSS custom
+  // property name and escape separately for display, so a crafted record can't
+  // break out of the style attribute or inject markup as element content.
+  const colorKey = (grade || '').toLowerCase().replace(/[^a-z]/g, '');
+  const color = `var(--grade-${colorKey})`;
+  const safeGrade = escapeHtml(grade);
   return `<div class="grade-ring" style="width:${px}px;height:${px}px">
     <svg width="${px}" height="${px}">
       <circle cx="${px / 2}" cy="${px / 2}" r="${r}" fill="none" stroke="var(--surface-inset)" stroke-width="${stroke}"/>
@@ -4269,7 +4380,7 @@ function gradeRingHTML(grade, score) {
         style="transition:stroke-dasharray var(--dur-slow) var(--ease-out);filter:drop-shadow(0 0 6px color-mix(in srgb, ${color} 40%, transparent))"/>
     </svg>
     <div class="center">
-      <span class="letter" style="color:${color}">${grade}</span>
+      <span class="letter" style="color:${color}">${safeGrade}</span>
       <span class="score">${score}<span class="slash">/100</span></span>
     </div>
   </div>
@@ -4310,7 +4421,61 @@ function renderProfileMatch(profile, cmp) {
     <div class="rcp-dev">${deviationMiniCurve(cmp.deviation)}</div>`;
 }
 
+// Renders a stored summary-only record (#147) — no metrics/bands/spectrum/
+// frames, since that raw data was never persisted (see AnalysisSummary). The
+// grade/score are read straight from the record: they were frozen at analysis
+// time, and recomputing via grading.* is impossible without the raw metrics
+// (and would risk silently disagreeing with what was actually graded).
+function renderReportCardFromHistory(summary) {
+  const empty = document.getElementById('rc-empty');
+  const content = document.getElementById('rc-content');
+  const printBtn = document.getElementById('reportcard-print-btn');
+  const clearBtn = document.getElementById('reportcard-clear-btn');
+
+  empty.style.display = 'none';
+  content.style.display = 'block';
+  printBtn.disabled = false;
+  // No file backs this card — there is nothing for Clear to release (#206).
+  clearBtn.disabled = true;
+
+  document.getElementById('rc-filename').textContent = summary.sourceFilename;
+  document.getElementById('rc-date').textContent = new Date(summary.date).toLocaleString();
+  document.getElementById('rc-ring').innerHTML = gradeRingHTML(summary.gradeLetter, summary.score);
+
+  const rt = document.getElementById('rc-rec-type');
+  rt.className = 'rc-rectype pill';
+  rt.textContent = summary.recordingType;
+
+  // These sections all need raw analysis data the stored summary doesn't have.
+  document.getElementById('rc-content-type').style.display = 'none';
+  document.getElementById('rc-ribbon-wrap').style.display = 'none';
+  document.getElementById('rc-profile-section').style.display = 'none';
+  document.getElementById('rc-metrics-section').style.display = 'none';
+  document.getElementById('rc-why-section').style.display = 'none';
+  document.getElementById('rc-bands-section').style.display = 'none';
+  document.getElementById('rc-frames-section').style.display = 'none';
+
+  document.getElementById('rc-recommendations').innerHTML = (summary.topFixes || []).map(r => {
+    const critical = r.startsWith('CRITICAL');
+    const text = critical ? r.replace(/^CRITICAL:\s*/, '') : r;
+    return `<div class="rc-rec${critical ? ' critical' : ''}">
+      <span class="rc-rec-icon">${iconSvg(critical ? 'alert-triangle' : 'check', 16)}</span>
+      <span class="rc-rec-text">${critical ? '<span class="rc-rec-badge">Critical</span>' : ''}${escapeHtml(text)}</span>
+    </div>`;
+  }).join('');
+
+  lastReportGrade = summary.gradeLetter;
+  renderUpgradeMomentum();
+}
+
 function renderReportCard() {
+  // A history entry only ever backs the card when no live/file analysis is
+  // present — a fresh analysis or a running live capture always wins (#147).
+  if (historyEntry && !currentAnalysis && liveWindows.length === 0) {
+    renderReportCardFromHistory(historyEntry);
+    return;
+  }
+
   const src = getReportCardSource();
   const empty = document.getElementById('rc-empty');
   const content = document.getElementById('rc-content');
@@ -4335,6 +4500,11 @@ function renderReportCard() {
   // live-capture card (currentAnalysis null, liveWindows populated) has no
   // file to clear, so leaving Clear enabled would no-op/flicker (#206).
   clearBtn.disabled = !currentAnalysis;
+  // Undo any summary-only hiding a previous historyEntry render left behind
+  // (#147) — a real analysis always shows every section its own data affects.
+  document.getElementById('rc-metrics-section').style.display = '';
+  document.getElementById('rc-why-section').style.display = '';
+  document.getElementById('rc-bands-section').style.display = '';
 
   document.getElementById('rc-filename').textContent = src.filename;
   document.getElementById('rc-date').textContent = new Date().toLocaleString();

@@ -258,6 +258,12 @@ export async function launchApp(): Promise<{ electronApp: ElectronApplication; w
     // this on every loadAndAnalyze) never touch the developer's real disk.
     ipcMain.removeHandler('save-analysis-summary');
     ipcMain.handle('save-analysis-summary', () => ({ success: true }));
+
+    // list-analysis-summaries (#147) reads from the same unisolated folder —
+    // stub it to the empty state so specs that don't seed history see
+    // "no analyses yet" rather than a real (or absent) disk read.
+    ipcMain.removeHandler('list-analysis-summaries');
+    ipcMain.handle('list-analysis-summaries', () => ({ success: true, summaries: [] }));
   }, FAKE_ANALYSIS));
 
   return { electronApp, window };

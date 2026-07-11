@@ -9,7 +9,7 @@ import { ipcMain } from 'electron';
 import * as fs from 'fs';
 import * as path from 'path';
 import { log, logError } from '../logger';
-import { saveAnalysisSummary, type AnalysisSummary } from '../storage';
+import { saveAnalysisSummary, listAnalysisSummaries, type AnalysisSummary } from '../storage';
 import { toolBin, pythonBin, childEnv, SPECTRUM_SCRIPT, DEMO_AUDIO, defaultRecordDir } from './shared';
 import {
   execFileWithTimeout,
@@ -316,6 +316,13 @@ export async function runSpectrum(filePath: string, signal?: AbortSignal): Promi
 // the run started by that same renderer.
 const inFlight = new Map<number, AbortController>();
 
+// The single folder save-analysis-summary writes to and list-analysis-summaries
+// reads from — factored out so the two handlers can never drift onto different
+// paths.
+function historyDir(): string {
+  return path.join(defaultRecordDir(), 'history');
+}
+
 export function registerAnalysisHandlers(): void {
   // analyze-file
   ipcMain.handle('analyze-file', async (event, opts: { filePath: string; noSpectrum?: boolean }) => {
@@ -417,13 +424,25 @@ export function registerAnalysisHandlers(): void {
         recordingType: String(payload?.recordingType ?? ''),
         topFixes: Array.isArray(payload?.topFixes) ? payload.topFixes.map(String) : [],
       };
-      const historyDir = path.join(defaultRecordDir(), 'history');
-      const file = await saveAnalysisSummary(historyDir, summary);
+      const file = await saveAnalysisSummary(historyDir(), summary);
       log(`saved analysis summary: ${file}`);
       return { success: true };
     } catch (err) {
       logError('save-analysis-summary failed', err);
       return { success: false, error: String(err) };
+    }
+  });
+
+  // list-analysis-summaries (#147) — the last 10 persisted report-card summaries,
+  // newest-first, for the Recent Services list. A failure (permissions, corrupt
+  // folder) is logged and returned as an empty list rather than thrown, so the
+  // Recent tab always has an empty state to fall back to instead of an error.
+  ipcMain.handle('list-analysis-summaries', async () => {
+    try {
+      return { success: true, summaries: await listAnalysisSummaries(historyDir(), 10) };
+    } catch (err) {
+      logError('list-analysis-summaries failed', err);
+      return { success: false, error: String(err), summaries: [] };
     }
   });
 }
