@@ -10,8 +10,10 @@ interface Props {
   description?: string;
   /** Human date the policy was last updated, e.g. "July 7, 2026". */
   updated: string;
+  /** Eyebrow label above the title — defaults to "Legal" for the policy pages. */
+  eyebrow?: string;
 }
-const { title, description, updated } = Astro.props;
+const { title, description, updated, eyebrow = 'Legal' } = Astro.props;
 
 const HOME_URL = '/';
 const SUPPORT_EMAIL = 'support@soundbuddy.online';
@@ -45,7 +47,7 @@ const canonical = new URL(current, Astro.site).href;
 
   <main class="legal">
     <div class="container legal-container">
-      <span class="eyebrow">Legal</span>
+      <span class="eyebrow">{eyebrow}</span>
       <h1 class="legal-title">{title}</h1>
       <p class="legal-updated mono">Last updated {updated}</p>
       <div class="prose">

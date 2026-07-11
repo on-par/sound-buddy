@@ -57,6 +57,9 @@ contextBridge.exposeInMainWorld('soundBuddy', {
 
   // Feedback mailto (#143) — opens the user's mail client; the app sends nothing.
   openFeedback: () => ipcRenderer.invoke('open-feedback'),
+  // Capture guidance (#142) — opens the hosted "record your service" docs page in
+  // the user's browser. The app sends nothing; fixed URL resolved in main.
+  openCaptureGuide: () => ipcRenderer.invoke('open-capture-guide'),
   // Attach diagnostics (#144) — reveals the log file in Finder so the user can
   // drag it into the feedback email themselves. Never attached automatically.
   revealDiagnostics: () => ipcRenderer.invoke('reveal-diagnostics'),
