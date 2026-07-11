@@ -3351,10 +3351,15 @@ async function runFileAnalysis(fp) {
   // Disable Clear while an analysis is in flight so it can't null currentAnalysis
   // mid-run and then have this continuation re-set it + flip the card back (#206).
   document.getElementById('reportcard-clear-btn').disabled = true;
+  // Same reasoning for Load a file… (#208): it stays visible for the whole
+  // in-flight window (isLiveCard only flips false once currentAnalysis is
+  // set below), so without this a second click could fire a concurrent pick.
+  document.getElementById('reportcard-load-btn').disabled = true;
 
   const result = await sb.analyzeFile({ filePath: fp });
 
   document.getElementById('analyze-btn').disabled = false;
+  document.getElementById('reportcard-load-btn').disabled = false;
 
   if (result.cancelled) {
     // Cancelled mid-run — return to the pre-analysis idle state (no report
