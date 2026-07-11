@@ -11,7 +11,8 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
-    "verify": "npm run typecheck && npm run test"
+    "verify": "npm run typecheck && npm run test",
+    "test:e2e:sandbox": "node --env-file=../.env.local scripts/e2e-sandbox.mjs"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20250109.0",

@@ -12,7 +12,9 @@ header required.
 
 Scaffold (#107), the Stripe webhook (#108), founding + subscription minting
 (#110/#111), the sign-on-demand license fetch + activation page (#112), and
-best-effort license email delivery (#114) are all implemented.
+best-effort license email delivery (#114) are all implemented. A Stripe
+sandbox end-to-end test harness (#121, manual/local gate) covers the full
+purchase/renewal/cancel/founding/refund/hardening test plan.
 
 ## Routes
 
@@ -105,3 +107,83 @@ npm run verify     # typecheck + test
 
 Deploy (`npm run deploy`) requires the real KV id, route zone, and secrets to be
 wired first (H4).
+
+## Sandbox e2e (manual gate)
+
+`test/e2e/sandbox.e2e.test.ts` (#121) drives the full purchase / renewal /
+cancel / founding / refund / webhook-hardening test plan against the **Stripe
+test-mode sandbox** (provisioned 2026-07-08) and a running Worker. It is a
+**manual/local launch gate**, mirroring the app's Playwright e2e that CI does
+not run — `describe.skipIf` makes it an inert no-op skip whenever the sandbox
+secrets are absent (always true in CI, so this is never a CI blocker), and a
+real run once `.env.local` is loaded.
+
+**Open question for Patrick:** should any part of this move into CI? Not
+decided in #121 — flagged per the issue's "Assumption (pending sign-off)".
+
+### Prerequisites
+
+- `.env.local` (repo root, gitignored, never committed) with:
+  - `STRIPE_SECRET_KEY` — sandbox test secret key (`sk_test_…`/`rk_test_…`)
+  - `STRIPE_WEBHOOK_SECRET` — sandbox test webhook signing secret (`whsec_…`)
+  - `RESEND_API_KEY` — sandbox test Resend key
+  - `WORKER_BASE_URL` — where the Worker is reachable, e.g.
+    `http://127.0.0.1:8787` for `wrangler dev`, or a preview deploy URL
+  - `LICENSE_PUBLIC_KEY` — the sandbox signing key's spki PEM, so the harness
+    can verify returned `SB1.` keys
+  - Optional: `SANDBOX_SEED_SESSION_ID` / `SANDBOX_SEED_FOUNDING_SESSION_ID` —
+    see "What's verified vs. what needs a manual seed" below
+- A running Worker (`npm run dev`, or a preview deploy) pointed at the same
+  sandbox account as the `.env.local` keys above.
+
+### Run it
+
+```bash
+cd worker
+npm run test:e2e:sandbox
+```
+
+### What's verified vs. what needs a manual seed
+
+Every scenario drives the Worker via a **constructed, validly-signed webhook
+event** POSTed directly to `/api/stripe/webhook`, built from real Stripe
+objects (customer, subscription, invoice, charge) created through the API —
+this avoids depending on a Stripe Dashboard webhook endpoint registration
+pointed at this run's Worker (that needs a public URL — a human/DNS step, H5),
+so the suite works against a bare `wrangler dev`.
+
+Stripe's API has no way to programmatically "pay" a hosted Checkout Session —
+that fundamentally requires a human on Stripe's own UI. Two legs need a REAL,
+already-paid Checkout Session and are gated behind optional env vars:
+
+- `GET /api/license?session_id=` returning `200 { key }` for a paid
+  subscription — set `SANDBOX_SEED_SESSION_ID` to a `cs_…` id from a Checkout
+  Session you complete once by hand (subscription mode, price
+  `sound_buddy_pro_monthly`, card `4242 4242 4242 4242`). The "seamless
+  refresh + cancellation" scenario reuses (and cancels) this same
+  subscription — re-seed a fresh session id before re-running that scenario.
+- `GET /api/license?session_id=` returning a lifetime key for the founding
+  flow — set `SANDBOX_SEED_FOUNDING_SESSION_ID` similarly (payment mode,
+  price `sound_buddy_founding_lifetime`).
+
+Without those set, the corresponding `it`s report a skip and everything else
+(mint via webhook, renewal via test clock, refresh rotation/supersede,
+cancellation, refund, webhook hardening/replay, founding cap config, and the
+decline/3DS/renewal-fail card paths) runs fully automated, no browser needed.
+
+The founding cap (300 completed sessions) is verified by asserting the
+Payment Link's `restrictions.completed_sessions.limit` via the Stripe API —
+not by exhausting it with 300 real purchases.
+
+Email delivery is asserted via `GET /api/license` (the authoritative check
+per the acceptance criteria); the Resend API's list-emails check is
+best-effort and degrades to a skip when the configured key is send-only (401
+on read), which is the expected shape of the provisioned sandbox key.
+
+### Security
+
+Never log a minted `SB1.` string, key material, email addresses,
+`.env.local` values, or raw webhook payload bodies — same rule as the rest of
+this Worker (see the security note above). This suite touches **test mode
+only**: every helper asserts `livemode === false` on the first Stripe object
+it creates or reads and aborts the run if that ever fails.
