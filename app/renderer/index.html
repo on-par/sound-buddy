@@ -313,6 +313,8 @@
     .dz-hint { font:var(--fw-regular) var(--fs-label)/1.3 var(--font-sans); color:var(--text-muted); }
     .dz-meta { font:var(--fw-regular) var(--fs-micro)/1.3 var(--font-mono); color:var(--text-muted); }
     .dz-body { display:flex; flex-direction:column; gap:3px; align-items:center; min-width:0; width:100%; }
+    .dir-note { margin-top:8px; }
+    .dir-note-cmd { font:var(--fw-regular) var(--fs-micro)/1.4 var(--font-mono); color:var(--text-secondary); }
 
     /* Dir file list */
     .dir-list { display:flex; flex-direction:column; gap:2px; max-height:220px; overflow-y:auto; }
@@ -982,7 +984,8 @@
             <span class="section-label">Files</span>
             <div class="dir-list" id="dir-file-list"></div>
           </div>
-          <button class="btn btn-primary full" id="analyze-dir-btn" data-icon="waveform" disabled>Analyze All</button>
+          <button class="btn btn-primary full" id="analyze-dir-btn" data-icon="waveform" disabled title="In-app multi-channel analysis is coming in v1.1">Analyze All</button>
+          <p class="dir-note dz-hint">In-app multi-channel analysis is coming in <strong>v1.1</strong>. For now, analyze a folder from the command line:<br><code class="dir-note-cmd">sound-buddy --dir "your/folder"</code></p>
         </div>
 
         <!-- LIVE -->
@@ -3275,13 +3278,7 @@ function loadDir(dp) {
   list.innerHTML =
     `<div class="dir-item"><span class="dir-name">Directory loaded</span></div>
      <div class="dir-item"><span class="dir-name">Supported: wav, aif, aiff, flac, mp3, ogg, m4a</span></div>`;
-  document.getElementById('analyze-dir-btn').disabled = false;
 }
-
-document.getElementById('analyze-dir-btn').addEventListener('click', () => {
-  if (!currentDirPath) return;
-  aiAppend(`\n[Directory analysis: sends the directory to the CLI pipeline.\nFor full multi-channel analysis, run: sound-buddy --dir "${currentDirPath}"]\n`);
-});
 
 /* ══ Live mode ══ */
 document.getElementById('window-secs').addEventListener('input', (e) => {

@@ -42,6 +42,13 @@ test.describe('Sound Buddy E2E — report card basics', () => {
     await expect(window.locator('#rc-empty')).toBeVisible();
   });
 
+  test('directory mode Analyze All is disabled with a v1.1 note, not a fake action (#127)', async () => {
+    await window.locator('.mode-tab[data-mode="dir"]').click();
+    await expect(window.locator('#tab-dir')).toHaveClass(/active/);
+    await expect(window.locator('#analyze-dir-btn')).toBeDisabled();
+    await expect(window.locator('#tab-dir .dir-note')).toContainText('v1.1');
+  });
+
   test('report card shows empty state before any analysis', async () => {
     await window.locator('.mode-tab[data-mode="reportcard"]').click();
     await expect(window.locator('#rc-empty')).toBeVisible();
