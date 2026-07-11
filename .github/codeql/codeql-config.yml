@@ -1,0 +1,18 @@
+name: "Sound Buddy CodeQL config"
+
+# Scope (#223): packages/*, app/, worker/. site/ (static Astro marketing
+# site) is out of scope per the issue — low-value SAST target.
+paths:
+  - packages
+  - app
+  - worker
+
+# These would be redundant with `paths` today (site/ is a sibling dir,
+# already out of scope; node_modules/dist/coverage/.venv are gitignored so
+# checkout never brings them in) — kept because JS/TS extraction needs no
+# build step for now, but that could change.
+paths-ignore:
+  - "**/node_modules/**"
+  - "**/dist/**"
+  - "**/coverage/**"
+  - "**/.venv/**"

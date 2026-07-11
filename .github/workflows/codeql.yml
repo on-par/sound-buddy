@@ -34,19 +34,9 @@ jobs:
         uses: github/codeql-action/init@v3
         with:
           languages: javascript-typescript
-          paths:
-            - packages
-            - app
-            - worker
-          # These would be redundant with `paths` today (site/ is a sibling
-          # dir, already out of scope; node_modules/dist/coverage/.venv are
-          # gitignored so checkout never brings them in) — kept because JS/TS
-          # extraction needs no build step for now, but that could change.
-          paths-ignore:
-            - '**/node_modules/**'
-            - '**/dist/**'
-            - '**/coverage/**'
-            - '**/.venv/**'
+          # `paths` / `paths-ignore` aren't `init` action inputs — they're
+          # config-file-only. See .github/codeql/codeql-config.yml for scope.
+          config-file: ./.github/codeql/codeql-config.yml
 
       # JS/TS analysis doesn't require a compiled build — CodeQL extracts
       # straight from source (build-mode: none), so there's no autobuild step.
