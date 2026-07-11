@@ -55,6 +55,34 @@ describe("GET /activate (#112)", () => {
     expect(body).toContain("cs_test_123");
   });
 
+  it("Scenario: a failed/exhausted poll surfaces an error state, not an infinite spinner (#140)", async () => {
+    // The page is self-contained, and the poll/timeout/showFallback() branching
+    // lives entirely in the inline <script> (no server round trip to assert
+    // against here) — so this stays a static text check on the rendered
+    // response, same as the rest of this file, rather than adding a DOM/JS
+    // runtime dependency. Markup alone (e.g. the #fallback panel's copy) would
+    // render identically for every session_id and so wouldn't catch a
+    // regression in the poll logic itself; the assertions below additionally
+    // pin the source text of the two branches that must call showFallback()
+    // (a false-positive-losing check: they fail if a future edit inverts the
+    // timeout comparison or drops either showFallback() call, reintroducing
+    // the infinite spinner #112 was written to prevent).
+    const res = await handleActivate(request("?session_id=cs_test_exhausted"), env, ctx);
+
+    const body = await res.text();
+    expect(body).toContain('id="fallback"');
+    expect(body).toContain("We couldn't confirm this checkout");
+    expect(body).toContain("your license key will also be emailed to you");
+    expect(body).toContain("contact support");
+    // The fallback panel isn't shown by default — the poll's terminal branches
+    // (200/202-timeout/error, see activate.ts's showFallback()) reveal it.
+    expect(body).toMatch(/id="fallback" style="display:\s*none"/);
+    // The 202-poll-timeout branch must still terminate into showFallback()...
+    expect(body).toMatch(/Date\.now\(\)\s*-\s*startedAt\s*>=\s*POLL_TIMEOUT_MS\)\s*\{\s*showFallback\(\);/);
+    // ...and so must a non-200/202 response and a rejected fetch (catch).
+    expect(body).toMatch(/\}\s*showFallback\(\);\s*\}\)\s*\.catch\(showFallback\)/);
+  });
+
   it("Scenario: a crafted session_id is HTML-escaped, not injected raw", async () => {
     const malicious = '"><script>alert(1)</script>';
     const res = await handleActivate(
