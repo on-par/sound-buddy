@@ -21,6 +21,23 @@ export interface AnalysisSummary {
   topFixes: string[];
 }
 
+// A parsed history file can be syntactically valid JSON (`null`, an array, an
+// object from an older/future schema) without being a real AnalysisSummary —
+// guards listAnalysisSummaries against handing the renderer a record it can't
+// safely read fields off of.
+function isAnalysisSummary(value: unknown): value is AnalysisSummary {
+  if (!value || typeof value !== 'object') return false;
+  const v = value as Record<string, unknown>;
+  return (
+    typeof v.date === 'string' &&
+    typeof v.sourceFilename === 'string' &&
+    typeof v.gradeLetter === 'string' &&
+    typeof v.score === 'number' &&
+    typeof v.recordingType === 'string' &&
+    Array.isArray(v.topFixes)
+  );
+}
+
 /**
  * Total size in bytes of every file under `dir`, walked recursively. Returns 0
  * when the folder does not exist yet (nothing recorded) — a missing storage dir
@@ -109,7 +126,12 @@ export async function listAnalysisSummaries(
     if (!entry.isFile() || !entry.name.endsWith('.json')) continue;
     try {
       const raw = await fsp.readFile(path.join(historyDir, entry.name), 'utf8');
-      records.push({ summary: JSON.parse(raw) as AnalysisSummary, filename: entry.name });
+      const summary = JSON.parse(raw) as AnalysisSummary;
+      // JSON.parse succeeding doesn't mean the shape is right — a record from
+      // a future/older schema or a manual edit could parse fine as `null`, an
+      // array, or an object missing fields the renderer assumes are there.
+      if (!isAnalysisSummary(summary)) continue;
+      records.push({ summary, filename: entry.name });
     } catch {
       // Corrupt or partially-written file — skip it, keep the rest.
     }

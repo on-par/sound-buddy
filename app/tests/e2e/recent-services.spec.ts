@@ -1,4 +1,5 @@
 import { test, expect, type ElectronApplication, type Page } from '@playwright/test';
+import * as path from 'path';
 import { launchApp } from './e2e-helpers';
 
 // Recent Services list (#147): the last 10 persisted report-card summaries,
@@ -135,5 +136,76 @@ test.describe('Sound Buddy E2E — recent services (#147)', () => {
 
     // Clear is disabled — there is no file backing this card to clear.
     await expect(window.locator('#reportcard-clear-btn')).toBeDisabled();
+  });
+
+  test('a crafted gradeLetter cannot break out of the style attribute or inject markup', async () => {
+    // gradeLetter is read back off a disk-stored record — historyDir() can be
+    // a user-configured, synced/shared storage folder (#91), so a record
+    // written by another install (or a hand-edited file) isn't fully trusted.
+    // Neither the list row nor the loaded report card should ever parse a
+    // crafted gradeLetter as markup.
+    const payload = '"><img src=x id=xss-probe onerror="window.__xssFired=true">';
+    await stubSummaries([summary({ sourceFilename: 'crafted.wav', gradeLetter: payload })]);
+    await openRecentTab();
+
+    await expect(window.locator('#recent-list .recent-row')).toHaveCount(1);
+    await expect(window.locator('#xss-probe')).toHaveCount(0);
+    await expect(window.locator('.recent-grade')).toHaveText(payload);
+
+    await window.locator('#recent-list .recent-row').first().click();
+    await expect(window.locator('#rc-content')).toBeVisible();
+    await expect(window.locator('#xss-probe')).toHaveCount(0);
+    await expect(window.locator('#rc-ring .letter')).toHaveText(payload);
+
+    const fired = await window.evaluate(() => (window as unknown as { __xssFired?: boolean }).__xssFired);
+    expect(fired).toBeUndefined();
+  });
+
+  test('a history record with a missing gradeLetter does not crash the report card render', async () => {
+    // Bypasses storage.ts's own shape validation (unit-tested separately) to
+    // exercise the renderer's own defensive fallback in gradeRingHTML — the
+    // two guards are independent layers against the same malformed-record risk.
+    await electronApp.evaluate(({ ipcMain }) => {
+      ipcMain.removeHandler('list-analysis-summaries');
+      ipcMain.handle('list-analysis-summaries', () => ({
+        success: true,
+        summaries: [{
+          date: '2026-07-01T00:00:00.000Z', sourceFilename: 'weird.wav',
+          score: 70, recordingType: 'Music', topFixes: [],
+        }],
+      }));
+    });
+
+    const pageErrors: string[] = [];
+    window.on('pageerror', (e) => pageErrors.push(String(e)));
+
+    await openRecentTab();
+    await window.locator('#recent-list .recent-row').first().click();
+
+    await expect(window.locator('#rc-content')).toBeVisible();
+    await expect(window.locator('#rc-filename')).toHaveText('weird.wav');
+    expect(pageErrors).toEqual([]);
+  });
+
+  test('loading a history entry resets a stale File-tab dropzone/Analyze state (#206)', async () => {
+    await stubSummaries([summary({ sourceFilename: 'worship.wav' })]);
+
+    // Load (without analyzing) a file first, so the dropzone shows "loaded"
+    // and Analyze is enabled — the exact state loadHistoryEntry must reset,
+    // otherwise Analyze would silently no-op on a null currentFilePath later.
+    const fixturePath = path.join(__dirname, '..', 'fixtures', 'silence.wav');
+    await window.evaluate((fp) => {
+      (window as unknown as { loadFile: (p: string) => void }).loadFile(fp);
+    }, fixturePath);
+    await expect(window.locator('#file-dropzone')).toHaveClass(/loaded/);
+    await expect(window.locator('#analyze-btn')).toBeEnabled();
+
+    await openRecentTab();
+    await window.locator('#recent-list .recent-row').first().click();
+    await expect(window.locator('#rc-content')).toBeVisible();
+
+    await expect(window.locator('#file-dropzone')).not.toHaveClass(/loaded/);
+    await expect(window.locator('#file-dropzone')).toContainText('Drop audio file here');
+    await expect(window.locator('#analyze-btn')).toBeDisabled();
   });
 });

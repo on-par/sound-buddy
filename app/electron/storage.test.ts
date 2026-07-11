@@ -215,4 +215,18 @@ describe('listAnalysisSummaries', () => {
     const result = await listAnalysisSummaries(historyDir);
     expect(result).toEqual([base]);
   });
+
+  it('skips a well-formed-JSON file that is not a real AnalysisSummary', async () => {
+    const historyDir = path.join(dir, 'history');
+    await saveAnalysisSummary(historyDir, base);
+    // Each of these parses fine but isn't a usable record: null, an array, an
+    // object missing a required field, and a field with the wrong type.
+    fs.writeFileSync(path.join(historyDir, 'null.json'), 'null');
+    fs.writeFileSync(path.join(historyDir, 'array.json'), '[]');
+    fs.writeFileSync(path.join(historyDir, 'missing-grade.json'), JSON.stringify({ ...base, gradeLetter: undefined }));
+    fs.writeFileSync(path.join(historyDir, 'wrong-type.json'), JSON.stringify({ ...base, score: '84' }));
+
+    const result = await listAnalysisSummaries(historyDir);
+    expect(result).toEqual([base]);
+  });
 });
