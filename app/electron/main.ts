@@ -7,7 +7,7 @@ import { registerIpcHandlers } from './ipc';
 import { initLogging, attachWindowLogging, log } from './logger';
 import { checkForUpdates, openReleasePage } from './updater';
 import { checkoutUrl } from './checkout';
-import { openFeedback } from './feedback';
+import { openFeedback, revealDiagnosticLog } from './feedback';
 import { ensureTrialStarted } from './license';
 import { maybeRefreshLicense } from './license-refresh';
 
@@ -172,6 +172,7 @@ app.whenReady().then(() => {
     void shell.openExternal(checkoutUrl(plan));
   });
   ipcMain.handle('open-feedback', () => openFeedback());
+  ipcMain.handle('reveal-diagnostics', () => revealDiagnosticLog());
 
   createWindow();
   log('main window created');

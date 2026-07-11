@@ -1319,6 +1319,24 @@
   </div>
 </div>
 
+<!-- Feedback dialog (#144). "Attach diagnostics" reveals the persistent log
+     file in Finder so the user can drag it into the email themselves — a
+     mailto: link can't carry an attachment, and unchecked stays byte-for-byte
+     identical to the #143 mailto behavior. Nothing is ever auto-attached or
+     uploaded. -->
+<div id="feedback-dialog" class="rig-dialog" style="display:none" role="dialog" aria-modal="true" aria-labelledby="feedback-dialog-title">
+  <div class="rig-dialog-card">
+    <div class="rig-dialog-title" id="feedback-dialog-title">Send Feedback</div>
+    <div class="ai-dialog-sub">Opens your email app with a pre-filled message. Nothing is sent automatically.</div>
+    <label class="ai-enable-row"><input type="checkbox" id="feedback-attach-diagnostics" />Attach diagnostics (reveals your log file)</label>
+    <p class="ai-dialog-note" id="feedback-diag-hint" style="display:none"></p>
+    <div class="rig-dialog-actions">
+      <button type="button" id="feedback-dialog-cancel" class="btn btn-secondary sm">Cancel</button>
+      <button type="button" id="feedback-dialog-send" class="btn btn-primary sm">Send Feedback</button>
+    </div>
+  </div>
+</div>
+
 <!-- Storage settings dialog (#91). Choose where recordings, stems and captured
      sessions live, and see how much disk they use. There is no cap — the usage
      figure is informational only. Point the folder inside an iCloud/Dropbox/
@@ -4525,7 +4543,7 @@ function renderReportCardFrames(src) {
 
 document.getElementById('reportcard-print-btn').addEventListener('click', () => window.print());
 document.getElementById('reportcard-feedback-btn').addEventListener('click', () => {
-  void window.soundBuddy.openFeedback();
+  openFeedbackDialog();
 });
 
 // #206: once a report card is showing, the file-loading dropzone is hidden
@@ -5129,6 +5147,63 @@ async function saveStorageSettings() {
   });
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape' && curveEl('curve-dialog').style.display !== 'none') closeCurveEditor();
+  });
+})();
+
+/* ══ Feedback dialog (#144) ══ */
+// The unchecked path stays byte-for-byte identical to the #143 mailto
+// behavior — Send just fires openFeedback(). The checkbox reveals the log
+// file in Finder at check-time (not send-time) so the drag-in instructions
+// are visible before the mail client opens.
+const FEEDBACK_DIAG_REVEALED_TEXT = 'Your log file is now selected in Finder — drag it into the email before sending. It never leaves your machine unless you attach it.';
+const FEEDBACK_DIAG_MISSING_TEXT = 'No diagnostic log exists yet — try again after using the app.';
+const FEEDBACK_DIAG_ERROR_TEXT = 'Could not reveal your log file — try unchecking and checking the box again.';
+
+function openFeedbackDialog() {
+  aiEl('feedback-attach-diagnostics').checked = false;
+  const hint = aiEl('feedback-diag-hint');
+  hint.style.display = 'none';
+  hint.textContent = '';
+  aiEl('feedback-dialog').style.display = 'flex';
+}
+
+function closeFeedbackDialog() {
+  aiEl('feedback-dialog').style.display = 'none';
+}
+
+async function onFeedbackAttachToggle() {
+  const checkbox = aiEl('feedback-attach-diagnostics');
+  const hint = aiEl('feedback-diag-hint');
+  if (!checkbox.checked) {
+    hint.style.display = 'none';
+    return;
+  }
+  let r;
+  try { r = await window.soundBuddy.revealDiagnostics(); }
+  catch { r = null; }
+  // The checkbox may have been unchecked again while the reveal was in flight.
+  if (!checkbox.checked) return;
+  // Distinguish "no log file yet" (r.missing) from an unexpected IPC/main-process
+  // failure (r is null/malformed) — mislabeling the latter as "no log yet" would
+  // send the user chasing app activity instead of retrying the checkbox.
+  if (r && r.revealed) hint.textContent = FEEDBACK_DIAG_REVEALED_TEXT;
+  else if (r && r.missing) hint.textContent = FEEDBACK_DIAG_MISSING_TEXT;
+  else hint.textContent = FEEDBACK_DIAG_ERROR_TEXT;
+  hint.style.display = '';
+}
+
+function sendFeedback() {
+  void window.soundBuddy.openFeedback();
+  closeFeedbackDialog();
+}
+
+(() => {
+  aiEl('feedback-dialog-cancel').addEventListener('click', closeFeedbackDialog);
+  aiEl('feedback-dialog-send').addEventListener('click', sendFeedback);
+  aiEl('feedback-attach-diagnostics').addEventListener('change', onFeedbackAttachToggle);
+  aiEl('feedback-dialog').addEventListener('click', (e) => { if (e.target === aiEl('feedback-dialog')) closeFeedbackDialog(); });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && aiEl('feedback-dialog').style.display !== 'none') closeFeedbackDialog();
   });
 })();
 
