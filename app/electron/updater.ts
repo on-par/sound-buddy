@@ -62,7 +62,7 @@ async function fetchLatest(): Promise<UpdateInfo | null> {
  */
 export async function checkForUpdates(win: BrowserWindow | null, silent: boolean): Promise<void> {
   const current = app.getVersion();
-  let latest: UpdateInfo | null = null;
+  let latest: UpdateInfo | null;
   try {
     latest = await fetchLatest();
   } catch (err) {

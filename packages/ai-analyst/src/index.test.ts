@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import type { AudioAnalysisResult, SceneDiff, Insight } from '@sound-buddy/shared'
+import type { AudioAnalysisResult, SceneDiff } from '@sound-buddy/shared'
 
 const mockCreate = vi.fn()
 const mockStream = vi.fn()

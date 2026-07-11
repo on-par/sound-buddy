@@ -1,7 +1,6 @@
 import { describe, it, expect } from 'vitest';
 
 // track-workspace is a plain classic script (window.trackWorkspace / module.exports).
-// eslint-disable-next-line @typescript-eslint/no-var-requires
 const { idleChannel, addEnabled, isEmpty } = require('./track-workspace.js') as {
   idleChannel: (bandKeys: string[]) => {
     name: undefined;

@@ -20,9 +20,7 @@ import { fileURLToPath } from 'node:url';
 // disk). The mock factory is hoisted above the ipc import, so resourcesPath is
 // set before ipc.ts's module body runs.
 vi.mock('electron', () => {
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
   const p = require('node:path') as typeof import('node:path');
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
   const os = require('node:os') as typeof import('node:os');
   // App Vitest runs with cwd = app/, so the repo root is one level up.
   (process as { resourcesPath?: string }).resourcesPath = p.resolve(

@@ -2,7 +2,6 @@ import { describe, it, expect } from 'vitest';
 
 // The reconciler is a plain classic script (window.rigReconcile in the browser,
 // module.exports under Node) so it can be exercised here without a DOM.
-// eslint-disable-next-line @typescript-eslint/no-var-requires
 const { reconcileRigDevice, clampChannelConfig, resolveStripLabel } = require('./rig-reconcile.js') as {
   reconcileRigDevice: (
     deviceName: string,

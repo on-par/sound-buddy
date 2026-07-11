@@ -27,7 +27,7 @@ export async function runSox(filePath: string): Promise<SoxStats> {
   // sox writes stat output to stderr, but exit code varies by platform/version:
   // some versions exit 0 (success) with stderr populated, others exit non-zero.
   // We need to capture stderr in both cases.
-  let stderr = "";
+  let stderr: string;
   try {
     const result = await execFileAsync("sox", [filePath, "-n", "stat"], { encoding: "utf8" });
     // sox succeeded — stderr is on the resolved value
@@ -37,11 +37,11 @@ export async function runSox(filePath: string): Promise<SoxStats> {
     const e = err as { stderr?: string; stdout?: string };
     stderr = e.stderr ?? "";
     if (!stderr) {
-      throw new Error(`sox failed with no stderr output: ${String(err)}`);
+      throw new Error(`sox failed with no stderr output: ${String(err)}`, { cause: err });
     }
   }
 
-  let output = stderr;
+  const output = stderr;
 
   // Some sox versions omit fields for silent/duplicate channels. Make parsing resilient.
   function safeParseField(label: string): number | undefined {

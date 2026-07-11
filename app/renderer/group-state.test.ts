@@ -1,7 +1,6 @@
 import { describe, it, expect } from 'vitest';
 
 // group-state is a plain classic script (window.groupState / module.exports).
-// eslint-disable-next-line @typescript-eslint/no-var-requires
 const { groupOf, assign, pruneStrip, addGroup, removeGroup, renameGroup, ungrouped } = require('./group-state.js') as {
   groupOf: (groups: Group[] | null, idx: number) => number;
   assign: (groups: Group[] | null, idx: number, g: number) => Group[];

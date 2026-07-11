@@ -4,7 +4,6 @@ import { describe, it, expect } from 'vitest';
 // pattern as ideal-curves.js / license-state.js. Require it directly so these
 // tests exercise the exact bytes the renderer loads via <script src>. The test
 // file is .js (per #130) — Vitest picks it up via the renderer/**/*.test.js glob.
-// eslint-disable-next-line @typescript-eslint/no-var-requires
 const grading = require('./grading.js');
 
 // Seven-band table, all equal → every band's diff-from-others is 0. Overriding
