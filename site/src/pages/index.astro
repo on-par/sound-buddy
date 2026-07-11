@@ -180,7 +180,7 @@ const tiers = [
           <span class="wa-icon" aria-hidden="true">🖥</span>
           <span class="eyebrow">On this website</span>
           <h3>Decide if it's right for you</h3>
-          <ul class="wa-list">
+          <ul class="rc-bullets wa-list">
             <li>See a real report card and what it grades</li>
             <li>Confirm it's local-first, with no account required</li>
             <li>Compare pricing tiers and check your Mac against system requirements</li>
@@ -190,7 +190,7 @@ const tiers = [
           <span class="wa-icon" aria-hidden="true">🎚</span>
           <span class="eyebrow">Inside the app</span>
           <h3>Where the work happens</h3>
-          <ul class="wa-list">
+          <ul class="rc-bullets wa-list">
             <li>Record every channel straight from your interface</li>
             <li>Generate your graded report card — fully on your Mac</li>
             <li>Replay the room with virtual soundcheck, week after week</li>
@@ -349,9 +349,7 @@ const tiers = [
   .wa-card { padding: 28px 26px; display: flex; flex-direction: column; gap: 4px; }
   .wa-icon { display: inline-flex; align-items: center; justify-content: center; width: 36px; height: 36px; border-radius: var(--radius-md); background: var(--gold-tint); color: var(--gold-text); font-size: 18px; margin-bottom: 14px; }
   .wa-card h3 { font: var(--fw-semibold) var(--fs-h2)/var(--lh-snug) var(--font-sans); color: var(--text-primary); margin-top: 6px; margin-bottom: 4px; }
-  .wa-list { list-style: none; margin-top: 14px; display: flex; flex-direction: column; gap: 12px; }
-  .wa-list li { position: relative; padding-left: 24px; font: var(--fw-regular) var(--fs-body-sm)/var(--lh-normal) var(--font-sans); color: var(--text-secondary); }
-  .wa-list li::before { content: ''; position: absolute; left: 0; top: 8px; width: 8px; height: 8px; border-radius: 50%; background: var(--gold-500); }
+  .wa-list { margin-top: 14px; }
 
   /* ── Pricing ── */
   .pricing { background: var(--bg-app); }
