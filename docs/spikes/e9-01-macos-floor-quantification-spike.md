@@ -55,7 +55,7 @@ literally compiled to run on, independent of the Info.plist claim.
 
 4. **No macOS-26-specific API usage.** The only macOS-native calls in the app are Electron's
    `systemPreferences.getMediaAccessStatus('microphone')` and `askForMediaAccess('microphone')`
-   (`app/electron/ipc.ts`) — both available since **macOS 10.14**. Live-capture device enumeration
+   (`app/electron/ipc/live-capture.ts`) — both available since **macOS 10.14**. Live-capture device enumeration
    uses these plus standard Electron/web APIs. Report-card generation shells out to the bundled
    `sox`/`ffprobe`/`python` (floors 11–14 above). No AVFoundation/Core Audio 26-only symbol is
    referenced anywhere in app or package source.

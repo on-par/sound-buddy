@@ -21,7 +21,7 @@
   // #131 — the single source of truth for the grading thresholds shared by the
   // letter grade, the ring score, and the report-card status pills, so each of
   // those numbers lives in exactly one place. Change a value and both the grade
-  // and its matching pill move together (proven by grading.test.js). Copy-only
+  // and its matching pill move together (proven by grading/*.test.js). Copy-only
   // recommendation cutoffs (e.g. the sub-bass / brilliance advice wording) stay
   // inline in computeRecommendations — they shape phrasing, not the grade or the
   // pills, and reconciling them is out of scope for #131.

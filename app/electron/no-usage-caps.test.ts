@@ -13,9 +13,16 @@ const appRoot = path.resolve(fileURLToPath(new URL('.', import.meta.url)), '..')
 const read = (rel: string) => fs.readFileSync(path.join(appRoot, rel), 'utf8');
 
 // Every source file that participates in feature gating, main and renderer.
+// electron/ipc.ts was split into ipc/*.ts by domain (#225) — list the modules
+// that actually gate features (live capture, playback, the AI narrative,
+// settings) so this guardrail keeps scanning the same surface it did as one
+// file.
 const GATING_SOURCES = [
   'electron/license.ts',
-  'electron/ipc.ts',
+  'electron/ipc/live-capture.ts',
+  'electron/ipc/narrative.ts',
+  'electron/ipc/playback.ts',
+  'electron/ipc/settings.ts',
   'electron/settings.ts',
   'renderer/license-state.js',
 ];

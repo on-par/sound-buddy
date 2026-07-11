@@ -8,12 +8,13 @@ import { fileURLToPath } from 'node:url';
 //
 // The sox/ffprobe/spectrum parsers are duplicated: the canonical copy lives in
 // @sound-buddy/audio-engine (MIT, used by the CLI) and an inline copy lives in
-// app/electron/ipc.ts (used by the Electron app). Nothing stopped the two from
-// silently diverging. This test runs BOTH copies against the same committed
-// fixture and asserts their numeric output is equal — a divergence fails here.
-// It is the safety net that makes de-duplicating them (#151) safe.
+// app/electron/ipc/analysis.ts (used by the Electron app; re-exported from
+// ipc.ts, split by domain in #225). Nothing stopped the two from silently
+// diverging. This test runs BOTH copies against the same committed fixture and
+// asserts their numeric output is equal — a divergence fails here. It is the
+// safety net that makes de-duplicating them (#151) safe.
 //
-// ipc.ts computes SCRIPTS_DIR/SPECTRUM_SCRIPT at module load from
+// ipc/shared.ts computes SCRIPTS_DIR/SPECTRUM_SCRIPT at module load from
 // app.isPackaged + process.resourcesPath. We mock Electron in the packaged
 // shape and point resourcesPath at the real audio-engine package so spectrum.py
 // resolves; the sox/ffprobe binaries fall back to PATH (no bundled bin dir on
