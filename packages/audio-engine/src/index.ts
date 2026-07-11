@@ -269,6 +269,16 @@ async function runListDevices(): Promise<void> {
   });
 }
 
+// The narrative text logged here can carry content from a remote AI provider
+// (or Ollama) response. JSON.stringify escapes newlines/control characters
+// into literal `\n`-style sequences before it hits the terminal, so a
+// crafted response can't forge extra log lines or inject terminal escape
+// sequences (CWE-117 log injection).
+function logLlmFailure(err: unknown): void {
+  const detail = err instanceof Error ? (err.stack ?? err.message) : String(err);
+  console.error(`\nLLM analysis failed:`, JSON.stringify(detail));
+}
+
 async function runSingleFile(filePath: string, names: string[], ollama: boolean, ollamaModel: string, ollamaHost: string): Promise<void> {
   console.log(`\nAnalyzing ${filePath}...`);
   console.log("");
@@ -307,7 +317,7 @@ async function runSingleFile(filePath: string, names: string[], ollama: boolean,
         await getEngineerRead(report);
       }
     } catch (err) {
-      console.error("\nLLM analysis failed:", err);
+      logLlmFailure(err);
       process.exit(1);
     }
     console.log("");
@@ -359,7 +369,7 @@ async function runSingleFile(filePath: string, names: string[], ollama: boolean,
       await analyzeMultiChannel(analysis, channelAnalyses, comparison);
     }
   } catch (err) {
-    console.error("\nLLM analysis failed:", err);
+    logLlmFailure(err);
   }
 
   console.log("");
@@ -418,7 +428,7 @@ async function runDirectory(dir: string, names: string[], ollama: boolean, ollam
       await analyzeMultiChannel(null, channelAnalyses, comparison);
     }
   } catch (err) {
-    console.error("\nLLM analysis failed:", err);
+    logLlmFailure(err);
   }
 
   console.log("");
