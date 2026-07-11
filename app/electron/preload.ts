@@ -57,6 +57,9 @@ contextBridge.exposeInMainWorld('soundBuddy', {
 
   // Feedback mailto (#143) — opens the user's mail client; the app sends nothing.
   openFeedback: () => ipcRenderer.invoke('open-feedback'),
+  // Attach diagnostics (#144) — reveals the log file in Finder so the user can
+  // drag it into the feedback email themselves. Never attached automatically.
+  revealDiagnostics: () => ipcRenderer.invoke('reveal-diagnostics'),
 
   // Capture rigs (#36) — backend only for now; the Live-tab UI arrives in #37.
   listRigs: () => ipcRenderer.invoke('list-rigs'),
