@@ -24,6 +24,6 @@
     "typescript": "^5",
     "tsx": "^4",
     "@types/node": "^22",
-    "vitest": "^2"
+    "vitest": "^4.1.10"
   }
 }

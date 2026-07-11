@@ -1,0 +1,82 @@
+version: 2
+
+# One entry per npm package boundary (root workspaces + the three standalone
+# packages, each with their own package-lock.json). Updates are grouped so a
+# weekly run opens one PR per directory instead of one per dependency (#224).
+#
+# TypeScript 5→7 and Electron 31→43 are known two-major jumps (see #224) that
+# need a deliberate, hand-reviewed pass — packaging/signing surface for
+# Electron, compiler-behavior surface for TypeScript — not an automated bump.
+# They're excluded from grouping and ignored on major versions so Dependabot
+# keeps proposing their minor/patch updates without opening a major-version PR
+# that would just sit unmergeable until that follow-up work happens.
+updates:
+  - package-ecosystem: npm
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+    groups:
+      npm-dependencies:
+        patterns:
+          - "*"
+        exclude-patterns:
+          - "typescript"
+    ignore:
+      - dependency-name: "typescript"
+        update-types: ["version-update:semver-major"]
+    open-pull-requests-limit: 10
+
+  - package-ecosystem: npm
+    directory: "/app"
+    schedule:
+      interval: weekly
+      day: monday
+    groups:
+      npm-dependencies:
+        patterns:
+          - "*"
+        exclude-patterns:
+          - "typescript"
+          - "electron"
+          - "electron-builder"
+    ignore:
+      - dependency-name: "typescript"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "electron"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "electron-builder"
+        update-types: ["version-update:semver-major"]
+    open-pull-requests-limit: 10
+
+  - package-ecosystem: npm
+    directory: "/worker"
+    schedule:
+      interval: weekly
+      day: tuesday
+    groups:
+      npm-dependencies:
+        patterns:
+          - "*"
+        exclude-patterns:
+          - "typescript"
+    ignore:
+      - dependency-name: "typescript"
+        update-types: ["version-update:semver-major"]
+    open-pull-requests-limit: 10
+
+  - package-ecosystem: npm
+    directory: "/site"
+    schedule:
+      interval: weekly
+      day: tuesday
+    groups:
+      npm-dependencies:
+        patterns:
+          - "*"
+        exclude-patterns:
+          - "typescript"
+    ignore:
+      - dependency-name: "typescript"
+        update-types: ["version-update:semver-major"]
+    open-pull-requests-limit: 10
