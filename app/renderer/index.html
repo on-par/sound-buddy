@@ -1191,6 +1191,7 @@
       <span class="panel-title">Report Card</span>
       <div class="rc-toolbar-actions">
         <button class="btn btn-secondary sm" id="reportcard-clear-btn" data-icon="x" disabled>Clear</button>
+        <button class="btn btn-secondary sm" id="reportcard-load-btn" data-icon="file-audio" style="display:none">Load a file…</button>
         <button class="btn btn-secondary sm" id="reportcard-feedback-btn" data-icon="info">Send Feedback</button>
         <button class="btn btn-secondary sm" id="reportcard-print-btn" data-icon="download" disabled>Export PDF</button>
         <button class="btn btn-secondary sm" id="grade-own-btn" data-icon="waveform" disabled>Grade your own service</button>
@@ -3350,10 +3351,15 @@ async function runFileAnalysis(fp) {
   // Disable Clear while an analysis is in flight so it can't null currentAnalysis
   // mid-run and then have this continuation re-set it + flip the card back (#206).
   document.getElementById('reportcard-clear-btn').disabled = true;
+  // Same reasoning for Load a file… (#208): it stays visible for the whole
+  // in-flight window (isLiveCard only flips false once currentAnalysis is
+  // set below), so without this a second click could fire a concurrent pick.
+  document.getElementById('reportcard-load-btn').disabled = true;
 
   const result = await sb.analyzeFile({ filePath: fp });
 
   document.getElementById('analyze-btn').disabled = false;
+  document.getElementById('reportcard-load-btn').disabled = false;
 
   if (result.cancelled) {
     // Cancelled mid-run — return to the pre-analysis idle state (no report
@@ -4478,6 +4484,8 @@ function renderReportCardFromHistory(summary) {
   gradeOwnBtn.disabled = false;
   // No file backs this card — there is nothing for Clear to release (#206).
   clearBtn.disabled = true;
+  // A history/summary card is never a live-capture card (#208).
+  document.getElementById('reportcard-load-btn').style.display = 'none';
 
   document.getElementById('rc-filename').textContent = summary.sourceFilename;
   document.getElementById('rc-date').textContent = new Date(summary.date).toLocaleString();
@@ -4523,6 +4531,11 @@ function renderReportCard() {
   const printBtn = document.getElementById('reportcard-print-btn');
   const clearBtn = document.getElementById('reportcard-clear-btn');
   const gradeOwnBtn = document.getElementById('grade-own-btn');
+  const loadBtn = document.getElementById('reportcard-load-btn');
+  // Mirrors getReportCardSource()'s priority (currentAnalysis wins, else
+  // liveWindows) — true exactly when the card on screen is the live-capture
+  // fallback, which has no file backing it for Clear or the dropzone (#208).
+  const isLiveCard = !currentAnalysis && liveWindows.length > 0;
 
   if (!src) {
     empty.style.display = 'flex';
@@ -4530,6 +4543,8 @@ function renderReportCard() {
     printBtn.disabled = true;
     gradeOwnBtn.disabled = true;
     clearBtn.disabled = true;
+    // Empty state already shows the dropzone.
+    loadBtn.style.display = 'none';
     // No card to improve on — never leave the upgrade card beside the empty
     // state (e.g. after a live capture clears the last analysis).
     lastReportGrade = null;
@@ -4544,6 +4559,10 @@ function renderReportCard() {
   // live-capture card (currentAnalysis null, liveWindows populated) has no
   // file to clear, so leaving Clear enabled would no-op/flicker (#206).
   clearBtn.disabled = !currentAnalysis;
+  // The live-capture card hides the file dropzone behind it (#rc-empty only
+  // renders when no card is showing) — surface this button as the only
+  // in-window way to load a different file while it's up (#208).
+  loadBtn.style.display = isLiveCard ? '' : 'none';
   // Undo any summary-only hiding a previous historyEntry render left behind
   // (#147) — a real analysis always shows every section its own data affects.
   document.getElementById('rc-metrics-section').style.display = '';
@@ -4810,6 +4829,19 @@ document.getElementById('reportcard-clear-btn').addEventListener('click', () => 
   analyzeBtn.innerHTML = iconSvg('waveform', 16) + 'Analyze';
   setSpectrumState('empty');
   renderReportCard(); // flips #rc-content → #rc-empty (when no live card remains)
+});
+
+// #208: while a live-capture card is showing, the file dropzone is hidden behind it
+// (#rc-empty only renders when no card is present) and Clear is disabled (no file to
+// release). This toolbar button — visible only for the live-capture card — opens the
+// picker and analyzes directly. The resulting file card replaces the live card via
+// getReportCardSource() priority; liveWindows is left untouched so the Live tab's
+// window history survives.
+document.getElementById('reportcard-load-btn').addEventListener('click', async () => {
+  try {
+    const fp = await sb.openFileDialog();
+    if (fp) { loadFile(fp); await runFileAnalysis(fp); }
+  } catch { /* user cancelled */ }
 });
 
 /* ══ License (#54) ══ */

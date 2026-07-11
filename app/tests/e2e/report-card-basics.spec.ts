@@ -142,4 +142,50 @@ test.describe('Sound Buddy E2E — report card basics', () => {
     await expect(window.locator('#rc-empty')).toBeVisible();
     await expect(window.locator('#rc-content')).toBeHidden();
   });
+
+  test('Load a file… loads a different file over a live-capture card (#208)', async () => {
+    // Simulate a finished live-capture session so the Report Card falls back to
+    // the live-capture card — the same setup as the Clear test above.
+    await electronApp.evaluate(({ BrowserWindow }) => {
+      BrowserWindow.getAllWindows()[0].webContents.send('live-event', {
+        type: 'window',
+        window: 1,
+        channels: [{
+          name: 'Vocals', rms: -18, peak: -6, clipping: false, centroid: 2400,
+          bands: { sub_bass: -58, bass: -30, low_mid: -24, mid: -12, high_mid: -20, presence: -28, brilliance: -80 },
+        }],
+      });
+    });
+
+    // Navigate away and back: renderReportCard() only runs on a mode-tab
+    // transition, and a prior test already left currentMode on 'reportcard' —
+    // a same-tab click would no-op and never pick up the new liveWindows data.
+    await window.locator('.mode-tab[data-mode="dir"]').click();
+    await window.locator('.mode-tab[data-mode="reportcard"]').click();
+    await expect(window.locator('#rc-content')).toBeVisible();
+    await expect(window.locator('#rc-filename')).toContainText('Live capture');
+
+    // The live-only card has no file to Clear (#206), but the dropzone is
+    // hidden behind #rc-content — the load button is the only in-window path.
+    const loadBtn = window.locator('#reportcard-load-btn');
+    await expect(loadBtn).toBeVisible();
+    await expect(window.locator('#reportcard-clear-btn')).toBeDisabled();
+
+    // Stub the native picker (main-process IPC handler, not the renderer-side
+    // sb.openFileDialog — contextBridge-exposed APIs reject page-side
+    // mutation) so the click resolves to a fixture path without a real dialog.
+    const fixturePath = path.join(__dirname, '..', 'fixtures', 'silence.wav');
+    await electronApp.evaluate(({ ipcMain }, fp) => {
+      ipcMain.removeHandler('open-file-dialog');
+      ipcMain.handle('open-file-dialog', () => fp);
+    }, fixturePath);
+
+    await loadBtn.click();
+
+    // The file-backed card replaces the live-capture card.
+    await expect(window.locator('#rc-filename')).not.toContainText('Live capture');
+    await expect(window.locator('#rc-filename')).toHaveText('silence.wav');
+    await expect(loadBtn).toBeHidden();
+    await expect(window.locator('#reportcard-clear-btn')).toBeEnabled();
+  });
 });
