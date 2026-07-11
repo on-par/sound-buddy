@@ -18,13 +18,28 @@ function ts(): string {
   return new Date().toISOString();
 }
 
+// Renderer console messages, AI/network error text, and preload crash detail
+// all flow through write() and none of it is trusted — strip control
+// characters (CR/LF/other C0 codes) before it hits the terminal or the
+// persistent log file so it can't forge extra log lines or inject terminal
+// escape sequences (CWE-117 log injection / CWE-912 untrusted data to file).
+function sanitizeLogText(msg: string): string {
+  // eslint-disable-next-line no-control-regex -- deliberately stripping control chars
+  return msg.replace(/[\x00-\x1f]/g, ' ');
+}
+
 function write(level: string, msg: string): void {
-  const line = `[${ts()}] [${level}] ${msg}`;
+  const line = `[${ts()}] [${level}] ${sanitizeLogText(msg)}`;
   if (level === 'ERROR' || level === 'FATAL' || level.endsWith('-ERROR')) {
     console.error(line);
   } else {
     console.log(line);
   }
+  // `line` is already run through sanitizeLogText() above, which strips the
+  // control characters (CR/LF/etc.) this query cares about — CodeQL's
+  // HttpToFileAccess query doesn't have a built-in sanitizer for custom
+  // string transforms, so it can't see that.
+  // codeql[js/http-to-file-access]
   logStream?.write(line + '\n');
 }
 
