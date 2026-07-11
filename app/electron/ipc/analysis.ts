@@ -8,7 +8,14 @@
 import { ipcMain } from 'electron';
 import * as fs from 'fs';
 import { log, logError } from '../logger';
-import { execFileAsync, toolBin, pythonBin, childEnv, SPECTRUM_SCRIPT, DEMO_AUDIO } from './shared';
+import { toolBin, pythonBin, childEnv, SPECTRUM_SCRIPT, DEMO_AUDIO } from './shared';
+import {
+  execFileWithTimeout,
+  SubprocessTimeoutError,
+  SOX_TIMEOUT_MS,
+  FFPROBE_TIMEOUT_MS,
+  SPECTRUM_TIMEOUT_MS,
+} from './timeout';
 
 export interface SoxStats {
   samplesRead: number;
@@ -125,9 +132,16 @@ function amplitudeToDbfs(amplitude: number): number {
 export async function runSox(filePath: string): Promise<SoxStats> {
   let stderr: string;
   try {
-    const result = await execFileAsync(toolBin('sox'), [filePath, '-n', 'stat'], { encoding: 'utf8' });
+    const result = await execFileWithTimeout(
+      toolBin('sox'),
+      [filePath, '-n', 'stat'],
+      { encoding: 'utf8' },
+      'sox stat',
+      SOX_TIMEOUT_MS,
+    );
     stderr = result.stderr ?? '';
   } catch (err: unknown) {
+    if (err instanceof SubprocessTimeoutError) throw err;
     const e = err as { stderr?: string };
     stderr = e.stderr ?? '';
     if (!stderr) throw new Error(`sox failed: ${String(err)}`, { cause: err });
@@ -168,13 +182,13 @@ export async function runSox(filePath: string): Promise<SoxStats> {
 // ─── FFPROBE ──────────────────────────────────────────────────────────────────
 
 export async function runFfprobe(filePath: string): Promise<FfprobeResult> {
-  const { stdout } = await execFileAsync(toolBin('ffprobe'), [
+  const { stdout } = await execFileWithTimeout(toolBin('ffprobe'), [
     '-v', 'quiet',
     '-print_format', 'json',
     '-show_format',
     '-show_streams',
     filePath,
-  ], { encoding: 'utf8' });
+  ], { encoding: 'utf8' }, 'ffprobe', FFPROBE_TIMEOUT_MS);
 
   const raw = JSON.parse(stdout) as {
     streams?: Array<{
@@ -239,11 +253,17 @@ export async function runFfprobe(filePath: string): Promise<FfprobeResult> {
 // ─── SPECTRUM ─────────────────────────────────────────────────────────────────
 
 export async function runSpectrum(filePath: string): Promise<SpectrumResult> {
-  const { stdout } = await execFileAsync(pythonBin(), [SPECTRUM_SCRIPT, filePath], {
-    encoding: 'utf8',
-    maxBuffer: 1024 * 1024,
-    env: childEnv(),
-  });
+  const { stdout } = await execFileWithTimeout(
+    pythonBin(),
+    [SPECTRUM_SCRIPT, filePath],
+    {
+      encoding: 'utf8',
+      maxBuffer: 1024 * 1024,
+      env: childEnv(),
+    },
+    'spectrum analysis',
+    SPECTRUM_TIMEOUT_MS,
+  );
 
   const raw = JSON.parse(stdout) as {
     bands: {

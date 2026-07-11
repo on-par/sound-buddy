@@ -6,15 +6,11 @@
 // monolithic ipc.ts (#225) since every domain module spawns sox/ffprobe/python
 // the same way.
 
-import { execFile } from 'child_process';
-import { promisify } from 'util';
 import * as path from 'path';
 import * as fs from 'fs';
 import { app } from 'electron';
 import { log } from '../logger';
 import { getSettings } from '../settings';
-
-export const execFileAsync = promisify(execFile);
 
 // Dev repo root (three levels up from app/dist/electron/). Only meaningful when
 // running from a checkout — inside a packaged .app this points into the bundle.

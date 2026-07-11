@@ -1,5 +1,3 @@
-import { execFile } from "node:child_process";
-import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
 import { join, dirname } from "node:path";
 import type {
@@ -9,6 +7,7 @@ import type {
   ContentClass,
   ContentType,
 } from "../types.js";
+import { execFileWithTimeout, SPECTRUM_TIMEOUT_MS } from "./timeout.js";
 
 const CONTENT_CLASSES: ContentClass[] = ["speech", "music", "silence", "unknown"];
 const CONTENT_TYPES: ContentType[] = ["speech", "music", "mixed", "silence"];
@@ -19,8 +18,6 @@ function asContentClass(v: string | undefined): ContentClass {
 function asContentType(v: string | undefined): ContentType | undefined {
   return CONTENT_TYPES.includes(v as ContentType) ? (v as ContentType) : undefined;
 }
-
-const execFileAsync = promisify(execFile);
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -50,10 +47,16 @@ interface RawSpectrumOutput {
 }
 
 export async function runSpectrum(filePath: string): Promise<SpectrumResult> {
-  const { stdout } = await execFileAsync("python3", [SPECTRUM_SCRIPT, filePath], {
-    encoding: "utf8",
-    maxBuffer: 1024 * 1024,
-  });
+  const { stdout } = await execFileWithTimeout(
+    "python3",
+    [SPECTRUM_SCRIPT, filePath],
+    {
+      encoding: "utf8",
+      maxBuffer: 1024 * 1024,
+    },
+    "spectrum analysis",
+    SPECTRUM_TIMEOUT_MS,
+  );
 
   const raw: RawSpectrumOutput = JSON.parse(stdout);
 

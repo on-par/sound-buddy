@@ -1,8 +1,5 @@
-import { execFile } from "node:child_process";
-import { promisify } from "node:util";
 import type { SoxStats } from "../types.js";
-
-const execFileAsync = promisify(execFile);
+import { execFileWithTimeout, SOX_TIMEOUT_MS, SubprocessTimeoutError } from "./timeout.js";
 
 /**
  * Parse a single numeric value from sox stat output.
@@ -29,10 +26,17 @@ export async function runSox(filePath: string): Promise<SoxStats> {
   // We need to capture stderr in both cases.
   let stderr: string;
   try {
-    const result = await execFileAsync("sox", [filePath, "-n", "stat"], { encoding: "utf8" });
+    const result = await execFileWithTimeout(
+      "sox",
+      [filePath, "-n", "stat"],
+      { encoding: "utf8" },
+      "sox stat",
+      SOX_TIMEOUT_MS,
+    );
     // sox succeeded — stderr is on the resolved value
     stderr = result.stderr ?? "";
   } catch (err: unknown) {
+    if (err instanceof SubprocessTimeoutError) throw err;
     // sox exited non-zero — stderr is on the error object
     const e = err as { stderr?: string; stdout?: string };
     stderr = e.stderr ?? "";
