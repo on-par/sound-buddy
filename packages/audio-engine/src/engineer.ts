@@ -12,11 +12,11 @@ const SYSTEM_PROMPT = `You are a professional audio engineer with 20+ years of e
 
 const MULTI_CHANNEL_SYSTEM_PROMPT = `You are a professional mixing engineer analyzing a multi-track recording from a Midas M32R console. Given the acoustic measurements of each channel and the full mix, identify: frequency masking between channels, problematic EQ buildups, channels that need low-cut or high-cut filters, channels competing in the same frequency range, and give specific actionable EQ/dynamics recommendations per channel. Reference actual dB values.`;
 
-function fmt(n: number, decimals = 2): string {
+export function fmt(n: number, decimals = 2): string {
   return isFinite(n) ? n.toFixed(decimals) : "-inf";
 }
 
-function buildMultiChannelPrompt(
+export function buildMultiChannelPrompt(
   mix: AudioAnalysis | null,
   channels: ChannelAnalysis[],
   comparison: ChannelComparison
