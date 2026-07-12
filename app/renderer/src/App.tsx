@@ -10,6 +10,7 @@ import {
 } from '../../../packages/audio-engine/src/profiles/index.js';
 import * as spectrumDisplay from './spectrum-display';
 import * as reportCard from './report-card';
+import * as liveCapturePanel from './live-capture-panel';
 import rootMarkup from './root-markup.html?raw';
 import rigReconcileSrc from '../rig-reconcile.js?raw';
 import collapseStateSrc from '../collapse-state.js?raw';
@@ -72,6 +73,7 @@ export default function App() {
     };
     (window as Window & { spectrumDisplay?: unknown }).spectrumDisplay = spectrumDisplay;
     (window as Window & { reportCard?: unknown }).reportCard = reportCard;
+    (window as Window & { liveCapturePanel?: unknown }).liveCapturePanel = liveCapturePanel;
     for (const src of BOOT_SCRIPTS) {
       const script = document.createElement('script');
       script.textContent = src;

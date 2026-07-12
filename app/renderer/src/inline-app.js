@@ -78,8 +78,15 @@ const {
   veqBarsAndLabelsHTML, eqTargetLineSVG, eqCentroidHTML, eqBarsHTML,
   veqLoudestIdx, veqBandView, veqValBottom,
 } = window.spectrumDisplay;
-// live-event band keys are snake_case
-const LIVE_BAND_KEYS = ['sub_bass', 'bass', 'low_mid', 'mid', 'high_mid', 'presence', 'brilliance'];
+
+/* ══ Live-capture panel rendering — extracted to live-capture-panel.ts (#307),
+   bridged onto window by App.tsx like spectrumDisplay/reportCard. ══ */
+const {
+  LIVE_BAND_KEYS, deviceOptionLabel, deviceListView, deviceChannelCount,
+  channelOptions, liveBandCurve, veqArcSVG, veqChannelHTML, liveMetersHTML,
+} = window.liveCapturePanel;
+// Renamed to avoid colliding with the zero-arg usedChannelCount() wrapper below.
+const lcUsedChannelCount = window.liveCapturePanel.usedChannelCount;
 
 /* ══ Ideal EQ profiles + comparison (PRD 05) ══
    Data and comparison logic come from @sound-buddy/audio-engine's profiles module
@@ -770,100 +777,6 @@ function stopPlaybackBandLoop(evt) {
   renderScrub(); // whole-file (or carried scrub) state — dismisses the realtime overlay
 }
 
-/* ── Live vertical-bar EQ ──
- * Each channel renders as a compact analyzer arc — the same spectrumCurveSVG
- * component used for whole-file quality, fed a 7-point curve built from the
- * live band levels — with a vertical bar per band overlaid on the SVG's plot
- * area. Bars span their band's log-frequency range, so they sit exactly under
- * the arc's band tints: low→high runs left→right, level grows bottom→top. */
-const VEQ_VB_H = 280; // compact viewBox height for the per-channel arcs
-const VEQ_GAP = 0.5;  // bar inset per side, % of plot width
-function veqLogPos(f) {
-  return (Math.log10(f) - Math.log10(CURVE_FMIN)) / (Math.log10(CURVE_FMAX) - Math.log10(CURVE_FMIN)) * 100;
-}
-// Geometry constants — all derived from CURVE_VB/BAND_META, so identical for
-// every tick and channel; computed once at module scope to keep the live
-// repaint path allocation-free.
-const VEQ_FREQS = BAND_META.map(b => Math.sqrt(b.lo * b.hi)); // band-center freqs (geometric mean)
-const VEQ_INSET = (() => {
-  const { w, ml, mr, mt, mb } = CURVE_VB;
-  return `left:${(ml / w * 100).toFixed(2)}%;right:${(mr / w * 100).toFixed(2)}%;top:${(mt / VEQ_VB_H * 100).toFixed(2)}%;bottom:${(mb / VEQ_VB_H * 100).toFixed(2)}%`;
-})();
-const VEQ_LABEL_MARGIN = `margin-left:${(CURVE_VB.ml / CURVE_VB.w * 100).toFixed(2)}%;margin-right:${(CURVE_VB.mr / CURVE_VB.w * 100).toFixed(2)}%`;
-const VEQ_BANDS = BAND_META.map((b, i) => {
-  const bx0 = veqLogPos(b.lo) + VEQ_GAP, bx1 = veqLogPos(b.hi) - VEQ_GAP;
-  return { key: b.key, label: b.label, color: b.color, left: bx0.toFixed(2), width: (bx1 - bx0).toFixed(2), center: veqLogPos(VEQ_FREQS[i]).toFixed(2) };
-});
-// { freqs, db } curve for one channel. Non-finite band values (a malformed
-// tick) floor to -120 so the arc always has 7 usable points and the channel
-// never collapses.
-function liveBandCurve(bands) {
-  return {
-    freqs: VEQ_FREQS,
-    db: LIVE_BAND_KEYS.map(k => { const v = bands[k]; return Number.isFinite(v) ? v : -120; }),
-  };
-}
-// Fixed dB scale so the arc's geometry matches the bars and stays put across ticks.
-function veqArcSVG(curve, centroid, idx, wantPaths) {
-  return spectrumCurveSVG(curve, centroid, null, { uid: `live${idx}`, vbH: VEQ_VB_H, yMin: DB_MIN, yMax: DB_MAX, wantPaths });
-}
-function veqChannelHTML(ch, idx, deviceChannels) {
-  const curve = liveBandCurve(ch.bands);
-  const loudestIdx = veqLoudestIdx(curve.db);
-  const { bars, labels } = veqBarsAndLabelsHTML(VEQ_BANDS, curve.db, loudestIdx);
-  const strip = channelConfig[idx];
-  const displayName = stripLabel(strip, ch, idx);
-  const collapsed = isStripCollapsed(idx);
-  const armed = window.armState.isArmed(strip);
-  // Inline track definition (#189): the { kind, a, b } strip, rendered right in
-  // the header so an engineer never has to leave the workspace to define a
-  // track. Disabled mid-capture like every other config control (#38).
-  const stereo = !!(strip && strip.kind === 'stereo');
-  const n = deviceChannels;
-  const defDisabled = liveRunning ? ' disabled' : '';
-  const defHTML = `<span class="live-ch-def">
-      <select class="live-ch-kind" data-idx="${idx}" aria-label="Mono or stereo"${defDisabled}>
-        <option value="mono"${!stereo ? ' selected' : ''}>Mono</option>
-        <option value="stereo"${stereo ? ' selected' : ''}>Stereo</option>
-      </select>
-      <select class="live-ch-src${stereo ? ' leg' : ''}" data-idx="${idx}" data-field="a" aria-label="${stereo ? 'Left source channel' : 'Source channel'}" title="${stereo ? 'Left source channel' : 'Source channel'}"${defDisabled}>${channelOptions(strip ? strip.a : 0, n, stereo)}</select>
-      ${stereo ? `<select class="live-ch-src leg" data-idx="${idx}" data-field="b" aria-label="Right source channel" title="Right source channel"${defDisabled}>${channelOptions(strip.b, n, true)}</select>` : ''}
-    </span>`;
-  // Per-track group assignment (#190): only meaningful once a group exists —
-  // Ungrouped plus every group, writing through window.groupState with its
-  // exclusive-membership rules. Disabled mid-capture like the rest of the
-  // config (#38).
-  const grpOf = window.groupState.groupOf(channelGroups, idx);
-  const groupHTML = channelGroups.length
-    ? `<select class="live-ch-group" data-idx="${idx}" aria-label="Assign track to group" title="Assign to group"${defDisabled}>`
-      + `<option value="-1"${grpOf === -1 ? ' selected' : ''}>Ungrouped</option>`
-      + channelGroups.map((grp, gi) => `<option value="${gi}"${grpOf === gi ? ' selected' : ''}>${escapeHtml(grp.name)}</option>`).join('')
-      + `</select>`
-    : '';
-  // The workspace remove control (#188) rides every strip — idle or live — so
-  // it stays present-but-disabled through a capture (read-only while running)
-  // rather than disappearing, and is allowed down to zero strips so the empty
-  // state stays reachable.
-  return `<div class="live-ch${collapsed ? ' collapsed' : ''}${ch.idle ? ' idle' : ''}" data-ch="${idx}">
-    <div class="live-ch-head">
-      <button type="button" class="live-ch-fold" aria-label="Collapse or expand strip" aria-expanded="${collapsed ? 'false' : 'true'}" title="Collapse / expand strip">▾</button>
-      ${liveMode === 'record'
-        ? `<button type="button" class="live-ch-arm" data-idx="${idx}" aria-pressed="${armed}" aria-label="${armed ? 'Disarm' : 'Arm'} track for recording" title="${armed ? 'Armed for recording — click to disarm' : 'Disarmed — click to arm'}"${liveRunning ? ' disabled' : ''}></button>`
-        : ''}
-      <span class="live-ch-name${ch.clipping ? ' clip' : ''}" contenteditable="true" spellcheck="false" role="textbox" aria-label="Channel name — click to rename" title="Click to rename">${escapeHtml(displayName)}</span>
-      ${defHTML}
-      ${groupHTML}
-      <span class="live-ch-meta">${ch.idle ? 'Idle' : `RMS ${fmt(ch.rms)} · Peak ${fmt(ch.peak)} dBFS`}</span>
-      ${ch.clipping ? '<span class="live-ch-clip">CLIP</span>' : ''}
-      <button type="button" class="live-ch-x" title="Remove track" aria-label="Remove track"${liveRunning ? ' disabled' : ''}>×</button>
-    </div>
-    <div class="veq">
-      <div class="veq-chart">${veqArcSVG(curve, ch.centroid, idx)}</div>
-      <div class="veq-bars" style="${VEQ_INSET}">${bars}</div>
-    </div>
-    <div class="veq-labels" style="${VEQ_LABEL_MARGIN}">${labels}</div>
-  </div>`;
-}
 // Update one channel's existing DOM in place: bars/readouts keep their nodes
 // so the CSS transitions actually animate, and the arc SVG keeps its static
 // grid/tint/label nodes — only the curve path `d`s and the centroid change.
@@ -963,7 +876,7 @@ function renderLiveMeters(win) {
     return;
   }
   body.innerHTML = liveWorkspaceToolbarHTML()
-    + `<div class="meter-card sb-live-meters">${liveMetersHTML(win.channels)}</div>`;
+    + `<div class="meter-card sb-live-meters">${liveMetersHTML(win.channels, win.channels.map((c, i) => stripViewAt(i, c)), livePanelView())}</div>`;
   body.querySelectorAll('.sb-live-meters .live-ch-name').forEach(wireLiveNameEdit);
   applyLiveCollapsed();
 }
@@ -990,39 +903,25 @@ function renderLiveWorkspace() {
   }
 
   const idleChannels = channelConfig.map(() => window.trackWorkspace.idleChannel(LIVE_BAND_KEYS));
-  body.innerHTML = toolbar + `<div class="meter-card sb-live-meters idle">${liveMetersHTML(idleChannels)}</div>`;
+  body.innerHTML = toolbar + `<div class="meter-card sb-live-meters idle">${liveMetersHTML(idleChannels, idleChannels.map((c, i) => stripViewAt(i, c)), livePanelView())}</div>`;
   body.querySelectorAll('.sb-live-meters .live-ch-name').forEach(wireLiveNameEdit);
   applyLiveCollapsed();
 }
 
-// Live board strip HTML grouped under named-group headers (#41); ungrouped strips
-// fall into a trailing default section. Strips keep their original channel index
-// as data-ch so patching/labels/arming stay index-addressed. With no groups this
-// is just the flat strip list (backward-compatible with #40).
-function liveMetersHTML(channels) {
-  const n = channels.length;
-  // Computed once per rebuild (#189) rather than per strip inside
-  // veqChannelHTML — same value for every row in this render pass.
-  const deviceChannels = selectedDeviceChannels();
-  let html = '';
-  const rendered = new Set();
-  channelGroups.forEach((grp, g) => {
-    html += `<div class="live-group-head" data-group="${g}">`
-      + `<button type="button" class="live-group-fold" aria-label="Collapse or expand group" title="Collapse / expand group">▾</button>`
-      + `<span class="live-group-name">${escapeHtml(grp.name)}</span>`
-      + `<button type="button" class="live-group-rename" aria-label="Rename group" title="Rename group"${liveRunning ? ' disabled' : ''}>Rename</button>`
-      + `<button type="button" class="live-group-del" aria-label="Delete group" title="Delete group"${liveRunning ? ' disabled' : ''}>Delete</button></div>`;
-    const members = grp.members.filter((m) => m < n);
-    if (!members.length) html += `<div class="live-group-empty">No strips assigned</div>`;
-    members.forEach((m) => { html += veqChannelHTML(channels[m], m, deviceChannels); rendered.add(m); });
-  });
-  const ung = [];
-  for (let i = 0; i < n; i++) if (!rendered.has(i)) ung.push(i);
-  if (channelGroups.length && ung.length) {
-    html += `<div class="live-group-head ungrouped" data-group="-1"><span class="live-group-name">Ungrouped</span></div>`;
-  }
-  ung.forEach((i) => { html += veqChannelHTML(channels[i], i, deviceChannels); });
-  return html;
+// Thin adapters bridging this module's mutable state (channelConfig,
+// liveRunning, channelGroups, …) onto the StripView/PanelView shapes the pure
+// live-capture-panel.ts functions take as parameters (#307).
+function stripViewAt(idx, ch) {
+  return {
+    strip: channelConfig[idx] || null,
+    displayName: stripLabel(channelConfig[idx], ch, idx),
+    collapsed: isStripCollapsed(idx),
+    armed: window.armState.isArmed(channelConfig[idx]),
+    groupIndex: window.groupState.groupOf(channelGroups, idx),
+  };
+}
+function livePanelView() {
+  return { deviceChannels: selectedDeviceChannels(), liveRunning, liveMode, groups: channelGroups };
 }
 
 // Collapse controls (#40). One delegated listener on #spectrum-body survives the
@@ -1657,19 +1556,12 @@ document.getElementById('record-folder-btn').addEventListener('click', async () 
 /* ── Channel configuration ── */
 // The selected device's max input channels (0 = default device / unknown).
 function selectedDeviceChannels() {
-  const val = document.getElementById('device-select').value;
-  if (val === '') {
-    // Default device: fall back to the max across enumerated inputs so the
-    // picker still offers something sensible.
-    return liveDevices.reduce((m, d) => Math.max(m, d.channels || 0), 0) || 2;
-  }
-  const dev = liveDevices.find((d) => String(d.index) === val);
-  return dev ? dev.channels : 2;
+  return deviceChannelCount(document.getElementById('device-select').value, liveDevices);
 }
 
 // Total device channels consumed by the current config (mono=1, stereo=2).
 function usedChannelCount() {
-  return channelConfig.reduce((n, s) => n + (s.kind === 'stereo' ? 2 : 1), 0);
+  return lcUsedChannelCount(channelConfig);
 }
 
 // Push a new mono strip onto channelConfig and re-render (#188). Called from
@@ -1698,15 +1590,6 @@ function resetChannelConfig() {
   channelConfig = [];
   for (let i = 0; i < Math.min(2, n); i++) channelConfig.push({ kind: 'mono', a: i, b: (i + 1) % Math.max(n, 1), armed: true });
   renderChannelConfig();
-}
-
-function channelOptions(selected, max, compact = false) {
-  let html = '';
-  // Compact (numeric-only) labels for the two stereo legs, which share the row
-  // with the kind select; roomy "Ch N" for the single mono select.
-  const label = (i) => (compact ? `${i + 1}` : `Ch ${i + 1}`);
-  for (let i = 0; i < max; i++) html += `<option value="${i}"${i === selected ? ' selected' : ''}>${label(i)}</option>`;
-  return html;
 }
 
 // Config changed: re-sync the center-pane track workspace and re-assert the
@@ -1776,50 +1659,24 @@ async function loadDevices() {
 
   const result = await sb.listDevices();
   sel.innerHTML = '';
-  liveDevices = [];
 
-  if (result.micAccess === 'denied' || result.micAccess === 'restricted') {
-    sel.innerHTML = '<option value="">Microphone access blocked</option>';
-    setDeviceHint('Sound Buddy is blocked from the microphone. Enable it in System Settings ▸ Privacy & Security ▸ Microphone, then click Refresh.', true);
-    if (btn) btn.disabled = false;
-    return;
+  const view = deviceListView(result);
+  liveDevices = view.devices;
+  for (const opt of view.options) {
+    // document.createElement('option') (not innerHTML) so a device name can
+    // never inject markup into the picker.
+    const el = document.createElement('option');
+    el.value = opt.value;
+    el.textContent = opt.label;
+    sel.appendChild(el);
   }
-
-  if (!result.success) {
-    sel.innerHTML = '<option value="">Could not list devices</option>';
-    setDeviceHint(result.error || 'Failed to enumerate input devices.', true);
-    if (btn) btn.disabled = false;
-    return;
-  }
-
-  if (!result.devices || result.devices.length === 0) {
-    sel.innerHTML = '<option value="">No input devices found</option>';
-    setDeviceHint('No microphone or audio interface is connected. Plug one in and click Refresh. (Mac desktops have no built-in mic.)', false);
-    if (btn) btn.disabled = false;
-    return;
-  }
-
-  liveDevices = result.devices;
-  const def = document.createElement('option');
-  def.value = ''; def.textContent = 'Default Device';
-  sel.appendChild(def);
-  for (const d of result.devices) {
-    const opt = document.createElement('option');
-    opt.value = String(d.index);
-    opt.textContent = `${d.index}: ${d.name} (${d.channels}ch, ${d.default_sr}Hz)`;
-    sel.appendChild(opt);
-  }
-  // Devices exist. If macOS hasn't been asked yet, it'll prompt on Start.
-  setDeviceHint(
-    result.micAccess === 'not-determined'
-      ? 'macOS will ask for microphone permission the first time you start capture.'
-      : '',
-    false,
-  );
+  setDeviceHint(view.hint ? view.hint.text : '', view.hint ? view.hint.isError : false);
   if (btn) btn.disabled = false;
 
-  // Seed the channel picker from the (default) device's channel count.
-  resetChannelConfig();
+  // Seed the channel picker from the (default) device's channel count — only
+  // once devices were actually found (mirrors the original early returns that
+  // skipped this on every non-happy branch).
+  if (view.devices.length) resetChannelConfig();
 }
 
 document.getElementById('device-refresh-btn').addEventListener('click', () => loadDevices());
