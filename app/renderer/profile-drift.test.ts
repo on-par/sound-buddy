@@ -25,7 +25,10 @@ describe('renderer imports ideal-EQ profiles from the audio-engine package', () 
   });
 
   it('inline-app.js no longer hand-mirrors the profile data', () => {
-    expect(inlineApp).not.toContain('dbOffsets: [3.0, 3.0, 3.0, 15.0');
+    // Structural, not value-based: catches IP_PROFILES being reintroduced as an
+    // inline array literal regardless of what dbOffsets it holds, so this guard
+    // doesn't go stale the next time the engine's profile data is edited.
+    expect(inlineApp).not.toMatch(/const\s+IP_PROFILES\s*=\s*\[/);
   });
 
   it('inline-app.js reads profiles off the window.audioEngineProfiles bridge', () => {
