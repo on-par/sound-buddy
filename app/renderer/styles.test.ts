@@ -16,6 +16,7 @@ const LICENSE_LINE = 'Licensed under the Sound Buddy Desktop Application License
 const html = fs.readFileSync(fileURLToPath(new URL('./index.html', import.meta.url)), 'utf8');
 const tokensCss = fs.readFileSync(fileURLToPath(new URL('./src/styles/tokens.css', import.meta.url)), 'utf8');
 const appCss = fs.readFileSync(fileURLToPath(new URL('./src/styles/app.css', import.meta.url)), 'utf8');
+const mainTsx = fs.readFileSync(fileURLToPath(new URL('./src/main.tsx', import.meta.url)), 'utf8');
 
 describe('index.html has no inline <style> block', () => {
   it('contains no <style> tag', () => {
@@ -24,6 +25,16 @@ describe('index.html has no inline <style> block', () => {
 
   it('contains no </style> tag', () => {
     expect(html).not.toContain('</style>');
+  });
+});
+
+describe('src/main.tsx imports the extracted stylesheets', () => {
+  it('imports tokens.css', () => {
+    expect(mainTsx).toContain("import './styles/tokens.css';");
+  });
+
+  it('imports app.css', () => {
+    expect(mainTsx).toContain("import './styles/app.css';");
   });
 });
 
