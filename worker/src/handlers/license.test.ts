@@ -1,9 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
 import { generateKeyPairSync } from "node:crypto";
 import Stripe from "stripe";
-import { handleGetLicense, type LicenseDeps } from "../src/handlers/license";
-import { importVerifyKey, verifyLicenseKey } from "../src/license-sign";
-import type { Env } from "../src/index";
+import { handleGetLicense, type LicenseDeps } from "./license";
+import { importVerifyKey, verifyLicenseKey } from "../license-sign";
+import type { Env } from "../index";
 
 // A throwaway signing keypair, generated exactly as scripts/license-keygen.mjs
 // does (ed25519 → pkcs8/spki PEM). The real production key (H3) is never used.

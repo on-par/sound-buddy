@@ -3,9 +3,9 @@ import Stripe from "stripe";
 import {
   handleInvoicePaymentFailed,
   type InvoicePaymentFailedDeps,
-} from "../src/handlers/invoice-payment-failed";
-import { eventHandlers, handleStripeWebhook, type EventHandler } from "../src/webhook";
-import type { Env } from "../src/index";
+} from "./invoice-payment-failed";
+import { eventHandlers, handleStripeWebhook, type EventHandler } from "../webhook";
+import type { Env } from "../index";
 
 const WEBHOOK_SECRET = "whsec_test_secret_123";
 const signer = new Stripe("sk_test_signer", {

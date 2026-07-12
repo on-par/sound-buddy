@@ -1,6 +1,6 @@
 # Sandbox e2e runbook (#121)
 
-A checklist for running `test/e2e/sandbox.e2e.test.ts` against the Stripe test
+A checklist for running `src/e2e/sandbox.e2e.test.ts` against the Stripe test
 sandbox. See `README.md`'s "Sandbox e2e (manual gate)" section for the full
 design rationale — this doc is just the reproduction steps.
 

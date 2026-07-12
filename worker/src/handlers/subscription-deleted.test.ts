@@ -4,9 +4,9 @@ import {
   handleSubscriptionDeleted,
   subscriptionCancellationRecordKey,
   type SubscriptionCancellationRecord,
-} from "../src/handlers/subscription-deleted";
-import { eventHandlers, handleStripeWebhook } from "../src/webhook";
-import type { Env } from "../src/index";
+} from "./subscription-deleted";
+import { eventHandlers, handleStripeWebhook } from "../webhook";
+import type { Env } from "../index";
 
 const WEBHOOK_SECRET = "whsec_test_secret_123";
 const signer = new Stripe("sk_test_signer", {

@@ -6,11 +6,11 @@ import { defineConfig } from "vitest/config";
 // or Web Crypto can add @cloudflare/vitest-pool-workers if they need it.
 export default defineConfig({
   test: {
-    include: ["test/**/*.test.ts"],
+    include: ["src/**/*.test.ts"],
     coverage: {
       provider: "v8",
       include: ["src/**/*.ts"],
-      exclude: ["test/**", "**/dist/**", "**/*.config.{ts,js,mjs}"],
+      exclude: ["src/**/*.test.ts", "src/e2e/**", "**/dist/**", "**/*.config.{ts,js,mjs}"],
       // Ratchet floors set a few points below the current baseline so this
       // gates real regressions without being a constant false alarm. Raise
       // them as coverage grows. Recalibrated for Vitest 4's more accurate v8

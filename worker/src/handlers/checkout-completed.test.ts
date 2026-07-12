@@ -6,9 +6,9 @@ import {
   sessionRecordKey,
   type CheckoutCompletedDeps,
   type SessionRecord,
-} from "../src/handlers/checkout-completed";
-import { handleStripeWebhook } from "../src/webhook";
-import type { Env } from "../src/index";
+} from "./checkout-completed";
+import { handleStripeWebhook } from "../webhook";
+import type { Env } from "../index";
 
 // A throwaway signing key, generated exactly as scripts/license-keygen.mjs does
 // (ed25519 → pkcs8 PEM). The real production key (H3) is never used.

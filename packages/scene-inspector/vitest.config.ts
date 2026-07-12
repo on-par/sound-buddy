@@ -11,7 +11,7 @@ export default defineConfig({
     coverage: {
       provider: 'v8',
       include: ['src/**/*.ts'],
-      exclude: ['src/**/*.test.ts', 'src/**/__tests__/**', '**/dist/**'],
+      exclude: ['src/**/*.test.ts', '**/dist/**'],
       // Recalibrated for Vitest 4's more accurate v8 coverage remapping
       // (#224): branches read lower than the old v2 number (~95/84/100/97
       // measured locally post-bump) even though nothing here changed

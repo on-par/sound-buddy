@@ -12,7 +12,7 @@ import {
   verifySignedPayload,
   type LicensePayload,
   type VerifyResult,
-} from "../../src/license-sign";
+} from "../license-sign";
 import type { SandboxConfig } from "./env";
 
 /** Build the Stripe test client the same way the Worker does (see

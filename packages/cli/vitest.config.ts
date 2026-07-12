@@ -11,7 +11,7 @@ export default defineConfig({
     coverage: {
       provider: 'v8',
       include: ['src/**/*.ts'],
-      exclude: ['src/**/*.test.ts', 'src/**/__tests__/**', '**/dist/**'],
+      exclude: ['src/**/*.test.ts', '**/dist/**'],
       // functions floor is CI-calibrated: CI measures lower than macOS (a
       // couple functions only run on darwin) — keep it below CI reality so
       // it's a ratchet, not a constant false alarm. Also recalibrated for

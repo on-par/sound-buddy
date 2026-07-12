@@ -17,7 +17,7 @@ import {
   verifyLicenseKey,
   LICENSE_ISSUER,
   type LicensePayload,
-} from "../src/license-sign";
+} from "./license-sign";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const KEYGEN = join(repoRoot, "scripts", "license-keygen.mjs");

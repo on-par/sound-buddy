@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import Stripe from "stripe";
-import { handleStripeWebhook, type EventHandler } from "../src/webhook";
-import type { Env } from "../src/index";
+import { handleStripeWebhook, type EventHandler } from "./webhook";
+import type { Env } from "./index";
 
 // Local test secret — the live `whsec_` secret is provisioned out-of-band (H4);
 // tests sign their own fixtures against this one.

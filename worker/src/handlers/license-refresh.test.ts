@@ -1,16 +1,16 @@
 import { describe, expect, it, vi } from "vitest";
 import { generateKeyPairSync } from "node:crypto";
 import Stripe from "stripe";
-import { handleRefreshLicense, type RefreshDeps } from "../src/handlers/license-refresh";
+import { handleRefreshLicense, type RefreshDeps } from "./license-refresh";
 import {
   importSigningKey,
   importVerifyKey,
   mintLicenseKey,
   sha256Hex,
   verifyLicenseKey,
-} from "../src/license-sign";
-import { subscriptionRecordKey, type SubscriptionRecord } from "../src/handlers/invoice-paid";
-import type { Env } from "../src/index";
+} from "../license-sign";
+import { subscriptionRecordKey, type SubscriptionRecord } from "./invoice-paid";
+import type { Env } from "../index";
 
 // A throwaway signing keypair, generated exactly as scripts/license-keygen.mjs
 // does (ed25519 → pkcs8/spki PEM). The real production key (H3) is never used.

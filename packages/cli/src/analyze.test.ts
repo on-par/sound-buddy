@@ -36,7 +36,7 @@ import {
   cleanupChannelFiles,
 } from '@sound-buddy/audio-engine'
 import { analyzeWithClaude } from '@sound-buddy/ai-analyst'
-import { runAnalyze } from '../analyze.js'
+import { runAnalyze } from './analyze.js'
 
 const mockAnalysis: AudioAnalysis = {
   filePath: '/tmp/mix.wav',

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { handleActivate } from "../src/handlers/activate";
-import type { Env } from "../src/index";
+import { handleActivate } from "./activate";
+import type { Env } from "../index";
 
 const env = {
   LICENSE_KV: {} as KVNamespace,
