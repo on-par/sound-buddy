@@ -13,13 +13,17 @@ const COL1 = "\x1b[G";
 let stdout: string;
 let writeSpy: ReturnType<typeof vi.spyOn>;
 
-beforeEach(() => {
-  vi.resetModules(); // fresh module instance => lastLineCount starts at 0
+function resetStdoutCapture(): void {
   stdout = "";
   writeSpy = vi.spyOn(process.stdout, "write").mockImplementation((chunk) => {
     stdout += String(chunk);
     return true;
   });
+}
+
+beforeEach(() => {
+  vi.resetModules(); // fresh module instance => lastLineCount starts at 0
+  resetStdoutCapture();
 });
 
 afterEach(() => {
@@ -195,11 +199,7 @@ describe("render", () => {
     expect(findLine(stdout, "Sub-bass")).toContain("█".repeat(16));
 
     vi.resetModules();
-    stdout = "";
-    writeSpy = vi.spyOn(process.stdout, "write").mockImplementation((chunk) => {
-      stdout += String(chunk);
-      return true;
-    });
+    resetStdoutCapture();
     const render2 = await loadRender();
     const state3 = makeState([makeChannel({ bands: { sub_bass: 3 } })]);
     render2(state3, "TestDevice", 1, 1, 0);
@@ -396,6 +396,17 @@ describe("render", () => {
   });
 
   it("manages the cursor across successive renders in the same module instance", async () => {
+    const emptyState: LiveState = { windows: [], currentWindow: null };
+
+    // Derive the empty-state frame's own line count from a real render,
+    // rather than hardcoding it, so this test tracks buildLines() if its
+    // empty-state branch ever gains or loses a line.
+    const probeRender = await loadRender();
+    probeRender(emptyState, "TestDevice", 1, 1, 0);
+    const emptyLineCount = (stdout.match(/\n/g) ?? []).length;
+
+    vi.resetModules();
+    resetStdoutCapture();
     const render = await loadRender();
     const chA = makeChannel({ index: 0, name: "Kick", rms: -10 });
     const chB = makeChannel({ index: 1, name: "Bass", rms: -20 });
@@ -414,12 +425,9 @@ describe("render", () => {
     expect(stdout.startsWith(`\x1b[${lineCount}A`)).toBe(true);
 
     stdout = "";
-    const emptyState: LiveState = { windows: [], currentWindow: null };
     render(emptyState, "TestDevice", 1, 1, 0);
     expect(stdout.startsWith(`\x1b[${lineCount}A`)).toBe(true);
-    const prevCount = lineCount;
-    const shortCount = 3;
-    expect(stdout).toContain(`\x1b[${prevCount - shortCount}A`);
+    expect(stdout).toContain(`\x1b[${lineCount - emptyLineCount}A`);
   });
 
   it("does not emit a second cursor-up when the frame grows", async () => {
