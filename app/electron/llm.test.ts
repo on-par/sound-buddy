@@ -100,10 +100,12 @@ function makeChild(): FakeChild {
   return child;
 }
 
-beforeEach(() => {
+function resetMocks(): void {
   vi.clearAllMocks();
   vi.mocked(isAiEnabled).mockReturnValue(true);
-});
+}
+
+beforeEach(resetMocks);
 
 describe('streamNarrative gating', () => {
   it('resolves disabled when AI is off, without touching any transport', async () => {
@@ -474,8 +476,7 @@ describe('streamNarrative — provider selection → pi', () => {
     expect(outcome1.ok).toBe(false);
     expect(outcome1.reason).toMatch(/^pi not found/);
 
-    vi.clearAllMocks();
-    vi.mocked(isAiEnabled).mockReturnValue(true);
+    resetMocks();
     vi.mocked(getLlmConfig).mockReturnValue({ provider: 'copilot' });
     const child2 = makeChild();
     vi.mocked(spawn).mockReturnValue(child2 as unknown as ReturnType<typeof spawn>);
@@ -498,8 +499,7 @@ describe('streamNarrative — provider selection → pi', () => {
     const outcome1 = await p1;
     expect(outcome1).toEqual({ ok: false, reason: 'something broke' });
 
-    vi.clearAllMocks();
-    vi.mocked(isAiEnabled).mockReturnValue(true);
+    resetMocks();
     vi.mocked(getLlmConfig).mockReturnValue({ provider: 'copilot' });
     const child2 = makeChild();
     vi.mocked(spawn).mockReturnValue(child2 as unknown as ReturnType<typeof spawn>);
@@ -564,8 +564,7 @@ describe('probeOllama', () => {
     const result1 = await probeOllama();
     expect(result1).toEqual({ ok: false, reason: 'not-running' });
 
-    vi.clearAllMocks();
-    vi.mocked(isAiEnabled).mockReturnValue(true);
+    resetMocks();
     primeError(http, Object.assign(new Error('getaddrinfo ENOTFOUND'), { code: 'ENOTFOUND' }));
     const result2 = await probeOllama();
     expect(result2).toEqual({ ok: false, reason: 'not-running' });
