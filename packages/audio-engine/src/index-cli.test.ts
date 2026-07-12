@@ -557,36 +557,17 @@ describe("runSingleFile", () => {
     expect(errOut()).toContain(JSON.stringify("plain string"));
   });
 
-  it("maps a sox ENOENT error to a brew install sox message", async () => {
-    vi.mocked(analyzeAudio).mockRejectedValue(new Error("spawn sox ENOENT"));
+  it.each([
+    ["spawn sox ENOENT", "brew install sox"],
+    ["spawn ffprobe ENOENT", "brew install ffmpeg"],
+    ["spawn python3 ENOENT", "pip install librosa numpy"],
+    ["bad wav", "Analysis failed:"],
+  ])("maps analyzeAudio error %j to a message containing %j", async (errMessage, expectedText) => {
+    vi.mocked(analyzeAudio).mockRejectedValue(new Error(errMessage));
     await expect(
       runSingleFile("/tmp/mix.wav", [], false, "llama3.2", "http://localhost:11434")
     ).rejects.toThrow("exit:1");
-    expect(errOut()).toContain("brew install sox");
-  });
-
-  it("maps an ffprobe ENOENT error to a brew install ffmpeg message", async () => {
-    vi.mocked(analyzeAudio).mockRejectedValue(new Error("spawn ffprobe ENOENT"));
-    await expect(
-      runSingleFile("/tmp/mix.wav", [], false, "llama3.2", "http://localhost:11434")
-    ).rejects.toThrow("exit:1");
-    expect(errOut()).toContain("brew install ffmpeg");
-  });
-
-  it("maps a python3 ENOENT error to a pip install message", async () => {
-    vi.mocked(analyzeAudio).mockRejectedValue(new Error("spawn python3 ENOENT"));
-    await expect(
-      runSingleFile("/tmp/mix.wav", [], false, "llama3.2", "http://localhost:11434")
-    ).rejects.toThrow("exit:1");
-    expect(errOut()).toContain("pip install librosa numpy");
-  });
-
-  it("maps a generic analyzeAudio error to Analysis failed:", async () => {
-    vi.mocked(analyzeAudio).mockRejectedValue(new Error("bad wav"));
-    await expect(
-      runSingleFile("/tmp/mix.wav", [], false, "llama3.2", "http://localhost:11434")
-    ).rejects.toThrow("exit:1");
-    expect(errOut()).toContain("Analysis failed:");
+    expect(errOut()).toContain(expectedText);
   });
 
   it("multichannel happy path runs per-channel analysis and the multi-channel read", async () => {
