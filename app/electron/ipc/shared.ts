@@ -12,9 +12,25 @@ import { app } from 'electron';
 import { log } from '../logger';
 import { getSettings } from '../settings';
 
-// Dev repo root (three levels up from app/dist/electron/). Only meaningful when
-// running from a checkout — inside a packaged .app this points into the bundle.
-export const REPO_ROOT = path.resolve(__dirname, '..', '..', '..', '..');
+// Dev repo root. Only meaningful when running from a checkout — inside a
+// packaged .app REPO_ROOT is never dereferenced (toolBin/SCRIPTS_DIR/pythonBin
+// all prefer the bundled resourcesPath first). Walk up from this file looking
+// for packages/audio-engine rather than a fixed `../../../..` — this file's
+// depth under the repo root differs between the compiled program (dist/electron/ipc,
+// one level deeper for the `dist` folder) and running straight from TS source
+// (electron/ipc, e.g. under Vitest), so a fixed offset resolves one directory
+// too high in the latter case.
+// Exported for testing — pure, no electron dependency.
+export function findRepoRoot(startDir: string): string {
+  let dir = startDir;
+  for (;;) {
+    if (fs.existsSync(path.join(dir, 'packages', 'audio-engine'))) return dir;
+    const parent = path.dirname(dir);
+    if (parent === dir) return startDir;
+    dir = parent;
+  }
+}
+export const REPO_ROOT = findRepoRoot(__dirname);
 
 // The Python scripts ship as extraResources (Contents/Resources/scripts) in a
 // packaged .app; in dev they live in the monorepo.

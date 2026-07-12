@@ -2,8 +2,12 @@
 // Licensed under the Sound Buddy Desktop Application License (app/LICENSE).
 
 // File-analysis domain (#225 split of the former monolithic ipc.ts): the
-// sox/ffprobe/spectrum parsers, the analyze-file IPC handler, and the bundled
-// demo-audio lookup used by the first-run onboarding flow (#69).
+// analyze-file IPC handler and the bundled demo-audio lookup used by the
+// first-run onboarding flow (#69). The sox/ffprobe/spectrum/ebur128 parsing
+// itself lives in @sound-buddy/audio-engine (#151) — the functions below are
+// thin wrappers that resolve the bundled-vs-PATH binary/script paths (via
+// ./shared) and the cancellation AbortSignal, then delegate to the engine's
+// CJS build loaded by ./engine-loader.
 
 import { ipcMain } from 'electron';
 import * as fs from 'fs';
@@ -11,370 +15,47 @@ import * as path from 'path';
 import { log, logError } from '../logger';
 import { saveAnalysisSummary, listAnalysisSummaries, type AnalysisSummary } from '../storage';
 import { toolBin, pythonBin, childEnv, SPECTRUM_SCRIPT, DEMO_AUDIO, defaultRecordDir } from './shared';
-import {
-  execFileWithTimeout,
-  SubprocessTimeoutError,
-  isAbortError,
-  SOX_TIMEOUT_MS,
-  FFPROBE_TIMEOUT_MS,
-  SPECTRUM_TIMEOUT_MS,
-  EBUR128_TIMEOUT_MS,
-} from './timeout';
+import { isAbortError } from './timeout';
 import type { AnalyzeFileOpts } from './api';
+import { loadEngineParsers } from './engine-loader';
+import type {
+  SoxStats,
+  FfprobeResult,
+  SpectrumResult,
+  SpectrumFrame,
+  SpectrumSegment,
+  LoudnessStats,
+  AudioAnalysis,
+} from '../../../packages/audio-engine/dist-cjs/types';
 
-export interface SoxStats {
-  samplesRead: number;
-  lengthSeconds: number;
-  scaledBy: number;
-  maximumAmplitude: number;
-  minimumAmplitude: number;
-  midlineAmplitude: number;
-  meanNorm: number;
-  meanAmplitude: number;
-  rmsAmplitude: number;
-  maximumDelta: number;
-  minimumDelta: number;
-  meanDelta: number;
-  rmsDelta: number;
-  roughFrequency: number;
-  volumeAdjustment: number;
-  rmsDbfs: number;
-  peakDbfs: number;
-  dynamicRangeDb: number;
-  clipping: boolean;
-}
+export type { SoxStats, FfprobeResult, SpectrumResult, SpectrumFrame, SpectrumSegment, LoudnessStats, AudioAnalysis };
 
-export interface FfprobeResult {
-  format: {
-    filename: string;
-    formatName: string;
-    formatLongName: string;
-    durationSeconds: number;
-    sizeBytes: number;
-    bitRate: number;
-    tags: Record<string, string>;
-  };
-  stream: {
-    codecName: string;
-    codecLongName: string;
-    channels: number;
-    channelLayout: string;
-    sampleRate: number;
-    bitDepth: number | null;
-    bitRate: number | null;
-    durationSeconds: number | null;
-  };
-}
+// ─── Parser wrappers ────────────────────────────────────────────────────────
+// Same exported names/signatures as before #151 so ipc.ts's re-exports, the
+// parser drift-guard test, and the analyze-file handler below stay unchanged
+// consumers. Each wrapper injects the bundled-vs-PATH binary/script path (the
+// one genuinely environment-dependent bit) into the engine's parameterized
+// parser.
 
-export interface SpectrumCurve {
-  freqs: number[];
-  db: number[];
-}
-export interface SpectrumFrame {
-  t: number;
-  db: number[];
-  rms: number;
-  class: string;
-}
-export interface SpectrumSegment {
-  class: string;
-  start: number;
-  end: number;
-}
-export interface SpectrumResult {
-  bands: {
-    subBass: number;
-    bass: number;
-    lowMid: number;
-    mid: number;
-    highMid: number;
-    presence: number;
-    brilliance: number;
-  };
-  spectralCentroid: number;
-  spectralRolloff85: number;
-  dynamicRange: number;
-  // Additive fields (PRD 02–04); carried through to the renderer.
-  curve?: SpectrumCurve;
-  frames?: SpectrumFrame[];
-  segments?: SpectrumSegment[];
-  contentType?: string;
-}
-
-export interface LoudnessStats {
-  integratedLufs: number;
-  loudnessRange: number;
-  truePeakDbtp: number;
-}
-
-export interface AudioAnalysis {
-  filePath: string;
-  sox: SoxStats;
-  ffprobe: FfprobeResult;
-  spectrum: SpectrumResult;
-  loudness: LoudnessStats | null;
-}
-
-// ─── SOX ──────────────────────────────────────────────────────────────────────
-
-function parseField(output: string, label: string): number {
-  const escaped = label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const match = output.match(new RegExp(`${escaped}\\s+([\\-\\d.]+)`));
-  if (!match) throw new Error(`sox stat: could not find field "${label}"`);
-  return parseFloat(match[1]);
-}
-
-// Some sox stat fields are omitted for degenerate input — e.g. pure silence
-// (all-zero amplitude) prints no "Volume adjustment:" line. Fall back instead
-// of crashing the whole analysis.
-function parseFieldOptional(output: string, label: string, fallback: number): number {
-  const escaped = label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const match = output.match(new RegExp(`${escaped}\\s+([\\-\\d.]+)`));
-  return match ? parseFloat(match[1]) : fallback;
-}
-
-function amplitudeToDbfs(amplitude: number): number {
-  if (amplitude <= 0) return -Infinity;
-  return 20 * Math.log10(amplitude);
-}
-
-// Exported for the parser drift-guard test (#150), which asserts these copies
-// stay equivalent to the @sound-buddy/audio-engine parsers until the
-// duplication is removed (#151). Not part of the app's runtime surface.
 export async function runSox(filePath: string, signal?: AbortSignal): Promise<SoxStats> {
-  let stderr: string;
-  try {
-    const result = await execFileWithTimeout(
-      toolBin('sox'),
-      [filePath, '-n', 'stat'],
-      { encoding: 'utf8', signal },
-      'sox stat',
-      SOX_TIMEOUT_MS,
-    );
-    stderr = result.stderr ?? '';
-  } catch (err: unknown) {
-    if (err instanceof SubprocessTimeoutError) throw err;
-    if (isAbortError(err)) throw err;
-    const e = err as { stderr?: string };
-    stderr = e.stderr ?? '';
-    if (!stderr) throw new Error(`sox failed: ${String(err)}`, { cause: err });
-  }
-
-  const samplesRead = parseField(stderr, 'Samples read:');
-  const lengthSeconds = parseField(stderr, 'Length (seconds):');
-  const scaledBy = parseField(stderr, 'Scaled by:');
-  const maximumAmplitude = parseField(stderr, 'Maximum amplitude:');
-  const minimumAmplitude = parseField(stderr, 'Minimum amplitude:');
-  const midlineAmplitude = parseField(stderr, 'Midline amplitude:');
-  const meanNorm = parseField(stderr, 'Mean    norm:');
-  const meanAmplitude = parseField(stderr, 'Mean    amplitude:');
-  const rmsAmplitude = parseField(stderr, 'RMS     amplitude:');
-  const maximumDelta = parseField(stderr, 'Maximum delta:');
-  const minimumDelta = parseField(stderr, 'Minimum delta:');
-  const meanDelta = parseField(stderr, 'Mean    delta:');
-  const rmsDelta = parseField(stderr, 'RMS     delta:');
-  const roughFrequency = parseField(stderr, 'Rough   frequency:');
-  // Omitted by sox for silent/all-zero audio; there is no meaningful gain to
-  // normalise to, so fall back to 1.0 (no adjustment).
-  const volumeAdjustment = parseFieldOptional(stderr, 'Volume adjustment:', 1.0);
-
-  const peakAmplitude = Math.max(Math.abs(maximumAmplitude), Math.abs(minimumAmplitude));
-  const rmsDbfs = amplitudeToDbfs(rmsAmplitude);
-  const peakDbfs = amplitudeToDbfs(peakAmplitude);
-  const dynamicRangeDb = peakDbfs - rmsDbfs;
-  const clipping = peakAmplitude >= 1.0;
-
-  return {
-    samplesRead, lengthSeconds, scaledBy, maximumAmplitude, minimumAmplitude,
-    midlineAmplitude, meanNorm, meanAmplitude, rmsAmplitude, maximumDelta,
-    minimumDelta, meanDelta, rmsDelta, roughFrequency, volumeAdjustment,
-    rmsDbfs, peakDbfs, dynamicRangeDb, clipping,
-  };
+  return loadEngineParsers().runSox(filePath, { bin: toolBin('sox'), signal });
 }
-
-// ─── FFPROBE ──────────────────────────────────────────────────────────────────
 
 export async function runFfprobe(filePath: string, signal?: AbortSignal): Promise<FfprobeResult> {
-  const { stdout } = await execFileWithTimeout(toolBin('ffprobe'), [
-    '-v', 'quiet',
-    '-print_format', 'json',
-    '-show_format',
-    '-show_streams',
-    filePath,
-  ], { encoding: 'utf8', signal }, 'ffprobe', FFPROBE_TIMEOUT_MS);
-
-  const raw = JSON.parse(stdout) as {
-    streams?: Array<{
-      codec_type?: string;
-      codec_name?: string;
-      codec_long_name?: string;
-      channels?: number;
-      channel_layout?: string;
-      sample_rate?: string;
-      bits_per_raw_sample?: string;
-      bits_per_sample?: number;
-      bit_rate?: string;
-      duration?: string;
-    }>;
-    format?: {
-      filename?: string;
-      format_name?: string;
-      format_long_name?: string;
-      duration?: string;
-      size?: string;
-      bit_rate?: string;
-      tags?: Record<string, string>;
-    };
-  };
-
-  const rawFormat = raw.format ?? {};
-  const audioStream = (raw.streams ?? []).find((s) => s.codec_type === 'audio');
-  if (!audioStream) throw new Error(`ffprobe: no audio stream in "${filePath}"`);
-
-  let bitDepth: number | null = null;
-  if (audioStream.bits_per_raw_sample) {
-    const v = parseInt(audioStream.bits_per_raw_sample, 10);
-    if (!isNaN(v) && v > 0) bitDepth = v;
-  }
-  if (bitDepth === null && audioStream.bits_per_sample !== undefined && audioStream.bits_per_sample > 0) {
-    bitDepth = audioStream.bits_per_sample;
-  }
-
-  return {
-    format: {
-      filename: rawFormat.filename ?? filePath,
-      formatName: rawFormat.format_name ?? 'unknown',
-      formatLongName: rawFormat.format_long_name ?? 'unknown',
-      durationSeconds: rawFormat.duration ? parseFloat(rawFormat.duration) : 0,
-      sizeBytes: rawFormat.size ? parseInt(rawFormat.size, 10) : 0,
-      bitRate: rawFormat.bit_rate ? parseInt(rawFormat.bit_rate, 10) : 0,
-      tags: rawFormat.tags ?? {},
-    },
-    stream: {
-      codecName: audioStream.codec_name ?? 'unknown',
-      codecLongName: audioStream.codec_long_name ?? 'unknown',
-      channels: audioStream.channels ?? 0,
-      channelLayout: audioStream.channel_layout ?? (audioStream.channels === 1 ? 'mono' : 'unknown'),
-      sampleRate: audioStream.sample_rate ? parseInt(audioStream.sample_rate, 10) : 0,
-      bitDepth,
-      bitRate: audioStream.bit_rate ? parseInt(audioStream.bit_rate, 10) : null,
-      durationSeconds: audioStream.duration ? parseFloat(audioStream.duration) : null,
-    },
-  };
+  return loadEngineParsers().runFfprobe(filePath, { bin: toolBin('ffprobe'), signal });
 }
-
-// ─── SPECTRUM ─────────────────────────────────────────────────────────────────
 
 export async function runSpectrum(filePath: string, signal?: AbortSignal): Promise<SpectrumResult> {
-  const { stdout } = await execFileWithTimeout(
-    pythonBin(),
-    [SPECTRUM_SCRIPT, filePath],
-    {
-      encoding: 'utf8',
-      maxBuffer: 1024 * 1024,
-      env: childEnv(),
-      signal,
-    },
-    'spectrum analysis',
-    SPECTRUM_TIMEOUT_MS,
-  );
-
-  const raw = JSON.parse(stdout) as {
-    bands: {
-      sub_bass: number;
-      bass: number;
-      low_mid: number;
-      mid: number;
-      high_mid: number;
-      presence: number;
-      brilliance: number;
-    };
-    spectral_centroid: number;
-    spectral_rolloff_85: number;
-    dynamic_range: number;
-    curve?: SpectrumCurve;
-    frames?: SpectrumFrame[];
-    segments?: SpectrumSegment[];
-    content_type?: string;
-  };
-
-  const result: SpectrumResult = {
-    bands: {
-      subBass: raw.bands.sub_bass,
-      bass: raw.bands.bass,
-      lowMid: raw.bands.low_mid,
-      mid: raw.bands.mid,
-      highMid: raw.bands.high_mid,
-      presence: raw.bands.presence,
-      brilliance: raw.bands.brilliance,
-    },
-    spectralCentroid: raw.spectral_centroid,
-    spectralRolloff85: raw.spectral_rolloff_85,
-    dynamicRange: raw.dynamic_range,
-  };
-  if (raw.curve) result.curve = raw.curve;
-  if (raw.frames) result.frames = raw.frames;
-  if (raw.segments) result.segments = raw.segments;
-  if (raw.content_type) result.contentType = raw.content_type;
-  return result;
+  return loadEngineParsers().runSpectrum(filePath, {
+    scriptPath: SPECTRUM_SCRIPT,
+    python: pythonBin(),
+    env: childEnv(),
+    signal,
+  });
 }
 
-// ─── EBUR128 ──────────────────────────────────────────────────────────────────
-
-// ffmpeg's ebur128 filter writes per-frame progress lines AND the final
-// summary to stderr; the per-frame lines also contain "I:"/"LRA:" tokens, so
-// we must only search the tail after the last "Summary:" marker or a
-// per-frame line could match instead of the real summary. "-inf" (not just a
-// numeric value or "nan") is a real value ffmpeg prints for true peak on
-// fully-silent audio — a muted channel or pre-service silence is common
-// enough in church recordings that it must parse, not throw.
-const INTEGRATED_LUFS_RE = /^\s*I:\s+(-?[\d.]+|-inf|nan)\s+LUFS/m;
-const LOUDNESS_RANGE_RE = /^\s*LRA:\s+(-?[\d.]+|-inf|nan)\s+LU/m;
-const TRUE_PEAK_RE = /^\s*Peak:\s+(-?[\d.]+|-inf|nan)\s+dBFS/m;
-
-function parseEbur128Field(tail: string, re: RegExp, fieldName: string): number {
-  const match = tail.match(re);
-  const raw = match?.[1];
-  const value = raw === '-inf' ? -Infinity : raw !== undefined ? parseFloat(raw) : NaN;
-  if (!match || Number.isNaN(value)) {
-    throw new Error(
-      `ffmpeg ebur128: could not parse ${fieldName} from summary output — the file may be too short or the bundled ffmpeg outdated; the report card will fall back to RMS levels`,
-    );
-  }
-  return value;
-}
-
-// Exported for the parser drift-guard test (#150), which asserts this copy
-// stays equivalent to the @sound-buddy/audio-engine parser until the
-// duplication is removed (#151). Not part of the app's runtime surface.
-export function parseEbur128Summary(output: string): LoudnessStats {
-  const summaryIndex = output.lastIndexOf('Summary:');
-  const tail = summaryIndex >= 0 ? output.slice(summaryIndex) : '';
-
-  return {
-    integratedLufs: parseEbur128Field(tail, INTEGRATED_LUFS_RE, 'integrated loudness'),
-    loudnessRange: parseEbur128Field(tail, LOUDNESS_RANGE_RE, 'loudness range'),
-    truePeakDbtp: parseEbur128Field(tail, TRUE_PEAK_RE, 'true peak'),
-  };
-}
-
-// ebur128 prints a progress line to stderr roughly every 100ms of audio;
-// a multi-hour service recording can produce many MB before the summary
-// block, well past Node's 1 MB execFile default (which would otherwise
-// throw ERR_CHILD_PROCESS_STDIO_MAXBUFFER and silently drop loudness data).
-const EBUR128_MAX_BUFFER_BYTES = 64 * 1024 * 1024;
-
-// Exported for the parser drift-guard test (#150).
 export async function runEbur128(filePath: string, signal?: AbortSignal): Promise<LoudnessStats> {
-  const { stderr } = await execFileWithTimeout(
-    toolBin('ffmpeg'),
-    ['-nostats', '-hide_banner', '-i', filePath, '-filter_complex', 'ebur128=peak=true', '-f', 'null', '-'],
-    { encoding: 'utf8', maxBuffer: EBUR128_MAX_BUFFER_BYTES, signal },
-    'ffmpeg ebur128',
-    EBUR128_TIMEOUT_MS,
-  );
-
-  return parseEbur128Summary(stderr);
+  return loadEngineParsers().runEbur128(filePath, { bin: toolBin('ffmpeg'), signal });
 }
 
 // ─── IPC HANDLERS ─────────────────────────────────────────────────────────────

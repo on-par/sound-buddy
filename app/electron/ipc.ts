@@ -5,7 +5,8 @@
 // themselves live under ipc/, grouped by domain (#225 — this file used to be
 // a single ~1200-line module covering file analysis, live capture, playback,
 // licensing, settings, and the AI narrative all at once):
-//   ipc/analysis.ts      — sox/ffprobe/spectrum parsing, analyze-file
+//   ipc/analysis.ts      — analyze-file; wraps @sound-buddy/audio-engine's
+//                          sox/ffprobe/spectrum/ebur128 parsers (#151)
 //   ipc/narrative.ts     — AI provider settings + streaming to the renderer
 //   ipc/live-capture.ts  — device enumeration, mic permission, start/stop-live
 //   ipc/playback.ts      — virtual-soundcheck playback (start/stop-playback)

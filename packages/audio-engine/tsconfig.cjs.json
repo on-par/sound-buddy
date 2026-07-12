@@ -1,0 +1,20 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "module": "CommonJS",
+    "moduleResolution": "Node10",
+    "outDir": "dist-cjs",
+    "rootDir": "src",
+    "declaration": true,
+    "declarationMap": false,
+    "sourceMap": false
+  },
+  "include": [
+    "src/analyze/sox.ts",
+    "src/analyze/ffprobe.ts",
+    "src/analyze/spectrum.ts",
+    "src/analyze/ebur128.ts",
+    "src/analyze/timeout.ts",
+    "src/types.ts"
+  ]
+}
