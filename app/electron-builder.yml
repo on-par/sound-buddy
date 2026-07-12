@@ -26,6 +26,13 @@ extraResources:
     to: scripts
     filter:
       - "**/*"
+  # Compiled CommonJS build of the audio-engine parsers (#151) — the app's
+  # single source of analysis parsing. Loaded at runtime by
+  # electron/ipc/engine-loader.ts from Contents/Resources/engine.
+  - from: ../packages/audio-engine/dist-cjs
+    to: engine
+    filter:
+      - "**/*"
   # First-run onboarding demo recording (#69). Ships outside the asar so the
   # external sox/ffprobe processes can read it (same rationale as scripts).
   - from: assets

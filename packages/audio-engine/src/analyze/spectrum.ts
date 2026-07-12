@@ -1,5 +1,3 @@
-import { fileURLToPath } from "node:url";
-import { join, dirname } from "node:path";
 import type {
   SpectrumResult,
   SpectrumFrame,
@@ -19,12 +17,13 @@ function asContentType(v: string | undefined): ContentType | undefined {
   return CONTENT_TYPES.includes(v as ContentType) ? (v as ContentType) : undefined;
 }
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
-
-// Resolve the spectrum.py path relative to this file:
-// src/analyze/spectrum.ts -> ../../scripts/spectrum.py
-const SPECTRUM_SCRIPT = join(__dirname, "..", "..", "scripts", "spectrum.py");
+export interface RunSpectrumOptions {
+  /** Path to spectrum.py — each host (CLI, packaged app) resolves this differently. */
+  scriptPath: string;
+  python?: string;
+  env?: NodeJS.ProcessEnv;
+  signal?: AbortSignal;
+}
 
 interface RawSpectrumOutput {
   bands: {
@@ -46,13 +45,16 @@ interface RawSpectrumOutput {
   content_type?: string;
 }
 
-export async function runSpectrum(filePath: string): Promise<SpectrumResult> {
+export async function runSpectrum(filePath: string, opts: RunSpectrumOptions): Promise<SpectrumResult> {
+  const { scriptPath, python = "python3", env, signal } = opts;
   const { stdout } = await execFileWithTimeout(
-    "python3",
-    [SPECTRUM_SCRIPT, filePath],
+    python,
+    [scriptPath, filePath],
     {
       encoding: "utf8",
       maxBuffer: 1024 * 1024,
+      env,
+      signal,
     },
     "spectrum analysis",
     SPECTRUM_TIMEOUT_MS,

@@ -1,5 +1,10 @@
 import type { SoxStats } from "../types.js";
-import { execFileWithTimeout, SOX_TIMEOUT_MS, SubprocessTimeoutError } from "./timeout.js";
+import { execFileWithTimeout, SOX_TIMEOUT_MS, SubprocessTimeoutError, isAbortError } from "./timeout.js";
+
+export interface RunSoxOptions {
+  bin?: string;
+  signal?: AbortSignal;
+}
 
 /**
  * Parse a single numeric value from sox stat output.
@@ -20,16 +25,17 @@ function amplitudeToDbfs(amplitude: number): number {
   return 20 * Math.log10(amplitude);
 }
 
-export async function runSox(filePath: string): Promise<SoxStats> {
+export async function runSox(filePath: string, opts: RunSoxOptions = {}): Promise<SoxStats> {
+  const { bin = "sox", signal } = opts;
   // sox writes stat output to stderr, but exit code varies by platform/version:
   // some versions exit 0 (success) with stderr populated, others exit non-zero.
   // We need to capture stderr in both cases.
   let stderr: string;
   try {
     const result = await execFileWithTimeout(
-      "sox",
+      bin,
       [filePath, "-n", "stat"],
-      { encoding: "utf8" },
+      { encoding: "utf8", signal },
       "sox stat",
       SOX_TIMEOUT_MS,
     );
@@ -37,6 +43,7 @@ export async function runSox(filePath: string): Promise<SoxStats> {
     stderr = result.stderr ?? "";
   } catch (err: unknown) {
     if (err instanceof SubprocessTimeoutError) throw err;
+    if (isAbortError(err)) throw err;
     // sox exited non-zero — stderr is on the error object
     const e = err as { stderr?: string; stdout?: string };
     stderr = e.stderr ?? "";

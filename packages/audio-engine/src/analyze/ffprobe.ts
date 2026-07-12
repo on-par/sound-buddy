@@ -1,6 +1,11 @@
 import type { FfprobeResult, AudioStream, AudioFormat } from "../types.js";
 import { execFileWithTimeout, FFPROBE_TIMEOUT_MS } from "./timeout.js";
 
+export interface RunFfprobeOptions {
+  bin?: string;
+  signal?: AbortSignal;
+}
+
 interface RawFfprobeStream {
   codec_type?: string;
   codec_name?: string;
@@ -29,9 +34,10 @@ interface RawFfprobeOutput {
   format?: RawFfprobeFormat;
 }
 
-export async function runFfprobe(filePath: string): Promise<FfprobeResult> {
+export async function runFfprobe(filePath: string, opts: RunFfprobeOptions = {}): Promise<FfprobeResult> {
+  const { bin = "ffprobe", signal } = opts;
   const { stdout } = await execFileWithTimeout(
-    "ffprobe",
+    bin,
     [
       "-v", "quiet",
       "-print_format", "json",
@@ -39,7 +45,7 @@ export async function runFfprobe(filePath: string): Promise<FfprobeResult> {
       "-show_streams",
       filePath,
     ],
-    { encoding: "utf8" },
+    { encoding: "utf8", signal },
     "ffprobe",
     FFPROBE_TIMEOUT_MS,
   );

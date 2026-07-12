@@ -4,22 +4,30 @@ import * as path from 'node:path';
 import * as fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
-// ─── Parser drift guard (#150) ────────────────────────────────────────────────
+// ─── Parser drift guard (#150 / #151) ──────────────────────────────────────────
 //
-// The sox/ffprobe/spectrum parsers are duplicated: the canonical copy lives in
-// @sound-buddy/audio-engine (MIT, used by the CLI) and an inline copy lives in
-// app/electron/ipc/analysis.ts (used by the Electron app; re-exported from
-// ipc.ts, split by domain in #225). Nothing stopped the two from silently
-// diverging. This test runs BOTH copies against the same committed fixture and
-// asserts their numeric output is equal — a divergence fails here. It is the
-// safety net that makes de-duplicating them (#151) safe.
+// The sox/ffprobe/spectrum/ebur128 parsers used to be duplicated: a canonical
+// copy in @sound-buddy/audio-engine (MIT, used by the CLI) and a hand-copied
+// fork inline in app/electron/ipc/analysis.ts (used by the Electron app).
+// #151 removed the fork — the app now calls the SAME engine functions
+// (loaded from the engine's CJS build via ./ipc/engine-loader.ts), parameterized
+// with bundled binary/script paths and a cancellation AbortSignal. This test no
+// longer compares two independent implementations; it guards the
+// parameterization seam itself: the app's wrappers (bundled-path resolution,
+// CJS build, loaded through engine-loader) must produce numerically identical
+// output, end to end, to the engine source called directly with its default
+// paths. A divergence here means the wrapper is passing the wrong bin/script
+// path or dropping an option — not that the parsing logic itself disagrees
+// (there is only one parsing implementation left to disagree with).
 //
 // ipc/shared.ts computes SCRIPTS_DIR/SPECTRUM_SCRIPT at module load from
 // app.isPackaged + process.resourcesPath. We mock Electron in the packaged
 // shape and point resourcesPath at the real audio-engine package so spectrum.py
-// resolves; the sox/ffprobe binaries fall back to PATH (no bundled bin dir on
-// disk). The mock factory is hoisted above the ipc import, so resourcesPath is
-// set before ipc.ts's module body runs.
+// resolves; the sox/ffprobe/ffmpeg binaries fall back to PATH (no bundled bin
+// dir on disk), and engine-loader's dev fallback resolves the real, built
+// dist-cjs parsers via REPO_ROOT (no `engine/` subdir at this mocked
+// resourcesPath). The mock factory is hoisted above the ipc import, so
+// resourcesPath is set before ipc.ts's module body runs.
 vi.mock('electron', () => {
   const p = require('node:path') as typeof import('node:path');
   const os = require('node:os') as typeof import('node:os');
@@ -67,6 +75,7 @@ const fixture = (name: string) =>
   path.join(repoRoot, 'packages', 'audio-engine', 'test-fixtures', name);
 const TONE = fixture('tone.wav');
 const SILENCE = fixture('silence.wav');
+const SPECTRUM_SCRIPT = path.join(repoRoot, 'packages', 'audio-engine', 'scripts', 'spectrum.py');
 
 function ok(cmd: string, args: string[], env?: NodeJS.ProcessEnv): boolean {
   try {
@@ -153,7 +162,10 @@ describe.skipIf(!LIBROSA_PYTHON)('spectrum parser: app copy === audio-engine cop
     ['tone.wav', () => TONE],
     ['silence.wav', () => SILENCE],
   ])('%s produces identical band + scalar values', async (_name, file) => {
-    const [a, e] = await Promise.all([appSpectrum(file()), engSpectrum(file())]);
+    const [a, e] = await Promise.all([
+      appSpectrum(file()),
+      engSpectrum(file(), { scriptPath: SPECTRUM_SCRIPT }),
+    ]);
     expect(core(a)).toEqual(core(e));
   });
 });

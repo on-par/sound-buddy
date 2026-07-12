@@ -1,6 +1,11 @@
 import type { LoudnessStats } from "../types.js";
 import { execFileWithTimeout, EBUR128_TIMEOUT_MS } from "./timeout.js";
 
+export interface RunEbur128Options {
+  bin?: string;
+  signal?: AbortSignal;
+}
+
 // ffmpeg's ebur128 filter writes per-frame progress lines AND the final
 // summary to stderr; the per-frame lines also contain "I:"/"LRA:" tokens, so
 // we must only search the tail after the last "Summary:" marker or a
@@ -41,11 +46,12 @@ export function parseEbur128Summary(output: string): LoudnessStats {
 // throw ERR_CHILD_PROCESS_STDIO_MAXBUFFER and silently drop loudness data).
 const EBUR128_MAX_BUFFER_BYTES = 64 * 1024 * 1024;
 
-export async function runEbur128(filePath: string): Promise<LoudnessStats> {
+export async function runEbur128(filePath: string, opts: RunEbur128Options = {}): Promise<LoudnessStats> {
+  const { bin = "ffmpeg", signal } = opts;
   const { stderr } = await execFileWithTimeout(
-    "ffmpeg",
+    bin,
     ["-nostats", "-hide_banner", "-i", filePath, "-filter_complex", "ebur128=peak=true", "-f", "null", "-"],
-    { encoding: "utf8", maxBuffer: EBUR128_MAX_BUFFER_BYTES },
+    { encoding: "utf8", maxBuffer: EBUR128_MAX_BUFFER_BYTES, signal },
     "ffmpeg ebur128",
     EBUR128_TIMEOUT_MS,
   );

@@ -25,6 +25,7 @@ const fixture = (name: string): string =>
 
 const TONE = fixture("tone.wav");
 const SILENCE = fixture("silence.wav");
+const SPECTRUM_SCRIPT = fileURLToPath(new URL("../../scripts/spectrum.py", import.meta.url));
 
 function toolAvailable(cmd: string, args: string[]): boolean {
   try {
@@ -93,7 +94,7 @@ describe.skipIf(!HAS_LIBROSA)("spectrum parser (fixture)", () => {
   const SPECTRUM_TIMEOUT = 60_000;
 
   it("tone.wav: seven band values, energy concentrated in the mid band", { timeout: SPECTRUM_TIMEOUT }, async () => {
-    const sp = await runSpectrum(TONE);
+    const sp = await runSpectrum(TONE, { scriptPath: SPECTRUM_SCRIPT });
     const b = sp.bands;
     // A 1 kHz tone lands in the mid band (500–2000 Hz); every other band sits
     // far below it. Expected values captured from spectrum.py on the fixture.
@@ -113,7 +114,7 @@ describe.skipIf(!HAS_LIBROSA)("spectrum parser (fixture)", () => {
   });
 
   it("silence.wav: all seven bands near the noise floor and roughly equal", { timeout: SPECTRUM_TIMEOUT }, async () => {
-    const sp = await runSpectrum(SILENCE);
+    const sp = await runSpectrum(SILENCE, { scriptPath: SPECTRUM_SCRIPT });
     const vals = Object.values(sp.bands);
     // No tone → the bands collapse to a flat, low floor.
     for (const v of vals) expect(v).toBeLessThan(-55);
@@ -137,6 +138,29 @@ describe.skipIf(!HAS_FFMPEG)("ebur128 parser (fixture)", () => {
   it("silence.wav: gates to the loudness floor, or rejects on too-short input", async () => {
     const integratedLufs = await runEbur128(SILENCE).then((s) => s.integratedLufs, () => -70);
     expect(integratedLufs).toBeLessThanOrEqual(-60);
+  });
+});
+
+// Tool-free option-plumbing tests (#151): exercise the new bin/python options
+// without needing sox/ffmpeg/python installed, so they run on every machine
+// including CI without media tools.
+describe("bin/python option plumbing (tool-free)", () => {
+  it("runSox rejects when given a nonexistent bin", async () => {
+    await expect(runSox(TONE, { bin: "/nonexistent/sox-bin" })).rejects.toThrow();
+  });
+
+  it("runFfprobe rejects when given a nonexistent bin", async () => {
+    await expect(runFfprobe(TONE, { bin: "/nonexistent/ffprobe-bin" })).rejects.toThrow();
+  });
+
+  it("runEbur128 rejects when given a nonexistent bin", async () => {
+    await expect(runEbur128(TONE, { bin: "/nonexistent/ffmpeg-bin" })).rejects.toThrow();
+  });
+
+  it("runSpectrum rejects when given a nonexistent python interpreter", async () => {
+    await expect(
+      runSpectrum(TONE, { scriptPath: SPECTRUM_SCRIPT, python: "/nonexistent/python3-bin" }),
+    ).rejects.toThrow();
   });
 });
 

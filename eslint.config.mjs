@@ -17,6 +17,7 @@ export default tseslint.config(
   {
     ignores: [
       '**/dist/**',
+      '**/dist-cjs/**',
       '**/coverage/**',
       'app/release/**',
       'app/test-results/**',
