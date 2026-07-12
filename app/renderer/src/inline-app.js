@@ -3215,8 +3215,11 @@ async function saveAiSettings() {
 let storagePendingDir = null;
 let storageDefaultPath = '~/Music/Sound Buddy';
 let storageLoadedPath = storageDefaultPath; // path persisted before this session
-// Opt-in anonymous usage counts (#145) — persisted preference only, reseeded
-// on every open so Cancel/Escape/backdrop-close discard any unsaved toggle.
+// Opt-in anonymous usage counts (#145) — persisted preference only. Cached
+// once at boot (alongside aiEnabled/idealProfileId) and kept in sync locally
+// on save, so opening the dialog re-seeds the checkbox from this cache
+// (Cancel/Escape/backdrop-close discard any unsaved toggle) without a fresh
+// IPC round trip on every open.
 let usageSignalLoaded = false;
 
 function effectiveStoragePath() {
@@ -3236,10 +3239,8 @@ async function openStorageSettings() {
   storageLoadedPath = storageDefaultPath;
   aiEl('storage-usage').textContent = 'Calculating disk usage…';
   renderStoragePath();
-  try {
-    const s = await sb.getSettings();
-    usageSignalLoaded = !!(s && s.usageSignalEnabled);
-  } catch { usageSignalLoaded = false; }
+  // usageSignalLoaded is cached at boot (and kept in sync on save below) —
+  // reused here rather than a fresh sb.getSettings() round trip on every open.
   aiEl('usage-signal-toggle').checked = usageSignalLoaded;
   aiEl('storage-dialog').style.display = 'flex';
   try {
@@ -3277,8 +3278,10 @@ async function saveStorageSettings() {
   }
   const usageChecked = aiEl('usage-signal-toggle').checked;
   if (usageChecked !== usageSignalLoaded) {
-    try { await sb.updateSettings({ usageSignalEnabled: usageChecked }); }
-    catch { /* non-fatal — preference only, nothing depends on it */ }
+    try {
+      await sb.updateSettings({ usageSignalEnabled: usageChecked });
+      usageSignalLoaded = usageChecked;
+    } catch { /* non-fatal — preference only, nothing depends on it */ }
   }
   closeStorageSettings();
 }
@@ -3417,6 +3420,7 @@ let aiEnabled = false;
   try {
     const s = await sb.getSettings();
     aiEnabled = !!(s && s.aiEnabled);
+    usageSignalLoaded = !!(s && s.usageSignalEnabled);
     if (s && typeof s.idealProfile === 'string') idealProfileId = s.idealProfile;
     customIdealProfiles = window.idealCurves
       ? window.idealCurves.normalizeProfiles(s && s.customIdealProfiles, IP_GRID_FREQS)
