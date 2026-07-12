@@ -45,6 +45,15 @@
     bandBalance: { hotDiff: 12, severeHotDiff: 15, quietDiff: -15 },
     // Spectral centroid in Hz — the "good" tonal-balance window for the pill.
     centroid: { min: 500, max: 4000 },
+    // #135 — EBU R128 level targets, used instead of the rms band whenever the
+    // source carries a real loudness measurement (#134). Same tier shape as rms:
+    // [acceptableMin, acceptableMax] passes; beyond quietEdge/hotEdge costs extra
+    // score. -20..-14 LUFS brackets the common delivery targets a church mix is
+    // judged against (-16 LUFS podcast/Apple, -14 LUFS streaming normalization).
+    lufs: { acceptableMin: -20, acceptableMax: -14, quietEdge: -25, hotEdge: -10 },
+    // True-peak ceiling in dBTP (EBU R128 / streaming-safe maximum). Exceeding it
+    // drops a letter even when the sample-peak heuristics look acceptable.
+    truePeak: { ceiling: -1 },
   };
 
   // Band label + frequency metadata used to phrase the "too much energy in X"
@@ -66,6 +75,11 @@
     return bands[key] - avgOthers;
   }
 
+  // Whether a loudness field (#134) carries a real measurement. -Infinity is a
+  // legitimate value (ffmpeg reports "-inf" for silent audio); only NaN, null,
+  // or a missing field mean "not measured" — same contract as report-card.ts.
+  function measuredLoudness(v) { return typeof v === 'number' && !Number.isNaN(v); }
+
   function analyzeRecordingType(src) {
     if (src.clipping || src.peak >= -0.5) return { type: 'clipping', label: 'Clipping', note: 'Signal is clipping. Reduce input gain immediately.', tone: 'issue' };
     if (src.peak > -3 && src.rms > -12) return { type: 'hot', label: 'Hot', note: 'Recording level is very hot. Consider reducing gain.', tone: 'check' };
@@ -86,13 +100,21 @@
     let idx = 0;
     const drop = () => { idx = Math.min(idx + 1, letters.length - 1); };
     const recType = analyzeRecordingType(src);
+    // #135 — true-peak ceiling rule: applies to all recording types.
+    if (measuredLoudness(src.truePeakDbtp) && src.truePeakDbtp > CONFIG.truePeak.ceiling) drop();
     if (recType.type === 'low_gain') {
       if (src.dynamicRange != null && src.dynamicRange < CONFIG.dynamicRange.check) drop();
       if (Object.keys(src.bands).some(k => bandDiffFromOthers(src.bands, k) > CONFIG.bandBalance.severeHotDiff)) drop();
       return letters[idx];
     }
     const rmsExempt = recType.type === 'dynamic_service';
-    if (!rmsExempt && (src.rms < CONFIG.rms.acceptableMin || src.rms > CONFIG.rms.acceptableMax)) drop();
+    if (measuredLoudness(src.lufsIntegrated)) {
+      // #135 — real loudness measured: the level rule judges integrated LUFS;
+      // the RMS rule does not run (LUFS replaces it, per config).
+      if (!rmsExempt && (src.lufsIntegrated < CONFIG.lufs.acceptableMin || src.lufsIntegrated > CONFIG.lufs.acceptableMax)) drop();
+    } else if (!rmsExempt && (src.rms < CONFIG.rms.acceptableMin || src.rms > CONFIG.rms.acceptableMax)) {
+      drop();
+    }
     if (src.dynamicRange != null && src.dynamicRange < CONFIG.dynamicRange.good) drop();
     if (Object.keys(src.bands).some(k => bandDiffFromOthers(src.bands, k) > CONFIG.bandBalance.severeHotDiff)) drop();
     return letters[idx];
@@ -168,6 +190,15 @@
       letterImpact: 'Drops one letter',
     });
 
+    if (measuredLoudness(src.truePeakDbtp) && src.truePeakDbtp > CONFIG.truePeak.ceiling) {
+      deductions.push({
+        rule: 'True peak over ceiling',
+        measured: src.truePeakDbtp.toFixed(1) + ' dBTP',
+        target: rcMetricTarget('truePeak'),
+        letterImpact: 'Drops one letter',
+      });
+    }
+
     if (recType.type === 'low_gain') {
       // Low-gain takes carry their own rule set (RMS ignored, DR floor relaxed
       // to the "check" threshold), matching computeGrade's low_gain branch.
@@ -186,7 +217,18 @@
     // Dynamic-service recordings are RMS-exempt (a quiet whole-file RMS is
     // expected when peaks are healthy), matching computeGrade's rmsExempt.
     const rmsExempt = recType.type === 'dynamic_service';
-    if (!rmsExempt && (src.rms < CONFIG.rms.acceptableMin || src.rms > CONFIG.rms.acceptableMax)) {
+    if (measuredLoudness(src.lufsIntegrated)) {
+      // #135 — real loudness measured: LUFS replaces the RMS deduction, same
+      // guard order as computeGrade.
+      if (!rmsExempt && (src.lufsIntegrated < CONFIG.lufs.acceptableMin || src.lufsIntegrated > CONFIG.lufs.acceptableMax)) {
+        deductions.push({
+          rule: 'Integrated loudness out of band',
+          measured: src.lufsIntegrated.toFixed(1) + ' LUFS',
+          target: rcMetricTarget('lufs'),
+          letterImpact: 'Drops one letter',
+        });
+      }
+    } else if (!rmsExempt && (src.rms < CONFIG.rms.acceptableMin || src.rms > CONFIG.rms.acceptableMax)) {
       deductions.push({
         rule: 'RMS out of band',
         measured: src.rms.toFixed(1) + ' dBFS',
@@ -217,9 +259,15 @@
     let score = 100;
     const rt = analyzeRecordingType(src);
     if (src.clipping) score -= 45;
+    if (measuredLoudness(src.truePeakDbtp) && src.truePeakDbtp > CONFIG.truePeak.ceiling) score -= 9;
     if (rt.type !== 'low_gain' && rt.type !== 'dynamic_service') {
-      if (src.rms < CONFIG.rms.acceptableMin || src.rms > CONFIG.rms.acceptableMax) score -= 9;
-      if (src.rms < CONFIG.rms.quietEdge || src.rms > CONFIG.rms.hotEdge) score -= 7;
+      if (measuredLoudness(src.lufsIntegrated)) {
+        if (src.lufsIntegrated < CONFIG.lufs.acceptableMin || src.lufsIntegrated > CONFIG.lufs.acceptableMax) score -= 9;
+        if (src.lufsIntegrated < CONFIG.lufs.quietEdge || src.lufsIntegrated > CONFIG.lufs.hotEdge) score -= 7;
+      } else {
+        if (src.rms < CONFIG.rms.acceptableMin || src.rms > CONFIG.rms.acceptableMax) score -= 9;
+        if (src.rms < CONFIG.rms.quietEdge || src.rms > CONFIG.rms.hotEdge) score -= 7;
+      }
     }
     if (src.dynamicRange != null) { if (src.dynamicRange < CONFIG.dynamicRange.check) score -= 15; else if (src.dynamicRange < CONFIG.dynamicRange.good) score -= 8; }
     let maxDiff = 0;
@@ -287,6 +335,18 @@
     return 'check';
   }
 
+  // #135 — two-way mirrors of the LUFS / true-peak grade rules, same pattern
+  // as rcRmsStatus: the acceptable band reads "good", anything the grade
+  // deducts for reads "issue".
+  function rcLufsStatus(lufs) {
+    const c = CONFIG.lufs;
+    return (lufs >= c.acceptableMin && lufs <= c.acceptableMax) ? 'good' : 'issue';
+  }
+
+  function rcTruePeakStatus(truePeak) {
+    return truePeak > CONFIG.truePeak.ceiling ? 'issue' : 'good';
+  }
+
   // #132 — the config-derived "good" target shown beside each measured metric on
   // the report card, turning an opaque pill into an actionable one. Every string
   // is read from CONFIG (never hardcoded in the renderer): change a threshold and
@@ -302,6 +362,8 @@
       case 'rms':          return c.rms.acceptableMin + ' to ' + c.rms.acceptableMax + ' dBFS';
       case 'dynamicRange': return '≥ ' + c.dynamicRange.good + ' dB';
       case 'centroid':     return c.centroid.min.toLocaleString() + ' to ' + c.centroid.max.toLocaleString() + ' Hz';
+      case 'lufs':         return c.lufs.acceptableMin + ' to ' + c.lufs.acceptableMax + ' LUFS';
+      case 'truePeak':     return '≤ ' + c.truePeak.ceiling + ' dBTP';
       default:             return null;
     }
   }
@@ -319,6 +381,8 @@
     rcPeakStatus: rcPeakStatus,
     rcDrStatus: rcDrStatus,
     rcCentroidStatus: rcCentroidStatus,
+    rcLufsStatus: rcLufsStatus,
+    rcTruePeakStatus: rcTruePeakStatus,
     rcMetricTarget: rcMetricTarget,
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;

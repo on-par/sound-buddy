@@ -214,16 +214,26 @@ describe('buildMetricRows', () => {
     // below -1.05, so JS rounds it to -1.1, not -1.0 (Number.prototype.toFixed
     // is not IEEE-round-half-to-even).
     expect(truePeak.value).toBe('-1.1');
-    expect(truePeak.tone).toBe('info');
-    expect(truePeak.target).toBeNull();
+    // #135 — True Peak / Integrated Loudness now mirror the grade rules via
+    // rcTruePeakStatus/rcLufsStatus instead of a fixed 'info' tone.
+    expect(truePeak.tone).toBe('good'); // -1.05 ≤ -1 ceiling
+    expect(truePeak.target).toBe('≤ -1 dBTP');
     expect(integrated.unit).toBe('LUFS');
     expect(integrated.value).toBe('-14.2');
-    expect(integrated.tone).toBe('info');
-    expect(integrated.target).toBeNull();
+    expect(integrated.tone).toBe('good'); // in the -20..-14 acceptable band
+    expect(integrated.target).toBe('-20 to -14 LUFS');
     expect(lra.unit).toBe('LU');
     expect(lra.value).toBe('6.3');
-    expect(lra.tone).toBe('info');
+    expect(lra.tone).toBe('info'); // no LRA grading rule — stays display-only
     expect(lra.target).toBeNull();
+  });
+
+  it('flags out-of-range True Peak / Integrated Loudness rows as "issue" (#135)', () => {
+    const rows = buildMetricRows(makeSrc({ lufsIntegrated: -12, loudnessRange: 6.3, truePeakDbtp: -0.3 }), grading);
+    const truePeak = rows.find((r) => r.name === 'True Peak')!;
+    const integrated = rows.find((r) => r.name === 'Integrated Loudness')!;
+    expect(truePeak.tone).toBe('issue');
+    expect(integrated.tone).toBe('issue');
   });
 
   it('omits the loudness rows individually when their field is null, undefined, or NaN (#134)', () => {
@@ -252,6 +262,7 @@ describe('buildMetricRows', () => {
     const truePeak = rows.find((r) => r.name === 'True Peak')!;
     expect(truePeak).toBeDefined();
     expect(truePeak.value).toBe('-∞');
+    expect(truePeak.tone).toBe('good'); // -Infinity ≤ ceiling
   });
 });
 

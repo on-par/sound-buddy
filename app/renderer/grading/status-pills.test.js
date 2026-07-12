@@ -11,6 +11,8 @@ describe('CONFIG — single source of truth (#131)', () => {
       dynamicRange: { good: 6, check: 3 },
       bandBalance: { hotDiff: 12, severeHotDiff: 15, quietDiff: -15 },
       centroid: { min: 500, max: 4000 },
+      lufs: { acceptableMin: -20, acceptableMax: -14, quietEdge: -25, hotEdge: -10 },
+      truePeak: { ceiling: -1 },
     });
   });
 });
@@ -61,6 +63,32 @@ describe('status pills', () => {
     });
   });
 
+  describe('rcLufsStatus (#135)', () => {
+    it('calls the acceptable LUFS band "good"', () => {
+      for (const lufs of [-20, -17, -14]) {
+        expect(grading.rcLufsStatus(lufs)).toBe('good');
+      }
+    });
+    it('calls any out-of-band LUFS "issue"', () => {
+      for (const lufs of [-25, -21, -13, -10]) {
+        expect(grading.rcLufsStatus(lufs)).toBe('issue');
+      }
+    });
+  });
+
+  describe('rcTruePeakStatus (#135)', () => {
+    it('calls true peak at or under the ceiling "good"', () => {
+      for (const tp of [-1.05, -2, -Infinity]) {
+        expect(grading.rcTruePeakStatus(tp)).toBe('good');
+      }
+    });
+    it('calls true peak over the ceiling "issue"', () => {
+      for (const tp of [-0.9, -0.3, 0]) {
+        expect(grading.rcTruePeakStatus(tp)).toBe('issue');
+      }
+    });
+  });
+
   describe('rcMetricTarget (#132)', () => {
     it('renders each metric target from its CONFIG threshold', () => {
       // Every string is derived from CONFIG — these expectations mirror the
@@ -69,6 +97,8 @@ describe('status pills', () => {
       expect(grading.rcMetricTarget('rms')).toBe('-20 to -14 dBFS'); // acceptable band
       expect(grading.rcMetricTarget('dynamicRange')).toBe('≥ 6 dB'); // CONFIG.dynamicRange.good
       expect(grading.rcMetricTarget('centroid')).toBe('500 to 4,000 Hz'); // centroid window
+      expect(grading.rcMetricTarget('lufs')).toBe('-20 to -14 LUFS'); // #135 acceptable band
+      expect(grading.rcMetricTarget('truePeak')).toBe('≤ -1 dBTP'); // #135 CONFIG.truePeak.ceiling
     });
 
     it('returns null for a metric with no target in CONFIG', () => {
@@ -90,6 +120,17 @@ describe('status pills', () => {
       }
       expect(grading.rcMetricTarget('rms')).toBe('-20 to -14 dBFS');
     });
+
+    it('reads the true-peak target from CONFIG — moving the ceiling moves the displayed target', () => {
+      const original = grading.CONFIG.truePeak.ceiling;
+      grading.CONFIG.truePeak.ceiling = -2;
+      try {
+        expect(grading.rcMetricTarget('truePeak')).toBe('≤ -2 dBTP');
+      } finally {
+        grading.CONFIG.truePeak.ceiling = original;
+      }
+      expect(grading.rcMetricTarget('truePeak')).toBe('≤ -1 dBTP');
+    });
   });
 
   describe('grade / pill direction agreement (#131)', () => {
@@ -105,6 +146,18 @@ describe('status pills', () => {
         const rmsDeducted = grading.computeGrade(src) !== 'A';
         if (pill === 'good') expect(rmsDeducted).toBe(false);
         if (rmsDeducted) expect(pill).not.toBe('good');
+      }
+    });
+
+    // #135 — same sweep for LUFS: with a measured, healthy true peak, the only
+    // possible deduction on an otherwise-clean source is the LUFS rule.
+    it('never shows a "good" LUFS pill while the grade deducts for LUFS, or vice versa', () => {
+      for (let lufs = -32; lufs <= -4; lufs += 0.5) {
+        const src = makeSrc({ truePeakDbtp: -5, lufsIntegrated: lufs });
+        const pill = grading.rcLufsStatus(lufs);
+        const lufsDeducted = grading.computeGrade(src) !== 'A';
+        if (pill === 'good') expect(lufsDeducted).toBe(false);
+        if (lufsDeducted) expect(pill).not.toBe('good');
       }
     });
   });

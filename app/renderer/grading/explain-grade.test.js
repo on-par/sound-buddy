@@ -172,6 +172,49 @@ describe('explainGrade (#133)', () => {
     }
   });
 
+  describe('#135 LUFS / true-peak deductions', () => {
+    it('pushes an "Integrated loudness out of band" deduction when LUFS is measured and out of band', () => {
+      const src = makeSrc({ rms: -17, lufsIntegrated: -12, truePeakDbtp: -5 });
+      const { grade, deductions } = grading.explainGrade(src);
+      expect(grade).toBe('B');
+      expect(deductions).toEqual([
+        { rule: 'Integrated loudness out of band', measured: '-12.0 LUFS', target: '-20 to -14 LUFS', letterImpact: 'Drops one letter' },
+      ]);
+    });
+
+    it('pushes a "True peak over ceiling" deduction when true peak exceeds the ceiling', () => {
+      const src = makeSrc({ rms: -17, lufsIntegrated: -16, truePeakDbtp: -0.3 });
+      const { grade, deductions } = grading.explainGrade(src);
+      expect(grade).toBe('B');
+      expect(deductions).toEqual([
+        { rule: 'True peak over ceiling', measured: '-0.3 dBTP', target: '≤ -1 dBTP', letterImpact: 'Drops one letter' },
+      ]);
+    });
+
+    it('orders the true-peak deduction before the LUFS deduction when both fire', () => {
+      const src = makeSrc({ lufsIntegrated: -12, truePeakDbtp: -0.3 });
+      const { grade, deductions } = grading.explainGrade(src);
+      expect(grade).toBe(grading.computeGrade(src));
+      expect(deductions.map((d) => d.rule)).toEqual([
+        'True peak over ceiling', 'Integrated loudness out of band',
+      ]);
+    });
+
+    it('falls back to the RMS deduction when LUFS is not measured', () => {
+      const src = makeSrc({ rms: -22, lufsIntegrated: null });
+      const { deductions } = grading.explainGrade(src);
+      expect(deductions).toEqual([
+        { rule: 'RMS out of band', measured: '-22.0 dBFS', target: '-20 to -14 dBFS', letterImpact: 'Drops one letter' },
+      ]);
+    });
+
+    it('omits the RMS deduction when LUFS is measured, even if RMS is out of band', () => {
+      const src = makeSrc({ rms: -22, lufsIntegrated: -16, truePeakDbtp: -5 });
+      const { deductions } = grading.explainGrade(src);
+      expect(deductions).toEqual([]);
+    });
+  });
+
   it('reads targets from CONFIG — moving a threshold moves the reason shown', () => {
     const src = makeSrc({ rms: -15 }); // in the default band → no RMS deduction
     expect(grading.explainGrade(src).deductions).toEqual([]);

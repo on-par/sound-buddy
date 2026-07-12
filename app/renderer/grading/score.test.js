@@ -56,7 +56,31 @@ describe('computeScore', () => {
       { bands: { ...flatBands(-30), mid: -8 } },
       { contentType: 'music', peak: -8, dynamicRange: 20, rms: -30 },
       { peak: -20, rms: -40, dynamicRange: 2 },
+      { lufsIntegrated: -12, truePeakDbtp: -5 },
+      { lufsIntegrated: -16, truePeakDbtp: -0.3 },
+      { lufsIntegrated: -Infinity, truePeakDbtp: -Infinity },
+      { rms: -22, lufsIntegrated: -16, truePeakDbtp: -5 },
     ];
     for (const over of cases) inBand(makeSrc(over));
+  });
+
+  describe('#135 LUFS / true-peak scoring', () => {
+    it('scores an out-of-band LUFS like the RMS rule — one tier, clamped to 89', () => {
+      const src = makeSrc({ lufsIntegrated: -12, truePeakDbtp: -5 });
+      expect(grading.computeGrade(src)).toBe('B');
+      expect(grading.computeScore(src)).toBe(89);
+    });
+
+    it('scores LUFS beyond the hot edge with both tiers — raw 100-9-7=84', () => {
+      const src = makeSrc({ lufsIntegrated: -8, truePeakDbtp: -5 });
+      expect(grading.computeGrade(src)).toBe('B');
+      expect(grading.computeScore(src)).toBe(84);
+    });
+
+    it('scores a true-peak overage alone — clamped to 89', () => {
+      const src = makeSrc({ lufsIntegrated: -16, truePeakDbtp: -0.3 });
+      expect(grading.computeGrade(src)).toBe('B');
+      expect(grading.computeScore(src)).toBe(89);
+    });
   });
 });

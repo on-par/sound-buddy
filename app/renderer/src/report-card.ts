@@ -97,6 +97,8 @@ export interface GradingPillApi {
   rcRmsStatus(rms: number): PillTone;
   rcDrStatus(dr: number | null): PillTone;
   rcCentroidStatus(centroid: number | undefined): PillTone;
+  rcLufsStatus(lufs: number): PillTone;
+  rcTruePeakStatus(truePeak: number): PillTone;
   rcMetricTarget(key: string): string | null;
 }
 
@@ -243,22 +245,25 @@ export function recTypePillHTML(recType: RecordingType): string {
    no measured value (DR/Centroid absent), get null → the row renders an
    explicit "—". */
 // Whether a loudness field (#134) has a real, displayable value — measured
-// values feed an `info` pill with no target (display-only until #135 wires
-// them into grading); absent/NaN values omit the row entirely so cards from
+// values feed the row; absent/NaN values omit the row entirely so cards from
 // before this feature (or a failed ffmpeg measurement) render unchanged.
 // -Infinity is a legitimate loudness measurement (ffmpeg reports "-inf dBFS"
 // true peak for fully-silent audio — a muted channel or pre-service silence —
 // and parseEbur128Summary parses it as such rather than throwing, #134). Only
 // NaN (or a missing field) means "not measured"; fmt() already renders
 // -Infinity as "-∞", same as the pre-existing Peak/RMS rows.
+// #135 — True Peak and Integrated Loudness now mirror the grade rules via
+// rcTruePeakStatus/rcLufsStatus (good/issue, config-sourced target), the same
+// #131/#132 mechanism as every other graded metric. Loudness Range has no
+// grading rule (#135 non-goal) and stays a plain 'info' pill with no target.
 const measured = (v: number | null | undefined): v is number => typeof v === 'number' && !Number.isNaN(v);
 
 export function buildMetricRows(src: ReportCardSource, g: GradingPillApi): MetricRow[] {
   return [
     { name: 'Peak Level', note: 'Sample peak', value: fmt(src.peak), unit: 'dBFS', tone: g.rcPeakStatus(src.peak, src.clipping), target: g.rcMetricTarget('peak') },
-    ...(measured(src.truePeakDbtp) ? [{ name: 'True Peak', note: 'Inter-sample peak (EBU R128)', value: fmt(src.truePeakDbtp), unit: 'dBTP', tone: 'info' as PillTone, target: null }] : []),
+    ...(measured(src.truePeakDbtp) ? [{ name: 'True Peak', note: 'Inter-sample peak (EBU R128)', value: fmt(src.truePeakDbtp), unit: 'dBTP', tone: g.rcTruePeakStatus(src.truePeakDbtp), target: g.rcMetricTarget('truePeak') }] : []),
     { name: 'RMS Level', note: 'Average level (RMS)', value: fmt(src.rms), unit: 'dBFS', tone: g.rcRmsStatus(src.rms), target: g.rcMetricTarget('rms') },
-    ...(measured(src.lufsIntegrated) ? [{ name: 'Integrated Loudness', note: 'Program loudness (EBU R128)', value: fmt(src.lufsIntegrated), unit: 'LUFS', tone: 'info' as PillTone, target: null }] : []),
+    ...(measured(src.lufsIntegrated) ? [{ name: 'Integrated Loudness', note: 'Program loudness (EBU R128)', value: fmt(src.lufsIntegrated), unit: 'LUFS', tone: g.rcLufsStatus(src.lufsIntegrated), target: g.rcMetricTarget('lufs') }] : []),
     ...(measured(src.loudnessRange) ? [{ name: 'Loudness Range', note: 'LRA (EBU R128)', value: fmt(src.loudnessRange), unit: 'LU', tone: 'info' as PillTone, target: null }] : []),
     { name: 'Dynamic Range', note: src.dynamicRange != null ? null : 'Not measured for live capture', value: src.dynamicRange != null ? fmt(src.dynamicRange) : '—', unit: src.dynamicRange != null ? 'dB' : '', tone: g.rcDrStatus(src.dynamicRange), target: src.dynamicRange != null ? g.rcMetricTarget('dynamicRange') : null },
     { name: 'Clipping', value: src.clipping ? 'Yes' : 'None', unit: '', tone: src.clipping ? 'issue' : 'good', target: g.rcMetricTarget('clipping') },

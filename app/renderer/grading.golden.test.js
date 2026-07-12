@@ -42,6 +42,10 @@ describe('grading golden fixtures (#137)', () => {
       'band_imbalance_drop',
       'low_gain_path',
       'dynamic_range_null_live',
+      'lufs_replaces_rms',
+      'lufs_out_of_band_drop',
+      'true_peak_over_ceiling_drop',
+      'true_peak_within_tolerance_hot_sample_peak',
     ]) {
       expect(cases.has(requiredCase)).toBe(true);
     }
