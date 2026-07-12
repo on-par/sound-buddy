@@ -34,13 +34,14 @@
   // passes its existing shared escapeHtml so there is one escape implementation,
   // not a duplicate.
   function rowHtml(summary, index, escapeHtml) {
-    var gradeClass = String(summary && summary.gradeLetter == null ? '' : summary.gradeLetter)
+    var s = summary || {};
+    var gradeClass = String(s.gradeLetter == null ? '' : s.gradeLetter)
       .toLowerCase().replace(/[^a-z]/g, '');
-    var safeGrade = escapeHtml(summary.gradeLetter);
+    var safeGrade = escapeHtml(s.gradeLetter);
     return '\n    <div class="dir-item recent-row" data-idx="' + index + '">\n' +
       '      <span class="recent-grade" style="color:var(--grade-' + gradeClass + ')">' + safeGrade + '</span>\n' +
-      '      <span class="dir-name">' + escapeHtml(summary.sourceFilename) + '</span>\n' +
-      '      <span class="recent-date">' + escapeHtml(new Date(summary.date).toLocaleString()) + '</span>\n' +
+      '      <span class="dir-name">' + escapeHtml(s.sourceFilename) + '</span>\n' +
+      '      <span class="recent-date">' + escapeHtml(new Date(s.date).toLocaleString()) + '</span>\n' +
       '    </div>';
   }
 

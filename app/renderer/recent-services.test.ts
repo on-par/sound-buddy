@@ -151,4 +151,9 @@ describe('rowHtml', () => {
     );
     expect(html).toContain('--grade-)');
   });
+
+  it('does not throw when summary itself is nullish', () => {
+    expect(() => rowHtml(null as unknown as Summary, 0, escapeHtml)).not.toThrow();
+    expect(rowHtml(null as unknown as Summary, 0, escapeHtml)).toContain('--grade-)');
+  });
 });
