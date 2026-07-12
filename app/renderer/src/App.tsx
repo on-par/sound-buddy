@@ -9,6 +9,7 @@ import {
   defaultProfileForContentType as aeDefaultProfileForContentType,
 } from '../../../packages/audio-engine/src/profiles/index.js';
 import * as spectrumDisplay from './spectrum-display';
+import * as reportCard from './report-card';
 import rootMarkup from './root-markup.html?raw';
 import rigReconcileSrc from '../rig-reconcile.js?raw';
 import collapseStateSrc from '../collapse-state.js?raw';
@@ -70,6 +71,7 @@ export default function App() {
       defaultProfileForContentType: aeDefaultProfileForContentType,
     };
     (window as Window & { spectrumDisplay?: unknown }).spectrumDisplay = spectrumDisplay;
+    (window as Window & { reportCard?: unknown }).reportCard = reportCard;
     for (const src of BOOT_SCRIPTS) {
       const script = document.createElement('script');
       script.textContent = src;
