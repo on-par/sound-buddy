@@ -26,7 +26,7 @@ export default defineConfig({
       // and under vitest 4's coverage-v8 an "app/**" pattern matches every
       // path here, since this package's own directory is named app/, which
       // zeroed out all coverage. See #224.)
-      include: ['electron/**/*.ts', 'renderer/**/*.{ts,js}', 'renderer/**/*.tsx'],
+      include: ['electron/**/*.ts', 'renderer/**/*.{ts,tsx,js}'],
       exclude: [
         'electron/**/*.test.ts',
         'renderer/**/*.test.{ts,js}',
