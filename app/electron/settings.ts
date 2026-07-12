@@ -82,6 +82,13 @@ export interface AppSettings {
   rigs: CaptureRig[];
   /** Id of the currently selected rig, or null when none. Default null. */
   activeRigId: string | null;
+  /**
+   * Opt-in anonymous usage counts (#145). Default false (off). This is a
+   * persisted preference ONLY — no collection, batching, or network code
+   * exists anywhere in the app, and none may be added until a receiving
+   * endpoint ships in the worker (re-verify before wiring anything).
+   */
+  usageSignalEnabled: boolean;
 }
 
 const DEFAULTS: AppSettings = {
@@ -91,6 +98,7 @@ const DEFAULTS: AppSettings = {
   storageDir: '',
   rigs: [],
   activeRigId: null,
+  usageSignalEnabled: false,
 };
 
 function settingsPath(): string {
@@ -141,6 +149,7 @@ function writeSettingsFile(file: Partial<AppSettings>): void {
     storageDir: file.storageDir ?? DEFAULTS.storageDir,
     rigs: fileRigs(file),
     activeRigId: file.activeRigId ?? DEFAULTS.activeRigId,
+    usageSignalEnabled: file.usageSignalEnabled ?? DEFAULTS.usageSignalEnabled,
   };
   try {
     fs.writeFileSync(settingsPath(), JSON.stringify(persisted, null, 2));
@@ -172,6 +181,9 @@ export function getSettings(): AppSettings {
     // Rigs have no env layer — they are pure persisted data.
     rigs: fileRigs(file),
     activeRigId: file.activeRigId ?? DEFAULTS.activeRigId,
+    // No env layer — unlike aiEnabled there is no behavior to gate, so this
+    // flag is pure persisted data (like rigs).
+    usageSignalEnabled: file.usageSignalEnabled ?? DEFAULTS.usageSignalEnabled,
   };
 }
 

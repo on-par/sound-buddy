@@ -151,4 +151,34 @@ test.describe('Storage settings (#91)', () => {
     });
     await window.evaluate(() => (window as any).soundBuddy.updateSettings({ storageDir: '' }));
   });
+
+  // Opt-in anonymous usage counts (#145) — default-OFF persisted preference,
+  // no collection/network code anywhere. Lives in the same Storage dialog.
+  test('usage-signal toggle is off by default with honest copy', async () => {
+    await window.locator('#storage-settings-btn').click();
+    await expect(window.locator('#usage-signal-toggle')).toBeVisible();
+    await expect(window.locator('#usage-signal-toggle')).not.toBeChecked();
+    await expect(window.locator('#usage-signal-note')).toContainText('anonymous');
+    await expect(window.locator('#usage-signal-note')).toContainText('never audio');
+    await window.locator('#storage-cancel-btn').click();
+  });
+
+  test('checking the usage-signal toggle persists across a reopen, then restores to off', async () => {
+    await window.locator('#storage-settings-btn').click();
+    await window.locator('#usage-signal-toggle').check();
+    await window.locator('#storage-save-btn').click();
+    await expect(window.locator('#storage-dialog')).toBeHidden();
+
+    await window.locator('#storage-settings-btn').click();
+    await expect(window.locator('#usage-signal-toggle')).toBeChecked();
+
+    // Restore the default-OFF state so no ON preference leaks into later tests.
+    await window.locator('#usage-signal-toggle').uncheck();
+    await window.locator('#storage-save-btn').click();
+    await expect(window.locator('#storage-dialog')).toBeHidden();
+
+    await window.locator('#storage-settings-btn').click();
+    await expect(window.locator('#usage-signal-toggle')).not.toBeChecked();
+    await window.locator('#storage-cancel-btn').click();
+  });
 });

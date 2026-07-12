@@ -78,6 +78,32 @@ describe('getSettings defaults', () => {
   it('defaults customIdealProfiles to [] when unset', () => {
     expect(getSettings().customIdealProfiles).toEqual([]);
   });
+
+  it('defaults usageSignalEnabled to false when unset', () => {
+    expect(getSettings().usageSignalEnabled).toBe(false);
+  });
+});
+
+describe('usageSignalEnabled (#145 — opt-in anonymous usage counts, persisted only)', () => {
+  it('flips on and back off, persisting each value to the raw file', () => {
+    const on = updateSettings({ usageSignalEnabled: true });
+    expect(on.usageSignalEnabled).toBe(true);
+    expect(readFile().usageSignalEnabled).toBe(true);
+
+    const off = updateSettings({ usageSignalEnabled: false });
+    expect(off.usageSignalEnabled).toBe(false);
+    expect(readFile().usageSignalEnabled).toBe(false);
+  });
+
+  it('backfills usageSignalEnabled=false on a write that does not mention it', () => {
+    updateSettings({ idealProfile: 'x' });
+    expect(readFile().usageSignalEnabled).toBe(false);
+  });
+
+  it('treats a settings.json with usageSignalEnabled absent as false', () => {
+    writeFile({ aiEnabled: false, idealProfile: '' });
+    expect(getSettings().usageSignalEnabled).toBe(false);
+  });
 });
 
 describe('customIdealProfiles', () => {
