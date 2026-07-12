@@ -14,7 +14,7 @@ import type { ChannelFile, ChannelAnalysis, AudioAnalysis } from "./types.js";
 // Public library API — consumed by other @sound-buddy packages.
 export { analyzeAudio, extractChannels, loadChannelFiles, compareChannels, formatMultiChannelReport };
 export { cleanup as cleanupChannelFiles };
-export type { AudioAnalysis, ChannelFile, ChannelAnalysis } from "./types.js";
+export type { AudioAnalysis, LoudnessStats, ChannelFile, ChannelAnalysis } from "./types.js";
 
 // Multitrack session playback (output path) — #45.
 export { buildPlaybackArgs, startPlayback } from "./playback/index.js";

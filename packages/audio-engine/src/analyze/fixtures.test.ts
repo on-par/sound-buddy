@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 import { runSox } from "./sox.js";
 import { runFfprobe } from "./ffprobe.js";
 import { runSpectrum } from "./spectrum.js";
+import { runEbur128 } from "./ebur128.js";
 
 // Fixture-based numeric parser tests (#150). These assert the actual numbers
 // each parser extracts for known, committed WAV fixtures — the trivial smoke
@@ -36,6 +37,7 @@ function toolAvailable(cmd: string, args: string[]): boolean {
 
 const HAS_SOX = toolAvailable("sox", ["--version"]);
 const HAS_FFPROBE = toolAvailable("ffprobe", ["-version"]);
+const HAS_FFMPEG = toolAvailable("ffmpeg", ["-version"]);
 // spectrum.py shells out to `python3`; it needs librosa (+ numpy). Probe the
 // exact interpreter the parser will use so the gate matches reality.
 const HAS_LIBROSA = toolAvailable("python3", ["-c", "import librosa, numpy"]);
@@ -117,6 +119,24 @@ describe.skipIf(!HAS_LIBROSA)("spectrum parser (fixture)", () => {
     for (const v of vals) expect(v).toBeLessThan(-55);
     const spread = Math.max(...vals) - Math.min(...vals);
     expect(spread).toBeLessThan(2);
+  });
+});
+
+describe.skipIf(!HAS_FFMPEG)("ebur128 parser (fixture)", () => {
+  it("tone.wav: integrated loudness ~ -9.0 LUFS, true peak ~ -6.0 dBTP, LRA < 1", async () => {
+    const s = await runEbur128(TONE);
+    // 1 kHz sine at 0.5 amplitude, K-weighted loudness of a pure tone tracks
+    // its RMS dBFS closely (±0.5 LU acceptance criterion against the known
+    // -9.03 dBFS RMS reference established in the sox fixture test above).
+    expect(s.integratedLufs).toBeGreaterThan(-9.5);
+    expect(s.integratedLufs).toBeLessThan(-8.5);
+    expect(s.truePeakDbtp).toBeCloseTo(-6.0, 0);
+    expect(s.loudnessRange).toBeLessThan(1);
+  });
+
+  it("silence.wav: gates to the loudness floor, or rejects on too-short input", async () => {
+    const integratedLufs = await runEbur128(SILENCE).then((s) => s.integratedLufs, () => -70);
+    expect(integratedLufs).toBeLessThanOrEqual(-60);
   });
 });
 
