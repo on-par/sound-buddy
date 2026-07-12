@@ -14,6 +14,7 @@ export interface UpdateSettingsPatch {
   idealProfile?: string;
   customIdealProfiles?: unknown[];
   storageDir?: string;
+  usageSignalEnabled?: boolean;
 }
 
 /** A renderer patch: `apiKey` semantics — undefined = keep, '' = clear. */

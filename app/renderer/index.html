@@ -143,6 +143,12 @@
     <p class="storage-usage" id="storage-usage">Calculating disk usage…</p>
     <p class="storage-unlimited">Unlimited recordings. Stored on your machine.</p>
     <p class="storage-note" id="storage-note">Record and analyze as much as you want — no limits on any tier. New recordings are saved here; anything you've already recorded stays in its current folder.</p>
+    <!-- Opt-in anonymous usage counts (#145). Off by default. Nothing is
+         collected or sent today — there is no telemetry code or receiving
+         endpoint anywhere in the app; this checkbox only records a
+         preference for whenever that capability ships. -->
+    <label class="ai-enable-row"><input type="checkbox" id="usage-signal-toggle" />Share anonymous usage counts</label>
+    <p class="ai-dialog-note" id="usage-signal-note">Off unless you turn it on. Nothing is collected or sent today — Sound Buddy has no usage reporting at all. If a future update adds it, enabling this would share only anonymous counts of which features get used — never audio, recordings, file names, or file paths. Your audio never leaves your machine.</p>
     <div class="rig-dialog-actions">
       <button type="button" id="storage-reset-btn" class="btn btn-secondary sm" style="display:none">Use default</button>
       <button type="button" id="storage-cancel-btn" class="btn btn-secondary sm">Cancel</button>

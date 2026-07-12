@@ -43,6 +43,12 @@ export function registerSettingsHandlers(): void {
       // Storage location (#91). Trimmed; an empty string resets to the platform
       // default (~/Music/Sound Buddy). No size/count limit is ever applied.
       if (typeof patch.storageDir === 'string') clean.storageDir = patch.storageDir.trim();
+      // Opt-in anonymous usage counts (#145). Persisted preference only —
+      // nothing reads it to send anything; there is no telemetry code or
+      // endpoint.
+      if (typeof patch.usageSignalEnabled === 'boolean') {
+        clean.usageSignalEnabled = patch.usageSignalEnabled;
+      }
     }
     return updateSettings(clean);
   });

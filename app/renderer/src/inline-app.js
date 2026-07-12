@@ -3215,6 +3215,9 @@ async function saveAiSettings() {
 let storagePendingDir = null;
 let storageDefaultPath = '~/Music/Sound Buddy';
 let storageLoadedPath = storageDefaultPath; // path persisted before this session
+// Opt-in anonymous usage counts (#145) — persisted preference only, reseeded
+// on every open so Cancel/Escape/backdrop-close discard any unsaved toggle.
+let usageSignalLoaded = false;
 
 function effectiveStoragePath() {
   if (storagePendingDir === '') return storageDefaultPath;
@@ -3233,6 +3236,11 @@ async function openStorageSettings() {
   storageLoadedPath = storageDefaultPath;
   aiEl('storage-usage').textContent = 'Calculating disk usage…';
   renderStoragePath();
+  try {
+    const s = await sb.getSettings();
+    usageSignalLoaded = !!(s && s.usageSignalEnabled);
+  } catch { usageSignalLoaded = false; }
+  aiEl('usage-signal-toggle').checked = usageSignalLoaded;
   aiEl('storage-dialog').style.display = 'flex';
   try {
     const u = await sb.getStorageUsage();
@@ -3266,6 +3274,11 @@ async function saveStorageSettings() {
   if (storagePendingDir !== null) {
     try { await sb.updateSettings({ storageDir: storagePendingDir }); }
     catch { /* non-fatal — the folder is still usable next launch */ }
+  }
+  const usageChecked = aiEl('usage-signal-toggle').checked;
+  if (usageChecked !== usageSignalLoaded) {
+    try { await sb.updateSettings({ usageSignalEnabled: usageChecked }); }
+    catch { /* non-fatal — preference only, nothing depends on it */ }
   }
   closeStorageSettings();
 }
