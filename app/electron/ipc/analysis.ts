@@ -19,6 +19,7 @@ import {
   FFPROBE_TIMEOUT_MS,
   SPECTRUM_TIMEOUT_MS,
 } from './timeout';
+import type { AnalyzeFileOpts } from './api';
 
 export interface SoxStats {
   samplesRead: number;
@@ -325,7 +326,7 @@ function historyDir(): string {
 
 export function registerAnalysisHandlers(): void {
   // analyze-file
-  ipcMain.handle('analyze-file', async (event, opts: { filePath: string; noSpectrum?: boolean }) => {
+  ipcMain.handle('analyze-file', async (event, opts: AnalyzeFileOpts) => {
     const { filePath, noSpectrum } = opts;
     const wc = event.sender;
     // Supersede any run still in flight for this renderer (e.g. a second

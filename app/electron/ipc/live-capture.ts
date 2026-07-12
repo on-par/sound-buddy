@@ -15,6 +15,7 @@ import { getSettings } from '../settings';
 import { isEntitled } from '../license';
 import { pythonBin, childEnv, STREAM_SCRIPT, defaultRecordDir } from './shared';
 import { streamLLM, buildLiveReport } from './narrative';
+import type { StartLiveOpts } from './api';
 
 let liveProcess: ChildProcess | null = null;
 let liveIntervalTimer: NodeJS.Timeout | null = null;
@@ -154,22 +155,7 @@ export function registerLiveCaptureHandlers(): void {
     enumerateDevices('--list-output-devices', 'list-output-devices'));
 
   // start-live
-  ipcMain.handle('start-live', async (event, opts: {
-    device?: string;
-    // Channel-config tokens: "N" (mono) or "N-M" (stereo pair), e.g. ["0","1-2"].
-    channels?: string[];
-    windowSecs: number;
-    // Real-time meter cadence in seconds (default 0.1 in stream.py).
-    intervalSecs?: number;
-    llmIntervalSecs: number;
-    // "monitor" (default) = live view only; "record" = also capture a session.
-    mode?: 'monitor' | 'record';
-    // Optional output folder for Record mode (defaults to ~/Music/Sound Buddy).
-    recordDir?: string;
-    // Record mode: which strips to arm as session stems, as channel-config
-    // tokens (e.g. ['0', '2-3']). Omitted ⇒ stream.py arms all configured strips.
-    arm?: string[];
-  }) => {
+  ipcMain.handle('start-live', async (event, opts: StartLiveOpts) => {
     // Live monitoring is a Pro feature (#54) — enforce in the main process so
     // the gate holds even if the renderer's CSS gating is bypassed.
     if (!isEntitled('live-monitoring')) {

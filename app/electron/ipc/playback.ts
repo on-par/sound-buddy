@@ -12,6 +12,7 @@ import * as fs from 'fs';
 import { log, logWarn, logError } from '../logger';
 import { isEntitled } from '../license';
 import { pythonBin, childEnv, PLAYBACK_SCRIPT } from './shared';
+import type { StartPlaybackOpts } from './api';
 
 // The current virtual-soundcheck playback child (playback.py). Held at module
 // scope — like start-live's liveProcess — so stop-playback can SIGTERM it for
@@ -52,18 +53,7 @@ export function registerPlaybackHandlers(): void {
   // set), forwarding its JSON-line events to the renderer as `playback-event`.
   // Modeled on start-live: a module-level process handle, line-buffered stdout,
   // SIGTERM on stop. No microphone grant (output only) and no LLM path.
-  ipcMain.handle('start-playback', async (event, opts: {
-    // Session folder holding session.json + stem WAVs (from a Record capture).
-    sessionDir: string;
-    // Output device index or name; omitted ⇒ playback.py uses the default output.
-    device?: string;
-    // Routing spec mapping track → output channel(s), e.g. "0:0,1:2-3".
-    route?: string;
-    // Progress/level cadence in seconds (default 0.1 in playback.py).
-    intervalSecs?: number;
-    // Force the stereo master mixdown fold even on a big-enough device.
-    master?: boolean;
-  }) => {
+  ipcMain.handle('start-playback', async (event, opts: StartPlaybackOpts) => {
     // Virtual soundcheck is a Pro feature (#54) — enforced here as well as in
     // the renderer. Reading a session manifest stays free (data never locks).
     if (!isEntitled('virtual-soundcheck')) {
