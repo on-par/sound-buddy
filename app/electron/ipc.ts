@@ -14,7 +14,8 @@
 //
 // Re-exports below preserve the surface other modules import from './ipc':
 // main.ts (registerIpcHandlers), the parser drift-guard test (runSox/
-// runFfprobe/runSpectrum, #150), and devices.test.ts (enumerateDevices).
+// runFfprobe/runSpectrum/runEbur128, #150), and devices.test.ts
+// (enumerateDevices).
 
 import { registerAnalysisHandlers } from './ipc/analysis';
 import { registerNarrativeHandlers } from './ipc/narrative';
@@ -23,7 +24,7 @@ import { registerPlaybackHandlers } from './ipc/playback';
 import { registerLicensingHandlers } from './ipc/licensing';
 import { registerSettingsHandlers } from './ipc/settings';
 
-export { runSox, runFfprobe, runSpectrum } from './ipc/analysis';
+export { runSox, runFfprobe, runSpectrum, runEbur128 } from './ipc/analysis';
 export { enumerateDevices, type DeviceListResult } from './ipc/live-capture';
 
 export function registerIpcHandlers(): void {

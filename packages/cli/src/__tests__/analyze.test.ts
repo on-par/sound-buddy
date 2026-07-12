@@ -98,6 +98,7 @@ const mockAnalysis: AudioAnalysis = {
       { class: 'music', start: 0.6, end: 1.0 },
     ],
   },
+  loudness: null,
 }
 
 function withChannels(channels: number): AudioAnalysis {

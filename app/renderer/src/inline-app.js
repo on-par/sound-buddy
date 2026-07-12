@@ -2239,7 +2239,7 @@ document.getElementById('ai-analyze-btn').addEventListener('click', async () => 
 
 function getReportCardSource() {
   if (currentAnalysis) {
-    const { sox, spectrum, ffprobe } = currentAnalysis;
+    const { sox, spectrum, ffprobe, loudness } = currentAnalysis;
     return {
       filename: (ffprobe.format.filename || '').split('/').pop() || 'Untitled',
       rms: sox.rmsDbfs, peak: sox.peakDbfs, dynamicRange: sox.dynamicRangeDb,
@@ -2252,6 +2252,12 @@ function getReportCardSource() {
       segments: spectrum.segments || null,
       // Time-sampled snapshots (PRD 03) for the "Spectrum Over Time" section.
       frames: spectrum.frames,
+      // EBU R128 loudness measurement (#134) — null when ffmpeg was unavailable
+      // or its output couldn't be parsed; the report card falls back to the
+      // RMS-based rows only.
+      lufsIntegrated: loudness ? loudness.integratedLufs : null,
+      loudnessRange: loudness ? loudness.loudnessRange : null,
+      truePeakDbtp: loudness ? loudness.truePeakDbtp : null,
     };
   }
   if (liveWindows.length > 0) {

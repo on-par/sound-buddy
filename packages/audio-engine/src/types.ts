@@ -51,6 +51,15 @@ export interface FfprobeResult {
   stream: AudioStream;
 }
 
+export interface LoudnessStats {
+  /** Integrated program loudness (EBU R128), LUFS */
+  integratedLufs: number;
+  /** Loudness range (LRA), LU */
+  loudnessRange: number;
+  /** True peak (4x oversampled), dBTP */
+  truePeakDbtp: number;
+}
+
 export interface FrequencyBands {
   /** Sub-bass 20–60 Hz */
   subBass: number;
@@ -127,6 +136,8 @@ export interface AudioAnalysis {
   sox: SoxStats;
   ffprobe: FfprobeResult;
   spectrum: SpectrumResult;
+  /** EBU R128 loudness measurement; null when ffmpeg is unavailable or its output can't be parsed. */
+  loudness: LoudnessStats | null;
 }
 
 export interface ChannelFile {

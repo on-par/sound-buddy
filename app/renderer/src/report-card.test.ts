@@ -200,6 +200,59 @@ describe('buildMetricRows', () => {
     expect(centroid.value).toBe('—');
     expect(centroid.target).toBeNull();
   });
+
+  it('inserts True Peak / Integrated Loudness / Loudness Range rows in order when measured (#134)', () => {
+    const rows = buildMetricRows(makeSrc({ lufsIntegrated: -14.2, loudnessRange: 6.3, truePeakDbtp: -1.05 }), grading);
+    expect(rows.map((r) => r.name)).toEqual([
+      'Peak Level', 'True Peak', 'RMS Level', 'Integrated Loudness', 'Loudness Range', 'Dynamic Range', 'Clipping', 'Spectral Centroid',
+    ]);
+    const truePeak = rows.find((r) => r.name === 'True Peak')!;
+    const integrated = rows.find((r) => r.name === 'Integrated Loudness')!;
+    const lra = rows.find((r) => r.name === 'Loudness Range')!;
+    expect(truePeak.unit).toBe('dBTP');
+    // fmt() is a straight toFixed(1); -1.05's nearest double is fractionally
+    // below -1.05, so JS rounds it to -1.1, not -1.0 (Number.prototype.toFixed
+    // is not IEEE-round-half-to-even).
+    expect(truePeak.value).toBe('-1.1');
+    expect(truePeak.tone).toBe('info');
+    expect(truePeak.target).toBeNull();
+    expect(integrated.unit).toBe('LUFS');
+    expect(integrated.value).toBe('-14.2');
+    expect(integrated.tone).toBe('info');
+    expect(integrated.target).toBeNull();
+    expect(lra.unit).toBe('LU');
+    expect(lra.value).toBe('6.3');
+    expect(lra.tone).toBe('info');
+    expect(lra.target).toBeNull();
+  });
+
+  it('omits the loudness rows individually when their field is null, undefined, or NaN (#134)', () => {
+    const nullRows = buildMetricRows(makeSrc({ lufsIntegrated: null, loudnessRange: 6.3, truePeakDbtp: -1.05 }), grading);
+    expect(nullRows.map((r) => r.name)).not.toContain('Integrated Loudness');
+    expect(nullRows.map((r) => r.name)).toContain('Loudness Range');
+    expect(nullRows.map((r) => r.name)).toContain('True Peak');
+
+    const undefinedRows = buildMetricRows(makeSrc({ lufsIntegrated: -14.2, loudnessRange: undefined, truePeakDbtp: -1.05 }), grading);
+    expect(undefinedRows.map((r) => r.name)).not.toContain('Loudness Range');
+    expect(undefinedRows.map((r) => r.name)).toContain('Integrated Loudness');
+    expect(undefinedRows.map((r) => r.name)).toContain('True Peak');
+
+    const nanRows = buildMetricRows(makeSrc({ lufsIntegrated: -14.2, loudnessRange: 6.3, truePeakDbtp: NaN }), grading);
+    expect(nanRows.map((r) => r.name)).not.toContain('True Peak');
+    expect(nanRows.map((r) => r.name)).toContain('Integrated Loudness');
+    expect(nanRows.map((r) => r.name)).toContain('Loudness Range');
+  });
+
+  it('still shows the True Peak row as "-∞" for fully-silent audio, where ffmpeg genuinely reports -Infinity (#134)', () => {
+    // parseEbur128Summary parses ffmpeg's "-inf dBFS" into -Infinity rather than
+    // throwing (a muted channel or pre-service silence is a real, common case) —
+    // buildMetricRows must not then treat that legitimate -Infinity measurement
+    // as "not measured" and hide the row, which would defeat the point of that fix.
+    const rows = buildMetricRows(makeSrc({ lufsIntegrated: -70, loudnessRange: 0, truePeakDbtp: -Infinity }), grading);
+    const truePeak = rows.find((r) => r.name === 'True Peak')!;
+    expect(truePeak).toBeDefined();
+    expect(truePeak.value).toBe('-∞');
+  });
 });
 
 describe('metricRowsHTML', () => {

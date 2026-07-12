@@ -73,6 +73,7 @@ function makeAnalysis(opts: {
       dynamicRange: 13,
       ...(opts.contentType ? { contentType: opts.contentType } : {}),
     },
+    loudness: null,
   };
 }
 

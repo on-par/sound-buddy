@@ -55,11 +55,12 @@ vi.mock('electron', () => {
 });
 
 // The app copies (exported from ipc.ts purely for this guard).
-import { runSox as appSox, runFfprobe as appFfprobe, runSpectrum as appSpectrum } from './ipc';
+import { runSox as appSox, runFfprobe as appFfprobe, runSpectrum as appSpectrum, runEbur128 as appEbur128 } from './ipc';
 // The canonical audio-engine copies (imported straight from source).
 import { runSox as engSox } from '../../packages/audio-engine/src/analyze/sox.js';
 import { runFfprobe as engFfprobe } from '../../packages/audio-engine/src/analyze/ffprobe.js';
 import { runSpectrum as engSpectrum } from '../../packages/audio-engine/src/analyze/spectrum.js';
+import { runEbur128 as engEbur128 } from '../../packages/audio-engine/src/analyze/ebur128.js';
 
 const repoRoot = path.resolve(fileURLToPath(new URL('../..', import.meta.url)));
 const fixture = (name: string) =>
@@ -78,6 +79,7 @@ function ok(cmd: string, args: string[], env?: NodeJS.ProcessEnv): boolean {
 
 const HAS_SOX = ok('sox', ['--version']);
 const HAS_FFPROBE = ok('ffprobe', ['-version']);
+const HAS_FFMPEG = ok('ffmpeg', ['-version']);
 
 // Resolve one Python interpreter with librosa. Both copies must use the SAME
 // interpreter for their outputs to be comparable, so we pin it: the app copy
@@ -120,6 +122,16 @@ describe.skipIf(!HAS_FFPROBE)('ffprobe parser: app copy === audio-engine copy', 
     ['silence.wav', () => SILENCE],
   ])('%s produces identical FfprobeResult', async (_name, file) => {
     const [a, e] = await Promise.all([appFfprobe(file()), engFfprobe(file())]);
+    expect(a).toEqual(e);
+  });
+});
+
+describe.skipIf(!HAS_FFMPEG)('ebur128 parser: app copy === audio-engine copy', () => {
+  it.each([
+    ['tone.wav', () => TONE],
+    ['silence.wav', () => SILENCE],
+  ])('%s produces identical LoudnessStats', async (_name, file) => {
+    const [a, e] = await Promise.all([appEbur128(file()), engEbur128(file())]);
     expect(a).toEqual(e);
   });
 });
