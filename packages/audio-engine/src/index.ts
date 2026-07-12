@@ -44,6 +44,22 @@ export type { IdealProfile, ProfileComparison, BandDeviation } from "./profiles/
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const STREAM_SCRIPT = resolve(__dirname, "../scripts/stream.py");
 
+// Exported for index-cli.test.ts only — not part of the public library API.
+// Library consumers use the named exports above; the CLI surface is reached
+// via the `sound-buddy` bin.
+export {
+  parseArgs,
+  printHelp,
+  analyzeChannelSafe,
+  printChannelTable,
+  runListDevices,
+  runSingleFile,
+  runDirectory,
+  main,
+  isMainModule,
+  logLlmFailure,
+};
+
 function parseArgs(argv: string[]): {
   file: string | null;
   dir: string | null;
@@ -492,9 +508,13 @@ function isMainModule(): boolean {
   }
 }
 
+/* c8 ignore start -- CLI entry wiring: only runs when index.ts is executed
+   as the process's main module (sound-buddy bin), which is impossible when
+   vitest imports it. isMainModule() itself is exported and unit-tested. */
 if (isMainModule()) {
   main().catch((err) => {
     console.error("Fatal error:", err);
     process.exit(1);
   });
 }
+/* c8 ignore stop */
