@@ -23,7 +23,7 @@ export interface UpdateInfo {
 
 // Compare dotted numeric versions (e.g. "0.2.0" vs "0.10.1"), ignoring a leading
 // "v" and any pre-release suffix. Returns true when `latest` > `current`.
-function isNewer(latest: string, current: string): boolean {
+export function isNewer(latest: string, current: string): boolean {
   const parse = (v: string) =>
     v.replace(/^v/, '').split('-')[0].split('.').map((n) => parseInt(n, 10) || 0);
   const a = parse(latest);
