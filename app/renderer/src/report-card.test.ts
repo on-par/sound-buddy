@@ -242,6 +242,17 @@ describe('buildMetricRows', () => {
     expect(nanRows.map((r) => r.name)).toContain('Integrated Loudness');
     expect(nanRows.map((r) => r.name)).toContain('Loudness Range');
   });
+
+  it('still shows the True Peak row as "-∞" for fully-silent audio, where ffmpeg genuinely reports -Infinity (#134)', () => {
+    // parseEbur128Summary parses ffmpeg's "-inf dBFS" into -Infinity rather than
+    // throwing (a muted channel or pre-service silence is a real, common case) —
+    // buildMetricRows must not then treat that legitimate -Infinity measurement
+    // as "not measured" and hide the row, which would defeat the point of that fix.
+    const rows = buildMetricRows(makeSrc({ lufsIntegrated: -70, loudnessRange: 0, truePeakDbtp: -Infinity }), grading);
+    const truePeak = rows.find((r) => r.name === 'True Peak')!;
+    expect(truePeak).toBeDefined();
+    expect(truePeak.value).toBe('-∞');
+  });
 });
 
 describe('metricRowsHTML', () => {

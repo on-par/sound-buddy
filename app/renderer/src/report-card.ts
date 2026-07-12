@@ -246,7 +246,12 @@ export function recTypePillHTML(recType: RecordingType): string {
 // values feed an `info` pill with no target (display-only until #135 wires
 // them into grading); absent/NaN values omit the row entirely so cards from
 // before this feature (or a failed ffmpeg measurement) render unchanged.
-const measured = (v: number | null | undefined): v is number => typeof v === 'number' && isFinite(v);
+// -Infinity is a legitimate loudness measurement (ffmpeg reports "-inf dBFS"
+// true peak for fully-silent audio — a muted channel or pre-service silence —
+// and parseEbur128Summary parses it as such rather than throwing, #134). Only
+// NaN (or a missing field) means "not measured"; fmt() already renders
+// -Infinity as "-∞", same as the pre-existing Peak/RMS rows.
+const measured = (v: number | null | undefined): v is number => typeof v === 'number' && !Number.isNaN(v);
 
 export function buildMetricRows(src: ReportCardSource, g: GradingPillApi): MetricRow[] {
   return [
