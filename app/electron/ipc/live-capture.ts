@@ -26,7 +26,7 @@ let liveSessionDir: string | null = null;
 
 // A timestamp like 20260703-143207-512, stable within one capture. Milliseconds
 // keep two captures started in the same second from colliding on one folder.
-function captureStamp(): string {
+export function captureStamp(): string {
   const now = new Date();
   const p = (n: number) => String(n).padStart(2, '0');
   return (
@@ -43,7 +43,7 @@ function captureStamp(): string {
 // error up front); the per-capture child is left to stream.py so a failed or
 // aborted start never leaves an empty session folder behind. The main process
 // owns the path so stop-live can hand the folder back once session.json exists.
-function buildSessionDir(dir?: string): string {
+export function buildSessionDir(dir?: string): string {
   const target = dir && dir.trim() ? dir : defaultRecordDir();
   fs.mkdirSync(target, { recursive: true });
   return path.join(target, `sound-buddy-${captureStamp()}`);
