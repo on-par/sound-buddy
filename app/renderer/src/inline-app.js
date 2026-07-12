@@ -90,12 +90,6 @@ let curveEditorId = null;
 let curveEditorBands = null;
 
 /* ══ Formatting helpers ══ */
-// Escape user-entered text (channel labels, #39) before it lands in innerHTML.
-function escapeHtml(s) {
-  return String(s == null ? '' : s)
-    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
-}
 // Resolve a strip's display name: label → backend name → "Ch N" (see #39).
 function stripLabel(strip, ch, index) { return window.rigReconcile.resolveStripLabel(strip, ch, index); }
 const MAX_LABEL_LEN = 40; // shared cap for both label entry points (config row + live header)
@@ -103,27 +97,20 @@ const MAX_LABEL_LEN = 40; // shared cap for both label entry points (config row 
 // label fallback resolves the same way from every call site (#39).
 function liveChannelAt(idx) { return lastLiveChannels ? lastLiveChannels[idx] : null; }
 function fmt(n, d = 1) { if (!isFinite(n)) return '-∞'; return n.toFixed(d); }
-function fmtHz(hz) { if (hz >= 1000) return (hz / 1000).toFixed(1) + ' kHz'; return Math.round(hz) + ' Hz'; }
 function fmtDur(s) { const m = Math.floor(s / 60); const sec = (s % 60).toFixed(1).padStart(4, '0'); return `${m}:${sec}`; }
 
-/* ══ Band metadata / meter geometry ══ */
-const DB_MIN = -72, DB_MAX = -3;
-const DIM_DB = -60; // at/below: band is idle → dimmed, never counts as "loudest"
-const HOT_DB = -24; // above: numeric readout emphasized as running hot
-const GRID = [-60, -48, -36, -24, -12, -6];
-const BAND_META = [
-  { key: 'subBass',    label: 'Sub Bass',   range: '20–60 Hz',    color: 'var(--band-sub)',        lo: 20,   hi: 60    },
-  { key: 'bass',       label: 'Bass',        range: '60–250 Hz',   color: 'var(--band-bass)',       lo: 60,   hi: 250   },
-  { key: 'lowMid',     label: 'Low Mid',     range: '250–500 Hz',  color: 'var(--band-low-mid)',    lo: 250,  hi: 500   },
-  { key: 'mid',        label: 'Mid',         range: '500 Hz–2 kHz',color: 'var(--band-mid)',        lo: 500,  hi: 2000  },
-  { key: 'highMid',    label: 'High Mid',    range: '2–4 kHz',     color: 'var(--band-high-mid)',   lo: 2000, hi: 4000  },
-  { key: 'presence',   label: 'Presence',    range: '4–6 kHz',     color: 'var(--band-presence)',   lo: 4000, hi: 6000  },
-  { key: 'brilliance', label: 'Brilliance',  range: '6–20 kHz',    color: 'var(--band-brilliance)', lo: 6000, hi: 20000 },
-];
+/* ══ Band metadata / meter geometry — extracted to spectrum-display.ts (#305),
+   bridged onto window by App.tsx like audioEngineProfiles (#309). ══ */
+const {
+  DB_MIN, DB_MAX, DIM_DB, HOT_DB, GRID, BAND_META, EQ_COLS,
+  CURVE_VB, CURVE_FMIN, CURVE_FMAX,
+  escapeHtml, fmtHz, toPct, levelMatchedTarget, niceTicks, smoothPath,
+  spectrumCurveSVG, spectrumLegendHTML, bandLevelsFromCurve, bandDbFromSpectrum,
+  veqBarsAndLabelsHTML, eqTargetLineSVG, eqCentroidHTML, eqBarsHTML,
+  veqLoudestIdx, veqBandView, veqValBottom,
+} = window.spectrumDisplay;
 // live-event band keys are snake_case
 const LIVE_BAND_KEYS = ['sub_bass', 'bass', 'low_mid', 'mid', 'high_mid', 'presence', 'brilliance'];
-
-function toPct(db) { const c = Math.max(DB_MIN, Math.min(DB_MAX, db)); return (c - DB_MIN) / (DB_MAX - DB_MIN) * 100; }
 
 /* ══ Ideal EQ profiles + comparison (PRD 05) ══
    Data and comparison logic come from @sound-buddy/audio-engine's profiles module
@@ -137,7 +124,6 @@ const IP_PROFILES = AE.PROFILES;
 const IP_BY_ID = new Map(IP_PROFILES.map(p => [p.id, p]));
 const ipCompare = AE.compareToProfile;
 const ipDefaultForContentType = AE.defaultProfileForContentType;
-function ipFiniteMean(xs) { let s = 0, n = 0; for (const x of xs) { if (Number.isFinite(x)) { s += x; n++; } } return n > 0 ? s / n : 0; }
 function customProfileId(value) { return String(value || '').startsWith('custom:') ? String(value).slice(7) : ''; }
 /** Resolve the profile to compare against: an explicit pick, else auto by content type. */
 function activeProfile(spectrum) {
@@ -152,13 +138,6 @@ function activeProfile(spectrum) {
 function ipHasCurve(spectrum) {
   const c = spectrum && spectrum.curve;
   return !!(c && Array.isArray(c.db) && Array.isArray(c.freqs) && c.freqs.length === c.db.length && c.db.length >= 2);
-}
-
-/* Level-match a profile's relative dbOffsets onto the measured curve's mean so
-   the dashed target sits at the same level as the measured curve (PRD 05). */
-function levelMatchedTarget(curve, profile) {
-  const mMean = ipFiniteMean(curve.db), tMean = ipFiniteMean(profile.dbOffsets);
-  return profile.dbOffsets.map(v => v + (mMean - tMean));
 }
 
 /* Populate + wire the ideal-profile dropdown (once, at boot). */
@@ -401,210 +380,6 @@ function setSpectrumState(state, opts = {}) {
 // keep the header in sync with what's actually drawn (curve vs. fallback meters).
 const SPECTRUM_TITLE = { curve: 'Spectrum · Curve', meters: 'Spectrum · Meters', live: 'Spectrum · Live EQ', liveStopped: 'Spectrum · Live EQ · Stopped' };
 
-/* ── EQ spectrum curve (PRD 02) ─────────────────────────────────────────────
- * A FabFilter Pro-Q–style analyzer: log-frequency X, auto-ranged dB Y, gold
- * curve with a gradient fill, band-range tints, and the centroid marker. */
-const CURVE_VB = { w: 900, h: 440, ml: 52, mr: 16, mt: 18, mb: 34 };
-const X_TICKS = [
-  { f: 20, label: '20' }, { f: 50, label: '50' }, { f: 100, label: '100' },
-  { f: 200, label: '200' }, { f: 500, label: '500' }, { f: 1000, label: '1k' },
-  { f: 2000, label: '2k' }, { f: 5000, label: '5k' }, { f: 10000, label: '10k' },
-  { f: 20000, label: '20k' },
-];
-const CURVE_FMIN = 20, CURVE_FMAX = 20000;
-
-// "Nice" evenly-spaced axis ticks spanning [lo, hi].
-function niceTicks(lo, hi, count = 5) {
-  const span = hi - lo;
-  if (!(span > 0)) return [Math.round(lo)];
-  const raw = span / count;
-  const mag = Math.pow(10, Math.floor(Math.log10(raw)));
-  const norm = raw / mag;
-  const step = (norm < 1.5 ? 1 : norm < 3 ? 2 : norm < 7 ? 5 : 10) * mag;
-  const first = Math.ceil(lo / step) * step;
-  const ticks = [];
-  for (let v = first; v <= hi + step * 1e-6; v += step) ticks.push(Math.round(v * 10) / 10);
-  return ticks;
-}
-
-// Catmull-Rom → cubic Bézier for a smooth curve through all points.
-function smoothPath(pts) {
-  if (pts.length < 2) return pts.length ? `M${pts[0].x},${pts[0].y}` : '';
-  let d = `M${pts[0].x.toFixed(2)},${pts[0].y.toFixed(2)}`;
-  for (let i = 0; i < pts.length - 1; i++) {
-    const p0 = pts[i - 1] || pts[i], p1 = pts[i], p2 = pts[i + 1], p3 = pts[i + 2] || p2;
-    const c1x = p1.x + (p2.x - p0.x) / 6, c1y = p1.y + (p2.y - p0.y) / 6;
-    const c2x = p2.x - (p3.x - p1.x) / 6, c2y = p2.y - (p3.y - p1.y) / 6;
-    d += `C${c1x.toFixed(2)},${c1y.toFixed(2)} ${c2x.toFixed(2)},${c2y.toFixed(2)} ${p2.x.toFixed(2)},${p2.y.toFixed(2)}`;
-  }
-  return d;
-}
-
-// Build the analyzer SVG from a { freqs, db } curve. `targetDb` (optional, same
-// grid as curve, already level-matched) overlays a dashed ideal target (PRD 05).
-// `opts` (optional) reuses the component in other contexts (live per-channel arcs):
-//   uid  — suffix for the gradient/clip ids, so several instances can coexist
-//   vbH  — compact viewBox height override
-//   yMin/yMax — fixed dB range instead of auto-ranging (stable across live ticks);
-//               points are clamped into the range (mirroring toPct) so the curve
-//               hugs the plot edge instead of being cut off by the clip-path
-//   wantPaths — return { svg, line, area, centroidMark } so a caller repainting
-//               per tick can patch the two path `d`s + centroid in place
-// Returns '' if unusable.
-function spectrumCurveSVG(curve, centroid, targetDb, opts = {}) {
-  if (!curve || !Array.isArray(curve.freqs) || !Array.isArray(curve.db)) return '';
-  const hasTarget = Array.isArray(targetDb) && targetDb.length >= curve.db.length;
-  const n = Math.min(curve.freqs.length, curve.db.length);
-  const raw = [];
-  for (let i = 0; i < n; i++) {
-    const f = curve.freqs[i], db = curve.db[i];
-    if (isFinite(f) && f > 0 && isFinite(db)) raw.push({ f, db, t: hasTarget ? targetDb[i] : null });
-  }
-  if (raw.length < 2) return '';
-
-  const { w, ml, mr, mt, mb } = CURVE_VB;
-  const h = opts.vbH || CURVE_VB.h;
-  const x0 = ml, x1 = w - mr, y0 = mt, y1 = h - mb;
-  const logMin = Math.log10(CURVE_FMIN), logSpan = Math.log10(CURVE_FMAX) - logMin;
-  const xForFreq = f => x0 + (Math.log10(Math.max(CURVE_FMIN, Math.min(CURVE_FMAX, f))) - logMin) / logSpan * (x1 - x0);
-
-  // Fixed Y range when requested; otherwise auto-range to the curve (and the
-  // target, so the dashed overlay never clips) with padding; widen a
-  // degenerate (flat) range.
-  let lo, hi;
-  if (isFinite(opts.yMin) && isFinite(opts.yMax) && opts.yMax > opts.yMin) {
-    lo = opts.yMin; hi = opts.yMax;
-    for (const p of raw) {
-      p.db = Math.max(lo, Math.min(hi, p.db));
-      if (isFinite(p.t)) p.t = Math.max(lo, Math.min(hi, p.t));
-    }
-  } else {
-    const dbs = raw.map(p => p.db);
-    if (hasTarget) for (const p of raw) if (isFinite(p.t)) dbs.push(p.t);
-    let dMin = Math.min(...dbs), dMax = Math.max(...dbs);
-    if (dMax - dMin < 1) { dMin -= 6; dMax += 6; }
-    const pad = Math.max(3, (dMax - dMin) * 0.08);
-    lo = dMin - pad; hi = dMax + pad;
-  }
-  const yForDb = db => y1 - (db - lo) / (hi - lo) * (y1 - y0);
-
-  const pts = raw.map(p => ({ x: xForFreq(p.f), y: yForDb(p.db) }));
-  const targetPath = hasTarget
-    ? smoothPath(raw.filter(p => isFinite(p.t)).map(p => ({ x: xForFreq(p.f), y: yForDb(p.t) })))
-    : '';
-
-  // Band-range tints along the x axis.
-  const tints = BAND_META.map(b => {
-    const bx0 = xForFreq(b.lo), bx1 = xForFreq(b.hi);
-    return `<rect class="sb-band-tint" x="${bx0.toFixed(1)}" y="${y0}" width="${(bx1 - bx0).toFixed(1)}" height="${y1 - y0}" fill="${b.color}"/>`;
-  }).join('');
-
-  // Horizontal dB gridlines + labels.
-  const yGrid = niceTicks(lo, hi, 5).filter(v => v > lo && v < hi).map(v => {
-    const y = yForDb(v).toFixed(1);
-    return `<line class="sb-grid-line" x1="${x0}" y1="${y}" x2="${x1}" y2="${y}"/>`
-      + `<text class="sb-y-label" x="${x0 - 8}" y="${(+y + 4).toFixed(1)}">${v}</text>`;
-  }).join('');
-
-  // Vertical frequency gridlines + labels.
-  const xGrid = X_TICKS.map(t => {
-    const x = xForFreq(t.f).toFixed(1);
-    return `<line class="sb-grid-line" x1="${x}" y1="${y0}" x2="${x}" y2="${y1}"/>`
-      + `<text class="sb-x-label" x="${x}" y="${y1 + 22}">${t.label}</text>`;
-  }).join('');
-
-  const line = smoothPath(pts);
-  const area = `${line} L${pts[pts.length - 1].x.toFixed(2)},${y1} L${pts[0].x.toFixed(2)},${y1} Z`;
-
-  // Spectral-centroid marker.
-  let centroidMark = '';
-  if (isFinite(centroid) && centroid >= CURVE_FMIN && centroid <= CURVE_FMAX) {
-    const cx = xForFreq(centroid).toFixed(1);
-    centroidMark = `<line class="sb-centroid-line" x1="${cx}" y1="${y0}" x2="${cx}" y2="${y1}"/>`
-      + `<text class="sb-centroid-label" x="${cx}" y="${y0 + 12}">${fmtHz(centroid)}</text>`;
-  }
-
-  const uid = opts.uid ? `-${opts.uid}` : '';
-  const svg = `<svg class="sb-spectrum-curve" viewBox="0 0 ${w} ${h}" role="img" aria-label="Frequency response curve">
-    <defs>
-      <linearGradient id="sb-spectrum-fill${uid}" x1="0" y1="0" x2="0" y2="1">
-        <stop offset="0" style="stop-color:var(--gold-500)" stop-opacity="0.34"/>
-        <stop offset="1" style="stop-color:var(--gold-500)" stop-opacity="0"/>
-      </linearGradient>
-      <clipPath id="sb-spectrum-plot${uid}"><rect x="${x0}" y="${y0}" width="${x1 - x0}" height="${y1 - y0}"/></clipPath>
-    </defs>
-    ${tints}
-    ${yGrid}
-    ${xGrid}
-    <line class="sb-axis-base" x1="${x0}" y1="${y1}" x2="${x1}" y2="${y1}"/>
-    <g clip-path="url(#sb-spectrum-plot${uid})">
-      <path class="sb-curve-fill" d="${area}" fill="url(#sb-spectrum-fill${uid})"/>
-      ${targetPath ? `<path class="sb-target-line" d="${targetPath}"/>` : ''}
-      <path class="sb-curve-line" d="${line}"/>
-    </g>
-    <g class="sb-centroid">${centroidMark}</g>
-  </svg>`;
-  return opts.wantPaths ? { svg, line, area, centroidMark } : svg;
-}
-
-// Legend + match score shown beneath the analyzer curve (PRD 05).
-function spectrumLegendHTML(profile, cmp) {
-  const score = cmp ? `<span class="sl-score"><span class="num">${cmp.matchScore}</span><span class="cap">Match</span></span>` : '';
-  const label = escapeHtml(profile.label);
-  return `<div class="spectrum-legend">
-    <span class="sl-item"><span class="sl-swatch measured"></span>Measured</span>
-    <span class="sl-item"><span class="sl-swatch target"></span>Target · ${label}${idealProfileId ? '' : ' (auto)'}</span>
-    ${score}
-  </div>`;
-}
-
-/* ── Uniform-width EQ bars (AW-2, #178) ──
- * 7 equal-width columns, one per BAND_META band — unlike VEQ_BANDS (#30),
- * which sizes each bar to its band's log-frequency span so it sits under the
- * arc's tint, these columns are all the same width, like a hardware graphic
- * EQ. Shared by renderSpectrum's curve path and renderBandMeters' fallback so
- * the analysis view reads the same regardless of which data is available. */
-const EQ_GAP = 1.4; // % inset per side, mirrors #30's VEQ_GAP
-const EQ_COLS = BAND_META.map((b, i) => {
-  const w = 100 / BAND_META.length;
-  return { key: b.key, label: b.label, color: b.color, range: b.range, left: (i * w + EQ_GAP).toFixed(3), width: (w - 2 * EQ_GAP).toFixed(3), center: (i * w + w / 2).toFixed(3) };
-});
-// Bucket a fine {freqs, db} curve into 7 BAND_META band levels (mean dB of
-// samples whose freq falls within [lo, hi]) — for contexts that only carry
-// the full-resolution curve (scrub frames, the level-matched target) rather
-// than spectrum.bands' precomputed per-band levels.
-function bandLevelsFromCurve(curve) {
-  return BAND_META.map(b => {
-    let sum = 0, n = 0;
-    curve.freqs.forEach((f, i) => {
-      if (Number.isFinite(f) && f >= b.lo && f <= b.hi && Number.isFinite(curve.db[i])) { sum += curve.db[i]; n++; }
-    });
-    return n ? sum / n : -120;
-  });
-}
-// spectrum.bands' per-band levels, floored to silence (-120) for any missing
-// or non-finite entry — mirrors liveBandCurve's same guard (#30) so a stale
-// or partial analysis payload degrades gracefully instead of rendering
-// "NaN"/"-Infinity" or throwing inside veqBandView's db.toFixed(1).
-function bandDbFromSpectrum(spectrum) {
-  const bands = spectrum.bands || {};
-  return BAND_META.map(b => { const v = bands[b.key]; return Number.isFinite(v) ? v : -120; });
-}
-// Bars + value readouts + labels shared by the Live-tab per-channel EQ (#30,
-// veqChannelHTML) and these analysis-view bars — geometry (cols) and levels
-// (dbArray) differ, everything else (loud/dim/hot styling, markup shape) is
-// identical. cols entries with a `range` get a title tooltip on their bar.
-function veqBarsAndLabelsHTML(cols, dbArray, loudestIdx) {
-  const bars = cols.map((b, i) => {
-    const v = veqBandView(dbArray[i]);
-    const cls = 'veq-bar' + (i === loudestIdx ? ' loud' : '') + (v.dim ? ' dim' : '');
-    return `<div class="${cls}" data-band="${b.key}" style="left:${b.left}%;width:${b.width}%;height:${v.pct.toFixed(2)}%;background:${b.color}"${b.range ? ` title="${b.range}"` : ''}></div>`
-      + `<div class="veq-val${v.hot ? ' hot' : ''}${v.dim ? ' dim' : ''}" style="left:${b.center}%;bottom:${veqValBottom(v.pct)}%">${v.val}</div>`;
-  }).join('');
-  const labels = cols.map((b, i) =>
-    `<span class="veq-label${i === loudestIdx ? ' loud' : ''}" style="left:${b.center}%">${b.label}</span>`).join('');
-  return { bars, labels };
-}
 // Patch existing bar/value/label DOM in place (the update-time counterpart of
 // veqBarsAndLabelsHTML above) — shared by the Live-tab per-channel patch
 // (patchLiveChannel) and the playback-band repaint (renderPlaybackBands, AW-4)
@@ -628,33 +403,6 @@ function patchBarsAndLabels(container, dbArray) {
   });
   container.querySelectorAll('.veq-label').forEach((lb, i) => lb.classList.toggle('loud', i === loudestIdx));
 }
-// Dashed target line connecting each band's target level at its column
-// center — an SVG overlay (viewBox 0 0 100 100 matches the bar percentages
-// directly) so it still reads as "the curve you're chasing" over the bars.
-function eqTargetLineSVG(targetBandDb) {
-  const pts = EQ_COLS.map((b, i) => `${b.center},${(100 - toPct(targetBandDb[i])).toFixed(2)}`);
-  return `<svg class="eq-target-svg" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
-    <path class="sb-target-line" style="vector-effect:non-scaling-stroke" d="M${pts.join(' L')}"/>
-  </svg>`;
-}
-function eqCentroidHTML(spectrum) {
-  return spectrum.spectralCentroid > 0 ? `<div class="eq-centroid">Centroid · ${fmtHz(spectrum.spectralCentroid)}</div>` : '';
-}
-// bandDb: 7 levels in BAND_META order. targetDb (optional): same shape,
-// overlaid as the dashed target line.
-function eqBarsHTML(bandDb, targetDb) {
-  const loudestIdx = veqLoudestIdx(bandDb);
-  const { bars, labels } = veqBarsAndLabelsHTML(EQ_COLS, bandDb, loudestIdx);
-  const grid = GRID.map(g => `<div class="eq-grid" style="bottom:${toPct(g)}%"></div>`).join('');
-  const yAxis = GRID.map(g => `<span style="bottom:${toPct(g)}%">${g}</span>`).join('');
-  const targetSvg = Array.isArray(targetDb) && targetDb.length === EQ_COLS.length ? eqTargetLineSVG(targetDb) : '';
-  return `<div class="eq-yaxis">${yAxis}</div>
-    <div class="eq-main">
-      <div class="eq-plot">${grid}<div class="veq-bars">${bars}</div>${targetSvg}</div>
-      <div class="veq-labels">${labels}</div>
-    </div>`;
-}
-
 function renderSpectrum(spectrum) {
   const body = document.getElementById('spectrum-body');
   const title = document.getElementById('spectrum-title');
@@ -676,7 +424,7 @@ function renderSpectrum(spectrum) {
     // beneath it, and the time-sampled spectrogram + scrubber sit under that and
     // redraw #spectrum-chart for the selected frame (PRD 03).
     body.innerHTML = `<div class="spectrum-chart" id="spectrum-chart" role="img" aria-label="Frequency band levels">${eqBarsHTML(bandDb, targetBandDb)}</div>`
-      + spectrumLegendHTML(profile, cmp)
+      + spectrumLegendHTML(profile, cmp, !idealProfileId)
       + eqCentroidHTML(spectrum)
       + buildFramesSectionHTML(spectrum);
     updateIdealProfileVisibility(spectrum);
@@ -1086,18 +834,6 @@ function liveBandCurve(bands) {
     db: LIVE_BAND_KEYS.map(k => { const v = bands[k]; return Number.isFinite(v) ? v : -120; }),
   };
 }
-// Per-band presentation state, shared by the build and patch paths so they
-// can't drift. Loudest emphasis only means something when signal is present:
-// during silence (all bands idle) no bar glows.
-function veqLoudestIdx(db) {
-  const max = Math.max(...db);
-  return max > DIM_DB ? db.indexOf(max) : -1;
-}
-function veqBandView(db) {
-  return { pct: toPct(db), dim: db <= DIM_DB, hot: db > HOT_DB, val: db.toFixed(1) };
-}
-// Readouts ride each bar's top; cap so they stay inside the plot at full scale.
-function veqValBottom(pct) { return Math.min(pct, 90).toFixed(2); }
 // Fixed dB scale so the arc's geometry matches the bars and stays put across ticks.
 function veqArcSVG(curve, centroid, idx, wantPaths) {
   return spectrumCurveSVG(curve, centroid, null, { uid: `live${idx}`, vbH: VEQ_VB_H, yMin: DB_MIN, yMax: DB_MAX, wantPaths });

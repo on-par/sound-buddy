@@ -26,7 +26,7 @@ export default defineConfig({
       // and under vitest 4's coverage-v8 an "app/**" pattern matches every
       // path here, since this package's own directory is named app/, which
       // zeroed out all coverage. See #224.)
-      include: ['electron/**/*.ts', 'renderer/**/*.{ts,js}'],
+      include: ['electron/**/*.ts', 'renderer/**/*.{ts,tsx,js}'],
       exclude: [
         'electron/**/*.test.ts',
         'renderer/**/*.test.{ts,js}',
@@ -38,11 +38,16 @@ export default defineConfig({
         'assets/**',
         'coverage/**',
         'test-results/**',
-        // React mount + verbatim-ported boot scripts (#303) — DOM/UI glue
-        // with no unit-test surface (same reason index.html was never
-        // instrumented before this existed); verified by the Playwright
-        // e2e/smoke suite instead, not Vitest coverage.
-        'renderer/src/**',
+        // React mount + verbatim-ported boot script (#303): DOM/UI glue
+        // verified by the Playwright e2e suite, no unit-test surface.
+        'renderer/src/main.tsx',
+        'renderer/src/App.tsx',
+        'renderer/src/inline-app.js',
+        // Test double (#308): its ~50 default stubs are arrows most tests
+        // never invoke; counting them as uncovered functions penalizes test
+        // infrastructure. Exercised by its own colocated test and by every
+        // consumer test at the type level (`satisfies SoundBuddyApi`).
+        'renderer/src/mock-sound-buddy.ts',
       ],
       // Recalibrated for Vitest 4's more accurate v8 coverage remapping
       // (#224): branches/functions in particular read lower than the old v2

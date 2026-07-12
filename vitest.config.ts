@@ -28,7 +28,7 @@ export default defineConfig({
       include: [
         'packages/*/src/**/*.ts',
         'app/electron/**/*.ts',
-        'app/renderer/**/*.{ts,js}',
+        'app/renderer/**/*.{ts,tsx,js}',
         'worker/src/**/*.ts',
       ],
       exclude: [
