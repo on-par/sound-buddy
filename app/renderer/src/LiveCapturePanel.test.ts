@@ -73,7 +73,7 @@ describe('LiveCapturePanel', () => {
       strip: channelsConfig[idx] ?? null,
       displayName: ch.name,
       collapsed: false,
-      armed: !!channelsConfig[idx]?.armed,
+      armed: !!channelsConfig[idx] && channelsConfig[idx].armed !== false,
       groupIndex: -1,
     }));
     const expectedMeters = liveMetersHTML(FIXTURE_CHANNELS, stripViews, panel);
@@ -108,6 +108,19 @@ describe('LiveCapturePanel', () => {
   it('shows the waiting placeholder when every event has an empty channel list', () => {
     const html = renderMarkup(baseProps({ meterEvents: [{ type: 'meter', ts: 0, channels: [] }] }));
     expect(html).toContain('Waiting for live audio…');
+  });
+
+  it('treats a strip with no armed field as armed by default (mirrors window.armState.isArmed)', () => {
+    const html = renderMarkup(baseProps({ liveMode: 'record' }));
+    // channelsConfig entries carry no `armed` field; default-armed means both
+    // render as pressed/"Disarm", not unarmed/"Arm".
+    expect(html).toContain('aria-pressed="true"');
+    expect(html).not.toContain('aria-pressed="false"');
+  });
+
+  it('honors an explicit armed:false strip as disarmed', () => {
+    const html = renderMarkup(baseProps({ liveMode: 'record', channels: [{ kind: 'mono', a: 0, b: 1, armed: false }, channelsConfig[1]] }));
+    expect(html).toContain('aria-pressed="false"');
   });
 
   it('resolves each strip\'s groupIndex from the groups prop', () => {

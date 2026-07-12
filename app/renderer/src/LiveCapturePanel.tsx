@@ -67,7 +67,10 @@ export default function LiveCapturePanel({
         strip,
         displayName: ch.name ?? `Ch ${idx + 1}`,
         collapsed: false,
-        armed: !!strip?.armed,
+        // Mirrors window.armState.isArmed: a strip is armed unless explicitly
+        // disarmed, so config with no `armed` field (e.g. loaded via
+        // clampChannelConfig) still reads as armed.
+        armed: !!strip && strip.armed !== false,
         groupIndex: groups.findIndex((g) => g.members.includes(idx)),
       };
     });

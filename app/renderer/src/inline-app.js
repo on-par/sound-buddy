@@ -82,8 +82,8 @@ const {
 /* ══ Live-capture panel rendering — extracted to live-capture-panel.ts (#307),
    bridged onto window by App.tsx like spectrumDisplay/reportCard. ══ */
 const {
-  LIVE_BAND_KEYS, deviceOptionLabel, deviceListView, deviceChannelCount,
-  channelOptions, liveBandCurve, veqArcSVG, veqChannelHTML, liveMetersHTML,
+  LIVE_BAND_KEYS, deviceListView, deviceChannelCount,
+  liveBandCurve, veqArcSVG, liveMetersHTML,
 } = window.liveCapturePanel;
 // Renamed to avoid colliding with the zero-arg usedChannelCount() wrapper below.
 const lcUsedChannelCount = window.liveCapturePanel.usedChannelCount;
