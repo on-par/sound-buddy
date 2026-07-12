@@ -1,5 +1,11 @@
-import { describe, it, expect } from "vitest";
-import { parseEbur128Summary } from "./ebur128.js";
+import { describe, it, expect, vi } from "vitest";
+import { parseEbur128Summary, runEbur128 } from "./ebur128.js";
+
+const executeMock = vi.hoisted(() => vi.fn());
+vi.mock("./timeout.js", () => ({
+  execFileWithTimeout: executeMock,
+  EBUR128_TIMEOUT_MS: 300_000,
+}));
 
 const TONE_SUMMARY = `[Parsed_ebur128_0 @ 0x1] t: 0.999977   TARGET:-23 LUFS    M:  -9.0 S:-120.7     I:  -9.0 LUFS       LRA:   0.0 LU  FTPK:  -6.0 dBFS  TPK:  -6.0 dBFS
 [Parsed_ebur128_0 @ 0x1] Summary:
@@ -99,5 +105,33 @@ describe("parseEbur128Summary", () => {
 
   it("throws on empty input", () => {
     expect(() => parseEbur128Summary("")).toThrow(/ffmpeg ebur128.*could not parse/i);
+  });
+
+  it("parses a -inf true peak (fully silent audio) as -Infinity instead of throwing", () => {
+    const output = `Summary:
+
+  Integrated loudness:
+    I:         -70.0 LUFS
+    Threshold: -inf LUFS
+
+  Loudness range:
+    LRA:         0.0 LU
+
+  True peak:
+    Peak:       -inf dBFS
+`;
+    const stats = parseEbur128Summary(output);
+    expect(stats.integratedLufs).toBeCloseTo(-70.0, 5);
+    expect(stats.loudnessRange).toBeCloseTo(0.0, 5);
+    expect(stats.truePeakDbtp).toBe(-Infinity);
+  });
+});
+
+describe("runEbur128", () => {
+  it("passes a maxBuffer large enough for multi-hour recordings — ebur128 writes a stderr progress line roughly every 100ms, which can exceed Node's 1MB execFile default well before a long service recording finishes", async () => {
+    executeMock.mockResolvedValueOnce({ stdout: "", stderr: TONE_SUMMARY });
+    await runEbur128("/tmp/service.wav");
+    const options = executeMock.mock.calls[0][2];
+    expect(options.maxBuffer).toBeGreaterThanOrEqual(16 * 1024 * 1024);
   });
 });
