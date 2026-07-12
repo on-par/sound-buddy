@@ -2,6 +2,12 @@
 // Licensed under the Sound Buddy Desktop Application License (app/LICENSE).
 
 import { useLayoutEffect, useRef } from 'react';
+import {
+  PROFILES as AE_PROFILES,
+  GRID_FREQS as AE_GRID_FREQS,
+  compareToProfile as aeCompareToProfile,
+  defaultProfileForContentType as aeDefaultProfileForContentType,
+} from '../../../packages/audio-engine/src/profiles/index.js';
 import rootMarkup from './root-markup.html?raw';
 import rigReconcileSrc from '../rig-reconcile.js?raw';
 import collapseStateSrc from '../collapse-state.js?raw';
@@ -56,6 +62,12 @@ export default function App() {
     if (booted.current) return;
     booted.current = true;
     document.getElementById('root')!.innerHTML = rootMarkup;
+    (window as Window & { audioEngineProfiles?: unknown }).audioEngineProfiles = {
+      PROFILES: AE_PROFILES,
+      GRID_FREQS: AE_GRID_FREQS,
+      compareToProfile: aeCompareToProfile,
+      defaultProfileForContentType: aeDefaultProfileForContentType,
+    };
     for (const src of BOOT_SCRIPTS) {
       const script = document.createElement('script');
       script.textContent = src;
