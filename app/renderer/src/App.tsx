@@ -8,6 +8,7 @@ import {
   compareToProfile as aeCompareToProfile,
   defaultProfileForContentType as aeDefaultProfileForContentType,
 } from '../../../packages/audio-engine/src/profiles/index.js';
+import * as spectrumDisplay from './spectrum-display';
 import rootMarkup from './root-markup.html?raw';
 import rigReconcileSrc from '../rig-reconcile.js?raw';
 import collapseStateSrc from '../collapse-state.js?raw';
@@ -68,6 +69,7 @@ export default function App() {
       compareToProfile: aeCompareToProfile,
       defaultProfileForContentType: aeDefaultProfileForContentType,
     };
+    (window as Window & { spectrumDisplay?: unknown }).spectrumDisplay = spectrumDisplay;
     for (const src of BOOT_SCRIPTS) {
       const script = document.createElement('script');
       script.textContent = src;
