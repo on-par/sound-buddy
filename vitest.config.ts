@@ -58,6 +58,12 @@ export default defineConfig({
         '**/dist/**',
         '**/*.config.{ts,js,mjs}',
         'worker/src/e2e/**',
+        // packages/shared is a type-only module (#331): src/index.ts exports
+        // only TypeScript interfaces and emits no runtime JavaScript, so its
+        // 78 "statements" are unreachable by any test. The constitution
+        // permits excluding type-only modules from coverage at the config
+        // level; the types are checked by `tsc` (lint), not vitest.
+        'packages/shared/src/index.ts',
         // Mirror app's own coverage excludes (see app/vitest.config.ts for
         // the rationale): e2e-verified DOM glue (#303) and the shared test
         // double (#308) don't count toward coverage there, so they must not
