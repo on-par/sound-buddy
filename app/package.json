@@ -6,10 +6,10 @@
   "author": "on-par",
   "main": "dist/electron/main.js",
   "scripts": {
-    "build": "tsc",
-    "lint": "tsc --noEmit",
+    "build": "npm run build --prefix renderer && tsc",
+    "lint": "tsc --noEmit && npm run lint --prefix renderer",
     "start": "npm run build && electron dist/electron/main.js",
-    "dev": "tsc && electron dist/electron/main.js",
+    "dev": "node scripts/dev.mjs",
     "test": "vitest run --passWithNoTests",
     "test:coverage": "vitest run --passWithNoTests --coverage",
     "test:e2e": "npx playwright test --config=playwright.config.ts",

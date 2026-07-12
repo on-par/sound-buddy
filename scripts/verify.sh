@@ -25,6 +25,8 @@ if [[ "$FAST" -eq 0 ]]; then
   npm ci
   echo "==> npm ci (app)"
   npm ci --prefix app
+  echo "==> npm ci (app/renderer)"
+  npm ci --prefix app/renderer
   echo "==> npm ci (worker)"
   npm ci --prefix worker
 fi
@@ -103,10 +105,10 @@ if [[ "$E2E" -eq 1 ]]; then
   # analyzes a fixture through sox + ffprobe + python3; when those are missing
   # (fresh box, CI without media tools) run only the stubbed specs rather than
   # failing the gate. App deps are required to build dist/electron at all.
-  if [[ ! -d app/node_modules ]]; then
-    echo "==> e2e SKIPPED — app deps not installed (run without --fast, or: npm ci --prefix app)"
+  if [[ ! -d app/node_modules || ! -d app/renderer/node_modules ]]; then
+    echo "==> e2e SKIPPED — app deps not installed (run without --fast, or: npm ci --prefix app && npm ci --prefix app/renderer)"
   else
-    echo "==> build app (tsc → dist/electron)"
+    echo "==> build app (renderer vite build + tsc → dist/electron)"
     npm run build --prefix app
     missing=""
     for tool in sox ffprobe python3; do

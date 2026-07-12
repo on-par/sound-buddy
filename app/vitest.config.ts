@@ -38,6 +38,11 @@ export default defineConfig({
         'assets/**',
         'coverage/**',
         'test-results/**',
+        // React mount + verbatim-ported boot scripts (#303) — DOM/UI glue
+        // with no unit-test surface (same reason index.html was never
+        // instrumented before this existed); verified by the Playwright
+        // e2e/smoke suite instead, not Vitest coverage.
+        'renderer/src/**',
       ],
       // Recalibrated for Vitest 4's more accurate v8 coverage remapping
       // (#224): branches/functions in particular read lower than the old v2

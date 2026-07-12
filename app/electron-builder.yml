@@ -6,13 +6,14 @@ directories:
 # and a relocatable Python with the audio deps, so it runs with no Homebrew /
 # system python. Requires sox, ffmpeg, dylibbundler on the build machine.
 afterPack: build/afterPack.js
-# Only ship the compiled app + the static renderer. node_modules is dev-only
-# (electron itself is provided by the builder), so it's excluded automatically.
+# Only ship the compiled app + the built renderer bundle. node_modules is
+# dev-only (electron itself is provided by the builder), so it's excluded
+# automatically. The renderer is a Vite single-file build (#303) — only
+# renderer/dist ships; renderer/src, renderer/node_modules, and the renderer
+# build config/tooling never do.
 files:
   - dist/**/*
-  - renderer/**/*
-  # Colocated Vitest specs (e.g. renderer/*.test.ts) are dev-only — never ship them.
-  - "!renderer/**/*.test.*"
+  - renderer/dist/**/*
   - package.json
   # package.json declares "SEE LICENSE IN LICENSE" — the file must ship with it.
   - LICENSE
