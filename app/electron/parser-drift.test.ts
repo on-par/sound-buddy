@@ -23,9 +23,13 @@ import { fileURLToPath } from 'node:url';
 vi.mock('electron', () => {
   const p = require('node:path') as typeof import('node:path');
   const os = require('node:os') as typeof import('node:os');
-  // App Vitest runs with cwd = app/, so the repo root is one level up.
+  // Resolve from this test file's location so the path is stable regardless of
+  // vitest's cwd (projects mode runs with cwd=repo-root, not app/).
+  const __filename2 = fileURLToPath(import.meta.url);
+  const __dirname2 = p.dirname(__filename2);
   (process as { resourcesPath?: string }).resourcesPath = p.resolve(
-    process.cwd(),
+    __dirname2,
+    '..',
     '..',
     'packages',
     'audio-engine',

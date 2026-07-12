@@ -13,6 +13,10 @@ import { defineConfig } from 'vitest/config';
 export default defineConfig({
   test: {
     projects: ['packages/*', 'app', 'worker'],
+    // Exclude Playwright e2e specs — they're driven by `npm run test:e2e`, not vitest.
+    // Without this, vitest in projects mode picks up app/tests/e2e/*.spec.ts and crashes
+    // on Playwright's test.describe(), preventing the coverage report from being written.
+    exclude: ['**/tests/e2e/**', '**/*.spec.ts', '**/node_modules/**', '**/dist/**'],
     coverage: {
       provider: 'v8',
       reportsDirectory: './coverage',
