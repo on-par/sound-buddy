@@ -262,7 +262,13 @@ export function buildMetricRows(src: ReportCardSource, g: GradingPillApi): Metri
   return [
     { name: 'Peak Level', note: 'Sample peak', value: fmt(src.peak), unit: 'dBFS', tone: g.rcPeakStatus(src.peak, src.clipping), target: g.rcMetricTarget('peak') },
     ...(measured(src.truePeakDbtp) ? [{ name: 'True Peak', note: 'Inter-sample peak (EBU R128)', value: fmt(src.truePeakDbtp), unit: 'dBTP', tone: g.rcTruePeakStatus(src.truePeakDbtp), target: g.rcMetricTarget('truePeak') }] : []),
-    { name: 'RMS Level', note: 'Average level (RMS)', value: fmt(src.rms), unit: 'dBFS', tone: g.rcRmsStatus(src.rms), target: g.rcMetricTarget('rms') },
+    // #135 review fix — once lufsIntegrated is measured, computeGrade/explainGrade
+    // stop judging RMS entirely (LUFS supersedes it); asserting a good/issue tone
+    // off raw RMS here would then contradict the LUFS-driven grade, breaking
+    // #131's invariant that the pill never disagrees with the grade. The row
+    // becomes informational ('info', no target) once RMS is no longer graded —
+    // the fallback (LUFS unmeasured) keeps the original rcRmsStatus behavior.
+    { name: 'RMS Level', note: 'Average level (RMS)', value: fmt(src.rms), unit: 'dBFS', tone: measured(src.lufsIntegrated) ? 'info' as PillTone : g.rcRmsStatus(src.rms), target: measured(src.lufsIntegrated) ? null : g.rcMetricTarget('rms') },
     ...(measured(src.lufsIntegrated) ? [{ name: 'Integrated Loudness', note: 'Program loudness (EBU R128)', value: fmt(src.lufsIntegrated), unit: 'LUFS', tone: g.rcLufsStatus(src.lufsIntegrated), target: g.rcMetricTarget('lufs') }] : []),
     ...(measured(src.loudnessRange) ? [{ name: 'Loudness Range', note: 'LRA (EBU R128)', value: fmt(src.loudnessRange), unit: 'LU', tone: 'info' as PillTone, target: null }] : []),
     { name: 'Dynamic Range', note: src.dynamicRange != null ? null : 'Not measured for live capture', value: src.dynamicRange != null ? fmt(src.dynamicRange) : '—', unit: src.dynamicRange != null ? 'dB' : '', tone: g.rcDrStatus(src.dynamicRange), target: src.dynamicRange != null ? g.rcMetricTarget('dynamicRange') : null },

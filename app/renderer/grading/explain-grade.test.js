@@ -213,6 +213,18 @@ describe('explainGrade (#133)', () => {
       const { deductions } = grading.explainGrade(src);
       expect(deductions).toEqual([]);
     });
+
+    it('formats a silent recording\'s out-of-band LUFS deduction as "-∞ LUFS", matching the app\'s infinity convention (review fix)', () => {
+      // -Infinity is a legitimate, measured LUFS value (ffmpeg's "-inf" for a
+      // fully silent file, #134) — raw toFixed(1) renders it as the literal
+      // string "-Infinity", breaking the "-∞" convention report-card.ts's
+      // fmt() uses for the same value elsewhere on the same card.
+      const src = makeSrc({ lufsIntegrated: -Infinity, truePeakDbtp: -5 });
+      const { deductions } = grading.explainGrade(src);
+      expect(deductions).toEqual([
+        { rule: 'Integrated loudness out of band', measured: '-∞ LUFS', target: '-20 to -14 LUFS', letterImpact: 'Drops one letter' },
+      ]);
+    });
   });
 
   it('reads targets from CONFIG — moving a threshold moves the reason shown', () => {

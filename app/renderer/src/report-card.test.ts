@@ -236,6 +236,29 @@ describe('buildMetricRows', () => {
     expect(integrated.tone).toBe('issue');
   });
 
+  it('shows the RMS Level row as "info" (not graded) once LUFS supersedes it (#135 review fix)', () => {
+    // computeGrade/explainGrade stop judging RMS the moment lufsIntegrated is
+    // measured (#135) — the RMS row must follow, or a clean LUFS-driven A
+    // grade could sit next to a red "issue" RMS pill, breaking #131's
+    // invariant that the pill never contradicts the grade. Pick RMS values
+    // that would read "good"/"issue" under the old unconditional rcRmsStatus
+    // call to prove the row no longer asserts either.
+    const rmsInBand = buildMetricRows(makeSrc({ rms: -17, lufsIntegrated: -16, truePeakDbtp: -5 }), grading);
+    const rmsOutOfBand = buildMetricRows(makeSrc({ rms: -30, lufsIntegrated: -16, truePeakDbtp: -5 }), grading);
+    for (const rows of [rmsInBand, rmsOutOfBand]) {
+      const rmsRow = rows.find((r) => r.name === 'RMS Level')!;
+      expect(rmsRow.tone).toBe('info');
+      expect(rmsRow.target).toBeNull();
+    }
+  });
+
+  it('keeps the RMS Level row graded via rcRmsStatus when LUFS is not measured (fallback, #135)', () => {
+    const rows = buildMetricRows(makeSrc({ rms: -30 }), grading);
+    const rmsRow = rows.find((r) => r.name === 'RMS Level')!;
+    expect(rmsRow.tone).toBe('issue');
+    expect(rmsRow.target).toBe('-20 to -14 dBFS');
+  });
+
   it('omits the loudness rows individually when their field is null, undefined, or NaN (#134)', () => {
     const nullRows = buildMetricRows(makeSrc({ lufsIntegrated: null, loudnessRange: 6.3, truePeakDbtp: -1.05 }), grading);
     expect(nullRows.map((r) => r.name)).not.toContain('Integrated Loudness');

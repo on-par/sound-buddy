@@ -80,6 +80,14 @@
   // or a missing field mean "not measured" — same contract as report-card.ts.
   function measuredLoudness(v) { return typeof v === 'number' && !Number.isNaN(v); }
 
+  // -Infinity is a legitimate LUFS measurement (ffmpeg's "-inf" for a fully
+  // silent file), but a raw toFixed(1) renders it as the literal string
+  // "-Infinity", breaking the "-∞" convention report-card.ts's fmt() uses for
+  // the same value elsewhere on the card. Only the LUFS deduction below can
+  // ever receive a non-finite value here — the true-peak deduction's guard
+  // (> ceiling) can never be true for -Infinity.
+  function fmtLufs(v) { return Number.isFinite(v) ? v.toFixed(1) : (v > 0 ? '∞' : '-∞'); }
+
   function analyzeRecordingType(src) {
     if (src.clipping || src.peak >= -0.5) return { type: 'clipping', label: 'Clipping', note: 'Signal is clipping. Reduce input gain immediately.', tone: 'issue' };
     if (src.peak > -3 && src.rms > -12) return { type: 'hot', label: 'Hot', note: 'Recording level is very hot. Consider reducing gain.', tone: 'check' };
@@ -223,7 +231,7 @@
       if (!rmsExempt && (src.lufsIntegrated < CONFIG.lufs.acceptableMin || src.lufsIntegrated > CONFIG.lufs.acceptableMax)) {
         deductions.push({
           rule: 'Integrated loudness out of band',
-          measured: src.lufsIntegrated.toFixed(1) + ' LUFS',
+          measured: fmtLufs(src.lufsIntegrated) + ' LUFS',
           target: rcMetricTarget('lufs'),
           letterImpact: 'Drops one letter',
         });
