@@ -1,4 +1,7 @@
 #!/usr/bin/env node
+// Copyright (c) 2026 Patrick Robinson (on-par). All rights reserved.
+// Licensed under the Sound Buddy Desktop Application License (app/LICENSE).
+
 // Dev orchestration (#303): start the renderer's Vite dev server, build the
 // Electron main/preload process once, then launch Electron pointed at the
 // dev server (SOUND_BUDDY_RENDERER_URL — see electron/main.ts createWindow).

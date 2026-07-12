@@ -9,16 +9,20 @@ import { viteSingleFile } from 'vite-plugin-singlefile';
 // Vite dev server's HMR websocket, which the built app never loads. Widen
 // `connect-src` for `localhost:5173` only when serving (`apply: 'serve'`) so
 // the built output's CSP — verified by the Electron smoke test — is never
-// touched by this plugin.
+// touched by this plugin. Reads the CSP straight out of the `html` Vite hands
+// this hook (index.html's own content, not a copy) so there's no second
+// literal of the policy to drift out of sync.
 function devServerCsp(): Plugin {
-  const prodCsp =
-    "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; media-src 'self' file:";
-  const devCsp = `${prodCsp}; connect-src 'self' ws://localhost:5173 http://localhost:5173`;
+  const CSP_ATTR = /(<meta http-equiv="Content-Security-Policy"\s+content=")([^"]*)(")/;
   return {
     name: 'sound-buddy-dev-server-csp',
     apply: 'serve',
     transformIndexHtml(html) {
-      return html.replace(prodCsp, devCsp);
+      return html.replace(
+        CSP_ATTR,
+        (_match, open: string, prodCsp: string, close: string) =>
+          `${open}${prodCsp}; connect-src 'self' ws://localhost:5173 http://localhost:5173${close}`,
+      );
     },
   };
 }

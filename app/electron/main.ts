@@ -47,7 +47,7 @@ function createWindow(): void {
   // HMR works. Everything else (built-and-launched for e2e, `npm run start`,
   // and the packaged app) loads the built single-file bundle — never a dev
   // URL, even if the env var somehow leaked into a packaged build (#303).
-  const devServerUrl = !app.isPackaged ? process.env.SOUND_BUDDY_RENDERER_URL : undefined;
+  const devServerUrl = !app.isPackaged && process.env.SOUND_BUDDY_RENDERER_URL;
   if (devServerUrl) {
     mainWindow.loadURL(devServerUrl);
   } else {
