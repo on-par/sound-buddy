@@ -11,7 +11,7 @@
     "test": "npm run test --workspaces --if-present",
     "test:coverage": "npm run test:coverage --workspaces --if-present; s=$?; npm run test:coverage --prefix app; a=$?; test $s -eq 0 && test $a -eq 0",
     "coverage": "npm run coverage:deps && vitest run --coverage",
-    "coverage:deps": "(test -d app/node_modules || npm ci --prefix app || true); (test -d app/renderer/node_modules || npm ci --prefix app/renderer || true); (test -d worker/node_modules || npm ci --prefix worker || true)",
+    "coverage:deps": "node scripts/coverage-deps.mjs",
     "dev": "npm run dev -w @sound-buddy/cli"
   },
   "devDependencies": {

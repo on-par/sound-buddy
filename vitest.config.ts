@@ -1,5 +1,5 @@
-import { existsSync } from 'node:fs';
 import { defineConfig } from 'vitest/config';
+import { PROJECT_INSTALL_ROOTS, isInstalled } from './scripts/coverage-install-roots.mjs';
 
 // Root Vitest projects config (#237): a single entry point that fans out to
 // every suite in the repo (packages/*, app, worker) and merges their coverage
@@ -10,15 +10,19 @@ import { defineConfig } from 'vitest/config';
 // `npm ci` can't run their suites — and a failed run makes Vitest skip the
 // coverage report entirely (#338). Include them only when their deps are
 // installed, so any invocation still writes a valid (if narrower) report.
-// app has two install roots: its own devDeps plus renderer/ (react et al.,
-// imported by the renderer unit tests since #304).
-const projectDeps: Record<string, string[]> = {
-  app: ['app/node_modules', 'app/renderer/node_modules'],
-  worker: ['worker/node_modules'],
-};
-const optional = Object.keys(projectDeps).filter((dir) =>
-  projectDeps[dir].every((dep) => existsSync(new URL(`./${dep}`, import.meta.url))),
+// The install-root map and the "actually installed" check live in
+// scripts/coverage-install-roots.mjs, shared with scripts/coverage-deps.mjs
+// so the two can't drift.
+const optional = Object.keys(PROJECT_INSTALL_ROOTS).filter((dir) =>
+  PROJECT_INSTALL_ROOTS[dir].every(isInstalled),
 );
+const skipped = Object.keys(PROJECT_INSTALL_ROOTS).filter((dir) => !optional.includes(dir));
+if (skipped.length > 0) {
+  console.warn(
+    `[coverage] skipping project(s) ${skipped.join(', ')} — install roots incomplete ` +
+      '(run `npm run coverage:deps`); the report covers the remaining projects only.',
+  );
+}
 
 // This is additive reporting only. The per-workspace `test:coverage` scripts
 // and their CI-gated ratchet thresholds (#185/#226) are untouched: in
