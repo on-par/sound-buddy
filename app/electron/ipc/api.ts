@@ -16,6 +16,7 @@ export interface UpdateSettingsPatch {
   storageDir?: string;
 }
 
+/** A renderer patch: `apiKey` semantics — undefined = keep, '' = clear. */
 export interface LlmConfigPatch {
   provider?: string;
   model?: string;
@@ -45,20 +46,31 @@ export interface AnalysisSummaryInput {
 
 export interface StartLiveOpts {
   device?: string;
+  // Channel-config tokens: "N" (mono) or "N-M" (stereo pair), e.g. ["0","1-2"].
   channels?: string[];
   windowSecs: number;
+  // Real-time meter cadence in seconds (default 0.1 in stream.py).
   intervalSecs?: number;
   llmIntervalSecs: number;
+  // "monitor" (default) = live view only; "record" = also capture a session.
   mode?: 'monitor' | 'record';
+  // Optional output folder for Record mode (defaults to ~/Music/Sound Buddy).
   recordDir?: string;
+  // Record mode: which strips to arm as session stems, as channel-config
+  // tokens (e.g. ['0', '2-3']). Omitted ⇒ stream.py arms all configured strips.
   arm?: string[];
 }
 
 export interface StartPlaybackOpts {
+  // Session folder holding session.json + stem WAVs (from a Record capture).
   sessionDir: string;
+  // Output device index or name; omitted ⇒ playback.py uses the default output.
   device?: string;
+  // Routing spec mapping track → output channel(s), e.g. "0:0,1:2-3".
   route?: string;
+  // Progress/level cadence in seconds (default 0.1 in playback.py).
   intervalSecs?: number;
+  // Force the stereo master mixdown fold even on a big-enough device.
   master?: boolean;
 }
 
