@@ -6,7 +6,7 @@
 /* ══ Icon set + report-card renderers — extracted to report-card.ts (#306),
    bridged onto window by App.tsx like spectrumDisplay (#305). ══ */
 const {
-  iconSvg, fmt, pillIcon, statusPillHTML, gradeRingHTML, profileMatchHTML,
+  iconSvg, fmt, gradeRingHTML, profileMatchHTML,
   recTypePillClass, recTypePillHTML, buildMetricRows, metricRowsHTML,
   whyGradeHTML, recListHTML,
 } = window.reportCard;
