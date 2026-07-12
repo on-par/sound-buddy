@@ -1500,6 +1500,8 @@
 <script src="ideal-curves.js"></script>
 <!-- Pure grading engine — grade/score/recommendations (window.grading, #130). -->
 <script src="grading.js"></script>
+<!-- Pure Recent Services list logic — sort/truncate/empty/row markup (window.recentServices, #147/#280). -->
+<script src="recent-services.js"></script>
 <script>
 'use strict';
 
@@ -4295,30 +4297,18 @@ async function renderRecentServices() {
     res = null;
   }
 
-  // Main already caps this list to 10 (listAnalysisSummaries); slice defensively
-  // so the renderer never shows more even if that contract changes.
-  recentSummaries = (res && res.success && Array.isArray(res.summaries)) ? res.summaries.slice(0, 10) : [];
+  recentSummaries = window.recentServices.normalizeSummaries(
+    (res && res.success && Array.isArray(res.summaries)) ? res.summaries : []
+  );
 
-  if (recentSummaries.length === 0) {
+  if (window.recentServices.isEmpty(recentSummaries)) {
     list.innerHTML = '';
     empty.style.display = 'block';
     return;
   }
   empty.style.display = 'none';
 
-  list.innerHTML = recentSummaries.map((s, i) => {
-    // gradeLetter is read back off a disk-stored record (#147) — escape it even
-    // in this attribute position, not just as text content, so a crafted record
-    // (e.g. a shared/synced storage folder written to by another install)
-    // can't break out of the style attribute and inject markup.
-    const safeGrade = escapeHtml(s.gradeLetter);
-    return `
-    <div class="dir-item recent-row" data-idx="${i}">
-      <span class="recent-grade" style="color:var(--grade-${(s.gradeLetter || '').toLowerCase().replace(/[^a-z]/g, '')})">${safeGrade}</span>
-      <span class="dir-name">${escapeHtml(s.sourceFilename)}</span>
-      <span class="recent-date">${escapeHtml(new Date(s.date).toLocaleString())}</span>
-    </div>`;
-  }).join('');
+  list.innerHTML = recentSummaries.map((s, i) => window.recentServices.rowHtml(s, i, escapeHtml)).join('');
 
   list.querySelectorAll('.recent-row').forEach((row) => {
     row.addEventListener('click', () => loadHistoryEntry(recentSummaries[parseInt(row.dataset.idx, 10)]));
