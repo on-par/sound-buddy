@@ -14,16 +14,16 @@
     "dev": "tsx src/index.ts"
   },
   "dependencies": {
-    "@sound-buddy/shared": "*",
-    "@sound-buddy/scene-inspector": "*",
-    "@sound-buddy/audio-engine": "*",
     "@sound-buddy/ai-analyst": "*",
-    "commander": "^12"
+    "@sound-buddy/audio-engine": "*",
+    "@sound-buddy/scene-inspector": "*",
+    "@sound-buddy/shared": "*",
+    "commander": "^15"
   },
   "devDependencies": {
+    "@types/node": "^26",
+    "tsx": "^4.23.0",
     "typescript": "^5",
-    "tsx": "^4",
-    "@types/node": "^22",
     "vitest": "^4.1.10"
   }
 }

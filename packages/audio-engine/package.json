@@ -13,12 +13,12 @@
     "dev": "tsx src/index.ts"
   },
   "dependencies": {
-    "@earendil-works/pi-ai": "latest",
-    "@earendil-works/pi-coding-agent": "latest"
+    "@earendil-works/pi-ai": "^0.80.6",
+    "@earendil-works/pi-coding-agent": "^0.80.6"
   },
   "devDependencies": {
-    "@types/node": "^22",
-    "tsx": "^4",
+    "@types/node": "^26",
+    "tsx": "^4.23.0",
     "typescript": "^5",
     "vitest": "^4.1.10"
   }

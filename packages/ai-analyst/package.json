@@ -12,7 +12,7 @@
     "test:coverage": "vitest run --passWithNoTests --coverage"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "latest",
+    "@anthropic-ai/sdk": "^0.111.0",
     "@sound-buddy/shared": "*"
   },
   "devDependencies": {
