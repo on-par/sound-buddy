@@ -229,5 +229,140 @@
         }
       ]
     }
+  },
+  {
+    "name": "LUFS replaces RMS (#135)",
+    "case": "lufs_replaces_rms",
+    "source": {
+      "rms": -22,
+      "peak": -6,
+      "dynamicRange": 10,
+      "clipping": false,
+      "centroid": 2000,
+      "contentType": null,
+      "bands": {
+        "subBass": -30,
+        "bass": -30,
+        "lowMid": -30,
+        "mid": -30,
+        "highMid": -30,
+        "presence": -30,
+        "brilliance": -30
+      },
+      "lufsIntegrated": -16,
+      "truePeakDbtp": -5.5,
+      "loudnessRange": 6
+    },
+    "expected": {
+      "grade": "A",
+      "score": 99,
+      "recommendations": ["Great job! No major issues detected — levels and balance are solid."],
+      "deductions": [],
+      "notMeasured": []
+    }
+  },
+  {
+    "name": "LUFS out-of-band drop (#135)",
+    "case": "lufs_out_of_band_drop",
+    "source": {
+      "rms": -17,
+      "peak": -6,
+      "dynamicRange": 10,
+      "clipping": false,
+      "centroid": 2000,
+      "contentType": null,
+      "bands": {
+        "subBass": -30,
+        "bass": -30,
+        "lowMid": -30,
+        "mid": -30,
+        "highMid": -30,
+        "presence": -30,
+        "brilliance": -30
+      },
+      "lufsIntegrated": -12,
+      "truePeakDbtp": -5.5
+    },
+    "expected": {
+      "grade": "B",
+      "score": 89,
+      "recommendations": ["Great job! No major issues detected — levels and balance are solid."],
+      "deductions": [
+        {
+          "rule": "Integrated loudness out of band",
+          "measured": "-12.0 LUFS",
+          "target": "-20 to -14 LUFS",
+          "letterImpact": "Drops one letter"
+        }
+      ],
+      "notMeasured": []
+    }
+  },
+  {
+    "name": "true peak over ceiling drop (#135)",
+    "case": "true_peak_over_ceiling_drop",
+    "source": {
+      "rms": -17,
+      "peak": -0.8,
+      "dynamicRange": 10,
+      "clipping": false,
+      "centroid": 2000,
+      "contentType": null,
+      "bands": {
+        "subBass": -30,
+        "bass": -30,
+        "lowMid": -30,
+        "mid": -30,
+        "highMid": -30,
+        "presence": -30,
+        "brilliance": -30
+      },
+      "lufsIntegrated": -16,
+      "truePeakDbtp": -0.3
+    },
+    "expected": {
+      "grade": "B",
+      "score": 89,
+      "recommendations": ["Great job! No major issues detected — levels and balance are solid."],
+      "deductions": [
+        {
+          "rule": "True peak over ceiling",
+          "measured": "-0.3 dBTP",
+          "target": "≤ -1 dBTP",
+          "letterImpact": "Drops one letter"
+        }
+      ],
+      "notMeasured": []
+    }
+  },
+  {
+    "name": "true peak within tolerance despite hot sample peak (#135 AC2)",
+    "case": "true_peak_within_tolerance_hot_sample_peak",
+    "source": {
+      "rms": -17,
+      "peak": -1.2,
+      "dynamicRange": 10,
+      "clipping": false,
+      "centroid": 2000,
+      "contentType": null,
+      "bands": {
+        "subBass": -30,
+        "bass": -30,
+        "lowMid": -30,
+        "mid": -30,
+        "highMid": -30,
+        "presence": -30,
+        "brilliance": -30
+      },
+      "lufsIntegrated": -16,
+      "truePeakDbtp": -1.05
+    },
+    "expected": {
+      "grade": "A",
+      "score": 99,
+      "recommendations": ["Great job! No major issues detected — levels and balance are solid."],
+      "deductions": [],
+      "notMeasured": []
+    }
   }
 ]

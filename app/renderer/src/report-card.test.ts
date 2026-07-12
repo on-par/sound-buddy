@@ -214,16 +214,49 @@ describe('buildMetricRows', () => {
     // below -1.05, so JS rounds it to -1.1, not -1.0 (Number.prototype.toFixed
     // is not IEEE-round-half-to-even).
     expect(truePeak.value).toBe('-1.1');
-    expect(truePeak.tone).toBe('info');
-    expect(truePeak.target).toBeNull();
+    // #135 — True Peak / Integrated Loudness now mirror the grade rules via
+    // rcTruePeakStatus/rcLufsStatus instead of a fixed 'info' tone.
+    expect(truePeak.tone).toBe('good'); // -1.05 ≤ -1 ceiling
+    expect(truePeak.target).toBe('≤ -1 dBTP');
     expect(integrated.unit).toBe('LUFS');
     expect(integrated.value).toBe('-14.2');
-    expect(integrated.tone).toBe('info');
-    expect(integrated.target).toBeNull();
+    expect(integrated.tone).toBe('good'); // in the -20..-14 acceptable band
+    expect(integrated.target).toBe('-20 to -14 LUFS');
     expect(lra.unit).toBe('LU');
     expect(lra.value).toBe('6.3');
-    expect(lra.tone).toBe('info');
+    expect(lra.tone).toBe('info'); // no LRA grading rule — stays display-only
     expect(lra.target).toBeNull();
+  });
+
+  it('flags out-of-range True Peak / Integrated Loudness rows as "issue" (#135)', () => {
+    const rows = buildMetricRows(makeSrc({ lufsIntegrated: -12, loudnessRange: 6.3, truePeakDbtp: -0.3 }), grading);
+    const truePeak = rows.find((r) => r.name === 'True Peak')!;
+    const integrated = rows.find((r) => r.name === 'Integrated Loudness')!;
+    expect(truePeak.tone).toBe('issue');
+    expect(integrated.tone).toBe('issue');
+  });
+
+  it('shows the RMS Level row as "info" (not graded) once LUFS supersedes it (#135 review fix)', () => {
+    // computeGrade/explainGrade stop judging RMS the moment lufsIntegrated is
+    // measured (#135) — the RMS row must follow, or a clean LUFS-driven A
+    // grade could sit next to a red "issue" RMS pill, breaking #131's
+    // invariant that the pill never contradicts the grade. Pick RMS values
+    // that would read "good"/"issue" under the old unconditional rcRmsStatus
+    // call to prove the row no longer asserts either.
+    const rmsInBand = buildMetricRows(makeSrc({ rms: -17, lufsIntegrated: -16, truePeakDbtp: -5 }), grading);
+    const rmsOutOfBand = buildMetricRows(makeSrc({ rms: -30, lufsIntegrated: -16, truePeakDbtp: -5 }), grading);
+    for (const rows of [rmsInBand, rmsOutOfBand]) {
+      const rmsRow = rows.find((r) => r.name === 'RMS Level')!;
+      expect(rmsRow.tone).toBe('info');
+      expect(rmsRow.target).toBeNull();
+    }
+  });
+
+  it('keeps the RMS Level row graded via rcRmsStatus when LUFS is not measured (fallback, #135)', () => {
+    const rows = buildMetricRows(makeSrc({ rms: -30 }), grading);
+    const rmsRow = rows.find((r) => r.name === 'RMS Level')!;
+    expect(rmsRow.tone).toBe('issue');
+    expect(rmsRow.target).toBe('-20 to -14 dBFS');
   });
 
   it('omits the loudness rows individually when their field is null, undefined, or NaN (#134)', () => {
@@ -252,6 +285,7 @@ describe('buildMetricRows', () => {
     const truePeak = rows.find((r) => r.name === 'True Peak')!;
     expect(truePeak).toBeDefined();
     expect(truePeak.value).toBe('-∞');
+    expect(truePeak.tone).toBe('good'); // -Infinity ≤ ceiling
   });
 });
 
