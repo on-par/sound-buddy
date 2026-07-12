@@ -1,0 +1,354 @@
+  <!-- ══ Update banner ══ -->
+  <div id="update-banner" role="status">
+    <span data-icon="arrow-up-circle" class="ub-icon"></span>
+    <span id="update-banner-text">A new version is available.</span>
+    <button type="button" id="update-download-btn" class="ub-btn">Download</button>
+    <button type="button" id="update-dismiss-btn" class="ub-x" aria-label="Dismiss">✕</button>
+  </div>
+  <!-- ══ License grace banner (#54) ══ -->
+  <div id="license-banner" role="status">
+    <span data-icon="alert-triangle" class="ub-icon"></span>
+    <span class="lb-text" id="license-banner-text"></span>
+    <button type="button" id="license-banner-manage" class="ub-btn">Manage…</button>
+    <button type="button" id="license-banner-dismiss" class="ub-x" aria-label="Dismiss">✕</button>
+  </div>
+  <!-- ══ Trial nudge / upgrade banner (#61) ══ -->
+  <div id="trial-banner" role="status">
+    <span data-icon="sparkles" class="ub-icon"></span>
+    <span class="lb-text" id="trial-banner-text"></span>
+    <button type="button" id="trial-banner-start" class="ub-btn">Start subscription</button>
+    <button type="button" id="trial-banner-dismiss" class="ub-x" aria-label="Dismiss">✕</button>
+  </div>
+  <!-- ══ First-run onboarding welcome (#69) ══ -->
+  <div id="onboarding-dialog" class="rig-dialog" style="display:none" role="dialog" aria-modal="true" aria-labelledby="onboarding-title">
+    <div class="rig-dialog-card onboarding-card">
+      <div class="onboarding-mark" data-icon="waveform" aria-hidden="true"></div>
+      <h2 id="onboarding-title" class="onboarding-title">Welcome to Sound Buddy</h2>
+      <p class="onboarding-copy" id="onboarding-copy">Sound Buddy scores your mix and hands back a clear report card — an overall grade, level and dynamics readouts, and the EQ moves that matter. No setup, no settings, and no audio gear required to get started. Run your first analysis on a sample recording and see your report card in seconds.</p>
+      <div class="onboarding-actions" id="onboarding-actions">
+        <button type="button" id="onboarding-skip" class="btn btn-secondary">Skip for now</button>
+        <button type="button" id="onboarding-run" class="btn btn-primary" data-icon="waveform">Run your first analysis</button>
+      </div>
+      <div class="onboarding-progress" id="onboarding-progress" style="display:none">
+        <span class="spin"></span>
+        <span id="onboarding-progress-text">Analyzing your first recording…</span>
+      </div>
+    </div>
+  </div>
+  <!-- ══ Header ══ -->
+  <div id="header">
+    <div id="logo">
+      <div id="logo-dot"></div>
+      <span id="logo-text">Sound<b> Buddy</b></span>
+    </div>
+    <div class="header-div"></div>
+    <div id="mode-tabs" role="tablist">
+      <button class="mode-tab" data-mode="dir" data-icon="folder">Directory</button>
+      <button class="mode-tab" data-mode="live" data-icon="radio">Live<span class="tab-lock" data-icon="lock" data-size="11"></span></button>
+      <button class="mode-tab" data-mode="soundcheck" data-icon="sliders">Soundcheck<span class="tab-lock" data-icon="lock" data-size="11"></span></button>
+      <button class="mode-tab" data-mode="recent" data-icon="clock">Recent</button>
+      <button class="mode-tab active" data-mode="reportcard" data-icon="clipboard-check">Report Card</button>
+    </div>
+    <div id="header-right">
+      <button type="button" id="storage-settings-btn" data-icon="hard-drive" data-size="17" aria-label="Storage settings" title="Storage settings"></button>
+      <button type="button" id="ai-settings-btn" data-icon="settings" data-size="17" aria-label="AI settings" title="AI settings"></button>
+      <button type="button" id="license-badge" title="License — click to manage">FREE</button>
+      <div id="live-indicator">
+        <div class="pulse sb-pulse"></div>
+        <span class="live-txt">LIVE</span>
+        <span id="window-badge"></span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ Stage (#177): workspace + report card share one screen ══ -->
+  <div id="stage">
+  <!-- ══ Workspace (File / Directory / Live) ══ -->
+  <div id="workspace">
+    <!-- Source panel -->
+    <aside id="source-panel" class="side-panel">
+      <div class="panel-head"><span class="panel-title">Source</span></div>
+      <div class="panel-body">
+        <!-- DIR -->
+        <div class="tab-content" id="tab-dir">
+          <div class="dropzone" id="dir-dropzone">
+            <div class="dz-icon" data-icon="folder"></div>
+            <div class="dz-body">
+              <span class="dz-title">Drop a folder here</span>
+              <span class="dz-hint">or click to browse</span>
+            </div>
+          </div>
+          <div id="dir-info" style="display:none; flex-direction:column; gap:8px;">
+            <span class="section-label">Files</span>
+            <div class="dir-list" id="dir-file-list"></div>
+          </div>
+          <button class="btn btn-primary full" id="analyze-dir-btn" data-icon="waveform" disabled title="In-app multi-channel analysis is coming in v1.1">Analyze All</button>
+          <p class="dir-note dz-hint">In-app multi-channel analysis is coming in <strong>v1.1</strong>. For now, analyze a folder from the command line:<br><code class="dir-note-cmd">sound-buddy --dir "your/folder"</code></p>
+        </div>
+
+        <!-- LIVE -->
+        <div class="tab-content" id="tab-live">
+          <!-- Pro gate (#54): shown instead of the live controls (incl. rigs)
+               when no active Pro license. -->
+          <div class="pro-gate">
+            <span class="pg-icon" data-icon="lock" data-size="22"></span>
+            <span class="pg-title">Live monitoring is a Pro feature</span>
+            <span class="pg-msg">Capture and monitor multi-channel audio in real time, with saved rigs.</span>
+            <button type="button" class="pg-link" data-license-open>Upgrade — enter a license key</button>
+          </div>
+          <!-- Saved capture setups ("rigs"): pick one to restore device, channels,
+               mode, folder and slider cadences; Save / Save As… / Rename / Delete. -->
+          <div id="rig-bar" class="rig-bar">
+            <label class="select-label">
+              <span>Rig</span>
+              <div class="select-row">
+                <div class="select-wrap">
+                  <select id="rig-select"><option value="">No saved rigs</option></select>
+                  <span class="select-caret" data-icon="chevron-down"></span>
+                </div>
+              </div>
+            </label>
+            <div class="rig-actions">
+              <button type="button" id="rig-save-btn" class="ghost-btn sm" title="Update the selected rig">Save</button>
+              <button type="button" id="rig-saveas-btn" class="ghost-btn sm" title="Save the current setup as a new rig">Save As…</button>
+              <button type="button" id="rig-rename-btn" class="ghost-btn sm" title="Rename the selected rig">Rename</button>
+              <button type="button" id="rig-delete-btn" class="ghost-btn sm" title="Delete the selected rig">Delete</button>
+            </div>
+          </div>
+          <div class="hairline"></div>
+
+          <label class="select-label">
+            <span>Input Device</span>
+            <div class="select-row">
+              <div class="select-wrap">
+                <select id="device-select"><option value="">Loading devices…</option></select>
+                <span class="select-caret" data-icon="chevron-down"></span>
+              </div>
+              <button type="button" id="device-refresh-btn" class="ghost-btn" title="Re-scan input devices">Refresh</button>
+            </div>
+          </label>
+          <p id="device-hint" class="device-hint" style="display:none"></p>
+
+          <!-- Monitor vs Record -->
+          <div>
+            <div class="seg-label">Mode</div>
+            <div class="segmented" id="live-mode">
+              <button type="button" data-mode="monitor" class="active" data-icon="activity">Monitor</button>
+              <button type="button" data-mode="record" data-icon="circle">Record</button>
+            </div>
+          </div>
+
+          <!-- Record folder (record mode only) -->
+          <div class="record-row" id="record-folder-row" style="display:none">
+            <button type="button" id="record-folder-btn" class="ghost-btn" title="Choose recording folder">Folder…</button>
+            <span class="record-path" id="record-folder-path">~/Music/Sound Buddy</span>
+          </div>
+
+          <div class="slider">
+            <div class="slider-head"><span class="lbl">Meter rate</span><span class="val" id="interval-label">100 ms</span></div>
+            <input type="range" class="sb-slider" id="meter-interval" min="50" max="500" step="10" value="100" />
+          </div>
+          <div class="slider">
+            <div class="slider-head"><span class="lbl">Window</span><span class="val" id="window-secs-label">3.0s</span></div>
+            <input type="range" class="sb-slider" id="window-secs" min="1" max="10" step="0.5" value="3" />
+          </div>
+          <div class="slider ai-only">
+            <div class="slider-head"><span class="lbl">LLM Interval</span><span class="val" id="llm-interval-label">60s</span></div>
+            <input type="range" class="sb-slider" id="llm-interval" min="0" max="300" step="10" value="60" />
+          </div>
+
+          <div class="capture-locked-note" id="capture-locked-note" role="note">Settings locked while capturing</div>
+          <div class="hairline"></div>
+          <button class="btn btn-primary full" id="live-start-btn" data-icon="play">Start Capture</button>
+          <button class="btn btn-danger full" id="live-stop-btn" data-icon="square" style="display:none">Stop Capture</button>
+          <div id="live-status" style="display:none; font:var(--fw-regular) var(--fs-label)/1.3 var(--font-sans); color:var(--text-muted); text-align:center"></div>
+          <div id="arm-hint" class="arm-hint" role="alert" style="display:none"></div>
+          <div id="rec-offer" class="rec-offer" style="display:none">
+            <span class="ro-text" id="rec-offer-text"></span>
+            <button type="button" class="btn btn-secondary sm" id="rec-offer-btn" data-icon="folder">Open folder</button>
+          </div>
+        </div>
+
+        <!-- Virtual Soundcheck (#46): load a recorded session, route each track to
+             an output, and play it back with per-track meters. -->
+        <div class="tab-content" id="tab-soundcheck">
+          <!-- Pro gate (#54): shown instead of the soundcheck controls when no
+               active Pro license. -->
+          <div class="pro-gate">
+            <span class="pg-icon" data-icon="lock" data-size="22"></span>
+            <span class="pg-title">Virtual soundcheck is a Pro feature</span>
+            <span class="pg-msg">Play back a captured session through your console and mix without the band.</span>
+            <button type="button" class="pg-link" data-license-open>Upgrade — enter a license key</button>
+          </div>
+          <button type="button" class="btn btn-secondary full" id="sc-choose-btn" data-icon="folder">Choose session folder…</button>
+          <div id="sc-session-name" class="sc-session-name" style="display:none"></div>
+          <div class="hairline"></div>
+          <label class="select-label">
+            <span>Output Device</span>
+            <div class="select-row">
+              <div class="select-wrap">
+                <select id="sc-device-select"><option value="">Default output</option></select>
+                <span class="select-caret" data-icon="chevron-down"></span>
+              </div>
+            </div>
+          </label>
+          <div class="chcfg-head"><span class="lbl">Tracks &amp; routing</span></div>
+          <div id="sc-tracks" class="sc-tracks"><div class="sc-empty">Choose a session folder to load its tracks.</div></div>
+          <label class="sc-master">
+            <input type="checkbox" id="sc-master-toggle" />
+            <span>Master mixdown (stereo)</span>
+          </label>
+          <div id="sc-mixdown-notice" class="sc-notice" style="display:none"></div>
+          <div class="hairline"></div>
+          <button class="btn btn-primary full" id="sc-play-btn" data-icon="play" disabled>Play</button>
+          <button class="btn btn-danger full" id="sc-stop-btn" data-icon="square" style="display:none">Stop</button>
+          <div id="sc-elapsed" class="sc-elapsed" style="display:none"></div>
+          <div id="sc-status" class="sc-status" role="alert" style="display:none"></div>
+        </div>
+
+        <!-- RECENT (#147) — last 10 persisted report-card summaries, newest-first. -->
+        <div class="tab-content" id="tab-recent">
+          <span class="section-label">Recent Services</span>
+          <div class="dir-list" id="recent-list"></div>
+          <p class="dz-hint recent-empty" id="recent-empty" style="display:none">No analyses yet — analyze a file to build your history.</p>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Spectrum / Meters -->
+    <section id="spectrum-panel">
+      <div id="spectrum-header">
+        <span id="spectrum-title">Spectrum · Curve</span>
+        <div id="stats-row">
+          <div class="stat"><span class="stat-label">RMS</span><span class="stat-val"><span class="stat-num" id="stat-rms">—</span><span class="stat-unit">dBFS</span></span></div>
+          <div class="stat"><span class="stat-label">Peak</span><span class="stat-val"><span class="stat-num" id="stat-peak">—</span><span class="stat-unit">dBFS</span></span></div>
+          <div class="stat"><span class="stat-label">DR</span><span class="stat-val"><span class="stat-num" id="stat-dr">—</span><span class="stat-unit">dB</span></span></div>
+          <div class="stat"><span class="stat-label">Clip</span><span class="stat-val"><span class="stat-num" id="stat-clip">—</span></span></div>
+          <div class="stat"><span class="stat-label">Centroid</span><span class="stat-val"><span class="stat-num" id="stat-centroid">—</span><span class="stat-unit">Hz</span></span></div>
+        </div>
+        <div id="ideal-profile-wrap">
+          <span class="ipw-label">Ideal</span>
+          <div class="select-wrap">
+            <select id="ideal-profile-select" aria-label="Ideal EQ profile"></select>
+            <span class="select-caret" data-icon="chevron-down"></span>
+          </div>
+          <button type="button" id="ideal-curve-edit-btn" data-icon="settings" data-size="15" aria-label="Create or edit ideal curve" title="Create or edit ideal curve"></button>
+        </div>
+      </div>
+      <div id="spectrum-body"></div>
+    </section>
+
+    <!-- AI Engineer -->
+    <aside id="ai-panel" class="side-panel">
+      <div class="panel-head">
+        <span class="panel-title">AI Engineer</span>
+        <span id="model-chip"><span data-icon="sparkles"></span><span id="model-chip-text">your provider</span></span>
+      </div>
+      <!-- Pro gate (#54): the AI panel body collapses to this when AI is
+           enabled but no Pro license is active. -->
+      <div class="pro-gate">
+        <span class="pg-icon" data-icon="lock" data-size="22"></span>
+        <span class="pg-title">The AI Engineer is a Pro feature</span>
+        <span class="pg-msg">Streaming mix feedback from your own AI provider — local or your API key.</span>
+        <button type="button" class="pg-link" data-license-open>Upgrade — enter a license key</button>
+      </div>
+      <div class="panel-body"><div id="ai-output" class="placeholder">AI feedback appears here after you analyze.</div></div>
+      <div class="panel-footer">
+        <div id="ai-countdown"></div>
+        <button class="btn btn-secondary full" id="ai-analyze-btn" data-icon="sparkles">Analyze with AI</button>
+      </div>
+    </aside>
+  </div>
+
+  <!-- ══ Report Card ══ -->
+  <div id="reportcard-view" class="active">
+    <div id="rc-toolbar">
+      <span class="panel-title">Report Card</span>
+      <div class="rc-toolbar-actions">
+        <button class="btn btn-secondary sm" id="reportcard-clear-btn" data-icon="x" disabled>Clear</button>
+        <button class="btn btn-secondary sm" id="reportcard-load-btn" data-icon="file-audio" style="display:none">Load a file…</button>
+        <button class="btn btn-secondary sm" id="reportcard-feedback-btn" data-icon="info">Send Feedback</button>
+        <button class="btn btn-secondary sm" id="reportcard-print-btn" data-icon="download" disabled>Export PDF</button>
+        <button class="btn btn-secondary sm" id="grade-own-btn" data-icon="waveform" disabled>Grade your own service</button>
+      </div>
+    </div>
+    <div id="rc-scroll">
+      <div id="rc-layout">
+      <div id="report-card">
+        <div id="rc-empty" class="rc-empty">
+          <div class="rc-empty-load">
+            <div class="dropzone" id="file-dropzone">
+              <div class="dz-icon" data-icon="file-audio"></div>
+              <div class="dz-body">
+                <span class="dz-title">Drop audio file here</span>
+                <span class="dz-hint">or click to browse</span>
+              </div>
+            </div>
+            <p class="dz-hint" style="text-align:center">Supports wav · aif · aiff · flac · mp3 · ogg · m4a</p>
+
+            <button class="btn btn-primary full" id="analyze-btn" data-icon="waveform" disabled>Analyze</button>
+          </div>
+        </div>
+        <div id="rc-content" style="display:none">
+          <div class="rc-header">
+            <h1>Sound Buddy Report Card</h1>
+            <div class="rc-meta"><span id="rc-filename">—</span><span>·</span><span id="rc-date">—</span></div>
+          </div>
+          <div class="rc-score">
+            <div id="rc-ring"></div>
+            <div class="rc-rectype pill" id="rc-rec-type"></div>
+            <div class="rc-contenttype" id="rc-content-type" style="display:none"></div>
+            <div class="rc-ribbon-wrap" id="rc-ribbon-wrap" style="display:none">
+              <div class="rc-ribbon" id="rc-ribbon"></div>
+              <div class="rc-ribbon-legend" id="rc-ribbon-legend"></div>
+            </div>
+          </div>
+          <div class="rc-section" id="rc-profile-section" style="display:none">
+            <h2>Tonal balance vs target</h2>
+            <div class="rc-profile" id="rc-profile"></div>
+          </div>
+          <div class="rc-section" id="rc-metrics-section">
+            <h2>Metrics</h2>
+            <table class="metric-table">
+              <thead><tr><th>Metric</th><th>Value</th><th>Target</th><th>Status</th></tr></thead>
+              <tbody id="rc-metrics-body"></tbody>
+            </table>
+          </div>
+          <div class="rc-section" id="rc-why-section">
+            <h2>Why This Grade</h2>
+            <div class="rc-why" id="rc-why"></div>
+          </div>
+          <div class="rc-section" id="rc-bands-section">
+            <h2>Frequency Band Breakdown</h2>
+            <div class="rc-bands" id="rc-bands"></div>
+          </div>
+          <div class="rc-section" id="rc-frames-section" style="display:none">
+            <h2>Spectrum Over Time</h2>
+            <div class="rc-heatmap" id="rc-heatmap"></div>
+            <div class="rc-frame-curves" id="rc-frame-curves"></div>
+          </div>
+          <div class="rc-section">
+            <h2>Recommendations</h2>
+            <div class="rc-recs" id="rc-recommendations"></div>
+          </div>
+        </div>
+      </div>
+      <!-- ══ "Keep improving" momentum card (#58) ══
+           Beside the finished free report card, never over it. Shown only to a
+           free (non-Pro) user, after a card renders, and only when not dismissed
+           for the 7-day conversion window. Copy/tone come from window.upgradeMomentum
+           (score-aware). CTAs open hosted Stripe checkout via sb.openCheckout. -->
+      <aside id="rc-upgrade" hidden aria-label="Upgrade to Pro">
+        <div class="rcu-head">
+          <span class="rcu-heading" id="rcu-heading"></span>
+          <span class="rcu-sub" id="rcu-sub"></span>
+        </div>
+        <ul class="rcu-actions" id="rcu-actions"></ul>
+        <div class="rcu-cta" id="rcu-cta"></div>
+        <p class="rcu-trust" id="rcu-trust"></p>
+        <button type="button" class="rcu-later" id="rcu-later">Maybe later</button>
+      </aside>
+      </div>
+    </div>
+  </div>
+  </div><!-- /#stage -->

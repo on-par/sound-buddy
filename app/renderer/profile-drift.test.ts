@@ -10,10 +10,14 @@ import { fileURLToPath } from 'node:url';
 // stopped the two from silently diverging. This test evaluates the renderer's
 // self-contained IP_* block in isolation and asserts its data is identical to
 // the engine's, id-for-id.
+//
+// The block used to live inline in index.html; the Vite scaffold (#303)
+// ported the inline script verbatim to src/inline-app.js, so this reads that
+// file now — the block's content is unchanged.
 
 import { PROFILES } from '../../packages/audio-engine/src/profiles/index.js';
 
-const html = fs.readFileSync(fileURLToPath(new URL('./index.html', import.meta.url)), 'utf8');
+const html = fs.readFileSync(fileURLToPath(new URL('./src/inline-app.js', import.meta.url)), 'utf8');
 
 const START = 'const IP_GRID_POINTS = 48;';
 const END = 'const IP_BY_ID';

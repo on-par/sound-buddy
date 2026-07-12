@@ -43,7 +43,16 @@ function createWindow(): void {
   });
 
   attachWindowLogging(mainWindow);
-  mainWindow.loadFile(path.join(__dirname, '../../renderer/index.html'));
+  // Dev: `npm run dev` starts the renderer's Vite dev server and sets this so
+  // HMR works. Everything else (built-and-launched for e2e, `npm run start`,
+  // and the packaged app) loads the built single-file bundle — never a dev
+  // URL, even if the env var somehow leaked into a packaged build (#303).
+  const devServerUrl = !app.isPackaged && process.env.SOUND_BUDDY_RENDERER_URL;
+  if (devServerUrl) {
+    mainWindow.loadURL(devServerUrl);
+  } else {
+    mainWindow.loadFile(path.join(__dirname, '../../renderer/dist/index.html'));
+  }
 
   // Quiet background update check shortly after the UI is ready.
   mainWindow.webContents.once('did-finish-load', () => {

@@ -22,6 +22,11 @@ export default tseslint.config(
       'app/test-results/**',
       'app/.build-cache/**',
       'app/renderer/*.golden.json',
+      // Verbatim-ported inline boot script (#303, see src/App.tsx) — was never
+      // linted before either (it lived inline in index.html, which ESLint
+      // doesn't parse); moving it to a .js file for the Vite build shouldn't
+      // retroactively lint content nothing here changed.
+      'app/renderer/src/inline-app.js',
       'site/**',
       'worker/**',
       'backlog/**',
@@ -54,8 +59,9 @@ export default tseslint.config(
   },
   {
     // Standalone Node scripts (e.g. the audio-engine wall-clock/memory
-    // benchmark harness) run directly via `node foo.mjs`, outside tsc.
-    files: ['packages/*/scripts/**/*.mjs'],
+    // benchmark harness, the renderer dev-server orchestrator) run directly
+    // via `node foo.mjs`, outside tsc.
+    files: ['packages/*/scripts/**/*.mjs', 'app/scripts/**/*.mjs'],
     languageOptions: {
       sourceType: 'module',
       globals: { ...globals.node },
