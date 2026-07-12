@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { parseScene } from '../index.js'
+import { parseScene } from './index.js'
 
 const VALID_HEADER = '#4.0# "TPC Sunday" "" %000000000 1'
 

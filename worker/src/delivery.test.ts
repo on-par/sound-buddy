@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
-import { sendDunningEmail, sendLicenseEmail } from "../src/delivery";
-import type { Env } from "../src/index";
+import { sendDunningEmail, sendLicenseEmail } from "./delivery";
+import type { Env } from "./index";
 
 function makeEnv(overrides: Partial<Env> = {}): Env {
   return {

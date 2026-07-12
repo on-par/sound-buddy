@@ -13,7 +13,7 @@ vi.mock('node:fs', () => ({
 
 import { readFileSync, existsSync } from 'node:fs'
 import { parseScene, diffScenes } from '@sound-buddy/scene-inspector'
-import { runDiff } from '../diff.js'
+import { runDiff } from './diff.js'
 
 const mockReadFileSync = vi.mocked(readFileSync)
 const mockExistsSync = vi.mocked(existsSync)

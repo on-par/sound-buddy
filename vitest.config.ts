@@ -55,9 +55,9 @@ export default defineConfig({
       ],
       exclude: [
         '**/*.test.{ts,js}',
-        '**/__tests__/**',
         '**/dist/**',
         '**/*.config.{ts,js,mjs}',
+        'worker/src/e2e/**',
         // Mirror app's own coverage excludes (see app/vitest.config.ts for
         // the rationale): e2e-verified DOM glue (#303) and the shared test
         // double (#308) don't count toward coverage there, so they must not

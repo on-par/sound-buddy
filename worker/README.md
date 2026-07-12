@@ -110,7 +110,7 @@ wired first (H4).
 
 ## Sandbox e2e (manual gate)
 
-`test/e2e/sandbox.e2e.test.ts` (#121) drives the full purchase / renewal /
+`src/e2e/sandbox.e2e.test.ts` (#121) drives the full purchase / renewal /
 cancel / founding / refund / webhook-hardening test plan against the **Stripe
 test-mode sandbox** (provisioned 2026-07-08) and a running Worker. It is a
 **manual/local launch gate**, mirroring the app's Playwright e2e that CI does

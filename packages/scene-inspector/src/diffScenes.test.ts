@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { diffScenes } from '../index.js'
+import { diffScenes } from './index.js'
 import type { Scene, SceneChange } from '@sound-buddy/shared'
 
 function makeScene(overrides: Partial<Scene> = {}): Scene {

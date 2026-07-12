@@ -40,7 +40,7 @@ console.log("test:e2e:sandbox: Worker is reachable — running the sandbox suite
 
 const result = spawnSync(
   process.execPath,
-  ["node_modules/.bin/vitest", "run", "test/e2e/sandbox.e2e.test.ts"],
+  ["node_modules/.bin/vitest", "run", "src/e2e/sandbox.e2e.test.ts"],
   { stdio: "inherit", env: process.env },
 );
 

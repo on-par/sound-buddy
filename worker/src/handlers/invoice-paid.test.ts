@@ -6,10 +6,10 @@ import {
   subscriptionRecordKey,
   type SubscriptionRecord,
   type InvoicePaidDeps,
-} from "../src/handlers/invoice-paid";
-import { handleCheckoutCompleted } from "../src/handlers/checkout-completed";
-import { eventHandlers, handleStripeWebhook } from "../src/webhook";
-import type { Env } from "../src/index";
+} from "./invoice-paid";
+import { handleCheckoutCompleted } from "./checkout-completed";
+import { eventHandlers, handleStripeWebhook } from "../webhook";
+import type { Env } from "../index";
 
 // A throwaway signing key, generated exactly as scripts/license-keygen.mjs does
 // (ed25519 → pkcs8 PEM). The real production key (H3) is never used.

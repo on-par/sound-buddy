@@ -16,7 +16,7 @@ import {
   verifyLicenseKey,
   LICENSE_ISSUER,
   type LicensePayload,
-} from "../src/license-sign";
+} from "./license-sign";
 
 // The interop core (#109): keys minted in the Worker (Web Crypto) must verify
 // byte-for-byte against app/electron/license.ts's crypto path — Node's

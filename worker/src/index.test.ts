@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import worker, { type Env } from "../src/index";
+import worker, { type Env } from "./index";
 
 // Minimal stub Env — the scaffold's routes don't touch any binding yet, so a
 // cast is enough. Later stories that read KV/vars will build a richer fixture.
