@@ -304,7 +304,7 @@ describe("startLive", () => {
     expect(vi.mocked(render).mock.calls.length).toBeGreaterThan(renderCallsBefore);
   });
 
-  it("exits 0 without logging when stream.py closes with code 0 or null", () => {
+  it("exits 0 without logging when stream.py closes with code 0", () => {
     const child = makeFakeChild();
     vi.mocked(spawn).mockReturnValue(child as never);
     void startLive(base);
@@ -313,14 +313,16 @@ describe("startLive", () => {
     expect(process.exit).toHaveBeenCalledWith(0);
     expect(stdout).toContain("\x1b[?25h");
     expect(console.error).not.toHaveBeenCalled();
+  });
 
-    vi.mocked(process.exit).mockClear();
-    vi.mocked(console.error).mockClear();
-    const child2 = makeFakeChild();
-    vi.mocked(spawn).mockReturnValue(child2 as never);
+  it("exits 0 without logging when stream.py closes with a null code", () => {
+    const child = makeFakeChild();
+    vi.mocked(spawn).mockReturnValue(child as never);
     void startLive(base);
-    child2.emit("close", null);
+
+    child.emit("close", null);
     expect(process.exit).toHaveBeenCalledWith(0);
+    expect(stdout).toContain("\x1b[?25h");
     expect(console.error).not.toHaveBeenCalled();
   });
 
