@@ -2,71 +2,36 @@ import { describe, it, expect } from 'vitest';
 import * as fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
-// ─── Ideal-profile drift guard (#160, #138, #274) ────────────────────────────
+// ─── Ideal-profile import guard (#309, formerly the drift guard #160/#138/#274) ──
 //
-// The renderer's IP_PROFILES block is a hand-maintained mirror of the engine's
-// PROFILES (packages/audio-engine/src/profiles/index.ts) — the renderer is a
-// bundler-free static page, so it can't import the package directly. Nothing
-// stopped the two from silently diverging. This test evaluates the renderer's
-// self-contained IP_* block in isolation and asserts its data is identical to
-// the engine's, id-for-id.
-//
-// The block used to live inline in index.html; the Vite scaffold (#303)
-// ported the inline script verbatim to src/inline-app.js, so this reads that
-// file now — the block's content is unchanged.
+// The renderer used to hand-maintain a mirror of the engine's PROFILES
+// (packages/audio-engine/src/profiles/index.ts) because it was a bundler-free
+// static page and couldn't `import` the package. #303 introduced a Vite build,
+// so #309 replaced the mirror: App.tsx now imports the engine's profiles module
+// directly and bridges it onto `window.audioEngineProfiles`, and inline-app.js
+// (still a classic `?raw` script) reads that bridge instead of duplicating data.
+// Drift is now structurally impossible — this test just asserts the wiring
+// stayed in place: the import in App.tsx, and no reintroduced inline literal.
 
-import { PROFILES } from '../../packages/audio-engine/src/profiles/index.js';
+const appTsxPath = fileURLToPath(new URL('./src/App.tsx', import.meta.url));
+const inlineAppPath = fileURLToPath(new URL('./src/inline-app.js', import.meta.url));
 
-const html = fs.readFileSync(fileURLToPath(new URL('./src/inline-app.js', import.meta.url)), 'utf8');
+const appTsx = fs.readFileSync(appTsxPath, 'utf8');
+const inlineApp = fs.readFileSync(inlineAppPath, 'utf8');
 
-const START = 'const IP_GRID_POINTS = 48;';
-const END = 'const IP_BY_ID';
-const startIdx = html.indexOf(START);
-const endIdx = html.indexOf(END, startIdx);
-if (startIdx === -1 || endIdx === -1) {
-  throw new Error('profile-drift: could not locate the IP_* block in index.html — did it move?');
-}
-const block = html.slice(startIdx, endIdx);
-
-const IP_PROFILES = new Function(`${block}\n;return IP_PROFILES;`)();
-
-describe('renderer IP_PROFILES === audio-engine PROFILES', () => {
-  it('has the same set of profile ids', () => {
-    expect(IP_PROFILES.map((p: { id: string }) => p.id).sort()).toEqual(
-      PROFILES.map((p) => p.id).sort(),
-    );
+describe('renderer imports ideal-EQ profiles from the audio-engine package', () => {
+  it('App.tsx imports the engine profiles module', () => {
+    expect(appTsx).toContain('packages/audio-engine/src/profiles/index.js');
   });
 
-  it.each(PROFILES.map((p) => [p.id, p]))('%s matches the engine profile', (_id, engineProfile) => {
-    const rendererProfile = IP_PROFILES.find((p: { id: string }) => p.id === (engineProfile as { id: string }).id);
-    expect(rendererProfile).toBeTruthy();
-    const { id, label, description, freqs, dbOffsets } = engineProfile as {
-      id: string;
-      label: string;
-      description: string;
-      freqs: number[];
-      dbOffsets: number[];
-    };
-    expect({ id: rendererProfile.id, label: rendererProfile.label, description: rendererProfile.description, freqs: rendererProfile.freqs, dbOffsets: rendererProfile.dbOffsets }).toEqual(
-      { id, label, description, freqs, dbOffsets },
-    );
+  it('inline-app.js no longer hand-mirrors the profile data', () => {
+    // Structural, not value-based: catches IP_PROFILES being reintroduced as an
+    // inline array literal regardless of what dbOffsets it holds, so this guard
+    // doesn't go stale the next time the engine's profile data is edited.
+    expect(inlineApp).not.toMatch(/const\s+IP_PROFILES\s*=\s*\[/);
   });
 
-  it('detects a one-value divergence (the guard has teeth)', () => {
-    const engine = PROFILES.find((p) => p.id === 'worship-service');
-    const renderer = IP_PROFILES.find((p: { id: string }) => p.id === 'worship-service');
-    expect(engine).toBeTruthy();
-    expect(renderer).toBeTruthy();
-
-    // Sanity: undamaged, the two agree (this is what the positive test asserts).
-    expect(renderer.dbOffsets).toEqual(engine!.dbOffsets);
-
-    // Deliberate test-only, in-memory one-value edit to a *clone* of the
-    // renderer copy — proving the drift comparison actually fails on divergence.
-    const mutated = {
-      ...renderer,
-      dbOffsets: renderer.dbOffsets.map((v: number, i: number) => (i === 3 ? v + 1 : v)),
-    };
-    expect(mutated.dbOffsets).not.toEqual(engine!.dbOffsets);
+  it('inline-app.js reads profiles off the window.audioEngineProfiles bridge', () => {
+    expect(inlineApp).toContain('window.audioEngineProfiles');
   });
 });

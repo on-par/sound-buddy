@@ -126,67 +126,19 @@ const LIVE_BAND_KEYS = ['sub_bass', 'bass', 'low_mid', 'mid', 'high_mid', 'prese
 function toPct(db) { const c = Math.max(DB_MIN, Math.min(DB_MAX, db)); return (c - DB_MIN) / (DB_MAX - DB_MIN) * 100; }
 
 /* ══ Ideal EQ profiles + comparison (PRD 05) ══
-   Hand-mirror of packages/audio-engine/src/profiles/index.ts. The renderer is a
-   bundler-free static page, so — as with the mirrored types in electron/ipc/analysis.ts —
-   this copy is kept in sync by hand; the authoritative, unit-tested version lives
-   in the audio-engine package. Comparison is level-invariant (mean-subtraction). */
-const IP_GRID_POINTS = 48;
-const IP_GRID_FREQS = Array.from({ length: IP_GRID_POINTS }, (_, i) => 20 * Math.pow(1000, i / (IP_GRID_POINTS - 1)));
-const IP_LOG2 = (f) => Math.log2(f);
-const IP_CLAMP01 = (x) => Math.max(0, Math.min(1, x));
-function ipBell(centerHz, gainDb, bw) { return (f) => gainDb * Math.exp(-0.5 * Math.pow((IP_LOG2(f) - IP_LOG2(centerHz)) / bw, 2)); }
-function ipLowShelf(cornerHz, gainDb, widthOct = 1.5) { return (f) => { const t = IP_CLAMP01((IP_LOG2(cornerHz) - IP_LOG2(f)) / (2 * widthOct) + 0.5); return gainDb * (t * t * (3 - 2 * t)); }; }
-function ipHighShelf(cornerHz, gainDb, widthOct = 1.5) { return (f) => { const t = IP_CLAMP01((IP_LOG2(f) - IP_LOG2(cornerHz)) / (2 * widthOct) + 0.5); return gainDb * (t * t * (3 - 2 * t)); }; }
-function ipShape(...terms) { return IP_GRID_FREQS.map(f => Math.round(terms.reduce((a, t) => a + t(f), 0) * 100) / 100); }
-const IP_PROFILES = [
-  { id: 'flat', label: 'Flat / neutral', description: 'Neutral reference — no target tilt.', freqs: IP_GRID_FREQS, dbOffsets: IP_GRID_FREQS.map(() => 0) },
-  { id: 'music-fullrange', label: 'Music (full-range)', description: 'Balanced mix: gentle low warmth and a soft presence lift.', freqs: IP_GRID_FREQS, dbOffsets: ipShape(ipLowShelf(120, 3, 1.5), ipBell(4500, 2.5, 1.1), ipHighShelf(12000, -1.5, 1.2)) },
-  { id: 'worship-service', label: 'Worship service', description: 'Reference target captured from a full worship service mix.', freqs: IP_GRID_FREQS, dbOffsets: [3.0, 3.0, 3.0, 15.0, 15.0, 18, 18, 18, 18, 18, 16.0, 13.5, 11.0, 11.5, 12.5, 10.5, 8.0, 8.5, 9.0, 8.0, 5.5, 4.0, 2.5, 7.0, 6.5, 5.5, 6.0, 2.0, 2.0, 1.0, -1.5, -3.0, -6.0, -8.0, -10.0, -13.5, -15.5, -14.0, -14.0, -14.5, -17.0, -17.0, -17.0, -18, -18, -18, -18, -18] },
-  { id: 'speech-podcast', label: 'Speech / podcast', description: 'Intelligibility: high-pass tilt, 2–5 kHz presence bump.', freqs: IP_GRID_FREQS, dbOffsets: ipShape(ipLowShelf(110, -6, 1.4), ipBell(3000, 4, 1.0), ipHighShelf(9000, -2, 1.2)) },
-  { id: 'broadcast', label: 'Broadcast (speech)', description: 'Loudness-normalized speech: controlled lows, gentle presence.', freqs: IP_GRID_FREQS, dbOffsets: ipShape(ipLowShelf(140, -8, 1.2), ipBell(2500, 2.5, 1.1), ipHighShelf(10000, -3, 1.2)) },
-];
+   Data and comparison logic come from @sound-buddy/audio-engine's profiles module
+   (packages/audio-engine/src/profiles/index.ts) via the `window.audioEngineProfiles`
+   bridge App.tsx sets before these boot scripts run — see #309. This is a classic
+   `?raw` script and can't `import`, so it reads the bridge instead of mirroring the
+   data by hand. Comparison is level-invariant (mean-subtraction). */
+const AE = window.audioEngineProfiles;
+const IP_GRID_FREQS = AE.GRID_FREQS;
+const IP_PROFILES = AE.PROFILES;
 const IP_BY_ID = new Map(IP_PROFILES.map(p => [p.id, p]));
-const IP_BANDS = [
-  { band: 'subBass', label: 'Sub-bass', lo: 20, hi: 60 },
-  { band: 'bass', label: 'Bass', lo: 60, hi: 250 },
-  { band: 'lowMid', label: 'Low-mid', lo: 250, hi: 500 },
-  { band: 'mid', label: 'Mid', lo: 500, hi: 2000 },
-  { band: 'highMid', label: 'High-mid', lo: 2000, hi: 4000 },
-  { band: 'presence', label: 'Presence', lo: 4000, hi: 6000 },
-  { band: 'brilliance', label: 'Brilliance', lo: 6000, hi: 20000 },
-];
-const IP_POINT_WEIGHTS = IP_GRID_FREQS.map(f => (f >= 200 && f <= 6000) ? 1 : (f < 200 ? 0.5 : 0.6));
-const IP_PENALTY_PER_DB = 4;
+const ipCompare = AE.compareToProfile;
+const ipDefaultForContentType = AE.defaultProfileForContentType;
 function ipFiniteMean(xs) { let s = 0, n = 0; for (const x of xs) { if (Number.isFinite(x)) { s += x; n++; } } return n > 0 ? s / n : 0; }
-function ipDefaultForContentType(ct) { switch (ct) { case 'speech': return 'speech-podcast'; case 'music': case 'mixed': return 'worship-service'; default: return 'flat'; } }
 function customProfileId(value) { return String(value || '').startsWith('custom:') ? String(value).slice(7) : ''; }
-function ipCompare(curve, profile) {
-  if (!curve || !Array.isArray(curve.db) || curve.db.length !== profile.dbOffsets.length) return null;
-  const mMean = ipFiniteMean(curve.db), tMean = ipFiniteMean(profile.dbOffsets);
-  // Silent (non-finite) bins are excluded from scoring, not counted on-target.
-  const valid = new Array(curve.db.length);
-  const deviation = curve.db.map((db, i) => {
-    const ok = Number.isFinite(db);
-    valid[i] = ok;
-    return ok ? (db - mMean) - (profile.dbOffsets[i] - tMean) : 0;
-  });
-  let wsum = 0, wtot = 0;
-  deviation.forEach((d, i) => { if (!valid[i]) return; const w = IP_POINT_WEIGHTS[i] ?? 1; wsum += w * d * d; wtot += w; });
-  if (wtot === 0) return null; // no real spectral content to compare against
-  const wrms = Math.sqrt(wsum / wtot);
-  const matchScore = Math.round(Math.max(0, Math.min(100, 100 - IP_PENALTY_PER_DB * wrms)));
-  const bands = IP_BANDS.map(({ band, label, lo, hi }) => {
-    const vals = [];
-    IP_GRID_FREQS.forEach((f, i) => { if (f >= lo && f < hi && valid[i]) vals.push(deviation[i]); });
-    return { band, label, deviation: vals.length ? ipFiniteMean(vals) : 0 };
-  });
-  let topOver = null, topUnder = null;
-  for (const b of bands) {
-    if (b.deviation > 0 && (!topOver || b.deviation > topOver.deviation)) topOver = b;
-    if (b.deviation < 0 && (!topUnder || b.deviation < topUnder.deviation)) topUnder = b;
-  }
-  return { profileId: profile.id, deviation, matchScore, bands, topOver, topUnder };
-}
 /** Resolve the profile to compare against: an explicit pick, else auto by content type. */
 function activeProfile(spectrum) {
   const customId = customProfileId(idealProfileId);
