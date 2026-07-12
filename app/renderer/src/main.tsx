@@ -2,6 +2,8 @@
 // Licensed under the Sound Buddy Desktop Application License (app/LICENSE).
 
 import { createRoot } from 'react-dom/client';
+import './styles/tokens.css';
+import './styles/app.css';
 import App from './App';
 
 // No <StrictMode>: it double-invokes effects in dev, which would run the

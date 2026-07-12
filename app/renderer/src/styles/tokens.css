@@ -1,0 +1,93 @@
+/* Copyright (c) 2026 Patrick Robinson (on-par). All rights reserved. */
+/* Licensed under the Sound Buddy Desktop Application License (app/LICENSE). */
+
+    /* ════════════════════════════════════════════════════════════════
+       Sound Buddy — Design System tokens (imported from claude.ai/design
+       "Sound Buddy macOS wireframe"). Dark-first, King Midas gold accent.
+       ════════════════════════════════════════════════════════════════ */
+    :root {
+      /* Neutral ramp */
+      --neutral-1000:#08090B; --neutral-950:#0B0C0F; --neutral-900:#101217;
+      --neutral-850:#15181E;  --neutral-800:#1B1F26; --neutral-750:#22262F;
+      --neutral-700:#2B303A;  --neutral-600:#3A404C; --neutral-500:#565D6B;
+      --neutral-400:#7A828F;  --neutral-300:#A2AAB6; --neutral-200:#C9CFD8;
+      --neutral-100:#E6E9EE;  --neutral-50:#F5F7FA;
+
+      /* Surfaces */
+      --bg-app:var(--neutral-950); --bg-panel:var(--neutral-900); --bg-panel-2:var(--neutral-850);
+      --surface:var(--neutral-800); --surface-raised:var(--neutral-750);
+      --surface-inset:var(--neutral-1000); --surface-hover:var(--neutral-750); --surface-active:var(--neutral-700);
+
+      /* Borders */
+      --border-subtle:rgba(255,255,255,0.055); --border-default:rgba(255,255,255,0.09);
+      --border-strong:rgba(255,255,255,0.15); --border-focus:var(--gold-500);
+
+      /* Text */
+      --text-primary:var(--neutral-100); --text-secondary:var(--neutral-300);
+      --text-tertiary:var(--neutral-400); --text-muted:var(--neutral-500);
+      --text-on-accent:#1A1500; --text-on-solid:#08090B;
+
+      /* Primary — King Midas gold */
+      --gold-300:#F7D97E; --gold-400:#F3CA5E; --gold-500:#EBB93C; --gold-600:#D19E22; --gold-700:#A87C15;
+      --gold-tint:rgba(235,185,60,0.14); --gold-tint-soft:rgba(235,185,60,0.08);
+      --gold-text:#F3CA5E; --gold-glow:rgba(235,185,60,0.28);
+      --primary:var(--gold-500); --primary-hover:var(--gold-400); --primary-active:var(--gold-600);
+      --on-primary:var(--text-on-accent);
+
+      /* Secondary — Azure */
+      --azure-300:#8FC0FF; --azure-400:#6FA8F5; --azure-500:#4C93F0; --azure-600:#3577D6;
+      --azure-tint:rgba(76,147,240,0.14); --azure-text:#7DB0F7;
+
+      /* Semantic */
+      --good-500:#33B85A; --good-text:#57D77C; --good-tint:rgba(51,184,90,0.15); --good-border:rgba(51,184,90,0.35);
+      --check-500:#E8862E; --check-text:#F2A65A; --check-tint:rgba(232,134,46,0.15); --check-border:rgba(232,134,46,0.35);
+      --issue-500:#E5484D; --issue-text:#F26D71; --issue-tint:rgba(229,72,77,0.15); --issue-border:rgba(229,72,77,0.35);
+      --info-500:var(--azure-500); --info-text:var(--azure-text); --info-tint:var(--azure-tint); --info-border:rgba(76,147,240,0.35);
+
+      /* Grades */
+      --grade-a:#57D77C; --grade-b:#9AD05A; --grade-c:var(--gold-400); --grade-d:#F2A65A; --grade-f:#F26D71;
+
+      /* Spectral band ramp */
+      --band-sub:#4C63D2; --band-bass:#3D82D6; --band-low-mid:#2BA2C9; --band-mid:#23BBA6;
+      --band-high-mid:#5FC96F; --band-presence:#D9B23E; --band-brilliance:#EC8B3E;
+
+      /* Meters */
+      --meter-track:var(--neutral-1000); --meter-good:var(--good-500); --meter-hot:var(--check-500);
+      --meter-clip:var(--issue-500); --meter-idle:var(--neutral-700);
+      --gridline:rgba(255,255,255,0.05); --gridline-label:rgba(255,255,255,0.22);
+
+      /* Type */
+      --font-sans:'Geist',-apple-system,BlinkMacSystemFont,'Segoe UI',system-ui,sans-serif;
+      --font-mono:'Geist Mono','SF Mono',ui-monospace,'Menlo','Consolas',monospace;
+      --fw-light:300; --fw-regular:400; --fw-medium:500; --fw-semibold:600; --fw-bold:700; --fw-black:800;
+      --fs-display:56px; --fs-h1:28px; --fs-h2:20px; --fs-h3:16px;
+      --fs-body-lg:15px; --fs-body:14px; --fs-body-sm:13px; --fs-label:12px; --fs-micro:11px;
+      --fs-data-xl:32px; --fs-data-lg:20px; --fs-data:14px; --fs-data-sm:12px;
+      --lh-tight:1.1; --lh-snug:1.28; --lh-normal:1.5; --lh-relaxed:1.65;
+      --tracking-tight:-0.02em; --tracking-snug:-0.01em; --tracking-normal:0;
+      --tracking-label:0.01em; --tracking-caps:0.06em;
+
+      /* Spacing / sizing */
+      --header-h:52px; --panel-w:260px; --ai-panel-w:320px; --rc-panel-w:640px;
+      --control-h-sm:28px; --control-h:36px; --control-h-lg:44px;
+
+      /* Radius */
+      --radius-xs:4px; --radius-sm:6px; --radius-md:8px; --radius-lg:12px;
+      --radius-xl:16px; --radius-2xl:20px; --radius-pill:999px; --radius-full:50%;
+
+      /* Elevation */
+      --shadow-sm:0 1px 2px rgba(0,0,0,0.40); --shadow-md:0 4px 14px rgba(0,0,0,0.38); --shadow-lg:0 14px 40px rgba(0,0,0,0.48);
+      --highlight-top:inset 0 1px 0 rgba(255,255,255,0.05);
+      --elevation-panel:var(--highlight-top),var(--shadow-sm);
+      --elevation-card:var(--highlight-top),0 2px 8px rgba(0,0,0,0.32);
+      --elevation-popover:var(--highlight-top),0 12px 32px rgba(0,0,0,0.52);
+      --elevation-canvas:inset 0 0 0 1px rgba(255,255,255,0.04),inset 0 1px 24px rgba(0,0,0,0.55);
+      --glow-gold:0 0 0 4px var(--gold-tint);
+      --glow-focus:0 0 0 3px var(--gold-tint),0 0 0 1px var(--gold-500);
+
+      /* Motion */
+      --dur-instant:80ms; --dur-fast:120ms; --dur-base:180ms; --dur-slow:280ms; --dur-pulse:1400ms;
+      --ease-out:cubic-bezier(0.22,1,0.36,1); --ease-in-out:cubic-bezier(0.45,0,0.15,1);
+      --transition-control:color var(--dur-fast) var(--ease-out),background-color var(--dur-fast) var(--ease-out),border-color var(--dur-fast) var(--ease-out),box-shadow var(--dur-fast) var(--ease-out),transform var(--dur-fast) var(--ease-out);
+      --transition-meter:width var(--dur-base) var(--ease-out),background-color var(--dur-base) var(--ease-out);
+    }
