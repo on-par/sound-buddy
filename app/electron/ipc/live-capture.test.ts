@@ -93,6 +93,11 @@ function flushMicrotasks() {
   return new Promise<void>((resolve) => setImmediate(resolve));
 }
 
+// Escapes a tmp/record dir path for use inside a `new RegExp(...)` prefix match.
+function escapeRegExp(literal: string): string {
+  return literal.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
 const realPlatform = process.platform;
 function setPlatform(p: string) {
   Object.defineProperty(process, 'platform', { value: p, configurable: true });
@@ -157,7 +162,7 @@ describe('buildSessionDir', () => {
 
     const sessionDir = mod.buildSessionDir();
 
-    expect(sessionDir).toMatch(new RegExp(`^${defaultDir.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}/sound-buddy-`));
+    expect(sessionDir).toMatch(new RegExp(`^${escapeRegExp(defaultDir)}/sound-buddy-`));
     expect(fs.existsSync(defaultDir)).toBe(true);
     expect(fs.existsSync(sessionDir)).toBe(false);
   });
@@ -359,9 +364,7 @@ describe('start-live handler', () => {
     const argv = spawnMock.mock.calls[0][1] as string[];
     const sessionDirIdx = argv.indexOf('--session-dir');
     expect(sessionDirIdx).toBeGreaterThan(-1);
-    expect(argv[sessionDirIdx + 1]).toMatch(
-      new RegExp(`^${tmpDir.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}/sound-buddy-`),
-    );
+    expect(argv[sessionDirIdx + 1]).toMatch(new RegExp(`^${escapeRegExp(tmpDir)}/sound-buddy-`));
     expect(argv).toContain('--arm');
     expect(argv[argv.indexOf('--arm') + 1]).toBe('0,2-3');
   });
