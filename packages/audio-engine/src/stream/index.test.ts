@@ -122,6 +122,7 @@ describe("startLive", () => {
   let sigintBefore: NodeJS.SignalsListener[];
   let sigtermBefore: NodeJS.SignalsListener[];
   let stdinDataBefore: ((...args: unknown[]) => void)[];
+  let isTTYBefore: boolean | undefined;
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -135,6 +136,11 @@ describe("startLive", () => {
     sigintBefore = [...process.listeners("SIGINT")] as NodeJS.SignalsListener[];
     sigtermBefore = [...process.listeners("SIGTERM")] as NodeJS.SignalsListener[];
     stdinDataBefore = [...process.stdin.listeners("data")] as ((...args: unknown[]) => void)[];
+    // Force non-TTY so startLive's raw-mode branch stays off by default, regardless
+    // of whether this suite runs in an interactive terminal or piped/CI stdin — only
+    // the dedicated TTY test below opts back in, and restores this afterward.
+    isTTYBefore = process.stdin.isTTY;
+    Object.defineProperty(process.stdin, "isTTY", { value: false, configurable: true });
   });
 
   afterEach(() => {
@@ -153,6 +159,7 @@ describe("startLive", () => {
       .listeners("data")
       .filter((l) => !stdinDataBefore.includes(l as (...args: unknown[]) => void))
       .forEach((l) => process.stdin.removeListener("data", l as (...args: unknown[]) => void));
+    Object.defineProperty(process.stdin, "isTTY", { value: isTTYBefore, configurable: true });
     vi.useRealTimers();
   });
 
