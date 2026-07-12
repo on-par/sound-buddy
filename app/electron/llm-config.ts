@@ -18,6 +18,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { app, safeStorage } from 'electron';
+import type { LlmConfigPatch } from './ipc/api';
 import { logWarn } from './logger';
 import { normalizeHostUrl } from './llm-providers';
 
@@ -114,14 +115,7 @@ export function getPublicLlmConfig(): PublicLlmConfig {
   };
 }
 
-/** A renderer patch: `apiKey` semantics — undefined = keep, '' = clear. */
-export interface LlmConfigPatch {
-  provider?: string;
-  model?: string;
-  ollamaHost?: string;
-  apiBaseUrl?: string;
-  apiKey?: string;
-}
+export type { LlmConfigPatch };
 
 /**
  * Merge and persist a settings-screen save. Encrypts a newly pasted key via

@@ -2,8 +2,21 @@
 // Licensed under the Sound Buddy Desktop Application License (app/LICENSE).
 
 import { contextBridge, ipcRenderer } from 'electron';
+import type {
+  SoundBuddyApi,
+  AnalyzeFileOpts,
+  StartLiveOpts,
+  StartPlaybackOpts,
+  UpdateSettingsPatch,
+  LlmConfigPatch,
+  TestLlmProviderOpts,
+  AnalysisSummaryInput,
+  AnalysisProgress,
+  UpdateInfo,
+  UpdateStatus,
+} from './ipc/api';
 
-contextBridge.exposeInMainWorld('soundBuddy', {
+const api = {
   getAppVersion: () => ipcRenderer.invoke('get-app-version'),
 
   getSettings: () => ipcRenderer.invoke('get-settings'),
@@ -13,12 +26,7 @@ contextBridge.exposeInMainWorld('soundBuddy', {
   // polyfill lacks pathToFileURL.
   toFileUrl: (filePath: string) => ipcRenderer.invoke('to-file-url', filePath),
 
-  updateSettings: (patch: {
-    aiEnabled?: boolean;
-    idealProfile?: string;
-    customIdealProfiles?: unknown[];
-    storageDir?: string;
-  }) =>
+  updateSettings: (patch: UpdateSettingsPatch) =>
     ipcRenderer.invoke('update-settings', patch),
 
   // Storage location + disk usage (#91). Informational only — Sound Buddy caps
@@ -28,15 +36,9 @@ contextBridge.exposeInMainWorld('soundBuddy', {
   // AI provider settings (#76). getLlmConfig never returns key material — just
   // a hasApiKey flag; saveLlmConfig takes the pasted key one way (to main).
   getLlmConfig: () => ipcRenderer.invoke('llm-get-config'),
-  saveLlmConfig: (patch: {
-    provider?: string;
-    model?: string;
-    ollamaHost?: string;
-    apiBaseUrl?: string;
-    apiKey?: string;
-  }) => ipcRenderer.invoke('llm-save-config', patch),
+  saveLlmConfig: (patch: LlmConfigPatch) => ipcRenderer.invoke('llm-save-config', patch),
   detectOllama: (host?: string) => ipcRenderer.invoke('llm-detect-ollama', host),
-  testLlmProvider: (opts: { provider: string; apiKey?: string; apiBaseUrl?: string }) =>
+  testLlmProvider: (opts: TestLlmProviderOpts) =>
     ipcRenderer.invoke('llm-test-provider', opts),
 
   // License (#54) — offline key validation + feature gating. Free/Pro state
@@ -70,18 +72,13 @@ contextBridge.exposeInMainWorld('soundBuddy', {
   deleteRig: (id: string) => ipcRenderer.invoke('delete-rig', id),
   setActiveRig: (id: string | null) => ipcRenderer.invoke('set-active-rig', id),
 
-  analyzeFile: (opts: { filePath: string; noSpectrum?: boolean }) =>
+  analyzeFile: (opts: AnalyzeFileOpts) =>
     ipcRenderer.invoke('analyze-file', opts),
 
   // Persist a report-card summary after a successful analysis (#146). Fire-and-
   // forget from the renderer's perspective; failures are logged in main.
-  saveAnalysisSummary: (summary: {
-    sourceFilename: string;
-    gradeLetter: string;
-    score: number;
-    recordingType: string;
-    topFixes: string[];
-  }) => ipcRenderer.invoke('save-analysis-summary', summary),
+  saveAnalysisSummary: (summary: AnalysisSummaryInput) =>
+    ipcRenderer.invoke('save-analysis-summary', summary),
 
   // Last 10 persisted report-card summaries, newest-first, for the Recent
   // Services list (#147).
@@ -89,7 +86,7 @@ contextBridge.exposeInMainWorld('soundBuddy', {
 
   // Cancel (#125) — aborts the in-flight analyze-file run for this renderer.
   cancelAnalysis: () => ipcRenderer.invoke('cancel-analysis'),
-  onAnalysisProgress: (cb: (data: { stage?: string; status: string }) => void) =>
+  onAnalysisProgress: (cb: (data: AnalysisProgress) => void) =>
     ipcRenderer.on('analysis-progress', (_event, d) => cb(d)),
 
   // Path to the bundled demo recording for the first-run onboarding flow (#69).
@@ -109,18 +106,7 @@ contextBridge.exposeInMainWorld('soundBuddy', {
 
   openDirDialog: () => ipcRenderer.invoke('open-dir-dialog'),
 
-  startLive: (opts: {
-    device?: string;
-    channels?: string[];
-    windowSecs: number;
-    intervalSecs?: number;
-    llmIntervalSecs: number;
-    mode?: 'monitor' | 'record';
-    recordDir?: string;
-    // Record mode: which strips to arm as session stems, as channel-config
-    // tokens (e.g. ['0', '2-3']). Omitted ⇒ all configured strips are armed.
-    arm?: string[];
-  }) => ipcRenderer.invoke('start-live', opts),
+  startLive: (opts: StartLiveOpts) => ipcRenderer.invoke('start-live', opts),
 
   stopLive: () => ipcRenderer.invoke('stop-live'),
 
@@ -131,14 +117,7 @@ contextBridge.exposeInMainWorld('soundBuddy', {
   // Virtual-soundcheck playback (#45). Play a captured session's stems through
   // an output device with per-track routing (or a stereo master fold). Events
   // (mixdown/progress/level/ended) arrive on the `playback-event` channel.
-  startPlayback: (opts: {
-    sessionDir: string;
-    device?: string;
-    // Routing spec mapping track → output channel(s), e.g. "0:0,1:2-3".
-    route?: string;
-    intervalSecs?: number;
-    master?: boolean;
-  }) => ipcRenderer.invoke('start-playback', opts),
+  startPlayback: (opts: StartPlaybackOpts) => ipcRenderer.invoke('start-playback', opts),
 
   stopPlayback: () => ipcRenderer.invoke('stop-playback'),
 
@@ -168,10 +147,12 @@ contextBridge.exposeInMainWorld('soundBuddy', {
   // Updates
   checkForUpdates: () => ipcRenderer.invoke('check-for-updates'),
   openReleasePage: (url?: string) => ipcRenderer.invoke('open-release-page', url),
-  onUpdateAvailable: (cb: (info: { version: string; url: string; notes: string }) => void) =>
+  onUpdateAvailable: (cb: (info: UpdateInfo) => void) =>
     ipcRenderer.on('update-available', (_event, info) => cb(info)),
-  onUpdateStatus: (cb: (status: { state: string; version?: string }) => void) =>
+  onUpdateStatus: (cb: (status: UpdateStatus) => void) =>
     ipcRenderer.on('update-status', (_event, s) => cb(s)),
 
   removeAllListeners: (ch: string) => ipcRenderer.removeAllListeners(ch),
-});
+} satisfies SoundBuddyApi;
+
+contextBridge.exposeInMainWorld('soundBuddy', api);
