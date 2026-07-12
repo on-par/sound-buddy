@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import * as fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
-// ─── Ideal-profile drift guard (#160, #138) ──────────────────────────────────
+// ─── Ideal-profile drift guard (#160, #138, #274) ────────────────────────────
 //
 // The renderer's IP_PROFILES block is a hand-maintained mirror of the engine's
 // PROFILES (packages/audio-engine/src/profiles/index.ts) — the renderer is a
@@ -46,5 +46,23 @@ describe('renderer IP_PROFILES === audio-engine PROFILES', () => {
     expect({ id: rendererProfile.id, label: rendererProfile.label, description: rendererProfile.description, freqs: rendererProfile.freqs, dbOffsets: rendererProfile.dbOffsets }).toEqual(
       { id, label, description, freqs, dbOffsets },
     );
+  });
+
+  it('detects a one-value divergence (the guard has teeth)', () => {
+    const engine = PROFILES.find((p) => p.id === 'worship-service');
+    const renderer = IP_PROFILES.find((p: { id: string }) => p.id === 'worship-service');
+    expect(engine).toBeTruthy();
+    expect(renderer).toBeTruthy();
+
+    // Sanity: undamaged, the two agree (this is what the positive test asserts).
+    expect(renderer.dbOffsets).toEqual(engine!.dbOffsets);
+
+    // Deliberate test-only, in-memory one-value edit to a *clone* of the
+    // renderer copy — proving the drift comparison actually fails on divergence.
+    const mutated = {
+      ...renderer,
+      dbOffsets: renderer.dbOffsets.map((v: number, i: number) => (i === 3 ? v + 1 : v)),
+    };
+    expect(mutated.dbOffsets).not.toEqual(engine!.dbOffsets);
   });
 });
