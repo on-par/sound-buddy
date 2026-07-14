@@ -84,6 +84,21 @@
   }
 
   /**
+   * Parses a stored localStorage timestamp (ms epoch number, or its string
+   * round-trip) into a valid ms-epoch number, or null when missing/garbage.
+   * Shared by isDismissed and revealDelayMs so their "invalid stored value"
+   * handling can't drift apart.
+   * @param {number|string|null|undefined} value
+   * @returns {number|null}
+   */
+  function parseStoredTimestamp(value) {
+    if (value == null) return null;
+    var at = typeof value === 'string' ? parseInt(value, 10) : value;
+    if (typeof at !== 'number' || isNaN(at)) return null;
+    return at;
+  }
+
+  /**
    * Whether a "Maybe later" dismissal is still active. Given the stored
    * timestamp (ms epoch, or null/invalid when never dismissed), the card stays
    * hidden until DISMISS_DAYS have passed, then returns once more.
@@ -92,9 +107,8 @@
    * @returns {boolean}
    */
   function isDismissed(dismissedAt, now) {
-    if (dismissedAt == null) return false;
-    var at = typeof dismissedAt === 'string' ? parseInt(dismissedAt, 10) : dismissedAt;
-    if (typeof at !== 'number' || isNaN(at)) return false;
+    var at = parseStoredTimestamp(dismissedAt);
+    if (at == null) return false;
     var nowMs = (now instanceof Date ? now : new Date()).getTime();
     return nowMs - at < DISMISS_DAYS * DAY_MS;
   }
@@ -109,10 +123,7 @@
    * @returns {number}
    */
   function revealDelayMs(firstSeenAt) {
-    if (firstSeenAt == null) return FIRST_RESULT_REVEAL_MS;
-    var at = typeof firstSeenAt === 'string' ? parseInt(firstSeenAt, 10) : firstSeenAt;
-    if (typeof at !== 'number' || isNaN(at)) return FIRST_RESULT_REVEAL_MS;
-    return 0;
+    return parseStoredTimestamp(firstSeenAt) == null ? FIRST_RESULT_REVEAL_MS : 0;
   }
 
   var api = {

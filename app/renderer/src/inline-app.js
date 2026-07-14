@@ -2630,18 +2630,21 @@ function renderUpgradeMomentum() {
 
   // First-result softened reveal (#296): hold the card back so the grade owns
   // the screen, then ease it in as a follow-on invitation. The first-seen
-  // flag is only written on this show===true path, so a Pro/trial user's
-  // first analysis never burns it — their first *free-tier* card (e.g. after
-  // trial expiry) still gets the softened reveal.
+  // flag is only written once the card actually shows below — not merely
+  // when the hold is scheduled — so quitting mid-hold or clearing the report
+  // doesn't silently burn the flag and skip the soft reveal on the next real
+  // sighting. It's also only written on this show===true path, so a Pro/trial
+  // user's first analysis never burns it — their first *free-tier* card (e.g.
+  // after trial expiry) still gets the softened reveal.
   const delay = um.revealDelayMs(upgradeMomentumFirstSeenAt());
   if (delay > 0 && !rcuHoldUntil) rcuHoldUntil = Date.now() + delay; // once per session
-  markUpgradeMomentumFirstSeen(); // idempotent
   if (Date.now() < rcuHoldUntil) {
     el.hidden = true;
     clearTimeout(rcuRevealTimer);
     rcuRevealTimer = setTimeout(renderUpgradeMomentum, rcuHoldUntil - Date.now());
     return;
   }
+  if (upgradeMomentumFirstSeenAt() == null) markUpgradeMomentumFirstSeen();
 
   const tone = um.toneForGrade(lastReportGrade);
   document.getElementById('rcu-heading').textContent = tone.heading;
