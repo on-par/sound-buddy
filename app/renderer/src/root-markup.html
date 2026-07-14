@@ -48,6 +48,7 @@
       <button class="mode-tab" data-mode="soundcheck" data-icon="sliders">Soundcheck<span class="tab-lock" data-icon="lock" data-size="11"></span></button>
       <button class="mode-tab" data-mode="recent" data-icon="clock">Recent</button>
       <button class="mode-tab" data-mode="guide" data-icon="clipboard-check">Build Guide</button>
+      <button class="mode-tab" data-mode="ringout" data-icon="waves">Ring Out</button>
       <button class="mode-tab active" data-mode="reportcard" data-icon="clipboard-check">Report Card</button>
     </div>
     <div id="header-right">
@@ -244,6 +245,36 @@
           <div class="bg-list" id="build-guide-list"></div>
           <div class="bg-complete" id="build-complete" hidden></div>
           <button type="button" id="build-guide-review" class="btn btn-secondary sm full" data-icon="clipboard-check">Review in Report Card</button>
+        </div>
+
+        <!-- FEEDBACK RING-OUT ASSISTANT (#366) — step-by-step wizard: raise gain to
+             just-ringing, capture (mic or manual), suggest a narrow-Q cut, save a
+             per-mic EQ profile. Free — no console API, fully offline. -->
+        <div class="tab-content" id="tab-ringout">
+          <span class="section-label">Ring-Out Assistant</span>
+          <div class="bg-list" id="ringout-step"></div>
+          <div class="ro-nav">
+            <button type="button" id="ringout-prev" class="ghost-btn sm">Back</button>
+            <button type="button" id="ringout-next" class="ghost-btn sm">Next</button>
+          </div>
+
+          <span class="section-label">Capture</span>
+          <button type="button" id="ringout-capture" class="btn btn-secondary sm full" data-icon="waveform">Capture from mic</button>
+          <p class="dz-hint" id="ringout-status"></p>
+          <div class="ro-manual">
+            <input type="number" id="ringout-manual-input" placeholder="Frequency (Hz)" min="20" max="20000" />
+            <button type="button" id="ringout-manual-apply" class="ghost-btn sm">Use this frequency</button>
+          </div>
+
+          <span class="section-label">Suggested cut</span>
+          <div id="ringout-suggestion"></div>
+
+          <span class="section-label">Mic EQ profiles</span>
+          <div class="ro-profile-save">
+            <input type="text" id="ringout-profile-name" placeholder="Mic name (e.g. SM58)" />
+            <button type="button" id="ringout-profile-save" class="ghost-btn sm">Save profile</button>
+          </div>
+          <div id="ringout-profile-list"></div>
         </div>
       </div>
     </aside>
