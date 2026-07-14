@@ -47,6 +47,7 @@
       <button class="mode-tab" data-mode="live" data-icon="radio">Live<span class="tab-lock" data-icon="lock" data-size="11"></span></button>
       <button class="mode-tab" data-mode="soundcheck" data-icon="sliders">Soundcheck<span class="tab-lock" data-icon="lock" data-size="11"></span></button>
       <button class="mode-tab" data-mode="recent" data-icon="clock">Recent</button>
+      <button class="mode-tab" data-mode="guide" data-icon="clipboard-check">Build Guide</button>
       <button class="mode-tab active" data-mode="reportcard" data-icon="clipboard-check">Report Card</button>
     </div>
     <div id="header-right">
@@ -211,6 +212,17 @@
           <span class="section-label">Recent Services</span>
           <div class="dir-list" id="recent-list"></div>
           <p class="dz-hint recent-empty" id="recent-empty" style="display:none">No analyses yet — analyze a file to build your history.</p>
+        </div>
+
+        <!-- BUILD GUIDE (#367) — Lee's channel build order as a checkable, persistent guide. -->
+        <div class="tab-content" id="tab-guide">
+          <div class="bg-head">
+            <span class="section-label">Build Order</span>
+            <span class="bg-progress" id="build-guide-progress"></span>
+            <button type="button" id="build-guide-reset" class="ghost-btn sm" title="Clear progress">Reset</button>
+          </div>
+          <div class="bg-list" id="build-guide-list"></div>
+          <button type="button" id="build-guide-review" class="btn btn-secondary sm full" data-icon="clipboard-check">Review in Report Card</button>
         </div>
       </div>
     </aside>

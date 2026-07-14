@@ -24,6 +24,7 @@ import upgradeMomentumSrc from '../upgrade-momentum.js?raw';
 import onboardingStateSrc from '../onboarding-state.js?raw';
 import idealCurvesSrc from '../ideal-curves.js?raw';
 import gradingSrc from '../grading.js?raw';
+import buildOrderStateSrc from '../build-order-state.js?raw';
 import inlineAppSrc from './inline-app.js?raw';
 
 // Boot scripts in their original document order (#303): the 12 UMD helpers
@@ -43,6 +44,7 @@ const BOOT_SCRIPTS = [
   onboardingStateSrc,
   idealCurvesSrc,
   gradingSrc,
+  buildOrderStateSrc,
   inlineAppSrc,
 ];
 
