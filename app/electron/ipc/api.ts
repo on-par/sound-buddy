@@ -148,4 +148,8 @@ export interface SoundBuddyApi {
   onUpdateAvailable(cb: (info: UpdateInfo) => void): void;
   onUpdateStatus(cb: (status: UpdateStatus) => void): void;
   removeAllListeners(ch: string): void;
+  saveReportImage(
+    bytes: Uint8Array,
+    suggestedName: string
+  ): Promise<{ saved: boolean; filePath?: string }>;
 }

@@ -95,6 +95,7 @@ export function createMockSoundBuddy(overrides: Partial<SoundBuddyApi> = {}): Mo
     onUpdateAvailable: listen<[UpdateInfo]>('onUpdateAvailable'),
     onUpdateStatus: listen<[UpdateStatus]>('onUpdateStatus'),
     removeAllListeners: (ch: string) => record('removeAllListeners', [ch]),
+    saveReportImage: invoke('saveReportImage', { saved: false }),
   } satisfies SoundBuddyApi;
 
   const api: SoundBuddyApi = { ...defaults, ...overrides };
