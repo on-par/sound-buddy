@@ -1918,6 +1918,10 @@ function updateRigButtons() {
 // Snapshot the current Live-tab setup into a CaptureRig. Device is stored BY
 // NAME (from the selected liveDevices entry) so it survives index reordering;
 // '' means the Default Device. Any per-channel label (#39) is preserved.
+// upsertRig persists whatever object this returns as a full replace of the
+// stored rig (not a merge, see settings.ts), so an existing saved preflight
+// baseline (#373) is carried forward here — otherwise the plain rig Save
+// button would silently delete it every time.
 function captureCurrentRig(name, id) {
   const rig = {
     name: name,
@@ -1939,7 +1943,11 @@ function captureCurrentRig(name, id) {
     windowSecs: parseFloat(document.getElementById('window-secs').value),
     llmIntervalMs: parseInt(document.getElementById('llm-interval').value, 10) * 1000,
   };
-  if (id) rig.id = id;
+  if (id) {
+    rig.id = id;
+    const existing = rigList.find((r) => r.id === id);
+    if (existing && existing.baseline) rig.baseline = existing.baseline;
+  }
   return rig;
 }
 
@@ -1980,10 +1988,6 @@ function applyRig(rig) {
 
 // Preflight checklist (#373): compare the live channel routing against the
 // active rig's saved baseline and render the green/amber/red rows + banner.
-// device-connected reconciles the rig's *expected* device (falling back to
-// whatever is currently selected when no rig is active) so a missing device
-// keeps failing even after applyRig's one-time "not found" notice has scrolled
-// away.
 function currentActiveRig() {
   const id = document.getElementById('rig-select').value;
   return id ? rigList.find((r) => r.id === id) : null;
@@ -2004,7 +2008,12 @@ function renderPreflight() {
   const list = document.getElementById('preflight-list');
   if (!list) return; // not booted yet
   const rig = currentActiveRig();
-  const rec = window.rigReconcile.reconcileRigDevice(rig ? rig.deviceName : selectedDeviceName(), liveDevices);
+  // Reconcile the device actually selected in the dropdown — the one Start
+  // Capture will use — not the rig's stored deviceName; those two can diverge
+  // (e.g. the engineer changes the dropdown without saving), and validating
+  // the wrong one would let a stale "Ready for service" mask an unvalidated
+  // capture device.
+  const rec = window.rigReconcile.reconcileRigDevice(selectedDeviceName(), liveDevices);
   const device = { found: rec.found, name: rec.deviceName || 'Default Device', channels: selectedDeviceChannels() };
   const current = window.preflight.snapshotRig(channelConfig, selectedDeviceName());
   const baseline = (rig && rig.baseline) || null;
@@ -2053,6 +2062,7 @@ async function saveBaseline() {
     updateRigButtons();
     setLiveStatus('Baseline saved.');
   } catch (err) {
+    console.error('save baseline failed:', err);
     const msg = err && err.message ? String(err.message) : '';
     setLiveStatus(/Pro license/i.test(msg)
       ? 'Saving a baseline requires a Pro license.'
@@ -2079,6 +2089,10 @@ async function rigSaveAs() {
     updateRigButtons();
     setLiveStatus(`Saved "${trimmed}".`);
   } catch (err) { rigError('save', err); }
+  // populateRigSelect sets the <select> value programmatically, which doesn't
+  // fire 'change' — repaint the checklist explicitly so it doesn't keep
+  // showing whatever rig/baseline was active before this Save As (#373).
+  renderPreflight();
 }
 
 async function initRigs() {
@@ -2165,6 +2179,10 @@ document.getElementById('rig-delete-btn').addEventListener('click', async () => 
     populateRigSelect(rigList, settings.activeRigId || '');
     updateRigButtons();
   } catch (err) { rigError('delete', err); }
+  // Same "programmatic <select> update doesn't fire 'change'" gap as Save As
+  // above — without this the checklist would keep showing the deleted rig's
+  // stale baseline/status (#373).
+  renderPreflight();
 });
 
 function startLiveCountdown(intervalSecs) {
