@@ -221,6 +221,17 @@ describe('upsertRig', () => {
     const got = getRig(saved.rigs[0].id);
     expect(got?.channelConfig[0]).toEqual({ kind: 'stereo', a: 0, b: 1, label: 'Drums OH' });
   });
+
+  it('round-trips a preflight baseline (#373) through save + getRig/listRigs', () => {
+    const baseline = {
+      deviceName: 'Scarlett 18i20',
+      strips: [{ kind: 'mono' as const, a: 0, b: 0, label: 'Vocal' }],
+      savedAt: '2026-07-14T12:00:00.000Z',
+    };
+    const saved = upsertRig(makeRig({ baseline }));
+    expect(getRig(saved.rigs[0].id)?.baseline).toEqual(baseline);
+    expect(listRigs()[0].baseline).toEqual(baseline);
+  });
 });
 
 describe('getRig', () => {
