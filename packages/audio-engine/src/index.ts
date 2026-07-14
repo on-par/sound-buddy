@@ -41,6 +41,11 @@ export {
 } from "./profiles/index.js";
 export type { IdealProfile, ProfileComparison, BandDeviation } from "./profiles/index.js";
 
+// Shared spectral-analysis primitives (#376): peak-picking for #15 feedback
+// ring-out, band-energy for the future #2 harshness engine.
+export { findSpectralPeaks, bandEnergy, localEnvelope } from "./analyze/spectral.js";
+export type { SpectralPeak, FindPeaksOptions } from "./analyze/spectral.js";
+
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const STREAM_SCRIPT = resolve(__dirname, "../scripts/stream.py");
 
