@@ -52,7 +52,7 @@
       display:flex; align-items:center; gap:18px; height:var(--header-h); padding:0 16px;
       /* Clear the macOS traffic-light cluster (hiddenInset) so the logo isn't
          squashed underneath the close/minimize/maximize buttons. */
-      padding-left:82px;
+      padding-left:var(--titlebar-safe-left);
       background:var(--bg-panel); border-bottom:1px solid var(--border-subtle);
       flex-shrink:0; -webkit-app-region:drag;
     }
@@ -176,6 +176,12 @@
     }
     #trial-banner.show { display:flex; }
     #trial-banner .lb-text { flex:1; min-width:0; }
+
+    #update-banner,
+    #license-banner,
+    #trial-banner {
+      padding-left:var(--titlebar-safe-left);
+    }
 
     /* License dialog status lines. */
     .lic-status { font:var(--fw-regular) var(--fs-label)/1.4 var(--font-sans); color:var(--text-secondary); }

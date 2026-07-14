@@ -52,6 +52,7 @@ describe('src/styles/tokens.css', () => {
     expect(tokensCss).toContain('--neutral-950:#0B0C0F');
     expect(tokensCss).toContain('--band-mid:#23BBA6');
     expect(tokensCss).toContain('--header-h:52px');
+    expect(tokensCss).toContain('--titlebar-safe-left:82px');
   });
 });
 
@@ -67,5 +68,10 @@ describe('src/styles/app.css', () => {
 
   it('does not hold the :root token block (proves the split)', () => {
     expect(appCss).not.toContain(':root {');
+  });
+
+  it('uses the shared titlebar safe-area token for the header and top banners', () => {
+    expect(appCss).toContain('#update-banner,\n    #license-banner,\n    #trial-banner {\n      padding-left:var(--titlebar-safe-left);');
+    expect(appCss).toContain('padding-left:var(--titlebar-safe-left);');
   });
 });
