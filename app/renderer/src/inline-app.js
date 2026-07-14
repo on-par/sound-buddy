@@ -2376,10 +2376,30 @@ function loadHistoryEntry(summary) {
   document.querySelector('.mode-tab[data-mode="reportcard"]').click();
 }
 
+/* ══ Rough Pass / Contextual Pass toggle (#365) — workflow-phase reminder
+   banner atop the Build Guide tab. Phase persists in sessionStorage (resets
+   on a fresh app launch) via the pure window.passModeState module; this just
+   wires the DOM. ══ */
+function renderPassMode() {
+  const phase = window.passModeState.loadPhase(sessionStorage);
+  document.getElementById('pass-mode-toggle').innerHTML =
+    window.passModeState.toggleHtml(phase, escapeHtml);
+  document.getElementById('pass-mode-reminder').innerHTML =
+    window.passModeState.reminderHtml(window.passModeState.getPhase(phase), escapeHtml);
+}
+
+document.getElementById('pass-mode-toggle').addEventListener('click', (e) => {
+  const btn = e.target.closest('[data-phase]');
+  if (!btn) return;
+  window.passModeState.savePhase(sessionStorage, btn.dataset.phase);
+  renderPassMode();
+});
+
 /* ══ Channel Build-Order Guide (#367) — ordered checklist with starting-point
    EQ/comp/gate presets. Progress persists in localStorage via the pure
    window.buildOrderState module; this just wires the DOM. ══ */
 function renderBuildGuide() {
+  renderPassMode();
   const list = document.getElementById('build-guide-list');
   const progress = window.buildOrderState.loadProgress(localStorage);
 
