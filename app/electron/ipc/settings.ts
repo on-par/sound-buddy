@@ -22,6 +22,21 @@ import { isEntitled } from '../license';
 import { dirSizeBytes, formatBytes } from '../storage';
 import { defaultRecordDir, platformDefaultStorageDir } from './shared';
 
+const DEFAULT_EXPORT_FILENAME = 'report.png';
+const PNG_EXTENSION = '.png';
+
+// Pure helper behind the save-report-image handler (#368): basename-strips a
+// suggested filename (defense-in-depth against a tampered IPC argument — the
+// renderer already sanitizes it via report-export.ts's sanitizeCardFilename/
+// buildExportFilename) and forces a .png extension so the save dialog always
+// offers a valid PNG name, even given a blank or extension-less suggestion.
+export function safeExportFilename(name: string): string {
+  const parts = name.split(/[\\/]/);
+  const basename = parts[parts.length - 1].trim();
+  if (basename === '') return DEFAULT_EXPORT_FILENAME;
+  return basename.toLowerCase().endsWith(PNG_EXTENSION) ? basename : `${basename}${PNG_EXTENSION}`;
+}
+
 export function registerSettingsHandlers(): void {
   // get-app-version — the installed app version (from package.json / the
   // packaged .app's Info.plist), shown in the AI Engineer dialog (#202).
@@ -123,6 +138,21 @@ export function registerSettingsHandlers(): void {
       properties: ['openDirectory'],
     });
     return filePaths[0] ?? null;
+  });
+
+  // save-report-image (#368) — local-only save of the Export PNG button's
+  // rasterized report card. No network anywhere: a native save dialog, then a
+  // direct file write of the bytes the renderer already produced.
+  ipcMain.handle('save-report-image', async (_event, bytes: Uint8Array, suggestedName: string) => {
+    const win = BrowserWindow.getFocusedWindow();
+    if (!win) return { saved: false };
+    const { canceled, filePath } = await dialog.showSaveDialog(win, {
+      defaultPath: safeExportFilename(suggestedName),
+      filters: [{ name: 'PNG Image', extensions: ['png'] }],
+    });
+    if (canceled || !filePath) return { saved: false };
+    await fs.promises.writeFile(filePath, Buffer.from(bytes));
+    return { saved: true, filePath };
   });
 
   // Playback transport (#180) — a file:// URL an <audio> element can load

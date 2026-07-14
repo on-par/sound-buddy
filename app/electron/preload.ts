@@ -106,6 +106,10 @@ const api = {
 
   openDirDialog: () => ipcRenderer.invoke('open-dir-dialog'),
 
+  // Local-only save of the Export PNG button's rasterized report card (#368).
+  saveReportImage: (bytes: Uint8Array, suggestedName: string) =>
+    ipcRenderer.invoke('save-report-image', bytes, suggestedName),
+
   startLive: (opts: StartLiveOpts) => ipcRenderer.invoke('start-live', opts),
 
   stopLive: () => ipcRenderer.invoke('stop-live'),
