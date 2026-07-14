@@ -77,6 +77,10 @@ async function launch(): Promise<void> {
 
 async function analyzeAndOpenReportCard(): Promise<void> {
   await win.locator('.mode-tab[data-mode="reportcard"]').click();
+  // This spec tests checkout, not the #296 first-reveal hold — pre-seed the
+  // flag so the upgrade card's CTAs are clickable without waiting out the
+  // softened first-result delay.
+  await win.evaluate(() => localStorage.setItem('sb-first-report-seen-at', String(Date.now() - 1000)));
   await win.evaluate(() => {
     (window as unknown as { loadFile: (p: string) => void }).loadFile('/fake/purchase-path.wav');
   });

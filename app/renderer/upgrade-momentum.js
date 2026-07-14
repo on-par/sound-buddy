@@ -22,6 +22,11 @@
   var DISMISS_DAYS = 7;
   var DAY_MS = 24 * 60 * 60 * 1000;
 
+  // The install's first report card gets the stage to itself for this long
+  // before the upsell slides in (#296) — long enough for the grade ring
+  // reveal to land, short enough to still be the same moment.
+  var FIRST_RESULT_REVEAL_MS = 6000;
+
   // The two subscription tiers (#56). One price each — no A/B (a non-goal). The
   // renderer maps `plan` straight to sb.openCheckout(plan); keep in sync with
   // the checkoutUrl() mapping in app/electron/checkout.ts.
@@ -94,14 +99,32 @@
     return nowMs - at < DISMISS_DAYS * DAY_MS;
   }
 
+  /**
+   * How long to hold the card back before its first-ever reveal (#296). Given
+   * the stored first-seen value (ms epoch, its localStorage string
+   * round-trip, or null/undefined/garbage when never seen), returns `0` once
+   * a valid timestamp exists (not the first result) and
+   * FIRST_RESULT_REVEAL_MS otherwise (this is the first result).
+   * @param {number|string|null|undefined} firstSeenAt
+   * @returns {number}
+   */
+  function revealDelayMs(firstSeenAt) {
+    if (firstSeenAt == null) return FIRST_RESULT_REVEAL_MS;
+    var at = typeof firstSeenAt === 'string' ? parseInt(firstSeenAt, 10) : firstSeenAt;
+    if (typeof at !== 'number' || isNaN(at)) return FIRST_RESULT_REVEAL_MS;
+    return 0;
+  }
+
   var api = {
     DISMISS_DAYS: DISMISS_DAYS,
     PLANS: PLANS,
     ACTIONS: ACTIONS,
     TRUST_COPY: TRUST_COPY,
+    FIRST_RESULT_REVEAL_MS: FIRST_RESULT_REVEAL_MS,
     toneForGrade: toneForGrade,
     shouldShowForLicense: shouldShowForLicense,
     isDismissed: isDismissed,
+    revealDelayMs: revealDelayMs,
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.upgradeMomentum = api;

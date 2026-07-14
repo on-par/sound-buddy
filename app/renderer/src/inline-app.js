@@ -2585,7 +2585,12 @@ function renderReportCard() {
    Shown when: a report card has rendered, the user is free (non-Pro), and no
    "Maybe later" dismissal is active for the 7-day conversion window. */
 const RCU_DISMISS_KEY = 'sb-upgrade-momentum-dismissed-at';
+// Records that a report card has been shown to a free user once (#296) — its
+// absence marks this install's first-value moment, when the upsell holds back.
+const RCU_FIRST_SEEN_KEY = 'sb-first-report-seen-at';
 let lastReportGrade = null;
+let rcuRevealTimer = null; // pending first-result reveal
+let rcuHoldUntil = 0; // ms epoch the first-result hold expires (session)
 
 function upgradeMomentumDismissedAt() {
   try { return localStorage.getItem(RCU_DISMISS_KEY); } catch { return null; }
@@ -2593,6 +2598,14 @@ function upgradeMomentumDismissedAt() {
 function dismissUpgradeMomentum() {
   try { localStorage.setItem(RCU_DISMISS_KEY, String(Date.now())); }
   catch { /* private mode: the card simply returns next launch */ }
+}
+
+function upgradeMomentumFirstSeenAt() {
+  try { return localStorage.getItem(RCU_FIRST_SEEN_KEY); } catch { return null; }
+}
+function markUpgradeMomentumFirstSeen() {
+  try { localStorage.setItem(RCU_FIRST_SEEN_KEY, String(Date.now())); }
+  catch { /* private mode: the card just shows undelayed */ }
 }
 
 function renderUpgradeMomentum() {
@@ -2605,7 +2618,30 @@ function renderUpgradeMomentum() {
     && licenseCurrent !== null
     && um.shouldShowForLicense(licenseCurrent)
     && !um.isDismissed(upgradeMomentumDismissedAt());
-  if (!show) { el.hidden = true; return; }
+  if (!show) {
+    // A mid-hold Pro activation, dismissal, or report clear must cancel the
+    // pending reveal (the timer callback re-enters this function anyway —
+    // this is belt-and-braces against a stale timer resurfacing the card).
+    clearTimeout(rcuRevealTimer);
+    rcuRevealTimer = null;
+    el.hidden = true;
+    return;
+  }
+
+  // First-result softened reveal (#296): hold the card back so the grade owns
+  // the screen, then ease it in as a follow-on invitation. The first-seen
+  // flag is only written on this show===true path, so a Pro/trial user's
+  // first analysis never burns it — their first *free-tier* card (e.g. after
+  // trial expiry) still gets the softened reveal.
+  const delay = um.revealDelayMs(upgradeMomentumFirstSeenAt());
+  if (delay > 0 && !rcuHoldUntil) rcuHoldUntil = Date.now() + delay; // once per session
+  markUpgradeMomentumFirstSeen(); // idempotent
+  if (Date.now() < rcuHoldUntil) {
+    el.hidden = true;
+    clearTimeout(rcuRevealTimer);
+    rcuRevealTimer = setTimeout(renderUpgradeMomentum, rcuHoldUntil - Date.now());
+    return;
+  }
 
   const tone = um.toneForGrade(lastReportGrade);
   document.getElementById('rcu-heading').textContent = tone.heading;
