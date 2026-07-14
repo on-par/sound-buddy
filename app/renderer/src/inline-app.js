@@ -1134,6 +1134,7 @@ document.querySelectorAll('.mode-tab').forEach(tab => {
       // Reload on every visit (not just once) so a just-completed analysis
       // shows up without an app restart (#147).
       if (mode === 'recent') renderRecentServices();
+      if (mode === 'guide') renderBuildGuide();
     }
   });
 });
@@ -1353,6 +1354,13 @@ function syncSpectrumForMode(mode) {
     title.textContent = SPECTRUM_TITLE.curve;
     if (currentAnalysis) renderSpectrum(currentAnalysis.spectrum);
     else setSpectrumState('empty', { text: 'Select a recent analysis to load its report card' });
+  } else if (mode === 'guide') {
+    // Build Guide (#367) has no file-loading UI of its own either — mirror
+    // the `recent` tailored empty state so it doesn't show the misleading
+    // generic "Load a file…" copy.
+    title.textContent = SPECTRUM_TITLE.curve;
+    if (currentAnalysis) renderSpectrum(currentAnalysis.spectrum);
+    else setSpectrumState('empty', { text: 'Follow the build order, then load a recording to grade it' });
   } else {
     // renderSpectrum sets the header to match what it draws (curve vs meters);
     // seed the curve label for the pre-analysis empty state.
@@ -2367,6 +2375,50 @@ function loadHistoryEntry(summary) {
   analyzeBtn.innerHTML = iconSvg('waveform', 16) + 'Analyze';
   document.querySelector('.mode-tab[data-mode="reportcard"]').click();
 }
+
+/* ══ Channel Build-Order Guide (#367) — ordered checklist with starting-point
+   EQ/comp/gate presets. Progress persists in localStorage via the pure
+   window.buildOrderState module; this just wires the DOM. ══ */
+function renderBuildGuide() {
+  const list = document.getElementById('build-guide-list');
+  const progress = window.buildOrderState.loadProgress(localStorage);
+
+  list.innerHTML = window.buildOrderState.STEPS
+    .map((step, i) => window.buildOrderState.stepRowHtml(step, i, progress, escapeHtml))
+    .join('');
+
+  const done = window.buildOrderState.completedCount(progress);
+  const total = window.buildOrderState.totalSteps();
+  document.getElementById('build-guide-progress').textContent = `${done}/${total} done`;
+}
+
+// Event delegation on the list (rows are re-rendered wholesale on every
+// toggle, so per-row listeners would leak/duplicate) — mirrors how other
+// dynamically-rendered lists in this file wire clicks.
+document.getElementById('build-guide-list').addEventListener('click', (e) => {
+  const row = e.target.closest('[data-step-id]');
+  if (!row) return;
+  const id = row.dataset.stepId;
+  if (e.target.closest('.bg-check')) {
+    const progress = window.buildOrderState.loadProgress(localStorage);
+    const next = window.buildOrderState.toggle(progress, id);
+    window.buildOrderState.saveProgress(localStorage, next);
+    renderBuildGuide();
+  } else if (e.target.closest('.bg-label')) {
+    row.classList.toggle('expanded');
+  }
+});
+
+document.getElementById('build-guide-reset').addEventListener('click', () => {
+  window.buildOrderState.saveProgress(localStorage, window.buildOrderState.emptyProgress());
+  renderBuildGuide();
+});
+
+// Reuses the existing Report Card tab handler so post-service review is one
+// click away from the guide (#367's "links to the Report Card" criterion).
+document.getElementById('build-guide-review').addEventListener('click', () => {
+  document.querySelector('.mode-tab[data-mode="reportcard"]').click();
+});
 
 /* ══ Content type — speech/music delineation (PRD 04) ══ */
 const CONTENT_TYPE_LABELS = { speech: 'Speech', music: 'Music', mixed: 'Mixed', silence: 'Silence' };

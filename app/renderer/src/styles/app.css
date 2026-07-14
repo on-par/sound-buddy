@@ -235,6 +235,27 @@
     .recent-date { font:var(--fw-regular) var(--fs-micro)/1 var(--font-sans); color:var(--text-muted); flex-shrink:0; white-space:nowrap; }
     .recent-empty { text-align:center; padding:12px 0; }
 
+    /* Channel Build-Order Guide (#367) */
+    .bg-head { display:flex; align-items:center; gap:8px; }
+    .bg-head .section-label { flex-shrink:0; }
+    .bg-progress { font:var(--fw-regular) var(--fs-micro)/1 var(--font-mono); color:var(--text-muted); flex:1; }
+    .bg-list { display:flex; flex-direction:column; gap:2px; overflow-y:auto; }
+    .bg-row { display:flex; align-items:flex-start; gap:8px; padding:6px 8px; border-radius:var(--radius-sm); background:var(--surface); }
+    .bg-row.bg-done { background:var(--gold-tint-soft); }
+    .bg-check {
+      flex-shrink:0; width:1.4em; height:1.4em; margin-top:1px; border-radius:var(--radius-full);
+      border:1px solid var(--border-default); background:var(--surface-raised); color:var(--text-tertiary);
+      font:var(--fw-bold) var(--fs-micro)/1 var(--font-mono); cursor:pointer; display:flex;
+      align-items:center; justify-content:center;
+    }
+    .bg-row.bg-done .bg-check { background:var(--grade-a); border-color:var(--grade-a); color:var(--text-on-solid); }
+    .bg-row-body { flex:1; min-width:0; display:flex; flex-direction:column; gap:2px; }
+    .bg-label { font:var(--fw-medium) var(--fs-label)/1.3 var(--font-sans); color:var(--text-secondary); cursor:pointer; }
+    .bg-row.bg-done .bg-label { color:var(--text-primary); }
+    .bg-details { list-style:none; display:none; flex-direction:column; gap:1px; margin-top:2px; }
+    .bg-row.expanded .bg-details { display:flex; }
+    .bg-details li { font:var(--fw-regular) var(--fs-micro)/1.4 var(--font-mono); color:var(--text-muted); }
+
     /* Buttons */
     .btn {
       display:inline-flex; align-items:center; justify-content:center; gap:8px;
