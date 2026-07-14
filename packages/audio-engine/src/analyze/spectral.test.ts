@@ -133,4 +133,13 @@ describe("bandEnergy", () => {
     const c: SpectrumCurve = { freqs: [100, 200, 300], db: [-10, -20] };
     expect(bandEnergy(c, 100, 300)).toBe(-Infinity);
   });
+
+  it("returns -Infinity for a falsy curve", () => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    expect(bandEnergy(undefined as any, 100, 300)).toBe(-Infinity);
+  });
+
+  it("returns -Infinity for an empty curve", () => {
+    expect(bandEnergy(curve([]), 100, 300)).toBe(-Infinity);
+  });
 });
