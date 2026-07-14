@@ -39,7 +39,7 @@ export default defineConfig({
     coverage: {
       provider: 'v8',
       reportsDirectory: './coverage',
-      reporter: ['text', 'lcov', 'json-summary'],
+      reporter: ['text', 'lcov', 'json-summary', 'cobertura'],
       // Mirror each project's coverage.include, re-rooted at the repo root —
       // include patterns here resolve against the root, not each project.
       // Everything vendored/generated under app/ (.build-cache, release,
