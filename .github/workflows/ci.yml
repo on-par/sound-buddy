@@ -32,6 +32,12 @@ jobs:
       - name: Install app dependencies
         run: npm ci --prefix app
 
+      # The Electron app shells into the nested Vite renderer package during
+      # `npm run build --prefix app`; install its lockfile too so app builds in
+      # CI mirror local `scripts/verify.sh`.
+      - name: Install renderer dependencies
+        run: npm ci --prefix app/renderer
+
       # Media tools + Python analysis deps must be present BEFORE the Vitest
       # steps: the fixture parser tests (#150) shell out to sox/ffprobe and the
       # spectrum + drift-guard tests run spectrum.py via librosa. Without these
