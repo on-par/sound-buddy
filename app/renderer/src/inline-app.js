@@ -1344,6 +1344,7 @@ function syncSpectrumForMode(mode) {
     // running board only takes over once real windows have actually arrived.
     if (liveRunning && liveWindows.length > 0) renderLiveMeters(liveWindows[liveWindows.length - 1]);
     else renderLiveWorkspace();
+    renderPreflight(); // repaint the checklist whenever the Live tab becomes visible
   } else if (mode === 'soundcheck') {
     title.textContent = 'Soundcheck · Meters';
     if (!scPlaying) setSpectrumState('empty', { text: 'Load a session and press Play to see per-track meters' });
@@ -1567,6 +1568,15 @@ function selectedDeviceChannels() {
   return deviceChannelCount(document.getElementById('device-select').value, liveDevices);
 }
 
+// The selected device's name, resolved from liveDevices ('' = Default Device),
+// mirroring captureCurrentRig's device-by-name resolution below.
+function selectedDeviceName() {
+  const val = document.getElementById('device-select').value;
+  if (val === '') return '';
+  const dev = liveDevices.find((d) => String(d.index) === val);
+  return dev ? dev.name : '';
+}
+
 // Total device channels consumed by the current config (mono=1, stereo=2).
 function usedChannelCount() {
   return lcUsedChannelCount(channelConfig);
@@ -1610,6 +1620,9 @@ function renderChannelConfig() {
   // Keep the persistent idle workspace in sync. A running capture owns the pane
   // via renderLiveMeters on the rAF tick, so only re-render when idle.
   if (currentMode === 'live' && !liveRunning) renderLiveWorkspace();
+  // Preflight checklist (#373) reads channelConfig/device state, so it rides
+  // the same "config changed" entry point as the workspace.
+  renderPreflight();
 }
 
 // Lock/unlock every capture-config control while a capture runs (#38). stream.py
@@ -1906,15 +1919,9 @@ function updateRigButtons() {
 // NAME (from the selected liveDevices entry) so it survives index reordering;
 // '' means the Default Device. Any per-channel label (#39) is preserved.
 function captureCurrentRig(name, id) {
-  const val = document.getElementById('device-select').value;
-  let deviceName = '';
-  if (val !== '') {
-    const dev = liveDevices.find((d) => String(d.index) === val);
-    deviceName = dev ? dev.name : '';
-  }
   const rig = {
     name: name,
-    deviceName: deviceName,
+    deviceName: selectedDeviceName(),
     channelConfig: channelConfig.map((s) => {
       const strip = { kind: s.kind, a: s.a, b: s.b };
       // Normalize the label once, at the persistence boundary, so both entry
@@ -1971,6 +1978,90 @@ function applyRig(rig) {
   setLiveStatus(notice);
 }
 
+// Preflight checklist (#373): compare the live channel routing against the
+// active rig's saved baseline and render the green/amber/red rows + banner.
+// device-connected reconciles the rig's *expected* device (falling back to
+// whatever is currently selected when no rig is active) so a missing device
+// keeps failing even after applyRig's one-time "not found" notice has scrolled
+// away.
+function currentActiveRig() {
+  const id = document.getElementById('rig-select').value;
+  return id ? rigList.find((r) => r.id === id) : null;
+}
+
+function relativeTime(iso) {
+  const then = new Date(iso).getTime();
+  if (!Number.isFinite(then)) return '';
+  const mins = Math.floor((Date.now() - then) / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours}h ago`;
+  return `${Math.floor(hours / 24)}d ago`;
+}
+
+function renderPreflight() {
+  const list = document.getElementById('preflight-list');
+  if (!list) return; // not booted yet
+  const rig = currentActiveRig();
+  const rec = window.rigReconcile.reconcileRigDevice(rig ? rig.deviceName : selectedDeviceName(), liveDevices);
+  const device = { found: rec.found, name: rec.deviceName || 'Default Device', channels: selectedDeviceChannels() };
+  const current = window.preflight.snapshotRig(channelConfig, selectedDeviceName());
+  const baseline = (rig && rig.baseline) || null;
+  const items = window.preflight.buildChecklist({ baseline, current, device });
+  const summary = window.preflight.checklistSummary(items);
+
+  document.getElementById('preflight-saved').textContent = baseline
+    ? `Baseline saved ${relativeTime(baseline.savedAt)}`
+    : 'No baseline saved';
+
+  const banner = document.getElementById('preflight-banner');
+  banner.textContent = summary.ready ? 'Ready for service' : 'Not ready — resolve the items below';
+  banner.className = 'pf-banner ' + (summary.ready ? 'pf-ready' : 'pf-not-ready');
+
+  list.innerHTML = items.map((item) => `
+    <li class="pf-row pf-${item.status}">
+      <span class="pf-dot" aria-hidden="true"></span>
+      <span class="pf-row-body">
+        <span class="pf-row-label">${escapeHtml(item.label)}</span>
+        <span class="pf-row-detail">${escapeHtml(item.detail)}</span>
+      </span>
+    </li>`).join('');
+}
+
+// Save baseline: snapshot the live routing, stamp it, and persist it onto the
+// active rig — seeding a new rig first if none is selected yet, reusing the
+// same capture path as the rig Save button (#373). Pro-gated exactly like the
+// existing rig save path: the IPC handler throws rather than the renderer
+// crashing, so the message surfaces as a status notice instead.
+async function saveBaseline() {
+  const rig = currentActiveRig();
+  const baseline = window.preflight.snapshotRig(channelConfig, selectedDeviceName());
+  baseline.savedAt = new Date().toISOString();
+  const payload = Object.assign(captureCurrentRig(rig ? rig.name : 'Rig', rig ? rig.id : undefined), { baseline: baseline });
+  const prevIds = new Set(rigList.map((r) => r.id));
+  try {
+    const settings = await sb.saveRig(payload);
+    rigList = settings.rigs || [];
+    let savedId = rig ? rig.id : '';
+    if (!savedId) {
+      const created = rigList.find((r) => !prevIds.has(r.id));
+      savedId = created ? created.id : '';
+    }
+    if (savedId) await sb.setActiveRig(savedId);
+    populateRigSelect(rigList, savedId || document.getElementById('rig-select').value);
+    updateRigButtons();
+    setLiveStatus('Baseline saved.');
+  } catch (err) {
+    const msg = err && err.message ? String(err.message) : '';
+    setLiveStatus(/Pro license/i.test(msg)
+      ? 'Saving a baseline requires a Pro license.'
+      : 'Could not save baseline — check that Sound Buddy can write its settings.');
+  }
+  renderPreflight();
+}
+document.getElementById('preflight-save-btn').addEventListener('click', saveBaseline);
+
 // Prompt for a name, capture the current setup as a NEW rig, and select it.
 async function rigSaveAs() {
   const name = await rigDialog({ title: 'Save rig as…', value: '', confirmLabel: 'Save', withInput: true });
@@ -2014,7 +2105,7 @@ document.getElementById('rig-select').addEventListener('change', async (e) => {
   try {
     await sb.setActiveRig(id || null);
   } catch (err) { rigError('select', err); return; }
-  if (!id) return;
+  if (!id) { renderPreflight(); return; } // deselecting still needs the checklist re-read (applyRig won't fire)
   const rig = rigList.find((r) => r.id === id);
   if (rig) applyRig(rig);
 });

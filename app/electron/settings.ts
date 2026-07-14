@@ -31,6 +31,18 @@ export interface CaptureRigChannel {
 }
 
 /**
+ * A saved preflight baseline (#373): the channel assignments + routing snapshot
+ * the engineer confirms pre-service, later diffed against the live config to
+ * surface drift. Excludes per-strip arming (a capture choice, not routing).
+ */
+export interface PreflightBaseline {
+  deviceName: string;
+  strips: Array<{ kind: 'mono' | 'stereo'; a: number; b: number; label?: string }>;
+  /** ISO 8601 capture time, for "baseline saved <when>" UI. */
+  savedAt: string;
+}
+
+/**
  * A saved capture setup ("rig"): a named device + channel + capture config the
  * user can reload instead of re-seeding defaults each launch. The device is
  * matched by {@link deviceName}, not index, so it survives device reordering.
@@ -50,6 +62,8 @@ export interface CaptureRig {
   windowSecs: number;
   /** LLM analysis cadence (ms); optional until #37 wires the slider. */
   llmIntervalMs?: number;
+  /** Pre-service checklist baseline (#373); optional until an engineer saves one. */
+  baseline?: PreflightBaseline;
 }
 
 export interface CustomIdealProfile {
