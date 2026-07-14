@@ -3,16 +3,27 @@ import { describe, it, expect } from 'vitest';
 // upgrade-momentum.js is a plain classic script (window.upgradeMomentum in the
 // browser, module.exports under Node) so its pure copy/tone/dismissal logic is
 // exercised here without a DOM.
-const { DISMISS_DAYS, PLANS, ACTIONS, TRUST_COPY, toneForGrade, shouldShowForLicense, isDismissed } =
-  require('./upgrade-momentum.js') as {
-    DISMISS_DAYS: number;
-    PLANS: { plan: string; label: string; primary: boolean }[];
-    ACTIONS: { feature: string; title: string; hint: string }[];
-    TRUST_COPY: string;
-    toneForGrade: (grade: string) => { heading: string; sub: string };
-    shouldShowForLicense: (state: unknown) => boolean;
-    isDismissed: (dismissedAt: number | string | null | undefined, now?: Date) => boolean;
-  };
+const {
+  DISMISS_DAYS,
+  PLANS,
+  ACTIONS,
+  TRUST_COPY,
+  FIRST_RESULT_REVEAL_MS,
+  toneForGrade,
+  shouldShowForLicense,
+  isDismissed,
+  revealDelayMs,
+} = require('./upgrade-momentum.js') as {
+  DISMISS_DAYS: number;
+  PLANS: { plan: string; label: string; primary: boolean }[];
+  ACTIONS: { feature: string; title: string; hint: string }[];
+  TRUST_COPY: string;
+  FIRST_RESULT_REVEAL_MS: number;
+  toneForGrade: (grade: string) => { heading: string; sub: string };
+  shouldShowForLicense: (state: unknown) => boolean;
+  isDismissed: (dismissedAt: number | string | null | undefined, now?: Date) => boolean;
+  revealDelayMs: (firstSeenAt: number | string | null | undefined) => number;
+};
 
 const NOW = new Date('2026-07-05T12:00:00Z');
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -79,6 +90,20 @@ describe('isDismissed', () => {
   });
 });
 
+describe('revealDelayMs', () => {
+  it('holds the card back when no first-seen timestamp has been recorded (first result)', () => {
+    expect(revealDelayMs(null)).toBe(FIRST_RESULT_REVEAL_MS);
+    expect(revealDelayMs(undefined)).toBe(FIRST_RESULT_REVEAL_MS);
+    expect(revealDelayMs('not-a-number')).toBe(FIRST_RESULT_REVEAL_MS);
+  });
+
+  it('reveals immediately once a first-seen timestamp exists', () => {
+    expect(revealDelayMs(NOW.getTime())).toBe(0);
+    // Stored as a string (localStorage round-trip) still works.
+    expect(revealDelayMs(String(NOW.getTime()))).toBe(0);
+  });
+});
+
 describe('copy constants', () => {
   it('offers exactly the two agreed prices, primary first', () => {
     expect(PLANS.map((p) => p.plan)).toEqual(['monthly', 'annual']);
@@ -100,5 +125,10 @@ describe('copy constants', () => {
   it('trust copy names both the own-provider and local-Ollama paths', () => {
     expect(TRUST_COPY).toMatch(/own AI provider/i);
     expect(TRUST_COPY).toMatch(/Ollama/i);
+  });
+
+  it('the first-result reveal delay is long enough to land, short enough to stay the same moment (#296)', () => {
+    expect(FIRST_RESULT_REVEAL_MS).toBeGreaterThanOrEqual(3000);
+    expect(FIRST_RESULT_REVEAL_MS).toBeLessThanOrEqual(10000);
   });
 });

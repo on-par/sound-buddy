@@ -686,6 +686,11 @@
     #report-card { flex:1 1 620px; width:100%; max-width:760px; min-width:0; }
 
     /* ── "Keep improving" momentum card (#58) ───────────────────────── */
+    /* Entrance animation (#296): a gentle fade + rise on every unhide — the
+       hidden attribute toggles display:none, so this replays each time the
+       card appears. Subtle and harmless on the normal (undelayed) path;
+       gives the softened first-result reveal its "follow-on invitation" feel. */
+    @keyframes rcu-reveal { from { opacity:0; transform:translateY(10px); } to { opacity:1; transform:translateY(0); } }
     #rc-upgrade {
       flex:1 1 288px; max-width:320px; align-self:flex-start;
       position:sticky; top:0;
@@ -693,8 +698,10 @@
       padding:20px; border-radius:var(--radius-lg);
       background:var(--surface); border:1px solid var(--border-subtle);
       box-shadow:var(--elevation-card);
+      animation:rcu-reveal 0.45s ease-out;
     }
     #rc-upgrade[hidden] { display:none; }
+    @media (prefers-reduced-motion: reduce) { #rc-upgrade { animation:none; } }
     .rcu-head { display:flex; flex-direction:column; gap:6px; }
     .rcu-heading { font:var(--fw-semibold) var(--fs-body)/1.25 var(--font-sans); color:var(--text-primary); }
     .rcu-sub { font:var(--fw-regular) var(--fs-body-sm)/1.5 var(--font-sans); color:var(--text-secondary); }

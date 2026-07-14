@@ -22,6 +22,11 @@
   var DISMISS_DAYS = 7;
   var DAY_MS = 24 * 60 * 60 * 1000;
 
+  // The install's first report card gets the stage to itself for this long
+  // before the upsell slides in (#296) — long enough for the grade ring
+  // reveal to land, short enough to still be the same moment.
+  var FIRST_RESULT_REVEAL_MS = 6000;
+
   // The two subscription tiers (#56). One price each — no A/B (a non-goal). The
   // renderer maps `plan` straight to sb.openCheckout(plan); keep in sync with
   // the checkoutUrl() mapping in app/electron/checkout.ts.
@@ -79,6 +84,21 @@
   }
 
   /**
+   * Parses a stored localStorage timestamp (ms epoch number, or its string
+   * round-trip) into a valid ms-epoch number, or null when missing/garbage.
+   * Shared by isDismissed and revealDelayMs so their "invalid stored value"
+   * handling can't drift apart.
+   * @param {number|string|null|undefined} value
+   * @returns {number|null}
+   */
+  function parseStoredTimestamp(value) {
+    if (value == null) return null;
+    var at = typeof value === 'string' ? parseInt(value, 10) : value;
+    if (typeof at !== 'number' || isNaN(at)) return null;
+    return at;
+  }
+
+  /**
    * Whether a "Maybe later" dismissal is still active. Given the stored
    * timestamp (ms epoch, or null/invalid when never dismissed), the card stays
    * hidden until DISMISS_DAYS have passed, then returns once more.
@@ -87,11 +107,23 @@
    * @returns {boolean}
    */
   function isDismissed(dismissedAt, now) {
-    if (dismissedAt == null) return false;
-    var at = typeof dismissedAt === 'string' ? parseInt(dismissedAt, 10) : dismissedAt;
-    if (typeof at !== 'number' || isNaN(at)) return false;
+    var at = parseStoredTimestamp(dismissedAt);
+    if (at == null) return false;
     var nowMs = (now instanceof Date ? now : new Date()).getTime();
     return nowMs - at < DISMISS_DAYS * DAY_MS;
+  }
+
+  /**
+   * How long to hold the card back before its first-ever reveal (#296). Given
+   * the stored first-seen value (ms epoch, its localStorage string
+   * round-trip, or null/undefined/garbage when never seen), returns `0` once
+   * a valid timestamp exists (not the first result) and
+   * FIRST_RESULT_REVEAL_MS otherwise (this is the first result).
+   * @param {number|string|null|undefined} firstSeenAt
+   * @returns {number}
+   */
+  function revealDelayMs(firstSeenAt) {
+    return parseStoredTimestamp(firstSeenAt) == null ? FIRST_RESULT_REVEAL_MS : 0;
   }
 
   var api = {
@@ -99,9 +131,11 @@
     PLANS: PLANS,
     ACTIONS: ACTIONS,
     TRUST_COPY: TRUST_COPY,
+    FIRST_RESULT_REVEAL_MS: FIRST_RESULT_REVEAL_MS,
     toneForGrade: toneForGrade,
     shouldShowForLicense: shouldShowForLicense,
     isDismissed: isDismissed,
+    revealDelayMs: revealDelayMs,
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.upgradeMomentum = api;

@@ -83,8 +83,11 @@ test.describe.serial('Upgrade momentum card (#58)', () => {
   test('appears beside the finished free report with next-steps, CTAs, trust copy', async () => {
     await analyzeAndOpenReportCard();
 
+    // The install's first report card: the grade owns the first frame (#296)
+    // — the momentum card holds back before easing in.
     const card = win.locator('#rc-upgrade');
-    await expect(card).toBeVisible();
+    await expect(card).toBeHidden();
+    await expect(card).toBeVisible({ timeout: 15_000 }); // 6s hold + margin
 
     // Score-aware heading (this mix is not an A/B, so the "Keep improving" tone).
     await expect(win.locator('#rcu-heading')).toHaveText('Keep improving');
@@ -107,6 +110,21 @@ test.describe.serial('Upgrade momentum card (#58)', () => {
     // Trust copy naming both the own-provider and local-Ollama paths.
     await expect(win.locator('#rcu-trust')).toContainText('own AI provider');
     await expect(win.locator('#rcu-trust')).toContainText('Ollama');
+  });
+
+  test('second and later report cards show the invitation immediately (#296)', async () => {
+    // The prior test's first-value moment wrote the first-seen flag.
+    expect(await win.evaluate(() => localStorage.getItem('sb-first-report-seen-at'))).not.toBeNull();
+
+    // Clear back to the empty state (where the dropzone/Analyze button live)
+    // and re-analyze to render a second report card. Read the upgrade card's
+    // hidden state right after #rc-content becomes visible — both flip in
+    // the same synchronous render, so there's no polling window in which the
+    // delayed (first-result) path could false-pass.
+    await win.locator('#reportcard-clear-btn').click();
+    await expect(win.locator('#rc-empty')).toBeVisible();
+    await analyzeAndOpenReportCard();
+    expect(await win.evaluate(() => document.getElementById('rc-upgrade')?.hidden)).toBe(false);
   });
 
   test('clicking a CTA opens hosted checkout (external), not a modal wall', async () => {
