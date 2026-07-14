@@ -70,7 +70,7 @@ echo
 if [[ -n "$max_minos" && "$gate" != "(unset)" ]]; then
   if [[ "$(printf '%s\n%s\n' "$gate" "$max_minos" | sort -V | tail -1)" == "$gate" && "$gate" != "$max_minos" ]]; then
     echo "==> Info.plist requires macOS $gate but no binary needs more than $max_minos."
-    echo "    The floor above $max_minos is ARTIFICIAL — see docs/spikes/e9-01-macos-floor-quantification-spike.md"
+    echo "    The floor above $max_minos is ARTIFICIAL — inspect the packaged binary floors before raising the gate."
   else
     echo "==> Info.plist floor matches the real binary floor."
   fi
