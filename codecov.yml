@@ -1,0 +1,28 @@
+# Codecov configuration — Sound Buddy
+#
+# This file tells coverage scanners (Codecov, Coveralls, and similar tools
+# including agent-ready assessment scanners) where to find coverage data
+# and how to interpret it. The repo uses Vitest's v8 provider with lcov
+# + json-summary output written to ./coverage/.
+
+coverage:
+  status:
+    project:
+      default:
+        target: auto
+        threshold: 1%
+        informational: true
+    patch:
+      default:
+        target: 80%
+        informational: true
+
+ignore:
+  - "packages/shared/src/index.ts"  # type-only module, no runtime code
+  - "app/renderer/src/main.tsx"     # e2e-verified DOM glue
+  - "app/renderer/src/App.tsx"      # e2e-verified DOM glue
+  - "app/renderer/src/inline-app.js"  # shared test double
+  - "app/renderer/src/mock-sound-buddy.ts"  # shared test double
+  - "**/dist/**"
+  - "**/*.config.{ts,js,mjs}"
+  - "**/node_modules/**"

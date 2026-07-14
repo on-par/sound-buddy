@@ -81,8 +81,23 @@ With nothing configured, the panel shows a hint and the rest of the app is unaff
 
 ```bash
 npm run build    # build all packages
-npm test         # run all tests (40 tests)
+npm test         # run all unit tests (Vitest)
+npm run coverage # unified coverage report → ./coverage/
+npm run lint     # typecheck + ESLint (zero warnings)
 ```
+
+### Testing
+
+Sound Buddy uses **test-driven development** (see `CLAUDE.md` and the constitution).
+Every package has its own `vitest.config.ts` with **gated coverage thresholds** (ratchet —
+never regresses). The root `vitest.config.ts` merges all packages + app + worker into a
+single unified `./coverage/` report (`lcov`, `json-summary`, `text`).
+
+- **Unit tests:** Vitest, colocated with source (`foo.ts` → `foo.test.ts`)
+- **E2E tests:** Playwright (headless), separate `npm run test:e2e` script
+- **Python tests:** `packages/audio-engine/scripts/test_stream.py`, `test_playback.py`
+- **Coverage gate:** CI fails if coverage drops below the per-package floor
+- **Current coverage:** ~89% lines, ~84% branches (see `vitest.config.ts` thresholds)
 
 ### Releasing the macOS app
 
