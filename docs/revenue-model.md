@@ -19,8 +19,14 @@ Related: [#63 GTM epic](https://github.com/on-par/sound-buddy/issues/63) ·
 
 **Rationale and anchors:**
 
-- **Anchored against MxU ($99–$349/month)** — Sound Buddy's cheapest tier is roughly
-  1/15th of theirs. We are priced for the volunteer/small-church market MxU doesn't serve.
+- **Anchored against the measurement-software market** — Rational Acoustics Smaart
+  (~$1,299 perpetual, aimed at pros) at the top and Room EQ Wizard (free, but demands
+  DSP literacy) at the bottom. Sound Buddy sells legibility — "is this good, and what
+  do I do about it on my console" — at a price a volunteer can expense.
+- **MxU ($99–$349/month) is category proof, not a price comparator.** MxU is a
+  volunteer-training/LMS platform, not a measurement tool. Its pricing proves churches
+  already budget for "make our volunteers better"; Sound Buddy delivers an automated
+  slice of that training value at 1/15th–1/40th the price.
 - **Dual pricing is deliberate.** Monthly captures hesitant buyers who won't commit $79
   up front; annual captures churches that budget yearly. Both serve real, distinct
   buying behaviors (see principle 4 below).
@@ -100,7 +106,9 @@ gross unchanged: 300 × $199 implies a ~$2,985 reserve at the cap.
 
 Zero inference cost is a **structural pricing moat**, not just a feature: competitors
 who serve inference have costs that scale with usage; ours don't. That is why we can
-sit at 1/15th of MxU's price and still run a ~96% margin.
+price at $9/month — a fraction of the training budgets churches already spend (MxU:
+$99–$349/month for volunteer training) and far below pro measurement software (Smaart:
+~$1,299) — and still run a ~96% margin.
 
 ## Merchant of record and US sales tax
 

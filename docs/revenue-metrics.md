@@ -73,8 +73,9 @@ Two consequences worth stating up front:
 - **Floor: 3%.** Sustained conversion below 3% is a **product/messaging** signal, not a
   pricing one. **Action (see the acceptance criteria):** if conversion stays below 3%
   for **two consecutive weeks**, investigate the **report card → upgrade flow**, *not*
-  the price. The report card is the funnel; the price is already anchored at 1/15th of
-  MxU and is not the constraint.
+  the price. The report card is the funnel; the price already sits far below both pro
+  measurement software (Smaart, ~$1,299) and the volunteer-training budgets MxU
+  commands ($99–$349/month), and is not the constraint.
 
 ### 5. MRR (Monthly Recurring Revenue)
 - **What:** Normalized monthly revenue across both plans.
