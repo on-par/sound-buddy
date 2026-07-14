@@ -38,6 +38,9 @@ const {
   saveProgress,
   presetLines,
   stepRowHtml,
+  WATCH_FOR,
+  summaryLine,
+  completeMomentHtml,
 } = require('./build-order-state.js') as {
   STORAGE_KEY: string;
   STEPS: Step[];
@@ -57,6 +60,9 @@ const {
     progress: Progress,
     escapeHtml: (s: unknown) => string
   ) => string;
+  WATCH_FOR: string[];
+  summaryLine: (progress: Progress) => string;
+  completeMomentHtml: (progress: Progress, escapeHtml: (s: unknown) => string) => string;
 };
 
 function escapeHtml(s: unknown): string {
@@ -262,6 +268,51 @@ describe('stepRowHtml', () => {
     };
     const html = stepRowHtml(hostileStep, 0, emptyProgress(), escapeHtml);
     expect(html).not.toContain('<img src=x onerror=1>');
+    expect(html).not.toContain('<script>');
+  });
+});
+
+describe('Build Complete closing moment (#374)', () => {
+  const completeProgress: Progress = EXPECTED_STEP_IDS.reduce(
+    (progress, id) => toggle(progress, id),
+    emptyProgress()
+  );
+
+  it('WATCH_FOR is 5 non-empty tip strings', () => {
+    expect(WATCH_FOR).toHaveLength(5);
+    WATCH_FOR.forEach((t) => {
+      expect(typeof t).toBe('string');
+      expect(t.length).toBeGreaterThan(0);
+    });
+  });
+
+  it('summaryLine reports the completed/total counts', () => {
+    expect(summaryLine(emptyProgress())).toContain('0 of 13');
+    expect(summaryLine(completeProgress)).toContain('13 of 13');
+  });
+
+  it('completeMomentHtml returns empty until complete', () => {
+    expect(completeMomentHtml(emptyProgress(), escapeHtml)).toBe('');
+    const partial = toggle(emptyProgress(), 'kick');
+    expect(completeMomentHtml(partial, escapeHtml)).toBe('');
+  });
+
+  it('renders the closing moment once complete', () => {
+    const html = completeMomentHtml(completeProgress, escapeHtml);
+    expect(html).toContain('You’re done.');
+    expect(html).toContain('13 of 13');
+    expect(html).toContain('id="build-complete-share"');
+    WATCH_FOR.forEach((tip) => expect(html).toContain(tip));
+  });
+
+  it('routes text through the injected escapeHtml', () => {
+    let called = 0;
+    const spy = (s: unknown) => {
+      called += 1;
+      return escapeHtml(s);
+    };
+    const html = completeMomentHtml(completeProgress, spy);
+    expect(called).toBeGreaterThan(0);
     expect(html).not.toContain('<script>');
   });
 });

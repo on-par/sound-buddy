@@ -274,6 +274,18 @@
     .bg-row.expanded .bg-details { display:flex; }
     .bg-details li { font:var(--fw-regular) var(--fs-micro)/1.4 var(--font-mono); color:var(--text-muted); }
 
+    /* Build Complete closing moment (#374) */
+    .bg-complete { margin-top:10px; padding:12px 12px 10px; border-radius:var(--radius-md);
+      background:var(--gold-tint-soft); border:1px solid var(--border-default);
+      display:flex; flex-direction:column; gap:8px; }
+    .bg-complete-head { display:flex; flex-direction:column; gap:2px; }
+    .bg-complete-title { font:var(--fw-semibold) var(--fs-h3)/1.2 var(--font-sans); color:var(--gold-text); }
+    .bg-complete-sub { font:var(--fw-regular) var(--fs-micro)/1.4 var(--font-sans); color:var(--text-secondary); }
+    .bg-complete-summary { font:var(--fw-regular) var(--fs-label)/1.4 var(--font-sans); color:var(--text-secondary); margin:0; }
+    .bg-watch-list { list-style:none; display:flex; flex-direction:column; gap:4px; margin:0; padding:0; }
+    .bg-watch-list li { font:var(--fw-regular) var(--fs-micro)/1.45 var(--font-sans); color:var(--text-muted); padding-left:14px; position:relative; }
+    .bg-watch-list li::before { content:'•'; position:absolute; left:2px; color:var(--gold-text); }
+
     /* Preflight checklist (#373) */
     .preflight-panel { display:flex; flex-direction:column; gap:8px; }
     .pf-head { display:flex; align-items:center; justify-content:space-between; gap:8px; }
