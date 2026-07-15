@@ -8,8 +8,9 @@ export const INSTALL_INTRO =
   '(sox, ffmpeg/ffprobe) and a Python runtime, so there is no setup.'
 
 // macOS 26 (Tahoe+) removed the old right-click → Open Gatekeeper bypass; this
-// is the real flow, kept as the single source of truth for release notes,
-// README.md, and the site install walkthrough so they can't drift again.
+// is the real flow, kept as the single source of truth for the generated
+// release notes (README.md and the site walkthrough hand-copy this wording —
+// keep them in sync manually since neither depends on this package).
 export const UNSIGNED_STEPS =
   '2. First launch is blocked by Gatekeeper ("Apple could not verify Sound Buddy").\n' +
   '   Open **System Settings → Privacy & Security**, scroll to the **Security** section,\n' +

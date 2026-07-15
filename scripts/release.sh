@@ -119,7 +119,12 @@ say "Publishing to $PUBLIC_REPO"
 # `null`/missing) — see #53. Reading it here (rather than hardcoding) means the
 # release notes' unsigned-workaround block disappears automatically the day
 # signing ships, with no further edits to this script.
-IDENTITY="$(node -e 'const y=require("fs").readFileSync(process.argv[1],"utf8"); const m=y.match(/^\s*identity:\s*(.+?)\s*$/m); console.log(m?m[1]:"null")' "$APP/electron-builder.yml")"
+IDENTITY="$(node -e '
+  const y = require("fs").readFileSync(process.argv[1], "utf8");
+  const m = y.match(/^\s*identity:\s*(.+?)\s*$/m);
+  const v = (m ? m[1] : "null").replace(/\s+#.*$/, "");
+  console.log(v || "null");
+' "$APP/electron-builder.yml")"
 SIGNED=$([ "$IDENTITY" = "null" ] && echo false || echo true)
 say "Release notes: $([ "$SIGNED" = "true" ] && echo "signed" || echo "unsigned") build"
 
