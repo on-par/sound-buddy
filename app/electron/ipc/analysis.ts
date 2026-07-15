@@ -27,6 +27,7 @@ import type {
   LoudnessStats,
   AudioAnalysis,
 } from '../../../packages/audio-engine/dist-cjs/types';
+import type { AnalyzeStage } from '../../../packages/audio-engine/dist-cjs/analyze/orchestrate';
 
 export type { SoxStats, FfprobeResult, SpectrumResult, SpectrumFrame, SpectrumSegment, LoudnessStats, AudioAnalysis };
 
@@ -96,35 +97,27 @@ export function registerAnalysisHandlers(): void {
     send({ stage: 'levels', status: 'start' });
     send({ stage: 'spectrum', status: 'start' });
 
-    const track = async <T>(stage: string, p: Promise<T>): Promise<T> => {
-      const result = await p;
-      send({ stage, status: 'done' });
-      return result;
+    const UI_STAGE: Partial<Record<AnalyzeStage, 'reading' | 'levels' | 'spectrum'>> = {
+      ffprobe: 'reading',
+      sox: 'levels',
+      spectrum: 'spectrum',
     };
 
     try {
-      const [sox, ffprobe, spectrum, loudness] = await Promise.all([
-        track('levels', runSox(filePath, signal)),
-        track('reading', runFfprobe(filePath, signal)),
-        noSpectrum
-          ? track(
-              'spectrum',
-              Promise.resolve<SpectrumResult>({
-                bands: { subBass: -120, bass: -120, lowMid: -120, mid: -120, highMid: -120, presence: -120, brilliance: -120 },
-                spectralCentroid: 0,
-                spectralRolloff85: 0,
-                dynamicRange: 0,
-              }),
-            )
-          : track('spectrum', runSpectrum(filePath, signal)),
-        runEbur128(filePath, signal).catch((err) => {
-          if (isAbortError(err)) throw err; // a cancelled run must still resolve as cancelled
-          log(`ebur128 unavailable for ${filePath}: ${String(err)}`);
-          return null;
-        }),
-      ]);
+      const analysis = await loadEngineParsers().analyzeAudio(filePath, {
+        sox: { bin: toolBin('sox') },
+        ffprobe: { bin: toolBin('ffprobe') },
+        spectrum: { scriptPath: SPECTRUM_SCRIPT, python: pythonBin(), env: childEnv() },
+        ebur128: { bin: toolBin('ffmpeg') },
+        signal,
+        noSpectrum,
+        onProgress: (stage) => {
+          const ui = UI_STAGE[stage];
+          if (ui) send({ stage: ui, status: 'done' });
+        },
+        onEbur128Error: (err) => log(`ebur128 unavailable for ${filePath}: ${String(err)}`),
+      });
 
-      const analysis: AudioAnalysis = { filePath, sox, ffprobe, spectrum, loudness };
       wc.send('analysis-result', { type: 'stats', data: analysis });
       log(`analyze-file ok: ${filePath}`);
       return { success: true, data: analysis };

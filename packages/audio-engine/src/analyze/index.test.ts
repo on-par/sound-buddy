@@ -18,6 +18,7 @@ vi.mock("./spectrum.js", () => ({ runSpectrum: mocks.runSpectrumMock }));
 vi.mock("./ebur128.js", () => ({ runEbur128: mocks.runEbur128Mock }));
 
 import { analyzeAudio } from "./index.js";
+import { DEFAULT_SPECTRUM_SCRIPT } from "./spectrum-script.js";
 
 mocks.runSoxMock.mockResolvedValue(soxResult);
 mocks.runFfprobeMock.mockResolvedValue(ffprobeResult);
@@ -40,5 +41,13 @@ describe("analyzeAudio", () => {
     expect(analysis.sox).toEqual(soxResult);
     expect(analysis.ffprobe).toEqual(ffprobeResult);
     expect(analysis.spectrum).toEqual(spectrumResult);
+  });
+
+  it("injects DEFAULT_SPECTRUM_SCRIPT into runSpectrum when the caller passes no spectrum option", async () => {
+    await analyzeAudio("/tmp/take.wav");
+    expect(mocks.runSpectrumMock).toHaveBeenCalledWith(
+      "/tmp/take.wav",
+      expect.objectContaining({ scriptPath: DEFAULT_SPECTRUM_SCRIPT }),
+    );
   });
 });

@@ -108,6 +108,7 @@ describe('loadEngineParsers', () => {
     expect(typeof parsers.runSpectrum).toBe('function');
     expect(typeof parsers.runEbur128).toBe('function');
     expect(typeof parsers.parseEbur128Summary).toBe('function');
+    expect(typeof parsers.analyzeAudio).toBe('function');
   });
 
   it('memoizes — returns the same object identity on a second call', () => {
