@@ -10,7 +10,6 @@ Sound Buddy is a Mac (Electron) desktop app for church audio engineers. It analy
 - `packages/shared` — shared TypeScript types
 - `packages/scene-inspector` — M32R .scn scene file parser and diff
 - `packages/audio-engine` — core audio analysis (sox, ffprobe, librosa spectrum)
-- `packages/ai-analyst` — Claude/Ollama API integration for AI insights
 - `packages/cli` — `buddy` CLI tool
 - `app/` — Electron desktop app (not a workspace member, has its own package.json)
 

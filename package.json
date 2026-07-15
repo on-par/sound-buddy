@@ -6,7 +6,7 @@
     "packages/*"
   ],
   "scripts": {
-    "build": "npm run build -w @sound-buddy/shared -w @sound-buddy/license-policy -w @sound-buddy/scene-inspector -w @sound-buddy/audio-engine -w @sound-buddy/ai-analyst -w @sound-buddy/cli",
+    "build": "npm run build -w @sound-buddy/shared -w @sound-buddy/license-policy -w @sound-buddy/scene-inspector -w @sound-buddy/audio-engine -w @sound-buddy/cli",
     "lint": "npm run lint --workspaces --if-present && npm run lint --prefix app && eslint . --max-warnings 0",
     "test": "npm run coverage",
     "coverage": "npm run coverage:deps && vitest run --coverage",

@@ -26,8 +26,8 @@ vi.mock('@sound-buddy/audio-engine', async (importOriginal) => {
   }
 })
 
-vi.mock('@sound-buddy/ai-analyst', () => ({
-  analyzeWithClaude: vi.fn(),
+vi.mock('./insights.js', () => ({
+  generateInsights: vi.fn(),
 }))
 
 vi.mock('node:fs', async (importOriginal) => {
@@ -45,7 +45,7 @@ import {
   formatMultiChannelReport,
   cleanupChannelFiles,
 } from '@sound-buddy/audio-engine'
-import { analyzeWithClaude } from '@sound-buddy/ai-analyst'
+import { generateInsights } from './insights.js'
 import { runAnalyze } from './analyze.js'
 
 const mockAnalysis: AudioAnalysis = {
@@ -159,7 +159,7 @@ beforeEach(() => {
   vi.mocked(analyzeAudio).mockResolvedValue(mockAnalysis)
   vi.mocked(compareChannels).mockReturnValue(emptyComparison as never)
   vi.mocked(formatMultiChannelReport).mockReturnValue('mock multi-channel report')
-  vi.mocked(analyzeWithClaude).mockResolvedValue(mockInsights)
+  vi.mocked(generateInsights).mockResolvedValue(mockInsights)
 })
 
 describe('buddy analyze — single file', () => {
@@ -224,7 +224,7 @@ describe('buddy analyze — single file', () => {
   it('does not call the AI pass in --json mode', async () => {
     const t = capture()
     await runAnalyze('/tmp/mix.wav', { json: true }, t.io)
-    expect(analyzeWithClaude).not.toHaveBeenCalled()
+    expect(generateInsights).not.toHaveBeenCalled()
   })
 })
 
@@ -329,8 +329,8 @@ describe('buddy analyze — scene diff', () => {
     const t = capture()
     await runAnalyze('/tmp/mix.wav', { scenes: ['before.scn', 'after.scn'] }, t.io) // AI on
 
-    expect(analyzeWithClaude).toHaveBeenCalledWith(expect.objectContaining({ diff: mockDiff }))
-    const input = vi.mocked(analyzeWithClaude).mock.calls[0][0]
+    expect(generateInsights).toHaveBeenCalledWith(expect.objectContaining({ diff: mockDiff }), undefined)
+    const input = vi.mocked(generateInsights).mock.calls[0][0]
     expect(input.audio?.channels).toHaveLength(1)
   })
 })
@@ -340,7 +340,7 @@ describe('buddy analyze — AI insights', () => {
     const t = capture()
     await runAnalyze('/tmp/mix.wav', {}, t.io)
 
-    expect(analyzeWithClaude).toHaveBeenCalled()
+    expect(generateInsights).toHaveBeenCalled()
     const combined = t.out.join('\n')
     expect(combined).toContain('AI Insights')
     expect(combined).toContain('CH1 fader increase may cause mix buildup')
@@ -350,12 +350,12 @@ describe('buddy analyze — AI insights', () => {
     const t = capture()
     await runAnalyze('/tmp/mix.wav', { noAi: true }, t.io)
 
-    expect(analyzeWithClaude).not.toHaveBeenCalled()
+    expect(generateInsights).not.toHaveBeenCalled()
     expect(t.out.join('\n')).not.toContain('AI Insights')
   })
 
   it('keeps measurements when the AI pass throws', async () => {
-    vi.mocked(analyzeWithClaude).mockRejectedValue(new Error('Not implemented'))
+    vi.mocked(generateInsights).mockRejectedValue(new Error('Not implemented'))
     const t = capture()
     await runAnalyze('/tmp/mix.wav', {}, t.io)
 
