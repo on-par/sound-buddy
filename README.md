@@ -84,7 +84,7 @@ With nothing configured, the panel shows a hint and the rest of the app is unaff
 
 ```bash
 npm run build    # build all packages
-npm test         # run all unit tests (Vitest)
+npm test         # all unit tests + unified coverage report (alias of `coverage`)
 npm run coverage # unified coverage report → ./coverage/
 npm run lint     # typecheck + ESLint (zero warnings)
 ```

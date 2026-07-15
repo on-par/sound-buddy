@@ -60,7 +60,12 @@ npm run build
 echo "==> lint (workspaces + app tsc)"
 npm run lint
 
-echo "==> test (unit, all workspaces)"
+# `npm test` is the root aggregated coverage run (#438): vitest projects over
+# packages/* + app + worker (skipping projects whose deps aren't installed),
+# writing one merged report (incl. Cobertura XML) to ./coverage. Its
+# coverage:deps preflight best-effort-installs the app/worker roots, so on a
+# --fast run with a clean tree this step may install them anyway.
+echo "==> test (unit, aggregated coverage — packages + app + worker)"
 npm test
 
 # The Electron app is not an npm workspace, so its Vitest suite (settings, IPC

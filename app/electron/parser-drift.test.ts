@@ -150,6 +150,13 @@ describe.skipIf(!LIBROSA_PYTHON)('spectrum parser: app copy === audio-engine cop
   // fields must be identical. We compare the scalar analysis fields (the seven
   // bands + centroid/rolloff/dynamic range + content type) — not the large
   // frames/segments arrays, which are explicitly out of scope for #150.
+  //
+  // spectrum.py's cold librosa import alone can exceed vitest's 5 s default
+  // on a fresh CI runner — worse under the root aggregated coverage run
+  // (#438), where audio-engine's spectrum tests compete for the same
+  // interpreter. Same headroom as audio-engine's fixtures.test.ts.
+  const SPECTRUM_TIMEOUT = 60_000;
+
   const core = (s: Awaited<ReturnType<typeof engSpectrum>>) => ({
     bands: s.bands,
     spectralCentroid: s.spectralCentroid,
@@ -161,7 +168,7 @@ describe.skipIf(!LIBROSA_PYTHON)('spectrum parser: app copy === audio-engine cop
   it.each([
     ['tone.wav', () => TONE],
     ['silence.wav', () => SILENCE],
-  ])('%s produces identical band + scalar values', async (_name, file) => {
+  ])('%s produces identical band + scalar values', { timeout: SPECTRUM_TIMEOUT }, async (_name, file) => {
     const [a, e] = await Promise.all([
       appSpectrum(file()),
       engSpectrum(file(), { scriptPath: SPECTRUM_SCRIPT }),

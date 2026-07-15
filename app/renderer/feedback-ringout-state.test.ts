@@ -62,6 +62,7 @@ const {
   getProfile,
   saveProfile,
   deleteProfile,
+  formatCut,
   stepHtml,
   suggestionHtml,
   profileRowHtml,
@@ -93,6 +94,7 @@ const {
   getProfile: (profiles: Profiles, mic: string) => Profile | null;
   saveProfile: (storage: unknown, profiles: Profiles, profile: Profile) => Profiles;
   deleteProfile: (storage: unknown, profiles: Profiles, mic: string) => Profiles;
+  formatCut: (cut: Cut) => string;
   stepHtml: (index: number, escapeHtml: (s: unknown) => string) => string;
   suggestionHtml: (cut: Cut | null, escapeHtml: (s: unknown) => string) => string;
   profileRowHtml: (profile: Profile, escapeHtml: (s: unknown) => string) => string;
@@ -356,6 +358,14 @@ describe('stepHtml', () => {
     const html = stepHtml(2, escapeHtml);
     expect(html).toContain('Capture the ringing frequency');
     expect(html).toContain('Step 3 of 6');
+  });
+});
+
+describe('formatCut', () => {
+  it('produces plain text with no markup (safe for textContent status lines)', () => {
+    const text = formatCut({ freq: 3150, gainDb: -6, q: 6 });
+    expect(text).toBe('Cut 3.15 kHz · -6 dB · Q 6.0');
+    expect(text).not.toContain('<');
   });
 });
 

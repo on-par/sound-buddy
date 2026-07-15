@@ -53,13 +53,28 @@ jobs:
       - name: Build
         run: npm run build
 
+      # The aggregated coverage run (`npm test` below) includes the worker
+      # project only when its deps are installed; its coverage:deps preflight
+      # installs them best-effort and skips worker on failure. Install them
+      # explicitly here so worker's inclusion in the merged report is
+      # deterministic in CI, not subject to a silent skip. Must run after
+      # Build: worker's `file:` dep on @sound-buddy/license-policy needs its
+      # dist/ to exist at install time.
+      - name: Install worker dependencies
+        run: npm ci --prefix worker
+
       - name: Build app
         run: npm run build --prefix app
 
       - name: Lint
         run: npm run lint
 
-      - name: Test
+      # `npm test` is the root aggregated coverage run (#438): a vitest
+      # projects run over packages/* + app + worker that writes one merged
+      # report (incl. Cobertura XML) to ./coverage — the artifact external
+      # repo scanners read when judging test posture. Ungated: no thresholds;
+      # the ratchet gate is the "Test coverage (gated)" step below.
+      - name: Test (aggregated coverage)
         run: npm test
 
       - name: Test app (Vitest — settings/IPC + parser drift guard)
@@ -70,11 +85,17 @@ jobs:
       # the build if coverage drops below the floor. The upload still runs on
       # failure (`if: always()`) so the HTML report is downloadable to inspect
       # what regressed. Raise the floors in the configs as coverage grows.
-      # Re-runs the same suites as the Test steps above with --coverage; the
-      # redundancy is intentional so a clean test pass and the coverage gate
-      # stay independent signals.
+      # Re-runs the same suites as the Test steps above with per-package
+      # --coverage; the redundancy is intentional so a clean test pass and the
+      # coverage gate stay independent signals. (This fan-out lived in a root
+      # `test:coverage` script until #438 made `test` itself a coverage run;
+      # both halves run even if the first fails so every report uploads.)
       - name: Test coverage (gated)
-        run: npm run test:coverage
+        run: |
+          s=0
+          npm run test:coverage --workspaces --if-present || s=1
+          npm run test:coverage --prefix app || s=1
+          exit $s
 
       - name: Upload coverage reports
         if: always()
@@ -82,6 +103,7 @@ jobs:
         with:
           name: coverage
           path: |
+            coverage/
             packages/*/coverage/
             app/coverage/
           if-no-files-found: ignore
@@ -203,8 +225,8 @@ jobs:
       # few points below the current baseline, so this step fails the build if
       # coverage drops below the floor. Re-runs the same suite as the Verify
       # step above with --coverage; the redundancy mirrors the root workflow's
-      # test / test:coverage split, keeping a clean pass and the coverage gate
-      # as independent signals.
+      # test / gated-coverage split, keeping a clean pass and the coverage
+      # gate as independent signals.
       - name: Test coverage (gated)
         run: npm run test:coverage
 
