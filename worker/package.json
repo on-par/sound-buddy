@@ -15,7 +15,7 @@
     "test:e2e:sandbox": "node --env-file=../.env.local scripts/e2e-sandbox.mjs"
   },
   "devDependencies": {
-    "@cloudflare/workers-types": "^5.20260711.1",
+    "@cloudflare/workers-types": "^5.20260714.1",
     "@types/node": "^26.1.1",
     "@vitest/coverage-v8": "^4.1.10",
     "typescript": "^5.6.0",
