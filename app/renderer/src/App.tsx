@@ -2,6 +2,7 @@
 // Licensed under the Sound Buddy Desktop Application License (app/LICENSE).
 
 import { useLayoutEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import {
   PROFILES as AE_PROFILES,
   GRID_FREQS as AE_GRID_FREQS,
@@ -32,6 +33,9 @@ import preflightSrc from '../preflight.js?raw';
 import feedbackRingoutSrc from '../feedback-ringout-state.js?raw';
 import gradeOwnStateSrc from '../grade-own-state.js?raw';
 import inlineAppSrc from './inline-app.js?raw';
+import LicensePanel from './LicensePanel';
+import SettingsPanel from './SettingsPanel';
+import { installStoreBridge } from './stores/bridge';
 
 // Boot scripts in their original document order (#303): the 18 UMD helpers
 // (each attaches to `window`, see the classic-script comment above their old
@@ -72,8 +76,9 @@ export default function App() {
   // (the banners, #header, #stage, …) rely on being direct flex items, so
   // the markup is set via imperative innerHTML on #root itself rather than
   // returned as JSX — a JSX-rendered wrapper div would break that layout by
-  // inserting an extra flex item. App renders nothing through React; it only
-  // drives #root imperatively, once.
+  // inserting an extra flex item. App drives #root imperatively, once; the
+  // only JSX it returns are the two license/settings islands portaled onto
+  // their static index.html nodes (TD-001 slice 3, #421) — see below.
   useLayoutEffect(() => {
     if (booted.current) return;
     booted.current = true;
@@ -88,6 +93,9 @@ export default function App() {
     (window as Window & { spectrumDisplay?: unknown }).spectrumDisplay = spectrumDisplay;
     (window as Window & { reportCard?: unknown }).reportCard = reportCard;
     (window as Window & { liveCapturePanel?: unknown }).liveCapturePanel = liveCapturePanel;
+    // Installed before the boot scripts run — inline-app.js reads
+    // window.rendererStores at its top level (TD-001 slice 3, #421).
+    installStoreBridge();
     for (const src of BOOT_SCRIPTS) {
       const script = document.createElement('script');
       script.textContent = src;
@@ -95,5 +103,16 @@ export default function App() {
     }
   }, []);
 
-  return null;
+  // #license-island and #settings-island are static nodes in index.html (see
+  // its comments), so they exist at this first render — no ready-flag guard
+  // needed. The panels' own mount effects (passive useEffect) run after this
+  // layout effect commits, i.e. after the boot scripts install their store
+  // subscribers — safe either order, since subscribers only fire on a
+  // subsequent store change, not on mount.
+  return (
+    <>
+      {createPortal(<LicensePanel />, document.getElementById('license-island')!)}
+      {createPortal(<SettingsPanel />, document.getElementById('settings-island')!)}
+    </>
+  );
 }

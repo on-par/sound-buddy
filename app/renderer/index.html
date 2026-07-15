@@ -15,69 +15,10 @@
 
 
 <!-- AI provider settings (#76). One screen, two paths: local Ollama (default)
-     or a pasted API key. The key goes renderer → main once and never back. -->
-<div id="ai-dialog" class="rig-dialog" style="display:none" role="dialog" aria-modal="true" aria-labelledby="ai-dialog-title">
-  <div class="rig-dialog-card ai-dialog-card">
-    <div class="rig-dialog-title" id="ai-dialog-title">AI Engineer</div>
-    <div class="ai-dialog-sub">Works with the AI you already have — use your local Ollama, or paste a key you already pay for.</div>
-    <div class="ai-tabs" role="tablist">
-      <button type="button" class="ai-tab active" id="ai-tab-btn-ollama" role="tab" aria-selected="true">I have Ollama</button>
-      <button type="button" class="ai-tab" id="ai-tab-btn-hosted" role="tab" aria-selected="false">I have an API key</button>
-    </div>
-    <div class="ai-tabpane" id="ai-tab-ollama">
-      <label class="ai-field">
-        <span class="ai-field-label">Endpoint</span>
-        <input type="text" id="ai-ollama-host" class="rig-dialog-input" placeholder="http://localhost:11434" autocomplete="off" spellcheck="false" />
-      </label>
-      <div class="ai-status" id="ai-ollama-status">Looking for Ollama…</div>
-      <label class="ai-field">
-        <span class="ai-field-label">Model</span>
-        <div class="select-wrap">
-          <select id="ai-ollama-model" aria-label="Ollama model"></select>
-          <span class="select-caret" data-icon="chevron-down"></span>
-        </div>
-      </label>
-    </div>
-    <div class="ai-tabpane" id="ai-tab-hosted" style="display:none">
-      <label class="ai-field">
-        <span class="ai-field-label">Provider</span>
-        <div class="select-wrap">
-          <select id="ai-provider" aria-label="Provider">
-            <option value="openai">OpenAI</option>
-            <option value="anthropic">Anthropic</option>
-            <option value="google">Google</option>
-            <option value="custom">Custom (OpenAI-compatible)</option>
-          </select>
-          <span class="select-caret" data-icon="chevron-down"></span>
-        </div>
-      </label>
-      <label class="ai-field" id="ai-baseurl-field" style="display:none">
-        <span class="ai-field-label">Base URL</span>
-        <input type="text" id="ai-base-url" class="rig-dialog-input" placeholder="https://my-endpoint.example.com" autocomplete="off" spellcheck="false" />
-      </label>
-      <label class="ai-field">
-        <span class="ai-field-label">API key</span>
-        <input type="password" id="ai-api-key" class="rig-dialog-input" placeholder="Paste your API key" autocomplete="off" spellcheck="false" />
-      </label>
-      <label class="ai-field">
-        <span class="ai-field-label">Model</span>
-        <input type="text" id="ai-hosted-model" class="rig-dialog-input" placeholder="gpt-4o-mini" autocomplete="off" spellcheck="false" list="ai-hosted-model-list" />
-        <datalist id="ai-hosted-model-list"></datalist>
-      </label>
-    </div>
-    <div class="ai-test-row">
-      <button type="button" id="ai-test-btn" class="btn btn-secondary sm">Test connection</button>
-      <span class="ai-status" id="ai-test-result" role="status"></span>
-    </div>
-    <label class="ai-enable-row"><input type="checkbox" id="ai-enable-toggle" />Enable AI analysis</label>
-    <div class="rig-dialog-actions">
-      <button type="button" id="ai-dialog-cancel" class="btn btn-secondary sm">Cancel</button>
-      <button type="button" id="ai-dialog-save" class="btn btn-primary sm">Save</button>
-    </div>
-    <p class="ai-dialog-note">Your audio never leaves your machine — analysis runs on-device, and only the measurements go to the provider you choose.</p>
-    <p class="ai-dialog-version" id="ai-dialog-version"></p>
-  </div>
-</div>
+     or a pasted API key. The key goes renderer → main once and never back.
+     Mounted by SettingsPanel.tsx (TD-001 slice 3, #421) via a React portal
+     into this static node — see App.tsx. -->
+<div id="settings-island"></div>
 
 <!-- Feedback dialog (#144). "Attach diagnostics" reveals the persistent log
      file in Finder so the user can drag it into the email themselves — a
@@ -216,21 +157,10 @@
 
 <!-- License entry/status dialog (#54) — opened from the header badge, the
      Help ▸ License… menu item, and every "Upgrade" link. Validation is fully
-     offline (Ed25519 signature in the main process); no network call, ever. -->
-<div id="license-dialog" class="rig-dialog" style="display:none" role="dialog" aria-modal="true" aria-labelledby="license-dialog-title">
-  <div class="rig-dialog-card">
-    <div class="rig-dialog-title" id="license-dialog-title">License</div>
-    <div class="lic-status" id="license-dialog-status">Free tier — full report card included.</div>
-    <input type="text" id="license-key-input" class="rig-dialog-input" placeholder="Paste your license key (SB1.…)" autocomplete="off" spellcheck="false" />
-    <div class="lic-status err" id="license-dialog-error" style="display:none" role="alert"></div>
-    <div class="rig-dialog-actions">
-      <button type="button" id="license-refresh-btn" class="btn btn-secondary sm" style="display:none">Refresh license</button>
-      <button type="button" id="license-remove-btn" class="btn btn-secondary sm" style="display:none">Remove key</button>
-      <button type="button" id="license-close-btn" class="btn btn-secondary sm">Close</button>
-      <button type="button" id="license-activate-btn" class="btn btn-primary sm">Activate</button>
-    </div>
-  </div>
-</div>
+     offline (Ed25519 signature in the main process); no network call, ever.
+     Mounted by LicensePanel.tsx (TD-001 slice 3, #421) via a React portal
+     into this static node — see App.tsx. -->
+<div id="license-island"></div>
 
 <script type="module" src="/src/main.tsx"></script>
 </body>

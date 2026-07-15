@@ -18,12 +18,12 @@ const LOCKED = [
   {
     phrase: 'Works with the AI you already have',
     required: [
-      'site/src/pages/index.astro', // landing — trust section
-      'app/renderer/index.html',    // app — AI provider settings
-      'README.md',                  // docs — architecture overview
+      'site/src/pages/index.astro',        // landing — trust section
+      'app/renderer/src/SettingsPanel.tsx', // app — AI provider settings (TD-001 slice 3, #421: moved out of index.html's static markup into this React island)
+      'README.md',                          // docs — architecture overview
     ],
     forbidden: [
-      { text: 'Works with your existing AI', in: ['site/src/pages/index.astro', 'app/renderer/index.html'] },
+      { text: 'Works with your existing AI', in: ['site/src/pages/index.astro', 'app/renderer/src/SettingsPanel.tsx'] },
     ],
   },
   {
