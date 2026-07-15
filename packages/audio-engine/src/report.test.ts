@@ -110,6 +110,18 @@ function makeComparison(overrides: Partial<ChannelComparison> = {}): ChannelComp
   };
 }
 
+describe("buildReport — non-normative observations disclaimer (TD-013, #407)", () => {
+  it("labels the computed observations as non-normative (not the grade)", () => {
+    const report = buildReport(makeAnalysis());
+    const obsIdx = report.indexOf("[ COMPUTED OBSERVATIONS ]");
+    expect(obsIdx).toBeGreaterThan(-1);
+    // Disclaimer appears, and appears inside the observations section.
+    const noteIdx = report.indexOf("NOT the report-card grade");
+    expect(noteIdx).toBeGreaterThan(obsIdx);
+    expect(report).toContain("authoritative pass/fail judgment");
+  });
+});
+
 describe("buildReport — content type (PRD 04)", () => {
   it("surfaces the detected content type in the observations", () => {
     expect(buildReport(makeAnalysis({ contentType: "speech" }))).toContain("Content type: Speech");

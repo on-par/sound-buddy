@@ -2,6 +2,20 @@ import type { AudioAnalysis, ChannelAnalysis, ChannelComparison, ContentType } f
 import { assessChannelGain, assessGainStructure, gainHealthLabel, GAIN_TARGET_DBFS, GAIN_TOLERANCE_DB } from "./analyze/gain-structure.js";
 import { formatChannelTable } from "./bands.js";
 
+/**
+ * The `[ COMPUTED OBSERVATIONS ]` block below is NON-NORMATIVE descriptive prose
+ * emitted by the CLI text report. It is NOT the product grade. The authoritative
+ * pass/fail judgment — letter grade, score, status pills, recommendations — lives
+ * in `app/renderer/grading.js` (its CONFIG is the single source of truth, #131).
+ * These observations may phrase or threshold things differently on purpose (a
+ * plain-language diagnostic vs. a graded verdict); when they disagree, the app
+ * report card wins. Do NOT copy grading thresholds here or vice-versa — that is
+ * the dual-judgment trap TD-013 (#407) closes.
+ */
+const OBSERVATIONS_NON_NORMATIVE_NOTE =
+  "(Descriptive engineering notes — NOT the report-card grade. " +
+  "The Sound Buddy app's report card is the authoritative pass/fail judgment.)";
+
 /** Human label for a detected content type (PRD 04). */
 function contentTypeLabel(ct: ContentType): string {
   switch (ct) {
@@ -137,6 +151,7 @@ export function buildReport(analysis: AudioAnalysis): string {
 
   // --- Computed Observations ---
   lines.push("[ COMPUTED OBSERVATIONS ]");
+  lines.push(`  ${OBSERVATIONS_NON_NORMATIVE_NOTE}`);
 
   // Content type (PRD 04) — drives the content-aware thresholds below.
   const contentType = spectrum.contentType;
