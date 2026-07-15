@@ -7,10 +7,7 @@ import {
 import * as http from "http";
 import type { AudioAnalysis, ChannelAnalysis, ChannelComparison } from "./types.js";
 import type { WindowData } from "./stream/types.js";
-
-const SYSTEM_PROMPT = `You are a professional audio engineer with 20+ years of experience. You are given acoustic measurement data for an audio file. Analyze it deeply: identify EQ imbalances, dynamic range issues, potential mastering problems, stereo image concerns, and anything else a trained ear would flag. Be specific, reference the actual numbers, and give actionable recommendations.`;
-
-const MULTI_CHANNEL_SYSTEM_PROMPT = `You are a professional mixing engineer analyzing a multi-track recording from a Midas M32R console. Given the acoustic measurements of each channel and the full mix, identify: frequency masking between channels, problematic EQ buildups, channels that need low-cut or high-cut filters, channels competing in the same frequency range, and give specific actionable EQ/dynamics recommendations per channel. Reference actual dB values.`;
+import { SYSTEM_PROMPT, MULTI_CHANNEL_SYSTEM_PROMPT } from "./prompts/index.js";
 
 export function fmt(n: number, decimals = 2): string {
   return isFinite(n) ? n.toFixed(decimals) : "-inf";

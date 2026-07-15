@@ -57,6 +57,10 @@ export type { ChannelGainHealth, GainStructureReport, GainStatus } from "./analy
 export { toAnalysisSummary, toChannelResult } from "./summary.js";
 export type { AudioAnalysisResult, ChannelResult } from "@sound-buddy/shared";
 
+// Shared AI system prompts (TD-004 slice 2, #426): single source of truth
+// for the three prompts previously duplicated across audio-engine/ai-analyst.
+export { SYSTEM_PROMPT, MULTI_CHANNEL_SYSTEM_PROMPT, ANALYST_SYSTEM_PROMPT } from "./prompts/index.js";
+
 function cleanup(chFiles: ChannelFile[]): void {
   for (const ch of chFiles) {
     if (ch.needsCleanup) {

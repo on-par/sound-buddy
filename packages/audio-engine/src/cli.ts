@@ -11,6 +11,7 @@ import { formatChannelTable } from "./bands.js";
 import { getEngineerRead, analyzeMultiChannel, analyzeWithOllama } from "./engineer.js";
 import { startLive } from "./stream/index.js";
 import { cleanupChannelFiles } from "./index.js";
+import { SYSTEM_PROMPT, MULTI_CHANNEL_SYSTEM_PROMPT } from "./prompts/index.js";
 import type { ChannelFile, ChannelAnalysis, AudioAnalysis } from "./types.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -239,7 +240,6 @@ async function runSingleFile(filePath: string, names: string[], ollama: boolean,
     console.log("");
     try {
       if (ollama) {
-        const SYSTEM_PROMPT = `You are a professional audio engineer with 20+ years of experience. You are given acoustic measurement data for an audio file. Analyze it deeply: identify EQ imbalances, dynamic range issues, potential mastering problems, stereo image concerns, and anything else a trained ear would flag. Be specific, reference the actual numbers, and give actionable recommendations.`;
         await analyzeWithOllama(report, SYSTEM_PROMPT, ollamaModel, ollamaHost);
       } else {
         await getEngineerRead(report);
@@ -291,7 +291,6 @@ async function runSingleFile(filePath: string, names: string[], ollama: boolean,
 
   try {
     if (ollama) {
-      const MULTI_CHANNEL_SYSTEM_PROMPT = `You are a professional mixing engineer analyzing a multi-track recording from a Midas M32R console. Given the acoustic measurements of each channel and the full mix, identify: frequency masking between channels, problematic EQ buildups, channels that need low-cut or high-cut filters, channels competing in the same frequency range, and give specific actionable EQ/dynamics recommendations per channel. Reference actual dB values.`;
       await analyzeWithOllama(formatMultiChannelReport(channelAnalyses, comparison), MULTI_CHANNEL_SYSTEM_PROMPT, ollamaModel, ollamaHost);
     } else {
       await analyzeMultiChannel(analysis, channelAnalyses, comparison);
@@ -350,7 +349,6 @@ async function runDirectory(dir: string, names: string[], ollama: boolean, ollam
 
   try {
     if (ollama) {
-      const MULTI_CHANNEL_SYSTEM_PROMPT = `You are a professional mixing engineer analyzing a multi-track recording from a Midas M32R console. Given the acoustic measurements of each channel and the full mix, identify: frequency masking between channels, problematic EQ buildups, channels that need low-cut or high-cut filters, channels competing in the same frequency range, and give specific actionable EQ/dynamics recommendations per channel. Reference actual dB values.`;
       await analyzeWithOllama(formatMultiChannelReport(channelAnalyses, comparison), MULTI_CHANNEL_SYSTEM_PROMPT, ollamaModel, ollamaHost);
     } else {
       await analyzeMultiChannel(null, channelAnalyses, comparison);

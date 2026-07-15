@@ -13,6 +13,7 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "0.91.1",
+    "@sound-buddy/audio-engine": "*",
     "@sound-buddy/shared": "*"
   },
   "devDependencies": {
