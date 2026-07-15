@@ -1,12 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk'
 import type { AnalystInput, Insight } from '@sound-buddy/shared'
-
-const SYSTEM_PROMPT = `You are an expert live sound engineer specializing in the Midas M32R digital mixing console.
-Analyze the provided audio measurements and/or scene changes and return actionable insights for the engineer.
-Reference actual dB values in your insights. Be specific about channel names.
-When returning structured insights, respond with a valid JSON array of insight objects matching this shape:
-{ type: string, channel?: string, message: string, severity: "info" | "warning" | "suggestion" }
-Return ONLY the JSON array, no prose wrapper.`
+import { ANALYST_SYSTEM_PROMPT } from '@sound-buddy/audio-engine'
 
 function getClient(): Anthropic {
   if (!process.env.ANTHROPIC_API_KEY) {
@@ -47,7 +41,7 @@ export async function analyzeWithClaude(input: AnalystInput): Promise<Insight[]>
   const response = await client.messages.create({
     model: 'claude-sonnet-4-6',
     max_tokens: 1024,
-    system: SYSTEM_PROMPT,
+    system: ANALYST_SYSTEM_PROMPT,
     messages: [{ role: 'user', content: buildPrompt(input) }],
   })
 
@@ -84,7 +78,7 @@ export async function analyzeWithClaudeStream(
   const stream = client.messages.stream({
     model: 'claude-sonnet-4-6',
     max_tokens: 1024,
-    system: SYSTEM_PROMPT,
+    system: ANALYST_SYSTEM_PROMPT,
     messages: [{ role: 'user', content: buildPrompt(input) }],
   })
 

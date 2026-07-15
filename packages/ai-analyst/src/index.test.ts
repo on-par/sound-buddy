@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import type { AudioAnalysisResult, SceneDiff } from '@sound-buddy/shared'
+import { ANALYST_SYSTEM_PROMPT } from '@sound-buddy/audio-engine'
 
 const mockCreate = vi.fn()
 const mockStream = vi.fn()
@@ -113,6 +114,7 @@ describe('analyzeWithClaude', () => {
         expect(typeof insight.channel).toBe('string')
       }
     }
+    expect(mockCreate.mock.calls[0][0].system).toBe(ANALYST_SYSTEM_PROMPT)
   })
 
   it('rejects with a handled ParseError when the model returns non-JSON', async () => {
@@ -220,5 +222,6 @@ describe('analyzeWithClaudeStream', () => {
     const accumulated = received.join('')
     expect(accumulated.length).toBeGreaterThan(0)
     expect(typeof accumulated).toBe('string')
+    expect(mockStream.mock.calls[0][0].system).toBe(ANALYST_SYSTEM_PROMPT)
   })
 })
