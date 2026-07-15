@@ -23,7 +23,7 @@ Sound Buddy is a Mac (Electron) desktop app for church audio engineers. It analy
 
 ```bash
 npm run build    # build all workspace packages
-npm test         # run all unit tests (40 tests across workspaces)
+npm test         # all unit tests + unified coverage report (alias of `coverage`)
 npm run lint     # typecheck all workspaces + app
 npm run coverage # unified coverage report (packages + app + worker) -> ./coverage
 npm run dev      # dev mode (CLI)

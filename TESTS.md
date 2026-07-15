@@ -11,9 +11,11 @@ Sound Buddy uses test-driven development with gated coverage ratchets.
 ## Running Tests
 
 ```bash
-npm test                    # all unit tests (workspaces + app)
-npm run test:coverage       # unit tests + per-package coverage gate
-npm run coverage            # unified coverage report → ./coverage/
+npm test                    # all unit tests + unified coverage report → ./coverage/
+npm run coverage            # same thing (`test` is an alias for it)
+npm run test:coverage -w <pkg>          # one package's suite + its coverage gate
+npm run test:coverage --workspaces --if-present && npm run test:coverage --prefix app
+                            # per-package coverage gates (what CI's gated step runs)
 npm run test:e2e            # Playwright e2e (headless)
 ```
 
@@ -21,7 +23,9 @@ npm run test:e2e            # Playwright e2e (headless)
 
 The root `vitest.config.ts` runs all workspace packages + the Electron app + the Cloudflare
 Worker in projects mode and merges results into a single `./coverage/` directory with
-`lcov`, `json-summary`, and `text` reporters.
+`lcov`, `json-summary`, `cobertura`, and `text` reporters. `npm test` runs this aggregated
+coverage run (#438) so external repo scanners always find a Cobertura report at
+`./coverage/cobertura-coverage.xml` after a plain root test run.
 
 Each package's `vitest.config.ts` has **gated threshold ratchets** — CI fails if coverage
 drops below the floor. Thresholds are set a few points below the current baseline and get
