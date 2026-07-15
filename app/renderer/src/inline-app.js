@@ -2673,7 +2673,7 @@ document.getElementById('ringout-capture').addEventListener('click', async () =>
     }
 
     ringoutCut = ro.suggestCut(ring.freq);
-    ringoutSetStatus(`Captured ${ro.suggestionHtml(ringoutCut, escapeHtml).replace(/<[^>]+>/g, '')}.`);
+    ringoutSetStatus(`Captured ${ro.formatCut(ringoutCut)}.`);
     renderRingout();
   } finally {
     btn.disabled = false;

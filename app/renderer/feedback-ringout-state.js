@@ -299,6 +299,7 @@
     getProfile: getProfile,
     saveProfile: saveProfile,
     deleteProfile: deleteProfile,
+    formatCut: formatCut,
     stepHtml: stepHtml,
     suggestionHtml: suggestionHtml,
     profileRowHtml: profileRowHtml,
