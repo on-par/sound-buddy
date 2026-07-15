@@ -43,7 +43,7 @@
     </div>
     <div class="header-div"></div>
     <div id="mode-tabs" role="tablist">
-      <button class="mode-tab" data-mode="dir" data-icon="folder">Directory</button>
+      <button class="mode-tab" data-mode="dir" data-icon="folder">Directory<span class="tab-soon">v1.1</span></button>
       <button class="mode-tab" data-mode="live" data-icon="radio">Live<span class="tab-lock" data-icon="lock" data-size="11"></span></button>
       <button class="mode-tab" data-mode="soundcheck" data-icon="sliders">Soundcheck<span class="tab-lock" data-icon="lock" data-size="11"></span></button>
       <button class="mode-tab" data-mode="recent" data-icon="clock">Recent</button>
@@ -71,21 +71,18 @@
     <aside id="source-panel" class="side-panel">
       <div class="panel-head"><span class="panel-title">Source</span></div>
       <div class="panel-body">
-        <!-- DIR -->
+        <!-- DIR — roadmap context, not a workflow (#293). Batch analysis is
+             deferred to v1.1; until it ships this tab must not present a
+             folder-drop + disabled-CTA dead end. The one action here is real:
+             it routes to the supported single-file path on Report Card. -->
         <div class="tab-content" id="tab-dir">
-          <div class="dropzone" id="dir-dropzone">
-            <div class="dz-icon" data-icon="folder"></div>
-            <div class="dz-body">
-              <span class="dz-title">Drop a folder here</span>
-              <span class="dz-hint">or click to browse</span>
-            </div>
+          <div class="roadmap-note" id="dir-roadmap">
+            <span class="rm-icon" data-icon="folder" data-size="22"></span>
+            <span class="rm-badge">Coming in v1.1</span>
+            <span class="rm-title">Batch analysis isn&rsquo;t here yet</span>
+            <span class="rm-msg">Directory mode will let you drop a folder of recordings and get a report card for every file in one pass. It&rsquo;s planned for v1.1. Until then, analyze recordings one at a time &mdash; same engine, same report card.</span>
+            <button type="button" class="btn btn-secondary" id="dir-goto-reportcard" data-icon="clipboard-check">Analyze a recording now</button>
           </div>
-          <div id="dir-info" style="display:none; flex-direction:column; gap:8px;">
-            <span class="section-label">Files</span>
-            <div class="dir-list" id="dir-file-list"></div>
-          </div>
-          <button class="btn btn-primary full" id="analyze-dir-btn" data-icon="waveform" disabled title="In-app multi-channel analysis is coming in v1.1">Analyze All</button>
-          <p class="dir-note dz-hint">In-app multi-channel analysis is coming in <strong>v1.1</strong>. For now, analyze a folder from the command line:<br><code class="dir-note-cmd">sound-buddy --dir "your/folder"</code></p>
         </div>
 
         <!-- LIVE -->
