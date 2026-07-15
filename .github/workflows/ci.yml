@@ -53,6 +53,16 @@ jobs:
       - name: Build
         run: npm run build
 
+      # The aggregated coverage run (`npm test` below) includes the worker
+      # project only when its deps are installed; its coverage:deps preflight
+      # installs them best-effort and skips worker on failure. Install them
+      # explicitly here so worker's inclusion in the merged report is
+      # deterministic in CI, not subject to a silent skip. Must run after
+      # Build: worker's `file:` dep on @sound-buddy/license-policy needs its
+      # dist/ to exist at install time.
+      - name: Install worker dependencies
+        run: npm ci --prefix worker
+
       - name: Build app
         run: npm run build --prefix app
 

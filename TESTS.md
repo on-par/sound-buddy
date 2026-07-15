@@ -15,7 +15,9 @@ npm test                    # all unit tests + unified coverage report → ./cov
 npm run coverage            # same thing (`test` is an alias for it)
 npm run test:coverage -w <pkg>          # one package's suite + its coverage gate
 npm run test:coverage --workspaces --if-present && npm run test:coverage --prefix app
-                            # per-package coverage gates (what CI's gated step runs)
+                            # per-package coverage gates; CI's gated step runs the same
+                            # two halves but continues to the app half even if the
+                            # workspaces half fails, so every report uploads
 npm run test:e2e            # Playwright e2e (headless)
 ```
 
