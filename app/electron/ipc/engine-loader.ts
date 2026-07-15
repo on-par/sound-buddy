@@ -25,6 +25,7 @@ type EngineFfprobe = typeof import('@sound-buddy/audio-engine/dist-cjs/analyze/f
 type EngineSpectrum = typeof import('@sound-buddy/audio-engine/dist-cjs/analyze/spectrum');
 type EngineEbur128 = typeof import('@sound-buddy/audio-engine/dist-cjs/analyze/ebur128');
 type EngineOrchestrate = typeof import('@sound-buddy/audio-engine/dist-cjs/analyze/orchestrate');
+type EngineExtract = typeof import('@sound-buddy/audio-engine/dist-cjs/analyze/extract');
 
 export function engineParsersDir(): string {
   if (app.isPackaged) {
@@ -41,6 +42,8 @@ export interface EngineParsers {
   runEbur128: EngineEbur128['runEbur128'];
   parseEbur128Summary: EngineEbur128['parseEbur128Summary'];
   analyzeAudio: EngineOrchestrate['analyzeAudio'];
+  isVideoFile: EngineExtract['isVideoFile'];
+  extractAudioToWav: EngineExtract['extractAudioToWav'];
 }
 
 let cachedParsers: EngineParsers | undefined;
@@ -58,6 +61,7 @@ export function loadEngineParsers(): EngineParsers {
     const spectrum: EngineSpectrum = req(path.join(dir, 'analyze', 'spectrum.js'));
     const ebur128: EngineEbur128 = req(path.join(dir, 'analyze', 'ebur128.js'));
     const orchestrate: EngineOrchestrate = req(path.join(dir, 'analyze', 'orchestrate.js'));
+    const extract: EngineExtract = req(path.join(dir, 'analyze', 'extract.js'));
 
     cachedParsers = {
       runSox: sox.runSox,
@@ -66,6 +70,8 @@ export function loadEngineParsers(): EngineParsers {
       runEbur128: ebur128.runEbur128,
       parseEbur128Summary: ebur128.parseEbur128Summary,
       analyzeAudio: orchestrate.analyzeAudio,
+      isVideoFile: extract.isVideoFile,
+      extractAudioToWav: extract.extractAudioToWav,
     };
     return cachedParsers;
   } catch (err) {

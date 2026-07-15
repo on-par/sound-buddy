@@ -25,6 +25,8 @@ const runFfprobeMock = vi.fn();
 const runSpectrumMock = vi.fn();
 const runEbur128Mock = vi.fn();
 const analyzeAudioMock = vi.fn();
+const isVideoFileMock = vi.fn();
+const extractAudioToWavMock = vi.fn();
 vi.mock('./engine-loader', () => ({
   loadEngineParsers: () => ({
     runSox: runSoxMock,
@@ -33,9 +35,14 @@ vi.mock('./engine-loader', () => ({
     runEbur128: runEbur128Mock,
     parseEbur128Summary: vi.fn(),
     analyzeAudio: analyzeAudioMock,
+    isVideoFile: isVideoFileMock,
+    extractAudioToWav: extractAudioToWavMock,
   }),
 }));
 
+import * as fs from 'fs';
+import * as path from 'path';
+import * as os from 'os';
 import { registerAnalysisHandlers, runSox, runFfprobe, runSpectrum, runEbur128 } from './analysis';
 import { toolBin, pythonBin, childEnv, SPECTRUM_SCRIPT } from './shared';
 
@@ -83,6 +90,8 @@ beforeEach(() => {
   runSpectrumMock.mockResolvedValue(SPECTRUM_STUB);
   runEbur128Mock.mockResolvedValue(LOUDNESS_STUB);
   analyzeAudioMock.mockResolvedValue(ANALYSIS_STUB);
+  isVideoFileMock.mockReturnValue(false);
+  extractAudioToWavMock.mockResolvedValue('/tmp/sb-extract-abc123.wav');
 });
 
 describe('analyze-file IPC handler', () => {
@@ -183,6 +192,93 @@ describe('analyze-file IPC handler', () => {
     const result = await handler({ sender }, { filePath: '/tmp/service.wav' });
 
     expect(result).toEqual({ success: false, error: 'Error: boom' });
+  });
+
+  describe('video pre-extraction', () => {
+    it('extracts audio and analyzes the extracted wav when the file is a video', async () => {
+      isVideoFileMock.mockReturnValue(true);
+      extractAudioToWavMock.mockResolvedValue('/tmp/sb-extract-abc123.wav');
+      const handler = handlers.get('analyze-file') as AnalyzeHandler;
+      const sender = fakeSender();
+
+      const result = await handler({ sender }, { filePath: '/tmp/service.mp4' });
+
+      expect(isVideoFileMock).toHaveBeenCalledWith('/tmp/service.mp4');
+      expect(extractAudioToWavMock).toHaveBeenCalledWith('/tmp/service.mp4', {
+        bin: toolBin('ffmpeg'),
+        signal: expect.any(AbortSignal),
+      });
+      expect(analyzeAudioMock).toHaveBeenCalledWith('/tmp/sb-extract-abc123.wav', expect.anything());
+      expect(result).toEqual({ success: true, data: ANALYSIS_STUB });
+    });
+
+    it('never calls extractAudioToWav for a non-video file', async () => {
+      isVideoFileMock.mockReturnValue(false);
+      const handler = handlers.get('analyze-file') as AnalyzeHandler;
+      const sender = fakeSender();
+
+      await handler({ sender }, { filePath: '/tmp/service.wav' });
+
+      expect(extractAudioToWavMock).not.toHaveBeenCalled();
+      expect(analyzeAudioMock).toHaveBeenCalledWith('/tmp/service.wav', expect.anything());
+    });
+
+    it('removes the extracted temp wav after a successful analysis', async () => {
+      const extractedPath = path.join(os.tmpdir(), 'sb-extract-cleanup-success.wav');
+      fs.writeFileSync(extractedPath, '');
+      isVideoFileMock.mockReturnValue(true);
+      extractAudioToWavMock.mockResolvedValue(extractedPath);
+      const handler = handlers.get('analyze-file') as AnalyzeHandler;
+      const sender = fakeSender();
+
+      await handler({ sender }, { filePath: '/tmp/service.mp4' });
+
+      expect(fs.existsSync(extractedPath)).toBe(false);
+    });
+
+    it('removes the extracted temp wav even when analyzeAudio fails', async () => {
+      const extractedPath = path.join(os.tmpdir(), 'sb-extract-cleanup-failure.wav');
+      fs.writeFileSync(extractedPath, '');
+      isVideoFileMock.mockReturnValue(true);
+      extractAudioToWavMock.mockResolvedValue(extractedPath);
+      analyzeAudioMock.mockRejectedValueOnce(new Error('boom'));
+      const handler = handlers.get('analyze-file') as AnalyzeHandler;
+      const sender = fakeSender();
+
+      const result = await handler({ sender }, { filePath: '/tmp/service.mp4' });
+
+      expect(result).toEqual({ success: false, error: 'Error: boom' });
+      expect(fs.existsSync(extractedPath)).toBe(false);
+    });
+
+    it('resolves { success: false, error } with the actionable message when extraction fails', async () => {
+      isVideoFileMock.mockReturnValue(true);
+      extractAudioToWavMock.mockRejectedValueOnce(
+        new Error('Could not extract an audio track from "service.mp4" — make sure the video has sound, or export the audio as a WAV and analyze that instead'),
+      );
+      const handler = handlers.get('analyze-file') as AnalyzeHandler;
+      const sender = fakeSender();
+
+      const result = await handler({ sender }, { filePath: '/tmp/service.mp4' });
+
+      expect(result).toEqual({
+        success: false,
+        error: 'Error: Could not extract an audio track from "service.mp4" — make sure the video has sound, or export the audio as a WAV and analyze that instead',
+      });
+      expect(analyzeAudioMock).not.toHaveBeenCalled();
+    });
+
+    it('resolves { success: false, cancelled: true } when extraction is aborted', async () => {
+      isVideoFileMock.mockReturnValue(true);
+      extractAudioToWavMock.mockRejectedValueOnce(abortError());
+      const handler = handlers.get('analyze-file') as AnalyzeHandler;
+      const sender = fakeSender();
+
+      const result = await handler({ sender }, { filePath: '/tmp/service.mp4' });
+
+      expect(result).toEqual({ success: false, cancelled: true });
+      expect(analyzeAudioMock).not.toHaveBeenCalled();
+    });
   });
 });
 

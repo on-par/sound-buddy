@@ -7,6 +7,8 @@ export const SPECTRUM_TIMEOUT_MS = 300_000;
 // ebur128 decodes the whole file with 4x true-peak oversampling; long service
 // recordings need the same headroom as the spectrum analysis.
 export const EBUR128_TIMEOUT_MS = 300_000;
+// Pre-extraction decodes a full video container to WAV; same scale as SPECTRUM/EBUR128.
+export const EXTRACT_TIMEOUT_MS = 300_000;
 
 const execFileAsync = promisify(execFile);
 

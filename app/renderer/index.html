@@ -96,31 +96,27 @@
   </div>
 </div>
 
-<!-- Guided path to grading a real service (#142). Entry point is the toolbar's
-     "Grade your own service" button, enabled in lockstep with Export PDF once a
-     report card has rendered. Never auto-opens — only shows on click, so it
-     can't cover the #69 welcome overlay or an e2e run. -->
+<!-- Actionable path to grading a real service (#295 rework of #142). Entry
+     point is the toolbar's "Grade your own service" button, enabled in
+     lockstep with Export PDF once a report card has rendered. A user who
+     already has a recording (or livestream video) picks it right from here
+     and lands directly in analysis; a user with nothing yet picks the
+     capture path that fits their setup. Never auto-opens — only shows on
+     click, so it can't cover the #69 welcome overlay or an e2e run. -->
 <div id="guide-dialog" class="rig-dialog" style="display:none" role="dialog" aria-modal="true" aria-labelledby="guide-dialog-title">
   <div class="rig-dialog-card guide-dialog-card">
     <div class="rig-dialog-title" id="guide-dialog-title">Grade your own service</div>
-    <div class="ai-dialog-sub">Recording a real service takes no special gear — pick whichever of these fits your setup.</div>
-    <div class="guide-list">
-      <div class="guide-item">
-        <span class="guide-item-num">1</span>
-        <span class="guide-item-text"><strong>Record to a USB stick on your console/mixer.</strong> Most digital mixers can record the main mix (or every channel) straight to a USB drive — start it before the service, stop it after, then drop the file in.</span>
-      </div>
-      <div class="guide-item">
-        <span class="guide-item-num">2</span>
-        <span class="guide-item-text"><strong>Capture on a laptop with a DAW or audio interface.</strong> Connect the board's output (or an interface) to a laptop and record into any DAW (or free tool); export a WAV/AIFF and analyze it.</span>
-      </div>
-      <div class="guide-item">
-        <span class="guide-item-num">3</span>
-        <span class="guide-item-text"><strong>Pull the audio from your livestream recording.</strong> If you already stream or record the service to video, extract the audio track from that file and grade it — no extra hardware at all.</span>
-      </div>
+    <div class="ai-dialog-sub">Start from what you already have — a recording, a livestream video, or neither.</div>
+    <div class="guide-have-file">
+      <div class="guide-have-file-heading">Already have a recording or livestream file?</div>
+      <button type="button" id="guide-choose-file" class="btn btn-primary" data-icon="file-audio">Choose a file to grade…</button>
+      <div class="guide-have-file-hint">wav · aif · aiff · flac · mp3 · ogg · m4a — or a video file; Sound Buddy grades its audio track. You can also drop a file on the Report Card anytime.</div>
     </div>
+    <div class="guide-need-capture-heading">Need to capture one first? Pick what fits your setup:</div>
+    <div class="guide-list" id="guide-paths"></div>
     <div class="rig-dialog-actions">
       <button type="button" id="guide-dialog-close" class="btn btn-secondary sm">Close</button>
-      <button type="button" id="guide-dialog-open-site" class="btn btn-primary sm" data-icon="external-link">Read the full guide</button>
+      <button type="button" id="guide-dialog-open-site" class="btn btn-secondary sm" data-icon="external-link">Read the full capture guide</button>
     </div>
   </div>
 </div>

@@ -14,6 +14,7 @@
     "src/analyze/ffprobe.ts",
     "src/analyze/spectrum.ts",
     "src/analyze/ebur128.ts",
+    "src/analyze/extract.ts",
     "src/analyze/orchestrate.ts",
     "src/analyze/timeout.ts",
     "src/types.ts"

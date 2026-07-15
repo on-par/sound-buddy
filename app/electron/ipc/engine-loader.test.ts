@@ -109,6 +109,14 @@ describe('loadEngineParsers', () => {
     expect(typeof parsers.runEbur128).toBe('function');
     expect(typeof parsers.parseEbur128Summary).toBe('function');
     expect(typeof parsers.analyzeAudio).toBe('function');
+    expect(typeof parsers.isVideoFile).toBe('function');
+    expect(typeof parsers.extractAudioToWav).toBe('function');
+  });
+
+  it('isVideoFile from the loaded module recognizes a video extension', () => {
+    const { isVideoFile } = loadEngineParsers();
+    expect(isVideoFile('/tmp/service.mp4')).toBe(true);
+    expect(isVideoFile('/tmp/service.wav')).toBe(false);
   });
 
   it('memoizes — returns the same object identity on a second call', () => {
