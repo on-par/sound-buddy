@@ -2,7 +2,7 @@
   "name": "@sound-buddy/shared",
   "version": "0.1.0",
   "license": "MIT",
-  "description": "Cross-package DTOs shared among the Sound Buddy TypeScript workspace packages (scene-inspector, ai-analyst, audio-engine, cli).",
+  "description": "Cross-package DTOs shared among the Sound Buddy TypeScript workspace packages (scene-inspector, audio-engine, cli).",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",

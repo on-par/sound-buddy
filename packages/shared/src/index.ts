@@ -1,5 +1,5 @@
 // Cross-package DTOs shared among the Sound Buddy TypeScript workspace packages
-// (scene-inspector, ai-analyst, audio-engine, cli). These are the flat,
+// (scene-inspector, audio-engine, cli). These are the flat,
 // serialization-safe shapes that cross package boundaries.
 //
 // Intentionally NOT consumed by app/ (a separately-bundled, proprietary Electron
@@ -77,7 +77,7 @@ export interface AnalystInput {
 
 /**
  * Flat, JSON/IPC-safe per-channel analysis summary. This is the boundary shape
- * consumed by ai-analyst and emitted to machine-readable output — deliberately a
+ * consumed by the CLI insights pass and emitted to machine-readable output — deliberately a
  * primitive-only subset of audio-engine's internal ChannelAnalysis. Produced by
  * audio-engine's toAnalysisSummary().
  */

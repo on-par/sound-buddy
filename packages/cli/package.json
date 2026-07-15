@@ -17,7 +17,6 @@
     "@sound-buddy/shared": "*",
     "@sound-buddy/scene-inspector": "*",
     "@sound-buddy/audio-engine": "*",
-    "@sound-buddy/ai-analyst": "*",
     "commander": "^12"
   },
   "devDependencies": {
