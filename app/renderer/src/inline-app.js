@@ -3801,8 +3801,9 @@ function sendFeedback() {
   });
 })();
 
-/* ══ Guided path to grading a real service (#142) ══ */
+/* ══ Actionable path to grading a real service (#142, reworked #295) ══ */
 function openGuideDialog() {
+  aiEl('guide-paths').innerHTML = window.gradeOwnState.pathsHtml(escapeHtml);
   aiEl('guide-dialog').style.display = 'flex';
 }
 
@@ -3810,15 +3811,40 @@ function closeGuideDialog() {
   aiEl('guide-dialog').style.display = 'none';
 }
 
+// Mirrors the onboarding "pick your own file" path (see runFirstAnalysis
+// above): no tab switch needed here since the CTA lives in the Report Card
+// toolbar, so the card is already on screen — a fresh analysis wins it by
+// the #147 priority rules.
+async function gradeOwnChooseFile() {
+  let fp;
+  try { fp = await sb.openFileDialog(); } catch { return; }
+  if (!fp) return;
+  closeGuideDialog();
+  loadFile(fp);
+  await runFileAnalysis(fp);
+}
+
 (() => {
   document.getElementById('grade-own-btn').addEventListener('click', openGuideDialog);
   aiEl('guide-dialog-close').addEventListener('click', closeGuideDialog);
+  aiEl('guide-choose-file').addEventListener('click', gradeOwnChooseFile);
   aiEl('guide-dialog-open-site').addEventListener('click', () => {
     // openCaptureGuide returns a Promise (ipcRenderer.invoke); swallow both a
     // synchronous throw (preload missing) and an async rejection so a failed
     // open never surfaces as an unhandled rejection (mirrors openCheckout).
     try { sb.openCaptureGuide()?.catch(() => {}); } catch { /* preload missing */ }
     closeGuideDialog();
+  });
+  aiEl('guide-paths').addEventListener('click', (e) => {
+    const btn = e.target.closest('[data-guide-path]');
+    if (!btn) return;
+    const action = window.gradeOwnState.ctaAction(btn.dataset.guidePath);
+    if (action === 'choose-file') {
+      gradeOwnChooseFile();
+    } else if (action === 'open-guide') {
+      try { sb.openCaptureGuide()?.catch(() => {}); } catch { /* preload missing */ }
+      closeGuideDialog();
+    }
   });
   aiEl('guide-dialog').addEventListener('click', (e) => { if (e.target === aiEl('guide-dialog')) closeGuideDialog(); });
   document.addEventListener('keydown', (e) => {

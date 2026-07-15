@@ -405,13 +405,18 @@
     .ai-dialog-sub { font:var(--fw-regular) var(--fs-label)/1.4 var(--font-sans); color:var(--text-secondary); margin-top:-6px; }
     .ai-dialog-note { font:var(--fw-regular) var(--fs-label)/1.4 var(--font-sans); color:var(--text-tertiary); margin:2px 0 0; }
     .ai-dialog-version { font:var(--fw-regular) var(--fs-micro)/1.4 var(--font-mono); color:var(--text-muted); margin:6px 0 0; text-align:center; }
-    /* "Grade your own service" guide dialog (#142) */
+    /* "Grade your own service" guide dialog (#142, actionable rework #295) */
     .guide-dialog-card { width:min(480px,calc(100vw - 48px)); }
+    .guide-have-file { display:flex; flex-direction:column; gap:8px; padding:14px; background:var(--surface); border:1px solid var(--border-subtle); border-radius:var(--radius-md); }
+    .guide-have-file-heading { font:var(--fw-semibold) var(--fs-body-sm)/1.4 var(--font-sans); color:var(--text-primary); }
+    .guide-have-file-hint { font:var(--fw-regular) var(--fs-label)/1.4 var(--font-sans); color:var(--text-tertiary); }
+    .guide-need-capture-heading { font:var(--fw-medium) var(--fs-label)/1.4 var(--font-sans); color:var(--text-secondary); margin-top:4px; }
     .guide-list { display:flex; flex-direction:column; gap:10px; }
     .guide-item { display:flex; gap:12px; padding:12px 14px; background:var(--surface); border:1px solid var(--border-subtle); border-radius:var(--radius-md); }
     .guide-item-num { flex-shrink:0; width:22px; height:22px; display:flex; align-items:center; justify-content:center; border-radius:50%; background:var(--gold-tint); color:var(--gold-text); font:var(--fw-semibold) var(--fs-label)/1 var(--font-sans); }
     .guide-item-text { font:var(--fw-regular) var(--fs-body-sm)/1.5 var(--font-sans); color:var(--text-secondary); }
     .guide-item-text strong { color:var(--text-primary); font-weight:var(--fw-semibold); }
+    .guide-item-cta { align-self:flex-start; margin:-4px 0 0 34px; }
     /* Doubling/Phase Bug Detector (#370): Report Card launch callout + guided
        checklist dialog. .detected uses the same issue-accent tone as
        statusPillHTML's issue pill so the emphasized state reads consistently

@@ -30,9 +30,10 @@ import passModeStateSrc from '../pass-mode-state.js?raw';
 import phaseDoublingStateSrc from '../phase-doubling-state.js?raw';
 import preflightSrc from '../preflight.js?raw';
 import feedbackRingoutSrc from '../feedback-ringout-state.js?raw';
+import gradeOwnStateSrc from '../grade-own-state.js?raw';
 import inlineAppSrc from './inline-app.js?raw';
 
-// Boot scripts in their original document order (#303): the 13 UMD helpers
+// Boot scripts in their original document order (#303): the 18 UMD helpers
 // (each attaches to `window`, see the classic-script comment above their old
 // <script src> tags in index.html), then the inline app script that wires up
 // the UI and reads those globals. Ported verbatim — see the source files.
@@ -54,6 +55,7 @@ const BOOT_SCRIPTS = [
   phaseDoublingStateSrc,
   preflightSrc,
   feedbackRingoutSrc,
+  gradeOwnStateSrc,
   inlineAppSrc,
 ];
 
