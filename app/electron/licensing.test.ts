@@ -16,7 +16,7 @@ const hasMonorepo = fs.existsSync(path.join(repoRoot, 'packages'));
 const read = (...parts: string[]) => fs.readFileSync(path.join(repoRoot, ...parts), 'utf8');
 const readPkg = (...parts: string[]) => JSON.parse(read(...parts, 'package.json'));
 
-const MIT_PACKAGES = ['shared', 'scene-inspector', 'audio-engine', 'ai-analyst', 'cli'];
+const MIT_PACKAGES = ['shared', 'scene-inspector', 'audio-engine', 'ai-analyst', 'cli', 'license-policy'];
 const MIT_GRANT = 'Permission is hereby granted, free of charge';
 
 describe('app/ proprietary license', () => {

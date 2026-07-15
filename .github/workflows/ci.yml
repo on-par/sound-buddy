@@ -120,6 +120,9 @@ jobs:
   # The Stripe / licensing API Worker (worker/, #107) is a standalone package
   # like site/ — not an npm workspace and not coupled to the app/ or site/
   # builds. It verifies independently: tsc typecheck → vitest routing tests.
+  # One cross-package dependency as of TD-006 (#400): @sound-buddy/license-policy
+  # via a `file:` dependency on its ESM dist/, built from the repo root below
+  # before this job's own `npm ci` resolves it.
   worker:
     runs-on: ubuntu-latest
     defaults:
@@ -133,6 +136,16 @@ jobs:
           node-version: '22'
           cache: 'npm'
           cache-dependency-path: worker/package-lock.json
+
+      # @sound-buddy/license-policy (TD-006, #400) is consumed via a `file:`
+      # dependency on its ESM dist/ (gitignored, not committed) — build it
+      # from the repo root before `npm ci` here, or the file: install ships a
+      # dist-less package and every import in license-sign.ts fails to resolve.
+      - name: Build @sound-buddy/license-policy
+        working-directory: ${{ github.workspace }}
+        run: |
+          npm ci
+          npm run build -w @sound-buddy/license-policy
 
       - name: Install dependencies
         run: npm ci

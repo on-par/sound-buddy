@@ -33,6 +33,12 @@ import * as path from 'path';
 import { createPublicKey, verify as cryptoVerify, KeyObject } from 'crypto';
 import { app } from 'electron';
 import { logWarn } from './logger';
+import { loadLicensePolicy } from './license-policy-loader';
+
+// Loaded eagerly (not lazily, unlike ipc/engine-loader) because GRACE_DAYS/
+// DAY_MS below are re-exported as static values consumed by
+// license-refresh.ts and this module's own test suite.
+const policy = loadLicensePolicy();
 
 /**
  * DEV public key — the production signing keypair replaces this before
@@ -45,27 +51,15 @@ const EMBEDDED_PUBLIC_KEY_PEM = `-----BEGIN PUBLIC KEY-----
 MCowBQYDK2VwAyEADAAF8d47qtdei8k1oP9b/7N8SlrhcABssKew3QBwUs8=
 -----END PUBLIC KEY-----`;
 
-/** Days a subscription key stays Pro after `expiresAt` (with a banner). */
-export const GRACE_DAYS = 7;
+/** Days a subscription key stays Pro after `expiresAt` (with a banner) — shared policy (TD-006). */
+export const GRACE_DAYS = policy.GRACE_DAYS;
 
-/** Days of full Pro access granted by the first-launch trial (#61). */
+/** Days of full Pro access granted by the first-launch trial (#61). App-only, not shared. */
 export const TRIAL_DAYS = 14;
 
-export const DAY_MS = 24 * 60 * 60 * 1000;
+export const DAY_MS = policy.DAY_MS;
 
-const KEY_PREFIX = 'SB1';
-
-export type LicenseKind = 'subscription' | 'lifetime';
-
-/** The signed payload embedded in a license key. */
-interface LicensePayload {
-  email?: string;
-  kind: LicenseKind;
-  /** ISO 8601. */
-  issuedAt?: string;
-  /** ISO 8601; required for `subscription`, absent for `lifetime`. */
-  expiresAt?: string;
-}
+export type LicenseKind = import('../../packages/license-policy/dist-cjs/index').LicenseKind;
 
 /**
  * The renderer-facing license state. `tier` is the single gating input
@@ -112,10 +106,6 @@ export function licensePublicKey(): KeyObject {
   return createPublicKey(EMBEDDED_PUBLIC_KEY_PEM);
 }
 
-function fromBase64Url(s: string): Buffer {
-  return Buffer.from(s.replace(/-/g, '+').replace(/_/g, '/'), 'base64');
-}
-
 function invalid(error: string): LicenseState {
   return { tier: 'free', status: 'invalid', error };
 }
@@ -124,21 +114,18 @@ function invalid(error: string): LicenseState {
  * Verify a key string offline and resolve its state as of `now`.
  * Never throws — malformed input, a bad signature, or an unparseable payload
  * all resolve to { status: 'invalid' } with a human-readable reason.
+ *
+ * The structural decode/parse/resolve steps are the shared policy (TD-006,
+ * #400) — only the Ed25519 signature check (Node `crypto.verify`) is
+ * runtime-specific and stays here.
  */
 export function verifyLicenseKey(key: string, now: Date = new Date()): LicenseState {
-  const trimmed = typeof key === 'string' ? key.trim() : '';
-  if (!trimmed) return invalid('Empty license key');
+  const decoded = policy.decodeSb1Key(key);
+  if (policy.isPolicyError(decoded)) return invalid(decoded.error);
 
-  const parts = trimmed.split('.');
-  if (parts.length !== 3 || parts[0] !== KEY_PREFIX) {
-    return invalid('Not a Sound Buddy license key');
-  }
-
-  const payloadBytes = fromBase64Url(parts[1]);
-  const sigBytes = fromBase64Url(parts[2]);
   try {
     // Ed25519: algorithm is implied by the key; pass null for the digest.
-    if (!cryptoVerify(null, payloadBytes, licensePublicKey(), sigBytes)) {
+    if (!cryptoVerify(null, decoded.payloadBytes, licensePublicKey(), decoded.sigBytes)) {
       return invalid('Invalid signature');
     }
   } catch (err) {
@@ -146,34 +133,10 @@ export function verifyLicenseKey(key: string, now: Date = new Date()): LicenseSt
     return invalid('Invalid signature');
   }
 
-  let payload: LicensePayload;
-  try {
-    payload = JSON.parse(payloadBytes.toString('utf8')) as LicensePayload;
-  } catch {
-    return invalid('Corrupt license payload');
-  }
-  if (payload == null || typeof payload !== 'object') return invalid('Corrupt license payload');
+  const payload = policy.parsePayload(decoded.payloadBytes);
+  if (policy.isPolicyError(payload)) return invalid(payload.error);
 
-  const base = {
-    kind: payload.kind,
-    email: typeof payload.email === 'string' ? payload.email : undefined,
-    expiresAt: typeof payload.expiresAt === 'string' ? payload.expiresAt : undefined,
-  };
-
-  // Lifetime keys (#90) never expire — skip expiry and grace entirely.
-  if (payload.kind === 'lifetime') return { tier: 'pro', status: 'valid', ...base, expiresAt: undefined };
-  if (payload.kind !== 'subscription') return invalid('Unknown license kind');
-
-  const expiresMs = Date.parse(base.expiresAt ?? '');
-  if (Number.isNaN(expiresMs)) return invalid('License has no valid expiry');
-
-  if (now.getTime() < expiresMs) return { tier: 'pro', status: 'valid', ...base };
-
-  const graceEndsMs = expiresMs + GRACE_DAYS * 24 * 60 * 60 * 1000;
-  if (now.getTime() < graceEndsMs) {
-    return { tier: 'pro', status: 'grace', ...base, graceEndsAt: new Date(graceEndsMs).toISOString() };
-  }
-  return { tier: 'free', status: 'expired', ...base };
+  return policy.resolvePolicyState(payload, now);
 }
 
 /** The parsed license.json — a paid key and/or a first-launch trial stamp. */

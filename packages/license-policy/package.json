@@ -1,0 +1,20 @@
+{
+  "name": "@sound-buddy/license-policy",
+  "version": "0.1.0",
+  "license": "MIT",
+  "description": "Isomorphic (Node + Workers) Sound Buddy license policy: SB1 codec, kind rules, grace math. No crypto — signature verification is per-runtime.",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "tsc && tsc -p tsconfig.cjs.json && cp cjs-package.json dist-cjs/package.json",
+    "lint": "tsc --noEmit",
+    "test": "vitest run",
+    "test:coverage": "vitest run --coverage"
+  },
+  "devDependencies": {
+    "typescript": "^5",
+    "vitest": "^4.1.10",
+    "@vitest/coverage-v8": "^4.1.10"
+  }
+}

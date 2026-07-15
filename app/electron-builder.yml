@@ -33,6 +33,13 @@ extraResources:
     to: engine
     filter:
       - "**/*"
+  # Compiled CommonJS build of the isomorphic license policy (TD-006, #400) —
+  # loaded at runtime by electron/license-policy-loader.ts from
+  # Contents/Resources/license-policy.
+  - from: ../packages/license-policy/dist-cjs
+    to: license-policy
+    filter:
+      - "**/*"
   # First-run onboarding demo recording (#69). Ships outside the asar so the
   # external sox/ffprobe processes can read it (same rationale as scripts).
   - from: assets

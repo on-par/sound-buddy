@@ -154,7 +154,7 @@ describe("worker license signing — SB1 format & interop (#109)", () => {
     expect(subPayload.iss).toBe(LICENSE_ISSUER);
     expect(subPayload.sub).toBe("sub_XYZ");
     expect(typeof subPayload.jti).toBe("string");
-    expect(subPayload.jti.length).toBeGreaterThan(0);
+    expect(subPayload.jti?.length).toBeGreaterThan(0);
 
     // jti is unique per mint.
     const another = decodePayload(
@@ -173,7 +173,7 @@ describe("worker license signing — SB1 format & interop (#109)", () => {
     );
     expect(lifePayload.kid).toBe("sign-key-2026-07");
     expect(lifePayload.iss).toBe(LICENSE_ISSUER);
-    expect(lifePayload.jti.length).toBeGreaterThan(0);
+    expect(lifePayload.jti?.length).toBeGreaterThan(0);
     expect(lifePayload.sub).toBeUndefined();
   });
 
