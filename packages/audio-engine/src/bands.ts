@@ -11,7 +11,14 @@ export interface BandMeta {
   hi: number;        // high bound Hz
 }
 
-/** Canonical 7-band spectrum metadata. Add a band here and nowhere else. */
+/**
+ * Canonical 7-band spectrum metadata for Node-side consumers (audio-engine,
+ * cli). Add a band here and nowhere else *on the Node side* — app/renderer's
+ * grading.js and spectrum-display.ts keep their own copies deliberately (see
+ * TD-005 spec Non-goals: one can't import an MIT package across the
+ * proprietary boundary, the other uses different presentation strings for a
+ * future mobile port), so a new band still needs manual updates there too.
+ */
 export const BAND_METADATA: BandMeta[] = [
   { key: "subBass",    label: "Sub-bass",   freqLabel: "20-60 Hz",      lo: 20,   hi: 60    },
   { key: "bass",       label: "Bass",       freqLabel: "60-250 Hz",     lo: 60,   hi: 250   },
