@@ -19,6 +19,8 @@ export default tseslint.config(
       '**/dist/**',
       '**/dist-cjs/**',
       '**/coverage/**',
+      '**/.venv/**',
+      '**/venv/**',
       'app/release/**',
       'app/test-results/**',
       'app/.build-cache/**',
