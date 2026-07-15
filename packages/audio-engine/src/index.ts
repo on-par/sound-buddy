@@ -46,6 +46,11 @@ export type { IdealProfile, ProfileComparison, BandDeviation } from "./profiles/
 export { findSpectralPeaks, bandEnergy, localEnvelope } from "./analyze/spectral.js";
 export type { SpectralPeak, FindPeaksOptions } from "./analyze/spectral.js";
 
+// Post-service gain-structure health (#369): per-channel RMS-vs-target read
+// derived from the existing sox measurements — no live console metering.
+export { assessChannelGain, assessGainStructure, gainHealthLabel, GAIN_TARGET_DBFS } from "./analyze/gain-structure.js";
+export type { ChannelGainHealth, GainStructureReport, GainStatus } from "./analyze/gain-structure.js";
+
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const STREAM_SCRIPT = resolve(__dirname, "../scripts/stream.py");
 

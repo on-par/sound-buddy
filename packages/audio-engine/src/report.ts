@@ -1,4 +1,5 @@
 import type { AudioAnalysis, ChannelAnalysis, ChannelComparison, ContentType } from "./types.js";
+import { assessChannelGain, assessGainStructure, gainHealthLabel, GAIN_TARGET_DBFS, GAIN_TOLERANCE_DB } from "./analyze/gain-structure.js";
 
 /** Human label for a detected content type (PRD 04). */
 function contentTypeLabel(ct: ContentType): string {
@@ -203,6 +204,19 @@ export function buildReport(analysis: AudioAnalysis): string {
   }
 
   lines.push("");
+  lines.push("[ GAIN STRUCTURE ]");
+  const gain = assessChannelGain("This file", sox);
+  lines.push(`  Target level:   ${GAIN_TARGET_DBFS} dBFS RMS`);
+  lines.push(`  Measured RMS:   ${fmtDb(sox.rmsDbfs)} (${gain.status})`);
+  if (gain.score !== undefined) {
+    lines.push(`  Health score:   ${gain.score} / 100 (${gainHealthLabel(gain.score)})`);
+  }
+  if (gain.warnings.length === 0 && gain.status === "healthy") {
+    lines.push(`  . Gain structure healthy — RMS is within ${GAIN_TOLERANCE_DB} dB of target`);
+  }
+  for (const w of gain.warnings) lines.push(`  ! ${w}`);
+
+  lines.push("");
   lines.push("=== END OF REPORT ===");
 
   return lines.join("\n");
@@ -283,6 +297,17 @@ export function formatMultiChannelReport(channels: ChannelAnalysis[], comparison
   }
 
   lines.push("");
+  const gain = assessGainStructure(channels.map((c) => ({ name: c.channel.name, sox: c.analysis.sox })));
+  lines.push("Gain structure health:");
+  lines.push(`  Overall score: ${gain.overallScore} / 100 (${gainHealthLabel(gain.overallScore)})`);
+  const silent = gain.channels.filter((c) => c.status === "silent").map((c) => c.name);
+  for (const ch of gain.channels) {
+    if (ch.status === "healthy" || ch.status === "silent") continue;
+    lines.push(`  ! ${ch.name} (${ch.status}, RMS ${fmtDb(ch.rmsDbfs)}): ${ch.warnings[0]}`);
+  }
+  if (silent.length > 0) lines.push(`  . Silent channels (no gain read): ${silent.join(", ")}`);
+
+  lines.push("");
   lines.push("=== END MULTI-CHANNEL SUMMARY ===");
 
   return lines.join("\n");
@@ -305,6 +330,12 @@ export function buildSummaryTable(analysis: AudioAnalysis): string {
     ["Dyn Range", `${fmt(sox.dynamicRangeDb)} dB`],
     ["Clipping", sox.clipping ? "YES *** WARNING ***" : "No"],
     ["Headroom", `${fmt(0 - sox.peakDbfs)} dB`],
+  ];
+
+  const gh = assessChannelGain("This file", sox);
+  if (gh.score !== undefined) rows.push(["Gain Health", `${gh.score} / 100`]);
+
+  rows.push(
     ["Sub-bass", `${fmt(bands.subBass)} dB`],
     ["Bass", `${fmt(bands.bass)} dB`],
     ["Low-mid", `${fmt(bands.lowMid)} dB`],
@@ -313,8 +344,8 @@ export function buildSummaryTable(analysis: AudioAnalysis): string {
     ["Presence", `${fmt(bands.presence)} dB`],
     ["Brilliance", `${fmt(bands.brilliance)} dB`],
     ["Spectral Centroid", fmtHz(spectrum.spectralCentroid)],
-    ["Rolloff 85%", fmtHz(spectrum.spectralRolloff85)],
-  ];
+    ["Rolloff 85%", fmtHz(spectrum.spectralRolloff85)]
+  );
 
   if (spectrum.contentType) {
     rows.push(["Content Type", contentTypeLabel(spectrum.contentType)]);
