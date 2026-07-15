@@ -41,6 +41,10 @@ test.describe.serial('License gating (#54)', () => {
   test('free tier: FREE badge, locked tabs show upgrade cards, report card stays free', async () => {
     await launch();
 
+    // The dialog is now React-mounted (LicensePanel.tsx, TD-001 slice 3, #421)
+    // via a portal into the static #license-island node.
+    await expect(win.locator('#license-island #license-dialog')).toHaveCount(1);
+
     await expect(win.locator('#license-badge')).toHaveText('FREE');
     await expect(win.locator('body')).toHaveClass(/not-pro/);
 
