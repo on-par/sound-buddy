@@ -9,6 +9,29 @@ const REPO_URL = 'https://github.com/on-par/sound-buddy';
 // Placeholder Founding Payment Link until H2/#116 provisions the live URL — mirrors
 // app/electron/checkout.ts's placeholder convention. Real link is capped at 300 by Stripe.
 const FOUNDING_URL = 'https://buy.stripe.com/sound-buddy-founding-lifetime';
+
+// ── Founding countdown, synced to the demo video drop (#377) ──────────────
+// The 300-cap Founding run's urgency is pinned to the demo video release so peak
+// scarcity lands in the launch-week share window. This DEMO_VIDEO_DROP constant is
+// the single source of truth — update this one line when GTM locks the drop date.
+// Placeholder pending the go-date, mirroring FOUNDING_URL's #116 placeholder convention.
+const FOUNDING_CAP = 300;
+const DEMO_VIDEO_DROP = new Date('2026-07-24T12:00:00-05:00');
+const MS_PER_DAY = 86_400_000;
+const msUntilDrop = DEMO_VIDEO_DROP.getTime() - Date.now();
+// Dropped past the deadline: match the client script's live "now live" message
+// instead of freezing on a stale "0 days left" for no-JS visitors and crawlers,
+// who never run the tick() below to pick up the state change.
+const dropHasPassed = msUntilDrop <= 0;
+// floor (not ceil) so this whole-day count matches the client script's tick()
+// on hydration — ceil would show one more day than the live countdown settles
+// into a second later, reading as the countdown skipping backward on load.
+const daysUntilDrop = Math.max(0, Math.floor(msUntilDrop / MS_PER_DAY));
+const dropLabel = DEMO_VIDEO_DROP.toLocaleDateString('en-US', {
+  month: 'long', day: 'numeric', year: 'numeric', timeZone: 'America/Chicago',
+});
+const dropDeadlineIso = DEMO_VIDEO_DROP.toISOString();
+
 const APP_VERSION = JSON.parse(
   readFileSync(join(process.cwd(), '../app/package.json'), 'utf8'),
 ).version;
@@ -219,6 +242,17 @@ const tiers = [
       <span class="eyebrow">Pricing</span>
       <h2 class="h2">Founding Lifetime — pay $199 once, own Pro forever.</h2>
       <p class="lede">First 300 churches only, through July. Prefer to pay as you go? $9/mo or $79/yr below — 14-day Pro trial on first launch, no card, no account.</p>
+      <div class="founding-countdown" data-drop-deadline={dropDeadlineIso}>
+        <span class="fc-pulse" aria-hidden="true"></span>
+        <p class="fc-copy">
+          Founding pricing locks with the demo video drop —
+          <time datetime={dropDeadlineIso}>{dropLabel}</time>.
+          <strong data-fc-remaining>{dropHasPassed
+            ? 'now live — final licenses going fast'
+            : `${daysUntilDrop} ${daysUntilDrop === 1 ? 'day' : 'days'} left`}</strong>{' '}
+          to claim one of {FOUNDING_CAP}.
+        </p>
+      </div>
       <div class="tiers">
         {tiers.map((t) => (
           <div class={`tier card ${t.founding ? 'founding' : ''}`}>
@@ -311,6 +345,26 @@ const tiers = [
   </footer>
 </Layout>
 
+<script>
+  const HOUR_MS = 3_600_000, MINUTE_MS = 60_000, DAY_MS = 86_400_000;
+  const el = document.querySelector<HTMLElement>('[data-drop-deadline]');
+  const out = el?.querySelector<HTMLElement>('[data-fc-remaining]');
+  const raw = el?.getAttribute('data-drop-deadline');
+  if (el && out && raw) {
+    const deadline = new Date(raw).getTime();
+    const tick = () => {
+      const diff = deadline - Date.now();
+      if (diff <= 0) { out.textContent = 'now live — final licenses going fast'; return; }
+      const d = Math.floor(diff / DAY_MS);
+      const h = Math.floor((diff % DAY_MS) / HOUR_MS);
+      const m = Math.floor((diff % HOUR_MS) / MINUTE_MS);
+      out.textContent = `${d}d ${h}h ${m}m left`;
+    };
+    tick();
+    setInterval(tick, MINUTE_MS);
+  }
+</script>
+
 <style>
   /* ── Header ── */
   .site-header { position: sticky; top: 0; z-index: 10; background: color-mix(in srgb, var(--bg-app) 88%, transparent); backdrop-filter: blur(12px); border-bottom: 1px solid var(--border-subtle); }
@@ -367,6 +421,15 @@ const tiers = [
 
   /* ── Pricing ── */
   .pricing { background: var(--bg-app); }
+  .founding-countdown { display: flex; align-items: center; gap: 10px; justify-content: center;
+    margin: 18px auto 0; padding: 10px 16px; max-width: max-content;
+    background: var(--info-tint); border: 1px solid var(--info-border); border-radius: var(--radius-pill); }
+  .fc-copy { font: var(--fw-medium) var(--fs-body-sm)/var(--lh-snug) var(--font-sans); color: var(--info-text); }
+  .fc-copy strong { font-weight: var(--fw-semibold); font-variant-numeric: tabular-nums; }
+  .fc-pulse { width: 8px; height: 8px; border-radius: 50%; background: var(--info-500);
+    flex-shrink: 0; animation: fc-pulse 2s var(--ease-out) infinite; }
+  @keyframes fc-pulse { 0%,100% { opacity: 1; } 50% { opacity: .35; } }
+  @media (prefers-reduced-motion: reduce) { .fc-pulse { animation: none; } }
   .tiers { display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px; margin-top: 36px; }
   .tier { padding: 28px 26px; display: flex; flex-direction: column; gap: 14px; position: relative; }
   .tier.founding { border-color: var(--gold-500); box-shadow: var(--elevation-card), var(--glow-gold); transform: scale(1.03); z-index: 1; }
