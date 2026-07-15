@@ -125,6 +125,25 @@
   </div>
 </div>
 
+<!-- Doubling/Phase Bug Detector (#370): a static, fully-offline guided
+     checklist for the "weird, robotic, doubled" system sound — routing
+     mistakes that sum a source into the mix twice. Entry point is the
+     Report Card's "Run phase check" callout. Never auto-opens — only shows
+     on click, so it can't cover the #69 welcome overlay or an e2e run. -->
+<div id="phase-doubling-dialog" class="rig-dialog" style="display:none" role="dialog" aria-modal="true" aria-labelledby="phase-doubling-title">
+  <div class="rig-dialog-card guide-dialog-card">
+    <div class="rig-dialog-title" id="phase-doubling-title">Phase &amp; Doubling Check</div>
+    <div class="ai-dialog-sub">A guided walkthrough of the routing mistakes behind a weird, robotic, or doubled system sound. No console access needed.</div>
+    <div id="phase-doubling-progress" class="pd-progress"></div>
+    <div id="phase-doubling-body" class="pd-body"></div>
+    <div class="rig-dialog-actions">
+      <button type="button" id="phase-doubling-back" class="btn btn-secondary sm">Back</button>
+      <button type="button" id="phase-doubling-next" class="btn btn-primary sm">Next</button>
+      <button type="button" id="phase-doubling-close" class="btn btn-secondary sm">Done</button>
+    </div>
+  </div>
+</div>
+
 <!-- Storage settings dialog (#91). Choose where recordings, stems and captured
      sessions live, and see how much disk they use. There is no cap — the usage
      figure is informational only. Point the folder inside an iCloud/Dropbox/

@@ -400,6 +400,24 @@
     .guide-item-num { flex-shrink:0; width:22px; height:22px; display:flex; align-items:center; justify-content:center; border-radius:50%; background:var(--gold-tint); color:var(--gold-text); font:var(--fw-semibold) var(--fs-label)/1 var(--font-sans); }
     .guide-item-text { font:var(--fw-regular) var(--fs-body-sm)/1.5 var(--font-sans); color:var(--text-secondary); }
     .guide-item-text strong { color:var(--text-primary); font-weight:var(--fw-semibold); }
+    /* Doubling/Phase Bug Detector (#370): Report Card launch callout + guided
+       checklist dialog. .detected uses the same issue-accent tone as
+       statusPillHTML's issue pill so the emphasized state reads consistently
+       with the rest of the card. */
+    .pd-launch { display:flex; align-items:center; justify-content:space-between; gap:14px; padding:12px 14px; background:var(--surface); border:1px solid var(--border-subtle); border-radius:var(--radius-md); }
+    .pd-launch.detected { background:var(--issue-tint); border-color:var(--issue-border); }
+    .pd-launch-body { display:flex; flex-direction:column; gap:2px; min-width:0; }
+    .pd-launch-title { font:var(--fw-semibold) var(--fs-body-sm)/1.3 var(--font-sans); color:var(--text-primary); }
+    .pd-launch.detected .pd-launch-title { color:var(--issue-text); }
+    .pd-launch-sub { font:var(--fw-regular) var(--fs-label)/1.4 var(--font-sans); color:var(--text-secondary); }
+    .pd-progress { display:flex; justify-content:center; gap:6px; }
+    .pd-dot { width:7px; height:7px; border-radius:50%; background:var(--border-default); }
+    .pd-dot.active { background:var(--gold-500); }
+    .pd-body { display:flex; flex-direction:column; gap:10px; }
+    .pd-counter { font:var(--fw-semibold) var(--fs-micro)/1 var(--font-sans); letter-spacing:var(--tracking-caps); text-transform:uppercase; color:var(--text-tertiary); }
+    .pd-title { font:var(--fw-semibold) var(--fs-body)/1.3 var(--font-sans); color:var(--text-primary); }
+    .pd-explanation { font:var(--fw-regular) var(--fs-body-sm)/1.5 var(--font-sans); color:var(--text-secondary); }
+    .pd-resolution { font:var(--fw-regular) var(--fs-body-sm)/1.5 var(--font-sans); color:var(--text-primary); padding:10px 12px; background:var(--surface); border:1px solid var(--border-subtle); border-radius:var(--radius-md); }
     .ai-tabs { display:flex; gap:6px; }
     .ai-tab { flex:1; height:var(--control-h); border:1px solid var(--border-default); border-radius:var(--radius-md); background:var(--surface); color:var(--text-secondary); font:var(--fw-medium) var(--fs-body-sm)/1 var(--font-sans); cursor:pointer; }
     .ai-tab.active { border-color:var(--gold-600); background:var(--gold-tint); color:var(--gold-text); }

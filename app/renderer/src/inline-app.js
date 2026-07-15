@@ -58,6 +58,7 @@ let idealProfileId = ''; // active ideal EQ profile; '' = auto by content type (
 let customIdealProfiles = [];
 let curveEditorId = null;
 let curveEditorBands = null;
+let phaseDoublingStep = 0; // current step in the phase/doubling checklist (#370)
 
 /* ══ Formatting helpers ══ */
 // Resolve a strip's display name: label → backend name → "Ch N" (see #39).
@@ -2654,6 +2655,9 @@ function renderReportCardFromHistory(summary) {
   document.getElementById('rc-why-section').style.display = 'none';
   document.getElementById('rc-bands-section').style.display = 'none';
   document.getElementById('rc-frames-section').style.display = 'none';
+  // No deviation data on a stored summary — never emphasize/launch a check
+  // we can't back with real analysis (#370).
+  document.getElementById('rc-phase-doubling').style.display = 'none';
 
   document.getElementById('rc-recommendations').innerHTML = recListHTML(summary.topFixes || [], true);
 
@@ -2689,6 +2693,8 @@ function renderReportCard() {
     clearBtn.disabled = true;
     // Empty state already shows the dropzone.
     loadBtn.style.display = 'none';
+    // No analysis data to check for a phase/doubling signature (#370).
+    document.getElementById('rc-phase-doubling').style.display = 'none';
     // No card to improve on — never leave the upgrade card beside the empty
     // state (e.g. after a live capture clears the last analysis).
     lastReportGrade = null;
@@ -2729,14 +2735,30 @@ function renderReportCard() {
 
   // Ideal profile match (PRD 05) — only when a whole-file curve is available.
   const profSection = document.getElementById('rc-profile-section');
+  let cmp = null;
   if (ipHasCurve(src)) {
     const profile = activeProfile(src);
-    const cmp = ipCompare(src.curve, profile);
+    cmp = ipCompare(src.curve, profile);
     if (cmp) { profSection.style.display = ''; renderProfileMatch(profile, cmp); }
     else profSection.style.display = 'none';
   } else {
     profSection.style.display = 'none';
   }
+
+  // Doubling/Phase Bug Detector launch callout (#370) — always shown on a
+  // real card, visually emphasized when the deviation curve shows a
+  // comb-filter signature. A real analysis always has deviation data to
+  // check, unlike the history-summary/empty branches below.
+  const phaseSection = document.getElementById('rc-phase-doubling');
+  const phaseSignal = window.phaseDoublingState.detectPhaseSignal({ deviation: cmp ? cmp.deviation : undefined });
+  phaseSection.style.display = '';
+  phaseSection.classList.toggle('detected', phaseSignal);
+  document.getElementById('rc-phase-doubling-title').textContent = phaseSignal
+    ? 'We spotted a possible phase or doubling issue'
+    : 'Hearing a weird, doubled, or robotic sound?';
+  document.getElementById('rc-phase-doubling-sub').textContent = phaseSignal
+    ? 'Your spectrum shows a comb-filter pattern — run the check to find the duplicate path.'
+    : 'Walk through the common phase & routing bugs — no console access needed.';
 
   // Metrics — built by the shared report-card.ts module (#306) from the
   // injected grading pill classifiers (#132), so a threshold change moves the
@@ -3626,6 +3648,43 @@ function closeGuideDialog() {
   aiEl('guide-dialog').addEventListener('click', (e) => { if (e.target === aiEl('guide-dialog')) closeGuideDialog(); });
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape' && aiEl('guide-dialog').style.display !== 'none') closeGuideDialog();
+  });
+})();
+
+/* ══ Doubling/Phase Bug Detector guided checklist (#370) ══ */
+function renderPhaseDoublingStep() {
+  const { getStep, stepCount, stepHtml, progressDotsHtml, isLastStep } = window.phaseDoublingState;
+  const total = stepCount();
+  aiEl('phase-doubling-body').innerHTML = stepHtml(getStep(phaseDoublingStep), phaseDoublingStep, total, escapeHtml);
+  aiEl('phase-doubling-progress').innerHTML = progressDotsHtml(phaseDoublingStep, total);
+  aiEl('phase-doubling-back').disabled = phaseDoublingStep === 0;
+  aiEl('phase-doubling-next').style.display = isLastStep(phaseDoublingStep) ? 'none' : '';
+}
+
+function openPhaseDoublingDialog() {
+  phaseDoublingStep = 0;
+  renderPhaseDoublingStep();
+  aiEl('phase-doubling-dialog').style.display = 'flex';
+}
+
+function closePhaseDoublingDialog() {
+  aiEl('phase-doubling-dialog').style.display = 'none';
+}
+
+(() => {
+  aiEl('rc-phase-doubling-btn').addEventListener('click', openPhaseDoublingDialog);
+  aiEl('phase-doubling-close').addEventListener('click', closePhaseDoublingDialog);
+  aiEl('phase-doubling-next').addEventListener('click', () => {
+    phaseDoublingStep = window.phaseDoublingState.clampIndex(phaseDoublingStep + 1);
+    renderPhaseDoublingStep();
+  });
+  aiEl('phase-doubling-back').addEventListener('click', () => {
+    phaseDoublingStep = window.phaseDoublingState.clampIndex(phaseDoublingStep - 1);
+    renderPhaseDoublingStep();
+  });
+  aiEl('phase-doubling-dialog').addEventListener('click', (e) => { if (e.target === aiEl('phase-doubling-dialog')) closePhaseDoublingDialog(); });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && aiEl('phase-doubling-dialog').style.display !== 'none') closePhaseDoublingDialog();
   });
 })();
 

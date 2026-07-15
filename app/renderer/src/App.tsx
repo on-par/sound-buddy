@@ -26,6 +26,7 @@ import idealCurvesSrc from '../ideal-curves.js?raw';
 import gradingSrc from '../grading.js?raw';
 import buildOrderStateSrc from '../build-order-state.js?raw';
 import passModeStateSrc from '../pass-mode-state.js?raw';
+import phaseDoublingStateSrc from '../phase-doubling-state.js?raw';
 import preflightSrc from '../preflight.js?raw';
 import inlineAppSrc from './inline-app.js?raw';
 
@@ -48,6 +49,7 @@ const BOOT_SCRIPTS = [
   gradingSrc,
   buildOrderStateSrc,
   passModeStateSrc,
+  phaseDoublingStateSrc,
   preflightSrc,
   inlineAppSrc,
 ];
