@@ -20,7 +20,17 @@ import * as path from 'path';
 import { app, safeStorage } from 'electron';
 import type { LlmConfigPatch, PublicLlmConfig } from './ipc/api';
 import { logWarn } from './logger';
-import { normalizeHostUrl } from './llm-providers';
+
+/**
+ * Normalize a user-typed endpoint ("localhost:11434", "box:80/") to a URL with
+ * an explicit scheme. Without one, `new URL('localhost:11434')` parses
+ * "localhost:" as the *protocol* and connects to the wrong place entirely.
+ */
+export function normalizeHostUrl(host: string): string {
+  const trimmed = host.trim().replace(/\/+$/, '');
+  if (!trimmed) return trimmed;
+  return /^https?:\/\//i.test(trimmed) ? trimmed : `http://${trimmed}`;
+}
 
 /** The persisted file shape (all optional — absent keys fall back at read). */
 export interface LlmConfigFile {
@@ -34,7 +44,6 @@ export interface LlmConfigFile {
   /** Which provider the stored key was pasted for — a key is never sent to a
    *  different provider's endpoint. */
   apiKeyProvider?: string;
-  piBin?: string;
 }
 
 /** Read-time view used by the LLM engine (env layered over file). */
@@ -43,7 +52,6 @@ export interface LlmConfig {
   model?: string;
   ollamaHost?: string;
   apiBaseUrl?: string;
-  piBin?: string;
 }
 
 // PublicLlmConfig is homed in ipc/api.ts (TD-011, #405) and re-imported above;
@@ -51,6 +59,11 @@ export interface LlmConfig {
 export type { PublicLlmConfig };
 
 export const DEFAULT_OLLAMA_HOST = 'http://localhost:11434';
+
+/** Direct hosted providers (a pasted API key talks straight to the
+ *  provider) — as opposed to ollama or a pi-subscription pass-through
+ *  provider. Single source of truth shared by llm.ts and narrative-port.ts. */
+export const HOSTED_PROVIDER_IDS: ReadonlySet<string> = new Set(['openai', 'anthropic', 'google', 'custom']);
 
 function llmConfigPath(): string {
   return path.join(app.getPath('userData'), 'llm.json');
@@ -88,7 +101,6 @@ export function getLlmConfig(): LlmConfig {
     model: process.env.SOUND_BUDDY_LLM_MODEL?.trim() || file.model,
     ollamaHost: process.env.SOUND_BUDDY_OLLAMA_HOST?.trim() || file.ollamaHost,
     apiBaseUrl: process.env.SOUND_BUDDY_LLM_BASE_URL?.trim() || file.apiBaseUrl,
-    piBin: process.env.SOUND_BUDDY_PI_BIN?.trim() || file.piBin,
   };
 }
 

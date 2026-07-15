@@ -14,16 +14,22 @@ export interface PiNarrativeAdapterOptions {
   provider?: string;
   /** Model id within the provider (default "claude-sonnet-4-6"). */
   modelId?: string;
+  /** Path to a pi models.json describing extra/local providers (e.g. Ollama, a
+   *  custom OpenAI-compatible endpoint). Passed straight through to
+   *  `ModelRegistry.create()`; omitted when not given. */
+  modelsJsonPath?: string;
 }
 
 /** NarrativePort implementation backed by the Pi SDK (@earendil-works/pi-coding-agent). */
 export class PiNarrativeAdapter implements NarrativePort {
   private readonly provider: string;
   private readonly modelId: string;
+  private readonly modelsJsonPath: string | undefined;
 
   constructor(options: PiNarrativeAdapterOptions = {}) {
     this.provider = options.provider ?? DEFAULT_PROVIDER;
     this.modelId = options.modelId ?? DEFAULT_MODEL_ID;
+    this.modelsJsonPath = options.modelsJsonPath;
   }
 
   async streamNarrative(
@@ -33,7 +39,7 @@ export class PiNarrativeAdapter implements NarrativePort {
   ): Promise<NarrativeResult> {
     try {
       const authStorage = AuthStorage.create();
-      const modelRegistry = ModelRegistry.create(authStorage);
+      const modelRegistry = ModelRegistry.create(authStorage, this.modelsJsonPath);
       const model = modelRegistry.find(this.provider, this.modelId);
       if (!model) {
         return {
@@ -62,7 +68,7 @@ export class PiNarrativeAdapter implements NarrativePort {
 
   async listModels(): Promise<ModelInfo[]> {
     const authStorage = AuthStorage.create();
-    const modelRegistry = ModelRegistry.create(authStorage);
+    const modelRegistry = ModelRegistry.create(authStorage, this.modelsJsonPath);
     return modelRegistry
       .getAvailable()
       .map((m) => ({ provider: m.provider, id: m.id, name: m.name }));

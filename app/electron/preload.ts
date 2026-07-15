@@ -40,6 +40,7 @@ const api = {
   detectOllama: (host?: string) => ipcRenderer.invoke('llm-detect-ollama', host),
   testLlmProvider: (opts: TestLlmProviderOpts) =>
     ipcRenderer.invoke('llm-test-provider', opts),
+  listLlmModels: () => ipcRenderer.invoke('llm-list-models'),
 
   // License (#54) — offline key validation + feature gating. Free/Pro state
   // drives the renderer's lock icons, badge, and grace banner.

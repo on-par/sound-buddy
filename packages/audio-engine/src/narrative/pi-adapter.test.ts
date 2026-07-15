@@ -67,10 +67,53 @@ describe("PiNarrativeAdapter", () => {
     await adapter.streamNarrative("sys", "user", vi.fn());
 
     expect(authCreateMock).toHaveBeenCalled();
-    expect(modelRegistryCreateMock).toHaveBeenCalledWith(authCreateMock.mock.results[0]?.value);
+    expect(modelRegistryCreateMock).toHaveBeenCalledWith(
+      authCreateMock.mock.results[0]?.value,
+      undefined
+    );
     expect(sessionManagerInMemoryMock).toHaveBeenCalled();
     expect(createAgentSessionMock).toHaveBeenCalledWith(
       expect.objectContaining({ model: findMock.mock.results[0]?.value })
+    );
+  });
+
+  it("passes modelsJsonPath through to ModelRegistry.create when streaming", async () => {
+    const adapter = new PiNarrativeAdapter({ modelsJsonPath: "/tmp/pi-models.json" });
+    await adapter.streamNarrative("sys", "user", vi.fn());
+
+    expect(modelRegistryCreateMock).toHaveBeenCalledWith(
+      authCreateMock.mock.results[0]?.value,
+      "/tmp/pi-models.json"
+    );
+  });
+
+  it("passes undefined modelsJsonPath to ModelRegistry.create when the option is absent", async () => {
+    const adapter = new PiNarrativeAdapter();
+    await adapter.streamNarrative("sys", "user", vi.fn());
+
+    expect(modelRegistryCreateMock).toHaveBeenCalledWith(
+      authCreateMock.mock.results[0]?.value,
+      undefined
+    );
+  });
+
+  it("passes modelsJsonPath through to ModelRegistry.create when listing models", async () => {
+    const adapter = new PiNarrativeAdapter({ modelsJsonPath: "/tmp/pi-models.json" });
+    await adapter.listModels();
+
+    expect(modelRegistryCreateMock).toHaveBeenCalledWith(
+      authCreateMock.mock.results[0]?.value,
+      "/tmp/pi-models.json"
+    );
+  });
+
+  it("passes undefined modelsJsonPath to ModelRegistry.create when listing models with the option absent", async () => {
+    const adapter = new PiNarrativeAdapter();
+    await adapter.listModels();
+
+    expect(modelRegistryCreateMock).toHaveBeenCalledWith(
+      authCreateMock.mock.results[0]?.value,
+      undefined
     );
   });
 

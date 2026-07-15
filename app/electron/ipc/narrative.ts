@@ -8,7 +8,9 @@
 
 import { ipcMain } from 'electron';
 import { log, logWarn, logError } from '../logger';
-import { probeOllama, streamNarrative, testHostedProvider } from '../llm';
+import { streamNarrative } from '../llm';
+import { probeOllama } from '../ollama-probe';
+import { testProvider, listNarrativeModels } from '../narrative-port';
 import { getPublicLlmConfig, saveLlmConfig, type LlmConfigPatch } from '../llm-config';
 import { isEntitled } from '../license';
 import type { AudioAnalysis } from './analysis';
@@ -148,8 +150,13 @@ export function registerNarrativeHandlers(): void {
   ipcMain.handle(
     'llm-test-provider',
     (_event, opts: { provider: string; apiKey?: string; apiBaseUrl?: string }) =>
-      testHostedProvider(opts && typeof opts === 'object' ? opts : { provider: '' }),
+      testProvider(opts && typeof opts === 'object' ? opts : { provider: '' }),
   );
+
+  // Model list for the settings screen's provider/model pickers (TD-004
+  // slice 3, #427) — sourced from Pi's ModelRegistry instead of a hardcoded
+  // hint map.
+  ipcMain.handle('llm-list-models', () => listNarrativeModels());
 
   // trigger-llm-analysis
   ipcMain.handle('trigger-llm-analysis', async (event, data: { analysis?: AudioAnalysis; windows?: unknown[]; mode: string }) => {
