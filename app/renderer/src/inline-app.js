@@ -821,6 +821,13 @@ function patchLiveChannel(el, ch, idx) {
   patchBarsAndLabels(el, curve.db);
 }
 
+// Shared "Add track" disabled rule (device channel cap or a capture running,
+// #38) — used by both the toolbar's + Add track (#188) and the guided
+// zero-track hero's Add your first track CTA (#294) so the two never drift.
+function addTrackDisabled(used, total) {
+  return !window.trackWorkspace.addEnabled(used, total, liveRunning);
+}
+
 // Shared by the idle workspace and the running live board (#188): one toolbar
 // carries Add track + a used/total count, plus Collapse/Expand all, so the
 // pane reads the same whether idle or mid-capture. Add is disabled at the
@@ -828,7 +835,7 @@ function patchLiveChannel(el, ch, idx) {
 function liveWorkspaceToolbarHTML() {
   const total = selectedDeviceChannels();
   const used = usedChannelCount();
-  const addDisabled = !window.trackWorkspace.addEnabled(used, total, liveRunning);
+  const addDisabled = addTrackDisabled(used, total);
   // Advanced controls (new group, collapse/expand, arm-all) stay out of the way
   // until the user has at least one track — a guided first-use setup (#294)
   // covers the zero-track state instead, so a brand-new user never sees
@@ -930,7 +937,7 @@ function renderLiveWorkspace() {
   // permanently at zero tracks, guide-completed or not (acceptance criterion),
   // with live done/active step state.
   if (window.trackWorkspace.isEmpty(channelConfig.length)) {
-    const addDisabled = !window.trackWorkspace.addEnabled(usedChannelCount(), selectedDeviceChannels(), liveRunning);
+    const addDisabled = addTrackDisabled(usedChannelCount(), selectedDeviceChannels());
     body.innerHTML = `<div class="live-setup-hero">`
       + iconSvg('radio', 34)
       + `<h2 class="lsh-title">Set up your live check</h2>`
@@ -1004,8 +1011,17 @@ function applyLiveCollapsed() {
 }
 document.getElementById('spectrum-body').addEventListener('click', (e) => {
   // Guided first-use setup dismiss (#294): retire the banner permanently
-  // without requiring a first capture.
-  if (e.target.closest('#live-setup-skip')) { window.liveSetupState.markSetupComplete(window.localStorage); renderChannelConfig(); return; }
+  // without requiring a first capture. renderChannelConfig() early-outs while
+  // liveRunning (a capture may already be starting), so remove the rendered
+  // banner node directly rather than relying solely on a re-render — the same
+  // fix the capture-start success handler below needs for the same reason.
+  if (e.target.closest('#live-setup-skip')) {
+    window.liveSetupState.markSetupComplete(window.localStorage);
+    const skipBanner = document.querySelector('#spectrum-body .live-setup-banner');
+    if (skipBanner) skipBanner.remove();
+    renderChannelConfig();
+    return;
+  }
   // Workspace Add track (#188). Delegated (rather than re-wired per render) so
   // it survives renderLiveWorkspace()/renderLiveMeters() rebuilding the pane.
   if (e.target.closest('#live-ws-add')) { addChannelStrip(); return; }

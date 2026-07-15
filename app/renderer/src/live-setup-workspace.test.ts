@@ -36,4 +36,16 @@ describe('Live tab guided first-use setup (#294)', () => {
   it('offers a dismiss control on the first-use banner', () => {
     expect(inlineApp).toContain('id="live-setup-skip"');
   });
+
+  it('dismiss handler removes the rendered banner directly, not only via renderChannelConfig()', () => {
+    // renderChannelConfig() early-outs while a capture is running (liveRunning),
+    // so a Dismiss click during Start Capture would leave the banner stuck on
+    // screen until the running board's next tick unless the handler also
+    // removes the DOM node itself — the same fix already applied to the
+    // capture-start success path just below.
+    const skipHandler = inlineApp.slice(inlineApp.indexOf("closest('#live-setup-skip')"));
+    const branchBody = skipHandler.slice(0, skipHandler.indexOf('return;'));
+    expect(branchBody).toContain('.live-setup-banner');
+    expect(branchBody).toContain('.remove()');
+  });
 });
