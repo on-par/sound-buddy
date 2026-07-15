@@ -135,6 +135,72 @@ describe('createSettingsStore', () => {
     expect(store.getState().settingsError).toBe('write failed');
   });
 
+  it('starts with the dialog closed', () => {
+    const mock = createMockSoundBuddy();
+    const store = createSettingsStore(() => mock.api);
+
+    expect(store.getState().dialogOpen).toBe(false);
+  });
+
+  it('openDialog and closeDialog flip dialogOpen', () => {
+    const mock = createMockSoundBuddy();
+    const store = createSettingsStore(() => mock.api);
+
+    store.getState().openDialog();
+    expect(store.getState().dialogOpen).toBe(true);
+
+    store.getState().closeDialog();
+    expect(store.getState().dialogOpen).toBe(false);
+  });
+
+  it('saveLlmConfig updates llmConfig and returns the result on success', async () => {
+    const config = {
+      provider: 'ollama',
+      model: 'llama3',
+      ollamaHost: '',
+      apiBaseUrl: '',
+      hasApiKey: false,
+      apiKeyProvider: '',
+    };
+    const mock = createMockSoundBuddy({
+      saveLlmConfig: async (patch) => {
+        mock.calls.push({ method: 'saveLlmConfig', args: [patch] });
+        return { ok: true, config };
+      },
+    });
+    const store = createSettingsStore(() => mock.api);
+
+    const result = await store.getState().saveLlmConfig({ provider: 'ollama', model: 'llama3' });
+
+    expect(result).toEqual({ ok: true, config });
+    expect(store.getState().llmConfig).toEqual(config);
+    expect(mock.calls).toContainEqual({ method: 'saveLlmConfig', args: [{ provider: 'ollama', model: 'llama3' }] });
+  });
+
+  it('saveLlmConfig leaves llmConfig untouched on a { ok: false } result', async () => {
+    const mock = createMockSoundBuddy({
+      saveLlmConfig: async () => ({ ok: false, reason: 'model is required' }),
+    });
+    const store = createSettingsStore(() => mock.api);
+    store.setState({ llmConfig: null });
+
+    const result = await store.getState().saveLlmConfig({ provider: 'openai' });
+
+    expect(result).toEqual({ ok: false, reason: 'model is required' });
+    expect(store.getState().llmConfig).toBeNull();
+  });
+
+  it('saveLlmConfig returns { ok: false, reason } when the IPC call throws', async () => {
+    const mock = createMockSoundBuddy({
+      saveLlmConfig: () => Promise.reject(new Error('bridge unavailable')),
+    });
+    const store = createSettingsStore(() => mock.api);
+
+    const result = await store.getState().saveLlmConfig({ provider: 'ollama' });
+
+    expect(result).toEqual({ ok: false, reason: 'bridge unavailable' });
+  });
+
   it('binds the default hook to the window preload bridge', async () => {
     const mock = createMockSoundBuddy({
       getSettings: async () => ({

@@ -123,6 +123,88 @@ describe('createLicensingStore', () => {
     expect(useLicensingStore.getState().licenseStatus).toBeNull();
     expect(useLicensingStore.getState().isLicensed).toBe(false);
   });
+
+  it('starts with the dialog closed', () => {
+    const mock = createMockSoundBuddy();
+    const store = createLicensingStore(() => mock.api);
+
+    expect(store.getState().dialogOpen).toBe(false);
+  });
+
+  it('openDialog and closeDialog flip dialogOpen', () => {
+    const mock = createMockSoundBuddy();
+    const store = createLicensingStore(() => mock.api);
+
+    store.getState().openDialog();
+    expect(store.getState().dialogOpen).toBe(true);
+
+    store.getState().closeDialog();
+    expect(store.getState().dialogOpen).toBe(false);
+  });
+
+  it('removeLicense projects the returned state', async () => {
+    const licenseState: LicenseState = { tier: 'free', status: 'none' };
+    const mock = createMockSoundBuddy({
+      removeLicense: async () => {
+        mock.calls.push({ method: 'removeLicense', args: [] });
+        return licenseState;
+      },
+    });
+    const store = createLicensingStore(() => mock.api);
+    store.setState({ licenseStatus: { tier: 'pro', status: 'valid', kind: 'lifetime' } });
+
+    await store.getState().removeLicense(NOW);
+
+    expect(store.getState().licenseStatus).toEqual(licenseState);
+    expect(store.getState().isLicensed).toBe(false);
+    expect(mock.calls).toContainEqual({ method: 'removeLicense', args: [] });
+  });
+
+  it('removeLicense propagates rejection without changing state', async () => {
+    const prior: LicenseState = { tier: 'pro', status: 'valid', kind: 'lifetime' };
+    const mock = createMockSoundBuddy({
+      removeLicense: () => Promise.reject(new Error('delete failed')),
+    });
+    const store = createLicensingStore(() => mock.api);
+    store.setState({ licenseStatus: prior });
+
+    await expect(store.getState().removeLicense(NOW)).rejects.toThrow('delete failed');
+    expect(store.getState().licenseStatus).toEqual(prior);
+  });
+
+  it('refreshLicense projects the returned state on success', async () => {
+    const licenseState: LicenseState = { tier: 'pro', status: 'valid', kind: 'subscription' };
+    const mock = createMockSoundBuddy({ refreshLicense: async () => licenseState });
+    const store = createLicensingStore(() => mock.api);
+
+    await store.getState().refreshLicense(NOW);
+
+    expect(store.getState().licenseStatus).toEqual(licenseState);
+  });
+
+  it('refreshLicense keeps current state silently on rejection', async () => {
+    const prior: LicenseState = { tier: 'pro', status: 'valid', kind: 'subscription' };
+    const mock = createMockSoundBuddy({
+      refreshLicense: () => Promise.reject(new Error('network down')),
+    });
+    const store = createLicensingStore(() => mock.api);
+    store.setState({ licenseStatus: prior });
+
+    await expect(store.getState().refreshLicense(NOW)).resolves.toBeUndefined();
+    expect(store.getState().licenseStatus).toEqual(prior);
+  });
+
+  it('checkLicense keeps current state silently on rejection', async () => {
+    const prior: LicenseState = { tier: 'pro', status: 'valid', kind: 'subscription' };
+    const mock = createMockSoundBuddy({
+      getLicense: () => Promise.reject(new Error('disk read failed')),
+    });
+    const store = createLicensingStore(() => mock.api);
+    store.setState({ licenseStatus: prior });
+
+    await expect(store.getState().checkLicense(NOW)).resolves.toBeUndefined();
+    expect(store.getState().licenseStatus).toEqual(prior);
+  });
 });
 
 describe('deriveTrialDaysLeft', () => {

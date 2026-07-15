@@ -40,4 +40,24 @@ describe('useStoreShallow', () => {
 
     expect(html).toContain('busy=false');
   });
+
+  // Regression: zustand's own bound hook uses getInitialState() (frozen at
+  // create() time) as its renderToString/SSR snapshot, so a setState() call
+  // made right before render — the pattern every store-driven component test
+  // in this app relies on — would silently render the pristine initial state
+  // instead. useStoreShallow must read the live state on both branches.
+  it('reflects a setState() call made before render (renderToString has no real hydration in this app)', () => {
+    const mock = createMockSoundBuddy();
+    const store = createAnalysisStore(() => mock.api);
+    store.setState({ isAnalyzing: true });
+
+    function Probe() {
+      const busy = useStoreShallow(store, (s) => s.isAnalyzing);
+      return createElement('div', null, `busy=${busy}`);
+    }
+
+    const html = renderToString(createElement(Probe));
+
+    expect(html).toContain('busy=true');
+  });
 });

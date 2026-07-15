@@ -36,10 +36,17 @@ test.describe('AI provider settings (#76)', () => {
   });
 
   test.afterEach(async () => {
-    // Close the dialog if a failed assertion left it open.
-    await window.evaluate(() => {
-      (document.getElementById('ai-dialog') as HTMLElement).style.display = 'none';
-    });
+    // Close the dialog if a failed assertion left it open. #ai-dialog is now
+    // React-owned (SettingsPanel.tsx, TD-001 slice 3, #421) — an imperative
+    // style write here would fight React's own re-render, so drive it
+    // through the real close affordance instead.
+    if (await window.locator('#ai-dialog').isVisible()) {
+      await window.locator('#ai-dialog-cancel').click();
+    }
+  });
+
+  test('the dialog is mounted by the React settings island', async () => {
+    await expect(window.locator('#settings-island #ai-dialog')).toHaveCount(1);
   });
 
   test('gear opens the dialog on the Ollama tab with detected models', async () => {
@@ -48,6 +55,13 @@ test.describe('AI provider settings (#76)', () => {
     await expect(window.locator('#ai-tab-btn-ollama')).toHaveClass(/active/);
     await expect(window.locator('#ai-ollama-status')).toContainText('Ollama detected — 2 models');
     await expect(window.locator('#ai-ollama-model option')).toHaveCount(2);
+  });
+
+  test('Escape closes the dialog', async () => {
+    await window.locator('#ai-settings-btn').click();
+    await expect(window.locator('#ai-dialog')).toBeVisible();
+    await window.keyboard.press('Escape');
+    await expect(window.locator('#ai-dialog')).toBeHidden();
   });
 
   // #202: the installed app version is visible somewhere in Settings — this
@@ -91,6 +105,18 @@ test.describe('AI provider settings (#76)', () => {
     await window.locator('#ai-settings-btn').click();
     await expect(window.locator('#ai-ollama-model')).toHaveValue('qwen3:8b');
     await window.locator('#ai-dialog-cancel').click();
+  });
+
+  // The bridge round trip (TD-001 slice 3, #421): settingsStore.saveLlmConfig()
+  // + updateSettings() write React state, and inline-app.js's subscriber
+  // toggles body.ai-disabled off that same store — no direct DOM write by
+  // the panel itself.
+  test('saving with Enable AI checked removes body.ai-disabled', async () => {
+    await window.locator('#ai-settings-btn').click();
+    await window.locator('#ai-enable-toggle').check();
+    await window.locator('#ai-dialog-save').click();
+    await expect(window.locator('#ai-dialog')).toBeHidden();
+    await expect(window.locator('body')).not.toHaveClass(/ai-disabled/);
   });
 });
 
