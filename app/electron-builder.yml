@@ -55,7 +55,7 @@ mac:
     NSMicrophoneUsageDescription: >-
       Sound Buddy needs microphone access to capture and analyze live audio
       from your input device.
-  # Unsigned — no Apple Developer ID required. Gatekeeper shows an
-  # "unidentified developer" warning on first launch; right-click → Open once
-  # (or `xattr -dr com.apple.quarantine "/Applications/Sound Buddy.app"`).
+  # Unsigned — no Apple Developer ID required. Gatekeeper blocks first launch;
+  # open System Settings → Privacy & Security and click "Open Anyway" in the
+  # Security section (or `xattr -dr com.apple.quarantine "/Applications/Sound Buddy.app"`).
   identity: null

@@ -114,20 +114,19 @@ git -C "$ROOT" push -q origin "$TAG"
 
 # ── Publish to the public download repo ──────────────────────────────────────
 say "Publishing to $PUBLIC_REPO"
-NOTES="$(cat <<EOF
-Self-contained macOS build (Apple Silicon) — bundles the audio toolchain
-(sox, ffmpeg/ffprobe) and a Python runtime, so there is no setup.
 
-## Download & install
-1. Download \`Sound.Buddy-$NEXT-arm64-mac.zip\` below, unzip, drag **Sound Buddy.app** to **/Applications**.
-2. First launch: right-click → **Open** (unsigned build). Or:
-   \`xattr -dr com.apple.quarantine "/Applications/Sound Buddy.app"\`
+# Signed iff app/electron-builder.yml sets a real Developer ID `identity` (not
+# `null`/missing) — see #53. Reading it here (rather than hardcoding) means the
+# release notes' unsigned-workaround block disappears automatically the day
+# signing ships, with no further edits to this script.
+IDENTITY="$(node -e 'const y=require("fs").readFileSync(process.argv[1],"utf8"); const m=y.match(/^\s*identity:\s*(.+?)\s*$/m); console.log(m?m[1]:"null")' "$APP/electron-builder.yml")"
+SIGNED=$([ "$IDENTITY" = "null" ] && echo false || echo true)
+say "Release notes: $([ "$SIGNED" = "true" ] && echo "signed" || echo "unsigned") build"
 
-## Requirements
-- **Apple Silicon (M1 or newer)** — arm64 only.
-- **macOS 26 (Tahoe) or newer.**
-EOF
-)"
+NOTES="$(node --input-type=module -e '
+  import { buildReleaseNotes } from "'"$ROOT"'/packages/shared/dist/index.js";
+  process.stdout.write(buildReleaseNotes({ version: process.argv[1], signed: process.argv[2] === "true" }));
+' "$NEXT" "$SIGNED")"
 gh release create "$TAG" "$ZIP" -R "$PUBLIC_REPO" \
   --title "Sound Buddy $TAG (macOS Apple Silicon)" \
   --notes "$NOTES"

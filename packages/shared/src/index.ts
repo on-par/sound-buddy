@@ -1,5 +1,8 @@
 // Shared types for all @sound-buddy packages
 
+export { buildReleaseNotes, INSTALL_INTRO, UNSIGNED_STEPS } from './install-instructions.js'
+export type { BuildReleaseNotesOptions } from './install-instructions.js'
+
 export interface EQBand {
   type: string
   freq: number

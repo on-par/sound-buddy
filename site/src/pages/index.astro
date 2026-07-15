@@ -315,6 +315,24 @@ const tiers = [
         <p>Download Sound Buddy and get a report card from this Sunday's recording in under five minutes.</p>
         <a class="btn btn-primary btn-lg" href={DOWNLOAD_URL} rel="noopener">Grade this Sunday's mix</a>
         <a class="btn btn-ghost btn-lg" href="#how">See how it works</a>
+        <details class="install-walkthrough" id="install-walkthrough">
+          <summary>First launch on macOS — the unsigned-install flow</summary>
+          <ol>
+            <li>Download the <code>.zip</code>, unzip, and drag <strong>Sound Buddy.app</strong> to <strong>/Applications</strong>.</li>
+            <li>First launch is blocked by Gatekeeper ("Apple could not verify Sound Buddy").</li>
+            <li>Open <strong>System Settings → Privacy &amp; Security</strong>, scroll to the <strong>Security</strong> section, and click <strong>Open Anyway</strong> next to the Sound Buddy message.</li>
+            <li>Confirm <strong>Open Anyway</strong> and authenticate.</li>
+          </ol>
+          <p class="install-walkthrough-alt">
+            Power-user alternative: <code>xattr -dr com.apple.quarantine "/Applications/Sound Buddy.app"</code>
+          </p>
+          <img
+            class="install-walkthrough-gif"
+            src="/install-walkthrough.gif"
+            alt="Step-by-step screen recording of opening System Settings, navigating to Privacy & Security, and clicking Open Anyway to launch the unsigned Sound Buddy build on macOS 26"
+            loading="lazy"
+          />
+        </details>
       </div>
     </div>
   </section>
@@ -463,6 +481,14 @@ const tiers = [
   .sysreq-cta { padding: 36px 32px; display: flex; flex-direction: column; gap: 14px; align-items: flex-start; }
   .sysreq-cta h3 { font: var(--fw-semibold) var(--fs-h2)/var(--lh-snug) var(--font-sans); color: var(--text-primary); }
   .sysreq-cta p { font: var(--fw-regular) var(--fs-body-sm)/var(--lh-normal) var(--font-sans); color: var(--text-tertiary); }
+  .install-walkthrough { width: 100%; margin-top: 6px; border-top: 1px solid var(--border-subtle); padding-top: 14px; }
+  .install-walkthrough summary { font: var(--fw-medium) var(--fs-body-sm)/var(--lh-normal) var(--font-sans); color: var(--text-secondary); cursor: pointer; }
+  .install-walkthrough summary:hover { color: var(--text-primary); }
+  .install-walkthrough ol { margin: 14px 0 0; padding-left: 20px; display: flex; flex-direction: column; gap: 8px; }
+  .install-walkthrough ol li { font: var(--fw-regular) var(--fs-body-sm)/var(--lh-normal) var(--font-sans); color: var(--text-secondary); }
+  .install-walkthrough code { font-family: var(--font-mono); font-size: 0.9em; }
+  .install-walkthrough-alt { margin-top: 10px; font: var(--fw-regular) var(--fs-body-sm)/var(--lh-normal) var(--font-sans); color: var(--text-tertiary); }
+  .install-walkthrough-gif { margin-top: 14px; width: 100%; border-radius: var(--radius-md); border: 1px solid var(--border-subtle); }
 
   /* ── Footer ── */
   .site-footer { border-top: 1px solid var(--border-subtle); background: var(--neutral-1000); padding: 36px 0; }

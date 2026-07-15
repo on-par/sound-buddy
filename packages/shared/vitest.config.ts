@@ -1,7 +1,8 @@
 import { defineConfig } from 'vitest/config';
 
-// Types-only package (no runtime code, no tests). The type-only source is
-// excluded from coverage entirely — there is nothing executable to cover.
+// Mostly types-only package (#331) plus the install-instructions runtime
+// module (#286). src/index.ts now re-exports that module's runtime code, so
+// it is measured too (see index.test.ts).
 export default defineConfig({
   test: {
     // Vitest 4 shrank its default test.exclude to just node_modules/.git,
@@ -12,9 +13,11 @@ export default defineConfig({
     coverage: {
       provider: 'v8',
       include: ['src/**/*.ts'],
-      // src/index.ts is type-only (#331): interfaces emit no runtime JS, so
-      // there is nothing executable to cover. Types are verified by `tsc`.
-      exclude: ['src/index.ts', 'src/**/*.test.ts', 'src/**/__tests__/**', '**/dist/**'],
+      exclude: ['src/**/*.test.ts', 'src/**/__tests__/**', '**/dist/**'],
+      // install-instructions.ts is fully exercised; index.ts's re-exports
+      // report 0 instrumentable statements (v8 doesn't count bare `export
+      // {...} from` bindings), so 100% is the real, achievable floor.
+      thresholds: { statements: 100, branches: 100, functions: 100, lines: 100 },
     },
   },
 });
