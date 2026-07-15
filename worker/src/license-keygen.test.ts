@@ -97,7 +97,7 @@ describe("license-keygen `sign` — payload v2 claims (#124/#109)", () => {
 
     const payload = decodePayload(key);
     expect(payload.kid).toBe("prod-2026");
-    expect(payload.jti.length).toBeGreaterThan(0);
+    expect(payload.jti?.length).toBeGreaterThan(0);
     expect(payload.iss).toBe(LICENSE_ISSUER);
     expect(payload.iss).toBe("soundbuddy.online");
     expect(payload.sub).toBe("sub_123");
@@ -122,7 +122,7 @@ describe("license-keygen `sign` — payload v2 claims (#124/#109)", () => {
     expect(payload.kind).toBe("lifetime");
     expect(payload.kid).toBe("k1");
     expect(payload.iss).toBe(LICENSE_ISSUER);
-    expect(payload.jti.length).toBeGreaterThan(0);
+    expect(payload.jti?.length).toBeGreaterThan(0);
     expect(payload.sub).toBeUndefined();
     expect(payload.expiresAt).toBeUndefined();
   });

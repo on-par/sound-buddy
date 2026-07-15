@@ -23,6 +23,7 @@
     "wrangler": "^4.110.0"
   },
   "dependencies": {
+    "@sound-buddy/license-policy": "file:../packages/license-policy",
     "stripe": "^22.3.1"
   }
 }

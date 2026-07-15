@@ -19,45 +19,27 @@
 // with `extractable: false` and the PEM string must not be referenced after
 // import. Never log key material, the raw private key, or minted `SB1.` strings.
 // Log kid/jti/outcomes only (see #107 / index.ts logging rule).
+//
+// The SB1 codec, `kind` rules, and grace-window math are the isomorphic
+// license *policy* (TD-006, #400) — single-sourced with
+// app/electron/license.ts in @sound-buddy/license-policy. Only the Web Crypto
+// signature step (Workers has no Node `crypto`) stays here.
 
-/** Key format version prefix. Bump only on a breaking payload/signature change. */
-const KEY_PREFIX = "SB1";
+import {
+  KEY_PREFIX,
+  GRACE_DAYS,
+  decodeSb1Key,
+  parsePayload,
+  resolvePolicyState,
+  isPolicyError,
+  type LicenseKind,
+  type LicensePayload,
+} from "@sound-buddy/license-policy";
+
+export { GRACE_DAYS, type LicenseKind, type LicensePayload };
 
 /** Issuer claim stamped into every minted payload (security review v2). */
 export const LICENSE_ISSUER = "soundbuddy.online";
-
-/** Days a subscription key stays Pro after `expiresAt` — mirrors license.ts. */
-export const GRACE_DAYS = 7;
-
-const DAY_MS = 24 * 60 * 60 * 1000;
-
-export type LicenseKind = "subscription" | "lifetime";
-
-/**
- * The signed payload (v2). Field order is irrelevant to interop — the app
- * verifies the signature over the transmitted bytes, then re-parses — but
- * JSON.stringify fixes insertion order here for stable, testable output.
- *
- * Verification everywhere stays tolerant of unknown/missing fields: the v2
- * claims (kid/jti/iss/sub) are informational and never gate `verifyLicenseKey`,
- * so a v1 key from scripts/license-keygen.mjs still verifies.
- */
-export interface LicensePayload {
-  email?: string;
-  kind: LicenseKind;
-  /** ISO 8601. */
-  issuedAt: string;
-  /** ISO 8601; present for `subscription`, absent for `lifetime`. */
-  expiresAt?: string;
-  /** Signing-key id — lets the app rotate keys without re-issuing everything. */
-  kid: string;
-  /** Unique per minted key (jwt-style id) — enables per-key revocation later. */
-  jti: string;
-  /** Issuer. Always {@link LICENSE_ISSUER}. */
-  iss: string;
-  /** Stripe subscription id — `subscription` kind only. */
-  sub?: string;
-}
 
 /** Inputs for minting a key. `issuedAt`/`jti` default to now / a fresh UUID. */
 export interface MintParams {
@@ -99,14 +81,6 @@ function toBase64Url(bytes: Uint8Array): string {
   let binary = "";
   for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
   return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
-}
-
-/** Decode a base64url string (padding optional) back to bytes. */
-function fromBase64Url(s: string): Uint8Array {
-  const binary = atob(s.replace(/-/g, "+").replace(/_/g, "/"));
-  const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-  return bytes;
 }
 
 /** Strip PEM armor for `label` and decode the base64 body to DER bytes. */
@@ -224,36 +198,20 @@ export async function verifySignedPayload(
   key: string,
   publicKey: CryptoKey,
 ): Promise<LicensePayload | null> {
-  const trimmed = typeof key === "string" ? key.trim() : "";
-  if (!trimmed) return null;
-
-  const parts = trimmed.split(".");
-  if (parts.length !== 3 || parts[0] !== KEY_PREFIX) return null;
-
-  let payloadBytes: Uint8Array;
-  let sigBytes: Uint8Array;
-  try {
-    payloadBytes = fromBase64Url(parts[1]);
-    sigBytes = fromBase64Url(parts[2]);
-  } catch {
-    return null;
-  }
+  const decoded = decodeSb1Key(key);
+  if (isPolicyError(decoded)) return null;
 
   let ok = false;
   try {
-    ok = await crypto.subtle.verify("Ed25519", publicKey, sigBytes, payloadBytes);
+    ok = await crypto.subtle.verify("Ed25519", publicKey, decoded.sigBytes, decoded.payloadBytes);
   } catch {
     return null;
   }
   if (!ok) return null;
 
-  try {
-    const payload = JSON.parse(new TextDecoder().decode(payloadBytes)) as LicensePayload;
-    if (payload == null || typeof payload !== "object") return null;
-    return payload;
-  } catch {
-    return null;
-  }
+  const payload = parsePayload(decoded.payloadBytes);
+  if (isPolicyError(payload)) return null;
+  return payload;
 }
 
 /**
@@ -268,66 +226,19 @@ export async function verifyLicenseKey(
   publicKey: CryptoKey,
   now: Date = new Date(),
 ): Promise<VerifyResult> {
-  const trimmed = typeof key === "string" ? key.trim() : "";
-  if (!trimmed) return invalid("Empty license key");
-
-  const parts = trimmed.split(".");
-  if (parts.length !== 3 || parts[0] !== KEY_PREFIX) {
-    return invalid("Not a Sound Buddy license key");
-  }
-
-  let payloadBytes: Uint8Array;
-  let sigBytes: Uint8Array;
-  try {
-    payloadBytes = fromBase64Url(parts[1]);
-    sigBytes = fromBase64Url(parts[2]);
-  } catch {
-    return invalid("Corrupt license encoding");
-  }
+  const decoded = decodeSb1Key(key);
+  if (isPolicyError(decoded)) return invalid(decoded.error);
 
   let ok = false;
   try {
-    ok = await crypto.subtle.verify("Ed25519", publicKey, sigBytes, payloadBytes);
+    ok = await crypto.subtle.verify("Ed25519", publicKey, decoded.sigBytes, decoded.payloadBytes);
   } catch {
     return invalid("Invalid signature");
   }
   if (!ok) return invalid("Invalid signature");
 
-  let payload: LicensePayload;
-  try {
-    payload = JSON.parse(new TextDecoder().decode(payloadBytes)) as LicensePayload;
-  } catch {
-    return invalid("Corrupt license payload");
-  }
-  if (payload == null || typeof payload !== "object") {
-    return invalid("Corrupt license payload");
-  }
+  const payload = parsePayload(decoded.payloadBytes);
+  if (isPolicyError(payload)) return invalid(payload.error);
 
-  const base = {
-    kind: payload.kind,
-    email: typeof payload.email === "string" ? payload.email : undefined,
-    expiresAt: typeof payload.expiresAt === "string" ? payload.expiresAt : undefined,
-  };
-
-  // Lifetime keys never expire — skip expiry and grace entirely.
-  if (payload.kind === "lifetime") {
-    return { tier: "pro", status: "valid", ...base, expiresAt: undefined };
-  }
-  if (payload.kind !== "subscription") return invalid("Unknown license kind");
-
-  const expiresMs = Date.parse(base.expiresAt ?? "");
-  if (Number.isNaN(expiresMs)) return invalid("License has no valid expiry");
-
-  if (now.getTime() < expiresMs) return { tier: "pro", status: "valid", ...base };
-
-  const graceEndsMs = expiresMs + GRACE_DAYS * DAY_MS;
-  if (now.getTime() < graceEndsMs) {
-    return {
-      tier: "pro",
-      status: "grace",
-      ...base,
-      graceEndsAt: new Date(graceEndsMs).toISOString(),
-    };
-  }
-  return { tier: "free", status: "expired", ...base };
+  return resolvePolicyState(payload, now);
 }
