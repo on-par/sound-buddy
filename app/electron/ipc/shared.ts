@@ -45,7 +45,7 @@ export const PLAYBACK_SCRIPT = path.join(SCRIPTS_DIR, 'playback.py');
 // Python scripts it must live OUTSIDE the asar archive so the external
 // sox/ffprobe processes can read it — it ships as extraResources
 // (Contents/Resources/assets) in a packaged .app; in dev it lives under app/assets.
-const APP_ROOT = path.resolve(__dirname, '..', '..', '..');
+export const APP_ROOT = path.resolve(__dirname, '..', '..', '..');
 export const DEMO_AUDIO = app.isPackaged
   ? path.join(process.resourcesPath, 'assets', 'demo.wav')
   : path.join(APP_ROOT, 'assets', 'demo.wav');

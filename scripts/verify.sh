@@ -1,7 +1,10 @@
 #!/usr/bin/env bash
 # Run the full verification suite locally, mirroring .github/workflows/ci.yml
-# (install → build → lint → test) plus the Electron end-to-end suite that CI
-# skips (it needs a real Electron launch, and the smoke run needs sox/ffprobe/python).
+# (install → build → lint → test). CI's `e2e` job (#402) now runs the same
+# stubbed Playwright specs this script's e2e block runs when media tools are
+# missing; this script additionally runs the full suite (real sox/ffprobe/
+# python smoke specs) locally when those tools are present, which CI still
+# skips.
 #
 #   ./scripts/verify.sh            # full: install + build + lint + test + app e2e
 #   ./scripts/verify.sh --no-e2e   # everything except the Electron e2e

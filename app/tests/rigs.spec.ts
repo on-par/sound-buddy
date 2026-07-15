@@ -15,11 +15,26 @@ const USER_DATA = path.join(__dirname, '..', 'test-results', 'rigs-userdata');
 const EIGHT_CH = [{ index: 0, name: 'Fake 8ch Interface', channels: 8, default_sr: 48000 }];
 const TWO_CH = [{ index: 0, name: 'Tiny 2ch', channels: 2, default_sr: 48000 }];
 
-async function stubDevices(app: ElectronApplication, devices: unknown) {
-  await app.evaluate(({ ipcMain }, devs) => {
-    ipcMain.removeHandler('list-devices');
-    ipcMain.handle('list-devices', () => ({ success: true, micAccess: 'granted', devices: devs }));
-  }, devices);
+// electronApplication.evaluate() is documented-flaky right when called
+// immediately after launch (a known upstream Playwright+Electron issue since
+// Electron 27: microsoft/playwright#33737) — the main-process execution
+// context can be torn down and recreated while the app finishes booting,
+// throwing "Execution context was destroyed, most likely because of a
+// navigation" even though nothing in this app actually navigates. Sibling
+// specs (momentum/purchase-path) incidentally dodge it because they assert on
+// the renderer first, giving the context time to settle; this is the only
+// caller of stubDevices() and it runs right after launch, so retry here
+// instead of relying on assertion ordering elsewhere.
+async function stubDevices(app: ElectronApplication, devices: unknown, attempt = 1): Promise<void> {
+  try {
+    await app.evaluate(({ ipcMain }, devs) => {
+      ipcMain.removeHandler('list-devices');
+      ipcMain.handle('list-devices', () => ({ success: true, micAccess: 'granted', devices: devs }));
+    }, devices);
+  } catch (err) {
+    if (attempt >= 3) throw err;
+    await stubDevices(app, devices, attempt + 1);
+  }
 }
 
 async function launch(devices: unknown): Promise<{ app: ElectronApplication; win: Page }> {

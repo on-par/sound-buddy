@@ -5,9 +5,10 @@
 // flags, storage location, capture rigs, native file/dir dialogs, and the
 // file:// URL bridge the sandboxed preload needs for the playback transport.
 
-import { ipcMain, dialog, BrowserWindow, app } from 'electron';
+import { ipcMain, dialog, BrowserWindow } from 'electron';
 import * as fs from 'fs';
 import { pathToFileURL } from 'url';
+import { resolveAppVersion } from '../app-version';
 import { logWarn } from '../logger';
 import {
   getSettings,
@@ -20,7 +21,7 @@ import {
 } from '../settings';
 import { isEntitled } from '../license';
 import { dirSizeBytes, formatBytes } from '../storage';
-import { defaultRecordDir, platformDefaultStorageDir } from './shared';
+import { APP_ROOT, defaultRecordDir, platformDefaultStorageDir } from './shared';
 
 const DEFAULT_EXPORT_FILENAME = 'report.png';
 const PNG_EXTENSION = '.png';
@@ -38,9 +39,10 @@ export function safeExportFilename(name: string): string {
 }
 
 export function registerSettingsHandlers(): void {
-  // get-app-version — the installed app version (from package.json / the
-  // packaged .app's Info.plist), shown in the AI Engineer dialog (#202).
-  ipcMain.handle('get-app-version', () => app.getVersion());
+  // get-app-version — the installed app version, shown in the AI Engineer
+  // dialog (#202). Reads package.json directly via resolveAppVersion rather
+  // than Electron's own app.getVersion() — see app-version.ts for why.
+  ipcMain.handle('get-app-version', () => resolveAppVersion(APP_ROOT));
 
   // get-settings — read app-behavior flags (AI on/off, ideal profile). The
   // renderer reads this at boot to hide AI affordances when disabled.

@@ -14,9 +14,10 @@ import { MATRIX_ENV, MATRIX_FREE_ENV, seedTrial, seedSubscription, seedProLicens
 // trial flows interactively; this spec is the cross-cutting matrix over all
 // eight states, driven directly through window.soundBuddy rather than clicks.
 //
-// NOTE: per the repo's ci-does-not-run-app-e2e convention, CI runs the Vitest
-// half of this matrix (electron/entitlement-matrix.test.ts) but NOT this
-// Playwright spec. Run it locally / pre-release:
+// NOTE (#402): CI now runs this Playwright spec too, via the stubbed e2e job
+// (.github/workflows/ci.yml's `e2e` job / `npm run test:e2e:stubbed`) — it
+// needs no real sox/ffprobe/python, so it isn't in playwright.config.ts's
+// MEDIA_SPECS denylist. To run it locally / pre-release:
 //   npm run build --prefix app && cd app && npx playwright test tests/entitlement-matrix.spec.ts
 
 const MAIN = path.join(__dirname, '..', 'dist', 'electron', 'main.js');

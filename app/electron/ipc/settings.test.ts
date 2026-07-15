@@ -32,7 +32,14 @@ vi.mock('electron', () => ({
 
 vi.mock('../license', () => ({ isEntitled: () => true }));
 
+// get-app-version (#402) delegates to resolveAppVersion(APP_ROOT) rather than
+// Electron's app.getVersion() — see app-version.ts for why. Stub it here so
+// this file tests the IPC wiring; resolveAppVersion's own file-reading logic
+// is covered by app-version.test.ts.
+vi.mock('../app-version', () => ({ resolveAppVersion: (appRoot: string) => `stub-version-for:${appRoot}` }));
+
 import { registerSettingsHandlers, safeExportFilename } from './settings';
+import { APP_ROOT } from './shared';
 
 const settingsFile = () => path.join(userDataDir, 'settings.json');
 const readFile = () => JSON.parse(fs.readFileSync(settingsFile(), 'utf8'));
@@ -47,6 +54,14 @@ beforeEach(() => {
 
 afterEach(() => {
   fs.rmSync(userDataDir, { recursive: true, force: true });
+});
+
+describe('get-app-version (#402)', () => {
+  it('delegates to resolveAppVersion(APP_ROOT) rather than Electron app.getVersion()', async () => {
+    const handler = handlers.get('get-app-version');
+    expect(handler).toBeTypeOf('function');
+    expect(await handler!(null)).toBe(`stub-version-for:${APP_ROOT}`);
+  });
 });
 
 describe('update-settings IPC whitelist — usageSignalEnabled (#145)', () => {
