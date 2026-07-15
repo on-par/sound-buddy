@@ -7,6 +7,7 @@ import { analyzeAudio } from "./analyze/index.js";
 import { extractChannels, loadChannelFiles } from "./analyze/channels.js";
 import { compareChannels } from "./analyze/compare.js";
 import { buildReport, buildSummaryTable, formatMultiChannelReport } from "./report.js";
+import { formatChannelTable } from "./bands.js";
 import { getEngineerRead, analyzeMultiChannel, analyzeWithOllama } from "./engineer.js";
 import { startLive } from "./stream/index.js";
 import type { ChannelFile, ChannelAnalysis, AudioAnalysis } from "./types.js";
@@ -40,6 +41,12 @@ export {
   PENALTY_PER_DB,
 } from "./profiles/index.js";
 export type { IdealProfile, ProfileComparison, BandDeviation } from "./profiles/index.js";
+
+// Canonical band metadata + presentation helpers (TD-005): single source of
+// truth for band labels/bounds and the per-channel summary table, replacing
+// four duplicated copies across audio-engine/cli.
+export { BAND_METADATA, BAND_LABELS, dominantBandLabel, formatChannelTable } from "./bands.js";
+export type { BandKey, BandMeta } from "./bands.js";
 
 // Shared spectral-analysis primitives (#376): peak-picking for #15 feedback
 // ring-out, band-energy for the future #2 harshness engine.
@@ -196,53 +203,7 @@ async function analyzeChannelSafe(
 }
 
 function printChannelTable(channelAnalyses: ChannelAnalysis[]): void {
-  const cols = {
-    name: Math.max(10, ...channelAnalyses.map((c) => c.channel.name.length)),
-    rms: 10,
-    peak: 11,
-    dyn: 13,
-    dominant: 14,
-  };
-
-  const header = [
-    "Channel".padEnd(cols.name),
-    "RMS dBFS".padEnd(cols.rms),
-    "Peak dBFS".padEnd(cols.peak),
-    "Dyn Range".padEnd(cols.dyn),
-    "Dominant Band",
-  ].join("  ");
-
-  const sep = "-".repeat(header.length);
-
-  const domLabels: Record<string, string> = {
-    subBass: "Sub-bass",
-    bass: "Bass",
-    lowMid: "Low-mid",
-    mid: "Mid",
-    highMid: "High-mid",
-    presence: "Presence",
-    brilliance: "Brilliance",
-  };
-
-  console.log(header);
-  console.log(sep);
-
-  for (const { channel, analysis } of channelAnalyses) {
-    const { sox, spectrum } = analysis;
-    const bandEntries = Object.entries(spectrum.bands) as [string, number][];
-    const dominant = bandEntries.reduce((a, b) => (b[1] > a[1] ? b : a))[0];
-    const rmsStr = isFinite(sox.rmsDbfs) ? sox.rmsDbfs.toFixed(2) + " dBFS" : "-inf dBFS";
-    const peakStr = isFinite(sox.peakDbfs) ? sox.peakDbfs.toFixed(2) + " dBFS" : "-inf dBFS";
-    const dynStr = sox.dynamicRangeDb.toFixed(2) + " dB";
-
-    console.log([
-      channel.name.padEnd(cols.name),
-      rmsStr.padEnd(cols.rms),
-      peakStr.padEnd(cols.peak),
-      dynStr.padEnd(cols.dyn),
-      domLabels[dominant] ?? dominant,
-    ].join("  "));
-  }
+  for (const line of formatChannelTable(channelAnalyses)) console.log(line);
 }
 
 async function runListDevices(): Promise<void> {
