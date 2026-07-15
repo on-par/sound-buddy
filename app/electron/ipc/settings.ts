@@ -126,6 +126,7 @@ export function registerSettingsHandlers(): void {
       properties: ['openFile'],
       filters: [
         { name: 'Audio Files', extensions: ['wav', 'aif', 'aiff', 'flac', 'mp3', 'ogg', 'm4a'] },
+        { name: 'Video Files', extensions: ['mp4', 'mov', 'm4v', 'mkv', 'webm'] },
         { name: 'All Files', extensions: ['*'] },
       ],
     });

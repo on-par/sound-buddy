@@ -103,8 +103,17 @@ export function registerAnalysisHandlers(): void {
       spectrum: 'spectrum',
     };
 
+    let analyzePath = filePath;
+    let extractedWav: string | null = null;
+
     try {
-      const analysis = await loadEngineParsers().analyzeAudio(filePath, {
+      if (loadEngineParsers().isVideoFile(filePath)) {
+        log(`analyze-file extracting audio from video: ${filePath}`);
+        extractedWav = await loadEngineParsers().extractAudioToWav(filePath, { bin: toolBin('ffmpeg'), signal });
+        analyzePath = extractedWav;
+      }
+
+      const analysis = await loadEngineParsers().analyzeAudio(analyzePath, {
         sox: { bin: toolBin('sox') },
         ffprobe: { bin: toolBin('ffprobe') },
         spectrum: { scriptPath: SPECTRUM_SCRIPT, python: pythonBin(), env: childEnv() },
@@ -134,6 +143,16 @@ export function registerAnalysisHandlers(): void {
       logError(`analyze-file failed for ${filePath}`, err);
       return { success: false, error: message };
     } finally {
+      // The extracted WAV is a scratch intermediate — remove it regardless of
+      // outcome. Best-effort: a removal failure (already gone, permissions)
+      // must not shadow the real success/error result above.
+      if (extractedWav) {
+        try {
+          fs.rmSync(extractedWav, { force: true });
+        } catch (err) {
+          logError(`failed to remove extracted audio temp file ${extractedWav}`, err);
+        }
+      }
       // Only clear this run's own entry — a supersede above may already have
       // replaced it with a newer run's controller.
       if (inFlight.get(wc.id) === controller) inFlight.delete(wc.id);
