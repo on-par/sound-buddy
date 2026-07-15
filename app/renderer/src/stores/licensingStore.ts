@@ -12,9 +12,14 @@ export interface LicensingState {
   trialDaysLeft: number | null;
   isTrial: boolean;
   isLicensed: boolean;
+  dialogOpen: boolean;
   checkLicense(now?: Date): Promise<void>;
   activateLicense(key: string, now?: Date): Promise<void>;
   startTrial(now?: Date): Promise<void>;
+  removeLicense(now?: Date): Promise<void>;
+  refreshLicense(now?: Date): Promise<void>;
+  openDialog(): void;
+  closeDialog(): void;
 }
 
 // Port of app/renderer/license-state.js's trialDaysLeft(): whole days left
@@ -48,6 +53,7 @@ export function createLicensingStore(getApi: () => LicenseApi) {
     trialDaysLeft: null,
     isTrial: false,
     isLicensed: false,
+    dialogOpen: false,
     async checkLicense(now = new Date()) {
       set(projectLicense(await getApi().getLicense(), now));
     },
@@ -59,6 +65,28 @@ export function createLicensingStore(getApi: () => LicenseApi) {
     // re-projects whatever the main process already resolved.
     async startTrial(now = new Date()) {
       set(projectLicense(await getApi().getLicense(), now));
+    },
+    // The main process rethrows a failed delete (inline-app.js:3346–3361) — let
+    // the rejection propagate so the panel can show it instead of pretending
+    // the key is gone.
+    async removeLicense(now = new Date()) {
+      set(projectLicense(await getApi().removeLicense(), now));
+    },
+    // Best-effort background refresh (inline-app.js:3365–3375 and the auto-kick
+    // at 3180): the IPC round-trip can reject, but there is nothing useful to
+    // show for it — keep whatever state is already on screen.
+    async refreshLicense(now = new Date()) {
+      try {
+        set(projectLicense(await getApi().refreshLicense(), now));
+      } catch {
+        // keep current state
+      }
+    },
+    openDialog() {
+      set({ dialogOpen: true });
+    },
+    closeDialog() {
+      set({ dialogOpen: false });
     },
   }));
 }
