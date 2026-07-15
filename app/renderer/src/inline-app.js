@@ -3419,6 +3419,8 @@ function openLicenseDialog() {
 // safeStorage there and never comes back to this process).
 // Direct hosted providers hard-require a model (no server-side default);
 // ollama and pi pass-through providers supply their own (TD-004 slice 3, #427).
+// Mirrors electron/llm-config.ts's HOSTED_PROVIDER_IDS — duplicated rather than
+// shared since this file runs in the renderer process, across the IPC boundary.
 const HOSTED_PROVIDER_IDS = new Set(['openai', 'anthropic', 'google', 'custom']);
 
 let aiDialogTab = 'ollama';
@@ -3529,12 +3531,14 @@ function syncHostedFields() {
 }
 
 async function openAiSettings() {
-  let cfg = null;
-  try { cfg = await sb.getLlmConfig(); } catch { cfg = null; }
+  // Independent round-trips — fire concurrently rather than serializing two
+  // main-process hops (the model list additionally awaits a Pi SDK load).
+  const [cfgResult, modelsResult] = await Promise.allSettled([sb.getLlmConfig(), sb.listLlmModels()]);
+  let cfg = cfgResult.status === 'fulfilled' ? cfgResult.value : null;
   cfg = cfg || { provider: '', model: '', ollamaHost: '', apiBaseUrl: '', hasApiKey: false, apiKeyProvider: '' };
   aiSavedCfg = cfg;
 
-  try { aiModelsCache = await sb.listLlmModels(); } catch { aiModelsCache = []; }
+  aiModelsCache = modelsResult.status === 'fulfilled' ? modelsResult.value : [];
 
   aiEl('ai-ollama-host').value = cfg.ollamaHost || '';
   aiEl('ai-base-url').value = cfg.apiBaseUrl || '';

@@ -1,12 +1,14 @@
 // Copyright (c) 2026 Patrick Robinson (on-par). All rights reserved.
 // Licensed under the Sound Buddy Desktop Application License (app/LICENSE).
 
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import type { Mock } from 'vitest';
+import type { NarrativePort } from '@sound-buddy/audio-engine/dist/narrative/port';
 
 vi.mock('electron', () => ({ app: { getPath: vi.fn(() => '/tmp/sb-narrative-test') } }));
 vi.mock('./llm-config', () => ({
   DEFAULT_OLLAMA_HOST: 'http://localhost:11434',
+  HOSTED_PROVIDER_IDS: new Set(['openai', 'anthropic', 'google', 'custom']),
   getApiKey: vi.fn(),
   getLlmConfig: vi.fn(),
   normalizeHostUrl: (host: string) => {
@@ -210,6 +212,94 @@ describe('getNarrativePort', () => {
     expect(error).toContain('module not found');
     expect(error).toMatch(/update/i);
   });
+
+  it('returns an actionable error for the custom provider with no base URL, without loading a port', async () => {
+    getLlmConfigMock.mockReturnValue({ provider: 'custom', model: 'my-model', apiBaseUrl: '' });
+    getApiKeyMock.mockReturnValue('sk-live');
+    const ctor = vi.fn(function () { return { streamNarrative: vi.fn(), listModels: vi.fn() }; });
+    const result = await getNarrativePort(fakeImporter(ctor));
+    expect(result).toEqual({
+      error: 'Custom provider requires a base URL — open AI settings (the gear icon) and set one.',
+    });
+    expect(ctor).not.toHaveBeenCalled();
+  });
+});
+
+// ─── getNarrativePort — idle timeout ────────────────────────────────────────
+// The old streamHosted() enforced a 60s no-data idle timeout so a black-holed
+// connection could never wedge the renderer's "Analyzing…" button forever
+// (see llm.test.ts's pre-#427 history). The Pi SDK's session.prompt() has no
+// equivalent built in, so getNarrativePort's returned port re-adds it.
+
+describe('getNarrativePort — idle timeout', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  function fakeImporter(ctor: Mock): AdapterImporter {
+    return () => Promise.resolve({ PiNarrativeAdapter: ctor as unknown as never });
+  }
+
+  it('resolves the underlying result when it settles before the idle timeout', async () => {
+    getLlmConfigMock.mockReturnValue({ provider: 'anthropic', model: 'claude-sonnet-4-6' });
+    getApiKeyMock.mockReturnValue('sk-ant');
+    const ctor = vi.fn(function () {
+      return {
+        streamNarrative: vi.fn().mockResolvedValue({ ok: true, provider: 'anthropic', model: 'claude-sonnet-4-6' }),
+        listModels: vi.fn(),
+      };
+    });
+    const result = await getNarrativePort(fakeImporter(ctor));
+    expect('port' in result).toBe(true);
+    const streamResult = await (result as { port: { streamNarrative: (...a: unknown[]) => Promise<unknown> } }).port.streamNarrative('sys', 'user', vi.fn());
+    expect(streamResult).toEqual({ ok: true, provider: 'anthropic', model: 'claude-sonnet-4-6' });
+  });
+
+  it('resolves an actionable timeout failure when no delta arrives within the idle window', async () => {
+    getLlmConfigMock.mockReturnValue({ provider: 'anthropic', model: 'claude-sonnet-4-6' });
+    getApiKeyMock.mockReturnValue('sk-ant');
+    const ctor = vi.fn(function () {
+      return { streamNarrative: vi.fn(() => new Promise(() => {})), listModels: vi.fn() };
+    });
+    const result = await getNarrativePort(fakeImporter(ctor));
+    const port = (result as { port: NarrativePort }).port;
+    const streamPromise = port.streamNarrative('sys', 'user', vi.fn());
+    await vi.advanceTimersByTimeAsync(60_000);
+    const streamResult = await streamPromise;
+    expect(streamResult).toEqual({ ok: false, reason: expect.stringMatching(/stopped responding/i) });
+  });
+
+  it('resets the idle timer on every delta, so a steady trickle never times out', async () => {
+    getLlmConfigMock.mockReturnValue({ provider: 'anthropic', model: 'claude-sonnet-4-6' });
+    getApiKeyMock.mockReturnValue('sk-ant');
+    let capturedOnDelta: ((text: string) => void) | undefined;
+    const ctor = vi.fn(function () {
+      return {
+        streamNarrative: vi.fn((_sys: string, _user: string, onDelta: (text: string) => void) => {
+          capturedOnDelta = onDelta;
+          return new Promise(() => {});
+        }),
+        listModels: vi.fn(),
+      };
+    });
+    const result = await getNarrativePort(fakeImporter(ctor));
+    const port = (result as { port: NarrativePort }).port;
+    const onDelta = vi.fn();
+    const streamPromise = port.streamNarrative('sys', 'user', onDelta);
+    for (let i = 0; i < 3; i++) {
+      await vi.advanceTimersByTimeAsync(45_000);
+      capturedOnDelta?.('chunk');
+    }
+    expect(onDelta).toHaveBeenCalledTimes(3);
+    let settled = false;
+    streamPromise.then(() => { settled = true; });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(settled).toBe(false);
+  });
 });
 
 // ─── listNarrativeModels ─────────────────────────────────────────────────────
@@ -257,6 +347,15 @@ describe('testProvider', () => {
     getApiKeyMock.mockReturnValue(undefined);
     const result = await testProvider({ provider: 'openai' });
     expect(result).toEqual({ ok: false, reason: 'Paste an API key first.' });
+  });
+
+  it('requires a base URL for the custom provider before checking for a key', async () => {
+    getApiKeyMock.mockReturnValue('sk-live');
+    const result = await testProvider({ provider: 'custom', apiKey: 'sk-live', apiBaseUrl: '' });
+    expect(result).toEqual({
+      ok: false,
+      reason: 'Custom provider requires a base URL — open AI settings (the gear icon) and set one.',
+    });
   });
 
   it('reports models found for the provider', async () => {

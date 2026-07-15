@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Patrick Robinson (on-par). All rights reserved.
 // Licensed under the Sound Buddy Desktop Application License (app/LICENSE).
 
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, afterEach } from 'vitest';
 import * as path from 'node:path';
 import * as fs from 'node:fs';
 
@@ -9,7 +9,7 @@ vi.mock('electron', () => ({
   app: { isPackaged: false, getPath: () => '/tmp/sound-buddy-test' },
 }));
 
-import { REPO_ROOT, findRepoRoot } from './shared';
+import { REPO_ROOT, findRepoRoot, childEnv } from './shared';
 
 describe('findRepoRoot', () => {
   it('walks up from a nested source directory to find the repo containing packages/audio-engine', () => {
@@ -30,5 +30,25 @@ describe('REPO_ROOT', () => {
   it('resolves to the actual repo root regardless of whether this runs from TS source or compiled dist', () => {
     expect(fs.existsSync(path.join(REPO_ROOT, 'packages', 'audio-engine'))).toBe(true);
     expect(fs.existsSync(path.join(REPO_ROOT, 'app'))).toBe(true);
+  });
+});
+
+describe('childEnv', () => {
+  const LLM_SECRET_VARS = ['OPENAI_API_KEY', 'ANTHROPIC_API_KEY', 'GEMINI_API_KEY', 'SOUND_BUDDY_CUSTOM_API_KEY'];
+
+  afterEach(() => {
+    for (const v of LLM_SECRET_VARS) delete process.env[v];
+  });
+
+  it('strips AI-provider API keys so bundled Python subprocesses never inherit them', () => {
+    for (const v of LLM_SECRET_VARS) process.env[v] = 'sk-should-not-leak';
+    const env = childEnv();
+    for (const v of LLM_SECRET_VARS) expect(env[v]).toBeUndefined();
+  });
+
+  it('passes through unrelated env vars unchanged', () => {
+    process.env.SOUND_BUDDY_TEST_PASSTHROUGH = 'keep-me';
+    expect(childEnv().SOUND_BUDDY_TEST_PASSTHROUGH).toBe('keep-me');
+    delete process.env.SOUND_BUDDY_TEST_PASSTHROUGH;
   });
 });

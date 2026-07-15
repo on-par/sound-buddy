@@ -60,6 +60,11 @@ export type { PublicLlmConfig };
 
 export const DEFAULT_OLLAMA_HOST = 'http://localhost:11434';
 
+/** Direct hosted providers (a pasted API key talks straight to the
+ *  provider) — as opposed to ollama or a pi-subscription pass-through
+ *  provider. Single source of truth shared by llm.ts and narrative-port.ts. */
+export const HOSTED_PROVIDER_IDS: ReadonlySet<string> = new Set(['openai', 'anthropic', 'google', 'custom']);
+
 function llmConfigPath(): string {
   return path.join(app.getPath('userData'), 'llm.json');
 }

@@ -24,12 +24,19 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { app } from 'electron';
-import { getApiKey, getLlmConfig, normalizeHostUrl, DEFAULT_OLLAMA_HOST, type LlmConfig } from './llm-config';
+import {
+  getApiKey,
+  getLlmConfig,
+  normalizeHostUrl,
+  DEFAULT_OLLAMA_HOST,
+  HOSTED_PROVIDER_IDS,
+  type LlmConfig,
+} from './llm-config';
 import { logWarn } from './logger';
 // Type-only — erased at build time, so this never pulls the ESM audio-engine
 // dist into app/electron's CommonJS runtime module graph (only used by name
 // for `tsc`'s benefit).
-import type { ModelInfo, NarrativePort } from '@sound-buddy/audio-engine/dist/narrative/port';
+import type { ModelInfo, NarrativePort, NarrativeResult } from '@sound-buddy/audio-engine/dist/narrative/port';
 
 const ADAPTER_SPECIFIER = '@sound-buddy/audio-engine/dist/narrative/pi-adapter.js';
 
@@ -57,8 +64,6 @@ const dynamicImport = new Function('specifier', 'return import(specifier);') as 
 const defaultImporter: AdapterImporter = () => dynamicImport(ADAPTER_SPECIFIER) as Promise<AdapterModule>;
 /* c8 ignore stop */
 
-const HOSTED = new Set(['openai', 'anthropic', 'google', 'custom']);
-
 const CUSTOM_KEY_ENV = 'SOUND_BUDDY_CUSTOM_API_KEY';
 
 // Pi resolves a pasted key from these env vars per provider (pi-ai's
@@ -68,6 +73,18 @@ const HOSTED_ENV_VAR: Record<string, string> = {
   anthropic: 'ANTHROPIC_API_KEY',
   google: 'GEMINI_API_KEY',
 };
+
+/**
+ * Every env var name applyPiEnv() can ever set. A decrypted API key set here
+ * lives in `process.env` for however long this provider stays configured —
+ * ipc/shared.ts's childEnv() (the env every bundled Python subprocess
+ * inherits) strips these so an unrelated audio-analysis child process never
+ * sees an AI provider's key.
+ */
+export const LLM_SECRET_ENV_VARS: readonly string[] = [
+  ...Object.values(HOSTED_ENV_VAR),
+  CUSTOM_KEY_ENV,
+];
 
 const MODELS_JSON_FILENAME = 'pi-models.json';
 
@@ -172,6 +189,55 @@ async function loadPort(
 
 export type NarrativePortResult = { port: NarrativePort } | { error: string };
 
+// The Pi SDK's session.prompt() has no built-in idle timeout, unlike the
+// deleted streamHosted()'s STREAM_IDLE_TIMEOUT_MS — without one, a
+// black-holed provider connection would never settle, and the renderer's
+// "Analyzing…" button would wedge forever (llm-done is only sent once
+// streamNarrative resolves). Re-added here rather than in llm.ts (which the
+// spec caps at ≤50 lines) by wrapping the returned port.
+const STREAM_IDLE_TIMEOUT_MS = 60_000;
+
+function withIdleTimeout(port: NarrativePort): NarrativePort {
+  return {
+    ...port,
+    streamNarrative: (systemPrompt, userMessage, onDelta) =>
+      new Promise<NarrativeResult>((resolve) => {
+        let settled = false;
+        let timer: ReturnType<typeof setTimeout>;
+        const resetTimer = (): void => {
+          clearTimeout(timer);
+          timer = setTimeout(() => {
+            if (settled) return;
+            settled = true;
+            resolve({
+              ok: false,
+              reason: `stopped responding (no data for ${STREAM_IDLE_TIMEOUT_MS / 1000}s)`,
+            });
+          }, STREAM_IDLE_TIMEOUT_MS);
+        };
+        resetTimer();
+        const wrappedOnDelta = (text: string): void => {
+          resetTimer();
+          onDelta(text);
+        };
+        port.streamNarrative(systemPrompt, userMessage, wrappedOnDelta).then((result) => {
+          if (settled) return;
+          settled = true;
+          clearTimeout(timer);
+          resolve(result);
+        });
+      }),
+  };
+}
+
+const CUSTOM_BASE_URL_ERROR = 'Custom provider requires a base URL — open AI settings (the gear icon) and set one.';
+
+/** The "custom" (OpenAI-compatible) provider has no default endpoint — unlike
+ *  every other provider, an empty base URL is always a configuration error. */
+function customBaseUrlMissing(provider: string | undefined, apiBaseUrl: string | undefined): boolean {
+  return provider === 'custom' && !apiBaseUrl?.trim();
+}
+
 /**
  * Load the configured NarrativePort. Model id rules preserve llm.ts's prior
  * behavior: ollama defaults to llama3.2; every other provider passes
@@ -181,10 +247,14 @@ export type NarrativePortResult = { port: NarrativePort } | { error: string };
  */
 export async function getNarrativePort(importer: AdapterImporter = defaultImporter): Promise<NarrativePortResult> {
   const cfg = getLlmConfig();
+  if (customBaseUrlMissing(cfg.provider, cfg.apiBaseUrl)) {
+    return { error: CUSTOM_BASE_URL_ERROR };
+  }
   const apiKey = getApiKey(cfg.provider);
   const modelId = cfg.provider === 'ollama' ? cfg.model || 'llama3.2' : cfg.model;
   try {
-    return await loadPort(cfg, apiKey, modelId, importer);
+    const { port } = await loadPort(cfg, apiKey, modelId, importer);
+    return { port: withIdleTimeout(port) };
   } catch (err) {
     return {
       error: `AI engine failed to load: ${err instanceof Error ? err.message : String(err)}. This build may not support in-app AI — check for a Sound Buddy update.`,
@@ -227,8 +297,11 @@ export async function testProvider(
   // The stored-key fallback is scoped to the provider it was pasted for — a
   // saved OpenAI key must not be tried against Anthropic just because the
   // user flipped the dropdown before testing.
+  if (customBaseUrlMissing(opts.provider, opts.apiBaseUrl)) {
+    return { ok: false, reason: CUSTOM_BASE_URL_ERROR };
+  }
   const candidateKey = opts.apiKey?.trim() || getApiKey(opts.provider);
-  if (HOSTED.has(opts.provider) && !candidateKey) {
+  if (HOSTED_PROVIDER_IDS.has(opts.provider) && !candidateKey) {
     return { ok: false, reason: 'Paste an API key first.' };
   }
 

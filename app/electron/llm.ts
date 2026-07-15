@@ -9,7 +9,7 @@
 // 'no-provider') that ipc/narrative.ts and the renderer already branch on.
 
 import { isAiEnabled } from './settings';
-import { getLlmConfig } from './llm-config';
+import { getLlmConfig, HOSTED_PROVIDER_IDS } from './llm-config';
 import { getNarrativePort } from './narrative-port';
 
 export interface NarrativeOutcome {
@@ -22,8 +22,6 @@ export interface NarrativeOutcome {
    */
   reason?: string;
 }
-
-const HOSTED = new Set(['openai', 'anthropic', 'google', 'custom']);
 
 export async function streamNarrative(
   onDelta: (text: string) => void,
@@ -38,7 +36,7 @@ export async function streamNarrative(
 
   // Direct hosted providers hard-require a model (no server-side default);
   // ollama and pi pass-through providers supply their own.
-  if (HOSTED.has(cfg.provider) && !cfg.model) {
+  if (HOSTED_PROVIDER_IDS.has(cfg.provider) && !cfg.model) {
     return { ok: false, reason: 'No model configured — pick one in AI settings.' };
   }
 

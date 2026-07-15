@@ -11,6 +11,7 @@ import * as fs from 'fs';
 import { app } from 'electron';
 import { log } from '../logger';
 import { getSettings } from '../settings';
+import { LLM_SECRET_ENV_VARS } from '../narrative-port';
 
 // Dev repo root. Only meaningful when running from a checkout — inside a
 // packaged .app REPO_ROOT is never dereferenced (toolBin/SCRIPTS_DIR/pythonBin
@@ -63,10 +64,16 @@ export function toolBin(name: string): string {
 }
 
 // Env for spawned Python: prepend the bundled bin dir so librosa/audioread can
-// find the bundled ffmpeg (m4a/aac decode) without a system install.
+// find the bundled ffmpeg (m4a/aac decode) without a system install. Also
+// strips any AI-provider API key narrative-port.ts may have set on
+// process.env — these audio-analysis subprocesses have nothing to do with
+// the AI narrative feature and must never inherit its secrets.
 export function childEnv(): NodeJS.ProcessEnv {
-  if (!BUNDLED_BIN_DIR) return process.env;
-  return { ...process.env, PATH: `${BUNDLED_BIN_DIR}${path.delimiter}${process.env.PATH ?? ''}` };
+  const env: NodeJS.ProcessEnv = BUNDLED_BIN_DIR
+    ? { ...process.env, PATH: `${BUNDLED_BIN_DIR}${path.delimiter}${process.env.PATH ?? ''}` }
+    : { ...process.env };
+  for (const key of LLM_SECRET_ENV_VARS) delete env[key];
+  return env;
 }
 
 // The audio-engine scripts need librosa/soundfile/sounddevice/scipy, which the

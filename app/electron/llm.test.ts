@@ -6,7 +6,10 @@ import { isAiEnabled } from './settings';
 import { getLlmConfig } from './llm-config';
 
 vi.mock('./settings', () => ({ isAiEnabled: vi.fn() }));
-vi.mock('./llm-config', () => ({ getLlmConfig: vi.fn() }));
+vi.mock('./llm-config', () => ({
+  getLlmConfig: vi.fn(),
+  HOSTED_PROVIDER_IDS: new Set(['openai', 'anthropic', 'google', 'custom']),
+}));
 vi.mock('./narrative-port', () => ({ getNarrativePort: vi.fn() }));
 
 import { getNarrativePort } from './narrative-port';

@@ -28,6 +28,7 @@ import {
   saveLlmConfig,
   getApiKey,
   DEFAULT_OLLAMA_HOST,
+  HOSTED_PROVIDER_IDS,
   normalizeHostUrl,
 } from './llm-config';
 
@@ -159,6 +160,17 @@ describe('key ↔ provider scoping', () => {
 describe('ollamaHost normalization on save', () => {
   it('prepends http:// to a scheme-less host so it can never parse as a protocol', () => {
     expect(saveLlmConfig({ ollamaHost: 'localhost:11434' }).ollamaHost).toBe('http://localhost:11434');
+  });
+});
+
+describe('HOSTED_PROVIDER_IDS', () => {
+  it('lists exactly the four direct hosted providers, excluding ollama and pi pass-through ids', () => {
+    expect(HOSTED_PROVIDER_IDS.has('openai')).toBe(true);
+    expect(HOSTED_PROVIDER_IDS.has('anthropic')).toBe(true);
+    expect(HOSTED_PROVIDER_IDS.has('google')).toBe(true);
+    expect(HOSTED_PROVIDER_IDS.has('custom')).toBe(true);
+    expect(HOSTED_PROVIDER_IDS.has('ollama')).toBe(false);
+    expect(HOSTED_PROVIDER_IDS.has('github-copilot')).toBe(false);
   });
 });
 
