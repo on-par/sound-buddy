@@ -19,8 +19,16 @@ import {
   metricRowsHTML,
   whyGradeHTML,
   recListHTML,
+  levelColor,
+  bandMeterHTML,
+  reportCardSourceFromAnalysis,
+  contentTypeView,
+  fmtClock,
+  bandBreakdownHTML,
+  reportCardFramesView,
   type PillTone,
   type ProfileComparison,
+  type BandDiffApi,
 } from './report-card';
 
 const require = createRequire(import.meta.url);
@@ -360,5 +368,196 @@ describe('recListHTML', () => {
     // passes escapeText=false for them (mirrors today's history/live split).
     const raw = recListHTML(['<b>bold</b>'], false);
     expect(raw).toContain('<b>bold</b>');
+  });
+});
+
+describe('levelColor', () => {
+  it('grades hot/good/idle bands by dB thresholds', () => {
+    expect(levelColor(-10)).toBe('var(--meter-good)');
+    expect(levelColor(-30)).toBe('var(--meter-hot)');
+    expect(levelColor(-50)).toBe('var(--meter-idle)');
+  });
+});
+
+describe('bandMeterHTML', () => {
+  it('renders the label, range, and formatted dB value', () => {
+    const html = bandMeterHTML('Bass', '60–250 Hz', -18.456);
+    expect(html).toContain('Bass');
+    expect(html).toContain('60–250 Hz');
+    expect(html).toContain('-18.5');
+  });
+
+  it('colors by level when colorBy is "level", falls back to a fixed color otherwise', () => {
+    const byLevel = bandMeterHTML('Bass', '', -10, { colorBy: 'level' });
+    expect(byLevel).toContain('var(--meter-good)');
+    const byBand = bandMeterHTML('Bass', '', -10, { color: 'var(--band-bass)' });
+    expect(byBand).toContain('var(--band-bass)');
+  });
+
+  it('dims the fill at/below DIM_DB and marks the value hot above HOT_DB', () => {
+    const dimmed = bandMeterHTML('Sub', '', -65);
+    expect(dimmed).toContain('opacity:0.5');
+    const hot = bandMeterHTML('Sub', '', -10);
+    expect(hot).toContain('bm-val hot');
+  });
+
+  it('omits the grid/scale by default and includes them when requested', () => {
+    const plain = bandMeterHTML('Bass', '', -18);
+    expect(plain).not.toContain('bm-scale');
+    expect(plain).not.toContain('bm-grid');
+    const withScale = bandMeterHTML('Bass', '', -18, { showScale: true });
+    expect(withScale).toContain('bm-scale');
+    expect(withScale).toContain('bm-grid');
+  });
+
+  it('renders -∞ for a non-finite dB value', () => {
+    expect(bandMeterHTML('Bass', '', -Infinity)).toContain('-∞');
+  });
+
+  it('marks the loudest band with the "loud" class', () => {
+    const html = bandMeterHTML('Bass', '', -18, { loudest: true });
+    expect(html).toContain('bm-name loud');
+    expect(html).toContain('bm-fill loud');
+  });
+});
+
+describe('reportCardSourceFromAnalysis', () => {
+  const analysis = {
+    sox: { rmsDbfs: -18, peakDbfs: -6, dynamicRangeDb: 12, clipping: false },
+    spectrum: {
+      spectralCentroid: 1200,
+      bands: { bass: -18, mid: -16 },
+      curve: { freqs: [100], db: [-10] },
+      contentType: 'speech',
+      segments: [{ start: 0, end: 1, class: 'speech' }],
+      frames: [{ t: 0, db: [-10], rms: -18 }],
+    },
+    ffprobe: { format: { filename: '/fake/path/silence.wav' } },
+    loudness: { integratedLufs: -20, loudnessRange: 5, truePeakDbtp: -1 },
+  };
+
+  it('maps a well-formed analysis onto the report-card source shape', () => {
+    const src = reportCardSourceFromAnalysis(analysis);
+    expect(src).toEqual({
+      filename: 'silence.wav',
+      rms: -18,
+      peak: -6,
+      dynamicRange: 12,
+      clipping: false,
+      centroid: 1200,
+      bands: { bass: -18, mid: -16 },
+      curve: { freqs: [100], db: [-10] },
+      contentType: 'speech',
+      segments: [{ start: 0, end: 1, class: 'speech' }],
+      frames: [{ t: 0, db: [-10], rms: -18 }],
+      lufsIntegrated: -20,
+      loudnessRange: 5,
+      truePeakDbtp: -1,
+    });
+  });
+
+  it('defaults loudness fields to null when the analysis has no loudness block', () => {
+    const src = reportCardSourceFromAnalysis({ ...analysis, loudness: null });
+    expect(src?.lufsIntegrated).toBeNull();
+    expect(src?.loudnessRange).toBeNull();
+    expect(src?.truePeakDbtp).toBeNull();
+  });
+
+  it('falls back to "Untitled" when ffprobe carries no filename', () => {
+    const src = reportCardSourceFromAnalysis({ ...analysis, ffprobe: { format: {} } });
+    expect(src?.filename).toBe('Untitled');
+  });
+
+  it.each([null, undefined, 42, {}, { sox: analysis.sox }, { spectrum: analysis.spectrum }])(
+    'returns null for a malformed analysis: %j',
+    (bad) => {
+      expect(reportCardSourceFromAnalysis(bad)).toBeNull();
+    }
+  );
+});
+
+describe('contentTypeView', () => {
+  it('resolves the pill label from a known content type', () => {
+    expect(contentTypeView('speech', null).pillLabel).toBe('Speech');
+    expect(contentTypeView('mixed', null).pillLabel).toBe('Mixed');
+  });
+
+  it('hides the pill for an absent or unknown content type', () => {
+    expect(contentTypeView(null, null).pillLabel).toBeNull();
+    expect(contentTypeView('bogus', null).pillLabel).toBeNull();
+  });
+
+  it('hides the ribbon when there are no usable segments', () => {
+    expect(contentTypeView('speech', null)).toMatchObject({ ribbonSegmentsHTML: '', ribbonLegendHTML: '' });
+    expect(contentTypeView('speech', []).ribbonSegmentsHTML).toBe('');
+    expect(contentTypeView('speech', [{ start: 1, end: 1 }]).ribbonSegmentsHTML).toBe('');
+  });
+
+  it('renders proportional segments + a de-duplicated legend', () => {
+    const segments = [
+      { start: 0, end: 5, class: 'speech' },
+      { start: 5, end: 10, class: 'music' },
+      { start: 10, end: 20, class: 'speech' },
+    ];
+    const view = contentTypeView('mixed', segments);
+    expect(view.ribbonSegmentsHTML).toContain('seg-speech');
+    expect(view.ribbonSegmentsHTML).toContain('seg-music');
+    expect(view.ribbonSegmentsHTML.match(/class="seg /g)).toHaveLength(3);
+    expect(view.ribbonLegendHTML.match(/class="lg"/g)).toHaveLength(2); // deduped
+  });
+
+  it('falls back an unrecognized segment class to "unknown"', () => {
+    const view = contentTypeView('speech', [{ start: 0, end: 1, class: 'bogus' }]);
+    expect(view.ribbonSegmentsHTML).toContain('seg-unknown');
+    expect(view.ribbonLegendHTML).toContain('Unknown');
+  });
+});
+
+describe('bandBreakdownHTML', () => {
+  const g: BandDiffApi = {
+    bandDiffFromOthers: (bands, key) => bands[key] - -20,
+    CONFIG: { bandBalance: { hotDiff: 5, quietDiff: -5 } },
+  };
+
+  it('renders one row per BAND_META band with a balanced/hot/quiet verdict', () => {
+    const bands = { subBass: -20, bass: -10, lowMid: -30, mid: -20, highMid: -20, presence: -20, brilliance: -20 };
+    const html = bandBreakdownHTML(bands, g);
+    expect(html.match(/rc-band-row/g)).toHaveLength(7);
+    expect(html).toContain('rc-band-verdict hot');
+    expect(html).toContain('Too Hot');
+    expect(html).toContain('rc-band-verdict quiet');
+    expect(html).toContain('Too Quiet');
+    expect(html).toContain('rc-band-verdict ok');
+    expect(html).toContain('Balanced');
+  });
+});
+
+describe('reportCardFramesView', () => {
+  it('is hidden when there are no frames', () => {
+    expect(reportCardFramesView(undefined)).toEqual({ visible: false, heatmapHTML: '', curvesHTML: '' });
+    expect(reportCardFramesView([])).toEqual({ visible: false, heatmapHTML: '', curvesHTML: '' });
+  });
+
+  it('renders a heatmap + start/middle/loudest frame curves when frames are present', () => {
+    const frames = Array.from({ length: 5 }, (_, i) => ({ t: i, db: [-20, -10], rms: -30 + i, class: 'music' }));
+    const view = reportCardFramesView(frames);
+    expect(view.visible).toBe(true);
+    expect(view.heatmapHTML).toContain('<svg');
+    expect(view.curvesHTML.match(/rc-frame-tag/g)).toHaveLength(3);
+    expect(view.curvesHTML).toContain('Start');
+    expect(view.curvesHTML).toContain('Middle');
+    expect(view.curvesHTML).toContain('Loudest');
+  });
+});
+
+describe('fmtClock', () => {
+  it('formats seconds as m:ss', () => {
+    expect(fmtClock(65)).toBe('1:05');
+    expect(fmtClock(5)).toBe('0:05');
+  });
+  it('falls back to 0:00 for non-finite or negative values', () => {
+    expect(fmtClock(-1)).toBe('0:00');
+    expect(fmtClock(NaN)).toBe('0:00');
+    expect(fmtClock(Infinity)).toBe('0:00');
   });
 });

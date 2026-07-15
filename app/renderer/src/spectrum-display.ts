@@ -346,6 +346,121 @@ export function eqTargetLineSVG(targetBandDb: number[]): string {
     <path class="sb-target-line" style="vector-effect:non-scaling-stroke" d="M${pts.join(' L')}"/>
   </svg>`;
 }
+/* ── Time-sampled spectrum: spectrogram heatmap + scrubber (PRD 03) ──
+ * Extracted verbatim from inline-app.js's closure (TD-001 slice 4, #422) so
+ * the heatmap/frame-curve/time-axis builders are unit-tested alongside the
+ * rest of this module; the scrubber's interactive playback transport stays
+ * inline (out of scope for this dependency-free module — it drives real DOM
+ * event listeners and an <audio> element). */
+export const HEAT_MIN = -78, HEAT_MAX = -12; // spectral-level window for the heat ramp
+// Continuous quiet→gold→bright ramp (dark ≈ app bg → King Midas gold → warm white).
+export const HEAT_STOPS: Array<[number, [number, number, number]]> = [
+  [0.0, [0x08, 0x09, 0x0b]],
+  [0.4, [0x8a, 0x5a, 0x16]],
+  [0.75, [0xeb, 0xb9, 0x3c]],
+  [1.0, [0xff, 0xf2, 0xd6]],
+];
+export function normHeat(db: number): number {
+  return Math.max(0, Math.min(1, (db - HEAT_MIN) / (HEAT_MAX - HEAT_MIN)));
+}
+export function heatColor(db: number): string {
+  const t = normHeat(db);
+  for (let i = 1; i < HEAT_STOPS.length; i++) {
+    const [t1, c1] = HEAT_STOPS[i];
+    if (t <= t1) {
+      const [t0, c0] = HEAT_STOPS[i - 1];
+      const f = (t - t0) / (t1 - t0 || 1);
+      const ch = (j: number) => Math.round(c0[j] + (c1[j] - c0[j]) * f);
+      return `rgb(${ch(0)},${ch(1)},${ch(2)})`;
+    }
+  }
+  const last = HEAT_STOPS[HEAT_STOPS.length - 1][1];
+  return `rgb(${last[0]},${last[1]},${last[2]})`;
+}
+export const CLASS_LABEL: Record<string, string> = { speech: 'Speech', music: 'Music', silence: 'Silence', unknown: '—' };
+export function classLabel(c: string | undefined): string { return (c && CLASS_LABEL[c]) || '—'; }
+
+export interface HeatmapSVGOpts {
+  interactive?: boolean;
+}
+
+// time → (columns) × frequency ↑ (rows, high freq on top) heatmap of the frames.
+export function heatmapSVG(frames: SpectrumFrame[], opts: HeatmapSVGOpts = {}): string {
+  const interactive = opts.interactive !== false;
+  const nF = frames.length;
+  const nB = frames[0].db.length;
+  let cells = '';
+  for (let x = 0; x < nF; x++) {
+    const db = frames[x].db;
+    for (let y = 0; y < nB; y++) {
+      const b = nB - 1 - y; // row 0 = highest frequency
+      cells += `<rect x="${x}" y="${y}" width="1.02" height="1.02" fill="${heatColor(db[b])}" shape-rendering="crispEdges"/>`;
+    }
+  }
+  let cols = '';
+  if (interactive) {
+    for (let x = 0; x < nF; x++) cols += `<rect class="hm-col" x="${x}" y="0" width="1" height="${nB}" data-i="${x}"/>`;
+  }
+  return `<svg viewBox="0 0 ${nF} ${nB}" preserveAspectRatio="none" role="img" aria-label="Time-frequency spectrogram">${cells}${cols}</svg>`;
+}
+
+// Compact sparkline of one frame's dB grid, for the report-card thumbnails.
+// (The analysis view uses the full PRD 02 spectrumCurveSVG; these stay small.)
+export function miniCurveSVG(db: number[]): string {
+  const VW = 600, VH = 150, padT = 8, padB = 10, ih = VH - padT - padB;
+  const n = db.length;
+  const xf = (i: number) => (n <= 1 ? VW / 2 : (i / (n - 1)) * VW);
+  const yf = (v: number) => padT + (1 - normHeat(v)) * ih;
+  let line = '', area = `M0 ${padT + ih}`;
+  for (let i = 0; i < n; i++) {
+    const X = xf(i).toFixed(1), Y = yf(db[i]).toFixed(1);
+    line += (i ? 'L' : 'M') + X + ' ' + Y + ' ';
+    area += ` L${X} ${Y}`;
+  }
+  area += ` L${VW} ${padT + ih} Z`;
+  return `<svg viewBox="0 0 ${VW} ${VH}" preserveAspectRatio="none" role="img" aria-label="Frame spectral curve">
+    <path d="${area}" fill="var(--gold-tint)" stroke="none"/>
+    <path d="${line}" fill="none" stroke="var(--gold-500)" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"/>
+  </svg>`;
+}
+
+// m:ss.d duration formatter shared by the frame time axis, the report-card
+// frame captions, and the scrubber readout (which stays inline).
+export function fmtDur(s: number): string {
+  const m = Math.floor(s / 60);
+  const sec = (s % 60).toFixed(1).padStart(4, '0');
+  return `${m}:${sec}`;
+}
+
+export function timeAxisHTML(frames: SpectrumFrame[]): string {
+  const n = frames.length;
+  if (n <= 1) return `<div class="spectro-axis"><span>${fmtDur(frames[0] ? frames[0].t : 0)}</span></div>`;
+  const mid = frames[Math.floor(n / 2)];
+  return `<div class="spectro-axis"><span>${fmtDur(frames[0].t)}</span><span>${fmtDur(mid.t)}</span><span>${fmtDur(frames[n - 1].t)}</span></div>`;
+}
+
+export interface FramePick {
+  i: number;
+  tag: string;
+}
+
+// Report-card "Spectrum Over Time" representative-frame selection: start,
+// middle, and loudest (by RMS), de-duplicated by index (short files can
+// collapse two or three picks onto the same frame) so the same frame is
+// never shown twice.
+export function pickRepresentativeFrames(frames: SpectrumFrame[]): FramePick[] {
+  const n = frames.length;
+  let loudest = 0;
+  for (let i = 1; i < n; i++) if ((frames[i].rms ?? -Infinity) > (frames[loudest].rms ?? -Infinity)) loudest = i;
+  const picks: FramePick[] = [
+    { i: 0, tag: 'Start' },
+    { i: Math.floor(n / 2), tag: 'Middle' },
+    { i: loudest, tag: 'Loudest' },
+  ];
+  const seen = new Set<number>();
+  return picks.filter((p) => (seen.has(p.i) ? false : seen.add(p.i)));
+}
+
 export function eqCentroidHTML(spectrum: SpectrumData): string {
   return (spectrum.spectralCentroid ?? 0) > 0 ? `<div class="eq-centroid">Centroid · ${fmtHz(spectrum.spectralCentroid as number)}</div>` : '';
 }
