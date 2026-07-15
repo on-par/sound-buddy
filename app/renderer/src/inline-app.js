@@ -91,9 +91,9 @@ function liveChannelAt(idx) { return lastLiveChannels ? lastLiveChannels[idx] : 
 /* ══ Band metadata / meter geometry — extracted to spectrum-display.ts (#305),
    bridged onto window by App.tsx like audioEngineProfiles (#309). ══ */
 const {
-  DB_MIN, DB_MAX, DIM_DB, HOT_DB, GRID, BAND_META, EQ_COLS,
+  DB_MIN, DB_MAX, BAND_META, EQ_COLS,
   CURVE_VB, CURVE_FMIN, CURVE_FMAX,
-  escapeHtml, fmtHz, toPct, levelMatchedTarget, niceTicks, smoothPath,
+  escapeHtml, fmtHz, levelMatchedTarget, niceTicks, smoothPath,
   spectrumCurveSVG, spectrumLegendHTML, bandLevelsFromCurve, bandDbFromSpectrum,
   veqBarsAndLabelsHTML, eqTargetLineSVG, eqCentroidHTML, eqBarsHTML,
   veqLoudestIdx, veqBandView, veqValBottom,
@@ -1393,12 +1393,14 @@ function syncReportCardChrome(state, prevState) {
     }
   }
 
-  // Disable Clear/Load/Print/Grade-own while an analysis is in flight so they
-  // can't swap the source out from under the run and have this continuation
-  // flip the card back over a stale reference (#206/#208); otherwise enabled
-  // exactly when a card (file, live, or history) is showing.
-  printBtn.disabled = state.status === 'analyzing' || !hasCard;
-  gradeOwnBtn.disabled = state.status === 'analyzing' || !hasCard;
+  // Print/Grade-own just mirror whether a card (file, live, or history) is
+  // showing — a re-analysis in flight still has the prior card on screen to
+  // print/grade, same as before this migration (runFileAnalysis never
+  // disabled these two while re-analyzing). Clear/Load DO disable in flight
+  // so they can't swap the source out from under the run and have this
+  // continuation flip the card back over a stale reference (#206/#208).
+  printBtn.disabled = !hasCard;
+  gradeOwnBtn.disabled = !hasCard;
   loadBtn.disabled = state.status === 'analyzing';
   loadBtn.style.display = isLiveCard ? '' : 'none';
   // Clear only makes sense when the card is backed by a file analysis — a
