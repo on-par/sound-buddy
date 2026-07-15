@@ -57,6 +57,13 @@ test.describe('AI provider settings (#76)', () => {
     await expect(window.locator('#ai-ollama-model option')).toHaveCount(2);
   });
 
+  test('Escape closes the dialog', async () => {
+    await window.locator('#ai-settings-btn').click();
+    await expect(window.locator('#ai-dialog')).toBeVisible();
+    await window.keyboard.press('Escape');
+    await expect(window.locator('#ai-dialog')).toBeHidden();
+  });
+
   // #202: the installed app version is visible somewhere in Settings — this
   // dialog (opened by the header gear icon) is the closest thing to one
   // today (#204 tracks unifying it with Storage settings under real tabs).

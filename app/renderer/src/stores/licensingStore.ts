@@ -54,8 +54,16 @@ export function createLicensingStore(getApi: () => LicenseApi) {
     isTrial: false,
     isLicensed: false,
     dialogOpen: false,
+    // Mount-time fetch + the 60s entitlement poll (LicensePanel.tsx) both fire
+    // this with a bare `void` — same never-throw contract as refreshLicense,
+    // matching the try/catch the poll it replaces always had (a rejected
+    // round-trip must not become an unhandled rejection every minute).
     async checkLicense(now = new Date()) {
-      set(projectLicense(await getApi().getLicense(), now));
+      try {
+        set(projectLicense(await getApi().getLicense(), now));
+      } catch {
+        // keep current state
+      }
     },
     async activateLicense(key, now = new Date()) {
       set(projectLicense(await getApi().activateLicense(key), now));

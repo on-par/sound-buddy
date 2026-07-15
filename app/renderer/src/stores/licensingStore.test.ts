@@ -193,6 +193,18 @@ describe('createLicensingStore', () => {
     await expect(store.getState().refreshLicense(NOW)).resolves.toBeUndefined();
     expect(store.getState().licenseStatus).toEqual(prior);
   });
+
+  it('checkLicense keeps current state silently on rejection', async () => {
+    const prior: LicenseState = { tier: 'pro', status: 'valid', kind: 'subscription' };
+    const mock = createMockSoundBuddy({
+      getLicense: () => Promise.reject(new Error('disk read failed')),
+    });
+    const store = createLicensingStore(() => mock.api);
+    store.setState({ licenseStatus: prior });
+
+    await expect(store.getState().checkLicense(NOW)).resolves.toBeUndefined();
+    expect(store.getState().licenseStatus).toEqual(prior);
+  });
 });
 
 describe('deriveTrialDaysLeft', () => {

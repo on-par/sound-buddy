@@ -116,7 +116,12 @@ export default function LicensePanel() {
   /* c8 ignore start -- mount-once lifecycle wiring (menu listener + the
      entitlement poll, inline-app.js:3311/3381–3383); requires a real
      Electron bridge + timers to observe, exercised by license.spec.ts. No
-     jsdom in this harness (constitution forbids adding a new framework). */
+     jsdom in this harness (constitution forbids adding a new framework).
+     Registering onOpenLicenseDialog here (a passive effect, fires after
+     paint) rather than synchronously during boot leaves a sub-millisecond
+     window where an 'open-license-dialog' IPC message sent before the first
+     paint would be missed — unreachable in practice since every trigger
+     (menu click, deep link) requires the window to already be interactive. */
   useEffect(() => {
     api.onOpenLicenseDialog(() => useLicensingStore.getState().openDialog());
     void useLicensingStore.getState().checkLicense();

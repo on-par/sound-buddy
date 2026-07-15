@@ -246,10 +246,15 @@ export default function SettingsPanel() {
   const hostedModelInputRef = useRef<HTMLInputElement>(null);
   const detectSeqRef = useRef(0);
 
-  async function detectOllamaInto(preferModel?: string): Promise<OllamaProbeResult | null> {
+  // Takes `host` explicitly rather than reading the `ollamaHost` state
+  // closure — the dialog-open effect below seeds `ollamaHost` via
+  // `setOllamaHost` and kicks the initial probe in the same tick, and a
+  // state update from that same render isn't visible to a same-render
+  // closure yet, which would probe the just-superseded (often empty) host.
+  async function detectOllamaInto(host: string, preferModel?: string): Promise<OllamaProbeResult | null> {
     const seq = ++detectSeqRef.current;
     setOllamaStatus({ text: 'Looking for Ollama…', kind: '' });
-    const res = await probeOllama(api, ollamaHost);
+    const res = await probeOllama(api, host);
     if (seq !== detectSeqRef.current) return null; // a newer probe superseded this one
     const models = res.ok ? res.models || [] : [];
     setOllamaModels(models);
@@ -279,7 +284,7 @@ export default function SettingsPanel() {
       setTab(seed.tab);
       setEnableAi(seed.enableAi);
       setTestResult({ text: '', kind: '' });
-      void detectOllamaInto(seed.savedCfg.provider === 'ollama' ? seed.savedCfg.model : undefined);
+      void detectOllamaInto(seed.ollamaHost, seed.savedCfg.provider === 'ollama' ? seed.savedCfg.model : undefined);
       try {
         const v = await api.getAppVersion();
         if (!cancelled) setVersion(`Sound Buddy ${v}`);
@@ -293,13 +298,23 @@ export default function SettingsPanel() {
   }, [dialogOpen]);
   /* c8 ignore stop */
 
+  /* c8 ignore start -- document-level Escape close (inline-app.js:3671–3676, same pattern as LicensePanel). */
+  useEffect(() => {
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key === 'Escape') useSettingsStore.getState().closeDialog();
+    }
+    document.addEventListener('keydown', onKeyDown);
+    return () => document.removeEventListener('keydown', onKeyDown);
+  }, []);
+  /* c8 ignore stop */
+
   const models = modelsForProvider(modelsCache, provider);
 
   async function handleTest() {
     setTesting(true);
     try {
       if (tab === 'ollama') {
-        const res = await detectOllamaInto(ollamaModel || undefined);
+        const res = await detectOllamaInto(ollamaHost, ollamaModel || undefined);
         const ok = !!(res && res.ok);
         setTestResult({ text: ok ? 'Connected ✓' : 'Not connected', kind: ok ? 'ok' : 'err' });
       } else {
@@ -381,7 +396,7 @@ export default function SettingsPanel() {
               spellCheck={false}
               value={ollamaHost}
               onChange={(e) => setOllamaHost(e.target.value)}
-              onBlur={() => void detectOllamaInto(ollamaModel || undefined)}
+              onBlur={() => void detectOllamaInto(ollamaHost, ollamaModel || undefined)}
             />
           </label>
           <div className={'ai-status' + (ollamaStatus.kind ? ` ${ollamaStatus.kind}` : '')} id="ai-ollama-status">
