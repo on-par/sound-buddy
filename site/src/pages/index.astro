@@ -18,10 +18,15 @@ const FOUNDING_URL = 'https://buy.stripe.com/sound-buddy-founding-lifetime';
 const FOUNDING_CAP = 300;
 const DEMO_VIDEO_DROP = new Date('2026-07-24T12:00:00-05:00');
 const MS_PER_DAY = 86_400_000;
-const daysUntilDrop = Math.max(
-  0,
-  Math.ceil((DEMO_VIDEO_DROP.getTime() - Date.now()) / MS_PER_DAY),
-);
+const msUntilDrop = DEMO_VIDEO_DROP.getTime() - Date.now();
+// Dropped past the deadline: match the client script's live "now live" message
+// instead of freezing on a stale "0 days left" for no-JS visitors and crawlers,
+// who never run the tick() below to pick up the state change.
+const dropHasPassed = msUntilDrop <= 0;
+// floor (not ceil) so this whole-day count matches the client script's tick()
+// on hydration — ceil would show one more day than the live countdown settles
+// into a second later, reading as the countdown skipping backward on load.
+const daysUntilDrop = Math.max(0, Math.floor(msUntilDrop / MS_PER_DAY));
 const dropLabel = DEMO_VIDEO_DROP.toLocaleDateString('en-US', {
   month: 'long', day: 'numeric', year: 'numeric', timeZone: 'America/Chicago',
 });
@@ -242,7 +247,9 @@ const tiers = [
         <p class="fc-copy">
           Founding pricing locks with the demo video drop —
           <time datetime={dropDeadlineIso}>{dropLabel}</time>.
-          <strong data-fc-remaining>{daysUntilDrop} {daysUntilDrop === 1 ? 'day' : 'days'} left</strong>{' '}
+          <strong data-fc-remaining>{dropHasPassed
+            ? 'now live — final licenses going fast'
+            : `${daysUntilDrop} ${daysUntilDrop === 1 ? 'day' : 'days'} left`}</strong>{' '}
           to claim one of {FOUNDING_CAP}.
         </p>
       </div>
