@@ -1,4 +1,11 @@
-// Shared types for all @sound-buddy packages
+// Cross-package DTOs shared among the Sound Buddy TypeScript workspace packages
+// (scene-inspector, ai-analyst, audio-engine, cli). These are the flat,
+// serialization-safe shapes that cross package boundaries.
+//
+// Intentionally NOT consumed by app/ (a separately-bundled, proprietary Electron
+// target) or by audio-engine's rich *internal* analysis types (SoxStats,
+// AudioAnalysis, SpectrumResult live in audio-engine/src/types.ts). audio-engine
+// depends on this package only to PRODUCE the boundary summary below.
 
 export interface EQBand {
   type: string
@@ -65,6 +72,12 @@ export interface AnalystInput {
   audio?: AudioAnalysisResult
 }
 
+/**
+ * Flat, JSON/IPC-safe per-channel analysis summary. This is the boundary shape
+ * consumed by ai-analyst and emitted to machine-readable output — deliberately a
+ * primitive-only subset of audio-engine's internal ChannelAnalysis. Produced by
+ * audio-engine's toAnalysisSummary().
+ */
 export interface AudioAnalysisResult {
   channels: ChannelResult[]
 }
