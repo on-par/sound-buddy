@@ -1,17 +1,10 @@
-import {
-  createAgentSession,
-  AuthStorage,
-  ModelRegistry,
-  SessionManager,
-} from "@earendil-works/pi-coding-agent";
 import * as http from "http";
 import type { AudioAnalysis, ChannelAnalysis, ChannelComparison } from "./types.js";
 import type { WindowData } from "./stream/types.js";
 import { SYSTEM_PROMPT, MULTI_CHANNEL_SYSTEM_PROMPT } from "./prompts/index.js";
-
-export function fmt(n: number, decimals = 2): string {
-  return isFinite(n) ? n.toFixed(decimals) : "-inf";
-}
+import { fmt } from "./format.js";
+import type { NarrativePort } from "./narrative/port.js";
+import { PiNarrativeAdapter } from "./narrative/pi-adapter.js";
 
 export function buildMultiChannelPrompt(
   mix: AudioAnalysis | null,
@@ -65,22 +58,25 @@ export function buildMultiChannelPrompt(
   return lines.join("\n");
 }
 
-async function createSession() {
-  const authStorage = AuthStorage.create();
-  const modelRegistry = ModelRegistry.create(authStorage);
-  const model = modelRegistry.find("anthropic", "claude-sonnet-4-6");
-  if (!model) throw new Error("Model claude-sonnet-4-6 not found in registry");
-  return createAgentSession({
-    model,
-    sessionManager: SessionManager.inMemory(),
-    authStorage,
-    modelRegistry,
+/** Stream a narrative to stdout via the port; throws on failure so the CLI's
+ *  existing catch/exit-1 paths (cli.ts, stream/index.ts) keep working. */
+async function streamToStdout(
+  port: NarrativePort,
+  systemPrompt: string,
+  userMessage: string
+): Promise<void> {
+  const result = await port.streamNarrative(systemPrompt, userMessage, (text) => {
+    process.stdout.write(text);
   });
+  if (!result.ok) throw new Error(result.reason);
+  process.stdout.write("\n");
 }
 
-export async function analyzeStream(windows: WindowData[], _channelNames: string[]): Promise<void> {
-  const { session } = await createSession();
-
+export async function analyzeStream(
+  windows: WindowData[],
+  _channelNames: string[],
+  port: NarrativePort = new PiNarrativeAdapter()
+): Promise<void> {
   const windowSecs = windows.length > 1
     ? (windows[windows.length - 1].ts - windows[0].ts) / (windows.length - 1)
     : 3;
@@ -98,53 +94,30 @@ export async function analyzeStream(windows: WindowData[], _channelNames: string
     return `Window ${w.window} (t=${new Date(w.ts * 1000).toISOString()}):\n${chSummary}${maskStr ? `\n    masking: ${maskStr}` : ""}`;
   }).join("\n\n");
 
-  session.subscribe((event: unknown) => {
-    const e = event as Record<string, unknown>;
-    if (e["type"] === "text_delta" && typeof e["text"] === "string") {
-      process.stdout.write(e["text"]);
-    }
-  });
-
-  await session.prompt(`${systemPrompt}\n\nLive mix data:\n\n${summary}`);
-  process.stdout.write("\n");
+  await streamToStdout(port, systemPrompt, `Live mix data:\n\n${summary}`);
 }
 
-export async function getEngineerRead(report: string): Promise<void> {
-  const { session } = await createSession();
-
-  const prompt = `${SYSTEM_PROMPT}\n\nHere is the acoustic measurement data:\n\n${report}`;
-
-  session.subscribe((event: unknown) => {
-    const e = event as Record<string, unknown>;
-    if (e["type"] === "text_delta" && typeof e["text"] === "string") {
-      process.stdout.write(e["text"]);
-    }
-  });
-
-  await session.prompt(prompt);
-  process.stdout.write("\n");
+export async function getEngineerRead(
+  report: string,
+  port: NarrativePort = new PiNarrativeAdapter()
+): Promise<void> {
+  await streamToStdout(port, SYSTEM_PROMPT, `Here is the acoustic measurement data:\n\n${report}`);
 }
 
 export async function analyzeMultiChannel(
   mix: AudioAnalysis | null,
   channels: ChannelAnalysis[],
-  comparison: ChannelComparison
+  comparison: ChannelComparison,
+  port: NarrativePort = new PiNarrativeAdapter()
 ): Promise<void> {
-  const { session } = await createSession();
-
-  const prompt = `${MULTI_CHANNEL_SYSTEM_PROMPT}\n\n${buildMultiChannelPrompt(mix, channels, comparison)}`;
-
-  session.subscribe((event: unknown) => {
-    const e = event as Record<string, unknown>;
-    if (e["type"] === "text_delta" && typeof e["text"] === "string") {
-      process.stdout.write(e["text"]);
-    }
-  });
-
-  await session.prompt(prompt);
-  process.stdout.write("\n");
+  await streamToStdout(port, MULTI_CHANNEL_SYSTEM_PROMPT, buildMultiChannelPrompt(mix, channels, comparison));
 }
 
+// Deliberate parallel path, not routed through NarrativePort: the CLI's
+// --ollama flag targets an arbitrary user-specified host/model directly,
+// while PiNarrativeAdapter can only reach Ollama through a pi models.json
+// (ModelRegistry). Folding this in would change the wire protocol and CLI
+// flags — a feature change, out of scope for TD-004 slice 5 (#429).
 export async function analyzeWithOllama(
   report: string,
   systemPrompt: string,
