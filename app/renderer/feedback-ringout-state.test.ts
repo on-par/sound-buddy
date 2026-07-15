@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { findSpectralPeaks } from '../../packages/audio-engine/src/analyze/spectral.js';
+import { findSpectralPeaks } from '@sound-buddy/audio-engine/dist/analyze/spectral.js';
 
 // feedback-ringout-state is a plain classic script (window.feedbackRingout in
 // the browser, module.exports under Node) so the pure wizard/DSP/profile

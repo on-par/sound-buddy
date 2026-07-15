@@ -7,8 +7,8 @@ import {
   GRID_FREQS as AE_GRID_FREQS,
   compareToProfile as aeCompareToProfile,
   defaultProfileForContentType as aeDefaultProfileForContentType,
-} from '../../../packages/audio-engine/src/profiles/index.js';
-import { findSpectralPeaks } from '../../../packages/audio-engine/src/analyze/spectral.js';
+} from '@sound-buddy/audio-engine/dist/profiles/index.js';
+import { findSpectralPeaks } from '@sound-buddy/audio-engine/dist/analyze/spectral.js';
 import * as spectrumDisplay from './spectrum-display';
 import * as reportCard from './report-card';
 import * as liveCapturePanel from './live-capture-panel';

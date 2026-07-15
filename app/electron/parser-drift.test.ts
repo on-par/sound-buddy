@@ -64,11 +64,11 @@ vi.mock('electron', () => {
 
 // The app copies (exported from ipc.ts purely for this guard).
 import { runSox as appSox, runFfprobe as appFfprobe, runSpectrum as appSpectrum, runEbur128 as appEbur128 } from './ipc';
-// The canonical audio-engine copies (imported straight from source).
-import { runSox as engSox } from '../../packages/audio-engine/src/analyze/sox.js';
-import { runFfprobe as engFfprobe } from '../../packages/audio-engine/src/analyze/ffprobe.js';
-import { runSpectrum as engSpectrum } from '../../packages/audio-engine/src/analyze/spectrum.js';
-import { runEbur128 as engEbur128 } from '../../packages/audio-engine/src/analyze/ebur128.js';
+// The canonical audio-engine copies (from the package's built ESM dist).
+import { runSox as engSox } from '@sound-buddy/audio-engine/dist/analyze/sox.js';
+import { runFfprobe as engFfprobe } from '@sound-buddy/audio-engine/dist/analyze/ffprobe.js';
+import { runSpectrum as engSpectrum } from '@sound-buddy/audio-engine/dist/analyze/spectrum.js';
+import { runEbur128 as engEbur128 } from '@sound-buddy/audio-engine/dist/analyze/ebur128.js';
 
 const repoRoot = path.resolve(fileURLToPath(new URL('../..', import.meta.url)));
 const fixture = (name: string) =>

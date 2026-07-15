@@ -10,6 +10,7 @@
     "lint": "tsc --noEmit"
   },
   "dependencies": {
+    "@sound-buddy/audio-engine": "file:../../packages/audio-engine",
     "react": "^19.2.7",
     "react-dom": "^19.2.7"
   },

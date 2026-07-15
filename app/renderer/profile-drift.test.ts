@@ -12,6 +12,8 @@ import { fileURLToPath } from 'node:url';
 // (still a classic `?raw` script) reads that bridge instead of duplicating data.
 // Drift is now structurally impossible — this test just asserts the wiring
 // stayed in place: the import in App.tsx, and no reintroduced inline literal.
+// #396 (TD-002) switched App.tsx from a deep relative source import to the
+// declared @sound-buddy/audio-engine package's built dist.
 
 const appTsxPath = fileURLToPath(new URL('./src/App.tsx', import.meta.url));
 const inlineAppPath = fileURLToPath(new URL('./src/inline-app.js', import.meta.url));
@@ -21,7 +23,7 @@ const inlineApp = fs.readFileSync(inlineAppPath, 'utf8');
 
 describe('renderer imports ideal-EQ profiles from the audio-engine package', () => {
   it('App.tsx imports the engine profiles module', () => {
-    expect(appTsx).toContain('packages/audio-engine/src/profiles/index.js');
+    expect(appTsx).toContain("'@sound-buddy/audio-engine/dist/profiles/index.js'");
   });
 
   it('inline-app.js no longer hand-mirrors the profile data', () => {

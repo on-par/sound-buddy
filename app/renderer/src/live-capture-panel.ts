@@ -33,7 +33,7 @@ import type {
   WindowData,
   ChannelWindowData,
   ChannelKind,
-} from '../../../packages/audio-engine/src/stream/types';
+} from '@sound-buddy/audio-engine/dist/stream/types';
 
 export type { LiveEvent, MeterData, WindowData, ChannelWindowData, ChannelKind };
 
