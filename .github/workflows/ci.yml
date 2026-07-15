@@ -139,7 +139,7 @@ jobs:
       # from the repo root before `npm ci` here, or the file: install ships a
       # dist-less package and every import in license-sign.ts fails to resolve.
       - name: Build @sound-buddy/license-policy
-        working-directory: ..
+        working-directory: ${{ github.workspace }}
         run: |
           npm ci
           npm run build -w @sound-buddy/license-policy
