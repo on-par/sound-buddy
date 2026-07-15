@@ -21,6 +21,12 @@
   var MIN_FREQ_HZ = 20;
   var MAX_FREQ_HZ = 20000;
 
+  // Report-card feedback-detection threshold (#372): stricter than the
+  // wizard's live-capture default (6 dB) because a full mix recording has
+  // real spectral structure — only a peak standing well proud of its
+  // neighborhood should flag the card.
+  var RC_FEEDBACK_MIN_PROMINENCE_DB = 10;
+
   // Standard 31-band ISO third-octave GEQ centers — the values engineers
   // actually have knobs for, so a raw FFT peak snaps to something dialable.
   var ISO_THIRD_OCTAVE = [
@@ -113,6 +119,44 @@
     // prominent peak is the one most likely to be the actual ring.
     var p = peaks[0];
     return { freq: p.freq, db: p.db, prominence: p.prominence };
+  }
+
+  // Report-card feedback callout (#372): does the whole-file curve show a
+  // narrow resonant spike worth flagging before the wizard is even opened?
+  // Reuses identifyRing with a stricter prominence floor than the live
+  // capture step uses, since a full mix has real spectral structure.
+  function detectFeedbackSignal(curve, findPeaks) {
+    return identifyRing(curve, findPeaks, { minProminenceDb: RC_FEEDBACK_MIN_PROMINENCE_DB });
+  }
+
+  function stepIndexById(id) {
+    for (var i = 0; i < STEPS.length; i++) {
+      if (STEPS[i].id === id) return i;
+    }
+    return 0;
+  }
+
+  // Pure data for the report-card callout — no DOM/escaping, values are set
+  // via textContent.
+  function reportCardCallout(peak) {
+    if (peak) {
+      return {
+        detected: true,
+        title: 'Possible feedback ring near ' + formatFreq(peak.freq),
+        sub: 'A narrow spike stands ' + Math.round(peak.prominence) + ' dB above the rest of the spectrum — often a monitor starting to feed back.',
+        buttonLabel: 'Ring out this frequency',
+      };
+    }
+    return {
+      detected: false,
+      title: 'Fighting feedback in your monitors?',
+      sub: 'Walk through ringing out a mic step by step — no console access needed.',
+      buttonLabel: 'Open the ring-out wizard',
+    };
+  }
+
+  function handoffStatus(freq) {
+    return 'From your report card: possible feedback ring near ' + formatFreq(freq) + '.';
   }
 
   // Nearest ISO third-octave center by log-frequency distance (perceptually
@@ -282,6 +326,7 @@
     MIN_FREQ_HZ: MIN_FREQ_HZ,
     MAX_FREQ_HZ: MAX_FREQ_HZ,
     ISO_THIRD_OCTAVE: ISO_THIRD_OCTAVE,
+    RC_FEEDBACK_MIN_PROMINENCE_DB: RC_FEEDBACK_MIN_PROMINENCE_DB,
     STEPS: STEPS,
     stepCount: stepCount,
     clampStep: clampStep,
@@ -290,6 +335,10 @@
     isFirstStep: isFirstStep,
     isLastStep: isLastStep,
     identifyRing: identifyRing,
+    detectFeedbackSignal: detectFeedbackSignal,
+    stepIndexById: stepIndexById,
+    reportCardCallout: reportCardCallout,
+    handoffStatus: handoffStatus,
     snapToIso: snapToIso,
     suggestCut: suggestCut,
     parseManualFrequency: parseManualFrequency,

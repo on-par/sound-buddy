@@ -114,6 +114,18 @@
       '<div class="pd-resolution">' + escapeHtml(s.resolution) + '</div>';
   }
 
+  // Report-card handoff context line (#372): names the analyzed file and
+  // whether the deviation curve showed a comb-filter pattern. ctx is
+  // { filename, detected } or null — no filename means no card was analyzed
+  // (no console/live data, nothing to name).
+  function contextLineHtml(ctx, escapeHtml) {
+    if (!ctx || typeof ctx.filename !== 'string' || !ctx.filename) return '';
+    if (ctx.detected) {
+      return '<div class="pd-context detected">From your report card — ' + escapeHtml(ctx.filename) + ': the spectrum shows a comb-filter pattern.</div>';
+    }
+    return '<div class="pd-context">From your report card — ' + escapeHtml(ctx.filename) + '</div>';
+  }
+
   // No user strings here — nothing to escape.
   function progressDotsHtml(index, total) {
     var active = clampIndex(index);
@@ -133,6 +145,7 @@
     stepHtml: stepHtml,
     progressDotsHtml: progressDotsHtml,
     detectPhaseSignal: detectPhaseSignal,
+    contextLineHtml: contextLineHtml,
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.phaseDoublingState = api;

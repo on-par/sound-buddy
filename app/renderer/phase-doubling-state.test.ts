@@ -19,6 +19,7 @@ const {
   stepHtml,
   progressDotsHtml,
   detectPhaseSignal,
+  contextLineHtml,
 } = require('./phase-doubling-state.js') as {
   STEPS: Step[];
   stepCount: () => number;
@@ -28,6 +29,10 @@ const {
   stepHtml: (step: Step, index: number, total: number, escapeHtml: (s: unknown) => string) => string;
   progressDotsHtml: (index: number, total: number) => string;
   detectPhaseSignal: (input: { deviation?: number[] } | undefined) => boolean;
+  contextLineHtml: (
+    ctx: { filename?: unknown; detected?: boolean } | null | undefined,
+    escapeHtml: (s: unknown) => string
+  ) => string;
 };
 
 function escapeHtml(s: unknown): string {
@@ -135,5 +140,29 @@ describe('progressDotsHtml', () => {
     expect(dots).toHaveLength(6);
     expect(dots[2]).toContain('active');
     expect(dots.filter((d) => d.includes('active'))).toHaveLength(1);
+  });
+});
+
+describe('contextLineHtml', () => {
+  it('returns an empty string for null/undefined context or a non-string/empty filename', () => {
+    expect(contextLineHtml(null, escapeHtml)).toBe('');
+    expect(contextLineHtml(undefined, escapeHtml)).toBe('');
+    expect(contextLineHtml({ filename: '' }, escapeHtml)).toBe('');
+    expect(contextLineHtml({ filename: 42 }, escapeHtml)).toBe('');
+  });
+
+  it('names the file without the comb-filter phrase when not detected', () => {
+    const html = contextLineHtml({ filename: 'mix.wav', detected: false }, escapeHtml);
+    expect(html).toContain('mix.wav');
+    expect(html).toContain('class="pd-context"');
+    expect(html).not.toContain('comb');
+    expect(html).not.toContain('detected');
+  });
+
+  it('escapes the filename and names the comb-filter pattern when detected', () => {
+    const html = contextLineHtml({ filename: 'a<b>.wav', detected: true }, escapeHtml);
+    expect(html).toContain('a&lt;b&gt;.wav');
+    expect(html).toContain('comb-filter');
+    expect(html).toContain('pd-context detected');
   });
 });

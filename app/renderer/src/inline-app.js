@@ -59,6 +59,8 @@ let customIdealProfiles = [];
 let curveEditorId = null;
 let curveEditorBands = null;
 let phaseDoublingStep = 0; // current step in the phase/doubling checklist (#370)
+let rcFeedbackPeak = null; // last render's detected feedback ring, or null (#372)
+let rcPhaseSignal = false; // last render's phase/doubling detection result (#372)
 
 /* ══ Formatting helpers ══ */
 // Resolve a strip's display name: label → backend name → "Ch N" (see #39).
@@ -2680,6 +2682,19 @@ document.getElementById('ringout-capture').addEventListener('click', async () =>
   }
 });
 
+// #372: launch the ring-out wizard from the report card, seeded with the
+// detected ring. Reuses the mode-tab click so the transition is the exact
+// navigation the user already knows (renderRingout runs inside it).
+document.getElementById('rc-feedback-ringout-btn').addEventListener('click', () => {
+  const ro = window.feedbackRingout;
+  if (rcFeedbackPeak) {
+    ringoutCut = ro.suggestCut(rcFeedbackPeak.freq);
+    ringoutStepIndex = ro.stepIndexById('cut');
+  }
+  document.querySelector('.mode-tab[data-mode="ringout"]').click();
+  ringoutSetStatus(rcFeedbackPeak ? ro.handoffStatus(rcFeedbackPeak.freq) : '');
+});
+
 document.getElementById('ringout-profile-save').addEventListener('click', () => {
   const nameInput = document.getElementById('ringout-profile-name');
   const name = nameInput.value.trim();
@@ -2812,6 +2827,9 @@ function renderReportCardFromHistory(summary) {
   // No deviation data on a stored summary — never emphasize/launch a check
   // we can't back with real analysis (#370).
   document.getElementById('rc-phase-doubling').style.display = 'none';
+  document.getElementById('rc-feedback-ringout').style.display = 'none';
+  rcFeedbackPeak = null;
+  rcPhaseSignal = false;
 
   document.getElementById('rc-recommendations').innerHTML = recListHTML(summary.topFixes || [], true);
 
@@ -2849,6 +2867,9 @@ function renderReportCard() {
     loadBtn.style.display = 'none';
     // No analysis data to check for a phase/doubling signature (#370).
     document.getElementById('rc-phase-doubling').style.display = 'none';
+    document.getElementById('rc-feedback-ringout').style.display = 'none';
+    rcFeedbackPeak = null;
+    rcPhaseSignal = false;
     // No card to improve on — never leave the upgrade card beside the empty
     // state (e.g. after a live capture clears the last analysis).
     lastReportGrade = null;
@@ -2905,6 +2926,7 @@ function renderReportCard() {
   // check, unlike the history-summary/empty branches below.
   const phaseSection = document.getElementById('rc-phase-doubling');
   const phaseSignal = window.phaseDoublingState.detectPhaseSignal({ deviation: cmp ? cmp.deviation : undefined });
+  rcPhaseSignal = phaseSignal;
   phaseSection.style.display = '';
   phaseSection.classList.toggle('detected', phaseSignal);
   document.getElementById('rc-phase-doubling-title').textContent = phaseSignal
@@ -2913,6 +2935,19 @@ function renderReportCard() {
   document.getElementById('rc-phase-doubling-sub').textContent = phaseSignal
     ? 'Your spectrum shows a comb-filter pattern — run the check to find the duplicate path.'
     : 'Walk through the common phase & routing bugs — no console access needed.';
+
+  // Feedback Ring-Out launch callout (#372) — mirrors the #370 phase callout:
+  // always shown on a real card, emphasized + frequency-seeded when the
+  // whole-file curve has a narrow resonant spike.
+  rcFeedbackPeak = window.feedbackRingout.detectFeedbackSignal(
+    src.curve || null, window.audioEngineSpectral.findSpectralPeaks);
+  const roSection = document.getElementById('rc-feedback-ringout');
+  const roCallout = window.feedbackRingout.reportCardCallout(rcFeedbackPeak);
+  roSection.style.display = '';
+  roSection.classList.toggle('detected', roCallout.detected);
+  document.getElementById('rc-feedback-ringout-title').textContent = roCallout.title;
+  document.getElementById('rc-feedback-ringout-sub').textContent = roCallout.sub;
+  document.getElementById('rc-feedback-ringout-btn-label').textContent = roCallout.buttonLabel;
 
   // Metrics — built by the shared report-card.ts module (#306) from the
   // injected grading pill classifiers (#132), so a threshold change moves the
@@ -3817,6 +3852,9 @@ function renderPhaseDoublingStep() {
 
 function openPhaseDoublingDialog() {
   phaseDoublingStep = 0;
+  const src = getReportCardSource();
+  aiEl('phase-doubling-context').innerHTML = window.phaseDoublingState.contextLineHtml(
+    src ? { filename: src.filename, detected: rcPhaseSignal } : null, escapeHtml);
   renderPhaseDoublingStep();
   aiEl('phase-doubling-dialog').style.display = 'flex';
 }
