@@ -1,16 +1,18 @@
 // Copyright (c) 2026 Patrick Robinson (on-par). All rights reserved.
 // Licensed under the Sound Buddy Desktop Application License (app/LICENSE).
 
-// Presentational counterpart to report-card.ts (#306, epic #302): renders the
-// same markup renderReportCard builds imperatively in inline-app.js, from the
-// shared module's functions, so there is one source of truth for the report
-// card's HTML. NOT mounted into the running app yet — inline-app.js still
-// drives #rc-content at runtime via the window.reportCard bridge (see
-// App.tsx). Wiring this component into the live tree is a later epic slice,
-// same as <SpectrumDisplay>. Content-type pill/ribbon, band breakdown,
-// spectrum-over-time frames, and the upgrade card are out of scope for this
-// component — they depend on playback/live-view helpers and license state
-// that stay with the imperative renderer, per the issue's In-scope list.
+// Presentational counterpart to report-card.ts (#306, epic #302; extended
+// TD-001 slice 4, #422): renders the full file/live-capture report card —
+// header, grade ring + recording-type pill, content-type pill/ribbon, tonal
+// balance vs target, metrics, "why this grade", band breakdown, spectrum-
+// over-time frames, and recommendations — plus the phase-doubling/feedback-
+// ringout launch callouts. Mounted as <ReportCardIsland>'s core (see
+// ReportCardIsland.tsx); the Recent-Services "history" card (frozen,
+// summary-only) is a separate, much smaller render in ReportCardIsland since
+// it hides nearly every section here.
+//
+// Stays presentational: every section's HTML is built from data the caller
+// already resolved (grade, view-model objects) — no window/DOM/store reads.
 //
 // Assumes a single instance per page (it reuses today's rc-* ids so CSS
 // applies unchanged).
@@ -23,11 +25,15 @@ import {
   metricRowsHTML,
   whyGradeHTML,
   recListHTML,
+  bandBreakdownHTML,
   type RecordingType,
   type GradeExplanation,
   type MetricRow,
   type ProfileComparison,
   type ReportCardSource,
+  type BandDiffApi,
+  type ContentTypeView,
+  type FramesSectionView,
 } from './report-card';
 
 export interface GradeResult {
@@ -39,6 +45,19 @@ export interface GradeResult {
   metrics: MetricRow[];
 }
 
+export interface PhaseDoublingView {
+  detected: boolean;
+  title: string;
+  sub: string;
+}
+
+export interface FeedbackRingoutView {
+  detected: boolean;
+  title: string;
+  sub: string;
+  buttonLabel: string;
+}
+
 export interface ReportCardProps {
   analysis: ReportCardSource;
   /** Active ideal profile (with comparison → match section). */
@@ -48,6 +67,16 @@ export interface ReportCardProps {
   grade: GradeResult;
   /** Caller formats the date — keeps the component pure (no `new Date()`). */
   dateText: string;
+  /** Content-type pill + segment ribbon (PRD 04). Omitted → both hidden. */
+  contentType?: ContentTypeView | null;
+  /** Injected grading.js slice for the band-breakdown verdicts (#131). Omitted → section hidden. */
+  bandDiffApi?: BandDiffApi | null;
+  /** Spectrum-over-time heatmap + representative frame curves (PRD 03). */
+  frames?: FramesSectionView | null;
+  phaseDoubling?: PhaseDoublingView | null;
+  feedbackRingout?: FeedbackRingoutView | null;
+  onOpenPhaseDoubling?: () => void;
+  onOpenFeedbackRingout?: () => void;
 }
 
 export default function ReportCard({
@@ -57,11 +86,52 @@ export default function ReportCard({
   isAutoProfile = false,
   grade,
   dateText,
+  contentType,
+  bandDiffApi,
+  frames,
+  phaseDoubling,
+  feedbackRingout,
+  onOpenPhaseDoubling,
+  onOpenFeedbackRingout,
 }: ReportCardProps) {
   const showProfile = !!(profile && comparison);
+  const showContentTypePill = !!contentType?.pillLabel;
+  const showRibbon = !!contentType?.ribbonSegmentsHTML;
 
   return (
     <div id="rc-content">
+      {phaseDoubling && (
+        <div className={`rc-section pd-launch${phaseDoubling.detected ? ' detected' : ''}`} id="rc-phase-doubling">
+          <div className="pd-launch-body">
+            <span className="pd-launch-title" id="rc-phase-doubling-title">{phaseDoubling.title}</span>
+            <span className="pd-launch-sub" id="rc-phase-doubling-sub">{phaseDoubling.sub}</span>
+          </div>
+          <button
+            type="button"
+            id="rc-phase-doubling-btn"
+            className="btn btn-secondary sm"
+            onClick={onOpenPhaseDoubling}
+          >
+            Check for doubling
+          </button>
+        </div>
+      )}
+      {feedbackRingout && (
+        <div className={`rc-section pd-launch${feedbackRingout.detected ? ' detected' : ''}`} id="rc-feedback-ringout">
+          <div className="pd-launch-body">
+            <span className="pd-launch-title" id="rc-feedback-ringout-title">{feedbackRingout.title}</span>
+            <span className="pd-launch-sub" id="rc-feedback-ringout-sub">{feedbackRingout.sub}</span>
+          </div>
+          <button
+            type="button"
+            id="rc-feedback-ringout-btn"
+            className="btn btn-secondary sm"
+            onClick={onOpenFeedbackRingout}
+          >
+            <span id="rc-feedback-ringout-btn-label">{feedbackRingout.buttonLabel}</span>
+          </button>
+        </div>
+      )}
       <div className="rc-header">
         <h1>Sound Buddy Report Card</h1>
         <div className="rc-meta">
@@ -77,6 +147,17 @@ export default function ReportCard({
           className={recTypePillClass(grade.recType)}
           dangerouslySetInnerHTML={{ __html: recTypePillHTML(grade.recType) }}
         />
+        <div
+          className={`rc-contenttype${contentType?.contentType ? ` ${contentType.contentType}` : ''}`}
+          id="rc-content-type"
+          style={{ display: showContentTypePill ? 'inline-flex' : 'none' }}
+        >
+          {contentType?.pillLabel || ''}
+        </div>
+        <div className="rc-ribbon-wrap" id="rc-ribbon-wrap" style={{ display: showRibbon ? 'flex' : 'none' }}>
+          <div className="rc-ribbon" id="rc-ribbon" dangerouslySetInnerHTML={{ __html: contentType?.ribbonSegmentsHTML || '' }} />
+          <div className="rc-ribbon-legend" id="rc-ribbon-legend" dangerouslySetInnerHTML={{ __html: contentType?.ribbonLegendHTML || '' }} />
+        </div>
       </div>
       {showProfile && (
         <div className="rc-section" id="rc-profile-section">
@@ -106,6 +187,23 @@ export default function ReportCard({
         <h2>Why This Grade</h2>
         <div className="rc-why" id="rc-why" dangerouslySetInnerHTML={{ __html: whyGradeHTML(grade.explain) }} />
       </div>
+      {bandDiffApi && (
+        <div className="rc-section" id="rc-bands-section">
+          <h2>Frequency Band Breakdown</h2>
+          <div
+            className="rc-bands"
+            id="rc-bands"
+            dangerouslySetInnerHTML={{ __html: bandBreakdownHTML(analysis.bands, bandDiffApi) }}
+          />
+        </div>
+      )}
+      {frames?.visible && (
+        <div className="rc-section" id="rc-frames-section">
+          <h2>Spectrum Over Time</h2>
+          <div className="rc-heatmap" id="rc-heatmap" dangerouslySetInnerHTML={{ __html: frames.heatmapHTML }} />
+          <div className="rc-frame-curves" id="rc-frame-curves" dangerouslySetInnerHTML={{ __html: frames.curvesHTML }} />
+        </div>
+      )}
       <div className="rc-section">
         <h2>Recommendations</h2>
         <div
