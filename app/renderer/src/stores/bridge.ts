@@ -8,10 +8,14 @@
 
 import { useLicensingStore } from './licensingStore';
 import { useSettingsStore } from './settingsStore';
+import { useAnalysisStore } from './analysisStore';
+import { useSpectrumStore } from './spectrumStore';
 
 export interface RendererStores {
   licensing: typeof useLicensingStore;
   settings: typeof useSettingsStore;
+  analysis: typeof useAnalysisStore;
+  spectrum: typeof useSpectrumStore;
 }
 
 declare global {
@@ -20,13 +24,34 @@ declare global {
   }
 }
 
+// Installed at most once per module lifetime: the analysis→spectrum
+// subscription below is on the singleton stores themselves (not the injected
+// target), so re-running installStoreBridge (e.g. a second App mount) must
+// not stack a second subscriber that would double-fire setSpectrumFromAnalysis.
+let crossStoreSubscriptionInstalled = false;
+
 // Accepts an injectable target so it's testable without a DOM `window` (the
 // constitution's "side effects are injected" rule) — defaults to the real
 // `window` in the running app.
 export function installStoreBridge(
   target: { rendererStores?: RendererStores } = window as unknown as { rendererStores?: RendererStores }
 ): RendererStores {
-  const stores: RendererStores = { licensing: useLicensingStore, settings: useSettingsStore };
+  const stores: RendererStores = {
+    licensing: useLicensingStore,
+    settings: useSettingsStore,
+    analysis: useAnalysisStore,
+    spectrum: useSpectrumStore,
+  };
   target.rendererStores = stores;
+
+  if (!crossStoreSubscriptionInstalled) {
+    crossStoreSubscriptionInstalled = true;
+    useAnalysisStore.subscribe((state, prevState) => {
+      if (state.currentAnalysis !== prevState.currentAnalysis) {
+        useSpectrumStore.getState().setSpectrumFromAnalysis(state.currentAnalysis);
+      }
+    });
+  }
+
   return stores;
 }

@@ -10,8 +10,12 @@ afterEach(() => {
   useAnalysisStore.setState({
     currentAnalysis: null,
     isAnalyzing: false,
+    status: 'idle',
     analysisProgress: null,
     analysisError: null,
+    selectedFilePath: null,
+    historySummary: null,
+    liveSource: null,
   });
 });
 
@@ -22,8 +26,12 @@ describe('createAnalysisStore', () => {
 
     expect(store.getState().currentAnalysis).toBeNull();
     expect(store.getState().isAnalyzing).toBe(false);
+    expect(store.getState().status).toBe('idle');
     expect(store.getState().analysisProgress).toBeNull();
     expect(store.getState().analysisError).toBeNull();
+    expect(store.getState().selectedFilePath).toBeNull();
+    expect(store.getState().historySummary).toBeNull();
+    expect(store.getState().liveSource).toBeNull();
   });
 
   it('runs the startAnalysis lifecycle to completion', async () => {
@@ -37,16 +45,30 @@ describe('createAnalysisStore', () => {
 
     const pending = store.getState().startAnalysis('/path/to/file.wav');
     expect(store.getState().isAnalyzing).toBe(true);
+    expect(store.getState().status).toBe('analyzing');
 
     await pending;
 
     expect(store.getState().currentAnalysis).toEqual({ score: 42 });
     expect(store.getState().isAnalyzing).toBe(false);
+    expect(store.getState().status).toBe('done');
     expect(store.getState().analysisError).toBeNull();
     expect(mock.calls).toContainEqual({
       method: 'analyzeFile',
       args: [{ filePath: '/path/to/file.wav' }],
     });
+  });
+
+  it('a successful startAnalysis clears a stale history summary', async () => {
+    const mock = createMockSoundBuddy({
+      analyzeFile: async () => ({ success: true, data: { score: 1 } }),
+    });
+    const store = createAnalysisStore(() => mock.api);
+    store.setState({ historySummary: { sourceFilename: 'old.wav' } });
+
+    await store.getState().startAnalysis('/path/to/file.wav');
+
+    expect(store.getState().historySummary).toBeNull();
   });
 
   it('surfaces the failure envelope error message', async () => {
@@ -58,6 +80,7 @@ describe('createAnalysisStore', () => {
     await store.getState().startAnalysis('/path/to/file.wav');
 
     expect(store.getState().isAnalyzing).toBe(false);
+    expect(store.getState().status).toBe('error');
     expect(store.getState().analysisError).toBe('sox exploded');
     expect(store.getState().currentAnalysis).toBeNull();
   });
@@ -83,6 +106,7 @@ describe('createAnalysisStore', () => {
     await store.getState().startAnalysis('/path/to/file.wav');
 
     expect(store.getState().isAnalyzing).toBe(false);
+    expect(store.getState().status).toBe('cancelled');
     expect(store.getState().analysisError).toBeNull();
   });
 
@@ -95,6 +119,7 @@ describe('createAnalysisStore', () => {
     await store.getState().startAnalysis('/path/to/file.wav');
 
     expect(store.getState().isAnalyzing).toBe(false);
+    expect(store.getState().status).toBe('error');
     expect(store.getState().analysisError).toContain('spawn failed');
   });
 
@@ -162,6 +187,91 @@ describe('createAnalysisStore', () => {
     expect(mock.calls).toContainEqual({
       method: 'analyzeFile',
       args: [{ filePath: '/path/to/file.wav' }],
+    });
+  });
+
+  it('selectFile sets the selected file path', () => {
+    const mock = createMockSoundBuddy();
+    const store = createAnalysisStore(() => mock.api);
+
+    store.getState().selectFile('/path/to/file.wav');
+
+    expect(store.getState().selectedFilePath).toBe('/path/to/file.wav');
+  });
+
+  it('clearAnalysis nulls the analysis + selected file and resets status to idle', () => {
+    const mock = createMockSoundBuddy();
+    const store = createAnalysisStore(() => mock.api);
+    store.setState({
+      currentAnalysis: { score: 1 },
+      selectedFilePath: '/path/to/file.wav',
+      status: 'done',
+    });
+
+    store.getState().clearAnalysis();
+
+    expect(store.getState().currentAnalysis).toBeNull();
+    expect(store.getState().selectedFilePath).toBeNull();
+    expect(store.getState().status).toBe('idle');
+  });
+
+  it('clearAnalysis leaves historySummary/liveSource untouched (callers clear those separately)', () => {
+    const mock = createMockSoundBuddy();
+    const store = createAnalysisStore(() => mock.api);
+    store.setState({ historySummary: { sourceFilename: 'x.wav' }, liveSource: { filename: 'live' } });
+
+    store.getState().clearAnalysis();
+
+    expect(store.getState().historySummary).toEqual({ sourceFilename: 'x.wav' });
+    expect(store.getState().liveSource).toEqual({ filename: 'live' });
+  });
+
+  it('setHistorySummary stores a Recent Services record', () => {
+    const mock = createMockSoundBuddy();
+    const store = createAnalysisStore(() => mock.api);
+
+    store.getState().setHistorySummary({ sourceFilename: 'sermon.wav' });
+    expect(store.getState().historySummary).toEqual({ sourceFilename: 'sermon.wav' });
+
+    store.getState().setHistorySummary(null);
+    expect(store.getState().historySummary).toBeNull();
+  });
+
+  it('setLiveSource stores the resolved live-capture report-card source', () => {
+    const mock = createMockSoundBuddy();
+    const store = createAnalysisStore(() => mock.api);
+
+    store.getState().setLiveSource({ filename: 'Live capture — Main (window #1)' });
+    expect(store.getState().liveSource).toEqual({ filename: 'Live capture — Main (window #1)' });
+
+    store.getState().setLiveSource(null);
+    expect(store.getState().liveSource).toBeNull();
+  });
+
+  describe('setAnalysisFromEvent', () => {
+    it('sets currentAnalysis and clears a stale history summary for a stats event', () => {
+      const mock = createMockSoundBuddy();
+      const store = createAnalysisStore(() => mock.api);
+      store.setState({ historySummary: { sourceFilename: 'old.wav' } });
+
+      store.getState().setAnalysisFromEvent({ type: 'stats', data: { score: 5 } });
+
+      expect(store.getState().currentAnalysis).toEqual({ score: 5 });
+      expect(store.getState().historySummary).toBeNull();
+    });
+
+    it.each([
+      ['a non-stats type', { type: 'other', data: { score: 5 } }],
+      ['a stats event with no data', { type: 'stats', data: null }],
+      ['null', null],
+    ])('ignores %s', (_label, evt) => {
+      const mock = createMockSoundBuddy();
+      const store = createAnalysisStore(() => mock.api);
+      store.setState({ currentAnalysis: { score: 1 } });
+
+      store.getState().setAnalysisFromEvent(evt);
+
+      expect(store.getState().currentAnalysis).toEqual({ score: 1 });
     });
   });
 });

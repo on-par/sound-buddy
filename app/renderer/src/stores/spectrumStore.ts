@@ -2,15 +2,23 @@
 // Licensed under the Sound Buddy Desktop Application License (app/LICENSE).
 
 import { create } from 'zustand';
-import type { SpectrumData, BandKey } from '../spectrum-display';
+import type { SpectrumData, BandKey, IdealProfileLike } from '../spectrum-display';
 
 export interface SpectrumState {
   spectrumData: SpectrumData | null;
   bands: Partial<Record<BandKey, number>>;
   spectralCentroid: number | null;
   rolloff: number | null;
+  // The active ideal EQ profile (PRD 05) — resolved by the still-inline
+  // profile-selection code (explicit pick, or auto by content type) and
+  // written here so both report-card and spectrum islands render the same
+  // target overlay. Independent of spectrumData: it survives a cleared
+  // spectrum, mirroring idealProfileId's lifetime in inline-app.js today.
+  idealProfile: IdealProfileLike | null;
+  isAutoProfile: boolean;
   setSpectrumFromAnalysis(analysis: unknown): void;
   clearSpectrum(): void;
+  setIdealProfile(profile: IdealProfileLike | null, isAuto: boolean): void;
 }
 
 // The analysis result is deliberately `unknown` at the boundary (TD-011); this
@@ -48,5 +56,10 @@ export const useSpectrumStore = create<SpectrumState>()((set) => ({
   },
   clearSpectrum() {
     set({ ...EMPTY_STATE });
+  },
+  idealProfile: null,
+  isAutoProfile: false,
+  setIdealProfile(profile, isAuto) {
+    set({ idealProfile: profile, isAutoProfile: isAuto });
   },
 }));
