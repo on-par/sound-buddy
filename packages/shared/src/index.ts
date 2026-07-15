@@ -7,6 +7,9 @@
 // AudioAnalysis, SpectrumResult live in audio-engine/src/types.ts). audio-engine
 // depends on this package only to PRODUCE the boundary summary below.
 
+export { buildReleaseNotes, INSTALL_INTRO, UNSIGNED_STEPS } from './install-instructions.js'
+export type { BuildReleaseNotesOptions } from './install-instructions.js'
+
 export interface EQBand {
   type: string
   freq: number
