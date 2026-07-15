@@ -34,6 +34,7 @@ import {
   isPolicyError,
   type LicenseKind,
   type LicensePayload,
+  type PolicyState,
 } from "@sound-buddy/license-policy";
 
 export { GRACE_DAYS, type LicenseKind, type LicensePayload };
@@ -60,19 +61,10 @@ export interface MintParams {
   jti?: string;
 }
 
-/** Result of verifying a key — the interop-relevant subset of license.ts's
- * LicenseState (tier is the single gating input; status is messaging detail). */
-export interface VerifyResult {
-  tier: "free" | "pro";
-  status: "valid" | "grace" | "expired" | "invalid";
-  kind?: LicenseKind;
-  email?: string;
-  expiresAt?: string;
-  /** Present only while status === 'grace'. */
-  graceEndsAt?: string;
-  /** Human-readable reason when status === 'invalid'. */
-  error?: string;
-}
+/** Result of verifying a key — an alias of the shared policy's result type
+ * (tier is the single gating input; status is messaging detail), kept under
+ * this name since it's the public API existing callers import. */
+export type VerifyResult = PolicyState;
 
 // --- base64 / PEM helpers (Web Crypto has no Buffer) --------------------------
 

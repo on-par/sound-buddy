@@ -2,10 +2,12 @@ import type { LicensePayload, PolicyState } from './index.js';
 import { GRACE_DAYS, DAY_MS } from './index.js';
 
 /**
- * Golden vectors for {@link resolvePolicyState} — the single source of truth
- * both `app/electron/license.ts` and `worker/src/license-sign.ts` are tested
- * against, so their runtime-specific verify adapters can't silently drift
- * from this policy's grace/expiry math.
+ * Golden vectors for {@link resolvePolicyState} — every grace/expiry/kind
+ * branch in one place, exercised by this package's own test suite. Exported
+ * (rather than kept test-local) so `app/electron/license.test.ts` and
+ * `worker/src/license-sign.test.ts` can import them too, for a stronger
+ * cross-runtime parity guarantee than duplicating the cases by hand — they
+ * don't yet; each keeps its own hand-written grace/expiry cases.
  */
 export interface GoldenVector {
   label: string;

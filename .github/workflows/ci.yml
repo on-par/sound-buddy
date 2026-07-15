@@ -120,6 +120,9 @@ jobs:
   # The Stripe / licensing API Worker (worker/, #107) is a standalone package
   # like site/ — not an npm workspace and not coupled to the app/ or site/
   # builds. It verifies independently: tsc typecheck → vitest routing tests.
+  # One cross-package dependency as of TD-006 (#400): @sound-buddy/license-policy
+  # via a `file:` dependency on its ESM dist/, built from the repo root below
+  # before this job's own `npm ci` resolves it.
   worker:
     runs-on: ubuntu-latest
     defaults:
