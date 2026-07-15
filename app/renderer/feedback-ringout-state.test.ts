@@ -46,6 +46,7 @@ const {
   MAX_FREQ_HZ,
   ISO_THIRD_OCTAVE,
   STEPS,
+  RC_FEEDBACK_MIN_PROMINENCE_DB,
   stepCount,
   clampStep,
   stepAt,
@@ -53,6 +54,10 @@ const {
   isFirstStep,
   isLastStep,
   identifyRing,
+  detectFeedbackSignal,
+  stepIndexById,
+  reportCardCallout,
+  handoffStatus,
   snapToIso,
   suggestCut,
   parseManualFrequency,
@@ -74,6 +79,7 @@ const {
   MAX_FREQ_HZ: number;
   ISO_THIRD_OCTAVE: number[];
   STEPS: Step[];
+  RC_FEEDBACK_MIN_PROMINENCE_DB: number;
   stepCount: () => number;
   clampStep: (i: unknown) => number;
   stepAt: (i: number) => Step;
@@ -85,6 +91,15 @@ const {
     findPeaks: unknown,
     opts?: unknown
   ) => Ring | null;
+  detectFeedbackSignal: (curve: SpectrumCurve, findPeaks: unknown) => Ring | null;
+  stepIndexById: (id: unknown) => number;
+  reportCardCallout: (peak: Ring | null) => {
+    detected: boolean;
+    title: string;
+    sub: string;
+    buttonLabel: string;
+  };
+  handoffStatus: (freq: number) => string;
   snapToIso: (freq: number) => number | null;
   suggestCut: (freq: number, opts?: Partial<Cut>) => Cut | null;
   parseManualFrequency: (input: unknown) => number | null;
@@ -226,6 +241,87 @@ describe('identifyRing', () => {
   it('returns null when the finder yields no peaks', () => {
     const curve = ringingCurve(3150, -10);
     expect(identifyRing(curve, () => [])).toBeNull();
+  });
+});
+
+describe('stepIndexById', () => {
+  it('resolves a known id to its index', () => {
+    expect(stepIndexById('cut')).toBe(3);
+    expect(stepIndexById('save')).toBe(5);
+    expect(stepIndexById('setup')).toBe(0);
+  });
+
+  it('falls back to 0 for an unknown or missing id', () => {
+    expect(stepIndexById('nope')).toBe(0);
+    expect(stepIndexById(undefined)).toBe(0);
+  });
+});
+
+describe('RC_FEEDBACK_MIN_PROMINENCE_DB', () => {
+  it('is stricter than the live-capture default of 6 dB', () => {
+    expect(RC_FEEDBACK_MIN_PROMINENCE_DB).toBeGreaterThan(6);
+  });
+});
+
+describe('detectFeedbackSignal', () => {
+  it('passes the stricter threshold through to the finder', () => {
+    let seenOpts: { minProminenceDb?: number } | undefined;
+    const fakeFindPeaks = (curve: SpectrumCurve, opts: { minProminenceDb?: number }) => {
+      seenOpts = opts;
+      return [];
+    };
+    detectFeedbackSignal(ringingCurve(3150, -10), fakeFindPeaks);
+    expect(seenOpts?.minProminenceDb).toBe(RC_FEEDBACK_MIN_PROMINENCE_DB);
+  });
+
+  it('returns the most prominent peak when the finder returns multiple', () => {
+    const fakeFindPeaks = () => [
+      { freq: 3150, db: -10, prominence: 14 },
+      { freq: 1000, db: -18, prominence: 9 },
+    ];
+    const result = detectFeedbackSignal(ringingCurve(3150, -10), fakeFindPeaks);
+    expect(result).toEqual({ freq: 3150, db: -10, prominence: 14 });
+  });
+
+  it('returns null when the finder yields no peaks', () => {
+    expect(detectFeedbackSignal(ringingCurve(3150, -10), () => [])).toBeNull();
+  });
+
+  it('returns null for a malformed curve', () => {
+    expect(detectFeedbackSignal({ freqs: [1] } as unknown as SpectrumCurve, () => [])).toBeNull();
+    expect(detectFeedbackSignal(null as unknown as SpectrumCurve, () => [])).toBeNull();
+  });
+
+  it('returns null when findPeaks is not a function', () => {
+    expect(detectFeedbackSignal(ringingCurve(3150, -10), undefined)).toBeNull();
+  });
+});
+
+describe('reportCardCallout', () => {
+  it('describes a detected peak with the seeded frequency and rounded prominence', () => {
+    const callout = reportCardCallout({ freq: 1250, db: -10, prominence: 12.4 });
+    expect(callout.detected).toBe(true);
+    expect(callout.title).toContain('1.25 kHz');
+    expect(callout.sub).toContain('12 dB');
+    expect(callout.buttonLabel).toBe('Ring out this frequency');
+  });
+
+  it('falls back to a generic invitation when no peak was detected', () => {
+    const callout = reportCardCallout(null);
+    expect(callout.detected).toBe(false);
+    expect(callout.buttonLabel).toBe('Open the ring-out wizard');
+    expect(callout.title.length).toBeGreaterThan(0);
+    expect(callout.sub.length).toBeGreaterThan(0);
+  });
+});
+
+describe('handoffStatus', () => {
+  it('formats the frequency in Hz below 1000', () => {
+    expect(handoffStatus(250)).toContain('250 Hz');
+  });
+
+  it('formats the frequency in kHz at/above 1000', () => {
+    expect(handoffStatus(1250)).toContain('1.25 kHz');
   });
 });
 
