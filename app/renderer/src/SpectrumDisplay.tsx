@@ -16,8 +16,8 @@
 // Assumes a single instance per page, same as today's single #spectrum-body
 // panel.
 
-import { compareToProfile } from '../../../packages/audio-engine/src/profiles/index.js';
-import type { IdealProfile } from '../../../packages/audio-engine/src/profiles/index.js';
+import { compareToProfile } from '@sound-buddy/audio-engine/dist/profiles/index.js';
+import type { IdealProfile } from '@sound-buddy/audio-engine/dist/profiles/index.js';
 import {
   bandDbFromSpectrum,
   bandLevelsFromCurve,

@@ -4,7 +4,7 @@
 import { describe, it, expect } from 'vitest';
 import { createElement } from 'react';
 import { renderToString } from 'react-dom/server';
-import { PROFILES, GRID_FREQS, compareToProfile } from '../../../packages/audio-engine/src/profiles/index.js';
+import { PROFILES, GRID_FREQS, compareToProfile } from '@sound-buddy/audio-engine/dist/profiles/index.js';
 import SpectrumDisplay from './SpectrumDisplay';
 import {
   bandDbFromSpectrum,

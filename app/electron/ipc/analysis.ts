@@ -26,8 +26,8 @@ import type {
   SpectrumSegment,
   LoudnessStats,
   AudioAnalysis,
-} from '../../../packages/audio-engine/dist-cjs/types';
-import type { AnalyzeStage } from '../../../packages/audio-engine/dist-cjs/analyze/orchestrate';
+} from '@sound-buddy/audio-engine/dist-cjs/types';
+import type { AnalyzeStage } from '@sound-buddy/audio-engine/dist-cjs/analyze/orchestrate';
 
 export type { SoxStats, FfprobeResult, SpectrumResult, SpectrumFrame, SpectrumSegment, LoudnessStats, AudioAnalysis };
 

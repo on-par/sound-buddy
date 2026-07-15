@@ -2,14 +2,17 @@
 // Licensed under the Sound Buddy Desktop Application License (app/LICENSE).
 
 // Loads the @sound-buddy/audio-engine parsers (#151) — the app's single
-// source of sox/ffprobe/spectrum/ebur128 analysis. The engine ships as an ESM
-// package, but the app's main process compiles CommonJS (see app/tsconfig.json)
-// and the packaged .app ships zero node_modules, so a normal ESM import or a
-// `file:` dependency is out. Instead the engine gains a second, CJS-only build
-// of just the parser subtree (packages/audio-engine/dist-cjs — see that
-// package's tsconfig.cjs.json), which this module loads at runtime via
-// createRequire from a path resolved packaged-vs-dev, mirroring the
-// toolBin()/SCRIPTS_DIR pattern in ./shared.
+// source of sox/ffprobe/spectrum/ebur128 analysis. #396 declares the engine
+// as a `file:` dependency in app/package.json so the coupling is visible to
+// npm and static analysis, but runtime loading still goes through
+// createRequire: the app's main process compiles CommonJS (see
+// app/tsconfig.json) and the packaged .app ships zero node_modules
+// (Contents/Resources/engine instead), so a normal ESM import can't be used
+// at runtime. Instead the engine gains a second, CJS-only build of just the
+// parser subtree (packages/audio-engine/dist-cjs — see that package's
+// tsconfig.cjs.json), which this module loads at runtime via createRequire
+// from a path resolved packaged-vs-dev, mirroring the toolBin()/SCRIPTS_DIR
+// pattern in ./shared.
 
 import { createRequire } from 'node:module';
 import * as fs from 'fs';
@@ -17,11 +20,11 @@ import * as path from 'path';
 import { app } from 'electron';
 import { REPO_ROOT } from './shared';
 
-type EngineSox = typeof import('../../../packages/audio-engine/dist-cjs/analyze/sox');
-type EngineFfprobe = typeof import('../../../packages/audio-engine/dist-cjs/analyze/ffprobe');
-type EngineSpectrum = typeof import('../../../packages/audio-engine/dist-cjs/analyze/spectrum');
-type EngineEbur128 = typeof import('../../../packages/audio-engine/dist-cjs/analyze/ebur128');
-type EngineOrchestrate = typeof import('../../../packages/audio-engine/dist-cjs/analyze/orchestrate');
+type EngineSox = typeof import('@sound-buddy/audio-engine/dist-cjs/analyze/sox');
+type EngineFfprobe = typeof import('@sound-buddy/audio-engine/dist-cjs/analyze/ffprobe');
+type EngineSpectrum = typeof import('@sound-buddy/audio-engine/dist-cjs/analyze/spectrum');
+type EngineEbur128 = typeof import('@sound-buddy/audio-engine/dist-cjs/analyze/ebur128');
+type EngineOrchestrate = typeof import('@sound-buddy/audio-engine/dist-cjs/analyze/orchestrate');
 
 export function engineParsersDir(): string {
   if (app.isPackaged) {
