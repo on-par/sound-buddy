@@ -22,7 +22,7 @@
 import Stripe from "stripe";
 import type { Env } from "../index";
 import { sendLicenseEmail } from "../delivery";
-import { importSigningKey, mintLicenseKey } from "../license-sign";
+import { importSigningKey, mintLicenseKey, sha256Hex } from "../license-sign";
 
 /**
  * Non-secret metadata persisted per founding Checkout Session. Contains NO
@@ -48,17 +48,6 @@ export interface CheckoutCompletedDeps {
   getStripe?: (env: Env) => Stripe;
   /** Best-effort license-key email delivery; injectable so tests never hit Resend. */
   sendEmail?: typeof sendLicenseEmail;
-}
-
-/** Lowercase-hex SHA-256 of a string, via Web Crypto (no Node `crypto`). */
-async function sha256Hex(input: string): Promise<string> {
-  const digest = await crypto.subtle.digest(
-    "SHA-256",
-    new TextEncoder().encode(input),
-  );
-  return Array.from(new Uint8Array(digest))
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join("");
 }
 
 /** Default Stripe client for the Workers runtime (fetch-based HTTP). */
