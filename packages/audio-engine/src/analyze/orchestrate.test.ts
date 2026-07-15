@@ -142,4 +142,11 @@ describe("analyzeAudio (orchestrate)", () => {
       "The operation was aborted",
     );
   });
+
+  it("rejects with an actionable error, without calling runSpectrum, when spectrum is omitted and noSpectrum is not set", async () => {
+    await expect(analyzeAudio("/tmp/take.wav", {})).rejects.toThrow(
+      "analyzeAudio: opts.spectrum.scriptPath is required unless opts.noSpectrum is true",
+    );
+    expect(mocks.runSpectrumMock).not.toHaveBeenCalled();
+  });
 });

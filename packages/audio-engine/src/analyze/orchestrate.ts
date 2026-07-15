@@ -36,6 +36,20 @@ const SILENT_SPECTRUM: SpectrumResult = {
   dynamicRange: 0,
 };
 
+// spectrum?: RunSpectrumOptions can't itself require scriptPath — it's legitimately
+// omitted when noSpectrum is true — so TS can't statically catch a caller who
+// forgets scriptPath while leaving noSpectrum false. This is the one runtime
+// check standing in for that: it turns a missing scriptPath into an actionable
+// error here instead of an opaque TypeError from execFile deep inside runSpectrum.
+function requireSpectrumOpts(opts: AnalyzeAudioOptions): RunSpectrumOptions {
+  if (!opts.spectrum) {
+    throw new Error(
+      "analyzeAudio: opts.spectrum.scriptPath is required unless opts.noSpectrum is true",
+    );
+  }
+  return { ...opts.spectrum, signal: opts.signal ?? opts.spectrum.signal };
+}
+
 export async function analyzeAudio(
   filePath: string,
   opts: AnalyzeAudioOptions = {},
@@ -48,10 +62,6 @@ export async function analyzeAudio(
 
   const soxOpts: RunSoxOptions = { ...opts.sox, signal: opts.signal ?? opts.sox?.signal };
   const ffprobeOpts: RunFfprobeOptions = { ...opts.ffprobe, signal: opts.signal ?? opts.ffprobe?.signal };
-  const spectrumOpts: RunSpectrumOptions = {
-    ...(opts.spectrum as RunSpectrumOptions),
-    signal: opts.signal ?? opts.spectrum?.signal,
-  };
   const ebur128Opts: RunEbur128Options = { ...opts.ebur128, signal: opts.signal ?? opts.ebur128?.signal };
 
   const [sox, ffprobe, spectrum, loudness] = await Promise.all([
@@ -59,7 +69,7 @@ export async function analyzeAudio(
     track("ffprobe", runFfprobe(filePath, ffprobeOpts)),
     opts.noSpectrum
       ? track("spectrum", Promise.resolve(SILENT_SPECTRUM))
-      : track("spectrum", runSpectrum(filePath, spectrumOpts)),
+      : track("spectrum", runSpectrum(filePath, requireSpectrumOpts(opts))),
     track("ebur128", runEbur128(filePath, ebur128Opts)).catch((err) => {
       if (isAbortError(err)) throw err;
       opts.onEbur128Error?.(err);
