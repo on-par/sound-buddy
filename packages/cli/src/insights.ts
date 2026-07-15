@@ -1,15 +1,9 @@
-import Anthropic from '@anthropic-ai/sdk'
 import type { AnalystInput, Insight } from '@sound-buddy/shared'
 import { ANALYST_SYSTEM_PROMPT } from '@sound-buddy/audio-engine'
+import { PiNarrativeAdapter } from '@sound-buddy/audio-engine/dist/narrative/pi-adapter.js'
+import type { NarrativePort } from '@sound-buddy/audio-engine/dist/narrative/port.js'
 
-function getClient(): Anthropic {
-  if (!process.env.ANTHROPIC_API_KEY) {
-    throw new Error('ConfigError: ANTHROPIC_API_KEY is required')
-  }
-  return new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
-}
-
-function buildPrompt(input: AnalystInput): string {
+export function buildPrompt(input: AnalystInput): string {
   const parts: string[] = []
 
   if (input.audio) {
@@ -35,27 +29,13 @@ function buildPrompt(input: AnalystInput): string {
   return parts.join('\n')
 }
 
-export async function analyzeWithClaude(input: AnalystInput): Promise<Insight[]> {
-  const client = getClient()
-
-  const response = await client.messages.create({
-    model: 'claude-sonnet-4-6',
-    max_tokens: 1024,
-    system: ANALYST_SYSTEM_PROMPT,
-    messages: [{ role: 'user', content: buildPrompt(input) }],
-  })
-
-  const text = response.content.find((b) => b.type === 'text')?.text ?? '[]'
-  return parseInsights(text)
-}
-
 /**
  * Parse the model's text response into insights. The model can occasionally
  * return prose or malformed JSON instead of the requested array; guard against
  * that so a bad response surfaces as a handled, descriptive error the caller can
  * show in the AI panel rather than an uncaught crash (#152).
  */
-function parseInsights(text: string): Insight[] {
+export function parseInsights(text: string): Insight[] {
   let parsed: unknown
   try {
     parsed = JSON.parse(text)
@@ -69,25 +49,26 @@ function parseInsights(text: string): Insight[] {
   return parsed as Insight[]
 }
 
-export async function analyzeWithClaudeStream(
+/** Default port: the unified Pi-backed adapter (TD-004). Constructor is side-effect free. */
+export function defaultNarrativePort(): NarrativePort {
+  return new PiNarrativeAdapter()
+}
+
+/**
+ * Generate structured insights over a NarrativePort: stream the narrative,
+ * accumulate the text, parse it as an Insight[] JSON array.
+ * NarrativePort never throws — an { ok: false } result is surfaced as a
+ * thrown Error so runAnalyze's existing "(AI analysis unavailable: ...)"
+ * catch path handles it exactly like the old analyzeWithClaude failures.
+ */
+export async function generateInsights(
   input: AnalystInput,
-  onChunk: (text: string) => void
-): Promise<void> {
-  const client = getClient()
-
-  const stream = client.messages.stream({
-    model: 'claude-sonnet-4-6',
-    max_tokens: 1024,
-    system: ANALYST_SYSTEM_PROMPT,
-    messages: [{ role: 'user', content: buildPrompt(input) }],
+  port: NarrativePort = defaultNarrativePort()
+): Promise<Insight[]> {
+  let text = ''
+  const result = await port.streamNarrative(ANALYST_SYSTEM_PROMPT, buildPrompt(input), (chunk) => {
+    text += chunk
   })
-
-  for await (const event of stream) {
-    if (
-      event.type === 'content_block_delta' &&
-      event.delta.type === 'text_delta'
-    ) {
-      onChunk(event.delta.text)
-    }
-  }
+  if (!result.ok) throw new Error(`AiError: ${result.reason}`)
+  return parseInsights(text)
 }

@@ -13,7 +13,8 @@ import {
   toAnalysisSummary,
 } from '@sound-buddy/audio-engine'
 import type { ChannelAnalysis, ChannelFile } from '@sound-buddy/audio-engine'
-import { analyzeWithClaude } from '@sound-buddy/ai-analyst'
+import type { NarrativePort } from '@sound-buddy/audio-engine/dist/narrative/port.js'
+import { generateInsights } from './insights.js'
 import type { SceneDiff, AnalystInput } from '@sound-buddy/shared'
 
 export interface AnalyzeOptions {
@@ -32,6 +33,8 @@ export interface AnalyzeIO {
   log?: (s: string) => void
   error?: (s: string) => void
   exit?: (code: number) => void
+  /** Injectable so tests can stub the AI pass without a real provider. */
+  narrativePort?: NarrativePort
 }
 
 function printChannelTable(channelAnalyses: ChannelAnalysis[], log: (s: string) => void): void {
@@ -189,7 +192,7 @@ export async function runAnalyze(
     // The AI call is supplementary — if it fails, keep the measurements already
     // printed above rather than discarding all output.
     try {
-      const insights = await analyzeWithClaude(input)
+      const insights = await generateInsights(input, io.narrativePort)
       if (insights.length > 0) {
         log(heading)
         for (const insight of insights) {

@@ -40,7 +40,6 @@ Current baselines (see each `vitest.config.ts` for exact thresholds):
 | audio-engine | ~89% | ~84% | ~81% |
 | scene-inspector | ~95% | ~84% | 100% |
 | cli | ~85% | ~72% | ~96% |
-| ai-analyst | 100% | 100% | 100% |
 | app (Electron) | ~52% | ~55% | ~45% |
 | worker | ~90% | ~87% | 100% |
 

@@ -42,7 +42,6 @@ cd app && npm install && npm run dev   # dev uses PATH sox/ffprobe + a local ven
 | `@sound-buddy/shared` | Shared TypeScript types |
 | `@sound-buddy/scene-inspector` | M32R .scn scene file parser and diff |
 | `@sound-buddy/audio-engine` | Core audio analysis (sox, ffprobe, librosa spectrum) |
-| `@sound-buddy/ai-analyst` | Claude API integration for AI insights |
 | `@sound-buddy/cli` | `buddy` CLI tool |
 
 ## Requirements
@@ -131,8 +130,8 @@ Sound Buddy is dual-licensed:
   [Sound Buddy Desktop Application License](app/LICENSE). Using the app requires a
   valid license key (issued on purchase); redistribution is not permitted.
 - **Packages (`packages/*`)** — [MIT](packages/shared/LICENSE): `@sound-buddy/shared`,
-  `@sound-buddy/scene-inspector`, `@sound-buddy/audio-engine`, `@sound-buddy/ai-analyst`,
-  and `@sound-buddy/cli`. Each package carries its own MIT `LICENSE` file.
+  `@sound-buddy/scene-inspector`, `@sound-buddy/audio-engine`, and `@sound-buddy/cli`.
+  Each package carries its own MIT `LICENSE` file.
 
 See [LICENSE](LICENSE) at the repo root for the overview. Bundled third-party tools
 (sox, FFmpeg, the Python runtime and libraries) remain under their own licenses.
