@@ -63,6 +63,24 @@ if (html.includes('MxU')) {
   problems.push('Built HTML contains "MxU" — the #260 measurement-price comparison is banned.');
 }
 
+// #377 — Founding urgency must be synced to a machine-readable drop date.
+const deadlineMatch = html.match(/data-drop-deadline="([^"]+)"/);
+if (!deadlineMatch) {
+  problems.push('Founding countdown missing — no data-drop-deadline anchor in built HTML (#377).');
+} else if (Number.isNaN(new Date(deadlineMatch[1]).getTime())) {
+  problems.push(`data-drop-deadline is not a valid date: "${deadlineMatch[1]}" (#377).`);
+}
+if (!/data-fc-remaining/.test(html)) {
+  problems.push('Founding countdown missing its live-remaining (data-fc-remaining) node (#377).');
+}
+if (!/demo video/i.test(html)) {
+  problems.push('Countdown copy must reference the demo video drop (#377).');
+}
+const countdownIdx = html.indexOf('founding-countdown');
+if (countdownIdx === -1 || !(pricingSectionIdx !== -1 && countdownIdx > pricingSectionIdx)) {
+  problems.push('Founding countdown must render inside the #pricing section (#377).');
+}
+
 if (problems.length) {
   console.error(`✖ ${problems.length} pricing invariant(s) broken:`);
   for (const p of problems) console.error('  ' + p);
