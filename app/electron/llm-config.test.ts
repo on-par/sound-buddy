@@ -28,6 +28,7 @@ import {
   saveLlmConfig,
   getApiKey,
   DEFAULT_OLLAMA_HOST,
+  normalizeHostUrl,
 } from './llm-config';
 
 const llmFile = () => path.join(userDataDir, 'llm.json');
@@ -40,7 +41,6 @@ const LLM_ENV_VARS = [
   'SOUND_BUDDY_OLLAMA_HOST',
   'SOUND_BUDDY_LLM_BASE_URL',
   'SOUND_BUDDY_LLM_API_KEY',
-  'SOUND_BUDDY_PI_BIN',
 ];
 
 beforeEach(() => {
@@ -159,6 +159,19 @@ describe('key ↔ provider scoping', () => {
 describe('ollamaHost normalization on save', () => {
   it('prepends http:// to a scheme-less host so it can never parse as a protocol', () => {
     expect(saveLlmConfig({ ollamaHost: 'localhost:11434' }).ollamaHost).toBe('http://localhost:11434');
+  });
+});
+
+describe('normalizeHostUrl', () => {
+  it('prepends http:// to a scheme-less host (localhost:11434 would parse as protocol "localhost:")', () => {
+    expect(normalizeHostUrl('localhost:11434')).toBe('http://localhost:11434');
+    expect(normalizeHostUrl('box.local:11434/')).toBe('http://box.local:11434');
+  });
+
+  it('leaves explicit schemes alone and strips trailing slashes', () => {
+    expect(normalizeHostUrl('http://localhost:11434/')).toBe('http://localhost:11434');
+    expect(normalizeHostUrl('HTTPS://box:443')).toBe('HTTPS://box:443');
+    expect(normalizeHostUrl('  ')).toBe('');
   });
 });
 

@@ -3417,11 +3417,14 @@ function openLicenseDialog() {
 // One screen, two paths: local Ollama (default tab — privacy-first) or a
 // pasted API key. Saving writes llm.json via main (the key is encrypted with
 // safeStorage there and never comes back to this process).
-const AI_MODEL_HINTS = { openai: 'gpt-4o-mini', anthropic: 'claude-sonnet-4-6', google: 'gemini-2.0-flash', custom: 'model-name' };
+// Direct hosted providers hard-require a model (no server-side default);
+// ollama and pi pass-through providers supply their own (TD-004 slice 3, #427).
+const HOSTED_PROVIDER_IDS = new Set(['openai', 'anthropic', 'google', 'custom']);
 
 let aiDialogTab = 'ollama';
 let aiDetectSeq = 0; // stale-response guard for endpoint edits
 let aiSavedCfg = null; // last-loaded public config (drives key placeholder + provider preservation)
+let aiModelsCache = []; // last-fetched Pi ModelRegistry listing (#427), filtered per-provider into the model datalist
 
 function aiEl(id) { return document.getElementById(id); }
 
@@ -3498,10 +3501,26 @@ async function detectOllamaInto(preferModel) {
   return res;
 }
 
+// Model ids the Pi ModelRegistry reports for `provider`, cached from the last
+// listLlmModels() fetch (#427) — replaces the old hardcoded AI_MODEL_HINTS map.
+function modelsForProvider(provider) {
+  return aiModelsCache.filter((m) => m.provider === provider).map((m) => m.id);
+}
+
 function syncHostedFields() {
   const provider = aiEl('ai-provider').value;
   aiEl('ai-baseurl-field').style.display = provider === 'custom' ? 'flex' : 'none';
-  aiEl('ai-hosted-model').placeholder = AI_MODEL_HINTS[provider] || 'model-name';
+  const models = modelsForProvider(provider);
+  aiEl('ai-hosted-model').placeholder = models[0] || 'model-name';
+  const datalist = aiEl('ai-hosted-model-list');
+  if (datalist) {
+    datalist.innerHTML = '';
+    for (const id of models) {
+      const opt = document.createElement('option');
+      opt.value = id;
+      datalist.appendChild(opt);
+    }
+  }
   // A stored key only counts for the provider it was pasted for — switching the
   // dropdown means a new key is needed (main enforces this; the placeholder
   // just keeps the UI honest about it).
@@ -3514,6 +3533,8 @@ async function openAiSettings() {
   try { cfg = await sb.getLlmConfig(); } catch { cfg = null; }
   cfg = cfg || { provider: '', model: '', ollamaHost: '', apiBaseUrl: '', hasApiKey: false, apiKeyProvider: '' };
   aiSavedCfg = cfg;
+
+  try { aiModelsCache = await sb.listLlmModels(); } catch { aiModelsCache = []; }
 
   aiEl('ai-ollama-host').value = cfg.ollamaHost || '';
   aiEl('ai-base-url').value = cfg.apiBaseUrl || '';
@@ -3600,8 +3621,9 @@ async function saveAiSettings() {
     const model = aiEl('ai-hosted-model').value.trim();
     // Direct hosted providers hard-require a model (there is no server-side
     // default); pi pass-through providers supply their own.
-    if (!model && provider in AI_MODEL_HINTS) {
-      setAiTestResult(`Enter a model name first (e.g. ${AI_MODEL_HINTS[provider]}).`, 'err');
+    if (!model && HOSTED_PROVIDER_IDS.has(provider)) {
+      const example = modelsForProvider(provider)[0] || 'model-name';
+      setAiTestResult(`Enter a model name first (e.g. ${example}).`, 'err');
       aiEl('ai-hosted-model').focus();
       return;
     }

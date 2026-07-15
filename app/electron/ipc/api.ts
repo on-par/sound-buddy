@@ -218,6 +218,14 @@ export type SaveLlmConfigResult =
   | { ok: true; config: PublicLlmConfig }
   | { ok: false; reason: string };
 
+/** A model the settings screen can offer for a given provider (TD-004 slice 3,
+ *  #427) — sourced from Pi's ModelRegistry via `listLlmModels`. */
+export interface LlmModelInfo {
+  provider: string;
+  id: string;
+  name: string;
+}
+
 // ─── Analysis / storage DTOs (AnalysisSummary moved from electron/storage.ts) ─
 
 export interface AnalysisSummary {
@@ -329,6 +337,7 @@ export interface LlmApi {
   saveLlmConfig(patch: LlmConfigPatch): Promise<SaveLlmConfigResult>;
   detectOllama(host?: string): Promise<unknown>;
   testLlmProvider(opts: TestLlmProviderOpts): Promise<unknown>;
+  listLlmModels(): Promise<LlmModelInfo[]>;
   triggerLlmAnalysis(data: unknown): Promise<unknown>;
   onLlmDelta(cb: (text: string) => void): void;
   onLlmDone(cb: () => void): void;

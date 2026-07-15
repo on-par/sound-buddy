@@ -94,6 +94,7 @@ export function createMockSoundBuddy(overrides: Partial<SoundBuddyApi> = {}): Mo
     saveLlmConfig: invoke('saveLlmConfig', { ok: true, config: DEFAULT_PUBLIC_LLM_CONFIG }),
     detectOllama: invoke('detectOllama', undefined),
     testLlmProvider: invoke('testLlmProvider', undefined),
+    listLlmModels: invoke('listLlmModels', []),
     getLicense: invoke('getLicense', DEFAULT_LICENSE_STATE),
     activateLicense: invoke('activateLicense', DEFAULT_LICENSE_STATE),
     removeLicense: invoke('removeLicense', DEFAULT_LICENSE_STATE),
