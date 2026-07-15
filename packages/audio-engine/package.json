@@ -14,7 +14,8 @@
   },
   "dependencies": {
     "@earendil-works/pi-ai": "0.80.2",
-    "@earendil-works/pi-coding-agent": "0.80.2"
+    "@earendil-works/pi-coding-agent": "0.80.2",
+    "@sound-buddy/shared": "*"
   },
   "devDependencies": {
     "@types/node": "^22",

@@ -10,6 +10,7 @@ import {
   cleanupChannelFiles,
   dominantBandLabel,
   formatChannelTable,
+  toAnalysisSummary,
 } from '@sound-buddy/audio-engine'
 import type { ChannelAnalysis, ChannelFile } from '@sound-buddy/audio-engine'
 import { analyzeWithClaude } from '@sound-buddy/ai-analyst'
@@ -182,15 +183,7 @@ export async function runAnalyze(
     const input: AnalystInput = {}
     if (diff) input.diff = diff
     if (channelAnalyses.length > 0) {
-      input.audio = {
-        channels: channelAnalyses.map(({ channel, analysis }) => ({
-          name: channel.name,
-          rmsDbfs: analysis.sox.rmsDbfs,
-          peakDbfs: analysis.sox.peakDbfs,
-          dynamicRangeDb: analysis.sox.dynamicRangeDb,
-          dominantBand: dominantBandLabel(analysis.spectrum.bands),
-        })),
-      }
+      input.audio = toAnalysisSummary(channelAnalyses)
     }
 
     // The AI call is supplementary — if it fails, keep the measurements already

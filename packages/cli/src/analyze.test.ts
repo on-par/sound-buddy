@@ -20,6 +20,9 @@ vi.mock('@sound-buddy/audio-engine', async (importOriginal) => {
     // printChannelTable/outputJson still produce real table rows/labels.
     dominantBandLabel: actual.dominantBandLabel,
     formatChannelTable: actual.formatChannelTable,
+    // Pure DTO mapper (TD-015) — keep the real implementation so the AI
+    // input assertions exercise the actual boundary shape.
+    toAnalysisSummary: actual.toAnalysisSummary,
   }
 })
 

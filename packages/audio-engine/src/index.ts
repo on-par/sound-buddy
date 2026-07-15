@@ -58,6 +58,12 @@ export type { SpectralPeak, FindPeaksOptions } from "./analyze/spectral.js";
 export { assessChannelGain, assessGainStructure, gainHealthLabel, GAIN_TARGET_DBFS } from "./analyze/gain-structure.js";
 export type { ChannelGainHealth, GainStructureReport, GainStatus } from "./analyze/gain-structure.js";
 
+// Canonical IPC-safe analysis summary (TD-015): the flat, serialization-safe
+// per-channel shape that crosses package boundaries. Produced here, defined
+// in @sound-buddy/shared.
+export { toAnalysisSummary, toChannelResult } from "./summary.js";
+export type { AudioAnalysisResult, ChannelResult } from "@sound-buddy/shared";
+
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const STREAM_SCRIPT = resolve(__dirname, "../scripts/stream.py");
 
