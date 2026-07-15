@@ -12,8 +12,8 @@ describe('createMockSoundBuddy', () => {
   });
 
   it('resolves an override value instead of the default', async () => {
-    const mock = createMockSoundBuddy({ getLicense: async () => ({ tier: 'pro' }) });
-    await expect(mock.api.getLicense()).resolves.toEqual({ tier: 'pro' });
+    const mock = createMockSoundBuddy({ getLicense: async () => ({ tier: 'pro', status: 'valid' }) });
+    await expect(mock.api.getLicense()).resolves.toEqual({ tier: 'pro', status: 'valid' });
   });
 
   it('emit() fires callbacks registered via an on* method', () => {

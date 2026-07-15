@@ -18,7 +18,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { app, safeStorage } from 'electron';
-import type { LlmConfigPatch } from './ipc/api';
+import type { LlmConfigPatch, PublicLlmConfig } from './ipc/api';
 import { logWarn } from './logger';
 import { normalizeHostUrl } from './llm-providers';
 
@@ -46,16 +46,9 @@ export interface LlmConfig {
   piBin?: string;
 }
 
-/** What the renderer sees — no ciphertext, no key material. */
-export interface PublicLlmConfig {
-  provider: string;
-  model: string;
-  ollamaHost: string;
-  apiBaseUrl: string;
-  hasApiKey: boolean;
-  /** Provider the stored key belongs to ('' when no key). */
-  apiKeyProvider: string;
-}
+// PublicLlmConfig is homed in ipc/api.ts (TD-011, #405) and re-imported above;
+// re-exported here so existing importers of './llm-config' keep working.
+export type { PublicLlmConfig };
 
 export const DEFAULT_OLLAMA_HOST = 'http://localhost:11434';
 

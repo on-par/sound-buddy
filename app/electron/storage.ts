@@ -10,16 +10,12 @@ import { promises as fsp } from 'fs';
 import type { Dirent } from 'fs';
 import { randomUUID } from 'crypto';
 import * as path from 'path';
+import type { AnalysisSummary } from './ipc/api';
 
-export interface AnalysisSummary {
-  /** ISO 8601 timestamp of when the analysis completed. */
-  date: string;
-  sourceFilename: string;
-  gradeLetter: string;
-  score: number;
-  recordingType: string;
-  topFixes: string[];
-}
+// AnalysisSummary is homed in ipc/api.ts (TD-011, #405) and re-imported
+// above; re-exported here so existing importers of './storage' (ipc/analysis.ts,
+// storage.test.ts) keep working.
+export type { AnalysisSummary };
 
 // A parsed history file can be syntactically valid JSON (`null`, an array, an
 // object from an older/future schema) without being a real AnalysisSummary —
