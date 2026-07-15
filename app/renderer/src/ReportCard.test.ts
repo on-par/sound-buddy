@@ -13,8 +13,12 @@ import {
   metricRowsHTML,
   whyGradeHTML,
   recListHTML,
+  bandBreakdownHTML,
+  contentTypeView,
+  reportCardFramesView,
   type ReportCardSource,
   type ProfileComparison,
+  type BandDiffApi,
 } from './report-card';
 
 const require = createRequire(import.meta.url);
@@ -100,5 +104,78 @@ describe('ReportCard', () => {
     const html = renderMarkup({ analysis: src, grade, dateText: 'now' });
 
     expect(html).toContain(`${grade.score}<span class="slash">/100</span>`);
+  });
+
+  it('omits content-type/bands/frames/callout sections when their props are absent', () => {
+    const src: ReportCardSource = { ...makeSrc(), filename: 'x.wav' };
+    const grade = buildGrade(src);
+
+    const html = renderMarkup({ analysis: src, grade, dateText: 'now' });
+
+    expect(html).toContain('style="display:none"'); // content-type pill + ribbon both hidden
+    expect(html).not.toContain('rc-bands-section');
+    expect(html).not.toContain('rc-frames-section');
+    expect(html).not.toContain('rc-phase-doubling');
+    expect(html).not.toContain('rc-feedback-ringout');
+  });
+
+  it('shows the content-type pill + ribbon when given a populated view', () => {
+    const src: ReportCardSource = { ...makeSrc(), filename: 'x.wav' };
+    const grade = buildGrade(src);
+    const view = contentTypeView('speech', [{ start: 0, end: 1, class: 'speech' }, { start: 1, end: 2, class: 'music' }]);
+
+    const html = renderMarkup({ analysis: src, grade, dateText: 'now', contentType: view });
+
+    expect(html).toContain('rc-contenttype speech');
+    expect(html).toContain('>Speech<');
+    expect(html).toContain('seg-speech');
+    expect(html).toContain('seg-music');
+  });
+
+  it('renders the band breakdown section from bandDiffApi', () => {
+    const src: ReportCardSource = { ...makeSrc(), filename: 'x.wav' };
+    const grade = buildGrade(src);
+    const bandDiffApi: BandDiffApi = {
+      bandDiffFromOthers: () => 0,
+      CONFIG: { bandBalance: { hotDiff: 5, quietDiff: -5 } },
+    };
+
+    const html = renderMarkup({ analysis: src, grade, dateText: 'now', bandDiffApi });
+
+    expect(html).toContain('rc-bands-section');
+    expect(html).toContain(bandBreakdownHTML(src.bands, bandDiffApi));
+  });
+
+  it('renders the frames section when visible, omits it when not', () => {
+    const src: ReportCardSource = { ...makeSrc(), filename: 'x.wav' };
+    const grade = buildGrade(src);
+    const framesData = [{ t: 0, db: [-20, -10], rms: -18, class: 'music' }];
+    const view = reportCardFramesView(framesData);
+
+    const shown = renderMarkup({ analysis: src, grade, dateText: 'now', frames: view });
+    expect(shown).toContain('rc-frames-section');
+    expect(shown).toContain(view.heatmapHTML);
+
+    const hidden = renderMarkup({ analysis: src, grade, dateText: 'now', frames: reportCardFramesView([]) });
+    expect(hidden).not.toContain('rc-frames-section');
+  });
+
+  it('renders the phase-doubling and feedback-ringout callouts, emphasized when detected', () => {
+    const src: ReportCardSource = { ...makeSrc(), filename: 'x.wav' };
+    const grade = buildGrade(src);
+
+    const html = renderMarkup({
+      analysis: src,
+      grade,
+      dateText: 'now',
+      phaseDoubling: { detected: true, title: 'Possible phase issue', sub: 'Comb-filter pattern' },
+      feedbackRingout: { detected: false, title: 'Fighting feedback?', sub: 'Walk through ringing out a mic', buttonLabel: 'Open the ring-out wizard' },
+    });
+
+    expect(html).toContain('rc-phase-doubling');
+    expect(html).toContain('pd-launch detected');
+    expect(html).toContain('Possible phase issue');
+    expect(html).toContain('rc-feedback-ringout');
+    expect(html).toContain('Open the ring-out wizard');
   });
 });

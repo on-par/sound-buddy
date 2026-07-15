@@ -32,7 +32,18 @@ import {
   veqLoudestIdx,
   veqBandView,
   veqValBottom,
+  HEAT_MIN,
+  HEAT_MAX,
+  normHeat,
+  heatColor,
+  classLabel,
+  heatmapSVG,
+  miniCurveSVG,
+  fmtDur,
+  timeAxisHTML,
+  pickRepresentativeFrames,
   type SpectrumCurvePaths,
+  type SpectrumFrame,
 } from './spectrum-display';
 
 describe('constants', () => {
@@ -369,5 +380,108 @@ describe('eqBarsHTML', () => {
     expect(withTarget).toContain('eq-target-svg');
     expect(withoutTarget).not.toContain('eq-target-svg');
     expect(wrongLength).not.toContain('eq-target-svg');
+  });
+});
+
+function makeFrames(n: number, dbLen = 4): SpectrumFrame[] {
+  return Array.from({ length: n }, (_, i) => ({
+    t: i * 2,
+    db: Array.from({ length: dbLen }, (_, k) => -40 + i * 2 + k),
+    rms: -30 + i,
+    class: i % 2 === 0 ? 'music' : 'speech',
+  }));
+}
+
+describe('normHeat / heatColor', () => {
+  it('clamps to [0, 1] at the heat window endpoints', () => {
+    expect(normHeat(HEAT_MIN - 10)).toBe(0);
+    expect(normHeat(HEAT_MAX + 10)).toBe(1);
+    expect(normHeat((HEAT_MIN + HEAT_MAX) / 2)).toBeCloseTo(0.5, 5);
+  });
+
+  it('ramps from the dark floor color to the bright ceiling color', () => {
+    expect(heatColor(HEAT_MIN)).toBe('rgb(8,9,11)');
+    expect(heatColor(HEAT_MAX)).toBe('rgb(255,242,214)');
+  });
+
+  it('returns a valid rgb() string for a mid-ramp value', () => {
+    expect(heatColor((HEAT_MIN + HEAT_MAX) / 2)).toMatch(/^rgb\(\d+,\d+,\d+\)$/);
+  });
+});
+
+describe('classLabel', () => {
+  it('maps known classes to their display label', () => {
+    expect(classLabel('speech')).toBe('Speech');
+    expect(classLabel('music')).toBe('Music');
+    expect(classLabel('silence')).toBe('Silence');
+  });
+  it('falls back to an em dash for unknown/absent classes', () => {
+    expect(classLabel('unknown')).toBe('—');
+    expect(classLabel(undefined)).toBe('—');
+    expect(classLabel('bogus')).toBe('—');
+  });
+});
+
+describe('heatmapSVG', () => {
+  it('renders one row×column cell per frame/band and interactive scrub columns by default', () => {
+    const frames = makeFrames(3, 4);
+    const svg = heatmapSVG(frames);
+    expect(svg.match(/<rect x="\d" y="\d"/g)).toHaveLength(12); // 3 frames × 4 bands
+    expect(svg.match(/class="hm-col"/g)).toHaveLength(3);
+    expect(svg).toContain('viewBox="0 0 3 4"');
+  });
+
+  it('omits the interactive scrub columns when interactive:false', () => {
+    const svg = heatmapSVG(makeFrames(2, 3), { interactive: false });
+    expect(svg).not.toContain('hm-col');
+  });
+});
+
+describe('miniCurveSVG', () => {
+  it('renders a single-point line/area without dividing by zero', () => {
+    expect(() => miniCurveSVG([-20])).not.toThrow();
+    expect(miniCurveSVG([-20])).toContain('<svg');
+  });
+  it('renders a multi-point sparkline path', () => {
+    const svg = miniCurveSVG([-40, -20, -10]);
+    expect(svg).toContain('<path d="M');
+  });
+});
+
+describe('fmtDur / timeAxisHTML', () => {
+  it('formats seconds as m:ss.d', () => {
+    expect(fmtDur(65.4)).toBe('1:05.4');
+    expect(fmtDur(0)).toBe('0:00.0');
+  });
+
+  it('shows a single timestamp for a single-frame axis', () => {
+    const html = timeAxisHTML(makeFrames(1));
+    expect(html.match(/<span>/g)).toHaveLength(1);
+  });
+
+  it('shows start/middle/end timestamps for a multi-frame axis', () => {
+    const frames = makeFrames(5);
+    const html = timeAxisHTML(frames);
+    expect(html).toContain(fmtDur(frames[0].t));
+    expect(html).toContain(fmtDur(frames[2].t));
+    expect(html).toContain(fmtDur(frames[4].t));
+  });
+});
+
+describe('pickRepresentativeFrames', () => {
+  it('picks start, middle, and the loudest-by-rms frame', () => {
+    const frames = makeFrames(5); // rms increases with i, so index 4 is loudest
+    const picks = pickRepresentativeFrames(frames);
+    expect(picks).toEqual([
+      { i: 0, tag: 'Start' },
+      { i: 2, tag: 'Middle' },
+      { i: 4, tag: 'Loudest' },
+    ]);
+  });
+
+  it('de-duplicates picks that land on the same frame (short files)', () => {
+    const frames = makeFrames(1);
+    const picks = pickRepresentativeFrames(frames);
+    expect(picks).toEqual([{ i: 0, tag: 'Start' }]);
   });
 });

@@ -8,7 +8,7 @@
 const {
   iconSvg, fmt, gradeRingHTML, profileMatchHTML,
   recTypePillClass, recTypePillHTML, buildMetricRows, metricRowsHTML,
-  whyGradeHTML, recListHTML,
+  whyGradeHTML, recListHTML, reportCardSourceFromAnalysis,
 } = window.reportCard;
 
 // Hydrate every element carrying a data-icon attribute (static markup).
@@ -32,16 +32,22 @@ const sb = window.soundBuddy;
 // copies of that state.
 const licStore = window.rendererStores.licensing;
 const setStore = window.rendererStores.settings;
+// The analysis/spectrum Zustand stores (TD-001 slice 4, #422) — analysisStore
+// is now the single source of truth for "what backs the report card";
+// spectrumStore backs the spectrum panel's curve/bars + active ideal profile.
+// ReportCardIsland/SpectrumPanel (React) render from these reactively; this
+// script only writes to them and drives the DOM/chrome the islands don't own.
+const anaStore = window.rendererStores.analysis;
+const specStore = window.rendererStores.spectrum;
+const curAnalysis = () => anaStore.getState().currentAnalysis;
 
 let currentMode = 'reportcard';
-let currentAnalysis = null;
-let currentFilePath = null;
 let liveRunning = false;
 let liveWindows = [];
-// A stored report-card summary loaded from the Recent Services list (#147).
-// Set by loadHistoryEntry(); renderReportCard() renders it via a reduced,
-// summary-only card when set and no live/file analysis is backing the card.
-let historyEntry = null;
+// A stored report-card summary loaded from the Recent Services list (#147) now
+// lives in analysisStore.historySummary — ReportCardIsland renders it via a
+// reduced, summary-only card when set and no live/file analysis is backing
+// the card (TD-001 slice 4, #422); set by loadHistoryEntry() below.
 // Per-strip collapsed state (#40), keyed by strip index. In-memory only for this
 // slice (persisting into the rig is deferred). Read on every repaint so an
 // incoming meter window never silently re-expands a folded strip.
@@ -65,8 +71,11 @@ let customIdealProfiles = [];
 let curveEditorId = null;
 let curveEditorBands = null;
 let phaseDoublingStep = 0; // current step in the phase/doubling checklist (#370)
-let rcFeedbackPeak = null; // last render's detected feedback ring, or null (#372)
-let rcPhaseSignal = false; // last render's phase/doubling detection result (#372)
+// rcFeedbackPeak/rcPhaseSignal used to be module vars set by renderReportCard();
+// ReportCardIsland (React) now computes them each render and seeds
+// window.rcCallouts from a passive effect (TD-001 slice 4, #422) — read that
+// instead (see openFeedbackRingout / openPhaseDoublingDialog below).
+function rcCallouts() { return window.rcCallouts || { feedbackPeak: null, phaseSignal: false }; }
 
 /* ══ Formatting helpers ══ */
 // Resolve a strip's display name: label → backend name → "Ch N" (see #39).
@@ -75,17 +84,20 @@ const MAX_LABEL_LEN = 40; // shared cap for both label entry points (config row 
 // The backend live channel for a strip index (or null before any tick), so the
 // label fallback resolves the same way from every call site (#39).
 function liveChannelAt(idx) { return lastLiveChannels ? lastLiveChannels[idx] : null; }
-function fmtDur(s) { const m = Math.floor(s / 60); const sec = (s % 60).toFixed(1).padStart(4, '0'); return `${m}:${sec}`; }
+// fmtDur is now bridged from spectrum-display.ts (see the window.spectrumDisplay
+// destructure below) — extracted alongside heatmapSVG/miniCurveSVG/timeAxisHTML
+// (TD-001 slice 4, #422).
 
 /* ══ Band metadata / meter geometry — extracted to spectrum-display.ts (#305),
    bridged onto window by App.tsx like audioEngineProfiles (#309). ══ */
 const {
-  DB_MIN, DB_MAX, DIM_DB, HOT_DB, GRID, BAND_META, EQ_COLS,
+  DB_MIN, DB_MAX, BAND_META, EQ_COLS,
   CURVE_VB, CURVE_FMIN, CURVE_FMAX,
-  escapeHtml, fmtHz, toPct, levelMatchedTarget, niceTicks, smoothPath,
+  escapeHtml, fmtHz, levelMatchedTarget, niceTicks, smoothPath,
   spectrumCurveSVG, spectrumLegendHTML, bandLevelsFromCurve, bandDbFromSpectrum,
   veqBarsAndLabelsHTML, eqTargetLineSVG, eqCentroidHTML, eqBarsHTML,
   veqLoudestIdx, veqBandView, veqValBottom,
+  heatmapSVG, miniCurveSVG, fmtDur, timeAxisHTML, classLabel,
 } = window.spectrumDisplay;
 
 /* ══ Live-capture panel rendering — extracted to live-capture-panel.ts (#307),
@@ -125,6 +137,15 @@ function ipHasCurve(spectrum) {
   return !!(c && Array.isArray(c.db) && Array.isArray(c.freqs) && c.freqs.length === c.db.length && c.db.length >= 2);
 }
 
+// Writes the resolved active profile into spectrumStore so ReportCardIsland
+// and SpectrumPanel (React) re-render with it (TD-001 slice 4, #422) —
+// replaces the renderSpectrum()/renderReportCard() calls the profile-select
+// change handler and curve editor used to make directly.
+function syncIdealProfile() {
+  const analysis = curAnalysis();
+  specStore.getState().setIdealProfile(activeProfile(analysis && analysis.spectrum), !idealProfileId);
+}
+
 /* Populate + wire the ideal-profile dropdown (once, at boot). */
 function initIdealProfileSelect() {
   const sel = document.getElementById('ideal-profile-select');
@@ -146,8 +167,7 @@ function initIdealProfileSelect() {
     if (sel.value === '__new') { sel.value = idealProfileId; openCurveEditor(); return; }
     idealProfileId = sel.value;
     try { await sb.updateSettings({ idealProfile: idealProfileId }); } catch { /* non-fatal */ }
-    if (currentAnalysis) renderSpectrum(currentAnalysis.spectrum);
-    if (currentMode === 'reportcard') renderReportCard();
+    syncIdealProfile();
   });
 }
 
@@ -178,7 +198,7 @@ function curveEditorProfileBase() {
   const custom = selectedCustomProfile();
   if (custom) return custom;
   if (idealProfileId && IP_BY_ID.has(idealProfileId)) return IP_BY_ID.get(idealProfileId);
-  return activeProfile(currentAnalysis && currentAnalysis.spectrum);
+  return activeProfile(curAnalysis() && curAnalysis().spectrum);
 }
 
 function setCurveStatus(text, kind) {
@@ -234,7 +254,7 @@ function openCurveEditor() {
   curveEl('curve-dialog-title').textContent = custom ? 'Edit Ideal Curve' : 'Create Ideal Curve';
   curveEl('curve-name').value = custom ? custom.label : `Copy of ${base ? base.label : 'Flat / neutral'}`;
   curveEl('curve-delete-btn').disabled = !custom;
-  curveEl('curve-capture-btn').disabled = !(currentAnalysis && ipHasCurve(currentAnalysis.spectrum));
+  curveEl('curve-capture-btn').disabled = !(curAnalysis() && ipHasCurve(curAnalysis().spectrum));
   setCurveStatus('', '');
   setCurveEditorBands(window.idealCurves.bandOffsetsFromProfile(base, IP_GRID_FREQS));
   curveEl('curve-dialog').style.display = 'flex';
@@ -256,8 +276,7 @@ async function persistCustomIdealProfiles(nextProfiles, nextIdealProfile) {
     return false;
   }
   refreshIdealProfileSelect();
-  if (currentAnalysis) renderSpectrum(currentAnalysis.spectrum);
-  if (currentMode === 'reportcard') renderReportCard();
+  syncIdealProfile();
   return true;
 }
 
@@ -281,12 +300,12 @@ async function saveCurveEditor() {
 
 async function captureCurrentCurveAsIdeal() {
   const name = curveEl('curve-name').value.trim() || 'Current analysis target';
-  if (!(currentAnalysis && ipHasCurve(currentAnalysis.spectrum))) {
+  if (!(curAnalysis() && ipHasCurve(curAnalysis().spectrum))) {
     setCurveStatus('Analyze a file with spectrum data first.', 'err');
     return;
   }
   const existing = selectedCustomProfile();
-  const profile = window.idealCurves.profileFromMeasuredCurve(currentAnalysis.spectrum.curve, IP_GRID_FREQS, {
+  const profile = window.idealCurves.profileFromMeasuredCurve(curAnalysis().spectrum.curve, IP_GRID_FREQS, {
     id: curveEditorId || (existing && existing.id),
     label: name,
     createdAt: existing && existing.createdAt,
@@ -307,31 +326,21 @@ async function deleteCurveEditor() {
   if (await persistCustomIdealProfiles(next, '')) closeCurveEditor();
 }
 
-function levelColor(db) { return db > -24 ? 'var(--meter-good)' : db > -36 ? 'var(--meter-hot)' : 'var(--meter-idle)'; }
-
-// One band-meter row. opts: { showScale, showGrid, colorBy:'band'|'level', color, loudest }
-function bandMeterHTML(label, range, db, opts = {}) {
-  const pct = toPct(db);
-  const fill = opts.colorBy === 'level' ? levelColor(db) : (opts.color || 'var(--gold-500)');
-  const dim = db <= DIM_DB;
-  const loud = !!opts.loudest;
-  const grid = (opts.showGrid || opts.showScale)
-    ? GRID.map(g => `<span class="bm-grid" style="left:${toPct(g)}%"></span>`).join('') : '';
-  const scale = opts.showScale
-    ? `<div class="bm-scale">${GRID.map(g => `<span style="left:${toPct(g)}%">${g}</span>`).join('')}</div>` : '';
-  const rangeHTML = range ? `<div class="bm-range">${range}</div>` : '';
-  return `<div class="bm">${scale}
-    <div class="bm-row">
-      <div class="bm-labelcol"><div class="bm-name${loud ? ' loud' : ''}">${label}</div>${rangeHTML}</div>
-      <div class="bm-track">${grid}<div class="bm-fill${loud ? ' loud' : ''}" style="width:${pct}%;background:${fill};opacity:${dim ? 0.5 : 1}"></div></div>
-      <div class="bm-val${db > HOT_DB ? ' hot' : ''}">${isFinite(db) ? db.toFixed(1) : '-∞'}</div>
-    </div>
-  </div>`;
-}
-
-/* ══ Spectrum panel rendering ══ */
+/* ══ Spectrum panel rendering ══
+   The analysis curve/bars view is now React's SpectrumPanel, driven by
+   spectrumStore (TD-001 slice 4, #422); this section keeps driving
+   #spectrum-imperative for the empty/loading/error/live-tab states and the
+   panel chrome (title/stats/ideal-profile visibility, island toggle) React
+   doesn't own — see syncSpectrumChrome below. */
 function setSpectrumState(state, opts = {}) {
-  const body = document.getElementById('spectrum-body');
+  const body = document.getElementById('spectrum-imperative');
+  // Every setSpectrumState call takes over the panel imperatively — hide the
+  // React island (even if spectrumStore still holds a prior analysis's data)
+  // so a loading/error/empty/live state never shows a stale curve beside or
+  // instead of it. Only syncSpectrumChrome() (a completed analysis or a
+  // mode switch back to a data-backed tab) can show the island again.
+  body.style.display = '';
+  document.getElementById('spectrum-island').style.display = 'none';
   const statsRow = document.getElementById('stats-row');
   statsRow.style.display = state === 'populated' ? 'flex' : 'none';
   const ipWrap = document.getElementById('ideal-profile-wrap');
@@ -365,6 +374,26 @@ function setSpectrumState(state, opts = {}) {
 // keep the header in sync with what's actually drawn (curve vs. fallback meters).
 const SPECTRUM_TITLE = { curve: 'Spectrum · Curve', meters: 'Spectrum · Meters', live: 'Spectrum · Live EQ', liveStopped: 'Spectrum · Live EQ · Stopped' };
 
+// Shows the analysis spectrum island (React's SpectrumPanel, driven by
+// spectrumStore) vs the imperative #spectrum-imperative container based on
+// the current tab mode + whether there's spectrum data to show, and keeps
+// the title/stats-row/ideal-profile-wrap chrome around the island in sync —
+// replaces what renderSpectrum() used to set directly (TD-001 slice 4,
+// #422). Idempotent: safe to call from a mode-tab switch, a completed
+// analysis, or an ideal-profile change.
+function syncSpectrumChrome() {
+  const spectrum = specStore.getState().spectrumData;
+  const island = document.getElementById('spectrum-island');
+  const imperative = document.getElementById('spectrum-imperative');
+  const showIsland = !!spectrum && currentMode !== 'live' && currentMode !== 'soundcheck';
+  island.style.display = showIsland ? '' : 'none';
+  imperative.style.display = showIsland ? 'none' : '';
+  if (!showIsland) return;
+  document.getElementById('stats-row').style.display = 'flex';
+  document.getElementById('spectrum-title').textContent = ipHasCurve(spectrum) ? SPECTRUM_TITLE.curve : SPECTRUM_TITLE.meters;
+  updateIdealProfileVisibility(spectrum);
+}
+
 // Patch existing bar/value/label DOM in place (the update-time counterpart of
 // veqBarsAndLabelsHTML above) — shared by the Live-tab per-channel patch
 // (patchLiveChannel) and the playback-band repaint (renderPlaybackBands, AW-4)
@@ -388,46 +417,17 @@ function patchBarsAndLabels(container, dbArray) {
   });
   container.querySelectorAll('.veq-label').forEach((lb, i) => lb.classList.toggle('loud', i === loudestIdx));
 }
+// e2e/legacy compat shim — report-card-grading.spec.ts's "missing spectrum
+// curve degrades…" test calls window.renderSpectrum(spectrum) directly to
+// drive the no-curve fallback. Routes the raw spectrum object through
+// spectrumStore so React's SpectrumPanel renders it (curve-with-target when
+// usable, the uniform-bars fallback otherwise — SpectrumDisplay.tsx already
+// degrades gracefully, reproducing this function's old two-branch body) and
+// refreshes the panel chrome the same way a real analysis landing would.
 function renderSpectrum(spectrum) {
-  const body = document.getElementById('spectrum-body');
-  const title = document.getElementById('spectrum-title');
-  document.getElementById('stats-row').style.display = 'flex';
-
-  // Preferred view: uniform EQ bars (AW-2) with the selected ideal target
-  // overlaid (PRD 05). The time-sampled spectrogram + scrubber sit under it
-  // and redraw #spectrum-chart for the selected frame (PRD 03). Degrade
-  // gracefully to the same bar view driven by spectrum.bands directly when no
-  // curve is available (e.g. --no-spectrum) — see renderBandMeters.
-  if (ipHasCurve(spectrum)) {
-    const profile = activeProfile(spectrum);
-    const target = levelMatchedTarget(spectrum.curve, profile);
-    const cmp = ipCompare(spectrum.curve, profile);
-    const bandDb = bandDbFromSpectrum(spectrum);
-    const targetBandDb = bandLevelsFromCurve({ freqs: spectrum.curve.freqs, db: target });
-    title.textContent = SPECTRUM_TITLE.curve;
-    // The bar chart is the "main curve"; the legend + match score sit directly
-    // beneath it, and the time-sampled spectrogram + scrubber sit under that and
-    // redraw #spectrum-chart for the selected frame (PRD 03).
-    body.innerHTML = `<div class="spectrum-chart" id="spectrum-chart" role="img" aria-label="Frequency band levels">${eqBarsHTML(bandDb, targetBandDb)}</div>`
-      + spectrumLegendHTML(profile, cmp, !idealProfileId)
-      + eqCentroidHTML(spectrum)
-      + buildFramesSectionHTML(spectrum);
-    updateIdealProfileVisibility(spectrum);
-    if (Array.isArray(spectrum.frames) && spectrum.frames.length) initSpectrogram(spectrum);
-    return;
-  }
-  title.textContent = SPECTRUM_TITLE.meters;
-  renderBandMeters(spectrum);
-}
-
-function renderBandMeters(spectrum) {
-  const body = document.getElementById('spectrum-body');
-  const bandDb = bandDbFromSpectrum(spectrum);
-  body.innerHTML = `<div class="spectrum-chart" id="spectrum-chart" role="img" aria-label="Frequency band levels">${eqBarsHTML(bandDb)}</div>`
-    + eqCentroidHTML(spectrum);
-  // No whole-file curve in the meters fallback, so the target dropdown is moot.
-  const wrap = document.getElementById('ideal-profile-wrap');
-  if (wrap) wrap.style.display = 'none';
+  specStore.getState().setSpectrumFromAnalysis({ spectrum });
+  syncIdealProfile();
+  syncSpectrumChrome();
 }
 
 // Coalesce live renders: meter ticks arrive up to ~20/s (and a window tick can
@@ -448,80 +448,10 @@ function scheduleLiveMeters(win) {
 }
 
 /* ── Time-sampled spectrum: spectrogram heatmap + scrubber (PRD 03) ──
- * The whole-file curve (PRD 02) is rendered by spectrumCurveSVG above; the
- * scrubber redraws that same #spectrum-chart for a chosen frame. */
-const HEAT_MIN = -78, HEAT_MAX = -12; // spectral-level window for the heat ramp
-// Continuous quiet→gold→bright ramp (dark ≈ app bg → King Midas gold → warm white).
-const HEAT_STOPS = [
-  [0.0,  [0x08, 0x09, 0x0b]],
-  [0.4,  [0x8a, 0x5a, 0x16]],
-  [0.75, [0xeb, 0xb9, 0x3c]],
-  [1.0,  [0xff, 0xf2, 0xd6]],
-];
-function normHeat(db) { return Math.max(0, Math.min(1, (db - HEAT_MIN) / (HEAT_MAX - HEAT_MIN))); }
-function heatColor(db) {
-  const t = normHeat(db);
-  for (let i = 1; i < HEAT_STOPS.length; i++) {
-    const [t1, c1] = HEAT_STOPS[i];
-    if (t <= t1) {
-      const [t0, c0] = HEAT_STOPS[i - 1];
-      const f = (t - t0) / (t1 - t0 || 1);
-      const ch = j => Math.round(c0[j] + (c1[j] - c0[j]) * f);
-      return `rgb(${ch(0)},${ch(1)},${ch(2)})`;
-    }
-  }
-  const last = HEAT_STOPS[HEAT_STOPS.length - 1][1];
-  return `rgb(${last[0]},${last[1]},${last[2]})`;
-}
-const CLASS_LABEL = { speech: 'Speech', music: 'Music', silence: 'Silence', unknown: '—' };
-function classLabel(c) { return CLASS_LABEL[c] || '—'; }
-
-// time → (columns) × frequency ↑ (rows, high freq on top) heatmap of the frames.
-function heatmapSVG(frames, opts = {}) {
-  const interactive = opts.interactive !== false;
-  const nF = frames.length;
-  const nB = frames[0].db.length;
-  let cells = '';
-  for (let x = 0; x < nF; x++) {
-    const db = frames[x].db;
-    for (let y = 0; y < nB; y++) {
-      const b = nB - 1 - y; // row 0 = highest frequency
-      cells += `<rect x="${x}" y="${y}" width="1.02" height="1.02" fill="${heatColor(db[b])}" shape-rendering="crispEdges"/>`;
-    }
-  }
-  let cols = '';
-  if (interactive) {
-    for (let x = 0; x < nF; x++) cols += `<rect class="hm-col" x="${x}" y="0" width="1" height="${nB}" data-i="${x}"/>`;
-  }
-  return `<svg viewBox="0 0 ${nF} ${nB}" preserveAspectRatio="none" role="img" aria-label="Time-frequency spectrogram">${cells}${cols}</svg>`;
-}
-
-// Compact sparkline of one frame's dB grid, for the report-card thumbnails.
-// (The analysis view uses the full PRD 02 spectrumCurveSVG; these stay small.)
-function miniCurveSVG(db) {
-  const VW = 600, VH = 150, padT = 8, padB = 10, ih = VH - padT - padB;
-  const n = db.length;
-  const xf = i => (n <= 1 ? VW / 2 : (i / (n - 1)) * VW);
-  const yf = v => padT + (1 - normHeat(v)) * ih;
-  let line = '', area = `M0 ${padT + ih}`;
-  for (let i = 0; i < n; i++) {
-    const X = xf(i).toFixed(1), Y = yf(db[i]).toFixed(1);
-    line += (i ? 'L' : 'M') + X + ' ' + Y + ' ';
-    area += ` L${X} ${Y}`;
-  }
-  area += ` L${VW} ${padT + ih} Z`;
-  return `<svg viewBox="0 0 ${VW} ${VH}" preserveAspectRatio="none" role="img" aria-label="Frame spectral curve">
-    <path d="${area}" fill="var(--gold-tint)" stroke="none"/>
-    <path d="${line}" fill="none" stroke="var(--gold-500)" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"/>
-  </svg>`;
-}
-
-function timeAxisHTML(frames) {
-  const n = frames.length;
-  if (n <= 1) return `<div class="spectro-axis"><span>${fmtDur(frames[0] ? frames[0].t : 0)}</span></div>`;
-  const mid = frames[Math.floor(n / 2)];
-  return `<div class="spectro-axis"><span>${fmtDur(frames[0].t)}</span><span>${fmtDur(mid.t)}</span><span>${fmtDur(frames[n - 1].t)}</span></div>`;
-}
+ * heatmapSVG/miniCurveSVG/timeAxisHTML/classLabel are now bridged in from
+ * spectrum-display.ts (see the window.spectrumDisplay destructure above,
+ * TD-001 slice 4, #422) — the scrubber itself (below) stays inline and
+ * consumes them, same as before. */
 
 // The spectrogram strip + scrubber under the curve. Empty string when frames are
 // absent, so the curve renders alone without error.
@@ -571,8 +501,20 @@ function initSpectrogram(spectrum) {
   const reset = document.getElementById('scrub-reset');
   if (reset) reset.addEventListener('click', () => selectFrame(null));
   if (carry != null) renderScrub(); // restore a carried scrub; the average curve is already drawn
-  initPlaybackTransport(currentAnalysis && currentAnalysis.filePath);
+  initPlaybackTransport(curAnalysis() && curAnalysis().filePath);
 }
+
+// Bridges SpectrumPanel's (React) frames-host effect to the still-inline
+// spectrogram scrubber + playback transport (TD-001 slice 4, #422): fills
+// the stable #spectrum-frames-host with the scrubber markup and (re)inits it.
+window.inlineSpectrum = {
+  renderFrames(spectrum) {
+    const host = document.getElementById('spectrum-frames-host');
+    if (!host) return;
+    host.innerHTML = buildFramesSectionHTML(spectrum);
+    if (Array.isArray(spectrum.frames) && spectrum.frames.length) initSpectrogram(spectrum);
+  },
+};
 
 /* ── Playback transport (#180) — HTML5 <audio> over the analyzed file, driving
  * a moving playhead + elapsed/total readout on the spectrogram strip. `sbAudio`
@@ -647,7 +589,7 @@ function updateTransportButton() {
 }
 function playbackDuration() {
   if (sbAudio && isFinite(sbAudio.duration) && sbAudio.duration > 0) return sbAudio.duration;
-  const fp = currentAnalysis && currentAnalysis.ffprobe && currentAnalysis.ffprobe.format;
+  const fp = curAnalysis() && curAnalysis().ffprobe && curAnalysis().ffprobe.format;
   return (fp && fp.durationSeconds) || 0;
 }
 function updatePlaybackReadout() {
@@ -858,7 +800,7 @@ function liveWorkspaceToolbarHTML() {
 }
 
 function renderLiveMeters(win) {
-  const body = document.getElementById('spectrum-body');
+  const body = document.getElementById('spectrum-imperative');
   if (!win || !win.channels || win.channels.length === 0) {
     setSpectrumState('empty', { text: 'Waiting for live audio…' });
     return;
@@ -898,7 +840,7 @@ function renderLiveMeters(win) {
 // liveWorkspaceToolbarHTML() with renderLiveMeters so Add/remove read
 // consistently whether idle or (locked) mid-capture.
 function renderLiveWorkspace() {
-  const body = document.getElementById('spectrum-body');
+  const body = document.getElementById('spectrum-imperative');
   document.getElementById('stats-row').style.display = 'none';
   const ipWrap = document.getElementById('ideal-profile-wrap');
   if (ipWrap) ipWrap.style.display = 'none';
@@ -1117,9 +1059,9 @@ document.querySelectorAll('.mode-tab').forEach(tab => {
 
     document.querySelectorAll('.mode-tab').forEach(t => t.classList.remove('active'));
     tab.classList.add('active');
-    // Set currentMode before the mode-specific work so a throw inside it (e.g.
-    // renderReportCard on an unexpected analysis shape) can't leave currentMode
-    // stale and lock the user out of navigating back via the same-tab guard (#177).
+    // Set currentMode before the mode-specific work so a throw inside it
+    // can't leave currentMode stale and lock the user out of navigating back
+    // via the same-tab guard (#177).
     currentMode = mode;
 
     if (mode === 'reportcard') {
@@ -1130,10 +1072,11 @@ document.querySelectorAll('.mode-tab').forEach(tab => {
       // DOM assertions keep holding. syncSpectrumForMode keeps the spectrum in
       // the right state beside the card — otherwise a stale Live/Soundcheck
       // spectrum (or pre-analysis empty state) would show next to the grade.
+      // ReportCardIsland (React) always renders from the live store state —
+      // no explicit render call needed here (TD-001 slice 4, #422).
       document.body.classList.add('rc-active');
       document.getElementById('reportcard-view').classList.add('active');
       syncSpectrumForMode('reportcard');
-      renderReportCard();
     } else {
       document.body.classList.remove('rc-active');
       document.getElementById('reportcard-view').classList.remove('active');
@@ -1304,7 +1247,7 @@ function scResetTransport() {
 }
 
 function scRenderMeters(tracks) {
-  const body = document.getElementById('spectrum-body');
+  const body = document.getElementById('spectrum-imperative');
   body.innerHTML = '<div class="meter-card sb-live-meters">' + (tracks || []).map((t) => {
     const rms = Number.isFinite(t.rms) ? t.rms : -120;
     const pct = Math.max(0, Math.min(100, (rms + 60) / 60 * 100));
@@ -1363,58 +1306,40 @@ function syncSpectrumForMode(mode) {
     // instead of the generic "Load a file…" copy the fallback branch below
     // would otherwise show (misleading here, since there's nothing to load).
     title.textContent = SPECTRUM_TITLE.curve;
-    if (currentAnalysis) renderSpectrum(currentAnalysis.spectrum);
-    else setSpectrumState('empty', { text: 'Select a recent analysis to load its report card' });
+    if (!curAnalysis()) setSpectrumState('empty', { text: 'Select a recent analysis to load its report card' });
   } else if (mode === 'guide') {
     // Build Guide (#367) has no file-loading UI of its own either — mirror
     // the `recent` tailored empty state so it doesn't show the misleading
     // generic "Load a file…" copy.
     title.textContent = SPECTRUM_TITLE.curve;
-    if (currentAnalysis) renderSpectrum(currentAnalysis.spectrum);
-    else setSpectrumState('empty', { text: 'Follow the build order, then load a recording to grade it' });
+    if (!curAnalysis()) setSpectrumState('empty', { text: 'Follow the build order, then load a recording to grade it' });
   } else if (mode === 'dir') {
     // Directory (#293) is roadmap context until batch analysis ships in
     // v1.1 — mirror the `recent`/`guide` tailored empty state instead of
     // promising a folder analysis that can't run yet.
     title.textContent = SPECTRUM_TITLE.curve;
-    if (currentAnalysis) renderSpectrum(currentAnalysis.spectrum);
-    else setSpectrumState('empty', { text: 'Batch analysis is coming in v1.1 — analyze recordings from Report Card' });
+    if (!curAnalysis()) setSpectrumState('empty', { text: 'Batch analysis is coming in v1.1 — analyze recordings from Report Card' });
   } else {
-    // renderSpectrum sets the header to match what it draws (curve vs meters);
-    // seed the curve label for the pre-analysis empty state.
+    // syncSpectrumChrome (below) sets the header to match what's drawn (curve
+    // vs meters) once there's data; seed the curve label for the pre-analysis
+    // empty state.
     title.textContent = SPECTRUM_TITLE.curve;
-    if (currentAnalysis) renderSpectrum(currentAnalysis.spectrum);
-    else setSpectrumState('empty', { text: 'Load a file to see the spectrum' });
+    if (!curAnalysis()) setSpectrumState('empty', { text: 'Load a file to see the spectrum' });
   }
+  // Shows/hides the React spectrum island vs #spectrum-imperative for this
+  // mode and refreshes its title/stats/ideal-profile chrome (TD-001 slice 4,
+  // #422) — a no-op when there's no spectrum data yet.
+  syncSpectrumChrome();
 }
 
-/* ══ File mode ══ */
-const fileDropzone = document.getElementById('file-dropzone');
-// Captured before loadFile()/Clear ever swap in a filename, so Clear can restore
-// this exact resting markup instead of hand-duplicating it (#206).
-const fileDropzoneDefaultHTML = fileDropzone.innerHTML;
-fileDropzone.addEventListener('click', async () => { const fp = await sb.openFileDialog(); if (fp) loadFile(fp); });
-fileDropzone.addEventListener('dragover', (e) => { e.preventDefault(); fileDropzone.classList.add('dragover'); });
-fileDropzone.addEventListener('dragleave', () => fileDropzone.classList.remove('dragover'));
-fileDropzone.addEventListener('drop', (e) => {
-  e.preventDefault(); fileDropzone.classList.remove('dragover');
-  const files = e.dataTransfer?.files;
-  if (files && files.length > 0) loadFile(files[0].path);
-});
-
-// Global (used by smoke test + menu-open).
-function loadFile(fp) {
-  currentFilePath = fp;
-  const name = fp.split('/').pop() || fp;
-  fileDropzone.classList.add('loaded');
-  fileDropzone.innerHTML =
-    `<div class="dz-icon" data-icon="file-audio"></div>
-     <div class="dz-body"><span class="dz-title">${name}</span><span class="dz-meta">${fp}</span></div>`;
-  hydrateIcons(fileDropzone);
-  document.getElementById('analyze-btn').disabled = false;
-}
-
-document.getElementById('analyze-btn').addEventListener('click', () => { if (currentFilePath) runFileAnalysis(currentFilePath); });
+/* ══ File mode ══
+   The dropzone (click/drag/drop) and the Analyze button now live in
+   ReportCardIsland (React), wired straight to analysisStore (TD-001 slice 4,
+   #422). window.loadFile/window.runFileAnalysis survive as thin shims — the
+   smoke test, sb.onMenuOpenFile, and onboarding's runFirstAnalysis all still
+   call them by name. ══ */
+window.loadFile = (fp) => anaStore.getState().selectFile(fp);
+window.runFileAnalysis = (fp) => anaStore.getState().startAnalysis(fp);
 
 // Coarse stage progress (#125) — the three stages run in parallel, so this
 // just checks off each stage's row as its subprocess returns. Registered
@@ -1426,52 +1351,74 @@ sb.onAnalysisProgress((data) => {
   if (row) row.classList.add('done');
 });
 
-async function runFileAnalysis(fp) {
-  pauseTransportAudio(); // don't let a previous file's playback bleed through the loading state (#180)
-  setSpectrumState('loading');
-  document.getElementById('analyze-btn').disabled = true;
-  // Disable Clear while an analysis is in flight so it can't null currentAnalysis
-  // mid-run and then have this continuation re-set it + flip the card back (#206).
-  document.getElementById('reportcard-clear-btn').disabled = true;
-  // Same reasoning for Load a file… (#208): it stays visible for the whole
-  // in-flight window (isLiveCard only flips false once currentAnalysis is
-  // set below), so without this a second click could fire a concurrent pick.
-  document.getElementById('reportcard-load-btn').disabled = true;
+// Replaces runFileAnalysis's DOM side effects — a single analysisStore
+// subscription reacting to `status` transitions (TD-001 slice 4, #422).
+// Installed at boot (see the Init section at the bottom of this file).
+function syncReportCardChrome(state, prevState) {
+  const clearBtn = document.getElementById('reportcard-clear-btn');
+  const loadBtn = document.getElementById('reportcard-load-btn');
+  const printBtn = document.getElementById('reportcard-print-btn');
+  const gradeOwnBtn = document.getElementById('grade-own-btn');
+  // Mirrors ReportCardIsland's own source priority (currentAnalysis wins,
+  // else liveSource, else historySummary, else no card at all) — computed
+  // here too so the toolbar/upgrade-card chrome (outside #report-card) stays
+  // in sync with whatever the island is actually showing.
+  const isHistoryCard = !!state.historySummary && !state.currentAnalysis && !state.liveSource;
+  const isLiveCard = !state.currentAnalysis && !!state.liveSource;
+  const chromeSource = state.currentAnalysis
+    ? reportCardSourceFromAnalysis(state.currentAnalysis)
+    : (state.liveSource || null);
+  const hasCard = isHistoryCard || !!chromeSource;
 
-  const result = await sb.analyzeFile({ filePath: fp });
-
-  document.getElementById('analyze-btn').disabled = false;
-  document.getElementById('reportcard-load-btn').disabled = false;
-
-  if (result.cancelled) {
-    // Cancelled mid-run — return to the pre-analysis idle state (no report
-    // card, no stuck spinner). Keep currentFilePath so the user can retry
-    // without re-picking the file; currentAnalysis is left untouched.
-    setSpectrumState('empty');
-    document.getElementById('reportcard-clear-btn').disabled = !currentAnalysis;
-    return;
+  if (state.status !== prevState.status) {
+    if (state.status === 'analyzing') {
+      pauseTransportAudio(); // don't let a previous file's playback bleed through the loading state (#180)
+      setSpectrumState('loading');
+    } else if (state.status === 'error') {
+      setSpectrumState('error', { text: state.analysisError || 'Analysis failed' });
+    } else if (state.status === 'cancelled') {
+      // Return to the pre-analysis idle state (no report card, no stuck
+      // spinner). selectedFilePath is left untouched by cancelAnalysis, so
+      // the user can retry without re-picking the file.
+      setSpectrumState('empty');
+    } else if (state.status === 'done') {
+      // File input now lives in the Report Card tab's empty state (#203) —
+      // the card flips over the moment analysis succeeds; #spectrum-imperative
+      // clears in favor of the React island (syncSpectrumChrome shows it).
+      document.getElementById('spectrum-imperative').innerHTML = '';
+      syncSpectrumChrome();
+      updateStatsRow(state.currentAnalysis.sox, state.currentAnalysis.spectrum);
+      syncIdealProfile();
+      persistAnalysisSummary();
+    }
   }
 
-  if (!result.success || !result.data) {
-    setSpectrumState('error', { text: result.error || 'Analysis failed' });
-    document.getElementById('reportcard-clear-btn').disabled = !currentAnalysis;
-    return;
-  }
+  // Print/Grade-own just mirror whether a card (file, live, or history) is
+  // showing — a re-analysis in flight still has the prior card on screen to
+  // print/grade, same as before this migration (runFileAnalysis never
+  // disabled these two while re-analyzing). Clear/Load DO disable in flight
+  // so they can't swap the source out from under the run and have this
+  // continuation flip the card back over a stale reference (#206/#208).
+  printBtn.disabled = !hasCard;
+  gradeOwnBtn.disabled = !hasCard;
+  loadBtn.disabled = state.status === 'analyzing';
+  loadBtn.style.display = isLiveCard ? '' : 'none';
+  // Clear only makes sense when the card is backed by a file analysis — a
+  // live-capture (or history) card has no file to clear, and it never makes
+  // sense mid-flight either (#206).
+  clearBtn.disabled = state.status === 'analyzing' || !state.currentAnalysis;
 
-  currentAnalysis = result.data;
-  // A fresh analysis always wins over a loaded history entry (#147).
-  historyEntry = null;
-  persistAnalysisSummary();
-  document.getElementById('analyze-btn').innerHTML = iconSvg('waveform', 16) + 'Re-analyze';
-  updateStatsRow(currentAnalysis.sox, currentAnalysis.spectrum);
-  renderSpectrum(currentAnalysis.spectrum);
-  document.getElementById('reportcard-print-btn').disabled = false;
-  document.getElementById('grade-own-btn').disabled = false;
-  document.getElementById('reportcard-clear-btn').disabled = !currentAnalysis;
-  // File input now lives in the Report Card tab's empty state (#203) — flip
-  // it over to the rendered card the moment analysis succeeds instead of
-  // leaving the dropzone showing behind a result nobody switched to see.
-  if (currentMode === 'reportcard') renderReportCard();
+  // Post-report-card upgrade moment (#58): score-aware, so it needs the
+  // latest grade. lastReportGrade/renderUpgradeMomentum stay inline (they own
+  // the imperative #rc-upgrade aside, a React-island sibling, #58/#296).
+  if (isHistoryCard) {
+    lastReportGrade = state.historySummary.gradeLetter;
+  } else if (chromeSource) {
+    lastReportGrade = grading.computeGrade(chromeSource);
+  } else {
+    lastReportGrade = null;
+  }
+  renderUpgradeMomentum();
 }
 
 /* ══ Directory mode (#293): roadmap card only — batch analysis lands in v1.1.
@@ -1727,8 +1674,9 @@ document.getElementById('live-start-btn').addEventListener('click', async () => 
 
   liveRunning = true;
   liveWindows = [];
+  syncLiveSource();
   // A live capture always wins over a loaded history entry (#147).
-  historyEntry = null;
+  anaStore.getState().setHistorySummary(null);
   setRigControlsEnabled(false);
   setCaptureControlsLocked(true); // freeze device/mode/folder/channels/sliders (#38)
 
@@ -2220,10 +2168,11 @@ sb.onLiveEvent((data) => {
     liveWindows.push(data);
     if (liveWindows.length > 10) liveWindows.shift();
     document.getElementById('window-badge').textContent = `Window #${data.window}`;
+    syncLiveSource();
   }
 });
 
-sb.onAnalysisResult((data) => { if (data.type === 'stats' && data.data) currentAnalysis = data.data; });
+sb.onAnalysisResult((data) => anaStore.getState().setAnalysisFromEvent(data));
 
 sb.onMenuOpenFile((fp) => {
   document.querySelector('.mode-tab[data-mode="reportcard"]').click();
@@ -2282,7 +2231,7 @@ async function initOnboarding() {
     loadFile(demo);
     await runFileAnalysis(demo);
 
-    if (!currentAnalysis) {
+    if (!curAnalysis()) {
       // Analysis failed (error surfaced in the spectrum panel). Surface the
       // reason in the always-visible copy line (the progress row is about to
       // be hidden), relabel the CTA, and let the user retry or skip.
@@ -2336,8 +2285,8 @@ document.getElementById('ai-analyze-btn').addEventListener('click', async () => 
 
   if (currentMode === 'live' && liveWindows.length > 0) {
     await sb.triggerLlmAnalysis({ mode: 'live', windows: liveWindows });
-  } else if (currentAnalysis) {
-    await sb.triggerLlmAnalysis({ mode: 'file', analysis: currentAnalysis });
+  } else if (curAnalysis()) {
+    await sb.triggerLlmAnalysis({ mode: 'file', analysis: curAnalysis() });
   } else {
     aiAppend('[No analysis data — load a file or start live capture first]');
     llmRunning = false;
@@ -2351,9 +2300,35 @@ document.getElementById('ai-analyze-btn').addEventListener('click', async () => 
 // the pure, unit-tested grading.js module (#130); the renderer calls through
 // window.grading below.
 
+// Builds the live-capture card's report-card source shape from the rolling
+// liveWindows buffer — mirrors getReportCardSource()'s old live fallback.
+// Written into analysisStore.liveSource wherever liveWindows changes (TD-001
+// slice 4, #422) so React (ReportCardIsland) can render it.
+function liveReportCardSource() {
+  if (liveWindows.length === 0) return null;
+  const win = liveWindows[liveWindows.length - 1];
+  const ch = win.channels && win.channels[0];
+  if (!ch) return null;
+  return {
+    filename: `Live capture — ${ch.name || 'Main'} (window #${win.window})`,
+    rms: ch.rms, peak: ch.peak, dynamicRange: null, clipping: ch.clipping, centroid: ch.centroid,
+    bands: {
+      subBass: ch.bands.sub_bass, bass: ch.bands.bass, lowMid: ch.bands.low_mid, mid: ch.bands.mid,
+      highMid: ch.bands.high_mid, presence: ch.bands.presence, brilliance: ch.bands.brilliance,
+    },
+  };
+}
+function syncLiveSource() {
+  anaStore.getState().setLiveSource(liveReportCardSource());
+}
+
+// getReportCardSource() survives only for its remaining inline consumers (the
+// AI narrative trigger, persistAnalysisSummary) — reads curAnalysis()/liveSource
+// from the stores instead of the old currentAnalysis/liveWindows module vars.
 function getReportCardSource() {
-  if (currentAnalysis) {
-    const { sox, spectrum, ffprobe, loudness } = currentAnalysis;
+  const analysis = curAnalysis();
+  if (analysis) {
+    const { sox, spectrum, ffprobe, loudness } = analysis;
     return {
       filename: (ffprobe.format.filename || '').split('/').pop() || 'Untitled',
       rms: sox.rmsDbfs, peak: sox.peakDbfs, dynamicRange: sox.dynamicRangeDb,
@@ -2374,21 +2349,7 @@ function getReportCardSource() {
       truePeakDbtp: loudness ? loudness.truePeakDbtp : null,
     };
   }
-  if (liveWindows.length > 0) {
-    const win = liveWindows[liveWindows.length - 1];
-    const ch = win.channels && win.channels[0];
-    if (ch) {
-      return {
-        filename: `Live capture — ${ch.name || 'Main'} (window #${win.window})`,
-        rms: ch.rms, peak: ch.peak, dynamicRange: null, clipping: ch.clipping, centroid: ch.centroid,
-        bands: {
-          subBass: ch.bands.sub_bass, bass: ch.bands.bass, lowMid: ch.bands.low_mid, mid: ch.bands.mid,
-          highMid: ch.bands.high_mid, presence: ch.bands.presence, brilliance: ch.bands.brilliance,
-        },
-      };
-    }
-  }
-  return null;
+  return anaStore.getState().liveSource;
 }
 
 // Persist a discrete report-card summary for the recent-services list (#147).
@@ -2398,7 +2359,7 @@ function getReportCardSource() {
 function persistAnalysisSummary() {
   try {
     const src = getReportCardSource();
-    if (!src || !currentAnalysis) return; // file analyses only
+    if (!src || !curAnalysis()) return; // file analyses only
     sb.saveAnalysisSummary({
       sourceFilename: src.filename,
       gradeLetter: grading.computeGrade(src),
@@ -2463,22 +2424,13 @@ async function renderRecentServices() {
 // analysis — the row's record is all the report card ever reads (#147).
 function loadHistoryEntry(summary) {
   pauseTransportAudio(); // don't leave a previous file's playback running behind the summary card
-  historyEntry = summary;
-  // A history entry always wins over whatever was previously on the card, so
-  // the summary-only branch in renderReportCard() is guaranteed to fire
-  // regardless of what was showing before this click.
-  currentAnalysis = null;
-  currentFilePath = null;
-  if (!liveRunning) liveWindows = [];
-  // Restore the file dropzone to its resting state too — otherwise it would
-  // still show a previously-loaded file as "loaded" with Re-analyze enabled,
-  // and clicking it would silently no-op on the now-null currentFilePath.
-  fileDropzone.classList.remove('loaded');
-  fileDropzone.innerHTML = fileDropzoneDefaultHTML;
-  hydrateIcons(fileDropzone);
-  const analyzeBtn = document.getElementById('analyze-btn');
-  analyzeBtn.disabled = true;
-  analyzeBtn.innerHTML = iconSvg('waveform', 16) + 'Analyze';
+  anaStore.getState().setHistorySummary(summary);
+  // A history entry always wins over whatever was previously on the card
+  // (ReportCardIsland's priority: currentAnalysis, else liveSource, else
+  // historySummary) — clearAnalysis() also resets selectedFilePath/status, so
+  // the empty-state dropzone/Analyze button reset themselves (#206).
+  anaStore.getState().clearAnalysis();
+  if (!liveRunning) { liveWindows = []; syncLiveSource(); }
   document.querySelector('.mode-tab[data-mode="reportcard"]').click();
 }
 
@@ -2677,16 +2629,20 @@ document.getElementById('ringout-capture').addEventListener('click', async () =>
 
 // #372: launch the ring-out wizard from the report card, seeded with the
 // detected ring. Reuses the mode-tab click so the transition is the exact
-// navigation the user already knows (renderRingout runs inside it).
-document.getElementById('rc-feedback-ringout-btn').addEventListener('click', () => {
+// navigation the user already knows (renderRingout runs inside it). Now
+// reached via window.inlineDialogs.openFeedbackRingout (ReportCard.tsx's
+// button, TD-001 slice 4, #422) instead of a static listener — see the
+// window.inlineDialogs assignment below.
+function openFeedbackRingout() {
   const ro = window.feedbackRingout;
-  if (rcFeedbackPeak) {
-    ringoutCut = ro.suggestCut(rcFeedbackPeak.freq);
+  const feedbackPeak = rcCallouts().feedbackPeak;
+  if (feedbackPeak) {
+    ringoutCut = ro.suggestCut(feedbackPeak.freq);
     ringoutStepIndex = ro.stepIndexById('cut');
   }
   document.querySelector('.mode-tab[data-mode="ringout"]').click();
-  ringoutSetStatus(rcFeedbackPeak ? ro.handoffStatus(rcFeedbackPeak.freq) : '');
-});
+  ringoutSetStatus(feedbackPeak ? ro.handoffStatus(feedbackPeak.freq) : '');
+}
 
 document.getElementById('ringout-profile-save').addEventListener('click', () => {
   const nameInput = document.getElementById('ringout-profile-name');
@@ -2725,257 +2681,12 @@ document.getElementById('build-complete').addEventListener('click', (e) => {
   document.querySelector('.mode-tab[data-mode="reportcard"]').click();
 });
 
-/* ══ Content type — speech/music delineation (PRD 04) ══ */
-const CONTENT_TYPE_LABELS = { speech: 'Speech', music: 'Music', mixed: 'Mixed', silence: 'Silence' };
-const SEG_CLASS_LABELS = { speech: 'Speech', music: 'Music', silence: 'Silence', unknown: 'Unknown' };
-
-function fmtClock(s) {
-  if (!isFinite(s) || s < 0) return '0:00';
-  const m = Math.floor(s / 60);
-  const sec = Math.floor(s % 60);
-  return `${m}:${String(sec).padStart(2, '0')}`;
-}
-
-// Populate the content-type pill + timeline ribbon. Both hide when the analysis
-// predates the classifier (older files, live capture) so nothing empty renders.
-function renderContentType(src) {
-  const pill = document.getElementById('rc-content-type');
-  const ribbonWrap = document.getElementById('rc-ribbon-wrap');
-  const ribbon = document.getElementById('rc-ribbon');
-  const legend = document.getElementById('rc-ribbon-legend');
-
-  const label = src.contentType ? CONTENT_TYPE_LABELS[src.contentType] : null;
-  if (!label) {
-    pill.style.display = 'none';
-  } else {
-    pill.style.display = 'inline-flex';
-    pill.className = 'rc-contenttype ' + src.contentType;
-    pill.textContent = label;
-  }
-
-  const segs = Array.isArray(src.segments) ? src.segments.filter(s => s && s.end > s.start) : [];
-  const span = segs.length > 0 ? segs[segs.length - 1].end - segs[0].start : 0;
-  if (segs.length === 0 || !(span > 0)) {
-    ribbonWrap.style.display = 'none';
-    return;
-  }
-  ribbonWrap.style.display = 'flex';
-
-  const segClass = (c) => (SEG_CLASS_LABELS[c] ? c : 'unknown');
-  ribbon.innerHTML = segs.map(s => {
-    const cls = segClass(s.class);
-    const pct = ((s.end - s.start) / span) * 100;
-    return `<span class="seg seg-${cls}" style="width:${pct}%" title="${SEG_CLASS_LABELS[cls]} · ${fmtClock(s.start)}–${fmtClock(s.end)}"></span>`;
-  }).join('');
-
-  const present = [...new Set(segs.map(s => segClass(s.class)))];
-  legend.innerHTML = present.map(c =>
-    `<span class="lg"><span class="sw seg-${c}"></span>${SEG_CLASS_LABELS[c]}</span>`).join('');
-}
-
-// Metric status pills, the grade ring, and the ideal-profile match block are
-// built by the shared report-card.ts module (#306) via the window.reportCard
-// bridge above; this just wires the resolved DOM node.
-function renderProfileMatch(profile, cmp) {
-  document.getElementById('rc-profile').innerHTML = profileMatchHTML(profile, cmp, !idealProfileId);
-}
-
-// Renders a stored summary-only record (#147) — no metrics/bands/spectrum/
-// frames, since that raw data was never persisted (see AnalysisSummary). The
-// grade/score are read straight from the record: they were frozen at analysis
-// time, and recomputing via grading.* is impossible without the raw metrics
-// (and would risk silently disagreeing with what was actually graded).
-function renderReportCardFromHistory(summary) {
-  const empty = document.getElementById('rc-empty');
-  const content = document.getElementById('rc-content');
-  const printBtn = document.getElementById('reportcard-print-btn');
-  const clearBtn = document.getElementById('reportcard-clear-btn');
-  const gradeOwnBtn = document.getElementById('grade-own-btn');
-
-  empty.style.display = 'none';
-  content.style.display = 'block';
-  printBtn.disabled = false;
-  gradeOwnBtn.disabled = false;
-  // No file backs this card — there is nothing for Clear to release (#206).
-  clearBtn.disabled = true;
-  // A history/summary card is never a live-capture card (#208).
-  document.getElementById('reportcard-load-btn').style.display = 'none';
-
-  document.getElementById('rc-filename').textContent = summary.sourceFilename;
-  document.getElementById('rc-date').textContent = new Date(summary.date).toLocaleString();
-  document.getElementById('rc-ring').innerHTML = gradeRingHTML(summary.gradeLetter, summary.score);
-
-  const rt = document.getElementById('rc-rec-type');
-  rt.className = 'rc-rectype pill';
-  rt.textContent = summary.recordingType;
-
-  // These sections all need raw analysis data the stored summary doesn't have.
-  document.getElementById('rc-content-type').style.display = 'none';
-  document.getElementById('rc-ribbon-wrap').style.display = 'none';
-  document.getElementById('rc-profile-section').style.display = 'none';
-  document.getElementById('rc-metrics-section').style.display = 'none';
-  document.getElementById('rc-why-section').style.display = 'none';
-  document.getElementById('rc-bands-section').style.display = 'none';
-  document.getElementById('rc-frames-section').style.display = 'none';
-  // No deviation data on a stored summary — never emphasize/launch a check
-  // we can't back with real analysis (#370).
-  document.getElementById('rc-phase-doubling').style.display = 'none';
-  document.getElementById('rc-feedback-ringout').style.display = 'none';
-  rcFeedbackPeak = null;
-  rcPhaseSignal = false;
-
-  document.getElementById('rc-recommendations').innerHTML = recListHTML(summary.topFixes || [], true);
-
-  lastReportGrade = summary.gradeLetter;
-  renderUpgradeMomentum();
-}
-
-function renderReportCard() {
-  // A history entry only ever backs the card when no live/file analysis is
-  // present — a fresh analysis or a running live capture always wins (#147).
-  if (historyEntry && !currentAnalysis && liveWindows.length === 0) {
-    renderReportCardFromHistory(historyEntry);
-    return;
-  }
-
-  const src = getReportCardSource();
-  const empty = document.getElementById('rc-empty');
-  const content = document.getElementById('rc-content');
-  const printBtn = document.getElementById('reportcard-print-btn');
-  const clearBtn = document.getElementById('reportcard-clear-btn');
-  const gradeOwnBtn = document.getElementById('grade-own-btn');
-  const loadBtn = document.getElementById('reportcard-load-btn');
-  // Mirrors getReportCardSource()'s priority (currentAnalysis wins, else
-  // liveWindows) — true exactly when the card on screen is the live-capture
-  // fallback, which has no file backing it for Clear or the dropzone (#208).
-  const isLiveCard = !currentAnalysis && liveWindows.length > 0;
-
-  if (!src) {
-    empty.style.display = 'flex';
-    content.style.display = 'none';
-    printBtn.disabled = true;
-    gradeOwnBtn.disabled = true;
-    clearBtn.disabled = true;
-    // Empty state already shows the dropzone.
-    loadBtn.style.display = 'none';
-    // No analysis data to check for a phase/doubling signature (#370).
-    document.getElementById('rc-phase-doubling').style.display = 'none';
-    document.getElementById('rc-feedback-ringout').style.display = 'none';
-    rcFeedbackPeak = null;
-    rcPhaseSignal = false;
-    // No card to improve on — never leave the upgrade card beside the empty
-    // state (e.g. after a live capture clears the last analysis).
-    lastReportGrade = null;
-    renderUpgradeMomentum();
-    return;
-  }
-  empty.style.display = 'none';
-  content.style.display = 'block';
-  printBtn.disabled = false;
-  gradeOwnBtn.disabled = false;
-  // Clear only makes sense when the card is backed by a file analysis — a
-  // live-capture card (currentAnalysis null, liveWindows populated) has no
-  // file to clear, so leaving Clear enabled would no-op/flicker (#206).
-  clearBtn.disabled = !currentAnalysis;
-  // The live-capture card hides the file dropzone behind it (#rc-empty only
-  // renders when no card is showing) — surface this button as the only
-  // in-window way to load a different file while it's up (#208).
-  loadBtn.style.display = isLiveCard ? '' : 'none';
-  // Undo any summary-only hiding a previous historyEntry render left behind
-  // (#147) — a real analysis always shows every section its own data affects.
-  document.getElementById('rc-metrics-section').style.display = '';
-  document.getElementById('rc-why-section').style.display = '';
-  document.getElementById('rc-bands-section').style.display = '';
-
-  document.getElementById('rc-filename').textContent = src.filename;
-  document.getElementById('rc-date').textContent = new Date().toLocaleString();
-
-  const grade = grading.computeGrade(src);
-  const score = grading.computeScore(src);
-  document.getElementById('rc-ring').innerHTML = gradeRingHTML(grade, score);
-
-  const recType = grading.analyzeRecordingType(src);
-  const rt = document.getElementById('rc-rec-type');
-  rt.className = recTypePillClass(recType);
-  rt.innerHTML = recTypePillHTML(recType);
-
-  renderContentType(src);
-
-  // Ideal profile match (PRD 05) — only when a whole-file curve is available.
-  const profSection = document.getElementById('rc-profile-section');
-  let cmp = null;
-  if (ipHasCurve(src)) {
-    const profile = activeProfile(src);
-    cmp = ipCompare(src.curve, profile);
-    if (cmp) { profSection.style.display = ''; renderProfileMatch(profile, cmp); }
-    else profSection.style.display = 'none';
-  } else {
-    profSection.style.display = 'none';
-  }
-
-  // Doubling/Phase Bug Detector launch callout (#370) — always shown on a
-  // real card, visually emphasized when the deviation curve shows a
-  // comb-filter signature. A real analysis always has deviation data to
-  // check, unlike the history-summary/empty branches below.
-  const phaseSection = document.getElementById('rc-phase-doubling');
-  const phaseSignal = window.phaseDoublingState.detectPhaseSignal({ deviation: cmp ? cmp.deviation : undefined });
-  rcPhaseSignal = phaseSignal;
-  phaseSection.style.display = '';
-  phaseSection.classList.toggle('detected', phaseSignal);
-  document.getElementById('rc-phase-doubling-title').textContent = phaseSignal
-    ? 'We spotted a possible phase or doubling issue'
-    : 'Hearing a weird, doubled, or robotic sound?';
-  document.getElementById('rc-phase-doubling-sub').textContent = phaseSignal
-    ? 'Your spectrum shows a comb-filter pattern — run the check to find the duplicate path.'
-    : 'Walk through the common phase & routing bugs — no console access needed.';
-
-  // Feedback Ring-Out launch callout (#372) — mirrors the #370 phase callout:
-  // always shown on a real card, emphasized + frequency-seeded when the
-  // whole-file curve has a narrow resonant spike.
-  rcFeedbackPeak = window.feedbackRingout.detectFeedbackSignal(
-    src.curve || null, window.audioEngineSpectral.findSpectralPeaks);
-  const roSection = document.getElementById('rc-feedback-ringout');
-  const roCallout = window.feedbackRingout.reportCardCallout(rcFeedbackPeak);
-  roSection.style.display = '';
-  roSection.classList.toggle('detected', roCallout.detected);
-  document.getElementById('rc-feedback-ringout-title').textContent = roCallout.title;
-  document.getElementById('rc-feedback-ringout-sub').textContent = roCallout.sub;
-  document.getElementById('rc-feedback-ringout-btn-label').textContent = roCallout.buttonLabel;
-
-  // Metrics — built by the shared report-card.ts module (#306) from the
-  // injected grading pill classifiers (#132), so a threshold change moves the
-  // displayed target with the grade.
-  document.getElementById('rc-metrics-body').innerHTML = metricRowsHTML(buildMetricRows(src, grading));
-
-  // Why this grade (#133/#136) — the per-deduction breakdown, straight from
-  // the pure grading module so it can never disagree with the letter it
-  // explains; whyGradeHTML also discloses any rule skipped because its metric
-  // wasn't measured (live captures have no dynamic range).
-  const explain = grading.explainGrade(src);
-  document.getElementById('rc-why').innerHTML = whyGradeHTML(explain);
-
-  // Band breakdown
-  document.getElementById('rc-bands').innerHTML = BAND_META.map(b => {
-    const db = src.bands[b.key];
-    const diff = grading.bandDiffFromOthers(src.bands, b.key);
-    let vc = 'ok', vt = 'Balanced';
-    if (diff > grading.CONFIG.bandBalance.hotDiff) { vc = 'hot'; vt = 'Too Hot'; }
-    else if (diff < grading.CONFIG.bandBalance.quietDiff) { vc = 'quiet'; vt = 'Too Quiet'; }
-    return `<div class="rc-band-row">${bandMeterHTML(b.label, b.range, db, { colorBy: 'level' })}<span class="rc-band-verdict ${vc}">${vt}</span></div>`;
-  }).join('');
-
-  // Spectrum over time (heatmap thumbnail + representative frame curves)
-  renderReportCardFrames(src);
-
-  // Recommendations
-  document.getElementById('rc-recommendations').innerHTML = recListHTML(grading.computeRecommendations(src), false);
-
-  // Post-report-card upgrade moment (#58): the "Keep improving" card is score-
-  // aware, so it needs this render's grade. It manages its own visibility
-  // (free-only, once-per-7-day dismissal).
-  lastReportGrade = grade;
-  renderUpgradeMomentum();
-}
+// renderContentType/renderProfileMatch/renderReportCardFromHistory/
+// renderReportCard are gone — ReportCardIsland (React) now owns all of
+// #report-card's rendering, driven by analysisStore/spectrumStore (TD-001
+// slice 4, #422). syncReportCardChrome (above) + renderUpgradeMomentum
+// (below) are what's left for this script to keep in sync: the toolbar
+// buttons and the #rc-upgrade momentum aside, both outside #report-card.
 
 /* ══ "Keep improving" momentum card (#58) ══
    Beside the finished free report card, never over it. Copy/tone come from the
@@ -3079,40 +2790,8 @@ document.getElementById('rcu-later').addEventListener('click', () => {
   document.getElementById('rc-upgrade').hidden = true;
 });
 
-// Report-card "Spectrum Over Time": a static heatmap thumbnail + start/middle/
-// loudest representative frame curves. Hidden when the analysis has no frames
-// (e.g. a live capture), so the card still prints cleanly.
-function renderReportCardFrames(src) {
-  const section = document.getElementById('rc-frames-section');
-  const frames = src.frames;
-  if (!Array.isArray(frames) || frames.length === 0) {
-    section.style.display = 'none';
-    return;
-  }
-  section.style.display = 'block';
-
-  document.getElementById('rc-heatmap').innerHTML = heatmapSVG(frames, { interactive: false });
-
-  const n = frames.length;
-  let loudest = 0;
-  for (let i = 1; i < n; i++) if (frames[i].rms > frames[loudest].rms) loudest = i;
-  const picks = [
-    { i: 0, tag: 'Start' },
-    { i: Math.floor(n / 2), tag: 'Middle' },
-    { i: loudest, tag: 'Loudest' },
-  ];
-  // Collapse duplicate indices (short files) so we never show the same frame twice.
-  const seen = new Set();
-  const unique = picks.filter(p => (seen.has(p.i) ? false : seen.add(p.i)));
-
-  document.getElementById('rc-frame-curves').innerHTML = unique.map(p => {
-    const f = frames[p.i];
-    return `<div class="rc-frame">
-      <div class="rc-frame-head"><span class="rc-frame-tag">${p.tag}</span><span class="rc-frame-t">${fmtDur(f.t)} · ${classLabel(f.class)}</span></div>
-      <div class="rc-frame-curve">${miniCurveSVG(f.db)}</div>
-    </div>`;
-  }).join('');
-}
+// renderReportCardFrames is gone — ReportCard.tsx renders "Spectrum Over
+// Time" from reportCardFramesView (report-card.ts), TD-001 slice 4, #422.
 
 document.getElementById('reportcard-print-btn').addEventListener('click', () => window.print());
 document.getElementById('reportcard-feedback-btn').addEventListener('click', () => {
@@ -3124,30 +2803,23 @@ document.getElementById('reportcard-feedback-btn').addEventListener('click', () 
 // state so a different file can be loaded in-window — no menu navigation or
 // relaunch needed.
 document.getElementById('reportcard-clear-btn').addEventListener('click', () => {
-  if (!currentAnalysis) return;
+  if (!curAnalysis()) return;
   // Release the <audio> element so a re-load of the SAME file starts at 0:00
   // instead of resuming at its last scrub position (ensurePlaybackAudio keys
   // on sbAudioPath === filePath).
   releasePlaybackAudio();
   sbAudioPath = null;
   sbGeneration++; // invalidate any in-flight ensurePlaybackAudio
-  currentAnalysis = null;
-  currentFilePath = null;
+  // clearAnalysis() nulls currentAnalysis/selectedFilePath and resets status
+  // to 'idle' — ReportCardIsland flips #rc-content → #rc-empty reactively,
+  // and the dropzone/Analyze button reset themselves from the cleared store.
+  anaStore.getState().clearAnalysis();
   // A finished live-capture session's rolling buffer would otherwise make
   // getReportCardSource() fall through to that stale live card instead of the
   // empty state (#206) — but leave an actively-running session's buffer alone
   // so its live meters don't blip empty.
-  if (!liveRunning) liveWindows = [];
-  // Restore the dropzone to its "browse for a file" resting state so the next
-  // load starts from a clean slate (loadFile swaps in the loaded filename).
-  fileDropzone.classList.remove('loaded');
-  fileDropzone.innerHTML = fileDropzoneDefaultHTML;
-  hydrateIcons(fileDropzone);
-  const analyzeBtn = document.getElementById('analyze-btn');
-  analyzeBtn.disabled = true;
-  analyzeBtn.innerHTML = iconSvg('waveform', 16) + 'Analyze';
+  if (!liveRunning) { liveWindows = []; syncLiveSource(); }
   setSpectrumState('empty');
-  renderReportCard(); // flips #rc-content → #rc-empty (when no live card remains)
 });
 
 // #208: while a live-capture card is showing, the file dropzone is hidden behind it
@@ -3539,11 +3211,13 @@ function renderPhaseDoublingStep() {
   aiEl('phase-doubling-next').style.display = isLastStep(phaseDoublingStep) ? 'none' : '';
 }
 
+// Reached via window.inlineDialogs.openPhaseDoublingDialog (ReportCard.tsx's
+// button, TD-001 slice 4, #422) instead of a static listener.
 function openPhaseDoublingDialog() {
   phaseDoublingStep = 0;
   const src = getReportCardSource();
   aiEl('phase-doubling-context').innerHTML = window.phaseDoublingState.contextLineHtml(
-    src ? { filename: src.filename, detected: rcPhaseSignal } : null, escapeHtml);
+    src ? { filename: src.filename, detected: rcCallouts().phaseSignal } : null, escapeHtml);
   renderPhaseDoublingStep();
   aiEl('phase-doubling-dialog').style.display = 'flex';
 }
@@ -3552,8 +3226,11 @@ function closePhaseDoublingDialog() {
   aiEl('phase-doubling-dialog').style.display = 'none';
 }
 
+// Bridges ReportCard.tsx's phase-doubling/feedback-ringout callout buttons to
+// the still-inline dialogs they open (TD-001 slice 4, #422).
+window.inlineDialogs = { openPhaseDoublingDialog, openFeedbackRingout };
+
 (() => {
-  aiEl('rc-phase-doubling-btn').addEventListener('click', openPhaseDoublingDialog);
   aiEl('phase-doubling-close').addEventListener('click', closePhaseDoublingDialog);
   aiEl('phase-doubling-next').addEventListener('click', () => {
     phaseDoublingStep = window.phaseDoublingState.clampIndex(phaseDoublingStep + 1);
@@ -3591,7 +3268,14 @@ function closePhaseDoublingDialog() {
     ? window.idealCurves.normalizeProfiles(s && s.customIdealProfiles, IP_GRID_FREQS)
     : [];
   initIdealProfileSelect();
+  syncIdealProfile();
 })();
+
+// Drives the report-card toolbar (Clear/Load/Print/Grade-own) + the
+// #rc-upgrade momentum aside from analysisStore — ReportCardIsland (React)
+// owns #report-card itself (TD-001 slice 4, #422).
+anaStore.subscribe(syncReportCardChrome);
+syncReportCardChrome(anaStore.getState(), anaStore.getState());
 
 hydrateIcons(document);
 setSpectrumState('empty', { text: 'Load a file to see the spectrum' });

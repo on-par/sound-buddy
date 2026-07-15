@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Patrick Robinson (on-par). All rights reserved.
 // Licensed under the Sound Buddy Desktop Application License (app/LICENSE).
 
-import { useLayoutEffect, useRef } from 'react';
+import { useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
   PROFILES as AE_PROFILES,
@@ -35,6 +35,8 @@ import gradeOwnStateSrc from '../grade-own-state.js?raw';
 import inlineAppSrc from './inline-app.js?raw';
 import LicensePanel from './LicensePanel';
 import SettingsPanel from './SettingsPanel';
+import ReportCardIsland from './ReportCardIsland';
+import SpectrumPanel from './SpectrumPanel';
 import { installStoreBridge } from './stores/bridge';
 
 // Boot scripts in their original document order (#303): the 18 UMD helpers
@@ -64,11 +66,18 @@ const BOOT_SCRIPTS = [
 ];
 
 export default function App() {
-  const booted = useRef(false);
+  const bootedOnce = useRef(false);
+  // #report-card/#spectrum-island are portal targets that live inside
+  // `rootMarkup`, injected via innerHTML below — they don't exist at the
+  // very first render (unlike the license/settings islands, which are static
+  // index.html nodes). `booted` forces a second render once that innerHTML
+  // assignment has run, so ReportCardIsland/SpectrumPanel's portals target
+  // real DOM nodes (TD-001 slice 4, #422).
+  const [booted, setBooted] = useState(false);
 
   // useLayoutEffect (not useEffect) so this runs synchronously right after
   // mount, before paint — matching the original synchronous <script>
-  // execution order as closely as possible. Guarded by `booted` since
+  // execution order as closely as possible. Guarded by `bootedOnce` since
   // without <StrictMode> this only ever runs once anyway, but the guard
   // makes that explicit and safe if that ever changes.
   //
@@ -77,11 +86,11 @@ export default function App() {
   // the markup is set via imperative innerHTML on #root itself rather than
   // returned as JSX — a JSX-rendered wrapper div would break that layout by
   // inserting an extra flex item. App drives #root imperatively, once; the
-  // only JSX it returns are the two license/settings islands portaled onto
-  // their static index.html nodes (TD-001 slice 3, #421) — see below.
+  // only JSX it returns are islands portaled onto static or boot-injected
+  // nodes (TD-001 slices 3 #421 and 4 #422) — see below.
   useLayoutEffect(() => {
-    if (booted.current) return;
-    booted.current = true;
+    if (bootedOnce.current) return;
+    bootedOnce.current = true;
     document.getElementById('root')!.innerHTML = rootMarkup;
     (window as Window & { audioEngineProfiles?: unknown }).audioEngineProfiles = {
       PROFILES: AE_PROFILES,
@@ -101,6 +110,10 @@ export default function App() {
       script.textContent = src;
       document.body.appendChild(script);
     }
+    // #report-card/#spectrum-island now exist (just injected above) —
+    // trigger the second render that portals ReportCardIsland/SpectrumPanel
+    // onto them (TD-001 slice 4, #422).
+    setBooted(true);
   }, []);
 
   // #license-island and #settings-island are static nodes in index.html (see
@@ -113,6 +126,8 @@ export default function App() {
     <>
       {createPortal(<LicensePanel />, document.getElementById('license-island')!)}
       {createPortal(<SettingsPanel />, document.getElementById('settings-island')!)}
+      {booted && createPortal(<ReportCardIsland />, document.getElementById('report-card')!)}
+      {booted && createPortal(<SpectrumPanel />, document.getElementById('spectrum-island')!)}
     </>
   );
 }

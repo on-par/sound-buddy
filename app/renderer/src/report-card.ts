@@ -16,7 +16,11 @@
 // the narrow GradingPillApi interface (constitution: deps are injected, not
 // imported globally).
 
-import { escapeHtml } from './spectrum-display';
+import {
+  escapeHtml, toPct, DIM_DB, HOT_DB, GRID, BAND_META,
+  heatmapSVG, miniCurveSVG, fmtDur, classLabel, pickRepresentativeFrames,
+  type SpectrumFrame,
+} from './spectrum-display';
 
 export type PillTone = 'good' | 'check' | 'issue' | 'info';
 
@@ -350,4 +354,184 @@ export function recListHTML(recs: string[], escapeText: boolean): string {
       <span class="rc-rec-text">${critical ? '<span class="rc-rec-badge">Critical</span>' : ''}${escapeText ? escapeHtml(text) : text}</span>
     </div>`;
   }).join('');
+}
+
+/* ── Analysis → report-card source (getReportCardSource()'s file branch,
+   inline-app.js:2354–2376) ── */
+export interface AnalysisLike {
+  sox?: { rmsDbfs: number; peakDbfs: number; dynamicRangeDb: number | null; clipping: boolean } | null;
+  spectrum?: {
+    spectralCentroid?: number;
+    bands?: Record<string, number>;
+    curve?: unknown;
+    contentType?: string | null;
+    segments?: unknown;
+    frames?: unknown;
+  } | null;
+  ffprobe?: { format?: { filename?: string } } | null;
+  loudness?: { integratedLufs?: number | null; loudnessRange?: number | null; truePeakDbtp?: number | null } | null;
+}
+
+// The analysis payload stays `unknown` at the render boundary (TD-011) — this
+// narrows it to the ReportCardSource shape the card renders from, mirroring
+// getReportCardSource()'s file branch. Returns null for a shape too malformed
+// to build a card from (missing sox/spectrum).
+export function reportCardSourceFromAnalysis(analysis: unknown): ReportCardSource | null {
+  if (typeof analysis !== 'object' || analysis === null) return null;
+  const a = analysis as AnalysisLike;
+  if (!a.sox || !a.spectrum) return null;
+  const { sox, spectrum, ffprobe, loudness } = a;
+  return {
+    filename: (ffprobe?.format?.filename || '').split('/').pop() || 'Untitled',
+    rms: sox.rmsDbfs,
+    peak: sox.peakDbfs,
+    dynamicRange: sox.dynamicRangeDb,
+    clipping: sox.clipping,
+    centroid: spectrum.spectralCentroid,
+    bands: { ...(spectrum.bands || {}) },
+    curve: spectrum.curve || null,
+    contentType: spectrum.contentType || null,
+    segments: spectrum.segments || null,
+    frames: spectrum.frames,
+    lufsIntegrated: loudness ? loudness.integratedLufs ?? null : null,
+    loudnessRange: loudness ? loudness.loudnessRange ?? null : null,
+    truePeakDbtp: loudness ? loudness.truePeakDbtp ?? null : null,
+  };
+}
+
+/* ── Content type — speech/music delineation (PRD 04) ──
+   Extracted verbatim from inline-app.js's renderContentType (TD-001 slice 4,
+   #422): the pill label and timeline-ribbon segment/legend HTML. Both hide
+   (null label / empty ribbon HTML) when the analysis predates the classifier
+   (older files, live capture) so the caller renders nothing empty. */
+export interface SegmentLike {
+  start: number;
+  end: number;
+  class?: string;
+}
+
+export const CONTENT_TYPE_LABELS: Record<string, string> = { speech: 'Speech', music: 'Music', mixed: 'Mixed', silence: 'Silence' };
+export const SEG_CLASS_LABELS: Record<string, string> = { speech: 'Speech', music: 'Music', silence: 'Silence', unknown: 'Unknown' };
+
+export function fmtClock(s: number): string {
+  if (!isFinite(s) || s < 0) return '0:00';
+  const m = Math.floor(s / 60);
+  const sec = Math.floor(s % 60);
+  return `${m}:${String(sec).padStart(2, '0')}`;
+}
+
+export interface ContentTypeView {
+  /** Raw classifier key (e.g. 'speech') — feeds the pill's modifier class. */
+  contentType: string | null;
+  pillLabel: string | null;
+  ribbonSegmentsHTML: string;
+  ribbonLegendHTML: string;
+}
+
+export function contentTypeView(contentType: string | null | undefined, segments: unknown): ContentTypeView {
+  const pillLabel = contentType ? CONTENT_TYPE_LABELS[contentType] ?? null : null;
+
+  const segs = Array.isArray(segments) ? (segments as SegmentLike[]).filter((s) => s && s.end > s.start) : [];
+  const span = segs.length > 0 ? segs[segs.length - 1].end - segs[0].start : 0;
+  if (segs.length === 0 || !(span > 0)) {
+    return { contentType: contentType || null, pillLabel, ribbonSegmentsHTML: '', ribbonLegendHTML: '' };
+  }
+
+  const segClass = (c: string | undefined) => (c && SEG_CLASS_LABELS[c] ? c : 'unknown');
+  const ribbonSegmentsHTML = segs.map((s) => {
+    const cls = segClass(s.class);
+    const pct = ((s.end - s.start) / span) * 100;
+    return `<span class="seg seg-${cls}" style="width:${pct}%" title="${SEG_CLASS_LABELS[cls]} · ${fmtClock(s.start)}–${fmtClock(s.end)}"></span>`;
+  }).join('');
+  const present = [...new Set(segs.map((s) => segClass(s.class)))];
+  const ribbonLegendHTML = present.map((c) =>
+    `<span class="lg"><span class="sw seg-${c}"></span>${SEG_CLASS_LABELS[c]}</span>`).join('');
+  return { contentType: contentType || null, pillLabel, ribbonSegmentsHTML, ribbonLegendHTML };
+}
+
+/* ── Band breakdown meter row ──
+   Extracted verbatim from inline-app.js's closure (TD-001 slice 4, #422) so
+   the report card's per-band breakdown rows are unit-tested; the Live-tab's
+   per-channel meters (colorBy:'level') and this report-card usage share the
+   same row markup, only differing in `opts`. */
+export interface BandMeterOpts {
+  showScale?: boolean;
+  showGrid?: boolean;
+  colorBy?: 'band' | 'level';
+  color?: string;
+  loudest?: boolean;
+}
+
+export function levelColor(db: number): string {
+  return db > -24 ? 'var(--meter-good)' : db > -36 ? 'var(--meter-hot)' : 'var(--meter-idle)';
+}
+
+// One band-meter row. opts: { showScale, showGrid, colorBy:'band'|'level', color, loudest }
+export function bandMeterHTML(label: string, range: string, db: number, opts: BandMeterOpts = {}): string {
+  const pct = toPct(db);
+  const fill = opts.colorBy === 'level' ? levelColor(db) : (opts.color || 'var(--gold-500)');
+  const dim = db <= DIM_DB;
+  const loud = !!opts.loudest;
+  const grid = (opts.showGrid || opts.showScale)
+    ? GRID.map((g) => `<span class="bm-grid" style="left:${toPct(g)}%"></span>`).join('') : '';
+  const scale = opts.showScale
+    ? `<div class="bm-scale">${GRID.map((g) => `<span style="left:${toPct(g)}%">${g}</span>`).join('')}</div>` : '';
+  const rangeHTML = range ? `<div class="bm-range">${range}</div>` : '';
+  return `<div class="bm">${scale}
+    <div class="bm-row">
+      <div class="bm-labelcol"><div class="bm-name${loud ? ' loud' : ''}">${label}</div>${rangeHTML}</div>
+      <div class="bm-track">${grid}<div class="bm-fill${loud ? ' loud' : ''}" style="width:${pct}%;background:${fill};opacity:${dim ? 0.5 : 1}"></div></div>
+      <div class="bm-val${db > HOT_DB ? ' hot' : ''}">${isFinite(db) ? db.toFixed(1) : '-∞'}</div>
+    </div>
+  </div>`;
+}
+
+/* ── Frequency band breakdown (report card) ──
+   Extracted verbatim from renderReportCard's band-breakdown loop
+   (inline-app.js:2958–2965, TD-001 slice 4, #422). The hot/quiet/balanced
+   verdict thresholds are config-sourced (grading.js's CONFIG.bandBalance), so
+   a threshold change moves the verdict with the grade — injected via the
+   narrow BandDiffApi rather than importing grading.js globally. */
+export interface BandDiffApi {
+  bandDiffFromOthers(bands: Record<string, number>, key: string): number;
+  CONFIG: { bandBalance: { hotDiff: number; quietDiff: number } };
+}
+
+export function bandBreakdownHTML(bands: Record<string, number>, g: BandDiffApi): string {
+  return BAND_META.map((b) => {
+    const db = bands[b.key];
+    const diff = g.bandDiffFromOthers(bands, b.key);
+    let vc: 'ok' | 'hot' | 'quiet' = 'ok';
+    let vt = 'Balanced';
+    if (diff > g.CONFIG.bandBalance.hotDiff) { vc = 'hot'; vt = 'Too Hot'; }
+    else if (diff < g.CONFIG.bandBalance.quietDiff) { vc = 'quiet'; vt = 'Too Quiet'; }
+    return `<div class="rc-band-row">${bandMeterHTML(b.label, b.range, db, { colorBy: 'level' })}<span class="rc-band-verdict ${vc}">${vt}</span></div>`;
+  }).join('');
+}
+
+/* ── "Spectrum Over Time" report-card section ──
+   Extracted verbatim from renderReportCardFrames (inline-app.js:3085–3115,
+   TD-001 slice 4, #422): a static heatmap thumbnail + start/middle/loudest
+   representative frame curves. Hidden (visible:false) when the analysis has
+   no frames (e.g. a live capture). */
+export interface FramesSectionView {
+  visible: boolean;
+  heatmapHTML: string;
+  curvesHTML: string;
+}
+
+export function reportCardFramesView(frames: unknown): FramesSectionView {
+  if (!Array.isArray(frames) || frames.length === 0) {
+    return { visible: false, heatmapHTML: '', curvesHTML: '' };
+  }
+  const fr = frames as SpectrumFrame[];
+  const heatmapHTML = heatmapSVG(fr, { interactive: false });
+  const curvesHTML = pickRepresentativeFrames(fr).map((p) => {
+    const f = fr[p.i];
+    return `<div class="rc-frame">
+      <div class="rc-frame-head"><span class="rc-frame-tag">${p.tag}</span><span class="rc-frame-t">${fmtDur(f.t)} · ${classLabel(f.class)}</span></div>
+      <div class="rc-frame-curve">${miniCurveSVG(f.db)}</div>
+    </div>`;
+  }).join('');
+  return { visible: true, heatmapHTML, curvesHTML };
 }

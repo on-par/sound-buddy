@@ -296,7 +296,12 @@
           <button type="button" id="ideal-curve-edit-btn" data-icon="settings" data-size="15" aria-label="Create or edit ideal curve" title="Create or edit ideal curve"></button>
         </div>
       </div>
-      <div id="spectrum-body"></div>
+      <!-- #spectrum-imperative: inline-app.js keeps driving the empty/loading/
+           error/live-tab states here (setSpectrumState, renderLiveMeters, …).
+           #spectrum-island: React's SpectrumPanel (TD-001 slice 4, #422),
+           portaled by App.tsx — the analysis curve/bar view. inline-app.js
+           toggles which of the two is visible per mode (syncSpectrumForMode). -->
+      <div id="spectrum-body"><div id="spectrum-imperative"></div><div id="spectrum-island"></div></div>
     </section>
 
     <!-- AI Engineer -->
@@ -335,79 +340,9 @@
     </div>
     <div id="rc-scroll">
       <div id="rc-layout">
-      <div id="report-card">
-        <div id="rc-empty" class="rc-empty">
-          <div class="rc-empty-load">
-            <div class="dropzone" id="file-dropzone">
-              <div class="dz-icon" data-icon="file-audio"></div>
-              <div class="dz-body">
-                <span class="dz-title">Drop audio file here</span>
-                <span class="dz-hint">or click to browse</span>
-              </div>
-            </div>
-            <p class="dz-hint" style="text-align:center">Supports wav · aif · aiff · flac · mp3 · ogg · m4a · mp4 · mov · mkv · webm (video: audio track is extracted)</p>
-
-            <button class="btn btn-primary full" id="analyze-btn" data-icon="waveform" disabled>Analyze</button>
-          </div>
-        </div>
-        <div id="rc-content" style="display:none">
-          <div class="rc-section pd-launch" id="rc-phase-doubling" style="display:none">
-            <div class="pd-launch-body">
-              <span class="pd-launch-title" id="rc-phase-doubling-title">Hearing a weird, doubled, or robotic sound?</span>
-              <span class="pd-launch-sub" id="rc-phase-doubling-sub">Walk through the common phase &amp; routing bugs — no console access needed.</span>
-            </div>
-            <button type="button" id="rc-phase-doubling-btn" class="btn btn-secondary sm" data-icon="clipboard-check">Check for doubling</button>
-          </div>
-          <div class="rc-section pd-launch" id="rc-feedback-ringout" style="display:none">
-            <div class="pd-launch-body">
-              <span class="pd-launch-title" id="rc-feedback-ringout-title">Fighting feedback in your monitors?</span>
-              <span class="pd-launch-sub" id="rc-feedback-ringout-sub">Walk through ringing out a mic step by step — no console access needed.</span>
-            </div>
-            <button type="button" id="rc-feedback-ringout-btn" class="btn btn-secondary sm" data-icon="waves"><span id="rc-feedback-ringout-btn-label">Open the ring-out wizard</span></button>
-          </div>
-          <div class="rc-header">
-            <h1>Sound Buddy Report Card</h1>
-            <div class="rc-meta"><span id="rc-filename">—</span><span>·</span><span id="rc-date">—</span></div>
-          </div>
-          <div class="rc-score">
-            <div id="rc-ring"></div>
-            <div class="rc-rectype pill" id="rc-rec-type"></div>
-            <div class="rc-contenttype" id="rc-content-type" style="display:none"></div>
-            <div class="rc-ribbon-wrap" id="rc-ribbon-wrap" style="display:none">
-              <div class="rc-ribbon" id="rc-ribbon"></div>
-              <div class="rc-ribbon-legend" id="rc-ribbon-legend"></div>
-            </div>
-          </div>
-          <div class="rc-section" id="rc-profile-section" style="display:none">
-            <h2>Tonal balance vs target</h2>
-            <div class="rc-profile" id="rc-profile"></div>
-          </div>
-          <div class="rc-section" id="rc-metrics-section">
-            <h2>Metrics</h2>
-            <table class="metric-table">
-              <thead><tr><th>Metric</th><th>Value</th><th>Target</th><th>Status</th></tr></thead>
-              <tbody id="rc-metrics-body"></tbody>
-            </table>
-          </div>
-          <div class="rc-section" id="rc-why-section">
-            <h2>Why This Grade</h2>
-            <div class="rc-why" id="rc-why"></div>
-          </div>
-          <div class="rc-section" id="rc-bands-section">
-            <h2>Frequency Band Breakdown</h2>
-            <div class="rc-bands" id="rc-bands"></div>
-          </div>
-          <div class="rc-section" id="rc-frames-section" style="display:none">
-            <h2>Spectrum Over Time</h2>
-            <div class="rc-heatmap" id="rc-heatmap"></div>
-            <div class="rc-frame-curves" id="rc-frame-curves"></div>
-          </div>
-          <div class="rc-section">
-            <h2>Recommendations</h2>
-            <div class="rc-recs" id="rc-recommendations"></div>
-          </div>
-        </div>
-      </div>
+      <!-- React island renders #rc-empty/#rc-content (TD-001 slice 4, #422):
+           ReportCardIsland, portaled by App.tsx. -->
+      <div id="report-card"></div>
       <!-- ══ "Keep improving" momentum card (#58) ══
            Beside the finished free report card, never over it. Shown only to a
            free (non-Pro) user, after a card renders, and only when not dismissed

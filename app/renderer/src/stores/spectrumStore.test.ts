@@ -10,6 +10,8 @@ afterEach(() => {
     bands: {},
     spectralCentroid: null,
     rolloff: null,
+    idealProfile: null,
+    isAutoProfile: false,
   });
 });
 
@@ -19,6 +21,37 @@ describe('spectrumStore', () => {
     expect(useSpectrumStore.getState().bands).toEqual({});
     expect(useSpectrumStore.getState().spectralCentroid).toBeNull();
     expect(useSpectrumStore.getState().rolloff).toBeNull();
+    expect(useSpectrumStore.getState().idealProfile).toBeNull();
+    expect(useSpectrumStore.getState().isAutoProfile).toBe(false);
+  });
+
+  describe('setIdealProfile', () => {
+    it('sets the active profile and auto flag', () => {
+      const profile = { label: 'Speech / podcast', dbOffsets: [1, 2, 3] };
+
+      useSpectrumStore.getState().setIdealProfile(profile, true);
+
+      expect(useSpectrumStore.getState().idealProfile).toBe(profile);
+      expect(useSpectrumStore.getState().isAutoProfile).toBe(true);
+    });
+
+    it('is independent of spectrumData — clearSpectrum does not reset it', () => {
+      const profile = { label: 'Flat / neutral', dbOffsets: [0, 0] };
+      useSpectrumStore.getState().setIdealProfile(profile, false);
+
+      useSpectrumStore.getState().clearSpectrum();
+
+      expect(useSpectrumStore.getState().idealProfile).toBe(profile);
+      expect(useSpectrumStore.getState().isAutoProfile).toBe(false);
+    });
+
+    it('can be cleared back to null', () => {
+      useSpectrumStore.getState().setIdealProfile({ label: 'Flat', dbOffsets: [] }, false);
+
+      useSpectrumStore.getState().setIdealProfile(null, false);
+
+      expect(useSpectrumStore.getState().idealProfile).toBeNull();
+    });
   });
 
   it('extracts and populates all four fields from an analysis result', () => {
