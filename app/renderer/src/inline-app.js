@@ -1700,7 +1700,8 @@ document.getElementById('live-start-btn').addEventListener('click', async () => 
   const intervalSecs = parseInt(document.getElementById('meter-interval').value) / 1000;
   // When AI is off, force the LLM interval to 0 so no countdown or auto-analysis
   // is armed (the backend also refuses to arm it — belt and suspenders).
-  const llmIntervalSecs = aiEnabled ? parseInt(document.getElementById('llm-interval').value) : 0;
+  const aiSettings = window.appStores.settings.getState().settings;
+  const llmIntervalSecs = (aiSettings && aiSettings.aiEnabled) ? parseInt(document.getElementById('llm-interval').value) : 0;
   const channels = channelTokens();
 
   // No configured tracks (#188): the workspace remove can drive channelConfig
@@ -3005,9 +3006,12 @@ function renderUpgradeMomentum() {
   // Guard the module load (sibling onboarding code guards likewise) and wait
   // for the license to resolve — never flash the card before we know the tier.
   if (!el || !um) return;
+  // Dual-read bridge (#421): the store is the source of truth for license
+  // state now; this module-scope renderer just reads through it.
+  const licenseStatus = window.appStores.licensing.getState().licenseStatus;
   const show = lastReportGrade !== null
-    && licenseCurrent !== null
-    && um.shouldShowForLicense(licenseCurrent)
+    && licenseStatus !== null
+    && um.shouldShowForLicense(licenseStatus)
     && !um.isDismissed(upgradeMomentumDismissedAt());
   if (!show) {
     // A mid-hold Pro activation, dismissal, or report clear must cancel the
@@ -3156,36 +3160,36 @@ document.getElementById('reportcard-load-btn').addEventListener('click', async (
 });
 
 /* ══ License (#54) ══ */
-// Free/Pro state comes from the main process (offline Ed25519 validation);
-// the pure display/entitlement rules live in license-state.js. Activating a
-// key mid-session applies immediately — no restart.
-let licenseCurrent = null;
+// Free/Pro state lives in licensingStore (#421, epic #395 slice 3), bridged
+// via window.appStores.licensing; the pure display/entitlement rules live in
+// license-state.js. Activating a key mid-session applies immediately — no
+// restart. The dialog itself (input, activate/remove/refresh) is now the
+// LicensePanel React island (App.tsx) — this module only renders the chrome
+// that stays imperative: the header badge, banners, and upgrade-momentum card.
 
 // Paywall-evaluation refresh trigger (#117): once per session, the first time
 // we observe a subscription in its refresh window, kick the automatic check.
 // The window predicate lives in license-state.js (isInRefreshWindow, shared +
 // unit-tested) so it can't silently drift from the main process's own
-// shouldAutoRefresh() — a polling loop isn't needed since applyLicenseState
-// already runs on every getLicense() read.
+// shouldAutoRefresh() — a polling loop isn't needed since applyLicenseChrome
+// already runs on every store update.
 let refreshKicked = false;
 
-function applyLicenseState(state) {
-  licenseCurrent = state || { tier: 'free', status: 'none' };
-  if (!refreshKicked && window.licenseState.isInRefreshWindow(licenseCurrent)) {
+function applyLicenseChrome(state) {
+  if (!refreshKicked && window.licenseState.isInRefreshWindow(state)) {
     refreshKicked = true;
-    // Best-effort: refreshLicense() is itself never-throw on the main-process
-    // side, but the IPC round-trip can still reject — don't leave an
-    // unhandled rejection. Un-set the guard on that rare failure so the next
-    // getLicense() poll can retry instead of never checking again this session.
-    void sb.refreshLicense().then((s) => { if (s) applyLicenseState(s); }).catch(() => { refreshKicked = false; });
+    // Best-effort: refreshLicense() is itself never-throw (the store action
+    // swallows both a rejected IPC call and a falsy result), so there's
+    // nothing to un-set the guard on failure for.
+    void window.appStores.licensing.getState().refreshLicense();
   }
   const ls = window.licenseState;
-  const b = ls.badge(licenseCurrent);
+  const b = ls.badge(state);
 
   const badgeEl = document.getElementById('license-badge');
   // During the trial the countdown IS the badge copy (#61); the pure helper
   // owns the exact string so it can't drift from what's under test.
-  const trialText = ls.trialBadgeText(licenseCurrent);
+  const trialText = ls.trialBadgeText(state);
   badgeEl.textContent = trialText || b.label;
   badgeEl.classList.toggle('pro', b.pro);
   badgeEl.classList.toggle('grace', b.grace);
@@ -3195,7 +3199,7 @@ function applyLicenseState(state) {
   document.body.classList.toggle('not-pro', !b.pro);
 
   const banner = document.getElementById('license-banner');
-  const graceText = ls.graceBannerText(licenseCurrent);
+  const graceText = ls.graceBannerText(state);
   if (graceText) {
     document.getElementById('license-banner-text').textContent = graceText;
     banner.classList.add('show');
@@ -3203,7 +3207,7 @@ function applyLicenseState(state) {
     banner.classList.remove('show');
   }
 
-  renderTrialBanner(licenseCurrent);
+  renderTrialBanner(state);
 
   // Activating/removing a key mid-session flips whether the upgrade card belongs
   // on the report (#58) — re-evaluate so it hides the instant a user goes Pro.
@@ -3240,146 +3244,34 @@ function renderTrialBanner(state) {
   }
 }
 
-function licenseStatusLine(state) {
-  if (!state || state.status === 'none') return 'Free tier — full report card included.';
-  if (state.status === 'trial') {
-    const days = window.licenseState.trialDaysLeft(state);
-    const left = days ? `${days} ${days === 1 ? 'day' : 'days'} left` : 'active';
-    return `Pro trial — ${left}. Start a subscription to keep Pro when it ends.`;
-  }
-  if (state.status === 'trial-expired') {
-    return 'Your Pro trial has ended — the report card stays free. Start a subscription to reunlock Pro features.';
-  }
-  if (state.status === 'valid') {
-    const who = state.email ? ` (${state.email})` : '';
-    if (state.kind === 'lifetime') return `Pro — lifetime license${who}.`;
-    const until = state.expiresAt ? ` until ${new Date(state.expiresAt).toLocaleDateString()}` : '';
-    return `Pro — active${until}${who}.`;
-  }
-  if (state.status === 'grace') return window.licenseState.graceBannerText(state) || 'License expired — grace period active.';
-  if (state.status === 'expired') return 'License expired — back on the free tier. Renew to restore Pro features.';
-  // Invalid: surface the specific reason the validator computed (bad paste vs
-  // wrong product vs issuance bug) rather than a generic shrug.
-  return 'License key could not be validated' + (state.error ? ': ' + state.error : '') + '.';
-}
-
-// Only a Pro subscription has anything to refresh — lifetime/trial users
-// never see the button (#117).
-function updateLicenseRefreshBtnVisibility() {
-  document.getElementById('license-refresh-btn').style.display =
-    licenseCurrent && licenseCurrent.tier === 'pro' && licenseCurrent.kind === 'subscription'
-      ? 'inline-flex'
-      : 'none';
-}
-
-function openLicenseDialog() {
-  const dlg = document.getElementById('license-dialog');
-  document.getElementById('license-dialog-status').textContent = licenseStatusLine(licenseCurrent);
-  document.getElementById('license-remove-btn').style.display =
-    licenseCurrent && licenseCurrent.tier === 'pro' ? 'inline-flex' : 'none';
-  updateLicenseRefreshBtnVisibility();
-  const errEl = document.getElementById('license-dialog-error');
-  errEl.style.display = 'none';
-  errEl.textContent = '';
-  const input = document.getElementById('license-key-input');
-  input.value = '';
-  dlg.style.display = 'flex';
-  input.focus();
-}
-
 (function initLicense() {
-  const dlg = document.getElementById('license-dialog');
-  const input = document.getElementById('license-key-input');
-  const errEl = document.getElementById('license-dialog-error');
-  const close = () => { dlg.style.display = 'none'; };
+  const lic = window.appStores.licensing;
 
-  document.getElementById('license-badge').addEventListener('click', openLicenseDialog);
-  document.getElementById('license-banner-manage').addEventListener('click', openLicenseDialog);
+  lic.subscribe((s) => applyLicenseChrome(s.licenseStatus || { tier: 'free', status: 'none' }));
+
+  document.getElementById('license-badge').addEventListener('click', () => lic.getState().openDialog());
+  document.getElementById('license-banner-manage').addEventListener('click', () => lic.getState().openDialog());
   document.getElementById('license-banner-dismiss').addEventListener('click', () =>
     document.getElementById('license-banner').classList.remove('show'));
 
   // Trial banner (#61): "Start subscription" opens the license dialog; the ✕
   // dismisses this milestone for good (so it doesn't nag every launch).
-  document.getElementById('trial-banner-start').addEventListener('click', openLicenseDialog);
+  document.getElementById('trial-banner-start').addEventListener('click', () => lic.getState().openDialog());
   document.getElementById('trial-banner-dismiss').addEventListener('click', () => {
     const tb = document.getElementById('trial-banner');
     if (tb.dataset.dismissId) dismissTrial(tb.dataset.dismissId);
     tb.classList.remove('show');
   });
   document.querySelectorAll('[data-license-open]').forEach((el) =>
-    el.addEventListener('click', openLicenseDialog));
-  sb.onOpenLicenseDialog(openLicenseDialog);
-
-  document.getElementById('license-close-btn').addEventListener('click', close);
-  dlg.addEventListener('click', (e) => { if (e.target === dlg) close(); });
-  document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape' && dlg.style.display !== 'none') close();
-  });
-
-  document.getElementById('license-activate-btn').addEventListener('click', async () => {
-    const key = input.value.trim();
-    if (!key) { input.focus(); return; }
-    let state;
-    try {
-      state = await sb.activateLicense(key);
-    } catch (err) {
-      errEl.textContent = 'Could not save the license: ' + String(err);
-      errEl.style.display = 'block';
-      return;
-    }
-    if (state && state.tier === 'pro') {
-      // Unlocks immediately — no restart (acceptance criterion).
-      applyLicenseState(state);
-      updateLicenseRefreshBtnVisibility();
-      close();
-    } else {
-      // Invalid/expired key: clear messaging, nothing is locked, and any
-      // previously stored key is left untouched by the main process.
-      errEl.textContent = licenseStatusLine(state);
-      errEl.style.display = 'block';
-    }
-  });
-  input.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') document.getElementById('license-activate-btn').click();
-  });
-
-  document.getElementById('license-remove-btn').addEventListener('click', async () => {
-    let state;
-    try {
-      state = await sb.removeLicense();
-    } catch (err) {
-      // The main process rethrows a failed delete — don't pretend the key is
-      // gone (it would come back on the next read).
-      errEl.textContent = 'Could not remove the license: ' + String(err);
-      errEl.style.display = 'block';
-      return;
-    }
-    applyLicenseState(state);
-    document.getElementById('license-dialog-status').textContent = licenseStatusLine(state);
-    document.getElementById('license-remove-btn').style.display = 'none';
-    updateLicenseRefreshBtnVisibility();
-  });
-
-  // Manual "Refresh license" button (#117) — same silent-failure contract as
-  // the automatic triggers; no error dialog, just an updated status line.
-  document.getElementById('license-refresh-btn').addEventListener('click', async () => {
-    let state;
-    try {
-      state = await sb.refreshLicense();
-    } catch {
-      return; // network call is best-effort; keep the current state on screen
-    }
-    applyLicenseState(state);
-    document.getElementById('license-dialog-status').textContent = licenseStatusLine(state);
-    updateLicenseRefreshBtnVisibility();
-  });
+    el.addEventListener('click', () => lic.getState().openDialog()));
+  sb.onOpenLicenseDialog(() => lic.getState().openDialog());
 
   // Entitlement is time-based (expiry, grace) and the main process re-verifies
   // on every read — poll so a lapse mid-session updates the badge/banner/locks
   // instead of leaving stale Pro UI until a restart. Local file read + Ed25519
   // verify: cheap enough to do every minute.
-  setInterval(async () => {
-    try { applyLicenseState(await sb.getLicense()); } catch { /* keep last state */ }
+  setInterval(() => {
+    lic.getState().checkLicense().catch(() => { /* keep last state */ });
   }, 60_000);
 })();
 
@@ -3413,16 +3305,12 @@ function openLicenseDialog() {
   document.getElementById('update-dismiss-btn').addEventListener('click', () => banner.classList.remove('show'));
 })();
 
-/* ══ AI provider settings (#76) ══ */
-// One screen, two paths: local Ollama (default tab — privacy-first) or a
-// pasted API key. Saving writes llm.json via main (the key is encrypted with
-// safeStorage there and never comes back to this process).
-const AI_MODEL_HINTS = { openai: 'gpt-4o-mini', anthropic: 'claude-sonnet-4-6', google: 'gemini-2.0-flash', custom: 'model-name' };
-
-let aiDialogTab = 'ollama';
-let aiDetectSeq = 0; // stale-response guard for endpoint edits
-let aiSavedCfg = null; // last-loaded public config (drives key placeholder + provider preservation)
-
+/* ══ AI + Storage settings (#76, #91) ══ */
+// Both dialogs are now the SettingsPanel React island (App.tsx), backed by
+// settingsStore and bridged via window.appStores.settings. `aiEl` stays here
+// — the curve/rig/phase-doubling dialogs below still use it — as does
+// updateModelChip, which reads the model chip that lives outside either
+// dialog's markup.
 function aiEl(id) { return document.getElementById(id); }
 
 function updateModelChip(cfg) {
@@ -3431,301 +3319,9 @@ function updateModelChip(cfg) {
   el.textContent = cfg && cfg.provider ? `${cfg.provider} · ${cfg.model || 'default model'}` : 'your provider';
 }
 
-function setAiTab(tab) {
-  aiDialogTab = tab;
-  aiEl('ai-tab-btn-ollama').classList.toggle('active', tab === 'ollama');
-  aiEl('ai-tab-btn-hosted').classList.toggle('active', tab === 'hosted');
-  aiEl('ai-tab-btn-ollama').setAttribute('aria-selected', String(tab === 'ollama'));
-  aiEl('ai-tab-btn-hosted').setAttribute('aria-selected', String(tab === 'hosted'));
-  aiEl('ai-tab-ollama').style.display = tab === 'ollama' ? 'flex' : 'none';
-  aiEl('ai-tab-hosted').style.display = tab === 'hosted' ? 'flex' : 'none';
-  setAiTestResult('', '');
-}
-
-function setAiTestResult(text, kind) {
-  const el = aiEl('ai-test-result');
-  el.textContent = text;
-  el.className = 'ai-status' + (kind ? ` ${kind}` : '');
-}
-
-// `html` must be a static template — dynamic strings (error reasons) go
-// through the `text` option instead so they can never inject markup.
-function setOllamaStatus(html, kind, text) {
-  const el = aiEl('ai-ollama-status');
-  if (text !== undefined) el.textContent = text;
-  else el.innerHTML = html;
-  el.className = 'ai-status' + (kind ? ` ${kind}` : '');
-  const link = el.querySelector('a');
-  if (link) link.addEventListener('click', (e) => { e.preventDefault(); sb.openReleasePage(link.href); });
-}
-
-// Probe the endpoint and fill the model dropdown. `preferModel` keeps the saved
-// selection when it's still available. Returns the probe result (null when a
-// newer probe superseded this one) so Test connection can judge reachability
-// directly instead of inferring it from widget state.
-async function detectOllamaInto(preferModel) {
-  const seq = ++aiDetectSeq;
-  const host = aiEl('ai-ollama-host').value.trim();
-  setOllamaStatus('Looking for Ollama…', '');
-  const sel = aiEl('ai-ollama-model');
-  let res;
-  try { res = await sb.detectOllama(host || undefined); }
-  catch (err) { res = { ok: false, reason: String(err) }; }
-  if (seq !== aiDetectSeq) return null; // a newer probe superseded this one
-  sel.innerHTML = '';
-  if (res && res.ok) {
-    const models = res.models || [];
-    for (const m of models) {
-      const opt = document.createElement('option');
-      opt.value = m; opt.textContent = m;
-      sel.appendChild(opt);
-    }
-    sel.disabled = models.length === 0;
-    if (preferModel && models.includes(preferModel)) sel.value = preferModel;
-    if (models.length) {
-      setOllamaStatus(`Ollama detected — ${models.length} model${models.length === 1 ? '' : 's'} available.`, 'ok');
-    } else {
-      setOllamaStatus('Ollama is running but has no models — run <code>ollama pull llama3.2</code> first.', 'err');
-    }
-  } else {
-    sel.disabled = true;
-    if (res && res.reason === 'not-running') {
-      setOllamaStatus('Ollama not detected — <a href="https://ollama.com/download">install it from ollama.com</a>, then relaunch it.', 'err');
-    } else {
-      setOllamaStatus('', 'err', `Could not reach Ollama: ${res && res.reason ? res.reason : 'unknown error'}`);
-    }
-  }
-  return res;
-}
-
-function syncHostedFields() {
-  const provider = aiEl('ai-provider').value;
-  aiEl('ai-baseurl-field').style.display = provider === 'custom' ? 'flex' : 'none';
-  aiEl('ai-hosted-model').placeholder = AI_MODEL_HINTS[provider] || 'model-name';
-  // A stored key only counts for the provider it was pasted for — switching the
-  // dropdown means a new key is needed (main enforces this; the placeholder
-  // just keeps the UI honest about it).
-  const keySaved = aiSavedCfg && aiSavedCfg.hasApiKey && aiSavedCfg.apiKeyProvider === provider;
-  aiEl('ai-api-key').placeholder = keySaved ? '••••••••••  (saved — paste to replace)' : 'Paste your API key';
-}
-
-async function openAiSettings() {
-  let cfg = null;
-  try { cfg = await sb.getLlmConfig(); } catch { cfg = null; }
-  cfg = cfg || { provider: '', model: '', ollamaHost: '', apiBaseUrl: '', hasApiKey: false, apiKeyProvider: '' };
-  aiSavedCfg = cfg;
-
-  aiEl('ai-ollama-host').value = cfg.ollamaHost || '';
-  aiEl('ai-base-url').value = cfg.apiBaseUrl || '';
-  aiEl('ai-api-key').value = '';
-  const hosted = cfg.provider && cfg.provider !== 'ollama';
-  const providerSel = aiEl('ai-provider');
-  // Drop any previously injected pass-through option before repopulating.
-  const injected = providerSel.querySelector('option[data-passthrough]');
-  if (injected) injected.remove();
-  if (hosted) {
-    if ([...providerSel.options].some((o) => o.value === cfg.provider)) {
-      providerSel.value = cfg.provider;
-    } else {
-      // A pre-#76 pi provider ("copilot", …). Keep it selectable as-is so a
-      // no-change Save can never silently rewrite a working config to "custom".
-      const opt = document.createElement('option');
-      opt.value = cfg.provider;
-      opt.textContent = `${cfg.provider} (via pi login)`;
-      opt.dataset.passthrough = '1';
-      providerSel.appendChild(opt);
-      providerSel.value = cfg.provider;
-    }
-    aiEl('ai-hosted-model').value = cfg.model || '';
-  } else {
-    providerSel.value = 'openai';
-    aiEl('ai-hosted-model').value = '';
-  }
-  syncHostedFields();
-  // First open (nothing configured) lands on the Ollama tab — privacy-first.
-  setAiTab(hosted ? 'hosted' : 'ollama');
-  aiEl('ai-enable-toggle').checked = cfg.provider ? aiEnabled : true;
-
-  aiEl('ai-dialog').style.display = 'flex';
-  detectOllamaInto(cfg.provider === 'ollama' ? cfg.model : undefined);
-
-  // #202: show the installed app version. No dedicated Settings modal exists
-  // yet (tracked in #204) — this dialog is the one opened by the header's
-  // gear icon, so it's the closest thing to "Settings" today.
-  const versionEl = aiEl('ai-dialog-version');
-  if (versionEl) {
-    try { versionEl.textContent = `Sound Buddy ${await sb.getAppVersion()}`; } catch { versionEl.textContent = ''; }
-  }
-}
-
-function closeAiSettings() {
-  aiEl('ai-dialog').style.display = 'none';
-}
-
-async function testAiConnection() {
-  const btn = aiEl('ai-test-btn');
-  btn.disabled = true;
-  setAiTestResult('Testing…', '');
-  try {
-    if (aiDialogTab === 'ollama') {
-      const res = await detectOllamaInto(aiEl('ai-ollama-model').value || undefined);
-      // res.ok = reachable — a running Ollama with zero models is still connected
-      // (the status line above already says to pull one).
-      const ok = !!(res && res.ok);
-      setAiTestResult(ok ? 'Connected ✓' : 'Not connected', ok ? 'ok' : 'err');
-    } else {
-      const res = await sb.testLlmProvider({
-        provider: aiEl('ai-provider').value,
-        apiKey: aiEl('ai-api-key').value || undefined,
-        apiBaseUrl: aiEl('ai-base-url').value.trim() || undefined,
-      });
-      if (res && res.ok) setAiTestResult('Connected ✓', 'ok');
-      else setAiTestResult(res && res.reason ? res.reason : 'Connection failed', 'err');
-    }
-  } finally {
-    btn.disabled = false;
-  }
-}
-
-async function saveAiSettings() {
-  let patch;
-  if (aiDialogTab === 'ollama') {
-    patch = {
-      provider: 'ollama',
-      model: aiEl('ai-ollama-model').value || '',
-      ollamaHost: aiEl('ai-ollama-host').value.trim(),
-    };
-  } else {
-    const provider = aiEl('ai-provider').value;
-    const model = aiEl('ai-hosted-model').value.trim();
-    // Direct hosted providers hard-require a model (there is no server-side
-    // default); pi pass-through providers supply their own.
-    if (!model && provider in AI_MODEL_HINTS) {
-      setAiTestResult(`Enter a model name first (e.g. ${AI_MODEL_HINTS[provider]}).`, 'err');
-      aiEl('ai-hosted-model').focus();
-      return;
-    }
-    patch = {
-      provider,
-      model,
-      // The base URL only means something for "custom" — never persist a stale
-      // one against a known provider.
-      apiBaseUrl: provider === 'custom' ? aiEl('ai-base-url').value.trim() : '',
-      // Empty field = keep the already-saved key (never an implicit clear).
-      ...(aiEl('ai-api-key').value ? { apiKey: aiEl('ai-api-key').value } : {}),
-    };
-  }
-
-  let res;
-  try { res = await sb.saveLlmConfig(patch); }
-  catch (err) { res = { ok: false, reason: String(err) }; }
-  if (!res || !res.ok) {
-    setAiTestResult(res && res.reason ? res.reason : 'Could not save settings', 'err');
-    return;
-  }
-  updateModelChip(res.config);
-
-  const enable = aiEl('ai-enable-toggle').checked;
-  try {
-    await sb.updateSettings({ aiEnabled: enable });
-    aiEnabled = enable;
-    document.body.classList.toggle('ai-disabled', !aiEnabled);
-  } catch { /* non-fatal — provider config itself was saved */ }
-  closeAiSettings();
-}
-
-/* ══ Storage settings (#91) ══ */
-// Sound Buddy has no usage caps — this dialog just lets the user pick where
-// recordings live and shows disk usage informationally. State (never DOM
-// read-back) drives what's shown: `storageDefaultPath` is the platform default
-// reported by main, and `storagePendingDir` is the folder chosen this session
-// before Save — null = unchanged, '' = reset to default, a path = a custom
-// folder. `effectiveStoragePath()` folds those into the one path to display; the
-// reset action is offered whenever that path isn't the default. Reuses `aiEl`.
-let storagePendingDir = null;
-let storageDefaultPath = '~/Music/Sound Buddy';
-let storageLoadedPath = storageDefaultPath; // path persisted before this session
-// Opt-in anonymous usage counts (#145) — persisted preference only. Cached
-// once at boot (alongside aiEnabled/idealProfileId) and kept in sync locally
-// on save, so opening the dialog re-seeds the checkbox from this cache
-// (Cancel/Escape/backdrop-close discard any unsaved toggle) without a fresh
-// IPC round trip on every open.
-let usageSignalLoaded = false;
-
-function effectiveStoragePath() {
-  if (storagePendingDir === '') return storageDefaultPath;
-  if (storagePendingDir) return storagePendingDir;
-  return storageLoadedPath;
-}
-
-function renderStoragePath() {
-  const current = effectiveStoragePath();
-  aiEl('storage-path').textContent = current;
-  aiEl('storage-reset-btn').style.display = current === storageDefaultPath ? 'none' : '';
-}
-
-async function openStorageSettings() {
-  storagePendingDir = null;
-  storageLoadedPath = storageDefaultPath;
-  aiEl('storage-usage').textContent = 'Calculating disk usage…';
-  renderStoragePath();
-  // usageSignalLoaded is cached at boot (and kept in sync on save below) —
-  // reused here rather than a fresh sb.getSettings() round trip on every open.
-  aiEl('usage-signal-toggle').checked = usageSignalLoaded;
-  aiEl('storage-dialog').style.display = 'flex';
-  try {
-    const u = await sb.getStorageUsage();
-    if (u) {
-      if (u.defaultPath) storageDefaultPath = u.defaultPath;
-      storageLoadedPath = u.path || storageDefaultPath;
-      aiEl('storage-usage').textContent = u.exists
-        ? `Using ${u.human} on this Mac — no limit.`
-        : 'Nothing recorded yet — no limit on how much you can store.';
-      renderStoragePath();
-    } else {
-      aiEl('storage-usage').textContent = '';
-    }
-  } catch {
-    aiEl('storage-usage').textContent = '';
-  }
-}
-
-function closeStorageSettings() {
-  aiEl('storage-dialog').style.display = 'none';
-}
-
-async function chooseStorageFolder() {
-  const dir = await sb.openDirDialog();
-  if (!dir) return;
-  storagePendingDir = dir;
-  renderStoragePath();
-}
-
-async function saveStorageSettings() {
-  if (storagePendingDir !== null) {
-    try { await sb.updateSettings({ storageDir: storagePendingDir }); }
-    catch { /* non-fatal — the folder is still usable next launch */ }
-  }
-  const usageChecked = aiEl('usage-signal-toggle').checked;
-  if (usageChecked !== usageSignalLoaded) {
-    try {
-      await sb.updateSettings({ usageSignalEnabled: usageChecked });
-      usageSignalLoaded = usageChecked;
-    } catch { /* non-fatal — preference only, nothing depends on it */ }
-  }
-  closeStorageSettings();
-}
-
 (() => {
-  aiEl('storage-settings-btn').addEventListener('click', openStorageSettings);
-  aiEl('storage-change-btn').addEventListener('click', chooseStorageFolder);
-  aiEl('storage-reset-btn').addEventListener('click', () => { storagePendingDir = ''; renderStoragePath(); });
-  aiEl('storage-save-btn').addEventListener('click', saveStorageSettings);
-  aiEl('storage-cancel-btn').addEventListener('click', closeStorageSettings);
-  aiEl('storage-dialog').addEventListener('click', (e) => { if (e.target === aiEl('storage-dialog')) closeStorageSettings(); });
-  document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape' && aiEl('storage-dialog').style.display !== 'none') closeStorageSettings();
-  });
+  aiEl('ai-settings-btn').addEventListener('click', () => window.appStores.settings.getState().openAiDialog());
+  aiEl('storage-settings-btn').addEventListener('click', () => window.appStores.settings.getState().openStorageDialog());
 })();
 
 (() => {
@@ -3866,44 +3462,35 @@ function closePhaseDoublingDialog() {
   });
 })();
 
-(() => {
-  aiEl('ai-settings-btn').addEventListener('click', openAiSettings);
-  aiEl('ai-tab-btn-ollama').addEventListener('click', () => setAiTab('ollama'));
-  aiEl('ai-tab-btn-hosted').addEventListener('click', () => setAiTab('hosted'));
-  aiEl('ai-provider').addEventListener('change', syncHostedFields);
-  aiEl('ai-ollama-host').addEventListener('change', () => detectOllamaInto(aiEl('ai-ollama-model').value || undefined));
-  aiEl('ai-test-btn').addEventListener('click', testAiConnection);
-  aiEl('ai-dialog-save').addEventListener('click', saveAiSettings);
-  aiEl('ai-dialog-cancel').addEventListener('click', closeAiSettings);
-  aiEl('ai-dialog').addEventListener('click', (e) => { if (e.target === aiEl('ai-dialog')) closeAiSettings(); });
-  document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape' && aiEl('ai-dialog').style.display !== 'none') closeAiSettings();
-  });
-})();
-
 /* ══ Init ══ */
 // AI is off by default. Body starts with .ai-disabled (no flash of the AI
-// panel); reveal AI affordances only if the user has opted in. The AI code
-// stays fully wired in — this only toggles UI visibility.
-let aiEnabled = false;
+// panel); reveal AI affordances only if the user has opted in. Settings are
+// bridged through settingsStore (#421) — this module reacts to the store
+// instead of mirroring aiEnabled/usageSignalEnabled in local variables.
+const st = window.appStores.settings;
+st.subscribe((v) => {
+  document.body.classList.toggle('ai-disabled', !(v.settings && v.settings.aiEnabled));
+  updateModelChip(v.llmConfig);
+});
 (async () => {
   try {
-    const s = await sb.getSettings();
-    aiEnabled = !!(s && s.aiEnabled);
-    usageSignalLoaded = !!(s && s.usageSignalEnabled);
+    await st.getState().loadSettings();
+    const s = st.getState().settings;
     if (s && typeof s.idealProfile === 'string') idealProfileId = s.idealProfile;
     customIdealProfiles = window.idealCurves
       ? window.idealCurves.normalizeProfiles(s && s.customIdealProfiles, IP_GRID_FREQS)
       : [];
-  } catch { aiEnabled = false; }
-  document.body.classList.toggle('ai-disabled', !aiEnabled);
+  } catch { /* settings stay at their defaults */ }
+  document.body.classList.toggle('ai-disabled', !(st.getState().settings && st.getState().settings.aiEnabled));
   // License (#54): body starts .not-pro (no flash of Pro UI); reveal Pro
   // surfaces once the stored key verifies offline. Runs before the remaining
-  // boot steps so a throw in them can't leave a licensed user locked.
-  try { applyLicenseState(await sb.getLicense()); } catch { applyLicenseState(null); }
+  // boot steps so a throw in it can't leave a licensed user locked.
+  const lic = window.appStores.licensing;
+  try { await lic.getState().checkLicense(); } catch { /* fall back to free chrome below */ }
+  applyLicenseChrome(lic.getState().licenseStatus || { tier: 'free', status: 'none' });
   initIdealProfileSelect();
   // Show the connected provider in the AI panel chip (#76).
-  try { updateModelChip(await sb.getLlmConfig()); } catch { /* chip keeps its default */ }
+  updateModelChip(st.getState().llmConfig);
 })();
 
 hydrateIcons(document);

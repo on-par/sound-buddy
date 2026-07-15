@@ -36,15 +36,16 @@ test.describe('AI provider settings (#76)', () => {
   });
 
   test.afterEach(async () => {
-    // Close the dialog if a failed assertion left it open.
-    await window.evaluate(() => {
-      (document.getElementById('ai-dialog') as HTMLElement).style.display = 'none';
-    });
+    // Close the dialog if a failed assertion left it open — routes through
+    // the React island's own Escape handler (#421) rather than reaching into
+    // the DOM directly, which would desync it from aiDialogOpen in the store.
+    await window.keyboard.press('Escape');
   });
 
   test('gear opens the dialog on the Ollama tab with detected models', async () => {
     await window.locator('#ai-settings-btn').click();
     await expect(window.locator('#ai-dialog')).toBeVisible();
+    await expect(window.locator('#ai-dialog')).toHaveAttribute('data-react-island', 'settings');
     await expect(window.locator('#ai-tab-btn-ollama')).toHaveClass(/active/);
     await expect(window.locator('#ai-ollama-status')).toContainText('Ollama detected — 2 models');
     await expect(window.locator('#ai-ollama-model option')).toHaveCount(2);
@@ -107,14 +108,17 @@ test.describe('Storage settings (#91)', () => {
   });
 
   test.afterEach(async () => {
-    await window.evaluate(() => {
-      (document.getElementById('storage-dialog') as HTMLElement).style.display = 'none';
-    });
+    // Close the dialog if a failed assertion left it open — routes through
+    // the React island's own Escape handler (#421) rather than reaching into
+    // the DOM directly, which would desync it from storageDialogOpen in the
+    // store.
+    await window.keyboard.press('Escape');
   });
 
   test('the header button opens the dialog with the no-caps copy and disk usage', async () => {
     await window.locator('#storage-settings-btn').click();
     await expect(window.locator('#storage-dialog')).toBeVisible();
+    await expect(window.locator('#storage-dialog')).toHaveAttribute('data-react-island', 'settings');
     await expect(window.locator('#storage-dialog .storage-unlimited')).toHaveText(
       'Unlimited recordings. Stored on your machine.',
     );

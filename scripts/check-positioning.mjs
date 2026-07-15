@@ -18,20 +18,23 @@ const LOCKED = [
   {
     phrase: 'Works with the AI you already have',
     required: [
-      'site/src/pages/index.astro', // landing — trust section
-      'app/renderer/index.html',    // app — AI provider settings
-      'README.md',                  // docs — architecture overview
+      'site/src/pages/index.astro',       // landing — trust section
+      'app/renderer/src/SettingsPanel.tsx', // app — AI provider settings (React island, #421)
+      'README.md',                         // docs — architecture overview
     ],
     forbidden: [
-      { text: 'Works with your existing AI', in: ['site/src/pages/index.astro', 'app/renderer/index.html'] },
+      {
+        text: 'Works with your existing AI',
+        in: ['site/src/pages/index.astro', 'app/renderer/src/SettingsPanel.tsx'],
+      },
     ],
   },
   {
     phrase: 'Your audio never leaves your machine',
     required: [
-      'site/src/pages/index.astro', // landing — privacy callout (headline-level)
-      'app/renderer/index.html',    // app — AI settings privacy note
-      'README.md',                  // docs — top-level positioning
+      'site/src/pages/index.astro',       // landing — privacy callout (headline-level)
+      'app/renderer/src/SettingsPanel.tsx', // app — AI settings privacy note (React island, #421)
+      'README.md',                         // docs — top-level positioning
     ],
     forbidden: [],
   },
@@ -40,9 +43,9 @@ const LOCKED = [
     // so it can't drift via pricing copy or gating implementation.
     phrase: 'Unlimited recordings. Stored on your machine.',
     required: [
-      'site/src/pages/index.astro', // landing — privacy callout
-      'app/renderer/index.html',    // app — Storage settings dialog
-      'README.md',                  // docs — top-level positioning
+      'site/src/pages/index.astro',       // landing — privacy callout
+      'app/renderer/src/SettingsPanel.tsx', // app — Storage settings dialog (React island, #421)
+      'README.md',                         // docs — top-level positioning
     ],
     forbidden: [],
   },

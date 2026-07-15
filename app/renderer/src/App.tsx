@@ -2,6 +2,11 @@
 // Licensed under the Sound Buddy Desktop Application License (app/LICENSE).
 
 import { useLayoutEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
+import LicensePanel from './LicensePanel';
+import SettingsPanel from './SettingsPanel';
+import { useLicensingStore } from './stores/licensingStore';
+import { useSettingsStore } from './stores/settingsStore';
 import {
   PROFILES as AE_PROFILES,
   GRID_FREQS as AE_GRID_FREQS,
@@ -70,12 +75,23 @@ export default function App() {
   // (the banners, #header, #stage, …) rely on being direct flex items, so
   // the markup is set via imperative innerHTML on #root itself rather than
   // returned as JSX — a JSX-rendered wrapper div would break that layout by
-  // inserting an extra flex item. App renders nothing through React; it only
-  // drives #root imperatively, once.
+  // inserting an extra flex item. App drives #root imperatively, once; the
+  // only JSX it returns are portals (below), which insert their children
+  // directly into document.body and never touch #root, so they can't
+  // conflict with the innerHTML wipe above.
   useLayoutEffect(() => {
     if (booted.current) return;
     booted.current = true;
     document.getElementById('root')!.innerHTML = rootMarkup;
+    // Bridge for inline-app.js (#421, epic #395 slice 3): the two mounted
+    // React islands (License, AI/Storage settings) read and act on their
+    // stores through this global rather than duplicating state in module-
+    // local variables. Exposed before the boot-script loop so every script
+    // below can rely on it existing.
+    (window as Window & { appStores?: unknown }).appStores = {
+      licensing: useLicensingStore,
+      settings: useSettingsStore,
+    };
     (window as Window & { audioEngineProfiles?: unknown }).audioEngineProfiles = {
       PROFILES: AE_PROFILES,
       GRID_FREQS: AE_GRID_FREQS,
@@ -93,5 +109,10 @@ export default function App() {
     }
   }, []);
 
-  return null;
+  return (
+    <>
+      {createPortal(<LicensePanel />, document.body)}
+      {createPortal(<SettingsPanel />, document.body)}
+    </>
+  );
 }

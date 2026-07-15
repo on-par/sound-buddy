@@ -63,6 +63,9 @@ test.describe.serial('License gating (#54)', () => {
   test('an invalid key shows clear messaging and locks nothing', async () => {
     await win.locator('#license-badge').click();
     await expect(win.locator('#license-dialog')).toBeVisible();
+    // The dialog is the LicensePanel React island (#421) — same ids/markup,
+    // now owned by React instead of inline-app.js's imperative wiring.
+    await expect(win.locator('#license-dialog')).toHaveAttribute('data-react-island', 'license');
     await win.locator('#license-key-input').fill('SB1.not.real');
     await win.locator('#license-activate-btn').click();
 
