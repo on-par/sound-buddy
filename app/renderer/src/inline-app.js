@@ -29,7 +29,6 @@ const sb = window.soundBuddy;
 let currentMode = 'reportcard';
 let currentAnalysis = null;
 let currentFilePath = null;
-let currentDirPath = null;
 let liveRunning = false;
 let liveWindows = [];
 // A stored report-card summary loaded from the Recent Services list (#147).
@@ -1366,12 +1365,19 @@ function syncSpectrumForMode(mode) {
     title.textContent = SPECTRUM_TITLE.curve;
     if (currentAnalysis) renderSpectrum(currentAnalysis.spectrum);
     else setSpectrumState('empty', { text: 'Follow the build order, then load a recording to grade it' });
+  } else if (mode === 'dir') {
+    // Directory (#293) is roadmap context until batch analysis ships in
+    // v1.1 — mirror the `recent`/`guide` tailored empty state instead of
+    // promising a folder analysis that can't run yet.
+    title.textContent = SPECTRUM_TITLE.curve;
+    if (currentAnalysis) renderSpectrum(currentAnalysis.spectrum);
+    else setSpectrumState('empty', { text: 'Batch analysis is coming in v1.1 — analyze recordings from Report Card' });
   } else {
     // renderSpectrum sets the header to match what it draws (curve vs meters);
     // seed the curve label for the pre-analysis empty state.
     title.textContent = SPECTRUM_TITLE.curve;
     if (currentAnalysis) renderSpectrum(currentAnalysis.spectrum);
-    else setSpectrumState('empty', { text: mode === 'dir' ? 'Analyze the folder to see the spectrum' : 'Load a file to see the spectrum' });
+    else setSpectrumState('empty', { text: 'Load a file to see the spectrum' });
   }
 }
 
@@ -1461,32 +1467,12 @@ async function runFileAnalysis(fp) {
   if (currentMode === 'reportcard') renderReportCard();
 }
 
-/* ══ Directory mode ══ */
-const dirDropzone = document.getElementById('dir-dropzone');
-dirDropzone.addEventListener('click', async () => { const dp = await sb.openDirDialog(); if (dp) loadDir(dp); });
-dirDropzone.addEventListener('dragover', (e) => { e.preventDefault(); dirDropzone.classList.add('dragover'); });
-dirDropzone.addEventListener('dragleave', () => dirDropzone.classList.remove('dragover'));
-dirDropzone.addEventListener('drop', (e) => {
-  e.preventDefault(); dirDropzone.classList.remove('dragover');
-  const files = e.dataTransfer?.files;
-  if (files && files.length > 0) loadDir(files[0].path);
+/* ══ Directory mode (#293): roadmap card only — batch analysis lands in v1.1.
+   The single action routes to the supported path via the real tab click so
+   the transition is identical to the user clicking the Report Card tab. ══ */
+document.getElementById('dir-goto-reportcard').addEventListener('click', () => {
+  document.querySelector('.mode-tab[data-mode="reportcard"]').click();
 });
-
-function loadDir(dp) {
-  currentDirPath = dp;
-  const name = dp.split('/').pop() || dp;
-  dirDropzone.classList.add('loaded');
-  dirDropzone.innerHTML =
-    `<div class="dz-icon" data-icon="folder"></div>
-     <div class="dz-body"><span class="dz-title">${name}</span><span class="dz-meta">${dp}</span></div>`;
-  hydrateIcons(dirDropzone);
-
-  document.getElementById('dir-info').style.display = 'flex';
-  const list = document.getElementById('dir-file-list');
-  list.innerHTML =
-    `<div class="dir-item"><span class="dir-name">Directory loaded</span></div>
-     <div class="dir-item"><span class="dir-name">Supported: wav, aif, aiff, flac, mp3, ogg, m4a</span></div>`;
-}
 
 /* ══ Live mode ══ */
 document.getElementById('window-secs').addEventListener('input', (e) => {
