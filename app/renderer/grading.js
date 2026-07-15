@@ -25,6 +25,12 @@
   // recommendation cutoffs (e.g. the sub-bass / brilliance advice wording) stay
   // inline in computeRecommendations — they shape phrasing, not the grade or the
   // pills, and reconciling them is out of scope for #131.
+  //
+  // TD-013 (#407): this module is the single NORMATIVE judgment — the grade the
+  // user is scored by. packages/audio-engine/src/report.ts's CLI
+  // "[ COMPUTED OBSERVATIONS ]" prose is intentionally non-normative and may use
+  // different wording/thresholds; it must never be treated as the grade, and
+  // thresholds are never copied between the two.
   const CONFIG = {
     // RMS "average level" in dBFS. [acceptableMin, acceptableMax] is the band
     // the grade treats as passing (no deduction); the pill calls it "good".
