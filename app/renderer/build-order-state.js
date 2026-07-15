@@ -151,6 +151,17 @@
 
   var VALID_IDS = STEPS.map(function (s) { return s.id; });
 
+  // "What to watch for during the service" — the closing-moment tips (#374).
+  // Static guidance shown once the whole build order is checked off; deliberately
+  // short and reassuring, not a scored/progression system (that's deferred #20).
+  var WATCH_FOR = [
+    'Keep the lead vocal on top — it should stay the clearest thing in the mix all service.',
+    'Ride faders gently between songs; the band’s energy shifts, your balance should follow.',
+    'Watch low-end buildup as the room fills with people — pull the bass/kick if it gets muddy.',
+    'Listen for feedback when mics move — catch the ring and pull gain before it takes off.',
+    'Trust the build you just did. Make small moves during the service; don’t rebuild mid-song.',
+  ];
+
   function emptyProgress() {
     return { completed: [] };
   }
@@ -256,6 +267,33 @@
       '    </div>';
   }
 
+  // One-line summary of what was accomplished, derived purely from progress.
+  // Uses completedCount/totalSteps so it stays honest if the step list changes.
+  function summaryLine(progress) {
+    var done = completedCount(progress);
+    var total = totalSteps();
+    return 'You built ' + done + ' of ' + total + ' channels, in order — kick through lead vocal, then a full unmute-all pass.';
+  }
+
+  // Markup for the Build Complete closing moment (#374). Returns '' unless the
+  // whole build order is complete, so the renderer can call it unconditionally
+  // and just toggle visibility. escapeHtml is injected — same shared escape used
+  // by stepRowHtml, so there is one escape implementation, not a duplicate.
+  function completeMomentHtml(progress, escapeHtml) {
+    if (!isAllComplete(progress)) return '';
+    var tips = WATCH_FOR
+      .map(function (t) { return '<li>' + escapeHtml(t) + '</li>'; })
+      .join('');
+    return '\n    <div class="bg-complete-head">\n' +
+      '      <span class="bg-complete-title">You’re done.</span>\n' +
+      '      <span class="bg-complete-sub">Every channel is built. Here’s what to watch for during the service.</span>\n' +
+      '    </div>\n' +
+      '    <p class="bg-complete-summary">' + escapeHtml(summaryLine(progress)) + '</p>\n' +
+      '    <span class="section-label">What to watch for</span>\n' +
+      '    <ul class="bg-watch-list">' + tips + '</ul>\n' +
+      '    <button type="button" id="build-complete-share" class="btn btn-secondary sm full" data-icon="clipboard-check">Share your grade</button>';
+  }
+
   var api = {
     STORAGE_KEY: STORAGE_KEY,
     STEPS: STEPS,
@@ -270,6 +308,9 @@
     saveProgress: saveProgress,
     presetLines: presetLines,
     stepRowHtml: stepRowHtml,
+    WATCH_FOR: WATCH_FOR,
+    summaryLine: summaryLine,
+    completeMomentHtml: completeMomentHtml,
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.buildOrderState = api;

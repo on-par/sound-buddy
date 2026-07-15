@@ -2519,6 +2519,11 @@ function renderBuildGuide() {
   const done = window.buildOrderState.completedCount(progress);
   const total = window.buildOrderState.totalSteps();
   document.getElementById('build-guide-progress').textContent = `${done}/${total} done`;
+
+  const complete = document.getElementById('build-complete');
+  complete.innerHTML = window.buildOrderState.completeMomentHtml(progress, escapeHtml);
+  complete.hidden = !window.buildOrderState.isAllComplete(progress);
+  hydrateIcons(complete);
 }
 
 // Event delegation on the list (rows are re-rendered wholesale on every
@@ -2546,6 +2551,14 @@ document.getElementById('build-guide-reset').addEventListener('click', () => {
 // Reuses the existing Report Card tab handler so post-service review is one
 // click away from the guide (#367's "links to the Report Card" criterion).
 document.getElementById('build-guide-review').addEventListener('click', () => {
+  document.querySelector('.mode-tab[data-mode="reportcard"]').click();
+});
+
+// Share prompt (#374): the Report Card is the shareable export, so the closing
+// moment's "Share your grade" jumps to it — same one-click hop as the guide's
+// "Review in Report Card" button.
+document.getElementById('build-complete').addEventListener('click', (e) => {
+  if (!e.target.closest('#build-complete-share')) return;
   document.querySelector('.mode-tab[data-mode="reportcard"]').click();
 });
 
