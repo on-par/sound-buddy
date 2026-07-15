@@ -43,8 +43,8 @@ import {
   main,
   isMainModule,
   logLlmFailure,
-  cleanupChannelFiles,
-} from "./index.js";
+} from "./cli.js";
+import { cleanupChannelFiles } from "./index.js";
 
 const mockAnalysis: AudioAnalysis = {
   filePath: "/tmp/mix.wav",
