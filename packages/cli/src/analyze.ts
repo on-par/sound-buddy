@@ -8,8 +8,10 @@ import {
   compareChannels,
   formatMultiChannelReport,
   cleanupChannelFiles,
+  dominantBandLabel,
+  formatChannelTable,
 } from '@sound-buddy/audio-engine'
-import type { AudioAnalysis, ChannelAnalysis, ChannelFile } from '@sound-buddy/audio-engine'
+import type { ChannelAnalysis, ChannelFile } from '@sound-buddy/audio-engine'
 import { analyzeWithClaude } from '@sound-buddy/ai-analyst'
 import type { SceneDiff, AnalystInput } from '@sound-buddy/shared'
 
@@ -31,59 +33,8 @@ export interface AnalyzeIO {
   exit?: (code: number) => void
 }
 
-const BAND_LABELS: Record<string, string> = {
-  subBass: 'Sub-bass',
-  bass: 'Bass',
-  lowMid: 'Low-mid',
-  mid: 'Mid',
-  highMid: 'High-mid',
-  presence: 'Presence',
-  brilliance: 'Brilliance',
-}
-
-/** Pick the loudest frequency band, mapped to a human label. */
-function dominantBand(bands: AudioAnalysis['spectrum']['bands']): string {
-  const entries = Object.entries(bands) as [string, number][]
-  if (entries.length === 0) return 'mid'
-  const top = entries.reduce((a, b) => (b[1] > a[1] ? b : a))[0]
-  return BAND_LABELS[top] ?? top
-}
-
 function printChannelTable(channelAnalyses: ChannelAnalysis[], log: (s: string) => void): void {
-  const cols = {
-    name: Math.max(10, ...channelAnalyses.map((c) => c.channel.name.length)),
-    rms: 12,
-    peak: 13,
-    dyn: 13,
-  }
-
-  const header = [
-    'Channel'.padEnd(cols.name),
-    'RMS dBFS'.padEnd(cols.rms),
-    'Peak dBFS'.padEnd(cols.peak),
-    'Dyn Range'.padEnd(cols.dyn),
-    'Dominant Band',
-  ].join('  ')
-
-  log(header)
-  log('-'.repeat(header.length))
-
-  for (const { channel, analysis } of channelAnalyses) {
-    const { sox, spectrum } = analysis
-    const rmsStr = isFinite(sox.rmsDbfs) ? sox.rmsDbfs.toFixed(2) + ' dBFS' : '-inf dBFS'
-    const peakStr = isFinite(sox.peakDbfs) ? sox.peakDbfs.toFixed(2) + ' dBFS' : '-inf dBFS'
-    const dynStr = sox.dynamicRangeDb.toFixed(2) + ' dB'
-
-    log(
-      [
-        channel.name.padEnd(cols.name),
-        rmsStr.padEnd(cols.rms),
-        peakStr.padEnd(cols.peak),
-        dynStr.padEnd(cols.dyn),
-        dominantBand(spectrum.bands),
-      ].join('  ')
-    )
-  }
+  for (const line of formatChannelTable(channelAnalyses)) log(line)
 }
 
 function outputJson(
@@ -99,7 +50,7 @@ function outputJson(
       peakDbfs: analysis.sox.peakDbfs,
       dynamicRangeDb: analysis.sox.dynamicRangeDb,
       bands: spectrum.bands,
-      dominantBand: dominantBand(spectrum.bands),
+      dominantBand: dominantBandLabel(spectrum.bands),
       // Whole-file frequency response (PRD 02) and time-sampled snapshots (PRD 03).
       // Optional on SpectrumResult for back-compat, so only emit when present.
       ...(spectrum.curve ? { curve: spectrum.curve } : {}),
@@ -237,7 +188,7 @@ export async function runAnalyze(
           rmsDbfs: analysis.sox.rmsDbfs,
           peakDbfs: analysis.sox.peakDbfs,
           dynamicRangeDb: analysis.sox.dynamicRangeDb,
-          dominantBand: dominantBand(analysis.spectrum.bands),
+          dominantBand: dominantBandLabel(analysis.spectrum.bands),
         })),
       }
     }

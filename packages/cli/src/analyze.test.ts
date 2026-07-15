@@ -7,14 +7,21 @@ vi.mock('@sound-buddy/scene-inspector', () => ({
   diffScenes: vi.fn(),
 }))
 
-vi.mock('@sound-buddy/audio-engine', () => ({
-  analyzeAudio: vi.fn(),
-  extractChannels: vi.fn(),
-  loadChannelFiles: vi.fn(),
-  compareChannels: vi.fn(),
-  formatMultiChannelReport: vi.fn(),
-  cleanupChannelFiles: vi.fn(),
-}))
+vi.mock('@sound-buddy/audio-engine', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@sound-buddy/audio-engine')>()
+  return {
+    analyzeAudio: vi.fn(),
+    extractChannels: vi.fn(),
+    loadChannelFiles: vi.fn(),
+    compareChannels: vi.fn(),
+    formatMultiChannelReport: vi.fn(),
+    cleanupChannelFiles: vi.fn(),
+    // Pure presentation helpers (TD-005) — keep the real implementation so
+    // printChannelTable/outputJson still produce real table rows/labels.
+    dominantBandLabel: actual.dominantBandLabel,
+    formatChannelTable: actual.formatChannelTable,
+  }
+})
 
 vi.mock('@sound-buddy/ai-analyst', () => ({
   analyzeWithClaude: vi.fn(),

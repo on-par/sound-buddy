@@ -1,5 +1,6 @@
 import type { AudioAnalysis, ChannelAnalysis, ChannelComparison, ContentType } from "./types.js";
 import { assessChannelGain, assessGainStructure, gainHealthLabel, GAIN_TARGET_DBFS, GAIN_TOLERANCE_DB } from "./analyze/gain-structure.js";
+import { formatChannelTable } from "./bands.js";
 
 /** Human label for a detected content type (PRD 04). */
 function contentTypeLabel(ct: ContentType): string {
@@ -229,51 +230,7 @@ export function formatMultiChannelReport(channels: ChannelAnalysis[], comparison
   lines.push("");
 
   // Per-channel summary table
-  const colWidths = {
-    name: Math.max(12, ...channels.map((c) => c.channel.name.length)),
-    rms: 10,
-    peak: 11,
-    dyn: 13,
-    dominant: 14,
-  };
-
-  const header = [
-    "Channel".padEnd(colWidths.name),
-    "RMS dBFS".padEnd(colWidths.rms),
-    "Peak dBFS".padEnd(colWidths.peak),
-    "Dyn Range".padEnd(colWidths.dyn),
-    "Dominant Band",
-  ].join("  ");
-
-  const separator = "-".repeat(header.length);
-
-  lines.push(header);
-  lines.push(separator);
-
-  for (const { channel, analysis } of channels) {
-    const { sox, spectrum } = analysis;
-    const bands = spectrum.bands;
-    const bandEntries = Object.entries(bands) as [keyof typeof bands, number][];
-    const dominantBandKey = bandEntries.reduce((a, b) => (b[1] > a[1] ? b : a))[0];
-    const dominantLabels: Record<string, string> = {
-      subBass: "Sub-bass",
-      bass: "Bass",
-      lowMid: "Low-mid",
-      mid: "Mid",
-      highMid: "High-mid",
-      presence: "Presence",
-      brilliance: "Brilliance",
-    };
-    const dominantLabel = dominantLabels[dominantBandKey] ?? dominantBandKey;
-
-    lines.push([
-      channel.name.padEnd(colWidths.name),
-      fmtDb(sox.rmsDbfs).padEnd(colWidths.rms),
-      fmtDb(sox.peakDbfs).padEnd(colWidths.peak),
-      `${fmt(sox.dynamicRangeDb)} dB`.padEnd(colWidths.dyn),
-      dominantLabel,
-    ].join("  "));
-  }
+  for (const line of formatChannelTable(channels)) lines.push(line);
 
   lines.push("");
 

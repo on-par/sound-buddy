@@ -12,6 +12,7 @@
 // and is the single source of truth mirrored by the renderer's inline copy.
 
 import type { ContentType } from "../types.js";
+import { BAND_METADATA } from "../bands.js";
 
 export interface IdealProfile {
   id: string;
@@ -59,15 +60,12 @@ export const GRID_FREQS: number[] = Array.from(
 );
 
 // ── Named bands (mirror the legacy 7-band meters) ─────────────────────────────
-const BANDS: Array<{ band: string; label: string; lo: number; hi: number }> = [
-  { band: "subBass", label: "Sub-bass", lo: 20, hi: 60 },
-  { band: "bass", label: "Bass", lo: 60, hi: 250 },
-  { band: "lowMid", label: "Low-mid", lo: 250, hi: 500 },
-  { band: "mid", label: "Mid", lo: 500, hi: 2000 },
-  { band: "highMid", label: "High-mid", lo: 2000, hi: 4000 },
-  { band: "presence", label: "Presence", lo: 4000, hi: 6000 },
-  { band: "brilliance", label: "Brilliance", lo: 6000, hi: 20000 },
-];
+const BANDS: Array<{ band: string; label: string; lo: number; hi: number }> = BAND_METADATA.map((b) => ({
+  band: b.key,
+  label: b.label,
+  lo: b.lo,
+  hi: b.hi,
+}));
 
 // ── Shape helpers (evaluated on GRID_FREQS to build dbOffsets) ─────────────────
 const log2 = (f: number) => Math.log2(f);
