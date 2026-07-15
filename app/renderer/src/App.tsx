@@ -8,6 +8,7 @@ import {
   compareToProfile as aeCompareToProfile,
   defaultProfileForContentType as aeDefaultProfileForContentType,
 } from '../../../packages/audio-engine/src/profiles/index.js';
+import { findSpectralPeaks } from '../../../packages/audio-engine/src/analyze/spectral.js';
 import * as spectrumDisplay from './spectrum-display';
 import * as reportCard from './report-card';
 import * as liveCapturePanel from './live-capture-panel';
@@ -28,6 +29,7 @@ import buildOrderStateSrc from '../build-order-state.js?raw';
 import passModeStateSrc from '../pass-mode-state.js?raw';
 import phaseDoublingStateSrc from '../phase-doubling-state.js?raw';
 import preflightSrc from '../preflight.js?raw';
+import feedbackRingoutSrc from '../feedback-ringout-state.js?raw';
 import inlineAppSrc from './inline-app.js?raw';
 
 // Boot scripts in their original document order (#303): the 13 UMD helpers
@@ -51,6 +53,7 @@ const BOOT_SCRIPTS = [
   passModeStateSrc,
   phaseDoublingStateSrc,
   preflightSrc,
+  feedbackRingoutSrc,
   inlineAppSrc,
 ];
 
@@ -79,6 +82,7 @@ export default function App() {
       compareToProfile: aeCompareToProfile,
       defaultProfileForContentType: aeDefaultProfileForContentType,
     };
+    (window as Window & { audioEngineSpectral?: unknown }).audioEngineSpectral = { findSpectralPeaks };
     (window as Window & { spectrumDisplay?: unknown }).spectrumDisplay = spectrumDisplay;
     (window as Window & { reportCard?: unknown }).reportCard = reportCard;
     (window as Window & { liveCapturePanel?: unknown }).liveCapturePanel = liveCapturePanel;

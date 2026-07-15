@@ -1136,6 +1136,7 @@ document.querySelectorAll('.mode-tab').forEach(tab => {
       // shows up without an app restart (#147).
       if (mode === 'recent') renderRecentServices();
       if (mode === 'guide') renderBuildGuide();
+      if (mode === 'ringout') renderRingout();
     }
   });
 });
@@ -2553,6 +2554,159 @@ document.getElementById('build-guide-reset').addEventListener('click', () => {
 // click away from the guide (#367's "links to the Report Card" criterion).
 document.getElementById('build-guide-review').addEventListener('click', () => {
   document.querySelector('.mode-tab[data-mode="reportcard"]').click();
+});
+
+/* ══ Feedback Ring-Out Assistant (#366) ══
+   Free, no-console-API wizard: raise gain to just-ringing, capture the
+   ringing frequency (mic or manual), suggest a narrow-Q cut, optionally save
+   a per-mic EQ profile. All wizard/DSP/profile logic lives in the tested
+   window.feedbackRingout module (mirrors window.buildOrderState above); this
+   is thin DOM glue only. */
+const RINGOUT_CAPTURE_WINDOW_SECS = 3; // meter-smoothing window passed to start-live
+const RINGOUT_CAPTURE_MS = 4000; // wall-clock record duration for a ring-out sample
+
+let ringoutStepIndex = 0; // ephemeral — not persisted, unlike profiles
+let ringoutCut = null; // last suggested { freq, gainDb, q }
+
+function ringoutSetStatus(msg) {
+  document.getElementById('ringout-status').textContent = msg || '';
+}
+
+function ringoutDegradeToManual(msg) {
+  ringoutSetStatus(msg);
+  document.getElementById('ringout-manual-input').focus();
+}
+
+function renderRingout() {
+  const ro = window.feedbackRingout;
+  document.getElementById('ringout-step').innerHTML = ro.stepHtml(ringoutStepIndex, escapeHtml);
+  document.getElementById('ringout-prev').disabled = ro.isFirstStep(ringoutStepIndex);
+  document.getElementById('ringout-next').disabled = ro.isLastStep(ringoutStepIndex);
+  document.getElementById('ringout-suggestion').innerHTML = ro.suggestionHtml(ringoutCut, escapeHtml);
+
+  const profiles = ro.loadProfiles(localStorage);
+  document.getElementById('ringout-profile-list').innerHTML =
+    profiles.profiles.map((p) => ro.profileRowHtml(p, escapeHtml)).join('');
+}
+
+document.getElementById('ringout-prev').addEventListener('click', () => {
+  ringoutStepIndex = window.feedbackRingout.clampStep(ringoutStepIndex - 1);
+  renderRingout();
+});
+
+document.getElementById('ringout-next').addEventListener('click', () => {
+  ringoutStepIndex = window.feedbackRingout.clampStep(ringoutStepIndex + 1);
+  renderRingout();
+});
+
+document.getElementById('ringout-manual-apply').addEventListener('click', () => {
+  const ro = window.feedbackRingout;
+  const input = document.getElementById('ringout-manual-input');
+  const freq = ro.parseManualFrequency(input.value);
+  if (freq === null) {
+    ringoutSetStatus(`Enter a frequency between ${ro.MIN_FREQ_HZ} and ${ro.MAX_FREQ_HZ} Hz.`);
+    return;
+  }
+  ringoutCut = ro.suggestCut(freq);
+  ringoutSetStatus('');
+  renderRingout();
+});
+
+function ringoutDelay(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+// Best-effort mic capture: record a few seconds via the existing start-live/
+// stop-live (record mode) pipeline, read the stem it wrote, run it through
+// the existing analyze-file pipeline for a fine spectrum curve, then find the
+// ring with the shared findSpectralPeaks core. Any failure (no mic, no
+// entitlement, empty curve, no clear peak) degrades to manual entry — capture
+// is a convenience, manual entry is the guaranteed path.
+document.getElementById('ringout-capture').addEventListener('click', async () => {
+  const ro = window.feedbackRingout;
+  const btn = document.getElementById('ringout-capture');
+  btn.disabled = true;
+  try {
+    const view = deviceListView(await sb.listDevices());
+    if (!view.devices.length) {
+      ringoutDegradeToManual('No mic detected — enter the frequency manually.');
+      return;
+    }
+
+    ringoutSetStatus('Listening for the ring…');
+    const started = await sb.startLive({
+      windowSecs: RINGOUT_CAPTURE_WINDOW_SECS,
+      llmIntervalSecs: 0,
+      mode: 'record',
+    });
+    if (!started.success) {
+      ringoutDegradeToManual(started.error || 'Live capture unavailable — enter the frequency manually.');
+      return;
+    }
+
+    await ringoutDelay(RINGOUT_CAPTURE_MS);
+    const stopped = await sb.stopLive();
+    if (!stopped || !stopped.sessionDir) {
+      ringoutDegradeToManual('Capture failed — enter the frequency manually.');
+      return;
+    }
+
+    const session = await sb.readSession(stopped.sessionDir);
+    const track = session && session.success && session.manifest.tracks[0];
+    if (!track) {
+      ringoutDegradeToManual('Capture failed — enter the frequency manually.');
+      return;
+    }
+
+    const analysis = await sb.analyzeFile({ filePath: `${stopped.sessionDir}/${track.file}` });
+    const curve = analysis && analysis.success && analysis.data
+      && analysis.data.spectrum && analysis.data.spectrum.curve;
+    if (!curve) {
+      ringoutDegradeToManual('Could not analyze the capture — enter the frequency manually.');
+      return;
+    }
+
+    const ring = ro.identifyRing(curve, window.audioEngineSpectral.findSpectralPeaks);
+    if (!ring) {
+      ringoutDegradeToManual('No clear ring detected — try again or enter the frequency manually.');
+      return;
+    }
+
+    ringoutCut = ro.suggestCut(ring.freq);
+    ringoutSetStatus(`Captured ${ro.suggestionHtml(ringoutCut, escapeHtml).replace(/<[^>]+>/g, '')}.`);
+    renderRingout();
+  } finally {
+    btn.disabled = false;
+  }
+});
+
+document.getElementById('ringout-profile-save').addEventListener('click', () => {
+  const nameInput = document.getElementById('ringout-profile-name');
+  const name = nameInput.value.trim();
+  if (!name || !ringoutCut) return;
+  const ro = window.feedbackRingout;
+  ro.saveProfile(localStorage, ro.loadProfiles(localStorage), { mic: name, cuts: [ringoutCut] });
+  nameInput.value = '';
+  renderRingout();
+});
+
+// Event delegation on the list (re-rendered wholesale on every change) —
+// mirrors the build-guide-list pattern above.
+document.getElementById('ringout-profile-list').addEventListener('click', (e) => {
+  const row = e.target.closest('[data-mic]');
+  if (!row) return;
+  const mic = row.dataset.mic;
+  const ro = window.feedbackRingout;
+  if (e.target.closest('.ro-profile-recall')) {
+    const profile = ro.getProfile(ro.loadProfiles(localStorage), mic);
+    if (profile && profile.cuts[0]) {
+      ringoutCut = profile.cuts[0];
+      renderRingout();
+    }
+  } else if (e.target.closest('.ro-profile-delete')) {
+    ro.deleteProfile(localStorage, ro.loadProfiles(localStorage), mic);
+    renderRingout();
+  }
 });
 
 // Share prompt (#374): the Report Card is the shareable export, so the closing
