@@ -222,7 +222,7 @@ const tiers = [
       <div class="tiers">
         {tiers.map((t) => (
           <div class={`tier card ${t.founding ? 'founding' : ''}`}>
-            {t.founding && <span class="tier-flag tier-flag-founding">Founding &middot; first 300 &middot; through July</span>}
+            {t.founding && <span class="tier-flag">Founding &middot; first 300 &middot; through July</span>}
             <h3>{t.name}</h3>
             <div class="tier-price"><span class="price">{t.price}</span><span class="cadence">{t.cadence}</span></div>
             <p class="tier-blurb">{t.blurb}</p>
@@ -371,7 +371,6 @@ const tiers = [
   .tier { padding: 28px 26px; display: flex; flex-direction: column; gap: 14px; position: relative; }
   .tier.founding { border-color: var(--gold-500); box-shadow: var(--elevation-card), var(--glow-gold); transform: scale(1.03); z-index: 1; }
   .tier-flag { position: absolute; top: -11px; left: 26px; background: var(--gold-500); color: var(--text-on-accent); font: var(--fw-semibold) var(--fs-micro)/1 var(--font-sans); letter-spacing: var(--tracking-caps); text-transform: uppercase; padding: 4px 10px; border-radius: var(--radius-pill); }
-  .tier-flag-founding { background: var(--gold-500); color: var(--text-on-accent); }
   .tier h3 { font: var(--fw-semibold) var(--fs-h2)/1 var(--font-sans); color: var(--text-primary); }
   .tier-price { display: flex; align-items: baseline; gap: 8px; }
   .tier-price .price { font: var(--fw-bold) var(--fs-data-xl)/1 var(--font-sans); color: var(--text-primary); }
