@@ -829,11 +829,16 @@ function liveWorkspaceToolbarHTML() {
   const total = selectedDeviceChannels();
   const used = usedChannelCount();
   const addDisabled = !window.trackWorkspace.addEnabled(used, total, liveRunning);
+  // Advanced controls (new group, collapse/expand, arm-all) stay out of the way
+  // until the user has at least one track — a guided first-use setup (#294)
+  // covers the zero-track state instead, so a brand-new user never sees
+  // power-user chrome with nothing yet to act on.
+  const advanced = window.liveSetupState.showAdvancedControls(channelConfig.length);
   // + New group (#190): names a group via the shared dialog and pushes it onto
   // channelGroups. Disabled mid-capture like every other config control (#38).
   // Arm all / Disarm all + armed count (#191), Record mode only (JS-gated — the
   // workspace sits outside #tab-live, so CSS gating can't reach it).
-  const armHTML = liveMode === 'record'
+  const armHTML = advanced && liveMode === 'record'
     ? `<span class="live-ws-arm">`
       + `<span class="arm-count" id="live-ws-arm-count">${armedCount()} / ${channelConfig.length} armed</span>`
       + `<button type="button" class="ghost-btn sm" id="live-ws-arm-all"${liveRunning ? ' disabled' : ''} title="Arm every track for recording">Arm all</button>`
@@ -842,12 +847,35 @@ function liveWorkspaceToolbarHTML() {
     : '';
   return `<div class="live-meters-toolbar">`
     + `<button type="button" class="ghost-btn" id="live-ws-add"${addDisabled ? ' disabled' : ''}>+ Add track</button>`
-    + `<button type="button" class="ghost-btn" id="live-ws-new-group"${liveRunning ? ' disabled' : ''} title="Create a named channel group">+ New group</button>`
+    + (advanced ? `<button type="button" class="ghost-btn" id="live-ws-new-group"${liveRunning ? ' disabled' : ''} title="Create a named channel group">+ New group</button>` : '')
     + `<span class="cap" id="live-ws-cap">${used} / ${total} used</span>`
-    + `<button type="button" class="ghost-btn" id="live-collapse-all">Collapse all</button>`
-    + `<button type="button" class="ghost-btn" id="live-expand-all">Expand all</button>`
+    + (advanced ? `<button type="button" class="ghost-btn" id="live-collapse-all">Collapse all</button>` : '')
+    + (advanced ? `<button type="button" class="ghost-btn" id="live-expand-all">Expand all</button>` : '')
     + armHTML
     + `</div>`;
+}
+
+// Shared renderer for the guided first-use setup's 3-step list (#294) — used
+// by both the zero-track hero and the post-seed banner. Steps come from the
+// pure window.liveSetupState.setupSteps() so done/active state never drifts
+// from the toolbar gating above.
+function liveSetupStepsHTML(steps) {
+  return steps.map((s, i) =>
+    `<li class="ls-step${s.done ? ' done' : ''}${s.active ? ' active' : ''}">`
+    + `<span class="ls-num">${s.done ? iconSvg('check', 12) : i + 1}</span>`
+    + `<span class="ls-body"><span class="ls-label">${s.label}</span>`
+    + (s.active ? `<span class="ls-hint">${s.hint}</span>` : '')
+    + `</span></li>`).join('');
+}
+
+// View adapter bridging this module's mutable state onto the setupSteps() view
+// shape (#294) — mirrors stripViewAt/livePanelView above.
+function liveSetupStepsView() {
+  return window.liveSetupState.setupSteps({
+    deviceReady: liveDevices.length > 0,
+    trackCount: channelConfig.length,
+    liveMode: liveMode,
+  });
 }
 
 function renderLiveMeters(win) {
@@ -896,16 +924,39 @@ function renderLiveWorkspace() {
   const ipWrap = document.getElementById('ideal-profile-wrap');
   if (ipWrap) ipWrap.style.display = 'none';
 
-  const toolbar = liveWorkspaceToolbarHTML();
-
+  // Guided first-use setup (#294): a zero-track workspace shows an
+  // instructional hero (no toolbar — that's what made this read as a blank
+  // technical canvas) instead of the toolbar + bare empty state. It renders
+  // permanently at zero tracks, guide-completed or not (acceptance criterion),
+  // with live done/active step state.
   if (window.trackWorkspace.isEmpty(channelConfig.length)) {
-    body.innerHTML = toolbar
-      + `<div class="spectrum-empty live-ws-empty">${iconSvg('waveform', 44)}<p>Add your first track to get started</p></div>`;
+    const addDisabled = !window.trackWorkspace.addEnabled(usedChannelCount(), selectedDeviceChannels(), liveRunning);
+    body.innerHTML = `<div class="live-setup-hero">`
+      + iconSvg('radio', 34)
+      + `<h2 class="lsh-title">Set up your live check</h2>`
+      + `<p class="lsh-sub">Three steps from silence to live meters.</p>`
+      + `<ol class="ls-steps">${liveSetupStepsHTML(liveSetupStepsView())}</ol>`
+      + `<button type="button" class="btn btn-primary" id="live-ws-add"${addDisabled ? ' disabled' : ''}>${iconSvg('plus', 16)}Add your first track</button>`
+      + `</div>`;
     return;
   }
 
+  const toolbar = liveWorkspaceToolbarHTML();
+  // First-use banner (#294): the real first-launch shape (loadDevices() seeds
+  // 2 idle tracks automatically) still needs the guide — steps 1-2 read done,
+  // step 3 ("Start monitoring/recording") stays active and points at Start
+  // Capture. It sits above the toolbar; the power workspace beneath stays
+  // fully visible and functional.
+  const banner = window.liveSetupState.shouldShowGuide(window.localStorage)
+    ? `<div class="live-setup-banner" role="note">`
+      + `<span class="lsb-title">Getting set up</span>`
+      + `<ol class="ls-steps compact">${liveSetupStepsHTML(liveSetupStepsView())}</ol>`
+      + `<button type="button" class="ghost-btn sm" id="live-setup-skip">Dismiss</button>`
+      + `</div>`
+    : '';
+
   const idleChannels = channelConfig.map(() => window.trackWorkspace.idleChannel(LIVE_BAND_KEYS));
-  body.innerHTML = toolbar + `<div class="meter-card sb-live-meters idle">${liveMetersHTML(idleChannels, idleChannels.map((c, i) => stripViewAt(i, c)), livePanelView())}</div>`;
+  body.innerHTML = banner + toolbar + `<div class="meter-card sb-live-meters idle">${liveMetersHTML(idleChannels, idleChannels.map((c, i) => stripViewAt(i, c)), livePanelView())}</div>`;
   body.querySelectorAll('.sb-live-meters .live-ch-name').forEach(wireLiveNameEdit);
   applyLiveCollapsed();
 }
@@ -952,6 +1003,9 @@ function applyLiveCollapsed() {
   });
 }
 document.getElementById('spectrum-body').addEventListener('click', (e) => {
+  // Guided first-use setup dismiss (#294): retire the banner permanently
+  // without requiring a first capture.
+  if (e.target.closest('#live-setup-skip')) { window.liveSetupState.markSetupComplete(window.localStorage); renderChannelConfig(); return; }
   // Workspace Add track (#188). Delegated (rather than re-wired per render) so
   // it survives renderLiveWorkspace()/renderLiveMeters() rebuilding the pane.
   if (e.target.closest('#live-ws-add')) { addChannelStrip(); return; }
@@ -1753,6 +1807,13 @@ document.getElementById('live-start-btn').addEventListener('click', async () => 
     document.getElementById('live-status').textContent =
       liveMode === 'record' ? `Recording · meters ${rate}/s` : `Monitoring · meters ${rate}/s`;
     startLiveCountdown(llmIntervalSecs);
+    // Guided first-use setup (#294): starting a capture completes setup
+    // permanently. Remove any rendered banner immediately rather than calling
+    // renderChannelConfig(), which early-outs while liveRunning — the running
+    // board takes the pane over on the first tick anyway.
+    window.liveSetupState.markSetupComplete(window.localStorage);
+    const b = document.querySelector('#spectrum-body .live-setup-banner');
+    if (b) b.remove();
   }
 });
 

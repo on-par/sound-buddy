@@ -23,6 +23,7 @@ import playbackRoutingSrc from '../playback-routing.js?raw';
 import licenseStateSrc from '../license-state.js?raw';
 import upgradeMomentumSrc from '../upgrade-momentum.js?raw';
 import onboardingStateSrc from '../onboarding-state.js?raw';
+import liveSetupStateSrc from '../live-setup-state.js?raw';
 import idealCurvesSrc from '../ideal-curves.js?raw';
 import gradingSrc from '../grading.js?raw';
 import buildOrderStateSrc from '../build-order-state.js?raw';
@@ -33,7 +34,7 @@ import feedbackRingoutSrc from '../feedback-ringout-state.js?raw';
 import gradeOwnStateSrc from '../grade-own-state.js?raw';
 import inlineAppSrc from './inline-app.js?raw';
 
-// Boot scripts in their original document order (#303): the 18 UMD helpers
+// Boot scripts in their original document order (#303): the 19 UMD helpers
 // (each attaches to `window`, see the classic-script comment above their old
 // <script src> tags in index.html), then the inline app script that wires up
 // the UI and reads those globals. Ported verbatim — see the source files.
@@ -48,6 +49,7 @@ const BOOT_SCRIPTS = [
   licenseStateSrc,
   upgradeMomentumSrc,
   onboardingStateSrc,
+  liveSetupStateSrc,
   idealCurvesSrc,
   gradingSrc,
   buildOrderStateSrc,
