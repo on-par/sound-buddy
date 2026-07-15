@@ -94,6 +94,52 @@ jobs:
           python packages/audio-engine/scripts/test_stream.py
           python packages/audio-engine/scripts/test_playback.py
 
+  # Electron e2e (#402, TD-008): the stubbed Playwright specs validate the real
+  # product shell (report card, live capture, entitlement/licensing gating).
+  # They stub the analyze-file/list-devices/start-live IPC, so no
+  # sox/ffprobe/python is needed — the specs that drive a real analysis
+  # (smoke/packaged/packaged-onboarding/onboarding, see MEDIA_SPECS in
+  # playwright.config.ts) are excluded via SB_E2E_STUBBED_ONLY and run only in
+  # scripts/verify.sh locally. Electron needs a display on Linux, hence xvfb.
+  e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      # Electron runtime libraries + a virtual framebuffer. libasound is
+      # libasound2t64 on ubuntu-24.04 (ubuntu-latest); the extra libs cover
+      # Chromium's sandbox/GBM/GTK deps that aren't preinstalled.
+      - name: Install Electron runtime libraries + xvfb
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y xvfb libnss3 libgbm1 libgtk-3-0 libasound2t64
+
+      - name: Install workspace dependencies
+        run: npm ci
+
+      # The Electron main process imports built workspace packages
+      # (@sound-buddy/shared etc.); build them before the app build (CI order
+      # mirrors scripts/verify.sh).
+      - name: Build workspace packages
+        run: npm run build
+
+      - name: Install app dependencies
+        run: npm ci --prefix app
+
+      - name: Install renderer dependencies
+        run: npm ci --prefix app/renderer
+
+      - name: Build app (renderer + electron main -> dist/electron)
+        run: npm run build --prefix app
+
+      - name: Run stubbed Electron e2e (Playwright under xvfb)
+        run: xvfb-run --auto-servernum npm run test:e2e:stubbed --prefix app
+
   # The landing site (site/) is a standalone Astro package, not an npm
   # workspace, so it builds independently: astro check → build → internal-link
   # smoke (guards the footer legal links and download URL).

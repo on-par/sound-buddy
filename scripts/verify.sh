@@ -1,7 +1,10 @@
 #!/usr/bin/env bash
 # Run the full verification suite locally, mirroring .github/workflows/ci.yml
-# (install → build → lint → test) plus the Electron end-to-end suite that CI
-# skips (it needs a real Electron launch, and the smoke run needs sox/ffprobe/python).
+# (install → build → lint → test). CI's `e2e` job (#402) now runs the same
+# stubbed Playwright specs this script's e2e block runs when media tools are
+# missing; this script additionally runs the full suite (real sox/ffprobe/
+# python smoke specs) locally when those tools are present, which CI still
+# skips.
 #
 #   ./scripts/verify.sh            # full: install + build + lint + test + app e2e
 #   ./scripts/verify.sh --no-e2e   # everything except the Electron e2e
@@ -116,10 +119,10 @@ if [[ "$E2E" -eq 1 ]]; then
     done
     if [[ -n "$missing" ]]; then
       echo "==> e2e: smoke SKIPPED (missing:$missing) — running stubbed specs only"
-      # e2e.spec.ts was split by user flow into tests/e2e/*.spec.ts (#225); all
-      # of them stub analyze-file/list-devices/start-live/stop-live like the
-      # original single file did, so the whole directory is still tool-free.
-      ( cd app && npx playwright test tests/e2e/ )
+      # SB_E2E_STUBBED_ONLY (playwright.config.ts MEDIA_SPECS) excludes the
+      # specs that need real sox/ffprobe/python (smoke/packaged/packaged-
+      # onboarding/onboarding); this is the same set CI's e2e job runs (#402).
+      npm run test:e2e:stubbed --prefix app
     else
       echo "==> e2e (full Playwright suite — real sox/ffprobe/python)"
       npm run test:e2e --prefix app

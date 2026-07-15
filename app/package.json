@@ -13,6 +13,7 @@
     "test": "vitest run --passWithNoTests",
     "test:coverage": "vitest run --passWithNoTests --coverage",
     "test:e2e": "npx playwright test --config=playwright.config.ts",
+    "test:e2e:stubbed": "SB_E2E_STUBBED_ONLY=1 npx playwright test --config=playwright.config.ts",
     "dist": "npm run build && electron-builder",
     "dist:dir": "npm run build && electron-builder --dir"
   },
