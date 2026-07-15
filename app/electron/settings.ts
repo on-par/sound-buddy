@@ -17,93 +17,18 @@ import * as path from 'path';
 import { randomUUID } from 'crypto';
 import { app } from 'electron';
 import { logWarn } from './logger';
+import type {
+  AppSettings,
+  CaptureRig,
+  CaptureRigChannel,
+  PreflightBaseline,
+  CustomIdealProfile,
+} from './ipc/api';
 
-/**
- * One strip of a rig's channel config — mirrors the renderer's inline shape
- * (`{ kind, a, b }` at index.html ~896). `a`/`b` are device channel indices;
- * `b` is only meaningful for a stereo pair. `label` is written later by #39.
- */
-export interface CaptureRigChannel {
-  kind: 'mono' | 'stereo';
-  a: number;
-  b: number;
-  label?: string;
-}
-
-/**
- * A saved preflight baseline (#373): the channel assignments + routing snapshot
- * the engineer confirms pre-service, later diffed against the live config to
- * surface drift. Excludes per-strip arming (a capture choice, not routing).
- */
-export interface PreflightBaseline {
-  deviceName: string;
-  strips: Array<{ kind: 'mono' | 'stereo'; a: number; b: number; label?: string }>;
-  /** ISO 8601 capture time, for "baseline saved <when>" UI. */
-  savedAt: string;
-}
-
-/**
- * A saved capture setup ("rig"): a named device + channel + capture config the
- * user can reload instead of re-seeding defaults each launch. The device is
- * matched by {@link deviceName}, not index, so it survives device reordering.
- */
-export interface CaptureRig {
-  /** Stable id, generated on create. */
-  id: string;
-  name: string;
-  /** Input device matched by name (resilient to reordering). */
-  deviceName: string;
-  channelConfig: CaptureRigChannel[];
-  mode: 'monitor' | 'record';
-  recordDir: string;
-  /** Real-time meter cadence (ms). */
-  intervalMs: number;
-  /** Rolling analysis window (seconds). */
-  windowSecs: number;
-  /** LLM analysis cadence (ms); optional until #37 wires the slider. */
-  llmIntervalMs?: number;
-  /** Pre-service checklist baseline (#373); optional until an engineer saves one. */
-  baseline?: PreflightBaseline;
-}
-
-export interface CustomIdealProfile {
-  id: string;
-  label: string;
-  description: string;
-  freqs: number[];
-  dbOffsets: number[];
-  source?: 'manual' | 'analysis';
-  createdAt?: string;
-  updatedAt?: string;
-}
-
-export interface AppSettings {
-  /** Master switch for all AI/LLM analysis. Default false (off). */
-  aiEnabled: boolean;
-  /** Selected ideal EQ profile id (PRD 05). Empty = auto by content type. */
-  idealProfile: string;
-  /** User-authored ideal EQ curves for analysis/report comparison. */
-  customIdealProfiles: CustomIdealProfile[];
-  /**
-   * Folder where recordings, stems, and captured sessions are stored (#91).
-   * Empty = the platform default (`~/Music/Sound Buddy`), resolved by the main
-   * process. There is deliberately no size/count/duration cap on this folder —
-   * storage is the user's own disk (#68). Users who want sync/backup point this
-   * inside a folder their cloud client already syncs (iCloud/Dropbox/Drive).
-   */
-  storageDir: string;
-  /** Saved capture setups. Default []. */
-  rigs: CaptureRig[];
-  /** Id of the currently selected rig, or null when none. Default null. */
-  activeRigId: string | null;
-  /**
-   * Opt-in anonymous usage counts (#145). Default false (off). This is a
-   * persisted preference ONLY — no collection, batching, or network code
-   * exists anywhere in the app, and none may be added until a receiving
-   * endpoint ships in the worker (re-verify before wiring anything).
-   */
-  usageSignalEnabled: boolean;
-}
+// These DTOs are homed in ipc/api.ts (TD-011, #405) — the renderer-safe
+// boundary type both tsc programs share — and re-exported here so existing
+// importers of './settings' don't need to change their import path.
+export type { AppSettings, CaptureRig, CaptureRigChannel, PreflightBaseline, CustomIdealProfile };
 
 const DEFAULTS: AppSettings = {
   aiEnabled: false,

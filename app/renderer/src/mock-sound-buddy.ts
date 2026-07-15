@@ -5,7 +5,16 @@
 // useElectron() be unit-tested without Electron: no window.soundBuddy stub,
 // no preload, no main process.
 
-import type { SoundBuddyApi, AnalysisProgress, UpdateInfo, UpdateStatus } from '../../electron/ipc/api';
+import type {
+  SoundBuddyApi,
+  AnalysisProgress,
+  UpdateInfo,
+  UpdateStatus,
+  AppSettings,
+  PublicLlmConfig,
+  LicenseState,
+  StorageUsage,
+} from '../../electron/ipc/api';
 
 export interface RecordedCall {
   method: keyof SoundBuddyApi;
@@ -18,6 +27,38 @@ export interface MockSoundBuddy {
   // Fires every callback registered via the on* method named `event`.
   emit(event: keyof SoundBuddyApi, ...args: unknown[]): void;
 }
+
+// Valid defaults for the sharpened (no-longer-`unknown`) return types (TD-011,
+// #405) — the renderer program must compile against real shapes, not `undefined`.
+const DEFAULT_APP_SETTINGS: AppSettings = {
+  aiEnabled: false,
+  idealProfile: '',
+  customIdealProfiles: [],
+  storageDir: '',
+  rigs: [],
+  activeRigId: null,
+  usageSignalEnabled: false,
+};
+
+const DEFAULT_PUBLIC_LLM_CONFIG: PublicLlmConfig = {
+  provider: '',
+  model: '',
+  ollamaHost: '',
+  apiBaseUrl: '',
+  hasApiKey: false,
+  apiKeyProvider: '',
+};
+
+const DEFAULT_LICENSE_STATE: LicenseState = { tier: 'free', status: 'none' };
+
+const DEFAULT_STORAGE_USAGE: StorageUsage = {
+  path: '',
+  isDefault: true,
+  defaultPath: '',
+  bytes: 0,
+  human: '0 B',
+  exists: false,
+};
 
 export function createMockSoundBuddy(overrides: Partial<SoundBuddyApi> = {}): MockSoundBuddy {
   const calls: RecordedCall[] = [];
@@ -45,31 +86,31 @@ export function createMockSoundBuddy(overrides: Partial<SoundBuddyApi> = {}): Mo
 
   const defaults = {
     getAppVersion: invoke('getAppVersion', ''),
-    getSettings: invoke('getSettings', undefined),
+    getSettings: invoke('getSettings', DEFAULT_APP_SETTINGS),
     toFileUrl: invoke('toFileUrl', ''),
-    updateSettings: invoke('updateSettings', undefined),
-    getStorageUsage: invoke('getStorageUsage', undefined),
-    getLlmConfig: invoke('getLlmConfig', undefined),
-    saveLlmConfig: invoke('saveLlmConfig', undefined),
+    updateSettings: invoke('updateSettings', DEFAULT_APP_SETTINGS),
+    getStorageUsage: invoke('getStorageUsage', DEFAULT_STORAGE_USAGE),
+    getLlmConfig: invoke('getLlmConfig', DEFAULT_PUBLIC_LLM_CONFIG),
+    saveLlmConfig: invoke('saveLlmConfig', { ok: true, config: DEFAULT_PUBLIC_LLM_CONFIG }),
     detectOllama: invoke('detectOllama', undefined),
     testLlmProvider: invoke('testLlmProvider', undefined),
-    getLicense: invoke('getLicense', undefined),
-    activateLicense: invoke('activateLicense', undefined),
-    removeLicense: invoke('removeLicense', undefined),
-    refreshLicense: invoke('refreshLicense', undefined),
+    getLicense: invoke('getLicense', DEFAULT_LICENSE_STATE),
+    activateLicense: invoke('activateLicense', DEFAULT_LICENSE_STATE),
+    removeLicense: invoke('removeLicense', DEFAULT_LICENSE_STATE),
+    refreshLicense: invoke('refreshLicense', DEFAULT_LICENSE_STATE),
     onOpenLicenseDialog: listen<[]>('onOpenLicenseDialog'),
     openCheckout: invoke('openCheckout', undefined),
     openFeedback: invoke('openFeedback', undefined),
     openCaptureGuide: invoke('openCaptureGuide', undefined),
-    revealDiagnostics: invoke('revealDiagnostics', undefined),
-    listRigs: invoke('listRigs', undefined),
-    saveRig: invoke('saveRig', undefined),
-    deleteRig: invoke('deleteRig', undefined),
-    setActiveRig: invoke('setActiveRig', undefined),
-    analyzeFile: invoke('analyzeFile', undefined),
-    saveAnalysisSummary: invoke('saveAnalysisSummary', undefined),
-    listAnalysisSummaries: invoke('listAnalysisSummaries', undefined),
-    cancelAnalysis: invoke('cancelAnalysis', undefined),
+    revealDiagnostics: invoke('revealDiagnostics', { revealed: true }),
+    listRigs: invoke('listRigs', []),
+    saveRig: invoke('saveRig', DEFAULT_APP_SETTINGS),
+    deleteRig: invoke('deleteRig', DEFAULT_APP_SETTINGS),
+    setActiveRig: invoke('setActiveRig', DEFAULT_APP_SETTINGS),
+    analyzeFile: invoke('analyzeFile', { success: true, data: undefined }),
+    saveAnalysisSummary: invoke('saveAnalysisSummary', { success: true }),
+    listAnalysisSummaries: invoke('listAnalysisSummaries', { success: true, summaries: [] }),
+    cancelAnalysis: invoke('cancelAnalysis', { success: false }),
     onAnalysisProgress: listen<[AnalysisProgress]>('onAnalysisProgress'),
     getDemoAudio: invoke('getDemoAudio', null),
     isOnboardingDisabled: invoke('isOnboardingDisabled', false),
@@ -78,10 +119,10 @@ export function createMockSoundBuddy(overrides: Partial<SoundBuddyApi> = {}): Mo
     openFileDialog: invoke('openFileDialog', null),
     openDirDialog: invoke('openDirDialog', null),
     startLive: invoke('startLive', undefined),
-    stopLive: invoke('stopLive', undefined),
-    revealPath: invoke('revealPath', undefined),
+    stopLive: invoke('stopLive', { success: true, sessionDir: null }),
+    revealPath: invoke('revealPath', { success: true }),
     startPlayback: invoke('startPlayback', undefined),
-    stopPlayback: invoke('stopPlayback', undefined),
+    stopPlayback: invoke('stopPlayback', { success: true }),
     readSession: invoke('readSession', undefined),
     onPlaybackEvent: listen<[unknown]>('onPlaybackEvent'),
     triggerLlmAnalysis: invoke('triggerLlmAnalysis', undefined),
