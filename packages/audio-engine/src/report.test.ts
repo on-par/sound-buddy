@@ -477,3 +477,36 @@ describe("formatMultiChannelReport", () => {
     expect(report).not.toContain("Frequency masking detected:");
   });
 });
+
+describe("buildReport — gain structure (#369)", () => {
+  it("surfaces a cold-channel warning and health score", () => {
+    const report = buildReport(makeAnalysis({ sox: { rmsDbfs: -34 } }));
+    expect(report).toContain("[ GAIN STRUCTURE ]");
+    expect(report).toContain("Health score:");
+    expect(report).toMatch(/below the -18 dBFS target/);
+  });
+
+  it("reports a healthy channel as gain structure healthy", () => {
+    const report = buildReport(makeAnalysis());
+    expect(report).toContain("Gain structure healthy");
+  });
+});
+
+describe("formatMultiChannelReport — gain structure (#369)", () => {
+  it("surfaces the overall score and a cold-channel flag", () => {
+    const report = formatMultiChannelReport(
+      [makeChannel("Cold Ch", 0, { sox: { rmsDbfs: -34 } })],
+      makeComparison(),
+    );
+    expect(report).toContain("Gain structure health:");
+    expect(report).toContain("Overall score:");
+    expect(report).toContain("Cold Ch (cold");
+  });
+});
+
+describe("buildSummaryTable — gain structure (#369)", () => {
+  it("includes a Gain Health row", () => {
+    const table = buildSummaryTable(makeAnalysis());
+    expect(table).toContain("Gain Health");
+  });
+});
