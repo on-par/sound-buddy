@@ -20,6 +20,9 @@ import type { AudioAnalysis } from './analysis';
 export function buildAnalysisReport(analysis: AudioAnalysis): string {
   const { sox, ffprobe, spectrum } = analysis;
   const { bands } = spectrum;
+  // Inline twin of @sound-buddy/audio-engine's canonical fmt (format.ts, #429):
+  // electron main must not statically import the audio-engine ESM — the
+  // packaged .app bundles no node_modules (see narrative-port.ts header).
   const fmt = (n: number, d = 2) => isFinite(n) ? n.toFixed(d) : '-inf';
 
   return [

@@ -2,45 +2,13 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { EventEmitter } from "node:events";
 import type { AudioAnalysis, ChannelAnalysis, ChannelComparison, FrequencyBands } from "./types.js";
 import type { WindowData } from "./stream/types.js";
+import type { NarrativePort, NarrativeResult } from "./narrative/port.js";
+import { SYSTEM_PROMPT, MULTI_CHANNEL_SYSTEM_PROMPT } from "./prompts/index.js";
 
-const {
-  promptMock,
-  subscribeMock,
-  findMock,
-  authCreateMock,
-  modelRegistryCreateMock,
-  sessionManagerInMemoryMock,
-  createAgentSessionMock,
-  requestMock,
-} = vi.hoisted(() => {
-  const promptMock = vi.fn().mockResolvedValue(undefined);
-  const subscribeMock = vi.fn();
-  const findMock = vi.fn((): { id: string } | null => ({ id: "claude-sonnet-4-6" }));
-  const authCreateMock = vi.fn(() => ({}));
-  const modelRegistryCreateMock = vi.fn(() => ({ find: findMock }));
-  const sessionManagerInMemoryMock = vi.fn(() => ({}));
-  const createAgentSessionMock = vi.fn(async () => ({
-    session: { subscribe: subscribeMock, prompt: promptMock },
-  }));
+const { requestMock } = vi.hoisted(() => {
   const requestMock = vi.fn();
-  return {
-    promptMock,
-    subscribeMock,
-    findMock,
-    authCreateMock,
-    modelRegistryCreateMock,
-    sessionManagerInMemoryMock,
-    createAgentSessionMock,
-    requestMock,
-  };
+  return { requestMock };
 });
-
-vi.mock("@earendil-works/pi-coding-agent", () => ({
-  createAgentSession: createAgentSessionMock,
-  AuthStorage: { create: authCreateMock },
-  ModelRegistry: { create: modelRegistryCreateMock },
-  SessionManager: { inMemory: sessionManagerInMemoryMock },
-}));
 
 vi.mock("http", () => ({
   request: requestMock,
@@ -48,7 +16,6 @@ vi.mock("http", () => ({
 }));
 
 import {
-  fmt,
   buildMultiChannelPrompt,
   getEngineerRead,
   analyzeMultiChannel,
@@ -158,38 +125,29 @@ function makeWindow(overrides: Partial<WindowData> = {}): WindowData {
   };
 }
 
+function makePort(opts: { result?: NarrativeResult; deltas?: string[] } = {}) {
+  const result: NarrativeResult = opts.result ?? { ok: true, provider: "anthropic", model: "claude-sonnet-4-6" };
+  const calls: Array<{ system: string; user: string }> = [];
+  const port: NarrativePort = {
+    streamNarrative: vi.fn(async (system: string, user: string, onDelta: (text: string) => void) => {
+      calls.push({ system, user });
+      for (const d of opts.deltas ?? []) onDelta(d);
+      return result;
+    }),
+    listModels: vi.fn(async () => []),
+  };
+  return { port, calls };
+}
+
 let writeSpy: ReturnType<typeof vi.spyOn>;
 
 beforeEach(() => {
   vi.clearAllMocks();
-  findMock.mockImplementation(() => ({ id: "claude-sonnet-4-6" }));
-  createAgentSessionMock.mockImplementation(async () => ({
-    session: { subscribe: subscribeMock, prompt: promptMock },
-  }));
-  promptMock.mockResolvedValue(undefined);
   writeSpy = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
 });
 
 afterEach(() => {
   vi.restoreAllMocks();
-});
-
-describe("fmt", () => {
-  it("formats a normal number to 2 decimals by default", () => {
-    expect(fmt(-12.345)).toBe("-12.35");
-    expect(fmt(0)).toBe("0.00");
-  });
-
-  it("honors the decimals arg", () => {
-    expect(fmt(-12.345, 1)).toBe("-12.3");
-    expect(fmt(5, 0)).toBe("5");
-  });
-
-  it("formats non-finite values as -inf", () => {
-    expect(fmt(-Infinity)).toBe("-inf");
-    expect(fmt(Infinity)).toBe("-inf");
-    expect(fmt(NaN)).toBe("-inf");
-  });
 });
 
 describe("buildMultiChannelPrompt", () => {
@@ -269,104 +227,135 @@ describe("buildMultiChannelPrompt", () => {
   });
 });
 
-describe("session functions", () => {
+describe("NarrativePort-backed functions", () => {
   describe("getEngineerRead", () => {
-    it("prompts with the engineer system prompt and the report data", async () => {
-      await getEngineerRead("REPORT DATA");
-      const prompt = promptMock.mock.calls[0][0] as string;
-      expect(prompt).toContain("professional audio engineer with 20+ years");
-      expect(prompt).toContain("REPORT DATA");
-    });
+    it("golden: sends the exact pre-refactor prompt string, split into (system, user)", async () => {
+      const { port, calls } = makePort();
+      await getEngineerRead("REPORT DATA", port);
 
-    it("errors when the model is not found in the registry", async () => {
-      findMock.mockReturnValueOnce(null);
-      await expect(getEngineerRead("x")).rejects.toThrow(
-        "Model claude-sonnet-4-6 not found in registry",
-      );
-    });
-
-    it("wires createSession deps together", async () => {
-      await getEngineerRead("x");
-      expect(authCreateMock).toHaveBeenCalled();
-      expect(modelRegistryCreateMock).toHaveBeenCalledWith(authCreateMock.mock.results[0]?.value);
-      expect(sessionManagerInMemoryMock).toHaveBeenCalled();
-      expect(createAgentSessionMock).toHaveBeenCalledWith(
-        expect.objectContaining({ model: findMock.mock.results[0]?.value }),
-      );
-    });
-
-    it("streams text_delta events to stdout and writes a trailing newline", async () => {
-      const promise = getEngineerRead("x");
-      await new Promise((r) => setImmediate(r));
-      const cb = subscribeMock.mock.calls[0][0] as (e: unknown) => void;
-      cb({ type: "text_delta", text: "hello" });
-      cb({ type: "other", text: "x" });
-      cb({ type: "text_delta", text: 42 });
-      await promise;
-
-      expect(writeSpy).toHaveBeenCalledWith("hello");
-      expect(writeSpy).not.toHaveBeenCalledWith("x");
-      expect(writeSpy).not.toHaveBeenCalledWith(42);
-      expect(writeSpy).toHaveBeenCalledWith("\n");
+      expect(calls).toHaveLength(1);
+      const joined = `${calls[0].system}\n\n${calls[0].user}`;
+      expect(joined).toBe(`${SYSTEM_PROMPT}\n\nHere is the acoustic measurement data:\n\nREPORT DATA`);
+      expect(joined).toContain("professional audio engineer with 20+ years");
+      expect(joined).toContain("REPORT DATA");
     });
   });
 
   describe("analyzeMultiChannel", () => {
-    it("prompts with the multi-channel system prompt, channel names, and the built prompt body", async () => {
+    it("golden: system/user match the multi-channel system prompt and built prompt body", async () => {
       const mix = makeAnalysis();
       const channels = [makeChannel("Kick", 0), makeChannel("Vox", 1)];
       const comparison = makeComparison();
+      const { port, calls } = makePort();
 
-      await analyzeMultiChannel(mix, channels, comparison);
+      await analyzeMultiChannel(mix, channels, comparison, port);
 
-      const prompt = promptMock.mock.calls[0][0] as string;
-      expect(prompt).toContain("professional mixing engineer");
-      expect(prompt).toContain("Kick");
-      expect(prompt).toContain("Vox");
-      expect(prompt).toContain(buildMultiChannelPrompt(mix, channels, comparison));
-
-      const cb = subscribeMock.mock.calls[0][0] as (e: unknown) => void;
-      cb({ type: "text_delta", text: "hello" });
-      expect(writeSpy).toHaveBeenCalledWith("hello");
+      expect(calls).toHaveLength(1);
+      expect(calls[0].system).toBe(MULTI_CHANNEL_SYSTEM_PROMPT);
+      const built = buildMultiChannelPrompt(mix, channels, comparison);
+      expect(calls[0].user).toBe(built);
+      const joined = `${calls[0].system}\n\n${calls[0].user}`;
+      expect(joined).toBe(`${MULTI_CHANNEL_SYSTEM_PROMPT}\n\n${built}`);
     });
   });
 
   describe("analyzeStream", () => {
-    it("computes windowSecs from the first/last window timestamps across multiple windows", async () => {
+    it("golden: computes windowSecs and formats windows into the user message", async () => {
       const windows = [makeWindow({ window: 1, ts: 1000 }), makeWindow({ window: 2, ts: 1003 })];
-      await analyzeStream(windows, ["Kick"]);
+      const { port, calls } = makePort();
 
-      const prompt = promptMock.mock.calls[0][0] as string;
-      expect(prompt).toContain("2 consecutive 3.0-second analysis windows");
-      expect(prompt).toContain("Window 1 (t=1970-01-01T00:16:40.000Z)");
-      expect(prompt).toContain("Kick: rms=-18.5dBFS peak=-3.2dBFS clip=false centroid=151Hz");
-      expect(prompt).toContain("[bass:-12.3dB]");
+      await analyzeStream(windows, ["Kick"], port);
 
-      const cb = subscribeMock.mock.calls[0][0] as (e: unknown) => void;
-      cb({ type: "text_delta", text: "hello" });
-      expect(writeSpy).toHaveBeenCalledWith("hello");
+      expect(calls).toHaveLength(1);
+      expect(calls[0].system).toContain("2 consecutive 3.0-second analysis windows");
+      expect(calls[0].system.startsWith("You are a professional audio engineer monitoring a live mix from a Midas M32R console.")).toBe(true);
+      expect(calls[0].user.startsWith("Live mix data:\n\n")).toBe(true);
+      expect(calls[0].user).toContain("Window 1 (t=1970-01-01T00:16:40.000Z)");
+      expect(calls[0].user).toContain("Kick: rms=-18.5dBFS peak=-3.2dBFS clip=false centroid=151Hz");
+      expect(calls[0].user).toContain("[bass:-12.3dB]");
     });
 
     it("falls back to a 3-second window when only one window is given", async () => {
       const windows = [makeWindow({ window: 1, ts: 1000 })];
-      await analyzeStream(windows, ["Kick"]);
+      const { port, calls } = makePort();
 
-      const prompt = promptMock.mock.calls[0][0] as string;
-      expect(prompt).toContain("1 consecutive 3.0-second analysis windows");
+      await analyzeStream(windows, ["Kick"], port);
+
+      expect(calls[0].system).toContain("1 consecutive 3.0-second analysis windows");
     });
 
     it("includes a masking line only when the window has masking pairs", async () => {
       const withMasking = [
         makeWindow({ masking: [{ band: "bass", channelA: "Kick", channelB: "Bass", diffDb: 2.5 }] }),
       ];
-      await analyzeStream(withMasking, ["Kick"]);
-      expect((promptMock.mock.calls[0][0] as string)).toContain("masking: bass:Kick↔Bass(2.5dB)");
-
-      promptMock.mockClear();
+      const { port: portWithMasking, calls: callsWithMasking } = makePort();
+      await analyzeStream(withMasking, ["Kick"], portWithMasking);
+      expect(callsWithMasking[0].user).toContain("masking: bass:Kick↔Bass(2.5dB)");
 
       const withoutMasking = [makeWindow({ masking: [] })];
-      await analyzeStream(withoutMasking, ["Kick"]);
-      expect((promptMock.mock.calls[0][0] as string)).not.toContain("masking:");
+      const { port: portWithoutMasking, calls: callsWithoutMasking } = makePort();
+      await analyzeStream(withoutMasking, ["Kick"], portWithoutMasking);
+      expect(callsWithoutMasking[0].user).not.toContain("masking:");
+    });
+  });
+
+  describe("streaming to stdout", () => {
+    it("forwards deltas to stdout and writes a trailing newline", async () => {
+      const { port } = makePort({ deltas: ["hello", " world"] });
+
+      await getEngineerRead("x", port);
+
+      expect(writeSpy).toHaveBeenNthCalledWith(1, "hello");
+      expect(writeSpy).toHaveBeenNthCalledWith(2, " world");
+      expect(writeSpy).toHaveBeenNthCalledWith(3, "\n");
+    });
+  });
+
+  describe("failure throws, no trailing newline", () => {
+    it("getEngineerRead rejects with the port's reason and never writes a trailing newline", async () => {
+      const { port } = makePort({ result: { ok: false, reason: "Model anthropic/claude-sonnet-4-6 not found in the Pi model registry." } });
+
+      await expect(getEngineerRead("x", port)).rejects.toThrow("not found");
+      expect(writeSpy).not.toHaveBeenCalledWith("\n");
+    });
+
+    it("analyzeMultiChannel rejects with the port's reason", async () => {
+      const { port } = makePort({ result: { ok: false, reason: "boom" } });
+      await expect(
+        analyzeMultiChannel(makeAnalysis(), [], makeComparison(), port),
+      ).rejects.toThrow("boom");
+    });
+
+    it("analyzeStream rejects with the port's reason", async () => {
+      const { port } = makePort({ result: { ok: false, reason: "boom" } });
+      await expect(analyzeStream([makeWindow()], ["Kick"], port)).rejects.toThrow("boom");
+    });
+  });
+
+  describe("default port", () => {
+    it("constructs the unified PiNarrativeAdapter and streams through it when no port is given", async () => {
+      vi.resetModules();
+      const streamNarrativeMock = vi.fn(async (_system: string, _user: string, onDelta: (text: string) => void) => {
+        onDelta("hi");
+        return { ok: true as const, provider: "anthropic", model: "claude-sonnet-4-6" };
+      });
+      vi.doMock("./narrative/pi-adapter.js", () => ({
+        PiNarrativeAdapter: vi.fn().mockImplementation(function (this: unknown) {
+          return {
+            streamNarrative: streamNarrativeMock,
+            listModels: vi.fn(async () => []),
+          };
+        }),
+      }));
+
+      const { getEngineerRead: getEngineerReadFresh } = await import("./engineer.js");
+      await getEngineerReadFresh("x");
+
+      expect(streamNarrativeMock).toHaveBeenCalledTimes(1);
+      expect(writeSpy).toHaveBeenCalledWith("hi");
+
+      vi.doUnmock("./narrative/pi-adapter.js");
+      vi.resetModules();
     });
   });
 });
