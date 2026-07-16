@@ -26,6 +26,7 @@ import {
   fmtClock,
   bandBreakdownHTML,
   reportCardFramesView,
+  reportDeltaView,
   type PillTone,
   type ProfileComparison,
   type BandDiffApi,
@@ -559,5 +560,54 @@ describe('fmtClock', () => {
     expect(fmtClock(-1)).toBe('0:00');
     expect(fmtClock(NaN)).toBe('0:00');
     expect(fmtClock(Infinity)).toBe('0:00');
+  });
+});
+
+describe('reportDeltaView', () => {
+  it('reports an improved score with a letter change', () => {
+    const view = reportDeltaView({ score: 92, gradeLetter: 'A' }, { score: 83, gradeLetter: 'B' });
+    expect(view).toEqual({ points: 9, direction: 'improved', text: '+9 pts vs. last service (B → A)' });
+  });
+
+  it('reports a regressed score with a letter change', () => {
+    const view = reportDeltaView({ score: 79, gradeLetter: 'B' }, { score: 83, gradeLetter: 'A' });
+    expect(view).toMatchObject({ points: -4, direction: 'regressed' });
+    expect(view?.text).toBe('-4 pts vs. last service (A → B)');
+  });
+
+  it('reports no change for an identical score and letter', () => {
+    const view = reportDeltaView({ score: 83, gradeLetter: 'B' }, { score: 83, gradeLetter: 'B' });
+    expect(view).toEqual({ points: 0, direction: 'unchanged', text: 'No change vs. last service (B)' });
+  });
+
+  it('shows the numeric change when the letter is the same (AC3)', () => {
+    const view = reportDeltaView({ score: 86, gradeLetter: 'B' }, { score: 83, gradeLetter: 'B' });
+    expect(view).toEqual({ points: 3, direction: 'improved', text: '+3 pts vs. last service (still B)' });
+  });
+
+  it('uses the singular "pt" unit for a one-point change', () => {
+    const view = reportDeltaView({ score: 84, gradeLetter: 'B' }, { score: 83, gradeLetter: 'B' });
+    expect(view).toEqual({ points: 1, direction: 'improved', text: '+1 pt vs. last service (still B)' });
+  });
+
+  it('returns null when there is no previous summary (first-ever analysis, AC2)', () => {
+    expect(reportDeltaView({ score: 92, gradeLetter: 'A' }, null)).toBeNull();
+    expect(reportDeltaView({ score: 92, gradeLetter: 'A' }, undefined)).toBeNull();
+  });
+
+  it('returns null when current is nullish', () => {
+    expect(reportDeltaView(null, { score: 83, gradeLetter: 'B' })).toBeNull();
+    expect(reportDeltaView(undefined, { score: 83, gradeLetter: 'B' })).toBeNull();
+  });
+
+  it('defends against a malformed previous summary read off disk', () => {
+    expect(reportDeltaView({ score: 92, gradeLetter: 'A' }, { score: NaN, gradeLetter: 'B' })).toBeNull();
+    expect(reportDeltaView({ score: 92, gradeLetter: 'A' }, { score: 83, gradeLetter: '' })).toBeNull();
+    expect(reportDeltaView({ score: 92, gradeLetter: 'A' }, { score: 83, gradeLetter: undefined as unknown as string })).toBeNull();
+  });
+
+  it('defends against a malformed current value', () => {
+    expect(reportDeltaView({ score: NaN, gradeLetter: 'A' }, { score: 83, gradeLetter: 'B' })).toBeNull();
+    expect(reportDeltaView({ score: 92, gradeLetter: '' }, { score: 83, gradeLetter: 'B' })).toBeNull();
   });
 });

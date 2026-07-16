@@ -82,6 +82,7 @@ afterEach(() => {
     selectedFilePath: null,
     historySummary: null,
     liveSource: null,
+    prevSummary: null,
   });
   useSpectrumStore.setState({
     spectrumData: null,
@@ -233,5 +234,63 @@ describe('ReportCardIsland', () => {
 
     expect(html).toContain('rc-profile-section');
     expect(html).toContain('Flat / neutral');
+  });
+
+  it('shows the "vs. last time" delta on the fresh file-analysis card when prevSummary is set (#259)', () => {
+    useAnalysisStore.setState({
+      currentAnalysis: ANALYSIS,
+      prevSummary: { score: 83, gradeLetter: 'B' },
+    });
+
+    const html = renderMarkup();
+
+    expect(html).toContain('id="rc-delta"');
+    expect(html).toContain('+9 pts vs. last service (B → A)');
+  });
+
+  it('omits the delta on a first-ever analysis (no prevSummary, AC2)', () => {
+    useAnalysisStore.setState({ currentAnalysis: ANALYSIS, prevSummary: null });
+
+    const html = renderMarkup();
+
+    expect(html).not.toContain('rc-delta');
+  });
+
+  it('shows the delta on the frozen history card from its stored score/letter', () => {
+    useAnalysisStore.setState({
+      historySummary: {
+        sourceFilename: 'sermon.wav',
+        date: '2026-07-01T09:00:00.000Z',
+        gradeLetter: 'A',
+        score: 92,
+        recordingType: 'Music',
+        topFixes: [],
+      },
+      prevSummary: { score: 83, gradeLetter: 'B' },
+    });
+
+    const html = renderMarkup();
+
+    expect(html).toContain('id="rc-delta"');
+    expect(html).toContain('+9 pts vs. last service (B → A)');
+  });
+
+  it('never shows a delta on a live-capture card, even with prevSummary set (source-type gate)', () => {
+    useAnalysisStore.setState({
+      liveSource: {
+        filename: 'Live capture — Main (window #1)',
+        rms: -18,
+        peak: -6,
+        dynamicRange: null,
+        clipping: false,
+        centroid: 1200,
+        bands: { subBass: -20, bass: -18, lowMid: -22, mid: -16, highMid: -25, presence: -30, brilliance: -35 },
+      },
+      prevSummary: { score: 83, gradeLetter: 'B' },
+    });
+
+    const html = renderMarkup();
+
+    expect(html).not.toContain('rc-delta');
   });
 });

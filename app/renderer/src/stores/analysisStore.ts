@@ -25,6 +25,9 @@ export interface AnalysisState {
   // getReportCardSource()'s live fallback), written by the still-inline live
   // capture code as windows arrive/clear (#208, TD-001 slice 4).
   liveSource: unknown | null;
+  // The persisted summary immediately preceding the card currently shown —
+  // feeds the "vs. last time" delta, #259.
+  prevSummary: unknown | null;
   startAnalysis(filePath: string): Promise<void>;
   cancelAnalysis(): Promise<void>;
   bindIpcEvents(): void;
@@ -32,6 +35,7 @@ export interface AnalysisState {
   clearAnalysis(): void;
   setHistorySummary(summary: unknown | null): void;
   setLiveSource(source: unknown | null): void;
+  setPrevSummary(summary: unknown | null): void;
   // The sb.onAnalysisResult 'stats' push path (inline-app.js, #208) — a
   // real-time re-analysis result pushed from the main process outside the
   // normal startAnalysis round trip.
@@ -48,6 +52,7 @@ export function createAnalysisStore(getApi: () => AnalysisApi) {
     selectedFilePath: null,
     historySummary: null,
     liveSource: null,
+    prevSummary: null,
     async startAnalysis(filePath) {
       set({ isAnalyzing: true, status: 'analyzing', analysisProgress: null, analysisError: null });
       try {
@@ -86,13 +91,16 @@ export function createAnalysisStore(getApi: () => AnalysisApi) {
       set({ selectedFilePath: filePath });
     },
     clearAnalysis() {
-      set({ currentAnalysis: null, selectedFilePath: null, status: 'idle' });
+      set({ currentAnalysis: null, selectedFilePath: null, status: 'idle', prevSummary: null });
     },
     setHistorySummary(summary) {
       set({ historySummary: summary });
     },
     setLiveSource(source) {
       set({ liveSource: source });
+    },
+    setPrevSummary(summary) {
+      set({ prevSummary: summary });
     },
     setAnalysisFromEvent(data) {
       const evt = data as { type?: string; data?: unknown } | null;

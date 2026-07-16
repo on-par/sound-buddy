@@ -28,12 +28,14 @@ import {
   reportCardSourceFromAnalysis,
   contentTypeView,
   reportCardFramesView,
+  reportDeltaView,
   type ReportCardSource,
   type ProfileComparison,
   type RecordingType,
   type GradeExplanation,
   type BandDiffApi,
   type GradingPillApi,
+  type ReportDeltaView,
 } from './report-card';
 import type { SpectrumCurve } from './spectrum-display';
 
@@ -102,7 +104,7 @@ interface HistorySummary {
 // straight from the record: they were frozen at analysis time. Verbatim port
 // of renderReportCardFromHistory (inline-app.js:2788–2831), minus the toolbar
 // + upgrade-momentum side effects (chrome sync, still inline).
-function HistoryCard({ summary }: { summary: HistorySummary }) {
+function HistoryCard({ summary, delta }: { summary: HistorySummary; delta?: ReportDeltaView | null }) {
   return (
     <div id="rc-content">
       <div className="rc-header">
@@ -116,6 +118,9 @@ function HistoryCard({ summary }: { summary: HistorySummary }) {
       <div className="rc-score">
         <div id="rc-ring" dangerouslySetInnerHTML={{ __html: gradeRingHTML(summary.gradeLetter, summary.score) }} />
         <div id="rc-rec-type" className="rc-rectype pill">{summary.recordingType}</div>
+        {delta && (
+          <div id="rc-delta" className={`rc-delta ${delta.direction}`}>{delta.text}</div>
+        )}
       </div>
       <div className="rc-section">
         <h2>Recommendations</h2>
@@ -214,13 +219,14 @@ function hasUsableCurve(curve: unknown): curve is SpectrumCurve {
 }
 
 export default function ReportCardIsland() {
-  const { currentAnalysis, selectedFilePath, historySummary, liveSource, status } = useStoreShallow(
+  const { currentAnalysis, selectedFilePath, historySummary, liveSource, prevSummary, status } = useStoreShallow(
     useAnalysisStore,
     (s) => ({
       currentAnalysis: s.currentAnalysis,
       selectedFilePath: s.selectedFilePath,
       historySummary: s.historySummary,
       liveSource: s.liveSource,
+      prevSummary: s.prevSummary,
       status: s.status,
     })
   );
@@ -260,6 +266,15 @@ export default function ReportCardIsland() {
     feedbackCallout = getFeedbackRingout().reportCardCallout(feedbackPeak);
   }
 
+  // "vs. last time" delta (#259) — only for the fresh file-analysis card and
+  // the newest history card; never for live capture (source-type gate).
+  const prev = prevSummary as { score: number; gradeLetter: string } | null;
+  const delta = currentAnalysis && grade
+    ? reportDeltaView({ score: grade.score, gradeLetter: grade.letter }, prev)
+    : isHistoryCard && historySummary
+      ? reportDeltaView(historySummary as HistorySummary, prev)
+      : null;
+
   // Seeds the inline phase-doubling/feedback-ringout dialogs, replacing
   // inline-app.js's rcFeedbackPeak/rcPhaseSignal module vars (architecture
   // decision 5 of the issue spec) — runs after every render so the dialogs
@@ -279,7 +294,7 @@ export default function ReportCardIsland() {
     <>
       <EmptyState visible={showEmpty} selectedFilePath={selectedFilePath} status={status} />
       {isHistoryCard && historySummary ? (
-        <HistoryCard summary={historySummary as HistorySummary} />
+        <HistoryCard summary={historySummary as HistorySummary} delta={delta} />
       ) : source && grade ? (
         <ReportCard
           analysis={source}
@@ -291,6 +306,7 @@ export default function ReportCardIsland() {
           contentType={contentTypeView(source.contentType, source.segments)}
           bandDiffApi={getGrading()}
           frames={reportCardFramesView(source.frames)}
+          delta={delta}
           phaseDoubling={{
             detected: phaseSignal,
             title: phaseSignal
