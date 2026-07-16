@@ -18,13 +18,18 @@
     { "pattern": "soundbuddy.online/api/license", "zone_name": "soundbuddy.online" },
     // Sub-path of /api/license — the exact-match pattern above does NOT cover it.
     { "pattern": "soundbuddy.online/api/license/refresh", "zone_name": "soundbuddy.online" },
-    { "pattern": "soundbuddy.online/activate", "zone_name": "soundbuddy.online" }
+    { "pattern": "soundbuddy.online/activate", "zone_name": "soundbuddy.online" },
+    // Exact-match pattern — does not cover sub-paths of /api/ingest.
+    { "pattern": "soundbuddy.online/api/ingest", "zone_name": "soundbuddy.online" }
   ],
 
   // Bindings later stories fill. The KV namespace `id` is set out-of-band (H4);
   // the placeholder below is intentionally not a real namespace id.
   "kv_namespaces": [
-    { "binding": "LICENSE_KV", "id": "REPLACE_WITH_LICENSE_KV_ID" }
+    { "binding": "LICENSE_KV", "id": "REPLACE_WITH_LICENSE_KV_ID" },
+    // Holds ingested feedback/crash/telemetry events (#475); real id wired
+    // out-of-band at deploy time, same convention as LICENSE_KV above.
+    { "binding": "EVENTS_KV", "id": "REPLACE_WITH_EVENTS_KV_ID" }
   ],
 
   // Non-secret configuration. FOUNDING_CAP is the founding-license count cap;
