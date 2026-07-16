@@ -10,12 +10,17 @@ import { useLicensingStore } from './licensingStore';
 import { useSettingsStore } from './settingsStore';
 import { useAnalysisStore } from './analysisStore';
 import { useSpectrumStore } from './spectrumStore';
+import { useNarrativeStore } from './narrativeStore';
+import { useLiveCaptureStore } from './liveCaptureStore';
+import { liveReportCardSource } from '../live-capture-panel';
 
 export interface RendererStores {
   licensing: typeof useLicensingStore;
   settings: typeof useSettingsStore;
   analysis: typeof useAnalysisStore;
   spectrum: typeof useSpectrumStore;
+  narrative: typeof useNarrativeStore;
+  liveCapture: typeof useLiveCaptureStore;
 }
 
 declare global {
@@ -41,6 +46,8 @@ export function installStoreBridge(
     settings: useSettingsStore,
     analysis: useAnalysisStore,
     spectrum: useSpectrumStore,
+    narrative: useNarrativeStore,
+    liveCapture: useLiveCaptureStore,
   };
   target.rendererStores = stores;
 
@@ -51,6 +58,20 @@ export function installStoreBridge(
         useSpectrumStore.getState().setSpectrumFromAnalysis(state.currentAnalysis);
       }
     });
+    // Replaces inline-app.js's syncLiveSource(): the live-capture card's
+    // report-card source is derived from liveCaptureStore.liveWindows
+    // wherever that buffer changes (TD-001 slice 5, #423).
+    useLiveCaptureStore.subscribe((state, prevState) => {
+      if (state.liveWindows !== prevState.liveWindows) {
+        useAnalysisStore.getState().setLiveSource(liveReportCardSource(state.liveWindows));
+      }
+    });
+    // bindIpcEvents() registers this module's sb.onLlmDelta/onLlmDone
+    // (narrative) and sb.onLiveEvent (liveCapture) listeners exactly once —
+    // guarded by the same crossStoreSubscriptionInstalled flag so a second
+    // App mount can't double-bind them (TD-001 slice 5, #423).
+    useNarrativeStore.getState().bindIpcEvents();
+    useLiveCaptureStore.getState().bindIpcEvents();
   }
 
   return stores;

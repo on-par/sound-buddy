@@ -13,6 +13,7 @@ afterEach(() => {
     streamError: null,
     provider: null,
     model: null,
+    suppressDeltas: false,
   });
 });
 
@@ -129,6 +130,48 @@ describe('createNarrativeStore', () => {
 
     expect(store.getState().isStreaming).toBe(false);
     expect(store.getState().streamError).toBe('llm exploded');
+  });
+
+  it('an unsolicited delta while idle starts an implicit stream and renders (#423)', () => {
+    const mock = createMockSoundBuddy();
+    const store = createNarrativeStore(() => mock.api);
+    store.getState().bindIpcEvents();
+
+    expect(store.getState().isStreaming).toBe(false);
+    mock.emit('onLlmDelta', 'Auto-triggered ');
+    expect(store.getState().isStreaming).toBe(true);
+    expect(store.getState().narrativeText).toBe('Auto-triggered ');
+
+    mock.emit('onLlmDelta', 'analysis');
+    expect(store.getState().narrativeText).toBe('Auto-triggered analysis');
+
+    mock.emit('onLlmDone');
+    expect(store.getState().isStreaming).toBe(false);
+  });
+
+  it('cancelNarrative suppresses the in-flight run\'s unsolicited deltas until onLlmDone', async () => {
+    const mock = createMockSoundBuddy();
+    const store = createNarrativeStore(() => mock.api);
+    store.getState().bindIpcEvents();
+
+    await store.getState().startNarrative({ mode: 'file', analysis: {} });
+    mock.emit('onLlmDelta', 'partial');
+    store.getState().cancelNarrative();
+    expect(store.getState().isStreaming).toBe(false);
+
+    // A late delta from the cancelled run must not restart an implicit
+    // stream while suppressed.
+    mock.emit('onLlmDelta', 'late');
+    expect(store.getState().isStreaming).toBe(false);
+    expect(store.getState().narrativeText).toBe('partial');
+
+    // Once the cancelled run's onLlmDone lands, suppression clears — the
+    // NEXT unsolicited delta (e.g. an auto-triggered live re-analysis) is
+    // free to start a fresh implicit stream.
+    mock.emit('onLlmDone');
+    mock.emit('onLlmDelta', 'fresh');
+    expect(store.getState().isStreaming).toBe(true);
+    expect(store.getState().narrativeText).toBe('fresh');
   });
 
   it('binds the default hook to the window preload bridge', async () => {
