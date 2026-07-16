@@ -58,6 +58,45 @@
         <div class="status-copy" data-status-copy>Choose a stereo file or start a live check.</div>
       </div>
 
+      <article class="live-meter-card card" data-live-meter>
+        <div class="live-meter-head">
+          <span class="meter-label">Live level</span>
+          <div class="live-meter-controls">
+            <select id="weighting-select" class="browser-select browser-select-compact">
+              <option value="A" selected>A-weighted</option>
+              <option value="C">C-weighted</option>
+              <option value="Z">Z (unweighted)</option>
+            </select>
+            <select id="response-select" class="browser-select browser-select-compact">
+              <option value="slow" selected>Slow — 1 s</option>
+              <option value="fast">Fast — 125 ms</option>
+            </select>
+          </div>
+        </div>
+
+        <strong class="live-meter-value mono" data-live-level>-- dBFS</strong>
+        <span class="live-meter-mode" data-live-level-mode>A-weighted · slow · dBFS</span>
+
+        <div class="live-meter-gauge">
+          <div class="live-meter-rail">
+            <span class="live-meter-target-band" data-live-target-band></span>
+            <span class="live-meter-level-bar" data-live-level-bar></span>
+          </div>
+          <div class="live-meter-ticks">
+            <span>-60 dBFS</span>
+            <span>0 dBFS</span>
+          </div>
+        </div>
+
+        <div class="live-meter-status" data-live-range-status>Start a live check to meter your room feed.</div>
+
+        <p class="live-meter-note">
+          Reads dBFS — level relative to this input's digital full scale, smoothed like a slow SPL
+          meter. Browser inputs aren't calibrated, so this is not true SPL; use it as a relative
+          loudness window, not a legal-limit meter.
+        </p>
+      </article>
+
       <div class="hero-meters">
         <article class="meter-card card">
           <span class="meter-label">Quick grade</span>
@@ -150,6 +189,22 @@
   // vite.build.assetsInlineLimit: 0) so the strict `script-src 'self'` CSP in
   // site/public/_headers isn't violated. Behavior is unchanged from the WIP —
   // only types/guards were added to satisfy `astro check` under strict TS.
+  import {
+    createLevelSmoother,
+    evaluateRange,
+    meterPercent,
+    weightingCorrectionDb,
+    isWeighting,
+    isMeterResponse,
+    SLOW_TIME_CONSTANT_MS,
+    FAST_TIME_CONSTANT_MS,
+    LIVE_METER_MIN_DB,
+    LIVE_METER_MAX_DB,
+    type Weighting,
+    type MeterResponse,
+    type TargetRange,
+  } from '../lib/spl-meter';
+
   (() => {
     const root = document.querySelector<HTMLElement>('[data-browser-analyzer]');
     if (!root) return;
@@ -163,6 +218,10 @@
       dynamicTarget: number;
       centroidTarget: number;
       clarityTarget: number;
+      // Music-playback window (dBFS, A-weighted slow) for the live decibel
+      // meter — the hook future per-user profiles can supply their own
+      // TargetRange through, without touching the meter itself.
+      liveTarget: TargetRange;
     }
 
     const PRESETS: Record<PresetKey, PresetConfig> = {
@@ -173,6 +232,7 @@
         dynamicTarget: 10,
         centroidTarget: 2200,
         clarityTarget: 0.9,
+        liveTarget: { minDb: -22, maxDb: -8 },
       },
       speech: {
         label: 'Speech-forward stream',
@@ -181,6 +241,7 @@
         dynamicTarget: 8,
         centroidTarget: 2600,
         clarityTarget: 1.2,
+        liveTarget: { minDb: -26, maxDb: -12 },
       },
       broadcast: {
         label: 'Tighter broadcast handoff',
@@ -189,6 +250,7 @@
         dynamicTarget: 7,
         centroidTarget: 2400,
         clarityTarget: 1.05,
+        liveTarget: { minDb: -18, maxDb: -8 },
       },
     };
 
@@ -251,6 +313,13 @@
       copyStatus: required(root.querySelector<HTMLElement>('[data-copy-status]'), '[data-copy-status]'),
       runMode: required(root.querySelector<HTMLElement>('[data-run-mode]'), '[data-run-mode]'),
       statusCopy: required(root.querySelector<HTMLElement>('[data-status-copy]'), '[data-status-copy]'),
+      weighting: required(root.querySelector<HTMLSelectElement>('#weighting-select'), '#weighting-select'),
+      response: required(root.querySelector<HTMLSelectElement>('#response-select'), '#response-select'),
+      liveLevel: required(root.querySelector<HTMLElement>('[data-live-level]'), '[data-live-level]'),
+      liveLevelMode: required(root.querySelector<HTMLElement>('[data-live-level-mode]'), '[data-live-level-mode]'),
+      liveLevelBar: required(root.querySelector<HTMLElement>('[data-live-level-bar]'), '[data-live-level-bar]'),
+      liveTargetBand: required(root.querySelector<HTMLElement>('[data-live-target-band]'), '[data-live-target-band]'),
+      liveRangeStatus: required(root.querySelector<HTMLElement>('[data-live-range-status]'), '[data-live-range-status]'),
       gradeLetter: required(root.querySelector<HTMLElement>('[data-grade-letter]'), '[data-grade-letter]'),
       gradeScore: required(root.querySelector<HTMLElement>('[data-grade-score]'), '[data-grade-score]'),
       gradeNote: required(root.querySelector<HTMLElement>('[data-grade-note]'), '[data-grade-note]'),
@@ -276,13 +345,72 @@
       animationFrame: number;
       summaryText: string;
       lastResult: AnalysisResult | null;
+      weighting: Weighting;
+      response: MeterResponse;
+      levelSmoother: ReturnType<typeof createLevelSmoother>;
+      lastTickMs: number | null;
+      liveLevelDb: number | null;
     } = {
       audioContext: null,
       stream: null,
       animationFrame: 0,
       summaryText: '',
       lastResult: null,
+      weighting: 'A',
+      response: 'slow',
+      levelSmoother: createLevelSmoother(SLOW_TIME_CONSTANT_MS),
+      lastTickMs: null,
+      liveLevelDb: null,
     };
+
+    const RESPONSE_TIME_CONSTANTS_MS: Record<MeterResponse, number> = {
+      slow: SLOW_TIME_CONSTANT_MS,
+      fast: FAST_TIME_CONSTANT_MS,
+    };
+
+    const WEIGHTING_LABELS: Record<Weighting, string> = {
+      A: 'A-weighted',
+      C: 'C-weighted',
+      Z: 'Z (unweighted)',
+    };
+
+    function activeLiveTarget(): TargetRange {
+      const presetKey = els.preset.value;
+      const preset = isPresetKey(presetKey) ? PRESETS[presetKey] : PRESETS.worship;
+      return preset.liveTarget;
+    }
+
+    function renderLiveTargetBand(): void {
+      const target = activeLiveTarget();
+      const left = meterPercent(target.minDb, LIVE_METER_MIN_DB, LIVE_METER_MAX_DB);
+      const right = meterPercent(target.maxDb, LIVE_METER_MIN_DB, LIVE_METER_MAX_DB);
+      els.liveTargetBand.style.left = `${left}%`;
+      els.liveTargetBand.style.width = `${Math.max(0, right - left)}%`;
+    }
+
+    function renderLiveLevelMode(): void {
+      els.liveLevelMode.textContent =
+        `${WEIGHTING_LABELS[state.weighting]} · ${state.response} · dBFS`;
+    }
+
+    function renderLiveLevel(displayDb: number | null): void {
+      state.liveLevelDb = displayDb;
+      if (displayDb === null) {
+        els.liveLevel.textContent = '-- dBFS';
+        els.liveLevelBar.style.width = '0%';
+        els.liveRangeStatus.textContent = 'Start a live check to meter your room feed.';
+        els.liveRangeStatus.dataset.status = '';
+        return;
+      }
+
+      els.liveLevel.textContent = formatDb(displayDb);
+      els.liveLevelBar.style.width = `${meterPercent(displayDb, LIVE_METER_MIN_DB, LIVE_METER_MAX_DB)}%`;
+
+      const status = evaluateRange(displayDb, activeLiveTarget());
+      els.liveRangeStatus.dataset.status = status;
+      els.liveRangeStatus.textContent =
+        status === 'below' ? 'Below target' : status === 'above' ? 'Above target' : 'In the target window';
+    }
 
     function db(value: number): number {
       return 20 * Math.log10(Math.max(value, 1e-7));
@@ -528,6 +656,14 @@
     }
 
     function buildSummaryText(result: AnalysisResult, preset: PresetConfig, grade: GradeResult, notes: string[]): string {
+      const liveLevelLine =
+        result.source === 'Live stereo input' && state.liveLevelDb !== null
+          ? [
+              `Live level: ${formatDb(state.liveLevelDb)} (${WEIGHTING_LABELS[state.weighting]}, ` +
+                `${state.response}, ${evaluateRange(state.liveLevelDb, preset.liveTarget)} target window)`,
+            ]
+          : [];
+
       return [
         `Sound Buddy Browser Lite — ${preset.label}`,
         `Source: ${result.source}`,
@@ -538,6 +674,7 @@
         `Balance: ${result.balanceDb.toFixed(1)} dB L-R`,
         `Dynamic spread: ${result.dynamicRange.toFixed(1)} dB`,
         `Centroid: ${formatHz(result.centroid)}`,
+        ...liveLevelLine,
         '',
         ...notes.map((note) => `- ${note}`),
       ].join('\n');
@@ -597,6 +734,9 @@
         void state.audioContext.close();
       }
       state.audioContext = null;
+      state.levelSmoother.reset();
+      state.lastTickMs = null;
+      renderLiveLevel(null);
       els.stopLive.disabled = true;
       els.startLive.disabled = false;
       els.runMode.textContent = 'Idle';
@@ -647,10 +787,11 @@
 
       const leftFreq = new Float32Array(leftAnalyser.frequencyBinCount);
       const rightFreq = new Float32Array(rightAnalyser.frequencyBinCount);
+      const avgFreq = new Float32Array(leftAnalyser.frequencyBinCount);
       const leftTime = new Float32Array(leftAnalyser.fftSize);
       const rightTime = new Float32Array(rightAnalyser.fftSize);
 
-      const tick = () => {
+      const tick = (nowMs: number) => {
         leftAnalyser.getFloatFrequencyData(leftFreq);
         rightAnalyser.getFloatFrequencyData(rightFreq);
         leftAnalyser.getFloatTimeDomainData(leftTime);
@@ -662,13 +803,17 @@
         let centroidNumerator = 0;
         let centroidDenominator = 0;
 
+        for (let i = 0; i < leftFreq.length; i += 1) {
+          avgFreq[i] = (leftFreq[i] + rightFreq[i]) * 0.5;
+        }
+
         for (const band of BAND_DEFS) {
           let sum = 0;
           let count = 0;
           for (let i = 0; i < leftFreq.length; i += 1) {
             const hz = i * binHz;
             if (hz >= band.low && hz < band.high) {
-              sum += (leftFreq[i] + rightFreq[i]) * 0.5;
+              sum += avgFreq[i];
               count += 1;
             }
           }
@@ -679,20 +824,35 @@
           centroidDenominator += linear;
         }
 
+        const rmsDbValue = db(computeRms(downmix(leftTime, rightTime)));
+        const peakDbValue = db(computePeak(leftTime, rightTime));
+
         const latestResult: AnalysisResult = {
           source: 'Live stereo input',
           duration: (performance.now() - startedAt) / 1000,
           sampleRate,
-          peakDb: db(computePeak(leftTime, rightTime)),
-          rmsDb: db(computeRms(downmix(leftTime, rightTime))),
+          peakDb: peakDbValue,
+          rmsDb: rmsDbValue,
           correlation: computeCorrelation(leftTime, rightTime),
           balanceDb: computeBalanceDb(leftTime, rightTime),
-          dynamicRange: Math.max(0, db(computePeak(leftTime, rightTime)) - db(computeRms(downmix(leftTime, rightTime)))),
+          dynamicRange: Math.max(0, peakDbValue - rmsDbValue),
           centroid: centroidDenominator > 0 ? centroidNumerator / centroidDenominator : 0,
           bands: bandMap,
         };
 
+        // The AnalyserNode's own smoothingTimeConstant (default 0.8, ~frame-level)
+        // sits underneath our explicit slow/fast ballistics below — it is
+        // negligible versus the 1 s slow time constant, so the analysers'
+        // settings are left untouched (the band-balance display depends on them).
+        const correctionDb = weightingCorrectionDb(avgFreq, binHz, state.weighting);
+        const instantDb = rmsDbValue + correctionDb;
+        const dtMs = state.lastTickMs === null ? 0 : nowMs - state.lastTickMs;
+        state.lastTickMs = nowMs;
+        const displayDb = state.levelSmoother.update(instantDb, dtMs);
+        renderLiveLevel(displayDb);
+
         applyResult(latestResult);
+
         els.runMode.textContent = 'Live';
         els.statusCopy.textContent = 'Listening locally to your current stereo input.';
         state.animationFrame = requestAnimationFrame(tick);
@@ -700,7 +860,9 @@
 
       els.startLive.disabled = true;
       els.stopLive.disabled = false;
-      tick();
+      renderLiveLevelMode();
+      renderLiveTargetBand();
+      tick(performance.now());
     }
 
     els.file.addEventListener('change', (event) => {
@@ -748,10 +910,32 @@
 
     els.preset.addEventListener('change', () => {
       if (state.lastResult) applyResult(state.lastResult);
+      renderLiveTargetBand();
+      if (state.liveLevelDb !== null) renderLiveLevel(state.liveLevelDb);
+    });
+
+    els.weighting.addEventListener('change', () => {
+      const value = els.weighting.value;
+      if (!isWeighting(value)) return;
+      state.weighting = value;
+      state.levelSmoother.reset();
+      state.lastTickMs = null;
+      renderLiveLevelMode();
+    });
+
+    els.response.addEventListener('change', () => {
+      const value = els.response.value;
+      if (!isMeterResponse(value)) return;
+      state.response = value;
+      state.levelSmoother = createLevelSmoother(RESPONSE_TIME_CONSTANTS_MS[value]);
+      state.lastTickMs = null;
+      renderLiveLevelMode();
     });
 
     window.addEventListener('beforeunload', stopLive);
     void populateDevices();
+    renderLiveLevelMode();
+    renderLiveTargetBand();
   })();
 </script>
 
@@ -857,6 +1041,85 @@
   .status-copy {
     color: var(--text-secondary);
     font: var(--fw-medium) var(--fs-body-sm)/1.5 var(--font-sans);
+  }
+  .live-meter-card {
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+  .live-meter-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+  }
+  .live-meter-controls { display: flex; gap: 10px; }
+  .browser-select-compact { width: auto; min-height: 36px; padding: 0 10px; }
+  .live-meter-value {
+    display: block;
+    color: var(--text-primary);
+    font: var(--fw-bold) 40px/1 var(--font-mono);
+  }
+  .live-meter-mode {
+    display: block;
+    margin-top: -8px;
+    color: var(--text-tertiary);
+    font: var(--fw-medium) var(--fs-label)/1 var(--font-sans);
+    letter-spacing: var(--tracking-caps);
+    text-transform: uppercase;
+  }
+  .live-meter-gauge { display: flex; flex-direction: column; gap: 6px; }
+  .live-meter-rail {
+    position: relative;
+    height: 14px;
+    border-radius: var(--radius-pill);
+    background: var(--surface-inset);
+    overflow: hidden;
+  }
+  .live-meter-target-band {
+    position: absolute;
+    top: 0;
+    left: 0;
+    height: 100%;
+    width: 0;
+    background: var(--gold-tint-soft);
+    border-left: 1px solid var(--gold-500);
+    border-right: 1px solid var(--gold-500);
+  }
+  .live-meter-level-bar {
+    position: absolute;
+    top: 0;
+    left: 0;
+    height: 100%;
+    width: 0%;
+    border-radius: inherit;
+    background: linear-gradient(90deg, var(--azure-500), var(--gold-500));
+    transition: width var(--dur-base) var(--ease-out);
+  }
+  .live-meter-ticks {
+    display: flex;
+    justify-content: space-between;
+    color: var(--text-muted);
+    font: var(--fw-regular) var(--fs-label)/1 var(--font-mono);
+  }
+  .live-meter-status {
+    align-self: flex-start;
+    padding: 4px 10px;
+    border-radius: var(--radius-pill);
+    background: rgba(255, 255, 255, 0.05);
+    color: var(--text-secondary);
+    font: var(--fw-semibold) var(--fs-label)/1 var(--font-sans);
+    letter-spacing: var(--tracking-caps);
+    text-transform: uppercase;
+  }
+  .live-meter-status[data-status='inside'] { background: rgba(87, 215, 124, 0.14); color: var(--grade-a); }
+  .live-meter-status[data-status='below'],
+  .live-meter-status[data-status='above'] { background: var(--gold-tint); color: var(--gold-text); }
+  .live-meter-note {
+    color: var(--text-tertiary);
+    font: var(--fw-regular) var(--fs-body-sm)/1.5 var(--font-sans);
   }
   .hero-meters {
     display: grid;
@@ -978,5 +1241,8 @@
     .hero-meters { grid-template-columns: 1fr; }
     .live-actions { flex-direction: column; }
     .detail-list { grid-template-columns: 1fr; }
+    .live-meter-head { flex-direction: column; align-items: flex-start; }
+    .live-meter-controls { width: 100%; }
+    .live-meter-controls .browser-select-compact { flex: 1; }
   }
 </style>
