@@ -15,20 +15,26 @@ import { maybeRefreshLicense } from './license-refresh';
 // Deterministic app name so logs land in ~/Library/Logs/SoundBuddy (not "Electron").
 app.setName('SoundBuddy');
 
+export function buildAugmentedPath(currentPath: string | undefined): string {
+  const extra = ['/opt/homebrew/bin', '/usr/local/bin', '/usr/bin', '/bin'];
+  const current = (currentPath ?? '').split(':').filter(Boolean);
+  return [...extra, ...current].filter((p, i, a) => a.indexOf(p) === i).join(':');
+}
+
 // A GUI app launched from Finder inherits a minimal PATH (/usr/bin:/bin) that
 // excludes Homebrew, so execFile/spawn can't find sox, ffprobe, or python3.
 // Prepend the usual install locations. No-op when launched from a shell that
 // already has them.
-function augmentPathForGuiLaunch(): void {
-  const extra = ['/opt/homebrew/bin', '/usr/local/bin', '/usr/bin', '/bin'];
-  const current = (process.env.PATH ?? '').split(':').filter(Boolean);
-  process.env.PATH = [...extra, ...current].filter((p, i, a) => a.indexOf(p) === i).join(':');
+export function augmentPathForGuiLaunch(): void {
+  process.env.PATH = buildAugmentedPath(process.env.PATH);
 }
 
-let mainWindow: BrowserWindow | null = null;
+export function getPreloadPath(baseDir: string): string {
+  return path.join(baseDir, 'preload.js');
+}
 
-function createWindow(): void {
-  mainWindow = new BrowserWindow({
+export function getWindowOptions(preloadPath: string): Electron.BrowserWindowConstructorOptions {
+  return {
     width: 1200,
     height: 800,
     minWidth: 900,
@@ -38,57 +44,46 @@ function createWindow(): void {
     webPreferences: {
       contextIsolation: true,
       nodeIntegration: false,
-      preload: path.join(__dirname, 'preload.js'),
+      preload: preloadPath,
     },
-  });
-
-  attachWindowLogging(mainWindow);
-  // Dev: `npm run dev` starts the renderer's Vite dev server and sets this so
-  // HMR works. Everything else (built-and-launched for e2e, `npm run start`,
-  // and the packaged app) loads the built single-file bundle — never a dev
-  // URL, even if the env var somehow leaked into a packaged build (#303).
-  const devServerUrl = !app.isPackaged && process.env.SOUND_BUDDY_RENDERER_URL;
-  if (devServerUrl) {
-    mainWindow.loadURL(devServerUrl);
-  } else {
-    mainWindow.loadFile(path.join(__dirname, '../../renderer/dist/index.html'));
-  }
-
-  // Quiet background update check shortly after the UI is ready.
-  mainWindow.webContents.once('did-finish-load', () => {
-    void checkForUpdates(mainWindow, true);
-  });
-
-  mainWindow.on('closed', () => {
-    mainWindow = null;
-  });
-
-  buildMenu();
+  };
 }
 
-function buildMenu(): void {
-  const template: Electron.MenuItemConstructorOptions[] = [
+export function openFileFromMenu(
+  win: BrowserWindow | null,
+  showOpenDialog: typeof dialog.showOpenDialog
+): void {
+  if (!win) return;
+  void showOpenDialog(win, {
+    properties: ['openFile'],
+    filters: [
+      { name: 'Audio Files', extensions: ['wav', 'aif', 'aiff', 'flac', 'mp3', 'ogg', 'm4a'] },
+      { name: 'All Files', extensions: ['*'] },
+    ],
+  }).then(({ filePaths }) => {
+    if (filePaths.length > 0 && win) {
+      win.webContents.send('menu-open-file', filePaths[0]);
+    }
+  });
+}
+
+export interface MenuDeps {
+  openFile: () => void;
+  toggleDevTools: () => void;
+  checkForUpdates: () => void;
+  openLicenseDialog: () => void;
+  sendFeedback: () => void;
+}
+
+export function getMenuTemplate(deps: MenuDeps): Electron.MenuItemConstructorOptions[] {
+  return [
     {
       label: 'File',
       submenu: [
         {
           label: 'Open File…',
           accelerator: 'CmdOrCtrl+O',
-          click: () => {
-            dialog
-              .showOpenDialog(mainWindow!, {
-                properties: ['openFile'],
-                filters: [
-                  { name: 'Audio Files', extensions: ['wav', 'aif', 'aiff', 'flac', 'mp3', 'ogg', 'm4a'] },
-                  { name: 'All Files', extensions: ['*'] },
-                ],
-              })
-              .then(({ filePaths }) => {
-                if (filePaths.length > 0 && mainWindow) {
-                  mainWindow.webContents.send('menu-open-file', filePaths[0]);
-                }
-              });
-          },
+          click: () => deps.openFile(),
         },
         { type: 'separator' },
         { role: 'quit' },
@@ -100,9 +95,7 @@ function buildMenu(): void {
         {
           label: 'Toggle DevTools',
           accelerator: 'CmdOrCtrl+Alt+I',
-          click: () => {
-            mainWindow?.webContents.toggleDevTools();
-          },
+          click: () => deps.toggleDevTools(),
         },
         { type: 'separator' },
         { role: 'reload' },
@@ -132,31 +125,62 @@ function buildMenu(): void {
       submenu: [
         {
           label: 'Check for Updates…',
-          click: () => {
-            void checkForUpdates(mainWindow, false);
-          },
+          click: () => deps.checkForUpdates(),
         },
         { type: 'separator' },
         {
           // License entry/status (#54) — the renderer owns the dialog; the
           // header badge opens the same one.
           label: 'License…',
-          click: () => {
-            mainWindow?.webContents.send('open-license-dialog');
-          },
+          click: () => deps.openLicenseDialog(),
         },
         {
           label: 'Send Feedback…',
-          click: () => {
-            void openFeedback();
-          },
+          click: () => deps.sendFeedback(),
         },
       ],
     },
   ];
+}
 
-  const menu = Menu.buildFromTemplate(template);
-  Menu.setApplicationMenu(menu);
+let mainWindow: BrowserWindow | null = null;
+
+function createWindow(): void {
+  mainWindow = new BrowserWindow(getWindowOptions(getPreloadPath(__dirname)));
+
+  attachWindowLogging(mainWindow);
+  // Dev: `npm run dev` starts the renderer's Vite dev server and sets this so
+  // HMR works. Everything else (built-and-launched for e2e, `npm run start`,
+  // and the packaged app) loads the built single-file bundle — never a dev
+  // URL, even if the env var somehow leaked into a packaged build (#303).
+  const devServerUrl = !app.isPackaged && process.env.SOUND_BUDDY_RENDERER_URL;
+  if (devServerUrl) {
+    mainWindow.loadURL(devServerUrl);
+  } else {
+    mainWindow.loadFile(path.join(__dirname, '../../renderer/dist/index.html'));
+  }
+
+  // Quiet background update check shortly after the UI is ready.
+  mainWindow.webContents.once('did-finish-load', () => {
+    void checkForUpdates(mainWindow, true);
+  });
+
+  mainWindow.on('closed', () => {
+    mainWindow = null;
+  });
+
+  buildMenu();
+}
+
+function buildMenu(): void {
+  const template = getMenuTemplate({
+    openFile: () => openFileFromMenu(mainWindow, dialog.showOpenDialog.bind(dialog)),
+    toggleDevTools: () => mainWindow?.webContents.toggleDevTools(),
+    checkForUpdates: () => void checkForUpdates(mainWindow, false),
+    openLicenseDialog: () => mainWindow?.webContents.send('open-license-dialog'),
+    sendFeedback: () => void openFeedback(),
+  });
+  Menu.setApplicationMenu(Menu.buildFromTemplate(template));
 }
 
 app.whenReady().then(() => {
