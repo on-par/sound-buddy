@@ -1,0 +1,15 @@
+# Security headers for all routes (Workers Assets serves this file's rules,
+# it is never served itself). CSP notes:
+# - script-src 'self': the only page script (index countdown) is forced
+#   external via vite.build.assetsInlineLimit=0 in astro.config.mjs.
+# - style-src needs 'unsafe-inline': Astro components render style=""
+#   attributes (ReportCard grade ring/ribbon); everything else is self-hosted.
+# - No external domains: fonts (@fontsource) and images are bundled into
+#   /_astro/; no analytics or third-party scripts.
+/*
+  Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; upgrade-insecure-requests
+  X-Frame-Options: DENY
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: strict-origin-when-cross-origin
+  Permissions-Policy: accelerometer=(), autoplay=(), camera=(), display-capture=(), encrypted-media=(), fullscreen=(), geolocation=(), gyroscope=(), magnetometer=(), microphone=(), midi=(), payment=(), picture-in-picture=(), publickey-credentials-get=(), screen-wake-lock=(), usb=(), xr-spatial-tracking=()
+  Strict-Transport-Security: max-age=31536000; includeSubDomains
