@@ -194,6 +194,8 @@
     evaluateRange,
     meterPercent,
     weightingCorrectionDb,
+    isWeighting,
+    isMeterResponse,
     SLOW_TIME_CONSTANT_MS,
     FAST_TIME_CONSTANT_MS,
     LIVE_METER_MIN_DB,
@@ -372,19 +374,6 @@
       Z: 'Z (unweighted)',
     };
 
-    const RESPONSE_LABELS: Record<MeterResponse, string> = {
-      slow: 'slow',
-      fast: 'fast',
-    };
-
-    function isWeighting(value: string): value is Weighting {
-      return value === 'A' || value === 'C' || value === 'Z';
-    }
-
-    function isMeterResponse(value: string): value is MeterResponse {
-      return value === 'slow' || value === 'fast';
-    }
-
     function activeLiveTarget(): TargetRange {
       const presetKey = els.preset.value;
       const preset = isPresetKey(presetKey) ? PRESETS[presetKey] : PRESETS.worship;
@@ -401,7 +390,7 @@
 
     function renderLiveLevelMode(): void {
       els.liveLevelMode.textContent =
-        `${WEIGHTING_LABELS[state.weighting]} · ${RESPONSE_LABELS[state.response]} · dBFS`;
+        `${WEIGHTING_LABELS[state.weighting]} · ${state.response} · dBFS`;
     }
 
     function renderLiveLevel(displayDb: number | null): void {
@@ -671,7 +660,7 @@
         result.source === 'Live stereo input' && state.liveLevelDb !== null
           ? [
               `Live level: ${formatDb(state.liveLevelDb)} (${WEIGHTING_LABELS[state.weighting]}, ` +
-                `${RESPONSE_LABELS[state.response]}, ${evaluateRange(state.liveLevelDb, preset.liveTarget)} target window)`,
+                `${state.response}, ${evaluateRange(state.liveLevelDb, preset.liveTarget)} target window)`,
             ]
           : [];
 
@@ -836,16 +825,17 @@
         }
 
         const rmsDbValue = db(computeRms(downmix(leftTime, rightTime)));
+        const peakDbValue = db(computePeak(leftTime, rightTime));
 
         const latestResult: AnalysisResult = {
           source: 'Live stereo input',
           duration: (performance.now() - startedAt) / 1000,
           sampleRate,
-          peakDb: db(computePeak(leftTime, rightTime)),
+          peakDb: peakDbValue,
           rmsDb: rmsDbValue,
           correlation: computeCorrelation(leftTime, rightTime),
           balanceDb: computeBalanceDb(leftTime, rightTime),
-          dynamicRange: Math.max(0, db(computePeak(leftTime, rightTime)) - rmsDbValue),
+          dynamicRange: Math.max(0, peakDbValue - rmsDbValue),
           centroid: centroidDenominator > 0 ? centroidNumerator / centroidDenominator : 0,
           bands: bandMap,
         };

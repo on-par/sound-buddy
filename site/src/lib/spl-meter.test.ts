@@ -7,13 +7,15 @@ import {
   createLevelSmoother,
   evaluateRange,
   meterPercent,
+  isWeighting,
+  isMeterResponse,
   SLOW_TIME_CONSTANT_MS,
   FAST_TIME_CONSTANT_MS,
 } from './spl-meter';
 
 describe('aWeightingDb', () => {
   it('is ~0 dB at 1 kHz', () => {
-    expect(aWeightingDb(1000)).toBeCloseTo(0, 0.1);
+    expect(Math.abs(aWeightingDb(1000) - 0)).toBeLessThan(0.1);
   });
 
   it('is ~-19.1 dB at 100 Hz', () => {
@@ -201,5 +203,32 @@ describe('meterPercent', () => {
 
   it('clamps values above max to 100', () => {
     expect(meterPercent(10, -60, 0)).toBe(100);
+  });
+});
+
+describe('isWeighting', () => {
+  it('accepts A, C, and Z', () => {
+    expect(isWeighting('A')).toBe(true);
+    expect(isWeighting('C')).toBe(true);
+    expect(isWeighting('Z')).toBe(true);
+  });
+
+  it('rejects anything else', () => {
+    expect(isWeighting('a')).toBe(false);
+    expect(isWeighting('')).toBe(false);
+    expect(isWeighting('slow')).toBe(false);
+  });
+});
+
+describe('isMeterResponse', () => {
+  it('accepts slow and fast', () => {
+    expect(isMeterResponse('slow')).toBe(true);
+    expect(isMeterResponse('fast')).toBe(true);
+  });
+
+  it('rejects anything else', () => {
+    expect(isMeterResponse('Slow')).toBe(false);
+    expect(isMeterResponse('')).toBe(false);
+    expect(isMeterResponse('A')).toBe(false);
   });
 });

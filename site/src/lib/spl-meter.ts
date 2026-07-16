@@ -27,6 +27,16 @@ export type Weighting = 'A' | 'C' | 'Z';
 export type MeterResponse = 'slow' | 'fast';
 export type RangeStatus = 'below' | 'inside' | 'above';
 
+/** Narrows a <select> option's raw string value to a Weighting. */
+export function isWeighting(value: string): value is Weighting {
+  return value === 'A' || value === 'C' || value === 'Z';
+}
+
+/** Narrows a <select> option's raw string value to a MeterResponse. */
+export function isMeterResponse(value: string): value is MeterResponse {
+  return value === 'slow' || value === 'fast';
+}
+
 export interface TargetRange {
   minDb: number;
   maxDb: number;
