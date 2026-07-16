@@ -791,6 +791,10 @@
     .rc-ring-label { font:var(--fw-medium) var(--fs-micro)/1 var(--font-sans); letter-spacing:var(--tracking-caps); text-transform:uppercase; color:var(--text-tertiary); }
     .rc-rectype { display:inline-flex; align-items:center; gap:8px; padding:5px 12px; border-radius:var(--radius-pill); max-width:420px; }
     .rc-rectype .txt { font:var(--fw-medium) var(--fs-body-sm)/1.35 var(--font-sans); }
+    .rc-delta { font:var(--fw-medium) var(--fs-body-sm)/1.35 var(--font-sans); }
+    .rc-delta.improved { color:var(--good-text); }
+    .rc-delta.regressed { color:var(--issue-text); }
+    .rc-delta.unchanged { color:var(--text-muted); }
 
     /* Content type — speech/music delineation (PRD 04) */
     .rc-contenttype { display:inline-flex; align-items:center; gap:7px; padding:4px 12px; border-radius:var(--radius-pill); font:var(--fw-semibold) var(--fs-label)/1 var(--font-sans); letter-spacing:var(--tracking-caps); text-transform:uppercase; }

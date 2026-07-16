@@ -34,6 +34,7 @@ import {
   type BandDiffApi,
   type ContentTypeView,
   type FramesSectionView,
+  type ReportDeltaView,
 } from './report-card';
 
 export interface GradeResult {
@@ -73,6 +74,8 @@ export interface ReportCardProps {
   bandDiffApi?: BandDiffApi | null;
   /** Spectrum-over-time heatmap + representative frame curves (PRD 03). */
   frames?: FramesSectionView | null;
+  /** "vs. last time" comparison vs. the previous persisted summary (#259). Omitted/null → hidden. */
+  delta?: ReportDeltaView | null;
   phaseDoubling?: PhaseDoublingView | null;
   feedbackRingout?: FeedbackRingoutView | null;
   onOpenPhaseDoubling?: () => void;
@@ -89,6 +92,7 @@ export default function ReportCard({
   contentType,
   bandDiffApi,
   frames,
+  delta,
   phaseDoubling,
   feedbackRingout,
   onOpenPhaseDoubling,
@@ -147,6 +151,9 @@ export default function ReportCard({
           className={recTypePillClass(grade.recType)}
           dangerouslySetInnerHTML={{ __html: recTypePillHTML(grade.recType) }}
         />
+        {delta && (
+          <div id="rc-delta" className={`rc-delta ${delta.direction}`}>{delta.text}</div>
+        )}
         <div
           className={`rc-contenttype${contentType?.contentType ? ` ${contentType.contentType}` : ''}`}
           id="rc-content-type"

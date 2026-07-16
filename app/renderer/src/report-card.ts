@@ -535,3 +535,41 @@ export function reportCardFramesView(frames: unknown): FramesSectionView {
   }).join('');
   return { visible: true, heatmapHTML, curvesHTML };
 }
+
+/* ── "vs. last time" delta (#259) ──
+   Compares the current grade/score against the immediately preceding
+   persisted Recent Services summary. Only ever called with two same-source
+   (file-analysis) summaries — see ReportCardIsland.tsx. */
+export interface ReportDeltaView {
+  /** Signed, rounded point change vs. the previous summary. */
+  points: number;
+  direction: 'improved' | 'regressed' | 'unchanged';
+  /** Full display line, e.g. "+9 pts vs. last service (B → A)". */
+  text: string;
+}
+
+export function reportDeltaView(
+  current: { score: number; gradeLetter: string } | null | undefined,
+  previous: { score: number; gradeLetter: string } | null | undefined
+): ReportDeltaView | null {
+  if (!current || !previous) return null;
+  if (!Number.isFinite(current.score) || !Number.isFinite(previous.score)) return null;
+  if (typeof current.gradeLetter !== 'string' || !current.gradeLetter) return null;
+  if (typeof previous.gradeLetter !== 'string' || !previous.gradeLetter) return null;
+
+  const points = Math.round(current.score - previous.score);
+  const direction: ReportDeltaView['direction'] = points > 0 ? 'improved' : points < 0 ? 'regressed' : 'unchanged';
+  const unit = Math.abs(points) === 1 ? 'pt' : 'pts';
+  const sign = points > 0 ? '+' : '';
+
+  let text: string;
+  if (points === 0) {
+    text = `No change vs. last service (${current.gradeLetter})`;
+  } else if (previous.gradeLetter !== current.gradeLetter) {
+    text = `${sign}${points} ${unit} vs. last service (${previous.gradeLetter} → ${current.gradeLetter})`;
+  } else {
+    text = `${sign}${points} ${unit} vs. last service (still ${current.gradeLetter})`;
+  }
+
+  return { points, direction, text };
+}

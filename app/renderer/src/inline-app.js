@@ -2360,13 +2360,23 @@ function persistAnalysisSummary() {
   try {
     const src = getReportCardSource();
     if (!src || !curAnalysis()) return; // file analyses only
-    sb.saveAnalysisSummary({
+    const summary = {
       sourceFilename: src.filename,
       gradeLetter: grading.computeGrade(src),
       score: grading.computeScore(src),
       recordingType: grading.analyzeRecordingType(src).label,
       topFixes: grading.computeRecommendations(src).slice(0, 3),
-    }).catch((err) => console.warn('persistAnalysisSummary failed', err));
+    };
+    // Read the previous newest entry BEFORE saving this run, so summaries[0]
+    // is genuinely "last time" and never the record we are about to write (#259).
+    sb.listAnalysisSummaries()
+      .then((res) => {
+        const prev = res && res.success && Array.isArray(res.summaries) && res.summaries[0] ? res.summaries[0] : null;
+        anaStore.getState().setPrevSummary(prev);
+      })
+      .catch(() => anaStore.getState().setPrevSummary(null))
+      .then(() => sb.saveAnalysisSummary(summary))
+      .catch((err) => console.warn('persistAnalysisSummary failed', err));
   } catch (err) {
     console.warn('persistAnalysisSummary failed', err);
   }
@@ -2416,13 +2426,18 @@ async function renderRecentServices() {
   }).join('');
 
   list.querySelectorAll('.recent-row').forEach((row) => {
-    row.addEventListener('click', () => loadHistoryEntry(recentSummaries[parseInt(row.dataset.idx, 10)]));
+    row.addEventListener('click', () => {
+      const i = parseInt(row.dataset.idx, 10);
+      loadHistoryEntry(recentSummaries[i], i === 0 ? recentSummaries[1] || null : null);
+    });
   });
 }
 
 // Loads a stored summary into the report card view without re-running any
 // analysis — the row's record is all the report card ever reads (#147).
-function loadHistoryEntry(summary) {
+// prevSummary (#259) feeds the "vs. last time" delta — only the newest
+// history entry (i === 0) gets one, compared against the second-newest.
+function loadHistoryEntry(summary, prevSummary) {
   pauseTransportAudio(); // don't leave a previous file's playback running behind the summary card
   anaStore.getState().setHistorySummary(summary);
   // A history entry always wins over whatever was previously on the card
@@ -2430,6 +2445,7 @@ function loadHistoryEntry(summary) {
   // historySummary) — clearAnalysis() also resets selectedFilePath/status, so
   // the empty-state dropzone/Analyze button reset themselves (#206).
   anaStore.getState().clearAnalysis();
+  anaStore.getState().setPrevSummary(prevSummary || null);
   if (!liveRunning) { liveWindows = []; syncLiveSource(); }
   document.querySelector('.mode-tab[data-mode="reportcard"]').click();
 }

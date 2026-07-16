@@ -16,6 +16,7 @@ import {
   bandBreakdownHTML,
   contentTypeView,
   reportCardFramesView,
+  reportDeltaView,
   type ReportCardSource,
   type ProfileComparison,
   type BandDiffApi,
@@ -177,5 +178,28 @@ describe('ReportCard', () => {
     expect(html).toContain('Possible phase issue');
     expect(html).toContain('rc-feedback-ringout');
     expect(html).toContain('Open the ring-out wizard');
+  });
+
+  it('renders the "vs. last time" delta line when a delta prop is given (#259)', () => {
+    const src: ReportCardSource = { ...makeSrc(), filename: 'x.wav' };
+    const grade = buildGrade(src);
+    const delta = reportDeltaView({ score: 92, gradeLetter: 'A' }, { score: 83, gradeLetter: 'B' });
+
+    const html = renderMarkup({ analysis: src, grade, dateText: 'now', delta });
+
+    expect(html).toContain('id="rc-delta"');
+    expect(html).toContain('rc-delta improved');
+    expect(html).toContain('+9 pts vs. last service (B → A)');
+  });
+
+  it('omits the delta line when the delta prop is absent or null (#259)', () => {
+    const src: ReportCardSource = { ...makeSrc(), filename: 'x.wav' };
+    const grade = buildGrade(src);
+
+    const withoutProp = renderMarkup({ analysis: src, grade, dateText: 'now' });
+    expect(withoutProp).not.toContain('rc-delta');
+
+    const withNull = renderMarkup({ analysis: src, grade, dateText: 'now', delta: null });
+    expect(withNull).not.toContain('rc-delta');
   });
 });

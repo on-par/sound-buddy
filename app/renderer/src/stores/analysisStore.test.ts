@@ -16,6 +16,7 @@ afterEach(() => {
     selectedFilePath: null,
     historySummary: null,
     liveSource: null,
+    prevSummary: null,
   });
 });
 
@@ -32,6 +33,7 @@ describe('createAnalysisStore', () => {
     expect(store.getState().selectedFilePath).toBeNull();
     expect(store.getState().historySummary).toBeNull();
     expect(store.getState().liveSource).toBeNull();
+    expect(store.getState().prevSummary).toBeNull();
   });
 
   it('runs the startAnalysis lifecycle to completion', async () => {
@@ -215,6 +217,16 @@ describe('createAnalysisStore', () => {
     expect(store.getState().status).toBe('idle');
   });
 
+  it('clearAnalysis also resets prevSummary to null (#259)', () => {
+    const mock = createMockSoundBuddy();
+    const store = createAnalysisStore(() => mock.api);
+    store.setState({ prevSummary: { score: 83, gradeLetter: 'B' } });
+
+    store.getState().clearAnalysis();
+
+    expect(store.getState().prevSummary).toBeNull();
+  });
+
   it('clearAnalysis leaves historySummary/liveSource untouched (callers clear those separately)', () => {
     const mock = createMockSoundBuddy();
     const store = createAnalysisStore(() => mock.api);
@@ -246,6 +258,17 @@ describe('createAnalysisStore', () => {
 
     store.getState().setLiveSource(null);
     expect(store.getState().liveSource).toBeNull();
+  });
+
+  it('setPrevSummary stores the previous persisted summary for the "vs. last time" delta (#259)', () => {
+    const mock = createMockSoundBuddy();
+    const store = createAnalysisStore(() => mock.api);
+
+    store.getState().setPrevSummary({ score: 83, gradeLetter: 'B' });
+    expect(store.getState().prevSummary).toEqual({ score: 83, gradeLetter: 'B' });
+
+    store.getState().setPrevSummary(null);
+    expect(store.getState().prevSummary).toBeNull();
   });
 
   describe('setAnalysisFromEvent', () => {
