@@ -23,10 +23,11 @@ import {
   spectrumCurveSVG,
   veqBarsAndLabelsHTML,
   veqLoudestIdx,
+  patchBarsAndLabels,
   type SpectrumCurve,
   type SpectrumCurvePaths,
 } from './spectrum-display';
-import { fmt } from './report-card';
+import { fmt, type ReportCardSource } from './report-card';
 import type {
   LiveEvent,
   MeterData,
@@ -40,7 +41,7 @@ export type { LiveEvent, MeterData, WindowData, ChannelWindowData, ChannelKind }
 export interface LiveDevice { index: number; name: string; channels: number; default_sr: number }
 export type MicAccess = 'granted' | 'denied' | 'restricted' | 'not-determined';
 export interface ListDevicesResult { success: boolean; error?: string; micAccess?: MicAccess; devices?: LiveDevice[] }
-export interface StripConfig { kind: ChannelKind; a: number; b: number; armed?: boolean }
+export interface StripConfig { kind: ChannelKind; a: number; b: number; armed?: boolean; label?: string }
 export interface ChannelGroup { name: string; members: number[] }
 
 // A live tick channel as the renderer actually receives it: stream.py sends
@@ -267,3 +268,122 @@ export function deviceListView(result: ListDevicesResult): DeviceListView {
       : null,
   };
 }
+
+/* ── Live-capture report-card source (TD-001 slice 5, #423) ──
+ * Builds the live-capture card's report-card source shape from the rolling
+ * liveWindows buffer — mirrors the old getReportCardSource() live fallback.
+ * Verbatim port of inline-app.js's liveReportCardSource(), now a pure
+ * function taking the buffer as a parameter instead of reading the module-
+ * level liveWindows var; liveCaptureStore writes analysisStore.liveSource
+ * from this wherever liveWindows changes (bridge.ts's cross-store
+ * subscription). */
+export function liveReportCardSource(liveWindows: LiveEvent[]): ReportCardSource | null {
+  if (liveWindows.length === 0) return null;
+  const win = liveWindows[liveWindows.length - 1];
+  const ch = win.channels && win.channels[0];
+  if (!ch) return null;
+  return {
+    filename: `Live capture — ${ch.name || 'Main'} (window #${(win as WindowData).window})`,
+    rms: ch.rms,
+    peak: ch.peak,
+    dynamicRange: null,
+    clipping: ch.clipping,
+    centroid: ch.centroid,
+    bands: {
+      subBass: ch.bands.sub_bass,
+      bass: ch.bands.bass,
+      lowMid: ch.bands.low_mid,
+      mid: ch.bands.mid,
+      highMid: ch.bands.high_mid,
+      presence: ch.bands.presence,
+      brilliance: ch.bands.brilliance,
+    },
+  };
+}
+
+/* ── Live-tick DOM patching (TD-001 slice 5, #423) ──
+ * patchLiveChannelPlan is the pure "what changed" computation (curve, meta
+ * text, collapsed/idle flags, the arc paths, loudest-band index) — fully
+ * unit-tested below. patchLiveChannel is the thin DOM applier ported
+ * verbatim from inline-app.js's patchLiveChannel; it stays c8-ignored for
+ * the same reason as spectrum-display.ts's patchBarsAndLabels (no jsdom in
+ * this harness) and is exercised by the live-capture-* e2e specs. */
+export interface LiveChannelPatchPlan {
+  collapsed: boolean;
+  idle: boolean;
+  displayName: string;
+  clipping: boolean;
+  meta: string;
+  removeDisabled: boolean;
+  curve: SpectrumCurve;
+  loudestIdx: number;
+  arc: string | SpectrumCurvePaths;
+}
+
+export function patchLiveChannelPlan(
+  ch: LiveMeterChannel,
+  idx: number,
+  stripView: StripView,
+  isCapturing: boolean
+): LiveChannelPatchPlan {
+  const curve = liveBandCurve(ch.bands);
+  return {
+    collapsed: stripView.collapsed,
+    idle: !!ch.idle,
+    displayName: stripView.displayName,
+    clipping: !!ch.clipping,
+    meta: ch.idle ? 'Idle' : `RMS ${fmt(ch.rms)} · Peak ${fmt(ch.peak)} dBFS`,
+    removeDisabled: isCapturing,
+    curve,
+    loudestIdx: veqLoudestIdx(curve.db),
+    arc: veqArcSVG(curve, ch.centroid, idx, true),
+  };
+}
+
+/* c8 ignore start -- DOM-patching applier, no jsdom in this harness
+   (renderToString only) — same precedent as spectrum-display.ts's
+   patchBarsAndLabels; exercised by the live-capture-* e2e specs. */
+export function patchLiveChannel(
+  el: Element,
+  ch: LiveMeterChannel,
+  idx: number,
+  stripView: StripView,
+  isCapturing: boolean
+): void {
+  const plan = patchLiveChannelPlan(ch, idx, stripView, isCapturing);
+  el.classList.toggle('collapsed', plan.collapsed);
+  el.classList.toggle('idle', plan.idle); // a real tick landing on a prior idle placeholder graduates it
+  const foldBtn = el.querySelector('.live-ch-fold');
+  if (foldBtn) foldBtn.setAttribute('aria-expanded', plan.collapsed ? 'false' : 'true');
+  const name = el.querySelector('.live-ch-name');
+  // Don't clobber the field while the engineer is renaming it in place (#39);
+  // the live tick keeps flowing but their caret/text stays put until they commit.
+  if (name && document.activeElement !== name) name.textContent = plan.displayName;
+  if (name) name.classList.toggle('clip', plan.clipping);
+  const meta = el.querySelector('.live-ch-meta');
+  if (meta) meta.textContent = plan.meta;
+  const removeBtn = el.querySelector('.live-ch-x') as HTMLButtonElement | null;
+  if (removeBtn) removeBtn.disabled = plan.removeDisabled;
+  const clipEl = el.querySelector('.live-ch-clip');
+  // Insert just before the remove button (#188) so CLIP lands in the same spot
+  // whether it was there on the first tick (static template order) or shows up
+  // later — .live-ch-x carries the head's margin-left:auto right-alignment.
+  if (plan.clipping && !clipEl && removeBtn) removeBtn.insertAdjacentHTML('beforebegin', '<span class="live-ch-clip">CLIP</span>');
+  else if (!plan.clipping && clipEl) clipEl.remove();
+
+  const chart = el.querySelector('.veq-chart');
+  if (chart) {
+    const lineEl = chart.querySelector('.sb-curve-line');
+    if (plan.arc && typeof plan.arc !== 'string' && lineEl) {
+      lineEl.setAttribute('d', plan.arc.line);
+      chart.querySelector('.sb-curve-fill')?.setAttribute('d', plan.arc.area);
+      const centroidEl = chart.querySelector('.sb-centroid');
+      if (centroidEl) centroidEl.innerHTML = plan.arc.centroidMark;
+    } else {
+      chart.innerHTML = typeof plan.arc === 'string' ? plan.arc : '';
+    }
+  }
+
+  patchBarsAndLabels(el, plan.curve.db);
+}
+/* c8 ignore stop */

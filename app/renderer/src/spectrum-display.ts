@@ -491,3 +491,35 @@ export function veqBandView(db: number): { pct: number; dim: boolean; hot: boole
 }
 // Readouts ride each bar's top; cap so they stay inside the plot at full scale.
 export function veqValBottom(pct: number): string { return Math.min(pct, 90).toFixed(2); }
+
+// Patch existing bar/value/label DOM in place (the update-time counterpart of
+// veqBarsAndLabelsHTML above) — shared by the Live-tab per-channel patch
+// (live-capture-panel.ts's patchLiveChannel, TD-001 slice 5, #423) and the
+// playback-band repaint (inline-app.js's renderPlaybackBands, AW-4) so
+// height/value transitions animate via CSS instead of restarting on every
+// repaint, and the two paint paths can't drift out of sync with each other.
+// Ported verbatim from inline-app.js (formerly module-scoped there).
+/* c8 ignore start -- DOM-patching applier, no jsdom in this harness
+   (renderToString only, and the constitution forbids adding a new test
+   framework) — exercised by the live-capture-* and report-card-playback e2e
+   specs. veqLoudestIdx/veqBandView/veqValBottom (the data this patches) are
+   fully unit-tested above. */
+export function patchBarsAndLabels(container: Element, dbArray: number[]): void {
+  const loudestIdx = veqLoudestIdx(dbArray);
+  const vals = container.querySelectorAll('.veq-val');
+  container.querySelectorAll('.veq-bar').forEach((bar, i) => {
+    const v = veqBandView(dbArray[i]);
+    (bar as HTMLElement).style.height = v.pct.toFixed(2) + '%';
+    bar.classList.toggle('loud', i === loudestIdx);
+    bar.classList.toggle('dim', v.dim);
+    const val = vals[i] as HTMLElement | undefined;
+    if (val) {
+      val.textContent = v.val;
+      val.style.bottom = veqValBottom(v.pct) + '%';
+      val.classList.toggle('hot', v.hot);
+      val.classList.toggle('dim', v.dim);
+    }
+  });
+  container.querySelectorAll('.veq-label').forEach((lb, i) => lb.classList.toggle('loud', i === loudestIdx));
+}
+/* c8 ignore stop */

@@ -14,6 +14,8 @@ import {
   liveBandCurve,
   veqChannelHTML,
   liveMetersHTML,
+  liveReportCardSource,
+  patchLiveChannelPlan,
   type LiveDevice,
   type ListDevicesResult,
   type StripConfig,
@@ -21,6 +23,7 @@ import {
   type LiveMeterChannel,
   type StripView,
   type PanelView,
+  type LiveEvent,
 } from './live-capture-panel';
 
 const devices: LiveDevice[] = [
@@ -293,5 +296,99 @@ describe('liveMetersHTML', () => {
     LIVE_CHANNELS.forEach((ch, i) => {
       expect(html).toContain(veqChannelHTML(ch, i, stripViews[i], panel));
     });
+  });
+});
+
+describe('liveReportCardSource', () => {
+  it('is null when there are no accumulated windows', () => {
+    expect(liveReportCardSource([])).toBeNull();
+  });
+
+  it('is null when the latest window carries no channels', () => {
+    const win: LiveEvent = { type: 'window', window: 1, ts: 0, channels: [], masking: [] };
+    expect(liveReportCardSource([win])).toBeNull();
+  });
+
+  it('builds a report-card source from the first channel of the latest window', () => {
+    const win: LiveEvent = {
+      type: 'window',
+      window: 3,
+      ts: 0,
+      masking: [],
+      channels: [
+        {
+          index: 0, name: 'Main', rms: -18, peak: -6, clipping: false, centroid: 1800, rolloff: 8000,
+          bands: { sub_bass: -50, bass: -20, low_mid: -22, mid: -14, high_mid: -24, presence: -30, brilliance: -60 },
+        },
+      ],
+    };
+    const src = liveReportCardSource([win]);
+    expect(src).toEqual({
+      filename: 'Live capture — Main (window #3)',
+      rms: -18, peak: -6, dynamicRange: null, clipping: false, centroid: 1800,
+      bands: { subBass: -50, bass: -20, lowMid: -22, mid: -14, highMid: -24, presence: -30, brilliance: -60 },
+    });
+  });
+
+  it('falls back to "Main" when the channel carries no name and uses only the LAST accumulated window', () => {
+    const first: LiveEvent = {
+      type: 'window', window: 1, ts: 0, masking: [],
+      channels: [{ index: 0, name: 'First', rms: -1, peak: -1, clipping: false, centroid: 1, rolloff: 1, bands: {} }],
+    };
+    const last: LiveEvent = {
+      type: 'window', window: 2, ts: 1, masking: [],
+      channels: [{ index: 0, name: undefined as unknown as string, rms: -18, peak: -6, clipping: true, centroid: 1800, rolloff: 8000, bands: {} }],
+    };
+    const src = liveReportCardSource([first, last]);
+    expect(src?.filename).toBe('Live capture — Main (window #2)');
+    expect(src?.clipping).toBe(true);
+  });
+});
+
+describe('patchLiveChannelPlan', () => {
+  function sv(overrides: Partial<StripView> = {}): StripView {
+    return { strip: { kind: 'mono', a: 0, b: 1 }, displayName: 'Ch 1', collapsed: false, armed: false, groupIndex: -1, ...overrides };
+  }
+
+  it('carries collapsed/displayName/meta through from the strip view and channel', () => {
+    const plan = patchLiveChannelPlan(LIVE_CHANNELS[0], 0, sv({ displayName: 'Vocals', collapsed: true }), false);
+    expect(plan.collapsed).toBe(true);
+    expect(plan.displayName).toBe('Vocals');
+    expect(plan.idle).toBe(false);
+    expect(plan.meta).toBe('RMS -18.0 · Peak -6.0 dBFS');
+    expect(plan.removeDisabled).toBe(false);
+  });
+
+  it('shows Idle meta for idle channels', () => {
+    const plan = patchLiveChannelPlan({ ...LIVE_CHANNELS[0], idle: true }, 0, sv(), false);
+    expect(plan.idle).toBe(true);
+    expect(plan.meta).toBe('Idle');
+  });
+
+  it('reflects clipping', () => {
+    const plan = patchLiveChannelPlan({ ...LIVE_CHANNELS[0], clipping: true }, 0, sv(), false);
+    expect(plan.clipping).toBe(true);
+  });
+
+  it('sets removeDisabled while capturing', () => {
+    const plan = patchLiveChannelPlan(LIVE_CHANNELS[0], 0, sv(), true);
+    expect(plan.removeDisabled).toBe(true);
+  });
+
+  it('floors non-finite bands to -120 in the derived curve', () => {
+    const plan = patchLiveChannelPlan({ ...LIVE_CHANNELS[0], bands: { ...LIVE_CHANNELS[0].bands, sub_bass: NaN } }, 0, sv(), false);
+    expect(plan.curve.db[0]).toBe(-120);
+  });
+
+  it('picks the loudest band index matching veqLoudestIdx semantics', () => {
+    const plan = patchLiveChannelPlan(LIVE_CHANNELS[0], 0, sv(), false);
+    // Vocals fixture: mid (-12) is the loudest of the 7 bands.
+    expect(plan.loudestIdx).toBe(3);
+  });
+
+  it('produces a truthy arc for a channel with real band data', () => {
+    const plan = patchLiveChannelPlan(LIVE_CHANNELS[0], 0, sv(), false);
+    expect(plan.arc).toBeTruthy();
+    expect(typeof plan.arc).toBe('object');
   });
 });
