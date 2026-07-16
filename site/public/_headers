@@ -13,3 +13,10 @@
   Referrer-Policy: strict-origin-when-cross-origin
   Permissions-Policy: accelerometer=(), autoplay=(), camera=(), display-capture=(), encrypted-media=(), fullscreen=(), geolocation=(), gyroscope=(), magnetometer=(), microphone=(), midi=(), payment=(), picture-in-picture=(), publickey-credentials-get=(), screen-wake-lock=(), usb=(), xr-spatial-tracking=()
   Strict-Transport-Security: max-age=31536000; includeSubDomains
+
+# Browser Lite (#314) needs getUserMedia for its live-input mode — re-grant
+# microphone only on this path. "!" detaches Permissions-Policy from the /*
+# rule above so it doesn't just append; every other header still applies.
+/browser/*
+  ! Permissions-Policy
+  Permissions-Policy: accelerometer=(), autoplay=(), camera=(), display-capture=(), encrypted-media=(), fullscreen=(), geolocation=(), gyroscope=(), magnetometer=(), microphone=(self), midi=(), payment=(), picture-in-picture=(), publickey-credentials-get=(), screen-wake-lock=(), usb=(), xr-spatial-tracking=()

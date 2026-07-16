@@ -1,0 +1,58 @@
+---
+// Static, non-interactive mini visual for hero/proof tiles — there is no
+// Browser Lite screenshot yet, so this hand-built mockup (same token
+// vocabulary as ReportCard.astro) reads at a glance as "an analyzer running
+// in a browser tab". No JS, matches Browser Lite's real seven-band layout.
+const bands = [
+  { name: 'Sub', height: 30 },
+  { name: 'Bass', height: 68 },
+  { name: 'Low-mid', height: 46 },
+  { name: 'Mid', height: 54 },
+  { name: 'High-mid', height: 34 },
+  { name: 'Presence', height: 58 },
+  { name: 'Brilliance', height: 42 },
+];
+---
+
+<div class="blp card">
+  <div class="blp-chrome">
+    <span class="blp-dot" aria-hidden="true"></span>
+    <span class="blp-dot" aria-hidden="true"></span>
+    <span class="blp-dot" aria-hidden="true"></span>
+    <span class="blp-url mono">soundbuddy.online/browser</span>
+  </div>
+  <div class="blp-body">
+    <div class="blp-grade">
+      <span class="blp-letter">B+</span>
+      <span class="blp-score mono">88<span class="blp-slash">/</span>100</span>
+    </div>
+    <div class="blp-bands" role="img" aria-label="Seven-band spectrum preview">
+      {bands.map((b) => (
+        <div class="blp-band">
+          <span class="blp-bar" style={`height:${b.height}%`}></span>
+        </div>
+      ))}
+    </div>
+  </div>
+</div>
+
+<style>
+  .blp { padding: 0; overflow: hidden; }
+  .blp-chrome {
+    display: flex; align-items: center; gap: 6px;
+    padding: 9px 12px; background: var(--neutral-1000); border-bottom: 1px solid var(--border-subtle);
+  }
+  .blp-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--neutral-700); flex-shrink: 0; }
+  .blp-url {
+    margin-left: 6px; padding: 3px 10px; border-radius: var(--radius-pill);
+    background: var(--surface); color: var(--text-tertiary); font-size: var(--fs-micro);
+  }
+  .blp-body { display: flex; align-items: center; gap: 16px; padding: 16px 18px; }
+  .blp-grade { display: flex; flex-direction: column; align-items: center; gap: 2px; flex-shrink: 0; }
+  .blp-letter { font: var(--fw-bold) 30px/1 var(--font-sans); color: var(--grade-b); }
+  .blp-score { font: var(--fw-medium) var(--fs-micro)/1 var(--font-mono); color: var(--text-tertiary); }
+  .blp-slash { opacity: 0.6; }
+  .blp-bands { flex: 1; display: flex; align-items: flex-end; gap: 5px; height: 46px; }
+  .blp-band { flex: 1; height: 100%; display: flex; align-items: flex-end; }
+  .blp-bar { display: block; width: 100%; border-radius: 2px 2px 0 0; background: linear-gradient(180deg, var(--gold-500), var(--azure-500)); }
+</style>

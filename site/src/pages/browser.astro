@@ -1,0 +1,240 @@
+---
+import Layout from '../layouts/Layout.astro';
+import BrowserAnalyzer from '../components/BrowserAnalyzer.astro';
+
+const DOWNLOAD_URL = 'https://github.com/on-par/sound-buddy-releases/releases/latest';
+---
+
+<Layout
+  title="Sound Buddy Browser Lite — Local Stereo Mix Check"
+  description="Run a fast local stereo mix check in the browser. Upload a service recording or tap a live stereo input for a quick grade, band balance, and copyable notes."
+  canonical="https://soundbuddy.online/browser"
+>
+  <header class="site-header">
+    <div class="container header-row">
+      <a class="brand" href="/" aria-label="Sound Buddy home">
+        <span class="brand-mark" aria-hidden="true">
+          <svg width="22" height="22" viewBox="0 0 22 22" fill="none">
+            <circle cx="11" cy="11" r="9.5" stroke="var(--gold-500)" stroke-width="1.5" />
+            <circle cx="11" cy="11" r="3.2" fill="var(--gold-500)" />
+          </svg>
+        </span>
+        <span class="brand-name">Sound Buddy</span>
+      </a>
+      <nav class="header-nav" aria-label="Primary">
+        <a href="/">Home</a>
+        <a href="#why-browser">Why Browser Lite</a>
+        <a href="#tool">Run it now</a>
+      </nav>
+      <a class="btn btn-primary" href={DOWNLOAD_URL} rel="noopener">Get the full app</a>
+    </div>
+  </header>
+
+  <section class="hero">
+    <div class="container hero-grid">
+      <div class="hero-copy">
+        <span class="eyebrow">Browser Lite</span>
+        <h1>Quick stereo confidence, no install required.</h1>
+        <p class="hero-lede">
+          Need a fast read on your stream feed, matrix out, or post-service stereo recording?
+          Browser Lite runs a local-only quick check right in the page. It is not the full app.
+          It is the sharp, zero-friction version you can use in rehearsal, on a laptop, or before
+          you ask a volunteer to download anything.
+        </p>
+        <div class="hero-cta">
+          <a class="btn btn-primary btn-lg" href="#tool">Run Browser Lite</a>
+          <a class="btn btn-ghost btn-lg" href={DOWNLOAD_URL} rel="noopener">Download desktop for multitrack</a>
+        </div>
+        <ul class="hero-points">
+          <li>Local-only: your audio stays in the browser.</li>
+          <li>Single stereo input: upload a file or tap a live feed.</li>
+          <li>Copyable notes: turn the result into team feedback fast.</li>
+        </ul>
+      </div>
+      <div class="hero-panel card">
+        <div class="hero-panel-head">
+          <span class="eyebrow">What it is for</span>
+          <h2>Worth using between services.</h2>
+        </div>
+        <div class="hero-panel-grid">
+          <div>
+            <strong>Before volunteers leave</strong>
+            <p>Check whether the stereo feed was too hot, muddy, or collapsed before the room clears out.</p>
+          </div>
+          <div>
+            <strong>For stream handoffs</strong>
+            <p>Use the speech or broadcast presets to sanity-check the online feed without pretending it is a mastering suite.</p>
+          </div>
+          <div>
+            <strong>For the real work</strong>
+            <p>When you need capture, stems, history, or virtual soundcheck, move to the Mac app.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="why-browser" class="section tight why">
+    <div class="container why-grid">
+      <article class="why-card card">
+        <span class="eyebrow">Browser Lite gives you</span>
+        <ul class="why-list">
+          <li>A fast local stereo quick-grade with no install and no cloud step.</li>
+          <li>Live input mode for a stream feed or matrix send.</li>
+          <li>Copyable notes you can paste to your team the moment rehearsal ends.</li>
+        </ul>
+      </article>
+      <article class="why-card card">
+        <span class="eyebrow">Desktop app still owns</span>
+        <ul class="why-list">
+          <li>8 to 32-channel recording and per-strip stems.</li>
+          <li>Full report cards, history, channel groups, and saved rigs.</li>
+          <li>Virtual soundcheck and the longer-term coaching workflow.</li>
+        </ul>
+      </article>
+    </div>
+  </section>
+
+  <section id="tool" class="section">
+    <div class="container">
+      <BrowserAnalyzer />
+    </div>
+  </section>
+
+  <footer class="site-footer">
+    <div class="container footer-row">
+      <div class="footer-brand">
+        <span class="brand-mark" aria-hidden="true">
+          <svg width="20" height="20" viewBox="0 0 22 22" fill="none">
+            <circle cx="11" cy="11" r="9.5" stroke="var(--gold-500)" stroke-width="1.5" />
+            <circle cx="11" cy="11" r="3.2" fill="var(--gold-500)" />
+          </svg>
+        </span>
+        <span>Sound Buddy</span>
+      </div>
+      <nav class="footer-nav" aria-label="Footer">
+        <a href="/">Home</a>
+        <a href={DOWNLOAD_URL} rel="noopener">Desktop app</a>
+        <a href="/privacy">Privacy</a>
+        <a href={`mailto:support@soundbuddy.online`}>Support</a>
+      </nav>
+    </div>
+  </footer>
+</Layout>
+
+<style>
+  .site-header {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    background: color-mix(in srgb, var(--bg-app) 88%, transparent);
+    backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--border-subtle);
+  }
+  .header-row { display: flex; align-items: center; gap: 20px; height: 64px; }
+  .brand { display: inline-flex; align-items: center; gap: 9px; font: var(--fw-semibold) var(--fs-body-lg)/1 var(--font-sans); color: var(--text-primary); }
+  .brand-mark { display: inline-flex; }
+  .header-nav { display: flex; gap: 22px; margin-left: auto; font: var(--fw-medium) var(--fs-body-sm)/1 var(--font-sans); color: var(--text-secondary); }
+  .header-nav a { padding: 6px 0; border-bottom: 1px solid transparent; transition: color var(--dur-fast) var(--ease-out), border-color var(--dur-fast) var(--ease-out); }
+  .header-nav a:hover { color: var(--text-primary); border-bottom-color: var(--gold-500); }
+  .site-header .btn { height: 36px; padding: 0 16px; }
+
+  .hero {
+    padding: 78px 0 72px;
+    background:
+      radial-gradient(circle at 15% 10%, rgba(76, 147, 240, 0.12), transparent 30%),
+      radial-gradient(circle at 85% 0%, rgba(235, 185, 60, 0.12), transparent 30%);
+  }
+  .hero-grid { display: grid; grid-template-columns: minmax(0, 1fr) 420px; gap: 34px; align-items: start; }
+  .hero-copy h1 { margin-top: 12px; font: var(--fw-bold) 58px/0.98 var(--font-sans); letter-spacing: var(--tracking-tight); }
+  .hero-lede {
+    margin-top: 18px;
+    color: var(--text-secondary);
+    max-width: 60ch;
+    font: var(--fw-regular) var(--fs-h3)/1.65 var(--font-sans);
+  }
+  .hero-cta { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 28px; }
+  .hero-points {
+    list-style: none;
+    margin-top: 22px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    color: var(--text-secondary);
+  }
+  .hero-points li {
+    position: relative;
+    padding-left: 18px;
+    font: var(--fw-regular) var(--fs-body-sm)/1.5 var(--font-sans);
+  }
+  .hero-points li::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 8px;
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--gold-500);
+  }
+  .hero-panel { padding: 24px; }
+  .hero-panel-head h2 { margin-top: 8px; font: var(--fw-semibold) var(--fs-h1)/1.1 var(--font-sans); }
+  .hero-panel-grid {
+    margin-top: 18px;
+    display: grid;
+    gap: 16px;
+  }
+  .hero-panel-grid div {
+    padding-top: 16px;
+    border-top: 1px solid var(--border-subtle);
+  }
+  .hero-panel-grid strong {
+    display: block;
+    color: var(--text-primary);
+    font: var(--fw-semibold) var(--fs-body)/1 var(--font-sans);
+  }
+  .hero-panel-grid p {
+    margin-top: 8px;
+    color: var(--text-tertiary);
+    font: var(--fw-regular) var(--fs-body-sm)/1.55 var(--font-sans);
+  }
+  .why-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .why-card { padding: 24px; }
+  .why-list {
+    margin-top: 18px;
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .why-list li {
+    position: relative;
+    padding-left: 18px;
+    color: var(--text-secondary);
+    font: var(--fw-regular) var(--fs-body-sm)/1.55 var(--font-sans);
+  }
+  .why-list li::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 9px;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--azure-500);
+  }
+  .site-footer { border-top: 1px solid var(--border-subtle); background: var(--neutral-1000); padding: 36px 0; }
+  .footer-row { display: flex; align-items: center; gap: 24px; flex-wrap: wrap; }
+  .footer-brand { display: inline-flex; align-items: center; gap: 8px; font: var(--fw-semibold) var(--fs-body)/1 var(--font-sans); color: var(--text-primary); }
+  .footer-nav { display: flex; gap: 20px; margin-left: auto; font: var(--fw-medium) var(--fs-body-sm)/1 var(--font-sans); color: var(--text-tertiary); }
+  .footer-nav a:hover { color: var(--text-primary); }
+
+  @media (max-width: 1024px) {
+    .hero-grid { grid-template-columns: 1fr; }
+  }
+  @media (max-width: 720px) {
+    .header-nav { display: none; }
+    .hero-copy h1 { font-size: 42px; }
+    .why-grid { grid-template-columns: 1fr; }
+  }
+</style>

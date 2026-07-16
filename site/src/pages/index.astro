@@ -1,12 +1,16 @@
 ---
 import Layout from '../layouts/Layout.astro';
 import ReportCard from '../components/ReportCard.astro';
+import BrowserLitePreview from '../components/BrowserLitePreview.astro';
 import liveCaptureScreenshot from '../assets/screenshots/live-capture.png';
+import reportCardShot from '../assets/screenshots/report-card.png';
+import momentumShot from '../assets/screenshots/momentum.png';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 const DOWNLOAD_URL = 'https://github.com/on-par/sound-buddy-releases/releases/latest';
 const REPO_URL = 'https://github.com/on-par/sound-buddy';
+const BROWSER_URL = '/browser';
 // Placeholder Founding Payment Link until H2/#116 provisions the live URL — mirrors
 // app/electron/checkout.ts's placeholder convention. Real link is capped at 300 by Stripe.
 const FOUNDING_URL = 'https://buy.stripe.com/sound-buddy-founding-lifetime';
@@ -37,10 +41,36 @@ const APP_VERSION = JSON.parse(
   readFileSync(join(process.cwd(), '../app/package.json'), 'utf8'),
 ).version;
 
+type ProofCard =
+  | { kind: 'image'; title: string; body: string; image: typeof liveCaptureScreenshot; alt: string }
+  | { kind: 'preview'; title: string; body: string };
+
+const proofCards: ProofCard[] = [
+  {
+    kind: 'image',
+    title: 'Multitrack capture when you need it',
+    body: 'Record 8 to 32 channels straight from your interface, stems saved per strip — the real FOH workflow behind the report card.',
+    image: liveCaptureScreenshot,
+    alt: 'Sound Buddy live capture interface showing armed audio channels',
+  },
+  {
+    kind: 'preview',
+    title: 'Browser Lite analysis',
+    body: 'The same grading engine, running locally in a browser tab — a fast read on a stream feed or stereo file before you open the app.',
+  },
+  {
+    kind: 'image',
+    title: 'Virtual soundcheck, the follow-up',
+    body: 'Once you know what broke, bring the stems back through the desk and rehearse the fix before next Sunday.',
+    image: momentumShot,
+    alt: 'Sound Buddy app chrome showing capture, live, soundcheck, and report card tabs',
+  },
+];
+
 const steps = [
-  { n: '1', title: 'Record your service', body: 'Capture every channel straight from your interface — up to 32 inputs, stems saved per strip.' },
-  { n: '2', title: 'Drop the file in', body: 'Sound Buddy analyzes loudness, dynamics, spectral balance, and speech vs. music — fully on your Mac.' },
-  { n: '3', title: 'Get your report card', body: 'A letter grade plus the exact things to fix. Virtual soundcheck lets you replay the room as separate tracks.' },
+  { n: '1', title: 'Bring in last Sunday', body: 'Use the stream recording you already have, a USB export from the console, or a quick laptop capture.' },
+  { n: '2', title: 'See what actually happened', body: 'Sound Buddy grades loudness, dynamics, spectral balance, and speech vs. music — fully on your Mac, instead of leaving you with "felt muddy."' },
+  { n: '3', title: 'Rehearse the fix', body: 'Turn the report card into practical next moves, then use virtual soundcheck to replay the room as separate tracks before next Sunday.' },
 ];
 
 const tiers = [
@@ -88,7 +118,10 @@ const tiers = [
 ];
 ---
 
-<Layout>
+<Layout
+  title="Sound Buddy — Get a clear answer from last Sunday's mix."
+  description="Sound Buddy grades the recording you already have and names exactly what to fix before next Sunday — loudness, dynamics, spectral balance, and speech clarity. Try it free in your browser, or run the full workflow locally on your Mac."
+>
   <!-- ── Header ─────────────────────────────────────────────────── -->
   <header class="site-header">
     <div class="container header-row">
@@ -103,11 +136,11 @@ const tiers = [
       </a>
       <nav class="header-nav" aria-label="Primary">
         <a href="#how">How it works</a>
-        <a href="#report-card">Report card</a>
+        <a href={BROWSER_URL}>Browser Lite</a>
+        <a href="#proof">App proof</a>
         <a href="#pricing">Pricing</a>
-        <a href={REPO_URL} rel="noopener">GitHub</a>
       </nav>
-      <a class="btn btn-primary" href={DOWNLOAD_URL} rel="noopener">Grade your mix</a>
+      <a class="btn btn-primary" href={DOWNLOAD_URL} rel="noopener">Grade last Sunday's mix</a>
     </div>
   </header>
 
@@ -116,30 +149,46 @@ const tiers = [
     <div class="container hero-grid">
       <div class="hero-copy">
         <span class="eyebrow">For church FOH volunteers &amp; worship engineers</span>
-        <h1>Know what to fix before next Sunday.</h1>
+        <h1>Get a clear answer from last Sunday's mix.</h1>
         <p class="hero-lede">
-          Drop in a recording of last service and Sound Buddy grades the mix, then names exactly
-          what to change before next Sunday — loudness, dynamics, spectral balance, and speech
-          clarity. Runs fully on your Mac; your audio never leaves your machine.
+          Stop guessing what went wrong. Sound Buddy grades the recording you already have and
+          names exactly what to fix before next Sunday — fully on your own machine.
         </p>
         <div class="hero-cta">
-          <a class="btn btn-primary btn-lg" href={DOWNLOAD_URL} rel="noopener">Grade Sunday's mix — free</a>
-          <a class="btn btn-ghost btn-lg" href="#how">See how it works</a>
+          <a class="btn btn-primary btn-lg" href={DOWNLOAD_URL} rel="noopener">Grade last Sunday's mix</a>
+          <a class="btn btn-ghost btn-lg" href={BROWSER_URL}>Try Browser Lite free</a>
         </div>
-        <p class="hero-fine mono">Local-first · No account for your first report card · Apple Silicon · macOS 26+ · v{APP_VERSION}</p>
+        <div class="hero-chips">
+          <span class="hero-chip">Local-first</span>
+          <span class="hero-chip">No cloud uploads</span>
+          <span class="hero-chip">No account required</span>
+        </div>
+        <p class="hero-fine mono">Apple Silicon · macOS 26+ · v{APP_VERSION}</p>
       </div>
-      <div class="hero-visual">
-        <figure class="hero-app-shot card">
+      <div class="hero-visual hero-collage">
+        <figure class="hero-tile hero-tile-live card">
           <img
             src={liveCaptureScreenshot.src}
             alt="Sound Buddy live capture screen showing armed audio channels and analysis controls"
             loading="eager"
             decoding="async"
           />
-          <figcaption>
-            <span class="mono">Live Capture</span>
-            Record the room, then review the single report card below.
-          </figcaption>
+          <figcaption><span class="mono">Live Capture</span></figcaption>
+        </figure>
+        <a class="hero-tile hero-tile-browser card" href={BROWSER_URL}>
+          <div class="hero-tile-browser-inner">
+            <BrowserLitePreview />
+          </div>
+          <span class="hero-tile-caption"><span class="mono">Browser Lite — runs in this tab</span></span>
+        </a>
+        <figure class="hero-tile hero-tile-report card">
+          <img
+            src={reportCardShot.src}
+            alt="Sound Buddy report card screenshot showing a mix grade"
+            loading="lazy"
+            decoding="async"
+          />
+          <figcaption><span class="mono">Report Card</span></figcaption>
         </figure>
       </div>
     </div>
@@ -149,17 +198,17 @@ const tiers = [
   <section class="trust tight">
     <div class="container trust-grid">
       <div class="trust-item">
-        <span class="trust-icon" aria-hidden="true">⌁</span>
-        <div>
-          <strong>Works with the AI you already have.</strong>
-          <p>Bring Ollama, or paste an API key. Sound Buddy meets you where you are.</p>
-        </div>
-      </div>
-      <div class="trust-item">
         <span class="trust-icon" aria-hidden="true">🔒</span>
         <div>
           <strong>No cloud. No accounts. No data collection.</strong>
           <p>Analysis runs on-device. Your recordings stay on your Mac, full stop.</p>
+        </div>
+      </div>
+      <div class="trust-item">
+        <span class="trust-icon" aria-hidden="true">⌁</span>
+        <div>
+          <strong>Works with the AI you already have.</strong>
+          <p>Bring Ollama, or paste an API key. Sound Buddy meets you where you are.</p>
         </div>
       </div>
       <div class="trust-item">
@@ -172,11 +221,40 @@ const tiers = [
     </div>
   </section>
 
+  <!-- ── Real app proof ────────────────────────────────────────── -->
+  <section id="proof" class="section proof-section">
+    <div class="container">
+      <span class="eyebrow">Real app proof</span>
+      <h2 class="h2">This is a real workflow, not a single-card demo.</h2>
+      <p class="lede">
+        The report card is the front door. Behind it is multitrack capture, a browser-based quick
+        check, and a rehearsal loop that turns the diagnosis into a fix.
+      </p>
+      <div class="proof-grid">
+        {proofCards.map((c) => (
+          <article class="proof-card card">
+            {c.kind === 'preview' ? (
+              <a class="proof-preview-link" href={BROWSER_URL} aria-label="Open Browser Lite">
+                <BrowserLitePreview />
+              </a>
+            ) : (
+              <img src={c.image.src} alt={c.alt} loading="lazy" />
+            )}
+            <div class="proof-copy">
+              <h3>{c.title}</h3>
+              <p>{c.body}</p>
+            </div>
+          </article>
+        ))}
+      </div>
+    </div>
+  </section>
+
   <!-- ── How it works ───────────────────────────────────────────── -->
   <section id="how" class="section">
     <div class="container">
       <span class="eyebrow">How it works</span>
-      <h2 class="h2">From service to report card in three steps.</h2>
+      <h2 class="h2">From service to fix in three steps.</h2>
       <div class="steps">
         {steps.map((s) => (
           <div class="step card">
@@ -200,6 +278,10 @@ const tiers = [
           table that points at what to change next week. Bass running hot? Speech buried?
           Sound Buddy names it, so you can fix it.
         </p>
+        <p class="lede">
+          This is the front door — proof the diagnosis is real — not the whole product. Capture,
+          Browser Lite, and virtual soundcheck are the workflow behind it.
+        </p>
         <ul class="rc-bullets">
           <li>Loudness, true peak &amp; dynamic range against real targets</li>
           <li>Spectral balance across seven bands</li>
@@ -213,36 +295,38 @@ const tiers = [
     </div>
   </section>
 
-  <!-- ── Website vs. app ───────────────────────────────────────── -->
-  <section id="website-vs-app" class="section tight wa">
+  <!-- ── Browser Lite vs. desktop app ─────────────────────────────── -->
+  <section id="browser-lite" class="section tight browser-compare">
     <div class="container">
-      <span class="eyebrow">Website vs. app</span>
-      <h2 class="h2">This page helps you decide. The app does the work.</h2>
+      <span class="eyebrow">Browser Lite vs. desktop app</span>
+      <h2 class="h2">A browser tool worth opening.</h2>
       <p class="lede">
-        Nothing on this website touches your audio — it's here so you can decide whether Sound
-        Buddy fits. The recording, grading, and playback all happen inside the Mac app, on your
-        own machine.
+        Browser Lite is the fastest way to taste the core promise — drop in a stereo file or tap a
+        live input, get a quick grade right in the tab. The desktop app is where the deeper
+        rehearsal workflow lives.
       </p>
-      <div class="wa-grid">
-        <div class="wa-card card">
-          <span class="wa-icon" aria-hidden="true">🖥</span>
-          <span class="eyebrow">On this website</span>
-          <h3>Decide if it's right for you</h3>
+      <div class="compare-grid">
+        <div class="compare-card card">
+          <span class="wa-icon" aria-hidden="true">🌐</span>
+          <span class="eyebrow">Browser</span>
+          <h3>Fast answer</h3>
           <ul class="rc-bullets wa-list">
-            <li>See a real report card and what it grades</li>
-            <li>Confirm it's local-first, with no account required</li>
-            <li>Compare pricing tiers and check your Mac against system requirements</li>
+            <li>Local-only stereo quick-grade, no install and no cloud step</li>
+            <li>Live input mode for a stream feed or matrix send</li>
+            <li>Copy notes straight into a team debrief</li>
           </ul>
+          <a class="btn btn-primary" href={BROWSER_URL}>Open Browser Lite</a>
         </div>
-        <div class="wa-card card">
+        <div class="compare-card card">
           <span class="wa-icon" aria-hidden="true">🎚</span>
-          <span class="eyebrow">Inside the app</span>
-          <h3>Where the work happens</h3>
+          <span class="eyebrow">Desktop</span>
+          <h3>Deep rehearsal workflow</h3>
           <ul class="rc-bullets wa-list">
-            <li>Record every channel straight from your interface</li>
-            <li>Generate your graded report card — fully on your Mac</li>
-            <li>Replay the room with virtual soundcheck, week after week</li>
+            <li>Record 8 to 32 channels straight from your interface</li>
+            <li>Full report card, history, channel groups, and saved rigs</li>
+            <li>Virtual soundcheck — replay the room, week after week</li>
           </ul>
+          <a class="btn btn-ghost" href={DOWNLOAD_URL} rel="noopener">Get the Mac app</a>
         </div>
       </div>
     </div>
@@ -294,7 +378,8 @@ const tiers = [
       <p class="lede">
         No cloud uploads. No accounts. No analytics tracking you across the web. Sound Buddy does
         its analysis on-device — that's the whole point. If you opt into AI, you pick the provider
-        (Ollama locally, or your own API key). Nothing is sent anywhere by default.
+        (Ollama locally, or your own API key). Nothing is sent anywhere by default. Browser Lite is
+        local-only too — audio decoding and analysis happen in your browser tab, not on a server.
       </p>
       <div class="privacy-pills">
         <span class="pill good">No cloud</span>
@@ -363,6 +448,7 @@ const tiers = [
       </div>
       <nav class="footer-nav" aria-label="Footer">
         <a href={DOWNLOAD_URL} rel="noopener">Download</a>
+        <a href={BROWSER_URL}>Browser Lite</a>
         <a href={REPO_URL} rel="noopener">GitHub</a>
         <a href="#pricing">Pricing</a>
         <a href="/refund">Refunds</a>
@@ -410,16 +496,33 @@ const tiers = [
   .hero { padding: 72px 0 88px; background:
       radial-gradient(900px 480px at 78% 0%, var(--gold-tint-soft), transparent 70%),
       radial-gradient(700px 420px at 12% 12%, var(--azure-tint), transparent 72%); }
-  .hero-grid { display: grid; grid-template-columns: 1.05fr 1fr; gap: 56px; align-items: center; }
+  .hero-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 56px; align-items: center; }
   .hero-copy h1 { font: var(--fw-bold) var(--fs-display)/var(--lh-tight) var(--font-sans); letter-spacing: var(--tracking-tight); margin: 16px 0 18px; color: var(--text-primary); }
   .hero-lede { font: var(--fw-regular) var(--fs-h3)/var(--lh-relaxed) var(--font-sans); color: var(--text-secondary); max-width: 52ch; }
   .hero-cta { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 28px; }
-  .hero-fine { margin-top: 18px; color: var(--text-muted); font-size: var(--fs-label); }
-  .hero-visual { display: flex; justify-content: center; }
-  .hero-app-shot { width: 100%; max-width: 500px; padding: 10px; transform: rotate(-0.4deg); box-shadow: var(--shadow-lg); overflow: hidden; }
-  .hero-app-shot img { width: 100%; aspect-ratio: 1.255; object-fit: cover; object-position: center; border-radius: var(--radius-lg); border: 1px solid var(--border-subtle); background: var(--surface-inset); }
-  .hero-app-shot figcaption { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 12px 4px 2px; font: var(--fw-medium) var(--fs-label)/var(--lh-normal) var(--font-sans); color: var(--text-tertiary); }
-  .hero-app-shot figcaption .mono { color: var(--gold-text); font-size: var(--fs-micro); text-transform: uppercase; letter-spacing: var(--tracking-caps); white-space: nowrap; }
+  .hero-chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 22px; }
+  .hero-chip { display: inline-flex; align-items: center; padding: 5px 12px; border-radius: var(--radius-pill); background: var(--surface); border: 1px solid var(--border-subtle); color: var(--text-tertiary); font: var(--fw-medium) var(--fs-label)/1 var(--font-sans); }
+  .hero-fine { margin-top: 14px; color: var(--text-muted); font-size: var(--fs-label); }
+
+  /* ── Hero collage ── */
+  .hero-collage {
+    display: grid;
+    grid-template-columns: 1.3fr 1fr;
+    grid-template-rows: auto auto;
+    gap: 16px;
+  }
+  .hero-tile { padding: 8px; overflow: hidden; display: flex; flex-direction: column; }
+  .hero-tile img { width: 100%; border-radius: var(--radius-lg); border: 1px solid var(--border-subtle); background: var(--surface-inset); object-fit: cover; }
+  .hero-tile figcaption, .hero-tile-caption { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 4px 2px; font: var(--fw-medium) var(--fs-label)/var(--lh-normal) var(--font-sans); color: var(--text-tertiary); }
+  .hero-tile figcaption .mono { color: var(--gold-text); font-size: var(--fs-micro); text-transform: uppercase; letter-spacing: var(--tracking-caps); white-space: nowrap; }
+  .hero-tile-caption .mono { color: var(--gold-text); font-size: var(--fs-micro); text-transform: uppercase; letter-spacing: var(--tracking-caps); line-height: 1.4; }
+  .hero-tile-live { grid-column: 1; grid-row: 1 / span 2; }
+  .hero-tile-live img { aspect-ratio: 1; object-position: center; flex: 1; }
+  .hero-tile-browser { grid-column: 2; grid-row: 1; transition: border-color var(--dur-fast) var(--ease-out), transform var(--dur-fast) var(--ease-out); }
+  .hero-tile-browser:hover { border-color: var(--gold-500); transform: translateY(-2px); }
+  .hero-tile-browser-inner :global(.blp) { border: 0; box-shadow: none; }
+  .hero-tile-report { grid-column: 2; grid-row: 2; }
+  .hero-tile-report img { aspect-ratio: 1.6; object-position: top; }
 
   /* ── Trust bar ── */
   .trust { background: var(--bg-panel); border-top: 1px solid var(--border-subtle); border-bottom: 1px solid var(--border-subtle); }
@@ -428,6 +531,17 @@ const tiers = [
   .trust-icon { display: inline-flex; align-items: center; justify-content: center; width: 36px; height: 36px; border-radius: var(--radius-md); background: var(--gold-tint); color: var(--gold-text); font-size: 18px; flex-shrink: 0; }
   .trust-item strong { display: block; font: var(--fw-semibold) var(--fs-body-sm)/var(--lh-snug) var(--font-sans); color: var(--text-primary); margin-bottom: 4px; }
   .trust-item p { font: var(--fw-regular) var(--fs-body-sm)/var(--lh-normal) var(--font-sans); color: var(--text-tertiary); }
+
+  /* ── Real app proof ── */
+  .proof-section { background: var(--bg-panel-2); }
+  .proof-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; margin-top: 36px; }
+  .proof-card { display: flex; flex-direction: column; overflow: hidden; }
+  .proof-card img { width: 100%; aspect-ratio: 1.5; object-fit: cover; object-position: top; }
+  .proof-preview-link { display: block; padding: 14px 14px 0; }
+  .proof-preview-link :global(.blp) { border: 0; box-shadow: none; }
+  .proof-copy { padding: 20px 22px 24px; }
+  .proof-copy h3 { font: var(--fw-semibold) var(--fs-h2)/var(--lh-snug) var(--font-sans); color: var(--text-primary); margin-bottom: 8px; }
+  .proof-copy p { font: var(--fw-regular) var(--fs-body-sm)/var(--lh-normal) var(--font-sans); color: var(--text-tertiary); }
 
   /* ── How it works ── */
   .steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; margin-top: 36px; }
@@ -445,11 +559,12 @@ const tiers = [
   .rc-showcase-visual { display: flex; justify-content: center; }
   .rc-showcase-visual :global(.rc) { width: 100%; max-width: 480px; box-shadow: var(--shadow-lg); }
 
-  /* ── Website vs. app ── */
-  .wa-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-top: 36px; }
-  .wa-card { padding: 28px 26px; display: flex; flex-direction: column; gap: 4px; }
+  /* ── Browser Lite vs. desktop app ── */
+  .compare-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-top: 36px; }
+  .compare-card { padding: 28px 26px; display: flex; flex-direction: column; gap: 4px; }
+  .compare-card .btn { margin-top: 18px; align-self: flex-start; }
   .wa-icon { display: inline-flex; align-items: center; justify-content: center; width: 36px; height: 36px; border-radius: var(--radius-md); background: var(--gold-tint); color: var(--gold-text); font-size: 18px; margin-bottom: 14px; }
-  .wa-card h3 { font: var(--fw-semibold) var(--fs-h2)/var(--lh-snug) var(--font-sans); color: var(--text-primary); margin-top: 6px; margin-bottom: 4px; }
+  .compare-card h3 { font: var(--fw-semibold) var(--fs-h2)/var(--lh-snug) var(--font-sans); color: var(--text-primary); margin-top: 6px; margin-bottom: 4px; }
   .wa-list { margin-top: 14px; }
 
   /* ── Pricing ── */
@@ -518,19 +633,25 @@ const tiers = [
   /* ── Responsive ── */
   @media (max-width: 920px) {
     .hero-grid { grid-template-columns: 1fr; gap: 40px; }
-    .hero-app-shot { max-width: 640px; }
+    .hero-collage { grid-template-columns: 1fr; grid-template-rows: none; }
+    .hero-tile-live, .hero-tile-browser, .hero-tile-report { grid-column: 1; grid-row: auto; }
+    .hero-tile-live img { aspect-ratio: 1.6; }
+    .proof-grid { grid-template-columns: 1fr; }
     .rc-showcase-grid { grid-template-columns: 1fr; gap: 40px; }
-    .wa-grid { grid-template-columns: 1fr; gap: 20px; }
+    .compare-grid { grid-template-columns: 1fr; gap: 20px; }
     .tiers { grid-template-columns: repeat(2, 1fr); max-width: 620px; margin-left: auto; margin-right: auto; }
     .sysreq-grid { grid-template-columns: 1fr; gap: 32px; }
   }
   @media (max-width: 720px) {
     .header-nav { display: none; }
     .hero-copy h1 { font-size: 40px; }
-    .hero-app-shot figcaption { align-items: flex-start; flex-direction: column; gap: 4px; }
     .trust-grid { grid-template-columns: 1fr; gap: 24px; }
     .steps { grid-template-columns: 1fr; }
     .privacy-card { padding: 28px 20px; }
     .tiers { grid-template-columns: 1fr; max-width: 460px; }
+  }
+  @media (max-width: 390px) {
+    .hero-cta, .hero-chips { gap: 8px; }
+    .hero-cta .btn { width: 100%; }
   }
 </style>
