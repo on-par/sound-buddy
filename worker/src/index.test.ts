@@ -5,6 +5,7 @@ import worker, { type Env } from "./index";
 // cast is enough. Later stories that read KV/vars will build a richer fixture.
 const env = {
   LICENSE_KV: {} as KVNamespace,
+  EVENTS_KV: {} as KVNamespace,
   FOUNDING_CAP: "300",
   FROM_EMAIL: "hello@example.test",
   SUPPORT_EMAIL: "support@example.test",
@@ -66,5 +67,25 @@ describe("worker router", () => {
     ]) {
       expect(body).not.toContain(secret);
     }
+  });
+
+  it("POST /api/ingest is wired (behaviour covered in ingest.test.ts)", async () => {
+    // Send invalid JSON so the handler responds before touching EVENTS_KV —
+    // the stub binding here is a bare `{}`.
+    const res = await worker.fetch(
+      new Request("https://sound-buddy-api.test/api/ingest", {
+        method: "POST",
+        body: "not json",
+      }),
+      env,
+      ctx,
+    );
+    expect(res.status).toBe(400);
+  });
+
+  it("GET /api/ingest is 405 with an Allow header", async () => {
+    const res = await call("GET", "/api/ingest");
+    expect(res.status).toBe(405);
+    expect(res.headers.get("allow")).toBe("POST");
   });
 });
