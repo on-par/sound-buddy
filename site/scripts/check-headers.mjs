@@ -81,6 +81,30 @@ for (const [name, expected] of Object.entries(EXPECTED_VALUES)) {
   }
 }
 
+const globalPermissionsPolicy = ruleHeaders.get('permissions-policy');
+if (globalPermissionsPolicy && !/microphone=\(\)/.test(globalPermissionsPolicy.value)) {
+  problems.push('The /* rule must deny microphone (microphone=()) — Browser Lite opts back in via /browser/*.');
+}
+
+// #314 — Browser Lite needs getUserMedia, so /browser/* must re-grant
+// microphone while every other route stays denied.
+const browserRuleIdx = lines.findIndex((l) => l.trim() === '/browser/*');
+if (browserRuleIdx === -1) {
+  problems.push('_headers is missing a "/browser/*" rule granting microphone access for Browser Lite (#314).');
+} else {
+  const browserRuleLines = [];
+  for (let i = browserRuleIdx + 1; i < lines.length; i++) {
+    const line = lines[i];
+    if (!line.trim()) continue;
+    if (!/^\s/.test(line)) break;
+    browserRuleLines.push(line.trim());
+  }
+  const browserRuleText = browserRuleLines.join('\n');
+  if (!/Permissions-Policy:.*microphone=\(self\)/.test(browserRuleText)) {
+    problems.push('The /browser/* rule must set Permissions-Policy with microphone=(self).');
+  }
+}
+
 const hsts = ruleHeaders.get('strict-transport-security'.toLowerCase());
 if (hsts && !hsts.value.includes('max-age=')) {
   problems.push('Strict-Transport-Security must contain "max-age=".');
