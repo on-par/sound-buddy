@@ -1,6 +1,7 @@
 ---
 import Layout from '../layouts/Layout.astro';
 import ReportCard from '../components/ReportCard.astro';
+import liveCaptureScreenshot from '../assets/screenshots/live-capture.png';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
@@ -128,7 +129,18 @@ const tiers = [
         <p class="hero-fine mono">Local-first · No account for your first report card · Apple Silicon · macOS 26+ · v{APP_VERSION}</p>
       </div>
       <div class="hero-visual">
-        <ReportCard />
+        <figure class="hero-app-shot card">
+          <img
+            src={liveCaptureScreenshot.src}
+            alt="Sound Buddy live capture screen showing armed audio channels and analysis controls"
+            loading="eager"
+            decoding="async"
+          />
+          <figcaption>
+            <span class="mono">Live Capture</span>
+            Record the room, then review the single report card below.
+          </figcaption>
+        </figure>
       </div>
     </div>
   </section>
@@ -404,7 +416,10 @@ const tiers = [
   .hero-cta { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 28px; }
   .hero-fine { margin-top: 18px; color: var(--text-muted); font-size: var(--fs-label); }
   .hero-visual { display: flex; justify-content: center; }
-  .hero-visual :global(.rc) { width: 100%; max-width: 460px; transform: rotate(-0.4deg); box-shadow: var(--shadow-lg); }
+  .hero-app-shot { width: 100%; max-width: 500px; padding: 10px; transform: rotate(-0.4deg); box-shadow: var(--shadow-lg); overflow: hidden; }
+  .hero-app-shot img { width: 100%; aspect-ratio: 1.255; object-fit: cover; object-position: center; border-radius: var(--radius-lg); border: 1px solid var(--border-subtle); background: var(--surface-inset); }
+  .hero-app-shot figcaption { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 12px 4px 2px; font: var(--fw-medium) var(--fs-label)/var(--lh-normal) var(--font-sans); color: var(--text-tertiary); }
+  .hero-app-shot figcaption .mono { color: var(--gold-text); font-size: var(--fs-micro); text-transform: uppercase; letter-spacing: var(--tracking-caps); white-space: nowrap; }
 
   /* ── Trust bar ── */
   .trust { background: var(--bg-panel); border-top: 1px solid var(--border-subtle); border-bottom: 1px solid var(--border-subtle); }
@@ -503,7 +518,7 @@ const tiers = [
   /* ── Responsive ── */
   @media (max-width: 920px) {
     .hero-grid { grid-template-columns: 1fr; gap: 40px; }
-    .hero-visual :global(.rc) { max-width: 100%; }
+    .hero-app-shot { max-width: 640px; }
     .rc-showcase-grid { grid-template-columns: 1fr; gap: 40px; }
     .wa-grid { grid-template-columns: 1fr; gap: 20px; }
     .tiers { grid-template-columns: repeat(2, 1fr); max-width: 620px; margin-left: auto; margin-right: auto; }
@@ -512,6 +527,7 @@ const tiers = [
   @media (max-width: 720px) {
     .header-nav { display: none; }
     .hero-copy h1 { font-size: 40px; }
+    .hero-app-shot figcaption { align-items: flex-start; flex-direction: column; gap: 4px; }
     .trust-grid { grid-template-columns: 1fr; gap: 24px; }
     .steps { grid-template-columns: 1fr; }
     .privacy-card { padding: 28px 20px; }
