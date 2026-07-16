@@ -24,16 +24,26 @@ const TWO_CH = [{ index: 0, name: 'Tiny 2ch', channels: 2, default_sr: 48000 }];
 // specs (momentum/purchase-path) incidentally dodge it because they assert on
 // the renderer first, giving the context time to settle; this is the only
 // caller of stubDevices() and it runs right after launch, so retry here
-// instead of relying on assertion ordering elsewhere.
-async function stubDevices(app: ElectronApplication, devices: unknown, attempt = 1): Promise<void> {
-  try {
-    await app.evaluate(({ ipcMain }, devs) => {
-      ipcMain.removeHandler('list-devices');
-      ipcMain.handle('list-devices', () => ({ success: true, micAccess: 'granted', devices: devs }));
-    }, devices);
-  } catch (err) {
-    if (attempt >= 3) throw err;
-    await stubDevices(app, devices, attempt + 1);
+// instead of relying on assertion ordering elsewhere. Retry only the
+// documented race, not arbitrary failures, so a genuine break (e.g. a typo in
+// the stub) still surfaces immediately instead of being masked.
+const STUB_DEVICES_ATTEMPTS = 5;
+const STUB_DEVICES_RETRY_DELAY_MS = 250;
+
+async function stubDevices(app: ElectronApplication, devices: unknown): Promise<void> {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      await app.evaluate(({ ipcMain }, devs) => {
+        ipcMain.removeHandler('list-devices');
+        ipcMain.handle('list-devices', () => ({ success: true, micAccess: 'granted', devices: devs }));
+      }, devices);
+      return;
+    } catch (err) {
+      const isContextDestroyed =
+        err instanceof Error && err.message.includes('Execution context was destroyed');
+      if (!isContextDestroyed || attempt >= STUB_DEVICES_ATTEMPTS) throw err;
+      await new Promise((resolve) => setTimeout(resolve, STUB_DEVICES_RETRY_DELAY_MS));
+    }
   }
 }
 
@@ -46,6 +56,11 @@ async function launch(devices: unknown): Promise<{ app: ElectronApplication; win
   });
   const win = await app.firstWindow();
   await win.waitForLoadState('domcontentloaded');
+  // Wait for the app shell to finish booting (mode tabs rendered) before the
+  // first main-process evaluate — domcontentloaded fires before the renderer
+  // boot script (and #117's startup license work) has settled, which is the
+  // window where playwright#33737 destroys the main-process context.
+  await win.locator('.mode-tab[data-mode="live"]').waitFor();
   // Stub then reload so the boot-time loadDevices() sees the fake interface.
   await stubDevices(app, devices);
   await win.reload();
