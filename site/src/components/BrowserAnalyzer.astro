@@ -300,8 +300,11 @@
 
     function formatSeconds(value: number): string {
       if (!Number.isFinite(value)) return '--';
-      const mins = Math.floor(value / 60);
-      const secs = Math.round(value % 60);
+      // Round the total first, then split — rounding mins/secs separately can
+      // carry secs to 60 (e.g. 59.6s -> "0:60" instead of "1:00").
+      const total = Math.round(value);
+      const mins = Math.floor(total / 60);
+      const secs = total % 60;
       return `${mins}:${String(secs).padStart(2, '0')}`;
     }
 
@@ -362,6 +365,19 @@
       return clamp(cov / Math.sqrt(varL * varR), -1, 1);
     }
 
+    const SILENCE_FLOOR_DB = -90;
+
+    /** A near-silent right channel means a mono source (e.g. laptop mic through
+     * a 2-channel splitter) rather than a real L/R imbalance — report 0 dB
+     * instead of leftDb minus the noise floor. */
+    function computeBalanceDb(left: Float32Array, right: Float32Array | null): number {
+      if (!right) return 0;
+      const leftDb = db(computeRms(left));
+      const rightDb = db(computeRms(right));
+      if (rightDb <= SILENCE_FLOOR_DB) return 0;
+      return leftDb - rightDb;
+    }
+
     function computeWindowedDynamic(mono: Float32Array, sampleRate: number): number {
       const frameSize = Math.max(512, Math.floor(sampleRate * 0.35));
       const frames: number[] = [];
@@ -412,16 +428,16 @@
       const rmsDb = db(computeRms(mono));
       const peakDb = db(computePeak(left, right));
       const correlation = computeCorrelation(left, right);
-      const leftDb = db(computeRms(left));
-      const rightDb = right ? db(computeRms(right)) : leftDb;
-      const balanceDb = leftDb - rightDb;
+      const balanceDb = computeBalanceDb(left, right);
       const dynamicRange = computeWindowedDynamic(mono, buffer.sampleRate);
-      // Built incrementally below — every BAND_DEFS key is assigned before use.
-      const bandValues = {} as Record<BandKey, number>;
-
-      for (const band of BAND_DEFS) {
-        bandValues[band.key] = await measureBandDb(mono, buffer.sampleRate, band.low, band.high);
-      }
+      // Each band's OfflineAudioContext render is independent of the others,
+      // so run them concurrently rather than serializing 7 renders — this is
+      // the difference between a "quick check" and a multi-second wait on a
+      // longer service recording.
+      const bandEntries = await Promise.all(
+        BAND_DEFS.map(async (band) => [band.key, await measureBandDb(mono, buffer.sampleRate, band.low, band.high)] as const),
+      );
+      const bandValues = Object.fromEntries(bandEntries) as Record<BandKey, number>;
 
       const centroidNumerator = BAND_DEFS.reduce((sum, band) => {
         const linear = Math.pow(10, (bandValues[band.key] || -120) / 20);
@@ -670,7 +686,7 @@
           peakDb: db(computePeak(leftTime, rightTime)),
           rmsDb: db(computeRms(downmix(leftTime, rightTime))),
           correlation: computeCorrelation(leftTime, rightTime),
-          balanceDb: db(computeRms(leftTime)) - db(computeRms(rightTime)),
+          balanceDb: computeBalanceDb(leftTime, rightTime),
           dynamicRange: Math.max(0, db(computePeak(leftTime, rightTime)) - db(computeRms(downmix(leftTime, rightTime)))),
           centroid: centroidDenominator > 0 ? centroidNumerator / centroidDenominator : 0,
           bands: bandMap,
@@ -695,12 +711,19 @@
         els.runMode.textContent = 'Analyzing';
         els.statusCopy.textContent = `Decoding ${file.name} locally...`;
         const context = new AudioContext();
-        const data = await file.arrayBuffer();
-        const buffer = await context.decodeAudioData(data.slice(0));
-        await context.close();
-        await analyzeDecodedBuffer(buffer, file.name);
-        els.runMode.textContent = 'File';
-        els.statusCopy.textContent = `${file.name} analyzed locally in your browser.`;
+        try {
+          const data = await file.arrayBuffer();
+          const buffer = await context.decodeAudioData(data.slice(0));
+          await analyzeDecodedBuffer(buffer, file.name);
+          els.runMode.textContent = 'File';
+          els.statusCopy.textContent = `${file.name} analyzed locally in your browser.`;
+        } catch {
+          els.runMode.textContent = 'Idle';
+          els.statusCopy.textContent =
+            `Couldn't decode ${file.name}. Try a standard stereo WAV, AIFF, MP3, AAC, or M4A file.`;
+        } finally {
+          await context.close();
+        }
       })();
     });
 

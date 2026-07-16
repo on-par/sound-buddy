@@ -4,6 +4,7 @@
 // against the whole dist/ tree).
 import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
+import { hasInlineScript } from './lib/inline-script.mjs';
 
 const browserPath = fileURLToPath(new URL('../dist/browser/index.html', import.meta.url));
 
@@ -21,8 +22,7 @@ if (!html.includes('data-browser-analyzer')) {
   problems.push('Browser page is missing the [data-browser-analyzer] mount point.');
 }
 
-const inlineScriptRe = /<script\b(?![^>]*\bsrc=)[^>]*>/i;
-if (inlineScriptRe.test(html)) {
+if (hasInlineScript(html)) {
   problems.push(
     "dist/browser/index.html contains an inline <script> tag (no src=) — the script-src 'self' " +
       'CSP will block it. Keep vite.build.assetsInlineLimit: 0 in astro.config.mjs so Astro emits ' +

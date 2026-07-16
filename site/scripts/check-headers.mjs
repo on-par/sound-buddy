@@ -5,6 +5,7 @@
 import { readFile, readdir } from 'node:fs/promises';
 import { join, extname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { hasInlineScript } from './lib/inline-script.mjs';
 
 const root = fileURLToPath(new URL('../dist/', import.meta.url));
 const headersPath = join(root, '_headers');
@@ -123,11 +124,10 @@ if (csp) {
 
 const files = await walk(root);
 const htmlFiles = files.filter((f) => extname(f) === '.html');
-const inlineScriptRe = /<script\b(?![^>]*\bsrc=)[^>]*>/i;
 
 for (const file of htmlFiles) {
   const html = await readFile(file, 'utf8');
-  if (inlineScriptRe.test(html)) {
+  if (hasInlineScript(html)) {
     problems.push(
       `${file.slice(root.length)}: contains an inline <script> tag (no src=) — the ` +
         "script-src 'self' CSP will block it. Keep vite.build.assetsInlineLimit: 0 " +
