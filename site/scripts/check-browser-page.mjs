@@ -1,5 +1,6 @@
-// Guard the built Browser Lite page (#314): it must exist, mount the
-// analyzer, carry local-only messaging, and never ship an inline <script>
+// Guard the built Browser Lite page (#314, #298): it must exist, mount the
+// analyzer, mount the live decibel meter with its dBFS-not-SPL honesty
+// copy, carry local-only messaging, and never ship an inline <script>
 // (the CSP is script-src 'self' — see check-headers.mjs for the same check
 // against the whole dist/ tree).
 import { readFile } from 'node:fs/promises';
@@ -22,6 +23,16 @@ if (!html.includes('data-browser-analyzer')) {
   problems.push('Browser page is missing the [data-browser-analyzer] mount point.');
 }
 
+if (!html.includes('data-live-meter')) {
+  problems.push('Browser page is missing the [data-live-meter] live decibel meter card.');
+}
+
+if (!/not (true|calibrated) SPL/i.test(html)) {
+  problems.push(
+    'Browser page must state that the live meter reads dBFS, not calibrated/true SPL (#298).',
+  );
+}
+
 if (hasInlineScript(html)) {
   problems.push(
     "dist/browser/index.html contains an inline <script> tag (no src=) — the script-src 'self' " +
@@ -40,4 +51,7 @@ if (problems.length) {
   process.exit(1);
 }
 
-console.log('✓ Browser Lite page builds, mounts the analyzer, has no inline scripts, and states local-only processing.');
+console.log(
+  '✓ Browser Lite page builds, mounts the analyzer and live meter, has no inline scripts, ' +
+    'and states local-only processing and dBFS-not-SPL honesty copy.',
+);
