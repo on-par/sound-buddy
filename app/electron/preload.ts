@@ -16,148 +16,170 @@ import type {
   UpdateStatus,
 } from './ipc/api';
 
-const api = {
-  getAppVersion: () => ipcRenderer.invoke('get-app-version'),
+// The slice of Electron's IpcRenderer the bridge actually uses. Injected so
+// the bridge can be built and exercised in unit tests without an Electron
+// sandbox (#332).
+export interface IpcRendererLike {
+  // `any` mirrors Electron's own IpcRenderer.invoke signature; the concrete
+  // per-channel return types are asserted by `satisfies SoundBuddyApi` below.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  invoke(channel: string, ...args: unknown[]): Promise<any>;
+  // `any` mirrors Electron's own IpcRenderer.on listener payload; the
+  // concrete per-channel argument types are asserted by `satisfies
+  // SoundBuddyApi` below.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  on(channel: string, listener: (event: unknown, ...args: any[]) => void): unknown;
+  removeAllListeners(channel: string): unknown;
+}
 
-  getSettings: () => ipcRenderer.invoke('get-settings'),
+export function createBridge(ipc: IpcRendererLike) {
+  return {
+    getAppVersion: () => ipc.invoke('get-app-version'),
 
-  // Playback transport (#180) — a file:// URL an <audio> element can load
-  // directly. Computed in the main process: the sandboxed preload's `url`
-  // polyfill lacks pathToFileURL.
-  toFileUrl: (filePath: string) => ipcRenderer.invoke('to-file-url', filePath),
+    getSettings: () => ipc.invoke('get-settings'),
 
-  updateSettings: (patch: UpdateSettingsPatch) =>
-    ipcRenderer.invoke('update-settings', patch),
+    // Playback transport (#180) — a file:// URL an <audio> element can load
+    // directly. Computed in the main process: the sandboxed preload's `url`
+    // polyfill lacks pathToFileURL.
+    toFileUrl: (filePath: string) => ipc.invoke('to-file-url', filePath),
 
-  // Storage location + disk usage (#91). Informational only — Sound Buddy caps
-  // nothing; this reports where recordings live and how much disk they use.
-  getStorageUsage: () => ipcRenderer.invoke('get-storage-usage'),
+    updateSettings: (patch: UpdateSettingsPatch) =>
+      ipc.invoke('update-settings', patch),
 
-  // AI provider settings (#76). getLlmConfig never returns key material — just
-  // a hasApiKey flag; saveLlmConfig takes the pasted key one way (to main).
-  getLlmConfig: () => ipcRenderer.invoke('llm-get-config'),
-  saveLlmConfig: (patch: LlmConfigPatch) => ipcRenderer.invoke('llm-save-config', patch),
-  detectOllama: (host?: string) => ipcRenderer.invoke('llm-detect-ollama', host),
-  testLlmProvider: (opts: TestLlmProviderOpts) =>
-    ipcRenderer.invoke('llm-test-provider', opts),
-  listLlmModels: () => ipcRenderer.invoke('llm-list-models'),
+    // Storage location + disk usage (#91). Informational only — Sound Buddy caps
+    // nothing; this reports where recordings live and how much disk they use.
+    getStorageUsage: () => ipc.invoke('get-storage-usage'),
 
-  // License (#54) — offline key validation + feature gating. Free/Pro state
-  // drives the renderer's lock icons, badge, and grace banner.
-  getLicense: () => ipcRenderer.invoke('get-license'),
-  activateLicense: (key: string) => ipcRenderer.invoke('activate-license', key),
-  removeLicense: () => ipcRenderer.invoke('remove-license'),
-  // Automatic license refresh (#117) — the manual "Refresh license" button and
-  // the paywall-evaluation trigger both call this; the launch trigger fires
-  // from the main process directly.
-  refreshLicense: () => ipcRenderer.invoke('refresh-license'),
-  onOpenLicenseDialog: (cb: () => void) =>
-    ipcRenderer.on('open-license-dialog', () => cb()),
+    // AI provider settings (#76). getLlmConfig never returns key material — just
+    // a hasApiKey flag; saveLlmConfig takes the pasted key one way (to main).
+    getLlmConfig: () => ipc.invoke('llm-get-config'),
+    saveLlmConfig: (patch: LlmConfigPatch) => ipc.invoke('llm-save-config', patch),
+    detectOllama: (host?: string) => ipc.invoke('llm-detect-ollama', host),
+    testLlmProvider: (opts: TestLlmProviderOpts) =>
+      ipc.invoke('llm-test-provider', opts),
+    listLlmModels: () => ipc.invoke('llm-list-models'),
 
-  // Upgrade checkout (#58) — open the hosted Stripe checkout for a plan
-  // ('monthly' | 'annual') in the user's browser. No card data touches the app.
-  openCheckout: (plan: 'monthly' | 'annual') => ipcRenderer.invoke('open-checkout', plan),
+    // License (#54) — offline key validation + feature gating. Free/Pro state
+    // drives the renderer's lock icons, badge, and grace banner.
+    getLicense: () => ipc.invoke('get-license'),
+    activateLicense: (key: string) => ipc.invoke('activate-license', key),
+    removeLicense: () => ipc.invoke('remove-license'),
+    // Automatic license refresh (#117) — the manual "Refresh license" button and
+    // the paywall-evaluation trigger both call this; the launch trigger fires
+    // from the main process directly.
+    refreshLicense: () => ipc.invoke('refresh-license'),
+    onOpenLicenseDialog: (cb: () => void) =>
+      ipc.on('open-license-dialog', () => cb()),
 
-  // Feedback mailto (#143) — opens the user's mail client; the app sends nothing.
-  openFeedback: () => ipcRenderer.invoke('open-feedback'),
-  // Capture guidance (#142) — opens the hosted "record your service" docs page in
-  // the user's browser. The app sends nothing; fixed URL resolved in main.
-  openCaptureGuide: () => ipcRenderer.invoke('open-capture-guide'),
-  // Attach diagnostics (#144) — reveals the log file in Finder so the user can
-  // drag it into the feedback email themselves. Never attached automatically.
-  revealDiagnostics: () => ipcRenderer.invoke('reveal-diagnostics'),
+    // Upgrade checkout (#58) — open the hosted Stripe checkout for a plan
+    // ('monthly' | 'annual') in the user's browser. No card data touches the app.
+    openCheckout: (plan: 'monthly' | 'annual') => ipc.invoke('open-checkout', plan),
 
-  // Capture rigs (#36) — backend only for now; the Live-tab UI arrives in #37.
-  listRigs: () => ipcRenderer.invoke('list-rigs'),
-  saveRig: (rig: unknown) => ipcRenderer.invoke('save-rig', rig),
-  deleteRig: (id: string) => ipcRenderer.invoke('delete-rig', id),
-  setActiveRig: (id: string | null) => ipcRenderer.invoke('set-active-rig', id),
+    // Feedback mailto (#143) — opens the user's mail client; the app sends nothing.
+    openFeedback: () => ipc.invoke('open-feedback'),
+    // Capture guidance (#142) — opens the hosted "record your service" docs page in
+    // the user's browser. The app sends nothing; fixed URL resolved in main.
+    openCaptureGuide: () => ipc.invoke('open-capture-guide'),
+    // Attach diagnostics (#144) — reveals the log file in Finder so the user can
+    // drag it into the feedback email themselves. Never attached automatically.
+    revealDiagnostics: () => ipc.invoke('reveal-diagnostics'),
 
-  analyzeFile: (opts: AnalyzeFileOpts) =>
-    ipcRenderer.invoke('analyze-file', opts),
+    // Capture rigs (#36) — backend only for now; the Live-tab UI arrives in #37.
+    listRigs: () => ipc.invoke('list-rigs'),
+    saveRig: (rig: unknown) => ipc.invoke('save-rig', rig),
+    deleteRig: (id: string) => ipc.invoke('delete-rig', id),
+    setActiveRig: (id: string | null) => ipc.invoke('set-active-rig', id),
 
-  // Persist a report-card summary after a successful analysis (#146). Fire-and-
-  // forget from the renderer's perspective; failures are logged in main.
-  saveAnalysisSummary: (summary: AnalysisSummaryInput) =>
-    ipcRenderer.invoke('save-analysis-summary', summary),
+    analyzeFile: (opts: AnalyzeFileOpts) =>
+      ipc.invoke('analyze-file', opts),
 
-  // Last 10 persisted report-card summaries, newest-first, for the Recent
-  // Services list (#147).
-  listAnalysisSummaries: () => ipcRenderer.invoke('list-analysis-summaries'),
+    // Persist a report-card summary after a successful analysis (#146). Fire-and-
+    // forget from the renderer's perspective; failures are logged in main.
+    saveAnalysisSummary: (summary: AnalysisSummaryInput) =>
+      ipc.invoke('save-analysis-summary', summary),
 
-  // Cancel (#125) — aborts the in-flight analyze-file run for this renderer.
-  cancelAnalysis: () => ipcRenderer.invoke('cancel-analysis'),
-  onAnalysisProgress: (cb: (data: AnalysisProgress) => void) =>
-    ipcRenderer.on('analysis-progress', (_event, d) => cb(d)),
+    // Last 10 persisted report-card summaries, newest-first, for the Recent
+    // Services list (#147).
+    listAnalysisSummaries: () => ipc.invoke('list-analysis-summaries'),
 
-  // Path to the bundled demo recording for the first-run onboarding flow (#69).
-  // Resolves to null when the asset is absent so the renderer can fall back.
-  getDemoAudio: () => ipcRenderer.invoke('get-demo-audio'),
+    // Cancel (#125) — aborts the in-flight analyze-file run for this renderer.
+    cancelAnalysis: () => ipc.invoke('cancel-analysis'),
+    onAnalysisProgress: (cb: (data: AnalysisProgress) => void) =>
+      ipc.on('analysis-progress', (_event, d) => cb(d)),
 
-  // Dev/e2e switch (SOUND_BUDDY_DISABLE_ONBOARDING) for the first-run overlay (#69).
-  isOnboardingDisabled: () => ipcRenderer.invoke('onboarding-disabled'),
+    // Path to the bundled demo recording for the first-run onboarding flow (#69).
+    // Resolves to null when the asset is absent so the renderer can fall back.
+    getDemoAudio: () => ipc.invoke('get-demo-audio'),
 
-  listDevices: () => ipcRenderer.invoke('list-devices'),
+    // Dev/e2e switch (SOUND_BUDDY_DISABLE_ONBOARDING) for the first-run overlay (#69).
+    isOnboardingDisabled: () => ipc.invoke('onboarding-disabled'),
 
-  // Playback (output) devices for virtual-soundcheck (#44). No micAccess field —
-  // choosing an output interface doesn't require the microphone grant.
-  listOutputDevices: () => ipcRenderer.invoke('list-output-devices'),
+    listDevices: () => ipc.invoke('list-devices'),
 
-  openFileDialog: () => ipcRenderer.invoke('open-file-dialog'),
+    // Playback (output) devices for virtual-soundcheck (#44). No micAccess field —
+    // choosing an output interface doesn't require the microphone grant.
+    listOutputDevices: () => ipc.invoke('list-output-devices'),
 
-  openDirDialog: () => ipcRenderer.invoke('open-dir-dialog'),
+    openFileDialog: () => ipc.invoke('open-file-dialog'),
 
-  // Local-only save of the Export PNG button's rasterized report card (#368).
-  saveReportImage: (bytes: Uint8Array, suggestedName: string) =>
-    ipcRenderer.invoke('save-report-image', bytes, suggestedName),
+    openDirDialog: () => ipc.invoke('open-dir-dialog'),
 
-  startLive: (opts: StartLiveOpts) => ipcRenderer.invoke('start-live', opts),
+    // Local-only save of the Export PNG button's rasterized report card (#368).
+    saveReportImage: (bytes: Uint8Array, suggestedName: string) =>
+      ipc.invoke('save-report-image', bytes, suggestedName),
 
-  stopLive: () => ipcRenderer.invoke('stop-live'),
+    startLive: (opts: StartLiveOpts) => ipc.invoke('start-live', opts),
 
-  // Reveal a captured session folder in the OS file manager (#43). Paves the way
-  // for "Open in Virtual Soundcheck" (epic #35); for now it opens the folder.
-  revealPath: (targetPath: string) => ipcRenderer.invoke('reveal-path', targetPath),
+    stopLive: () => ipc.invoke('stop-live'),
 
-  // Virtual-soundcheck playback (#45). Play a captured session's stems through
-  // an output device with per-track routing (or a stereo master fold). Events
-  // (mixdown/progress/level/ended) arrive on the `playback-event` channel.
-  startPlayback: (opts: StartPlaybackOpts) => ipcRenderer.invoke('start-playback', opts),
+    // Reveal a captured session folder in the OS file manager (#43). Paves the way
+    // for "Open in Virtual Soundcheck" (epic #35); for now it opens the folder.
+    revealPath: (targetPath: string) => ipc.invoke('reveal-path', targetPath),
 
-  stopPlayback: () => ipcRenderer.invoke('stop-playback'),
+    // Virtual-soundcheck playback (#45). Play a captured session's stems through
+    // an output device with per-track routing (or a stereo master fold). Events
+    // (mixdown/progress/level/ended) arrive on the `playback-event` channel.
+    startPlayback: (opts: StartPlaybackOpts) => ipc.invoke('start-playback', opts),
 
-  // Read a captured session's session.json manifest for the Soundcheck UI (#46).
-  readSession: (sessionDir: string) => ipcRenderer.invoke('read-session', sessionDir),
+    stopPlayback: () => ipc.invoke('stop-playback'),
 
-  onPlaybackEvent: (cb: (data: unknown) => void) =>
-    ipcRenderer.on('playback-event', (_event, d) => cb(d)),
+    // Read a captured session's session.json manifest for the Soundcheck UI (#46).
+    readSession: (sessionDir: string) => ipc.invoke('read-session', sessionDir),
 
-  triggerLlmAnalysis: (data: unknown) => ipcRenderer.invoke('trigger-llm-analysis', data),
+    onPlaybackEvent: (cb: (data: unknown) => void) =>
+      ipc.on('playback-event', (_event, d) => cb(d)),
 
-  onLiveEvent: (cb: (data: unknown) => void) =>
-    ipcRenderer.on('live-event', (_event, d) => cb(d)),
+    triggerLlmAnalysis: (data: unknown) => ipc.invoke('trigger-llm-analysis', data),
 
-  onLlmDelta: (cb: (text: string) => void) =>
-    ipcRenderer.on('llm-delta', (_event, t) => cb(t)),
+    onLiveEvent: (cb: (data: unknown) => void) =>
+      ipc.on('live-event', (_event, d) => cb(d)),
 
-  onLlmDone: (cb: () => void) =>
-    ipcRenderer.on('llm-done', () => cb()),
+    onLlmDelta: (cb: (text: string) => void) =>
+      ipc.on('llm-delta', (_event, t) => cb(t)),
 
-  onAnalysisResult: (cb: (data: unknown) => void) =>
-    ipcRenderer.on('analysis-result', (_event, d) => cb(d)),
+    onLlmDone: (cb: () => void) =>
+      ipc.on('llm-done', () => cb()),
 
-  onMenuOpenFile: (cb: (filePath: string) => void) =>
-    ipcRenderer.on('menu-open-file', (_event, fp) => cb(fp)),
+    onAnalysisResult: (cb: (data: unknown) => void) =>
+      ipc.on('analysis-result', (_event, d) => cb(d)),
 
-  // Updates
-  checkForUpdates: () => ipcRenderer.invoke('check-for-updates'),
-  openReleasePage: (url?: string) => ipcRenderer.invoke('open-release-page', url),
-  onUpdateAvailable: (cb: (info: UpdateInfo) => void) =>
-    ipcRenderer.on('update-available', (_event, info) => cb(info)),
-  onUpdateStatus: (cb: (status: UpdateStatus) => void) =>
-    ipcRenderer.on('update-status', (_event, s) => cb(s)),
+    onMenuOpenFile: (cb: (filePath: string) => void) =>
+      ipc.on('menu-open-file', (_event, fp) => cb(fp)),
 
-  removeAllListeners: (ch: string) => ipcRenderer.removeAllListeners(ch),
-} satisfies SoundBuddyApi;
+    // Updates
+    checkForUpdates: () => ipc.invoke('check-for-updates'),
+    openReleasePage: (url?: string) => ipc.invoke('open-release-page', url),
+    onUpdateAvailable: (cb: (info: UpdateInfo) => void) =>
+      ipc.on('update-available', (_event, info) => cb(info)),
+    onUpdateStatus: (cb: (status: UpdateStatus) => void) =>
+      ipc.on('update-status', (_event, s) => cb(s)),
 
-contextBridge.exposeInMainWorld('soundBuddy', api);
+    removeAllListeners: (ch: string) => ipc.removeAllListeners(ch),
+  } satisfies SoundBuddyApi;
+}
+
+/* c8 ignore start -- Electron framework wiring: contextBridge only exists in
+   a real sandboxed preload context; the bridge it exposes is fully covered
+   via createBridge() in preload.test.ts. */
+contextBridge.exposeInMainWorld('soundBuddy', createBridge(ipcRenderer));
+/* c8 ignore stop */
