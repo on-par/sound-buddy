@@ -25,6 +25,7 @@ import type {
   DialogApi,
   UpdateApi,
   FeedbackApi,
+  CrashReportingApi,
   ListenerApi,
   AppSettings,
   PublicLlmConfig,
@@ -68,6 +69,7 @@ type SubInterfaceIntersection = AppInfoApi &
   DialogApi &
   UpdateApi &
   FeedbackApi &
+  CrashReportingApi &
   ListenerApi;
 
 // `true` only when the extends-check holds; assigning `true` to a `never`
@@ -150,6 +152,7 @@ describe('SoundBuddyApi composition (TD-011, #405)', () => {
     const dialogSlice: DialogApi = api;
     const updateSlice: UpdateApi = api;
     const feedbackSlice: FeedbackApi = api;
+    const crashReportingSlice: CrashReportingApi = api;
     const listenerSlice: ListenerApi = api;
 
     const slices: unknown[] = [
@@ -165,10 +168,11 @@ describe('SoundBuddyApi composition (TD-011, #405)', () => {
       dialogSlice,
       updateSlice,
       feedbackSlice,
+      crashReportingSlice,
       listenerSlice,
     ];
 
-    expect(slices).toHaveLength(13);
+    expect(slices).toHaveLength(14);
     for (const slice of slices) expect(slice).toBeTruthy();
   });
 

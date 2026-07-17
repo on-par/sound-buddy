@@ -154,6 +154,11 @@ export function registerSettingsHandlers(): void {
       // replace discipline as channelLabels.
       const groups = sanitizeChannelGroups(patch.channelGroups);
       if (groups) clean.channelGroups = groups;
+      // Opt-in crash reporting (#473) — gates all capture/sending in
+      // crash-reporting.ts.
+      if (typeof patch.crashReportingEnabled === 'boolean') {
+        clean.crashReportingEnabled = patch.crashReportingEnabled;
+      }
     }
     return updateSettings(clean);
   });

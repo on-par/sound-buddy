@@ -13,6 +13,7 @@ import { findSpectralPeaks } from '@sound-buddy/audio-engine/dist/analyze/spectr
 import * as spectrumDisplay from './spectrum-display';
 import * as reportCard from './report-card';
 import * as liveCapturePanel from './live-capture-panel';
+import * as crashHooks from './crash-hooks';
 import rootMarkup from './root-markup.html?raw';
 import rigReconcileSrc from '../rig-reconcile.js?raw';
 import collapseStateSrc from '../collapse-state.js?raw';
@@ -106,6 +107,7 @@ export default function App() {
     (window as Window & { spectrumDisplay?: unknown }).spectrumDisplay = spectrumDisplay;
     (window as Window & { reportCard?: unknown }).reportCard = reportCard;
     (window as Window & { liveCapturePanel?: unknown }).liveCapturePanel = liveCapturePanel;
+    (window as Window & { crashHooks?: unknown }).crashHooks = crashHooks;
     // Installed before the boot scripts run — inline-app.js reads
     // window.rendererStores at its top level (TD-001 slice 3, #421).
     installStoreBridge();

@@ -19,6 +19,9 @@ const MAX_SHORT_FIELD_LENGTH = 32; // appVersion, osVersion
 const MAX_TELEMETRY_PROPS = 20;
 const MAX_PROP_VALUE_LENGTH = 256;
 const TELEMETRY_NAME_PATTERN = /^[a-z0-9][a-z0-9._-]{0,63}$/;
+// #473: crash.recentEvents — a bounded ring buffer of recent safe app event
+// names (never free text), same shape as telemetry.name.
+const MAX_RECENT_EVENTS = 20;
 
 // #472: feedback.category/contactEmail/platform — additive, backwards-compatible
 // fields. contactEmail is a deliberate reply channel the user typed into a
@@ -48,6 +51,12 @@ export interface CrashEvent {
   message: string;
   stack?: string;
   processType?: "main" | "renderer";
+  /** e.g. "darwin-arm64" — same semantics as feedback.platform. */
+  platform?: string;
+  /** Current screen identifier, e.g. "screen.live". */
+  route?: string;
+  /** Recent safe app event names, oldest→newest, ≤ MAX_RECENT_EVENTS. */
+  recentEvents?: string[];
 }
 
 export interface TelemetryEvent {
@@ -95,7 +104,17 @@ const ALLOWED_FIELDS: Record<IngestEventType, ReadonlySet<string>> = {
     "contactEmail",
     "platform",
   ]),
-  crash: new Set(["type", "appVersion", "osVersion", "message", "stack", "processType"]),
+  crash: new Set([
+    "type",
+    "appVersion",
+    "osVersion",
+    "message",
+    "stack",
+    "processType",
+    "platform",
+    "route",
+    "recentEvents",
+  ]),
   telemetry: new Set(["type", "appVersion", "osVersion", "name", "value", "props"]),
 };
 
@@ -250,6 +269,23 @@ export function validateIngestEvent(body: unknown): ValidationResult {
     ) {
       return { ok: false, error: "invalid_field", field: "processType", status: 400 };
     }
+    const platform = body.platform;
+    if (platform !== undefined && !isShortField(platform, false)) {
+      return { ok: false, error: "invalid_field", field: "platform", status: 400 };
+    }
+    const route = body.route;
+    if (route !== undefined && (typeof route !== "string" || !TELEMETRY_NAME_PATTERN.test(route))) {
+      return { ok: false, error: "invalid_field", field: "route", status: 400 };
+    }
+    const recentEvents = body.recentEvents;
+    if (
+      recentEvents !== undefined &&
+      (!Array.isArray(recentEvents) ||
+        recentEvents.length > MAX_RECENT_EVENTS ||
+        !recentEvents.every((e) => typeof e === "string" && TELEMETRY_NAME_PATTERN.test(e)))
+    ) {
+      return { ok: false, error: "invalid_field", field: "recentEvents", status: 400 };
+    }
     return {
       ok: true,
       event: {
@@ -259,6 +295,9 @@ export function validateIngestEvent(body: unknown): ValidationResult {
         message,
         ...(stack !== undefined ? { stack: stack as string } : {}),
         ...(processType !== undefined ? { processType: processType as "main" | "renderer" } : {}),
+        ...(platform !== undefined ? { platform: platform as string } : {}),
+        ...(route !== undefined ? { route: route as string } : {}),
+        ...(recentEvents !== undefined ? { recentEvents: recentEvents as string[] } : {}),
       },
     };
   }

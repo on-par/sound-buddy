@@ -169,6 +169,32 @@ describe('usageSignalEnabled (#145 — opt-in anonymous usage counts, persisted 
   });
 });
 
+describe('crashReportingEnabled (#473 — opt-in crash reporting, default off)', () => {
+  it('defaults to false when unset', () => {
+    expect(getSettings().crashReportingEnabled).toBe(false);
+  });
+
+  it('flips on and back off, persisting each value to the raw file', () => {
+    const on = updateSettings({ crashReportingEnabled: true });
+    expect(on.crashReportingEnabled).toBe(true);
+    expect(readFile().crashReportingEnabled).toBe(true);
+
+    const off = updateSettings({ crashReportingEnabled: false });
+    expect(off.crashReportingEnabled).toBe(false);
+    expect(readFile().crashReportingEnabled).toBe(false);
+  });
+
+  it('backfills crashReportingEnabled=false on a write that does not mention it', () => {
+    updateSettings({ idealProfile: 'x' });
+    expect(readFile().crashReportingEnabled).toBe(false);
+  });
+
+  it('treats a settings.json with crashReportingEnabled absent as false', () => {
+    writeFile({ aiEnabled: false, idealProfile: '' });
+    expect(getSettings().crashReportingEnabled).toBe(false);
+  });
+});
+
 describe('customIdealProfiles', () => {
   const curve = {
     id: 'sunday',

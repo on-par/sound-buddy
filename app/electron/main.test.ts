@@ -42,7 +42,18 @@ vi.mock('electron', () => {
   };
 });
 vi.mock('./ipc', () => ({ registerIpcHandlers: vi.fn() }));
-vi.mock('./logger', () => ({ initLogging: vi.fn(), attachWindowLogging: vi.fn(), log: vi.fn() }));
+vi.mock('./logger', () => ({
+  initLogging: vi.fn(),
+  attachWindowLogging: vi.fn(),
+  log: vi.fn(),
+  setCrashSink: vi.fn(),
+}));
+vi.mock('./crash-reporting', () => ({
+  captureMainError: vi.fn(),
+  flushPendingCrashReport: vi.fn().mockResolvedValue(undefined),
+  handleRendererErrorReport: vi.fn(),
+  recordAppEvent: vi.fn(),
+}));
 vi.mock('./updater', () => ({ checkForUpdates: vi.fn(), openReleasePage: vi.fn() }));
 vi.mock('./checkout', () => ({ checkoutUrl: vi.fn((plan?: string) => `https://example.com/checkout/${plan}`) }));
 vi.mock('./capture-guide', () => ({ captureGuideUrl: vi.fn(() => 'https://example.com/guide') }));
@@ -56,7 +67,8 @@ vi.mock('./license-refresh', () => ({ maybeRefreshLicense: vi.fn().mockResolvedV
 
 import { app, BrowserWindow, Menu, ipcMain, shell } from 'electron';
 import { registerIpcHandlers } from './ipc';
-import { initLogging, attachWindowLogging } from './logger';
+import { initLogging, attachWindowLogging, setCrashSink } from './logger';
+import { captureMainError, flushPendingCrashReport, handleRendererErrorReport, recordAppEvent } from './crash-reporting';
 import { checkForUpdates, openReleasePage } from './updater';
 import { checkoutUrl } from './checkout';
 import { captureGuideUrl } from './capture-guide';
@@ -301,8 +313,35 @@ describe('lifecycle (whenReady callback)', () => {
         'submit-feedback',
         'open-capture-guide',
         'reveal-diagnostics',
+        'report-renderer-error',
+        'record-app-event',
       ])
     );
+  });
+
+  it('wires the logger crash sink to captureMainError and flushes any pending crash report', () => {
+    expect(setCrashSink).toHaveBeenCalledTimes(1);
+    const sink = (setCrashSink as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    const err = new Error('boom');
+    sink(err, { fatal: true });
+    expect(captureMainError).toHaveBeenCalledWith(err, { fatal: true });
+
+    expect(flushPendingCrashReport).toHaveBeenCalledTimes(1);
+  });
+
+  it('report-renderer-error handler forwards the renderer input to handleRendererErrorReport', () => {
+    const calls = (ipcMain.handle as ReturnType<typeof vi.fn>).mock.calls;
+    const handler = calls.find((c) => c[0] === 'report-renderer-error')?.[1];
+    const input = { message: 'boom', stack: 'Error: boom' };
+    handler(undefined, input);
+    expect(handleRendererErrorReport).toHaveBeenCalledWith(input);
+  });
+
+  it('record-app-event handler forwards the name to recordAppEvent', () => {
+    const calls = (ipcMain.handle as ReturnType<typeof vi.fn>).mock.calls;
+    const handler = calls.find((c) => c[0] === 'record-app-event')?.[1];
+    handler(undefined, 'screen.live');
+    expect(recordAppEvent).toHaveBeenCalledWith('screen.live');
   });
 
   it('open-checkout handler opens the checkout URL for the given plan', () => {

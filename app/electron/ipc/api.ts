@@ -35,6 +35,7 @@ export interface UpdateSettingsPatch {
   usageSignalEnabled?: boolean;
   channelLabels?: Record<string, Record<string, string>>;
   channelGroups?: Record<string, PersistedChannelGroup[]>;
+  crashReportingEnabled?: boolean;
 }
 
 /** A renderer patch: `apiKey` semantics — undefined = keep, '' = clear. */
@@ -229,6 +230,13 @@ export interface AppSettings {
    * pure persisted data, like `rigs`.
    */
   channelGroups: Record<string, PersistedChannelGroup[]>;
+  /**
+   * Opt-in crash reporting (#473). Default false (off). Unlike
+   * usageSignalEnabled, this flag *does* gate real behavior — it controls
+   * all capture and sending in crash-reporting.ts. No env layer: opt-in
+   * must be an explicit user action, never a launch-time override.
+   */
+  crashReportingEnabled: boolean;
 }
 
 // ─── LLM DTOs (PublicLlmConfig moved from electron/llm-config.ts, TD-011) ────
@@ -448,6 +456,18 @@ export interface FeedbackApi {
   onOpenFeedbackDialog(cb: () => void): void;
 }
 
+/**
+ * Opt-in crash reporting (#473). reportRendererError is the IPC-facing
+ * validator's entry point — never trust the renderer, so main revalidates
+ * from scratch (see electron/crash-reporting.ts's handleRendererErrorReport).
+ * recordAppEvent pushes a safe event *name* (never free text) onto the
+ * bounded breadcrumb ring buffer a crash payload later includes.
+ */
+export interface CrashReportingApi {
+  reportRendererError(input: { message: string; stack?: string }): Promise<void>;
+  recordAppEvent(name: string): Promise<void>;
+}
+
 // Cross-cutting: not tied to any one domain (used by every `on*` listener).
 export interface ListenerApi {
   removeAllListeners(ch: string): void;
@@ -467,4 +487,5 @@ export interface SoundBuddyApi
     DialogApi,
     UpdateApi,
     FeedbackApi,
+    CrashReportingApi,
     ListenerApi {}

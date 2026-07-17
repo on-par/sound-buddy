@@ -128,6 +128,12 @@ const INVOKE_TABLE: Array<{ method: BridgeKey; channel: string; args: unknown[] 
   { method: 'triggerLlmAnalysis', channel: 'trigger-llm-analysis', args: [{ summary: 'x' }] },
   { method: 'checkForUpdates', channel: 'check-for-updates', args: [] },
   { method: 'openReleasePage', channel: 'open-release-page', args: ['https://example.com'] },
+  {
+    method: 'reportRendererError',
+    channel: 'report-renderer-error',
+    args: [{ message: 'boom', stack: 'Error: boom' }],
+  },
+  { method: 'recordAppEvent', channel: 'record-app-event', args: ['screen.live'] },
 ];
 
 // Methods backed by `ipc.on` rather than `ipc.invoke` — excluded from the

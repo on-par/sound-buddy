@@ -126,6 +126,11 @@
          preference for whenever that capability ships. -->
     <label class="ai-enable-row"><input type="checkbox" id="usage-signal-toggle" />Share anonymous usage counts</label>
     <p class="ai-dialog-note" id="usage-signal-note">Off unless you turn it on. Nothing is collected or sent today — Sound Buddy has no usage reporting at all. If a future update adds it, enabling this would share only anonymous counts of which features get used — never audio, recordings, file names, or file paths. Your audio never leaves your machine.</p>
+    <!-- Opt-in crash reporting (#473). Off by default. When enabled, a crash
+         sends a strictly-allowlisted, redacted payload — never recordings,
+         full file paths, secrets, license keys, or audio metadata. -->
+    <label class="ai-enable-row"><input type="checkbox" id="crash-reporting-toggle" />Send crash reports</label>
+    <p class="ai-dialog-note" id="crash-reporting-note">Off unless you turn it on. When enabled, a crash sends only: app version, macOS version, the error message and stack trace (emails, license keys, and folder paths removed — file names are reduced to their base name), which screen you were on, and the names of recent app actions. Never recordings, audio, full file paths, or anything you typed.</p>
     <div class="rig-dialog-actions">
       <button type="button" id="storage-reset-btn" class="btn btn-secondary sm" style="display:none">Use default</button>
       <button type="button" id="storage-cancel-btn" class="btn btn-secondary sm">Cancel</button>

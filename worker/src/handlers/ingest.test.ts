@@ -579,6 +579,131 @@ describe("POST /api/ingest (#475)", () => {
 
       expect(res.status).toBe(202);
     });
+
+    it("crash with platform/route/recentEvents accepted and stored verbatim", async () => {
+      const { kv, store, putSpy } = makeKv();
+      const env = makeEnv(kv);
+
+      const res = await handleIngestEvent(
+        request({
+          ...validCrash,
+          platform: "darwin-arm64",
+          route: "screen.live",
+          recentEvents: ["app.launch", "screen.live"],
+        }),
+        env,
+        ctx,
+        deps,
+      );
+
+      expect(res.status).toBe(202);
+      const ingestPutCall = putSpy.mock.calls.find((call) =>
+        String(call[0]).startsWith("ingest:"),
+      );
+      const stored = JSON.parse(store.get(ingestPutCall![0] as string)!) as StoredIngestEvent;
+      const event = stored.event as {
+        platform: string;
+        route: string;
+        recentEvents: string[];
+      };
+      expect(event.platform).toBe("darwin-arm64");
+      expect(event.route).toBe("screen.live");
+      expect(event.recentEvents).toEqual(["app.launch", "screen.live"]);
+    });
+
+    it("whitespace-containing platform → 400 invalid_field platform", async () => {
+      const { kv } = makeKv();
+      const env = makeEnv(kv);
+
+      const res = await handleIngestEvent(
+        request({ ...validCrash, platform: "darwin arm64" }),
+        env,
+        ctx,
+        deps,
+      );
+
+      expect(res.status).toBe(400);
+      expect(await res.json()).toEqual({ error: "invalid_field", field: "platform" });
+    });
+
+    it("route with spaces → 400 invalid_field route", async () => {
+      const { kv } = makeKv();
+      const env = makeEnv(kv);
+
+      const res = await handleIngestEvent(
+        request({ ...validCrash, route: "Has Spaces" }),
+        env,
+        ctx,
+        deps,
+      );
+
+      expect(res.status).toBe(400);
+      expect(await res.json()).toEqual({ error: "invalid_field", field: "route" });
+    });
+
+    it("21 recentEvents → 400 invalid_field recentEvents", async () => {
+      const { kv } = makeKv();
+      const env = makeEnv(kv);
+
+      const res = await handleIngestEvent(
+        request({ ...validCrash, recentEvents: Array.from({ length: 21 }, () => "app.tick") }),
+        env,
+        ctx,
+        deps,
+      );
+
+      expect(res.status).toBe(400);
+      expect(await res.json()).toEqual({ error: "invalid_field", field: "recentEvents" });
+    });
+
+    it("non-string entry in recentEvents → 400 invalid_field recentEvents", async () => {
+      const { kv } = makeKv();
+      const env = makeEnv(kv);
+
+      const res = await handleIngestEvent(
+        request({ ...validCrash, recentEvents: ["app.launch", 42] }),
+        env,
+        ctx,
+        deps,
+      );
+
+      expect(res.status).toBe(400);
+      expect(await res.json()).toEqual({ error: "invalid_field", field: "recentEvents" });
+    });
+
+    it("non-array recentEvents → 400 invalid_field recentEvents", async () => {
+      const { kv } = makeKv();
+      const env = makeEnv(kv);
+
+      const res = await handleIngestEvent(
+        request({ ...validCrash, recentEvents: "app.launch" }),
+        env,
+        ctx,
+        deps,
+      );
+
+      expect(res.status).toBe(400);
+      expect(await res.json()).toEqual({ error: "invalid_field", field: "recentEvents" });
+    });
+
+    it("old minimal crash events (no platform/route/recentEvents) still accepted (back-compat)", async () => {
+      const { kv, store, putSpy } = makeKv();
+      const env = makeEnv(kv);
+
+      const res = await handleIngestEvent(
+        request({ type: "crash", appVersion: "1.2.3", message: "boom" }),
+        env,
+        ctx,
+        deps,
+      );
+
+      expect(res.status).toBe(202);
+      const ingestPutCall = putSpy.mock.calls.find((call) =>
+        String(call[0]).startsWith("ingest:"),
+      );
+      const stored = JSON.parse(store.get(ingestPutCall![0] as string)!) as StoredIngestEvent;
+      expect(Object.keys(stored.event).sort()).toEqual(["appVersion", "message", "type"].sort());
+    });
   });
 
   describe("telemetry fields", () => {
