@@ -1,6 +1,7 @@
 export interface BuildReleaseNotesOptions {
   version: string
   signed: boolean
+  highlights?: string
 }
 
 export const INSTALL_INTRO =
@@ -18,13 +19,18 @@ export const UNSIGNED_STEPS =
   '3. Confirm **Open Anyway** and authenticate.\n' +
   '   Power-user alternative: `xattr -dr com.apple.quarantine "/Applications/Sound Buddy.app"`'
 
-export function buildReleaseNotes({ version, signed }: BuildReleaseNotesOptions): string {
+export function buildReleaseNotes({ version, signed, highlights }: BuildReleaseNotesOptions): string {
   const zipName = `Sound.Buddy-${version}-arm64-mac.zip`
   const installSteps = signed
     ? `1. Download \`${zipName}\` below, unzip, drag **Sound Buddy.app** to **/Applications**, and launch it.`
     : `1. Download \`${zipName}\` below, unzip, drag **Sound Buddy.app** to **/Applications**.\n${UNSIGNED_STEPS}`
 
-  return `${INSTALL_INTRO}
+  const trimmedHighlights = highlights?.trim()
+  const highlightsSection = trimmedHighlights
+    ? `## What's new in ${version}\n${trimmedHighlights}\n\n`
+    : ''
+
+  return `${highlightsSection}${INSTALL_INTRO}
 
 ## Download & install
 ${installSteps}

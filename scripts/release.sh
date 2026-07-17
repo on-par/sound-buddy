@@ -128,10 +128,17 @@ IDENTITY="$(node -e '
 SIGNED=$([ "$IDENTITY" = "null" ] && echo false || echo true)
 say "Release notes: $([ "$SIGNED" = "true" ] && echo "signed" || echo "unsigned") build"
 
+HIGHLIGHTS=""
+[[ -f "$ROOT/RELEASE_HIGHLIGHTS.md" ]] && HIGHLIGHTS="$(cat "$ROOT/RELEASE_HIGHLIGHTS.md")"
+
 NOTES="$(node --input-type=module -e '
   import { buildReleaseNotes } from "'"$ROOT"'/packages/shared/dist/index.js";
-  process.stdout.write(buildReleaseNotes({ version: process.argv[1], signed: process.argv[2] === "true" }));
-' "$NEXT" "$SIGNED")"
+  process.stdout.write(buildReleaseNotes({
+    version: process.argv[1],
+    signed: process.argv[2] === "true",
+    highlights: process.argv[3] || undefined,
+  }));
+' "$NEXT" "$SIGNED" "$HIGHLIGHTS")"
 gh release create "$TAG" "$ZIP" -R "$PUBLIC_REPO" \
   --title "Sound Buddy $TAG (macOS Apple Silicon)" \
   --notes "$NOTES"

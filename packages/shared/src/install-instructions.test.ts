@@ -42,4 +42,24 @@ describe('buildReleaseNotes', () => {
     expect(INSTALL_INTRO).not.toContain('right-click');
     expect(UNSIGNED_STEPS).not.toContain('right-click');
   });
+
+  it('renders a What\'s new section above install steps when highlights are provided', () => {
+    const notes = buildReleaseNotes({
+      version: '0.9.0',
+      signed: false,
+      highlights: '- **Opt-in crash reporting** — off by default.',
+    });
+    expect(notes).toContain("## What's new in 0.9.0");
+    expect(notes).toContain('- **Opt-in crash reporting** — off by default.');
+    expect(notes.indexOf("## What's new in 0.9.0")).toBeLessThan(notes.indexOf('## Download & install'));
+  });
+
+  it('omits the What\'s new section when highlights are absent or empty', () => {
+    const withoutHighlights = buildReleaseNotes({ version: '0.9.0', signed: false });
+    const emptyHighlights = buildReleaseNotes({ version: '0.9.0', signed: false, highlights: '   ' });
+    for (const notes of [withoutHighlights, emptyHighlights]) {
+      expect(notes).not.toContain("What's new");
+      expect(notes).toContain('## Download & install');
+    }
+  });
 });
