@@ -663,6 +663,8 @@
     .spectrum-chart { flex:1; min-height:340px; display:flex; align-items:flex-start; gap:10px; background:var(--surface-inset); border:1px solid var(--border-subtle); border-radius:var(--radius-xl); box-shadow:var(--elevation-canvas); padding:18px 20px; }
     .sb-band-tint { opacity:0.06; }
     .sb-grid-line { stroke:var(--gridline); stroke-width:1; }
+    .sb-grid-line.minor { stroke:var(--gridline-minor); }
+    .sb-grid-line.major { stroke:var(--gridline-major); }
     .sb-axis-base { stroke:var(--border-default); stroke-width:1; }
     .sb-x-label { font:var(--fw-medium) 11px/1 var(--font-mono); fill:var(--gridline-label); text-anchor:middle; }
     .sb-y-label { font:var(--fw-medium) 11px/1 var(--font-mono); fill:var(--gridline-label); text-anchor:end; }
@@ -685,6 +687,8 @@
     .eq-plot { position:relative; height:280px; }
     .eq-plot .veq-bars { inset:0; }
     .eq-grid { position:absolute; left:0; right:0; height:1px; background:var(--gridline); }
+    .eq-grid.minor { background:var(--gridline-minor); }
+    .eq-grid.major { background:var(--gridline-major); }
     .eq-target-svg { position:absolute; inset:0; width:100%; height:100%; pointer-events:none; overflow:visible; }
     .eq-centroid { margin-top:8px; padding:0 4px; font:var(--fw-regular) var(--fs-micro)/1 var(--font-mono); color:var(--azure-text); }
 

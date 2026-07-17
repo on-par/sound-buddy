@@ -54,6 +54,11 @@ describe('src/styles/tokens.css', () => {
     expect(tokensCss).toContain('--header-h:52px');
     expect(tokensCss).toContain('--titlebar-safe-left:82px');
   });
+
+  it('carries the console-style gridline major/minor tokens (#480)', () => {
+    expect(tokensCss).toContain('--gridline-minor:rgba(255,255,255,0.03)');
+    expect(tokensCss).toContain('--gridline-major:rgba(255,255,255,0.09)');
+  });
 });
 
 describe('src/styles/app.css', () => {
@@ -73,5 +78,12 @@ describe('src/styles/app.css', () => {
   it('uses the shared titlebar safe-area token for the header and top banners', () => {
     expect(appCss).toContain('#update-banner,\n    #license-banner,\n    #trial-banner {\n      padding-left:var(--titlebar-safe-left);');
     expect(appCss).toContain('padding-left:var(--titlebar-safe-left);');
+  });
+
+  it('carries the console-style major/minor gridline rules (#480)', () => {
+    expect(appCss).toContain('.sb-grid-line.minor');
+    expect(appCss).toContain('.sb-grid-line.major');
+    expect(appCss).toContain('.eq-grid.minor');
+    expect(appCss).toContain('.eq-grid.major');
   });
 });

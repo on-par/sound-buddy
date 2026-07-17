@@ -55,6 +55,7 @@
       --meter-track:var(--neutral-1000); --meter-good:var(--good-500); --meter-hot:var(--check-500);
       --meter-clip:var(--issue-500); --meter-idle:var(--neutral-700);
       --gridline:rgba(255,255,255,0.05); --gridline-label:rgba(255,255,255,0.22);
+      --gridline-minor:rgba(255,255,255,0.03); --gridline-major:rgba(255,255,255,0.09);
 
       /* Type */
       --font-sans:'Geist',-apple-system,BlinkMacSystemFont,'Segoe UI',system-ui,sans-serif;
