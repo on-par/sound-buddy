@@ -32,7 +32,7 @@ describe('createSettingsStore', () => {
           rigs: [],
           activeRigId: null,
           usageSignalEnabled: false,
-          channelLabels: {}, channelGroups: {},
+          channelLabels: {}, channelGroups: {}, crashReportingEnabled: false,
         };
       },
       getLlmConfig: async () => {
@@ -66,7 +66,7 @@ describe('createSettingsStore', () => {
       rigs: [],
       activeRigId: null,
       usageSignalEnabled: false,
-      channelLabels: {}, channelGroups: {},
+      channelLabels: {}, channelGroups: {}, crashReportingEnabled: false,
     };
     const mock = createMockSoundBuddy({
       updateSettings: async (patch) => {
@@ -113,7 +113,7 @@ describe('createSettingsStore', () => {
       rigs: [],
       activeRigId: null,
       usageSignalEnabled: false,
-      channelLabels: {}, channelGroups: {},
+      channelLabels: {}, channelGroups: {}, crashReportingEnabled: false,
     };
     const mock = createMockSoundBuddy({
       updateSettings: () => Promise.reject(new Error('write failed')),
@@ -214,7 +214,7 @@ describe('createSettingsStore', () => {
         rigs: [],
         activeRigId: null,
         usageSignalEnabled: false,
-        channelLabels: {}, channelGroups: {},
+        channelLabels: {}, channelGroups: {}, crashReportingEnabled: false,
       }),
     });
     (globalThis as { window?: unknown }).window = { soundBuddy: mock.api };

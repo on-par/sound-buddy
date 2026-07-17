@@ -40,6 +40,7 @@ const DEFAULT_APP_SETTINGS: AppSettings = {
   usageSignalEnabled: false,
   channelLabels: {},
   channelGroups: {},
+  crashReportingEnabled: false,
 };
 
 const DEFAULT_PUBLIC_LLM_CONFIG: PublicLlmConfig = {
@@ -140,6 +141,8 @@ export function createMockSoundBuddy(overrides: Partial<SoundBuddyApi> = {}): Mo
     openReleasePage: invoke('openReleasePage', undefined),
     onUpdateAvailable: listen<[UpdateInfo]>('onUpdateAvailable'),
     onUpdateStatus: listen<[UpdateStatus]>('onUpdateStatus'),
+    reportRendererError: invoke('reportRendererError', undefined),
+    recordAppEvent: invoke('recordAppEvent', undefined),
     removeAllListeners: (ch: string) => record('removeAllListeners', [ch]),
     saveReportImage: invoke('saveReportImage', { saved: false }),
   } satisfies SoundBuddyApi;

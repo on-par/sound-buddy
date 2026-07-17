@@ -47,6 +47,17 @@ export function getLogFilePath(): string {
   return logFilePath;
 }
 
+// ─── Crash sink (#473) ──────────────────────────────────────────────────────
+// Injected rather than imported directly: crash-reporting.ts imports logWarn
+// from this module, so a direct import the other way would be a cycle.
+export type CrashSink = (err: unknown, opts: { fatal: boolean }) => void;
+
+let crashSink: CrashSink | null = null;
+
+export function setCrashSink(sink: CrashSink | null): void {
+  crashSink = sink;
+}
+
 export const log = (msg: string): void => write('INFO', msg);
 export const logWarn = (msg: string): void => write('WARN', msg);
 export function logError(msg: string, err?: unknown): void {
@@ -62,6 +73,15 @@ export function logError(msg: string, err?: unknown): void {
  */
 export function handleUncaughtException(err: unknown): void {
   write('FATAL', `uncaughtException: ${err instanceof Error ? (err.stack ?? err.message) : String(err)}`);
+
+  // Must run before the dialog/app.exit(1) below — a fatal main-process
+  // error exits synchronously, so crash-reporting.ts's fatal path (a
+  // synchronous file write) has to happen first or it never runs at all.
+  try {
+    crashSink?.(err, { fatal: true });
+  } catch {
+    /* a crashing process must not crash harder */
+  }
 
   // Skip the blocking modal in automated/e2e runs so a crash fails the run
   // instead of hanging forever on showMessageBoxSync with no one to click.
@@ -110,6 +130,11 @@ export function initLogging(): string {
   process.on('uncaughtException', handleUncaughtException);
   process.on('unhandledRejection', (reason) => {
     write('ERROR', `unhandledRejection: ${reason instanceof Error ? reason.stack : String(reason)}`);
+    try {
+      crashSink?.(reason, { fatal: false });
+    } catch {
+      /* a crashing process must not crash harder */
+    }
   });
 
   return logFilePath;
@@ -128,6 +153,16 @@ export function attachWindowLogging(win: BrowserWindow): void {
 
   wc.on('render-process-gone', (_e, details) => {
     write('FATAL', `render-process-gone: reason=${details.reason} exitCode=${details.exitCode}`);
+    try {
+      // Native renderer crashes have no JS stack — the reason/exitCode
+      // metadata above is the whole payload.
+      crashSink?.(
+        new Error(`render-process-gone: reason=${details.reason} exitCode=${details.exitCode}`),
+        { fatal: false }
+      );
+    } catch {
+      /* a crashing process must not crash harder */
+    }
   });
 
   wc.on('unresponsive', () => write('ERROR', 'renderer became unresponsive'));

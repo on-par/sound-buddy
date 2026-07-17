@@ -88,6 +88,33 @@ describe('update-settings IPC whitelist — usageSignalEnabled (#145)', () => {
     await handler!(null, { bogus: 1 });
     expect(readFile().bogus).toBeUndefined();
   });
+});
+
+describe('update-settings IPC whitelist — crashReportingEnabled (#473)', () => {
+  it('accepts a boolean and persists it', async () => {
+    const handler = handlers.get('update-settings');
+    const result = (await handler!(null, { crashReportingEnabled: true })) as {
+      crashReportingEnabled: boolean;
+    };
+    expect(result.crashReportingEnabled).toBe(true);
+    expect(readFile().crashReportingEnabled).toBe(true);
+  });
+
+  it('ignores a string value, leaving the setting at its default', async () => {
+    const handler = handlers.get('update-settings');
+    const result = (await handler!(null, { crashReportingEnabled: 'true' })) as {
+      crashReportingEnabled: boolean;
+    };
+    expect(result.crashReportingEnabled).toBe(false);
+  });
+
+  it('ignores a number value, leaving the setting at its default', async () => {
+    const handler = handlers.get('update-settings');
+    const result = (await handler!(null, { crashReportingEnabled: 1 })) as {
+      crashReportingEnabled: boolean;
+    };
+    expect(result.crashReportingEnabled).toBe(false);
+  });
 
   it('still passes an existing whitelisted key through (regression guard)', async () => {
     const handler = handlers.get('update-settings');

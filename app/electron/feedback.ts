@@ -32,8 +32,10 @@ export type FeedbackCategory = (typeof FEEDBACK_CATEGORIES)[number];
  * Resolve the ingest endpoint: a dev/e2e-only env override (mirrors how
  * license-refresh.ts's refreshUrl() gates its own override) or the
  * production default. A packaged .app can never be redirected elsewhere.
+ * Exported so crash-reporting.ts (#473) shares this instead of duplicating
+ * the env-override logic.
  */
-function ingestUrl(): string {
+export function ingestUrl(): string {
   const env = !app.isPackaged && process.env.SOUND_BUDDY_INGEST_API_URL?.trim();
   return env || DEFAULT_INGEST_URL;
 }

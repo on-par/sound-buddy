@@ -182,6 +182,14 @@ export function createBridge(ipc: IpcRendererLike) {
     onUpdateStatus: (cb: (status: UpdateStatus) => void) =>
       ipc.on('update-status', (_event, s) => cb(s)),
 
+    // Opt-in crash reporting (#473) — reportRendererError is validated fresh
+    // in main (never trusted from the renderer); recordAppEvent pushes a
+    // safe event name onto the breadcrumb ring buffer a crash payload later
+    // includes.
+    reportRendererError: (input: { message: string; stack?: string }) =>
+      ipc.invoke('report-renderer-error', input),
+    recordAppEvent: (name: string) => ipc.invoke('record-app-event', name),
+
     removeAllListeners: (ch: string) => ipc.removeAllListeners(ch),
   } satisfies SoundBuddyApi;
 }

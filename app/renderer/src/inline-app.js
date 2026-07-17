@@ -117,6 +117,13 @@ const {
 // Renamed to avoid colliding with the zero-arg usedChannelCount() wrapper below.
 const lcUsedChannelCount = window.liveCapturePanel.usedChannelCount;
 
+/* ══ Opt-in crash reporting (#473) — extracted to crash-hooks.ts, bridged onto
+   window by App.tsx like spectrumDisplay/reportCard/liveCapturePanel. Only
+   installed when the main process exposes reportRendererError (older mock
+   bridges in e2e may not), so a stubbed bridge never breaks. ══ */
+const { installCrashHooks } = window.crashHooks;
+if (sb.reportRendererError) installCrashHooks(window, (input) => sb.reportRendererError(input));
+
 /* ══ Ideal EQ profiles + comparison (PRD 05) ══
    Data and comparison logic come from @sound-buddy/audio-engine's profiles module
    (packages/audio-engine/src/profiles/index.ts) via the `window.audioEngineProfiles`
@@ -1186,6 +1193,10 @@ document.querySelectorAll('.mode-tab').forEach(tab => {
   tab.addEventListener('click', () => {
     const mode = tab.dataset.mode;
     if (mode === currentMode) return;
+    // Opt-in crash reporting (#473): the current screen is a safe breadcrumb
+    // (a name, never content) a crash payload includes as `route`. No-op
+    // when reporting is off or unavailable (main process ignores it either way).
+    sb.recordAppEvent?.('screen.' + (mode === 'reportcard' ? 'reportcard' : mode));
     // Live/Soundcheck replace the spectrum area with unrelated content and
     // Soundcheck has its own playback transport — don't leave the analyzed
     // file playing silently in the background with no visible control (#180).
@@ -3240,6 +3251,7 @@ async function openStorageSettings() {
   // rather than a module-level cache — settingsStore.loadSettings() already
   // fetched this at boot.
   aiEl('usage-signal-toggle').checked = !!(setStore.getState().settings || {}).usageSignalEnabled;
+  aiEl('crash-reporting-toggle').checked = !!(setStore.getState().settings || {}).crashReportingEnabled;
   aiEl('storage-dialog').style.display = 'flex';
   try {
     const u = await sb.getStorageUsage();
@@ -3281,6 +3293,11 @@ async function saveStorageSettings() {
   const usageLoaded = !!(setStore.getState().settings || {}).usageSignalEnabled;
   if (usageChecked !== usageLoaded) {
     await setStore.getState().updateSettings({ usageSignalEnabled: usageChecked });
+  }
+  const crashReportingChecked = aiEl('crash-reporting-toggle').checked;
+  const crashReportingLoaded = !!(setStore.getState().settings || {}).crashReportingEnabled;
+  if (crashReportingChecked !== crashReportingLoaded) {
+    await setStore.getState().updateSettings({ crashReportingEnabled: crashReportingChecked });
   }
   closeStorageSettings();
 }

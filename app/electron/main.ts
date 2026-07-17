@@ -4,11 +4,17 @@
 import { app, BrowserWindow, Menu, dialog, ipcMain, shell } from 'electron';
 import * as path from 'path';
 import { registerIpcHandlers } from './ipc';
-import { initLogging, attachWindowLogging, log } from './logger';
+import { initLogging, attachWindowLogging, log, setCrashSink } from './logger';
 import { checkForUpdates, openReleasePage } from './updater';
 import { checkoutUrl } from './checkout';
 import { captureGuideUrl } from './capture-guide';
 import { openFeedback, revealDiagnosticLog, submitFeedback } from './feedback';
+import {
+  captureMainError,
+  flushPendingCrashReport,
+  handleRendererErrorReport,
+  recordAppEvent,
+} from './crash-reporting';
 import { ensureTrialStarted } from './license';
 import { maybeRefreshLicense } from './license-refresh';
 
@@ -205,6 +211,11 @@ function buildMenu(): void {
 app.whenReady().then(() => {
   augmentPathForGuiLaunch();
   initLogging();
+  // Opt-in crash reporting (#473): wire the logger's crash sink to the
+  // tested capture module, then flush any crash payload a previous fatal
+  // crash saved to disk. Both fire-and-forget from boot's perspective.
+  setCrashSink((err, opts) => captureMainError(err, opts));
+  void flushPendingCrashReport();
   // Start the 14-day Pro trial on first launch (#61) before the renderer reads
   // the license, so a new user boots straight into Pro (no free-tier flash).
   ensureTrialStarted();
@@ -232,6 +243,8 @@ app.whenReady().then(() => {
     void shell.openExternal(captureGuideUrl());
   });
   ipcMain.handle('reveal-diagnostics', () => revealDiagnosticLog());
+  ipcMain.handle('report-renderer-error', (_event, input) => handleRendererErrorReport(input));
+  ipcMain.handle('record-app-event', (_event, name) => recordAppEvent(name));
 
   createWindow();
   log('main window created');

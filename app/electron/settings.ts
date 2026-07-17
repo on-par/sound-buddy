@@ -41,6 +41,7 @@ const DEFAULTS: AppSettings = {
   usageSignalEnabled: false,
   channelLabels: {},
   channelGroups: {},
+  crashReportingEnabled: false,
 };
 
 function settingsPath(): string {
@@ -117,6 +118,7 @@ function writeSettingsFile(file: Partial<AppSettings>): void {
     usageSignalEnabled: file.usageSignalEnabled ?? DEFAULTS.usageSignalEnabled,
     channelLabels: fileChannelLabels(file),
     channelGroups: fileChannelGroups(file),
+    crashReportingEnabled: file.crashReportingEnabled ?? DEFAULTS.crashReportingEnabled,
   };
   try {
     fs.writeFileSync(settingsPath(), JSON.stringify(persisted, null, 2));
@@ -155,6 +157,9 @@ export function getSettings(): AppSettings {
     channelLabels: fileChannelLabels(file),
     // Channel groups (#483) have no env layer — pure persisted data, like rigs.
     channelGroups: fileChannelGroups(file),
+    // No env layer — opt-in crash reporting (#473) must be an explicit user
+    // action, same rationale as usageSignalEnabled.
+    crashReportingEnabled: file.crashReportingEnabled ?? DEFAULTS.crashReportingEnabled,
   };
 }
 
