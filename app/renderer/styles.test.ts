@@ -87,3 +87,15 @@ describe('src/styles/app.css', () => {
     expect(appCss).toContain('.eq-grid.major');
   });
 });
+
+describe('rc-toolbar wraps instead of clipping (#478)', () => {
+  it('lets the toolbar row wrap so buttons never clip under the panel overflow', () => {
+    expect(appCss).toContain('#rc-toolbar { display:flex; flex-wrap:wrap;');
+  });
+
+  it('wraps and right-aligns the action group with breathing room', () => {
+    expect(appCss).toContain(
+      '.rc-toolbar-actions { display:flex; flex-wrap:wrap; align-items:center; justify-content:flex-end; gap:8px; min-width:0; }',
+    );
+  });
+});
