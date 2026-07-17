@@ -98,6 +98,18 @@ test.describe('Named channel groups (#41)', () => {
     await expect(window.locator('.live-group-name')).toHaveText(['Vox', 'Drums', 'Ungrouped']);
   });
 
+  test('keyboard Arrow Up reorders tracks within a group (#483)', async () => {
+    await makeGroup('Drums');
+    await window.locator('#spectrum-body .live-ch').nth(0).locator('.live-ch-group').selectOption({ label: 'Drums' });
+    await window.locator('#spectrum-body .live-ch').nth(1).locator('.live-ch-group').selectOption({ label: 'Drums' });
+    const chOrder = () => window.locator('#spectrum-body .live-ch').evaluateAll((els) => els.map((el) => el.getAttribute('data-ch')));
+    await expect.poll(chOrder).toEqual(['0', '1']);
+
+    await window.locator('#spectrum-body .live-ch[data-ch="1"] .live-ch-drag').focus();
+    await window.keyboard.press('ArrowUp');
+    await expect.poll(chOrder).toEqual(['1', '0']);
+  });
+
   test('removing a strip from config drops it from its group (no dangling ref)', async () => {
     await makeGroup('Drums');
     await window.locator('#spectrum-body .live-ch').nth(0).locator('.live-ch-group').selectOption({ label: 'Drums' });
