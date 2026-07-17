@@ -16,6 +16,8 @@ import {
   liveMetersHTML,
   liveReportCardSource,
   patchLiveChannelPlan,
+  groupSummary,
+  groupSummaryText,
   type LiveDevice,
   type ListDevicesResult,
   type StripConfig,
@@ -38,6 +40,7 @@ function stripView(overrides: Partial<StripView> = {}): StripView {
     collapsed: false,
     armed: false,
     groupIndex: -1,
+    groupCollapsed: false,
     ...overrides,
   };
 }
@@ -258,6 +261,90 @@ describe('veqChannelHTML', () => {
     const html = veqChannelHTML(LIVE_CHANNELS[1], 3, stripView(), panelView());
     expect(html).toContain('data-ch="3"');
   });
+
+  it('adds the group-collapsed class when the owning group is collapsed', () => {
+    const html = veqChannelHTML(LIVE_CHANNELS[0], 0, stripView({ groupIndex: 0, groupCollapsed: true }), panelView());
+    expect(/class="live-ch[^"]*\bgroup-collapsed\b[^"]*"/.test(html)).toBe(true);
+  });
+
+  it('omits the group-collapsed class when not in a collapsed group', () => {
+    const html = veqChannelHTML(LIVE_CHANNELS[0], 0, stripView({ groupIndex: 0, groupCollapsed: false }), panelView());
+    expect(html).not.toContain('group-collapsed');
+  });
+
+  it('renders a drag handle for a grouped strip, absent for an ungrouped one', () => {
+    const grouped = veqChannelHTML(LIVE_CHANNELS[0], 0, stripView({ groupIndex: 0 }), panelView());
+    expect(grouped).toContain('live-ch-drag');
+    expect(grouped).toContain('draggable="true"');
+    expect(grouped).toContain('Reorder track within group');
+
+    const ungrouped = veqChannelHTML(LIVE_CHANNELS[0], 0, stripView({ groupIndex: -1 }), panelView());
+    expect(ungrouped).not.toContain('live-ch-drag');
+  });
+
+  it('disables the strip drag handle when liveRunning', () => {
+    const html = veqChannelHTML(LIVE_CHANNELS[0], 0, stripView({ groupIndex: 0 }), panelView({ liveRunning: true }));
+    expect(html).toContain('live-ch-drag" draggable="true" aria-label="Reorder track within group — drag, or press Arrow Up/Down" title="Drag to reorder track" disabled');
+  });
+});
+
+describe('groupSummary', () => {
+  it('counts present members, finds max peak, and flags clipping', () => {
+    const s = groupSummary(LIVE_CHANNELS, [0, 1]);
+    expect(s.count).toBe(2);
+    expect(s.peak).toBe(-6); // max of -6, -9
+    expect(s.clipping).toBe(false);
+    expect(s.idle).toBe(false);
+  });
+
+  it('flags clipping when any member is clipping', () => {
+    const channels = [{ ...LIVE_CHANNELS[0], clipping: true }, LIVE_CHANNELS[1]];
+    expect(groupSummary(channels, [0, 1]).clipping).toBe(true);
+  });
+
+  it('is idle only when every present member is idle', () => {
+    const channels = [{ ...LIVE_CHANNELS[0], idle: true }, { ...LIVE_CHANNELS[1], idle: true }];
+    expect(groupSummary(channels, [0, 1]).idle).toBe(true);
+    const mixed = [{ ...LIVE_CHANNELS[0], idle: true }, LIVE_CHANNELS[1]];
+    expect(groupSummary(mixed, [0, 1]).idle).toBe(false);
+  });
+
+  it('excludes out-of-range members from the count', () => {
+    const s = groupSummary(LIVE_CHANNELS, [0, 99]);
+    expect(s.count).toBe(1);
+  });
+
+  it('is idle with a null peak for an empty member list', () => {
+    const s = groupSummary(LIVE_CHANNELS, []);
+    expect(s.count).toBe(0);
+    expect(s.peak).toBeNull();
+    expect(s.idle).toBe(true);
+  });
+
+  it('floors non-finite peaks to null (no crash on NaN)', () => {
+    const channels = [{ ...LIVE_CHANNELS[0], peak: NaN }];
+    const s = groupSummary(channels, [0]);
+    expect(s.peak).toBeNull();
+  });
+});
+
+describe('groupSummaryText', () => {
+  it('uses singular "track" for a count of 1', () => {
+    expect(groupSummaryText({ count: 1, peak: null, clipping: false, idle: true })).toBe('1 track');
+  });
+
+  it('uses plural "tracks" otherwise', () => {
+    expect(groupSummaryText({ count: 3, peak: null, clipping: false, idle: true })).toBe('3 tracks');
+    expect(groupSummaryText({ count: 0, peak: null, clipping: false, idle: true })).toBe('0 tracks');
+  });
+
+  it('appends the peak when not idle', () => {
+    expect(groupSummaryText({ count: 3, peak: -6.2, clipping: false, idle: false })).toBe('3 tracks · Peak -6.2 dBFS');
+  });
+
+  it('omits the peak while idle even if a peak value is present', () => {
+    expect(groupSummaryText({ count: 3, peak: -6.2, clipping: false, idle: true })).toBe('3 tracks');
+  });
 });
 
 describe('liveMetersHTML', () => {
@@ -287,6 +374,47 @@ describe('liveMetersHTML', () => {
     const html = liveMetersHTML(LIVE_CHANNELS, stripViews, panelView({ groups, liveRunning: true }));
     expect(html).toContain('live-group-rename" aria-label="Rename group" title="Rename group" disabled');
     expect(html).toContain('live-group-del" aria-label="Delete group" title="Delete group" disabled');
+  });
+
+  it('marks a collapsed group header with .collapsed, aria-expanded=false, and a visible summary', () => {
+    const groups: ChannelGroup[] = [{ name: 'Drums', members: [0, 1], collapsed: true }];
+    const stripViews = LIVE_CHANNELS.map(() => stripView({ groupIndex: 0, groupCollapsed: true }));
+    const html = liveMetersHTML(LIVE_CHANNELS, stripViews, panelView({ groups }));
+    expect(html).toMatch(/<div class="live-group-head collapsed" data-group="0">/);
+    expect(html).toContain('aria-expanded="false"');
+    expect(html).toContain('live-group-summary');
+    expect(html).toContain('2 tracks');
+  });
+
+  it('does not mark an expanded group header collapsed, and aria-expanded is true', () => {
+    const groups: ChannelGroup[] = [{ name: 'Drums', members: [0] }];
+    const stripViews = LIVE_CHANNELS.map(() => stripView({ groupIndex: 0, groupCollapsed: false }));
+    const html = liveMetersHTML(LIVE_CHANNELS, stripViews, panelView({ groups }));
+    expect(html).toMatch(/<div class="live-group-head" data-group="0">/);
+    expect(html).toContain('aria-expanded="true"');
+  });
+
+  it('renders a group drag handle, disabled while liveRunning', () => {
+    const groups: ChannelGroup[] = [{ name: 'Drums', members: [0] }];
+    const stripViews = LIVE_CHANNELS.map(() => stripView({ groupIndex: 0 }));
+    const html = liveMetersHTML(LIVE_CHANNELS, stripViews, panelView({ groups, liveRunning: true }));
+    expect(html).toContain('live-group-drag" draggable="true" aria-label="Reorder group — drag, or press Arrow Up/Down" title="Drag to reorder group" disabled');
+  });
+
+  it('shows a CLIP badge on the group summary when a member is clipping', () => {
+    const groups: ChannelGroup[] = [{ name: 'Drums', members: [0, 1] }];
+    const stripViews = LIVE_CHANNELS.map(() => stripView({ groupIndex: 0 }));
+    const channels = [{ ...LIVE_CHANNELS[0], clipping: true }, LIVE_CHANNELS[1]];
+    const html = liveMetersHTML(channels, stripViews, panelView({ groups }));
+    expect(html).toContain('live-group-summary');
+    expect(html).toMatch(/live-group-summary">[^<]*<span class="live-ch-clip">CLIP<\/span>/);
+  });
+
+  it('excludes out-of-range members from the summary count', () => {
+    const groups: ChannelGroup[] = [{ name: 'Drums', members: [0, 1, 99] }];
+    const stripViews = LIVE_CHANNELS.map(() => stripView({ groupIndex: 0 }));
+    const html = liveMetersHTML(LIVE_CHANNELS, stripViews, panelView({ groups }));
+    expect(html).toContain('2 tracks');
   });
 
   it('is composed of the exact veqChannelHTML output for each channel (markup-identity guard)', () => {
@@ -347,7 +475,7 @@ describe('liveReportCardSource', () => {
 
 describe('patchLiveChannelPlan', () => {
   function sv(overrides: Partial<StripView> = {}): StripView {
-    return { strip: { kind: 'mono', a: 0, b: 1 }, displayName: 'Ch 1', collapsed: false, armed: false, groupIndex: -1, ...overrides };
+    return { strip: { kind: 'mono', a: 0, b: 1 }, displayName: 'Ch 1', collapsed: false, armed: false, groupIndex: -1, groupCollapsed: false, ...overrides };
   }
 
   it('carries collapsed/displayName/meta through from the strip view and channel', () => {

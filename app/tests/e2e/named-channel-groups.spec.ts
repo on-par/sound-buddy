@@ -36,9 +36,17 @@ test.describe('Named channel groups (#41)', () => {
   }
 
   test.beforeEach(async () => {
-    await window.reload(); // reset in-memory groups between tests
+    await window.reload();
     await window.waitForLoadState('domcontentloaded');
     await window.locator('.mode-tab[data-mode="live"]').click();
+    // Groups now persist per-device across reloads (#483, mirroring #482's
+    // channelLabels), so a plain reload no longer resets them the way it used
+    // to (#41). Delete every leftover group through the UI so each test still
+    // starts from a clean board.
+    while (await window.locator('.live-group-del').count() > 0) {
+      await window.locator('.live-group-del').first().click();
+      await window.locator('#rig-dialog-ok').click();
+    }
   });
 
   test('create a group, assign a strip, and it renders grouped in the live board', async () => {
@@ -53,13 +61,53 @@ test.describe('Named channel groups (#41)', () => {
     await expect(board.locator('.live-ch')).toHaveCount(2);
   });
 
-  test('collapsing a group folds all its members, leaving others alone', async () => {
+  test('collapsing a group hides all its members entirely, leaving others alone (#483)', async () => {
     await makeGroup('Drums');
     await window.locator('#spectrum-body .live-ch').nth(0).locator('.live-ch-group').selectOption({ label: 'Drums' });
     await tick();
-    await window.locator('.live-group-fold').first().click();
-    await expect(window.locator('#spectrum-body .live-ch[data-ch="0"]')).toHaveClass(/collapsed/);
-    await expect(window.locator('#spectrum-body .live-ch[data-ch="1"]')).not.toHaveClass(/collapsed/);
+    const header = window.locator('.live-group-head').first();
+    await header.locator('.live-group-fold').click();
+
+    await expect(header).toHaveClass(/collapsed/);
+    await expect(header.locator('.live-group-fold')).toHaveAttribute('aria-expanded', 'false');
+    await expect(header.locator('.live-group-summary')).toBeVisible();
+    await expect(window.locator('#spectrum-body .live-ch[data-ch="0"]')).toHaveClass(/group-collapsed/);
+    await expect(window.locator('#spectrum-body .live-ch[data-ch="0"]')).not.toBeVisible();
+    // The other (ungrouped) strip is untouched — still visible, no group-collapsed class.
+    await expect(window.locator('#spectrum-body .live-ch[data-ch="1"]')).toBeVisible();
+    await expect(window.locator('#spectrum-body .live-ch[data-ch="1"]')).not.toHaveClass(/group-collapsed/);
+
+    // Clicking again restores visibility.
+    await header.locator('.live-group-fold').click();
+    await expect(header).not.toHaveClass(/collapsed/);
+    await expect(window.locator('#spectrum-body .live-ch[data-ch="0"]')).toBeVisible();
+  });
+
+  test('keyboard Arrow Up reorders groups, and the order persists across reload (#483)', async () => {
+    await makeGroup('Drums');
+    await makeGroup('Vox');
+    await expect(window.locator('.live-group-name')).toHaveText(['Drums', 'Vox', 'Ungrouped']);
+
+    await window.locator('.live-group-head').nth(1).locator('.live-group-drag').focus();
+    await window.keyboard.press('ArrowUp');
+    await expect(window.locator('.live-group-name')).toHaveText(['Vox', 'Drums', 'Ungrouped']);
+
+    await window.reload();
+    await window.waitForLoadState('domcontentloaded');
+    await window.locator('.mode-tab[data-mode="live"]').click();
+    await expect(window.locator('.live-group-name')).toHaveText(['Vox', 'Drums', 'Ungrouped']);
+  });
+
+  test('keyboard Arrow Up reorders tracks within a group (#483)', async () => {
+    await makeGroup('Drums');
+    await window.locator('#spectrum-body .live-ch').nth(0).locator('.live-ch-group').selectOption({ label: 'Drums' });
+    await window.locator('#spectrum-body .live-ch').nth(1).locator('.live-ch-group').selectOption({ label: 'Drums' });
+    const chOrder = () => window.locator('#spectrum-body .live-ch').evaluateAll((els) => els.map((el) => el.getAttribute('data-ch')));
+    await expect.poll(chOrder).toEqual(['0', '1']);
+
+    await window.locator('#spectrum-body .live-ch[data-ch="1"] .live-ch-drag').focus();
+    await window.keyboard.press('ArrowUp');
+    await expect.poll(chOrder).toEqual(['1', '0']);
   });
 
   test('removing a strip from config drops it from its group (no dangling ref)', async () => {

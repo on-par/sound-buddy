@@ -95,11 +95,16 @@ interface ChannelLabelsApi {
   ): Record<string, Record<string, string>>;
 }
 interface GroupStateApi {
+  groupOf(groups: ChannelGroup[], idx: number): number;
   assign(groups: ChannelGroup[], idx: number, g: number): ChannelGroup[];
   pruneStrip(groups: ChannelGroup[], idx: number): ChannelGroup[];
   addGroup(groups: ChannelGroup[], name: string): ChannelGroup[];
   removeGroup(groups: ChannelGroup[], g: number): ChannelGroup[];
   renameGroup(groups: ChannelGroup[], g: number, name: string): ChannelGroup[];
+  moveGroup(groups: ChannelGroup[], from: number, to: number): ChannelGroup[];
+  moveMember(groups: ChannelGroup[], g: number, from: number, to: number): ChannelGroup[];
+  setGroupCollapsed(groups: ChannelGroup[], g: number, collapsed: boolean): ChannelGroup[];
+  isGroupCollapsed(groups: ChannelGroup[], g: number): boolean;
 }
 interface CollapseStateApi {
   isCollapsed(set: ReadonlySet<number>, id: number): boolean;
@@ -153,6 +158,14 @@ function withSavedLabels(cfg: StripConfig[], deviceName: string): StripConfig[] 
   return getChannelLabels().applyLabels(cfg, tokens, channelLabels[deviceName] || {});
 }
 
+// The persisted channel groups (#483) saved for `deviceName`, mapped to fresh
+// group objects — shared by loadDevices()/selectDevice(), mirroring
+// withSavedLabels above (#482).
+function savedGroupsFor(deviceName: string): ChannelGroup[] {
+  const channelGroups = (useSettingsStore.getState().settings || {}).channelGroups || {};
+  return (channelGroups[deviceName] || []).map((g) => ({ name: g.name, members: (g.members || []).slice(), collapsed: g.collapsed }));
+}
+
 export interface LiveCaptureState {
   devices: LiveDevice[];
   deviceHint: DeviceHint | null;
@@ -201,6 +214,9 @@ export interface LiveCaptureState {
   removeGroup(group: number): void;
   toggleCollapse(idx: number): void;
   setGroupCollapsed(group: number, collapsed: boolean): void;
+  toggleGroupCollapse(group: number): void;
+  moveGroup(from: number, to: number): void;
+  moveChannelInGroup(group: number, fromPos: number, toPos: number): void;
   collapseAll(stripCount: number): void;
   expandAll(): void;
   toggleArm(idx: number): void;
@@ -223,6 +239,20 @@ export function createLiveCaptureStore(getApi: () => LiveCaptureApi) {
       clearInterval(countdownTimer);
       countdownTimer = null;
     }
+  }
+
+  // Persist channelGroups (#483) as a full-map replace keyed by device —
+  // mirrors setStripLabel's write path (#482) exactly. Called from every
+  // group mutator (create/rename/delete/assign/reorder/collapse) so the
+  // stored map always reflects the current in-memory group state.
+  function persistGroups(state: LiveCaptureState) {
+    const all = (useSettingsStore.getState().settings || {}).channelGroups || {};
+    const deviceName = deviceNameFor(state.selectedDevice, state.devices);
+    const next = {
+      ...all,
+      [deviceName]: state.channelGroups.map((g) => ({ name: g.name, members: g.members.slice(), collapsed: !!g.collapsed })),
+    };
+    void useSettingsStore.getState().updateSettings({ channelGroups: next });
   }
 
   return create<LiveCaptureState>()((set, get) => ({
@@ -260,7 +290,10 @@ export function createLiveCaptureStore(getApi: () => LiveCaptureApi) {
         const selected = get().selectedDevice;
         const n = deviceChannelCount(selected, view.devices);
         const deviceName = deviceNameFor(selected, view.devices);
-        set({ channelConfig: withSavedLabels(defaultChannelConfig(n), deviceName) });
+        set({
+          channelConfig: withSavedLabels(defaultChannelConfig(n), deviceName),
+          channelGroups: savedGroupsFor(deviceName),
+        });
       }
     },
 
@@ -269,7 +302,10 @@ export function createLiveCaptureStore(getApi: () => LiveCaptureApi) {
       const devices = get().devices;
       const n = deviceChannelCount(value, devices);
       const deviceName = deviceNameFor(value, devices);
-      set({ channelConfig: withSavedLabels(defaultChannelConfig(n), deviceName) });
+      set({
+        channelConfig: withSavedLabels(defaultChannelConfig(n), deviceName),
+        channelGroups: savedGroupsFor(deviceName),
+      });
     },
 
     setLiveMode(mode) {
@@ -302,6 +338,7 @@ export function createLiveCaptureStore(getApi: () => LiveCaptureApi) {
         channelConfig: state.channelConfig.filter((_, i) => i !== idx),
         channelGroups: getGroupState().pruneStrip(state.channelGroups, idx),
       });
+      persistGroups(get());
     },
 
     setStripKind(idx, kind) {
@@ -340,33 +377,51 @@ export function createLiveCaptureStore(getApi: () => LiveCaptureApi) {
 
     assignGroup(idx, group) {
       set((state) => ({ channelGroups: getGroupState().assign(state.channelGroups, idx, group) }));
+      persistGroups(get());
     },
 
     addGroup(name) {
       set((state) => ({ channelGroups: getGroupState().addGroup(state.channelGroups, name) }));
+      persistGroups(get());
     },
 
     renameGroup(group, name) {
       set((state) => ({ channelGroups: getGroupState().renameGroup(state.channelGroups, group, name) }));
+      persistGroups(get());
     },
 
     removeGroup(group) {
       set((state) => ({ channelGroups: getGroupState().removeGroup(state.channelGroups, group) }));
+      persistGroups(get());
     },
 
     toggleCollapse(idx) {
       set((state) => ({ collapsed: getCollapseState().toggle(state.collapsed, idx) }));
     },
 
+    // Group-level collapse (#483): writes the group's own `collapsed` flag
+    // through group-state.js — it no longer folds every member's per-strip
+    // `collapsed` set (that was #41's original behavior, replaced here).
     setGroupCollapsed(group, collapsedFlag) {
+      set((state) => ({ channelGroups: getGroupState().setGroupCollapsed(state.channelGroups, group, collapsedFlag) }));
+      persistGroups(get());
+    },
+
+    toggleGroupCollapse(group) {
       const state = get();
-      const members = state.channelGroups[group]?.members ?? [];
-      let collapsed: ReadonlySet<number> = state.collapsed;
-      const cs = getCollapseState();
-      members.forEach((m) => {
-        if (cs.isCollapsed(collapsed, m) !== collapsedFlag) collapsed = cs.toggle(collapsed, m);
-      });
-      set({ collapsed });
+      const collapsed = getGroupState().isGroupCollapsed(state.channelGroups, group);
+      set({ channelGroups: getGroupState().setGroupCollapsed(state.channelGroups, group, !collapsed) });
+      persistGroups(get());
+    },
+
+    moveGroup(from, to) {
+      set((state) => ({ channelGroups: getGroupState().moveGroup(state.channelGroups, from, to) }));
+      persistGroups(get());
+    },
+
+    moveChannelInGroup(group, fromPos, toPos) {
+      set((state) => ({ channelGroups: getGroupState().moveMember(state.channelGroups, group, fromPos, toPos) }));
+      persistGroups(get());
     },
 
     collapseAll(stripCount) {

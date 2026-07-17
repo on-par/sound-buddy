@@ -598,6 +598,11 @@
     .live-ch.collapsed { padding:8px 0; }
     .live-ch.collapsed .live-ch-head { margin-bottom:0; }
     .live-ch.collapsed .veq, .live-ch.collapsed .veq-labels { display:none; }
+    /* Group-level collapse (#483): a collapsed group hides its member strips
+       entirely (distinct from the per-strip fold above, which only compacts
+       one strip's own header) — strips stay in the DOM so live-tick patching
+       keeps working, CSS just hides them. */
+    .live-ch.group-collapsed { display:none; }
     .live-meters-toolbar { display:flex; align-items:center; gap:8px; margin-bottom:14px; }
     /* Workspace toolbar cap (#188): "N / M used" channel count. */
     .live-meters-toolbar .cap { font:var(--fw-regular) var(--fs-micro)/1 var(--font-mono); color:var(--text-muted); margin-right:auto; }
@@ -610,6 +615,11 @@
     .live-group-head.collapsed .live-group-fold { transform:rotate(-90deg); }
     .live-group-head.ungrouped { border-bottom-style:dashed; }
     .live-group-empty { padding:6px 0; font:var(--fw-regular) var(--fs-micro)/1 var(--font-sans); color:var(--text-muted); }
+    /* Group-level live summary (#483): hidden while expanded (the strips
+       themselves already show live level); surfaces on a collapsed header so
+       an engineer can still see the group is live without expanding it. */
+    .live-group-summary { display:none; align-items:center; gap:6px; font:var(--fw-regular) var(--fs-micro)/1 var(--font-mono); color:var(--text-muted); }
+    .live-group-head.collapsed .live-group-summary { display:inline-flex; }
     /* Group header rename/delete (#190): quiet text buttons, right-aligned. */
     .live-group-rename { margin-left:auto; }
     .live-group-rename, .live-group-del { background:none; border:none; padding:0 4px; cursor:pointer; color:var(--text-muted);
@@ -617,6 +627,13 @@
     .live-group-rename:hover:not(:disabled) { color:var(--text-primary); }
     .live-group-del:hover:not(:disabled) { color:var(--issue-text); }
     .live-group-rename:disabled, .live-group-del:disabled { opacity:0.4; cursor:not-allowed; }
+    /* Drag-reorder handles (#483): a grip glyph, quiet like the fold chevron.
+       .drag-over is the drop-target insertion cue for both group headers and
+       track strips. */
+    .live-group-drag, .live-ch-drag { background:none; border:none; padding:0 2px; color:var(--text-muted); cursor:grab; font-size:11px; line-height:1; letter-spacing:-1px; }
+    .live-group-drag:hover:not(:disabled), .live-ch-drag:hover:not(:disabled) { color:var(--text-primary); }
+    .live-group-drag:disabled, .live-ch-drag:disabled { opacity:0.35; cursor:not-allowed; }
+    .live-group-head.drag-over, .live-ch.drag-over { outline:1px dashed var(--gold-500); outline-offset:-1px; }
     /* Per-track group assignment select (#190): styled like the inline def selects. */
     .live-ch-group { flex:0 0 auto; height:var(--control-h-sm); padding:0 6px; border-radius:var(--radius-md); background:var(--surface-raised);
       color:var(--text-secondary); border:1px solid var(--border-subtle); font:var(--fw-medium) var(--fs-micro)/1 var(--font-sans); align-self:center; }

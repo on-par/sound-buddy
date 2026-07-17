@@ -23,12 +23,13 @@ import type {
   CaptureRigChannel,
   PreflightBaseline,
   CustomIdealProfile,
+  PersistedChannelGroup,
 } from './ipc/api';
 
 // These DTOs are homed in ipc/api.ts (TD-011, #405) — the renderer-safe
 // boundary type both tsc programs share — and re-exported here so existing
 // importers of './settings' don't need to change their import path.
-export type { AppSettings, CaptureRig, CaptureRigChannel, PreflightBaseline, CustomIdealProfile };
+export type { AppSettings, CaptureRig, CaptureRigChannel, PreflightBaseline, CustomIdealProfile, PersistedChannelGroup };
 
 const DEFAULTS: AppSettings = {
   aiEnabled: false,
@@ -39,6 +40,7 @@ const DEFAULTS: AppSettings = {
   activeRigId: null,
   usageSignalEnabled: false,
   channelLabels: {},
+  channelGroups: {},
 };
 
 function settingsPath(): string {
@@ -85,6 +87,18 @@ function fileChannelLabels(file: Partial<AppSettings>): Record<string, Record<st
 }
 
 /**
+ * The channelGroups map from a raw file view, defaulting to a fresh empty
+ * object when the key is absent or corrupted (hand-edited to a non-object or
+ * an array) — mirrors fileChannelLabels (#482) for #483's per-device groups.
+ * Always returns a new object for the default case so callers can never
+ * mutate a shared default.
+ */
+function fileChannelGroups(file: Partial<AppSettings>): Record<string, PersistedChannelGroup[]> {
+  const v = file.channelGroups;
+  return v && typeof v === 'object' && !Array.isArray(v) ? v : {};
+}
+
+/**
  * Persist the file layer, preserving any fields not being changed — including
  * unknown top-level keys a future version may add. Callers pass the mutated file
  * view — never getSettings()'s env-resolved view — so transient env overrides
@@ -102,6 +116,7 @@ function writeSettingsFile(file: Partial<AppSettings>): void {
     activeRigId: file.activeRigId ?? DEFAULTS.activeRigId,
     usageSignalEnabled: file.usageSignalEnabled ?? DEFAULTS.usageSignalEnabled,
     channelLabels: fileChannelLabels(file),
+    channelGroups: fileChannelGroups(file),
   };
   try {
     fs.writeFileSync(settingsPath(), JSON.stringify(persisted, null, 2));
@@ -138,6 +153,8 @@ export function getSettings(): AppSettings {
     usageSignalEnabled: file.usageSignalEnabled ?? DEFAULTS.usageSignalEnabled,
     // Channel labels have no env layer — pure persisted data, like rigs.
     channelLabels: fileChannelLabels(file),
+    // Channel groups (#483) have no env layer — pure persisted data, like rigs.
+    channelGroups: fileChannelGroups(file),
   };
 }
 

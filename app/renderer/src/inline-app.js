@@ -53,10 +53,17 @@ let liveWindows = [];
 // incoming meter window never silently re-expands a folded strip.
 let liveCollapsed = new Set();
 function isStripCollapsed(idx) { return window.collapseState.isCollapsed(liveCollapsed, idx); }
-// Named channel groups (#41): [{ name, members:[stripIndex,…] }]. Organizational
-// only — strips render under their group's header in the live board and a group
-// header folds all its members. Persisted into the active rig.
+// Named channel groups (#41, #483): [{ name, members:[stripIndex,…], collapsed? }].
+// Organizational only — strips render under their group's header in the live
+// board; a group header collapses to a compact live-summary row (#483), and
+// both group order and per-group member order are drag/keyboard-reorderable.
+// Persisted per-device in settings.json (#483, mirroring #482's channelLabels)
+// and also saved into rigs (Pro) via captureCurrentRig/applyRig.
 let channelGroups = [];
+// Drag-reorder source (#483): { type:'group'|'strip', index } set on dragstart,
+// cleared on drop/dragend. Module-level because dragover/drop fire on whatever
+// element is currently under the pointer, not the element that started the drag.
+let liveDragSrc = null;
 let lastLiveChannels = null;   // channels from the most recent meter tick (for #39 label fallbacks)
 let liveCountdownTimer = null;
 let liveCountdownSecs = 0;
@@ -105,6 +112,7 @@ const {
 const {
   LIVE_BAND_KEYS, deviceListView, deviceChannelCount,
   liveBandCurve, veqArcSVG, liveMetersHTML,
+  groupSummary, groupSummaryText,
 } = window.liveCapturePanel;
 // Renamed to avoid colliding with the zero-arg usedChannelCount() wrapper below.
 const lcUsedChannelCount = window.liveCapturePanel.usedChannelCount;
@@ -824,6 +832,16 @@ function renderLiveMeters(win) {
       const el = body.querySelector(`.sb-live-meters .live-ch[data-ch="${i}"]`);
       if (el) patchLiveChannel(el, ch, i);
     });
+    // Refresh each group header's live summary (#483) so a collapsed group still
+    // reflects current level/clip without touching collapse state — that's
+    // applyLiveCollapsed's job — or rebuilding the DOM.
+    channelGroups.forEach((grp, g) => {
+      const summaryEl = body.querySelector(`.sb-live-meters .live-group-head[data-group="${g}"] .live-group-summary`);
+      if (!summaryEl) return;
+      const summary = groupSummary(win.channels, grp.members);
+      summaryEl.textContent = groupSummaryText(summary);
+      if (summary.clipping) summaryEl.insertAdjacentHTML('beforeend', '<span class="live-ch-clip">CLIP</span>');
+    });
     return;
   }
   body.innerHTML = liveWorkspaceToolbarHTML()
@@ -863,12 +881,14 @@ function renderLiveWorkspace() {
 // liveRunning, channelGroups, …) onto the StripView/PanelView shapes the pure
 // live-capture-panel.ts functions take as parameters (#307).
 function stripViewAt(idx, ch) {
+  const groupIndex = window.groupState.groupOf(channelGroups, idx);
   return {
     strip: channelConfig[idx] || null,
     displayName: stripLabel(channelConfig[idx], ch, idx),
     collapsed: isStripCollapsed(idx),
     armed: window.armState.isArmed(channelConfig[idx]),
-    groupIndex: window.groupState.groupOf(channelGroups, idx),
+    groupIndex: groupIndex,
+    groupCollapsed: window.groupState.isGroupCollapsed(channelGroups, groupIndex),
   };
 }
 function livePanelView() {
@@ -888,16 +908,20 @@ function applyLiveCollapsed() {
     el.classList.toggle('collapsed', collapsed);
     const btn = el.querySelector('.live-ch-fold');
     if (btn) btn.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+    // A collapsed GROUP hides the member strip entirely (#483) — distinct from
+    // the per-strip fold above, which only compacts its own header.
+    const g = window.groupState.groupOf(channelGroups, idx);
+    el.classList.toggle('group-collapsed', window.groupState.isGroupCollapsed(channelGroups, g));
   });
-  // A group header reads collapsed when all its members are (#41).
+  // Group headers own an explicit collapsed flag now (#483), replacing the old
+  // all-members-collapsed derivation from #41's per-strip-only fold.
   wrap.querySelectorAll('.live-group-head[data-group]').forEach((head) => {
     const g = parseInt(head.dataset.group, 10);
     if (g < 0) return;
-    const members = (channelGroups[g] && channelGroups[g].members) || [];
-    const allCollapsed = members.length > 0 && members.every((m) => isStripCollapsed(m));
-    head.classList.toggle('collapsed', allCollapsed);
+    const collapsed = window.groupState.isGroupCollapsed(channelGroups, g);
+    head.classList.toggle('collapsed', collapsed);
     const btn = head.querySelector('.live-group-fold');
-    if (btn) btn.setAttribute('aria-expanded', allCollapsed ? 'false' : 'true');
+    if (btn) btn.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
   });
 }
 document.getElementById('spectrum-body').addEventListener('click', (e) => {
@@ -935,14 +959,13 @@ document.getElementById('spectrum-body').addEventListener('click', (e) => {
   if (gRename) { renameChannelGroup(parseInt(gRename.closest('.live-group-head').dataset.group, 10)); return; }
   const gDel = e.target.closest('.live-group-del');
   if (gDel) { deleteChannelGroup(parseInt(gDel.closest('.live-group-head').dataset.group, 10)); return; }
-  // Group header fold (#41): collapse/expand every member strip at once.
+  // Group header fold (#483): collapse the whole group to a compact summary
+  // row (replaces #41's collapse-every-member behavior).
   const gfold = e.target.closest('.live-group-fold');
   if (gfold) {
     const g = parseInt(gfold.closest('.live-group-head').dataset.group, 10);
-    const members = (channelGroups[g] && channelGroups[g].members) || [];
-    const allCollapsed = members.length > 0 && members.every((m) => isStripCollapsed(m));
-    const target = !allCollapsed; // collapse the group unless it's already fully collapsed
-    members.forEach((m) => { if (isStripCollapsed(m) !== target) liveCollapsed = window.collapseState.toggle(liveCollapsed, m); });
+    channelGroups = window.groupState.setGroupCollapsed(channelGroups, g, !window.groupState.isGroupCollapsed(channelGroups, g));
+    persistChannelGroups();
     applyLiveCollapsed();
     return;
   }
@@ -962,6 +985,109 @@ document.getElementById('spectrum-body').addEventListener('click', (e) => {
   } else if (e.target.closest('#live-expand-all')) {
     liveCollapsed = window.collapseState.expandAll();
     applyLiveCollapsed();
+  }
+});
+
+// Drag-reorder (#483): whole groups via .live-group-drag, or tracks within a
+// group via .live-ch-drag. Delegated on #spectrum-body — same rationale as the
+// click/change listeners — so wiring survives the pane's innerHTML rebuilds.
+// Cross-group moves stay out of scope here; that's still the per-strip
+// .live-ch-group dropdown (#33 follow-up).
+document.getElementById('spectrum-body').addEventListener('dragstart', (e) => {
+  if (liveRunning) { e.preventDefault(); return; }
+  const groupHandle = e.target.closest('.live-group-drag');
+  const stripHandle = !groupHandle && e.target.closest('.live-ch-drag');
+  if (!groupHandle && !stripHandle) return;
+  liveDragSrc = groupHandle
+    ? { type: 'group', index: parseInt(groupHandle.closest('.live-group-head').dataset.group, 10) }
+    : { type: 'strip', index: parseInt(stripHandle.closest('.live-ch').dataset.ch, 10) };
+  e.dataTransfer.effectAllowed = 'move';
+  e.dataTransfer.setData('text/plain', String(liveDragSrc.index));
+});
+document.getElementById('spectrum-body').addEventListener('dragover', (e) => {
+  if (!liveDragSrc) return;
+  let target = null;
+  if (liveDragSrc.type === 'group') {
+    const head = e.target.closest('.live-group-head[data-group]');
+    if (head && parseInt(head.dataset.group, 10) >= 0) target = head;
+  } else {
+    const strip = e.target.closest('.live-ch');
+    if (strip) {
+      const srcGroup = window.groupState.groupOf(channelGroups, liveDragSrc.index);
+      if (srcGroup !== -1 && window.groupState.groupOf(channelGroups, parseInt(strip.dataset.ch, 10)) === srcGroup) target = strip;
+    }
+  }
+  document.querySelectorAll('#spectrum-body .drag-over').forEach((el) => { if (el !== target) el.classList.remove('drag-over'); });
+  if (!target) return;
+  e.preventDefault();
+  e.dataTransfer.dropEffect = 'move';
+  target.classList.add('drag-over');
+});
+document.getElementById('spectrum-body').addEventListener('dragleave', (e) => {
+  const el = e.target.closest('.live-group-head, .live-ch');
+  if (el) el.classList.remove('drag-over');
+});
+document.getElementById('spectrum-body').addEventListener('drop', (e) => {
+  document.querySelectorAll('#spectrum-body .drag-over').forEach((el) => el.classList.remove('drag-over'));
+  const src = liveDragSrc;
+  liveDragSrc = null;
+  if (!src) return;
+  e.preventDefault();
+  if (src.type === 'group') {
+    const head = e.target.closest('.live-group-head[data-group]');
+    const to = head && parseInt(head.dataset.group, 10);
+    if (head && to >= 0) channelGroups = window.groupState.moveGroup(channelGroups, src.index, to);
+  } else {
+    const strip = e.target.closest('.live-ch');
+    if (strip) {
+      const g = window.groupState.groupOf(channelGroups, src.index);
+      const members = (channelGroups[g] && channelGroups[g].members) || [];
+      const from = members.indexOf(src.index);
+      const to = members.indexOf(parseInt(strip.dataset.ch, 10));
+      if (g !== -1 && from !== -1 && to !== -1) channelGroups = window.groupState.moveMember(channelGroups, g, from, to);
+    }
+  }
+  persistChannelGroups();
+  renderChannelConfig();
+});
+document.getElementById('spectrum-body').addEventListener('dragend', () => {
+  liveDragSrc = null;
+  document.querySelectorAll('#spectrum-body .drag-over').forEach((el) => el.classList.remove('drag-over'));
+});
+
+// Keyboard reorder (#483): Arrow Up/Down on a drag handle moves its group or
+// track by one position — an accessible, deterministic alternative to HTML5
+// drag-and-drop. Re-renders (grouping change) then re-focuses the moved
+// handle, since the rebuild would otherwise drop keyboard focus.
+document.getElementById('spectrum-body').addEventListener('keydown', (e) => {
+  if (liveRunning || (e.key !== 'ArrowUp' && e.key !== 'ArrowDown')) return;
+  const dir = e.key === 'ArrowUp' ? -1 : 1;
+  const groupHandle = e.target.closest('.live-group-drag');
+  if (groupHandle) {
+    e.preventDefault();
+    const g = parseInt(groupHandle.closest('.live-group-head').dataset.group, 10);
+    const to = g + dir;
+    if (to < 0 || to >= channelGroups.length) return;
+    channelGroups = window.groupState.moveGroup(channelGroups, g, to);
+    persistChannelGroups();
+    renderChannelConfig();
+    document.querySelector(`#spectrum-body .live-group-head[data-group="${to}"] .live-group-drag`)?.focus();
+    return;
+  }
+  const stripHandle = e.target.closest('.live-ch-drag');
+  if (stripHandle) {
+    const idx = parseInt(stripHandle.closest('.live-ch').dataset.ch, 10);
+    const g = window.groupState.groupOf(channelGroups, idx);
+    if (g === -1) return;
+    const members = channelGroups[g].members;
+    const from = members.indexOf(idx);
+    const to = from + dir;
+    if (from === -1 || to < 0 || to >= members.length) return;
+    e.preventDefault();
+    channelGroups = window.groupState.moveMember(channelGroups, g, from, to);
+    persistChannelGroups();
+    renderChannelConfig();
+    document.querySelector(`#spectrum-body .live-ch[data-ch="${idx}"] .live-ch-drag`)?.focus();
   }
 });
 
@@ -994,6 +1120,7 @@ document.getElementById('spectrum-body').addEventListener('change', (e) => {
   if (grpSel) {
     const idx = parseInt(grpSel.dataset.idx, 10);
     channelGroups = window.groupState.assign(channelGroups, idx, parseInt(e.target.value, 10));
+    persistChannelGroups();
     renderChannelConfig();
   }
 });
@@ -1474,6 +1601,7 @@ async function createChannelGroup() {
   const trimmed = (name || '').trim();
   if (!trimmed) return;
   channelGroups = window.groupState.addGroup(channelGroups, trimmed.slice(0, 40));
+  persistChannelGroups();
   renderChannelConfig();
 }
 
@@ -1486,6 +1614,7 @@ async function renameChannelGroup(g) {
   const trimmed = (name || '').trim();
   if (!trimmed) return;
   channelGroups = window.groupState.renameGroup(channelGroups, g, trimmed.slice(0, 40));
+  persistChannelGroups();
   renderChannelConfig();
 }
 
@@ -1502,6 +1631,7 @@ async function deleteChannelGroup(g) {
   });
   if (!ok) return;
   channelGroups = window.groupState.removeGroup(channelGroups, g);
+  persistChannelGroups();
   renderChannelConfig();
 }
 
@@ -1551,6 +1681,32 @@ function applySavedLabels() {
   );
 }
 
+// The persisted channel groups (#483) saved for the currently selected device,
+// mirroring savedLabelsForDevice above (#482).
+function savedGroupsForDevice() {
+  return ((setStore.getState().settings || {}).channelGroups || {})[selectedDeviceName()] || [];
+}
+
+// Hydrate channelGroups from settings.json for the current device (#483).
+// Called from resetChannelConfig() right after applySavedLabels() so a device
+// switch (or app restart) restores both labels and group layout together.
+function hydrateChannelGroups() {
+  channelGroups = savedGroupsForDevice().map((g) => ({
+    name: g.name, members: (g.members || []).slice(), collapsed: !!g.collapsed,
+  }));
+}
+
+// Persist channelGroups (#483) as a full-map replace keyed by device — mirrors
+// channelLabels' write path (#482) exactly. Called from every group mutator
+// (create/rename/delete/assign/reorder/collapse) and from applyRig.
+function persistChannelGroups() {
+  const all = (setStore.getState().settings || {}).channelGroups || {};
+  const next = Object.assign({}, all, {
+    [selectedDeviceName()]: channelGroups.map((g) => ({ name: g.name, members: g.members.slice(), collapsed: !!g.collapsed })),
+  });
+  setStore.getState().updateSettings({ channelGroups: next });
+}
+
 // Total device channels consumed by the current config (mono=1, stereo=2).
 function usedChannelCount() {
   return lcUsedChannelCount(channelConfig);
@@ -1573,17 +1729,19 @@ function removeChannelStrip(idx) {
   // Drop the removed strip from any group and shift higher indices down so no
   // dangling reference remains (#41).
   channelGroups = window.groupState.pruneStrip(channelGroups, idx);
+  persistChannelGroups();
   renderChannelConfig();
 }
 
 // Reset the config to the device default: first ≤2 channels as mono strips,
-// then overlay any saved labels for this device (#482) — covers device
-// switches and refresh.
+// then overlay any saved labels and groups for this device (#482, #483) —
+// covers device switches and refresh.
 function resetChannelConfig() {
   const n = selectedDeviceChannels();
   channelConfig = [];
   for (let i = 0; i < Math.min(2, n); i++) channelConfig.push({ kind: 'mono', a: i, b: (i + 1) % Math.max(n, 1), armed: true });
   applySavedLabels();
+  hydrateChannelGroups();
   renderChannelConfig();
 }
 
@@ -1627,6 +1785,10 @@ function setCaptureControlsLocked(locked) {
   document.querySelectorAll('#spectrum-body .live-ch-kind, #spectrum-body .live-ch-src, #spectrum-body .live-ch-group').forEach(set);
   // Group header rename/delete controls (#190), frozen mid-capture with the rest.
   document.querySelectorAll('#spectrum-body .live-group-rename, #spectrum-body .live-group-del').forEach(set);
+  // Drag-reorder handles (#483): reordering is disabled mid-capture like every
+  // other config control — the board is patched by data-ch and grouping is
+  // assumed stable across ticks while a capture runs.
+  document.querySelectorAll('#spectrum-body .live-group-drag, #spectrum-body .live-ch-drag').forEach(set);
   const tab = document.getElementById('tab-live');
   if (tab) tab.classList.toggle('capture-locked', locked);
 }
@@ -1957,6 +2119,8 @@ function applyRig(rig) {
   channelGroups = (rig.groups || []).map((g) => ({
     name: g.name, members: (g.members || []).filter((m) => m < channelConfig.length),
   }));
+  // The applied rig becomes this device's current layout (#483).
+  persistChannelGroups();
   renderChannelConfig();
   if (clamp.adjusted) {
     notice = notice

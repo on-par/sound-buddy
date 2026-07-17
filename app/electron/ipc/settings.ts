@@ -18,6 +18,7 @@ import {
   deleteRig,
   setActiveRig,
   type CaptureRig,
+  type PersistedChannelGroup,
 } from '../settings';
 import { isEntitled } from '../license';
 import { dirSizeBytes, formatBytes } from '../storage';
@@ -30,6 +31,10 @@ const PNG_EXTENSION = '.png';
 // sync by convention since the renderer and this main-process guard must
 // agree on what "too long" means.
 const MAX_CHANNEL_LABEL_LEN = 40;
+// Cap on a group name's stored length (#483) — same value/rationale as
+// MAX_CHANNEL_LABEL_LEN, kept as its own named constant since a group name and
+// a channel label are conceptually distinct fields that happen to share a cap.
+const MAX_GROUP_NAME_LEN = 40;
 
 /** A plain, non-array, non-null object. */
 function isPlainObject(v: unknown): v is Record<string, unknown> {
@@ -55,6 +60,48 @@ export function sanitizeChannelLabels(value: unknown): Record<string, Record<str
       labels[token] = trimmed;
     }
     if (Object.keys(labels).length > 0) clean[deviceName] = labels;
+  }
+  return clean;
+}
+
+// Guards the update-settings whitelist for channelGroups (#483): `null` when
+// `value` isn't a plain non-array object (the patch key is then ignored
+// entirely, leaving the stored map untouched). Otherwise rebuilds the map
+// from scratch — callers send the FULL next map, so this replaces rather than
+// deep-merges with whatever was previously stored. Mirrors
+// sanitizeChannelLabels's discipline, extended for the group shape:
+//  - a group needs a non-empty (post-trim) `name`, capped at MAX_GROUP_NAME_LEN
+//  - `members` is filtered to non-negative integers, deduped in order
+//  - `collapsed` is kept only when it's literally `true`
+//  - a group with an empty `members` list is still kept (a named empty group
+//    is legal — "No strips assigned"); a device whose group list ends up
+//    empty is dropped (absence hydrates to [], same as channelLabels)
+export function sanitizeChannelGroups(value: unknown): Record<string, PersistedChannelGroup[]> | null {
+  if (!isPlainObject(value)) return null;
+
+  const clean: Record<string, PersistedChannelGroup[]> = {};
+  for (const [deviceName, groupList] of Object.entries(value)) {
+    if (!Array.isArray(groupList)) continue;
+    const groups: PersistedChannelGroup[] = [];
+    for (const g of groupList) {
+      if (!isPlainObject(g) || typeof g.name !== 'string') continue;
+      const name = g.name.trim().slice(0, MAX_GROUP_NAME_LEN);
+      if (name === '') continue;
+      const seen = new Set<number>();
+      const members: number[] = [];
+      if (Array.isArray(g.members)) {
+        for (const m of g.members) {
+          if (Number.isInteger(m) && (m as number) >= 0 && !seen.has(m as number)) {
+            seen.add(m as number);
+            members.push(m as number);
+          }
+        }
+      }
+      const group: PersistedChannelGroup = { name, members };
+      if (g.collapsed === true) group.collapsed = true;
+      groups.push(group);
+    }
+    if (groups.length > 0) clean[deviceName] = groups;
   }
   return clean;
 }
@@ -103,6 +150,10 @@ export function registerSettingsHandlers(): void {
       // map — callers always send the full next map, never a partial merge.
       const labels = sanitizeChannelLabels(patch.channelLabels);
       if (labels) clean.channelLabels = labels;
+      // Persisted per-device named channel groups (#483). Same full-map
+      // replace discipline as channelLabels.
+      const groups = sanitizeChannelGroups(patch.channelGroups);
+      if (groups) clean.channelGroups = groups;
     }
     return updateSettings(clean);
   });

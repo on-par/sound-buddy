@@ -34,6 +34,7 @@ export interface UpdateSettingsPatch {
   storageDir?: string;
   usageSignalEnabled?: boolean;
   channelLabels?: Record<string, Record<string, string>>;
+  channelGroups?: Record<string, PersistedChannelGroup[]>;
 }
 
 /** A renderer patch: `apiKey` semantics — undefined = keep, '' = clear. */
@@ -164,6 +165,18 @@ export interface CaptureRig {
   baseline?: PreflightBaseline;
 }
 
+/**
+ * One persisted named channel group (#483): `members` are strip indices, in
+ * manual display order (not sorted). `collapsed` is omitted (≡ false/expanded)
+ * unless the engineer has folded the group. Mirrors the renderer's
+ * `ChannelGroup` shape (live-capture-panel.ts) at the persistence boundary.
+ */
+export interface PersistedChannelGroup {
+  name: string;
+  members: number[];
+  collapsed?: boolean;
+}
+
 export interface CustomIdealProfile {
   id: string;
   label: string;
@@ -208,6 +221,14 @@ export interface AppSettings {
    * (Pro-gated) rig. No env layer — pure persisted data, like `rigs`.
    */
   channelLabels: Record<string, Record<string, string>>;
+  /**
+   * Persisted per-device named channel groups (#483): deviceName ('' =
+   * Default Device) → ordered list of groups. Restores collapse state and
+   * both group order and per-group member order across monitor/live sessions,
+   * mirroring `channelLabels`'s per-device persistence (#482). No env layer —
+   * pure persisted data, like `rigs`.
+   */
+  channelGroups: Record<string, PersistedChannelGroup[]>;
 }
 
 // ─── LLM DTOs (PublicLlmConfig moved from electron/llm-config.ts, TD-011) ────

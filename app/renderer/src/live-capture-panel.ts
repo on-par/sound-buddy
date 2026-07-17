@@ -42,7 +42,7 @@ export interface LiveDevice { index: number; name: string; channels: number; def
 export type MicAccess = 'granted' | 'denied' | 'restricted' | 'not-determined';
 export interface ListDevicesResult { success: boolean; error?: string; micAccess?: MicAccess; devices?: LiveDevice[] }
 export interface StripConfig { kind: ChannelKind; a: number; b: number; armed?: boolean; label?: string }
-export interface ChannelGroup { name: string; members: number[] }
+export interface ChannelGroup { name: string; members: number[]; collapsed?: boolean }
 
 // A live tick channel as the renderer actually receives it: stream.py sends
 // snake_case band keys; the idle workspace synthesizes placeholder channels
@@ -56,6 +56,7 @@ export interface StripView {   // per-strip state the caller resolves from its s
   collapsed: boolean;          // isStripCollapsed(idx)
   armed: boolean;              // window.armState.isArmed(strip)
   groupIndex: number;          // window.groupState.groupOf(channelGroups, idx); -1 = ungrouped
+  groupCollapsed: boolean;     // window.groupState.isGroupCollapsed(channelGroups, groupIndex)
 }
 
 export interface PanelView {
@@ -151,8 +152,14 @@ export function veqChannelHTML(ch: LiveMeterChannel, idx: number, stripView: Str
   // it stays present-but-disabled through a capture (read-only while running)
   // rather than disappearing, and is allowed down to zero strips so the empty
   // state stays reachable.
-  return `<div class="live-ch${collapsed ? ' collapsed' : ''}${ch.idle ? ' idle' : ''}" data-ch="${idx}">
+  // Per-strip drag handle (#483) only applies within a group — cross-group
+  // moves stay on the .live-ch-group dropdown (#33 follow-up).
+  const dragHTML = grpOf !== -1
+    ? `<button type="button" class="live-ch-drag" draggable="true" aria-label="Reorder track within group — drag, or press Arrow Up/Down" title="Drag to reorder track"${panel.liveRunning ? ' disabled' : ''}>⋮⋮</button>`
+    : '';
+  return `<div class="live-ch${collapsed ? ' collapsed' : ''}${ch.idle ? ' idle' : ''}${stripView.groupCollapsed ? ' group-collapsed' : ''}" data-ch="${idx}">
     <div class="live-ch-head">
+      ${dragHTML}
       <button type="button" class="live-ch-fold" aria-label="Collapse or expand strip" aria-expanded="${collapsed ? 'false' : 'true'}" title="Collapse / expand strip">▾</button>
       ${panel.liveMode === 'record'
         ? `<button type="button" class="live-ch-arm" data-idx="${idx}" aria-pressed="${armed}" aria-label="${armed ? 'Disarm' : 'Arm'} track for recording" title="${armed ? 'Armed for recording — click to disarm' : 'Disarmed — click to arm'}"${panel.liveRunning ? ' disabled' : ''}></button>`
@@ -172,6 +179,29 @@ export function veqChannelHTML(ch: LiveMeterChannel, idx: number, stripView: Str
   </div>`;
 }
 
+// Group-level summary (#483): a compact "N tracks · Peak X dBFS" readout shown
+// on a collapsed group's header so an engineer can still see the group is
+// live without expanding it. Out-of-range members (a group referencing a
+// since-removed strip) are excluded, mirroring liveMetersHTML's own filter.
+export interface GroupSummary { count: number; peak: number | null; clipping: boolean; idle: boolean }
+export function groupSummary(channels: LiveMeterChannel[], members: number[]): GroupSummary {
+  const present = members.filter((m) => m < channels.length).map((m) => channels[m]);
+  let peak: number | null = null;
+  let clipping = false;
+  let idle = true;
+  present.forEach((ch) => {
+    if (!ch.idle) idle = false;
+    if (ch.clipping) clipping = true;
+    if (Number.isFinite(ch.peak) && (peak === null || ch.peak > peak)) peak = ch.peak;
+  });
+  return { count: present.length, peak, clipping, idle };
+}
+
+export function groupSummaryText(s: GroupSummary): string {
+  const label = `${s.count} ${s.count === 1 ? 'track' : 'tracks'}`;
+  return s.idle || s.peak === null ? label : `${label} · Peak ${fmt(s.peak)} dBFS`;
+}
+
 // Live board strip HTML grouped under named-group headers (#41); ungrouped strips
 // fall into a trailing default section. Strips keep their original channel index
 // as data-ch so patching/labels/arming stay index-addressed. With no groups this
@@ -181,9 +211,13 @@ export function liveMetersHTML(channels: LiveMeterChannel[], stripViews: StripVi
   let html = '';
   const rendered = new Set<number>();
   panel.groups.forEach((grp, g) => {
-    html += `<div class="live-group-head" data-group="${g}">`
-      + `<button type="button" class="live-group-fold" aria-label="Collapse or expand group" title="Collapse / expand group">▾</button>`
+    const collapsed = !!grp.collapsed;
+    const summary = groupSummary(channels, grp.members);
+    html += `<div class="live-group-head${collapsed ? ' collapsed' : ''}" data-group="${g}">`
+      + `<button type="button" class="live-group-drag" draggable="true" aria-label="Reorder group — drag, or press Arrow Up/Down" title="Drag to reorder group"${panel.liveRunning ? ' disabled' : ''}>⋮⋮</button>`
+      + `<button type="button" class="live-group-fold" aria-label="Collapse or expand group" aria-expanded="${collapsed ? 'false' : 'true'}" title="Collapse / expand group">▾</button>`
       + `<span class="live-group-name">${escapeHtml(grp.name)}</span>`
+      + `<span class="live-group-summary">${escapeHtml(groupSummaryText(summary))}${summary.clipping ? '<span class="live-ch-clip">CLIP</span>' : ''}</span>`
       + `<button type="button" class="live-group-rename" aria-label="Rename group" title="Rename group"${panel.liveRunning ? ' disabled' : ''}>Rename</button>`
       + `<button type="button" class="live-group-del" aria-label="Delete group" title="Delete group"${panel.liveRunning ? ' disabled' : ''}>Delete</button></div>`;
     const members = grp.members.filter((m) => m < n);
