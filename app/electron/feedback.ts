@@ -22,6 +22,7 @@ export const FEEDBACK_EMAIL = 'support@soundbuddy.online';
 const DEFAULT_INGEST_URL = 'https://soundbuddy.online/api/ingest';
 const SUBMIT_TIMEOUT_MS = 5000;
 const MAX_MESSAGE_LENGTH = 4000;
+const MAX_CONTACT_EMAIL_LENGTH = 254; // matches the worker's ingest.ts bound
 const CONTACT_EMAIL_PATTERN = /^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$/;
 
 export const FEEDBACK_CATEGORIES = ['bug', 'idea', 'question', 'other'] as const;
@@ -73,7 +74,11 @@ function validateSubmission(
     return { ok: false, error: 'Choose a category for your feedback.' };
   }
 
-  if (contactEmail !== undefined && contactEmail !== '' && !CONTACT_EMAIL_PATTERN.test(contactEmail)) {
+  if (
+    contactEmail !== undefined &&
+    contactEmail !== '' &&
+    (contactEmail.length > MAX_CONTACT_EMAIL_LENGTH || !CONTACT_EMAIL_PATTERN.test(contactEmail))
+  ) {
     return { ok: false, error: 'Enter a valid email address, or leave it blank.' };
   }
 
@@ -106,12 +111,26 @@ export async function submitFeedback(
   }
   const { message, category, contactEmail } = validated.value;
 
+  // Redaction placeholders (e.g. "[redacted-email]") can be longer than the
+  // text they replace, so a message just under MAX_MESSAGE_LENGTH can grow
+  // past it here — re-check the length the worker will actually see before
+  // ever making a network call, rather than sending a payload guaranteed to
+  // bounce with a generic 400.
+  const redactedMessage = redactFeedbackText(message);
+  if (redactedMessage.length > MAX_MESSAGE_LENGTH) {
+    return {
+      ok: false,
+      retryable: false,
+      error: `Your message is too long — please shorten it to ${MAX_MESSAGE_LENGTH} characters or fewer.`,
+    };
+  }
+
   const payload = {
     type: 'feedback' as const,
     appVersion: app.getVersion(),
     osVersion: process.getSystemVersion(),
     platform: `${process.platform}-${process.arch}`,
-    message: redactFeedbackText(message),
+    message: redactedMessage,
     category,
     ...(contactEmail ? { contactEmail } : {}),
   };

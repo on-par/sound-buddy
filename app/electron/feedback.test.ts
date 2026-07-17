@@ -282,6 +282,40 @@ describe('submitFeedback', () => {
       });
       expect(fetchFn).not.toHaveBeenCalled();
     });
+
+    it('rejects a contactEmail over 254 chars, matching the worker\'s bound', async () => {
+      const fetchFn = vi.fn();
+      const overlong = `${'a'.repeat(250)}@x.com`; // > 254 chars
+
+      const result = await submitFeedback(
+        { message: 'hi', category: 'bug', contactEmail: overlong },
+        fetchFn
+      );
+
+      expect(result).toEqual({
+        ok: false,
+        retryable: false,
+        error: expect.stringContaining('email'),
+      });
+      expect(fetchFn).not.toHaveBeenCalled();
+    });
+
+    it('rejects locally (no fetch) a message that only exceeds 4000 chars after redaction expands it', async () => {
+      const fetchFn = vi.fn();
+      // Each "a@b.co" (6 chars) redacts to "[redacted-email]" (16 chars) — a
+      // message under the raw 4000-char cap can still grow past it once
+      // every short email-shaped match is replaced with the longer placeholder.
+      const message = 'a@b.co '.repeat(560); // 3920 raw chars, well under 4000
+
+      const result = await submitFeedback({ message, category: 'bug' }, fetchFn);
+
+      expect(result).toEqual({
+        ok: false,
+        retryable: false,
+        error: expect.stringMatching(/too long/i),
+      });
+      expect(fetchFn).not.toHaveBeenCalled();
+    });
   });
 
   describe('response classification', () => {

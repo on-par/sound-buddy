@@ -10,6 +10,7 @@
   'use strict';
 
   var MAX_MESSAGE_LENGTH = 4000;
+  var MAX_CONTACT_EMAIL_LENGTH = 254; // matches the worker's ingest.ts bound
   var EMAIL_PATTERN = /^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$/;
 
   var CATEGORIES = [
@@ -35,7 +36,11 @@
       };
     }
     var contactEmail = input && input.contactEmail;
-    if (contactEmail && String(contactEmail).trim() && !EMAIL_PATTERN.test(String(contactEmail).trim())) {
+    var trimmedEmail = contactEmail ? String(contactEmail).trim() : '';
+    if (
+      trimmedEmail &&
+      (trimmedEmail.length > MAX_CONTACT_EMAIL_LENGTH || !EMAIL_PATTERN.test(trimmedEmail))
+    ) {
       return { ok: false, error: 'Enter a valid email address, or leave it blank.' };
     }
     return { ok: true };

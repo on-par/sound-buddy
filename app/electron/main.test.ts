@@ -70,6 +70,7 @@ import {
   getWindowOptions,
   getMenuTemplate,
   openFileFromMenu,
+  sendFeedbackFromMenu,
   type MenuDeps,
 } from './main';
 
@@ -247,6 +248,27 @@ describe('openFileFromMenu', () => {
     openFileFromMenu(null, showOpenDialog);
 
     expect(showOpenDialog).not.toHaveBeenCalled();
+  });
+});
+
+describe('sendFeedbackFromMenu', () => {
+  beforeEach(() => {
+    vi.mocked(openFeedback).mockClear();
+  });
+
+  it('pushes the renderer open to the in-app feedback form when a window exists', () => {
+    const win = { webContents: { send: vi.fn() } } as unknown as BrowserWindow;
+
+    sendFeedbackFromMenu(win);
+
+    expect(win.webContents.send).toHaveBeenCalledWith('open-feedback-dialog');
+    expect(openFeedback).not.toHaveBeenCalled();
+  });
+
+  it('falls back to the mailto dialog when there is no window', () => {
+    sendFeedbackFromMenu(null);
+
+    expect(openFeedback).toHaveBeenCalledTimes(1);
   });
 });
 

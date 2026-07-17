@@ -67,6 +67,21 @@ export function openFileFromMenu(
   });
 }
 
+/**
+ * Help ▸ "Send Feedback…" click handler (#472). When a window exists, push
+ * the renderer open to the in-app feedback form; when it doesn't (e.g. the
+ * user closed the last window on macOS, where the app stays running), fall
+ * back to the mailto: dialog so the menu item still does something instead
+ * of silently no-oping.
+ */
+export function sendFeedbackFromMenu(win: BrowserWindow | null): void {
+  if (win) {
+    win.webContents.send('open-feedback-dialog');
+  } else {
+    void openFeedback();
+  }
+}
+
 export interface MenuDeps {
   openFile: () => void;
   toggleDevTools: () => void;
@@ -179,9 +194,10 @@ function buildMenu(): void {
     checkForUpdates: () => void checkForUpdates(mainWindow, false),
     openLicenseDialog: () => mainWindow?.webContents.send('open-license-dialog'),
     // #472: the Help-menu item now opens the in-app feedback form; the
-    // preserved mailto (openFeedback/'open-feedback') is the dialog's
-    // explicit "Email instead" fallback on a non-retryable failure.
-    sendFeedback: () => mainWindow?.webContents.send('open-feedback-dialog'),
+    // preserved mailto (openFeedback/'open-feedback') is both the dialog's
+    // explicit "Email instead" fallback on a non-retryable failure, and
+    // sendFeedbackFromMenu's own fallback when there's no window to push to.
+    sendFeedback: () => sendFeedbackFromMenu(mainWindow),
   });
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));
 }

@@ -104,6 +104,13 @@ describe('validate', () => {
     expect(result.error).toMatch(/valid email/i);
   });
 
+  it('rejects a contact email over 254 chars, matching the worker\'s bound', () => {
+    const overlong = 'a'.repeat(250) + '@x.com'; // > 254 chars
+    const result = validate({ message: 'hi', contactEmail: overlong });
+    expect(result.ok).toBe(false);
+    expect(result.error).toMatch(/valid email/i);
+  });
+
   it('accepts an empty-string contact email (treated as omitted)', () => {
     expect(validate({ message: 'hi', contactEmail: '' })).toEqual({ ok: true });
   });
