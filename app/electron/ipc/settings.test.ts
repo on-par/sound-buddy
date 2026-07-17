@@ -38,7 +38,7 @@ vi.mock('../license', () => ({ isEntitled: () => true }));
 // is covered by app-version.test.ts.
 vi.mock('../app-version', () => ({ resolveAppVersion: (appRoot: string) => `stub-version-for:${appRoot}` }));
 
-import { registerSettingsHandlers, safeExportFilename } from './settings';
+import { registerSettingsHandlers, safeExportFilename, sanitizeChannelLabels } from './settings';
 import { APP_ROOT } from './shared';
 
 const settingsFile = () => path.join(userDataDir, 'settings.json');
@@ -94,6 +94,73 @@ describe('update-settings IPC whitelist — usageSignalEnabled (#145)', () => {
     const result = (await handler!(null, { aiEnabled: true })) as { aiEnabled: boolean };
     expect(result.aiEnabled).toBe(true);
     expect(readFile().aiEnabled).toBe(true);
+  });
+});
+
+describe('sanitizeChannelLabels (#482)', () => {
+  it('returns null for a non-object value (patch key ignored)', () => {
+    expect(sanitizeChannelLabels('nope')).toBeNull();
+    expect(sanitizeChannelLabels(123)).toBeNull();
+    expect(sanitizeChannelLabels(null)).toBeNull();
+    expect(sanitizeChannelLabels(undefined)).toBeNull();
+    expect(sanitizeChannelLabels([{ '0': 'Kick' }])).toBeNull();
+  });
+
+  it('drops a device entry whose value is not a plain object', () => {
+    expect(sanitizeChannelLabels({ 'Scarlett 18i20': 'nope', Other: { '0': 'Kick' } })).toEqual({
+      Other: { '0': 'Kick' },
+    });
+  });
+
+  it('drops a non-string label value', () => {
+    expect(sanitizeChannelLabels({ Scarlett: { '0': 'Kick', '1': 42 } })).toEqual({
+      Scarlett: { '0': 'Kick' },
+    });
+  });
+
+  it('trims labels and caps them at 40 chars', () => {
+    const long = 'x'.repeat(50);
+    const result = sanitizeChannelLabels({ Scarlett: { '0': '  Kick  ', '1': long } });
+    expect(result).toEqual({ Scarlett: { '0': 'Kick', '1': 'x'.repeat(40) } });
+  });
+
+  it('drops a label that is empty after trim, and prunes an empty device map', () => {
+    expect(sanitizeChannelLabels({ Scarlett: { '0': '   ' } })).toEqual({});
+    expect(sanitizeChannelLabels({ Scarlett: { '0': '   ', '1': 'Kick' } })).toEqual({
+      Scarlett: { '1': 'Kick' },
+    });
+  });
+
+  it('drops an empty token key', () => {
+    expect(sanitizeChannelLabels({ Scarlett: { '': 'Kick', '0': 'Snare' } })).toEqual({
+      Scarlett: { '0': 'Snare' },
+    });
+  });
+});
+
+describe('update-settings IPC whitelist — channelLabels (#482)', () => {
+  it('accepts a valid nested map and persists it', async () => {
+    const handler = handlers.get('update-settings');
+    const map = { Scarlett: { '0': 'Kick', '2-3': 'OH' } };
+    const result = (await handler!(null, { channelLabels: map })) as {
+      channelLabels: Record<string, Record<string, string>>;
+    };
+    expect(result.channelLabels).toEqual(map);
+    expect(readFile().channelLabels).toEqual(map);
+  });
+
+  it('replaces the whole stored map rather than merging', async () => {
+    const handler = handlers.get('update-settings');
+    await handler!(null, { channelLabels: { Scarlett: { '0': 'Kick' } } });
+    await handler!(null, { channelLabels: { Scarlett: { '1': 'Snare' } } });
+    expect(readFile().channelLabels).toEqual({ Scarlett: { '1': 'Snare' } });
+  });
+
+  it('ignores a non-object channelLabels patch value', async () => {
+    const handler = handlers.get('update-settings');
+    await handler!(null, { channelLabels: { Scarlett: { '0': 'Kick' } } });
+    await handler!(null, { channelLabels: 'nope' });
+    expect(readFile().channelLabels).toEqual({ Scarlett: { '0': 'Kick' } });
   });
 });
 

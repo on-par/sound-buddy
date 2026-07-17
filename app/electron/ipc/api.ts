@@ -33,6 +33,7 @@ export interface UpdateSettingsPatch {
   customIdealProfiles?: unknown[];
   storageDir?: string;
   usageSignalEnabled?: boolean;
+  channelLabels?: Record<string, Record<string, string>>;
 }
 
 /** A renderer patch: `apiKey` semantics — undefined = keep, '' = clear. */
@@ -70,6 +71,9 @@ export interface StartLiveOpts {
   // Record mode: which strips to arm as session stems, as channel-config
   // tokens (e.g. ['0', '2-3']). Omitted ⇒ stream.py arms all configured strips.
   arm?: string[];
+  // Record mode: per-strip display labels aligned index-for-index with
+  // `channels`; '' = unlabeled. Only sent in record mode (#482).
+  labels?: string[];
 }
 
 export interface StartPlaybackOpts {
@@ -197,6 +201,13 @@ export interface AppSettings {
    * endpoint ships in the worker (re-verify before wiring anything).
    */
   usageSignalEnabled: boolean;
+  /**
+   * Persisted per-device channel labels (#482): deviceName ('' = Default
+   * Device) → strip token ("0" mono, "2-3" stereo) → display label. Restores
+   * user-entered labels across monitor/live sessions without needing a saved
+   * (Pro-gated) rig. No env layer — pure persisted data, like `rigs`.
+   */
+  channelLabels: Record<string, Record<string, string>>;
 }
 
 // ─── LLM DTOs (PublicLlmConfig moved from electron/llm-config.ts, TD-011) ────

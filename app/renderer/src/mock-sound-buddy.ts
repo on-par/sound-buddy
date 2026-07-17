@@ -38,6 +38,7 @@ const DEFAULT_APP_SETTINGS: AppSettings = {
   rigs: [],
   activeRigId: null,
   usageSignalEnabled: false,
+  channelLabels: {},
 };
 
 const DEFAULT_PUBLIC_LLM_CONFIG: PublicLlmConfig = {

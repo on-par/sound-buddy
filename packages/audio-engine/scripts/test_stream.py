@@ -162,6 +162,59 @@ class ArmResolution(unittest.TestCase):
             stream.resolve_armed_strips(_mono_stereo_groups(), "9", 4)
 
 
+class ApplyStripLabels(unittest.TestCase):
+    def test_happy_path_sets_label_per_index(self):
+        groups = _mono_stereo_groups()
+        out = stream.apply_strip_labels(groups, '["Kick","OH","Snare"]')
+        self.assertEqual([g.get("label") for g in out], ["Kick", "OH", "Snare"])
+        self.assertIs(out, groups)  # same list, mutated in place for chaining
+
+    def test_empty_strings_skipped(self):
+        groups = _mono_stereo_groups()
+        stream.apply_strip_labels(groups, '["Kick",""]')
+        self.assertEqual(groups[0]["label"], "Kick")
+        self.assertNotIn("label", groups[1])
+
+    def test_whitespace_only_label_skipped(self):
+        groups = _mono_stereo_groups()
+        stream.apply_strip_labels(groups, '["   "]')
+        self.assertNotIn("label", groups[0])
+
+    def test_extra_entries_ignored(self):
+        groups = _mono_stereo_groups()
+        stream.apply_strip_labels(groups, '["Kick","OH","Snare","Extra1","Extra2"]')
+        self.assertEqual([g.get("label") for g in groups], ["Kick", "OH", "Snare"])
+
+    def test_missing_entries_leave_strips_unlabeled(self):
+        groups = _mono_stereo_groups()
+        stream.apply_strip_labels(groups, '["Kick"]')
+        self.assertEqual(groups[0]["label"], "Kick")
+        self.assertNotIn("label", groups[1])
+        self.assertNotIn("label", groups[2])
+
+    def test_falsy_labels_json_is_a_noop(self):
+        groups = _mono_stereo_groups()
+        self.assertIs(stream.apply_strip_labels(groups, None), groups)
+        self.assertIs(stream.apply_strip_labels(groups, ""), groups)
+        self.assertNotIn("label", groups[0])
+
+    def test_invalid_json_raises_value_error(self):
+        with self.assertRaisesRegex(ValueError, "--labels must be a JSON array"):
+            stream.apply_strip_labels(_mono_stereo_groups(), "not json")
+
+    def test_non_array_json_raises_value_error(self):
+        with self.assertRaisesRegex(ValueError, "--labels must be a JSON array"):
+            stream.apply_strip_labels(_mono_stereo_groups(), '{"0": "Kick"}')
+        with self.assertRaisesRegex(ValueError, "--labels must be a JSON array"):
+            stream.apply_strip_labels(_mono_stereo_groups(), '"Kick"')
+
+    def test_non_string_entry_ignored(self):
+        groups = _mono_stereo_groups()
+        stream.apply_strip_labels(groups, '[42, "Snare"]')
+        self.assertNotIn("label", groups[0])
+        self.assertEqual(groups[1]["label"], "Snare")
+
+
 class Slugify(unittest.TestCase):
     def test_slugs(self):
         self.assertEqual(stream.slugify("CH01"), "ch01")
@@ -287,6 +340,67 @@ class SessionRecording(unittest.TestCase):
         with open(os.path.join(self.dir, "session.json")) as f:
             manifest = json.load(f)
         self.assertEqual(manifest["tracks"][0]["frames"], 0)
+
+
+@unittest.skipUnless(HAVE_SOUNDFILE, "soundfile not installed")
+class SessionRecordingWithLabels(unittest.TestCase):
+    def setUp(self):
+        self.dir = tempfile.mkdtemp()
+        self.sr = 48000
+
+    def tearDown(self):
+        shutil.rmtree(self.dir, ignore_errors=True)
+
+    def test_labeled_strip_names_stem_from_the_label(self):
+        groups = stream.parse_channel_groups("0,1", 2)
+        stream.apply_strip_labels(groups, '["Kick Drum",""]')
+        rec = stream.SessionRecorder(self.dir, groups, self.sr)
+        rec.finalize()
+        wavs = sorted(f for f in os.listdir(self.dir) if f.endswith(".wav"))
+        self.assertEqual(wavs, ["01-kick-drum.wav", "02-ch02.wav"])
+
+    def test_unlabeled_strip_falls_back_to_channel_identity(self):
+        groups = stream.parse_channel_groups("0", 1)
+        rec = stream.SessionRecorder(self.dir, groups, self.sr)
+        rec.finalize()
+        self.assertTrue(os.path.exists(os.path.join(self.dir, "01-ch01.wav")))
+
+    def test_label_with_slashes_and_spaces_is_sanitized(self):
+        groups = stream.parse_channel_groups("0", 1)
+        stream.apply_strip_labels(groups, '["Vocal / Lead"]')
+        rec = stream.SessionRecorder(self.dir, groups, self.sr)
+        rec.finalize()
+        self.assertTrue(os.path.exists(os.path.join(self.dir, "01-vocal-lead.wav")))
+
+    def test_label_with_no_alphanumerics_falls_back_to_channel_identity(self):
+        groups = stream.parse_channel_groups("0", 1)
+        stream.apply_strip_labels(groups, '["../.."]')
+        rec = stream.SessionRecorder(self.dir, groups, self.sr)
+        rec.finalize()
+        # "../.." has no alphanumeric content, so the channel identity (CH01)
+        # is used instead of a slug of the (traversal-looking) label.
+        self.assertTrue(os.path.exists(os.path.join(self.dir, "01-ch01.wav")))
+
+    def test_two_strips_with_the_same_label_get_unique_stem_names(self):
+        # The idx prefix ("01-"/"02-") already disambiguates same-labeled
+        # strips within one session; _unique_stem_name's counter only kicks in
+        # for a true filename collision (covered by UniqueStemName above).
+        groups = stream.parse_channel_groups("0,1", 2)
+        stream.apply_strip_labels(groups, '["Vox","Vox"]')
+        rec = stream.SessionRecorder(self.dir, groups, self.sr)
+        rec.finalize()
+        wavs = sorted(f for f in os.listdir(self.dir) if f.endswith(".wav"))
+        self.assertEqual(wavs, ["01-vox.wav", "02-vox.wav"])
+
+    def test_manifest_label_carries_the_user_label_and_falls_back_to_channel_name(self):
+        groups = stream.parse_channel_groups("0,1", 2)
+        stream.apply_strip_labels(groups, '["Kick",""]')
+        rec = stream.SessionRecorder(self.dir, groups, self.sr)
+        rec.finalize()
+        with open(os.path.join(self.dir, "session.json")) as f:
+            manifest = json.load(f)
+        self.assertEqual(manifest["tracks"][0]["label"], "Kick")
+        self.assertEqual(manifest["tracks"][1]["label"], "CH02")
 
 
 class MonitorPathWritesNothing(unittest.TestCase):

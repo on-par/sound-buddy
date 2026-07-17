@@ -32,6 +32,7 @@ describe('createSettingsStore', () => {
           rigs: [],
           activeRigId: null,
           usageSignalEnabled: false,
+          channelLabels: {},
         };
       },
       getLlmConfig: async () => {
@@ -65,6 +66,7 @@ describe('createSettingsStore', () => {
       rigs: [],
       activeRigId: null,
       usageSignalEnabled: false,
+      channelLabels: {},
     };
     const mock = createMockSoundBuddy({
       updateSettings: async (patch) => {
@@ -111,6 +113,7 @@ describe('createSettingsStore', () => {
       rigs: [],
       activeRigId: null,
       usageSignalEnabled: false,
+      channelLabels: {},
     };
     const mock = createMockSoundBuddy({
       updateSettings: () => Promise.reject(new Error('write failed')),
@@ -211,6 +214,7 @@ describe('createSettingsStore', () => {
         rigs: [],
         activeRigId: null,
         usageSignalEnabled: false,
+        channelLabels: {},
       }),
     });
     (globalThis as { window?: unknown }).window = { soundBuddy: mock.api };

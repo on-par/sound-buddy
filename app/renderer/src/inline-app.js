@@ -1013,6 +1013,13 @@ function wireLiveNameEdit(nameEl) {
     const strip = channelConfig[idx];
     if (!strip || nameEl.textContent === original) return;
     strip.label = nameEl.textContent.trim().slice(0, MAX_LABEL_LEN);
+    // Persist the label (#482) so it survives across monitor/live sessions,
+    // keyed by device + strip token (mono "0" / stereo "2-3").
+    const all = (setStore.getState().settings || {}).channelLabels || {};
+    const next = window.channelLabels.recordLabel(
+      all, selectedDeviceName(), window.armState.stripToken(strip), strip.label,
+    );
+    setStore.getState().updateSettings({ channelLabels: next });
     // Reflect the resolved name (empty label falls back to the device name /
     // Ch N) and refresh the config row inputs to match.
     nameEl.textContent = stripLabel(strip, liveChannelAt(idx), idx);
@@ -1498,6 +1505,14 @@ async function deleteChannelGroup(g) {
   renderChannelConfig();
 }
 
+// The effective default recording folder to show when no folder is explicitly
+// chosen (#482): the configured storageDir setting (#91), falling back to the
+// platform default — mirrors ipc/shared.ts's defaultRecordDir().
+function defaultRecordFolderText() {
+  const s = setStore.getState().settings;
+  return (s && s.storageDir && s.storageDir.trim()) || '~/Music/Sound Buddy';
+}
+
 document.getElementById('record-folder-btn').addEventListener('click', async () => {
   const dir = await sb.openDirDialog();
   if (dir) {
@@ -1519,6 +1534,21 @@ function selectedDeviceName() {
   if (val === '') return '';
   const dev = liveDevices.find((d) => String(d.index) === val);
   return dev ? dev.name : '';
+}
+
+// The persisted channel labels (#482) saved for the currently selected device.
+function savedLabelsForDevice() {
+  return ((setStore.getState().settings || {}).channelLabels || {})[selectedDeviceName()] || {};
+}
+
+// Overlay saved labels onto channelConfig for the current device (#482) —
+// never clobbers a label already present (e.g. loaded from a rig).
+function applySavedLabels() {
+  channelConfig = window.channelLabels.applyLabels(
+    channelConfig,
+    window.armState.allTokens(channelConfig),
+    savedLabelsForDevice(),
+  );
 }
 
 // Total device channels consumed by the current config (mono=1, stereo=2).
@@ -1546,11 +1576,14 @@ function removeChannelStrip(idx) {
   renderChannelConfig();
 }
 
-// Reset the config to the device default: first ≤2 channels as mono strips.
+// Reset the config to the device default: first ≤2 channels as mono strips,
+// then overlay any saved labels for this device (#482) — covers device
+// switches and refresh.
 function resetChannelConfig() {
   const n = selectedDeviceChannels();
   channelConfig = [];
   for (let i = 0; i < Math.min(2, n); i++) channelConfig.push({ kind: 'mono', a: i, b: (i + 1) % Math.max(n, 1), armed: true });
+  applySavedLabels();
   renderChannelConfig();
 }
 
@@ -1698,6 +1731,8 @@ document.getElementById('live-start-btn').addEventListener('click', async () => 
     mode: liveMode, recordDir: recordDir || undefined,
     // Record mode: capture only the armed strips as session stems (#43).
     arm: liveMode === 'record' ? armedTokens() : undefined,
+    // Record mode: carry display labels into stem filenames + session.json (#482).
+    labels: liveMode === 'record' ? channelConfig.map((s) => (s.label || '').trim()) : undefined,
   });
 
   if (!result.success) {
@@ -1905,7 +1940,7 @@ function applyRig(rig) {
   setLiveMode(rig.mode);
 
   recordDir = rig.recordDir || '';
-  document.getElementById('record-folder-path').textContent = recordDir || '~/Music/Sound Buddy';
+  document.getElementById('record-folder-path').textContent = recordDir || defaultRecordFolderText();
 
   setSliderVal('meter-interval', rig.intervalMs);
   setSliderVal('window-secs', rig.windowSecs);
@@ -2054,6 +2089,11 @@ async function initRigs() {
   populateRigSelect(rigList, active);
   updateRigButtons();
   if (active) applyRig(rigList.find((r) => r.id === active));
+  // Re-apply saved labels (#482): loadDevices() may have seeded channelConfig
+  // before settingsStore.loadSettings() resolved, so re-overlay now that the
+  // store's settings are available.
+  applySavedLabels();
+  renderChannelConfig();
 }
 
 // Selecting a rig restores it and records it as active; the placeholder clears
@@ -3285,6 +3325,9 @@ window.inlineDialogs = { openPhaseDoublingDialog, openFeedbackRingout };
     : [];
   initIdealProfileSelect();
   syncIdealProfile();
+  // Reflect the effective default record folder (#482) now that settings have
+  // loaded — root-markup.html's static text is only the cold-boot placeholder.
+  if (!recordDir) document.getElementById('record-folder-path').textContent = defaultRecordFolderText();
 })();
 
 // Drives the report-card toolbar (Clear/Load/Print/Grade-own) + the

@@ -264,7 +264,7 @@ describe('save', () => {
       saveLlmConfig: async () => ({ ok: true, config }),
       updateSettings: async (patch) => {
         mock.calls.push({ method: 'updateSettings', args: [patch] });
-        return { aiEnabled: true, idealProfile: '', customIdealProfiles: [], storageDir: '', rigs: [], activeRigId: null, usageSignalEnabled: false };
+        return { aiEnabled: true, idealProfile: '', customIdealProfiles: [], storageDir: '', rigs: [], activeRigId: null, usageSignalEnabled: false, channelLabels: {} };
       },
     });
     const store = createSettingsStore(() => mock.api);

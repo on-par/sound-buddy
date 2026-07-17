@@ -25,6 +25,39 @@ import { APP_ROOT, defaultRecordDir, platformDefaultStorageDir } from './shared'
 
 const DEFAULT_EXPORT_FILENAME = 'report.png';
 const PNG_EXTENSION = '.png';
+// Cap on a single channel label's stored length (#482) — same value as the
+// renderer's MAX_LABEL_LEN (liveCaptureStore.ts / inline-app.js), kept in
+// sync by convention since the renderer and this main-process guard must
+// agree on what "too long" means.
+const MAX_CHANNEL_LABEL_LEN = 40;
+
+/** A plain, non-array, non-null object. */
+function isPlainObject(v: unknown): v is Record<string, unknown> {
+  return typeof v === 'object' && v !== null && !Array.isArray(v);
+}
+
+// Guards the update-settings whitelist for channelLabels (#482): `null` when
+// `value` isn't a plain non-array object (the patch key is then ignored
+// entirely, leaving the stored map untouched). Otherwise rebuilds the map
+// from scratch — callers send the FULL next map, so this replaces rather than
+// deep-merges with whatever was previously stored.
+export function sanitizeChannelLabels(value: unknown): Record<string, Record<string, string>> | null {
+  if (!isPlainObject(value)) return null;
+
+  const clean: Record<string, Record<string, string>> = {};
+  for (const [deviceName, tokenMap] of Object.entries(value)) {
+    if (!isPlainObject(tokenMap)) continue;
+    const labels: Record<string, string> = {};
+    for (const [token, label] of Object.entries(tokenMap)) {
+      if (token === '' || typeof label !== 'string') continue;
+      const trimmed = label.trim().slice(0, MAX_CHANNEL_LABEL_LEN);
+      if (trimmed === '') continue;
+      labels[token] = trimmed;
+    }
+    if (Object.keys(labels).length > 0) clean[deviceName] = labels;
+  }
+  return clean;
+}
 
 // Pure helper behind the save-report-image handler (#368): basename-strips a
 // suggested filename (defense-in-depth against a tampered IPC argument — the
@@ -66,6 +99,10 @@ export function registerSettingsHandlers(): void {
       if (typeof patch.usageSignalEnabled === 'boolean') {
         clean.usageSignalEnabled = patch.usageSignalEnabled;
       }
+      // Persisted per-device channel labels (#482). Replaces the whole stored
+      // map — callers always send the full next map, never a partial merge.
+      const labels = sanitizeChannelLabels(patch.channelLabels);
+      if (labels) clean.channelLabels = labels;
     }
     return updateSettings(clean);
   });
