@@ -80,7 +80,11 @@ const validCrash = {
 const validTelemetry = {
   type: "telemetry",
   appVersion: "1.2.3",
-  name: "app.launch",
+  name: "app_opened",
+  platform: "darwin-arm64",
+  installId: "11111111-1111-1111-1111-111111111111",
+  sessionId: "22222222-2222-2222-2222-222222222222",
+  occurredAt: "2026-07-16T12:00:00Z",
   value: 42,
   props: { channel: "stable", ok: true, count: 3 },
 };
@@ -863,13 +867,151 @@ describe("POST /api/ingest (#475)", () => {
       const env = makeEnv(kv);
 
       const res = await handleIngestEvent(
-        request({ type: "telemetry", appVersion: "1.2.3", osVersion: "14.5", name: "app.launch" }),
+        request({
+          type: "telemetry",
+          appVersion: "1.2.3",
+          osVersion: "14.5",
+          name: "app_opened",
+          platform: "darwin-arm64",
+          installId: "11111111-1111-1111-1111-111111111111",
+          sessionId: "22222222-2222-2222-2222-222222222222",
+          occurredAt: "2026-07-16T12:00:00Z",
+        }),
         env,
         ctx,
         deps,
       );
 
       expect(res.status).toBe(202);
+    });
+  });
+
+  describe("telemetry allowlist + envelope fields (#474)", () => {
+    it("an approved name with platform/installId/sessionId/occurredAt → 202", async () => {
+      const { kv } = makeKv();
+      const env = makeEnv(kv);
+
+      const res = await handleIngestEvent(request(validTelemetry), env, ctx, deps);
+
+      expect(res.status).toBe(202);
+    });
+
+    it("a pattern-valid but unapproved name → 400 unknown_event_name", async () => {
+      const { kv } = makeKv();
+      const env = makeEnv(kv);
+
+      const res = await handleIngestEvent(
+        request({ ...validTelemetry, name: "app.launch" }),
+        env,
+        ctx,
+        deps,
+      );
+
+      expect(res.status).toBe(400);
+      expect(await res.json()).toEqual({ error: "unknown_event_name", field: "name" });
+    });
+
+    it("missing platform → 400 invalid_field platform", async () => {
+      const { kv } = makeKv();
+      const env = makeEnv(kv);
+      const { platform: _platform, ...withoutPlatform } = validTelemetry;
+
+      const res = await handleIngestEvent(request(withoutPlatform), env, ctx, deps);
+
+      expect(res.status).toBe(400);
+      expect(await res.json()).toEqual({ error: "invalid_field", field: "platform" });
+    });
+
+    it("missing installId → 400 invalid_field installId", async () => {
+      const { kv } = makeKv();
+      const env = makeEnv(kv);
+      const { installId: _installId, ...withoutInstallId } = validTelemetry;
+
+      const res = await handleIngestEvent(request(withoutInstallId), env, ctx, deps);
+
+      expect(res.status).toBe(400);
+      expect(await res.json()).toEqual({ error: "invalid_field", field: "installId" });
+    });
+
+    it("missing sessionId → 400 invalid_field sessionId", async () => {
+      const { kv } = makeKv();
+      const env = makeEnv(kv);
+      const { sessionId: _sessionId, ...withoutSessionId } = validTelemetry;
+
+      const res = await handleIngestEvent(request(withoutSessionId), env, ctx, deps);
+
+      expect(res.status).toBe(400);
+      expect(await res.json()).toEqual({ error: "invalid_field", field: "sessionId" });
+    });
+
+    it("missing occurredAt → 400 invalid_field occurredAt", async () => {
+      const { kv } = makeKv();
+      const env = makeEnv(kv);
+      const { occurredAt: _occurredAt, ...withoutOccurredAt } = validTelemetry;
+
+      const res = await handleIngestEvent(request(withoutOccurredAt), env, ctx, deps);
+
+      expect(res.status).toBe(400);
+      expect(await res.json()).toEqual({ error: "invalid_field", field: "occurredAt" });
+    });
+
+    it("minute-precision occurredAt → 400 invalid_field occurredAt", async () => {
+      const { kv } = makeKv();
+      const env = makeEnv(kv);
+
+      const res = await handleIngestEvent(
+        request({ ...validTelemetry, occurredAt: "2026-07-17T14:23:00Z" }),
+        env,
+        ctx,
+        deps,
+      );
+
+      expect(res.status).toBe(400);
+      expect(await res.json()).toEqual({ error: "invalid_field", field: "occurredAt" });
+    });
+
+    it("non-UUID installId → 400 invalid_field installId", async () => {
+      const { kv } = makeKv();
+      const env = makeEnv(kv);
+
+      const res = await handleIngestEvent(
+        request({ ...validTelemetry, installId: "not-a-uuid" }),
+        env,
+        ctx,
+        deps,
+      );
+
+      expect(res.status).toBe(400);
+      expect(await res.json()).toEqual({ error: "invalid_field", field: "installId" });
+    });
+
+    it("non-UUID sessionId → 400 invalid_field sessionId", async () => {
+      const { kv } = makeKv();
+      const env = makeEnv(kv);
+
+      const res = await handleIngestEvent(
+        request({ ...validTelemetry, sessionId: "not-a-uuid" }),
+        env,
+        ctx,
+        deps,
+      );
+
+      expect(res.status).toBe(400);
+      expect(await res.json()).toEqual({ error: "invalid_field", field: "sessionId" });
+    });
+
+    it("stores the four new fields verbatim alongside the existing telemetry shape", async () => {
+      const { kv, store, putSpy } = makeKv();
+      const env = makeEnv(kv);
+
+      const res = await handleIngestEvent(request(validTelemetry), env, ctx, deps);
+
+      expect(res.status).toBe(202);
+      const ingestPutCall = putSpy.mock.calls.find((call) =>
+        String(call[0]).startsWith("ingest:"),
+      );
+      const stored = JSON.parse(store.get(ingestPutCall![0] as string)!) as StoredIngestEvent;
+      expect(stored.event).toEqual(validTelemetry);
     });
   });
 
@@ -997,7 +1139,11 @@ describe("POST /api/ingest (#475)", () => {
         request({
           type: "telemetry",
           appVersion: "1.0.0",
-          name: "feedback.submitted",
+          name: "feedback_sent",
+          platform: "darwin-arm64",
+          installId: "11111111-1111-1111-1111-111111111111",
+          sessionId: "22222222-2222-2222-2222-222222222222",
+          occurredAt: "2026-07-16T12:00:00Z",
           props: { contact: "pat@x.com", count: 3, ok: true },
         }),
         env,
@@ -1079,7 +1225,11 @@ describe("POST /api/ingest (#475)", () => {
       const event = {
         type: "telemetry",
         appVersion: "1.0.0",
-        name: "app.launch",
+        name: "app_opened",
+        platform: "darwin-arm64",
+        installId: "11111111-1111-1111-1111-111111111111",
+        sessionId: "22222222-2222-2222-2222-222222222222",
+        occurredAt: "2026-07-16T12:00:00Z",
       } as IngestEvent;
       expect(redactIngestEvent(event)).toEqual(event);
     });

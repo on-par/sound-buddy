@@ -15,6 +15,7 @@ import {
   handleRendererErrorReport,
   recordAppEvent,
 } from './crash-reporting';
+import { recordTelemetryEvent } from './telemetry';
 import { ensureTrialStarted } from './license';
 import { maybeRefreshLicense } from './license-refresh';
 
@@ -216,6 +217,8 @@ app.whenReady().then(() => {
   // crash saved to disk. Both fire-and-forget from boot's perspective.
   setCrashSink((err, opts) => captureMainError(err, opts));
   void flushPendingCrashReport();
+  // Opt-in usage telemetry (#474) — no-op unless usageSignalEnabled is on.
+  recordTelemetryEvent('app_opened');
   // Start the 14-day Pro trial on first launch (#61) before the renderer reads
   // the license, so a new user boots straight into Pro (no free-tier flash).
   ensureTrialStarted();
@@ -236,7 +239,11 @@ app.whenReady().then(() => {
     void shell.openExternal(checkoutUrl(plan));
   });
   ipcMain.handle('open-feedback', () => openFeedback());
-  ipcMain.handle('submit-feedback', (_event, input) => submitFeedback(input));
+  ipcMain.handle('submit-feedback', async (_event, input) => {
+    const result = await submitFeedback(input);
+    if (result.ok) recordTelemetryEvent('feedback_sent');
+    return result;
+  });
   // Capture guidance (#142): "Grade your own service" panel's "Read the full
   // guide" CTA opens the hosted docs page in the user's browser.
   ipcMain.handle('open-capture-guide', () => {
@@ -244,7 +251,13 @@ app.whenReady().then(() => {
   });
   ipcMain.handle('reveal-diagnostics', () => revealDiagnosticLog());
   ipcMain.handle('report-renderer-error', (_event, input) => handleRendererErrorReport(input));
-  ipcMain.handle('record-app-event', (_event, name) => recordAppEvent(name));
+  // record-app-event feeds both the crash-reporting breadcrumb buffer (any
+  // pattern-valid name) and telemetry's stricter documented allowlist, which
+  // silently drops everything not approved (#474).
+  ipcMain.handle('record-app-event', (_event, name) => {
+    recordAppEvent(name);
+    recordTelemetryEvent(name);
+  });
 
   createWindow();
   log('main window created');

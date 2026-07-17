@@ -32,6 +32,13 @@ vi.mock('electron', () => ({
 
 vi.mock('../license', () => ({ isEntitled: () => true }));
 
+const recordTelemetryEventMock = vi.hoisted(() => vi.fn());
+const clearTelemetryStateMock = vi.hoisted(() => vi.fn());
+vi.mock('../telemetry', () => ({
+  recordTelemetryEvent: recordTelemetryEventMock,
+  clearTelemetryState: clearTelemetryStateMock,
+}));
+
 // get-app-version (#402) delegates to resolveAppVersion(APP_ROOT) rather than
 // Electron's app.getVersion() — see app-version.ts for why. Stub it here so
 // this file tests the IPC wiring; resolveAppVersion's own file-reading logic
@@ -49,6 +56,8 @@ beforeEach(() => {
   handlers.clear();
   focusedWindow = {};
   saveDialogResult = { canceled: false, filePath: '' };
+  recordTelemetryEventMock.mockClear();
+  clearTelemetryStateMock.mockClear();
   registerSettingsHandlers();
 });
 
@@ -87,6 +96,18 @@ describe('update-settings IPC whitelist — usageSignalEnabled (#145)', () => {
     const handler = handlers.get('update-settings');
     await handler!(null, { bogus: 1 });
     expect(readFile().bogus).toBeUndefined();
+  });
+
+  it('turning usageSignalEnabled off calls clearTelemetryState (#474)', async () => {
+    const handler = handlers.get('update-settings');
+    await handler!(null, { usageSignalEnabled: false });
+    expect(clearTelemetryStateMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('turning usageSignalEnabled on does not call clearTelemetryState (#474)', async () => {
+    const handler = handlers.get('update-settings');
+    await handler!(null, { usageSignalEnabled: true });
+    expect(clearTelemetryStateMock).not.toHaveBeenCalled();
   });
 });
 
@@ -335,5 +356,20 @@ describe('save-report-image IPC (#368)', () => {
     const result = await handler!(null, PNG_BYTES, 'sound-buddy-report.png');
     expect(result).toEqual({ saved: true, filePath: target });
     expect(new Uint8Array(fs.readFileSync(target))).toEqual(PNG_BYTES);
+  });
+
+  it('records report_exported telemetry on a successful save (#474)', async () => {
+    const target = path.join(userDataDir, 'my-export.png');
+    saveDialogResult = { canceled: false, filePath: target };
+    const handler = handlers.get('save-report-image');
+    await handler!(null, PNG_BYTES, 'sound-buddy-report.png');
+    expect(recordTelemetryEventMock).toHaveBeenCalledWith('report_exported');
+  });
+
+  it('does not record telemetry when the save dialog is cancelled (#474)', async () => {
+    saveDialogResult = { canceled: true };
+    const handler = handlers.get('save-report-image');
+    await handler!(null, PNG_BYTES, 'report.png');
+    expect(recordTelemetryEventMock).not.toHaveBeenCalled();
   });
 });

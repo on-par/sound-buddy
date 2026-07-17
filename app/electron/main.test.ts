@@ -54,6 +54,9 @@ vi.mock('./crash-reporting', () => ({
   handleRendererErrorReport: vi.fn(),
   recordAppEvent: vi.fn(),
 }));
+vi.mock('./telemetry', () => ({
+  recordTelemetryEvent: vi.fn(),
+}));
 vi.mock('./updater', () => ({ checkForUpdates: vi.fn(), openReleasePage: vi.fn() }));
 vi.mock('./checkout', () => ({ checkoutUrl: vi.fn((plan?: string) => `https://example.com/checkout/${plan}`) }));
 vi.mock('./capture-guide', () => ({ captureGuideUrl: vi.fn(() => 'https://example.com/guide') }));
@@ -69,6 +72,7 @@ import { app, BrowserWindow, Menu, ipcMain, shell } from 'electron';
 import { registerIpcHandlers } from './ipc';
 import { initLogging, attachWindowLogging, setCrashSink } from './logger';
 import { captureMainError, flushPendingCrashReport, handleRendererErrorReport, recordAppEvent } from './crash-reporting';
+import { recordTelemetryEvent } from './telemetry';
 import { checkForUpdates, openReleasePage } from './updater';
 import { checkoutUrl } from './checkout';
 import { captureGuideUrl } from './capture-guide';
@@ -329,6 +333,10 @@ describe('lifecycle (whenReady callback)', () => {
     expect(flushPendingCrashReport).toHaveBeenCalledTimes(1);
   });
 
+  it('records app_opened telemetry once at startup', () => {
+    expect(recordTelemetryEvent).toHaveBeenCalledWith('app_opened');
+  });
+
   it('report-renderer-error handler forwards the renderer input to handleRendererErrorReport', () => {
     const calls = (ipcMain.handle as ReturnType<typeof vi.fn>).mock.calls;
     const handler = calls.find((c) => c[0] === 'report-renderer-error')?.[1];
@@ -337,11 +345,12 @@ describe('lifecycle (whenReady callback)', () => {
     expect(handleRendererErrorReport).toHaveBeenCalledWith(input);
   });
 
-  it('record-app-event handler forwards the name to recordAppEvent', () => {
+  it('record-app-event handler forwards the name to both recordAppEvent and recordTelemetryEvent', () => {
     const calls = (ipcMain.handle as ReturnType<typeof vi.fn>).mock.calls;
     const handler = calls.find((c) => c[0] === 'record-app-event')?.[1];
     handler(undefined, 'screen.live');
     expect(recordAppEvent).toHaveBeenCalledWith('screen.live');
+    expect(recordTelemetryEvent).toHaveBeenCalledWith('screen.live');
   });
 
   it('open-checkout handler opens the checkout URL for the given plan', () => {
@@ -384,12 +393,35 @@ describe('lifecycle (whenReady callback)', () => {
     expect(openFeedback).toHaveBeenCalled();
   });
 
-  it('submit-feedback handler forwards the renderer input to submitFeedback', () => {
+  it('submit-feedback handler forwards the renderer input to submitFeedback', async () => {
+    vi.mocked(submitFeedback).mockResolvedValue({ ok: true });
     const calls = (ipcMain.handle as ReturnType<typeof vi.fn>).mock.calls;
     const handler = calls.find((c) => c[0] === 'submit-feedback')?.[1];
     const input = { message: 'hi', category: 'bug' };
-    handler(undefined, input);
+    await handler(undefined, input);
     expect(submitFeedback).toHaveBeenCalledWith(input);
+  });
+
+  it('submit-feedback handler records feedback_sent telemetry when the result is ok', async () => {
+    vi.mocked(submitFeedback).mockResolvedValue({ ok: true });
+    vi.mocked(recordTelemetryEvent).mockClear();
+    const calls = (ipcMain.handle as ReturnType<typeof vi.fn>).mock.calls;
+    const handler = calls.find((c) => c[0] === 'submit-feedback')?.[1];
+
+    await handler(undefined, { message: 'hi', category: 'bug' });
+
+    expect(recordTelemetryEvent).toHaveBeenCalledWith('feedback_sent');
+  });
+
+  it('submit-feedback handler does not record telemetry when the result is not ok', async () => {
+    vi.mocked(submitFeedback).mockResolvedValue({ ok: false, retryable: false, error: 'nope' });
+    vi.mocked(recordTelemetryEvent).mockClear();
+    const calls = (ipcMain.handle as ReturnType<typeof vi.fn>).mock.calls;
+    const handler = calls.find((c) => c[0] === 'submit-feedback')?.[1];
+
+    await handler(undefined, { message: 'hi', category: 'bug' });
+
+    expect(recordTelemetryEvent).not.toHaveBeenCalledWith('feedback_sent');
   });
 
   it('constructs the BrowserWindow with the expected options', () => {
