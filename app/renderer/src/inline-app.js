@@ -3313,20 +3313,44 @@ async function saveStorageSettings() {
   });
 })();
 
-/* ══ Feedback dialog (#144) ══ */
-// The unchecked path stays byte-for-byte identical to the #143 mailto
-// behavior — Send just fires openFeedback(). The checkbox reveals the log
-// file in Finder at check-time (not send-time) so the drag-in instructions
-// are visible before the mail client opens.
-const FEEDBACK_DIAG_REVEALED_TEXT = 'Your log file is now selected in Finder — drag it into the email before sending. It never leaves your machine unless you attach it.';
+/* ══ Feedback dialog (#144, in-app submission #472) ══ */
+// Send now POSTs message + category + optional contact email via
+// window.soundBuddy.submitFeedback (validated/built by window.feedbackForm,
+// #472's pure logic module). The checkbox stays local-only: it reveals the
+// log file in Finder at check-time so the user can attach it to a support
+// email themselves — it is never uploaded automatically.
+const FEEDBACK_DIAG_REVEALED_TEXT = 'Your log file is now selected in Finder. It is never uploaded — attach it to an email to support@soundbuddy.online if you’d like us to see it.';
 const FEEDBACK_DIAG_MISSING_TEXT = 'No diagnostic log exists yet — try again after using the app.';
 const FEEDBACK_DIAG_ERROR_TEXT = 'Could not reveal your log file — try unchecking and checking the box again.';
+const FEEDBACK_SUCCESS_CLOSE_DELAY_MS = 1200;
+
+let feedbackCategoriesPopulated = false;
+
+function populateFeedbackCategories() {
+  if (feedbackCategoriesPopulated) return;
+  const select = aiEl('feedback-category');
+  select.innerHTML = window.feedbackForm.CATEGORIES.map(
+    (c) => `<option value="${escapeHtml(c.id)}">${escapeHtml(c.label)}</option>`
+  ).join('');
+  feedbackCategoriesPopulated = true;
+}
+
+function setFeedbackStatus(text) {
+  aiEl('feedback-status').textContent = text || '';
+}
 
 function openFeedbackDialog() {
+  populateFeedbackCategories();
+  aiEl('feedback-category').value = 'bug';
+  aiEl('feedback-message').value = '';
+  aiEl('feedback-email').value = '';
   aiEl('feedback-attach-diagnostics').checked = false;
+  aiEl('feedback-dialog-email-instead').style.display = 'none';
+  aiEl('feedback-dialog-send').disabled = false;
   const hint = aiEl('feedback-diag-hint');
   hint.style.display = 'none';
   hint.textContent = '';
+  setFeedbackStatus('');
   aiEl('feedback-dialog').style.display = 'flex';
 }
 
@@ -3355,19 +3379,62 @@ async function onFeedbackAttachToggle() {
   hint.style.display = '';
 }
 
-function sendFeedback() {
+function feedbackEmailInstead() {
   void window.soundBuddy.openFeedback();
   closeFeedbackDialog();
+}
+
+async function sendFeedback() {
+  const fb = window.feedbackForm;
+  const raw = {
+    message: aiEl('feedback-message').value,
+    category: aiEl('feedback-category').value,
+    contactEmail: aiEl('feedback-email').value,
+  };
+
+  const validation = fb.validate(raw);
+  if (!validation.ok) {
+    setFeedbackStatus(validation.error);
+    return;
+  }
+
+  aiEl('feedback-dialog-send').disabled = true;
+  aiEl('feedback-dialog-email-instead').style.display = 'none';
+  setFeedbackStatus('Sending…');
+
+  let result;
+  try {
+    result = await window.soundBuddy.submitFeedback(fb.buildSubmission(raw));
+  } catch {
+    result = {
+      ok: false,
+      retryable: true,
+      error: 'Could not reach the feedback service — check your internet connection and try again.',
+    };
+  }
+
+  if (result && result.ok) {
+    setFeedbackStatus(fb.resultStatus(result).text);
+    setTimeout(closeFeedbackDialog, FEEDBACK_SUCCESS_CLOSE_DELAY_MS);
+    return;
+  }
+
+  const status = fb.resultStatus(result);
+  setFeedbackStatus(status.text);
+  aiEl('feedback-dialog-send').disabled = false;
+  aiEl('feedback-dialog-email-instead').style.display = status.retryable ? 'none' : '';
 }
 
 (() => {
   aiEl('feedback-dialog-cancel').addEventListener('click', closeFeedbackDialog);
   aiEl('feedback-dialog-send').addEventListener('click', sendFeedback);
+  aiEl('feedback-dialog-email-instead').addEventListener('click', feedbackEmailInstead);
   aiEl('feedback-attach-diagnostics').addEventListener('change', onFeedbackAttachToggle);
   aiEl('feedback-dialog').addEventListener('click', (e) => { if (e.target === aiEl('feedback-dialog')) closeFeedbackDialog(); });
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape' && aiEl('feedback-dialog').style.display !== 'none') closeFeedbackDialog();
   });
+  window.soundBuddy.onOpenFeedbackDialog(() => openFeedbackDialog());
 })();
 
 /* ══ Actionable path to grading a real service (#142, reworked #295) ══ */

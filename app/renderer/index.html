@@ -20,18 +20,37 @@
      into this static node — see App.tsx. -->
 <div id="settings-island"></div>
 
-<!-- Feedback dialog (#144). "Attach diagnostics" reveals the persistent log
-     file in Finder so the user can drag it into the email themselves — a
-     mailto: link can't carry an attachment, and unchecked stays byte-for-byte
-     identical to the #143 mailto behavior. Nothing is ever auto-attached or
-     uploaded. -->
+<!-- Feedback dialog (#144, in-app submission #472). Send now POSTs the message
+     + category + optional contact email to the worker ingestion endpoint
+     (#475) — the main process attaches app version/macOS version itself, so
+     the renderer can neither add nor omit that context, and nothing else
+     (no audio, secrets, license keys, or file paths) ever goes in the
+     payload. "Attach diagnostics" stays local-only: it reveals the
+     persistent log file in Finder so the user can attach it to a support
+     email themselves — it is never uploaded automatically. A non-retryable
+     failure offers "Email instead", which falls back to the original #143
+     mailto behavior. -->
 <div id="feedback-dialog" class="rig-dialog" style="display:none" role="dialog" aria-modal="true" aria-labelledby="feedback-dialog-title">
   <div class="rig-dialog-card">
     <div class="rig-dialog-title" id="feedback-dialog-title">Send Feedback</div>
-    <div class="ai-dialog-sub">Opens your email app with a pre-filled message. Nothing is sent automatically.</div>
-    <label class="ai-enable-row"><input type="checkbox" id="feedback-attach-diagnostics" />Attach diagnostics (reveals your log file)</label>
+    <div class="ai-dialog-sub">Sends your message to the Sound Buddy team along with your app version and macOS version. Never audio, recordings, license keys, file paths, or anything else from your machine.</div>
+    <label class="ai-field">
+      <span class="ai-field-label">Category</span>
+      <select id="feedback-category" class="rig-dialog-input"></select>
+    </label>
+    <label class="ai-field">
+      <span class="ai-field-label">Message</span>
+      <textarea id="feedback-message" class="rig-dialog-input" rows="4" maxlength="4000" placeholder="What happened, or what would help?"></textarea>
+    </label>
+    <label class="ai-field">
+      <span class="ai-field-label">Email for a reply (optional)</span>
+      <input type="email" id="feedback-email" class="rig-dialog-input" placeholder="you@example.com" autocomplete="off" />
+    </label>
+    <label class="ai-enable-row"><input type="checkbox" id="feedback-attach-diagnostics" />Reveal my diagnostic log (never uploaded)</label>
     <p class="ai-dialog-note" id="feedback-diag-hint" style="display:none"></p>
+    <span class="ai-status" id="feedback-status" role="status"></span>
     <div class="rig-dialog-actions">
+      <button type="button" id="feedback-dialog-email-instead" class="btn btn-secondary sm" style="display:none">Email instead</button>
       <button type="button" id="feedback-dialog-cancel" class="btn btn-secondary sm">Cancel</button>
       <button type="button" id="feedback-dialog-send" class="btn btn-primary sm">Send Feedback</button>
     </div>

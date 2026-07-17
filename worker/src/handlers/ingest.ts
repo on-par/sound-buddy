@@ -20,13 +20,25 @@ const MAX_TELEMETRY_PROPS = 20;
 const MAX_PROP_VALUE_LENGTH = 256;
 const TELEMETRY_NAME_PATTERN = /^[a-z0-9][a-z0-9._-]{0,63}$/;
 
+// #472: feedback.category/contactEmail/platform — additive, backwards-compatible
+// fields. contactEmail is a deliberate reply channel the user typed into a
+// dedicated field, so it is validated (not deny-listed like `email`/`userEmail`).
+const FEEDBACK_CATEGORIES = new Set(["bug", "idea", "question", "other"]);
+const MAX_CONTACT_EMAIL_LENGTH = 254;
+const CONTACT_EMAIL_PATTERN = /^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$/;
+
 export type IngestEventType = "feedback" | "crash" | "telemetry";
+
+export type FeedbackCategory = "bug" | "idea" | "question" | "other";
 
 export interface FeedbackEvent {
   type: "feedback";
   appVersion: string;
   osVersion?: string;
   message: string;
+  category?: FeedbackCategory;
+  contactEmail?: string;
+  platform?: string;
 }
 
 export interface CrashEvent {
@@ -74,7 +86,15 @@ const SENSITIVE_FIELD_NAMES = new Set([
 ]);
 
 const ALLOWED_FIELDS: Record<IngestEventType, ReadonlySet<string>> = {
-  feedback: new Set(["type", "appVersion", "osVersion", "message"]),
+  feedback: new Set([
+    "type",
+    "appVersion",
+    "osVersion",
+    "message",
+    "category",
+    "contactEmail",
+    "platform",
+  ]),
   crash: new Set(["type", "appVersion", "osVersion", "message", "stack", "processType"]),
   telemetry: new Set(["type", "appVersion", "osVersion", "name", "value", "props"]),
 };
@@ -178,9 +198,34 @@ export function validateIngestEvent(body: unknown): ValidationResult {
     if (typeof message !== "string" || !message || message.length > MAX_MESSAGE_LENGTH) {
       return { ok: false, error: "invalid_field", field: "message", status: 400 };
     }
+    const category = body.category;
+    if (category !== undefined && !FEEDBACK_CATEGORIES.has(category as string)) {
+      return { ok: false, error: "invalid_field", field: "category", status: 400 };
+    }
+    const contactEmail = body.contactEmail;
+    if (
+      contactEmail !== undefined &&
+      (typeof contactEmail !== "string" ||
+        contactEmail.length > MAX_CONTACT_EMAIL_LENGTH ||
+        !CONTACT_EMAIL_PATTERN.test(contactEmail))
+    ) {
+      return { ok: false, error: "invalid_field", field: "contactEmail", status: 400 };
+    }
+    const platform = body.platform;
+    if (platform !== undefined && !isShortField(platform, false)) {
+      return { ok: false, error: "invalid_field", field: "platform", status: 400 };
+    }
     return {
       ok: true,
-      event: { type, appVersion, ...(osVersion ? { osVersion } : {}), message },
+      event: {
+        type,
+        appVersion,
+        ...(osVersion ? { osVersion } : {}),
+        message,
+        ...(category !== undefined ? { category: category as FeedbackCategory } : {}),
+        ...(contactEmail !== undefined ? { contactEmail: contactEmail as string } : {}),
+        ...(platform !== undefined ? { platform: platform as string } : {}),
+      },
     };
   }
 
@@ -258,6 +303,10 @@ export function redactText(input: string): string {
  * and every string value in `props`. */
 export function redactIngestEvent(event: IngestEvent): IngestEvent {
   if (event.type === "feedback") {
+    // contactEmail is a deliberately consented reply channel the user typed
+    // into a dedicated field — it is NOT unintended PII like a stray email
+    // caught inside free-text `message`, so it is stored as-is, unlike the
+    // deny-listed `email`/`userEmail` keys, which are rejected outright.
     return { ...event, message: redactText(event.message) };
   }
   if (event.type === "crash") {

@@ -14,6 +14,7 @@ import type {
   AnalysisProgress,
   UpdateInfo,
   UpdateStatus,
+  FeedbackSubmission,
 } from './ipc/api';
 
 // The slice of Electron's IpcRenderer the bridge actually uses. Injected so
@@ -83,6 +84,13 @@ export function createBridge(ipc: IpcRendererLike) {
     // Attach diagnostics (#144) — reveals the log file in Finder so the user can
     // drag it into the feedback email themselves. Never attached automatically.
     revealDiagnostics: () => ipc.invoke('reveal-diagnostics'),
+    // In-app feedback submission (#472) — POSTs a strictly-allowlisted payload
+    // to the worker ingestion endpoint; the main process attaches the safe
+    // diagnostic summary itself. onOpenFeedbackDialog mirrors
+    // onOpenLicenseDialog: the Help menu pushes the renderer open instead of
+    // firing a mailto directly.
+    submitFeedback: (input: FeedbackSubmission) => ipc.invoke('submit-feedback', input),
+    onOpenFeedbackDialog: (cb: () => void) => ipc.on('open-feedback-dialog', () => cb()),
 
     // Capture rigs (#36) — backend only for now; the Live-tab UI arrives in #37.
     listRigs: () => ipc.invoke('list-rigs'),
