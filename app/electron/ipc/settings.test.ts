@@ -38,7 +38,7 @@ vi.mock('../license', () => ({ isEntitled: () => true }));
 // is covered by app-version.test.ts.
 vi.mock('../app-version', () => ({ resolveAppVersion: (appRoot: string) => `stub-version-for:${appRoot}` }));
 
-import { registerSettingsHandlers, safeExportFilename, sanitizeChannelLabels } from './settings';
+import { registerSettingsHandlers, safeExportFilename, sanitizeChannelLabels, sanitizeChannelGroups } from './settings';
 import { APP_ROOT } from './shared';
 
 const settingsFile = () => path.join(userDataDir, 'settings.json');
@@ -161,6 +161,101 @@ describe('update-settings IPC whitelist — channelLabels (#482)', () => {
     await handler!(null, { channelLabels: { Scarlett: { '0': 'Kick' } } });
     await handler!(null, { channelLabels: 'nope' });
     expect(readFile().channelLabels).toEqual({ Scarlett: { '0': 'Kick' } });
+  });
+});
+
+describe('sanitizeChannelGroups (#483)', () => {
+  it('returns null for a non-object value (patch key ignored)', () => {
+    expect(sanitizeChannelGroups('nope')).toBeNull();
+    expect(sanitizeChannelGroups(123)).toBeNull();
+    expect(sanitizeChannelGroups(null)).toBeNull();
+    expect(sanitizeChannelGroups(undefined)).toBeNull();
+    expect(sanitizeChannelGroups([{ name: 'Drums', members: [0] }])).toBeNull();
+  });
+
+  it('drops a device entry whose value is not an array', () => {
+    expect(sanitizeChannelGroups({ Scarlett: 'nope', Other: [{ name: 'Drums', members: [0] }] })).toEqual({
+      Other: [{ name: 'Drums', members: [0] }],
+    });
+  });
+
+  it('drops a group with a missing or non-string name', () => {
+    expect(sanitizeChannelGroups({ Scarlett: [{ members: [0] }, { name: 'Drums', members: [1] }] })).toEqual({
+      Scarlett: [{ name: 'Drums', members: [1] }],
+    });
+    expect(sanitizeChannelGroups({ Scarlett: [{ name: 42, members: [0] }] })).toEqual({});
+  });
+
+  it('trims a group name and caps it at 40 chars', () => {
+    const long = 'x'.repeat(50);
+    const result = sanitizeChannelGroups({ Scarlett: [{ name: '  Drums  ', members: [] }, { name: long, members: [] }] });
+    expect(result).toEqual({ Scarlett: [{ name: 'Drums', members: [] }, { name: 'x'.repeat(40), members: [] }] });
+  });
+
+  it('drops a group whose name is empty after trim', () => {
+    expect(sanitizeChannelGroups({ Scarlett: [{ name: '   ', members: [0] }] })).toEqual({});
+  });
+
+  it('filters members to non-negative integers, deduped in order', () => {
+    const result = sanitizeChannelGroups({ Scarlett: [{ name: 'Drums', members: [2, -1, 0.5, 2, 0, 'x'] }] });
+    expect(result).toEqual({ Scarlett: [{ name: 'Drums', members: [2, 0] }] });
+  });
+
+  it('defaults members to [] when absent or malformed', () => {
+    expect(sanitizeChannelGroups({ Scarlett: [{ name: 'Drums' }] })).toEqual({
+      Scarlett: [{ name: 'Drums', members: [] }],
+    });
+    expect(sanitizeChannelGroups({ Scarlett: [{ name: 'Drums', members: 'nope' }] })).toEqual({
+      Scarlett: [{ name: 'Drums', members: [] }],
+    });
+  });
+
+  it('keeps a group with empty members (a named empty group is legal)', () => {
+    expect(sanitizeChannelGroups({ Scarlett: [{ name: 'Empty', members: [] }] })).toEqual({
+      Scarlett: [{ name: 'Empty', members: [] }],
+    });
+  });
+
+  it('keeps collapsed only when it is literally true', () => {
+    expect(sanitizeChannelGroups({ Scarlett: [{ name: 'Drums', members: [0], collapsed: true }] })).toEqual({
+      Scarlett: [{ name: 'Drums', members: [0], collapsed: true }],
+    });
+    expect(sanitizeChannelGroups({ Scarlett: [{ name: 'Drums', members: [0], collapsed: 'true' }] })).toEqual({
+      Scarlett: [{ name: 'Drums', members: [0] }],
+    });
+    expect(sanitizeChannelGroups({ Scarlett: [{ name: 'Drums', members: [0], collapsed: false }] })).toEqual({
+      Scarlett: [{ name: 'Drums', members: [0] }],
+    });
+  });
+
+  it('drops a device key whose group list ends up empty', () => {
+    expect(sanitizeChannelGroups({ Scarlett: [{ name: '   ', members: [0] }], Other: [] })).toEqual({});
+  });
+});
+
+describe('update-settings IPC whitelist — channelGroups (#483)', () => {
+  it('accepts a valid group list and persists it', async () => {
+    const handler = handlers.get('update-settings');
+    const map = { Scarlett: [{ name: 'Drums', members: [0, 1], collapsed: true }] };
+    const result = (await handler!(null, { channelGroups: map })) as {
+      channelGroups: Record<string, unknown>;
+    };
+    expect(result.channelGroups).toEqual(map);
+    expect(readFile().channelGroups).toEqual(map);
+  });
+
+  it('replaces the whole stored map rather than merging', async () => {
+    const handler = handlers.get('update-settings');
+    await handler!(null, { channelGroups: { Scarlett: [{ name: 'Drums', members: [0] }] } });
+    await handler!(null, { channelGroups: { Scarlett: [{ name: 'Vox', members: [1] }] } });
+    expect(readFile().channelGroups).toEqual({ Scarlett: [{ name: 'Vox', members: [1] }] });
+  });
+
+  it('ignores a non-object channelGroups patch value', async () => {
+    const handler = handlers.get('update-settings');
+    await handler!(null, { channelGroups: { Scarlett: [{ name: 'Drums', members: [0] }] } });
+    await handler!(null, { channelGroups: 'nope' });
+    expect(readFile().channelGroups).toEqual({ Scarlett: [{ name: 'Drums', members: [0] }] });
   });
 });
 

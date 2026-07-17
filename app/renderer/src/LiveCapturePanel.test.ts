@@ -75,6 +75,7 @@ describe('LiveCapturePanel', () => {
       collapsed: false,
       armed: !!channelsConfig[idx] && channelsConfig[idx].armed !== false,
       groupIndex: -1,
+      groupCollapsed: false,
     }));
     const expectedMeters = liveMetersHTML(FIXTURE_CHANNELS, stripViews, panel);
 
@@ -126,6 +127,12 @@ describe('LiveCapturePanel', () => {
   it('resolves each strip\'s groupIndex from the groups prop', () => {
     const html = renderMarkup(baseProps({ groups: [{ name: 'Drums', members: [1] }] }));
     expect(html).toContain('<option value="0" selected>Drums</option>');
+  });
+
+  it('resolves each strip\'s groupCollapsed from the owning group (#483)', () => {
+    const html = renderMarkup(baseProps({ groups: [{ name: 'Drums', members: [1], collapsed: true }] }));
+    expect(html).toMatch(/class="live-ch[^"]*\bgroup-collapsed\b[^"]*" data-ch="1"/);
+    expect(html).not.toMatch(/class="live-ch[^"]*\bgroup-collapsed\b[^"]*" data-ch="0"/);
   });
 
   it('picks the last event with a non-empty channel list as the latest tick', () => {

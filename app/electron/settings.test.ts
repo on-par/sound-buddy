@@ -86,6 +86,39 @@ describe('getSettings defaults', () => {
   it('defaults channelLabels to {} when unset', () => {
     expect(getSettings().channelLabels).toEqual({});
   });
+
+  it('defaults channelGroups to {} when unset', () => {
+    expect(getSettings().channelGroups).toEqual({});
+  });
+});
+
+describe('channelGroups (#483 — persisted per-device named channel groups)', () => {
+  it('round-trips a device/group-list map through an update', () => {
+    const map = {
+      'Scarlett 18i20': [{ name: 'Drums', members: [0, 1], collapsed: true }, { name: 'Vox', members: [] }],
+      '': [{ name: 'Band', members: [2, 3] }],
+    };
+    const after = updateSettings({ channelGroups: map });
+    expect(after.channelGroups).toEqual(map);
+    expect(readFile().channelGroups).toEqual(map);
+    expect(getSettings().channelGroups).toEqual(map);
+  });
+
+  it('treats a corrupted channelGroups value (string/array) as {}', () => {
+    writeFile({ channelGroups: 'nope' });
+    expect(getSettings().channelGroups).toEqual({});
+
+    writeFile({ channelGroups: ['nope'] });
+    expect(getSettings().channelGroups).toEqual({});
+  });
+
+  it('unrelated updates preserve stored channelGroups', () => {
+    const map = { 'Scarlett 18i20': [{ name: 'Drums', members: [0] }] };
+    updateSettings({ channelGroups: map });
+    updateSettings({ idealProfile: 'broadcast' });
+    expect(readFile().channelGroups).toEqual(map);
+    expect(getSettings().channelGroups).toEqual(map);
+  });
 });
 
 describe('channelLabels (#482 — persisted per-device channel labels)', () => {

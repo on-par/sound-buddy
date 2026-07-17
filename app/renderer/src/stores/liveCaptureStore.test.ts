@@ -125,6 +125,35 @@ describe('createLiveCaptureStore', () => {
       store.getState().selectDevice('');
       expect(store.getState().channelConfig[0].label).toBe('Default label');
     });
+
+    it('loadDevices hydrates channelGroups (#483) for the resolved device', async () => {
+      useSettingsStore.setState({
+        settings: { channelGroups: { 'Scarlett 18i20': [{ name: 'Drums', members: [0, 1], collapsed: true }] } } as never,
+      });
+      const { store } = makeStore({
+        listDevices: async () => ({ success: true, micAccess: 'granted', devices: DEVICES }),
+      });
+      store.setState({ selectedDevice: '0' });
+      await store.getState().loadDevices();
+      expect(store.getState().channelGroups).toEqual([{ name: 'Drums', members: [0, 1], collapsed: true }]);
+    });
+
+    it('selectDevice hydrates channelGroups (#483) for the newly selected device', () => {
+      useSettingsStore.setState({
+        settings: { channelGroups: { 'Scarlett 18i20': [{ name: 'Drums', members: [0] }] } } as never,
+      });
+      const { store } = makeStore();
+      store.setState({ devices: DEVICES, channelGroups: [{ name: 'Stale', members: [0] }] });
+      store.getState().selectDevice('0');
+      expect(store.getState().channelGroups).toEqual([{ name: 'Drums', members: [0] }]);
+    });
+
+    it('selectDevice resets channelGroups to [] when the device has no saved groups', () => {
+      const { store } = makeStore();
+      store.setState({ devices: DEVICES, channelGroups: [{ name: 'Stale', members: [0] }] });
+      store.getState().selectDevice('0');
+      expect(store.getState().channelGroups).toEqual([]);
+    });
   });
 
   describe('strip mutators', () => {
@@ -233,6 +262,63 @@ describe('createLiveCaptureStore', () => {
       store.getState().removeGroup(0);
       expect(store.getState().channelGroups).toEqual([]);
     });
+
+    it('moveGroup reorders channelGroups (#483)', () => {
+      const { store } = makeStore();
+      store.setState({ channelGroups: [{ name: 'A', members: [] }, { name: 'B', members: [] }] });
+      store.getState().moveGroup(0, 1);
+      expect(store.getState().channelGroups.map((g) => g.name)).toEqual(['B', 'A']);
+    });
+
+    it('moveChannelInGroup reorders members within a group by position (#483)', () => {
+      const { store } = makeStore();
+      store.setState({ channelGroups: [{ name: 'Drums', members: [0, 1, 2] }] });
+      store.getState().moveChannelInGroup(0, 2, 0);
+      expect(store.getState().channelGroups[0].members).toEqual([2, 0, 1]);
+    });
+
+    it('removeStrip persists the pruned channelGroups map via useSettingsStore (#483)', () => {
+      const updateSettingsSpy = vi.fn().mockResolvedValue(undefined);
+      useSettingsStore.setState({ settings: { channelGroups: {} } as never, updateSettings: updateSettingsSpy });
+      const { store } = makeStore();
+      store.setState({
+        devices: DEVICES, selectedDevice: '0',
+        channelConfig: [{ kind: 'mono', a: 0, b: 1 }, { kind: 'mono', a: 1, b: 2 }],
+        channelGroups: [{ name: 'Drums', members: [0, 1] }],
+      });
+      store.getState().removeStrip(0);
+      expect(updateSettingsSpy).toHaveBeenCalledWith({
+        channelGroups: { 'Scarlett 18i20': [{ name: 'Drums', members: [0], collapsed: false }] },
+      });
+    });
+
+    it('addGroup persists the computed channelGroups map via useSettingsStore (#483)', () => {
+      const updateSettingsSpy = vi.fn().mockResolvedValue(undefined);
+      useSettingsStore.setState({ settings: { channelGroups: {} } as never, updateSettings: updateSettingsSpy });
+      const { store } = makeStore();
+      store.setState({ devices: DEVICES, selectedDevice: '0' });
+      store.getState().addGroup('Drums');
+      expect(updateSettingsSpy).toHaveBeenCalledWith({
+        channelGroups: { 'Scarlett 18i20': [{ name: 'Drums', members: [], collapsed: false }] },
+      });
+    });
+
+    it('persistGroups keys by device name and preserves other devices (#483)', () => {
+      const updateSettingsSpy = vi.fn().mockResolvedValue(undefined);
+      useSettingsStore.setState({
+        settings: { channelGroups: { Other: [{ name: 'Existing', members: [] }] } } as never,
+        updateSettings: updateSettingsSpy,
+      });
+      const { store } = makeStore();
+      store.setState({ devices: DEVICES, selectedDevice: '0' });
+      store.getState().addGroup('Drums');
+      expect(updateSettingsSpy).toHaveBeenCalledWith({
+        channelGroups: {
+          Other: [{ name: 'Existing', members: [] }],
+          'Scarlett 18i20': [{ name: 'Drums', members: [], collapsed: false }],
+        },
+      });
+    });
   });
 
   describe('collapse', () => {
@@ -246,14 +332,23 @@ describe('createLiveCaptureStore', () => {
       expect(store.getState().collapsed.size).toBe(0);
     });
 
-    it('setGroupCollapsed folds every member to the target state', () => {
+    it('setGroupCollapsed sets the group-level collapsed flag, leaving per-strip collapse untouched (#483)', () => {
       const { store } = makeStore();
       store.setState({ channelGroups: [{ name: 'Drums', members: [0, 1] }] });
       store.getState().setGroupCollapsed(0, true);
-      expect(store.getState().collapsed.has(0)).toBe(true);
-      expect(store.getState().collapsed.has(1)).toBe(true);
-      store.getState().setGroupCollapsed(0, false);
+      expect(store.getState().channelGroups[0].collapsed).toBe(true);
       expect(store.getState().collapsed.size).toBe(0);
+      store.getState().setGroupCollapsed(0, false);
+      expect(store.getState().channelGroups[0].collapsed).toBe(false);
+    });
+
+    it('toggleGroupCollapse flips the group-level collapsed flag (#483)', () => {
+      const { store } = makeStore();
+      store.setState({ channelGroups: [{ name: 'Drums', members: [0, 1] }] });
+      store.getState().toggleGroupCollapse(0);
+      expect(store.getState().channelGroups[0].collapsed).toBe(true);
+      store.getState().toggleGroupCollapse(0);
+      expect(store.getState().channelGroups[0].collapsed).toBe(false);
     });
   });
 
@@ -459,6 +554,15 @@ describe('createLiveCaptureStore', () => {
       store.getState().bindIpcEvents();
       mock.emit('onLiveEvent', { window: 1, ts: 0, channels: [], masking: [] });
       expect(store.getState().liveWindows).toHaveLength(1);
+    });
+
+    it('a tick leaves channelGroups (incl. collapsed) untouched (#483)', () => {
+      const { store, mock } = makeStore();
+      store.setState({ channelGroups: [{ name: 'Drums', members: [0, 1], collapsed: true }] });
+      store.getState().bindIpcEvents();
+      const tick = { type: 'window', window: 1, ts: 0, channels: [{ index: 0, name: 'A', bands: {}, rms: -10, peak: -5, clipping: false, centroid: 100, rolloff: 200 }], masking: [] };
+      mock.emit('onLiveEvent', tick);
+      expect(store.getState().channelGroups).toEqual([{ name: 'Drums', members: [0, 1], collapsed: true }]);
     });
   });
 

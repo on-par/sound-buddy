@@ -63,6 +63,7 @@ export default function LiveCapturePanel({
     const panel: PanelView = { deviceChannels: deviceChannelCount(selectedDevice, devices), liveRunning: isLive, liveMode, groups };
     const stripViews: StripView[] = latestTick.channels.map((ch, idx) => {
       const strip = channels[idx] ?? null;
+      const groupIndex = groups.findIndex((g) => g.members.includes(idx));
       return {
         strip,
         displayName: ch.name ?? `Ch ${idx + 1}`,
@@ -71,7 +72,8 @@ export default function LiveCapturePanel({
         // disarmed, so config with no `armed` field (e.g. loaded via
         // clampChannelConfig) still reads as armed.
         armed: !!strip && strip.armed !== false,
-        groupIndex: groups.findIndex((g) => g.members.includes(idx)),
+        groupIndex,
+        groupCollapsed: !!groups[groupIndex]?.collapsed,
       };
     });
     metersHTML = liveMetersHTML(latestTick.channels, stripViews, panel);
