@@ -82,6 +82,36 @@ describe('getSettings defaults', () => {
   it('defaults usageSignalEnabled to false when unset', () => {
     expect(getSettings().usageSignalEnabled).toBe(false);
   });
+
+  it('defaults channelLabels to {} when unset', () => {
+    expect(getSettings().channelLabels).toEqual({});
+  });
+});
+
+describe('channelLabels (#482 — persisted per-device channel labels)', () => {
+  it('round-trips a nested device/token label map through an update', () => {
+    const map = { 'Scarlett 18i20': { '0': 'Kick', '2-3': 'OH' }, '': { '1': 'Vocal' } };
+    const after = updateSettings({ channelLabels: map });
+    expect(after.channelLabels).toEqual(map);
+    expect(readFile().channelLabels).toEqual(map);
+    expect(getSettings().channelLabels).toEqual(map);
+  });
+
+  it('treats a corrupted channelLabels value (string/array) as {}', () => {
+    writeFile({ channelLabels: 'nope' });
+    expect(getSettings().channelLabels).toEqual({});
+
+    writeFile({ channelLabels: ['nope'] });
+    expect(getSettings().channelLabels).toEqual({});
+  });
+
+  it('unrelated updates preserve stored channelLabels', () => {
+    const map = { 'Scarlett 18i20': { '0': 'Kick' } };
+    updateSettings({ channelLabels: map });
+    updateSettings({ idealProfile: 'broadcast' });
+    expect(readFile().channelLabels).toEqual(map);
+    expect(getSettings().channelLabels).toEqual(map);
+  });
 });
 
 describe('usageSignalEnabled (#145 — opt-in anonymous usage counts, persisted only)', () => {

@@ -14,6 +14,7 @@
 
 import { create } from 'zustand';
 import { getSoundBuddy } from '../useElectron';
+import { useSettingsStore } from './settingsStore';
 import type { LiveApi, DialogApi, StartLiveOpts } from '../../../electron/ipc/api';
 import {
   deviceListView,
@@ -78,6 +79,20 @@ interface ArmStateApi {
   allTokens(cfg: StripConfig[]): string[];
   armedTokens(cfg: StripConfig[]): string[];
   setAllArmed(cfg: StripConfig[], armed: boolean): StripConfig[];
+  stripToken(strip: StripConfig): string;
+}
+interface ChannelLabelsApi {
+  applyLabels(
+    cfg: StripConfig[] | null | undefined,
+    tokens: string[] | null | undefined,
+    savedForDevice: Record<string, string> | null | undefined,
+  ): StripConfig[];
+  recordLabel(
+    all: Record<string, Record<string, string>> | null | undefined,
+    deviceName: string,
+    token: string,
+    label: string,
+  ): Record<string, Record<string, string>>;
 }
 interface GroupStateApi {
   assign(groups: ChannelGroup[], idx: number, g: number): ChannelGroup[];
@@ -98,6 +113,9 @@ interface RigKindApi {
 function getArmState(): ArmStateApi {
   return (window as unknown as { armState: ArmStateApi }).armState;
 }
+function getChannelLabels(): ChannelLabelsApi {
+  return (window as unknown as { channelLabels: ChannelLabelsApi }).channelLabels;
+}
 function getGroupState(): GroupStateApi {
   return (window as unknown as { groupState: GroupStateApi }).groupState;
 }
@@ -117,6 +135,22 @@ function defaultChannelConfig(deviceChannels: number): StripConfig[] {
     cfg.push({ kind: 'mono', a: i, b: (i + 1) % Math.max(deviceChannels, 1), armed: true });
   }
   return cfg;
+}
+
+// The selected device's name, resolved from the device list ('' = Default
+// Device) — mirrors inline-app.js's selectedDeviceName() (#482).
+function deviceNameFor(selectedValue: string, devices: LiveDevice[]): string {
+  if (selectedValue === '') return '';
+  const dev = devices.find((d) => String(d.index) === selectedValue);
+  return dev ? dev.name : '';
+}
+
+// Overlay persisted channel labels (#482) for `deviceName` onto a freshly
+// seeded channel config — shared by loadDevices()/selectDevice().
+function withSavedLabels(cfg: StripConfig[], deviceName: string): StripConfig[] {
+  const channelLabels = (useSettingsStore.getState().settings || {}).channelLabels || {};
+  const tokens = getArmState().allTokens(cfg);
+  return getChannelLabels().applyLabels(cfg, tokens, channelLabels[deviceName] || {});
 }
 
 export interface LiveCaptureState {
@@ -223,15 +257,19 @@ export function createLiveCaptureStore(getApi: () => LiveCaptureApi) {
       const view = deviceListView(result);
       set({ devices: view.devices, deviceHint: view.hint });
       if (view.devices.length) {
-        const n = deviceChannelCount(get().selectedDevice, view.devices);
-        set({ channelConfig: defaultChannelConfig(n) });
+        const selected = get().selectedDevice;
+        const n = deviceChannelCount(selected, view.devices);
+        const deviceName = deviceNameFor(selected, view.devices);
+        set({ channelConfig: withSavedLabels(defaultChannelConfig(n), deviceName) });
       }
     },
 
     selectDevice(value) {
       set({ selectedDevice: value });
-      const n = deviceChannelCount(value, get().devices);
-      set({ channelConfig: defaultChannelConfig(n) });
+      const devices = get().devices;
+      const n = deviceChannelCount(value, devices);
+      const deviceName = deviceNameFor(value, devices);
+      set({ channelConfig: withSavedLabels(defaultChannelConfig(n), deviceName) });
     },
 
     setLiveMode(mode) {
@@ -285,11 +323,19 @@ export function createLiveCaptureStore(getApi: () => LiveCaptureApi) {
 
     setStripLabel(idx, label) {
       const state = get();
-      if (!state.channelConfig[idx]) return;
+      const strip = state.channelConfig[idx];
+      if (!strip) return;
       const trimmed = label.trim().slice(0, MAX_LABEL_LEN);
       set({
         channelConfig: state.channelConfig.map((s, i) => (i === idx ? { ...s, label: trimmed } : s)),
       });
+      // Persist the label (#482) so it survives across monitor/live sessions,
+      // keyed by device + strip token (mono "0" / stereo "2-3").
+      const all = (useSettingsStore.getState().settings || {}).channelLabels || {};
+      const deviceName = deviceNameFor(state.selectedDevice, state.devices);
+      const token = getArmState().stripToken(strip);
+      const next = getChannelLabels().recordLabel(all, deviceName, token, trimmed);
+      void useSettingsStore.getState().updateSettings({ channelLabels: next });
     },
 
     assignGroup(idx, group) {
@@ -357,6 +403,11 @@ export function createLiveCaptureStore(getApi: () => LiveCaptureApi) {
         mode: state.liveMode,
         recordDir: state.recordDir || undefined,
         arm: state.liveMode === 'record' ? arm.armedTokens(state.channelConfig) : undefined,
+        // Record mode: carry display labels into stem filenames + session.json (#482).
+        labels:
+          state.liveMode === 'record'
+            ? state.channelConfig.map((s) => (s.label ?? '').trim())
+            : undefined,
       };
       const result = (await getApi().startLive(payload)) as StartCaptureResult;
       if (!result.success) {

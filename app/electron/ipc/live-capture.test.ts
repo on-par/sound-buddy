@@ -20,6 +20,11 @@ vi.mock('electron', () => ({
     getMediaAccessStatus: (...a: unknown[]) => getMediaAccessStatusMock(...a),
     askForMediaAccess: (...a: unknown[]) => askForMediaAccessMock(...a),
   },
+  // Only touched by the "REAL defaultRecordDir()" test below, which imports
+  // shared.ts's actual implementation via vi.importActual — its module-scope
+  // `app.isPackaged` read needs `app` to exist even though every other test
+  // in this file goes through the './shared' mock instead.
+  app: { isPackaged: false },
 }));
 vi.mock('../logger', () => ({ log: vi.fn(), logWarn: vi.fn(), logError: vi.fn() }));
 const isEntitledMock = vi.fn();
@@ -192,6 +197,23 @@ describe('buildSessionDir', () => {
     const badPath = path.join(fileOnDisk, 'sub');
 
     expect(() => mod.buildSessionDir(badPath)).toThrow();
+  });
+
+  it('resolves through the REAL defaultRecordDir() reading settings.storageDir (#91/#482)', async () => {
+    // Every other test in this file stands `defaultRecordDir` in with a plain
+    // mock (see the `./shared` mock above) so it can be pointed at a fixed tmp
+    // dir. This test instead exercises shared.ts's actual implementation
+    // (getSettings().storageDir?.trim() || platformDefaultStorageDir()) to pin
+    // the storageDir → defaultRecordDir → buildSessionDir wiring end to end.
+    const actualShared = await vi.importActual<typeof import('./shared')>('./shared');
+    const storageDir = path.join(tmpDir, 'configured-storage');
+    getSettingsMock.mockReturnValue({ storageDir });
+    defaultRecordDirMock.mockImplementation(() => actualShared.defaultRecordDir());
+
+    const sessionDir = mod.buildSessionDir();
+
+    expect(sessionDir).toMatch(new RegExp(`^${escapeRegExp(storageDir)}/sound-buddy-`));
+    expect(fs.existsSync(storageDir)).toBe(true);
   });
 });
 
@@ -377,6 +399,53 @@ describe('start-live handler', () => {
 
     const argv = spawnMock.mock.calls[0][1] as string[];
     expect(argv).not.toContain('--arm');
+  });
+
+  it('record mode: adds --labels with the JSON array when any label is non-empty (#482)', async () => {
+    spawnMock.mockReturnValueOnce(fakeProc());
+    const sender = fakeSender();
+
+    await startLive(
+      { windowSecs: 5, llmIntervalSecs: 0, mode: 'record', recordDir: tmpDir, labels: ['Kick', '', 'OH'] },
+      sender,
+    );
+
+    const argv = spawnMock.mock.calls[0][1] as string[];
+    expect(argv).toContain('--labels');
+    expect(argv[argv.indexOf('--labels') + 1]).toBe(JSON.stringify(['Kick', '', 'OH']));
+  });
+
+  it('record mode: omits --labels when labels is absent (#482)', async () => {
+    spawnMock.mockReturnValueOnce(fakeProc());
+    const sender = fakeSender();
+
+    await startLive({ windowSecs: 5, llmIntervalSecs: 0, mode: 'record', recordDir: tmpDir }, sender);
+
+    const argv = spawnMock.mock.calls[0][1] as string[];
+    expect(argv).not.toContain('--labels');
+  });
+
+  it('record mode: omits --labels when every label is blank/whitespace (#482)', async () => {
+    spawnMock.mockReturnValueOnce(fakeProc());
+    const sender = fakeSender();
+
+    await startLive(
+      { windowSecs: 5, llmIntervalSecs: 0, mode: 'record', recordDir: tmpDir, labels: ['', '  '] },
+      sender,
+    );
+
+    const argv = spawnMock.mock.calls[0][1] as string[];
+    expect(argv).not.toContain('--labels');
+  });
+
+  it('monitor mode: never adds --labels even when labels is given (#482)', async () => {
+    spawnMock.mockReturnValueOnce(fakeProc());
+    const sender = fakeSender();
+
+    await startLive({ windowSecs: 5, llmIntervalSecs: 0, labels: ['Kick'] }, sender);
+
+    const argv = spawnMock.mock.calls[0][1] as string[];
+    expect(argv).not.toContain('--labels');
   });
 
   it('record mode: bad recordDir surfaces a friendly error without spawning', async () => {

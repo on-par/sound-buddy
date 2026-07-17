@@ -25,6 +25,9 @@ Options:
   --arm TOKENS  which strips to record in a --session-dir session, as channel-config
                 tokens matched against the configured strips (e.g. "0,2-3"). Defaults
                 to all configured strips. Tokens not matching a configured strip error.
+  --labels JSON JSON array of per-strip display labels aligned with the channels
+                config (e.g. '["Kick","",""]'); "" = unlabeled. Used for stem
+                filenames and session.json track labels.
 
 Channel configuration grammar (comma-separated groups):
   N        a mono strip on device channel N
@@ -166,6 +169,34 @@ def parse_channel_groups(channels_arg: str, n_device_channels: int) -> list[dict
     return groups
 
 
+def apply_strip_labels(groups: list[dict], labels_json: str | None) -> list[dict]:
+    """
+    Overlay user-entered display labels (#482) onto configured strips, in place.
+
+    `labels_json` is a JSON array of per-strip labels aligned index-for-index
+    with `groups`; "" (or a missing/non-string entry) leaves that strip
+    unlabeled. A falsy `labels_json` is a no-op. Extra entries beyond
+    len(groups) are ignored. Returns `groups` (mutated) for chaining.
+    """
+    if not labels_json:
+        return groups
+
+    try:
+        labels = json.loads(labels_json)
+    except (ValueError, TypeError):
+        labels = None
+    if not isinstance(labels, list):
+        raise ValueError('--labels must be a JSON array of strings, e.g. \'["Kick",""]\'')
+
+    for i, g in enumerate(groups):
+        if i >= len(labels):
+            break
+        label = labels[i]
+        if isinstance(label, str) and label.strip():
+            g["label"] = label.strip()
+    return groups
+
+
 def resolve_armed_strips(groups: list[dict], arm_arg: str | None,
                          n_device_channels: int) -> list[dict]:
     """
@@ -262,13 +293,18 @@ class SessionRecorder:
         os.makedirs(session_dir, exist_ok=True)
         self.tracks: list[dict] = []
         for idx, g in enumerate(armed_groups):
-            fname = _unique_stem_name(session_dir, f"{idx + 1:02d}-{slugify(g['name'])}.wav")
+            # A user label with no alphanumeric content (e.g. "../.." or "!!!")
+            # falls back to the channel identity, so a label that's effectively
+            # empty (or traversal-looking) never drives the stem name (#482).
+            label = (g.get("label") or "").strip()
+            base = label if re.search(r"[A-Za-z0-9]", label) else g["name"]
+            fname = _unique_stem_name(session_dir, f"{idx + 1:02d}-{slugify(base)}.wav")
             writer = sf.SoundFile(
                 os.path.join(session_dir, fname), mode="w", samplerate=self.sample_rate,
                 channels=len(g["indices"]), subtype="PCM_24",
             )
             self.tracks.append({
-                "id": f"t{idx + 1}", "label": g["name"], "group": g,
+                "id": f"t{idx + 1}", "label": (g.get("label") or "").strip() or g["name"], "group": g,
                 "file": fname, "writer": writer,
             })
 
@@ -605,6 +641,7 @@ def main():
     record_path = None
     session_dir = None
     arm_arg = None
+    labels_json = None
     positional: list[str] = []
     i = 0
     while i < len(args):
@@ -617,6 +654,8 @@ def main():
             session_dir = args[i + 1]; i += 2
         elif a == "--arm" and i + 1 < len(args):
             arm_arg = args[i + 1]; i += 2
+        elif a == "--labels" and i + 1 < len(args):
+            labels_json = args[i + 1]; i += 2
         else:
             positional.append(a); i += 1
 
@@ -648,6 +687,10 @@ def main():
 
     try:
         groups = parse_channel_groups(channels_arg, n_device_channels)
+        # Attach display labels right after parsing (#482): armed_groups below
+        # is built from these same dict objects, so labeling here carries
+        # through to whichever strips end up armed.
+        apply_strip_labels(groups, labels_json)
     except ValueError as e:
         print(json.dumps({"error": str(e)}), flush=True)
         sys.exit(1)

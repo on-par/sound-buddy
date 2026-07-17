@@ -10,6 +10,7 @@ import {
   type LiveCaptureApi,
 } from './liveCaptureStore';
 import { createMockSoundBuddy } from '../mock-sound-buddy';
+import { useSettingsStore } from './settingsStore';
 import type { StripConfig, LiveDevice } from '../live-capture-panel';
 
 // The pure helper classic-scripts the store reads off `window` — real modules
@@ -18,14 +19,16 @@ const armState = require('../../arm-state.js');
 const groupState = require('../../group-state.js');
 const collapseState = require('../../collapse-state.js');
 const rigKind = require('../../rig-kind.js');
+const channelLabels = require('../../channel-labels.js');
 
 beforeEach(() => {
-  (globalThis as { window?: unknown }).window = { armState, groupState, collapseState, rigKind };
+  (globalThis as { window?: unknown }).window = { armState, groupState, collapseState, rigKind, channelLabels };
 });
 
 afterEach(() => {
   delete (globalThis as { window?: unknown }).window;
   vi.useRealTimers();
+  useSettingsStore.setState({ settings: null, llmConfig: null, settingsError: null });
 });
 
 const DEVICES: LiveDevice[] = [
@@ -90,6 +93,38 @@ describe('createLiveCaptureStore', () => {
       expect(store.getState().selectedDevice).toBe('0');
       expect(store.getState().channelConfig).toHaveLength(2);
     });
+
+    it('loadDevices overlays saved labels (#482) for the resolved device onto the seeded config', async () => {
+      useSettingsStore.setState({
+        settings: { channelLabels: { 'Scarlett 18i20': { '0': 'Kick', '1': 'Snare' } } } as never,
+      });
+      const { store } = makeStore({
+        listDevices: async () => ({ success: true, micAccess: 'granted', devices: DEVICES }),
+      });
+      store.setState({ selectedDevice: '0' });
+      await store.getState().loadDevices();
+      expect(store.getState().channelConfig.map((s: StripConfig) => s.label)).toEqual(['Kick', 'Snare']);
+    });
+
+    it('selectDevice overlays saved labels (#482) for the newly selected device', () => {
+      useSettingsStore.setState({
+        settings: { channelLabels: { 'Scarlett 18i20': { '0': 'Kick' } } } as never,
+      });
+      const { store } = makeStore();
+      store.setState({ devices: DEVICES });
+      store.getState().selectDevice('0');
+      expect(store.getState().channelConfig[0].label).toBe('Kick');
+    });
+
+    it('selectDevice resolves the "" (Default Device) key for the saved-labels lookup', () => {
+      useSettingsStore.setState({
+        settings: { channelLabels: { '': { '0': 'Default label' } } } as never,
+      });
+      const { store } = makeStore();
+      store.setState({ devices: DEVICES });
+      store.getState().selectDevice('');
+      expect(store.getState().channelConfig[0].label).toBe('Default label');
+    });
   });
 
   describe('strip mutators', () => {
@@ -137,6 +172,36 @@ describe('createLiveCaptureStore', () => {
       store.setState({ channelConfig: [{ kind: 'mono', a: 0, b: 1 }] });
       store.getState().setStripLabel(0, '  ' + 'x'.repeat(50) + '  ');
       expect(store.getState().channelConfig[0].label).toBe('x'.repeat(MAX_LABEL_LEN));
+    });
+
+    it('setStripLabel persists the computed channelLabels map via useSettingsStore (#482)', () => {
+      const updateSettingsSpy = vi.fn().mockResolvedValue(undefined);
+      useSettingsStore.setState({
+        settings: { channelLabels: { 'Scarlett 18i20': { '1': 'Snare' } } } as never,
+        updateSettings: updateSettingsSpy,
+      });
+      const { store } = makeStore();
+      store.setState({ devices: DEVICES, selectedDevice: '0', channelConfig: [{ kind: 'mono', a: 0, b: 1 }] });
+
+      store.getState().setStripLabel(0, 'Kick');
+
+      expect(updateSettingsSpy).toHaveBeenCalledWith({
+        channelLabels: { 'Scarlett 18i20': { '0': 'Kick', '1': 'Snare' } },
+      });
+    });
+
+    it('setStripLabel clearing a label deletes its persisted entry (#482)', () => {
+      const updateSettingsSpy = vi.fn().mockResolvedValue(undefined);
+      useSettingsStore.setState({
+        settings: { channelLabels: { 'Scarlett 18i20': { '0': 'Kick' } } } as never,
+        updateSettings: updateSettingsSpy,
+      });
+      const { store } = makeStore();
+      store.setState({ devices: DEVICES, selectedDevice: '0', channelConfig: [{ kind: 'mono', a: 0, b: 1, label: 'Kick' }] });
+
+      store.getState().setStripLabel(0, '   ');
+
+      expect(updateSettingsSpy).toHaveBeenCalledWith({ channelLabels: {} });
     });
 
     it('toggleArm flips the armed flag, defaulting an unset flag to armed', () => {
@@ -238,6 +303,41 @@ describe('createLiveCaptureStore', () => {
       await store.getState().startCapture({ windowSecs: 3, intervalSecs: 0.1, llmIntervalSecs: 0 });
       const call = mock.calls.find((c) => c.method === 'startLive');
       expect((call!.args[0] as { arm: string[] }).arm).toEqual(['0']);
+    });
+
+    it('record mode: labels payload is aligned index-for-index with channelConfig (#482)', async () => {
+      const { store, mock } = makeStore({
+        startLive: async (opts) => {
+          mock.calls.push({ method: 'startLive', args: [opts] });
+          return { success: true };
+        },
+      });
+      store.setState({
+        channelConfig: [
+          { kind: 'mono', a: 0, b: 1, label: 'Kick' },
+          { kind: 'mono', a: 1, b: 2, label: '  ' },
+        ],
+        liveMode: 'record',
+      });
+      await store.getState().startCapture({ windowSecs: 3, intervalSecs: 0.1, llmIntervalSecs: 0 });
+      const call = mock.calls.find((c) => c.method === 'startLive');
+      expect((call!.args[0] as { labels: string[] }).labels).toEqual(['Kick', '']);
+    });
+
+    it('monitor mode: labels is undefined (#482)', async () => {
+      const { store, mock } = makeStore({
+        startLive: async (opts) => {
+          mock.calls.push({ method: 'startLive', args: [opts] });
+          return { success: true };
+        },
+      });
+      store.setState({
+        channelConfig: [{ kind: 'mono', a: 0, b: 1, label: 'Kick' }],
+        liveMode: 'monitor',
+      });
+      await store.getState().startCapture({ windowSecs: 3, intervalSecs: 0.1, llmIntervalSecs: 0 });
+      const call = mock.calls.find((c) => c.method === 'startLive');
+      expect((call!.args[0] as { labels?: string[] }).labels).toBeUndefined();
     });
 
     it('resets isCapturing on a failed start and returns the result', async () => {
