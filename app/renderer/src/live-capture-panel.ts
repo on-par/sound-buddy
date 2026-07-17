@@ -202,6 +202,14 @@ export function groupSummaryText(s: GroupSummary): string {
   return s.idle || s.peak === null ? label : `${label} · Peak ${fmt(s.peak)} dBFS`;
 }
 
+// #488: after a capture stops, offer "View report card" only when the session
+// actually built one — monitor mode with at least one accumulated window tick.
+// (Record mode keeps its own "Session saved" offer; a capture stopped before
+// the first window has nothing to show.)
+export function shouldOfferReportCard(mode: string, windowCount: number): boolean {
+  return mode === 'monitor' && windowCount > 0;
+}
+
 // Live board strip HTML grouped under named-group headers (#41); ungrouped strips
 // fall into a trailing default section. Strips keep their original channel index
 // as data-ch so patching/labels/arming stay index-addressed. With no groups this

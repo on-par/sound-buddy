@@ -48,3 +48,33 @@ describe('Directory tab is roadmap context, not a fake workflow (#293)', () => {
     expect(inlineApp).not.toContain('Analyze the folder to see the spectrum');
   });
 });
+
+describe('Live monitoring visibly leads to a Report Card (#488)', () => {
+  it('shows a pre-start cue that capture builds a live Report Card', () => {
+    expect(markup).toContain('id="live-rc-cue"');
+    expect(markup).toContain('Capture builds a live Report Card as it runs.');
+    // Idle-visible: the cue must NOT start hidden.
+    expect(markup).not.toMatch(/id="live-rc-cue"[^>]*display:none/);
+  });
+
+  it('hides the cue while a capture runs and restores it on stop', () => {
+    expect(inlineApp).toContain("document.getElementById('live-rc-cue').style.display = 'none'");
+    expect(inlineApp).toContain("document.getElementById('live-rc-cue').style.display = 'block'");
+  });
+
+  it('has a report-card offer row reusing the rec-offer pattern', () => {
+    expect(markup).toMatch(/id="rc-offer" class="rec-offer" style="display:none"/);
+    expect(markup).toContain('Report card ready.');
+    expect(markup).toMatch(/id="rc-offer-btn"[^>]*>View report card/);
+  });
+
+  it('gates the offer on the pure monitor-with-windows rule', () => {
+    expect(inlineApp).toContain('shouldOfferReportCard(liveMode, liveWindows.length)');
+  });
+
+  it('navigates to the Report Card tab from the offer button', () => {
+    expect(inlineApp).toMatch(
+      /rc-offer-btn'\)\.addEventListener\('click'[\s\S]{0,200}mode-tab\[data-mode="reportcard"\]'\)\.click\(\)/
+    );
+  });
+});

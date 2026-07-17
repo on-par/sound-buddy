@@ -112,7 +112,7 @@ const {
 const {
   LIVE_BAND_KEYS, deviceListView, deviceChannelCount,
   liveBandCurve, veqArcSVG, liveMetersHTML,
-  groupSummary, groupSummaryText,
+  groupSummary, groupSummaryText, shouldOfferReportCard,
 } = window.liveCapturePanel;
 // Renamed to avoid colliding with the zero-arg usedChannelCount() wrapper below.
 const lcUsedChannelCount = window.liveCapturePanel.usedChannelCount;
@@ -1957,6 +1957,8 @@ document.getElementById('live-start-btn').addEventListener('click', async () => 
   setCaptureControlsLocked(true); // freeze device/mode/folder/channels/sliders (#38)
 
   document.getElementById('rec-offer').style.display = 'none';
+  document.getElementById('rc-offer').style.display = 'none';
+  document.getElementById('live-rc-cue').style.display = 'none';
   document.getElementById('live-start-btn').style.display = 'none';
   document.getElementById('live-stop-btn').style.display = 'inline-flex';
   document.getElementById('live-indicator').style.display = 'flex';
@@ -2008,6 +2010,7 @@ async function stopLive() {
   document.getElementById('live-stop-btn').style.display = 'none';
   document.getElementById('live-indicator').style.display = 'none';
   document.getElementById('live-status').style.display = 'none';
+  document.getElementById('live-rc-cue').style.display = 'block';
   document.getElementById('window-badge').textContent = '';
   // "Stopped" distinguishes the frozen EQ from a running one; guard the mode so
   // a tab switch during the stop-live await isn't clobbered.
@@ -2029,6 +2032,15 @@ async function stopLive() {
     document.getElementById('rec-offer').style.display = 'flex';
     hydrateIcons(document.getElementById('rec-offer'));
   }
+
+  // #488: a monitor session that accumulated at least one window built a live
+  // Report Card (it's already on the Report Card tab) — say so and offer the
+  // jump. Record mode keeps its session-saved offer above; the two never
+  // show together (sessionDir only exists in record mode).
+  if (shouldOfferReportCard(liveMode, liveWindows.length)) {
+    document.getElementById('rc-offer').style.display = 'flex';
+    hydrateIcons(document.getElementById('rc-offer'));
+  }
 }
 
 let lastSessionDir = null;
@@ -2036,6 +2048,11 @@ document.getElementById('rec-offer-btn').addEventListener('click', () => {
   if (!lastSessionDir) return;
   document.getElementById('rec-offer').style.display = 'none';
   sb.revealPath(lastSessionDir);
+});
+
+document.getElementById('rc-offer-btn').addEventListener('click', () => {
+  document.getElementById('rc-offer').style.display = 'none';
+  document.querySelector('.mode-tab[data-mode="reportcard"]').click();
 });
 
 /* ══ Rigs — save / load / switch capture setups (#37, persisted via #36) ══ */
@@ -2738,7 +2755,7 @@ function loadHistoryEntry(summary, prevSummary) {
   // the empty-state dropzone/Analyze button reset themselves (#206).
   anaStore.getState().clearAnalysis();
   anaStore.getState().setPrevSummary(prevSummary || null);
-  if (!liveRunning) { liveWindows = []; syncLiveSource(); }
+  if (!liveRunning) { liveWindows = []; syncLiveSource(); document.getElementById('rc-offer').style.display = 'none'; }
   document.querySelector('.mode-tab[data-mode="reportcard"]').click();
 }
 
@@ -3126,7 +3143,7 @@ document.getElementById('reportcard-clear-btn').addEventListener('click', () => 
   // getReportCardSource() fall through to that stale live card instead of the
   // empty state (#206) — but leave an actively-running session's buffer alone
   // so its live meters don't blip empty.
-  if (!liveRunning) { liveWindows = []; syncLiveSource(); }
+  if (!liveRunning) { liveWindows = []; syncLiveSource(); document.getElementById('rc-offer').style.display = 'none'; }
   setSpectrumState('empty');
 });
 
