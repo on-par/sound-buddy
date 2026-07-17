@@ -46,7 +46,11 @@ vi.mock('./logger', () => ({ initLogging: vi.fn(), attachWindowLogging: vi.fn(),
 vi.mock('./updater', () => ({ checkForUpdates: vi.fn(), openReleasePage: vi.fn() }));
 vi.mock('./checkout', () => ({ checkoutUrl: vi.fn((plan?: string) => `https://example.com/checkout/${plan}`) }));
 vi.mock('./capture-guide', () => ({ captureGuideUrl: vi.fn(() => 'https://example.com/guide') }));
-vi.mock('./feedback', () => ({ openFeedback: vi.fn(), revealDiagnosticLog: vi.fn() }));
+vi.mock('./feedback', () => ({
+  openFeedback: vi.fn(),
+  revealDiagnosticLog: vi.fn(),
+  submitFeedback: vi.fn(),
+}));
 vi.mock('./license', () => ({ ensureTrialStarted: vi.fn() }));
 vi.mock('./license-refresh', () => ({ maybeRefreshLicense: vi.fn().mockResolvedValue(undefined) }));
 
@@ -56,7 +60,7 @@ import { initLogging, attachWindowLogging } from './logger';
 import { checkForUpdates, openReleasePage } from './updater';
 import { checkoutUrl } from './checkout';
 import { captureGuideUrl } from './capture-guide';
-import { openFeedback, revealDiagnosticLog } from './feedback';
+import { openFeedback, revealDiagnosticLog, submitFeedback } from './feedback';
 import { ensureTrialStarted } from './license';
 import { maybeRefreshLicense } from './license-refresh';
 import {
@@ -66,6 +70,7 @@ import {
   getWindowOptions,
   getMenuTemplate,
   openFileFromMenu,
+  sendFeedbackFromMenu,
   type MenuDeps,
 } from './main';
 
@@ -246,6 +251,27 @@ describe('openFileFromMenu', () => {
   });
 });
 
+describe('sendFeedbackFromMenu', () => {
+  beforeEach(() => {
+    vi.mocked(openFeedback).mockClear();
+  });
+
+  it('pushes the renderer open to the in-app feedback form when a window exists', () => {
+    const win = { webContents: { send: vi.fn() } } as unknown as BrowserWindow;
+
+    sendFeedbackFromMenu(win);
+
+    expect(win.webContents.send).toHaveBeenCalledWith('open-feedback-dialog');
+    expect(openFeedback).not.toHaveBeenCalled();
+  });
+
+  it('falls back to the mailto dialog when there is no window', () => {
+    sendFeedbackFromMenu(null);
+
+    expect(openFeedback).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe('lifecycle (whenReady callback)', () => {
   beforeAll(async () => {
     delete process.env.SOUND_BUDDY_RENDERER_URL;
@@ -272,6 +298,7 @@ describe('lifecycle (whenReady callback)', () => {
         'open-release-page',
         'open-checkout',
         'open-feedback',
+        'submit-feedback',
         'open-capture-guide',
         'reveal-diagnostics',
       ])
@@ -316,6 +343,14 @@ describe('lifecycle (whenReady callback)', () => {
     const handler = calls.find((c) => c[0] === 'open-feedback')?.[1];
     handler();
     expect(openFeedback).toHaveBeenCalled();
+  });
+
+  it('submit-feedback handler forwards the renderer input to submitFeedback', () => {
+    const calls = (ipcMain.handle as ReturnType<typeof vi.fn>).mock.calls;
+    const handler = calls.find((c) => c[0] === 'submit-feedback')?.[1];
+    const input = { message: 'hi', category: 'bug' };
+    handler(undefined, input);
+    expect(submitFeedback).toHaveBeenCalledWith(input);
   });
 
   it('constructs the BrowserWindow with the expected options', () => {

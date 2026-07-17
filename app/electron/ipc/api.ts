@@ -331,6 +331,19 @@ export interface RevealDiagnosticsResult {
   missing?: boolean;
 }
 
+/** Mirrors electron/feedback.ts's submitFeedback() input/output (#472). */
+export type FeedbackCategory = 'bug' | 'idea' | 'question' | 'other';
+
+export interface FeedbackSubmission {
+  message: string;
+  category: FeedbackCategory;
+  contactEmail?: string;
+}
+
+export type SubmitFeedbackResult =
+  | { ok: true }
+  | { ok: false; retryable: boolean; error: string };
+
 /** Mirrors ipc/live-capture.ts's stop-live handler return. */
 export interface StopLiveResult {
   success: boolean;
@@ -431,6 +444,8 @@ export interface FeedbackApi {
   openFeedback(): Promise<void>;
   openCaptureGuide(): Promise<void>;
   revealDiagnostics(): Promise<RevealDiagnosticsResult>;
+  submitFeedback(input: FeedbackSubmission): Promise<SubmitFeedbackResult>;
+  onOpenFeedbackDialog(cb: () => void): void;
 }
 
 // Cross-cutting: not tied to any one domain (used by every `on*` listener).

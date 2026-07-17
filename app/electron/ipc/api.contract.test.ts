@@ -31,6 +31,7 @@ import type {
   StorageUsage,
   LicenseState,
   RevealDiagnosticsResult,
+  SubmitFeedbackResult,
   SaveLlmConfigResult,
   StopLiveResult,
   AnalyzeFileResult,
@@ -47,7 +48,7 @@ import { createMockSoundBuddy } from '../../renderer/src/mock-sound-buddy';
 import type { getSettings } from '../settings';
 import type { getPublicLlmConfig } from '../llm-config';
 import type { getLicenseState } from '../license';
-import type { revealDiagnosticLog } from '../feedback';
+import type { revealDiagnosticLog, submitFeedback } from '../feedback';
 
 // ─── Composition coverage ────────────────────────────────────────────────────
 // The intersection of every domain sub-interface must describe exactly the
@@ -88,6 +89,12 @@ const llmConfigDrift: PublicLlmConfig = null as unknown as ReturnType<typeof get
 const licenseDrift: LicenseState = null as unknown as ReturnType<typeof getLicenseState>;
 const diagnosticsDrift: RevealDiagnosticsResult = null as unknown as ReturnType<
   typeof revealDiagnosticLog
+>;
+
+// submitFeedback (feedback.ts, #472) is async — unwrap the Promise before
+// comparing against the mirrored DTO.
+const submitFeedbackDrift: SubmitFeedbackResult = null as unknown as Awaited<
+  ReturnType<typeof submitFeedback>
 >;
 
 // get-storage-usage (ipc/settings.ts) builds its result inline from local
@@ -177,6 +184,7 @@ describe('SoundBuddyApi composition (TD-011, #405)', () => {
     expect(llmConfigDrift).toBeNull();
     expect(licenseDrift).toBeNull();
     expect(diagnosticsDrift).toBeNull();
+    expect(submitFeedbackDrift).toBeNull();
     expect(storageUsageDrift.path).toBe('/tmp/sound-buddy');
     expect(saveLlmConfigOkDrift.ok).toBe(true);
     expect(saveLlmConfigErrDrift.ok).toBe(false);

@@ -106,6 +106,8 @@ export function createMockSoundBuddy(overrides: Partial<SoundBuddyApi> = {}): Mo
     openFeedback: invoke('openFeedback', undefined),
     openCaptureGuide: invoke('openCaptureGuide', undefined),
     revealDiagnostics: invoke('revealDiagnostics', { revealed: true }),
+    submitFeedback: invoke('submitFeedback', { ok: true as const }),
+    onOpenFeedbackDialog: listen<[]>('onOpenFeedbackDialog'),
     listRigs: invoke('listRigs', []),
     saveRig: invoke('saveRig', DEFAULT_APP_SETTINGS),
     deleteRig: invoke('deleteRig', DEFAULT_APP_SETTINGS),

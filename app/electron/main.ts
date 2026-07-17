@@ -8,7 +8,7 @@ import { initLogging, attachWindowLogging, log } from './logger';
 import { checkForUpdates, openReleasePage } from './updater';
 import { checkoutUrl } from './checkout';
 import { captureGuideUrl } from './capture-guide';
-import { openFeedback, revealDiagnosticLog } from './feedback';
+import { openFeedback, revealDiagnosticLog, submitFeedback } from './feedback';
 import { ensureTrialStarted } from './license';
 import { maybeRefreshLicense } from './license-refresh';
 
@@ -65,6 +65,21 @@ export function openFileFromMenu(
       win.webContents.send('menu-open-file', filePaths[0]);
     }
   });
+}
+
+/**
+ * Help ▸ "Send Feedback…" click handler (#472). When a window exists, push
+ * the renderer open to the in-app feedback form; when it doesn't (e.g. the
+ * user closed the last window on macOS, where the app stays running), fall
+ * back to the mailto: dialog so the menu item still does something instead
+ * of silently no-oping.
+ */
+export function sendFeedbackFromMenu(win: BrowserWindow | null): void {
+  if (win) {
+    win.webContents.send('open-feedback-dialog');
+  } else {
+    void openFeedback();
+  }
 }
 
 export interface MenuDeps {
@@ -178,7 +193,11 @@ function buildMenu(): void {
     toggleDevTools: () => mainWindow?.webContents.toggleDevTools(),
     checkForUpdates: () => void checkForUpdates(mainWindow, false),
     openLicenseDialog: () => mainWindow?.webContents.send('open-license-dialog'),
-    sendFeedback: () => void openFeedback(),
+    // #472: the Help-menu item now opens the in-app feedback form; the
+    // preserved mailto (openFeedback/'open-feedback') is both the dialog's
+    // explicit "Email instead" fallback on a non-retryable failure, and
+    // sendFeedbackFromMenu's own fallback when there's no window to push to.
+    sendFeedback: () => sendFeedbackFromMenu(mainWindow),
   });
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));
 }
@@ -206,6 +225,7 @@ app.whenReady().then(() => {
     void shell.openExternal(checkoutUrl(plan));
   });
   ipcMain.handle('open-feedback', () => openFeedback());
+  ipcMain.handle('submit-feedback', (_event, input) => submitFeedback(input));
   // Capture guidance (#142): "Grade your own service" panel's "Read the full
   // guide" CTA opens the hosted docs page in the user's browser.
   ipcMain.handle('open-capture-guide', () => {

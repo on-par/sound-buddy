@@ -21,6 +21,7 @@ import type {
   AnalysisSummaryInput,
   StartLiveOpts,
   StartPlaybackOpts,
+  FeedbackSubmission,
 } from './ipc/api';
 
 function mockIpc(): IpcRendererLike & {
@@ -70,6 +71,11 @@ const INVOKE_TABLE: Array<{ method: BridgeKey; channel: string; args: unknown[] 
   { method: 'openFeedback', channel: 'open-feedback', args: [] },
   { method: 'openCaptureGuide', channel: 'open-capture-guide', args: [] },
   { method: 'revealDiagnostics', channel: 'reveal-diagnostics', args: [] },
+  {
+    method: 'submitFeedback',
+    channel: 'submit-feedback',
+    args: [{ message: 'it broke', category: 'bug' } satisfies FeedbackSubmission],
+  },
   { method: 'listRigs', channel: 'list-rigs', args: [] },
   { method: 'saveRig', channel: 'save-rig', args: [{ id: 'r1' }] },
   { method: 'deleteRig', channel: 'delete-rig', args: ['r1'] },
@@ -128,6 +134,7 @@ const INVOKE_TABLE: Array<{ method: BridgeKey; channel: string; args: unknown[] 
 // completeness guard's "every non-listener key is in the table" check.
 const LISTENERS: BridgeKey[] = [
   'onOpenLicenseDialog',
+  'onOpenFeedbackDialog',
   'onAnalysisProgress',
   'onPlaybackEvent',
   'onLiveEvent',
@@ -178,6 +185,7 @@ describe('createBridge — event listeners', () => {
     expectsPayload: boolean;
   }> = [
     { method: 'onOpenLicenseDialog', channel: 'open-license-dialog', payload: undefined, expectsPayload: false },
+    { method: 'onOpenFeedbackDialog', channel: 'open-feedback-dialog', payload: undefined, expectsPayload: false },
     { method: 'onAnalysisProgress', channel: 'analysis-progress', payload: { status: 'running' }, expectsPayload: true },
     { method: 'onPlaybackEvent', channel: 'playback-event', payload: { kind: 'level' }, expectsPayload: true },
     { method: 'onLiveEvent', channel: 'live-event', payload: { kind: 'meter' }, expectsPayload: true },

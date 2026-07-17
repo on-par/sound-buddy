@@ -350,6 +350,153 @@ describe("POST /api/ingest (#475)", () => {
     });
   });
 
+  describe("feedback category/contactEmail/platform (#472)", () => {
+    it("accepts a feedback event with category, contactEmail, and platform and stores them", async () => {
+      const { kv, store, putSpy } = makeKv();
+      const env = makeEnv(kv);
+
+      const res = await handleIngestEvent(
+        request({
+          ...validFeedback,
+          category: "bug",
+          contactEmail: "pat@example.test",
+          platform: "darwin-arm64",
+        }),
+        env,
+        ctx,
+        deps,
+      );
+
+      expect(res.status).toBe(202);
+      const ingestPutCall = putSpy.mock.calls.find((call) =>
+        String(call[0]).startsWith("ingest:"),
+      );
+      const stored = JSON.parse(store.get(ingestPutCall![0] as string)!) as StoredIngestEvent;
+      expect(stored.event).toEqual({
+        ...validFeedback,
+        category: "bug",
+        contactEmail: "pat@example.test",
+        platform: "darwin-arm64",
+      });
+    });
+
+    it("bare {type, appVersion, message} feedback events are still accepted (back-compat)", async () => {
+      const { kv, store, putSpy } = makeKv();
+      const env = makeEnv(kv);
+
+      const res = await handleIngestEvent(request(validFeedback), env, ctx, deps);
+
+      expect(res.status).toBe(202);
+      const ingestPutCall = putSpy.mock.calls.find((call) =>
+        String(call[0]).startsWith("ingest:"),
+      );
+      const stored = JSON.parse(store.get(ingestPutCall![0] as string)!) as StoredIngestEvent;
+      expect(Object.keys(stored.event).sort()).toEqual(["appVersion", "message", "type"].sort());
+    });
+
+    it("category outside the allowed set → 400 invalid_field category", async () => {
+      const { kv } = makeKv();
+      const env = makeEnv(kv);
+
+      const res = await handleIngestEvent(
+        request({ ...validFeedback, category: "rant" }),
+        env,
+        ctx,
+        deps,
+      );
+
+      expect(res.status).toBe(400);
+      expect(await res.json()).toEqual({ error: "invalid_field", field: "category" });
+    });
+
+    it("malformed contactEmail → 400 invalid_field contactEmail", async () => {
+      const { kv } = makeKv();
+      const env = makeEnv(kv);
+
+      const res = await handleIngestEvent(
+        request({ ...validFeedback, contactEmail: "not-an-email" }),
+        env,
+        ctx,
+        deps,
+      );
+
+      expect(res.status).toBe(400);
+      expect(await res.json()).toEqual({ error: "invalid_field", field: "contactEmail" });
+    });
+
+    it("overlong contactEmail → 400 invalid_field contactEmail", async () => {
+      const { kv } = makeKv();
+      const env = makeEnv(kv);
+      const overlong = `${"a".repeat(250)}@x.com`; // > 254 chars
+
+      const res = await handleIngestEvent(
+        request({ ...validFeedback, contactEmail: overlong }),
+        env,
+        ctx,
+        deps,
+      );
+
+      expect(res.status).toBe(400);
+      expect(await res.json()).toEqual({ error: "invalid_field", field: "contactEmail" });
+    });
+
+    it("whitespace-containing platform → 400 invalid_field platform", async () => {
+      const { kv } = makeKv();
+      const env = makeEnv(kv);
+
+      const res = await handleIngestEvent(
+        request({ ...validFeedback, platform: "darwin arm64" }),
+        env,
+        ctx,
+        deps,
+      );
+
+      expect(res.status).toBe(400);
+      expect(await res.json()).toEqual({ error: "invalid_field", field: "platform" });
+    });
+
+    it("contactEmail survives storage un-redacted while an email inside message is redacted", async () => {
+      const { kv, store, putSpy } = makeKv();
+      const env = makeEnv(kv);
+
+      const res = await handleIngestEvent(
+        request({
+          type: "feedback",
+          appVersion: "1.0.0",
+          message: "reach me at other@example.test if needed",
+          contactEmail: "pat@example.test",
+        }),
+        env,
+        ctx,
+        deps,
+      );
+
+      expect(res.status).toBe(202);
+      const ingestPutCall = putSpy.mock.calls.find((call) =>
+        String(call[0]).startsWith("ingest:"),
+      );
+      const stored = JSON.parse(store.get(ingestPutCall![0] as string)!) as StoredIngestEvent;
+      const event = stored.event as { message: string; contactEmail: string };
+      expect(event.message).toBe("reach me at [redacted-email] if needed");
+      expect(event.contactEmail).toBe("pat@example.test");
+    });
+
+    it("email/userEmail top-level keys are still rejected as sensitive_field alongside category/contactEmail", async () => {
+      const { kv } = makeKv();
+      const env = makeEnv(kv);
+
+      const res = await handleIngestEvent(
+        request({ ...validFeedback, category: "bug", email: "pat@example.test" }),
+        env,
+        ctx,
+        deps,
+      );
+
+      expect(res.status).toBe(400);
+      expect(await res.json()).toEqual({ error: "sensitive_field", field: "email" });
+    });
+  });
+
   describe("crash fields", () => {
     it("stack over 8000 chars → 400 invalid_field stack", async () => {
       const { kv } = makeKv();

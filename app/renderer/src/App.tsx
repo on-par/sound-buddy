@@ -33,6 +33,7 @@ import phaseDoublingStateSrc from '../phase-doubling-state.js?raw';
 import preflightSrc from '../preflight.js?raw';
 import feedbackRingoutSrc from '../feedback-ringout-state.js?raw';
 import gradeOwnStateSrc from '../grade-own-state.js?raw';
+import feedbackFormSrc from '../feedback-form-state.js?raw';
 import inlineAppSrc from './inline-app.js?raw';
 import LicensePanel from './LicensePanel';
 import SettingsPanel from './SettingsPanel';
@@ -64,6 +65,7 @@ const BOOT_SCRIPTS = [
   preflightSrc,
   feedbackRingoutSrc,
   gradeOwnStateSrc,
+  feedbackFormSrc,
   inlineAppSrc,
 ];
 
