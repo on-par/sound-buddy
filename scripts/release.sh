@@ -129,7 +129,11 @@ SIGNED=$([ "$IDENTITY" = "null" ] && echo false || echo true)
 say "Release notes: $([ "$SIGNED" = "true" ] && echo "signed" || echo "unsigned") build"
 
 HIGHLIGHTS=""
-[[ -f "$ROOT/RELEASE_HIGHLIGHTS.md" ]] && HIGHLIGHTS="$(cat "$ROOT/RELEASE_HIGHLIGHTS.md")"
+# The leading HTML comment is an editor-only instruction — strip it so it
+# never ships as literal text in the published release notes (GitHub hides
+# HTML comments in rendered markdown, but `gh release view`/the API/RSS show
+# raw markdown as-is).
+[[ -f "$ROOT/RELEASE_HIGHLIGHTS.md" ]] && HIGHLIGHTS="$(sed -E '/^<!--.*-->[[:space:]]*$/d' "$ROOT/RELEASE_HIGHLIGHTS.md")"
 
 NOTES="$(node --input-type=module -e '
   import { buildReleaseNotes } from "'"$ROOT"'/packages/shared/dist/index.js";
