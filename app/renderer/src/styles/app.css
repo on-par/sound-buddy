@@ -606,6 +606,27 @@
     .live-meters-toolbar { display:flex; align-items:center; gap:8px; margin-bottom:14px; }
     /* Workspace toolbar cap (#188): "N / M used" channel count. */
     .live-meters-toolbar .cap { font:var(--fw-regular) var(--fs-micro)/1 var(--font-mono); color:var(--text-muted); margin-right:auto; }
+
+    /* Guided first-use setup (#294): zero-track hero replacing the old bare
+       empty state, plus a compact banner over the seeded-track workspace. */
+    .live-setup-hero { flex:1; min-height:360px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:14px; color:var(--text-muted); text-align:center; max-width:420px; margin:0 auto; }
+    .live-setup-hero .lsh-title { font:var(--fw-semibold) var(--fs-body)/1 var(--font-sans); color:var(--text-primary); margin:0; }
+    .live-setup-hero .lsh-sub { font:var(--fw-regular) var(--fs-label)/1.3 var(--font-sans); color:var(--text-muted); margin:0; }
+    .live-setup-hero .ls-steps { text-align:left; width:100%; margin:4px 0; }
+    .ls-steps { list-style:none; display:flex; flex-direction:column; gap:10px; padding:0; margin:0; }
+    .ls-step { display:flex; align-items:flex-start; gap:10px; }
+    .ls-num { flex:0 0 auto; width:18px; height:18px; display:flex; align-items:center; justify-content:center; border:1px solid var(--surface-raised); border-radius:50%; font:var(--fw-medium) var(--fs-micro)/1 var(--font-mono); color:var(--text-muted); }
+    .ls-step.done .ls-num { border-color:var(--gold-500); color:var(--gold-500); }
+    .ls-body { display:flex; flex-direction:column; gap:2px; }
+    .ls-label { font:var(--fw-medium) var(--fs-label)/1.3 var(--font-sans); color:var(--text-muted); }
+    .ls-step.active .ls-label { color:var(--text-primary); }
+    .ls-hint { font:var(--fw-regular) var(--fs-micro)/1.3 var(--font-sans); color:var(--text-muted); }
+    /* Compact banner variant (#294): steps run inline, hints only on the active step. */
+    .ls-steps.compact { flex-direction:row; align-items:center; gap:16px; flex-wrap:wrap; }
+    .ls-steps.compact .ls-step { align-items:center; }
+    .live-setup-banner { display:flex; align-items:center; gap:16px; padding:10px 12px; margin-bottom:14px; background:var(--surface-raised); border-radius:var(--radius-lg); }
+    .live-setup-banner .lsb-title { flex:0 0 auto; font:var(--fw-semibold) var(--fs-micro)/1 var(--font-sans); letter-spacing:var(--tracking-caps); text-transform:uppercase; color:var(--text-tertiary); }
+    .live-setup-banner #live-setup-skip { margin-left:auto; }
     /* Named channel groups (#41): group headers in the live board + row assignment. */
     .live-group-head { display:flex; align-items:center; gap:8px; padding:10px 0 6px; margin-top:8px; border-bottom:1px solid var(--border-subtle); }
     .live-group-head:first-child { margin-top:0; }
