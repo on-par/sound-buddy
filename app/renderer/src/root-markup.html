@@ -176,10 +176,15 @@
           <button class="btn btn-primary full" id="live-start-btn" data-icon="play">Start Capture</button>
           <button class="btn btn-danger full" id="live-stop-btn" data-icon="square" style="display:none">Stop Capture</button>
           <div id="live-status" style="display:none; font:var(--fw-regular) var(--fs-label)/1.3 var(--font-sans); color:var(--text-muted); text-align:center"></div>
+          <div id="live-rc-cue" style="font:var(--fw-regular) var(--fs-label)/1.3 var(--font-sans); color:var(--text-muted); text-align:center">Capture builds a live Report Card as it runs.</div>
           <div id="arm-hint" class="arm-hint" role="alert" style="display:none"></div>
           <div id="rec-offer" class="rec-offer" style="display:none">
             <span class="ro-text" id="rec-offer-text"></span>
             <button type="button" class="btn btn-secondary sm" id="rec-offer-btn" data-icon="folder">Open folder</button>
+          </div>
+          <div id="rc-offer" class="rec-offer" style="display:none">
+            <span class="ro-text">Report card ready.</span>
+            <button type="button" class="btn btn-secondary sm" id="rc-offer-btn" data-icon="clipboard-check">View report card</button>
           </div>
         </div>
 

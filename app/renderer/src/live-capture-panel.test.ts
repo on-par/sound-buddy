@@ -18,6 +18,7 @@ import {
   patchLiveChannelPlan,
   groupSummary,
   groupSummaryText,
+  shouldOfferReportCard,
   type LiveDevice,
   type ListDevicesResult,
   type StripConfig,
@@ -344,6 +345,20 @@ describe('groupSummaryText', () => {
 
   it('omits the peak while idle even if a peak value is present', () => {
     expect(groupSummaryText({ count: 3, peak: -6.2, clipping: false, idle: true })).toBe('3 tracks');
+  });
+});
+
+describe('shouldOfferReportCard (#488)', () => {
+  it('offers after a monitor session that accumulated windows', () => {
+    expect(shouldOfferReportCard('monitor', 1)).toBe(true);
+    expect(shouldOfferReportCard('monitor', 10)).toBe(true);
+  });
+  it('does not offer when no window tick ever arrived', () => {
+    expect(shouldOfferReportCard('monitor', 0)).toBe(false);
+  });
+  it('does not offer for record mode (it has its own session-saved offer)', () => {
+    expect(shouldOfferReportCard('record', 5)).toBe(false);
+    expect(shouldOfferReportCard('record', 0)).toBe(false);
   });
 });
 
