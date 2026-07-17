@@ -8,9 +8,11 @@ import {
   DIM_DB,
   HOT_DB,
   GRID,
+  GRID_MINOR,
   BAND_META,
   CURVE_VB,
   X_TICKS,
+  X_MINOR_TICKS,
   CURVE_FMIN,
   CURVE_FMAX,
   EQ_GAP,
@@ -67,6 +69,31 @@ describe('constants', () => {
     expect(EQ_GAP).toBe(1.4);
     expect(EQ_COLS).toHaveLength(7);
     expect(EQ_COLS[0].key).toBe('subBass');
+  });
+});
+
+describe('X_MINOR_TICKS', () => {
+  it('has 18 in-range, ascending, unlabeled minor ticks distinct from X_TICKS', () => {
+    expect(X_MINOR_TICKS).toHaveLength(18);
+    for (const f of X_MINOR_TICKS) {
+      expect(f).toBeGreaterThan(CURVE_FMIN);
+      expect(f).toBeLessThan(CURVE_FMAX);
+    }
+    for (let i = 1; i < X_MINOR_TICKS.length; i++) expect(X_MINOR_TICKS[i]).toBeGreaterThan(X_MINOR_TICKS[i - 1]);
+    const majors = new Set(X_TICKS.map((t) => t.f));
+    for (const f of X_MINOR_TICKS) expect(majors.has(f)).toBe(false);
+  });
+});
+
+describe('GRID_MINOR', () => {
+  it('is the fixed set of minor dB lines, disjoint from GRID and within the dB window', () => {
+    expect(GRID_MINOR).toEqual([-66, -54, -42, -30, -18]);
+    const majors = new Set(GRID);
+    for (const g of GRID_MINOR) expect(majors.has(g)).toBe(false);
+    for (const g of GRID_MINOR) {
+      expect(g).toBeGreaterThanOrEqual(DB_MIN);
+      expect(g).toBeLessThanOrEqual(DB_MAX);
+    }
   });
 });
 
@@ -282,6 +309,39 @@ describe('spectrumCurveSVG', () => {
     expect(typeof paths.area).toBe('string');
     expect(typeof paths.centroidMark).toBe('string');
   });
+
+  it('draws console-style minor subdivisions under major gridlines without adding labels (#480)', () => {
+    const svg = spectrumCurveSVG(curve, undefined, undefined) as string;
+    const minorCount = (svg.match(/class="sb-grid-line minor"/g) || []).length;
+    const majorCount = (svg.match(/class="sb-grid-line major"/g) || []).length;
+    expect(minorCount).toBeGreaterThanOrEqual(X_MINOR_TICKS.length);
+    expect(majorCount).toBeGreaterThanOrEqual(X_TICKS.length);
+
+    const xLabelCount = (svg.match(/class="sb-x-label"/g) || []).length;
+    expect(xLabelCount).toBe(X_TICKS.length);
+
+    const { w, ml, mr, mt, mb } = CURVE_VB;
+    const x0 = ml, x1 = w - mr, y0 = mt, y1 = CURVE_VB.h - mb;
+    const dbs = curve.db.slice();
+    let dMin = Math.min(...dbs), dMax = Math.max(...dbs);
+    if (dMax - dMin < 1) { dMin -= 6; dMax += 6; }
+    const pad = Math.max(3, (dMax - dMin) * 0.08);
+    const lo = dMin - pad, hi = dMax + pad;
+    const expectedYMajors = niceTicks(lo, hi, 5).filter((v) => v > lo && v < hi);
+    const yLabelCount = (svg.match(/class="sb-y-label"/g) || []).length;
+    expect(yLabelCount).toBe(expectedYMajors.length);
+    // x0/x1/y0/y1 sanity: the plot bounds used to compute the expectation above are real.
+    expect(x1).toBeGreaterThan(x0);
+    expect(y1).toBeGreaterThan(y0);
+  });
+
+  it('draws minors in the fixed-range live-arc variant too, with compact geometry untouched', () => {
+    const svg = spectrumCurveSVG(curve, undefined, null, {
+      uid: 'live0', vbH: 280, yMin: DB_MIN, yMax: DB_MAX,
+    }) as string;
+    expect(svg).toContain('class="sb-grid-line minor"');
+    expect(svg).toContain('viewBox="0 0 900 280"');
+  });
 });
 
 describe('spectrumLegendHTML', () => {
@@ -381,6 +441,14 @@ describe('eqBarsHTML', () => {
     expect(withoutTarget).not.toContain('eq-target-svg');
     expect(wrongLength).not.toContain('eq-target-svg');
   });
+
+  it('emits major and minor gridlines without adding y-axis labels (#480)', () => {
+    const html = eqBarsHTML(bandDb);
+    expect((html.match(/class="eq-grid major"/g) || []).length).toBe(GRID.length);
+    expect((html.match(/class="eq-grid minor"/g) || []).length).toBe(GRID_MINOR.length);
+    const yaxisBlock = (html.match(/<div class="eq-yaxis">[\s\S]*?<\/div>/) || [''])[0];
+    expect((yaxisBlock.match(/<span/g) || []).length).toBe(GRID.length);
+  });
 });
 
 function makeFrames(n: number, dbLen = 4): SpectrumFrame[] {
@@ -444,6 +512,13 @@ describe('miniCurveSVG', () => {
   });
   it('renders a multi-point sparkline path', () => {
     const svg = miniCurveSVG([-40, -20, -10]);
+    expect(svg).toContain('<path d="M');
+  });
+
+  it('renders 3 faint reference gridlines without disturbing the area/line paths or viewBox (#480)', () => {
+    const svg = miniCurveSVG([-40, -20, -10]);
+    expect((svg.match(/class="sb-grid-line minor"/g) || []).length).toBe(3);
+    expect(svg).toContain('viewBox="0 0 600 150"');
     expect(svg).toContain('<path d="M');
   });
 });

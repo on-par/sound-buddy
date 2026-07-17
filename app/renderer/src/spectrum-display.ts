@@ -96,6 +96,9 @@ export const DB_MIN = -72, DB_MAX = -3;
 export const DIM_DB = -60; // at/below: band is idle → dimmed, never counts as "loudest"
 export const HOT_DB = -24; // above: numeric readout emphasized as running hot
 export const GRID = [-60, -48, -36, -24, -12, -6];
+// Unlabeled minor dB lines between the labeled GRID majors (every 6 dB in the
+// DB_MIN..DB_MAX window not already covered by GRID) (#480).
+export const GRID_MINOR = [-66, -54, -42, -30, -18];
 export const BAND_META: BandMeta[] = [
   { key: 'subBass',    label: 'Sub Bass',   range: '20–60 Hz',    color: 'var(--band-sub)',        lo: 20,   hi: 60    },
   { key: 'bass',       label: 'Bass',        range: '60–250 Hz',   color: 'var(--band-bass)',       lo: 60,   hi: 250   },
@@ -136,6 +139,12 @@ export const X_TICKS: XTick[] = [
   { f: 20000, label: '20k' },
 ];
 export const CURVE_FMIN = 20, CURVE_FMAX = 20000;
+// Unlabeled log-decade minor ticks between the labeled X_TICKS majors (#480).
+export const X_MINOR_TICKS: number[] = [
+  30, 40, 60, 70, 80, 90,
+  300, 400, 600, 700, 800, 900,
+  3000, 4000, 6000, 7000, 8000, 9000,
+];
 
 // "Nice" evenly-spaced axis ticks spanning [lo, hi].
 export function niceTicks(lo: number, hi: number, count = 5): number[] {
@@ -228,18 +237,33 @@ export function spectrumCurveSVG(
     return `<rect class="sb-band-tint" x="${bx0.toFixed(1)}" y="${y0}" width="${(bx1 - bx0).toFixed(1)}" height="${y1 - y0}" fill="${b.color}"/>`;
   }).join('');
 
-  // Horizontal dB gridlines + labels.
-  const yGrid = niceTicks(lo, hi, 5).filter((v) => v > lo && v < hi).map((v) => {
+  // Horizontal dB gridlines + labels (major).
+  const yMajors = niceTicks(lo, hi, 5).filter((v) => v > lo && v < hi);
+  const yGrid = yMajors.map((v) => {
     const y = yForDb(v).toFixed(1);
-    return `<line class="sb-grid-line" x1="${x0}" y1="${y}" x2="${x1}" y2="${y}"/>`
+    return `<line class="sb-grid-line major" x1="${x0}" y1="${y}" x2="${x1}" y2="${y}"/>`
       + `<text class="sb-y-label" x="${x0 - 8}" y="${(+y + 4).toFixed(1)}">${v}</text>`;
   }).join('');
 
-  // Vertical frequency gridlines + labels.
+  // Minor dB gridlines at the midpoint of each consecutive major pair (#480).
+  const yMinor = yMajors.slice(1).map((v, i) => {
+    const mid = (yMajors[i] + v) / 2;
+    if (!(mid > lo && mid < hi)) return '';
+    const y = yForDb(mid).toFixed(1);
+    return `<line class="sb-grid-line minor" x1="${x0}" y1="${y}" x2="${x1}" y2="${y}"/>`;
+  }).join('');
+
+  // Vertical frequency gridlines + labels (major).
   const xGrid = X_TICKS.map((t) => {
     const x = xForFreq(t.f).toFixed(1);
-    return `<line class="sb-grid-line" x1="${x}" y1="${y0}" x2="${x}" y2="${y1}"/>`
+    return `<line class="sb-grid-line major" x1="${x}" y1="${y0}" x2="${x}" y2="${y1}"/>`
       + `<text class="sb-x-label" x="${x}" y="${y1 + 22}">${t.label}</text>`;
+  }).join('');
+
+  // Minor frequency gridlines, unlabeled (#480).
+  const xMinor = X_MINOR_TICKS.map((f) => {
+    const x = xForFreq(f).toFixed(1);
+    return `<line class="sb-grid-line minor" x1="${x}" y1="${y0}" x2="${x}" y2="${y1}"/>`;
   }).join('');
 
   const line = smoothPath(pts);
@@ -263,6 +287,8 @@ export function spectrumCurveSVG(
       <clipPath id="sb-spectrum-plot${uid}"><rect x="${x0}" y="${y0}" width="${x1 - x0}" height="${y1 - y0}"/></clipPath>
     </defs>
     ${tints}
+    ${yMinor}
+    ${xMinor}
     ${yGrid}
     ${xGrid}
     <line class="sb-axis-base" x1="${x0}" y1="${y1}" x2="${x1}" y2="${y1}"/>
@@ -418,7 +444,10 @@ export function miniCurveSVG(db: number[]): string {
     area += ` L${X} ${Y}`;
   }
   area += ` L${VW} ${padT + ih} Z`;
+  const refs = [0.25, 0.5, 0.75].map((t) =>
+    `<line class="sb-grid-line minor" x1="0" y1="${(padT + ih * t).toFixed(1)}" x2="${VW}" y2="${(padT + ih * t).toFixed(1)}"/>`).join('');
   return `<svg viewBox="0 0 ${VW} ${VH}" preserveAspectRatio="none" role="img" aria-label="Frame spectral curve">
+    ${refs}
     <path d="${area}" fill="var(--gold-tint)" stroke="none"/>
     <path d="${line}" fill="none" stroke="var(--gold-500)" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"/>
   </svg>`;
@@ -469,7 +498,8 @@ export function eqCentroidHTML(spectrum: SpectrumData): string {
 export function eqBarsHTML(bandDb: number[], targetDb?: number[]): string {
   const loudestIdx = veqLoudestIdx(bandDb);
   const { bars, labels } = veqBarsAndLabelsHTML(EQ_COLS, bandDb, loudestIdx);
-  const grid = GRID.map((g) => `<div class="eq-grid" style="bottom:${toPct(g)}%"></div>`).join('');
+  const grid = GRID.map((g) => `<div class="eq-grid major" style="bottom:${toPct(g)}%"></div>`).join('')
+    + GRID_MINOR.map((g) => `<div class="eq-grid minor" style="bottom:${toPct(g)}%"></div>`).join('');
   const yAxis = GRID.map((g) => `<span style="bottom:${toPct(g)}%">${g}</span>`).join('');
   const targetSvg = Array.isArray(targetDb) && targetDb.length === EQ_COLS.length ? eqTargetLineSVG(targetDb) : '';
   return `<div class="eq-yaxis">${yAxis}</div>
