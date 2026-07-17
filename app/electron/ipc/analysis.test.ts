@@ -40,6 +40,11 @@ vi.mock('./engine-loader', () => ({
   }),
 }));
 
+const recordTelemetryEventMock = vi.hoisted(() => vi.fn());
+vi.mock('../telemetry', () => ({
+  recordTelemetryEvent: recordTelemetryEventMock,
+}));
+
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
@@ -192,6 +197,48 @@ describe('analyze-file IPC handler', () => {
     const result = await handler({ sender }, { filePath: '/tmp/service.wav' });
 
     expect(result).toEqual({ success: false, error: 'Error: boom' });
+  });
+
+  describe('telemetry (#474)', () => {
+    it('records analysis_started on entry, always', async () => {
+      const handler = handlers.get('analyze-file') as AnalyzeHandler;
+      const sender = fakeSender();
+
+      await handler({ sender }, { filePath: '/tmp/service.wav' });
+
+      expect(recordTelemetryEventMock).toHaveBeenCalledWith('analysis_started');
+    });
+
+    it('records analysis_completed on success', async () => {
+      const handler = handlers.get('analyze-file') as AnalyzeHandler;
+      const sender = fakeSender();
+
+      await handler({ sender }, { filePath: '/tmp/service.wav' });
+
+      expect(recordTelemetryEventMock).toHaveBeenCalledWith('analysis_completed');
+    });
+
+    it('does not record analysis_completed on cancellation', async () => {
+      analyzeAudioMock.mockRejectedValueOnce(abortError());
+      const handler = handlers.get('analyze-file') as AnalyzeHandler;
+      const sender = fakeSender();
+
+      await handler({ sender }, { filePath: '/tmp/service.wav' });
+
+      expect(recordTelemetryEventMock).toHaveBeenCalledWith('analysis_started');
+      expect(recordTelemetryEventMock).not.toHaveBeenCalledWith('analysis_completed');
+    });
+
+    it('does not record analysis_completed on error', async () => {
+      analyzeAudioMock.mockRejectedValueOnce(new Error('boom'));
+      const handler = handlers.get('analyze-file') as AnalyzeHandler;
+      const sender = fakeSender();
+
+      await handler({ sender }, { filePath: '/tmp/service.wav' });
+
+      expect(recordTelemetryEventMock).toHaveBeenCalledWith('analysis_started');
+      expect(recordTelemetryEventMock).not.toHaveBeenCalledWith('analysis_completed');
+    });
   });
 
   describe('video pre-extraction', () => {

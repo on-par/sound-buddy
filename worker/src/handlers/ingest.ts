@@ -23,6 +23,22 @@ const TELEMETRY_NAME_PATTERN = /^[a-z0-9][a-z0-9._-]{0,63}$/;
 // names (never free text), same shape as telemetry.name.
 const MAX_RECENT_EVENTS = 20;
 
+// #474: the documented allowlist of desktop-app usage events — kept
+// field-for-field in sync with TELEMETRY_EVENTS (app/electron/telemetry.ts).
+// A name can pass TELEMETRY_NAME_PATTERN and still be rejected here — the
+// pattern only bounds shape, this allowlist bounds meaning.
+const TELEMETRY_EVENT_NAMES = new Set([
+  "app_opened",
+  "analysis_started",
+  "analysis_completed",
+  "report_viewed",
+  "report_exported",
+  "browser_lite_used",
+  "feedback_sent",
+]);
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+const COARSE_TIMESTAMP_PATTERN = /^\d{4}-\d{2}-\d{2}T\d{2}:00:00Z$/;
+
 // #472: feedback.category/contactEmail/platform — additive, backwards-compatible
 // fields. contactEmail is a deliberate reply channel the user typed into a
 // dedicated field, so it is validated (not deny-listed like `email`/`userEmail`).
@@ -64,6 +80,10 @@ export interface TelemetryEvent {
   appVersion: string;
   osVersion?: string;
   name: string;
+  platform: string;
+  installId: string;
+  sessionId: string;
+  occurredAt: string;
   value?: number;
   props?: Record<string, string | number | boolean>;
 }
@@ -115,7 +135,18 @@ const ALLOWED_FIELDS: Record<IngestEventType, ReadonlySet<string>> = {
     "route",
     "recentEvents",
   ]),
-  telemetry: new Set(["type", "appVersion", "osVersion", "name", "value", "props"]),
+  telemetry: new Set([
+    "type",
+    "appVersion",
+    "osVersion",
+    "name",
+    "platform",
+    "installId",
+    "sessionId",
+    "occurredAt",
+    "value",
+    "props",
+  ]),
 };
 
 type ValidationResult =
@@ -307,6 +338,25 @@ export function validateIngestEvent(body: unknown): ValidationResult {
   if (typeof name !== "string" || !TELEMETRY_NAME_PATTERN.test(name)) {
     return { ok: false, error: "invalid_field", field: "name", status: 400 };
   }
+  if (!TELEMETRY_EVENT_NAMES.has(name)) {
+    return { ok: false, error: "unknown_event_name", field: "name", status: 400 };
+  }
+  const platform = body.platform;
+  if (!isShortField(platform, true)) {
+    return { ok: false, error: "invalid_field", field: "platform", status: 400 };
+  }
+  const installId = body.installId;
+  if (typeof installId !== "string" || !UUID_PATTERN.test(installId)) {
+    return { ok: false, error: "invalid_field", field: "installId", status: 400 };
+  }
+  const sessionId = body.sessionId;
+  if (typeof sessionId !== "string" || !UUID_PATTERN.test(sessionId)) {
+    return { ok: false, error: "invalid_field", field: "sessionId", status: 400 };
+  }
+  const occurredAt = body.occurredAt;
+  if (typeof occurredAt !== "string" || !COARSE_TIMESTAMP_PATTERN.test(occurredAt)) {
+    return { ok: false, error: "invalid_field", field: "occurredAt", status: 400 };
+  }
   const value = body.value;
   if (value !== undefined && (typeof value !== "number" || !Number.isFinite(value))) {
     return { ok: false, error: "invalid_field", field: "value", status: 400 };
@@ -321,6 +371,10 @@ export function validateIngestEvent(body: unknown): ValidationResult {
       appVersion,
       ...(osVersion ? { osVersion } : {}),
       name,
+      platform: platform as string,
+      installId,
+      sessionId,
+      occurredAt,
       ...(value !== undefined ? { value: value as number } : {}),
       ...(body.props !== undefined
         ? { props: body.props as Record<string, string | number | boolean> }

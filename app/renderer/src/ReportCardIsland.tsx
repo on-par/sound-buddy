@@ -234,6 +234,7 @@ export default function ReportCardIsland() {
     idealProfile: s.idealProfile,
     isAutoProfile: s.isAutoProfile,
   }));
+  const reportViewedRef = useRef(false);
 
   const isHistoryCard = !!historySummary && !currentAnalysis && !liveSource;
   const source: ReportCardSource | null = currentAnalysis
@@ -289,6 +290,25 @@ export default function ReportCardIsland() {
   /* c8 ignore stop */
 
   const showEmpty = !isHistoryCard && !(source && grade);
+  const cardVisible = !showEmpty || isHistoryCard;
+
+  // report_viewed telemetry (#474): fires once per false→true visibility
+  // transition, not on every render the card stays visible. Main-process
+  // filtering (telemetry.ts's allowlist + usageSignalEnabled gate) means this
+  // needs no renderer-side gating on the setting.
+  /* c8 ignore start -- passive effect calling the telemetry IPC bridge; no
+     jsdom in this harness (renderToString doesn't run effects, and the
+     constitution forbids adding a new test framework) — exercised by the
+     report-card e2e. */
+  useEffect(() => {
+    if (cardVisible && !reportViewedRef.current) {
+      (window as unknown as { soundBuddy?: { recordAppEvent: (name: string) => void } }).soundBuddy?.recordAppEvent(
+        'report_viewed'
+      );
+    }
+    reportViewedRef.current = cardVisible;
+  });
+  /* c8 ignore stop */
 
   return (
     <>

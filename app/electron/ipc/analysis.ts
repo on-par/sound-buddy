@@ -13,6 +13,7 @@ import { ipcMain } from 'electron';
 import * as fs from 'fs';
 import * as path from 'path';
 import { log, logError } from '../logger';
+import { recordTelemetryEvent } from '../telemetry';
 import { saveAnalysisSummary, listAnalysisSummaries, type AnalysisSummary } from '../storage';
 import { toolBin, pythonBin, childEnv, SPECTRUM_SCRIPT, DEMO_AUDIO, defaultRecordDir } from './shared';
 import { isAbortError } from './timeout';
@@ -86,6 +87,7 @@ export function registerAnalysisHandlers(): void {
     const controller = new AbortController();
     inFlight.set(wc.id, controller);
     const { signal } = controller;
+    recordTelemetryEvent('analysis_started');
 
     // Stage progress (#125): all three stages genuinely run in parallel
     // (Promise.all below), so report them starting together and check each
@@ -129,6 +131,7 @@ export function registerAnalysisHandlers(): void {
 
       wc.send('analysis-result', { type: 'stats', data: analysis });
       log(`analyze-file ok: ${filePath}`);
+      recordTelemetryEvent('analysis_completed');
       return { success: true, data: analysis };
     } catch (err) {
       if (isAbortError(err)) {

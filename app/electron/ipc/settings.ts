@@ -10,6 +10,7 @@ import * as fs from 'fs';
 import { pathToFileURL } from 'url';
 import { resolveAppVersion } from '../app-version';
 import { logWarn } from '../logger';
+import { recordTelemetryEvent, clearTelemetryState } from '../telemetry';
 import {
   getSettings,
   updateSettings,
@@ -140,9 +141,8 @@ export function registerSettingsHandlers(): void {
       // Storage location (#91). Trimmed; an empty string resets to the platform
       // default (~/Music/Sound Buddy). No size/count limit is ever applied.
       if (typeof patch.storageDir === 'string') clean.storageDir = patch.storageDir.trim();
-      // Opt-in anonymous usage counts (#145). Persisted preference only —
-      // nothing reads it to send anything; there is no telemetry code or
-      // endpoint.
+      // Opt-in anonymous usage counts (#145) — gates all recording/sending in
+      // telemetry.ts (#474).
       if (typeof patch.usageSignalEnabled === 'boolean') {
         clean.usageSignalEnabled = patch.usageSignalEnabled;
       }
@@ -160,7 +160,11 @@ export function registerSettingsHandlers(): void {
         clean.crashReportingEnabled = patch.crashReportingEnabled;
       }
     }
-    return updateSettings(clean);
+    const result = updateSettings(clean);
+    // Opting out of telemetry (#474) clears the pending queue and the
+    // install id, so a later opt-in starts with a fresh anonymous identity.
+    if (clean.usageSignalEnabled === false) clearTelemetryState();
+    return result;
   });
 
   // get-storage-usage — where recordings live and how much disk they use (#91).
@@ -248,6 +252,7 @@ export function registerSettingsHandlers(): void {
     });
     if (canceled || !filePath) return { saved: false };
     await fs.promises.writeFile(filePath, Buffer.from(bytes));
+    recordTelemetryEvent('report_exported');
     return { saved: true, filePath };
   });
 
