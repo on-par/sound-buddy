@@ -18,14 +18,23 @@ const probeOllamaMock = vi.fn();
 const testHostedProviderMock = vi.fn();
 vi.mock('../llm', () => ({
   streamNarrative: (...a: unknown[]) => streamNarrativeMock(...a),
-  probeOllama: (...a: unknown[]) => probeOllamaMock(...a),
-  testHostedProvider: (...a: unknown[]) => testHostedProviderMock(...a),
+}));
+vi.mock('../ollama-probe', () => ({ probeOllama: (...a: unknown[]) => probeOllamaMock(...a) }));
+vi.mock('../narrative-port', () => ({
+  listNarrativeModels: vi.fn().mockResolvedValue([]),
+  testProvider: (...a: unknown[]) => testHostedProviderMock(...a),
 }));
 
 const getPublicLlmConfigMock = vi.fn();
 const saveLlmConfigMock = vi.fn();
 vi.mock('../llm-config', () => ({
+  HOSTED_PROVIDER_IDS: new Set(['openai', 'anthropic', 'google', 'custom']),
   getPublicLlmConfig: () => getPublicLlmConfigMock(),
+  getApiKey: () => undefined,
+  normalizeHostUrl: (host: string) => {
+    const trimmed = host.trim().replace(/\/+$/, '');
+    return trimmed && !/^https?:\/\//i.test(trimmed) ? `http://${trimmed}` : trimmed;
+  },
   saveLlmConfig: (...a: unknown[]) => saveLlmConfigMock(...a),
 }));
 
