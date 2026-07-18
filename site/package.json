@@ -9,7 +9,7 @@
     "preview": "astro preview",
     "check": "astro check",
     "test": "vitest run",
-    "verify": "npm run check && npm run test && npm run build && node scripts/verify-links.mjs && node scripts/check-pricing.mjs && node scripts/check-homepage-visuals.mjs && node scripts/check-headers.mjs && node scripts/check-browser-page.mjs"
+    "verify": "npm run check && npm run test && npm run build && node scripts/verify-links.mjs && node scripts/check-pricing.mjs && node scripts/check-homepage-visuals.mjs && node scripts/check-headers.mjs && node scripts/check-browser-page.mjs && node scripts/check-mobile-overflow.mjs"
   },
   "dependencies": {
     "@fontsource-variable/geist": "^5.2.9",
@@ -19,6 +19,7 @@
   "devDependencies": {
     "@astrojs/check": "^0.9.4",
     "@types/node": "^26.1.1",
+    "playwright": "^1.61.1",
     "typescript": "^5.6.0",
     "vitest": "^4.1.10"
   }
