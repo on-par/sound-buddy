@@ -138,6 +138,11 @@
          existing Live Capture workflow. -->
     <label class="ai-enable-row"><input type="checkbox" id="daw-workspace-toggle" />Try the experimental DAW-style Live workspace</label>
     <p class="ai-dialog-note" id="daw-workspace-note">Off unless you turn it on. An early, experimental take on a DAW-style recording workspace for the Live tab. Your current Live Capture workflow stays the default — turn this off anytime to go back.</p>
+    <!-- Opt-in experimental live adjustment recommendations (#522, epic #515).
+         Off by default. A pure UI gate: when off, Live Capture shows no
+         live-adjustments area at all. -->
+    <label class="ai-enable-row"><input type="checkbox" id="live-adjustments-toggle" />Try experimental live adjustments</label>
+    <p class="ai-dialog-note" id="live-adjustments-note">Off unless you turn it on. An early, experimental area for mix suggestions while you monitor or record in Live Capture. Nothing is analyzed or sent anywhere — turn this off anytime to hide it.</p>
     <div class="rig-dialog-actions">
       <button type="button" id="storage-reset-btn" class="btn btn-secondary sm" style="display:none">Use default</button>
       <button type="button" id="storage-cancel-btn" class="btn btn-secondary sm">Cancel</button>

@@ -217,6 +217,28 @@ describe('dawWorkspaceEnabled (#516 — experimental DAW workspace, default off)
   });
 });
 
+describe('liveAdjustmentsEnabled (#522 — experimental live adjustments, default off)', () => {
+  it('defaults to false when settings.json is absent', () => {
+    expect(getSettings().liveAdjustmentsEnabled).toBe(false);
+  });
+
+  it('defaults to false when the file exists without the key', () => {
+    writeFile({ aiEnabled: false, idealProfile: '' });
+    expect(getSettings().liveAdjustmentsEnabled).toBe(false);
+  });
+
+  it('flips on and back off, persisting each value to the raw file and surviving a fresh read', () => {
+    const on = updateSettings({ liveAdjustmentsEnabled: true });
+    expect(on.liveAdjustmentsEnabled).toBe(true);
+    expect(readFile().liveAdjustmentsEnabled).toBe(true);
+    expect(getSettings().liveAdjustmentsEnabled).toBe(true);
+
+    const off = updateSettings({ liveAdjustmentsEnabled: false });
+    expect(off.liveAdjustmentsEnabled).toBe(false);
+    expect(readFile().liveAdjustmentsEnabled).toBe(false);
+  });
+});
+
 describe('customIdealProfiles', () => {
   const curve = {
     id: 'sunday',

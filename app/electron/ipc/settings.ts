@@ -164,6 +164,11 @@ export function registerSettingsHandlers(): void {
       if (typeof patch.dawWorkspaceEnabled === 'boolean') {
         clean.dawWorkspaceEnabled = patch.dawWorkspaceEnabled;
       }
+      // Opt-in experimental live adjustments area (#522) — a pure UI gate,
+      // consumed by the renderer only.
+      if (typeof patch.liveAdjustmentsEnabled === 'boolean') {
+        clean.liveAdjustmentsEnabled = patch.liveAdjustmentsEnabled;
+      }
     }
     const result = updateSettings(clean);
     // Opting out of telemetry (#474) clears the pending queue and the

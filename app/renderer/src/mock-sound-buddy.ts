@@ -43,6 +43,7 @@ const DEFAULT_APP_SETTINGS: AppSettings = {
   channelGroups: {},
   crashReportingEnabled: false,
   dawWorkspaceEnabled: false,
+  liveAdjustmentsEnabled: false,
 };
 
 const DEFAULT_PUBLIC_LLM_CONFIG: PublicLlmConfig = {
