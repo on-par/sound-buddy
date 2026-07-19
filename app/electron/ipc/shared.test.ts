@@ -10,7 +10,15 @@ vi.mock('electron', () => ({
   app: { isPackaged: false, getPath: () => '/tmp/sound-buddy-test' },
 }));
 
-import { REPO_ROOT, findRepoRoot, childEnv, readNdjsonLines } from './shared';
+import {
+  REPO_ROOT,
+  findRepoRoot,
+  childEnv,
+  readNdjsonLines,
+  toolBin,
+  platformDefaultStorageDir,
+  defaultRecordDir,
+} from './shared';
 
 describe('findRepoRoot', () => {
   it('walks up from a nested source directory to find the repo containing packages/audio-engine', () => {
@@ -51,6 +59,67 @@ describe('childEnv', () => {
     process.env.SOUND_BUDDY_TEST_PASSTHROUGH = 'keep-me';
     expect(childEnv().SOUND_BUDDY_TEST_PASSTHROUGH).toBe('keep-me');
     delete process.env.SOUND_BUDDY_TEST_PASSTHROUGH;
+  });
+});
+
+describe('toolBin', () => {
+  it('falls back to the bare tool name on PATH in dev (unpackaged)', () => {
+    expect(toolBin('sox')).toBe('sox');
+  });
+});
+
+describe('platformDefaultStorageDir', () => {
+  it('joins the platform music dir with "Sound Buddy"', () => {
+    expect(platformDefaultStorageDir()).toBe(path.join('/tmp/sound-buddy-test', 'Sound Buddy'));
+  });
+});
+
+describe('defaultRecordDir', () => {
+  const settingsFile = () => path.join('/tmp/sound-buddy-test', 'settings.json');
+
+  afterEach(() => {
+    fs.rmSync(settingsFile(), { force: true });
+  });
+
+  it('falls back to the platform default when no storageDir is configured', () => {
+    fs.rmSync(settingsFile(), { force: true });
+    expect(defaultRecordDir()).toBe(platformDefaultStorageDir());
+  });
+
+  it('uses the configured storageDir override when present', () => {
+    fs.mkdirSync('/tmp/sound-buddy-test', { recursive: true });
+    fs.writeFileSync(settingsFile(), JSON.stringify({ storageDir: '/tmp/custom-recordings' }));
+    expect(defaultRecordDir()).toBe('/tmp/custom-recordings');
+  });
+});
+
+describe('pythonBin', () => {
+  afterEach(() => {
+    delete process.env.SOUND_BUDDY_PYTHON;
+  });
+
+  it('returns a string interpreter path', async () => {
+    vi.resetModules();
+    const fresh = await import('./shared');
+    expect(typeof fresh.pythonBin()).toBe('string');
+    expect(fresh.pythonBin().length).toBeGreaterThan(0);
+  });
+
+  it('prefers SOUND_BUDDY_PYTHON when it points at an existing file', async () => {
+    const existing = path.join(path.parse(__dirname).root, 'bin', 'sh');
+    process.env.SOUND_BUDDY_PYTHON = fs.existsSync(existing) ? existing : __filename;
+
+    vi.resetModules();
+    const fresh = await import('./shared');
+    expect(fresh.pythonBin()).toBe(process.env.SOUND_BUDDY_PYTHON);
+  });
+
+  it('falls back to bare python3 when no candidate exists', async () => {
+    process.env.SOUND_BUDDY_PYTHON = '/definitely/not/a/real/path/python3';
+
+    vi.resetModules();
+    const fresh = await import('./shared');
+    expect(fresh.pythonBin()).toBe('python3');
   });
 });
 

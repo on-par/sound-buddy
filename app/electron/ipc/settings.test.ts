@@ -14,6 +14,7 @@ const handlers = new Map<string, (event: unknown, ...args: unknown[]) => unknown
 // window) and a fake save-dialog result (cancel vs a chosen path).
 let focusedWindow: object | null = {};
 let saveDialogResult: { canceled: boolean; filePath?: string } = { canceled: false, filePath: '' };
+let openDialogResult: { canceled: boolean; filePaths: string[] } = { canceled: true, filePaths: [] };
 
 vi.mock('electron', () => ({
   app: { getPath: () => userDataDir, getVersion: () => '0.0.0', isPackaged: false },
@@ -24,13 +25,21 @@ vi.mock('electron', () => ({
   },
   dialog: {
     showSaveDialog: () => Promise.resolve(saveDialogResult),
+    showOpenDialog: () => Promise.resolve(openDialogResult),
   },
   BrowserWindow: {
     getFocusedWindow: () => focusedWindow,
   },
 }));
 
-vi.mock('../license', () => ({ isEntitled: () => true }));
+const isEntitledMock = vi.hoisted(() => vi.fn(() => true));
+vi.mock('../license', () => ({ isEntitled: isEntitledMock }));
+
+const dirSizeBytesMock = vi.hoisted(() => vi.fn());
+vi.mock('../storage', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../storage')>();
+  return { ...actual, dirSizeBytes: dirSizeBytesMock.mockImplementation(actual.dirSizeBytes) };
+});
 
 const recordTelemetryEventMock = vi.hoisted(() => vi.fn());
 const clearTelemetryStateMock = vi.hoisted(() => vi.fn());
@@ -62,8 +71,11 @@ beforeEach(() => {
   handlers.clear();
   focusedWindow = {};
   saveDialogResult = { canceled: false, filePath: '' };
+  openDialogResult = { canceled: true, filePaths: [] };
   recordTelemetryEventMock.mockClear();
   clearTelemetryStateMock.mockClear();
+  isEntitledMock.mockReset().mockReturnValue(true);
+  dirSizeBytesMock.mockClear();
   registerSettingsHandlers();
 });
 
@@ -76,6 +88,187 @@ describe('get-app-version (#402)', () => {
     const handler = handlers.get('get-app-version');
     expect(handler).toBeTypeOf('function');
     expect(await handler!(null)).toBe(`stub-version-for:${APP_ROOT}`);
+  });
+});
+
+describe('get-settings', () => {
+  it('returns the current settings', async () => {
+    const handler = handlers.get('get-settings');
+    expect(handler).toBeTypeOf('function');
+    const result = (await handler!(null)) as { aiEnabled: boolean; rigs: unknown[] };
+    expect(result.aiEnabled).toBe(false);
+    expect(result.rigs).toEqual([]);
+  });
+});
+
+describe('get-storage-usage', () => {
+  it('reports byte size and exists:true for a real dir with a file', async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'sb-storage-usage-'));
+    fs.writeFileSync(path.join(dir, 'a.wav'), Buffer.alloc(1024));
+    const update = handlers.get('update-settings')!;
+    await update(null, { storageDir: dir });
+
+    const handler = handlers.get('get-storage-usage')!;
+    const result = (await handler(null)) as {
+      path: string;
+      isDefault: boolean;
+      bytes: number;
+      exists: boolean;
+      human: string;
+    };
+
+    expect(result.path).toBe(dir);
+    expect(result.isDefault).toBe(false);
+    expect(result.bytes).toBe(1024);
+    expect(result.exists).toBe(true);
+    expect(result.human).toBe('1 KB');
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+
+  it('reports exists:false and bytes:0 for a nonexistent dir, isDefault:true when unset', async () => {
+    const handler = handlers.get('get-storage-usage')!;
+    const result = (await handler(null)) as {
+      isDefault: boolean;
+      bytes: number;
+      exists: boolean;
+    };
+
+    expect(result.isDefault).toBe(true);
+    expect(result.bytes).toBe(0);
+    expect(result.exists).toBe(false);
+  });
+
+  it('logs a warning and reports bytes:0 when dirSizeBytes throws', async () => {
+    dirSizeBytesMock.mockRejectedValueOnce(new Error('boom'));
+    const handler = handlers.get('get-storage-usage')!;
+
+    const result = (await handler(null)) as { bytes: number };
+
+    expect(result.bytes).toBe(0);
+  });
+});
+
+describe('list-rigs / set-active-rig / onboarding-disabled', () => {
+  it('list-rigs returns the persisted rigs array', async () => {
+    const handler = handlers.get('list-rigs')!;
+    expect(await handler(null)).toEqual([]);
+  });
+
+  it('set-active-rig selects a saved rig', async () => {
+    const saved = (await handlers.get('save-rig')!(null, {
+      name: 'Main',
+      deviceName: 'Scarlett',
+      channelConfig: [],
+      mode: 'monitor',
+      recordDir: '/tmp',
+      intervalMs: 100,
+      windowSecs: 5,
+    })) as { rigs: { id: string }[] };
+    const id = saved.rigs[0].id;
+
+    const result = (await handlers.get('set-active-rig')!(null, id)) as { activeRigId: string };
+    expect(result.activeRigId).toBe(id);
+  });
+
+  it('onboarding-disabled reflects SOUND_BUDDY_DISABLE_ONBOARDING', async () => {
+    const handler = handlers.get('onboarding-disabled')!;
+    expect(await handler(null)).toBe(false);
+
+    process.env.SOUND_BUDDY_DISABLE_ONBOARDING = '1';
+    try {
+      expect(await handler(null)).toBe(true);
+    } finally {
+      delete process.env.SOUND_BUDDY_DISABLE_ONBOARDING;
+    }
+  });
+});
+
+describe('save-rig / delete-rig Pro gating', () => {
+  const rig = {
+    name: 'Main',
+    deviceName: 'Scarlett',
+    channelConfig: [],
+    mode: 'monitor' as const,
+    recordDir: '/tmp',
+    intervalMs: 100,
+    windowSecs: 5,
+  };
+
+  it('save-rig succeeds when entitled', async () => {
+    const result = (await handlers.get('save-rig')!(null, rig)) as { rigs: unknown[] };
+    expect(result.rigs).toHaveLength(1);
+  });
+
+  it('save-rig throws the Pro-gate error when not entitled', () => {
+    isEntitledMock.mockReturnValue(false);
+    expect(() => handlers.get('save-rig')!(null, rig)).toThrow(/Pro license/);
+  });
+
+  it('delete-rig succeeds when entitled', async () => {
+    const saved = (await handlers.get('save-rig')!(null, rig)) as { rigs: { id: string }[] };
+    const id = saved.rigs[0].id;
+    const result = (await handlers.get('delete-rig')!(null, id)) as { rigs: unknown[] };
+    expect(result.rigs).toHaveLength(0);
+  });
+
+  it('delete-rig throws the Pro-gate error when not entitled', async () => {
+    const saved = (await handlers.get('save-rig')!(null, rig)) as { rigs: { id: string }[] };
+    const id = saved.rigs[0].id;
+    isEntitledMock.mockReturnValue(false);
+    expect(() => handlers.get('delete-rig')!(null, id)).toThrow(/Pro license/);
+  });
+});
+
+describe('open-file-dialog / open-dir-dialog', () => {
+  it('open-file-dialog returns the chosen path', async () => {
+    openDialogResult = { canceled: false, filePaths: ['/x/audio.wav'] };
+    const handler = handlers.get('open-file-dialog')!;
+    expect(await handler(null)).toBe('/x/audio.wav');
+  });
+
+  it('open-file-dialog returns null when canceled', async () => {
+    openDialogResult = { canceled: true, filePaths: [] };
+    const handler = handlers.get('open-file-dialog')!;
+    expect(await handler(null)).toBeNull();
+  });
+
+  it('open-file-dialog returns null when there is no focused window', async () => {
+    focusedWindow = null;
+    const handler = handlers.get('open-file-dialog')!;
+    expect(await handler(null)).toBeNull();
+  });
+
+  it('open-dir-dialog returns the chosen path', async () => {
+    openDialogResult = { canceled: false, filePaths: ['/x/folder'] };
+    const handler = handlers.get('open-dir-dialog')!;
+    expect(await handler(null)).toBe('/x/folder');
+  });
+
+  it('open-dir-dialog returns null when canceled', async () => {
+    openDialogResult = { canceled: true, filePaths: [] };
+    const handler = handlers.get('open-dir-dialog')!;
+    expect(await handler(null)).toBeNull();
+  });
+
+  it('open-dir-dialog returns null when there is no focused window', async () => {
+    focusedWindow = null;
+    const handler = handlers.get('open-dir-dialog')!;
+    expect(await handler(null)).toBeNull();
+  });
+});
+
+describe('to-file-url', () => {
+  it('returns a file:// URL for an existing path', async () => {
+    const target = path.join(userDataDir, 'exists.wav');
+    fs.writeFileSync(target, 'x');
+    const handler = handlers.get('to-file-url')!;
+    const { pathToFileURL } = await import('url');
+    expect(await handler(null, target)).toBe(pathToFileURL(target).href);
+  });
+
+  it('returns null for a nonexistent path', async () => {
+    const handler = handlers.get('to-file-url')!;
+    expect(await handler(null, path.join(userDataDir, 'missing.wav'))).toBeNull();
   });
 });
 

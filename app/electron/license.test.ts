@@ -12,6 +12,20 @@ vi.mock('electron', () => ({
   BrowserWindow: class {},
 }));
 
+// Partial mock: writeFileSync/rmSync delegate to the real implementation by
+// default (vi.fn wrapping actual) so every existing real-fs test keeps
+// working, but individual tests can force a failure with
+// mockImplementationOnce — vi.spyOn can't do this because Node's ESM fs
+// namespace is non-configurable.
+vi.mock('fs', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('fs')>();
+  return {
+    ...actual,
+    writeFileSync: vi.fn(actual.writeFileSync),
+    rmSync: vi.fn(actual.rmSync),
+  };
+});
+
 import {
   verifyLicenseKey,
   getLicenseState,
@@ -20,6 +34,7 @@ import {
   ensureTrialStarted,
   isEntitled,
   licensePublicKey,
+  getStoredKey,
   GRACE_DAYS,
   TRIAL_DAYS,
 } from './license';
@@ -63,6 +78,11 @@ describe('licensePublicKey', () => {
     // would reject every real customer key while all other tests stay green
     // (they verify against throwaway test keypairs via the env override).
     delete process.env.SOUND_BUDDY_LICENSE_PUBKEY;
+    expect(licensePublicKey().asymmetricKeyType).toBe('ed25519');
+  });
+
+  it('parses a PEM-formatted env override, not just base64 DER', () => {
+    process.env.SOUND_BUDDY_LICENSE_PUBKEY = testPub.export({ type: 'spki', format: 'pem' }).toString();
     expect(licensePublicKey().asymmetricKeyType).toBe('ed25519');
   });
 });
@@ -181,6 +201,61 @@ describe('license store (license.json)', () => {
     expect(getLicenseState(NOW).tier).toBe('free');
     fs.writeFileSync(licenseFile(), JSON.stringify({ key: 42 }));
     expect(getLicenseState(NOW)).toEqual({ tier: 'free', status: 'none' });
+  });
+});
+
+describe('getStoredKey', () => {
+  it('returns undefined when no license.json exists', () => {
+    expect(getStoredKey()).toBeUndefined();
+  });
+
+  it('returns the stored key string when one is present', () => {
+    const key = makeKey({ kind: 'lifetime' });
+    activateLicense(key, NOW);
+    expect(getStoredKey()).toBe(key);
+  });
+});
+
+describe('write/delete failures are logged and propagate correctly', () => {
+  // mockImplementationOnce queues a single failing call; every other call in
+  // the file falls through to the real fs.writeFileSync/rmSync set as the
+  // mock's default implementation (see the top-of-file vi.mock('fs', ...)).
+
+  it('ensureTrialStarted logs and continues when the write fails', () => {
+    vi.mocked(fs.writeFileSync).mockImplementationOnce(() => {
+      throw new Error('EACCES: permission denied');
+    });
+
+    const state = ensureTrialStarted(NOW);
+    // Trial write failed, but getLicenseState still resolves (falls back to free).
+    expect(state).toEqual({ tier: 'free', status: 'none' });
+  });
+
+  it('activateLicense rethrows when the write fails', () => {
+    vi.mocked(fs.writeFileSync).mockImplementationOnce(() => {
+      throw new Error('EACCES: permission denied');
+    });
+
+    expect(() => activateLicense(makeKey({ kind: 'lifetime' }), NOW)).toThrow(/EACCES/);
+  });
+
+  it('removeLicense rethrows when the delete fails (no trial stamp)', () => {
+    activateLicense(makeKey({ kind: 'lifetime' }), NOW);
+    vi.mocked(fs.rmSync).mockImplementationOnce(() => {
+      throw new Error('EBUSY: resource busy');
+    });
+
+    expect(() => removeLicense(NOW)).toThrow(/EBUSY/);
+  });
+
+  it('removeLicense rethrows when rewriting the trial-only stamp fails', () => {
+    ensureTrialStarted(NOW);
+    activateLicense(makeKey({ kind: 'lifetime' }), NOW);
+    vi.mocked(fs.writeFileSync).mockImplementationOnce(() => {
+      throw new Error('EACCES: permission denied');
+    });
+
+    expect(() => removeLicense(NOW)).toThrow(/EACCES/);
   });
 });
 

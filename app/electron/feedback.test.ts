@@ -6,6 +6,7 @@ import {
   revealDiagnosticLog,
   redactFeedbackText,
   submitFeedback,
+  openFeedback,
 } from './feedback';
 import { getLogFilePath, logWarn } from './logger';
 
@@ -91,6 +92,38 @@ describe('revealDiagnosticLog', () => {
 
     expect(() => revealDiagnosticLog()).not.toThrow();
     expect(revealDiagnosticLog()).toEqual({ revealed: false, missing: true });
+  });
+});
+
+describe('openFeedback', () => {
+  beforeEach(async () => {
+    const { shell } = await import('electron');
+    vi.mocked(shell.openExternal).mockReset();
+    vi.mocked(logWarn).mockClear();
+    (process as unknown as { getSystemVersion: () => string }).getSystemVersion = () => '14.5.0';
+  });
+
+  afterEach(() => {
+    delete (process as unknown as { getSystemVersion?: () => string }).getSystemVersion;
+  });
+
+  it('opens the mailto URL via shell.openExternal', async () => {
+    const { shell } = await import('electron');
+    vi.mocked(shell.openExternal).mockResolvedValue(undefined);
+
+    await openFeedback();
+
+    expect(shell.openExternal).toHaveBeenCalledTimes(1);
+    const [url] = vi.mocked(shell.openExternal).mock.calls[0];
+    expect(url).toMatch(new RegExp(`^mailto:${FEEDBACK_EMAIL}\\?`));
+  });
+
+  it('logs a warning and does not throw when openExternal rejects', async () => {
+    const { shell } = await import('electron');
+    vi.mocked(shell.openExternal).mockRejectedValue(new Error('no default mail client'));
+
+    await expect(openFeedback()).resolves.toBeUndefined();
+    expect(logWarn).toHaveBeenCalledWith(expect.stringContaining('feedback mailto failed'));
   });
 });
 

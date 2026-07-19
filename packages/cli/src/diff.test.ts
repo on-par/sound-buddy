@@ -133,4 +133,26 @@ describe('runDiff', () => {
     expect(stdout).toBe('')
     expect(stderr).toBe('Error: not a valid M32R scene file')
   })
+
+  it('returns error when file1 exists but file2 does not', async () => {
+    mockExistsSync.mockImplementation((p) => p !== 'missing-b.scn')
+
+    const { stdout, stderr, exitCode } = await runDiff('scene-a.scn', 'missing-b.scn', {})
+
+    expect(exitCode).toBe(1)
+    expect(stdout).toBe('')
+    expect(stderr).toBe('Error: file not found: missing-b.scn')
+  })
+
+  it('stringifies a non-Error thrown by parseScene', async () => {
+    mockParseScene.mockImplementation(() => {
+      throw 'a plain string failure'
+    })
+
+    const { stdout, stderr, exitCode } = await runDiff('scene-a.scn', 'scene-b.scn', {})
+
+    expect(exitCode).toBe(1)
+    expect(stdout).toBe('')
+    expect(stderr).toBe('Error: a plain string failure')
+  })
 })

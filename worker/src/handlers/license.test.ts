@@ -428,4 +428,150 @@ describe("GET /api/license (#112)", () => {
     expect(body).toEqual({ error: "rate_limited" });
     for (const value of store.values()) expect(value).not.toContain("SB1.");
   });
+
+  it("Scenario: no session-level email — falls back to a customer lookup by id", async () => {
+    const { kv } = makeKv();
+    const env = makeEnv(kv);
+    const getStripe = stubStripe({
+      session: {
+        id: "cs_customer_lookup",
+        mode: "payment",
+        payment_status: "paid",
+        status: "complete",
+        created: unix("2026-07-09T11:00:00.000Z"),
+        customer: "cus_x",
+      },
+      customer: { email: "a@b.c", deleted: false },
+    });
+
+    const res = await handleGetLicense(request("cs_customer_lookup"), env, ctx, {
+      getStripe,
+      now: () => NOW,
+    });
+
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { key: string };
+    const state = await verifyKey(body.key);
+    expect(state.email).toBe("a@b.c");
+  });
+
+  it("Scenario: customer lookup returns a deleted customer — mints with no email", async () => {
+    const { kv } = makeKv();
+    const env = makeEnv(kv);
+    const getStripe = stubStripe({
+      session: {
+        id: "cs_customer_deleted",
+        mode: "payment",
+        payment_status: "paid",
+        status: "complete",
+        created: unix("2026-07-09T11:00:00.000Z"),
+        customer: "cus_gone",
+      },
+      customer: { deleted: true },
+    });
+
+    const res = await handleGetLicense(request("cs_customer_deleted"), env, ctx, {
+      getStripe,
+      now: () => NOW,
+    });
+
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { key: string };
+    const state = await verifyKey(body.key);
+    expect(state.email).toBeUndefined();
+  });
+
+  it("Scenario: expired subscription-mode session with no subscription id refuses as not_paid", async () => {
+    const { kv } = makeKv();
+    const env = makeEnv(kv);
+    const getStripe = stubStripe({
+      session: {
+        id: "cs_sub_expired_no_id",
+        mode: "subscription",
+        status: "expired",
+        created: unix("2026-07-09T11:00:00.000Z"),
+        subscription: null,
+      },
+    });
+
+    const res = await handleGetLicense(request("cs_sub_expired_no_id"), env, ctx, {
+      getStripe,
+      now: () => NOW,
+    });
+
+    expect(res.status).toBe(402);
+    const body = await res.json();
+    expect(body).toEqual({ error: "not_paid" });
+  });
+
+  it("Scenario: canceled subscription refuses as not_paid", async () => {
+    const { kv } = makeKv();
+    const env = makeEnv(kv);
+    const getStripe = stubStripe({
+      session: {
+        id: "cs_sub_canceled",
+        mode: "subscription",
+        status: "complete",
+        created: unix("2026-07-09T11:00:00.000Z"),
+        subscription: "sub_canceled",
+      },
+      subscription: { status: "canceled", items: { data: [] } },
+    });
+
+    const res = await handleGetLicense(request("cs_sub_canceled"), env, ctx, {
+      getStripe,
+      now: () => NOW,
+    });
+
+    expect(res.status).toBe(402);
+    const body = await res.json();
+    expect(body).toEqual({ error: "not_paid" });
+  });
+
+  it("Scenario: unrecognized Checkout Session mode refuses as not_paid", async () => {
+    const { kv } = makeKv();
+    const env = makeEnv(kv);
+    const getStripe = stubStripe({
+      session: {
+        id: "cs_setup",
+        mode: "setup",
+        status: "complete",
+        created: unix("2026-07-09T11:00:00.000Z"),
+      },
+    });
+
+    const res = await handleGetLicense(request("cs_setup"), env, ctx, {
+      getStripe,
+      now: () => NOW,
+    });
+
+    expect(res.status).toBe(402);
+    const body = await res.json();
+    expect(body).toEqual({ error: "not_paid" });
+  });
+
+  it("Scenario: no customer_details but a customer_email — used via the ?? fallback", async () => {
+    const { kv } = makeKv();
+    const env = makeEnv(kv);
+    const getStripe = stubStripe({
+      session: {
+        id: "cs_customer_email_fallback",
+        mode: "payment",
+        payment_status: "paid",
+        status: "complete",
+        created: unix("2026-07-09T11:00:00.000Z"),
+        customer_email: "fallback@example.test",
+      },
+    });
+
+    const res = await handleGetLicense(request("cs_customer_email_fallback"), env, ctx, {
+      getStripe,
+      now: () => NOW,
+    });
+
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { key: string };
+    const state = await verifyKey(body.key);
+    expect(state.email).toBe("fallback@example.test");
+  });
 });

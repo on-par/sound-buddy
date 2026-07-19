@@ -95,6 +95,56 @@ describe('diffScenes', () => {
     })
   })
 
+  it('detects a preamp gain change', () => {
+    const sceneA = makeScene()
+    const sceneB = makeScene({
+      channels: makeScene().channels.map((ch, i) =>
+        i === 2 ? { ...ch, preamp: { gain: 4.5 } } : ch
+      ),
+    })
+    const result = diffScenes(sceneA, sceneB)
+    const change = result.changes.find((c: SceneChange) => c.path === 'channels[2].preamp.gain')
+    expect(change).toMatchObject({
+      path: 'channels[2].preamp.gain',
+      label: 'Vox 3 — gain',
+      from: 0,
+      to: 4.5,
+    })
+  })
+
+  it('detects a DCA level change', () => {
+    const sceneA = makeScene()
+    const sceneB = makeScene({
+      dcas: makeScene().dcas.map((dca, i) => (i === 1 ? { ...dca, level: -3.2 } : dca)),
+    })
+    const result = diffScenes(sceneA, sceneB)
+    const change = result.changes.find((c: SceneChange) => c.path === 'dcas[1].level')
+    expect(change).toMatchObject({
+      path: 'dcas[1].level',
+      label: 'DCA 2 — level',
+      from: 0,
+      to: -3.2,
+    })
+  })
+
+  it('skips extra channels without throwing when channel counts differ', () => {
+    const sceneA = makeScene()
+    const sceneB = makeScene({ channels: makeScene().channels.slice(0, 3) })
+    expect(() => diffScenes(sceneA, sceneB)).not.toThrow()
+    const result = diffScenes(sceneA, sceneB)
+    expect(result.changes.some((c) => c.path.startsWith('channels[3]'))).toBe(false)
+    expect(result.changes.some((c) => c.path.startsWith('channels[7]'))).toBe(false)
+  })
+
+  it('skips extra DCAs without throwing when DCA counts differ', () => {
+    const sceneA = makeScene()
+    const sceneB = makeScene({ dcas: makeScene().dcas.slice(0, 2) })
+    expect(() => diffScenes(sceneA, sceneB)).not.toThrow()
+    const result = diffScenes(sceneA, sceneB)
+    expect(result.changes.some((c) => c.path.startsWith('dcas[2]'))).toBe(false)
+    expect(result.changes.some((c) => c.path.startsWith('dcas[5]'))).toBe(false)
+  })
+
   it('groups changes by section', () => {
     const sceneA = makeScene({
       channels: makeScene().channels.map((ch, i) =>

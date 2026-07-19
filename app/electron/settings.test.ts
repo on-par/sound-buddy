@@ -12,6 +12,20 @@ vi.mock('electron', () => ({
   BrowserWindow: class {},
 }));
 
+vi.mock('./logger', () => ({ logWarn: vi.fn() }));
+
+// Partial mock: writeFileSync delegates to the real implementation by default
+// (vi.fn wrapping actual) so every existing real-fs test keeps working, but
+// individual tests can force a failure with mockImplementationOnce — vi.spyOn
+// can't do this because Node's ESM fs namespace is non-configurable.
+vi.mock('fs', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('fs')>();
+  return {
+    ...actual,
+    writeFileSync: vi.fn(actual.writeFileSync),
+  };
+});
+
 import {
   getSettings,
   updateSettings,
@@ -20,8 +34,10 @@ import {
   upsertRig,
   deleteRig,
   setActiveRig,
+  isAiEnabled,
   type CaptureRig,
 } from './settings';
+import { logWarn } from './logger';
 
 const settingsFile = () => path.join(userDataDir, 'settings.json');
 const readFile = () => JSON.parse(fs.readFileSync(settingsFile(), 'utf8'));
@@ -48,6 +64,7 @@ beforeEach(() => {
   delete process.env.SOUND_BUDDY_IDEAL_PROFILE;
   delete process.env.SOUND_BUDDY_STORAGE_DIR;
   delete process.env.SOUND_BUDDY_REPORT_FIRST_UX;
+  vi.mocked(logWarn).mockClear();
 });
 
 afterEach(() => {
@@ -553,5 +570,65 @@ describe('robustness against a corrupted settings.json', () => {
   it('throws a clear error when saveRig is handed a null/undefined rig', () => {
     // The preload types the IPC arg as unknown, so null can reach upsertRig.
     expect(() => upsertRig(null as unknown as Omit<CaptureRig, 'id'>)).toThrow(/name is required/);
+  });
+
+  it('treats syntactically invalid JSON as defaults and logs a warning', () => {
+    fs.writeFileSync(settingsFile(), '{not json');
+
+    const s = getSettings();
+
+    expect(s.rigs).toEqual([]);
+    expect(s.aiEnabled).toBe(false);
+    expect(logWarn).toHaveBeenCalledWith(expect.stringContaining('could not read settings.json'));
+  });
+});
+
+describe('writeSettingsFile failure', () => {
+  it('rethrows when the underlying write fails', () => {
+    vi.mocked(fs.writeFileSync).mockImplementationOnce(() => {
+      throw new Error('EACCES: permission denied');
+    });
+
+    expect(() => updateSettings({ idealProfile: 'broadcast' })).toThrow(/EACCES/);
+    expect(logWarn).toHaveBeenCalledWith(expect.stringContaining('could not write settings.json'));
+  });
+});
+
+describe('SOUND_BUDDY_IDEAL_PROFILE env override', () => {
+  afterEach(() => {
+    delete process.env.SOUND_BUDDY_IDEAL_PROFILE;
+  });
+
+  it('overrides the persisted idealProfile at read time', () => {
+    updateSettings({ idealProfile: 'broadcast' });
+    process.env.SOUND_BUDDY_IDEAL_PROFILE = 'jazz';
+    expect(getSettings().idealProfile).toBe('jazz');
+  });
+});
+
+describe('isAiEnabled', () => {
+  afterEach(() => {
+    delete process.env.SOUND_BUDDY_AI_ENABLED;
+  });
+
+  it('is false by default with no file and no env', () => {
+    expect(isAiEnabled()).toBe(false);
+  });
+
+  it('an empty env value falls through to the file/default (unset behavior)', () => {
+    process.env.SOUND_BUDDY_AI_ENABLED = '';
+    updateSettings({ aiEnabled: true });
+    expect(isAiEnabled()).toBe(true);
+  });
+
+  it.each(['true', 'yes', 'on'])('env value %j is truthy', (v) => {
+    process.env.SOUND_BUDDY_AI_ENABLED = v;
+    expect(isAiEnabled()).toBe(true);
+  });
+
+  it('env value "0" is falsy even when the file has it enabled', () => {
+    updateSettings({ aiEnabled: true });
+    process.env.SOUND_BUDDY_AI_ENABLED = '0';
+    expect(isAiEnabled()).toBe(false);
   });
 });

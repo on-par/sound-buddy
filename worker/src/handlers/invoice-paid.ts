@@ -62,12 +62,15 @@ async function sha256Hex(input: string): Promise<string> {
     .join("");
 }
 
+/* c8 ignore start -- constructs a real Stripe client; exercising it would hit
+ * the network. All tests inject getStripe. */
 /** Default Stripe client for the Workers runtime (fetch-based HTTP). */
 export function defaultStripe(env: Env): Stripe {
   return new Stripe(env.STRIPE_SECRET_KEY, {
     httpClient: Stripe.createFetchHttpClient(),
   });
 }
+/* c8 ignore stop */
 
 /** Resolve an object-or-id reference to its id string. */
 export function idOf(ref: string | { id: string } | null | undefined): string | undefined {

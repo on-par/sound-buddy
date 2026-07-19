@@ -71,6 +71,15 @@ describe('parseScene', () => {
     expect(result.channels[0].name).toBe('Vox 1')
   })
 
+  it('falls back to the raw token for an unquoted channel config name', () => {
+    const content = [
+      VALID_HEADER,
+      '/ch/01/config Vox1 1 RD 1',
+    ].join('\n')
+    const result = parseScene(content)
+    expect(result.channels[0].name).toBe('Vox1')
+  })
+
   it('throws ParseError for invalid file', () => {
     expect(() => parseScene('not a scene file')).toThrow('not a valid M32R scene file')
   })

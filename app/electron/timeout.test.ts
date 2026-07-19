@@ -2,7 +2,7 @@
 // Licensed under the Sound Buddy Desktop Application License (app/LICENSE).
 
 import { describe, it, expect } from 'vitest';
-import { execFileWithTimeout, SubprocessTimeoutError } from './ipc/timeout';
+import { execFileWithTimeout, isAbortError, SubprocessTimeoutError } from './ipc/timeout';
 
 describe('execFileWithTimeout', () => {
   it('kills the child and rejects with SubprocessTimeoutError when it never returns', async () => {
@@ -31,5 +31,37 @@ describe('execFileWithTimeout', () => {
 
     await expect(run).rejects.not.toBeInstanceOf(SubprocessTimeoutError);
     await expect(run).rejects.toMatchObject({ code: 'ABORT_ERR' });
+  });
+
+  it('rejects with the original error, not SubprocessTimeoutError, for a nonexistent binary', async () => {
+    const run = execFileWithTimeout(
+      '/definitely/not/a/real/binary-xyz',
+      [],
+      { encoding: 'utf8' },
+      'missing binary test',
+      5_000,
+    );
+
+    await expect(run).rejects.not.toBeInstanceOf(SubprocessTimeoutError);
+    await expect(run).rejects.toMatchObject({ code: 'ENOENT' });
+  });
+});
+
+describe('isAbortError', () => {
+  it('is true for an error named AbortError', () => {
+    expect(isAbortError({ name: 'AbortError' })).toBe(true);
+  });
+
+  it('is true for an error with code ABORT_ERR', () => {
+    expect(isAbortError({ code: 'ABORT_ERR' })).toBe(true);
+  });
+
+  it('is false for a plain Error', () => {
+    expect(isAbortError(new Error('boom'))).toBe(false);
+  });
+
+  it('is false for null/undefined', () => {
+    expect(isAbortError(null)).toBe(false);
+    expect(isAbortError(undefined)).toBe(false);
   });
 });
