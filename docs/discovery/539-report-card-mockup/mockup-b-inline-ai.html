@@ -7,7 +7,7 @@
   header comment for the golden case / sourcing notes) — the only difference
   here is the AI Engineer treatment: a new "Ask the AI Engineer" section is
   added beneath the metric rows, collapsed by default, instead of the
-  standing right-rail `aside#ai-panel` (root-markup.html:340-351, copy
+  standing right-rail `aside#ai-panel` (root-markup.html:333-351, copy
   reused below: pg-icon/pg-title/pg-msg from `.pro-gate`, narrative shape
   from `#ai-output`).
 
@@ -148,7 +148,7 @@
   .metric-detail-row .impact { margin-left:auto; font:var(--fw-medium) 10px/1.2 var(--font-sans); letter-spacing:0.02em; text-transform:uppercase; color:var(--text-tertiary); }
 
   /* ── Inline AI Engineer section (new for this mockup) ──
-     Reuses .pro-gate copy/classes from root-markup.html:344-350, and the
+     Reuses .pro-gate copy/classes from root-markup.html:340-345, and the
      #ai-output narrative slot, folded into a card instead of a side aside. */
   details.ai-inline {
     background:var(--surface); border:1px solid var(--border-subtle);
@@ -219,7 +219,7 @@
 
     <h2 class="rc-h2">Metrics</h2>
     <div class="metric-rows">
-      <details class="metric-row tone-issue">
+      <details class="metric-row tone-issue" open>
         <summary>
           <span class="status-dot issue"></span>
           <span class="metric-name">Loudness<span class="metric-note">Average level (RMS)</span></span>

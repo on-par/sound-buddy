@@ -37,7 +37,7 @@ be built from:
 | Per-row expand → measured/target/impact | `GradeExplanation.deductions` / `.notMeasured` (`report-card.ts:34-53`, the e2-05 breakdown), same data `whyGradeHTML()` already renders (`report-card.ts:303-342`). The five rows mocked here map onto `buildMetricRows()`'s existing metric list (`report-card.ts:265-282`) — no new metric needs computing. |
 | Metric tones (good/check/issue) | `GradingPillApi` classifiers already exist and are two-way mirrors of the grade (`rcRmsStatus`, `rcPeakStatus`, `rcDrStatus`, `rcCentroidStatus` — `app/renderer/grading.js:324-349`). Every tone and target string in the mockup was read from these functions and `CONFIG`, not invented. |
 | Real sample grade | `app/renderer/grading.golden.json`, case `rms_out_of_band_drop` (grade B, score 89, one deduction: RMS -22.0 dBFS vs. -20 to -14 dBFS target). No golden case in the file carries more than one deduction, so the spec's "prefer a richer multi-deduction case if one exists" doesn't apply — this was the only real option, and it's exactly the case the spec named. |
-| Inline AI content (mockup B) | `#ai-output`'s narrative slot and `.pro-gate`'s copy/markup (`root-markup.html:340-351`) — both already exist, just currently rendered in a side `aside`, not inline. |
+| Inline AI content (mockup B) | `#ai-output`'s narrative slot and `.pro-gate`'s copy/markup (`aside#ai-panel`, `root-markup.html:333-351`; `.pro-gate` itself is `340-345`) — both already exist, just currently rendered in a side `aside`, not inline. |
 
 ### Gap found: the "standing AI rail" doesn't actually show on the Report Card today
 
