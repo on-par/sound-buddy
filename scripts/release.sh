@@ -147,4 +147,29 @@ gh release create "$TAG" "$ZIP" -R "$PUBLIC_REPO" \
   --title "Sound Buddy $TAG (macOS Apple Silicon)" \
   --notes "$NOTES"
 
+# ── Publish the machine-readable latest-release manifest (#500) ─────────────
+say "Generating latest.json manifest"
+ASSET_NAME="Sound.Buddy-$NEXT-arm64-mac.zip"
+ZIP_SIZE="$(stat -f%z "$ZIP")"
+ZIP_SHA256="$(shasum -a 256 "$ZIP" | cut -d' ' -f1)"
+PUBLISHED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+MANIFEST_PATH="$APP/release/latest.json"
+node --input-type=module -e '
+  import { writeFileSync } from "node:fs";
+  import { buildReleaseManifest } from "'"$ROOT"'/packages/shared/dist/index.js";
+  const [version, notes, releaseUrl, artifactUrl, size, sha256, publishedAt, out] = process.argv.slice(1);
+  const manifest = buildReleaseManifest({
+    version, notes, releaseUrl, artifactUrl,
+    artifactSizeBytes: Number(size), sha256, publishedAt,
+  });
+  writeFileSync(out, JSON.stringify(manifest, null, 2) + "\n");
+' "$NEXT" "$NOTES" \
+  "https://github.com/$PUBLIC_REPO/releases/tag/$TAG" \
+  "https://github.com/$PUBLIC_REPO/releases/download/$TAG/$ASSET_NAME" \
+  "$ZIP_SIZE" "$ZIP_SHA256" "$PUBLISHED_AT" "$MANIFEST_PATH" \
+  || die "manifest generation failed — see error above"
+gh release upload "$TAG" "$MANIFEST_PATH" -R "$PUBLIC_REPO" \
+  || die "manifest upload failed — run: gh release upload $TAG $MANIFEST_PATH -R $PUBLIC_REPO"
+say "Manifest → https://github.com/$PUBLIC_REPO/releases/latest/download/latest.json"
+
 say "Done → https://github.com/$PUBLIC_REPO/releases/tag/$TAG"

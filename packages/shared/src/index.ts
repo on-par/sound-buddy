@@ -10,6 +10,13 @@
 export { buildReleaseNotes, INSTALL_INTRO, UNSIGNED_STEPS } from './install-instructions.js'
 export type { BuildReleaseNotesOptions } from './install-instructions.js'
 
+export {
+  buildReleaseManifest, parseReleaseManifest, validateReleaseManifest, summarizeReleaseNotes,
+  RELEASE_MANIFEST_SCHEMA_VERSION, RELEASE_CHANNEL_LATEST, RELEASE_MANIFEST_FILENAME,
+  RELEASE_MANIFEST_URL, SHA256_HEX_PATTERN, NOTES_SUMMARY_MAX_CHARS,
+} from './release-manifest.js'
+export type { ReleaseManifest, ReleaseManifestValidation } from './release-manifest.js'
+
 export interface EQBand {
   type: string
   freq: number
