@@ -57,7 +57,7 @@
       flex-shrink:0; -webkit-app-region:drag;
     }
     #logo { display:flex; align-items:center; gap:10px; -webkit-app-region:no-drag; }
-    #logo-dot { width:11px; height:11px; border-radius:50%; background:var(--gold-500); box-shadow:0 0 12px var(--gold-glow); flex-shrink:0; }
+    #logo-mark { width:22px; height:22px; flex-shrink:0; border-radius:5px; box-shadow:0 0 14px color-mix(in srgb, var(--gold-glow) 56%, transparent); }
     #logo-text { font:var(--fw-semibold) 15px/1 var(--font-sans); letter-spacing:0.04em; text-transform:uppercase; color:var(--text-primary); }
     #logo-text b { color:var(--gold-text); font-weight:var(--fw-semibold); }
     .header-div { width:1px; height:22px; background:var(--border-default); -webkit-app-region:no-drag; }

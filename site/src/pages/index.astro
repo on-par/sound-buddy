@@ -1,5 +1,6 @@
 ---
 import Layout from '../layouts/Layout.astro';
+import BrandMark from '../components/BrandMark.astro';
 import ReportCard from '../components/ReportCard.astro';
 import BrowserLitePreview from '../components/BrowserLitePreview.astro';
 import liveCaptureScreenshot from '../assets/screenshots/live-capture.png';
@@ -127,10 +128,7 @@ const tiers = [
     <div class="container header-row">
       <a class="brand" href="/" aria-label="Sound Buddy home">
         <span class="brand-mark" aria-hidden="true">
-          <svg width="22" height="22" viewBox="0 0 22 22" fill="none">
-            <circle cx="11" cy="11" r="9.5" stroke="var(--gold-500)" stroke-width="1.5" />
-            <circle cx="11" cy="11" r="3.2" fill="var(--gold-500)" />
-          </svg>
+          <BrandMark />
         </span>
         <span class="brand-name">Sound Buddy</span>
       </a>
@@ -439,10 +437,7 @@ const tiers = [
     <div class="container footer-row">
       <div class="footer-brand">
         <span class="brand-mark" aria-hidden="true">
-          <svg width="20" height="20" viewBox="0 0 22 22" fill="none">
-            <circle cx="11" cy="11" r="9.5" stroke="var(--gold-500)" stroke-width="1.5" />
-            <circle cx="11" cy="11" r="3.2" fill="var(--gold-500)" />
-          </svg>
+          <BrandMark size={20} />
         </span>
         <span>Sound Buddy</span>
       </div>
