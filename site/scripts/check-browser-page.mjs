@@ -1,8 +1,9 @@
-// Guard the built Browser Lite page (#314, #298): it must exist, mount the
-// analyzer, mount the live decibel meter with its dBFS-not-SPL honesty
-// copy, carry local-only messaging, and never ship an inline <script>
-// (the CSP is script-src 'self' — see check-headers.mjs for the same check
-// against the whole dist/ tree).
+// Guard the built Browser Lite page (#314, #298, #299): it must exist, mount
+// the analyzer, mount the live decibel meter with its dBFS-not-SPL honesty
+// copy, mount the equal-distance EQ band plot and its rolling-average
+// honesty copy, carry local-only messaging, and never ship an inline
+// <script> (the CSP is script-src 'self' — see check-headers.mjs for the
+// same check against the whole dist/ tree).
 import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { hasInlineScript } from './lib/inline-script.mjs';
@@ -25,6 +26,18 @@ if (!html.includes('data-browser-analyzer')) {
 
 if (!html.includes('data-live-meter')) {
   problems.push('Browser page is missing the [data-live-meter] live decibel meter card.');
+}
+
+if (!html.includes('data-band-bars')) {
+  problems.push(
+    'Browser page is missing the [data-band-bars] equal-distance EQ band plot mount (#299).',
+  );
+}
+
+if (!/rolling average/i.test(html)) {
+  problems.push(
+    'Browser page must state that live analyzer values are a rolling average, not instant (#299).',
+  );
 }
 
 if (!/not (true|calibrated) SPL/i.test(html)) {
@@ -52,6 +65,6 @@ if (problems.length) {
 }
 
 console.log(
-  '✓ Browser Lite page builds, mounts the analyzer and live meter, has no inline scripts, ' +
-    'and states local-only processing and dBFS-not-SPL honesty copy.',
+  '✓ Browser Lite page builds, mounts the analyzer, live meter, and EQ band plot, has no inline ' +
+    'scripts, and states local-only processing, dBFS-not-SPL, and rolling-average honesty copy.',
 );
