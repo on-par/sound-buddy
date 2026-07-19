@@ -96,7 +96,6 @@ export default function LiveCapturePanel({
         <select
           id="measurement-source"
           defaultValue={measurementSource == null ? '' : String(measurementSource)}
-          disabled={isLive}
           onChange={(e) => onSelectMeasurementSource?.(e.target.value === '' ? null : parseInt(e.target.value, 10))}
         >
           <option value="">First track (default)</option>

@@ -117,6 +117,7 @@ const {
   liveBandCurve, veqArcSVG, liveMetersHTML,
   groupSummary, groupSummaryText, shouldOfferReportCard,
   normalizeMeasurementSource, measurementSourceAfterRemove, measurementSourceOptionsHTML,
+  measurementChannel, measurementSourceBadgeText,
   liveReportCardSource: lcLiveReportCardSource,
 } = window.liveCapturePanel;
 // Renamed to avoid colliding with the zero-arg usedChannelCount() wrapper below.
@@ -1859,6 +1860,14 @@ function renderChannelConfig() {
 function renderMeasurementSource() {
   document.getElementById('measurement-source').innerHTML =
     measurementSourceOptionsHTML(channelConfig, lcStore.getState().measurementSource);
+  renderMeasurementBadge();
+}
+
+// Label which strip the room-analysis indicators are judging (#457) — lives
+// in the header's LIVE indicator so it's visible whenever analysis runs.
+function renderMeasurementBadge() {
+  document.getElementById('measurement-badge').textContent =
+    measurementSourceBadgeText(channelConfig, lcStore.getState().measurementSource);
 }
 
 // Lock/unlock every capture-config control while a capture runs (#38). stream.py
@@ -1866,9 +1875,12 @@ function renderMeasurementSource() {
 // mid-session change, so freezing avoids corrupting the take. Idempotent, and
 // re-selects the live-rendered workspace children each call. The rig picker has
 // its own lock (setRigControlsEnabled) but is guarded here too, defensively.
+// measurement-source is excluded (#457): it's a renderer-side selection into
+// already-streaming tick data, not a stream.py argument, so switching it
+// mid-capture is safe and is the point of #457's second AC.
 function setCaptureControlsLocked(locked) {
   const set = (el) => { if (el) { el.disabled = locked; el.setAttribute('aria-disabled', String(locked)); } };
-  ['device-select', 'measurement-source', 'device-refresh-btn', 'record-folder-btn',
+  ['device-select', 'device-refresh-btn', 'record-folder-btn',
     'meter-interval', 'window-secs', 'llm-interval', 'rig-select',
     'live-ws-add', 'live-ws-new-group',
     'live-ws-arm-all', 'live-ws-disarm-all'].forEach((id) => set(document.getElementById(id)));
@@ -1949,6 +1961,7 @@ document.getElementById('device-select').addEventListener('change', () => resetC
 document.getElementById('measurement-source').addEventListener('change', (e) => {
   const value = e.target.value === '' ? null : parseInt(e.target.value, 10);
   lcStore.getState().setMeasurementSource(normalizeMeasurementSource(value, channelConfig.length));
+  renderMeasurementBadge();
 });
 
 document.getElementById('live-start-btn').addEventListener('click', async () => {
@@ -1990,6 +2003,7 @@ document.getElementById('live-start-btn').addEventListener('click', async () => 
   document.getElementById('live-stop-btn').style.display = 'inline-flex';
   document.getElementById('live-indicator').style.display = 'flex';
   document.querySelector('#live-indicator .live-txt').textContent = liveMode === 'record' ? 'REC' : 'LIVE';
+  renderMeasurementBadge();
   document.getElementById('live-status').style.display = 'block';
   document.getElementById('live-status').textContent = 'Connecting…';
   document.getElementById('spectrum-title').textContent = SPECTRUM_TITLE.live;
@@ -2039,6 +2053,7 @@ async function stopLive() {
   document.getElementById('live-status').style.display = 'none';
   document.getElementById('live-rc-cue').style.display = 'block';
   document.getElementById('window-badge').textContent = '';
+  document.getElementById('measurement-badge').textContent = '';
   // "Stopped" distinguishes the frozen EQ from a running one; guard the mode so
   // a tab switch during the stop-live await isn't clobbered.
   if (currentMode === 'live') document.getElementById('spectrum-title').textContent = SPECTRUM_TITLE.liveStopped;
@@ -2501,7 +2516,8 @@ sb.onLiveEvent((data) => {
   // Every event (fast meter ticks + slower window ticks) drives the live view,
   // coalesced to one repaint per animation frame.
   if (currentMode === 'live') scheduleLiveMeters(data);
-  if (data.channels && data.channels.length > 0) updateLiveStatsRow(data.channels[0]);
+  const statsCh = measurementChannel(data.channels, lcStore.getState().measurementSource);
+  if (statsCh) updateLiveStatsRow(statsCh);
 
   // Only the heavier window ticks (which carry masking + window #) accumulate as
   // LLM trend context and feed the report card.
@@ -2646,7 +2662,7 @@ document.getElementById('ai-analyze-btn').addEventListener('click', async () => 
 // Written into analysisStore.liveSource wherever liveWindows changes (TD-001
 // slice 4, #422) so React (ReportCardIsland) can render it.
 function liveReportCardSource() {
-  return lcLiveReportCardSource(liveWindows, lcStore.getState().measurementSource);
+  return lcLiveReportCardSource(liveWindows, lcStore.getState().measurementSource, channelConfig);
 }
 function syncLiveSource() {
   anaStore.getState().setLiveSource(liveReportCardSource());

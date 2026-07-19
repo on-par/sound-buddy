@@ -291,6 +291,22 @@ export function measurementSourceOptionsHTML(config: StripConfig[], selected: nu
   return html;
 }
 
+// Resolves which tick channel the analysis indicators read: the selected
+// strip's channel, falling back to channel 0 when the selection is null or
+// the tick doesn't carry that channel (so a stale index never sticks).
+export function measurementChannel<T>(channels: T[] | undefined, source: number | null): T | null {
+  if (!channels || channels.length === 0) return null;
+  return channels[source ?? 0] ?? channels[0] ?? null;
+}
+
+// Badge text for the live header: "Measuring: <label>" for the strip the
+// analysis is actually reading (post-fallback), so stale labels never show.
+export function measurementSourceBadgeText(config: StripConfig[], source: number | null): string {
+  if (config.length === 0) return 'Measuring: First track';
+  const idx = source != null && config[source] ? source : 0;
+  return `Measuring: ${measurementSourceOptionLabel(config[idx], idx)}`;
+}
+
 /* ── Device picker ── */
 export function deviceOptionLabel(d: LiveDevice): string {
   return `${d.index}: ${d.name} (${d.channels}ch, ${d.default_sr}Hz)`;
@@ -354,14 +370,20 @@ export function deviceListView(result: ListDevicesResult): DeviceListView {
  * level liveWindows var; liveCaptureStore writes analysisStore.liveSource
  * from this wherever liveWindows changes (bridge.ts's cross-store
  * subscription). */
-export function liveReportCardSource(liveWindows: LiveEvent[], measurementSource: number | null = null): ReportCardSource | null {
+export function liveReportCardSource(
+  liveWindows: LiveEvent[],
+  measurementSource: number | null = null,
+  config: StripConfig[] = [],
+): ReportCardSource | null {
   if (liveWindows.length === 0) return null;
   const win = liveWindows[liveWindows.length - 1];
-  const idx = measurementSource ?? 0;
-  const ch = win.channels && (win.channels[idx] ?? win.channels[0]);
+  let idx = measurementSource ?? 0;
+  if (!win.channels || !win.channels[idx]) idx = 0;
+  const ch = win.channels && win.channels[idx];
   if (!ch) return null;
+  const label = config[idx]?.label?.trim() || ch.name || 'Main';
   return {
-    filename: `Live capture — ${ch.name || 'Main'} (window #${(win as WindowData).window})`,
+    filename: `Live capture — ${label} (window #${(win as WindowData).window})`,
     rms: ch.rms,
     peak: ch.peak,
     dynamicRange: null,

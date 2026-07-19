@@ -83,7 +83,7 @@
     #live-indicator { display:none; align-items:center; gap:8px; font:var(--fw-semibold) 11px/1 var(--font-sans); letter-spacing:0.06em; color:var(--text-secondary); }
     #live-indicator .pulse { width:8px; height:8px; border-radius:50%; background:var(--issue-500); box-shadow:0 0 8px rgba(229,72,77,0.6); }
     #live-indicator .live-txt { color:var(--issue-text); }
-    #window-badge { color:var(--text-muted); font-family:var(--font-mono); }
+    #window-badge, #measurement-badge { color:var(--text-muted); font-family:var(--font-mono); }
 
     @keyframes sbpulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:.45;transform:scale(.6)} }
     .sb-pulse { animation:sbpulse var(--dur-pulse) var(--ease-in-out) infinite; }
