@@ -15,7 +15,22 @@
     return !!settings && settings.dawWorkspaceEnabled === true;
   }
 
-  var api = { isEnabled: isEnabled };
+  /** Whether the DAW shell should render in place of the meter workspace —
+   *  only on the Live tab, and only while the experiment is on. Single
+   *  predicate every render gate calls so the two rules can't drift apart
+   *  between call sites. */
+  function showShell(settings, mode) {
+    return isEnabled(settings) && mode === 'live';
+  }
+
+  /** Transport chip text for the DAW shell header, driven by the same
+   *  liveRunning/liveMode state the existing capture controls use. */
+  function transportLabel(liveRunning, liveMode) {
+    if (!liveRunning) return 'Stopped';
+    return liveMode === 'record' ? 'Recording' : 'Monitoring';
+  }
+
+  var api = { isEnabled: isEnabled, showShell: showShell, transportLabel: transportLabel };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.dawWorkspaceState = api;
 })(typeof globalThis !== 'undefined' ? globalThis : this);

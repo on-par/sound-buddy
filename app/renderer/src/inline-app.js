@@ -856,6 +856,11 @@ function liveSetupStepsView() {
 }
 
 function renderLiveMeters(win) {
+  // Keep lastLiveChannels (#39 device-name fallback for stripLabel) flowing
+  // even while the DAW shell has taken over rendering below — otherwise every
+  // lane name would be stuck unresolved for the whole capture.
+  if (win && win.channels && win.channels.length > 0) lastLiveChannels = win.channels;
+  if (window.dawWorkspaceState.showShell(setStore.getState().settings, currentMode)) { renderDawShell(); return; }
   const body = document.getElementById('spectrum-imperative');
   if (!win || !win.channels || win.channels.length === 0) {
     setSpectrumState('empty', { text: 'Waiting for live audio…' });
@@ -864,10 +869,6 @@ function renderLiveMeters(win) {
   document.getElementById('stats-row').style.display = 'flex';
   const ipWrap = document.getElementById('ideal-profile-wrap');
   if (ipWrap) ipWrap.style.display = 'none'; // no whole-file curve in live mode
-
-  // Once real channels arrive, remember them so label fallbacks (#39) can resolve
-  // the backend device name.
-  lastLiveChannels = win.channels;
 
   // Patch in place while the strip set is unchanged (bar heights keep their CSS
   // transitions); rebuild only when the shape changes. Match by .live-ch COUNT so
@@ -906,6 +907,7 @@ function renderLiveMeters(win) {
 // liveWorkspaceToolbarHTML() with renderLiveMeters so Add/remove read
 // consistently whether idle or (locked) mid-capture.
 function renderLiveWorkspace() {
+  if (window.dawWorkspaceState.showShell(setStore.getState().settings, currentMode)) { renderDawShell(); return; }
   const body = document.getElementById('spectrum-imperative');
   document.getElementById('stats-row').style.display = 'none';
   const ipWrap = document.getElementById('ideal-profile-wrap');
@@ -946,6 +948,61 @@ function renderLiveWorkspace() {
   body.innerHTML = banner + toolbar + `<div class="meter-card sb-live-meters idle">${liveMetersHTML(idleChannels, idleChannels.map((c, i) => stripViewAt(i, c)), livePanelView())}</div>`;
   body.querySelectorAll('.sb-live-meters .live-ch-name').forEach(wireLiveNameEdit);
   applyLiveCollapsed();
+}
+
+// Timeline-oriented DAW shell (#517, epic #515): swapped in for the meter
+// workspace on the Live tab when the experimental toggle (#516) is on. UI-only
+// vertical slice — no playhead/waveform math, just the shell layout. The
+// Source panel remains the sole capture control surface, so this never
+// renders #live-mode/#live-start-btn/#live-stop-btn.
+function renderDawShell() {
+  const body = document.getElementById('spectrum-imperative');
+  document.getElementById('stats-row').style.display = 'none';
+  const ipWrap = document.getElementById('ideal-profile-wrap');
+  if (ipWrap) ipWrap.style.display = 'none';
+
+  const laneNames = channelConfig.map((strip, idx) => escapeHtml(stripLabel(strip, liveChannelAt(idx), idx)));
+  // Joined with a NUL separator (can't appear in an escaped label) as a safe
+  // fingerprint for "did anything about the lanes themselves change" — a rig
+  // swap with the same channel count changes labels without changing length.
+  const laneSignature = laneNames.join('\u0000');
+  const transportChip = window.dawWorkspaceState.transportLabel(liveRunning, liveMode);
+
+  // Patch in place on the rAF meter tick (mirrors renderLiveMeters' strip-count
+  // check) so the shell doesn't rebuild its DOM every frame during a capture —
+  // only touch the transport chip, and only when its own text actually moved.
+  const existingShell = body.querySelector('.daw-shell');
+  if (existingShell && existingShell.dataset.laneSignature === laneSignature) {
+    const chip = body.querySelector('.daw-transport-state');
+    if (chip && chip.textContent !== transportChip) {
+      chip.textContent = transportChip;
+      chip.className = `daw-transport-state daw-transport-state-${transportChip.toLowerCase()}`;
+    }
+    return;
+  }
+
+  const laneHTML = channelConfig.length > 0
+    ? `<div class="daw-channel-lanes">${channelConfig.map((strip, idx) =>
+      `<div class="daw-lane daw-channel-lane" data-ch="${idx}">`
+      + `<span class="daw-lane-name">${laneNames[idx]}</span>`
+      + `<span class="daw-lane-body">Waveform coming soon</span>`
+      + `</div>`).join('')}</div>`
+    : `<div class="daw-lane daw-empty-state">Add tracks from the Source panel to see channel lanes</div>`;
+
+  body.innerHTML = `<div class="daw-shell">`
+    + `<div class="daw-transport">`
+    + `<span class="daw-transport-title">Live Workspace</span>`
+    + `<span class="daw-transport-state daw-transport-state-${transportChip.toLowerCase()}">${transportChip}</span>`
+    + `<span class="daw-transport-hint">Start and stop capture from the Source panel</span>`
+    + `</div>`
+    + `<div class="daw-ruler"></div>`
+    + `<div class="daw-lane daw-mix-lane">`
+    + `<span class="daw-lane-name">Overall mix</span>`
+    + `<span class="daw-lane-body">Mix waveform coming soon</span>`
+    + `</div>`
+    + laneHTML
+    + `</div>`;
+  body.querySelector('.daw-shell').dataset.laneSignature = laneSignature;
 }
 
 // Thin adapters bridging this module's mutable state (channelConfig,
@@ -3731,7 +3788,16 @@ window.inlineDialogs = { openPhaseDoublingDialog, openFeedbackRingout };
   // Experimental DAW workspace gate (#516): body class is the entry point
   // #517's workspace shell mounts against. Absent by default — the existing
   // Live Capture UI is untouched until the user opts in.
-  setStore.subscribe((s) => document.body.classList.toggle('daw-workspace', window.dawWorkspaceState.isEnabled(s.settings)));
+  let dawWorkspaceWasEnabled = false;
+  setStore.subscribe((s) => {
+    const nowEnabled = window.dawWorkspaceState.isEnabled(s.settings);
+    document.body.classList.toggle('daw-workspace', nowEnabled);
+    // Re-render the Live pane immediately on an actual flip so the shell swaps
+    // in/out without requiring a tab switch — but not on every settings save,
+    // or an unrelated save with the toggle unchanged would clobber the pane.
+    if (nowEnabled !== dawWorkspaceWasEnabled && currentMode === 'live') syncSpectrumForMode('live');
+    dawWorkspaceWasEnabled = nowEnabled;
+  });
 })();
 
 /* ══ Init ══ */
