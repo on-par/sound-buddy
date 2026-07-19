@@ -67,4 +67,42 @@ describe('ideal curve helpers', () => {
     expect(list.map((p) => p.id)).toEqual(['a', 'b']);
     expect(curves.deleteProfile(list, 'custom:a').map((p) => p.id)).toEqual(['b']);
   });
+
+  it('bandOffsetsFromProfile clamps a real profile to one offset per band center', () => {
+    const profile = curves.profileFromBands([-4, -2, 0, 2, 4, 6, 8], freqs, { label: 'Bands' });
+    const offsets = curves.bandOffsetsFromProfile(profile, freqs);
+    expect(offsets).toHaveLength(7);
+    for (const o of offsets) {
+      expect(o).toBeGreaterThanOrEqual(-18);
+      expect(o).toBeLessThanOrEqual(18);
+    }
+  });
+
+  it('bandOffsetsFromProfile returns all-zero offsets for a null/mismatched profile', () => {
+    expect(curves.bandOffsetsFromProfile(null as unknown as CustomProfile, freqs)).toEqual([
+      0, 0, 0, 0, 0, 0, 0,
+    ]);
+    const mismatched = { ...curves.profileFromBands([0], freqs, { label: 'X' }), dbOffsets: [1, 2] };
+    expect(curves.bandOffsetsFromProfile(mismatched, freqs)).toEqual([0, 0, 0, 0, 0, 0, 0]);
+  });
+
+  it('upsertProfile(profiles, null) returns the normalized existing list', () => {
+    const withEmptyFreqs = { ...curves.profileFromBands([0], freqs, { id: 'a', label: 'A' }), freqs: [], dbOffsets: [] };
+    const result = curves.upsertProfile([withEmptyFreqs], null as unknown as CustomProfile);
+    expect(result.map((p) => p.id)).toEqual(['a']);
+  });
+
+  it('normalizeProfiles drops a row with valid arrays but an empty/missing label', () => {
+    const dbOffsets = new Array(freqs.length).fill(0);
+    const noLabel = { dbOffsets };
+    const blankLabel = { label: '   ', dbOffsets };
+    const result = curves.normalizeProfiles([noLabel, blankLabel], freqs);
+    expect(result).toEqual([]);
+  });
+
+  it('profileFromMeasuredCurve with all-non-finite db values falls back to zero offsets', () => {
+    const db = freqs.map(() => NaN);
+    const profile = curves.profileFromMeasuredCurve({ freqs, db }, freqs, { label: 'Broken' })!;
+    expect(profile.dbOffsets).toEqual(new Array(freqs.length).fill(0));
+  });
 });

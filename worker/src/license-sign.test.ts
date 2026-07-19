@@ -14,6 +14,8 @@ import {
   importVerifyKey,
   mintLicenseKey,
   verifyLicenseKey,
+  verifySignedPayload,
+  sha256Hex,
   LICENSE_ISSUER,
   type LicensePayload,
 } from "./license-sign";
@@ -301,5 +303,129 @@ describe("worker license signing — SB1 format & interop (#109)", () => {
     await expect(
       mintLicenseKey(signingKey, { kind: "lifetime", kid: "k1", expiresAt: future }),
     ).rejects.toThrow(/lifetime/);
+  });
+});
+
+/** base64url-encode raw bytes (test-side mirror of toBase64Url in license-sign.ts). */
+function bytesToB64url(bytes: Uint8Array): string {
+  return Buffer.from(bytes)
+    .toString("base64")
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/, "");
+}
+
+/** Sign arbitrary (possibly non-JSON) bytes and assemble a structurally-valid SB1 key. */
+async function signRawBytes(signingKey: CryptoKey, bytes: Uint8Array): Promise<string> {
+  const signature = await crypto.subtle.sign("Ed25519", signingKey, bytes);
+  return `SB1.${bytesToB64url(bytes)}.${bytesToB64url(new Uint8Array(signature))}`;
+}
+
+describe("verifySignedPayload — refresh-path verify without expiry gating (#113)", () => {
+  it("happy path: returns the full payload incl. sub, ignoring expiry", async () => {
+    const { pkcs8Pem, spkiPem } = throwawayKeypair();
+    const signingKey = await importSigningKey(pkcs8Pem);
+    const verifyKey = await importVerifyKey(spkiPem);
+
+    const expiresAt = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString();
+    const key = await mintLicenseKey(signingKey, {
+      kind: "subscription",
+      kid: "k1",
+      email: "engineer@example.test",
+      expiresAt,
+      sub: "sub_ABC123",
+    });
+
+    const payload = await verifySignedPayload(key, verifyKey);
+    expect(payload).not.toBeNull();
+    expect(payload?.sub).toBe("sub_ABC123");
+    expect(payload?.email).toBe("engineer@example.test");
+    expect(payload?.kind).toBe("subscription");
+    expect(payload?.expiresAt).toBe(expiresAt);
+  });
+
+  it("structurally invalid key returns null without touching crypto", async () => {
+    const { spkiPem } = throwawayKeypair();
+    const verifyKey = await importVerifyKey(spkiPem);
+
+    expect(await verifySignedPayload("not-a-key", verifyKey)).toBeNull();
+  });
+
+  it("wrong-signer key returns null", async () => {
+    const { pkcs8Pem } = throwawayKeypair();
+    const signingKey = await importSigningKey(pkcs8Pem);
+    const key = await mintLicenseKey(signingKey, { kind: "lifetime", kid: "k1" });
+
+    const { spkiPem: strangerSpki } = throwawayKeypair();
+    const strangerVerify = await importVerifyKey(strangerSpki);
+
+    expect(await verifySignedPayload(key, strangerVerify)).toBeNull();
+  });
+
+  it("malformed-but-decodable key whose decoded body is not valid JSON payload returns null", async () => {
+    const { pkcs8Pem, spkiPem } = throwawayKeypair();
+    const signingKey = await importSigningKey(pkcs8Pem);
+    const verifyKey = await importVerifyKey(spkiPem);
+
+    // Structurally valid SB1 key (real signature over real bytes), but the
+    // signed bytes are not valid JSON — parsePayload fails after the
+    // signature check already passed.
+    const key = await signRawBytes(signingKey, new TextEncoder().encode("not-json{"));
+
+    expect(await verifySignedPayload(key, verifyKey)).toBeNull();
+  });
+
+  it("crypto.subtle.verify throwing (wrong-algorithm key) is caught and returns null", async () => {
+    const { pkcs8Pem } = throwawayKeypair();
+    const signingKey = await importSigningKey(pkcs8Pem);
+    const key = await mintLicenseKey(signingKey, { kind: "lifetime", kid: "k1" });
+
+    const hmacKey = await crypto.subtle.generateKey(
+      { name: "HMAC", hash: "SHA-256" },
+      false,
+      ["sign", "verify"],
+    );
+
+    expect(await verifySignedPayload(key, hmacKey as unknown as CryptoKey)).toBeNull();
+  });
+});
+
+describe("sha256Hex", () => {
+  it("matches the well-known digest of 'abc'", async () => {
+    expect(await sha256Hex("abc")).toBe(
+      "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad",
+    );
+  });
+});
+
+describe("verifyLicenseKey — additional catch/branch coverage", () => {
+  it("crypto.subtle.verify throwing (wrong-algorithm key) resolves to invalid", async () => {
+    const { pkcs8Pem } = throwawayKeypair();
+    const signingKey = await importSigningKey(pkcs8Pem);
+    const key = await mintLicenseKey(signingKey, { kind: "lifetime", kid: "k1" });
+
+    const hmacKey = await crypto.subtle.generateKey(
+      { name: "HMAC", hash: "SHA-256" },
+      false,
+      ["sign", "verify"],
+    );
+
+    const state = await verifyLicenseKey(key, hmacKey as unknown as CryptoKey, now);
+    expect(state.status).toBe("invalid");
+    expect(state.tier).toBe("free");
+  });
+
+  it("a validly-signed but non-JSON payload resolves to invalid after signature passes", async () => {
+    const { pkcs8Pem, spkiPem } = throwawayKeypair();
+    const signingKey = await importSigningKey(pkcs8Pem);
+    const verifyKey = await importVerifyKey(spkiPem);
+
+    // Sign a JSON array — parsePayload rejects non-object JSON, so this
+    // reaches isPolicyError(payload) with a real, verified signature.
+    const key = await signRawBytes(signingKey, new TextEncoder().encode(JSON.stringify(["nope"])));
+
+    const state = await verifyLicenseKey(key, verifyKey, now);
+    expect(state.status).toBe("invalid");
+    expect(state.tier).toBe("free");
   });
 });

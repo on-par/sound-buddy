@@ -35,7 +35,8 @@ export const REPO_ROOT = findRepoRoot(__dirname);
 
 // The Python scripts ship as extraResources (Contents/Resources/scripts) in a
 // packaged .app; in dev they live in the monorepo.
-export const SCRIPTS_DIR = app.isPackaged
+// c8 ignore: packaged-app path resolution; vitest always runs unpackaged.
+export const SCRIPTS_DIR = app.isPackaged /* c8 ignore next */
   ? path.join(process.resourcesPath, 'scripts')
   : path.join(REPO_ROOT, 'packages', 'audio-engine', 'scripts');
 export const SPECTRUM_SCRIPT = path.join(SCRIPTS_DIR, 'spectrum.py');
@@ -47,19 +48,26 @@ export const PLAYBACK_SCRIPT = path.join(SCRIPTS_DIR, 'playback.py');
 // sox/ffprobe processes can read it — it ships as extraResources
 // (Contents/Resources/assets) in a packaged .app; in dev it lives under app/assets.
 export const APP_ROOT = path.resolve(__dirname, '..', '..', '..');
-export const DEMO_AUDIO = app.isPackaged
+// c8 ignore: packaged-app path resolution; vitest always runs unpackaged.
+export const DEMO_AUDIO = app.isPackaged /* c8 ignore next */
   ? path.join(process.resourcesPath, 'assets', 'demo.wav')
   : path.join(APP_ROOT, 'assets', 'demo.wav');
 
 // Native helpers (sox, ffprobe) are bundled at Contents/Resources/bin in a
 // packaged .app (see build/afterPack.js). In dev they come from PATH. Resolving
 // to the bundled copy means the app never depends on a Homebrew install.
-const BUNDLED_BIN_DIR = app.isPackaged ? path.join(process.resourcesPath, 'bin') : null;
+// c8 ignore: packaged-app path resolution; vitest always runs unpackaged.
+const BUNDLED_BIN_DIR = app.isPackaged /* c8 ignore next */
+  ? path.join(process.resourcesPath, 'bin')
+  : null;
 export function toolBin(name: string): string {
+  // c8 ignore start -- BUNDLED_BIN_DIR is always null under vitest (packaged-app
+  // path resolution); this branch only runs inside a packaged .app.
   if (BUNDLED_BIN_DIR) {
     const bundled = path.join(BUNDLED_BIN_DIR, name);
     if (fs.existsSync(bundled)) return bundled;
   }
+  // c8 ignore stop
   return name; // fall back to PATH (dev / unbundled)
 }
 
@@ -69,9 +77,12 @@ export function toolBin(name: string): string {
 // process.env — these audio-analysis subprocesses have nothing to do with
 // the AI narrative feature and must never inherit its secrets.
 export function childEnv(): NodeJS.ProcessEnv {
+  // c8 ignore: packaged-app path resolution; vitest always runs unpackaged
+  // (BUNDLED_BIN_DIR is always null), so this branch is unreachable in tests.
+  /* c8 ignore start */
   const env: NodeJS.ProcessEnv = BUNDLED_BIN_DIR
     ? { ...process.env, PATH: `${BUNDLED_BIN_DIR}${path.delimiter}${process.env.PATH ?? ''}` }
-    : { ...process.env };
+    : /* c8 ignore stop */ { ...process.env };
   for (const key of LLM_SECRET_ENV_VARS) delete env[key];
   return env;
 }
@@ -86,8 +97,12 @@ export function pythonBin(): string {
   if (cachedPython) return cachedPython;
   const candidates = [
     process.env.SOUND_BUDDY_PYTHON,
-    // Bundled relocatable interpreter (Contents/Resources/python) — packaged apps.
-    app.isPackaged ? path.join(process.resourcesPath, 'python', 'bin', 'python3') : undefined,
+    // Bundled relocatable interpreter (Contents/Resources/python) — packaged
+    // apps. c8 ignore: packaged-app path resolution; vitest always runs unpackaged.
+    /* c8 ignore start */
+    app.isPackaged
+      ? path.join(process.resourcesPath, 'python', 'bin', 'python3')
+      : /* c8 ignore stop */ undefined,
     path.join(app.getPath('userData'), 'venv', 'bin', 'python3'),
     path.join(REPO_ROOT, '.venv', 'bin', 'python3'),
   ].filter((p): p is string => Boolean(p));

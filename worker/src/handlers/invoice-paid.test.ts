@@ -316,6 +316,94 @@ describe("invoice.paid handler (#110)", () => {
     expect(store.size).toBe(0);
   });
 
+  it("emailFromInvoice: an embedded expanded customer object supplies the email", async () => {
+    const { kv, store } = makeKv();
+    const env = makeEnv(kv);
+    const periodEnd = unix("2027-04-01T00:00:00.000Z");
+
+    const invoice: Record<string, unknown> = {
+      id: "in_embedded",
+      object: "invoice",
+      customer: { id: "cus_embedded", email: "embedded@example.test" },
+      customer_email: null,
+      parent: { subscription_details: { subscription: "sub_embedded" } },
+      lines: {
+        data: [{ subscription: "sub_embedded", period: { end: periodEnd } }],
+      },
+    };
+    const event = {
+      id: "evt_embedded",
+      object: "event",
+      type: "invoice.paid",
+      data: { object: invoice },
+    } as unknown as Stripe.Event;
+
+    const getStripe = vi.fn(() => {
+      throw new Error("should not build a Stripe client — email came from the payload");
+    });
+
+    await handleInvoicePaid(event, env, ctx, {
+      getStripe: getStripe as unknown as InvoicePaidDeps["getStripe"],
+    });
+
+    expect(getStripe).not.toHaveBeenCalled();
+    const record = readRecord(store, "sub_embedded");
+    expect(record.email).toBe("embedded@example.test");
+    expectNoSignedKeyInKv(store);
+  });
+
+  it("expands a deleted customer to no email", async () => {
+    const { kv, store } = makeKv();
+    const env = makeEnv(kv);
+    const getStripe: InvoicePaidDeps["getStripe"] = () =>
+      ({
+        customers: { retrieve: async () => ({ deleted: true }) },
+      }) as unknown as Stripe;
+
+    await handleInvoicePaid(
+      invoicePaidEvent("evt_deleted_customer", {
+        subscription: "sub_deleted_customer",
+        customer: "cus_deleted",
+        customerEmail: null,
+        lines: [
+          { subscription: "sub_deleted_customer", periodEnd: unix("2027-05-01T00:00:00.000Z") },
+        ],
+      }),
+      env,
+      ctx,
+      { getStripe },
+    );
+
+    const record = readRecord(store, "sub_deleted_customer");
+    expect(record.email).toBeUndefined();
+    expectNoSignedKeyInKv(store);
+  });
+
+  it("expands a customer with a null email to no email", async () => {
+    const { kv, store } = makeKv();
+    const env = makeEnv(kv);
+    const getStripe: InvoicePaidDeps["getStripe"] = () =>
+      ({
+        customers: { retrieve: async () => ({ email: null, deleted: false }) },
+      }) as unknown as Stripe;
+
+    await handleInvoicePaid(
+      invoicePaidEvent("evt_null_email", {
+        subscription: "sub_null_email",
+        customer: "cus_null_email",
+        customerEmail: null,
+        lines: [{ subscription: "sub_null_email", periodEnd: unix("2027-05-01T00:00:00.000Z") }],
+      }),
+      env,
+      ctx,
+      { getStripe },
+    );
+
+    const record = readRecord(store, "sub_null_email");
+    expect(record.email).toBeUndefined();
+    expectNoSignedKeyInKv(store);
+  });
+
   it("throws when no period end can be resolved (so Stripe retries)", async () => {
     const { kv, store } = makeKv();
     const env = makeEnv(kv);

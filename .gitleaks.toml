@@ -27,9 +27,10 @@ regexes = [
 ]
 
 [[allowlists]]
-description = "Fake minted license-key literal used in a worker delivery test scenario (worker/test/delivery.test.ts). Real SB1. license keys are base64url payload+signature triples; this is a plain English placeholder, not key material."
+description = "Fake minted license-key literals used in worker delivery test scenarios (worker/src/delivery.test.ts). Real SB1. license keys are base64url payload+signature triples; these are plain English placeholders, not key material."
 regexes = [
   '''SB1\.throw\.key''',
+  '''SB1\.no\.expiry''',
 ]
 
 [[allowlists]]

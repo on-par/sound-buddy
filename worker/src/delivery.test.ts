@@ -110,6 +110,22 @@ describe("license email delivery (#114)", () => {
     expect(lifetimeBody.text).not.toContain("valid through");
   });
 
+  it("Scenario: subscription with no expiresAt omits 'valid through' from the copy", async () => {
+    const env = makeEnv();
+    const fetchMock = vi.fn(async () => ({ ok: true, status: 200 }));
+
+    await sendLicenseEmail(
+      env,
+      { to: "buyer@example.test", key: "SB1.no.expiry", kind: "subscription" },
+      { fetch: fetchMock as unknown as typeof fetch },
+    );
+
+    const body = requestBody(fetchMock);
+    expect(body.text).toContain("renews automatically");
+    expect(body.text).not.toContain("valid through");
+    expect(body.html).not.toContain("valid through");
+  });
+
   it("Scenario: Resend error is non-fatal", async () => {
     const env = makeEnv();
     const failingStatus = vi.fn(async () => ({ ok: false, status: 500 }));
@@ -163,6 +179,7 @@ describe("license email delivery (#114)", () => {
 });
 
 describe("dunning email delivery (#118)", () => {
+
   it("Scenario: sends via Resend with the right shape", async () => {
     const env = makeEnv();
     const fetchMock = vi.fn(async () => ({ ok: true, status: 200 }));
@@ -198,5 +215,49 @@ describe("dunning email delivery (#118)", () => {
     ).resolves.toEqual({ ok: false });
 
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("Scenario: missing RESEND_API_KEY is skipped", async () => {
+    const fetchMock = vi.fn(async () => ({ ok: true, status: 200 }));
+
+    await expect(
+      sendDunningEmail(
+        makeEnv({ RESEND_API_KEY: "" }),
+        { to: "a@b.c" },
+        { fetch: fetchMock as unknown as typeof fetch },
+      ),
+    ).resolves.toEqual({ ok: false });
+
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("Scenario: Resend error status is non-fatal", async () => {
+    const failingStatus = vi.fn(async () => ({ ok: false, status: 500 }));
+    const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    await expect(
+      sendDunningEmail(
+        makeEnv(),
+        { to: "a@b.c" },
+        { fetch: failingStatus as unknown as typeof fetch },
+      ),
+    ).resolves.toEqual({ ok: false });
+    expect(consoleErrorSpy).toHaveBeenCalledWith("dunning email send failed", { status: 500 });
+
+    consoleErrorSpy.mockRestore();
+  });
+
+  it("Scenario: a thrown fetch is non-fatal", async () => {
+    const throwingFetch = vi.fn(async () => {
+      throw new Error("network down");
+    });
+
+    await expect(
+      sendDunningEmail(
+        makeEnv(),
+        { to: "a@b.c" },
+        { fetch: throwingFetch as unknown as typeof fetch },
+      ),
+    ).resolves.toEqual({ ok: false });
   });
 });

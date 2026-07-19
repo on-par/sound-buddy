@@ -128,10 +128,15 @@ export function verifyLicenseKey(key: string, now: Date = new Date()): LicenseSt
     if (!cryptoVerify(null, decoded.payloadBytes, licensePublicKey(), decoded.sigBytes)) {
       return invalid('Invalid signature');
     }
+    /* c8 ignore start -- Node's crypto.verify(null, ...) returns false rather
+     * than throwing for every wrong-key-type / malformed-signature input we
+     * can construct (verified empirically); this catch guards against a
+     * future Node/OpenSSL version that throws instead. */
   } catch (err) {
     logWarn(`license signature check failed: ${String(err)}`);
     return invalid('Invalid signature');
   }
+  /* c8 ignore stop */
 
   const payload = policy.parsePayload(decoded.payloadBytes);
   if (policy.isPolicyError(payload)) return invalid(payload.error);

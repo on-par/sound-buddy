@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi, afterEach } from 'vitest';
 
 // upgrade-momentum.js is a plain classic script (window.upgradeMomentum in the
 // browser, module.exports under Node) so its pure copy/tone/dismissal logic is
@@ -82,6 +82,21 @@ describe('isDismissed', () => {
     expect(isDismissed(NOW.getTime() - 6 * DAY_MS, NOW)).toBe(true);
     // Stored as a string (localStorage round-trip) still works.
     expect(isDismissed(String(NOW.getTime() - 1 * DAY_MS), NOW)).toBe(true);
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('defaults `now` to the current time when omitted', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(NOW);
+    try {
+      expect(isDismissed(NOW.getTime())).toBe(true);
+      expect(isDismissed(NOW.getTime() - (DISMISS_DAYS + 1) * DAY_MS)).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('re-appears once the window has passed', () => {

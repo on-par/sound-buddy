@@ -277,6 +277,112 @@ describe("checkout completed handler (#111)", () => {
     expectNoSignedKeyInKv(store);
   });
 
+  it("Scenario: only customer_email set (no customer_details) — used via the ?? fallback", async () => {
+    const { kv, store } = makeKv();
+    const env = makeEnv(kv);
+
+    const session: Record<string, unknown> = {
+      id: "cs_customer_email_only",
+      object: "checkout.session",
+      mode: "payment",
+      payment_status: "paid",
+      customer_email: "fallback@example.test",
+      customer: null,
+    };
+    const event = {
+      id: "evt_customer_email_only",
+      object: "event",
+      type: "checkout.session.completed",
+      data: { object: session },
+    } as unknown as Stripe.Event;
+
+    await handleCheckoutCompleted(event, env, ctx);
+
+    const record = readSessionRecord(store, "cs_customer_email_only");
+    expect(record.email).toBe("fallback@example.test");
+  });
+
+  it("Scenario: no customer_details/customer_email/customer at all — mints with no email, no Stripe call", async () => {
+    const { kv, store } = makeKv();
+    const env = makeEnv(kv);
+    const getStripe = vi.fn(() => {
+      throw new Error("should not build a Stripe client");
+    });
+
+    const session: Record<string, unknown> = {
+      id: "cs_no_email_at_all",
+      object: "checkout.session",
+      mode: "payment",
+      payment_status: "paid",
+      customer_details: null,
+      customer_email: null,
+      customer: null,
+    };
+    const event = {
+      id: "evt_no_email_at_all",
+      object: "event",
+      type: "checkout.session.completed",
+      data: { object: session },
+    } as unknown as Stripe.Event;
+
+    await handleCheckoutCompleted(event, env, ctx, {
+      getStripe: getStripe as unknown as CheckoutCompletedDeps["getStripe"],
+    });
+
+    expect(getStripe).not.toHaveBeenCalled();
+    const record = readSessionRecord(store, "cs_no_email_at_all");
+    expect(record.email).toBeUndefined();
+    expectNoSignedKeyInKv(store);
+  });
+
+  it("Scenario: customer lookup returns a deleted customer — mints with no email", async () => {
+    const { kv, store } = makeKv();
+    const env = makeEnv(kv);
+    const getStripe: CheckoutCompletedDeps["getStripe"] = () =>
+      ({
+        customers: { retrieve: async () => ({ deleted: true }) },
+      }) as unknown as Stripe;
+
+    await handleCheckoutCompleted(
+      checkoutEvent("evt_expand_deleted", {
+        email: null,
+        customer: "cus_deleted",
+        sessionId: "cs_expand_deleted",
+      }),
+      env,
+      ctx,
+      { getStripe },
+    );
+
+    const record = readSessionRecord(store, "cs_expand_deleted");
+    expect(record.email).toBeUndefined();
+    expectNoSignedKeyInKv(store);
+  });
+
+  it("Scenario: customer lookup returns a null email — mints with no email", async () => {
+    const { kv, store } = makeKv();
+    const env = makeEnv(kv);
+    const getStripe: CheckoutCompletedDeps["getStripe"] = () =>
+      ({
+        customers: { retrieve: async () => ({ email: null, deleted: false }) },
+      }) as unknown as Stripe;
+
+    await handleCheckoutCompleted(
+      checkoutEvent("evt_expand_null_email", {
+        email: null,
+        customer: "cus_null_email",
+        sessionId: "cs_expand_null_email",
+      }),
+      env,
+      ctx,
+      { getStripe },
+    );
+
+    const record = readSessionRecord(store, "cs_expand_null_email");
+    expect(record.email).toBeUndefined();
+    expectNoSignedKeyInKv(store);
+  });
+
   it("does not look up the customer when the payload already carries email", async () => {
     const { kv } = makeKv();
     const env = makeEnv(kv);

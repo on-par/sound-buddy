@@ -188,6 +188,34 @@ describe("invoice.payment_failed handler (#118)", () => {
     expect(sendEmail).toHaveBeenCalledWith(env, { to: "expanded@example.test" });
   });
 
+  it("expands to a deleted customer — dunning email sent with no recipient", async () => {
+    const { kv } = makeKv();
+    const env = makeEnv(kv);
+    const customersRetrieve = vi.fn(async () => ({ deleted: true }));
+    const getStripe = vi.fn(() =>
+      ({
+        customers: { retrieve: customersRetrieve },
+      }) as unknown as Stripe,
+    );
+    const sendEmail = vi.fn(async () => ({ ok: true }));
+
+    await handleInvoicePaymentFailed(
+      invoicePaymentFailedEvent("evt_expand_deleted", {
+        customer: "cus_deleted",
+        customerEmail: null,
+      }),
+      env,
+      ctx,
+      {
+        getStripe: getStripe as unknown as InvoicePaymentFailedDeps["getStripe"],
+        sendEmail,
+      },
+    );
+
+    expect(customersRetrieve).toHaveBeenCalledWith("cus_deleted");
+    expect(sendEmail).toHaveBeenCalledWith(env, { to: undefined });
+  });
+
   it("does not expand the customer when the payload carries email", async () => {
     const { kv } = makeKv();
     const env = makeEnv(kv);

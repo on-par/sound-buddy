@@ -54,12 +54,15 @@ export interface RefreshDeps {
   now?: () => Date;
 }
 
+/* c8 ignore start -- constructs a real Stripe client; exercising it would hit
+ * the network. All tests inject getStripe. */
 /** Default Stripe client for the Workers runtime (fetch-based HTTP). */
 function defaultStripe(env: Env): Stripe {
   return new Stripe(env.STRIPE_SECRET_KEY, {
     httpClient: Stripe.createFetchHttpClient(),
   });
 }
+/* c8 ignore stop */
 
 /**
  * Furthest-out `current_period_end` (unix seconds) across a subscription's

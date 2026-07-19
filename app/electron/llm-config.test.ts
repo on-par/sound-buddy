@@ -22,6 +22,18 @@ vi.mock('electron', () => ({
   },
 }));
 
+// Partial mock: writeFileSync delegates to the real implementation by default
+// (vi.fn wrapping actual) so every existing real-fs test keeps working, but
+// individual tests can force a failure with mockImplementationOnce — vi.spyOn
+// can't do this because Node's ESM fs namespace is non-configurable.
+vi.mock('fs', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('fs')>();
+  return {
+    ...actual,
+    writeFileSync: vi.fn(actual.writeFileSync),
+  };
+});
+
 import {
   getLlmConfig,
   getPublicLlmConfig,
@@ -196,5 +208,24 @@ describe('robustness', () => {
   it('returns undefined (not a throw) when the ciphertext cannot be decrypted', () => {
     writeFile({ apiKeyEnc: Buffer.from('garbage').toString('base64') });
     expect(getApiKey()).toBeUndefined();
+  });
+
+  it('a stored key with no apiKeyProvider reports apiKeyProvider as "" and getApiKey ignores forProvider scoping', () => {
+    writeFile({ apiKeyEnc: Buffer.from('enc:sk-legacy').toString('base64') });
+
+    expect(getPublicLlmConfig().apiKeyProvider).toBe('');
+    // file.apiKeyProvider is falsy, so the scoping check never rejects — the
+    // key is returned regardless of which provider is asked for.
+    expect(getApiKey('openai')).toBe('sk-legacy');
+  });
+});
+
+describe('writeLlmFile failure', () => {
+  it('saveLlmConfig rethrows when the underlying write fails', () => {
+    vi.mocked(fs.writeFileSync).mockImplementationOnce(() => {
+      throw new Error('EACCES: permission denied');
+    });
+
+    expect(() => saveLlmConfig({ provider: 'ollama' })).toThrow(/EACCES/);
   });
 });

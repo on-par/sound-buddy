@@ -50,4 +50,33 @@ describe("analyzeAudio", () => {
       expect.objectContaining({ scriptPath: DEFAULT_SPECTRUM_SCRIPT }),
     );
   });
+
+  it("lets a caller-supplied spectrum.scriptPath override the default", async () => {
+    await analyzeAudio("/tmp/take.wav", { spectrum: { scriptPath: "/custom.py" } });
+    expect(mocks.runSpectrumMock).toHaveBeenCalledWith(
+      "/tmp/take.wav",
+      expect.objectContaining({ scriptPath: "/custom.py" }),
+    );
+  });
+
+  it("passes through noSpectrum and custom sox/ffprobe options", async () => {
+    const callsBefore = mocks.runSpectrumMock.mock.calls.length;
+    const analysis = await analyzeAudio("/tmp/take.wav", {
+      noSpectrum: true,
+      sox: { bin: "/opt/custom/sox" },
+      ffprobe: { bin: "/opt/custom/ffprobe" },
+    });
+
+    // noSpectrum skips runSpectrum entirely — call count is unchanged.
+    expect(mocks.runSpectrumMock.mock.calls.length).toBe(callsBefore);
+    expect(analysis.spectrum.bands.subBass).toBe(-120);
+    expect(mocks.runSoxMock).toHaveBeenCalledWith(
+      "/tmp/take.wav",
+      expect.objectContaining({ bin: "/opt/custom/sox" }),
+    );
+    expect(mocks.runFfprobeMock).toHaveBeenCalledWith(
+      "/tmp/take.wav",
+      expect.objectContaining({ bin: "/opt/custom/ffprobe" }),
+    );
+  });
 });

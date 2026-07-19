@@ -134,6 +134,27 @@ async function verifyKey(key: string) {
   return verifyLicenseKey(key, verifyKeyHandle, NOW);
 }
 
+/** base64url-encode raw bytes (mirrors toBase64Url in license-sign.ts). */
+function bytesToB64url(bytes: Uint8Array): string {
+  return Buffer.from(bytes)
+    .toString("base64")
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/, "");
+}
+
+/** Sign an arbitrary payload object directly, bypassing mintLicenseKey's
+ * expiresAt-required-for-subscription validation — used to construct a
+ * subscription key that has no `expiresAt` at all. */
+async function signPayloadDirectly(
+  signingKey: CryptoKey,
+  payload: Record<string, unknown>,
+): Promise<string> {
+  const payloadBytes = new TextEncoder().encode(JSON.stringify(payload));
+  const signature = await crypto.subtle.sign("Ed25519", signingKey, payloadBytes);
+  return `SB1.${bytesToB64url(payloadBytes)}.${bytesToB64url(new Uint8Array(signature))}`;
+}
+
 describe("POST /api/license/refresh (#113)", () => {
   it("Scenario: valid latest key, active subscription → 200 with a new signed key, hash rotated", async () => {
     const { kv, store } = makeKv();
@@ -456,6 +477,54 @@ describe("POST /api/license/refresh (#113)", () => {
     expect(res.status).toBe(403);
     const body = await res.json();
     expect(body).toEqual({ error: "no-active-subscription" });
+  });
+
+  it("Scenario: presented key with no expiresAt skips the staleness check and refreshes", async () => {
+    const { kv, store } = makeKv();
+    const env = makeEnv(kv);
+    const signingKey = await importSigningKey(PKCS8_PEM);
+    const presentedKey = await signPayloadDirectly(signingKey, {
+      kind: "subscription",
+      sub: "sub_no_expiry",
+      kid: "test-kid",
+      jti: "jti-1",
+      iss: "soundbuddy.online",
+    });
+    await seedRecord(store, "sub_no_expiry", presentedKey);
+    const periodEnd = unix("2027-01-01T00:00:00.000Z");
+    const getStripe = stubStripe({
+      subscription: { status: "active", items: { data: [{ current_period_end: periodEnd }] } },
+    });
+
+    const res = await handleRefreshLicense(request({ key: presentedKey }), env, ctx, {
+      getStripe,
+      now: () => NOW,
+    });
+
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { key: string };
+    expect(body.key.startsWith("SB1.")).toBe(true);
+  });
+
+  it("Scenario: presented key with no email falls back to the KV record's email", async () => {
+    const { kv, store } = makeKv();
+    const env = makeEnv(kv);
+    const presentedKey = await mintPresentedKey({ sub: "sub_record_email" });
+    await seedRecord(store, "sub_record_email", presentedKey, { email: "from-record@example.test" });
+    const periodEnd = unix("2027-01-01T00:00:00.000Z");
+    const getStripe = stubStripe({
+      subscription: { status: "active", items: { data: [{ current_period_end: periodEnd }] } },
+    });
+
+    const res = await handleRefreshLicense(request({ key: presentedKey }), env, ctx, {
+      getStripe,
+      now: () => NOW,
+    });
+
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { key: string };
+    const state = await verifyKey(body.key);
+    expect(state.email).toBe("from-record@example.test");
   });
 
   it("Leak guard: refusal bodies never contain the presented key, email, or raw Stripe error text", async () => {
