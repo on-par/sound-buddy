@@ -35,6 +35,7 @@ export interface UpdateSettingsPatch {
   usageSignalEnabled?: boolean;
   channelLabels?: Record<string, Record<string, string>>;
   channelGroups?: Record<string, PersistedChannelGroup[]>;
+  inputInstrumentProfiles?: Record<string, Record<string, string>>;
   crashReportingEnabled?: boolean;
   dawWorkspaceEnabled?: boolean;
   liveAdjustmentsEnabled?: boolean;
@@ -243,6 +244,13 @@ export interface AppSettings {
    * pure persisted data, like `rigs`.
    */
   channelGroups: Record<string, PersistedChannelGroup[]>;
+  /**
+   * Persisted per-device instrument-profile overrides for live inputs (#524):
+   * deviceName ('' = Default Device) → strip token ("0" mono, "2-3" stereo) →
+   * profile id. Mirrors `channelLabels` (#482) exactly. No env layer — pure
+   * persisted data, like `rigs`.
+   */
+  inputInstrumentProfiles: Record<string, Record<string, string>>;
   /**
    * Opt-in crash reporting (#473). Default false (off). Unlike
    * usageSignalEnabled, this flag *does* gate real behavior — it controls

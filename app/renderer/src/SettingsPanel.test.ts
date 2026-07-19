@@ -264,7 +264,7 @@ describe('save', () => {
       saveLlmConfig: async () => ({ ok: true, config }),
       updateSettings: async (patch) => {
         mock.calls.push({ method: 'updateSettings', args: [patch] });
-        return { aiEnabled: true, idealProfile: '', customIdealProfiles: [], storageDir: '', rigs: [], activeRigId: null, usageSignalEnabled: false, channelLabels: {}, channelGroups: {}, crashReportingEnabled: false, dawWorkspaceEnabled: false, liveAdjustmentsEnabled: false };
+        return { aiEnabled: true, idealProfile: '', customIdealProfiles: [], storageDir: '', rigs: [], activeRigId: null, usageSignalEnabled: false, channelLabels: {}, channelGroups: {}, inputInstrumentProfiles: {}, crashReportingEnabled: false, dawWorkspaceEnabled: false, liveAdjustmentsEnabled: false };
       },
     });
     const store = createSettingsStore(() => mock.api);

@@ -41,6 +41,7 @@ const DEFAULT_APP_SETTINGS: AppSettings = {
   usageSignalEnabled: false,
   channelLabels: {},
   channelGroups: {},
+  inputInstrumentProfiles: {},
   crashReportingEnabled: false,
   dawWorkspaceEnabled: false,
   liveAdjustmentsEnabled: false,

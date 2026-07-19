@@ -90,6 +90,10 @@ describe('getSettings defaults', () => {
   it('defaults channelGroups to {} when unset', () => {
     expect(getSettings().channelGroups).toEqual({});
   });
+
+  it('defaults inputInstrumentProfiles to {} when unset', () => {
+    expect(getSettings().inputInstrumentProfiles).toEqual({});
+  });
 });
 
 describe('channelGroups (#483 — persisted per-device named channel groups)', () => {
@@ -144,6 +148,32 @@ describe('channelLabels (#482 — persisted per-device channel labels)', () => {
     updateSettings({ idealProfile: 'broadcast' });
     expect(readFile().channelLabels).toEqual(map);
     expect(getSettings().channelLabels).toEqual(map);
+  });
+});
+
+describe('inputInstrumentProfiles (#524 — persisted per-device instrument-profile overrides)', () => {
+  it('round-trips a nested device/token profile-id map through an update', () => {
+    const map = { 'Scarlett 18i20': { '0': 'kick', '2-3': 'vocal' }, '': { '1': 'bass' } };
+    const after = updateSettings({ inputInstrumentProfiles: map });
+    expect(after.inputInstrumentProfiles).toEqual(map);
+    expect(readFile().inputInstrumentProfiles).toEqual(map);
+    expect(getSettings().inputInstrumentProfiles).toEqual(map);
+  });
+
+  it('treats a corrupted inputInstrumentProfiles value (string/array) as {}', () => {
+    writeFile({ inputInstrumentProfiles: 'nope' });
+    expect(getSettings().inputInstrumentProfiles).toEqual({});
+
+    writeFile({ inputInstrumentProfiles: ['nope'] });
+    expect(getSettings().inputInstrumentProfiles).toEqual({});
+  });
+
+  it('unrelated updates preserve stored inputInstrumentProfiles', () => {
+    const map = { 'Scarlett 18i20': { '0': 'kick' } };
+    updateSettings({ inputInstrumentProfiles: map });
+    updateSettings({ idealProfile: 'broadcast' });
+    expect(readFile().inputInstrumentProfiles).toEqual(map);
+    expect(getSettings().inputInstrumentProfiles).toEqual(map);
   });
 });
 

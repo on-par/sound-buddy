@@ -1068,6 +1068,8 @@ function renderDawShell() {
 // live-capture-panel.ts functions take as parameters (#307).
 function stripViewAt(idx, ch) {
   const groupIndex = window.groupState.groupOf(channelGroups, idx);
+  const token = channelConfig[idx] ? window.armState.stripToken(channelConfig[idx]) : String(idx);
+  const savedProfiles = savedInstrumentProfilesForDevice();
   return {
     strip: channelConfig[idx] || null,
     displayName: stripLabel(channelConfig[idx], ch, idx),
@@ -1075,10 +1077,18 @@ function stripViewAt(idx, ch) {
     armed: window.armState.isArmed(channelConfig[idx]),
     groupIndex: groupIndex,
     groupCollapsed: window.groupState.isGroupCollapsed(channelGroups, groupIndex),
+    instrumentProfileId: window.instrumentProfiles.effectiveProfileId(savedProfiles, token, channelConfig[idx] && channelConfig[idx].label),
+    instrumentAuto: !(savedProfiles[token] && window.instrumentProfiles.isKnownProfileId(savedProfiles[token])),
   };
 }
 function livePanelView() {
-  return { deviceChannels: selectedDeviceChannels(), liveRunning, liveMode, groups: channelGroups };
+  return {
+    deviceChannels: selectedDeviceChannels(),
+    liveRunning,
+    liveMode,
+    groups: channelGroups,
+    instrumentProfiles: window.instrumentProfiles.PROFILES.map((p) => ({ id: p.id, label: p.label })),
+  };
 }
 
 // Collapse controls (#40). One delegated listener on #spectrum-body survives the
@@ -1319,6 +1329,18 @@ document.getElementById('spectrum-body').addEventListener('change', (e) => {
     const idx = parseInt(grpSel.dataset.idx, 10);
     channelGroups = window.groupState.assign(channelGroups, idx, parseInt(e.target.value, 10));
     persistChannelGroups();
+    renderChannelConfig();
+    return;
+  }
+  // Per-input instrument-profile override (#524): write through recordOverride
+  // with its full-map replace discipline, then re-render the workspace.
+  const profileSel = e.target.closest('.live-ch-profile');
+  if (profileSel) {
+    const idx = parseInt(profileSel.dataset.idx, 10);
+    if (!channelConfig[idx]) return;
+    const all = (setStore.getState().settings || {}).inputInstrumentProfiles || {};
+    const next = window.instrumentProfiles.recordOverride(all, selectedDeviceName(), window.armState.stripToken(channelConfig[idx]), e.target.value);
+    setStore.getState().updateSettings({ inputInstrumentProfiles: next });
     renderChannelConfig();
   }
 });
@@ -1873,6 +1895,12 @@ function savedLabelsForDevice() {
   return ((setStore.getState().settings || {}).channelLabels || {})[selectedDeviceName()] || {};
 }
 
+// The persisted instrument-profile overrides (#524) saved for the currently
+// selected device, mirroring savedLabelsForDevice above (#482).
+function savedInstrumentProfilesForDevice() {
+  return ((setStore.getState().settings || {}).inputInstrumentProfiles || {})[selectedDeviceName()] || {};
+}
+
 // Overlay saved labels onto channelConfig for the current device (#482) —
 // never clobbers a label already present (e.g. loaded from a rig).
 function applySavedLabels() {
@@ -2010,7 +2038,7 @@ function setCaptureControlsLocked(locked) {
   // mid-capture (stream.py can't honor a mid-session channel change).
   // veqChannelHTML already stamps `disabled` at build time; this re-asserts it
   // after any re-render triggered while running.
-  document.querySelectorAll('#spectrum-body .live-ch-kind, #spectrum-body .live-ch-src, #spectrum-body .live-ch-group').forEach(set);
+  document.querySelectorAll('#spectrum-body .live-ch-kind, #spectrum-body .live-ch-src, #spectrum-body .live-ch-group, #spectrum-body .live-ch-profile').forEach(set);
   // Group header rename/delete controls (#190), frozen mid-capture with the rest.
   document.querySelectorAll('#spectrum-body .live-group-rename, #spectrum-body .live-group-del').forEach(set);
   // Drag-reorder handles (#483): reordering is disabled mid-capture like every

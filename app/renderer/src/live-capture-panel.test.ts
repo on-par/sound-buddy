@@ -48,6 +48,8 @@ function stripView(overrides: Partial<StripView> = {}): StripView {
     armed: false,
     groupIndex: -1,
     groupCollapsed: false,
+    instrumentProfileId: 'generic',
+    instrumentAuto: true,
     ...overrides,
   };
 }
@@ -292,6 +294,38 @@ describe('veqChannelHTML', () => {
   it('disables the strip drag handle when liveRunning', () => {
     const html = veqChannelHTML(LIVE_CHANNELS[0], 0, stripView({ groupIndex: 0 }), panelView({ liveRunning: true }));
     expect(html).toContain('live-ch-drag" draggable="true" aria-label="Reorder track within group — drag, or press Arrow Up/Down" title="Drag to reorder track" disabled');
+  });
+
+  it('renders an instrument-profile select with an Auto option selected when instrumentAuto is true', () => {
+    const profiles = [{ id: 'bass', label: 'Bass' }, { id: 'vocal', label: 'Vocal' }];
+    const html = veqChannelHTML(LIVE_CHANNELS[0], 0, stripView({ instrumentProfileId: 'bass', instrumentAuto: true }), panelView({ instrumentProfiles: profiles }));
+    expect(html).toContain('class="live-ch-profile"');
+    expect(html).toContain('data-idx="0"');
+    expect(html).toContain('<option value="auto" selected>Auto — Bass</option>');
+    expect(html).toContain('<option value="bass">Bass</option>');
+    expect(html).toContain('<option value="vocal">Vocal</option>');
+  });
+
+  it('selects the override option instead of Auto when instrumentAuto is false', () => {
+    const profiles = [{ id: 'bass', label: 'Bass' }, { id: 'vocal', label: 'Vocal' }];
+    const html = veqChannelHTML(LIVE_CHANNELS[0], 0, stripView({ instrumentProfileId: 'vocal', instrumentAuto: false }), panelView({ instrumentProfiles: profiles }));
+    expect(html).toContain('<option value="auto">Auto — Vocal</option>');
+    expect(html).toContain('<option value="vocal" selected>Vocal</option>');
+    expect(html).toContain('<option value="bass">Bass</option>');
+  });
+
+  it('disables the instrument-profile select when liveRunning', () => {
+    const profiles = [{ id: 'bass', label: 'Bass' }];
+    const html = veqChannelHTML(LIVE_CHANNELS[0], 0, stripView(), panelView({ instrumentProfiles: profiles, liveRunning: true }));
+    expect(html).toContain('live-ch-profile" data-idx="0" aria-label="Instrument profile" title="Instrument profile" disabled');
+  });
+
+  it('omits the instrument-profile select when panel.instrumentProfiles is absent or empty', () => {
+    const absent = veqChannelHTML(LIVE_CHANNELS[0], 0, stripView(), panelView());
+    expect(absent).not.toContain('live-ch-profile');
+
+    const empty = veqChannelHTML(LIVE_CHANNELS[0], 0, stripView(), panelView({ instrumentProfiles: [] }));
+    expect(empty).not.toContain('live-ch-profile');
   });
 });
 
@@ -735,7 +769,7 @@ describe('liveReportCardSource', () => {
 
 describe('patchLiveChannelPlan', () => {
   function sv(overrides: Partial<StripView> = {}): StripView {
-    return { strip: { kind: 'mono', a: 0, b: 1 }, displayName: 'Ch 1', collapsed: false, armed: false, groupIndex: -1, groupCollapsed: false, ...overrides };
+    return { strip: { kind: 'mono', a: 0, b: 1 }, displayName: 'Ch 1', collapsed: false, armed: false, groupIndex: -1, groupCollapsed: false, instrumentProfileId: 'generic', instrumentAuto: true, ...overrides };
   }
 
   it('carries collapsed/displayName/meta through from the strip view and channel', () => {

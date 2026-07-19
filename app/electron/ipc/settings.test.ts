@@ -45,7 +45,13 @@ vi.mock('../telemetry', () => ({
 // is covered by app-version.test.ts.
 vi.mock('../app-version', () => ({ resolveAppVersion: (appRoot: string) => `stub-version-for:${appRoot}` }));
 
-import { registerSettingsHandlers, safeExportFilename, sanitizeChannelLabels, sanitizeChannelGroups } from './settings';
+import {
+  registerSettingsHandlers,
+  safeExportFilename,
+  sanitizeChannelLabels,
+  sanitizeChannelGroups,
+  sanitizeInputInstrumentProfiles,
+} from './settings';
 import { APP_ROOT } from './shared';
 
 const settingsFile = () => path.join(userDataDir, 'settings.json');
@@ -263,6 +269,73 @@ describe('update-settings IPC whitelist — channelLabels (#482)', () => {
     await handler!(null, { channelLabels: { Scarlett: { '0': 'Kick' } } });
     await handler!(null, { channelLabels: 'nope' });
     expect(readFile().channelLabels).toEqual({ Scarlett: { '0': 'Kick' } });
+  });
+});
+
+describe('sanitizeInputInstrumentProfiles (#524)', () => {
+  it('returns null for a non-object value (patch key ignored)', () => {
+    expect(sanitizeInputInstrumentProfiles('nope')).toBeNull();
+    expect(sanitizeInputInstrumentProfiles(123)).toBeNull();
+    expect(sanitizeInputInstrumentProfiles(null)).toBeNull();
+    expect(sanitizeInputInstrumentProfiles(undefined)).toBeNull();
+    expect(sanitizeInputInstrumentProfiles([{ '0': 'kick' }])).toBeNull();
+  });
+
+  it('drops a device entry whose value is not a plain object', () => {
+    expect(sanitizeInputInstrumentProfiles({ 'Scarlett 18i20': 'nope', Other: { '0': 'kick' } })).toEqual({
+      Other: { '0': 'kick' },
+    });
+  });
+
+  it('drops a non-string profile-id value', () => {
+    expect(sanitizeInputInstrumentProfiles({ Scarlett: { '0': 'kick', '1': 42 } })).toEqual({
+      Scarlett: { '0': 'kick' },
+    });
+  });
+
+  it('trims profile ids and caps them at 64 chars', () => {
+    const long = 'x'.repeat(80);
+    const result = sanitizeInputInstrumentProfiles({ Scarlett: { '0': '  kick  ', '1': long } });
+    expect(result).toEqual({ Scarlett: { '0': 'kick', '1': 'x'.repeat(64) } });
+  });
+
+  it('drops a profile id that is empty after trim, and prunes an empty device map', () => {
+    expect(sanitizeInputInstrumentProfiles({ Scarlett: { '0': '   ' } })).toEqual({});
+    expect(sanitizeInputInstrumentProfiles({ Scarlett: { '0': '   ', '1': 'kick' } })).toEqual({
+      Scarlett: { '1': 'kick' },
+    });
+  });
+
+  it('drops an empty token key', () => {
+    expect(sanitizeInputInstrumentProfiles({ Scarlett: { '': 'kick', '0': 'vocal' } })).toEqual({
+      Scarlett: { '0': 'vocal' },
+    });
+  });
+});
+
+describe('update-settings IPC whitelist — inputInstrumentProfiles (#524)', () => {
+  it('accepts a valid nested map and persists it', async () => {
+    const handler = handlers.get('update-settings');
+    const map = { Scarlett: { '0': 'kick', '2-3': 'vocal' } };
+    const result = (await handler!(null, { inputInstrumentProfiles: map })) as {
+      inputInstrumentProfiles: Record<string, Record<string, string>>;
+    };
+    expect(result.inputInstrumentProfiles).toEqual(map);
+    expect(readFile().inputInstrumentProfiles).toEqual(map);
+  });
+
+  it('replaces the whole stored map rather than merging', async () => {
+    const handler = handlers.get('update-settings');
+    await handler!(null, { inputInstrumentProfiles: { Scarlett: { '0': 'kick' } } });
+    await handler!(null, { inputInstrumentProfiles: { Scarlett: { '1': 'vocal' } } });
+    expect(readFile().inputInstrumentProfiles).toEqual({ Scarlett: { '1': 'vocal' } });
+  });
+
+  it('ignores a non-object inputInstrumentProfiles patch value', async () => {
+    const handler = handlers.get('update-settings');
+    await handler!(null, { inputInstrumentProfiles: { Scarlett: { '0': 'kick' } } });
+    await handler!(null, { inputInstrumentProfiles: 'nope' });
+    expect(readFile().inputInstrumentProfiles).toEqual({ Scarlett: { '0': 'kick' } });
   });
 });
 

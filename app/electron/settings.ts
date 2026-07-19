@@ -41,6 +41,7 @@ const DEFAULTS: AppSettings = {
   usageSignalEnabled: false,
   channelLabels: {},
   channelGroups: {},
+  inputInstrumentProfiles: {},
   crashReportingEnabled: false,
   dawWorkspaceEnabled: false,
   liveAdjustmentsEnabled: false,
@@ -102,6 +103,18 @@ function fileChannelGroups(file: Partial<AppSettings>): Record<string, Persisted
 }
 
 /**
+ * The inputInstrumentProfiles map from a raw file view, defaulting to a
+ * fresh empty object when the key is absent or corrupted (hand-edited to a
+ * non-object or an array) — exact mirror of fileChannelLabels (#524). Always
+ * returns a new object for the default case so callers can never mutate a
+ * shared default.
+ */
+function fileInputInstrumentProfiles(file: Partial<AppSettings>): Record<string, Record<string, string>> {
+  const v = file.inputInstrumentProfiles;
+  return v && typeof v === 'object' && !Array.isArray(v) ? v : {};
+}
+
+/**
  * Persist the file layer, preserving any fields not being changed — including
  * unknown top-level keys a future version may add. Callers pass the mutated file
  * view — never getSettings()'s env-resolved view — so transient env overrides
@@ -120,6 +133,7 @@ function writeSettingsFile(file: Partial<AppSettings>): void {
     usageSignalEnabled: file.usageSignalEnabled ?? DEFAULTS.usageSignalEnabled,
     channelLabels: fileChannelLabels(file),
     channelGroups: fileChannelGroups(file),
+    inputInstrumentProfiles: fileInputInstrumentProfiles(file),
     crashReportingEnabled: file.crashReportingEnabled ?? DEFAULTS.crashReportingEnabled,
     dawWorkspaceEnabled: file.dawWorkspaceEnabled ?? DEFAULTS.dawWorkspaceEnabled,
     liveAdjustmentsEnabled: file.liveAdjustmentsEnabled ?? DEFAULTS.liveAdjustmentsEnabled,
@@ -161,6 +175,9 @@ export function getSettings(): AppSettings {
     channelLabels: fileChannelLabels(file),
     // Channel groups (#483) have no env layer — pure persisted data, like rigs.
     channelGroups: fileChannelGroups(file),
+    // Instrument-profile overrides (#524) have no env layer — pure persisted
+    // data, like channelLabels.
+    inputInstrumentProfiles: fileInputInstrumentProfiles(file),
     // No env layer — opt-in crash reporting (#473) must be an explicit user
     // action, same rationale as usageSignalEnabled.
     crashReportingEnabled: file.crashReportingEnabled ?? DEFAULTS.crashReportingEnabled,

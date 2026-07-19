@@ -77,6 +77,8 @@ describe('LiveCapturePanel', () => {
       armed: !!channelsConfig[idx] && channelsConfig[idx].armed !== false,
       groupIndex: -1,
       groupCollapsed: false,
+      instrumentProfileId: 'generic',
+      instrumentAuto: true,
     }));
     const expectedMeters = liveMetersHTML(FIXTURE_CHANNELS, stripViews, panel);
 
