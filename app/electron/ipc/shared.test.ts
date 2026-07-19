@@ -19,6 +19,7 @@ import {
   platformDefaultStorageDir,
   defaultRecordDir,
 } from './shared';
+import { readNdjsonLines as engineReadNdjsonLines } from '@sound-buddy/audio-engine/dist/ndjson.js';
 
 describe('findRepoRoot', () => {
   it('walks up from a nested source directory to find the repo containing packages/audio-engine', () => {
@@ -160,5 +161,41 @@ describe('readNdjsonLines', () => {
     const { em, seen } = collect();
     em.emit('data', Buffer.from('{"x":1}'));
     expect(seen).toEqual([]);
+  });
+});
+
+describe('readNdjsonLines drift guard (#279)', () => {
+  // The app's copy of readNdjsonLines cannot yet delegate to the engine at
+  // runtime (the packaged .app ships zero node_modules — see
+  // app/electron/ipc/engine-loader.ts). Until it does, this proves the two
+  // hand-maintained copies still behave identically over one fixture chunk
+  // sequence covering every documented behavior.
+  const CHUNKS = [
+    '{"a":1}\n{"b":2}\n',
+    '{"win',
+    'dow":2}\n',
+    '\n   \n',
+    'garbage\n',
+    '{"x":1}',
+  ];
+  const EXPECTED = [{ a: 1 }, { b: 2 }, { window: 2 }];
+
+  function run(fn: typeof readNdjsonLines) {
+    const seen: unknown[] = [];
+    const em = new EventEmitter();
+    fn(em, (d) => seen.push(d));
+    for (const chunk of CHUNKS) {
+      em.emit('data', Buffer.from(chunk));
+    }
+    return seen;
+  }
+
+  it('produces identical results to the audio-engine copy', () => {
+    const appResult = run(readNdjsonLines);
+    const engineResult = run(engineReadNdjsonLines);
+
+    expect(appResult).toEqual(EXPECTED);
+    expect(engineResult).toEqual(EXPECTED);
+    expect(appResult).toEqual(engineResult);
   });
 });

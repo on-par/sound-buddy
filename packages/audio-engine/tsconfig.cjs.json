@@ -17,6 +17,7 @@
     "src/analyze/extract.ts",
     "src/analyze/orchestrate.ts",
     "src/analyze/timeout.ts",
-    "src/types.ts"
+    "src/types.ts",
+    "src/ndjson.ts"
   ]
 }
