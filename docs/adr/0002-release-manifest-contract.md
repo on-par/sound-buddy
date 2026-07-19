@@ -49,6 +49,7 @@ https://github.com/on-par/sound-buddy-releases/releases/latest/download/latest.j
 | `artifactSizeBytes`    | number | positive integer                         |
 | `sha256`               | string | lowercase hex, 64 chars                  |
 | `publishedAt`          | string | ISO 8601 UTC timestamp                   |
+| `signed`               | boolean (optional) | marks artifact signing state; false = unsigned Gatekeeper-bypass build, true = Developer ID signed/notarized. Always emitted by scripts/release.sh from electron-builder.yml's identity. |
 
 ### Evolution rules
 
@@ -70,6 +71,19 @@ https://github.com/on-par/sound-buddy-releases/releases/latest/download/latest.j
   dependency-free TypeScript in `packages/shared`, matching the existing
   `install-instructions.ts` precedent, so the shape is enforced by tests
   rather than convention.
+
+### Publishing guarantees (#501)
+
+`scripts/release.sh --dry-run` prints the manifest it would publish (measured
+fields like `artifactSizeBytes`/`sha256`/`publishedAt` shown as a placeholder
+since the build hasn't run yet) plus the stable download URL, so a preflight
+run answers "what would ship" without mutating anything. After a real
+publish, the uploaded zip's digest is verified against the manifest's
+`sha256` before `latest.json` is uploaded — a corrupted upload never gets a
+manifest pointing at it. Any publish failure (release creation, checksum
+verification, manifest generation, or manifest upload) reports explicitly
+that app/site update discovery (`latest.json`) was not updated, so an
+operator never mistakes a partial failure for a clean release.
 
 ## Non-goals
 

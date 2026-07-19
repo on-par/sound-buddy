@@ -1,10 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import {
   buildReleaseManifest,
+  buildReleaseManifestPreview,
   parseReleaseManifest,
   summarizeReleaseNotes,
   validateReleaseManifest,
+  verifyUploadedArtifactChecksum,
   NOTES_SUMMARY_MAX_CHARS,
+  DRY_RUN_MEASURED_PLACEHOLDER,
+  RELEASE_MANIFEST_SCHEMA_VERSION,
 } from './release-manifest.js';
 
 const FIXTURE: Record<string, unknown> = {
@@ -212,6 +216,138 @@ describe('buildReleaseManifest', () => {
     expect(() => buildReleaseManifest({ ...input, sha256: 'bad' })).toThrow(
       'cannot build release manifest',
     );
+  });
+});
+
+describe('signed field', () => {
+  it('validates ok with signed: false and includes it in the manifest', () => {
+    const result = validateReleaseManifest({ ...FIXTURE, signed: false });
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error('expected ok');
+    expect(result.manifest.signed).toBe(false);
+    expect(Object.keys(result.manifest).sort()).toEqual([...REQUIRED_FIELDS, 'signed'].sort());
+  });
+
+  it('validates ok with signed: true', () => {
+    const result = validateReleaseManifest({ ...FIXTURE, signed: true });
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error('expected ok');
+    expect(result.manifest.signed).toBe(true);
+  });
+
+  it('stays valid without signed, and omits it from the manifest (backwards compat)', () => {
+    const result = validateReleaseManifest(FIXTURE);
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error('expected ok');
+    expect(result.manifest).not.toHaveProperty('signed');
+    expect(Object.keys(result.manifest).sort()).toEqual([...REQUIRED_FIELDS].sort());
+  });
+
+  it.each(['yes', 1, null])('rejects a non-boolean signed (%s)', (badSigned) => {
+    const result = validateReleaseManifest({ ...FIXTURE, signed: badSigned });
+    expect(result.ok).toBe(false);
+    if (result.ok) throw new Error('expected failure');
+    expect(result.errors.some((e) => e.includes('signed') && e.includes('boolean'))).toBe(true);
+  });
+
+  it('buildReleaseManifest includes signed when provided, omits it otherwise', () => {
+    const input = {
+      version: '0.4.2',
+      notes: '## Highlights\n- Adds virtual soundcheck playback.',
+      releaseUrl: 'https://github.com/on-par/sound-buddy-releases/releases/tag/v0.4.2',
+      artifactUrl:
+        'https://github.com/on-par/sound-buddy-releases/releases/download/v0.4.2/Sound.Buddy-0.4.2-arm64-mac.zip',
+      artifactSizeBytes: 123456789,
+      sha256: 'a'.repeat(64),
+      publishedAt: '2026-07-18T12:00:00Z',
+    };
+    const signedManifest = buildReleaseManifest({ ...input, signed: false });
+    expect(signedManifest.signed).toBe(false);
+
+    const unsignedManifest = buildReleaseManifest(input);
+    expect(unsignedManifest).not.toHaveProperty('signed');
+  });
+});
+
+describe('buildReleaseManifestPreview', () => {
+  const previewInput = {
+    version: '0.4.2',
+    notes: '## Highlights\n- Adds virtual soundcheck playback.',
+    releaseUrl: 'https://github.com/on-par/sound-buddy-releases/releases/tag/v0.4.2',
+    artifactUrl:
+      'https://github.com/on-par/sound-buddy-releases/releases/download/v0.4.2/Sound.Buddy-0.4.2-arm64-mac.zip',
+    signed: false,
+  };
+
+  it('builds a preview with measured-field placeholders', () => {
+    const preview = buildReleaseManifestPreview(previewInput);
+    expect(preview.schemaVersion).toBe(RELEASE_MANIFEST_SCHEMA_VERSION);
+    expect(preview.channel).toBe('latest');
+    expect(preview.notesSummary).toBe('Highlights Adds virtual soundcheck playback.');
+    expect(preview.artifactSizeBytes).toBe(DRY_RUN_MEASURED_PLACEHOLDER);
+    expect(preview.sha256).toBe(DRY_RUN_MEASURED_PLACEHOLDER);
+    expect(preview.publishedAt).toBe(DRY_RUN_MEASURED_PLACEHOLDER);
+    expect(preview.signed).toBe(false);
+  });
+
+  it('passes through an explicit channel', () => {
+    const preview = buildReleaseManifestPreview({ ...previewInput, channel: 'beta' });
+    expect(preview.channel).toBe('beta');
+  });
+
+  it('throws on a bad semver version', () => {
+    expect(() => buildReleaseManifestPreview({ ...previewInput, version: 'v0.4.2' })).toThrow(
+      'MAJOR.MINOR.PATCH',
+    );
+  });
+
+  it.each(['artifactUrl', 'releaseUrl'])('throws on a non-https %s', (field) => {
+    expect(() =>
+      buildReleaseManifestPreview({ ...previewInput, [field]: 'http://example.com/x' }),
+    ).toThrow(new RegExp(field));
+  });
+});
+
+describe('verifyUploadedArtifactChecksum', () => {
+  const sha = 'b'.repeat(64);
+
+  it('ok when a sha256:-prefixed digest matches', () => {
+    const result = verifyUploadedArtifactChecksum(sha, `sha256:${sha}`);
+    expect(result).toEqual({ ok: true });
+  });
+
+  it('ok when a bare-hex digest matches', () => {
+    const result = verifyUploadedArtifactChecksum(sha, sha);
+    expect(result).toEqual({ ok: true });
+  });
+
+  it('fails on mismatch and names both hex values plus the re-run hint', () => {
+    const other = 'c'.repeat(64);
+    const result = verifyUploadedArtifactChecksum(sha, other);
+    expect(result.ok).toBe(false);
+    if (result.ok) throw new Error('expected failure');
+    expect(result.error).toContain(sha);
+    expect(result.error).toContain(other);
+    expect(result.error).toContain('re-run scripts/release.sh');
+  });
+
+  it('fails on an empty digest with a shasum hint', () => {
+    const result = verifyUploadedArtifactChecksum(sha, '');
+    expect(result.ok).toBe(false);
+    if (result.ok) throw new Error('expected failure');
+    expect(result.error).toContain('shasum -a 256');
+  });
+
+  it('fails on a malformed digest', () => {
+    const result = verifyUploadedArtifactChecksum(sha, 'sha256:zzz');
+    expect(result.ok).toBe(false);
+  });
+
+  it('fails on an invalid expectedSha256 with a regenerate hint', () => {
+    const result = verifyUploadedArtifactChecksum('a'.repeat(63), sha);
+    expect(result.ok).toBe(false);
+    if (result.ok) throw new Error('expected failure');
+    expect(result.error).toContain('regenerate');
   });
 });
 
