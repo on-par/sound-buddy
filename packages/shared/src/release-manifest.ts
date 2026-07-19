@@ -22,6 +22,7 @@ export interface ReleaseManifest {
   artifactSizeBytes: number;
   sha256: string;
   publishedAt: string;
+  signed?: boolean;
 }
 
 export type ReleaseManifestValidation =
@@ -120,6 +121,12 @@ export function validateReleaseManifest(value: unknown): ReleaseManifestValidati
     }
   }
 
+  if ('signed' in v && v.signed !== undefined && typeof v.signed !== 'boolean') {
+    errors.push(
+      `signed must be a boolean (true = Developer ID signed/notarized, false = unsigned), got ${JSON.stringify(v.signed)}`,
+    );
+  }
+
   if (errors.length > 0) return { ok: false, errors };
 
   const manifest: ReleaseManifest = {
@@ -132,6 +139,7 @@ export function validateReleaseManifest(value: unknown): ReleaseManifestValidati
     artifactSizeBytes: v.artifactSizeBytes as number,
     sha256: v.sha256 as string,
     publishedAt: v.publishedAt as string,
+    ...(typeof v.signed === 'boolean' ? { signed: v.signed } : {}),
   };
 
   return { ok: true, manifest };
@@ -158,6 +166,7 @@ export interface BuildReleaseManifestInput {
   sha256: string;
   publishedAt: string;
   channel?: string;
+  signed?: boolean;
 }
 
 export function buildReleaseManifest(input: BuildReleaseManifestInput): ReleaseManifest {
@@ -171,6 +180,7 @@ export function buildReleaseManifest(input: BuildReleaseManifestInput): ReleaseM
     artifactSizeBytes: input.artifactSizeBytes,
     sha256: input.sha256,
     publishedAt: input.publishedAt,
+    ...(input.signed !== undefined ? { signed: input.signed } : {}),
   };
 
   const result = validateReleaseManifest(candidate);
@@ -178,4 +188,98 @@ export function buildReleaseManifest(input: BuildReleaseManifestInput): ReleaseM
     throw new Error(`cannot build release manifest: ${result.errors.join('; ')}`);
   }
   return result.manifest;
+}
+
+export const DRY_RUN_MEASURED_PLACEHOLDER = '(measured during publish)';
+
+export interface ReleaseManifestPreview {
+  schemaVersion: number;
+  version: string;
+  channel: string;
+  notesSummary: string;
+  releaseUrl: string;
+  artifactUrl: string;
+  artifactSizeBytes: string;
+  sha256: string;
+  publishedAt: string;
+  signed: boolean;
+}
+
+export interface BuildReleaseManifestPreviewInput {
+  version: string;
+  notes: string;
+  releaseUrl: string;
+  artifactUrl: string;
+  signed: boolean;
+  channel?: string;
+}
+
+export function buildReleaseManifestPreview(
+  input: BuildReleaseManifestPreviewInput,
+): ReleaseManifestPreview {
+  if (!SEMVER_PATTERN.test(input.version)) {
+    throw new Error(
+      `cannot build manifest preview: version must be MAJOR.MINOR.PATCH without a leading "v", got ${JSON.stringify(input.version)}`,
+    );
+  }
+  for (const field of ['releaseUrl', 'artifactUrl'] as const) {
+    if (!input[field].startsWith('https://')) {
+      throw new Error(
+        `cannot build manifest preview: ${field} must be an https:// URL, got ${JSON.stringify(input[field])}`,
+      );
+    }
+  }
+
+  return {
+    schemaVersion: RELEASE_MANIFEST_SCHEMA_VERSION,
+    version: input.version,
+    channel: input.channel ?? RELEASE_CHANNEL_LATEST,
+    notesSummary: summarizeReleaseNotes(input.notes),
+    releaseUrl: input.releaseUrl,
+    artifactUrl: input.artifactUrl,
+    artifactSizeBytes: DRY_RUN_MEASURED_PLACEHOLDER,
+    sha256: DRY_RUN_MEASURED_PLACEHOLDER,
+    publishedAt: DRY_RUN_MEASURED_PLACEHOLDER,
+    signed: input.signed,
+  };
+}
+
+export type ChecksumVerification = { ok: true } | { ok: false; error: string };
+
+export function verifyUploadedArtifactChecksum(
+  expectedSha256: string,
+  uploadedDigest: string,
+): ChecksumVerification {
+  if (!SHA256_HEX_PATTERN.test(expectedSha256)) {
+    return {
+      ok: false,
+      error: 'manifest sha256 is not 64 lowercase hex chars — regenerate it with scripts/release.sh',
+    };
+  }
+
+  const normalized = uploadedDigest.trim().replace(/^sha256:/, '');
+
+  if (normalized.length === 0) {
+    return {
+      ok: false,
+      error:
+        'could not read the uploaded asset checksum from GitHub — verify manually with: shasum -a 256 <downloaded zip>',
+    };
+  }
+
+  if (!SHA256_HEX_PATTERN.test(normalized)) {
+    return {
+      ok: false,
+      error: `uploaded asset checksum ${JSON.stringify(normalized)} is not 64 lowercase hex chars — verify manually with: shasum -a 256 <downloaded zip>`,
+    };
+  }
+
+  if (normalized !== expectedSha256) {
+    return {
+      ok: false,
+      error: `uploaded artifact checksum ${normalized} does not match manifest sha256 ${expectedSha256} — the upload may be corrupted; delete the release asset and re-run scripts/release.sh`,
+    };
+  }
+
+  return { ok: true };
 }

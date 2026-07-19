@@ -78,7 +78,51 @@ say "Running gate (build, lint, test)"
   || die "gate failed — fix build/lint/test before releasing"
 say "Gate passed"
 
+# Signed iff app/electron-builder.yml sets a real Developer ID `identity` (not
+# `null`/missing) — see #53. Reading it here (rather than hardcoding) means the
+# release notes' unsigned-workaround block disappears automatically the day
+# signing ships, with no further edits to this script.
+IDENTITY="$(node -e '
+  const y = require("fs").readFileSync(process.argv[1], "utf8");
+  const m = y.match(/^\s*identity:\s*(.+?)\s*$/m);
+  const v = (m ? m[1] : "null").replace(/\s+#.*$/, "");
+  console.log(v || "null");
+' "$APP/electron-builder.yml")"
+SIGNED=$([ "$IDENTITY" = "null" ] && echo false || echo true)
+say "Release notes: $([ "$SIGNED" = "true" ] && echo "signed" || echo "unsigned") build"
+
+HIGHLIGHTS=""
+# The leading HTML comment is an editor-only instruction — strip it so it
+# never ships as literal text in the published release notes (GitHub hides
+# HTML comments in rendered markdown, but `gh release view`/the API/RSS show
+# raw markdown as-is).
+[[ -f "$ROOT/RELEASE_HIGHLIGHTS.md" ]] && HIGHLIGHTS="$(sed -E '/^<!--.*-->[[:space:]]*$/d' "$ROOT/RELEASE_HIGHLIGHTS.md")"
+
+NOTES="$(node --input-type=module -e '
+  import { buildReleaseNotes } from "'"$ROOT"'/packages/shared/dist/index.js";
+  process.stdout.write(buildReleaseNotes({
+    version: process.argv[1],
+    signed: process.argv[2] === "true",
+    highlights: process.argv[3] || undefined,
+  }));
+' "$NEXT" "$SIGNED" "$HIGHLIGHTS")"
+
+ASSET_NAME="Sound.Buddy-$NEXT-arm64-mac.zip"
+RELEASE_URL="https://github.com/$PUBLIC_REPO/releases/tag/$TAG"
+ARTIFACT_URL="https://github.com/$PUBLIC_REPO/releases/download/$TAG/$ASSET_NAME"
+
 if [[ "$DRY_RUN" == 1 ]]; then
+  say "Dry run — manifest that would be published as latest.json:"
+  node --input-type=module -e '
+    import { buildReleaseManifestPreview, RELEASE_MANIFEST_URL } from "'"$ROOT"'/packages/shared/dist/index.js";
+    const [version, notes, releaseUrl, artifactUrl, signed] = process.argv.slice(1);
+    const preview = buildReleaseManifestPreview({
+      version, notes, releaseUrl, artifactUrl, signed: signed === "true",
+    });
+    console.log(JSON.stringify(preview, null, 2));
+    console.log(`\nStable download URL: ${RELEASE_MANIFEST_URL}`);
+  ' "$NEXT" "$NOTES" "$RELEASE_URL" "$ARTIFACT_URL" "$SIGNED" \
+    || die "manifest preview failed — see error above"
   say "Dry run — stopping before version bump / build / publish."
   exit 0
 fi
@@ -114,62 +158,50 @@ git -C "$ROOT" push -q origin "$TAG"
 
 # ── Publish to the public download repo ──────────────────────────────────────
 say "Publishing to $PUBLIC_REPO"
-
-# Signed iff app/electron-builder.yml sets a real Developer ID `identity` (not
-# `null`/missing) — see #53. Reading it here (rather than hardcoding) means the
-# release notes' unsigned-workaround block disappears automatically the day
-# signing ships, with no further edits to this script.
-IDENTITY="$(node -e '
-  const y = require("fs").readFileSync(process.argv[1], "utf8");
-  const m = y.match(/^\s*identity:\s*(.+?)\s*$/m);
-  const v = (m ? m[1] : "null").replace(/\s+#.*$/, "");
-  console.log(v || "null");
-' "$APP/electron-builder.yml")"
-SIGNED=$([ "$IDENTITY" = "null" ] && echo false || echo true)
-say "Release notes: $([ "$SIGNED" = "true" ] && echo "signed" || echo "unsigned") build"
-
-HIGHLIGHTS=""
-# The leading HTML comment is an editor-only instruction — strip it so it
-# never ships as literal text in the published release notes (GitHub hides
-# HTML comments in rendered markdown, but `gh release view`/the API/RSS show
-# raw markdown as-is).
-[[ -f "$ROOT/RELEASE_HIGHLIGHTS.md" ]] && HIGHLIGHTS="$(sed -E '/^<!--.*-->[[:space:]]*$/d' "$ROOT/RELEASE_HIGHLIGHTS.md")"
-
-NOTES="$(node --input-type=module -e '
-  import { buildReleaseNotes } from "'"$ROOT"'/packages/shared/dist/index.js";
-  process.stdout.write(buildReleaseNotes({
-    version: process.argv[1],
-    signed: process.argv[2] === "true",
-    highlights: process.argv[3] || undefined,
-  }));
-' "$NEXT" "$SIGNED" "$HIGHLIGHTS")"
 gh release create "$TAG" "$ZIP" -R "$PUBLIC_REPO" \
   --title "Sound Buddy $TAG (macOS Apple Silicon)" \
-  --notes "$NOTES"
+  --notes "$NOTES" \
+  || die "publishing $TAG to $PUBLIC_REPO failed — no release was created and app/site update discovery (latest.json) was NOT updated; fix the error above and re-run scripts/release.sh"
+
+# ── Verify the uploaded artifact matches what we built ───────────────────────
+say "Verifying uploaded artifact checksum matches the manifest"
+ZIP_SHA256="$(shasum -a 256 "$ZIP" | cut -d' ' -f1)"
+UPLOADED_DIGEST="$(gh api "repos/$PUBLIC_REPO/releases/tags/$TAG" \
+  --jq ".assets[] | select(.name == \"$ASSET_NAME\") | .digest // \"\"")"
+if [[ -z "$UPLOADED_DIGEST" ]]; then
+  # Older GitHub deployments may not expose asset digests — fall back to
+  # downloading the uploaded bytes and hashing them locally.
+  UPLOADED_DIGEST="$(gh release download "$TAG" -R "$PUBLIC_REPO" --pattern "$ASSET_NAME" -O - | shasum -a 256 | cut -d' ' -f1)"
+fi
+node --input-type=module -e '
+  import { verifyUploadedArtifactChecksum } from "'"$ROOT"'/packages/shared/dist/index.js";
+  const [expected, actual] = process.argv.slice(1);
+  const result = verifyUploadedArtifactChecksum(expected, actual);
+  if (!result.ok) { console.error(result.error); process.exit(1); }
+' "$ZIP_SHA256" "$UPLOADED_DIGEST" \
+  || die "uploaded artifact checksum verification failed — app/site update discovery (latest.json) was NOT updated; see error above"
+say "Checksum verified: manifest sha256 matches the uploaded artifact"
 
 # ── Publish the machine-readable latest-release manifest (#500) ─────────────
 say "Generating latest.json manifest"
-ASSET_NAME="Sound.Buddy-$NEXT-arm64-mac.zip"
 ZIP_SIZE="$(stat -f%z "$ZIP")"
-ZIP_SHA256="$(shasum -a 256 "$ZIP" | cut -d' ' -f1)"
 PUBLISHED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 MANIFEST_PATH="$APP/release/latest.json"
 node --input-type=module -e '
   import { writeFileSync } from "node:fs";
   import { buildReleaseManifest } from "'"$ROOT"'/packages/shared/dist/index.js";
-  const [version, notes, releaseUrl, artifactUrl, size, sha256, publishedAt, out] = process.argv.slice(1);
+  const [version, notes, releaseUrl, artifactUrl, size, sha256, publishedAt, out, signed] = process.argv.slice(1);
   const manifest = buildReleaseManifest({
     version, notes, releaseUrl, artifactUrl,
     artifactSizeBytes: Number(size), sha256, publishedAt,
+    signed: signed === "true",
   });
   writeFileSync(out, JSON.stringify(manifest, null, 2) + "\n");
-' "$NEXT" "$NOTES" \
-  "https://github.com/$PUBLIC_REPO/releases/tag/$TAG" \
-  "https://github.com/$PUBLIC_REPO/releases/download/$TAG/$ASSET_NAME" \
-  "$ZIP_SIZE" "$ZIP_SHA256" "$PUBLISHED_AT" "$MANIFEST_PATH" \
-  || die "manifest generation failed — see error above"
+' "$NEXT" "$NOTES" "$RELEASE_URL" "$ARTIFACT_URL" \
+  "$ZIP_SIZE" "$ZIP_SHA256" "$PUBLISHED_AT" "$MANIFEST_PATH" "$SIGNED" \
+  || die "manifest generation failed — the $TAG release exists but app/site update discovery (latest.json) was NOT updated; it still points at the previous release. Fix the error above and re-run the manifest steps manually"
 gh release upload "$TAG" "$MANIFEST_PATH" -R "$PUBLIC_REPO" \
-  || die "manifest upload failed — run: gh release upload $TAG $MANIFEST_PATH -R $PUBLIC_REPO"
+  || die "manifest upload failed — app/site update discovery (latest.json) was NOT updated and still points at the previous release; run: gh release upload $TAG $MANIFEST_PATH -R $PUBLIC_REPO"
 say "Manifest → https://github.com/$PUBLIC_REPO/releases/latest/download/latest.json"
 
 say "Done → https://github.com/$PUBLIC_REPO/releases/tag/$TAG"

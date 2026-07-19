@@ -11,11 +11,15 @@ export { buildReleaseNotes, INSTALL_INTRO, UNSIGNED_STEPS } from './install-inst
 export type { BuildReleaseNotesOptions } from './install-instructions.js'
 
 export {
-  buildReleaseManifest, parseReleaseManifest, validateReleaseManifest, summarizeReleaseNotes,
+  buildReleaseManifest, buildReleaseManifestPreview, parseReleaseManifest, validateReleaseManifest,
+  summarizeReleaseNotes, verifyUploadedArtifactChecksum,
   RELEASE_MANIFEST_SCHEMA_VERSION, RELEASE_CHANNEL_LATEST, RELEASE_MANIFEST_FILENAME,
-  RELEASE_MANIFEST_URL, SHA256_HEX_PATTERN, NOTES_SUMMARY_MAX_CHARS,
+  RELEASE_MANIFEST_URL, SHA256_HEX_PATTERN, NOTES_SUMMARY_MAX_CHARS, DRY_RUN_MEASURED_PLACEHOLDER,
 } from './release-manifest.js'
-export type { ReleaseManifest, ReleaseManifestValidation } from './release-manifest.js'
+export type {
+  ReleaseManifest, ReleaseManifestValidation, ReleaseManifestPreview,
+  BuildReleaseManifestPreviewInput, ChecksumVerification,
+} from './release-manifest.js'
 
 export interface EQBand {
   type: string
