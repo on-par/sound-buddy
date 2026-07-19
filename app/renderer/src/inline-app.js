@@ -47,6 +47,14 @@ const lcStore = window.rendererStores.liveCapture;
 let currentMode = 'reportcard';
 let liveRunning = false;
 let liveWindows = [];
+// Elapsed-time playhead for the experimental DAW shell (#518): window.dawPlayheadState
+// state, null before the first capture ever starts. Tracked regardless of the
+// DAW toggle so flipping the experiment mid-capture shows correct elapsed time.
+let playheadState = null;
+let playheadTimer = null;
+const PLAYHEAD_TICK_MS = 100;        // patch cadence — smooth without rebuild cost
+const PLAYHEAD_PX_PER_SECOND = 8;    // one 40px ruler division = 5s
+const DAW_TIMELINE_INSET_PX = 4;     // matches the ruler's margin: 8px 4px horizontal inset
 // A stored report-card summary loaded from the Recent Services list (#147) now
 // lives in analysisStore.historySummary — ReportCardIsland renders it via a
 // reduced, summary-only card when set and no live/file analysis is backing
@@ -978,6 +986,7 @@ function renderDawShell() {
       chip.textContent = transportChip;
       chip.className = `daw-transport-state daw-transport-state-${transportChip.toLowerCase()}`;
     }
+    renderDawPlayhead(); // refresh the readout/line on meter-tick patch renders too
     return;
   }
 
@@ -989,12 +998,17 @@ function renderDawShell() {
       + `</div>`).join('')}</div>`
     : `<div class="daw-lane daw-empty-state">Add tracks from the Source panel to see channel lanes</div>`;
 
+  // Seed the time from state so a mid-capture full rebuild (lane signature
+  // change) never flashes 0:00 (#518).
+  const seededElapsed = window.dawPlayheadState.elapsedMs(playheadState, Date.now());
   body.innerHTML = `<div class="daw-shell">`
     + `<div class="daw-transport">`
     + `<span class="daw-transport-title">Live Workspace</span>`
     + `<span class="daw-transport-state daw-transport-state-${transportChip.toLowerCase()}">${transportChip}</span>`
+    + `<span class="daw-transport-time">${window.dawPlayheadState.formatElapsed(seededElapsed)}</span>`
     + `<span class="daw-transport-hint">Start and stop capture from the Source panel</span>`
     + `</div>`
+    + `<div class="daw-playhead"></div>`
     + `<div class="daw-ruler"></div>`
     + `<div class="daw-lane daw-mix-lane">`
     + `<span class="daw-lane-name">Overall mix</span>`
@@ -1003,6 +1017,7 @@ function renderDawShell() {
     + laneHTML
     + `</div>`;
   body.querySelector('.daw-shell').dataset.laneSignature = laneSignature;
+  renderDawPlayhead(); // position the line after the rebuild
 }
 
 // Thin adapters bridging this module's mutable state (channelConfig,
@@ -2046,6 +2061,10 @@ document.getElementById('live-start-btn').addEventListener('click', async () => 
   hideArmHint();
 
   liveRunning = true;
+  // Overwriting the previous state is the reset — the next capture starts
+  // from zero (#518).
+  playheadState = window.dawPlayheadState.start(Date.now());
+  startPlayheadTicker();
   liveWindows = [];
   syncLiveSource();
   // A live capture always wins over a loaded history entry (#147).
@@ -2100,6 +2119,11 @@ document.getElementById('live-stop-btn').addEventListener('click', () => stopLiv
 
 async function stopLive() {
   liveRunning = false;
+  // The failed-Start path also routes through here, so this covers both a
+  // normal stop and a start that never got going (#518).
+  playheadState = window.dawPlayheadState.stop(playheadState, Date.now());
+  stopPlayheadTicker();
+  renderDawPlayhead(); // paint the frozen time
   setRigControlsEnabled(true);
   setCaptureControlsLocked(false); // re-enable config (also the failed-Start path) (#38)
   clearLiveCountdown();
@@ -2561,6 +2585,34 @@ function startLiveCountdown(intervalSecs) {
 function clearLiveCountdown() {
   if (liveCountdownTimer) { clearInterval(liveCountdownTimer); liveCountdownTimer = null; }
   document.getElementById('ai-countdown').textContent = '';
+}
+
+// A dedicated interval (not the meter-event rAF path) so the playhead
+// advances even while "Connecting…" before the first meter tick, and keeps
+// advancing if meter events stall (#518).
+function startPlayheadTicker() {
+  stopPlayheadTicker();
+  playheadTimer = setInterval(renderDawPlayhead, PLAYHEAD_TICK_MS);
+}
+function stopPlayheadTicker() {
+  if (playheadTimer) { clearInterval(playheadTimer); playheadTimer = null; }
+}
+
+// Patches the DAW shell's transport time and playhead line in place — never
+// rebuilds DOM (#518).
+function renderDawPlayhead() {
+  const shell = document.querySelector('.daw-shell');
+  if (!shell) return; // DAW toggle off or not on Live tab
+  const elapsed = window.dawPlayheadState.elapsedMs(playheadState, Date.now());
+  const timeEl = shell.querySelector('.daw-transport-time');
+  const text = window.dawPlayheadState.formatElapsed(elapsed);
+  if (timeEl && timeEl.textContent !== text) timeEl.textContent = text;
+  const line = shell.querySelector('.daw-playhead');
+  if (line) {
+    const maxPx = Math.max(0, shell.clientWidth - DAW_TIMELINE_INSET_PX * 2);
+    line.style.transform = `translateX(${window.dawPlayheadState.offsetPx(elapsed, PLAYHEAD_PX_PER_SECOND, maxPx)}px)`;
+    line.classList.toggle('advancing', window.dawPlayheadState.isAdvancing(playheadState));
+  }
 }
 
 /* ══ IPC event listeners ══ */
