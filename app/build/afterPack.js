@@ -15,6 +15,7 @@ const { execFileSync, execSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
+const { pathToFileURL } = require('url');
 
 // Pinned relocatable CPython (python-build-standalone). Bump deliberately.
 const PY_TAG = '20260623';
@@ -34,6 +35,14 @@ function log(msg) {
 module.exports = async function afterPack(context) {
   // Only the macOS build is self-contained; skip other platforms outright.
   if (context.electronPlatformName !== 'darwin') return;
+
+  // The monorepo is always present on the build machine (scriptsDir below
+  // already reaches into packages/audio-engine). packages/shared/dist is
+  // ESM, and this file is CJS, so a dynamic import is required to reach it.
+  const shared = await import(
+    pathToFileURL(path.join(__dirname, '..', '..', 'packages', 'shared', 'dist', 'index.js')).href
+  );
+  const signing = shared.resolveSigningConfig(process.env);
 
   const appName = `${context.packager.appInfo.productFilename}.app`;
   const appPath = path.join(context.appOutDir, appName);
@@ -108,18 +117,65 @@ module.exports = async function afterPack(context) {
   sh(`cp -R "${pyCache}" "${pyDest}"`);
 
   // ── 3. Re-seal the bundle so the added Resources are covered ───────────────
-  // We added nested Mach-O (native bin/lib + the whole Python tree) after
-  // electron's ad-hoc sign, which invalidates the bundle seal. A *broken* seal
-  // makes Gatekeeper call the app "damaged" (worse than unsigned), so deep
-  // re-sign ad-hoc: this signs every nested binary and rebuilds CodeResources.
-  log('re-signing app bundle (ad-hoc, deep)');
-  execFileSync('codesign', ['--force', '--deep', '--sign', '-', appPath], { stdio: ['ignore', 'ignore', 'pipe'] });
-  // Fail the build if the signature is actually broken. Plain --verify (not
-  // --strict) is the criterion Gatekeeper uses for the ad-hoc / quarantine-open
-  // path: passing here means users get the normal "unidentified developer"
-  // prompt, never "app is damaged". (--strict adds picky nested-code checks that
-  // a zip round-trip can trip without affecting that user-facing behavior.)
-  execFileSync('codesign', ['--verify', appPath], { stdio: ['ignore', 'ignore', 'pipe'] });
+  if (!signing.signed) {
+    // We added nested Mach-O (native bin/lib + the whole Python tree) after
+    // electron's ad-hoc sign, which invalidates the bundle seal. A *broken* seal
+    // makes Gatekeeper call the app "damaged" (worse than unsigned), so deep
+    // re-sign ad-hoc: this signs every nested binary and rebuilds CodeResources.
+    log('re-signing app bundle (ad-hoc, deep)');
+    execFileSync('codesign', ['--force', '--deep', '--sign', '-', appPath], { stdio: ['ignore', 'ignore', 'pipe'] });
+    // Fail the build if the signature is actually broken. Plain --verify (not
+    // --strict) is the criterion Gatekeeper uses for the ad-hoc / quarantine-open
+    // path: passing here means users get the normal "unidentified developer"
+    // prompt, never "app is damaged". (--strict adds picky nested-code checks that
+    // a zip round-trip can trip without affecting that user-facing behavior.)
+    execFileSync('codesign', ['--verify', appPath], { stdio: ['ignore', 'ignore', 'pipe'] });
+  } else {
+    // Sign every nested Mach-O we just added (native bin/lib + the whole
+    // Python tree) with the real Developer ID identity so notarization
+    // accepts them. We deliberately do NOT sign the outer .app or run the
+    // ad-hoc verify here — electron-builder's own sign phase runs
+    // immediately after afterPack (identity passed via -c.mac.identity),
+    // signs the frameworks/helpers/outer bundle with the entitlements, and
+    // rebuilds the seal. Signing nested binaries here first means that final
+    // pass has nothing unsigned left to trip over.
+    log('signing bundled native binaries with Developer ID');
+    let signedCount = 0;
+    for (const dir of [binDir, libDir, path.join(resources, 'python')]) {
+      signedCount += signMachOBinariesRecursive(dir, signing.identity, shared.isMachOBinary);
+    }
+    log(`signed ${signedCount} bundled binaries`);
+  }
 
   log('done — app is self-contained');
 };
+
+// Walks `dir` recursively, signing every regular file whose first 4 bytes are
+// a Mach-O/universal-binary magic number. Symlinks are skipped — dylibbundler
+// and the Python runtime both use them to alias versioned libraries, and
+// signing the link target (not the link itself) is what codesign expects.
+function signMachOBinariesRecursive(dir, identity, isMachOBinary) {
+  if (!fs.existsSync(dir)) return 0;
+  let count = 0;
+  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+    const entryPath = path.join(dir, entry.name);
+    if (entry.isSymbolicLink()) continue;
+    if (entry.isDirectory()) {
+      count += signMachOBinariesRecursive(entryPath, identity, isMachOBinary);
+      continue;
+    }
+    if (!entry.isFile()) continue;
+    const fd = fs.openSync(entryPath, 'r');
+    const header = Buffer.alloc(4);
+    fs.readSync(fd, header, 0, 4, 0);
+    fs.closeSync(fd);
+    if (!isMachOBinary(header)) continue;
+    execFileSync(
+      'codesign',
+      ['--force', '--options', 'runtime', '--timestamp', '--sign', identity, entryPath],
+      { stdio: ['ignore', 'ignore', 'pipe'] },
+    );
+    count++;
+  }
+  return count;
+}

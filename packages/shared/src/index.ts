@@ -30,6 +30,9 @@ export type {
   SmokeLayer, SmokeCheckResult, ReleaseSmokeReport, ReleaseSmokeFetchers,
 } from './release-smoke.js'
 
+export { resolveSigningConfig, isMachOBinary, parseNotarySubmission, parseSpctlAssessment } from './signing.js'
+export type { SigningConfig, NotarySubmissionResult, SpctlVerdict } from './signing.js'
+
 export interface EQBand {
   type: string
   freq: number

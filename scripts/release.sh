@@ -15,6 +15,10 @@
 #   scripts/release.sh patch --dry-run   # do everything except mutate/publish
 #   scripts/release.sh --yes        # skip the confirmation prompt
 #
+# Set SOUND_BUDDY_SIGNING_IDENTITY + SOUND_BUDDY_NOTARY_PROFILE (both, or
+# neither) to produce a Developer ID-signed, notarized, stapled release — see
+# docs/signing-and-notarization.md for one-time setup.
+#
 set -euo pipefail
 
 PUBLIC_REPO="on-par/sound-buddy-releases"
@@ -78,18 +82,26 @@ say "Running gate (build, lint, test)"
   || die "gate failed — fix build/lint/test before releasing"
 say "Gate passed"
 
-# Signed iff app/electron-builder.yml sets a real Developer ID `identity` (not
-# `null`/missing) — see #53. Reading it here (rather than hardcoding) means the
-# release notes' unsigned-workaround block disappears automatically the day
-# signing ships, with no further edits to this script.
-IDENTITY="$(node -e '
-  const y = require("fs").readFileSync(process.argv[1], "utf8");
-  const m = y.match(/^\s*identity:\s*(.+?)\s*$/m);
-  const v = (m ? m[1] : "null").replace(/\s+#.*$/, "");
-  console.log(v || "null");
-' "$APP/electron-builder.yml")"
-SIGNED=$([ "$IDENTITY" = "null" ] && echo false || echo true)
+# Signing is env-driven (#53): set SOUND_BUDDY_SIGNING_IDENTITY and
+# SOUND_BUDDY_NOTARY_PROFILE to produce a Developer ID-signed, notarized,
+# stapled release; leave both unset for an unsigned build. Resolution +
+# validation live in packages/shared (resolveSigningConfig) so the
+# both-or-neither rule is tested.
+SIGNING_JSON="$(node --input-type=module -e '
+  import { resolveSigningConfig } from "'"$ROOT"'/packages/shared/dist/index.js";
+  try { console.log(JSON.stringify(resolveSigningConfig(process.env))); }
+  catch (e) { console.error(e.message); process.exit(1); }
+')" || die "signing configuration invalid — see error above"
+SIGNED="$(node -pe 'JSON.parse(process.argv[1]).signed' "$SIGNING_JSON")"
+IDENTITY="$(node -pe 'JSON.parse(process.argv[1]).identity ?? ""' "$SIGNING_JSON")"
+NOTARY_PROFILE="$(node -pe 'JSON.parse(process.argv[1]).notaryProfile ?? ""' "$SIGNING_JSON")"
 say "Release notes: $([ "$SIGNED" = "true" ] && echo "signed" || echo "unsigned") build"
+
+if [[ "$SIGNED" == "true" ]]; then
+  security find-identity -v -p codesigning | grep -Fq "$IDENTITY" \
+    || die "certificate \"$IDENTITY\" not found in the keychain — open Keychain Access and confirm the Developer ID Application certificate + private key are installed (docs/signing-and-notarization.md)"
+  command -v xcrun >/dev/null 2>&1 || die "xcrun not found — install Xcode Command Line Tools: xcode-select --install"
+fi
 
 HIGHLIGHTS=""
 # The leading HTML comment is an editor-only instruction — strip it so it
@@ -139,7 +151,12 @@ say "Bumping version to $NEXT"
 # npm version touches package.json (and package-lock.json if present).
 
 say "Building self-contained app (this takes a minute)"
-( cd "$APP" && npm run dist >/dev/null )
+if [[ "$SIGNED" == "true" ]]; then
+  ( cd "$APP" && SOUND_BUDDY_SIGNING_IDENTITY="$IDENTITY" SOUND_BUDDY_NOTARY_PROFILE="$NOTARY_PROFILE" \
+      npm run dist -- -c.mac.identity="$IDENTITY" >/dev/null )
+else
+  ( cd "$APP" && npm run dist >/dev/null )
+fi
 
 ZIP="$APP/release/Sound Buddy-$NEXT-arm64-mac.zip"
 [[ -f "$ZIP" ]] || die "expected zip not found: $ZIP"
@@ -147,6 +164,43 @@ ZIP="$APP/release/Sound Buddy-$NEXT-arm64-mac.zip"
 APP_RES="$APP/release/mac-arm64/Sound Buddy.app/Contents/Resources"
 [[ -x "$APP_RES/bin/sox" && -x "$APP_RES/python/bin/python3" ]] || die "bundle is missing sox/python — build problem"
 say "Built $(basename "$ZIP") ($(du -h "$ZIP" | cut -f1))"
+
+# ── Notarize + staple + re-verify ────────────────────────────────────────────
+if [[ "$SIGNED" == "true" ]]; then
+  APP_BUNDLE="$APP/release/mac-arm64/Sound Buddy.app"
+
+  say "Verifying Developer ID signature"
+  codesign --verify --deep --strict "$APP_BUNDLE" \
+    || die "codesign verification failed — a nested binary is unsigned or the seal is broken; run: codesign --verify --deep --strict --verbose=4 \"$APP_BUNDLE\""
+
+  say "Submitting to Apple notary service (this can take a few minutes)"
+  NOTARY_OUT="$(xcrun notarytool submit "$ZIP" --keychain-profile "$NOTARY_PROFILE" --wait --output-format json 2>/dev/null || true)"
+  node --input-type=module -e '
+    import { parseNotarySubmission } from "'"$ROOT"'/packages/shared/dist/index.js";
+    const r = parseNotarySubmission(process.argv[1], process.argv[2]);
+    if (!r.ok) { console.error(r.error); process.exit(1); }
+    console.log(`notarization accepted (submission ${r.id})`);
+  ' "$NOTARY_OUT" "$NOTARY_PROFILE" || die "notarization failed — see error above"
+
+  say "Stapling notarization ticket"
+  xcrun stapler staple "$APP_BUNDLE" >/dev/null || die "stapling failed — run: xcrun stapler staple \"$APP_BUNDLE\""
+
+  # Stapling modified the .app, so the zip electron-builder made is stale.
+  # Rebuild it with ditto (preserves resource forks / permissions the way
+  # Apple expects) — every later step (checksum, upload, manifest) uses $ZIP.
+  say "Re-zipping stapled app"
+  rm -f "$ZIP"
+  ditto -c -k --keepParent "$APP_BUNDLE" "$ZIP" || die "re-zip after stapling failed"
+
+  say "Assessing with Gatekeeper (spctl)"
+  SPCTL_OUT="$(spctl --assess --type execute --verbose=4 "$APP_BUNDLE" 2>&1 || true)"
+  node --input-type=module -e '
+    import { parseSpctlAssessment } from "'"$ROOT"'/packages/shared/dist/index.js";
+    const v = parseSpctlAssessment(process.argv[1]);
+    if (!v.accepted) { console.error(v.error); process.exit(1); }
+    console.log("spctl: accepted");
+  ' "$SPCTL_OUT" || die "Gatekeeper assessment failed — the build must not ship; see error above"
+fi
 
 # ── Tag the source repo ──────────────────────────────────────────────────────
 say "Committing + tagging the source repo"
