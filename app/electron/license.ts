@@ -48,7 +48,7 @@ const policy = loadLicensePolicy();
  * Override for tests/e2e via SOUND_BUDDY_LICENSE_PUBKEY (PEM, or base64 SPKI DER).
  */
 const EMBEDDED_PUBLIC_KEY_PEM = `-----BEGIN PUBLIC KEY-----
-MCowBQYDK2VwAyEADAAF8d47qtdei8k1oP9b/7N8SlrhcABssKew3QBwUs8=
+MCowBQYDK2VwAyEA19ANezS8KTFwY4NWqH/V8A3qyKR+28cEqXb7018NEWk=
 -----END PUBLIC KEY-----`;
 
 /** Days a subscription key stays Pro after `expiresAt` (with a banner) — shared policy (TD-006). */
