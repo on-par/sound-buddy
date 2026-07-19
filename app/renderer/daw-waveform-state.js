@@ -28,21 +28,15 @@
     return { pairs: [] };
   }
 
-  /** Decode the "mix" lane of a parsed peaks event into an array of
-   *  {min, max} pairs in [-1, 1]. Null-safe: returns null for a
-   *  missing/malformed frame, missing lanes, no mix lane, or empty/undecodable
-   *  data — a truncated NDJSON line must not throw in the event handler. */
-  function decodeMixLane(frame) {
-    if (!frame || !Array.isArray(frame.lanes)) return null;
-    var mixLane = null;
-    for (var i = 0; i < frame.lanes.length; i++) {
-      if (frame.lanes[i] && frame.lanes[i].id === 'mix') { mixLane = frame.lanes[i]; break; }
-    }
-    if (!mixLane || typeof mixLane.data !== 'string' || mixLane.data.length === 0) return null;
+  /** Decode one lane's base64 `data` into an array of {min, max} pairs in
+   *  [-1, 1]. Returns null for empty/non-string/undecodable/odd-length
+   *  input — a truncated NDJSON line must not throw in the event handler. */
+  function decodeLaneData(data) {
+    if (typeof data !== 'string' || data.length === 0) return null;
 
     var binary;
     try {
-      binary = atob(mixLane.data);
+      binary = atob(data);
     } catch (_e) {
       return null;
     }
@@ -58,6 +52,34 @@
       });
     }
     return pairs;
+  }
+
+  /** Decode every well-formed lane of a parsed peaks event into an object
+   *  mapping lane id ("mix", "strip0", "strip1", …, per stream.py's
+   *  build_peak_lanes ordering, #521) to its {min, max} pairs. Null-safe:
+   *  returns null for a missing/malformed frame or missing `lanes` array. A
+   *  lane with a missing/non-string id or undecodable data is skipped so one
+   *  truncated lane doesn't drop the whole frame. */
+  function decodeLanes(frame) {
+    if (!frame || !Array.isArray(frame.lanes)) return null;
+    var out = {};
+    for (var i = 0; i < frame.lanes.length; i++) {
+      var lane = frame.lanes[i];
+      if (!lane || typeof lane.id !== 'string') continue;
+      var pairs = decodeLaneData(lane.data);
+      if (!pairs) continue;
+      out[lane.id] = pairs;
+    }
+    return out;
+  }
+
+  /** Decode the "mix" lane of a parsed peaks event into an array of
+   *  {min, max} pairs in [-1, 1]. Null-safe: returns null for a
+   *  missing/malformed frame, missing lanes, no mix lane, or empty/undecodable
+   *  data — a truncated NDJSON line must not throw in the event handler. */
+  function decodeMixLane(frame) {
+    var lanes = decodeLanes(frame);
+    return lanes && lanes.mix ? lanes.mix : null;
   }
 
   /** A new state with `pairs` appended, truncated so pairs.length never
@@ -133,6 +155,7 @@
     MAX_WAVEFORM_BUCKETS: MAX_WAVEFORM_BUCKETS,
     create: create,
     decodeMixLane: decodeMixLane,
+    decodeLanes: decodeLanes,
     append: append,
     bucketsPerSecond: bucketsPerSecond,
     columnPeaks: columnPeaks,

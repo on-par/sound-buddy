@@ -59,6 +59,12 @@ const DAW_TIMELINE_INSET_PX = 4;     // matches the ruler's margin: 8px 4px hori
 // window.dawWaveformState state, reset (assigned fresh) on every capture Start.
 let waveformState = window.dawWaveformState.create();
 let waveformBucketsPerSec = window.dawWaveformState.WAVEFORM_BUCKETS_PER_SEC;
+// Per-input waveform lanes (#521): lane id ("strip0", "strip1", …, matching
+// stream.py's build_peak_lanes index) -> its own window.dawWaveformState
+// state. Reset alongside waveformState on every capture Start. The
+// strip{idx} <-> data-ch="${idx}" mapping is safe because channel config is
+// locked during capture (setCaptureControlsLocked(true)).
+let waveformLaneStates = {};
 let waveformRenderScheduled = false;
 // Recording-vs-monitoring waveform stroke, matching the transport-chip colors
 // (--issue-text/--gold-text/--text-muted in app.css) — canvas drawing can't
@@ -1011,7 +1017,7 @@ function renderDawShell() {
     ? `<div class="daw-channel-lanes">${channelConfig.map((strip, idx) =>
       `<div class="daw-lane daw-channel-lane" data-ch="${idx}">`
       + `<span class="daw-lane-name">${laneNames[idx]}</span>`
-      + `<span class="daw-lane-body">Waveform coming soon</span>`
+      + `<span class="daw-lane-body"><canvas class="daw-channel-waveform"></canvas></span>`
       + `</div>`).join('')}</div>`
     : `<div class="daw-lane daw-empty-state">Add tracks from the Source panel to see channel lanes</div>`;
 
@@ -2087,6 +2093,7 @@ document.getElementById('live-start-btn').addEventListener('click', async () => 
   // capture's meter interval (#520).
   waveformState = window.dawWaveformState.create();
   waveformBucketsPerSec = window.dawWaveformState.bucketsPerSecond(intervalSecs);
+  waveformLaneStates = {};
   liveWindows = [];
   syncLiveSource();
   // A live capture always wins over a loaded history entry (#147).
@@ -2637,16 +2644,11 @@ function renderDawPlayhead() {
   }
 }
 
-// Patches the DAW shell's mix waveform canvas in place — never rebuilds DOM
-// (#520). Columns are budgeted to the canvas's own drawable width so nothing
-// is ever generated past its right edge (see the comment at the columnPeaks
-// call below).
-function renderDawWaveform() {
-  const shell = document.querySelector('.daw-shell');
-  if (!shell) return; // DAW toggle off or not on Live tab
-  const canvas = shell.querySelector('.daw-mix-waveform');
-  if (!canvas) return;
-
+// Draws one waveform lane's canvas in place — sized to its own `.daw-lane-body`
+// parent, budgeted to the canvas's own drawable width so nothing is ever
+// generated past its right edge (#520). Empty `pairs` leaves a cleared
+// canvas (the "empty" state); silence draws a 1px hairline (min 1px tall).
+function drawWaveformLane(canvas, pairs, strokeStyle) {
   const laneBody = canvas.parentElement;
   const width = laneBody.clientWidth;
   const height = laneBody.clientHeight;
@@ -2657,15 +2659,10 @@ function renderDawWaveform() {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   if (canvas.width === 0 || canvas.height === 0) return;
 
-  // Column budget is the canvas's own drawable width (not the shell's, which
-  // is wider by the lane-name column) — using a wider budget here would
-  // generate columns past the canvas's right edge, silently clipping the
-  // waveform before the playhead reaches its parked position (#520).
-  const cols = window.dawWaveformState.columnPeaks(waveformState.pairs, waveformBucketsPerSec, PLAYHEAD_PX_PER_SECOND, canvas.width);
+  const cols = window.dawWaveformState.columnPeaks(pairs, waveformBucketsPerSec, PLAYHEAD_PX_PER_SECOND, canvas.width);
   if (cols.length === 0) return;
 
-  const captureMode = window.dawWaveformState.captureModeToken(liveRunning, liveMode);
-  ctx.strokeStyle = WAVEFORM_COLORS[captureMode] || WAVEFORM_COLORS.stopped;
+  ctx.strokeStyle = strokeStyle;
   ctx.lineWidth = 1;
 
   const midY = canvas.height / 2;
@@ -2676,6 +2673,27 @@ function renderDawWaveform() {
     ctx.moveTo(x + 0.5, yTop);
     ctx.lineTo(x + 0.5, yBottom);
     ctx.stroke();
+  });
+}
+
+// Patches the DAW shell's waveform canvases in place — never rebuilds DOM
+// (#520, #521): the mix lane plus one canvas per per-input channel lane.
+function renderDawWaveform() {
+  const shell = document.querySelector('.daw-shell');
+  if (!shell) return; // DAW toggle off or not on Live tab
+  const canvas = shell.querySelector('.daw-mix-waveform');
+  if (!canvas) return;
+
+  const captureMode = window.dawWaveformState.captureModeToken(liveRunning, liveMode);
+  const strokeStyle = WAVEFORM_COLORS[captureMode] || WAVEFORM_COLORS.stopped;
+
+  drawWaveformLane(canvas, waveformState.pairs, strokeStyle);
+
+  shell.querySelectorAll('.daw-channel-lane').forEach((lane) => {
+    const laneCanvas = lane.querySelector('.daw-channel-waveform');
+    if (!laneCanvas) return;
+    const state = waveformLaneStates['strip' + lane.dataset.ch];
+    drawWaveformLane(laneCanvas, state ? state.pairs : [], strokeStyle);
   });
 }
 
@@ -2704,8 +2722,16 @@ sb.onLiveEvent((data) => {
   // return before the meter/stats paths below, which would otherwise treat a
   // peaks frame as a channel-less (and thus useless) meter/window tick.
   if (data.type === 'peaks') {
-    const pairs = window.dawWaveformState.decodeMixLane(data);
-    if (pairs) { waveformState = window.dawWaveformState.append(waveformState, pairs); scheduleDawWaveformRender(); }
+    const lanes = window.dawWaveformState.decodeLanes(data);
+    if (lanes) {
+      if (lanes.mix) waveformState = window.dawWaveformState.append(waveformState, lanes.mix);
+      for (const id of Object.keys(lanes)) {
+        if (id === 'mix') continue;
+        waveformLaneStates[id] = window.dawWaveformState.append(
+          waveformLaneStates[id] || window.dawWaveformState.create(), lanes[id]);
+      }
+      scheduleDawWaveformRender();
+    }
     return;
   }
 

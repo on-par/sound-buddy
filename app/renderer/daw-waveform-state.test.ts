@@ -4,6 +4,7 @@ import { describe, it, expect } from 'vitest';
 const {
   create,
   decodeMixLane,
+  decodeLanes,
   append,
   bucketsPerSecond,
   columnPeaks,
@@ -12,6 +13,7 @@ const {
 } = require('./daw-waveform-state.js') as {
   create: () => { pairs: Array<{ min: number; max: number }> };
   decodeMixLane: (frame: unknown) => Array<{ min: number; max: number }> | null;
+  decodeLanes: (frame: unknown) => Record<string, Array<{ min: number; max: number }>> | null;
   append: (
     state: { pairs: Array<{ min: number; max: number }> },
     pairs: Array<{ min: number; max: number }>
@@ -72,6 +74,53 @@ describe('decodeMixLane', () => {
   it('returns null for odd-length decoded bytes (truncated pair)', () => {
     // "AA==" decodes to a single 0x00 byte — no complete (min,max) pair.
     expect(decodeMixLane({ type: 'peaks', ts: 1, lanes: [{ id: 'mix', data: 'AA==' }] })).toBeNull();
+  });
+});
+
+describe('decodeLanes', () => {
+  it('decodes a two-lane frame into an object keyed by lane id', () => {
+    // "mix" bytes [0, 255, 128, 128] -> "AP+AgA=="; "strip0" bytes [64, 192] -> "QMA="
+    const frame = {
+      type: 'peaks',
+      ts: 1,
+      lanes: [
+        { id: 'mix', data: 'AP+AgA==' },
+        { id: 'strip0', data: 'QMA=' },
+      ],
+    };
+    const lanes = decodeLanes(frame)!;
+    expect(Object.keys(lanes).sort()).toEqual(['mix', 'strip0']);
+    expect(lanes.mix).toHaveLength(2);
+    expect(lanes.mix[0].min).toBeCloseTo(-1, 5);
+    expect(lanes.mix[0].max).toBeCloseTo(1, 5);
+    expect(lanes.strip0).toHaveLength(1);
+    expect(lanes.strip0[0].min).toBeCloseTo(64 / 255 * 2 - 1, 5);
+    expect(lanes.strip0[0].max).toBeCloseTo(192 / 255 * 2 - 1, 5);
+  });
+
+  it('returns null for a null frame', () => {
+    expect(decodeLanes(null)).toBeNull();
+  });
+
+  it('returns null when lanes is missing', () => {
+    expect(decodeLanes({ type: 'peaks', ts: 1 })).toBeNull();
+  });
+
+  it('skips a lane with bad base64, empty data, odd-length bytes, or a missing id, keeping well-formed lanes', () => {
+    const frame = {
+      type: 'peaks',
+      ts: 1,
+      lanes: [
+        { id: 'mix', data: 'AP+AgA==' },
+        { id: 'bad-base64', data: '!!!not-base64!!!' },
+        { id: 'empty', data: '' },
+        { id: 'odd', data: 'AA==' },
+        { data: 'AP+AgA==' },
+      ],
+    };
+    const lanes = decodeLanes(frame)!;
+    expect(Object.keys(lanes)).toEqual(['mix']);
+    expect(lanes.mix).toHaveLength(2);
   });
 });
 

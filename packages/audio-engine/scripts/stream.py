@@ -41,11 +41,13 @@ is relative to the session dir so the folder stays movable.
 
 Output: JSON lines on stdout.
   {"type":"meter",  "ts":…, "channels":[…]}                            — every --interval
-  {"type":"peaks",  "ts":…, "lanes":[{"id":"mix","data":"…"}]}         — every --interval
+  {"type":"peaks",  "ts":…, "lanes":[{"id":"mix","data":"…"},{"id":"strip0","data":"…"},…]}
+                                                                        — every --interval
   {"type":"window", "window":N, "ts":…, "channels":[…], "masking":[…]} — every window_secs
 The "window" events carry the heavier context used by the (gated) LLM path. The
 "peaks" events carry a base64-packed min/max waveform envelope for the DAW
-workspace's mix lane (#520, ADR 0004).
+workspace's mix lane plus one "strip{i}" lane per configured strip, in
+configured order (#520, #521, ADR 0004).
 
 Dependencies: pip install sounddevice numpy scipy soundfile
 """
@@ -463,6 +465,27 @@ def mix_indices(groups: list[dict]) -> list[int]:
     return sorted(indices)
 
 
+def build_peak_lanes(wf_samples, groups: list[dict], mix_cols: list[int], n_buckets: int) -> list:
+    """One peaks lane per drawable signal: the overall mix first, then one
+    "strip{i}" lane per configured strip, in configured order — matching the
+    renderer's channelConfig index so lane ids map 1:1 onto the DAW shell's
+    data-ch lanes (#521). Same collapse as analyze_groups: a stereo strip is
+    the mean of its two columns."""
+    lanes = []
+    if mix_cols:
+        mix_sig = wf_samples[:, mix_cols].astype(np.float64).mean(axis=1)
+        pairs = bucket_peaks(mix_sig.tolist(), n_buckets)
+        if pairs:
+            lanes.append({"id": "mix", "peaks": pairs})
+    for idx, g in enumerate(groups):
+        cols = wf_samples[:, g["indices"]].astype(np.float64)
+        sig = cols[:, 0] if cols.shape[1] == 1 else cols.mean(axis=1)
+        pairs = bucket_peaks(sig.tolist(), n_buckets)
+        if pairs:
+            lanes.append({"id": f"strip{idx}", "peaks": pairs})
+    return lanes
+
+
 def encode_peaks_frame(lanes: list, ts: float) -> str:
     """Per lane, pack interleaved (quantize_peak(min), quantize_peak(max))
     bytes, base64-encode, and wrap in the "peaks" NDJSON envelope. Mirrors
@@ -693,10 +716,9 @@ def stream_live(device_index, window_secs: float, groups: list[dict],
             # earliest tick(s), before the ring buffer has filled — mirrors the
             # meter loop's own `if frames.shape[0] < 2: continue` skip-tick guard.
             if wf_samples.shape[0] >= n_buckets:
-                mix_sig = wf_samples[:, mix_cols].astype(np.float64).mean(axis=1)
-                pairs = bucket_peaks(mix_sig.tolist(), n_buckets)
-                if pairs:
-                    print(encode_peaks_frame([{"id": "mix", "peaks": pairs}], time.time()), flush=True)
+                lanes = build_peak_lanes(wf_samples, groups, mix_cols, n_buckets)
+                if lanes:
+                    print(encode_peaks_frame(lanes, time.time()), flush=True)
 
             # Heavier window tick — trend context for the (gated) LLM path.
             tick += 1

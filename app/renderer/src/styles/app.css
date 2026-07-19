@@ -691,6 +691,8 @@
     .daw-mix-lane[data-capture-mode="monitoring"] { border-left:2px solid var(--gold-text); }
     .daw-mix-lane[data-capture-mode="monitoring"] .daw-lane-name { color:var(--gold-text); }
     .daw-channel-lanes { display:flex; flex-direction:column; }
+    .daw-channel-lane .daw-lane-body { height:36px; }
+    .daw-channel-waveform { display:block; width:100%; height:100%; }
     .daw-empty-state { color:var(--text-muted); font:var(--fw-regular) var(--fs-label)/1.3 var(--font-sans); justify-content:center; text-align:center; }
 
     /* Live vertical-bar EQ: shared analyzer arc + per-band vertical bars.

@@ -229,6 +229,79 @@ class EncodePeaksFrame(unittest.TestCase):
             self.assertLessEqual(mn, mx)
 
 
+class BuildPeakLanes(unittest.TestCase):
+    def test_mix_lane_first_then_one_strip_lane_per_group_in_order(self):
+        # 4 device channels, distinct constant values per column; strips on
+        # ch0 and ch2 only, so the mix (over mix_cols=[0,2]) differs from
+        # either strip's own signal.
+        wf = np.array([
+            [0.1, 0.9, 0.3, 0.9],
+            [0.1, 0.9, 0.3, 0.9],
+            [0.1, 0.9, 0.3, 0.9],
+            [0.1, 0.9, 0.3, 0.9],
+        ], dtype=np.float32)
+        groups = stream.parse_channel_groups("0,2", 4)
+        mix_cols = stream.mix_indices(groups)
+        lanes = stream.build_peak_lanes(wf, groups, mix_cols, 2)
+        self.assertEqual([lane["id"] for lane in lanes], ["mix", "strip0", "strip1"])
+        for mn, mx in lanes[0]["peaks"]:
+            self.assertAlmostEqual(mn, 0.2, places=5)
+            self.assertAlmostEqual(mx, 0.2, places=5)
+        for mn, mx in lanes[1]["peaks"]:
+            self.assertAlmostEqual(mn, 0.1, places=5)
+            self.assertAlmostEqual(mx, 0.1, places=5)
+        for mn, mx in lanes[2]["peaks"]:
+            self.assertAlmostEqual(mn, 0.3, places=5)
+            self.assertAlmostEqual(mx, 0.3, places=5)
+
+    def test_stereo_strip_lane_is_mean_of_its_two_columns(self):
+        wf = np.array([
+            [0.2, 0.4],
+            [0.2, 0.4],
+            [0.2, 0.4],
+        ], dtype=np.float32)
+        groups = stream.parse_channel_groups("0-1", 2)
+        mix_cols = stream.mix_indices(groups)
+        lanes = stream.build_peak_lanes(wf, groups, mix_cols, 1)
+        strip_lane = next(lane for lane in lanes if lane["id"] == "strip0")
+        mn, mx = strip_lane["peaks"][0]
+        self.assertAlmostEqual(mn, 0.3, places=5)
+        self.assertAlmostEqual(mx, 0.3, places=5)
+
+    def test_silent_strip_yields_all_zero_pairs(self):
+        wf = np.zeros((4, 2), dtype=np.float32)
+        groups = stream.parse_channel_groups("0", 2)
+        mix_cols = stream.mix_indices(groups)
+        lanes = stream.build_peak_lanes(wf, groups, mix_cols, 2)
+        strip_lane = next(lane for lane in lanes if lane["id"] == "strip0")
+        for mn, mx in strip_lane["peaks"]:
+            self.assertAlmostEqual(mn, 0.0, places=9)
+            self.assertAlmostEqual(mx, 0.0, places=9)
+
+    def test_empty_groups_yields_empty_lanes(self):
+        wf = np.zeros((4, 2), dtype=np.float32)
+        # mix_indices([]) is [], which makes mix_cols falsy — this must not
+        # crash indexing wf_samples[:, []] as a "mix" lane.
+        self.assertEqual(stream.build_peak_lanes(wf, [], [], 2), [])
+
+    def test_end_to_end_encode_decode_roundtrip(self):
+        sr = 48000
+        t = np.arange(int(0.1 * sr)) / sr
+        sine = (0.7 * np.sin(2 * np.pi * 10 * t)).astype(np.float32)
+        wf = np.stack([sine, np.zeros_like(sine)], axis=1)
+        groups = stream.parse_channel_groups("0", 2)
+        mix_cols = stream.mix_indices(groups)
+        lanes = stream.build_peak_lanes(wf, groups, mix_cols, 5)
+        line = stream.encode_peaks_frame(lanes, 0.0)
+        parsed = json.loads(line)
+        strip_lane = next(lane for lane in parsed["lanes"] if lane["id"] == "strip0")
+        raw = base64.b64decode(strip_lane["data"])
+        expected_pairs = next(lane for lane in lanes if lane["id"] == "strip0")["peaks"]
+        for i, (mn, mx) in enumerate(expected_pairs):
+            self.assertEqual(raw[i * 2], stream.quantize_peak(mn))
+            self.assertEqual(raw[i * 2 + 1], stream.quantize_peak(mx))
+
+
 class Masking(unittest.TestCase):
     def test_similar_channels_flagged(self):
         sr = 48000
