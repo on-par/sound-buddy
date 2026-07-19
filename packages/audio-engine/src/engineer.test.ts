@@ -225,6 +225,49 @@ describe("buildMultiChannelPrompt", () => {
     expect(out).toContain("bass: Kick > Bass");
     expect(out).toContain("bass: -10.50 dBFS");
   });
+
+  it("golden: full combined prompt pins section order, separators, and every section's content", () => {
+    const mix = makeAnalysis();
+    const channels = [makeChannel("Kick", 0), makeChannel("Vox", 1)];
+    const comparison = makeComparison({
+      subBassOffenders: ["Kick"],
+      maskingPairs: [{ bandName: "bass", channelA: "Kick", channelB: "Vox", energyDiff: 2 }],
+      bandRankings: { bass: ["Kick", "Vox"], presence: ["Vox", "Kick"] },
+      mixBandEnergy: { bass: -10.5, presence: -18.25 },
+    });
+
+    const out = buildMultiChannelPrompt(mix, channels, comparison);
+
+    expect(out).toBe(
+      [
+        "=== FULL MIX ANALYSIS ===",
+        "Peak: -3.00 dBFS | RMS: -16.00 dBFS | Dyn Range: 13.00 dB | Clipping: No",
+        "Spectral centroid: 1800 Hz | Rolloff 85%: 4500 Hz",
+        "Bands (dBFS): sub=-30.00 bass=-12.00 lo-mid=-14.00 mid=-10.00 hi-mid=-16.00 presence=-18.00 brilliance=-22.00",
+        "",
+        "=== CHANNEL ANALYSES ===",
+        "--- Kick (CH1) ---",
+        "  Peak: -3.00 dBFS | RMS: -16.00 dBFS | Dyn Range: 13.00 dB | Clipping: No",
+        "  Spectral centroid: 1800 Hz",
+        "  Bands (dBFS): sub=-30.00 bass=-12.00 lo-mid=-14.00 mid=-10.00 hi-mid=-16.00 presence=-18.00 brilliance=-22.00",
+        "--- Vox (CH2) ---",
+        "  Peak: -3.00 dBFS | RMS: -16.00 dBFS | Dyn Range: 13.00 dB | Clipping: No",
+        "  Spectral centroid: 1800 Hz",
+        "  Bands (dBFS): sub=-30.00 bass=-12.00 lo-mid=-14.00 mid=-10.00 hi-mid=-16.00 presence=-18.00 brilliance=-22.00",
+        "",
+        "=== COMPARISON & MASKING ANALYSIS ===",
+        "Sub-bass offenders (>-20 dBFS in sub-bass band): Kick",
+        "Masking pairs (within 3 dB of each other in same band):",
+        "  bass: Kick vs Vox (diff: 2.00 dB)",
+        "Band rankings (channels sorted by energy, highest first):",
+        "  bass: Kick > Vox",
+        "  presence: Vox > Kick",
+        "Mix band energy (sum of all channels):",
+        "  bass: -10.50 dBFS",
+        "  presence: -18.25 dBFS",
+      ].join("\n"),
+    );
+  });
 });
 
 describe("NarrativePort-backed functions", () => {
