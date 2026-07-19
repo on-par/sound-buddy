@@ -19,12 +19,14 @@ import { useElectron } from './useElectron';
 import { useStoreShallow } from './stores/useStoreShallow';
 import { useAnalysisStore, type AnalysisStatus } from './stores/analysisStore';
 import { useSpectrumStore } from './stores/spectrumStore';
+import { useSettingsStore } from './stores/settingsStore';
 import ReportCard, { type GradeResult } from './ReportCard';
 import {
   iconSvg,
   gradeRingHTML,
   recListHTML,
   buildMetricRows,
+  buildScoreRows,
   reportCardSourceFromAnalysis,
   contentTypeView,
   reportCardFramesView,
@@ -36,6 +38,7 @@ import {
   type BandDiffApi,
   type GradingPillApi,
   type ReportDeltaView,
+  type ScoreRow,
 } from './report-card';
 import type { SpectrumCurve } from './spectrum-display';
 
@@ -88,6 +91,9 @@ function getFindSpectralPeaks(): unknown {
 }
 function getInlineDialogs(): InlineDialogsApi | undefined {
   return (window as unknown as { inlineDialogs?: InlineDialogsApi }).inlineDialogs;
+}
+function getReportFirstUxState(): { isEnabled(s: unknown): boolean } | undefined {
+  return (window as unknown as { reportFirstUxState?: { isEnabled(s: unknown): boolean } }).reportFirstUxState;
 }
 
 interface HistorySummary {
@@ -234,6 +240,7 @@ export default function ReportCardIsland() {
     idealProfile: s.idealProfile,
     isAutoProfile: s.isAutoProfile,
   }));
+  const { settings } = useStoreShallow(useSettingsStore, (s) => ({ settings: s.settings }));
   const reportViewedRef = useRef(false);
 
   const isHistoryCard = !!historySummary && !currentAnalysis && !liveSource;
@@ -246,6 +253,7 @@ export default function ReportCardIsland() {
   let phaseSignal = false;
   let feedbackPeak: FeedbackPeak | null = null;
   let feedbackCallout: FeedbackRingoutCalloutView | null = null;
+  let scoreRows: ScoreRow[] | null = null;
 
   if (!isHistoryCard && source) {
     const grading = getGrading();
@@ -257,6 +265,8 @@ export default function ReportCardIsland() {
       recommendations: grading.computeRecommendations(source),
       metrics: buildMetricRows(source, grading),
     };
+
+    scoreRows = getReportFirstUxState()?.isEnabled(settings) ? buildScoreRows(source, grading, grade.explain) : null;
 
     if (hasUsableCurve(source.curve) && idealProfile) {
       comparison = compareToProfile(source.curve, idealProfile as IdealProfile);
@@ -327,6 +337,7 @@ export default function ReportCardIsland() {
           bandDiffApi={getGrading()}
           frames={reportCardFramesView(source.frames)}
           delta={delta}
+          scoreRows={scoreRows}
           phaseDoubling={{
             detected: phaseSignal,
             title: phaseSignal

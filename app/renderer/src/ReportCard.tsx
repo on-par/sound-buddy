@@ -24,6 +24,7 @@ import {
   profileMatchHTML,
   metricRowsHTML,
   whyGradeHTML,
+  scoreRowsHTML,
   recListHTML,
   bandBreakdownHTML,
   type RecordingType,
@@ -35,6 +36,7 @@ import {
   type ContentTypeView,
   type FramesSectionView,
   type ReportDeltaView,
+  type ScoreRow,
 } from './report-card';
 
 export interface GradeResult {
@@ -76,6 +78,10 @@ export interface ReportCardProps {
   frames?: FramesSectionView | null;
   /** "vs. last time" comparison vs. the previous persisted summary (#259). Omitted/null → hidden. */
   delta?: ReportDeltaView | null;
+  /** Score-circle expandable metric rows (#540, report-first-ux epic). Non-null → the flag-on
+   *  treatment renders (rows replace the metric table, "Why This Grade" is dropped); null/omitted
+   *  → today's markup renders unchanged. */
+  scoreRows?: ScoreRow[] | null;
   phaseDoubling?: PhaseDoublingView | null;
   feedbackRingout?: FeedbackRingoutView | null;
   onOpenPhaseDoubling?: () => void;
@@ -93,6 +99,7 @@ export default function ReportCard({
   bandDiffApi,
   frames,
   delta,
+  scoreRows,
   phaseDoubling,
   feedbackRingout,
   onOpenPhaseDoubling,
@@ -178,22 +185,28 @@ export default function ReportCard({
       )}
       <div className="rc-section" id="rc-metrics-section">
         <h2>Metrics</h2>
-        <table className="metric-table">
-          <thead>
-            <tr>
-              <th>Metric</th>
-              <th>Value</th>
-              <th>Target</th>
-              <th>Status</th>
-            </tr>
-          </thead>
-          <tbody id="rc-metrics-body" dangerouslySetInnerHTML={{ __html: metricRowsHTML(grade.metrics) }} />
-        </table>
+        {scoreRows ? (
+          <div className="metric-rows" id="rc-metric-rows" dangerouslySetInnerHTML={{ __html: scoreRowsHTML(scoreRows) }} />
+        ) : (
+          <table className="metric-table">
+            <thead>
+              <tr>
+                <th>Metric</th>
+                <th>Value</th>
+                <th>Target</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody id="rc-metrics-body" dangerouslySetInnerHTML={{ __html: metricRowsHTML(grade.metrics) }} />
+          </table>
+        )}
       </div>
-      <div className="rc-section" id="rc-why-section">
-        <h2>Why This Grade</h2>
-        <div className="rc-why" id="rc-why" dangerouslySetInnerHTML={{ __html: whyGradeHTML(grade.explain) }} />
-      </div>
+      {!scoreRows && (
+        <div className="rc-section" id="rc-why-section">
+          <h2>Why This Grade</h2>
+          <div className="rc-why" id="rc-why" dangerouslySetInnerHTML={{ __html: whyGradeHTML(grade.explain) }} />
+        </div>
+      )}
       {bandDiffApi && (
         <div className="rc-section" id="rc-bands-section">
           <h2>Frequency Band Breakdown</h2>

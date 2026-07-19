@@ -12,6 +12,8 @@ import {
   recTypePillHTML,
   metricRowsHTML,
   whyGradeHTML,
+  buildScoreRows,
+  scoreRowsHTML,
   recListHTML,
   bandBreakdownHTML,
   contentTypeView,
@@ -53,6 +55,22 @@ describe('ReportCard', () => {
     expect(html).toContain(metricRowsHTML(grade.metrics));
     expect(html).toContain(whyGradeHTML(grade.explain));
     expect(html).toContain(recListHTML(grade.recommendations, false));
+    expect(html).not.toContain('rc-metric-rows');
+  });
+
+  it('renders the score-circle metric rows instead of the table/why-section when scoreRows is passed (#540)', () => {
+    const src: ReportCardSource = { ...makeSrc(), filename: 'x.wav' };
+    const grade = buildGrade(src);
+    const rows = buildScoreRows(src, grading, grade.explain);
+
+    const html = renderMarkup({ analysis: src, grade, dateText: 'now', scoreRows: rows });
+
+    expect(html).toContain('id="rc-metric-rows"');
+    expect(html).toContain(scoreRowsHTML(rows));
+    expect(html).not.toContain(metricRowsHTML(grade.metrics));
+    expect(html).not.toContain(whyGradeHTML(grade.explain));
+    expect(html).not.toContain('metric-table');
+    expect(html).toContain(gradeRingHTML(grade.letter, grade.score));
   });
 
   it('renders mixed pill tones across metrics and an info-tone rec-type', () => {
@@ -138,7 +156,7 @@ describe('ReportCard', () => {
     const grade = buildGrade(src);
     const bandDiffApi: BandDiffApi = {
       bandDiffFromOthers: () => 0,
-      CONFIG: { bandBalance: { hotDiff: 5, quietDiff: -5 } },
+      CONFIG: { bandBalance: { hotDiff: 5, quietDiff: -5, severeHotDiff: 15 } },
     };
 
     const html = renderMarkup({ analysis: src, grade, dateText: 'now', bandDiffApi });

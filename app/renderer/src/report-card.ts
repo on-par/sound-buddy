@@ -280,6 +280,164 @@ export function buildMetricRows(src: ReportCardSource, g: GradingPillApi): Metri
     { name: 'Spectral Centroid', value: src.centroid ? Math.round(src.centroid).toLocaleString() : '—', unit: src.centroid ? 'Hz' : '', tone: g.rcCentroidStatus(src.centroid), target: src.centroid ? g.rcMetricTarget('centroid') : null },
   ];
 }
+// Rule strings exactly as grading.js's explainGrade emits them (grading.js's
+// deduction/notMeasured builders) — presentation-layer matching by rule name
+// since the grading module is frozen (issue #540 scope).
+export const DEDUCTION_RULES = {
+  clipping: 'Clipping',
+  truePeak: 'True peak over ceiling',
+  dynamicRange: 'Dynamic range too low',
+  lufs: 'Integrated loudness out of band',
+  rms: 'RMS out of band',
+  bandImbalance: 'Band imbalance',
+} as const;
+export const SKIP_RULES = { dynamicRange: 'Dynamic range' } as const; // notMeasured entries
+
+export interface ScoreRowDetail { measured: string; target: string; impact: string; }
+export interface ScoreRow {
+  name: string;
+  note: string | null;
+  value: string;
+  tone: PillTone;
+  hardFail: boolean;
+  detail: ScoreRowDetail;
+  extra: string | null;
+}
+
+// The score-circle treatment's per-metric expandable rows (#540): the same
+// six metrics as buildMetricRows, but each carries its own e2-05 deduction
+// detail inline (measured/target/letterImpact) instead of relying on a
+// separate "Why this grade" section. Tone is derived from deduction presence,
+// not by re-running thresholds, so a row can never disagree with the letter
+// grade it explains (the #131 invariant, extended to this new layout).
+export function buildScoreRows(
+  src: ReportCardSource,
+  g: GradingPillApi & BandDiffApi,
+  explain: GradeExplanation,
+): ScoreRow[] {
+  const ded = (rule: string) => explain.deductions.find((d) => d.rule === rule) ?? null;
+  const skip = (rule: string) => explain.notMeasured.find((s) => s.rule === rule) ?? null;
+  const rows: ScoreRow[] = [];
+
+  // 1. Loudness (LUFS when measured, else RMS)
+  if (measured(src.lufsIntegrated)) {
+    const value = fmt(src.lufsIntegrated) + ' LUFS';
+    const d = ded(DEDUCTION_RULES.lufs);
+    const tone: PillTone = d ? 'issue' : 'good';
+    const detail: ScoreRowDetail = d
+      ? { measured: d.measured, target: d.target, impact: d.letterImpact }
+      : { measured: value, target: g.rcMetricTarget('lufs') ?? '—', impact: 'No impact' };
+    const extra = measured(src.loudnessRange) ? 'Loudness range ' + fmt(src.loudnessRange) + ' LU' : null;
+    rows.push({ name: 'Integrated Loudness', note: 'Program loudness (EBU R128)', value, tone, hardFail: false, detail, extra });
+  } else {
+    const value = fmt(src.rms) + ' dBFS';
+    const d = ded(DEDUCTION_RULES.rms);
+    const tone: PillTone = d ? 'issue' : 'good';
+    const detail: ScoreRowDetail = d
+      ? { measured: d.measured, target: d.target, impact: d.letterImpact }
+      : { measured: value, target: g.rcMetricTarget('rms') ?? '—', impact: 'No impact' };
+    const extra = measured(src.loudnessRange) ? 'Loudness range ' + fmt(src.loudnessRange) + ' LU' : null;
+    rows.push({ name: 'RMS Level', note: 'Average level (RMS)', value, tone, hardFail: false, detail, extra });
+  }
+
+  // 2. Peak / True Peak
+  if (measured(src.truePeakDbtp)) {
+    const value = fmt(src.truePeakDbtp) + ' dBTP';
+    const d = ded(DEDUCTION_RULES.truePeak);
+    const tone: PillTone = d ? 'issue' : 'good';
+    const detail: ScoreRowDetail = d
+      ? { measured: d.measured, target: d.target, impact: d.letterImpact }
+      : { measured: value, target: g.rcMetricTarget('truePeak') ?? '—', impact: 'No impact' };
+    rows.push({ name: 'True Peak', note: 'Inter-sample peak (EBU R128)', value, tone, hardFail: false, detail, extra: null });
+  } else {
+    const value = fmt(src.peak) + ' dBFS';
+    rows.push({
+      name: 'Peak Level', note: 'Sample peak', value,
+      tone: g.rcPeakStatus(src.peak, src.clipping), hardFail: false,
+      detail: { measured: value, target: g.rcMetricTarget('peak') ?? '—', impact: 'Not graded' },
+      extra: null,
+    });
+  }
+
+  // 3. Dynamic Range
+  if (src.dynamicRange == null) {
+    const s = skip(SKIP_RULES.dynamicRange);
+    const detail: ScoreRowDetail = s
+      ? { measured: s.measured, target: g.rcMetricTarget('dynamicRange') ?? '—', impact: s.letterImpact }
+      : { measured: 'Not measured', target: g.rcMetricTarget('dynamicRange') ?? '—', impact: 'Rule skipped — graded on fewer metrics' };
+    rows.push({ name: 'Dynamic Range', note: 'Not measured for live capture', value: '—', tone: 'info', hardFail: false, detail, extra: null });
+  } else {
+    const value = fmt(src.dynamicRange) + ' dB';
+    const d = ded(DEDUCTION_RULES.dynamicRange);
+    const tone: PillTone = d ? 'issue' : 'good';
+    const detail: ScoreRowDetail = d
+      ? { measured: d.measured, target: d.target, impact: d.letterImpact }
+      : { measured: value, target: g.rcMetricTarget('dynamicRange') ?? '—', impact: 'No impact' };
+    rows.push({ name: 'Dynamic Range', note: null, value, tone, hardFail: false, detail, extra: null });
+  }
+
+  // 4. Band Balance
+  {
+    const maxDiff = Object.keys(src.bands).reduce((m, k) => Math.max(m, g.bandDiffFromOthers(src.bands, k)), 0);
+    const value = fmtDev(maxDiff);
+    const d = ded(DEDUCTION_RULES.bandImbalance);
+    const tone: PillTone = d ? 'issue' : maxDiff > g.CONFIG.bandBalance.hotDiff ? 'check' : 'good';
+    const detail: ScoreRowDetail = d
+      ? { measured: d.measured, target: d.target, impact: d.letterImpact }
+      : { measured: fmtDev(maxDiff) + ' vs. other bands', target: '≤ +' + g.CONFIG.bandBalance.severeHotDiff + ' dB vs. other bands', impact: 'No impact' };
+    rows.push({ name: 'Band Balance', note: null, value, tone, hardFail: false, detail, extra: null });
+  }
+
+  // 5. Clipping
+  {
+    const value = src.clipping ? 'Yes' : 'None';
+    const d = ded(DEDUCTION_RULES.clipping);
+    const hardFail = explain.clipping;
+    const tone: PillTone = d ? 'issue' : 'good';
+    const detail: ScoreRowDetail = d
+      ? { measured: d.measured, target: d.target, impact: d.letterImpact }
+      : { measured: 'None', target: 'No clipping', impact: 'No impact' };
+    const extra = hardFail ? 'Clipping forced an automatic F — the other grading rules were not evaluated.' : null;
+    rows.push({ name: 'Clipping', note: null, value, tone, hardFail, detail, extra });
+  }
+
+  // 6. Spectral Centroid
+  {
+    const value = src.centroid ? Math.round(src.centroid).toLocaleString() + ' Hz' : '—';
+    rows.push({
+      name: 'Spectral Centroid', note: null, value,
+      tone: g.rcCentroidStatus(src.centroid), hardFail: false,
+      detail: { measured: value, target: src.centroid ? (g.rcMetricTarget('centroid') ?? '—') : '—', impact: 'Not graded' },
+      extra: null,
+    });
+  }
+
+  return rows;
+}
+
+// Mirrors the mockup's markup (docs/discovery/539-report-card-mockup/mockup-a-
+// score-circle.html) — a native <details>/<summary> per row, collapsed by
+// default (never emits `open`; the mockup's default-open row was a static-
+// screenshot affordance only).
+export function scoreRowsHTML(rows: ScoreRow[]): string {
+  return rows.map((r) => `<details class="metric-row tone-${r.tone}${r.hardFail ? ' hard-fail' : ''}">
+    <summary>
+      <span class="status-dot ${r.tone}"></span>
+      <span class="metric-name">${escapeHtml(r.name)}${r.note ? `<span class="metric-note">${escapeHtml(r.note)}</span>` : ''}</span>
+      <span class="metric-value">${escapeHtml(r.value)}</span>
+      ${statusPillHTML(r.tone)}
+    </summary>
+    <div class="metric-detail">
+      <div class="metric-detail-row">
+        <span>Measured <span class="measured${r.tone === 'issue' ? ' hot' : ''}">${escapeHtml(r.detail.measured)}</span></span>
+        <span>Target ${escapeHtml(r.detail.target)}</span>
+        <span class="impact">${escapeHtml(r.detail.impact)}</span>
+      </div>
+      ${r.extra ? `<div class="metric-extra">${escapeHtml(r.extra)}</div>` : ''}
+    </div>
+  </details>`).join('');
+}
+
 export function metricRowsHTML(metrics: MetricRow[]): string {
   return metrics.map((m) =>
     `<tr>
@@ -494,7 +652,10 @@ export function bandMeterHTML(label: string, range: string, db: number, opts: Ba
    narrow BandDiffApi rather than importing grading.js globally. */
 export interface BandDiffApi {
   bandDiffFromOthers(bands: Record<string, number>, key: string): number;
-  CONFIG: { bandBalance: { hotDiff: number; quietDiff: number } };
+  // severeHotDiff (#540) is the ceiling the score-circle Band Balance row's
+  // clean-target string reads — type-only widening, runtime window.grading
+  // already carries it (grading.js's CONFIG.bandBalance).
+  CONFIG: { bandBalance: { hotDiff: number; quietDiff: number; severeHotDiff: number } };
 }
 
 export function bandBreakdownHTML(bands: Record<string, number>, g: BandDiffApi): string {
