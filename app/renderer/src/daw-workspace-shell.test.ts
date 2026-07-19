@@ -259,7 +259,7 @@ describe('DAW mix waveform (#520)', () => {
     expect(peaksIdx).toBeGreaterThan(-1);
     expect(scheduleIdx).toBeGreaterThan(-1);
     expect(peaksIdx).toBeLessThan(scheduleIdx);
-    const peaksBlock = enclosingBlock(inlineApp, "decodeMixLane(data)");
+    const peaksBlock = enclosingBlock(inlineApp, "decodeLanes(data)");
     expect(peaksBlock).toContain('return;');
   });
 
@@ -267,7 +267,7 @@ describe('DAW mix waveform (#520)', () => {
     // Peaks frames can arrive at the meter cadence — painting synchronously on
     // every IPC event would bypass this file's rAF-coalescing convention
     // (mirrored by scheduleLiveMeters for meter/window ticks).
-    const peaksBlock = enclosingBlock(inlineApp, 'decodeMixLane(data)');
+    const peaksBlock = enclosingBlock(inlineApp, 'decodeLanes(data)');
     expect(peaksBlock).toContain('scheduleDawWaveformRender(');
     expect(peaksBlock).not.toContain('renderDawWaveform()');
   });
@@ -292,9 +292,14 @@ describe('DAW mix waveform (#520)', () => {
     expect(body).not.toContain('innerHTML');
   });
 
-  it('renderDawWaveform budgets columns to the canvas\'s own width, not the wider shell width (avoids off-canvas clipping)', () => {
+  it('drawWaveformLane budgets columns to the canvas\'s own width, not the wider shell width (avoids off-canvas clipping)', () => {
+    const body = functionBody(inlineApp, 'drawWaveformLane');
+    expect(body).toContain('columnPeaks(pairs, waveformBucketsPerSec, PLAYHEAD_PX_PER_SECOND, canvas.width)');
+  });
+
+  it('renderDawWaveform draws the mix canvas from waveformState.pairs via the shared helper', () => {
     const body = functionBody(inlineApp, 'renderDawWaveform');
-    expect(body).toContain('columnPeaks(waveformState.pairs, waveformBucketsPerSec, PLAYHEAD_PX_PER_SECOND, canvas.width)');
+    expect(body).toContain('drawWaveformLane(canvas, waveformState.pairs, strokeStyle)');
   });
 
   it('renderDawWaveform derives capture mode directly from live state, not a DOM re-query', () => {
@@ -315,5 +320,41 @@ describe('DAW mix waveform (#520)', () => {
     expect(waveformIdx).toBeGreaterThan(-1);
     expect(inlineIdx).toBeGreaterThan(-1);
     expect(waveformIdx).toBeLessThan(inlineIdx);
+  });
+});
+
+describe('Per-input waveform lanes (#521)', () => {
+  it('renderDawShell lane markup renders a real waveform canvas, not the placeholder text', () => {
+    const body = functionBody(inlineApp, 'renderDawShell');
+    expect(body).toContain('daw-channel-waveform');
+    expect(body).not.toContain('Waveform coming soon');
+  });
+
+  it('renderDawShell still renders each lane\'s name from laneNames (channel identity preserved)', () => {
+    const body = functionBody(inlineApp, 'renderDawShell');
+    expect(body).toContain('daw-lane-name">${laneNames[idx]}</span>');
+    expect(body).toContain('data-ch="${idx}"');
+  });
+
+  it('onLiveEvent decodes all lanes and appends per-strip lanes into waveformLaneStates', () => {
+    const peaksBlock = enclosingBlock(inlineApp, 'decodeLanes(data)');
+    expect(peaksBlock).toContain('decodeLanes(');
+    expect(peaksBlock).toContain('waveformLaneStates[id]');
+  });
+
+  it('the Start handler resets waveformLaneStates alongside waveformState', () => {
+    const block = enclosingBlock(inlineApp, 'liveRunning = true;');
+    expect(block).toContain('waveformLaneStates = {}');
+  });
+
+  it('renderDawWaveform iterates channel lanes and looks up state by strip + data-ch', () => {
+    const body = functionBody(inlineApp, 'renderDawWaveform');
+    expect(body).toContain('daw-channel-lane');
+    expect(body).toContain("'strip' + ");
+  });
+
+  it('app.css styles the per-channel waveform canvas and lane body height', () => {
+    expect(css).toContain('.daw-channel-waveform');
+    expect(css).toContain('.daw-channel-lane .daw-lane-body');
   });
 });
