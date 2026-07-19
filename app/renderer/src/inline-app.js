@@ -986,10 +986,12 @@ function renderLiveWorkspace() {
 // settings flip adds/removes the panel without a rebuild.
 function syncLiveAdjustmentsPanel() {
   const body = document.getElementById('spectrum-imperative');
-  const html = window.liveAdjustmentsState.panelHTML(setStore.getState().settings, currentMode);
+  const html = window.liveAdjustmentsState.panelHTML(
+    setStore.getState().settings, currentMode, liveWindows, lcStore.getState().measurementSource);
   const existing = body.querySelector('.live-adjustments-panel');
   if (!html) { if (existing) existing.remove(); return; }
   if (!existing) body.insertAdjacentHTML('beforeend', html);
+  else if (existing.outerHTML !== html) existing.outerHTML = html;
 }
 
 // Timeline-oriented DAW shell (#517, epic #515): swapped in for the meter
@@ -2113,6 +2115,7 @@ document.getElementById('live-start-btn').addEventListener('click', async () => 
   waveformLaneStates = {};
   liveWindows = [];
   syncLiveSource();
+  syncLiveAdjustmentsPanel();
   // A live capture always wins over a loaded history entry (#147).
   anaStore.getState().setHistorySummary(null);
   setRigControlsEnabled(false);
@@ -2765,6 +2768,7 @@ sb.onLiveEvent((data) => {
     if (liveWindows.length > 10) liveWindows.shift();
     document.getElementById('window-badge').textContent = `Window #${data.window}`;
     syncLiveSource();
+    syncLiveAdjustmentsPanel();
   }
 });
 

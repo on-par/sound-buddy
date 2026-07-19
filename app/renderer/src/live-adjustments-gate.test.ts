@@ -83,6 +83,23 @@ describe('Live adjustments gate wiring (#522)', () => {
     expect(body).toContain('.live-adjustments-panel');
   });
 
+  it('syncLiveAdjustmentsPanel passes live window data through and replaces stale panels', () => {
+    const body = functionBody(inlineApp, 'syncLiveAdjustmentsPanel');
+    expect(body).toContain('liveWindows');
+    expect(body).toContain('measurementSource');
+    expect(body).toContain('outerHTML');
+  });
+
+  it('window ticks refresh the adjustments panel', () => {
+    const block = enclosingBlock(inlineApp, 'liveWindows.push');
+    expect(block).toContain('syncLiveAdjustmentsPanel(');
+  });
+
+  it('starting a capture resets the adjustments panel to the waiting state', () => {
+    const block = enclosingBlock(inlineApp, 'liveRunning = true');
+    expect(block).toContain('syncLiveAdjustmentsPanel(');
+  });
+
   it('openStorageSettings seeds the toggle checkbox', () => {
     const body = functionBody(inlineApp, 'openStorageSettings');
     expect(body).toContain('live-adjustments-toggle');
@@ -115,5 +132,10 @@ describe('Live adjustments gate wiring (#522)', () => {
 
   it('app.css styles the live-adjustments panel', () => {
     expect(css).toContain('.live-adjustments-panel');
+  });
+
+  it('app.css styles the mix-candidates list (#523)', () => {
+    expect(css).toContain('.lap-candidates');
+    expect(css).toContain('.lap-cand-title');
   });
 });
