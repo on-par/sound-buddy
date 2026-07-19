@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<!--
+  Static, non-interactive mockup — spike for issue #539 (epic e17,
+  "report-first-ux"). Zero JavaScript, zero production code changed.
+
+  Golden case used for the real sample grade: "rms_out_of_band_drop" in
+  app/renderer/grading.golden.json — source { rms:-22, peak:-6, dynamicRange:10,
+  clipping:false, centroid:2000, contentType:null }, expected { grade:"B",
+  score:89, deductions:[{rule:"RMS out of band", measured:"-22.0 dBFS",
+  target:"-20 to -14 dBFS", letterImpact:"Drops one letter"}] }. It was picked
+  per the spec's own suggestion — no golden case in this file carries more
+  than one deduction, so "richer multi-deduction" doesn't apply.
+
+  Non-deducted metric targets below are read from app/renderer/grading.js's
+  CONFIG + rcMetricTarget() (peak checkAbove -3 dBFS, dynamicRange.good 6 dB,
+  centroid 500-4,000 Hz) and tone functions (rcPeakStatus/rcDrStatus/
+  rcCentroidStatus), not fabricated — every value on this page traces to real
+  code or real fixture data. The recording-type pill ("Normal") is the real
+  analyzeRecordingType() fallback for this source shape. Filename and date in
+  the header are the only illustrative placeholders (the golden fixture has
+  no file metadata) and are labelled as such.
+
+  Design tokens below are a copied subset of app/renderer/src/styles/tokens.css
+  (not <link>-ed, so this file stays self-contained and viewable via a plain
+  file:// open). Layout classes (.rc-header, .grade-ring, .pill, #rc-toolbar,
+  .btn, …) mirror app/renderer/src/styles/app.css so the mockup reads as the
+  real screen; the metric-row disclosure treatment itself is new exploratory
+  markup (native <details>/<summary>, no <script> anywhere) — that novel part
+  is exactly what this spike is validating.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Mockup A — Score-circle Report Card (static spike, #539)</title>
+<style>
+  :root {
+    --neutral-1000:#08090B; --neutral-950:#0B0C0F; --neutral-900:#101217;
+    --neutral-850:#15181E;  --neutral-800:#1B1F26; --neutral-750:#22262F;
+    --neutral-700:#2B303A;  --neutral-600:#3A404C; --neutral-500:#565D6B;
+    --neutral-400:#7A828F;  --neutral-300:#A2AAB6; --neutral-200:#C9CFD8;
+    --neutral-100:#E6E9EE;  --neutral-50:#F5F7FA;
+
+    --bg-app:var(--neutral-950); --bg-panel:var(--neutral-900);
+    --surface:var(--neutral-800); --surface-raised:var(--neutral-750);
+    --surface-inset:var(--neutral-1000); --surface-hover:var(--neutral-750);
+
+    --border-subtle:rgba(255,255,255,0.055); --border-default:rgba(255,255,255,0.09);
+    --border-strong:rgba(255,255,255,0.15);
+
+    --text-primary:var(--neutral-100); --text-secondary:var(--neutral-300);
+    --text-tertiary:var(--neutral-400); --text-muted:var(--neutral-500);
+    --text-on-accent:#1A1500;
+
+    --gold-500:#EBB93C; --gold-600:#D19E22; --gold-tint:rgba(235,185,60,0.14);
+    --gold-text:#F3CA5E;
+
+    --good-500:#33B85A; --good-text:#57D77C; --good-tint:rgba(51,184,90,0.15); --good-border:rgba(51,184,90,0.35);
+    --check-500:#E8862E; --check-text:#F2A65A; --check-tint:rgba(232,134,46,0.15); --check-border:rgba(232,134,46,0.35);
+    --issue-500:#E5484D; --issue-text:#F26D71; --issue-tint:rgba(229,72,77,0.15); --issue-border:rgba(229,72,77,0.35);
+    --info-500:#4C93F0; --info-text:#7DB0F7; --info-tint:rgba(76,147,240,0.14); --info-border:rgba(76,147,240,0.35);
+
+    --grade-a:#57D77C; --grade-b:#9AD05A; --grade-c:#F3CA5E; --grade-d:#F2A65A; --grade-f:#F26D71;
+
+    --font-sans:'Geist',-apple-system,BlinkMacSystemFont,'Segoe UI',system-ui,sans-serif;
+    --font-mono:'Geist Mono','SF Mono',ui-monospace,'Menlo','Consolas',monospace;
+    --fw-regular:400; --fw-medium:500; --fw-semibold:600; --fw-bold:700;
+    --fs-h1:28px; --fs-body:14px; --fs-body-sm:13px; --fs-label:12px; --fs-micro:11px;
+
+    --radius-xs:4px; --radius-sm:6px; --radius-md:8px; --radius-pill:999px;
+
+    --shadow-sm:0 1px 2px rgba(0,0,0,0.40);
+    --highlight-top:inset 0 1px 0 rgba(255,255,255,0.05);
+    --elevation-card:var(--highlight-top),0 2px 8px rgba(0,0,0,0.32);
+  }
+
+  * { box-sizing:border-box; }
+  html,body { margin:0; padding:0; }
+  body {
+    background:var(--bg-app); color:var(--text-primary);
+    font:var(--fw-regular) var(--fs-body)/1.5 var(--font-sans);
+    min-height:100vh;
+  }
+
+  /* ── #rc-toolbar, copied from app/renderer/src/root-markup.html:356-365 ── */
+  #rc-toolbar {
+    display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between;
+    row-gap:8px; padding:10px 22px; border-bottom:1px solid var(--border-subtle);
+    background:var(--bg-panel);
+  }
+  .panel-title { font:var(--fw-semibold) var(--fs-micro)/1 var(--font-sans); letter-spacing:0.06em; text-transform:uppercase; color:var(--text-tertiary); }
+  .rc-toolbar-actions { display:flex; gap:8px; }
+  .btn {
+    display:inline-flex; align-items:center; justify-content:center; gap:6px;
+    height:28px; padding:0 12px; font:var(--fw-medium) var(--fs-label)/1 var(--font-sans);
+    border:1px solid var(--border-default); border-radius:var(--radius-md); cursor:default;
+    background:var(--surface-raised); color:var(--text-primary); box-shadow:var(--highlight-top);
+    white-space:nowrap;
+  }
+  .btn:disabled { opacity:0.45; }
+
+  main { max-width:900px; margin:0 auto; padding:40px 22px 64px; }
+
+  /* ── Report Card header, from app/renderer/src/ReportCard.tsx:139-146 ── */
+  .rc-header { text-align:center; margin-bottom:26px; padding-bottom:20px; border-bottom:1px solid var(--border-subtle); }
+  .rc-header h1 { font:var(--fw-semibold) var(--fs-h1)/1.2 var(--font-sans); letter-spacing:-0.02em; margin:0 0 8px; }
+  .rc-meta { display:flex; justify-content:center; gap:14px; font:var(--fw-regular) var(--fs-label)/1 var(--font-mono); color:var(--text-muted); }
+
+  /* ── Score circle (Lighthouse-style), values from report-card.ts gradeRingHTML() ── */
+  .rc-score { display:flex; flex-direction:column; align-items:center; gap:14px; margin-bottom:36px; }
+  .grade-ring { position:relative; width:168px; height:168px; }
+  .grade-ring svg { display:block; transform:rotate(-90deg); }
+  .grade-ring .center { position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; }
+  .grade-ring .letter { font:var(--fw-bold) 76px/1 var(--font-sans); letter-spacing:-0.03em; color:var(--grade-b); }
+  .grade-ring .score { font:var(--fw-medium) var(--fs-micro)/1 var(--font-mono); color:var(--text-tertiary); margin-top:4px; }
+  .grade-ring .score .slash { opacity:0.6; }
+  .rc-ring-label { font:var(--fw-medium) var(--fs-micro)/1 var(--font-sans); letter-spacing:0.06em; text-transform:uppercase; color:var(--text-tertiary); }
+  .rc-rectype { display:inline-flex; align-items:center; gap:8px; padding:5px 12px; border-radius:var(--radius-pill); max-width:420px; font:var(--fw-medium) var(--fs-body-sm)/1.35 var(--font-sans); }
+  .rc-rectype.info { background:var(--info-tint); border:1px solid var(--info-border); color:var(--info-text); }
+
+  /* ── Per-metric expandable rows (the new part this spike validates) ── */
+  h2.rc-h2 { font:var(--fw-semibold) var(--fs-micro)/1 var(--font-sans); letter-spacing:0.06em; text-transform:uppercase; color:var(--text-tertiary); margin:0 0 14px; padding-bottom:10px; border-bottom:1px solid var(--border-subtle); }
+  .metric-rows { display:flex; flex-direction:column; gap:10px; }
+  details.metric-row {
+    background:var(--surface); border:1px solid var(--border-subtle);
+    border-left:3px solid var(--neutral-600); border-radius:var(--radius-md);
+    box-shadow:var(--elevation-card);
+  }
+  details.metric-row.tone-good { border-left-color:var(--good-500); }
+  details.metric-row.tone-issue { border-left-color:var(--issue-500); }
+  details.metric-row > summary {
+    display:flex; align-items:center; gap:14px; padding:14px 16px; cursor:default;
+    list-style:none;
+  }
+  details.metric-row > summary::-webkit-details-marker { display:none; }
+  details.metric-row > summary::after {
+    content:''; margin-left:auto; width:8px; height:8px;
+    border-right:2px solid var(--text-tertiary); border-bottom:2px solid var(--text-tertiary);
+    transform:rotate(45deg); transition:transform 0.15s ease; flex-shrink:0;
+  }
+  details.metric-row[open] > summary::after { transform:rotate(-135deg); }
+  .status-dot { width:9px; height:9px; border-radius:50%; flex-shrink:0; }
+  .status-dot.good { background:var(--good-text); }
+  .status-dot.issue { background:var(--issue-text); }
+  .metric-name { font-weight:var(--fw-medium); flex:0 0 200px; }
+  .metric-note { display:block; font:var(--fw-regular) var(--fs-micro)/1.3 var(--font-sans); color:var(--text-muted); margin-top:2px; }
+  .metric-value { font-family:var(--font-mono); color:var(--text-secondary); margin-left:auto; margin-right:14px; }
+  .pill { display:inline-flex; align-items:center; gap:5px; padding:3px 10px; border-radius:var(--radius-pill); font:var(--fw-semibold) var(--fs-label)/1 var(--font-sans); letter-spacing:0.01em; white-space:nowrap; }
+  .pill.good { background:var(--good-tint); border:1px solid var(--good-border); color:var(--good-text); }
+  .pill.issue { background:var(--issue-tint); border:1px solid var(--issue-border); color:var(--issue-text); }
+  .metric-detail {
+    padding:0 16px 16px 39px; border-top:1px solid var(--border-subtle); margin-top:0;
+    padding-top:12px;
+  }
+  .metric-detail-row { display:flex; flex-wrap:wrap; gap:6px 18px; font:var(--fw-regular) 13px/1.5 var(--font-mono); }
+  .metric-detail-row .measured.hot { color:var(--issue-text); }
+  .metric-detail-row .impact { margin-left:auto; font:var(--fw-medium) 10px/1.2 var(--font-sans); letter-spacing:0.02em; text-transform:uppercase; color:var(--text-tertiary); }
+</style>
+</head>
+<body>
+  <div id="rc-toolbar">
+    <span class="panel-title">Report Card</span>
+    <div class="rc-toolbar-actions">
+      <button class="btn" type="button" disabled>Clear</button>
+      <button class="btn" type="button">Send Feedback</button>
+      <button class="btn" type="button" disabled>Export PDF</button>
+      <button class="btn" type="button" disabled>Grade your own service</button>
+    </div>
+  </div>
+
+  <main>
+    <div class="rc-header">
+      <h1>Sound Buddy Report Card</h1>
+      <!-- filename/date are illustrative placeholders — the golden fixture carries no file metadata -->
+      <div class="rc-meta">
+        <span>sunday-9am-service.wav</span>
+        <span>·</span>
+        <span>Jul 19, 2026</span>
+      </div>
+    </div>
+
+    <div class="rc-score">
+      <div class="grade-ring">
+        <svg width="168" height="168">
+          <circle cx="84" cy="84" r="80" fill="none" stroke="var(--surface-inset)" stroke-width="8"/>
+          <circle cx="84" cy="84" r="80" fill="none" stroke="var(--grade-b)" stroke-width="8"
+            stroke-linecap="round" stroke-dasharray="447.36 502.65"/>
+        </svg>
+        <div class="center">
+          <span class="letter">B</span>
+          <span class="score">89<span class="slash">/100</span></span>
+        </div>
+      </div>
+      <span class="rc-ring-label">Overall Grade</span>
+      <span class="rc-rectype info">Normal — Recording level is within typical range.</span>
+    </div>
+
+    <h2 class="rc-h2">Metrics</h2>
+    <div class="metric-rows">
+
+      <!-- Open by default: the one metric this golden case deducts for, so the
+           expanded state is visible with zero interaction. -->
+      <details class="metric-row tone-issue" open>
+        <summary>
+          <span class="status-dot issue"></span>
+          <span class="metric-name">Loudness<span class="metric-note">Average level (RMS)</span></span>
+          <span class="metric-value">-22.0 dBFS</span>
+          <span class="pill issue">Issue</span>
+        </summary>
+        <div class="metric-detail">
+          <div class="metric-detail-row">
+            <span>Measured <span class="measured hot">-22.0 dBFS</span></span>
+            <span>Target -20 to -14 dBFS</span>
+            <span class="impact">Drops one letter</span>
+          </div>
+        </div>
+      </details>
+
+      <details class="metric-row tone-good">
+        <summary>
+          <span class="status-dot good"></span>
+          <span class="metric-name">Peak / True Peak<span class="metric-note">Sample peak · true peak not measured for this recording</span></span>
+          <span class="metric-value">-6.0 dBFS</span>
+          <span class="pill good">Good</span>
+        </summary>
+        <div class="metric-detail">
+          <div class="metric-detail-row">
+            <span>Measured -6.0 dBFS</span>
+            <span>Target ≤ -3 dBFS</span>
+            <span class="impact">No impact</span>
+          </div>
+        </div>
+      </details>
+
+      <details class="metric-row tone-good">
+        <summary>
+          <span class="status-dot good"></span>
+          <span class="metric-name">Dynamic Range</span>
+          <span class="metric-value">10.0 dB</span>
+          <span class="pill good">Good</span>
+        </summary>
+        <div class="metric-detail">
+          <div class="metric-detail-row">
+            <span>Measured 10.0 dB</span>
+            <span>Target ≥ 6 dB</span>
+            <span class="impact">No impact</span>
+          </div>
+        </div>
+      </details>
+
+      <details class="metric-row tone-good">
+        <summary>
+          <span class="status-dot good"></span>
+          <span class="metric-name">Spectral Balance<span class="metric-note">Centroid</span></span>
+          <span class="metric-value">2,000 Hz</span>
+          <span class="pill good">Good</span>
+        </summary>
+        <div class="metric-detail">
+          <div class="metric-detail-row">
+            <span>Measured 2,000 Hz</span>
+            <span>Target 500 to 4,000 Hz</span>
+            <span class="impact">No impact</span>
+          </div>
+        </div>
+      </details>
+
+      <details class="metric-row tone-good">
+        <summary>
+          <span class="status-dot good"></span>
+          <span class="metric-name">Clipping</span>
+          <span class="metric-value">None</span>
+          <span class="pill good">Good</span>
+        </summary>
+        <div class="metric-detail">
+          <div class="metric-detail-row">
+            <span>Measured None</span>
+            <span>Target No clipping</span>
+            <span class="impact">No impact</span>
+          </div>
+        </div>
+      </details>
+
+    </div>
+  </main>
+</body>
+</html>
