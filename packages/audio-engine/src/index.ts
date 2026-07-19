@@ -64,6 +64,10 @@ export { SYSTEM_PROMPT, MULTI_CHANNEL_SYSTEM_PROMPT, ANALYST_SYSTEM_PROMPT } fro
 // Canonical AI-prompt numeric formatter (TD-004 slice 5, #429).
 export { fmt } from "./format.js";
 
+// ── NDJSON stream parsing (#279) ──
+export { readNdjsonLines, parseOllamaNdjsonStream } from "./ndjson.js";
+export type { NdjsonSource, OllamaChatChunk } from "./ndjson.js";
+
 function cleanup(chFiles: ChannelFile[]): void {
   for (const ch of chFiles) {
     if (ch.needsCleanup) {

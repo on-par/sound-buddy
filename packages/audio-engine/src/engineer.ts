@@ -5,6 +5,7 @@ import { SYSTEM_PROMPT, MULTI_CHANNEL_SYSTEM_PROMPT } from "./prompts/index.js";
 import { fmt } from "./format.js";
 import type { NarrativePort } from "./narrative/port.js";
 import { PiNarrativeAdapter } from "./narrative/pi-adapter.js";
+import { parseOllamaNdjsonStream } from "./ndjson.js";
 
 export function buildMultiChannelPrompt(
   mix: AudioAnalysis | null,
@@ -148,30 +149,14 @@ export async function analyzeWithOllama(
     };
 
     const req = http.request(options, (res) => {
-      let buffer = "";
-
-      res.on("data", (chunk: Buffer) => {
-        buffer += chunk.toString();
-        const lines = buffer.split("\n");
-        buffer = lines.pop() ?? "";
-
-        for (const line of lines) {
-          const trimmed = line.trim();
-          if (!trimmed) continue;
-          try {
-            const json = JSON.parse(trimmed) as { message?: { content: string }; done: boolean };
-            if (!json.done && json.message?.content) {
-              process.stdout.write(json.message.content);
-            }
-            if (json.done) {
-              process.stdout.write("\n");
-              resolve();
-            }
-          } catch {
-            // ignore malformed lines
-          }
-        }
-      });
+      parseOllamaNdjsonStream(
+        res,
+        (text) => process.stdout.write(text),
+        () => {
+          process.stdout.write("\n");
+          resolve();
+        },
+      );
 
       res.on("end", () => {
         process.stdout.write("\n");
