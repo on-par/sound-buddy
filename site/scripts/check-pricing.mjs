@@ -45,9 +45,7 @@ if (!html.includes('300')) {
   problems.push('300-cap framing missing from the built HTML.');
 }
 
-const downloadCtaIdx = html.indexOf(
-  'https://github.com/on-par/sound-buddy-releases/releases/latest',
-);
+const downloadCtaIdx = html.indexOf('href="/download"');
 const pricingSectionIdx = html.indexOf('id="pricing"');
 if (downloadCtaIdx === -1) {
   problems.push('Download CTA URL not found in built HTML.');
