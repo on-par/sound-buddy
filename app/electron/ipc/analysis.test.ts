@@ -45,17 +45,41 @@ vi.mock('../telemetry', () => ({
   recordTelemetryEvent: recordTelemetryEventMock,
 }));
 
+// save-analysis-summary / list-analysis-summaries delegate to storage.ts, which
+// has its own test suite (storage.test.ts) — here we only assert the handlers
+// call it with the right folder/args and translate its resolution/rejection.
+const saveAnalysisSummaryMock = vi.hoisted(() => vi.fn());
+const listAnalysisSummariesMock = vi.hoisted(() => vi.fn());
+vi.mock('../storage', () => ({
+  saveAnalysisSummary: saveAnalysisSummaryMock,
+  listAnalysisSummaries: listAnalysisSummariesMock,
+}));
+
+const logErrorMock = vi.hoisted(() => vi.fn());
+vi.mock('../logger', () => ({ log: vi.fn(), logError: logErrorMock }));
+
+// Partial fs mock: the existing temp-cleanup tests below write/check REAL files
+// under os.tmpdir(), so this must pass through to the actual module by default
+// and only be overridden per-test via mockImplementationOnce/mockReturnValueOnce.
+const { existsSyncSpy, rmSyncSpy } = vi.hoisted(() => ({ existsSyncSpy: vi.fn(), rmSyncSpy: vi.fn() }));
+vi.mock('fs', async (importActual) => {
+  const actual = await importActual<typeof import('fs')>();
+  existsSyncSpy.mockImplementation(actual.existsSync);
+  rmSyncSpy.mockImplementation(actual.rmSync);
+  return { ...actual, existsSync: existsSyncSpy, rmSync: rmSyncSpy };
+});
+
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
 import { registerAnalysisHandlers, runSox, runFfprobe, runSpectrum, runEbur128 } from './analysis';
-import { toolBin, pythonBin, childEnv, SPECTRUM_SCRIPT } from './shared';
+import { toolBin, pythonBin, childEnv, SPECTRUM_SCRIPT, DEMO_AUDIO, defaultRecordDir } from './shared';
 
 /** A minimal event-sender (renderer webContents) that records `send` calls. */
-function fakeSender() {
+function fakeSender(opts: { destroyed?: boolean } = {}) {
   return {
     id: 1,
-    isDestroyed: () => false,
+    isDestroyed: () => opts.destroyed ?? false,
     sent: [] as { channel: string; payload: unknown }[],
     send(channel: string, payload: unknown) {
       this.sent.push({ channel, payload });
@@ -97,6 +121,8 @@ beforeEach(() => {
   analyzeAudioMock.mockResolvedValue(ANALYSIS_STUB);
   isVideoFileMock.mockReturnValue(false);
   extractAudioToWavMock.mockResolvedValue('/tmp/sb-extract-abc123.wav');
+  saveAnalysisSummaryMock.mockResolvedValue('/tmp/sound-buddy-test/history/x.json');
+  listAnalysisSummariesMock.mockResolvedValue([]);
 });
 
 describe('analyze-file IPC handler', () => {
@@ -197,6 +223,34 @@ describe('analyze-file IPC handler', () => {
     const result = await handler({ sender }, { filePath: '/tmp/service.wav' });
 
     expect(result).toEqual({ success: false, error: 'Error: boom' });
+  });
+
+  it('skips analysis-progress sends to a destroyed webContents but still sends analysis-result and resolves normally', async () => {
+    const handler = handlers.get('analyze-file') as AnalyzeHandler;
+    const sender = fakeSender({ destroyed: true });
+
+    const result = await handler({ sender }, { filePath: '/tmp/service.wav' });
+
+    expect(sender.sent.filter((s) => s.channel === 'analysis-progress')).toHaveLength(0);
+    expect(sender.sent.filter((s) => s.channel === 'analysis-result')).toHaveLength(1);
+    expect(result).toEqual({ success: true, data: ANALYSIS_STUB });
+  });
+
+  it('supersedes an in-flight run for the same renderer, aborting the first and letting the second complete', async () => {
+    analyzeAudioMock.mockImplementationOnce(
+      (_path: string, opts: { signal: AbortSignal }) =>
+        new Promise((_resolve, reject) => {
+          opts.signal.addEventListener('abort', () => reject(abortError()));
+        }),
+    );
+    const handler = handlers.get('analyze-file') as AnalyzeHandler;
+    const sender = fakeSender();
+
+    const firstRun = handler({ sender }, { filePath: '/tmp/a.wav' });
+    const secondResult = await handler({ sender }, { filePath: '/tmp/b.wav' });
+
+    expect(secondResult).toEqual({ success: true, data: ANALYSIS_STUB });
+    await expect(firstRun).resolves.toEqual({ success: false, cancelled: true });
   });
 
   describe('telemetry (#474)', () => {
@@ -326,6 +380,190 @@ describe('analyze-file IPC handler', () => {
       expect(result).toEqual({ success: false, cancelled: true });
       expect(analyzeAudioMock).not.toHaveBeenCalled();
     });
+
+    it('logs but does not fail the analysis when removing the extracted temp file throws', async () => {
+      isVideoFileMock.mockReturnValue(true);
+      rmSyncSpy.mockImplementationOnce(() => {
+        throw new Error('EACCES');
+      });
+      const handler = handlers.get('analyze-file') as AnalyzeHandler;
+      const sender = fakeSender();
+
+      const result = await handler({ sender }, { filePath: '/tmp/service.mp4' });
+
+      expect(result).toEqual({ success: true, data: ANALYSIS_STUB });
+      expect(logErrorMock).toHaveBeenCalledWith(
+        expect.stringContaining('/tmp/sb-extract-abc123.wav'),
+        expect.any(Error),
+      );
+    });
+  });
+});
+
+type CancelHandler = (event: { sender: { id: number } }) => { success: boolean };
+type GetDemoAudioHandler = () => string | null;
+type SaveSummaryHandler = (
+  event: unknown,
+  payload?: Record<string, unknown>,
+) => Promise<{ success: boolean; error?: string }>;
+type ListSummariesHandler = () => Promise<{ success: boolean; summaries: unknown[]; error?: string }>;
+
+describe('cancel-analysis IPC handler', () => {
+  it('resolves { success: false } when no run is in flight for this renderer', () => {
+    const handler = handlers.get('cancel-analysis') as CancelHandler;
+    const sender = fakeSender();
+
+    const result = handler({ sender });
+
+    expect(result).toEqual({ success: false });
+  });
+
+  it('aborts the in-flight run for this renderer and resolves { success: true }, letting the run resolve cancelled', async () => {
+    analyzeAudioMock.mockImplementationOnce(
+      (_path: string, opts: { signal: AbortSignal }) =>
+        new Promise((_resolve, reject) => {
+          opts.signal.addEventListener('abort', () => reject(abortError()));
+        }),
+    );
+    const analyzeHandler = handlers.get('analyze-file') as AnalyzeHandler;
+    const cancelHandler = handlers.get('cancel-analysis') as CancelHandler;
+    const sender = fakeSender();
+
+    const runPromise = analyzeHandler({ sender }, { filePath: '/tmp/a.wav' });
+    const cancelResult = cancelHandler({ sender });
+
+    expect(cancelResult).toEqual({ success: true });
+    await expect(runPromise).resolves.toEqual({ success: false, cancelled: true });
+  });
+});
+
+describe('get-demo-audio IPC handler', () => {
+  it('returns DEMO_AUDIO when the bundled asset exists on disk', () => {
+    existsSyncSpy.mockReturnValueOnce(true);
+    const handler = handlers.get('get-demo-audio') as GetDemoAudioHandler;
+
+    const result = handler();
+
+    expect(result).toBe(DEMO_AUDIO);
+    expect(existsSyncSpy).toHaveBeenCalledWith(DEMO_AUDIO);
+  });
+
+  it('returns null when the bundled asset is missing', () => {
+    existsSyncSpy.mockReturnValueOnce(false);
+    const handler = handlers.get('get-demo-audio') as GetDemoAudioHandler;
+
+    const result = handler();
+
+    expect(result).toBeNull();
+  });
+});
+
+describe('save-analysis-summary IPC handler', () => {
+  it('saves the summary under the history folder with a stamped ISO date', async () => {
+    const handler = handlers.get('save-analysis-summary') as SaveSummaryHandler;
+
+    const result = await handler(undefined, {
+      sourceFilename: 'sunday.wav',
+      gradeLetter: 'B',
+      score: 87,
+      recordingType: 'service',
+      topFixes: ['cut 400Hz'],
+    });
+
+    expect(saveAnalysisSummaryMock).toHaveBeenCalledWith(
+      path.join(defaultRecordDir(), 'history'),
+      expect.objectContaining({
+        sourceFilename: 'sunday.wav',
+        gradeLetter: 'B',
+        score: 87,
+        recordingType: 'service',
+        topFixes: ['cut 400Hz'],
+        date: expect.stringMatching(/^\d{4}-\d{2}-\d{2}T/),
+      }),
+    );
+    expect(result).toEqual({ success: true });
+  });
+
+  it('defaults every field to its empty/zero value when the payload is undefined', async () => {
+    const handler = handlers.get('save-analysis-summary') as SaveSummaryHandler;
+
+    await handler(undefined, undefined);
+
+    expect(saveAnalysisSummaryMock).toHaveBeenCalledWith(
+      path.join(defaultRecordDir(), 'history'),
+      expect.objectContaining({
+        sourceFilename: '',
+        gradeLetter: '',
+        score: 0,
+        recordingType: '',
+        topFixes: [],
+      }),
+    );
+  });
+
+  it('coerces a non-array topFixes to [] and a numeric-string score to a number, even with a truthy payload', async () => {
+    const handler = handlers.get('save-analysis-summary') as SaveSummaryHandler;
+
+    await handler(undefined, {
+      sourceFilename: 'x.wav',
+      gradeLetter: 'A',
+      score: '92',
+      recordingType: 'rehearsal',
+      topFixes: 'not-an-array',
+    });
+
+    expect(saveAnalysisSummaryMock).toHaveBeenCalledWith(
+      path.join(defaultRecordDir(), 'history'),
+      expect.objectContaining({ score: 92, topFixes: [] }),
+    );
+  });
+
+  it('resolves { success: false, error } and logs when storage rejects', async () => {
+    saveAnalysisSummaryMock.mockRejectedValueOnce(new Error('disk full'));
+    const handler = handlers.get('save-analysis-summary') as SaveSummaryHandler;
+
+    const result = await handler(undefined, {
+      sourceFilename: 'a.wav',
+      gradeLetter: 'A',
+      score: 90,
+      recordingType: 'service',
+      topFixes: [],
+    });
+
+    expect(result).toEqual({ success: false, error: 'Error: disk full' });
+    expect(logErrorMock).toHaveBeenCalled();
+  });
+});
+
+describe('list-analysis-summaries IPC handler', () => {
+  it('resolves the summaries returned by storage, reading the history folder with limit 10', async () => {
+    const summaries = [
+      {
+        date: '2026-07-19T00:00:00.000Z',
+        sourceFilename: 'a.wav',
+        gradeLetter: 'A',
+        score: 95,
+        recordingType: 'service',
+        topFixes: [],
+      },
+    ];
+    listAnalysisSummariesMock.mockResolvedValueOnce(summaries);
+    const handler = handlers.get('list-analysis-summaries') as ListSummariesHandler;
+
+    const result = await handler();
+
+    expect(listAnalysisSummariesMock).toHaveBeenCalledWith(path.join(defaultRecordDir(), 'history'), 10);
+    expect(result).toEqual({ success: true, summaries });
+  });
+
+  it('resolves { success: false, error, summaries: [] } and logs when storage rejects', async () => {
+    listAnalysisSummariesMock.mockRejectedValueOnce(new Error('EACCES'));
+    const handler = handlers.get('list-analysis-summaries') as ListSummariesHandler;
+
+    const result = await handler();
+
+    expect(result).toEqual({ success: false, error: 'Error: EACCES', summaries: [] });
+    expect(logErrorMock).toHaveBeenCalled();
   });
 });
 
