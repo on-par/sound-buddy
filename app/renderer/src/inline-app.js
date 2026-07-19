@@ -979,7 +979,7 @@ function renderDawShell() {
   const laneHTML = channelConfig.length > 0
     ? `<div class="daw-channel-lanes">${channelConfig.map((strip, idx) =>
       `<div class="daw-lane daw-channel-lane" data-ch="${idx}">`
-      + `<span class="daw-lane-name">${stripLabel(strip, liveChannelAt(idx), idx)}</span>`
+      + `<span class="daw-lane-name">${escapeHtml(stripLabel(strip, liveChannelAt(idx), idx))}</span>`
       + `<span class="daw-lane-body">Waveform coming soon</span>`
       + `</div>`).join('')}</div>`
     : `<div class="daw-lane daw-empty-state">Add tracks from the Source panel to see channel lanes</div>`;

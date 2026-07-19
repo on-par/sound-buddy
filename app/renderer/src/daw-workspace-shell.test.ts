@@ -66,6 +66,11 @@ describe('DAW workspace timeline shell markup (#517)', () => {
     expect(body).toContain('stripLabel(');
   });
 
+  it('escapes the lane name before it reaches innerHTML (stripLabel can return a user-entered or device-reported string)', () => {
+    const body = functionBody(inlineApp, 'renderDawShell');
+    expect(body).toMatch(/daw-lane-name">\$\{escapeHtml\(stripLabel\(/);
+  });
+
   it('renders a muted empty-state row when channelConfig is empty', () => {
     const body = functionBody(inlineApp, 'renderDawShell');
     expect(body).toContain('Add tracks from the Source panel');
