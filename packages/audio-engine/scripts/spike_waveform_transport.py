@@ -454,14 +454,26 @@ def run_real_capture(sd, np, device: dict, duration_secs: float, interval_secs: 
     """
     import queue
     import threading
+    import collections
 
     n_channels = device["channels"]
     sample_rate = device["default_sr"]
-    q: "queue.Queue" = queue.Queue()
+    # Mirrors stream.py's architecture exactly (stream.py:445-518): the
+    # PortAudio callback only enqueues (never blocks on I/O); a writer thread
+    # drains the queue to disk *and* appends each block to a bounded ring
+    # buffer (`blocks`, trimmed to the meter window) that the main loop reads
+    # via `trailing()`. This keeps the callback thread real-time-safe and
+    # keeps the main loop's per-tick work bounded (not O(total run length)).
+    audio_q: "queue.Queue" = queue.Queue()
     status_flag_count = {"n": 0}
     writer_queue_max_depth = {"n": 0}
     stop_flag = {"stop": False}
-    blocks: list = []
+    n_samples = max(1, round(sample_rate * interval_secs))
+    buckets = max(1, round(buckets_per_sec * interval_secs))
+
+    blocks: "collections.deque" = collections.deque()
+    buffered_samples = {"n": 0}
+    lock = threading.Lock()
 
     writers = []
     if record_dir is not None:
@@ -477,18 +489,41 @@ def run_real_capture(sd, np, device: dict, duration_secs: float, interval_secs: 
     def audio_callback(indata, frames, time_info, status):
         if status:
             status_flag_count["n"] += 1
-        q.put(indata.copy())
-        blocks.append(indata.copy())
-        writer_queue_max_depth["n"] = max(writer_queue_max_depth["n"], q.qsize())
+        # Backlog that existed *before* this block — a healthy writer thread
+        # drains between callbacks, so this reads 0 on a healthy run; sampling
+        # after put() would always read >=1 (this block itself) and falsely
+        # signal backpressure on every tick.
+        writer_queue_max_depth["n"] = max(writer_queue_max_depth["n"], audio_q.qsize())
+        audio_q.put(np.array(indata, dtype=np.float32, copy=True))
 
     def writer_loop():
-        while not stop_flag["stop"] or not q.empty():
-            try:
-                block = q.get(timeout=0.1)
-            except queue.Empty:
-                continue
+        while True:
+            block = audio_q.get()
+            if block is None:
+                return
             for ch, writer in enumerate(writers):
                 writer.write(block[:, ch])
+            with lock:
+                blocks.append(block)
+                buffered_samples["n"] += block.shape[0]
+                while blocks and buffered_samples["n"] - blocks[0].shape[0] >= n_samples:
+                    buffered_samples["n"] -= blocks.popleft().shape[0]
+
+    def trailing(want_samples: int):
+        with lock:
+            if not blocks:
+                return np.empty((0, n_channels), dtype=np.float32)
+            picked = []
+            total = 0
+            for block in reversed(blocks):
+                picked.append(block)
+                total += block.shape[0]
+                if total >= want_samples:
+                    break
+            data = np.concatenate(list(reversed(picked)), axis=0)
+        if data.shape[0] > want_samples:
+            data = data[-want_samples:]
+        return data
 
     def _on_signal(*_args):
         stop_flag["stop"] = True
@@ -500,8 +535,6 @@ def run_real_capture(sd, np, device: dict, duration_secs: float, interval_secs: 
     writer_thread.start()
 
     tick_records = []
-    n_samples = max(1, round(sample_rate * interval_secs))
-    buckets = max(1, round(buckets_per_sec * interval_secs))
 
     with sd.InputStream(
         device=device["index"], channels=n_channels, samplerate=sample_rate,
@@ -519,24 +552,21 @@ def run_real_capture(sd, np, device: dict, duration_secs: float, interval_secs: 
                 time.sleep(sleep)
 
             cpu_start = time.process_time()
-            total = sum(b.shape[0] for b in blocks)
-            if total < n_samples:
+            frames = trailing(n_samples)
+            if frames.shape[0] < buckets:
+                # Not enough samples buffered yet (e.g. the first tick right
+                # after the stream opens) — mirrors stream.py's
+                # `if frames.shape[0] < 2: continue` skip-tick guard.
                 continue
-            recent = blocks[-1]
-            trailing_len = min(recent.shape[0], n_samples)
-            trailing = recent[-trailing_len:]
 
             lane_ids = ["mix"] + [f"strip{i}" for i in range(n_channels)]
-            mix = trailing.mean(axis=1)
+            mix = frames.mean(axis=1)
             lanes = []
-            for lane_id, channel in zip(lane_ids, [mix] + [trailing[:, i] for i in range(n_channels)]):
-                reshaped = channel[: buckets * (len(channel) // buckets)].reshape(buckets, -1) if len(channel) >= buckets else channel.reshape(0, 0)
-                if reshaped.size == 0:
-                    peaks = []
-                else:
-                    mins = reshaped.min(axis=1)
-                    maxs = reshaped.max(axis=1)
-                    peaks = list(zip((float(v) for v in mins), (float(v) for v in maxs)))
+            for lane_id, channel in zip(lane_ids, [mix] + [frames[:, i] for i in range(n_channels)]):
+                reshaped = channel[: buckets * (len(channel) // buckets)].reshape(buckets, -1)
+                mins = reshaped.min(axis=1)
+                maxs = reshaped.max(axis=1)
+                peaks = list(zip((float(v) for v in mins), (float(v) for v in maxs)))
                 lanes.append({"id": lane_id, "peaks": peaks})
 
             line = encode_frame_u8(lanes, time.time())
@@ -548,6 +578,7 @@ def run_real_capture(sd, np, device: dict, duration_secs: float, interval_secs: 
             })
 
     stop_flag["stop"] = True
+    audio_q.put(None)  # end-of-input sentinel — mirrors stream.py's shutdown()
     writer_thread.join(timeout=5.0)
     for writer in writers:
         writer.close()
