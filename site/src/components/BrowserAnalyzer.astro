@@ -143,17 +143,15 @@
         <article class="spectrum-card card">
           <div class="insight-head">
             <span class="eyebrow">Band balance</span>
-            <h3>Seven-band snapshot</h3>
+            <h3>Seven bands, evenly spaced</h3>
           </div>
-          <div class="band-list" data-band-list>
-            <div class="band-row"><span>Sub</span><span class="mono">--</span></div>
-            <div class="band-row"><span>Bass</span><span class="mono">--</span></div>
-            <div class="band-row"><span>Low-mid</span><span class="mono">--</span></div>
-            <div class="band-row"><span>Mid</span><span class="mono">--</span></div>
-            <div class="band-row"><span>High-mid</span><span class="mono">--</span></div>
-            <div class="band-row"><span>Presence</span><span class="mono">--</span></div>
-            <div class="band-row"><span>Brilliance</span><span class="mono">--</span></div>
-          </div>
+          <p class="band-plot-note">
+            Live reads are a 3-second rolling average, not an instant frame; file reads average the
+            whole take.
+          </p>
+          <span class="band-avg-note" data-band-avg-note>Waiting for audio</span>
+          <div class="eq-plot" data-band-bars></div>
+          <div class="eq-labels" data-band-labels></div>
         </article>
       </div>
 
@@ -204,6 +202,20 @@
     type MeterResponse,
     type TargetRange,
   } from '../lib/spl-meter';
+  import {
+    EQ_BAND_DEFS,
+    EQ_GRID_DB,
+    LIVE_AVG_WINDOW_MS,
+    eqBarColumns,
+    eqBarPercent,
+    bandView,
+    loudestBandIndex,
+    barReadoutBottomPct,
+    createRollingAverager,
+    createRollingMax,
+    centroidFromBandDbs,
+    type BandKey,
+  } from '../lib/eq-bands';
 
   (() => {
     const root = document.querySelector<HTMLElement>('[data-browser-analyzer]');
@@ -258,26 +270,6 @@
       return value === 'worship' || value === 'speech' || value === 'broadcast';
     }
 
-    type BandKey = 'sub' | 'bass' | 'lowMid' | 'mid' | 'highMid' | 'presence' | 'brilliance';
-
-    interface BandDef {
-      key: BandKey;
-      label: string;
-      low: number;
-      high: number;
-      center: number;
-    }
-
-    const BAND_DEFS: BandDef[] = [
-      { key: 'sub', label: 'Sub', low: 20, high: 60, center: 40 },
-      { key: 'bass', label: 'Bass', low: 60, high: 250, center: 155 },
-      { key: 'lowMid', label: 'Low-mid', low: 250, high: 500, center: 375 },
-      { key: 'mid', label: 'Mid', low: 500, high: 2000, center: 1200 },
-      { key: 'highMid', label: 'High-mid', low: 2000, high: 4000, center: 3000 },
-      { key: 'presence', label: 'Presence', low: 4000, high: 6000, center: 5000 },
-      { key: 'brilliance', label: 'Brilliance', low: 6000, high: 16000, center: 9500 },
-    ];
-
     interface AnalysisResult {
       source: string;
       duration: number;
@@ -330,7 +322,9 @@
       correlation: required(root.querySelector<HTMLElement>('[data-correlation]'), '[data-correlation]'),
       correlationBar: required(root.querySelector<HTMLElement>('[data-correlation-bar]'), '[data-correlation-bar]'),
       summaryList: required(root.querySelector<HTMLElement>('[data-summary-list]'), '[data-summary-list]'),
-      bandList: required(root.querySelector<HTMLElement>('[data-band-list]'), '[data-band-list]'),
+      bandBars: required(root.querySelector<HTMLElement>('[data-band-bars]'), '[data-band-bars]'),
+      bandLabels: required(root.querySelector<HTMLElement>('[data-band-labels]'), '[data-band-labels]'),
+      bandAvgNote: required(root.querySelector<HTMLElement>('[data-band-avg-note]'), '[data-band-avg-note]'),
       source: required(root.querySelector<HTMLElement>('[data-source]'), '[data-source]'),
       duration: required(root.querySelector<HTMLElement>('[data-duration]'), '[data-duration]'),
       sampleRate: required(root.querySelector<HTMLElement>('[data-sample-rate]'), '[data-sample-rate]'),
@@ -350,6 +344,10 @@
       levelSmoother: ReturnType<typeof createLevelSmoother>;
       lastTickMs: number | null;
       liveLevelDb: number | null;
+      bandAverager: ReturnType<typeof createRollingAverager>;
+      scalarAverager: ReturnType<typeof createRollingAverager>;
+      rmsAverager: ReturnType<typeof createRollingAverager>;
+      peakHold: ReturnType<typeof createRollingMax>;
     } = {
       audioContext: null,
       stream: null,
@@ -361,6 +359,10 @@
       levelSmoother: createLevelSmoother(SLOW_TIME_CONSTANT_MS),
       lastTickMs: null,
       liveLevelDb: null,
+      bandAverager: createRollingAverager(LIVE_AVG_WINDOW_MS, 'db'),
+      scalarAverager: createRollingAverager(LIVE_AVG_WINDOW_MS, 'linear'),
+      rmsAverager: createRollingAverager(LIVE_AVG_WINDOW_MS, 'db'),
+      peakHold: createRollingMax(LIVE_AVG_WINDOW_MS),
     };
 
     const RESPONSE_TIME_CONSTANTS_MS: Record<MeterResponse, number> = {
@@ -563,19 +565,10 @@
       // the difference between a "quick check" and a multi-second wait on a
       // longer service recording.
       const bandEntries = await Promise.all(
-        BAND_DEFS.map(async (band) => [band.key, await measureBandDb(mono, buffer.sampleRate, band.low, band.high)] as const),
+        EQ_BAND_DEFS.map(async (band) => [band.key, await measureBandDb(mono, buffer.sampleRate, band.lo, band.hi)] as const),
       );
       const bandValues = Object.fromEntries(bandEntries) as Record<BandKey, number>;
-
-      const centroidNumerator = BAND_DEFS.reduce((sum, band) => {
-        const linear = Math.pow(10, (bandValues[band.key] || -120) / 20);
-        return sum + linear * band.center;
-      }, 0);
-      const centroidDenominator = BAND_DEFS.reduce((sum, band) => {
-        const linear = Math.pow(10, (bandValues[band.key] || -120) / 20);
-        return sum + linear;
-      }, 0);
-      const centroid = centroidDenominator > 0 ? centroidNumerator / centroidDenominator : 0;
+      const centroid = centroidFromBandDbs(EQ_BAND_DEFS.map((band) => bandValues[band.key]));
 
       const result: AnalysisResult = {
         source: sourceLabel,
@@ -590,7 +583,68 @@
         bands: bandValues,
       };
 
+      setBandAvgNote('Whole-file average');
       applyResult(result);
+    }
+
+    function setBandAvgNote(text: string): void {
+      els.bandAvgNote.textContent = text;
+    }
+
+    interface BandBarRefs {
+      bar: HTMLElement;
+      val: HTMLElement;
+    }
+
+    let bandBarRefs: BandBarRefs[] | null = null;
+
+    function buildBandBars(): void {
+      const cols = eqBarColumns();
+      const gridHtml = EQ_GRID_DB.map((gridDb) => {
+        const bottom = eqBarPercent(gridDb);
+        return `<div class="eq-grid-line" style="bottom:${bottom.toFixed(2)}%"><span>${gridDb}</span></div>`;
+      }).join('');
+
+      const barsHtml = cols.map((col, i) => {
+        const rangeLabel = EQ_BAND_DEFS[i].rangeLabel;
+        const colStyle = `left:${col.leftPct.toFixed(3)}%;width:${col.widthPct.toFixed(3)}%`;
+        return (
+          `<div class="eq-bar" data-band="${col.key}" style="${colStyle}" title="${rangeLabel}" aria-label="${col.label}: ${rangeLabel}"></div>` +
+          `<div class="eq-val" data-band-val="${col.key}" style="${colStyle}"></div>`
+        );
+      }).join('');
+
+      els.bandBars.innerHTML = `<div class="eq-grid">${gridHtml}</div>${barsHtml}`;
+      // Positioned by left+width (matching each bar's own column), not a
+      // centered/translated point — the label text is wider than a 1/7
+      // column at this card's size, so centering on a point would overlap
+      // adjacent labels; centering within the column's own width lets it
+      // wrap onto a second line instead (#299).
+      els.bandLabels.innerHTML = cols
+        .map((col) => `<span class="eq-label" style="left:${col.leftPct.toFixed(3)}%;width:${col.widthPct.toFixed(3)}%">${col.label}</span>`)
+        .join('');
+
+      bandBarRefs = cols.map((col) => ({
+        bar: required(els.bandBars.querySelector<HTMLElement>(`.eq-bar[data-band="${col.key}"]`), `.eq-bar[data-band="${col.key}"]`),
+        val: required(els.bandBars.querySelector<HTMLElement>(`.eq-val[data-band-val="${col.key}"]`), `.eq-val[data-band-val="${col.key}"]`),
+      }));
+    }
+
+    function renderBands(bandDbs: number[]): void {
+      if (!bandBarRefs) buildBandBars();
+      const refs = bandBarRefs as BandBarRefs[];
+      const loudest = loudestBandIndex(bandDbs);
+      EQ_BAND_DEFS.forEach((_band, i) => {
+        const view = bandView(bandDbs[i]);
+        const { bar, val } = refs[i];
+        bar.style.height = `${view.pct.toFixed(2)}%`;
+        bar.classList.toggle('dim', view.dim);
+        bar.classList.toggle('loud', i === loudest);
+        val.style.bottom = `${barReadoutBottomPct(view.pct).toFixed(2)}%`;
+        val.textContent = view.val;
+        val.classList.toggle('hot', view.hot);
+        val.classList.toggle('dim', view.dim);
+      });
     }
 
     function buildNotes(result: AnalysisResult, preset: PresetConfig): string[] {
@@ -700,10 +754,7 @@
       els.correlationBar.style.width = meterWidth(result.correlation, -1, 1);
 
       els.summaryList.innerHTML = notes.map((note) => `<li>${note}</li>`).join('');
-      els.bandList.innerHTML = BAND_DEFS.map((band) => {
-        const value = result.bands[band.key];
-        return `<div class="band-row"><span>${band.label}</span><span class="mono">${value.toFixed(1)} dB</span></div>`;
-      }).join('');
+      renderBands(EQ_BAND_DEFS.map((band) => result.bands[band.key]));
 
       els.source.textContent = result.source;
       els.duration.textContent = formatSeconds(result.duration);
@@ -736,7 +787,12 @@
       state.audioContext = null;
       state.levelSmoother.reset();
       state.lastTickMs = null;
+      state.bandAverager.reset();
+      state.scalarAverager.reset();
+      state.rmsAverager.reset();
+      state.peakHold.reset();
       renderLiveLevel(null);
+      setBandAvgNote('Waiting for audio');
       els.stopLive.disabled = true;
       els.startLive.disabled = false;
       els.runMode.textContent = 'Idle';
@@ -799,45 +855,52 @@
 
         const sampleRate = context.sampleRate;
         const binHz = sampleRate / 2 / leftFreq.length;
-        const bandMap = {} as Record<BandKey, number>;
-        let centroidNumerator = 0;
-        let centroidDenominator = 0;
 
         for (let i = 0; i < leftFreq.length; i += 1) {
           avgFreq[i] = (leftFreq[i] + rightFreq[i]) * 0.5;
         }
 
-        for (const band of BAND_DEFS) {
+        const instBandDbs = EQ_BAND_DEFS.map((band) => {
           let sum = 0;
           let count = 0;
           for (let i = 0; i < leftFreq.length; i += 1) {
             const hz = i * binHz;
-            if (hz >= band.low && hz < band.high) {
+            if (hz >= band.lo && hz < band.hi) {
               sum += avgFreq[i];
               count += 1;
             }
           }
-          const bandDb = count ? sum / count : -90;
-          bandMap[band.key] = bandDb;
-          const linear = Math.pow(10, bandDb / 20);
-          centroidNumerator += linear * band.center;
-          centroidDenominator += linear;
-        }
+          return count ? sum / count : -90;
+        });
 
         const rmsDbValue = db(computeRms(downmix(leftTime, rightTime)));
         const peakDbValue = db(computePeak(leftTime, rightTime));
+        const instCorrelation = computeCorrelation(leftTime, rightTime);
+        const instBalanceDb = computeBalanceDb(leftTime, rightTime);
+
+        // Live values are smoothed with a rolling average window (#299) so the
+        // band balance and hero meters read as a settled measurement rather
+        // than a jittery instantaneous FFT frame — this is a different kind
+        // of smoothing than the live level meter's slow/fast ballistics below.
+        const avgBandDbs = state.bandAverager.update(instBandDbs, nowMs);
+        const [avgCorrelation, avgBalanceDb] = state.scalarAverager.update([instCorrelation, instBalanceDb], nowMs);
+        const [avgRmsDb] = state.rmsAverager.update([rmsDbValue], nowMs);
+        const avgPeakDb = state.peakHold.update(peakDbValue, nowMs);
+        const bandsRecord = Object.fromEntries(
+          EQ_BAND_DEFS.map((band, i) => [band.key, avgBandDbs[i]]),
+        ) as Record<BandKey, number>;
 
         const latestResult: AnalysisResult = {
           source: 'Live stereo input',
           duration: (performance.now() - startedAt) / 1000,
           sampleRate,
-          peakDb: peakDbValue,
-          rmsDb: rmsDbValue,
-          correlation: computeCorrelation(leftTime, rightTime),
-          balanceDb: computeBalanceDb(leftTime, rightTime),
-          dynamicRange: Math.max(0, peakDbValue - rmsDbValue),
-          centroid: centroidDenominator > 0 ? centroidNumerator / centroidDenominator : 0,
-          bands: bandMap,
+          peakDb: avgPeakDb,
+          rmsDb: avgRmsDb,
+          correlation: avgCorrelation,
+          balanceDb: avgBalanceDb,
+          dynamicRange: Math.max(0, avgPeakDb - avgRmsDb),
+          centroid: centroidFromBandDbs(avgBandDbs),
+          bands: bandsRecord,
         };
 
         // The AnalyserNode's own smoothingTimeConstant (default 0.8, ~frame-level)
@@ -853,8 +916,15 @@
 
         applyResult(latestResult);
 
+        const coverageMs = state.bandAverager.coverageMs(nowMs);
+        setBandAvgNote(
+          coverageMs < LIVE_AVG_WINDOW_MS
+            ? `Settling · averaging first ${LIVE_AVG_WINDOW_MS / 1000}s`
+            : '3-second rolling average · live',
+        );
+
         els.runMode.textContent = 'Live';
-        els.statusCopy.textContent = 'Listening locally to your current stereo input.';
+        els.statusCopy.textContent = 'Listening locally — values are a 3-second rolling average.';
         state.animationFrame = requestAnimationFrame(tick);
       };
 
@@ -936,6 +1006,7 @@
     void populateDevices();
     renderLiveLevelMode();
     renderLiveTargetBand();
+    renderBands(EQ_BAND_DEFS.map(() => -120));
   })();
 </script>
 
@@ -1195,17 +1266,82 @@
     border-radius: 50%;
     background: var(--gold-500);
   }
-  .band-list { margin-top: 18px; display: flex; flex-direction: column; gap: 10px; }
-  .band-row {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 12px;
-    padding: 10px 12px;
-    border-radius: var(--radius-md);
-    background: rgba(255, 255, 255, 0.03);
+  .band-plot-note {
+    margin-top: 12px;
+    color: var(--text-tertiary);
+    font: var(--fw-regular) var(--fs-body-sm)/1.5 var(--font-sans);
+  }
+  .band-avg-note {
+    display: inline-block;
+    margin-top: 10px;
+    padding: 4px 10px;
+    align-self: flex-start;
+    border-radius: var(--radius-pill);
+    background: rgba(255, 255, 255, 0.05);
     color: var(--text-secondary);
-    font: var(--fw-medium) var(--fs-body-sm)/1 var(--font-sans);
+    font: var(--fw-semibold) var(--fs-label)/1 var(--font-sans);
+    letter-spacing: var(--tracking-caps);
+    text-transform: uppercase;
+  }
+  .eq-plot {
+    position: relative;
+    margin-top: 16px;
+    height: 240px;
+    border-radius: var(--radius-lg);
+    background: var(--surface-inset);
+    overflow: hidden;
+  }
+  /* :global() is required below: these elements are built by the client
+     script via innerHTML (#299's renderBands/buildBandBars), not Astro's
+     compiled template, so they never receive the component's scoped
+     data-astro-cid attribute and a scoped selector would silently never
+     match them. */
+  :global(.eq-grid) { position: absolute; inset: 0; }
+  :global(.eq-grid-line) {
+    position: absolute;
+    left: 0;
+    right: 0;
+    border-top: 1px solid var(--border-subtle);
+  }
+  :global(.eq-grid-line span) {
+    position: absolute;
+    left: 8px;
+    top: -7px;
+    color: var(--text-muted);
+    font: var(--fw-regular) 10px/1 var(--font-mono);
+  }
+  :global(.eq-bar) {
+    position: absolute;
+    bottom: 0;
+    height: 0%;
+    border-radius: var(--radius-sm) var(--radius-sm) 0 0;
+    background: linear-gradient(180deg, var(--gold-500), var(--azure-500));
+    transition: height var(--dur-base) var(--ease-out);
+  }
+  :global(.eq-bar.dim) { opacity: 0.35; }
+  :global(.eq-bar.loud) { box-shadow: 0 0 16px var(--gold-glow); }
+  :global(.eq-val) {
+    position: absolute;
+    text-align: center;
+    color: var(--text-secondary);
+    font: var(--fw-semibold) 9px/1 var(--font-mono);
+    transition: bottom var(--dur-base) var(--ease-out);
+  }
+  :global(.eq-val.dim) { color: var(--text-muted); }
+  :global(.eq-val.hot) { color: var(--gold-text); }
+  .eq-labels {
+    position: relative;
+    margin-top: 10px;
+    height: 28px;
+  }
+  :global(.eq-label) {
+    position: absolute;
+    text-align: center;
+    overflow-wrap: break-word;
+    color: var(--text-tertiary);
+    font: var(--fw-medium) 9px/1.25 var(--font-sans);
+    letter-spacing: var(--tracking-caps);
+    text-transform: uppercase;
   }
   .detail-list {
     margin-top: 18px;
@@ -1244,5 +1380,8 @@
     .live-meter-head { flex-direction: column; align-items: flex-start; }
     .live-meter-controls { width: 100%; }
     .live-meter-controls .browser-select-compact { flex: 1; }
+    .eq-plot { height: 180px; }
+    :global(.eq-label) { font-size: 8px; }
+    :global(.eq-val) { font-size: 8px; }
   }
 </style>
