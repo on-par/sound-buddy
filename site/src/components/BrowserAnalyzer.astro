@@ -213,6 +213,7 @@
     barReadoutBottomPct,
     createRollingAverager,
     createRollingMax,
+    centroidFromBandDbs,
     type BandKey,
   } from '../lib/eq-bands';
 
@@ -586,18 +587,6 @@
       applyResult(result);
     }
 
-    /** Linear-weighted spectral centroid from per-band dB levels, in EQ_BAND_DEFS order. */
-    function centroidFromBandDbs(bandDbs: number[]): number {
-      let numerator = 0;
-      let denominator = 0;
-      EQ_BAND_DEFS.forEach((band, i) => {
-        const linear = Math.pow(10, (bandDbs[i] ?? -120) / 20);
-        numerator += linear * band.center;
-        denominator += linear;
-      });
-      return denominator > 0 ? numerator / denominator : 0;
-    }
-
     function setBandAvgNote(text: string): void {
       els.bandAvgNote.textContent = text;
     }
@@ -618,15 +607,21 @@
 
       const barsHtml = cols.map((col, i) => {
         const rangeLabel = EQ_BAND_DEFS[i].rangeLabel;
+        const colStyle = `left:${col.leftPct.toFixed(3)}%;width:${col.widthPct.toFixed(3)}%`;
         return (
-          `<div class="eq-bar" data-band="${col.key}" style="left:${col.leftPct.toFixed(3)}%;width:${col.widthPct.toFixed(3)}%" title="${rangeLabel}" aria-label="${col.label}: ${rangeLabel}"></div>` +
-          `<div class="eq-val" data-band-val="${col.key}" style="left:${col.centerPct.toFixed(3)}%"></div>`
+          `<div class="eq-bar" data-band="${col.key}" style="${colStyle}" title="${rangeLabel}" aria-label="${col.label}: ${rangeLabel}"></div>` +
+          `<div class="eq-val" data-band-val="${col.key}" style="${colStyle}"></div>`
         );
       }).join('');
 
       els.bandBars.innerHTML = `<div class="eq-grid">${gridHtml}</div>${barsHtml}`;
+      // Positioned by left+width (matching each bar's own column), not a
+      // centered/translated point — the label text is wider than a 1/7
+      // column at this card's size, so centering on a point would overlap
+      // adjacent labels; centering within the column's own width lets it
+      // wrap onto a second line instead (#299).
       els.bandLabels.innerHTML = cols
-        .map((col) => `<span class="eq-label" style="left:${col.centerPct.toFixed(3)}%">${col.label}</span>`)
+        .map((col) => `<span class="eq-label" style="left:${col.leftPct.toFixed(3)}%;width:${col.widthPct.toFixed(3)}%">${col.label}</span>`)
         .join('');
 
       bandBarRefs = cols.map((col) => ({
@@ -1011,6 +1006,7 @@
     void populateDevices();
     renderLiveLevelMode();
     renderLiveTargetBand();
+    renderBands(EQ_BAND_DEFS.map(() => -120));
   })();
 </script>
 
@@ -1295,21 +1291,26 @@
     background: var(--surface-inset);
     overflow: hidden;
   }
-  .eq-grid { position: absolute; inset: 0; }
-  .eq-grid-line {
+  /* :global() is required below: these elements are built by the client
+     script via innerHTML (#299's renderBands/buildBandBars), not Astro's
+     compiled template, so they never receive the component's scoped
+     data-astro-cid attribute and a scoped selector would silently never
+     match them. */
+  :global(.eq-grid) { position: absolute; inset: 0; }
+  :global(.eq-grid-line) {
     position: absolute;
     left: 0;
     right: 0;
     border-top: 1px solid var(--border-subtle);
   }
-  .eq-grid-line span {
+  :global(.eq-grid-line span) {
     position: absolute;
     left: 8px;
     top: -7px;
     color: var(--text-muted);
     font: var(--fw-regular) 10px/1 var(--font-mono);
   }
-  .eq-bar {
+  :global(.eq-bar) {
     position: absolute;
     bottom: 0;
     height: 0%;
@@ -1317,31 +1318,30 @@
     background: linear-gradient(180deg, var(--gold-500), var(--azure-500));
     transition: height var(--dur-base) var(--ease-out);
   }
-  .eq-bar.dim { opacity: 0.35; }
-  .eq-bar.loud { box-shadow: 0 0 16px var(--gold-glow); }
-  .eq-val {
+  :global(.eq-bar.dim) { opacity: 0.35; }
+  :global(.eq-bar.loud) { box-shadow: 0 0 16px var(--gold-glow); }
+  :global(.eq-val) {
     position: absolute;
-    transform: translateX(-50%);
+    text-align: center;
     color: var(--text-secondary);
-    font: var(--fw-semibold) 11px/1 var(--font-mono);
-    white-space: nowrap;
+    font: var(--fw-semibold) 9px/1 var(--font-mono);
     transition: bottom var(--dur-base) var(--ease-out);
   }
-  .eq-val.dim { color: var(--text-muted); }
-  .eq-val.hot { color: var(--gold-text); }
+  :global(.eq-val.dim) { color: var(--text-muted); }
+  :global(.eq-val.hot) { color: var(--gold-text); }
   .eq-labels {
     position: relative;
     margin-top: 10px;
-    height: 16px;
+    height: 28px;
   }
-  .eq-label {
+  :global(.eq-label) {
     position: absolute;
-    transform: translateX(-50%);
+    text-align: center;
+    overflow-wrap: break-word;
     color: var(--text-tertiary);
-    font: var(--fw-medium) var(--fs-label)/1 var(--font-sans);
+    font: var(--fw-medium) 9px/1.25 var(--font-sans);
     letter-spacing: var(--tracking-caps);
     text-transform: uppercase;
-    white-space: nowrap;
   }
   .detail-list {
     margin-top: 18px;
@@ -1381,7 +1381,7 @@
     .live-meter-controls { width: 100%; }
     .live-meter-controls .browser-select-compact { flex: 1; }
     .eq-plot { height: 180px; }
-    .eq-label { font-size: 9px; }
-    .eq-val { font-size: 9px; }
+    :global(.eq-label) { font-size: 8px; }
+    :global(.eq-val) { font-size: 8px; }
   }
 </style>

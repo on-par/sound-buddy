@@ -18,21 +18,28 @@ export interface EqBandDef {
   center: number;
 }
 
+/** Compact frequency-range label, e.g. "60–250 Hz" — derived from lo/hi so the two can never drift apart. */
+export function formatEqRangeLabel(lo: number, hi: number): string {
+  return `${lo}–${hi} Hz`;
+}
+
 // 7-band metadata mirroring packages/audio-engine/src/bands.ts's BAND_METADATA
 // (the MIT source of truth for band names/ranges), with two deliberate
 // alignments vs. the browser component's prior inline copy: "Sub" -> "Sub-bass",
 // and brilliance's top extended 16000 -> 20000 Hz to match the desktop's
 // display window. Brilliance's center is recomputed as the new range's
 // midpoint (13000) rather than its old hand-tuned value.
-export const EQ_BAND_DEFS: EqBandDef[] = [
-  { key: 'sub', label: 'Sub-bass', rangeLabel: '20–60 Hz', lo: 20, hi: 60, center: 40 },
-  { key: 'bass', label: 'Bass', rangeLabel: '60–250 Hz', lo: 60, hi: 250, center: 155 },
-  { key: 'lowMid', label: 'Low-mid', rangeLabel: '250–500 Hz', lo: 250, hi: 500, center: 375 },
-  { key: 'mid', label: 'Mid', rangeLabel: '500–2000 Hz', lo: 500, hi: 2000, center: 1200 },
-  { key: 'highMid', label: 'High-mid', rangeLabel: '2000–4000 Hz', lo: 2000, hi: 4000, center: 3000 },
-  { key: 'presence', label: 'Presence', rangeLabel: '4000–6000 Hz', lo: 4000, hi: 6000, center: 5000 },
-  { key: 'brilliance', label: 'Brilliance', rangeLabel: '6000–20000 Hz', lo: 6000, hi: 20000, center: 13000 },
-];
+export const EQ_BAND_DEFS: EqBandDef[] = (
+  [
+    { key: 'sub', label: 'Sub-bass', lo: 20, hi: 60, center: 40 },
+    { key: 'bass', label: 'Bass', lo: 60, hi: 250, center: 155 },
+    { key: 'lowMid', label: 'Low-mid', lo: 250, hi: 500, center: 375 },
+    { key: 'mid', label: 'Mid', lo: 500, hi: 2000, center: 1200 },
+    { key: 'highMid', label: 'High-mid', lo: 2000, hi: 4000, center: 3000 },
+    { key: 'presence', label: 'Presence', lo: 4000, hi: 6000, center: 5000 },
+    { key: 'brilliance', label: 'Brilliance', lo: 6000, hi: 20000, center: 13000 },
+  ] as const
+).map((b) => ({ ...b, rangeLabel: formatEqRangeLabel(b.lo, b.hi) }));
 
 /* ── Bar geometry: 7 equal-width columns, like a hardware graphic EQ ── */
 export const EQ_BAR_GAP_PCT = 1.4; // % inset per side, mirrors the desktop's EQ_GAP
@@ -108,12 +115,33 @@ export function barReadoutBottomPct(pct: number): number {
   return Math.min(pct, 90);
 }
 
+/**
+ * Linear-weighted spectral centroid from per-band dB levels, in EQ_BAND_DEFS
+ * order. Shared by file mode (instantaneous per-band levels) and live mode
+ * (averaged per-band levels) so there is one centroid formula, not two.
+ */
+export function centroidFromBandDbs(bandDbs: number[]): number {
+  let numerator = 0;
+  let denominator = 0;
+  EQ_BAND_DEFS.forEach((band, i) => {
+    const linear = Math.pow(10, (bandDbs[i] ?? SILENCE_FLOOR_DB) / 20);
+    numerator += linear * band.center;
+    denominator += linear;
+  });
+  return denominator > 0 ? numerator / denominator : 0;
+}
+
 /* ── Rolling average / peak-hold: smooths live analyzer values over a window ── */
 export const LIVE_AVG_WINDOW_MS = 3000;
 
 interface TimestampedSample {
   t: number;
   values: number[];
+}
+
+/** Drop samples timestamped further back than `windowMs` from `nowMs`. Shared by the averager and peak-hold below. */
+function evictOlderThan<T extends { t: number }>(samples: T[], nowMs: number, windowMs: number): T[] {
+  return samples.filter((s) => nowMs - s.t <= windowMs);
 }
 
 export type AverageDomain = 'db' | 'linear';
@@ -141,7 +169,7 @@ export function createRollingAverager(windowMs: number, domain: AverageDomain): 
         ? values.map((v) => (Number.isFinite(v) ? v : SILENCE_FLOOR_DB))
         : values.slice();
       samples.push({ t: nowMs, values: prepared });
-      samples = samples.filter((s) => nowMs - s.t <= windowMs);
+      samples = evictOlderThan(samples, nowMs, windowMs);
 
       const n = prepared.length;
       const sums = new Array(n).fill(0) as number[];
@@ -178,7 +206,7 @@ export function createRollingMax(windowMs: number): RollingMax {
   return {
     update(value: number, nowMs: number): number {
       samples.push({ t: nowMs, value });
-      samples = samples.filter((s) => nowMs - s.t <= windowMs);
+      samples = evictOlderThan(samples, nowMs, windowMs);
       return samples.reduce((max, s) => Math.max(max, s.value), -Infinity);
     },
     reset(): void {

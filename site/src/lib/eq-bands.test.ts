@@ -15,6 +15,8 @@ import {
   barReadoutBottomPct,
   createRollingAverager,
   createRollingMax,
+  formatEqRangeLabel,
+  centroidFromBandDbs,
 } from './eq-bands';
 
 describe('EQ_BAND_DEFS', () => {
@@ -49,7 +51,7 @@ describe('EQ_BAND_DEFS', () => {
 
   it('every band has a compact range label', () => {
     for (const band of EQ_BAND_DEFS) {
-      expect(band.rangeLabel).toMatch(/^\d+.\d+ Hz$/);
+      expect(band.rangeLabel).toMatch(/^\d+–\d+ Hz$/);
     }
   });
 });
@@ -281,6 +283,42 @@ describe('createRollingMax', () => {
     max.reset();
     const result = max.update(2, 100);
     expect(result).toBe(2);
+  });
+});
+
+describe('formatEqRangeLabel', () => {
+  it('formats a compact Hz range with an en dash', () => {
+    expect(formatEqRangeLabel(60, 250)).toBe('60–250 Hz');
+  });
+
+  it('is the source of every EQ_BAND_DEFS rangeLabel, so lo/hi can never drift from it', () => {
+    for (const band of EQ_BAND_DEFS) {
+      expect(band.rangeLabel).toBe(formatEqRangeLabel(band.lo, band.hi));
+    }
+  });
+});
+
+describe('centroidFromBandDbs', () => {
+  it('is the weighted mean of band centers when every band is equally loud', () => {
+    const equalDbs = EQ_BAND_DEFS.map(() => -6);
+    const expected = EQ_BAND_DEFS.reduce((sum, b) => sum + b.center, 0) / EQ_BAND_DEFS.length;
+    expect(centroidFromBandDbs(equalDbs)).toBeCloseTo(expected, 6);
+  });
+
+  it('is dominated by the loudest band', () => {
+    const dbs = EQ_BAND_DEFS.map((b) => (b.key === 'mid' ? -6 : -120));
+    const midCenter = EQ_BAND_DEFS.find((b) => b.key === 'mid')?.center as number;
+    expect(centroidFromBandDbs(dbs)).toBeCloseTo(midCenter, 0);
+  });
+
+  it('missing entries fall back to the silence floor, same as an all-silent input', () => {
+    const silentDbs = EQ_BAND_DEFS.map(() => -120);
+    expect(centroidFromBandDbs([])).toBeCloseTo(centroidFromBandDbs(silentDbs), 6);
+  });
+
+  it('returns 0 when every band underflows to zero linear power', () => {
+    const dbs = EQ_BAND_DEFS.map(() => -100000);
+    expect(centroidFromBandDbs(dbs)).toBe(0);
   });
 });
 
