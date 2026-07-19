@@ -195,6 +195,28 @@ describe('crashReportingEnabled (#473 — opt-in crash reporting, default off)',
   });
 });
 
+describe('dawWorkspaceEnabled (#516 — experimental DAW workspace, default off)', () => {
+  it('defaults to false when settings.json is absent', () => {
+    expect(getSettings().dawWorkspaceEnabled).toBe(false);
+  });
+
+  it('defaults to false when the file exists without the key', () => {
+    writeFile({ aiEnabled: false, idealProfile: '' });
+    expect(getSettings().dawWorkspaceEnabled).toBe(false);
+  });
+
+  it('flips on and back off, persisting each value to the raw file and surviving a fresh read', () => {
+    const on = updateSettings({ dawWorkspaceEnabled: true });
+    expect(on.dawWorkspaceEnabled).toBe(true);
+    expect(readFile().dawWorkspaceEnabled).toBe(true);
+    expect(getSettings().dawWorkspaceEnabled).toBe(true);
+
+    const off = updateSettings({ dawWorkspaceEnabled: false });
+    expect(off.dawWorkspaceEnabled).toBe(false);
+    expect(readFile().dawWorkspaceEnabled).toBe(false);
+  });
+});
+
 describe('customIdealProfiles', () => {
   const curve = {
     id: 'sunday',

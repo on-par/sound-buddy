@@ -159,6 +159,11 @@ export function registerSettingsHandlers(): void {
       if (typeof patch.crashReportingEnabled === 'boolean') {
         clean.crashReportingEnabled = patch.crashReportingEnabled;
       }
+      // Opt-in experimental DAW-style Live workspace (#516) — a pure UI gate,
+      // consumed by the renderer only.
+      if (typeof patch.dawWorkspaceEnabled === 'boolean') {
+        clean.dawWorkspaceEnabled = patch.dawWorkspaceEnabled;
+      }
     }
     const result = updateSettings(clean);
     // Opting out of telemetry (#474) clears the pending queue and the

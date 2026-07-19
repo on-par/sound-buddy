@@ -133,6 +133,11 @@
          full file paths, secrets, license keys, or audio metadata. -->
     <label class="ai-enable-row"><input type="checkbox" id="crash-reporting-toggle" />Send crash reports</label>
     <p class="ai-dialog-note" id="crash-reporting-note">Off unless you turn it on. When enabled, a crash sends only: app version, macOS version, the error message and stack trace (emails, license keys, and folder paths removed — file names are reduced to their base name), which screen you were on, and the names of recent app actions. Never recordings, audio, full file paths, or anything you typed.</p>
+    <!-- Opt-in experimental DAW-style Live workspace (#516, epic #515). Off by
+         default. A pure UI gate: when off, the Live tab is exactly the
+         existing Live Capture workflow. -->
+    <label class="ai-enable-row"><input type="checkbox" id="daw-workspace-toggle" />Try the experimental DAW-style Live workspace</label>
+    <p class="ai-dialog-note" id="daw-workspace-note">Off unless you turn it on. An early, experimental take on a DAW-style recording workspace for the Live tab. Your current Live Capture workflow stays the default — turn this off anytime to go back.</p>
     <div class="rig-dialog-actions">
       <button type="button" id="storage-reset-btn" class="btn btn-secondary sm" style="display:none">Use default</button>
       <button type="button" id="storage-cancel-btn" class="btn btn-secondary sm">Cancel</button>

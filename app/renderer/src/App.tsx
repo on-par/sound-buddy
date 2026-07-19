@@ -37,6 +37,7 @@ import feedbackRingoutSrc from '../feedback-ringout-state.js?raw';
 import gradeOwnStateSrc from '../grade-own-state.js?raw';
 import feedbackFormSrc from '../feedback-form-state.js?raw';
 import updateDownloadStateSrc from '../update-download-state.js?raw';
+import dawWorkspaceStateSrc from '../daw-workspace-state.js?raw';
 import inlineAppSrc from './inline-app.js?raw';
 import LicensePanel from './LicensePanel';
 import SettingsPanel from './SettingsPanel';
@@ -44,7 +45,7 @@ import ReportCardIsland from './ReportCardIsland';
 import SpectrumPanel from './SpectrumPanel';
 import { installStoreBridge } from './stores/bridge';
 
-// Boot scripts in their original document order (#303): the 19 UMD helpers
+// Boot scripts in their original document order (#303): the 20 UMD helpers
 // (each attaches to `window`, see the classic-script comment above their old
 // <script src> tags in index.html), then the inline app script that wires up
 // the UI and reads those globals. Ported verbatim — see the source files.
@@ -71,6 +72,7 @@ const BOOT_SCRIPTS = [
   gradeOwnStateSrc,
   feedbackFormSrc,
   updateDownloadStateSrc,
+  dawWorkspaceStateSrc,
   inlineAppSrc,
 ];
 
