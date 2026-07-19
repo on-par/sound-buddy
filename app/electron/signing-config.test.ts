@@ -42,7 +42,7 @@ describe('build/entitlements.mac.plist', () => {
 
   it.each(ENTITLEMENT_KEYS)('declares %s as true', (key) => {
     const plist = fs.readFileSync(entitlementsPath, 'utf8');
-    const escapedKey = key.replace(/\./g, '\\.');
+    const escapedKey = key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     const pattern = new RegExp(`<key>${escapedKey}</key>\\s*(?:<!--.*?-->\\s*)?<true\\s*/>`, 's');
     expect(plist, `${key} should be followed by <true/>`).toMatch(pattern);
   });
