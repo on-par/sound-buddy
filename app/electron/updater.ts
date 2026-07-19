@@ -3,22 +3,24 @@
 
 import { app, BrowserWindow, shell } from 'electron';
 import { log, logWarn } from './logger';
+import { LATEST_MANIFEST_URL, parseUpdateManifest } from './update-manifest';
 
 // Lightweight "check for updates" — no auto-download/install (that needs a
-// Developer ID signature + notarization). We ask the GitHub Releases API for the
-// latest tag and, if it's newer than the running build, tell the renderer to
-// show a banner whose button opens the release page in the browser.
+// Developer ID signature + notarization). We read the stable release manifest
+// (the same latest.json contract customers download from, #500/#501) and, if
+// it's newer than the running build, tell the renderer to show a banner whose
+// button opens the release page in the browser.
 //
 // Downloads live in a separate PUBLIC repo so the source can stay private; a
-// public repo is what makes the anonymous Releases API + zip downloads work.
+// public repo is what makes the anonymous manifest fetch + zip downloads work.
 const REPO = 'on-par/sound-buddy-releases';
-const LATEST_RELEASE_API = `https://api.github.com/repos/${REPO}/releases/latest`;
 const RELEASES_PAGE = `https://github.com/${REPO}/releases/latest`;
 
 export interface UpdateInfo {
   version: string;
   url: string;
   notes: string;
+  downloadUrl: string;
 }
 
 // Compare dotted numeric versions (e.g. "0.2.0" vs "0.10.1"), ignoring a leading
@@ -36,22 +38,20 @@ export function isNewer(latest: string, current: string): boolean {
 }
 
 async function fetchLatest(): Promise<UpdateInfo | null> {
-  // GitHub requires a User-Agent. A private repo returns 404 to anonymous
-  // requests — handled as "no update" rather than an error surfaced to the user.
-  const res = await fetch(LATEST_RELEASE_API, {
-    headers: { 'User-Agent': 'SoundBuddy', Accept: 'application/vnd.github+json' },
+  const res = await fetch(LATEST_MANIFEST_URL, {
+    headers: { 'User-Agent': 'SoundBuddy' },
   });
   if (!res.ok) {
-    logWarn(`update check: GitHub API returned ${res.status}`);
+    logWarn(`update check: manifest fetch returned ${res.status}`);
     return null;
   }
-  const data = (await res.json()) as { tag_name?: string; html_url?: string; body?: string };
-  if (!data.tag_name) return null;
-  return {
-    version: data.tag_name.replace(/^v/, ''),
-    url: data.html_url || RELEASES_PAGE,
-    notes: (data.body || '').slice(0, 2000),
-  };
+  const parsed = parseUpdateManifest(await res.json());
+  if (!parsed.ok) {
+    logWarn(`update check: malformed manifest — ${parsed.problems.join('; ')}`);
+    return null;
+  }
+  const m = parsed.manifest;
+  return { version: m.version, url: m.releaseUrl, notes: m.notesSummary, downloadUrl: m.artifactUrl };
 }
 
 /**

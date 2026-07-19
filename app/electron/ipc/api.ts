@@ -100,6 +100,7 @@ export interface UpdateInfo {
   version: string;
   url: string;
   notes: string;
+  downloadUrl: string;
 }
 
 export interface UpdateStatus {

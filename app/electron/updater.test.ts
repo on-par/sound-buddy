@@ -10,6 +10,7 @@ vi.mock('./logger', () => ({ log: vi.fn(), logWarn: vi.fn() }));
 import { app, shell, BrowserWindow } from 'electron';
 import { log, logWarn } from './logger';
 import { isNewer, checkForUpdates, openReleasePage, type UpdateInfo } from './updater';
+import { LATEST_MANIFEST_URL } from './update-manifest';
 
 const RELEASES_PAGE = 'https://github.com/on-par/sound-buddy-releases/releases/latest';
 
@@ -22,6 +23,21 @@ function makeWin(destroyed = false): BrowserWindow {
 
 function stubFetchJson(body: unknown, ok = true, status = 200): void {
   vi.stubGlobal('fetch', vi.fn(async () => ({ ok, status, json: async () => body })));
+}
+
+function validManifest(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    schemaVersion: 1,
+    version: '9.9.9',
+    channel: 'latest',
+    notesSummary: 'notes',
+    releaseUrl: 'https://example.com/rel',
+    artifactUrl: 'https://example.com/rel.zip',
+    artifactSizeBytes: 123,
+    sha256: 'a'.repeat(64),
+    publishedAt: '2026-07-01T00:00:00.000Z',
+    ...overrides,
+  };
 }
 
 beforeEach(() => {
@@ -67,10 +83,10 @@ describe('isNewer', () => {
 });
 
 describe('checkForUpdates', () => {
-  const release = { tag_name: 'v9.9.9', html_url: 'https://example.com/rel', body: 'notes' };
+  const manifest = validManifest();
 
   it('notifies the renderer when an update is available (silent=true)', async () => {
-    stubFetchJson(release);
+    stubFetchJson(manifest);
     const win = makeWin();
 
     await checkForUpdates(win, true);
@@ -79,26 +95,27 @@ describe('checkForUpdates', () => {
       version: '9.9.9',
       url: 'https://example.com/rel',
       notes: 'notes',
+      downloadUrl: 'https://example.com/rel.zip',
     };
     expect(win.webContents.send).toHaveBeenCalledTimes(1);
     expect(win.webContents.send).toHaveBeenCalledWith('update-available', expected);
     expect(log).toHaveBeenCalled();
   });
 
-  it('calls the GitHub Releases API with a User-Agent header', async () => {
-    stubFetchJson(release);
+  it('calls the manifest URL with a User-Agent header', async () => {
+    stubFetchJson(manifest);
     const win = makeWin();
 
     await checkForUpdates(win, true);
 
     expect(fetch).toHaveBeenCalledWith(
-      'https://api.github.com/repos/on-par/sound-buddy-releases/releases/latest',
+      LATEST_MANIFEST_URL,
       expect.objectContaining({ headers: expect.objectContaining({ 'User-Agent': 'SoundBuddy' }) }),
     );
   });
 
   it('reports up to date on a manual check (silent=false)', async () => {
-    stubFetchJson({ tag_name: 'v0.2.0' });
+    stubFetchJson(validManifest({ version: '0.2.0' }));
     const win = makeWin();
 
     await checkForUpdates(win, false);
@@ -111,7 +128,7 @@ describe('checkForUpdates', () => {
   });
 
   it('stays quiet when up to date and silent', async () => {
-    stubFetchJson({ tag_name: 'v0.2.0' });
+    stubFetchJson(validManifest({ version: '0.2.0' }));
     const win = makeWin();
 
     await checkForUpdates(win, true);
@@ -168,7 +185,7 @@ describe('checkForUpdates', () => {
     expect(win.webContents.send).toHaveBeenCalledWith('update-status', { state: 'error' });
   });
 
-  it('reports an error on a non-OK response (private-repo 404)', async () => {
+  it('reports an error on a non-OK response (404/500)', async () => {
     stubFetchJson({}, false, 404);
     const win = makeWin();
 
@@ -178,23 +195,44 @@ describe('checkForUpdates', () => {
     expect(win.webContents.send).toHaveBeenCalledWith('update-status', { state: 'error' });
   });
 
-  it('reports an error when tag_name is missing', async () => {
-    stubFetchJson({});
+  it('reports an error when the manifest is malformed', async () => {
+    stubFetchJson({ schemaVersion: 1 });
     const win = makeWin();
 
     await checkForUpdates(win, false);
 
+    expect(logWarn).toHaveBeenCalledWith(expect.stringContaining('malformed manifest'));
     expect(win.webContents.send).toHaveBeenCalledWith('update-status', { state: 'error' });
   });
 
+  it('reports an error when the manifest version has a leading "v"', async () => {
+    stubFetchJson(validManifest({ version: 'v9.9.9' }));
+    const win = makeWin();
+
+    await checkForUpdates(win, false);
+
+    expect(logWarn).toHaveBeenCalledWith(expect.stringContaining('malformed manifest'));
+    expect(win.webContents.send).toHaveBeenCalledWith('update-status', { state: 'error' });
+  });
+
+  it('stays quiet on a malformed manifest when silent', async () => {
+    stubFetchJson({ schemaVersion: 1 });
+    const win = makeWin();
+
+    await checkForUpdates(win, true);
+
+    expect(logWarn).toHaveBeenCalledWith(expect.stringContaining('malformed manifest'));
+    expect(win.webContents.send).not.toHaveBeenCalled();
+  });
+
   it('resolves without throwing when the window is null', async () => {
-    stubFetchJson(release);
+    stubFetchJson(manifest);
 
     await expect(checkForUpdates(null, false)).resolves.toBeUndefined();
   });
 
   it('does not send to a destroyed window', async () => {
-    stubFetchJson(release);
+    stubFetchJson(manifest);
     const win = makeWin(true);
 
     await checkForUpdates(win, false);
@@ -202,28 +240,18 @@ describe('checkForUpdates', () => {
     expect(win.webContents.send).not.toHaveBeenCalled();
   });
 
-  it('falls back to the releases page and empty notes when missing', async () => {
-    stubFetchJson({ tag_name: 'v9.9.9' });
+  it('produces update-available even with unknown forward-compat fields (AC 4)', async () => {
+    stubFetchJson(validManifest({ deltaUrl: 'https://example.com/delta.zip', minimumOsVersion: '26.0' }));
     const win = makeWin();
 
     await checkForUpdates(win, true);
 
     expect(win.webContents.send).toHaveBeenCalledWith('update-available', {
       version: '9.9.9',
-      url: RELEASES_PAGE,
-      notes: '',
+      url: 'https://example.com/rel',
+      notes: 'notes',
+      downloadUrl: 'https://example.com/rel.zip',
     });
-  });
-
-  it('truncates release notes to 2000 characters', async () => {
-    stubFetchJson({ tag_name: 'v9.9.9', body: 'x'.repeat(3000) });
-    const win = makeWin();
-
-    await checkForUpdates(win, true);
-
-    const call = vi.mocked(win.webContents.send).mock.calls[0];
-    const payload = call[1] as UpdateInfo;
-    expect(payload.notes.length).toBe(2000);
   });
 });
 
