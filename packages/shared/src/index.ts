@@ -21,6 +21,15 @@ export type {
   BuildReleaseManifestPreviewInput, ChecksumVerification,
 } from './release-manifest.js'
 
+export {
+  runReleaseSmoke, formatSmokeReport, checkManifestLayer, checkArtifactLayer,
+  checkSiteRouteLayer, checkAppUpdateLayer, isNewerVersion,
+  SMOKE_LAYERS, SITE_DOWNLOAD_URL, DEFAULT_BASELINE_APP_VERSION,
+} from './release-smoke.js'
+export type {
+  SmokeLayer, SmokeCheckResult, ReleaseSmokeReport, ReleaseSmokeFetchers,
+} from './release-smoke.js'
+
 export interface EQBand {
   type: string
   freq: number

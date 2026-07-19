@@ -122,6 +122,31 @@ the same zip and uploads it as a workflow artifact; it additionally publishes to
 repo only if a **`RELEASES_TOKEN`** secret (fine-grained PAT, `contents: write` on the
 releases repo) is configured.
 
+### Release smoke check (before announcing)
+
+After `scripts/release.sh` finishes, and before you announce the release, run the
+end-to-end smoke check against the tag it just published:
+
+```bash
+npm run smoke:release -- v0.3.0
+```
+
+It proves the release channel is reachable through all four layers and exits non-zero
+naming whichever layer is broken:
+
+- **`manifest`** — the stable `latest.json` reports this tag's version, artifact, checksum,
+  and release notes. Fix: re-run the `latest.json` upload steps from `scripts/release.sh`'s
+  output.
+- **`artifact`** — the release zip is downloadable and its size/sha256 match the manifest.
+  Fix: delete the release asset and re-run the release.
+- **`site-route`** — the site's `/download` route 302-redirects to that same artifact. Fix:
+  check the Cloudflare Worker deploy for `site/` and run `node site/scripts/check-download-channel.mjs`.
+- **`app-update`** — the app's update-discovery contract accepts the manifest and would
+  offer it as an update. Fix: the manifest drifted from the app contract in
+  `app/electron/update-manifest.ts` — fix and republish `latest.json`.
+
+This is a live-network, tag-pinned operator command — it is not run in CI or `npm test`.
+
 ## License
 
 Sound Buddy is dual-licensed:
