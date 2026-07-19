@@ -3417,6 +3417,7 @@ async function openStorageSettings() {
   // fetched this at boot.
   aiEl('usage-signal-toggle').checked = !!(setStore.getState().settings || {}).usageSignalEnabled;
   aiEl('crash-reporting-toggle').checked = !!(setStore.getState().settings || {}).crashReportingEnabled;
+  aiEl('daw-workspace-toggle').checked = !!(setStore.getState().settings || {}).dawWorkspaceEnabled;
   aiEl('storage-dialog').style.display = 'flex';
   try {
     const u = await sb.getStorageUsage();
@@ -3463,6 +3464,11 @@ async function saveStorageSettings() {
   const crashReportingLoaded = !!(setStore.getState().settings || {}).crashReportingEnabled;
   if (crashReportingChecked !== crashReportingLoaded) {
     await setStore.getState().updateSettings({ crashReportingEnabled: crashReportingChecked });
+  }
+  const dawChecked = aiEl('daw-workspace-toggle').checked;
+  const dawLoaded = !!(setStore.getState().settings || {}).dawWorkspaceEnabled;
+  if (dawChecked !== dawLoaded) {
+    await setStore.getState().updateSettings({ dawWorkspaceEnabled: dawChecked });
   }
   closeStorageSettings();
 }
@@ -3722,6 +3728,10 @@ window.inlineDialogs = { openPhaseDoublingDialog, openFeedbackRingout };
   // #421); loadSettings() in the boot IIFE below fires these on first load.
   setStore.subscribe((s) => updateModelChip(s.llmConfig));
   setStore.subscribe((s) => document.body.classList.toggle('ai-disabled', !(s.settings && s.settings.aiEnabled)));
+  // Experimental DAW workspace gate (#516): body class is the entry point
+  // #517's workspace shell mounts against. Absent by default — the existing
+  // Live Capture UI is untouched until the user opts in.
+  setStore.subscribe((s) => document.body.classList.toggle('daw-workspace', window.dawWorkspaceState.isEnabled(s.settings)));
 })();
 
 /* ══ Init ══ */

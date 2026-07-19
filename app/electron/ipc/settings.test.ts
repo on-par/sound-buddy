@@ -145,6 +145,33 @@ describe('update-settings IPC whitelist — crashReportingEnabled (#473)', () =>
   });
 });
 
+describe('update-settings IPC whitelist — dawWorkspaceEnabled (#516)', () => {
+  it('accepts a boolean and persists it', async () => {
+    const handler = handlers.get('update-settings');
+    const result = (await handler!(null, { dawWorkspaceEnabled: true })) as {
+      dawWorkspaceEnabled: boolean;
+    };
+    expect(result.dawWorkspaceEnabled).toBe(true);
+    expect(readFile().dawWorkspaceEnabled).toBe(true);
+  });
+
+  it('ignores a string value, leaving the setting at its default', async () => {
+    const handler = handlers.get('update-settings');
+    const result = (await handler!(null, { dawWorkspaceEnabled: 'true' })) as {
+      dawWorkspaceEnabled: boolean;
+    };
+    expect(result.dawWorkspaceEnabled).toBe(false);
+  });
+
+  it('ignores a number value, leaving the setting at its default', async () => {
+    const handler = handlers.get('update-settings');
+    const result = (await handler!(null, { dawWorkspaceEnabled: 1 })) as {
+      dawWorkspaceEnabled: boolean;
+    };
+    expect(result.dawWorkspaceEnabled).toBe(false);
+  });
+});
+
 describe('sanitizeChannelLabels (#482)', () => {
   it('returns null for a non-object value (patch key ignored)', () => {
     expect(sanitizeChannelLabels('nope')).toBeNull();

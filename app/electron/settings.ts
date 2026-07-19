@@ -42,6 +42,7 @@ const DEFAULTS: AppSettings = {
   channelLabels: {},
   channelGroups: {},
   crashReportingEnabled: false,
+  dawWorkspaceEnabled: false,
 };
 
 function settingsPath(): string {
@@ -119,6 +120,7 @@ function writeSettingsFile(file: Partial<AppSettings>): void {
     channelLabels: fileChannelLabels(file),
     channelGroups: fileChannelGroups(file),
     crashReportingEnabled: file.crashReportingEnabled ?? DEFAULTS.crashReportingEnabled,
+    dawWorkspaceEnabled: file.dawWorkspaceEnabled ?? DEFAULTS.dawWorkspaceEnabled,
   };
   try {
     fs.writeFileSync(settingsPath(), JSON.stringify(persisted, null, 2));
@@ -160,6 +162,9 @@ export function getSettings(): AppSettings {
     // No env layer — opt-in crash reporting (#473) must be an explicit user
     // action, same rationale as usageSignalEnabled.
     crashReportingEnabled: file.crashReportingEnabled ?? DEFAULTS.crashReportingEnabled,
+    // No env layer — opting into the experimental DAW workspace (#516) must
+    // be an explicit user action, same rationale as crashReportingEnabled.
+    dawWorkspaceEnabled: file.dawWorkspaceEnabled ?? DEFAULTS.dawWorkspaceEnabled,
   };
 }
 

@@ -36,6 +36,7 @@ export interface UpdateSettingsPatch {
   channelLabels?: Record<string, Record<string, string>>;
   channelGroups?: Record<string, PersistedChannelGroup[]>;
   crashReportingEnabled?: boolean;
+  dawWorkspaceEnabled?: boolean;
 }
 
 /** A renderer patch: `apiKey` semantics — undefined = keep, '' = clear. */
@@ -248,6 +249,15 @@ export interface AppSettings {
    * must be an explicit user action, never a launch-time override.
    */
   crashReportingEnabled: boolean;
+  /**
+   * Opt-in experimental DAW-style Live workspace (#516, epic #515). Default
+   * false (off). Pure persisted UI gate — when false the existing Live
+   * Capture UI is untouched; when true the renderer may show the
+   * experimental workspace entry point (#517). No env layer: enabling an
+   * experiment must be an explicit user action, same rationale as
+   * crashReportingEnabled.
+   */
+  dawWorkspaceEnabled: boolean;
 }
 
 // ─── LLM DTOs (PublicLlmConfig moved from electron/llm-config.ts, TD-011) ────
