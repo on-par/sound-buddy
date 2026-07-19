@@ -45,6 +45,7 @@ const DEFAULT_APP_SETTINGS: AppSettings = {
   crashReportingEnabled: false,
   dawWorkspaceEnabled: false,
   liveAdjustmentsEnabled: false,
+  reportFirstUxEnabled: false,
 };
 
 const DEFAULT_PUBLIC_LLM_CONFIG: PublicLlmConfig = {

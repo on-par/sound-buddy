@@ -39,6 +39,7 @@ export interface UpdateSettingsPatch {
   crashReportingEnabled?: boolean;
   dawWorkspaceEnabled?: boolean;
   liveAdjustmentsEnabled?: boolean;
+  reportFirstUxEnabled?: boolean;
 }
 
 /** A renderer patch: `apiKey` semantics — undefined = keep, '' = clear. */
@@ -276,6 +277,15 @@ export interface AppSettings {
    * rationale as dawWorkspaceEnabled.
    */
   liveAdjustmentsEnabled: boolean;
+  /**
+   * Opt-in report-first-ux epic gate (#538, epic e17). Default false (off).
+   * Pure UI gate — when false the existing tab/pane UI renders unchanged;
+   * when true the renderer takes the report-first-ux branch (e17-00 onward).
+   * Unlike dawWorkspaceEnabled it *does* have an env layer
+   * (SOUND_BUDDY_REPORT_FIRST_UX), mirroring SOUND_BUDDY_AI_ENABLED, so the
+   * epic can be dogfooded at launch time without shipping a Settings toggle.
+   */
+  reportFirstUxEnabled: boolean;
 }
 
 // ─── LLM DTOs (PublicLlmConfig moved from electron/llm-config.ts, TD-011) ────

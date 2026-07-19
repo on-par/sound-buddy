@@ -205,6 +205,33 @@ describe('update-settings IPC whitelist — liveAdjustmentsEnabled (#522)', () =
   });
 });
 
+describe('update-settings IPC whitelist — reportFirstUxEnabled (#538)', () => {
+  it('accepts a boolean and persists it', async () => {
+    const handler = handlers.get('update-settings');
+    const result = (await handler!(null, { reportFirstUxEnabled: true })) as {
+      reportFirstUxEnabled: boolean;
+    };
+    expect(result.reportFirstUxEnabled).toBe(true);
+    expect(readFile().reportFirstUxEnabled).toBe(true);
+  });
+
+  it('ignores a string value, leaving the setting at its default', async () => {
+    const handler = handlers.get('update-settings');
+    const result = (await handler!(null, { reportFirstUxEnabled: 'true' })) as {
+      reportFirstUxEnabled: boolean;
+    };
+    expect(result.reportFirstUxEnabled).toBe(false);
+  });
+
+  it('ignores a number value, leaving the setting at its default', async () => {
+    const handler = handlers.get('update-settings');
+    const result = (await handler!(null, { reportFirstUxEnabled: 1 })) as {
+      reportFirstUxEnabled: boolean;
+    };
+    expect(result.reportFirstUxEnabled).toBe(false);
+  });
+});
+
 describe('sanitizeChannelLabels (#482)', () => {
   it('returns null for a non-object value (patch key ignored)', () => {
     expect(sanitizeChannelLabels('nope')).toBeNull();
