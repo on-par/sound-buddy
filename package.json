@@ -11,7 +11,8 @@
     "test": "npm run coverage",
     "coverage": "npm run coverage:deps && vitest run --coverage",
     "coverage:deps": "node scripts/coverage-deps.mjs",
-    "dev": "npm run dev -w @sound-buddy/cli"
+    "dev": "npm run dev -w @sound-buddy/cli",
+    "smoke:release": "node scripts/release-smoke.mjs"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
