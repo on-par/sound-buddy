@@ -92,6 +92,8 @@ if [[ -n "$PYTHON" ]]; then
   "$PYTHON" packages/audio-engine/scripts/test_stream.py
   echo "==> python tests (playback.py) via $PYTHON"
   "$PYTHON" packages/audio-engine/scripts/test_playback.py
+  echo "==> python tests (spike_dual_capture.py) via $PYTHON"
+  "$PYTHON" packages/audio-engine/scripts/test_spike_dual_capture.py
 else
   echo "==> python tests skipped (no interpreter with numpy+scipy)"
 fi
