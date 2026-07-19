@@ -31,6 +31,33 @@ function functionBody(src: string, name: string): string {
   throw new Error(`unbalanced braces in function ${name}`);
 }
 
+// Extracts the innermost {...} block enclosing `marker`, e.g. an anonymous
+// callback body — for code that (unlike functionBody's targets) isn't a named
+// `function foo() {}` declaration.
+function enclosingBlock(src: string, marker: string): string {
+  const markerIdx = src.indexOf(marker);
+  if (markerIdx === -1) throw new Error(`marker ${JSON.stringify(marker)} not found`);
+  let depth = 0;
+  let openBrace = -1;
+  for (let i = markerIdx; i >= 0; i--) {
+    if (src[i] === '}') depth++;
+    else if (src[i] === '{') {
+      if (depth === 0) { openBrace = i; break; }
+      depth--;
+    }
+  }
+  if (openBrace === -1) throw new Error(`no enclosing block found for marker ${JSON.stringify(marker)}`);
+  depth = 0;
+  for (let i = openBrace; i < src.length; i++) {
+    if (src[i] === '{') depth++;
+    else if (src[i] === '}') {
+      depth--;
+      if (depth === 0) return src.slice(openBrace, i + 1);
+    }
+  }
+  throw new Error(`unbalanced braces around marker ${JSON.stringify(marker)}`);
+}
+
 describe('DAW workspace shell gating (#517)', () => {
   it('renderLiveWorkspace early-outs to the DAW shell when showShell is true', () => {
     const body = functionBody(inlineApp, 'renderLiveWorkspace');
@@ -42,6 +69,17 @@ describe('DAW workspace shell gating (#517)', () => {
     const body = functionBody(inlineApp, 'renderLiveMeters');
     expect(body).toContain('dawWorkspaceState.showShell(');
     expect(body).toContain('renderDawShell()');
+  });
+
+  it('renderLiveMeters keeps resolving live channel names even while the DAW shell is showing', () => {
+    // lastLiveChannels (the #39 device-name fallback stripLabel reads for DAW
+    // shell lane names) must be assigned before the showShell early-return,
+    // or every lane name is stuck unresolved for the whole capture.
+    const body = functionBody(inlineApp, 'renderLiveMeters');
+    const assignIdx = body.indexOf('lastLiveChannels = win.channels');
+    const gateIdx = body.indexOf('dawWorkspaceState.showShell(');
+    expect(assignIdx).toBeGreaterThan(-1);
+    expect(assignIdx).toBeLessThan(gateIdx);
   });
 });
 
@@ -68,7 +106,23 @@ describe('DAW workspace timeline shell markup (#517)', () => {
 
   it('escapes the lane name before it reaches innerHTML (stripLabel can return a user-entered or device-reported string)', () => {
     const body = functionBody(inlineApp, 'renderDawShell');
-    expect(body).toMatch(/daw-lane-name">\$\{escapeHtml\(stripLabel\(/);
+    expect(body).toMatch(/escapeHtml\(stripLabel\(/);
+  });
+
+  it('rebuilds when lane content changes even if the channel count does not (e.g. a same-size rig swap)', () => {
+    // The patch-in-place shortcut must key off more than channelConfig.length,
+    // or swapping to a different rig with the same track count leaves every
+    // lane showing the previous rig's names until something else forces a
+    // full rebuild.
+    const body = functionBody(inlineApp, 'renderDawShell');
+    expect(body).toContain('laneSignature');
+    expect(body).toContain('dataset.laneSignature');
+  });
+
+  it('patches the transport chip in place rather than replacing it every tick', () => {
+    const body = functionBody(inlineApp, 'renderDawShell');
+    expect(body).not.toContain('chip.outerHTML');
+    expect(body).toMatch(/chip\.textContent\s*!==/);
   });
 
   it('renders a muted empty-state row when channelConfig is empty', () => {
@@ -78,9 +132,8 @@ describe('DAW workspace timeline shell markup (#517)', () => {
 
   it('patches in place instead of rebuilding every tick', () => {
     const body = functionBody(inlineApp, 'renderDawShell');
-    expect(body).toContain('.daw-shell');
-    expect(body).toContain('.daw-channel-lane');
-    expect(body).toContain('channelConfig.length');
+    expect(body).toContain(".querySelector('.daw-shell')");
+    expect(body).toContain('laneSignature');
   });
 
   it('points users at the Source panel for capture controls', () => {
@@ -106,11 +159,13 @@ describe('DAW shell preserves existing capture controls (#517)', () => {
 
 describe('DAW shell re-renders on toggle flip (#517)', () => {
   it('the settingsStore subscriber re-syncs the Live pane on an actual flip', () => {
-    const subscriberBlock = inlineApp.slice(
-      inlineApp.indexOf("classList.toggle('daw-workspace'"),
-      inlineApp.indexOf("classList.toggle('daw-workspace'") + 600
-    );
+    const subscriberBlock = enclosingBlock(inlineApp, "classList.toggle('daw-workspace'");
     expect(subscriberBlock).toContain("syncSpectrumForMode('live')");
+  });
+
+  it('only re-syncs on an actual flip, not on every settings save', () => {
+    const subscriberBlock = enclosingBlock(inlineApp, "classList.toggle('daw-workspace'");
+    expect(subscriberBlock).toMatch(/nowEnabled !== dawWorkspaceWasEnabled/);
   });
 });
 

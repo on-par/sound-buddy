@@ -856,6 +856,10 @@ function liveSetupStepsView() {
 }
 
 function renderLiveMeters(win) {
+  // Keep lastLiveChannels (#39 device-name fallback for stripLabel) flowing
+  // even while the DAW shell has taken over rendering below — otherwise every
+  // lane name would be stuck unresolved for the whole capture.
+  if (win && win.channels && win.channels.length > 0) lastLiveChannels = win.channels;
   if (window.dawWorkspaceState.showShell(setStore.getState().settings, currentMode)) { renderDawShell(); return; }
   const body = document.getElementById('spectrum-imperative');
   if (!win || !win.channels || win.channels.length === 0) {
@@ -865,10 +869,6 @@ function renderLiveMeters(win) {
   document.getElementById('stats-row').style.display = 'flex';
   const ipWrap = document.getElementById('ideal-profile-wrap');
   if (ipWrap) ipWrap.style.display = 'none'; // no whole-file curve in live mode
-
-  // Once real channels arrive, remember them so label fallbacks (#39) can resolve
-  // the backend device name.
-  lastLiveChannels = win.channels;
 
   // Patch in place while the strip set is unchanged (bar heights keep their CSS
   // transitions); rebuild only when the shape changes. Match by .live-ch COUNT so
@@ -961,25 +961,30 @@ function renderDawShell() {
   const ipWrap = document.getElementById('ideal-profile-wrap');
   if (ipWrap) ipWrap.style.display = 'none';
 
-  const transportChipHTML = () => {
-    const label = window.dawWorkspaceState.transportLabel(liveRunning, liveMode);
-    return `<span class="daw-transport-state daw-transport-state-${label.toLowerCase()}">${label}</span>`;
-  };
+  const laneNames = channelConfig.map((strip, idx) => escapeHtml(stripLabel(strip, liveChannelAt(idx), idx)));
+  // Joined with a NUL separator (can't appear in an escaped label) as a safe
+  // fingerprint for "did anything about the lanes themselves change" — a rig
+  // swap with the same channel count changes labels without changing length.
+  const laneSignature = laneNames.join('\u0000');
+  const transportChip = window.dawWorkspaceState.transportLabel(liveRunning, liveMode);
 
   // Patch in place on the rAF meter tick (mirrors renderLiveMeters' strip-count
   // check) so the shell doesn't rebuild its DOM every frame during a capture —
-  // only the transport chip needs to move.
-  const existingLanes = body.querySelectorAll('.daw-shell .daw-channel-lane');
-  if (body.querySelector('.daw-shell') && existingLanes.length === channelConfig.length) {
+  // only touch the transport chip, and only when its own text actually moved.
+  const existingShell = body.querySelector('.daw-shell');
+  if (existingShell && existingShell.dataset.laneSignature === laneSignature) {
     const chip = body.querySelector('.daw-transport-state');
-    if (chip) chip.outerHTML = transportChipHTML();
+    if (chip && chip.textContent !== transportChip) {
+      chip.textContent = transportChip;
+      chip.className = `daw-transport-state daw-transport-state-${transportChip.toLowerCase()}`;
+    }
     return;
   }
 
   const laneHTML = channelConfig.length > 0
     ? `<div class="daw-channel-lanes">${channelConfig.map((strip, idx) =>
       `<div class="daw-lane daw-channel-lane" data-ch="${idx}">`
-      + `<span class="daw-lane-name">${escapeHtml(stripLabel(strip, liveChannelAt(idx), idx))}</span>`
+      + `<span class="daw-lane-name">${laneNames[idx]}</span>`
       + `<span class="daw-lane-body">Waveform coming soon</span>`
       + `</div>`).join('')}</div>`
     : `<div class="daw-lane daw-empty-state">Add tracks from the Source panel to see channel lanes</div>`;
@@ -987,7 +992,7 @@ function renderDawShell() {
   body.innerHTML = `<div class="daw-shell">`
     + `<div class="daw-transport">`
     + `<span class="daw-transport-title">Live Workspace</span>`
-    + transportChipHTML()
+    + `<span class="daw-transport-state daw-transport-state-${transportChip.toLowerCase()}">${transportChip}</span>`
     + `<span class="daw-transport-hint">Start and stop capture from the Source panel</span>`
     + `</div>`
     + `<div class="daw-ruler"></div>`
@@ -997,6 +1002,7 @@ function renderDawShell() {
     + `</div>`
     + laneHTML
     + `</div>`;
+  body.querySelector('.daw-shell').dataset.laneSignature = laneSignature;
 }
 
 // Thin adapters bridging this module's mutable state (channelConfig,
