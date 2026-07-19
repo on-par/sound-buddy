@@ -188,9 +188,9 @@ describe('LiveCapturePanel', () => {
       expect(html).toMatch(/<option value=""[^>]*selected[^>]*>First track \(default\)<\/option>/);
     });
 
-    it('is disabled while live', () => {
+    it('is not disabled while live (mid-capture source switching, #457)', () => {
       const html = renderMarkup(baseProps({ isLive: true }));
-      expect(html).toMatch(/id="measurement-source"[^>]*disabled/);
+      expect(html).not.toMatch(/id="measurement-source"[^>]*disabled/);
     });
 
     it('is not disabled when not live', () => {

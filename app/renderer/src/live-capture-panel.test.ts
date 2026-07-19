@@ -23,6 +23,8 @@ import {
   measurementSourceAfterRemove,
   measurementSourceOptionLabel,
   measurementSourceOptionsHTML,
+  measurementChannel,
+  measurementSourceBadgeText,
   type LiveDevice,
   type ListDevicesResult,
   type StripConfig,
@@ -556,6 +558,57 @@ describe('measurementSourceOptionsHTML', () => {
   });
 });
 
+describe('measurementChannel', () => {
+  const channels = ['ch0', 'ch1', 'ch2'];
+
+  it('returns channels[source] for a valid index', () => {
+    expect(measurementChannel(channels, 1)).toBe('ch1');
+  });
+
+  it('returns channels[0] when source is null', () => {
+    expect(measurementChannel(channels, null)).toBe('ch0');
+  });
+
+  it('falls back to channels[0] when source is out of range', () => {
+    expect(measurementChannel(channels, 9)).toBe('ch0');
+  });
+
+  it('returns null for undefined channels', () => {
+    expect(measurementChannel(undefined, 0)).toBeNull();
+  });
+
+  it('returns null for empty channels', () => {
+    expect(measurementChannel([], 0)).toBeNull();
+  });
+});
+
+describe('measurementSourceBadgeText', () => {
+  const config: StripConfig[] = [
+    { kind: 'mono', a: 0, b: 1, label: 'Crowd Mic' },
+    { kind: 'mono', a: 1, b: 2 },
+  ];
+
+  it('shows the labeled strip', () => {
+    expect(measurementSourceBadgeText(config, 0)).toBe('Measuring: Crowd Mic');
+  });
+
+  it('shows "Track N" for an unlabeled strip', () => {
+    expect(measurementSourceBadgeText(config, 1)).toBe('Measuring: Track 2');
+  });
+
+  it('shows the first strip when source is null', () => {
+    expect(measurementSourceBadgeText(config, null)).toBe('Measuring: Crowd Mic');
+  });
+
+  it('falls back to the first strip when source is out of range (stale label never shown)', () => {
+    expect(measurementSourceBadgeText(config, 9)).toBe('Measuring: Crowd Mic');
+  });
+
+  it('shows "First track" when config is empty', () => {
+    expect(measurementSourceBadgeText([], null)).toBe('Measuring: First track');
+  });
+});
+
 describe('liveReportCardSource', () => {
   it('is null when there are no accumulated windows', () => {
     expect(liveReportCardSource([])).toBeNull();
@@ -630,6 +683,53 @@ describe('liveReportCardSource', () => {
     };
     const src = liveReportCardSource([win], null);
     expect(src?.filename).toBe('Live capture — Main (window #1)');
+  });
+
+  it('uses the selected strip\'s trimmed label from config, not the tick name', () => {
+    const win: LiveEvent = {
+      type: 'window', window: 7, ts: 0, masking: [],
+      channels: [
+        { index: 0, name: 'Main', rms: -1, peak: -1, clipping: false, centroid: 1, rolloff: 1, bands: {} },
+        { index: 1, name: 'Vocals', rms: -18, peak: -6, clipping: true, centroid: 1800, rolloff: 8000, bands: {} },
+      ],
+    };
+    const config: StripConfig[] = [
+      { kind: 'mono', a: 0, b: 1 },
+      { kind: 'mono', a: 1, b: 2, label: '  Crowd Mic  ' },
+    ];
+    const src = liveReportCardSource([win], 1, config);
+    expect(src?.filename).toBe('Live capture — Crowd Mic (window #7)');
+  });
+
+  it('falls back to the tick channel name when the selected strip has no label', () => {
+    const win: LiveEvent = {
+      type: 'window', window: 4, ts: 0, masking: [],
+      channels: [{ index: 0, name: 'Board Mix', rms: -1, peak: -1, clipping: false, centroid: 1, rolloff: 1, bands: {} }],
+    };
+    const config: StripConfig[] = [{ kind: 'mono', a: 0, b: 1 }];
+    const src = liveReportCardSource([win], 0, config);
+    expect(src?.filename).toBe('Live capture — Board Mix (window #4)');
+  });
+
+  it('labels strip 0 (not the stale selection) when the selected channel is missing from the tick', () => {
+    const win: LiveEvent = {
+      type: 'window', window: 2, ts: 0, masking: [],
+      channels: [{ index: 0, name: 'Main', rms: -1, peak: -1, clipping: false, centroid: 1, rolloff: 1, bands: {} }],
+    };
+    const config: StripConfig[] = [
+      { kind: 'mono', a: 0, b: 1, label: 'Kick' },
+      { kind: 'mono', a: 1, b: 2, label: 'Stale Selection' },
+    ];
+    const src = liveReportCardSource([win], 5, config);
+    expect(src?.filename).toBe('Live capture — Kick (window #2)');
+  });
+
+  it('matches the config-omitted default when config is not passed', () => {
+    const win: LiveEvent = {
+      type: 'window', window: 1, ts: 0, masking: [],
+      channels: [{ index: 0, name: 'Main', rms: -1, peak: -1, clipping: false, centroid: 1, rolloff: 1, bands: {} }],
+    };
+    expect(liveReportCardSource([win], null)?.filename).toBe('Live capture — Main (window #1)');
   });
 });
 

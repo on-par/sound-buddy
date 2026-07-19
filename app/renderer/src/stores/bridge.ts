@@ -62,8 +62,11 @@ export function installStoreBridge(
     // report-card source is derived from liveCaptureStore.liveWindows
     // wherever that buffer changes (TD-001 slice 5, #423).
     useLiveCaptureStore.subscribe((state, prevState) => {
-      if (state.liveWindows !== prevState.liveWindows || state.measurementSource !== prevState.measurementSource) {
-        useAnalysisStore.getState().setLiveSource(liveReportCardSource(state.liveWindows, state.measurementSource));
+      if (state.liveWindows !== prevState.liveWindows
+        || state.measurementSource !== prevState.measurementSource
+        || state.channelConfig !== prevState.channelConfig) {
+        useAnalysisStore.getState().setLiveSource(
+          liveReportCardSource(state.liveWindows, state.measurementSource, state.channelConfig));
       }
     });
     // bindIpcEvents() registers this module's sb.onLlmDelta/onLlmDone

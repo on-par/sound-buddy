@@ -40,7 +40,7 @@ afterEach(() => {
     idealProfile: null,
     isAutoProfile: false,
   });
-  useLiveCaptureStore.setState({ liveWindows: [], measurementSource: null });
+  useLiveCaptureStore.setState({ liveWindows: [], measurementSource: null, channelConfig: [] });
 });
 
 describe('installStoreBridge', () => {
@@ -144,5 +144,45 @@ describe('installStoreBridge', () => {
 
     const source = useAnalysisStore.getState().liveSource as { filename: string } | null;
     expect(source?.filename).toBe('Live capture — Vocals (window #1)');
+  });
+
+  it('re-derives analysisStore.liveSource from the current liveWindows when channelConfig changes', () => {
+    installStoreBridge({});
+    useLiveCaptureStore.setState({
+      liveWindows: [{
+        type: 'window', window: 1, ts: 0, masking: [],
+        channels: [{ index: 0, name: 'Main', rms: -1, peak: -1, clipping: false, centroid: 1, rolloff: 1, bands: {} }],
+      }],
+    });
+    expect((useAnalysisStore.getState().liveSource as { filename: string } | null)?.filename)
+      .toBe('Live capture — Main (window #1)');
+
+    useLiveCaptureStore.setState({ channelConfig: [{ kind: 'mono', a: 0, b: 1, label: 'Crowd Mic' }] });
+
+    const source = useAnalysisStore.getState().liveSource as { filename: string } | null;
+    expect(source?.filename).toBe('Live capture — Crowd Mic (window #1)');
+  });
+
+  it('uses the strip label from channelConfig when measurementSource selects a labeled strip', () => {
+    installStoreBridge({});
+    useLiveCaptureStore.setState({
+      channelConfig: [
+        { kind: 'mono', a: 0, b: 1 },
+        { kind: 'mono', a: 1, b: 2, label: 'Crowd Mic' },
+      ],
+    });
+    useLiveCaptureStore.setState({
+      liveWindows: [{
+        type: 'window', window: 1, ts: 0, masking: [],
+        channels: [
+          { index: 0, name: 'Main', rms: -1, peak: -1, clipping: false, centroid: 1, rolloff: 1, bands: {} },
+          { index: 1, name: 'Vocals', rms: -18, peak: -6, clipping: true, centroid: 1800, rolloff: 8000, bands: {} },
+        ],
+      }],
+      measurementSource: 1,
+    });
+
+    const source = useAnalysisStore.getState().liveSource as { filename: string } | null;
+    expect(source?.filename).toBe('Live capture — Crowd Mic (window #1)');
   });
 });
