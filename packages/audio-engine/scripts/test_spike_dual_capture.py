@@ -143,6 +143,7 @@ class ComputeStreamStats(unittest.TestCase):
         self.assertEqual(stats["drift_ppm"], 0.0)
         self.assertEqual(stats["status_flag_count"], 0)
         self.assertEqual(stats["jitter_ms"], {"p50": 0.0, "p95": 0.0, "max": 0.0})
+        self.assertTrue(stats["degenerate"])
 
     def test_single_event_does_not_raise_zero_division(self):
         events = _synth_events(48000.0, n_events=1)
@@ -151,6 +152,12 @@ class ComputeStreamStats(unittest.TestCase):
         self.assertEqual(stats["total_frames"], 480)
         self.assertEqual(stats["effective_sample_rate"], 0.0)
         self.assertEqual(stats["jitter_ms"], {"p50": 0.0, "p95": 0.0, "max": 0.0})
+        self.assertTrue(stats["degenerate"])
+
+    def test_two_or_more_events_are_not_degenerate(self):
+        events = _synth_events(48000.0, n_events=2)
+        stats = spike.compute_stream_stats(events, nominal_sr=48000)
+        self.assertFalse(stats["degenerate"])
 
     def test_jitter_reflects_callback_interval_gaps(self):
         events = _synth_events(48000.0, n_events=10, frames_per_event=4800)  # 100ms apart
@@ -194,6 +201,25 @@ class ComputeRelativeDrift(unittest.TestCase):
         # at magnitude so a large negative drift still warns.
         relative = spike.compute_relative_drift({"drift_ppm": 50.0}, {"drift_ppm": 0.0})
         self.assertAlmostEqual(relative["relative_ppm"], -50.0, delta=0.01)
+
+    def test_verdict_insufficient_data_when_either_stream_degenerate(self):
+        # A stalled/near-silent stream (too few callbacks to fit a slope) must
+        # not be reported as "ok" drift — that would mask exactly the failure
+        # mode this spike exists to catch.
+        degenerate_a = spike.compute_relative_drift(
+            {"drift_ppm": 0.0, "degenerate": True}, {"drift_ppm": 0.0, "degenerate": False}
+        )
+        degenerate_b = spike.compute_relative_drift(
+            {"drift_ppm": 0.0, "degenerate": False}, {"drift_ppm": 0.0, "degenerate": True}
+        )
+        self.assertEqual(degenerate_a["verdict"], "insufficient_data")
+        self.assertEqual(degenerate_b["verdict"], "insufficient_data")
+
+    def test_verdict_not_insufficient_data_when_neither_degenerate(self):
+        relative = spike.compute_relative_drift(
+            {"drift_ppm": 0.0, "degenerate": False}, {"drift_ppm": 5.0, "degenerate": False}
+        )
+        self.assertEqual(relative["verdict"], "ok")
 
 
 class BuildReport(unittest.TestCase):
@@ -243,6 +269,30 @@ class BuildReport(unittest.TestCase):
             self.device_a, self.device_b, self.stats_a, self.stats_b, self.relative, events_log
         )
         self.assertFalse(report["both_streams_ran"])
+
+    def test_both_streams_ran_false_when_a_stream_is_degenerate(self):
+        # No error/disconnect event was logged (the stream just stalled
+        # silently), but too few callbacks arrived to trust the measurement —
+        # both_streams_ran must reflect that, not just explicit errors.
+        degenerate_stats = spike.compute_stream_stats([], nominal_sr=48000)
+        report = spike.build_report(
+            self.device_a, self.device_b, degenerate_stats, self.stats_b, self.relative, []
+        )
+        self.assertFalse(report["both_streams_ran"])
+
+
+class StreamTimeoutEvents(unittest.TestCase):
+    def test_no_events_when_both_threads_stopped(self):
+        self.assertEqual(spike._stream_timeout_events(False, False), [])
+
+    def test_error_event_for_each_still_alive_thread(self):
+        events = spike._stream_timeout_events(True, True)
+        self.assertEqual([e["label"] for e in events], ["board", "measurement"])
+        self.assertTrue(all(e["type"] == "error" for e in events))
+
+    def test_error_event_for_only_the_stuck_thread(self):
+        events = spike._stream_timeout_events(True, False)
+        self.assertEqual([e["label"] for e in events], ["board"])
 
 
 if __name__ == "__main__":

@@ -166,7 +166,6 @@ def compute_stream_stats(events: list[dict], nominal_sr: float) -> dict:
     with zeroed rate/drift/jitter fields rather than raising.
     """
     event_count = len(events)
-    total_frames = sum(e["frames"] for e in events)
     duration_secs = (events[-1]["host_time"] - events[0]["host_time"]) if event_count >= 2 else 0.0
     status_flag_count = sum(1 for e in events if e.get("flags"))
 
@@ -176,6 +175,7 @@ def compute_stream_stats(events: list[dict], nominal_sr: float) -> dict:
     for e in events:
         running += e["frames"]
         cumulative.append(running)
+    total_frames = cumulative[-1] if cumulative else 0
     effective_sr = _lstsq_slope(host_times, cumulative)
     drift_ppm = ((effective_sr - nominal_sr) / nominal_sr * 1e6) if effective_sr else 0.0
 
@@ -197,6 +197,10 @@ def compute_stream_stats(events: list[dict], nominal_sr: float) -> dict:
         "drift_ppm": drift_ppm,
         "jitter_ms": jitter_ms,
         "status_flag_count": status_flag_count,
+        # Fewer than 2 callbacks means no slope could be fit at all — a
+        # stalled/near-silent stream, not a genuinely zero-drift one. Callers
+        # must not treat a degenerate stream's drift_ppm as trustworthy.
+        "degenerate": event_count < 2,
     }
 
 
@@ -208,6 +212,11 @@ def compute_relative_drift(stats_a: dict, stats_b: dict) -> dict:
 
     A ppm drift is a fractional rate error, so the projected offset in
     seconds after `window_secs` is simply `relative_ppm * 1e-6 * window_secs`.
+
+    If either stream is `degenerate` (too few callbacks to fit a slope — see
+    compute_stream_stats), its drift_ppm is untrustworthy zero-fill, not a
+    real measurement, so the verdict is "insufficient_data" rather than a
+    possibly-misleading "ok".
     """
     relative_ppm = stats_b["drift_ppm"] - stats_a["drift_ppm"]
     projections = [
@@ -217,7 +226,10 @@ def compute_relative_drift(stats_a: dict, stats_b: dict) -> dict:
         }
         for window_secs in PROJECTION_WINDOWS_SECS
     ]
-    verdict = "warn" if abs(relative_ppm) >= DRIFT_WARN_PPM else "ok"
+    if stats_a.get("degenerate") or stats_b.get("degenerate"):
+        verdict = "insufficient_data"
+    else:
+        verdict = "warn" if abs(relative_ppm) >= DRIFT_WARN_PPM else "ok"
     return {
         "relative_ppm": relative_ppm,
         "projections": projections,
@@ -231,7 +243,9 @@ def build_report(device_a: dict, device_b: dict, stats_a: dict, stats_b: dict,
     Assemble the final JSON findings document — the reproducible artifact the
     ADR quotes. `both_streams_ran` is False if any lifecycle event is an
     "error" or "disconnect" (a killed/degraded run is still a valid finding,
-    not a crash — see spec's disconnect-behavior-is-a-finding note).
+    not a crash — see spec's disconnect-behavior-is-a-finding note), or if
+    either stream's stats are `degenerate` (too few callbacks arrived to
+    trust the measurement, even though no explicit error was raised).
     """
     def _device_entry(d: dict) -> dict:
         return {
@@ -241,7 +255,11 @@ def build_report(device_a: dict, device_b: dict, stats_a: dict, stats_b: dict,
             "nominal_sample_rate": d["default_sr"],
         }
 
-    both_streams_ran = not any(e.get("type") in ("error", "disconnect") for e in events_log)
+    both_streams_ran = (
+        not any(e.get("type") in ("error", "disconnect") for e in events_log)
+        and not stats_a.get("degenerate")
+        and not stats_b.get("degenerate")
+    )
 
     return {
         "devices": {"a": _device_entry(device_a), "b": _device_entry(device_b)},
@@ -302,6 +320,24 @@ def _run_stream(sd, device: dict, events: list, events_log: list, label: str, st
         })
 
 
+def _stream_timeout_events(alive_a: bool, alive_b: bool) -> list[dict]:
+    """Lifecycle "error" events for any stream whose thread didn't stop within
+    the shutdown join timeout — a wedged/hung stream must be surfaced as a
+    finding, not silently computed from a still-mutating event list."""
+    events = []
+    if alive_a:
+        events.append({
+            "type": "error", "label": "board",
+            "detail": "stream thread did not stop within the shutdown timeout",
+        })
+    if alive_b:
+        events.append({
+            "type": "error", "label": "measurement",
+            "detail": "stream thread did not stop within the shutdown timeout",
+        })
+    return events
+
+
 def run_dual_capture(sd, device_a: dict, device_b: dict, duration_secs: float) -> dict:
     """Open both streams concurrently (one background thread per stream),
     run for `duration_secs`, then build and return the findings report."""
@@ -334,6 +370,12 @@ def run_dual_capture(sd, device_a: dict, device_b: dict, duration_secs: float) -
 
     thread_a.join(timeout=5.0)
     thread_b.join(timeout=5.0)
+
+    timeout_events = _stream_timeout_events(thread_a.is_alive(), thread_b.is_alive())
+    now = time.time()
+    for e in timeout_events:
+        e["ts"] = now
+    events_log.extend(timeout_events)
 
     stats_a = compute_stream_stats(events_a, device_a["default_sr"])
     stats_b = compute_stream_stats(events_b, device_b["default_sr"])

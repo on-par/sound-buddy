@@ -77,8 +77,9 @@ else
   echo "==> app unit tests SKIPPED — app deps not installed (run without --fast, or: npm ci --prefix app)"
 fi
 
-# Python analysis helpers (stream.py). Requires numpy + scipy; sounddevice is
-# stubbed by the test. Skipped with a note if no suitable interpreter is found.
+# Python analysis helpers (stream.py, playback.py). Require numpy + scipy;
+# sounddevice is stubbed by their tests. Skipped with a note if no suitable
+# interpreter is found.
 PYTHON="${SOUND_BUDDY_PYTHON:-}"
 if [[ -z "$PYTHON" ]]; then
   for cand in ./.venv/bin/python3 python3; do
@@ -92,10 +93,28 @@ if [[ -n "$PYTHON" ]]; then
   "$PYTHON" packages/audio-engine/scripts/test_stream.py
   echo "==> python tests (playback.py) via $PYTHON"
   "$PYTHON" packages/audio-engine/scripts/test_playback.py
-  echo "==> python tests (spike_dual_capture.py) via $PYTHON"
-  "$PYTHON" packages/audio-engine/scripts/test_spike_dual_capture.py
 else
   echo "==> python tests skipped (no interpreter with numpy+scipy)"
+fi
+
+# spike_dual_capture.py's helpers are plain Python (no numpy/scipy — the
+# module keeps both out of its analysis helpers so this runs on any python3),
+# so it's gated on interpreter presence only — independent of the numpy+scipy
+# probe above, which would otherwise skip this test on a host that lacks
+# numpy/scipy but has a perfectly good plain python3.
+PYTHON_PLAIN="${SOUND_BUDDY_PYTHON:-}"
+if [[ -z "$PYTHON_PLAIN" ]]; then
+  for cand in ./.venv/bin/python3 python3; do
+    if command -v "$cand" >/dev/null 2>&1; then
+      PYTHON_PLAIN="$cand"; break
+    fi
+  done
+fi
+if [[ -n "$PYTHON_PLAIN" ]]; then
+  echo "==> python tests (spike_dual_capture.py) via $PYTHON_PLAIN"
+  "$PYTHON_PLAIN" packages/audio-engine/scripts/test_spike_dual_capture.py
+else
+  echo "==> python tests (spike_dual_capture.py) skipped (no python3 interpreter found)"
 fi
 
 # The Stripe / licensing API Worker (worker/, #107) is a standalone package like
