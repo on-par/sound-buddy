@@ -97,11 +97,12 @@ else
   echo "==> python tests skipped (no interpreter with numpy+scipy)"
 fi
 
-# spike_dual_capture.py's helpers are plain Python (no numpy/scipy — the
-# module keeps both out of its analysis helpers so this runs on any python3),
-# so it's gated on interpreter presence only — independent of the numpy+scipy
-# probe above, which would otherwise skip this test on a host that lacks
-# numpy/scipy but has a perfectly good plain python3.
+# spike helpers (spike_dual_capture.py, spike_waveform_transport.py) are
+# plain Python (no numpy/scipy — the modules keep both out of their analysis
+# helpers so these run on any python3), so they're gated on interpreter
+# presence only — independent of the numpy+scipy probe above, which would
+# otherwise skip these tests on a host that lacks numpy/scipy but has a
+# perfectly good plain python3.
 PYTHON_PLAIN="${SOUND_BUDDY_PYTHON:-}"
 if [[ -z "$PYTHON_PLAIN" ]]; then
   for cand in ./.venv/bin/python3 python3; do
@@ -113,8 +114,10 @@ fi
 if [[ -n "$PYTHON_PLAIN" ]]; then
   echo "==> python tests (spike_dual_capture.py) via $PYTHON_PLAIN"
   "$PYTHON_PLAIN" packages/audio-engine/scripts/test_spike_dual_capture.py
+  echo "==> python tests (spike_waveform_transport.py) via $PYTHON_PLAIN"
+  "$PYTHON_PLAIN" packages/audio-engine/scripts/test_spike_waveform_transport.py
 else
-  echo "==> python tests (spike_dual_capture.py) skipped (no python3 interpreter found)"
+  echo "==> python tests (spike_dual_capture.py, spike_waveform_transport.py) skipped (no python3 interpreter found)"
 fi
 
 # The Stripe / licensing API Worker (worker/, #107) is a standalone package like
