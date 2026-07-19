@@ -19,6 +19,10 @@ import {
   groupSummary,
   groupSummaryText,
   shouldOfferReportCard,
+  normalizeMeasurementSource,
+  measurementSourceAfterRemove,
+  measurementSourceOptionLabel,
+  measurementSourceOptionsHTML,
   type LiveDevice,
   type ListDevicesResult,
   type StripConfig,
@@ -442,6 +446,116 @@ describe('liveMetersHTML', () => {
   });
 });
 
+describe('normalizeMeasurementSource', () => {
+  it('passes through a valid index', () => {
+    expect(normalizeMeasurementSource(1, 3)).toBe(1);
+  });
+
+  it('normalizes null to null', () => {
+    expect(normalizeMeasurementSource(null, 3)).toBeNull();
+  });
+
+  it('normalizes undefined to null', () => {
+    expect(normalizeMeasurementSource(undefined, 3)).toBeNull();
+  });
+
+  it('normalizes a negative index to null', () => {
+    expect(normalizeMeasurementSource(-1, 3)).toBeNull();
+  });
+
+  it('normalizes an index equal to stripCount to null', () => {
+    expect(normalizeMeasurementSource(3, 3)).toBeNull();
+  });
+
+  it('normalizes a non-integer index to null', () => {
+    expect(normalizeMeasurementSource(1.5, 3)).toBeNull();
+  });
+
+  it('normalizes NaN to null', () => {
+    expect(normalizeMeasurementSource(NaN, 3)).toBeNull();
+  });
+
+  it('normalizes 0 with a stripCount of 0 to null', () => {
+    expect(normalizeMeasurementSource(0, 0)).toBeNull();
+  });
+});
+
+describe('measurementSourceAfterRemove', () => {
+  it('leaves a null selection as null', () => {
+    expect(measurementSourceAfterRemove(null, 1)).toBeNull();
+  });
+
+  it('resets the selection to null when the selected strip is removed', () => {
+    expect(measurementSourceAfterRemove(2, 2)).toBeNull();
+  });
+
+  it('shifts the selection down by 1 when a lower strip is removed', () => {
+    expect(measurementSourceAfterRemove(2, 0)).toBe(1);
+  });
+
+  it('leaves the selection unchanged when a higher strip is removed', () => {
+    expect(measurementSourceAfterRemove(1, 2)).toBe(1);
+  });
+});
+
+describe('measurementSourceOptionLabel', () => {
+  it('uses the trimmed strip label when present', () => {
+    expect(measurementSourceOptionLabel({ kind: 'mono', a: 0, b: 1, label: '  Kick  ' }, 0)).toBe('Kick');
+  });
+
+  it('falls back to "Track N" when the label is missing', () => {
+    expect(measurementSourceOptionLabel({ kind: 'mono', a: 0, b: 1 }, 2)).toBe('Track 3');
+  });
+
+  it('falls back to "Track N" when the label is blank', () => {
+    expect(measurementSourceOptionLabel({ kind: 'mono', a: 0, b: 1, label: '   ' }, 0)).toBe('Track 1');
+  });
+
+  it('falls back to "Track N" for a null strip', () => {
+    expect(measurementSourceOptionLabel(null, 4)).toBe('Track 5');
+  });
+});
+
+describe('measurementSourceOptionsHTML', () => {
+  const config: StripConfig[] = [
+    { kind: 'mono', a: 0, b: 1, label: 'Kick' },
+    { kind: 'mono', a: 1, b: 2 },
+  ];
+
+  it('renders the default option first, selected when source is null', () => {
+    const html = measurementSourceOptionsHTML(config, null);
+    expect(html.startsWith('<option value="" selected>First track (default)</option>')).toBe(true);
+  });
+
+  it('renders one option per strip with the correct value, label, and selected state', () => {
+    const html = measurementSourceOptionsHTML(config, 1);
+    expect(html).toContain('<option value="0">Kick</option>');
+    expect(html).toContain('<option value="1" selected>Track 2</option>');
+  });
+
+  it('does not mark the default option selected when a strip is selected', () => {
+    const html = measurementSourceOptionsHTML(config, 0);
+    expect(html).toContain('<option value="">First track (default)</option>');
+  });
+
+  it('HTML-escapes strip labels', () => {
+    const html = measurementSourceOptionsHTML([{ kind: 'mono', a: 0, b: 1, label: '<b>Kick</b>' }], null);
+    expect(html).toContain('&lt;b&gt;Kick&lt;/b&gt;');
+    expect(html).not.toContain('<b>Kick</b>');
+  });
+
+  it('options come only from the strip config — value set is exactly "" plus strip indices', () => {
+    const html = measurementSourceOptionsHTML(config, null);
+    const values = [...html.matchAll(/value="([^"]*)"/g)].map((m) => m[1]);
+    expect(values).toEqual(['', '0', '1']);
+  });
+
+  it('is empty apart from the default option when config is empty', () => {
+    const html = measurementSourceOptionsHTML([], null);
+    expect(html).toBe('<option value="" selected>First track (default)</option>');
+  });
+});
+
 describe('liveReportCardSource', () => {
   it('is null when there are no accumulated windows', () => {
     expect(liveReportCardSource([])).toBeNull();
@@ -485,6 +599,37 @@ describe('liveReportCardSource', () => {
     const src = liveReportCardSource([first, last]);
     expect(src?.filename).toBe('Live capture — Main (window #2)');
     expect(src?.clipping).toBe(true);
+  });
+
+  it('picks channels[measurementSource] when a source index is given', () => {
+    const win: LiveEvent = {
+      type: 'window', window: 1, ts: 0, masking: [],
+      channels: [
+        { index: 0, name: 'Main', rms: -1, peak: -1, clipping: false, centroid: 1, rolloff: 1, bands: {} },
+        { index: 1, name: 'Vocals', rms: -18, peak: -6, clipping: true, centroid: 1800, rolloff: 8000, bands: { sub_bass: -50, bass: -20, low_mid: -22, mid: -14, high_mid: -24, presence: -30, brilliance: -60 } },
+      ],
+    };
+    const src = liveReportCardSource([win], 1);
+    expect(src?.filename).toBe('Live capture — Vocals (window #1)');
+    expect(src?.rms).toBe(-18);
+  });
+
+  it('falls back to channels[0] when the measurement source index is out of range for this tick', () => {
+    const win: LiveEvent = {
+      type: 'window', window: 1, ts: 0, masking: [],
+      channels: [{ index: 0, name: 'Main', rms: -1, peak: -1, clipping: false, centroid: 1, rolloff: 1, bands: {} }],
+    };
+    const src = liveReportCardSource([win], 5);
+    expect(src?.filename).toBe('Live capture — Main (window #1)');
+  });
+
+  it('keeps channels[0] when the measurement source is null', () => {
+    const win: LiveEvent = {
+      type: 'window', window: 1, ts: 0, masking: [],
+      channels: [{ index: 0, name: 'Main', rms: -1, peak: -1, clipping: false, centroid: 1, rolloff: 1, bands: {} }],
+    };
+    const src = liveReportCardSource([win], null);
+    expect(src?.filename).toBe('Live capture — Main (window #1)');
   });
 });
 

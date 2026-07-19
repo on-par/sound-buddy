@@ -52,6 +52,7 @@ describe('createLiveCaptureStore', () => {
     expect(s.collapsed.size).toBe(0);
     expect(s.appMode).toBe('reportcard');
     expect(s.ringout).toEqual({ stepIndex: 0, cut: null });
+    expect(s.measurementSource).toBeNull();
   });
 
   describe('loadDevices / selectDevice', () => {
@@ -154,6 +155,44 @@ describe('createLiveCaptureStore', () => {
       store.getState().selectDevice('0');
       expect(store.getState().channelGroups).toEqual([]);
     });
+
+    it('selectDevice resets measurementSource to null (config is rebuilt, old indices are meaningless)', () => {
+      const { store } = makeStore();
+      store.setState({ devices: DEVICES, measurementSource: 1 });
+      store.getState().selectDevice('0');
+      expect(store.getState().measurementSource).toBeNull();
+    });
+
+    it('loadDevices resets measurementSource to null when it reseeds the config', async () => {
+      const { store } = makeStore({
+        listDevices: async () => ({ success: true, micAccess: 'granted', devices: DEVICES }),
+      });
+      store.setState({ measurementSource: 1 });
+      await store.getState().loadDevices();
+      expect(store.getState().measurementSource).toBeNull();
+    });
+  });
+
+  describe('measurementSource', () => {
+    it('setMeasurementSource sets the value as given', () => {
+      const { store } = makeStore();
+      store.getState().setMeasurementSource(1);
+      expect(store.getState().measurementSource).toBe(1);
+    });
+
+    it('the value survives unrelated store actions', () => {
+      const { store } = makeStore();
+      store.getState().setMeasurementSource(1);
+      store.getState().setLiveMode('record');
+      expect(store.getState().measurementSource).toBe(1);
+    });
+
+    it('setMeasurementSource(null) resets to the default', () => {
+      const { store } = makeStore();
+      store.getState().setMeasurementSource(1);
+      store.getState().setMeasurementSource(null);
+      expect(store.getState().measurementSource).toBeNull();
+    });
   });
 
   describe('strip mutators', () => {
@@ -174,6 +213,26 @@ describe('createLiveCaptureStore', () => {
       store.getState().removeStrip(0);
       expect(store.getState().channelConfig).toHaveLength(1);
       expect(store.getState().channelGroups[0].members).toEqual([0]); // strip 1 shifted to 0
+    });
+
+    it('removeStrip resets measurementSource to null when the selected strip is removed', () => {
+      const { store } = makeStore();
+      store.setState({
+        channelConfig: [{ kind: 'mono', a: 0, b: 1 }, { kind: 'mono', a: 1, b: 2 }],
+        measurementSource: 0,
+      });
+      store.getState().removeStrip(0);
+      expect(store.getState().measurementSource).toBeNull();
+    });
+
+    it('removeStrip shifts measurementSource down when a lower strip is removed', () => {
+      const { store } = makeStore();
+      store.setState({
+        channelConfig: [{ kind: 'mono', a: 0, b: 1 }, { kind: 'mono', a: 1, b: 2 }],
+        measurementSource: 1,
+      });
+      store.getState().removeStrip(0);
+      expect(store.getState().measurementSource).toBe(0);
     });
 
     it('setStripKind switches mono to stereo via window.rigKind', () => {
