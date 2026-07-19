@@ -263,6 +263,22 @@ describe('DAW mix waveform (#520)', () => {
     expect(peaksBlock).toContain('return;');
   });
 
+  it('onLiveEvent schedules the waveform repaint rather than painting synchronously', () => {
+    // Peaks frames can arrive at the meter cadence — painting synchronously on
+    // every IPC event would bypass this file's rAF-coalescing convention
+    // (mirrored by scheduleLiveMeters for meter/window ticks).
+    const peaksBlock = enclosingBlock(inlineApp, 'decodeMixLane(data)');
+    expect(peaksBlock).toContain('scheduleDawWaveformRender(');
+    expect(peaksBlock).not.toContain('renderDawWaveform()');
+  });
+
+  it('scheduleDawWaveformRender coalesces repaints to one per animation frame', () => {
+    const body = functionBody(inlineApp, 'scheduleDawWaveformRender');
+    expect(body).toContain('waveformRenderScheduled');
+    expect(body).toContain('requestAnimationFrame(');
+    expect(body).toContain('renderDawWaveform()');
+  });
+
   it('the Start handler resets waveform state and its bucket rate', () => {
     const block = enclosingBlock(inlineApp, 'liveRunning = true;');
     expect(block).toContain('dawWaveformState.create(');
@@ -274,6 +290,17 @@ describe('DAW mix waveform (#520)', () => {
     expect(body).toContain(".daw-shell'");
     expect(body).toContain('daw-mix-waveform');
     expect(body).not.toContain('innerHTML');
+  });
+
+  it('renderDawWaveform budgets columns to the canvas\'s own width, not the wider shell width (avoids off-canvas clipping)', () => {
+    const body = functionBody(inlineApp, 'renderDawWaveform');
+    expect(body).toContain('columnPeaks(waveformState.pairs, waveformBucketsPerSec, PLAYHEAD_PX_PER_SECOND, canvas.width)');
+  });
+
+  it('renderDawWaveform derives capture mode directly from live state, not a DOM re-query', () => {
+    const body = functionBody(inlineApp, 'renderDawWaveform');
+    expect(body).toContain('dawWaveformState.captureModeToken(liveRunning, liveMode)');
+    expect(body).not.toContain("querySelector('.daw-mix-lane')");
   });
 
   it('app.css styles the mix waveform canvas and capture-mode markers', () => {

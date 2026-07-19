@@ -148,6 +148,15 @@ class BucketPeaks(unittest.TestCase):
     def test_negative_buckets_returns_empty(self):
         self.assertEqual(stream.bucket_peaks([0.1, 0.2], -1), [])
 
+    def test_fewer_samples_than_buckets_collapses_to_one_bucket(self):
+        # base = n // buckets = 0 when n < buckets, so every non-last bucket
+        # gets an empty chunk and is skipped — only the last iteration (which
+        # takes the remainder, i.e. all samples) contributes. Callers must
+        # guard on len(samples) >= buckets before calling if they need exactly
+        # `buckets` pairs out (#520's stream_live emission does this).
+        out = stream.bucket_peaks([0.1, -0.2, 0.3], 5)
+        self.assertEqual(out, [(-0.2, 0.3)])
+
 
 class QuantizePeak(unittest.TestCase):
     def test_zero_maps_to_128(self):

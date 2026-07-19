@@ -683,10 +683,17 @@ def stream_live(device_index, window_secs: float, groups: list[dict],
             # Peak-envelope frame for the DAW waveform lane (#520, ADR 0004). Emitted from
             # this meter loop only — never the audio callback or writer thread — preserving
             # the recording-safety split the spike's architecture proved.
+            n_buckets = max(1, round(WAVEFORM_BUCKETS_PER_SEC * interval_secs))
             wf_samples = trailing(max(1, int(interval_secs * sample_rate)))
-            if wf_samples.shape[0] >= 1:
+            # Require at least n_buckets samples so bucket_peaks fills every bucket
+            # (fewer samples than buckets collapses to a single bucket — see
+            # bucket_peaks' `base = n // buckets` — which would emit a
+            # shorter-than-expected frame and permanently misalign the renderer's
+            # bucketsPerSecond assumption for the rest of the capture). Skips the
+            # earliest tick(s), before the ring buffer has filled — mirrors the
+            # meter loop's own `if frames.shape[0] < 2: continue` skip-tick guard.
+            if wf_samples.shape[0] >= n_buckets:
                 mix_sig = wf_samples[:, mix_cols].astype(np.float64).mean(axis=1)
-                n_buckets = max(1, round(WAVEFORM_BUCKETS_PER_SEC * interval_secs))
                 pairs = bucket_peaks(mix_sig.tolist(), n_buckets)
                 if pairs:
                     print(encode_peaks_frame([{"id": "mix", "peaks": pairs}], time.time()), flush=True)

@@ -59,6 +59,7 @@ const DAW_TIMELINE_INSET_PX = 4;     // matches the ruler's margin: 8px 4px hori
 // window.dawWaveformState state, reset (assigned fresh) on every capture Start.
 let waveformState = window.dawWaveformState.create();
 let waveformBucketsPerSec = window.dawWaveformState.WAVEFORM_BUCKETS_PER_SEC;
+let waveformRenderScheduled = false;
 // Recording-vs-monitoring waveform stroke, matching the transport-chip colors
 // (--issue-text/--gold-text/--text-muted in app.css) — canvas drawing can't
 // read CSS custom properties, so these are named constants here (#520).
@@ -2637,16 +2638,15 @@ function renderDawPlayhead() {
 }
 
 // Patches the DAW shell's mix waveform canvas in place — never rebuilds DOM
-// (#520). Columns are computed at the same maxPx clamp renderDawPlayhead uses
-// for the playhead line, so the waveform's right edge and the playhead's
-// parked position stay aligned (the alignment contract, ADR 0004).
+// (#520). Columns are budgeted to the canvas's own drawable width so nothing
+// is ever generated past its right edge (see the comment at the columnPeaks
+// call below).
 function renderDawWaveform() {
   const shell = document.querySelector('.daw-shell');
   if (!shell) return; // DAW toggle off or not on Live tab
   const canvas = shell.querySelector('.daw-mix-waveform');
   if (!canvas) return;
 
-  const lane = shell.querySelector('.daw-mix-lane');
   const laneBody = canvas.parentElement;
   const width = laneBody.clientWidth;
   const height = laneBody.clientHeight;
@@ -2657,11 +2657,14 @@ function renderDawWaveform() {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   if (canvas.width === 0 || canvas.height === 0) return;
 
-  const maxPx = Math.max(0, shell.clientWidth - DAW_TIMELINE_INSET_PX * 2);
-  const cols = window.dawWaveformState.columnPeaks(waveformState.pairs, waveformBucketsPerSec, PLAYHEAD_PX_PER_SECOND, maxPx);
+  // Column budget is the canvas's own drawable width (not the shell's, which
+  // is wider by the lane-name column) — using a wider budget here would
+  // generate columns past the canvas's right edge, silently clipping the
+  // waveform before the playhead reaches its parked position (#520).
+  const cols = window.dawWaveformState.columnPeaks(waveformState.pairs, waveformBucketsPerSec, PLAYHEAD_PX_PER_SECOND, canvas.width);
   if (cols.length === 0) return;
 
-  const captureMode = lane ? lane.dataset.captureMode : 'stopped';
+  const captureMode = window.dawWaveformState.captureModeToken(liveRunning, liveMode);
   ctx.strokeStyle = WAVEFORM_COLORS[captureMode] || WAVEFORM_COLORS.stopped;
   ctx.lineWidth = 1;
 
@@ -2673,6 +2676,20 @@ function renderDawWaveform() {
     ctx.moveTo(x + 0.5, yTop);
     ctx.lineTo(x + 0.5, yBottom);
     ctx.stroke();
+  });
+}
+
+// Coalesces peaks-frame repaints to one per animation frame, mirroring
+// scheduleLiveMeters' rAF batching — peaks frames can arrive at the meter
+// cadence (up to several per second), and each repaint forces a layout read
+// (clientWidth/clientHeight), so batching avoids uncoalesced, redundant
+// paint work (#520).
+function scheduleDawWaveformRender() {
+  if (waveformRenderScheduled) return;
+  waveformRenderScheduled = true;
+  requestAnimationFrame(() => {
+    waveformRenderScheduled = false;
+    renderDawWaveform();
   });
 }
 
@@ -2688,7 +2705,7 @@ sb.onLiveEvent((data) => {
   // peaks frame as a channel-less (and thus useless) meter/window tick.
   if (data.type === 'peaks') {
     const pairs = window.dawWaveformState.decodeMixLane(data);
-    if (pairs) { waveformState = window.dawWaveformState.append(waveformState, pairs); renderDawWaveform(); }
+    if (pairs) { waveformState = window.dawWaveformState.append(waveformState, pairs); scheduleDawWaveformRender(); }
     return;
   }
 
