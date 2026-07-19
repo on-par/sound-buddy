@@ -4,12 +4,18 @@
 import { describe, it, expect, afterEach, beforeEach } from 'vitest';
 import { createElement } from 'react';
 import { renderToString } from 'react-dom/server';
+import { createRequire } from 'node:module';
 import ReportCardIsland from './ReportCardIsland';
 import { ElectronContext } from './useElectron';
 import { useAnalysisStore } from './stores/analysisStore';
 import { useSpectrumStore } from './stores/spectrumStore';
+import { useSettingsStore } from './stores/settingsStore';
 import { createMockSoundBuddy } from './mock-sound-buddy';
 import type { GradingPillApi, BandDiffApi } from './report-card';
+import type { AppSettings } from '../../electron/ipc/api';
+
+const require = createRequire(import.meta.url);
+const reportFirstUxState = require('../report-first-ux-state.js');
 
 const gradingMock: GradingPillApi & BandDiffApi & {
   computeGrade(): string;
@@ -31,7 +37,7 @@ const gradingMock: GradingPillApi & BandDiffApi & {
   rcTruePeakStatus: () => 'good',
   rcMetricTarget: () => null,
   bandDiffFromOthers: () => 0,
-  CONFIG: { bandBalance: { hotDiff: 5, quietDiff: -5 } },
+  CONFIG: { bandBalance: { hotDiff: 5, quietDiff: -5, severeHotDiff: 15 } },
 };
 
 const phaseDoublingStateMock = { detectPhaseSignal: () => false };
@@ -68,6 +74,7 @@ beforeEach(() => {
     feedbackRingout: feedbackRingoutMock,
     audioEngineSpectral: audioEngineSpectralMock,
     inlineDialogs: inlineDialogsMock,
+    reportFirstUxState,
   };
 });
 
@@ -92,6 +99,7 @@ afterEach(() => {
     idealProfile: null,
     isAutoProfile: false,
   });
+  useSettingsStore.setState({ settings: null, llmConfig: null, settingsError: null, dialogOpen: false });
 });
 
 function renderMarkup(): string {
@@ -292,5 +300,36 @@ describe('ReportCardIsland', () => {
     const html = renderMarkup();
 
     expect(html).not.toContain('rc-delta');
+  });
+
+  it('renders the score-circle metric rows when the report-first-ux flag is enabled (#540)', () => {
+    useAnalysisStore.setState({ currentAnalysis: ANALYSIS, status: 'done' });
+    // cast comment: minimal settings slice for the gate — only the flag it reads matters here
+    useSettingsStore.setState({ settings: { reportFirstUxEnabled: true } as unknown as AppSettings });
+
+    const html = renderMarkup();
+
+    expect(html).toContain('rc-metric-rows');
+    expect(html).not.toContain('metric-table');
+  });
+
+  it('renders the legacy metric table when the report-first-ux flag is off', () => {
+    useAnalysisStore.setState({ currentAnalysis: ANALYSIS, status: 'done' });
+    useSettingsStore.setState({ settings: { reportFirstUxEnabled: false } as unknown as AppSettings });
+
+    const html = renderMarkup();
+
+    expect(html).toContain('metric-table');
+    expect(html).not.toContain('rc-metric-rows');
+  });
+
+  it('renders the legacy metric table when settings are still null/loading (strict gate)', () => {
+    useAnalysisStore.setState({ currentAnalysis: ANALYSIS, status: 'done' });
+    useSettingsStore.setState({ settings: null });
+
+    const html = renderMarkup();
+
+    expect(html).toContain('metric-table');
+    expect(html).not.toContain('rc-metric-rows');
   });
 });

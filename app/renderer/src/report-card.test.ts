@@ -18,6 +18,8 @@ import {
   buildMetricRows,
   metricRowsHTML,
   whyGradeHTML,
+  buildScoreRows,
+  scoreRowsHTML,
   recListHTML,
   levelColor,
   bandMeterHTML,
@@ -34,7 +36,7 @@ import {
 
 const require = createRequire(import.meta.url);
 const grading = require('../grading.js');
-const { makeSrc } = require('../grading/fixtures.js');
+const { makeSrc, flatBands } = require('../grading/fixtures.js');
 
 describe('iconSvg', () => {
   it('renders an svg with the requested size and stroke width for a known name', () => {
@@ -323,6 +325,101 @@ describe('metricRowsHTML', () => {
   });
 });
 
+describe('buildScoreRows', () => {
+  it('returns 6 rows in order, every graded row "good"/"No impact" and Peak/Centroid "Not graded" for a clean fixture', () => {
+    const src = makeSrc();
+    const rows = buildScoreRows(src, grading, grading.explainGrade(src));
+    expect(rows.map((r) => r.name)).toEqual([
+      'RMS Level', 'Peak Level', 'Dynamic Range', 'Band Balance', 'Clipping', 'Spectral Centroid',
+    ]);
+    const gradedNames = ['RMS Level', 'Dynamic Range', 'Band Balance', 'Clipping'];
+    expect(rows.filter((r) => gradedNames.includes(r.name)).every((r) => r.tone === 'good')).toBe(true);
+    expect(rows.filter((r) => gradedNames.includes(r.name)).every((r) => r.detail.impact === 'No impact')).toBe(true);
+    expect(rows.find((r) => r.name === 'Peak Level')!.detail.impact).toBe('Not graded');
+    expect(rows.find((r) => r.name === 'Spectral Centroid')!.detail.impact).toBe('Not graded');
+  });
+
+  it('marks the Loudness row "issue" with the deduction\'s exact strings for an out-of-band RMS (golden case)', () => {
+    const src = makeSrc({ rms: -22 });
+    const explain = grading.explainGrade(src);
+    const rows = buildScoreRows(src, grading, explain);
+    const row = rows.find((r) => r.name === 'RMS Level')!;
+    const ded = explain.deductions.find((d: { rule: string }) => d.rule === 'RMS out of band');
+    expect(row.tone).toBe('issue');
+    expect(row.detail).toEqual({ measured: ded.measured, target: ded.target, impact: ded.letterImpact });
+  });
+
+  it('shows the LUFS variant of the Loudness row with the LRA extra line when loudness is measured', () => {
+    const src = makeSrc({ lufsIntegrated: -25, loudnessRange: 6 });
+    const rows = buildScoreRows(src, grading, grading.explainGrade(src));
+    const row = rows.find((r) => r.name === 'Integrated Loudness')!;
+    expect(row).toBeDefined();
+    expect(row.value).toBe('-25.0 LUFS');
+    expect(row.tone).toBe('issue');
+    expect(row.extra).toBe('Loudness range 6.0 LU');
+  });
+
+  it('shows the True Peak variant of the Peak row when true peak is measured, good in-band and issue over ceiling', () => {
+    const goodSrc = makeSrc({ truePeakDbtp: -1.05 });
+    const goodRow = buildScoreRows(goodSrc, grading, grading.explainGrade(goodSrc)).find((r) => r.name === 'True Peak')!;
+    expect(goodRow.tone).toBe('good');
+    expect(goodRow.detail.impact).toBe('No impact');
+
+    const issueSrc = makeSrc({ truePeakDbtp: -0.3 });
+    const explain = grading.explainGrade(issueSrc);
+    const issueRow = buildScoreRows(issueSrc, grading, explain).find((r) => r.name === 'True Peak')!;
+    const ded = explain.deductions.find((d: { rule: string }) => d.rule === 'True peak over ceiling');
+    expect(issueRow.tone).toBe('issue');
+    expect(issueRow.detail).toEqual({ measured: ded.measured, target: ded.target, impact: ded.letterImpact });
+  });
+
+  it('marks Clipping hardFail with the forced-F sentence and "Automatic F" impact', () => {
+    const src = makeSrc({ clipping: true });
+    const rows = buildScoreRows(src, grading, grading.explainGrade(src));
+    const row = rows.find((r) => r.name === 'Clipping')!;
+    expect(row.hardFail).toBe(true);
+    expect(row.detail.impact).toBe('Automatic F');
+    expect(row.extra).toBe('Clipping forced an automatic F — the other grading rules were not evaluated.');
+
+    const html = scoreRowsHTML(rows);
+    expect(html).toContain('hard-fail');
+    expect(html).toContain('Automatic F');
+    expect(html).toContain('Clipping forced an automatic F');
+  });
+
+  it('marks Dynamic Range "info" with the skipped-rule detail for a live capture', () => {
+    const src = makeSrc({ dynamicRange: null });
+    const rows = buildScoreRows(src, grading, grading.explainGrade(src));
+    const row = rows.find((r) => r.name === 'Dynamic Range')!;
+    expect(row.tone).toBe('info');
+    expect(row.value).toBe('—');
+    expect(row.detail.impact).toBe('Rule skipped — graded on fewer metrics');
+  });
+
+  it('marks Band Balance "issue" over severeHotDiff and "check" between hotDiff and severeHotDiff', () => {
+    const hotSrc = makeSrc({ bands: { ...flatBands(-30), mid: -8 } }); // diff +22, > severeHotDiff (15)
+    const hotRow = buildScoreRows(hotSrc, grading, grading.explainGrade(hotSrc)).find((r) => r.name === 'Band Balance')!;
+    expect(hotRow.tone).toBe('issue');
+    expect(hotRow.detail.target).toBe('≤ +15 dB vs. other bands');
+
+    const mildSrc = makeSrc({ bands: { ...flatBands(-30), mid: -17 } }); // diff +13, > hotDiff (12), <= severeHotDiff (15)
+    const mildRow = buildScoreRows(mildSrc, grading, grading.explainGrade(mildSrc)).find((r) => r.name === 'Band Balance')!;
+    expect(mildRow.tone).toBe('check');
+  });
+});
+
+describe('scoreRowsHTML', () => {
+  it('renders one collapsed <details> per row, reusing statusPillHTML for the pill', () => {
+    const src = makeSrc();
+    const rows = buildScoreRows(src, grading, grading.explainGrade(src));
+    const html = scoreRowsHTML(rows);
+    expect(html.match(/<details /g)?.length).toBe(6);
+    expect(html).not.toMatch(/<details[^>]* open/);
+    expect(html).toContain('pill sm good');
+    expect(html).toContain('status-dot good');
+  });
+});
+
 describe('whyGradeHTML', () => {
   it('renders the clean "met every grading rule" state', () => {
     const explain = grading.explainGrade(makeSrc());
@@ -517,7 +614,7 @@ describe('contentTypeView', () => {
 describe('bandBreakdownHTML', () => {
   const g: BandDiffApi = {
     bandDiffFromOthers: (bands, key) => bands[key] - -20,
-    CONFIG: { bandBalance: { hotDiff: 5, quietDiff: -5 } },
+    CONFIG: { bandBalance: { hotDiff: 5, quietDiff: -5, severeHotDiff: 15 } },
   };
 
   it('renders one row per BAND_META band with a balanced/hot/quiet verdict', () => {
