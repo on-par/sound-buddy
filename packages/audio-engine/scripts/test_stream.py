@@ -13,6 +13,7 @@ import sys
 import time
 import json
 import types
+import base64
 import shutil
 import signal
 import contextlib
@@ -121,6 +122,111 @@ class AnalyzeGroups(unittest.TestCase):
         frames = np.zeros((16, 2), dtype=np.float32)
         out = stream.analyze_groups(frames, self.sr, stream.parse_channel_groups("0", 2))
         self.assertEqual(len(out), 1)
+
+
+class BucketPeaks(unittest.TestCase):
+    def test_even_split(self):
+        self.assertEqual(
+            stream.bucket_peaks([0.0, 0.5, -0.5, 1.0], 2),
+            [(0.0, 0.5), (-0.5, 1.0)],
+        )
+
+    def test_remainder_goes_to_last_bucket(self):
+        # 5 samples / 2 buckets: base=2, so bucket0 gets [0,1), bucket1 gets the
+        # remainder [2,5) — 3 samples.
+        out = stream.bucket_peaks([0.1, 0.2, 0.3, -0.9, 0.9], 2)
+        self.assertEqual(len(out), 2)
+        self.assertEqual(out[0], (0.1, 0.2))
+        self.assertEqual(out[1], (-0.9, 0.9))
+
+    def test_empty_input_returns_empty(self):
+        self.assertEqual(stream.bucket_peaks([], 4), [])
+
+    def test_zero_buckets_returns_empty(self):
+        self.assertEqual(stream.bucket_peaks([0.1, 0.2], 0), [])
+
+    def test_negative_buckets_returns_empty(self):
+        self.assertEqual(stream.bucket_peaks([0.1, 0.2], -1), [])
+
+    def test_fewer_samples_than_buckets_collapses_to_one_bucket(self):
+        # base = n // buckets = 0 when n < buckets, so every non-last bucket
+        # gets an empty chunk and is skipped — only the last iteration (which
+        # takes the remainder, i.e. all samples) contributes. Callers must
+        # guard on len(samples) >= buckets before calling if they need exactly
+        # `buckets` pairs out (#520's stream_live emission does this).
+        out = stream.bucket_peaks([0.1, -0.2, 0.3], 5)
+        self.assertEqual(out, [(-0.2, 0.3)])
+
+
+class QuantizePeak(unittest.TestCase):
+    def test_zero_maps_to_128(self):
+        self.assertEqual(stream.quantize_peak(0.0), 128)
+
+    def test_negative_one_maps_to_zero(self):
+        self.assertEqual(stream.quantize_peak(-1.0), 0)
+
+    def test_positive_one_maps_to_255(self):
+        self.assertEqual(stream.quantize_peak(1.0), 255)
+
+    def test_out_of_range_clamps(self):
+        self.assertEqual(stream.quantize_peak(5.0), 255)
+        self.assertEqual(stream.quantize_peak(-5.0), 0)
+
+    def test_round_trips_within_epsilon(self):
+        # The renderer's dequantize formula: level / (QUANT_LEVELS - 1) * 2 - 1.
+        for value in (-1.0, -0.5, 0.0, 0.33, 0.75, 1.0):
+            level = stream.quantize_peak(value)
+            dequantized = level / (stream.QUANT_LEVELS - 1) * 2 - 1
+            self.assertAlmostEqual(dequantized, value, delta=1.0 / (stream.QUANT_LEVELS - 1) + 1e-9)
+
+
+class MixIndices(unittest.TestCase):
+    def test_mono_and_stereo_groups_sorted_unique(self):
+        groups = stream.parse_channel_groups("3,0-1", 4)
+        self.assertEqual(stream.mix_indices(groups), [0, 1, 3])
+
+    def test_overlapping_indices_deduplicated(self):
+        groups = [
+            {"kind": "mono", "indices": [2], "name": "CH03"},
+            {"kind": "stereo", "indices": [2, 5], "name": "CH03+CH06"},
+        ]
+        self.assertEqual(stream.mix_indices(groups), [2, 5])
+
+    def test_empty_groups_returns_empty(self):
+        self.assertEqual(stream.mix_indices([]), [])
+
+
+class EncodePeaksFrame(unittest.TestCase):
+    def test_parses_as_json_with_expected_shape(self):
+        line = stream.encode_peaks_frame([{"id": "mix", "peaks": [(-0.5, 0.5)]}], 1234.5)
+        parsed = json.loads(line)
+        self.assertEqual(parsed["type"], "peaks")
+        self.assertIsInstance(parsed["ts"], float)
+        self.assertEqual(len(parsed["lanes"]), 1)
+        self.assertEqual(parsed["lanes"][0]["id"], "mix")
+
+    def test_data_decodes_to_interleaved_quantized_bytes(self):
+        peaks = [(-1.0, 1.0), (0.0, 0.0)]
+        line = stream.encode_peaks_frame([{"id": "mix", "peaks": peaks}], 0.0)
+        parsed = json.loads(line)
+        raw = base64.b64decode(parsed["lanes"][0]["data"])
+        expected = bytes([
+            stream.quantize_peak(-1.0), stream.quantize_peak(1.0),
+            stream.quantize_peak(0.0), stream.quantize_peak(0.0),
+        ])
+        self.assertEqual(raw, expected)
+
+    def test_known_sine_decodes_to_expected_signs(self):
+        sr = 48000
+        t = np.arange(int(0.1 * sr)) / sr
+        sine = (0.8 * np.sin(2 * np.pi * 10 * t)).tolist()
+        pairs = stream.bucket_peaks(sine, 5)
+        line = stream.encode_peaks_frame([{"id": "mix", "peaks": pairs}], 0.0)
+        raw = base64.b64decode(json.loads(line)["lanes"][0]["data"])
+        for i, (mn, mx) in enumerate(pairs):
+            self.assertEqual(raw[i * 2], stream.quantize_peak(mn))
+            self.assertEqual(raw[i * 2 + 1], stream.quantize_peak(mx))
+            self.assertLessEqual(mn, mx)
 
 
 class Masking(unittest.TestCase):

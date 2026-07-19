@@ -41,8 +41,11 @@ is relative to the session dir so the folder stays movable.
 
 Output: JSON lines on stdout.
   {"type":"meter",  "ts":…, "channels":[…]}                            — every --interval
+  {"type":"peaks",  "ts":…, "lanes":[{"id":"mix","data":"…"}]}         — every --interval
   {"type":"window", "window":N, "ts":…, "channels":[…], "masking":[…]} — every window_secs
-The "window" events carry the heavier context used by the (gated) LLM path.
+The "window" events carry the heavier context used by the (gated) LLM path. The
+"peaks" events carry a base64-packed min/max waveform envelope for the DAW
+workspace's mix lane (#520, ADR 0004).
 
 Dependencies: pip install sounddevice numpy scipy soundfile
 """
@@ -52,6 +55,7 @@ import re
 import sys
 import json
 import time
+import base64
 import queue
 import signal
 import threading
@@ -85,6 +89,11 @@ METER_WINDOW_SECS = 0.2
 # How long a clip stays latched on the live meter after the last clipped sample,
 # so a transient clip is visible rather than flashing for one meter slice.
 CLIP_HOLD_SECS = 1.5
+
+# Peak-envelope resolution for the DAW workspace's mix waveform lane (ADR 0004).
+WAVEFORM_BUCKETS_PER_SEC = 50
+# u8 quantization of a peak value in [-1.0, 1.0] for the peak transport (ADR 0004).
+QUANT_LEVELS = 256
 
 
 def _enumerate_devices(channel_key: str) -> list[dict]:
@@ -412,6 +421,67 @@ def analyze_groups(frames: np.ndarray, sample_rate: int, groups: list[dict]) -> 
     return channels_out
 
 
+def bucket_peaks(samples: list, buckets: int) -> list:
+    """
+    Split `samples` into `buckets` contiguous slices (the last bucket takes
+    any remainder from integer division) and return a (min, max) tuple per
+    slice. Empty input or `buckets <= 0` returns [] (ADR 0004).
+    """
+    if not samples or buckets <= 0:
+        return []
+    n = len(samples)
+    base = n // buckets
+    result = []
+    idx = 0
+    for i in range(buckets):
+        if i == buckets - 1:
+            chunk = samples[idx:]
+        else:
+            chunk = samples[idx:idx + base]
+            idx += base
+        if not chunk:
+            continue
+        result.append((min(chunk), max(chunk)))
+    return result
+
+
+def quantize_peak(value: float) -> int:
+    """Map a peak value in [-1.0, 1.0] to a u8 level in [0, QUANT_LEVELS-1]
+    (0.0 -> 128), clamping out-of-range input (ADR 0004)."""
+    clamped = max(-1.0, min(1.0, value))
+    return round((clamped + 1.0) * (QUANT_LEVELS - 1) / 2.0)
+
+
+def mix_indices(groups: list[dict]) -> list[int]:
+    """Sorted, de-duplicated device-channel indices across every configured
+    strip's g["indices"]. The overall mix is the mean over these columns —
+    not all device channels — so unconfigured silent channels never dilute
+    the mix (#520)."""
+    indices: set[int] = set()
+    for g in groups:
+        indices.update(g["indices"])
+    return sorted(indices)
+
+
+def encode_peaks_frame(lanes: list, ts: float) -> str:
+    """Per lane, pack interleaved (quantize_peak(min), quantize_peak(max))
+    bytes, base64-encode, and wrap in the "peaks" NDJSON envelope. Mirrors
+    the spike's encode_frame_b64 candidate (ADR 0004,
+    spike_waveform_transport.py:142-156)."""
+    out_lanes = []
+    for lane in lanes:
+        packed = bytes(
+            b
+            for mn, mx in lane["peaks"]
+            for b in (quantize_peak(mn), quantize_peak(mx))
+        )
+        out_lanes.append({
+            "id": lane["id"],
+            "data": base64.b64encode(packed).decode("ascii"),
+        })
+    return json.dumps({"type": "peaks", "ts": ts, "lanes": out_lanes})
+
+
 def compute_masking(channels_out: list[dict]) -> list[dict]:
     """Pairs of strips within MASKING_THRESHOLD_DB in any band (potential masking)."""
     masking = []
@@ -571,6 +641,9 @@ def stream_live(device_index, window_secs: float, groups: list[dict],
             elif now - clip_hold.get(ch["name"], -1e9) < CLIP_HOLD_SECS:
                 ch["clipping"] = True
 
+    # Hoisted out of the meter loop — groups don't change mid-capture (#520).
+    mix_cols = mix_indices(groups)
+
     with sd.InputStream(
         device=device_index,
         channels=n_device_channels,
@@ -606,6 +679,24 @@ def stream_live(device_index, window_secs: float, groups: list[dict],
                 "ts": time.time(),
                 "channels": channels_out,
             }), flush=True)
+
+            # Peak-envelope frame for the DAW waveform lane (#520, ADR 0004). Emitted from
+            # this meter loop only — never the audio callback or writer thread — preserving
+            # the recording-safety split the spike's architecture proved.
+            n_buckets = max(1, round(WAVEFORM_BUCKETS_PER_SEC * interval_secs))
+            wf_samples = trailing(max(1, int(interval_secs * sample_rate)))
+            # Require at least n_buckets samples so bucket_peaks fills every bucket
+            # (fewer samples than buckets collapses to a single bucket — see
+            # bucket_peaks' `base = n // buckets` — which would emit a
+            # shorter-than-expected frame and permanently misalign the renderer's
+            # bucketsPerSecond assumption for the rest of the capture). Skips the
+            # earliest tick(s), before the ring buffer has filled — mirrors the
+            # meter loop's own `if frames.shape[0] < 2: continue` skip-tick guard.
+            if wf_samples.shape[0] >= n_buckets:
+                mix_sig = wf_samples[:, mix_cols].astype(np.float64).mean(axis=1)
+                pairs = bucket_peaks(mix_sig.tolist(), n_buckets)
+                if pairs:
+                    print(encode_peaks_frame([{"id": "mix", "peaks": pairs}], time.time()), flush=True)
 
             # Heavier window tick — trend context for the (gated) LLM path.
             tick += 1
