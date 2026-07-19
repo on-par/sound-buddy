@@ -55,6 +55,18 @@ let playheadTimer = null;
 const PLAYHEAD_TICK_MS = 100;        // patch cadence — smooth without rebuild cost
 const PLAYHEAD_PX_PER_SECOND = 8;    // one 40px ruler division = 5s
 const DAW_TIMELINE_INSET_PX = 4;     // matches the ruler's margin: 8px 4px horizontal inset
+// Mix waveform lane for the experimental DAW shell (#520, ADR 0004):
+// window.dawWaveformState state, reset (assigned fresh) on every capture Start.
+let waveformState = window.dawWaveformState.create();
+let waveformBucketsPerSec = window.dawWaveformState.WAVEFORM_BUCKETS_PER_SEC;
+// Recording-vs-monitoring waveform stroke, matching the transport-chip colors
+// (--issue-text/--gold-text/--text-muted in app.css) — canvas drawing can't
+// read CSS custom properties, so these are named constants here (#520).
+const WAVEFORM_COLORS = {
+  recording: '#F26D71',
+  monitoring: '#F3CA5E',
+  stopped: '#565D6B',
+};
 // A stored report-card summary loaded from the Recent Services list (#147) now
 // lives in analysisStore.historySummary — ReportCardIsland renders it via a
 // reduced, summary-only card when set and no live/file analysis is backing
@@ -975,6 +987,7 @@ function renderDawShell() {
   // swap with the same channel count changes labels without changing length.
   const laneSignature = laneNames.join('\u0000');
   const transportChip = window.dawWorkspaceState.transportLabel(liveRunning, liveMode);
+  const captureMode = window.dawWaveformState.captureModeToken(liveRunning, liveMode);
 
   // Patch in place on the rAF meter tick (mirrors renderLiveMeters' strip-count
   // check) so the shell doesn't rebuild its DOM every frame during a capture —
@@ -986,7 +999,10 @@ function renderDawShell() {
       chip.textContent = transportChip;
       chip.className = `daw-transport-state daw-transport-state-${transportChip.toLowerCase()}`;
     }
+    const mixLane = body.querySelector('.daw-mix-lane');
+    if (mixLane && mixLane.dataset.captureMode !== captureMode) mixLane.dataset.captureMode = captureMode;
     renderDawPlayhead(); // refresh the readout/line on meter-tick patch renders too
+    renderDawWaveform(); // refresh the mix waveform on meter-tick patch renders too (#520)
     return;
   }
 
@@ -1010,14 +1026,15 @@ function renderDawShell() {
     + `</div>`
     + `<div class="daw-playhead"></div>`
     + `<div class="daw-ruler"></div>`
-    + `<div class="daw-lane daw-mix-lane">`
+    + `<div class="daw-lane daw-mix-lane" data-capture-mode="${captureMode}">`
     + `<span class="daw-lane-name">Overall mix</span>`
-    + `<span class="daw-lane-body">Mix waveform coming soon</span>`
+    + `<span class="daw-lane-body"><canvas class="daw-mix-waveform"></canvas></span>`
     + `</div>`
     + laneHTML
     + `</div>`;
   body.querySelector('.daw-shell').dataset.laneSignature = laneSignature;
   renderDawPlayhead(); // position the line after the rebuild
+  renderDawWaveform(); // repaint waveform history after a mid-capture rebuild (#520)
 }
 
 // Thin adapters bridging this module's mutable state (channelConfig,
@@ -2065,6 +2082,10 @@ document.getElementById('live-start-btn').addEventListener('click', async () => 
   // from zero (#518).
   playheadState = window.dawPlayheadState.start(Date.now());
   startPlayheadTicker();
+  // Clear the previous capture's waveform and align the bucket rate to this
+  // capture's meter interval (#520).
+  waveformState = window.dawWaveformState.create();
+  waveformBucketsPerSec = window.dawWaveformState.bucketsPerSecond(intervalSecs);
   liveWindows = [];
   syncLiveSource();
   // A live capture always wins over a loaded history entry (#147).
@@ -2615,10 +2636,59 @@ function renderDawPlayhead() {
   }
 }
 
+// Patches the DAW shell's mix waveform canvas in place — never rebuilds DOM
+// (#520). Columns are computed at the same maxPx clamp renderDawPlayhead uses
+// for the playhead line, so the waveform's right edge and the playhead's
+// parked position stay aligned (the alignment contract, ADR 0004).
+function renderDawWaveform() {
+  const shell = document.querySelector('.daw-shell');
+  if (!shell) return; // DAW toggle off or not on Live tab
+  const canvas = shell.querySelector('.daw-mix-waveform');
+  if (!canvas) return;
+
+  const lane = shell.querySelector('.daw-mix-lane');
+  const laneBody = canvas.parentElement;
+  const width = laneBody.clientWidth;
+  const height = laneBody.clientHeight;
+  if (canvas.width !== width) canvas.width = width;
+  if (canvas.height !== height) canvas.height = height;
+
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  if (canvas.width === 0 || canvas.height === 0) return;
+
+  const maxPx = Math.max(0, shell.clientWidth - DAW_TIMELINE_INSET_PX * 2);
+  const cols = window.dawWaveformState.columnPeaks(waveformState.pairs, waveformBucketsPerSec, PLAYHEAD_PX_PER_SECOND, maxPx);
+  if (cols.length === 0) return;
+
+  const captureMode = lane ? lane.dataset.captureMode : 'stopped';
+  ctx.strokeStyle = WAVEFORM_COLORS[captureMode] || WAVEFORM_COLORS.stopped;
+  ctx.lineWidth = 1;
+
+  const midY = canvas.height / 2;
+  cols.forEach((col, x) => {
+    const yTop = midY - col.max * midY;
+    const yBottom = Math.max(yTop + 1, midY - col.min * midY); // min 1px tall — silence draws a hairline
+    ctx.beginPath();
+    ctx.moveTo(x + 0.5, yTop);
+    ctx.lineTo(x + 0.5, yBottom);
+    ctx.stroke();
+  });
+}
+
 /* ══ IPC event listeners ══ */
 sb.onLiveEvent((data) => {
   if (!data || data.error) {
     if (data?.error) setSpectrumState('error', { text: `Live error: ${data.error}` });
+    return;
+  }
+
+  // Mix-waveform peak frames (#520, ADR 0004) carry no channels — handle and
+  // return before the meter/stats paths below, which would otherwise treat a
+  // peaks frame as a channel-less (and thus useless) meter/window tick.
+  if (data.type === 'peaks') {
+    const pairs = window.dawWaveformState.decodeMixLane(data);
+    if (pairs) { waveformState = window.dawWaveformState.append(waveformState, pairs); renderDawWaveform(); }
     return;
   }
 

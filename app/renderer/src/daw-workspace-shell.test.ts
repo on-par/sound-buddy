@@ -238,3 +238,55 @@ describe('DAW playhead (#518)', () => {
     expect(playheadIdx).toBeLessThan(inlineIdx);
   });
 });
+
+describe('DAW mix waveform (#520)', () => {
+  it('renderDawShell markup includes the canvas and capture-mode attribute, no longer the placeholder text', () => {
+    const body = functionBody(inlineApp, 'renderDawShell');
+    expect(body).toContain('daw-mix-waveform');
+    expect(body).toContain('data-capture-mode');
+    expect(body).not.toContain('Mix waveform coming soon');
+  });
+
+  it('renderDawShell calls renderDawWaveform on both the patch and rebuild paths', () => {
+    const body = functionBody(inlineApp, 'renderDawShell');
+    const matches = body.match(/renderDawWaveform\(/g) || [];
+    expect(matches.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it('onLiveEvent handles peaks frames before scheduleLiveMeters and returns', () => {
+    const peaksIdx = inlineApp.indexOf("data.type === 'peaks'");
+    const scheduleIdx = inlineApp.indexOf('scheduleLiveMeters(data)');
+    expect(peaksIdx).toBeGreaterThan(-1);
+    expect(scheduleIdx).toBeGreaterThan(-1);
+    expect(peaksIdx).toBeLessThan(scheduleIdx);
+    const peaksBlock = enclosingBlock(inlineApp, "decodeMixLane(data)");
+    expect(peaksBlock).toContain('return;');
+  });
+
+  it('the Start handler resets waveform state and its bucket rate', () => {
+    const block = enclosingBlock(inlineApp, 'liveRunning = true;');
+    expect(block).toContain('dawWaveformState.create(');
+    expect(block).toContain('bucketsPerSecond(');
+  });
+
+  it('renderDawWaveform guards on shell/canvas presence and never assigns innerHTML', () => {
+    const body = functionBody(inlineApp, 'renderDawWaveform');
+    expect(body).toContain(".daw-shell'");
+    expect(body).toContain('daw-mix-waveform');
+    expect(body).not.toContain('innerHTML');
+  });
+
+  it('app.css styles the mix waveform canvas and capture-mode markers', () => {
+    expect(css).toContain('.daw-mix-waveform');
+    expect(css).toContain('data-capture-mode');
+  });
+
+  it('App.tsx boots daw-waveform-state.js before the inline app script', () => {
+    expect(appTsx).toContain('daw-waveform-state.js?raw');
+    const waveformIdx = appTsx.indexOf('dawWaveformStateSrc,');
+    const inlineIdx = appTsx.indexOf('inlineAppSrc,');
+    expect(waveformIdx).toBeGreaterThan(-1);
+    expect(inlineIdx).toBeGreaterThan(-1);
+    expect(waveformIdx).toBeLessThan(inlineIdx);
+  });
+});

@@ -39,6 +39,7 @@ import feedbackFormSrc from '../feedback-form-state.js?raw';
 import updateDownloadStateSrc from '../update-download-state.js?raw';
 import dawWorkspaceStateSrc from '../daw-workspace-state.js?raw';
 import dawPlayheadStateSrc from '../daw-playhead-state.js?raw';
+import dawWaveformStateSrc from '../daw-waveform-state.js?raw';
 import inlineAppSrc from './inline-app.js?raw';
 import LicensePanel from './LicensePanel';
 import SettingsPanel from './SettingsPanel';
@@ -75,6 +76,7 @@ const BOOT_SCRIPTS = [
   updateDownloadStateSrc,
   dawWorkspaceStateSrc,
   dawPlayheadStateSrc,
+  dawWaveformStateSrc,
   inlineAppSrc,
 ];
 
