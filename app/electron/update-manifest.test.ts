@@ -22,7 +22,7 @@ function validManifest(): Record<string, unknown> {
 }
 
 describe('parseUpdateManifest', () => {
-  it('parses a valid manifest into the four consumed fields', () => {
+  it('parses a valid manifest into the six consumed fields', () => {
     const result = parseUpdateManifest(validManifest());
 
     expect(result).toEqual({
@@ -33,6 +33,8 @@ describe('parseUpdateManifest', () => {
         releaseUrl: 'https://github.com/on-par/sound-buddy-releases/releases/tag/v9.9.9',
         artifactUrl:
           'https://github.com/on-par/sound-buddy-releases/releases/download/v9.9.9/SoundBuddy.zip',
+        sha256: 'a'.repeat(64),
+        artifactSizeBytes: 123456,
       },
     });
   });
@@ -53,6 +55,8 @@ describe('parseUpdateManifest', () => {
         releaseUrl: 'https://github.com/on-par/sound-buddy-releases/releases/tag/v9.9.9',
         artifactUrl:
           'https://github.com/on-par/sound-buddy-releases/releases/download/v9.9.9/SoundBuddy.zip',
+        sha256: 'a'.repeat(64),
+        artifactSizeBytes: 123456,
       },
     });
   });
@@ -165,6 +169,69 @@ describe('parseUpdateManifest', () => {
     const result = parseUpdateManifest('str');
 
     expect(result).toEqual({ ok: false, problems: [expect.stringContaining('JSON object')] });
+  });
+
+  it('reports a problem naming the field when sha256 is missing', () => {
+    const result = parseUpdateManifest(omit(validManifest(), 'sha256'));
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.problems.join(' ')).toMatch(/sha256/);
+  });
+
+  it('rejects a sha256 shorter than 64 hex characters', () => {
+    const result = parseUpdateManifest({ ...validManifest(), sha256: 'a'.repeat(63) });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.problems.join(' ')).toMatch(/sha256/);
+  });
+
+  it('rejects an uppercase sha256', () => {
+    const result = parseUpdateManifest({ ...validManifest(), sha256: 'A'.repeat(64) });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.problems.join(' ')).toMatch(/sha256/);
+  });
+
+  it('rejects a non-hex sha256', () => {
+    const result = parseUpdateManifest({ ...validManifest(), sha256: 'z'.repeat(64) });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.problems.join(' ')).toMatch(/sha256/);
+  });
+
+  it('rejects a non-string sha256', () => {
+    const result = parseUpdateManifest({ ...validManifest(), sha256: 123 });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.problems.join(' ')).toMatch(/sha256/);
+  });
+
+  it('reports a problem naming the field when artifactSizeBytes is missing', () => {
+    const result = parseUpdateManifest(omit(validManifest(), 'artifactSizeBytes'));
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.problems.join(' ')).toMatch(/artifactSizeBytes/);
+  });
+
+  it('rejects a zero artifactSizeBytes', () => {
+    const result = parseUpdateManifest({ ...validManifest(), artifactSizeBytes: 0 });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.problems.join(' ')).toMatch(/artifactSizeBytes/);
+  });
+
+  it('rejects a negative artifactSizeBytes', () => {
+    const result = parseUpdateManifest({ ...validManifest(), artifactSizeBytes: -1 });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.problems.join(' ')).toMatch(/artifactSizeBytes/);
+  });
+
+  it('rejects a non-integer artifactSizeBytes', () => {
+    const result = parseUpdateManifest({ ...validManifest(), artifactSizeBytes: 123.5 });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.problems.join(' ')).toMatch(/artifactSizeBytes/);
   });
 
   it('accumulates multiple problems at once', () => {

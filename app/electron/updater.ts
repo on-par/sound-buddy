@@ -21,6 +21,17 @@ export interface UpdateInfo {
   url: string;
   notes: string;
   downloadUrl: string;
+  sha256: string;
+  sizeBytes: number;
+}
+
+// The update the last checkForUpdates() found (if any) — set right before the
+// 'update-available' event fires, so download-update never has to trust a
+// renderer-supplied URL/hash: it only ever downloads what main itself vetted.
+let availableUpdate: UpdateInfo | null = null;
+
+export function getAvailableUpdate(): UpdateInfo | null {
+  return availableUpdate;
 }
 
 // Compare dotted numeric versions (e.g. "0.2.0" vs "0.10.1"), ignoring a leading
@@ -51,7 +62,14 @@ async function fetchLatest(): Promise<UpdateInfo | null> {
     return null;
   }
   const m = parsed.manifest;
-  return { version: m.version, url: m.releaseUrl, notes: m.notesSummary, downloadUrl: m.artifactUrl };
+  return {
+    version: m.version,
+    url: m.releaseUrl,
+    notes: m.notesSummary,
+    downloadUrl: m.artifactUrl,
+    sha256: m.sha256,
+    sizeBytes: m.artifactSizeBytes,
+  };
 }
 
 /**
@@ -84,6 +102,7 @@ export async function checkForUpdates(win: BrowserWindow | null, silent: boolean
 
   if (isNewer(latest.version, current)) {
     log(`update available: ${current} → ${latest.version}`);
+    availableUpdate = latest;
     if (win && !win.isDestroyed()) win.webContents.send('update-available', latest);
     return;
   }

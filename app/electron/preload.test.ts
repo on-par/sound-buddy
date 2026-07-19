@@ -128,6 +128,9 @@ const INVOKE_TABLE: Array<{ method: BridgeKey; channel: string; args: unknown[] 
   { method: 'triggerLlmAnalysis', channel: 'trigger-llm-analysis', args: [{ summary: 'x' }] },
   { method: 'checkForUpdates', channel: 'check-for-updates', args: [] },
   { method: 'openReleasePage', channel: 'open-release-page', args: ['https://example.com'] },
+  { method: 'downloadUpdate', channel: 'download-update', args: [] },
+  { method: 'cancelUpdateDownload', channel: 'cancel-update-download', args: [] },
+  { method: 'revealUpdateDownload', channel: 'reveal-update-download', args: [] },
   {
     method: 'reportRendererError',
     channel: 'report-renderer-error',
@@ -150,6 +153,7 @@ const LISTENERS: BridgeKey[] = [
   'onMenuOpenFile',
   'onUpdateAvailable',
   'onUpdateStatus',
+  'onUpdateDownloadStatus',
   'removeAllListeners',
 ];
 
@@ -206,6 +210,12 @@ describe('createBridge — event listeners', () => {
       expectsPayload: true,
     },
     { method: 'onUpdateStatus', channel: 'update-status', payload: { state: 'downloading' }, expectsPayload: true },
+    {
+      method: 'onUpdateDownloadStatus',
+      channel: 'update-download-status',
+      payload: { state: 'verifying' },
+      expectsPayload: true,
+    },
   ];
 
   it.each(LISTENER_TABLE)(
