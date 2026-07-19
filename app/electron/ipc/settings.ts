@@ -206,6 +206,12 @@ export function registerSettingsHandlers(): void {
       if (typeof patch.liveAdjustmentsEnabled === 'boolean') {
         clean.liveAdjustmentsEnabled = patch.liveAdjustmentsEnabled;
       }
+      // Opt-in report-first-ux epic gate (#538) — a pure UI gate, consumed by
+      // the renderer only; also env-overridable at read time
+      // (SOUND_BUDDY_REPORT_FIRST_UX).
+      if (typeof patch.reportFirstUxEnabled === 'boolean') {
+        clean.reportFirstUxEnabled = patch.reportFirstUxEnabled;
+      }
     }
     const result = updateSettings(clean);
     // Opting out of telemetry (#474) clears the pending queue and the

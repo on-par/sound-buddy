@@ -4037,6 +4037,10 @@ window.inlineDialogs = { openPhaseDoublingDialog, openFeedbackRingout };
   // #421); loadSettings() in the boot IIFE below fires these on first load.
   setStore.subscribe((s) => updateModelChip(s.llmConfig));
   setStore.subscribe((s) => document.body.classList.toggle('ai-disabled', !(s.settings && s.settings.aiEnabled)));
+  // Report-first-ux epic gate (#538): the body class is the branch point the
+  // e17 slices mount against. Absent by default — with the flag off the
+  // existing tab bar and 3-column workspace render exactly as before.
+  setStore.subscribe((s) => document.body.classList.toggle('report-first-ux', window.reportFirstUxState.isEnabled(s.settings)));
   // Experimental DAW workspace gate (#516): body class is the entry point
   // #517's workspace shell mounts against. Absent by default — the existing
   // Live Capture UI is untouched until the user opts in.

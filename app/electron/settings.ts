@@ -45,6 +45,7 @@ const DEFAULTS: AppSettings = {
   crashReportingEnabled: false,
   dawWorkspaceEnabled: false,
   liveAdjustmentsEnabled: false,
+  reportFirstUxEnabled: false,
 };
 
 function settingsPath(): string {
@@ -137,6 +138,7 @@ function writeSettingsFile(file: Partial<AppSettings>): void {
     crashReportingEnabled: file.crashReportingEnabled ?? DEFAULTS.crashReportingEnabled,
     dawWorkspaceEnabled: file.dawWorkspaceEnabled ?? DEFAULTS.dawWorkspaceEnabled,
     liveAdjustmentsEnabled: file.liveAdjustmentsEnabled ?? DEFAULTS.liveAdjustmentsEnabled,
+    reportFirstUxEnabled: file.reportFirstUxEnabled ?? DEFAULTS.reportFirstUxEnabled,
   };
   try {
     fs.writeFileSync(settingsPath(), JSON.stringify(persisted, null, 2));
@@ -157,6 +159,7 @@ export function getSettings(): AppSettings {
   const file = readSettingsFile('for read');
 
   const envAi = envBool('SOUND_BUDDY_AI_ENABLED');
+  const envReportFirstUx = envBool('SOUND_BUDDY_REPORT_FIRST_UX');
 
   return {
     aiEnabled: envAi ?? file.aiEnabled ?? DEFAULTS.aiEnabled,
@@ -187,6 +190,10 @@ export function getSettings(): AppSettings {
     // No env layer — opting into experimental live adjustments (#522) must
     // be an explicit user action, same rationale as dawWorkspaceEnabled.
     liveAdjustmentsEnabled: file.liveAdjustmentsEnabled ?? DEFAULTS.liveAdjustmentsEnabled,
+    // Env layer mirrors aiEnabled's — dogfooding the report-first-ux epic
+    // (#538) without a UI toggle needs a launch-time override, unlike the
+    // other experimental UI gates above.
+    reportFirstUxEnabled: envReportFirstUx ?? file.reportFirstUxEnabled ?? DEFAULTS.reportFirstUxEnabled,
   };
 }
 
