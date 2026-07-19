@@ -12,6 +12,7 @@ export const LATEST_MANIFEST_URL =
 
 const SEMVER_RE = /^\d+\.\d+\.\d+$/;
 const HTTPS_PREFIX = 'https://';
+const SHA256_HEX_RE = /^[0-9a-f]{64}$/;
 
 /** The subset of the latest.json contract (#500) that update discovery consumes. */
 export interface UpdateManifest {
@@ -19,6 +20,8 @@ export interface UpdateManifest {
   notesSummary: string;
   releaseUrl: string;
   artifactUrl: string;
+  sha256: string;
+  artifactSizeBytes: number;
 }
 
 export type UpdateManifestResult =
@@ -36,7 +39,7 @@ export function parseUpdateManifest(data: unknown): UpdateManifestResult {
   }
 
   const problems: string[] = [];
-  const { schemaVersion, version, notesSummary, releaseUrl, artifactUrl } = data;
+  const { schemaVersion, version, notesSummary, releaseUrl, artifactUrl, sha256, artifactSizeBytes } = data;
 
   if (typeof schemaVersion !== 'number' || !Number.isInteger(schemaVersion) || schemaVersion < 1) {
     problems.push('schemaVersion must be an integer >= 1');
@@ -58,6 +61,18 @@ export function parseUpdateManifest(data: unknown): UpdateManifestResult {
     problems.push('artifactUrl must be an https:// URL to the release zip');
   }
 
+  if (typeof sha256 !== 'string' || !SHA256_HEX_RE.test(sha256)) {
+    problems.push('sha256 must be 64 lowercase hex characters');
+  }
+
+  if (
+    typeof artifactSizeBytes !== 'number' ||
+    !Number.isInteger(artifactSizeBytes) ||
+    artifactSizeBytes <= 0
+  ) {
+    problems.push('artifactSizeBytes must be a positive integer');
+  }
+
   if (problems.length > 0) {
     return { ok: false, problems };
   }
@@ -69,6 +84,8 @@ export function parseUpdateManifest(data: unknown): UpdateManifestResult {
       notesSummary: notesSummary as string,
       releaseUrl: releaseUrl as string,
       artifactUrl: artifactUrl as string,
+      sha256: sha256 as string,
+      artifactSizeBytes: artifactSizeBytes as number,
     },
   };
 }

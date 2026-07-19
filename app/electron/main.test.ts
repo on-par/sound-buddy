@@ -57,7 +57,12 @@ vi.mock('./crash-reporting', () => ({
 vi.mock('./telemetry', () => ({
   recordTelemetryEvent: vi.fn(),
 }));
-vi.mock('./updater', () => ({ checkForUpdates: vi.fn(), openReleasePage: vi.fn() }));
+vi.mock('./updater', () => ({ checkForUpdates: vi.fn(), openReleasePage: vi.fn(), getAvailableUpdate: vi.fn() }));
+vi.mock('./update-download', () => ({
+  startUpdateDownload: vi.fn(),
+  cancelUpdateDownload: vi.fn(),
+  revealDownloadedUpdate: vi.fn(),
+}));
 vi.mock('./checkout', () => ({ checkoutUrl: vi.fn((plan?: string) => `https://example.com/checkout/${plan}`) }));
 vi.mock('./capture-guide', () => ({ captureGuideUrl: vi.fn(() => 'https://example.com/guide') }));
 vi.mock('./feedback', () => ({
@@ -73,7 +78,8 @@ import { registerIpcHandlers } from './ipc';
 import { initLogging, attachWindowLogging, setCrashSink } from './logger';
 import { captureMainError, flushPendingCrashReport, handleRendererErrorReport, recordAppEvent } from './crash-reporting';
 import { recordTelemetryEvent } from './telemetry';
-import { checkForUpdates, openReleasePage } from './updater';
+import { checkForUpdates, openReleasePage, getAvailableUpdate } from './updater';
+import { startUpdateDownload, cancelUpdateDownload, revealDownloadedUpdate } from './update-download';
 import { checkoutUrl } from './checkout';
 import { captureGuideUrl } from './capture-guide';
 import { openFeedback, revealDiagnosticLog, submitFeedback } from './feedback';
@@ -312,6 +318,9 @@ describe('lifecycle (whenReady callback)', () => {
       new Set([
         'check-for-updates',
         'open-release-page',
+        'download-update',
+        'cancel-update-download',
+        'reveal-update-download',
         'open-checkout',
         'open-feedback',
         'submit-feedback',
@@ -384,6 +393,32 @@ describe('lifecycle (whenReady callback)', () => {
 
     releaseHandler(undefined, 'https://example.com/release');
     expect(openReleasePage).toHaveBeenCalledWith('https://example.com/release');
+  });
+
+  it('download-update, cancel-update-download, and reveal-update-download handlers call their respective mocks', () => {
+    const availableUpdate = {
+      version: '1.2.3',
+      url: 'https://example.com/rel',
+      notes: 'notes',
+      downloadUrl: 'https://example.com/rel.zip',
+      sha256: 'a'.repeat(64),
+      sizeBytes: 123,
+    };
+    vi.mocked(getAvailableUpdate).mockReturnValue(availableUpdate);
+    const win = (BrowserWindow as unknown as ReturnType<typeof vi.fn>).mock.results[0].value;
+    const calls = (ipcMain.handle as ReturnType<typeof vi.fn>).mock.calls;
+    const downloadHandler = calls.find((c) => c[0] === 'download-update')?.[1];
+    const cancelHandler = calls.find((c) => c[0] === 'cancel-update-download')?.[1];
+    const revealHandler = calls.find((c) => c[0] === 'reveal-update-download')?.[1];
+
+    downloadHandler();
+    expect(startUpdateDownload).toHaveBeenCalledWith(win, availableUpdate);
+
+    cancelHandler();
+    expect(cancelUpdateDownload).toHaveBeenCalled();
+
+    revealHandler();
+    expect(revealDownloadedUpdate).toHaveBeenCalled();
   });
 
   it('open-feedback handler calls openFeedback', () => {

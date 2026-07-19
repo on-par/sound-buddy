@@ -3273,28 +3273,62 @@ function renderTrialBanner(state) {
   const banner = document.getElementById('update-banner');
   const text = document.getElementById('update-banner-text');
   const dlBtn = document.getElementById('update-download-btn');
-  let releaseUrl = null;
+  const cancelBtn = document.getElementById('update-cancel-btn');
+  const progress = document.getElementById('update-progress');
+  let info = null;
+  let currentAction = 'download';
 
-  sb.onUpdateAvailable((info) => {
-    releaseUrl = info.url;
-    text.textContent = `Sound Buddy ${info.version} is available.`;
+  function render(view) {
+    text.textContent = view.text;
+    if (view.primary == null) {
+      dlBtn.hidden = true;
+    } else {
+      dlBtn.hidden = false;
+      dlBtn.textContent = view.primary.label;
+      currentAction = view.primary.action;
+    }
+    cancelBtn.hidden = !view.showCancel;
+    progress.hidden = !view.showProgress;
+    progress.value = view.percent;
+    if (view.indeterminate) {
+      progress.removeAttribute('value');
+    } else {
+      progress.setAttribute('value', String(view.percent));
+    }
+  }
+
+  sb.onUpdateAvailable((i) => {
+    info = i;
+    render(window.updateDownloadState.viewFor(null, info));
     banner.classList.add('show');
   });
   sb.onUpdateStatus((s) => {
     // Feedback for the manual "Check for Updates…" menu item.
     if (s.state === 'up-to-date') {
       text.textContent = `You're up to date (v${s.version}).`;
-      dlBtn.style.display = 'none';
+      dlBtn.hidden = true;
+      cancelBtn.hidden = true;
+      progress.hidden = true;
       banner.classList.add('show');
       setTimeout(() => banner.classList.remove('show'), 4000);
     } else if (s.state === 'error') {
       text.textContent = 'Could not check for updates. Try again later.';
-      dlBtn.style.display = 'none';
+      dlBtn.hidden = true;
+      cancelBtn.hidden = true;
+      progress.hidden = true;
       banner.classList.add('show');
       setTimeout(() => banner.classList.remove('show'), 5000);
     }
   });
-  dlBtn.addEventListener('click', () => sb.openReleasePage(releaseUrl || undefined));
+  sb.onUpdateDownloadStatus((s) => {
+    if (!info) return;
+    render(window.updateDownloadState.viewFor(s.state === 'cancelled' ? null : s, info));
+  });
+  dlBtn.addEventListener('click', () => {
+    if (currentAction === 'reveal') sb.revealUpdateDownload();
+    else sb.downloadUpdate();
+  });
+  cancelBtn.addEventListener('click', () => sb.cancelUpdateDownload());
   document.getElementById('update-dismiss-btn').addEventListener('click', () => banner.classList.remove('show'));
 })();
 

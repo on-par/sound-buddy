@@ -101,12 +101,22 @@ export interface UpdateInfo {
   url: string;
   notes: string;
   downloadUrl: string;
+  sha256: string;
+  sizeBytes: number;
 }
 
 export interface UpdateStatus {
   state: string;
   version?: string;
 }
+
+/** Mirrors electron/update-download.ts's UpdateDownloadStatus (#504). */
+export type UpdateDownloadStatus =
+  | { state: 'downloading'; receivedBytes: number; totalBytes: number; percent: number }
+  | { state: 'verifying' }
+  | { state: 'done'; filePath: string; version: string }
+  | { state: 'cancelled' }
+  | { state: 'error'; message: string };
 
 /** Standard IPC result envelope used by mutating/side-effecting handlers. */
 export interface OperationResult {
@@ -447,6 +457,10 @@ export interface UpdateApi {
   openReleasePage(url?: string): Promise<void>;
   onUpdateAvailable(cb: (info: UpdateInfo) => void): void;
   onUpdateStatus(cb: (status: UpdateStatus) => void): void;
+  downloadUpdate(): Promise<OperationResult>;
+  cancelUpdateDownload(): Promise<void>;
+  revealUpdateDownload(): Promise<OperationResult>;
+  onUpdateDownloadStatus(cb: (status: UpdateDownloadStatus) => void): void;
 }
 
 export interface FeedbackApi {

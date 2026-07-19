@@ -14,6 +14,7 @@ import type {
   AnalysisProgress,
   UpdateInfo,
   UpdateStatus,
+  UpdateDownloadStatus,
   FeedbackSubmission,
 } from './ipc/api';
 
@@ -181,6 +182,11 @@ export function createBridge(ipc: IpcRendererLike) {
       ipc.on('update-available', (_event, info) => cb(info)),
     onUpdateStatus: (cb: (status: UpdateStatus) => void) =>
       ipc.on('update-status', (_event, s) => cb(s)),
+    downloadUpdate: () => ipc.invoke('download-update'),
+    cancelUpdateDownload: () => ipc.invoke('cancel-update-download'),
+    revealUpdateDownload: () => ipc.invoke('reveal-update-download'),
+    onUpdateDownloadStatus: (cb: (s: UpdateDownloadStatus) => void) =>
+      ipc.on('update-download-status', (_event, s) => cb(s)),
 
     // Opt-in crash reporting (#473) — reportRendererError is validated fresh
     // in main (never trusted from the renderer); recordAppEvent pushes a

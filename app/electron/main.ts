@@ -5,7 +5,8 @@ import { app, BrowserWindow, Menu, dialog, ipcMain, shell } from 'electron';
 import * as path from 'path';
 import { registerIpcHandlers } from './ipc';
 import { initLogging, attachWindowLogging, log, setCrashSink } from './logger';
-import { checkForUpdates, openReleasePage } from './updater';
+import { checkForUpdates, openReleasePage, getAvailableUpdate } from './updater';
+import { startUpdateDownload, cancelUpdateDownload, revealDownloadedUpdate } from './update-download';
 import { checkoutUrl } from './checkout';
 import { captureGuideUrl } from './capture-guide';
 import { openFeedback, revealDiagnosticLog, submitFeedback } from './feedback';
@@ -231,6 +232,13 @@ app.whenReady().then(() => {
   // Manual update check + "Download" button (opens the release page in browser).
   ipcMain.handle('check-for-updates', () => checkForUpdates(mainWindow, false));
   ipcMain.handle('open-release-page', (_event, url?: string) => openReleasePage(url));
+
+  // Download + verify the vetted update in-app (#504): main never trusts a
+  // renderer-supplied URL/hash — getAvailableUpdate() is whatever the last
+  // checkForUpdates() itself validated against the manifest.
+  ipcMain.handle('download-update', () => startUpdateDownload(mainWindow, getAvailableUpdate()));
+  ipcMain.handle('cancel-update-download', () => cancelUpdateDownload());
+  ipcMain.handle('reveal-update-download', () => revealDownloadedUpdate());
 
   // Upgrade CTA (#58): open the hosted Stripe checkout for a plan in the user's
   // browser. Sound Buddy never handles card data; the real Payment Links are

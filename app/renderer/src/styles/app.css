@@ -35,6 +35,9 @@
     #update-banner.show { display:flex; }
     #update-banner .ub-icon { display:flex; color:var(--gold-text, #F3CA5E); }
     #update-banner-text { flex:1; min-width:0; }
+    #update-banner progress {
+      flex:none; width:120px; height:6px; accent-color:var(--gold-500, #EBB93C);
+    }
     .ub-btn {
       flex:none; height:26px; padding:0 12px; border-radius:var(--radius-md, 8px);
       background:var(--gold-500, #EBB93C); color:#08090B; border:none; cursor:pointer;

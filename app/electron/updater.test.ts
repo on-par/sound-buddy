@@ -40,6 +40,8 @@ function validManifest(overrides: Record<string, unknown> = {}): Record<string, 
   };
 }
 
+const SHA256 = 'a'.repeat(64);
+
 beforeEach(() => {
   vi.clearAllMocks();
   vi.mocked(app.getVersion).mockReturnValue('0.2.0');
@@ -96,6 +98,8 @@ describe('checkForUpdates', () => {
       url: 'https://example.com/rel',
       notes: 'notes',
       downloadUrl: 'https://example.com/rel.zip',
+      sha256: SHA256,
+      sizeBytes: 123,
     };
     expect(win.webContents.send).toHaveBeenCalledTimes(1);
     expect(win.webContents.send).toHaveBeenCalledWith('update-available', expected);
@@ -251,7 +255,46 @@ describe('checkForUpdates', () => {
       url: 'https://example.com/rel',
       notes: 'notes',
       downloadUrl: 'https://example.com/rel.zip',
+      sha256: SHA256,
+      sizeBytes: 123,
     });
+  });
+});
+
+describe('getAvailableUpdate', () => {
+  it('is null before any check', async () => {
+    vi.resetModules();
+    const fresh = await import('./updater');
+    expect(fresh.getAvailableUpdate()).toBeNull();
+  });
+
+  it('holds the UpdateInfo after a successful check that found an update', async () => {
+    vi.resetModules();
+    stubFetchJson(validManifest());
+    const fresh = await import('./updater');
+    const win = makeWin();
+
+    await fresh.checkForUpdates(win, true);
+
+    expect(fresh.getAvailableUpdate()).toEqual({
+      version: '9.9.9',
+      url: 'https://example.com/rel',
+      notes: 'notes',
+      downloadUrl: 'https://example.com/rel.zip',
+      sha256: SHA256,
+      sizeBytes: 123,
+    });
+  });
+
+  it('stays null after an up-to-date check', async () => {
+    vi.resetModules();
+    stubFetchJson(validManifest({ version: '0.2.0' }));
+    const fresh = await import('./updater');
+    const win = makeWin();
+
+    await fresh.checkForUpdates(win, false);
+
+    expect(fresh.getAvailableUpdate()).toBeNull();
   });
 });
 
