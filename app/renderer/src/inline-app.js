@@ -1428,6 +1428,19 @@ function updateLiveStatsRow(ch) {
   document.getElementById('stat-centroid').textContent = ch.centroid ? Math.round(ch.centroid).toLocaleString() : '—';
 }
 
+// #541: docks the AI Engineer panel inline in the report card (report-first-ux)
+// or restores the standing rail. Moving the node (not cloning) keeps every
+// listener and getElementById wiring intact; placement() decides, never DOM state.
+function syncAiDock() {
+  const panel = document.getElementById('ai-panel');
+  const where = window.aiDockState.placement(
+    window.reportFirstUxState.isEnabled(setStore.getState().settings), currentMode);
+  const dockBody = document.getElementById('rc-ai-dock-body');
+  if (where === 'docked' && panel.parentElement !== dockBody) dockBody.appendChild(panel);
+  // The rail slot is #workspace's last child — appendChild restores it exactly.
+  else if (where === 'rail' && panel.parentElement === dockBody) document.getElementById('workspace').appendChild(panel);
+}
+
 /* ══ Mode tabs ══ */
 document.querySelectorAll('.mode-tab').forEach(tab => {
   tab.addEventListener('click', () => {
@@ -1474,6 +1487,7 @@ document.querySelectorAll('.mode-tab').forEach(tab => {
       if (mode === 'guide') renderBuildGuide();
       if (mode === 'ringout') renderRingout();
     }
+    syncAiDock();
   });
 });
 
@@ -4041,6 +4055,10 @@ window.inlineDialogs = { openPhaseDoublingDialog, openFeedbackRingout };
   // e17 slices mount against. Absent by default — with the flag off the
   // existing tab bar and 3-column workspace render exactly as before.
   setStore.subscribe((s) => document.body.classList.toggle('report-first-ux', window.reportFirstUxState.isEnabled(s.settings)));
+  // #541: re-dock/re-rail the AI Engineer panel whenever the flag (or mode)
+  // changes — both directions, since appendChild restores the exact original
+  // #workspace slot.
+  setStore.subscribe(() => syncAiDock());
   // Experimental DAW workspace gate (#516): body class is the entry point
   // #517's workspace shell mounts against. Absent by default — the existing
   // Live Capture UI is untouched until the user opts in.
@@ -4088,6 +4106,9 @@ window.inlineDialogs = { openPhaseDoublingDialog, openFeedbackRingout };
 // owns #report-card itself (TD-001 slice 4, #422).
 anaStore.subscribe(syncReportCardChrome);
 syncReportCardChrome(anaStore.getState(), anaStore.getState());
+// #541: dock the AI Engineer panel correctly on first paint if the flag is
+// already on when settings resolve (the subscribe above only fires on change).
+syncAiDock();
 
 hydrateIcons(document);
 setSpectrumState('empty', { text: 'Load a file to see the spectrum' });

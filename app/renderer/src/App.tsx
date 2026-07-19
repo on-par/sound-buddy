@@ -43,6 +43,7 @@ import dawPlayheadStateSrc from '../daw-playhead-state.js?raw';
 import dawWaveformStateSrc from '../daw-waveform-state.js?raw';
 import liveAdjustmentsStateSrc from '../live-adjustments-state.js?raw';
 import reportFirstUxStateSrc from '../report-first-ux-state.js?raw';
+import aiDockStateSrc from '../ai-dock-state.js?raw';
 import inlineAppSrc from './inline-app.js?raw';
 import LicensePanel from './LicensePanel';
 import SettingsPanel from './SettingsPanel';
@@ -83,6 +84,7 @@ const BOOT_SCRIPTS = [
   dawWaveformStateSrc,
   liveAdjustmentsStateSrc,
   reportFirstUxStateSrc,
+  aiDockStateSrc,
   inlineAppSrc,
 ];
 

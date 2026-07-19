@@ -368,6 +368,14 @@
       <!-- React island renders #rc-empty/#rc-content (TD-001 slice 4, #422):
            ReportCardIsland, portaled by App.tsx. -->
       <div id="report-card"></div>
+      <!-- Inline AI Engineer dock (#541): with the epic gate on, the whole
+           aside#ai-panel is moved into this <details> by syncAiDock() in
+           inline-app.js instead of standing as a right rail. Collapsed by
+           default; invisible (and empty) while the gate is off. -->
+      <details id="rc-ai-dock" class="rc-ai-dock">
+        <summary><span data-icon="sparkles" data-size="15"></span><span class="rc-ai-dock-title">AI Engineer</span><span class="rc-ai-dock-caret" data-icon="chevron-down"></span></summary>
+        <div id="rc-ai-dock-body"></div>
+      </details>
       <!-- ══ "Keep improving" momentum card (#58) ══
            Beside the finished free report card, never over it. Shown only to a
            free (non-Pro) user, after a card renders, and only when not dismissed
