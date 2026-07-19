@@ -14,6 +14,7 @@ import { fileURLToPath } from 'node:url';
 const inlineApp = fs.readFileSync(fileURLToPath(new URL('./inline-app.js', import.meta.url)), 'utf8');
 const markup = fs.readFileSync(fileURLToPath(new URL('./root-markup.html', import.meta.url)), 'utf8');
 const css = fs.readFileSync(fileURLToPath(new URL('./styles/app.css', import.meta.url)), 'utf8');
+const appTsx = fs.readFileSync(fileURLToPath(new URL('./App.tsx', import.meta.url)), 'utf8');
 
 function functionBody(src: string, name: string): string {
   const marker = `function ${name}(`;
@@ -173,5 +174,67 @@ describe('DAW shell styles (#517)', () => {
   it('app.css styles the shell and its lanes', () => {
     expect(css).toContain('.daw-shell');
     expect(css).toContain('.daw-lane');
+  });
+});
+
+describe('DAW playhead (#518)', () => {
+  it('renderDawShell markup includes the transport time readout and playhead line', () => {
+    const body = functionBody(inlineApp, 'renderDawShell');
+    expect(body).toContain('daw-transport-time');
+    expect(body).toContain('daw-playhead');
+  });
+
+  it('renderDawShell calls renderDawPlayhead on both the patch and rebuild paths', () => {
+    const body = functionBody(inlineApp, 'renderDawShell');
+    const matches = body.match(/renderDawPlayhead\(/g) || [];
+    expect(matches.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it('renderDawShell seeds the transport time from state so a mid-capture rebuild never flashes 0:00', () => {
+    const body = functionBody(inlineApp, 'renderDawShell');
+    expect(body).toMatch(/formatElapsed\(/);
+  });
+
+  it('the Start handler starts the playhead and its ticker', () => {
+    const block = enclosingBlock(inlineApp, 'liveRunning = true;');
+    expect(block).toContain('dawPlayheadState.start(');
+    expect(block).toContain('startPlayheadTicker()');
+  });
+
+  it('stopLive freezes the playhead and stops its ticker', () => {
+    const body = functionBody(inlineApp, 'stopLive');
+    expect(body).toContain('dawPlayheadState.stop(');
+    expect(body).toContain('stopPlayheadTicker()');
+  });
+
+  it('renderDawPlayhead guards on shell presence, patches text only on change, and never assigns innerHTML', () => {
+    const body = functionBody(inlineApp, 'renderDawPlayhead');
+    expect(body).toContain(".daw-shell'");
+    expect(body).toMatch(/textContent\s*!==/);
+    expect(body).not.toContain('innerHTML');
+  });
+
+  it('startPlayheadTicker uses PLAYHEAD_TICK_MS; stopPlayheadTicker clears the interval', () => {
+    expect(functionBody(inlineApp, 'startPlayheadTicker')).toContain('PLAYHEAD_TICK_MS');
+    expect(functionBody(inlineApp, 'stopPlayheadTicker')).toContain('clearInterval');
+  });
+
+  it('defines named constants for the tick cadence and pixel scale (no magic numbers)', () => {
+    expect(inlineApp).toMatch(/const PLAYHEAD_TICK_MS = \d+/);
+    expect(inlineApp).toMatch(/const PLAYHEAD_PX_PER_SECOND = \d+/);
+  });
+
+  it('app.css styles the playhead line and the transport time readout', () => {
+    expect(css).toContain('.daw-playhead');
+    expect(css).toContain('.daw-transport-time');
+  });
+
+  it('App.tsx boots daw-playhead-state.js before the inline app script', () => {
+    expect(appTsx).toContain('daw-playhead-state.js?raw');
+    const playheadIdx = appTsx.indexOf('dawPlayheadStateSrc,');
+    const inlineIdx = appTsx.indexOf('inlineAppSrc,');
+    expect(playheadIdx).toBeGreaterThan(-1);
+    expect(inlineIdx).toBeGreaterThan(-1);
+    expect(playheadIdx).toBeLessThan(inlineIdx);
   });
 });
