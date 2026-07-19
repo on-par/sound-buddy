@@ -13,7 +13,7 @@ import * as fs from 'fs';
 import { log, logWarn, logError } from '../logger';
 import { getSettings } from '../settings';
 import { isEntitled } from '../license';
-import { pythonBin, childEnv, STREAM_SCRIPT, defaultRecordDir } from './shared';
+import { pythonBin, childEnv, STREAM_SCRIPT, defaultRecordDir, readNdjsonLines } from './shared';
 import { streamLLM, buildLiveReport } from './narrative';
 import type { StartLiveOpts } from './api';
 
@@ -237,29 +237,15 @@ export function registerLiveCaptureHandlers(): void {
       if (text) logWarn(`start-live stderr: ${text}`);
     });
 
-    let lineBuffer = '';
-    py.stdout.on('data', (chunk: Buffer) => {
-      lineBuffer += chunk.toString();
-      const lines = lineBuffer.split('\n');
-      lineBuffer = lines.pop() ?? '';
-
-      for (const line of lines) {
-        const trimmed = line.trim();
-        if (!trimmed) continue;
-        try {
-          const data = JSON.parse(trimmed) as Record<string, unknown>;
-          // Forward to renderer
-          if (!wc.isDestroyed()) {
-            wc.send('live-event', data);
-          }
-          // Collect for LLM
-          if ('window' in data) {
-            windowCollector.push(data);
-            if (windowCollector.length > 10) windowCollector.shift();
-          }
-        } catch {
-          // ignore non-JSON lines
-        }
+    readNdjsonLines(py.stdout, (data) => {
+      // Forward to renderer
+      if (!wc.isDestroyed()) {
+        wc.send('live-event', data);
+      }
+      // Collect for LLM
+      if ('window' in data) {
+        windowCollector.push(data);
+        if (windowCollector.length > 10) windowCollector.shift();
       }
     });
 

@@ -32,12 +32,16 @@ vi.mock('../license', () => ({ isEntitled: (...a: unknown[]) => isEntitledMock(.
 const getSettingsMock = vi.fn();
 vi.mock('../settings', () => ({ getSettings: () => getSettingsMock() }));
 const defaultRecordDirMock = vi.fn();
-vi.mock('./shared', () => ({
-  pythonBin: () => 'python3',
-  childEnv: () => ({}),
-  STREAM_SCRIPT: '/fake/stream.py',
-  defaultRecordDir: () => defaultRecordDirMock(),
-}));
+vi.mock('./shared', async () => {
+  const actualShared = await vi.importActual<typeof import('./shared')>('./shared');
+  return {
+    pythonBin: () => 'python3',
+    childEnv: () => ({}),
+    STREAM_SCRIPT: '/fake/stream.py',
+    defaultRecordDir: () => defaultRecordDirMock(),
+    readNdjsonLines: actualShared.readNdjsonLines,
+  };
+});
 const streamLLMMock = vi.fn();
 const buildLiveReportMock = vi.fn();
 vi.mock('./narrative', () => ({

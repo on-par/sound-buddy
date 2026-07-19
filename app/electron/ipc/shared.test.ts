@@ -4,12 +4,13 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import * as path from 'node:path';
 import * as fs from 'node:fs';
+import { EventEmitter } from 'node:events';
 
 vi.mock('electron', () => ({
   app: { isPackaged: false, getPath: () => '/tmp/sound-buddy-test' },
 }));
 
-import { REPO_ROOT, findRepoRoot, childEnv } from './shared';
+import { REPO_ROOT, findRepoRoot, childEnv, readNdjsonLines } from './shared';
 
 describe('findRepoRoot', () => {
   it('walks up from a nested source directory to find the repo containing packages/audio-engine', () => {
@@ -50,5 +51,45 @@ describe('childEnv', () => {
     process.env.SOUND_BUDDY_TEST_PASSTHROUGH = 'keep-me';
     expect(childEnv().SOUND_BUDDY_TEST_PASSTHROUGH).toBe('keep-me');
     delete process.env.SOUND_BUDDY_TEST_PASSTHROUGH;
+  });
+});
+
+describe('readNdjsonLines', () => {
+  const collect = () => {
+    const seen: unknown[] = [];
+    const em = new EventEmitter();
+    readNdjsonLines(em, (d) => seen.push(d));
+    return { em, seen };
+  };
+
+  it('parses complete newline-terminated lines, including multiple objects per chunk', () => {
+    const { em, seen } = collect();
+    em.emit('data', Buffer.from('{"a":1}\n{"b":2}\n'));
+    expect(seen).toEqual([{ a: 1 }, { b: 2 }]);
+  });
+
+  it('reassembles a line split across two chunks', () => {
+    const { em, seen } = collect();
+    em.emit('data', Buffer.from('{"win'));
+    em.emit('data', Buffer.from('dow":2}\n'));
+    expect(seen).toEqual([{ window: 2 }]);
+  });
+
+  it('ignores non-JSON lines', () => {
+    const { em, seen } = collect();
+    em.emit('data', Buffer.from('garbage\n{"ok":true}\n'));
+    expect(seen).toEqual([{ ok: true }]);
+  });
+
+  it('skips blank/whitespace-only lines', () => {
+    const { em, seen } = collect();
+    em.emit('data', Buffer.from('\n   \n{"x":1}\n'));
+    expect(seen).toEqual([{ x: 1 }]);
+  });
+
+  it('does not deliver a trailing partial line with no newline', () => {
+    const { em, seen } = collect();
+    em.emit('data', Buffer.from('{"x":1}'));
+    expect(seen).toEqual([]);
   });
 });

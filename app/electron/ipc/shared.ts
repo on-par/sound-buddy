@@ -112,3 +112,33 @@ export function platformDefaultStorageDir(): string {
 export function defaultRecordDir(): string {
   return getSettings().storageDir?.trim() || platformDefaultStorageDir();
 }
+
+// Incrementally parse newline-delimited JSON from a subprocess stdout stream.
+// Buffers partial lines across chunks (a JSON object may be split mid-line by
+// the OS pipe), skips blank lines, and silently ignores non-JSON lines —
+// stream.py/playback.py may emit stray diagnostics on stdout. Data after the
+// final newline is never delivered (matches the previous inline readers).
+export interface NdjsonSource {
+  on(event: 'data', listener: (chunk: Buffer) => void): unknown;
+}
+
+export function readNdjsonLines(
+  stream: NdjsonSource,
+  onObject: (data: Record<string, unknown>) => void,
+): void {
+  let lineBuffer = '';
+  stream.on('data', (chunk: Buffer) => {
+    lineBuffer += chunk.toString();
+    const lines = lineBuffer.split('\n');
+    lineBuffer = lines.pop() ?? '';
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed) continue;
+      try {
+        onObject(JSON.parse(trimmed) as Record<string, unknown>);
+      } catch {
+        // ignore non-JSON lines
+      }
+    }
+  });
+}
