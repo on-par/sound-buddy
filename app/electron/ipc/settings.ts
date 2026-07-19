@@ -36,6 +36,11 @@ const MAX_CHANNEL_LABEL_LEN = 40;
 // MAX_CHANNEL_LABEL_LEN, kept as its own named constant since a group name and
 // a channel label are conceptually distinct fields that happen to share a cap.
 const MAX_GROUP_NAME_LEN = 40;
+// Cap on a stored instrument-profile override id (#524) — mirrors the
+// renderer's instrument-profiles.js MAX_PROFILE_ID_LEN, kept in sync by
+// convention since the renderer and this main-process guard must agree on
+// what "too long" means.
+const MAX_PROFILE_ID_LEN = 64;
 
 /** A plain, non-array, non-null object. */
 function isPlainObject(v: unknown): v is Record<string, unknown> {
@@ -107,6 +112,34 @@ export function sanitizeChannelGroups(value: unknown): Record<string, PersistedC
   return clean;
 }
 
+// Guards the update-settings whitelist for inputInstrumentProfiles (#524):
+// `null` when `value` isn't a plain non-array object (the patch key is then
+// ignored entirely, leaving the stored map untouched). Otherwise rebuilds the
+// map from scratch — callers send the FULL next map, so this replaces rather
+// than deep-merges with whatever was previously stored. Exact mirror of
+// sanitizeChannelLabels. Deliberately does NOT validate the profile id against
+// the renderer's built-in profile list — that list lives in instrument-
+// profiles.js and an unknown id is already treated as "auto" on read
+// (effectiveProfileId), so structural sanitization is sufficient here and
+// keeps the main process decoupled from the renderer's profile catalog.
+export function sanitizeInputInstrumentProfiles(value: unknown): Record<string, Record<string, string>> | null {
+  if (!isPlainObject(value)) return null;
+
+  const clean: Record<string, Record<string, string>> = {};
+  for (const [deviceName, tokenMap] of Object.entries(value)) {
+    if (!isPlainObject(tokenMap)) continue;
+    const profiles: Record<string, string> = {};
+    for (const [token, profileId] of Object.entries(tokenMap)) {
+      if (token === '' || typeof profileId !== 'string') continue;
+      const trimmed = profileId.trim().slice(0, MAX_PROFILE_ID_LEN);
+      if (trimmed === '') continue;
+      profiles[token] = trimmed;
+    }
+    if (Object.keys(profiles).length > 0) clean[deviceName] = profiles;
+  }
+  return clean;
+}
+
 // Pure helper behind the save-report-image handler (#368): basename-strips a
 // suggested filename (defense-in-depth against a tampered IPC argument — the
 // renderer already sanitizes it via report-export.ts's sanitizeCardFilename/
@@ -154,6 +187,10 @@ export function registerSettingsHandlers(): void {
       // replace discipline as channelLabels.
       const groups = sanitizeChannelGroups(patch.channelGroups);
       if (groups) clean.channelGroups = groups;
+      // Persisted per-device instrument-profile overrides for live inputs
+      // (#524). Same full-map replace discipline as channelLabels.
+      const instrumentProfiles = sanitizeInputInstrumentProfiles(patch.inputInstrumentProfiles);
+      if (instrumentProfiles) clean.inputInstrumentProfiles = instrumentProfiles;
       // Opt-in crash reporting (#473) — gates all capture/sending in
       // crash-reporting.ts.
       if (typeof patch.crashReportingEnabled === 'boolean') {

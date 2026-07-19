@@ -57,6 +57,8 @@ export interface StripView {   // per-strip state the caller resolves from its s
   armed: boolean;              // window.armState.isArmed(strip)
   groupIndex: number;          // window.groupState.groupOf(channelGroups, idx); -1 = ungrouped
   groupCollapsed: boolean;     // window.groupState.isGroupCollapsed(channelGroups, groupIndex)
+  instrumentProfileId: string; // window.instrumentProfiles.effectiveProfileId(...) (#524)
+  instrumentAuto: boolean;     // true when no persisted override applies to this strip (#524)
 }
 
 export interface PanelView {
@@ -64,6 +66,7 @@ export interface PanelView {
   liveRunning: boolean;
   liveMode: 'monitor' | 'record';
   groups: ChannelGroup[];      // channelGroups
+  instrumentProfiles?: { id: string; label: string }[]; // window.instrumentProfiles.PROFILES (#524)
 }
 
 export interface DeviceOption { value: string; label: string }
@@ -148,6 +151,18 @@ export function veqChannelHTML(ch: LiveMeterChannel, idx: number, stripView: Str
       + panel.groups.map((grp, gi) => `<option value="${gi}"${grpOf === gi ? ' selected' : ''}>${escapeHtml(grp.name)}</option>`).join('')
       + `</select>`
     : '';
+  // Per-input instrument profile assignment (#524): defaults from the label
+  // (Auto) or an explicit override, feeding a later per-input analysis pass
+  // an appropriate EQ target instead of one generic curve. Graceful degrade
+  // when the caller has no profile catalog to offer (same spirit as groups).
+  const profiles = panel.instrumentProfiles;
+  const profileAuto = stripView.instrumentAuto;
+  const profileHTML = profiles && profiles.length
+    ? `<select class="live-ch-profile" data-idx="${idx}" aria-label="Instrument profile" title="Instrument profile"${defDisabled}>`
+      + `<option value="auto"${profileAuto ? ' selected' : ''}>Auto — ${(profiles.find((p) => p.id === stripView.instrumentProfileId) || profiles[0]).label}</option>`
+      + profiles.map((p) => `<option value="${p.id}"${!profileAuto && p.id === stripView.instrumentProfileId ? ' selected' : ''}>${p.label}</option>`).join('')
+      + `</select>`
+    : '';
   // The workspace remove control (#188) rides every strip — idle or live — so
   // it stays present-but-disabled through a capture (read-only while running)
   // rather than disappearing, and is allowed down to zero strips so the empty
@@ -167,6 +182,7 @@ export function veqChannelHTML(ch: LiveMeterChannel, idx: number, stripView: Str
       <span class="live-ch-name${ch.clipping ? ' clip' : ''}" contenteditable="true" spellcheck="false" role="textbox" aria-label="Channel name — click to rename" title="Click to rename">${escapeHtml(displayName)}</span>
       ${defHTML}
       ${groupHTML}
+      ${profileHTML}
       <span class="live-ch-meta">${ch.idle ? 'Idle' : `RMS ${fmt(ch.rms)} · Peak ${fmt(ch.peak)} dBFS`}</span>
       ${ch.clipping ? '<span class="live-ch-clip">CLIP</span>' : ''}
       <button type="button" class="live-ch-x" title="Remove track" aria-label="Remove track"${panel.liveRunning ? ' disabled' : ''}>×</button>

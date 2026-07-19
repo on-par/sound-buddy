@@ -19,6 +19,7 @@ import rigReconcileSrc from '../rig-reconcile.js?raw';
 import collapseStateSrc from '../collapse-state.js?raw';
 import armStateSrc from '../arm-state.js?raw';
 import channelLabelsSrc from '../channel-labels.js?raw';
+import instrumentProfilesSrc from '../instrument-profiles.js?raw';
 import rigKindSrc from '../rig-kind.js?raw';
 import groupStateSrc from '../group-state.js?raw';
 import trackWorkspaceSrc from '../track-workspace.js?raw';
@@ -57,6 +58,7 @@ const BOOT_SCRIPTS = [
   collapseStateSrc,
   armStateSrc,
   channelLabelsSrc,
+  instrumentProfilesSrc,
   rigKindSrc,
   groupStateSrc,
   trackWorkspaceSrc,

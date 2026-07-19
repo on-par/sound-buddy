@@ -79,6 +79,12 @@ export default function LiveCapturePanel({
         armed: !!strip && strip.armed !== false,
         groupIndex,
         groupCollapsed: !!groups[groupIndex]?.collapsed,
+        // Instrument-profile assignment (#524) isn't wired into this
+        // not-yet-mounted component — no persisted overrides are available
+        // here, so every strip reads as Auto/generic, matching the "no
+        // instrumentProfiles supplied" graceful degrade in veqChannelHTML.
+        instrumentProfileId: 'generic',
+        instrumentAuto: true,
       };
     });
     metersHTML = liveMetersHTML(latestTick.channels, stripViews, panel);
