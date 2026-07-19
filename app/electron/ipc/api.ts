@@ -37,6 +37,7 @@ export interface UpdateSettingsPatch {
   channelGroups?: Record<string, PersistedChannelGroup[]>;
   crashReportingEnabled?: boolean;
   dawWorkspaceEnabled?: boolean;
+  liveAdjustmentsEnabled?: boolean;
 }
 
 /** A renderer patch: `apiKey` semantics — undefined = keep, '' = clear. */
@@ -258,6 +259,15 @@ export interface AppSettings {
    * crashReportingEnabled.
    */
   dawWorkspaceEnabled: boolean;
+  /**
+   * Opt-in experimental live adjustment recommendations (#522, epic #515).
+   * Default false (off). Pure persisted UI gate — when false, Live Capture
+   * shows no live-adjustment area; when true the renderer shows the
+   * experimental (placeholder) recommendations area on the Live tab. No env
+   * layer: enabling an experiment must be an explicit user action, same
+   * rationale as dawWorkspaceEnabled.
+   */
+  liveAdjustmentsEnabled: boolean;
 }
 
 // ─── LLM DTOs (PublicLlmConfig moved from electron/llm-config.ts, TD-011) ────

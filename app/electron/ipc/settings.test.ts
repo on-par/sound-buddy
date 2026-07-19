@@ -172,6 +172,33 @@ describe('update-settings IPC whitelist — dawWorkspaceEnabled (#516)', () => {
   });
 });
 
+describe('update-settings IPC whitelist — liveAdjustmentsEnabled (#522)', () => {
+  it('accepts a boolean and persists it', async () => {
+    const handler = handlers.get('update-settings');
+    const result = (await handler!(null, { liveAdjustmentsEnabled: true })) as {
+      liveAdjustmentsEnabled: boolean;
+    };
+    expect(result.liveAdjustmentsEnabled).toBe(true);
+    expect(readFile().liveAdjustmentsEnabled).toBe(true);
+  });
+
+  it('ignores a string value, leaving the setting at its default', async () => {
+    const handler = handlers.get('update-settings');
+    const result = (await handler!(null, { liveAdjustmentsEnabled: 'true' })) as {
+      liveAdjustmentsEnabled: boolean;
+    };
+    expect(result.liveAdjustmentsEnabled).toBe(false);
+  });
+
+  it('ignores a number value, leaving the setting at its default', async () => {
+    const handler = handlers.get('update-settings');
+    const result = (await handler!(null, { liveAdjustmentsEnabled: 1 })) as {
+      liveAdjustmentsEnabled: boolean;
+    };
+    expect(result.liveAdjustmentsEnabled).toBe(false);
+  });
+});
+
 describe('sanitizeChannelLabels (#482)', () => {
   it('returns null for a non-object value (patch key ignored)', () => {
     expect(sanitizeChannelLabels('nope')).toBeNull();

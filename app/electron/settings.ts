@@ -43,6 +43,7 @@ const DEFAULTS: AppSettings = {
   channelGroups: {},
   crashReportingEnabled: false,
   dawWorkspaceEnabled: false,
+  liveAdjustmentsEnabled: false,
 };
 
 function settingsPath(): string {
@@ -121,6 +122,7 @@ function writeSettingsFile(file: Partial<AppSettings>): void {
     channelGroups: fileChannelGroups(file),
     crashReportingEnabled: file.crashReportingEnabled ?? DEFAULTS.crashReportingEnabled,
     dawWorkspaceEnabled: file.dawWorkspaceEnabled ?? DEFAULTS.dawWorkspaceEnabled,
+    liveAdjustmentsEnabled: file.liveAdjustmentsEnabled ?? DEFAULTS.liveAdjustmentsEnabled,
   };
   try {
     fs.writeFileSync(settingsPath(), JSON.stringify(persisted, null, 2));
@@ -165,6 +167,9 @@ export function getSettings(): AppSettings {
     // No env layer — opting into the experimental DAW workspace (#516) must
     // be an explicit user action, same rationale as crashReportingEnabled.
     dawWorkspaceEnabled: file.dawWorkspaceEnabled ?? DEFAULTS.dawWorkspaceEnabled,
+    // No env layer — opting into experimental live adjustments (#522) must
+    // be an explicit user action, same rationale as dawWorkspaceEnabled.
+    liveAdjustmentsEnabled: file.liveAdjustmentsEnabled ?? DEFAULTS.liveAdjustmentsEnabled,
   };
 }
 

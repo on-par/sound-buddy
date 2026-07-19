@@ -918,12 +918,14 @@ function renderLiveMeters(win) {
       summaryEl.textContent = groupSummaryText(summary);
       if (summary.clipping) summaryEl.insertAdjacentHTML('beforeend', '<span class="live-ch-clip">CLIP</span>');
     });
+    syncLiveAdjustmentsPanel();
     return;
   }
   body.innerHTML = liveWorkspaceToolbarHTML()
     + `<div class="meter-card sb-live-meters">${liveMetersHTML(win.channels, win.channels.map((c, i) => stripViewAt(i, c)), livePanelView())}</div>`;
   body.querySelectorAll('.sb-live-meters .live-ch-name').forEach(wireLiveNameEdit);
   applyLiveCollapsed();
+  syncLiveAdjustmentsPanel();
 }
 
 // Persistent idle track workspace (#188): the center pane renders
@@ -975,6 +977,19 @@ function renderLiveWorkspace() {
   body.innerHTML = banner + toolbar + `<div class="meter-card sb-live-meters idle">${liveMetersHTML(idleChannels, idleChannels.map((c, i) => stripViewAt(i, c)), livePanelView())}</div>`;
   body.querySelectorAll('.sb-live-meters .live-ch-name').forEach(wireLiveNameEdit);
   applyLiveCollapsed();
+  syncLiveAdjustmentsPanel();
+}
+
+// Experimental live adjustments area (#522): ensure the placeholder panel's
+// presence in the Live pane matches the toggle. Called from every Live
+// render path — including the patch-in-place branches, so a mid-capture
+// settings flip adds/removes the panel without a rebuild.
+function syncLiveAdjustmentsPanel() {
+  const body = document.getElementById('spectrum-imperative');
+  const html = window.liveAdjustmentsState.panelHTML(setStore.getState().settings, currentMode);
+  const existing = body.querySelector('.live-adjustments-panel');
+  if (!html) { if (existing) existing.remove(); return; }
+  if (!existing) body.insertAdjacentHTML('beforeend', html);
 }
 
 // Timeline-oriented DAW shell (#517, epic #515): swapped in for the meter
@@ -1010,6 +1025,7 @@ function renderDawShell() {
     if (mixLane && mixLane.dataset.captureMode !== captureMode) mixLane.dataset.captureMode = captureMode;
     renderDawPlayhead(); // refresh the readout/line on meter-tick patch renders too
     renderDawWaveform(); // refresh the mix waveform on meter-tick patch renders too (#520)
+    syncLiveAdjustmentsPanel();
     return;
   }
 
@@ -1042,6 +1058,7 @@ function renderDawShell() {
   body.querySelector('.daw-shell').dataset.laneSignature = laneSignature;
   renderDawPlayhead(); // position the line after the rebuild
   renderDawWaveform(); // repaint waveform history after a mid-capture rebuild (#520)
+  syncLiveAdjustmentsPanel();
 }
 
 // Thin adapters bridging this module's mutable state (channelConfig,
@@ -3640,6 +3657,7 @@ async function openStorageSettings() {
   aiEl('usage-signal-toggle').checked = !!(setStore.getState().settings || {}).usageSignalEnabled;
   aiEl('crash-reporting-toggle').checked = !!(setStore.getState().settings || {}).crashReportingEnabled;
   aiEl('daw-workspace-toggle').checked = !!(setStore.getState().settings || {}).dawWorkspaceEnabled;
+  aiEl('live-adjustments-toggle').checked = !!(setStore.getState().settings || {}).liveAdjustmentsEnabled;
   aiEl('storage-dialog').style.display = 'flex';
   try {
     const u = await sb.getStorageUsage();
@@ -3691,6 +3709,11 @@ async function saveStorageSettings() {
   const dawLoaded = !!(setStore.getState().settings || {}).dawWorkspaceEnabled;
   if (dawChecked !== dawLoaded) {
     await setStore.getState().updateSettings({ dawWorkspaceEnabled: dawChecked });
+  }
+  const liveAdjChecked = aiEl('live-adjustments-toggle').checked;
+  const liveAdjLoaded = !!(setStore.getState().settings || {}).liveAdjustmentsEnabled;
+  if (liveAdjChecked !== liveAdjLoaded) {
+    await setStore.getState().updateSettings({ liveAdjustmentsEnabled: liveAdjChecked });
   }
   closeStorageSettings();
 }
@@ -3962,6 +3985,14 @@ window.inlineDialogs = { openPhaseDoublingDialog, openFeedbackRingout };
     // or an unrelated save with the toggle unchanged would clobber the pane.
     if (nowEnabled !== dawWorkspaceWasEnabled && currentMode === 'live') syncSpectrumForMode('live');
     dawWorkspaceWasEnabled = nowEnabled;
+  });
+  // Experimental live adjustments gate (#522): re-sync the Live pane on an
+  // actual flip so the area appears/disappears without a tab switch.
+  let liveAdjustmentsWasEnabled = false;
+  setStore.subscribe((s) => {
+    const nowEnabled = window.liveAdjustmentsState.isEnabled(s.settings);
+    if (nowEnabled !== liveAdjustmentsWasEnabled && currentMode === 'live') syncSpectrumForMode('live');
+    liveAdjustmentsWasEnabled = nowEnabled;
   });
 })();
 
