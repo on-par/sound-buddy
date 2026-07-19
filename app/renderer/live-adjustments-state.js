@@ -65,6 +65,20 @@
   }
 
   var BAND_KEYS = ['sub_bass', 'bass', 'low_mid', 'mid', 'high_mid', 'presence', 'brilliance'];
+  // Parallel to BAND_KEYS, same order — maps to the camelCase keys used by
+  // instrumentProfiles' PROFILES[n].bands (#524, see instrument-profiles.js).
+  var PROFILE_BAND_KEYS = ['subBass', 'bass', 'lowMid', 'mid', 'highMid', 'presence', 'brilliance'];
+
+  /** Minimal HTML escaper for the focused-input names, which are user-editable
+   *  labels — can't require inline-app's escapeHtml from this classic script. */
+  function escapeText(s) {
+    return String(s == null ? '' : s)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
 
   // Reimplemented locally (rather than requiring grading.js's bandDiffFromOthers)
   // because this classic script can't require a module in the browser — same
@@ -122,12 +136,111 @@
     return candidates.slice(0, MAX_CANDIDATES);
   }
 
+  /** The selected input channel's bands object for one window event, or null
+   *  when the window/channel/bands data isn't present. Unlike channelBands,
+   *  there is no fallback to channel 0 — a missing channel means no data for
+   *  this specific input, not a stand-in for the mix. */
+  function inputBands(w, channelIndex) {
+    if (!w || !Array.isArray(w.channels)) return null;
+    var ch = w.channels[channelIndex];
+    if (!ch || !ch.bands) return null;
+    return ch.bands;
+  }
+
+  /** The usable bands objects (one per window) for the selected input channel.
+   *  Null-safe per element; non-array input yields []. */
+  function usableInputBands(windows, channelIndex) {
+    if (!Array.isArray(windows)) return [];
+    var result = [];
+    for (var i = 0; i < windows.length; i++) {
+      var bands = inputBands(windows[i], channelIndex);
+      if (bands) result.push(bands);
+    }
+    return result;
+  }
+
+  /** Whether enough live analysis windows carrying this input's channel have
+   *  accumulated to derive per-input adjustment candidates. */
+  function inputHasEnoughData(windows, channelIndex) {
+    return usableInputBands(windows, channelIndex).length >= MIN_WINDOWS;
+  }
+
+  function meanOf(source, keys) {
+    var sum = 0;
+    for (var i = 0; i < keys.length; i++) sum += source[keys[i]];
+    return sum / keys.length;
+  }
+
+  /** Non-commanding per-input adjustment candidates: the input's averaged band
+   *  shape, centered and compared against its instrument profile's shape
+   *  (also centered), rather than judged in isolation. `profile` is a full
+   *  { id, label, bands } entry from instrumentProfiles.profileById, passed in
+   *  by the caller so this module stays dependency-free. [] unless a profile
+   *  with bands is given and MIN_WINDOWS usable windows have accumulated. */
+  function inputCandidates(windows, channelIndex, profile) {
+    if (!profile || !profile.bands) return [];
+    var bandsList = usableInputBands(windows, channelIndex);
+    if (bandsList.length < MIN_WINDOWS) return [];
+
+    var avg = {};
+    for (var i = 0; i < BAND_KEYS.length; i++) {
+      var key = BAND_KEYS[i];
+      var sum = 0;
+      for (var j = 0; j < bandsList.length; j++) sum += bandsList[j][key];
+      avg[key] = sum / bandsList.length;
+    }
+
+    var measuredMean = meanOf(avg, BAND_KEYS);
+    var targetMean = meanOf(profile.bands, PROFILE_BAND_KEYS);
+
+    var dev = {};
+    for (i = 0; i < BAND_KEYS.length; i++) {
+      var measuredRel = avg[BAND_KEYS[i]] - measuredMean;
+      var targetRel = profile.bands[PROFILE_BAND_KEYS[i]] - targetMean;
+      dev[BAND_KEYS[i]] = measuredRel - targetRel;
+    }
+
+    var candidates = [];
+    var lowDiff = Math.max(dev.sub_bass, dev.bass);
+    if (lowDiff > HOT_DIFF_DB) {
+      candidates.push({
+        id: 'input-low-cleanup',
+        title: 'Low-end cleanup',
+        detail: 'This input is carrying more low end than a ' + profile.label + ' input usually needs. A small cut below 250 Hz, or a high-pass, is what Sound Buddy would try first.',
+      });
+    } else if (lowDiff < QUIET_DIFF_DB) {
+      candidates.push({
+        id: 'input-low-support',
+        title: 'Low-end support',
+        detail: 'This input has less low end than a ' + profile.label + ' input usually carries. A small boost in the 60–250 Hz range, or easing its high-pass, is what Sound Buddy would try first.',
+      });
+    }
+    var upperDiff = Math.max(dev.high_mid, dev.presence);
+    if (upperDiff > HOT_DIFF_DB) {
+      candidates.push({
+        id: 'input-high-buildup',
+        title: 'Upper-mid buildup',
+        detail: 'This input has more 2–6 kHz energy than a ' + profile.label + ' input usually needs. A gentle cut there is what Sound Buddy would try first.',
+      });
+    } else if (upperDiff < QUIET_DIFF_DB) {
+      candidates.push({
+        id: 'input-high-support',
+        title: 'Presence support',
+        detail: 'This input sits below the 2–6 kHz presence a ' + profile.label + ' input usually carries. A small boost there is what Sound Buddy would try first.',
+      });
+    }
+    return candidates.slice(0, MAX_CANDIDATES);
+  }
+
   /** The panel's markup, or '' when it shouldn't render. Renders a waiting
    *  state until enough live analysis windows have accumulated, then the
    *  derived overall-mix adjustment candidates (or a steady-state message
    *  when none trigger). `windows`/`measurementSource` are optional — omitting
-   *  them (legacy callers) behaves as not-enough-data. */
-  function panelHTML(settings, mode, windows, measurementSource) {
+   *  them (legacy callers) behaves as not-enough-data. The optional
+   *  `focusView` (#525) is `{ inputs: [{ index, name, profile }], focusedIndex
+   *  }` — when absent, or when `inputs` is empty, output is byte-identical to
+   *  the pre-#525 shape. */
+  function panelHTML(settings, mode, windows, measurementSource, focusView) {
     if (!showPanel(settings, mode)) return '';
     var body;
     if (!hasEnoughData(windows, measurementSource)) {
@@ -148,6 +261,51 @@
     return '<div class="live-adjustments-panel" role="note">'
       + '<span class="lap-title">Live adjustments <span class="lap-flag">Experimental</span></span>'
       + body
+      + focusHTML(windows, focusView)
+      + '</div>';
+  }
+
+  /** The focused-input inspector section markup (#525), or '' when `focusView`
+   *  is absent or has no inputs — that absence is also what keeps panelHTML's
+   *  output byte-identical to the pre-#525 shape for existing callers. */
+  function focusHTML(windows, focusView) {
+    if (!focusView || !focusView.inputs || focusView.inputs.length === 0) return '';
+    var inputs = focusView.inputs;
+    var focusedIndex = focusView.focusedIndex == null ? null : focusView.focusedIndex;
+    var options = '<option value="">None</option>' + inputs.map(function (input) {
+      var selected = input.index === focusedIndex ? ' selected' : '';
+      return '<option value="' + input.index + '"' + selected + '>' + escapeText(input.name) + '</option>';
+    }).join('');
+    var selectHTML = '<select class="lap-focus-select" aria-label="Focused input">' + options + '</select>';
+
+    var focused = null;
+    for (var i = 0; i < inputs.length; i++) {
+      if (inputs[i].index === focusedIndex) { focused = inputs[i]; break; }
+    }
+
+    var focusBody;
+    if (!focused) {
+      focusBody = '<p class="lap-empty">Choose an input to see instrument-aware candidates.</p>';
+    } else if (!inputHasEnoughData(windows, focused.index)) {
+      focusBody = '<p class="lap-empty">Listening to ' + escapeText(focused.name) + '… candidates appear after a few analysis windows.</p>';
+    } else {
+      var candidates = inputCandidates(windows, focused.index, focused.profile);
+      if (candidates.length === 0) {
+        focusBody = '<p class="lap-empty">' + escapeText(focused.name) + ' sits close to its ' + escapeText(focused.profile.label) + ' shape — nothing to try right now.</p>';
+      } else {
+        var items = candidates.map(function (c) {
+          return '<li class="lap-candidate"><span class="lap-cand-title">' + c.title + '</span> '
+            + '<span class="lap-cand-detail">' + c.detail + '</span></li>';
+        }).join('');
+        focusBody = '<p class="lap-note">Candidates for ' + escapeText(focused.name) + ', judged against the '
+          + escapeText(focused.profile.label) + ' profile — for this input only, not the whole mix:</p>'
+          + '<ul class="lap-input-candidates">' + items + '</ul>';
+      }
+    }
+
+    return '<div class="lap-focus"><span class="lap-section-title">Focused input</span>'
+      + selectHTML
+      + focusBody
       + '</div>';
   }
 
@@ -157,6 +315,8 @@
     panelHTML: panelHTML,
     hasEnoughData: hasEnoughData,
     mixCandidates: mixCandidates,
+    inputHasEnoughData: inputHasEnoughData,
+    inputCandidates: inputCandidates,
     MIN_WINDOWS: MIN_WINDOWS,
     HOT_DIFF_DB: HOT_DIFF_DB,
     QUIET_DIFF_DB: QUIET_DIFF_DB,

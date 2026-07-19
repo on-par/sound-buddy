@@ -139,3 +139,37 @@ describe('Live adjustments gate wiring (#522)', () => {
     expect(css).toContain('.lap-cand-title');
   });
 });
+
+describe('Per-input instrument-aware adjustment candidates (#525)', () => {
+  it('syncLiveAdjustmentsPanel builds and passes the focus view', () => {
+    const body = functionBody(inlineApp, 'syncLiveAdjustmentsPanel');
+    expect(body).toContain('lapFocusView(');
+  });
+
+  it('lapFocusView resolves each input strip\'s effective instrument profile', () => {
+    const body = functionBody(inlineApp, 'lapFocusView');
+    expect(body).toContain('instrumentProfiles.profileById(');
+    expect(body).toContain('effectiveProfileId(');
+  });
+
+  it('the .lap-focus-select change listener updates focusedInputIndex and re-syncs the panel', () => {
+    const block = enclosingBlock(inlineApp, "closest('.lap-focus-select')");
+    expect(block).toContain('focusedInputIndex');
+    expect(block).toContain('syncLiveAdjustmentsPanel(');
+  });
+
+  it('removing a track shifts/clears the focused input index', () => {
+    const block = enclosingBlock(inlineApp, 'measurementSourceAfterRemove(focusedInputIndex');
+    expect(block).toBeTruthy();
+  });
+
+  it('resetChannelConfig clears the focused input on a device switch', () => {
+    const body = functionBody(inlineApp, 'resetChannelConfig');
+    expect(body).toContain('focusedInputIndex = null');
+  });
+
+  it('app.css styles the focused-input selector and candidate list', () => {
+    expect(css).toContain('.lap-focus-select');
+    expect(css).toContain('.lap-input-candidates');
+  });
+});
