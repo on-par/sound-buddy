@@ -11,7 +11,7 @@ import * as path from 'path';
 import * as fs from 'fs';
 import { log, logWarn, logError } from '../logger';
 import { isEntitled } from '../license';
-import { pythonBin, childEnv, PLAYBACK_SCRIPT } from './shared';
+import { pythonBin, childEnv, PLAYBACK_SCRIPT, readNdjsonLines } from './shared';
 import type { StartPlaybackOpts } from './api';
 
 // The current virtual-soundcheck playback child (playback.py). Held at module
@@ -92,22 +92,9 @@ export function registerPlaybackHandlers(): void {
       if (text) logWarn(`start-playback stderr: ${text}`);
     });
 
-    let lineBuffer = '';
-    py.stdout.on('data', (chunk: Buffer) => {
-      lineBuffer += chunk.toString();
-      const lines = lineBuffer.split('\n');
-      lineBuffer = lines.pop() ?? '';
-      for (const line of lines) {
-        const trimmed = line.trim();
-        if (!trimmed) continue;
-        try {
-          const data = JSON.parse(trimmed) as Record<string, unknown>;
-          if (!wc.isDestroyed()) {
-            wc.send('playback-event', data);
-          }
-        } catch {
-          // ignore non-JSON lines
-        }
+    readNdjsonLines(py.stdout, (data) => {
+      if (!wc.isDestroyed()) {
+        wc.send('playback-event', data);
       }
     });
 
