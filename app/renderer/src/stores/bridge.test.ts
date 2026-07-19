@@ -40,7 +40,7 @@ afterEach(() => {
     idealProfile: null,
     isAutoProfile: false,
   });
-  useLiveCaptureStore.setState({ liveWindows: [] });
+  useLiveCaptureStore.setState({ liveWindows: [], measurementSource: null });
 });
 
 describe('installStoreBridge', () => {
@@ -124,5 +124,25 @@ describe('installStoreBridge', () => {
     useLiveCaptureStore.getState().clearLiveWindows();
 
     expect(useAnalysisStore.getState().liveSource).toBeNull();
+  });
+
+  it('re-derives analysisStore.liveSource from the current liveWindows when measurementSource changes', () => {
+    installStoreBridge({});
+    useLiveCaptureStore.setState({
+      liveWindows: [{
+        type: 'window', window: 1, ts: 0, masking: [],
+        channels: [
+          { index: 0, name: 'Main', rms: -1, peak: -1, clipping: false, centroid: 1, rolloff: 1, bands: {} },
+          { index: 1, name: 'Vocals', rms: -18, peak: -6, clipping: true, centroid: 1800, rolloff: 8000, bands: {} },
+        ],
+      }],
+    });
+    expect((useAnalysisStore.getState().liveSource as { filename: string } | null)?.filename)
+      .toBe('Live capture — Main (window #1)');
+
+    useLiveCaptureStore.setState({ measurementSource: 1 });
+
+    const source = useAnalysisStore.getState().liveSource as { filename: string } | null;
+    expect(source?.filename).toBe('Live capture — Vocals (window #1)');
   });
 });

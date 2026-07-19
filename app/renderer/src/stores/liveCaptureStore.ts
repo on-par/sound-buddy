@@ -20,6 +20,7 @@ import {
   deviceListView,
   deviceChannelCount,
   usedChannelCount,
+  measurementSourceAfterRemove,
   type LiveDevice,
   type DeviceHint,
   type StripConfig,
@@ -197,6 +198,10 @@ export interface LiveCaptureState {
 
   ringout: RingoutState;
 
+  // Strip index into channelConfig used to judge the room (#456); null = first
+  // track (default), today's channels[0] behavior.
+  measurementSource: number | null;
+
   loadDevices(): Promise<void>;
   selectDevice(value: string): void;
   setLiveMode(mode: 'monitor' | 'record'): void;
@@ -228,6 +233,8 @@ export interface LiveCaptureState {
   bindIpcEvents(): void;
 
   setRingout(patch: Partial<RingoutState>): void;
+
+  setMeasurementSource(source: number | null): void;
 }
 
 export function createLiveCaptureStore(getApi: () => LiveCaptureApi) {
@@ -282,6 +289,8 @@ export function createLiveCaptureStore(getApi: () => LiveCaptureApi) {
 
     ringout: { stepIndex: 0, cut: null },
 
+    measurementSource: null,
+
     async loadDevices() {
       const result = (await getApi().listDevices()) as ListDevicesResult;
       const view = deviceListView(result);
@@ -293,6 +302,7 @@ export function createLiveCaptureStore(getApi: () => LiveCaptureApi) {
         set({
           channelConfig: withSavedLabels(defaultChannelConfig(n), deviceName),
           channelGroups: savedGroupsFor(deviceName),
+          measurementSource: null,
         });
       }
     },
@@ -305,6 +315,7 @@ export function createLiveCaptureStore(getApi: () => LiveCaptureApi) {
       set({
         channelConfig: withSavedLabels(defaultChannelConfig(n), deviceName),
         channelGroups: savedGroupsFor(deviceName),
+        measurementSource: null,
       });
     },
 
@@ -337,6 +348,7 @@ export function createLiveCaptureStore(getApi: () => LiveCaptureApi) {
       set({
         channelConfig: state.channelConfig.filter((_, i) => i !== idx),
         channelGroups: getGroupState().pruneStrip(state.channelGroups, idx),
+        measurementSource: measurementSourceAfterRemove(state.measurementSource, idx),
       });
       persistGroups(get());
     },
@@ -531,6 +543,15 @@ export function createLiveCaptureStore(getApi: () => LiveCaptureApi) {
 
     setRingout(patch) {
       set((state) => ({ ringout: { ...state.ringout, ...patch } }));
+    },
+
+    // Stores the value as given — normalization happens at call boundaries
+    // with an explicit strip count, because during the TD-001 migration the
+    // runtime's real strip list is inline-app.js's own channelConfig, not this
+    // store's (normalizing against the store's possibly-empty config would
+    // wrongly clamp runtime selections to null).
+    setMeasurementSource(source) {
+      set({ measurementSource: source });
     },
   }));
 }

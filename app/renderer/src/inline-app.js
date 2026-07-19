@@ -40,6 +40,9 @@ const setStore = window.rendererStores.settings;
 const anaStore = window.rendererStores.analysis;
 const specStore = window.rendererStores.spectrum;
 const curAnalysis = () => anaStore.getState().currentAnalysis;
+// The measurement-source selection (#456) lives in liveCaptureStore; this
+// script reads/writes it through the store instead of a module-level var.
+const lcStore = window.rendererStores.liveCapture;
 
 let currentMode = 'reportcard';
 let liveRunning = false;
@@ -113,6 +116,8 @@ const {
   LIVE_BAND_KEYS, deviceListView, deviceChannelCount,
   liveBandCurve, veqArcSVG, liveMetersHTML,
   groupSummary, groupSummaryText, shouldOfferReportCard,
+  normalizeMeasurementSource, measurementSourceAfterRemove, measurementSourceOptionsHTML,
+  liveReportCardSource: lcLiveReportCardSource,
 } = window.liveCapturePanel;
 // Renamed to avoid colliding with the zero-arg usedChannelCount() wrapper below.
 const lcUsedChannelCount = window.liveCapturePanel.usedChannelCount;
@@ -1806,6 +1811,9 @@ function addChannelStrip() {
 // callers may drive this down to zero strips so the workspace empty state
 // stays reachable.
 function removeChannelStrip(idx) {
+  // Reindex/clear the measurement source (#456) before the splice, using the
+  // pre-removal selection.
+  lcStore.getState().setMeasurementSource(measurementSourceAfterRemove(lcStore.getState().measurementSource, idx));
   channelConfig.splice(idx, 1);
   // Drop the removed strip from any group and shift higher indices down so no
   // dangling reference remains (#41).
@@ -1823,6 +1831,9 @@ function resetChannelConfig() {
   for (let i = 0; i < Math.min(2, n); i++) channelConfig.push({ kind: 'mono', a: i, b: (i + 1) % Math.max(n, 1), armed: true });
   applySavedLabels();
   hydrateChannelGroups();
+  // Config is rebuilt on a device switch — old measurement-source indices are
+  // meaningless (#456).
+  lcStore.getState().setMeasurementSource(null);
   renderChannelConfig();
 }
 
@@ -1839,6 +1850,15 @@ function renderChannelConfig() {
   // Preflight checklist (#373) reads channelConfig/device state, so it rides
   // the same "config changed" entry point as the workspace.
   renderPreflight();
+  renderMeasurementSource();
+}
+
+// Refresh the measurement-source picker (#456) from the current strip config
+// and store selection — rides the same "config changed" entry point as the
+// workspace/preflight so it stays in sync whenever strips or labels change.
+function renderMeasurementSource() {
+  document.getElementById('measurement-source').innerHTML =
+    measurementSourceOptionsHTML(channelConfig, lcStore.getState().measurementSource);
 }
 
 // Lock/unlock every capture-config control while a capture runs (#38). stream.py
@@ -1848,7 +1868,7 @@ function renderChannelConfig() {
 // its own lock (setRigControlsEnabled) but is guarded here too, defensively.
 function setCaptureControlsLocked(locked) {
   const set = (el) => { if (el) { el.disabled = locked; el.setAttribute('aria-disabled', String(locked)); } };
-  ['device-select', 'device-refresh-btn', 'record-folder-btn',
+  ['device-select', 'measurement-source', 'device-refresh-btn', 'record-folder-btn',
     'meter-interval', 'window-secs', 'llm-interval', 'rig-select',
     'live-ws-add', 'live-ws-new-group',
     'live-ws-arm-all', 'live-ws-disarm-all'].forEach((id) => set(document.getElementById(id)));
@@ -1923,6 +1943,13 @@ async function loadDevices() {
 document.getElementById('device-refresh-btn').addEventListener('click', () => loadDevices());
 // Switching devices re-seeds the channel config to that device's channel count.
 document.getElementById('device-select').addEventListener('change', () => resetChannelConfig());
+// Measurement source picker (#456): normalize against the current strip count
+// so a stale selection ('' -> null, an index -> the resolved strip) never
+// lands in the store.
+document.getElementById('measurement-source').addEventListener('change', (e) => {
+  const value = e.target.value === '' ? null : parseInt(e.target.value, 10);
+  lcStore.getState().setMeasurementSource(normalizeMeasurementSource(value, channelConfig.length));
+});
 
 document.getElementById('live-start-btn').addEventListener('click', async () => {
   const device = document.getElementById('device-select').value || undefined;
@@ -2184,6 +2211,9 @@ function captureCurrentRig(name, id) {
     }),
     // Named channel groups (#41) — organizational only; members are strip indices.
     groups: channelGroups.map((g) => ({ name: g.name, members: g.members.slice() })),
+    // The selected measurement source (#456) — a strip index, or null for the
+    // default (first track).
+    measurementSource: lcStore.getState().measurementSource,
     mode: liveMode,
     recordDir: recordDir,
     intervalMs: parseInt(document.getElementById('meter-interval').value, 10),
@@ -2224,6 +2254,8 @@ function applyRig(rig) {
   channelGroups = (rig.groups || []).map((g) => ({
     name: g.name, members: (g.members || []).filter((m) => m < channelConfig.length),
   }));
+  // Old rigs without the field resolve to null (default) (#456).
+  lcStore.getState().setMeasurementSource(normalizeMeasurementSource(rig.measurementSource, channelConfig.length));
   // The applied rig becomes this device's current layout (#483).
   persistChannelGroups();
   renderChannelConfig();
@@ -2614,18 +2646,7 @@ document.getElementById('ai-analyze-btn').addEventListener('click', async () => 
 // Written into analysisStore.liveSource wherever liveWindows changes (TD-001
 // slice 4, #422) so React (ReportCardIsland) can render it.
 function liveReportCardSource() {
-  if (liveWindows.length === 0) return null;
-  const win = liveWindows[liveWindows.length - 1];
-  const ch = win.channels && win.channels[0];
-  if (!ch) return null;
-  return {
-    filename: `Live capture — ${ch.name || 'Main'} (window #${win.window})`,
-    rms: ch.rms, peak: ch.peak, dynamicRange: null, clipping: ch.clipping, centroid: ch.centroid,
-    bands: {
-      subBass: ch.bands.sub_bass, bass: ch.bands.bass, lowMid: ch.bands.low_mid, mid: ch.bands.mid,
-      highMid: ch.bands.high_mid, presence: ch.bands.presence, brilliance: ch.bands.brilliance,
-    },
-  };
+  return lcLiveReportCardSource(liveWindows, lcStore.getState().measurementSource);
 }
 function syncLiveSource() {
   anaStore.getState().setLiveSource(liveReportCardSource());

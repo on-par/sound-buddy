@@ -256,6 +256,41 @@ export function usedChannelCount(config: StripConfig[]): number {
   return config.reduce((n, s) => n + (s.kind === 'stereo' ? 2 : 1), 0);
 }
 
+/* ── Measurement source (#456) ──
+ * `measurementSource` is a strip index into channelConfig — null means "first
+ * track (default)", today's channels[0] behavior. Normalized at every
+ * boundary (rig apply, select change, store) so a stale/out-of-range index
+ * never lingers in state. */
+export function normalizeMeasurementSource(source: number | null | undefined, stripCount: number): number | null {
+  if (source == null) return null;
+  if (!Number.isInteger(source)) return null;
+  if (source < 0 || source >= stripCount) return null;
+  return source;
+}
+
+// Mirrors groupState.pruneStrip's reindexing contract: the removed strip's
+// own selection resets to default, strips above it shift down to stay
+// pointed at the same physical strip, strips below are untouched.
+export function measurementSourceAfterRemove(source: number | null, removedIdx: number): number | null {
+  if (source === null) return null;
+  if (source === removedIdx) return null;
+  if (source > removedIdx) return source - 1;
+  return source;
+}
+
+export function measurementSourceOptionLabel(strip: StripConfig | null | undefined, idx: number): string {
+  const label = strip?.label?.trim();
+  return label ? label : `Track ${idx + 1}`;
+}
+
+export function measurementSourceOptionsHTML(config: StripConfig[], selected: number | null): string {
+  let html = `<option value=""${selected === null ? ' selected' : ''}>First track (default)</option>`;
+  config.forEach((strip, i) => {
+    html += `<option value="${i}"${i === selected ? ' selected' : ''}>${escapeHtml(measurementSourceOptionLabel(strip, i))}</option>`;
+  });
+  return html;
+}
+
 /* ── Device picker ── */
 export function deviceOptionLabel(d: LiveDevice): string {
   return `${d.index}: ${d.name} (${d.channels}ch, ${d.default_sr}Hz)`;
@@ -319,10 +354,11 @@ export function deviceListView(result: ListDevicesResult): DeviceListView {
  * level liveWindows var; liveCaptureStore writes analysisStore.liveSource
  * from this wherever liveWindows changes (bridge.ts's cross-store
  * subscription). */
-export function liveReportCardSource(liveWindows: LiveEvent[]): ReportCardSource | null {
+export function liveReportCardSource(liveWindows: LiveEvent[], measurementSource: number | null = null): ReportCardSource | null {
   if (liveWindows.length === 0) return null;
   const win = liveWindows[liveWindows.length - 1];
-  const ch = win.channels && win.channels[0];
+  const idx = measurementSource ?? 0;
+  const ch = win.channels && (win.channels[idx] ?? win.channels[0]);
   if (!ch) return null;
   return {
     filename: `Live capture — ${ch.name || 'Main'} (window #${(win as WindowData).window})`,

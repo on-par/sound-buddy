@@ -22,6 +22,7 @@ import {
   deviceOptionLabel,
   deviceChannelCount,
   liveMetersHTML,
+  measurementSourceOptionLabel,
   type LiveDevice,
   type StripConfig,
   type ChannelGroup,
@@ -40,6 +41,8 @@ export interface LiveCapturePanelProps {
   meterEvents: LiveEvent[];          // stream.py JSON-lines events, oldest→newest
   liveMode?: 'monitor' | 'record';   // default 'monitor'
   groups?: ChannelGroup[];           // default []
+  measurementSource?: number | null;                       // strip index judging the room; default null (first track)
+  onSelectMeasurementSource?: (source: number | null) => void;
 }
 
 export default function LiveCapturePanel({
@@ -52,6 +55,8 @@ export default function LiveCapturePanel({
   meterEvents,
   liveMode = 'monitor',
   groups = [],
+  measurementSource = null,
+  onSelectMeasurementSource,
 }: LiveCapturePanelProps) {
   let latestTick: LiveEvent | undefined;
   for (let i = meterEvents.length - 1; i >= 0; i--) {
@@ -85,6 +90,17 @@ export default function LiveCapturePanel({
         <select id="device-select" defaultValue={selectedDevice}>
           <option value="">Default Device</option>
           {devices.map((d) => <option key={d.index} value={String(d.index)}>{deviceOptionLabel(d)}</option>)}
+        </select>
+      </div>
+      <div className="select-wrap">
+        <select
+          id="measurement-source"
+          defaultValue={measurementSource == null ? '' : String(measurementSource)}
+          disabled={isLive}
+          onChange={(e) => onSelectMeasurementSource?.(e.target.value === '' ? null : parseInt(e.target.value, 10))}
+        >
+          <option value="">First track (default)</option>
+          {channels.map((strip, i) => <option key={i} value={String(i)}>{measurementSourceOptionLabel(strip, i)}</option>)}
         </select>
       </div>
       <button

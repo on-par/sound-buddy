@@ -9,6 +9,7 @@ import {
   deviceOptionLabel,
   deviceChannelCount,
   liveMetersHTML,
+  measurementSourceOptionLabel,
   type LiveDevice,
   type StripConfig,
   type StripView,
@@ -165,5 +166,55 @@ describe('LiveCapturePanel', () => {
 
     expect(startBtn?.props.onClick).toBe(onStart);
     expect(stopBtn?.props.onClick).toBe(onStop);
+  });
+
+  describe('measurement source select', () => {
+    it('renders the default option plus one option per configured strip', () => {
+      const html = renderMarkup(baseProps());
+      expect(html).toContain('id="measurement-source"');
+      expect(html).toContain('First track (default)');
+      channelsConfig.forEach((strip, i) => {
+        expect(html).toContain(`>${measurementSourceOptionLabel(strip, i)}<`);
+      });
+    });
+
+    it('marks the option matching measurementSource as selected', () => {
+      const html = renderMarkup(baseProps({ measurementSource: 1 }));
+      expect(html).toMatch(/<option value="1"[^>]*selected[^>]*>/);
+    });
+
+    it('defaults to the "First track (default)" option when measurementSource is null', () => {
+      const html = renderMarkup(baseProps({ measurementSource: null }));
+      expect(html).toMatch(/<option value=""[^>]*selected[^>]*>First track \(default\)<\/option>/);
+    });
+
+    it('is disabled while live', () => {
+      const html = renderMarkup(baseProps({ isLive: true }));
+      expect(html).toMatch(/id="measurement-source"[^>]*disabled/);
+    });
+
+    it('is not disabled when not live', () => {
+      const html = renderMarkup(baseProps({ isLive: false }));
+      expect(html).not.toMatch(/id="measurement-source"[^>]*disabled/);
+    });
+
+    it('option values carry no device indices or names', () => {
+      const html = renderMarkup(baseProps());
+      const selectMatch = html.match(/<select id="measurement-source"[^>]*>([\s\S]*?)<\/select>/);
+      expect(selectMatch).toBeTruthy();
+      expect(selectMatch![1]).not.toContain('Scarlett');
+      expect(selectMatch![1]).not.toContain('Built-in Microphone');
+    });
+
+    it('wires onChange to onSelectMeasurementSource, mapping "" to null and a digit string to a number', () => {
+      const onSelectMeasurementSource = vi.fn();
+      const element = LiveCapturePanel(baseProps({ onSelectMeasurementSource }));
+      const select = findById(element, 'measurement-source') as ReactElement<{ onChange?: (e: { target: { value: string } }) => void }> | null;
+      expect(select).toBeTruthy();
+      select!.props.onChange!({ target: { value: '1' } });
+      expect(onSelectMeasurementSource).toHaveBeenCalledWith(1);
+      select!.props.onChange!({ target: { value: '' } });
+      expect(onSelectMeasurementSource).toHaveBeenCalledWith(null);
+    });
   });
 });
