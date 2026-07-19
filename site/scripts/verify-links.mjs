@@ -37,7 +37,9 @@ if (htmlFiles.length === 0) {
 
 // Build a set of "URL paths" the build produced, for internal-link resolution.
 // Astro directory mode: /page/ -> dist/page/index.html; root -> dist/index.html.
-const paths = new Set(['/']);
+// /download is a Worker route (wrangler.jsonc run_worker_first), not a static
+// file, so it's seeded here to keep the internal-link walker from flagging it dead.
+const paths = new Set(['/', '/download']);
 for (const f of files) {
   let rel = f.slice(root.length).replace(/\\/g, '/');
   if (rel.endsWith('/index.html')) rel = rel.slice(0, -'index.html'.length) || '/';
@@ -71,11 +73,24 @@ if (problems.length) {
   process.exit(1);
 }
 
-// Sanity: the download CTA must point at the public releases repo.
+// #502 — download CTAs must route through /download (which resolves the
+// latest.json manifest at request time), never regress to the GitHub
+// releases page directly.
+const releasesPageCtaRe = /sound-buddy-releases\/releases\/latest(?!\/download\/)/;
+for (const file of htmlFiles) {
+  const html = await readFile(file, 'utf8');
+  if (releasesPageCtaRe.test(html)) {
+    console.error(
+      `✖ download CTA points at the GitHub releases page — CTAs must route through /download (stable release channel, #502)`,
+    );
+    process.exit(1);
+  }
+}
+
 const indexHtml = await readFile(join(root, 'index.html'), 'utf8');
-if (!indexHtml.includes('on-par/sound-buddy-releases/releases/latest')) {
-  console.error('✖ index.html missing the releases-repo download URL');
+if (!indexHtml.includes('href="/download"')) {
+  console.error('✖ index.html has no /download CTA — the stable download channel is not wired');
   process.exit(1);
 }
 
-console.log(`✓ ${files.length} files, ${htmlFiles.length} page(s), internal links OK, download URL present.`);
+console.log(`✓ ${files.length} files, ${htmlFiles.length} page(s), internal links OK, /download CTA present.`);
