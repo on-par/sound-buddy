@@ -4,6 +4,7 @@
 // the three policies together. Wraps the base Layout so fonts, tokens, and
 // global styles match the landing page.
 import Layout from './Layout.astro';
+import BrandMark from '../components/BrandMark.astro';
 
 interface Props {
   title: string;
@@ -34,10 +35,7 @@ const canonical = new URL(current, Astro.site).href;
     <div class="container header-row">
       <a class="brand" href={HOME_URL} aria-label="Sound Buddy home">
         <span class="brand-mark" aria-hidden="true">
-          <svg width="22" height="22" viewBox="0 0 22 22" fill="none">
-            <circle cx="11" cy="11" r="9.5" stroke="var(--gold-500)" stroke-width="1.5" />
-            <circle cx="11" cy="11" r="3.2" fill="var(--gold-500)" />
-          </svg>
+          <BrandMark />
         </span>
         <span class="brand-name">Sound Buddy</span>
       </a>
@@ -63,10 +61,7 @@ const canonical = new URL(current, Astro.site).href;
     <div class="container footer-row">
       <div class="footer-brand">
         <span class="brand-mark" aria-hidden="true">
-          <svg width="20" height="20" viewBox="0 0 22 22" fill="none">
-            <circle cx="11" cy="11" r="9.5" stroke="var(--gold-500)" stroke-width="1.5" />
-            <circle cx="11" cy="11" r="3.2" fill="var(--gold-500)" />
-          </svg>
+          <BrandMark size={20} />
         </span>
         <span>Sound Buddy</span>
       </div>
