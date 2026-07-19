@@ -47,6 +47,9 @@ const lcStore = window.rendererStores.liveCapture;
 let currentMode = 'reportcard';
 let liveRunning = false;
 let liveWindows = [];
+// Focused input for the per-input instrument-aware adjustment candidates
+// (#525) — ephemeral, per-session only, never persisted.
+let focusedInputIndex = null;
 // Elapsed-time playhead for the experimental DAW shell (#518): window.dawPlayheadState
 // state, null before the first capture ever starts. Tracked regardless of the
 // DAW toggle so flipping the experiment mid-capture shows correct elapsed time.
@@ -987,7 +990,7 @@ function renderLiveWorkspace() {
 function syncLiveAdjustmentsPanel() {
   const body = document.getElementById('spectrum-imperative');
   const html = window.liveAdjustmentsState.panelHTML(
-    setStore.getState().settings, currentMode, liveWindows, lcStore.getState().measurementSource);
+    setStore.getState().settings, currentMode, liveWindows, lcStore.getState().measurementSource, lapFocusView());
   const existing = body.querySelector('.live-adjustments-panel');
   if (!html) { if (existing) existing.remove(); return; }
   if (!existing) body.insertAdjacentHTML('beforeend', html);
@@ -1088,6 +1091,22 @@ function livePanelView() {
     liveMode,
     groups: channelGroups,
     instrumentProfiles: window.instrumentProfiles.PROFILES.map((p) => ({ id: p.id, label: p.label })),
+  };
+}
+
+// The focused-input view for the per-input instrument-aware adjustment
+// candidates panel (#525): every current input strip's display name and
+// effective instrument profile, plus which one (if any) is focused.
+function lapFocusView() {
+  const savedProfiles = savedInstrumentProfilesForDevice();
+  return {
+    focusedIndex: focusedInputIndex,
+    inputs: channelConfig.map((strip, idx) => ({
+      index: idx,
+      name: stripLabel(strip, liveChannelAt(idx), idx),
+      profile: window.instrumentProfiles.profileById(
+        window.instrumentProfiles.effectiveProfileId(savedProfiles, window.armState.stripToken(strip), strip && strip.label)),
+    })),
   };
 }
 
@@ -1306,6 +1325,14 @@ document.getElementById('spectrum-body').addEventListener('keydown', (e) => {
 // Routes through renderChannelConfig() (not a bare renderLiveWorkspace()) so
 // the capture lock and the workspace stay in sync.
 document.getElementById('spectrum-body').addEventListener('change', (e) => {
+  // Focused-input selector for the per-input instrument-aware adjustment
+  // candidates panel (#525) — ephemeral, so it just re-syncs the panel.
+  const focusSel = e.target.closest('.lap-focus-select');
+  if (focusSel) {
+    focusedInputIndex = focusSel.value === '' ? null : parseInt(focusSel.value, 10);
+    syncLiveAdjustmentsPanel();
+    return;
+  }
   const kindSel = e.target.closest('.live-ch-kind');
   if (kindSel) {
     const idx = parseInt(kindSel.dataset.idx, 10);
@@ -1958,6 +1985,8 @@ function removeChannelStrip(idx) {
   // Reindex/clear the measurement source (#456) before the splice, using the
   // pre-removal selection.
   lcStore.getState().setMeasurementSource(measurementSourceAfterRemove(lcStore.getState().measurementSource, idx));
+  // Same reindex/clear semantics apply to the focused input (#525).
+  focusedInputIndex = measurementSourceAfterRemove(focusedInputIndex, idx);
   channelConfig.splice(idx, 1);
   // Drop the removed strip from any group and shift higher indices down so no
   // dangling reference remains (#41).
@@ -1978,6 +2007,9 @@ function resetChannelConfig() {
   // Config is rebuilt on a device switch — old measurement-source indices are
   // meaningless (#456).
   lcStore.getState().setMeasurementSource(null);
+  // Same reasoning applies to the focused input (#525) — it never dangles
+  // across a device swap.
+  focusedInputIndex = null;
   renderChannelConfig();
 }
 
