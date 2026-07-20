@@ -106,6 +106,7 @@ const INVOKE_TABLE: Array<{ method: BridgeKey; channel: string; args: unknown[] 
     args: [{ file: 'x.json', note: 'used the new wireless pack today' } satisfies SetSummaryNoteInput],
   },
   { method: 'listAnalysisSummaries', channel: 'list-analysis-summaries', args: [] },
+  { method: 'listFolderAudio', channel: 'list-folder-audio', args: ['/recordings'] },
   { method: 'cancelAnalysis', channel: 'cancel-analysis', args: [] },
   { method: 'getDemoAudio', channel: 'get-demo-audio', args: [] },
   {

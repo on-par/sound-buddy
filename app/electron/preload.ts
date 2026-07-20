@@ -104,6 +104,9 @@ export function createBridge(ipc: IpcRendererLike) {
     analyzeFile: (opts: AnalyzeFileOpts) =>
       ipc.invoke('analyze-file', opts),
 
+    // Batch analysis (#270) — the whole-mix audio files found in a chosen folder.
+    listFolderAudio: (dir: string) => ipc.invoke('list-folder-audio', dir),
+
     // Persist a report-card summary after a successful analysis (#146). Fire-and-
     // forget from the renderer's perspective; failures are logged in main.
     saveAnalysisSummary: (summary: AnalysisSummaryInput) =>

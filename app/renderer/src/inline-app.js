@@ -1479,7 +1479,7 @@ function closeAnalyzeSourcePicker() {
   document.getElementById('analyze-source-picker').hidden = true;
 }
 // Routing is a simulated tab click — the same idiom used throughout this file
-// (e.g. #dir-goto-reportcard, #rc-offer-btn) — so Live/Soundcheck reach their
+// (e.g. #rc-offer-btn) — so Live/Soundcheck reach their
 // destination through the real mode-tab handler: Pro gating, transport
 // pausing, spectrum sync, syncAiDock(), syncSingleColumn() all fire exactly
 // as if the user had clicked the tab themselves.
@@ -1770,11 +1770,10 @@ function syncSpectrumForMode(mode) {
     title.textContent = SPECTRUM_TITLE.curve;
     if (!curAnalysis()) setSpectrumState('empty', { text: 'Follow the build order, then load a recording to grade it' });
   } else if (mode === 'dir') {
-    // Directory (#293) is roadmap context until batch analysis ships in
-    // v1.1 — mirror the `recent`/`guide` tailored empty state instead of
-    // promising a folder analysis that can't run yet.
+    // Directory (#270) batch-analyzes a folder — mirror the `recent`/`guide`
+    // tailored empty state rather than the generic "Load a file…" copy.
     title.textContent = SPECTRUM_TITLE.curve;
-    if (!curAnalysis()) setSpectrumState('empty', { text: 'Batch analysis is coming in v1.1 — analyze recordings from Report Card' });
+    if (!curAnalysis()) setSpectrumState('empty', { text: 'Choose a folder to analyze every recording in it' });
   } else {
     // syncSpectrumChrome (below) sets the header to match what's drawn (curve
     // vs meters) once there's data; seed the curve label for the pre-analysis
@@ -1886,11 +1885,71 @@ function syncReportCardChrome(state, prevState) {
   renderUpgradeMomentum();
 }
 
-/* ══ Directory mode (#293): roadmap card only — batch analysis lands in v1.1.
-   The single action routes to the supported path via the real tab click so
-   the transition is identical to the user clicking the Report Card tab. ══ */
-document.getElementById('dir-goto-reportcard').addEventListener('click', () => {
-  document.querySelector('.mode-tab[data-mode="reportcard"]').click();
+/* ══ Directory mode (#270): batch-analyze a folder of whole-mix recordings.
+   Runs the existing single-file analyze pipeline sequentially over every
+   audio file found in a chosen folder (batchAnalysis.runBatch, #270) —
+   strictly sequential because analyze-file supersedes any run still in
+   flight for this renderer. Calls analyzeFile directly rather than
+   anaStore.getState().startAnalysis() so the batch never drives the
+   single-file report-card store's status machine through N spurious
+   transitions (syncReportCardChrome above). ══ */
+let batchFiles = [];
+let batchRunning = false;
+
+function renderDirEmptyState() {
+  const empty = document.getElementById('dir-empty');
+  const analyzeBtn = document.getElementById('dir-analyze-btn');
+  empty.style.display = batchFiles.length === 0 ? 'block' : 'none';
+  analyzeBtn.disabled = batchRunning || batchFiles.length === 0;
+}
+
+document.getElementById('dir-choose-btn').addEventListener('click', async () => {
+  const dir = await sb.openDirDialog();
+  if (!dir) return;
+  document.getElementById('dir-path').textContent = dir;
+  document.getElementById('dir-results').innerHTML = '';
+  document.getElementById('dir-progress').textContent = '';
+  let res;
+  try {
+    res = await sb.listFolderAudio(dir);
+  } catch (err) {
+    console.warn('listFolderAudio failed', err);
+    res = null;
+  }
+  batchFiles = (res && res.success && Array.isArray(res.files)) ? res.files : [];
+  renderDirEmptyState();
+});
+
+document.getElementById('dir-analyze-btn').addEventListener('click', async () => {
+  if (batchRunning || batchFiles.length === 0) return;
+  batchRunning = true;
+  const analyzeBtn = document.getElementById('dir-analyze-btn');
+  const progress = document.getElementById('dir-progress');
+  const results = document.getElementById('dir-results');
+  analyzeBtn.disabled = true;
+  results.innerHTML = '';
+  progress.textContent = window.batchAnalysis.progressText(0, batchFiles.length);
+
+  try {
+    const rows = await window.batchAnalysis.runBatch(batchFiles, {
+      analyzeFile: (fp) => sb.analyzeFile({ filePath: fp }),
+      toSummaryInput: (data, fp) => {
+        const src = reportCardSourceFromAnalysis(data);
+        return src ? buildAnalysisSummaryInput(src, grading, 'file') : null;
+      },
+      saveSummary: (input) => sb.saveAnalysisSummary(input),
+      onProgress: (event) => {
+        if (event.status === 'running') return;
+        progress.textContent = window.batchAnalysis.progressText(event.index + 1, event.total);
+        results.insertAdjacentHTML('beforeend', window.batchAnalysis.batchRowHtml(event, event.index, escapeHtml));
+      },
+    });
+    progress.textContent = window.batchAnalysis.summaryText(rows);
+  } finally {
+    batchRunning = false;
+    renderDirEmptyState();
+    await renderRecentServices();
+  }
 });
 
 /* ══ Live mode ══ */
@@ -2935,7 +2994,13 @@ sb.onLiveEvent((data) => {
   }
 });
 
-sb.onAnalysisResult((data) => anaStore.getState().setAnalysisFromEvent(data));
+// A batch run (#270) also triggers this pushed event on every successful
+// analyze-file call — left alone, it would flip the Report Card N times
+// mid-batch. Suppressed only while a batch is actually running.
+sb.onAnalysisResult((data) => {
+  if (window.batchAnalysis.shouldSuppressPushedResult(batchRunning)) return;
+  anaStore.getState().setAnalysisFromEvent(data);
+});
 
 sb.onMenuOpenFile((fp) => {
   document.querySelector('.mode-tab[data-mode="reportcard"]').click();

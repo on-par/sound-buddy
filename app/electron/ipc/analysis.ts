@@ -25,6 +25,7 @@ import {
 } from './api';
 import { loadEngineParsers } from './engine-loader';
 import { runAnalysis } from './run-analysis';
+import { collectAudioFiles } from './audio-files';
 import { computeSceneDiff } from '../scene-diff';
 import { loadSceneInspector } from '../scene-inspector-loader';
 import type {
@@ -190,6 +191,28 @@ export function registerAnalysisHandlers(): void {
     } catch (err) {
       logError('list-analysis-summaries failed', err);
       return { success: false, error: String(err), summaries: [] };
+    }
+  });
+
+  // list-folder-audio (#270) — the whole-mix audio files in a chosen folder,
+  // for the Directory tab's batch-analysis file list. Thin: assembles the fs
+  // deps and delegates to collectAudioFiles. A failure (folder deleted since
+  // picking it, no read permission) is logged and reported as an actionable
+  // error rather than thrown, so the renderer can show it inline.
+  ipcMain.handle('list-folder-audio', (_event, dir: string) => {
+    try {
+      const files = collectAudioFiles(String(dir ?? ''), {
+        readdir: (d) => fs.readdirSync(d),
+        isFile: (p) => fs.statSync(p).isFile(),
+      });
+      return { success: true, files };
+    } catch (err) {
+      logError('list-folder-audio failed', err);
+      return {
+        success: false,
+        error: `Could not read that folder — check it still exists and you have permission to read it. (${String(err)})`,
+        files: [],
+      };
     }
   });
 

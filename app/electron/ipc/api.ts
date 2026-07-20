@@ -364,6 +364,12 @@ export interface ListSummariesResult extends OperationResult {
   summaries: AnalysisSummary[];
 }
 
+/** list-folder-audio (#270) — the whole-mix audio files found in a chosen
+ *  folder, for the Directory tab's batch-analysis file list. */
+export interface ListFolderAudioResult extends OperationResult {
+  files: string[];
+}
+
 /** Patch a single already-saved record's handoff note (#267). `file` is the
  *  basename SaveSummaryResult returned. */
 export interface SetSummaryNoteInput {
@@ -524,6 +530,8 @@ export interface AnalysisApi {
   saveAnalysisSummary(summary: AnalysisSummaryInput): Promise<SaveSummaryResult>;
   setAnalysisSummaryNote(input: SetSummaryNoteInput): Promise<SetSummaryNoteResult>;
   listAnalysisSummaries(): Promise<ListSummariesResult>;
+  // Batch analysis (#270) — the whole-mix audio files found in a chosen folder.
+  listFolderAudio(dir: string): Promise<ListFolderAudioResult>;
   onAnalysisProgress(cb: (data: AnalysisProgress) => void): void;
   onAnalysisResult(cb: (data: unknown) => void): void;
   getDemoAudio(): Promise<string | null>;
