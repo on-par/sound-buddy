@@ -9,8 +9,7 @@
     "build": "tsc && tsc -p tsconfig.cjs.json && cp cjs-package.json dist-cjs/package.json",
     "lint": "tsc --noEmit",
     "test": "vitest run --passWithNoTests",
-    "test:coverage": "vitest run --passWithNoTests --coverage",
-    "dev": "tsx src/cli.ts"
+    "test:coverage": "vitest run --passWithNoTests --coverage"
   },
   "dependencies": {
     "@earendil-works/pi-ai": "0.80.7",
