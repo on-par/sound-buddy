@@ -32,6 +32,7 @@ function makeEnv(kv: KVNamespace): Env {
   return {
     LICENSE_KV: {} as KVNamespace,
     EVENTS_KV: kv,
+    WAITLIST_KV: {} as KVNamespace,
     FOUNDING_CAP: "300",
     FROM_EMAIL: "hello@example.test",
     SUPPORT_EMAIL: "support@example.test",

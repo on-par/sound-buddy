@@ -14,6 +14,7 @@ import { handleGetLicense } from "./handlers/license";
 import { handleRefreshLicense } from "./handlers/license-refresh";
 import { handleActivate } from "./handlers/activate";
 import { handleIngestEvent } from "./handlers/ingest";
+import { handleWaitlistSignup } from "./handlers/waitlist";
 
 /**
  * Environment bindings declared in wrangler.jsonc. Secret values
@@ -67,6 +68,8 @@ export interface Env {
   LICENSE_PUBLIC_KEY: string;
   /** KV namespace holding ingested feedback/crash/telemetry events (#475). */
   EVENTS_KV: KVNamespace;
+  /** KV namespace holding waitlist signups (#599), keyed by lowercased email. */
+  WAITLIST_KV: KVNamespace;
 }
 
 type RouteHandler = (
@@ -93,6 +96,7 @@ const routes: Route[] = [
   { method: "POST", path: "/api/license/refresh", handler: handleRefreshLicense },
   { method: "GET", path: "/activate", handler: handleActivate },
   { method: "POST", path: "/api/ingest", handler: handleIngestEvent },
+  { method: "POST", path: "/api/waitlist", handler: handleWaitlistSignup },
 ];
 
 export async function handleRequest(
