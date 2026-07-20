@@ -63,7 +63,7 @@ describe('Source tabs gate (#544)', () => {
 
   it('the hide rule comes after the base .mode-tab rules so it wins the cascade', () => {
     const hideIdx = appCss.indexOf('body.report-first-ux .mode-tab[data-mode="dir"]');
-    const baseIdx = appCss.indexOf('.mode-tab .tab-soon');
+    const baseIdx = appCss.indexOf('.mode-tab .tab-lock');
     expect(hideIdx).toBeGreaterThan(-1);
     expect(baseIdx).toBeGreaterThan(-1);
     expect(hideIdx).toBeGreaterThan(baseIdx);
