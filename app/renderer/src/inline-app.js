@@ -1450,6 +1450,34 @@ function syncSingleColumn() {
     window.reportFirstUxState.isEnabled(setStore.getState().settings), currentMode));
 }
 
+// #543 (epic e17): the unified "Analyze" source picker — opened from the
+// Report Card toolbar (see the reportcard-load-btn handler above), never on
+// launch, so there's no full-screen overlay for e2e specs to trip over.
+function openAnalyzeSourcePicker() {
+  document.getElementById('analyze-source-picker').hidden = false;
+  document.querySelector('[data-analyze-source]').focus();
+}
+function closeAnalyzeSourcePicker() {
+  document.getElementById('analyze-source-picker').hidden = true;
+}
+// Routing is a simulated tab click — the same idiom used throughout this file
+// (e.g. #dir-goto-reportcard, #rc-offer-btn) — so Live/Soundcheck reach their
+// destination through the real mode-tab handler: Pro gating, transport
+// pausing, spectrum sync, syncAiDock(), syncSingleColumn() all fire exactly
+// as if the user had clicked the tab themselves.
+document.querySelectorAll('[data-analyze-source]').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const mode = window.analyzeSourceState.targetModeFor(btn.dataset.analyzeSource);
+    closeAnalyzeSourcePicker();
+    if (mode === null) { chooseAndAnalyzeFile(); return; }
+    if (mode) document.querySelector(`.mode-tab[data-mode="${mode}"]`).click();
+  });
+});
+document.getElementById('source-picker-cancel').addEventListener('click', closeAnalyzeSourcePicker);
+document.getElementById('analyze-source-picker').addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') closeAnalyzeSourcePicker();
+});
+
 /* ══ Mode tabs ══ */
 document.querySelectorAll('.mode-tab').forEach(tab => {
   tab.addEventListener('click', () => {
@@ -3517,11 +3545,23 @@ document.getElementById('reportcard-clear-btn').addEventListener('click', () => 
 // picker and analyzes directly. The resulting file card replaces the live card via
 // getReportCardSource() priority; liveWindows is left untouched so the Live tab's
 // window history survives.
-document.getElementById('reportcard-load-btn').addEventListener('click', async () => {
+async function chooseAndAnalyzeFile() {
   try {
     const fp = await sb.openFileDialog();
     if (fp) { loadFile(fp); await runFileAnalysis(fp); }
   } catch { /* user cancelled */ }
+}
+
+// #543 (epic e17): with report-first-ux on, "Load a file…" is the entry point
+// to the unified source picker rather than straight to the OS file dialog.
+// Flag off, the behavior is byte-identical to before.
+document.getElementById('reportcard-load-btn').addEventListener('click', () => {
+  if (window.analyzeSourceState.isPickerEnabled(
+        window.reportFirstUxState.isEnabled(setStore.getState().settings))) {
+    openAnalyzeSourcePicker();
+  } else {
+    chooseAndAnalyzeFile();
+  }
 });
 
 /* ══ License (#54) ══ */

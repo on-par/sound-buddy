@@ -37,6 +37,30 @@
       </div>
     </div>
   </div>
+  <!-- ══ Unified "Analyze" source picker (#543, epic e17) ══
+       Report-first-ux only: the entry point for a new analysis, offering the
+       three real ways to get audio in. Additive — Directory/Live/Soundcheck
+       tabs keep working; this just routes to them via a simulated tab click,
+       so Pro gating and every other destination behavior stays unchanged. -->
+  <div class="source-picker" id="analyze-source-picker" role="dialog" aria-modal="true"
+       aria-labelledby="source-picker-title" hidden>
+    <div class="sp-panel">
+      <h2 class="sp-title" id="source-picker-title">Where&rsquo;s the audio coming from?</h2>
+      <button type="button" class="sp-choice" data-analyze-source="file" data-icon="file-audio">
+        <span class="sp-label">Analyze a file</span>
+        <span class="sp-hint">Drop in a recording you already have.</span>
+      </button>
+      <button type="button" class="sp-choice" data-analyze-source="live" data-icon="radio">
+        <span class="sp-label">Start live capture</span>
+        <span class="sp-hint">Capture multi-channel audio from the console right now.</span>
+      </button>
+      <button type="button" class="sp-choice" data-analyze-source="soundcheck" data-icon="sliders">
+        <span class="sp-label">Load a soundcheck session</span>
+        <span class="sp-hint">Play back a captured session and mix without the band.</span>
+      </button>
+      <button type="button" class="sp-cancel" id="source-picker-cancel">Cancel</button>
+    </div>
+  </div>
   <!-- ══ Header ══ -->
   <div id="header">
     <div id="logo">
