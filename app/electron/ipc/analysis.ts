@@ -16,9 +16,9 @@ import { log, logError } from '../logger';
 import { recordTelemetryEvent } from '../telemetry';
 import { saveAnalysisSummary, listAnalysisSummaries, type AnalysisSummary } from '../storage';
 import { toolBin, pythonBin, childEnv, SPECTRUM_SCRIPT, DEMO_AUDIO, defaultRecordDir } from './shared';
-import { isAbortError } from './timeout';
 import type { AnalyzeFileOpts } from './api';
 import { loadEngineParsers } from './engine-loader';
+import { runAnalysis } from './run-analysis';
 import type {
   SoxStats,
   FfprobeResult,
@@ -28,7 +28,6 @@ import type {
   LoudnessStats,
   AudioAnalysis,
 } from '@sound-buddy/audio-engine/dist-cjs/types';
-import type { AnalyzeStage } from '@sound-buddy/audio-engine/dist-cjs/analyze/orchestrate';
 
 export type { SoxStats, FfprobeResult, SpectrumResult, SpectrumFrame, SpectrumSegment, LoudnessStats, AudioAnalysis };
 
@@ -86,7 +85,6 @@ export function registerAnalysisHandlers(): void {
     inFlight.get(wc.id)?.abort();
     const controller = new AbortController();
     inFlight.set(wc.id, controller);
-    const { signal } = controller;
     recordTelemetryEvent('analysis_started');
 
     // Stage progress (#125): all three stages genuinely run in parallel
@@ -99,63 +97,29 @@ export function registerAnalysisHandlers(): void {
     send({ stage: 'levels', status: 'start' });
     send({ stage: 'spectrum', status: 'start' });
 
-    const UI_STAGE: Partial<Record<AnalyzeStage, 'reading' | 'levels' | 'spectrum'>> = {
-      ffprobe: 'reading',
-      sox: 'levels',
-      spectrum: 'spectrum',
-    };
-
-    let analyzePath = filePath;
-    let extractedWav: string | null = null;
-
     try {
-      if (loadEngineParsers().isVideoFile(filePath)) {
-        log(`analyze-file extracting audio from video: ${filePath}`);
-        extractedWav = await loadEngineParsers().extractAudioToWav(filePath, { bin: toolBin('ffmpeg'), signal });
-        analyzePath = extractedWav;
-      }
-
-      const analysis = await loadEngineParsers().analyzeAudio(analyzePath, {
-        sox: { bin: toolBin('sox') },
-        ffprobe: { bin: toolBin('ffprobe') },
-        spectrum: { scriptPath: SPECTRUM_SCRIPT, python: pythonBin(), env: childEnv() },
-        ebur128: { bin: toolBin('ffmpeg') },
-        signal,
-        noSpectrum,
-        onProgress: (stage) => {
-          const ui = UI_STAGE[stage];
-          if (ui) send({ stage: ui, status: 'done' });
+      const outcome = await runAnalysis(filePath, {
+        engine: loadEngineParsers(),
+        tools: {
+          soxBin: toolBin('sox'),
+          ffprobeBin: toolBin('ffprobe'),
+          ffmpegBin: toolBin('ffmpeg'),
+          spectrumScript: SPECTRUM_SCRIPT,
+          python: pythonBin(),
+          env: childEnv(),
         },
-        onEbur128Error: (err) => log(`ebur128 unavailable for ${filePath}: ${String(err)}`),
+        noSpectrum,
+        signal: controller.signal,
+        onStage: (stage) => send({ stage, status: 'done' }),
+        log,
+        logError,
       });
-
-      wc.send('analysis-result', { type: 'stats', data: analysis });
-      log(`analyze-file ok: ${filePath}`);
-      recordTelemetryEvent('analysis_completed');
-      return { success: true, data: analysis };
-    } catch (err) {
-      if (isAbortError(err)) {
-        // No terminal progress event here: the renderer that started this
-        // specific run already learns of the cancellation from this
-        // invoke()'s own resolution (`result.cancelled`) — a stage-keyed
-        // 'done'/'start' event has nowhere to attach without a stage.
-        log(`analyze-file cancelled: ${filePath}`);
-        return { success: false, cancelled: true };
+      if (outcome.success) {
+        wc.send('analysis-result', { type: 'stats', data: outcome.data });
+        recordTelemetryEvent('analysis_completed');
       }
-      const message = String(err);
-      logError(`analyze-file failed for ${filePath}`, err);
-      return { success: false, error: message };
+      return outcome;
     } finally {
-      // The extracted WAV is a scratch intermediate — remove it regardless of
-      // outcome. Best-effort: a removal failure (already gone, permissions)
-      // must not shadow the real success/error result above.
-      if (extractedWav) {
-        try {
-          fs.rmSync(extractedWav, { force: true });
-        } catch (err) {
-          logError(`failed to remove extracted audio temp file ${extractedWav}`, err);
-        }
-      }
       // Only clear this run's own entry — a supersede above may already have
       // replaced it with a newer run's controller.
       if (inFlight.get(wc.id) === controller) inFlight.delete(wc.id);
