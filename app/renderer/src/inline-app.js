@@ -12,6 +12,15 @@ const {
   buildAnalysisSummaryInput,
 } = window.reportCard;
 
+/* ══ Share Image export (#265) + Export PNG's metadata guard (#368) —
+   pure modules bridged onto window by App.tsx the same way as reportCard. ══ */
+const { assertPngMetadataStripped } = window.reportExport;
+const {
+  SHARE_CARD_WIDTH, SHARE_CARD_HEIGHT, MAX_SHARE_METRICS,
+  buildShareCardModel, shareCardDrawOps, renderShareCard,
+  assertNoIdentifyingText, buildShareFilename,
+} = window.shareCard;
+
 // Hydrate every element carrying a data-icon attribute (static markup).
 function hydrateIcons(root = document) {
   root.querySelectorAll('[data-icon]').forEach(el => {
@@ -1801,20 +1810,27 @@ sb.onAnalysisProgress((data) => {
 // Replaces runFileAnalysis's DOM side effects — a single analysisStore
 // subscription reacting to `status` transitions (TD-001 slice 4, #422).
 // Installed at boot (see the Init section at the bottom of this file).
+// Mirrors ReportCardIsland's own source priority (currentAnalysis wins, else
+// liveSource, else historySummary, else no card at all). Shared by
+// syncReportCardChrome (toolbar/upgrade-card chrome outside #report-card) and
+// the Share Image click handler (#265) so both derive "what card is showing"
+// from one place instead of two independently-maintained copies.
+function resolveReportCardChromeSource(state) {
+  const isHistoryCard = !!state.historySummary && !state.currentAnalysis && !state.liveSource;
+  const chromeSource = state.currentAnalysis
+    ? reportCardSourceFromAnalysis(state.currentAnalysis)
+    : (state.liveSource || null);
+  return { isHistoryCard, chromeSource };
+}
+
 function syncReportCardChrome(state, prevState) {
   const clearBtn = document.getElementById('reportcard-clear-btn');
   const loadBtn = document.getElementById('reportcard-load-btn');
   const printBtn = document.getElementById('reportcard-print-btn');
+  const shareBtn = document.getElementById('reportcard-share-btn');
   const gradeOwnBtn = document.getElementById('grade-own-btn');
-  // Mirrors ReportCardIsland's own source priority (currentAnalysis wins,
-  // else liveSource, else historySummary, else no card at all) — computed
-  // here too so the toolbar/upgrade-card chrome (outside #report-card) stays
-  // in sync with whatever the island is actually showing.
-  const isHistoryCard = !!state.historySummary && !state.currentAnalysis && !state.liveSource;
+  const { isHistoryCard, chromeSource } = resolveReportCardChromeSource(state);
   const isLiveCard = !state.currentAnalysis && !!state.liveSource;
-  const chromeSource = state.currentAnalysis
-    ? reportCardSourceFromAnalysis(state.currentAnalysis)
-    : (state.liveSource || null);
   const hasCard = isHistoryCard || !!chromeSource;
 
   if (state.status !== prevState.status) {
@@ -1840,13 +1856,15 @@ function syncReportCardChrome(state, prevState) {
     }
   }
 
-  // Print/Grade-own just mirror whether a card (file, live, or history) is
-  // showing — a re-analysis in flight still has the prior card on screen to
-  // print/grade, same as before this migration (runFileAnalysis never
-  // disabled these two while re-analyzing). Clear/Load DO disable in flight
-  // so they can't swap the source out from under the run and have this
-  // continuation flip the card back over a stale reference (#206/#208).
+  // Print/Share/Grade-own just mirror whether a card (file, live, or
+  // history) is showing — a re-analysis in flight still has the prior card
+  // on screen to print/share/grade, same as before this migration
+  // (runFileAnalysis never disabled these while re-analyzing). Clear/Load DO
+  // disable in flight so they can't swap the source out from under the run
+  // and have this continuation flip the card back over a stale reference
+  // (#206/#208).
   printBtn.disabled = !hasCard;
+  shareBtn.disabled = !hasCard;
   gradeOwnBtn.disabled = !hasCard;
   loadBtn.disabled = state.status === 'analyzing';
   loadBtn.style.display = isLiveCard ? '' : 'none';
@@ -3564,6 +3582,74 @@ document.getElementById('rcu-later').addEventListener('click', () => {
 
 // renderReportCardFrames is gone — ReportCard.tsx renders "Spectrum Over
 // Time" from reportCardFramesView (report-card.ts), TD-001 slice 4, #422.
+
+// Share Image (#265): a one-click, purpose-built 1200×630 PNG for social
+// posting — distinct from Export PDF (window.print(), untouched above). Model
+// → draw ops → render is entirely the pure share-card.ts module; this handler
+// is only the impure glue (source lookup, canvas, save dialog), same split
+// report-export.ts already established for Export PNG (#368).
+document.getElementById('reportcard-share-btn').addEventListener('click', async () => {
+  try {
+    const state = anaStore.getState();
+    const { isHistoryCard, chromeSource } = resolveReportCardChromeSource(state);
+
+    let grade, score, metrics;
+    if (chromeSource) {
+      grade = grading.computeGrade(chromeSource);
+      score = grading.computeScore(chromeSource);
+      metrics = buildMetricRows(chromeSource, grading)
+        .slice(0, MAX_SHARE_METRICS)
+        .map((m) => ({ label: m.name, value: m.unit ? `${m.value} ${m.unit}` : m.value }));
+    } else if (isHistoryCard) {
+      // A history-only card has no raw sox/spectrum data to build metric
+      // rows from — share the grade/score alone rather than block entirely.
+      grade = state.historySummary.gradeLetter;
+      score = state.historySummary.score;
+      metrics = [];
+    } else {
+      return; // no card on screen to share
+    }
+
+    const churchNameSetting = (setStore.getState().settings || {}).shareChurchName || '';
+    const model = buildShareCardModel({
+      grade,
+      score,
+      headline: 'Mix graded by Sound Buddy',
+      metrics,
+      churchName: churchNameSetting,
+    });
+    const ops = shareCardDrawOps(model);
+
+    // AC-2 privacy guard: the image must carry no identifying information by
+    // default — assert the source filename/path never leaked into an op,
+    // and the raw church-name setting didn't either when the model omitted it.
+    const basename = chromeSource ? (chromeSource.filename || '') : (state.historySummary.sourceFilename || '');
+    const fullPath = state.currentAnalysis?.ffprobe?.format?.filename || '';
+    assertNoIdentifyingText(ops, [basename, fullPath, model.churchName === null ? churchNameSetting : '']);
+
+    const canvas = document.createElement('canvas');
+    canvas.width = SHARE_CARD_WIDTH;
+    canvas.height = SHARE_CARD_HEIGHT;
+    const ctx = canvas.getContext('2d');
+    renderShareCard(ctx, ops);
+
+    const blob = await new Promise((resolve, reject) => {
+      canvas.toBlob((b) => (b ? resolve(b) : reject(new Error('canvas.toBlob returned null'))), 'image/png');
+    });
+    const bytes = new Uint8Array(await blob.arrayBuffer());
+    assertPngMetadataStripped(bytes);
+
+    const dateEl = document.getElementById('rc-date');
+    const dateText = (dateEl && dateEl.textContent) || '';
+    await sb.saveReportImage(bytes, buildShareFilename(dateText));
+    // { saved: false } just means the user cancelled the native save dialog
+    // — not an error, nothing further to do.
+  } catch (err) {
+    console.error('share image failed:', err);
+    const reason = err && err.message ? err.message : String(err);
+    window.alert(`Could not create the share image: ${reason}. Try again, or use Export PDF instead.`);
+  }
+});
 
 document.getElementById('reportcard-print-btn').addEventListener('click', () => window.print());
 document.getElementById('reportcard-feedback-btn').addEventListener('click', () => {

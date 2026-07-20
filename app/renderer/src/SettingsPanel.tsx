@@ -17,6 +17,7 @@ import { useStoreShallow } from './stores/useStoreShallow';
 import { useSettingsStore, type SettingsState } from './stores/settingsStore';
 import { DEFAULT_STORAGE_PATH, effectiveStoragePath, loadStorageSeed, buildStoragePatch } from './storage-settings';
 import type { LlmApi, LlmConfigPatch, LlmModelInfo, PublicLlmConfig, UpdateSettingsPatch } from '../../electron/ipc/api';
+import { MAX_CHURCH_NAME_LEN } from './share-card';
 
 export type SettingsSection = 'storage' | 'ai' | 'about';
 
@@ -243,6 +244,13 @@ export async function saveAll(
   store.getState().closeDialog();
 }
 
+// Persists the Share Image church-name field (#265) straight through
+// settingsStore — a plain string setting, not gated behind the Save button
+// like the AI provider fields (there's no separate "test" step for it).
+export async function commitShareChurchName(store: SettingsStoreHandle, value: string): Promise<void> {
+  await store.getState().updateSettings({ shareChurchName: value });
+}
+
 export default function SettingsPanel() {
   const api = useElectron();
   const { settings, dialogOpen } = useStoreShallow(useSettingsStore, (s) => ({
@@ -263,6 +271,10 @@ export default function SettingsPanel() {
   const [enableAi, setEnableAi] = useState(true);
   const [version, setVersion] = useState('');
   const [modelsCache, setModelsCache] = useState<LlmModelInfo[]>([]);
+  // Seeded eagerly from the store's current settings (not just the
+  // dialog-open effect below) so a server-rendered/initial pass already shows
+  // the persisted value — the effect below only re-syncs it on reopen.
+  const [shareChurchName, setShareChurchName] = useState(() => settings?.shareChurchName ?? '');
   const [savedCfg, setSavedCfg] = useState<PublicLlmConfig | null>(null);
   const [passthroughOption, setPassthroughOption] = useState<{ value: string; label: string } | null>(null);
   const [testing, setTesting] = useState(false);
@@ -324,6 +336,7 @@ export default function SettingsPanel() {
       setPassthroughOption(seed.passthroughOption);
       setTab(seed.tab);
       setEnableAi(seed.enableAi);
+      setShareChurchName(settings?.shareChurchName ?? '');
       setTestResult({ text: '', kind: '' });
       setDefaultPath(storageSeed.defaultPath);
       setLoadedPath(storageSeed.loadedPath);
@@ -376,6 +389,11 @@ export default function SettingsPanel() {
   }
 
   function handleSave() {
+    // The church-name field commits on blur, but a click straight from the
+    // field to this Save button can beat that blur — flush it explicitly so
+    // Save always captures whatever is currently typed, not just fields
+    // gated behind the AI-provider save flow below.
+    void commitShareChurchName(useSettingsStore, shareChurchName);
     const storagePatch = buildStoragePatch(
       pendingDir,
       { usageSignalEnabled, crashReportingEnabled, dawWorkspaceEnabled, liveAdjustmentsEnabled },
@@ -674,6 +692,24 @@ export default function SettingsPanel() {
             <input type="checkbox" id="ai-enable-toggle" checked={enableAi} onChange={(e) => setEnableAi(e.target.checked)} />
             Enable AI analysis
           </label>
+          <label className="ai-field" id="share-church-name-field">
+            <span className="ai-field-label">Church name (for shared images)</span>
+            <input
+              type="text"
+              id="share-church-name-input"
+              className="rig-dialog-input"
+              placeholder="Leave blank to keep shared images anonymous"
+              autoComplete="off"
+              spellCheck={false}
+              maxLength={MAX_CHURCH_NAME_LEN}
+              value={shareChurchName}
+              onChange={(e) => setShareChurchName(e.target.value)}
+              onBlur={() => void commitShareChurchName(useSettingsStore, shareChurchName)}
+            />
+          </label>
+          <p className="ai-dialog-note" id="share-church-name-note">
+            Optional. Leave blank (default) and shared images contain no identifying information.
+          </p>
           <p className="ai-dialog-note">
             Your audio never leaves your machine — analysis runs on-device, and only the measurements go to the provider
             you choose.

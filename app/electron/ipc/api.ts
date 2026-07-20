@@ -40,6 +40,7 @@ export interface UpdateSettingsPatch {
   dawWorkspaceEnabled?: boolean;
   liveAdjustmentsEnabled?: boolean;
   reportFirstUxEnabled?: boolean;
+  shareChurchName?: string;
 }
 
 /** A renderer patch: `apiKey` semantics — undefined = keep, '' = clear. */
@@ -291,6 +292,14 @@ export interface AppSettings {
    * epic can be dogfooded at launch time without shipping a Settings toggle.
    */
   reportFirstUxEnabled: boolean;
+  /**
+   * Optional church name (#265) shown on the "Share Image" report-card
+   * export. Default '' (blank) — an empty value means the shared image
+   * carries no identifying information at all, the hard privacy constraint
+   * behind the Share feature. No env layer: this is user-authored copy, not
+   * a launch-time behavior toggle.
+   */
+  shareChurchName: string;
 }
 
 // ─── LLM DTOs (PublicLlmConfig moved from electron/llm-config.ts, TD-011) ────

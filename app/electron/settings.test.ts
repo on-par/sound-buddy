@@ -408,6 +408,31 @@ describe('storageDir (#91 — no usage caps, configurable location)', () => {
   });
 });
 
+describe('shareChurchName (#265 — Share Image export, blank by default)', () => {
+  it('defaults to "" when unset', () => {
+    expect(getSettings().shareChurchName).toBe('');
+  });
+
+  it('persists a chosen church name and reads it back', () => {
+    const after = updateSettings({ shareChurchName: 'Grace Chapel' });
+    expect(after.shareChurchName).toBe('Grace Chapel');
+    expect(getSettings().shareChurchName).toBe('Grace Chapel');
+    expect(readFile().shareChurchName).toBe('Grace Chapel');
+  });
+
+  it('falls back to the default when settings.json holds a non-string value', () => {
+    writeFile({ shareChurchName: 42 });
+    expect(getSettings().shareChurchName).toBe('');
+  });
+
+  it('has no env override', () => {
+    updateSettings({ shareChurchName: 'from-file' });
+    process.env.SOUND_BUDDY_SHARE_CHURCH_NAME = 'from-env';
+    expect(getSettings().shareChurchName).toBe('from-file');
+    delete process.env.SOUND_BUDDY_SHARE_CHURCH_NAME;
+  });
+});
+
 describe('upsertRig', () => {
   it('generates a stable id and appends a rig without one', () => {
     upsertRig(makeRig());
