@@ -59,6 +59,13 @@ describe('Unified Analyze source picker gate (#543)', () => {
     expect(inlineApp).toContain('window.analyzeSourceState.targetModeFor(');
   });
 
+  it('inline-app.js surfaces an error instead of silently no-opping on an unrecognized source id', () => {
+    // targetModeFor returns undefined for an unknown id specifically so a typo
+    // "fails loudly instead of silently no-op'ing" (analyze-source-state.js) —
+    // the picker's click handler must honor that contract, not just close.
+    expect(inlineApp).toMatch(/mode === undefined[\s\S]{0,160}console\.error/);
+  });
+
   it('inline-app.js still falls back to chooseAndAnalyzeFile when the flag is off (additive guarantee)', () => {
     expect(inlineApp).toContain('function chooseAndAnalyzeFile()');
     expect(inlineApp).toContain('chooseAndAnalyzeFile();');

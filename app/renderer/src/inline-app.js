@@ -1470,7 +1470,8 @@ document.querySelectorAll('[data-analyze-source]').forEach(btn => {
     const mode = window.analyzeSourceState.targetModeFor(btn.dataset.analyzeSource);
     closeAnalyzeSourcePicker();
     if (mode === null) { chooseAndAnalyzeFile(); return; }
-    if (mode) document.querySelector(`.mode-tab[data-mode="${mode}"]`).click();
+    if (mode === undefined) { console.error(`analyze-source-picker: unrecognized source "${btn.dataset.analyzeSource}"`); return; }
+    document.querySelector(`.mode-tab[data-mode="${mode}"]`).click();
   });
 });
 document.getElementById('source-picker-cancel').addEventListener('click', closeAnalyzeSourcePicker);
