@@ -36,6 +36,8 @@ import {
   reportDeltaView,
   noteSubmitPayload,
   commitReportCardNote,
+  isStrongGrade,
+  strongMixTargetMeta,
   type ReportCardSource,
   type ProfileComparison,
   type RecordingType,
@@ -79,6 +81,7 @@ interface FeedbackRingoutApi {
 interface InlineDialogsApi {
   openPhaseDoublingDialog(): void;
   openFeedbackRingout(): void;
+  saveMixAsTarget?(): void | Promise<boolean>;
 }
 
 function getGrading(): GradingApi {
@@ -358,6 +361,8 @@ export default function ReportCardIsland() {
   let feedbackPeak: FeedbackPeak | null = null;
   let feedbackCallout: FeedbackRingoutCalloutView | null = null;
   let scoreRows: ScoreRow[] | null = null;
+  let showSaveTarget = false;
+  let saveTargetSaved = false;
 
   if (!isHistoryCard && source) {
     const grading = getGrading();
@@ -379,6 +384,16 @@ export default function ReportCardIsland() {
     phaseSignal = getPhaseDoublingState().detectPhaseSignal({ deviation: comparison ? comparison.deviation : undefined });
     feedbackPeak = getFeedbackRingout().detectFeedbackSignal(source.curve || null, getFindSpectralPeaks());
     feedbackCallout = getFeedbackRingout().reportCardCallout(feedbackPeak);
+
+    // "Save this mix as your target" CTA (#263) — surfaces the existing free
+    // profileFromMeasuredCurve path after a strong (A/B) grade with a usable
+    // curve. "Saved" is derived from the active idealProfile rather than local
+    // state: after the save, the newly-created custom profile becomes active
+    // via the bridge, so this flips to true with no extra effect/state.
+    showSaveTarget = !!grade && isStrongGrade(grade.letter) && hasUsableCurve(source.curve);
+    const targetMeta = showSaveTarget ? strongMixTargetMeta(source.filename) : null;
+    const ip = idealProfile as { id?: string; source?: string } | null;
+    saveTargetSaved = !!targetMeta && ip?.source === 'custom' && ip.id === targetMeta.id;
   }
 
   // "vs. last time" delta (#259) — only for the fresh file-analysis card and
@@ -454,6 +469,11 @@ export default function ReportCardIsland() {
           feedbackRingout={feedbackCallout}
           onOpenPhaseDoubling={() => getInlineDialogs()?.openPhaseDoublingDialog()}
           onOpenFeedbackRingout={() => getInlineDialogs()?.openFeedbackRingout()}
+          showSaveTarget={showSaveTarget}
+          saveTargetSaved={saveTargetSaved}
+          /* c8 ignore next -- interaction-only glue; no jsdom in this harness to
+             click the button (renderToString doesn't run DOM events). */
+          onSaveAsTarget={() => { void getInlineDialogs()?.saveMixAsTarget?.(); }}
           noteValue={noteDraft}
           noteEditable={!!lastSavedSummaryFile}
           onNoteChange={setNoteDraft}

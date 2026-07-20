@@ -9,7 +9,7 @@ const {
   iconSvg, fmt, gradeRingHTML, profileMatchHTML,
   recTypePillClass, recTypePillHTML, buildMetricRows, metricRowsHTML,
   whyGradeHTML, recListHTML, reportCardSourceFromAnalysis,
-  buildAnalysisSummaryInput,
+  buildAnalysisSummaryInput, strongMixTargetMeta,
 } = window.reportCard;
 
 /* ══ Share Image export (#265) + Export PNG's metadata guard (#368) —
@@ -4245,9 +4245,24 @@ function closePhaseDoublingDialog() {
   aiEl('phase-doubling-dialog').style.display = 'none';
 }
 
+// #263: one-click "save this mix's tone as your target" from the report-card
+// CTA. Reuses the exact profileFromMeasuredCurve → upsert → persist path the
+// "Create new curve…" capture button uses; no new curve logic. Auto-names the
+// profile from the current recording (deterministic id → re-click updates it).
+async function saveMixAsTarget() {
+  const analysis = curAnalysis();
+  if (!analysis || !ipHasCurve(analysis.spectrum)) return false;
+  const src = getReportCardSource();
+  const meta = strongMixTargetMeta(src ? src.filename : '');
+  const profile = window.idealCurves.profileFromMeasuredCurve(analysis.spectrum.curve, IP_GRID_FREQS, meta);
+  if (!profile) return false;
+  const next = window.idealCurves.upsertProfile(customIdealProfiles, profile);
+  return persistCustomIdealProfiles(next, `custom:${profile.id}`);
+}
+
 // Bridges ReportCard.tsx's phase-doubling/feedback-ringout callout buttons to
 // the still-inline dialogs they open (TD-001 slice 4, #422).
-window.inlineDialogs = { openPhaseDoublingDialog, openFeedbackRingout };
+window.inlineDialogs = { openPhaseDoublingDialog, openFeedbackRingout, saveMixAsTarget };
 
 (() => {
   aiEl('phase-doubling-close').addEventListener('click', closePhaseDoublingDialog);

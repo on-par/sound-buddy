@@ -87,6 +87,13 @@ export interface ReportCardProps {
   feedbackRingout?: FeedbackRingoutView | null;
   onOpenPhaseDoubling?: () => void;
   onOpenFeedbackRingout?: () => void;
+  /** Show the "save this mix as your target" CTA (#263) — gated to A/B grades
+   *  with a usable curve by the caller. */
+  showSaveTarget?: boolean;
+  /** True once this mix has already been saved as the active target curve — flips
+   *  the CTA to a done state instead of hiding it. */
+  saveTargetSaved?: boolean;
+  onSaveAsTarget?: () => void;
   /** Optional one-line handoff note for the next volunteer (#267). Editable
    *  only once the underlying record has actually been written — disabled
    *  (not hidden) beforehand so the field's presence doesn't shift layout. */
@@ -112,6 +119,9 @@ export default function ReportCard({
   feedbackRingout,
   onOpenPhaseDoubling,
   onOpenFeedbackRingout,
+  showSaveTarget = false,
+  saveTargetSaved = false,
+  onSaveAsTarget,
   noteValue = '',
   noteEditable = false,
   onNoteChange,
@@ -254,6 +264,28 @@ export default function ReportCard({
           <h2>Spectrum Over Time</h2>
           <div className="rc-heatmap" id="rc-heatmap" dangerouslySetInnerHTML={{ __html: frames.heatmapHTML }} />
           <div className="rc-frame-curves" id="rc-frame-curves" dangerouslySetInnerHTML={{ __html: frames.curvesHTML }} />
+        </div>
+      )}
+      {showSaveTarget && (
+        <div className="rc-section pd-launch" id="rc-save-target">
+          <div className="pd-launch-body">
+            <span className="pd-launch-title" id="rc-save-target-title">
+              This mix graded well — lock in its tone
+            </span>
+            <span className="pd-launch-sub" id="rc-save-target-sub">
+              Save its tonal balance as a reusable target curve, then grade future
+              services against the sound you already nailed.
+            </span>
+          </div>
+          <button
+            type="button"
+            id="rc-save-target-btn"
+            className="btn btn-primary sm"
+            disabled={saveTargetSaved}
+            onClick={onSaveAsTarget}
+          >
+            {saveTargetSaved ? 'Saved as a target curve ✓' : 'Save this mix’s tone as your target'}
+          </button>
         </div>
       )}
       <div className="rc-section">

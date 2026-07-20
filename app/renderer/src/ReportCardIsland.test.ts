@@ -389,3 +389,54 @@ describe('ReportCardIsland — handoff note (#267)', () => {
     expect(html).not.toContain('id="rc-note-text"');
   });
 });
+
+describe('ReportCardIsland — "save this mix as your target" CTA (#263)', () => {
+  const CURVE_ANALYSIS = {
+    ...ANALYSIS,
+    spectrum: { ...ANALYSIS.spectrum, curve: { freqs: [100, 200, 300], db: [-10, -12, -14] } },
+  };
+
+  afterEach(() => {
+    gradingMock.computeGrade = () => 'A';
+  });
+
+  it('shows the CTA for an A grade with a usable curve', () => {
+    useAnalysisStore.setState({ currentAnalysis: CURVE_ANALYSIS, status: 'done' });
+
+    const html = renderMarkup();
+
+    expect(html).toContain('id="rc-save-target"');
+    expect(html).toContain('Save this mix’s tone as your target');
+  });
+
+  it('flips to the saved/disabled state once the matching custom profile is active', () => {
+    useAnalysisStore.setState({ currentAnalysis: CURVE_ANALYSIS, status: 'done' });
+    useSpectrumStore.setState({
+      idealProfile: {
+        id: 'strongmix-silence', source: 'custom', label: 'Target from silence', dbOffsets: [-10, -12, -14],
+      } as unknown as { label: string; dbOffsets: number[] },
+    });
+
+    const html = renderMarkup();
+
+    expect(html).toContain('Saved as a target curve');
+    expect(html).toMatch(/id="rc-save-target-btn"[^>]*disabled=""/);
+  });
+
+  it('hides the CTA for a C-or-below grade', () => {
+    gradingMock.computeGrade = () => 'C';
+    useAnalysisStore.setState({ currentAnalysis: CURVE_ANALYSIS, status: 'done' });
+
+    const html = renderMarkup();
+
+    expect(html).not.toContain('id="rc-save-target"');
+  });
+
+  it('hides the CTA for an A grade with no usable curve', () => {
+    useAnalysisStore.setState({ currentAnalysis: ANALYSIS, status: 'done' });
+
+    const html = renderMarkup();
+
+    expect(html).not.toContain('id="rc-save-target"');
+  });
+});
