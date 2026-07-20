@@ -1,9 +1,11 @@
 // Smoke-check the built pricing section: Founding Lifetime must be the visually
 // dominant, first-listed tier through the July launch window (#290), the #196
-// download-before-purchase CTA hierarchy must hold, and the #260 MxU constraint
-// must never regress.
+// download-before-purchase CTA hierarchy must hold, the #260 MxU constraint
+// must never regress, and the Founding urgency block / hero version string
+// must satisfy the #560 invariants.
 import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
+import { checkFoundingUrgencyInvariants, checkHeroVersionInvariant } from './lib/pricing-invariants.mjs';
 
 const indexPath = fileURLToPath(new URL('../dist/index.html', import.meta.url));
 const html = await readFile(indexPath, 'utf8');
@@ -61,23 +63,7 @@ if (html.includes('MxU')) {
   problems.push('Built HTML contains "MxU" — the #260 measurement-price comparison is banned.');
 }
 
-// #377 — Founding urgency must be synced to a machine-readable drop date.
-const deadlineMatch = html.match(/data-drop-deadline="([^"]+)"/);
-if (!deadlineMatch) {
-  problems.push('Founding countdown missing — no data-drop-deadline anchor in built HTML (#377).');
-} else if (Number.isNaN(new Date(deadlineMatch[1]).getTime())) {
-  problems.push(`data-drop-deadline is not a valid date: "${deadlineMatch[1]}" (#377).`);
-}
-if (!/data-fc-remaining/.test(html)) {
-  problems.push('Founding countdown missing its live-remaining (data-fc-remaining) node (#377).');
-}
-if (!/demo video/i.test(html)) {
-  problems.push('Countdown copy must reference the demo video drop (#377).');
-}
-const countdownIdx = html.indexOf('founding-countdown');
-if (countdownIdx === -1 || !(pricingSectionIdx !== -1 && countdownIdx > pricingSectionIdx)) {
-  problems.push('Founding countdown must render inside the #pricing section (#377).');
-}
+problems.push(...checkFoundingUrgencyInvariants(html), ...checkHeroVersionInvariant(html));
 
 // #559 — the money-back guarantee must be visible inside the pricing block,
 // not just in the footer, and must link to the policy it quotes.
