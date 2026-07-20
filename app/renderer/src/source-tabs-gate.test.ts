@@ -30,8 +30,8 @@ const upgradeMomentum = fs.readFileSync(fileURLToPath(new URL('../upgrade-moment
 // strip on adversarial nested-comment input would at worst leave stray
 // `<!--`/`-->` text in the value diffed against, not an injection.
 function stripComments(source: string): string {
+  // codeql[js/incomplete-multi-character-sanitization]
   return source
-    // codeql[js/incomplete-multi-character-sanitization]
     .replace(/<!--[\s\S]*?-->/g, '')
     .replace(/^\s*\/\/.*$/gm, '');
 }
