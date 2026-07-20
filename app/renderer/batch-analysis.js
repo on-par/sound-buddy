@@ -77,9 +77,16 @@
     if (r.status === 'ok') {
       var gradeClass = String(r.gradeLetter == null ? '' : r.gradeLetter).toLowerCase().replace(/[^a-z]/g, '');
       var safeGrade = escapeHtml(r.gradeLetter);
+      // A save failure must stay visible even though the analysis itself
+      // succeeded — otherwise the row looks identical to a fully-persisted
+      // success and the user has no way to know this one never made it
+      // into history.
+      var saveWarningHtml = r.saveError
+        ? '\n      <div class="batch-error">Analyzed, but not saved to history: ' + escapeHtml(r.saveError) + '</div>'
+        : '';
       return '\n    <div class="dir-item recent-row" data-idx="' + index + '">\n' +
         '      <span class="recent-grade" style="color:var(--grade-' + gradeClass + ')">' + safeGrade + '</span>\n' +
-        '      <span class="dir-name">' + safeName + '</span>\n' +
+        '      <span class="dir-name">' + safeName + '</span>' + saveWarningHtml + '\n' +
         '    </div>';
     }
     var safeError = escapeHtml(r.error || (r.status === 'cancelled' ? 'Cancelled' : 'Analysis failed'));
@@ -114,12 +121,24 @@
     return batchRunning === true;
   }
 
+  var DEFAULT_EMPTY_FOLDER_MESSAGE = 'No audio files in that folder — pick a folder containing your service recordings.';
+
+  // The Directory tab's empty-state copy after a folder is chosen: a genuine
+  // "this folder has no audio files" gets the generic message, but a failed
+  // scan (deleted folder, permission denied, a rejected IPC call) must surface
+  // its own actionable error instead of looking identical to an empty folder.
+  function dirEmptyMessage(res) {
+    if (res && res.success === false && res.error) return res.error;
+    return DEFAULT_EMPTY_FOLDER_MESSAGE;
+  }
+
   var api = {
     runBatch: runBatch,
     batchRowHtml: batchRowHtml,
     progressText: progressText,
     summaryText: summaryText,
     shouldSuppressPushedResult: shouldSuppressPushedResult,
+    dirEmptyMessage: dirEmptyMessage,
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.batchAnalysis = api;

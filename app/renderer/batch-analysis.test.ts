@@ -44,12 +44,14 @@ const {
   progressText,
   summaryText,
   shouldSuppressPushedResult,
+  dirEmptyMessage,
 } = require('./batch-analysis.js') as {
   runBatch: (files: string[], deps: RunBatchDeps) => Promise<ResultRow[]>;
   batchRowHtml: (result: ResultRow, index: number, escapeHtml: (s: unknown) => string) => string;
   progressText: (done: number, total: number) => string;
   summaryText: (results: ResultRow[]) => string;
   shouldSuppressPushedResult: (batchRunning: boolean) => boolean;
+  dirEmptyMessage: (res: { success: boolean; error?: string } | null) => string;
 };
 
 function escapeHtml(s: unknown): string {
@@ -241,6 +243,24 @@ describe('batchRowHtml', () => {
     expect(html).toContain('sunday.wav');
   });
 
+  it('renders an ok row that carries a saveError with a visible, escaped warning — never a silent-looking success', () => {
+    const html = batchRowHtml(
+      {
+        filePath: '/x/sunday.wav',
+        filename: 'sunday.wav',
+        status: 'ok',
+        gradeLetter: 'B',
+        score: 82,
+        saveError: 'ENOSPC: no space left on device',
+      },
+      0,
+      escapeHtml,
+    );
+    expect(html).toContain('batch-error');
+    expect(html).toContain('ENOSPC: no space left on device');
+    expect(html).toContain('not saved to history');
+  });
+
   it('renders a non-ok row with batch-failed and the specific escaped error', () => {
     const html = batchRowHtml(
       { filePath: '/x/broken.wav', filename: 'broken.wav', status: 'error', error: 'ffprobe exited 1' },
@@ -306,5 +326,24 @@ describe('shouldSuppressPushedResult', () => {
   it('suppresses only while a batch is running', () => {
     expect(shouldSuppressPushedResult(true)).toBe(true);
     expect(shouldSuppressPushedResult(false)).toBe(false);
+  });
+});
+
+describe('dirEmptyMessage', () => {
+  it('shows the actionable folder-read error instead of the generic empty-folder copy', () => {
+    expect(dirEmptyMessage({ success: false, error: 'Could not read that folder — check it still exists and you have permission to read it.' }))
+      .toBe('Could not read that folder — check it still exists and you have permission to read it.');
+  });
+
+  it('falls back to the generic empty-folder copy for a genuinely empty folder', () => {
+    expect(dirEmptyMessage({ success: true, files: [] } as unknown as { success: boolean })).toBe(
+      'No audio files in that folder — pick a folder containing your service recordings.',
+    );
+  });
+
+  it('falls back to the generic copy when the IPC call itself rejected (res is null)', () => {
+    expect(dirEmptyMessage(null)).toBe(
+      'No audio files in that folder — pick a folder containing your service recordings.',
+    );
   });
 });
