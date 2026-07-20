@@ -1,0 +1,10 @@
+#4.0# "Sunday PM"
+/ch/01/config "Kick"
+/ch/01/mix OFF -3.0
+/ch/01/preamp +10.0
+/ch/02/config "Snare"
+/ch/02/mix ON -2.0
+/ch/02/preamp +14.0
+/ch/03/config "Vocal"
+/ch/03/mix ON +2.0
+/ch/03/preamp +11.0

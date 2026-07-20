@@ -17,6 +17,7 @@ import type {
   UpdateStatus,
   UpdateDownloadStatus,
   FeedbackSubmission,
+  DiffScenesOpts,
 } from './ipc/api';
 
 // The slice of Electron's IpcRenderer the bridge actually uses. Injected so
@@ -126,6 +127,9 @@ export function createBridge(ipc: IpcRendererLike) {
     // Path to the bundled demo recording for the first-run onboarding flow (#69).
     // Resolves to null when the asset is absent so the renderer can fall back.
     getDemoAudio: () => ipc.invoke('get-demo-audio'),
+
+    // Scene-file diff (#264) — parses and diffs two dropped M32R .scn files.
+    diffScenes: (opts: DiffScenesOpts) => ipc.invoke('diff-scenes', opts),
 
     // Dev/e2e switch (SOUND_BUDDY_DISABLE_ONBOARDING) for the first-run overlay (#69).
     isOnboardingDisabled: () => ipc.invoke('onboarding-disabled'),

@@ -47,6 +47,14 @@ extraResources:
     to: license-policy
     filter:
       - "**/*"
+  # Compiled CommonJS build of the scene-inspector M32R .scn parser/diff (#264)
+  # — the package ships ESM-only, so the app's CommonJS main process loads
+  # this build at runtime via electron/scene-inspector-loader.ts from
+  # Contents/Resources/scene-inspector, mirroring engine/ and license-policy/.
+  - from: ../packages/scene-inspector/dist-cjs
+    to: scene-inspector
+    filter:
+      - "**/*"
   # First-run onboarding demo recording (#69). Ships outside the asar so the
   # external sox/ffprobe processes can read it (same rationale as scripts).
   - from: assets
