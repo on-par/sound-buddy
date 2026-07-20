@@ -28,6 +28,10 @@ export type SettingsSection = 'storage' | 'ai' | 'about';
 // the IPC boundary (same reasoning as inline-app.js's own copy).
 const HOSTED_PROVIDER_IDS = new Set(['openai', 'anthropic', 'google', 'custom']);
 
+// Day-of-week options for the weekly reminder's service-day <select> (#268),
+// index-aligned with Date.prototype.getDay() (0 = Sunday … 6 = Saturday).
+const DAY_LABELS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+
 type SettingsStoreHandle = UseBoundStore<StoreApi<SettingsState>>;
 
 interface OllamaProbeResult {
@@ -288,6 +292,8 @@ export default function SettingsPanel() {
   const [crashReportingEnabled, setCrashReportingEnabled] = useState(false);
   const [dawWorkspaceEnabled, setDawWorkspaceEnabled] = useState(false);
   const [liveAdjustmentsEnabled, setLiveAdjustmentsEnabled] = useState(false);
+  const [weeklyReminderEnabled, setWeeklyReminderEnabled] = useState(false);
+  const [weeklyReminderServiceDay, setWeeklyReminderServiceDay] = useState(0);
 
   const hostedModelInputRef = useRef<HTMLInputElement>(null);
   const detectSeqRef = useRef(0);
@@ -322,6 +328,8 @@ export default function SettingsPanel() {
     setCrashReportingEnabled(!!settings?.crashReportingEnabled);
     setDawWorkspaceEnabled(!!settings?.dawWorkspaceEnabled);
     setLiveAdjustmentsEnabled(!!settings?.liveAdjustmentsEnabled);
+    setWeeklyReminderEnabled(!!settings?.weeklyReminderEnabled);
+    setWeeklyReminderServiceDay(settings?.weeklyReminderServiceDay ?? 0);
     let cancelled = false;
     void (async () => {
       const [seed, storageSeed] = await Promise.all([loadSettingsSeed(api, settings?.aiEnabled ?? true), loadStorageSeed(api)]);
@@ -396,7 +404,14 @@ export default function SettingsPanel() {
     void commitShareChurchName(useSettingsStore, shareChurchName);
     const storagePatch = buildStoragePatch(
       pendingDir,
-      { usageSignalEnabled, crashReportingEnabled, dawWorkspaceEnabled, liveAdjustmentsEnabled },
+      {
+        usageSignalEnabled,
+        crashReportingEnabled,
+        dawWorkspaceEnabled,
+        liveAdjustmentsEnabled,
+        weeklyReminderEnabled,
+        weeklyReminderServiceDay,
+      },
       settings
     );
     void saveAll(
@@ -527,6 +542,38 @@ export default function SettingsPanel() {
           <p className="ai-dialog-note" id="live-adjustments-note">
             Off unless you turn it on. An early, experimental area for mix suggestions while you monitor or record in
             Live Capture. Nothing is analyzed or sent anywhere — turn this off anytime to hide it.
+          </p>
+          <label className="ai-enable-row">
+            <input
+              type="checkbox"
+              id="weekly-reminder-toggle"
+              checked={weeklyReminderEnabled}
+              onChange={(e) => setWeeklyReminderEnabled(e.target.checked)}
+            />
+            Remind me to grade my weekly service
+          </label>
+          <label className="ai-field">
+            <span className="ai-field-label">Service day</span>
+            <div className="select-wrap">
+              <select
+                id="weekly-reminder-day"
+                aria-label="Service day"
+                value={weeklyReminderServiceDay}
+                onChange={(e) => setWeeklyReminderServiceDay(Number(e.target.value))}
+              >
+                {DAY_LABELS.map((label, i) => (
+                  <option key={label} value={i}>
+                    {label}
+                  </option>
+                ))}
+              </select>
+              <span className="select-caret" data-icon="chevron-down" />
+            </div>
+          </label>
+          <p className="ai-dialog-note" id="weekly-reminder-note">
+            Off unless you turn it on. Sound Buddy shows a local notification on this Mac the evening before your
+            service day, reminding you to record and grade it. Nothing leaves your machine — no account, no email, no
+            server.
           </p>
         </div>
         <div className="settings-pane" id="settings-pane-ai" style={{ display: section === 'ai' ? 'flex' : 'none' }}>

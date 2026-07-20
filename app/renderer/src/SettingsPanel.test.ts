@@ -278,7 +278,7 @@ describe('saveAll', () => {
       saveLlmConfig: async () => ({ ok: true, config }),
       updateSettings: async (patch) => {
         mock.calls.push({ method: 'updateSettings', args: [patch] });
-        return { aiEnabled: true, idealProfile: '', customIdealProfiles: [], storageDir: '', rigs: [], activeRigId: null, usageSignalEnabled: false, channelLabels: {}, channelGroups: {}, inputInstrumentProfiles: {}, crashReportingEnabled: false, dawWorkspaceEnabled: false, liveAdjustmentsEnabled: false, reportFirstUxEnabled: false, shareChurchName: '' };
+        return { aiEnabled: true, idealProfile: '', customIdealProfiles: [], storageDir: '', rigs: [], activeRigId: null, usageSignalEnabled: false, channelLabels: {}, channelGroups: {}, inputInstrumentProfiles: {}, crashReportingEnabled: false, dawWorkspaceEnabled: false, liveAdjustmentsEnabled: false, reportFirstUxEnabled: false, shareChurchName: '', weeklyReminderEnabled: false, weeklyReminderServiceDay: 0 };
       },
     });
     const store = createSettingsStore(() => mock.api);

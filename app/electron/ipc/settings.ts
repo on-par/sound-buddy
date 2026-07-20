@@ -11,6 +11,7 @@ import { pathToFileURL } from 'url';
 import { resolveAppVersion } from '../app-version';
 import { logWarn } from '../logger';
 import { recordTelemetryEvent, clearTelemetryState } from '../telemetry';
+import { scheduleWeeklyReminder } from '../weekly-reminder';
 import {
   getSettings,
   updateSettings,
@@ -45,6 +46,10 @@ const MAX_PROFILE_ID_LEN = 64;
 // renderer's share-card.ts MAX_CHURCH_NAME_LEN. Defined here too since main
 // can't import from the renderer program.
 const MAX_SHARE_CHURCH_NAME_LEN = 40;
+// Valid range for weeklyReminderServiceDay (#268) — 0 = Sunday … 6 = Saturday,
+// matching Date.prototype.getDay().
+const MIN_SERVICE_DAY = 0;
+const MAX_SERVICE_DAY = 6;
 
 /** A plain, non-array, non-null object. */
 function isPlainObject(v: unknown): v is Record<string, unknown> {
@@ -231,11 +236,29 @@ export function registerSettingsHandlers(): void {
       // this is gated on the sanitizer's null (invalid input), not falsiness.
       const shareChurchName = sanitizeShareChurchName(patch.shareChurchName);
       if (shareChurchName !== null) clean.shareChurchName = shareChurchName;
+      // Opt-in local weekly reminder (#268). Fully local — no server, no
+      // telemetry. Re-armed below once the patch is persisted.
+      if (typeof patch.weeklyReminderEnabled === 'boolean') {
+        clean.weeklyReminderEnabled = patch.weeklyReminderEnabled;
+      }
+      if (
+        typeof patch.weeklyReminderServiceDay === 'number' &&
+        Number.isInteger(patch.weeklyReminderServiceDay) &&
+        patch.weeklyReminderServiceDay >= MIN_SERVICE_DAY &&
+        patch.weeklyReminderServiceDay <= MAX_SERVICE_DAY
+      ) {
+        clean.weeklyReminderServiceDay = patch.weeklyReminderServiceDay;
+      }
     }
     const result = updateSettings(clean);
     // Opting out of telemetry (#474) clears the pending queue and the
     // install id, so a later opt-in starts with a fresh anonymous identity.
     if (clean.usageSignalEnabled === false) clearTelemetryState();
+    // Re-arm (or cancel) the local weekly reminder whenever either of its two
+    // keys changes — turning the toggle off clears the pending timer (#268).
+    if (clean.weeklyReminderEnabled !== undefined || clean.weeklyReminderServiceDay !== undefined) {
+      scheduleWeeklyReminder();
+    }
     return result;
   });
 
