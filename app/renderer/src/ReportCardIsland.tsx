@@ -31,6 +31,8 @@ import {
   contentTypeView,
   reportCardFramesView,
   reportDeltaView,
+  noteSubmitPayload,
+  commitReportCardNote,
   type ReportCardSource,
   type ProfileComparison,
   type RecordingType,
@@ -103,6 +105,8 @@ interface HistorySummary {
   score: number;
   recordingType: string;
   topFixes: string[];
+  /** Optional one-line handoff note for the next volunteer (#267). */
+  note?: string;
 }
 
 // Renders a stored summary-only record (#147) — no metrics/bands/spectrum/
@@ -128,6 +132,7 @@ function HistoryCard({ summary, delta }: { summary: HistorySummary; delta?: Repo
           <div id="rc-delta" className={`rc-delta ${delta.direction}`}>{delta.text}</div>
         )}
       </div>
+      {summary.note && <p className="rc-note-text" id="rc-note-text">{summary.note}</p>}
       <div className="rc-section">
         <h2>Recommendations</h2>
         <div
@@ -225,17 +230,64 @@ function hasUsableCurve(curve: unknown): curve is SpectrumCurve {
 }
 
 export default function ReportCardIsland() {
-  const { currentAnalysis, selectedFilePath, historySummary, liveSource, prevSummary, status } = useStoreShallow(
-    useAnalysisStore,
-    (s) => ({
+  const sb = useElectron();
+  const { currentAnalysis, selectedFilePath, historySummary, liveSource, prevSummary, status, lastSavedSummaryFile } =
+    useStoreShallow(useAnalysisStore, (s) => ({
       currentAnalysis: s.currentAnalysis,
       selectedFilePath: s.selectedFilePath,
       historySummary: s.historySummary,
       liveSource: s.liveSource,
       prevSummary: s.prevSummary,
       status: s.status,
-    })
-  );
+      lastSavedSummaryFile: s.lastSavedSummaryFile,
+    }));
+  const [noteDraft, setNoteDraft] = useState('');
+  // noteDraftRef mirrors the latest draft text every render, so the flush
+  // effect below can read "what the user was typing" without adding noteDraft
+  // as a dependency (which would re-run it on every keystroke). prevNoteFileRef
+  // is different: it's updated only inside the effect itself, so at the start
+  // of each run it still holds the *previous* lastSavedSummaryFile — updating
+  // it on every render (like noteDraftRef) would make "previous" and
+  // "current" the same value by the time the effect reads it.
+  const noteDraftRef = useRef(noteDraft);
+  noteDraftRef.current = noteDraft;
+  const prevNoteFileRef = useRef(lastSavedSummaryFile);
+  const lastCommittedNoteRef = useRef('');
+  /* c8 ignore start -- thin wiring invoked by the input's onBlur; no jsdom in
+     this harness to dispatch a blur event (renderToString doesn't run DOM
+     events). The logic that can actually break — payload construction,
+     success/failure handling, rejection handling — is extracted into
+     commitReportCardNote/noteSubmitPayload and fully covered by
+     report-card.test.ts. */
+  const commitNote = (value: string) => {
+    lastCommittedNoteRef.current = noteSubmitPayload(lastSavedSummaryFile, value)?.note ?? lastCommittedNoteRef.current;
+    void commitReportCardNote(sb.setAnalysisSummaryNote, lastSavedSummaryFile, value);
+  };
+  /* c8 ignore stop */
+  // A new fresh-analysis save (or a return to no-file state) always starts the
+  // note field blank — it's a per-record field, never carried over from the
+  // previous card (#267). Flushes an uncommitted edit against the *previous*
+  // file first: disabling the input as a new analysis lands force-blurs a
+  // still-focused field, and that native blur fires against the already-reset
+  // (null) lastSavedSummaryFile, so relying on onBlur alone silently drops the
+  // in-progress edit — skip the flush once it's already been committed via a
+  // normal blur (no double-write of the same value).
+  /* c8 ignore start -- passive effect with no DOM/store side effect beyond
+     local state; no jsdom in this harness (renderToString doesn't run
+     effects, and the constitution forbids adding a new test framework) —
+     exercised by the report-card e2e. */
+  useEffect(() => {
+    const prevFile = prevNoteFileRef.current;
+    const draft = noteDraftRef.current;
+    const pending = noteSubmitPayload(prevFile, draft);
+    if (pending && pending.note !== lastCommittedNoteRef.current) {
+      void commitReportCardNote(sb.setAnalysisSummaryNote, prevFile, draft);
+    }
+    prevNoteFileRef.current = lastSavedSummaryFile;
+    setNoteDraft('');
+    lastCommittedNoteRef.current = '';
+  }, [lastSavedSummaryFile, sb]);
+  /* c8 ignore stop */
   const { idealProfile, isAutoProfile } = useStoreShallow(useSpectrumStore, (s) => ({
     idealProfile: s.idealProfile,
     isAutoProfile: s.isAutoProfile,
@@ -350,6 +402,10 @@ export default function ReportCardIsland() {
           feedbackRingout={feedbackCallout}
           onOpenPhaseDoubling={() => getInlineDialogs()?.openPhaseDoublingDialog()}
           onOpenFeedbackRingout={() => getInlineDialogs()?.openFeedbackRingout()}
+          noteValue={noteDraft}
+          noteEditable={!!lastSavedSummaryFile}
+          onNoteChange={setNoteDraft}
+          onNoteCommit={commitNote}
         />
       ) : (
         <div id="rc-content" style={{ display: 'none' }} />

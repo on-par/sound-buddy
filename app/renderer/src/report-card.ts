@@ -16,6 +16,7 @@
 // the narrow GradingPillApi interface (constitution: deps are injected, not
 // imported globally).
 
+import { MAX_NOTE_LENGTH } from '../../electron/ipc/api';
 import {
   escapeHtml, toPct, DIM_DB, HOT_DB, GRID, BAND_META,
   heatmapSVG, miniCurveSVG, fmtDur, classLabel, pickRepresentativeFrames,
@@ -733,4 +734,34 @@ export function reportDeltaView(
   }
 
   return { points, direction, text };
+}
+
+/* ── Handoff note (#267) ──
+   MAX_NOTE_LENGTH re-exported so callers (ReportCard.tsx's input maxLength)
+   need only import this module, not reach into electron/ipc/api directly. */
+export { MAX_NOTE_LENGTH };
+
+/** The IPC payload for committing a draft note, or null when there is no
+ *  freshly-saved record to patch yet (fresh save still in flight, or a
+ *  historical card is loaded — the note field is add-at-save-time only). */
+export function noteSubmitPayload(file: string | null, rawValue: string): { file: string; note: string } | null {
+  if (!file) return null;
+  return { file, note: rawValue.trim().slice(0, MAX_NOTE_LENGTH) };
+}
+
+/** Commits a draft note via the injected IPC call, swallowing/logging failure
+ *  the same way the fire-and-forget saveAnalysisSummary path does — a note
+ *  patch failing must never surface as an error to the user, just a warning. */
+export function commitReportCardNote(
+  setNote: (input: { file: string; note: string }) => Promise<{ success: boolean; error?: string }>,
+  file: string | null,
+  rawValue: string,
+): Promise<void> {
+  const payload = noteSubmitPayload(file, rawValue);
+  if (!payload) return Promise.resolve();
+  return setNote(payload)
+    .then((res) => {
+      if (!res.success) console.warn('setAnalysisSummaryNote failed', res.error);
+    })
+    .catch((err) => console.warn('setAnalysisSummaryNote failed', err));
 }

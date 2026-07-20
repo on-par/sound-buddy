@@ -17,6 +17,7 @@ afterEach(() => {
     historySummary: null,
     liveSource: null,
     prevSummary: null,
+    lastSavedSummaryFile: null,
   });
 });
 
@@ -34,6 +35,7 @@ describe('createAnalysisStore', () => {
     expect(store.getState().historySummary).toBeNull();
     expect(store.getState().liveSource).toBeNull();
     expect(store.getState().prevSummary).toBeNull();
+    expect(store.getState().lastSavedSummaryFile).toBeNull();
   });
 
   it('runs the startAnalysis lifecycle to completion', async () => {
@@ -247,6 +249,37 @@ describe('createAnalysisStore', () => {
 
     store.getState().setHistorySummary(null);
     expect(store.getState().historySummary).toBeNull();
+  });
+
+  it('setHistorySummary resets lastSavedSummaryFile — the note field is add-at-save-time only (#267)', () => {
+    const mock = createMockSoundBuddy();
+    const store = createAnalysisStore(() => mock.api);
+    store.setState({ lastSavedSummaryFile: 'x.json' });
+
+    store.getState().setHistorySummary({ sourceFilename: 'sermon.wav' });
+
+    expect(store.getState().lastSavedSummaryFile).toBeNull();
+  });
+
+  it('clearAnalysis also resets lastSavedSummaryFile (#267)', () => {
+    const mock = createMockSoundBuddy();
+    const store = createAnalysisStore(() => mock.api);
+    store.setState({ lastSavedSummaryFile: 'x.json' });
+
+    store.getState().clearAnalysis();
+
+    expect(store.getState().lastSavedSummaryFile).toBeNull();
+  });
+
+  it('setLastSavedSummaryFile stores/clears the just-written record basename (#267)', () => {
+    const mock = createMockSoundBuddy();
+    const store = createAnalysisStore(() => mock.api);
+
+    store.getState().setLastSavedSummaryFile('2026-07-20T18-00-00-000Z-a1b2c3d4.json');
+    expect(store.getState().lastSavedSummaryFile).toBe('2026-07-20T18-00-00-000Z-a1b2c3d4.json');
+
+    store.getState().setLastSavedSummaryFile(null);
+    expect(store.getState().lastSavedSummaryFile).toBeNull();
   });
 
   it('setLiveSource stores the resolved live-capture report-card source', () => {

@@ -244,11 +244,13 @@
     .dir-fmt { font:var(--fw-semibold) 9px/1 var(--font-mono); letter-spacing:0.05em; color:var(--text-muted); background:var(--surface-raised); border:1px solid var(--border-subtle); border-radius:var(--radius-xs); padding:2px 5px; flex-shrink:0; }
 
     /* Recent services list (#147) */
-    .recent-row { cursor:pointer; }
+    .recent-row { cursor:pointer; flex-wrap:wrap; }
     .recent-row:hover { background:var(--surface-raised); }
     .recent-grade { font:var(--fw-bold) var(--fs-label)/1 var(--font-mono); flex-shrink:0; width:1.2em; text-align:center; }
     .recent-date { font:var(--fw-regular) var(--fs-micro)/1 var(--font-sans); color:var(--text-muted); flex-shrink:0; white-space:nowrap; }
     .recent-empty { text-align:center; padding:12px 0; }
+    /* Handoff note secondary line (#267) — its own line under the grade/date row. */
+    .recent-note { flex-basis:100%; margin-top:2px; font:var(--fw-regular) var(--fs-micro)/1.3 var(--font-sans); color:var(--text-muted); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 
     /* Rough Pass / Contextual Pass toggle (#365) */
     .pass-mode { display:flex; flex-direction:column; gap:8px; margin-bottom:10px; }
@@ -891,6 +893,18 @@
     .rc-rectype { display:inline-flex; align-items:center; gap:8px; padding:5px 12px; border-radius:var(--radius-pill); max-width:420px; }
     .rc-rectype .txt { font:var(--fw-medium) var(--fs-body-sm)/1.35 var(--font-sans); }
     .rc-delta { font:var(--fw-medium) var(--fs-body-sm)/1.35 var(--font-sans); }
+    /* Handoff note (#267) — add-at-save-time field on the freshly-rendered card,
+       plus its read-only rendering on a saved/printed card. */
+    .rc-note { width:100%; max-width:420px; margin:0 auto 30px; text-align:center; }
+    .rc-note-label { display:block; margin-bottom:6px; font:var(--fw-medium) var(--fs-micro)/1 var(--font-sans); letter-spacing:var(--tracking-caps); text-transform:uppercase; color:var(--text-tertiary); }
+    .rc-note-optional { text-transform:none; letter-spacing:normal; font-weight:var(--fw-regular); color:var(--text-muted); }
+    .rc-note-input { width:100%; height:var(--control-h); padding:0 12px; background:var(--surface); color:var(--text-primary); border:1px solid var(--border-default); border-radius:var(--radius-md); font:var(--fw-regular) var(--fs-body-sm)/1 var(--font-sans); outline:none; }
+    .rc-note-input:disabled { opacity:0.5; cursor:not-allowed; }
+    .rc-note-text { margin:6px 0 0; font:var(--fw-regular) var(--fs-body-sm)/1.4 var(--font-sans); color:var(--text-secondary); text-align:left; }
+    /* The fresh-card echo mirrors the input for print only — never on screen,
+       even once it has a value (removing `hidden` alone isn't enough, since
+       a <p> with no hidden attribute is visible by default). */
+    .rc-note-print-mirror { display:none; }
     .rc-delta.improved { color:var(--good-text); }
     .rc-delta.regressed { color:var(--issue-text); }
     .rc-delta.unchanged { color:var(--text-muted); }
@@ -1063,6 +1077,12 @@
       #rc-upgrade { display:none !important; }
       .rc-header h1, .rc-meta, .rc-section h2, .mt-metric, .mt-value, .rc-rec-text, .rc-band-verdict, .rc-ring-label, .rc-empty, .rc-why-rule, .rc-why-none-text { color:#000 !important; }
       .rc-header, .rc-section h2 { border-color:#ccc !important; }
+      /* Handoff note (#267) — the input/"(optional)" hint are interactive-only
+         chrome; the exported PDF shows the note as plain text, never an empty
+         form control. */
+      #rc-note-input, .rc-note-optional { display:none !important; }
+      #rc-note-text[hidden] { display:none !important; }
+      #rc-note-text { display:block !important; color:#000 !important; }
       .metric-table td, .metric-table th { border-color:#ccc !important; color:#111 !important; }
       .rc-bands, .rc-rec, .rc-frame, .rc-why-row, .rc-why-none { background:#f7f7f7 !important; box-shadow:none !important; }
       .rc-frame-tag { color:#000 !important; }

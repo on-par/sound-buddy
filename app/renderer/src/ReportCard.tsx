@@ -27,6 +27,7 @@ import {
   scoreRowsHTML,
   recListHTML,
   bandBreakdownHTML,
+  MAX_NOTE_LENGTH,
   type RecordingType,
   type GradeExplanation,
   type MetricRow,
@@ -86,6 +87,13 @@ export interface ReportCardProps {
   feedbackRingout?: FeedbackRingoutView | null;
   onOpenPhaseDoubling?: () => void;
   onOpenFeedbackRingout?: () => void;
+  /** Optional one-line handoff note for the next volunteer (#267). Editable
+   *  only once the underlying record has actually been written — disabled
+   *  (not hidden) beforehand so the field's presence doesn't shift layout. */
+  noteValue?: string;
+  noteEditable?: boolean;
+  onNoteChange?: (value: string) => void;
+  onNoteCommit?: (value: string) => void;
 }
 
 export default function ReportCard({
@@ -104,6 +112,10 @@ export default function ReportCard({
   feedbackRingout,
   onOpenPhaseDoubling,
   onOpenFeedbackRingout,
+  noteValue = '',
+  noteEditable = false,
+  onNoteChange,
+  onNoteCommit,
 }: ReportCardProps) {
   const showProfile = !!(profile && comparison);
   const showContentTypePill = !!contentType?.pillLabel;
@@ -172,6 +184,26 @@ export default function ReportCard({
           <div className="rc-ribbon" id="rc-ribbon" dangerouslySetInnerHTML={{ __html: contentType?.ribbonSegmentsHTML || '' }} />
           <div className="rc-ribbon-legend" id="rc-ribbon-legend" dangerouslySetInnerHTML={{ __html: contentType?.ribbonLegendHTML || '' }} />
         </div>
+      </div>
+      <div className="rc-note" id="rc-note">
+        <label className="rc-note-label" htmlFor="rc-note-input">
+          Handoff note <span className="rc-note-optional">(optional)</span>
+        </label>
+        <input
+          id="rc-note-input"
+          className="rc-note-input"
+          type="text"
+          maxLength={MAX_NOTE_LENGTH}
+          placeholder="Anything the next volunteer should know?"
+          disabled={!noteEditable}
+          value={noteValue}
+          onChange={(e) => onNoteChange?.(e.target.value)}
+          onBlur={(e) => onNoteCommit?.(e.target.value)}
+        />
+        {/* Print-only mirror of the input above (#267) — .rc-note-print-mirror keeps
+            it invisible on screen even once noteValue is non-empty; the print
+            stylesheet forces it visible in the exported PDF instead. */}
+        <p className="rc-note-text rc-note-print-mirror" id="rc-note-text" hidden={!noteValue}>{noteValue}</p>
       </div>
       {showProfile && (
         <div className="rc-section" id="rc-profile-section">

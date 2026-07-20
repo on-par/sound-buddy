@@ -90,6 +90,7 @@ afterEach(() => {
     historySummary: null,
     liveSource: null,
     prevSummary: null,
+    lastSavedSummaryFile: null,
   });
   useSpectrumStore.setState({
     spectrumData: null,
@@ -331,5 +332,60 @@ describe('ReportCardIsland', () => {
 
     expect(html).toContain('metric-table');
     expect(html).not.toContain('rc-metric-rows');
+  });
+});
+
+describe('ReportCardIsland — handoff note (#267)', () => {
+  it('leaves the note input disabled on a fresh card before the save round trip resolves', () => {
+    useAnalysisStore.setState({ currentAnalysis: ANALYSIS, status: 'done', lastSavedSummaryFile: null });
+
+    const html = renderMarkup();
+
+    expect(html).toMatch(/id="rc-note-input"[^>]*disabled=""/);
+  });
+
+  it('enables the note input once lastSavedSummaryFile is set', () => {
+    useAnalysisStore.setState({ currentAnalysis: ANALYSIS, status: 'done', lastSavedSummaryFile: 'x.json' });
+
+    const html = renderMarkup();
+
+    expect(html).not.toMatch(/id="rc-note-input"[^>]*disabled=""/);
+  });
+
+  it('renders a saved note as read-only text on the frozen history card', () => {
+    useAnalysisStore.setState({
+      historySummary: {
+        sourceFilename: 'sermon.wav',
+        date: '2026-07-01T09:00:00.000Z',
+        gradeLetter: 'B',
+        score: 84,
+        recordingType: 'Music',
+        topFixes: ['Reduce low mids'],
+        note: 'board tech was out',
+      },
+    });
+
+    const html = renderMarkup();
+
+    expect(html).toContain('id="rc-note-text"');
+    expect(html).toContain('board tech was out');
+    expect(html).not.toContain('id="rc-note-input"');
+  });
+
+  it('omits the note paragraph on a history card with no saved note', () => {
+    useAnalysisStore.setState({
+      historySummary: {
+        sourceFilename: 'sermon.wav',
+        date: '2026-07-01T09:00:00.000Z',
+        gradeLetter: 'B',
+        score: 84,
+        recordingType: 'Music',
+        topFixes: [],
+      },
+    });
+
+    const html = renderMarkup();
+
+    expect(html).not.toContain('id="rc-note-text"');
   });
 });

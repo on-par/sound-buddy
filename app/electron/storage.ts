@@ -10,7 +10,7 @@ import { promises as fsp } from 'fs';
 import type { Dirent } from 'fs';
 import { randomUUID } from 'crypto';
 import * as path from 'path';
-import type { AnalysisSummary } from './ipc/api';
+import { MAX_NOTE_LENGTH, type AnalysisSummary } from './ipc/api';
 
 // AnalysisSummary is homed in ipc/api.ts (TD-011, #405) and re-imported
 // above; re-exported here so existing importers of './storage' (ipc/analysis.ts,
@@ -30,7 +30,8 @@ function isAnalysisSummary(value: unknown): value is AnalysisSummary {
     typeof v.gradeLetter === 'string' &&
     typeof v.score === 'number' &&
     typeof v.recordingType === 'string' &&
-    Array.isArray(v.topFixes)
+    Array.isArray(v.topFixes) &&
+    (v.note === undefined || typeof v.note === 'string')
   );
 }
 
@@ -140,6 +141,40 @@ export async function listAnalysisSummaries(
   });
 
   return records.slice(0, limit).map((r) => r.summary);
+}
+
+/**
+ * Patch a single already-saved record's optional handoff note (#267).
+ * Read-modify-write of one addressed file is safe here for the same reason
+ * saveAnalysisSummary's one-file-per-analysis design is (see its doc
+ * comment): no two analyses ever target the same file, so there is never a
+ * concurrent writer to race against.
+ */
+export async function setAnalysisSummaryNote(historyDir: string, file: string, note: string): Promise<void> {
+  if (file !== path.basename(file) || !file.endsWith('.json')) {
+    throw new Error(`Invalid history record name "${file}" — expected a plain .json filename.`);
+  }
+
+  const fullPath = path.join(historyDir, file);
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(await fsp.readFile(fullPath, 'utf8'));
+  } catch {
+    throw new Error(`History record "${file}" is missing or unreadable — the note was not saved.`);
+  }
+  if (!isAnalysisSummary(parsed)) {
+    throw new Error(`History record "${file}" is missing or unreadable — the note was not saved.`);
+  }
+  const record = parsed;
+
+  const trimmed = note.trim();
+  if (trimmed) {
+    record.note = trimmed.slice(0, MAX_NOTE_LENGTH);
+  } else {
+    delete record.note;
+  }
+
+  await fsp.writeFile(fullPath, JSON.stringify(record, null, 2));
 }
 
 /**

@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Patrick Robinson (on-par). All rights reserved.
 // Licensed under the Sound Buddy Desktop Application License (app/LICENSE).
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { createRequire } from 'node:module';
 import {
   iconSvg,
@@ -29,6 +29,8 @@ import {
   bandBreakdownHTML,
   reportCardFramesView,
   reportDeltaView,
+  noteSubmitPayload,
+  commitReportCardNote,
   type PillTone,
   type ProfileComparison,
   type BandDiffApi,
@@ -706,5 +708,58 @@ describe('reportDeltaView', () => {
   it('defends against a malformed current value', () => {
     expect(reportDeltaView({ score: NaN, gradeLetter: 'A' }, { score: 83, gradeLetter: 'B' })).toBeNull();
     expect(reportDeltaView({ score: 92, gradeLetter: '' }, { score: 83, gradeLetter: 'B' })).toBeNull();
+  });
+});
+
+/* ── Handoff note (#267) ── */
+describe('noteSubmitPayload', () => {
+  it('returns null (no IPC call) when there is no lastSavedSummaryFile', () => {
+    expect(noteSubmitPayload(null, 'anything')).toBeNull();
+  });
+
+  it('trims whitespace before dispatch', () => {
+    expect(noteSubmitPayload('x.json', '  used the new wireless pack  ')).toEqual({
+      file: 'x.json',
+      note: 'used the new wireless pack',
+    });
+  });
+
+  it('clamps the note to MAX_NOTE_LENGTH before dispatch', () => {
+    const result = noteSubmitPayload('x.json', 'x'.repeat(500));
+    expect(result?.note).toHaveLength(200);
+  });
+
+  it('dispatches an empty payload for a whitespace-only note (clears the saved note)', () => {
+    expect(noteSubmitPayload('x.json', '   ')).toEqual({ file: 'x.json', note: '' });
+  });
+});
+
+describe('commitReportCardNote', () => {
+  it('does not call setNote when there is no lastSavedSummaryFile', async () => {
+    const setNote = vi.fn();
+    await commitReportCardNote(setNote, null, 'anything');
+    expect(setNote).not.toHaveBeenCalled();
+  });
+
+  it('calls setNote with the trimmed/clamped payload and resolves on success', async () => {
+    const setNote = vi.fn().mockResolvedValue({ success: true });
+    await commitReportCardNote(setNote, 'x.json', '  board tech was out  ');
+    expect(setNote).toHaveBeenCalledWith({ file: 'x.json', note: 'board tech was out' });
+  });
+
+  it('warns without throwing when setNote resolves { success: false }', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const setNote = vi.fn().mockResolvedValue({ success: false, error: 'disk full' });
+    await commitReportCardNote(setNote, 'x.json', 'note text');
+    expect(warn).toHaveBeenCalled();
+    warn.mockRestore();
+  });
+
+  it('warns without throwing when setNote rejects', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const setNote = vi.fn().mockRejectedValue(new Error('IPC down'));
+    await commitReportCardNote(setNote, 'x.json', 'note text');
+    expect(warn).toHaveBeenCalled();
+    warn.mockRestore();
   });
 });

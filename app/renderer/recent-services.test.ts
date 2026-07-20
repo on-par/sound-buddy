@@ -7,6 +7,7 @@ interface Summary {
   date?: string | null;
   sourceFilename?: string;
   gradeLetter?: string | null;
+  note?: string;
 }
 
 const { normalizeSummaries, isEmpty, rowHtml } = require('./recent-services.js') as {
@@ -155,5 +156,48 @@ describe('rowHtml', () => {
   it('does not throw when summary itself is nullish', () => {
     expect(() => rowHtml(null as unknown as Summary, 0, escapeHtml)).not.toThrow();
     expect(rowHtml(null as unknown as Summary, 0, escapeHtml)).toContain('--grade-)');
+  });
+
+  it('renders a .recent-note element containing the note when one is present (#267)', () => {
+    const html = rowHtml(
+      { gradeLetter: 'B', sourceFilename: 'file.wav', date: '2026-01-01T00:00:00.000Z', note: 'board tech was out' },
+      0,
+      escapeHtml,
+    );
+    expect(html).toContain('class="recent-note"');
+    expect(html).toContain('board tech was out');
+  });
+
+  it('omits .recent-note when there is no note', () => {
+    const html = rowHtml(
+      { gradeLetter: 'B', sourceFilename: 'file.wav', date: '2026-01-01T00:00:00.000Z' },
+      0,
+      escapeHtml,
+    );
+    expect(html).not.toContain('recent-note');
+  });
+
+  it('omits .recent-note when the note is an empty string', () => {
+    const html = rowHtml(
+      { gradeLetter: 'B', sourceFilename: 'file.wav', date: '2026-01-01T00:00:00.000Z', note: '' },
+      0,
+      escapeHtml,
+    );
+    expect(html).not.toContain('recent-note');
+  });
+
+  it('escapes a hostile note (XSS guard)', () => {
+    const html = rowHtml(
+      {
+        gradeLetter: 'B',
+        sourceFilename: 'file.wav',
+        date: '2026-01-01T00:00:00.000Z',
+        note: '<img src=x onerror=alert(1)>',
+      },
+      0,
+      escapeHtml,
+    );
+    expect(html).not.toContain('<img src=x onerror=alert(1)>');
+    expect(html).toContain('&lt;img src=x onerror=alert(1)&gt;');
   });
 });

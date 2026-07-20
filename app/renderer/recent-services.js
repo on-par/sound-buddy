@@ -38,10 +38,11 @@
     var gradeClass = String(s.gradeLetter == null ? '' : s.gradeLetter)
       .toLowerCase().replace(/[^a-z]/g, '');
     var safeGrade = escapeHtml(s.gradeLetter);
+    var noteHtml = s.note ? '\n      <div class="recent-note">' + escapeHtml(s.note) + '</div>' : '';
     return '\n    <div class="dir-item recent-row" data-idx="' + index + '">\n' +
       '      <span class="recent-grade" style="color:var(--grade-' + gradeClass + ')">' + safeGrade + '</span>\n' +
       '      <span class="dir-name">' + escapeHtml(s.sourceFilename) + '</span>\n' +
-      '      <span class="recent-date">' + escapeHtml(new Date(s.date).toLocaleString()) + '</span>\n' +
+      '      <span class="recent-date">' + escapeHtml(new Date(s.date).toLocaleString()) + '</span>' + noteHtml + '\n' +
       '    </div>';
   }
 

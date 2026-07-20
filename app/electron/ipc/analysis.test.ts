@@ -50,9 +50,11 @@ vi.mock('../telemetry', () => ({
 // call it with the right folder/args and translate its resolution/rejection.
 const saveAnalysisSummaryMock = vi.hoisted(() => vi.fn());
 const listAnalysisSummariesMock = vi.hoisted(() => vi.fn());
+const setAnalysisSummaryNoteMock = vi.hoisted(() => vi.fn());
 vi.mock('../storage', () => ({
   saveAnalysisSummary: saveAnalysisSummaryMock,
   listAnalysisSummaries: listAnalysisSummariesMock,
+  setAnalysisSummaryNote: setAnalysisSummaryNoteMock,
 }));
 
 const logErrorMock = vi.hoisted(() => vi.fn());
@@ -123,6 +125,7 @@ beforeEach(() => {
   extractAudioToWavMock.mockResolvedValue('/tmp/sb-extract-abc123.wav');
   saveAnalysisSummaryMock.mockResolvedValue('/tmp/sound-buddy-test/history/x.json');
   listAnalysisSummariesMock.mockResolvedValue([]);
+  setAnalysisSummaryNoteMock.mockResolvedValue(undefined);
 });
 
 describe('analyze-file IPC handler', () => {
@@ -395,8 +398,12 @@ type GetDemoAudioHandler = () => string | null;
 type SaveSummaryHandler = (
   event: unknown,
   payload?: Record<string, unknown>,
-) => Promise<{ success: boolean; error?: string }>;
+) => Promise<{ success: boolean; error?: string; file?: string }>;
 type ListSummariesHandler = () => Promise<{ success: boolean; summaries: unknown[]; error?: string }>;
+type SetSummaryNoteHandler = (
+  event: unknown,
+  payload?: Record<string, unknown>,
+) => Promise<{ success: boolean; error?: string }>;
 
 describe('cancel-analysis IPC handler', () => {
   it('resolves { success: false } when no run is in flight for this renderer', () => {
@@ -471,7 +478,41 @@ describe('save-analysis-summary IPC handler', () => {
         date: expect.stringMatching(/^\d{4}-\d{2}-\d{2}T/),
       }),
     );
-    expect(result).toEqual({ success: true });
+    expect(result).toEqual({ success: true, file: 'x.json' });
+    expect(result.file).not.toMatch(/[/\\]/);
+  });
+
+  it('persists a trimmed, clamped note when the payload supplies one (#267)', async () => {
+    const handler = handlers.get('save-analysis-summary') as SaveSummaryHandler;
+
+    await handler(undefined, {
+      sourceFilename: 'sunday.wav',
+      gradeLetter: 'B',
+      score: 87,
+      recordingType: 'service',
+      topFixes: [],
+      note: `  ${'x'.repeat(500)}  `,
+    });
+
+    expect(saveAnalysisSummaryMock).toHaveBeenCalledWith(
+      path.join(defaultRecordDir(), 'history'),
+      expect.objectContaining({ note: 'x'.repeat(200) }),
+    );
+  });
+
+  it('writes a record with no note key at all when the payload has no note (#267)', async () => {
+    const handler = handlers.get('save-analysis-summary') as SaveSummaryHandler;
+
+    await handler(undefined, {
+      sourceFilename: 'sunday.wav',
+      gradeLetter: 'B',
+      score: 87,
+      recordingType: 'service',
+      topFixes: [],
+    });
+
+    const written = saveAnalysisSummaryMock.mock.calls[0][1];
+    expect('note' in written).toBe(false);
   });
 
   it('defaults every field to its empty/zero value when the payload is undefined', async () => {
@@ -553,6 +594,34 @@ describe('list-analysis-summaries IPC handler', () => {
     const result = await handler();
 
     expect(result).toEqual({ success: false, error: 'Error: EACCES', summaries: [] });
+    expect(logErrorMock).toHaveBeenCalled();
+  });
+});
+
+describe('set-analysis-summary-note IPC handler', () => {
+  it('delegates to storage with the history folder, file, and note, and resolves { success: true }', async () => {
+    const handler = handlers.get('set-analysis-summary-note') as SetSummaryNoteHandler;
+
+    const result = await handler(undefined, { file: 'x.json', note: 'used the new wireless pack today' });
+
+    expect(setAnalysisSummaryNoteMock).toHaveBeenCalledWith(
+      path.join(defaultRecordDir(), 'history'),
+      'x.json',
+      'used the new wireless pack today',
+    );
+    expect(result).toEqual({ success: true });
+  });
+
+  it('resolves { success: false, error } and logs, without throwing, when storage rejects', async () => {
+    setAnalysisSummaryNoteMock.mockRejectedValueOnce(new Error('History record "missing.json" is missing or unreadable — the note was not saved.'));
+    const handler = handlers.get('set-analysis-summary-note') as SetSummaryNoteHandler;
+
+    const result = await handler(undefined, { file: 'missing.json', note: 'x' });
+
+    expect(result).toEqual({
+      success: false,
+      error: 'Error: History record "missing.json" is missing or unreadable — the note was not saved.',
+    });
     expect(logErrorMock).toHaveBeenCalled();
   });
 });

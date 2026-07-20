@@ -19,6 +19,7 @@ import {
   contentTypeView,
   reportCardFramesView,
   reportDeltaView,
+  MAX_NOTE_LENGTH,
   type ReportCardSource,
   type ProfileComparison,
   type BandDiffApi,
@@ -219,5 +220,64 @@ describe('ReportCard', () => {
 
     const withNull = renderMarkup({ analysis: src, grade, dateText: 'now', delta: null });
     expect(withNull).not.toContain('rc-delta');
+  });
+});
+
+describe('ReportCard — handoff note (#267)', () => {
+  const src: ReportCardSource = { ...makeSrc(), filename: 'x.wav' };
+  const grade = buildGrade(src);
+
+  it('renders the note input disabled and the print text hidden by default (no save has resolved yet)', () => {
+    const html = renderMarkup({ analysis: src, grade, dateText: 'now' });
+
+    expect(html).toContain('id="rc-note-input"');
+    expect(html).toContain('disabled=""');
+    expect(html).toMatch(/maxlength="200"/i);
+    expect(html).toContain('id="rc-note-text"');
+    expect(html).toMatch(/<p[^>]*id="rc-note-text"[^>]*hidden=""/);
+  });
+
+  it('enables the input and shows the print text once a note is editable with a value', () => {
+    const html = renderMarkup({
+      analysis: src,
+      grade,
+      dateText: 'now',
+      noteEditable: true,
+      noteValue: 'used the new wireless pack today',
+    });
+
+    expect(html).not.toMatch(/id="rc-note-input"[^>]*disabled=""/);
+    expect(html).toContain('value="used the new wireless pack today"');
+    expect(html).toContain('used the new wireless pack today</p>');
+    expect(html).not.toMatch(/<p[^>]*id="rc-note-text"[^>]*hidden=""/);
+  });
+
+  it('carries a screen-only-hidden class so the print mirror never duplicates the input on screen while typing', () => {
+    const html = renderMarkup({
+      analysis: src,
+      grade,
+      dateText: 'now',
+      noteEditable: true,
+      noteValue: 'used the new wireless pack today',
+    });
+
+    expect(html).toMatch(/<p[^>]*class="rc-note-text rc-note-print-mirror"[^>]*id="rc-note-text"/);
+  });
+
+  it('escapes a hostile note value in the print text', () => {
+    const html = renderMarkup({
+      analysis: src,
+      grade,
+      dateText: 'now',
+      noteEditable: true,
+      noteValue: '<img src=x onerror=alert(1)>',
+    });
+
+    expect(html).not.toContain('<img src=x onerror=alert(1)>');
+    expect(html).toContain('&lt;img src=x onerror=alert(1)&gt;');
+  });
+
+  it('exposes MAX_NOTE_LENGTH as 200', () => {
+    expect(MAX_NOTE_LENGTH).toBe(200);
   });
 });

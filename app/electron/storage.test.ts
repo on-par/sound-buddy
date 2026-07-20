@@ -8,6 +8,7 @@ import {
   formatBytes,
   saveAnalysisSummary,
   listAnalysisSummaries,
+  setAnalysisSummaryNote,
   type AnalysisSummary,
 } from './storage';
 
@@ -228,5 +229,116 @@ describe('listAnalysisSummaries', () => {
 
     const result = await listAnalysisSummaries(historyDir);
     expect(result).toEqual([base]);
+  });
+
+  it('returns a record with a note intact, and an older no-note record unchanged (#267)', async () => {
+    const historyDir = path.join(dir, 'history');
+    const withNote: AnalysisSummary = { ...base, sourceFilename: 'with-note.wav', note: 'board tech was out' };
+    const withoutNote: AnalysisSummary = { ...base, sourceFilename: 'without-note.wav' };
+    await saveAnalysisSummary(historyDir, withNote);
+    await saveAnalysisSummary(historyDir, withoutNote);
+
+    const result = await listAnalysisSummaries(historyDir);
+    const bySource = Object.fromEntries(result.map((r) => [r.sourceFilename, r]));
+    expect(bySource['with-note.wav'].note).toBe('board tech was out');
+    expect('note' in bySource['without-note.wav']).toBe(false);
+  });
+
+  it('skips a record whose note field is the wrong type (#267)', async () => {
+    const historyDir = path.join(dir, 'history');
+    await saveAnalysisSummary(historyDir, base);
+    fs.writeFileSync(path.join(historyDir, 'bad-note.json'), JSON.stringify({ ...base, note: 42 }));
+
+    const result = await listAnalysisSummaries(historyDir);
+    expect(result).toEqual([base]);
+  });
+});
+
+describe('setAnalysisSummaryNote', () => {
+  let dir = '';
+  let historyDir = '';
+  let base: AnalysisSummary;
+
+  beforeEach(() => {
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'sb-storage-'));
+    historyDir = path.join(dir, 'history');
+    base = {
+      date: '2026-07-11T15:30:45.123Z',
+      sourceFilename: 'sermon.wav',
+      gradeLetter: 'B',
+      score: 84,
+      recordingType: 'Music',
+      topFixes: ['Reduce low mids', 'Raise speech presence'],
+    };
+  });
+
+  afterEach(() => {
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+
+  it('writes the note into an existing record, leaving all other fields byte-identical', async () => {
+    const file = await saveAnalysisSummary(historyDir, base);
+    const basename = path.basename(file);
+
+    await setAnalysisSummaryNote(historyDir, basename, 'used the new wireless pack today');
+
+    const parsed = JSON.parse(fs.readFileSync(file, 'utf8')) as AnalysisSummary;
+    expect(parsed).toEqual({ ...base, note: 'used the new wireless pack today' });
+  });
+
+  it('trims whitespace off the note', async () => {
+    const file = await saveAnalysisSummary(historyDir, base);
+    await setAnalysisSummaryNote(historyDir, path.basename(file), '  spaced out  ');
+
+    const parsed = JSON.parse(fs.readFileSync(file, 'utf8')) as AnalysisSummary;
+    expect(parsed.note).toBe('spaced out');
+  });
+
+  it('clamps the note to MAX_NOTE_LENGTH', async () => {
+    const file = await saveAnalysisSummary(historyDir, base);
+    const long = 'x'.repeat(500);
+    await setAnalysisSummaryNote(historyDir, path.basename(file), long);
+
+    const parsed = JSON.parse(fs.readFileSync(file, 'utf8')) as AnalysisSummary;
+    expect(parsed.note).toHaveLength(200);
+    expect(parsed.note).toBe('x'.repeat(200));
+  });
+
+  it('removes the note key entirely for an empty/whitespace-only note', async () => {
+    const file = await saveAnalysisSummary(historyDir, { ...base, note: 'old note' });
+    await setAnalysisSummaryNote(historyDir, path.basename(file), '   ');
+
+    const parsed = JSON.parse(fs.readFileSync(file, 'utf8')) as AnalysisSummary;
+    expect('note' in parsed).toBe(false);
+  });
+
+  it('rejects a path-traversal filename', async () => {
+    await expect(setAnalysisSummaryNote(historyDir, '../outside.json', 'x')).rejects.toThrow(
+      /\.\.\/outside\.json/,
+    );
+  });
+
+  it('rejects a filename with a subdirectory component', async () => {
+    await expect(setAnalysisSummaryNote(historyDir, 'a/b.json', 'x')).rejects.toThrow(/a\/b\.json/);
+  });
+
+  it('rejects a filename that does not end in .json', async () => {
+    await expect(setAnalysisSummaryNote(historyDir, 'notjson.txt', 'x')).rejects.toThrow(/notjson\.txt/);
+  });
+
+  it('throws an actionable error when the target file does not exist', async () => {
+    fs.mkdirSync(historyDir, { recursive: true });
+    await expect(setAnalysisSummaryNote(historyDir, 'missing.json', 'x')).rejects.toThrow(
+      /missing\.json.*not saved/,
+    );
+  });
+
+  it('throws when the target file parses but is not an AnalysisSummary', async () => {
+    fs.mkdirSync(historyDir, { recursive: true });
+    fs.writeFileSync(path.join(historyDir, 'not-a-summary.json'), JSON.stringify({ foo: 'bar' }));
+
+    await expect(setAnalysisSummaryNote(historyDir, 'not-a-summary.json', 'x')).rejects.toThrow(
+      /not-a-summary\.json.*not saved/,
+    );
   });
 });
