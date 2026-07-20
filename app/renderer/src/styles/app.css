@@ -1110,6 +1110,8 @@
     .rc-rec-text { font:var(--fw-regular) var(--fs-body-sm)/1.55 var(--font-sans); color:var(--text-secondary); }
     .rc-rec-badge { display:inline; font:var(--fw-semibold) 9px/1 var(--font-sans); letter-spacing:0.06em; text-transform:uppercase; color:var(--issue-text); background:var(--issue-tint); border:1px solid var(--issue-border); border-radius:var(--radius-xs); padding:2px 6px; margin-right:8px; }
 
+    .rc-contextual-links { display:flex; flex-wrap:wrap; gap:10px; }
+
     /* ── Why this grade — per-deduction breakdown (#133) ───────────── */
     .rc-why { display:flex; flex-direction:column; gap:10px; }
     /* A deduction reads as a warning (gold, like a recommendation); the clipping

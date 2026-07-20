@@ -3601,6 +3601,14 @@ function openFeedbackRingout() {
   ringoutSetStatus(feedbackPeak ? ro.handoffStatus(feedbackPeak.freq) : '');
 }
 
+// #545 (epic e17): forward link from the Report Card to the Build Guide —
+// the mirror of #build-guide-review's Report-Card link. Reuses the mode-tab
+// click so navigation is identical to the user clicking the tab. Reached via
+// window.inlineDialogs.openBuildGuide (ReportCard.tsx's flag-on link).
+function openBuildGuide() {
+  document.querySelector('.mode-tab[data-mode="guide"]').click();
+}
+
 document.getElementById('ringout-profile-save').addEventListener('click', () => {
   const nameInput = document.getElementById('ringout-profile-name');
   const name = nameInput.value.trim();
@@ -4279,7 +4287,7 @@ async function saveMixAsTarget() {
 
 // Bridges ReportCard.tsx's phase-doubling/feedback-ringout callout buttons to
 // the still-inline dialogs they open (TD-001 slice 4, #422).
-window.inlineDialogs = { openPhaseDoublingDialog, openFeedbackRingout, saveMixAsTarget };
+window.inlineDialogs = { openPhaseDoublingDialog, openFeedbackRingout, saveMixAsTarget, openBuildGuide };
 
 (() => {
   aiEl('phase-doubling-close').addEventListener('click', closePhaseDoublingDialog);

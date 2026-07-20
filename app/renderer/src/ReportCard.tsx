@@ -94,6 +94,14 @@ export interface ReportCardProps {
    *  the CTA to a done state instead of hiding it. */
   saveTargetSaved?: boolean;
   onSaveAsTarget?: () => void;
+  /** Contextual link to the Ring-Out Assistant, shown alongside the
+   *  recommendations when a feedback-risk finding was detected (#545,
+   *  report-first-ux epic). Reuses onOpenFeedbackRingout. */
+  showRingoutLink?: boolean;
+  /** Contextual "Review in Build Guide" link, the mirror of the Build
+   *  Guide's existing Report-Card link (#545). */
+  showBuildGuideLink?: boolean;
+  onOpenBuildGuide?: () => void;
   /** Optional one-line handoff note for the next volunteer (#267). Editable
    *  only once the underlying record has actually been written — disabled
    *  (not hidden) beforehand so the field's presence doesn't shift layout. */
@@ -122,6 +130,9 @@ export default function ReportCard({
   showSaveTarget = false,
   saveTargetSaved = false,
   onSaveAsTarget,
+  showRingoutLink = false,
+  showBuildGuideLink = false,
+  onOpenBuildGuide,
   noteValue = '',
   noteEditable = false,
   onNoteChange,
@@ -296,6 +307,32 @@ export default function ReportCard({
           dangerouslySetInnerHTML={{ __html: recListHTML(grade.recommendations, false) }}
         />
       </div>
+      {(showRingoutLink || showBuildGuideLink) && (
+        <div className="rc-section rc-contextual-links" id="rc-contextual-links">
+          {showRingoutLink && (
+            <button
+              type="button"
+              id="rc-ringout-link"
+              className="btn btn-secondary sm"
+              data-icon="waves"
+              onClick={onOpenFeedbackRingout}
+            >
+              Ring out feedback in the Ring-Out Assistant
+            </button>
+          )}
+          {showBuildGuideLink && (
+            <button
+              type="button"
+              id="rc-build-guide-link"
+              className="btn btn-secondary sm"
+              data-icon="clipboard-check"
+              onClick={onOpenBuildGuide}
+            >
+              Review in Build Guide
+            </button>
+          )}
+        </div>
+      )}
     </div>
   );
 }

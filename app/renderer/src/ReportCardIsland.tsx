@@ -82,6 +82,7 @@ interface InlineDialogsApi {
   openPhaseDoublingDialog(): void;
   openFeedbackRingout(): void;
   saveMixAsTarget?(): void | Promise<boolean>;
+  openBuildGuide(): void;
 }
 
 function getGrading(): GradingApi {
@@ -364,6 +365,8 @@ export default function ReportCardIsland() {
   let showSaveTarget = false;
   let saveTargetSaved = false;
 
+  const reportFirstUxOn = getReportFirstUxState()?.isEnabled(settings) ?? false;
+
   if (!isHistoryCard && source) {
     const grading = getGrading();
     grade = {
@@ -375,7 +378,7 @@ export default function ReportCardIsland() {
       metrics: buildMetricRows(source, grading),
     };
 
-    scoreRows = getReportFirstUxState()?.isEnabled(settings) ? buildScoreRows(source, grading, grade.explain) : null;
+    scoreRows = reportFirstUxOn ? buildScoreRows(source, grading, grade.explain) : null;
 
     if (hasUsableCurve(source.curve) && idealProfile) {
       comparison = compareToProfile(source.curve, idealProfile as IdealProfile);
@@ -395,6 +398,9 @@ export default function ReportCardIsland() {
     const ip = idealProfile as { id?: string; source?: string } | null;
     saveTargetSaved = !!targetMeta && ip?.source === 'custom' && ip.id === targetMeta.id;
   }
+
+  const showRingoutLink = reportFirstUxOn && !!feedbackPeak;
+  const showBuildGuideLink = reportFirstUxOn;
 
   // "vs. last time" delta (#259) — only for the fresh file-analysis card and
   // the newest history card; never for live capture (source-type gate).
@@ -474,6 +480,11 @@ export default function ReportCardIsland() {
           /* c8 ignore next -- interaction-only glue; no jsdom in this harness to
              click the button (renderToString doesn't run DOM events). */
           onSaveAsTarget={() => { void getInlineDialogs()?.saveMixAsTarget?.(); }}
+          showRingoutLink={showRingoutLink}
+          showBuildGuideLink={showBuildGuideLink}
+          /* c8 ignore next -- interaction-only glue; no jsdom in this harness to
+             click the button (renderToString doesn't run DOM events). */
+          onOpenBuildGuide={() => getInlineDialogs()?.openBuildGuide()}
           noteValue={noteDraft}
           noteEditable={!!lastSavedSummaryFile}
           onNoteChange={setNoteDraft}

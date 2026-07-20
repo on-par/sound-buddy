@@ -42,7 +42,7 @@ const gradingMock: GradingPillApi & BandDiffApi & {
 
 const phaseDoublingStateMock = { detectPhaseSignal: () => false };
 const feedbackRingoutMock = {
-  detectFeedbackSignal: () => null,
+  detectFeedbackSignal: (): { freq: number; prominence: number } | null => null,
   reportCardCallout: () => ({
     detected: false,
     title: 'Fighting feedback in your monitors?',
@@ -51,7 +51,7 @@ const feedbackRingoutMock = {
   }),
 };
 const audioEngineSpectralMock = { findSpectralPeaks: () => [] };
-const inlineDialogsMock = { openPhaseDoublingDialog: () => {}, openFeedbackRingout: () => {} };
+const inlineDialogsMock = { openPhaseDoublingDialog: () => {}, openFeedbackRingout: () => {}, openBuildGuide: () => {} };
 
 const ANALYSIS = {
   sox: { rmsDbfs: -18, peakDbfs: -6, dynamicRangeDb: 12, clipping: false },
@@ -332,6 +332,56 @@ describe('ReportCardIsland', () => {
 
     expect(html).toContain('metric-table');
     expect(html).not.toContain('rc-metric-rows');
+  });
+});
+
+describe('ReportCardIsland — contextual links (#545)', () => {
+  it('shows the Ring-Out link and the Build Guide link when the flag is on and a feedback peak is detected', () => {
+    useAnalysisStore.setState({ currentAnalysis: ANALYSIS, status: 'done' });
+    useSettingsStore.setState({ settings: { reportFirstUxEnabled: true } as unknown as AppSettings });
+    (globalThis as { window?: { feedbackRingout?: typeof feedbackRingoutMock } }).window!.feedbackRingout = {
+      ...feedbackRingoutMock,
+      detectFeedbackSignal: () => ({ freq: 3150, prominence: 12 }),
+    };
+
+    const html = renderMarkup();
+
+    expect(html).toContain('rc-ringout-link');
+    expect(html).toContain('rc-build-guide-link');
+  });
+
+  it('shows the Build Guide link but not the Ring-Out link when the flag is on with no feedback peak', () => {
+    useAnalysisStore.setState({ currentAnalysis: ANALYSIS, status: 'done' });
+    useSettingsStore.setState({ settings: { reportFirstUxEnabled: true } as unknown as AppSettings });
+
+    const html = renderMarkup();
+
+    expect(html).toContain('rc-build-guide-link');
+    expect(html).not.toContain('rc-ringout-link');
+  });
+
+  it('shows neither contextual link when the flag is off, even with a feedback peak', () => {
+    useAnalysisStore.setState({ currentAnalysis: ANALYSIS, status: 'done' });
+    useSettingsStore.setState({ settings: { reportFirstUxEnabled: false } as unknown as AppSettings });
+    (globalThis as { window?: { feedbackRingout?: typeof feedbackRingoutMock } }).window!.feedbackRingout = {
+      ...feedbackRingoutMock,
+      detectFeedbackSignal: () => ({ freq: 3150, prominence: 12 }),
+    };
+
+    const html = renderMarkup();
+
+    expect(html).not.toContain('rc-ringout-link');
+    expect(html).not.toContain('rc-build-guide-link');
+  });
+
+  it('shows neither contextual link when settings are still null/loading (strict gate)', () => {
+    useAnalysisStore.setState({ currentAnalysis: ANALYSIS, status: 'done' });
+    useSettingsStore.setState({ settings: null });
+
+    const html = renderMarkup();
+
+    expect(html).not.toContain('rc-ringout-link');
+    expect(html).not.toContain('rc-build-guide-link');
   });
 });
 
