@@ -201,6 +201,8 @@ jobs:
         run: npx playwright install --with-deps chromium
 
       - name: Verify (check + build + link smoke)
+        env:
+          PUBLIC_SITE_MODE: live
         run: npm run verify
 
   # The Stripe / licensing API Worker (worker/, #107) is a standalone package

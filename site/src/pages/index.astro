@@ -9,11 +9,13 @@ import momentumShot from '../assets/screenshots/momentum.png';
 import { GUARANTEE_BADGE, REFUND_PATH } from '../lib/guarantee';
 import { FOUNDING_CAP, foundingCheckoutUrl, foundingUrgency, isCheckoutLive } from '../lib/founding-urgency';
 import { FAQ_ENTRIES } from '../lib/faq';
+import { resolveSiteMode } from '../lib/site-mode';
 
 const DOWNLOAD_URL = '/download';
 const REPO_URL = 'https://github.com/on-par/sound-buddy';
 const BROWSER_URL = '/browser';
 const FOUNDING_URL = foundingCheckoutUrl(process.env);
+const SITE_MODE = resolveSiteMode(process.env);
 
 // Single source of truth for the macOS/Apple-Silicon floor, restated at every
 // download/purchase CTA on the page (#154) so a visitor learns it without
@@ -115,6 +117,7 @@ const tiers = [
 ];
 ---
 
+{SITE_MODE === 'live' ? (
 <Layout
   title="Sound Buddy — Get a clear answer from last Sunday's mix."
   description="Sound Buddy grades the recording you already have and names exactly what to fix before next Sunday — loudness, dynamics, spectral balance, and speech clarity. Try it free in your browser, or run the full workflow locally on your Mac."
@@ -492,6 +495,14 @@ const tiers = [
     </div>
   </footer>
 </Layout>
+) : (
+<Layout
+  title="Sound Buddy — Coming soon"
+  description="Sound Buddy is launching soon."
+>
+  <h1>Coming soon</h1>
+</Layout>
+)}
 
 <script>
   import { FOUNDING_CAP, remainingLabel } from '../lib/founding-urgency';
