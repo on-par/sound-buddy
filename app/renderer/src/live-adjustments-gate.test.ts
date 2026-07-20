@@ -12,7 +12,7 @@ import { fileURLToPath } from 'node:url';
 // (#517) encodes its acceptance criteria.
 
 const inlineApp = fs.readFileSync(fileURLToPath(new URL('./inline-app.js', import.meta.url)), 'utf8');
-const indexHtml = fs.readFileSync(fileURLToPath(new URL('../index.html', import.meta.url)), 'utf8');
+const settingsPanelTsx = fs.readFileSync(fileURLToPath(new URL('./SettingsPanel.tsx', import.meta.url)), 'utf8');
 const css = fs.readFileSync(fileURLToPath(new URL('./styles/app.css', import.meta.url)), 'utf8');
 const appTsx = fs.readFileSync(fileURLToPath(new URL('./App.tsx', import.meta.url)), 'utf8');
 
@@ -100,25 +100,15 @@ describe('Live adjustments gate wiring (#522)', () => {
     expect(block).toContain('syncLiveAdjustmentsPanel(');
   });
 
-  it('openStorageSettings seeds the toggle checkbox', () => {
-    const body = functionBody(inlineApp, 'openStorageSettings');
-    expect(body).toContain('live-adjustments-toggle');
-  });
-
-  it('saveStorageSettings writes liveAdjustmentsEnabled on a diff', () => {
-    const body = functionBody(inlineApp, 'saveStorageSettings');
-    expect(body).toContain('liveAdjustmentsEnabled');
-  });
-
   it('the settingsStore subscriber re-syncs the Live pane on an actual flip', () => {
     const block = enclosingBlock(inlineApp, 'liveAdjustmentsWasEnabled = nowEnabled');
     expect(block).toContain('liveAdjustmentsState.isEnabled(');
     expect(block).toContain("syncSpectrumForMode('live')");
   });
 
-  it('index.html has the toggle and note elements', () => {
-    expect(indexHtml).toContain('id="live-adjustments-toggle"');
-    expect(indexHtml).toContain('id="live-adjustments-note"');
+  it('the Settings dialog has the toggle and note elements (#204)', () => {
+    expect(settingsPanelTsx).toContain('id="live-adjustments-toggle"');
+    expect(settingsPanelTsx).toContain('id="live-adjustments-note"');
   });
 
   it('App.tsx imports and boots live-adjustments-state.js before the inline app script', () => {

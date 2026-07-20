@@ -415,17 +415,21 @@
     .onboarding-progress { display:flex; align-items:center; justify-content:center; gap:10px; min-height:var(--control-h); color:var(--text-secondary); font:var(--fw-regular) var(--fs-body-sm)/1 var(--font-sans); }
     .onboarding-progress .spin { width:18px; height:18px; border-radius:50%; border:2px solid var(--surface-raised); border-top-color:var(--gold-500); animation:sbspin 0.8s linear infinite; }
 
-    /* AI provider settings dialog (#76) — same overlay pattern as .rig-dialog */
-    #ai-settings-btn, #storage-settings-btn { display:flex; align-items:center; justify-content:center; width:30px; height:30px; padding:0; background:transparent; border:none; border-radius:var(--radius-sm); color:var(--text-secondary); cursor:pointer; }
-    #ai-settings-btn:hover, #storage-settings-btn:hover { color:var(--text-primary); background:var(--surface); }
-    /* Storage dialog (#91) */
-    .storage-dialog-card { width:min(460px,calc(100vw - 48px)); }
+    /* Settings dialog (#76, #91, combined into one tabbed modal by #204) —
+       same overlay pattern as .rig-dialog */
+    #settings-btn { display:flex; align-items:center; justify-content:center; width:30px; height:30px; padding:0; background:transparent; border:none; border-radius:var(--radius-sm); color:var(--text-secondary); cursor:pointer; }
+    #settings-btn:hover { color:var(--text-primary); background:var(--surface); }
+    .settings-dialog-card { width:min(520px,calc(100vw - 48px)); }
+    .settings-tabs { display:flex; gap:6px; }
+    .settings-tab { flex:1; height:var(--control-h); border:1px solid var(--border-default); border-radius:var(--radius-md); background:var(--surface); color:var(--text-secondary); font:var(--fw-medium) var(--fs-body-sm)/1 var(--font-sans); cursor:pointer; }
+    .settings-tab.active { border-color:var(--gold-600); background:var(--gold-tint); color:var(--gold-text); }
+    .settings-pane { display:flex; flex-direction:column; gap:12px; max-height:min(72vh, 640px); overflow-y:auto; }
+    /* Storage pane (#91) */
     .storage-path-row { display:flex; align-items:center; gap:10px; margin-top:4px; }
     .storage-path { flex:1; min-width:0; font:var(--fw-regular) var(--fs-label)/1.4 var(--font-mono,monospace); color:var(--text-primary); word-break:break-all; }
     .storage-usage { font:var(--fw-regular) var(--fs-label)/1.4 var(--font-sans); color:var(--text-secondary); margin-top:10px; }
     .storage-unlimited { font:var(--fw-medium) var(--fs-label)/1.4 var(--font-sans); color:var(--text-primary); margin:12px 0 0; }
     .storage-note { font:var(--fw-regular) var(--fs-label)/1.4 var(--font-sans); color:var(--text-tertiary); margin:6px 0 0; }
-    .ai-dialog-card { width:min(440px,calc(100vw - 48px)); }
     .ai-dialog-sub { font:var(--fw-regular) var(--fs-label)/1.4 var(--font-sans); color:var(--text-secondary); margin-top:-6px; }
     .ai-dialog-note { font:var(--fw-regular) var(--fs-label)/1.4 var(--font-sans); color:var(--text-tertiary); margin:2px 0 0; }
     .ai-dialog-version { font:var(--fw-regular) var(--fs-micro)/1.4 var(--font-mono); color:var(--text-muted); margin:6px 0 0; text-align:center; }
