@@ -1810,21 +1810,27 @@ sb.onAnalysisProgress((data) => {
 // Replaces runFileAnalysis's DOM side effects — a single analysisStore
 // subscription reacting to `status` transitions (TD-001 slice 4, #422).
 // Installed at boot (see the Init section at the bottom of this file).
+// Mirrors ReportCardIsland's own source priority (currentAnalysis wins, else
+// liveSource, else historySummary, else no card at all). Shared by
+// syncReportCardChrome (toolbar/upgrade-card chrome outside #report-card) and
+// the Share Image click handler (#265) so both derive "what card is showing"
+// from one place instead of two independently-maintained copies.
+function resolveReportCardChromeSource(state) {
+  const isHistoryCard = !!state.historySummary && !state.currentAnalysis && !state.liveSource;
+  const chromeSource = state.currentAnalysis
+    ? reportCardSourceFromAnalysis(state.currentAnalysis)
+    : (state.liveSource || null);
+  return { isHistoryCard, chromeSource };
+}
+
 function syncReportCardChrome(state, prevState) {
   const clearBtn = document.getElementById('reportcard-clear-btn');
   const loadBtn = document.getElementById('reportcard-load-btn');
   const printBtn = document.getElementById('reportcard-print-btn');
   const shareBtn = document.getElementById('reportcard-share-btn');
   const gradeOwnBtn = document.getElementById('grade-own-btn');
-  // Mirrors ReportCardIsland's own source priority (currentAnalysis wins,
-  // else liveSource, else historySummary, else no card at all) — computed
-  // here too so the toolbar/upgrade-card chrome (outside #report-card) stays
-  // in sync with whatever the island is actually showing.
-  const isHistoryCard = !!state.historySummary && !state.currentAnalysis && !state.liveSource;
+  const { isHistoryCard, chromeSource } = resolveReportCardChromeSource(state);
   const isLiveCard = !state.currentAnalysis && !!state.liveSource;
-  const chromeSource = state.currentAnalysis
-    ? reportCardSourceFromAnalysis(state.currentAnalysis)
-    : (state.liveSource || null);
   const hasCard = isHistoryCard || !!chromeSource;
 
   if (state.status !== prevState.status) {
@@ -3585,12 +3591,7 @@ document.getElementById('rcu-later').addEventListener('click', () => {
 document.getElementById('reportcard-share-btn').addEventListener('click', async () => {
   try {
     const state = anaStore.getState();
-    // Mirrors syncReportCardChrome's own chromeSource/isHistoryCard priority
-    // (currentAnalysis wins, else liveSource, else historySummary).
-    const chromeSource = state.currentAnalysis
-      ? reportCardSourceFromAnalysis(state.currentAnalysis)
-      : (state.liveSource || null);
-    const isHistoryCard = !!state.historySummary && !state.currentAnalysis && !state.liveSource;
+    const { isHistoryCard, chromeSource } = resolveReportCardChromeSource(state);
 
     let grade, score, metrics;
     if (chromeSource) {
@@ -3623,8 +3624,7 @@ document.getElementById('reportcard-share-btn').addEventListener('click', async 
     // default — assert the source filename/path never leaked into an op,
     // and the raw church-name setting didn't either when the model omitted it.
     const basename = chromeSource ? (chromeSource.filename || '') : (state.historySummary.sourceFilename || '');
-    const fullPath = (state.currentAnalysis && state.currentAnalysis.ffprobe && state.currentAnalysis.ffprobe.format
-      && state.currentAnalysis.ffprobe.format.filename) || '';
+    const fullPath = state.currentAnalysis?.ffprobe?.format?.filename || '';
     assertNoIdentifyingText(ops, [basename, fullPath, model.churchName === null ? churchNameSetting : '']);
 
     const canvas = document.createElement('canvas');

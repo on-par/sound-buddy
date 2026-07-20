@@ -11,6 +11,8 @@
 // creation, toBlob, save dialog) is impure browser code that lives in
 // inline-app.js, mirroring report-export.ts's split (#368).
 
+import { slugify } from './report-export';
+
 export const SHARE_CARD_WIDTH = 1200;
 export const SHARE_CARD_HEIGHT = 630;
 export const MAX_SHARE_METRICS = 3;
@@ -111,8 +113,6 @@ const WORDMARK_FONT = 'bold 24px "Helvetica Neue", Arial, sans-serif';
 const WORDMARK_Y = SHARE_CARD_HEIGHT - 48;
 const PRODUCT_LINE_TEXT = 'soundbuddy.app';
 const PRODUCT_LINE_FONT = '18px "Helvetica Neue", Arial, sans-serif';
-
-const MAX_SLUG_LENGTH = 60; // mirrors report-export.ts's MAX_SLUG_LENGTH
 
 function clampScore(score: number): number {
   return Math.round(Math.min(MAX_SCORE, Math.max(MIN_SCORE, score)));
@@ -282,14 +282,6 @@ export function assertNoIdentifyingText(ops: DrawOp[], forbidden: string[]): voi
       }
     }
   }
-}
-
-function slugify(input: string): string {
-  return input
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-    .slice(0, MAX_SLUG_LENGTH);
 }
 
 /**

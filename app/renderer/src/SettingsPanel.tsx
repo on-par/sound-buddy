@@ -389,6 +389,11 @@ export default function SettingsPanel() {
   }
 
   function handleSave() {
+    // The church-name field commits on blur, but a click straight from the
+    // field to this Save button can beat that blur — flush it explicitly so
+    // Save always captures whatever is currently typed, not just fields
+    // gated behind the AI-provider save flow below.
+    void commitShareChurchName(useSettingsStore, shareChurchName);
     const storagePatch = buildStoragePatch(
       pendingDir,
       { usageSignalEnabled, crashReportingEnabled, dawWorkspaceEnabled, liveAdjustmentsEnabled },

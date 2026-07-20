@@ -89,9 +89,9 @@ export function sanitizeCardFilename(name: string): string {
   return collapsed === '' ? 'report' : collapsed;
 }
 
-const MAX_SLUG_LENGTH = 60;
+export const MAX_SLUG_LENGTH = 60;
 
-function slugify(input: string): string {
+export function slugify(input: string): string {
   return input
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '-')
