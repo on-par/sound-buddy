@@ -3166,9 +3166,16 @@ async function renderRecentServices() {
     // (e.g. a shared/synced storage folder written to by another install)
     // can't break out of the style attribute and inject markup.
     const safeGrade = escapeHtml(s.gradeLetter);
+    // Literal string, never interpolating s.source (#261) — the only two values
+    // written by save-analysis-summary are 'file' (omitted) and 'live'. Mirrors
+    // recent-services.rowHtml, which is the extracted-but-not-yet-wired copy of
+    // this markup (#395 folds the two together).
+    const sourceHtml = s.source === 'live'
+      ? '<span class="recent-source recent-source-live">Live</span>'
+      : '';
     return `
     <div class="dir-item recent-row" data-idx="${i}">
-      <span class="recent-grade" style="color:var(--grade-${(s.gradeLetter || '').toLowerCase().replace(/[^a-z]/g, '')})">${safeGrade}</span>
+      <span class="recent-grade" style="color:var(--grade-${(s.gradeLetter || '').toLowerCase().replace(/[^a-z]/g, '')})">${safeGrade}</span>${sourceHtml}
       <span class="dir-name">${escapeHtml(s.sourceFilename)}</span>
       <span class="recent-date">${escapeHtml(new Date(s.date).toLocaleString())}</span>${s.note ? `<div class="recent-note">${escapeHtml(s.note)}</div>` : ''}
     </div>`;
