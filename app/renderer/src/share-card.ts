@@ -92,9 +92,9 @@ const GRADE_CIRCLE_STROKE_WIDTH = 12;
 const CIRCLE_START_ANGLE = 0;
 const FULL_CIRCLE_RADIANS = Math.PI * 2;
 
-const GRADE_LETTER_FONT = 'bold 120px "Helvetica Neue", Arial, sans-serif';
-const GRADE_LETTER_BASELINE_OFFSET = 15; // nudges the letter's baseline to look vertically centered
-const SCORE_FONT = 'bold 30px "Helvetica Neue", Arial, sans-serif';
+const GRADE_LETTER_FONT = 'bold 96px "Helvetica Neue", Arial, sans-serif';
+const GRADE_LETTER_BASELINE_OFFSET = -20; // nudges the letter up to leave room for the score line below
+const SCORE_FONT = 'bold 28px "Helvetica Neue", Arial, sans-serif';
 const SCORE_BASELINE_OFFSET = 55; // below the grade letter, inside the ring
 
 const CONTENT_X = 420; // left edge of headline/metric/church-name text, right of the grade circle
