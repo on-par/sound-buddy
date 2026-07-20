@@ -41,17 +41,25 @@ const gradingMock: GradingPillApi & BandDiffApi & {
 };
 
 const phaseDoublingStateMock = { detectPhaseSignal: () => false };
+let mockDetected = false;
 const feedbackRingoutMock = {
   detectFeedbackSignal: () => null,
-  reportCardCallout: () => ({
-    detected: false,
-    title: 'Fighting feedback in your monitors?',
-    sub: 'Walk through ringing out a mic step by step — no console access needed.',
-    buttonLabel: 'Open the ring-out wizard',
-  }),
+  reportCardCallout: () => (mockDetected
+    ? {
+      detected: true,
+      title: 'We spotted possible feedback risk',
+      sub: 'Ring out this frequency before it becomes a problem.',
+      buttonLabel: 'Ring out this frequency',
+    }
+    : {
+      detected: false,
+      title: 'Fighting feedback in your monitors?',
+      sub: 'Walk through ringing out a mic step by step — no console access needed.',
+      buttonLabel: 'Open the ring-out wizard',
+    }),
 };
 const audioEngineSpectralMock = { findSpectralPeaks: () => [] };
-const inlineDialogsMock = { openPhaseDoublingDialog: () => {}, openFeedbackRingout: () => {} };
+const inlineDialogsMock = { openPhaseDoublingDialog: () => {}, openFeedbackRingout: () => {}, openBuildGuide: () => {} };
 
 const ANALYSIS = {
   sox: { rmsDbfs: -18, peakDbfs: -6, dynamicRangeDb: 12, clipping: false },
@@ -68,6 +76,7 @@ const ANALYSIS = {
 };
 
 beforeEach(() => {
+  mockDetected = false;
   (globalThis as { window?: unknown }).window = {
     grading: gradingMock,
     phaseDoublingState: phaseDoublingStateMock,
@@ -332,6 +341,56 @@ describe('ReportCardIsland', () => {
 
     expect(html).toContain('metric-table');
     expect(html).not.toContain('rc-metric-rows');
+  });
+});
+
+describe('ReportCardIsland — contextual links to Build Guide / Ring-Out (#545)', () => {
+  it('flag on + a real feedback-risk finding → shows the ring-out callout (AC1)', () => {
+    mockDetected = true;
+    useAnalysisStore.setState({ currentAnalysis: ANALYSIS, status: 'done' });
+    useSettingsStore.setState({ settings: { reportFirstUxEnabled: true } as unknown as AppSettings });
+
+    const html = renderMarkup();
+
+    expect(html).toContain('rc-feedback-ringout');
+  });
+
+  it('flag on + no finding → suppresses the prophylactic ring-out banner (AC3)', () => {
+    mockDetected = false;
+    useAnalysisStore.setState({ currentAnalysis: ANALYSIS, status: 'done' });
+    useSettingsStore.setState({ settings: { reportFirstUxEnabled: true } as unknown as AppSettings });
+
+    const html = renderMarkup();
+
+    expect(html).not.toContain('rc-feedback-ringout');
+  });
+
+  it('flag off + no finding → keeps showing the pre-existing banner (#372 preserved; AC4)', () => {
+    mockDetected = false;
+    useAnalysisStore.setState({ currentAnalysis: ANALYSIS, status: 'done' });
+    useSettingsStore.setState({ settings: { reportFirstUxEnabled: false } as unknown as AppSettings });
+
+    const html = renderMarkup();
+
+    expect(html).toContain('rc-feedback-ringout');
+  });
+
+  it('flag on → shows the "Review in Build Guide" forward link (AC2)', () => {
+    useAnalysisStore.setState({ currentAnalysis: ANALYSIS, status: 'done' });
+    useSettingsStore.setState({ settings: { reportFirstUxEnabled: true } as unknown as AppSettings });
+
+    const html = renderMarkup();
+
+    expect(html).toContain('rc-build-guide-review');
+  });
+
+  it('flag off → omits the "Review in Build Guide" forward link (AC4, no new links)', () => {
+    useAnalysisStore.setState({ currentAnalysis: ANALYSIS, status: 'done' });
+    useSettingsStore.setState({ settings: { reportFirstUxEnabled: false } as unknown as AppSettings });
+
+    const html = renderMarkup();
+
+    expect(html).not.toContain('rc-build-guide-review');
   });
 });
 

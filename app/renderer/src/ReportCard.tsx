@@ -87,6 +87,9 @@ export interface ReportCardProps {
   feedbackRingout?: FeedbackRingoutView | null;
   onOpenPhaseDoubling?: () => void;
   onOpenFeedbackRingout?: () => void;
+  /** e17-06 (#545): show the flag-gated "Review in Build Guide" forward link. */
+  showBuildGuideLink?: boolean;
+  onOpenBuildGuide?: () => void;
   /** Optional one-line handoff note for the next volunteer (#267). Editable
    *  only once the underlying record has actually been written — disabled
    *  (not hidden) beforehand so the field's presence doesn't shift layout. */
@@ -112,6 +115,8 @@ export default function ReportCard({
   feedbackRingout,
   onOpenPhaseDoubling,
   onOpenFeedbackRingout,
+  showBuildGuideLink = false,
+  onOpenBuildGuide,
   noteValue = '',
   noteEditable = false,
   onNoteChange,
@@ -264,6 +269,18 @@ export default function ReportCard({
           dangerouslySetInnerHTML={{ __html: recListHTML(grade.recommendations, false) }}
         />
       </div>
+      {showBuildGuideLink && (
+        <div className="rc-section" id="rc-build-guide-review-section">
+          <button
+            type="button"
+            id="rc-build-guide-review"
+            className="btn btn-secondary sm full"
+            onClick={onOpenBuildGuide}
+          >
+            Review in Build Guide
+          </button>
+        </div>
+      )}
     </div>
   );
 }

@@ -22,6 +22,8 @@ import {
   heatmapSVG, miniCurveSVG, fmtDur, classLabel, pickRepresentativeFrames,
   type SpectrumFrame,
 } from './spectrum-display';
+import type { FeedbackRingoutView } from './ReportCard';
+export type { FeedbackRingoutView };
 
 export type PillTone = 'good' | 'check' | 'issue' | 'info';
 
@@ -782,6 +784,21 @@ export function buildAnalysisSummaryInput(
     topFixes: grading.computeRecommendations(src).slice(0, MAX_TOP_FIXES),
     source,
   };
+}
+
+/* ── Ring-out contextual link (#545, epic e17) ──
+   Under the report-first-ux flag the pre-existing feedback-ringout callout
+   (#372/#422) becomes a contextual link that only surfaces when there is a
+   real feedback-risk finding; with the flag off it stays today's
+   always-shown banner (prophylactic included). See FeedbackRingoutView in
+   ReportCard.tsx for the shape. */
+export function ringoutCalloutForFlag(
+  callout: FeedbackRingoutView | null,
+  reportFirstUxEnabled: boolean,
+): FeedbackRingoutView | null {
+  if (!callout) return null;
+  if (reportFirstUxEnabled && !callout.detected) return null;
+  return callout;
 }
 
 /* ── Handoff note (#267) ──

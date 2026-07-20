@@ -4108,9 +4108,17 @@ function closePhaseDoublingDialog() {
   aiEl('phase-doubling-dialog').style.display = 'none';
 }
 
-// Bridges ReportCard.tsx's phase-doubling/feedback-ringout callout buttons to
-// the still-inline dialogs they open (TD-001 slice 4, #422).
-window.inlineDialogs = { openPhaseDoublingDialog, openFeedbackRingout };
+// #545 (epic e17): forward link from the Report Card to the Build Guide —
+// the inverse of #build-guide-review. Reuses the mode-tab click so the
+// transition is the exact navigation a user click performs.
+function openBuildGuide() {
+  document.querySelector('.mode-tab[data-mode="guide"]').click();
+}
+
+// Bridges ReportCard.tsx's phase-doubling/feedback-ringout/build-guide
+// callout buttons to the still-inline dialogs/tabs they open (TD-001 slice 4,
+// #422; extended #545).
+window.inlineDialogs = { openPhaseDoublingDialog, openFeedbackRingout, openBuildGuide };
 
 (() => {
   aiEl('phase-doubling-close').addEventListener('click', closePhaseDoublingDialog);

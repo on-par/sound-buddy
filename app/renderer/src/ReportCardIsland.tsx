@@ -30,6 +30,7 @@ import {
   recListHTML,
   buildMetricRows,
   buildScoreRows,
+  ringoutCalloutForFlag,
   reportCardSourceFromAnalysis,
   contentTypeView,
   reportCardFramesView,
@@ -79,6 +80,7 @@ interface FeedbackRingoutApi {
 interface InlineDialogsApi {
   openPhaseDoublingDialog(): void;
   openFeedbackRingout(): void;
+  openBuildGuide(): void;
 }
 
 function getGrading(): GradingApi {
@@ -358,6 +360,7 @@ export default function ReportCardIsland() {
   let feedbackPeak: FeedbackPeak | null = null;
   let feedbackCallout: FeedbackRingoutCalloutView | null = null;
   let scoreRows: ScoreRow[] | null = null;
+  const reportFirstUxOn = !!getReportFirstUxState()?.isEnabled(settings);
 
   if (!isHistoryCard && source) {
     const grading = getGrading();
@@ -370,7 +373,7 @@ export default function ReportCardIsland() {
       metrics: buildMetricRows(source, grading),
     };
 
-    scoreRows = getReportFirstUxState()?.isEnabled(settings) ? buildScoreRows(source, grading, grade.explain) : null;
+    scoreRows = reportFirstUxOn ? buildScoreRows(source, grading, grade.explain) : null;
 
     if (hasUsableCurve(source.curve) && idealProfile) {
       comparison = compareToProfile(source.curve, idealProfile as IdealProfile);
@@ -378,7 +381,7 @@ export default function ReportCardIsland() {
 
     phaseSignal = getPhaseDoublingState().detectPhaseSignal({ deviation: comparison ? comparison.deviation : undefined });
     feedbackPeak = getFeedbackRingout().detectFeedbackSignal(source.curve || null, getFindSpectralPeaks());
-    feedbackCallout = getFeedbackRingout().reportCardCallout(feedbackPeak);
+    feedbackCallout = ringoutCalloutForFlag(getFeedbackRingout().reportCardCallout(feedbackPeak), reportFirstUxOn);
   }
 
   // "vs. last time" delta (#259) — only for the fresh file-analysis card and
@@ -454,6 +457,8 @@ export default function ReportCardIsland() {
           feedbackRingout={feedbackCallout}
           onOpenPhaseDoubling={() => getInlineDialogs()?.openPhaseDoublingDialog()}
           onOpenFeedbackRingout={() => getInlineDialogs()?.openFeedbackRingout()}
+          showBuildGuideLink={reportFirstUxOn}
+          onOpenBuildGuide={() => getInlineDialogs()?.openBuildGuide()}
           noteValue={noteDraft}
           noteEditable={!!lastSavedSummaryFile}
           onNoteChange={setNoteDraft}

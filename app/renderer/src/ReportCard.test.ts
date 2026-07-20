@@ -199,6 +199,27 @@ describe('ReportCard', () => {
     expect(html).toContain('Open the ring-out wizard');
   });
 
+  it('renders the "Review in Build Guide" forward link when showBuildGuideLink is true (#545)', () => {
+    const src: ReportCardSource = { ...makeSrc(), filename: 'x.wav' };
+    const grade = buildGrade(src);
+
+    const html = renderMarkup({ analysis: src, grade, dateText: 'now', showBuildGuideLink: true });
+
+    expect(html).toContain('rc-build-guide-review');
+    expect(html).toContain('Review in Build Guide');
+  });
+
+  it('omits the "Review in Build Guide" link when showBuildGuideLink is omitted or false (#545)', () => {
+    const src: ReportCardSource = { ...makeSrc(), filename: 'x.wav' };
+    const grade = buildGrade(src);
+
+    const omitted = renderMarkup({ analysis: src, grade, dateText: 'now' });
+    expect(omitted).not.toContain('rc-build-guide-review');
+
+    const explicitFalse = renderMarkup({ analysis: src, grade, dateText: 'now', showBuildGuideLink: false });
+    expect(explicitFalse).not.toContain('rc-build-guide-review');
+  });
+
   it('renders the "vs. last time" delta line when a delta prop is given (#259)', () => {
     const src: ReportCardSource = { ...makeSrc(), filename: 'x.wav' };
     const grade = buildGrade(src);

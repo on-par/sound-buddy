@@ -33,11 +33,13 @@ import {
   commitReportCardNote,
   buildAnalysisSummaryInput,
   MAX_TOP_FIXES,
+  ringoutCalloutForFlag,
   type PillTone,
   type ProfileComparison,
   type BandDiffApi,
   type SummaryGradingApi,
   type ReportCardSource,
+  type FeedbackRingoutView,
 } from './report-card';
 
 const require = createRequire(import.meta.url);
@@ -712,6 +714,42 @@ describe('reportDeltaView', () => {
   it('defends against a malformed current value', () => {
     expect(reportDeltaView({ score: NaN, gradeLetter: 'A' }, { score: 83, gradeLetter: 'B' })).toBeNull();
     expect(reportDeltaView({ score: 92, gradeLetter: '' }, { score: 83, gradeLetter: 'B' })).toBeNull();
+  });
+});
+
+describe('ringoutCalloutForFlag (#545)', () => {
+  const detected: FeedbackRingoutView = {
+    detected: true,
+    title: 'We spotted possible feedback risk',
+    sub: 'Ring out this frequency before it becomes a problem.',
+    buttonLabel: 'Ring out this frequency',
+  };
+  const prophylactic: FeedbackRingoutView = {
+    detected: false,
+    title: 'Fighting feedback in your monitors?',
+    sub: 'Walk through ringing out a mic step by step — no console access needed.',
+    buttonLabel: 'Open the ring-out wizard',
+  };
+
+  it('flag off + detected:false → returns the callout unchanged (#372 behavior)', () => {
+    expect(ringoutCalloutForFlag(prophylactic, false)).toBe(prophylactic);
+  });
+
+  it('flag off + detected:true → returns the callout unchanged', () => {
+    expect(ringoutCalloutForFlag(detected, false)).toBe(detected);
+  });
+
+  it('flag on + detected:true → returns the callout (AC1)', () => {
+    expect(ringoutCalloutForFlag(detected, true)).toBe(detected);
+  });
+
+  it('flag on + detected:false → returns null, suppressing the prophylactic banner (AC3)', () => {
+    expect(ringoutCalloutForFlag(prophylactic, true)).toBeNull();
+  });
+
+  it('returns null for a null callout regardless of the flag', () => {
+    expect(ringoutCalloutForFlag(null, false)).toBeNull();
+    expect(ringoutCalloutForFlag(null, true)).toBeNull();
   });
 });
 

@@ -43,3 +43,17 @@ describe('Report-first-ux gate wiring (#538)', () => {
     expect(reportFirstUxState).toContain('Copyright (c) 2026 Patrick Robinson (on-par)');
   });
 });
+
+// e17-06 (#545): the classic-side open action for the Report Card's "Review
+// in Build Guide" forward link — the inverse of #build-guide-review. Same
+// gate-by-text-assertion approach since inline-app.js is coverage-excluded.
+describe('Build Guide forward-link wiring (#545)', () => {
+  it('defines openBuildGuide and clicks the guide mode tab', () => {
+    expect(inlineApp).toContain('function openBuildGuide');
+    expect(inlineApp).toContain('.mode-tab[data-mode="guide"]');
+  });
+
+  it('exposes openBuildGuide on window.inlineDialogs', () => {
+    expect(inlineApp).toMatch(/window\.inlineDialogs\s*=\s*\{[^}]*openBuildGuide[^}]*\}/);
+  });
+});
