@@ -15,6 +15,12 @@ const REPO_URL = 'https://github.com/on-par/sound-buddy';
 const BROWSER_URL = '/browser';
 const FOUNDING_URL = foundingCheckoutUrl(process.env);
 
+// Single source of truth for the macOS/Apple-Silicon floor, restated at every
+// download/purchase CTA on the page (#154) so a visitor learns it without
+// scrolling to the mid-page "System requirements" section.
+const REQUIREMENT_LINE = 'Apple Silicon · macOS 26+';
+const REQUIREMENT_TOOLTIP = `Requires ${REQUIREMENT_LINE}`;
+
 // ── Founding countdown, synced to the demo video drop (#377) ──────────────
 // The 300-cap Founding run's urgency is pinned to the demo video release so peak
 // scarcity lands in the launch-week share window. This DEMO_VIDEO_DROP constant is
@@ -129,7 +135,7 @@ const tiers = [
         <a href="#faq">FAQ</a>
         <a href="#pricing">Pricing</a>
       </nav>
-      <a class="btn btn-primary" href={DOWNLOAD_URL} rel="noopener">Grade last Sunday's mix</a>
+      <a class="btn btn-primary" href={DOWNLOAD_URL} rel="noopener" title={REQUIREMENT_TOOLTIP}>Grade last Sunday's mix</a>
     </div>
   </header>
 
@@ -152,7 +158,7 @@ const tiers = [
           <span class="hero-chip">No cloud uploads</span>
           <span class="hero-chip">No account required</span>
         </div>
-        <p class="hero-fine mono">Apple Silicon · macOS 26+</p>
+        <p class="hero-fine mono">{REQUIREMENT_LINE}</p>
       </div>
       <div class="hero-visual hero-collage">
         <figure class="hero-tile hero-tile-live card">
@@ -317,6 +323,7 @@ const tiers = [
             <li>Virtual soundcheck — replay the room, week after week</li>
           </ul>
           <a class="btn btn-ghost" href={DOWNLOAD_URL} rel="noopener">Get the Mac app</a>
+          <p class="req-fine mono">{REQUIREMENT_LINE}</p>
         </div>
       </div>
     </div>
@@ -356,6 +363,7 @@ const tiers = [
             <div class="tier-price"><span class="price">{t.price}</span><span class="cadence">{t.cadence}</span></div>
             <p class="tier-blurb">{t.blurb}</p>
             <a class={`btn ${t.ctaVariant === 'primary' ? 'btn-primary' : 'btn-ghost'}`} href={t.ctaHref} rel="noopener">{t.cta}</a>
+            <p class="tier-req mono">{REQUIREMENT_LINE}</p>
             <ul class="tier-features">
               {t.features.map((f) => <li>{f}</li>)}
             </ul>
@@ -469,7 +477,7 @@ const tiers = [
         <span>Sound Buddy</span>
       </div>
       <nav class="footer-nav" aria-label="Footer">
-        <a href={DOWNLOAD_URL} rel="noopener">Download</a>
+        <a href={DOWNLOAD_URL} rel="noopener" title={REQUIREMENT_TOOLTIP}>Download</a>
         <a href={BROWSER_URL}>Browser Lite</a>
         <a href="/record-your-service">Recording guide</a>
         <a href={REPO_URL} rel="noopener">GitHub</a>
@@ -597,6 +605,8 @@ const tiers = [
   .wa-list { margin-top: 14px; }
 
   /* ── Pricing ── */
+  /* ── Requirement fine-print at download CTAs (#154) ── */
+  .tier-req, .req-fine { margin-top: 4px; color: var(--text-muted); font-size: var(--fs-label); }
   .pricing { background: var(--bg-app); }
   .founding-countdown { display: flex; align-items: center; gap: 10px; justify-content: center;
     margin: 18px auto 0; padding: 10px 16px; max-width: max-content;

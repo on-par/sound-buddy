@@ -52,6 +52,8 @@ configured order (#520, #521, ADR 0004).
 Dependencies: pip install sounddevice numpy scipy soundfile
 """
 
+from __future__ import annotations
+
 import os
 import re
 import sys
