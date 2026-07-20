@@ -986,6 +986,19 @@
     body.report-first-ux #rc-ai-dock #ai-panel { display:flex; width:auto; border-left:none; }
     #rc-ai-dock .panel-head .panel-title { display:none; }
 
+    /* ── Single-column workspace (#542, report-first-ux epic) ──
+       Recent / Build Guide / Ring-Out are a list, a checklist and a step
+       wizard — nothing to meter and no per-analysis narrative — so the
+       spectrum panel and AI rail sit empty beside them. body.single-column
+       (set from window.singleColumnState, flag-gated) folds both away and
+       lets the Source panel take the full workspace width. Placed after the
+       #rc-ai-dock block above so it wins the AI-panel cascade regardless of
+       whether the dock has moved #ai-panel out of #workspace (#541). */
+    body.single-column #spectrum-panel { display:none; }
+    body.single-column #ai-panel { display:none; }
+    body.single-column #rc-ai-dock { display:none; }
+    body.single-column #source-panel { width:100%; flex:1; border-right:none; }
+
     /* Status pill */
     .pill { display:inline-flex; align-items:center; gap:5px; padding:3px 10px; border-radius:var(--radius-pill); font:var(--fw-semibold) var(--fs-label)/1 var(--font-sans); letter-spacing:var(--tracking-caps); white-space:nowrap; }
     .pill.sm { padding:2px 8px; font-size:var(--fs-micro); }
