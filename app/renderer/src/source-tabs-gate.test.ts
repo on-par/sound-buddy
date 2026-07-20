@@ -31,9 +31,7 @@ const upgradeMomentum = fs.readFileSync(fileURLToPath(new URL('../upgrade-moment
 // `<!--`/`-->` text in the value diffed against, not an injection.
 function stripComments(source: string): string {
   // codeql[js/incomplete-multi-character-sanitization]
-  return source
-    .replace(/<!--[\s\S]*?-->/g, '')
-    .replace(/^\s*\/\/.*$/gm, '');
+  return source.replace(/<!--[\s\S]*?-->/g, '').replace(/^\s*\/\/.*$/gm, '');
 }
 
 describe('Source tabs gate (#544)', () => {
