@@ -25,14 +25,19 @@ describe('GUARANTEE_BADGE / GUARANTEE_SENTENCE', () => {
 describe('copy-drift guard', () => {
   it('index.astro has no hardcoded refund-window literal — it must go through the constant', () => {
     const source = readFileSync(indexAstroPath, 'utf8');
-    expect(source).not.toMatch(/\d+-day money-back/);
+    expect(source).not.toMatch(/\d+-day (money-back|full refund)/);
     expect(source).toContain("from '../lib/guarantee'");
   });
 
   it('refund.astro has no hardcoded refund-window literal — it must go through the constant', () => {
     const source = readFileSync(refundAstroPath, 'utf8');
-    expect(source).not.toMatch(/\d+-day money-back/);
+    expect(source).not.toMatch(/\d+-day (money-back|full refund)/);
     expect(source).toContain("from '../lib/guarantee'");
+  });
+
+  it('index.astro has no hardcoded "/refund" href — every link must go through REFUND_PATH', () => {
+    const source = readFileSync(indexAstroPath, 'utf8');
+    expect(source).not.toMatch(/href="\/refund"/);
   });
 });
 
