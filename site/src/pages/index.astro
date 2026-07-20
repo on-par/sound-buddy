@@ -68,8 +68,8 @@ const proofCards: ProofCard[] = [
   },
 ];
 
-const steps = [
-  { n: '1', title: 'Bring in last Sunday', body: 'Use the stream recording you already have, a USB export from the console, or a quick laptop capture.' },
+const steps: { n: string; title: string; body: string; link?: { href: string; label: string } }[] = [
+  { n: '1', title: 'Bring in last Sunday', body: 'Use the stream recording you already have, a USB export from the console, or a quick laptop capture.', link: { href: '/record-your-service', label: 'How to record your service →' } },
   { n: '2', title: 'See what actually happened', body: 'Sound Buddy grades loudness, dynamics, spectral balance, and speech vs. music — fully on your Mac, instead of leaving you with "felt muddy."' },
   { n: '3', title: 'Rehearse the fix', body: 'Turn the report card into practical next moves, then use virtual soundcheck to replay the room as separate tracks before next Sunday.' },
 ];
@@ -259,6 +259,7 @@ const tiers = [
             <span class="step-n mono">{s.n}</span>
             <h3>{s.title}</h3>
             <p>{s.body}</p>
+            {s.link && <a class="step-link" href={s.link.href}>{s.link.label}</a>}
           </div>
         ))}
       </div>
@@ -444,6 +445,7 @@ const tiers = [
       <nav class="footer-nav" aria-label="Footer">
         <a href={DOWNLOAD_URL} rel="noopener">Download</a>
         <a href={BROWSER_URL}>Browser Lite</a>
+        <a href="/record-your-service">Recording guide</a>
         <a href={REPO_URL} rel="noopener">GitHub</a>
         <a href="#pricing">Pricing</a>
         <a href="/refund">Refunds</a>
@@ -544,6 +546,8 @@ const tiers = [
   .step-n { display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; border-radius: var(--radius-md); background: var(--gold-tint); color: var(--gold-text); font: var(--fw-semibold) var(--fs-body)/1 var(--font-mono); margin-bottom: 14px; }
   .step h3 { font: var(--fw-semibold) var(--fs-h2)/var(--lh-snug) var(--font-sans); color: var(--text-primary); margin-bottom: 8px; }
   .step p { font: var(--fw-regular) var(--fs-body-sm)/var(--lh-normal) var(--font-sans); color: var(--text-tertiary); }
+  .step-link { display: inline-block; margin-top: 12px; font: var(--fw-medium) var(--fs-body-sm)/1 var(--font-sans); color: var(--gold-text); }
+  .step-link:hover { color: var(--text-primary); }
 
   /* ── Report card showcase ── */
   .rc-showcase { background: var(--bg-panel-2); }

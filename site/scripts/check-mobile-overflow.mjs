@@ -24,7 +24,7 @@ const CONTENT_TYPES = {
   '.woff2': 'font/woff2',
 };
 
-const PAGES = ['/', '/browser/'];
+const PAGES = ['/', '/browser/', '/record-your-service/'];
 const VIEWPORTS = [
   { w: 320, h: 568 },
   { w: 360, h: 740 },
@@ -32,6 +32,7 @@ const VIEWPORTS = [
 ];
 const EDGE_TOLERANCE_PX = 1;
 const MAX_OFFENDERS_REPORTED = 3;
+const MIN_VISIBLE_LINK_SIZE_PX = 1;
 
 try {
   await access(join(distRoot, 'index.html'));
@@ -122,6 +123,17 @@ try {
         );
       }
 
+      const guideLinkRect = await page.evaluate(() => {
+        const a = document.querySelector('footer a[href="/record-your-service"]');
+        return a ? a.getBoundingClientRect().toJSON() : null;
+      });
+      if (!guideLinkRect || guideLinkRect.width < MIN_VISIBLE_LINK_SIZE_PX || guideLinkRect.height < MIN_VISIBLE_LINK_SIZE_PX) {
+        problems.push(
+          `${pagePath} at ${viewport.w}x${viewport.h}: footer recording-guide link is missing or hidden ` +
+            `(rect=${guideLinkRect ? JSON.stringify(guideLinkRect) : 'null'})`,
+        );
+      }
+
       if (pagePath === '/') {
         const clipped = await page.evaluate(
           ({ edgeTolerance }) => {
@@ -165,4 +177,4 @@ if (problems.length) {
   process.exit(1);
 }
 
-console.log('✓ No horizontal overflow or hero clipping at 320/360/390px on / and /browser/.');
+console.log(`✓ No horizontal overflow or hero clipping at 320/360/390px on ${PAGES.join(', ')}.`);

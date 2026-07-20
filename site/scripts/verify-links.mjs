@@ -51,8 +51,13 @@ for (const f of files) {
 const external = /^(https?:|mailto:|tel:|data:)/i;
 const problems = [];
 
+// Read each built page once and reuse the content across every check below.
+const htmlByFile = new Map(
+  await Promise.all(htmlFiles.map(async (file) => [file, await readFile(file, 'utf8')])),
+);
+
 for (const file of htmlFiles) {
-  const html = await readFile(file, 'utf8');
+  const html = htmlByFile.get(file);
   for (const raw of hrefs(html)) {
     if (external.test(raw)) continue;
     if (raw.startsWith('#')) continue; // in-page anchor
@@ -78,8 +83,7 @@ if (problems.length) {
 // releases page directly.
 const releasesPageCtaRe = /sound-buddy-releases\/releases\/latest(?!\/download\/)/;
 for (const file of htmlFiles) {
-  const html = await readFile(file, 'utf8');
-  if (releasesPageCtaRe.test(html)) {
+  if (releasesPageCtaRe.test(htmlByFile.get(file))) {
     console.error(
       `✖ download CTA points at the GitHub releases page — CTAs must route through /download (stable release channel, #502)`,
     );
@@ -87,10 +91,28 @@ for (const file of htmlFiles) {
   }
 }
 
-const indexHtml = await readFile(join(root, 'index.html'), 'utf8');
+const indexHtml = htmlByFile.get(join(root, 'index.html'));
 if (!indexHtml.includes('href="/download"')) {
   console.error('✖ index.html has no /download CTA — the stable download channel is not wired');
   process.exit(1);
 }
 
-console.log(`✓ ${files.length} files, ${htmlFiles.length} page(s), internal links OK, /download CTA present.`);
+// #556 — /record-your-service explains step 1 of the funnel but nothing linked to
+// it. Every built page's footer must carry a link there so it's reachable from
+// anywhere on the site (it links to itself via LegalLayout's own footer, which is
+// fine and expected).
+const missingGuideLink = [];
+for (const file of htmlFiles) {
+  if (!htmlByFile.get(file).includes('href="/record-your-service"')) {
+    missingGuideLink.push(file.slice(root.length));
+  }
+}
+if (missingGuideLink.length) {
+  console.error(`✖ ${missingGuideLink.length} page(s) missing the recording-guide footer link:`);
+  for (const f of missingGuideLink) {
+    console.error(`  ${f}: add <a href="/record-your-service">Recording guide</a> to this page's footer nav`);
+  }
+  process.exit(1);
+}
+
+console.log(`✓ ${files.length} files, ${htmlFiles.length} page(s), internal links OK, /download CTA present, recording-guide link present on every page.`);
