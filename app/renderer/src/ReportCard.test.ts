@@ -223,6 +223,40 @@ describe('ReportCard', () => {
   });
 });
 
+describe('ReportCard — "save this mix as your target" CTA (#263)', () => {
+  it('renders the CTA with the not-yet-saved label when showSaveTarget is true and saveTargetSaved is false', () => {
+    const src: ReportCardSource = { ...makeSrc(), filename: 'x.wav' };
+    const grade = buildGrade(src);
+
+    const html = renderMarkup({ analysis: src, grade, dateText: 'now', showSaveTarget: true, saveTargetSaved: false });
+
+    expect(html).toContain('id="rc-save-target"');
+    expect(html).toContain('Save this mix’s tone as your target');
+    expect(html).not.toContain('Saved as a target curve');
+  });
+
+  it('flips to the saved/disabled state when saveTargetSaved is true', () => {
+    const src: ReportCardSource = { ...makeSrc(), filename: 'x.wav' };
+    const grade = buildGrade(src);
+
+    const html = renderMarkup({ analysis: src, grade, dateText: 'now', showSaveTarget: true, saveTargetSaved: true });
+
+    expect(html).toContain('Saved as a target curve');
+    expect(html).toMatch(/id="rc-save-target-btn"[^>]*disabled=""/);
+  });
+
+  it('omits the CTA when showSaveTarget is false or omitted', () => {
+    const src: ReportCardSource = { ...makeSrc(), filename: 'x.wav' };
+    const grade = buildGrade(src);
+
+    const omitted = renderMarkup({ analysis: src, grade, dateText: 'now' });
+    expect(omitted).not.toContain('id="rc-save-target"');
+
+    const explicitFalse = renderMarkup({ analysis: src, grade, dateText: 'now', showSaveTarget: false });
+    expect(explicitFalse).not.toContain('id="rc-save-target"');
+  });
+});
+
 describe('ReportCard — handoff note (#267)', () => {
   const src: ReportCardSource = { ...makeSrc(), filename: 'x.wav' };
   const grade = buildGrade(src);

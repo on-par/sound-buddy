@@ -33,6 +33,8 @@ import {
   commitReportCardNote,
   buildAnalysisSummaryInput,
   MAX_TOP_FIXES,
+  isStrongGrade,
+  strongMixTargetMeta,
   type PillTone,
   type ProfileComparison,
   type BandDiffApi,
@@ -765,6 +767,55 @@ describe('commitReportCardNote', () => {
     await commitReportCardNote(setNote, 'x.json', 'note text');
     expect(warn).toHaveBeenCalled();
     warn.mockRestore();
+  });
+});
+
+/* ── "Save this mix as your target" CTA (#263) ── */
+describe('isStrongGrade', () => {
+  it('returns true for A and B', () => {
+    expect(isStrongGrade('A')).toBe(true);
+    expect(isStrongGrade('B')).toBe(true);
+  });
+  it('returns false for C, D, F, and an empty string', () => {
+    expect(isStrongGrade('C')).toBe(false);
+    expect(isStrongGrade('D')).toBe(false);
+    expect(isStrongGrade('F')).toBe(false);
+    expect(isStrongGrade('')).toBe(false);
+  });
+});
+
+describe('strongMixTargetMeta', () => {
+  it('derives an id/label from a simple filename', () => {
+    expect(strongMixTargetMeta('silence.wav')).toEqual({
+      id: 'strongmix-silence',
+      label: 'Target from silence',
+      description: 'Saved from a strong-grading mix',
+    });
+  });
+
+  it('strips the extension and slugifies spaces/mixed case', () => {
+    const meta = strongMixTargetMeta('My Sunday Mix.flac');
+    expect(meta.id).toBe('strongmix-my-sunday-mix');
+    expect(meta.label).toBe('Target from My Sunday Mix');
+  });
+
+  it('falls back to "Saved mix" for an empty or whitespace-only filename', () => {
+    expect(strongMixTargetMeta('')).toEqual({
+      id: 'strongmix-saved-mix',
+      label: 'Target from Saved mix',
+      description: 'Saved from a strong-grading mix',
+    });
+    expect(strongMixTargetMeta('   ')).toEqual({
+      id: 'strongmix-saved-mix',
+      label: 'Target from Saved mix',
+      description: 'Saved from a strong-grading mix',
+    });
+  });
+
+  it('caps the label at 60 characters for a very long base name', () => {
+    const meta = strongMixTargetMeta('a'.repeat(100) + '.wav');
+    expect(meta.label.length).toBe(60);
+    expect(meta.label.startsWith('Target from ')).toBe(true);
   });
 });
 

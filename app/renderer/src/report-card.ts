@@ -784,6 +784,32 @@ export function buildAnalysisSummaryInput(
   };
 }
 
+/* ── "Save this mix as your target" CTA (#263) ──
+   Surfaces the existing free profileFromMeasuredCurve path at the moment it
+   matters most: a strong-grading recording. No new curve-generation logic —
+   these are pure view/id helpers; the capture itself stays in ideal-curves.js. */
+// Strong = grade the CTA surfaces after (A or B). Kept as a named helper so the
+// A/B gate is a single source of truth for the report card + tests (#263).
+export function isStrongGrade(letter: string): boolean {
+  return letter === 'A' || letter === 'B';
+}
+
+export interface StrongMixTargetMeta { id: string; label: string; description: string }
+
+// Deterministic id + human label for the "save this mix as your target" CTA
+// (#263). Deterministic id (derived from the filename) means re-clicking the CTA
+// for the same recording upserts the same profile instead of piling up dupes.
+export function strongMixTargetMeta(filename: string): StrongMixTargetMeta {
+  const base = String(filename || '').replace(/\.[^/.]+$/, '').trim();
+  const name = base || 'Saved mix';
+  const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40) || 'saved-mix';
+  return {
+    id: `strongmix-${slug}`,
+    label: `Target from ${name}`.slice(0, 60),
+    description: 'Saved from a strong-grading mix',
+  };
+}
+
 /* ── Handoff note (#267) ──
    MAX_NOTE_LENGTH re-exported so callers (ReportCard.tsx's input maxLength)
    need only import this module, not reach into electron/ipc/api directly. */
