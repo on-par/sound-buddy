@@ -48,6 +48,10 @@ vi.mock('./narrative', () => ({
   streamLLM: (...a: unknown[]) => streamLLMMock(...a),
   buildLiveReport: (...a: unknown[]) => buildLiveReportMock(...a),
 }));
+const loadEnginePromptsMock = vi.fn();
+vi.mock('./engine-loader', () => ({
+  loadEnginePrompts: () => loadEnginePromptsMock(),
+}));
 const spawnMock = vi.fn();
 vi.mock('child_process', () => ({
   spawn: (...args: unknown[]) => spawnMock(...args),
@@ -128,6 +132,9 @@ beforeEach(async () => {
   getMediaAccessStatusMock.mockReturnValue('granted');
   getSettingsMock.mockReturnValue({ aiEnabled: false });
   defaultRecordDirMock.mockReturnValue(path.join(tmpDir, 'default'));
+  loadEnginePromptsMock.mockReturnValue({
+    buildLiveSystemPrompt: () => 'You are a professional audio engineer (fake live prompt, TD-004 #398).',
+  });
 });
 
 afterEach(() => {
@@ -602,6 +609,52 @@ describe('LLM interval timer', () => {
     await vi.advanceTimersByTimeAsync(5000);
 
     expect(streamLLMMock).not.toHaveBeenCalled();
+  });
+
+  it('uses the engine loader\'s buildLiveSystemPrompt() for the tick system prompt (TD-004, #398)', async () => {
+    getSettingsMock.mockReturnValue({ aiEnabled: true });
+    buildLiveReportMock.mockReturnValue('REPORT');
+    streamLLMMock.mockResolvedValue(undefined);
+    const proc = fakeProc();
+    spawnMock.mockReturnValueOnce(proc);
+    const sender = fakeSender();
+
+    await startLive({ windowSecs: 5, llmIntervalSecs: 5 }, sender);
+    proc.stdout.emit('data', Buffer.from(JSON.stringify({ window: 1 }) + '\n'));
+    await vi.advanceTimersByTimeAsync(5000);
+
+    expect(streamLLMMock).toHaveBeenCalledWith(
+      sender,
+      'You are a professional audio engineer (fake live prompt, TD-004 #398).',
+      'REPORT',
+    );
+  });
+
+  it('skips the tick without crashing the interval when loadEnginePrompts throws', async () => {
+    getSettingsMock.mockReturnValue({ aiEnabled: true });
+    buildLiveReportMock.mockReturnValue('REPORT');
+    loadEnginePromptsMock.mockImplementation(() => {
+      throw new Error('audio-engine prompts not found');
+    });
+    const proc = fakeProc();
+    spawnMock.mockReturnValueOnce(proc);
+    const sender = fakeSender();
+
+    await startLive({ windowSecs: 5, llmIntervalSecs: 5 }, sender);
+    proc.stdout.emit('data', Buffer.from(JSON.stringify({ window: 1 }) + '\n'));
+    await vi.advanceTimersByTimeAsync(5000);
+
+    expect(streamLLMMock).not.toHaveBeenCalled();
+
+    // The interval itself must survive the throw — a later tick with a
+    // healthy loader still fires.
+    loadEnginePromptsMock.mockReturnValue({
+      buildLiveSystemPrompt: () => 'You are a professional audio engineer (fake live prompt, TD-004 #398).',
+    });
+    streamLLMMock.mockResolvedValue(undefined);
+    await vi.advanceTimersByTimeAsync(5000);
+
+    expect(streamLLMMock).toHaveBeenCalledTimes(1);
   });
 
   it('is cleared on stop', async () => {

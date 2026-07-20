@@ -13,6 +13,7 @@ import { probeOllama } from '../ollama-probe';
 import { testProvider, listNarrativeModels } from '../narrative-port';
 import { getPublicLlmConfig, saveLlmConfig, type LlmConfigPatch } from '../llm-config';
 import { isEntitled } from '../license';
+import { loadEnginePrompts } from './engine-loader';
 import type { AudioAnalysis } from './analysis';
 
 // ─── LLM ──────────────────────────────────────────────────────────────────────
@@ -165,8 +166,6 @@ export function registerNarrativeHandlers(): void {
   ipcMain.handle('trigger-llm-analysis', async (event, data: { analysis?: AudioAnalysis; windows?: unknown[]; mode: string }) => {
     const wc = event.sender;
 
-    const systemPrompt = `You are a professional audio engineer with 20+ years of experience. Analyze the given acoustic measurement data deeply: identify EQ imbalances, dynamic range issues, potential mastering problems, stereo image concerns, and anything else a trained ear would flag. Be specific, reference the actual numbers, and give actionable recommendations.`;
-
     let userMessage: string;
     if (data.mode === 'live' && data.windows) {
       userMessage = buildLiveReport(data.windows);
@@ -179,10 +178,13 @@ export function registerNarrativeHandlers(): void {
     }
 
     try {
-      await streamLLM(wc, systemPrompt, userMessage);
+      const { SYSTEM_PROMPT } = loadEnginePrompts();
+      await streamLLM(wc, SYSTEM_PROMPT, userMessage);
       return { success: true };
     } catch (err) {
       logError(`trigger-llm-analysis failed (mode=${data.mode})`, err);
+      if (!wc.isDestroyed()) wc.send('llm-delta', `\n[AI error: ${err instanceof Error ? err.message : String(err)}]\n`);
+      if (!wc.isDestroyed()) wc.send('llm-done');
       return { success: false, error: String(err) };
     }
   });

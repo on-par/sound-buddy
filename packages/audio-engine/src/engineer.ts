@@ -1,7 +1,7 @@
 import * as http from "http";
 import type { AudioAnalysis, ChannelAnalysis, ChannelComparison } from "./types.js";
 import type { WindowData } from "./stream/types.js";
-import { SYSTEM_PROMPT, MULTI_CHANNEL_SYSTEM_PROMPT } from "./prompts/index.js";
+import { SYSTEM_PROMPT, MULTI_CHANNEL_SYSTEM_PROMPT, buildLiveSystemPrompt } from "./prompts/index.js";
 import { fmt } from "./format.js";
 import type { NarrativePort } from "./narrative/port.js";
 import { PiNarrativeAdapter } from "./narrative/pi-adapter.js";
@@ -82,7 +82,10 @@ export async function analyzeStream(
     ? (windows[windows.length - 1].ts - windows[0].ts) / (windows.length - 1)
     : 3;
 
-  const systemPrompt = `You are a professional audio engineer monitoring a live mix from a Midas M32R console. You are given ${windows.length} consecutive ${windowSecs.toFixed(1)}-second analysis windows. Identify trends, flag developing problems (frequency buildup, approaching clipping, dynamic issues), and give real-time mixing recommendations. Be concise — this is live monitoring, not a post-session report.`;
+  const systemPrompt = buildLiveSystemPrompt({
+    windowCount: windows.length,
+    windowSeconds: windowSecs,
+  });
 
   const summary = windows.map((w) => {
     const chSummary = w.channels.map((ch) => {

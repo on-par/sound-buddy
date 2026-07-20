@@ -3,7 +3,7 @@ import { EventEmitter } from "node:events";
 import type { AudioAnalysis, ChannelAnalysis, ChannelComparison, FrequencyBands } from "./types.js";
 import type { WindowData } from "./stream/types.js";
 import type { NarrativePort, NarrativeResult } from "./narrative/port.js";
-import { SYSTEM_PROMPT, MULTI_CHANNEL_SYSTEM_PROMPT } from "./prompts/index.js";
+import { SYSTEM_PROMPT, MULTI_CHANNEL_SYSTEM_PROMPT, buildLiveSystemPrompt } from "./prompts/index.js";
 
 const { requestMock } = vi.hoisted(() => {
   const requestMock = vi.fn();
@@ -316,6 +316,7 @@ describe("NarrativePort-backed functions", () => {
       expect(calls[0].user).toContain("Window 1 (t=1970-01-01T00:16:40.000Z)");
       expect(calls[0].user).toContain("Kick: rms=-18.5dBFS peak=-3.2dBFS clip=false centroid=151Hz");
       expect(calls[0].user).toContain("[bass:-12.3dB]");
+      expect(calls[0].system).toBe(buildLiveSystemPrompt({ windowCount: 2, windowSeconds: 3 }));
     });
 
     it("falls back to a 3-second window when only one window is given", async () => {

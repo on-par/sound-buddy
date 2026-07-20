@@ -18,6 +18,11 @@
     "src/analyze/orchestrate.ts",
     "src/analyze/timeout.ts",
     "src/types.ts",
-    "src/ndjson.ts"
+    "src/ndjson.ts",
+    "src/prompts/index.ts",
+    "src/prompts/system-engineer.ts",
+    "src/prompts/system-multi-channel.ts",
+    "src/prompts/system-analyst.ts",
+    "src/prompts/system-live.ts"
   ]
 }
