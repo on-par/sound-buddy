@@ -23,4 +23,9 @@ const makeSrc = (over = {}) => ({
   ...over,
 });
 
-module.exports = { flatBands, makeSrc };
+// Per-channel live-capture contributors: n channels of flat bands, with the
+// caller overriding individual channels to inject a hot band and labels.
+const makeChannels = (overrides = []) =>
+  overrides.map((o, i) => ({ name: `CH${i + 1}`, bands: flatBands(), ...o }));
+
+module.exports = { flatBands, makeSrc, makeChannels };
