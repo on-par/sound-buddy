@@ -20,7 +20,10 @@ import { useStoreShallow } from './stores/useStoreShallow';
 import { useAnalysisStore, type AnalysisStatus } from './stores/analysisStore';
 import { useSpectrumStore } from './stores/spectrumStore';
 import { useSettingsStore } from './stores/settingsStore';
+import { useSceneDiffStore } from './stores/sceneDiffStore';
 import ReportCard, { type GradeResult } from './ReportCard';
+import SceneChanges from './SceneChanges';
+import { topSceneChanges } from '../../electron/scene-diff-format';
 import {
   iconSvg,
   gradeRingHTML,
@@ -161,6 +164,7 @@ interface EmptyStateProps {
 function EmptyState({ visible, selectedFilePath, status }: EmptyStateProps) {
   const sb = useElectron();
   const [dragOver, setDragOver] = useState(false);
+  const [sceneDragOver, setSceneDragOver] = useState(false);
   // Sticks at true once a run has ever completed, so a later failed re-run
   // doesn't flip the label back to "Analyze" — mirrors inline-app.js's
   // one-way analyzeBtn.innerHTML flip (only Clear/clearAnalysis resets it).
@@ -174,6 +178,14 @@ function EmptyState({ visible, selectedFilePath, status }: EmptyStateProps) {
   const pickFile = async () => {
     const fp = await sb.openFileDialog();
     if (fp) useAnalysisStore.getState().selectFile(fp);
+  };
+
+  // Scene-file diff (#264) — the extension check lives in computeSceneDiff
+  // (electron/scene-diff.ts), not here, so a wrong file gets the actionable
+  // IPC error message instead of a silent no-op.
+  const pickScene = async () => {
+    const fp = await sb.openFileDialog();
+    if (fp) void useSceneDiffStore.getState().addScenePath(fp);
   };
 
   return (
@@ -219,6 +231,39 @@ function EmptyState({ visible, selectedFilePath, status }: EmptyStateProps) {
           <span dangerouslySetInnerHTML={{ __html: iconSvg('waveform', 16) }} />
           {everAnalyzedRef.current ? 'Re-analyze' : 'Analyze'}
         </button>
+      </div>
+      <div className="rc-empty-scene">
+        <div
+          className={`dropzone${sceneDragOver ? ' dragover' : ''}`}
+          id="scene-dropzone"
+          onClick={() => { void pickScene(); }}
+          onDragOver={(e) => { e.preventDefault(); setSceneDragOver(true); }}
+          onDragLeave={() => setSceneDragOver(false)}
+          onDrop={(e) => {
+            e.preventDefault();
+            setSceneDragOver(false);
+            // Unlike the audio dropzone, a single drop gesture can carry both
+            // files at once (the hint text invites "drop two") — feed every
+            // dropped path through addScenePath in order, awaiting each
+            // before the next so the two-file window and its diffScenes
+            // in-flight guard (sceneDiffStore.ts) see them one at a time
+            // instead of racing.
+            const files = Array.from(e.dataTransfer?.files ?? []) as Array<File & { path?: string }>;
+            const paths = files.map((f) => f.path).filter((p): p is string => !!p);
+            if (paths.length === 0) return;
+            void (async () => {
+              for (const p of paths) {
+                await useSceneDiffStore.getState().addScenePath(p);
+              }
+            })();
+          }}
+        >
+          <div className="dz-icon" dangerouslySetInnerHTML={{ __html: iconSvg('file-audio', 16) }} />
+          <div className="dz-body">
+            <span className="dz-title">Console scene (optional)</span>
+            <span className="dz-hint">Drop a .scn from your M32R — drop two to compare before/after</span>
+          </div>
+        </div>
       </div>
     </div>
   );
@@ -293,6 +338,13 @@ export default function ReportCardIsland() {
     isAutoProfile: s.isAutoProfile,
   }));
   const { settings } = useStoreShallow(useSettingsStore, (s) => ({ settings: s.settings }));
+  const { sceneStatus, sceneDiff, sceneNameA, sceneNameB, sceneError } = useStoreShallow(useSceneDiffStore, (s) => ({
+    sceneStatus: s.status,
+    sceneDiff: s.diff,
+    sceneNameA: s.nameA,
+    sceneNameB: s.nameB,
+    sceneError: s.sceneError,
+  }));
   const reportViewedRef = useRef(false);
 
   const isHistoryCard = !!historySummary && !currentAnalysis && !liveSource;
@@ -410,6 +462,14 @@ export default function ReportCardIsland() {
       ) : (
         <div id="rc-content" style={{ display: 'none' }} />
       )}
+      <SceneChanges
+        status={sceneStatus}
+        changes={sceneDiff ? topSceneChanges(sceneDiff) : []}
+        totalChanges={sceneDiff?.changes.length ?? 0}
+        nameA={sceneNameA}
+        nameB={sceneNameB}
+        sceneError={sceneError}
+      />
     </>
   );
 }

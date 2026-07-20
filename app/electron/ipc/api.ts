@@ -61,6 +61,12 @@ export interface AnalyzeFileOpts {
   filePath: string;
 }
 
+/** electron/scene-diff.ts's computeSceneDiff() input for the diff-scenes IPC handler (#264). */
+export interface DiffScenesOpts {
+  pathA: string;
+  pathB: string;
+}
+
 export interface StartLiveOpts {
   device?: string;
   // Channel-config tokens: "N" (mono) or "N-M" (stereo pair), e.g. ["0","1-2"].
@@ -365,6 +371,33 @@ export interface CancelAnalysisResult {
   success: boolean;
 }
 
+// ─── Scene-diff DTOs (new — #264) ────────────────────────────────────────────
+// Mirror @sound-buddy/shared's SceneChange/SceneDiff. Deliberately duplicated
+// rather than imported: this file must stay dependency-free (see the file
+// header), same rationale as LicenseKind/LicenseState below.
+
+export interface SceneChangeDto {
+  path: string;
+  label: string;
+  from: unknown;
+  to: unknown;
+}
+
+export interface SceneDiffDto {
+  changes: SceneChangeDto[];
+  summary: string;
+  bySection: {
+    channels: SceneChangeDto[];
+    dcas: SceneChangeDto[];
+    main: SceneChangeDto[];
+  };
+}
+
+/** electron/scene-diff.ts's computeSceneDiff() result envelope, exposed over IPC. */
+export type DiffScenesResult =
+  | { ok: true; diff: SceneDiffDto; nameA: string; nameB: string }
+  | { ok: false; error: string };
+
 // ─── Storage-usage DTO (new — mirrors ipc/settings.ts's get-storage-usage) ───
 
 export interface StorageUsage {
@@ -482,6 +515,8 @@ export interface AnalysisApi {
   onAnalysisResult(cb: (data: unknown) => void): void;
   getDemoAudio(): Promise<string | null>;
   onMenuOpenFile(cb: (filePath: string) => void): void;
+  // Scene-file diff (#264) — parses and diffs two dropped M32R .scn files.
+  diffScenes(opts: DiffScenesOpts): Promise<DiffScenesResult>;
 }
 
 export interface LiveApi {

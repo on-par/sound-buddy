@@ -23,6 +23,7 @@ import type {
   StartLiveOpts,
   StartPlaybackOpts,
   FeedbackSubmission,
+  DiffScenesOpts,
 } from './ipc/api';
 
 function mockIpc(): IpcRendererLike & {
@@ -107,6 +108,11 @@ const INVOKE_TABLE: Array<{ method: BridgeKey; channel: string; args: unknown[] 
   { method: 'listAnalysisSummaries', channel: 'list-analysis-summaries', args: [] },
   { method: 'cancelAnalysis', channel: 'cancel-analysis', args: [] },
   { method: 'getDemoAudio', channel: 'get-demo-audio', args: [] },
+  {
+    method: 'diffScenes',
+    channel: 'diff-scenes',
+    args: [{ pathA: '/tmp/before.scn', pathB: '/tmp/after.scn' } satisfies DiffScenesOpts],
+  },
   { method: 'isOnboardingDisabled', channel: 'onboarding-disabled', args: [] },
   { method: 'listDevices', channel: 'list-devices', args: [] },
   { method: 'listOutputDevices', channel: 'list-output-devices', args: [] },

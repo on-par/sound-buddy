@@ -40,6 +40,16 @@ vi.mock('./engine-loader', () => ({
   }),
 }));
 
+// diff-scenes (#264) delegates to computeSceneDiff (its own test suite,
+// scene-diff.test.ts) with parseScene/diffScenes resolved from the loader —
+// mocked here the same way as engine-loader above, so this suite never
+// touches the real compiled scene-inspector CJS build.
+const parseSceneMock = vi.fn();
+const diffScenesMock = vi.fn();
+vi.mock('../scene-inspector-loader', () => ({
+  loadSceneInspector: () => ({ parseScene: parseSceneMock, diffScenes: diffScenesMock }),
+}));
+
 const recordTelemetryEventMock = vi.hoisted(() => vi.fn());
 vi.mock('../telemetry', () => ({
   recordTelemetryEvent: recordTelemetryEventMock,
@@ -623,6 +633,56 @@ describe('set-analysis-summary-note IPC handler', () => {
       error: 'Error: History record "missing.json" is missing or unreadable — the note was not saved.',
     });
     expect(logErrorMock).toHaveBeenCalled();
+  });
+});
+
+describe('diff-scenes IPC handler', () => {
+  type DiffScenesHandler = (
+    event: unknown,
+    opts: { pathA: string; pathB: string },
+  ) => { ok: boolean; diff?: unknown; nameA?: string; nameB?: string; error?: string };
+
+  function tempScenePath(name: string, contents: string): string {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'sb-diff-scenes-test-'));
+    const file = path.join(dir, name);
+    fs.writeFileSync(file, contents, 'utf8');
+    return file;
+  }
+
+  it('is registered by registerAnalysisHandlers()', () => {
+    expect(handlers.has('diff-scenes')).toBe(true);
+  });
+
+  it('assembles fs + scene-inspector deps and delegates to computeSceneDiff, resolving the diff on the happy path', () => {
+    const pathA = tempScenePath('before.scn', 'before-contents');
+    const pathB = tempScenePath('after.scn', 'after-contents');
+    const sceneA = { name: 'Before', version: '4.0', channels: [], dcas: [] };
+    const sceneB = { name: 'After', version: '4.0', channels: [], dcas: [] };
+    const diff = {
+      changes: [{ path: 'channels[0].mix.on', label: 'Kick — mute', from: true, to: false }],
+      summary: '1 change found',
+      bySection: { channels: [], dcas: [], main: [] },
+    };
+    parseSceneMock.mockImplementation((content: string) => (content === 'before-contents' ? sceneA : sceneB));
+    diffScenesMock.mockReturnValue(diff);
+
+    const handler = handlers.get('diff-scenes') as DiffScenesHandler;
+    const result = handler(undefined, { pathA, pathB });
+
+    expect(result).toEqual({ ok: true, diff, nameA: 'Before', nameB: 'After' });
+    expect(diffScenesMock).toHaveBeenCalledWith(sceneA, sceneB);
+  });
+
+  it('delegates a validation failure (e.g. a non-.scn extension) unchanged, without touching the scene-inspector module', () => {
+    const handler = handlers.get('diff-scenes') as DiffScenesHandler;
+
+    const result = handler(undefined, { pathA: '/tmp/before.txt', pathB: '/tmp/after.scn' });
+
+    expect(result).toEqual({
+      ok: false,
+      error: "before.txt isn't a scene file. Drop a .scn file exported from your M32R console.",
+    });
+    expect(parseSceneMock).not.toHaveBeenCalled();
   });
 });
 

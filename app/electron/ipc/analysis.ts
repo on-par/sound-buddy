@@ -16,9 +16,17 @@ import { log, logError } from '../logger';
 import { recordTelemetryEvent } from '../telemetry';
 import { saveAnalysisSummary, listAnalysisSummaries, setAnalysisSummaryNote, type AnalysisSummary } from '../storage';
 import { toolBin, pythonBin, childEnv, SPECTRUM_SCRIPT, DEMO_AUDIO, defaultRecordDir } from './shared';
-import { MAX_NOTE_LENGTH, type AnalyzeFileOpts, type SetSummaryNoteInput } from './api';
+import {
+  MAX_NOTE_LENGTH,
+  type AnalyzeFileOpts,
+  type SetSummaryNoteInput,
+  type DiffScenesOpts,
+  type DiffScenesResult,
+} from './api';
 import { loadEngineParsers } from './engine-loader';
 import { runAnalysis } from './run-analysis';
+import { computeSceneDiff } from '../scene-diff';
+import { loadSceneInspector } from '../scene-inspector-loader';
 import type {
   SoxStats,
   FfprobeResult,
@@ -193,5 +201,17 @@ export function registerAnalysisHandlers(): void {
       logError('set-analysis-summary-note failed', err);
       return { success: false, error: String(err) };
     }
+  });
+
+  // diff-scenes (#264) — parses and diffs two dropped M32R .scn files. Thin:
+  // assembles the fs + scene-inspector deps and delegates to computeSceneDiff.
+  ipcMain.handle('diff-scenes', (_event, opts: DiffScenesOpts): DiffScenesResult => {
+    const { parseScene, diffScenes } = loadSceneInspector();
+    return computeSceneDiff(opts.pathA, opts.pathB, {
+      readFile: (p) => fs.readFileSync(p, 'utf8'),
+      fileExists: (p) => fs.existsSync(p),
+      parseScene,
+      diffScenes,
+    });
   });
 }
