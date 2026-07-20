@@ -78,3 +78,16 @@ describe('Live monitoring visibly leads to a Report Card (#488)', () => {
     );
   });
 });
+
+describe('Existing tabs stay intact under the unified Analyze picker (#543)', () => {
+  it('keeps all seven mode tabs, unchanged', () => {
+    ['dir', 'live', 'soundcheck', 'recent', 'guide', 'ringout', 'reportcard'].forEach((mode) => {
+      expect(markup).toContain(`data-mode="${mode}"`);
+    });
+  });
+
+  it('leaves the Directory roadmap note in place', () => {
+    expect(markup).toContain('id="dir-roadmap"');
+    expect(markup).toContain('Coming in v1.1');
+  });
+});
