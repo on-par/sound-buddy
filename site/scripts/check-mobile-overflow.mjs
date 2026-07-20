@@ -177,4 +177,4 @@ if (problems.length) {
   process.exit(1);
 }
 
-console.log('✓ No horizontal overflow or hero clipping at 320/360/390px on / and /browser/.');
+console.log(`✓ No horizontal overflow or hero clipping at 320/360/390px on ${PAGES.join(', ')}.`);

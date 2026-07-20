@@ -51,8 +51,13 @@ for (const f of files) {
 const external = /^(https?:|mailto:|tel:|data:)/i;
 const problems = [];
 
+// Read each built page once and reuse the content across every check below.
+const htmlByFile = new Map(
+  await Promise.all(htmlFiles.map(async (file) => [file, await readFile(file, 'utf8')])),
+);
+
 for (const file of htmlFiles) {
-  const html = await readFile(file, 'utf8');
+  const html = htmlByFile.get(file);
   for (const raw of hrefs(html)) {
     if (external.test(raw)) continue;
     if (raw.startsWith('#')) continue; // in-page anchor
@@ -78,8 +83,7 @@ if (problems.length) {
 // releases page directly.
 const releasesPageCtaRe = /sound-buddy-releases\/releases\/latest(?!\/download\/)/;
 for (const file of htmlFiles) {
-  const html = await readFile(file, 'utf8');
-  if (releasesPageCtaRe.test(html)) {
+  if (releasesPageCtaRe.test(htmlByFile.get(file))) {
     console.error(
       `✖ download CTA points at the GitHub releases page — CTAs must route through /download (stable release channel, #502)`,
     );
@@ -87,7 +91,7 @@ for (const file of htmlFiles) {
   }
 }
 
-const indexHtml = await readFile(join(root, 'index.html'), 'utf8');
+const indexHtml = htmlByFile.get(join(root, 'index.html'));
 if (!indexHtml.includes('href="/download"')) {
   console.error('✖ index.html has no /download CTA — the stable download channel is not wired');
   process.exit(1);
@@ -99,8 +103,7 @@ if (!indexHtml.includes('href="/download"')) {
 // fine and expected).
 const missingGuideLink = [];
 for (const file of htmlFiles) {
-  const html = await readFile(file, 'utf8');
-  if (!html.includes('href="/record-your-service"')) {
+  if (!htmlByFile.get(file).includes('href="/record-your-service"')) {
     missingGuideLink.push(file.slice(root.length));
   }
 }

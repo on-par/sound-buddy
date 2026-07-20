@@ -65,14 +65,16 @@ const canonical = new URL(current, Astro.site).href;
         </span>
         <span>Sound Buddy</span>
       </div>
-      <nav class="footer-nav" aria-label="Guides">
-        <a href="/record-your-service" aria-current={current === '/record-your-service' ? 'page' : undefined}>Recording guide</a>
-      </nav>
-      <nav class="footer-nav" aria-label="Legal">
-        {legalLinks.map((l) => (
-          <a href={l.href} aria-current={current === l.href ? 'page' : undefined}>{l.label}</a>
-        ))}
-      </nav>
+      <div class="footer-navs">
+        <nav class="footer-nav" aria-label="Guides">
+          <a href="/record-your-service" aria-current={current === '/record-your-service' ? 'page' : undefined}>Recording guide</a>
+        </nav>
+        <nav class="footer-nav" aria-label="Legal">
+          {legalLinks.map((l) => (
+            <a href={l.href} aria-current={current === l.href ? 'page' : undefined}>{l.label}</a>
+          ))}
+        </nav>
+      </div>
       <p class="footer-meta mono">© {new Date().getFullYear()} <a href="https://onpardev.com" rel="noopener">On PAR Dev</a> · Built for worship teams</p>
     </div>
   </footer>
@@ -112,9 +114,8 @@ const canonical = new URL(current, Astro.site).href;
   .site-footer { border-top: 1px solid var(--border-subtle); background: var(--neutral-1000); padding: 36px 0; }
   .footer-row { display: flex; align-items: center; gap: 24px; flex-wrap: wrap; }
   .footer-brand { display: inline-flex; align-items: center; gap: 8px; font: var(--fw-semibold) var(--fs-body)/1 var(--font-sans); color: var(--text-primary); }
+  .footer-navs { display: flex; gap: 20px; flex-wrap: wrap; margin-left: auto; }
   .footer-nav { display: flex; gap: 20px; flex-wrap: wrap; font: var(--fw-medium) var(--fs-body-sm)/1 var(--font-sans); color: var(--text-tertiary); }
-  .footer-row > .footer-nav:first-of-type { margin-left: auto; }
-  .footer-nav + .footer-nav { margin-left: 20px; }
   .footer-nav a { border-bottom: 1px solid transparent; padding-bottom: 2px; }
   .footer-nav a:hover { color: var(--text-primary); }
   .footer-nav a[aria-current='page'] { color: var(--gold-text); }
