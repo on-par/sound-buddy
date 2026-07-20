@@ -31,6 +31,7 @@ import upgradeMomentumSrc from '../upgrade-momentum.js?raw';
 import onboardingStateSrc from '../onboarding-state.js?raw';
 import whatsNewStateSrc from '../whats-new-state.js?raw';
 import liveSetupStateSrc from '../live-setup-state.js?raw';
+import liveTransitionStateSrc from '../live-transition-state.js?raw';
 import idealCurvesSrc from '../ideal-curves.js?raw';
 import gradingSrc from '../grading.js?raw';
 import buildOrderStateSrc from '../build-order-state.js?raw';
@@ -75,6 +76,7 @@ const BOOT_SCRIPTS = [
   onboardingStateSrc,
   whatsNewStateSrc,
   liveSetupStateSrc,
+  liveTransitionStateSrc,
   idealCurvesSrc,
   gradingSrc,
   buildOrderStateSrc,

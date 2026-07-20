@@ -120,6 +120,11 @@ let liveCountdownSecs = 0;
 let liveDevices = [];          // last device list (for channel-count lookup)
 let liveMode = 'monitor';      // 'monitor' | 'record'
 let recordDir = '';            // chosen recording folder ('' = default ~/Music/Sound Buddy)
+// Transient: true only while a running monitor session is being promoted to a
+// recording (#458) — the backend swap from the monitor stream.py child to a
+// record one is in flight. Distinct from liveMode so the transport UI can
+// show "Starting…" without prematurely flipping into the recording state.
+let capturePromoting = false;
 let channelConfig = [];        // configured strips: { kind:'mono'|'stereo', a:idx, b:idx }
 let llmRunning = false;
 let aiStreamStarted = false;
@@ -1922,6 +1927,35 @@ function setLiveMode(mode) {
 // Inline "arm at least one strip" hint near the Start button (#43).
 function showArmHint(msg) { const h = document.getElementById('arm-hint'); h.textContent = msg; h.style.display = 'block'; }
 function hideArmHint() { const h = document.getElementById('arm-hint'); if (h) h.style.display = 'none'; }
+
+// Single source of truth for the Start/Stop/Record transport buttons + the
+// header indicator + the status line, all driven by window.liveTransitionState's
+// pure phase model (#458) from the raw liveRunning/liveMode/capturePromoting
+// flags — start, stop, and promote-to-recording all funnel through here so
+// they can never paint diverging transport states. `meterRate`, when passed,
+// interpolates into the status line ("Recording · meters N/s"); omit it to
+// leave the current status text alone (e.g. the "Connecting…" placeholder).
+function syncCaptureControls(meterRate) {
+  const phase = window.liveTransitionState.capturePhase({ liveRunning, liveMode, promoting: capturePromoting });
+
+  document.getElementById('live-start-btn').style.display = phase === 'idle' ? 'inline-flex' : 'none';
+  document.getElementById('live-stop-btn').style.display = phase === 'idle' ? 'none' : 'inline-flex';
+
+  const recordView = window.liveTransitionState.recordButtonView(phase);
+  const recordBtn = document.getElementById('live-record-btn');
+  recordBtn.style.display = recordView.visible ? 'inline-flex' : 'none';
+  recordBtn.disabled = recordView.disabled;
+  recordBtn.textContent = recordView.label;
+  hydrateIcons(recordBtn);
+
+  const indicator = window.liveTransitionState.captureIndicator(phase);
+  document.querySelector('#live-indicator .live-txt').textContent = indicator.text;
+  document.getElementById('live-indicator').classList.toggle('capture-record', indicator.recording);
+
+  if (meterRate != null) {
+    document.getElementById('live-status').textContent = window.liveTransitionState.statusLabel(phase, meterRate);
+  }
+}
 document.querySelectorAll('#live-mode button').forEach((b) => {
   b.addEventListener('click', () => setLiveMode(b.dataset.mode));
 });
@@ -2266,10 +2300,8 @@ document.getElementById('live-start-btn').addEventListener('click', async () => 
   document.getElementById('rc-offer').style.display = 'none';
   document.getElementById('rc-not-enough').style.display = 'none';
   document.getElementById('live-rc-cue').style.display = 'none';
-  document.getElementById('live-start-btn').style.display = 'none';
-  document.getElementById('live-stop-btn').style.display = 'inline-flex';
   document.getElementById('live-indicator').style.display = 'flex';
-  document.querySelector('#live-indicator .live-txt').textContent = liveMode === 'record' ? 'REC' : 'LIVE';
+  syncCaptureControls();
   renderMeasurementBadge();
   document.getElementById('live-status').style.display = 'block';
   document.getElementById('live-status').textContent = 'Connecting…';
@@ -2293,8 +2325,7 @@ document.getElementById('live-start-btn').addEventListener('click', async () => 
     setSpectrumState('error', { text: result.error || 'Failed to start live capture' });
   } else {
     const rate = Math.round(1 / intervalSecs);
-    document.getElementById('live-status').textContent =
-      liveMode === 'record' ? `Recording · meters ${rate}/s` : `Monitoring · meters ${rate}/s`;
+    syncCaptureControls(rate);
     startLiveCountdown(llmIntervalSecs);
     // Guided first-use setup (#294): starting a capture completes setup
     // permanently. Remove any rendered banner immediately rather than calling
@@ -2307,6 +2338,64 @@ document.getElementById('live-start-btn').addEventListener('click', async () => 
 });
 
 document.getElementById('live-stop-btn').addEventListener('click', () => stopLive());
+document.getElementById('live-record-btn').addEventListener('click', () => promoteToRecording());
+
+// Promote a running monitor session to a recording in place (#458): same
+// device, channels, groups, labels, and measurement source carry over
+// unchanged — no teardown, no re-selection. The backend still swaps the
+// monitor stream.py child for a record one (an acceptable short transition
+// for this slice), but the UI never makes the user rebuild the setup. On
+// failure the session drops to a stopped-but-configured state via stopLive()
+// (device/channels/groups/measurement source all preserved) rather than
+// attempting to resume monitoring — see the spec's non-goals.
+async function promoteToRecording() {
+  const guard = window.liveTransitionState.canPromoteToRecording({
+    liveRunning, liveMode, promoting: capturePromoting, armedCount: armedCount(),
+  });
+  if (!guard.ok) {
+    showArmHint(guard.reason);
+    return;
+  }
+  hideArmHint();
+
+  capturePromoting = true;
+  liveMode = 'record';
+  document.getElementById('tab-live').classList.toggle('capture-record', true);
+  syncCaptureControls();
+
+  const device = document.getElementById('device-select').value || undefined;
+  const windowSecs = parseFloat(document.getElementById('window-secs').value);
+  const intervalSecs = parseInt(document.getElementById('meter-interval').value) / 1000;
+  const llmIntervalSecs = (setStore.getState().settings || {}).aiEnabled ? parseInt(document.getElementById('llm-interval').value) : 0;
+  const channels = channelTokens();
+
+  const result = await sb.startLive({
+    device, channels, windowSecs, intervalSecs, llmIntervalSecs,
+    mode: 'record', recordDir: recordDir || undefined,
+    // Record mode: capture only the armed strips as session stems (#43).
+    arm: armedTokens(),
+    // Record mode: carry display labels into stem filenames + session.json (#482).
+    labels: channelConfig.map((s) => (s.label || '').trim()),
+  });
+  capturePromoting = false;
+
+  if (result.success) {
+    document.getElementById('record-folder-row').style.display = 'flex';
+    syncCaptureControls(Math.round(1 / intervalSecs));
+    renderMeasurementBadge();
+    // The record child is a fresh stream — re-arm the LLM cadence against it.
+    clearLiveCountdown();
+    startLiveCountdown(llmIntervalSecs);
+  } else {
+    liveMode = 'monitor';
+    document.getElementById('tab-live').classList.toggle('capture-record', false);
+    setSpectrumState('error', {
+      text: result.error || 'Could not start recording. Monitoring stopped — press Start Capture to resume.',
+    });
+    stopLive();
+    syncCaptureControls();
+  }
+}
 
 async function stopLive() {
   liveRunning = false;
@@ -2319,10 +2408,9 @@ async function stopLive() {
   setCaptureControlsLocked(false); // re-enable config (also the failed-Start path) (#38)
   clearLiveCountdown();
   const result = await sb.stopLive();
-  document.getElementById('live-start-btn').style.display = 'inline-flex';
-  document.getElementById('live-stop-btn').style.display = 'none';
   document.getElementById('live-indicator').style.display = 'none';
   document.getElementById('live-status').style.display = 'none';
+  syncCaptureControls();
   document.getElementById('live-rc-cue').style.display = 'block';
   document.getElementById('window-badge').textContent = '';
   document.getElementById('measurement-badge').textContent = '';
