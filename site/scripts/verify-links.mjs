@@ -93,4 +93,23 @@ if (!indexHtml.includes('href="/download"')) {
   process.exit(1);
 }
 
-console.log(`✓ ${files.length} files, ${htmlFiles.length} page(s), internal links OK, /download CTA present.`);
+// #556 — /record-your-service explains step 1 of the funnel but nothing linked to
+// it. Every built page's footer must carry a link there so it's reachable from
+// anywhere on the site (it links to itself via LegalLayout's own footer, which is
+// fine and expected).
+const missingGuideLink = [];
+for (const file of htmlFiles) {
+  const html = await readFile(file, 'utf8');
+  if (!html.includes('href="/record-your-service"')) {
+    missingGuideLink.push(file.slice(root.length));
+  }
+}
+if (missingGuideLink.length) {
+  console.error(`✖ ${missingGuideLink.length} page(s) missing the recording-guide footer link:`);
+  for (const f of missingGuideLink) {
+    console.error(`  ${f}: add <a href="/record-your-service">Recording guide</a> to this page's footer nav`);
+  }
+  process.exit(1);
+}
+
+console.log(`✓ ${files.length} files, ${htmlFiles.length} page(s), internal links OK, /download CTA present, recording-guide link present on every page.`);

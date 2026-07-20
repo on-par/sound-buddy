@@ -24,7 +24,7 @@ const CONTENT_TYPES = {
   '.woff2': 'font/woff2',
 };
 
-const PAGES = ['/', '/browser/'];
+const PAGES = ['/', '/browser/', '/record-your-service/'];
 const VIEWPORTS = [
   { w: 320, h: 568 },
   { w: 360, h: 740 },
@@ -32,6 +32,7 @@ const VIEWPORTS = [
 ];
 const EDGE_TOLERANCE_PX = 1;
 const MAX_OFFENDERS_REPORTED = 3;
+const MIN_VISIBLE_LINK_SIZE_PX = 1;
 
 try {
   await access(join(distRoot, 'index.html'));
@@ -119,6 +120,17 @@ try {
         problems.push(
           `${pagePath} at ${viewport.w}x${viewport.h}: document scrollWidth ${scrollWidth} > clientWidth ${clientWidth}. ` +
             `Offenders: ${offenders.length ? offenders.join(', ') : '(none found past tolerance — check for a container overflow)'}`,
+        );
+      }
+
+      const guideLinkRect = await page.evaluate(() => {
+        const a = document.querySelector('footer a[href="/record-your-service"]');
+        return a ? a.getBoundingClientRect().toJSON() : null;
+      });
+      if (!guideLinkRect || guideLinkRect.width < MIN_VISIBLE_LINK_SIZE_PX || guideLinkRect.height < MIN_VISIBLE_LINK_SIZE_PX) {
+        problems.push(
+          `${pagePath} at ${viewport.w}x${viewport.h}: footer recording-guide link is missing or hidden ` +
+            `(rect=${guideLinkRect ? JSON.stringify(guideLinkRect) : 'null'})`,
         );
       }
 
