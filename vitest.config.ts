@@ -1,5 +1,6 @@
 import { defineConfig } from 'vitest/config';
 import { PROJECT_INSTALL_ROOTS, isInstalled } from './scripts/coverage-install-roots.mjs';
+import { UI_COVERAGE_EXCLUSIONS } from './app/vitest.config';
 
 // Root Vitest projects config (#237): a single entry point that fans out to
 // every suite in the repo (packages/*, app, worker) and merges their coverage
@@ -58,14 +59,11 @@ export default defineConfig({
         '**/dist/**',
         '**/*.config.{ts,js,mjs}',
         'worker/src/e2e/**',
-        // Mirror app's own coverage excludes (see app/vitest.config.ts for
-        // the rationale): e2e-verified DOM glue (#303) and the shared test
-        // double (#308) don't count toward coverage there, so they must not
-        // count here either.
-        'app/renderer/src/main.tsx',
-        'app/renderer/src/App.tsx',
-        'app/renderer/src/inline-app.js',
-        'app/renderer/src/mock-sound-buddy.ts',
+        // Shared with app/vitest.config.ts's UI_COVERAGE_EXCLUSIONS (#401) —
+        // e2e-verified DOM glue (#303) and the shared test double (#308)
+        // don't count toward coverage there, so they must not count here
+        // either. Imported, not duplicated, so the two lists can't drift.
+        ...UI_COVERAGE_EXCLUSIONS.map((e) => `app/${e.path}`),
       ],
     },
   },
