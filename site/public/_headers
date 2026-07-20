@@ -4,10 +4,13 @@
 #   external via vite.build.assetsInlineLimit=0 in astro.config.mjs.
 # - style-src needs 'unsafe-inline': Astro components render style=""
 #   attributes (ReportCard grade ring/ribbon); everything else is self-hosted.
-# - No external domains: fonts (@fontsource) and images are bundled into
-#   /_astro/; no analytics or third-party scripts.
+# - script-src/connect-src allow Cloudflare Web Analytics: the beacon
+#   (static.cloudflareinsights.com) is injected at the CF edge, not by our
+#   build, and reports to cloudflareinsights.com. It is cookieless and sets
+#   no cross-site identifiers (#555). These are the ONLY external origins;
+#   fonts (@fontsource) and images are still bundled into /_astro/.
 /*
-  Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; upgrade-insecure-requests
+  Content-Security-Policy: default-src 'self'; script-src 'self' https://static.cloudflareinsights.com; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self' https://cloudflareinsights.com; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; upgrade-insecure-requests
   X-Frame-Options: DENY
   X-Content-Type-Options: nosniff
   Referrer-Policy: strict-origin-when-cross-origin

@@ -1,11 +1,13 @@
 // Guard the built site's security headers: asserts dist/_headers exists,
 // carries the required header set with the right values on the `/*` rule,
 // and stays consistent with the build (no inline <script> tags — those would
-// be blocked by the strict script-src 'self' CSP below).
+// be blocked by the CSP's script-src, which only allows 'self' and the
+// Cloudflare Web Analytics beacon origin).
 import { readFile, readdir } from 'node:fs/promises';
 import { join, extname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { hasInlineScript } from './lib/inline-script.mjs';
+import { checkCspOrigins, parseCsp } from './lib/csp.mjs';
 
 const root = fileURLToPath(new URL('../dist/', import.meta.url));
 const headersPath = join(root, '_headers');
@@ -116,10 +118,11 @@ if (csp) {
   if (/unsafe-eval/i.test(csp.value)) {
     problems.push("Content-Security-Policy must not contain 'unsafe-eval' anywhere.");
   }
-  const scriptSrcMatch = csp.value.match(/script-src\s+([^;]+)/i);
-  if (scriptSrcMatch && /unsafe-inline/i.test(scriptSrcMatch[1])) {
+  const scriptSrc = parseCsp(csp.value).get('script-src') ?? [];
+  if (scriptSrc.includes("'unsafe-inline'")) {
     problems.push("Content-Security-Policy script-src must not contain 'unsafe-inline'.");
   }
+  problems.push(...checkCspOrigins(csp.value));
 }
 
 const files = await walk(root);
@@ -150,4 +153,4 @@ if (problems.length) {
   process.exit(1);
 }
 
-console.log('✓ _headers present, required headers set correctly, CSP strict, no inline scripts.');
+console.log('✓ _headers present, required headers set correctly, CSP strict (CF Web Analytics allowed), no inline scripts.');
