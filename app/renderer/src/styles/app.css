@@ -901,6 +901,10 @@
     .rc-note-input { width:100%; height:var(--control-h); padding:0 12px; background:var(--surface); color:var(--text-primary); border:1px solid var(--border-default); border-radius:var(--radius-md); font:var(--fw-regular) var(--fs-body-sm)/1 var(--font-sans); outline:none; }
     .rc-note-input:disabled { opacity:0.5; cursor:not-allowed; }
     .rc-note-text { margin:6px 0 0; font:var(--fw-regular) var(--fs-body-sm)/1.4 var(--font-sans); color:var(--text-secondary); text-align:left; }
+    /* The fresh-card echo mirrors the input for print only — never on screen,
+       even once it has a value (removing `hidden` alone isn't enough, since
+       a <p> with no hidden attribute is visible by default). */
+    .rc-note-print-mirror { display:none; }
     .rc-delta.improved { color:var(--good-text); }
     .rc-delta.regressed { color:var(--issue-text); }
     .rc-delta.unchanged { color:var(--text-muted); }

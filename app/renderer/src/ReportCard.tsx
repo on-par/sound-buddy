@@ -200,7 +200,10 @@ export default function ReportCard({
           onChange={(e) => onNoteChange?.(e.target.value)}
           onBlur={(e) => onNoteCommit?.(e.target.value)}
         />
-        <p className="rc-note-text" id="rc-note-text" hidden={!noteValue}>{noteValue}</p>
+        {/* Print-only mirror of the input above (#267) — .rc-note-print-mirror keeps
+            it invisible on screen even once noteValue is non-empty; the print
+            stylesheet forces it visible in the exported PDF instead. */}
+        <p className="rc-note-text rc-note-print-mirror" id="rc-note-text" hidden={!noteValue}>{noteValue}</p>
       </div>
       {showProfile && (
         <div className="rc-section" id="rc-profile-section">

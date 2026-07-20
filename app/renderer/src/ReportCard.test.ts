@@ -252,6 +252,18 @@ describe('ReportCard — handoff note (#267)', () => {
     expect(html).not.toMatch(/<p[^>]*id="rc-note-text"[^>]*hidden=""/);
   });
 
+  it('carries a screen-only-hidden class so the print mirror never duplicates the input on screen while typing', () => {
+    const html = renderMarkup({
+      analysis: src,
+      grade,
+      dateText: 'now',
+      noteEditable: true,
+      noteValue: 'used the new wireless pack today',
+    });
+
+    expect(html).toMatch(/<p[^>]*class="rc-note-text rc-note-print-mirror"[^>]*id="rc-note-text"/);
+  });
+
   it('escapes a hostile note value in the print text', () => {
     const html = renderMarkup({
       analysis: src,

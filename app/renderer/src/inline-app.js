@@ -3025,6 +3025,13 @@ function getReportCardSource() {
   return anaStore.getState().liveSource;
 }
 
+// Guards persistAnalysisSummary's async chain against out-of-order resolution
+// (#267): each call gets the next generation number, and a chain only applies
+// its resolved state if it's still the newest call — otherwise a slower older
+// run finishing after a newer re-analysis would stamp the wrong prevSummary/
+// lastSavedSummaryFile onto the card that's actually on screen.
+let persistGeneration = 0;
+
 // Persist a discrete report-card summary for the recent-services list (#147).
 // Fire-and-forget: never block or fail the report card on a storage error
 // (main logs and swallows). Only called from the file-analysis success path, so
@@ -3040,6 +3047,7 @@ function persistAnalysisSummary() {
       recordingType: grading.analyzeRecordingType(src).label,
       topFixes: grading.computeRecommendations(src).slice(0, 3),
     };
+    const generation = ++persistGeneration;
     // The handoff note field (#267) is add-at-save-time only — disabled until
     // this run's own save resolves with the record it wrote.
     anaStore.getState().setLastSavedSummaryFile(null);
@@ -3047,12 +3055,16 @@ function persistAnalysisSummary() {
     // is genuinely "last time" and never the record we are about to write (#259).
     sb.listAnalysisSummaries()
       .then((res) => {
+        if (generation !== persistGeneration) return; // superseded by a newer analysis
         const prev = res && res.success && Array.isArray(res.summaries) && res.summaries[0] ? res.summaries[0] : null;
         anaStore.getState().setPrevSummary(prev);
       })
-      .catch(() => anaStore.getState().setPrevSummary(null))
+      .catch(() => {
+        if (generation === persistGeneration) anaStore.getState().setPrevSummary(null);
+      })
       .then(() => sb.saveAnalysisSummary(summary))
       .then((r) => {
+        if (generation !== persistGeneration) return; // superseded by a newer analysis
         anaStore.getState().setLastSavedSummaryFile(r && r.success ? r.file || null : null);
       })
       .catch((err) => console.warn('persistAnalysisSummary failed', err));
