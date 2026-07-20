@@ -9,6 +9,21 @@ import { PROJECT_INSTALL_ROOTS, isInstalled } from './coverage-install-roots.mjs
 
 const repoRoot = fileURLToPath(new URL('..', import.meta.url));
 
+// packages/cli's tests resolve @sound-buddy/audio-engine through its
+// package.json `main` (./dist/index.js) — a bare `npm ci` installs the
+// workspace symlinks but never produces that dist/ output. Unlike app/worker
+// above, packages/* are never skipped by vitest.config.ts, so a missing
+// build doesn't narrow the report — it makes vitest fail the suite and write
+// no coverage report at all (#595, a second instance of #338's failure
+// mode). Build the workspaces the same way CI does before running tests.
+const build = spawnSync('npm', ['run', 'build'], { cwd: repoRoot, stdio: 'inherit' });
+if (build.status !== 0) {
+  console.warn(
+    'coverage:deps: `npm run build` failed — packages/cli and packages/audio-engine ' +
+      'coverage will run against whatever dist/ output already exists, if any.',
+  );
+}
+
 for (const dir of Object.values(PROJECT_INSTALL_ROOTS).flat()) {
   if (isInstalled(dir)) continue;
   const result = spawnSync('npm', ['ci', '--prefix', dir], {
