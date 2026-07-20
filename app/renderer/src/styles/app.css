@@ -170,6 +170,16 @@
        not license gating — it marks a roadmap item (Directory / batch
        analysis, v1.1) so availability is readable from the tab bar. */
     .mode-tab .tab-soon { margin-left:4px; padding:1px 5px; border-radius:var(--radius-sm); background:var(--surface-raised); color:var(--text-muted); font:var(--fw-semibold) var(--fs-micro)/1.2 var(--font-sans); }
+
+    /* Unified source entry point (#544, epic e17): with report-first-ux on, the
+       three "where's the audio from?" tabs are reachable only through the #543
+       picker — keeping them in the tab bar too is duplicate navigation. The
+       buttons stay in the DOM (the picker routes by simulated .click(), and the
+       flag-off shell must be unchanged); display:none also drops them from the
+       accessibility tree, so they are not announced as tabs either. */
+    body.report-first-ux .mode-tab[data-mode="dir"],
+    body.report-first-ux .mode-tab[data-mode="live"],
+    body.report-first-ux .mode-tab[data-mode="soundcheck"] { display:none; }
     body.not-pro #tab-live > :not(.pro-gate),
     body.not-pro #tab-soundcheck > :not(.pro-gate) { display:none !important; }
     body.not-pro #tab-live .pro-gate,

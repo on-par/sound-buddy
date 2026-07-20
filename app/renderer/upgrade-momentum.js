@@ -41,7 +41,7 @@
   var ACTIONS = [
     { title: 'See what changed week to week', hint: 'Saved rigs track every mix over time.' },
     { title: 'Save this rig as your baseline', hint: 'Capture profiles you can compare against.' },
-    { title: 'Get ongoing coaching during live monitoring', hint: 'Real-time feedback on the Live tab.' },
+    { title: 'Get ongoing coaching during live monitoring', hint: 'Real-time feedback while you capture live.' },
   ];
 
   // Trust copy under the CTAs (#58) — the AI is always the user's own, local or
