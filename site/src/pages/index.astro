@@ -8,6 +8,7 @@ import reportCardShot from '../assets/screenshots/report-card.png';
 import momentumShot from '../assets/screenshots/momentum.png';
 import { GUARANTEE_BADGE, REFUND_PATH } from '../lib/guarantee';
 import { FOUNDING_CAP, foundingCheckoutUrl, foundingUrgency, isCheckoutLive } from '../lib/founding-urgency';
+import { FAQ_ENTRIES } from '../lib/faq';
 
 const DOWNLOAD_URL = '/download';
 const REPO_URL = 'https://github.com/on-par/sound-buddy';
@@ -125,6 +126,7 @@ const tiers = [
         <a href="#how">How it works</a>
         <a href={BROWSER_URL}>Browser Lite</a>
         <a href="#proof">App proof</a>
+        <a href="#faq">FAQ</a>
         <a href="#pricing">Pricing</a>
       </nav>
       <a class="btn btn-primary" href={DOWNLOAD_URL} rel="noopener">Grade last Sunday's mix</a>
@@ -367,6 +369,32 @@ const tiers = [
     </div>
   </section>
 
+  <!-- ── FAQ / objection handling ───────────────────────────────── -->
+  <section id="faq" class="section faq">
+    <div class="container">
+      <span class="eyebrow">Questions</span>
+      <h2 class="h2">The things churches ask before they install.</h2>
+      <p class="lede">
+        Short answers to what actually blocks the decision — privacy, the unsigned
+        install, the AI, and what happens if it doesn't work out.
+      </p>
+      <div class="faq-list">
+        {FAQ_ENTRIES.map((entry) => (
+          <details class="faq-item card" id={`faq-${entry.id}`}>
+            <summary>
+              <h3>{entry.question}</h3>
+              <span class="faq-chevron" aria-hidden="true">+</span>
+            </summary>
+            <div class="faq-answer">
+              {entry.answer.map((p) => <p>{p}</p>)}
+              {entry.link && <a class="faq-link" href={entry.link.href}>{entry.link.label}</a>}
+            </div>
+          </details>
+        ))}
+      </div>
+    </div>
+  </section>
+
   <!-- ── Privacy callout ────────────────────────────────────────── -->
   <section class="section privacy">
     <div class="container privacy-card card">
@@ -445,6 +473,7 @@ const tiers = [
         <a href={BROWSER_URL}>Browser Lite</a>
         <a href="/record-your-service">Recording guide</a>
         <a href={REPO_URL} rel="noopener">GitHub</a>
+        <a href="#faq">FAQ</a>
         <a href="#pricing">Pricing</a>
         <a href={REFUND_PATH}>Refunds</a>
         <a href="/terms">Terms</a>
@@ -603,6 +632,21 @@ const tiers = [
   .tier-features li::before { content: '✓'; position: absolute; left: 0; top: 0; color: var(--good-text); font: var(--fw-semibold) var(--fs-body-sm)/1 var(--font-sans); }
   .pricing-note { margin-top: 24px; font: var(--fw-regular) var(--fs-body-sm)/1.5 var(--font-sans); color: var(--text-muted); text-align: center; }
   .pricing-note a { color: var(--gold-text); border-bottom: 1px solid var(--border-subtle); }
+
+  /* ── FAQ ── */
+  .faq-list { display: flex; flex-direction: column; gap: 12px; margin-top: 36px; max-width: 760px; }
+  .faq-item { padding: 0; overflow: hidden; }
+  .faq-item summary { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 18px 22px; cursor: pointer; list-style: none; }
+  .faq-item summary::-webkit-details-marker { display: none; }
+  .faq-item summary:hover h3 { color: var(--gold-text); }
+  .faq-item summary:focus-visible { outline: 2px solid var(--border-focus); outline-offset: -2px; }
+  .faq-item summary h3 { font: var(--fw-medium) var(--fs-body)/var(--lh-snug) var(--font-sans); color: var(--text-primary); }
+  .faq-chevron { flex-shrink: 0; color: var(--text-muted); font: var(--fw-regular) var(--fs-h2)/1 var(--font-sans); transition: transform var(--ease-out, ease) 150ms; }
+  .faq-item[open] .faq-chevron { transform: rotate(45deg); }
+  @media (prefers-reduced-motion: reduce) { .faq-chevron { transition: none; } }
+  .faq-answer { padding: 0 22px 20px; display: flex; flex-direction: column; gap: 12px; }
+  .faq-answer p { font: var(--fw-regular) var(--fs-body-sm)/var(--lh-relaxed) var(--font-sans); color: var(--text-secondary); }
+  .faq-link { align-self: flex-start; font: var(--fw-medium) var(--fs-body-sm)/1 var(--font-sans); color: var(--gold-text); border-bottom: 1px solid var(--border-subtle); }
 
   /* ── Privacy ── */
   .privacy-card { padding: 44px 40px; text-align: center; }

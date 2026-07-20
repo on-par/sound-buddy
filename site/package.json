@@ -9,7 +9,7 @@
     "preview": "astro preview",
     "check": "astro check",
     "test": "vitest run",
-    "verify": "npm run check && npm run test && npm run build && node scripts/verify-links.mjs && node scripts/check-download-channel.mjs && node scripts/check-pricing.mjs && node scripts/check-homepage-visuals.mjs && node scripts/check-headers.mjs && node scripts/check-browser-page.mjs && node scripts/check-mobile-overflow.mjs"
+    "verify": "npm run check && npm run test && npm run build && node scripts/verify-links.mjs && node scripts/check-download-channel.mjs && node scripts/check-pricing.mjs && node scripts/check-faq.mjs && node scripts/check-homepage-visuals.mjs && node scripts/check-headers.mjs && node scripts/check-browser-page.mjs && node scripts/check-mobile-overflow.mjs"
   },
   "dependencies": {
     "@fontsource-variable/geist": "^5.2.9",
