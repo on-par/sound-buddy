@@ -81,6 +81,37 @@
     return bands[key] - avgOthers;
   }
 
+  // Fallback label for a live channel with no saved label and no engine-supplied
+  // name — attribution is never blocked on labeling being complete (#262).
+  const RC_UNLABELED_CHANNEL_PREFIX = 'Channel ';
+
+  // Picks the channel contributing the most energy to a single band — the
+  // loudest bands[bandKey] value wins. Ties resolve to the lowest array index
+  // (stable, matches the console's channel order). Returns null when there is
+  // no per-channel data or no channel reports that band, so callers fall back
+  // to the band-only recommendation text (#262).
+  function loudestBandContributor(channels, bandKey) {
+    if (!Array.isArray(channels) || channels.length === 0) return null;
+    let best = null;
+    for (let i = 0; i < channels.length; i++) {
+      const ch = channels[i];
+      const db = ch && ch.bands ? ch.bands[bandKey] : undefined;
+      if (typeof db !== 'number' || !Number.isFinite(db)) continue;
+      if (best === null || db > best.db) best = { index: i, db, label: channelLabel(ch, i) };
+    }
+    return best === null ? null : { index: best.index, label: best.label };
+  }
+
+  // Saved label wins, then the engine-supplied channel name, then a generic
+  // 1-based fallback (#262 AC: generic "Channel 3" is acceptable).
+  function channelLabel(ch, index) {
+    const saved = ch && typeof ch.label === 'string' ? ch.label.trim() : '';
+    if (saved) return saved;
+    const name = ch && typeof ch.name === 'string' ? ch.name.trim() : '';
+    if (name) return name;
+    return `${RC_UNLABELED_CHANNEL_PREFIX}${index + 1}`;
+  }
+
   // Whether a loudness field (#134) carries a real measurement. -Infinity is a
   // legitimate value (ffmpeg reports "-inf" for silent audio); only NaN, null,
   // or a missing field mean "not measured" — same contract as report-card.ts.
@@ -304,7 +335,9 @@
       const diff = bandDiffFromOthers(src.bands, k);
       if (diff > CONFIG.bandBalance.hotDiff) {
         const info = RC_BAND_INFO[k];
-        recs.push(`Too much energy in ${info.label} (${info.freq}). Cut ${Math.min(diff, 10).toFixed(1)} dB around this range.`);
+        const base = `Too much energy in ${info.label} (${info.freq}). Cut ${Math.min(diff, 10).toFixed(1)} dB around this range.`;
+        const contributor = loudestBandContributor(src.channels, k);
+        recs.push(contributor ? `${base} Mostly coming from "${contributor.label}".` : base);
       }
     }
     if (src.bands.brilliance < -40) recs.push('Mix lacks air and brightness. Boost 2-3 dB above 8kHz.');
@@ -386,6 +419,7 @@
     CONFIG: CONFIG,
     RC_BAND_INFO: RC_BAND_INFO,
     bandDiffFromOthers: bandDiffFromOthers,
+    loudestBandContributor: loudestBandContributor,
     analyzeRecordingType: analyzeRecordingType,
     computeGrade: computeGrade,
     explainGrade: explainGrade,

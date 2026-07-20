@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 
 const grading = require('../grading.js');
-const { flatBands, makeSrc } = require('./fixtures.js');
+const { flatBands, makeSrc, makeChannels } = require('./fixtures.js');
 
 describe('computeRecommendations', () => {
   it('leads with the critical clipping warning', () => {
@@ -59,5 +59,129 @@ describe('computeRecommendations', () => {
       makeSrc({ clipping: true, rms: -30, peak: -10, dynamicRange: 2, bands }),
     );
     expect(recs.length).toBeLessThanOrEqual(5);
+  });
+});
+
+describe('band-balance channel attribution (#262)', () => {
+  it('names the loudest contributing channel by its saved label', () => {
+    const channels = makeChannels([
+      { label: 'Acoustic Guitar', bands: { ...flatBands(-30), mid: -8 } },
+      { bands: flatBands(-30) },
+    ]);
+    const recs = grading.computeRecommendations(
+      makeSrc({ bands: { ...flatBands(-30), mid: -8 }, channels }),
+    );
+    expect(recs).toContain(
+      'Too much energy in Mid (500Hz-2kHz). Cut 10.0 dB around this range. Mostly coming from "Acoustic Guitar".',
+    );
+  });
+
+  it('falls back to the engine-supplied name when no label is saved', () => {
+    const channels = makeChannels([
+      { name: 'Kick Mic', bands: { ...flatBands(-30), mid: -8 } },
+    ]);
+    const recs = grading.computeRecommendations(
+      makeSrc({ bands: { ...flatBands(-30), mid: -8 }, channels }),
+    );
+    expect(recs).toContain(
+      'Too much energy in Mid (500Hz-2kHz). Cut 10.0 dB around this range. Mostly coming from "Kick Mic".',
+    );
+  });
+
+  it('falls back to a generic "Channel N" when there is neither a label nor a name', () => {
+    const channels = [
+      { bands: flatBands(-30) },
+      { bands: flatBands(-30) },
+      { bands: { ...flatBands(-30), mid: -8 } },
+    ];
+    const recs = grading.computeRecommendations(
+      makeSrc({ bands: { ...flatBands(-30), mid: -8 }, channels }),
+    );
+    expect(recs).toContain(
+      'Too much energy in Mid (500Hz-2kHz). Cut 10.0 dB around this range. Mostly coming from "Channel 3".',
+    );
+  });
+
+  it('treats a whitespace-only label as absent and falls back to the name', () => {
+    const channels = makeChannels([
+      { label: '   ', name: 'Overhead L', bands: { ...flatBands(-30), mid: -8 } },
+    ]);
+    const recs = grading.computeRecommendations(
+      makeSrc({ bands: { ...flatBands(-30), mid: -8 }, channels }),
+    );
+    expect(recs).toContain(
+      'Too much energy in Mid (500Hz-2kHz). Cut 10.0 dB around this range. Mostly coming from "Overhead L".',
+    );
+  });
+
+  it('breaks ties between equally loud channels toward the lowest index', () => {
+    const channels = makeChannels([
+      { label: 'First', bands: { ...flatBands(-30), mid: -8 } },
+      { label: 'Second', bands: { ...flatBands(-30), mid: -8 } },
+    ]);
+    const recs = grading.computeRecommendations(
+      makeSrc({ bands: { ...flatBands(-30), mid: -8 }, channels }),
+    );
+    expect(recs).toContain(
+      'Too much energy in Mid (500Hz-2kHz). Cut 10.0 dB around this range. Mostly coming from "First".',
+    );
+  });
+
+  it('emits the exact band-only text with no attribution when the source has no channels field', () => {
+    const recs = grading.computeRecommendations(makeSrc({ bands: { ...flatBands(-30), mid: -8 } }));
+    expect(recs).toContain('Too much energy in Mid (500Hz-2kHz). Cut 10.0 dB around this range.');
+    expect(recs.some(r => r.includes('Mostly coming from'))).toBe(false);
+  });
+
+  it('falls back to band-only text for an empty channels array or unusable channel data', () => {
+    const emptyRecs = grading.computeRecommendations(
+      makeSrc({ bands: { ...flatBands(-30), mid: -8 }, channels: [] }),
+    );
+    expect(emptyRecs).toContain('Too much energy in Mid (500Hz-2kHz). Cut 10.0 dB around this range.');
+
+    const unusableChannels = [
+      { label: 'No Bands' },
+      { label: 'NaN Mid', bands: { ...flatBands(-30), mid: NaN } },
+    ];
+    const unusableRecs = grading.computeRecommendations(
+      makeSrc({ bands: { ...flatBands(-30), mid: -8 }, channels: unusableChannels }),
+    );
+    expect(unusableRecs).toContain('Too much energy in Mid (500Hz-2kHz). Cut 10.0 dB around this range.');
+    expect(unusableRecs.some(r => r.includes('Mostly coming from'))).toBe(false);
+  });
+});
+
+describe('grading.loudestBandContributor', () => {
+  it('returns null for undefined channels', () => {
+    expect(grading.loudestBandContributor(undefined, 'mid')).toBeNull();
+  });
+
+  it('returns null for an empty channel list', () => {
+    expect(grading.loudestBandContributor([], 'mid')).toBeNull();
+  });
+
+  it('returns null when no channel has usable data for the band', () => {
+    const channels = [
+      { label: 'A' },
+      { label: 'B', bands: { mid: NaN } },
+      { label: 'C', bands: { mid: -Infinity } },
+    ];
+    expect(grading.loudestBandContributor(channels, 'mid')).toBeNull();
+  });
+
+  it('returns the index and label of the loudest channel', () => {
+    const channels = makeChannels([
+      { label: 'Quiet', bands: { ...flatBands(-30), mid: -30 } },
+      { label: 'Loud', bands: { ...flatBands(-30), mid: -5 } },
+    ]);
+    expect(grading.loudestBandContributor(channels, 'mid')).toEqual({ index: 1, label: 'Loud' });
+  });
+
+  it('resolves ties to the lowest index', () => {
+    const channels = makeChannels([
+      { label: 'First', bands: { ...flatBands(-30), mid: -5 } },
+      { label: 'Second', bands: { ...flatBands(-30), mid: -5 } },
+    ]);
+    expect(grading.loudestBandContributor(channels, 'mid')).toEqual({ index: 0, label: 'First' });
   });
 });

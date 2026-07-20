@@ -83,6 +83,10 @@ export interface ReportCardSource {
   clipping: boolean;
   centroid: number | undefined;
   bands: Record<string, number>;
+  // Per-channel band data for live-capture sources only, used to attribute a
+  // band-balance recommendation to the loudest contributing channel (#262).
+  // Absent on file analyses and on history entries predating this feature.
+  channels?: Array<{ label?: string; name?: string; bands: Record<string, number> }>;
   curve?: unknown;
   contentType?: string | null;
   segments?: unknown;

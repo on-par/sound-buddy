@@ -386,6 +386,36 @@ export function deviceListView(result: ListDevicesResult): DeviceListView {
  * level liveWindows var; liveCaptureStore writes analysisStore.liveSource
  * from this wherever liveWindows changes (bridge.ts's cross-store
  * subscription). */
+// Maps stream.py's snake_case band keys to grading.js's camelCase shape.
+// Shared by liveReportCardSource's own `bands:` field and
+// liveChannelContributors below so the seven-key mapping lives in one place.
+function liveBandsToCamel(bands: Record<string, number>): Record<string, number> {
+  return {
+    subBass: bands.sub_bass,
+    bass: bands.bass,
+    lowMid: bands.low_mid,
+    mid: bands.mid,
+    highMid: bands.high_mid,
+    presence: bands.presence,
+    brilliance: bands.brilliance,
+  };
+}
+
+/* Maps the live tick's per-channel data into grading.js's camelCase band shape,
+ * overlaying each strip's saved label so band-balance recommendations can name
+ * the loudest contributing channel (#262). */
+export function liveChannelContributors(
+  channels: ChannelWindowData[] | undefined,
+  config: StripConfig[] = [],
+): Array<{ label?: string; name?: string; bands: Record<string, number> }> {
+  if (!channels || channels.length === 0) return [];
+  return channels.map((ch, i) => ({
+    label: config[i]?.label?.trim() || undefined,
+    name: ch.name,
+    bands: liveBandsToCamel(ch.bands),
+  }));
+}
+
 export function liveReportCardSource(
   liveWindows: LiveEvent[],
   measurementSource: number | null = null,
@@ -405,15 +435,8 @@ export function liveReportCardSource(
     dynamicRange: null,
     clipping: ch.clipping,
     centroid: ch.centroid,
-    bands: {
-      subBass: ch.bands.sub_bass,
-      bass: ch.bands.bass,
-      lowMid: ch.bands.low_mid,
-      mid: ch.bands.mid,
-      highMid: ch.bands.high_mid,
-      presence: ch.bands.presence,
-      brilliance: ch.bands.brilliance,
-    },
+    bands: liveBandsToCamel(ch.bands),
+    channels: liveChannelContributors(win.channels, config),
   };
 }
 

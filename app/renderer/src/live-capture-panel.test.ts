@@ -15,6 +15,7 @@ import {
   veqChannelHTML,
   liveMetersHTML,
   liveReportCardSource,
+  liveChannelContributors,
   patchLiveChannelPlan,
   groupSummary,
   groupSummaryText,
@@ -671,6 +672,13 @@ describe('liveReportCardSource', () => {
       filename: 'Live capture — Main (window #3)',
       rms: -18, peak: -6, dynamicRange: null, clipping: false, centroid: 1800,
       bands: { subBass: -50, bass: -20, lowMid: -22, mid: -14, highMid: -24, presence: -30, brilliance: -60 },
+      channels: [
+        {
+          label: undefined,
+          name: 'Main',
+          bands: { subBass: -50, bass: -20, lowMid: -22, mid: -14, highMid: -24, presence: -30, brilliance: -60 },
+        },
+      ],
     });
   });
 
@@ -764,6 +772,65 @@ describe('liveReportCardSource', () => {
       channels: [{ index: 0, name: 'Main', rms: -1, peak: -1, clipping: false, centroid: 1, rolloff: 1, bands: {} }],
     };
     expect(liveReportCardSource([win], null)?.filename).toBe('Live capture — Main (window #1)');
+  });
+
+  it('returns a channels array the same length as win.channels with byte-identical top-level bands', () => {
+    const win: LiveEvent = {
+      type: 'window', window: 5, ts: 0, masking: [],
+      channels: [
+        { index: 0, name: 'Main', rms: -18, peak: -6, clipping: false, centroid: 1800, rolloff: 8000, bands: { sub_bass: -50, bass: -20, low_mid: -22, mid: -14, high_mid: -24, presence: -30, brilliance: -60 } },
+        { index: 1, name: 'Vocals', rms: -20, peak: -8, clipping: false, centroid: 1500, rolloff: 7000, bands: { sub_bass: -55, bass: -25, low_mid: -27, mid: -19, high_mid: -29, presence: -35, brilliance: -65 } },
+      ],
+    };
+    const src = liveReportCardSource([win]);
+    expect(src?.channels).toHaveLength(2);
+    expect(src?.bands).toEqual({ subBass: -50, bass: -20, lowMid: -22, mid: -14, highMid: -24, presence: -30, brilliance: -60 });
+  });
+});
+
+describe('liveChannelContributors', () => {
+  it('returns [] for undefined channels', () => {
+    expect(liveChannelContributors(undefined)).toEqual([]);
+  });
+
+  it('returns [] for an empty channels array', () => {
+    expect(liveChannelContributors([])).toEqual([]);
+  });
+
+  it('maps snake_case bands to the seven camelCase keys for every channel', () => {
+    const channels = [
+      { index: 0, name: 'Main', rms: -1, peak: -1, clipping: false, centroid: 1, rolloff: 1, bands: { sub_bass: -50, bass: -20, low_mid: -22, mid: -14, high_mid: -24, presence: -30, brilliance: -60 } },
+    ];
+    expect(liveChannelContributors(channels)).toEqual([
+      {
+        label: undefined,
+        name: 'Main',
+        bands: { subBass: -50, bass: -20, lowMid: -22, mid: -14, highMid: -24, presence: -30, brilliance: -60 },
+      },
+    ]);
+  });
+
+  it('overlays the saved config label when present', () => {
+    const channels = [
+      { index: 0, name: 'Main', rms: -1, peak: -1, clipping: false, centroid: 1, rolloff: 1, bands: {} },
+    ];
+    const config: StripConfig[] = [{ kind: 'mono', a: 0, b: 1, label: 'Crowd Mic' }];
+    expect(liveChannelContributors(channels, config)[0].label).toBe('Crowd Mic');
+  });
+
+  it('leaves label undefined when the saved label is empty or whitespace-only', () => {
+    const channels = [
+      { index: 0, name: 'Main', rms: -1, peak: -1, clipping: false, centroid: 1, rolloff: 1, bands: {} },
+    ];
+    const config: StripConfig[] = [{ kind: 'mono', a: 0, b: 1, label: '   ' }];
+    expect(liveChannelContributors(channels, config)[0].label).toBeUndefined();
+  });
+
+  it('defaults config to [] when not passed', () => {
+    const channels = [
+      { index: 0, name: 'Main', rms: -1, peak: -1, clipping: false, centroid: 1, rolloff: 1, bands: {} },
+    ];
+    expect(liveChannelContributors(channels)[0].label).toBeUndefined();
   });
 });
 
