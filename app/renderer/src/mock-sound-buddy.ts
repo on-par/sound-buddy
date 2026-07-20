@@ -128,6 +128,7 @@ export function createMockSoundBuddy(overrides: Partial<SoundBuddyApi> = {}): Mo
     cancelAnalysis: invoke('cancelAnalysis', { success: false }),
     onAnalysisProgress: listen<[AnalysisProgress]>('onAnalysisProgress'),
     getDemoAudio: invoke('getDemoAudio', null),
+    getWhatsNew: invoke('getWhatsNew', null),
     diffScenes: invoke('diffScenes', { ok: false as const, error: '' }),
     isOnboardingDisabled: invoke('isOnboardingDisabled', false),
     listDevices: invoke('listDevices', undefined),

@@ -15,7 +15,7 @@ import * as path from 'path';
 import { log, logError } from '../logger';
 import { recordTelemetryEvent } from '../telemetry';
 import { saveAnalysisSummary, listAnalysisSummaries, setAnalysisSummaryNote, type AnalysisSummary } from '../storage';
-import { toolBin, pythonBin, childEnv, SPECTRUM_SCRIPT, DEMO_AUDIO, defaultRecordDir } from './shared';
+import { toolBin, pythonBin, childEnv, SPECTRUM_SCRIPT, DEMO_AUDIO, WHATS_NEW_NOTE, defaultRecordDir } from './shared';
 import {
   MAX_NOTE_LENGTH,
   type AnalyzeFileOpts,
@@ -65,6 +65,19 @@ export async function runSpectrum(filePath: string, signal?: AbortSignal): Promi
 
 export async function runEbur128(filePath: string, signal?: AbortSignal): Promise<LoudnessStats> {
   return loadEngineParsers().runEbur128(filePath, { bin: toolBin('ffmpeg'), signal });
+}
+
+// Reads the bundled "what's new" note (#271) — pure and injectable so it's
+// testable without mocking the whole fs module. Returns null when the file is
+// absent or blank so the renderer never renders an empty/broken note.
+export function readWhatsNoteFile(
+  filePath: string,
+  exists: (p: string) => boolean = fs.existsSync,
+  read: (p: string, enc: 'utf8') => string = fs.readFileSync,
+): string | null {
+  if (!exists(filePath)) return null;
+  const text = read(filePath, 'utf8');
+  return text.trim() ? text : null;
 }
 
 // ─── IPC HANDLERS ─────────────────────────────────────────────────────────────
@@ -147,6 +160,11 @@ export function registerAnalysisHandlers(): void {
   ipcMain.handle('get-demo-audio', () => {
     return fs.existsSync(DEMO_AUDIO) ? DEMO_AUDIO : null;
   });
+
+  // get-whats-new (#271) — bundled "what's new" note shown once after an
+  // update, or null when the build ships none. The renderer (whats-new-state.js)
+  // owns parsing/gating; this handler is a thin file read.
+  ipcMain.handle('get-whats-new', () => readWhatsNoteFile(WHATS_NEW_NOTE));
 
   // save-analysis-summary (#146) — persist a small report-card summary under the
   // configured storage folder so the recent-services list (#147) has a history to

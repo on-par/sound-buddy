@@ -29,6 +29,7 @@ import playbackRoutingSrc from '../playback-routing.js?raw';
 import licenseStateSrc from '../license-state.js?raw';
 import upgradeMomentumSrc from '../upgrade-momentum.js?raw';
 import onboardingStateSrc from '../onboarding-state.js?raw';
+import whatsNewStateSrc from '../whats-new-state.js?raw';
 import liveSetupStateSrc from '../live-setup-state.js?raw';
 import idealCurvesSrc from '../ideal-curves.js?raw';
 import gradingSrc from '../grading.js?raw';
@@ -72,6 +73,7 @@ const BOOT_SCRIPTS = [
   licenseStateSrc,
   upgradeMomentumSrc,
   onboardingStateSrc,
+  whatsNewStateSrc,
   liveSetupStateSrc,
   idealCurvesSrc,
   gradingSrc,

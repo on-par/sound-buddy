@@ -110,6 +110,12 @@ HIGHLIGHTS=""
 # raw markdown as-is).
 [[ -f "$ROOT/RELEASE_HIGHLIGHTS.md" ]] && HIGHLIGHTS="$(sed -E '/^<!--.*-->[[:space:]]*$/d' "$ROOT/RELEASE_HIGHLIGHTS.md")"
 
+# Before cutting a release, also edit app/assets/whats-new.md (#271) — its
+# bullets become the in-app "what's new" note shown once after users update.
+# Leave it empty / delete it for a build with nothing to announce. It ships
+# automatically via electron-builder's `assets` extraResources mapping, so no
+# script logic here needs to change.
+
 NOTES="$(node --input-type=module -e '
   import { buildReleaseNotes } from "'"$ROOT"'/packages/shared/dist/index.js";
   process.stdout.write(buildReleaseNotes({

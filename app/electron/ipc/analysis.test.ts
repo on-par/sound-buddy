@@ -73,19 +73,24 @@ vi.mock('../logger', () => ({ log: vi.fn(), logError: logErrorMock }));
 // Partial fs mock: the existing temp-cleanup tests below write/check REAL files
 // under os.tmpdir(), so this must pass through to the actual module by default
 // and only be overridden per-test via mockImplementationOnce/mockReturnValueOnce.
-const { existsSyncSpy, rmSyncSpy } = vi.hoisted(() => ({ existsSyncSpy: vi.fn(), rmSyncSpy: vi.fn() }));
+const { existsSyncSpy, rmSyncSpy, readFileSyncSpy } = vi.hoisted(() => ({
+  existsSyncSpy: vi.fn(),
+  rmSyncSpy: vi.fn(),
+  readFileSyncSpy: vi.fn(),
+}));
 vi.mock('fs', async (importActual) => {
   const actual = await importActual<typeof import('fs')>();
   existsSyncSpy.mockImplementation(actual.existsSync);
   rmSyncSpy.mockImplementation(actual.rmSync);
-  return { ...actual, existsSync: existsSyncSpy, rmSync: rmSyncSpy };
+  readFileSyncSpy.mockImplementation(actual.readFileSync);
+  return { ...actual, existsSync: existsSyncSpy, rmSync: rmSyncSpy, readFileSync: readFileSyncSpy };
 });
 
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
-import { registerAnalysisHandlers, runSox, runFfprobe, runSpectrum, runEbur128 } from './analysis';
-import { toolBin, pythonBin, childEnv, SPECTRUM_SCRIPT, DEMO_AUDIO, defaultRecordDir } from './shared';
+import { registerAnalysisHandlers, runSox, runFfprobe, runSpectrum, runEbur128, readWhatsNoteFile } from './analysis';
+import { toolBin, pythonBin, childEnv, SPECTRUM_SCRIPT, DEMO_AUDIO, WHATS_NEW_NOTE, defaultRecordDir } from './shared';
 
 /** A minimal event-sender (renderer webContents) that records `send` calls. */
 function fakeSender(opts: { destroyed?: boolean } = {}) {
@@ -405,6 +410,7 @@ describe('analyze-file IPC handler', () => {
 
 type CancelHandler = (event: { sender: { id: number } }) => { success: boolean };
 type GetDemoAudioHandler = () => string | null;
+type GetWhatsNewHandler = () => string | null;
 type SaveSummaryHandler = (
   event: unknown,
   payload?: Record<string, unknown>,
@@ -458,6 +464,71 @@ describe('get-demo-audio IPC handler', () => {
   it('returns null when the bundled asset is missing', () => {
     existsSyncSpy.mockReturnValueOnce(false);
     const handler = handlers.get('get-demo-audio') as GetDemoAudioHandler;
+
+    const result = handler();
+
+    expect(result).toBeNull();
+  });
+});
+
+describe('readWhatsNoteFile', () => {
+  it('returns the file text when the path exists and is non-blank', () => {
+    const exists = vi.fn().mockReturnValue(true);
+    const read = vi.fn().mockReturnValue('# What\'s new\n- Something we shipped.\n');
+
+    const result = readWhatsNoteFile('/tmp/whats-new.md', exists, read);
+
+    expect(result).toBe('# What\'s new\n- Something we shipped.\n');
+    expect(exists).toHaveBeenCalledWith('/tmp/whats-new.md');
+    expect(read).toHaveBeenCalledWith('/tmp/whats-new.md', 'utf8');
+  });
+
+  it('returns null when the file does not exist', () => {
+    const exists = vi.fn().mockReturnValue(false);
+    const read = vi.fn();
+
+    const result = readWhatsNoteFile('/tmp/missing.md', exists, read);
+
+    expect(result).toBeNull();
+    expect(read).not.toHaveBeenCalled();
+  });
+
+  it('returns null when the file is blank/whitespace-only', () => {
+    const exists = vi.fn().mockReturnValue(true);
+    const read = vi.fn().mockReturnValue('   \n  \n');
+
+    const result = readWhatsNoteFile('/tmp/blank.md', exists, read);
+
+    expect(result).toBeNull();
+  });
+});
+
+describe('get-whats-new IPC handler', () => {
+  it('returns the bundled note text when the asset exists on disk', () => {
+    existsSyncSpy.mockReturnValueOnce(true);
+    readFileSyncSpy.mockReturnValueOnce('# What\'s new\n- Something we shipped.\n');
+    const handler = handlers.get('get-whats-new') as GetWhatsNewHandler;
+
+    const result = handler();
+
+    expect(result).toBe('# What\'s new\n- Something we shipped.\n');
+    expect(existsSyncSpy).toHaveBeenCalledWith(WHATS_NEW_NOTE);
+    expect(readFileSyncSpy).toHaveBeenCalledWith(WHATS_NEW_NOTE, 'utf8');
+  });
+
+  it('returns null when the bundled asset is missing', () => {
+    existsSyncSpy.mockReturnValueOnce(false);
+    const handler = handlers.get('get-whats-new') as GetWhatsNewHandler;
+
+    const result = handler();
+
+    expect(result).toBeNull();
+  });
+
+  it('returns null when the bundled asset is blank', () => {
+    existsSyncSpy.mockReturnValueOnce(true);
+    readFileSyncSpy.mockReturnValueOnce('   \n');
+    const handler = handlers.get('get-whats-new') as GetWhatsNewHandler;
 
     const result = handler();
 
