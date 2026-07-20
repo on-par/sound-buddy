@@ -23,15 +23,17 @@ const indexHtml = fs.readFileSync(fileURLToPath(new URL('../index.html', import.
 const upgradeMomentum = fs.readFileSync(fileURLToPath(new URL('../upgrade-momentum.js', import.meta.url)), 'utf8');
 
 // Strips HTML `<!-- ... -->` and JS `//` line comments so copy assertions
-// only see real, user-visible strings.
-// Not a security sanitizer: this never renders to a browser or feeds an
-// HTML sink — it only trims comment markers out of trusted local repo
-// source files before a test string-equality assertion. An incomplete
-// strip on adversarial nested-comment input would at worst leave stray
-// `<!--`/`-->` text in the value diffed against, not an injection.
+// only see real, user-visible strings. Repeats the HTML-comment strip until
+// it stabilizes so nested/overlapping comment markers can't survive a single
+// pass (CWE-116 / CodeQL js/incomplete-multi-character-sanitization).
 function stripComments(source: string): string {
-  // codeql[js/incomplete-multi-character-sanitization]
-  return source.replace(/<!--[\s\S]*?-->/g, '').replace(/^\s*\/\/.*$/gm, '');
+  let withoutHtmlComments = source;
+  let previous: string;
+  do {
+    previous = withoutHtmlComments;
+    withoutHtmlComments = withoutHtmlComments.replace(/<!--[\s\S]*?-->/g, '');
+  } while (withoutHtmlComments !== previous);
+  return withoutHtmlComments.replace(/^\s*\/\/.*$/gm, '');
 }
 
 describe('Source tabs gate (#544)', () => {
