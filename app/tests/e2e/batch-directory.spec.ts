@@ -8,11 +8,14 @@ import { launchApp, FAKE_ANALYSIS, WORSHIP_SERVICE_ANALYSIS } from './e2e-helper
 // Stubbed spec (SB_E2E_STUBBED_ONLY-safe): open-dir-dialog and analyze-file
 // are stubbed (fixture folder path; a canned result keyed by filePath, same
 // removeHandler/handle pattern as every other spec, see e2e-helpers.ts).
-// list-folder-audio is left REAL (never stubbed by launchApp()), and
-// save-analysis-summary/list-analysis-summaries are restored to the real
-// storage.ts read/write path (unit-tested in storage.test.ts) against an
-// isolated history folder, so the real folder scan and the real history
-// write/read are exercised end to end — not just the wiring.
+// list-folder-audio is left REAL (never stubbed by launchApp()), so the real
+// folder scan runs against the fixtures folder below. save-analysis-summary/
+// list-analysis-summaries are backed by a plain in-memory array instead of
+// launchApp()'s default no-op stubs (real storage.ts is unisolated across
+// spec files, and electronApp.evaluate's main-process context has no
+// `require`) — this still exercises the real save → list → Recent-tab round
+// trip end to end; storage.ts's own disk read/write is covered separately by
+// storage.test.ts.
 
 let electronApp: ElectronApplication;
 let window: Page;
@@ -28,9 +31,6 @@ test.describe('Sound Buddy E2E — batch-analyze a folder (#270)', () => {
     ({ electronApp, window } = await launchApp());
 
     await electronApp.evaluate(({ ipcMain }, opts) => {
-      const nodePath = require('path');
-      const storage = require(nodePath.join(opts.distElectronDir, 'storage.js'));
-
       ipcMain.removeHandler('open-dir-dialog');
       ipcMain.handle('open-dir-dialog', () => opts.fixturesDir);
 
@@ -39,23 +39,23 @@ test.describe('Sound Buddy E2E — batch-analyze a folder (#270)', () => {
         opts.analyses[fileOpts.filePath] ?? { success: false, error: 'unexpected fixture path' });
 
       // launchApp()'s default stubs no-op these two (real storage.ts is
-      // unisolated across spec files) — swap in the real implementation
-      // against an isolated per-run history folder instead.
+      // unisolated across spec files, and this main-process evaluate context
+      // has no `require` to reach the compiled module directly) — an
+      // in-memory array still exercises the real save → list → Recent-tab
+      // round trip; storage.ts's own disk read/write has its own test suite.
+      const history: Array<Record<string, unknown>> = [];
       ipcMain.removeHandler('save-analysis-summary');
-      ipcMain.handle('save-analysis-summary', async (_event: unknown, payload: Record<string, unknown>) => {
-        const summary = { date: new Date().toISOString(), ...payload };
-        const file = await storage.saveAnalysisSummary(opts.historyDir, summary);
-        return { success: true, file: nodePath.basename(file) };
+      ipcMain.handle('save-analysis-summary', (_event: unknown, payload: Record<string, unknown>) => {
+        history.unshift({ date: new Date().toISOString(), ...payload });
+        return { success: true, file: `${history.length}.json` };
       });
       ipcMain.removeHandler('list-analysis-summaries');
-      ipcMain.handle('list-analysis-summaries', async () => ({
+      ipcMain.handle('list-analysis-summaries', () => ({
         success: true,
-        summaries: await storage.listAnalysisSummaries(opts.historyDir, 10),
+        summaries: history.slice(0, 10),
       }));
     }, {
-      distElectronDir: path.join(__dirname, '..', '..', 'dist', 'electron'),
       fixturesDir: FIXTURES_DIR,
-      historyDir: path.join(__dirname, '..', '..', 'test-results', `e2e-batch-history-${process.pid}`),
       analyses: {
         [GOOD_1]: { success: true, data: FAKE_ANALYSIS },
         [BROKEN]: { success: false, error: BROKEN_ERROR },
@@ -95,8 +95,9 @@ test.describe('Sound Buddy E2E — batch-analyze a folder (#270)', () => {
     await expect(rows.nth(2).locator('.dir-name')).toHaveText('03-wednesday-night.wav');
     await expect(rows.nth(2).locator('.recent-grade')).not.toHaveText('—');
 
-    // History persistence AC: the two successful analyses are really written
-    // to (and read back from) disk via storage.ts, not just held in memory.
+    // History persistence AC: the two successful analyses were really saved
+    // (via saveAnalysisSummary) and are read back (via listAnalysisSummaries)
+    // on the Recent tab — the same round trip a single-file analysis takes.
     await window.locator('.mode-tab[data-mode="recent"]').click();
     await expect(window.locator('#recent-list .recent-row')).toHaveCount(2);
     await expect(window.locator('#recent-empty')).toBeHidden();
