@@ -137,6 +137,56 @@ describe('createSceneDiffStore', () => {
     ]);
   });
 
+  it('ignores a stale diffScenes response superseded by a newer drop (race guard)', async () => {
+    let resolveFirst!: (v: { ok: true; diff: typeof DIFF; nameA: string; nameB: string }) => void;
+    let calls = 0;
+    const mock = createMockSoundBuddy({
+      diffScenes: async () => {
+        calls += 1;
+        if (calls === 1) return new Promise((resolve) => { resolveFirst = resolve; });
+        return { ok: true, diff: DIFF, nameA: 'B', nameB: 'C' };
+      },
+    });
+    const store = createSceneDiffStore(() => mock.api);
+
+    await store.getState().addScenePath('/scenes/a.scn');
+    const firstPending = store.getState().addScenePath('/scenes/b.scn'); // in flight, slow
+    await store.getState().addScenePath('/scenes/c.scn'); // shifts the window to [b,c], resolves fast
+
+    expect(store.getState().status).toBe('done');
+    expect(store.getState().nameA).toBe('B');
+    expect(store.getState().nameB).toBe('C');
+
+    // The slow, now-superseded (a,b) response finally resolves — it must not
+    // clobber the newer (b,c) result already applied above.
+    resolveFirst({ ok: true, diff: DIFF, nameA: 'A', nameB: 'B' });
+    await firstPending;
+
+    expect(store.getState().nameA).toBe('B');
+    expect(store.getState().nameB).toBe('C');
+  });
+
+  it('a one-file drop after a diff also invalidates any still-in-flight request', async () => {
+    let resolveFirst!: (v: { ok: true; diff: typeof DIFF; nameA: string; nameB: string }) => void;
+    const mock = createMockSoundBuddy({
+      diffScenes: () => new Promise((resolve) => { resolveFirst = resolve; }),
+    });
+    const store = createSceneDiffStore(() => mock.api);
+    await store.getState().addScenePath('/scenes/a.scn');
+    const firstPending = store.getState().addScenePath('/scenes/b.scn');
+
+    store.getState().clearScenes();
+    await store.getState().addScenePath('/scenes/c.scn');
+    expect(store.getState().status).toBe('one-loaded');
+
+    resolveFirst({ ok: true, diff: DIFF, nameA: 'A', nameB: 'B' });
+    await firstPending;
+
+    // The stale (a,b) response must not resurrect a 'done' state over the
+    // fresh one-loaded state the clear + new drop produced.
+    expect(store.getState().status).toBe('one-loaded');
+  });
+
   it('clearScenes resets to the initial idle state', async () => {
     const mock = createMockSoundBuddy({
       diffScenes: async () => ({ ok: true, diff: DIFF, nameA: 'A', nameB: 'B' }),

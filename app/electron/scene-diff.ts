@@ -10,19 +10,16 @@
 // implementations are resolved by ./scene-inspector-loader and assembled by
 // the IPC handler (ipc/analysis.ts), keeping this module free of Electron/fs.
 //
-// Deliberately has NO node-builtin imports (no `node:path`): topSceneChanges
-// below is imported at runtime by the renderer (ReportCardIsland/SceneChanges,
-// #264) alongside computeSceneDiff living in the same file, and the renderer's
-// Vite bundle can't resolve node builtins. basename is hand-rolled instead.
+// The renderer-facing formatter (topSceneChanges) lives in the sibling
+// ./scene-diff-format.ts, not here — this module is main-process-only (the
+// renderer never imports it) and is free to use node builtins like the
+// hand-rolled fileBasename below without risking a node import leaking into
+// the renderer's Vite bundle.
 
+import { basename } from 'node:path';
 import type { Scene, SceneDiff } from '@sound-buddy/shared';
 
-function fileBasename(p: string): string {
-  return p.split(/[/\\]/).pop() || p;
-}
-
 export const SCENE_FILE_EXTENSION = '.scn';
-export const TOP_SCENE_CHANGES = 3;
 
 export interface SceneDiffDeps {
   readFile(path: string): string;
@@ -40,13 +37,13 @@ export function computeSceneDiff(pathA: string, pathB: string, deps: SceneDiffDe
 
   for (const p of paths) {
     if (!p.toLowerCase().endsWith(SCENE_FILE_EXTENSION)) {
-      return { ok: false, error: `${fileBasename(p)} isn't a scene file. Drop a .scn file exported from your M32R console.` };
+      return { ok: false, error: `${basename(p)} isn't a scene file. Drop a .scn file exported from your M32R console.` };
     }
   }
 
   for (const p of paths) {
     if (!deps.fileExists(p)) {
-      return { ok: false, error: `Couldn't find ${fileBasename(p)}. Move the file somewhere Sound Buddy can read it and drop it again.` };
+      return { ok: false, error: `Couldn't find ${basename(p)}. Move the file somewhere Sound Buddy can read it and drop it again.` };
     }
   }
 
@@ -55,7 +52,7 @@ export function computeSceneDiff(pathA: string, pathB: string, deps: SceneDiffDe
     try {
       contents.push(deps.readFile(p));
     } catch {
-      return { ok: false, error: `Couldn't read ${fileBasename(p)}. Check the file isn't open in another program and try again.` };
+      return { ok: false, error: `Couldn't read ${basename(p)}. Check the file isn't open in another program and try again.` };
     }
   }
 
@@ -66,29 +63,11 @@ export function computeSceneDiff(pathA: string, pathB: string, deps: SceneDiffDe
     } catch {
       return {
         ok: false,
-        error: `${fileBasename(paths[i])} isn't a valid M32R scene file. Export a fresh scene from the console (Setup → Scenes → Export) and try again.`,
+        error: `${basename(paths[i])} isn't a valid M32R scene file. Export a fresh scene from the console (Setup → Scenes → Export) and try again.`,
       };
     }
   }
 
   const diff = deps.diffScenes(scenes[0], scenes[1]);
   return { ok: true, diff, nameA: scenes[0].name, nameB: scenes[1].name };
-}
-
-function formatValue(v: unknown): string {
-  if (typeof v === 'boolean') return v ? 'on' : 'off';
-  if (typeof v === 'number') return v.toFixed(1);
-  if (v === null || v === undefined) return '—';
-  return String(v);
-}
-
-export function topSceneChanges(
-  diff: SceneDiff,
-  limit = TOP_SCENE_CHANGES,
-): Array<{ label: string; from: string; to: string }> {
-  return diff.changes.slice(0, limit).map((c) => ({
-    label: c.label,
-    from: formatValue(c.from),
-    to: formatValue(c.to),
-  }));
 }

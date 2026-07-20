@@ -9,6 +9,7 @@ import { useAnalysisStore } from './analysisStore';
 import { useSpectrumStore } from './spectrumStore';
 import { useNarrativeStore } from './narrativeStore';
 import { useLiveCaptureStore } from './liveCaptureStore';
+import { useSceneDiffStore } from './sceneDiffStore';
 import { createMockSoundBuddy } from '../mock-sound-buddy';
 
 // installStoreBridge()'s cross-store subscription install (guarded by the
@@ -41,6 +42,14 @@ afterEach(() => {
     isAutoProfile: false,
   });
   useLiveCaptureStore.setState({ liveWindows: [], measurementSource: null, channelConfig: [] });
+  useSceneDiffStore.setState({
+    status: 'idle',
+    scenePaths: [],
+    diff: null,
+    nameA: null,
+    nameB: null,
+    sceneError: null,
+  });
 });
 
 describe('installStoreBridge', () => {
@@ -82,6 +91,36 @@ describe('installStoreBridge', () => {
     useAnalysisStore.getState().clearAnalysis();
 
     expect(useSpectrumStore.getState().spectrumData).toBeNull();
+  });
+
+  it('clearAnalysis (#264) also clears a stale scene-file comparison, since SceneChanges renders alongside whatever report card is showing', () => {
+    installStoreBridge({});
+    useAnalysisStore.setState({ status: 'done' });
+    useSceneDiffStore.setState({
+      status: 'done',
+      scenePaths: ['/scenes/before.scn', '/scenes/after.scn'],
+      diff: { changes: [], summary: '0 changes found', bySection: { channels: [], dcas: [], main: [] } },
+      nameA: 'Before',
+      nameB: 'After',
+      sceneError: null,
+    });
+
+    useAnalysisStore.getState().clearAnalysis();
+
+    expect(useSceneDiffStore.getState().status).toBe('idle');
+    expect(useSceneDiffStore.getState().scenePaths).toEqual([]);
+    expect(useSceneDiffStore.getState().nameA).toBeNull();
+  });
+
+  it('does not clear an in-progress scene comparison on transitions that are not a Clear (e.g. a fresh analysis starting)', () => {
+    installStoreBridge({});
+    useSceneDiffStore.setState({ status: 'one-loaded', scenePaths: ['/scenes/before.scn'] });
+
+    useAnalysisStore.getState().selectFile('/tmp/service.wav');
+    void useAnalysisStore.getState().startAnalysis('/tmp/service.wav');
+
+    expect(useSceneDiffStore.getState().status).toBe('one-loaded');
+    expect(useSceneDiffStore.getState().scenePaths).toEqual(['/scenes/before.scn']);
   });
 
   it('installs the cross-store subscription at most once across repeated calls', () => {

@@ -23,7 +23,7 @@ import { useSettingsStore } from './stores/settingsStore';
 import { useSceneDiffStore } from './stores/sceneDiffStore';
 import ReportCard, { type GradeResult } from './ReportCard';
 import SceneChanges from './SceneChanges';
-import { topSceneChanges } from '../../electron/scene-diff';
+import { topSceneChanges } from '../../electron/scene-diff-format';
 import {
   iconSvg,
   gradeRingHTML,
@@ -242,8 +242,20 @@ function EmptyState({ visible, selectedFilePath, status }: EmptyStateProps) {
           onDrop={(e) => {
             e.preventDefault();
             setSceneDragOver(false);
-            const file = e.dataTransfer?.files?.[0] as (File & { path?: string }) | undefined;
-            if (file?.path) void useSceneDiffStore.getState().addScenePath(file.path);
+            // Unlike the audio dropzone, a single drop gesture can carry both
+            // files at once (the hint text invites "drop two") — feed every
+            // dropped path through addScenePath in order, awaiting each
+            // before the next so the two-file window and its diffScenes
+            // in-flight guard (sceneDiffStore.ts) see them one at a time
+            // instead of racing.
+            const files = Array.from(e.dataTransfer?.files ?? []) as Array<File & { path?: string }>;
+            const paths = files.map((f) => f.path).filter((p): p is string => !!p);
+            if (paths.length === 0) return;
+            void (async () => {
+              for (const p of paths) {
+                await useSceneDiffStore.getState().addScenePath(p);
+              }
+            })();
           }}
         >
           <div className="dz-icon" dangerouslySetInnerHTML={{ __html: iconSvg('file-audio', 16) }} />

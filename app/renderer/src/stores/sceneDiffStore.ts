@@ -30,6 +30,13 @@ const INITIAL_STATE = {
 };
 
 export function createSceneDiffStore(getApi: () => Pick<AnalysisApi, 'diffScenes'>) {
+  // Bumped on every addScenePath/clearScenes call so an in-flight diffScenes
+  // response can tell it's been superseded (e.g. two drops in quick
+  // succession) and skip applying its now-stale result — a private closure,
+  // not store state, since it's plumbing rather than something a consumer
+  // should read or subscribe to.
+  let requestId = 0;
+
   return create<SceneDiffState>()((set, get) => ({
     ...INITIAL_STATE,
     async addScenePath(path) {
@@ -37,19 +44,23 @@ export function createSceneDiffStore(getApi: () => Pick<AnalysisApi, 'diffScenes
       const next = prev.length >= 2 ? [prev[1], path] : [...prev, path];
 
       if (next.length < 2) {
+        requestId += 1;
         set({ scenePaths: next, status: 'one-loaded', sceneError: null });
         return;
       }
 
+      const myRequestId = (requestId += 1);
       set({ scenePaths: next, status: 'diffing', sceneError: null });
       try {
         const result = await getApi().diffScenes({ pathA: next[0], pathB: next[1] });
+        if (myRequestId !== requestId) return;
         if (result.ok) {
           set({ status: 'done', diff: result.diff, nameA: result.nameA, nameB: result.nameB, sceneError: null });
         } else {
           set({ status: 'error', sceneError: result.error, diff: null });
         }
       } catch {
+        if (myRequestId !== requestId) return;
         set({
           status: 'error',
           sceneError: "Couldn't compare the scene files. Restart Sound Buddy and try again.",
@@ -58,6 +69,7 @@ export function createSceneDiffStore(getApi: () => Pick<AnalysisApi, 'diffScenes
       }
     },
     clearScenes() {
+      requestId += 1;
       set({ ...INITIAL_STATE });
     },
   }));

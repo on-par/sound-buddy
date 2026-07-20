@@ -12,6 +12,7 @@ import { useAnalysisStore } from './analysisStore';
 import { useSpectrumStore } from './spectrumStore';
 import { useNarrativeStore } from './narrativeStore';
 import { useLiveCaptureStore } from './liveCaptureStore';
+import { useSceneDiffStore } from './sceneDiffStore';
 import { liveReportCardSource } from '../live-capture-panel';
 
 export interface RendererStores {
@@ -69,6 +70,17 @@ export function installStoreBridge(
           liveReportCardSource(state.liveWindows, state.measurementSource, state.channelConfig));
       }
     });
+    // Clearing the audio analysis (#264) also clears any scene-file
+    // comparison — SceneChanges renders unconditionally alongside whatever
+    // report card is showing, so without this a stale console-changes panel
+    // from an earlier session would linger across Clear. clearAnalysis() is
+    // the only analysisStore action that sets status back to 'idle'.
+    useAnalysisStore.subscribe((state, prevState) => {
+      if (state.status === 'idle' && prevState.status !== 'idle') {
+        useSceneDiffStore.getState().clearScenes();
+      }
+    });
+
     // bindIpcEvents() registers this module's sb.onLlmDelta/onLlmDone
     // (narrative) and sb.onLiveEvent (liveCapture) listeners exactly once —
     // guarded by the same crossStoreSubscriptionInstalled flag so a second
