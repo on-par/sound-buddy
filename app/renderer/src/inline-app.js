@@ -48,6 +48,13 @@ const lcStore = window.rendererStores.liveCapture;
 let currentMode = 'reportcard';
 let liveRunning = false;
 let liveWindows = [];
+// Whole-session window accumulator (#261): liveWindows above is capped at 10
+// entries (see the onLiveEvent handler below) for the rolling preview + LLM
+// trend context (#208) — nowhere near enough for "the whole session" a
+// multi-minute monitor capture needs to grade. sessionWindows mirrors every
+// window tick with no cap, reset alongside liveWindows at each capture start,
+// and is what the session report card is built from at Stop Capture.
+let sessionWindows = [];
 // Focused input for the per-input instrument-aware adjustment candidates
 // (#525) — ephemeral, per-session only, never persisted.
 let focusedInputIndex = null;
@@ -2229,6 +2236,7 @@ document.getElementById('live-start-btn').addEventListener('click', async () => 
   waveformBucketsPerSec = window.dawWaveformState.bucketsPerSecond(intervalSecs);
   waveformLaneStates = {};
   liveWindows = [];
+  sessionWindows = [];
   syncLiveSource();
   syncLiveAdjustmentsPanel();
   // A live capture always wins over a loaded history entry (#147).
@@ -2322,14 +2330,16 @@ async function stopLive() {
   }
 
   // #488/#261: a monitor session that accumulated at least one window builds
-  // a session-level Report Card from the whole liveWindows buffer, grades it,
-  // and persists it to history tagged as a live-capture source — the same
+  // a session-level Report Card from the whole sessionWindows buffer (every
+  // window tick since Start Capture — the capped liveWindows below only
+  // keeps the last 10 for the rolling preview/LLM context), grades it, and
+  // persists it to history tagged as a live-capture source — the same
   // hook a file analysis gets. Record mode keeps its session-saved offer
   // above; the two never show together (sessionDir only exists in record
   // mode). A session too short/silent to produce usable windows degrades to
   // the "not enough data" state instead of a nonsensical grade.
   if (shouldOfferReportCard(liveMode, liveWindows.length)) {
-    const sessionSrc = liveSessionReportCardSource(liveWindows, lcStore.getState().measurementSource, channelConfig);
+    const sessionSrc = liveSessionReportCardSource(sessionWindows, lcStore.getState().measurementSource, channelConfig);
     if (sessionSrc) {
       anaStore.getState().setLiveSource(sessionSrc); // freeze the session card onto the Report Card tab
       persistSummary(sessionSrc, 'live');
@@ -2900,6 +2910,7 @@ sb.onLiveEvent((data) => {
   if (data.type === 'window' || typeof data.window === 'number') {
     liveWindows.push(data);
     if (liveWindows.length > 10) liveWindows.shift();
+    sessionWindows.push(data); // uncapped — see the declaration above (#261)
     document.getElementById('window-badge').textContent = `Window #${data.window}`;
     syncLiveSource();
     syncLiveAdjustmentsPanel();
