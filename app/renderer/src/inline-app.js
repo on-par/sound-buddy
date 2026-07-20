@@ -3033,15 +3033,24 @@ async function initWhatsNew() {
   // specs aren't disrupted by a banner appearing mid-run.
   try { if (sb.isOnboardingDisabled && (await sb.isOnboardingDisabled())) return; } catch { /* no bridge → proceed */ }
 
-  const version = await sb.getAppVersion().catch(() => '');
+  const [version, md] = await Promise.all([
+    sb.getAppVersion().catch(() => ''),
+    sb.getWhatsNew().catch(() => null),
+  ]);
   if (!version) return;
 
-  let md = null;
-  try { md = await sb.getWhatsNew(); } catch { md = null; }
-
-  if (!whatsNewState.shouldShow(window.localStorage, version, md)) return;
+  // A genuine first launch shows the onboarding overlay instead — crediting
+  // "shipped" changes to someone who just installed today (no prior version
+  // to compare against) would be a non-sequitur competing with that overlay.
+  // Mark this version seen so it doesn't retroactively appear later either.
+  if (window.onboardingState && !onboardingState.hasSeenOnboarding(window.localStorage)) {
+    whatsNewState.markSeen(window.localStorage, version);
+    return;
+  }
 
   const note = whatsNewState.parseNote(md);
+  if (!note || whatsNewState.hasSeen(window.localStorage, version)) return;
+
   const text = document.getElementById('whats-new-text');
   if (text) {
     text.textContent = note.title ? `${note.title}: ${note.items.join(' • ')}` : note.items.join(' • ');
@@ -3051,11 +3060,11 @@ async function initWhatsNew() {
   if (dismissBtn) {
     dismissBtn.addEventListener('click', () => {
       whatsNewState.markSeen(window.localStorage, version);
-      banner.hidden = true;
+      banner.classList.remove('show');
     });
   }
 
-  banner.hidden = false;
+  banner.classList.add('show');
 }
 
 sb.onLlmDelta((text) => aiAppend(text));
