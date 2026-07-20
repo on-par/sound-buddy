@@ -20,6 +20,7 @@ const LOADED_SETTINGS: AppSettings = {
   dawWorkspaceEnabled: false,
   liveAdjustmentsEnabled: false,
   reportFirstUxEnabled: false,
+  shareChurchName: '',
 };
 
 const NO_TOGGLES = {
