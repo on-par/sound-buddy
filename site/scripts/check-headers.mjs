@@ -7,7 +7,7 @@ import { readFile, readdir } from 'node:fs/promises';
 import { join, extname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { hasInlineScript } from './lib/inline-script.mjs';
-import { checkCspOrigins } from './lib/csp.mjs';
+import { checkCspOrigins, parseCsp } from './lib/csp.mjs';
 
 const root = fileURLToPath(new URL('../dist/', import.meta.url));
 const headersPath = join(root, '_headers');
@@ -118,8 +118,8 @@ if (csp) {
   if (/unsafe-eval/i.test(csp.value)) {
     problems.push("Content-Security-Policy must not contain 'unsafe-eval' anywhere.");
   }
-  const scriptSrcMatch = csp.value.match(/script-src\s+([^;]+)/i);
-  if (scriptSrcMatch && /unsafe-inline/i.test(scriptSrcMatch[1])) {
+  const scriptSrc = parseCsp(csp.value).get('script-src') ?? [];
+  if (scriptSrc.includes("'unsafe-inline'")) {
     problems.push("Content-Security-Policy script-src must not contain 'unsafe-inline'.");
   }
   problems.push(...checkCspOrigins(csp.value));

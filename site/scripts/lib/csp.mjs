@@ -17,11 +17,20 @@ export function parseCsp(value) {
 export const CF_ANALYTICS_SCRIPT_SRC = 'https://static.cloudflareinsights.com';
 export const CF_ANALYTICS_CONNECT_SRC = 'https://cloudflareinsights.com';
 
+// Each CF Web Analytics origin is only expected in its own directive — the
+// beacon script is loaded via script-src, its RUM payload posted via
+// connect-src. A directive not listed here allows no external origin at all.
+const ALLOWED_ORIGIN_BY_DIRECTIVE = {
+  'script-src': CF_ANALYTICS_SCRIPT_SRC,
+  'connect-src': CF_ANALYTICS_CONNECT_SRC,
+};
+
 /**
  * Check a CSP value against the site's policy: the CF Web Analytics origins
  * must be present in script-src/connect-src, and no OTHER external origin may
- * appear in any directive. Returns an array of human-readable problem strings
- * (empty === OK). Pure — the caller does the printing and exiting.
+ * appear in any directive — including either CF origin showing up outside its
+ * own directive. Returns an array of human-readable problem strings (empty
+ * === OK). Pure — the caller does the printing and exiting.
  */
 export function checkCspOrigins(value) {
   const directives = parseCsp(value);
@@ -45,12 +54,14 @@ export function checkCspOrigins(value) {
   }
 
   for (const [directive, sources] of directives) {
+    const allowedOrigin = ALLOWED_ORIGIN_BY_DIRECTIVE[directive];
     for (const source of sources) {
       if (!/^https?:\/\//i.test(source)) continue; // 'self', 'none', data:, etc. are keywords, not origins
-      if (source === CF_ANALYTICS_SCRIPT_SRC || source === CF_ANALYTICS_CONNECT_SRC) continue;
+      if (source === allowedOrigin) continue;
       problems.push(
         `${directive}: unexpected external origin '${source}'. Only the two Cloudflare Web ` +
-          'Analytics origins are allowed; bundle assets into /_astro/ instead.',
+          'Analytics origins are allowed, each in its own directive; bundle assets into ' +
+          '/_astro/ instead.',
       );
     }
   }
