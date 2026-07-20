@@ -24,8 +24,14 @@ const upgradeMomentum = fs.readFileSync(fileURLToPath(new URL('../upgrade-moment
 
 // Strips HTML `<!-- ... -->` and JS `//` line comments so copy assertions
 // only see real, user-visible strings.
+// Not a security sanitizer: this never renders to a browser or feeds an
+// HTML sink — it only trims comment markers out of trusted local repo
+// source files before a test string-equality assertion. An incomplete
+// strip on adversarial nested-comment input would at worst leave stray
+// `<!--`/`-->` text in the value diffed against, not an injection.
 function stripComments(source: string): string {
   return source
+    // codeql[js/incomplete-multi-character-sanitization]
     .replace(/<!--[\s\S]*?-->/g, '')
     .replace(/^\s*\/\/.*$/gm, '');
 }
