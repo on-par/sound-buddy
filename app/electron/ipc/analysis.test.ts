@@ -18,8 +18,8 @@ vi.mock('electron', () => ({
 // covered by that package's own tests. What belongs to the app is: does the
 // handler resolve bundled-vs-PATH options and thread them into
 // engine.analyzeAudio, forward its per-stage progress onto the renderer's UI
-// stage names, forward noSpectrum, and translate success/cancel/error
-// outcomes. The four wrapper exports are tested directly further down.
+// stage names, and translate success/cancel/error outcomes. The four
+// wrapper exports are tested directly further down.
 const runSoxMock = vi.fn();
 const runFfprobeMock = vi.fn();
 const runSpectrumMock = vi.fn();
@@ -107,7 +107,7 @@ const ANALYSIS_STUB = {
 
 type AnalyzeHandler = (
   event: { sender: ReturnType<typeof fakeSender> },
-  opts: { filePath: string; noSpectrum?: boolean },
+  opts: { filePath: string },
 ) => Promise<{ success: boolean; cancelled?: boolean; error?: string; data?: unknown }>;
 
 beforeEach(() => {
@@ -138,7 +138,6 @@ describe('analyze-file IPC handler', () => {
       spectrum: { scriptPath: SPECTRUM_SCRIPT, python: pythonBin(), env: childEnv() },
       ebur128: { bin: toolBin('ffmpeg') },
       signal: expect.any(AbortSignal),
-      noSpectrum: undefined,
       onProgress: expect.any(Function),
       onEbur128Error: expect.any(Function),
     });
@@ -185,15 +184,6 @@ describe('analyze-file IPC handler', () => {
     const result = await handler({ sender }, { filePath: '/tmp/service.wav' });
 
     expect(result).toEqual({ success: true, data: ANALYSIS_STUB });
-  });
-
-  it('forwards noSpectrum: true to analyzeAudio', async () => {
-    const handler = handlers.get('analyze-file') as AnalyzeHandler;
-    const sender = fakeSender();
-
-    await handler({ sender }, { filePath: '/tmp/service.wav', noSpectrum: true });
-
-    expect(analyzeAudioMock).toHaveBeenCalledWith('/tmp/service.wav', expect.objectContaining({ noSpectrum: true }));
   });
 
   it('resolves { success: true, data } with the analysis analyzeAudio resolved', async () => {

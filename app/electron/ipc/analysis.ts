@@ -75,7 +75,7 @@ function historyDir(): string {
 export function registerAnalysisHandlers(): void {
   // analyze-file
   ipcMain.handle('analyze-file', async (event, opts: AnalyzeFileOpts) => {
-    const { filePath, noSpectrum } = opts;
+    const { filePath } = opts;
     const wc = event.sender;
     // Supersede any run still in flight for this renderer (e.g. a second
     // analyze-file triggered via File > Open while one is running) instead of
@@ -108,7 +108,6 @@ export function registerAnalysisHandlers(): void {
           python: pythonBin(),
           env: childEnv(),
         },
-        noSpectrum,
         signal: controller.signal,
         onStage: (stage) => send({ stage, status: 'done' }),
         log,

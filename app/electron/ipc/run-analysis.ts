@@ -43,7 +43,6 @@ export interface AnalysisTools {
 export interface RunAnalysisOptions {
   engine: AnalysisEngine;
   tools: AnalysisTools;
-  noSpectrum?: boolean;
   signal?: AbortSignal;
   /** Called once per completed stage that has a UI row. */
   onStage?: (stage: UiStage) => void;
@@ -77,7 +76,6 @@ export async function runAnalysis(filePath: string, opts: RunAnalysisOptions): P
       spectrum: { scriptPath: tools.spectrumScript, python: tools.python, env: tools.env },
       ebur128: { bin: tools.ffmpegBin },
       signal: opts.signal,
-      noSpectrum: opts.noSpectrum,
       onProgress: (stage) => {
         const ui = UI_STAGE[stage];
         if (ui) opts.onStage?.(ui);

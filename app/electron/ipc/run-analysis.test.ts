@@ -62,7 +62,6 @@ describe('runAnalysis', () => {
       spectrum: { scriptPath: tools.spectrumScript, python: tools.python, env: tools.env },
       ebur128: { bin: tools.ffmpegBin },
       signal,
-      noSpectrum: undefined,
       onProgress: expect.any(Function),
       onEbur128Error: expect.any(Function),
     });
@@ -100,21 +99,18 @@ describe('runAnalysis', () => {
     ).resolves.toEqual({ success: true, data: ANALYSIS_STUB });
   });
 
-  it('forwards noSpectrum: true to analyzeAudio', async () => {
+  it('does not pass a noSpectrum key to analyzeAudio', async () => {
     const engine = fakeEngine();
 
     await runAnalysis('/tmp/service.wav', {
       engine,
       tools: fakeTools(),
-      noSpectrum: true,
       log: vi.fn(),
       logError: vi.fn(),
     });
 
-    expect(engine.analyzeAudio).toHaveBeenCalledWith(
-      '/tmp/service.wav',
-      expect.objectContaining({ noSpectrum: true }),
-    );
+    const passedOpts = (engine.analyzeAudio as ReturnType<typeof vi.fn>).mock.calls[0][1];
+    expect(Object.keys(passedOpts)).not.toContain('noSpectrum');
   });
 
   it('resolves { success: false, cancelled: true } on abort, without calling logError', async () => {
