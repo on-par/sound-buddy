@@ -4,6 +4,7 @@
 // ahead of install instructions.
 import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
+import { checkRequirementsAtCtas } from './lib/requirements-cta.mjs';
 
 const indexPath = fileURLToPath(new URL('../dist/index.html', import.meta.url));
 const html = await readFile(indexPath, 'utf8');
@@ -74,6 +75,8 @@ if (sysreqIdx === -1) {
 } else if (pricingIdx !== -1 && !(sysreqIdx > pricingIdx)) {
   problems.push('"System requirements" must render after #pricing (buyer messaging before install docs).');
 }
+
+problems.push(...checkRequirementsAtCtas(html));
 
 if (problems.length) {
   console.error(`✖ ${problems.length} homepage visual invariant(s) broken:`);
