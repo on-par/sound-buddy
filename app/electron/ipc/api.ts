@@ -527,6 +527,8 @@ export interface AnalysisApi {
   onAnalysisProgress(cb: (data: AnalysisProgress) => void): void;
   onAnalysisResult(cb: (data: unknown) => void): void;
   getDemoAudio(): Promise<string | null>;
+  // Bundled "what's new" note (#271) — raw markdown, or null when absent.
+  getWhatsNew(): Promise<string | null>;
   onMenuOpenFile(cb: (filePath: string) => void): void;
   // Scene-file diff (#264) — parses and diffs two dropped M32R .scn files.
   diffScenes(opts: DiffScenesOpts): Promise<DiffScenesResult>;

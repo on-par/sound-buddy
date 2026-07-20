@@ -53,6 +53,15 @@ export const DEMO_AUDIO = app.isPackaged /* c8 ignore next */
   ? path.join(process.resourcesPath, 'assets', 'demo.wav')
   : path.join(APP_ROOT, 'assets', 'demo.wav');
 
+// Bundled post-update "what's new" note (#271) — a short markdown file authored
+// per release, read once and shown as a dismissible banner crediting shipped,
+// user-requested items. Same packaged-vs-dev resolution as DEMO_AUDIO; ships
+// via the same `assets` extraResources mapping in electron-builder.yml.
+// c8 ignore: packaged-app path resolution; vitest always runs unpackaged.
+export const WHATS_NEW_NOTE = app.isPackaged /* c8 ignore next */
+  ? path.join(process.resourcesPath, 'assets', 'whats-new.md')
+  : path.join(APP_ROOT, 'assets', 'whats-new.md');
+
 // Native helpers (sox, ffprobe) are bundled at Contents/Resources/bin in a
 // packaged .app (see build/afterPack.js). In dev they come from PATH. Resolving
 // to the bundled copy means the app never depends on a Homebrew install.

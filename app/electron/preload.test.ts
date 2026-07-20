@@ -108,6 +108,7 @@ const INVOKE_TABLE: Array<{ method: BridgeKey; channel: string; args: unknown[] 
   { method: 'listAnalysisSummaries', channel: 'list-analysis-summaries', args: [] },
   { method: 'cancelAnalysis', channel: 'cancel-analysis', args: [] },
   { method: 'getDemoAudio', channel: 'get-demo-audio', args: [] },
+  { method: 'getWhatsNew', channel: 'get-whats-new', args: [] },
   {
     method: 'diffScenes',
     channel: 'diff-scenes',

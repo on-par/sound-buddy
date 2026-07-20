@@ -3018,6 +3018,46 @@ async function initOnboarding() {
   dlg.style.display = 'flex';
 }
 
+/* ══ Post-update "what's new" note (#271) ══
+   Closes the loop opened by the in-app "Send Feedback" flow (#143/#144): after
+   the user updates, a dismissible, non-blocking banner credits shipped,
+   user-requested items — "You asked, we shipped: …". Bundled with the release
+   and read from disk (never fetched), gated once-per-version by
+   window.whatsNewState + localStorage (mirrors the onboarding "seen once"
+   idiom above). Never shows for a build that ships no note or an empty one. */
+async function initWhatsNew() {
+  const banner = document.getElementById('whats-new-banner');
+  if (!banner || !window.whatsNewState) return;
+  // Dev/e2e escape hatch (SOUND_BUDDY_DISABLE_ONBOARDING): reuse the app's
+  // established "suppress first-run surfaces in e2e" switch so automated
+  // specs aren't disrupted by a banner appearing mid-run.
+  try { if (sb.isOnboardingDisabled && (await sb.isOnboardingDisabled())) return; } catch { /* no bridge → proceed */ }
+
+  const version = await sb.getAppVersion().catch(() => '');
+  if (!version) return;
+
+  let md = null;
+  try { md = await sb.getWhatsNew(); } catch { md = null; }
+
+  if (!whatsNewState.shouldShow(window.localStorage, version, md)) return;
+
+  const note = whatsNewState.parseNote(md);
+  const text = document.getElementById('whats-new-text');
+  if (text) {
+    text.textContent = note.title ? `${note.title}: ${note.items.join(' • ')}` : note.items.join(' • ');
+  }
+
+  const dismissBtn = document.getElementById('whats-new-dismiss');
+  if (dismissBtn) {
+    dismissBtn.addEventListener('click', () => {
+      whatsNewState.markSeen(window.localStorage, version);
+      banner.hidden = true;
+    });
+  }
+
+  banner.hidden = false;
+}
+
 sb.onLlmDelta((text) => aiAppend(text));
 sb.onLlmDone(() => {
   llmRunning = false;
@@ -4209,3 +4249,6 @@ loadDevices().then(initRigs, initRigs);
 
 // First-run onboarding (#69): show the welcome overlay on a genuine first launch.
 void initOnboarding();
+
+// What's-new note (#271): credit shipped, user-requested items after an update.
+void initWhatsNew();

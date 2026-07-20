@@ -128,6 +128,9 @@ export function createBridge(ipc: IpcRendererLike) {
     // Resolves to null when the asset is absent so the renderer can fall back.
     getDemoAudio: () => ipc.invoke('get-demo-audio'),
 
+    // Bundled "what's new" note (#271), or null when the build ships none.
+    getWhatsNew: () => ipc.invoke('get-whats-new'),
+
     // Scene-file diff (#264) — parses and diffs two dropped M32R .scn files.
     diffScenes: (opts: DiffScenesOpts) => ipc.invoke('diff-scenes', opts),
 
