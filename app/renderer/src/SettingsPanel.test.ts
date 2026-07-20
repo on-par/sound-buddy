@@ -16,6 +16,7 @@ import SettingsPanel, {
   loadSettingsSeed,
   testConnection,
   saveAll,
+  type SettingsSection,
 } from './SettingsPanel';
 import { ElectronContext } from './useElectron';
 import { createSettingsStore, useSettingsStore } from './stores/settingsStore';
@@ -245,7 +246,7 @@ describe('saveAll', () => {
     const mock = createMockSoundBuddy();
     const store = createSettingsStore(() => mock.api);
     let result: { text: string; kind: '' | 'ok' | 'err' } | null = null;
-    let section: 'storage' | 'ai' | 'about' | null = null;
+    let section: SettingsSection | null = null;
     let focused = false;
 
     await saveAll(
@@ -266,10 +267,11 @@ describe('saveAll', () => {
     expect(section).toBe('ai');
     expect(focused).toBe(true);
     expect(mock.calls.some((c) => c.method === 'saveLlmConfig')).toBe(false);
+    // Nothing partially saves on a blocked save — including the unrelated storage patch.
     expect(mock.calls.some((c) => c.method === 'updateSettings')).toBe(false);
   });
 
-  it('applies the storage patch before the LLM patch, folds in the enable toggle, and closes on success', async () => {
+  it('applies the storage patch after the LLM patch succeeds, folds in the enable toggle, and closes', async () => {
     const config: PublicLlmConfig = { provider: 'ollama', model: 'llama3', ollamaHost: '', apiBaseUrl: '', hasApiKey: false, apiKeyProvider: '' };
     const mock = createMockSoundBuddy({
       saveLlmConfig: async () => ({ ok: true, config }),
@@ -296,9 +298,35 @@ describe('saveAll', () => {
     );
 
     expect(store.getState().dialogOpen).toBe(false);
+    const llmCallIdx = mock.calls.findIndex((c) => c.method === 'saveLlmConfig');
     const updateCalls = mock.calls.filter((c) => c.method === 'updateSettings');
+    // saveLlmConfig must complete before either updateSettings call fires (storage patch, then aiEnabled).
+    expect(mock.calls.indexOf(updateCalls[0])).toBeGreaterThan(llmCallIdx);
     expect(updateCalls[0]).toEqual({ method: 'updateSettings', args: [{ storageDir: '/custom/folder' }] });
     expect(updateCalls[1]).toEqual({ method: 'updateSettings', args: [{ aiEnabled: true }] });
+  });
+
+  it('does not apply the storage patch when the LLM save itself fails — no partial commit', async () => {
+    const mock = createMockSoundBuddy({ saveLlmConfig: async () => ({ ok: false, reason: 'network error' }) });
+    const store = createSettingsStore(() => mock.api);
+    store.getState().openDialog();
+
+    await saveAll(
+      {
+        tab: 'ollama',
+        llm: { ollamaModel: 'llama3', ollamaHost: '', provider: '', hostedModel: '', baseUrl: '', apiKey: '' },
+        modelsCache: [],
+        storagePatch: { storageDir: '/should-not-save', crashReportingEnabled: true },
+        enableAi: true,
+      },
+      store,
+      () => {},
+      () => {},
+      () => {}
+    );
+
+    expect(mock.calls.some((c) => c.method === 'updateSettings')).toBe(false);
+    expect(store.getState().dialogOpen).toBe(true);
   });
 
   it('skips the storage patch call when it is null', async () => {
@@ -321,7 +349,7 @@ describe('saveAll', () => {
     const store = createSettingsStore(() => mock.api);
     store.getState().openDialog();
     let result: { text: string; kind: '' | 'ok' | 'err' } | null = null;
-    let section: 'storage' | 'ai' | 'about' | null = null;
+    let section: SettingsSection | null = null;
 
     await saveAll(
       {

@@ -49,6 +49,13 @@ export interface StorageToggles {
   liveAdjustmentsEnabled: boolean;
 }
 
+const TOGGLE_KEYS: (keyof StorageToggles & keyof UpdateSettingsPatch)[] = [
+  'usageSignalEnabled',
+  'crashReportingEnabled',
+  'dawWorkspaceEnabled',
+  'liveAdjustmentsEnabled',
+];
+
 // Port of saveStorageSettings()'s change-detection: only emits keys that
 // differ from `loaded`, and only includes storageDir when pendingDir !== null.
 // Unlike the old code (up to five separate updateSettings() round-trips),
@@ -61,17 +68,10 @@ export function buildStoragePatch(
 ): UpdateSettingsPatch | null {
   const patch: UpdateSettingsPatch = {};
   if (pendingDir !== null) patch.storageDir = pendingDir;
-  if (toggles.usageSignalEnabled !== !!(loaded && loaded.usageSignalEnabled)) {
-    patch.usageSignalEnabled = toggles.usageSignalEnabled;
-  }
-  if (toggles.crashReportingEnabled !== !!(loaded && loaded.crashReportingEnabled)) {
-    patch.crashReportingEnabled = toggles.crashReportingEnabled;
-  }
-  if (toggles.dawWorkspaceEnabled !== !!(loaded && loaded.dawWorkspaceEnabled)) {
-    patch.dawWorkspaceEnabled = toggles.dawWorkspaceEnabled;
-  }
-  if (toggles.liveAdjustmentsEnabled !== !!(loaded && loaded.liveAdjustmentsEnabled)) {
-    patch.liveAdjustmentsEnabled = toggles.liveAdjustmentsEnabled;
+  for (const key of TOGGLE_KEYS) {
+    const current = toggles[key];
+    const previous = !!(loaded && loaded[key]);
+    if (current !== previous) patch[key] = current;
   }
   return Object.keys(patch).length ? patch : null;
 }

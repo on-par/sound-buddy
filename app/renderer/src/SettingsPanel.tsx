@@ -203,10 +203,15 @@ export interface SaveAllFields {
 }
 
 // Port of inline-app.js:3615–3661 (AI save) merged with saveStorageSettings()
-// (storage save) behind the single Settings footer Save button (#204):
-// validates a hosted-tab model first — on failure, jumps back to the AI
-// section and does NOT close — then applies the storage patch (if any),
-// then the LLM save + enable-toggle fold-in, then closes.
+// (storage save) behind the single Settings footer Save button (#204). One
+// Save now covers both sections atomically: the hosted-model validation and
+// the LLM save must both succeed — on either failure, jump back to the AI
+// section, report the error, and do NOT close or persist anything, including
+// the storage patch — before the storage patch and the enable-toggle
+// fold-in are applied and the dialog closes. This intentionally differs from
+// the two-independent-dialogs precursor: a single shared Save button means a
+// failed AI save must not silently leave an unrelated storage change
+// persisted with no way to tell the user it happened.
 export async function saveAll(
   fields: SaveAllFields,
   store: SettingsStoreHandle,
@@ -224,15 +229,15 @@ export async function saveAll(
       return;
     }
   }
-  if (storagePatch) {
-    await store.getState().updateSettings(storagePatch);
-  }
   const patch = buildLlmPatch(tab, llm);
   const res = await store.getState().saveLlmConfig(patch);
   if (!res.ok) {
     setSection('ai');
     setTestResult({ text: res.reason || 'Could not save settings', kind: 'err' });
     return;
+  }
+  if (storagePatch) {
+    await store.getState().updateSettings(storagePatch);
   }
   await store.getState().updateSettings({ aiEnabled: enableAi });
   store.getState().closeDialog();
