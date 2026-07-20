@@ -1441,6 +1441,15 @@ function syncAiDock() {
   else if (where === 'rail' && panel.parentElement === dockBody) document.getElementById('workspace').appendChild(panel);
 }
 
+// #542 (epic e17): Recent / Build Guide / Ring-Out have no spectrum and no
+// per-analysis narrative — collapse the workspace to one full-width column
+// for them when the report-first-ux flag is on. CSS does the layout; this
+// only owns the branch point.
+function syncSingleColumn() {
+  document.body.classList.toggle('single-column', window.singleColumnState.isSingleColumn(
+    window.reportFirstUxState.isEnabled(setStore.getState().settings), currentMode));
+}
+
 /* ══ Mode tabs ══ */
 document.querySelectorAll('.mode-tab').forEach(tab => {
   tab.addEventListener('click', () => {
@@ -1488,6 +1497,7 @@ document.querySelectorAll('.mode-tab').forEach(tab => {
       if (mode === 'ringout') renderRingout();
     }
     syncAiDock();
+    syncSingleColumn();
   });
 });
 
@@ -4059,6 +4069,10 @@ window.inlineDialogs = { openPhaseDoublingDialog, openFeedbackRingout };
   // changes — both directions, since appendChild restores the exact original
   // #workspace slot.
   setStore.subscribe(() => syncAiDock());
+  // #542: re-fold the workspace to a single column whenever the flag (or
+  // mode) changes, so toggling it in Settings while on Recent reflows
+  // immediately — same rationale as the AI dock re-sync above.
+  setStore.subscribe(() => syncSingleColumn());
   // Experimental DAW workspace gate (#516): body class is the entry point
   // #517's workspace shell mounts against. Absent by default — the existing
   // Live Capture UI is untouched until the user opts in.
@@ -4109,6 +4123,9 @@ syncReportCardChrome(anaStore.getState(), anaStore.getState());
 // #541: dock the AI Engineer panel correctly on first paint if the flag is
 // already on when settings resolve (the subscribe above only fires on change).
 syncAiDock();
+// #542: same rationale — a flag-already-on first paint on Recent / Guide /
+// Ring-Out must render single-column without requiring a tab click.
+syncSingleColumn();
 
 hydrateIcons(document);
 setSpectrumState('empty', { text: 'Load a file to see the spectrum' });
