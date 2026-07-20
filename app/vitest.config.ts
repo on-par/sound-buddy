@@ -6,6 +6,38 @@ import { defineConfig } from 'vitest/config';
 // Renderer tests are .test.ts by convention; the grading.js suite (#130,
 // split into renderer/grading/*.test.js per #225) is .js, so the renderer
 // glob covers both extensions and recurses into subdirectories.
+// Coverage exclusions for renderer modules with no meaningful unit-test
+// surface. Each entry MUST name the e2e spec (or colocated test) that
+// actually exercises it — an exclusion with no other gate is a coverage
+// hole, not a coverage decision. Guarded by vitest.config.test.ts (#401).
+export const UI_COVERAGE_EXCLUSIONS = [
+  {
+    path: 'renderer/src/main.tsx',
+    reason: 'React mount glue (#303) — 11 LOC of createRoot wiring, no branches.',
+    gate: 'tests/e2e/report-card-basics.spec.ts',
+  },
+  {
+    path: 'renderer/src/App.tsx',
+    reason: 'React shell + BOOT_SCRIPTS injection (#303) — DOM glue, e2e-verified.',
+    gate: 'tests/e2e/report-card-basics.spec.ts',
+  },
+  {
+    path: 'renderer/src/inline-app.js',
+    reason:
+      'Imperative runtime owner being drained by the TD-001 slices; scheduled for ' +
+      'deletion in #424, at which point this entry goes away rather than being ' +
+      'instrumented. Behavior is gated by the Playwright e2e suite meanwhile.',
+    gate: 'tests/e2e/live-capture-workspace.spec.ts',
+  },
+  {
+    path: 'renderer/src/mock-sound-buddy.ts',
+    reason:
+      'Test double (#308) — ~50 default stubs most tests never invoke; counting ' +
+      'them as uncovered functions penalizes test infrastructure.',
+    gate: 'renderer/src/mock-sound-buddy.test.ts',
+  },
+] as const;
+
 export default defineConfig({
   test: {
     // Unit tests are colocated with the code they cover: main-process logic under
@@ -13,8 +45,10 @@ export default defineConfig({
     // under tests/ are driven by `npm run test:e2e`, not Vitest — keep them out.
     // Renderer tests are .test.ts by convention; the grading.js suite (#130,
     // split into renderer/grading/*.test.js per #225) is .js, so the renderer
-    // glob covers both extensions and recurses into subdirectories.
-    include: ['electron/**/*.test.ts', 'renderer/**/*.test.{ts,js}'],
+    // glob covers both extensions and recurses into subdirectories. '*.test.ts'
+    // additionally picks up colocated config guard tests at the package root
+    // (e.g. vitest.config.test.ts, #401).
+    include: ['*.test.ts', 'electron/**/*.test.ts', 'renderer/**/*.test.{ts,js}'],
     coverage: {
       provider: 'v8',
       // Only instrument real source. Everything else under app/ — the Python
@@ -30,6 +64,7 @@ export default defineConfig({
       exclude: [
         'electron/**/*.test.ts',
         'renderer/**/*.test.{ts,js}',
+        '*.test.ts',
         '**/*.config.{ts,js,mjs}',
         '**/dist/**',
         'build/**',
@@ -38,23 +73,16 @@ export default defineConfig({
         'assets/**',
         'coverage/**',
         'test-results/**',
-        // React mount + verbatim-ported boot script (#303): DOM/UI glue
-        // verified by the Playwright e2e suite, no unit-test surface.
-        'renderer/src/main.tsx',
-        'renderer/src/App.tsx',
-        'renderer/src/inline-app.js',
-        // Test double (#308): its ~50 default stubs are arrows most tests
-        // never invoke; counting them as uncovered functions penalizes test
-        // infrastructure. Exercised by its own colocated test and by every
-        // consumer test at the type level (`satisfies SoundBuddyApi`).
-        'renderer/src/mock-sound-buddy.ts',
+        ...UI_COVERAGE_EXCLUSIONS.map((e) => e.path),
       ],
-      // Recalibrated for Vitest 4's more accurate v8 coverage remapping
-      // (#224): branches/functions in particular read lower than the old v2
-      // numbers (~57/62/51/57 measured locally post-bump, plus the app/**
-      // exclude bug fixed above) even though nothing here changed
-      // behaviorally.
-      thresholds: { statements: 52, branches: 55, functions: 45, lines: 52 },
+      // Ratcheted 2026-07-20 (#401): measured locally at statements 96.31 /
+      // branches 91.33 / functions 94.98 / lines 97.01 under Vitest 4's v8
+      // coverage remapping. Floors are Math.floor(measured) - MARGIN, with
+      // MARGIN 2 for statements/lines (stable across platforms) and MARGIN 3
+      // for branches/functions (these drift most between macOS and the
+      // Ubuntu CI runner — see packages/cli's 91.7% local / 84.6% CI split).
+      // Next ratchet step is #424, which deletes inline-app.js outright.
+      thresholds: { statements: 94, branches: 88, functions: 91, lines: 95 },
     },
   },
 });
