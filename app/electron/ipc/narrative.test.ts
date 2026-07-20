@@ -41,6 +41,11 @@ vi.mock('../llm-config', () => ({
 const isEntitledMock = vi.fn();
 vi.mock('../license', () => ({ isEntitled: (...a: unknown[]) => isEntitledMock(...a) }));
 
+const loadEnginePromptsMock = vi.fn();
+vi.mock('./engine-loader', () => ({
+  loadEnginePrompts: () => loadEnginePromptsMock(),
+}));
+
 /** A minimal event-sender (renderer webContents) that records `send` calls with varargs. */
 function fakeSender(destroyed = false) {
   return {
@@ -119,6 +124,8 @@ type Handler = (...args: unknown[]) => Promise<Record<string, unknown>>;
 type NarrativeModule = typeof import('./narrative');
 let mod: NarrativeModule;
 
+const FAKE_SYSTEM_PROMPT = 'You are a professional audio engineer (fake, TD-004 #398).';
+
 beforeEach(async () => {
   vi.clearAllMocks();
   handlers.clear();
@@ -126,6 +133,7 @@ beforeEach(async () => {
   mod = await import('./narrative');
   mod.registerNarrativeHandlers();
   isEntitledMock.mockReturnValue(true);
+  loadEnginePromptsMock.mockReturnValue({ SYSTEM_PROMPT: FAKE_SYSTEM_PROMPT });
 });
 
 describe('registerNarrativeHandlers', () => {
@@ -497,6 +505,36 @@ describe('trigger-llm-analysis handler', () => {
       expect.stringContaining('professional audio engineer'),
       expect.stringContaining('File: /tmp/mix.wav'),
     );
+  });
+
+  it('forwards exactly the engine loader\'s SYSTEM_PROMPT, not an inline copy (TD-004, #398)', async () => {
+    streamNarrativeMock.mockResolvedValue({ ok: true });
+    const sender = fakeSender();
+
+    await invoke(sender, { analysis: makeAnalysis(), mode: 'file' });
+
+    expect(streamNarrativeMock).toHaveBeenCalledWith(
+      expect.any(Function),
+      FAKE_SYSTEM_PROMPT,
+      expect.any(String),
+    );
+  });
+
+  it('when loadEnginePrompts throws, returns success:false and sends an llm-delta error plus llm-done', async () => {
+    loadEnginePromptsMock.mockImplementation(() => {
+      throw new Error('audio-engine prompts not found');
+    });
+    const sender = fakeSender();
+
+    const result = await invoke(sender, { analysis: makeAnalysis(), mode: 'file' });
+
+    expect(result).toEqual({ success: false, error: 'Error: audio-engine prompts not found' });
+    expect(streamNarrativeMock).not.toHaveBeenCalled();
+    expect(sender.sent[0]).toEqual({
+      channel: 'llm-delta',
+      args: ['\n[AI error: audio-engine prompts not found]\n'],
+    });
+    expect(sender.sent[1]).toEqual({ channel: 'llm-done', args: [] });
   });
 
   it('live mode: feeds buildLiveReport output into streamNarrative', async () => {

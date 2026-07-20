@@ -59,7 +59,8 @@ export type { AudioAnalysisResult, ChannelResult } from "@sound-buddy/shared";
 
 // Shared AI system prompts (TD-004 slice 2, #426): single source of truth
 // for the three prompts previously duplicated across audio-engine/ai-analyst.
-export { SYSTEM_PROMPT, MULTI_CHANNEL_SYSTEM_PROMPT, ANALYST_SYSTEM_PROMPT } from "./prompts/index.js";
+export { SYSTEM_PROMPT, MULTI_CHANNEL_SYSTEM_PROMPT, ANALYST_SYSTEM_PROMPT, buildLiveSystemPrompt } from "./prompts/index.js";
+export type { LiveSystemPromptOptions } from "./prompts/index.js";
 
 // Canonical AI-prompt numeric formatter (TD-004 slice 5, #429).
 export { fmt } from "./format.js";

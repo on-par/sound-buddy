@@ -15,6 +15,7 @@ import { getSettings } from '../settings';
 import { isEntitled } from '../license';
 import { pythonBin, childEnv, STREAM_SCRIPT, defaultRecordDir, readNdjsonLines } from './shared';
 import { streamLLM, buildLiveReport } from './narrative';
+import { loadEnginePrompts } from './engine-loader';
 import type { StartLiveOpts } from './api';
 
 let liveProcess: ChildProcess | null = null;
@@ -282,11 +283,10 @@ export function registerLiveCaptureHandlers(): void {
         // repeating it every interval would spam the AI panel.
         if (!isEntitled('ai-narrative')) return;
         const snapshot = [...windowCollector];
-
-        const systemPrompt = `You are a professional audio engineer monitoring a live mix. You are given consecutive analysis windows. Identify trends, flag developing problems (frequency buildup, approaching clipping, dynamic issues), and give real-time mixing recommendations. Be concise — this is live monitoring.`;
         const userMessage = buildLiveReport(snapshot);
 
         try {
+          const systemPrompt = loadEnginePrompts().buildLiveSystemPrompt();
           await streamLLM(wc, systemPrompt, userMessage);
         } catch {
           // non-fatal

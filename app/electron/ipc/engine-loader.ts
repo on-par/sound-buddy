@@ -26,6 +26,7 @@ type EngineSpectrum = typeof import('@sound-buddy/audio-engine/dist-cjs/analyze/
 type EngineEbur128 = typeof import('@sound-buddy/audio-engine/dist-cjs/analyze/ebur128');
 type EngineOrchestrate = typeof import('@sound-buddy/audio-engine/dist-cjs/analyze/orchestrate');
 type EngineExtract = typeof import('@sound-buddy/audio-engine/dist-cjs/analyze/extract');
+type EnginePrompts = typeof import('@sound-buddy/audio-engine/dist-cjs/prompts/index');
 
 export function engineParsersDir(): string {
   if (app.isPackaged) {
@@ -77,6 +78,36 @@ export function loadEngineParsers(): EngineParsers {
   } catch (err) {
     throw new Error(
       `audio-engine parsers not found at ${dir} — run \`npm run build\` at the repo root first (builds packages/audio-engine/dist-cjs)`,
+      { cause: err },
+    );
+  }
+}
+
+export interface EnginePromptModule {
+  SYSTEM_PROMPT: EnginePrompts['SYSTEM_PROMPT'];
+  buildLiveSystemPrompt: EnginePrompts['buildLiveSystemPrompt'];
+}
+
+let cachedPrompts: EnginePromptModule | undefined;
+
+// Shared AI system prompts (TD-004, #398) — the app must not keep its own
+// copies. Loaded lazily on first narrative so unrelated tests importing
+// ./ipc don't fail when dist-cjs is stale/missing.
+export function loadEnginePrompts(): EnginePromptModule {
+  if (cachedPrompts) return cachedPrompts;
+
+  const dir = engineParsersDir();
+  const req = createRequire(__filename);
+  try {
+    const prompts: EnginePrompts = req(path.join(dir, 'prompts', 'index.js'));
+    cachedPrompts = {
+      SYSTEM_PROMPT: prompts.SYSTEM_PROMPT,
+      buildLiveSystemPrompt: prompts.buildLiveSystemPrompt,
+    };
+    return cachedPrompts;
+  } catch (err) {
+    throw new Error(
+      `audio-engine prompts not found at ${dir} — run \`npm run build\` at the repo root first (builds packages/audio-engine/dist-cjs)`,
       { cause: err },
     );
   }

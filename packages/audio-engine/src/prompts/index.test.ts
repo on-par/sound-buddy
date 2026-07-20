@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { SYSTEM_PROMPT, MULTI_CHANNEL_SYSTEM_PROMPT, ANALYST_SYSTEM_PROMPT } from "./index.js";
+import { SYSTEM_PROMPT, MULTI_CHANNEL_SYSTEM_PROMPT, ANALYST_SYSTEM_PROMPT, buildLiveSystemPrompt } from "./index.js";
 import * as audioEngine from "../index.js";
 
 const EXPECTED_ENGINEER = `You are a professional audio engineer with 20+ years of experience. You are given acoustic measurement data for an audio file. Analyze it deeply: identify EQ imbalances, dynamic range issues, potential mastering problems, stereo image concerns, and anything else a trained ear would flag. Be specific, reference the actual numbers, and give actionable recommendations.`;
@@ -27,5 +27,6 @@ describe("shared AI system prompts (golden, #426)", () => {
     expect(audioEngine.SYSTEM_PROMPT).toBe(SYSTEM_PROMPT);
     expect(audioEngine.MULTI_CHANNEL_SYSTEM_PROMPT).toBe(MULTI_CHANNEL_SYSTEM_PROMPT);
     expect(audioEngine.ANALYST_SYSTEM_PROMPT).toBe(ANALYST_SYSTEM_PROMPT);
+    expect(audioEngine.buildLiveSystemPrompt).toBe(buildLiveSystemPrompt);
   });
 });
