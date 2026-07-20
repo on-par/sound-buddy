@@ -88,6 +88,25 @@ describe('src/styles/app.css', () => {
   });
 });
 
+describe('Settings dialog CSS (#204)', () => {
+  it('has the new tabbed-modal classes', () => {
+    expect(appCss).toContain('.settings-dialog-card');
+    expect(appCss).toContain('.settings-tabs');
+    expect(appCss).toContain('.settings-tab.active');
+    expect(appCss).toContain('.settings-pane');
+  });
+
+  it('no longer holds the two separate dialog-card classes it replaced', () => {
+    expect(appCss).not.toContain('.storage-dialog-card');
+    expect(appCss).not.toContain('.ai-dialog-card');
+  });
+
+  it('no longer styles the two separate header gear buttons it replaced', () => {
+    expect(appCss).not.toContain('#ai-settings-btn');
+    expect(appCss).not.toContain('#storage-settings-btn');
+  });
+});
+
 describe('rc-toolbar wraps instead of clipping (#478)', () => {
   it('lets the toolbar row wrap so buttons never clip under the panel overflow', () => {
     expect(appCss).toContain('#rc-toolbar { display:flex; flex-wrap:wrap;');

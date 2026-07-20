@@ -79,6 +79,17 @@ describe('Live monitoring visibly leads to a Report Card (#488)', () => {
   });
 });
 
+describe('Storage and AI Engineer dialogs combined into one Settings gear (#204)', () => {
+  it('has exactly one settings header button', () => {
+    expect(markup.match(/id="settings-btn"/g)).toHaveLength(1);
+  });
+
+  it('no longer has the two separate header gear buttons it replaced', () => {
+    expect(markup).not.toContain('id="storage-settings-btn"');
+    expect(markup).not.toContain('id="ai-settings-btn"');
+  });
+});
+
 describe('Existing tabs stay intact under the unified Analyze picker (#543)', () => {
   it('keeps all seven mode tabs, unchanged', () => {
     ['dir', 'live', 'soundcheck', 'recent', 'guide', 'ringout', 'reportcard'].forEach((mode) => {

@@ -14,10 +14,15 @@
 <div id="root"></div>
 
 
-<!-- AI provider settings (#76). One screen, two paths: local Ollama (default)
-     or a pasted API key. The key goes renderer → main once and never back.
-     Mounted by SettingsPanel.tsx (TD-001 slice 3, #421) via a React portal
-     into this static node — see App.tsx. -->
+<!-- Settings dialog (#204) — Storage, AI Engineer, About. One header gear opens
+     a tabbed modal: Storage picks where recordings, stems and captured
+     sessions live and shows disk usage (no cap — the figure is informational
+     only; point the folder inside an iCloud/Dropbox/Drive folder for sync,
+     that's the whole cloud story for MVP). AI Engineer is one screen, two
+     paths: local Ollama (default) or a pasted API key — the key goes
+     renderer → main once and never back. About shows the installed app
+     version. Mounted by SettingsPanel.tsx (TD-001 slice 3, #421) via a React
+     portal into this static node — see App.tsx. -->
 <div id="settings-island"></div>
 
 <!-- Feedback dialog (#144, in-app submission #472). Send now POSTs the message
@@ -98,55 +103,6 @@
       <button type="button" id="phase-doubling-back" class="btn btn-secondary sm">Back</button>
       <button type="button" id="phase-doubling-next" class="btn btn-primary sm">Next</button>
       <button type="button" id="phase-doubling-close" class="btn btn-secondary sm">Done</button>
-    </div>
-  </div>
-</div>
-
-<!-- Storage settings dialog (#91). Choose where recordings, stems and captured
-     sessions live, and see how much disk they use. There is no cap — the usage
-     figure is informational only. Point the folder inside an iCloud/Dropbox/
-     Drive folder for sync; that's the whole cloud story for MVP. -->
-<div id="storage-dialog" class="rig-dialog" style="display:none" role="dialog" aria-modal="true" aria-labelledby="storage-dialog-title">
-  <div class="rig-dialog-card storage-dialog-card">
-    <div class="rig-dialog-title" id="storage-dialog-title">Storage</div>
-    <div class="ai-dialog-sub">Where Sound Buddy keeps your recordings, stems, and captured sessions.</div>
-    <label class="ai-field">
-      <span>Storage folder</span>
-      <div class="storage-path-row">
-        <span class="storage-path" id="storage-path">~/Music/Sound Buddy</span>
-        <button type="button" id="storage-change-btn" class="btn btn-secondary sm" data-icon="folder">Change…</button>
-      </div>
-    </label>
-    <p class="storage-usage" id="storage-usage">Calculating disk usage…</p>
-    <p class="storage-unlimited">Unlimited recordings. Stored on your machine.</p>
-    <p class="storage-note" id="storage-note">Record and analyze as much as you want — no limits on any tier. New recordings are saved here; anything you've already recorded stays in its current folder.</p>
-    <!-- Opt-in anonymous usage counts (#474). Off by default. When enabled,
-         telemetry.ts records a documented allowlist of product events and
-         batches them to the #475 ingestion endpoint — see
-         app/electron/telemetry.ts for the exact event list and payload
-         shape. Turning this off stops recording and clears the pending
-         queue and install id. -->
-    <label class="ai-enable-row"><input type="checkbox" id="usage-signal-toggle" />Share anonymous usage counts</label>
-    <p class="ai-dialog-note" id="usage-signal-note">Off unless you turn it on. When enabled, Sound Buddy sends only anonymous usage counts — which features get used (app opened, analysis run, report viewed or exported, feedback sent) plus app version, macOS version, platform, an anonymous install/session id, and the hour it happened — never audio, recordings, church or file names, file paths, prompts, or report text. Your audio never leaves your machine.</p>
-    <!-- Opt-in crash reporting (#473). Off by default. When enabled, a crash
-         sends a strictly-allowlisted, redacted payload — never recordings,
-         full file paths, secrets, license keys, or audio metadata. -->
-    <label class="ai-enable-row"><input type="checkbox" id="crash-reporting-toggle" />Send crash reports</label>
-    <p class="ai-dialog-note" id="crash-reporting-note">Off unless you turn it on. When enabled, a crash sends only: app version, macOS version, the error message and stack trace (emails, license keys, and folder paths removed — file names are reduced to their base name), which screen you were on, and the names of recent app actions. Never recordings, audio, full file paths, or anything you typed.</p>
-    <!-- Opt-in experimental DAW-style Live workspace (#516, epic #515). Off by
-         default. A pure UI gate: when off, the Live tab is exactly the
-         existing Live Capture workflow. -->
-    <label class="ai-enable-row"><input type="checkbox" id="daw-workspace-toggle" />Try the experimental DAW-style Live workspace</label>
-    <p class="ai-dialog-note" id="daw-workspace-note">Off unless you turn it on. An early, experimental take on a DAW-style recording workspace for the Live tab. Your current Live Capture workflow stays the default — turn this off anytime to go back.</p>
-    <!-- Opt-in experimental live adjustment recommendations (#522, epic #515).
-         Off by default. A pure UI gate: when off, Live Capture shows no
-         live-adjustments area at all. -->
-    <label class="ai-enable-row"><input type="checkbox" id="live-adjustments-toggle" />Try experimental live adjustments</label>
-    <p class="ai-dialog-note" id="live-adjustments-note">Off unless you turn it on. An early, experimental area for mix suggestions while you monitor or record in Live Capture. Nothing is analyzed or sent anywhere — turn this off anytime to hide it.</p>
-    <div class="rig-dialog-actions">
-      <button type="button" id="storage-reset-btn" class="btn btn-secondary sm" style="display:none">Use default</button>
-      <button type="button" id="storage-cancel-btn" class="btn btn-secondary sm">Cancel</button>
-      <button type="button" id="storage-save-btn" class="btn btn-primary sm">Save</button>
     </div>
   </div>
 </div>

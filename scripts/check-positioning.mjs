@@ -29,9 +29,9 @@ const LOCKED = [
   {
     phrase: 'Your audio never leaves your machine',
     required: [
-      'site/src/pages/index.astro', // landing — privacy callout (headline-level)
-      'app/renderer/index.html',    // app — AI settings privacy note
-      'README.md',                  // docs — top-level positioning
+      'site/src/pages/index.astro',         // landing — privacy callout (headline-level)
+      'app/renderer/src/SettingsPanel.tsx', // app — AI Engineer settings privacy note (#204: index.html's static dialog markup was fully absorbed into this React island)
+      'README.md',                          // docs — top-level positioning
     ],
     forbidden: [],
   },
@@ -40,9 +40,9 @@ const LOCKED = [
     // so it can't drift via pricing copy or gating implementation.
     phrase: 'Unlimited recordings. Stored on your machine.',
     required: [
-      'site/src/pages/index.astro', // landing — privacy callout
-      'app/renderer/index.html',    // app — Storage settings dialog
-      'README.md',                  // docs — top-level positioning
+      'site/src/pages/index.astro',         // landing — privacy callout
+      'app/renderer/src/SettingsPanel.tsx', // app — Storage settings tab (#204: index.html's static dialog markup was fully absorbed into this React island)
+      'README.md',                          // docs — top-level positioning
     ],
     forbidden: [],
   },

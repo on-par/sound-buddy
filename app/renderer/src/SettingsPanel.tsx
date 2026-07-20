@@ -1,11 +1,12 @@
 // Copyright (c) 2026 Patrick Robinson (on-par). All rights reserved.
 // Licensed under the Sound Buddy Desktop Application License (app/LICENSE).
 
-// React island for the AI provider settings dialog (#76, TD-001 slice 3,
-// #421) — replaces the static #ai-dialog markup + openAiSettings()/
-// saveAiSettings() in inline-app.js with a component backed by
-// settingsStore. Renders the exact same ids/classes/structure the static
-// markup had (index.html:19–80) so the existing e2e suite
+// React island for the unified Settings dialog (#76, #91, TD-001 slice 3,
+// #421, combined into one tabbed modal by #204) — replaces the static
+// #ai-dialog and #storage-dialog markup + openAiSettings()/saveAiSettings()/
+// openStorageSettings()/saveStorageSettings() in inline-app.js with a
+// component backed by settingsStore. Renders the same inner ids/classes the
+// static markup had (index.html) so the existing e2e suite
 // (app/tests/e2e/settings.spec.ts) keeps driving the same selectors. The
 // dialog stays permanently in the DOM — `display` toggles via `dialogOpen`.
 
@@ -14,7 +15,10 @@ import type { StoreApi, UseBoundStore } from 'zustand';
 import { useElectron } from './useElectron';
 import { useStoreShallow } from './stores/useStoreShallow';
 import { useSettingsStore, type SettingsState } from './stores/settingsStore';
-import type { LlmApi, LlmConfigPatch, LlmModelInfo, PublicLlmConfig } from '../../electron/ipc/api';
+import { DEFAULT_STORAGE_PATH, effectiveStoragePath, loadStorageSeed, buildStoragePatch } from './storage-settings';
+import type { LlmApi, LlmConfigPatch, LlmModelInfo, PublicLlmConfig, UpdateSettingsPatch } from '../../electron/ipc/api';
+
+export type SettingsSection = 'storage' | 'ai' | 'about';
 
 // Direct hosted providers hard-require a model (no server-side default);
 // ollama and pi pass-through providers supply their own (TD-004 slice 3,
@@ -190,30 +194,50 @@ export async function testConnection(
   return { text: res && res.reason ? res.reason : 'Connection failed', kind: 'err' };
 }
 
-// Port of inline-app.js:3615–3661 — validates a hosted-tab model, saves via
-// the store, then folds in the enable toggle non-fatally and closes.
-export async function save(
-  tab: 'ollama' | 'hosted',
-  fields: LlmPatchFields,
-  modelsCache: LlmModelInfo[],
+export interface SaveAllFields {
+  tab: 'ollama' | 'hosted';
+  llm: LlmPatchFields;
+  modelsCache: LlmModelInfo[];
+  storagePatch: UpdateSettingsPatch | null;
+  enableAi: boolean;
+}
+
+// Port of inline-app.js:3615–3661 (AI save) merged with saveStorageSettings()
+// (storage save) behind the single Settings footer Save button (#204). One
+// Save now covers both sections atomically: the hosted-model validation and
+// the LLM save must both succeed — on either failure, jump back to the AI
+// section, report the error, and do NOT close or persist anything, including
+// the storage patch — before the storage patch and the enable-toggle
+// fold-in are applied and the dialog closes. This intentionally differs from
+// the two-independent-dialogs precursor: a single shared Save button means a
+// failed AI save must not silently leave an unrelated storage change
+// persisted with no way to tell the user it happened.
+export async function saveAll(
+  fields: SaveAllFields,
   store: SettingsStoreHandle,
-  enableAi: boolean,
+  setSection: (s: SettingsSection) => void,
   setTestResult: (r: { text: string; kind: '' | 'ok' | 'err' }) => void,
   focusModelInput: () => void
 ): Promise<void> {
+  const { tab, llm, modelsCache, storagePatch, enableAi } = fields;
   if (tab === 'hosted') {
-    const validation = hostedModelValidation(fields.provider, fields.hostedModel.trim(), modelsCache);
+    const validation = hostedModelValidation(llm.provider, llm.hostedModel.trim(), modelsCache);
     if (validation) {
+      setSection('ai');
       setTestResult({ text: validation, kind: 'err' });
       focusModelInput();
       return;
     }
   }
-  const patch = buildLlmPatch(tab, fields);
+  const patch = buildLlmPatch(tab, llm);
   const res = await store.getState().saveLlmConfig(patch);
   if (!res.ok) {
+    setSection('ai');
     setTestResult({ text: res.reason || 'Could not save settings', kind: 'err' });
     return;
+  }
+  if (storagePatch) {
+    await store.getState().updateSettings(storagePatch);
   }
   await store.getState().updateSettings({ aiEnabled: enableAi });
   store.getState().closeDialog();
@@ -243,6 +267,16 @@ export default function SettingsPanel() {
   const [passthroughOption, setPassthroughOption] = useState<{ value: string; label: string } | null>(null);
   const [testing, setTesting] = useState(false);
 
+  const [section, setSection] = useState<SettingsSection>('storage');
+  const [pendingDir, setPendingDir] = useState<string | null>(null);
+  const [defaultPath, setDefaultPath] = useState(DEFAULT_STORAGE_PATH);
+  const [loadedPath, setLoadedPath] = useState(DEFAULT_STORAGE_PATH);
+  const [usageText, setUsageText] = useState('Calculating disk usage…');
+  const [usageSignalEnabled, setUsageSignalEnabled] = useState(false);
+  const [crashReportingEnabled, setCrashReportingEnabled] = useState(false);
+  const [dawWorkspaceEnabled, setDawWorkspaceEnabled] = useState(false);
+  const [liveAdjustmentsEnabled, setLiveAdjustmentsEnabled] = useState(false);
+
   const hostedModelInputRef = useRef<HTMLInputElement>(null);
   const detectSeqRef = useRef(0);
 
@@ -269,9 +303,16 @@ export default function SettingsPanel() {
      a new framework), so effects never run under renderToString. */
   useEffect(() => {
     if (!dialogOpen) return;
+    setSection('storage');
+    setPendingDir(null);
+    setUsageText('Calculating disk usage…');
+    setUsageSignalEnabled(!!settings?.usageSignalEnabled);
+    setCrashReportingEnabled(!!settings?.crashReportingEnabled);
+    setDawWorkspaceEnabled(!!settings?.dawWorkspaceEnabled);
+    setLiveAdjustmentsEnabled(!!settings?.liveAdjustmentsEnabled);
     let cancelled = false;
     void (async () => {
-      const seed = await loadSettingsSeed(api, settings?.aiEnabled ?? true);
+      const [seed, storageSeed] = await Promise.all([loadSettingsSeed(api, settings?.aiEnabled ?? true), loadStorageSeed(api)]);
       if (cancelled) return;
       setSavedCfg(seed.savedCfg);
       setModelsCache(seed.modelsCache);
@@ -284,6 +325,9 @@ export default function SettingsPanel() {
       setTab(seed.tab);
       setEnableAi(seed.enableAi);
       setTestResult({ text: '', kind: '' });
+      setDefaultPath(storageSeed.defaultPath);
+      setLoadedPath(storageSeed.loadedPath);
+      setUsageText(storageSeed.usageText);
       void detectOllamaInto(seed.ollamaHost, seed.savedCfg.provider === 'ollama' ? seed.savedCfg.model : undefined);
       try {
         const v = await api.getAppVersion();
@@ -325,216 +369,335 @@ export default function SettingsPanel() {
     }
   }
 
+  async function handleChooseStorageFolder() {
+    const dir = await api.openDirDialog();
+    if (!dir) return;
+    setPendingDir(dir);
+  }
+
   function handleSave() {
-    void save(
-      tab,
-      { ollamaModel, ollamaHost, provider, hostedModel, baseUrl, apiKey },
-      modelsCache,
+    const storagePatch = buildStoragePatch(
+      pendingDir,
+      { usageSignalEnabled, crashReportingEnabled, dawWorkspaceEnabled, liveAdjustmentsEnabled },
+      settings
+    );
+    void saveAll(
+      { tab, llm: { ollamaModel, ollamaHost, provider, hostedModel, baseUrl, apiKey }, modelsCache, storagePatch, enableAi },
       useSettingsStore,
-      enableAi,
+      setSection,
       setTestResult,
       () => hostedModelInputRef.current?.focus()
     );
   }
 
+  const storagePath = effectiveStoragePath(pendingDir, defaultPath, loadedPath);
+
   return (
     <div
-      id="ai-dialog"
+      id="settings-dialog"
       className="rig-dialog"
       style={{ display: dialogOpen ? 'flex' : 'none' }}
       role="dialog"
       aria-modal="true"
-      aria-labelledby="ai-dialog-title"
+      aria-labelledby="settings-dialog-title"
       onClick={(e) => {
         if (e.target === e.currentTarget) useSettingsStore.getState().closeDialog();
       }}
     >
-      <div className="rig-dialog-card ai-dialog-card">
-        <div className="rig-dialog-title" id="ai-dialog-title">
-          AI Engineer
+      <div className="rig-dialog-card settings-dialog-card">
+        <div className="rig-dialog-title" id="settings-dialog-title">
+          Settings
         </div>
-        <div className="ai-dialog-sub">
-          Works with the AI you already have — use your local Ollama, or paste a key you already pay for.
-        </div>
-        <div className="ai-tabs" role="tablist">
+        <div className="settings-tabs" role="tablist">
           <button
             type="button"
-            className={'ai-tab' + (tab === 'ollama' ? ' active' : '')}
-            id="ai-tab-btn-ollama"
+            className={'settings-tab' + (section === 'storage' ? ' active' : '')}
+            id="settings-tab-btn-storage"
             role="tab"
-            aria-selected={tab === 'ollama'}
-            onClick={() => {
-              setTab('ollama');
-              setTestResult({ text: '', kind: '' });
-            }}
+            aria-selected={section === 'storage'}
+            onClick={() => setSection('storage')}
           >
-            I have Ollama
+            Storage
           </button>
           <button
             type="button"
-            className={'ai-tab' + (tab === 'hosted' ? ' active' : '')}
-            id="ai-tab-btn-hosted"
+            className={'settings-tab' + (section === 'ai' ? ' active' : '')}
+            id="settings-tab-btn-ai"
             role="tab"
-            aria-selected={tab === 'hosted'}
-            onClick={() => {
-              setTab('hosted');
-              setTestResult({ text: '', kind: '' });
-            }}
+            aria-selected={section === 'ai'}
+            onClick={() => setSection('ai')}
           >
-            I have an API key
+            AI Engineer
+          </button>
+          <button
+            type="button"
+            className={'settings-tab' + (section === 'about' ? ' active' : '')}
+            id="settings-tab-btn-about"
+            role="tab"
+            aria-selected={section === 'about'}
+            onClick={() => setSection('about')}
+          >
+            About
           </button>
         </div>
-        <div className="ai-tabpane" id="ai-tab-ollama" style={{ display: tab === 'ollama' ? 'flex' : 'none' }}>
+        <div className="settings-pane" id="settings-pane-storage" style={{ display: section === 'storage' ? 'flex' : 'none' }}>
           <label className="ai-field">
-            <span className="ai-field-label">Endpoint</span>
-            <input
-              type="text"
-              id="ai-ollama-host"
-              className="rig-dialog-input"
-              placeholder="http://localhost:11434"
-              autoComplete="off"
-              spellCheck={false}
-              value={ollamaHost}
-              onChange={(e) => setOllamaHost(e.target.value)}
-              onBlur={() => void detectOllamaInto(ollamaHost, ollamaModel || undefined)}
-            />
+            <span>Storage folder</span>
+            <div className="storage-path-row">
+              <span className="storage-path" id="storage-path">
+                {storagePath}
+              </span>
+              <button type="button" id="storage-change-btn" className="btn btn-secondary sm" data-icon="folder" onClick={() => void handleChooseStorageFolder()}>
+                Change…
+              </button>
+            </div>
           </label>
-          <div className={'ai-status' + (ollamaStatus.kind ? ` ${ollamaStatus.kind}` : '')} id="ai-ollama-status">
-            {ollamaStatus.showInstallLink ? (
-              <>
-                {ollamaStatus.text}
-                <a
-                  href="https://ollama.com/download"
-                  onClick={(e) => {
-                    e.preventDefault();
-                    void api.openReleasePage(e.currentTarget.href);
-                  }}
-                >
-                  install it from ollama.com
-                </a>
-                , then relaunch it.
-              </>
-            ) : (
-              ollamaStatus.text
-            )}
+          <p className="storage-usage" id="storage-usage">
+            {usageText}
+          </p>
+          <p className="storage-unlimited">Unlimited recordings. Stored on your machine.</p>
+          <p className="storage-note" id="storage-note">
+            Record and analyze as much as you want — no limits on any tier. New recordings are saved here; anything
+            you&apos;ve already recorded stays in its current folder.
+          </p>
+          <button
+            type="button"
+            id="storage-reset-btn"
+            className="btn btn-secondary sm"
+            style={{ display: storagePath === defaultPath ? 'none' : undefined }}
+            onClick={() => setPendingDir('')}
+          >
+            Use default
+          </button>
+          <label className="ai-enable-row">
+            <input type="checkbox" id="usage-signal-toggle" checked={usageSignalEnabled} onChange={(e) => setUsageSignalEnabled(e.target.checked)} />
+            Share anonymous usage counts
+          </label>
+          <p className="ai-dialog-note" id="usage-signal-note">
+            Off unless you turn it on. When enabled, Sound Buddy sends only anonymous usage counts — which features get
+            used (app opened, analysis run, report viewed or exported, feedback sent) plus app version, macOS version,
+            platform, an anonymous install/session id, and the hour it happened — never audio, recordings, church or
+            file names, file paths, prompts, or report text. Your audio never leaves your machine.
+          </p>
+          <label className="ai-enable-row">
+            <input type="checkbox" id="crash-reporting-toggle" checked={crashReportingEnabled} onChange={(e) => setCrashReportingEnabled(e.target.checked)} />
+            Send crash reports
+          </label>
+          <p className="ai-dialog-note" id="crash-reporting-note">
+            Off unless you turn it on. When enabled, a crash sends only: app version, macOS version, the error message
+            and stack trace (emails, license keys, and folder paths removed — file names are reduced to their base
+            name), which screen you were on, and the names of recent app actions. Never recordings, audio, full file
+            paths, or anything you typed.
+          </p>
+          <label className="ai-enable-row">
+            <input type="checkbox" id="daw-workspace-toggle" checked={dawWorkspaceEnabled} onChange={(e) => setDawWorkspaceEnabled(e.target.checked)} />
+            Try the experimental DAW-style Live workspace
+          </label>
+          <p className="ai-dialog-note" id="daw-workspace-note">
+            Off unless you turn it on. An early, experimental take on a DAW-style recording workspace for the Live tab.
+            Your current Live Capture workflow stays the default — turn this off anytime to go back.
+          </p>
+          <label className="ai-enable-row">
+            <input
+              type="checkbox"
+              id="live-adjustments-toggle"
+              checked={liveAdjustmentsEnabled}
+              onChange={(e) => setLiveAdjustmentsEnabled(e.target.checked)}
+            />
+            Try experimental live adjustments
+          </label>
+          <p className="ai-dialog-note" id="live-adjustments-note">
+            Off unless you turn it on. An early, experimental area for mix suggestions while you monitor or record in
+            Live Capture. Nothing is analyzed or sent anywhere — turn this off anytime to hide it.
+          </p>
+        </div>
+        <div className="settings-pane" id="settings-pane-ai" style={{ display: section === 'ai' ? 'flex' : 'none' }}>
+          <div className="ai-dialog-sub">
+            Works with the AI you already have — use your local Ollama, or paste a key you already pay for.
           </div>
-          <label className="ai-field">
-            <span className="ai-field-label">Model</span>
-            <div className="select-wrap">
-              <select
-                id="ai-ollama-model"
-                aria-label="Ollama model"
-                value={ollamaModel}
-                disabled={ollamaModels.length === 0}
-                onChange={(e) => setOllamaModel(e.target.value)}
-              >
-                {ollamaModels.map((m) => (
-                  <option key={m} value={m}>
-                    {m}
-                  </option>
+          <div className="ai-tabs" role="tablist">
+            <button
+              type="button"
+              className={'ai-tab' + (tab === 'ollama' ? ' active' : '')}
+              id="ai-tab-btn-ollama"
+              role="tab"
+              aria-selected={tab === 'ollama'}
+              onClick={() => {
+                setTab('ollama');
+                setTestResult({ text: '', kind: '' });
+              }}
+            >
+              I have Ollama
+            </button>
+            <button
+              type="button"
+              className={'ai-tab' + (tab === 'hosted' ? ' active' : '')}
+              id="ai-tab-btn-hosted"
+              role="tab"
+              aria-selected={tab === 'hosted'}
+              onClick={() => {
+                setTab('hosted');
+                setTestResult({ text: '', kind: '' });
+              }}
+            >
+              I have an API key
+            </button>
+          </div>
+          <div className="ai-tabpane" id="ai-tab-ollama" style={{ display: tab === 'ollama' ? 'flex' : 'none' }}>
+            <label className="ai-field">
+              <span className="ai-field-label">Endpoint</span>
+              <input
+                type="text"
+                id="ai-ollama-host"
+                className="rig-dialog-input"
+                placeholder="http://localhost:11434"
+                autoComplete="off"
+                spellCheck={false}
+                value={ollamaHost}
+                onChange={(e) => setOllamaHost(e.target.value)}
+                onBlur={() => void detectOllamaInto(ollamaHost, ollamaModel || undefined)}
+              />
+            </label>
+            <div className={'ai-status' + (ollamaStatus.kind ? ` ${ollamaStatus.kind}` : '')} id="ai-ollama-status">
+              {ollamaStatus.showInstallLink ? (
+                <>
+                  {ollamaStatus.text}
+                  <a
+                    href="https://ollama.com/download"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      void api.openReleasePage(e.currentTarget.href);
+                    }}
+                  >
+                    install it from ollama.com
+                  </a>
+                  , then relaunch it.
+                </>
+              ) : (
+                ollamaStatus.text
+              )}
+            </div>
+            <label className="ai-field">
+              <span className="ai-field-label">Model</span>
+              <div className="select-wrap">
+                <select
+                  id="ai-ollama-model"
+                  aria-label="Ollama model"
+                  value={ollamaModel}
+                  disabled={ollamaModels.length === 0}
+                  onChange={(e) => setOllamaModel(e.target.value)}
+                >
+                  {ollamaModels.map((m) => (
+                    <option key={m} value={m}>
+                      {m}
+                    </option>
+                  ))}
+                </select>
+                <span className="select-caret" data-icon="chevron-down" />
+              </div>
+            </label>
+          </div>
+          <div className="ai-tabpane" id="ai-tab-hosted" style={{ display: tab === 'hosted' ? 'flex' : 'none' }}>
+            <label className="ai-field">
+              <span className="ai-field-label">Provider</span>
+              <div className="select-wrap">
+                <select id="ai-provider" aria-label="Provider" value={provider} onChange={(e) => setProvider(e.target.value)}>
+                  <option value="openai">OpenAI</option>
+                  <option value="anthropic">Anthropic</option>
+                  <option value="google">Google</option>
+                  <option value="custom">Custom (OpenAI-compatible)</option>
+                  {passthroughOption && (
+                    <option value={passthroughOption.value} data-passthrough="1">
+                      {passthroughOption.label}
+                    </option>
+                  )}
+                </select>
+                <span className="select-caret" data-icon="chevron-down" />
+              </div>
+            </label>
+            <label className="ai-field" id="ai-baseurl-field" style={{ display: provider === 'custom' ? 'flex' : 'none' }}>
+              <span className="ai-field-label">Base URL</span>
+              <input
+                type="text"
+                id="ai-base-url"
+                className="rig-dialog-input"
+                placeholder="https://my-endpoint.example.com"
+                autoComplete="off"
+                spellCheck={false}
+                value={baseUrl}
+                onChange={(e) => setBaseUrl(e.target.value)}
+              />
+            </label>
+            <label className="ai-field">
+              <span className="ai-field-label">API key</span>
+              <input
+                type="password"
+                id="ai-api-key"
+                className="rig-dialog-input"
+                placeholder={keyPlaceholder(savedCfg, provider)}
+                autoComplete="off"
+                spellCheck={false}
+                value={apiKey}
+                onChange={(e) => setApiKey(e.target.value)}
+              />
+            </label>
+            <label className="ai-field">
+              <span className="ai-field-label">Model</span>
+              <input
+                ref={hostedModelInputRef}
+                type="text"
+                id="ai-hosted-model"
+                className="rig-dialog-input"
+                placeholder={models[0] || 'model-name'}
+                autoComplete="off"
+                spellCheck={false}
+                list="ai-hosted-model-list"
+                value={hostedModel}
+                onChange={(e) => setHostedModel(e.target.value)}
+              />
+              <datalist id="ai-hosted-model-list">
+                {models.map((id) => (
+                  <option key={id} value={id} />
                 ))}
-              </select>
-              <span className="select-caret" data-icon="chevron-down" />
-            </div>
+              </datalist>
+            </label>
+          </div>
+          <div className="ai-test-row">
+            <button type="button" id="ai-test-btn" className="btn btn-secondary sm" disabled={testing} onClick={() => void handleTest()}>
+              Test connection
+            </button>
+            <span className={'ai-status' + (testResult.kind ? ` ${testResult.kind}` : '')} id="ai-test-result" role="status">
+              {testResult.text}
+            </span>
+          </div>
+          <label className="ai-enable-row">
+            <input type="checkbox" id="ai-enable-toggle" checked={enableAi} onChange={(e) => setEnableAi(e.target.checked)} />
+            Enable AI analysis
           </label>
+          <p className="ai-dialog-note">
+            Your audio never leaves your machine — analysis runs on-device, and only the measurements go to the provider
+            you choose.
+          </p>
         </div>
-        <div className="ai-tabpane" id="ai-tab-hosted" style={{ display: tab === 'hosted' ? 'flex' : 'none' }}>
-          <label className="ai-field">
-            <span className="ai-field-label">Provider</span>
-            <div className="select-wrap">
-              <select id="ai-provider" aria-label="Provider" value={provider} onChange={(e) => setProvider(e.target.value)}>
-                <option value="openai">OpenAI</option>
-                <option value="anthropic">Anthropic</option>
-                <option value="google">Google</option>
-                <option value="custom">Custom (OpenAI-compatible)</option>
-                {passthroughOption && (
-                  <option value={passthroughOption.value} data-passthrough="1">
-                    {passthroughOption.label}
-                  </option>
-                )}
-              </select>
-              <span className="select-caret" data-icon="chevron-down" />
-            </div>
-          </label>
-          <label className="ai-field" id="ai-baseurl-field" style={{ display: provider === 'custom' ? 'flex' : 'none' }}>
-            <span className="ai-field-label">Base URL</span>
-            <input
-              type="text"
-              id="ai-base-url"
-              className="rig-dialog-input"
-              placeholder="https://my-endpoint.example.com"
-              autoComplete="off"
-              spellCheck={false}
-              value={baseUrl}
-              onChange={(e) => setBaseUrl(e.target.value)}
-            />
-          </label>
-          <label className="ai-field">
-            <span className="ai-field-label">API key</span>
-            <input
-              type="password"
-              id="ai-api-key"
-              className="rig-dialog-input"
-              placeholder={keyPlaceholder(savedCfg, provider)}
-              autoComplete="off"
-              spellCheck={false}
-              value={apiKey}
-              onChange={(e) => setApiKey(e.target.value)}
-            />
-          </label>
-          <label className="ai-field">
-            <span className="ai-field-label">Model</span>
-            <input
-              ref={hostedModelInputRef}
-              type="text"
-              id="ai-hosted-model"
-              className="rig-dialog-input"
-              placeholder={models[0] || 'model-name'}
-              autoComplete="off"
-              spellCheck={false}
-              list="ai-hosted-model-list"
-              value={hostedModel}
-              onChange={(e) => setHostedModel(e.target.value)}
-            />
-            <datalist id="ai-hosted-model-list">
-              {models.map((id) => (
-                <option key={id} value={id} />
-              ))}
-            </datalist>
-          </label>
+        <div className="settings-pane" id="settings-pane-about" style={{ display: section === 'about' ? 'flex' : 'none' }}>
+          <p className="ai-dialog-version" id="ai-dialog-version">
+            {version}
+          </p>
+          <p className="ai-dialog-note">Licensed under the Sound Buddy Desktop Application License.</p>
         </div>
-        <div className="ai-test-row">
-          <button type="button" id="ai-test-btn" className="btn btn-secondary sm" disabled={testing} onClick={() => void handleTest()}>
-            Test connection
-          </button>
-          <span className={'ai-status' + (testResult.kind ? ` ${testResult.kind}` : '')} id="ai-test-result" role="status">
-            {testResult.text}
-          </span>
-        </div>
-        <label className="ai-enable-row">
-          <input type="checkbox" id="ai-enable-toggle" checked={enableAi} onChange={(e) => setEnableAi(e.target.checked)} />
-          Enable AI analysis
-        </label>
         <div className="rig-dialog-actions">
           <button
             type="button"
-            id="ai-dialog-cancel"
+            id="settings-dialog-cancel"
             className="btn btn-secondary sm"
             onClick={() => useSettingsStore.getState().closeDialog()}
           >
             Cancel
           </button>
-          <button type="button" id="ai-dialog-save" className="btn btn-primary sm" onClick={handleSave}>
+          <button type="button" id="settings-dialog-save" className="btn btn-primary sm" onClick={handleSave}>
             Save
           </button>
         </div>
-        <p className="ai-dialog-note">
-          Your audio never leaves your machine — analysis runs on-device, and only the measurements go to the provider you
-          choose.
-        </p>
-        <p className="ai-dialog-version" id="ai-dialog-version">
-          {version}
-        </p>
       </div>
     </div>
   );

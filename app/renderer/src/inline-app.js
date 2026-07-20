@@ -3755,11 +3755,12 @@ function renderTrialBanner(state) {
   document.getElementById('update-dismiss-btn').addEventListener('click', () => banner.classList.remove('show'));
 })();
 
-/* ══ AI provider settings (#76) ══ */
-// SettingsPanel.tsx now owns the dialog itself — tabs, provider fields, Test
-// connection, Save (TD-001 slice 3, #421). This section keeps the header gear
-// button wired to settingsStore and mirrors its state onto the surfaces that
-// stay inline: the model chip and the body.ai-disabled gate.
+/* ══ Settings dialog (#76, #91, #204) ══ */
+// SettingsPanel.tsx now owns the whole dialog — Storage, AI Engineer, and
+// About tabs, provider fields, Test connection, Save (TD-001 slice 3, #421;
+// combined into one tabbed modal by #204). This section keeps the header
+// gear button wired to settingsStore and mirrors its state onto the surfaces
+// that stay inline: the model chip and the body.ai-disabled gate.
 
 function aiEl(id) { return document.getElementById(id); }
 
@@ -3768,114 +3769,6 @@ function updateModelChip(cfg) {
   if (!el) return;
   el.textContent = cfg && cfg.provider ? `${cfg.provider} · ${cfg.model || 'default model'}` : 'your provider';
 }
-
-/* ══ Storage settings (#91) ══ */
-// Sound Buddy has no usage caps — this dialog just lets the user pick where
-// recordings live and shows disk usage informationally. State (never DOM
-// read-back) drives what's shown: `storageDefaultPath` is the platform default
-// reported by main, and `storagePendingDir` is the folder chosen this session
-// before Save — null = unchanged, '' = reset to default, a path = a custom
-// folder. `effectiveStoragePath()` folds those into the one path to display; the
-// reset action is offered whenever that path isn't the default. Reuses `aiEl`.
-let storagePendingDir = null;
-let storageDefaultPath = '~/Music/Sound Buddy';
-let storageLoadedPath = storageDefaultPath; // path persisted before this session
-
-function effectiveStoragePath() {
-  if (storagePendingDir === '') return storageDefaultPath;
-  if (storagePendingDir) return storagePendingDir;
-  return storageLoadedPath;
-}
-
-function renderStoragePath() {
-  const current = effectiveStoragePath();
-  aiEl('storage-path').textContent = current;
-  aiEl('storage-reset-btn').style.display = current === storageDefaultPath ? 'none' : '';
-}
-
-async function openStorageSettings() {
-  storagePendingDir = null;
-  storageLoadedPath = storageDefaultPath;
-  aiEl('storage-usage').textContent = 'Calculating disk usage…';
-  renderStoragePath();
-  // Read live from settingsStore (dual-write bridge, TD-001 slice 3, #421)
-  // rather than a module-level cache — settingsStore.loadSettings() already
-  // fetched this at boot.
-  aiEl('usage-signal-toggle').checked = !!(setStore.getState().settings || {}).usageSignalEnabled;
-  aiEl('crash-reporting-toggle').checked = !!(setStore.getState().settings || {}).crashReportingEnabled;
-  aiEl('daw-workspace-toggle').checked = !!(setStore.getState().settings || {}).dawWorkspaceEnabled;
-  aiEl('live-adjustments-toggle').checked = !!(setStore.getState().settings || {}).liveAdjustmentsEnabled;
-  aiEl('storage-dialog').style.display = 'flex';
-  try {
-    const u = await sb.getStorageUsage();
-    if (u) {
-      if (u.defaultPath) storageDefaultPath = u.defaultPath;
-      storageLoadedPath = u.path || storageDefaultPath;
-      aiEl('storage-usage').textContent = u.exists
-        ? `Using ${u.human} on this Mac — no limit.`
-        : 'Nothing recorded yet — no limit on how much you can store.';
-      renderStoragePath();
-    } else {
-      aiEl('storage-usage').textContent = '';
-    }
-  } catch {
-    aiEl('storage-usage').textContent = '';
-  }
-}
-
-function closeStorageSettings() {
-  aiEl('storage-dialog').style.display = 'none';
-}
-
-async function chooseStorageFolder() {
-  const dir = await sb.openDirDialog();
-  if (!dir) return;
-  storagePendingDir = dir;
-  renderStoragePath();
-}
-
-async function saveStorageSettings() {
-  // settingsStore.updateSettings() never throws (a failed round-trip parks
-  // the reason in settingsError) — same non-fatal contract these saves had
-  // before, now dual-written through the store so its cached `settings`
-  // never goes stale (TD-001 slice 3, #421).
-  if (storagePendingDir !== null) {
-    await setStore.getState().updateSettings({ storageDir: storagePendingDir });
-  }
-  const usageChecked = aiEl('usage-signal-toggle').checked;
-  const usageLoaded = !!(setStore.getState().settings || {}).usageSignalEnabled;
-  if (usageChecked !== usageLoaded) {
-    await setStore.getState().updateSettings({ usageSignalEnabled: usageChecked });
-  }
-  const crashReportingChecked = aiEl('crash-reporting-toggle').checked;
-  const crashReportingLoaded = !!(setStore.getState().settings || {}).crashReportingEnabled;
-  if (crashReportingChecked !== crashReportingLoaded) {
-    await setStore.getState().updateSettings({ crashReportingEnabled: crashReportingChecked });
-  }
-  const dawChecked = aiEl('daw-workspace-toggle').checked;
-  const dawLoaded = !!(setStore.getState().settings || {}).dawWorkspaceEnabled;
-  if (dawChecked !== dawLoaded) {
-    await setStore.getState().updateSettings({ dawWorkspaceEnabled: dawChecked });
-  }
-  const liveAdjChecked = aiEl('live-adjustments-toggle').checked;
-  const liveAdjLoaded = !!(setStore.getState().settings || {}).liveAdjustmentsEnabled;
-  if (liveAdjChecked !== liveAdjLoaded) {
-    await setStore.getState().updateSettings({ liveAdjustmentsEnabled: liveAdjChecked });
-  }
-  closeStorageSettings();
-}
-
-(() => {
-  aiEl('storage-settings-btn').addEventListener('click', openStorageSettings);
-  aiEl('storage-change-btn').addEventListener('click', chooseStorageFolder);
-  aiEl('storage-reset-btn').addEventListener('click', () => { storagePendingDir = ''; renderStoragePath(); });
-  aiEl('storage-save-btn').addEventListener('click', saveStorageSettings);
-  aiEl('storage-cancel-btn').addEventListener('click', closeStorageSettings);
-  aiEl('storage-dialog').addEventListener('click', (e) => { if (e.target === aiEl('storage-dialog')) closeStorageSettings(); });
-  document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape' && aiEl('storage-dialog').style.display !== 'none') closeStorageSettings();
-  });
-})();
 
 (() => {
   curveEl('ideal-curve-edit-btn').addEventListener('click', openCurveEditor);
@@ -4114,7 +4007,7 @@ window.inlineDialogs = { openPhaseDoublingDialog, openFeedbackRingout };
 })();
 
 (() => {
-  aiEl('ai-settings-btn').addEventListener('click', () => setStore.getState().openDialog());
+  aiEl('settings-btn').addEventListener('click', () => setStore.getState().openDialog());
   // Model chip + the AI-panel visibility gate both just mirror settingsStore
   // (SettingsPanel.tsx owns everything else about the dialog, TD-001 slice 3,
   // #421); loadSettings() in the boot IIFE below fires these on first load.

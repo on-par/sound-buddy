@@ -4,6 +4,8 @@
 import { describe, it, expect, afterEach } from 'vitest';
 import { createElement } from 'react';
 import { renderToString } from 'react-dom/server';
+import * as fs from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import SettingsPanel, {
   modelsForProvider,
   keyPlaceholder,
@@ -13,7 +15,8 @@ import SettingsPanel, {
   probeOllama,
   loadSettingsSeed,
   testConnection,
-  save,
+  saveAll,
+  type SettingsSection,
 } from './SettingsPanel';
 import { ElectronContext } from './useElectron';
 import { createSettingsStore, useSettingsStore } from './stores/settingsStore';
@@ -25,6 +28,8 @@ const MODELS: LlmModelInfo[] = [
   { provider: 'openai', id: 'gpt-4o', name: 'GPT-4o' },
   { provider: 'anthropic', id: 'claude-sonnet-5', name: 'Claude Sonnet 5' },
 ];
+
+const EMPTY_PUBLIC_LLM_CONFIG: PublicLlmConfig = { provider: '', model: '', ollamaHost: '', apiBaseUrl: '', hasApiKey: false, apiKeyProvider: '' };
 
 afterEach(() => {
   useSettingsStore.setState({ settings: null, llmConfig: null, settingsError: null, dialogOpen: false });
@@ -236,29 +241,37 @@ describe('testConnection', () => {
   });
 });
 
-describe('save', () => {
-  it('blocks the save and focuses the model field when a hosted model is missing', async () => {
+describe('saveAll', () => {
+  it('blocks the save, jumps to the AI section, and focuses the model field when a hosted model is missing', async () => {
     const mock = createMockSoundBuddy();
     const store = createSettingsStore(() => mock.api);
     let result: { text: string; kind: '' | 'ok' | 'err' } | null = null;
+    let section: SettingsSection | null = null;
     let focused = false;
 
-    await save(
-      'hosted',
-      { ollamaModel: '', ollamaHost: '', provider: 'openai', hostedModel: '', baseUrl: '', apiKey: '' },
-      MODELS,
+    await saveAll(
+      {
+        tab: 'hosted',
+        llm: { ollamaModel: '', ollamaHost: '', provider: 'openai', hostedModel: '', baseUrl: '', apiKey: '' },
+        modelsCache: MODELS,
+        storagePatch: { storageDir: '/should-not-save' },
+        enableAi: true,
+      },
       store,
-      true,
+      (s) => { section = s; },
       (r) => { result = r; },
       () => { focused = true; }
     );
 
     expect(result).toEqual({ text: 'Enter a model name first (e.g. gpt-4o-mini).', kind: 'err' });
+    expect(section).toBe('ai');
     expect(focused).toBe(true);
     expect(mock.calls.some((c) => c.method === 'saveLlmConfig')).toBe(false);
+    // Nothing partially saves on a blocked save — including the unrelated storage patch.
+    expect(mock.calls.some((c) => c.method === 'updateSettings')).toBe(false);
   });
 
-  it('saves, folds in the enable toggle, and closes the dialog on success', async () => {
+  it('applies the storage patch after the LLM patch succeeds, folds in the enable toggle, and closes', async () => {
     const config: PublicLlmConfig = { provider: 'ollama', model: 'llama3', ollamaHost: '', apiBaseUrl: '', hasApiKey: false, apiKeyProvider: '' };
     const mock = createMockSoundBuddy({
       saveLlmConfig: async () => ({ ok: true, config }),
@@ -270,46 +283,105 @@ describe('save', () => {
     const store = createSettingsStore(() => mock.api);
     store.getState().openDialog();
 
-    await save(
-      'ollama',
-      { ollamaModel: 'llama3', ollamaHost: '', provider: '', hostedModel: '', baseUrl: '', apiKey: '' },
-      [],
+    await saveAll(
+      {
+        tab: 'ollama',
+        llm: { ollamaModel: 'llama3', ollamaHost: '', provider: '', hostedModel: '', baseUrl: '', apiKey: '' },
+        modelsCache: [],
+        storagePatch: { storageDir: '/custom/folder' },
+        enableAi: true,
+      },
       store,
-      true,
+      () => {},
       () => {},
       () => {}
     );
 
     expect(store.getState().dialogOpen).toBe(false);
-    expect(mock.calls).toContainEqual({ method: 'updateSettings', args: [{ aiEnabled: true }] });
+    const llmCallIdx = mock.calls.findIndex((c) => c.method === 'saveLlmConfig');
+    const updateCalls = mock.calls.filter((c) => c.method === 'updateSettings');
+    // saveLlmConfig must complete before either updateSettings call fires (storage patch, then aiEnabled).
+    expect(mock.calls.indexOf(updateCalls[0])).toBeGreaterThan(llmCallIdx);
+    expect(updateCalls[0]).toEqual({ method: 'updateSettings', args: [{ storageDir: '/custom/folder' }] });
+    expect(updateCalls[1]).toEqual({ method: 'updateSettings', args: [{ aiEnabled: true }] });
   });
 
-  it('reports the failure reason and leaves the dialog open when the save itself fails', async () => {
+  it('does not apply the storage patch when the LLM save itself fails — no partial commit', async () => {
+    const mock = createMockSoundBuddy({ saveLlmConfig: async () => ({ ok: false, reason: 'network error' }) });
+    const store = createSettingsStore(() => mock.api);
+    store.getState().openDialog();
+
+    await saveAll(
+      {
+        tab: 'ollama',
+        llm: { ollamaModel: 'llama3', ollamaHost: '', provider: '', hostedModel: '', baseUrl: '', apiKey: '' },
+        modelsCache: [],
+        storagePatch: { storageDir: '/should-not-save', crashReportingEnabled: true },
+        enableAi: true,
+      },
+      store,
+      () => {},
+      () => {},
+      () => {}
+    );
+
+    expect(mock.calls.some((c) => c.method === 'updateSettings')).toBe(false);
+    expect(store.getState().dialogOpen).toBe(true);
+  });
+
+  it('skips the storage patch call when it is null', async () => {
+    const mock = createMockSoundBuddy({ saveLlmConfig: async () => ({ ok: true, config: EMPTY_PUBLIC_LLM_CONFIG }) });
+    const store = createSettingsStore(() => mock.api);
+
+    await saveAll(
+      { tab: 'ollama', llm: { ollamaModel: '', ollamaHost: '', provider: '', hostedModel: '', baseUrl: '', apiKey: '' }, modelsCache: [], storagePatch: null, enableAi: false },
+      store,
+      () => {},
+      () => {},
+      () => {}
+    );
+
+    expect(mock.calls.filter((c) => c.method === 'updateSettings')).toHaveLength(1);
+  });
+
+  it('reports the failure reason, jumps to the AI section, and leaves the dialog open when the LLM save itself fails', async () => {
     const mock = createMockSoundBuddy({ saveLlmConfig: async () => ({ ok: false, reason: 'model is required' }) });
     const store = createSettingsStore(() => mock.api);
     store.getState().openDialog();
     let result: { text: string; kind: '' | 'ok' | 'err' } | null = null;
+    let section: SettingsSection | null = null;
 
-    await save(
-      'ollama',
-      { ollamaModel: 'llama3', ollamaHost: '', provider: '', hostedModel: '', baseUrl: '', apiKey: '' },
-      [],
+    await saveAll(
+      {
+        tab: 'ollama',
+        llm: { ollamaModel: 'llama3', ollamaHost: '', provider: '', hostedModel: '', baseUrl: '', apiKey: '' },
+        modelsCache: [],
+        storagePatch: null,
+        enableAi: true,
+      },
       store,
-      true,
+      (s) => { section = s; },
       (r) => { result = r; },
       () => {}
     );
 
     expect(result).toEqual({ text: 'model is required', kind: 'err' });
+    expect(section).toBe('ai');
     expect(store.getState().dialogOpen).toBe(true);
   });
 });
 
 describe('SettingsPanel markup', () => {
-  it('renders hidden by default with both tabs present', () => {
+  it('renders hidden by default with all three top-level tabs and panes present', () => {
     const html = renderMarkup();
-    expect(html).toContain('id="ai-dialog"');
+    expect(html).toContain('id="settings-dialog"');
     expect(html).toContain('style="display:none"');
+    expect(html).toContain('id="settings-tab-btn-storage"');
+    expect(html).toContain('id="settings-tab-btn-ai"');
+    expect(html).toContain('id="settings-tab-btn-about"');
+    expect(html).toContain('id="settings-pane-storage"');
+    expect(html).toContain('id="settings-pane-ai"');
+    expect(html).toContain('id="settings-pane-about"');
     expect(html).toContain('id="ai-tab-ollama"');
     expect(html).toContain('id="ai-tab-hosted"');
     expect(html).toContain('id="ai-tab-btn-ollama"');
@@ -320,6 +392,31 @@ describe('SettingsPanel markup', () => {
     useSettingsStore.setState({ dialogOpen: true });
     const html = renderMarkup();
     expect(html).toContain('style="display:flex"');
+  });
+
+  it('defaults to the Storage tab active and the other two panes hidden', () => {
+    const html = renderMarkup();
+    expect(html).toContain('id="settings-tab-btn-storage" role="tab" aria-selected="true"');
+    expect(html).toMatch(/id="settings-pane-storage" style="display:flex"/);
+    expect(html).toMatch(/id="settings-pane-ai" style="display:none"/);
+    expect(html).toMatch(/id="settings-pane-about" style="display:none"/);
+  });
+
+  it('renders the storage pane copy verbatim, including the no-caps guardrail line', () => {
+    const html = renderMarkup();
+    expect(html).toContain('Unlimited recordings. Stored on your machine.');
+    expect(html).toContain('id="storage-path"');
+    expect(html).toContain('id="storage-usage"');
+    expect(html).toContain('id="storage-change-btn"');
+    expect(html).toContain('id="usage-signal-toggle"');
+    expect(html).toContain('id="crash-reporting-toggle"');
+    expect(html).toContain('id="daw-workspace-toggle"');
+    expect(html).toContain('id="live-adjustments-toggle"');
+  });
+
+  it('hides the storage reset button when the effective path is the default', () => {
+    const html = renderMarkup();
+    expect(html).toMatch(/id="storage-reset-btn"[^>]*style="display:none"/);
   });
 
   it('renders the four static provider options', () => {
@@ -339,5 +436,24 @@ describe('SettingsPanel markup', () => {
     const html = renderMarkup();
     expect(html).toContain('id="ai-tab-btn-ollama" role="tab" aria-selected="true"');
     expect(html).toMatch(/id="ai-tab-hosted" style="display:none"/);
+  });
+});
+
+// Re-homed from inline-app.js's now-deleted openStorageSettings()/
+// saveStorageSettings() (#91, #522) onto SettingsPanel.tsx + storage-settings.ts
+// (#204). The seeding itself lives in the dialog-open effect, which is
+// c8-ignored (no jsdom, exercised by settings.spec.ts) — this asserts the
+// wiring exists in source, same pattern live-adjustments-gate.test.ts used
+// against inline-app.js. buildStoragePatch's per-toggle diff behavior,
+// including liveAdjustmentsEnabled, is covered directly in
+// storage-settings.test.ts.
+describe('storage toggle seeding on dialog open (#522, #204)', () => {
+  const src = fs.readFileSync(fileURLToPath(new URL('./SettingsPanel.tsx', import.meta.url)), 'utf8');
+
+  it('seeds every storage toggle from the loaded settings', () => {
+    expect(src).toContain('setUsageSignalEnabled(!!settings?.usageSignalEnabled)');
+    expect(src).toContain('setCrashReportingEnabled(!!settings?.crashReportingEnabled)');
+    expect(src).toContain('setDawWorkspaceEnabled(!!settings?.dawWorkspaceEnabled)');
+    expect(src).toContain('setLiveAdjustmentsEnabled(!!settings?.liveAdjustmentsEnabled)');
   });
 });

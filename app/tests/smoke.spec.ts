@@ -45,13 +45,15 @@ test('smoke: exercise all flows and collect errors', async () => {
     await win.waitForTimeout(120);
   }
 
-  // 2. AI provider settings dialog (#76): open via the gear, let the real
-  // Ollama auto-detect run (connection-refused is a handled state), close.
-  await win.locator('#ai-settings-btn').click();
+  // 2. Settings dialog (#76, #91, combined into one tabbed modal by #204):
+  // open via the gear, switch to AI Engineer, let the real Ollama auto-detect
+  // run (connection-refused is a handled state), close.
+  await win.locator('#settings-btn').click();
   await win.waitForTimeout(600);
+  await win.locator('#settings-tab-btn-ai').click();
   await win.locator('#ai-tab-btn-hosted').click();
   await win.waitForTimeout(120);
-  await win.locator('#ai-dialog-cancel').click();
+  await win.locator('#settings-dialog-cancel').click();
 
   // 3. Load + analyze a real fixture (real sox/ffprobe/python — surfaces missing tools)
   const fixture = path.join(__dirname, 'fixtures', 'silence.wav');
