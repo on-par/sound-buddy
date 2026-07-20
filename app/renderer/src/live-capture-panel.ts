@@ -440,6 +440,81 @@ export function liveReportCardSource(
   };
 }
 
+/* ── Live-capture SESSION report-card source (#261) ──
+ * A one-shot card synthesized at Stop Capture from the entire accumulated
+ * liveWindows buffer — distinct from liveReportCardSource above, which stays
+ * the rolling last-window-only preview bridge.ts feeds the tab while a
+ * capture runs. Never modifies or replaces liveReportCardSource. */
+
+// Fewer accumulated window ticks than this is a capture stopped almost
+// immediately — mirrors live-adjustments-state.js's MIN_WINDOWS=3 precedent:
+// grading it would produce a confident-looking letter from a second of audio.
+export const MIN_SESSION_WINDOWS = 3;
+
+export function hasEnoughSessionData(liveWindows: LiveEvent[]): boolean {
+  return liveWindows.length >= MIN_SESSION_WINDOWS;
+}
+
+// The seven camelCase band keys liveBandsToCamel always produces, shared here
+// so the per-band session mean iterates the same fixed key set.
+const CAMEL_BAND_KEYS = ['subBass', 'bass', 'lowMid', 'mid', 'highMid', 'presence', 'brilliance'] as const;
+
+function meanBands(campedBandsList: Record<string, number>[]): Record<string, number> {
+  const bands: Record<string, number> = {};
+  CAMEL_BAND_KEYS.forEach((key) => {
+    const values = campedBandsList
+      .map((b) => b[key])
+      .filter((v): v is number => typeof v === 'number' && Number.isFinite(v));
+    if (values.length > 0) bands[key] = values.reduce((sum, v) => sum + v, 0) / values.length;
+  });
+  return bands;
+}
+
+interface UsableSessionWindow { idx: number; ch: ChannelWindowData; win: WindowData }
+
+export function liveSessionReportCardSource(
+  liveWindows: LiveEvent[],
+  measurementSource: number | null = null,
+  config: StripConfig[] = [],
+): ReportCardSource | null {
+  if (!hasEnoughSessionData(liveWindows)) return null;
+
+  const usable: UsableSessionWindow[] = [];
+  for (const w of liveWindows) {
+    const win = w as WindowData;
+    let idx = measurementSource ?? 0;
+    if (!win.channels || !win.channels[idx]) idx = 0;
+    const ch = win.channels && win.channels[idx];
+    if (!ch) continue;
+    usable.push({ idx, ch, win });
+  }
+  if (usable.length < MIN_SESSION_WINDOWS) return null;
+
+  const n = usable.length;
+  const rms = usable.reduce((sum, u) => sum + u.ch.rms, 0) / n;
+  const peak = Math.max(...usable.map((u) => u.ch.peak));
+  const centroids = usable
+    .map((u) => u.ch.centroid)
+    .filter((c): c is number => typeof c === 'number' && Number.isFinite(c));
+  const centroid = centroids.length > 0 ? centroids.reduce((sum, c) => sum + c, 0) / centroids.length : undefined;
+  const clipping = usable.some((u) => !!u.ch.clipping);
+  const bands = meanBands(usable.map((u) => liveBandsToCamel(u.ch.bands)));
+
+  const last = usable[usable.length - 1];
+  const label = config[last.idx]?.label?.trim() || last.ch.name || 'Main';
+
+  return {
+    filename: `Live capture — ${label} (${n} windows)`,
+    rms,
+    peak,
+    dynamicRange: null,
+    clipping,
+    centroid,
+    bands,
+    channels: liveChannelContributors(last.win.channels, config),
+  };
+}
+
 /* ── Live-tick DOM patching (TD-001 slice 5, #423) ──
  * patchLiveChannelPlan is the pure "what changed" computation (curve, meta
  * text, collapsed/idle flags, the arc paths, loudest-band index) — fully

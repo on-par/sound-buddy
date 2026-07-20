@@ -8,6 +8,7 @@ interface Summary {
   sourceFilename?: string;
   gradeLetter?: string | null;
   note?: string;
+  source?: string;
 }
 
 const { normalizeSummaries, isEmpty, rowHtml } = require('./recent-services.js') as {
@@ -199,5 +200,33 @@ describe('rowHtml', () => {
     );
     expect(html).not.toContain('<img src=x onerror=alert(1)>');
     expect(html).toContain('&lt;img src=x onerror=alert(1)&gt;');
+  });
+
+  it('renders a Live badge for source: "live" (#261)', () => {
+    const html = rowHtml(
+      { gradeLetter: 'B', sourceFilename: 'live capture.wav', date: '2026-01-01T00:00:00.000Z', source: 'live' },
+      0,
+      escapeHtml,
+    );
+    expect(html).toContain('class="recent-source recent-source-live"');
+    expect(html).toContain('Live');
+  });
+
+  it('omits the Live badge for source: "file"', () => {
+    const html = rowHtml(
+      { gradeLetter: 'B', sourceFilename: 'file.wav', date: '2026-01-01T00:00:00.000Z', source: 'file' },
+      0,
+      escapeHtml,
+    );
+    expect(html).not.toContain('recent-source');
+  });
+
+  it('omits the Live badge when source is undefined (legacy record)', () => {
+    const html = rowHtml(
+      { gradeLetter: 'B', sourceFilename: 'file.wav', date: '2026-01-01T00:00:00.000Z' },
+      0,
+      escapeHtml,
+    );
+    expect(html).not.toContain('recent-source');
   });
 });

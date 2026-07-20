@@ -574,6 +574,55 @@ describe('save-analysis-summary IPC handler', () => {
     expect(result).toEqual({ success: false, error: 'Error: disk full' });
     expect(logErrorMock).toHaveBeenCalled();
   });
+
+  it('persists source: "live" when the payload carries it (#261)', async () => {
+    const handler = handlers.get('save-analysis-summary') as SaveSummaryHandler;
+
+    await handler(undefined, {
+      sourceFilename: 'live capture.wav',
+      gradeLetter: 'B',
+      score: 80,
+      recordingType: 'service',
+      topFixes: [],
+      source: 'live',
+    });
+
+    expect(saveAnalysisSummaryMock).toHaveBeenCalledWith(
+      path.join(defaultRecordDir(), 'history'),
+      expect.objectContaining({ source: 'live' }),
+    );
+  });
+
+  it('omits the source key entirely for a file payload (#261)', async () => {
+    const handler = handlers.get('save-analysis-summary') as SaveSummaryHandler;
+
+    await handler(undefined, {
+      sourceFilename: 'sunday.wav',
+      gradeLetter: 'B',
+      score: 87,
+      recordingType: 'service',
+      topFixes: [],
+      source: 'file',
+    });
+
+    const written = saveAnalysisSummaryMock.mock.calls[0][1];
+    expect('source' in written).toBe(false);
+  });
+
+  it('omits the source key when the payload carries no source at all', async () => {
+    const handler = handlers.get('save-analysis-summary') as SaveSummaryHandler;
+
+    await handler(undefined, {
+      sourceFilename: 'sunday.wav',
+      gradeLetter: 'B',
+      score: 87,
+      recordingType: 'service',
+      topFixes: [],
+    });
+
+    const written = saveAnalysisSummaryMock.mock.calls[0][1];
+    expect('source' in written).toBe(false);
+  });
 });
 
 describe('list-analysis-summaries IPC handler', () => {

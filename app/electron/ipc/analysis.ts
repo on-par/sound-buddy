@@ -166,6 +166,10 @@ export function registerAnalysisHandlers(): void {
         // to today's — the renderer doesn't supply one up front yet, but a
         // future caller might (#267).
         ...(payload?.note ? { note: String(payload.note).trim().slice(0, MAX_NOTE_LENGTH) } : {}),
+        // Same spread-omit for source (#261): a file-analysis record stays
+        // byte-identical to today's — only a live-capture session payload
+        // adds the key.
+        ...(payload?.source === 'live' ? { source: 'live' as const } : {}),
       };
       const file = await saveAnalysisSummary(historyDir(), summary);
       log(`saved analysis summary: ${file}`);

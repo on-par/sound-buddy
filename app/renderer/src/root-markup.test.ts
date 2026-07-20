@@ -77,6 +77,12 @@ describe('Live monitoring visibly leads to a Report Card (#488)', () => {
       /rc-offer-btn'\)\.addEventListener\('click'[\s\S]{0,200}mode-tab\[data-mode="reportcard"\]'\)\.click\(\)/
     );
   });
+
+  it('has a not-enough-data state for a session too short to grade (#261)', () => {
+    expect(markup).toMatch(/id="rc-not-enough" class="rec-offer" style="display:none"/);
+    expect(markup).toContain('Not enough data');
+    expect(markup).toContain('capture at least a few seconds of audio');
+  });
 });
 
 describe('Storage and AI Engineer dialogs combined into one Settings gear (#204)', () => {

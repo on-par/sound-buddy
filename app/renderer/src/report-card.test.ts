@@ -31,9 +31,13 @@ import {
   reportDeltaView,
   noteSubmitPayload,
   commitReportCardNote,
+  buildAnalysisSummaryInput,
+  MAX_TOP_FIXES,
   type PillTone,
   type ProfileComparison,
   type BandDiffApi,
+  type SummaryGradingApi,
+  type ReportCardSource,
 } from './report-card';
 
 const require = createRequire(import.meta.url);
@@ -761,5 +765,54 @@ describe('commitReportCardNote', () => {
     await commitReportCardNote(setNote, 'x.json', 'note text');
     expect(warn).toHaveBeenCalled();
     warn.mockRestore();
+  });
+});
+
+/* ── Summary-building (#261) ── */
+describe('buildAnalysisSummaryInput', () => {
+  function fakeGrading(overrides: Partial<SummaryGradingApi> = {}): SummaryGradingApi {
+    return {
+      computeGrade: vi.fn().mockReturnValue('B'),
+      computeScore: vi.fn().mockReturnValue(83),
+      analyzeRecordingType: vi.fn().mockReturnValue({ label: 'Live service mix' }),
+      computeRecommendations: vi.fn().mockReturnValue(['fix one', 'fix two']),
+      ...overrides,
+    };
+  }
+
+  const src = makeSrc({ filename: 'service.wav' }) as ReportCardSource;
+
+  it('maps grading output and the source filename into the summary shape', () => {
+    const g = fakeGrading();
+    const input = buildAnalysisSummaryInput(src, g, 'file');
+    expect(input).toEqual({
+      sourceFilename: 'service.wav',
+      gradeLetter: 'B',
+      score: 83,
+      recordingType: 'Live service mix',
+      topFixes: ['fix one', 'fix two'],
+      source: 'file',
+    });
+    expect(g.computeGrade).toHaveBeenCalledWith(src);
+    expect(g.computeScore).toHaveBeenCalledWith(src);
+    expect(g.analyzeRecordingType).toHaveBeenCalledWith(src);
+    expect(g.computeRecommendations).toHaveBeenCalledWith(src);
+  });
+
+  it(`truncates topFixes to MAX_TOP_FIXES (${MAX_TOP_FIXES})`, () => {
+    expect(MAX_TOP_FIXES).toBe(3);
+    const g = fakeGrading({ computeRecommendations: vi.fn().mockReturnValue(['a', 'b', 'c', 'd', 'e']) });
+    const input = buildAnalysisSummaryInput(src, g, 'file');
+    expect(input.topFixes).toEqual(['a', 'b', 'c']);
+  });
+
+  it('passes through source "live"', () => {
+    const input = buildAnalysisSummaryInput(src, fakeGrading(), 'live');
+    expect(input.source).toBe('live');
+  });
+
+  it('passes through source "file"', () => {
+    const input = buildAnalysisSummaryInput(src, fakeGrading(), 'file');
+    expect(input.source).toBe('file');
   });
 });
