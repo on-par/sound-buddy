@@ -31,6 +31,9 @@ import type {
 // importers of './settings' don't need to change their import path.
 export type { AppSettings, CaptureRig, CaptureRigChannel, PreflightBaseline, CustomIdealProfile, PersistedChannelGroup };
 
+const MIN_SERVICE_DAY = 0;
+const MAX_SERVICE_DAY = 6;
+
 const DEFAULTS: AppSettings = {
   aiEnabled: false,
   idealProfile: '',
@@ -46,6 +49,8 @@ const DEFAULTS: AppSettings = {
   dawWorkspaceEnabled: false,
   liveAdjustmentsEnabled: false,
   reportFirstUxEnabled: false,
+  weeklyReminderEnabled: false,
+  weeklyReminderServiceDay: 0,
 };
 
 function settingsPath(): string {
@@ -78,6 +83,19 @@ function fileRigs(file: Partial<AppSettings>): CaptureRig[] {
 
 function fileCustomIdealProfiles(file: Partial<AppSettings>): CustomIdealProfile[] {
   return Array.isArray(file.customIdealProfiles) ? file.customIdealProfiles : [];
+}
+
+/**
+ * The weeklyReminderServiceDay value from a raw file view, defaulting to
+ * `DEFAULTS.weeklyReminderServiceDay` when the key is absent or corrupted
+ * (hand-edited to a non-integer or out-of-range value) — mirrors fileRigs's
+ * "corrupted value falls back to the default" discipline.
+ */
+function fileWeeklyReminderServiceDay(file: Partial<AppSettings>): number {
+  const v = file.weeklyReminderServiceDay;
+  return typeof v === 'number' && Number.isInteger(v) && v >= MIN_SERVICE_DAY && v <= MAX_SERVICE_DAY
+    ? v
+    : DEFAULTS.weeklyReminderServiceDay;
 }
 
 /**
@@ -139,6 +157,8 @@ function writeSettingsFile(file: Partial<AppSettings>): void {
     dawWorkspaceEnabled: file.dawWorkspaceEnabled ?? DEFAULTS.dawWorkspaceEnabled,
     liveAdjustmentsEnabled: file.liveAdjustmentsEnabled ?? DEFAULTS.liveAdjustmentsEnabled,
     reportFirstUxEnabled: file.reportFirstUxEnabled ?? DEFAULTS.reportFirstUxEnabled,
+    weeklyReminderEnabled: file.weeklyReminderEnabled ?? DEFAULTS.weeklyReminderEnabled,
+    weeklyReminderServiceDay: fileWeeklyReminderServiceDay(file),
   };
   try {
     fs.writeFileSync(settingsPath(), JSON.stringify(persisted, null, 2));
@@ -194,6 +214,10 @@ export function getSettings(): AppSettings {
     // (#538) without a UI toggle needs a launch-time override, unlike the
     // other experimental UI gates above.
     reportFirstUxEnabled: envReportFirstUx ?? file.reportFirstUxEnabled ?? DEFAULTS.reportFirstUxEnabled,
+    // No env layer — opting into the local weekly reminder (#268) must be an
+    // explicit user action, same rationale as crashReportingEnabled.
+    weeklyReminderEnabled: file.weeklyReminderEnabled ?? DEFAULTS.weeklyReminderEnabled,
+    weeklyReminderServiceDay: fileWeeklyReminderServiceDay(file),
   };
 }
 

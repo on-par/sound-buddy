@@ -48,6 +48,11 @@ vi.mock('../telemetry', () => ({
   clearTelemetryState: clearTelemetryStateMock,
 }));
 
+const scheduleWeeklyReminderMock = vi.hoisted(() => vi.fn());
+vi.mock('../weekly-reminder', () => ({
+  scheduleWeeklyReminder: scheduleWeeklyReminderMock,
+}));
+
 // get-app-version (#402) delegates to resolveAppVersion(APP_ROOT) rather than
 // Electron's app.getVersion() — see app-version.ts for why. Stub it here so
 // this file tests the IPC wiring; resolveAppVersion's own file-reading logic
@@ -74,6 +79,7 @@ beforeEach(() => {
   openDialogResult = { canceled: true, filePaths: [] };
   recordTelemetryEventMock.mockClear();
   clearTelemetryStateMock.mockClear();
+  scheduleWeeklyReminderMock.mockClear();
   isEntitledMock.mockReset().mockReturnValue(true);
   dirSizeBytesMock.mockClear();
   registerSettingsHandlers();
@@ -422,6 +428,46 @@ describe('update-settings IPC whitelist — reportFirstUxEnabled (#538)', () => 
       reportFirstUxEnabled: boolean;
     };
     expect(result.reportFirstUxEnabled).toBe(false);
+  });
+});
+
+describe('update-settings IPC whitelist — weeklyReminderEnabled / weeklyReminderServiceDay (#268)', () => {
+  it('persists weeklyReminderEnabled and calls scheduleWeeklyReminder once', async () => {
+    const handler = handlers.get('update-settings');
+    const result = (await handler!(null, { weeklyReminderEnabled: true })) as {
+      weeklyReminderEnabled: boolean;
+    };
+    expect(result.weeklyReminderEnabled).toBe(true);
+    expect(readFile().weeklyReminderEnabled).toBe(true);
+    expect(scheduleWeeklyReminderMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('persists an in-range weeklyReminderServiceDay and re-arms', async () => {
+    const handler = handlers.get('update-settings');
+    const result = (await handler!(null, { weeklyReminderServiceDay: 4 })) as {
+      weeklyReminderServiceDay: number;
+    };
+    expect(result.weeklyReminderServiceDay).toBe(4);
+    expect(readFile().weeklyReminderServiceDay).toBe(4);
+    expect(scheduleWeeklyReminderMock).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([7, -1, 1.5, '3'])(
+    'ignores an out-of-range/non-integer/wrong-type weeklyReminderServiceDay (%p), leaving the stored value unchanged',
+    async (bad) => {
+      const handler = handlers.get('update-settings');
+      const result = (await handler!(null, { weeklyReminderServiceDay: bad })) as {
+        weeklyReminderServiceDay: number;
+      };
+      expect(result.weeklyReminderServiceDay).toBe(0);
+      expect(readFile().weeklyReminderServiceDay).toBe(0);
+    },
+  );
+
+  it('does not call scheduleWeeklyReminder for an unrelated patch', async () => {
+    const handler = handlers.get('update-settings');
+    await handler!(null, { aiEnabled: true });
+    expect(scheduleWeeklyReminderMock).not.toHaveBeenCalled();
   });
 });
 

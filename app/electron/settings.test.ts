@@ -339,6 +339,36 @@ describe('reportFirstUxEnabled (#538 — report-first-ux epic gate, default off)
   });
 });
 
+describe('weeklyReminderEnabled / weeklyReminderServiceDay (#268 — opt-in local weekly reminder, default off)', () => {
+  it('defaults to disabled and Sunday when settings.json is absent', () => {
+    const s = getSettings();
+    expect(s.weeklyReminderEnabled).toBe(false);
+    expect(s.weeklyReminderServiceDay).toBe(0);
+  });
+
+  it('round-trips a full update through updateSettings and a fresh read', () => {
+    const on = updateSettings({ weeklyReminderEnabled: true, weeklyReminderServiceDay: 3 });
+    expect(on.weeklyReminderEnabled).toBe(true);
+    expect(on.weeklyReminderServiceDay).toBe(3);
+    expect(readFile().weeklyReminderEnabled).toBe(true);
+    expect(readFile().weeklyReminderServiceDay).toBe(3);
+    expect(getSettings().weeklyReminderEnabled).toBe(true);
+    expect(getSettings().weeklyReminderServiceDay).toBe(3);
+
+    const off = updateSettings({ weeklyReminderEnabled: false });
+    expect(off.weeklyReminderEnabled).toBe(false);
+    expect(readFile().weeklyReminderEnabled).toBe(false);
+  });
+
+  it.each([9, -1, 2.5, 'sunday'])(
+    'hydrates a corrupted weeklyReminderServiceDay value (%p) back to the default 0',
+    (corrupted) => {
+      writeFile({ weeklyReminderServiceDay: corrupted });
+      expect(getSettings().weeklyReminderServiceDay).toBe(0);
+    },
+  );
+});
+
 describe('customIdealProfiles', () => {
   const curve = {
     id: 'sunday',

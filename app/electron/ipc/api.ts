@@ -40,6 +40,8 @@ export interface UpdateSettingsPatch {
   dawWorkspaceEnabled?: boolean;
   liveAdjustmentsEnabled?: boolean;
   reportFirstUxEnabled?: boolean;
+  weeklyReminderEnabled?: boolean;
+  weeklyReminderServiceDay?: number;
 }
 
 /** A renderer patch: `apiKey` semantics — undefined = keep, '' = clear. */
@@ -291,6 +293,21 @@ export interface AppSettings {
    * epic can be dogfooded at launch time without shipping a Settings toggle.
    */
   reportFirstUxEnabled: boolean;
+  /**
+   * Opt-in local weekly reminder (#268). Default false (off). When true the
+   * main process schedules a local OS notification the evening before
+   * `weeklyReminderServiceDay`. Fully local — no server, no telemetry. No env
+   * layer: opting in must be an explicit user action, same rationale as
+   * crashReportingEnabled.
+   */
+  weeklyReminderEnabled: boolean;
+  /**
+   * Day of the week the user's service falls on (#268): 0 = Sunday … 6 =
+   * Saturday, matching `Date.prototype.getDay()`. Default 0 (Sunday). Only
+   * meaningful when `weeklyReminderEnabled` is true. No env layer — pure
+   * persisted data, like `rigs`.
+   */
+  weeklyReminderServiceDay: number;
 }
 
 // ─── LLM DTOs (PublicLlmConfig moved from electron/llm-config.ts, TD-011) ────

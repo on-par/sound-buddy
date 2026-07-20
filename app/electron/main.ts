@@ -19,6 +19,7 @@ import {
 import { recordTelemetryEvent } from './telemetry';
 import { ensureTrialStarted } from './license';
 import { maybeRefreshLicense } from './license-refresh';
+import { scheduleWeeklyReminder } from './weekly-reminder';
 
 // Deterministic app name so logs land in ~/Library/Logs/SoundBuddy (not "Electron").
 app.setName('SoundBuddy');
@@ -224,6 +225,8 @@ app.whenReady().then(() => {
   // the license, so a new user boots straight into Pro (no free-tier flash).
   ensureTrialStarted();
   registerIpcHandlers();
+  // Opt-in local weekly reminder (#268) — no-op unless the user turned it on.
+  scheduleWeeklyReminder();
   // Automatic license refresh (#117), fire-and-forget on every launch — only
   // makes a request when a subscription key is within 7 days of expiry or
   // already in grace; never delays window creation.

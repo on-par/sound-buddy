@@ -143,6 +143,22 @@
          live-adjustments area at all. -->
     <label class="ai-enable-row"><input type="checkbox" id="live-adjustments-toggle" />Try experimental live adjustments</label>
     <p class="ai-dialog-note" id="live-adjustments-note">Off unless you turn it on. An early, experimental area for mix suggestions while you monitor or record in Live Capture. Nothing is analyzed or sent anywhere — turn this off anytime to hide it.</p>
+    <!-- Opt-in local weekly reminder (#268). Off by default. Fully local: the
+         main process schedules an OS notification the evening before the
+         chosen service day. Nothing is sent anywhere. -->
+    <label class="ai-enable-row"><input type="checkbox" id="weekly-reminder-toggle" />Remind me to grade my next service</label>
+    <label class="ai-enable-row" id="weekly-reminder-day-row">Service day
+      <select id="weekly-reminder-day">
+        <option value="0">Sunday</option>
+        <option value="1">Monday</option>
+        <option value="2">Tuesday</option>
+        <option value="3">Wednesday</option>
+        <option value="4">Thursday</option>
+        <option value="5">Friday</option>
+        <option value="6">Saturday</option>
+      </select>
+    </label>
+    <p class="ai-dialog-note" id="weekly-reminder-note">Off unless you turn it on. Sound Buddy shows a notification on this Mac the evening before your service day. Nothing leaves your machine — no account, no email, no server.</p>
     <div class="rig-dialog-actions">
       <button type="button" id="storage-reset-btn" class="btn btn-secondary sm" style="display:none">Use default</button>
       <button type="button" id="storage-cancel-btn" class="btn btn-secondary sm">Cancel</button>

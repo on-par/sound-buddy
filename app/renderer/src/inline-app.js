@@ -3805,6 +3805,9 @@ async function openStorageSettings() {
   aiEl('crash-reporting-toggle').checked = !!(setStore.getState().settings || {}).crashReportingEnabled;
   aiEl('daw-workspace-toggle').checked = !!(setStore.getState().settings || {}).dawWorkspaceEnabled;
   aiEl('live-adjustments-toggle').checked = !!(setStore.getState().settings || {}).liveAdjustmentsEnabled;
+  aiEl('weekly-reminder-toggle').checked = !!(setStore.getState().settings || {}).weeklyReminderEnabled;
+  aiEl('weekly-reminder-day').value = String((setStore.getState().settings || {}).weeklyReminderServiceDay ?? 0);
+  renderWeeklyReminderDayRow();
   aiEl('storage-dialog').style.display = 'flex';
   try {
     const u = await sb.getStorageUsage();
@@ -3825,6 +3828,10 @@ async function openStorageSettings() {
 
 function closeStorageSettings() {
   aiEl('storage-dialog').style.display = 'none';
+}
+
+function renderWeeklyReminderDayRow() {
+  aiEl('weekly-reminder-day-row').style.display = aiEl('weekly-reminder-toggle').checked ? '' : 'none';
 }
 
 async function chooseStorageFolder() {
@@ -3862,6 +3869,13 @@ async function saveStorageSettings() {
   if (liveAdjChecked !== liveAdjLoaded) {
     await setStore.getState().updateSettings({ liveAdjustmentsEnabled: liveAdjChecked });
   }
+  const reminderChecked = aiEl('weekly-reminder-toggle').checked;
+  const reminderDay = Number(aiEl('weekly-reminder-day').value);
+  const loaded = setStore.getState().settings || {};
+  const patch = {};
+  if (reminderChecked !== !!loaded.weeklyReminderEnabled) patch.weeklyReminderEnabled = reminderChecked;
+  if (reminderDay !== (loaded.weeklyReminderServiceDay ?? 0)) patch.weeklyReminderServiceDay = reminderDay;
+  if (Object.keys(patch).length > 0) await setStore.getState().updateSettings(patch);
   closeStorageSettings();
 }
 
@@ -3871,6 +3885,7 @@ async function saveStorageSettings() {
   aiEl('storage-reset-btn').addEventListener('click', () => { storagePendingDir = ''; renderStoragePath(); });
   aiEl('storage-save-btn').addEventListener('click', saveStorageSettings);
   aiEl('storage-cancel-btn').addEventListener('click', closeStorageSettings);
+  aiEl('weekly-reminder-toggle').addEventListener('change', renderWeeklyReminderDayRow);
   aiEl('storage-dialog').addEventListener('click', (e) => { if (e.target === aiEl('storage-dialog')) closeStorageSettings(); });
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape' && aiEl('storage-dialog').style.display !== 'none') closeStorageSettings();

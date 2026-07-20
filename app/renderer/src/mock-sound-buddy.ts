@@ -45,7 +45,7 @@ const DEFAULT_APP_SETTINGS: AppSettings = {
   crashReportingEnabled: false,
   dawWorkspaceEnabled: false,
   liveAdjustmentsEnabled: false,
-  reportFirstUxEnabled: false,
+  reportFirstUxEnabled: false, weeklyReminderEnabled: false, weeklyReminderServiceDay: 0,
 };
 
 const DEFAULT_PUBLIC_LLM_CONFIG: PublicLlmConfig = {
