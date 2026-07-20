@@ -268,11 +268,11 @@ jobs:
   # allowlists known fake test-fixture placeholders by literal value — see
   # that file for what's excluded and why.
   #
-  # NOTE: this job isn't yet wired into a required-status-checks branch
-  # protection ruleset — the repo's ruleset/branch-protection API is gated
-  # behind a GitHub plan upgrade (403 "Upgrade to GitHub Pro or make this
-  # repository public"), so it can't be configured from here. Follow-up once
-  # that access is available.
+  # This job IS a required status check on main (#408) — the desired ruleset
+  # lives at .github/rulesets/main.json and is applied with
+  # scripts/sync-ruleset.sh. app/electron/ci-required-checks.test.ts fails if a
+  # job in this file has no matching required-check entry, so a new job can't
+  # silently escape the gate.
   #
   # Keep the `gitleaks detect` invocation below in sync with the one in
   # scripts/verify.sh (same flags, same config) so local and CI results match.
