@@ -1801,6 +1801,11 @@ window.runFileAnalysis = (fp) => anaStore.getState().startAnalysis(fp);
 // once at module scope; setSpectrumState('loading') (re)renders the rows
 // each run, so there's nothing stale to clear between runs.
 sb.onAnalysisProgress((data) => {
+  // A batch run (#270) fires this same event per file too — suppressed the
+  // same way as the pushed analysis-result below, so a batch file's stage
+  // completion can't check off a stage row for a concurrent single-file
+  // analysis the user started on the Report Card tab.
+  if (window.batchAnalysis.shouldSuppressPushedResult(batchRunning)) return;
   if (!data.stage || data.status !== 'done') return;
   const row = document.querySelector(`#spectrum-body .stage-row[data-stage="${data.stage}"]`);
   if (row) row.classList.add('done');
@@ -1899,11 +1904,20 @@ let batchRunning = false;
 function renderDirEmptyState() {
   const empty = document.getElementById('dir-empty');
   const analyzeBtn = document.getElementById('dir-analyze-btn');
+  const chooseBtn = document.getElementById('dir-choose-btn');
   empty.style.display = batchFiles.length === 0 ? 'block' : 'none';
   analyzeBtn.disabled = batchRunning || batchFiles.length === 0;
+  chooseBtn.disabled = batchRunning;
 }
 
 document.getElementById('dir-choose-btn').addEventListener('click', async () => {
+  // A batch already in flight owns #dir-path/#dir-results/batchFiles until it
+  // finishes — picking a new folder mid-run would repaint the panel out from
+  // under it while its onProgress callback keeps appending the OLD folder's
+  // rows under the NEW folder's path. The button is also disabled while
+  // running (renderDirEmptyState), this guard covers a click already queued
+  // just before that disable took effect.
+  if (batchRunning) return;
   const dir = await sb.openDirDialog();
   if (!dir) return;
   document.getElementById('dir-path').textContent = dir;
@@ -1917,6 +1931,7 @@ document.getElementById('dir-choose-btn').addEventListener('click', async () => 
     res = null;
   }
   batchFiles = (res && res.success && Array.isArray(res.files)) ? res.files : [];
+  document.getElementById('dir-empty').textContent = window.batchAnalysis.dirEmptyMessage(res);
   renderDirEmptyState();
 });
 
