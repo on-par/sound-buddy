@@ -42,20 +42,14 @@ test.describe('Sound Buddy E2E — report card basics', () => {
     await expect(window.locator('#rc-empty')).toBeVisible();
   });
 
-  test('directory tab is roadmap context with a working handoff, not a dead-end (#293)', async () => {
+  test('directory tab offers a real folder-picker + Analyze All workflow (#270)', async () => {
     await window.locator('.mode-tab[data-mode="dir"]').click();
     await expect(window.locator('#tab-dir')).toHaveClass(/active/);
-    // No fake workflow: no disabled primary CTA, no folder dropzone, no CLI escape hatch.
-    await expect(window.locator('#analyze-dir-btn')).toHaveCount(0);
-    await expect(window.locator('#dir-dropzone')).toHaveCount(0);
-    // Availability is readable at a glance: pill on the tab + roadmap card.
-    await expect(window.locator('.mode-tab[data-mode="dir"] .tab-soon')).toHaveText('v1.1');
-    await expect(window.locator('#dir-roadmap')).toBeVisible();
-    await expect(window.locator('#dir-roadmap .rm-badge')).toContainText('v1.1');
-    // The one action really works: it lands on the supported single-file path.
-    await window.locator('#dir-goto-reportcard').click();
-    await expect(window.locator('#reportcard-view')).toHaveClass(/active/);
-    await expect(window.locator('#file-dropzone')).toBeVisible();
+    await expect(window.locator('#dir-choose-btn')).toBeVisible();
+    // Nothing to analyze yet: disabled until a folder with audio is chosen.
+    await expect(window.locator('#dir-analyze-btn')).toBeDisabled();
+    // The full choose-folder → analyze-all → results flow is covered end to
+    // end by batch-directory.spec.ts.
   });
 
   test('report card shows empty state before any analysis', async () => {

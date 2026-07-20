@@ -73,17 +73,21 @@ vi.mock('../logger', () => ({ log: vi.fn(), logError: logErrorMock }));
 // Partial fs mock: the existing temp-cleanup tests below write/check REAL files
 // under os.tmpdir(), so this must pass through to the actual module by default
 // and only be overridden per-test via mockImplementationOnce/mockReturnValueOnce.
-const { existsSyncSpy, rmSyncSpy, readFileSyncSpy } = vi.hoisted(() => ({
+const { existsSyncSpy, rmSyncSpy, readFileSyncSpy, readdirSyncSpy, statSyncSpy } = vi.hoisted(() => ({
   existsSyncSpy: vi.fn(),
   rmSyncSpy: vi.fn(),
   readFileSyncSpy: vi.fn(),
+  readdirSyncSpy: vi.fn(),
+  statSyncSpy: vi.fn(),
 }));
 vi.mock('fs', async (importActual) => {
   const actual = await importActual<typeof import('fs')>();
   existsSyncSpy.mockImplementation(actual.existsSync);
   rmSyncSpy.mockImplementation(actual.rmSync);
   readFileSyncSpy.mockImplementation(actual.readFileSync);
-  return { ...actual, existsSync: existsSyncSpy, rmSync: rmSyncSpy, readFileSync: readFileSyncSpy };
+  readdirSyncSpy.mockImplementation(actual.readdirSync);
+  statSyncSpy.mockImplementation(actual.statSync);
+  return { ...actual, existsSync: existsSyncSpy, rmSync: rmSyncSpy, readFileSync: readFileSyncSpy, readdirSync: readdirSyncSpy, statSync: statSyncSpy };
 });
 
 import * as fs from 'fs';
@@ -724,6 +728,38 @@ describe('list-analysis-summaries IPC handler', () => {
     const result = await handler();
 
     expect(result).toEqual({ success: false, error: 'Error: EACCES', summaries: [] });
+    expect(logErrorMock).toHaveBeenCalled();
+  });
+});
+
+describe('list-folder-audio IPC handler', () => {
+  type ListFolderAudioHandler = (
+    event: unknown,
+    dir: string,
+  ) => { success: boolean; files: string[]; error?: string };
+
+  it('resolves { success: true, files } for a folder of audio files', () => {
+    readdirSyncSpy.mockReturnValueOnce(['sunday.wav', 'notes.txt']);
+    statSyncSpy.mockReturnValue({ isFile: () => true } as fs.Stats);
+    const handler = handlers.get('list-folder-audio') as ListFolderAudioHandler;
+
+    const result = handler(undefined, '/recordings');
+
+    expect(result).toEqual({ success: true, files: [path.join('/recordings', 'sunday.wav')] });
+  });
+
+  it('resolves { success: false, error, files: [] } naming the folder/permission remedy when readdirSync throws, without throwing', () => {
+    readdirSyncSpy.mockImplementationOnce(() => {
+      throw new Error('EACCES');
+    });
+    const handler = handlers.get('list-folder-audio') as ListFolderAudioHandler;
+
+    const result = handler(undefined, '/no-access');
+
+    expect(result.success).toBe(false);
+    expect(result.files).toEqual([]);
+    expect(result.error).toMatch(/folder/i);
+    expect(result.error).toMatch(/permission/i);
     expect(logErrorMock).toHaveBeenCalled();
   });
 });
