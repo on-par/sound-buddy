@@ -52,6 +52,10 @@ configured order (#520, #521, ADR 0004).
 Dependencies: pip install sounddevice numpy scipy soundfile
 """
 
+# Postpones evaluation of annotations (PEP 563) so the `list[dict]` / `str |
+# None` style hints below don't need Python 3.10+ at runtime.
+from __future__ import annotations
+
 import os
 import re
 import sys

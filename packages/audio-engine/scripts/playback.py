@@ -46,6 +46,10 @@ Output: JSON lines on stdout.
 Dependencies: pip install sounddevice numpy soundfile
 """
 
+# Postpones evaluation of annotations (PEP 563) so the `list[dict]` / `str |
+# None` style hints below don't need Python 3.10+ at runtime.
+from __future__ import annotations
+
 import os
 import sys
 import json
