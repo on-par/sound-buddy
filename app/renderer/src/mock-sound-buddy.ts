@@ -120,6 +120,7 @@ export function createMockSoundBuddy(overrides: Partial<SoundBuddyApi> = {}): Mo
     setActiveRig: invoke('setActiveRig', DEFAULT_APP_SETTINGS),
     analyzeFile: invoke('analyzeFile', { success: true, data: undefined }),
     saveAnalysisSummary: invoke('saveAnalysisSummary', { success: true }),
+    setAnalysisSummaryNote: invoke('setAnalysisSummaryNote', { success: true }),
     listAnalysisSummaries: invoke('listAnalysisSummaries', { success: true, summaries: [] }),
     cancelAnalysis: invoke('cancelAnalysis', { success: false }),
     onAnalysisProgress: listen<[AnalysisProgress]>('onAnalysisProgress'),

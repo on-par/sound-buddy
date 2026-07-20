@@ -29,6 +29,7 @@ import {
   bandBreakdownHTML,
   reportCardFramesView,
   reportDeltaView,
+  noteSubmitPayload,
   type PillTone,
   type ProfileComparison,
   type BandDiffApi,
@@ -706,5 +707,28 @@ describe('reportDeltaView', () => {
   it('defends against a malformed current value', () => {
     expect(reportDeltaView({ score: NaN, gradeLetter: 'A' }, { score: 83, gradeLetter: 'B' })).toBeNull();
     expect(reportDeltaView({ score: 92, gradeLetter: '' }, { score: 83, gradeLetter: 'B' })).toBeNull();
+  });
+});
+
+/* ── Handoff note (#267) ── */
+describe('noteSubmitPayload', () => {
+  it('returns null (no IPC call) when there is no lastSavedSummaryFile', () => {
+    expect(noteSubmitPayload(null, 'anything')).toBeNull();
+  });
+
+  it('trims whitespace before dispatch', () => {
+    expect(noteSubmitPayload('x.json', '  used the new wireless pack  ')).toEqual({
+      file: 'x.json',
+      note: 'used the new wireless pack',
+    });
+  });
+
+  it('clamps the note to MAX_NOTE_LENGTH before dispatch', () => {
+    const result = noteSubmitPayload('x.json', 'x'.repeat(500));
+    expect(result?.note).toHaveLength(200);
+  });
+
+  it('dispatches an empty payload for a whitespace-only note (clears the saved note)', () => {
+    expect(noteSubmitPayload('x.json', '   ')).toEqual({ file: 'x.json', note: '' });
   });
 });

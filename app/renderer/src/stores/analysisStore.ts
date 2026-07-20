@@ -28,6 +28,12 @@ export interface AnalysisState {
   // The persisted summary immediately preceding the card currently shown —
   // feeds the "vs. last time" delta, #259.
   prevSummary: unknown | null;
+  // Basename of the record saveAnalysisSummary just wrote for the currently-
+  // shown fresh card (#267) — null until that fire-and-forget save resolves,
+  // and whenever a historical card is loaded instead (the handoff note is
+  // add-at-save-time only). Lets the report card address the record it just
+  // wrote in a follow-up setAnalysisSummaryNote call.
+  lastSavedSummaryFile: string | null;
   startAnalysis(filePath: string): Promise<void>;
   cancelAnalysis(): Promise<void>;
   bindIpcEvents(): void;
@@ -36,6 +42,7 @@ export interface AnalysisState {
   setHistorySummary(summary: unknown | null): void;
   setLiveSource(source: unknown | null): void;
   setPrevSummary(summary: unknown | null): void;
+  setLastSavedSummaryFile(file: string | null): void;
   // The sb.onAnalysisResult 'stats' push path (inline-app.js, #208) — a
   // real-time re-analysis result pushed from the main process outside the
   // normal startAnalysis round trip.
@@ -53,6 +60,7 @@ export function createAnalysisStore(getApi: () => AnalysisApi) {
     historySummary: null,
     liveSource: null,
     prevSummary: null,
+    lastSavedSummaryFile: null,
     async startAnalysis(filePath) {
       set({ isAnalyzing: true, status: 'analyzing', analysisProgress: null, analysisError: null });
       try {
@@ -91,16 +99,19 @@ export function createAnalysisStore(getApi: () => AnalysisApi) {
       set({ selectedFilePath: filePath });
     },
     clearAnalysis() {
-      set({ currentAnalysis: null, selectedFilePath: null, status: 'idle', prevSummary: null });
+      set({ currentAnalysis: null, selectedFilePath: null, status: 'idle', prevSummary: null, lastSavedSummaryFile: null });
     },
     setHistorySummary(summary) {
-      set({ historySummary: summary });
+      set({ historySummary: summary, lastSavedSummaryFile: null });
     },
     setLiveSource(source) {
       set({ liveSource: source });
     },
     setPrevSummary(summary) {
       set({ prevSummary: summary });
+    },
+    setLastSavedSummaryFile(file) {
+      set({ lastSavedSummaryFile: file });
     },
     setAnalysisFromEvent(data) {
       const evt = data as { type?: string; data?: unknown } | null;

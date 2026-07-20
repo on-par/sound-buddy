@@ -317,6 +317,9 @@ export interface LlmModelInfo {
 
 // ─── Analysis / storage DTOs (AnalysisSummary moved from electron/storage.ts) ─
 
+/** Max characters for a handoff note (#267) — one line of context, not a journal. */
+export const MAX_NOTE_LENGTH = 200;
+
 export interface AnalysisSummary {
   /** ISO 8601 timestamp of when the analysis completed. */
   date: string;
@@ -325,16 +328,32 @@ export interface AnalysisSummary {
   score: number;
   recordingType: string;
   topFixes: string[];
+  /** Optional one-line handoff note for the next volunteer (#267). Absent when unset. */
+  note?: string;
 }
 
 /** The renderer submits everything but the server-stamped `date`. */
 export type AnalysisSummaryInput = Omit<AnalysisSummary, 'date'>;
 
-export type SaveSummaryResult = OperationResult;
+/** `file` is the basename of the record just written (#267), so the renderer
+ *  can address it in a follow-up setAnalysisSummaryNote call without ever
+ *  learning the absolute storage path. */
+export interface SaveSummaryResult extends OperationResult {
+  file?: string;
+}
 
 export interface ListSummariesResult extends OperationResult {
   summaries: AnalysisSummary[];
 }
+
+/** Patch a single already-saved record's handoff note (#267). `file` is the
+ *  basename SaveSummaryResult returned. */
+export interface SetSummaryNoteInput {
+  file: string;
+  note: string;
+}
+
+export type SetSummaryNoteResult = OperationResult;
 
 /** analyze-file resolves to a typed envelope; `data` is the audio-engine analysis,
  *  kept `unknown` at the boundary so audio-engine's node-only types don't enter the
@@ -458,6 +477,7 @@ export interface AnalysisApi {
   analyzeFile(opts: AnalyzeFileOpts): Promise<AnalyzeFileResult>;
   cancelAnalysis(): Promise<CancelAnalysisResult>;
   saveAnalysisSummary(summary: AnalysisSummaryInput): Promise<SaveSummaryResult>;
+  setAnalysisSummaryNote(input: SetSummaryNoteInput): Promise<SetSummaryNoteResult>;
   listAnalysisSummaries(): Promise<ListSummariesResult>;
   onAnalysisProgress(cb: (data: AnalysisProgress) => void): void;
   onAnalysisResult(cb: (data: unknown) => void): void;

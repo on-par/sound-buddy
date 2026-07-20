@@ -14,9 +14,9 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { log, logError } from '../logger';
 import { recordTelemetryEvent } from '../telemetry';
-import { saveAnalysisSummary, listAnalysisSummaries, type AnalysisSummary } from '../storage';
+import { saveAnalysisSummary, listAnalysisSummaries, setAnalysisSummaryNote, type AnalysisSummary } from '../storage';
 import { toolBin, pythonBin, childEnv, SPECTRUM_SCRIPT, DEMO_AUDIO, defaultRecordDir } from './shared';
-import type { AnalyzeFileOpts } from './api';
+import { MAX_NOTE_LENGTH, type AnalyzeFileOpts, type SetSummaryNoteInput } from './api';
 import { loadEngineParsers } from './engine-loader';
 import { runAnalysis } from './run-analysis';
 import type {
@@ -155,10 +155,14 @@ export function registerAnalysisHandlers(): void {
         score: Number(payload?.score ?? 0),
         recordingType: String(payload?.recordingType ?? ''),
         topFixes: Array.isArray(payload?.topFixes) ? payload.topFixes.map(String) : [],
+        // Spread-omit (not `note: ''`) so a no-note record is byte-identical
+        // to today's — the renderer doesn't supply one up front yet, but a
+        // future caller might (#267).
+        ...(payload?.note ? { note: String(payload.note).trim().slice(0, MAX_NOTE_LENGTH) } : {}),
       };
       const file = await saveAnalysisSummary(historyDir(), summary);
       log(`saved analysis summary: ${file}`);
-      return { success: true };
+      return { success: true, file: path.basename(file) };
     } catch (err) {
       logError('save-analysis-summary failed', err);
       return { success: false, error: String(err) };
@@ -175,6 +179,20 @@ export function registerAnalysisHandlers(): void {
     } catch (err) {
       logError('list-analysis-summaries failed', err);
       return { success: false, error: String(err), summaries: [] };
+    }
+  });
+
+  // set-analysis-summary-note (#267) — patch a single already-saved record's
+  // optional handoff note. Never throws to the renderer: a bad/stale file
+  // reference (deleted history, storage-folder change mid-session) is logged
+  // and reported as a normal failure result instead.
+  ipcMain.handle('set-analysis-summary-note', async (_event, payload: SetSummaryNoteInput) => {
+    try {
+      await setAnalysisSummaryNote(historyDir(), String(payload?.file ?? ''), String(payload?.note ?? ''));
+      return { success: true };
+    } catch (err) {
+      logError('set-analysis-summary-note failed', err);
+      return { success: false, error: String(err) };
     }
   });
 }

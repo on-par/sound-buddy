@@ -31,6 +31,7 @@ import {
   contentTypeView,
   reportCardFramesView,
   reportDeltaView,
+  noteSubmitPayload,
   type ReportCardSource,
   type ProfileComparison,
   type RecordingType,
@@ -103,6 +104,8 @@ interface HistorySummary {
   score: number;
   recordingType: string;
   topFixes: string[];
+  /** Optional one-line handoff note for the next volunteer (#267). */
+  note?: string;
 }
 
 // Renders a stored summary-only record (#147) — no metrics/bands/spectrum/
@@ -128,6 +131,7 @@ function HistoryCard({ summary, delta }: { summary: HistorySummary; delta?: Repo
           <div id="rc-delta" className={`rc-delta ${delta.direction}`}>{delta.text}</div>
         )}
       </div>
+      {summary.note && <p className="rc-note-text" id="rc-note-text">{summary.note}</p>}
       <div className="rc-section">
         <h2>Recommendations</h2>
         <div
@@ -225,17 +229,38 @@ function hasUsableCurve(curve: unknown): curve is SpectrumCurve {
 }
 
 export default function ReportCardIsland() {
-  const { currentAnalysis, selectedFilePath, historySummary, liveSource, prevSummary, status } = useStoreShallow(
-    useAnalysisStore,
-    (s) => ({
+  const sb = useElectron();
+  const { currentAnalysis, selectedFilePath, historySummary, liveSource, prevSummary, status, lastSavedSummaryFile } =
+    useStoreShallow(useAnalysisStore, (s) => ({
       currentAnalysis: s.currentAnalysis,
       selectedFilePath: s.selectedFilePath,
       historySummary: s.historySummary,
       liveSource: s.liveSource,
       prevSummary: s.prevSummary,
       status: s.status,
-    })
-  );
+      lastSavedSummaryFile: s.lastSavedSummaryFile,
+    }));
+  const [noteDraft, setNoteDraft] = useState('');
+  // A new fresh-analysis save (or a return to no-file state) always starts the
+  // note field blank — it's a per-record field, never carried over from the
+  // previous card (#267).
+  /* c8 ignore start -- passive effect with no DOM/store side effect beyond
+     local state; no jsdom in this harness (renderToString doesn't run
+     effects, and the constitution forbids adding a new test framework) —
+     exercised by the report-card e2e. */
+  useEffect(() => {
+    setNoteDraft('');
+  }, [lastSavedSummaryFile]);
+  /* c8 ignore stop */
+  const commitNote = (value: string) => {
+    const payload = noteSubmitPayload(lastSavedSummaryFile, value);
+    if (!payload) return;
+    sb.setAnalysisSummaryNote(payload)
+      .then((res) => {
+        if (!res.success) console.warn('setAnalysisSummaryNote failed', res.error);
+      })
+      .catch((err) => console.warn('setAnalysisSummaryNote failed', err));
+  };
   const { idealProfile, isAutoProfile } = useStoreShallow(useSpectrumStore, (s) => ({
     idealProfile: s.idealProfile,
     isAutoProfile: s.isAutoProfile,
@@ -350,6 +375,10 @@ export default function ReportCardIsland() {
           feedbackRingout={feedbackCallout}
           onOpenPhaseDoubling={() => getInlineDialogs()?.openPhaseDoublingDialog()}
           onOpenFeedbackRingout={() => getInlineDialogs()?.openFeedbackRingout()}
+          noteValue={noteDraft}
+          noteEditable={!!lastSavedSummaryFile}
+          onNoteChange={setNoteDraft}
+          onNoteCommit={commitNote}
         />
       ) : (
         <div id="rc-content" style={{ display: 'none' }} />

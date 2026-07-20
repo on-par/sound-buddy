@@ -11,6 +11,7 @@ import type {
   LlmConfigPatch,
   TestLlmProviderOpts,
   AnalysisSummaryInput,
+  SetSummaryNoteInput,
   AnalysisProgress,
   UpdateInfo,
   UpdateStatus,
@@ -106,6 +107,12 @@ export function createBridge(ipc: IpcRendererLike) {
     // forget from the renderer's perspective; failures are logged in main.
     saveAnalysisSummary: (summary: AnalysisSummaryInput) =>
       ipc.invoke('save-analysis-summary', summary),
+
+    // Patch the optional handoff note on an already-saved summary record
+    // (#267) — the note is entered after the fire-and-forget save above
+    // resolves, so it's always a follow-up patch, never part of the initial write.
+    setAnalysisSummaryNote: (input: SetSummaryNoteInput) =>
+      ipc.invoke('set-analysis-summary-note', input),
 
     // Last 10 persisted report-card summaries, newest-first, for the Recent
     // Services list (#147).

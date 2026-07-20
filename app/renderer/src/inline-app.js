@@ -3040,6 +3040,9 @@ function persistAnalysisSummary() {
       recordingType: grading.analyzeRecordingType(src).label,
       topFixes: grading.computeRecommendations(src).slice(0, 3),
     };
+    // The handoff note field (#267) is add-at-save-time only — disabled until
+    // this run's own save resolves with the record it wrote.
+    anaStore.getState().setLastSavedSummaryFile(null);
     // Read the previous newest entry BEFORE saving this run, so summaries[0]
     // is genuinely "last time" and never the record we are about to write (#259).
     sb.listAnalysisSummaries()
@@ -3049,6 +3052,9 @@ function persistAnalysisSummary() {
       })
       .catch(() => anaStore.getState().setPrevSummary(null))
       .then(() => sb.saveAnalysisSummary(summary))
+      .then((r) => {
+        anaStore.getState().setLastSavedSummaryFile(r && r.success ? r.file || null : null);
+      })
       .catch((err) => console.warn('persistAnalysisSummary failed', err));
   } catch (err) {
     console.warn('persistAnalysisSummary failed', err);
@@ -3094,7 +3100,7 @@ async function renderRecentServices() {
     <div class="dir-item recent-row" data-idx="${i}">
       <span class="recent-grade" style="color:var(--grade-${(s.gradeLetter || '').toLowerCase().replace(/[^a-z]/g, '')})">${safeGrade}</span>
       <span class="dir-name">${escapeHtml(s.sourceFilename)}</span>
-      <span class="recent-date">${escapeHtml(new Date(s.date).toLocaleString())}</span>
+      <span class="recent-date">${escapeHtml(new Date(s.date).toLocaleString())}</span>${s.note ? `<div class="recent-note">${escapeHtml(s.note)}</div>` : ''}
     </div>`;
   }).join('');
 
