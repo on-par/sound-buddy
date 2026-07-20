@@ -38,6 +38,7 @@ import type {
   AnalyzeFileResult,
   SaveSummaryResult,
   ListSummariesResult,
+  ListFolderAudioResult,
   CancelAnalysisResult,
 } from './api';
 import { createMockSoundBuddy } from '../../renderer/src/mock-sound-buddy';
@@ -131,6 +132,7 @@ const analyzeFileErrDrift: AnalyzeFileResult = { success: false, error: 'failed'
 // (ipc/analysis.ts) each build their result inline too.
 const saveSummaryDrift: SaveSummaryResult = { success: true };
 const listSummariesDrift: ListSummariesResult = { success: true, summaries: [] };
+const listFolderAudioDrift: ListFolderAudioResult = { success: true, files: [] };
 const cancelAnalysisDrift: CancelAnalysisResult = { success: true };
 
 describe('SoundBuddyApi composition (TD-011, #405)', () => {
@@ -198,6 +200,7 @@ describe('SoundBuddyApi composition (TD-011, #405)', () => {
     expect(analyzeFileErrDrift.success).toBe(false);
     expect(saveSummaryDrift.success).toBe(true);
     expect(listSummariesDrift.summaries).toEqual([]);
+    expect(listFolderAudioDrift.files).toEqual([]);
     expect(cancelAnalysisDrift.success).toBe(true);
   });
 });

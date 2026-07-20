@@ -76,7 +76,7 @@
     </div>
     <div class="header-div"></div>
     <div id="mode-tabs" role="tablist">
-      <button class="mode-tab" data-mode="dir" data-icon="folder">Directory<span class="tab-soon">v1.1</span></button>
+      <button class="mode-tab" data-mode="dir" data-icon="folder">Directory</button>
       <button class="mode-tab" data-mode="live" data-icon="radio">Live<span class="tab-lock" data-icon="lock" data-size="11"></span></button>
       <button class="mode-tab" data-mode="soundcheck" data-icon="sliders">Soundcheck<span class="tab-lock" data-icon="lock" data-size="11"></span></button>
       <button class="mode-tab" data-mode="recent" data-icon="clock">Recent</button>
@@ -104,18 +104,16 @@
     <aside id="source-panel" class="side-panel">
       <div class="panel-head"><span class="panel-title">Source</span></div>
       <div class="panel-body">
-        <!-- DIR — roadmap context, not a workflow (#293). Batch analysis is
-             deferred to v1.1; until it ships this tab must not present a
-             folder-drop + disabled-CTA dead end. The one action here is real:
-             it routes to the supported single-file path on Report Card. -->
+        <!-- DIR (#270) — batch-analyze a folder of whole-mix recordings.
+             Runs the existing single-file analyze pipeline sequentially over
+             every audio file found, rendering one row per result. -->
         <div class="tab-content" id="tab-dir">
-          <div class="roadmap-note" id="dir-roadmap">
-            <span class="rm-icon" data-icon="folder" data-size="22"></span>
-            <span class="rm-badge">Coming in v1.1</span>
-            <span class="rm-title">Batch analysis isn&rsquo;t here yet</span>
-            <span class="rm-msg">Directory mode will let you drop a folder of recordings and get a report card for every file in one pass. It&rsquo;s planned for v1.1. Until then, analyze recordings one at a time &mdash; same engine, same report card.</span>
-            <button type="button" class="btn btn-secondary" id="dir-goto-reportcard" data-icon="clipboard-check">Analyze a recording now</button>
-          </div>
+          <button type="button" class="btn btn-primary" id="dir-choose-btn" data-icon="folder">Choose a folder&hellip;</button>
+          <div class="dir-path" id="dir-path"></div>
+          <button type="button" class="btn btn-primary" id="dir-analyze-btn" disabled>Analyze all</button>
+          <div class="dir-progress" id="dir-progress"></div>
+          <div class="dir-list" id="dir-results"></div>
+          <div class="dir-empty" id="dir-empty" style="display:none">No audio files in that folder — pick a folder containing your service recordings.</div>
         </div>
 
         <!-- LIVE -->

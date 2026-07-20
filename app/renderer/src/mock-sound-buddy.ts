@@ -123,6 +123,7 @@ export function createMockSoundBuddy(overrides: Partial<SoundBuddyApi> = {}): Mo
     saveAnalysisSummary: invoke('saveAnalysisSummary', { success: true, file: 'mock-summary.json' }),
     setAnalysisSummaryNote: invoke('setAnalysisSummaryNote', { success: true }),
     listAnalysisSummaries: invoke('listAnalysisSummaries', { success: true, summaries: [] }),
+    listFolderAudio: invoke('listFolderAudio', { success: true, files: [] }),
     cancelAnalysis: invoke('cancelAnalysis', { success: false }),
     onAnalysisProgress: listen<[AnalysisProgress]>('onAnalysisProgress'),
     getDemoAudio: invoke('getDemoAudio', null),

@@ -8,9 +8,9 @@
   'use strict';
 
   // The three answers to "where's the audio coming from?" (#543, epic e17).
-  // Directory is deliberately absent: it is not a real workflow yet (its tab
-  // shows a v1.1 roadmap note), and the story's acceptance criteria call for
-  // exactly three choices.
+  // Directory is deliberately absent: it's a real batch workflow now (#270),
+  // but adding it to this unified picker is a separate story — the picker's
+  // acceptance criteria call for exactly these three choices.
   var ANALYZE_SOURCES = [
     { id: 'file', label: 'Analyze a file', hint: 'Drop in a recording you already have.', icon: 'file-audio' },
     { id: 'live', label: 'Start live capture', hint: 'Capture multi-channel audio from the console right now.', icon: 'radio' },

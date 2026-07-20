@@ -5,22 +5,25 @@ import { describe, it, expect } from 'vitest';
 import * as fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
-// Directory dead-end guard (#293): the Directory tab is roadmap context until
-// batch analysis ships in v1.1. These assertions encode the acceptance
-// criteria — no disabled primary CTA, no fake folder-drop workflow, no CLI
-// command as the resolution path, and a real handoff to Report Card.
+// Directory tab is a real batch-analysis workflow (#270), replacing the
+// #293 roadmap card. These assertions encode the acceptance criteria — a
+// real folder picker + Analyze All CTA + results list, and no trace of the
+// old dead-end roadmap markup or its handoff-to-Report-Card listener.
 
 const markup = fs.readFileSync(fileURLToPath(new URL('./root-markup.html', import.meta.url)), 'utf8');
 const inlineApp = fs.readFileSync(fileURLToPath(new URL('./inline-app.js', import.meta.url)), 'utf8');
 
-describe('Directory tab is roadmap context, not a fake workflow (#293)', () => {
-  it('has no disabled Analyze All primary CTA', () => {
-    expect(markup).not.toContain('analyze-dir-btn');
+describe('Directory tab batch-analyzes a folder of recordings (#270)', () => {
+  it('has a real folder picker, Analyze All CTA, and results list', () => {
+    expect(markup).toContain('id="dir-choose-btn"');
+    expect(markup).toContain('id="dir-analyze-btn"');
+    expect(markup).toContain('id="dir-results"');
   });
 
-  it('has no folder dropzone pretending to start a batch run', () => {
-    expect(markup).not.toContain('dir-dropzone');
-    expect(markup).not.toContain('dir-file-list');
+  it('no longer carries the #293 roadmap markup or its v1.1 badge', () => {
+    expect(markup).not.toContain('dir-roadmap');
+    expect(markup).not.toContain('dir-goto-reportcard');
+    expect(markup).not.toMatch(/data-mode="dir"[^>]*tab-soon">v1\.1/);
   });
 
   it('does not route users to the CLI as the resolution path', () => {
@@ -28,24 +31,8 @@ describe('Directory tab is roadmap context, not a fake workflow (#293)', () => {
     expect(markup).not.toContain('dir-note-cmd');
   });
 
-  it('marks availability on the tab itself and in the panel', () => {
-    expect(markup).toMatch(/data-mode="dir"[^>]*>Directory<span class="tab-soon">v1\.1<\/span>/);
-    expect(markup).toContain('id="dir-roadmap"');
-    expect(markup).toContain('Coming in v1.1');
-  });
-
-  it('offers a working handoff to the supported Report Card path', () => {
-    expect(markup).toContain('id="dir-goto-reportcard"');
-    // btn-secondary, never btn-primary — a deferred feature must not lead
-    // with a primary CTA.
-    expect(markup).toMatch(/class="btn btn-secondary" id="dir-goto-reportcard"/);
-    expect(inlineApp).toContain("document.getElementById('dir-goto-reportcard')");
-  });
-
-  it('inline-app no longer carries the dead directory workflow', () => {
-    expect(inlineApp).not.toContain('loadDir');
-    expect(inlineApp).not.toContain('currentDirPath');
-    expect(inlineApp).not.toContain('Analyze the folder to see the spectrum');
+  it('inline-app no longer references the removed roadmap handoff listener', () => {
+    expect(inlineApp).not.toContain('dir-goto-reportcard');
   });
 });
 
@@ -103,8 +90,8 @@ describe('Existing tabs stay intact under the unified Analyze picker (#543)', ()
     });
   });
 
-  it('leaves the Directory roadmap note in place', () => {
-    expect(markup).toContain('id="dir-roadmap"');
-    expect(markup).toContain('Coming in v1.1');
+  it('leaves the Directory batch-analysis panel in place', () => {
+    expect(markup).toContain('id="dir-choose-btn"');
+    expect(markup).toContain('id="dir-analyze-btn"');
   });
 });

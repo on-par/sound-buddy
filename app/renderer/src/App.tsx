@@ -48,6 +48,7 @@ import reportFirstUxStateSrc from '../report-first-ux-state.js?raw';
 import aiDockStateSrc from '../ai-dock-state.js?raw';
 import singleColumnStateSrc from '../single-column-state.js?raw';
 import analyzeSourceStateSrc from '../analyze-source-state.js?raw';
+import batchAnalysisSrc from '../batch-analysis.js?raw';
 import inlineAppSrc from './inline-app.js?raw';
 import LicensePanel from './LicensePanel';
 import SettingsPanel from './SettingsPanel';
@@ -91,6 +92,7 @@ const BOOT_SCRIPTS = [
   aiDockStateSrc,
   singleColumnStateSrc,
   analyzeSourceStateSrc,
+  batchAnalysisSrc,
   inlineAppSrc,
 ];
 
