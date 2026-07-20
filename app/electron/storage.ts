@@ -31,7 +31,8 @@ function isAnalysisSummary(value: unknown): value is AnalysisSummary {
     typeof v.score === 'number' &&
     typeof v.recordingType === 'string' &&
     Array.isArray(v.topFixes) &&
-    (v.note === undefined || typeof v.note === 'string')
+    (v.note === undefined || typeof v.note === 'string') &&
+    (v.source === undefined || typeof v.source === 'string')
   );
 }
 

@@ -38,9 +38,14 @@
     var gradeClass = String(s.gradeLetter == null ? '' : s.gradeLetter)
       .toLowerCase().replace(/[^a-z]/g, '');
     var safeGrade = escapeHtml(s.gradeLetter);
+    // Literal string, never interpolating s.source (#261) — the only two
+    // values written by save-analysis-summary are 'file' (omitted) and 'live'.
+    var sourceHtml = s.source === 'live'
+      ? '\n      <span class="recent-source recent-source-live">Live</span>'
+      : '';
     var noteHtml = s.note ? '\n      <div class="recent-note">' + escapeHtml(s.note) + '</div>' : '';
     return '\n    <div class="dir-item recent-row" data-idx="' + index + '">\n' +
-      '      <span class="recent-grade" style="color:var(--grade-' + gradeClass + ')">' + safeGrade + '</span>\n' +
+      '      <span class="recent-grade" style="color:var(--grade-' + gradeClass + ')">' + safeGrade + '</span>' + sourceHtml + '\n' +
       '      <span class="dir-name">' + escapeHtml(s.sourceFilename) + '</span>\n' +
       '      <span class="recent-date">' + escapeHtml(new Date(s.date).toLocaleString()) + '</span>' + noteHtml + '\n' +
       '    </div>';

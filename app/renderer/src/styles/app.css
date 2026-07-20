@@ -270,6 +270,9 @@
     .recent-empty { text-align:center; padding:12px 0; }
     /* Handoff note secondary line (#267) — its own line under the grade/date row. */
     .recent-note { flex-basis:100%; margin-top:2px; font:var(--fw-regular) var(--fs-micro)/1.3 var(--font-sans); color:var(--text-muted); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    /* Live-capture-session badge (#261) — distinguishes a live-graded entry from a file analysis. */
+    .recent-source { flex-shrink:0; font:var(--fw-semibold) 9px/1 var(--font-mono); letter-spacing:0.05em; text-transform:uppercase; padding:2px 5px; border-radius:var(--radius-xs); }
+    .recent-source-live { color:var(--gold-text); background:var(--gold-tint, rgba(243,202,94,0.14)); }
 
     /* Rough Pass / Contextual Pass toggle (#365) */
     .pass-mode { display:flex; flex-direction:column; gap:8px; margin-bottom:10px; }

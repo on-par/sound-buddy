@@ -9,6 +9,7 @@ const {
   iconSvg, fmt, gradeRingHTML, profileMatchHTML,
   recTypePillClass, recTypePillHTML, buildMetricRows, metricRowsHTML,
   whyGradeHTML, recListHTML, reportCardSourceFromAnalysis,
+  buildAnalysisSummaryInput,
 } = window.reportCard;
 
 // Hydrate every element carrying a data-icon attribute (static markup).
@@ -149,6 +150,7 @@ const {
   normalizeMeasurementSource, measurementSourceAfterRemove, measurementSourceOptionsHTML,
   measurementChannel, measurementSourceBadgeText,
   liveReportCardSource: lcLiveReportCardSource,
+  liveSessionReportCardSource,
 } = window.liveCapturePanel;
 // Renamed to avoid colliding with the zero-arg usedChannelCount() wrapper below.
 const lcUsedChannelCount = window.liveCapturePanel.usedChannelCount;
@@ -1827,7 +1829,7 @@ function syncReportCardChrome(state, prevState) {
       syncSpectrumChrome();
       updateStatsRow(state.currentAnalysis.sox, state.currentAnalysis.spectrum);
       syncIdealProfile();
-      persistAnalysisSummary();
+      if (curAnalysis()) persistSummary(getReportCardSource(), 'file');
     }
   }
 
@@ -2236,6 +2238,7 @@ document.getElementById('live-start-btn').addEventListener('click', async () => 
 
   document.getElementById('rec-offer').style.display = 'none';
   document.getElementById('rc-offer').style.display = 'none';
+  document.getElementById('rc-not-enough').style.display = 'none';
   document.getElementById('live-rc-cue').style.display = 'none';
   document.getElementById('live-start-btn').style.display = 'none';
   document.getElementById('live-stop-btn').style.display = 'inline-flex';
@@ -2318,14 +2321,32 @@ async function stopLive() {
     hydrateIcons(document.getElementById('rec-offer'));
   }
 
-  // #488: a monitor session that accumulated at least one window built a live
-  // Report Card (it's already on the Report Card tab) — say so and offer the
-  // jump. Record mode keeps its session-saved offer above; the two never
-  // show together (sessionDir only exists in record mode).
+  // #488/#261: a monitor session that accumulated at least one window builds
+  // a session-level Report Card from the whole liveWindows buffer, grades it,
+  // and persists it to history tagged as a live-capture source — the same
+  // hook a file analysis gets. Record mode keeps its session-saved offer
+  // above; the two never show together (sessionDir only exists in record
+  // mode). A session too short/silent to produce usable windows degrades to
+  // the "not enough data" state instead of a nonsensical grade.
   if (shouldOfferReportCard(liveMode, liveWindows.length)) {
-    document.getElementById('rc-offer').style.display = 'flex';
-    hydrateIcons(document.getElementById('rc-offer'));
+    const sessionSrc = liveSessionReportCardSource(liveWindows, lcStore.getState().measurementSource, channelConfig);
+    if (sessionSrc) {
+      anaStore.getState().setLiveSource(sessionSrc); // freeze the session card onto the Report Card tab
+      persistSummary(sessionSrc, 'live');
+      document.getElementById('rc-offer').style.display = 'flex';
+      hydrateIcons(document.getElementById('rc-offer'));
+    } else {
+      showLiveNotEnoughData();
+    }
   }
+}
+
+// #261: shown in place of the report-card offer when a monitor session
+// accumulated at least one window tick but not enough to grade meaningfully
+// (fewer than MIN_SESSION_WINDOWS usable windows) — a clear degraded state
+// rather than a crash or a confident-looking grade from a second of audio.
+function showLiveNotEnoughData() {
+  document.getElementById('rc-not-enough').style.display = 'flex';
 }
 
 let lastSessionDir = null;
@@ -3025,8 +3046,9 @@ function syncLiveSource() {
 }
 
 // getReportCardSource() survives only for its remaining inline consumers (the
-// AI narrative trigger, persistAnalysisSummary) — reads curAnalysis()/liveSource
-// from the stores instead of the old currentAnalysis/liveWindows module vars.
+// AI narrative trigger, the file-analysis persistSummary call site) — reads
+// curAnalysis()/liveSource from the stores instead of the old
+// currentAnalysis/liveWindows module vars.
 function getReportCardSource() {
   const analysis = curAnalysis();
   if (analysis) {
@@ -3054,28 +3076,24 @@ function getReportCardSource() {
   return anaStore.getState().liveSource;
 }
 
-// Guards persistAnalysisSummary's async chain against out-of-order resolution
+// Guards persistSummary's async chain against out-of-order resolution
 // (#267): each call gets the next generation number, and a chain only applies
 // its resolved state if it's still the newest call — otherwise a slower older
 // run finishing after a newer re-analysis would stamp the wrong prevSummary/
 // lastSavedSummaryFile onto the card that's actually on screen.
 let persistGeneration = 0;
 
-// Persist a discrete report-card summary for the recent-services list (#147).
-// Fire-and-forget: never block or fail the report card on a storage error
-// (main logs and swallows). Only called from the file-analysis success path, so
-// it runs once per completed analysis and never for live-capture cards.
-function persistAnalysisSummary() {
+// Persist a discrete report-card summary for the recent-services list (#147),
+// tagged with its source ('file' | 'live', #261) so Recent Services can badge
+// a live-capture session distinctly from a file analysis. Fire-and-forget:
+// never block or fail the report card on a storage error (main logs and
+// swallows). Callers decide whether src is gradeable — this no longer gates
+// on curAnalysis() itself, so the live-capture session path (which has no
+// currentAnalysis) can call it too.
+function persistSummary(src, source) {
   try {
-    const src = getReportCardSource();
-    if (!src || !curAnalysis()) return; // file analyses only
-    const summary = {
-      sourceFilename: src.filename,
-      gradeLetter: grading.computeGrade(src),
-      score: grading.computeScore(src),
-      recordingType: grading.analyzeRecordingType(src).label,
-      topFixes: grading.computeRecommendations(src).slice(0, 3),
-    };
+    if (!src) return;
+    const summary = buildAnalysisSummaryInput(src, grading, source);
     const generation = ++persistGeneration;
     // The handoff note field (#267) is add-at-save-time only — disabled until
     // this run's own save resolves with the record it wrote.
@@ -3096,9 +3114,9 @@ function persistAnalysisSummary() {
         if (generation !== persistGeneration) return; // superseded by a newer analysis
         anaStore.getState().setLastSavedSummaryFile(r && r.success ? r.file || null : null);
       })
-      .catch((err) => console.warn('persistAnalysisSummary failed', err));
+      .catch((err) => console.warn('persistSummary failed', err));
   } catch (err) {
-    console.warn('persistAnalysisSummary failed', err);
+    console.warn('persistSummary failed', err);
   }
 }
 
@@ -3166,7 +3184,7 @@ function loadHistoryEntry(summary, prevSummary) {
   // the empty-state dropzone/Analyze button reset themselves (#206).
   anaStore.getState().clearAnalysis();
   anaStore.getState().setPrevSummary(prevSummary || null);
-  if (!liveRunning) { liveWindows = []; syncLiveSource(); document.getElementById('rc-offer').style.display = 'none'; }
+  if (!liveRunning) { liveWindows = []; syncLiveSource(); document.getElementById('rc-offer').style.display = 'none'; document.getElementById('rc-not-enough').style.display = 'none'; }
   document.querySelector('.mode-tab[data-mode="reportcard"]').click();
 }
 
@@ -3554,7 +3572,7 @@ document.getElementById('reportcard-clear-btn').addEventListener('click', () => 
   // getReportCardSource() fall through to that stale live card instead of the
   // empty state (#206) — but leave an actively-running session's buffer alone
   // so its live meters don't blip empty.
-  if (!liveRunning) { liveWindows = []; syncLiveSource(); document.getElementById('rc-offer').style.display = 'none'; }
+  if (!liveRunning) { liveWindows = []; syncLiveSource(); document.getElementById('rc-offer').style.display = 'none'; document.getElementById('rc-not-enough').style.display = 'none'; }
   setSpectrumState('empty');
 });
 

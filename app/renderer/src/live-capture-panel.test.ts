@@ -26,6 +26,9 @@ import {
   measurementSourceOptionsHTML,
   measurementChannel,
   measurementSourceBadgeText,
+  MIN_SESSION_WINDOWS,
+  hasEnoughSessionData,
+  liveSessionReportCardSource,
   type LiveDevice,
   type ListDevicesResult,
   type StripConfig,
@@ -34,6 +37,7 @@ import {
   type StripView,
   type PanelView,
   type LiveEvent,
+  type WindowData,
 } from './live-capture-panel';
 
 const devices: LiveDevice[] = [
@@ -831,6 +835,130 @@ describe('liveChannelContributors', () => {
       { index: 0, name: 'Main', rms: -1, peak: -1, clipping: false, centroid: 1, rolloff: 1, bands: {} },
     ];
     expect(liveChannelContributors(channels)[0].label).toBeUndefined();
+  });
+});
+
+describe('hasEnoughSessionData', () => {
+  function windows(n: number): LiveEvent[] {
+    return Array.from({ length: n }, (_, i) => ({
+      type: 'window', window: i, ts: i, masking: [],
+      channels: [{ index: 0, name: 'Main', rms: -18, peak: -6, clipping: false, centroid: 1000, rolloff: 4000, bands: {} }],
+    }));
+  }
+
+  it('is false for 0, 1, and 2 windows (below MIN_SESSION_WINDOWS)', () => {
+    expect(hasEnoughSessionData(windows(0))).toBe(false);
+    expect(hasEnoughSessionData(windows(1))).toBe(false);
+    expect(hasEnoughSessionData(windows(2))).toBe(false);
+  });
+
+  it('is true at exactly MIN_SESSION_WINDOWS and above', () => {
+    expect(MIN_SESSION_WINDOWS).toBe(3);
+    expect(hasEnoughSessionData(windows(3))).toBe(true);
+    expect(hasEnoughSessionData(windows(10))).toBe(true);
+  });
+});
+
+describe('liveSessionReportCardSource', () => {
+  function win(
+    window: number,
+    channels: Array<{ index: number; name?: string; rms: number; peak: number; clipping: boolean; centroid?: number; bands: Record<string, number> }>,
+  ): LiveEvent {
+    return {
+      type: 'window', window, ts: window, masking: [],
+      channels: channels.map((c) => ({ rolloff: 4000, ...c })),
+    } as LiveEvent;
+  }
+
+  const fullBands = { sub_bass: -50, bass: -20, low_mid: -22, mid: -14, high_mid: -24, presence: -30, brilliance: -60 };
+
+  function threeWindows(overrides: Partial<{ rms: number[]; peak: number[]; centroid: (number | undefined)[]; clipping: boolean[] }> = {}): LiveEvent[] {
+    const rms = overrides.rms || [-20, -18, -16];
+    const peak = overrides.peak || [-8, -6, -4];
+    const centroid = overrides.centroid || [1000, 1200, 1400];
+    const clipping = overrides.clipping || [false, false, false];
+    return rms.map((r, i) => win(i + 1, [{ index: 0, name: 'Main', rms: r, peak: peak[i], clipping: clipping[i], centroid: centroid[i], bands: fullBands }]));
+  }
+
+  it('is null for 0, 1, and 2 windows', () => {
+    expect(liveSessionReportCardSource([])).toBeNull();
+    expect(liveSessionReportCardSource(threeWindows().slice(0, 1))).toBeNull();
+    expect(liveSessionReportCardSource(threeWindows().slice(0, 2))).toBeNull();
+  });
+
+  it('computes mean rms, max peak, mean centroid, and per-band means across 3+ windows', () => {
+    const src = liveSessionReportCardSource(threeWindows());
+    expect(src).not.toBeNull();
+    expect(src!.rms).toBeCloseTo((-20 + -18 + -16) / 3);
+    expect(src!.peak).toBeCloseTo(-4); // max of -8, -6, -4
+    expect(src!.centroid).toBeCloseTo((1000 + 1200 + 1400) / 3);
+    expect(src!.bands.subBass).toBeCloseTo(-50);
+    expect(src!.bands.bass).toBeCloseTo(-20);
+    expect(src!.bands.brilliance).toBeCloseTo(-60);
+    expect(src!.dynamicRange).toBeNull();
+  });
+
+  it('is true when any usable window clipped, false when none did', () => {
+    const clippedSrc = liveSessionReportCardSource(threeWindows({ clipping: [false, true, false] }));
+    expect(clippedSrc!.clipping).toBe(true);
+    const cleanSrc = liveSessionReportCardSource(threeWindows({ clipping: [false, false, false] }));
+    expect(cleanSrc!.clipping).toBe(false);
+  });
+
+  it('builds a filename with the strip label and usable-window count, no window-# suffix', () => {
+    const config: StripConfig[] = [{ kind: 'mono', a: 0, b: 1, label: 'Crowd Mic' }];
+    const src = liveSessionReportCardSource(threeWindows(), 0, config);
+    expect(src!.filename).toBe('Live capture — Crowd Mic (3 windows)');
+    expect(src!.filename).not.toMatch(/window #/);
+  });
+
+  it('falls back to the channel name, then "Main", when no strip label is set', () => {
+    const src = liveSessionReportCardSource(threeWindows());
+    expect(src!.filename).toBe('Live capture — Main (3 windows)');
+  });
+
+  it('populates channels from the last usable window via liveChannelContributors', () => {
+    const windows = threeWindows();
+    const src = liveSessionReportCardSource(windows);
+    expect(src!.channels).toEqual(liveChannelContributors((windows[2] as WindowData).channels));
+  });
+
+  it('is undefined when every window has an undefined centroid', () => {
+    const src = liveSessionReportCardSource(threeWindows({ centroid: [undefined, undefined, undefined] }));
+    expect(src!.centroid).toBeUndefined();
+  });
+
+  it('skips windows lacking the measurement-source channel, falling index back to 0', () => {
+    const withVocals = [
+      win(1, [{ index: 0, name: 'Main', rms: -20, peak: -8, clipping: false, centroid: 1000, bands: fullBands }]),
+      win(2, [
+        { index: 0, name: 'Main', rms: -18, peak: -6, clipping: false, centroid: 1200, bands: fullBands },
+        { index: 1, name: 'Vocals', rms: -10, peak: -2, clipping: false, centroid: 2000, bands: fullBands },
+      ]),
+      win(3, [{ index: 0, name: 'Main', rms: -16, peak: -4, clipping: false, centroid: 1400, bands: fullBands }]),
+    ];
+    // measurementSource 1 ("Vocals") is absent on windows 1 and 3 — each falls
+    // back to channel 0 rather than being dropped, so all three stay usable.
+    const src = liveSessionReportCardSource(withVocals, 1);
+    expect(src!.rms).toBeCloseTo((-20 + -10 + -16) / 3);
+  });
+
+  it('is null when every window lacks channels entirely', () => {
+    const noChannels: LiveEvent[] = [
+      { type: 'window', window: 1, ts: 1, masking: [], channels: [] },
+      { type: 'window', window: 2, ts: 2, masking: [], channels: [] },
+      { type: 'window', window: 3, ts: 3, masking: [], channels: [] },
+    ];
+    expect(liveSessionReportCardSource(noChannels)).toBeNull();
+  });
+
+  it('is null when fewer than MIN_SESSION_WINDOWS usable windows survive the channel filter', () => {
+    const mixed: LiveEvent[] = [
+      { type: 'window', window: 1, ts: 1, masking: [], channels: [] },
+      win(2, [{ index: 0, name: 'Main', rms: -18, peak: -6, clipping: false, centroid: 1200, bands: fullBands }]),
+      win(3, [{ index: 0, name: 'Main', rms: -16, peak: -4, clipping: false, centroid: 1400, bands: fullBands }]),
+    ];
+    expect(liveSessionReportCardSource(mixed)).toBeNull();
   });
 });
 

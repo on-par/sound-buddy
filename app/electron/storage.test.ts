@@ -252,6 +252,19 @@ describe('listAnalysisSummaries', () => {
     const result = await listAnalysisSummaries(historyDir);
     expect(result).toEqual([base]);
   });
+
+  it('round-trips a record with source: "live", and a legacy no-source record unchanged (#261)', async () => {
+    const historyDir = path.join(dir, 'history');
+    const live: AnalysisSummary = { ...base, sourceFilename: 'live-session.wav', source: 'live' };
+    const legacy: AnalysisSummary = { ...base, sourceFilename: 'legacy.wav' };
+    await saveAnalysisSummary(historyDir, live);
+    await saveAnalysisSummary(historyDir, legacy);
+
+    const result = await listAnalysisSummaries(historyDir);
+    const bySource = Object.fromEntries(result.map((r) => [r.sourceFilename, r]));
+    expect(bySource['live-session.wav'].source).toBe('live');
+    expect('source' in bySource['legacy.wav']).toBe(false);
+  });
 });
 
 describe('setAnalysisSummaryNote', () => {

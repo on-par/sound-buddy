@@ -329,6 +329,10 @@ export interface AnalysisSummary {
   topFixes: string[];
   /** Optional one-line handoff note for the next volunteer (#267). Absent when unset. */
   note?: string;
+  /** Where the card was graded from (#261). Optional so the thousands of
+   *  already-written history JSON files stay valid; readers treat a missing
+   *  value as 'file'. */
+  source?: 'file' | 'live';
 }
 
 /** The renderer submits everything but the server-stamped `date`. */

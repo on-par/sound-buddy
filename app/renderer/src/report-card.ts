@@ -740,6 +740,50 @@ export function reportDeltaView(
   return { points, direction, text };
 }
 
+/* ── Summary-building (#146, extracted for #261) ──
+   persistAnalysisSummary()/persistSummary() in inline-app.js build the
+   Recent Services history-record payload from a ReportCardSource; extracted
+   here so the file-analysis and live-capture-session paths share one tested
+   implementation instead of inline-app.js duplicating the object literal. */
+export type AnalysisSummarySource = 'file' | 'live';
+
+// The narrow slice of grading.js this module needs to build a summary,
+// injected by the caller (inline-app.js via the global `grading`, tests via
+// a fake) rather than imported globally — window.grading's CONFIG is
+// runtime-mutable and a second import would fork it.
+export interface SummaryGradingApi {
+  computeGrade(src: ReportCardSource): string;
+  computeScore(src: ReportCardSource): number;
+  analyzeRecordingType(src: ReportCardSource): { label: string };
+  computeRecommendations(src: ReportCardSource): string[];
+}
+
+export const MAX_TOP_FIXES = 3;
+
+export interface AnalysisSummaryInputShape {
+  sourceFilename: string;
+  gradeLetter: string;
+  score: number;
+  recordingType: string;
+  topFixes: string[];
+  source: AnalysisSummarySource;
+}
+
+export function buildAnalysisSummaryInput(
+  src: ReportCardSource,
+  grading: SummaryGradingApi,
+  source: AnalysisSummarySource,
+): AnalysisSummaryInputShape {
+  return {
+    sourceFilename: src.filename,
+    gradeLetter: grading.computeGrade(src),
+    score: grading.computeScore(src),
+    recordingType: grading.analyzeRecordingType(src).label,
+    topFixes: grading.computeRecommendations(src).slice(0, MAX_TOP_FIXES),
+    source,
+  };
+}
+
 /* ── Handoff note (#267) ──
    MAX_NOTE_LENGTH re-exported so callers (ReportCard.tsx's input maxLength)
    need only import this module, not reach into electron/ipc/api directly. */
