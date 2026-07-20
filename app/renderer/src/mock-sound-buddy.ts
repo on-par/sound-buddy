@@ -46,6 +46,7 @@ const DEFAULT_APP_SETTINGS: AppSettings = {
   dawWorkspaceEnabled: false,
   liveAdjustmentsEnabled: false,
   reportFirstUxEnabled: false,
+  shareChurchName: '',
 };
 
 const DEFAULT_PUBLIC_LLM_CONFIG: PublicLlmConfig = {

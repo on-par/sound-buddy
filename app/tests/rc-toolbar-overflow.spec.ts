@@ -12,6 +12,7 @@ const ACTION_BUTTON_IDS = [
   'reportcard-clear-btn',
   'reportcard-load-btn',
   'reportcard-feedback-btn',
+  'reportcard-share-btn',
   'reportcard-print-btn',
   'grade-own-btn',
 ];

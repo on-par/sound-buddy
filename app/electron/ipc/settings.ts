@@ -41,6 +41,10 @@ const MAX_GROUP_NAME_LEN = 40;
 // convention since the renderer and this main-process guard must agree on
 // what "too long" means.
 const MAX_PROFILE_ID_LEN = 64;
+// Cap on the persisted Share Image church-name setting (#265) — mirrors the
+// renderer's share-card.ts MAX_CHURCH_NAME_LEN. Defined here too since main
+// can't import from the renderer program.
+const MAX_SHARE_CHURCH_NAME_LEN = 40;
 
 /** A plain, non-array, non-null object. */
 function isPlainObject(v: unknown): v is Record<string, unknown> {
@@ -152,6 +156,16 @@ export function safeExportFilename(name: string): string {
   return basename.toLowerCase().endsWith(PNG_EXTENSION) ? basename : `${basename}${PNG_EXTENSION}`;
 }
 
+// Guards the update-settings whitelist for shareChurchName (#265): `null`
+// when `value` isn't a string (the patch key is then ignored entirely,
+// leaving the stored setting untouched). Otherwise trims and caps the
+// length — an empty string is a valid, meaningful result (it's how the user
+// clears the name back to the privacy-preserving default).
+export function sanitizeShareChurchName(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  return value.trim().slice(0, MAX_SHARE_CHURCH_NAME_LEN);
+}
+
 export function registerSettingsHandlers(): void {
   // get-app-version — the installed app version, shown in the AI Engineer
   // dialog (#202). Reads package.json directly via resolveAppVersion rather
@@ -212,6 +226,11 @@ export function registerSettingsHandlers(): void {
       if (typeof patch.reportFirstUxEnabled === 'boolean') {
         clean.reportFirstUxEnabled = patch.reportFirstUxEnabled;
       }
+      // Optional church name for the Share Image export (#265). '' is a
+      // valid, meaningful value (it's the privacy-preserving default), so
+      // this is gated on the sanitizer's null (invalid input), not falsiness.
+      const shareChurchName = sanitizeShareChurchName(patch.shareChurchName);
+      if (shareChurchName !== null) clean.shareChurchName = shareChurchName;
     }
     const result = updateSettings(clean);
     // Opting out of telemetry (#474) clears the pending queue and the

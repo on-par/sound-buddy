@@ -12,6 +12,8 @@ import {
 import { findSpectralPeaks } from '@sound-buddy/audio-engine/dist/analyze/spectral.js';
 import * as spectrumDisplay from './spectrum-display';
 import * as reportCard from './report-card';
+import * as reportExport from './report-export';
+import * as shareCard from './share-card';
 import * as liveCapturePanel from './live-capture-panel';
 import * as crashHooks from './crash-hooks';
 import rootMarkup from './root-markup.html?raw';
@@ -128,6 +130,11 @@ export default function App() {
     (window as Window & { audioEngineSpectral?: unknown }).audioEngineSpectral = { findSpectralPeaks };
     (window as Window & { spectrumDisplay?: unknown }).spectrumDisplay = spectrumDisplay;
     (window as Window & { reportCard?: unknown }).reportCard = reportCard;
+    // Share Image export (#265) + Export PNG's metadata-stripping guard
+    // (#368) — both pure modules, bridged the same way as reportCard so
+    // inline-app.js's classic-script glue can call them by name.
+    (window as Window & { reportExport?: unknown }).reportExport = reportExport;
+    (window as Window & { shareCard?: unknown }).shareCard = shareCard;
     (window as Window & { liveCapturePanel?: unknown }).liveCapturePanel = liveCapturePanel;
     (window as Window & { crashHooks?: unknown }).crashHooks = crashHooks;
     // Installed before the boot scripts run — inline-app.js reads

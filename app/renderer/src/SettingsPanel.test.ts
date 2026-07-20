@@ -17,11 +17,12 @@ import SettingsPanel, {
   testConnection,
   saveAll,
   type SettingsSection,
+  commitShareChurchName,
 } from './SettingsPanel';
 import { ElectronContext } from './useElectron';
 import { createSettingsStore, useSettingsStore } from './stores/settingsStore';
 import { createMockSoundBuddy } from './mock-sound-buddy';
-import type { LlmModelInfo, PublicLlmConfig } from '../../electron/ipc/api';
+import type { AppSettings, LlmModelInfo, PublicLlmConfig } from '../../electron/ipc/api';
 
 const MODELS: LlmModelInfo[] = [
   { provider: 'openai', id: 'gpt-4o-mini', name: 'GPT-4o mini' },
@@ -277,7 +278,7 @@ describe('saveAll', () => {
       saveLlmConfig: async () => ({ ok: true, config }),
       updateSettings: async (patch) => {
         mock.calls.push({ method: 'updateSettings', args: [patch] });
-        return { aiEnabled: true, idealProfile: '', customIdealProfiles: [], storageDir: '', rigs: [], activeRigId: null, usageSignalEnabled: false, channelLabels: {}, channelGroups: {}, inputInstrumentProfiles: {}, crashReportingEnabled: false, dawWorkspaceEnabled: false, liveAdjustmentsEnabled: false, reportFirstUxEnabled: false };
+        return { aiEnabled: true, idealProfile: '', customIdealProfiles: [], storageDir: '', rigs: [], activeRigId: null, usageSignalEnabled: false, channelLabels: {}, channelGroups: {}, inputInstrumentProfiles: {}, crashReportingEnabled: false, dawWorkspaceEnabled: false, liveAdjustmentsEnabled: false, reportFirstUxEnabled: false, shareChurchName: '' };
       },
     });
     const store = createSettingsStore(() => mock.api);
@@ -436,6 +437,38 @@ describe('SettingsPanel markup', () => {
     const html = renderMarkup();
     expect(html).toContain('id="ai-tab-btn-ollama" role="tab" aria-selected="true"');
     expect(html).toMatch(/id="ai-tab-hosted" style="display:none"/);
+  });
+
+  it('renders the church-name field blank by default (no persisted settings)', () => {
+    const html = renderMarkup();
+    expect(html).toContain('id="share-church-name-input"');
+    expect(html).toMatch(/id="share-church-name-input"[^>]*value=""/);
+  });
+
+  it('shows a persisted church name on initial render', () => {
+    useSettingsStore.setState({ settings: { shareChurchName: 'Grace Chapel' } as unknown as AppSettings });
+    const html = renderMarkup();
+    expect(html).toMatch(/id="share-church-name-input"[^>]*value="Grace Chapel"/);
+  });
+});
+
+describe('commitShareChurchName', () => {
+  it('persists the church name via settingsStore.updateSettings', async () => {
+    const mock = createMockSoundBuddy();
+    const store = createSettingsStore(() => mock.api);
+
+    await commitShareChurchName(store, 'Grace Chapel');
+
+    expect(mock.calls).toContainEqual({ method: 'updateSettings', args: [{ shareChurchName: 'Grace Chapel' }] });
+  });
+
+  it('persists an empty string to clear a previously-saved name', async () => {
+    const mock = createMockSoundBuddy();
+    const store = createSettingsStore(() => mock.api);
+
+    await commitShareChurchName(store, '');
+
+    expect(mock.calls).toContainEqual({ method: 'updateSettings', args: [{ shareChurchName: '' }] });
   });
 });
 

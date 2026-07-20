@@ -60,6 +60,7 @@ import {
   sanitizeChannelLabels,
   sanitizeChannelGroups,
   sanitizeInputInstrumentProfiles,
+  sanitizeShareChurchName,
 } from './settings';
 import { APP_ROOT } from './shared';
 
@@ -422,6 +423,54 @@ describe('update-settings IPC whitelist — reportFirstUxEnabled (#538)', () => 
       reportFirstUxEnabled: boolean;
     };
     expect(result.reportFirstUxEnabled).toBe(false);
+  });
+});
+
+describe('sanitizeShareChurchName (#265)', () => {
+  it('returns null for a non-string value (patch key ignored)', () => {
+    expect(sanitizeShareChurchName(42)).toBeNull();
+    expect(sanitizeShareChurchName({})).toBeNull();
+    expect(sanitizeShareChurchName(undefined)).toBeNull();
+    expect(sanitizeShareChurchName(null)).toBeNull();
+  });
+
+  it('trims surrounding whitespace', () => {
+    expect(sanitizeShareChurchName('  Grace Chapel  ')).toBe('Grace Chapel');
+  });
+
+  it('truncates past the length cap', () => {
+    const long = 'a'.repeat(60);
+    expect(sanitizeShareChurchName(long)).toBe('a'.repeat(40));
+  });
+
+  it('preserves a normal name unchanged', () => {
+    expect(sanitizeShareChurchName('First Baptist')).toBe('First Baptist');
+  });
+
+  it('accepts an empty string (clears the setting back to the privacy default)', () => {
+    expect(sanitizeShareChurchName('')).toBe('');
+  });
+});
+
+describe('update-settings IPC whitelist — shareChurchName (#265)', () => {
+  it('accepts and persists a church name', async () => {
+    const handler = handlers.get('update-settings');
+    const result = (await handler!(null, { shareChurchName: 'Grace Chapel' })) as { shareChurchName: string };
+    expect(result.shareChurchName).toBe('Grace Chapel');
+    expect(readFile().shareChurchName).toBe('Grace Chapel');
+  });
+
+  it('ignores a non-string value, leaving the setting at its default', async () => {
+    const handler = handlers.get('update-settings');
+    const result = (await handler!(null, { shareChurchName: 42 })) as { shareChurchName: string };
+    expect(result.shareChurchName).toBe('');
+  });
+
+  it('accepts an empty string to clear a previously-saved name', async () => {
+    const handler = handlers.get('update-settings');
+    await handler!(null, { shareChurchName: 'Grace Chapel' });
+    const result = (await handler!(null, { shareChurchName: '' })) as { shareChurchName: string };
+    expect(result.shareChurchName).toBe('');
   });
 });
 

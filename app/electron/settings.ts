@@ -46,6 +46,7 @@ const DEFAULTS: AppSettings = {
   dawWorkspaceEnabled: false,
   liveAdjustmentsEnabled: false,
   reportFirstUxEnabled: false,
+  shareChurchName: '',
 };
 
 function settingsPath(): string {
@@ -139,6 +140,7 @@ function writeSettingsFile(file: Partial<AppSettings>): void {
     dawWorkspaceEnabled: file.dawWorkspaceEnabled ?? DEFAULTS.dawWorkspaceEnabled,
     liveAdjustmentsEnabled: file.liveAdjustmentsEnabled ?? DEFAULTS.liveAdjustmentsEnabled,
     reportFirstUxEnabled: file.reportFirstUxEnabled ?? DEFAULTS.reportFirstUxEnabled,
+    shareChurchName: typeof file.shareChurchName === 'string' ? file.shareChurchName : DEFAULTS.shareChurchName,
   };
   try {
     fs.writeFileSync(settingsPath(), JSON.stringify(persisted, null, 2));
@@ -194,6 +196,9 @@ export function getSettings(): AppSettings {
     // (#538) without a UI toggle needs a launch-time override, unlike the
     // other experimental UI gates above.
     reportFirstUxEnabled: envReportFirstUx ?? file.reportFirstUxEnabled ?? DEFAULTS.reportFirstUxEnabled,
+    // No env layer — a church name is user-authored copy for the Share
+    // Image export (#265), not a launch-time behavior toggle like aiEnabled.
+    shareChurchName: typeof file.shareChurchName === 'string' ? file.shareChurchName : DEFAULTS.shareChurchName,
   };
 }
 

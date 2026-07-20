@@ -66,6 +66,8 @@ test.describe('Sound Buddy E2E — report card basics', () => {
     await expect(window.locator('#file-dropzone')).toContainText('Drop audio file here');
     await expect(window.locator('#analyze-btn')).toBeDisabled();
     await expect(window.locator('#rc-content')).toBeHidden();
+    // Nothing to share before a card exists (#265).
+    await expect(window.locator('#reportcard-share-btn')).toBeDisabled();
   });
 
   test('playback transport is absent (disabled/idle) before any analysis is loaded (#180)', async () => {
@@ -91,6 +93,8 @@ test.describe('Sound Buddy E2E — report card basics', () => {
     await expect(window.locator('#rc-content')).toBeVisible();
     await expect(window.locator('#rc-empty')).toBeHidden();
     await expect(window.locator('#rc-filename')).toHaveText('silence.wav');
+    // The Share Image action enables alongside Export PDF once a card renders (#265).
+    await expect(window.locator('#reportcard-share-btn')).toBeEnabled();
   });
 
   test('Clear returns to the empty/dropzone state to load a different file (#206)', async () => {
@@ -118,9 +122,10 @@ test.describe('Sound Buddy E2E — report card basics', () => {
     await expect(window.locator('#file-dropzone')).toContainText('Drop audio file here');
     await expect(window.locator('#analyze-btn')).toBeDisabled();
     // The toolbar controls reset too — Clear is a no-op without a card, and
-    // there's nothing to print from the empty state.
+    // there's nothing to print or share from the empty state.
     await expect(clearBtn).toBeDisabled();
     await expect(window.locator('#reportcard-print-btn')).toBeDisabled();
+    await expect(window.locator('#reportcard-share-btn')).toBeDisabled();
   });
 
   test('Clear does not resurrect a stale live-capture card from an earlier session (#206)', async () => {
