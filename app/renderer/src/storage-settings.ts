@@ -47,13 +47,28 @@ export interface StorageToggles {
   crashReportingEnabled: boolean;
   dawWorkspaceEnabled: boolean;
   liveAdjustmentsEnabled: boolean;
+  weeklyReminderEnabled: boolean;
+  weeklyReminderServiceDay: number;
 }
 
-const TOGGLE_KEYS: (keyof StorageToggles & keyof UpdateSettingsPatch)[] = [
+// The boolean-valued StorageToggles keys — deliberately excludes
+// weeklyReminderServiceDay (a number), which is diffed separately below.
+// Listing them out (rather than `keyof StorageToggles`) keeps `patch[key]`
+// below assignable to a single boolean type instead of widening to
+// `boolean | number` once a non-boolean field exists on StorageToggles.
+type BooleanToggleKey =
+  | 'usageSignalEnabled'
+  | 'crashReportingEnabled'
+  | 'dawWorkspaceEnabled'
+  | 'liveAdjustmentsEnabled'
+  | 'weeklyReminderEnabled';
+
+const TOGGLE_KEYS: (BooleanToggleKey & keyof UpdateSettingsPatch)[] = [
   'usageSignalEnabled',
   'crashReportingEnabled',
   'dawWorkspaceEnabled',
   'liveAdjustmentsEnabled',
+  'weeklyReminderEnabled',
 ];
 
 // Port of saveStorageSettings()'s change-detection: only emits keys that
@@ -72,6 +87,12 @@ export function buildStoragePatch(
     const current = toggles[key];
     const previous = !!(loaded && loaded[key]);
     if (current !== previous) patch[key] = current;
+  }
+  // weeklyReminderServiceDay is a number, not a boolean, so it's diffed
+  // separately from the boolean TOGGLE_KEYS loop above.
+  const previousDay = loaded?.weeklyReminderServiceDay ?? 0;
+  if (toggles.weeklyReminderServiceDay !== previousDay) {
+    patch.weeklyReminderServiceDay = toggles.weeklyReminderServiceDay;
   }
   return Object.keys(patch).length ? patch : null;
 }

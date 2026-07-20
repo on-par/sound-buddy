@@ -72,6 +72,7 @@ vi.mock('./feedback', () => ({
 }));
 vi.mock('./license', () => ({ ensureTrialStarted: vi.fn() }));
 vi.mock('./license-refresh', () => ({ maybeRefreshLicense: vi.fn().mockResolvedValue(undefined) }));
+vi.mock('./weekly-reminder', () => ({ scheduleWeeklyReminder: vi.fn() }));
 
 import { app, BrowserWindow, Menu, ipcMain, shell } from 'electron';
 import { registerIpcHandlers } from './ipc';
@@ -85,6 +86,7 @@ import { captureGuideUrl } from './capture-guide';
 import { openFeedback, revealDiagnosticLog, submitFeedback } from './feedback';
 import { ensureTrialStarted } from './license';
 import { maybeRefreshLicense } from './license-refresh';
+import { scheduleWeeklyReminder } from './weekly-reminder';
 import {
   buildAugmentedPath,
   augmentPathForGuiLaunch,
@@ -310,6 +312,10 @@ describe('lifecycle (whenReady callback)', () => {
     expect(ensureTrialStarted).toHaveBeenCalledTimes(1);
     expect(initLogging).toHaveBeenCalledTimes(1);
     expect(maybeRefreshLicense).toHaveBeenCalledTimes(1);
+  });
+
+  it('arms the opt-in weekly reminder (#268) once at boot', () => {
+    expect(scheduleWeeklyReminder).toHaveBeenCalledTimes(1);
   });
 
   it('registers exactly the expected ipcMain.handle channels', () => {

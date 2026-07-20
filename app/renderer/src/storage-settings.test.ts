@@ -21,6 +21,8 @@ const LOADED_SETTINGS: AppSettings = {
   liveAdjustmentsEnabled: false,
   reportFirstUxEnabled: false,
   shareChurchName: '',
+  weeklyReminderEnabled: false,
+  weeklyReminderServiceDay: 0,
 };
 
 const NO_TOGGLES = {
@@ -28,6 +30,8 @@ const NO_TOGGLES = {
   crashReportingEnabled: false,
   dawWorkspaceEnabled: false,
   liveAdjustmentsEnabled: false,
+  weeklyReminderEnabled: false,
+  weeklyReminderServiceDay: 0,
 };
 
 describe('effectiveStoragePath', () => {
@@ -122,10 +126,33 @@ describe('buildStoragePatch', () => {
     });
   });
 
+  it('includes only weeklyReminderEnabled when just that toggle changed', () => {
+    expect(buildStoragePatch(null, { ...NO_TOGGLES, weeklyReminderEnabled: true }, LOADED_SETTINGS)).toEqual({
+      weeklyReminderEnabled: true,
+    });
+  });
+
+  it('includes only weeklyReminderServiceDay when just the day changed', () => {
+    expect(buildStoragePatch(null, { ...NO_TOGGLES, weeklyReminderServiceDay: 3 }, LOADED_SETTINGS)).toEqual({
+      weeklyReminderServiceDay: 3,
+    });
+  });
+
+  it('omits weeklyReminderServiceDay when unchanged from the loaded default (0)', () => {
+    expect(buildStoragePatch(null, NO_TOGGLES, LOADED_SETTINGS)).toBeNull();
+  });
+
   it('merges every changed field into a single patch', () => {
     const patch = buildStoragePatch(
       '/custom',
-      { usageSignalEnabled: true, crashReportingEnabled: true, dawWorkspaceEnabled: true, liveAdjustmentsEnabled: true },
+      {
+        usageSignalEnabled: true,
+        crashReportingEnabled: true,
+        dawWorkspaceEnabled: true,
+        liveAdjustmentsEnabled: true,
+        weeklyReminderEnabled: true,
+        weeklyReminderServiceDay: 5,
+      },
       LOADED_SETTINGS
     );
     expect(patch).toEqual({
@@ -134,6 +161,8 @@ describe('buildStoragePatch', () => {
       crashReportingEnabled: true,
       dawWorkspaceEnabled: true,
       liveAdjustmentsEnabled: true,
+      weeklyReminderEnabled: true,
+      weeklyReminderServiceDay: 5,
     });
   });
 

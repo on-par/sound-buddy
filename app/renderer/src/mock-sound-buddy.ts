@@ -47,6 +47,8 @@ const DEFAULT_APP_SETTINGS: AppSettings = {
   liveAdjustmentsEnabled: false,
   reportFirstUxEnabled: false,
   shareChurchName: '',
+  weeklyReminderEnabled: false,
+  weeklyReminderServiceDay: 0,
 };
 
 const DEFAULT_PUBLIC_LLM_CONFIG: PublicLlmConfig = {
