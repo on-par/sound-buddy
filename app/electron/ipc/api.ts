@@ -59,7 +59,6 @@ export interface TestLlmProviderOpts {
 
 export interface AnalyzeFileOpts {
   filePath: string;
-  noSpectrum?: boolean;
 }
 
 export interface StartLiveOpts {
