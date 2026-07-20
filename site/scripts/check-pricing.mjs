@@ -79,6 +79,24 @@ if (countdownIdx === -1 || !(pricingSectionIdx !== -1 && countdownIdx > pricingS
   problems.push('Founding countdown must render inside the #pricing section (#377).');
 }
 
+// #559 — the money-back guarantee must be visible inside the pricing block,
+// not just in the footer, and must link to the policy it quotes.
+const guaranteeIdx = html.indexOf('money-back guarantee');
+const tiersIdx = html.indexOf('class="tiers"');
+if (guaranteeIdx === -1) {
+  problems.push('Money-back guarantee copy not found in built HTML (#559).');
+} else if (pricingSectionIdx === -1 || !(guaranteeIdx > pricingSectionIdx)) {
+  problems.push('Money-back guarantee must render inside the #pricing section (#559).');
+} else if (tiersIdx !== -1 && !(guaranteeIdx < tiersIdx)) {
+  problems.push('Money-back guarantee must render above the tier grid, next to the price (#559).');
+}
+if (!/class="guarantee"[^>]*href="\/refund"|href="\/refund"[^>]*class="guarantee"/.test(html)) {
+  problems.push('Guarantee badge must link to /refund (#559).');
+}
+if (/14[-\s]day money-back/i.test(html)) {
+  problems.push('Guarantee window must be 30 days, matching /refund — "14-day money-back" found (#559).');
+}
+
 if (problems.length) {
   console.error(`✖ ${problems.length} pricing invariant(s) broken:`);
   for (const p of problems) console.error('  ' + p);

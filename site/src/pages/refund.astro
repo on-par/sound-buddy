@@ -1,22 +1,30 @@
 ---
 import LegalLayout from '../layouts/LegalLayout.astro';
+import { GUARANTEE_SENTENCE, GUARANTEE_WINDOW_DAYS } from '../lib/guarantee';
 ---
 
 <LegalLayout
   title="Refund Policy"
   description="Sound Buddy's refund policy — a 30-day full refund, no questions asked. Clear terms for monthly and annual subscribers."
-  updated="July 7, 2026"
+  updated="July 20, 2026"
 >
   <p>
     We want Sound Buddy to earn its place at your desk. If it doesn't, we'll refund you.
-    This policy explains how refunds work for the Sound Buddy Pro subscription.
+    This policy explains how refunds work for the Sound Buddy Pro subscription and for the
+    one-time Founding Lifetime purchase.
   </p>
 
   <div class="callout">
-    <p><strong>30-day money-back guarantee.</strong> If you're not happy with Sound Buddy Pro
-    for any reason within 30 days of your first payment, email us and we'll refund you in full —
-    no questions asked.</p>
+    <p><strong>{GUARANTEE_SENTENCE}</strong> If you're not happy with Sound Buddy Pro
+    for any reason within {GUARANTEE_WINDOW_DAYS} days of your first payment, email us and
+    we'll refund you in full — no questions asked.</p>
   </div>
+
+  <h2>Founding Lifetime (one-time purchase)</h2>
+  <p>
+    Within {GUARANTEE_WINDOW_DAYS} days of purchase — full refund, no questions asked. After
+    that, the lifetime license is yours to keep and there is nothing to cancel.
+  </p>
 
   <h2>Annual subscriptions</h2>
   <ul>

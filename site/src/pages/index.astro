@@ -8,6 +8,7 @@ import reportCardShot from '../assets/screenshots/report-card.png';
 import momentumShot from '../assets/screenshots/momentum.png';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { GUARANTEE_BADGE, REFUND_PATH } from '../lib/guarantee';
 
 const DOWNLOAD_URL = '/download';
 const REPO_URL = 'https://github.com/on-par/sound-buddy';
@@ -348,6 +349,10 @@ const tiers = [
           to claim one of {FOUNDING_CAP}.
         </p>
       </div>
+      <a class="guarantee" href={REFUND_PATH}>
+        <span class="guarantee-icon" aria-hidden="true">✓</span>
+        <span class="guarantee-copy">{GUARANTEE_BADGE}</span>
+      </a>
       <div class="tiers">
         {tiers.map((t) => (
           <div class={`tier card ${t.founding ? 'founding' : ''}`}>
@@ -577,6 +582,13 @@ const tiers = [
     flex-shrink: 0; animation: fc-pulse 2s var(--ease-out) infinite; }
   @keyframes fc-pulse { 0%,100% { opacity: 1; } 50% { opacity: .35; } }
   @media (prefers-reduced-motion: reduce) { .fc-pulse { animation: none; } }
+  .guarantee { display: flex; align-items: center; gap: 8px;
+    margin: 12px auto 0; padding: 8px 16px; max-width: max-content;
+    background: var(--good-tint); border: 1px solid var(--good-border);
+    border-radius: var(--radius-pill); color: var(--good-text);
+    font: var(--fw-medium) var(--fs-body-sm)/var(--lh-snug) var(--font-sans);
+    text-align: center; }
+  .guarantee-icon { flex-shrink: 0; font-weight: var(--fw-semibold); }
   .tiers { display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px; margin-top: 36px; }
   .tier { padding: 28px 26px; display: flex; flex-direction: column; gap: 14px; position: relative; }
   .tier.founding { border-color: var(--gold-500); box-shadow: var(--elevation-card), var(--glow-gold); transform: scale(1.03); z-index: 1; }
