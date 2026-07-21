@@ -75,6 +75,29 @@ Given both env vars, `scripts/release.sh`:
 7. Assesses the result with Gatekeeper (`spctl --assess --verbose=4`) and
    aborts the release if it isn't accepted.
 
+## The signed, notarized DMG (#622)
+
+electron-builder 24 notarizes and staples only the `.app` — its
+`notarizeIfProvided()` call runs inside the sign phase, before any target
+(zip, dmg) is built, and is passed the `.app` path only. The DMG built
+afterwards therefore contains a stapled app but carries no notarization
+ticket of its own, so `xcrun stapler validate` against the `.dmg` fails
+unless something submits and staples the DMG separately.
+
+`app/build/afterAllArtifactBuild.js` does that: it runs once all artifacts
+are built, uses `packages/shared`'s `planDmgNotarization()` to decide what to
+do, and — if `APPLE_KEYCHAIN_PROFILE` is set — runs `xcrun notarytool submit
+--wait` and `xcrun stapler staple` against each `.dmg` electron-builder
+produced. All decision logic (which env var gates this, which files count as
+a `.dmg`) is a pure function in `packages/shared/src/dmg-notarization.ts`;
+the hook itself is a thin shell, mirroring the `signing.ts` ⇄ `afterPack.js`
+split. Unsigned builds (no `APPLE_KEYCHAIN_PROFILE`) skip this step silently
+— the DMG still builds, just unnotarized.
+
+`scripts/release.sh` verifies the result the same way it verifies the app:
+`xcrun stapler validate` and `spctl --assess --type open --context
+context:primary-signature` against the `.dmg`, before pushing or publishing.
+
 ## Manual verification (acceptance criteria)
 
 On a fresh macOS install (or a machine that has never opened this app):
@@ -86,6 +109,11 @@ On a fresh macOS install (or a machine that has never opened this app):
 3. `codesign -dv --verbose=4 "/Applications/Sound Buddy.app"` shows the
    Developer ID Application certificate.
 4. `xcrun stapler validate "/Applications/Sound Buddy.app"` prints "The
+   validate action worked!".
+5. Download the release `.dmg`, open it — the window shows **Sound Buddy.app**
+   next to an `/Applications` shortcut for drag-to-install, with no Gatekeeper
+   prompt.
+6. `xcrun stapler validate "Sound Buddy-<version>-arm64.dmg"` prints "The
    validate action worked!".
 
 ## Troubleshooting

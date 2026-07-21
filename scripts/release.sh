@@ -177,10 +177,12 @@ fi
 
 ZIP="$APP/release/Sound Buddy-$NEXT-arm64-mac.zip"
 [[ -f "$ZIP" ]] || die "expected zip not found: $ZIP"
+DMG="$APP/release/Sound Buddy-$NEXT-arm64.dmg"
+[[ -f "$DMG" ]] || die "expected dmg not found: $DMG — check the dmg target in app/electron-builder.yml"
 # Sanity: the bundle must actually be self-contained.
 APP_RES="$APP/release/mac-arm64/Sound Buddy.app/Contents/Resources"
 [[ -x "$APP_RES/bin/sox" && -x "$APP_RES/python/bin/python3" ]] || die "bundle is missing sox/python — build problem"
-say "Built $(basename "$ZIP") ($(du -h "$ZIP" | cut -f1))"
+say "Built $(basename "$ZIP") ($(du -h "$ZIP" | cut -f1)), $(basename "$DMG") ($(du -h "$DMG" | cut -f1))"
 
 # ── Verify the notarized, stapled artifact ───────────────────────────────────
 # electron-builder already submitted to Apple, stapled the ticket, and *then*
@@ -210,6 +212,27 @@ if [[ "$SIGNED" == "true" ]]; then
     if (!v.accepted) { console.error(v.error); process.exit(1); }
     console.log("spctl: accepted");
   ' "$SPCTL_OUT" || die "Gatekeeper assessment failed — the build must not ship; see error above"
+
+  # electron-builder does not notarize the dmg itself (#622) —
+  # app/build/afterAllArtifactBuild.js submitted + stapled it separately
+  # during the build above. Verify that ticket landed before publishing.
+  say "Validating the stapled DMG notarization ticket"
+  DMG_STAPLER_OUT="$(xcrun stapler validate "$DMG" 2>&1 || true)"
+  node --input-type=module -e '
+    import { parseStaplerValidation } from "'"$ROOT"'/packages/shared/dist/index.js";
+    const v = parseStaplerValidation(process.argv[1]);
+    if (!v.stapled) { console.error(v.error); process.exit(1); }
+    console.log("stapler: valid ticket stapled to dmg");
+  ' "$DMG_STAPLER_OUT" || die "DMG stapled-ticket validation failed — the build must not ship; see error above"
+
+  say "Assessing the DMG with Gatekeeper (spctl)"
+  DMG_SPCTL_OUT="$(spctl --assess --type open --context context:primary-signature --verbose=4 "$DMG" 2>&1 || true)"
+  node --input-type=module -e '
+    import { parseSpctlAssessment } from "'"$ROOT"'/packages/shared/dist/index.js";
+    const v = parseSpctlAssessment(process.argv[1]);
+    if (!v.accepted) { console.error(v.error); process.exit(1); }
+    console.log("spctl: dmg accepted");
+  ' "$DMG_SPCTL_OUT" || die "DMG Gatekeeper assessment failed — the build must not ship; see error above"
 fi
 
 # ── Tag the source repo ──────────────────────────────────────────────────────
@@ -222,7 +245,7 @@ git -C "$ROOT" push -q origin "$TAG"
 
 # ── Publish to the public download repo ──────────────────────────────────────
 say "Publishing to $PUBLIC_REPO"
-gh release create "$TAG" "$ZIP" -R "$PUBLIC_REPO" \
+gh release create "$TAG" "$ZIP" "$DMG" -R "$PUBLIC_REPO" \
   --title "Sound Buddy $TAG (macOS Apple Silicon)" \
   --notes "$NOTES" \
   || die "publishing $TAG to $PUBLIC_REPO failed — no release was created and app/site update discovery (latest.json) was NOT updated; fix the error above and re-run scripts/release.sh"

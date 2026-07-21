@@ -66,3 +66,41 @@ describe('release.sh notarization (#621)', () => {
     expect(electronBuilderYml).toMatch(/^\s+notarize: false$/m);
   });
 });
+
+describe('release.sh dmg publishing (#622)', () => {
+  it('defines DMG=', () => {
+    expect(releaseScript).toMatch(/^DMG="/m);
+  });
+
+  it('dies when the expected dmg is missing', () => {
+    expect(releaseScript).toMatch(/\[\[ -f "\$DMG" \]\] \|\| die/);
+  });
+
+  it('validates the stapled ticket on the dmg with xcrun stapler validate', () => {
+    expect(releaseScript).toMatch(/xcrun stapler validate "\$DMG"/);
+  });
+
+  it('passes both the zip and the dmg to gh release create', () => {
+    expect(releaseScript).toMatch(/gh release create "\$TAG" "\$ZIP" "\$DMG"/);
+  });
+
+  it('runs the dmg verification before pushing to the source repo', () => {
+    const dmgStaplerIndex = releaseScript.indexOf('xcrun stapler validate "$DMG"');
+    const pushIndex = releaseScript.indexOf('git -C "$ROOT" push');
+    expect(dmgStaplerIndex).toBeGreaterThan(-1);
+    expect(pushIndex).toBeGreaterThan(-1);
+    expect(dmgStaplerIndex).toBeLessThan(pushIndex);
+  });
+
+  it('runs the dmg verification before publishing the release', () => {
+    const dmgStaplerIndex = releaseScript.indexOf('xcrun stapler validate "$DMG"');
+    const releaseIndex = releaseScript.indexOf('gh release create');
+    expect(dmgStaplerIndex).toBeGreaterThan(-1);
+    expect(releaseIndex).toBeGreaterThan(-1);
+    expect(dmgStaplerIndex).toBeLessThan(releaseIndex);
+  });
+
+  it('ASSET_NAME still ends in .zip (manifest contract unchanged)', () => {
+    expect(releaseScript).toMatch(/ASSET_NAME="Sound\.Buddy-\$NEXT-arm64-mac\.zip"/);
+  });
+});
