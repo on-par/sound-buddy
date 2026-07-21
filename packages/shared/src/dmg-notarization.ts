@@ -11,6 +11,9 @@
 
 export const DMG_EXTENSION = '.dmg';
 export const KEYCHAIN_PROFILE_VAR = 'APPLE_KEYCHAIN_PROFILE';
+const APPLE_ID_VAR = 'APPLE_ID';
+const APPLE_TEAM_ID_VAR = 'APPLE_TEAM_ID';
+const APPLE_APP_SPECIFIC_PASSWORD_VAR = 'APPLE_APP_SPECIFIC_PASSWORD';
 
 const DMG_EXTENSION_PATTERN = /\.dmg$/i;
 
@@ -29,7 +32,7 @@ export interface DmgNotarizationStep {
 
 export type DmgNotarizationPlan =
   | { notarize: false; reason: string }
-  | { notarize: true; steps: DmgNotarizationStep[] };
+  | { notarize: true; steps: DmgNotarizationStep[]; redactValues: string[] };
 
 function trimmedOrUndefined(value: string | undefined): string | undefined {
   const trimmed = value?.trim();
@@ -41,13 +44,20 @@ export function planDmgNotarization(
   env: Record<string, string | undefined>,
 ): DmgNotarizationPlan {
   const profile = trimmedOrUndefined(env[KEYCHAIN_PROFILE_VAR]);
-  if (!profile) {
+  const appleId = trimmedOrUndefined(env[APPLE_ID_VAR]);
+  const teamId = trimmedOrUndefined(env[APPLE_TEAM_ID_VAR]);
+  const appSpecificPassword = trimmedOrUndefined(env[APPLE_APP_SPECIFIC_PASSWORD_VAR]);
+  const ascComplete = Boolean(appleId && teamId && appSpecificPassword);
+
+  if (!profile && !ascComplete) {
     return {
       notarize: false,
       reason:
-        `${KEYCHAIN_PROFILE_VAR} not set — skipping DMG notarization (unsigned build). Set ` +
-        `SOUND_BUDDY_SIGNING_IDENTITY + SOUND_BUDDY_NOTARY_PROFILE and release via ` +
-        `scripts/release.sh to produce a notarized DMG (docs/signing-and-notarization.md).`,
+        `neither ${KEYCHAIN_PROFILE_VAR} (local) nor all of ${APPLE_ID_VAR}, ${APPLE_TEAM_ID_VAR}, ` +
+        `${APPLE_APP_SPECIFIC_PASSWORD_VAR} (CI) are set — skipping DMG notarization (unsigned build). Set ` +
+        `SOUND_BUDDY_SIGNING_IDENTITY + SOUND_BUDDY_NOTARY_PROFILE and release via scripts/release.sh locally, or ` +
+        `${APPLE_ID_VAR}/${APPLE_TEAM_ID_VAR}/${APPLE_APP_SPECIFIC_PASSWORD_VAR} in CI, to produce a notarized DMG ` +
+        `(docs/signing-and-notarization.md).`,
     };
   }
 
@@ -56,8 +66,20 @@ export function planDmgNotarization(
     return {
       notarize: false,
       reason:
-        `${KEYCHAIN_PROFILE_VAR} is set but no .dmg was found in the build output — check that ` +
+        `notary credentials are set but no .dmg was found in the build output — check that ` +
         `mac.target includes "dmg" in app/electron-builder.yml.`,
+    };
+  }
+
+  if (profile) {
+    return {
+      notarize: true,
+      steps: dmgPaths.map((dmgPath) => ({
+        dmgPath,
+        submitArgs: ['notarytool', 'submit', dmgPath, '--keychain-profile', profile, '--wait'],
+        stapleArgs: ['stapler', 'staple', dmgPath],
+      })),
+      redactValues: [],
     };
   }
 
@@ -65,8 +87,15 @@ export function planDmgNotarization(
     notarize: true,
     steps: dmgPaths.map((dmgPath) => ({
       dmgPath,
-      submitArgs: ['notarytool', 'submit', dmgPath, '--keychain-profile', profile, '--wait'],
+      submitArgs: [
+        'notarytool', 'submit', dmgPath,
+        '--apple-id', appleId as string,
+        '--team-id', teamId as string,
+        '--password', appSpecificPassword as string,
+        '--wait',
+      ],
       stapleArgs: ['stapler', 'staple', dmgPath],
     })),
+    redactValues: [appSpecificPassword as string],
   };
 }

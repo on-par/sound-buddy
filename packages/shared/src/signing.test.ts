@@ -2,9 +2,12 @@ import { describe, expect, it } from 'vitest';
 import {
   CODESIGN_BATCH_SIZE,
   isMachOBinary,
+  parseCodesigningIdentity,
   parseSpctlAssessment,
   parseStaplerValidation,
   planCodesignBatches,
+  REDACTED,
+  redactSecrets,
   resolveSigningConfig,
 } from './signing.js';
 
@@ -19,6 +22,7 @@ describe('resolveSigningConfig', () => {
       identity: 'Developer ID Application: Patrick Robinson (TEAMID)',
       identityName: 'Patrick Robinson (TEAMID)',
       notaryProfile: 'sound-buddy-notary',
+      notaryAuth: { kind: 'keychain-profile', profile: 'sound-buddy-notary' },
     });
   });
 
@@ -38,16 +42,16 @@ describe('resolveSigningConfig', () => {
     ).toEqual({ signed: false });
   });
 
-  it('throws naming both variables when only SOUND_BUDDY_SIGNING_IDENTITY is set', () => {
+  it('throws naming both routes when only SOUND_BUDDY_SIGNING_IDENTITY is set', () => {
     expect(() =>
       resolveSigningConfig({ SOUND_BUDDY_SIGNING_IDENTITY: 'Developer ID Application: X (TEAMID)' }),
-    ).toThrow(/SOUND_BUDDY_SIGNING_IDENTITY.*SOUND_BUDDY_NOTARY_PROFILE|SOUND_BUDDY_NOTARY_PROFILE.*SOUND_BUDDY_SIGNING_IDENTITY/s);
+    ).toThrow(/SOUND_BUDDY_SIGNING_IDENTITY.*SOUND_BUDDY_NOTARY_PROFILE/s);
   });
 
-  it('throws naming the missing variable when only SOUND_BUDDY_SIGNING_IDENTITY is set', () => {
+  it('throws naming every missing ASC var when only SOUND_BUDDY_SIGNING_IDENTITY is set', () => {
     expect(() =>
       resolveSigningConfig({ SOUND_BUDDY_SIGNING_IDENTITY: 'Developer ID Application: X (TEAMID)' }),
-    ).toThrow(/SOUND_BUDDY_NOTARY_PROFILE is missing/);
+    ).toThrow(/missing APPLE_ID, APPLE_TEAM_ID, APPLE_APP_SPECIFIC_PASSWORD/);
   });
 
   it('throws naming the missing variable when only SOUND_BUDDY_NOTARY_PROFILE is set', () => {
@@ -65,18 +69,18 @@ describe('resolveSigningConfig', () => {
     ).toThrow(/SOUND_BUDDY_SIGNING_IDENTITY is missing/);
   });
 
-  it('treats a whitespace-only notaryProfile as unset -> single-var error naming notaryProfile missing', () => {
+  it('treats a whitespace-only notaryProfile with no ASC vars as incomplete-credentials -> throws naming all three ASC vars', () => {
     expect(() =>
       resolveSigningConfig({
         SOUND_BUDDY_SIGNING_IDENTITY: 'Developer ID Application: X (TEAMID)',
         SOUND_BUDDY_NOTARY_PROFILE: '   ',
       }),
-    ).toThrow(/SOUND_BUDDY_NOTARY_PROFILE is missing/);
+    ).toThrow(/missing APPLE_ID, APPLE_TEAM_ID, APPLE_APP_SPECIFIC_PASSWORD/);
   });
 
-  it('error message states both are required to sign, or neither to build unsigned', () => {
+  it('error message offers both routes (SOUND_BUDDY_NOTARY_PROFILE or the three APPLE_* vars) or unsetting the identity', () => {
     expect(() => resolveSigningConfig({ SOUND_BUDDY_SIGNING_IDENTITY: 'x' })).toThrow(
-      /both.*required|either.*or neither/i,
+      /Either set SOUND_BUDDY_NOTARY_PROFILE.*or set all of APPLE_ID, APPLE_TEAM_ID, APPLE_APP_SPECIFIC_PASSWORD.*or unset SOUND_BUDDY_SIGNING_IDENTITY to build unsigned/s,
     );
   });
 
@@ -90,6 +94,7 @@ describe('resolveSigningConfig', () => {
       identity: 'Developer ID Application: X (TEAMID)',
       identityName: 'X (TEAMID)',
       notaryProfile: 'sound-buddy-notary',
+      notaryAuth: { kind: 'keychain-profile', profile: 'sound-buddy-notary' },
     });
   });
 
@@ -148,6 +153,72 @@ describe('resolveSigningConfig', () => {
     });
     expect(config.identityName).toBe('X (TEAMID)');
     expect(config.identity).toBe('Developer ID Application: X (TEAMID)');
+  });
+
+  it('resolves signed: true via the App Store Connect route (identity + APPLE_ID/APPLE_TEAM_ID/APPLE_APP_SPECIFIC_PASSWORD)', () => {
+    const config = resolveSigningConfig({
+      SOUND_BUDDY_SIGNING_IDENTITY: 'Developer ID Application: X (TEAMID)',
+      APPLE_ID: 'dev@onpar.example',
+      APPLE_TEAM_ID: 'Q7LB49TPBS',
+      APPLE_APP_SPECIFIC_PASSWORD: 'abcd-efgh-ijkl-mnop',
+    });
+    expect(config).toEqual({
+      signed: true,
+      identity: 'Developer ID Application: X (TEAMID)',
+      identityName: 'X (TEAMID)',
+      notaryAuth: {
+        kind: 'app-store-connect',
+        appleId: 'dev@onpar.example',
+        teamId: 'Q7LB49TPBS',
+        appSpecificPassword: 'abcd-efgh-ijkl-mnop',
+      },
+    });
+  });
+
+  it('the keychain-profile route wins when both routes are present (local behaviour must not change)', () => {
+    const config = resolveSigningConfig({
+      SOUND_BUDDY_SIGNING_IDENTITY: 'Developer ID Application: X (TEAMID)',
+      SOUND_BUDDY_NOTARY_PROFILE: 'sound-buddy-notary',
+      APPLE_ID: 'dev@onpar.example',
+      APPLE_TEAM_ID: 'Q7LB49TPBS',
+      APPLE_APP_SPECIFIC_PASSWORD: 'abcd-efgh-ijkl-mnop',
+    });
+    expect(config.notaryProfile).toBe('sound-buddy-notary');
+    expect(config.notaryAuth).toEqual({ kind: 'keychain-profile', profile: 'sound-buddy-notary' });
+  });
+
+  it.each([
+    ['APPLE_ID', { APPLE_TEAM_ID: 'Q7LB49TPBS', APPLE_APP_SPECIFIC_PASSWORD: 'pw' }],
+    ['APPLE_TEAM_ID', { APPLE_ID: 'dev@onpar.example', APPLE_APP_SPECIFIC_PASSWORD: 'pw' }],
+    ['APPLE_APP_SPECIFIC_PASSWORD', { APPLE_ID: 'dev@onpar.example', APPLE_TEAM_ID: 'Q7LB49TPBS' }],
+  ])('throws naming exactly %s when it is the only missing ASC var', (missingVar, presentVars) => {
+    expect(() =>
+      resolveSigningConfig({
+        SOUND_BUDDY_SIGNING_IDENTITY: 'Developer ID Application: X (TEAMID)',
+        ...presentVars,
+      }),
+    ).toThrow(new RegExp(`missing ${missingVar}$|missing ${missingVar}\\.`));
+  });
+
+  it('does not name a var as missing when it is present in the partial-ASC error', () => {
+    expect(() =>
+      resolveSigningConfig({
+        SOUND_BUDDY_SIGNING_IDENTITY: 'Developer ID Application: X (TEAMID)',
+        APPLE_ID: 'dev@onpar.example',
+        APPLE_TEAM_ID: 'Q7LB49TPBS',
+      }),
+    ).not.toThrow(/missing APPLE_ID\b/);
+  });
+
+  it('treats whitespace-only ASC vars as unset', () => {
+    expect(() =>
+      resolveSigningConfig({
+        SOUND_BUDDY_SIGNING_IDENTITY: 'Developer ID Application: X (TEAMID)',
+        APPLE_ID: '  ',
+        APPLE_TEAM_ID: 'Q7LB49TPBS',
+        APPLE_APP_SPECIFIC_PASSWORD: 'pw',
+      }),
+    ).toThrow(/missing APPLE_ID/);
   });
 });
 
@@ -270,5 +341,92 @@ describe('planCodesignBatches', () => {
   it.each([0, -1, 1.5])('throws an actionable message for batchSize %s', (batchSize) => {
     expect(() => planCodesignBatches(['a'], batchSize)).toThrow(/positive integer/);
     expect(() => planCodesignBatches(['a'], batchSize)).toThrow(String(batchSize));
+  });
+});
+
+describe('parseCodesigningIdentity', () => {
+  const findIdentityOutput = [
+    'Policy: X.509 Basic',
+    'Matching identities',
+    '  1) 79F5F4CC55A6F3936A7C398A5EB49DD2B0C5A619 "Developer ID Application: On PAR Dev LLC (Q7LB49TPBS)"',
+    '     1 valid identities found',
+  ].join('\n');
+
+  it('extracts the full identity string from realistic find-identity output', () => {
+    const result = parseCodesigningIdentity(findIdentityOutput, 'Q7LB49TPBS');
+    expect(result).toEqual({ identity: 'Developer ID Application: On PAR Dev LLC (Q7LB49TPBS)' });
+  });
+
+  it('returns an actionable error when no matching certificate is found', () => {
+    const result = parseCodesigningIdentity(findIdentityOutput, 'DIFFERENTTEAM');
+    expect(result.identity).toBeUndefined();
+    expect(result.error).toMatch(/no "Developer ID Application: … \(DIFFERENTTEAM\)" certificate found/);
+    expect(result.error).toMatch(/APPLE_CERT_P12_BASE64/);
+    expect(result.error).toMatch(/APPLE_TEAM_ID/);
+    expect(result.error).toContain(findIdentityOutput);
+  });
+
+  it('returns an actionable error when two distinct certificates match the same team id', () => {
+    const ambiguousOutput = [
+      '  1) AAA "Developer ID Application: On PAR Dev LLC (Q7LB49TPBS)"',
+      '  2) BBB "Developer ID Application: Patrick Robinson (Q7LB49TPBS)"',
+    ].join('\n');
+    const result = parseCodesigningIdentity(ambiguousOutput, 'Q7LB49TPBS');
+    expect(result.identity).toBeUndefined();
+    expect(result.error).toMatch(/ambiguous/i);
+    expect(result.error).toContain('Developer ID Application: On PAR Dev LLC (Q7LB49TPBS)');
+    expect(result.error).toContain('Developer ID Application: Patrick Robinson (Q7LB49TPBS)');
+  });
+
+  it('dedupes duplicate lines for the same certificate into a single match', () => {
+    const duplicateOutput = [
+      '  1) AAA "Developer ID Application: On PAR Dev LLC (Q7LB49TPBS)"',
+      '  2) AAA "Developer ID Application: On PAR Dev LLC (Q7LB49TPBS)"',
+    ].join('\n');
+    const result = parseCodesigningIdentity(duplicateOutput, 'Q7LB49TPBS');
+    expect(result).toEqual({ identity: 'Developer ID Application: On PAR Dev LLC (Q7LB49TPBS)' });
+  });
+
+  it('escapes regex metacharacters in the team id', () => {
+    const output = '  1) AAA "Developer ID Application: On PAR Dev LLC (TEAM.ID+X)"';
+    expect(parseCodesigningIdentity(output, 'TEAM.ID+X')).toEqual({
+      identity: 'Developer ID Application: On PAR Dev LLC (TEAM.ID+X)',
+    });
+    // A literal-dot team id must not match an unrelated single-char-substituted string.
+    expect(parseCodesigningIdentity('  1) AAA "Developer ID Application: X (TEAMXIDXX)"', 'TEAM.ID+X')).toEqual({
+      identity: undefined,
+      error: expect.stringContaining('no "Developer ID Application:'),
+    });
+  });
+});
+
+describe('redactSecrets', () => {
+  it('replaces every occurrence of a secret', () => {
+    const text = 'xcrun failed: --password hunter2 (retry with hunter2)';
+    expect(redactSecrets(text, ['hunter2'])).toBe(`xcrun failed: --password ${REDACTED} (retry with ${REDACTED})`);
+  });
+
+  it('replaces multiple distinct secrets', () => {
+    const text = 'id=alice pw=secret1 other=secret2';
+    expect(redactSecrets(text, ['secret1', 'secret2'])).toBe(`id=alice pw=${REDACTED} other=${REDACTED}`);
+  });
+
+  it('ignores undefined, empty, and whitespace-only secrets', () => {
+    const text = 'nothing to redact here';
+    expect(redactSecrets(text, [undefined, '', '   '])).toBe(text);
+  });
+
+  it('is a no-op when none of the secrets appear in the text', () => {
+    const text = 'clean log line';
+    expect(redactSecrets(text, ['not-present'])).toBe(text);
+  });
+
+  it('escapes regex metacharacters in the secret', () => {
+    const text = 'password was a.b+c(d)';
+    expect(redactSecrets(text, ['a.b+c(d)'])).toBe(`password was ${REDACTED}`);
+  });
+
+  it('REDACTED is the literal "***"', () => {
+    expect(REDACTED).toBe('***');
   });
 });

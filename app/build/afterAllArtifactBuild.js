@@ -36,8 +36,19 @@ module.exports = async function afterAllArtifactBuild(buildResult) {
 
   for (const step of plan.steps) {
     log(`notarizing ${path.basename(step.dmgPath)} (this waits on Apple)`);
-    execFileSync('xcrun', step.submitArgs, { stdio: 'inherit' });
-    execFileSync('xcrun', step.stapleArgs, { stdio: 'inherit' });
+    try {
+      execFileSync('xcrun', step.submitArgs, { stdio: 'inherit' });
+      execFileSync('xcrun', step.stapleArgs, { stdio: 'inherit' });
+    } catch (err) {
+      // On the App Store Connect route, step.submitArgs carries the app-specific
+      // password — Node embeds the full argv in a failed execFileSync's Error
+      // message, so that message must be scrubbed before it can propagate to logs.
+      // Deliberately not passed as `cause`: Node prints an Error's full cause
+      // chain on an uncaught throw, which would print the unredacted original
+      // right back out.
+      // eslint-disable-next-line preserve-caught-error -- cause would leak the secret this rethrow exists to redact
+      throw new Error(shared.redactSecrets(err.message, plan.redactValues));
+    }
   }
 
   return []; // no new artifacts — the dmg is stapled in place

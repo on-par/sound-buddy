@@ -42,6 +42,46 @@ Both variables must be set together — set one without the other and
 `scripts/release.sh` fails fast with an actionable message. Leave both unset
 to build the existing unsigned, self-contained flow unchanged.
 
+## Signing in CI (#624)
+
+`.github/workflows/release.yml` signs and notarizes every tagged release the
+same way `scripts/release.sh` does locally, but a GitHub Actions runner is
+fresh on every run — it has no keychain with a certificate already imported,
+and no stored `notarytool` keychain profile. The workflow authenticates
+notarization with `--apple-id`/`--team-id`/`--password` instead of
+`--keychain-profile`, and it imports the certificate into a **temporary,
+randomly-named keychain** at the start of the job, then deletes it at the end
+(even on failure). The login keychain is never touched.
+
+Set these five repository secrets under **Settings → Secrets and variables →
+Actions**:
+
+| Secret | Value |
+| --- | --- |
+| `APPLE_CERT_P12_BASE64` | The Developer ID Application certificate **and its private key**, exported as a `.p12` and base64-encoded |
+| `APPLE_CERT_PASSWORD` | The password used to protect that `.p12` on export |
+| `APPLE_ID` | The On PAR Dev business Apple ID used for notarization |
+| `APPLE_TEAM_ID` | `Q7LB49TPBS` |
+| `APPLE_APP_SPECIFIC_PASSWORD` | An app-specific password for `APPLE_ID`, created at [appleid.apple.com](https://appleid.apple.com) |
+
+To produce `APPLE_CERT_P12_BASE64`: open Keychain Access, find the Developer
+ID Application certificate (it must show the disclosure triangle with its
+private key underneath — exporting the certificate alone is not enough),
+select both, choose **File → Export Items…**, save as a `.p12`, then:
+
+```bash
+base64 -i cert.p12 | pbcopy
+```
+
+Paste the clipboard contents directly into the `APPLE_CERT_P12_BASE64` secret.
+
+If any of the five secrets is missing, the workflow's "Verify signing
+secrets" step fails the job immediately, before any build work runs — CI
+never silently falls back to an unsigned build. `packages/shared/src/release-workflow.ts`
+statically audits the workflow file itself (temporary-keychain-only,
+guaranteed cleanup, no secret ever logged) so a future edit to
+`release.yml` that reintroduces one of these problems fails its own test.
+
 ## What the pipeline does automatically
 
 Given both env vars, `scripts/release.sh`:

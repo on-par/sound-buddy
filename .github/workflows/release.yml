@@ -6,6 +6,14 @@ name: Release
 # repo needs a RELEASES_TOKEN secret (a fine-grained PAT with contents:write on
 # on-par/sound-buddy-releases). Without that secret the build still runs and the
 # zip can be grabbed from the run's artifacts / published manually.
+#
+# Signing + notarization (#624): every tagged build is signed with the
+# Developer ID Application certificate and notarized. The certificate is
+# imported into a temporary, randomly-named keychain that is deleted at the
+# end of the job (even on failure) — the login keychain is never touched. A
+# fresh runner has no stored notarytool keychain profile, so notarization
+# authenticates with --apple-id/--team-id/--password instead of
+# --keychain-profile (see docs/signing-and-notarization.md § CI).
 on:
   push:
     tags:
@@ -15,6 +23,11 @@ on:
 
 env:
   RELEASES_TOKEN: ${{ secrets.RELEASES_TOKEN }}
+  APPLE_CERT_P12_BASE64: ${{ secrets.APPLE_CERT_P12_BASE64 }}
+  APPLE_CERT_PASSWORD: ${{ secrets.APPLE_CERT_PASSWORD }}
+  APPLE_ID: ${{ secrets.APPLE_ID }}
+  APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+  APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
 
 jobs:
   release:
@@ -46,8 +59,82 @@ jobs:
       - name: Lint
         run: npm run lint
 
-      - name: Build macOS zip
-        run: npm run dist --prefix app
+      # No `if:` — CI must never produce an unsigned artifact, including on a
+      # manual workflow_dispatch run, so this always runs and fails the job
+      # before any build work if a secret is absent.
+      - name: Verify signing secrets
+        run: node scripts/ci-signing.mjs check-secrets
+
+      - name: Import signing certificate (temporary keychain)
+        run: |
+          set -euo pipefail
+          KEYCHAIN_PATH="$RUNNER_TEMP/sound-buddy-signing-$(openssl rand -hex 12).keychain-db"
+          KEYCHAIN_PASSWORD="$(openssl rand -base64 24)"
+          CERT_PATH="$RUNNER_TEMP/cert-$(openssl rand -hex 12).p12"
+          echo "KEYCHAIN_PATH=$KEYCHAIN_PATH" >> "$GITHUB_ENV"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          printf '%s' "$APPLE_CERT_P12_BASE64" | base64 --decode > "$CERT_PATH"
+          security import "$CERT_PATH" -k "$KEYCHAIN_PATH" -P "$APPLE_CERT_PASSWORD" \
+            -T /usr/bin/codesign -T /usr/bin/security -f pkcs12 -A
+          rm -f "$CERT_PATH"
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH" >/dev/null
+          # Prepend to the user search list so codesign/afterPack find the identity; keep the existing ones.
+          security list-keychains -d user -s "$KEYCHAIN_PATH" $(security list-keychains -d user | tr -d '"')
+          IDENTITY="$(security find-identity -v -p codesigning "$KEYCHAIN_PATH" | node "$GITHUB_WORKSPACE/scripts/ci-signing.mjs" identity)"
+          echo "SOUND_BUDDY_SIGNING_IDENTITY=$IDENTITY" >> "$GITHUB_ENV"
+
+      - name: Build macOS zip + dmg (signed + notarized)
+        env:
+          CSC_KEYCHAIN: ${{ env.KEYCHAIN_PATH }}
+        run: |
+          set -euo pipefail
+          IDENTITY_NAME="${SOUND_BUDDY_SIGNING_IDENTITY#Developer ID Application: }"
+          npm run dist --prefix app -- -c.mac.identity="$IDENTITY_NAME" -c.mac.notarize=true
+
+      # Mirrors scripts/release.sh's Phase A verification (same shared parsers,
+      # same node --input-type=module idiom) — any failure here means the
+      # build must not ship, so it fails the job before the publish step.
+      - name: Verify the signed artifact
+        run: |
+          set -euo pipefail
+          APP_BUNDLE="app/release/mac-arm64/Sound Buddy.app"
+          DMG="$(ls app/release/*.dmg)"
+
+          codesign --verify --deep --strict "$APP_BUNDLE"
+
+          STAPLER_OUT="$(xcrun stapler validate "$APP_BUNDLE" 2>&1 || true)"
+          node --input-type=module -e '
+            import { parseStaplerValidation } from "'"$GITHUB_WORKSPACE"'/packages/shared/dist/index.js";
+            const v = parseStaplerValidation(process.argv[1]);
+            if (!v.stapled) { console.error(v.error); process.exit(1); }
+            console.log("stapler: valid ticket stapled to app");
+          ' "$STAPLER_OUT"
+
+          SPCTL_OUT="$(spctl --assess --type execute --verbose=4 "$APP_BUNDLE" 2>&1 || true)"
+          node --input-type=module -e '
+            import { parseSpctlAssessment } from "'"$GITHUB_WORKSPACE"'/packages/shared/dist/index.js";
+            const v = parseSpctlAssessment(process.argv[1]);
+            if (!v.accepted) { console.error(v.error); process.exit(1); }
+            console.log("spctl: app accepted");
+          ' "$SPCTL_OUT"
+
+          DMG_STAPLER_OUT="$(xcrun stapler validate "$DMG" 2>&1 || true)"
+          node --input-type=module -e '
+            import { parseStaplerValidation } from "'"$GITHUB_WORKSPACE"'/packages/shared/dist/index.js";
+            const v = parseStaplerValidation(process.argv[1]);
+            if (!v.stapled) { console.error(v.error); process.exit(1); }
+            console.log("stapler: valid ticket stapled to dmg");
+          ' "$DMG_STAPLER_OUT"
+
+          DMG_SPCTL_OUT="$(spctl --assess --type open --context context:primary-signature --verbose=4 "$DMG" 2>&1 || true)"
+          node --input-type=module -e '
+            import { parseSpctlAssessment } from "'"$GITHUB_WORKSPACE"'/packages/shared/dist/index.js";
+            const v = parseSpctlAssessment(process.argv[1]);
+            if (!v.accepted) { console.error(v.error); process.exit(1); }
+            console.log("spctl: dmg accepted");
+          ' "$DMG_SPCTL_OUT"
 
       # Always available from the run, even when no publish token is configured.
       - name: Upload build artifact
@@ -67,3 +154,13 @@ jobs:
             app/release/*-arm64-mac.zip
           fail_on_unmatched_files: true
           generate_release_notes: true
+
+      - name: Delete the temporary keychain
+        if: always()
+        run: |
+          set -euo pipefail
+          if [ -n "${KEYCHAIN_PATH:-}" ] && [ -f "$KEYCHAIN_PATH" ]; then
+            security delete-keychain "$KEYCHAIN_PATH" || true
+            rm -f "$KEYCHAIN_PATH"
+          fi
+          rm -f "$RUNNER_TEMP"/cert-*.p12
