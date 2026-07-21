@@ -1016,7 +1016,7 @@ function renderLiveWorkspace() {
 function syncLiveAdjustmentsPanel() {
   const body = document.getElementById('spectrum-imperative');
   const html = window.liveAdjustmentsState.panelHTML(
-    setStore.getState().settings, currentMode, liveWindows, lcStore.getState().measurementSource, lapFocusView(), lapCoaching);
+    setStore.getState().settings, currentMode, liveWindows, lcStore.getState().measurementSource, lapFocusView(), lapCoaching, Date.now());
   const existing = body.querySelector('.live-adjustments-panel');
   if (!html) { if (existing) existing.remove(); return; }
   if (!existing) body.insertAdjacentHTML('beforeend', html);
@@ -1176,6 +1176,21 @@ document.getElementById('spectrum-body').addEventListener('click', (e) => {
     const skipBanner = document.querySelector('#spectrum-body .live-setup-banner');
     if (skipBanner) skipBanner.remove();
     renderChannelConfig();
+    return;
+  }
+  // Live coaching dispositions (#613) — engineer control over the active card.
+  // Delegated like every other lap- control so it survives panel re-renders.
+  const lapActionBtn = e.target.closest('[data-lap-action]');
+  if (lapActionBtn) {
+    const lapNow = Date.now();
+    const lapAction = lapActionBtn.dataset.lapAction;
+    const lap = window.liveAdjustmentsState;
+    if (lapAction === 'acknowledge') lapCoaching = lap.acknowledgeCoaching(lapCoaching);
+    else if (lapAction === 'tried') lapCoaching = lap.markTriedCoaching(lapCoaching, lapNow);
+    else if (lapAction === 'snooze') lapCoaching = lap.snoozeCoaching(lapCoaching, lapNow);
+    else if (lapAction === 'dismiss') lapCoaching = lap.dismissCoaching(lapCoaching, lapNow);
+    else if (lapAction === 'resume') lapCoaching = lap.resumeCoaching(lapCoaching);
+    syncLiveAdjustmentsPanel();
     return;
   }
   // Workspace Add track (#188). Delegated (rather than re-wired per render) so
