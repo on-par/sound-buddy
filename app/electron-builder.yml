@@ -6,6 +6,12 @@ directories:
 # and a relocatable Python with the audio deps, so it runs with no Homebrew /
 # system python. Requires sox, ffmpeg, dylibbundler on the build machine.
 afterPack: build/afterPack.js
+# electron-builder 24 notarizes + staples only the .app (macPackager's
+# notarizeIfProvided() runs inside the sign phase, before any target is
+# built), so the DMG built afterwards contains a stapled app but carries no
+# ticket of its own. This hook submits + staples the DMG separately, once all
+# artifacts are built (see mac.notarize above and dmg: below).
+afterAllArtifactBuild: build/afterAllArtifactBuild.js
 # Only ship the compiled app + the built renderer bundle. node_modules is
 # dev-only (electron itself is provided by the builder), so it's excluded
 # automatically. The renderer is a Vite single-file build (#303) — only
@@ -67,6 +73,8 @@ mac:
   target:
     - target: zip
       arch: arm64
+    - target: dmg
+      arch: arm64
   category: public.app-category.music
   # macOS 26 (Tahoe) or newer. Written to Info.plist as LSMinimumSystemVersion.
   minimumSystemVersion: "26.0"
@@ -120,3 +128,23 @@ mac:
     - "Contents/Resources/license-policy/"
     - "Contents/Resources/scene-inspector/"
     - "Contents/Resources/assets/"
+dmg:
+  # Sign the .dmg with the same Developer ID. dmg-builder skips this cleanly
+  # when mac.identity is null (unsigned dev/CI builds), so it is safe to leave on.
+  sign: true
+  window:
+    width: 540
+    height: 380
+  contents:
+    - x: 140
+      y: 200
+      type: file
+    - x: 400
+      y: 200
+      type: link
+      path: /Applications
+  # The afterAllArtifactBuild hook staples the notarization ticket to the .dmg
+  # AFTER dmg-builder writes it, which would invalidate a blockmap computed
+  # beforehand. Nothing consumes dmg differential updates (the updater is
+  # zip-based and check-only), so don't emit one.
+  writeUpdateInfo: false
