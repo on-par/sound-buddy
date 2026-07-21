@@ -1,0 +1,214 @@
+---
+import BrandMark from './BrandMark.astro';
+import { WAITLIST_FAQ_ENTRIES } from '../lib/faq';
+
+const REPO_URL = 'https://github.com/on-par/sound-buddy';
+---
+
+<header class="site-header">
+  <div class="container header-row">
+    <a class="brand" href="/" aria-label="Sound Buddy home">
+      <span class="brand-mark" aria-hidden="true"><BrandMark /></span>
+      <span class="brand-name">Sound Buddy</span>
+    </a>
+  </div>
+</header>
+
+<section class="hero">
+  <div class="container hero-copy">
+    <span class="eyebrow">For church FOH volunteers &amp; worship engineers</span>
+    <h1>A clear answer from last Sunday's mix. Coming soon.</h1>
+    <p class="hero-lede">
+      Sound Buddy grades the recording you already have and names what to fix before next
+      Sunday, fully on your own machine. It isn't open to the public yet, so join the
+      waitlist and we'll email you when early access opens.
+    </p>
+
+    <form class="waitlist-form" data-waitlist-form>
+      <div class="waitlist-fields">
+        <div class="field">
+          <label for="waitlist-email">Email</label>
+          <input id="waitlist-email" name="email" type="email" required autocomplete="email" placeholder="you@yourchurch.org" />
+        </div>
+        <div class="field">
+          <label for="waitlist-church">Church or ministry name (optional)</label>
+          <input id="waitlist-church" name="churchName" type="text" autocomplete="organization" placeholder="First Baptist" />
+        </div>
+      </div>
+      <button class="btn btn-primary btn-lg" type="submit">Join the waitlist</button>
+      <p class="waitlist-status" data-waitlist-status role="status" aria-live="polite"></p>
+    </form>
+  </div>
+</section>
+
+<section class="section tight demo-video">
+  <div class="container demo-video-card card">
+    <span class="demo-video-icon" aria-hidden="true">▶</span>
+    <h2 class="h2">Demo video coming soon</h2>
+    <p class="lede">
+      We're finishing a walkthrough of Sound Buddy grading a real Sunday recording end to
+      end — capture, report card, and the fix. It'll drop right here, and everyone on the
+      waitlist hears first.
+    </p>
+  </div>
+</section>
+
+<section class="trust tight">
+  <div class="container trust-grid">
+    <div class="trust-item">
+      <span class="trust-icon" aria-hidden="true">🔒</span>
+      <div>
+        <strong>No cloud. No accounts. No cross-site tracking.</strong>
+        <p>Analysis runs on-device. Your recordings stay on your Mac, full stop.</p>
+      </div>
+    </div>
+    <div class="trust-item">
+      <span class="trust-icon" aria-hidden="true">⌁</span>
+      <div>
+        <strong>Works with the AI you already have.</strong>
+        <p>Bring Ollama, or paste an API key. Sound Buddy meets you where you are.</p>
+      </div>
+    </div>
+    <div class="trust-item">
+      <span class="trust-icon" aria-hidden="true">♩</span>
+      <div>
+        <strong>Built by live-sound engineers.</strong>
+        <p>For the volunteer and the staff audio lead at the church FOH desk.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="faq" class="section faq">
+  <div class="container">
+    <span class="eyebrow">Questions</span>
+    <h2 class="h2">What people ask before joining.</h2>
+    <div class="faq-list">
+      {WAITLIST_FAQ_ENTRIES.map((entry) => (
+        <details class={`faq-item card`} id={`faq-${entry.id}`}>
+          <summary>
+            <h3>{entry.question}</h3>
+            <span class="faq-chevron" aria-hidden="true">+</span>
+          </summary>
+          <div class="faq-answer">
+            {entry.answer.map((p) => <p>{p}</p>)}
+            {entry.link && <a class="faq-link" href={entry.link.href}>{entry.link.label}</a>}
+          </div>
+        </details>
+      ))}
+    </div>
+  </div>
+</section>
+
+<footer class="site-footer">
+  <div class="container footer-row">
+    <div class="footer-brand">
+      <span class="brand-mark" aria-hidden="true"><BrandMark size={20} /></span>
+      <span>Sound Buddy</span>
+    </div>
+    <nav class="footer-nav" aria-label="Footer">
+      <a href={REPO_URL} rel="noopener">GitHub</a>
+      <a href="/terms">Terms</a>
+      <a href="/privacy">Privacy</a>
+      <a href="mailto:support@soundbuddy.online">Support</a>
+    </nav>
+    <p class="footer-meta mono">© {new Date().getFullYear()} <a href="https://onpardev.com" rel="noopener">On PAR Dev</a> · Built for worship teams</p>
+  </div>
+</footer>
+
+<script>
+  import { WAITLIST_ENDPOINT, buildWaitlistPayload, waitlistOutcomeMessage } from '../lib/waitlist-form';
+
+  const form = document.querySelector<HTMLFormElement>('[data-waitlist-form]');
+  const status = document.querySelector<HTMLElement>('[data-waitlist-status]');
+  const submitBtn = form?.querySelector<HTMLButtonElement>('button[type="submit"]');
+
+  form?.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    if (!status) return;
+    const emailInput = form.querySelector<HTMLInputElement>('#waitlist-email');
+    const churchInput = form.querySelector<HTMLInputElement>('#waitlist-church');
+    const email = emailInput?.value ?? '';
+    const churchName = churchInput?.value ?? '';
+
+    if (submitBtn) submitBtn.disabled = true;
+    let ok = false;
+    try {
+      const response = await fetch(WAITLIST_ENDPOINT, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(buildWaitlistPayload(email, churchName)),
+      });
+      ok = response.ok;
+    } catch {
+      ok = false;
+    }
+    status.textContent = waitlistOutcomeMessage(ok);
+    status.dataset.state = ok ? 'success' : 'error';
+    if (submitBtn) submitBtn.disabled = false;
+  });
+</script>
+
+<style>
+  .site-header { position: sticky; top: 0; z-index: 10; background: color-mix(in srgb, var(--bg-app) 88%, transparent); backdrop-filter: blur(12px); border-bottom: 1px solid var(--border-subtle); }
+  .header-row { display: flex; align-items: center; height: 64px; }
+  .brand { display: inline-flex; align-items: center; gap: 9px; font: var(--fw-semibold) var(--fs-body-lg)/1 var(--font-sans); color: var(--text-primary); }
+  .brand-mark { display: inline-flex; }
+
+  .hero { padding: 96px 0 80px; background:
+      radial-gradient(900px 480px at 78% 0%, var(--gold-tint-soft), transparent 70%),
+      radial-gradient(700px 420px at 12% 12%, var(--azure-tint), transparent 72%); }
+  .hero-copy { max-width: 640px; margin: 0 auto; text-align: center; }
+  .hero-copy h1 { font: var(--fw-bold) var(--fs-display)/var(--lh-tight) var(--font-sans); letter-spacing: var(--tracking-tight); margin: 16px 0 18px; color: var(--text-primary); }
+  .hero-lede { font: var(--fw-regular) var(--fs-h3)/var(--lh-relaxed) var(--font-sans); color: var(--text-secondary); margin: 0 auto; }
+
+  .waitlist-form { margin: 36px auto 0; max-width: 480px; display: flex; flex-direction: column; gap: 14px; }
+  .waitlist-fields { display: flex; flex-direction: column; gap: 14px; text-align: left; }
+  .field { display: flex; flex-direction: column; gap: 6px; }
+  .field label { font: var(--fw-medium) var(--fs-body-sm)/1 var(--font-sans); color: var(--text-secondary); }
+  .field input { height: var(--control-h-lg); padding: 0 14px; border-radius: var(--radius-md); border: 1px solid var(--border-strong); background: var(--surface); color: var(--text-primary); font: var(--fw-regular) var(--fs-body)/1 var(--font-sans); }
+  .field input:focus-visible { outline: none; box-shadow: var(--glow-focus); border-color: var(--border-focus); }
+  .waitlist-form .btn { width: 100%; }
+  .waitlist-status { min-height: 1.4em; font: var(--fw-medium) var(--fs-body-sm)/var(--lh-snug) var(--font-sans); }
+  .waitlist-status[data-state="success"] { color: var(--good-text); }
+  .waitlist-status[data-state="error"] { color: var(--issue-text); }
+
+  .demo-video-card { padding: 44px 40px; text-align: center; max-width: 640px; margin: 0 auto; }
+  .demo-video-icon { display: inline-flex; align-items: center; justify-content: center; width: 44px; height: 44px; border-radius: 50%; background: var(--gold-tint); color: var(--gold-text); font-size: 18px; margin-bottom: 16px; }
+  .demo-video-card .lede { margin: 10px auto 0; }
+
+  .trust { background: var(--bg-panel); border-top: 1px solid var(--border-subtle); border-bottom: 1px solid var(--border-subtle); }
+  .trust-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 32px; padding: 36px 24px; }
+  .trust-item { display: flex; gap: 14px; align-items: flex-start; }
+  .trust-icon { display: inline-flex; align-items: center; justify-content: center; width: 36px; height: 36px; border-radius: var(--radius-md); background: var(--gold-tint); color: var(--gold-text); font-size: 18px; flex-shrink: 0; }
+  .trust-item strong { display: block; font: var(--fw-semibold) var(--fs-body-sm)/var(--lh-snug) var(--font-sans); color: var(--text-primary); margin-bottom: 4px; }
+  .trust-item p { font: var(--fw-regular) var(--fs-body-sm)/var(--lh-normal) var(--font-sans); color: var(--text-tertiary); }
+
+  .faq-list { display: flex; flex-direction: column; gap: 12px; margin-top: 36px; max-width: 760px; margin-left: auto; margin-right: auto; }
+  .faq-item { padding: 0; overflow: hidden; }
+  .faq-item summary { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 18px 22px; cursor: pointer; list-style: none; }
+  .faq-item summary::-webkit-details-marker { display: none; }
+  .faq-item summary:hover h3 { color: var(--gold-text); }
+  .faq-item summary:focus-visible { outline: 2px solid var(--border-focus); outline-offset: -2px; }
+  .faq-item summary h3 { font: var(--fw-medium) var(--fs-body)/var(--lh-snug) var(--font-sans); color: var(--text-primary); }
+  .faq-chevron { flex-shrink: 0; color: var(--text-muted); font: var(--fw-regular) var(--fs-h2)/1 var(--font-sans); transition: transform var(--ease-out, ease) 150ms; }
+  .faq-item[open] .faq-chevron { transform: rotate(45deg); }
+  @media (prefers-reduced-motion: reduce) { .faq-chevron { transition: none; } }
+  .faq-answer { padding: 0 22px 20px; display: flex; flex-direction: column; gap: 12px; }
+  .faq-answer p { font: var(--fw-regular) var(--fs-body-sm)/var(--lh-relaxed) var(--font-sans); color: var(--text-secondary); }
+  .faq-link { align-self: flex-start; font: var(--fw-medium) var(--fs-body-sm)/1 var(--font-sans); color: var(--gold-text); border-bottom: 1px solid var(--border-subtle); }
+
+  .site-footer { border-top: 1px solid var(--border-subtle); background: var(--neutral-1000); padding: 36px 0; }
+  .footer-row { display: flex; align-items: center; gap: 24px; flex-wrap: wrap; }
+  .footer-brand { display: inline-flex; align-items: center; gap: 8px; font: var(--fw-semibold) var(--fs-body)/1 var(--font-sans); color: var(--text-primary); }
+  .footer-nav { display: flex; gap: 20px; flex-wrap: wrap; margin-left: auto; font: var(--fw-medium) var(--fs-body-sm)/1 var(--font-sans); color: var(--text-tertiary); }
+  .footer-nav a:hover { color: var(--text-primary); }
+  .footer-meta { font-size: var(--fs-micro); color: var(--text-muted); }
+  .footer-meta a { color: inherit; text-decoration: none; }
+  .footer-meta a:hover { color: var(--text-primary); }
+
+  @media (max-width: 720px) {
+    .trust-grid { grid-template-columns: 1fr; gap: 24px; }
+    .hero-copy h1 { font-size: 40px; }
+  }
+</style>
