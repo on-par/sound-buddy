@@ -196,3 +196,31 @@ describe('Coaching stability wiring (#612)', () => {
     expect(matches.length).toBeGreaterThanOrEqual(3);
   });
 });
+
+describe('Coaching disposition wiring (#613)', () => {
+  it('syncLiveAdjustmentsPanel passes Date.now() as the 7th argument to panelHTML', () => {
+    const body = functionBody(inlineApp, 'syncLiveAdjustmentsPanel');
+    expect(body).toContain('panelHTML(');
+    expect(body).toContain('Date.now()');
+  });
+
+  it('the spectrum-body click handler routes data-lap-action clicks to all five disposition reducers', () => {
+    const block = enclosingBlock(inlineApp, "closest('[data-lap-action]')");
+    expect(block).toContain('lap.acknowledgeCoaching(');
+    expect(block).toContain('lap.markTriedCoaching(');
+    expect(block).toContain('lap.snoozeCoaching(');
+    expect(block).toContain('lap.dismissCoaching(');
+    expect(block).toContain('lap.resumeCoaching(');
+    expect(block).toContain('lapCoaching =');
+    expect(block).toContain('syncLiveAdjustmentsPanel(');
+  });
+
+  it('app.css styles the disposition actions, cue, observing line, and snoozed card', () => {
+    expect(css).toContain('.lap-card-actions');
+    expect(css).toContain('.lap-action');
+    expect(css).toContain('.lap-card-cue');
+    expect(css).toContain('.lap-card-observing');
+    expect(css).toContain('.lap-card-snoozed');
+    expect(css).toContain('prefers-reduced-motion');
+  });
+});

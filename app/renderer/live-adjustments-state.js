@@ -458,8 +458,22 @@
     'input-high-support': 'input-high-buildup',
   };
 
-  /** A fresh coaching stability state (#612): no active suggestion, nothing
-   *  pending, no cooldowns in effect. */
+  // Ordinary coaching is hidden this long (ms) after a snooze — one song, roughly.
+  var SNOOZE_MS = 300000;
+  // A dismissed condition may only return if it reads this much worse (dB past its own
+  // threshold) than it was when dismissed — "materially more severe", not noise.
+  var DISMISS_ESCALATION_DB = 3;
+  // After "I tried this", Sound Buddy watches this long (ms) before it would have anything
+  // to say about the result. #613 only opens the window; scoring it is out of scope.
+  var OBSERVATION_WINDOW_MS = 60000;
+  // Categories a snooze does not silence — a clipping risk is safety-critical, and the
+  // acceptance criteria only protect *ordinary* advice from reactivation.
+  var SNOOZE_BYPASS_CATEGORIES = { clipping: true };
+  // Minutes-remaining display for the snoozed card copy.
+  var MS_PER_MINUTE = 60000;
+
+  /** A fresh coaching stability state (#612/#613): no active suggestion,
+   *  nothing pending, no cooldowns/dismissals in effect, no disposition. */
   function createCoachingState() {
     return {
       active: null,
@@ -469,6 +483,10 @@
       pendingCandidate: null,
       clearCount: 0,
       cooldowns: {},
+      acknowledgedId: null,
+      snoozeUntil: null,
+      dismissed: {},
+      observing: null,
     };
   }
 
@@ -507,8 +525,26 @@
       }
     }
 
+    var dismissed = {};
+    for (var dKey in state.dismissed) {
+      if (!Object.prototype.hasOwnProperty.call(state.dismissed, dKey)) continue;
+      var record = state.dismissed[dKey];
+      var escaped = false;
+      for (var d = 0; d < cands.length; d++) {
+        var c = cands[d];
+        if (c && c.id === dKey && c.severityDb >= record.severityDb + DISMISS_ESCALATION_DB - CONFIDENCE_EPSILON) {
+          escaped = true;
+          break;
+        }
+      }
+      if (!escaped) dismissed[dKey] = record;
+    }
+
+    var snoozeUntil = (state.snoozeUntil != null && state.snoozeUntil > now) ? state.snoozeUntil : null;
+    var observing = (state.observing && state.observing.until > now) ? state.observing : null;
+
     var ranked = rankCandidates(cands);
-    var eligible = ranked.filter(function (c) { return cooldowns[c.id] == null; });
+    var eligible = ranked.filter(function (c) { return cooldowns[c.id] == null && dismissed[c.id] == null; });
 
     var active = state.active;
     var activeSince = state.activeSince;
@@ -517,6 +553,7 @@
     // Always reassigned in the pending-accounting step below before use.
     var pendingCandidate;
     var clearCount = state.clearCount;
+    var prevActiveId = state.active ? state.active.id : null;
 
     if (active) {
       var cur = null;
@@ -542,6 +579,10 @@
             pendingCandidate: null,
             clearCount: 0,
             cooldowns: cooldowns,
+            acknowledgedId: null,
+            snoozeUntil: snoozeUntil,
+            dismissed: dismissed,
+            observing: observing,
           };
         }
         // A dip that hasn't yet cleared RECOVERY_WINDOWS keeps the previous snapshot.
@@ -597,6 +638,9 @@
       }
     }
 
+    var newActiveId = active ? active.id : null;
+    var acknowledgedId = newActiveId === prevActiveId ? state.acknowledgedId : null;
+
     return {
       active: active,
       activeSince: activeSince,
@@ -605,6 +649,99 @@
       pendingCandidate: pendingCandidate,
       clearCount: clearCount,
       cooldowns: cooldowns,
+      acknowledgedId: acknowledgedId,
+      snoozeUntil: snoozeUntil,
+      dismissed: dismissed,
+      observing: observing,
+    };
+  }
+
+  /** Engineer control over the active coaching card (#613). Every reducer
+   *  returns a brand-new state object and never mutates `prev` (including
+   *  `prev.cooldowns`/`prev.dismissed`); no reducer calls Date.now() — `now`
+   *  is always the caller's injected clock reading. A click on a card that
+   *  just resolved (no `state.active`) is a no-op, not a crash. */
+
+  /** Marks the active candidate as seen — stops the repeated attention cue.
+   *  No-op (unchanged copy) when there is no active candidate. */
+  function acknowledgeCoaching(state) {
+    if (!state || !state.active) return Object.assign({}, state);
+    return Object.assign({}, state, { acknowledgedId: state.active.id });
+  }
+
+  /** Hides ordinary coaching for SNOOZE_MS. A panel-level action — allowed
+   *  even with no active card — so monitoring and the state machine keep
+   *  running underneath; only the view hides ordinary cards. */
+  function snoozeCoaching(state, now) {
+    return Object.assign({}, state, { snoozeUntil: now + SNOOZE_MS });
+  }
+
+  /** Ends a snooze early. */
+  function resumeCoaching(state) {
+    return Object.assign({}, state, { snoozeUntil: null });
+  }
+
+  /** Suppresses the active candidate for the rest of the session unless it
+   *  gets materially worse (DISMISS_ESCALATION_DB), and clears the active
+   *  card plus its pending counters so the machine cannot re-promote it on
+   *  the very next window. No-op when there is no active candidate. */
+  function dismissCoaching(state, now) {
+    if (!state || !state.active) return Object.assign({}, state);
+    var severityDb = isFinite(state.active.severityDb) ? state.active.severityDb : 0;
+    var dismissed = Object.assign({}, state.dismissed);
+    dismissed[state.active.id] = { severityDb: severityDb, at: now };
+    return Object.assign({}, state, {
+      active: null,
+      activeSince: null,
+      acknowledgedId: null,
+      pendingId: null,
+      pendingCount: 0,
+      pendingCandidate: null,
+      clearCount: 0,
+      dismissed: dismissed,
+    });
+  }
+
+  /** Records the active candidate's before-state and opens an
+   *  OBSERVATION_WINDOW_MS window on it. Keeps `active` so the card stays on
+   *  screen while being observed; also acknowledges it — trying it implies
+   *  seeing it. No-op when there is no active candidate. */
+  function markTriedCoaching(state, now) {
+    if (!state || !state.active) return Object.assign({}, state);
+    var active = state.active;
+    return Object.assign({}, state, {
+      acknowledgedId: active.id,
+      observing: {
+        id: active.id,
+        title: active.title,
+        category: active.category,
+        scope: active.scope,
+        before: { severityDb: active.severityDb, confidence: active.confidence },
+        startedAt: now,
+        until: now + OBSERVATION_WINDOW_MS,
+      },
+    });
+  }
+
+  /** The render-time truth derived from a coaching state (#613): the
+   *  candidate to show (or null while snoozed, unless its category bypasses
+   *  the snooze), whether it's acknowledged, and the active observation
+   *  window, if any. Null/garbage `state` yields the same shape with
+   *  `candidate: null` and everything else falsy/0. */
+  function coachingView(state, now) {
+    var s = state && typeof state === 'object' ? state : {};
+    var snoozed = s.snoozeUntil != null && s.snoozeUntil > now;
+    var candidate = s.active || null;
+    if (candidate && snoozed && !SNOOZE_BYPASS_CATEGORIES[candidate.category]) candidate = null;
+    var snoozeRemainingMs = snoozed ? s.snoozeUntil - now : 0;
+    var acknowledged = !!candidate && s.acknowledgedId === candidate.id;
+    var observing = (s.observing && candidate && s.observing.id === candidate.id && s.observing.until > now) ? s.observing : null;
+    return {
+      candidate: candidate,
+      snoozed: snoozed,
+      snoozeRemainingMs: snoozeRemainingMs,
+      acknowledged: acknowledged,
+      observing: observing,
     };
   }
 
@@ -612,9 +749,20 @@
    *  is null. `focusName` is the focused input's display name (may be
    *  null/absent) — escaped since it's a user-editable label. Candidate
    *  title/why/action/detail are module-owned literals, emitted as-is like
-   *  the existing candidate markup. */
-  function coachingCardHTML(candidate, focusName) {
+   *  the existing candidate markup. The optional third `view` (#613,
+   *  coachingView()'s return shape) adds the disposition actions and
+   *  attention cue; omitting it (every pre-#613 caller) emits byte-identical
+   *  markup to before. */
+  function coachingCardHTML(candidate, focusName, view) {
     if (!candidate) {
+      if (view && view.snoozed) {
+        var minutes = Math.max(1, Math.ceil(view.snoozeRemainingMs / MS_PER_MINUTE));
+        return '<div class="lap-card lap-card-snoozed" role="note">'
+          + '<span class="lap-card-label">Top suggestion <span class="lap-flag">Experimental · Advisory</span></span>'
+          + '<p class="lap-empty">Coaching snoozed — still listening. Suggestions resume in ' + minutes + ' min.</p>'
+          + '<div class="lap-card-actions"><button type="button" class="lap-action" data-lap-action="resume">Resume coaching</button></div>'
+          + '</div>';
+      }
       return '<div class="lap-card lap-card-monitoring" role="note">'
         + '<span class="lap-card-label">Top suggestion <span class="lap-flag">Experimental · Advisory</span></span>'
         + '<p class="lap-empty">Monitoring — not enough evidence to advise yet. Sound Buddy will surface one suggestion when it is confident.</p>'
@@ -628,12 +776,42 @@
     } else {
       scopeText = 'Focused input';
     }
-    return '<div class="lap-card" role="note" data-candidate-id="' + candidate.id + '">'
-      + '<span class="lap-card-label">Top suggestion <span class="lap-flag">Experimental · Advisory</span></span>'
+
+    var acknowledged = !!(view && view.acknowledged);
+    var cardClass = 'lap-card';
+    var cueHTML = '';
+    if (view && !acknowledged) {
+      cardClass += ' lap-card-attention';
+      cueHTML = ' <span class="lap-card-cue">New</span>';
+    }
+
+    var observingHTML = '';
+    var actionsHTML = '';
+    if (view && view.observing) {
+      observingHTML = '<p class="lap-card-observing" role="status">Checking the result — watching the next minute of audio.</p>';
+      actionsHTML = '<div class="lap-card-actions">'
+        + '<button type="button" class="lap-action" data-lap-action="snooze">Snooze 5 min</button>'
+        + '<button type="button" class="lap-action" data-lap-action="dismiss">Dismiss</button>'
+        + '</div>';
+    } else if (view) {
+      var ackClass = acknowledged ? 'lap-action lap-action-on' : 'lap-action';
+      var ackAttr = acknowledged ? ' aria-pressed="true"' : '';
+      actionsHTML = '<div class="lap-card-actions">'
+        + '<button type="button" class="' + ackClass + '"' + ackAttr + ' data-lap-action="acknowledge">Got it</button>'
+        + '<button type="button" class="lap-action" data-lap-action="tried">I tried this</button>'
+        + '<button type="button" class="lap-action" data-lap-action="snooze">Snooze 5 min</button>'
+        + '<button type="button" class="lap-action" data-lap-action="dismiss">Dismiss</button>'
+        + '</div>';
+    }
+
+    return '<div class="' + cardClass + '" role="note" data-candidate-id="' + candidate.id + '">'
+      + '<span class="lap-card-label">Top suggestion <span class="lap-flag">Experimental · Advisory</span>' + cueHTML + '</span>'
       + '<span class="lap-card-title">' + candidate.title + '</span>'
       + '<p class="lap-card-why"><span class="lap-card-key">Why it matters:</span> ' + candidate.why + '</p>'
       + '<p class="lap-card-action"><span class="lap-card-key">One thing to consider:</span> ' + candidate.action + '</p>'
       + '<p class="lap-card-meta"><span class="lap-card-scope">' + scopeText + '</span> · <span class="lap-card-confidence">Confidence: ' + confidenceLabel(candidate.confidence) + '</span></p>'
+      + observingHTML
+      + actionsHTML
       + '<p class="lap-card-advisory">Advisory only — Sound Buddy never changes your console.</p>'
       + '</div>';
   }
@@ -663,7 +841,7 @@
    *  none) is the card shown, so the card reflects the stability rules rather
    *  than the per-render winner; omitting it keeps the pre-#612 per-render
    *  selection so every existing caller stays byte-identical. */
-  function panelHTML(settings, mode, windows, measurementSource, focusView, coaching) {
+  function panelHTML(settings, mode, windows, measurementSource, focusView, coaching, now) {
     if (!showPanel(settings, mode)) return '';
     var mixCands = mixCandidates(windows, measurementSource);
     var body;
@@ -681,9 +859,15 @@
     }
 
     var focused = focusedInput(focusView);
-    var card = (coaching && typeof coaching === 'object')
-      ? coachingCardHTML(coaching.active, focused && focused.name)
-      : coachingCardHTML(selectCoachingCandidate(allCoachingCandidates(windows, measurementSource, focusView)), focused && focused.name);
+    var card;
+    if (coaching && typeof coaching === 'object' && typeof now === 'number') {
+      var view = coachingView(coaching, now);
+      card = coachingCardHTML(view.candidate, focused && focused.name, view);
+    } else if (coaching && typeof coaching === 'object') {
+      card = coachingCardHTML(coaching.active, focused && focused.name);
+    } else {
+      card = coachingCardHTML(selectCoachingCandidate(allCoachingCandidates(windows, measurementSource, focusView)), focused && focused.name);
+    }
 
     return '<div class="live-adjustments-panel" role="note">'
       + '<span class="lap-title">Live adjustments <span class="lap-flag">Experimental</span></span>'
@@ -767,6 +951,16 @@
     MIN_ACTIVE_HOLD_MS: MIN_ACTIVE_HOLD_MS,
     COOLDOWN_MS: COOLDOWN_MS,
     OPPOSITE_IDS: OPPOSITE_IDS,
+    acknowledgeCoaching: acknowledgeCoaching,
+    snoozeCoaching: snoozeCoaching,
+    resumeCoaching: resumeCoaching,
+    dismissCoaching: dismissCoaching,
+    markTriedCoaching: markTriedCoaching,
+    coachingView: coachingView,
+    SNOOZE_MS: SNOOZE_MS,
+    DISMISS_ESCALATION_DB: DISMISS_ESCALATION_DB,
+    OBSERVATION_WINDOW_MS: OBSERVATION_WINDOW_MS,
+    SNOOZE_BYPASS_CATEGORIES: SNOOZE_BYPASS_CATEGORIES,
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.liveAdjustmentsState = api;

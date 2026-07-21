@@ -10,10 +10,12 @@ const {
   createCoachingState, advanceCoaching, allCoachingCandidates,
   PERSISTENCE_WINDOWS, RETAIN_CONFIDENCE, RECOVERY_WINDOWS, REPLACEMENT_MARGIN,
   MIN_ACTIVE_HOLD_MS, COOLDOWN_MS, OPPOSITE_IDS,
+  acknowledgeCoaching, snoozeCoaching, resumeCoaching, dismissCoaching, markTriedCoaching, coachingView,
+  SNOOZE_MS, DISMISS_ESCALATION_DB, OBSERVATION_WINDOW_MS, SNOOZE_BYPASS_CATEGORIES,
 } = require('./live-adjustments-state.js') as {
   isEnabled: (settings: unknown) => boolean;
   showPanel: (settings: unknown, mode: string) => boolean;
-  panelHTML: (settings: unknown, mode: string, windows?: unknown, measurementSource?: number | null, focusView?: unknown, coaching?: unknown) => string;
+  panelHTML: (settings: unknown, mode: string, windows?: unknown, measurementSource?: number | null, focusView?: unknown, coaching?: unknown, now?: number) => string;
   hasEnoughData: (windows: unknown, measurementSource?: number | null) => boolean;
   mixCandidates: (windows: unknown, measurementSource?: number | null) => Array<{ id: string; title: string; detail: string }>;
   MIN_WINDOWS: number;
@@ -24,7 +26,7 @@ const {
   confidenceLabel: (confidence: number) => string;
   rankCandidates: (candidates: unknown) => Array<Record<string, unknown>>;
   selectCoachingCandidate: (candidates: unknown) => Record<string, unknown> | null;
-  coachingCardHTML: (candidate: Record<string, unknown> | null, focusName?: string | null) => string;
+  coachingCardHTML: (candidate: Record<string, unknown> | null, focusName?: string | null, view?: CoachingView) => string;
   MIN_CONFIDENCE: number;
   HIGH_CONFIDENCE: number;
   CATEGORY_PRIORITY: Record<string, number>;
@@ -40,9 +42,28 @@ const {
   MIN_ACTIVE_HOLD_MS: number;
   COOLDOWN_MS: number;
   OPPOSITE_IDS: Record<string, string>;
+  acknowledgeCoaching: (state: CoachingState) => CoachingState;
+  snoozeCoaching: (state: CoachingState, now: number) => CoachingState;
+  resumeCoaching: (state: CoachingState) => CoachingState;
+  dismissCoaching: (state: CoachingState, now: number) => CoachingState;
+  markTriedCoaching: (state: CoachingState, now: number) => CoachingState;
+  coachingView: (state: CoachingState, now: number) => CoachingView;
+  SNOOZE_MS: number;
+  DISMISS_ESCALATION_DB: number;
+  OBSERVATION_WINDOW_MS: number;
+  SNOOZE_BYPASS_CATEGORIES: Record<string, boolean>;
 };
 
-type CoachingCandidate = Record<string, unknown> & { id: string; confidence: number };
+type CoachingCandidate = Record<string, unknown> & { id: string; confidence: number; severityDb: number; category: string };
+type ObservationWindow = {
+  id: string;
+  title: string;
+  category: string;
+  scope: string;
+  before: { severityDb: number; confidence: number };
+  startedAt: number;
+  until: number;
+};
 type CoachingState = {
   active: CoachingCandidate | null;
   activeSince: number | null;
@@ -51,6 +72,17 @@ type CoachingState = {
   pendingCandidate: CoachingCandidate | null;
   clearCount: number;
   cooldowns: Record<string, number>;
+  acknowledgedId: string | null;
+  snoozeUntil: number | null;
+  dismissed: Record<string, { severityDb: number; at: number }>;
+  observing: ObservationWindow | null;
+};
+type CoachingView = {
+  candidate: CoachingCandidate | null;
+  snoozed: boolean;
+  snoozeRemainingMs: number;
+  acknowledged: boolean;
+  observing: ObservationWindow | null;
 };
 
 type Profile = { id: string; label: string; bands: Record<string, number> };
@@ -992,6 +1024,7 @@ describe('Coaching stability (#612)', () => {
     const state: CoachingState = {
       active: null, activeSince: null, pendingId: null, pendingCount: 0, pendingCandidate: null,
       clearCount: 0, cooldowns: { stale: 500, fresh: 5000 },
+      acknowledgedId: null, snoozeUntil: null, dismissed: {}, observing: null,
     };
     const next = advanceCoaching(state, [], 1000);
     expect(next.cooldowns.stale).toBeUndefined();
@@ -1052,5 +1085,378 @@ describe('Coaching stability (#612)', () => {
     const withoutCoaching = panelHTML({ liveAdjustmentsEnabled: true }, 'live', windows, null);
     const withUndefinedCoaching = panelHTML({ liveAdjustmentsEnabled: true }, 'live', windows, null, undefined, undefined);
     expect(withUndefinedCoaching).toBe(withoutCoaching);
+  });
+});
+
+describe('Engineer control over live coaching (#613)', () => {
+  function cand(id: string, confidence: number, extra?: Record<string, unknown>): CoachingCandidate {
+    return {
+      id, title: id, category: 'tonal', scope: 'mix', severityDb: 1, confidence,
+      why: '', action: '', detail: '', ...extra,
+    };
+  }
+
+  function activeState(candidate: CoachingCandidate, extra?: Partial<CoachingState>): CoachingState {
+    return {
+      ...createCoachingState(),
+      active: candidate,
+      activeSince: 0,
+      ...extra,
+    };
+  }
+
+  it('createCoachingState() seeds the #613 disposition fields', () => {
+    const state = createCoachingState();
+    expect(state.acknowledgedId).toBeNull();
+    expect(state.snoozeUntil).toBeNull();
+    expect(state.dismissed).toEqual({});
+    expect(state.observing).toBeNull();
+  });
+
+  it('coachingView returns candidate: null and everything falsy/0 for a null/garbage state', () => {
+    expect(coachingView(null as unknown as CoachingState, 0)).toEqual({
+      candidate: null, snoozed: false, snoozeRemainingMs: 0, acknowledged: false, observing: null,
+    });
+    expect(coachingView({} as CoachingState, 0)).toEqual({
+      candidate: null, snoozed: false, snoozeRemainingMs: 0, acknowledged: false, observing: null,
+    });
+  });
+
+  describe('Acknowledge', () => {
+    it('sets acknowledgedId to the active candidate id, leaves active intact, and does not mutate the input', () => {
+      const active = cand('x', 0.9);
+      const state = activeState(active);
+      const snapshot = JSON.parse(JSON.stringify(state));
+      const next = acknowledgeCoaching(state);
+      expect(next).not.toBe(state);
+      expect(next.acknowledgedId).toBe('x');
+      expect(next.active).toBe(active);
+      expect(state).toEqual(snapshot);
+    });
+
+    it('coachingView reports acknowledged: true once acknowledged, false before', () => {
+      const state = activeState(cand('x', 0.9));
+      expect(coachingView(state, 0).acknowledged).toBe(false);
+      const next = acknowledgeCoaching(state);
+      expect(coachingView(next, 0).acknowledged).toBe(true);
+    });
+
+    it('coachingCardHTML omits lap-card-cue/lap-card-attention once acknowledged, includes both before', () => {
+      const state = activeState(cand('x', 0.9));
+      const beforeView = coachingView(state, 0);
+      const beforeHTML = coachingCardHTML(beforeView.candidate, null, beforeView);
+      expect(beforeHTML).toContain('lap-card-cue');
+      expect(beforeHTML).toContain('lap-card-attention');
+
+      const next = acknowledgeCoaching(state);
+      const afterView = coachingView(next, 0);
+      const afterHTML = coachingCardHTML(afterView.candidate, null, afterView);
+      expect(afterHTML).not.toContain('lap-card-cue');
+      expect(afterHTML).not.toContain('lap-card-attention');
+      expect(afterHTML).toContain('lap-card-title');
+    });
+
+    it('is a no-op (unchanged copy) when there is no active candidate', () => {
+      const state = createCoachingState();
+      const next = acknowledgeCoaching(state);
+      expect(next).not.toBe(state);
+      expect(next).toEqual(state);
+    });
+  });
+
+  describe('Snooze', () => {
+    it('sets snoozeUntil to now + SNOOZE_MS', () => {
+      const state = createCoachingState();
+      const next = snoozeCoaching(state, 1000);
+      expect(next.snoozeUntil).toBe(1000 + SNOOZE_MS);
+    });
+
+    it('coachingView hides the candidate while snoozed, returns it once expired', () => {
+      const state = activeState(cand('x', 0.9));
+      const snoozed = snoozeCoaching(state, 1000);
+      const insideView = coachingView(snoozed, 1000 + SNOOZE_MS - 1);
+      expect(insideView.candidate).toBeNull();
+      expect(insideView.snoozed).toBe(true);
+      expect(insideView.snoozeRemainingMs).toBeGreaterThan(0);
+
+      const atExpiry = coachingView(snoozed, 1000 + SNOOZE_MS);
+      expect(atExpiry.snoozed).toBe(false);
+      expect(atExpiry.candidate).not.toBeNull();
+      expect(atExpiry.candidate!.id).toBe('x');
+    });
+
+    it('advanceCoaching keeps promoting/retaining candidates while snoozed, and clears the expired snoozeUntil', () => {
+      let state = createCoachingState();
+      state = advanceCoaching(state, [cand('x', 0.9)], 0);
+      state = advanceCoaching(state, [cand('x', 0.9)], 1000);
+      expect(state.active!.id).toBe('x');
+
+      state = snoozeCoaching(state, 1000);
+      const stillSnoozed = advanceCoaching(state, [cand('x', 0.9)], 2000);
+      expect(stillSnoozed.active!.id).toBe('x'); // monitoring keeps running underneath
+      expect(stillSnoozed.snoozeUntil).toBe(1000 + SNOOZE_MS);
+
+      const afterExpiry = advanceCoaching(stillSnoozed, [cand('x', 0.9)], 1000 + SNOOZE_MS + 1);
+      expect(afterExpiry.snoozeUntil).toBeNull();
+    });
+
+    it('does not hide a clipping candidate while snoozed (bypass category)', () => {
+      const clip = cand('clip-risk', 0.9, { category: 'clipping' });
+      const state = activeState(clip);
+      const snoozed = snoozeCoaching(state, 1000);
+      const view = coachingView(snoozed, 1000 + SNOOZE_MS - 1);
+      expect(view.snoozed).toBe(true);
+      expect(view.candidate).not.toBeNull();
+      expect(view.candidate!.id).toBe('clip-risk');
+      expect(SNOOZE_BYPASS_CATEGORIES.clipping).toBe(true);
+    });
+
+    it('renders a snoozed card with a resume button, and resumeCoaching clears snoozeUntil', () => {
+      const state = activeState(cand('x', 0.9));
+      const snoozed = snoozeCoaching(state, 1000);
+      const view = coachingView(snoozed, 1000 + SNOOZE_MS - 1);
+      const html = coachingCardHTML(view.candidate, null, view);
+      expect(html).toContain('lap-card-snoozed');
+      expect(html).toContain('data-lap-action="resume"');
+
+      const resumed = resumeCoaching(snoozed);
+      expect(resumed.snoozeUntil).toBeNull();
+    });
+
+    it('is allowed even with no active card (panel-level action)', () => {
+      const state = createCoachingState();
+      const next = snoozeCoaching(state, 500);
+      expect(next.snoozeUntil).toBe(500 + SNOOZE_MS);
+    });
+  });
+
+  describe('Dismiss', () => {
+    it('is a no-op (unchanged copy) when there is no active candidate', () => {
+      const state = createCoachingState();
+      const next = dismissCoaching(state, 1000);
+      expect(next).not.toBe(state);
+      expect(next).toEqual(state);
+    });
+
+    it('records dismissed[id].severityDb, clears active and pending counters, and does not mutate the input', () => {
+      const active = cand('x', 0.9, { severityDb: 4 });
+      const state = activeState(active, { pendingId: 'y', pendingCount: 1, pendingCandidate: cand('y', 0.7), clearCount: 1 });
+      const snapshot = JSON.parse(JSON.stringify(state));
+      const next = dismissCoaching(state, 1000);
+      expect(next).not.toBe(state);
+      expect(next.dismissed.x).toEqual({ severityDb: 4, at: 1000 });
+      expect(next.active).toBeNull();
+      expect(next.activeSince).toBeNull();
+      expect(next.acknowledgedId).toBeNull();
+      expect(next.pendingId).toBeNull();
+      expect(next.pendingCount).toBe(0);
+      expect(next.pendingCandidate).toBeNull();
+      expect(next.clearCount).toBe(0);
+      expect(state).toEqual(snapshot);
+    });
+
+    it('never re-promotes the dismissed candidate across PERSISTENCE_WINDOWS + 2 windows', () => {
+      let state = createCoachingState();
+      state = advanceCoaching(state, [cand('x', 0.9)], 0);
+      state = advanceCoaching(state, [cand('x', 0.9)], 1000);
+      expect(state.active!.id).toBe('x');
+      state = dismissCoaching(state, 2000);
+
+      for (let n = 1; n <= PERSISTENCE_WINDOWS + 2; n++) {
+        state = advanceCoaching(state, [cand('x', 0.9)], 2000 + n * 1000);
+        expect(state.active).toBeNull();
+      }
+    });
+
+    it('clears the dismissal once the candidate reads DISMISS_ESCALATION_DB worse, and promotes again after the normal persistence count', () => {
+      let state = createCoachingState();
+      state = advanceCoaching(state, [cand('x', 0.9, { severityDb: 4 })], 0);
+      state = advanceCoaching(state, [cand('x', 0.9, { severityDb: 4 })], 1000);
+      expect(state.active!.id).toBe('x');
+      state = dismissCoaching(state, 2000);
+      expect(state.dismissed.x.severityDb).toBe(4);
+
+      const worse = cand('x', 0.9, { severityDb: 4 + DISMISS_ESCALATION_DB });
+      state = advanceCoaching(state, [worse], 3000);
+      expect(state.dismissed.x).toBeUndefined();
+      expect(state.active).toBeNull(); // one persistence window, not yet promoted
+      state = advanceCoaching(state, [worse], 4000);
+      expect(state.active).not.toBeNull();
+      expect(state.active!.id).toBe('x');
+    });
+
+    it('stays suppressed for a candidate DISMISS_ESCALATION_DB - 0.5 dB worse (boundary)', () => {
+      let state = createCoachingState();
+      state = advanceCoaching(state, [cand('x', 0.9, { severityDb: 4 })], 0);
+      state = advanceCoaching(state, [cand('x', 0.9, { severityDb: 4 })], 1000);
+      state = dismissCoaching(state, 2000);
+
+      const almostWorse = cand('x', 0.9, { severityDb: 4 + DISMISS_ESCALATION_DB - 0.5 });
+      state = advanceCoaching(state, [almostWorse], 3000);
+      expect(state.dismissed.x).toBeDefined();
+      state = advanceCoaching(state, [almostWorse], 4000);
+      expect(state.active).toBeNull();
+    });
+
+    it('does not affect other candidates', () => {
+      let state = createCoachingState();
+      state = advanceCoaching(state, [cand('x', 0.9)], 0);
+      state = advanceCoaching(state, [cand('x', 0.9)], 1000);
+      state = dismissCoaching(state, 2000);
+
+      state = advanceCoaching(state, [cand('z', 0.9)], 3000);
+      state = advanceCoaching(state, [cand('z', 0.9)], 4000);
+      expect(state.active!.id).toBe('z');
+    });
+
+    it('records severityDb 0 when the active candidate has a non-finite severityDb', () => {
+      const state = activeState(cand('x', 0.9, { severityDb: NaN }));
+      const next = dismissCoaching(state, 1000);
+      expect(next.dismissed.x.severityDb).toBe(0);
+    });
+  });
+
+  describe('I tried this', () => {
+    it('records observing.id/before/startedAt/until, and sets acknowledgedId', () => {
+      const active = cand('x', 0.9, { severityDb: 3, confidence: 0.9 });
+      const state = activeState(active);
+      const next = markTriedCoaching(state, 1000);
+      expect(next.observing).toEqual({
+        id: 'x', title: 'x', category: 'tonal', scope: 'mix',
+        before: { severityDb: 3, confidence: 0.9 },
+        startedAt: 1000,
+        until: 1000 + OBSERVATION_WINDOW_MS,
+      });
+      expect(next.acknowledgedId).toBe('x');
+      expect(next.active).toBe(active); // stays on screen while observed
+    });
+
+    it('does not mutate the input', () => {
+      const state = activeState(cand('x', 0.9));
+      const snapshot = JSON.parse(JSON.stringify(state));
+      markTriedCoaching(state, 1000);
+      expect(state).toEqual(snapshot);
+    });
+
+    it('coachingView reports observing inside the window; card HTML shows the observing copy', () => {
+      const state = activeState(cand('x', 0.9));
+      const tried = markTriedCoaching(state, 1000);
+      const view = coachingView(tried, 1000 + OBSERVATION_WINDOW_MS - 1);
+      expect(view.observing).not.toBeNull();
+      const html = coachingCardHTML(view.candidate, null, view);
+      expect(html).toContain('lap-card-observing');
+      expect(html).toContain('Checking the result');
+    });
+
+    it('advanceCoaching clears observing at/after until; coachingView then reports observing: null', () => {
+      const state = activeState(cand('x', 0.9));
+      const tried = markTriedCoaching(state, 1000);
+      const stillObserving = advanceCoaching(tried, [cand('x', 0.9)], 1000 + OBSERVATION_WINDOW_MS - 1);
+      expect(stillObserving.observing).not.toBeNull();
+      const cleared = advanceCoaching(tried, [cand('x', 0.9)], 1000 + OBSERVATION_WINDOW_MS);
+      expect(cleared.observing).toBeNull();
+      expect(coachingView(cleared, 1000 + OBSERVATION_WINDOW_MS).observing).toBeNull();
+    });
+
+    it('is a no-op (unchanged copy) when there is no active candidate', () => {
+      const state = createCoachingState();
+      const next = markTriedCoaching(state, 1000);
+      expect(next).not.toBe(state);
+      expect(next).toEqual(state);
+    });
+  });
+
+  describe('Disposition preserved across windows', () => {
+    it('a snooze survives several advanceCoaching windows, keeping ordinary categories hidden', () => {
+      let state = activeState(cand('x', 0.9));
+      state = snoozeCoaching(state, 0);
+      for (let n = 1; n <= 3; n++) {
+        state = advanceCoaching(state, [cand('x', 0.9)], n * 1000);
+        expect(state.snoozeUntil).toBe(SNOOZE_MS);
+        expect(coachingView(state, n * 1000).candidate).toBeNull();
+      }
+    });
+
+    it('a dismissal survives subsequent windows, including one that also puts an unrelated id into cooldown', () => {
+      let state = createCoachingState();
+      state = advanceCoaching(state, [cand('x', 0.9)], 0);
+      state = advanceCoaching(state, [cand('x', 0.9)], 1000);
+      expect(state.active!.id).toBe('x');
+      state = dismissCoaching(state, 2000);
+      expect(state.dismissed.x).toBeDefined();
+
+      // Promote y, then resolve it (RECOVERY_WINDOWS windows without it) — puts y in cooldowns.
+      state = advanceCoaching(state, [cand('y', 0.9)], 3000);
+      state = advanceCoaching(state, [cand('y', 0.9)], 4000);
+      expect(state.active!.id).toBe('y');
+      expect(state.dismissed.x).toBeDefined();
+
+      for (let n = 1; n <= RECOVERY_WINDOWS; n++) {
+        state = advanceCoaching(state, [], 4000 + n * 1000);
+      }
+      expect(state.active).toBeNull();
+      expect(state.cooldowns.y).toBeDefined();
+      expect(state.dismissed.x).toBeDefined();
+    });
+  });
+
+  describe('Purity', () => {
+    it('every reducer returns a new object and leaves dismissed/cooldowns unmutated', () => {
+      const state = activeState(cand('x', 0.9), { cooldowns: { a: 5000 }, dismissed: { b: { severityDb: 1, at: 0 } } });
+      const dismissedSnapshot = { ...state.dismissed };
+      const cooldownsSnapshot = { ...state.cooldowns };
+
+      const reducers: Array<(s: CoachingState) => CoachingState> = [
+        (s) => acknowledgeCoaching(s),
+        (s) => snoozeCoaching(s, 1000),
+        (s) => resumeCoaching(s),
+        (s) => dismissCoaching(s, 1000),
+        (s) => markTriedCoaching(s, 1000),
+      ];
+      for (const reducer of reducers) {
+        const result = reducer(state);
+        expect(result).not.toBe(state);
+        expect(state.dismissed).toEqual(dismissedSnapshot);
+        expect(state.cooldowns).toEqual(cooldownsSnapshot);
+      }
+    });
+  });
+
+  describe('Back-compat', () => {
+    it('coachingCardHTML with no view produces no data-lap-action markup', () => {
+      const selected = cand('low-end', 0.9, { title: 'Low-end buildup', why: 'w', action: 'a', scopeLabel: 'Overall mix' });
+      const html = coachingCardHTML(selected, null);
+      expect(html).not.toContain('data-lap-action');
+    });
+
+    it('panelHTML with no now produces no data-lap-action markup', () => {
+      const hotBass = { ...FLAT, bass: FLAT.bass + 20 };
+      const windows = [mkWindow(hotBass), mkWindow(hotBass), mkWindow(hotBass)];
+      const coaching = activeState(cand('low-end', 0.9));
+      const html = panelHTML({ liveAdjustmentsEnabled: true }, 'live', windows, null, undefined, coaching);
+      expect(html).not.toContain('data-lap-action');
+    });
+  });
+
+  describe('panelHTML with now (#613)', () => {
+    it('renders the four disposition buttons for an active candidate', () => {
+      const hotBass = { ...FLAT, bass: FLAT.bass + 20 };
+      const windows = [mkWindow(hotBass), mkWindow(hotBass), mkWindow(hotBass)];
+      const coaching = activeState(cand('low-end', 0.9));
+      const html = panelHTML({ liveAdjustmentsEnabled: true }, 'live', windows, null, undefined, coaching, 0);
+      expect(html).toContain('data-lap-action="acknowledge"');
+      expect(html).toContain('data-lap-action="tried"');
+      expect(html).toContain('data-lap-action="snooze"');
+      expect(html).toContain('data-lap-action="dismiss"');
+    });
+
+    it('renders the snoozed variant when coaching.snoozeUntil is in the future', () => {
+      const hotBass = { ...FLAT, bass: FLAT.bass + 20 };
+      const windows = [mkWindow(hotBass), mkWindow(hotBass), mkWindow(hotBass)];
+      const coaching = activeState(cand('low-end', 0.9), { snoozeUntil: 5000 });
+      const html = panelHTML({ liveAdjustmentsEnabled: true }, 'live', windows, null, undefined, coaching, 1000);
+      expect(html).toContain('lap-card-snoozed');
+      expect(html).toContain('data-lap-action="resume"');
+    });
   });
 });
