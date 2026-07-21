@@ -45,7 +45,10 @@
   var MARKDOWN_EMPHASIS_RUN = /(\*\*|`)/g;
   var HEADING_LINE = /^#{1,2}\s+(.+)$/;
   var BULLET_LINE = /^[-*]\s+(.+)$/;
-  var HTML_COMMENT_LINE = /^<!--.*-->$/;
+  // `[\s\S]` (not `.`) so the comment body still matches when it spans
+  // newlines — a bare `.*` here trips CodeQL js/bad-tag-filter (incomplete
+  // multiline-comment match) and could let a `<!-- ... -->` slip through.
+  var HTML_COMMENT_LINE = /^<!--[\s\S]*?-->$/;
 
   function stripEmphasis(text) {
     return text.replace(MARKDOWN_EMPHASIS_RUN, '');
