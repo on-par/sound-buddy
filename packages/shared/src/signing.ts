@@ -69,42 +69,6 @@ export function isMachOBinary(header: Uint8Array): boolean {
   return MACHO_MAGICS.has(magic);
 }
 
-export interface NotarySubmissionResult {
-  ok: boolean;
-  id?: string;
-  status?: string;
-  error?: string;
-}
-
-export function parseNotarySubmission(jsonText: string, notaryProfile: string): NotarySubmissionResult {
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(jsonText);
-  } catch {
-    return {
-      ok: false,
-      error:
-        'could not parse `xcrun notarytool submit` output — re-run it manually and check your notary ' +
-        `credentials: xcrun notarytool submit <zip> --keychain-profile ${notaryProfile} --wait`,
-    };
-  }
-
-  const v = parsed as Record<string, unknown>;
-  const status = typeof v.status === 'string' ? v.status : undefined;
-  const id = typeof v.id === 'string' ? v.id : undefined;
-
-  if (status === 'Accepted') {
-    return { ok: true, id, status };
-  }
-
-  return {
-    ok: false,
-    error:
-      `notarization did not succeed (status: ${status ?? 'unknown'}, submission ${id ?? 'unknown'}) — ` +
-      `see why with: xcrun notarytool log ${id ?? '<submission-id>'} --keychain-profile ${notaryProfile}`,
-  };
-}
-
 // afterPack signs ~262 nested Mach-O binaries. One `codesign` process per file
 // means 262 process spawns and 262 Apple timestamp-server round trips (#620).
 // `codesign` accepts many paths per invocation, so batching collapses that to a
@@ -146,5 +110,31 @@ export function parseSpctlAssessment(output: string): SpctlVerdict {
     error:
       `Gatekeeper did not accept the build — it will be blocked on a fresh macOS install. Check that ` +
       `notarization and stapling completed. spctl output:\n${output}`,
+  };
+}
+
+export interface StaplerVerdict {
+  stapled: boolean;
+  error?: string;
+}
+
+// `xcrun stapler validate` prints this line when a ticket is present and valid.
+// Anything else (missing ticket, "The validate action failed! Error 65") is a
+// failure: without a stapled ticket, first launch breaks for offline users
+// because Gatekeeper can't reach Apple to look the ticket up.
+const STAPLER_VALID_LINE = /The validate action worked!/;
+
+export function parseStaplerValidation(output: string): StaplerVerdict {
+  if (STAPLER_VALID_LINE.test(output)) {
+    return { stapled: true };
+  }
+
+  return {
+    stapled: false,
+    error:
+      'no valid notarization ticket is stapled to the app — offline first launch will be ' +
+      'blocked by Gatekeeper. Confirm electron-builder ran notarization (mac.notarize must ' +
+      'not be false and APPLE_KEYCHAIN_PROFILE must be set), then re-run the build. ' +
+      `stapler output:\n${output}`,
   };
 }

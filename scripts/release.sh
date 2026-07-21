@@ -161,8 +161,13 @@ say "Building self-contained app (this takes a minute)"
 if [[ "$SIGNED" == "true" ]]; then
   # Two formats, one cert: afterPack/codesign wants the full "Developer ID Application: …"
   # string; electron-builder rejects that prefix and wants the bare name (#619).
+  # APPLE_KEYCHAIN_PROFILE is how electron-builder hands our notarytool keychain profile to
+  # @electron/notarize — it submits, waits, and staples the ticket before zipping (#621).
+  # Output is NOT silenced here: the submission id and notary progress belong in the log.
   ( cd "$APP" && SOUND_BUDDY_SIGNING_IDENTITY="$IDENTITY" SOUND_BUDDY_NOTARY_PROFILE="$NOTARY_PROFILE" \
-      npm run dist -- -c.mac.identity="$IDENTITY_NAME" >/dev/null )
+      APPLE_KEYCHAIN_PROFILE="$NOTARY_PROFILE" \
+      npm run dist -- -c.mac.identity="$IDENTITY_NAME" -c.mac.notarize=true ) \
+    || die "signed build failed — if notarization was rejected, find the submission id in the output above and read the log with: xcrun notarytool log <submission-id> --keychain-profile $NOTARY_PROFILE"
 else
   ( cd "$APP" && npm run dist >/dev/null )
 fi
@@ -174,7 +179,10 @@ APP_RES="$APP/release/mac-arm64/Sound Buddy.app/Contents/Resources"
 [[ -x "$APP_RES/bin/sox" && -x "$APP_RES/python/bin/python3" ]] || die "bundle is missing sox/python — build problem"
 say "Built $(basename "$ZIP") ($(du -h "$ZIP" | cut -f1))"
 
-# ── Notarize + staple + re-verify ────────────────────────────────────────────
+# ── Verify the notarized, stapled artifact ───────────────────────────────────
+# electron-builder already submitted to Apple, stapled the ticket, and *then*
+# zipped the stapled .app (#621). Everything below is verification only — no
+# mutation of the artifact, so $ZIP stays exactly what gets uploaded.
 if [[ "$SIGNED" == "true" ]]; then
   APP_BUNDLE="$APP/release/mac-arm64/Sound Buddy.app"
 
@@ -182,24 +190,14 @@ if [[ "$SIGNED" == "true" ]]; then
   codesign --verify --deep --strict "$APP_BUNDLE" \
     || die "codesign verification failed — a nested binary is unsigned or the seal is broken; run: codesign --verify --deep --strict --verbose=4 \"$APP_BUNDLE\""
 
-  say "Submitting to Apple notary service (this can take a few minutes)"
-  NOTARY_OUT="$(xcrun notarytool submit "$ZIP" --keychain-profile "$NOTARY_PROFILE" --wait --output-format json 2>/dev/null || true)"
+  say "Validating the stapled notarization ticket"
+  STAPLER_OUT="$(xcrun stapler validate "$APP_BUNDLE" 2>&1 || true)"
   node --input-type=module -e '
-    import { parseNotarySubmission } from "'"$ROOT"'/packages/shared/dist/index.js";
-    const r = parseNotarySubmission(process.argv[1], process.argv[2]);
-    if (!r.ok) { console.error(r.error); process.exit(1); }
-    console.log(`notarization accepted (submission ${r.id})`);
-  ' "$NOTARY_OUT" "$NOTARY_PROFILE" || die "notarization failed — see error above"
-
-  say "Stapling notarization ticket"
-  xcrun stapler staple "$APP_BUNDLE" >/dev/null || die "stapling failed — run: xcrun stapler staple \"$APP_BUNDLE\""
-
-  # Stapling modified the .app, so the zip electron-builder made is stale.
-  # Rebuild it with ditto (preserves resource forks / permissions the way
-  # Apple expects) — every later step (checksum, upload, manifest) uses $ZIP.
-  say "Re-zipping stapled app"
-  rm -f "$ZIP"
-  ditto -c -k --keepParent "$APP_BUNDLE" "$ZIP" || die "re-zip after stapling failed"
+    import { parseStaplerValidation } from "'"$ROOT"'/packages/shared/dist/index.js";
+    const v = parseStaplerValidation(process.argv[1]);
+    if (!v.stapled) { console.error(v.error); process.exit(1); }
+    console.log("stapler: valid ticket stapled");
+  ' "$STAPLER_OUT" || die "stapled-ticket validation failed — the build must not ship; see error above"
 
   say "Assessing with Gatekeeper (spctl)"
   SPCTL_OUT="$(spctl --assess --type execute --verbose=4 "$APP_BUNDLE" 2>&1 || true)"

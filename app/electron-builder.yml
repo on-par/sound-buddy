@@ -84,6 +84,14 @@ mac:
   # Anyway" in the Security section (or
   # `xattr -dr com.apple.quarantine "/Applications/Sound Buddy.app"`).
   identity: null
+  # Notarization + stapling are performed natively by electron-builder (#621):
+  # it submits to Apple inside its sign phase, staples the returned ticket to the
+  # .app, and only then builds the zip target — so the shipped zip always contains
+  # a stapled app (no post-hoc staple + re-zip dance). Off by default so unsigned
+  # dev/CI builds never touch the notary service; release.sh turns it on with
+  # -c.mac.notarize=true and passes credentials via APPLE_KEYCHAIN_PROFILE, exactly
+  # mirroring how it overrides `identity` above.
+  notarize: false
   # Hardened runtime + entitlements are required for notarization (#53). They
   # are inert for unsigned dev/CI builds (identity: null skips the sign step);
   # release.sh activates real signing by overriding identity on the CLI

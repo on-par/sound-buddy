@@ -66,10 +66,12 @@ Given both env vars, `scripts/release.sh`:
    their own — walking them individually is what made a signed build take
    ~45 minutes (#620).
 4. Verifies the signature (`codesign --verify --deep --strict`).
-5. Submits to Apple's notary service and waits
-   (`xcrun notarytool submit --wait`).
-6. Staples the notarization ticket (`xcrun stapler staple`) and re-zips the
-   stapled `.app`.
+5. electron-builder submits the signed `.app` to Apple's notary service and
+   staples the returned ticket itself (`mac.notarize`, credentials passed as
+   `APPLE_KEYCHAIN_PROFILE`) — this happens inside its sign phase, before the
+   zip target is built, so the shipped zip always contains a stapled app (#621).
+6. Validates the stapled ticket (`xcrun stapler validate`) and aborts if it
+   isn't there.
 7. Assesses the result with Gatekeeper (`spctl --assess --verbose=4`) and
    aborts the release if it isn't accepted.
 
@@ -83,11 +85,14 @@ On a fresh macOS install (or a machine that has never opened this app):
    prints `accepted`.
 3. `codesign -dv --verbose=4 "/Applications/Sound Buddy.app"` shows the
    Developer ID Application certificate.
+4. `xcrun stapler validate "/Applications/Sound Buddy.app"` prints "The
+   validate action worked!".
 
 ## Troubleshooting
 
-If notarization comes back `Invalid` or `Rejected`, the error from
-`scripts/release.sh` includes the exact command to see why:
+If notarization comes back `Invalid` or `Rejected`, electron-builder prints the
+submission id and the failure output directly, and `scripts/release.sh`'s
+`die` message repeats the exact command to see why:
 
 ```bash
 xcrun notarytool log <submission-id> --keychain-profile sound-buddy-notary
