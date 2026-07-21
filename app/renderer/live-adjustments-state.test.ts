@@ -1255,6 +1255,18 @@ describe('Engineer control over live coaching (#613)', () => {
       expect(state).toEqual(snapshot);
     });
 
+    it('also clears a stale observation window, so a later re-promotion of the same id is not misread as still-observed', () => {
+      const active = cand('x', 0.9);
+      const state = activeState(active, {
+        observing: {
+          id: 'x', title: 'x', category: 'tonal', scope: 'mix',
+          before: { severityDb: 1, confidence: 0.9 }, startedAt: 500, until: 500 + OBSERVATION_WINDOW_MS,
+        },
+      });
+      const next = dismissCoaching(state, 1000);
+      expect(next.observing).toBeNull();
+    });
+
     it('never re-promotes the dismissed candidate across PERSISTENCE_WINDOWS + 2 windows', () => {
       let state = createCoachingState();
       state = advanceCoaching(state, [cand('x', 0.9)], 0);

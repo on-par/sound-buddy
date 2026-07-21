@@ -471,6 +471,9 @@
   var SNOOZE_BYPASS_CATEGORIES = { clipping: true };
   // Minutes-remaining display for the snoozed card copy.
   var MS_PER_MINUTE = 60000;
+  // The "Snooze N min" button label, derived from SNOOZE_MS rather than a
+  // second hardcoded "5 min" literal so the two can't drift out of sync.
+  var SNOOZE_BUTTON_LABEL = 'Snooze ' + (SNOOZE_MS / MS_PER_MINUTE) + ' min';
 
   /** A fresh coaching stability state (#612/#613): no active suggestion,
    *  nothing pending, no cooldowns/dismissals in effect, no disposition. */
@@ -683,8 +686,10 @@
 
   /** Suppresses the active candidate for the rest of the session unless it
    *  gets materially worse (DISMISS_ESCALATION_DB), and clears the active
-   *  card plus its pending counters so the machine cannot re-promote it on
-   *  the very next window. No-op when there is no active candidate. */
+   *  card, its pending counters, and any observation window on it so the
+   *  machine cannot re-promote it on the very next window and a later,
+   *  unrelated reactivation of the same id can't be misread as still being
+   *  observed. No-op when there is no active candidate. */
   function dismissCoaching(state, now) {
     if (!state || !state.active) return Object.assign({}, state);
     var severityDb = isFinite(state.active.severityDb) ? state.active.severityDb : 0;
@@ -699,6 +704,7 @@
       pendingCandidate: null,
       clearCount: 0,
       dismissed: dismissed,
+      observing: null,
     });
   }
 
@@ -790,7 +796,7 @@
     if (view && view.observing) {
       observingHTML = '<p class="lap-card-observing" role="status">Checking the result — watching the next minute of audio.</p>';
       actionsHTML = '<div class="lap-card-actions">'
-        + '<button type="button" class="lap-action" data-lap-action="snooze">Snooze 5 min</button>'
+        + '<button type="button" class="lap-action" data-lap-action="snooze">' + SNOOZE_BUTTON_LABEL + '</button>'
         + '<button type="button" class="lap-action" data-lap-action="dismiss">Dismiss</button>'
         + '</div>';
     } else if (view) {
@@ -799,7 +805,7 @@
       actionsHTML = '<div class="lap-card-actions">'
         + '<button type="button" class="' + ackClass + '"' + ackAttr + ' data-lap-action="acknowledge">Got it</button>'
         + '<button type="button" class="lap-action" data-lap-action="tried">I tried this</button>'
-        + '<button type="button" class="lap-action" data-lap-action="snooze">Snooze 5 min</button>'
+        + '<button type="button" class="lap-action" data-lap-action="snooze">' + SNOOZE_BUTTON_LABEL + '</button>'
         + '<button type="button" class="lap-action" data-lap-action="dismiss">Dismiss</button>'
         + '</div>';
     }
