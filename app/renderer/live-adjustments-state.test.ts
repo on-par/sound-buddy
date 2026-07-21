@@ -7,10 +7,13 @@ const {
   clipCandidates, candidateConfidence, confidenceLabel, rankCandidates, selectCoachingCandidate,
   coachingCardHTML, MIN_CONFIDENCE, HIGH_CONFIDENCE, CATEGORY_PRIORITY, CLIP_RISK_PEAK_DBFS,
   CONFIDENCE_FULL_WINDOWS,
+  createCoachingState, advanceCoaching, allCoachingCandidates,
+  PERSISTENCE_WINDOWS, RETAIN_CONFIDENCE, RECOVERY_WINDOWS, REPLACEMENT_MARGIN,
+  MIN_ACTIVE_HOLD_MS, COOLDOWN_MS, OPPOSITE_IDS,
 } = require('./live-adjustments-state.js') as {
   isEnabled: (settings: unknown) => boolean;
   showPanel: (settings: unknown, mode: string) => boolean;
-  panelHTML: (settings: unknown, mode: string, windows?: unknown, measurementSource?: number | null, focusView?: unknown) => string;
+  panelHTML: (settings: unknown, mode: string, windows?: unknown, measurementSource?: number | null, focusView?: unknown, coaching?: unknown) => string;
   hasEnoughData: (windows: unknown, measurementSource?: number | null) => boolean;
   mixCandidates: (windows: unknown, measurementSource?: number | null) => Array<{ id: string; title: string; detail: string }>;
   MIN_WINDOWS: number;
@@ -27,6 +30,27 @@ const {
   CATEGORY_PRIORITY: Record<string, number>;
   CLIP_RISK_PEAK_DBFS: number;
   CONFIDENCE_FULL_WINDOWS: number;
+  createCoachingState: () => CoachingState;
+  advanceCoaching: (prev: CoachingState | null | undefined, candidates: unknown, now: number) => CoachingState;
+  allCoachingCandidates: (windows: unknown, measurementSource: number | null, focusView: unknown) => Array<Record<string, unknown>>;
+  PERSISTENCE_WINDOWS: number;
+  RETAIN_CONFIDENCE: number;
+  RECOVERY_WINDOWS: number;
+  REPLACEMENT_MARGIN: number;
+  MIN_ACTIVE_HOLD_MS: number;
+  COOLDOWN_MS: number;
+  OPPOSITE_IDS: Record<string, string>;
+};
+
+type CoachingCandidate = Record<string, unknown> & { id: string; confidence: number };
+type CoachingState = {
+  active: CoachingCandidate | null;
+  activeSince: number | null;
+  pendingId: string | null;
+  pendingCount: number;
+  pendingCandidate: CoachingCandidate | null;
+  clearCount: number;
+  cooldowns: Record<string, number>;
 };
 
 type Profile = { id: string; label: string; bands: Record<string, number> };
@@ -775,5 +799,258 @@ describe('panelHTML — ranked coaching card (#611)', () => {
     expect(cardIdx).toBeGreaterThan(-1);
     expect(noteIdx).toBeGreaterThan(-1);
     expect(cardIdx).toBeLessThan(noteIdx);
+  });
+});
+
+describe('Coaching stability (#612)', () => {
+  function cand(id: string, confidence: number, extra?: Record<string, unknown>): CoachingCandidate {
+    return {
+      id, title: id, category: 'tonal', scope: 'mix', severityDb: 1, confidence,
+      why: '', action: '', detail: '', ...extra,
+    };
+  }
+
+  it('ignores a transient condition — one qualifying window then nothing does not activate', () => {
+    const s0 = createCoachingState();
+    const s1 = advanceCoaching(s0, [cand('x', 0.9)], 0);
+    expect(s1.active).toBeNull();
+    const s2 = advanceCoaching(s1, [], 1000);
+    expect(s2.active).toBeNull();
+    const s3 = advanceCoaching(s2, [], 2000);
+    expect(s3.active).toBeNull();
+  });
+
+  it('activates a persistent condition after exactly PERSISTENCE_WINDOWS consecutive windows', () => {
+    let state = createCoachingState();
+    let lastNow = 0;
+    for (let n = 1; n <= PERSISTENCE_WINDOWS; n++) {
+      lastNow = n * 1000;
+      state = advanceCoaching(state, [cand('x', 0.9)], lastNow);
+      if (n < PERSISTENCE_WINDOWS) expect(state.active).toBeNull();
+    }
+    expect(state.active).not.toBeNull();
+    expect(state.active!.id).toBe('x');
+    expect(state.activeSince).toBe(lastNow);
+    expect(state.pendingCount).toBe(0); // pending clears on promotion
+  });
+
+  it('does not treat the active candidate as a challenger to itself when it remains top-ranked', () => {
+    const s0 = createCoachingState();
+    const s1 = advanceCoaching(s0, [cand('x', 0.9)], 0);
+    const s2 = advanceCoaching(s1, [cand('x', 0.9)], 1000);
+    expect(s2.active!.id).toBe('x');
+    // x stays the top-ranked, fully-qualified candidate — must not accumulate pending credit against itself.
+    const s3 = advanceCoaching(s2, [cand('x', 0.9)], 2000);
+    expect(s3.active!.id).toBe('x');
+    expect(s3.pendingId).toBeNull();
+    expect(s3.pendingCount).toBe(0);
+  });
+
+  it('retains the active card through minor fluctuation, tracking the newest confidence', () => {
+    const s0 = createCoachingState();
+    const s1 = advanceCoaching(s0, [cand('x', 0.9)], 0);
+    const s2 = advanceCoaching(s1, [cand('x', 0.9)], 1000);
+    expect(s2.active!.id).toBe('x');
+
+    const between = (RETAIN_CONFIDENCE + MIN_CONFIDENCE) / 2;
+    const s3 = advanceCoaching(s2, [cand('x', between)], 2000);
+    expect(s3.active).not.toBeNull();
+    expect(s3.active!.id).toBe('x');
+    expect(s3.active!.confidence).toBeCloseTo(between);
+  });
+
+  it('does not replace the active card when a challenger stays below the replacement margin', () => {
+    const s0 = createCoachingState();
+    const s1 = advanceCoaching(s0, [cand('x', MIN_CONFIDENCE)], 0);
+    const s2 = advanceCoaching(s1, [cand('x', MIN_CONFIDENCE)], 1000);
+    expect(s2.active!.id).toBe('x');
+    expect(s2.activeSince).toBe(1000);
+
+    const belowMargin = MIN_CONFIDENCE + REPLACEMENT_MARGIN / 2;
+    const t1 = 1000 + MIN_ACTIVE_HOLD_MS + 1000;
+    const t2 = t1 + 1000;
+    const s3 = advanceCoaching(s2, [cand('x', MIN_CONFIDENCE), cand('y', belowMargin)], t1);
+    expect(s3.active!.id).toBe('x');
+    const s4 = advanceCoaching(s3, [cand('x', MIN_CONFIDENCE), cand('y', belowMargin)], t2);
+    expect(s4.active!.id).toBe('x');
+  });
+
+  it('replaces the active card when a persistent challenger clears the replacement margin', () => {
+    const s0 = createCoachingState();
+    const s1 = advanceCoaching(s0, [cand('x', MIN_CONFIDENCE)], 0);
+    const s2 = advanceCoaching(s1, [cand('x', MIN_CONFIDENCE)], 1000);
+    expect(s2.active!.id).toBe('x');
+
+    const overMargin = MIN_CONFIDENCE + REPLACEMENT_MARGIN;
+    const t1 = 1000 + MIN_ACTIVE_HOLD_MS + 1000;
+    const t2 = t1 + 1000;
+    const s3 = advanceCoaching(s2, [cand('x', MIN_CONFIDENCE), cand('y', overMargin)], t1);
+    const s4 = advanceCoaching(s3, [cand('x', MIN_CONFIDENCE), cand('y', overMargin)], t2);
+    expect(s4.active!.id).toBe('y');
+    expect(s4.activeSince).toBe(t2);
+  });
+
+  it('the hold window blocks an early over-margin replacement; a higher-priority category bypasses it', () => {
+    const s0 = createCoachingState();
+    const s1 = advanceCoaching(s0, [cand('x', MIN_CONFIDENCE)], 0);
+    const s2 = advanceCoaching(s1, [cand('x', MIN_CONFIDENCE)], 1000);
+    expect(s2.active!.id).toBe('x');
+    expect(1000 + MIN_ACTIVE_HOLD_MS).toBeGreaterThan(3000); // sanity: 3000 is still inside the hold
+
+    const overMargin = MIN_CONFIDENCE + REPLACEMENT_MARGIN + 0.05;
+    const s3 = advanceCoaching(s2, [cand('x', MIN_CONFIDENCE), cand('y', overMargin)], 2000);
+    const s4 = advanceCoaching(s3, [cand('x', MIN_CONFIDENCE), cand('y', overMargin)], 3000);
+    expect(s4.active!.id).toBe('x'); // blocked — still inside MIN_ACTIVE_HOLD_MS
+
+    // A clipping-category challenger at the same early instants bypasses both the hold and the margin.
+    const s1b = advanceCoaching(s0, [cand('x', MIN_CONFIDENCE)], 0);
+    const s2b = advanceCoaching(s1b, [cand('x', MIN_CONFIDENCE)], 1000);
+    const s3b = advanceCoaching(s2b, [cand('x', MIN_CONFIDENCE), cand('clip', 0.9, { id: 'clip', category: 'clipping' })], 2000);
+    const s4b = advanceCoaching(s3b, [cand('x', MIN_CONFIDENCE), cand('clip', 0.9, { id: 'clip', category: 'clipping' })], 3000);
+    expect(s4b.active!.id).toBe('clip');
+    expect(s4b.activeSince).toBe(3000);
+  });
+
+  it('clears a resolved condition after exactly RECOVERY_WINDOWS windows without it', () => {
+    const s0 = createCoachingState();
+    const s1 = advanceCoaching(s0, [cand('x', 0.9)], 0);
+    const s2 = advanceCoaching(s1, [cand('x', 0.9)], 1000);
+    expect(s2.active!.id).toBe('x');
+
+    let state = s2;
+    for (let n = 1; n <= RECOVERY_WINDOWS; n++) {
+      state = advanceCoaching(state, [], 1000 + n * 1000);
+      if (n < RECOVERY_WINDOWS) expect(state.active!.id).toBe('x'); // a dip short of RECOVERY_WINDOWS is not yet a resolution
+    }
+    expect(state.active).toBeNull();
+  });
+
+  it('suppresses immediate contradictory advice during cooldown, then activates once cooldown expires', () => {
+    const s0 = createCoachingState();
+    const s1 = advanceCoaching(s0, [cand('input-low-support', 0.9)], 0);
+    const s2 = advanceCoaching(s1, [cand('input-low-support', 0.9)], 1000);
+    expect(s2.active!.id).toBe('input-low-support');
+
+    const s3 = advanceCoaching(s2, [], 2000);
+    const s4 = advanceCoaching(s3, [], 3000);
+    expect(s4.active).toBeNull();
+    expect(s4.cooldowns['input-low-support']).toBe(3000 + COOLDOWN_MS);
+    expect(s4.cooldowns[OPPOSITE_IDS['input-low-support']]).toBe(3000 + COOLDOWN_MS);
+
+    let state = s4;
+    for (let t = 4000; t < 3000 + COOLDOWN_MS; t += 1000) {
+      state = advanceCoaching(state, [cand('input-low-cleanup', 0.9)], t);
+      expect(state.active).toBeNull();
+    }
+
+    const afterCooldown1 = 3000 + COOLDOWN_MS + 1000;
+    const afterCooldown2 = afterCooldown1 + 1000;
+    const s5 = advanceCoaching(state, [cand('input-low-cleanup', 0.9)], afterCooldown1);
+    expect(s5.active).toBeNull();
+    const s6 = advanceCoaching(s5, [cand('input-low-cleanup', 0.9)], afterCooldown2);
+    expect(s6.active).not.toBeNull();
+    expect(s6.active!.id).toBe('input-low-cleanup');
+  });
+
+  it('does not promote on the resolving window, even with a fully-persistent other candidate present', () => {
+    const s0 = createCoachingState();
+    const s1 = advanceCoaching(s0, [cand('x', 0.9)], 0);
+    const s2 = advanceCoaching(s1, [cand('x', 0.9)], 1000);
+    expect(s2.active!.id).toBe('x');
+
+    const s3 = advanceCoaching(s2, [cand('z', 0.9)], 2000);
+    expect(s3.active!.id).toBe('x'); // one dip, not yet a resolution
+    const s4 = advanceCoaching(s3, [cand('z', 0.9)], 3000);
+    expect(s4.active).toBeNull(); // resolves x; must NOT promote z even though z has 2 persistent windows
+    expect(s4.pendingId).toBeNull();
+    expect(s4.pendingCount).toBe(0);
+  });
+
+  it('advanceCoaching(null, ...) and advanceCoaching(undefined, ...) behave like a fresh state', () => {
+    const fresh = advanceCoaching(createCoachingState(), [cand('a', 0.9)], 0);
+    expect(advanceCoaching(null, [cand('a', 0.9)], 0)).toEqual(fresh);
+    expect(advanceCoaching(undefined, [cand('a', 0.9)], 0)).toEqual(fresh);
+  });
+
+  it('a non-array candidates argument behaves like []', () => {
+    const state = advanceCoaching(createCoachingState(), [cand('x', 0.9)], 0);
+    expect(advanceCoaching(state, 'nope', 1000)).toEqual(advanceCoaching(state, [], 1000));
+    expect(advanceCoaching(state, null, 1000)).toEqual(advanceCoaching(state, [], 1000));
+  });
+
+  it('never mutates prev, including prev.cooldowns', () => {
+    const s0 = createCoachingState();
+    const s1 = advanceCoaching(s0, [cand('x', 0.9)], 0);
+    const s2 = advanceCoaching(s1, [cand('x', 0.9)], 1000);
+    const s3 = advanceCoaching(s2, [], 2000); // one dip — populates clearCount without resolving
+    const snapshot = JSON.parse(JSON.stringify(s3));
+    advanceCoaching(s3, [cand('y', 0.9)], 3000);
+    expect(s3).toEqual(snapshot);
+  });
+
+  it('prunes expired cooldown entries from the returned state', () => {
+    const state: CoachingState = {
+      active: null, activeSince: null, pendingId: null, pendingCount: 0, pendingCandidate: null,
+      clearCount: 0, cooldowns: { stale: 500, fresh: 5000 },
+    };
+    const next = advanceCoaching(state, [], 1000);
+    expect(next.cooldowns.stale).toBeUndefined();
+    expect(next.cooldowns.fresh).toBe(5000);
+  });
+
+  it('allCoachingCandidates returns the clipping + mix + focused-input union', () => {
+    const hotBassMix = { ...FLAT, bass: FLAT.bass + 20 };
+    const hotLowInput = { ...FLAT, sub_bass: -20, bass: -20 };
+    const windows = [1, 2, 3].map(() => ({
+      type: 'window',
+      window: 1,
+      channels: [
+        { bands: hotBassMix, peak: 2, clipping: true },
+        { bands: hotLowInput },
+      ],
+    }));
+    const focusView = { focusedIndex: 1, inputs: [{ index: 1, name: 'Guitar', profile: egProfile }] };
+    const candidates = allCoachingCandidates(windows, null, focusView);
+    const ids = candidates.map((c) => c.id);
+    expect(ids).toContain('clip-risk');
+    expect(ids).toContain('low-end');
+    expect(ids).toContain('input-low-cleanup');
+  });
+
+  it('allCoachingCandidates omits input candidates without enough focused-input data or without a focusView', () => {
+    const windows = [mkWindow(FLAT), mkWindow(FLAT), mkWindow(FLAT)];
+    expect(allCoachingCandidates(windows, null, undefined).some((c) => String(c.id).indexOf('input-') === 0)).toBe(false);
+
+    const focusView = { focusedIndex: 0, inputs: [{ index: 0, name: 'X', profile: genericProfile }] };
+    const notEnough = [mkWindow(FLAT)];
+    expect(allCoachingCandidates(notEnough, null, focusView).some((c) => String(c.id).indexOf('input-') === 0)).toBe(false);
+  });
+
+  it('panelHTML renders coaching.active\'s card via the 6th argument', () => {
+    const hotBass = { ...FLAT, bass: FLAT.bass + 20 };
+    const windows = [mkWindow(hotBass), mkWindow(hotBass), mkWindow(hotBass)];
+    const coaching = {
+      active: {
+        id: 'custom-id', title: 'Custom', why: 'w', action: 'a', scope: 'mix', scopeLabel: 'Overall mix', confidence: 0.9,
+      },
+    };
+    const html = panelHTML({ liveAdjustmentsEnabled: true }, 'live', windows, null, undefined, coaching);
+    expect(html).toContain('data-candidate-id="custom-id"');
+  });
+
+  it('panelHTML renders the monitoring card when coaching.active is null, even with a qualifying candidate in the windows', () => {
+    const hotBass = { ...FLAT, bass: FLAT.bass + 20 };
+    const windows = [mkWindow(hotBass), mkWindow(hotBass), mkWindow(hotBass)];
+    const html = panelHTML({ liveAdjustmentsEnabled: true }, 'live', windows, null, undefined, { active: null });
+    expect(html).toContain('lap-card-monitoring');
+    expect(html).not.toContain('data-candidate-id="low-end"');
+  });
+
+  it('panelHTML with the 6th argument omitted is byte-identical to the current behavior', () => {
+    const hotBass = { ...FLAT, bass: FLAT.bass + 20 };
+    const windows = [mkWindow(hotBass), mkWindow(hotBass), mkWindow(hotBass)];
+    const withoutCoaching = panelHTML({ liveAdjustmentsEnabled: true }, 'live', windows, null);
+    const withUndefinedCoaching = panelHTML({ liveAdjustmentsEnabled: true }, 'live', windows, null, undefined, undefined);
+    expect(withUndefinedCoaching).toBe(withoutCoaching);
   });
 });

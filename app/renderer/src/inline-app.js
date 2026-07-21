@@ -67,6 +67,9 @@ let sessionWindows = [];
 // Focused input for the per-input instrument-aware adjustment candidates
 // (#525) — ephemeral, per-session only, never persisted.
 let focusedInputIndex = null;
+// Coaching stability state (#612) — advanced once per analysis window, never
+// per render, since syncLiveAdjustmentsPanel() is called from many render paths.
+let lapCoaching = window.liveAdjustmentsState.createCoachingState();
 // Elapsed-time playhead for the experimental DAW shell (#518): window.dawPlayheadState
 // state, null before the first capture ever starts. Tracked regardless of the
 // DAW toggle so flipping the experiment mid-capture shows correct elapsed time.
@@ -1013,7 +1016,7 @@ function renderLiveWorkspace() {
 function syncLiveAdjustmentsPanel() {
   const body = document.getElementById('spectrum-imperative');
   const html = window.liveAdjustmentsState.panelHTML(
-    setStore.getState().settings, currentMode, liveWindows, lcStore.getState().measurementSource, lapFocusView());
+    setStore.getState().settings, currentMode, liveWindows, lcStore.getState().measurementSource, lapFocusView(), lapCoaching);
   const existing = body.querySelector('.live-adjustments-panel');
   if (!html) { if (existing) existing.remove(); return; }
   if (!existing) body.insertAdjacentHTML('beforeend', html);
@@ -2289,6 +2292,8 @@ document.getElementById('live-start-btn').addEventListener('click', async () => 
   waveformLaneStates = {};
   liveWindows = [];
   sessionWindows = [];
+  // A new capture must not inherit the previous session's cooldowns or active card (#612).
+  lapCoaching = window.liveAdjustmentsState.createCoachingState();
   syncLiveSource();
   syncLiveAdjustmentsPanel();
   // A live capture always wins over a loaded history entry (#147).
@@ -3019,6 +3024,11 @@ sb.onLiveEvent((data) => {
     sessionWindows.push(data); // uncapped — see the declaration above (#261)
     document.getElementById('window-badge').textContent = `Window #${data.window}`;
     syncLiveSource();
+    lapCoaching = window.liveAdjustmentsState.advanceCoaching(
+      lapCoaching,
+      window.liveAdjustmentsState.allCoachingCandidates(
+        liveWindows, lcStore.getState().measurementSource, lapFocusView()),
+      Date.now());
     syncLiveAdjustmentsPanel();
   }
 });
@@ -3357,7 +3367,7 @@ function loadHistoryEntry(summary, prevSummary) {
   // the empty-state dropzone/Analyze button reset themselves (#206).
   anaStore.getState().clearAnalysis();
   anaStore.getState().setPrevSummary(prevSummary || null);
-  if (!liveRunning) { liveWindows = []; syncLiveSource(); document.getElementById('rc-offer').style.display = 'none'; document.getElementById('rc-not-enough').style.display = 'none'; }
+  if (!liveRunning) { liveWindows = []; lapCoaching = window.liveAdjustmentsState.createCoachingState(); syncLiveSource(); document.getElementById('rc-offer').style.display = 'none'; document.getElementById('rc-not-enough').style.display = 'none'; }
   document.querySelector('.mode-tab[data-mode="reportcard"]').click();
 }
 
@@ -3813,7 +3823,7 @@ document.getElementById('reportcard-clear-btn').addEventListener('click', () => 
   // getReportCardSource() fall through to that stale live card instead of the
   // empty state (#206) — but leave an actively-running session's buffer alone
   // so its live meters don't blip empty.
-  if (!liveRunning) { liveWindows = []; syncLiveSource(); document.getElementById('rc-offer').style.display = 'none'; document.getElementById('rc-not-enough').style.display = 'none'; }
+  if (!liveRunning) { liveWindows = []; lapCoaching = window.liveAdjustmentsState.createCoachingState(); syncLiveSource(); document.getElementById('rc-offer').style.display = 'none'; document.getElementById('rc-not-enough').style.display = 'none'; }
   setSpectrumState('empty');
 });
 
