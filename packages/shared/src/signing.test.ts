@@ -2,8 +2,8 @@ import { describe, expect, it } from 'vitest';
 import {
   CODESIGN_BATCH_SIZE,
   isMachOBinary,
-  parseNotarySubmission,
   parseSpctlAssessment,
+  parseStaplerValidation,
   planCodesignBatches,
   resolveSigningConfig,
 } from './signing.js';
@@ -184,55 +184,30 @@ describe('isMachOBinary', () => {
   });
 });
 
-describe('parseNotarySubmission', () => {
-  it('returns ok: true with id and status for an Accepted submission', () => {
-    const json = JSON.stringify({ id: 'abc-123', status: 'Accepted', message: 'done' });
-    const result = parseNotarySubmission(json, 'sound-buddy-notary');
-    expect(result).toEqual({ ok: true, id: 'abc-123', status: 'Accepted' });
+describe('parseStaplerValidation', () => {
+  it('accepts real success output', () => {
+    const output = 'Processing: /x/Sound Buddy.app\nThe validate action worked!';
+    expect(parseStaplerValidation(output)).toEqual({ stapled: true });
   });
 
-  it('returns ok: false with an actionable notarytool log hint for an Invalid status', () => {
-    const json = JSON.stringify({ id: 'abc-123', status: 'Invalid', message: 'failed' });
-    const result = parseNotarySubmission(json, 'sound-buddy-notary');
-    expect(result.ok).toBe(false);
-    if (result.ok) throw new Error('expected failure');
-    expect(result.error).toContain('Invalid');
-    expect(result.error).toContain('abc-123');
-    expect(result.error).toContain('xcrun notarytool log abc-123 --keychain-profile sound-buddy-notary');
+  it('rejects a missing-ticket failure, quoting the output with an actionable error', () => {
+    const output = 'Processing: /x/Sound Buddy.app\nThe validate action failed! Error 65.';
+    const verdict = parseStaplerValidation(output);
+    expect(verdict.stapled).toBe(false);
+    if (verdict.stapled) throw new Error('expected failure');
+    expect(verdict.error).toContain(output);
+    expect(verdict.error).toMatch(/offline/i);
+    expect(verdict.error).toMatch(/APPLE_KEYCHAIN_PROFILE/);
+    expect(verdict.error).toMatch(/mac\.notarize/);
   });
 
-  it('returns ok: false with the log hint for a Rejected status', () => {
-    const json = JSON.stringify({ id: 'xyz-789', status: 'Rejected' });
-    const result = parseNotarySubmission(json, 'sound-buddy-notary');
-    expect(result.ok).toBe(false);
-    if (result.ok) throw new Error('expected failure');
-    expect(result.error).toContain('Rejected');
-    expect(result.error).toContain('xyz-789');
-    expect(result.error).toContain('xcrun notarytool log xyz-789 --keychain-profile sound-buddy-notary');
-  });
-
-  it('returns ok: false with a manual re-run hint for garbage JSON', () => {
-    const result = parseNotarySubmission('not json{', 'sound-buddy-notary');
-    expect(result.ok).toBe(false);
-    if (result.ok) throw new Error('expected failure');
-    expect(result.error).toContain('xcrun notarytool submit');
-    expect(result.error).toMatch(/credentials/i);
-  });
-
-  it('returns ok: false with a manual re-run hint for empty input', () => {
-    const result = parseNotarySubmission('', 'sound-buddy-notary');
-    expect(result.ok).toBe(false);
-    if (result.ok) throw new Error('expected failure');
-    expect(result.error).toContain('xcrun notarytool submit');
-  });
-
-  it('falls back to "unknown"/placeholder id in the error when valid JSON omits status and id', () => {
-    const result = parseNotarySubmission('{}', 'sound-buddy-notary');
-    expect(result.ok).toBe(false);
-    if (result.ok) throw new Error('expected failure');
-    expect(result.error).toContain('status: unknown');
-    expect(result.error).toContain('submission unknown');
-    expect(result.error).toContain('xcrun notarytool log <submission-id> --keychain-profile sound-buddy-notary');
+  it('rejects empty output with the same actionable error', () => {
+    const verdict = parseStaplerValidation('');
+    expect(verdict.stapled).toBe(false);
+    if (verdict.stapled) throw new Error('expected failure');
+    expect(verdict.error).toMatch(/offline/i);
+    expect(verdict.error).toMatch(/APPLE_KEYCHAIN_PROFILE/);
+    expect(verdict.error).toMatch(/mac\.notarize/);
   });
 });
 

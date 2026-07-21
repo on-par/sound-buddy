@@ -31,10 +31,10 @@ export type {
 } from './release-smoke.js'
 
 export {
-  resolveSigningConfig, isMachOBinary, parseNotarySubmission, parseSpctlAssessment,
+  resolveSigningConfig, isMachOBinary, parseSpctlAssessment, parseStaplerValidation,
   planCodesignBatches, CODESIGN_BATCH_SIZE,
 } from './signing.js'
-export type { SigningConfig, NotarySubmissionResult, SpctlVerdict } from './signing.js'
+export type { SigningConfig, SpctlVerdict, StaplerVerdict } from './signing.js'
 
 export interface EQBand {
   type: string
