@@ -105,6 +105,30 @@ export function parseNotarySubmission(jsonText: string, notaryProfile: string): 
   };
 }
 
+// afterPack signs ~262 nested Mach-O binaries. One `codesign` process per file
+// means 262 process spawns and 262 Apple timestamp-server round trips (#620).
+// `codesign` accepts many paths per invocation, so batching collapses that to a
+// handful of calls. The cap is a compromise: large enough to matter, small
+// enough to stay well under ARG_MAX and to keep a failure's error message
+// pointing at a small set of files.
+export const CODESIGN_BATCH_SIZE = 32;
+
+/**
+ * Split `paths` into batches for `codesign`, preserving order.
+ * Returns [] for an empty input. Throws on a non-positive batch size.
+ */
+export function planCodesignBatches(paths: readonly string[], batchSize = CODESIGN_BATCH_SIZE): string[][] {
+  if (!Number.isInteger(batchSize) || batchSize < 1) {
+    throw new Error(`planCodesignBatches: batchSize must be a positive integer, got ${batchSize}`);
+  }
+
+  const batches: string[][] = [];
+  for (let i = 0; i < paths.length; i += batchSize) {
+    batches.push(paths.slice(i, i + batchSize));
+  }
+  return batches;
+}
+
 export interface SpctlVerdict {
   accepted: boolean;
   error?: string;

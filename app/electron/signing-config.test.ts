@@ -35,6 +35,67 @@ describe('electron-builder.yml notarization wiring', () => {
   });
 });
 
+// Parses the `signIgnore:` list out of the raw YAML with a regex instead of
+// pulling in a YAML parser dependency just for this drift guard (#620).
+function parseSignIgnorePatterns(config: string): string[] {
+  const lines = config.split('\n');
+  const startIndex = lines.findIndex((line) => /^\s*signIgnore:\s*$/.test(line));
+  if (startIndex === -1) return [];
+
+  const patterns: string[] = [];
+  for (const line of lines.slice(startIndex + 1)) {
+    const match = line.match(/^\s+- "(.+)"$/);
+    if (!match) break;
+    patterns.push(match[1]);
+  }
+  return patterns;
+}
+
+describe('electron-builder.yml signIgnore (#620)', () => {
+  const patterns = parseSignIgnorePatterns(builderConfig);
+  const regexes = patterns.map((pattern) => new RegExp(pattern));
+
+  it('parses a non-empty signIgnore list', () => {
+    expect(patterns.length).toBeGreaterThan(0);
+  });
+
+  it('ignores the python runtime tree that afterPack already signed', () => {
+    const pycPath =
+      '/Applications/Sound Buddy.app/Contents/Resources/python/lib/python3.12/ctypes/macholib/__pycache__/dylib.cpython-312.pyc';
+    const pyPath = '/Applications/Sound Buddy.app/Contents/Resources/python/lib/python3.12/ctypes/macholib/dylib.py';
+    const txtPath = '/Applications/Sound Buddy.app/Contents/Resources/python/lib/python3.12/some-file.txt';
+    const scriptsPath = '/Applications/Sound Buddy.app/Contents/Resources/scripts/analyze.py';
+
+    for (const path of [pycPath, pyPath, txtPath, scriptsPath]) {
+      expect(regexes.some((re) => re.test(path)), `expected a signIgnore pattern to match ${path}`).toBe(true);
+    }
+  });
+
+  it.each(['python', 'bin', 'lib'])('ignores a file directly under afterPack-owned dir %s', (dir) => {
+    const filePath = `/Applications/Sound Buddy.app/Contents/Resources/${dir}/some-file`;
+    expect(regexes.some((re) => re.test(filePath))).toBe(true);
+  });
+
+  it('never ignores the app, its helpers, or the Electron frameworks', () => {
+    const protectedPaths = [
+      'Contents/MacOS/Sound Buddy',
+      'Contents/Frameworks/Electron Framework.framework/Versions/A/Electron Framework',
+      'Contents/Frameworks/Sound Buddy Helper.app/Contents/MacOS/Sound Buddy Helper',
+      'Contents/Resources/app.asar',
+    ];
+    for (const path of protectedPaths) {
+      expect(regexes.some((re) => re.test(path)), `expected no signIgnore pattern to match ${path}`).toBe(false);
+    }
+  });
+
+  it('keeps signIgnore inside the mac block', () => {
+    const macIndex = builderConfig.indexOf('\nmac:');
+    const signIgnoreIndex = builderConfig.indexOf('\n  signIgnore:');
+    expect(macIndex).toBeGreaterThan(-1);
+    expect(signIgnoreIndex).toBeGreaterThan(macIndex);
+  });
+});
+
 describe('build/entitlements.mac.plist', () => {
   it('exists', () => {
     expect(fs.existsSync(entitlementsPath)).toBe(true);

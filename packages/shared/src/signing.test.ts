@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import {
+  CODESIGN_BATCH_SIZE,
   isMachOBinary,
   parseNotarySubmission,
   parseSpctlAssessment,
+  planCodesignBatches,
   resolveSigningConfig,
 } from './signing.js';
 
@@ -256,5 +258,42 @@ describe('parseSpctlAssessment', () => {
     expect(verdict.accepted).toBe(false);
     if (verdict.accepted) throw new Error('expected rejection');
     expect(verdict.error).toMatch(/Gatekeeper/i);
+  });
+});
+
+describe('planCodesignBatches', () => {
+  it('returns [] for an empty array', () => {
+    expect(planCodesignBatches([])).toEqual([]);
+  });
+
+  it('splits 5 paths with batchSize 2 into [[a,b],[c,d],[e]], preserving order', () => {
+    const paths = ['a', 'b', 'c', 'd', 'e'];
+    expect(planCodesignBatches(paths, 2)).toEqual([['a', 'b'], ['c', 'd'], ['e']]);
+  });
+
+  it('produces no trailing empty batch for an exact multiple', () => {
+    const paths = ['a', 'b', 'c', 'd'];
+    expect(planCodesignBatches(paths, 2)).toEqual([['a', 'b'], ['c', 'd']]);
+  });
+
+  it('returns a single batch when paths.length < batchSize', () => {
+    const paths = ['a', 'b'];
+    expect(planCodesignBatches(paths, 10)).toEqual([['a', 'b']]);
+  });
+
+  it('flattens back to the input with no path dropped or duplicated (default CODESIGN_BATCH_SIZE)', () => {
+    const paths = Array.from({ length: 130 }, (_, i) => `/path/to/binary-${i}`);
+    const batches = planCodesignBatches(paths);
+    expect(batches.flat()).toEqual(paths);
+  });
+
+  it('CODESIGN_BATCH_SIZE is a positive integer', () => {
+    expect(Number.isInteger(CODESIGN_BATCH_SIZE)).toBe(true);
+    expect(CODESIGN_BATCH_SIZE).toBeGreaterThan(0);
+  });
+
+  it.each([0, -1, 1.5])('throws an actionable message for batchSize %s', (batchSize) => {
+    expect(() => planCodesignBatches(['a'], batchSize)).toThrow(/positive integer/);
+    expect(() => planCodesignBatches(['a'], batchSize)).toThrow(String(batchSize));
   });
 });

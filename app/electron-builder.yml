@@ -92,3 +92,23 @@ mac:
   gatekeeperAssess: false
   entitlements: build/entitlements.mac.plist
   entitlementsInherit: build/entitlements.mac.plist
+  # #620 — electron-builder's sign phase walks every file in the bundle and
+  # runs one `codesign` per file. Under Contents/Resources that is thousands of
+  # .py/.pyc/.json/.txt files that are NOT Mach-O: they carry no signature of
+  # their own and are already covered by the outer bundle seal, so signing them
+  # individually turned a release build into ~45 minutes. afterPack.js has
+  # already signed every genuine nested Mach-O under bin/, lib/ and python/
+  # with `--options runtime --timestamp`, so skipping these trees here removes
+  # the duplicate walk without leaving any binary unsigned. These are regexes
+  # matched against the full file path; nothing under Contents/MacOS,
+  # Contents/Frameworks, or app.asar is listed, so the app, its helpers and the
+  # Electron frameworks are still signed normally.
+  signIgnore:
+    - "Contents/Resources/python/"
+    - "Contents/Resources/bin/"
+    - "Contents/Resources/lib/"
+    - "Contents/Resources/scripts/"
+    - "Contents/Resources/engine/"
+    - "Contents/Resources/license-policy/"
+    - "Contents/Resources/scene-inspector/"
+    - "Contents/Resources/assets/"
