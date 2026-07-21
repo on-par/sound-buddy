@@ -7,6 +7,11 @@ which blocked the build. This file is that source.
 
 Voice reference: `site/src/pages/index.astro` (hero, trust bar) and `site/src/lib/faq.ts`.
 
+> **Pricing is not final.** Nothing on the waitlist page quotes a price, names a tier cost,
+> or promises a Founding price or a seat cap. The page converts to an email list only.
+> When pricing is locked, update this file first, then the FAQ entry and the form success
+> state together.
+
 ## Hero
 
 **Eyebrow**
@@ -25,7 +30,7 @@ Voice reference: `site/src/pages/index.astro` (hero, trust bar) and `site/src/li
 
 **Success**
 
-> You're on the list. We'll email you the moment early access opens, and Founding pricing is capped at the first 300 churches.
+> You're on the list. We'll email you the moment early access opens.
 
 **Error**
 
@@ -37,13 +42,16 @@ Exactly three entries in waitlist mode: `cost`, `privacy`, `launch-timing`. The 
 entry is reused unchanged from `site/src/lib/faq.ts`; the other two are new and belong in
 `faq.ts` so they stay greppable alongside the existing FAQ invariant checks.
 
+The `cost` entry deliberately quotes no numbers. Pricing is still being worked out, and a
+public page is the wrong place to commit to one.
+
 ```ts
 {
   id: 'cost',
   question: 'What will it cost?',
   answer: [
-    "Founding pricing is a one-time $199 for Pro forever, and it's capped at the first 300 churches. After that, Pro is $9 per month or $79 per year, priced with the church budget cycle in mind.",
-    'Nothing is for sale yet, so the waitlist is simply how you get first claim on one of the 300 Founding licenses when checkout opens.',
+    "We're still working out pricing, so there's nothing to quote yet. Sound Buddy will have a paid tier when it launches, and we'd rather tell you the real number once than guess at it now.",
+    'Joining the waitlist costs nothing and commits you to nothing. When pricing is set, the list hears it first.',
   ],
 },
 {
@@ -74,4 +82,6 @@ the AI you already have, built by live-sound engineers.
 
 - Nothing is for sale in waitlist mode. The page converts to an email list and does not
   present a checkout path.
+- No price, tier cost, Founding price, or seat cap appears anywhere on the page while
+  pricing is unsettled.
 - The `privacy` entry retains its original punctuation because #598 requires it verbatim.
