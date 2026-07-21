@@ -87,3 +87,39 @@ export const FAQ_ENTRIES: FaqEntry[] = [
 
 /** The three objections #558 names as the ones a church buyer leads with. */
 export const CORE_OBJECTION_IDS = ['privacy', 'unsigned-install', 'ai'] as const;
+
+// Two entries answerable before public launch (#598), kept out of FAQ_ENTRIES because
+// their copy ("pricing not announced yet", "not publicly available yet") would
+// contradict the live-mode pricing section, which renders FAQ_ENTRIES unfiltered and
+// is guarded by scripts/lib/faq-invariants.mjs's EXPECTED_FAQ_COUNT.
+const WAITLIST_ONLY_FAQ_ENTRIES: FaqEntry[] = [
+  {
+    id: 'cost',
+    question: 'What will it cost?',
+    answer: [
+      "We're still working out pricing, so there's nothing to quote yet. Sound Buddy will have a paid tier when it launches, and we'd rather tell you the real number once than guess at it now.",
+      'Joining the waitlist costs nothing and commits you to nothing. When pricing is set, the list hears it first.',
+    ],
+  },
+  {
+    id: 'launch-timing',
+    question: 'When can I actually use it?',
+    answer: [
+      "We're still in the build. Sound Buddy isn't publicly available yet, and we'd rather ship it right than ship it early to a room full of volunteers on a Sunday morning.",
+      'The waitlist hears first. Everyone on the list gets early access before public launch, and one email when it opens. No drip sequence, no newsletter.',
+    ],
+  },
+];
+
+/** The three pre-launch-answerable entries the waitlist mini-FAQ shows (#598), in
+ *  display order. */
+export const WAITLIST_FAQ_IDS = ['cost', 'privacy', 'launch-timing'] as const;
+
+/** Resolved waitlist mini-FAQ entries, in WAITLIST_FAQ_IDS order. Throws at import
+ *  time if an id doesn't resolve — a fast, loud signal instead of a silently
+ *  short mini-FAQ. */
+export const WAITLIST_FAQ_ENTRIES: FaqEntry[] = WAITLIST_FAQ_IDS.map((id) => {
+  const entry = [...FAQ_ENTRIES, ...WAITLIST_ONLY_FAQ_ENTRIES].find((e) => e.id === id);
+  if (!entry) throw new Error(`WAITLIST_FAQ_IDS references unknown FAQ id: ${id}`);
+  return entry;
+});

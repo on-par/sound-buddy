@@ -3,6 +3,7 @@ import Layout from '../layouts/Layout.astro';
 import BrandMark from '../components/BrandMark.astro';
 import ReportCard from '../components/ReportCard.astro';
 import BrowserLitePreview from '../components/BrowserLitePreview.astro';
+import WaitlistHome from '../components/WaitlistHome.astro';
 import liveCaptureScreenshot from '../assets/screenshots/live-capture.png';
 import reportCardShot from '../assets/screenshots/report-card.png';
 import momentumShot from '../assets/screenshots/momentum.png';
@@ -497,10 +498,10 @@ const tiers = [
 </Layout>
 ) : (
 <Layout
-  title="Sound Buddy — Coming soon"
-  description="Sound Buddy is launching soon."
+  title="Sound Buddy — Coming soon. Join the waitlist."
+  description="Sound Buddy grades the recording you already have and names what to fix before next Sunday, fully on your own machine. Join the waitlist for early access."
 >
-  <h1>Coming soon</h1>
+  <WaitlistHome />
 </Layout>
 )}
 
