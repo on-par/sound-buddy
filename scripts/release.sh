@@ -94,6 +94,7 @@ SIGNING_JSON="$(node --input-type=module -e '
 ')" || die "signing configuration invalid — see error above"
 SIGNED="$(node -pe 'JSON.parse(process.argv[1]).signed' "$SIGNING_JSON")"
 IDENTITY="$(node -pe 'JSON.parse(process.argv[1]).identity ?? ""' "$SIGNING_JSON")"
+IDENTITY_NAME="$(node -pe 'JSON.parse(process.argv[1]).identityName ?? ""' "$SIGNING_JSON")"
 NOTARY_PROFILE="$(node -pe 'JSON.parse(process.argv[1]).notaryProfile ?? ""' "$SIGNING_JSON")"
 say "Release notes: $([ "$SIGNED" = "true" ] && echo "signed" || echo "unsigned") build"
 
@@ -158,8 +159,10 @@ say "Bumping version to $NEXT"
 
 say "Building self-contained app (this takes a minute)"
 if [[ "$SIGNED" == "true" ]]; then
+  # Two formats, one cert: afterPack/codesign wants the full "Developer ID Application: …"
+  # string; electron-builder rejects that prefix and wants the bare name (#619).
   ( cd "$APP" && SOUND_BUDDY_SIGNING_IDENTITY="$IDENTITY" SOUND_BUDDY_NOTARY_PROFILE="$NOTARY_PROFILE" \
-      npm run dist -- -c.mac.identity="$IDENTITY" >/dev/null )
+      npm run dist -- -c.mac.identity="$IDENTITY_NAME" >/dev/null )
 else
   ( cd "$APP" && npm run dist >/dev/null )
 fi

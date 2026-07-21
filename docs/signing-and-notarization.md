@@ -50,7 +50,10 @@ Given both env vars, `scripts/release.sh`:
    on a build.
 2. Builds with `-c.mac.identity` overriding `electron-builder.yml`'s
    `identity: null`, with hardened runtime + entitlements
-   (`app/build/entitlements.mac.plist`) enabled.
+   (`app/build/entitlements.mac.plist`) enabled — passed as the bare
+   certificate name (electron-builder rejects the `Developer ID Application:`
+   prefix), while `afterPack.js` receives the full string via
+   `SOUND_BUDDY_SIGNING_IDENTITY`.
 3. `app/build/afterPack.js` signs every bundled Mach-O (sox, ffmpeg, ffprobe,
    their dylibs, the Python runtime) with the Developer ID identity;
    electron-builder's own sign phase then signs the frameworks, helpers, and

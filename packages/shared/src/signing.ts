@@ -5,9 +5,17 @@
 const SIGNING_IDENTITY_VAR = 'SOUND_BUDDY_SIGNING_IDENTITY';
 const NOTARY_PROFILE_VAR = 'SOUND_BUDDY_NOTARY_PROFILE';
 
+// electron-builder rejects a `mac.identity` that carries this prefix ("Please remove
+// prefix ... — appropriate certificate will be chosen automatically"), while `codesign -s`
+// wants the full string. One env var, two derived forms (#619).
+const DEVELOPER_ID_PREFIX = 'Developer ID Application: ';
+
 export interface SigningConfig {
   signed: boolean;
+  /** Full `Developer ID Application: Name (TEAMID)` string — what `codesign -s` expects. */
   identity?: string;
+  /** Identity with the `Developer ID Application: ` prefix stripped — what electron-builder's `mac.identity` expects. */
+  identityName?: string;
   notaryProfile?: string;
 }
 
@@ -16,12 +24,18 @@ function trimmedOrUndefined(value: string | undefined): string | undefined {
   return trimmed && trimmed.length > 0 ? trimmed : undefined;
 }
 
+function deriveIdentityForms(raw: string): { identity: string; identityName: string } {
+  const identityName = raw.startsWith(DEVELOPER_ID_PREFIX) ? raw.slice(DEVELOPER_ID_PREFIX.length).trim() : raw;
+  return { identity: `${DEVELOPER_ID_PREFIX}${identityName}`, identityName };
+}
+
 export function resolveSigningConfig(env: Record<string, string | undefined>): SigningConfig {
   const identity = trimmedOrUndefined(env[SIGNING_IDENTITY_VAR]);
   const notaryProfile = trimmedOrUndefined(env[NOTARY_PROFILE_VAR]);
 
   if (identity && notaryProfile) {
-    return { signed: true, identity, notaryProfile };
+    const { identity: fullIdentity, identityName } = deriveIdentityForms(identity);
+    return { signed: true, identity: fullIdentity, identityName, notaryProfile };
   }
 
   if (!identity && !notaryProfile) {
