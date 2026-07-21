@@ -41,6 +41,15 @@ export {
 } from './dmg-notarization.js'
 export type { DmgNotarizationStep, DmgNotarizationPlan } from './dmg-notarization.js'
 
+export {
+  planReleasePublish, evaluateReleasePreflight, formatPublishFailure, resumeCommand, classifyWorkingTree,
+  PUBLISH_STEPS,
+} from './release-publish.js'
+export type {
+  PublishStep, PublishState, ExistingRelease, PublishTargets, PublishStepPlan, PublishPlan,
+  PreflightVerdict, PublishOutcomeInput, TreeState,
+} from './release-publish.js'
+
 export interface EQBand {
   type: string
   freq: number
