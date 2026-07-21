@@ -85,6 +85,18 @@ verification, manifest generation, or manifest upload) reports explicitly
 that app/site update discovery (`latest.json`) was not updated, so an
 operator never mistakes a partial failure for a clean release.
 
+### Publishing order (#623)
+
+The release is staged as a GitHub **draft** first — a draft is never
+`releases/latest`, so update discovery keeps serving the previous good
+release untouched. `latest.json` is generated, checksum-verified, and
+uploaded to the draft, and only then is the release promoted out of draft
+(`gh release edit --draft=false`) — the single step that makes it visible to
+`releases/latest`. Every step before promote is idempotent and safe to
+re-run: re-invoking `scripts/release.sh` with the same explicit version
+resumes from whatever already exists instead of double-publishing. The
+decision logic lives in `packages/shared/src/release-publish.ts`.
+
 ## Non-goals
 
 - No in-app download UI, and no change to `app/electron/updater.ts` — it
