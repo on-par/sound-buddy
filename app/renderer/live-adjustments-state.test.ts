@@ -12,15 +12,17 @@ const {
   MIN_ACTIVE_HOLD_MS, COOLDOWN_MS, OPPOSITE_IDS,
   acknowledgeCoaching, snoozeCoaching, resumeCoaching, dismissCoaching, markTriedCoaching, coachingView,
   SNOOZE_MS, DISMISS_ESCALATION_DB, OBSERVATION_WINDOW_MS, SNOOZE_BYPASS_CATEGORIES,
+  MEANINGFUL_CHANGE_DB, MIN_OBSERVATION_SAMPLES, RESOLVED_SEVERITY_DB, UNKNOWN_SOURCE_LABEL,
+  observationContext, observeWindow, evaluateOutcome, acknowledgeOutcome, outcomeCardHTML,
 } = require('./live-adjustments-state.js') as {
   isEnabled: (settings: unknown) => boolean;
   showPanel: (settings: unknown, mode: string) => boolean;
   panelHTML: (settings: unknown, mode: string, windows?: unknown, measurementSource?: number | null, focusView?: unknown, coaching?: unknown, now?: number) => string;
   hasEnoughData: (windows: unknown, measurementSource?: number | null) => boolean;
-  mixCandidates: (windows: unknown, measurementSource?: number | null) => Array<{ id: string; title: string; detail: string }>;
+  mixCandidates: (windows: unknown, measurementSource?: number | null) => Array<{ id: string; title: string; detail: string; metric?: string }>;
   MIN_WINDOWS: number;
   inputHasEnoughData: (windows: unknown, channelIndex: number) => boolean;
-  inputCandidates: (windows: unknown, channelIndex: number, profile: unknown) => Array<{ id: string; title: string; detail: string }>;
+  inputCandidates: (windows: unknown, channelIndex: number, profile: unknown) => Array<{ id: string; title: string; detail: string; metric?: string }>;
   clipCandidates: (windows: unknown, measurementSource?: number | null) => Array<Record<string, unknown>>;
   candidateConfidence: (severityDb: number, windowCount: number) => number;
   confidenceLabel: (confidence: number) => string;
@@ -33,7 +35,7 @@ const {
   CLIP_RISK_PEAK_DBFS: number;
   CONFIDENCE_FULL_WINDOWS: number;
   createCoachingState: () => CoachingState;
-  advanceCoaching: (prev: CoachingState | null | undefined, candidates: unknown, now: number) => CoachingState;
+  advanceCoaching: (prev: CoachingState | null | undefined, candidates: unknown, now: number, context?: ObservationContext) => CoachingState;
   allCoachingCandidates: (windows: unknown, measurementSource: number | null, focusView: unknown) => Array<Record<string, unknown>>;
   PERSISTENCE_WINDOWS: number;
   RETAIN_CONFIDENCE: number;
@@ -46,23 +48,62 @@ const {
   snoozeCoaching: (state: CoachingState, now: number) => CoachingState;
   resumeCoaching: (state: CoachingState) => CoachingState;
   dismissCoaching: (state: CoachingState, now: number) => CoachingState;
-  markTriedCoaching: (state: CoachingState, now: number) => CoachingState;
+  markTriedCoaching: (state: CoachingState, now: number, context?: ObservationContext) => CoachingState;
   coachingView: (state: CoachingState, now: number) => CoachingView;
   SNOOZE_MS: number;
   DISMISS_ESCALATION_DB: number;
   OBSERVATION_WINDOW_MS: number;
   SNOOZE_BYPASS_CATEGORIES: Record<string, boolean>;
+  MEANINGFUL_CHANGE_DB: number;
+  MIN_OBSERVATION_SAMPLES: number;
+  RESOLVED_SEVERITY_DB: number;
+  UNKNOWN_SOURCE_LABEL: string;
+  observationContext: (windows: unknown, measurementSource: number | null | undefined, focusView: unknown, sourceName?: unknown) => ObservationContext;
+  observeWindow: (observing: ObservationWindow | null, candidates: unknown, context: ObservationContext | null | undefined) => ObservationWindow | null;
+  evaluateOutcome: (observing: ObservationWindow | null) => Outcome | null;
+  acknowledgeOutcome: (state: CoachingState, now: number) => CoachingState;
+  outcomeCardHTML: (outcome: Outcome | null, focusName?: string | null) => string;
 };
 
-type CoachingCandidate = Record<string, unknown> & { id: string; confidence: number; severityDb: number; category: string };
+type CoachingCandidate = Record<string, unknown> & { id: string; confidence: number; severityDb: number; category: string; metric?: string | null };
+type ObservationSource = { measurementSource: number; focusIndex: number | null; label: string | null };
 type ObservationWindow = {
   id: string;
   title: string;
   category: string;
   scope: string;
+  metric?: string | null;
+  source?: ObservationSource | null;
   before: { severityDb: number; confidence: number };
+  samples?: number[];
+  invalidCount?: number;
+  sourceChanged?: boolean;
   startedAt: number;
   until: number;
+};
+type ObservationContext = {
+  measurementSource: number;
+  focusIndex: number | null;
+  label: string | null;
+  mixValid: boolean;
+  inputValid: boolean;
+  clipping: boolean;
+};
+type Outcome = {
+  id: string;
+  title: string;
+  category: string;
+  scope: string;
+  status: 'improved' | 'worsened' | 'unchanged' | 'inconclusive';
+  reason: string | null;
+  metric: string | null;
+  sourceLabel: string | null;
+  beforeDb: number;
+  afterDb: number | null;
+  deltaDb: number | null;
+  sampleCount: number;
+  headline: string;
+  detail: string;
 };
 type CoachingState = {
   active: CoachingCandidate | null;
@@ -76,6 +117,7 @@ type CoachingState = {
   snoozeUntil: number | null;
   dismissed: Record<string, { severityDb: number; at: number }>;
   observing: ObservationWindow | null;
+  outcome: Outcome | null;
 };
 type CoachingView = {
   candidate: CoachingCandidate | null;
@@ -83,6 +125,7 @@ type CoachingView = {
   snoozeRemainingMs: number;
   acknowledged: boolean;
   observing: ObservationWindow | null;
+  outcome: Outcome | null;
 };
 
 type Profile = { id: string; label: string; bands: Record<string, number> };
@@ -1024,7 +1067,7 @@ describe('Coaching stability (#612)', () => {
     const state: CoachingState = {
       active: null, activeSince: null, pendingId: null, pendingCount: 0, pendingCandidate: null,
       clearCount: 0, cooldowns: { stale: 500, fresh: 5000 },
-      acknowledgedId: null, snoozeUntil: null, dismissed: {}, observing: null,
+      acknowledgedId: null, snoozeUntil: null, dismissed: {}, observing: null, outcome: null,
     };
     const next = advanceCoaching(state, [], 1000);
     expect(next.cooldowns.stale).toBeUndefined();
@@ -1111,14 +1154,15 @@ describe('Engineer control over live coaching (#613)', () => {
     expect(state.snoozeUntil).toBeNull();
     expect(state.dismissed).toEqual({});
     expect(state.observing).toBeNull();
+    expect(state.outcome).toBeNull();
   });
 
   it('coachingView returns candidate: null and everything falsy/0 for a null/garbage state', () => {
     expect(coachingView(null as unknown as CoachingState, 0)).toEqual({
-      candidate: null, snoozed: false, snoozeRemainingMs: 0, acknowledged: false, observing: null,
+      candidate: null, snoozed: false, snoozeRemainingMs: 0, acknowledged: false, observing: null, outcome: null,
     });
     expect(coachingView({} as CoachingState, 0)).toEqual({
-      candidate: null, snoozed: false, snoozeRemainingMs: 0, acknowledged: false, observing: null,
+      candidate: null, snoozed: false, snoozeRemainingMs: 0, acknowledged: false, observing: null, outcome: null,
     });
   });
 
@@ -1335,6 +1379,7 @@ describe('Engineer control over live coaching (#613)', () => {
       const next = markTriedCoaching(state, 1000);
       expect(next.observing).toEqual({
         id: 'x', title: 'x', category: 'tonal', scope: 'mix',
+        metric: null, source: null, samples: [], invalidCount: 0, sourceChanged: false,
         before: { severityDb: 3, confidence: 0.9 },
         startedAt: 1000,
         until: 1000 + OBSERVATION_WINDOW_MS,
@@ -1418,12 +1463,14 @@ describe('Engineer control over live coaching (#613)', () => {
       const dismissedSnapshot = { ...state.dismissed };
       const cooldownsSnapshot = { ...state.cooldowns };
 
+      const ctx: ObservationContext = { measurementSource: 0, focusIndex: null, label: null, mixValid: true, inputValid: false, clipping: false };
       const reducers: Array<(s: CoachingState) => CoachingState> = [
         (s) => acknowledgeCoaching(s),
         (s) => snoozeCoaching(s, 1000),
         (s) => resumeCoaching(s),
         (s) => dismissCoaching(s, 1000),
-        (s) => markTriedCoaching(s, 1000),
+        (s) => markTriedCoaching(s, 1000, ctx),
+        (s) => acknowledgeOutcome(s, 1000),
       ];
       for (const reducer of reducers) {
         const result = reducer(state);
@@ -1469,6 +1516,516 @@ describe('Engineer control over live coaching (#613)', () => {
       const html = panelHTML({ liveAdjustmentsEnabled: true }, 'live', windows, null, undefined, coaching, 1000);
       expect(html).toContain('lap-card-snoozed');
       expect(html).toContain('data-lap-action="resume"');
+    });
+  });
+});
+
+describe('Outcome evaluation (#614)', () => {
+  function mkObserving(overrides?: Partial<ObservationWindow>): ObservationWindow {
+    return {
+      id: 'x', title: 'x', category: 'tonal', scope: 'mix', metric: 'test metric',
+      source: { measurementSource: 0, focusIndex: null, label: 'Overall mix' },
+      before: { severityDb: 4, confidence: 0.9 },
+      samples: [], invalidCount: 0, sourceChanged: false,
+      startedAt: 0, until: OBSERVATION_WINDOW_MS,
+      ...overrides,
+    };
+  }
+
+  describe('metric on candidates', () => {
+    it('mixCandidates emits the metric copy for each factory', () => {
+      const lowBands = { ...FLAT, bass: FLAT.bass + 20 };
+      const lowWindows = [mkWindow(lowBands), mkWindow(lowBands), mkWindow(lowBands)];
+      expect(mixCandidates(lowWindows).find((c) => c.id === 'low-end')!.metric).toBe('low-frequency energy below 250 Hz');
+
+      const harshBands = { ...FLAT, presence: FLAT.presence + 20 };
+      const harshWindows = [mkWindow(harshBands), mkWindow(harshBands), mkWindow(harshBands)];
+      expect(mixCandidates(harshWindows).find((c) => c.id === 'harshness')!.metric).toBe('2–6 kHz energy');
+
+      const vocalBands = { ...FLAT, mid: FLAT.mid - 20 };
+      const vocalWindows = [mkWindow(vocalBands), mkWindow(vocalBands), mkWindow(vocalBands)];
+      expect(mixCandidates(vocalWindows).find((c) => c.id === 'vocal-clarity')!.metric).toBe('500 Hz–2 kHz level');
+    });
+
+    it('clipCandidates emits peak level', () => {
+      const peak = CLIP_RISK_PEAK_DBFS + 3;
+      const windows = [mkLevelWindow([{ peak }]), mkLevelWindow([{ peak }]), mkLevelWindow([{ peak }])];
+      expect(clipCandidates(windows)[0].metric).toBe('peak level');
+    });
+
+    it('inputCandidates emits per-condition metric copy', () => {
+      function twoChannelWindows(bandsForBoth: Record<string, number>, count = MIN_WINDOWS) {
+        const win = mkWindow(undefined, [{ bands: bandsForBoth }, { bands: bandsForBoth }]);
+        return Array.from({ length: count }, () => win);
+      }
+      const hot = { ...FLAT, sub_bass: -20, bass: -20 };
+      const lowCleanup = inputCandidates(twoChannelWindows(hot), 1, egProfile);
+      expect(lowCleanup.find((c) => c.id === 'input-low-cleanup')!.metric).toBe('low-frequency energy below 250 Hz on this input');
+
+      const thin = { ...FLAT, sub_bass: -45, bass: -45 };
+      const lowSupport = inputCandidates(twoChannelWindows(thin), 0, bassProfile);
+      expect(lowSupport.find((c) => c.id === 'input-low-support')!.metric).toBe('low-frequency energy below 250 Hz on this input');
+
+      const hotPresence = { ...FLAT, presence: FLAT.presence + 20 };
+      const highBuildup = inputCandidates(twoChannelWindows(hotPresence), 0, genericProfile);
+      expect(highBuildup.find((c) => c.id === 'input-high-buildup')!.metric).toBe('2–6 kHz energy on this input');
+
+      const quiet = { ...FLAT, high_mid: FLAT.high_mid - 25, presence: FLAT.presence - 25 };
+      const highSupport = inputCandidates(twoChannelWindows(quiet), 0, genericProfile);
+      expect(highSupport.find((c) => c.id === 'input-high-support')!.metric).toBe('2–6 kHz energy on this input');
+    });
+  });
+
+  describe('observationContext', () => {
+    it('resolves measurementSource null to 0', () => {
+      expect(observationContext([], null, undefined, undefined).measurementSource).toBe(0);
+    });
+
+    it('picks up focusIndex from a focusView', () => {
+      const focusView = { focusedIndex: 1, inputs: [{ index: 1, name: 'Guitar', profile: egProfile }] };
+      expect(observationContext([], null, focusView).focusIndex).toBe(1);
+    });
+
+    it('focusIndex is null when there is no focused input', () => {
+      expect(observationContext([], null, undefined).focusIndex).toBeNull();
+    });
+
+    it('mixValid/inputValid are true only with MIN_WINDOWS usable windows', () => {
+      const windows = [mkWindow(FLAT), mkWindow(FLAT), mkWindow(FLAT)];
+      const focusView = { focusedIndex: 0, inputs: [{ index: 0, name: 'X', profile: genericProfile }] };
+      const ctx = observationContext(windows, null, focusView);
+      expect(ctx.mixValid).toBe(true);
+      expect(ctx.inputValid).toBe(true);
+
+      const shortWindows = [mkWindow(FLAT)];
+      const ctxShort = observationContext(shortWindows, null, focusView);
+      expect(ctxShort.mixValid).toBe(false);
+      expect(ctxShort.inputValid).toBe(false);
+    });
+
+    it('clipping is true only when the newest window\'s selected channel reads clipping === true', () => {
+      const windows = [
+        mkLevelWindow([{ peak: -20 }]),
+        mkLevelWindow([{ peak: -20 }]),
+        mkLevelWindow([{ peak: -0.5, clipping: true }]),
+      ];
+      expect(observationContext(windows, null, undefined).clipping).toBe(true);
+
+      const notClippingNewest = [
+        mkLevelWindow([{ peak: -0.5, clipping: true }]),
+        mkLevelWindow([{ peak: -20 }]),
+        mkLevelWindow([{ peak: -20 }]),
+      ];
+      expect(observationContext(notClippingNewest, null, undefined).clipping).toBe(false);
+    });
+
+    it('non-array windows yields mixValid:false, clipping:false', () => {
+      const ctx = observationContext(undefined, null, undefined);
+      expect(ctx.mixValid).toBe(false);
+      expect(ctx.clipping).toBe(false);
+    });
+
+    it('a blank/non-string sourceName yields label: null', () => {
+      expect(observationContext([], null, undefined, '').label).toBeNull();
+      expect(observationContext([], null, undefined, 42).label).toBeNull();
+      expect(observationContext([], null, undefined, undefined).label).toBeNull();
+    });
+
+    it('a real sourceName is captured as label', () => {
+      expect(observationContext([], null, undefined, 'Kick').label).toBe('Kick');
+    });
+  });
+
+  describe('observeWindow', () => {
+    const ctxValid: ObservationContext = { measurementSource: 0, focusIndex: null, label: 'Overall mix', mixValid: true, inputValid: false, clipping: false };
+
+    it('returns null for a null observing', () => {
+      expect(observeWindow(null, [], ctxValid)).toBeNull();
+    });
+
+    it('appends c.severityDb when the id is present in candidates', () => {
+      const observing = mkObserving({ scope: 'mix', category: 'tonal' });
+      const next = observeWindow(observing, [{ id: 'x', severityDb: 5 }], ctxValid);
+      expect(next!.samples).toEqual([5]);
+    });
+
+    it('appends RESOLVED_SEVERITY_DB when the id is absent but the source is valid', () => {
+      const observing = mkObserving({ scope: 'mix', category: 'tonal' });
+      const next = observeWindow(observing, [], ctxValid);
+      expect(next!.samples).toEqual([RESOLVED_SEVERITY_DB]);
+    });
+
+    it('increments invalidCount (appends no sample) when mixValid/inputValid is false', () => {
+      const observing = mkObserving({ scope: 'mix', category: 'tonal' });
+      const invalidCtx = { ...ctxValid, mixValid: false };
+      const next = observeWindow(observing, [{ id: 'x', severityDb: 5 }], invalidCtx);
+      expect(next!.invalidCount).toBe(1);
+      expect(next!.samples).toEqual([]);
+    });
+
+    it('increments invalidCount for a tonal candidate when context.clipping is true, but samples for a clipping-category candidate in the same situation', () => {
+      const tonalObserving = mkObserving({ scope: 'mix', category: 'tonal' });
+      const clippingCtx = { ...ctxValid, clipping: true };
+      const nextTonal = observeWindow(tonalObserving, [{ id: 'x', severityDb: 5 }], clippingCtx);
+      expect(nextTonal!.invalidCount).toBe(1);
+      expect(nextTonal!.samples).toEqual([]);
+
+      const clipObserving = mkObserving({ id: 'clip-risk', scope: 'mix', category: 'clipping' });
+      const nextClip = observeWindow(clipObserving, [{ id: 'clip-risk', severityDb: 5 }], clippingCtx);
+      expect(nextClip!.samples).toEqual([5]);
+      expect(nextClip!.invalidCount).toBe(0);
+    });
+
+    it('sets sourceChanged on a measurementSource change', () => {
+      const observing = mkObserving({ scope: 'mix', source: { measurementSource: 0, focusIndex: null, label: null } });
+      const differentSourceCtx = { ...ctxValid, measurementSource: 1 };
+      const next = observeWindow(observing, [], differentSourceCtx);
+      expect(next!.sourceChanged).toBe(true);
+    });
+
+    it('sets sourceChanged on a focusIndex change for input scope only', () => {
+      const observing = mkObserving({ scope: 'input', source: { measurementSource: 0, focusIndex: 0, label: null } });
+      const inputCtx = { ...ctxValid, inputValid: true, focusIndex: 1 };
+      const next = observeWindow(observing, [], inputCtx);
+      expect(next!.sourceChanged).toBe(true);
+
+      const mixObserving = mkObserving({ scope: 'mix', source: { measurementSource: 0, focusIndex: 0, label: null } });
+      const nextMix = observeWindow(mixObserving, [], inputCtx);
+      expect(nextMix!.sourceChanged).toBe(false);
+    });
+
+    it('is sticky — once sourceChanged is true, subsequent windows also short-circuit', () => {
+      const observing = mkObserving({ scope: 'mix', sourceChanged: true, source: { measurementSource: 0, focusIndex: null, label: null } });
+      const next = observeWindow(observing, [{ id: 'x', severityDb: 5 }], ctxValid);
+      expect(next!.sourceChanged).toBe(true);
+      expect(next!.samples).toEqual([]);
+    });
+
+    it('leaves the record untouched with no context', () => {
+      const observing = mkObserving();
+      expect(observeWindow(observing, [], undefined)).toBe(observing);
+      expect(observeWindow(observing, [], null)).toBe(observing);
+    });
+
+    it('leaves the record untouched when source is null', () => {
+      const observing = mkObserving({ source: null });
+      expect(observeWindow(observing, [], ctxValid)).toBe(observing);
+    });
+
+    it('never mutates its argument', () => {
+      const observing = mkObserving({ scope: 'mix', category: 'tonal' });
+      const snapshot = JSON.parse(JSON.stringify(observing));
+      observeWindow(observing, [{ id: 'x', severityDb: 5 }], ctxValid);
+      expect(observing).toEqual(snapshot);
+    });
+  });
+
+  describe('evaluateOutcome', () => {
+    function observingFor(beforeDb: number, samples: number[], overrides?: Partial<ObservationWindow>): ObservationWindow {
+      return mkObserving({ before: { severityDb: beforeDb, confidence: 0.9 }, samples, ...overrides });
+    }
+
+    it('returns null for a falsy argument', () => {
+      expect(evaluateOutcome(null)).toBeNull();
+    });
+
+    it('improved: before 8, samples [2, 2] => delta 6', () => {
+      const outcome = evaluateOutcome(observingFor(8, [2, 2]))!;
+      expect(outcome.status).toBe('improved');
+      expect(outcome.deltaDb).toBeCloseTo(6);
+      expect(outcome.reason).toBeNull();
+    });
+
+    it('worsened: before 2, samples [8, 8]', () => {
+      const outcome = evaluateOutcome(observingFor(2, [8, 8]))!;
+      expect(outcome.status).toBe('worsened');
+      expect(outcome.deltaDb).toBeCloseTo(-6);
+    });
+
+    it('unchanged: before 4, samples [4.5, 4.5], delta 0.5 < MEANINGFUL_CHANGE_DB', () => {
+      const outcome = evaluateOutcome(observingFor(4, [4.5, 4.5]))!;
+      expect(outcome.status).toBe('unchanged');
+      expect(outcome.deltaDb).toBeCloseTo(-0.5);
+      expect(Math.abs(outcome.deltaDb!)).toBeLessThan(MEANINGFUL_CHANGE_DB);
+    });
+
+    it('inconclusive/source-changed', () => {
+      const outcome = evaluateOutcome(observingFor(4, [2, 2], { sourceChanged: true }))!;
+      expect(outcome.status).toBe('inconclusive');
+      expect(outcome.reason).toBe('source-changed');
+    });
+
+    it('inconclusive/insufficient-data with one sample', () => {
+      const outcome = evaluateOutcome(observingFor(4, [2]))!;
+      expect(outcome.status).toBe('inconclusive');
+      expect(outcome.reason).toBe('insufficient-data');
+    });
+
+    it('inconclusive/insufficient-data with zero samples', () => {
+      const outcome = evaluateOutcome(observingFor(4, []))!;
+      expect(outcome.status).toBe('inconclusive');
+      expect(outcome.reason).toBe('insufficient-data');
+      expect(outcome.afterDb).toBeNull();
+      expect(outcome.deltaDb).toBeNull();
+    });
+
+    it('is improved exactly on the threshold: before 4, samples [2, 2] (delta === MEANINGFUL_CHANGE_DB)', () => {
+      const outcome = evaluateOutcome(observingFor(4, [2, 2]))!;
+      expect(outcome.deltaDb).toBeCloseTo(MEANINGFUL_CHANGE_DB);
+      expect(outcome.status).toBe('improved');
+    });
+
+    it('is worsened exactly on the threshold: before 2, samples [4, 4] (delta === -MEANINGFUL_CHANGE_DB)', () => {
+      const outcome = evaluateOutcome(observingFor(2, [4, 4]))!;
+      expect(outcome.deltaDb).toBeCloseTo(-MEANINGFUL_CHANGE_DB);
+      expect(outcome.status).toBe('worsened');
+    });
+
+    it('requires at least MIN_OBSERVATION_SAMPLES before scoring anything but inconclusive', () => {
+      const oneShort = evaluateOutcome(observingFor(8, Array(MIN_OBSERVATION_SAMPLES - 1).fill(2)))!;
+      expect(oneShort.status).toBe('inconclusive');
+      expect(oneShort.reason).toBe('insufficient-data');
+
+      const exactlyEnough = evaluateOutcome(observingFor(8, Array(MIN_OBSERVATION_SAMPLES).fill(2)))!;
+      expect(exactlyEnough.status).toBe('improved');
+    });
+
+    it('detail contains the metric and the source label', () => {
+      const observing = observingFor(8, [2, 2], {
+        metric: 'low-frequency energy below 250 Hz',
+        source: { measurementSource: 0, focusIndex: null, label: 'Kick' },
+      });
+      const outcome = evaluateOutcome(observing)!;
+      expect(outcome.detail).toContain('low-frequency energy below 250 Hz');
+      expect(outcome.detail).toContain('Kick');
+    });
+
+    it('improved/worsened details contain the honesty clauses', () => {
+      const improved = evaluateOutcome(observingFor(8, [2, 2]))!;
+      expect(improved.detail).toContain('can’t prove your change caused it');
+      expect(improved.detail).toContain('doesn’t mean the whole room improved');
+
+      const worsened = evaluateOutcome(observingFor(2, [8, 8]))!;
+      expect(worsened.detail).toContain('not a verdict on what you did');
+    });
+
+    it('falls back to UNKNOWN_SOURCE_LABEL when source is null', () => {
+      const outcome = evaluateOutcome(observingFor(8, [2, 2], { source: null }))!;
+      expect(outcome.detail).toContain(UNKNOWN_SOURCE_LABEL);
+      expect(outcome.sourceLabel).toBeNull();
+    });
+  });
+
+  describe('advanceCoaching integration', () => {
+    function cand(id: string, confidence: number, extra?: Record<string, unknown>): CoachingCandidate {
+      return {
+        id, title: id, category: 'tonal', scope: 'mix', severityDb: 1, confidence,
+        why: '', action: '', detail: '', metric: 'test metric', ...extra,
+      };
+    }
+
+    const ctx: ObservationContext = { measurementSource: 0, focusIndex: null, label: 'Overall mix', mixValid: true, inputValid: false, clipping: false };
+
+    function activateAndTry(before: number) {
+      let state = createCoachingState();
+      state = advanceCoaching(state, [cand('x', 0.9, { severityDb: before })], 0, ctx);
+      state = advanceCoaching(state, [cand('x', 0.9, { severityDb: before })], 1000, ctx);
+      expect(state.active!.id).toBe('x');
+      return markTriedCoaching(state, 1000, ctx);
+    }
+
+    it('walks to improved with improving severities across the window', () => {
+      let state = activateAndTry(8);
+      state = advanceCoaching(state, [cand('x', 0.9, { severityDb: 2 })], 1000 + 20000, ctx);
+      state = advanceCoaching(state, [cand('x', 0.9, { severityDb: 2 })], 1000 + 40000, ctx);
+      expect(state.observing).not.toBeNull();
+      const finalState = advanceCoaching(state, [cand('x', 0.9, { severityDb: 2 })], 1000 + OBSERVATION_WINDOW_MS, ctx);
+      expect(finalState.observing).toBeNull();
+      expect(finalState.outcome!.status).toBe('improved');
+    });
+
+    it('walks to worsened with worsening severities across the window', () => {
+      let state = activateAndTry(2);
+      state = advanceCoaching(state, [cand('x', 0.9, { severityDb: 8 })], 1000 + 20000, ctx);
+      state = advanceCoaching(state, [cand('x', 0.9, { severityDb: 8 })], 1000 + 40000, ctx);
+      const finalState = advanceCoaching(state, [cand('x', 0.9, { severityDb: 8 })], 1000 + OBSERVATION_WINDOW_MS, ctx);
+      expect(finalState.observing).toBeNull();
+      expect(finalState.outcome!.status).toBe('worsened');
+    });
+
+    it('walks to unchanged with a small drift across the window', () => {
+      let state = activateAndTry(4);
+      state = advanceCoaching(state, [cand('x', 0.9, { severityDb: 4.5 })], 1000 + 20000, ctx);
+      state = advanceCoaching(state, [cand('x', 0.9, { severityDb: 4.5 })], 1000 + 40000, ctx);
+      const finalState = advanceCoaching(state, [cand('x', 0.9, { severityDb: 4.5 })], 1000 + OBSERVATION_WINDOW_MS, ctx);
+      expect(finalState.outcome!.status).toBe('unchanged');
+    });
+
+    it('walks to inconclusive/source-changed when the source switches mid-window', () => {
+      let state = activateAndTry(8);
+      const switchedCtx: ObservationContext = { ...ctx, measurementSource: 1 };
+      state = advanceCoaching(state, [cand('x', 0.9, { severityDb: 2 })], 1000 + 20000, switchedCtx);
+      const finalState = advanceCoaching(state, [cand('x', 0.9, { severityDb: 2 })], 1000 + OBSERVATION_WINDOW_MS, switchedCtx);
+      expect(finalState.outcome!.status).toBe('inconclusive');
+      expect(finalState.outcome!.reason).toBe('source-changed');
+    });
+
+    it('advanceCoaching with no context argument still yields inconclusive/insufficient-data (back-compat)', () => {
+      let state = createCoachingState();
+      state = advanceCoaching(state, [cand('x', 0.9)], 0);
+      state = advanceCoaching(state, [cand('x', 0.9)], 1000);
+      const tried = markTriedCoaching(state, 1000, ctx);
+      const finalState = advanceCoaching(tried, [cand('x', 0.9)], 1000 + OBSERVATION_WINDOW_MS);
+      expect(finalState.outcome!.status).toBe('inconclusive');
+      expect(finalState.outcome!.reason).toBe('insufficient-data');
+    });
+  });
+
+  describe('acknowledgeOutcome', () => {
+    function cand(id: string, confidence: number, extra?: Record<string, unknown>): CoachingCandidate {
+      return {
+        id, title: id, category: 'tonal', scope: 'mix', severityDb: 1, confidence,
+        why: '', action: '', detail: '', ...extra,
+      };
+    }
+
+    function outcomeState(id: string, extra?: Partial<CoachingState>): CoachingState {
+      return {
+        ...createCoachingState(),
+        outcome: {
+          id, title: id, category: 'tonal', scope: 'mix', status: 'improved', reason: null,
+          metric: null, sourceLabel: null, beforeDb: 8, afterDb: 2, deltaDb: 6, sampleCount: 2,
+          headline: 'h', detail: 'd',
+        },
+        active: cand(id, 0.9),
+        activeSince: 0,
+        ...extra,
+      };
+    }
+
+    it('clears outcome/active/pending, sets cooldowns[id] = now + COOLDOWN_MS', () => {
+      const state = outcomeState('x');
+      const next = acknowledgeOutcome(state, 1000);
+      expect(next.outcome).toBeNull();
+      expect(next.active).toBeNull();
+      expect(next.activeSince).toBeNull();
+      expect(next.acknowledgedId).toBeNull();
+      expect(next.pendingId).toBeNull();
+      expect(next.pendingCount).toBe(0);
+      expect(next.pendingCandidate).toBeNull();
+      expect(next.clearCount).toBe(0);
+      expect(next.observing).toBeNull();
+      expect(next.cooldowns.x).toBe(1000 + COOLDOWN_MS);
+    });
+
+    it('also cools the OPPOSITE_IDS counterpart for an input candidate', () => {
+      const state = outcomeState('input-low-support');
+      const next = acknowledgeOutcome(state, 1000);
+      expect(next.cooldowns['input-low-support']).toBe(1000 + COOLDOWN_MS);
+      expect(next.cooldowns[OPPOSITE_IDS['input-low-support']]).toBe(1000 + COOLDOWN_MS);
+    });
+
+    it('is a no-op copy when there is no outcome', () => {
+      const state = createCoachingState();
+      const next = acknowledgeOutcome(state, 1000);
+      expect(next).not.toBe(state);
+      expect(next).toEqual(state);
+    });
+
+    it('does not mutate prev.cooldowns', () => {
+      const state = outcomeState('x', { cooldowns: { existing: 5000 } });
+      const snapshot = { ...state.cooldowns };
+      acknowledgeOutcome(state, 1000);
+      expect(state.cooldowns).toEqual(snapshot);
+    });
+
+    it('is not re-promoted after acknowledgement, even with the same candidate still present at high confidence', () => {
+      let state = createCoachingState();
+      state = advanceCoaching(state, [cand('x', 0.9)], 0);
+      state = advanceCoaching(state, [cand('x', 0.9)], 1000);
+      expect(state.active!.id).toBe('x');
+      const tried = markTriedCoaching(state, 1000);
+      const withOutcome = advanceCoaching(tried, [cand('x', 0.9)], 1000 + OBSERVATION_WINDOW_MS);
+      expect(withOutcome.outcome).not.toBeNull();
+      const acked = acknowledgeOutcome(withOutcome, 1000 + OBSERVATION_WINDOW_MS);
+      expect(acked.active).toBeNull();
+
+      let after = acked;
+      for (let n = 1; n <= PERSISTENCE_WINDOWS; n++) {
+        after = advanceCoaching(after, [cand('x', 0.9)], 1000 + OBSERVATION_WINDOW_MS + n * 1000);
+      }
+      expect(after.active).toBeNull(); // cooldown holds
+    });
+  });
+
+  describe('coachingView / outcomeCardHTML / panelHTML', () => {
+    function cand(id: string, confidence: number, extra?: Record<string, unknown>): CoachingCandidate {
+      return {
+        id, title: id, category: 'tonal', scope: 'mix', severityDb: 1, confidence,
+        why: '', action: '', detail: '', ...extra,
+      };
+    }
+
+    const sampleOutcome: Outcome = {
+      id: 'low-end', title: 'Low-end buildup', category: 'tonal', scope: 'mix',
+      status: 'improved', reason: null, metric: 'low-frequency energy below 250 Hz', sourceLabel: 'Overall mix',
+      beforeDb: 8, afterDb: 2, deltaDb: 6, sampleCount: 2,
+      headline: 'Measured improvement', detail: 'low-frequency energy below 250 Hz moved 6.0 dB closer to its target range on Overall mix.',
+    };
+
+    it('coachingView surfaces the outcome even while snoozed', () => {
+      const state: CoachingState = { ...createCoachingState(), snoozeUntil: 5000, outcome: sampleOutcome };
+      const view = coachingView(state, 1000);
+      expect(view.snoozed).toBe(true);
+      expect(view.outcome).toBe(sampleOutcome);
+    });
+
+    it('outcomeCardHTML returns "" for null', () => {
+      expect(outcomeCardHTML(null)).toBe('');
+    });
+
+    it('outcomeCardHTML emits lap-card-outcome, lap-outcome-<status>, data-lap-action="outcome-ack", scope text, Metric:, and the advisory line', () => {
+      const html = outcomeCardHTML(sampleOutcome, null);
+      expect(html).toContain('lap-card-outcome');
+      expect(html).toContain('lap-outcome-improved');
+      expect(html).toContain('data-lap-action="outcome-ack"');
+      expect(html).toContain('Overall mix');
+      expect(html).toContain('Metric:');
+      expect(html).toContain('Advisory only');
+    });
+
+    it('falls back to "the measured condition" when outcome.metric is null', () => {
+      const html = outcomeCardHTML({ ...sampleOutcome, metric: null }, null);
+      expect(html).toContain('Metric: the measured condition');
+    });
+
+    it('escapes a <script>-bearing focus name and a <script>-bearing source label', () => {
+      const inputOutcome: Outcome = { ...sampleOutcome, scope: 'input' };
+      const html = outcomeCardHTML(inputOutcome, '<script>1</script>');
+      expect(html).not.toContain('<script>1</script>');
+      expect(html).toContain('&lt;script&gt;');
+
+      const unsafeOutcome: Outcome = { ...sampleOutcome, detail: '<script>2</script>', headline: '<script>3</script>' };
+      const html2 = outcomeCardHTML(unsafeOutcome, null);
+      expect(html2).not.toContain('<script>2</script>');
+      expect(html2).not.toContain('<script>3</script>');
+    });
+
+    it('panelHTML with a now and a state carrying an outcome renders the outcome card instead of the coaching card', () => {
+      const hotBass = { ...FLAT, bass: FLAT.bass + 20 };
+      const windows = [mkWindow(hotBass), mkWindow(hotBass), mkWindow(hotBass)];
+      const coaching: CoachingState = { ...createCoachingState(), outcome: sampleOutcome, active: cand('low-end', 0.9) };
+      const html = panelHTML({ liveAdjustmentsEnabled: true }, 'live', windows, null, undefined, coaching, 0);
+      expect(html).toContain('lap-card-outcome');
+      expect(html).not.toContain('data-lap-action="tried"');
+    });
+
+    it('panelHTML with no now still produces no data-lap-action markup (back-compat)', () => {
+      const hotBass = { ...FLAT, bass: FLAT.bass + 20 };
+      const windows = [mkWindow(hotBass), mkWindow(hotBass), mkWindow(hotBass)];
+      const coaching: CoachingState = { ...createCoachingState(), outcome: sampleOutcome, active: cand('low-end', 0.9) };
+      const html = panelHTML({ liveAdjustmentsEnabled: true }, 'live', windows, null, undefined, coaching);
+      expect(html).not.toContain('data-lap-action');
     });
   });
 });

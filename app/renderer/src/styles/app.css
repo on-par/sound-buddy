@@ -799,6 +799,13 @@
     .lap-card-attention { border-color:var(--gold-500); }
     .lap-card-observing { margin-top:6px; font:var(--fw-regular) var(--fs-micro)/1.4 var(--font-sans); color:var(--gold-text); }
     .lap-card-snoozed { background:transparent; }
+    /* Outcome evaluation (#614): the single result card shown once an observation
+       window elapses, replacing the coaching card until acknowledged. */
+    .lap-card-outcome { border-color:var(--border-strong); }
+    .lap-outcome-detail { margin-top:6px; font:var(--fw-regular) var(--fs-label)/1.4 var(--font-sans); color:var(--text-muted); }
+    .lap-outcome-metric { font:var(--fw-medium) var(--fs-micro)/1.4 var(--font-sans); color:var(--text-tertiary); }
+    .lap-outcome-improved { border-color:var(--gold-500); }
+    .lap-outcome-worsened, .lap-outcome-unchanged, .lap-outcome-inconclusive { border-color:var(--border-strong); }
 
     /* Live vertical-bar EQ: shared analyzer arc + per-band vertical bars.
        .veq-bars is inset to the SVG plot area (inline, from CURVE_VB) so each

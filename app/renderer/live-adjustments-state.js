@@ -145,6 +145,7 @@
         category: 'tonal',
         scope: 'mix',
         scopeLabel: 'Overall mix',
+        metric: 'low-frequency energy below 250 Hz',
         severityDb: lowSeverity,
         confidence: candidateConfidence(lowSeverity, bandsList.length),
         why: 'Extra energy below 250 Hz masks vocals and makes the room feel muddy from the back.',
@@ -160,6 +161,7 @@
         category: 'tonal',
         scope: 'mix',
         scopeLabel: 'Overall mix',
+        metric: '2–6 kHz energy',
         severityDb: harshSeverity,
         confidence: candidateConfidence(harshSeverity, bandsList.length),
         why: 'A concentration of 2–6 kHz energy is what listeners hear as harsh or fatiguing.',
@@ -175,6 +177,7 @@
         category: 'tonal',
         scope: 'mix',
         scopeLabel: 'Overall mix',
+        metric: '500 Hz–2 kHz level',
         severityDb: vocalSeverity,
         confidence: candidateConfidence(vocalSeverity, bandsList.length),
         why: 'With 500 Hz–2 kHz well below the rest of the mix, spoken and sung words get hard to follow.',
@@ -259,6 +262,7 @@
         category: 'tonal',
         scope: 'input',
         scopeLabel: 'Focused input',
+        metric: 'low-frequency energy below 250 Hz on this input',
         severityDb: lowCleanupSeverity,
         confidence: candidateConfidence(lowCleanupSeverity, bandsList.length),
         why: 'Low end this input doesn’t need still eats headroom and muddies the mix.',
@@ -273,6 +277,7 @@
         category: 'tonal',
         scope: 'input',
         scopeLabel: 'Focused input',
+        metric: 'low-frequency energy below 250 Hz on this input',
         severityDb: lowSupportSeverity,
         confidence: candidateConfidence(lowSupportSeverity, bandsList.length),
         why: 'Without its usual low end this input sounds thin against the rest of the mix.',
@@ -289,6 +294,7 @@
         category: 'tonal',
         scope: 'input',
         scopeLabel: 'Focused input',
+        metric: '2–6 kHz energy on this input',
         severityDb: highBuildupSeverity,
         confidence: candidateConfidence(highBuildupSeverity, bandsList.length),
         why: 'Extra 2–6 kHz on one input is what makes a single source stick out as harsh.',
@@ -303,6 +309,7 @@
         category: 'tonal',
         scope: 'input',
         scopeLabel: 'Focused input',
+        metric: '2–6 kHz energy on this input',
         severityDb: highSupportSeverity,
         confidence: candidateConfidence(highSupportSeverity, bandsList.length),
         why: 'Without its usual presence this input gets buried even when its fader is up.',
@@ -378,6 +385,7 @@
       category: 'clipping',
       scope: 'mix',
       scopeLabel: 'Overall mix',
+      metric: 'peak level',
       severityDb: severityDb,
       confidence: confidence,
       why: 'A signal at or past 0 dBFS distorts, and no downstream EQ can undo it.',
@@ -464,8 +472,25 @@
   // threshold) than it was when dismissed — "materially more severe", not noise.
   var DISMISS_ESCALATION_DB = 3;
   // After "I tried this", Sound Buddy watches this long (ms) before it would have anything
-  // to say about the result. #613 only opens the window; scoring it is out of scope.
+  // to say about the result. The after-state is sampled once per analysis window across
+  // this span (#614).
   var OBSERVATION_WINDOW_MS = 60000;
+  // A before/after severity move smaller than this (dB) is not a meaningful change —
+  // it is within the window-to-window variation the detectors already tolerate.
+  var MEANINGFUL_CHANGE_DB = 2;
+  // Valid post-action samples required before an outcome may be anything other than
+  // inconclusive. Fewer than this and Sound Buddy says so rather than guessing.
+  var MIN_OBSERVATION_SAMPLES = 2;
+  // Tolerance for the dB threshold comparisons in evaluateOutcome — severities are
+  // sums of floats, so a delta landing exactly on MEANINGFUL_CHANGE_DB must not fall
+  // out to binary representation error.
+  var SEVERITY_EPSILON = 1e-9;
+  // Severity attributed to a window in which the observed condition is no longer a
+  // candidate at all: it stopped clearing its own detection threshold, i.e. zero
+  // excess. Not "silence" — the source must still be valid for the sample to count.
+  var RESOLVED_SEVERITY_DB = 0;
+  // Fallback source wording when no measurement label was captured with the action.
+  var UNKNOWN_SOURCE_LABEL = 'the measured source';
   // Categories a snooze does not silence — a clipping risk is safety-critical, and the
   // acceptance criteria only protect *ordinary* advice from reactivation.
   var SNOOZE_BYPASS_CATEGORIES = { clipping: true };
@@ -490,6 +515,7 @@
       snoozeUntil: null,
       dismissed: {},
       observing: null,
+      outcome: null,
     };
   }
 
@@ -506,6 +532,33 @@
     return candidates;
   }
 
+  /** The measurement identity/validity snapshot for one analysis window (#614):
+   *  which source/scope the coaching evaluation is measuring, and whether this
+   *  window's reading is usable for either scope. `sourceName` is the caller's
+   *  display label for the resolved measurementSource strip; a non-string or
+   *  empty value yields `label: null`. Non-array/empty `windows` yields
+   *  `mixValid: false, clipping: false`, matching hasEnoughData/channelLevels'
+   *  own null-safety. */
+  function observationContext(windows, measurementSource, focusView, sourceName) {
+    var resolvedSource = measurementSource == null ? 0 : measurementSource;
+    var focused = focusedInput(focusView);
+    var focusIndex = focused ? focused.index : null;
+    var label = typeof sourceName === 'string' && sourceName.length > 0 ? sourceName : null;
+    var mixValid = hasEnoughData(windows, measurementSource);
+    var inputValid = focusIndex != null && inputHasEnoughData(windows, focusIndex);
+    var lastWindow = Array.isArray(windows) && windows.length > 0 ? windows[windows.length - 1] : null;
+    var ch = lastWindow ? channelLevels(lastWindow, measurementSource) : null;
+    var clipping = !!(ch && ch.clipping === true);
+    return {
+      measurementSource: resolvedSource,
+      focusIndex: focusIndex,
+      label: label,
+      mixValid: mixValid,
+      inputValid: inputValid,
+      clipping: clipping,
+    };
+  }
+
   /** Pure coaching-stability reducer (#612). A candidate must persist for
    *  PERSISTENCE_WINDOWS consecutive windows before it becomes the active
    *  suggestion; the active card is retained through minor confidence dips;
@@ -516,8 +569,12 @@
    *  can't surface moments later. Called once per analysis window, never per
    *  render. Pure: returns a brand-new state object, never mutates `prev`
    *  (including `prev.cooldowns`). `now` is always the caller's injected
-   *  clock reading — this module never calls Date.now() itself. */
-  function advanceCoaching(prev, candidates, now) {
+   *  clock reading — this module never calls Date.now() itself. The optional
+   *  `context` (#614, an observationContext() result) samples the active
+   *  observation window, if any, for this window; when the window's
+   *  `until` has already elapsed, the gathered samples are scored into
+   *  `outcome` via evaluateOutcome instead. */
+  function advanceCoaching(prev, candidates, now, context) {
     var state = prev && typeof prev === 'object' ? prev : createCoachingState();
     var cands = Array.isArray(candidates) ? candidates : [];
 
@@ -544,7 +601,18 @@
     }
 
     var snoozeUntil = (state.snoozeUntil != null && state.snoozeUntil > now) ? state.snoozeUntil : null;
-    var observing = (state.observing && state.observing.until > now) ? state.observing : null;
+
+    var outcome = state.outcome || null;
+    var observing = null;
+    if (state.observing) {
+      if (state.observing.until > now) {
+        observing = observeWindow(state.observing, cands, context);
+      } else {
+        // The window elapsed: score what was gathered, and hand the engineer one
+        // outcome card. A newer evaluation always replaces an unacknowledged one.
+        outcome = evaluateOutcome(state.observing);
+      }
+    }
 
     var ranked = rankCandidates(cands);
     var eligible = ranked.filter(function (c) { return cooldowns[c.id] == null && dismissed[c.id] == null; });
@@ -586,6 +654,7 @@
             snoozeUntil: snoozeUntil,
             dismissed: dismissed,
             observing: observing,
+            outcome: outcome,
           };
         }
         // A dip that hasn't yet cleared RECOVERY_WINDOWS keeps the previous snapshot.
@@ -656,6 +725,119 @@
       snoozeUntil: snoozeUntil,
       dismissed: dismissed,
       observing: observing,
+      outcome: outcome,
+    };
+  }
+
+  /** Samples one analysis window into an in-flight observation record (#614).
+   *  Pure — returns a brand-new observing object, never mutates `observing`.
+   *  With no usable `context` (including the honest "we can't verify we
+   *  measured the same thing" case of `observing.source === null`, set when
+   *  markTriedCoaching was called with no context), the record is returned
+   *  untouched — evaluateOutcome then reads as insufficient-data. A source or
+   *  focused-input change mid-window is sticky: once `sourceChanged` is set,
+   *  every later window short-circuits here too. A clipped signal invalidates
+   *  a tonal reading (spectrum content is unreliable while clipping) but not a
+   *  clipping-category reading, where the clipping *is* the measured condition. */
+  function observeWindow(observing, candidates, context) {
+    if (!observing) return null;
+    if (!context || typeof context !== 'object' || !observing.source) return observing;
+
+    if (observing.sourceChanged
+      || observing.source.measurementSource !== context.measurementSource
+      || (observing.scope === 'input' && observing.source.focusIndex !== context.focusIndex)) {
+      return Object.assign({}, observing, { sourceChanged: true });
+    }
+
+    var valid = observing.scope === 'input' ? context.inputValid : context.mixValid;
+    if (observing.category === 'tonal' && context.clipping === true) valid = false;
+    if (!valid) return Object.assign({}, observing, { invalidCount: observing.invalidCount + 1 });
+
+    var cands = Array.isArray(candidates) ? candidates : [];
+    var severity = RESOLVED_SEVERITY_DB;
+    for (var i = 0; i < cands.length; i++) {
+      if (cands[i] && cands[i].id === observing.id) {
+        if (isFinite(cands[i].severityDb)) severity = cands[i].severityDb;
+        break;
+      }
+    }
+    return Object.assign({}, observing, { samples: observing.samples.concat([severity]) });
+  }
+
+  /** Scores a completed (or abandoned) observation window into exactly one
+   *  outcome card (#614): improved, worsened, unchanged, or inconclusive.
+   *  Never claims causation or a room-wide effect — the copy says so in
+   *  words. `null` for a falsy `observing`. */
+  function evaluateOutcome(observing) {
+    if (!observing) return null;
+
+    var samples = Array.isArray(observing.samples) ? observing.samples : [];
+    var beforeDb = isFinite(observing.before && observing.before.severityDb) ? observing.before.severityDb : 0;
+    var afterDb = null;
+    if (samples.length) {
+      var sum = 0;
+      for (var i = 0; i < samples.length; i++) sum += samples[i];
+      afterDb = sum / samples.length;
+    }
+    var deltaDb = afterDb == null ? null : beforeDb - afterDb;
+
+    var status;
+    var reason = null;
+    if (observing.sourceChanged === true) {
+      status = 'inconclusive';
+      reason = 'source-changed';
+    } else if (samples.length < MIN_OBSERVATION_SAMPLES) {
+      status = 'inconclusive';
+      reason = 'insufficient-data';
+    } else if (deltaDb >= MEANINGFUL_CHANGE_DB - SEVERITY_EPSILON) {
+      status = 'improved';
+    } else if (deltaDb <= -MEANINGFUL_CHANGE_DB + SEVERITY_EPSILON) {
+      status = 'worsened';
+    } else {
+      status = 'unchanged';
+    }
+
+    var metric = observing.metric || null;
+    var sourceLabel = (observing.source && observing.source.label) || null;
+    var SRC = sourceLabel || UNKNOWN_SOURCE_LABEL;
+    var MET = metric || 'the measured condition';
+    var AMT = deltaDb == null ? null : Math.abs(deltaDb).toFixed(1);
+    var SCOPE_TEXT = observing.scope === 'mix' ? 'the overall mix reading' : 'this input only';
+
+    var headline;
+    var detail;
+    if (status === 'improved') {
+      headline = 'Measured improvement';
+      detail = MET + ' moved ' + AMT + ' dB closer to its target range on ' + SRC + '. That is what Sound Buddy measured on ' + SCOPE_TEXT + ' — it can’t prove your change caused it, and it doesn’t mean the whole room improved.';
+    } else if (status === 'worsened') {
+      headline = 'Measured condition moved the wrong way';
+      detail = MET + ' moved ' + AMT + ' dB further from its target range on ' + SRC + '. Plenty of things move a live mix — this is a reading on ' + SCOPE_TEXT + ', not a verdict on what you did. A smaller move, or undoing it, may be worth a try.';
+    } else if (status === 'unchanged') {
+      headline = 'No meaningful measured change';
+      detail = MET + ' changed less than ' + MEANINGFUL_CHANGE_DB + ' dB on ' + SRC + ' — too little to call either way on ' + SCOPE_TEXT + '.';
+    } else if (reason === 'source-changed') {
+      headline = 'Result inconclusive';
+      detail = 'The measurement source changed during the check, so there is nothing comparable to measure against. Sound Buddy did not compare readings across different sources.';
+    } else {
+      headline = 'Result inconclusive';
+      detail = 'Sound Buddy did not get enough clean audio on ' + SRC + ' during the check to compare before and after.';
+    }
+
+    return {
+      id: observing.id,
+      title: observing.title,
+      category: observing.category,
+      scope: observing.scope,
+      status: status,
+      reason: reason,
+      metric: metric,
+      sourceLabel: sourceLabel,
+      beforeDb: beforeDb,
+      afterDb: afterDb,
+      deltaDb: deltaDb,
+      sampleCount: samples.length,
+      headline: headline,
+      detail: detail,
     };
   }
 
@@ -705,27 +887,66 @@
       clearCount: 0,
       dismissed: dismissed,
       observing: null,
+      outcome: null,
     });
   }
 
   /** Records the active candidate's before-state and opens an
    *  OBSERVATION_WINDOW_MS window on it. Keeps `active` so the card stays on
    *  screen while being observed; also acknowledges it — trying it implies
-   *  seeing it. No-op when there is no active candidate. */
-  function markTriedCoaching(state, now) {
+   *  seeing it; clears any stale `outcome` — pressing "I tried this" again
+   *  starts a fresh evaluation. No-op when there is no active candidate. The
+   *  optional `context` (#614, an observationContext() result) is captured as
+   *  the record's `source`; omitting it means later windows have nothing
+   *  verifiable to sample against (observeWindow never samples), so the
+   *  eventual outcome comes out inconclusive/insufficient-data — the honest
+   *  "we cannot verify we measured the same thing" case. */
+  function markTriedCoaching(state, now, context) {
     if (!state || !state.active) return Object.assign({}, state);
     var active = state.active;
     return Object.assign({}, state, {
       acknowledgedId: active.id,
+      outcome: null,
       observing: {
         id: active.id,
         title: active.title,
         category: active.category,
         scope: active.scope,
+        metric: active.metric == null ? null : active.metric,
+        source: context && typeof context === 'object'
+          ? { measurementSource: context.measurementSource, focusIndex: context.focusIndex, label: context.label == null ? null : context.label }
+          : null,
         before: { severityDb: active.severityDb, confidence: active.confidence },
+        samples: [],
+        invalidCount: 0,
+        sourceChanged: false,
         startedAt: now,
         until: now + OBSERVATION_WINDOW_MS,
       },
+    });
+  }
+
+  /** Returns to monitoring after an outcome card is seen (#614): puts the
+   *  evaluated condition (and its OPPOSITE_IDS counterpart, if any) into
+   *  cooldown just like a resolved condition, and clears the active card,
+   *  outcome, and pending/observation state. No-op (unchanged copy) when
+   *  there is no outcome. Never mutates `prev.cooldowns`. */
+  function acknowledgeOutcome(state, now) {
+    if (!state || !state.outcome) return Object.assign({}, state);
+    var cooldowns = Object.assign({}, state.cooldowns);
+    cooldowns[state.outcome.id] = now + COOLDOWN_MS;
+    if (OPPOSITE_IDS[state.outcome.id]) cooldowns[OPPOSITE_IDS[state.outcome.id]] = now + COOLDOWN_MS;
+    return Object.assign({}, state, {
+      outcome: null,
+      active: null,
+      activeSince: null,
+      acknowledgedId: null,
+      pendingId: null,
+      pendingCount: 0,
+      pendingCandidate: null,
+      clearCount: 0,
+      observing: null,
+      cooldowns: cooldowns,
     });
   }
 
@@ -733,7 +954,9 @@
    *  candidate to show (or null while snoozed, unless its category bypasses
    *  the snooze), whether it's acknowledged, and the active observation
    *  window, if any. Null/garbage `state` yields the same shape with
-   *  `candidate: null` and everything else falsy/0. */
+   *  `candidate: null` and everything else falsy/0. `outcome` (#614) is
+   *  surfaced even while snoozed — the engineer explicitly asked for this
+   *  result by pressing "I tried this", so a snooze doesn't hide it. */
   function coachingView(state, now) {
     var s = state && typeof state === 'object' ? state : {};
     var snoozed = s.snoozeUntil != null && s.snoozeUntil > now;
@@ -742,12 +965,14 @@
     var snoozeRemainingMs = snoozed ? s.snoozeUntil - now : 0;
     var acknowledged = !!candidate && s.acknowledgedId === candidate.id;
     var observing = (s.observing && candidate && s.observing.id === candidate.id && s.observing.until > now) ? s.observing : null;
+    var outcome = (s.outcome && typeof s.outcome === 'object') ? s.outcome : null;
     return {
       candidate: candidate,
       snoozed: snoozed,
       snoozeRemainingMs: snoozeRemainingMs,
       acknowledged: acknowledged,
       observing: observing,
+      outcome: outcome,
     };
   }
 
@@ -822,6 +1047,31 @@
       + '</div>';
   }
 
+  /** The one outcome card's markup (#614), or '' for a falsy `outcome`.
+   *  `headline`/`detail`/`metric` may embed a user-editable source label, so
+   *  each is escaped. `focusName` is the focused input's display name, used
+   *  the same way coachingCardHTML uses it for the scope line. */
+  function outcomeCardHTML(outcome, focusName) {
+    if (!outcome) return '';
+    var scopeText;
+    if (outcome.scope === 'mix') {
+      scopeText = 'Overall mix';
+    } else if (focusName) {
+      scopeText = 'Focused input: ' + escapeText(focusName);
+    } else {
+      scopeText = 'Focused input';
+    }
+    var metricText = outcome.metric || 'the measured condition';
+    return '<div class="lap-card lap-card-outcome lap-outcome-' + outcome.status + '" role="status" data-outcome-id="' + outcome.id + '">'
+      + '<span class="lap-card-label">Result <span class="lap-flag">Experimental · Advisory</span></span>'
+      + '<span class="lap-card-title">' + escapeText(outcome.headline) + '</span>'
+      + '<p class="lap-outcome-detail">' + escapeText(outcome.detail) + '</p>'
+      + '<p class="lap-card-meta"><span class="lap-card-scope">' + scopeText + '</span> · <span class="lap-outcome-metric">Metric: ' + escapeText(metricText) + '</span></p>'
+      + '<div class="lap-card-actions"><button type="button" class="lap-action" data-lap-action="outcome-ack">Got it — keep monitoring</button></div>'
+      + '<p class="lap-card-advisory">Advisory only — Sound Buddy never changes your console. Sound Buddy measures; it does not prove cause.</p>'
+      + '</div>';
+  }
+
   /** The focused input entry from focusView (#525's { index, name, profile }
    *  shape), or null when there is none — the lookup focusHTML and panelHTML
    *  both need, factored out so they can't drift apart. */
@@ -868,7 +1118,9 @@
     var card;
     if (coaching && typeof coaching === 'object' && typeof now === 'number') {
       var view = coachingView(coaching, now);
-      card = coachingCardHTML(view.candidate, focused && focused.name, view);
+      card = view.outcome
+        ? outcomeCardHTML(view.outcome, focused && focused.name)
+        : coachingCardHTML(view.candidate, focused && focused.name, view);
     } else if (coaching && typeof coaching === 'object') {
       card = coachingCardHTML(coaching.active, focused && focused.name);
     } else {
@@ -967,6 +1219,15 @@
     DISMISS_ESCALATION_DB: DISMISS_ESCALATION_DB,
     OBSERVATION_WINDOW_MS: OBSERVATION_WINDOW_MS,
     SNOOZE_BYPASS_CATEGORIES: SNOOZE_BYPASS_CATEGORIES,
+    MEANINGFUL_CHANGE_DB: MEANINGFUL_CHANGE_DB,
+    MIN_OBSERVATION_SAMPLES: MIN_OBSERVATION_SAMPLES,
+    RESOLVED_SEVERITY_DB: RESOLVED_SEVERITY_DB,
+    UNKNOWN_SOURCE_LABEL: UNKNOWN_SOURCE_LABEL,
+    observationContext: observationContext,
+    observeWindow: observeWindow,
+    evaluateOutcome: evaluateOutcome,
+    acknowledgeOutcome: acknowledgeOutcome,
+    outcomeCardHTML: outcomeCardHTML,
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.liveAdjustmentsState = api;
