@@ -5,9 +5,10 @@ import {
   evaluateReleasePreflight,
   formatPublishFailure,
   planReleasePublish,
+  planUpdateInfoUpload,
   resumeCommand,
 } from './release-publish.js';
-import { RELEASE_MANIFEST_FILENAME } from './release-manifest.js';
+import { ELECTRON_UPDATER_MANIFEST_FILENAME, RELEASE_MANIFEST_FILENAME } from './release-manifest.js';
 import type { PublishState, PublishTargets } from './release-publish.js';
 
 const TARGETS: PublishTargets = {
@@ -174,7 +175,12 @@ describe('evaluateReleasePreflight', () => {
     const state: PublishState = {
       ...FRESH_STATE,
       release: { isDraft: true },
-      assetNames: [TARGETS.zipAssetName, TARGETS.dmgAssetName, RELEASE_MANIFEST_FILENAME],
+      assetNames: [
+        TARGETS.zipAssetName,
+        TARGETS.dmgAssetName,
+        RELEASE_MANIFEST_FILENAME,
+        ELECTRON_UPDATER_MANIFEST_FILENAME,
+      ],
     };
     const verdict = evaluateReleasePreflight(state, TARGETS, true);
     expect(verdict.ok).toBe(true);
@@ -182,6 +188,7 @@ describe('evaluateReleasePreflight', () => {
     expect(verdict.mode).toBe('resume');
     expect(verdict.notice).toContain(TARGETS.dmgAssetName);
     expect(verdict.notice).toContain(RELEASE_MANIFEST_FILENAME);
+    expect(verdict.notice).toContain(ELECTRON_UPDATER_MANIFEST_FILENAME);
   });
 
   it('existing published (non-draft, incomplete) release + explicitVersion true: resume notice describes it as published', () => {
@@ -194,16 +201,62 @@ describe('evaluateReleasePreflight', () => {
     expect(verdict.notice).toContain(TARGETS.zipAssetName);
   });
 
-  it('published release already holding zip, dmg, and latest.json: ok false, nothing left to resume', () => {
+  it('published release already holding zip, dmg, latest.json, and latest-mac.yml: ok false, nothing left to resume', () => {
+    const state: PublishState = {
+      ...FRESH_STATE,
+      release: { isDraft: false },
+      assetNames: [
+        TARGETS.zipAssetName,
+        TARGETS.dmgAssetName,
+        RELEASE_MANIFEST_FILENAME,
+        ELECTRON_UPDATER_MANIFEST_FILENAME,
+      ],
+    };
+    const verdict = evaluateReleasePreflight(state, TARGETS, true);
+    expect(verdict.ok).toBe(false);
+    if (verdict.ok) throw new Error('unreachable');
+    expect(verdict.error).toContain('nothing is left to resume');
+  });
+
+  it('published release missing only latest-mac.yml: resumable, not "nothing left"', () => {
     const state: PublishState = {
       ...FRESH_STATE,
       release: { isDraft: false },
       assetNames: [TARGETS.zipAssetName, TARGETS.dmgAssetName, RELEASE_MANIFEST_FILENAME],
     };
     const verdict = evaluateReleasePreflight(state, TARGETS, true);
-    expect(verdict.ok).toBe(false);
-    if (verdict.ok) throw new Error('unreachable');
-    expect(verdict.error).toContain('nothing is left to resume');
+    expect(verdict.ok).toBe(true);
+    if (!verdict.ok) throw new Error('unreachable');
+    expect(verdict.mode).toBe('resume');
+    expect(verdict.notice).toContain(RELEASE_MANIFEST_FILENAME);
+  });
+});
+
+describe('planUpdateInfoUpload', () => {
+  it('draft-release ran this run: uploads (the local build is the asset)', () => {
+    const plan = planUpdateInfoUpload(true, false);
+    expect(plan).toEqual({ action: 'upload', reason: expect.any(String) });
+  });
+
+  it('draft-release ran this run, even if a stale upload already exists: still uploads', () => {
+    const plan = planUpdateInfoUpload(true, true);
+    expect(plan).toEqual({ action: 'upload', reason: expect.any(String) });
+  });
+
+  it('draft-release skipped, latest-mac.yml already uploaded: skips (matches the already-uploaded zip)', () => {
+    const plan = planUpdateInfoUpload(false, true);
+    expect(plan).toEqual({ action: 'skip', reason: expect.any(String) });
+    if (plan.action !== 'skip') throw new Error('unreachable');
+    expect(plan.reason).toContain('already');
+  });
+
+  it('draft-release skipped, latest-mac.yml missing: fails with an actionable resume command', () => {
+    const plan = planUpdateInfoUpload(false, false);
+    expect(plan.action).toBe('fail');
+    if (plan.action !== 'fail') throw new Error('unreachable');
+    expect(plan.error).toContain('latest-mac.yml');
+    expect(plan.error).toContain('scripts/release.sh');
+    expect(plan.error).toContain('--yes');
   });
 });
 

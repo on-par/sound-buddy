@@ -18,7 +18,8 @@
     "dist:dir": "npm run build && electron-builder --dir"
   },
   "dependencies": {
-    "@sound-buddy/audio-engine": "file:../packages/audio-engine"
+    "@sound-buddy/audio-engine": "file:../packages/audio-engine",
+    "electron-updater": "^6.3.9"
   },
   "devDependencies": {
     "@playwright/test": "^1.61.1",

@@ -142,8 +142,7 @@ const INVOKE_TABLE: Array<{ method: BridgeKey; channel: string; args: unknown[] 
   { method: 'checkForUpdates', channel: 'check-for-updates', args: [] },
   { method: 'openReleasePage', channel: 'open-release-page', args: ['https://example.com'] },
   { method: 'downloadUpdate', channel: 'download-update', args: [] },
-  { method: 'cancelUpdateDownload', channel: 'cancel-update-download', args: [] },
-  { method: 'revealUpdateDownload', channel: 'reveal-update-download', args: [] },
+  { method: 'installUpdate', channel: 'install-update', args: [] },
   {
     method: 'reportRendererError',
     channel: 'report-renderer-error',
@@ -226,7 +225,7 @@ describe('createBridge — event listeners', () => {
     {
       method: 'onUpdateDownloadStatus',
       channel: 'update-download-status',
-      payload: { state: 'verifying' },
+      payload: { state: 'done', version: '1.2.3' },
       expectsPayload: true,
     },
   ];

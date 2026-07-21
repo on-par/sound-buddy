@@ -1,10 +1,13 @@
 // End-to-end release channel smoke check (#505): proves a freshly cut release
 // is reachable through every layer shipped in #500-#504 — the latest.json
-// manifest, the artifact it points at, the site's /download redirect, and the
-// app's update-discovery contract. The app-side rules below mirror
-// app/electron/update-manifest.ts#parseUpdateManifest, which cannot be
-// imported here across the MIT/proprietary boundary (that file documents the
-// same mirroring precedent against site/src/lib/latest-manifest.ts).
+// manifest, the artifact it points at, the site's /download redirect, and
+// latest.json's contract (still published on every release for the website
+// and any pre-#625 installed build, even though the app itself moved update
+// discovery to electron-updater's latest-mac.yml feed — see
+// docs/adr/0002-release-manifest-contract.md's "Update discovery migration"
+// section). packages/shared (MIT) can't import from app/ (proprietary), so
+// the app-update rules below are a self-contained duplicate of that
+// validation, not an import of it.
 
 import {
   validateReleaseManifest,
@@ -166,7 +169,8 @@ export function checkSiteRouteLayer(
   return { layer: 'site-route', ok: true, detail: `/download redirects to ${manifest.artifactUrl}` };
 }
 
-// Mirror of isNewer in app/electron/updater.ts.
+// Duplicates the version-comparison the app used to do in app/electron/updater.ts
+// before #625 (electron-updater now does this comparison internally).
 export function isNewerVersion(latest: string, current: string): boolean {
   const parse = (v: string) =>
     v.replace(/^v/, '').split('-')[0].split('.').map((n) => parseInt(n, 10) || 0);
@@ -183,7 +187,11 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
-// Mirrors app/electron/update-manifest.ts#parseUpdateManifest.
+// Duplicates the validation the app used to do in
+// app/electron/update-manifest.ts#parseUpdateManifest before #625 (deleted;
+// superseded by electron-updater's own latest-mac.yml validation). Kept here
+// so this smoke check still proves latest.json's shape for its other
+// consumers (the website, any pre-#625 installed build).
 function checkAppUpdateContract(data: unknown): string[] {
   if (!isPlainObject(data)) {
     return ['manifest must be a JSON object'];

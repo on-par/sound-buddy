@@ -2,6 +2,17 @@ appId: com.soundbuddy.app
 productName: Sound Buddy
 directories:
   output: release
+# Update discovery (#625). electron-builder generates release/latest-mac.yml from
+# this block during `npm run dist` and bakes Contents/Resources/app-update.yml into
+# the .app, so electron-updater resolves the feed with no runtime configuration.
+# The downloads repo is PUBLIC, so update checks need no token — `publish` here
+# only describes the feed; uploading stays scripts/release.sh's job (electron-builder
+# is never invoked with --publish).
+publish:
+  provider: github
+  owner: on-par
+  repo: sound-buddy-releases
+  releaseType: release
 # Makes the packaged .app fully self-contained: bundles sox, ffprobe (+ dylibs)
 # and a relocatable Python with the audio deps, so it runs with no Homebrew /
 # system python. Requires sox, ffmpeg, dylibbundler on the build machine.
@@ -23,13 +34,11 @@ files:
   - package.json
   # package.json declares "SEE LICENSE IN LICENSE" — the file must ship with it.
   - LICENSE
-  # #396 declares @sound-buddy/audio-engine as a file: dependency for static
-  # visibility only — the runtime engine ships via extraResources (engine/)
-  # and the app must keep shipping zero node_modules. Excluded explicitly so
-  # electron-builder's automatic production-dependency collection (triggered
-  # by the new "dependencies" section in package.json) can't pull the
-  # symlinked package tree into the bundle.
-  - "!node_modules/**"
+  # #396's @sound-buddy/audio-engine is a file: dependency for static visibility
+  # only; its runtime code ships via extraResources (engine/) and its symlinked
+  # tree must never enter the bundle. Everything else in dependencies (#625:
+  # electron-updater) is a real runtime dep and ships inside the asar.
+  - "!node_modules/@sound-buddy/**"
 asar: true
 # The Python analysis scripts must live OUTSIDE the asar archive — an external
 # `python3` process can't read files inside app.asar. They land at
@@ -75,6 +84,10 @@ mac:
       arch: arm64
     - target: dmg
       arch: arm64
+  # electron-builder writes this on-disk name into latest-mac.yml, but GitHub
+  # rewrites spaces to dots on upload — without a dotted artifactName here the
+  # two names diverge and electron-updater 404s on every update (#625).
+  artifactName: Sound.Buddy-${version}-${arch}-mac.${ext}
   category: public.app-category.music
   # macOS 26 (Tahoe) or newer. Written to Info.plist as LSMinimumSystemVersion.
   minimumSystemVersion: "26.0"
@@ -131,6 +144,9 @@ mac:
     - "Contents/Resources/scene-inspector/"
     - "Contents/Resources/assets/"
 dmg:
+  # Without this, mac.artifactName above would apply here too and rename the
+  # user-facing DMG download; this keeps it byte-identical to today's name.
+  artifactName: Sound.Buddy-${version}-${arch}.${ext}
   # Sign the .dmg with the same Developer ID. dmg-builder skips this cleanly
   # when mac.identity is null (unsigned dev/CI builds), so it is safe to leave on.
   sign: true

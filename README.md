@@ -27,8 +27,10 @@ blocked as unsigned — open **System Settings → Privacy & Security**, then cl
 **Open Anyway** in the Security section (or run
 `xattr -dr com.apple.quarantine "/Applications/Sound Buddy.app"`). See the
 [install walkthrough](https://soundbuddy.online/#install-walkthrough) for the full
-steps. It also checks Releases for newer versions and shows a **Download** banner
-when one is available (Help ▸ Check for Updates… to check manually).
+steps. It also checks Releases for newer versions and shows a banner when one is
+available (Help ▸ Check for Updates… to check manually); on a signed build, clicking
+**Download** then **Restart to Update** downloads and installs the update in place —
+no manual drag-and-drop required.
 
 **From source (dev):**
 ```bash
@@ -141,9 +143,9 @@ naming whichever layer is broken:
   Fix: delete the release asset and re-run the release.
 - **`site-route`** — the site's `/download` route 302-redirects to that same artifact. Fix:
   check the Cloudflare Worker deploy for `site/` and run `node site/scripts/check-download-channel.mjs`.
-- **`app-update`** — the app's update-discovery contract accepts the manifest and would
-  offer it as an update. Fix: the manifest drifted from the app contract in
-  `app/electron/update-manifest.ts` — fix and republish `latest.json`.
+- **`app-update`** — `latest.json`'s shape still matches the contract other consumers
+  (the website, this smoke check) expect. Fix: the manifest drifted from
+  `packages/shared/src/release-manifest.ts` — fix and republish `latest.json`.
 
 This is a live-network, tag-pinned operator command — it is not run in CI or `npm test`.
 
