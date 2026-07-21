@@ -163,11 +163,14 @@ if [[ "$SIGNED" == "true" ]]; then
   # string; electron-builder rejects that prefix and wants the bare name (#619).
   # APPLE_KEYCHAIN_PROFILE is how electron-builder hands our notarytool keychain profile to
   # @electron/notarize — it submits, waits, and staples the ticket before zipping (#621).
-  # Output is NOT silenced here: the submission id and notary progress belong in the log.
+  # Output is NOT silenced here: any signing/notarization/staple failure and its full error
+  # text land directly in this log. @electron/notarize does not print the Apple submission id
+  # on a successful run (only on failure, and only into its own debug channel) — look up a
+  # past submission's id with: xcrun notarytool history --keychain-profile $NOTARY_PROFILE
   ( cd "$APP" && SOUND_BUDDY_SIGNING_IDENTITY="$IDENTITY" SOUND_BUDDY_NOTARY_PROFILE="$NOTARY_PROFILE" \
       APPLE_KEYCHAIN_PROFILE="$NOTARY_PROFILE" \
       npm run dist -- -c.mac.identity="$IDENTITY_NAME" -c.mac.notarize=true ) \
-    || die "signed build failed — if notarization was rejected, find the submission id in the output above and read the log with: xcrun notarytool log <submission-id> --keychain-profile $NOTARY_PROFILE"
+    || die "signed build failed during signing, notarization, or stapling — check the output above for the exact error. If Apple rejected the notarization, find the submission id there and read the full log with: xcrun notarytool log <submission-id> --keychain-profile $NOTARY_PROFILE"
 else
   ( cd "$APP" && npm run dist >/dev/null )
 fi
