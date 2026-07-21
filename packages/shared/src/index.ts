@@ -30,7 +30,10 @@ export type {
   SmokeLayer, SmokeCheckResult, ReleaseSmokeReport, ReleaseSmokeFetchers,
 } from './release-smoke.js'
 
-export { resolveSigningConfig, isMachOBinary, parseNotarySubmission, parseSpctlAssessment } from './signing.js'
+export {
+  resolveSigningConfig, isMachOBinary, parseNotarySubmission, parseSpctlAssessment,
+  planCodesignBatches, CODESIGN_BATCH_SIZE,
+} from './signing.js'
 export type { SigningConfig, NotarySubmissionResult, SpctlVerdict } from './signing.js'
 
 export interface EQBand {

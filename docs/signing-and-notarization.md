@@ -55,9 +55,16 @@ Given both env vars, `scripts/release.sh`:
    prefix), while `afterPack.js` receives the full string via
    `SOUND_BUDDY_SIGNING_IDENTITY`.
 3. `app/build/afterPack.js` signs every bundled Mach-O (sox, ffmpeg, ffprobe,
-   their dylibs, the Python runtime) with the Developer ID identity;
-   electron-builder's own sign phase then signs the frameworks, helpers, and
-   outer `.app`.
+   their dylibs, the Python runtime) with the Developer ID identity, batching
+   the `codesign` calls so ~262 binaries take a handful of invocations instead
+   of one each; electron-builder's own sign phase then signs the frameworks,
+   helpers, and outer `.app`. That phase is scoped by `mac.signIgnore` in
+   `electron-builder.yml` to skip `Contents/Resources/{python,bin,lib,scripts,
+   engine,license-policy,scene-inspector,assets}`, since afterPack already
+   signed every Mach-O there and none of the thousands of other files in those
+   trees (`.py`, `.pyc`, `.json`, `.txt`, …) are Mach-O or carry a signature of
+   their own — walking them individually is what made a signed build take
+   ~45 minutes (#620).
 4. Verifies the signature (`codesign --verify --deep --strict`).
 5. Submits to Apple's notary service and waits
    (`xcrun notarytool submit --wait`).
@@ -89,3 +96,9 @@ xcrun notarytool log <submission-id> --keychain-profile sound-buddy-notary
 The most common cause is an unsigned nested Mach-O binary. `afterPack.js`
 signs everything under `Contents/Resources/bin`, `lib`, and `python` — if a
 new bundled binary lands somewhere else, add that directory to its walk list.
+
+If a future bundled tool lands in a **new** `Contents/Resources` subdirectory
+containing Mach-O, it must either be covered by `afterPack.js`'s walk (so it
+gets signed) or left out of `mac.signIgnore` in `electron-builder.yml` (so
+electron-builder's sign phase catches it instead) — otherwise notarization
+will reject the build with an unsigned-nested-code error.

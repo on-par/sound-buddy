@@ -140,28 +140,33 @@ module.exports = async function afterPack(context) {
     // rebuilds the seal. Signing nested binaries here first means that final
     // pass has nothing unsigned left to trip over.
     log('signing bundled native binaries with Developer ID');
-    let signedCount = 0;
-    for (const dir of [binDir, libDir, path.join(resources, 'python')]) {
-      signedCount += signMachOBinariesRecursive(dir, signing.identity, shared.isMachOBinary);
-    }
-    log(`signed ${signedCount} bundled binaries`);
+    // Batched, not one `codesign` per file: electron-builder's own sign phase
+    // (next, driven by -c.mac.identity) is scoped by `mac.signIgnore` in
+    // electron-builder.yml to skip these same trees, so this is the only pass
+    // that ever touches them (#620).
+    const machO = [binDir, libDir, path.join(resources, 'python')]
+      .flatMap((dir) => collectMachOBinaries(dir, shared.isMachOBinary));
+    const batches = shared.planCodesignBatches(machO);
+    const signedCount = signMachOBatches(batches, signing.identity);
+    log(`signed ${signedCount} bundled binaries in ${batches.length} codesign calls`);
   }
 
   log('done — app is self-contained');
 };
 
-// Walks `dir` recursively, signing every regular file whose first 4 bytes are
-// a Mach-O/universal-binary magic number. Symlinks are skipped — dylibbundler
-// and the Python runtime both use them to alias versioned libraries, and
-// signing the link target (not the link itself) is what codesign expects.
-function signMachOBinariesRecursive(dir, identity, isMachOBinary) {
-  if (!fs.existsSync(dir)) return 0;
-  let count = 0;
+// Walks `dir` recursively, collecting every regular file whose first 4 bytes
+// are a Mach-O/universal-binary magic number. Symlinks are skipped —
+// dylibbundler and the Python runtime both use them to alias versioned
+// libraries, and signing the link target (not the link itself) is what
+// codesign expects.
+function collectMachOBinaries(dir, isMachOBinary) {
+  if (!fs.existsSync(dir)) return [];
+  const paths = [];
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
     const entryPath = path.join(dir, entry.name);
     if (entry.isSymbolicLink()) continue;
     if (entry.isDirectory()) {
-      count += signMachOBinariesRecursive(entryPath, identity, isMachOBinary);
+      paths.push(...collectMachOBinaries(entryPath, isMachOBinary));
       continue;
     }
     if (!entry.isFile()) continue;
@@ -170,12 +175,23 @@ function signMachOBinariesRecursive(dir, identity, isMachOBinary) {
     fs.readSync(fd, header, 0, 4, 0);
     fs.closeSync(fd);
     if (!isMachOBinary(header)) continue;
+    paths.push(entryPath);
+  }
+  return paths;
+}
+
+// codesign accepts many paths per invocation, so signing `batches` (already
+// split by planCodesignBatches) collapses hundreds of process spawns + Apple
+// timestamp-server round trips into a handful (#620).
+function signMachOBatches(batches, identity) {
+  let count = 0;
+  for (const batch of batches) {
     execFileSync(
       'codesign',
-      ['--force', '--options', 'runtime', '--timestamp', '--sign', identity, entryPath],
+      ['--force', '--options', 'runtime', '--timestamp', '--sign', identity, ...batch],
       { stdio: ['ignore', 'ignore', 'pipe'] },
     );
-    count++;
+    count += batch.length;
   }
   return count;
 }
