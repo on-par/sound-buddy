@@ -36,6 +36,11 @@ export {
 } from './signing.js'
 export type { SigningConfig, SpctlVerdict, StaplerVerdict } from './signing.js'
 
+export {
+  selectDmgArtifacts, planDmgNotarization, DMG_EXTENSION, KEYCHAIN_PROFILE_VAR,
+} from './dmg-notarization.js'
+export type { DmgNotarizationStep, DmgNotarizationPlan } from './dmg-notarization.js'
+
 export interface EQBand {
   type: string
   freq: number
