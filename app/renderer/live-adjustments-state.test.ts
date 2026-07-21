@@ -1729,6 +1729,12 @@ describe('Outcome evaluation (#614)', () => {
       expect(evaluateOutcome(null)).toBeNull();
     });
 
+    it('does not throw when observing.before is null, treating beforeDb as 0', () => {
+      const observing = mkObserving({ before: null as unknown as { severityDb: number; confidence: number }, samples: [2, 2] });
+      expect(() => evaluateOutcome(observing)).not.toThrow();
+      expect(evaluateOutcome(observing)!.beforeDb).toBe(0);
+    });
+
     it('improved: before 8, samples [2, 2] => delta 6', () => {
       const outcome = evaluateOutcome(observingFor(8, [2, 2]))!;
       expect(outcome.status).toBe('improved');
@@ -1978,6 +1984,31 @@ describe('Outcome evaluation (#614)', () => {
       const view = coachingView(state, 1000);
       expect(view.snoozed).toBe(true);
       expect(view.outcome).toBe(sampleOutcome);
+    });
+
+    it('does not let a pending outcome hide a concurrently active snooze-bypass-category candidate (e.g. a safety-critical clipping risk)', () => {
+      expect(SNOOZE_BYPASS_CATEGORIES.clipping).toBe(true);
+      const clipActive = cand('clip-risk', 0.9, { category: 'clipping' });
+      const state: CoachingState = { ...createCoachingState(), active: clipActive, activeSince: 0, outcome: sampleOutcome };
+      const view = coachingView(state, 1000);
+      expect(view.candidate).toBe(clipActive);
+      expect(view.outcome).toBeNull();
+    });
+
+    it('surfaces the outcome once no bypass-category candidate is active', () => {
+      const state: CoachingState = { ...createCoachingState(), active: null, outcome: sampleOutcome };
+      const view = coachingView(state, 1000);
+      expect(view.outcome).toBe(sampleOutcome);
+    });
+
+    it('panelHTML renders the clipping card, not the outcome card, while a clipping risk is active alongside a pending outcome', () => {
+      const hotBass = { ...FLAT, bass: FLAT.bass + 20 };
+      const windows = [mkWindow(hotBass), mkWindow(hotBass), mkWindow(hotBass)];
+      const clipActive = cand('clip-risk', 0.9, { category: 'clipping' });
+      const coaching: CoachingState = { ...createCoachingState(), active: clipActive, activeSince: 0, outcome: sampleOutcome };
+      const html = panelHTML({ liveAdjustmentsEnabled: true }, 'live', windows, null, undefined, coaching, 1000);
+      expect(html).toContain('data-candidate-id="clip-risk"');
+      expect(html).not.toContain('lap-card-outcome');
     });
 
     it('outcomeCardHTML returns "" for null', () => {

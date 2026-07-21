@@ -772,7 +772,12 @@
     if (!observing) return null;
 
     var samples = Array.isArray(observing.samples) ? observing.samples : [];
-    var beforeDb = isFinite(observing.before && observing.before.severityDb) ? observing.before.severityDb : 0;
+    // Read severityDb through a single guarded local rather than dereferencing
+    // observing.before twice — isFinite(null) coerces to true (Number(null) is
+    // 0), so re-reading observing.before.severityDb in a ternary's true branch
+    // would throw when observing.before itself is null.
+    var beforeSeverity = observing.before ? observing.before.severityDb : undefined;
+    var beforeDb = isFinite(beforeSeverity) ? beforeSeverity : 0;
     var afterDb = null;
     if (samples.length) {
       var sum = 0;
@@ -799,28 +804,28 @@
 
     var metric = observing.metric || null;
     var sourceLabel = (observing.source && observing.source.label) || null;
-    var SRC = sourceLabel || UNKNOWN_SOURCE_LABEL;
-    var MET = metric || 'the measured condition';
-    var AMT = deltaDb == null ? null : Math.abs(deltaDb).toFixed(1);
-    var SCOPE_TEXT = observing.scope === 'mix' ? 'the overall mix reading' : 'this input only';
+    var src = sourceLabel || UNKNOWN_SOURCE_LABEL;
+    var met = metric || 'the measured condition';
+    var amt = deltaDb == null ? null : Math.abs(deltaDb).toFixed(1);
+    var scopeText = observing.scope === 'mix' ? 'the overall mix reading' : 'this input only';
 
     var headline;
     var detail;
     if (status === 'improved') {
       headline = 'Measured improvement';
-      detail = MET + ' moved ' + AMT + ' dB closer to its target range on ' + SRC + '. That is what Sound Buddy measured on ' + SCOPE_TEXT + ' — it can’t prove your change caused it, and it doesn’t mean the whole room improved.';
+      detail = met + ' moved ' + amt + ' dB closer to its target range on ' + src + '. That is what Sound Buddy measured on ' + scopeText + ' — it can’t prove your change caused it, and it doesn’t mean the whole room improved.';
     } else if (status === 'worsened') {
       headline = 'Measured condition moved the wrong way';
-      detail = MET + ' moved ' + AMT + ' dB further from its target range on ' + SRC + '. Plenty of things move a live mix — this is a reading on ' + SCOPE_TEXT + ', not a verdict on what you did. A smaller move, or undoing it, may be worth a try.';
+      detail = met + ' moved ' + amt + ' dB further from its target range on ' + src + '. Plenty of things move a live mix — this is a reading on ' + scopeText + ', not a verdict on what you did. A smaller move, or undoing it, may be worth a try.';
     } else if (status === 'unchanged') {
       headline = 'No meaningful measured change';
-      detail = MET + ' changed less than ' + MEANINGFUL_CHANGE_DB + ' dB on ' + SRC + ' — too little to call either way on ' + SCOPE_TEXT + '.';
+      detail = met + ' changed less than ' + MEANINGFUL_CHANGE_DB + ' dB on ' + src + ' — too little to call either way on ' + scopeText + '.';
     } else if (reason === 'source-changed') {
       headline = 'Result inconclusive';
       detail = 'The measurement source changed during the check, so there is nothing comparable to measure against. Sound Buddy did not compare readings across different sources.';
     } else {
       headline = 'Result inconclusive';
-      detail = 'Sound Buddy did not get enough clean audio on ' + SRC + ' during the check to compare before and after.';
+      detail = 'Sound Buddy did not get enough clean audio on ' + src + ' during the check to compare before and after.';
     }
 
     return {
@@ -966,6 +971,11 @@
     var acknowledged = !!candidate && s.acknowledgedId === candidate.id;
     var observing = (s.observing && candidate && s.observing.id === candidate.id && s.observing.until > now) ? s.observing : null;
     var outcome = (s.outcome && typeof s.outcome === 'object') ? s.outcome : null;
+    // A safety-critical, snooze-bypass candidate (clipping) must stay visible —
+    // the same guarantee that already protects it from a snooze — so a pending
+    // outcome from an unrelated observation cannot push it off-screen. The
+    // outcome resurfaces once that candidate is no longer active.
+    if (outcome && candidate && SNOOZE_BYPASS_CATEGORIES[candidate.category]) outcome = null;
     return {
       candidate: candidate,
       snoozed: snoozed,
