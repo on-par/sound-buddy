@@ -15,15 +15,15 @@
     "test:e2e:sandbox": "node --env-file=../.env.local scripts/e2e-sandbox.mjs"
   },
   "devDependencies": {
-    "@cloudflare/workers-types": "^5.20260714.1",
+    "@cloudflare/workers-types": "^5.20260721.1",
     "@types/node": "^26.1.1",
     "@vitest/coverage-v8": "^4.1.10",
     "typescript": "^5.6.0",
     "vitest": "^4.1.10",
-    "wrangler": "^4.110.0"
+    "wrangler": "^4.113.0"
   },
   "dependencies": {
     "@sound-buddy/license-policy": "file:../packages/license-policy",
-    "stripe": "^22.3.1"
+    "stripe": "^22.3.2"
   }
 }
