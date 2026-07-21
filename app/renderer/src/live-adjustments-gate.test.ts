@@ -128,6 +128,13 @@ describe('Live adjustments gate wiring (#522)', () => {
     expect(css).toContain('.lap-candidates');
     expect(css).toContain('.lap-cand-title');
   });
+
+  it('app.css styles the ranked coaching card (#611)', () => {
+    expect(css).toContain('.lap-card');
+    expect(css).toContain('.lap-card-title');
+    expect(css).toContain('.lap-card-meta');
+    expect(css).toContain('.lap-card-advisory');
+  });
 });
 
 describe('Per-input instrument-aware adjustment candidates (#525)', () => {
