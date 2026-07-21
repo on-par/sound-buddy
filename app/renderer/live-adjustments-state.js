@@ -33,6 +33,30 @@
   var QUIET_DIFF_DB = -15;
   var MAX_CANDIDATES = 3;
 
+  // Peak (dBFS) above which the live signal reads as clipping-adjacent; mirrors
+  // grading.js CONFIG.peak.issueAbove so the live card and the report card agree.
+  var CLIP_RISK_PEAK_DBFS = -1;
+  // Ranking tiers. A critical condition (clipping risk) always outranks a tonal
+  // balance improvement, no matter how confident the tonal candidate is.
+  var CATEGORY_PRIORITY = { clipping: 2, tonal: 1 };
+  // Confidence model. Confidence is evidence strength, not probability: a base
+  // floor, plus how far past its threshold the condition sits, plus how many
+  // analysis windows back it up. Saturates at 1.
+  var CONFIDENCE_BASE = 0.4;
+  var CONFIDENCE_MAGNITUDE_WEIGHT = 0.4;
+  var CONFIDENCE_WINDOW_WEIGHT = 0.2;
+  // dB past a candidate's own threshold at which the magnitude term saturates.
+  var CONFIDENCE_FULL_EXCESS_DB = 6;
+  // Analysis windows at which the evidence term saturates (2x MIN_WINDOWS).
+  var CONFIDENCE_FULL_WINDOWS = 6;
+  // Below this, Sound Buddy stays quiet rather than offering weak advice.
+  var MIN_CONFIDENCE = 0.6;
+  var HIGH_CONFIDENCE = 0.8;
+  // Tolerance for the float threshold comparisons below — confidence is a sum of
+  // floats, so a candidate landing exactly on a threshold must not fall out to
+  // binary representation error.
+  var CONFIDENCE_EPSILON = 1e-9;
+
   /** The selected mix channel's bands object for one window event, or null when
    *  the window/channel/bands data isn't present. Mirrors the fallback in
    *  live-capture-panel.ts's liveReportCardSource(): measurementSource ?? 0,
@@ -112,25 +136,49 @@
     }
 
     var candidates = [];
-    if (Math.max(diffFromOthers(averages, 'sub_bass'), diffFromOthers(averages, 'bass')) > HOT_DIFF_DB) {
+    var lowSeverity = Math.max(diffFromOthers(averages, 'sub_bass'), diffFromOthers(averages, 'bass')) - HOT_DIFF_DB;
+    if (lowSeverity > 0) {
       candidates.push({
         id: 'low-end',
         title: 'Low-end buildup',
         detail: 'The mix is carrying extra energy below 250 Hz. A small cut in the 60–250 Hz range, or a high-pass on channels that don’t need lows, is what Sound Buddy would try first.',
+        category: 'tonal',
+        scope: 'mix',
+        scopeLabel: 'Overall mix',
+        severityDb: lowSeverity,
+        confidence: candidateConfidence(lowSeverity, bandsList.length),
+        why: 'Extra energy below 250 Hz masks vocals and makes the room feel muddy from the back.',
+        action: 'Consider a small cut in the 60–250 Hz range, or a high-pass on channels that don’t need lows.',
       });
     }
-    if (Math.max(diffFromOthers(averages, 'high_mid'), diffFromOthers(averages, 'presence')) > HOT_DIFF_DB) {
+    var harshSeverity = Math.max(diffFromOthers(averages, 'high_mid'), diffFromOthers(averages, 'presence')) - HOT_DIFF_DB;
+    if (harshSeverity > 0) {
       candidates.push({
         id: 'harshness',
         title: 'Possible harshness',
         detail: 'Energy is concentrated in the 2–6 kHz range. A gentle cut there is what Sound Buddy would try first.',
+        category: 'tonal',
+        scope: 'mix',
+        scopeLabel: 'Overall mix',
+        severityDb: harshSeverity,
+        confidence: candidateConfidence(harshSeverity, bandsList.length),
+        why: 'A concentration of 2–6 kHz energy is what listeners hear as harsh or fatiguing.',
+        action: 'Consider a gentle cut in the 2–6 kHz range.',
       });
     }
-    if (diffFromOthers(averages, 'mid') < QUIET_DIFF_DB) {
+    var vocalSeverity = QUIET_DIFF_DB - diffFromOthers(averages, 'mid');
+    if (vocalSeverity > 0) {
       candidates.push({
         id: 'vocal-clarity',
         title: 'Vocal range sitting low',
         detail: 'The 500 Hz–2 kHz range is well below the rest of the mix. A small boost there, or a nudge up on vocal faders, is what Sound Buddy would try first.',
+        category: 'tonal',
+        scope: 'mix',
+        scopeLabel: 'Overall mix',
+        severityDb: vocalSeverity,
+        confidence: candidateConfidence(vocalSeverity, bandsList.length),
+        why: 'With 500 Hz–2 kHz well below the rest of the mix, spoken and sung words get hard to follow.',
+        action: 'Consider a small boost in the 500 Hz–2 kHz range, or a nudge up on vocal faders.',
       });
     }
     return candidates.slice(0, MAX_CANDIDATES);
@@ -203,33 +251,221 @@
     var candidates = [];
     var lowDiff = Math.max(dev.sub_bass, dev.bass);
     if (lowDiff > HOT_DIFF_DB) {
+      var lowCleanupSeverity = lowDiff - HOT_DIFF_DB;
       candidates.push({
         id: 'input-low-cleanup',
         title: 'Low-end cleanup',
         detail: 'This input is carrying more low end than a ' + profile.label + ' input usually needs. A small cut below 250 Hz, or a high-pass, is what Sound Buddy would try first.',
+        category: 'tonal',
+        scope: 'input',
+        scopeLabel: 'Focused input',
+        severityDb: lowCleanupSeverity,
+        confidence: candidateConfidence(lowCleanupSeverity, bandsList.length),
+        why: 'Low end this input doesn’t need still eats headroom and muddies the mix.',
+        action: 'Consider a small cut below 250 Hz on this input, or a high-pass.',
       });
     } else if (lowDiff < QUIET_DIFF_DB) {
+      var lowSupportSeverity = QUIET_DIFF_DB - lowDiff;
       candidates.push({
         id: 'input-low-support',
         title: 'Low-end support',
         detail: 'This input has less low end than a ' + profile.label + ' input usually carries. A small boost in the 60–250 Hz range, or easing its high-pass, is what Sound Buddy would try first.',
+        category: 'tonal',
+        scope: 'input',
+        scopeLabel: 'Focused input',
+        severityDb: lowSupportSeverity,
+        confidence: candidateConfidence(lowSupportSeverity, bandsList.length),
+        why: 'Without its usual low end this input sounds thin against the rest of the mix.',
+        action: 'Consider a small boost in the 60–250 Hz range on this input, or easing its high-pass.',
       });
     }
     var upperDiff = Math.max(dev.high_mid, dev.presence);
     if (upperDiff > HOT_DIFF_DB) {
+      var highBuildupSeverity = upperDiff - HOT_DIFF_DB;
       candidates.push({
         id: 'input-high-buildup',
         title: 'Upper-mid buildup',
         detail: 'This input has more 2–6 kHz energy than a ' + profile.label + ' input usually needs. A gentle cut there is what Sound Buddy would try first.',
+        category: 'tonal',
+        scope: 'input',
+        scopeLabel: 'Focused input',
+        severityDb: highBuildupSeverity,
+        confidence: candidateConfidence(highBuildupSeverity, bandsList.length),
+        why: 'Extra 2–6 kHz on one input is what makes a single source stick out as harsh.',
+        action: 'Consider a gentle cut in the 2–6 kHz range on this input.',
       });
     } else if (upperDiff < QUIET_DIFF_DB) {
+      var highSupportSeverity = QUIET_DIFF_DB - upperDiff;
       candidates.push({
         id: 'input-high-support',
         title: 'Presence support',
         detail: 'This input sits below the 2–6 kHz presence a ' + profile.label + ' input usually carries. A small boost there is what Sound Buddy would try first.',
+        category: 'tonal',
+        scope: 'input',
+        scopeLabel: 'Focused input',
+        severityDb: highSupportSeverity,
+        confidence: candidateConfidence(highSupportSeverity, bandsList.length),
+        why: 'Without its usual presence this input gets buried even when its fader is up.',
+        action: 'Consider a small boost in the 2–6 kHz range on this input.',
       });
     }
     return candidates.slice(0, MAX_CANDIDATES);
+  }
+
+  /** Evidence-strength score in [CONFIDENCE_BASE, 1]: a base floor, plus how
+   *  far past its own threshold the condition sits (magnitude), plus how many
+   *  analysis windows back it up (evidence). Non-finite/missing inputs (e.g.
+   *  a candidate with no severity yet) coerce to a 0 ratio rather than NaN. */
+  function candidateConfidence(severityDb, windowCount) {
+    var magnitudeRatio = Math.min(1, Math.max(0, severityDb) / CONFIDENCE_FULL_EXCESS_DB);
+    var windowRatio = Math.min(1, Math.max(0, windowCount) / CONFIDENCE_FULL_WINDOWS);
+    if (!isFinite(magnitudeRatio)) magnitudeRatio = 0;
+    if (!isFinite(windowRatio)) windowRatio = 0;
+    return Math.min(1, CONFIDENCE_BASE + CONFIDENCE_MAGNITUDE_WEIGHT * magnitudeRatio + CONFIDENCE_WINDOW_WEIGHT * windowRatio);
+  }
+
+  /** 'High' | 'Medium' | 'Low' reading of a confidence score, for the
+   *  coaching card's confidence line. */
+  function confidenceLabel(confidence) {
+    if (confidence >= HIGH_CONFIDENCE - CONFIDENCE_EPSILON) return 'High';
+    if (confidence >= MIN_CONFIDENCE - CONFIDENCE_EPSILON) return 'Medium';
+    return 'Low';
+  }
+
+  /** The selected channel's level object (peak/clipping) for one window
+   *  event, or null when it doesn't carry a numeric peak. Reuses the same
+   *  channel-selection fallback as channelBands (measurementSource ?? 0,
+   *  falling back to index 0 when missing). */
+  function channelLevels(w, measurementSource) {
+    if (!w || !Array.isArray(w.channels)) return null;
+    var idx = measurementSource == null ? 0 : measurementSource;
+    if (!w.channels[idx]) idx = 0;
+    var ch = w.channels[idx];
+    if (!ch || typeof ch.peak !== 'number') return null;
+    return ch;
+  }
+
+  /** Mix-scope clipping-risk candidate(s) from the peak/clipping fields the
+   *  live window events already carry (stream.py emits them per channel and
+   *  the live meters already render them) — no new detector, just a ranking
+   *  input. [] unless MIN_WINDOWS usable level readings have accumulated and
+   *  the signal is at or past clipping-adjacent. */
+  function clipCandidates(windows, measurementSource) {
+    if (!Array.isArray(windows)) return [];
+    var levels = [];
+    for (var i = 0; i < windows.length; i++) {
+      var ch = channelLevels(windows[i], measurementSource);
+      if (ch) levels.push(ch);
+    }
+    if (levels.length < MIN_WINDOWS) return [];
+
+    var maxPeak = -Infinity;
+    var anyClipping = false;
+    for (var j = 0; j < levels.length; j++) {
+      if (levels[j].peak > maxPeak) maxPeak = levels[j].peak;
+      if (levels[j].clipping === true) anyClipping = true;
+    }
+    if (!anyClipping && maxPeak <= CLIP_RISK_PEAK_DBFS) return [];
+
+    var severityDb = maxPeak - CLIP_RISK_PEAK_DBFS;
+    // A measured `clipping === true` is not an inference — force confidence
+    // to 1 rather than let a barely-past-threshold peak read as low-evidence.
+    var confidence = anyClipping ? 1 : candidateConfidence(severityDb, levels.length);
+    return [{
+      id: 'clip-risk',
+      title: 'Clipping risk',
+      detail: 'The measured signal is peaking at or above −1 dBFS. Easing input gain is what Sound Buddy would try first.',
+      category: 'clipping',
+      scope: 'mix',
+      scopeLabel: 'Overall mix',
+      severityDb: severityDb,
+      confidence: confidence,
+      why: 'A signal at or past 0 dBFS distorts, and no downstream EQ can undo it.',
+      action: 'Consider easing input gain or the fader until peaks sit below −1 dBFS.',
+    }];
+  }
+
+  /** 0 for mix-scope, 1 for input-scope — mix sorts first in rankCandidates. */
+  function scopeRank(scope) {
+    return scope === 'mix' ? 0 : 1;
+  }
+
+  /** All candidate sources normalized into one ranked set, highest priority
+   *  first. Ignores null/non-array input and filters out non-object entries.
+   *  Returns a new array (never mutates the argument) sorted by a fully
+   *  deterministic comparator — category, then confidence, then severity,
+   *  then scope, then id — so ordering never depends on sort stability. */
+  function rankCandidates(candidates) {
+    if (!Array.isArray(candidates)) return [];
+    var ranked = candidates.filter(function (c) { return c && typeof c === 'object'; });
+    ranked.sort(function (a, b) {
+      var catDiff = (CATEGORY_PRIORITY[b.category] || 0) - (CATEGORY_PRIORITY[a.category] || 0);
+      if (catDiff !== 0) return catDiff;
+      var confDiff = b.confidence - a.confidence;
+      if (confDiff !== 0) return confDiff;
+      var sevDiff = b.severityDb - a.severityDb;
+      if (sevDiff !== 0) return sevDiff;
+      var scopeDiff = scopeRank(a.scope) - scopeRank(b.scope);
+      if (scopeDiff !== 0) return scopeDiff;
+      if (a.id < b.id) return -1;
+      if (a.id > b.id) return 1;
+      return 0;
+    });
+    return ranked;
+  }
+
+  /** The single winning candidate, or null when nothing clears the
+   *  confidence gate. The gate is applied after ranking, so a low-confidence
+   *  clipping candidate does not suppress a high-confidence tonal one. */
+  function selectCoachingCandidate(candidates) {
+    var ranked = rankCandidates(candidates);
+    for (var i = 0; i < ranked.length; i++) {
+      if (ranked[i].confidence >= MIN_CONFIDENCE - CONFIDENCE_EPSILON) return ranked[i];
+    }
+    return null;
+  }
+
+  /** The one coaching card's markup, or the monitoring state when `candidate`
+   *  is null. `focusName` is the focused input's display name (may be
+   *  null/absent) — escaped since it's a user-editable label. Candidate
+   *  title/why/action/detail are module-owned literals, emitted as-is like
+   *  the existing candidate markup. */
+  function coachingCardHTML(candidate, focusName) {
+    if (!candidate) {
+      return '<div class="lap-card lap-card-monitoring" role="note">'
+        + '<span class="lap-card-label">Top suggestion <span class="lap-flag">Experimental · Advisory</span></span>'
+        + '<p class="lap-empty">Monitoring — not enough evidence to advise yet. Sound Buddy will surface one suggestion when it is confident.</p>'
+        + '</div>';
+    }
+    var scopeText;
+    if (candidate.scope === 'mix') {
+      scopeText = 'Overall mix';
+    } else if (focusName) {
+      scopeText = 'Focused input: ' + escapeText(focusName);
+    } else {
+      scopeText = 'Focused input';
+    }
+    return '<div class="lap-card" role="note" data-candidate-id="' + candidate.id + '">'
+      + '<span class="lap-card-label">Top suggestion <span class="lap-flag">Experimental · Advisory</span></span>'
+      + '<span class="lap-card-title">' + candidate.title + '</span>'
+      + '<p class="lap-card-why"><span class="lap-card-key">Why it matters:</span> ' + candidate.why + '</p>'
+      + '<p class="lap-card-action"><span class="lap-card-key">One thing to consider:</span> ' + candidate.action + '</p>'
+      + '<p class="lap-card-meta"><span class="lap-card-scope">' + scopeText + '</span> · <span class="lap-card-confidence">Confidence: ' + confidenceLabel(candidate.confidence) + '</span></p>'
+      + '<p class="lap-card-advisory">Advisory only — Sound Buddy never changes your console.</p>'
+      + '</div>';
+  }
+
+  /** The focused input entry from focusView (#525's { index, name, profile }
+   *  shape), or null when there is none — the lookup focusHTML and panelHTML
+   *  both need, factored out so they can't drift apart. */
+  function focusedInput(focusView) {
+    if (!focusView || !focusView.inputs || focusView.inputs.length === 0) return null;
+    var inputs = focusView.inputs;
+    var focusedIndex = focusView.focusedIndex == null ? null : focusView.focusedIndex;
+    for (var i = 0; i < inputs.length; i++) {
+      if (inputs[i].index === focusedIndex) return inputs[i];
+    }
+    return null;
   }
 
   /** The panel's markup, or '' when it shouldn't render. Renders a waiting
@@ -242,24 +478,31 @@
    *  the pre-#525 shape. */
   function panelHTML(settings, mode, windows, measurementSource, focusView) {
     if (!showPanel(settings, mode)) return '';
+    var mixCands = mixCandidates(windows, measurementSource);
     var body;
     if (!hasEnoughData(windows, measurementSource)) {
       body = '<p class="lap-empty">Listening… collecting live analysis data. Candidates appear after a few analysis windows.</p>';
+    } else if (mixCands.length === 0) {
+      body = '<p class="lap-empty">Mix balance looks steady — nothing to try right now.</p>';
     } else {
-      var candidates = mixCandidates(windows, measurementSource);
-      if (candidates.length === 0) {
-        body = '<p class="lap-empty">Mix balance looks steady — nothing to try right now.</p>';
-      } else {
-        var items = candidates.map(function (c) {
-          return '<li class="lap-candidate"><span class="lap-cand-title">' + c.title + '</span> '
-            + '<span class="lap-cand-detail">' + c.detail + '</span></li>';
-        }).join('');
-        body = '<p class="lap-note">Overall mix candidates — suggestions to consider, not instructions:</p>'
-          + '<ul class="lap-candidates">' + items + '</ul>';
-      }
+      var items = mixCands.map(function (c) {
+        return '<li class="lap-candidate"><span class="lap-cand-title">' + c.title + '</span> '
+          + '<span class="lap-cand-detail">' + c.detail + '</span></li>';
+      }).join('');
+      body = '<p class="lap-note">Overall mix candidates — suggestions to consider, not instructions:</p>'
+        + '<ul class="lap-candidates">' + items + '</ul>';
     }
+
+    var focused = focusedInput(focusView);
+    var allCandidates = clipCandidates(windows, measurementSource).concat(mixCands);
+    if (focused && inputHasEnoughData(windows, focused.index)) {
+      allCandidates = allCandidates.concat(inputCandidates(windows, focused.index, focused.profile));
+    }
+    var card = coachingCardHTML(selectCoachingCandidate(allCandidates), focused && focused.name);
+
     return '<div class="live-adjustments-panel" role="note">'
       + '<span class="lap-title">Live adjustments <span class="lap-flag">Experimental</span></span>'
+      + card
       + body
       + focusHTML(windows, focusView)
       + '</div>';
@@ -278,10 +521,7 @@
     }).join('');
     var selectHTML = '<select class="lap-focus-select" aria-label="Focused input">' + options + '</select>';
 
-    var focused = null;
-    for (var i = 0; i < inputs.length; i++) {
-      if (inputs[i].index === focusedIndex) { focused = inputs[i]; break; }
-    }
+    var focused = focusedInput(focusView);
 
     var focusBody;
     if (!focused) {
@@ -321,6 +561,17 @@
     HOT_DIFF_DB: HOT_DIFF_DB,
     QUIET_DIFF_DB: QUIET_DIFF_DB,
     MAX_CANDIDATES: MAX_CANDIDATES,
+    clipCandidates: clipCandidates,
+    candidateConfidence: candidateConfidence,
+    confidenceLabel: confidenceLabel,
+    rankCandidates: rankCandidates,
+    selectCoachingCandidate: selectCoachingCandidate,
+    coachingCardHTML: coachingCardHTML,
+    MIN_CONFIDENCE: MIN_CONFIDENCE,
+    HIGH_CONFIDENCE: HIGH_CONFIDENCE,
+    CATEGORY_PRIORITY: CATEGORY_PRIORITY,
+    CLIP_RISK_PEAK_DBFS: CLIP_RISK_PEAK_DBFS,
+    CONFIDENCE_FULL_WINDOWS: CONFIDENCE_FULL_WINDOWS,
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.liveAdjustmentsState = api;
