@@ -14,7 +14,9 @@ const builderConfig = fs.readFileSync(path.join(appRoot, 'electron-builder.yml')
 
 describe('electron-builder.yml dmg target (#622)', () => {
   it('adds a dmg target entry with arch: arm64', () => {
-    expect(builderConfig).toMatch(/^\s*-\s*target:\s*dmg\s*$/m);
+    // Matches "- target: dmg" followed on the next line by its own "arch: arm64",
+    // not just any arch: arm64 elsewhere in the file (e.g. the zip entry's).
+    expect(builderConfig).toMatch(/^\s*-\s*target:\s*dmg\s*\n\s*arch:\s*arm64\s*$/m);
   });
 
   it('keeps the zip target (the dmg must not replace it)', () => {
