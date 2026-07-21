@@ -62,6 +62,13 @@ done
 gh auth status >/dev/null 2>&1 || die "not logged in to GitHub — run: gh auth login"
 gh repo view "$PUBLIC_REPO" >/dev/null 2>&1 || die "can't reach $PUBLIC_REPO (permissions?)"
 
+# The preflight checks below (classifyWorkingTree, evaluateReleasePreflight) need
+# packages/shared/dist before the full Quality gate (which builds everything)
+# runs — build just this package now so a fresh checkout doesn't crash with a
+# raw ERR_MODULE_NOT_FOUND before ever reaching the gate that would build it.
+( cd "$ROOT" && npm run build -w @sound-buddy/shared >/dev/null ) \
+  || die "failed to build packages/shared — required before preflight checks can run"
+
 PORCELAIN="$(git -C "$ROOT" status --porcelain)"
 TREE_STATE="$(node --input-type=module -e '
   import { classifyWorkingTree } from "'"$ROOT"'/packages/shared/dist/index.js";
@@ -69,7 +76,16 @@ TREE_STATE="$(node --input-type=module -e '
 ' "$PORCELAIN")"
 case "$TREE_STATE" in
   clean) ;;
-  version-bump-only) say "working tree has only the version bump from a prior partial run — resuming" ;;
+  version-bump-only)
+    # A prior run bumped app/package.json but never got to commit/tag/push it.
+    # Target that exact stranded version instead of re-running the bump math on
+    # top of it — otherwise a bare re-run (no explicit version) would silently
+    # skip the stranded version and cut the next one instead.
+    BUMPED_VERSION="$(node -p "require('$APP/package.json').version")"
+    say "working tree has only the version bump from a prior partial run (already at $BUMPED_VERSION) — resuming that exact version"
+    BUMP="$BUMPED_VERSION"
+    EXPLICIT_VERSION=1
+    ;;
   dirty) die "working tree is dirty — commit or stash first (a release should be a clean bump)" ;;
 esac
 
@@ -105,6 +121,12 @@ targets_json() {
 }
 TARGETS_JSON="$(targets_json)"
 
+# HEAD's committed app/package.json version, or empty if unreadable/unparsable.
+head_committed_version() {
+  git -C "$ROOT" show "HEAD:app/package.json" 2>/dev/null \
+    | node -pe 'JSON.parse(require("fs").readFileSync(0,"utf8")).version' 2>/dev/null || true
+}
+
 # Observe what already exists on $PUBLIC_REPO/$TAG (the tag or release may
 # already exist from an earlier, partially-completed run).
 gather_publish_state() {
@@ -115,8 +137,7 @@ gather_publish_state() {
   git -C "$ROOT" rev-parse -q --verify "refs/tags/$TAG" >/dev/null 2>&1 && tag_local=true
   git -C "$ROOT" ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null 2>&1 && tag_origin=true
   local head_version
-  head_version="$(git -C "$ROOT" show "HEAD:app/package.json" 2>/dev/null \
-    | node -pe 'JSON.parse(require("fs").readFileSync(0,"utf8")).version' 2>/dev/null || true)"
+  head_version="$(head_committed_version)"
   [[ "$head_version" == "$NEXT" ]] && version_committed=true
 
   node -e '
@@ -346,6 +367,7 @@ done
 
 TAG_PUSH_ACTION="$(step_action tag-push)"
 DRAFT_RELEASE_ACTION="$(step_action draft-release)"
+CHECKSUM_VERIFY_ACTION="$(step_action checksum-verify)"
 PROMOTE_ACTION="$(step_action promote)"
 RELEASE_EXISTS="$(node -pe 'JSON.parse(process.argv[1]).release !== null' "$STATE_JSON")"
 
@@ -359,8 +381,11 @@ SKIPPED=()
 publish_fail() {
   local step="$1" detail="$2"
   local completed_json skipped_json report
-  completed_json="$(to_json_array "${COMPLETED[@]}")"
-  skipped_json="$(to_json_array "${SKIPPED[@]}")"
+  # "${ARR[@]+"${ARR[@]}"}" (not bare "${ARR[@]}") — under `set -u`, stock macOS
+  # /bin/bash (3.2) throws "unbound variable" expanding an empty array; this
+  # idiom only expands when the array actually has elements.
+  completed_json="$(to_json_array "${COMPLETED[@]+"${COMPLETED[@]}"}")"
+  skipped_json="$(to_json_array "${SKIPPED[@]+"${SKIPPED[@]}"}")"
   report="$(node --input-type=module -e '
     import { formatPublishFailure } from "'"$ROOT"'/packages/shared/dist/index.js";
     const [targetsJson, completedJson, skippedJson, failedStep, failureDetail] = process.argv.slice(1);
@@ -378,8 +403,7 @@ publish_fail() {
 
 # ── tag-push ──
 if [[ "$TAG_PUSH_ACTION" == "run" ]]; then
-  HEAD_VERSION="$(git -C "$ROOT" show "HEAD:app/package.json" 2>/dev/null \
-    | node -pe 'JSON.parse(require("fs").readFileSync(0,"utf8")).version' 2>/dev/null || true)"
+  HEAD_VERSION="$(head_committed_version)"
   if [[ "$HEAD_VERSION" != "$NEXT" ]]; then
     git -C "$ROOT" add "$APP/package.json" "$APP/package-lock.json" || publish_fail tag-push "git add failed"
     git -C "$ROOT" commit -q -m "release: $TAG" || publish_fail tag-push "git commit failed"
@@ -409,38 +433,71 @@ if [[ "$DRAFT_RELEASE_ACTION" == "run" ]]; then
       --notes "$NOTES" \
       || publish_fail draft-release "gh release create --draft failed"
   else
-    # Re-using an existing draft from a prior attempt — upload whatever's missing.
-    gh release upload "$TAG" "$ZIP" "$DMG" -R "$PUBLIC_REPO" --clobber \
-      || publish_fail draft-release "gh release upload (zip/dmg) failed"
+    # Re-using an existing draft from a prior attempt — upload only what's missing.
+    MISSING_ASSETS=()
+    [[ "$(node -pe 'JSON.parse(process.argv[1]).assetNames.includes(process.argv[2])' "$STATE_JSON" "$ZIP_ASSET_NAME")" == "true" ]] \
+      || MISSING_ASSETS+=("$ZIP")
+    [[ "$(node -pe 'JSON.parse(process.argv[1]).assetNames.includes(process.argv[2])' "$STATE_JSON" "$DMG_ASSET_NAME")" == "true" ]] \
+      || MISSING_ASSETS+=("$DMG")
+    gh release upload "$TAG" "${MISSING_ASSETS[@]+"${MISSING_ASSETS[@]}"}" -R "$PUBLIC_REPO" --clobber \
+      || publish_fail draft-release "gh release upload (missing assets) failed"
   fi
   COMPLETED+=("draft-release")
 else
   SKIPPED+=("draft-release")
 fi
 
-# ── checksum-verify (always runs — read-only safety check, AC3) ──
-ZIP_SHA256="$(shasum -a 256 "$ZIP" | cut -d' ' -f1)"
-UPLOADED_DIGEST="$(gh api "repos/$PUBLIC_REPO/releases/tags/$TAG" \
-  --jq ".assets[] | select(.name == \"$ZIP_ASSET_NAME\") | .digest // \"\"")"
-if [[ -z "$UPLOADED_DIGEST" ]]; then
-  # Older GitHub deployments may not expose asset digests — fall back to
-  # downloading the uploaded bytes and hashing them locally. `gh release
-  # download` works against drafts for authenticated users.
-  UPLOADED_DIGEST="$(gh release download "$TAG" -R "$PUBLIC_REPO" --pattern "$ZIP_ASSET_NAME" -O - | shasum -a 256 | cut -d' ' -f1)"
+# ── artifact facts (what is ACTUALLY attached to the release right now) ──
+# When draft-release just uploaded this run's local build, that local file IS
+# the release asset. When draft-release was skipped (assets already present
+# from an earlier run), the local rebuild is a *different* build — Phase A has
+# no artifact caching and a signed build's notarization ticket is not
+# byte-reproducible across submissions — so latest.json must describe the
+# remote asset's real facts, not a fresh local rebuild that was never uploaded.
+if [[ "$DRAFT_RELEASE_ACTION" == "run" ]]; then
+  ZIP_SHA256="$(shasum -a 256 "$ZIP" | cut -d' ' -f1)"
+  ZIP_SIZE="$(stat -f%z "$ZIP")"
+else
+  REMOTE_ZIP_JSON="$(gh api "repos/$PUBLIC_REPO/releases/tags/$TAG" \
+    --jq ".assets[] | select(.name == \"$ZIP_ASSET_NAME\")")"
+  ZIP_SIZE="$(node -pe 'JSON.parse(process.argv[1]).size' "$REMOTE_ZIP_JSON")"
+  REMOTE_DIGEST="$(node -pe 'JSON.parse(process.argv[1]).digest ?? ""' "$REMOTE_ZIP_JSON")"
+  if [[ -n "$REMOTE_DIGEST" ]]; then
+    ZIP_SHA256="${REMOTE_DIGEST#sha256:}"
+  else
+    # Older GitHub deployments may not expose asset digests — fall back to
+    # downloading the uploaded bytes and hashing them locally. `gh release
+    # download` works against drafts for authenticated users.
+    ZIP_SHA256="$(gh release download "$TAG" -R "$PUBLIC_REPO" --pattern "$ZIP_ASSET_NAME" -O - | shasum -a 256 | cut -d' ' -f1)"
+  fi
 fi
-CHECKSUM_JSON="$(node --input-type=module -e '
-  import { verifyUploadedArtifactChecksum } from "'"$ROOT"'/packages/shared/dist/index.js";
-  const [expected, actual] = process.argv.slice(1);
-  process.stdout.write(JSON.stringify(verifyUploadedArtifactChecksum(expected, actual)));
-' "$ZIP_SHA256" "$UPLOADED_DIGEST")"
-if [[ "$(node -pe 'JSON.parse(process.argv[1]).ok' "$CHECKSUM_JSON")" != "true" ]]; then
-  publish_fail checksum-verify "$(node -pe 'JSON.parse(process.argv[1]).error' "$CHECKSUM_JSON")"
+
+# ── checksum-verify (only meaningful when draft-release just uploaded THIS
+#    run's build — re-verifying a fresh rebuild against bytes a *previous* run
+#    already uploaded would be a false mismatch, not a real corruption signal,
+#    and would permanently deadlock every resume) ──
+if [[ "$CHECKSUM_VERIFY_ACTION" == "run" ]]; then
+  UPLOADED_DIGEST="$(gh api "repos/$PUBLIC_REPO/releases/tags/$TAG" \
+    --jq ".assets[] | select(.name == \"$ZIP_ASSET_NAME\") | .digest // \"\"")"
+  if [[ -z "$UPLOADED_DIGEST" ]]; then
+    UPLOADED_DIGEST="$(gh release download "$TAG" -R "$PUBLIC_REPO" --pattern "$ZIP_ASSET_NAME" -O - | shasum -a 256 | cut -d' ' -f1)"
+  fi
+  CHECKSUM_JSON="$(node --input-type=module -e '
+    import { verifyUploadedArtifactChecksum } from "'"$ROOT"'/packages/shared/dist/index.js";
+    const [expected, actual] = process.argv.slice(1);
+    process.stdout.write(JSON.stringify(verifyUploadedArtifactChecksum(expected, actual)));
+  ' "$ZIP_SHA256" "$UPLOADED_DIGEST")"
+  if [[ "$(node -pe 'JSON.parse(process.argv[1]).ok' "$CHECKSUM_JSON")" != "true" ]]; then
+    publish_fail checksum-verify "$(node -pe 'JSON.parse(process.argv[1]).error' "$CHECKSUM_JSON")"
+  fi
+  say "Checksum verified: uploaded artifact matches the local build"
+  COMPLETED+=("checksum-verify")
+else
+  say "Checksum verify skipped — $ZIP_ASSET_NAME was already uploaded and verified in a previous run"
+  SKIPPED+=("checksum-verify")
 fi
-say "Checksum verified: manifest sha256 matches the uploaded artifact"
-COMPLETED+=("checksum-verify")
 
 # ── manifest-upload (always runs — idempotent via --clobber) ──
-ZIP_SIZE="$(stat -f%z "$ZIP")"
 PUBLISHED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 MANIFEST_PATH="$APP/release/latest.json"
 node --input-type=module -e '

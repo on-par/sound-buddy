@@ -35,7 +35,7 @@ describe('planReleasePublish', () => {
     expect(plan.resumed).toBe(false);
   });
 
-  it('tag pushed + draft release with both assets: tag-push and draft-release skip, checksum-verify/manifest-upload/promote run, resumed true', () => {
+  it('tag pushed + draft release with both assets: tag-push/draft-release/checksum-verify skip (checksum-verify has nothing new to verify), manifest-upload/promote run, resumed true', () => {
     const state: PublishState = {
       tagExistsLocally: true,
       tagExistsOnOrigin: true,
@@ -48,13 +48,13 @@ describe('planReleasePublish', () => {
     const byStep = Object.fromEntries(plan.steps.map((s) => [s.step, s]));
     expect(byStep['tag-push'].action).toBe('skip');
     expect(byStep['draft-release'].action).toBe('skip');
-    expect(byStep['checksum-verify'].action).toBe('run');
+    expect(byStep['checksum-verify'].action).toBe('skip');
     expect(byStep['manifest-upload'].action).toBe('run');
     expect(byStep['promote'].action).toBe('run');
     expect(plan.resumed).toBe(true);
   });
 
-  it('draft release missing the dmg: draft-release runs and names the missing asset', () => {
+  it('draft release missing the dmg: draft-release and checksum-verify both run, draft-release names the missing asset', () => {
     const state: PublishState = {
       tagExistsLocally: true,
       tagExistsOnOrigin: true,
@@ -67,6 +67,22 @@ describe('planReleasePublish', () => {
     const draftStep = plan.steps.find((s) => s.step === 'draft-release')!;
     expect(draftStep.action).toBe('run');
     expect(draftStep.reason).toContain(TARGETS.dmgAssetName);
+    expect(plan.steps.find((s) => s.step === 'checksum-verify')!.action).toBe('run');
+  });
+
+  it('draft release already has both assets: checksum-verify skip reason explains why re-verification would be a false mismatch', () => {
+    const state: PublishState = {
+      tagExistsLocally: true,
+      tagExistsOnOrigin: true,
+      versionCommitted: true,
+      release: { isDraft: true },
+      assetNames: [TARGETS.zipAssetName, TARGETS.dmgAssetName],
+    };
+    const plan = planReleasePublish(state, TARGETS);
+    if (!plan.ok) throw new Error('unreachable');
+    const checksumStep = plan.steps.find((s) => s.step === 'checksum-verify')!;
+    expect(checksumStep.action).toBe('skip');
+    expect(checksumStep.reason).toContain('false mismatch');
   });
 
   it('draft release missing the zip: draft-release runs and names the missing asset', () => {

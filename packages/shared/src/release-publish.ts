@@ -58,29 +58,33 @@ export function planReleasePublish(state: PublishState, targets: PublishTargets)
 
   const hasZip = state.assetNames.includes(targets.zipAssetName);
   const hasDmg = state.assetNames.includes(targets.dmgAssetName);
-  if (state.release !== null && hasZip && hasDmg) {
-    steps.push({
-      step: 'draft-release',
-      action: 'skip',
-      reason: `release ${targets.tag} already has ${targets.zipAssetName} and ${targets.dmgAssetName}`,
-    });
+  const draftAction: 'run' | 'skip' = state.release !== null && hasZip && hasDmg ? 'skip' : 'run';
+  let draftReason: string;
+  if (draftAction === 'skip') {
+    draftReason = `release ${targets.tag} already has ${targets.zipAssetName} and ${targets.dmgAssetName}`;
   } else if (state.release === null) {
-    steps.push({ step: 'draft-release', action: 'run', reason: `creating draft release ${targets.tag}` });
+    draftReason = `creating draft release ${targets.tag}`;
   } else {
     const missing = [!hasZip ? targets.zipAssetName : null, !hasDmg ? targets.dmgAssetName : null].filter(
       (name): name is string => name !== null,
     );
-    steps.push({
-      step: 'draft-release',
-      action: 'run',
-      reason: `re-using existing draft, uploading missing assets: ${missing.join(', ')}`,
-    });
+    draftReason = `re-using existing draft, uploading missing assets: ${missing.join(', ')}`;
   }
+  steps.push({ step: 'draft-release', action: draftAction, reason: draftReason });
 
+  // checksum-verify only has a meaningful comparison to make when draft-release
+  // just uploaded THIS run's local build: a resumed run rebuilds from scratch
+  // (no artifact caching, by design) and a signed build's notarization ticket
+  // is not byte-reproducible across submissions, so comparing a fresh rebuild
+  // against bytes a *previous* run already uploaded would be a false mismatch,
+  // not a real corruption signal — permanently deadlocking every resume.
   steps.push({
     step: 'checksum-verify',
-    action: 'run',
-    reason: 'checksum-verify always runs — it is read-only and is the safety property in AC3',
+    action: draftAction,
+    reason:
+      draftAction === 'run'
+        ? 'verifying the artifact just uploaded to the draft matches the local build byte-for-byte — the safety property in AC3'
+        : `${targets.zipAssetName} was uploaded in a previous run and is not being re-uploaded — re-verifying a fresh, non-reproducible rebuild against it would be a false mismatch`,
   });
 
   steps.push({
