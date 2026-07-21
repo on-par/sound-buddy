@@ -15,6 +15,7 @@ describe('resolveSigningConfig', () => {
     expect(config).toEqual({
       signed: true,
       identity: 'Developer ID Application: Patrick Robinson (TEAMID)',
+      identityName: 'Patrick Robinson (TEAMID)',
       notaryProfile: 'sound-buddy-notary',
     });
   });
@@ -85,8 +86,66 @@ describe('resolveSigningConfig', () => {
     expect(config).toEqual({
       signed: true,
       identity: 'Developer ID Application: X (TEAMID)',
+      identityName: 'X (TEAMID)',
       notaryProfile: 'sound-buddy-notary',
     });
+  });
+
+  it('derives both forms from a prefixed identity (AC scenario 1)', () => {
+    const config = resolveSigningConfig({
+      SOUND_BUDDY_SIGNING_IDENTITY: 'Developer ID Application: On PAR Dev, LLC (Q7LB49TPBS)',
+      SOUND_BUDDY_NOTARY_PROFILE: 'sound-buddy-notary',
+    });
+    expect(config.identity).toBe('Developer ID Application: On PAR Dev, LLC (Q7LB49TPBS)');
+    expect(config.identityName).toBe('On PAR Dev, LLC (Q7LB49TPBS)');
+  });
+
+  it('reconstructs the full prefixed form from a bare identity (AC scenario 2)', () => {
+    const config = resolveSigningConfig({
+      SOUND_BUDDY_SIGNING_IDENTITY: 'On PAR Dev, LLC (Q7LB49TPBS)',
+      SOUND_BUDDY_NOTARY_PROFILE: 'sound-buddy-notary',
+    });
+    expect(config.identityName).toBe('On PAR Dev, LLC (Q7LB49TPBS)');
+    expect(config.identity).toBe('Developer ID Application: On PAR Dev, LLC (Q7LB49TPBS)');
+  });
+
+  it('never carries the Developer ID Application prefix in identityName', () => {
+    const config = resolveSigningConfig({
+      SOUND_BUDDY_SIGNING_IDENTITY: 'Developer ID Application: On PAR Dev, LLC (Q7LB49TPBS)',
+      SOUND_BUDDY_NOTARY_PROFILE: 'sound-buddy-notary',
+    });
+    expect(config.identityName?.startsWith('Developer ID Application:')).toBe(false);
+  });
+
+  it('is idempotent when the derived full identity is fed back in', () => {
+    const first = resolveSigningConfig({
+      SOUND_BUDDY_SIGNING_IDENTITY: 'On PAR Dev, LLC (Q7LB49TPBS)',
+      SOUND_BUDDY_NOTARY_PROFILE: 'sound-buddy-notary',
+    });
+    const second = resolveSigningConfig({
+      SOUND_BUDDY_SIGNING_IDENTITY: first.identity,
+      SOUND_BUDDY_NOTARY_PROFILE: 'sound-buddy-notary',
+    });
+    expect(second.identity).toBe(first.identity);
+    expect(second.identityName).toBe(first.identityName);
+  });
+
+  it('trims whitespace immediately following the prefix', () => {
+    const config = resolveSigningConfig({
+      SOUND_BUDDY_SIGNING_IDENTITY: 'Developer ID Application:   X (TEAMID)',
+      SOUND_BUDDY_NOTARY_PROFILE: 'sound-buddy-notary',
+    });
+    expect(config.identityName).toBe('X (TEAMID)');
+    expect(config.identity).toBe('Developer ID Application: X (TEAMID)');
+  });
+
+  it('does not double-prefix a prefixed identity missing the space after the colon', () => {
+    const config = resolveSigningConfig({
+      SOUND_BUDDY_SIGNING_IDENTITY: 'Developer ID Application:X (TEAMID)',
+      SOUND_BUDDY_NOTARY_PROFILE: 'sound-buddy-notary',
+    });
+    expect(config.identityName).toBe('X (TEAMID)');
+    expect(config.identity).toBe('Developer ID Application: X (TEAMID)');
   });
 });
 
