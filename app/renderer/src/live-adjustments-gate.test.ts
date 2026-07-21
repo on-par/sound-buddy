@@ -170,3 +170,29 @@ describe('Per-input instrument-aware adjustment candidates (#525)', () => {
     expect(css).toContain('.lap-input-candidates');
   });
 });
+
+describe('Coaching stability wiring (#612)', () => {
+  it('declares lapCoaching, seeded from createCoachingState()', () => {
+    expect(inlineApp).toContain('let lapCoaching = window.liveAdjustmentsState.createCoachingState();');
+  });
+
+  it('syncLiveAdjustmentsPanel passes lapCoaching to panelHTML', () => {
+    const body = functionBody(inlineApp, 'syncLiveAdjustmentsPanel');
+    expect(body).toContain('liveAdjustmentsState.panelHTML(');
+    expect(body).toContain('lapCoaching');
+  });
+
+  it('advanceCoaching is called once per window tick with Date.now() and allCoachingCandidates', () => {
+    const block = enclosingBlock(inlineApp, 'liveWindows.push');
+    expect(block).toContain('window.liveAdjustmentsState.advanceCoaching(');
+    expect(block).toContain('window.liveAdjustmentsState.allCoachingCandidates(');
+    expect(block).toContain('Date.now()');
+    // Must run before the render call so the card reflects this window's decision.
+    expect(block.indexOf('advanceCoaching(')).toBeLessThan(block.indexOf('syncLiveAdjustmentsPanel('));
+  });
+
+  it('createCoachingState() is called at capture start and at each liveWindows reset (at least 3 sites)', () => {
+    const matches = inlineApp.match(/createCoachingState\(\)/g) || [];
+    expect(matches.length).toBeGreaterThanOrEqual(3);
+  });
+});

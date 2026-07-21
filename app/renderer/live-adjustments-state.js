@@ -425,6 +425,189 @@
     return null;
   }
 
+  // A candidate must win the ranked, confidence-gated top slot for this many
+  // consecutive analysis windows before it becomes actionable. At the default 3s
+  // window that is ~6s of agreement on top of the MIN_WINDOWS the detectors
+  // already require — enough to ride out one transient peak or song transition.
+  var PERSISTENCE_WINDOWS = 2;
+  // While a suggestion is active it is retained down to this confidence, below
+  // the MIN_CONFIDENCE promotion gate — so a condition fluctuating around the
+  // activation threshold does not blink the card off and on.
+  var RETAIN_CONFIDENCE = 0.5;
+  // Consecutive windows the active condition must read as resolved (absent from
+  // the candidate set, or below RETAIN_CONFIDENCE) before it is cleared.
+  var RECOVERY_WINDOWS = 2;
+  // A challenger in the same category must beat the active candidate's
+  // confidence by this much to be worth switching the engineer's attention.
+  var REPLACEMENT_MARGIN = 0.15;
+  // An active suggestion is held at least this long (ms) before a same-category
+  // challenger may replace it — long enough to read the card and try the change.
+  // A higher-priority category (clipping) bypasses this: it is safety-critical.
+  var MIN_ACTIVE_HOLD_MS = 15000;
+  // After a condition resolves, it and its contradictory counterpart are
+  // suppressed for this long (ms) so short-term variation cannot produce the
+  // opposite advice moments later.
+  var COOLDOWN_MS = 60000;
+  // Candidate ids that advise opposite moves on the same range. Resolving one
+  // puts the other in cooldown too. Only same-scope pairs are listed — a mix
+  // candidate never contradicts a focused-input candidate.
+  var OPPOSITE_IDS = {
+    'input-low-cleanup': 'input-low-support',
+    'input-low-support': 'input-low-cleanup',
+    'input-high-buildup': 'input-high-support',
+    'input-high-support': 'input-high-buildup',
+  };
+
+  /** A fresh coaching stability state (#612): no active suggestion, nothing
+   *  pending, no cooldowns in effect. */
+  function createCoachingState() {
+    return {
+      active: null,
+      activeSince: null,
+      pendingId: null,
+      pendingCount: 0,
+      pendingCandidate: null,
+      clearCount: 0,
+      cooldowns: {},
+    };
+  }
+
+  /** The full candidate set (clipping + overall-mix + focused-input) for one
+   *  analysis window, in the same shape panelHTML has always assembled —
+   *  factored out (#612) so advanceCoaching sees exactly the candidates the
+   *  render path would, without duplicating the assembly logic. */
+  function allCoachingCandidates(windows, measurementSource, focusView) {
+    var candidates = clipCandidates(windows, measurementSource).concat(mixCandidates(windows, measurementSource));
+    var focused = focusedInput(focusView);
+    if (focused && inputHasEnoughData(windows, focused.index)) {
+      candidates = candidates.concat(inputCandidates(windows, focused.index, focused.profile));
+    }
+    return candidates;
+  }
+
+  /** Pure coaching-stability reducer (#612). A candidate must persist for
+   *  PERSISTENCE_WINDOWS consecutive windows before it becomes the active
+   *  suggestion; the active card is retained through minor confidence dips;
+   *  replacing it requires either a higher-priority category or clearing both
+   *  MIN_ACTIVE_HOLD_MS and REPLACEMENT_MARGIN; a cleared condition resolves
+   *  after RECOVERY_WINDOWS windows without it, putting it (and its
+   *  contradictory counterpart, if any) into cooldown so the opposite advice
+   *  can't surface moments later. Called once per analysis window, never per
+   *  render. Pure: returns a brand-new state object, never mutates `prev`
+   *  (including `prev.cooldowns`). `now` is always the caller's injected
+   *  clock reading — this module never calls Date.now() itself. */
+  function advanceCoaching(prev, candidates, now) {
+    var state = prev && typeof prev === 'object' ? prev : createCoachingState();
+    var cands = Array.isArray(candidates) ? candidates : [];
+
+    var cooldowns = {};
+    for (var key in state.cooldowns) {
+      if (Object.prototype.hasOwnProperty.call(state.cooldowns, key) && state.cooldowns[key] > now) {
+        cooldowns[key] = state.cooldowns[key];
+      }
+    }
+
+    var ranked = rankCandidates(cands);
+    var eligible = ranked.filter(function (c) { return cooldowns[c.id] == null; });
+
+    var active = state.active;
+    var activeSince = state.activeSince;
+    var pendingId = state.pendingId;
+    var pendingCount = state.pendingCount;
+    // Always reassigned in the pending-accounting step below before use.
+    var pendingCandidate;
+    var clearCount = state.clearCount;
+
+    if (active) {
+      var cur = null;
+      for (var i = 0; i < ranked.length; i++) {
+        if (ranked[i].id === active.id) { cur = ranked[i]; break; }
+      }
+      if (cur && cur.confidence >= RETAIN_CONFIDENCE - CONFIDENCE_EPSILON) {
+        active = cur;
+        clearCount = 0;
+      } else {
+        clearCount = clearCount + 1;
+        if (clearCount >= RECOVERY_WINDOWS) {
+          var resolvedId = active.id;
+          cooldowns[resolvedId] = now + COOLDOWN_MS;
+          if (OPPOSITE_IDS[resolvedId]) cooldowns[OPPOSITE_IDS[resolvedId]] = now + COOLDOWN_MS;
+          // A resolution window must not also promote another candidate —
+          // return immediately rather than falling into pending accounting.
+          return {
+            active: null,
+            activeSince: null,
+            pendingId: null,
+            pendingCount: 0,
+            pendingCandidate: null,
+            clearCount: 0,
+            cooldowns: cooldowns,
+          };
+        }
+        // A dip that hasn't yet cleared RECOVERY_WINDOWS keeps the previous snapshot.
+      }
+    }
+
+    var top = null;
+    for (var j = 0; j < eligible.length; j++) {
+      if (eligible[j].confidence >= MIN_CONFIDENCE - CONFIDENCE_EPSILON) { top = eligible[j]; break; }
+    }
+
+    if (!top) {
+      pendingId = null;
+      pendingCount = 0;
+      pendingCandidate = null;
+    } else if (active && top.id === active.id) {
+      // Not a challenger to itself.
+      pendingId = null;
+      pendingCount = 0;
+      pendingCandidate = null;
+    } else if (top.id === pendingId) {
+      pendingCount = pendingCount + 1;
+      pendingCandidate = top;
+    } else {
+      pendingId = top.id;
+      pendingCount = 1;
+      pendingCandidate = top;
+    }
+
+    if (pendingCount >= PERSISTENCE_WINDOWS) {
+      if (!active) {
+        active = pendingCandidate;
+        activeSince = now;
+        clearCount = 0;
+        pendingId = null;
+        pendingCount = 0;
+        pendingCandidate = null;
+      } else {
+        var challenger = top;
+        var categoryBypass = (CATEGORY_PRIORITY[challenger.category] || 0) > (CATEGORY_PRIORITY[active.category] || 0);
+        var pastHold = now - activeSince >= MIN_ACTIVE_HOLD_MS;
+        var overMargin = challenger.confidence >= active.confidence + REPLACEMENT_MARGIN - CONFIDENCE_EPSILON;
+        if (categoryBypass || (pastHold && overMargin)) {
+          active = challenger;
+          activeSince = now;
+          clearCount = 0;
+          pendingId = null;
+          pendingCount = 0;
+          pendingCandidate = null;
+        }
+        // Otherwise keep the current active — the pending counters above
+        // already carried the challenger's persistence credit forward.
+      }
+    }
+
+    return {
+      active: active,
+      activeSince: activeSince,
+      pendingId: pendingId,
+      pendingCount: pendingCount,
+      pendingCandidate: pendingCandidate,
+      clearCount: clearCount,
+      cooldowns: cooldowns,
+    };
+  }
+
   /** The one coaching card's markup, or the monitoring state when `candidate`
    *  is null. `focusName` is the focused input's display name (may be
    *  null/absent) — escaped since it's a user-editable label. Candidate
@@ -475,8 +658,12 @@
    *  them (legacy callers) behaves as not-enough-data. The optional
    *  `focusView` (#525) is `{ inputs: [{ index, name, profile }], focusedIndex
    *  }` — when absent, or when `inputs` is empty, output is byte-identical to
-   *  the pre-#525 shape. */
-  function panelHTML(settings, mode, windows, measurementSource, focusView) {
+   *  the pre-#525 shape. The optional `coaching` (#612) is an
+   *  advanceCoaching() state object — when given, its `active` candidate (or
+   *  none) is the card shown, so the card reflects the stability rules rather
+   *  than the per-render winner; omitting it keeps the pre-#612 per-render
+   *  selection so every existing caller stays byte-identical. */
+  function panelHTML(settings, mode, windows, measurementSource, focusView, coaching) {
     if (!showPanel(settings, mode)) return '';
     var mixCands = mixCandidates(windows, measurementSource);
     var body;
@@ -494,11 +681,9 @@
     }
 
     var focused = focusedInput(focusView);
-    var allCandidates = clipCandidates(windows, measurementSource).concat(mixCands);
-    if (focused && inputHasEnoughData(windows, focused.index)) {
-      allCandidates = allCandidates.concat(inputCandidates(windows, focused.index, focused.profile));
-    }
-    var card = coachingCardHTML(selectCoachingCandidate(allCandidates), focused && focused.name);
+    var card = (coaching && typeof coaching === 'object')
+      ? coachingCardHTML(coaching.active, focused && focused.name)
+      : coachingCardHTML(selectCoachingCandidate(allCoachingCandidates(windows, measurementSource, focusView)), focused && focused.name);
 
     return '<div class="live-adjustments-panel" role="note">'
       + '<span class="lap-title">Live adjustments <span class="lap-flag">Experimental</span></span>'
@@ -572,6 +757,16 @@
     CATEGORY_PRIORITY: CATEGORY_PRIORITY,
     CLIP_RISK_PEAK_DBFS: CLIP_RISK_PEAK_DBFS,
     CONFIDENCE_FULL_WINDOWS: CONFIDENCE_FULL_WINDOWS,
+    createCoachingState: createCoachingState,
+    advanceCoaching: advanceCoaching,
+    allCoachingCandidates: allCoachingCandidates,
+    PERSISTENCE_WINDOWS: PERSISTENCE_WINDOWS,
+    RETAIN_CONFIDENCE: RETAIN_CONFIDENCE,
+    RECOVERY_WINDOWS: RECOVERY_WINDOWS,
+    REPLACEMENT_MARGIN: REPLACEMENT_MARGIN,
+    MIN_ACTIVE_HOLD_MS: MIN_ACTIVE_HOLD_MS,
+    COOLDOWN_MS: COOLDOWN_MS,
+    OPPOSITE_IDS: OPPOSITE_IDS,
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.liveAdjustmentsState = api;
