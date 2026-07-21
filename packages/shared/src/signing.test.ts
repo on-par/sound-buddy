@@ -138,6 +138,15 @@ describe('resolveSigningConfig', () => {
     expect(config.identityName).toBe('X (TEAMID)');
     expect(config.identity).toBe('Developer ID Application: X (TEAMID)');
   });
+
+  it('does not double-prefix a prefixed identity missing the space after the colon', () => {
+    const config = resolveSigningConfig({
+      SOUND_BUDDY_SIGNING_IDENTITY: 'Developer ID Application:X (TEAMID)',
+      SOUND_BUDDY_NOTARY_PROFILE: 'sound-buddy-notary',
+    });
+    expect(config.identityName).toBe('X (TEAMID)');
+    expect(config.identity).toBe('Developer ID Application: X (TEAMID)');
+  });
 });
 
 describe('isMachOBinary', () => {

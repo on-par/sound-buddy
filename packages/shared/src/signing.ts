@@ -7,8 +7,10 @@ const NOTARY_PROFILE_VAR = 'SOUND_BUDDY_NOTARY_PROFILE';
 
 // electron-builder rejects a `mac.identity` that carries this prefix ("Please remove
 // prefix ... — appropriate certificate will be chosen automatically"), while `codesign -s`
-// wants the full string. One env var, two derived forms (#619).
-const DEVELOPER_ID_PREFIX = 'Developer ID Application: ';
+// wants the full string. One env var, two derived forms (#619). No trailing space on the
+// constant — matching without it and trimming what follows tolerates a missing/extra space
+// after the colon instead of double-prefixing when the exact "prefix + one space" isn't there.
+const DEVELOPER_ID_PREFIX = 'Developer ID Application:';
 
 export interface SigningConfig {
   signed: boolean;
@@ -26,7 +28,7 @@ function trimmedOrUndefined(value: string | undefined): string | undefined {
 
 function deriveIdentityForms(raw: string): { identity: string; identityName: string } {
   const identityName = raw.startsWith(DEVELOPER_ID_PREFIX) ? raw.slice(DEVELOPER_ID_PREFIX.length).trim() : raw;
-  return { identity: `${DEVELOPER_ID_PREFIX}${identityName}`, identityName };
+  return { identity: `${DEVELOPER_ID_PREFIX} ${identityName}`, identityName };
 }
 
 export function resolveSigningConfig(env: Record<string, string | undefined>): SigningConfig {
