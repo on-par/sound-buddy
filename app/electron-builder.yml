@@ -85,8 +85,8 @@ mac:
     NSMicrophoneUsageDescription: >-
       Sound Buddy needs microphone access to capture and analyze live audio
       from your input device.
-  # Unsigned by default; release.sh overrides this on the CLI when
-  # SOUND_BUDDY_SIGNING_IDENTITY / SOUND_BUDDY_NOTARY_PROFILE are set — see
+  # Unsigned by default; release.sh (local) and .github/workflows/release.yml (CI)
+  # both override this on the CLI when SOUND_BUDDY_SIGNING_IDENTITY is set — see
   # docs/signing-and-notarization.md. Unsigned builds still block first launch
   # on Gatekeeper; open System Settings → Privacy & Security and click "Open
   # Anyway" in the Security section (or
@@ -96,9 +96,11 @@ mac:
   # it submits to Apple inside its sign phase, staples the returned ticket to the
   # .app, and only then builds the zip target — so the shipped zip always contains
   # a stapled app (no post-hoc staple + re-zip dance). Off by default so unsigned
-  # dev/CI builds never touch the notary service; release.sh turns it on with
-  # -c.mac.notarize=true and passes credentials via APPLE_KEYCHAIN_PROFILE, exactly
-  # mirroring how it overrides `identity` above.
+  # dev/CI builds never touch the notary service; release.sh (local, via
+  # APPLE_KEYCHAIN_PROFILE) and .github/workflows/release.yml (CI, via
+  # APPLE_ID/APPLE_TEAM_ID/APPLE_APP_SPECIFIC_PASSWORD — a fresh runner has no
+  # stored notarytool profile) both turn it on with -c.mac.notarize=true, exactly
+  # mirroring how they override `identity` above.
   notarize: false
   # Hardened runtime + entitlements are required for notarization (#53). They
   # are inert for unsigned dev/CI builds (identity: null skips the sign step);

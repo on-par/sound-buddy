@@ -4,6 +4,9 @@
 
 const SIGNING_IDENTITY_VAR = 'SOUND_BUDDY_SIGNING_IDENTITY';
 const NOTARY_PROFILE_VAR = 'SOUND_BUDDY_NOTARY_PROFILE';
+const APPLE_ID_VAR = 'APPLE_ID';
+const APPLE_TEAM_ID_VAR = 'APPLE_TEAM_ID';
+const APPLE_APP_SPECIFIC_PASSWORD_VAR = 'APPLE_APP_SPECIFIC_PASSWORD';
 
 // electron-builder rejects a `mac.identity` that carries this prefix ("Please remove
 // prefix ... — appropriate certificate will be chosen automatically"), while `codesign -s`
@@ -12,13 +15,22 @@ const NOTARY_PROFILE_VAR = 'SOUND_BUDDY_NOTARY_PROFILE';
 // after the colon instead of double-prefixing when the exact "prefix + one space" isn't there.
 const DEVELOPER_ID_PREFIX = 'Developer ID Application:';
 
+// A fresh CI runner has no stored notarytool keychain profile, so it
+// authenticates with discrete App Store Connect credentials instead (#624).
+// release.sh keeps using the keychain-profile route (see docs/signing-and-notarization.md).
+export type NotaryAuth =
+  | { kind: 'keychain-profile'; profile: string }
+  | { kind: 'app-store-connect'; appleId: string; teamId: string; appSpecificPassword: string };
+
 export interface SigningConfig {
   signed: boolean;
   /** Full `Developer ID Application: Name (TEAMID)` string — what `codesign -s` expects. */
   identity?: string;
   /** Identity with the `Developer ID Application: ` prefix stripped — what electron-builder's `mac.identity` expects. */
   identityName?: string;
+  /** Kept for back-compat with release.sh's `$NOTARY_PROFILE` reads — set only on the keychain-profile route. */
   notaryProfile?: string;
+  notaryAuth?: NotaryAuth;
 }
 
 function trimmedOrUndefined(value: string | undefined): string | undefined {
@@ -34,21 +46,61 @@ function deriveIdentityForms(raw: string): { identity: string; identityName: str
 export function resolveSigningConfig(env: Record<string, string | undefined>): SigningConfig {
   const identity = trimmedOrUndefined(env[SIGNING_IDENTITY_VAR]);
   const notaryProfile = trimmedOrUndefined(env[NOTARY_PROFILE_VAR]);
+  const appleId = trimmedOrUndefined(env[APPLE_ID_VAR]);
+  const teamId = trimmedOrUndefined(env[APPLE_TEAM_ID_VAR]);
+  const appSpecificPassword = trimmedOrUndefined(env[APPLE_APP_SPECIFIC_PASSWORD_VAR]);
+  const ascComplete = Boolean(appleId && teamId && appSpecificPassword);
+  const anyNotaryHintPresent = Boolean(notaryProfile || appleId || teamId || appSpecificPassword);
 
   if (identity && notaryProfile) {
     const { identity: fullIdentity, identityName } = deriveIdentityForms(identity);
-    return { signed: true, identity: fullIdentity, identityName, notaryProfile };
+    return {
+      signed: true,
+      identity: fullIdentity,
+      identityName,
+      notaryProfile,
+      notaryAuth: { kind: 'keychain-profile', profile: notaryProfile },
+    };
   }
 
-  if (!identity && !notaryProfile) {
+  if (identity && ascComplete) {
+    const { identity: fullIdentity, identityName } = deriveIdentityForms(identity);
+    return {
+      signed: true,
+      identity: fullIdentity,
+      identityName,
+      notaryAuth: {
+        kind: 'app-store-connect',
+        appleId: appleId as string,
+        teamId: teamId as string,
+        appSpecificPassword: appSpecificPassword as string,
+      },
+    };
+  }
+
+  if (!identity && !anyNotaryHintPresent) {
     return { signed: false };
   }
 
-  const missing = identity ? NOTARY_PROFILE_VAR : SIGNING_IDENTITY_VAR;
+  if (!identity) {
+    throw new Error(
+      `${SIGNING_IDENTITY_VAR} is missing — both ${SIGNING_IDENTITY_VAR} and ${NOTARY_PROFILE_VAR} are required to ` +
+        `produce a Developer ID-signed, notarized release, or neither to build unsigned. Set ${SIGNING_IDENTITY_VAR} ` +
+        `(see docs/signing-and-notarization.md) or unset the other variable.`,
+    );
+  }
+
+  const missingAscVars = [
+    !appleId && APPLE_ID_VAR,
+    !teamId && APPLE_TEAM_ID_VAR,
+    !appSpecificPassword && APPLE_APP_SPECIFIC_PASSWORD_VAR,
+  ].filter((v): v is string => Boolean(v));
+
   throw new Error(
-    `${missing} is missing — both ${SIGNING_IDENTITY_VAR} and ${NOTARY_PROFILE_VAR} are required to ` +
-      `produce a Developer ID-signed, notarized release, or neither to build unsigned. Set ${missing} ` +
-      `(see docs/signing-and-notarization.md) or unset the other variable.`,
+    `${SIGNING_IDENTITY_VAR} is set but notary credentials are incomplete — missing ${missingAscVars.join(', ')}. ` +
+      `Either set ${NOTARY_PROFILE_VAR} (local: see docs/signing-and-notarization.md) or set all of ` +
+      `${APPLE_ID_VAR}, ${APPLE_TEAM_ID_VAR}, ${APPLE_APP_SPECIFIC_PASSWORD_VAR} (CI), or unset ${SIGNING_IDENTITY_VAR} ` +
+      `to build unsigned.`,
   );
 }
 
@@ -137,4 +189,59 @@ export function parseStaplerValidation(output: string): StaplerVerdict {
       'not be false and APPLE_KEYCHAIN_PROFILE must be set), then re-run the build. ' +
       `stapler output:\n${output}`,
   };
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+export interface ParsedCodesigningIdentity {
+  identity?: string;
+  error?: string;
+}
+
+/**
+ * Extracts the full "Developer ID Application: … (TEAM)" string from
+ * `security find-identity -v -p codesigning` output, scoped to `teamId` so a
+ * keychain holding other certificates doesn't pick the wrong one.
+ */
+export function parseCodesigningIdentity(output: string, teamId: string): ParsedCodesigningIdentity {
+  const pattern = new RegExp(`"(Developer ID Application: [^"]*\\(${escapeRegExp(teamId)}\\))"`, 'g');
+  const matches = new Set<string>();
+  for (const match of output.matchAll(pattern)) {
+    matches.add(match[1]);
+  }
+  const identities = Array.from(matches);
+
+  if (identities.length === 0) {
+    return {
+      error:
+        `no "Developer ID Application: … (${teamId})" certificate found in the signing keychain — check ` +
+        `APPLE_CERT_P12_BASE64 exports the Developer ID Application certificate *and* its private key, and ` +
+        `that APPLE_TEAM_ID matches the certificate. find-identity output:\n${output}`,
+    };
+  }
+
+  if (identities.length > 1) {
+    return {
+      error:
+        `ambiguous — multiple "Developer ID Application: … (${teamId})" certificates found in the signing ` +
+        `keychain: ${identities.join(', ')}. Export a single Developer ID Application certificate into ` +
+        `APPLE_CERT_P12_BASE64 (see docs/signing-and-notarization.md).`,
+    };
+  }
+
+  return { identity: identities[0] };
+}
+
+export const REDACTED = '***';
+
+/** Replaces every occurrence of each secret with `REDACTED` so a thrown command's message can be logged safely. */
+export function redactSecrets(text: string, secrets: readonly (string | undefined)[]): string {
+  let result = text;
+  for (const secret of secrets) {
+    if (!secret || secret.trim().length === 0) continue;
+    result = result.split(secret).join(REDACTED);
+  }
+  return result;
 }

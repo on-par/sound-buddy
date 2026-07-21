@@ -32,14 +32,22 @@ export type {
 
 export {
   resolveSigningConfig, isMachOBinary, parseSpctlAssessment, parseStaplerValidation,
-  planCodesignBatches, CODESIGN_BATCH_SIZE,
+  planCodesignBatches, CODESIGN_BATCH_SIZE, parseCodesigningIdentity, redactSecrets, REDACTED,
 } from './signing.js'
-export type { SigningConfig, SpctlVerdict, StaplerVerdict } from './signing.js'
+export type { SigningConfig, SpctlVerdict, StaplerVerdict, NotaryAuth } from './signing.js'
 
 export {
   selectDmgArtifacts, planDmgNotarization, DMG_EXTENSION, KEYCHAIN_PROFILE_VAR,
 } from './dmg-notarization.js'
 export type { DmgNotarizationStep, DmgNotarizationPlan } from './dmg-notarization.js'
+
+export {
+  resolveCiSigningSecrets, CI_SIGNING_SECRET_VARS,
+} from './ci-signing.js'
+export type { CiSigningSecretsVerdict } from './ci-signing.js'
+
+export { auditReleaseWorkflow } from './release-workflow.js'
+export type { ReleaseWorkflowAudit } from './release-workflow.js'
 
 export {
   planReleasePublish, evaluateReleasePreflight, formatPublishFailure, resumeCommand, classifyWorkingTree,
