@@ -224,3 +224,35 @@ describe('Coaching disposition wiring (#613)', () => {
     expect(css).toContain('prefers-reduced-motion');
   });
 });
+
+describe('Outcome evaluation wiring (#614)', () => {
+  it('window ticks compute the observation context and pass it to advanceCoaching', () => {
+    const block = enclosingBlock(inlineApp, 'liveWindows.push');
+    expect(block).toContain('lapObservationContext(');
+    expect(block).toContain('window.liveAdjustmentsState.advanceCoaching(');
+  });
+
+  it('the spectrum-body click handler routes outcome-ack and passes context to markTriedCoaching', () => {
+    const block = enclosingBlock(inlineApp, "closest('[data-lap-action]')");
+    expect(block).toContain('lap.acknowledgeOutcome(');
+    expect(block).toContain('markTriedCoaching(lapCoaching, lapNow, lapObservationContext())');
+  });
+
+  it('lapObservationContext derives context from observationContext, liveWindows, lapFocusView, and measurementSourceOptionLabel', () => {
+    const body = functionBody(inlineApp, 'lapObservationContext');
+    expect(body).toContain('liveAdjustmentsState.observationContext(');
+    expect(body).toContain('liveWindows');
+    expect(body).toContain('lapFocusView(');
+    expect(body).toContain('measurementSourceOptionLabel(');
+  });
+
+  it('inline-app.js imports measurementSourceOptionLabel', () => {
+    expect(inlineApp).toContain('measurementSourceOptionLabel');
+  });
+
+  it('app.css styles the outcome card', () => {
+    expect(css).toContain('.lap-card-outcome');
+    expect(css).toContain('.lap-outcome-detail');
+    expect(css).toContain('.lap-outcome-metric');
+  });
+});

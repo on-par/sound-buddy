@@ -172,7 +172,7 @@ const {
   liveBandCurve, veqArcSVG, liveMetersHTML,
   groupSummary, groupSummaryText, shouldOfferReportCard,
   normalizeMeasurementSource, measurementSourceAfterRemove, measurementSourceOptionsHTML,
-  measurementChannel, measurementSourceBadgeText,
+  measurementChannel, measurementSourceBadgeText, measurementSourceOptionLabel,
   liveReportCardSource: lcLiveReportCardSource,
   liveSessionReportCardSource,
 } = window.liveCapturePanel;
@@ -1136,6 +1136,15 @@ function lapFocusView() {
   };
 }
 
+// Observation context for #614: which source/scope the coaching evaluation is
+// measuring, and whether this window's reading is usable.
+function lapObservationContext() {
+  const ms = lcStore.getState().measurementSource;
+  const idx = ms == null ? 0 : ms;
+  return window.liveAdjustmentsState.observationContext(
+    liveWindows, ms, lapFocusView(), measurementSourceOptionLabel(channelConfig[idx], idx));
+}
+
 // Collapse controls (#40). One delegated listener on #spectrum-body survives the
 // meter card's rebuilds and covers the per-strip chevrons plus the toolbar's
 // Collapse all / Expand all. Toggling only rewrites .collapsed on the existing
@@ -1186,10 +1195,11 @@ document.getElementById('spectrum-body').addEventListener('click', (e) => {
     const lapAction = lapActionBtn.dataset.lapAction;
     const lap = window.liveAdjustmentsState;
     if (lapAction === 'acknowledge') lapCoaching = lap.acknowledgeCoaching(lapCoaching);
-    else if (lapAction === 'tried') lapCoaching = lap.markTriedCoaching(lapCoaching, lapNow);
+    else if (lapAction === 'tried') lapCoaching = lap.markTriedCoaching(lapCoaching, lapNow, lapObservationContext());
     else if (lapAction === 'snooze') lapCoaching = lap.snoozeCoaching(lapCoaching, lapNow);
     else if (lapAction === 'dismiss') lapCoaching = lap.dismissCoaching(lapCoaching, lapNow);
     else if (lapAction === 'resume') lapCoaching = lap.resumeCoaching(lapCoaching);
+    else if (lapAction === 'outcome-ack') lapCoaching = lap.acknowledgeOutcome(lapCoaching, lapNow);
     syncLiveAdjustmentsPanel();
     return;
   }
@@ -3043,7 +3053,8 @@ sb.onLiveEvent((data) => {
       lapCoaching,
       window.liveAdjustmentsState.allCoachingCandidates(
         liveWindows, lcStore.getState().measurementSource, lapFocusView()),
-      Date.now());
+      Date.now(),
+      lapObservationContext());
     syncLiveAdjustmentsPanel();
   }
 });
