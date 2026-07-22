@@ -28,13 +28,11 @@
   // Bindings later stories fill. The KV namespace `id` is set out-of-band (H4);
   // the placeholder below is intentionally not a real namespace id.
   "kv_namespaces": [
-    { "binding": "LICENSE_KV", "id": "REPLACE_WITH_LICENSE_KV_ID" },
-    // Holds ingested feedback/crash/telemetry events (#475); real id wired
-    // out-of-band at deploy time, same convention as LICENSE_KV above.
-    { "binding": "EVENTS_KV", "id": "REPLACE_WITH_EVENTS_KV_ID" },
-    // Holds waitlist signups (#599); real id wired out-of-band at deploy time,
-    // same convention as LICENSE_KV/EVENTS_KV above.
-    { "binding": "WAITLIST_KV", "id": "REPLACE_WITH_WAITLIST_KV_ID" }
+    { "binding": "LICENSE_KV", "id": "bd8406528f484d1bb2a077e0a6cb8034" },
+    // Holds ingested feedback/crash/telemetry events (#475).
+    { "binding": "EVENTS_KV", "id": "25bfac1831c44e38a22db0ea780ce127" },
+    // Holds waitlist signups (#599), keyed by lowercased email.
+    { "binding": "WAITLIST_KV", "id": "be250ecd5f9b427c859e8e451873e5b3" }
   ],
 
   // Non-secret configuration. FOUNDING_CAP is the founding-license count cap;
