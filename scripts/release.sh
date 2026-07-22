@@ -568,9 +568,13 @@ COMPLETED+=("manifest-upload")
 if [[ "$PROMOTE_ACTION" == "run" ]]; then
   gh api -X PATCH "repos/$PUBLIC_REPO/releases/$RELEASE_ID" -F draft=false --silent \
     || publish_fail promote "PATCH releases/$RELEASE_ID draft=false failed — the release is fully staged as a draft with all assets; one command finishes it: gh api -X PATCH repos/$PUBLIC_REPO/releases/$RELEASE_ID -F draft=false"
+  # The PATCH above is the actual user-visible flip — record it as completed
+  # before the read-only check below, so a failure there (e.g. transient
+  # read-after-write lag) reports via formatPublishFailure's "promote already
+  # ran" warning instead of the misleading "no users are affected" message.
+  COMPLETED+=("promote")
   gh api "repos/$PUBLIC_REPO/releases/tags/$TAG" --jq .id >/dev/null \
     || publish_fail promote "release was un-drafted but is not reachable at tag $TAG on $PUBLIC_REPO — inspect https://github.com/$PUBLIC_REPO/releases"
-  COMPLETED+=("promote")
 else
   SKIPPED+=("promote")
 fi
