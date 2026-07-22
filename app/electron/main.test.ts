@@ -33,7 +33,11 @@ vi.mock('electron', () => {
       ),
       on: vi.fn(),
       quit: vi.fn(),
-      isPackaged: false,
+      // Packaged: the shipping path, and the only one that wires the
+      // auto-updater (#625 regression — unpackaged boots skip it because there
+      // is no app-update.yml to read). The unpackaged branch is covered by the
+      // Electron e2e suite, which runs the app for real from source.
+      isPackaged: true,
     },
     BrowserWindow,
     Menu: { buildFromTemplate: vi.fn((t) => t), setApplicationMenu: vi.fn() },
