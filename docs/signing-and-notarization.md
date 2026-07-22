@@ -53,6 +53,12 @@ notarization with `--apple-id`/`--team-id`/`--password` instead of
 randomly-named keychain** at the start of the job, then deletes it at the end
 (even on failure). The login keychain is never touched.
 
+electron-builder 24's `.app` notarization never reads `APPLE_TEAM_ID` from the
+environment when `mac.notarize` is boolean, so the workflow passes the team id
+explicitly via `-c.mac.notarize.teamId="$APPLE_TEAM_ID"`; the bare
+`-c.mac.notarize=true` form is only valid on the local keychain-profile route
+used by `scripts/release.sh`, and `release-workflow.ts` audits for this (#646).
+
 Set these five repository secrets under **Settings → Secrets and variables →
 Actions**:
 

@@ -16,7 +16,8 @@ const CREATE_KEYCHAIN_PATTERN = /security create-keychain\b/;
 const DEFAULT_KEYCHAIN_SWITCH_PATTERN = /security default-keychain\s+-s\b/;
 const DELETE_KEYCHAIN_PATTERN = /security delete-keychain\b/;
 const ALWAYS_GUARD_PATTERN = /if:\s*always\(\)/;
-const NOTARIZE_FLAG = '-c.mac.notarize=true';
+const NOTARIZE_TEAM_ID_FLAG = '-c.mac.notarize.teamId=';
+const BARE_NOTARIZE_FLAG = '-c.mac.notarize=true';
 const IDENTITY_FLAG_PATTERN = /-c\.mac\.identity=/;
 const APPLE_VAR_PATTERN = /\bAPPLE_(CERT_P12_BASE64|CERT_PASSWORD|ID|TEAM_ID|APP_SPECIFIC_PASSWORD)\b/;
 const ECHO_PRINTF_PATTERN = /\b(echo|printf)\b/;
@@ -65,8 +66,15 @@ export function auditReleaseWorkflow(yml: string): ReleaseWorkflowAudit {
     problems.push('the "security delete-keychain" step is not guarded by "if: always()"');
   }
 
-  if (!yml.includes(NOTARIZE_FLAG)) {
-    problems.push(`the build step is missing "${NOTARIZE_FLAG}"`);
+  if (!yml.includes(NOTARIZE_TEAM_ID_FLAG)) {
+    problems.push(
+      `the build step is missing "${NOTARIZE_TEAM_ID_FLAG}" — electron-builder 24 never reads APPLE_TEAM_ID from the env for the .app notarization, so the team id must be passed via config (#646)`,
+    );
+  }
+  if (yml.includes(BARE_NOTARIZE_FLAG)) {
+    problems.push(
+      `the build step passes bare "${BARE_NOTARIZE_FLAG}" — with Apple-ID/password auth electron-builder 24 drops the teamId and @electron/notarize rejects the submission; use ${NOTARIZE_TEAM_ID_FLAG}"$APPLE_TEAM_ID" instead (#646)`,
+    );
   }
   if (!IDENTITY_FLAG_PATTERN.test(yml)) {
     problems.push('the build step is missing "-c.mac.identity="');

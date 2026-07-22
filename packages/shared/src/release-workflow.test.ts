@@ -39,7 +39,7 @@ jobs:
       - name: Build macOS zip + dmg (signed + notarized)
         run: |
           set -euo pipefail
-          npm run dist --prefix app -- -c.mac.identity="$IDENTITY_NAME" -c.mac.notarize=true
+          npm run dist --prefix app -- -c.mac.identity="$IDENTITY_NAME" -c.mac.notarize.teamId="$APPLE_TEAM_ID"
 
       - name: Delete the temporary keychain
         if: always()
@@ -112,11 +112,18 @@ describe('auditReleaseWorkflow', () => {
     expect(result.problems).toEqual([expect.stringMatching(/not guarded by "if: always\(\)"/)]);
   });
 
-  it('flags a build step missing -c.mac.notarize=true', () => {
-    const yml = CLEAN_WORKFLOW.replace('-c.mac.notarize=true', '');
+  it('flags a build step missing -c.mac.notarize.teamId=', () => {
+    const yml = CLEAN_WORKFLOW.replace(' -c.mac.notarize.teamId="$APPLE_TEAM_ID"', '');
     const result = auditReleaseWorkflow(yml);
     expect(result.ok).toBe(false);
-    expect(result.problems).toEqual([expect.stringMatching(/-c\.mac\.notarize=true/)]);
+    expect(result.problems).toEqual([expect.stringMatching(/-c\.mac\.notarize\.teamId=/)]);
+  });
+
+  it('flags a build step that passes bare -c.mac.notarize=true (electron-builder 24 drops teamId under password auth, #646)', () => {
+    const yml = CLEAN_WORKFLOW.replace('-c.mac.notarize.teamId="$APPLE_TEAM_ID"', '-c.mac.notarize=true');
+    const result = auditReleaseWorkflow(yml);
+    expect(result.ok).toBe(false);
+    expect(result.problems).toContainEqual(expect.stringMatching(/-c\.mac\.notarize=true/));
   });
 
   it('flags a build step missing -c.mac.identity=', () => {
