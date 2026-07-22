@@ -6,6 +6,7 @@
 
 import { json } from "../http";
 import { redactText } from "./ingest";
+import { sendWaitlistConfirmationEmail, syncWaitlistContact } from "../delivery";
 import type { Env } from "../index";
 
 const MAX_BODY_BYTES = 4 * 1024; // waitlist bodies are tiny — email + short name
@@ -21,16 +22,25 @@ export interface WaitlistSignup {
   churchName?: string;
 }
 
+/**
+ * Lifecycle of a signup (#642). Written on every new row so the beta-invite
+ * work does not have to backfill existing records: `waitlist` on signup,
+ * `invited` once a beta invite goes out, `activated` once they run a build.
+ */
+export type WaitlistStatus = "waitlist" | "invited" | "activated";
+
 export interface StoredWaitlistSignup {
   email: string;
   churchName?: string;
   signedUpAt: string;
   ip: string;
+  status: WaitlistStatus;
 }
 
-/** Injectable seam so tests never depend on the wall clock. */
+/** Injectable seam so tests never depend on the wall clock or the network. */
 export interface WaitlistDeps {
   now?: () => Date;
+  fetch?: typeof fetch;
 }
 
 type ValidationResult =
@@ -110,7 +120,7 @@ async function withinWaitlistRateLimit(env: Env, ip: string): Promise<boolean> {
 export async function handleWaitlistSignup(
   request: Request,
   env: Env,
-  _ctx: ExecutionContext,
+  ctx: ExecutionContext,
   deps: WaitlistDeps = {},
 ): Promise<Response> {
   const raw = await request.text();
@@ -147,6 +157,7 @@ export async function handleWaitlistSignup(
     ...(churchName !== undefined ? { churchName } : {}),
     signedUpAt,
     ip,
+    status: "waitlist",
   };
 
   try {
@@ -154,6 +165,16 @@ export async function handleWaitlistSignup(
   } catch {
     return json({ error: "server_error" }, 500);
   }
+
+  // Storage above is the source of truth and has already succeeded. The
+  // confirmation email (#639) and Audience sync (#640) are deferred to
+  // `waitUntil` so neither latency nor a Resend outage can turn a stored
+  // signup into a user-visible failure. Both senders swallow their own errors.
+  const deliveryDeps = deps.fetch ? { fetch: deps.fetch } : {};
+  ctx.waitUntil(sendWaitlistConfirmationEmail(env, { to: emailLower }, deliveryDeps));
+  ctx.waitUntil(
+    syncWaitlistContact(env, { email: emailLower, ...(churchName ? { churchName } : {}) }, deliveryDeps),
+  );
 
   return json({ status: "ok" }, 200);
 }

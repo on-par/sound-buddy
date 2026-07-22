@@ -53,6 +53,11 @@
     // never gates on `kid` — so this value can change on a key rotation without
     // invalidating already-issued keys. Bump when the signing key rotates.
     "LICENSE_SIGNING_KID": "sb-sign-2026-07",
+    // Resend Audience id that waitlist signups mirror into (#640). Not a secret
+    // (it is inert without RESEND_API_KEY), but account-specific, so it is
+    // wired out-of-band like the Stripe portal URL. Empty/placeholder means the
+    // sync is skipped and logged rather than failing the signup.
+    "WAITLIST_AUDIENCE_ID": "",
     // Ed25519 license verify key, spki PEM (#113) — the public counterpart of
     // LICENSE_SIGNING_PRIVATE_KEY, mirroring the key embedded in the app. Public
     // keys are not secret, so this is a var, not `wrangler secret put`. The real

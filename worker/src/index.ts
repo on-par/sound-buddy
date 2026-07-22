@@ -70,6 +70,14 @@ export interface Env {
   EVENTS_KV: KVNamespace;
   /** KV namespace holding waitlist signups (#599), keyed by lowercased email. */
   WAITLIST_KV: KVNamespace;
+  /**
+   * Resend Audience that waitlist signups are mirrored into (#640), so
+   * broadcasts, unsubscribe handling, and bounce processing live with the email
+   * vendor rather than in this Worker. Non-secret id; set in wrangler `vars`.
+   * Optional: unset or empty means the sync is skipped and logged rather than
+   * throwing, so the Worker runs fine before the Audience exists.
+   */
+  WAITLIST_AUDIENCE_ID?: string;
 }
 
 type RouteHandler = (

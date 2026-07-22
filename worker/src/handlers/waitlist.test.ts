@@ -36,6 +36,7 @@ function makeEnv(kv: KVNamespace): Env {
     RESEND_API_KEY: "re_test_unused",
     LICENSE_SIGNING_KID: "test-kid",
     LICENSE_PUBLIC_KEY: "",
+    WAITLIST_AUDIENCE_ID: "",
   } satisfies Env;
 }
 
@@ -45,7 +46,13 @@ const ctx = {
 } as unknown as ExecutionContext;
 
 const NOW = new Date("2026-07-16T12:00:00.000Z");
-const deps: WaitlistDeps = { now: () => NOW };
+
+/** Stub for the Resend calls the handler fires through `waitUntil` (#639,
+ * #640). Always injected so no test can reach the real network. */
+const okFetch = () =>
+  vi.fn(async (_url: string, _init?: RequestInit) => new Response("{}", { status: 200 }));
+
+const deps: WaitlistDeps = { now: () => NOW, fetch: okFetch() as unknown as typeof fetch };
 
 const request = (body: unknown, ip = "1.2.3.4"): Request =>
   new Request("https://sound-buddy-api.test/api/waitlist", {
@@ -77,6 +84,7 @@ describe("POST /api/waitlist (#599)", () => {
       email: "pat@example.com",
       signedUpAt: NOW.toISOString(),
       ip: "1.2.3.4",
+      status: "waitlist",
     });
     expect(stored).not.toHaveProperty("churchName");
   });
@@ -288,11 +296,125 @@ describe("POST /api/waitlist (#599)", () => {
     const { kv, store } = makeKv();
     const env = makeEnv(kv);
 
-    const res = await handleWaitlistSignup(request({ email: "pat@example.com" }), env, ctx);
+    // `fetch` is still injected: only the clock is left to the default, so the
+    // deferred Resend calls cannot reach the network.
+    const res = await handleWaitlistSignup(request({ email: "pat@example.com" }), env, ctx, {
+      fetch: okFetch() as unknown as typeof fetch,
+    });
 
     expect(res.status).toBe(200);
     const stored = JSON.parse(store.get("waitlist:pat@example.com")!) as StoredWaitlistSignup;
     expect(() => new Date(stored.signedUpAt).toISOString()).not.toThrow();
     expect(new Date(stored.signedUpAt).toISOString()).toBe(stored.signedUpAt);
+  });
+});
+
+describe("waitlist signup side effects (#639, #640)", () => {
+  /** Collects the promises handed to `waitUntil` so tests can await the
+   * deferred work the runtime would otherwise finish after the response. */
+  function makeCollectingCtx(): { ctx: ExecutionContext; settled: () => Promise<unknown[]> } {
+    const pending: Promise<unknown>[] = [];
+    const collecting = {
+      waitUntil: (p: Promise<unknown>) => pending.push(p),
+      passThroughOnException: () => {},
+    } as unknown as ExecutionContext;
+    return { ctx: collecting, settled: () => Promise.all(pending) };
+  }
+
+  it("sends the confirmation email and syncs the Audience", async () => {
+    const { kv } = makeKv();
+    const env = { ...makeEnv(kv), WAITLIST_AUDIENCE_ID: "aud_123" };
+    const fetchSpy = okFetch();
+    const { ctx: collecting, settled } = makeCollectingCtx();
+
+    await handleWaitlistSignup(
+      request({ email: "Pat@Example.com", churchName: "Grace Community" }),
+      env,
+      collecting,
+      { now: () => NOW, fetch: fetchSpy as unknown as typeof fetch },
+    );
+    await settled();
+
+    const urls = fetchSpy.mock.calls.map((c) => String(c[0]));
+    expect(urls).toContain("https://api.resend.com/emails");
+    expect(urls).toContain("https://api.resend.com/audiences/aud_123/contacts");
+
+    // Both calls address the lowercased email, matching the KV key.
+    for (const call of fetchSpy.mock.calls) {
+      const body = JSON.parse(String(call[1]?.body));
+      const recipient = body.to ? body.to[0] : body.email;
+      expect(recipient).toBe("pat@example.com");
+    }
+  });
+
+  it("a failing Resend API still leaves the signup stored and the response 200", async () => {
+    const { kv, store } = makeKv();
+    const env = { ...makeEnv(kv), WAITLIST_AUDIENCE_ID: "aud_123" };
+    const failing = vi.fn(
+      async (_url: string, _init?: RequestInit) => new Response("nope", { status: 500 }),
+    );
+    const { ctx: collecting, settled } = makeCollectingCtx();
+
+    const res = await handleWaitlistSignup(request({ email: "pat@example.com" }), env, collecting, {
+      now: () => NOW,
+      fetch: failing as unknown as typeof fetch,
+    });
+    await expect(settled()).resolves.toBeDefined();
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ status: "ok" });
+    expect(store.has("waitlist:pat@example.com")).toBe(true);
+  });
+
+  it("a throwing fetch is swallowed, never surfacing as a signup failure", async () => {
+    const { kv, store } = makeKv();
+    const env = { ...makeEnv(kv), WAITLIST_AUDIENCE_ID: "aud_123" };
+    const throwing = vi.fn(async (_url: string, _init?: RequestInit): Promise<Response> => {
+      throw new Error("network down");
+    });
+    const { ctx: collecting, settled } = makeCollectingCtx();
+
+    const res = await handleWaitlistSignup(request({ email: "pat@example.com" }), env, collecting, {
+      now: () => NOW,
+      fetch: throwing as unknown as typeof fetch,
+    });
+    await expect(settled()).resolves.toBeDefined();
+
+    expect(res.status).toBe(200);
+    expect(store.has("waitlist:pat@example.com")).toBe(true);
+  });
+
+  it("skips the Audience sync when no audience is configured, still sends the email", async () => {
+    const { kv } = makeKv();
+    const env = makeEnv(kv); // WAITLIST_AUDIENCE_ID is ""
+    const fetchSpy = okFetch();
+    const { ctx: collecting, settled } = makeCollectingCtx();
+
+    await handleWaitlistSignup(request({ email: "pat@example.com" }), env, collecting, {
+      now: () => NOW,
+      fetch: fetchSpy as unknown as typeof fetch,
+    });
+    await settled();
+
+    const urls = fetchSpy.mock.calls.map((c) => String(c[0]));
+    expect(urls).toContain("https://api.resend.com/emails");
+    expect(urls.some((u) => u.includes("/audiences/"))).toBe(false);
+  });
+
+  it("sends nothing at all when RESEND_API_KEY is unset", async () => {
+    const { kv, store } = makeKv();
+    const env = { ...makeEnv(kv), RESEND_API_KEY: "", WAITLIST_AUDIENCE_ID: "aud_123" };
+    const fetchSpy = okFetch();
+    const { ctx: collecting, settled } = makeCollectingCtx();
+
+    const res = await handleWaitlistSignup(request({ email: "pat@example.com" }), env, collecting, {
+      now: () => NOW,
+      fetch: fetchSpy as unknown as typeof fetch,
+    });
+    await settled();
+
+    expect(res.status).toBe(200);
+    expect(store.has("waitlist:pat@example.com")).toBe(true);
+    expect(fetchSpy).not.toHaveBeenCalled();
   });
 });
