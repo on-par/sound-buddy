@@ -197,8 +197,7 @@ export function createBridge(ipc: IpcRendererLike) {
     onUpdateStatus: (cb: (status: UpdateStatus) => void) =>
       ipc.on('update-status', (_event, s) => cb(s)),
     downloadUpdate: () => ipc.invoke('download-update'),
-    cancelUpdateDownload: () => ipc.invoke('cancel-update-download'),
-    revealUpdateDownload: () => ipc.invoke('reveal-update-download'),
+    installUpdate: () => ipc.invoke('install-update'),
     onUpdateDownloadStatus: (cb: (s: UpdateDownloadStatus) => void) =>
       ipc.on('update-download-status', (_event, s) => cb(s)),
 

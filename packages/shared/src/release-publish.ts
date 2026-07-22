@@ -8,7 +8,7 @@
 // `promote` — the single step in PUBLISH_STEPS that flips the release visible.
 // Every step before it is safe to retry or resume after a failure.
 
-import { RELEASE_MANIFEST_FILENAME, RELEASES_REPO } from './release-manifest.js';
+import { ELECTRON_UPDATER_MANIFEST_FILENAME, RELEASE_MANIFEST_FILENAME, RELEASES_REPO } from './release-manifest.js';
 
 export const PUBLISH_STEPS = ['tag-push', 'draft-release', 'checksum-verify', 'manifest-upload', 'promote'] as const;
 export type PublishStep = (typeof PUBLISH_STEPS)[number];
@@ -121,13 +121,14 @@ export function evaluateReleasePreflight(
   const hasZip = state.assetNames.includes(targets.zipAssetName);
   const hasDmg = state.assetNames.includes(targets.dmgAssetName);
   const hasManifest = state.assetNames.includes(RELEASE_MANIFEST_FILENAME);
+  const hasUpdateInfo = state.assetNames.includes(ELECTRON_UPDATER_MANIFEST_FILENAME);
 
-  if (!state.release.isDraft && hasZip && hasDmg && hasManifest) {
+  if (!state.release.isDraft && hasZip && hasDmg && hasManifest && hasUpdateInfo) {
     return {
       ok: false,
       error:
         `release ${targets.tag} is already fully published on ${RELEASES_REPO} with ${targets.zipAssetName}, ` +
-        `${targets.dmgAssetName}, and ${RELEASE_MANIFEST_FILENAME} — nothing is left to resume`,
+        `${targets.dmgAssetName}, ${RELEASE_MANIFEST_FILENAME}, and ${ELECTRON_UPDATER_MANIFEST_FILENAME} — nothing is left to resume`,
     };
   }
 
@@ -145,6 +146,7 @@ export function evaluateReleasePreflight(
     hasZip ? targets.zipAssetName : null,
     hasDmg ? targets.dmgAssetName : null,
     hasManifest ? RELEASE_MANIFEST_FILENAME : null,
+    hasUpdateInfo ? ELECTRON_UPDATER_MANIFEST_FILENAME : null,
   ].filter((name): name is string => name !== null);
   const notice =
     `resuming ${status} release ${targets.tag}` +
@@ -184,7 +186,7 @@ export function formatPublishFailure(input: PublishOutcomeInput): string {
         'the expected publish order (promote must be last); investigate immediately.',
     );
   } else {
-    lines.push('latest.json / update discovery is unchanged — no users are affected.');
+    lines.push('latest.json / latest-mac.yml / update discovery is unchanged — no users are affected.');
   }
   lines.push('');
   lines.push(`Resume with: ${resumeCommand(targets.version)}`);
@@ -194,6 +196,46 @@ export function formatPublishFailure(input: PublishOutcomeInput): string {
 
 export function resumeCommand(version: string): string {
   return `scripts/release.sh ${version} --yes`;
+}
+
+export type UpdateInfoUploadPlan =
+  | { action: 'upload'; reason: string }
+  | { action: 'skip'; reason: string }
+  | { action: 'fail'; error: string };
+
+/**
+ * Decides whether this run may upload its locally-generated latest-mac.yml.
+ * The sha512 in latest-mac.yml describes THIS run's local build. When
+ * draft-release was skipped, the release already carries a *different*
+ * build's zip (Phase A has no artifact caching and a notarized build is not
+ * byte-reproducible), so uploading a fresh latest-mac.yml would advertise a
+ * checksum the published artifact does not have — AC5's exact failure mode.
+ */
+export function planUpdateInfoUpload(
+  draftReleaseRan: boolean,
+  updateInfoAlreadyUploaded: boolean,
+): UpdateInfoUploadPlan {
+  if (draftReleaseRan) {
+    return {
+      action: 'upload',
+      reason: 'draft-release ran this run — the local build is the asset latest-mac.yml describes',
+    };
+  }
+
+  if (updateInfoAlreadyUploaded) {
+    return {
+      action: 'skip',
+      reason: 'latest-mac.yml is already uploaded and matches the already-uploaded zip from a previous run',
+    };
+  }
+
+  return {
+    action: 'fail',
+    error:
+      'latest-mac.yml is missing from this release but its zip was uploaded by an earlier run, so this ' +
+      "run's rebuild does not match it (notarized builds are not byte-reproducible). Delete the release " +
+      'assets and re-run: scripts/release.sh <version> --yes',
+  };
 }
 
 export type TreeState = 'clean' | 'version-bump-only' | 'dirty';

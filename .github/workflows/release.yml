@@ -152,6 +152,7 @@ jobs:
           tag_name: ${{ github.ref_name }}
           files: |
             app/release/*-arm64-mac.zip
+            app/release/latest-mac.yml
           fail_on_unmatched_files: true
           generate_release_notes: true
 

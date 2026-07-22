@@ -56,28 +56,19 @@
       return {
         text: text,
         primary: null,
-        showCancel: true,
+        // electron-updater exposes no cancel — the download always runs to
+        // completion (or failure), so there is nothing to show a Cancel button for.
+        showCancel: false,
         showProgress: true,
         percent: percent,
         indeterminate: totalBytes === 0,
       };
     }
 
-    if (status.state === 'verifying') {
-      return {
-        text: 'Verifying download…',
-        primary: null,
-        showCancel: false,
-        showProgress: true,
-        percent: 100,
-        indeterminate: false,
-      };
-    }
-
     if (status.state === 'done') {
       return {
-        text: 'Sound Buddy ' + v + ' downloaded and verified.',
-        primary: { label: 'Show in Finder', action: 'reveal' },
+        text: 'Sound Buddy ' + v + ' downloaded — restart to install.',
+        primary: { label: 'Restart to Update', action: 'install' },
         showCancel: false,
         showProgress: false,
         percent: 0,

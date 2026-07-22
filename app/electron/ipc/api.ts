@@ -112,9 +112,6 @@ export interface UpdateInfo {
   version: string;
   url: string;
   notes: string;
-  downloadUrl: string;
-  sha256: string;
-  sizeBytes: number;
 }
 
 export interface UpdateStatus {
@@ -122,11 +119,10 @@ export interface UpdateStatus {
   version?: string;
 }
 
-/** Mirrors electron/update-download.ts's UpdateDownloadStatus (#504). */
+/** Mirrors electron/auto-updater.ts's UpdateDownloadStatus (#625). */
 export type UpdateDownloadStatus =
   | { state: 'downloading'; receivedBytes: number; totalBytes: number; percent: number }
-  | { state: 'verifying' }
-  | { state: 'done'; filePath: string; version: string }
+  | { state: 'done'; version: string }
   | { state: 'cancelled' }
   | { state: 'error'; message: string };
 
@@ -582,8 +578,7 @@ export interface UpdateApi {
   onUpdateAvailable(cb: (info: UpdateInfo) => void): void;
   onUpdateStatus(cb: (status: UpdateStatus) => void): void;
   downloadUpdate(): Promise<OperationResult>;
-  cancelUpdateDownload(): Promise<void>;
-  revealUpdateDownload(): Promise<OperationResult>;
+  installUpdate(): Promise<void>;
   onUpdateDownloadStatus(cb: (status: UpdateDownloadStatus) => void): void;
 }
 

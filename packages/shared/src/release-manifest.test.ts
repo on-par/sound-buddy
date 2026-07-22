@@ -374,3 +374,10 @@ describe('summarizeReleaseNotes', () => {
     expect(summarizeReleaseNotes('   \n\n  ')).toBe('');
   });
 });
+
+describe('ELECTRON_UPDATER_MANIFEST_FILENAME', () => {
+  it('is "latest-mac.yml", exported from the package index (#625)', async () => {
+    const { ELECTRON_UPDATER_MANIFEST_FILENAME } = await import('./index.js');
+    expect(ELECTRON_UPDATER_MANIFEST_FILENAME).toBe('latest-mac.yml');
+  });
+});

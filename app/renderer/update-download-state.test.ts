@@ -56,7 +56,7 @@ describe('viewFor', () => {
     expect(view).toEqual({
       text: 'Downloading Sound Buddy 1.4.2… 50% (5.0 MB of 10.0 MB)',
       primary: null,
-      showCancel: true,
+      showCancel: false,
       showProgress: true,
       percent: 50,
       indeterminate: false,
@@ -69,30 +69,18 @@ describe('viewFor', () => {
     expect(view).toEqual({
       text: 'Downloading Sound Buddy 1.4.2… 3.0 MB',
       primary: null,
-      showCancel: true,
+      showCancel: false,
       showProgress: true,
       percent: 0,
       indeterminate: true,
     });
   });
 
-  it('verifying view', () => {
-    const view = viewFor({ state: 'verifying' }, INFO);
-    expect(view).toEqual({
-      text: 'Verifying download…',
-      primary: null,
-      showCancel: false,
-      showProgress: true,
-      percent: 100,
-      indeterminate: false,
-    });
-  });
-
-  it('done view offers Show in Finder', () => {
+  it('done view offers Restart to Update', () => {
     const view = viewFor({ state: 'done' }, INFO);
     expect(view).toEqual({
-      text: 'Sound Buddy 1.4.2 downloaded and verified.',
-      primary: { label: 'Show in Finder', action: 'reveal' },
+      text: 'Sound Buddy 1.4.2 downloaded — restart to install.',
+      primary: { label: 'Restart to Update', action: 'install' },
       showCancel: false,
       showProgress: false,
       percent: 0,

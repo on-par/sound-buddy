@@ -14,6 +14,7 @@ export {
   buildReleaseManifest, buildReleaseManifestPreview, parseReleaseManifest, validateReleaseManifest,
   summarizeReleaseNotes, verifyUploadedArtifactChecksum,
   RELEASE_MANIFEST_SCHEMA_VERSION, RELEASE_CHANNEL_LATEST, RELEASE_MANIFEST_FILENAME,
+  ELECTRON_UPDATER_MANIFEST_FILENAME,
   RELEASE_MANIFEST_URL, SHA256_HEX_PATTERN, NOTES_SUMMARY_MAX_CHARS, DRY_RUN_MEASURED_PLACEHOLDER,
 } from './release-manifest.js'
 export type {
@@ -51,11 +52,12 @@ export type { ReleaseWorkflowAudit } from './release-workflow.js'
 
 export {
   planReleasePublish, evaluateReleasePreflight, formatPublishFailure, resumeCommand, classifyWorkingTree,
+  planUpdateInfoUpload,
   PUBLISH_STEPS,
 } from './release-publish.js'
 export type {
   PublishStep, PublishState, ExistingRelease, PublishTargets, PublishStepPlan, PublishPlan,
-  PreflightVerdict, PublishOutcomeInput, TreeState,
+  PreflightVerdict, PublishOutcomeInput, TreeState, UpdateInfoUploadPlan,
 } from './release-publish.js'
 
 export interface EQBand {

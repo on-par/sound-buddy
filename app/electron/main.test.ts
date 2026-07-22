@@ -18,6 +18,7 @@ vi.mock('electron', () => {
     this.on = vi.fn();
     this.loadFile = vi.fn();
     this.loadURL = vi.fn();
+    this.isDestroyed = vi.fn(() => false);
   }) as any;
   /* eslint-enable @typescript-eslint/no-explicit-any */
   BrowserWindow.getAllWindows = vi.fn(() => []);
@@ -46,6 +47,7 @@ vi.mock('./logger', () => ({
   initLogging: vi.fn(),
   attachWindowLogging: vi.fn(),
   log: vi.fn(),
+  logWarn: vi.fn(),
   setCrashSink: vi.fn(),
 }));
 vi.mock('./crash-reporting', () => ({
@@ -57,12 +59,14 @@ vi.mock('./crash-reporting', () => ({
 vi.mock('./telemetry', () => ({
   recordTelemetryEvent: vi.fn(),
 }));
-vi.mock('./updater', () => ({ checkForUpdates: vi.fn(), openReleasePage: vi.fn(), getAvailableUpdate: vi.fn() }));
-vi.mock('./update-download', () => ({
-  startUpdateDownload: vi.fn(),
-  cancelUpdateDownload: vi.fn(),
-  revealDownloadedUpdate: vi.fn(),
+vi.mock('./updater', () => ({ openReleasePage: vi.fn() }));
+vi.mock('./auto-updater', () => ({
+  wireAutoUpdater: vi.fn(),
+  checkForUpdates: vi.fn(),
+  downloadUpdate: vi.fn(),
+  installUpdate: vi.fn(),
 }));
+vi.mock('electron-updater', () => ({ autoUpdater: {} }));
 vi.mock('./checkout', () => ({ checkoutUrl: vi.fn((plan?: string) => `https://example.com/checkout/${plan}`) }));
 vi.mock('./capture-guide', () => ({ captureGuideUrl: vi.fn(() => 'https://example.com/guide') }));
 vi.mock('./feedback', () => ({
@@ -79,8 +83,8 @@ import { registerIpcHandlers } from './ipc';
 import { initLogging, attachWindowLogging, setCrashSink } from './logger';
 import { captureMainError, flushPendingCrashReport, handleRendererErrorReport, recordAppEvent } from './crash-reporting';
 import { recordTelemetryEvent } from './telemetry';
-import { checkForUpdates, openReleasePage, getAvailableUpdate } from './updater';
-import { startUpdateDownload, cancelUpdateDownload, revealDownloadedUpdate } from './update-download';
+import { openReleasePage } from './updater';
+import { wireAutoUpdater, checkForUpdates, downloadUpdate, installUpdate } from './auto-updater';
 import { checkoutUrl } from './checkout';
 import { captureGuideUrl } from './capture-guide';
 import { openFeedback, revealDiagnosticLog, submitFeedback } from './feedback';
@@ -308,6 +312,10 @@ describe('lifecycle (whenReady callback)', () => {
     expect(registerIpcHandlers).toHaveBeenCalledTimes(1);
   });
 
+  it('wires the electron-updater event listeners once', () => {
+    expect(wireAutoUpdater).toHaveBeenCalledTimes(1);
+  });
+
   it('calls ensureTrialStarted, initLogging, and maybeRefreshLicense once each', () => {
     expect(ensureTrialStarted).toHaveBeenCalledTimes(1);
     expect(initLogging).toHaveBeenCalledTimes(1);
@@ -325,8 +333,7 @@ describe('lifecycle (whenReady callback)', () => {
         'check-for-updates',
         'open-release-page',
         'download-update',
-        'cancel-update-download',
-        'reveal-update-download',
+        'install-update',
         'open-checkout',
         'open-feedback',
         'submit-feedback',
@@ -395,36 +402,22 @@ describe('lifecycle (whenReady callback)', () => {
     const releaseHandler = calls.find((c) => c[0] === 'open-release-page')?.[1];
 
     checkHandler();
-    expect(checkForUpdates).toHaveBeenCalled();
+    expect(checkForUpdates).toHaveBeenCalledWith(expect.anything(), false);
 
     releaseHandler(undefined, 'https://example.com/release');
     expect(openReleasePage).toHaveBeenCalledWith('https://example.com/release');
   });
 
-  it('download-update, cancel-update-download, and reveal-update-download handlers call their respective mocks', () => {
-    const availableUpdate = {
-      version: '1.2.3',
-      url: 'https://example.com/rel',
-      notes: 'notes',
-      downloadUrl: 'https://example.com/rel.zip',
-      sha256: 'a'.repeat(64),
-      sizeBytes: 123,
-    };
-    vi.mocked(getAvailableUpdate).mockReturnValue(availableUpdate);
-    const win = (BrowserWindow as unknown as ReturnType<typeof vi.fn>).mock.results[0].value;
+  it('download-update and install-update handlers delegate to the auto-updater adapter', () => {
     const calls = (ipcMain.handle as ReturnType<typeof vi.fn>).mock.calls;
     const downloadHandler = calls.find((c) => c[0] === 'download-update')?.[1];
-    const cancelHandler = calls.find((c) => c[0] === 'cancel-update-download')?.[1];
-    const revealHandler = calls.find((c) => c[0] === 'reveal-update-download')?.[1];
+    const installHandler = calls.find((c) => c[0] === 'install-update')?.[1];
 
     downloadHandler();
-    expect(startUpdateDownload).toHaveBeenCalledWith(win, availableUpdate);
+    expect(downloadUpdate).toHaveBeenCalledWith(expect.anything());
 
-    cancelHandler();
-    expect(cancelUpdateDownload).toHaveBeenCalled();
-
-    revealHandler();
-    expect(revealDownloadedUpdate).toHaveBeenCalled();
+    installHandler();
+    expect(installUpdate).toHaveBeenCalledWith(expect.anything());
   });
 
   it('open-feedback handler calls openFeedback', () => {
@@ -487,7 +480,43 @@ describe('lifecycle (whenReady callback)', () => {
       (c: unknown[]) => c[0] === 'did-finish-load'
     );
     onceCall[1]();
-    expect(checkForUpdates).toHaveBeenCalledWith(win, true);
+    expect(checkForUpdates).toHaveBeenCalledWith(expect.anything(), true);
+  });
+
+  describe('updaterDeps.send (guarded window.webContents.send)', () => {
+    it('forwards to the current window when it exists and is not destroyed', () => {
+      const win = (BrowserWindow as unknown as ReturnType<typeof vi.fn>).mock.results[0].value;
+      const deps = (wireAutoUpdater as ReturnType<typeof vi.fn>).mock.calls[0][0];
+      win.webContents.send.mockClear();
+
+      deps.send('update-available', { version: '1.2.3' });
+
+      expect(win.webContents.send).toHaveBeenCalledWith('update-available', { version: '1.2.3' });
+    });
+
+    it('does nothing when the window is destroyed', () => {
+      const win = (BrowserWindow as unknown as ReturnType<typeof vi.fn>).mock.results[0].value;
+      const deps = (wireAutoUpdater as ReturnType<typeof vi.fn>).mock.calls[0][0];
+      win.webContents.send.mockClear();
+      win.isDestroyed.mockReturnValue(true);
+
+      deps.send('update-available', {});
+
+      expect(win.webContents.send).not.toHaveBeenCalled();
+      win.isDestroyed.mockReturnValue(false);
+    });
+
+    it('does nothing once the window has closed (mainWindow reset to null)', () => {
+      const win = (BrowserWindow as unknown as ReturnType<typeof vi.fn>).mock.results[0].value;
+      const deps = (wireAutoUpdater as ReturnType<typeof vi.fn>).mock.calls[0][0];
+      const closedCall = (win.on as ReturnType<typeof vi.fn>).mock.calls.find((c: unknown[]) => c[0] === 'closed');
+      closedCall[1]();
+      win.webContents.send.mockClear();
+
+      deps.send('update-available', {});
+
+      expect(win.webContents.send).not.toHaveBeenCalled();
+    });
   });
 
   it('sets the application menu', () => {

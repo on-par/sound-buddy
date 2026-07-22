@@ -2,11 +2,18 @@
 // Licensed under the Sound Buddy Desktop Application License (app/LICENSE).
 
 import { app, BrowserWindow, Menu, dialog, ipcMain, shell } from 'electron';
+import { autoUpdater } from 'electron-updater';
 import * as path from 'path';
 import { registerIpcHandlers } from './ipc';
-import { initLogging, attachWindowLogging, log, setCrashSink } from './logger';
-import { checkForUpdates, openReleasePage, getAvailableUpdate } from './updater';
-import { startUpdateDownload, cancelUpdateDownload, revealDownloadedUpdate } from './update-download';
+import { initLogging, attachWindowLogging, log, logWarn, setCrashSink } from './logger';
+import { openReleasePage } from './updater';
+import {
+  wireAutoUpdater,
+  checkForUpdates,
+  downloadUpdate,
+  installUpdate,
+  type AutoUpdaterDeps,
+} from './auto-updater';
 import { checkoutUrl } from './checkout';
 import { captureGuideUrl } from './capture-guide';
 import { openFeedback, revealDiagnosticLog, submitFeedback } from './feedback';
@@ -169,6 +176,19 @@ export function getMenuTemplate(deps: MenuDeps): Electron.MenuItemConstructorOpt
 
 let mainWindow: BrowserWindow | null = null;
 
+// Built once at module scope so wireAutoUpdater's listeners always reach
+// whichever window is currently live — mainWindow is reassigned across the
+// app's lifetime (closed, then recreated on 'activate').
+const updaterDeps: AutoUpdaterDeps = {
+  updater: autoUpdater,
+  send: (channel, payload) => {
+    if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send(channel, payload);
+  },
+  currentVersion: () => app.getVersion(),
+  log,
+  logWarn,
+};
+
 function createWindow(): void {
   mainWindow = new BrowserWindow(getWindowOptions(getPreloadPath(__dirname)));
 
@@ -186,7 +206,7 @@ function createWindow(): void {
 
   // Quiet background update check shortly after the UI is ready.
   mainWindow.webContents.once('did-finish-load', () => {
-    void checkForUpdates(mainWindow, true);
+    void checkForUpdates(updaterDeps, true);
   });
 
   mainWindow.on('closed', () => {
@@ -200,7 +220,7 @@ function buildMenu(): void {
   const template = getMenuTemplate({
     openFile: () => openFileFromMenu(mainWindow, dialog.showOpenDialog.bind(dialog)),
     toggleDevTools: () => mainWindow?.webContents.toggleDevTools(),
-    checkForUpdates: () => void checkForUpdates(mainWindow, false),
+    checkForUpdates: () => void checkForUpdates(updaterDeps, false),
     openLicenseDialog: () => mainWindow?.webContents.send('open-license-dialog'),
     // #472: the Help-menu item now opens the in-app feedback form; the
     // preserved mailto (openFeedback/'open-feedback') is both the dialog's
@@ -232,16 +252,18 @@ app.whenReady().then(() => {
   // already in grace; never delays window creation.
   void maybeRefreshLicense();
 
+  // electron-updater event → IPC channel wiring (#625) — once, at startup.
+  wireAutoUpdater(updaterDeps);
+
   // Manual update check + "Download" button (opens the release page in browser).
-  ipcMain.handle('check-for-updates', () => checkForUpdates(mainWindow, false));
+  ipcMain.handle('check-for-updates', () => checkForUpdates(updaterDeps, false));
   ipcMain.handle('open-release-page', (_event, url?: string) => openReleasePage(url));
 
-  // Download + verify the vetted update in-app (#504): main never trusts a
-  // renderer-supplied URL/hash — getAvailableUpdate() is whatever the last
-  // checkForUpdates() itself validated against the manifest.
-  ipcMain.handle('download-update', () => startUpdateDownload(mainWindow, getAvailableUpdate()));
-  ipcMain.handle('cancel-update-download', () => cancelUpdateDownload());
-  ipcMain.handle('reveal-update-download', () => revealDownloadedUpdate());
+  // Download + install in place (#625) — electron-updater owns the feed URL
+  // and verifies its own sha512, so main no longer vets a renderer-supplied
+  // URL/hash.
+  ipcMain.handle('download-update', () => downloadUpdate(updaterDeps));
+  ipcMain.handle('install-update', () => installUpdate(updaterDeps));
 
   // Upgrade CTA (#58): open the hosted Stripe checkout for a plan in the user's
   // browser. Sound Buddy never handles card data; the real Payment Links are
