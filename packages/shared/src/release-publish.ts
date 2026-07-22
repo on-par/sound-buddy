@@ -15,7 +15,42 @@ export type PublishStep = (typeof PUBLISH_STEPS)[number];
 
 /** Observed state, gathered by release.sh before the publish phase. */
 export interface ExistingRelease {
+  id: number;
   isDraft: boolean;
+}
+
+/** Shape of one entry from GitHub's list-releases API (snake_case comes from the API). */
+export interface ReleaseListEntry {
+  id: number;
+  tag_name: string;
+  draft: boolean;
+  assets: readonly { name: string }[];
+}
+
+export interface SelectedRelease {
+  id: number;
+  isDraft: boolean;
+  assetNames: string[];
+}
+
+/**
+ * Picks the release matching `tag` out of GitHub's list-releases response.
+ * Unlike `GET /releases/tags/{tag}`, the list endpoint includes drafts whose
+ * intended tag was never actually created as a git tag (#645) — draft
+ * releases are only tagged once published.
+ */
+export function selectReleaseByTag(releases: readonly ReleaseListEntry[], tag: string): SelectedRelease | null {
+  const matches = releases.filter((r) => r.tag_name === tag);
+  if (matches.length === 0) return null;
+
+  const published = matches.find((r) => !r.draft);
+  const selected = published ?? matches.reduce((newest, r) => (r.id > newest.id ? r : newest));
+
+  return {
+    id: selected.id,
+    isDraft: selected.draft,
+    assetNames: selected.assets.map((a) => a.name),
+  };
 }
 
 export interface PublishState {

@@ -52,12 +52,13 @@ export type { ReleaseWorkflowAudit } from './release-workflow.js'
 
 export {
   planReleasePublish, evaluateReleasePreflight, formatPublishFailure, resumeCommand, classifyWorkingTree,
-  planUpdateInfoUpload,
+  planUpdateInfoUpload, selectReleaseByTag,
   PUBLISH_STEPS,
 } from './release-publish.js'
 export type {
   PublishStep, PublishState, ExistingRelease, PublishTargets, PublishStepPlan, PublishPlan,
   PreflightVerdict, PublishOutcomeInput, TreeState, UpdateInfoUploadPlan,
+  ReleaseListEntry, SelectedRelease,
 } from './release-publish.js'
 
 export interface EQBand {

@@ -130,10 +130,14 @@ head_committed_version() {
 }
 
 # Observe what already exists on $PUBLIC_REPO/$TAG (the tag or release may
-# already exist from an earlier, partially-completed run).
+# already exist from an earlier, partially-completed run). A draft release is
+# untagged on GitHub until it's published (#645), so `gh release view $TAG`
+# (which resolves by git tag) 404s for a stranded draft — list releases
+# instead and match by tag_name, which drafts do carry. per_page=100 is far
+# above this repo's release count; no pagination needed.
 gather_publish_state() {
   local release_json
-  release_json="$(gh release view "$TAG" -R "$PUBLIC_REPO" --json isDraft,assets 2>/dev/null || true)"
+  release_json="$(gh api "repos/$PUBLIC_REPO/releases?per_page=100" 2>/dev/null || true)"
 
   local tag_local=false tag_origin=false version_committed=false
   git -C "$ROOT" rev-parse -q --verify "refs/tags/$TAG" >/dev/null 2>&1 && tag_local=true
@@ -142,15 +146,18 @@ gather_publish_state() {
   head_version="$(head_committed_version)"
   [[ "$head_version" == "$NEXT" ]] && version_committed=true
 
-  node -e '
-    const [releaseJson, tagLocal, tagOrigin, versionCommitted] = process.argv.slice(1);
+  node --input-type=module -e '
+    import { selectReleaseByTag } from "'"$ROOT"'/packages/shared/dist/index.js";
+    const [releaseJson, tagLocal, tagOrigin, versionCommitted, tag] = process.argv.slice(1);
     let release = null;
     let assetNames = [];
     const trimmed = releaseJson.trim();
     if (trimmed) {
-      const parsed = JSON.parse(trimmed);
-      release = { isDraft: Boolean(parsed.isDraft) };
-      assetNames = (parsed.assets || []).map((a) => a.name);
+      const selected = selectReleaseByTag(JSON.parse(trimmed), tag);
+      if (selected) {
+        release = { id: selected.id, isDraft: selected.isDraft };
+        assetNames = selected.assetNames;
+      }
     }
     process.stdout.write(JSON.stringify({
       tagExistsLocally: tagLocal === "true",
@@ -159,7 +166,7 @@ gather_publish_state() {
       release,
       assetNames,
     }));
-  ' "$release_json" "$tag_local" "$tag_origin" "$version_committed"
+  ' "$release_json" "$tag_local" "$tag_origin" "$version_committed" "$TAG"
 }
 
 STATE_JSON="$(gather_publish_state)"
@@ -354,6 +361,7 @@ say "── Phase B: publish (idempotent) ──"
 # The tag/release/assets may already exist from an earlier, partially-completed
 # attempt at this same version — re-observe state right before publishing.
 STATE_JSON="$(gather_publish_state)"
+RELEASE_ID="$(node -pe 'JSON.parse(process.argv[1]).release?.id ?? ""' "$STATE_JSON")"
 PLAN_JSON="$(node --input-type=module -e '
   import { planReleasePublish } from "'"$ROOT"'/packages/shared/dist/index.js";
   const [stateJson, targetsJson] = process.argv.slice(1);
@@ -438,6 +446,12 @@ if [[ "$DRAFT_RELEASE_ACTION" == "run" ]]; then
       --title "Sound Buddy $TAG (macOS Apple Silicon)" \
       --notes "$NOTES" \
       || publish_fail draft-release "gh release create --draft failed"
+    # A freshly-created draft is untagged on GitHub until published (#645) — its
+    # id isn't known yet. Re-resolve it by tag_name via the list endpoint.
+    STATE_JSON="$(gather_publish_state)"
+    RELEASE_ID="$(node -pe 'JSON.parse(process.argv[1]).release?.id ?? ""' "$STATE_JSON")"
+    [[ -n "$RELEASE_ID" ]] \
+      || publish_fail draft-release "draft was created but could not be found by tag_name $TAG in repos/$PUBLIC_REPO/releases — check https://github.com/$PUBLIC_REPO/releases and re-run: scripts/release.sh $NEXT --yes"
   else
     # Re-using an existing draft from a prior attempt — upload only what's missing.
     MISSING_ASSETS=()
@@ -464,7 +478,7 @@ if [[ "$DRAFT_RELEASE_ACTION" == "run" ]]; then
   ZIP_SHA256="$(shasum -a 256 "$ZIP" | cut -d' ' -f1)"
   ZIP_SIZE="$(stat -f%z "$ZIP")"
 else
-  REMOTE_ZIP_JSON="$(gh api "repos/$PUBLIC_REPO/releases/tags/$TAG" \
+  REMOTE_ZIP_JSON="$(gh api "repos/$PUBLIC_REPO/releases/$RELEASE_ID" \
     --jq ".assets[] | select(.name == \"$ZIP_ASSET_NAME\")")"
   ZIP_SIZE="$(node -pe 'JSON.parse(process.argv[1]).size' "$REMOTE_ZIP_JSON")"
   REMOTE_DIGEST="$(node -pe 'JSON.parse(process.argv[1]).digest ?? ""' "$REMOTE_ZIP_JSON")"
@@ -483,7 +497,7 @@ fi
 #    already uploaded would be a false mismatch, not a real corruption signal,
 #    and would permanently deadlock every resume) ──
 if [[ "$CHECKSUM_VERIFY_ACTION" == "run" ]]; then
-  UPLOADED_DIGEST="$(gh api "repos/$PUBLIC_REPO/releases/tags/$TAG" \
+  UPLOADED_DIGEST="$(gh api "repos/$PUBLIC_REPO/releases/$RELEASE_ID" \
     --jq ".assets[] | select(.name == \"$ZIP_ASSET_NAME\") | .digest // \"\"")"
   if [[ -z "$UPLOADED_DIGEST" ]]; then
     UPLOADED_DIGEST="$(gh release download "$TAG" -R "$PUBLIC_REPO" --pattern "$ZIP_ASSET_NAME" -O - | shasum -a 256 | cut -d' ' -f1)"
@@ -548,9 +562,14 @@ esac
 COMPLETED+=("manifest-upload")
 
 # ── promote (the only user-visible flip) ──
+# Promote by numeric id, not by tag — an untagged draft has no
+# releases/tags/$TAG endpoint to edit (#645). Publishing an untagged draft
+# makes GitHub create the $TAG git tag itself; verify that lands (AC1).
 if [[ "$PROMOTE_ACTION" == "run" ]]; then
-  gh release edit "$TAG" -R "$PUBLIC_REPO" --draft=false \
-    || publish_fail promote "gh release edit --draft=false failed — the release is fully staged as a draft with all assets; one command finishes it: gh release edit $TAG -R $PUBLIC_REPO --draft=false"
+  gh api -X PATCH "repos/$PUBLIC_REPO/releases/$RELEASE_ID" -F draft=false --silent \
+    || publish_fail promote "PATCH releases/$RELEASE_ID draft=false failed — the release is fully staged as a draft with all assets; one command finishes it: gh api -X PATCH repos/$PUBLIC_REPO/releases/$RELEASE_ID -F draft=false"
+  gh api "repos/$PUBLIC_REPO/releases/tags/$TAG" --jq .id >/dev/null \
+    || publish_fail promote "release was un-drafted but is not reachable at tag $TAG on $PUBLIC_REPO — inspect https://github.com/$PUBLIC_REPO/releases"
   COMPLETED+=("promote")
 else
   SKIPPED+=("promote")

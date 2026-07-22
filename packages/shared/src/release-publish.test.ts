@@ -7,9 +7,10 @@ import {
   planReleasePublish,
   planUpdateInfoUpload,
   resumeCommand,
+  selectReleaseByTag,
 } from './release-publish.js';
 import { ELECTRON_UPDATER_MANIFEST_FILENAME, RELEASE_MANIFEST_FILENAME } from './release-manifest.js';
-import type { PublishState, PublishTargets } from './release-publish.js';
+import type { PublishState, PublishTargets, ReleaseListEntry } from './release-publish.js';
 
 const TARGETS: PublishTargets = {
   version: '0.8.6',
@@ -41,7 +42,7 @@ describe('planReleasePublish', () => {
       tagExistsLocally: true,
       tagExistsOnOrigin: true,
       versionCommitted: true,
-      release: { isDraft: true },
+      release: { isDraft: true, id: 100000001 },
       assetNames: [TARGETS.zipAssetName, TARGETS.dmgAssetName],
     };
     const plan = planReleasePublish(state, TARGETS);
@@ -60,7 +61,7 @@ describe('planReleasePublish', () => {
       tagExistsLocally: true,
       tagExistsOnOrigin: true,
       versionCommitted: true,
-      release: { isDraft: true },
+      release: { isDraft: true, id: 100000001 },
       assetNames: [TARGETS.zipAssetName],
     };
     const plan = planReleasePublish(state, TARGETS);
@@ -76,7 +77,7 @@ describe('planReleasePublish', () => {
       tagExistsLocally: true,
       tagExistsOnOrigin: true,
       versionCommitted: true,
-      release: { isDraft: true },
+      release: { isDraft: true, id: 100000001 },
       assetNames: [TARGETS.zipAssetName, TARGETS.dmgAssetName],
     };
     const plan = planReleasePublish(state, TARGETS);
@@ -91,7 +92,7 @@ describe('planReleasePublish', () => {
       tagExistsLocally: true,
       tagExistsOnOrigin: true,
       versionCommitted: true,
-      release: { isDraft: true },
+      release: { isDraft: true, id: 100000001 },
       assetNames: [TARGETS.dmgAssetName],
     };
     const plan = planReleasePublish(state, TARGETS);
@@ -106,7 +107,7 @@ describe('planReleasePublish', () => {
       tagExistsLocally: true,
       tagExistsOnOrigin: true,
       versionCommitted: true,
-      release: { isDraft: false },
+      release: { isDraft: false, id: 100000001 },
       assetNames: [TARGETS.zipAssetName, TARGETS.dmgAssetName, RELEASE_MANIFEST_FILENAME],
     };
     const plan = planReleasePublish(state, TARGETS);
@@ -138,7 +139,7 @@ describe('evaluateReleasePreflight', () => {
   });
 
   it('existing draft + explicitVersion true: mode is resume, notice mentions the draft', () => {
-    const state: PublishState = { ...FRESH_STATE, release: { isDraft: true }, assetNames: [TARGETS.zipAssetName] };
+    const state: PublishState = { ...FRESH_STATE, release: { isDraft: true, id: 100000001 }, assetNames: [TARGETS.zipAssetName] };
     const verdict = evaluateReleasePreflight(state, TARGETS, true);
     expect(verdict.ok).toBe(true);
     if (!verdict.ok) throw new Error('unreachable');
@@ -147,7 +148,7 @@ describe('evaluateReleasePreflight', () => {
   });
 
   it('existing release + explicitVersion false: ok false, error names the tag and the exact resume command', () => {
-    const state: PublishState = { ...FRESH_STATE, release: { isDraft: true }, assetNames: [] };
+    const state: PublishState = { ...FRESH_STATE, release: { isDraft: true, id: 100000001 }, assetNames: [] };
     const verdict = evaluateReleasePreflight(state, TARGETS, false);
     expect(verdict.ok).toBe(false);
     if (verdict.ok) throw new Error('unreachable');
@@ -156,7 +157,7 @@ describe('evaluateReleasePreflight', () => {
   });
 
   it('existing published (non-draft, incomplete) release + explicitVersion false: ok false, describes it as published', () => {
-    const state: PublishState = { ...FRESH_STATE, release: { isDraft: false }, assetNames: [TARGETS.zipAssetName] };
+    const state: PublishState = { ...FRESH_STATE, release: { isDraft: false, id: 100000001 }, assetNames: [TARGETS.zipAssetName] };
     const verdict = evaluateReleasePreflight(state, TARGETS, false);
     expect(verdict.ok).toBe(false);
     if (verdict.ok) throw new Error('unreachable');
@@ -164,7 +165,7 @@ describe('evaluateReleasePreflight', () => {
   });
 
   it('existing draft + explicitVersion true with no assets yet: resume notice says no assets uploaded', () => {
-    const state: PublishState = { ...FRESH_STATE, release: { isDraft: true }, assetNames: [] };
+    const state: PublishState = { ...FRESH_STATE, release: { isDraft: true, id: 100000001 }, assetNames: [] };
     const verdict = evaluateReleasePreflight(state, TARGETS, true);
     expect(verdict.ok).toBe(true);
     if (!verdict.ok) throw new Error('unreachable');
@@ -174,7 +175,7 @@ describe('evaluateReleasePreflight', () => {
   it('existing draft with all assets already uploaded + explicitVersion true: resume notice lists every asset', () => {
     const state: PublishState = {
       ...FRESH_STATE,
-      release: { isDraft: true },
+      release: { isDraft: true, id: 100000001 },
       assetNames: [
         TARGETS.zipAssetName,
         TARGETS.dmgAssetName,
@@ -192,7 +193,7 @@ describe('evaluateReleasePreflight', () => {
   });
 
   it('existing published (non-draft, incomplete) release + explicitVersion true: resume notice describes it as published', () => {
-    const state: PublishState = { ...FRESH_STATE, release: { isDraft: false }, assetNames: [TARGETS.zipAssetName] };
+    const state: PublishState = { ...FRESH_STATE, release: { isDraft: false, id: 100000001 }, assetNames: [TARGETS.zipAssetName] };
     const verdict = evaluateReleasePreflight(state, TARGETS, true);
     expect(verdict.ok).toBe(true);
     if (!verdict.ok) throw new Error('unreachable');
@@ -204,7 +205,7 @@ describe('evaluateReleasePreflight', () => {
   it('published release already holding zip, dmg, latest.json, and latest-mac.yml: ok false, nothing left to resume', () => {
     const state: PublishState = {
       ...FRESH_STATE,
-      release: { isDraft: false },
+      release: { isDraft: false, id: 100000001 },
       assetNames: [
         TARGETS.zipAssetName,
         TARGETS.dmgAssetName,
@@ -221,7 +222,7 @@ describe('evaluateReleasePreflight', () => {
   it('published release missing only latest-mac.yml: resumable, not "nothing left"', () => {
     const state: PublishState = {
       ...FRESH_STATE,
-      release: { isDraft: false },
+      release: { isDraft: false, id: 100000001 },
       assetNames: [TARGETS.zipAssetName, TARGETS.dmgAssetName, RELEASE_MANIFEST_FILENAME],
     };
     const verdict = evaluateReleasePreflight(state, TARGETS, true);
@@ -340,5 +341,64 @@ describe('classifyWorkingTree', () => {
 
   it('an untracked file is dirty', () => {
     expect(classifyWorkingTree('?? junk.txt\n')).toBe('dirty');
+  });
+});
+
+describe('selectReleaseByTag', () => {
+  it('returns null for an empty list', () => {
+    expect(selectReleaseByTag([], 'v0.8.4')).toBeNull();
+  });
+
+  it('returns null when no entry matches the tag', () => {
+    const releases: ReleaseListEntry[] = [{ id: 1, tag_name: 'v0.8.3', draft: false, assets: [] }];
+    expect(selectReleaseByTag(releases, 'v0.8.4')).toBeNull();
+  });
+
+  it('bug repro: finds an untagged draft by its tag_name and maps asset names', () => {
+    const releases: ReleaseListEntry[] = [
+      {
+        id: 356461075,
+        tag_name: 'v0.8.4',
+        draft: true,
+        assets: [{ name: 'Sound.Buddy-0.8.4-arm64-mac.zip' }, { name: 'Sound.Buddy-0.8.4-arm64.dmg' }],
+      },
+    ];
+    expect(selectReleaseByTag(releases, 'v0.8.4')).toEqual({
+      id: 356461075,
+      isDraft: true,
+      assetNames: ['Sound.Buddy-0.8.4-arm64-mac.zip', 'Sound.Buddy-0.8.4-arm64.dmg'],
+    });
+  });
+
+  it('prefers a published release over a draft with the same tag_name', () => {
+    const releases: ReleaseListEntry[] = [
+      { id: 1, tag_name: 'v0.8.4', draft: true, assets: [] },
+      { id: 2, tag_name: 'v0.8.4', draft: false, assets: [] },
+    ];
+    const selected = selectReleaseByTag(releases, 'v0.8.4');
+    expect(selected).not.toBeNull();
+    expect(selected?.id).toBe(2);
+    expect(selected?.isDraft).toBe(false);
+  });
+
+  it('among duplicate drafts sharing a tag_name, returns the highest id (real v0.8.0 duplicate case, ascending order)', () => {
+    const releases: ReleaseListEntry[] = [
+      { id: 352647691, tag_name: 'v0.8.0', draft: true, assets: [] },
+      { id: 352647975, tag_name: 'v0.8.0', draft: true, assets: [] },
+    ];
+    expect(selectReleaseByTag(releases, 'v0.8.0')?.id).toBe(352647975);
+  });
+
+  it('among duplicate drafts sharing a tag_name, returns the highest id regardless of input order (descending order)', () => {
+    const releases: ReleaseListEntry[] = [
+      { id: 352647975, tag_name: 'v0.8.0', draft: true, assets: [] },
+      { id: 352647691, tag_name: 'v0.8.0', draft: true, assets: [] },
+    ];
+    expect(selectReleaseByTag(releases, 'v0.8.0')?.id).toBe(352647975);
+  });
+
+  it('maps assets: [] to assetNames: []', () => {
+    const releases: ReleaseListEntry[] = [{ id: 1, tag_name: 'v0.8.4', draft: true, assets: [] }];
+    expect(selectReleaseByTag(releases, 'v0.8.4')?.assetNames).toEqual([]);
   });
 });
