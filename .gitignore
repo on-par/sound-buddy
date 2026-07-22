@@ -23,3 +23,7 @@ SoundBuddy-keys/
 
 # Playwright MCP snapshot cache
 .playwright-mcp/
+
+# Local wrangler state (KV simulation, build cache)
+worker/.wrangler/
+site/.wrangler/
