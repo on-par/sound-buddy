@@ -117,10 +117,27 @@ describe('pythonBin', () => {
 
   it('falls back to bare python3 when no candidate exists', async () => {
     process.env.SOUND_BUDDY_PYTHON = '/definitely/not/a/real/path/python3';
-
+    // Pointing SOUND_BUDDY_PYTHON at a missing file is not enough to reach the
+    // fallback: pythonBin also probes the userData venv and REPO_ROOT/.venv,
+    // and a checkout that has run the Python dev setup really does have a
+    // .venv/bin/python3 — so finding it is correct behaviour, not a bug. Stub
+    // the filesystem so *no* candidate exists, which is what this asserts.
+    // node:fs exports are non-configurable, so vi.spyOn cannot patch them —
+    // the module has to be mocked for the fresh import instead.
     vi.resetModules();
-    const fresh = await import('./shared');
-    expect(fresh.pythonBin()).toBe('python3');
+    vi.doMock('node:fs', async () => {
+      const actual = await vi.importActual<typeof fs>('node:fs');
+      const stubbed = { ...actual, existsSync: () => false };
+      return { ...stubbed, default: stubbed };
+    });
+
+    try {
+      const fresh = await import('./shared');
+      expect(fresh.pythonBin()).toBe('python3');
+    } finally {
+      vi.doUnmock('node:fs');
+      vi.resetModules();
+    }
   });
 });
 
