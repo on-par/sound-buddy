@@ -36,6 +36,10 @@ const REPO_URL = 'https://github.com/on-par/sound-buddy';
         </div>
       </div>
       <button class="btn btn-primary btn-lg" type="submit">Join the waitlist</button>
+      <p class="waitlist-consent">
+        We'll email you when early access opens, plus the occasional note on what we're building.
+        Unsubscribe any time. We never sell your address. See our <a href="/privacy">privacy policy</a>.
+      </p>
       <p class="waitlist-status" data-waitlist-status role="status" aria-live="polite"></p>
     </form>
   </div>
@@ -169,6 +173,8 @@ const REPO_URL = 'https://github.com/on-par/sound-buddy';
   .field input { height: var(--control-h-lg); padding: 0 14px; border-radius: var(--radius-md); border: 1px solid var(--border-strong); background: var(--surface); color: var(--text-primary); font: var(--fw-regular) var(--fs-body)/1 var(--font-sans); }
   .field input:focus-visible { outline: none; box-shadow: var(--glow-focus); border-color: var(--border-focus); }
   .waitlist-form .btn { width: 100%; }
+  .waitlist-consent { margin: -2px 0 0; color: var(--muted); font: var(--fw-regular) var(--fs-body-xs)/var(--lh-normal) var(--font-sans); }
+  .waitlist-consent a { color: inherit; text-decoration: underline; }
   .waitlist-status { min-height: 1.4em; font: var(--fw-medium) var(--fs-body-sm)/var(--lh-snug) var(--font-sans); }
   .waitlist-status[data-state="success"] { color: var(--good-text); }
   .waitlist-status[data-state="error"] { color: var(--issue-text); }
