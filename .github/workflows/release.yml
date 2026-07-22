@@ -13,7 +13,10 @@ name: Release
 # end of the job (even on failure) — the login keychain is never touched. A
 # fresh runner has no stored notarytool keychain profile, so notarization
 # authenticates with --apple-id/--team-id/--password instead of
-# --keychain-profile (see docs/signing-and-notarization.md § CI).
+# --keychain-profile (see docs/signing-and-notarization.md § CI). The team id
+# is passed explicitly via -c.mac.notarize.teamId because electron-builder 24
+# never reads APPLE_TEAM_ID from the environment for password-auth
+# notarization (#646).
 on:
   push:
     tags:
@@ -91,7 +94,7 @@ jobs:
         run: |
           set -euo pipefail
           IDENTITY_NAME="${SOUND_BUDDY_SIGNING_IDENTITY#Developer ID Application: }"
-          npm run dist --prefix app -- -c.mac.identity="$IDENTITY_NAME" -c.mac.notarize=true
+          npm run dist --prefix app -- -c.mac.identity="$IDENTITY_NAME" -c.mac.notarize.teamId="$APPLE_TEAM_ID"
 
       # Mirrors scripts/release.sh's Phase A verification (same shared parsers,
       # same node --input-type=module idiom) — any failure here means the
