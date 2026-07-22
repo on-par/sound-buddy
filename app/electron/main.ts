@@ -180,7 +180,18 @@ let mainWindow: BrowserWindow | null = null;
 // whichever window is currently live — mainWindow is reassigned across the
 // app's lifetime (closed, then recreated on 'activate').
 const updaterDeps: AutoUpdaterDeps = {
-  updater: autoUpdater,
+  // A getter, not `updater: autoUpdater` (#625 regression). electron-updater
+  // resolves a platform-specific implementation the first time the export is
+  // read, and reading it at module scope ran that before app.whenReady() on
+  // every platform. On Linux — which is where CI runs the Electron e2e — it
+  // builds an AppImageUpdater whose construction touches Electron `app` APIs
+  // too early, main.js threw during import, and all 140 e2e specs failed at
+  // `firstWindow()` with "Target page, context or browser has been closed".
+  // Deferring the read keeps the same object for real use while making module
+  // import free of side effects.
+  get updater() {
+    return autoUpdater;
+  },
   send: (channel, payload) => {
     if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send(channel, payload);
   },
@@ -253,7 +264,15 @@ app.whenReady().then(() => {
   void maybeRefreshLicense();
 
   // electron-updater event → IPC channel wiring (#625) — once, at startup.
-  wireAutoUpdater(updaterDeps);
+  // Only in a packaged app: unpackaged runs (dev, and the Electron e2e suite)
+  // have no app-update.yml to read, so there is nothing to check against, and
+  // touching the updater there is pure risk for no behaviour. The IPC handlers
+  // below stay registered either way so the renderer contract is unchanged.
+  if (app.isPackaged) {
+    wireAutoUpdater(updaterDeps);
+  } else {
+    log('auto-updater not wired: unpackaged build');
+  }
 
   // Manual update check + "Download" button (opens the release page in browser).
   ipcMain.handle('check-for-updates', () => checkForUpdates(updaterDeps, false));
