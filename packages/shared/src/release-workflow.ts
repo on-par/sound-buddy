@@ -73,7 +73,7 @@ export function auditReleaseWorkflow(yml: string): ReleaseWorkflowAudit {
   }
   if (yml.includes(BARE_NOTARIZE_FLAG)) {
     problems.push(
-      `the build step passes bare "${BARE_NOTARIZE_FLAG}" — with Apple-ID/password auth electron-builder 24 drops the teamId and @electron/notarize rejects the submission; use "${NOTARIZE_TEAM_ID_FLAG}\\"$APPLE_TEAM_ID\\"" instead (#646)`,
+      `the build step passes bare "${BARE_NOTARIZE_FLAG}" — with Apple-ID/password auth electron-builder 24 drops the teamId and @electron/notarize rejects the submission; use ${NOTARIZE_TEAM_ID_FLAG}"$APPLE_TEAM_ID" instead (#646)`,
     );
   }
   if (!IDENTITY_FLAG_PATTERN.test(yml)) {
