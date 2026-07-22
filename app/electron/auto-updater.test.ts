@@ -161,9 +161,20 @@ describe('wireAutoUpdater', () => {
 
       expect(deps.send).not.toHaveBeenCalled();
     });
+
+    it('logs the up-to-date result even when silent (diagnostic evidence the check ran)', async () => {
+      const updater = makeFakeUpdater();
+      const deps = makeDeps(updater);
+      wireAutoUpdater(deps);
+      await checkForUpdates(deps, true);
+
+      updater.fire('update-not-available');
+
+      expect(deps.log).toHaveBeenCalledWith(expect.stringContaining('1.0.0'));
+    });
   });
 
-  describe('error', () => {
+  describe('error (no download in progress — this was a check failure)', () => {
     it('logs and sends update-status error when the triggering check was not silent', async () => {
       const updater = makeFakeUpdater();
       const deps = makeDeps(updater);
@@ -186,6 +197,36 @@ describe('wireAutoUpdater', () => {
 
       expect(deps.logWarn).toHaveBeenCalled();
       expect(deps.send).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('error while a download is in progress', () => {
+    it('routes to update-download-status regardless of the last check\'s silent flag', async () => {
+      const updater = makeFakeUpdater();
+      let rejectDownload: (err: unknown) => void = () => {};
+      updater.downloadUpdate = vi.fn(
+        () =>
+          new Promise((_resolve, reject) => {
+            rejectDownload = reject;
+          })
+      );
+      const deps = makeDeps(updater);
+      wireAutoUpdater(deps);
+      // The startup silent check already ran (lastCheckWasSilent === true) —
+      // a download failure must still be reported; the user explicitly clicked Download.
+      await checkForUpdates(deps, true);
+
+      const downloadPromise = downloadUpdate(deps);
+      updater.fire('error', new Error('network drop'));
+
+      expect(deps.send).toHaveBeenCalledWith('update-download-status', {
+        state: 'error',
+        message: expect.stringContaining('network drop'),
+      });
+      expect(deps.send).not.toHaveBeenCalledWith('update-status', expect.anything());
+
+      rejectDownload(new Error('network drop'));
+      await downloadPromise;
     });
   });
 });
@@ -232,6 +273,36 @@ describe('downloadUpdate', () => {
     expect(result.success).toBe(false);
     expect(result.error).toContain('network drop');
     expect(deps.logWarn).toHaveBeenCalled();
+  });
+
+  it('rejects a second concurrent call while a download is already in progress', async () => {
+    const updater = makeFakeUpdater();
+    let resolveDownload: (v: unknown) => void = () => {};
+    updater.downloadUpdate = vi.fn(
+      () =>
+        new Promise((resolve) => {
+          resolveDownload = resolve;
+        })
+    );
+    const deps = makeDeps(updater);
+
+    const first = downloadUpdate(deps);
+    const second = await downloadUpdate(deps);
+
+    expect(second).toEqual({ success: false, error: 'An update download is already in progress.' });
+    expect(updater.downloadUpdate).toHaveBeenCalledTimes(1);
+
+    resolveDownload(null);
+    await first;
+  });
+
+  it('allows a new download once the previous one has finished', async () => {
+    const deps = makeDeps();
+
+    await downloadUpdate(deps);
+    const result = await downloadUpdate(deps);
+
+    expect(result).toEqual({ success: true });
   });
 });
 

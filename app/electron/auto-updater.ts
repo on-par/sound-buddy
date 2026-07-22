@@ -73,6 +73,13 @@ export function toDownloadStatus(p: { transferred: number; total: number; percen
 // manual "Check for Updates…" menu item), so a single shared flag is enough.
 let lastCheckWasSilent = true;
 
+// Tracks whether downloadUpdate() is currently awaiting electron-updater, so
+// the shared 'error' event (electron-updater emits the same event for both a
+// failed check and a failed download) is routed to the right channel — a
+// download failure must always reach the renderer's progress banner, whether
+// or not the most recent *check* happened to be silent.
+let downloadInProgress = false;
+
 /** Wires electron-updater's events to the existing IPC channel names, once, at startup. */
 export function wireAutoUpdater(deps: AutoUpdaterDeps): void {
   const { updater, send, currentVersion, log, logWarn } = deps;
@@ -90,11 +97,17 @@ export function wireAutoUpdater(deps: AutoUpdaterDeps): void {
   });
 
   updater.on('update-not-available', () => {
+    log(`update check: up to date (${currentVersion()})`);
     if (lastCheckWasSilent) return;
     send('update-status', { state: 'up-to-date', version: currentVersion() });
   });
 
   updater.on('error', (err: unknown) => {
+    if (downloadInProgress) {
+      logWarn(`update download failed: ${String(err)}`);
+      send('update-download-status', { state: 'error', message: String(err) });
+      return;
+    }
     logWarn(`update check failed: ${String(err)}`);
     if (lastCheckWasSilent) return;
     send('update-status', { state: 'error' });
@@ -126,6 +139,10 @@ export async function checkForUpdates(deps: AutoUpdaterDeps, silent: boolean): P
 }
 
 export async function downloadUpdate(deps: AutoUpdaterDeps): Promise<{ success: boolean; error?: string }> {
+  if (downloadInProgress) {
+    return { success: false, error: 'An update download is already in progress.' };
+  }
+  downloadInProgress = true;
   try {
     await deps.updater.downloadUpdate();
     return { success: true };
@@ -135,6 +152,8 @@ export async function downloadUpdate(deps: AutoUpdaterDeps): Promise<{ success: 
       success: false,
       error: `download failed (${String(err)}) — check your connection and try again`,
     };
+  } finally {
+    downloadInProgress = false;
   }
 }
 
