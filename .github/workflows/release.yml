@@ -146,6 +146,15 @@ jobs:
           name: sound-buddy-macos-arm64
           path: app/release/*-arm64-mac.zip
 
+      # latest.json is what the site's download button and the in-app update
+      # check read (#652). scripts/release.sh writes it for a local release;
+      # without this step a CI-published release would become
+      # `releases/latest` with no manifest attached, 404-ing update discovery
+      # for every existing user.
+      - name: Write the release manifest (latest.json)
+        if: ${{ env.RELEASES_TOKEN != '' }}
+        run: node scripts/ci-release-manifest.mjs "$GITHUB_REF_NAME"
+
       - name: Publish to public releases repo
         if: ${{ env.RELEASES_TOKEN != '' }}
         uses: softprops/action-gh-release@v2
@@ -153,9 +162,15 @@ jobs:
           repository: on-par/sound-buddy-releases
           token: ${{ secrets.RELEASES_TOKEN }}
           tag_name: ${{ github.ref_name }}
+          # The dmg is what humans download; the zip + latest-mac.yml are
+          # electron-updater's feed; latest.json is the site/update manifest.
+          # Publishing without the dmg would ship a release nobody can install
+          # the normal way.
           files: |
+            app/release/*-arm64.dmg
             app/release/*-arm64-mac.zip
             app/release/latest-mac.yml
+            app/release/latest.json
           fail_on_unmatched_files: true
           generate_release_notes: true
 
