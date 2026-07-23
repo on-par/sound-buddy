@@ -34,6 +34,13 @@
 #
 set -euo pipefail
 
+# Ensure the macOS system tool dirs are on PATH. codesign/xcrun live in
+# /usr/bin (usually present), but spctl lives in /usr/sbin, which is NOT on
+# PATH under some launchers (e.g. a detached tmux/agent shell). Without this the
+# Gatekeeper assessment step dies with "spctl: command not found" *after* a
+# successful ~1h notarization — treating a tooling gap as a build rejection.
+export PATH="/usr/bin:/bin:/usr/sbin:/sbin:$PATH"
+
 PUBLIC_REPO="on-par/sound-buddy-releases"
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 APP="$ROOT/app"
