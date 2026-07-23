@@ -88,6 +88,13 @@ jobs:
           IDENTITY="$(security find-identity -v -p codesigning "$KEYCHAIN_PATH" | node "$GITHUB_WORKSPACE/scripts/ci-signing.mjs" identity)"
           echo "SOUND_BUDDY_SIGNING_IDENTITY=$IDENTITY" >> "$GITHUB_ENV"
 
+      # The `dist` script passes --publish never (#654). On a CI tag build
+      # electron-builder otherwise assumes it should publish the artifacts
+      # itself, infers a GitHub provider from the git remote, and dies asking
+      # for GH_TOKEN — after the full notarization wait. Publishing is this
+      # workflow's job, not electron-builder's: the step below uploads to
+      # on-par/sound-buddy-releases, which is a *different* repo than the one
+      # electron-builder would infer.
       - name: Build macOS zip + dmg (signed + notarized)
         env:
           CSC_KEYCHAIN: ${{ env.KEYCHAIN_PATH }}
