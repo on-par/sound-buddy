@@ -89,4 +89,31 @@ describe("worker router", () => {
     expect(res.status).toBe(405);
     expect(res.headers.get("allow")).toBe("POST");
   });
+
+  it("GET /api/waitlist/invitees is wired (behaviour covered in waitlist-invite.test.ts)", async () => {
+    // The stub Env has no WAITLIST_ADMIN_TOKEN, so a 401 (not 404/405) proves
+    // the route reaches handleListInvitees.
+    const res = await call("GET", "/api/waitlist/invitees");
+    expect(res.status).toBe(401);
+  });
+
+  it("POST /api/waitlist/invite is wired (behaviour covered in waitlist-invite.test.ts)", async () => {
+    // Same proof-of-wiring: no admin token configured → 401 before the body
+    // is even read.
+    const res = await worker.fetch(
+      new Request("https://sound-buddy-api.test/api/waitlist/invite", {
+        method: "POST",
+        body: "not json",
+      }),
+      env,
+      ctx,
+    );
+    expect(res.status).toBe(401);
+  });
+
+  it("GET /api/waitlist/invite is 405 with an Allow header", async () => {
+    const res = await call("GET", "/api/waitlist/invite");
+    expect(res.status).toBe(405);
+    expect(res.headers.get("allow")).toBe("POST");
+  });
 });

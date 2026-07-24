@@ -12,10 +12,16 @@ import type { Env } from "../index";
 const MAX_BODY_BYTES = 4 * 1024; // waitlist bodies are tiny — email + short name
 const RATE_LIMIT_WINDOW_SECONDS = 60;
 const RATE_LIMIT_MAX_REQUESTS = 10; // per client IP per window — lower than ingest's 30, this is a single small form
-const MAX_EMAIL_LENGTH = 254;
+export const MAX_EMAIL_LENGTH = 254;
 const MAX_CHURCH_NAME_LENGTH = 100;
-const EMAIL_PATTERN = /^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$/; // same pattern as ingest.ts's CONTACT_EMAIL_PATTERN
+// same pattern as ingest.ts's CONTACT_EMAIL_PATTERN; exported so waitlist-invite.ts
+// (#642) reuses it rather than duplicating.
+export const EMAIL_PATTERN = /^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$/;
 const ALLOWED_FIELDS = new Set(["email", "churchName"]);
+// KV key prefix for a stored signup, keyed by lowercased email. Exported so
+// waitlist-invite.ts (#642) shares this single source of truth instead of a
+// second inline literal that could drift out of sync.
+export const WAITLIST_KEY_PREFIX = "waitlist:";
 
 export interface WaitlistSignup {
   email: string;
@@ -35,6 +41,8 @@ export interface StoredWaitlistSignup {
   signedUpAt: string;
   ip: string;
   status: WaitlistStatus;
+  /** ISO timestamp stamped when the contact transitions to `invited` (#642). */
+  invitedAt?: string;
 }
 
 /** Injectable seam so tests never depend on the wall clock or the network. */
@@ -47,7 +55,8 @@ type ValidationResult =
   | { ok: true; signup: WaitlistSignup }
   | { ok: false; error: string; field?: string; status: number };
 
-function isPlainObject(value: unknown): value is Record<string, unknown> {
+/** Exported so waitlist-invite.ts (#642) reuses it rather than duplicating. */
+export function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
@@ -161,7 +170,7 @@ export async function handleWaitlistSignup(
   };
 
   try {
-    await env.WAITLIST_KV.put(`waitlist:${emailLower}`, JSON.stringify(stored));
+    await env.WAITLIST_KV.put(`${WAITLIST_KEY_PREFIX}${emailLower}`, JSON.stringify(stored));
   } catch {
     return json({ error: "server_error" }, 500);
   }

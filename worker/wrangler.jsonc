@@ -22,7 +22,10 @@
     // Exact-match pattern — does not cover sub-paths of /api/ingest.
     { "pattern": "soundbuddy.online/api/ingest", "zone_name": "soundbuddy.online" },
     // Exact-match pattern — does not cover sub-paths of /api/waitlist.
-    { "pattern": "soundbuddy.online/api/waitlist", "zone_name": "soundbuddy.online" }
+    { "pattern": "soundbuddy.online/api/waitlist", "zone_name": "soundbuddy.online" },
+    // Sub-paths of /api/waitlist — the exact-match pattern above does NOT cover them (#642).
+    { "pattern": "soundbuddy.online/api/waitlist/invitees", "zone_name": "soundbuddy.online" },
+    { "pattern": "soundbuddy.online/api/waitlist/invite", "zone_name": "soundbuddy.online" }
   ],
 
   // Bindings later stories fill. The KV namespace `id` is set out-of-band (H4);
@@ -40,8 +43,9 @@
   // shown in license email; CUSTOMER_PORTAL_URL is the Stripe Customer Portal
   // link shown in license email; APP_ORIGIN is the desktop app's activation
   // origin. Secrets (STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET,
-  // LICENSE_SIGNING_PRIVATE_KEY, RESEND_API_KEY) are set out-of-band (H4) via
-  // `wrangler secret put` and never appear in this file.
+  // LICENSE_SIGNING_PRIVATE_KEY, RESEND_API_KEY, WAITLIST_ADMIN_TOKEN (#642))
+  // are set out-of-band (H4) via `wrangler secret put` and never appear in
+  // this file.
   "vars": {
     "FOUNDING_CAP": "300",
     "FROM_EMAIL": "hello@soundbuddy.online",

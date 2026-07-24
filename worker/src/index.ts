@@ -15,6 +15,7 @@ import { handleRefreshLicense } from "./handlers/license-refresh";
 import { handleActivate } from "./handlers/activate";
 import { handleIngestEvent } from "./handlers/ingest";
 import { handleWaitlistSignup } from "./handlers/waitlist";
+import { handleInvite, handleListInvitees } from "./handlers/waitlist-invite";
 
 /**
  * Environment bindings declared in wrangler.jsonc. Secret values
@@ -78,6 +79,14 @@ export interface Env {
    * throwing, so the Worker runs fine before the Audience exists.
    */
   WAITLIST_AUDIENCE_ID?: string;
+  /**
+   * Shared-secret bearer token for the waitlist admin endpoints (#642)
+   * (`GET /api/waitlist/invitees`, `POST /api/waitlist/invite`). Secret; set
+   * via `wrangler secret put WAITLIST_ADMIN_TOKEN`. Optional: unset means the
+   * admin endpoints are disabled (always 401) — safe default for any deploy
+   * that hasn't provisioned it.
+   */
+  WAITLIST_ADMIN_TOKEN?: string;
 }
 
 type RouteHandler = (
@@ -105,6 +114,8 @@ const routes: Route[] = [
   { method: "GET", path: "/activate", handler: handleActivate },
   { method: "POST", path: "/api/ingest", handler: handleIngestEvent },
   { method: "POST", path: "/api/waitlist", handler: handleWaitlistSignup },
+  { method: "GET", path: "/api/waitlist/invitees", handler: handleListInvitees },
+  { method: "POST", path: "/api/waitlist/invite", handler: handleInvite },
 ];
 
 export async function handleRequest(
