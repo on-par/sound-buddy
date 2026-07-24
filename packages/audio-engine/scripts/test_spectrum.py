@@ -29,7 +29,21 @@ try:
 except ImportError:
     HAVE_SOUNDFILE = False
 
-HAVE_FFMPEG = shutil.which("ffmpeg") is not None
+def _ffmpeg_runs() -> bool:
+    # A present `ffmpeg` binary can still fail to launch (e.g. a missing
+    # shared library on a minimal CI image) — probe that it actually runs,
+    # matching the toolAvailable() convention in fixtures.test.ts /
+    # parser-drift.test.ts, rather than just checking PATH resolution.
+    if shutil.which("ffmpeg") is None:
+        return False
+    try:
+        result = subprocess.run(["ffmpeg", "-version"], capture_output=True, timeout=10)
+        return result.returncode == 0
+    except Exception:
+        return False
+
+
+HAVE_FFMPEG = _ffmpeg_runs()
 
 try:
     import librosa
