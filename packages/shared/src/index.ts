@@ -42,6 +42,13 @@ export {
 } from './python-prune.js'
 
 export {
+  BANNED_VIDEO_LIB_PATTERN, FFMPEG_BUILD_VERSION, FFMPEG_VERSION, MEDIA_FIXTURE_FORMATS,
+  ffmpegConfigureArgs, ffmpegTarballUrl, findBannedVideoLibs, findDanglingBundledLibRefs,
+  parseOtoolLibraryPaths,
+} from './ffmpeg-audio-only.js'
+export type { MediaFixtureFormat } from './ffmpeg-audio-only.js'
+
+export {
   selectDmgArtifacts, planDmgNotarization, DMG_EXTENSION, KEYCHAIN_PROFILE_VAR,
 } from './dmg-notarization.js'
 export type { DmgNotarizationStep, DmgNotarizationPlan } from './dmg-notarization.js'

@@ -1,18 +1,29 @@
 // electron-builder afterPack hook — makes the macOS .app fully self-contained.
 //
-// The app shells out to sox, ffprobe and a Python interpreter (numpy/scipy/…).
-// None of those ship with macOS, so a download-only user hit "spawn sox ENOENT".
-// This hook bundles them INTO the app so it runs with zero external setup:
+// The app shells out to sox, ffprobe/ffmpeg and a Python interpreter
+// (numpy/scipy/…). None of those ship with macOS, so a download-only user hit
+// "spawn sox ENOENT". This hook bundles them INTO the app so it runs with zero
+// external setup:
 //
-//   Contents/Resources/bin/{sox,ffprobe}   native tools (dylibs relocated to ../lib)
-//   Contents/Resources/lib/*.dylib         their shared libraries
-//   Contents/Resources/python/bin/python3  relocatable CPython + audio deps
+//   Contents/Resources/bin/{sox,ffprobe,ffmpeg}   native tools (dylibs relocated to ../lib)
+//   Contents/Resources/lib/*.dylib                their shared libraries
+//   Contents/Resources/python/bin/python3          relocatable CPython + audio deps
 //
-// Requires on the BUILD machine: sox, ffprobe (Homebrew), dylibbundler, curl.
+// ffprobe/ffmpeg are an audio-only ffmpeg built from source and cached in
+// app/.build-cache (#664) — see ensureAudioOnlyFfmpeg — instead of Homebrew's
+// ffmpeg, whose dylib graph hard-links GPL video codecs (x264/x265) that can't
+// be pruned after the fact without breaking "Library not loaded" at launch.
+//
+// Requires on the BUILD machine: sox + Homebrew ffmpeg (release.yml already
+// installs both; Homebrew ffmpeg is only used to synthesize the verify-gate's
+// media fixtures, never bundled), dylibbundler, curl, and the Xcode Command
+// Line Tools (clang/make, to build the audio-only ffmpeg from source — cached
+// after the first build).
 // ipc.ts resolves these paths via process.resourcesPath when app.isPackaged.
 
 const { execFileSync, execSync } = require('child_process');
 const fs = require('fs');
+const os = require('os');
 const path = require('path');
 const crypto = require('crypto');
 const { pathToFileURL } = require('url');
@@ -56,16 +67,25 @@ module.exports = async function afterPack(context) {
   const cacheRoot = path.join(__dirname, '..', '.build-cache');
   fs.mkdirSync(cacheRoot, { recursive: true });
 
-  // ── 1. Native tools: sox + ffprobe with their dylibs ──────────────────────
-  log('bundling sox + ffprobe + ffmpeg');
+  // ── 1. Native tools: sox (Homebrew) + an audio-only ffprobe/ffmpeg (built
+  //      from source, cached) with their dylibs ─────────────────────────────
+  log('bundling sox + audio-only ffprobe/ffmpeg');
   fs.mkdirSync(binDir, { recursive: true });
   fs.mkdirSync(libDir, { recursive: true });
-  // ffmpeg shares ffprobe's dylibs (dylibbundler dedups), so it adds almost no
-  // size but lets spectrum.py's subprocess fallback decode m4a/aac when
+  const ffmpegCache = ensureAudioOnlyFfmpeg(cacheRoot, shared);
+  // ffmpeg and ffprobe are both built from the same audio-only ffmpeg tree, so
+  // they share the same lib set; dylibbundler dedups when it copies them into
+  // libDir. ffmpeg lets spectrum.py's subprocess fallback decode m4a/aac when
   // soundfile can't.
   for (const tool of ['sox', 'ffprobe', 'ffmpeg']) {
-    const src = sh(`command -v ${tool}`);
-    if (!src) throw new Error(`afterPack: "${tool}" not found on build machine (brew install sox ffmpeg)`);
+    const src = tool === 'sox' ? sh('command -v sox') : path.join(ffmpegCache, 'bin', tool);
+    if (!src || !fs.existsSync(src)) {
+      throw new Error(
+        tool === 'sox'
+          ? 'afterPack: "sox" not found on build machine (brew install sox)'
+          : `afterPack: "${tool}" missing from the audio-only ffmpeg build at ${ffmpegCache} (delete app/.build-cache and rebuild)`,
+      );
+    }
     const dest = path.join(binDir, tool);
     fs.copyFileSync(fs.realpathSync(src), dest);
     fs.chmodSync(dest, 0o755);
@@ -82,6 +102,12 @@ module.exports = async function afterPack(context) {
     ], { stdio: ['ignore', 'ignore', 'pipe'] });
   }
   log(`native libs bundled (${fs.readdirSync(libDir).length} dylibs)`);
+
+  // ── 1b. Verify the trimmed media libs ──────────────────────────────────────
+  // Runs pre-signing (dylibbundler already ad-hoc re-signed what it rewrote, so
+  // bundled ffprobe/ffmpeg/sox already execute) and gates the build: a broken
+  // bundle must fail here, not at the user's first launch.
+  verifyTrimmedMediaLibs(binDir, libDir, shared);
 
   // ── 2. Relocatable Python with the audio-engine deps ──────────────────────
   const reqHash = crypto.createHash('sha256')
@@ -161,6 +187,114 @@ module.exports = async function afterPack(context) {
 
   log('done — app is self-contained');
 };
+
+// Builds (or reuses a cached) audio-only ffmpeg/ffprobe from source, per #664:
+// Homebrew's ffmpeg hard-links GPL video codecs (x264/x265/vpx/…) via
+// LC_LOAD_DYLIB, so those dylibs can't be deleted after bundling without
+// "Library not loaded" at first launch. Configure flags come from the tested
+// shared module (packages/shared/src/ffmpeg-audio-only.ts); this function only
+// does I/O, mirroring the Python cache below.
+function ensureAudioOnlyFfmpeg(cacheRoot, shared) {
+  const hash = crypto.createHash('sha256')
+    .update(shared.FFMPEG_BUILD_VERSION + '\n' + shared.ffmpegConfigureArgs('PREFIX').join('\n'))
+    .digest('hex').slice(0, 12);
+  const ffmpegCache = path.join(cacheRoot, `ffmpeg-${shared.FFMPEG_VERSION}-${hash}`);
+
+  if (fs.existsSync(path.join(ffmpegCache, 'bin', 'ffprobe'))) {
+    log('using cached audio-only ffmpeg');
+    return ffmpegCache;
+  }
+
+  if (!sh('command -v make || true') || !sh('command -v clang || true')) {
+    throw new Error('afterPack: building the audio-only ffmpeg needs the Xcode Command Line Tools (xcode-select --install)');
+  }
+
+  log(`building audio-only ffmpeg ${shared.FFMPEG_VERSION} (one-time; cached afterwards)`);
+  const tmp = path.join(cacheRoot, `tmp-ffmpeg-${hash}`);
+  fs.rmSync(tmp, { recursive: true, force: true });
+  fs.mkdirSync(tmp, { recursive: true });
+  const tarball = path.join(cacheRoot, `ffmpeg-${shared.FFMPEG_VERSION}.tar.xz`);
+  if (!fs.existsSync(tarball)) {
+    sh(`curl -fsSL "${shared.ffmpegTarballUrl(shared.FFMPEG_VERSION)}" -o "${tarball}"`);
+  }
+  sh(`tar xJf "${tarball}" -C "${tmp}"`); // extracts a "ffmpeg-<version>/" dir
+  const srcDir = path.join(tmp, `ffmpeg-${shared.FFMPEG_VERSION}`);
+  const installPrefix = path.join(tmp, 'install');
+  sh(`./configure ${shared.ffmpegConfigureArgs(installPrefix).join(' ')}`, { cwd: srcDir });
+  sh(`make -j${os.cpus().length}`, { cwd: srcDir });
+  sh('make install', { cwd: srcDir });
+  fs.rmSync(ffmpegCache, { recursive: true, force: true });
+  fs.renameSync(installPrefix, ffmpegCache); // atomic-publish, same idiom as the Python cache
+  fs.rmSync(tmp, { recursive: true, force: true });
+  return ffmpegCache;
+}
+
+// Hard build-time gate for the trimmed ffmpeg/ffprobe/sox bundle (#664): a
+// broken bundle must fail the build, not the user's first launch. All policy
+// (which libs are banned, which refs are dangling, which fixtures to
+// synthesize) is the tested shared module; this function only does I/O.
+function verifyTrimmedMediaLibs(binDir, libDir, shared) {
+  const offenders = shared.findBannedVideoLibs(fs.readdirSync(libDir));
+  if (offenders.length > 0) {
+    throw new Error(
+      `afterPack: banned video/codec dylibs found in the bundle: ${offenders.join(', ')} ` +
+      '(check packages/shared/src/ffmpeg-audio-only.ts ffmpegConfigureArgs, then bump FFMPEG_BUILD_VERSION to force a clean rebuild)',
+    );
+  }
+
+  const bundledLibNames = fs.readdirSync(libDir);
+  const entries = [];
+  for (const dir of [binDir, libDir]) {
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      if (!entry.isFile()) continue;
+      const filePath = path.join(dir, entry.name);
+      entries.push({ file: `${path.basename(dir)}/${entry.name}`, deps: shared.parseOtoolLibraryPaths(sh(`otool -L "${filePath}"`)) });
+    }
+  }
+  const dangling = shared.findDanglingBundledLibRefs(entries, bundledLibNames);
+  if (dangling.length > 0) {
+    const detail = dangling.map((d) => `${d.file} -> ${d.missing}`).join(', ');
+    throw new Error(`afterPack: dangling library references found (would crash "Library not loaded" at first launch): ${detail}`);
+  }
+
+  const buildMachineFfmpeg = sh('command -v ffmpeg');
+  if (!buildMachineFfmpeg) {
+    throw new Error('afterPack: "ffmpeg" not found on build machine (brew install ffmpeg) — needed to synthesize verify-gate fixtures');
+  }
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'sb-ffmpeg-fixtures-'));
+  try {
+    for (const format of shared.MEDIA_FIXTURE_FORMATS) {
+      const fixturePath = path.join(tmpDir, format.file);
+      execFileSync(buildMachineFfmpeg, ['-y', ...format.encodeArgs.slice(0, -1), fixturePath], { stdio: ['ignore', 'ignore', 'pipe'] });
+
+      const probeOut = execFileSync(
+        path.join(binDir, 'ffprobe'),
+        ['-v', 'error', '-show_entries', 'stream=codec_type', '-of', 'json', fixturePath],
+        { stdio: ['ignore', 'pipe', 'pipe'], encoding: 'utf8' },
+      );
+      if (!probeOut.includes('"codec_type": "audio"')) {
+        throw new Error(`afterPack: bundled ffprobe found no audio stream in the ${format.name} fixture`);
+      }
+
+      // Byte output (raw PCM-in-WAV on stdout), not utf8 — capture as a Buffer.
+      const pcmOut = execFileSync(
+        path.join(binDir, 'ffmpeg'),
+        ['-v', 'error', '-i', fixturePath, '-f', 'wav', '-acodec', 'pcm_f32le', '-'],
+        { stdio: ['ignore', 'pipe', 'pipe'] },
+      );
+      if (pcmOut.length === 0) {
+        throw new Error(`afterPack: bundled ffmpeg produced no PCM output decoding the ${format.name} fixture`);
+      }
+    }
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+
+  sh(`"${path.join(binDir, 'sox')}" --version`);
+
+  const libSize = sh(`du -sh "${libDir}"`);
+  log(`verified trimmed media libs (${libSize})`);
+}
 
 // Prunes the assembled runtime using the pure predicates from packages/shared
 // (isPrunablePythonDir / isPrunablePythonFile — unit-tested there). Walks
