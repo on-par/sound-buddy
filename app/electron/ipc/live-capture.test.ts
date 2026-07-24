@@ -29,6 +29,12 @@ vi.mock('electron', () => ({
 vi.mock('../logger', () => ({ log: vi.fn(), logWarn: vi.fn(), logError: vi.fn() }));
 const isEntitledMock = vi.fn();
 vi.mock('../license', () => ({ isEntitled: (...a: unknown[]) => isEntitledMock(...a) }));
+// getSettings is otherwise unused in this file post-#658 (the LLM interval
+// timer was its only caller in live-capture.ts), but shared.ts's REAL
+// defaultRecordDir() still imports it directly — the "REAL defaultRecordDir()"
+// test below exercises that real implementation via vi.importActual, so this
+// mock must stay to keep it from hitting the real settings.ts (which needs a
+// full Electron app.getPath, not the minimal `app` stub above).
 const getSettingsMock = vi.fn();
 vi.mock('../settings', () => ({ getSettings: () => getSettingsMock() }));
 const defaultRecordDirMock = vi.fn();
@@ -42,16 +48,6 @@ vi.mock('./shared', async () => {
     readNdjsonLines: actualShared.readNdjsonLines,
   };
 });
-const streamLLMMock = vi.fn();
-const buildLiveReportMock = vi.fn();
-vi.mock('./narrative', () => ({
-  streamLLM: (...a: unknown[]) => streamLLMMock(...a),
-  buildLiveReport: (...a: unknown[]) => buildLiveReportMock(...a),
-}));
-const loadEnginePromptsMock = vi.fn();
-vi.mock('./engine-loader', () => ({
-  loadEnginePrompts: () => loadEnginePromptsMock(),
-}));
 const spawnMock = vi.fn();
 vi.mock('child_process', () => ({
   spawn: (...args: unknown[]) => spawnMock(...args),
@@ -130,11 +126,7 @@ beforeEach(async () => {
   mod.registerLiveCaptureHandlers();
   isEntitledMock.mockReturnValue(true);
   getMediaAccessStatusMock.mockReturnValue('granted');
-  getSettingsMock.mockReturnValue({ aiEnabled: false });
   defaultRecordDirMock.mockReturnValue(path.join(tmpDir, 'default'));
-  loadEnginePromptsMock.mockReturnValue({
-    buildLiveSystemPrompt: () => 'You are a professional audio engineer (fake live prompt, TD-004 #398).',
-  });
 });
 
 afterEach(() => {
@@ -528,151 +520,6 @@ describe('start-live handler', () => {
     proc.emit('close', 0);
 
     expect(sender.sent.length).toBe(sentBeforeClose);
-  });
-});
-
-describe('LLM interval timer', () => {
-  beforeEach(() => {
-    vi.useFakeTimers();
-  });
-
-  it('fires at cadence once the collector has data', async () => {
-    getSettingsMock.mockReturnValue({ aiEnabled: true });
-    buildLiveReportMock.mockReturnValue('REPORT');
-    streamLLMMock.mockResolvedValue(undefined);
-    const proc = fakeProc();
-    spawnMock.mockReturnValueOnce(proc);
-    const sender = fakeSender();
-
-    await startLive({ windowSecs: 5, llmIntervalSecs: 5 }, sender);
-    proc.stdout.emit('data', Buffer.from(JSON.stringify({ window: 1 }) + '\n'));
-
-    await vi.advanceTimersByTimeAsync(5000);
-    expect(streamLLMMock).toHaveBeenCalledTimes(1);
-    expect(streamLLMMock).toHaveBeenCalledWith(
-      sender,
-      expect.stringContaining('professional audio engineer'),
-      'REPORT',
-    );
-    expect(buildLiveReportMock).toHaveBeenCalledWith([{ window: 1 }]);
-
-    await vi.advanceTimersByTimeAsync(5000);
-    expect(streamLLMMock).toHaveBeenCalledTimes(2);
-  });
-
-  it('does not tick when the collector is empty', async () => {
-    getSettingsMock.mockReturnValue({ aiEnabled: true });
-    spawnMock.mockReturnValueOnce(fakeProc());
-    const sender = fakeSender();
-
-    await startLive({ windowSecs: 5, llmIntervalSecs: 5 }, sender);
-    await vi.advanceTimersByTimeAsync(5000);
-
-    expect(streamLLMMock).not.toHaveBeenCalled();
-  });
-
-  it('skips silently when entitlement lapses mid-capture', async () => {
-    getSettingsMock.mockReturnValue({ aiEnabled: true });
-    isEntitledMock.mockImplementation((f: string) => f === 'live-monitoring');
-    const proc = fakeProc();
-    spawnMock.mockReturnValueOnce(proc);
-    const sender = fakeSender();
-
-    await startLive({ windowSecs: 5, llmIntervalSecs: 5 }, sender);
-    proc.stdout.emit('data', Buffer.from(JSON.stringify({ window: 1 }) + '\n'));
-    await vi.advanceTimersByTimeAsync(5000);
-
-    expect(streamLLMMock).not.toHaveBeenCalled();
-  });
-
-  it('never schedules a timer when llmIntervalSecs is 0', async () => {
-    getSettingsMock.mockReturnValue({ aiEnabled: true });
-    const proc = fakeProc();
-    spawnMock.mockReturnValueOnce(proc);
-    const sender = fakeSender();
-
-    await startLive({ windowSecs: 5, llmIntervalSecs: 0 }, sender);
-    proc.stdout.emit('data', Buffer.from(JSON.stringify({ window: 1 }) + '\n'));
-    await vi.advanceTimersByTimeAsync(5000);
-
-    expect(streamLLMMock).not.toHaveBeenCalled();
-  });
-
-  it('never schedules a timer when aiEnabled is false', async () => {
-    getSettingsMock.mockReturnValue({ aiEnabled: false });
-    const proc = fakeProc();
-    spawnMock.mockReturnValueOnce(proc);
-    const sender = fakeSender();
-
-    await startLive({ windowSecs: 5, llmIntervalSecs: 5 }, sender);
-    proc.stdout.emit('data', Buffer.from(JSON.stringify({ window: 1 }) + '\n'));
-    await vi.advanceTimersByTimeAsync(5000);
-
-    expect(streamLLMMock).not.toHaveBeenCalled();
-  });
-
-  it('uses the engine loader\'s buildLiveSystemPrompt() for the tick system prompt (TD-004, #398)', async () => {
-    getSettingsMock.mockReturnValue({ aiEnabled: true });
-    buildLiveReportMock.mockReturnValue('REPORT');
-    streamLLMMock.mockResolvedValue(undefined);
-    const proc = fakeProc();
-    spawnMock.mockReturnValueOnce(proc);
-    const sender = fakeSender();
-
-    await startLive({ windowSecs: 5, llmIntervalSecs: 5 }, sender);
-    proc.stdout.emit('data', Buffer.from(JSON.stringify({ window: 1 }) + '\n'));
-    await vi.advanceTimersByTimeAsync(5000);
-
-    expect(streamLLMMock).toHaveBeenCalledWith(
-      sender,
-      'You are a professional audio engineer (fake live prompt, TD-004 #398).',
-      'REPORT',
-    );
-  });
-
-  it('skips the tick without crashing the interval when loadEnginePrompts throws', async () => {
-    getSettingsMock.mockReturnValue({ aiEnabled: true });
-    buildLiveReportMock.mockReturnValue('REPORT');
-    loadEnginePromptsMock.mockImplementation(() => {
-      throw new Error('audio-engine prompts not found');
-    });
-    const proc = fakeProc();
-    spawnMock.mockReturnValueOnce(proc);
-    const sender = fakeSender();
-
-    await startLive({ windowSecs: 5, llmIntervalSecs: 5 }, sender);
-    proc.stdout.emit('data', Buffer.from(JSON.stringify({ window: 1 }) + '\n'));
-    await vi.advanceTimersByTimeAsync(5000);
-
-    expect(streamLLMMock).not.toHaveBeenCalled();
-
-    // The interval itself must survive the throw — a later tick with a
-    // healthy loader still fires.
-    loadEnginePromptsMock.mockReturnValue({
-      buildLiveSystemPrompt: () => 'You are a professional audio engineer (fake live prompt, TD-004 #398).',
-    });
-    streamLLMMock.mockResolvedValue(undefined);
-    await vi.advanceTimersByTimeAsync(5000);
-
-    expect(streamLLMMock).toHaveBeenCalledTimes(1);
-  });
-
-  it('is cleared on stop', async () => {
-    getSettingsMock.mockReturnValue({ aiEnabled: true });
-    buildLiveReportMock.mockReturnValue('REPORT');
-    streamLLMMock.mockResolvedValue(undefined);
-    const proc = fakeProc();
-    proc.kill = vi.fn(() => { proc.emit('close', 0); });
-    spawnMock.mockReturnValueOnce(proc);
-    const sender = fakeSender();
-
-    await startLive({ windowSecs: 5, llmIntervalSecs: 5 }, sender);
-    proc.stdout.emit('data', Buffer.from(JSON.stringify({ window: 1 }) + '\n'));
-
-    await stopLive();
-    await vi.advanceTimersByTimeAsync(10000);
-
-    expect(streamLLMMock).not.toHaveBeenCalled();
   });
 });
 

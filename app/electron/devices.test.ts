@@ -16,7 +16,6 @@ vi.mock('electron', () => ({
   systemPreferences: { getMediaAccessStatus: () => 'granted' },
 }));
 vi.mock('./logger', () => ({ log: vi.fn(), logWarn: vi.fn(), logError: vi.fn() }));
-vi.mock('./llm', () => ({ streamNarrative: vi.fn() }));
 
 // The device-enumeration helper is the whole unit under test: it spawns stream.py
 // and shapes the result. Stub child_process so we drive the fake process's

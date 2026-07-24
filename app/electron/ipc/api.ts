@@ -19,13 +19,11 @@
 // stays a single `window.soundBuddy` object (see api.contract.test.ts for the
 // coverage/drift guards).
 //
-// A few payloads stay `Promise<unknown>` deliberately: `detectOllama` /
-// `testLlmProvider` (probe result shapes aren't obviously stable),
-// `analyzeFile`'s `data` and the streaming event callbacks (`onLiveEvent`,
-// `onPlaybackEvent`, `onAnalysisResult`, `triggerLlmAnalysis`, `onLlmDelta`'s
-// upstream) — sharpening those would drag audio-engine's node-only types or a
-// large heterogeneous event union into the renderer program. See the TD-011
-// PR for the full list.
+// A few payloads stay `Promise<unknown>` deliberately: `analyzeFile`'s `data`
+// and the streaming event callbacks (`onLiveEvent`, `onPlaybackEvent`,
+// `onAnalysisResult`) — sharpening those would drag audio-engine's node-only
+// types or a large heterogeneous event union into the renderer program. See
+// the TD-011 PR for the full list.
 
 export interface UpdateSettingsPatch {
   aiEnabled?: boolean;
@@ -52,12 +50,6 @@ export interface LlmConfigPatch {
   ollamaHost?: string;
   apiBaseUrl?: string;
   apiKey?: string;
-}
-
-export interface TestLlmProviderOpts {
-  provider: string;
-  apiKey?: string;
-  apiBaseUrl?: string;
 }
 
 export interface AnalyzeFileOpts {
@@ -328,20 +320,6 @@ export interface PublicLlmConfig {
   apiKeyProvider: string;
 }
 
-/** The `llm-save-config` handler's envelope (ipc/narrative.ts) — distinct from
- *  `saveLlmConfig()` itself, which returns a bare {@link PublicLlmConfig}. */
-export type SaveLlmConfigResult =
-  | { ok: true; config: PublicLlmConfig }
-  | { ok: false; reason: string };
-
-/** A model the settings screen can offer for a given provider (TD-004 slice 3,
- *  #427) — sourced from Pi's ModelRegistry via `listLlmModels`. */
-export interface LlmModelInfo {
-  provider: string;
-  id: string;
-  name: string;
-}
-
 // ─── Analysis / storage DTOs (AnalysisSummary moved from electron/storage.ts) ─
 
 /** Max characters for a handoff note (#267) — one line of context, not a journal. */
@@ -511,17 +489,6 @@ export interface RigApi {
   setActiveRig(id: string | null): Promise<AppSettings>;
 }
 
-export interface LlmApi {
-  getLlmConfig(): Promise<PublicLlmConfig>;
-  saveLlmConfig(patch: LlmConfigPatch): Promise<SaveLlmConfigResult>;
-  detectOllama(host?: string): Promise<unknown>;
-  testLlmProvider(opts: TestLlmProviderOpts): Promise<unknown>;
-  listLlmModels(): Promise<LlmModelInfo[]>;
-  triggerLlmAnalysis(data: unknown): Promise<unknown>;
-  onLlmDelta(cb: (text: string) => void): void;
-  onLlmDone(cb: () => void): void;
-}
-
 export interface LicenseApi {
   getLicense(): Promise<LicenseState>;
   activateLicense(key: string): Promise<LicenseState>;
@@ -613,7 +580,6 @@ export interface SoundBuddyApi
     SettingsApi,
     StorageApi,
     RigApi,
-    LlmApi,
     LicenseApi,
     AnalysisApi,
     LiveApi,

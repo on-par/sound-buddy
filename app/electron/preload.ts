@@ -8,8 +8,6 @@ import type {
   StartLiveOpts,
   StartPlaybackOpts,
   UpdateSettingsPatch,
-  LlmConfigPatch,
-  TestLlmProviderOpts,
   AnalysisSummaryInput,
   SetSummaryNoteInput,
   AnalysisProgress,
@@ -53,15 +51,6 @@ export function createBridge(ipc: IpcRendererLike) {
     // Storage location + disk usage (#91). Informational only — Sound Buddy caps
     // nothing; this reports where recordings live and how much disk they use.
     getStorageUsage: () => ipc.invoke('get-storage-usage'),
-
-    // AI provider settings (#76). getLlmConfig never returns key material — just
-    // a hasApiKey flag; saveLlmConfig takes the pasted key one way (to main).
-    getLlmConfig: () => ipc.invoke('llm-get-config'),
-    saveLlmConfig: (patch: LlmConfigPatch) => ipc.invoke('llm-save-config', patch),
-    detectOllama: (host?: string) => ipc.invoke('llm-detect-ollama', host),
-    testLlmProvider: (opts: TestLlmProviderOpts) =>
-      ipc.invoke('llm-test-provider', opts),
-    listLlmModels: () => ipc.invoke('llm-list-models'),
 
     // License (#54) — offline key validation + feature gating. Free/Pro state
     // drives the renderer's lock icons, badge, and grace banner.
@@ -172,16 +161,8 @@ export function createBridge(ipc: IpcRendererLike) {
     onPlaybackEvent: (cb: (data: unknown) => void) =>
       ipc.on('playback-event', (_event, d) => cb(d)),
 
-    triggerLlmAnalysis: (data: unknown) => ipc.invoke('trigger-llm-analysis', data),
-
     onLiveEvent: (cb: (data: unknown) => void) =>
       ipc.on('live-event', (_event, d) => cb(d)),
-
-    onLlmDelta: (cb: (text: string) => void) =>
-      ipc.on('llm-delta', (_event, t) => cb(t)),
-
-    onLlmDone: (cb: () => void) =>
-      ipc.on('llm-done', () => cb()),
 
     onAnalysisResult: (cb: (data: unknown) => void) =>
       ipc.on('analysis-result', (_event, d) => cb(d)),
