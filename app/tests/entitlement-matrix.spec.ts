@@ -99,7 +99,7 @@ async function assertRendererUngated(badgeText: string): Promise<void> {
   await expect(win.locator('#live-start-btn')).toBeVisible();
 }
 
-// Drives all four main-process gates to their reject boundary via
+// Drives all three main-process gates to their reject boundary via
 // window.soundBuddy — proves the gate holds even though the renderer's UI is
 // only asserted separately (a patched renderer can't bypass this half).
 async function assertMainProcessRejectsAllGates(): Promise<void> {
@@ -118,28 +118,13 @@ async function assertMainProcessRejectsAllGates(): Promise<void> {
   );
   expect(playback.success).toBe(false);
   expect(playback.error).toMatch(/Pro license/);
-
-  const narrativeText = await win.evaluate(
-    () =>
-      new Promise<string>((resolve) => {
-        const sb = (window as any).soundBuddy;
-        let collected = '';
-        sb.onLlmDelta((t: string) => {
-          collected += t;
-        });
-        sb.onLlmDone(() => resolve(collected));
-        sb.triggerLlmAnalysis({ mode: 'live', windows: [] });
-      }),
-  );
-  expect(narrativeText).toMatch(/🔒|Pro feature/);
 }
 
 // The one cleanly-testable privileged allow-path — saveRig, no subprocess or
-// provider needed. The other three Pro features (live-monitoring,
-// virtual-soundcheck, ai-narrative) spawn subprocesses/need a provider when
-// entitled, so their positive (entitled ⇒ allowed) case is covered by the
-// Vitest isEntitled truth table (electron/entitlement-matrix.test.ts), not
-// driven live here.
+// provider needed. The other two Pro features (live-monitoring,
+// virtual-soundcheck) spawn subprocesses when entitled, so their positive
+// (entitled ⇒ allowed) case is covered by the Vitest isEntitled truth table
+// (electron/entitlement-matrix.test.ts), not driven live here.
 async function assertMainProcessAllowsSaveRig(label: string): Promise<void> {
   const name = `Matrix Rig — ${label}`;
   await win.evaluate((rig) => (window as any).soundBuddy.saveRig(rig), testRig(name));
@@ -162,7 +147,7 @@ test.describe.serial('Entitlement matrix (#139) — non-Pro states', () => {
   });
 
   for (const state of NON_PRO_STATES) {
-    test(`${state.label}: renderer gated, all four main-process gates reject, zero network calls`, async () => {
+    test(`${state.label}: renderer gated, all three main-process gates reject, zero network calls`, async () => {
       await reseed(state.seed);
       await launch(state.env);
 

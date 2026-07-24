@@ -7,7 +7,6 @@
 // licensing, settings, and the AI narrative all at once):
 //   ipc/analysis.ts      — analyze-file; wraps @sound-buddy/audio-engine's
 //                          sox/ffprobe/spectrum/ebur128 parsers (#151)
-//   ipc/narrative.ts     — AI provider settings + streaming to the renderer
 //   ipc/live-capture.ts  — device enumeration, mic permission, start/stop-live
 //   ipc/playback.ts      — virtual-soundcheck playback (start/stop-playback)
 //   ipc/licensing.ts     — license get/activate/remove
@@ -19,7 +18,6 @@
 // (enumerateDevices).
 
 import { registerAnalysisHandlers } from './ipc/analysis';
-import { registerNarrativeHandlers } from './ipc/narrative';
 import { registerLiveCaptureHandlers } from './ipc/live-capture';
 import { registerPlaybackHandlers } from './ipc/playback';
 import { registerLicensingHandlers } from './ipc/licensing';
@@ -30,7 +28,6 @@ export { enumerateDevices, type DeviceListResult } from './ipc/live-capture';
 
 export function registerIpcHandlers(): void {
   registerAnalysisHandlers();
-  registerNarrativeHandlers();
   registerLiveCaptureHandlers();
   registerPlaybackHandlers();
   registerLicensingHandlers();

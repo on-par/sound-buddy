@@ -11,15 +11,11 @@ import { spawn, ChildProcess } from 'child_process';
 import * as path from 'path';
 import * as fs from 'fs';
 import { log, logWarn, logError } from '../logger';
-import { getSettings } from '../settings';
 import { isEntitled } from '../license';
 import { pythonBin, childEnv, STREAM_SCRIPT, defaultRecordDir, readNdjsonLines } from './shared';
-import { streamLLM, buildLiveReport } from './narrative';
-import { loadEnginePrompts } from './engine-loader';
 import type { StartLiveOpts } from './api';
 
 let liveProcess: ChildProcess | null = null;
-let liveIntervalTimer: NodeJS.Timeout | null = null;
 // Directory of the current/last multitrack session (Record mode) — per-strip
 // stems + session.json — so stop-live can hand it back to the renderer. null in
 // Monitor mode.
@@ -230,7 +226,6 @@ export function registerLiveCaptureHandlers(): void {
 
     liveProcess = py;
     const wc = event.sender;
-    const windowCollector: unknown[] = [];
 
     // stderr was previously piped but never read (lost errors + risked backpressure).
     py.stderr.on('data', (chunk: Buffer) => {
@@ -242,11 +237,6 @@ export function registerLiveCaptureHandlers(): void {
       // Forward to renderer
       if (!wc.isDestroyed()) {
         wc.send('live-event', data);
-      }
-      // Collect for LLM
-      if ('window' in data) {
-        windowCollector.push(data);
-        if (windowCollector.length > 10) windowCollector.shift();
       }
     });
 
@@ -269,40 +259,11 @@ export function registerLiveCaptureHandlers(): void {
       }
     });
 
-    // LLM interval timer
-    if (liveIntervalTimer) {
-      clearInterval(liveIntervalTimer);
-      liveIntervalTimer = null;
-    }
-
-    if (opts.llmIntervalSecs > 0 && getSettings().aiEnabled) {
-      liveIntervalTimer = setInterval(async () => {
-        if (windowCollector.length === 0 || wc.isDestroyed()) return;
-        // Entitlement can lapse mid-capture (grace period ending). Skip the
-        // tick silently — streamLLM's lock message is for explicit requests;
-        // repeating it every interval would spam the AI panel.
-        if (!isEntitled('ai-narrative')) return;
-        const snapshot = [...windowCollector];
-        const userMessage = buildLiveReport(snapshot);
-
-        try {
-          const systemPrompt = loadEnginePrompts().buildLiveSystemPrompt();
-          await streamLLM(wc, systemPrompt, userMessage);
-        } catch {
-          // non-fatal
-        }
-      }, opts.llmIntervalSecs * 1000);
-    }
-
     return { success: true };
   });
 
   // stop-live
   ipcMain.handle('stop-live', async () => {
-    if (liveIntervalTimer) {
-      clearInterval(liveIntervalTimer);
-      liveIntervalTimer = null;
-    }
     const proc = liveProcess;
     liveProcess = null;
     const sessionDirPath = liveSessionDir;

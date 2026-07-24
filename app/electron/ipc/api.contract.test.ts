@@ -17,7 +17,6 @@ import type {
   SettingsApi,
   StorageApi,
   RigApi,
-  LlmApi,
   LicenseApi,
   AnalysisApi,
   LiveApi,
@@ -33,7 +32,6 @@ import type {
   LicenseState,
   RevealDiagnosticsResult,
   SubmitFeedbackResult,
-  SaveLlmConfigResult,
   StopLiveResult,
   AnalyzeFileResult,
   SaveSummaryResult,
@@ -61,7 +59,6 @@ type SubInterfaceIntersection = AppInfoApi &
   SettingsApi &
   StorageApi &
   RigApi &
-  LlmApi &
   LicenseApi &
   AnalysisApi &
   LiveApi &
@@ -111,14 +108,6 @@ const storageUsageDrift: StorageUsage = {
   exists: true,
 };
 
-// llm-save-config (ipc/narrative.ts) wraps saveLlmConfig()'s PublicLlmConfig
-// in an { ok, config | reason } envelope — mirror both of its branches.
-const saveLlmConfigOkDrift: SaveLlmConfigResult = {
-  ok: true,
-  config: null as unknown as PublicLlmConfig,
-};
-const saveLlmConfigErrDrift: SaveLlmConfigResult = { ok: false, reason: 'unavailable' };
-
 // stop-live (ipc/live-capture.ts) always resolves { success: true, sessionDir }.
 const stopLiveDrift: StopLiveResult = { success: true, sessionDir: null };
 
@@ -144,7 +133,6 @@ describe('SoundBuddyApi composition (TD-011, #405)', () => {
     const settingsSlice: SettingsApi = api;
     const storageSlice: StorageApi = api;
     const rigSlice: RigApi = api;
-    const llmSlice: LlmApi = api;
     const licenseSlice: LicenseApi = api;
     const analysisSlice: AnalysisApi = api;
     const liveSlice: LiveApi = api;
@@ -160,7 +148,6 @@ describe('SoundBuddyApi composition (TD-011, #405)', () => {
       settingsSlice,
       storageSlice,
       rigSlice,
-      llmSlice,
       licenseSlice,
       analysisSlice,
       liveSlice,
@@ -172,7 +159,7 @@ describe('SoundBuddyApi composition (TD-011, #405)', () => {
       listenerSlice,
     ];
 
-    expect(slices).toHaveLength(14);
+    expect(slices).toHaveLength(13);
     for (const slice of slices) expect(slice).toBeTruthy();
   });
 
@@ -190,8 +177,6 @@ describe('SoundBuddyApi composition (TD-011, #405)', () => {
     expect(diagnosticsDrift).toBeNull();
     expect(submitFeedbackDrift).toBeNull();
     expect(storageUsageDrift.path).toBe('/tmp/sound-buddy');
-    expect(saveLlmConfigOkDrift.ok).toBe(true);
-    expect(saveLlmConfigErrDrift.ok).toBe(false);
     expect(stopLiveDrift.sessionDir).toBeNull();
     expect(analyzeFileOkDrift.success).toBe(true);
     expect(analyzeFileCancelledDrift.success).toBe(false);

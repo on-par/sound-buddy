@@ -13,7 +13,6 @@ vi.mock('electron', () => ({
   systemPreferences: { getMediaAccessStatus: () => 'granted' },
 }));
 vi.mock('./logger', () => ({ log: vi.fn(), logWarn: vi.fn(), logError: vi.fn() }));
-vi.mock('./llm', () => ({ streamNarrative: vi.fn() }));
 // Playback is Pro-gated (#54); these tests cover the spawn/stream mechanics,
 // so entitle everything. license.test.ts owns the gate itself.
 vi.mock('./license', () => ({

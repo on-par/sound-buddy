@@ -12,7 +12,6 @@ import type {
   UpdateStatus,
   UpdateDownloadStatus,
   AppSettings,
-  PublicLlmConfig,
   LicenseState,
   StorageUsage,
 } from '../../electron/ipc/api';
@@ -49,15 +48,6 @@ const DEFAULT_APP_SETTINGS: AppSettings = {
   shareChurchName: '',
   weeklyReminderEnabled: false,
   weeklyReminderServiceDay: 0,
-};
-
-const DEFAULT_PUBLIC_LLM_CONFIG: PublicLlmConfig = {
-  provider: '',
-  model: '',
-  ollamaHost: '',
-  apiBaseUrl: '',
-  hasApiKey: false,
-  apiKeyProvider: '',
 };
 
 const DEFAULT_LICENSE_STATE: LicenseState = { tier: 'free', status: 'none' };
@@ -101,11 +91,6 @@ export function createMockSoundBuddy(overrides: Partial<SoundBuddyApi> = {}): Mo
     toFileUrl: invoke('toFileUrl', ''),
     updateSettings: invoke('updateSettings', DEFAULT_APP_SETTINGS),
     getStorageUsage: invoke('getStorageUsage', DEFAULT_STORAGE_USAGE),
-    getLlmConfig: invoke('getLlmConfig', DEFAULT_PUBLIC_LLM_CONFIG),
-    saveLlmConfig: invoke('saveLlmConfig', { ok: true, config: DEFAULT_PUBLIC_LLM_CONFIG }),
-    detectOllama: invoke('detectOllama', undefined),
-    testLlmProvider: invoke('testLlmProvider', undefined),
-    listLlmModels: invoke('listLlmModels', []),
     getLicense: invoke('getLicense', DEFAULT_LICENSE_STATE),
     activateLicense: invoke('activateLicense', DEFAULT_LICENSE_STATE),
     removeLicense: invoke('removeLicense', DEFAULT_LICENSE_STATE),
@@ -142,10 +127,7 @@ export function createMockSoundBuddy(overrides: Partial<SoundBuddyApi> = {}): Mo
     stopPlayback: invoke('stopPlayback', { success: true }),
     readSession: invoke('readSession', undefined),
     onPlaybackEvent: listen<[unknown]>('onPlaybackEvent'),
-    triggerLlmAnalysis: invoke('triggerLlmAnalysis', undefined),
     onLiveEvent: listen<[unknown]>('onLiveEvent'),
-    onLlmDelta: listen<[string]>('onLlmDelta'),
-    onLlmDone: listen<[]>('onLlmDone'),
     onAnalysisResult: listen<[unknown]>('onAnalysisResult'),
     onMenuOpenFile: listen<[string]>('onMenuOpenFile'),
     checkForUpdates: invoke('checkForUpdates', undefined),
