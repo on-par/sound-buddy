@@ -15,8 +15,6 @@ import io
 import os
 import sys
 import json
-import wave
-import struct
 import shutil
 import tempfile
 import subprocess
@@ -181,25 +179,23 @@ class LoadAudio(unittest.TestCase):
     @unittest.skipUnless(HAVE_SOUNDFILE and HAVE_FFMPEG, "soundfile+ffmpeg not installed")
     def test_ffmpeg_fallback_decodes_m4a(self):
         # soundfile (libsndfile) can't read m4a/aac — this exercises the
-        # subprocess fallback's actual success path, not just its error path.
-        sr = 44100
-        tone, _ = _sine(freq=440.0, sr=sr, amplitude=0.5, seconds=0.5)
-        with tempfile.TemporaryDirectory() as tmp:
-            wav_path = os.path.join(tmp, "tone.wav")
-            m4a_path = os.path.join(tmp, "tone.m4a")
-            sf.write(wav_path, tone, sr)
-            subprocess.run(
-                ["ffmpeg", "-v", "error", "-y", "-i", wav_path, "-c:a", "aac", m4a_path],
-                capture_output=True, check=True,
-            )
-            self.assertRaises(Exception, sf.read, m4a_path)  # confirms the fallback is exercised
-            y, loaded_sr = spectrum._load_audio(m4a_path)
-        self.assertEqual(loaded_sr, sr)
+        # subprocess fallback's actual success (decode) path, not just its
+        # error path. Uses a committed fixture (not generated at test time,
+        # matching the project's other fixtures) so this only depends on
+        # ffmpeg's DECODE path — already exercised elsewhere in CI (ebur128
+        # fixture tests) — not its AAC ENCODE toolchain, which can be flaky
+        # on minimal apt-cached CI runners.
+        m4a_path = os.path.join(_HERE, "..", "test-fixtures", "tone.m4a")
+        self.assertRaises(Exception, sf.read, m4a_path)  # confirms the fallback is exercised
+        y, loaded_sr = spectrum._load_audio(m4a_path)
+        self.assertEqual(loaded_sr, 44100)
         self.assertEqual(y.dtype, np.float32)
-        # Lossy AAC re-encode: compare RMS level rather than sample-exact.
+        self.assertGreater(len(y), 0)
+        # 440 Hz tone at 0.5 amplitude: RMS ≈ 0.354 (0.5 / sqrt(2)). Lossy AAC
+        # re-encode, so compare RMS level rather than sample-exact.
         self.assertAlmostEqual(
             float(np.sqrt(np.mean(y.astype(np.float64) ** 2))),
-            float(np.sqrt(np.mean(tone.astype(np.float64) ** 2))),
+            0.5 / np.sqrt(2),
             delta=0.05,
         )
 
