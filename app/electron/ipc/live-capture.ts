@@ -222,7 +222,7 @@ export function registerLiveCaptureHandlers(): void {
       stdio: ['ignore', 'pipe', 'pipe'],
       env: childEnv(),
     });
-    log(`start-live: spawned stream.py (device="${opts.device ?? ''}" window=${opts.windowSecs}s interval=${opts.intervalSecs ?? 0.1}s mode=${opts.mode ?? 'monitor'} llmInterval=${opts.llmIntervalSecs}s)`);
+    log(`start-live: spawned stream.py (device="${opts.device ?? ''}" window=${opts.windowSecs}s interval=${opts.intervalSecs ?? 0.1}s mode=${opts.mode ?? 'monitor'})`);
 
     liveProcess = py;
     const wc = event.sender;
