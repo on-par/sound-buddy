@@ -2,6 +2,7 @@
 dist/
 dist-waitlist/
 dist-live/
+dist-live-parity/
 # generated types
 .astro/
 # dependencies
