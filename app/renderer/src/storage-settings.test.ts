@@ -22,6 +22,7 @@ const LOADED_SETTINGS: AppSettings = {
   shareChurchName: '',
   weeklyReminderEnabled: false,
   weeklyReminderServiceDay: 0,
+  liveEqPaneWidth: 360,
 };
 
 const NO_TOGGLES = {

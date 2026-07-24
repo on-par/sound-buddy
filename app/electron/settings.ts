@@ -47,6 +47,7 @@ const DEFAULTS: AppSettings = {
   shareChurchName: '',
   weeklyReminderEnabled: false,
   weeklyReminderServiceDay: 0,
+  liveEqPaneWidth: 360,
 };
 
 function settingsPath(): string {
@@ -92,6 +93,20 @@ function fileWeeklyReminderServiceDay(file: Partial<AppSettings>): number {
   return typeof v === 'number' && Number.isInteger(v) && v >= MIN_SERVICE_DAY && v <= MAX_SERVICE_DAY
     ? v
     : DEFAULTS.weeklyReminderServiceDay;
+}
+
+/**
+ * The liveEqPaneWidth value from a raw file view, defaulting to
+ * `DEFAULTS.liveEqPaneWidth` when the key is absent or corrupted (hand-edited
+ * to a non-number, non-finite, or non-positive value) — mirrors
+ * fileWeeklyReminderServiceDay's discipline (#668). Deliberately does NOT
+ * clamp to [EQ_PANE_MIN_W, EQ_PANE_MAX_W] — that range lives in the renderer
+ * (live-capture-panel.ts's clampEqPaneWidth) and is applied there; main only
+ * guards against a structurally invalid value reaching the renderer at all.
+ */
+function fileLiveEqPaneWidth(file: Partial<AppSettings>): number {
+  const v = file.liveEqPaneWidth;
+  return typeof v === 'number' && Number.isFinite(v) && v > 0 ? v : DEFAULTS.liveEqPaneWidth;
 }
 
 /**
@@ -155,6 +170,7 @@ function writeSettingsFile(file: Partial<AppSettings>): void {
     shareChurchName: typeof file.shareChurchName === 'string' ? file.shareChurchName : DEFAULTS.shareChurchName,
     weeklyReminderEnabled: file.weeklyReminderEnabled ?? DEFAULTS.weeklyReminderEnabled,
     weeklyReminderServiceDay: fileWeeklyReminderServiceDay(file),
+    liveEqPaneWidth: fileLiveEqPaneWidth(file),
   };
   try {
     fs.writeFileSync(settingsPath(), JSON.stringify(persisted, null, 2));
@@ -215,6 +231,10 @@ export function getSettings(): AppSettings {
     // explicit user action, same rationale as crashReportingEnabled.
     weeklyReminderEnabled: file.weeklyReminderEnabled ?? DEFAULTS.weeklyReminderEnabled,
     weeklyReminderServiceDay: fileWeeklyReminderServiceDay(file),
+    // No env layer — the pane width is a UI layout preference the renderer
+    // persists on resize, not a launch-time behavior toggle. Pure persisted
+    // data, like `rigs`.
+    liveEqPaneWidth: fileLiveEqPaneWidth(file),
   };
 }
 
