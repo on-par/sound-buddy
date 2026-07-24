@@ -1179,6 +1179,22 @@ function applyLiveGroupCollapsed() {
     if (btn) btn.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
   });
 }
+
+// Strip selection (#668): drives the docked EQ pane's "Selected" section.
+// Shared by the click handler (below) and the keydown handler (further down,
+// Enter/Space on a focused strip) so mouse and keyboard stay in sync — a
+// strip is `tabindex="0"`/`role="button"` (live-capture-panel.ts) precisely
+// so this isn't mouse-only.
+function selectStrip(idx) {
+  lcStore.getState().setSelectedChannel(idx);
+  document.querySelectorAll('#spectrum-body .live-ch').forEach((el) => {
+    const sel = parseInt(el.dataset.ch, 10) === idx;
+    el.classList.toggle('selected', sel);
+    if (sel) el.setAttribute('aria-current', 'true');
+    else el.removeAttribute('aria-current');
+  });
+  renderEqPane(currentEqPaneChannels());
+}
 document.getElementById('spectrum-body').addEventListener('click', (e) => {
   // Guided first-use setup dismiss (#294): retire the banner permanently
   // without requiring a first capture. renderChannelConfig() early-outs while
@@ -1258,15 +1274,7 @@ document.getElementById('spectrum-body').addEventListener('click', (e) => {
   // strip never also counts as a selection.
   const stripEl = e.target.closest('.live-ch');
   if (stripEl && !e.target.closest('button, select, [contenteditable], input')) {
-    const idx = parseInt(stripEl.dataset.ch, 10);
-    lcStore.getState().setSelectedChannel(idx);
-    document.querySelectorAll('#spectrum-body .live-ch').forEach((el) => {
-      const sel = parseInt(el.dataset.ch, 10) === idx;
-      el.classList.toggle('selected', sel);
-      if (sel) el.setAttribute('aria-current', 'true');
-      else el.removeAttribute('aria-current');
-    });
-    renderEqPane(currentEqPaneChannels());
+    selectStrip(parseInt(stripEl.dataset.ch, 10));
   }
 });
 
@@ -1342,6 +1350,20 @@ document.getElementById('spectrum-body').addEventListener('dragend', () => {
 // drag-and-drop. Re-renders (grouping change) then re-focuses the moved
 // handle, since the rebuild would otherwise drop keyboard focus.
 document.getElementById('spectrum-body').addEventListener('keydown', (e) => {
+  // Strip selection via keyboard (#668): Enter/Space while a strip itself
+  // (not one of its interactive children — e.target === stripEl only holds
+  // when the strip's own tabindex="0" wrapper has focus) has focus mirrors
+  // the click handler above. Not gated on liveRunning — selection is a
+  // renderer-side view state, unrelated to the capture lock (like
+  // measurement-source).
+  if (e.key === 'Enter' || e.key === ' ') {
+    const stripEl = e.target.closest('.live-ch');
+    if (stripEl && e.target === stripEl) {
+      e.preventDefault();
+      selectStrip(parseInt(stripEl.dataset.ch, 10));
+    }
+    return;
+  }
   if (liveRunning || (e.key !== 'ArrowUp' && e.key !== 'ArrowDown')) return;
   const dir = e.key === 'ArrowUp' ? -1 : 1;
   const groupHandle = e.target.closest('.live-group-drag');
@@ -2149,6 +2171,11 @@ function resetChannelConfig() {
   // Same reasoning applies to the focused input (#525) — it never dangles
   // across a device swap.
   focusedInputIndex = null;
+  // A stale lastLiveChannels from the previous device must not leak into the
+  // EQ pane (#668) on the next renderEqPane call — currentEqPaneChannels()
+  // falls back to it whenever it's non-null, so it has to be cleared here too,
+  // not just measurementSource/selectedChannel above.
+  lastLiveChannels = null;
   renderChannelConfig();
 }
 

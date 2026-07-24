@@ -173,7 +173,7 @@ export function veqChannelHTML(ch: LiveMeterChannel, idx: number, stripView: Str
   const dragHTML = grpOf !== -1
     ? `<button type="button" class="live-ch-drag" draggable="true" aria-label="Reorder track within group — drag, or press Arrow Up/Down" title="Drag to reorder track"${panel.liveRunning ? ' disabled' : ''}>⋮⋮</button>`
     : '';
-  return `<div class="live-ch${selected ? ' selected' : ''}${ch.idle ? ' idle' : ''}${stripView.groupCollapsed ? ' group-collapsed' : ''}" data-ch="${idx}"${selected ? ' aria-current="true"' : ''}>
+  return `<div class="live-ch${selected ? ' selected' : ''}${ch.idle ? ' idle' : ''}${stripView.groupCollapsed ? ' group-collapsed' : ''}" data-ch="${idx}"${selected ? ' aria-current="true"' : ''} tabindex="0" role="button" aria-label="Select ${escapeHtml(displayName)} to inspect in the EQ pane">
     <div class="live-ch-head">
       ${dragHTML}
       ${panel.liveMode === 'record'
@@ -252,18 +252,31 @@ export function eqPaneView(
   return { primary, secondary, secondaryIsPrimary };
 }
 
-// Shared by eqPaneHTML's two sections — same .veq/.veq-bars/.veq-labels shape
-// veqChannelHTML used to render per-strip, now rendered once per pane slot.
-function eqPaneSectionHTML(section: EqPaneSection, headerHTML: string, uid: string): string {
+// Shared, uid-independent per-section work (curve, loudest band, bars/labels
+// markup — none of it references a section's SVG uid) — computed once per
+// distinct channel and reused for both pane slots when the selected channel
+// is also the measurement source (secondaryIsPrimary), instead of redoing
+// the same curve/loudest-band/bars/labels work twice for identical input.
+interface EqPaneSectionParts { curve: SpectrumCurve; loudestIdx: number; bars: string; labels: string }
+function eqPaneSectionParts(section: EqPaneSection): EqPaneSectionParts {
   const curve = liveBandCurve(section.ch.bands);
   const loudestIdx = veqLoudestIdx(curve.db);
   const { bars, labels } = veqBarsAndLabelsHTML(VEQ_BANDS, curve.db, loudestIdx);
+  return { curve, loudestIdx, bars, labels };
+}
+
+// Shared by eqPaneHTML's two sections — same .veq/.veq-bars/.veq-labels shape
+// veqChannelHTML used to render per-strip, now rendered once per pane slot.
+// Only the arc SVG is regenerated per call: its uid ('pane-a'/'pane-b') has
+// to differ between the two slots so their element ids don't collide, even
+// when both slots show the same channel.
+function eqPaneSectionHTML(section: EqPaneSection, headerHTML: string, uid: string, parts: EqPaneSectionParts): string {
   return `<div class="eq-pane-header">${headerHTML}</div>
     <div class="veq">
-      <div class="veq-chart">${veqArcSVG(curve, section.ch.centroid, uid)}</div>
-      <div class="veq-bars" style="${VEQ_INSET}">${bars}</div>
+      <div class="veq-chart">${veqArcSVG(parts.curve, section.ch.centroid, uid)}</div>
+      <div class="veq-bars" style="${VEQ_INSET}">${parts.bars}</div>
     </div>
-    <div class="veq-labels" style="${VEQ_LABEL_MARGIN}">${labels}</div>`;
+    <div class="veq-labels" style="${VEQ_LABEL_MARGIN}">${parts.labels}</div>`;
 }
 
 // The pane body: "Room — <label>" always (defensive-only null check — the
@@ -271,14 +284,16 @@ function eqPaneSectionHTML(section: EqPaneSection, headerHTML: string, uid: stri
 // <label>" once a strip has been clicked, or an empty-state hint until then.
 export function eqPaneHTML(view: EqPaneView): string {
   let html = '';
-  if (view.primary) {
+  const primaryParts = view.primary ? eqPaneSectionParts(view.primary) : null;
+  if (view.primary && primaryParts) {
     const header = `Room — ${escapeHtml(view.primary.label)}`;
-    html += `<div class="eq-pane-section eq-pane-primary">${eqPaneSectionHTML(view.primary, header, 'pane-a')}</div>`;
+    html += `<div class="eq-pane-section eq-pane-primary">${eqPaneSectionHTML(view.primary, header, 'pane-a', primaryParts)}</div>`;
   }
   if (view.secondary) {
     const suffix = view.secondaryIsPrimary ? ' · Measurement source' : '';
     const header = `Selected — ${escapeHtml(view.secondary.label)}${suffix}`;
-    html += `<div class="eq-pane-section eq-pane-secondary">${eqPaneSectionHTML(view.secondary, header, 'pane-b')}</div>`;
+    const secondaryParts = view.secondaryIsPrimary && primaryParts ? primaryParts : eqPaneSectionParts(view.secondary);
+    html += `<div class="eq-pane-section eq-pane-secondary">${eqPaneSectionHTML(view.secondary, header, 'pane-b', secondaryParts)}</div>`;
   } else {
     html += `<div class="eq-pane-section eq-pane-secondary eq-pane-empty">`
       + `<div class="eq-pane-header">Selected</div>`
@@ -310,19 +325,28 @@ export interface EqPanePatchPlan {
 
 // Per-tick "what changed" for the pane's two arcs — mirrors
 // patchLiveChannelPlan's curve/loudestIdx/arc shape (below), just computed
-// for the pane's up-to-two sections instead of once per strip.
+// for the pane's up-to-two sections instead of once per strip. curve/
+// loudestIdx are reused between slots when secondaryIsPrimary (same channel)
+// — only the uid-scoped arc SVG has to be regenerated per slot.
 export function eqPanePatchPlan(view: EqPaneView): EqPanePatchPlan {
-  function planFor(section: EqPaneSection, uid: string): EqPaneSectionPatch {
+  function curveFor(section: EqPaneSection): { curve: SpectrumCurve; loudestIdx: number } {
     const curve = liveBandCurve(section.ch.bands);
+    return { curve, loudestIdx: veqLoudestIdx(curve.db) };
+  }
+  function planFor(section: EqPaneSection, uid: string, parts: { curve: SpectrumCurve; loudestIdx: number }): EqPaneSectionPatch {
     return {
-      curve,
-      loudestIdx: veqLoudestIdx(curve.db),
-      arc: veqArcSVG(curve, section.ch.centroid, uid, true),
+      curve: parts.curve,
+      loudestIdx: parts.loudestIdx,
+      arc: veqArcSVG(parts.curve, section.ch.centroid, uid, true),
     };
   }
+  const primaryParts = view.primary ? curveFor(view.primary) : null;
+  const secondaryParts = view.secondary
+    ? (view.secondaryIsPrimary && primaryParts ? primaryParts : curveFor(view.secondary))
+    : null;
   return {
-    primary: view.primary ? planFor(view.primary, 'pane-a') : null,
-    secondary: view.secondary ? planFor(view.secondary, 'pane-b') : null,
+    primary: view.primary && primaryParts ? planFor(view.primary, 'pane-a', primaryParts) : null,
+    secondary: view.secondary && secondaryParts ? planFor(view.secondary, 'pane-b', secondaryParts) : null,
   };
 }
 

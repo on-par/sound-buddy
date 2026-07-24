@@ -315,6 +315,14 @@ describe('veqChannelHTML', () => {
     expect(wrapper).not.toContain('aria-current');
   });
 
+  it('is keyboard-focusable so strip selection (#668) is not mouse-only', () => {
+    const html = veqChannelHTML(LIVE_CHANNELS[0], 0, stripView(), panelView());
+    const wrapper = html.match(/<div class="live-ch[^"]*"[^>]*>/)?.[0] ?? '';
+    expect(wrapper).toContain('tabindex="0"');
+    expect(wrapper).toContain('role="button"');
+    expect(wrapper).toContain('aria-label="Select');
+  });
+
   it('renders a group select with the strip\'s group selected when groups exist, omits it otherwise', () => {
     const groups: ChannelGroup[] = [{ name: 'Drums', members: [0] }, { name: 'Vox', members: [] }];
     const html = veqChannelHTML(LIVE_CHANNELS[0], 0, stripView({ groupIndex: 0 }), panelView({ groups }));
