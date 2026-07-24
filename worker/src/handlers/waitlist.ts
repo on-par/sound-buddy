@@ -12,9 +12,11 @@ import type { Env } from "../index";
 const MAX_BODY_BYTES = 4 * 1024; // waitlist bodies are tiny — email + short name
 const RATE_LIMIT_WINDOW_SECONDS = 60;
 const RATE_LIMIT_MAX_REQUESTS = 10; // per client IP per window — lower than ingest's 30, this is a single small form
-const MAX_EMAIL_LENGTH = 254;
+export const MAX_EMAIL_LENGTH = 254;
 const MAX_CHURCH_NAME_LENGTH = 100;
-const EMAIL_PATTERN = /^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$/; // same pattern as ingest.ts's CONTACT_EMAIL_PATTERN
+// same pattern as ingest.ts's CONTACT_EMAIL_PATTERN; exported so waitlist-invite.ts
+// (#642) reuses it rather than duplicating.
+export const EMAIL_PATTERN = /^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$/;
 const ALLOWED_FIELDS = new Set(["email", "churchName"]);
 
 export interface WaitlistSignup {
@@ -35,6 +37,8 @@ export interface StoredWaitlistSignup {
   signedUpAt: string;
   ip: string;
   status: WaitlistStatus;
+  /** ISO timestamp stamped when the contact transitions to `invited` (#642). */
+  invitedAt?: string;
 }
 
 /** Injectable seam so tests never depend on the wall clock or the network. */
