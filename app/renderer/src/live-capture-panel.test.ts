@@ -2,9 +2,13 @@
 // Licensed under the Sound Buddy Desktop Application License (app/LICENSE).
 
 import { describe, it, expect } from 'vitest';
+import * as fs from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { BAND_META } from './spectrum-display';
 import {
   LIVE_BAND_KEYS,
   VEQ_FREQS,
+  VEQ_BANDS,
   DEFAULT_DEVICE_CHANNELS,
   deviceOptionLabel,
   deviceListView,
@@ -39,6 +43,8 @@ import {
   type LiveEvent,
   type WindowData,
 } from './live-capture-panel';
+
+const css = fs.readFileSync(fileURLToPath(new URL('./styles/app.css', import.meta.url)), 'utf8');
 
 const devices: LiveDevice[] = [
   { index: 0, name: 'Scarlett 18i20', channels: 18, default_sr: 48000 },
@@ -198,12 +204,27 @@ describe('liveBandCurve', () => {
   });
 });
 
+describe('VEQ_BANDS short labels (#666)', () => {
+  it('carries BAND_META.short through for all 7 bands', () => {
+    VEQ_BANDS.forEach((b, i) => expect(b.short).toBe(BAND_META[i].short));
+  });
+});
+
 describe('veqChannelHTML', () => {
   it('renders one source select (no leg selects) for a mono strip', () => {
     const html = veqChannelHTML(LIVE_CHANNELS[0], 0, stripView({ strip: { kind: 'mono', a: 2, b: 3 } }), panelView());
     expect((html.match(/live-ch-src/g) || []).length).toBe(1);
     expect(html).not.toContain('live-ch-src leg');
     expect(html).toContain('data-ch="0"');
+  });
+
+  it('renders 7 single-row .veq-label spans with nested full/abbr children (#666)', () => {
+    const html = veqChannelHTML(LIVE_CHANNELS[0], 0, stripView(), panelView());
+    expect((html.match(/class="veq-label( loud)?"/g) || []).length).toBe(7);
+    expect((html.match(/veq-label-full/g) || []).length).toBe(7);
+    expect((html.match(/veq-label-abbr/g) || []).length).toBe(7);
+    expect(html).toContain('<span class="veq-label-full">Sub Bass</span>');
+    expect(html).toContain('<span class="veq-label-abbr">Sub</span>');
   });
 
   it('defaults the source select to channel 0 when the strip is unconfigured', () => {
@@ -1007,5 +1028,23 @@ describe('patchLiveChannelPlan', () => {
     const plan = patchLiveChannelPlan(LIVE_CHANNELS[0], 0, sv(), false);
     expect(plan.arc).toBeTruthy();
     expect(typeof plan.arc).toBe('object');
+  });
+});
+
+describe('app.css: single-row EQ band labels (#666)', () => {
+  it('no longer drops alternating labels to a second row', () => {
+    expect(css).not.toMatch(/\.veq-label:nth-child/);
+  });
+
+  it('makes .veq-labels a size container for the collide-aware breakpoint', () => {
+    expect(css).toMatch(/\.veq-labels\s*\{[^}]*container-type:\s*inline-size/);
+  });
+
+  it('swaps full labels for short forms below the derived width threshold', () => {
+    const containerBlock = css.match(/@container[^{]*\{[^]*?\.veq-label-abbr[^]*?\}\s*\}/);
+    expect(containerBlock).not.toBeNull();
+    const block = containerBlock ? containerBlock[0] : '';
+    expect(block).toContain('.veq-label-full { display:none; }');
+    expect(block).toContain('.veq-label-abbr { display:inline; }');
   });
 });

@@ -44,6 +44,7 @@ export interface CurveComparison {
 interface BandMeta {
   key: BandKey;
   label: string;
+  short: string;
   range: string;
   color: string;
   lo: number;
@@ -53,6 +54,7 @@ interface BandMeta {
 export interface BarColumn {
   key: string;
   label: string;
+  short?: string;
   color: string;
   range?: string;
   left: string;
@@ -100,13 +102,13 @@ export const GRID = [-60, -48, -36, -24, -12, -6];
 // DB_MIN..DB_MAX window not already covered by GRID) (#480).
 export const GRID_MINOR = [-66, -54, -42, -30, -18];
 export const BAND_META: BandMeta[] = [
-  { key: 'subBass',    label: 'Sub Bass',   range: '20–60 Hz',    color: 'var(--band-sub)',        lo: 20,   hi: 60    },
-  { key: 'bass',       label: 'Bass',        range: '60–250 Hz',   color: 'var(--band-bass)',       lo: 60,   hi: 250   },
-  { key: 'lowMid',     label: 'Low Mid',     range: '250–500 Hz',  color: 'var(--band-low-mid)',    lo: 250,  hi: 500   },
-  { key: 'mid',        label: 'Mid',         range: '500 Hz–2 kHz',color: 'var(--band-mid)',        lo: 500,  hi: 2000  },
-  { key: 'highMid',    label: 'High Mid',    range: '2–4 kHz',     color: 'var(--band-high-mid)',   lo: 2000, hi: 4000  },
-  { key: 'presence',   label: 'Presence',    range: '4–6 kHz',     color: 'var(--band-presence)',   lo: 4000, hi: 6000  },
-  { key: 'brilliance', label: 'Brilliance',  range: '6–20 kHz',    color: 'var(--band-brilliance)', lo: 6000, hi: 20000 },
+  { key: 'subBass',    label: 'Sub Bass',   short: 'Sub',    range: '20–60 Hz',    color: 'var(--band-sub)',        lo: 20,   hi: 60    },
+  { key: 'bass',       label: 'Bass',        short: 'Bass',   range: '60–250 Hz',   color: 'var(--band-bass)',       lo: 60,   hi: 250   },
+  { key: 'lowMid',     label: 'Low Mid',     short: 'Lo Mid', range: '250–500 Hz',  color: 'var(--band-low-mid)',    lo: 250,  hi: 500   },
+  { key: 'mid',        label: 'Mid',         short: 'Mid',    range: '500 Hz–2 kHz',color: 'var(--band-mid)',        lo: 500,  hi: 2000  },
+  { key: 'highMid',    label: 'High Mid',    short: 'Hi Mid', range: '2–4 kHz',     color: 'var(--band-high-mid)',   lo: 2000, hi: 4000  },
+  { key: 'presence',   label: 'Presence',    short: 'Pres',   range: '4–6 kHz',     color: 'var(--band-presence)',   lo: 4000, hi: 6000  },
+  { key: 'brilliance', label: 'Brilliance',  short: 'Brill',  range: '6–20 kHz',    color: 'var(--band-brilliance)', lo: 6000, hi: 20000 },
 ];
 
 export function toPct(db: number): number {
@@ -324,7 +326,7 @@ export function spectrumLegendHTML(profile: IdealProfileLike, cmp: CurveComparis
 export const EQ_GAP = 1.4; // % inset per side, mirrors #30's VEQ_GAP
 export const EQ_COLS: BarColumn[] = BAND_META.map((b, i) => {
   const w = 100 / BAND_META.length;
-  return { key: b.key, label: b.label, color: b.color, range: b.range, left: (i * w + EQ_GAP).toFixed(3), width: (w - 2 * EQ_GAP).toFixed(3), center: (i * w + w / 2).toFixed(3) };
+  return { key: b.key, label: b.label, short: b.short, color: b.color, range: b.range, left: (i * w + EQ_GAP).toFixed(3), width: (w - 2 * EQ_GAP).toFixed(3), center: (i * w + w / 2).toFixed(3) };
 });
 
 // Bucket a fine {freqs, db} curve into 7 BAND_META band levels (mean dB of
@@ -360,7 +362,10 @@ export function veqBarsAndLabelsHTML(cols: BarColumn[], dbArray: number[], loude
       + `<div class="veq-val${v.hot ? ' hot' : ''}${v.dim ? ' dim' : ''}" style="left:${b.center}%;bottom:${veqValBottom(v.pct)}%">${v.val}</div>`;
   }).join('');
   const labels = cols.map((b, i) =>
-    `<span class="veq-label${i === loudestIdx ? ' loud' : ''}" style="left:${b.center}%">${b.label}</span>`).join('');
+    `<span class="veq-label${i === loudestIdx ? ' loud' : ''}" style="left:${b.center}%">`
+    + `<span class="veq-label-full">${b.label}</span>`
+    + `<span class="veq-label-abbr">${b.short ?? b.label}</span>`
+    + `</span>`).join('');
   return { bars, labels };
 }
 // Dashed target line connecting each band's target level at its column

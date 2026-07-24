@@ -59,8 +59,8 @@ test.describe('Sound Buddy E2E — report card spectrum', () => {
 
     // Band-name labels replace the old frequency-decade axis, low → high.
     await expect(window.locator('#spectrum-chart .veq-label')).toHaveCount(7);
-    await expect(window.locator('#spectrum-chart .veq-label').first()).toHaveText('Sub Bass');
-    await expect(window.locator('#spectrum-chart .veq-label').last()).toHaveText('Brilliance');
+    await expect(window.locator('#spectrum-chart .veq-label .veq-label-full').first()).toHaveText('Sub Bass');
+    await expect(window.locator('#spectrum-chart .veq-label .veq-label-full').last()).toHaveText('Brilliance');
 
     // The old horizontal band meters are no longer the file-view spectrum.
     await expect(window.locator('#spectrum-body .bm-track')).toHaveCount(0);
