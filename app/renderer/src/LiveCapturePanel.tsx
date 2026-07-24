@@ -72,7 +72,9 @@ export default function LiveCapturePanel({
       return {
         strip,
         displayName: ch.name ?? `Ch ${idx + 1}`,
-        collapsed: false,
+        // No "selected channel" concept in this not-yet-mounted component (see
+        // header comment) — every strip renders as unselected (#668).
+        selected: false,
         // Mirrors window.armState.isArmed: a strip is armed unless explicitly
         // disarmed, so config with no `armed` field (e.g. loaded via
         // clampChannelConfig) still reads as armed.

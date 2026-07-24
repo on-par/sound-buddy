@@ -2,15 +2,15 @@
 // Licensed under the Sound Buddy Desktop Application License (app/LICENSE).
 
 // Single source of truth for the Live-capture center pane (TD-001 slice 5,
-// #423): devices, capture state, channel config/groups/collapse, and the
-// rolling live-window buffer that feeds the report card. Follows the factory
-// pattern used throughout these stores — an injected API so side effects
-// stay testable — and reads the pure helper modules (arm-state.js, group-state.js,
-// collapse-state.js, rig-kind.js) off `window` via typed accessors
-// (ReportCardIsland.tsx's pattern) rather than importing them: they're classic
-// scripts loaded once by App.tsx's boot sequence, and a second ES import would
-// risk a second, divergent copy of their (stateless, but singleton-loaded)
-// module.
+// #423): devices, capture state, channel config/groups, the selected-channel
+// and measurement-source EQ-pane slots (#668), and the rolling live-window
+// buffer that feeds the report card. Follows the factory pattern used
+// throughout these stores — an injected API so side effects stay testable —
+// and reads the pure helper modules (arm-state.js, group-state.js,
+// rig-kind.js) off `window` via typed accessors (ReportCardIsland.tsx's
+// pattern) rather than importing them: they're classic scripts loaded once by
+// App.tsx's boot sequence, and a second ES import would risk a second,
+// divergent copy of their (stateless, but singleton-loaded) module.
 
 import { create } from 'zustand';
 import { getSoundBuddy } from '../useElectron';
@@ -103,12 +103,6 @@ interface GroupStateApi {
   setGroupCollapsed(groups: ChannelGroup[], g: number, collapsed: boolean): ChannelGroup[];
   isGroupCollapsed(groups: ChannelGroup[], g: number): boolean;
 }
-interface CollapseStateApi {
-  isCollapsed(set: ReadonlySet<number>, id: number): boolean;
-  toggle(set: ReadonlySet<number>, id: number): Set<number>;
-  collapseAll(ids: number[]): Set<number>;
-  expandAll(): Set<number>;
-}
 interface RigKindApi {
   switchKind(strip: StripConfig, kind: string, maxChannels: number): StripConfig;
 }
@@ -120,9 +114,6 @@ function getChannelLabels(): ChannelLabelsApi {
 }
 function getGroupState(): GroupStateApi {
   return (window as unknown as { groupState: GroupStateApi }).groupState;
-}
-function getCollapseState(): CollapseStateApi {
-  return (window as unknown as { collapseState: CollapseStateApi }).collapseState;
 }
 function getRigKind(): RigKindApi {
   return (window as unknown as { rigKind: RigKindApi }).rigKind;
@@ -170,7 +161,6 @@ export interface LiveCaptureState {
 
   channelConfig: StripConfig[];
   channelGroups: ChannelGroup[];
-  collapsed: ReadonlySet<number>;
 
   liveMode: 'monitor' | 'record';
   recordDir: string;
@@ -195,6 +185,12 @@ export interface LiveCaptureState {
   // track (default), today's channels[0] behavior.
   measurementSource: number | null;
 
+  // Strip index an engineer last clicked to inspect in the "Selected" EQ pane
+  // slot (#668); null = nothing selected yet (the pane shows its empty-state
+  // hint). Independent of measurementSource — a strip can be selected without
+  // becoming the room's measurement source.
+  selectedChannel: number | null;
+
   loadDevices(): Promise<void>;
   selectDevice(value: string): void;
   setLiveMode(mode: 'monitor' | 'record'): void;
@@ -210,13 +206,10 @@ export interface LiveCaptureState {
   addGroup(name: string): void;
   renameGroup(group: number, name: string): void;
   removeGroup(group: number): void;
-  toggleCollapse(idx: number): void;
   setGroupCollapsed(group: number, collapsed: boolean): void;
   toggleGroupCollapse(group: number): void;
   moveGroup(from: number, to: number): void;
   moveChannelInGroup(group: number, fromPos: number, toPos: number): void;
-  collapseAll(stripCount: number): void;
-  expandAll(): void;
   toggleArm(idx: number): void;
   setAllArmed(armed: boolean): void;
 
@@ -228,6 +221,7 @@ export interface LiveCaptureState {
   setRingout(patch: Partial<RingoutState>): void;
 
   setMeasurementSource(source: number | null): void;
+  setSelectedChannel(source: number | null): void;
 }
 
 export function createLiveCaptureStore(getApi: () => LiveCaptureApi) {
@@ -252,7 +246,6 @@ export function createLiveCaptureStore(getApi: () => LiveCaptureApi) {
 
     channelConfig: [],
     channelGroups: [],
-    collapsed: new Set<number>(),
 
     liveMode: 'monitor',
     recordDir: '',
@@ -270,6 +263,7 @@ export function createLiveCaptureStore(getApi: () => LiveCaptureApi) {
     ringout: { stepIndex: 0, cut: null },
 
     measurementSource: null,
+    selectedChannel: null,
 
     async loadDevices() {
       const result = (await getApi().listDevices()) as ListDevicesResult;
@@ -283,6 +277,7 @@ export function createLiveCaptureStore(getApi: () => LiveCaptureApi) {
           channelConfig: withSavedLabels(defaultChannelConfig(n), deviceName),
           channelGroups: savedGroupsFor(deviceName),
           measurementSource: null,
+          selectedChannel: null,
         });
       }
     },
@@ -296,6 +291,7 @@ export function createLiveCaptureStore(getApi: () => LiveCaptureApi) {
         channelConfig: withSavedLabels(defaultChannelConfig(n), deviceName),
         channelGroups: savedGroupsFor(deviceName),
         measurementSource: null,
+        selectedChannel: null,
       });
     },
 
@@ -329,6 +325,9 @@ export function createLiveCaptureStore(getApi: () => LiveCaptureApi) {
         channelConfig: state.channelConfig.filter((_, i) => i !== idx),
         channelGroups: getGroupState().pruneStrip(state.channelGroups, idx),
         measurementSource: measurementSourceAfterRemove(state.measurementSource, idx),
+        // Same reindex contract as measurementSource (#668): the removed
+        // strip's own selection resets to null, strips above it shift down.
+        selectedChannel: measurementSourceAfterRemove(state.selectedChannel, idx),
       });
       persistGroups(get());
     },
@@ -387,10 +386,6 @@ export function createLiveCaptureStore(getApi: () => LiveCaptureApi) {
       persistGroups(get());
     },
 
-    toggleCollapse(idx) {
-      set((state) => ({ collapsed: getCollapseState().toggle(state.collapsed, idx) }));
-    },
-
     // Group-level collapse (#483): writes the group's own `collapsed` flag
     // through group-state.js — it no longer folds every member's per-strip
     // `collapsed` set (that was #41's original behavior, replaced here).
@@ -414,14 +409,6 @@ export function createLiveCaptureStore(getApi: () => LiveCaptureApi) {
     moveChannelInGroup(group, fromPos, toPos) {
       set((state) => ({ channelGroups: getGroupState().moveMember(state.channelGroups, group, fromPos, toPos) }));
       persistGroups(get());
-    },
-
-    collapseAll(stripCount) {
-      set({ collapsed: getCollapseState().collapseAll(Array.from({ length: stripCount }, (_, i) => i)) });
-    },
-
-    expandAll() {
-      set({ collapsed: getCollapseState().expandAll() });
     },
 
     toggleArm(idx) {
@@ -516,6 +503,14 @@ export function createLiveCaptureStore(getApi: () => LiveCaptureApi) {
     // wrongly clamp runtime selections to null).
     setMeasurementSource(source) {
       set({ measurementSource: source });
+    },
+
+    // Stores the value as given — normalization happens at call boundaries
+    // with an explicit strip count, same rationale as setMeasurementSource
+    // above (the runtime's real strip list is inline-app.js's own
+    // channelConfig during the TD-001 migration, not necessarily this store's).
+    setSelectedChannel(source) {
+      set({ selectedChannel: source });
     },
   }));
 }

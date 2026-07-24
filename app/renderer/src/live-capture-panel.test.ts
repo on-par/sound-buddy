@@ -4,12 +4,22 @@
 import { describe, it, expect } from 'vitest';
 import * as fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { BAND_META } from './spectrum-display';
+import { BAND_META, DB_MIN, DB_MAX } from './spectrum-display';
 import {
   LIVE_BAND_KEYS,
   VEQ_FREQS,
   VEQ_BANDS,
   DEFAULT_DEVICE_CHANNELS,
+  EQ_PANE_MIN_W,
+  EQ_PANE_MAX_W,
+  EQ_PANE_DEFAULT_W,
+  EQ_PANE_RESIZE_STEP,
+  clampEqPaneWidth,
+  levelPercent,
+  eqPaneView,
+  eqPaneHTML,
+  eqPaneSignature,
+  eqPanePatchPlan,
   deviceOptionLabel,
   deviceListView,
   deviceChannelCount,
@@ -55,7 +65,7 @@ function stripView(overrides: Partial<StripView> = {}): StripView {
   return {
     strip: { kind: 'mono', a: 0, b: 1 },
     displayName: 'Ch 1',
-    collapsed: false,
+    selected: false,
     armed: false,
     groupIndex: -1,
     groupCollapsed: false,
@@ -218,13 +228,29 @@ describe('veqChannelHTML', () => {
     expect(html).toContain('data-ch="0"');
   });
 
-  it('renders 7 single-row .veq-label spans with nested full/abbr children (#666)', () => {
+  it('no longer renders a per-strip chart — that moved to the shared EQ pane (#668)', () => {
     const html = veqChannelHTML(LIVE_CHANNELS[0], 0, stripView(), panelView());
-    expect((html.match(/class="veq-label( loud)?"/g) || []).length).toBe(7);
-    expect((html.match(/veq-label-full/g) || []).length).toBe(7);
-    expect((html.match(/veq-label-abbr/g) || []).length).toBe(7);
-    expect(html).toContain('<span class="veq-label-full">Sub Bass</span>');
-    expect(html).toContain('<span class="veq-label-abbr">Sub</span>');
+    expect(html).not.toContain('class="veq"');
+    expect(html).not.toContain('veq-chart');
+    expect(html).not.toContain('veq-bars');
+    expect(html).not.toContain('veq-labels');
+  });
+
+  it('no longer renders a fold/collapse button (#668 — strips are no longer collapsible)', () => {
+    const html = veqChannelHTML(LIVE_CHANNELS[0], 0, stripView(), panelView());
+    expect(html).not.toContain('live-ch-fold');
+    expect(html).not.toContain('Collapse or expand strip');
+  });
+
+  it('renders an inline level-fill bar sized from levelPercent(rms, idle)', () => {
+    const html = veqChannelHTML(LIVE_CHANNELS[0], 0, stripView(), panelView());
+    expect(html).toContain('<span class="live-ch-level" aria-hidden="true">');
+    expect(html).toContain(`<span class="live-ch-level-fill" style="width:${levelPercent(LIVE_CHANNELS[0].rms, false)}%"></span>`);
+  });
+
+  it('renders a 0% level-fill for an idle channel', () => {
+    const html = veqChannelHTML({ ...LIVE_CHANNELS[0], idle: true }, 0, stripView(), panelView());
+    expect(html).toContain('<span class="live-ch-level-fill" style="width:0%"></span>');
   });
 
   it('defaults the source select to channel 0 when the strip is unconfigured', () => {
@@ -276,10 +302,17 @@ describe('veqChannelHTML', () => {
     expect(live).toContain('RMS -18.0 · Peak -6.0 dBFS');
   });
 
-  it('adds the collapsed class and aria-expanded=false when collapsed', () => {
-    const html = veqChannelHTML(LIVE_CHANNELS[0], 0, stripView({ collapsed: true }), panelView());
-    expect(html).toContain('live-ch collapsed');
-    expect(html).toContain('aria-expanded="false"');
+  it('adds the selected class and aria-current="true" when selected', () => {
+    const html = veqChannelHTML(LIVE_CHANNELS[0], 0, stripView({ selected: true }), panelView());
+    expect(html).toContain('live-ch selected');
+    expect(html).toContain('aria-current="true"');
+  });
+
+  it('omits the selected class and aria-current entirely when not selected', () => {
+    const html = veqChannelHTML(LIVE_CHANNELS[0], 0, stripView({ selected: false }), panelView());
+    const wrapper = html.match(/<div class="live-ch[^"]*"[^>]*>/)?.[0] ?? '';
+    expect(wrapper).not.toContain('selected');
+    expect(wrapper).not.toContain('aria-current');
   });
 
   it('renders a group select with the strip\'s group selected when groups exist, omits it otherwise', () => {
@@ -985,12 +1018,12 @@ describe('liveSessionReportCardSource', () => {
 
 describe('patchLiveChannelPlan', () => {
   function sv(overrides: Partial<StripView> = {}): StripView {
-    return { strip: { kind: 'mono', a: 0, b: 1 }, displayName: 'Ch 1', collapsed: false, armed: false, groupIndex: -1, groupCollapsed: false, instrumentProfileId: 'generic', instrumentAuto: true, ...overrides };
+    return { strip: { kind: 'mono', a: 0, b: 1 }, displayName: 'Ch 1', selected: false, armed: false, groupIndex: -1, groupCollapsed: false, instrumentProfileId: 'generic', instrumentAuto: true, ...overrides };
   }
 
-  it('carries collapsed/displayName/meta through from the strip view and channel', () => {
-    const plan = patchLiveChannelPlan(LIVE_CHANNELS[0], 0, sv({ displayName: 'Vocals', collapsed: true }), false);
-    expect(plan.collapsed).toBe(true);
+  it('carries selected/displayName/meta through from the strip view and channel', () => {
+    const plan = patchLiveChannelPlan(LIVE_CHANNELS[0], 0, sv({ displayName: 'Vocals', selected: true }), false);
+    expect(plan.selected).toBe(true);
     expect(plan.displayName).toBe('Vocals');
     expect(plan.idle).toBe(false);
     expect(plan.meta).toBe('RMS -18.0 · Peak -6.0 dBFS');
@@ -1013,21 +1046,290 @@ describe('patchLiveChannelPlan', () => {
     expect(plan.removeDisabled).toBe(true);
   });
 
-  it('floors non-finite bands to -120 in the derived curve', () => {
-    const plan = patchLiveChannelPlan({ ...LIVE_CHANNELS[0], bands: { ...LIVE_CHANNELS[0].bands, sub_bass: NaN } }, 0, sv(), false);
-    expect(plan.curve.db[0]).toBe(-120);
+  it('is false by default when the strip view is not selected', () => {
+    const plan = patchLiveChannelPlan(LIVE_CHANNELS[0], 0, sv({ selected: false }), false);
+    expect(plan.selected).toBe(false);
   });
 
-  it('picks the loudest band index matching veqLoudestIdx semantics', () => {
+  it('computes levelPercent from the channel rms/idle, matching the pure levelPercent helper', () => {
     const plan = patchLiveChannelPlan(LIVE_CHANNELS[0], 0, sv(), false);
-    // Vocals fixture: mid (-12) is the loudest of the 7 bands.
-    expect(plan.loudestIdx).toBe(3);
+    expect(plan.levelPercent).toBe(levelPercent(LIVE_CHANNELS[0].rms, false));
   });
 
-  it('produces a truthy arc for a channel with real band data', () => {
+  it('levelPercent is 0 for an idle channel', () => {
+    const plan = patchLiveChannelPlan({ ...LIVE_CHANNELS[0], idle: true }, 0, sv(), false);
+    expect(plan.levelPercent).toBe(0);
+  });
+
+  it('no longer carries a curve/loudestIdx/arc (#668 — strips no longer chart their own EQ)', () => {
     const plan = patchLiveChannelPlan(LIVE_CHANNELS[0], 0, sv(), false);
-    expect(plan.arc).toBeTruthy();
-    expect(typeof plan.arc).toBe('object');
+    expect(plan).not.toHaveProperty('curve');
+    expect(plan).not.toHaveProperty('loudestIdx');
+    expect(plan).not.toHaveProperty('arc');
+  });
+});
+
+describe('EQ_PANE constants (#668)', () => {
+  it('defines the width bounds and the default and keyboard-resize step as named px constants', () => {
+    expect(EQ_PANE_MIN_W).toBe(260);
+    expect(EQ_PANE_MAX_W).toBe(640);
+    expect(EQ_PANE_DEFAULT_W).toBe(360);
+    expect(EQ_PANE_RESIZE_STEP).toBe(16);
+    expect(EQ_PANE_MIN_W).toBeLessThan(EQ_PANE_DEFAULT_W);
+    expect(EQ_PANE_DEFAULT_W).toBeLessThan(EQ_PANE_MAX_W);
+  });
+});
+
+describe('clampEqPaneWidth', () => {
+  it('passes a value already inside the range through unchanged', () => {
+    expect(clampEqPaneWidth(400)).toBe(400);
+  });
+
+  it('clamps below EQ_PANE_MIN_W up to the minimum', () => {
+    expect(clampEqPaneWidth(10)).toBe(EQ_PANE_MIN_W);
+  });
+
+  it('clamps above EQ_PANE_MAX_W down to the maximum', () => {
+    expect(clampEqPaneWidth(10000)).toBe(EQ_PANE_MAX_W);
+  });
+
+  it('falls back to EQ_PANE_DEFAULT_W for non-number input', () => {
+    expect(clampEqPaneWidth('400')).toBe(EQ_PANE_DEFAULT_W);
+    expect(clampEqPaneWidth(null)).toBe(EQ_PANE_DEFAULT_W);
+    expect(clampEqPaneWidth(undefined)).toBe(EQ_PANE_DEFAULT_W);
+    expect(clampEqPaneWidth({})).toBe(EQ_PANE_DEFAULT_W);
+  });
+
+  it('falls back to EQ_PANE_DEFAULT_W for non-finite numbers', () => {
+    expect(clampEqPaneWidth(NaN)).toBe(EQ_PANE_DEFAULT_W);
+    expect(clampEqPaneWidth(Infinity)).toBe(EQ_PANE_DEFAULT_W);
+    expect(clampEqPaneWidth(-Infinity)).toBe(EQ_PANE_DEFAULT_W);
+  });
+
+  it('accepts the exact boundary values', () => {
+    expect(clampEqPaneWidth(EQ_PANE_MIN_W)).toBe(EQ_PANE_MIN_W);
+    expect(clampEqPaneWidth(EQ_PANE_MAX_W)).toBe(EQ_PANE_MAX_W);
+  });
+});
+
+describe('levelPercent', () => {
+  it('is 0 while idle regardless of rms', () => {
+    expect(levelPercent(-6, true)).toBe(0);
+  });
+
+  it('is 0 for a non-finite rms', () => {
+    expect(levelPercent(NaN, false)).toBe(0);
+    expect(levelPercent(Infinity, false)).toBe(0);
+  });
+
+  it('maps DB_MIN to 0 and DB_MAX to 100', () => {
+    expect(levelPercent(DB_MIN, false)).toBe(0);
+    expect(levelPercent(DB_MAX, false)).toBe(100);
+  });
+
+  it('clamps a reading below DB_MIN to 0 and above DB_MAX to 100', () => {
+    expect(levelPercent(DB_MIN - 20, false)).toBe(0);
+    expect(levelPercent(DB_MAX + 20, false)).toBe(100);
+  });
+
+  it('is between 0 and 100 for a mid-range reading', () => {
+    const pct = levelPercent((DB_MIN + DB_MAX) / 2, false);
+    expect(pct).toBeGreaterThan(0);
+    expect(pct).toBeLessThan(100);
+  });
+});
+
+describe('eqPaneView', () => {
+  const config: StripConfig[] = [
+    { kind: 'mono', a: 0, b: 1, label: 'Kick' },
+    { kind: 'mono', a: 1, b: 2, label: 'Vocals' },
+  ];
+
+  it('resolves primary from measurementSource, falling back to channel 0 when null', () => {
+    const view = eqPaneView(LIVE_CHANNELS, config, null, null);
+    expect(view.primary).toEqual({ idx: 0, label: 'Kick', ch: LIVE_CHANNELS[0] });
+  });
+
+  it('resolves primary to the given measurementSource index', () => {
+    const view = eqPaneView(LIVE_CHANNELS, config, 1, null);
+    expect(view.primary).toEqual({ idx: 1, label: 'Vocals', ch: LIVE_CHANNELS[1] });
+  });
+
+  it('falls back primary to channel 0 when measurementSource is out of range', () => {
+    const view = eqPaneView(LIVE_CHANNELS, config, 9, null);
+    expect(view.primary?.idx).toBe(0);
+  });
+
+  it('primary is null only when channels is empty', () => {
+    expect(eqPaneView([], config, null, null).primary).toBeNull();
+  });
+
+  it('secondary is null when selectedChannel is null', () => {
+    expect(eqPaneView(LIVE_CHANNELS, config, null, null).secondary).toBeNull();
+  });
+
+  it('secondary is null when selectedChannel is out of range', () => {
+    expect(eqPaneView(LIVE_CHANNELS, config, null, 9).secondary).toBeNull();
+    expect(eqPaneView(LIVE_CHANNELS, config, null, -1).secondary).toBeNull();
+  });
+
+  it('resolves secondary from a valid selectedChannel', () => {
+    const view = eqPaneView(LIVE_CHANNELS, config, null, 1);
+    expect(view.secondary).toEqual({ idx: 1, label: 'Vocals', ch: LIVE_CHANNELS[1] });
+  });
+
+  it('secondaryIsPrimary is true when both resolve to the same index', () => {
+    const view = eqPaneView(LIVE_CHANNELS, config, 1, 1);
+    expect(view.secondaryIsPrimary).toBe(true);
+  });
+
+  it('secondaryIsPrimary is false when they differ', () => {
+    const view = eqPaneView(LIVE_CHANNELS, config, 0, 1);
+    expect(view.secondaryIsPrimary).toBe(false);
+  });
+
+  it('secondaryIsPrimary is false when secondary is null', () => {
+    const view = eqPaneView(LIVE_CHANNELS, config, 0, null);
+    expect(view.secondaryIsPrimary).toBe(false);
+  });
+});
+
+describe('eqPaneHTML', () => {
+  const config: StripConfig[] = [
+    { kind: 'mono', a: 0, b: 1, label: 'Kick' },
+    { kind: 'mono', a: 1, b: 2, label: 'Vocals' },
+  ];
+
+  it('renders the primary section with a "Room — <label>" header and a .veq chart + .veq-bars + .veq-labels', () => {
+    const view = eqPaneView(LIVE_CHANNELS, config, 0, null);
+    const html = eqPaneHTML(view);
+    expect(html).toContain('Room — Kick');
+    expect(html).toContain('class="veq"');
+    expect(html).toContain('veq-chart');
+    expect(html).toContain('veq-bars');
+    expect(html).toContain('veq-labels');
+  });
+
+  it('renders the secondary section with a "Selected — <label>" header when a channel is selected', () => {
+    const view = eqPaneView(LIVE_CHANNELS, config, 0, 1);
+    const html = eqPaneHTML(view);
+    expect(html).toContain('Selected — Vocals');
+  });
+
+  it('appends " · Measurement source" to the secondary header when secondaryIsPrimary', () => {
+    const view = eqPaneView(LIVE_CHANNELS, config, 1, 1);
+    const html = eqPaneHTML(view);
+    expect(html).toContain('Selected — Vocals · Measurement source');
+  });
+
+  it('does not append the suffix when secondary differs from primary', () => {
+    const view = eqPaneView(LIVE_CHANNELS, config, 0, 1);
+    const html = eqPaneHTML(view);
+    expect(html).not.toContain('Measurement source');
+  });
+
+  it('renders an empty-state hint instead of a chart when no channel is selected', () => {
+    const view = eqPaneView(LIVE_CHANNELS, config, 0, null);
+    const html = eqPaneHTML(view);
+    expect(html).toContain('Click a channel to inspect it here');
+  });
+
+  it('escapes label text', () => {
+    const xssConfig: StripConfig[] = [{ kind: 'mono', a: 0, b: 1, label: '<b>Kick</b>' }];
+    const view = eqPaneView(LIVE_CHANNELS, xssConfig, 0, null);
+    const html = eqPaneHTML(view);
+    expect(html).toContain('&lt;b&gt;Kick&lt;/b&gt;');
+    expect(html).not.toContain('<b>Kick</b>');
+  });
+
+  it('renders nothing for a null primary (defensive — empty channels)', () => {
+    const view = eqPaneView([], config, null, null);
+    const html = eqPaneHTML(view);
+    expect(html).not.toContain('Room —');
+  });
+});
+
+describe('eqPaneSignature', () => {
+  const config: StripConfig[] = [
+    { kind: 'mono', a: 0, b: 1, label: 'Kick' },
+    { kind: 'mono', a: 1, b: 2, label: 'Vocals' },
+  ];
+
+  it('is stable across two views with the same idx/label/flag', () => {
+    const a = eqPaneSignature(eqPaneView(LIVE_CHANNELS, config, 0, 1));
+    const b = eqPaneSignature(eqPaneView(LIVE_CHANNELS, config, 0, 1));
+    expect(a).toBe(b);
+  });
+
+  it('changes when the primary idx changes', () => {
+    const a = eqPaneSignature(eqPaneView(LIVE_CHANNELS, config, 0, null));
+    const b = eqPaneSignature(eqPaneView(LIVE_CHANNELS, config, 1, null));
+    expect(a).not.toBe(b);
+  });
+
+  it('changes when the secondary idx changes', () => {
+    const a = eqPaneSignature(eqPaneView(LIVE_CHANNELS, config, 0, null));
+    const b = eqPaneSignature(eqPaneView(LIVE_CHANNELS, config, 0, 1));
+    expect(a).not.toBe(b);
+  });
+
+  it('changes when secondaryIsPrimary flips even if idx stays put', () => {
+    const a = eqPaneSignature(eqPaneView(LIVE_CHANNELS, config, 1, 1));
+    const b = eqPaneSignature(eqPaneView(LIVE_CHANNELS, config, 0, 1));
+    expect(a).not.toBe(b);
+  });
+
+  it('changes when a label changes for the same idx', () => {
+    const relabeled: StripConfig[] = [{ ...config[0], label: 'Kick Drum' }, config[1]];
+    const a = eqPaneSignature(eqPaneView(LIVE_CHANNELS, config, 0, null));
+    const b = eqPaneSignature(eqPaneView(LIVE_CHANNELS, relabeled, 0, null));
+    expect(a).not.toBe(b);
+  });
+
+  it('does not crash and produces a stable signature when primary/secondary are both null (empty channels)', () => {
+    const a = eqPaneSignature(eqPaneView([], config, null, null));
+    const b = eqPaneSignature(eqPaneView([], config, null, null));
+    expect(a).toBe(b);
+    expect(a).toBe(': ::false');
+  });
+});
+
+describe('eqPanePatchPlan', () => {
+  const config: StripConfig[] = [
+    { kind: 'mono', a: 0, b: 1, label: 'Kick' },
+    { kind: 'mono', a: 1, b: 2, label: 'Vocals' },
+  ];
+
+  it('produces a primary curve/loudestIdx/arc when primary resolves', () => {
+    const view = eqPaneView(LIVE_CHANNELS, config, 0, null);
+    const plan = eqPanePatchPlan(view);
+    expect(plan.primary).not.toBeNull();
+    expect(plan.primary!.curve.db).toHaveLength(7);
+    // LIVE_CHANNELS[0] fixture: mid (-12) is the loudest of the 7 bands (index 3).
+    expect(plan.primary!.loudestIdx).toBe(3);
+    expect(typeof plan.primary!.arc).toBe('object');
+  });
+
+  it('primary/secondary are both null when there is nothing to plan', () => {
+    const view = eqPaneView([], config, null, null);
+    const plan = eqPanePatchPlan(view);
+    expect(plan.primary).toBeNull();
+    expect(plan.secondary).toBeNull();
+  });
+
+  it('secondary is null when no channel is selected, non-null once one is', () => {
+    const noSecondary = eqPanePatchPlan(eqPaneView(LIVE_CHANNELS, config, 0, null));
+    expect(noSecondary.secondary).toBeNull();
+
+    const withSecondary = eqPanePatchPlan(eqPaneView(LIVE_CHANNELS, config, 0, 1));
+    expect(withSecondary.secondary).not.toBeNull();
+    expect(withSecondary.secondary!.curve.db).toHaveLength(7);
+  });
+
+  it('floors non-finite bands to -120 in the derived curve, same as patchLiveChannelPlan', () => {
+    const withNaN = [{ ...LIVE_CHANNELS[0], bands: { ...LIVE_CHANNELS[0].bands, sub_bass: NaN } }, LIVE_CHANNELS[1]];
+    const plan = eqPanePatchPlan(eqPaneView(withNaN, config, 0, null));
+    expect(plan.primary!.curve.db[0]).toBe(-120);
   });
 });
 
