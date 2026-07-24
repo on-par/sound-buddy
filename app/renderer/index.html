@@ -14,15 +14,13 @@
 <div id="root"></div>
 
 
-<!-- Settings dialog (#204) — Storage, AI Engineer, About. One header gear opens
-     a tabbed modal: Storage picks where recordings, stems and captured
-     sessions live and shows disk usage (no cap — the figure is informational
-     only; point the folder inside an iCloud/Dropbox/Drive folder for sync,
-     that's the whole cloud story for MVP). AI Engineer is one screen, two
-     paths: local Ollama (default) or a pasted API key — the key goes
-     renderer → main once and never back. About shows the installed app
-     version. Mounted by SettingsPanel.tsx (TD-001 slice 3, #421) via a React
-     portal into this static node — see App.tsx. -->
+<!-- Settings dialog (#204) — Storage, About. One header gear opens a tabbed
+     modal: Storage picks where recordings, stems and captured sessions live
+     and shows disk usage (no cap — the figure is informational only; point
+     the folder inside an iCloud/Dropbox/Drive folder for sync, that's the
+     whole cloud story for MVP). About shows the installed app version.
+     Mounted by SettingsPanel.tsx (TD-001 slice 3, #421) via a React portal
+     into this static node — see App.tsx. -->
 <div id="settings-island"></div>
 
 <!-- Feedback dialog (#144, in-app submission #472). Send now POSTs the message

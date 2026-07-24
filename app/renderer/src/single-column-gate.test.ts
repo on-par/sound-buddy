@@ -6,12 +6,11 @@ import * as fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 // Single-column workspace gate (#542, epic e17): renders the Source panel
-// full-width and folds the spectrum panel + AI rail away for Recent / Build
-// Guide / Ring-Out when report-first-ux is on, mirroring
-// ai-dock-gate.test.ts and report-first-ux-gate.test.ts file-for-file.
-// inline-app.js is coverage-excluded glue (see vitest.config.ts), so its
-// wiring is verified here the same way those gate tests encode their
-// acceptance criteria.
+// full-width and folds the spectrum panel away for Recent / Build Guide /
+// Ring-Out when report-first-ux is on, mirroring report-first-ux-gate.test.ts
+// file-for-file. inline-app.js is coverage-excluded glue (see
+// vitest.config.ts), so its wiring is verified here the same way that gate
+// test encodes its acceptance criteria.
 
 const inlineApp = fs.readFileSync(fileURLToPath(new URL('./inline-app.js', import.meta.url)), 'utf8');
 const appTsx = fs.readFileSync(fileURLToPath(new URL('./App.tsx', import.meta.url)), 'utf8');
@@ -51,18 +50,9 @@ describe('Single-column workspace gate (#542)', () => {
     expect(rootMarkup).not.toContain('single-column');
   });
 
-  it('app.css collapses both side panels and frees the source panel', () => {
+  it('app.css collapses the spectrum panel and frees the source panel', () => {
     expect(appCss).toContain('body.single-column #spectrum-panel { display:none; }');
-    expect(appCss).toContain('body.single-column #ai-panel { display:none; }');
     expect(appCss).toContain('body.single-column #source-panel');
-  });
-
-  it('app.css hides the single-column AI panel rule after the docked-AI cascade so it always wins', () => {
-    const dockedAiIdx = appCss.indexOf('body.report-first-ux #rc-ai-dock #ai-panel');
-    const singleColumnAiIdx = appCss.indexOf('body.single-column #ai-panel');
-    expect(dockedAiIdx).toBeGreaterThan(-1);
-    expect(singleColumnAiIdx).toBeGreaterThan(-1);
-    expect(singleColumnAiIdx).toBeGreaterThan(dockedAiIdx);
   });
 
   it('single-column-state.js carries the proprietary header', () => {

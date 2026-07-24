@@ -88,7 +88,6 @@
     @keyframes sbpulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:.45;transform:scale(.6)} }
     .sb-pulse { animation:sbpulse var(--dur-pulse) var(--ease-in-out) infinite; }
     @keyframes sbspin { to{transform:rotate(360deg)} }
-    @keyframes sbcaret { 0%,49%{opacity:1} 50%,100%{opacity:0} }
     @keyframes sblivem { 0%,100%{opacity:1} 50%{opacity:.85} }
     .sb-live-meters { animation:sblivem 1.2s ease-in-out infinite; }
 
@@ -103,11 +102,6 @@
        Narrow windows stack the two vertically so neither clips. */
     #stage { display:flex; flex:1; overflow:hidden; }
     body.rc-active #source-panel { display:none; }
-    /* The report card is the post-analysis focus surface; fold the AI Engineer
-       panel away too so the spectrum and card share the full width and the curve
-       stays readable at any window width (the card + AI panel alone are 960px
-       of fixed neighbors — without this the spectrum would be squeezed, #177). */
-    body.rc-active #ai-panel { display:none; }
     @media (max-width:1000px) {
       body.rc-active #stage { flex-direction:column; }
       body.rc-active #reportcard-view { width:100%; flex:1; }
@@ -116,11 +110,6 @@
     /* Side panels */
     .side-panel { display:flex; flex-direction:column; flex-shrink:0; background:var(--bg-panel); overflow:hidden; }
     #source-panel { width:var(--panel-w); border-right:1px solid var(--border-default); }
-    #ai-panel { width:var(--ai-panel-w); border-left:1px solid var(--border-default); }
-    /* AI is off by default (PRD 01): hide every AI affordance. The center
-       spectrum panel is flex:1 so it reflows to fill the freed space. */
-    body.ai-disabled #ai-panel { display:none; }
-    body.ai-disabled .ai-only { display:none !important; }
 
     /* ── License gating (#54) ─────────────────────────────────────────
        body.not-pro = no active Pro license. Gated surfaces (Live tab,
@@ -184,9 +173,6 @@
     body.not-pro #tab-soundcheck > :not(.pro-gate) { display:none !important; }
     body.not-pro #tab-live .pro-gate,
     body.not-pro #tab-soundcheck .pro-gate { display:flex; }
-    body.not-pro #ai-panel .panel-body,
-    body.not-pro #ai-panel .panel-footer { display:none; }
-    body.not-pro #ai-panel .pro-gate { display:flex; }
 
     /* Free/Pro badge in the header (click to manage the license). */
     #license-badge {
@@ -499,10 +485,6 @@
     .pd-title { font:var(--fw-semibold) var(--fs-body)/1.3 var(--font-sans); color:var(--text-primary); }
     .pd-explanation { font:var(--fw-regular) var(--fs-body-sm)/1.5 var(--font-sans); color:var(--text-secondary); }
     .pd-resolution { font:var(--fw-regular) var(--fs-body-sm)/1.5 var(--font-sans); color:var(--text-primary); padding:10px 12px; background:var(--surface); border:1px solid var(--border-subtle); border-radius:var(--radius-md); }
-    .ai-tabs { display:flex; gap:6px; }
-    .ai-tab { flex:1; height:var(--control-h); border:1px solid var(--border-default); border-radius:var(--radius-md); background:var(--surface); color:var(--text-secondary); font:var(--fw-medium) var(--fs-body-sm)/1 var(--font-sans); cursor:pointer; }
-    .ai-tab.active { border-color:var(--gold-600); background:var(--gold-tint); color:var(--gold-text); }
-    .ai-tabpane { display:flex; flex-direction:column; gap:12px; }
     .ai-field { display:flex; flex-direction:column; gap:5px; }
     .ai-field-label { font:var(--fw-medium) var(--fs-label)/1 var(--font-sans); color:var(--text-tertiary); letter-spacing:var(--tracking-label); }
     .ai-field .select-wrap select { width:100%; }
@@ -907,14 +889,6 @@
       box-shadow:0 0 6px var(--gold-glow); pointer-events:none; display:none; }
 
     /* AI panel */
-    #model-chip { display:inline-flex; align-items:center; gap:5px; font:var(--fw-medium) 10px/1 var(--font-mono); color:var(--gold-text); background:var(--gold-tint); border:1px solid var(--gold-600); border-radius:var(--radius-xs); padding:3px 7px; }
-    #ai-output { flex:1; overflow-y:auto; padding:16px; font:var(--fw-regular) var(--fs-body-sm)/var(--lh-relaxed) var(--font-sans); color:var(--text-secondary); white-space:pre-wrap; word-break:break-word; }
-    #ai-output.placeholder { color:var(--text-muted); font-style:italic; }
-    #ai-output .caret { display:inline-block; width:7px; height:15px; margin-left:1px; background:var(--gold-500); vertical-align:text-bottom; animation:sbcaret 1s steps(1) infinite; }
-    #ai-panel .panel-body { padding:0; }
-    #ai-countdown { font:var(--fw-regular) var(--fs-label)/1.3 var(--font-sans); color:var(--text-muted); text-align:center; margin-bottom:8px; min-height:0; }
-    #ai-countdown:empty { display:none; }
-    #ai-countdown .cd-num { font-family:var(--font-mono); color:var(--gold-text); }
 
     /* ── Report Card ──────────────────────────────────────────────── */
     #reportcard-view { display:none; width:var(--rc-panel-w); flex-shrink:0; flex-direction:column; overflow:hidden; background:var(--bg-app); }
@@ -1070,34 +1044,13 @@
     .metric-detail-row .impact { margin-left:auto; font:var(--fw-medium) 10px/1.2 var(--font-sans); letter-spacing:0.02em; text-transform:uppercase; color:var(--text-tertiary); }
     .metric-extra { margin-top:8px; font:var(--fw-regular) var(--fs-label)/1.4 var(--font-sans); color:var(--text-tertiary); }
 
-    /* ── Inline AI Engineer dock (#541, report-first-ux epic) ── */
-    #rc-ai-dock { display:none; }
-    body.report-first-ux #rc-ai-dock {
-      display:block; flex:1 1 100%; max-width:760px;
-      background:var(--surface); border:1px solid var(--border-subtle); border-radius:var(--radius-lg);
-    }
-    body.ai-disabled #rc-ai-dock { display:none !important; }
-    #rc-ai-dock > summary {
-      display:flex; align-items:center; gap:14px; padding:14px 16px; cursor:pointer; list-style:none;
-      font:var(--fw-semibold) var(--fs-body-sm)/1.3 var(--font-sans); color:var(--text-primary);
-    }
-    #rc-ai-dock > summary::-webkit-details-marker { display:none; }
-    .rc-ai-dock-caret { margin-left:auto; color:var(--text-tertiary); display:flex; transition:transform 0.15s ease; }
-    #rc-ai-dock[open] .rc-ai-dock-caret { transform:rotate(180deg); }
-    body.report-first-ux #rc-ai-dock #ai-panel { display:flex; width:auto; border-left:none; }
-    #rc-ai-dock .panel-head .panel-title { display:none; }
-
     /* ── Single-column workspace (#542, report-first-ux epic) ──
        Recent / Build Guide / Ring-Out are a list, a checklist and a step
-       wizard — nothing to meter and no per-analysis narrative — so the
-       spectrum panel and AI rail sit empty beside them. body.single-column
-       (set from window.singleColumnState, flag-gated) folds both away and
-       lets the Source panel take the full workspace width. Placed after the
-       #rc-ai-dock block above so it wins the AI-panel cascade regardless of
-       whether the dock has moved #ai-panel out of #workspace (#541). */
+       wizard — nothing to meter — so the spectrum panel sits empty beside
+       them. body.single-column (set from window.singleColumnState,
+       flag-gated) folds it away and lets the Source panel take the full
+       workspace width. */
     body.single-column #spectrum-panel { display:none; }
-    body.single-column #ai-panel { display:none; }
-    body.single-column #rc-ai-dock { display:none; }
     body.single-column #source-panel { width:100%; flex:1; border-right:none; }
 
     /* Status pill */

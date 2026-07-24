@@ -2,15 +2,15 @@
 // Licensed under the Sound Buddy Desktop Application License (app/LICENSE).
 
 // Pure, framework-free predicate for the single-column workspace layout
-// (#542, epic e17). DOM-free so it's unit-testable, mirroring ai-dock-state.js.
-// Read off window.singleColumnState.
+// (#542, epic e17). DOM-free so it's unit-testable. Read off
+// window.singleColumnState.
 (function (root) {
   'use strict';
 
   // Tabs whose content is a list / checklist / step wizard — no real-time
-  // spectrum to meter and no per-analysis AI narrative, so the spectrum panel
-  // and AI rail are dead space beside them (#542). Live and Soundcheck are
-  // deliberately absent: their meters are a genuine use of that space.
+  // spectrum to meter, so the spectrum panel is dead space beside them
+  // (#542). Live and Soundcheck are deliberately absent: their meters are a
+  // genuine use of that space.
   var SINGLE_COLUMN_MODES = ['recent', 'guide', 'ringout'];
 
   /** Whether the workspace should collapse to a single full-width column.

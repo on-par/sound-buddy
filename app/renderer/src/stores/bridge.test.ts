@@ -7,17 +7,15 @@ import { useLicensingStore } from './licensingStore';
 import { useSettingsStore } from './settingsStore';
 import { useAnalysisStore } from './analysisStore';
 import { useSpectrumStore } from './spectrumStore';
-import { useNarrativeStore } from './narrativeStore';
 import { useLiveCaptureStore } from './liveCaptureStore';
 import { useSceneDiffStore } from './sceneDiffStore';
 import { createMockSoundBuddy } from '../mock-sound-buddy';
 
 // installStoreBridge()'s cross-store subscription install (guarded by the
 // module-level crossStoreSubscriptionInstalled flag) binds the DEFAULT
-// narrative/liveCapture store instances' IPC listeners exactly once — those
-// read window.soundBuddy via getSoundBuddy(), so it must exist before the
-// first installStoreBridge() call in this file (mirrors narrativeStore.test's
-// "binds the default hook" setup).
+// liveCapture store instance's IPC listeners exactly once — it reads
+// window.soundBuddy via getSoundBuddy(), so it must exist before the first
+// installStoreBridge() call in this file.
 beforeAll(() => {
   (globalThis as { window?: unknown }).window = { soundBuddy: createMockSoundBuddy().api };
 });
@@ -53,7 +51,7 @@ afterEach(() => {
 });
 
 describe('installStoreBridge', () => {
-  it('installs all six stores on the injected target and returns them', () => {
+  it('installs all five stores on the injected target and returns them', () => {
     const target: { rendererStores?: RendererStores } = {};
 
     const stores = installStoreBridge(target);
@@ -62,7 +60,6 @@ describe('installStoreBridge', () => {
     expect(stores.settings).toBe(useSettingsStore);
     expect(stores.analysis).toBe(useAnalysisStore);
     expect(stores.spectrum).toBe(useSpectrumStore);
-    expect(stores.narrative).toBe(useNarrativeStore);
     expect(stores.liveCapture).toBe(useLiveCaptureStore);
     expect(target.rendererStores).toBe(stores);
   });
