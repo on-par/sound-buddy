@@ -138,10 +138,10 @@ head_committed_version() {
 
 # Observe what already exists on $PUBLIC_REPO/$TAG (the tag or release may
 # already exist from an earlier, partially-completed run). A draft release is
-# untagged on GitHub until it's published (#645), so `gh release view $TAG`
-# (which resolves by git tag) 404s for a stranded draft — list releases
-# instead and match by tag_name, which drafts do carry. per_page=100 is far
-# above this repo's release count; no pagination needed.
+# untagged on GitHub until it's published (#645), so a tag-based release
+# lookup 404s for a stranded draft — list releases instead and match by
+# tag_name, which drafts do carry. per_page=100 is far above this repo's
+# release count; no pagination needed.
 gather_publish_state() {
   local release_json
   release_json="$(gh api "repos/$PUBLIC_REPO/releases?per_page=100" 2>/dev/null || true)"
@@ -220,7 +220,7 @@ fi
 HIGHLIGHTS=""
 # The leading HTML comment is an editor-only instruction — strip it so it
 # never ships as literal text in the published release notes (GitHub hides
-# HTML comments in rendered markdown, but `gh release view`/the API/RSS show
+# HTML comments in rendered markdown, but the REST API and RSS feed show
 # raw markdown as-is).
 [[ -f "$ROOT/RELEASE_HIGHLIGHTS.md" ]] && HIGHLIGHTS="$(sed -E '/^<!--.*-->[[:space:]]*$/d' "$ROOT/RELEASE_HIGHLIGHTS.md")"
 
@@ -396,6 +396,56 @@ to_json_array() {
   node -e 'process.stdout.write(JSON.stringify(process.argv.slice(1)))' "$@"
 }
 
+# #648: every asset read/write after draft creation must key off the id-resolved
+# $RELEASE_ID, never "$TAG" — the tag-resolving asset upload/download
+# subcommands can silently target a DIFFERENT draft than selectReleaseByTag's
+# pick when duplicate drafts share a tag_name (the real v0.8.0 case).
+
+# Print the numeric id of the named asset on release $RELEASE_ID ("" if absent).
+release_asset_id() {
+  local name="$1" assets_json
+  [[ -n "$RELEASE_ID" ]] || { echo "internal error: RELEASE_ID is empty — re-run: scripts/release.sh $NEXT --yes" >&2; return 1; }
+  assets_json="$(gh api "repos/$PUBLIC_REPO/releases/$RELEASE_ID" --jq '[.assets[] | {id, name}]')" || return 1
+  node --input-type=module -e '
+    import { findReleaseAssetId } from "'"$ROOT"'/packages/shared/dist/index.js";
+    const [assetsJson, name] = process.argv.slice(1);
+    const id = findReleaseAssetId(JSON.parse(assetsJson), name);
+    process.stdout.write(id === null ? "" : String(id));
+  ' "$assets_json" "$name"
+}
+
+# Upload one file to release $RELEASE_ID, replacing any same-named asset first —
+# mirrors the old tag-resolved upload's --clobber behavior, but keyed by id
+# instead of tag. A raw POST of a duplicate name would 422, so clobber =
+# DELETE existing + POST.
+upload_release_asset() {
+  local file="$1" name existing_id upload_url
+  name="$(basename "$file")"
+  existing_id="$(release_asset_id "$name")" || return 1
+  if [[ -n "$existing_id" ]]; then
+    gh api -X DELETE "$(node --input-type=module -e '
+      import { releaseAssetApiPath } from "'"$ROOT"'/packages/shared/dist/index.js";
+      process.stdout.write(releaseAssetApiPath(process.argv[1], Number(process.argv[2])));
+    ' "$PUBLIC_REPO" "$existing_id")" --silent || return 1
+  fi
+  upload_url="$(node --input-type=module -e '
+    import { buildReleaseAssetUploadUrl } from "'"$ROOT"'/packages/shared/dist/index.js";
+    process.stdout.write(buildReleaseAssetUploadUrl(process.argv[1], Number(process.argv[2]), process.argv[3]));
+  ' "$PUBLIC_REPO" "$RELEASE_ID" "$name")"
+  gh api -X POST "$upload_url" -H "Content-Type: application/octet-stream" --input "$file" --silent
+}
+
+# Stream the named asset's bytes from release $RELEASE_ID to stdout.
+download_release_asset() {
+  local name="$1" asset_id
+  asset_id="$(release_asset_id "$name")" || return 1
+  [[ -n "$asset_id" ]] || { echo "asset $name not found on release id $RELEASE_ID — check https://github.com/$PUBLIC_REPO/releases and re-run: scripts/release.sh $NEXT --yes" >&2; return 1; }
+  gh api -H "Accept: application/octet-stream" "$(node --input-type=module -e '
+    import { releaseAssetApiPath } from "'"$ROOT"'/packages/shared/dist/index.js";
+    process.stdout.write(releaseAssetApiPath(process.argv[1], Number(process.argv[2])));
+  ' "$PUBLIC_REPO" "$asset_id")"
+}
+
 COMPLETED=()
 SKIPPED=()
 
@@ -466,8 +516,10 @@ if [[ "$DRAFT_RELEASE_ACTION" == "run" ]]; then
       || MISSING_ASSETS+=("$ZIP")
     [[ "$(node -pe 'JSON.parse(process.argv[1]).assetNames.includes(process.argv[2])' "$STATE_JSON" "$DMG_ASSET_NAME")" == "true" ]] \
       || MISSING_ASSETS+=("$DMG")
-    gh release upload "$TAG" "${MISSING_ASSETS[@]+"${MISSING_ASSETS[@]}"}" -R "$PUBLIC_REPO" --clobber \
-      || publish_fail draft-release "gh release upload (missing assets) failed"
+    for asset in "${MISSING_ASSETS[@]+"${MISSING_ASSETS[@]}"}"; do
+      upload_release_asset "$asset" \
+        || publish_fail draft-release "upload of $(basename "$asset") to release id $RELEASE_ID failed"
+    done
   fi
   COMPLETED+=("draft-release")
 else
@@ -493,9 +545,10 @@ else
     ZIP_SHA256="${REMOTE_DIGEST#sha256:}"
   else
     # Older GitHub deployments may not expose asset digests — fall back to
-    # downloading the uploaded bytes and hashing them locally. `gh release
-    # download` works against drafts for authenticated users.
-    ZIP_SHA256="$(gh release download "$TAG" -R "$PUBLIC_REPO" --pattern "$ZIP_ASSET_NAME" -O - | shasum -a 256 | cut -d' ' -f1)"
+    # downloading the uploaded bytes and hashing them locally. Fetching by
+    # asset id via `gh api` with `Accept: application/octet-stream` works
+    # against drafts for authenticated users.
+    ZIP_SHA256="$(download_release_asset "$ZIP_ASSET_NAME" | shasum -a 256 | cut -d' ' -f1)"
   fi
 fi
 
@@ -507,7 +560,7 @@ if [[ "$CHECKSUM_VERIFY_ACTION" == "run" ]]; then
   UPLOADED_DIGEST="$(gh api "repos/$PUBLIC_REPO/releases/$RELEASE_ID" \
     --jq ".assets[] | select(.name == \"$ZIP_ASSET_NAME\") | .digest // \"\"")"
   if [[ -z "$UPLOADED_DIGEST" ]]; then
-    UPLOADED_DIGEST="$(gh release download "$TAG" -R "$PUBLIC_REPO" --pattern "$ZIP_ASSET_NAME" -O - | shasum -a 256 | cut -d' ' -f1)"
+    UPLOADED_DIGEST="$(download_release_asset "$ZIP_ASSET_NAME" | shasum -a 256 | cut -d' ' -f1)"
   fi
   CHECKSUM_JSON="$(node --input-type=module -e '
     import { verifyUploadedArtifactChecksum } from "'"$ROOT"'/packages/shared/dist/index.js";
@@ -524,7 +577,8 @@ else
   SKIPPED+=("checksum-verify")
 fi
 
-# ── manifest-upload (always runs — idempotent via --clobber) ──
+# ── manifest-upload (always runs — idempotent via upload_release_asset's
+#    delete-then-upload replace) ──
 PUBLISHED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 MANIFEST_PATH="$APP/release/latest.json"
 node --input-type=module -e '
@@ -539,8 +593,7 @@ node --input-type=module -e '
   writeFileSync(out, JSON.stringify(manifest, null, 2) + "\n");
 ' "$NEXT" "$NOTES" "$RELEASE_URL" "$ARTIFACT_URL" "$ZIP_SIZE" "$ZIP_SHA256" "$PUBLISHED_AT" "$MANIFEST_PATH" "$SIGNED" \
   || publish_fail manifest-upload "manifest generation failed"
-gh release upload "$TAG" "$MANIFEST_PATH" -R "$PUBLIC_REPO" --clobber \
-  || publish_fail manifest-upload "gh release upload of latest.json failed"
+upload_release_asset "$MANIFEST_PATH" || publish_fail manifest-upload "upload of latest.json to release id $RELEASE_ID failed"
 say "Manifest → https://github.com/$PUBLIC_REPO/releases/latest/download/latest.json"
 say "Update feed → https://github.com/$PUBLIC_REPO/releases/latest/download/latest-mac.yml"
 
@@ -559,8 +612,7 @@ case "$UPDATE_INFO_ACTION" in
     publish_fail manifest-upload "$(node -pe 'JSON.parse(process.argv[1]).error' "$UPDATE_INFO_PLAN")"
     ;;
   upload)
-    gh release upload "$TAG" "$UPDATE_INFO_PATH" -R "$PUBLIC_REPO" --clobber \
-      || publish_fail manifest-upload "gh release upload of latest-mac.yml failed"
+    upload_release_asset "$UPDATE_INFO_PATH" || publish_fail manifest-upload "upload of latest-mac.yml to release id $RELEASE_ID failed"
     ;;
   skip)
     say "$(node -pe 'JSON.parse(process.argv[1]).reason' "$UPDATE_INFO_PLAN")"
