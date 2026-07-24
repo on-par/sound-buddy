@@ -9,8 +9,12 @@
 #   build, and reports to cloudflareinsights.com. It is cookieless and sets
 #   no cross-site identifiers (#555). These are the ONLY external origins;
 #   fonts (@fontsource) and images are still bundled into /_astro/.
+# - frame-src allows the two hosts demo-video.ts's iframe mode ever embeds
+#   (#600): youtube-nocookie.com and player.vimeo.com. A direct-file
+#   PUBLIC_DEMO_VIDEO_URL (the <video> fallback) is unaffected — media
+#   playback isn't gated by frame-src.
 /*
-  Content-Security-Policy: default-src 'self'; script-src 'self' https://static.cloudflareinsights.com; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self' https://cloudflareinsights.com; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; upgrade-insecure-requests
+  Content-Security-Policy: default-src 'self'; script-src 'self' https://static.cloudflareinsights.com; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self' https://cloudflareinsights.com; frame-src https://www.youtube-nocookie.com https://player.vimeo.com; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; upgrade-insecure-requests
   X-Frame-Options: DENY
   X-Content-Type-Options: nosniff
   Referrer-Policy: strict-origin-when-cross-origin

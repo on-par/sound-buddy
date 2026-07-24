@@ -17,12 +17,16 @@ export function parseCsp(value) {
 export const CF_ANALYTICS_SCRIPT_SRC = 'https://static.cloudflareinsights.com';
 export const CF_ANALYTICS_CONNECT_SRC = 'https://cloudflareinsights.com';
 
-// Each CF Web Analytics origin is only expected in its own directive — the
-// beacon script is loaded via script-src, its RUM payload posted via
-// connect-src. A directive not listed here allows no external origin at all.
-const ALLOWED_ORIGIN_BY_DIRECTIVE = {
-  'script-src': CF_ANALYTICS_SCRIPT_SRC,
-  'connect-src': CF_ANALYTICS_CONNECT_SRC,
+// Origins the waitlist demo-video slot's iframe embed can point at (#600) —
+// the only two embed bases site/src/lib/demo-video.ts ever generates.
+export const DEMO_VIDEO_FRAME_SRC_ORIGINS = ['https://www.youtube-nocookie.com', 'https://player.vimeo.com'];
+
+// Each external origin is only expected in its own directive — a directive
+// not listed here allows no external origin at all.
+const ALLOWED_ORIGINS_BY_DIRECTIVE = {
+  'script-src': [CF_ANALYTICS_SCRIPT_SRC],
+  'connect-src': [CF_ANALYTICS_CONNECT_SRC],
+  'frame-src': DEMO_VIDEO_FRAME_SRC_ORIGINS,
 };
 
 /**
@@ -54,14 +58,14 @@ export function checkCspOrigins(value) {
   }
 
   for (const [directive, sources] of directives) {
-    const allowedOrigin = ALLOWED_ORIGIN_BY_DIRECTIVE[directive];
+    const allowedOrigins = ALLOWED_ORIGINS_BY_DIRECTIVE[directive] ?? [];
     for (const source of sources) {
       if (!/^https?:\/\//i.test(source)) continue; // 'self', 'none', data:, etc. are keywords, not origins
-      if (source === allowedOrigin) continue;
+      if (allowedOrigins.includes(source)) continue;
       problems.push(
-        `${directive}: unexpected external origin '${source}'. Only the two Cloudflare Web ` +
-          'Analytics origins are allowed, each in its own directive; bundle assets into ' +
-          '/_astro/ instead.',
+        `${directive}: unexpected external origin '${source}'. Only the origins listed in ` +
+          "ALLOWED_ORIGINS_BY_DIRECTIVE are allowed, each in its own directive; bundle assets " +
+          'into /_astro/ instead.',
       );
     }
   }

@@ -1,7 +1,13 @@
 import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { CF_ANALYTICS_CONNECT_SRC, CF_ANALYTICS_SCRIPT_SRC, checkCspOrigins, parseCsp } from './csp.mjs';
+import {
+  CF_ANALYTICS_CONNECT_SRC,
+  CF_ANALYTICS_SCRIPT_SRC,
+  DEMO_VIDEO_FRAME_SRC_ORIGINS,
+  checkCspOrigins,
+  parseCsp,
+} from './csp.mjs';
 
 // Derived from the real file (not a hand-copied duplicate) so a future edit
 // to site/public/_headers can't silently drift out of sync with these tests.
@@ -69,6 +75,22 @@ describe('checkCspOrigins', () => {
     const csp = PRODUCTION_CSP.replace(` ${CF_ANALYTICS_SCRIPT_SRC}`, '').replace(` ${CF_ANALYTICS_CONNECT_SRC}`, '');
     const problems = checkCspOrigins(csp);
     expect(problems).toHaveLength(2);
+  });
+
+  it('allows both demo-video embed origins in frame-src', () => {
+    for (const origin of DEMO_VIDEO_FRAME_SRC_ORIGINS) {
+      expect(PRODUCTION_CSP).toContain(origin);
+    }
+    expect(checkCspOrigins(PRODUCTION_CSP)).toEqual([]);
+  });
+
+  it('flags a demo-video embed origin appearing outside frame-src', () => {
+    const csp = PRODUCTION_CSP.replace(
+      "img-src 'self' data:",
+      `img-src 'self' data: ${DEMO_VIDEO_FRAME_SRC_ORIGINS[0]}`,
+    );
+    const problems = checkCspOrigins(csp);
+    expect(problems.some((p) => p.includes(DEMO_VIDEO_FRAME_SRC_ORIGINS[0]) && p.includes('img-src'))).toBe(true);
   });
 
   it('does not flag keyword sources as external origins', () => {
