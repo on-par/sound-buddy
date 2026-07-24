@@ -12,7 +12,6 @@ Audio analysis and coaching tool for church sound engineers. Analyze recordings,
 ```bash
 npm run build
 npx @sound-buddy/cli analyze recording.wav
-npx @sound-buddy/cli analyze recording.wav --no-ai   # skip LLM analysis
 npx @sound-buddy/cli analyze --scene before.scn --scene after.scn --audio recording.wav
 ```
 

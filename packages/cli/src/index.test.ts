@@ -108,7 +108,6 @@ describe('buddy CLI', () => {
       expect(stdout).toContain('--dir')
       expect(stdout).toContain('--scene')
       expect(stdout).toContain('--json')
-      expect(stdout).toContain('--no-ai')
       expect(exitCalls[0]).toBe(0)
     })
   })
@@ -171,7 +170,6 @@ describe('buddy CLI', () => {
         scenes: [],
         dir: undefined,
         json: undefined,
-        noAi: false,
       })
     })
 
@@ -182,7 +180,6 @@ describe('buddy CLI', () => {
         scenes: [],
         dir: './stems',
         json: undefined,
-        noAi: false,
       })
     })
 
@@ -193,7 +190,6 @@ describe('buddy CLI', () => {
         scenes: ['a.scn'],
         dir: undefined,
         json: undefined,
-        noAi: false,
       })
     })
 
@@ -204,7 +200,6 @@ describe('buddy CLI', () => {
         scenes: ['a.scn', 'b.scn'],
         dir: undefined,
         json: undefined,
-        noAi: false,
       })
     })
 
@@ -215,18 +210,6 @@ describe('buddy CLI', () => {
         scenes: [],
         dir: undefined,
         json: true,
-        noAi: false,
-      })
-    })
-
-    it('forwards --no-ai as noAi: true', async () => {
-      await runCli(['analyze', 'song.wav', '--no-ai'])
-
-      expect(mockRunAnalyze).toHaveBeenCalledWith('song.wav', {
-        scenes: [],
-        dir: undefined,
-        json: undefined,
-        noAi: true,
       })
     })
 
@@ -237,7 +220,6 @@ describe('buddy CLI', () => {
         scenes: [],
         dir: undefined,
         json: undefined,
-        noAi: false,
       })
     })
 

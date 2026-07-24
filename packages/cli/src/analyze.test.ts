@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import type { AudioAnalysis, ChannelFile } from '@sound-buddy/audio-engine'
-import type { SceneDiff, Insight } from '@sound-buddy/shared'
+import type { SceneDiff } from '@sound-buddy/shared'
 
 vi.mock('@sound-buddy/scene-inspector', () => ({
   parseScene: vi.fn(),
@@ -20,15 +20,8 @@ vi.mock('@sound-buddy/audio-engine', async (importOriginal) => {
     // printChannelTable/outputJson still produce real table rows/labels.
     dominantBandLabel: actual.dominantBandLabel,
     formatChannelTable: actual.formatChannelTable,
-    // Pure DTO mapper (TD-015) — keep the real implementation so the AI
-    // input assertions exercise the actual boundary shape.
-    toAnalysisSummary: actual.toAnalysisSummary,
   }
 })
-
-vi.mock('./insights.js', () => ({
-  generateInsights: vi.fn(),
-}))
 
 vi.mock('node:fs', async (importOriginal) => {
   const actual = await importOriginal<typeof import('node:fs')>()
@@ -45,7 +38,6 @@ import {
   formatMultiChannelReport,
   cleanupChannelFiles,
 } from '@sound-buddy/audio-engine'
-import { generateInsights } from './insights.js'
 import { runAnalyze } from './analyze.js'
 
 const mockAnalysis: AudioAnalysis = {
@@ -123,11 +115,6 @@ const mockDiff: SceneDiff = {
   bySection: { channels: [], dcas: [], main: [] },
 }
 
-const mockInsights: Insight[] = [
-  { type: 'level', message: 'CH1 fader increase may cause mix buildup', severity: 'warning' },
-  { type: 'frequency', message: 'Strong mid presence, watch for muddiness', severity: 'info' },
-]
-
 /** Collect stdout/stderr/exit for a single runAnalyze call. */
 function capture() {
   const out: string[] = []
@@ -159,13 +146,12 @@ beforeEach(() => {
   vi.mocked(analyzeAudio).mockResolvedValue(mockAnalysis)
   vi.mocked(compareChannels).mockReturnValue(emptyComparison as never)
   vi.mocked(formatMultiChannelReport).mockReturnValue('mock multi-channel report')
-  vi.mocked(generateInsights).mockResolvedValue(mockInsights)
 })
 
 describe('buddy analyze — single file', () => {
   it('prints RMS, peak, dynamic range and dominant band for a valid WAV', async () => {
     const t = capture()
-    await runAnalyze('/tmp/mix.wav', { noAi: true }, t.io)
+    await runAnalyze('/tmp/mix.wav', {}, t.io)
 
     const combined = t.out.join('\n')
     expect(combined).toContain('-9.11') // RMS dBFS
@@ -220,12 +206,6 @@ describe('buddy analyze — single file', () => {
     expect(Array.isArray(ch.segments)).toBe(true)
     expect(ch.segments[0]).toMatchObject({ class: 'speech', start: 0, end: 0.6 })
   })
-
-  it('does not call the AI pass in --json mode', async () => {
-    const t = capture()
-    await runAnalyze('/tmp/mix.wav', { json: true }, t.io)
-    expect(generateInsights).not.toHaveBeenCalled()
-  })
 })
 
 describe('buddy analyze — multi-channel WAV', () => {
@@ -247,7 +227,7 @@ describe('buddy analyze — multi-channel WAV', () => {
 
   it('shows a table row for all 32 channels', async () => {
     const t = capture()
-    await runAnalyze('/tmp/session.wav', { noAi: true }, t.io)
+    await runAnalyze('/tmp/session.wav', {}, t.io)
 
     const combined = t.out.join('\n')
     for (let i = 1; i <= 32; i++) expect(combined).toContain(`CH${i}`)
@@ -255,22 +235,13 @@ describe('buddy analyze — multi-channel WAV', () => {
 
   it('renders the per-channel table only once', async () => {
     const t = capture()
-    await runAnalyze('/tmp/session.wav', { noAi: true }, t.io)
+    await runAnalyze('/tmp/session.wav', {}, t.io)
     expect(t.out.join('\n').match(/CH1\b/g) ?? []).toHaveLength(1)
-  })
-
-  it("labels the AI pass as the Multi-Channel Engineer's Read", async () => {
-    const t = capture()
-    await runAnalyze('/tmp/session.wav', {}, t.io) // AI on
-
-    const combined = t.out.join('\n')
-    expect(combined).toMatch(/multi-channel engineer'?s read/i)
-    expect(combined).toContain('CH1 fader increase may cause mix buildup')
   })
 
   it('cleans up the extracted per-channel temp files', async () => {
     const t = capture()
-    await runAnalyze('/tmp/session.wav', { noAi: true }, t.io)
+    await runAnalyze('/tmp/session.wav', {}, t.io)
     expect(cleanupChannelFiles).toHaveBeenCalledTimes(1)
     const passed = vi.mocked(cleanupChannelFiles).mock.calls[0][0]
     expect(passed).toHaveLength(32)
@@ -291,7 +262,7 @@ describe('buddy analyze — directory', () => {
 
   it('analyzes each file in the directory as a separate channel', async () => {
     const t = capture()
-    await runAnalyze(undefined, { dir: '/tmp/session', noAi: true }, t.io)
+    await runAnalyze(undefined, { dir: '/tmp/session' }, t.io)
 
     expect(loadChannelFiles).toHaveBeenCalledWith('/tmp/session')
     const combined = t.out.join('\n')
@@ -303,7 +274,7 @@ describe('buddy analyze — directory', () => {
 describe('buddy analyze — scene diff', () => {
   it('shows the scene diff summary when two --scene files are provided', async () => {
     const t = capture()
-    await runAnalyze('/tmp/mix.wav', { scenes: ['before.scn', 'after.scn'], noAi: true }, t.io)
+    await runAnalyze('/tmp/mix.wav', { scenes: ['before.scn', 'after.scn'] }, t.io)
 
     expect(readFileSync).toHaveBeenCalledWith('before.scn', 'utf8')
     expect(readFileSync).toHaveBeenCalledWith('after.scn', 'utf8')
@@ -323,44 +294,5 @@ describe('buddy analyze — scene diff', () => {
     await runAnalyze(undefined, { scenes: ['a.scn', 'b.scn', 'c.scn'] }, t.io)
     expect(t.err.join('\n')).toMatch(/exactly two/i)
     expect(t.code).toBe(1)
-  })
-
-  it('sends both the scene diff and audio to the AI pass when combined', async () => {
-    const t = capture()
-    await runAnalyze('/tmp/mix.wav', { scenes: ['before.scn', 'after.scn'] }, t.io) // AI on
-
-    expect(generateInsights).toHaveBeenCalledWith(expect.objectContaining({ diff: mockDiff }), undefined)
-    const input = vi.mocked(generateInsights).mock.calls[0][0]
-    expect(input.audio?.channels).toHaveLength(1)
-  })
-})
-
-describe('buddy analyze — AI insights', () => {
-  it('appends AI insights by default', async () => {
-    const t = capture()
-    await runAnalyze('/tmp/mix.wav', {}, t.io)
-
-    expect(generateInsights).toHaveBeenCalled()
-    const combined = t.out.join('\n')
-    expect(combined).toContain('AI Insights')
-    expect(combined).toContain('CH1 fader increase may cause mix buildup')
-  })
-
-  it('skips the AI pass when --no-ai is set', async () => {
-    const t = capture()
-    await runAnalyze('/tmp/mix.wav', { noAi: true }, t.io)
-
-    expect(generateInsights).not.toHaveBeenCalled()
-    expect(t.out.join('\n')).not.toContain('AI Insights')
-  })
-
-  it('keeps measurements when the AI pass throws', async () => {
-    vi.mocked(generateInsights).mockRejectedValue(new Error('Not implemented'))
-    const t = capture()
-    await runAnalyze('/tmp/mix.wav', {}, t.io)
-
-    const combined = t.out.join('\n')
-    expect(combined).toContain('-9.11') // measurements still printed
-    expect(combined).toContain('AI analysis unavailable')
   })
 })
