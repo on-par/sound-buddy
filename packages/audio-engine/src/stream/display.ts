@@ -71,8 +71,7 @@ function buildLines(
   state: LiveState,
   deviceName: string,
   windowNum: number,
-  windowSecs: number,
-  nextLlmIn: number
+  windowSecs: number
 ): string[] {
   const lines: string[] = [];
   const cur = state.currentWindow;
@@ -151,13 +150,7 @@ function buildLines(
   }
 
   lines.push("");
-  if (nextLlmIn > 0) {
-    lines.push(
-      `${ANSI.dim}Next LLM analysis in: ${nextLlmIn}s  (press L = analyze now, Q = quit)${ANSI.reset}`
-    );
-  } else {
-    lines.push(`${ANSI.dim}LLM analysis disabled  (press Q = quit)${ANSI.reset}`);
-  }
+  lines.push(`${ANSI.dim}Press Q = quit${ANSI.reset}`);
 
   return lines;
 }
@@ -166,10 +159,9 @@ export function render(
   state: LiveState,
   deviceName: string,
   windowNum: number,
-  windowSecs: number,
-  nextLlmIn: number
+  windowSecs: number
 ): void {
-  const lines = buildLines(state, deviceName, windowNum, windowSecs, nextLlmIn);
+  const lines = buildLines(state, deviceName, windowNum, windowSecs);
 
   // Erase exactly the number of lines drawn last time
   if (lastLineCount > 0) {

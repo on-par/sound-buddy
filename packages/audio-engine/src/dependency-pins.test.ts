@@ -14,16 +14,7 @@ const pkg = JSON.parse(
   devDependencies?: Record<string, string>;
 };
 
-const EXACT_VERSION = /^\d+\.\d+\.\d+$/;
-
 describe('audio-engine dependency pins', () => {
-  it.each(['@earendil-works/pi-ai', '@earendil-works/pi-coding-agent'])(
-    'pins %s to an exact version',
-    (name) => {
-      expect(pkg.dependencies[name]).toMatch(EXACT_VERSION);
-    },
-  );
-
   it('declares no "latest" dependency specifiers', () => {
     const specs = Object.values({
       ...pkg.dependencies,
