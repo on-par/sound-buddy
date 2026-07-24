@@ -114,7 +114,12 @@ test.describe('Live capture (PRD 06)', () => {
     await expect(window.locator('.live-ch .sb-spectrum-curve')).toHaveCount(2);
     await expect(channels.first().locator('.sb-y-label').first()).toBeAttached();
     await expect(channels.first().locator('.veq-label')).toHaveCount(7);
-    await expect(channels.first().locator('.veq-label').first()).toHaveText('Sub Bass');
+    await expect(channels.first().locator('.veq-label .veq-label-full').first()).toHaveText('Sub Bass');
+
+    // All 7 labels sit on a single row (#666) — no alternating second row.
+    const boxes = await channels.first().locator('.veq-label').evaluateAll(
+      els => els.map(el => el.getBoundingClientRect().y));
+    for (let i = 1; i < boxes.length; i++) expect(Math.abs(boxes[i] - boxes[0])).toBeLessThanOrEqual(1);
   });
 
   // Per-strip collapse / fold (#40).

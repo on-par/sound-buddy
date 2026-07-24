@@ -100,7 +100,7 @@ export const VEQ_INSET = (() => {
 export const VEQ_LABEL_MARGIN = `margin-left:${(CURVE_VB.ml / CURVE_VB.w * 100).toFixed(2)}%;margin-right:${(CURVE_VB.mr / CURVE_VB.w * 100).toFixed(2)}%`;
 export const VEQ_BANDS = BAND_META.map((b, i) => {
   const bx0 = veqLogPos(b.lo) + VEQ_GAP, bx1 = veqLogPos(b.hi) - VEQ_GAP;
-  return { key: b.key, label: b.label, color: b.color, left: bx0.toFixed(2), width: (bx1 - bx0).toFixed(2), center: veqLogPos(VEQ_FREQS[i]).toFixed(2) };
+  return { key: b.key, label: b.label, short: b.short, color: b.color, left: bx0.toFixed(2), width: (bx1 - bx0).toFixed(2), center: veqLogPos(VEQ_FREQS[i]).toFixed(2) };
 });
 
 // { freqs, db } curve for one channel. Non-finite band values (a malformed

@@ -800,12 +800,28 @@
     .veq-val { position:absolute; transform:translate(-50%, -3px); bottom:0; font:var(--fw-medium) 8.5px/1 var(--font-mono); font-variant-numeric:tabular-nums; color:var(--text-muted); transition:bottom var(--dur-base) var(--ease-out); pointer-events:none; }
     .veq-val.hot { color:var(--text-primary); }
     .veq-val.dim { opacity:0.45; }
-    /* Alternate labels drop to a second row so narrow bands (Presence) never
-       collide with their neighbors at small window widths. */
-    .veq-labels { position:relative; height:26px; margin-top:2px; }
+    /* Single-row band labels (#666): all 7 labels stay on one row and swap
+       to short forms ("Sub Bass" -> "Sub") below a collide-aware width,
+       instead of the old alternating-second-row layout that made labels
+       read as misaligned. .veq-labels is also used by the analysis-view EQ
+       (equal-width columns, 14.3% apart) — the breakpoint below is derived
+       from the Live tab's tightest gap, so the analysis view is safe well
+       below it too. */
+    .veq-labels { position:relative; height:12px; margin-top:2px; container-type:inline-size; }
     .veq-label { position:absolute; transform:translateX(-50%); font:var(--fw-medium) 9.5px/1 var(--font-sans); color:var(--text-muted); white-space:nowrap; }
-    .veq-label:nth-child(2n) { top:12px; }
     .veq-label.loud { color:var(--text-primary); font-weight:var(--fw-semibold); }
+    .veq-label-abbr { display:none; }
+    /* 640px derivation: the Live tab's narrowest label gap is High Mid <->
+       Presence, whose band centers sit 7.95% of the plot width apart
+       (veqLogPos of 2828Hz vs 4899Hz). The full labels "High Mid"/"Presence"
+       render ~46px wide at this 9.5px font, so full labels need
+       ~(46+4)/0.0795 = ~630px of label-row width -- 640px adds margin. Short
+       forms (<=~32px wide) fit down to ~350px, well under the app's 900px
+       minWidth (app/electron/main.ts). */
+    @container (max-width: 640px) {
+      .veq-label .veq-label-full { display:none; }
+      .veq-label .veq-label-abbr { display:inline; }
+    }
 
     /* BandMeter */
     .bm { display:flex; flex-direction:column; }

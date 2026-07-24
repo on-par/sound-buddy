@@ -72,6 +72,22 @@ describe('constants', () => {
   });
 });
 
+describe('BAND_META short labels (#666)', () => {
+  it('gives every band a non-empty short form, in band order', () => {
+    expect(BAND_META.map((b) => b.short)).toEqual([
+      'Sub', 'Bass', 'Lo Mid', 'Mid', 'Hi Mid', 'Pres', 'Brill',
+    ]);
+    for (const b of BAND_META) {
+      expect(b.short.length).toBeGreaterThan(0);
+      if (b.short !== 'Bass' && b.short !== 'Mid') expect(b.short.length).toBeLessThan(b.label.length);
+    }
+  });
+
+  it('carries short through EQ_COLS matching BAND_META by index', () => {
+    EQ_COLS.forEach((col, i) => expect(col.short).toBe(BAND_META[i].short));
+  });
+});
+
 describe('X_MINOR_TICKS', () => {
   it('has 18 in-range, ascending, unlabeled minor ticks distinct from X_TICKS', () => {
     expect(X_MINOR_TICKS).toHaveLength(18);
@@ -394,6 +410,24 @@ describe('veqBarsAndLabelsHTML', () => {
     expect(labels).toContain('veq-label loud');
     expect(labels).toContain('>A<');
     expect(labels).toContain('>B<');
+  });
+
+  it('renders one .veq-label per column with nested full/abbr spans, falling back to label when short is absent (#666)', () => {
+    const cols = [
+      { key: 'a', label: 'Alpha', short: 'A', color: 'red', left: '0', width: '10', center: '5' },
+      { key: 'b', label: 'Beta', color: 'blue', left: '10', width: '10', center: '15' },
+    ];
+    const { labels } = veqBarsAndLabelsHTML(cols, [-50, -10], 1);
+    const outer = labels.match(/<span class="veq-label( loud)?"[^>]*>/g) || [];
+    expect(outer).toHaveLength(2);
+    expect(outer[1]).toContain('veq-label loud');
+    expect(outer[0]).not.toContain('loud');
+
+    expect(labels).toContain('<span class="veq-label-full">Alpha</span>');
+    expect(labels).toContain('<span class="veq-label-abbr">A</span>');
+    // no short on Beta -> abbr falls back to the full label
+    expect(labels).toContain('<span class="veq-label-full">Beta</span>');
+    expect(labels).toContain('<span class="veq-label-abbr">Beta</span>');
   });
 });
 
