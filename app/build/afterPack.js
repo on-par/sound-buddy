@@ -1,6 +1,6 @@
 // electron-builder afterPack hook — makes the macOS .app fully self-contained.
 //
-// The app shells out to sox, ffprobe and a Python interpreter (librosa/numpy/…).
+// The app shells out to sox, ffprobe and a Python interpreter (numpy/scipy/…).
 // None of those ship with macOS, so a download-only user hit "spawn sox ENOENT".
 // This hook bundles them INTO the app so it runs with zero external setup:
 //
@@ -61,7 +61,8 @@ module.exports = async function afterPack(context) {
   fs.mkdirSync(binDir, { recursive: true });
   fs.mkdirSync(libDir, { recursive: true });
   // ffmpeg shares ffprobe's dylibs (dylibbundler dedups), so it adds almost no
-  // size but lets librosa/audioread decode m4a/aac when soundfile can't.
+  // size but lets spectrum.py's subprocess fallback decode m4a/aac when
+  // soundfile can't.
   for (const tool of ['sox', 'ffprobe', 'ffmpeg']) {
     const src = sh(`command -v ${tool}`);
     if (!src) throw new Error(`afterPack: "${tool}" not found on build machine (brew install sox ffmpeg)`);

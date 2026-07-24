@@ -90,11 +90,12 @@ const HAS_SOX = ok('sox', ['--version']);
 const HAS_FFPROBE = ok('ffprobe', ['-version']);
 const HAS_FFMPEG = ok('ffmpeg', ['-version']);
 
-// Resolve one Python interpreter with librosa. Both copies must use the SAME
-// interpreter for their outputs to be comparable, so we pin it: the app copy
-// via SOUND_BUDDY_PYTHON, the audio-engine copy (which spawns bare `python3`)
-// via a PATH prepend to that interpreter's directory.
-function resolveLibrosaPython(): string | null {
+// Resolve one Python interpreter with the spectrum deps (numpy/scipy/
+// soundfile). Both copies must use the SAME interpreter for their outputs to
+// be comparable, so we pin it: the app copy via SOUND_BUDDY_PYTHON, the
+// audio-engine copy (which spawns bare `python3`) via a PATH prepend to that
+// interpreter's directory.
+function resolveSpectrumPython(): string | null {
   const candidates = [
     process.env.SOUND_BUDDY_PYTHON,
     path.join(repoRoot, '.venv', 'bin', 'python3'),
@@ -102,16 +103,16 @@ function resolveLibrosaPython(): string | null {
   ].filter((c): c is string => Boolean(c));
   for (const c of candidates) {
     const exists = c === 'python3' || fs.existsSync(c);
-    if (exists && ok(c, ['-c', 'import librosa, numpy'])) return c;
+    if (exists && ok(c, ['-c', 'import numpy, scipy, soundfile'])) return c;
   }
   return null;
 }
-const LIBROSA_PYTHON = resolveLibrosaPython();
+const SPECTRUM_PYTHON = resolveSpectrumPython();
 
 beforeAll(() => {
-  if (LIBROSA_PYTHON && LIBROSA_PYTHON !== 'python3') {
-    process.env.SOUND_BUDDY_PYTHON = LIBROSA_PYTHON;
-    process.env.PATH = `${path.dirname(LIBROSA_PYTHON)}${path.delimiter}${process.env.PATH ?? ''}`;
+  if (SPECTRUM_PYTHON && SPECTRUM_PYTHON !== 'python3') {
+    process.env.SOUND_BUDDY_PYTHON = SPECTRUM_PYTHON;
+    process.env.PATH = `${path.dirname(SPECTRUM_PYTHON)}${path.delimiter}${process.env.PATH ?? ''}`;
   }
 });
 
@@ -145,14 +146,14 @@ describe.skipIf(!HAS_FFMPEG)('ebur128 parser: app copy === audio-engine copy', (
   });
 });
 
-describe.skipIf(!LIBROSA_PYTHON)('spectrum parser: app copy === audio-engine copy', () => {
+describe.skipIf(!SPECTRUM_PYTHON)('spectrum parser: app copy === audio-engine copy', () => {
   // Both spawn the same spectrum.py with the same interpreter, so the numeric
   // fields must be identical. We compare the scalar analysis fields (the seven
   // bands + centroid/rolloff/dynamic range + content type) — not the large
   // frames/segments arrays, which are explicitly out of scope for #150.
   //
-  // spectrum.py's cold librosa import alone can exceed vitest's 5 s default
-  // on a fresh CI runner — worse under the root aggregated coverage run
+  // spectrum.py's cold numpy/scipy import alone can exceed vitest's 5 s
+  // default on a fresh CI runner — worse under the root aggregated coverage run
   // (#438), where audio-engine's spectrum tests compete for the same
   // interpreter. Same headroom as audio-engine's fixtures.test.ts.
   const SPECTRUM_TIMEOUT = 60_000;

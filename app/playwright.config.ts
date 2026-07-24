@@ -5,7 +5,7 @@ import { defineConfig } from '@playwright/test';
 // only the stubbed, tool-free specs (SB_E2E_STUBBED_ONLY=1) and skips these;
 // they still run locally via scripts/verify.sh when the tools are present.
 // onboarding.spec.ts drives the bundled demo.wav through the real analyze
-// pipeline (electron/ipc/shared.ts), so it needs sox/ffprobe/python+librosa
+// pipeline (electron/ipc/shared.ts), so it needs sox/ffprobe/python+numpy/scipy
 // same as smoke/packaged — it is not IPC-stubbed despite living alongside the
 // stubbed specs.
 const MEDIA_SPECS = [

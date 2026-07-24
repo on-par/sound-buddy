@@ -80,8 +80,8 @@ export function toolBin(name: string): string {
   return name; // fall back to PATH (dev / unbundled)
 }
 
-// Env for spawned Python: prepend the bundled bin dir so librosa/audioread can
-// find the bundled ffmpeg (m4a/aac decode) without a system install. Also
+// Env for spawned Python: prepend the bundled bin dir so spectrum.py's ffmpeg
+// fallback (m4a/aac decode) finds it without a system install. Also
 // strips any AI-provider API key narrative-port.ts may have set on
 // process.env — these audio-analysis subprocesses have nothing to do with
 // the AI narrative feature and must never inherit its secrets.
@@ -96,7 +96,7 @@ export function childEnv(): NodeJS.ProcessEnv {
   return env;
 }
 
-// The audio-engine scripts need librosa/soundfile/sounddevice/scipy, which the
+// The audio-engine scripts need numpy/scipy/soundfile/sounddevice, which the
 // system `python3` usually lacks (and Homebrew's is externally-managed). Prefer,
 // in order: an explicit override, the per-user venv created by
 // scripts/setup-macos.sh, the dev repo .venv, then bare `python3`. Resolved

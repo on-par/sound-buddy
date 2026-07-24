@@ -77,13 +77,15 @@ else
   echo "==> app unit tests SKIPPED — app deps not installed (run without --fast, or: npm ci --prefix app)"
 fi
 
-# Python analysis helpers (stream.py, playback.py). Require numpy + scipy;
-# sounddevice is stubbed by their tests. Skipped with a note if no suitable
-# interpreter is found.
+# Python analysis helpers (stream.py, playback.py, spectrum.py). Require
+# numpy + scipy + soundfile — spectrum.py hard-requires soundfile at import
+# time (sys.exit(1) if missing), so the probe must include it or this whole
+# block aborts the run instead of skipping. sounddevice is stubbed by the
+# stream/playback tests. Skipped with a note if no suitable interpreter is found.
 PYTHON="${SOUND_BUDDY_PYTHON:-}"
 if [[ -z "$PYTHON" ]]; then
   for cand in ./.venv/bin/python3 python3; do
-    if command -v "$cand" >/dev/null 2>&1 && "$cand" -c 'import numpy, scipy' >/dev/null 2>&1; then
+    if command -v "$cand" >/dev/null 2>&1 && "$cand" -c 'import numpy, scipy, soundfile' >/dev/null 2>&1; then
       PYTHON="$cand"; break
     fi
   done
@@ -93,8 +95,10 @@ if [[ -n "$PYTHON" ]]; then
   "$PYTHON" packages/audio-engine/scripts/test_stream.py
   echo "==> python tests (playback.py) via $PYTHON"
   "$PYTHON" packages/audio-engine/scripts/test_playback.py
+  echo "==> python tests (spectrum.py) via $PYTHON"
+  "$PYTHON" packages/audio-engine/scripts/test_spectrum.py
 else
-  echo "==> python tests skipped (no interpreter with numpy+scipy)"
+  echo "==> python tests skipped (no interpreter with numpy+scipy+soundfile)"
 fi
 
 # spike helpers (spike_dual_capture.py, spike_waveform_transport.py) are

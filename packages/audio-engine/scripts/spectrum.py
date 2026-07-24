@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-spectrum.py — Frequency-band + fine-grained spectral analysis using librosa.
+spectrum.py — Frequency-band + fine-grained spectral analysis using numpy/scipy.
 
 Usage: python3 spectrum.py <audio_file_path>
 
@@ -22,13 +22,19 @@ additive.
 
 import sys
 import json
+import subprocess
+import io
 import numpy as np
 
 try:
-    import librosa
+    import soundfile as sf
+    from scipy.signal import get_window
 except ImportError:
     print(
-        json.dumps({"error": "librosa not installed. Run: pip install librosa"}),
+        json.dumps({
+            "error": "soundfile/scipy not installed. Run: "
+                     "pip install -r packages/audio-engine/scripts/requirements.txt",
+        }),
         file=sys.stdout,
     )
     sys.exit(1)
@@ -39,6 +45,17 @@ except ImportError:
 N_FFT = 4096
 HOP = N_FFT // 4          # 1024
 SILENCE_FLOOR_DB = -120.0
+
+# Legacy scalar spectral_centroid/spectral_rolloff_85 use a separate feature-
+# level STFT (n_fft=2048, hop_length=512), not the 4096/1024 STFT above — kept
+# verbatim so the pinned golden values (fixtures.test.ts) don't drift.
+SCALAR_N_FFT = 2048
+SCALAR_HOP = 512
+SCALAR_ROLLOFF_PERCENT = 0.85
+
+# Spectral-flatness `amin` floor — keeps bin power from hitting zero before
+# the geometric/arithmetic mean ratio, so silence doesn't divide by zero.
+FLATNESS_AMIN = 1e-10
 
 # Legacy 7-band definitions: (name, low_hz, high_hz). Kept verbatim.
 BANDS = [
@@ -68,6 +85,85 @@ SILENCE_RMS_DB = -55.0     # a frame quieter than this is 'silence'
 
 def _grid_freqs() -> np.ndarray:
     return np.geomspace(GRID_LOW_HZ, GRID_HIGH_HZ, GRID_POINTS)
+
+
+def _load_audio(path: str):
+    """Native sample rate, channel-mean mono, float32. soundfile (libsndfile)
+    can't decode m4a/aac, so fall back to the ffmpeg subprocess (bundled in
+    the packaged app, on PATH in dev)."""
+    try:
+        data, sr = sf.read(path, dtype="float32", always_2d=True)
+    except Exception:
+        try:
+            raw = subprocess.run(
+                ["ffmpeg", "-v", "error", "-i", path, "-f", "wav", "-acodec", "pcm_f32le", "-"],
+                capture_output=True, check=True,
+            ).stdout
+        except subprocess.CalledProcessError as ffmpeg_exc:
+            stderr = (ffmpeg_exc.stderr or b"").decode("utf-8", errors="replace").strip()
+            raise RuntimeError(
+                f"ffmpeg could not decode '{path}': {stderr or 'no error output from ffmpeg'}"
+            ) from ffmpeg_exc
+        data, sr = sf.read(io.BytesIO(raw), dtype="float32", always_2d=True)
+    y = data.mean(axis=1) if data.shape[1] > 1 else data[:, 0]
+    return y.astype(np.float32), int(sr)
+
+
+def _stft_mag(y: np.ndarray, n_fft: int, hop: int) -> np.ndarray:
+    """Magnitude STFT, shape (1 + n_fft//2, T). Centered framing with zero
+    padding and a periodic Hann window — see the parity tests in
+    test_spectrum.py for the reference semantics this must match."""
+    pad = n_fft // 2
+    ypad = np.pad(y, pad, mode="constant")          # zero-padded, centered framing
+    window = get_window("hann", n_fft, fftbins=True)
+    n_frames = 1 + (len(ypad) - n_fft) // hop
+    frames = np.lib.stride_tricks.sliding_window_view(ypad, n_fft)[::hop][:n_frames]
+    return np.abs(np.fft.rfft(frames * window, axis=1)).T
+
+
+def _fft_freqs(sr: int, n_fft: int) -> np.ndarray:
+    return np.fft.rfftfreq(n_fft, 1.0 / sr)
+
+
+def _frames_to_time(idx: np.ndarray, sr: int, hop: int) -> np.ndarray:
+    return np.asarray(idx, dtype=np.float64) * hop / sr
+
+
+def _rms_frames(y: np.ndarray, frame_length: int, hop_length: int) -> np.ndarray:
+    """Centered windowed RMS: zero-pad by frame_length // 2 before framing."""
+    ypad = np.pad(y, frame_length // 2, mode="constant")
+    if len(ypad) < frame_length:
+        # Near-empty input (e.g. a corrupted/header-only file decodes to 0
+        # samples) combined with an odd frame_length pads one sample short of
+        # a full window — no frames fit. compute_dynamic_range's empty-array
+        # branch turns this into a clean 0.0 rather than a sliding_window_view
+        # ValueError.
+        return np.zeros(0, dtype=np.float64)
+    n = 1 + (len(ypad) - frame_length) // hop_length
+    frames = np.lib.stride_tricks.sliding_window_view(ypad, frame_length)[::hop_length][:n]
+    return np.sqrt(np.mean(frames.astype(np.float64) ** 2, axis=1))
+
+
+def _spectral_centroid(S_mag: np.ndarray, freqs: np.ndarray) -> np.ndarray:
+    """Power-weighted mean frequency per column: sum(freq * normalize(S, norm=1))."""
+    norm = np.sum(S_mag, axis=0)
+    norm = np.where(norm < np.finfo(S_mag.dtype).tiny, 1.0, norm)
+    return np.sum(freqs[:, None] * S_mag, axis=0) / norm
+
+
+def _spectral_rolloff(S_mag: np.ndarray, freqs: np.ndarray, roll_percent: float) -> np.ndarray:
+    """Lowest frequency per column whose cumulative magnitude reaches
+    roll_percent of the column total."""
+    cum = np.cumsum(S_mag, axis=0)
+    threshold = roll_percent * cum[-1, :]
+    idx = np.argmax(cum >= threshold, axis=0)   # first bin meeting the threshold
+    return freqs[idx]
+
+
+def _spectral_flatness(S_mag: np.ndarray) -> np.ndarray:
+    """Geometric-to-arithmetic mean power ratio per column (amin=1e-10, power=2.0)."""
+    p = np.maximum(FLATNESS_AMIN, S_mag ** 2)
+    return np.exp(np.mean(np.log(p), axis=0)) / np.mean(p, axis=0)
 
 
 def amplitude_to_db(rms: float) -> float:
@@ -120,7 +216,7 @@ def compute_dynamic_range(y: np.ndarray, sr: int) -> float:
     """Windowed-RMS dynamic range: p95 − p5 of 100 ms RMS frames (dB)."""
     frame_length = max(1, int(sr * 0.1))
     hop_length = max(1, frame_length // 2)
-    rms_frames = librosa.feature.rms(y=y, frame_length=frame_length, hop_length=hop_length)[0]
+    rms_frames = _rms_frames(y, frame_length, hop_length)
     rms_frames = rms_frames[rms_frames > 1e-10]
     if len(rms_frames) == 0:
         return 0.0
@@ -241,7 +337,7 @@ def main() -> None:
     audio_path = sys.argv[1]
 
     try:
-        y, sr = librosa.load(audio_path, sr=None, mono=True)
+        y, sr = _load_audio(audio_path)
     except Exception as exc:  # noqa: BLE001
         print(json.dumps({"error": f"Failed to load audio: {exc}"}))
         sys.exit(1)
@@ -250,9 +346,9 @@ def main() -> None:
 
     # One STFT drives the whole-file curve, the legacy bands, and the per-frame
     # time slices (each is just a column range of this matrix).
-    stft = np.abs(librosa.stft(y, n_fft=N_FFT, hop_length=HOP))       # (bins, T)
+    stft = _stft_mag(y, N_FFT, HOP)       # (bins, T)
     power = stft ** 2
-    freqs = librosa.fft_frequencies(sr=sr, n_fft=N_FFT)
+    freqs = _fft_freqs(sr, N_FFT)
     n_cols = power.shape[1]
 
     centers = _grid_freqs()
@@ -273,11 +369,11 @@ def main() -> None:
         by_duration = max(1, int(duration / MIN_FRAME_SECONDS))
         n_frames = max(1, min(MAX_FRAMES, by_duration))
         col_edges = np.linspace(0, n_cols, n_frames + 1, dtype=int)
-        col_time = librosa.frames_to_time(np.arange(n_cols), sr=sr, hop_length=HOP)
+        col_time = _frames_to_time(np.arange(n_cols), sr, HOP)
 
         # Precompute per-column features for classification.
-        centroid_cols = librosa.feature.spectral_centroid(S=stft, sr=sr)[0]
-        flatness_cols = librosa.feature.spectral_flatness(S=stft)[0]
+        centroid_cols = _spectral_centroid(stft, freqs)
+        flatness_cols = _spectral_flatness(stft)
 
         for fi in range(n_frames):
             c0, c1 = col_edges[fi], max(col_edges[fi] + 1, col_edges[fi + 1])
@@ -311,10 +407,13 @@ def main() -> None:
     segments = build_segments(frames)
     content_type = summarize_content(frames)
 
-    # Legacy scalar spectral characteristics (unchanged).
-    centroid_frames = librosa.feature.spectral_centroid(y=y, sr=sr)[0]
+    # Legacy scalar spectral characteristics (unchanged): a separate
+    # feature-level STFT (2048/512), not the 4096/1024 STFT above — see SCALAR_N_FFT.
+    scalar_stft = _stft_mag(y, SCALAR_N_FFT, SCALAR_HOP)
+    scalar_freqs = _fft_freqs(sr, SCALAR_N_FFT)
+    centroid_frames = _spectral_centroid(scalar_stft, scalar_freqs)
     spectral_centroid = float(np.mean(centroid_frames)) if len(centroid_frames) else 0.0
-    rolloff_frames = librosa.feature.spectral_rolloff(y=y, sr=sr, roll_percent=0.85)[0]
+    rolloff_frames = _spectral_rolloff(scalar_stft, scalar_freqs, SCALAR_ROLLOFF_PERCENT)
     spectral_rolloff_85 = float(np.mean(rolloff_frames)) if len(rolloff_frames) else 0.0
     dynamic_range = compute_dynamic_range(y, sr)
 
