@@ -18,6 +18,10 @@ const MAX_CHURCH_NAME_LENGTH = 100;
 // (#642) reuses it rather than duplicating.
 export const EMAIL_PATTERN = /^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$/;
 const ALLOWED_FIELDS = new Set(["email", "churchName"]);
+// KV key prefix for a stored signup, keyed by lowercased email. Exported so
+// waitlist-invite.ts (#642) shares this single source of truth instead of a
+// second inline literal that could drift out of sync.
+export const WAITLIST_KEY_PREFIX = "waitlist:";
 
 export interface WaitlistSignup {
   email: string;
@@ -51,7 +55,8 @@ type ValidationResult =
   | { ok: true; signup: WaitlistSignup }
   | { ok: false; error: string; field?: string; status: number };
 
-function isPlainObject(value: unknown): value is Record<string, unknown> {
+/** Exported so waitlist-invite.ts (#642) reuses it rather than duplicating. */
+export function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
@@ -165,7 +170,7 @@ export async function handleWaitlistSignup(
   };
 
   try {
-    await env.WAITLIST_KV.put(`waitlist:${emailLower}`, JSON.stringify(stored));
+    await env.WAITLIST_KV.put(`${WAITLIST_KEY_PREFIX}${emailLower}`, JSON.stringify(stored));
   } catch {
     return json({ error: "server_error" }, 500);
   }

@@ -9,13 +9,18 @@
 
 import { json } from "../http";
 import { sha256Hex } from "../license-sign";
-import { EMAIL_PATTERN, MAX_EMAIL_LENGTH, type StoredWaitlistSignup } from "./waitlist";
+import {
+  EMAIL_PATTERN,
+  isPlainObject,
+  MAX_EMAIL_LENGTH,
+  WAITLIST_KEY_PREFIX,
+  type StoredWaitlistSignup,
+} from "./waitlist";
 import type { Env } from "../index";
 
 const MAX_BODY_BYTES = 64 * 1024; // an invite batch is a list of emails — far below this
 const MAX_INVITE_BATCH = 200; // per-call cap; also bounds KV writes per request
 const BEARER_PREFIX = "Bearer ";
-const WAITLIST_KEY_PREFIX = "waitlist:"; // must match the key prefix written by waitlist.ts
 
 /** Injectable seam so tests never depend on the wall clock. */
 export interface WaitlistInviteDeps {
@@ -43,10 +48,6 @@ export async function isAdminAuthorized(request: Request, env: Env): Promise<boo
 
   const presented = header.slice(BEARER_PREFIX.length);
   return (await sha256Hex(presented)) === (await sha256Hex(env.WAITLIST_ADMIN_TOKEN));
-}
-
-function isPlainObject(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 type InviteValidationResult =
@@ -132,14 +133,22 @@ export async function handleInvite(
     );
   }
 
-  const now = deps.now ?? (() => new Date());
+  // Read once for the whole batch — every contact invited in the same call
+  // gets the same invitedAt, matching the "invited together" intent.
+  const invitedAt = (deps.now ?? (() => new Date()))().toISOString();
   const results: InviteResult[] = [];
 
   for (const email of validated.emails) {
     const emailLower = email.toLowerCase();
     const key = `${WAITLIST_KEY_PREFIX}${emailLower}`;
 
-    const raw = await env.WAITLIST_KV.get(key);
+    let raw: string | null;
+    try {
+      raw = await env.WAITLIST_KV.get(key);
+    } catch {
+      results.push({ email: emailLower, outcome: "error" });
+      continue;
+    }
     if (raw === null) {
       results.push({ email: emailLower, outcome: "not_found" });
       continue;
@@ -161,7 +170,7 @@ export async function handleInvite(
     const updated: StoredWaitlistSignup = {
       ...record,
       status: "invited",
-      invitedAt: now().toISOString(),
+      invitedAt,
     };
     try {
       await env.WAITLIST_KV.put(key, JSON.stringify(updated));
@@ -198,41 +207,50 @@ export async function handleListInvitees(
   const url = new URL(request.url);
   const cursor = url.searchParams.get("cursor");
 
+  let list;
   try {
-    const list = await env.WAITLIST_KV.list({
+    list = await env.WAITLIST_KV.list({
       prefix: WAITLIST_KEY_PREFIX,
       ...(cursor ? { cursor } : {}),
     });
-
-    const invitees: Invitee[] = [];
-    for (const key of list.keys) {
-      const raw = await env.WAITLIST_KV.get(key.name);
-      if (raw === null) continue;
-
-      let record: StoredWaitlistSignup;
-      try {
-        record = JSON.parse(raw) as StoredWaitlistSignup;
-      } catch {
-        continue;
-      }
-
-      if (record.status !== "waitlist") continue;
-      invitees.push({
-        email: record.email,
-        signedUpAt: record.signedUpAt,
-        ...(record.churchName ? { churchName: record.churchName } : {}),
-      });
-    }
-
-    return json(
-      {
-        invitees,
-        complete: list.list_complete,
-        ...(list.list_complete ? {} : { cursor: list.cursor }),
-      },
-      200,
-    );
   } catch {
     return json({ error: "server_error" }, 500);
   }
+
+  // Per-key reads are isolated from the list() call above: a transient read
+  // failure or an unparseable row skips just that key rather than discarding
+  // every invitee already gathered from the page.
+  const invitees: Invitee[] = [];
+  for (const key of list.keys) {
+    let raw: string | null;
+    try {
+      raw = await env.WAITLIST_KV.get(key.name);
+    } catch {
+      continue;
+    }
+    if (raw === null) continue;
+
+    let record: StoredWaitlistSignup;
+    try {
+      record = JSON.parse(raw) as StoredWaitlistSignup;
+    } catch {
+      continue;
+    }
+
+    if (record.status !== "waitlist") continue;
+    invitees.push({
+      email: record.email,
+      signedUpAt: record.signedUpAt,
+      ...(record.churchName !== undefined ? { churchName: record.churchName } : {}),
+    });
+  }
+
+  return json(
+    {
+      invitees,
+      complete: list.list_complete,
+      ...(list.list_complete ? {} : { cursor: list.cursor }),
+    },
+    200,
+  );
 }

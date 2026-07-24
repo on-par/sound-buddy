@@ -404,6 +404,69 @@ describe("POST /api/waitlist/invite (#642)", () => {
     expect(await res.json()).toEqual({ results: [{ email: "pat@example.com", outcome: "error" }] });
   });
 
+  it("get() throwing for one email → that email error, others still processed, response still 200", async () => {
+    const store = new Map<string, string>();
+    seed(store, waitlistRow({ email: "a@example.com" }));
+    seed(store, waitlistRow({ email: "b@example.com" }));
+    const kv = {
+      get: vi.fn(async (key: string) => {
+        if (key === "waitlist:a@example.com") throw new Error("boom");
+        return store.has(key) ? store.get(key)! : null;
+      }),
+      put: vi.fn(async (key: string, value: string) => {
+        store.set(key, value);
+      }),
+    } as unknown as KVNamespace;
+    const env = makeEnv(kv);
+
+    const res = await handleInvite(
+      inviteRequest({ emails: ["a@example.com", "b@example.com"] }),
+      env,
+      ctx,
+      deps,
+    );
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({
+      results: [
+        { email: "a@example.com", outcome: "error" },
+        { email: "b@example.com", outcome: "invited" },
+      ],
+    });
+  });
+
+  it("empty-string churchName is preserved verbatim on the invited record", async () => {
+    const { kv, store } = makeKv();
+    seed(store, waitlistRow({ churchName: "" }));
+    const env = makeEnv(kv);
+
+    const res = await handleInvite(inviteRequest({ emails: ["pat@example.com"] }), env, ctx, deps);
+
+    expect(res.status).toBe(200);
+    const stored = JSON.parse(store.get("waitlist:pat@example.com")!) as StoredWaitlistSignup;
+    expect(stored.churchName).toBe("");
+  });
+
+  it("a batch of multiple invites all get the same invitedAt (one clock read per request)", async () => {
+    const { kv, store } = makeKv();
+    seed(store, waitlistRow({ email: "a@example.com" }));
+    seed(store, waitlistRow({ email: "b@example.com" }));
+    const env = makeEnv(kv);
+
+    const res = await handleInvite(
+      inviteRequest({ emails: ["a@example.com", "b@example.com"] }),
+      env,
+      ctx,
+      deps,
+    );
+
+    expect(res.status).toBe(200);
+    const a = JSON.parse(store.get("waitlist:a@example.com")!) as StoredWaitlistSignup;
+    const b = JSON.parse(store.get("waitlist:b@example.com")!) as StoredWaitlistSignup;
+    expect(a.invitedAt).toBe(NOW.toISOString());
+    expect(b.invitedAt).toBe(a.invitedAt);
+  });
+
   it("default deps (real clock): invited contact gets a real ISO timestamp", async () => {
     const { kv, store } = makeKv();
     seed(store, waitlistRow());
@@ -471,6 +534,19 @@ describe("GET /api/waitlist/invitees (#642)", () => {
       },
     ]);
     expect(body.invitees[0]).not.toHaveProperty("ip");
+  });
+
+  it("empty-string churchName is included, not dropped", async () => {
+    const { kv, store } = makeKv();
+    seed(store, waitlistRow({ churchName: "" }));
+    const env = makeEnv(kv);
+
+    const res = await handleListInvitees(invitieesRequest(), env, ctx);
+    const body = (await res.json()) as { invitees: Array<Record<string, unknown>> };
+
+    expect(body.invitees).toEqual([
+      { email: "pat@example.com", signedUpAt: "2026-07-01T00:00:00.000Z", churchName: "" },
+    ]);
   });
 
   it("rate-limit keys are invisible: list called with { prefix: 'waitlist:' }", async () => {
@@ -547,6 +623,30 @@ describe("GET /api/waitlist/invitees (#642)", () => {
 
     expect(res.status).toBe(200);
     expect(body.invitees).toHaveLength(1);
+  });
+
+  it("get() throwing for one listed key is skipped, other invitees still returned, 200", async () => {
+    const store = new Map<string, string>();
+    seed(store, waitlistRow({ email: "a@example.com" }));
+    seed(store, waitlistRow({ email: "b@example.com" }));
+    const kv = {
+      get: vi.fn(async (key: string) => {
+        if (key === "waitlist:a@example.com") throw new Error("boom");
+        return store.has(key) ? store.get(key)! : null;
+      }),
+      put: vi.fn(),
+      list: vi.fn(async () => ({
+        keys: [{ name: "waitlist:a@example.com" }, { name: "waitlist:b@example.com" }],
+        list_complete: true,
+      })),
+    } as unknown as KVNamespace;
+    const env = makeEnv(kv);
+
+    const res = await handleListInvitees(invitieesRequest(), env, ctx);
+    const body = (await res.json()) as { invitees: Array<{ email: string }> };
+
+    expect(res.status).toBe(200);
+    expect(body.invitees).toEqual([{ email: "b@example.com", signedUpAt: "2026-07-01T00:00:00.000Z" }]);
   });
 
   it("KV list throwing → 500 server_error", async () => {
