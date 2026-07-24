@@ -49,7 +49,7 @@ vi.mock('electron', () => {
 });
 
 import { app } from 'electron';
-import { engineParsersDir, loadEngineParsers, loadEnginePrompts } from './engine-loader';
+import { engineParsersDir, loadEngineParsers } from './engine-loader';
 import { REPO_ROOT } from './shared';
 
 describe('engineParsersDir', () => {
@@ -142,36 +142,5 @@ describe('loadEngineParsers', () => {
     expect(stats.integratedLufs).toBeCloseTo(-9.0, 5);
     expect(stats.loudnessRange).toBeCloseTo(0.0, 5);
     expect(stats.truePeakDbtp).toBeCloseTo(-6.0, 5);
-  });
-});
-
-describe('loadEnginePrompts', () => {
-  // Must run before any successful loadEnginePrompts() call below — same
-  // cache-ordering hazard as loadEngineParsers's throw test above, but against
-  // this module's own independent cachedPrompts variable.
-  it('throws an actionable rebuild error when the resolved dir has no prompts/*.js (e.g. a stale or missing dist-cjs build)', () => {
-    const fakeResourcesPath = fs.mkdtempSync(path.join(os.tmpdir(), 'sb-engine-loader-prompts-missing-'));
-    fs.mkdirSync(path.join(fakeResourcesPath, 'engine'));
-    const original = process.resourcesPath;
-    (process as { resourcesPath?: string }).resourcesPath = fakeResourcesPath;
-    try {
-      expect(() => loadEnginePrompts()).toThrow(/audio-engine prompts not found at .*npm run build/);
-    } finally {
-      (process as { resourcesPath?: string }).resourcesPath = original;
-    }
-  });
-
-  it('loads the real SYSTEM_PROMPT and buildLiveSystemPrompt from the compiled CJS build', () => {
-    const prompts = loadEnginePrompts();
-    expect(typeof prompts.SYSTEM_PROMPT).toBe('string');
-    expect(prompts.SYSTEM_PROMPT).toContain('professional audio engineer');
-    expect(typeof prompts.buildLiveSystemPrompt).toBe('function');
-    expect(prompts.buildLiveSystemPrompt()).toContain('from a Midas M32R console');
-  });
-
-  it('memoizes — returns the same object identity on a second call', () => {
-    const first = loadEnginePrompts();
-    const second = loadEnginePrompts();
-    expect(second).toBe(first);
   });
 });

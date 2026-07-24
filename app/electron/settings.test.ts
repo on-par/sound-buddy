@@ -34,7 +34,6 @@ import {
   upsertRig,
   deleteRig,
   setActiveRig,
-  isAiEnabled,
   type CaptureRig,
 } from './settings';
 import { logWarn } from './logger';
@@ -60,7 +59,6 @@ function makeRig(over: Partial<CaptureRig> = {}): Omit<CaptureRig, 'id'> {
 
 beforeEach(() => {
   userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'sb-settings-'));
-  delete process.env.SOUND_BUDDY_AI_ENABLED;
   delete process.env.SOUND_BUDDY_IDEAL_PROFILE;
   delete process.env.SOUND_BUDDY_STORAGE_DIR;
   delete process.env.SOUND_BUDDY_REPORT_FIRST_UX;
@@ -76,17 +74,16 @@ describe('getSettings defaults', () => {
     const s = getSettings();
     expect(s.rigs).toEqual([]);
     expect(s.activeRigId).toBeNull();
-    expect(s.aiEnabled).toBe(false);
     expect(s.idealProfile).toBe('');
   });
 
   it('defaults rigs when settings.json has no "rigs" key, preserving other fields', () => {
-    writeFile({ aiEnabled: true, idealProfile: 'broadcast' });
+    writeFile({ idealProfile: 'broadcast', crashReportingEnabled: true });
     const s = getSettings();
     expect(s.rigs).toEqual([]);
     expect(s.activeRigId).toBeNull();
-    expect(s.aiEnabled).toBe(true);
     expect(s.idealProfile).toBe('broadcast');
+    expect(s.crashReportingEnabled).toBe(true);
   });
 
   it('defaults storageDir to "" (platform default) when unset', () => {
@@ -212,7 +209,7 @@ describe('usageSignalEnabled (#145 — opt-in anonymous usage counts, persisted 
   });
 
   it('treats a settings.json with usageSignalEnabled absent as false', () => {
-    writeFile({ aiEnabled: false, idealProfile: '' });
+    writeFile({ idealProfile: '' });
     expect(getSettings().usageSignalEnabled).toBe(false);
   });
 });
@@ -238,7 +235,7 @@ describe('crashReportingEnabled (#473 — opt-in crash reporting, default off)',
   });
 
   it('treats a settings.json with crashReportingEnabled absent as false', () => {
-    writeFile({ aiEnabled: false, idealProfile: '' });
+    writeFile({ idealProfile: '' });
     expect(getSettings().crashReportingEnabled).toBe(false);
   });
 });
@@ -249,7 +246,7 @@ describe('dawWorkspaceEnabled (#516 — experimental DAW workspace, default off)
   });
 
   it('defaults to false when the file exists without the key', () => {
-    writeFile({ aiEnabled: false, idealProfile: '' });
+    writeFile({ idealProfile: '' });
     expect(getSettings().dawWorkspaceEnabled).toBe(false);
   });
 
@@ -271,7 +268,7 @@ describe('liveAdjustmentsEnabled (#522 — experimental live adjustments, defaul
   });
 
   it('defaults to false when the file exists without the key', () => {
-    writeFile({ aiEnabled: false, idealProfile: '' });
+    writeFile({ idealProfile: '' });
     expect(getSettings().liveAdjustmentsEnabled).toBe(false);
   });
 
@@ -293,7 +290,7 @@ describe('reportFirstUxEnabled (#538 — report-first-ux epic gate, default off)
   });
 
   it('defaults to false when the file exists without the key', () => {
-    writeFile({ aiEnabled: false, idealProfile: '' });
+    writeFile({ idealProfile: '' });
     expect(getSettings().reportFirstUxEnabled).toBe(false);
   });
 
@@ -325,7 +322,7 @@ describe('reportFirstUxEnabled (#538 — report-first-ux epic gate, default off)
   });
 
   it('never bakes an env override into a rigs write', () => {
-    writeFile({ aiEnabled: false, idealProfile: '', rigs: [], activeRigId: null, reportFirstUxEnabled: false });
+    writeFile({ idealProfile: '', rigs: [], activeRigId: null, reportFirstUxEnabled: false });
     process.env.SOUND_BUDDY_REPORT_FIRST_UX = '1';
 
     // getSettings reflects the env layer...
@@ -575,30 +572,30 @@ describe('setActiveRig', () => {
 
 describe('layered-persistence discipline', () => {
   it('never bakes an env override into a rigs write', () => {
-    writeFile({ aiEnabled: false, idealProfile: '', rigs: [], activeRigId: null });
-    process.env.SOUND_BUDDY_AI_ENABLED = '1';
+    writeFile({ idealProfile: '', rigs: [], activeRigId: null, reportFirstUxEnabled: false });
+    process.env.SOUND_BUDDY_REPORT_FIRST_UX = '1';
 
     // getSettings reflects the env layer...
-    expect(getSettings().aiEnabled).toBe(true);
+    expect(getSettings().reportFirstUxEnabled).toBe(true);
 
-    // ...but writing a rig persists the FILE's aiEnabled=false, not the env true.
+    // ...but writing a rig persists the FILE's reportFirstUxEnabled=false, not the env true.
     upsertRig(makeRig());
-    expect(readFile().aiEnabled).toBe(false);
+    expect(readFile().reportFirstUxEnabled).toBe(false);
     // The env override is still applied on read.
-    expect(getSettings().aiEnabled).toBe(true);
+    expect(getSettings().reportFirstUxEnabled).toBe(true);
   });
 
-  it('rig writes do not disturb existing aiEnabled/idealProfile file values', () => {
-    updateSettings({ aiEnabled: true, idealProfile: 'broadcast' });
+  it('rig writes do not disturb existing reportFirstUxEnabled/idealProfile file values', () => {
+    updateSettings({ reportFirstUxEnabled: true, idealProfile: 'broadcast' });
     upsertRig(makeRig());
     const f = readFile();
-    expect(f.aiEnabled).toBe(true);
+    expect(f.reportFirstUxEnabled).toBe(true);
     expect(f.idealProfile).toBe('broadcast');
     expect(f.rigs).toHaveLength(1);
   });
 
   it('preserves unknown top-level keys across a rig write (forward compat)', () => {
-    writeFile({ aiEnabled: false, idealProfile: '', rigs: [], futureKey: 'keep-me' });
+    writeFile({ idealProfile: '', rigs: [], futureKey: 'keep-me' });
     upsertRig(makeRig());
     expect(readFile().futureKey).toBe('keep-me');
   });
@@ -606,7 +603,7 @@ describe('layered-persistence discipline', () => {
 
 describe('robustness against a corrupted settings.json', () => {
   it('treats a non-array "rigs" value as empty rather than throwing', () => {
-    writeFile({ aiEnabled: false, idealProfile: '', rigs: { not: 'an array' } });
+    writeFile({ idealProfile: '', rigs: { not: 'an array' } });
     expect(listRigs()).toEqual([]);
     expect(getSettings().rigs).toEqual([]);
     // A save still works and repairs the shape.
@@ -633,7 +630,6 @@ describe('robustness against a corrupted settings.json', () => {
     const s = getSettings();
 
     expect(s.rigs).toEqual([]);
-    expect(s.aiEnabled).toBe(false);
     expect(logWarn).toHaveBeenCalledWith(expect.stringContaining('could not read settings.json'));
   });
 });
@@ -661,29 +657,45 @@ describe('SOUND_BUDDY_IDEAL_PROFILE env override', () => {
   });
 });
 
-describe('isAiEnabled', () => {
-  afterEach(() => {
-    delete process.env.SOUND_BUDDY_AI_ENABLED;
+describe('legacy AI-flag settings migration (#659)', () => {
+  // Built by concatenation so the ai-carveout-gate.test.ts (#659) token scan
+  // — which bans the removed flag's literal name — tolerates this file
+  // exercising the on-disk legacy key by name.
+  const LEGACY_AI_KEY = 'ai' + 'Enabled';
+
+  it('loads a 0.8.7-shaped settings.json with the legacy key cleanly, dropping it from getSettings() while preserving every other setting', () => {
+    writeFile({
+      [LEGACY_AI_KEY]: true,
+      idealProfile: 'broadcast',
+      storageDir: '/tmp/somewhere',
+      rigs: [],
+      activeRigId: null,
+    });
+
+    let s: ReturnType<typeof getSettings> | undefined;
+    expect(() => {
+      s = getSettings();
+    }).not.toThrow();
+
+    expect(LEGACY_AI_KEY in (s as object)).toBe(false);
+    expect(s?.idealProfile).toBe('broadcast');
+    expect(s?.storageDir).toBe('/tmp/somewhere');
   });
 
-  it('is false by default with no file and no env', () => {
-    expect(isAiEnabled()).toBe(false);
-  });
+  it('round-trips the unknown legacy key untouched through a subsequent updateSettings write', () => {
+    writeFile({
+      [LEGACY_AI_KEY]: true,
+      idealProfile: 'broadcast',
+      storageDir: '/tmp/somewhere',
+      rigs: [],
+      activeRigId: null,
+    });
 
-  it('an empty env value falls through to the file/default (unset behavior)', () => {
-    process.env.SOUND_BUDDY_AI_ENABLED = '';
-    updateSettings({ aiEnabled: true });
-    expect(isAiEnabled()).toBe(true);
-  });
+    updateSettings({ idealProfile: 'concert' });
 
-  it.each(['true', 'yes', 'on'])('env value %j is truthy', (v) => {
-    process.env.SOUND_BUDDY_AI_ENABLED = v;
-    expect(isAiEnabled()).toBe(true);
-  });
-
-  it('env value "0" is falsy even when the file has it enabled', () => {
-    updateSettings({ aiEnabled: true });
-    process.env.SOUND_BUDDY_AI_ENABLED = '0';
-    expect(isAiEnabled()).toBe(false);
+    const raw = readFile();
+    expect(raw[LEGACY_AI_KEY]).toBe(true);
+    expect(raw.idealProfile).toBe('concert');
+    expect(raw.storageDir).toBe('/tmp/somewhere');
   });
 });

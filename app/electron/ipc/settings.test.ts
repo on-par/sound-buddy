@@ -102,8 +102,8 @@ describe('get-settings', () => {
   it('returns the current settings', async () => {
     const handler = handlers.get('get-settings');
     expect(handler).toBeTypeOf('function');
-    const result = (await handler!(null)) as { aiEnabled: boolean; rigs: unknown[] };
-    expect(result.aiEnabled).toBe(false);
+    const result = (await handler!(null)) as { usageSignalEnabled: boolean; rigs: unknown[] };
+    expect(result.usageSignalEnabled).toBe(false);
     expect(result.rigs).toEqual([]);
   });
 });
@@ -345,9 +345,9 @@ describe('update-settings IPC whitelist — crashReportingEnabled (#473)', () =>
 
   it('still passes an existing whitelisted key through (regression guard)', async () => {
     const handler = handlers.get('update-settings');
-    const result = (await handler!(null, { aiEnabled: true })) as { aiEnabled: boolean };
-    expect(result.aiEnabled).toBe(true);
-    expect(readFile().aiEnabled).toBe(true);
+    const result = (await handler!(null, { dawWorkspaceEnabled: true })) as { dawWorkspaceEnabled: boolean };
+    expect(result.dawWorkspaceEnabled).toBe(true);
+    expect(readFile().dawWorkspaceEnabled).toBe(true);
   });
 });
 
@@ -515,7 +515,7 @@ describe('update-settings IPC whitelist — weeklyReminderEnabled / weeklyRemind
 
   it('does not call scheduleWeeklyReminder for an unrelated patch', async () => {
     const handler = handlers.get('update-settings');
-    await handler!(null, { aiEnabled: true });
+    await handler!(null, { usageSignalEnabled: true });
     expect(scheduleWeeklyReminderMock).not.toHaveBeenCalled();
   });
 });

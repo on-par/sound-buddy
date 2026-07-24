@@ -29,12 +29,12 @@ vi.mock('electron', () => ({
 vi.mock('../logger', () => ({ log: vi.fn(), logWarn: vi.fn(), logError: vi.fn() }));
 const isEntitledMock = vi.fn();
 vi.mock('../license', () => ({ isEntitled: (...a: unknown[]) => isEntitledMock(...a) }));
-// getSettings is otherwise unused in this file post-#658 (the LLM interval
-// timer was its only caller in live-capture.ts), but shared.ts's REAL
-// defaultRecordDir() still imports it directly — the "REAL defaultRecordDir()"
-// test below exercises that real implementation via vi.importActual, so this
-// mock must stay to keep it from hitting the real settings.ts (which needs a
-// full Electron app.getPath, not the minimal `app` stub above).
+// getSettings is otherwise unused in this file (live-capture.ts has no
+// remaining caller of it), but shared.ts's REAL defaultRecordDir() still
+// imports it directly — the "REAL defaultRecordDir()" test below exercises
+// that real implementation via vi.importActual, so this mock must stay to
+// keep it from hitting the real settings.ts (which needs a full Electron
+// app.getPath, not the minimal `app` stub above).
 const getSettingsMock = vi.fn();
 vi.mock('../settings', () => ({ getSettings: () => getSettingsMock() }));
 const defaultRecordDirMock = vi.fn();
@@ -283,7 +283,7 @@ describe('start-live handler', () => {
     isEntitledMock.mockReturnValue(false);
     const sender = fakeSender();
 
-    const result = await startLive({ windowSecs: 5, llmIntervalSecs: 0 }, sender);
+    const result = await startLive({ windowSecs: 5 }, sender);
 
     expect(result).toEqual({ success: false, error: 'Live monitoring requires a Pro license.' });
     expect(spawnMock).not.toHaveBeenCalled();
@@ -294,7 +294,7 @@ describe('start-live handler', () => {
     getMediaAccessStatusMock.mockReturnValue('denied');
     const sender = fakeSender();
 
-    const result = await startLive({ windowSecs: 5, llmIntervalSecs: 0 }, sender);
+    const result = await startLive({ windowSecs: 5 }, sender);
 
     expect(result).toEqual({
       success: false,
@@ -311,7 +311,7 @@ describe('start-live handler', () => {
     spawnMock.mockReturnValueOnce(fakeProc());
     const sender = fakeSender();
 
-    const result = await startLive({ windowSecs: 5, llmIntervalSecs: 0 }, sender);
+    const result = await startLive({ windowSecs: 5 }, sender);
 
     expect(result).toEqual({ success: true });
     expect(spawnMock).toHaveBeenCalled();
@@ -323,7 +323,7 @@ describe('start-live handler', () => {
     askForMediaAccessMock.mockResolvedValue(false);
     const sender = fakeSender();
 
-    const result = await startLive({ windowSecs: 5, llmIntervalSecs: 0 }, sender);
+    const result = await startLive({ windowSecs: 5 }, sender);
 
     expect(result).toMatchObject({ success: false, micAccess: 'denied' });
     expect(spawnMock).not.toHaveBeenCalled();
@@ -334,7 +334,7 @@ describe('start-live handler', () => {
     askForMediaAccessMock.mockRejectedValue(new Error('tcc'));
     const sender = fakeSender();
 
-    const result = await startLive({ windowSecs: 5, llmIntervalSecs: 0 }, sender);
+    const result = await startLive({ windowSecs: 5 }, sender);
 
     expect(result).toMatchObject({ success: false, micAccess: 'unknown' });
     expect(spawnMock).not.toHaveBeenCalled();
@@ -346,7 +346,7 @@ describe('start-live handler', () => {
     spawnMock.mockReturnValueOnce(fakeProc());
     const sender = fakeSender();
 
-    const result = await startLive({ windowSecs: 5, llmIntervalSecs: 0 }, sender);
+    const result = await startLive({ windowSecs: 5 }, sender);
 
     expect(result).toEqual({ success: true });
     expect(spawnMock).toHaveBeenCalled();
@@ -357,7 +357,7 @@ describe('start-live handler', () => {
     const sender = fakeSender();
 
     await startLive(
-      { device: '2', windowSecs: 5, channels: ['0', '1-2'], intervalSecs: 0.5, llmIntervalSecs: 0 },
+      { device: '2', windowSecs: 5, channels: ['0', '1-2'], intervalSecs: 0.5 },
       sender,
     );
 
@@ -372,7 +372,7 @@ describe('start-live handler', () => {
     spawnMock.mockReturnValueOnce(fakeProc());
     const sender = fakeSender();
 
-    await startLive({ windowSecs: 5, llmIntervalSecs: 0 }, sender);
+    await startLive({ windowSecs: 5 }, sender);
 
     expect(spawnMock).toHaveBeenCalledWith('python3', ['/fake/stream.py', '', '5', ''], expect.anything());
   });
@@ -382,7 +382,7 @@ describe('start-live handler', () => {
     const sender = fakeSender();
 
     await startLive(
-      { windowSecs: 5, llmIntervalSecs: 0, mode: 'record', recordDir: tmpDir, arm: ['0', '2-3'] },
+      { windowSecs: 5, mode: 'record', recordDir: tmpDir, arm: ['0', '2-3'] },
       sender,
     );
 
@@ -398,7 +398,7 @@ describe('start-live handler', () => {
     spawnMock.mockReturnValueOnce(fakeProc());
     const sender = fakeSender();
 
-    await startLive({ windowSecs: 5, llmIntervalSecs: 0, mode: 'record', recordDir: tmpDir }, sender);
+    await startLive({ windowSecs: 5, mode: 'record', recordDir: tmpDir }, sender);
 
     const argv = spawnMock.mock.calls[0][1] as string[];
     expect(argv).not.toContain('--arm');
@@ -409,7 +409,7 @@ describe('start-live handler', () => {
     const sender = fakeSender();
 
     await startLive(
-      { windowSecs: 5, llmIntervalSecs: 0, mode: 'record', recordDir: tmpDir, labels: ['Kick', '', 'OH'] },
+      { windowSecs: 5, mode: 'record', recordDir: tmpDir, labels: ['Kick', '', 'OH'] },
       sender,
     );
 
@@ -422,7 +422,7 @@ describe('start-live handler', () => {
     spawnMock.mockReturnValueOnce(fakeProc());
     const sender = fakeSender();
 
-    await startLive({ windowSecs: 5, llmIntervalSecs: 0, mode: 'record', recordDir: tmpDir }, sender);
+    await startLive({ windowSecs: 5, mode: 'record', recordDir: tmpDir }, sender);
 
     const argv = spawnMock.mock.calls[0][1] as string[];
     expect(argv).not.toContain('--labels');
@@ -433,7 +433,7 @@ describe('start-live handler', () => {
     const sender = fakeSender();
 
     await startLive(
-      { windowSecs: 5, llmIntervalSecs: 0, mode: 'record', recordDir: tmpDir, labels: ['', '  '] },
+      { windowSecs: 5, mode: 'record', recordDir: tmpDir, labels: ['', '  '] },
       sender,
     );
 
@@ -445,7 +445,7 @@ describe('start-live handler', () => {
     spawnMock.mockReturnValueOnce(fakeProc());
     const sender = fakeSender();
 
-    await startLive({ windowSecs: 5, llmIntervalSecs: 0, labels: ['Kick'] }, sender);
+    await startLive({ windowSecs: 5, labels: ['Kick'] }, sender);
 
     const argv = spawnMock.mock.calls[0][1] as string[];
     expect(argv).not.toContain('--labels');
@@ -457,7 +457,7 @@ describe('start-live handler', () => {
     const sender = fakeSender();
 
     const result = await startLive(
-      { windowSecs: 5, llmIntervalSecs: 0, mode: 'record', recordDir: path.join(fileOnDisk, 'sub') },
+      { windowSecs: 5, mode: 'record', recordDir: path.join(fileOnDisk, 'sub') },
       sender,
     );
 
@@ -472,8 +472,8 @@ describe('start-live handler', () => {
     spawnMock.mockReturnValueOnce(firstProc).mockReturnValueOnce(secondProc);
     const sender = fakeSender();
 
-    await startLive({ windowSecs: 5, llmIntervalSecs: 0 }, sender);
-    await startLive({ windowSecs: 5, llmIntervalSecs: 0 }, sender);
+    await startLive({ windowSecs: 5 }, sender);
+    await startLive({ windowSecs: 5 }, sender);
 
     expect(firstProc.kill).toHaveBeenCalled();
   });
@@ -483,7 +483,7 @@ describe('start-live handler', () => {
     spawnMock.mockReturnValueOnce(proc);
     const sender = fakeSender();
 
-    await startLive({ windowSecs: 5, llmIntervalSecs: 0 }, sender);
+    await startLive({ windowSecs: 5 }, sender);
 
     proc.stdout.emit('data', Buffer.from(JSON.stringify({ window: 1, rms: -12 }) + '\n'));
     proc.stdout.emit('data', Buffer.from('garbage\n'));
@@ -501,7 +501,7 @@ describe('start-live handler', () => {
     spawnMock.mockReturnValueOnce(proc);
     const sender = fakeSender();
 
-    await startLive({ windowSecs: 5, llmIntervalSecs: 0 }, sender);
+    await startLive({ windowSecs: 5 }, sender);
 
     proc.emit('error', new Error('boom'));
     expect(sender.sent).toContainEqual({ channel: 'live-event', payload: { error: 'boom' } });
@@ -515,7 +515,7 @@ describe('start-live handler', () => {
     spawnMock.mockReturnValueOnce(proc);
     const sender = fakeSender();
 
-    await startLive({ windowSecs: 5, llmIntervalSecs: 0 }, sender);
+    await startLive({ windowSecs: 5 }, sender);
     const sentBeforeClose = sender.sent.length;
     proc.emit('close', 0);
 
@@ -537,7 +537,7 @@ describe('stop-live handler', () => {
     spawnMock.mockReturnValueOnce(proc);
     const sender = fakeSender();
 
-    await startLive({ windowSecs: 5, llmIntervalSecs: 0 }, sender);
+    await startLive({ windowSecs: 5 }, sender);
     const result = await stopLive();
 
     expect(result).toEqual({ success: true, sessionDir: null });
@@ -551,7 +551,7 @@ describe('stop-live handler', () => {
     spawnMock.mockReturnValueOnce(proc);
     const sender = fakeSender();
 
-    await startLive({ windowSecs: 5, llmIntervalSecs: 0, mode: 'record', recordDir: tmpDir }, sender);
+    await startLive({ windowSecs: 5, mode: 'record', recordDir: tmpDir }, sender);
     const argv = spawnMock.mock.calls[0][1] as string[];
     const sessionDir = argv[argv.indexOf('--session-dir') + 1];
     fs.mkdirSync(sessionDir, { recursive: true });
@@ -568,7 +568,7 @@ describe('stop-live handler', () => {
     spawnMock.mockReturnValueOnce(proc);
     const sender = fakeSender();
 
-    await startLive({ windowSecs: 5, llmIntervalSecs: 0, mode: 'record', recordDir: tmpDir }, sender);
+    await startLive({ windowSecs: 5, mode: 'record', recordDir: tmpDir }, sender);
     const argv = spawnMock.mock.calls[0][1] as string[];
     const sessionDir = argv[argv.indexOf('--session-dir') + 1];
     fs.mkdirSync(sessionDir, { recursive: true });
@@ -585,7 +585,7 @@ describe('stop-live handler', () => {
     spawnMock.mockReturnValueOnce(proc);
     const sender = fakeSender();
 
-    await startLive({ windowSecs: 5, llmIntervalSecs: 0, mode: 'record', recordDir: tmpDir }, sender);
+    await startLive({ windowSecs: 5, mode: 'record', recordDir: tmpDir }, sender);
     const argv = spawnMock.mock.calls[0][1] as string[];
     const sessionDir = argv[argv.indexOf('--session-dir') + 1];
     fs.mkdirSync(sessionDir, { recursive: true });

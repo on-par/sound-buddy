@@ -6,7 +6,6 @@ import { DEFAULT_STORAGE_PATH, effectiveStoragePath, loadStorageSeed, buildStora
 import type { AppSettings, StorageUsage } from '../../electron/ipc/api';
 
 const LOADED_SETTINGS: AppSettings = {
-  aiEnabled: false,
   idealProfile: '',
   customIdealProfiles: [],
   storageDir: '',
