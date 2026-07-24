@@ -8,6 +8,7 @@ import {
   ffmpegTarballUrl,
   findBannedVideoLibs,
   findDanglingBundledLibRefs,
+  hasAudioStream,
   parseOtoolLibraryPaths,
 } from './ffmpeg-audio-only.js';
 
@@ -208,6 +209,38 @@ describe('MEDIA_FIXTURE_FORMATS', () => {
   it('gives every fixture a distinct output file name', () => {
     const files = MEDIA_FIXTURE_FORMATS.map((f) => f.file);
     expect(new Set(files).size).toBe(files.length);
+  });
+
+  it('ends every encodeArgs list with its own output file name (afterPack.js swaps this last element for a tmpdir path)', () => {
+    for (const format of MEDIA_FIXTURE_FORMATS) {
+      expect(format.encodeArgs[format.encodeArgs.length - 1]).toBe(format.file);
+    }
+  });
+});
+
+describe('hasAudioStream', () => {
+  it('recognizes an ffprobe JSON report containing an audio stream', () => {
+    const probeJson = JSON.stringify({ streams: [{ codec_type: 'audio' }] });
+    expect(hasAudioStream(probeJson)).toBe(true);
+  });
+
+  it('rejects a report with only a video stream', () => {
+    const probeJson = JSON.stringify({ streams: [{ codec_type: 'video' }] });
+    expect(hasAudioStream(probeJson)).toBe(false);
+  });
+
+  it('finds the audio stream among multiple streams (e.g. the mp4-with-video fixture)', () => {
+    const probeJson = JSON.stringify({ streams: [{ codec_type: 'video' }, { codec_type: 'audio' }] });
+    expect(hasAudioStream(probeJson)).toBe(true);
+  });
+
+  it('rejects a report with no streams at all', () => {
+    const probeJson = JSON.stringify({ streams: [] });
+    expect(hasAudioStream(probeJson)).toBe(false);
+  });
+
+  it('rejects a report missing the streams key entirely', () => {
+    expect(hasAudioStream(JSON.stringify({}))).toBe(false);
   });
 });
 

@@ -44,7 +44,7 @@ export {
 export {
   BANNED_VIDEO_LIB_PATTERN, FFMPEG_BUILD_VERSION, FFMPEG_VERSION, MEDIA_FIXTURE_FORMATS,
   ffmpegConfigureArgs, ffmpegTarballUrl, findBannedVideoLibs, findDanglingBundledLibRefs,
-  parseOtoolLibraryPaths,
+  hasAudioStream, parseOtoolLibraryPaths,
 } from './ffmpeg-audio-only.js'
 export type { MediaFixtureFormat } from './ffmpeg-audio-only.js'
 

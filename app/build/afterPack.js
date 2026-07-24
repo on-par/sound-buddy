@@ -219,12 +219,19 @@ function ensureAudioOnlyFfmpeg(cacheRoot, shared) {
   }
   sh(`tar xJf "${tarball}" -C "${tmp}"`); // extracts a "ffmpeg-<version>/" dir
   const srcDir = path.join(tmp, `ffmpeg-${shared.FFMPEG_VERSION}`);
-  const installPrefix = path.join(tmp, 'install');
-  sh(`./configure ${shared.ffmpegConfigureArgs(installPrefix).join(' ')}`, { cwd: srcDir });
+  // Unlike the relocatable Python build below, ffmpeg's `make install` bakes
+  // --prefix into every dylib's install name (LC_ID_DYLIB) and every
+  // consumer's load command as an ABSOLUTE path — there's no DESTDIR staging
+  // support in its Makefiles. So --prefix must already be the real final
+  // cache dir; installing into a tmp dir and renaming afterwards (the Python
+  // cache's atomic-publish idiom) would leave every binary pointing at a
+  // deleted tmp path, which is silently fatal until something tries to
+  // resolve those libs. Clear any partial dir from an interrupted prior
+  // build first so a retry starts clean.
+  fs.rmSync(ffmpegCache, { recursive: true, force: true });
+  sh(`./configure ${shared.ffmpegConfigureArgs(ffmpegCache).join(' ')}`, { cwd: srcDir });
   sh(`make -j${os.cpus().length}`, { cwd: srcDir });
   sh('make install', { cwd: srcDir });
-  fs.rmSync(ffmpegCache, { recursive: true, force: true });
-  fs.renameSync(installPrefix, ffmpegCache); // atomic-publish, same idiom as the Python cache
   fs.rmSync(tmp, { recursive: true, force: true });
   return ffmpegCache;
 }
@@ -272,7 +279,7 @@ function verifyTrimmedMediaLibs(binDir, libDir, shared) {
         ['-v', 'error', '-show_entries', 'stream=codec_type', '-of', 'json', fixturePath],
         { stdio: ['ignore', 'pipe', 'pipe'], encoding: 'utf8' },
       );
-      if (!probeOut.includes('"codec_type": "audio"')) {
+      if (!shared.hasAudioStream(probeOut)) {
         throw new Error(`afterPack: bundled ffprobe found no audio stream in the ${format.name} fixture`);
       }
 

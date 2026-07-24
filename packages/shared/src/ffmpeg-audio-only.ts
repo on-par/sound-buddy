@@ -107,6 +107,16 @@ export function findBannedVideoLibs(libFileNames: string[]): string[] {
   return libFileNames.filter((name) => BANNED_VIDEO_LIB_PATTERN.test(name));
 }
 
+/**
+ * Decides whether `ffprobe -show_entries stream=codec_type -of json` output
+ * reports at least one audio stream — the verify-gate's proof that the
+ * bundled ffprobe can still read the format.
+ */
+export function hasAudioStream(probeJsonOutput: string): boolean {
+  const parsed = JSON.parse(probeJsonOutput) as { streams?: Array<{ codec_type?: string }> };
+  return (parsed.streams ?? []).some((stream) => stream.codec_type === 'audio');
+}
+
 export interface MediaFixtureFormat {
   name: string;
   file: string;
