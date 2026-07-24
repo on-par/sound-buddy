@@ -273,6 +273,55 @@ export function planUpdateInfoUpload(
   };
 }
 
+/** One entry of a release's `assets` array as returned by GET repos/{repo}/releases/{id}. */
+export interface ReleaseAssetRef {
+  id: number;
+  name: string;
+}
+
+/** Exact-name lookup of an asset's numeric id on the id-resolved release; null when absent. */
+export function findReleaseAssetId(assets: readonly ReleaseAssetRef[], name: string): number | null {
+  return assets.find((a) => a.name === name)?.id ?? null;
+}
+
+/** POST target for uploading an asset to a release by numeric id (uploads.github.com, not api.github.com). */
+export function buildReleaseAssetUploadUrl(repo: string, releaseId: number, assetName: string): string {
+  return `https://uploads.github.com/repos/${repo}/releases/${releaseId}/assets?name=${encodeURIComponent(assetName)}`;
+}
+
+/** API path for one asset by numeric id — used for both DELETE (clobber) and octet-stream GET (download). */
+export function releaseAssetApiPath(repo: string, assetId: number): string {
+  return `repos/${repo}/releases/assets/${assetId}`;
+}
+
+export interface ReleaseScriptAudit {
+  ok: boolean;
+  problems: string[];
+}
+
+// #648: `gh release upload`/`gh release download` (and view/edit/delete-asset) resolve the
+// release by TAG, which can target a different draft than selectReleaseByTag's id-based pick
+// when duplicate drafts share a tag_name. The only allowed `gh release` subcommand in
+// scripts/release.sh is `create` (it makes a brand-new draft; it never resolves an existing
+// one). Everything else must go through id-keyed `gh api` calls.
+const FORBIDDEN_GH_RELEASE_SUBCOMMAND = /\bgh release (?!create\b)([a-z-]+)/;
+
+/** Forbids tag-resolved `gh release <sub>` calls (other than `create`) from reappearing in release.sh (#648). */
+export function auditReleaseScriptResolution(scriptText: string): ReleaseScriptAudit {
+  const problems: string[] = [];
+  const lines = scriptText.split('\n');
+  lines.forEach((line, i) => {
+    const m = line.match(FORBIDDEN_GH_RELEASE_SUBCOMMAND);
+    if (m) {
+      problems.push(
+        `line ${i + 1}: "gh release ${m[1]}" resolves the release by tag and can target the wrong ` +
+          `duplicate draft (#648) — use an id-keyed gh api call via $RELEASE_ID instead: ${line.trim()}`,
+      );
+    }
+  });
+  return { ok: problems.length === 0, problems };
+}
+
 export type TreeState = 'clean' | 'version-bump-only' | 'dirty';
 
 const VERSION_BUMP_FILES = new Set(['app/package.json', 'app/package-lock.json']);

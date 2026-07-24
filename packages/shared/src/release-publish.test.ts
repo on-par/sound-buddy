@@ -1,16 +1,22 @@
+import { readFileSync, existsSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import {
   PUBLISH_STEPS,
+  auditReleaseScriptResolution,
+  buildReleaseAssetUploadUrl,
   classifyWorkingTree,
   evaluateReleasePreflight,
+  findReleaseAssetId,
   formatPublishFailure,
   planReleasePublish,
   planUpdateInfoUpload,
+  releaseAssetApiPath,
   resumeCommand,
   selectReleaseByTag,
 } from './release-publish.js';
 import { ELECTRON_UPDATER_MANIFEST_FILENAME, RELEASE_MANIFEST_FILENAME } from './release-manifest.js';
-import type { PublishState, PublishTargets, ReleaseListEntry } from './release-publish.js';
+import type { PublishState, PublishTargets, ReleaseAssetRef, ReleaseListEntry } from './release-publish.js';
 
 const TARGETS: PublishTargets = {
   version: '0.8.6',
@@ -400,5 +406,114 @@ describe('selectReleaseByTag', () => {
   it('maps assets: [] to assetNames: []', () => {
     const releases: ReleaseListEntry[] = [{ id: 1, tag_name: 'v0.8.4', draft: true, assets: [] }];
     expect(selectReleaseByTag(releases, 'v0.8.4')?.assetNames).toEqual([]);
+  });
+});
+
+describe('findReleaseAssetId', () => {
+  it('returns the id on exact name match', () => {
+    const assets: ReleaseAssetRef[] = [
+      { id: 1, name: 'Sound.Buddy-0.8.0-arm64-mac.zip' },
+      { id: 2, name: 'latest.json' },
+    ];
+    expect(findReleaseAssetId(assets, 'latest.json')).toBe(2);
+  });
+
+  it('returns null on an empty list', () => {
+    expect(findReleaseAssetId([], 'latest.json')).toBeNull();
+  });
+
+  it('returns null when no name matches', () => {
+    const assets: ReleaseAssetRef[] = [{ id: 1, name: 'latest.json' }];
+    expect(findReleaseAssetId(assets, 'latest-mac.yml')).toBeNull();
+  });
+
+  it('does not substring-match', () => {
+    const assets: ReleaseAssetRef[] = [{ id: 1, name: 'latest-mac.yml.bak' }];
+    expect(findReleaseAssetId(assets, 'latest-mac.yml')).toBeNull();
+  });
+});
+
+describe('buildReleaseAssetUploadUrl', () => {
+  it('builds the uploads.github.com URL for a numeric release id and asset name', () => {
+    expect(buildReleaseAssetUploadUrl('on-par/sound-buddy-releases', 352647975, 'Sound.Buddy-0.8.0-arm64-mac.zip')).toBe(
+      'https://uploads.github.com/repos/on-par/sound-buddy-releases/releases/352647975/assets?name=Sound.Buddy-0.8.0-arm64-mac.zip',
+    );
+  });
+
+  it('URL-encodes the asset name', () => {
+    expect(buildReleaseAssetUploadUrl('on-par/sound-buddy-releases', 1, 'a b+c.zip')).toBe(
+      'https://uploads.github.com/repos/on-par/sound-buddy-releases/releases/1/assets?name=a%20b%2Bc.zip',
+    );
+  });
+});
+
+describe('releaseAssetApiPath', () => {
+  it('returns the assets-by-id API path', () => {
+    expect(releaseAssetApiPath('on-par/sound-buddy-releases', 12345)).toBe(
+      'repos/on-par/sound-buddy-releases/releases/assets/12345',
+    );
+  });
+});
+
+describe('auditReleaseScriptResolution', () => {
+  it('flags a tag-resolved gh release upload with the 1-indexed line number and offending subcommand', () => {
+    const script = 'line one\ngh release upload "$TAG" "$MANIFEST_PATH" -R "$PUBLIC_REPO" --clobber\n';
+    const result = auditReleaseScriptResolution(script);
+    expect(result.ok).toBe(false);
+    expect(result.problems).toHaveLength(1);
+    expect(result.problems[0]).toContain('line 2');
+    expect(result.problems[0]).toContain('gh release upload');
+  });
+
+  it('flags a tag-resolved gh release download', () => {
+    const script = 'gh release download "$TAG" -R "$PUBLIC_REPO" --pattern "$ZIP_ASSET_NAME" -O -\n';
+    const result = auditReleaseScriptResolution(script);
+    expect(result.ok).toBe(false);
+    expect(result.problems[0]).toContain('gh release download');
+  });
+
+  it('flags gh release view', () => {
+    const result = auditReleaseScriptResolution('gh release view "$TAG" -R "$PUBLIC_REPO"\n');
+    expect(result.ok).toBe(false);
+    expect(result.problems[0]).toContain('gh release view');
+  });
+
+  it('flags gh release edit', () => {
+    const result = auditReleaseScriptResolution('gh release edit "$TAG" -R "$PUBLIC_REPO" --draft=false\n');
+    expect(result.ok).toBe(false);
+    expect(result.problems[0]).toContain('gh release edit');
+  });
+
+  it('does not flag gh release create', () => {
+    const result = auditReleaseScriptResolution('gh release create "$TAG" "$ZIP" "$DMG" -R "$PUBLIC_REPO" --draft\n');
+    expect(result.ok).toBe(true);
+    expect(result.problems).toEqual([]);
+  });
+
+  it('does not flag id-keyed gh api calls or prose without the "gh release <sub>" shape', () => {
+    const script = [
+      'gh api "repos/$PUBLIC_REPO/releases/$RELEASE_ID" --jq .assets',
+      '# see the release notes for details',
+      'gh api -X PATCH "repos/$PUBLIC_REPO/releases/$RELEASE_ID" -F draft=false --silent',
+    ].join('\n');
+    const result = auditReleaseScriptResolution(script);
+    expect(result.ok).toBe(true);
+    expect(result.problems).toEqual([]);
+  });
+
+  it('a clean script returns ok: true, problems: []', () => {
+    expect(auditReleaseScriptResolution('#!/usr/bin/env bash\nset -euo pipefail\n')).toEqual({ ok: true, problems: [] });
+  });
+});
+
+const releaseScriptPath = fileURLToPath(new URL('../../../scripts/release.sh', import.meta.url));
+const hasReleaseScript = existsSync(releaseScriptPath);
+
+describe.runIf(hasReleaseScript)('the real scripts/release.sh (#648)', () => {
+  it('contains no tag-resolved gh release subcommands', () => {
+    const script = readFileSync(releaseScriptPath, 'utf8');
+    const result = auditReleaseScriptResolution(script);
+    expect(result.problems).toEqual([]);
+    expect(result.ok).toBe(true);
   });
 });
