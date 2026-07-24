@@ -167,7 +167,9 @@
        accessibility tree, so they are not announced as tabs either. */
     body.report-first-ux .mode-tab[data-mode="dir"],
     body.report-first-ux .mode-tab[data-mode="live"],
-    body.report-first-ux .mode-tab[data-mode="soundcheck"] { display:none; }
+    body.report-first-ux .mode-tab[data-mode="soundcheck"],
+    body.report-first-ux .mode-tab[data-mode="guide"],
+    body.report-first-ux .mode-tab[data-mode="ringout"] { display:none; }
     body.not-pro #tab-live > :not(.pro-gate),
     body.not-pro #tab-soundcheck > :not(.pro-gate) { display:none !important; }
     body.not-pro #tab-live .pro-gate,
