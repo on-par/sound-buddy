@@ -100,8 +100,11 @@ test.describe('Live capture (PRD 06)', () => {
     await expect(channels.first().locator('.live-ch-name')).toHaveText('Vocals');
     await expect(channels.nth(1).locator('.live-ch-name')).toHaveText('Band');
 
-    // 7 upright bars per channel, ordered low→high left→right.
-    const bars = channels.first().locator('.veq-bar');
+    // The strips themselves carry no chart (#668) — the docked EQ pane's
+    // "Room" section (defaults to channel 0, Vocals) does. 7 upright bars,
+    // ordered low→high left→right.
+    const pane = window.locator('#live-eq-pane .eq-pane-primary');
+    const bars = pane.locator('.veq-bar');
     await expect(bars).toHaveCount(7);
     await expect(bars.first()).toHaveAttribute('data-band', 'subBass');
     await expect(bars.last()).toHaveAttribute('data-band', 'brilliance');
@@ -109,105 +112,75 @@ test.describe('Live capture (PRD 06)', () => {
     for (let i = 1; i < lefts.length; i++) expect(lefts[i]).toBeGreaterThan(lefts[i - 1]);
 
     // The arc is the same component as the whole-mix quality view
-    // (spectrumCurveSVG → .sb-spectrum-curve), one per channel, and its SVG
-    // carries the dB reference scale; band labels sit under the bars.
-    await expect(window.locator('.live-ch .sb-spectrum-curve')).toHaveCount(2);
-    await expect(channels.first().locator('.sb-y-label').first()).toBeAttached();
-    await expect(channels.first().locator('.veq-label')).toHaveCount(7);
-    await expect(channels.first().locator('.veq-label .veq-label-full').first()).toHaveText('Sub Bass');
+    // (spectrumCurveSVG → .sb-spectrum-curve), rendered once in the pane
+    // (no selection yet), and its SVG carries the dB reference scale; band
+    // labels sit under the bars.
+    await expect(window.locator('#live-eq-pane .sb-spectrum-curve')).toHaveCount(1);
+    await expect(pane.locator('.sb-y-label').first()).toBeAttached();
+    await expect(pane.locator('.veq-label')).toHaveCount(7);
+    await expect(pane.locator('.veq-label .veq-label-full').first()).toHaveText('Sub Bass');
 
     // All 7 labels sit on a single row (#666) — no alternating second row.
-    const boxes = await channels.first().locator('.veq-label').evaluateAll(
+    const boxes = await pane.locator('.veq-label').evaluateAll(
       els => els.map(el => el.getBoundingClientRect().y));
     for (let i = 1; i < boxes.length; i++) expect(Math.abs(boxes[i] - boxes[0])).toBeLessThanOrEqual(1);
   });
 
-  // Per-strip collapse / fold (#40).
-  test('collapse a single strip hides its bands; others stay expanded', async () => {
+  // Docked live EQ pane (#668) — replaces the old per-strip collapse/fold (#40).
+  test('the EQ pane shows only the Room section until a strip is selected', async () => {
     await sendLiveTick(LIVE_CHANNELS);
-    await window.locator('#live-expand-all').click(); // normalize from any prior test
-    const ch0 = window.locator('.live-ch[data-ch="0"]');
-    const ch1 = window.locator('.live-ch[data-ch="1"]');
-    await expect(ch0.locator('.veq')).toBeVisible();
-
-    await ch0.locator('.live-ch-fold').click();
-    await expect(ch0).toHaveClass(/collapsed/);
-    await expect(ch0.locator('.veq')).toBeHidden();
-    await expect(ch0.locator('.veq-labels')).toBeHidden();
-    // The header summary (name + RMS/peak) stays visible when collapsed.
-    await expect(ch0.locator('.live-ch-name')).toBeVisible();
-    await expect(ch0.locator('.live-ch-meta')).toBeVisible();
-    // The other strip is untouched.
-    await expect(ch1).not.toHaveClass(/collapsed/);
-    await expect(ch1.locator('.veq')).toBeVisible();
-
-    await ch0.locator('.live-ch-fold').click(); // toggles back open
-    await expect(ch0).not.toHaveClass(/collapsed/);
-    await expect(ch0.locator('.veq')).toBeVisible();
+    await expect(window.locator('#live-eq-pane .veq')).toHaveCount(1);
+    await expect(window.locator('#live-eq-pane .eq-pane-empty-hint')).toBeVisible();
+    await expect(window.locator('#live-eq-pane .eq-pane-empty-hint')).toHaveText('Click a channel to inspect it here');
+    // Strips themselves never carry a chart anymore.
+    await expect(window.locator('.live-ch .veq')).toHaveCount(0);
   });
 
-  test('Collapse all then expand one leaves the rest collapsed', async () => {
+  test('clicking a strip adds a Selected section to the EQ pane', async () => {
     await sendLiveTick(LIVE_CHANNELS);
-    await window.locator('#live-collapse-all').click();
-    await expect(window.locator('.sb-live-meters .live-ch.collapsed')).toHaveCount(2);
-
-    await window.locator('.live-ch[data-ch="0"] .live-ch-fold').click();
-    await expect(window.locator('.live-ch[data-ch="0"]')).not.toHaveClass(/collapsed/);
-    await expect(window.locator('.live-ch[data-ch="1"]')).toHaveClass(/collapsed/);
-
-    await window.locator('#live-expand-all').click();
-    await expect(window.locator('.sb-live-meters .live-ch.collapsed')).toHaveCount(0);
+    await window.locator('.live-ch[data-ch="1"] .live-ch-meta').click();
+    await expect(window.locator('.live-ch[data-ch="1"]')).toHaveClass(/selected/);
+    await expect(window.locator('.live-ch[data-ch="1"]')).toHaveAttribute('aria-current', 'true');
+    await expect(window.locator('#live-eq-pane .veq')).toHaveCount(2);
+    // No explicit label was set on strip 1 — the pane's header falls back to
+    // "Track 2" (1-indexed), which is unique to the channel that was clicked.
+    await expect(window.locator('#live-eq-pane .eq-pane-secondary .eq-pane-header')).toHaveText('Selected — Track 2');
   });
 
-  test('collapsed strip still reflects clipping, and stays collapsed across repaints', async () => {
+  test('removing the selected strip returns the EQ pane to just the Room section', async () => {
     await sendLiveTick(LIVE_CHANNELS);
-    await window.locator('#live-expand-all').click();
-    const ch0 = window.locator('.live-ch[data-ch="0"]');
-    await ch0.locator('.live-ch-fold').click();
-    await expect(ch0).toHaveClass(/collapsed/);
+    await window.locator('.live-ch[data-ch="1"] .live-ch-meta').click();
+    await expect(window.locator('#live-eq-pane .veq')).toHaveCount(2);
 
-    // A new window reporting clipping on channel 0 must light the clip dot
-    // without re-expanding the strip.
-    const clipping = LIVE_CHANNELS.map((c, i) => (i === 0 ? { ...c, clipping: true } : c));
-    await sendLiveTick(clipping);
-    await expect(ch0.locator('.live-ch-name')).toHaveClass(/clip/);
-    await expect(ch0.locator('.live-ch-clip')).toBeVisible();
-    await expect(ch0).toHaveClass(/collapsed/);
-    await expect(ch0.locator('.veq')).toBeHidden();
-    // The CLIP badge appearing on a later tick must land in the same spot as
-    // one present from the first tick — just before the remove control (#188).
-    const headChildren = await ch0.locator('.live-ch-head > *').evaluateAll((els) => els.map((e) => e.className));
-    expect(headChildren.indexOf('live-ch-clip')).toBeLessThan(headChildren.indexOf('live-ch-x'));
-
-    // Several more repaints — still collapsed.
-    await sendLiveTick(LIVE_CHANNELS);
-    await sendLiveTick(LIVE_CHANNELS);
-    await expect(ch0).toHaveClass(/collapsed/);
-    await window.locator('#live-expand-all').click(); // leave clean for later tests
+    await window.locator('.live-ch[data-ch="1"] .live-ch-x').click();
+    await expect(window.locator('#live-eq-pane .veq')).toHaveCount(1);
+    await expect(window.locator('#live-eq-pane .eq-pane-empty-hint')).toBeVisible();
   });
 
   test('bar height tracks level; loudest band is emphasized; silent bands dim', async () => {
     await sendLiveTick(LIVE_CHANNELS);
-    // The persistent workspace (#188) already shows 7 idle-placeholder bars
-    // before this tick lands, so a bare bar-count check wouldn't wait for the
-    // real data — wait on the name (idle placeholders read "Ch 1") first.
+    // The persistent workspace (#188) already shows the pane's idle-placeholder
+    // bars before this tick lands, so a bare bar-count check wouldn't wait for
+    // the real data — wait on the strip name (idle placeholders read "Ch 1")
+    // first, then read the pane's Room section (channel 0, the default).
     await expect(window.locator('.live-ch[data-ch="0"] .live-ch-name')).toHaveText('Vocals');
-    await expect(window.locator('.live-ch[data-ch="0"] .veq-bar')).toHaveCount(7);
+    const pane = window.locator('#live-eq-pane .eq-pane-primary');
+    await expect(pane.locator('.veq-bar')).toHaveCount(7);
 
     const heightOf = async (band: string) =>
-      parseFloat(await window.locator(`.live-ch[data-ch="0"] .veq-bar[data-band="${band}"]`).evaluate(el => (el as HTMLElement).style.height));
+      parseFloat(await pane.locator(`.veq-bar[data-band="${band}"]`).evaluate(el => (el as HTMLElement).style.height));
     const mid = await heightOf('mid'), bass = await heightOf('bass'), sub = await heightOf('subBass'), brill = await heightOf('brilliance');
     expect(mid).toBeGreaterThan(bass);       // -12 dB taller than -30 dB
     expect(bass).toBeGreaterThan(sub);       // -30 dB taller than -58 dB
     expect(brill).toBe(0);                   // ≤ DB_MIN clamps to the floor (min-height keeps it visible)
 
-    const loud = window.locator('.live-ch[data-ch="0"] .veq-bar.loud');
+    const loud = pane.locator('.veq-bar.loud');
     await expect(loud).toHaveCount(1);
     await expect(loud).toHaveAttribute('data-band', 'mid');
-    await expect(window.locator('.live-ch[data-ch="0"] .veq-bar.dim')).toHaveAttribute('data-band', 'brilliance');
+    await expect(pane.locator('.veq-bar.dim')).toHaveAttribute('data-band', 'brilliance');
 
     // Numeric per-band readouts ride the bars; > -24 dBFS is emphasized hot.
-    const vals = window.locator('.live-ch[data-ch="0"] .veq-val');
+    const vals = pane.locator('.veq-val');
     await expect(vals).toHaveCount(7);
     await expect(vals.nth(3)).toHaveText('-12.0');
     await expect(vals.nth(3)).toHaveClass(/hot/);
@@ -216,26 +189,34 @@ test.describe('Live capture (PRD 06)', () => {
   });
 
   test('silence gets no loudest-band emphasis', async () => {
+    // A tick must land before a strip can be selected into it (#668) —
+    // establish it, then select the second strip too, so the pane shows both
+    // sections (14 bars).
+    await sendLiveTick(LIVE_CHANNELS);
+    await window.locator('.live-ch[data-ch="1"] .live-ch-meta').click();
     const silent = LIVE_CHANNELS.map(ch => ({
       ...ch,
       bands: Object.fromEntries(Object.keys(ch.bands).map(k => [k, -120])),
     }));
     await sendLiveTick(silent);
-    await expect(window.locator('.veq-bar.dim')).toHaveCount(14); // all bands idle...
-    await expect(window.locator('.veq-bar.loud')).toHaveCount(0); // ...none "loudest"
-    await expect(window.locator('.veq-label.loud')).toHaveCount(0);
+    await expect(window.locator('#live-eq-pane .veq-bar.dim')).toHaveCount(14); // all bands idle...
+    await expect(window.locator('#live-eq-pane .veq-bar.loud')).toHaveCount(0); // ...none "loudest"
+    await expect(window.locator('#live-eq-pane .veq-label.loud')).toHaveCount(0);
 
     // Signal returns → emphasis comes back.
     await sendLiveTick(LIVE_CHANNELS);
-    await expect(window.locator('.live-ch[data-ch="0"] .veq-bar.loud')).toHaveAttribute('data-band', 'mid');
+    await expect(window.locator('#live-eq-pane .eq-pane-primary .veq-bar.loud')).toHaveAttribute('data-band', 'mid');
   });
 
   test('each channel has its own independent arc and loudest band', async () => {
     await sendLiveTick(LIVE_CHANNELS);
-    // Bass-heavy channel emphasizes bass, not mid.
-    await expect(window.locator('.live-ch[data-ch="1"] .veq-bar.loud')).toHaveAttribute('data-band', 'bass');
-    // The two arcs are drawn from their own band values → different paths.
-    const paths = await window.locator('.live-ch .sb-curve-line').evaluateAll(els => els.map(e => e.getAttribute('d')));
+    // Select the second (bass-heavy) strip so its data lands in "Selected".
+    await window.locator('.live-ch[data-ch="1"] .live-ch-meta').click();
+    await expect(window.locator('#live-eq-pane .eq-pane-secondary .veq-bar.loud')).toHaveAttribute('data-band', 'bass');
+    // "Room" still reads channel 0 — mid-heavy.
+    await expect(window.locator('#live-eq-pane .eq-pane-primary .veq-bar.loud')).toHaveAttribute('data-band', 'mid');
+    // The two sections are drawn from their own band values → different paths.
+    const paths = await window.locator('#live-eq-pane .sb-curve-line').evaluateAll(els => els.map(e => e.getAttribute('d')));
     expect(paths).toHaveLength(2);
     expect(paths[0]).not.toBe(paths[1]);
   });
@@ -305,14 +286,16 @@ test.describe('Live capture (PRD 06)', () => {
 
   test('a new tick updates bars and arc in place', async () => {
     await sendLiveTick(LIVE_CHANNELS);
-    const midBar = window.locator('.live-ch[data-ch="0"] .veq-bar[data-band="mid"]');
+    // The pane's "Room" section defaults to channel 0 (Vocals).
+    const pane = window.locator('#live-eq-pane .eq-pane-primary');
+    const midBar = pane.locator('.veq-bar[data-band="mid"]');
     await expect(midBar).toHaveClass(/loud/);
     const before = parseFloat(await midBar.evaluate(el => (el as HTMLElement).style.height));
-    const arcLine = window.locator('.live-ch[data-ch="0"] .sb-curve-line');
+    const arcLine = pane.locator('.sb-curve-line');
     const arcBefore = await arcLine.getAttribute('d');
     // Mark the SVG node so we can prove the tick patches it rather than
     // rebuilding it (bars/arc keep their nodes → CSS transitions run).
-    await window.locator('.live-ch[data-ch="0"] .sb-spectrum-curve').evaluate(el => el.setAttribute('data-marker', 'kept'));
+    await pane.locator('.sb-spectrum-curve').evaluate(el => el.setAttribute('data-marker', 'kept'));
 
     // Vocals goes bass-heavy: the mid bar shrinks and emphasis moves to bass.
     const next = [
@@ -320,12 +303,12 @@ test.describe('Live capture (PRD 06)', () => {
       LIVE_CHANNELS[1],
     ];
     await sendLiveTick(next);
-    await expect(window.locator('.live-ch[data-ch="0"] .veq-bar.loud')).toHaveAttribute('data-band', 'bass');
+    await expect(pane.locator('.veq-bar.loud')).toHaveAttribute('data-band', 'bass');
     const after = parseFloat(await midBar.evaluate(el => (el as HTMLElement).style.height));
     expect(after).toBeLessThan(before);
     // Arc re-shaped with the bars, on the same SVG node.
     await expect(arcLine).not.toHaveAttribute('d', arcBefore as string);
-    await expect(window.locator('.live-ch[data-ch="0"] .sb-spectrum-curve')).toHaveAttribute('data-marker', 'kept');
+    await expect(pane.locator('.sb-spectrum-curve')).toHaveAttribute('data-marker', 'kept');
   });
 
   test('record mode captures a session and offers to reveal the folder (#43)', async () => {
