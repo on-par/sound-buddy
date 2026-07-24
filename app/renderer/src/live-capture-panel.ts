@@ -21,9 +21,11 @@ import {
   DB_MAX,
   escapeHtml,
   spectrumCurveSVG,
+  veqBandView,
   veqBarsAndLabelsHTML,
   veqLoudestIdx,
   toPct,
+  type BarColumn,
   type SpectrumCurve,
   type SpectrumCurvePaths,
 } from './spectrum-display';
@@ -102,6 +104,64 @@ export const VEQ_BANDS = BAND_META.map((b, i) => {
   const bx0 = veqLogPos(b.lo) + VEQ_GAP, bx1 = veqLogPos(b.hi) - VEQ_GAP;
   return { key: b.key, label: b.label, short: b.short, color: b.color, left: bx0.toFixed(2), width: (bx1 - bx0).toFixed(2), center: veqLogPos(VEQ_FREQS[i]).toFixed(2) };
 });
+
+/* ── Granular analyzer grid (#667) ──
+ * Replaces the 7 wildly-unequal-span bars with one equal-width bar per point
+ * of the same 48-point log-frequency grid spectrum.py's offline analyzer
+ * uses, fed by the full STFT stream.py now emits (curve_from_power) instead
+ * of throwing it away. Mirrors spectrum.py's GRID_* constants — parity is
+ * pinned by tests on both sides. */
+export const ANALYZER_GRID_LOW_HZ = 20;
+export const ANALYZER_GRID_HIGH_HZ = 20000;
+export const ANALYZER_GRID_POINTS = 48;
+// geomspace(20, 20000, 48) — parity with spectrum.py._grid_freqs() is pinned by tests on both sides.
+export const ANALYZER_GRID_FREQS = Array.from({ length: ANALYZER_GRID_POINTS }, (_, i) =>
+  ANALYZER_GRID_LOW_HZ * Math.pow(ANALYZER_GRID_HIGH_HZ / ANALYZER_GRID_LOW_HZ, i / (ANALYZER_GRID_POINTS - 1)));
+export const VEQ_GRID_GAP = 0.25; // bar inset per side, % of plot width
+// The grid is log-uniform, so each bar's log-position lands exactly on
+// i * VEQ_GRID_STEP — equal-width bars at true log frequency placement.
+const VEQ_GRID_STEP = 100 / (ANALYZER_GRID_POINTS - 1);
+
+// BAND_META entry whose [lo, hi) covers f, clamped to the outer bands beyond
+// [20, 20000) so every grid point (including the edge points sitting exactly
+// on 20 Hz / 20 kHz) resolves to a tint.
+export function bandColorForFreq(f: number): string {
+  if (f < BAND_META[0].lo) return BAND_META[0].color;
+  const last = BAND_META[BAND_META.length - 1];
+  if (f >= last.hi) return last.color;
+  const band = BAND_META.find((b) => f >= b.lo && f < b.hi);
+  return (band ?? last).color;
+}
+
+export const VEQ_GRID_BARS: BarColumn[] = ANALYZER_GRID_FREQS.map((freq, i) => {
+  const center = veqLogPos(freq);
+  const width = VEQ_GRID_STEP - 2 * VEQ_GRID_GAP;
+  const left = center - width / 2;
+  return { key: `g${i}`, label: '', color: bandColorForFreq(freq), left: left.toFixed(2), width: width.toFixed(2), center: center.toFixed(2) };
+});
+
+// { freqs, db } curve from a channel's 48-point grid, when present — the
+// idle placeholder set and stale/older engines omit `curve` entirely, in
+// which case the caller falls back to liveBandCurve's 7-band curve. A
+// present-but-malformed length (not exactly ANALYZER_GRID_POINTS) is also
+// treated as absent rather than partially rendered.
+export function liveAnalyzerCurve(ch: LiveMeterChannel): SpectrumCurve | null {
+  const curve = ch.curve;
+  if (!Array.isArray(curve) || curve.length !== ANALYZER_GRID_POINTS) return null;
+  return { freqs: ANALYZER_GRID_FREQS, db: curve.map((v) => (Number.isFinite(v) ? v : -120)) };
+}
+
+// 48 grid bars, one per ANALYZER_GRID_FREQS point — no per-bar numeric
+// readouts (48 of them are unreadable) and no `loud` highlight (band-level
+// "loudest" is noise at this resolution; the 7 band labels keep that
+// emphasis instead, driven by the band-level curve — see eqPaneSectionParts).
+export function veqGridBarsHTML(gridDb: number[]): string {
+  return VEQ_GRID_BARS.map((b, i) => {
+    const v = veqBandView(gridDb[i]);
+    const cls = 'veq-bar' + (v.dim ? ' dim' : '');
+    return `<div class="${cls}" data-band="${b.key}" style="left:${b.left}%;width:${b.width}%;height:${v.pct.toFixed(2)}%;background:${b.color}"></div>`;
+  }).join('');
+}
 
 // { freqs, db } curve for one channel. Non-finite band values (a malformed
 // tick) floor to -120 so the arc always has 7 usable points and the channel
@@ -259,10 +319,16 @@ export function eqPaneView(
 // the same curve/loudest-band/bars/labels work twice for identical input.
 interface EqPaneSectionParts { curve: SpectrumCurve; loudestIdx: number; bars: string; labels: string }
 function eqPaneSectionParts(section: EqPaneSection): EqPaneSectionParts {
-  const curve = liveBandCurve(section.ch.bands);
-  const loudestIdx = veqLoudestIdx(curve.db);
-  const { bars, labels } = veqBarsAndLabelsHTML(VEQ_BANDS, curve.db, loudestIdx);
-  return { curve, loudestIdx, bars, labels };
+  const bandCurve = liveBandCurve(section.ch.bands);
+  const gridCurve = liveAnalyzerCurve(section.ch);
+  const loudestIdx = veqLoudestIdx(bandCurve.db); // band-level, drives the 7 band labels only
+  const { bars: bandBars, labels } = veqBarsAndLabelsHTML(VEQ_BANDS, bandCurve.db, loudestIdx);
+  return {
+    curve: gridCurve ?? bandCurve, // the arc gets the full 48-point resolution for free
+    loudestIdx,
+    bars: gridCurve ? veqGridBarsHTML(gridCurve.db) : bandBars,
+    labels,
+  };
 }
 
 // Shared by eqPaneHTML's two sections — same .veq/.veq-bars/.veq-labels shape
@@ -307,14 +373,24 @@ export function eqPaneHTML(view: EqPaneView): string {
 // eqPaneHTML's visible content (which channel, which label, the "Measurement
 // source" suffix) would change, and stays stable across ticks that only move
 // the needle (those are patched via eqPanePatchPlan instead).
+// 'g' once a channel carries a 48-point grid curve, 'b' for the 7-band
+// fallback — so a channel gaining/losing `curve` (idle → first live tick, or
+// a stale engine) rebuilds the pane's DOM instead of patching a 48-entry
+// grid onto 7-bar markup (or vice versa).
+function sectionRenderMode(section: EqPaneSection | null): string {
+  if (!section) return '';
+  return liveAnalyzerCurve(section.ch) ? 'g' : 'b';
+}
+
 export function eqPaneSignature(view: EqPaneView): string {
   const { primary, secondary, secondaryIsPrimary } = view;
-  return `${primary?.idx ?? ''}:${primary?.label ?? ''} ${secondary?.idx ?? ''}:${secondary?.label ?? ''}:${secondaryIsPrimary}`;
+  return `${primary?.idx ?? ''}:${primary?.label ?? ''}:${sectionRenderMode(primary)} ${secondary?.idx ?? ''}:${secondary?.label ?? ''}:${secondaryIsPrimary}:${sectionRenderMode(secondary)}`;
 }
 
 export interface EqPaneSectionPatch {
   curve: SpectrumCurve;
   loudestIdx: number;
+  gridDb: number[] | null;
   arc: string | SpectrumCurvePaths;
 }
 
@@ -329,14 +405,20 @@ export interface EqPanePatchPlan {
 // loudestIdx are reused between slots when secondaryIsPrimary (same channel)
 // — only the uid-scoped arc SVG has to be regenerated per slot.
 export function eqPanePatchPlan(view: EqPaneView): EqPanePatchPlan {
-  function curveFor(section: EqPaneSection): { curve: SpectrumCurve; loudestIdx: number } {
-    const curve = liveBandCurve(section.ch.bands);
-    return { curve, loudestIdx: veqLoudestIdx(curve.db) };
+  function curveFor(section: EqPaneSection): { curve: SpectrumCurve; loudestIdx: number; gridDb: number[] | null } {
+    const bandCurve = liveBandCurve(section.ch.bands);
+    const gridCurve = liveAnalyzerCurve(section.ch);
+    return {
+      curve: gridCurve ?? bandCurve,
+      loudestIdx: veqLoudestIdx(bandCurve.db), // band-level, drives the 7 band labels only
+      gridDb: gridCurve ? gridCurve.db : null,
+    };
   }
-  function planFor(section: EqPaneSection, uid: string, parts: { curve: SpectrumCurve; loudestIdx: number }): EqPaneSectionPatch {
+  function planFor(section: EqPaneSection, uid: string, parts: { curve: SpectrumCurve; loudestIdx: number; gridDb: number[] | null }): EqPaneSectionPatch {
     return {
       curve: parts.curve,
       loudestIdx: parts.loudestIdx,
+      gridDb: parts.gridDb,
       arc: veqArcSVG(parts.curve, section.ch.centroid, uid, true),
     };
   }

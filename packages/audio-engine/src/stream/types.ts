@@ -25,6 +25,8 @@ export interface ChannelWindowData {
   name: string;
   kind?: ChannelKind;
   bands: Record<string, number>;
+  /** dB per point of the 48-point log analyzer grid (#667); absent on idle placeholders. */
+  curve?: number[];
   rms: number;
   peak: number;
   clipping: boolean;

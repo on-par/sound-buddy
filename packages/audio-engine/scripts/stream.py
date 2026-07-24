@@ -70,6 +70,7 @@ from datetime import datetime, timezone
 try:
     import sounddevice as sd
     from scipy import signal as scipy_signal
+    from spectrum import GRID_POINTS, _grid_freqs, _band_edges, curve_from_power
 except ImportError as e:
     print(json.dumps({"error": f"missing dependency: {e}"}), flush=True)
     sys.exit(1)
@@ -85,6 +86,12 @@ BANDS = [
 ]
 
 MASKING_THRESHOLD_DB = 3.0
+
+# Analyzer log grid (issue #667): same 48-point 1/6-octave grid spectrum.py
+# uses offline, so live and offline curves are directly comparable.
+GRID_CENTERS = _grid_freqs()
+GRID_EDGES = _band_edges(GRID_CENTERS)
+CURVE_ROUND_DECIMALS = 1  # bounds the per-tick JSON payload (~320 B/channel)
 
 # Shortest trailing slice a meter tick analyses. Long enough to resolve the
 # sub-bass band (≈50 ms for 20 Hz) with margin; kept small so meters stay snappy.
@@ -387,6 +394,8 @@ def analyze_signal(sig: np.ndarray, sample_rate: int, cols: np.ndarray | None = 
         power = np.array([0.0])
 
     bands = {name: compute_band_rms_db(freqs, power, low, high) for name, low, high in BANDS}
+    curve = [round(v, CURVE_ROUND_DECIMALS)
+             for v in curve_from_power(power, freqs, GRID_CENTERS, GRID_EDGES)]
 
     power_nz = np.clip(power, 0, None)
     total_power = float(np.sum(power_nz))
@@ -401,6 +410,7 @@ def analyze_signal(sig: np.ndarray, sample_rate: int, cols: np.ndarray | None = 
 
     return {
         "bands": bands,
+        "curve": curve,
         "rms": rms_db,
         "peak": peak_db,
         "clipping": clipping,
