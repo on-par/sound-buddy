@@ -4,11 +4,20 @@
 import { describe, it, expect } from 'vitest';
 import * as fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { BAND_META, DB_MIN, DB_MAX } from './spectrum-display';
+import { BAND_META, DB_MIN, DB_MAX, DIM_DB, toPct } from './spectrum-display';
 import {
   LIVE_BAND_KEYS,
   VEQ_FREQS,
   VEQ_BANDS,
+  ANALYZER_GRID_LOW_HZ,
+  ANALYZER_GRID_HIGH_HZ,
+  ANALYZER_GRID_POINTS,
+  ANALYZER_GRID_FREQS,
+  VEQ_GRID_BARS,
+  veqLogPos,
+  bandColorForFreq,
+  liveAnalyzerCurve,
+  veqGridBarsHTML,
   DEFAULT_DEVICE_CHANNELS,
   EQ_PANE_MIN_W,
   EQ_PANE_MAX_W,
@@ -217,6 +226,130 @@ describe('liveBandCurve', () => {
 describe('VEQ_BANDS short labels (#666)', () => {
   it('carries BAND_META.short through for all 7 bands', () => {
     VEQ_BANDS.forEach((b, i) => expect(b.short).toBe(BAND_META[i].short));
+  });
+});
+
+describe('ANALYZER_GRID_FREQS (#667)', () => {
+  it('has 48 points spanning 20 Hz to 20 kHz, log-uniform', () => {
+    expect(ANALYZER_GRID_FREQS).toHaveLength(ANALYZER_GRID_POINTS);
+    expect(ANALYZER_GRID_POINTS).toBe(48);
+    expect(ANALYZER_GRID_FREQS[0]).toBe(ANALYZER_GRID_LOW_HZ);
+    expect(ANALYZER_GRID_FREQS[ANALYZER_GRID_FREQS.length - 1]).toBeCloseTo(ANALYZER_GRID_HIGH_HZ);
+  });
+
+  it('has a constant ratio between successive points, matching spectrum.py._grid_freqs()', () => {
+    const ratio = ANALYZER_GRID_FREQS[1] / ANALYZER_GRID_FREQS[0];
+    for (let i = 1; i < ANALYZER_GRID_FREQS.length; i++) {
+      expect(ANALYZER_GRID_FREQS[i] / ANALYZER_GRID_FREQS[i - 1]).toBeCloseTo(1.1583233, 6);
+    }
+    expect(ratio).toBeCloseTo(1.1583233, 6);
+  });
+
+  it('pins index 24 to the same value spectrum.py._grid_freqs() produces (cross-language parity)', () => {
+    expect(ANALYZER_GRID_FREQS[24]).toBeCloseTo(680.683, 2);
+  });
+});
+
+describe('VEQ_GRID_BARS (#667)', () => {
+  it('has 48 equal-width entries', () => {
+    expect(VEQ_GRID_BARS).toHaveLength(48);
+    const width = VEQ_GRID_BARS[0].width;
+    VEQ_GRID_BARS.forEach((b) => expect(b.width).toBe(width));
+  });
+
+  it('centers each bar on its grid frequency\'s true log position (AC scenario 2)', () => {
+    VEQ_GRID_BARS.forEach((b, i) => {
+      expect(b.center).toBe(veqLogPos(ANALYZER_GRID_FREQS[i]).toFixed(2));
+    });
+  });
+
+  it('derives left from center - width/2', () => {
+    VEQ_GRID_BARS.forEach((b) => {
+      // Each field is independently rounded via .toFixed(2), so up to ~0.01
+      // combined rounding slop between left and center - width/2 is expected.
+      expect(Number(b.left)).toBeCloseTo(Number(b.center) - Number(b.width) / 2, 1);
+    });
+  });
+
+  it('keeps interior bars within the [0, 100] plot range', () => {
+    for (let i = 1; i < VEQ_GRID_BARS.length - 1; i++) {
+      expect(Number(VEQ_GRID_BARS[i].center)).toBeGreaterThanOrEqual(0);
+      expect(Number(VEQ_GRID_BARS[i].center)).toBeLessThanOrEqual(100);
+    }
+  });
+});
+
+describe('bandColorForFreq (#667)', () => {
+  it('maps representative frequencies to their band color', () => {
+    expect(bandColorForFreq(30)).toBe(BAND_META[0].color); // sub-bass
+    expect(bandColorForFreq(100)).toBe(BAND_META[1].color); // bass
+    expect(bandColorForFreq(1000)).toBe(BAND_META[3].color); // mid
+    expect(bandColorForFreq(10000)).toBe(BAND_META[6].color); // brilliance
+  });
+
+  it('is lo-inclusive at a band boundary', () => {
+    expect(bandColorForFreq(60)).toBe(BAND_META[1].color); // bass, not sub-bass
+  });
+
+  it('clamps frequencies at/above 20 kHz to brilliance', () => {
+    expect(bandColorForFreq(20000)).toBe(BAND_META[6].color);
+    expect(bandColorForFreq(25000)).toBe(BAND_META[6].color);
+  });
+
+  it('clamps frequencies below 20 Hz to sub-bass', () => {
+    expect(bandColorForFreq(10)).toBe(BAND_META[0].color);
+  });
+});
+
+describe('liveAnalyzerCurve (#667)', () => {
+  function chWithCurve(curve: number[]): LiveMeterChannel {
+    return { name: 'X', rms: -20, peak: -10, clipping: false, centroid: 1000, bands: {}, curve };
+  }
+
+  it('returns { freqs: ANALYZER_GRID_FREQS, db } for a full 48-entry curve', () => {
+    const curve = Array.from({ length: 48 }, (_, i) => -i);
+    const result = liveAnalyzerCurve(chWithCurve(curve));
+    expect(result).not.toBeNull();
+    expect(result!.freqs).toBe(ANALYZER_GRID_FREQS);
+    expect(result!.db).toEqual(curve);
+  });
+
+  it('floors non-finite entries to -120', () => {
+    const curve = Array.from({ length: 48 }, () => -30);
+    curve[5] = NaN;
+    const result = liveAnalyzerCurve(chWithCurve(curve));
+    expect(result!.db[5]).toBe(-120);
+  });
+
+  it('returns null when curve is missing', () => {
+    const ch: LiveMeterChannel = { name: 'X', rms: -20, peak: -10, clipping: false, centroid: 1000, bands: {} };
+    expect(liveAnalyzerCurve(ch)).toBeNull();
+  });
+
+  it.each([7, 47, 49])('returns null for a malformed length of %i', (len) => {
+    const curve = Array.from({ length: len }, () => -30);
+    expect(liveAnalyzerCurve(chWithCurve(curve))).toBeNull();
+  });
+});
+
+describe('veqGridBarsHTML (#667)', () => {
+  it('renders exactly 48 .veq-bar divs with no .veq-val and no loud class', () => {
+    const gridDb = Array.from({ length: 48 }, () => -20);
+    const html = veqGridBarsHTML(gridDb);
+    expect((html.match(/class="veq-bar/g) || [])).toHaveLength(48);
+    expect(html).not.toContain('veq-val');
+    expect(html).not.toContain('loud');
+  });
+
+  it('marks bars dim exactly when db <= DIM_DB, and heights follow toPct', () => {
+    const gridDb = Array.from({ length: 48 }, (_, i) => (i === 0 ? DIM_DB : -10));
+    const html = veqGridBarsHTML(gridDb);
+    const bars = html.match(/<div[^>]*><\/div>/g) || [];
+    expect(bars).toHaveLength(48);
+    expect(bars[0]).toContain('dim');
+    expect(bars[0]).toContain(`height:${toPct(DIM_DB).toFixed(2)}%`);
+    expect(bars[1]).not.toContain('dim');
+    expect(bars[1]).toContain(`height:${toPct(-10).toFixed(2)}%`);
   });
 });
 
@@ -1255,6 +1388,30 @@ describe('eqPaneHTML', () => {
     const html = eqPaneHTML(view);
     expect(html).not.toContain('Room —');
   });
+
+  it('renders 48 grid bars and still exactly 7 .veq-label spans when the channel carries a curve (#667)', () => {
+    const gridChannel: LiveMeterChannel = { ...LIVE_CHANNELS[0], curve: Array.from({ length: 48 }, () => -30) };
+    const view = eqPaneView([gridChannel], config, 0, null);
+    const html = eqPaneHTML(view);
+    expect((html.match(/data-band="/g) || [])).toHaveLength(48);
+    expect((html.match(/<span class="veq-label(?: loud)?" /g) || [])).toHaveLength(7);
+  });
+
+  it('marks the loudest band label from the band curve, not the grid, when a curve is present (#667)', () => {
+    const gridChannel: LiveMeterChannel = { ...LIVE_CHANNELS[0], curve: Array.from({ length: 48 }, () => -30) };
+    const view = eqPaneView([gridChannel], config, 0, null);
+    const html = eqPaneHTML(view);
+    // LIVE_CHANNELS[0]'s loudest band is "mid" (index 3, see eqPanePatchPlan tests).
+    const labelMatch = html.match(/<span class="veq-label(?: loud)?" [^>]*>/g) || [];
+    expect(labelMatch[3]).toContain('loud');
+    expect(labelMatch.filter((l) => l.includes('loud'))).toHaveLength(1);
+  });
+
+  it('renders byte-identical 7-band structure when the channel carries no curve (regression guard)', () => {
+    const view = eqPaneView(LIVE_CHANNELS, config, 0, null);
+    const html = eqPaneHTML(view);
+    expect((html.match(/data-band="/g) || [])).toHaveLength(7);
+  });
 });
 
 describe('eqPaneSignature', () => {
@@ -1298,7 +1455,22 @@ describe('eqPaneSignature', () => {
     const a = eqPaneSignature(eqPaneView([], config, null, null));
     const b = eqPaneSignature(eqPaneView([], config, null, null));
     expect(a).toBe(b);
-    expect(a).toBe(': ::false');
+    expect(a).toBe(':: ::false:');
+  });
+
+  it('changes when a channel gains a curve (idle → first live tick, #667)', () => {
+    const withoutCurve = eqPaneView(LIVE_CHANNELS, config, 0, null);
+    const gridChannel: LiveMeterChannel = { ...LIVE_CHANNELS[0], curve: Array.from({ length: 48 }, () => -30) };
+    const withCurve = eqPaneView([gridChannel, LIVE_CHANNELS[1]], config, 0, null);
+    expect(eqPaneSignature(withoutCurve)).not.toBe(eqPaneSignature(withCurve));
+  });
+
+  it('is stable across two ticks that both carry curves (#667)', () => {
+    const gridChannelA: LiveMeterChannel = { ...LIVE_CHANNELS[0], curve: Array.from({ length: 48 }, () => -30) };
+    const gridChannelB: LiveMeterChannel = { ...LIVE_CHANNELS[0], curve: Array.from({ length: 48 }, () => -10) };
+    const a = eqPaneSignature(eqPaneView([gridChannelA, LIVE_CHANNELS[1]], config, 0, null));
+    const b = eqPaneSignature(eqPaneView([gridChannelB, LIVE_CHANNELS[1]], config, 0, null));
+    expect(a).toBe(b);
   });
 });
 
@@ -1338,6 +1510,29 @@ describe('eqPanePatchPlan', () => {
     const withNaN = [{ ...LIVE_CHANNELS[0], bands: { ...LIVE_CHANNELS[0].bands, sub_bass: NaN } }, LIVE_CHANNELS[1]];
     const plan = eqPanePatchPlan(eqPaneView(withNaN, config, 0, null));
     expect(plan.primary!.curve.db[0]).toBe(-120);
+  });
+
+  it('gridDb is null when the channel carries no curve', () => {
+    const plan = eqPanePatchPlan(eqPaneView(LIVE_CHANNELS, config, 0, null));
+    expect(plan.primary!.gridDb).toBeNull();
+  });
+
+  it('gridDb equals the floored 48-point curve when present; loudestIdx still comes from bands (#667)', () => {
+    const curve = Array.from({ length: 48 }, () => -30);
+    curve[10] = NaN;
+    const gridChannel: LiveMeterChannel = { ...LIVE_CHANNELS[0], curve };
+    const plan = eqPanePatchPlan(eqPaneView([gridChannel, LIVE_CHANNELS[1]], config, 0, null));
+    expect(plan.primary!.gridDb).toEqual(curve.map((v) => (Number.isFinite(v) ? v : -120)));
+    // LIVE_CHANNELS[0]'s loudest band is "mid" (index 3) regardless of the grid curve.
+    expect(plan.primary!.loudestIdx).toBe(3);
+  });
+
+  it("arc's underlying curve uses grid freqs when a curve is present", () => {
+    const curve = Array.from({ length: 48 }, () => -30);
+    const gridChannel: LiveMeterChannel = { ...LIVE_CHANNELS[0], curve };
+    const plan = eqPanePatchPlan(eqPaneView([gridChannel, LIVE_CHANNELS[1]], config, 0, null));
+    expect(plan.primary!.curve.freqs).toBe(ANALYZER_GRID_FREQS);
+    expect(plan.primary!.curve.db).toHaveLength(48);
   });
 });
 

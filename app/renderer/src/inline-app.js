@@ -154,6 +154,7 @@ const {
   veqBarsAndLabelsHTML, eqTargetLineSVG, eqCentroidHTML, eqBarsHTML,
   veqLoudestIdx, veqBandView, veqValBottom,
   heatmapSVG, miniCurveSVG, fmtDur, timeAxisHTML, classLabel,
+  patchGridBarsAndBandLabels,
 } = window.spectrumDisplay;
 
 /* ══ Live-capture panel rendering — extracted to live-capture-panel.ts (#307),
@@ -829,7 +830,8 @@ function patchEqPaneSection(sectionEl, patch) {
       chart.innerHTML = patch.arc ? patch.arc.svg : '';
     }
   }
-  patchBarsAndLabels(sectionEl, patch.curve.db);
+  if (patch.gridDb) patchGridBarsAndBandLabels(sectionEl, patch.gridDb, patch.loudestIdx);
+  else patchBarsAndLabels(sectionEl, patch.curve.db);
 }
 
 // Renders/patches the docked live EQ pane (#668): the "Room" (measurement

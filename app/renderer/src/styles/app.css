@@ -801,7 +801,10 @@
        bar sits exactly under its band tint on the arc's log-frequency axis. */
     .veq { position:relative; }
     .veq-chart svg { width:100%; height:auto; display:block; }
-    .veq-bars { position:absolute; pointer-events:none; }
+    /* overflow:hidden (#667): the granular 48-bar analyzer grid's first/last
+       bars intentionally overhang the plot edges by ~1% (centers sit exactly
+       at 20 Hz / 20 kHz, like a hardware analyzer) — clip it at the boundary. */
+    .veq-bars { position:absolute; pointer-events:none; overflow:hidden; }
     .veq-bar { position:absolute; bottom:0; min-height:2px; opacity:0.6; border-radius:var(--radius-sm) var(--radius-sm) 0 0; transition:height var(--dur-base) var(--ease-out), opacity var(--dur-base) var(--ease-out); }
     .veq-bar.loud { opacity:0.95; box-shadow:0 0 10px -1px var(--gold-glow); }
     .veq-bar.dim { opacity:0.3; }

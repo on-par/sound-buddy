@@ -558,3 +558,20 @@ export function patchBarsAndLabels(container: Element, dbArray: number[]): void 
   container.querySelectorAll('.veq-label').forEach((lb, i) => lb.classList.toggle('loud', i === loudestIdx));
 }
 /* c8 ignore stop */
+
+// Patch-in-place counterpart of veqGridBarsHTML (live-capture-panel.ts, #667):
+// the granular 48-bar analyzer grid has no per-bar `loud`/`.veq-val` state to
+// patch (see veqGridBarsHTML's doc comment), just height + dim; the 7
+// `.veq-label`s still get `loud` from the band-level loudest index.
+/* c8 ignore start -- DOM-patching applier, no jsdom in this harness
+   (renderToString only) — same precedent as patchBarsAndLabels above; pure
+   inputs (veqBandView, veqLoudestIdx) are unit-tested. */
+export function patchGridBarsAndBandLabels(container: Element, gridDb: number[], labelLoudestIdx: number): void {
+  container.querySelectorAll('.veq-bar').forEach((bar, i) => {
+    const v = veqBandView(gridDb[i]);
+    (bar as HTMLElement).style.height = v.pct.toFixed(2) + '%';
+    bar.classList.toggle('dim', v.dim);
+  });
+  container.querySelectorAll('.veq-label').forEach((lb, i) => lb.classList.toggle('loud', i === labelLoudestIdx));
+}
+/* c8 ignore stop */

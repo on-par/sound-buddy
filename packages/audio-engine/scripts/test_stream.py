@@ -42,6 +42,12 @@ _spec = importlib.util.spec_from_file_location("stream", os.path.join(_HERE, "st
 stream = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(stream)
 
+# Loaded separately (not just via stream.py's re-export) so the analyzer-grid
+# parity tests pin the same literals spectrum.py's own offline analyzer uses.
+_spectrum_spec = importlib.util.spec_from_file_location("spectrum_parity", os.path.join(_HERE, "spectrum.py"))
+spectrum = importlib.util.module_from_spec(_spectrum_spec)
+_spectrum_spec.loader.exec_module(spectrum)
+
 
 def _mono_stereo_groups():
     """Configured strips: mono ch0, stereo ch2+ch3, mono ch1 (device with 4ch)."""
@@ -122,6 +128,71 @@ class AnalyzeGroups(unittest.TestCase):
         frames = np.zeros((16, 2), dtype=np.float32)
         out = stream.analyze_groups(frames, self.sr, stream.parse_channel_groups("0", 2))
         self.assertEqual(len(out), 1)
+
+
+class TestAnalyzerCurve(unittest.TestCase):
+    """#667: analyze_signal grows a 48-point log-grid `curve` alongside the
+    untouched 7-band `bands`, reusing spectrum.py's offline analyzer grid."""
+
+    def setUp(self):
+        self.sr = 48000
+        t = np.arange(int(1.0 * self.sr)) / self.sr
+        self.tone = (0.5 * np.sin(2 * np.pi * 1000 * t)).astype(np.float32)
+
+    def test_curve_has_one_entry_per_grid_point_all_finite(self):
+        out = stream.analyze_signal(self.tone, self.sr)
+        self.assertEqual(len(out["curve"]), spectrum.GRID_POINTS)
+        self.assertTrue(all(np.isfinite(v) for v in out["curve"]))
+
+    def test_1khz_tone_peaks_near_grid_index_27(self):
+        out = stream.analyze_signal(self.tone, self.sr)
+        peak_idx = int(np.argmax(out["curve"]))
+        self.assertLessEqual(abs(peak_idx - 27), 1)
+
+    def test_curve_values_rounded_to_one_decimal(self):
+        out = stream.analyze_signal(self.tone, self.sr)
+        for v in out["curve"]:
+            self.assertEqual(v, round(v, 1))
+
+    def test_grid_parity_with_spectrum_py(self):
+        centers = spectrum._grid_freqs()
+        self.assertEqual(centers[0], 20.0)
+        self.assertEqual(centers[47], 20000.0)
+        self.assertAlmostEqual(centers[24], 680.683, places=2)
+        ratios = centers[1:] / centers[:-1]
+        for r in ratios:
+            self.assertAlmostEqual(r, 1.1583233, places=6)
+
+    def test_degenerate_short_signal_curve_is_all_silence_floor(self):
+        sig = np.zeros(16, dtype=np.float32)
+        out = stream.analyze_signal(sig, self.sr)
+        self.assertEqual(out["curve"], [-120.0] * spectrum.GRID_POINTS)
+
+    def test_bands_unaffected_by_curve_addition(self):
+        out = stream.analyze_signal(self.tone, self.sr)
+        self.assertEqual(set(out["bands"].keys()), {name for name, _lo, _hi in stream.BANDS})
+        # A 1 kHz tone falls in the "mid" (500-2000 Hz) band, so it should
+        # read louder than an out-of-range band like "sub_bass" — the bands
+        # computation still reflects the real signal, unaffected by curve.
+        self.assertGreater(out["bands"]["mid"], out["bands"]["sub_bass"])
+
+    def test_analyze_groups_payload_stays_under_budget(self):
+        rng = np.random.default_rng(0)
+        n = int(0.2 * self.sr)
+        frames = rng.uniform(-0.3, 0.3, size=(n, 8)).astype(np.float32)
+        groups = stream.parse_channel_groups("0,1,2,3,4,5,6,7", 8)
+        out = stream.analyze_groups(frames, self.sr, groups)
+        payload = json.dumps(out)
+        size = len(payload.encode("utf-8"))
+        print(f"analyze_groups payload for 8 mono strips: {size} bytes")
+        self.assertLess(size, 8 * 1024)
+
+    def test_analyze_groups_channels_each_carry_curve(self):
+        frames = np.stack([self.tone[: int(0.2 * self.sr)], np.zeros(int(0.2 * self.sr), dtype=np.float32)], axis=1)
+        out = stream.analyze_groups(frames, self.sr, stream.parse_channel_groups("0,1", 2))
+        self.assertEqual(len(out), 2)
+        for ch in out:
+            self.assertEqual(len(ch["curve"]), spectrum.GRID_POINTS)
 
 
 class BucketPeaks(unittest.TestCase):
