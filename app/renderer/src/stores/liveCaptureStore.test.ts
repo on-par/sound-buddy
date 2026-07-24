@@ -17,12 +17,11 @@ import type { StripConfig, LiveDevice } from '../live-capture-panel';
 // (not hand-rolled stubs), same convention as arm-state.test.ts/group-state.test.ts.
 const armState = require('../../arm-state.js');
 const groupState = require('../../group-state.js');
-const collapseState = require('../../collapse-state.js');
 const rigKind = require('../../rig-kind.js');
 const channelLabels = require('../../channel-labels.js');
 
 beforeEach(() => {
-  (globalThis as { window?: unknown }).window = { armState, groupState, collapseState, rigKind, channelLabels };
+  (globalThis as { window?: unknown }).window = { armState, groupState, rigKind, channelLabels };
 });
 
 afterEach(() => {
@@ -49,10 +48,10 @@ describe('createLiveCaptureStore', () => {
     expect(s.channelConfig).toEqual([]);
     expect(s.isCapturing).toBe(false);
     expect(s.liveWindows).toEqual([]);
-    expect(s.collapsed.size).toBe(0);
     expect(s.appMode).toBe('reportcard');
     expect(s.ringout).toEqual({ stepIndex: 0, cut: null });
     expect(s.measurementSource).toBeNull();
+    expect(s.selectedChannel).toBeNull();
   });
 
   describe('loadDevices / selectDevice', () => {
@@ -192,6 +191,74 @@ describe('createLiveCaptureStore', () => {
       store.getState().setMeasurementSource(1);
       store.getState().setMeasurementSource(null);
       expect(store.getState().measurementSource).toBeNull();
+    });
+  });
+
+  describe('selectedChannel (#668)', () => {
+    it('setSelectedChannel sets the value as given', () => {
+      const { store } = makeStore();
+      store.getState().setSelectedChannel(1);
+      expect(store.getState().selectedChannel).toBe(1);
+    });
+
+    it('the value survives unrelated store actions', () => {
+      const { store } = makeStore();
+      store.getState().setSelectedChannel(1);
+      store.getState().setLiveMode('record');
+      expect(store.getState().selectedChannel).toBe(1);
+    });
+
+    it('setSelectedChannel(null) resets to the default', () => {
+      const { store } = makeStore();
+      store.getState().setSelectedChannel(1);
+      store.getState().setSelectedChannel(null);
+      expect(store.getState().selectedChannel).toBeNull();
+    });
+
+    it('selectDevice resets selectedChannel to null (config is rebuilt, old indices are meaningless)', () => {
+      const { store } = makeStore();
+      store.setState({ devices: DEVICES, selectedChannel: 1 });
+      store.getState().selectDevice('0');
+      expect(store.getState().selectedChannel).toBeNull();
+    });
+
+    it('loadDevices resets selectedChannel to null when it reseeds the config', async () => {
+      const { store } = makeStore({
+        listDevices: async () => ({ success: true, micAccess: 'granted', devices: DEVICES }),
+      });
+      store.setState({ selectedChannel: 1 });
+      await store.getState().loadDevices();
+      expect(store.getState().selectedChannel).toBeNull();
+    });
+
+    it('removeStrip resets selectedChannel to null when the selected strip is removed', () => {
+      const { store } = makeStore();
+      store.setState({
+        channelConfig: [{ kind: 'mono', a: 0, b: 1 }, { kind: 'mono', a: 1, b: 2 }],
+        selectedChannel: 0,
+      });
+      store.getState().removeStrip(0);
+      expect(store.getState().selectedChannel).toBeNull();
+    });
+
+    it('removeStrip shifts selectedChannel down when a lower strip is removed', () => {
+      const { store } = makeStore();
+      store.setState({
+        channelConfig: [{ kind: 'mono', a: 0, b: 1 }, { kind: 'mono', a: 1, b: 2 }],
+        selectedChannel: 1,
+      });
+      store.getState().removeStrip(0);
+      expect(store.getState().selectedChannel).toBe(0);
+    });
+
+    it('removeStrip leaves selectedChannel untouched when a higher strip is removed', () => {
+      const { store } = makeStore();
+      store.setState({
+        channelConfig: [{ kind: 'mono', a: 0, b: 1 }, { kind: 'mono', a: 1, b: 2 }],
+        selectedChannel: 0,
+      });
+      store.getState().removeStrip(1);
+      expect(store.getState().selectedChannel).toBe(0);
     });
   });
 
@@ -381,22 +448,11 @@ describe('createLiveCaptureStore', () => {
   });
 
   describe('collapse', () => {
-    it('toggleCollapse/collapseAll/expandAll', () => {
-      const { store } = makeStore();
-      store.getState().toggleCollapse(1);
-      expect(store.getState().collapsed.has(1)).toBe(true);
-      store.getState().collapseAll(3);
-      expect([...store.getState().collapsed]).toEqual([0, 1, 2]);
-      store.getState().expandAll();
-      expect(store.getState().collapsed.size).toBe(0);
-    });
-
-    it('setGroupCollapsed sets the group-level collapsed flag, leaving per-strip collapse untouched (#483)', () => {
+    it('setGroupCollapsed sets the group-level collapsed flag (#483)', () => {
       const { store } = makeStore();
       store.setState({ channelGroups: [{ name: 'Drums', members: [0, 1] }] });
       store.getState().setGroupCollapsed(0, true);
       expect(store.getState().channelGroups[0].collapsed).toBe(true);
-      expect(store.getState().collapsed.size).toBe(0);
       store.getState().setGroupCollapsed(0, false);
       expect(store.getState().channelGroups[0].collapsed).toBe(false);
     });
@@ -612,7 +668,7 @@ describe('createLiveCaptureStore', () => {
       soundBuddy: createMockSoundBuddy({
         listDevices: async () => ({ success: true, devices: [] }),
       }).api,
-      armState, groupState, collapseState, rigKind,
+      armState, groupState, rigKind,
     };
     await expect(useLiveCaptureStore.getState().loadDevices()).resolves.toBeUndefined();
   });

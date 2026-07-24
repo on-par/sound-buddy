@@ -520,6 +520,25 @@ describe('update-settings IPC whitelist — weeklyReminderEnabled / weeklyRemind
   });
 });
 
+describe('update-settings IPC whitelist — liveEqPaneWidth (#668)', () => {
+  it('accepts a finite positive number and persists it', async () => {
+    const handler = handlers.get('update-settings');
+    const result = (await handler!(null, { liveEqPaneWidth: 420 })) as { liveEqPaneWidth: number };
+    expect(result.liveEqPaneWidth).toBe(420);
+    expect(readFile().liveEqPaneWidth).toBe(420);
+  });
+
+  it.each([-100, 0, NaN, Infinity, '400'])(
+    'ignores an invalid liveEqPaneWidth (%p), leaving the stored value at the default 360',
+    async (bad) => {
+      const handler = handlers.get('update-settings');
+      const result = (await handler!(null, { liveEqPaneWidth: bad })) as { liveEqPaneWidth: number };
+      expect(result.liveEqPaneWidth).toBe(360);
+      expect(readFile().liveEqPaneWidth).toBe(360);
+    },
+  );
+});
+
 describe('sanitizeChannelLabels (#482)', () => {
   it('returns null for a non-object value (patch key ignored)', () => {
     expect(sanitizeChannelLabels('nope')).toBeNull();

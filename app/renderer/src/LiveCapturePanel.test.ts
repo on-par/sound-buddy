@@ -73,7 +73,7 @@ describe('LiveCapturePanel', () => {
     const stripViews: StripView[] = FIXTURE_CHANNELS.map((ch, idx) => ({
       strip: channelsConfig[idx] ?? null,
       displayName: ch.name,
-      collapsed: false,
+      selected: false,
       armed: !!channelsConfig[idx] && channelsConfig[idx].armed !== false,
       groupIndex: -1,
       groupCollapsed: false,

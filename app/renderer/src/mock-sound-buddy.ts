@@ -47,6 +47,7 @@ const DEFAULT_APP_SETTINGS: AppSettings = {
   shareChurchName: '',
   weeklyReminderEnabled: false,
   weeklyReminderServiceDay: 0,
+  liveEqPaneWidth: 360,
 };
 
 const DEFAULT_LICENSE_STATE: LicenseState = { tier: 'free', status: 'none' };

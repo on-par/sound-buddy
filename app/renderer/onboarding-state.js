@@ -8,7 +8,7 @@
 // without a DOM by taking a Storage-like object (getItem/setItem). A missing or
 // throwing storage is treated as "not seen" so onboarding still shows rather than
 // being silently suppressed. Loaded via <script src> and read off
-// window.onboardingState, mirroring collapse-state.js / license-state.js.
+// window.onboardingState, mirroring license-state.js.
 (function (root) {
   'use strict';
 

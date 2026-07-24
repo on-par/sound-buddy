@@ -366,6 +366,37 @@ describe('weeklyReminderEnabled / weeklyReminderServiceDay (#268 — opt-in loca
   );
 });
 
+describe('liveEqPaneWidth (#668 — persisted Live EQ pane width, renderer clamps, main only sanitizes)', () => {
+  it('defaults to 360 when settings.json is absent', () => {
+    expect(getSettings().liveEqPaneWidth).toBe(360);
+  });
+
+  it('defaults to 360 when the file exists without the key', () => {
+    writeFile({ idealProfile: '' });
+    expect(getSettings().liveEqPaneWidth).toBe(360);
+  });
+
+  it('round-trips a value through updateSettings, the raw file, and a fresh read', () => {
+    const updated = updateSettings({ liveEqPaneWidth: 420 });
+    expect(updated.liveEqPaneWidth).toBe(420);
+    expect(readFile().liveEqPaneWidth).toBe(420);
+    expect(getSettings().liveEqPaneWidth).toBe(420);
+  });
+
+  it.each([-100, 0, NaN, Infinity, '400'])(
+    'hydrates a corrupted liveEqPaneWidth value (%p) back to the default 360',
+    (corrupted) => {
+      writeFile({ liveEqPaneWidth: corrupted });
+      expect(getSettings().liveEqPaneWidth).toBe(360);
+    },
+  );
+
+  it('backfills liveEqPaneWidth=360 on a write that does not mention it', () => {
+    updateSettings({ idealProfile: 'x' });
+    expect(readFile().liveEqPaneWidth).toBe(360);
+  });
+});
+
 describe('customIdealProfiles', () => {
   const curve = {
     id: 'sunday',

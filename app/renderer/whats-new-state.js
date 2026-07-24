@@ -9,7 +9,7 @@
 // gated by a per-version localStorage flag (mirrors onboarding-state.js's
 // "seen once" idiom), and never renders for a build that ships no note or an
 // empty/heading-only one. Loaded via <script src> and read off
-// window.whatsNewState, mirroring onboarding-state.js / collapse-state.js.
+// window.whatsNewState, mirroring onboarding-state.js.
 (function (root) {
   'use strict';
 

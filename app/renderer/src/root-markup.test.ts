@@ -96,6 +96,34 @@ describe('Storage and AI Engineer dialogs combined into one Settings gear (#204)
   });
 });
 
+describe('Docked live EQ pane markup (#668)', () => {
+  it('renders the pane, its resize handle, and its body container', () => {
+    expect(markup).toContain('id="live-eq-pane"');
+    expect(markup).toContain('id="live-eq-resize"');
+    expect(markup).toContain('id="live-eq-pane-body"');
+  });
+
+  it('starts hidden — inline-app.js shows it only in Live mode', () => {
+    expect(markup).toMatch(/id="live-eq-pane"[^>]*style="display:none"/);
+  });
+
+  it('the resize handle is a keyboard-operable vertical separator', () => {
+    expect(markup).toMatch(/id="live-eq-resize"[^>]*role="separator"/);
+    expect(markup).toMatch(/id="live-eq-resize"[^>]*aria-orientation="vertical"/);
+    expect(markup).toMatch(/id="live-eq-resize"[^>]*aria-label="Resize EQ pane"/);
+    expect(markup).toMatch(/id="live-eq-resize"[^>]*tabindex="0"/);
+  });
+
+  it('lives inside #workspace, after the spectrum panel', () => {
+    const workspaceIdx = markup.indexOf('id="workspace"');
+    const spectrumCloseIdx = markup.indexOf('</section>', markup.indexOf('id="spectrum-panel"'));
+    const paneIdx = markup.indexOf('id="live-eq-pane"');
+    expect(workspaceIdx).toBeGreaterThan(-1);
+    expect(spectrumCloseIdx).toBeGreaterThan(workspaceIdx);
+    expect(paneIdx).toBeGreaterThan(spectrumCloseIdx);
+  });
+});
+
 describe('Existing tabs stay intact under the unified Analyze picker (#543)', () => {
   it('keeps all seven mode tabs, unchanged', () => {
     ['dir', 'live', 'soundcheck', 'recent', 'guide', 'ringout', 'reportcard'].forEach((mode) => {

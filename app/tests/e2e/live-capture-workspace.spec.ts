@@ -138,15 +138,6 @@ test.describe('Live capture (PRD 06) — workspace controls', () => {
       await expect(window.locator('#live-ws-cap')).toHaveText('2 / 8 used');
     });
 
-    test('Collapse all folds idle placeholder rows before any live tick has arrived', async () => {
-      // Collapse all sizes itself off the strips actually on screen, not the
-      // (still-null pre-tick) lastLiveChannels — regression coverage (#188).
-      await window.locator('#live-collapse-all').click();
-      await expect(window.locator('#spectrum-body .sb-live-meters .live-ch.collapsed')).toHaveCount(2);
-      await window.locator('#live-expand-all').click();
-      await expect(window.locator('#spectrum-body .sb-live-meters .live-ch.collapsed')).toHaveCount(0);
-    });
-
     test('workspace Add track adds a strip', async () => {
       await window.locator('#live-ws-add').click();
       await expect(window.locator('#spectrum-body .sb-live-meters .live-ch')).toHaveCount(3);
@@ -193,6 +184,68 @@ test.describe('Live capture (PRD 06) — workspace controls', () => {
 
       await window.locator('#live-stop-btn').click();
       await expect(window.locator('#live-ws-add')).toBeEnabled();
+    });
+  });
+
+  // Docked live EQ pane resize (#668): a draggable handle on the pane's left
+  // edge, clamped to [EQ_PANE_MIN_W, EQ_PANE_MAX_W] (live-capture-panel.ts).
+  test.describe('EQ pane resize (#668)', () => {
+    test('dragging the handle resizes the pane', async () => {
+      const pane = window.locator('#live-eq-pane');
+      const handle = window.locator('#live-eq-resize');
+      const before = await pane.boundingBox();
+      const handleBox = await handle.boundingBox();
+      if (!before || !handleBox) throw new Error('missing bounding box');
+
+      const y = handleBox.y + handleBox.height / 2;
+      // Drag left (decreasing clientX) — the pane is docked to the right edge
+      // with the handle on its left edge, so this widens the pane.
+      await window.mouse.move(handleBox.x + handleBox.width / 2, y);
+      await window.mouse.down();
+      await window.mouse.move(handleBox.x - 60, y);
+      await window.mouse.up();
+
+      const after = await pane.boundingBox();
+      expect(after).not.toBeNull();
+      expect(after!.width).toBeGreaterThan(before.width + 30);
+    });
+
+    test('dragging far past the minimum clamps the pane width', async () => {
+      const pane = window.locator('#live-eq-pane');
+      const handle = window.locator('#live-eq-resize');
+      const handleBox = await handle.boundingBox();
+      if (!handleBox) throw new Error('missing bounding box');
+
+      const y = handleBox.y + handleBox.height / 2;
+      // Drag right (increasing clientX) shrinks the pane — push it far enough
+      // to hit the EQ_PANE_MIN_W (260px) floor.
+      await window.mouse.move(handleBox.x + handleBox.width / 2, y);
+      await window.mouse.down();
+      await window.mouse.move(handleBox.x + 2000, y);
+      await window.mouse.up();
+
+      const after = await pane.boundingBox();
+      expect(after).not.toBeNull();
+      expect(Math.round(after!.width)).toBe(260);
+    });
+
+    test('ArrowLeft/ArrowRight on the focused handle resize the pane in steps', async () => {
+      const pane = window.locator('#live-eq-pane');
+      const handle = window.locator('#live-eq-resize');
+      await handle.focus();
+      const before = await pane.boundingBox();
+      if (!before) throw new Error('missing bounding box');
+
+      await window.keyboard.press('ArrowLeft'); // widens
+      const afterLeft = await pane.boundingBox();
+      expect(afterLeft).not.toBeNull();
+      expect(afterLeft!.width).toBeGreaterThan(before.width);
+
+      await window.keyboard.press('ArrowRight'); // shrinks back
+      await window.keyboard.press('ArrowRight');
+      const afterRight = await pane.boundingBox();
+      expect(afterRight).not.toBeNull();
+      expect(afterRight!.width).toBeLessThan(afterLeft!.width);
     });
   });
 });

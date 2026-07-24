@@ -23,7 +23,7 @@ import {
   spectrumCurveSVG,
   veqBarsAndLabelsHTML,
   veqLoudestIdx,
-  patchBarsAndLabels,
+  toPct,
   type SpectrumCurve,
   type SpectrumCurvePaths,
 } from './spectrum-display';
@@ -53,7 +53,7 @@ export type LiveMeterChannel = Pick<ChannelWindowData, 'bands' | 'rms' | 'peak'>
 export interface StripView {   // per-strip state the caller resolves from its stores
   strip: StripConfig | null;   // channelConfig[idx] ?? null
   displayName: string;         // stripLabel(strip, ch, idx) at runtime
-  collapsed: boolean;          // isStripCollapsed(idx)
+  selected: boolean;           // idx === selectedChannel (#668) — drives the strip's secondary EQ pane
   armed: boolean;              // window.armState.isArmed(strip)
   groupIndex: number;          // window.groupState.groupOf(channelGroups, idx); -1 = ungrouped
   groupCollapsed: boolean;     // window.groupState.isGroupCollapsed(channelGroups, groupIndex)
@@ -114,17 +114,18 @@ export function liveBandCurve(bands: Record<string, number>): SpectrumCurve {
 }
 
 // Fixed dB scale so the arc's geometry matches the bars and stays put across ticks.
-export function veqArcSVG(curve: SpectrumCurve, centroid: number | undefined, idx: number, wantPaths?: boolean): string | SpectrumCurvePaths {
+// `idx` is either a strip's numeric channel index (per-strip callers, historical)
+// or a stable string uid (the EQ pane's 'pane-a'/'pane-b' slots, #668) — either
+// way it only ever interpolates into the `live${idx}` SVG uid string, so widening
+// this from `number` to `number | string` is a pure signature change.
+export function veqArcSVG(curve: SpectrumCurve, centroid: number | undefined, idx: number | string, wantPaths?: boolean): string | SpectrumCurvePaths {
   return spectrumCurveSVG(curve, centroid, null, { uid: `live${idx}`, vbH: VEQ_VB_H, yMin: DB_MIN, yMax: DB_MAX, wantPaths });
 }
 
 export function veqChannelHTML(ch: LiveMeterChannel, idx: number, stripView: StripView, panel: PanelView): string {
-  const curve = liveBandCurve(ch.bands);
-  const loudestIdx = veqLoudestIdx(curve.db);
-  const { bars, labels } = veqBarsAndLabelsHTML(VEQ_BANDS, curve.db, loudestIdx);
   const strip = stripView.strip;
   const displayName = stripView.displayName;
-  const collapsed = stripView.collapsed;
+  const selected = stripView.selected;
   const armed = stripView.armed;
   // Inline track definition (#189): the { kind, a, b } strip, rendered right in
   // the header so an engineer never has to leave the workspace to define a
@@ -172,10 +173,9 @@ export function veqChannelHTML(ch: LiveMeterChannel, idx: number, stripView: Str
   const dragHTML = grpOf !== -1
     ? `<button type="button" class="live-ch-drag" draggable="true" aria-label="Reorder track within group — drag, or press Arrow Up/Down" title="Drag to reorder track"${panel.liveRunning ? ' disabled' : ''}>⋮⋮</button>`
     : '';
-  return `<div class="live-ch${collapsed ? ' collapsed' : ''}${ch.idle ? ' idle' : ''}${stripView.groupCollapsed ? ' group-collapsed' : ''}" data-ch="${idx}">
+  return `<div class="live-ch${selected ? ' selected' : ''}${ch.idle ? ' idle' : ''}${stripView.groupCollapsed ? ' group-collapsed' : ''}" data-ch="${idx}"${selected ? ' aria-current="true"' : ''} tabindex="0" role="button" aria-label="Select ${escapeHtml(displayName)} to inspect in the EQ pane">
     <div class="live-ch-head">
       ${dragHTML}
-      <button type="button" class="live-ch-fold" aria-label="Collapse or expand strip" aria-expanded="${collapsed ? 'false' : 'true'}" title="Collapse / expand strip">▾</button>
       ${panel.liveMode === 'record'
         ? `<button type="button" class="live-ch-arm" data-idx="${idx}" aria-pressed="${armed}" aria-label="${armed ? 'Disarm' : 'Arm'} track for recording" title="${armed ? 'Armed for recording — click to disarm' : 'Disarmed — click to arm'}"${panel.liveRunning ? ' disabled' : ''}></button>`
         : ''}
@@ -183,16 +183,171 @@ export function veqChannelHTML(ch: LiveMeterChannel, idx: number, stripView: Str
       ${defHTML}
       ${groupHTML}
       ${profileHTML}
+      <span class="live-ch-level" aria-hidden="true"><span class="live-ch-level-fill" style="width:${levelPercent(ch.rms, !!ch.idle)}%"></span></span>
       <span class="live-ch-meta">${ch.idle ? 'Idle' : `RMS ${fmt(ch.rms)} · Peak ${fmt(ch.peak)} dBFS`}</span>
       ${ch.clipping ? '<span class="live-ch-clip">CLIP</span>' : ''}
       <button type="button" class="live-ch-x" title="Remove track" aria-label="Remove track"${panel.liveRunning ? ' disabled' : ''}>×</button>
     </div>
-    <div class="veq">
-      <div class="veq-chart">${veqArcSVG(curve, ch.centroid, idx)}</div>
-      <div class="veq-bars" style="${VEQ_INSET}">${bars}</div>
-    </div>
-    <div class="veq-labels" style="${VEQ_LABEL_MARGIN}">${labels}</div>
   </div>`;
+}
+
+/* ── Live EQ pane (#668) ──
+ * The per-strip chart moved off the compact channel strip and into a single
+ * shared pane: a "Room" section (the measurement-source channel, same
+ * resolution as measurementChannel()/the header badge) and a "Selected"
+ * section (whichever strip an engineer last clicked). levelPercent drives the
+ * inline level-bar left behind on the now-chartless strip (veqChannelHTML). */
+export const EQ_PANE_MIN_W = 260;
+export const EQ_PANE_MAX_W = 640;
+export const EQ_PANE_DEFAULT_W = 360;
+export const EQ_PANE_RESIZE_STEP = 16; // px per keyboard resize step (stage 2)
+
+// Clamps a persisted/dragged pane width into [EQ_PANE_MIN_W, EQ_PANE_MAX_W];
+// any non-finite/non-number input (corrupted settings.json, a stray NaN mid-
+// drag) falls back to EQ_PANE_DEFAULT_W rather than propagating garbage.
+export function clampEqPaneWidth(w: unknown): number {
+  if (typeof w !== 'number' || !Number.isFinite(w)) return EQ_PANE_DEFAULT_W;
+  return Math.min(EQ_PANE_MAX_W, Math.max(EQ_PANE_MIN_W, w));
+}
+
+// Maps an RMS dBFS reading onto the same [DB_MIN, DB_MAX] window the arc/bars
+// use, as a 0-100 percentage for the compact strip's inline level-fill bar.
+// Idle strips (no signal yet) and a non-finite reading both read as empty
+// rather than pinning to either end of the scale.
+export function levelPercent(rms: number, idle: boolean): number {
+  if (idle || !Number.isFinite(rms)) return 0;
+  return toPct(rms);
+}
+
+export interface EqPaneSection { idx: number; label: string; ch: LiveMeterChannel }
+
+export interface EqPaneView {
+  primary: EqPaneSection | null;
+  secondary: EqPaneSection | null;
+  secondaryIsPrimary: boolean;
+}
+
+// Resolves the pane's two slots from the same inputs the runtime already
+// tracks: measurementSource (the "Room" reading — see measurementChannel's
+// fallback-to-channel-0 contract, mirrored here so the two never disagree)
+// and selectedChannel (the "Selected" reading, #668's new per-strip click
+// target). `primary` is null only when there are no channels at all;
+// `secondary` is null whenever selectedChannel isn't a live channel index.
+export function eqPaneView(
+  channels: LiveMeterChannel[],
+  config: StripConfig[],
+  measurementSource: number | null,
+  selectedChannel: number | null,
+): EqPaneView {
+  let primary: EqPaneSection | null = null;
+  if (channels.length > 0) {
+    const idx = measurementSource != null && channels[measurementSource] ? measurementSource : 0;
+    primary = { idx, label: measurementSourceOptionLabel(config[idx], idx), ch: channels[idx] };
+  }
+  let secondary: EqPaneSection | null = null;
+  if (selectedChannel != null && selectedChannel >= 0 && selectedChannel < channels.length) {
+    secondary = { idx: selectedChannel, label: measurementSourceOptionLabel(config[selectedChannel], selectedChannel), ch: channels[selectedChannel] };
+  }
+  const secondaryIsPrimary = !!(primary && secondary && primary.idx === secondary.idx);
+  return { primary, secondary, secondaryIsPrimary };
+}
+
+// Shared, uid-independent per-section work (curve, loudest band, bars/labels
+// markup — none of it references a section's SVG uid) — computed once per
+// distinct channel and reused for both pane slots when the selected channel
+// is also the measurement source (secondaryIsPrimary), instead of redoing
+// the same curve/loudest-band/bars/labels work twice for identical input.
+interface EqPaneSectionParts { curve: SpectrumCurve; loudestIdx: number; bars: string; labels: string }
+function eqPaneSectionParts(section: EqPaneSection): EqPaneSectionParts {
+  const curve = liveBandCurve(section.ch.bands);
+  const loudestIdx = veqLoudestIdx(curve.db);
+  const { bars, labels } = veqBarsAndLabelsHTML(VEQ_BANDS, curve.db, loudestIdx);
+  return { curve, loudestIdx, bars, labels };
+}
+
+// Shared by eqPaneHTML's two sections — same .veq/.veq-bars/.veq-labels shape
+// veqChannelHTML used to render per-strip, now rendered once per pane slot.
+// Only the arc SVG is regenerated per call: its uid ('pane-a'/'pane-b') has
+// to differ between the two slots so their element ids don't collide, even
+// when both slots show the same channel.
+function eqPaneSectionHTML(section: EqPaneSection, headerHTML: string, uid: string, parts: EqPaneSectionParts): string {
+  return `<div class="eq-pane-header">${headerHTML}</div>
+    <div class="veq">
+      <div class="veq-chart">${veqArcSVG(parts.curve, section.ch.centroid, uid)}</div>
+      <div class="veq-bars" style="${VEQ_INSET}">${parts.bars}</div>
+    </div>
+    <div class="veq-labels" style="${VEQ_LABEL_MARGIN}">${parts.labels}</div>`;
+}
+
+// The pane body: "Room — <label>" always (defensive-only null check — the
+// runtime never calls this with an empty channels list) plus "Selected —
+// <label>" once a strip has been clicked, or an empty-state hint until then.
+export function eqPaneHTML(view: EqPaneView): string {
+  let html = '';
+  const primaryParts = view.primary ? eqPaneSectionParts(view.primary) : null;
+  if (view.primary && primaryParts) {
+    const header = `Room — ${escapeHtml(view.primary.label)}`;
+    html += `<div class="eq-pane-section eq-pane-primary">${eqPaneSectionHTML(view.primary, header, 'pane-a', primaryParts)}</div>`;
+  }
+  if (view.secondary) {
+    const suffix = view.secondaryIsPrimary ? ' · Measurement source' : '';
+    const header = `Selected — ${escapeHtml(view.secondary.label)}${suffix}`;
+    const secondaryParts = view.secondaryIsPrimary && primaryParts ? primaryParts : eqPaneSectionParts(view.secondary);
+    html += `<div class="eq-pane-section eq-pane-secondary">${eqPaneSectionHTML(view.secondary, header, 'pane-b', secondaryParts)}</div>`;
+  } else {
+    html += `<div class="eq-pane-section eq-pane-secondary eq-pane-empty">`
+      + `<div class="eq-pane-header">Selected</div>`
+      + `<div class="eq-pane-empty-hint">Click a channel to inspect it here</div></div>`;
+  }
+  return html;
+}
+
+// Cheap identity string the runtime diffs to decide "rebuild the pane's DOM
+// from scratch vs patch the existing arcs in place" — changes exactly when
+// eqPaneHTML's visible content (which channel, which label, the "Measurement
+// source" suffix) would change, and stays stable across ticks that only move
+// the needle (those are patched via eqPanePatchPlan instead).
+export function eqPaneSignature(view: EqPaneView): string {
+  const { primary, secondary, secondaryIsPrimary } = view;
+  return `${primary?.idx ?? ''}:${primary?.label ?? ''} ${secondary?.idx ?? ''}:${secondary?.label ?? ''}:${secondaryIsPrimary}`;
+}
+
+export interface EqPaneSectionPatch {
+  curve: SpectrumCurve;
+  loudestIdx: number;
+  arc: string | SpectrumCurvePaths;
+}
+
+export interface EqPanePatchPlan {
+  primary: EqPaneSectionPatch | null;
+  secondary: EqPaneSectionPatch | null;
+}
+
+// Per-tick "what changed" for the pane's two arcs — mirrors
+// patchLiveChannelPlan's curve/loudestIdx/arc shape (below), just computed
+// for the pane's up-to-two sections instead of once per strip. curve/
+// loudestIdx are reused between slots when secondaryIsPrimary (same channel)
+// — only the uid-scoped arc SVG has to be regenerated per slot.
+export function eqPanePatchPlan(view: EqPaneView): EqPanePatchPlan {
+  function curveFor(section: EqPaneSection): { curve: SpectrumCurve; loudestIdx: number } {
+    const curve = liveBandCurve(section.ch.bands);
+    return { curve, loudestIdx: veqLoudestIdx(curve.db) };
+  }
+  function planFor(section: EqPaneSection, uid: string, parts: { curve: SpectrumCurve; loudestIdx: number }): EqPaneSectionPatch {
+    return {
+      curve: parts.curve,
+      loudestIdx: parts.loudestIdx,
+      arc: veqArcSVG(parts.curve, section.ch.centroid, uid, true),
+    };
+  }
+  const primaryParts = view.primary ? curveFor(view.primary) : null;
+  const secondaryParts = view.secondary
+    ? (view.secondaryIsPrimary && primaryParts ? primaryParts : curveFor(view.secondary))
+    : null;
+  return {
+    primary: view.primary && primaryParts ? planFor(view.primary, 'pane-a', primaryParts) : null,
+    secondary: view.secondary && secondaryParts ? planFor(view.secondary, 'pane-b', secondaryParts) : null,
+  };
 }
 
 // Group-level summary (#483): a compact "N tracks · Peak X dBFS" readout shown
@@ -516,22 +671,23 @@ export function liveSessionReportCardSource(
 }
 
 /* ── Live-tick DOM patching (TD-001 slice 5, #423) ──
- * patchLiveChannelPlan is the pure "what changed" computation (curve, meta
- * text, collapsed/idle flags, the arc paths, loudest-band index) — fully
- * unit-tested below. patchLiveChannel is the thin DOM applier ported
- * verbatim from inline-app.js's patchLiveChannel; it stays c8-ignored for
- * the same reason as spectrum-display.ts's patchBarsAndLabels (no jsdom in
- * this harness) and is exercised by the live-capture-* e2e specs. */
+ * patchLiveChannelPlan is the pure "what changed" computation (meta text,
+ * selected/idle flags, the inline level-bar percentage) — fully unit-tested
+ * below. Strips no longer carry their own chart (#668 moved that to the
+ * shared EQ pane — see eqPanePatchPlan above), which is the performance win
+ * the issue is about: a tick with N strips no longer recomputes N arcs.
+ * patchLiveChannel is the thin DOM applier ported verbatim from
+ * inline-app.js's patchLiveChannel; it stays c8-ignored for the same reason
+ * as spectrum-display.ts's patchBarsAndLabels (no jsdom in this harness) and
+ * is exercised by the live-capture-* e2e specs. */
 export interface LiveChannelPatchPlan {
-  collapsed: boolean;
+  selected: boolean;
   idle: boolean;
   displayName: string;
   clipping: boolean;
   meta: string;
   removeDisabled: boolean;
-  curve: SpectrumCurve;
-  loudestIdx: number;
-  arc: string | SpectrumCurvePaths;
+  levelPercent: number;
 }
 
 export function patchLiveChannelPlan(
@@ -540,17 +696,14 @@ export function patchLiveChannelPlan(
   stripView: StripView,
   isCapturing: boolean
 ): LiveChannelPatchPlan {
-  const curve = liveBandCurve(ch.bands);
   return {
-    collapsed: stripView.collapsed,
+    selected: stripView.selected,
     idle: !!ch.idle,
     displayName: stripView.displayName,
     clipping: !!ch.clipping,
     meta: ch.idle ? 'Idle' : `RMS ${fmt(ch.rms)} · Peak ${fmt(ch.peak)} dBFS`,
     removeDisabled: isCapturing,
-    curve,
-    loudestIdx: veqLoudestIdx(curve.db),
-    arc: veqArcSVG(curve, ch.centroid, idx, true),
+    levelPercent: levelPercent(ch.rms, !!ch.idle),
   };
 }
 
@@ -565,10 +718,10 @@ export function patchLiveChannel(
   isCapturing: boolean
 ): void {
   const plan = patchLiveChannelPlan(ch, idx, stripView, isCapturing);
-  el.classList.toggle('collapsed', plan.collapsed);
+  el.classList.toggle('selected', plan.selected);
+  if (plan.selected) el.setAttribute('aria-current', 'true');
+  else el.removeAttribute('aria-current');
   el.classList.toggle('idle', plan.idle); // a real tick landing on a prior idle placeholder graduates it
-  const foldBtn = el.querySelector('.live-ch-fold');
-  if (foldBtn) foldBtn.setAttribute('aria-expanded', plan.collapsed ? 'false' : 'true');
   const name = el.querySelector('.live-ch-name');
   // Don't clobber the field while the engineer is renaming it in place (#39);
   // the live tick keeps flowing but their caret/text stays put until they commit.
@@ -585,19 +738,7 @@ export function patchLiveChannel(
   if (plan.clipping && !clipEl && removeBtn) removeBtn.insertAdjacentHTML('beforebegin', '<span class="live-ch-clip">CLIP</span>');
   else if (!plan.clipping && clipEl) clipEl.remove();
 
-  const chart = el.querySelector('.veq-chart');
-  if (chart) {
-    const lineEl = chart.querySelector('.sb-curve-line');
-    if (plan.arc && typeof plan.arc !== 'string' && lineEl) {
-      lineEl.setAttribute('d', plan.arc.line);
-      chart.querySelector('.sb-curve-fill')?.setAttribute('d', plan.arc.area);
-      const centroidEl = chart.querySelector('.sb-centroid');
-      if (centroidEl) centroidEl.innerHTML = plan.arc.centroidMark;
-    } else {
-      chart.innerHTML = typeof plan.arc === 'string' ? plan.arc : '';
-    }
-  }
-
-  patchBarsAndLabels(el, plan.curve.db);
+  const levelFill = el.querySelector('.live-ch-level-fill') as HTMLElement | null;
+  if (levelFill) levelFill.style.width = `${plan.levelPercent}%`;
 }
 /* c8 ignore stop */

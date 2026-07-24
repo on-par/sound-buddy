@@ -355,6 +355,12 @@
            toggles which of the two is visible per mode (syncSpectrumForMode). -->
       <div id="spectrum-body"><div id="spectrum-imperative"></div><div id="spectrum-island"></div></div>
     </section>
+
+    <!-- Docked live EQ pane (#668): one resizable pane replaces the per-strip EQs. -->
+    <aside id="live-eq-pane" aria-label="Live EQ" style="display:none">
+      <div id="live-eq-resize" role="separator" aria-orientation="vertical" aria-label="Resize EQ pane" tabindex="0"></div>
+      <div id="live-eq-pane-body"></div>
+    </aside>
   </div>
 
   <!-- ══ Report Card ══ -->

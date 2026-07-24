@@ -40,6 +40,7 @@ export interface UpdateSettingsPatch {
   shareChurchName?: string;
   weeklyReminderEnabled?: boolean;
   weeklyReminderServiceDay?: number;
+  liveEqPaneWidth?: number;
 }
 
 export interface AnalyzeFileOpts {
@@ -290,6 +291,15 @@ export interface AppSettings {
    * persisted data, like `rigs`.
    */
   weeklyReminderServiceDay: number;
+  /**
+   * Persisted Live EQ pane width in px (#668): the shared "Room"/"Selected"
+   * EQ pane replacing per-strip charts on the Live tab. Default
+   * EQ_PANE_DEFAULT_W (360, live-capture-panel.ts). The renderer clamps this
+   * into [EQ_PANE_MIN_W, EQ_PANE_MAX_W] on read/resize; main only sanitizes a
+   * structurally invalid value (non-number, non-finite, non-positive) back to
+   * the default — it does not know or enforce the renderer's clamp range.
+   */
+  liveEqPaneWidth: number;
 }
 
 // ─── Analysis / storage DTOs (AnalysisSummary moved from electron/storage.ts) ─

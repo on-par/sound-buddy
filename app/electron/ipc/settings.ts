@@ -248,6 +248,17 @@ export function registerSettingsHandlers(): void {
       ) {
         clean.weeklyReminderServiceDay = patch.weeklyReminderServiceDay;
       }
+      // Persisted Live EQ pane width (#668). Main only sanitizes a
+      // structurally invalid value (non-number, non-finite, non-positive) —
+      // the [EQ_PANE_MIN_W, EQ_PANE_MAX_W] clamp is the renderer's job
+      // (live-capture-panel.ts's clampEqPaneWidth), not enforced here.
+      if (
+        typeof patch.liveEqPaneWidth === 'number' &&
+        Number.isFinite(patch.liveEqPaneWidth) &&
+        patch.liveEqPaneWidth > 0
+      ) {
+        clean.liveEqPaneWidth = patch.liveEqPaneWidth;
+      }
     }
     const result = updateSettings(clean);
     // Opting out of telemetry (#474) clears the pending queue and the
