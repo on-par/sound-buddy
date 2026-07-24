@@ -81,6 +81,10 @@
     </div>
     <div class="header-div"></div>
     <div id="mode-tabs" role="tablist">
+      <!-- Final nav consolidation (#547, epic e17): flag-only entries — hidden by
+           default (see app.css) so the flag-off shell is unchanged. -->
+      <button class="mode-tab" id="nav-analyze" data-mode="analyze" data-icon="activity">Analyze</button>
+      <button class="mode-tab" id="nav-history" data-mode="history" data-icon="clock">History</button>
       <button class="mode-tab" data-mode="dir" data-icon="folder">Directory<span class="tab-soon">v1.1</span></button>
       <button class="mode-tab" data-mode="live" data-icon="radio">Live<span class="tab-lock" data-icon="lock" data-size="11"></span></button>
       <button class="mode-tab" data-mode="soundcheck" data-icon="sliders">Soundcheck<span class="tab-lock" data-icon="lock" data-size="11"></span></button>
