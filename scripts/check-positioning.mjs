@@ -18,19 +18,22 @@ const LOCKED = [
   {
     phrase: 'Works with the AI you already have',
     required: [
-      'site/src/pages/index.astro',        // landing — trust section
-      'app/renderer/src/SettingsPanel.tsx', // app — AI provider settings (TD-001 slice 3, #421: moved out of index.html's static markup into this React island)
-      'README.md',                          // docs — architecture overview
+      'site/src/pages/index.astro', // landing — trust section
+      'README.md',                  // docs — architecture overview
+      // app/renderer/src/SettingsPanel.tsx dropped the AI provider settings pane
+      // entirely (#657) — the renderer no longer advertises AI configuration
+      // that can't run in a packaged build. Restore this surface once #658/#659
+      // bring a working AI settings UI back.
     ],
     forbidden: [
-      { text: 'Works with your existing AI', in: ['site/src/pages/index.astro', 'app/renderer/src/SettingsPanel.tsx'] },
+      { text: 'Works with your existing AI', in: ['site/src/pages/index.astro'] },
     ],
   },
   {
     phrase: 'Your audio never leaves your machine',
     required: [
       'site/src/pages/index.astro',         // landing — privacy callout (headline-level)
-      'app/renderer/src/SettingsPanel.tsx', // app — AI Engineer settings privacy note (#204: index.html's static dialog markup was fully absorbed into this React island)
+      'app/renderer/src/SettingsPanel.tsx', // app — Storage settings privacy note (#204: index.html's static dialog markup was fully absorbed into this React island)
       'README.md',                          // docs — top-level positioning
     ],
     forbidden: [],

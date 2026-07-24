@@ -69,7 +69,7 @@
       --tracking-label:0.01em; --tracking-caps:0.06em;
 
       /* Spacing / sizing */
-      --header-h:52px; --titlebar-safe-left:82px; --panel-w:260px; --ai-panel-w:320px; --rc-panel-w:640px;
+      --header-h:52px; --titlebar-safe-left:82px; --panel-w:260px; --rc-panel-w:640px;
       --control-h-sm:28px; --control-h:36px; --control-h-lg:44px;
 
       /* Radius */

@@ -137,9 +137,9 @@ describe('copy constants', () => {
     for (const a of ACTIONS) expect(a.hint.length).toBeGreaterThan(0);
   });
 
-  it('trust copy names both the own-provider and local-Ollama paths', () => {
-    expect(TRUST_COPY).toMatch(/own AI provider/i);
-    expect(TRUST_COPY).toMatch(/Ollama/i);
+  it('trust copy leads with the local-only privacy claim now that the AI Engineer UI is gone (#657)', () => {
+    expect(TRUST_COPY).toMatch(/never leaves this Mac/i);
+    expect(TRUST_COPY).toMatch(/fully local/i);
   });
 
   it('the first-result reveal delay is long enough to land, short enough to stay the same moment (#296)', () => {

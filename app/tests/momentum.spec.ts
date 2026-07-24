@@ -107,9 +107,9 @@ test.describe.serial('Upgrade momentum card (#58)', () => {
     await expect(ctas.nth(1)).toHaveText('Best value $79/yr');
     await expect(ctas.nth(1)).toHaveAttribute('data-checkout-plan', 'annual');
 
-    // Trust copy naming both the own-provider and local-Ollama paths.
-    await expect(win.locator('#rcu-trust')).toContainText('own AI provider');
-    await expect(win.locator('#rcu-trust')).toContainText('Ollama');
+    // Trust copy leads with the local-only privacy claim (#657).
+    await expect(win.locator('#rcu-trust')).toContainText('never leaves this Mac');
+    await expect(win.locator('#rcu-trust')).toContainText('fully local');
   });
 
   test('second and later report cards show the invitation immediately (#296)', async () => {

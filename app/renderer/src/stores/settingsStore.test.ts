@@ -7,7 +7,7 @@ import { createMockSoundBuddy } from '../mock-sound-buddy';
 
 afterEach(() => {
   delete (globalThis as { window?: unknown }).window;
-  useSettingsStore.setState({ settings: null, llmConfig: null, settingsError: null });
+  useSettingsStore.setState({ settings: null, settingsError: null });
 });
 
 describe('createSettingsStore', () => {
@@ -16,11 +16,10 @@ describe('createSettingsStore', () => {
     const store = createSettingsStore(() => mock.api);
 
     expect(store.getState().settings).toBeNull();
-    expect(store.getState().llmConfig).toBeNull();
     expect(store.getState().settingsError).toBeNull();
   });
 
-  it('loads settings and llm config together', async () => {
+  it('loads settings', async () => {
     const mock = createMockSoundBuddy({
       getSettings: async () => {
         mock.calls.push({ method: 'getSettings', args: [] });
@@ -35,26 +34,14 @@ describe('createSettingsStore', () => {
           channelLabels: {}, channelGroups: {}, inputInstrumentProfiles: {}, crashReportingEnabled: false, dawWorkspaceEnabled: false, liveAdjustmentsEnabled: false, reportFirstUxEnabled: false, shareChurchName: '', weeklyReminderEnabled: false, weeklyReminderServiceDay: 0,
         };
       },
-      getLlmConfig: async () => {
-        mock.calls.push({ method: 'getLlmConfig', args: [] });
-        return {
-          provider: 'ollama',
-          model: 'llama3',
-          ollamaHost: '',
-          apiBaseUrl: '',
-          hasApiKey: false,
-          apiKeyProvider: '',
-        };
-      },
     });
     const store = createSettingsStore(() => mock.api);
 
     await store.getState().loadSettings();
 
     expect(store.getState().settings?.aiEnabled).toBe(true);
-    expect(store.getState().llmConfig?.provider).toBe('ollama');
     expect(store.getState().settingsError).toBeNull();
-    expect(mock.calls.map((c) => c.method)).toEqual(expect.arrayContaining(['getSettings', 'getLlmConfig']));
+    expect(mock.calls.map((c) => c.method)).toEqual(expect.arrayContaining(['getSettings']));
   });
 
   it('updates settings and records the IPC call', async () => {
@@ -154,54 +141,6 @@ describe('createSettingsStore', () => {
 
     store.getState().closeDialog();
     expect(store.getState().dialogOpen).toBe(false);
-  });
-
-  it('saveLlmConfig updates llmConfig and returns the result on success', async () => {
-    const config = {
-      provider: 'ollama',
-      model: 'llama3',
-      ollamaHost: '',
-      apiBaseUrl: '',
-      hasApiKey: false,
-      apiKeyProvider: '',
-    };
-    const mock = createMockSoundBuddy({
-      saveLlmConfig: async (patch) => {
-        mock.calls.push({ method: 'saveLlmConfig', args: [patch] });
-        return { ok: true, config };
-      },
-    });
-    const store = createSettingsStore(() => mock.api);
-
-    const result = await store.getState().saveLlmConfig({ provider: 'ollama', model: 'llama3' });
-
-    expect(result).toEqual({ ok: true, config });
-    expect(store.getState().llmConfig).toEqual(config);
-    expect(mock.calls).toContainEqual({ method: 'saveLlmConfig', args: [{ provider: 'ollama', model: 'llama3' }] });
-  });
-
-  it('saveLlmConfig leaves llmConfig untouched on a { ok: false } result', async () => {
-    const mock = createMockSoundBuddy({
-      saveLlmConfig: async () => ({ ok: false, reason: 'model is required' }),
-    });
-    const store = createSettingsStore(() => mock.api);
-    store.setState({ llmConfig: null });
-
-    const result = await store.getState().saveLlmConfig({ provider: 'openai' });
-
-    expect(result).toEqual({ ok: false, reason: 'model is required' });
-    expect(store.getState().llmConfig).toBeNull();
-  });
-
-  it('saveLlmConfig returns { ok: false, reason } when the IPC call throws', async () => {
-    const mock = createMockSoundBuddy({
-      saveLlmConfig: () => Promise.reject(new Error('bridge unavailable')),
-    });
-    const store = createSettingsStore(() => mock.api);
-
-    const result = await store.getState().saveLlmConfig({ provider: 'ollama' });
-
-    expect(result).toEqual({ ok: false, reason: 'bridge unavailable' });
   });
 
   it('binds the default hook to the window preload bridge', async () => {

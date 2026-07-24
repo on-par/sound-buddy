@@ -28,7 +28,7 @@ beforeEach(() => {
 afterEach(() => {
   delete (globalThis as { window?: unknown }).window;
   vi.useRealTimers();
-  useSettingsStore.setState({ settings: null, llmConfig: null, settingsError: null });
+  useSettingsStore.setState({ settings: null, settingsError: null });
 });
 
 const DEVICES: LiveDevice[] = [

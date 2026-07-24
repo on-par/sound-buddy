@@ -118,8 +118,6 @@ let channelGroups = [];
 // element is currently under the pointer, not the element that started the drag.
 let liveDragSrc = null;
 let lastLiveChannels = null;   // channels from the most recent meter tick (for #39 label fallbacks)
-let liveCountdownTimer = null;
-let liveCountdownSecs = 0;
 let liveDevices = [];          // last device list (for channel-count lookup)
 let liveMode = 'monitor';      // 'monitor' | 'record'
 let recordDir = '';            // chosen recording folder ('' = default ~/Music/Sound Buddy)
@@ -129,8 +127,6 @@ let recordDir = '';            // chosen recording folder ('' = default ~/Music/
 // show "Starting…" without prematurely flipping into the recording state.
 let capturePromoting = false;
 let channelConfig = [];        // configured strips: { kind:'mono'|'stereo', a:idx, b:idx }
-let llmRunning = false;
-let aiStreamStarted = false;
 let idealProfileId = ''; // active ideal EQ profile; '' = auto by content type (PRD 05)
 let customIdealProfiles = [];
 let curveEditorId = null;
@@ -1479,23 +1475,10 @@ function updateLiveStatsRow(ch) {
   document.getElementById('stat-centroid').textContent = ch.centroid ? Math.round(ch.centroid).toLocaleString() : '—';
 }
 
-// #541: docks the AI Engineer panel inline in the report card (report-first-ux)
-// or restores the standing rail. Moving the node (not cloning) keeps every
-// listener and getElementById wiring intact; placement() decides, never DOM state.
-function syncAiDock() {
-  const panel = document.getElementById('ai-panel');
-  const where = window.aiDockState.placement(
-    window.reportFirstUxState.isEnabled(setStore.getState().settings), currentMode);
-  const dockBody = document.getElementById('rc-ai-dock-body');
-  if (where === 'docked' && panel.parentElement !== dockBody) dockBody.appendChild(panel);
-  // The rail slot is #workspace's last child — appendChild restores it exactly.
-  else if (where === 'rail' && panel.parentElement === dockBody) document.getElementById('workspace').appendChild(panel);
-}
-
 // #542 (epic e17): Recent / Build Guide / Ring-Out have no spectrum and no
-// per-analysis narrative — collapse the workspace to one full-width column
-// for them when the report-first-ux flag is on. CSS does the layout; this
-// only owns the branch point.
+// per-analysis report content of their own — collapse the workspace to one
+// full-width column for them when the report-first-ux flag is on. CSS does
+// the layout; this only owns the branch point.
 function syncSingleColumn() {
   document.body.classList.toggle('single-column', window.singleColumnState.isSingleColumn(
     window.reportFirstUxState.isEnabled(setStore.getState().settings), currentMode));
@@ -1514,8 +1497,8 @@ function closeAnalyzeSourcePicker() {
 // Routing is a simulated tab click — the same idiom used throughout this file
 // (e.g. #dir-goto-reportcard, #rc-offer-btn) — so Live/Soundcheck reach their
 // destination through the real mode-tab handler: Pro gating, transport
-// pausing, spectrum sync, syncAiDock(), syncSingleColumn() all fire exactly
-// as if the user had clicked the tab themselves.
+// pausing, spectrum sync, syncSingleColumn() all fire exactly as if the user
+// had clicked the tab themselves.
 document.querySelectorAll('[data-analyze-source]').forEach(btn => {
   btn.addEventListener('click', () => {
     const mode = window.analyzeSourceState.targetModeFor(btn.dataset.analyzeSource);
@@ -1576,7 +1559,6 @@ document.querySelectorAll('.mode-tab').forEach(tab => {
       if (mode === 'guide') renderBuildGuide();
       if (mode === 'ringout') renderRingout();
     }
-    syncAiDock();
     syncSingleColumn();
   });
 });
@@ -1930,10 +1912,6 @@ document.getElementById('dir-goto-reportcard').addEventListener('click', () => {
 document.getElementById('window-secs').addEventListener('input', (e) => {
   document.getElementById('window-secs-label').textContent = parseFloat(e.target.value).toFixed(1) + 's';
 });
-document.getElementById('llm-interval').addEventListener('input', (e) => {
-  const v = parseInt(e.target.value);
-  document.getElementById('llm-interval-label').textContent = v === 0 ? 'Off' : v + 's';
-});
 document.getElementById('meter-interval').addEventListener('input', (e) => {
   const ms = parseInt(e.target.value);
   document.getElementById('interval-label').textContent = `${ms} ms · ${Math.round(1000 / ms)}/s`;
@@ -2198,7 +2176,7 @@ function renderMeasurementBadge() {
 function setCaptureControlsLocked(locked) {
   const set = (el) => { if (el) { el.disabled = locked; el.setAttribute('aria-disabled', String(locked)); } };
   ['device-select', 'device-refresh-btn', 'record-folder-btn',
-    'meter-interval', 'window-secs', 'llm-interval', 'rig-select',
+    'meter-interval', 'window-secs', 'rig-select',
     'live-ws-add', 'live-ws-new-group',
     'live-ws-arm-all', 'live-ws-disarm-all'].forEach((id) => set(document.getElementById(id)));
   document.querySelectorAll('#live-mode button').forEach(set);
@@ -2285,9 +2263,9 @@ document.getElementById('live-start-btn').addEventListener('click', async () => 
   const device = document.getElementById('device-select').value || undefined;
   const windowSecs = parseFloat(document.getElementById('window-secs').value);
   const intervalSecs = parseInt(document.getElementById('meter-interval').value) / 1000;
-  // When AI is off, force the LLM interval to 0 so no countdown or auto-analysis
-  // is armed (the backend also refuses to arm it — belt and suspenders).
-  const llmIntervalSecs = (setStore.getState().settings || {}).aiEnabled ? parseInt(document.getElementById('llm-interval').value) : 0;
+  // The main API still requires llmIntervalSecs (#658/#659 own removing it) —
+  // the renderer no longer exposes any UI to configure it, so it's always off.
+  const llmIntervalSecs = 0;
   const channels = channelTokens();
 
   // No configured tracks (#188): the workspace remove can drive channelConfig
@@ -2356,7 +2334,6 @@ document.getElementById('live-start-btn').addEventListener('click', async () => 
   } else {
     const rate = Math.round(1 / intervalSecs);
     syncCaptureControls(rate);
-    startLiveCountdown(llmIntervalSecs);
     // Guided first-use setup (#294): starting a capture completes setup
     // permanently. Remove any rendered banner immediately rather than calling
     // renderChannelConfig(), which early-outs while liveRunning — the running
@@ -2396,7 +2373,9 @@ async function promoteToRecording() {
   const device = document.getElementById('device-select').value || undefined;
   const windowSecs = parseFloat(document.getElementById('window-secs').value);
   const intervalSecs = parseInt(document.getElementById('meter-interval').value) / 1000;
-  const llmIntervalSecs = (setStore.getState().settings || {}).aiEnabled ? parseInt(document.getElementById('llm-interval').value) : 0;
+  // The main API still requires llmIntervalSecs (#658/#659 own removing it) —
+  // the renderer no longer exposes any UI to configure it, so it's always off.
+  const llmIntervalSecs = 0;
   const channels = channelTokens();
 
   const result = await sb.startLive({
@@ -2413,9 +2392,6 @@ async function promoteToRecording() {
     document.getElementById('record-folder-row').style.display = 'flex';
     syncCaptureControls(Math.round(1 / intervalSecs));
     renderMeasurementBadge();
-    // The record child is a fresh stream — re-arm the LLM cadence against it.
-    clearLiveCountdown();
-    startLiveCountdown(llmIntervalSecs);
   } else {
     liveMode = 'monitor';
     document.getElementById('tab-live').classList.toggle('capture-record', false);
@@ -2436,7 +2412,6 @@ async function stopLive() {
   renderDawPlayhead(); // paint the frozen time
   setRigControlsEnabled(true);
   setCaptureControlsLocked(false); // re-enable config (also the failed-Start path) (#38)
-  clearLiveCountdown();
   const result = await sb.stopLive();
   document.getElementById('live-indicator').style.display = 'none';
   document.getElementById('live-status').style.display = 'none';
@@ -2643,7 +2618,6 @@ function captureCurrentRig(name, id) {
     recordDir: recordDir,
     intervalMs: parseInt(document.getElementById('meter-interval').value, 10),
     windowSecs: parseFloat(document.getElementById('window-secs').value),
-    llmIntervalMs: parseInt(document.getElementById('llm-interval').value, 10) * 1000,
   };
   if (id) {
     rig.id = id;
@@ -2666,7 +2640,6 @@ function applyRig(rig) {
 
   setSliderVal('meter-interval', rig.intervalMs);
   setSliderVal('window-secs', rig.windowSecs);
-  setSliderVal('llm-interval', Math.round((rig.llmIntervalMs || 0) / 1000));
 
   const rec = window.rigReconcile.reconcileRigDevice(rig.deviceName, liveDevices);
   document.getElementById('device-select').value = rec.index;
@@ -2895,26 +2868,6 @@ document.getElementById('rig-delete-btn').addEventListener('click', async () => 
   // stale baseline/status (#373).
   renderPreflight();
 });
-
-function startLiveCountdown(intervalSecs) {
-  if (intervalSecs <= 0) { document.getElementById('ai-countdown').textContent = ''; return; }
-  liveCountdownSecs = intervalSecs;
-  clearLiveCountdown();
-  liveCountdownTimer = setInterval(() => {
-    liveCountdownSecs--;
-    const cd = document.getElementById('ai-countdown');
-    if (liveCountdownSecs <= 0) {
-      liveCountdownSecs = intervalSecs;
-      cd.textContent = 'AI analyzing…';
-    } else {
-      cd.innerHTML = `Next AI analysis in <span class="cd-num">${liveCountdownSecs}s</span>`;
-    }
-  }, 1000);
-}
-function clearLiveCountdown() {
-  if (liveCountdownTimer) { clearInterval(liveCountdownTimer); liveCountdownTimer = null; }
-  document.getElementById('ai-countdown').textContent = '';
-}
 
 // A dedicated interval (not the meter-event rAF path) so the playhead
 // advances even while "Connecting…" before the first meter tick, and keeps
@@ -3190,46 +3143,6 @@ async function initWhatsNew() {
 
   banner.classList.add('show');
 }
-
-sb.onLlmDelta((text) => aiAppend(text));
-sb.onLlmDone(() => {
-  llmRunning = false;
-  const btn = document.getElementById('ai-analyze-btn');
-  btn.disabled = false;
-  btn.innerHTML = iconSvg('sparkles', 16) + 'Re-analyze with AI';
-  aiAppend('\n');
-});
-
-/* ══ AI panel ══ */
-function aiAppend(text) {
-  const out = document.getElementById('ai-output');
-  if (!aiStreamStarted) { out.classList.remove('placeholder'); out.textContent = ''; aiStreamStarted = true; }
-  out.textContent += text;
-  out.scrollTop = out.scrollHeight;
-}
-
-document.getElementById('ai-analyze-btn').addEventListener('click', async () => {
-  if (llmRunning) return;
-  llmRunning = true;
-
-  const btn = document.getElementById('ai-analyze-btn');
-  btn.disabled = true;
-  btn.innerHTML = iconSvg('sparkles', 16) + 'Analyzing…';
-
-  const out = document.getElementById('ai-output');
-  if (aiStreamStarted && out.textContent) aiAppend('\n\n' + '─'.repeat(36) + '\n\n');
-
-  if (currentMode === 'live' && liveWindows.length > 0) {
-    await sb.triggerLlmAnalysis({ mode: 'live', windows: liveWindows });
-  } else if (curAnalysis()) {
-    await sb.triggerLlmAnalysis({ mode: 'file', analysis: curAnalysis() });
-  } else {
-    aiAppend('[No analysis data — load a file or start live capture first]');
-    llmRunning = false;
-    btn.disabled = false;
-    btn.innerHTML = iconSvg('sparkles', 16) + 'Analyze with AI';
-  }
-});
 
 /* ══ Report Card ══ */
 // Grading (grade/score/recommendations + recording-type + band-diff) lives in
@@ -4046,19 +3959,11 @@ function renderTrialBanner(state) {
 })();
 
 /* ══ Settings dialog (#76, #91, #204) ══ */
-// SettingsPanel.tsx now owns the whole dialog — Storage, AI Engineer, and
-// About tabs, provider fields, Test connection, Save (TD-001 slice 3, #421;
-// combined into one tabbed modal by #204). This section keeps the header
-// gear button wired to settingsStore and mirrors its state onto the surfaces
-// that stay inline: the model chip and the body.ai-disabled gate.
+// SettingsPanel.tsx now owns the whole dialog — Storage and About tabs, Save
+// (TD-001 slice 3, #421; combined into one tabbed modal by #204). This
+// section keeps the header gear button wired to settingsStore.
 
 function aiEl(id) { return document.getElementById(id); }
-
-function updateModelChip(cfg) {
-  const el = aiEl('model-chip-text');
-  if (!el) return;
-  el.textContent = cfg && cfg.provider ? `${cfg.provider} · ${cfg.model || 'default model'}` : 'your provider';
-}
 
 (() => {
   curveEl('ideal-curve-edit-btn').addEventListener('click', openCurveEditor);
@@ -4313,22 +4218,13 @@ window.inlineDialogs = { openPhaseDoublingDialog, openFeedbackRingout, saveMixAs
 
 (() => {
   aiEl('settings-btn').addEventListener('click', () => setStore.getState().openDialog());
-  // Model chip + the AI-panel visibility gate both just mirror settingsStore
-  // (SettingsPanel.tsx owns everything else about the dialog, TD-001 slice 3,
-  // #421); loadSettings() in the boot IIFE below fires these on first load.
-  setStore.subscribe((s) => updateModelChip(s.llmConfig));
-  setStore.subscribe((s) => document.body.classList.toggle('ai-disabled', !(s.settings && s.settings.aiEnabled)));
   // Report-first-ux epic gate (#538): the body class is the branch point the
   // e17 slices mount against. Absent by default — with the flag off the
   // existing tab bar and 3-column workspace render exactly as before.
   setStore.subscribe((s) => document.body.classList.toggle('report-first-ux', window.reportFirstUxState.isEnabled(s.settings)));
-  // #541: re-dock/re-rail the AI Engineer panel whenever the flag (or mode)
-  // changes — both directions, since appendChild restores the exact original
-  // #workspace slot.
-  setStore.subscribe(() => syncAiDock());
   // #542: re-fold the workspace to a single column whenever the flag (or
   // mode) changes, so toggling it in Settings while on Recent reflows
-  // immediately — same rationale as the AI dock re-sync above.
+  // immediately.
   setStore.subscribe(() => syncSingleColumn());
   // Experimental DAW workspace gate (#516): body class is the entry point
   // #517's workspace shell mounts against. Absent by default — the existing
@@ -4354,10 +4250,6 @@ window.inlineDialogs = { openPhaseDoublingDialog, openFeedbackRingout, saveMixAs
 })();
 
 /* ══ Init ══ */
-// AI is off by default. Body starts with .ai-disabled (no flash of the AI
-// panel); the settingsStore subscriber above reveals AI affordances once
-// loadSettings() resolves. The AI code stays fully wired in — this only
-// toggles UI visibility.
 (async () => {
   await setStore.getState().loadSettings();
   const s = setStore.getState().settings;
@@ -4377,11 +4269,8 @@ window.inlineDialogs = { openPhaseDoublingDialog, openFeedbackRingout, saveMixAs
 // owns #report-card itself (TD-001 slice 4, #422).
 anaStore.subscribe(syncReportCardChrome);
 syncReportCardChrome(anaStore.getState(), anaStore.getState());
-// #541: dock the AI Engineer panel correctly on first paint if the flag is
-// already on when settings resolve (the subscribe above only fires on change).
-syncAiDock();
-// #542: same rationale — a flag-already-on first paint on Recent / Guide /
-// Ring-Out must render single-column without requiring a tab click.
+// #542: a flag-already-on first paint on Recent / Guide / Ring-Out must
+// render single-column without requiring a tab click.
 syncSingleColumn();
 
 hydrateIcons(document);

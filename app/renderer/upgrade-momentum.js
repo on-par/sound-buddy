@@ -44,10 +44,12 @@
     { title: 'Get ongoing coaching during live monitoring', hint: 'Real-time feedback while you capture live.' },
   ];
 
-  // Trust copy under the CTAs (#58) — the AI is always the user's own, local or
-  // their key, never proxied. Companion to the locked "Works with the AI you
-  // already have" phrase, but scoped to the pricing moment.
-  var TRUST_COPY = 'Use your own AI provider or stay fully local with Ollama';
+  // Trust copy under the CTAs (#58) — the app's core privacy claim: nothing
+  // about the recording ever leaves the machine. Reworded by #657 (renderer-
+  // only AI Engineer carve-out) — the old copy advertised "your own AI
+  // provider or Ollama," which would be false advertising with the AI
+  // Engineer UI gone; the underlying local-analysis fact still holds.
+  var TRUST_COPY = 'Your audio never leaves this Mac — analysis runs fully local.';
 
   /**
    * Score-aware framing so the card respects the user's result (#58): a strong

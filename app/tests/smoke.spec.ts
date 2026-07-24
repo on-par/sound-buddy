@@ -45,13 +45,12 @@ test('smoke: exercise all flows and collect errors', async () => {
     await win.waitForTimeout(120);
   }
 
-  // 2. Settings dialog (#76, #91, combined into one tabbed modal by #204):
-  // open via the gear, switch to AI Engineer, let the real Ollama auto-detect
-  // run (connection-refused is a handled state), close.
+  // 2. Settings dialog (#76, #91, combined into one tabbed modal by #204; the
+  // AI Engineer half was removed by #657): open via the gear, switch tabs to
+  // exercise tab switching (About, since AI Engineer no longer exists), close.
   await win.locator('#settings-btn').click();
   await win.waitForTimeout(600);
-  await win.locator('#settings-tab-btn-ai').click();
-  await win.locator('#ai-tab-btn-hosted').click();
+  await win.locator('#settings-tab-btn-about').click();
   await win.waitForTimeout(120);
   await win.locator('#settings-dialog-cancel').click();
 
@@ -61,18 +60,11 @@ test('smoke: exercise all flows and collect errors', async () => {
   await win.locator('#analyze-btn').click().catch(() => {});
   await win.waitForTimeout(2500);
 
-  // 4. AI analysis. AI is OFF by default now (PRD 01), so the AI panel/button is
-  // hidden — only exercise the AI path when a dev has opted in (panel visible).
-  if (await win.locator('#ai-analyze-btn').isVisible().catch(() => false)) {
-    await win.locator('#ai-analyze-btn').click().catch(() => {});
-    await win.waitForTimeout(1200);
-  }
-
-  // 5. Report card render
+  // 4. Report card render
   await win.locator('.mode-tab[data-mode="reportcard"]').click();
   await win.waitForTimeout(400);
 
-  // 6. Live: enumerate devices (real python stream.py)
+  // 5. Live: enumerate devices (real python stream.py)
   await win.locator('.mode-tab[data-mode="live"]').click();
   await win.waitForTimeout(1500);
 
@@ -104,12 +96,12 @@ test('smoke: exercise all flows and collect errors', async () => {
   // Playwright (see scripts/verify.sh + CLAUDE.md).
   //
   // The happy-path run on silence.wav produces zero renderer/page errors, so we
-  // assert strictly empty — no allowlist. Handled error states (e.g. Ollama
-  // connection-refused #76, analysis error surfaces #148/#125) log to the
-  // renderer as warnings or are caught, not emitted as console errors, so they
-  // don't trip this gate. If a known-benign renderer error ever appears, add a
-  // narrow, inline-documented allowlist filter here rather than loosening the
-  // assertion. Warnings and main-process stdout stay log-only (too noisy).
+  // assert strictly empty — no allowlist. Handled error states (e.g. analysis
+  // error surfaces #148/#125) log to the renderer as warnings or are caught,
+  // not emitted as console errors, so they don't trip this gate. If a
+  // known-benign renderer error ever appears, add a narrow, inline-documented
+  // allowlist filter here rather than loosening the assertion. Warnings and
+  // main-process stdout stay log-only (too noisy).
   expect(pageErrors, 'uncaught page errors during smoke run').toEqual([]);
   expect(rendererErrors, 'renderer console errors during smoke run').toEqual([]);
 });

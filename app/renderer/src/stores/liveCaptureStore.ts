@@ -3,9 +3,9 @@
 
 // Single source of truth for the Live-capture center pane (TD-001 slice 5,
 // #423): devices, capture state, channel config/groups/collapse, the rolling
-// live-window buffer, and the LLM countdown. Follows the createNarrativeStore
-// factory pattern (narrativeStore.ts) — an injected API so side effects stay
-// testable — and reads the pure helper modules (arm-state.js, group-state.js,
+// live-window buffer, and the LLM countdown. Follows the factory pattern used
+// throughout these stores — an injected API so side effects stay testable —
+// and reads the pure helper modules (arm-state.js, group-state.js,
 // collapse-state.js, rig-kind.js) off `window` via typed accessors
 // (ReportCardIsland.tsx's pattern) rather than importing them: they're classic
 // scripts loaded once by App.tsx's boot sequence, and a second ES import would
@@ -193,7 +193,7 @@ export interface LiveCaptureState {
   countdownAnalyzing: boolean;
 
   // The active mode-tab, dual-written by the still-inline tab handler; read
-  // by NarrativePanel/LiveCaptureIsland instead of importing currentMode.
+  // by LiveCaptureIsland instead of importing currentMode.
   appMode: string;
 
   ringout: RingoutState;

@@ -10,7 +10,6 @@ import { useLicensingStore } from './licensingStore';
 import { useSettingsStore } from './settingsStore';
 import { useAnalysisStore } from './analysisStore';
 import { useSpectrumStore } from './spectrumStore';
-import { useNarrativeStore } from './narrativeStore';
 import { useLiveCaptureStore } from './liveCaptureStore';
 import { useSceneDiffStore } from './sceneDiffStore';
 import { liveReportCardSource } from '../live-capture-panel';
@@ -20,7 +19,6 @@ export interface RendererStores {
   settings: typeof useSettingsStore;
   analysis: typeof useAnalysisStore;
   spectrum: typeof useSpectrumStore;
-  narrative: typeof useNarrativeStore;
   liveCapture: typeof useLiveCaptureStore;
 }
 
@@ -47,7 +45,6 @@ export function installStoreBridge(
     settings: useSettingsStore,
     analysis: useAnalysisStore,
     spectrum: useSpectrumStore,
-    narrative: useNarrativeStore,
     liveCapture: useLiveCaptureStore,
   };
   target.rendererStores = stores;
@@ -81,11 +78,10 @@ export function installStoreBridge(
       }
     });
 
-    // bindIpcEvents() registers this module's sb.onLlmDelta/onLlmDone
-    // (narrative) and sb.onLiveEvent (liveCapture) listeners exactly once —
-    // guarded by the same crossStoreSubscriptionInstalled flag so a second
-    // App mount can't double-bind them (TD-001 slice 5, #423).
-    useNarrativeStore.getState().bindIpcEvents();
+    // bindIpcEvents() registers this module's sb.onLiveEvent (liveCapture)
+    // listeners exactly once — guarded by the same
+    // crossStoreSubscriptionInstalled flag so a second App mount can't
+    // double-bind them (TD-001 slice 5, #423).
     useLiveCaptureStore.getState().bindIpcEvents();
   }
 

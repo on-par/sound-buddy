@@ -100,7 +100,7 @@ afterEach(() => {
     idealProfile: null,
     isAutoProfile: false,
   });
-  useSettingsStore.setState({ settings: null, llmConfig: null, settingsError: null, dialogOpen: false });
+  useSettingsStore.setState({ settings: null, settingsError: null, dialogOpen: false });
 });
 
 function renderMarkup(): string {
