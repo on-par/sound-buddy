@@ -173,6 +173,20 @@
     body.report-first-ux .mode-tab[data-mode="soundcheck"],
     body.report-first-ux .mode-tab[data-mode="guide"],
     body.report-first-ux .mode-tab[data-mode="ringout"] { display:none; }
+    /* Final nav consolidation (#547, epic e17): flag-on, the tab bar offers
+       exactly two destinations — Analyze (opens the #543 source picker) and
+       History (the #542 full-width Recent list) — so the two remaining legacy
+       tabs fold away too. Same rationale as above: buttons stay in the DOM
+       because simulated .click() routing and the flag-off shell depend on them. */
+    body.report-first-ux .mode-tab[data-mode="recent"],
+    body.report-first-ux .mode-tab[data-mode="reportcard"] { display:none; }
+    /* The two #547 entries are new, flag-only chrome: hidden by default so the
+       flag-off shell is unchanged (same idiom as #analyze-source-picker).
+       Selected by id, not [data-mode=...], so the rule above stays the only
+       display:none on mode-tab data-mode selectors (source-tabs-gate.test.ts
+       asserts every such line is flag-scoped). */
+    #nav-analyze, #nav-history { display:none; }
+    body.report-first-ux #nav-analyze, body.report-first-ux #nav-history { display:inline-flex; }
     body.not-pro #tab-live > :not(.pro-gate),
     body.not-pro #tab-soundcheck > :not(.pro-gate) { display:none !important; }
     body.not-pro #tab-live .pro-gate,

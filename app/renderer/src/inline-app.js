@@ -1549,6 +1549,18 @@ document.getElementById('analyze-source-picker').addEventListener('keydown', (e)
 document.querySelectorAll('.mode-tab').forEach(tab => {
   tab.addEventListener('click', () => {
     const mode = tab.dataset.mode;
+    // Final nav consolidation (#547, epic e17): the two flag-only entries
+    // are not modes of their own. Analyze opens the #543 source picker over
+    // the current view. History routes to the existing Recent list through
+    // the real recent-tab handler (the simulated-click idiom used throughout
+    // this file), then takes the visible active state itself, since the
+    // recent tab it delegates to is display:none under the flag.
+    if (mode === 'analyze') { openAnalyzeSourcePicker(); return; }
+    if (mode === 'history') {
+      document.querySelector('.mode-tab[data-mode="recent"]').click();
+      tab.classList.add('active');
+      return;
+    }
     if (mode === currentMode) return;
     // Opt-in crash reporting (#473): the current screen is a safe breadcrumb
     // (a name, never content) a crash payload includes as `route`. No-op
