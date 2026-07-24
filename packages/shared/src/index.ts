@@ -38,6 +38,10 @@ export {
 export type { SigningConfig, SpctlVerdict, StaplerVerdict, NotaryAuth } from './signing.js'
 
 export {
+  isPrunablePythonDir, isPrunablePythonFile, PYTHON_PRUNE_VERSION,
+} from './python-prune.js'
+
+export {
   selectDmgArtifacts, planDmgNotarization, DMG_EXTENSION, KEYCHAIN_PROFILE_VAR,
 } from './dmg-notarization.js'
 export type { DmgNotarizationStep, DmgNotarizationPlan } from './dmg-notarization.js'

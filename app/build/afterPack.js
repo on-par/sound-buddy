@@ -85,7 +85,7 @@ module.exports = async function afterPack(context) {
 
   // ── 2. Relocatable Python with the audio-engine deps ──────────────────────
   const reqHash = crypto.createHash('sha256')
-    .update(PY_ASSET + '\n' + fs.readFileSync(requirements))
+    .update(PY_ASSET + '\n' + shared.PYTHON_PRUNE_VERSION + '\n' + fs.readFileSync(requirements))
     .digest('hex').slice(0, 12);
   const pyCache = path.join(cacheRoot, `python-${PY_VERSION}-${reqHash}`);
 
@@ -103,8 +103,15 @@ module.exports = async function afterPack(context) {
     const py = path.join(tmp, 'python', 'bin', 'python3');
     sh(`"${py}" -m pip install --quiet --upgrade pip`);
     sh(`"${py}" -m pip install --quiet -r "${requirements}"`);
-    // Drop pip caches / bytecode churn we don't need to ship.
-    sh(`"${py}" -c "import compileall,sys; compileall.compile_dir('${path.join(tmp, 'python')}', quiet=2)" || true`);
+    // Bytecode strategy: sources-only. We do NOT precompile with compileall —
+    // prunePythonRuntime deletes any __pycache__ instead. This costs a one-time
+    // bytecode compile on the user's first run, keeps source lines in tracebacks
+    // while the Python path is still changing, and saves ~100 MB of .pyc (#663).
+    const pruned = prunePythonRuntime(path.join(tmp, 'python'), shared);
+    log(`pruned Python runtime (${pruned} entries removed: pip/setuptools/wheel, test suites, __pycache__)`);
+    // Fail the build if pruning broke any runtime import (e.g. numpy.testing,
+    // which scipy pulls in at import time, or the _*_data native-lib dirs).
+    sh(`"${py}" -c "import numpy, soundfile, sounddevice; from scipy.signal import get_window"`);
     fs.renameSync(path.join(tmp, 'python'), pyCache);
     fs.rmSync(tmp, { recursive: true, force: true });
   } else {
@@ -154,6 +161,33 @@ module.exports = async function afterPack(context) {
 
   log('done — app is self-contained');
 };
+
+// Prunes the assembled runtime using the pure predicates from packages/shared
+// (isPrunablePythonDir / isPrunablePythonFile — unit-tested there). Walks
+// top-down; a pruned directory is removed whole and not descended into.
+function prunePythonRuntime(rootDir, shared) {
+  let removed = 0;
+  const walk = (dir) => {
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      const entryPath = path.join(dir, entry.name);
+      const rel = path.relative(rootDir, entryPath).split(path.sep).join('/');
+      if (entry.isSymbolicLink()) continue;
+      if (entry.isDirectory()) {
+        if (shared.isPrunablePythonDir(rel)) {
+          fs.rmSync(entryPath, { recursive: true, force: true });
+          removed++;
+        } else {
+          walk(entryPath);
+        }
+      } else if (entry.isFile() && shared.isPrunablePythonFile(rel)) {
+        fs.rmSync(entryPath);
+        removed++;
+      }
+    }
+  };
+  walk(rootDir);
+  return removed;
+}
 
 // Walks `dir` recursively, collecting every regular file whose first 4 bytes
 // are a Mach-O/universal-binary magic number. Symlinks are skipped —

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildReleaseNotes, planDmgNotarization, planReleasePublish, resumeCommand, selectDmgArtifacts } from './index.js';
+import { buildReleaseNotes, isPrunablePythonDir, planDmgNotarization, planReleasePublish, resumeCommand, selectDmgArtifacts } from './index.js';
 
 describe('index barrel', () => {
   it('re-exports buildReleaseNotes from install-instructions', () => {
@@ -21,5 +21,9 @@ describe('index barrel', () => {
       { version: '1.0.0', tag: 'v1.0.0', zipAssetName: 'app.zip', dmgAssetName: 'app.dmg' },
     );
     expect(plan.ok).toBe(true);
+  });
+
+  it('re-exports isPrunablePythonDir from python-prune', () => {
+    expect(isPrunablePythonDir('lib/python3.12/site-packages/pip')).toBe(true);
   });
 });
