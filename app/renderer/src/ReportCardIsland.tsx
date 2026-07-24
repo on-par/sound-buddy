@@ -399,9 +399,6 @@ export default function ReportCardIsland() {
     saveTargetSaved = !!targetMeta && ip?.source === 'custom' && ip.id === targetMeta.id;
   }
 
-  const showRingoutLink = reportFirstUxOn && !!feedbackPeak;
-  const showBuildGuideLink = reportFirstUxOn;
-
   // "vs. last time" delta (#259) — only for the fresh file-analysis card and
   // the newest history card; never for live capture (source-type gate).
   const prev = prevSummary as { score: number; gradeLetter: string } | null;
@@ -480,8 +477,7 @@ export default function ReportCardIsland() {
           /* c8 ignore next -- interaction-only glue; no jsdom in this harness to
              click the button (renderToString doesn't run DOM events). */
           onSaveAsTarget={() => { void getInlineDialogs()?.saveMixAsTarget?.(); }}
-          showRingoutLink={showRingoutLink}
-          showBuildGuideLink={showBuildGuideLink}
+          contextualLinks={reportFirstUxOn}
           /* c8 ignore next -- interaction-only glue; no jsdom in this harness to
              click the button (renderToString doesn't run DOM events). */
           onOpenBuildGuide={() => getInlineDialogs()?.openBuildGuide()}

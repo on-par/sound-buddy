@@ -335,53 +335,51 @@ describe('ReportCardIsland', () => {
   });
 });
 
-describe('ReportCardIsland — contextual links (#545)', () => {
-  it('shows the Ring-Out link and the Build Guide link when the flag is on and a feedback peak is detected', () => {
+describe('ReportCardIsland — contextual tool links (#545)', () => {
+  it('flag on, no feedback peak: shows the Build Guide link and hides the Ring-Out callout', () => {
     useAnalysisStore.setState({ currentAnalysis: ANALYSIS, status: 'done' });
     useSettingsStore.setState({ settings: { reportFirstUxEnabled: true } as unknown as AppSettings });
+
+    const html = renderMarkup();
+
+    expect(html).toContain('rc-build-guide-btn');
+    expect(html).not.toContain('rc-feedback-ringout');
+  });
+
+  it('flag on, feedback peak detected: shows the Ring-Out callout with the detected class', () => {
+    useAnalysisStore.setState({ currentAnalysis: ANALYSIS, status: 'done' });
+    useSettingsStore.setState({ settings: { reportFirstUxEnabled: true } as unknown as AppSettings });
+    const realFeedbackRingout = require('../feedback-ringout-state.js');
     (globalThis as { window?: { feedbackRingout?: typeof feedbackRingoutMock } }).window!.feedbackRingout = {
       ...feedbackRingoutMock,
-      detectFeedbackSignal: () => ({ freq: 3150, prominence: 12 }),
+      detectFeedbackSignal: () => ({ freq: 2000, prominence: 12 }),
+      reportCardCallout: realFeedbackRingout.reportCardCallout,
     };
 
     const html = renderMarkup();
 
-    expect(html).toContain('rc-ringout-link');
-    expect(html).toContain('rc-build-guide-link');
+    expect(html).toContain('rc-feedback-ringout');
+    expect(html).toContain('pd-launch detected');
   });
 
-  it('shows the Build Guide link but not the Ring-Out link when the flag is on with no feedback peak', () => {
-    useAnalysisStore.setState({ currentAnalysis: ANALYSIS, status: 'done' });
-    useSettingsStore.setState({ settings: { reportFirstUxEnabled: true } as unknown as AppSettings });
-
-    const html = renderMarkup();
-
-    expect(html).toContain('rc-build-guide-link');
-    expect(html).not.toContain('rc-ringout-link');
-  });
-
-  it('shows neither contextual link when the flag is off, even with a feedback peak', () => {
+  it('flag off: shows the always-on Ring-Out callout (undetected copy) and no Build Guide link', () => {
     useAnalysisStore.setState({ currentAnalysis: ANALYSIS, status: 'done' });
     useSettingsStore.setState({ settings: { reportFirstUxEnabled: false } as unknown as AppSettings });
-    (globalThis as { window?: { feedbackRingout?: typeof feedbackRingoutMock } }).window!.feedbackRingout = {
-      ...feedbackRingoutMock,
-      detectFeedbackSignal: () => ({ freq: 3150, prominence: 12 }),
-    };
 
     const html = renderMarkup();
 
-    expect(html).not.toContain('rc-ringout-link');
-    expect(html).not.toContain('rc-build-guide-link');
+    expect(html).toContain('rc-feedback-ringout');
+    expect(html).not.toContain('rc-build-guide-btn');
   });
 
-  it('shows neither contextual link when settings are still null/loading (strict gate)', () => {
+  it('settings null/loading (strict gate): behaves like flag off', () => {
     useAnalysisStore.setState({ currentAnalysis: ANALYSIS, status: 'done' });
     useSettingsStore.setState({ settings: null });
 
     const html = renderMarkup();
 
-    expect(html).not.toContain('rc-ringout-link');
-    expect(html).not.toContain('rc-build-guide-link');
+    expect(html).toContain('rc-feedback-ringout');
+    expect(html).not.toContain('rc-build-guide-btn');
   });
 });
 

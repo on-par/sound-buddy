@@ -257,40 +257,8 @@ describe('ReportCard — "save this mix as your target" CTA (#263)', () => {
   });
 });
 
-describe('ReportCard — contextual links (#545)', () => {
-  it('renders the Ring-Out link when showRingoutLink is true', () => {
-    const src: ReportCardSource = { ...makeSrc(), filename: 'x.wav' };
-    const grade = buildGrade(src);
-
-    const html = renderMarkup({ analysis: src, grade, dateText: 'now', showRingoutLink: true });
-
-    expect(html).toContain('id="rc-contextual-links"');
-    expect(html).toContain('id="rc-ringout-link"');
-    expect(html).toContain('Ring out feedback in the Ring-Out Assistant');
-  });
-
-  it('renders the Build Guide link when showBuildGuideLink is true', () => {
-    const src: ReportCardSource = { ...makeSrc(), filename: 'x.wav' };
-    const grade = buildGrade(src);
-
-    const html = renderMarkup({ analysis: src, grade, dateText: 'now', showBuildGuideLink: true });
-
-    expect(html).toContain('id="rc-build-guide-link"');
-    expect(html).toContain('Review in Build Guide');
-  });
-
-  it('renders neither contextual link by default (flag-off caller)', () => {
-    const src: ReportCardSource = { ...makeSrc(), filename: 'x.wav' };
-    const grade = buildGrade(src);
-
-    const html = renderMarkup({ analysis: src, grade, dateText: 'now' });
-
-    expect(html).not.toContain('rc-contextual-links');
-    expect(html).not.toContain('rc-ringout-link');
-    expect(html).not.toContain('rc-build-guide-link');
-  });
-
-  it('gates the two links independently — Build Guide only', () => {
+describe('ReportCard — contextual tool links (#545)', () => {
+  it('flag-on + detected finding: keeps the Ring-Out callout and adds the Build Guide link', () => {
     const src: ReportCardSource = { ...makeSrc(), filename: 'x.wav' };
     const grade = buildGrade(src);
 
@@ -298,12 +266,69 @@ describe('ReportCard — contextual links (#545)', () => {
       analysis: src,
       grade,
       dateText: 'now',
-      showRingoutLink: false,
-      showBuildGuideLink: true,
+      contextualLinks: true,
+      feedbackRingout: {
+        detected: true,
+        title: 'Possible feedback ring near 2.00 kHz',
+        sub: 'Ring out this frequency before it becomes a problem.',
+        buttonLabel: 'Ring out this frequency',
+      },
     });
 
-    expect(html).toContain('rc-build-guide-link');
-    expect(html).not.toContain('rc-ringout-link');
+    expect(html).toContain('id="rc-feedback-ringout"');
+    expect(html).toContain('Ring out this frequency');
+    expect(html).toContain('id="rc-build-guide-btn"');
+    expect(html).toContain('Review in Build Guide');
+  });
+
+  it('flag-on + no finding: hides the Ring-Out callout but still shows the report-level Build Guide link', () => {
+    const src: ReportCardSource = { ...makeSrc(), filename: 'x.wav' };
+    const grade = buildGrade(src);
+
+    const html = renderMarkup({
+      analysis: src,
+      grade,
+      dateText: 'now',
+      contextualLinks: true,
+      feedbackRingout: { detected: false, title: 'Fighting feedback?', sub: 'Walk through ringing out a mic', buttonLabel: 'Open the ring-out wizard' },
+    });
+
+    expect(html).not.toContain('rc-feedback-ringout');
+    expect(html).toContain('id="rc-build-guide-link"');
+  });
+
+  it('flag-off: renders today\'s always-on callout and no Build Guide link', () => {
+    const src: ReportCardSource = { ...makeSrc(), filename: 'x.wav' };
+    const grade = buildGrade(src);
+
+    const html = renderMarkup({
+      analysis: src,
+      grade,
+      dateText: 'now',
+      feedbackRingout: { detected: false, title: 'Fighting feedback?', sub: 'Walk through ringing out a mic', buttonLabel: 'Open the ring-out wizard' },
+    });
+
+    expect(html).toContain('id="rc-feedback-ringout"');
+    expect(html).not.toContain('rc-build-guide');
+  });
+
+  it('flag-on works alongside scoreRows (e17-01 interplay)', () => {
+    const src: ReportCardSource = { ...makeSrc(), filename: 'x.wav' };
+    const grade = buildGrade(src);
+    const scoreRows = buildScoreRows(src, grading, grade.explain);
+
+    const html = renderMarkup({
+      analysis: src,
+      grade,
+      dateText: 'now',
+      contextualLinks: true,
+      scoreRows,
+      feedbackRingout: { detected: true, title: 'Possible feedback ring', sub: 'sub', buttonLabel: 'Ring out this frequency' },
+    });
+
+    expect(html).toContain('rc-metric-rows');
+    expect(html).toContain('rc-feedback-ringout');
+    expect(html).toContain('rc-build-guide-btn');
   });
 });
 

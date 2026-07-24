@@ -94,13 +94,11 @@ export interface ReportCardProps {
    *  the CTA to a done state instead of hiding it. */
   saveTargetSaved?: boolean;
   onSaveAsTarget?: () => void;
-  /** Contextual link to the Ring-Out Assistant, shown alongside the
-   *  recommendations when a feedback-risk finding was detected (#545,
-   *  report-first-ux epic). Reuses onOpenFeedbackRingout. */
-  showRingoutLink?: boolean;
-  /** Contextual "Review in Build Guide" link, the mirror of the Build
-   *  Guide's existing Report-Card link (#545). */
-  showBuildGuideLink?: boolean;
+  /** Contextual-links treatment (#545, report-first-ux epic). When true, the
+   *  feedback-ringout callout renders only when a ring was actually detected,
+   *  and the forward "Review in Build Guide" link renders. False/omitted →
+   *  today's markup renders unchanged (flag-off path). */
+  contextualLinks?: boolean;
   onOpenBuildGuide?: () => void;
   /** Optional one-line handoff note for the next volunteer (#267). Editable
    *  only once the underlying record has actually been written — disabled
@@ -130,8 +128,7 @@ export default function ReportCard({
   showSaveTarget = false,
   saveTargetSaved = false,
   onSaveAsTarget,
-  showRingoutLink = false,
-  showBuildGuideLink = false,
+  contextualLinks = false,
   onOpenBuildGuide,
   noteValue = '',
   noteEditable = false,
@@ -160,7 +157,7 @@ export default function ReportCard({
           </button>
         </div>
       )}
-      {feedbackRingout && (
+      {feedbackRingout && (!contextualLinks || feedbackRingout.detected) && (
         <div className={`rc-section pd-launch${feedbackRingout.detected ? ' detected' : ''}`} id="rc-feedback-ringout">
           <div className="pd-launch-body">
             <span className="pd-launch-title" id="rc-feedback-ringout-title">{feedbackRingout.title}</span>
@@ -307,30 +304,17 @@ export default function ReportCard({
           dangerouslySetInnerHTML={{ __html: recListHTML(grade.recommendations, false) }}
         />
       </div>
-      {(showRingoutLink || showBuildGuideLink) && (
-        <div className="rc-section rc-contextual-links" id="rc-contextual-links">
-          {showRingoutLink && (
-            <button
-              type="button"
-              id="rc-ringout-link"
-              className="btn btn-secondary sm"
-              data-icon="waves"
-              onClick={onOpenFeedbackRingout}
-            >
-              Ring out feedback in the Ring-Out Assistant
-            </button>
-          )}
-          {showBuildGuideLink && (
-            <button
-              type="button"
-              id="rc-build-guide-link"
-              className="btn btn-secondary sm"
-              data-icon="clipboard-check"
-              onClick={onOpenBuildGuide}
-            >
-              Review in Build Guide
-            </button>
-          )}
+      {contextualLinks && (
+        <div className="rc-section pd-launch" id="rc-build-guide-link">
+          <div className="pd-launch-body">
+            <span className="pd-launch-title" id="rc-build-guide-title">Rebuild from a clean baseline</span>
+            <span className="pd-launch-sub" id="rc-build-guide-sub">
+              Walk the channel-by-channel build order in the Build Guide, then re-analyze to check your work.
+            </span>
+          </div>
+          <button type="button" id="rc-build-guide-btn" className="btn btn-secondary sm" onClick={onOpenBuildGuide}>
+            Review in Build Guide
+          </button>
         </div>
       )}
     </div>
