@@ -2,10 +2,10 @@
 // Licensed under the Sound Buddy Desktop Application License (app/LICENSE).
 
 // Single source of truth for the Live-capture center pane (TD-001 slice 5,
-// #423): devices, capture state, channel config/groups/collapse, the rolling
-// live-window buffer, and the LLM countdown. Follows the factory pattern used
-// throughout these stores — an injected API so side effects stay testable —
-// and reads the pure helper modules (arm-state.js, group-state.js,
+// #423): devices, capture state, channel config/groups/collapse, and the
+// rolling live-window buffer that feeds the report card. Follows the factory
+// pattern used throughout these stores — an injected API so side effects
+// stay testable — and reads the pure helper modules (arm-state.js, group-state.js,
 // collapse-state.js, rig-kind.js) off `window` via typed accessors
 // (ReportCardIsland.tsx's pattern) rather than importing them: they're classic
 // scripts loaded once by App.tsx's boot sequence, and a second ES import would
@@ -34,14 +34,11 @@ export type LiveCaptureApi = Pick<LiveApi, 'listDevices' | 'startLive' | 'stopLi
   Pick<DialogApi, 'openDirDialog'>;
 
 // Rolling live-window buffer cap — mirrors the inline `if (liveWindows.length
-// > 10) liveWindows.shift()` (#208's LLM trend context / report-card source).
+// > 10) liveWindows.shift()` (#208's report-card source).
 export const LIVE_WINDOWS_CAP = 10;
 // Shared label-entry cap (config row + inline live header), same as the
 // inline MAX_LABEL_LEN.
 export const MAX_LABEL_LEN = 40;
-// The AI countdown ticks once a second, same cadence as the inline
-// startLiveCountdown's setInterval.
-export const COUNTDOWN_TICK_MS = 1000;
 
 export interface RingoutCut {
   freq: number;
@@ -57,7 +54,6 @@ export interface RingoutState {
 export interface StartCaptureOpts {
   windowSecs: number;
   intervalSecs: number;
-  llmIntervalSecs: number;
 }
 
 export interface StartCaptureResult {
@@ -189,9 +185,6 @@ export interface LiveCaptureState {
   boardShapeVersion: number;
   lastError: string | null;
 
-  countdownSecs: number | null;
-  countdownAnalyzing: boolean;
-
   // The active mode-tab, dual-written by the still-inline tab handler; read
   // by LiveCaptureIsland instead of importing currentMode.
   appMode: string;
@@ -238,16 +231,6 @@ export interface LiveCaptureState {
 }
 
 export function createLiveCaptureStore(getApi: () => LiveCaptureApi) {
-  // Countdown timer id — not store state (not serializable / not meaningful
-  // to subscribers), mirrors the inline module-level `liveCountdownTimer`.
-  let countdownTimer: ReturnType<typeof setInterval> | null = null;
-  function clearCountdownTimer() {
-    if (countdownTimer != null) {
-      clearInterval(countdownTimer);
-      countdownTimer = null;
-    }
-  }
-
   // Persist channelGroups (#483) as a full-map replace keyed by device —
   // mirrors setStripLabel's write path (#482) exactly. Called from every
   // group mutator (create/rename/delete/assign/reorder/collapse) so the
@@ -281,9 +264,6 @@ export function createLiveCaptureStore(getApi: () => LiveCaptureApi) {
     lastLiveChannels: null,
     boardShapeVersion: 0,
     lastError: null,
-
-    countdownSecs: null,
-    countdownAnalyzing: false,
 
     appMode: 'reportcard',
 
@@ -466,7 +446,6 @@ export function createLiveCaptureStore(getApi: () => LiveCaptureApi) {
         channels: arm.allTokens(state.channelConfig),
         windowSecs: opts.windowSecs,
         intervalSecs: opts.intervalSecs,
-        llmIntervalSecs: opts.llmIntervalSecs,
         mode: state.liveMode,
         recordDir: state.recordDir || undefined,
         arm: state.liveMode === 'record' ? arm.armedTokens(state.channelConfig) : undefined,
@@ -481,26 +460,11 @@ export function createLiveCaptureStore(getApi: () => LiveCaptureApi) {
         set({ isCapturing: false });
         return result;
       }
-      clearCountdownTimer();
-      if (opts.llmIntervalSecs > 0) {
-        set({ countdownSecs: opts.llmIntervalSecs, countdownAnalyzing: false });
-        countdownTimer = setInterval(() => {
-          set((s) => {
-            if (s.countdownSecs == null) return {};
-            const next = s.countdownSecs - 1;
-            if (next <= 0) return { countdownSecs: opts.llmIntervalSecs, countdownAnalyzing: true };
-            return { countdownSecs: next, countdownAnalyzing: false };
-          });
-        }, COUNTDOWN_TICK_MS);
-      } else {
-        set({ countdownSecs: null, countdownAnalyzing: false });
-      }
       return result;
     },
 
     async stopCapture() {
-      set({ isCapturing: false, countdownSecs: null, countdownAnalyzing: false });
-      clearCountdownTimer();
+      set({ isCapturing: false });
       const result = (await getApi().stopLive()) as StopCaptureResult;
       return result;
     },

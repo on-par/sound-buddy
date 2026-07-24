@@ -31,7 +31,6 @@ export interface MockSoundBuddy {
 // Valid defaults for the sharpened (no-longer-`unknown`) return types (TD-011,
 // #405) — the renderer program must compile against real shapes, not `undefined`.
 const DEFAULT_APP_SETTINGS: AppSettings = {
-  aiEnabled: false,
   idealProfile: '',
   customIdealProfiles: [],
   storageDir: '',

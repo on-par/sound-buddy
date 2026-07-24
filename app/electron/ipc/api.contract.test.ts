@@ -27,7 +27,6 @@ import type {
   CrashReportingApi,
   ListenerApi,
   AppSettings,
-  PublicLlmConfig,
   StorageUsage,
   LicenseState,
   RevealDiagnosticsResult,
@@ -45,7 +44,6 @@ import { createMockSoundBuddy } from '../../renderer/src/mock-sound-buddy';
 // this test's runtime — they exist purely so `ReturnType<typeof ...>` below
 // checks against the real function, not a hand-copied guess.
 import type { getSettings } from '../settings';
-import type { getPublicLlmConfig } from '../llm-config';
 import type { getLicenseState } from '../license';
 import type { revealDiagnosticLog, submitFeedback } from '../feedback';
 
@@ -77,14 +75,13 @@ const compositionForward: AssertForward = true;
 const compositionBackward: AssertBackward = true;
 
 // ─── Drift guards: mirrored (not moved) DTOs vs. their real producer ────────
-// Moved DTOs (AppSettings, PublicLlmConfig, AnalysisSummary, ...) can't drift
-// by construction — the producing module imports them back from here. These
-// are the ones defined fresh in api.ts because no canonical type exists (a
-// hand-duplicated LicenseState) or because the handler wraps/builds its
-// result inline — so a shape change on the producing side must be caught here.
+// Moved DTOs (AppSettings, AnalysisSummary, ...) can't drift by construction —
+// the producing module imports them back from here. These are the ones
+// defined fresh in api.ts because no canonical type exists (a hand-duplicated
+// LicenseState) or because the handler wraps/builds its result inline — so a
+// shape change on the producing side must be caught here.
 
 const settingsDrift: AppSettings = null as unknown as ReturnType<typeof getSettings>;
-const llmConfigDrift: PublicLlmConfig = null as unknown as ReturnType<typeof getPublicLlmConfig>;
 const licenseDrift: LicenseState = null as unknown as ReturnType<typeof getLicenseState>;
 const diagnosticsDrift: RevealDiagnosticsResult = null as unknown as ReturnType<
   typeof revealDiagnosticLog
@@ -172,7 +169,6 @@ describe('SoundBuddyApi composition (TD-011, #405)', () => {
     expect(compositionForward).toBe(true);
     expect(compositionBackward).toBe(true);
     expect(settingsDrift).toBeNull();
-    expect(llmConfigDrift).toBeNull();
     expect(licenseDrift).toBeNull();
     expect(diagnosticsDrift).toBeNull();
     expect(submitFeedbackDrift).toBeNull();

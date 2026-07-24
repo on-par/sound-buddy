@@ -52,7 +52,7 @@ export function registerPlaybackHandlers(): void {
   // routing (or a stereo master fold when the device is too small / master is
   // set), forwarding its JSON-line events to the renderer as `playback-event`.
   // Modeled on start-live: a module-level process handle, line-buffered stdout,
-  // SIGTERM on stop. No microphone grant (output only) and no LLM path.
+  // SIGTERM on stop. No microphone grant (output only).
   ipcMain.handle('start-playback', async (event, opts: StartPlaybackOpts) => {
     // Virtual soundcheck is a Pro feature (#54) — enforced here as well as in
     // the renderer. Reading a session manifest stays free (data never locks).

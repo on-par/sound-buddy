@@ -11,7 +11,6 @@ import * as fs from 'fs';
 import { app } from 'electron';
 import { log } from '../logger';
 import { getSettings } from '../settings';
-import { LLM_SECRET_ENV_VARS } from '../narrative-port';
 
 // Dev repo root. Only meaningful when running from a checkout — inside a
 // packaged .app REPO_ROOT is never dereferenced (toolBin/SCRIPTS_DIR/pythonBin
@@ -80,11 +79,16 @@ export function toolBin(name: string): string {
   return name; // fall back to PATH (dev / unbundled)
 }
 
+// AI-era API keys are stripped from spawned analysis subprocesses: the app
+// no longer sets these, but they may exist in the user's own environment
+// and audio analysis must never inherit them.
+const AI_KEY_ENV_VARS = ['OPENAI_API_KEY', 'ANTHROPIC_API_KEY', 'GEMINI_API_KEY', 'SOUND_BUDDY_CUSTOM_API_KEY'] as const;
+
 // Env for spawned Python: prepend the bundled bin dir so spectrum.py's ffmpeg
-// fallback (m4a/aac decode) finds it without a system install. Also
-// strips any AI-provider API key narrative-port.ts may have set on
-// process.env — these audio-analysis subprocesses have nothing to do with
-// the AI narrative feature and must never inherit its secrets.
+// fallback (m4a/aac decode) finds it without a system install. Also strips
+// any AI-provider API key that may be set on process.env — these
+// audio-analysis subprocesses have nothing to do with the AI narrative
+// feature and must never inherit its secrets.
 export function childEnv(): NodeJS.ProcessEnv {
   // c8 ignore: packaged-app path resolution; vitest always runs unpackaged
   // (BUNDLED_BIN_DIR is always null), so this branch is unreachable in tests.
@@ -92,7 +96,7 @@ export function childEnv(): NodeJS.ProcessEnv {
   const env: NodeJS.ProcessEnv = BUNDLED_BIN_DIR
     ? { ...process.env, PATH: `${BUNDLED_BIN_DIR}${path.delimiter}${process.env.PATH ?? ''}` }
     : /* c8 ignore stop */ { ...process.env };
-  for (const key of LLM_SECRET_ENV_VARS) delete env[key];
+  for (const key of AI_KEY_ENV_VARS) delete env[key];
   return env;
 }
 

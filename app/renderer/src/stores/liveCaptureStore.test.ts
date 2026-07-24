@@ -425,7 +425,7 @@ describe('createLiveCaptureStore', () => {
         liveMode: 'monitor',
         recordDir: '',
       });
-      await store.getState().startCapture({ windowSecs: 3, intervalSecs: 0.1, llmIntervalSecs: 0 });
+      await store.getState().startCapture({ windowSecs: 3, intervalSecs: 0.1 });
       expect(mock.calls).toContainEqual({
         method: 'startLive',
         args: [{
@@ -433,7 +433,6 @@ describe('createLiveCaptureStore', () => {
           channels: ['0', '2-3'],
           windowSecs: 3,
           intervalSecs: 0.1,
-          llmIntervalSecs: 0,
           mode: 'monitor',
           recordDir: undefined,
           arm: undefined,
@@ -454,7 +453,7 @@ describe('createLiveCaptureStore', () => {
         channelConfig: [{ kind: 'mono', a: 0, b: 1, armed: true }, { kind: 'mono', a: 1, b: 2, armed: false }],
         liveMode: 'record',
       });
-      await store.getState().startCapture({ windowSecs: 3, intervalSecs: 0.1, llmIntervalSecs: 0 });
+      await store.getState().startCapture({ windowSecs: 3, intervalSecs: 0.1 });
       const call = mock.calls.find((c) => c.method === 'startLive');
       expect((call!.args[0] as { arm: string[] }).arm).toEqual(['0']);
     });
@@ -473,7 +472,7 @@ describe('createLiveCaptureStore', () => {
         ],
         liveMode: 'record',
       });
-      await store.getState().startCapture({ windowSecs: 3, intervalSecs: 0.1, llmIntervalSecs: 0 });
+      await store.getState().startCapture({ windowSecs: 3, intervalSecs: 0.1 });
       const call = mock.calls.find((c) => c.method === 'startLive');
       expect((call!.args[0] as { labels: string[] }).labels).toEqual(['Kick', '']);
     });
@@ -489,14 +488,14 @@ describe('createLiveCaptureStore', () => {
         channelConfig: [{ kind: 'mono', a: 0, b: 1, label: 'Kick' }],
         liveMode: 'monitor',
       });
-      await store.getState().startCapture({ windowSecs: 3, intervalSecs: 0.1, llmIntervalSecs: 0 });
+      await store.getState().startCapture({ windowSecs: 3, intervalSecs: 0.1 });
       const call = mock.calls.find((c) => c.method === 'startLive');
       expect((call!.args[0] as { labels?: string[] }).labels).toBeUndefined();
     });
 
     it('resets isCapturing on a failed start and returns the result', async () => {
       const { store } = makeStore({ startLive: async () => ({ success: false, error: 'boom' }) });
-      const result = await store.getState().startCapture({ windowSecs: 3, intervalSecs: 0.1, llmIntervalSecs: 0 });
+      const result = await store.getState().startCapture({ windowSecs: 3, intervalSecs: 0.1 });
       expect(store.getState().isCapturing).toBe(false);
       expect(result).toEqual({ success: false, error: 'boom' });
     });
@@ -504,36 +503,15 @@ describe('createLiveCaptureStore', () => {
     it('is a no-op while already capturing', async () => {
       const { store, mock } = makeStore({ startLive: async () => ({ success: true }) });
       store.setState({ isCapturing: true });
-      const result = await store.getState().startCapture({ windowSecs: 3, intervalSecs: 0.1, llmIntervalSecs: 0 });
+      const result = await store.getState().startCapture({ windowSecs: 3, intervalSecs: 0.1 });
       expect(result).toBeUndefined();
       expect(mock.calls.filter((c) => c.method === 'startLive')).toHaveLength(0);
     });
 
-    it('arms the countdown on a successful start with a positive llmIntervalSecs', async () => {
-      vi.useFakeTimers();
-      const { store } = makeStore({ startLive: async () => ({ success: true }) });
-      await store.getState().startCapture({ windowSecs: 3, intervalSecs: 0.1, llmIntervalSecs: 5 });
-      expect(store.getState().countdownSecs).toBe(5);
-      expect(store.getState().countdownAnalyzing).toBe(false);
-
-      vi.advanceTimersByTime(1000);
-      expect(store.getState().countdownSecs).toBe(4);
-
-      vi.advanceTimersByTime(4000);
-      expect(store.getState().countdownSecs).toBe(5);
-      expect(store.getState().countdownAnalyzing).toBe(true);
-    });
-
-    it('does not arm a countdown when llmIntervalSecs is 0', async () => {
-      const { store } = makeStore({ startLive: async () => ({ success: true }) });
-      await store.getState().startCapture({ windowSecs: 3, intervalSecs: 0.1, llmIntervalSecs: 0 });
-      expect(store.getState().countdownSecs).toBeNull();
-    });
   });
 
   describe('stopCapture', () => {
-    it('clears capture/countdown state and calls sb.stopLive', async () => {
-      vi.useFakeTimers();
+    it('clears capture state and calls sb.stopLive', async () => {
       const { store, mock } = makeStore({
         startLive: async () => ({ success: true }),
         stopLive: async () => {
@@ -541,17 +519,11 @@ describe('createLiveCaptureStore', () => {
           return { success: true, sessionDir: '/tmp/session' };
         },
       });
-      await store.getState().startCapture({ windowSecs: 3, intervalSecs: 0.1, llmIntervalSecs: 5 });
+      await store.getState().startCapture({ windowSecs: 3, intervalSecs: 0.1 });
       const result = await store.getState().stopCapture();
       expect(store.getState().isCapturing).toBe(false);
-      expect(store.getState().countdownSecs).toBeNull();
       expect(result).toEqual({ success: true, sessionDir: '/tmp/session' });
       expect(mock.calls.some((c) => c.method === 'stopLive')).toBe(true);
-
-      // The countdown timer must actually be cleared (no further store writes).
-      const before = store.getState().countdownSecs;
-      vi.advanceTimersByTime(5000);
-      expect(store.getState().countdownSecs).toBe(before);
     });
   });
 

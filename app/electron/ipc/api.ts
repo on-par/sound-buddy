@@ -10,7 +10,7 @@
 // main-process module.
 //
 // This is also the renderer-safe DTO home (TD-011, #405): node-side modules
-// that produce these shapes (settings.ts, llm-config.ts, storage.ts, ...)
+// that produce these shapes (settings.ts, storage.ts, ...)
 // import their DTOs back from here — a one-way dependency toward the
 // boundary type — so the shape is defined exactly once and can't drift.
 // `SoundBuddyApi` itself is decomposed into cohesive per-domain
@@ -26,7 +26,6 @@
 // the TD-011 PR for the full list.
 
 export interface UpdateSettingsPatch {
-  aiEnabled?: boolean;
   idealProfile?: string;
   customIdealProfiles?: unknown[];
   storageDir?: string;
@@ -41,15 +40,6 @@ export interface UpdateSettingsPatch {
   shareChurchName?: string;
   weeklyReminderEnabled?: boolean;
   weeklyReminderServiceDay?: number;
-}
-
-/** A renderer patch: `apiKey` semantics — undefined = keep, '' = clear. */
-export interface LlmConfigPatch {
-  provider?: string;
-  model?: string;
-  ollamaHost?: string;
-  apiBaseUrl?: string;
-  apiKey?: string;
 }
 
 export interface AnalyzeFileOpts {
@@ -69,7 +59,6 @@ export interface StartLiveOpts {
   windowSecs: number;
   // Real-time meter cadence in seconds (default 0.1 in stream.py).
   intervalSecs?: number;
-  llmIntervalSecs: number;
   // "monitor" (default) = live view only; "record" = also capture a session.
   mode?: 'monitor' | 'record';
   // Optional output folder for Record mode (defaults to ~/Music/Sound Buddy).
@@ -171,8 +160,6 @@ export interface CaptureRig {
   intervalMs: number;
   /** Rolling analysis window (seconds). */
   windowSecs: number;
-  /** LLM analysis cadence (ms); optional until #37 wires the slider. */
-  llmIntervalMs?: number;
   /** Pre-service checklist baseline (#373); optional until an engineer saves one. */
   baseline?: PreflightBaseline;
 }
@@ -201,8 +188,6 @@ export interface CustomIdealProfile {
 }
 
 export interface AppSettings {
-  /** Master switch for all AI/LLM analysis. Default false (off). */
-  aiEnabled: boolean;
   /** Selected ideal EQ profile id (PRD 05). Empty = auto by content type. */
   idealProfile: string;
   /** User-authored ideal EQ curves for analysis/report comparison. */
@@ -278,8 +263,8 @@ export interface AppSettings {
    * Pure UI gate — when false the existing tab/pane UI renders unchanged;
    * when true the renderer takes the report-first-ux branch (e17-00 onward).
    * Unlike dawWorkspaceEnabled it *does* have an env layer
-   * (SOUND_BUDDY_REPORT_FIRST_UX), mirroring SOUND_BUDDY_AI_ENABLED, so the
-   * epic can be dogfooded at launch time without shipping a Settings toggle.
+   * (SOUND_BUDDY_REPORT_FIRST_UX), so the epic can be dogfooded at launch
+   * time without shipping a Settings toggle.
    */
   reportFirstUxEnabled: boolean;
   /**
@@ -305,19 +290,6 @@ export interface AppSettings {
    * persisted data, like `rigs`.
    */
   weeklyReminderServiceDay: number;
-}
-
-// ─── LLM DTOs (PublicLlmConfig moved from electron/llm-config.ts, TD-011) ────
-
-/** What the renderer sees — no ciphertext, no key material. */
-export interface PublicLlmConfig {
-  provider: string;
-  model: string;
-  ollamaHost: string;
-  apiBaseUrl: string;
-  hasApiKey: boolean;
-  /** Provider the stored key belongs to ('' when no key). */
-  apiKeyProvider: string;
 }
 
 // ─── Analysis / storage DTOs (AnalysisSummary moved from electron/storage.ts) ─

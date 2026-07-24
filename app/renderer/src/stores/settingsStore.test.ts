@@ -24,14 +24,13 @@ describe('createSettingsStore', () => {
       getSettings: async () => {
         mock.calls.push({ method: 'getSettings', args: [] });
         return {
-          aiEnabled: true,
           idealProfile: '',
           customIdealProfiles: [],
           storageDir: '',
           rigs: [],
           activeRigId: null,
           usageSignalEnabled: false,
-          channelLabels: {}, channelGroups: {}, inputInstrumentProfiles: {}, crashReportingEnabled: false, dawWorkspaceEnabled: false, liveAdjustmentsEnabled: false, reportFirstUxEnabled: false, shareChurchName: '', weeklyReminderEnabled: false, weeklyReminderServiceDay: 0,
+          channelLabels: {}, channelGroups: {}, inputInstrumentProfiles: {}, crashReportingEnabled: true, dawWorkspaceEnabled: false, liveAdjustmentsEnabled: false, reportFirstUxEnabled: false, shareChurchName: '', weeklyReminderEnabled: false, weeklyReminderServiceDay: 0,
         };
       },
     });
@@ -39,21 +38,20 @@ describe('createSettingsStore', () => {
 
     await store.getState().loadSettings();
 
-    expect(store.getState().settings?.aiEnabled).toBe(true);
+    expect(store.getState().settings?.crashReportingEnabled).toBe(true);
     expect(store.getState().settingsError).toBeNull();
     expect(mock.calls.map((c) => c.method)).toEqual(expect.arrayContaining(['getSettings']));
   });
 
   it('updates settings and records the IPC call', async () => {
     const updated = {
-      aiEnabled: true,
       idealProfile: '',
       customIdealProfiles: [],
       storageDir: '',
       rigs: [],
       activeRigId: null,
       usageSignalEnabled: false,
-      channelLabels: {}, channelGroups: {}, inputInstrumentProfiles: {}, crashReportingEnabled: false, dawWorkspaceEnabled: false, liveAdjustmentsEnabled: false, reportFirstUxEnabled: false, shareChurchName: '', weeklyReminderEnabled: false, weeklyReminderServiceDay: 0,
+      channelLabels: {}, channelGroups: {}, inputInstrumentProfiles: {}, crashReportingEnabled: true, dawWorkspaceEnabled: false, liveAdjustmentsEnabled: false, reportFirstUxEnabled: false, shareChurchName: '', weeklyReminderEnabled: false, weeklyReminderServiceDay: 0,
     };
     const mock = createMockSoundBuddy({
       updateSettings: async (patch) => {
@@ -63,10 +61,10 @@ describe('createSettingsStore', () => {
     });
     const store = createSettingsStore(() => mock.api);
 
-    await store.getState().updateSettings({ aiEnabled: true });
+    await store.getState().updateSettings({ crashReportingEnabled: true });
 
     expect(store.getState().settings).toEqual(updated);
-    expect(mock.calls).toContainEqual({ method: 'updateSettings', args: [{ aiEnabled: true }] });
+    expect(mock.calls).toContainEqual({ method: 'updateSettings', args: [{ crashReportingEnabled: true }] });
   });
 
   it('captures a rejected loadSettings promise as an error', async () => {
@@ -93,7 +91,6 @@ describe('createSettingsStore', () => {
 
   it('captures a rejected updateSettings promise and retains previous settings', async () => {
     const initial = {
-      aiEnabled: false,
       idealProfile: '',
       customIdealProfiles: [],
       storageDir: '',
@@ -108,7 +105,7 @@ describe('createSettingsStore', () => {
     const store = createSettingsStore(() => mock.api);
     store.setState({ settings: initial });
 
-    await store.getState().updateSettings({ aiEnabled: true });
+    await store.getState().updateSettings({ crashReportingEnabled: true });
 
     expect(store.getState().settingsError).toBe('write failed');
     expect(store.getState().settings).toEqual(initial);
@@ -120,7 +117,7 @@ describe('createSettingsStore', () => {
     });
     const store = createSettingsStore(() => mock.api);
 
-    await store.getState().updateSettings({ aiEnabled: true });
+    await store.getState().updateSettings({ crashReportingEnabled: true });
 
     expect(store.getState().settingsError).toBe('write failed');
   });
@@ -146,20 +143,19 @@ describe('createSettingsStore', () => {
   it('binds the default hook to the window preload bridge', async () => {
     const mock = createMockSoundBuddy({
       getSettings: async () => ({
-        aiEnabled: true,
         idealProfile: '',
         customIdealProfiles: [],
         storageDir: '',
         rigs: [],
         activeRigId: null,
         usageSignalEnabled: false,
-        channelLabels: {}, channelGroups: {}, inputInstrumentProfiles: {}, crashReportingEnabled: false, dawWorkspaceEnabled: false, liveAdjustmentsEnabled: false, reportFirstUxEnabled: false, shareChurchName: '', weeklyReminderEnabled: false, weeklyReminderServiceDay: 0,
+        channelLabels: {}, channelGroups: {}, inputInstrumentProfiles: {}, crashReportingEnabled: true, dawWorkspaceEnabled: false, liveAdjustmentsEnabled: false, reportFirstUxEnabled: false, shareChurchName: '', weeklyReminderEnabled: false, weeklyReminderServiceDay: 0,
       }),
     });
     (globalThis as { window?: unknown }).window = { soundBuddy: mock.api };
 
     await useSettingsStore.getState().loadSettings();
 
-    expect(useSettingsStore.getState().settings?.aiEnabled).toBe(true);
+    expect(useSettingsStore.getState().settings?.crashReportingEnabled).toBe(true);
   });
 });

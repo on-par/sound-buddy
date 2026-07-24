@@ -58,8 +58,8 @@ let currentMode = 'reportcard';
 let liveRunning = false;
 let liveWindows = [];
 // Whole-session window accumulator (#261): liveWindows above is capped at 10
-// entries (see the onLiveEvent handler below) for the rolling preview + LLM
-// trend context (#208) — nowhere near enough for "the whole session" a
+// entries (see the onLiveEvent handler below) for the rolling preview and the
+// report-card source (#208) — nowhere near enough for "the whole session" a
 // multi-minute monitor capture needs to grade. sessionWindows mirrors every
 // window tick with no cap, reset alongside liveWindows at each capture start,
 // and is what the session report card is built from at Stop Capture.
@@ -2263,9 +2263,6 @@ document.getElementById('live-start-btn').addEventListener('click', async () => 
   const device = document.getElementById('device-select').value || undefined;
   const windowSecs = parseFloat(document.getElementById('window-secs').value);
   const intervalSecs = parseInt(document.getElementById('meter-interval').value) / 1000;
-  // The main API still requires llmIntervalSecs (#658/#659 own removing it) —
-  // the renderer no longer exposes any UI to configure it, so it's always off.
-  const llmIntervalSecs = 0;
   const channels = channelTokens();
 
   // No configured tracks (#188): the workspace remove can drive channelConfig
@@ -2320,7 +2317,7 @@ document.getElementById('live-start-btn').addEventListener('click', async () => 
   renderLiveWorkspace();
 
   const result = await sb.startLive({
-    device, channels, windowSecs, intervalSecs, llmIntervalSecs,
+    device, channels, windowSecs, intervalSecs,
     mode: liveMode, recordDir: recordDir || undefined,
     // Record mode: capture only the armed strips as session stems (#43).
     arm: liveMode === 'record' ? armedTokens() : undefined,
@@ -2373,13 +2370,10 @@ async function promoteToRecording() {
   const device = document.getElementById('device-select').value || undefined;
   const windowSecs = parseFloat(document.getElementById('window-secs').value);
   const intervalSecs = parseInt(document.getElementById('meter-interval').value) / 1000;
-  // The main API still requires llmIntervalSecs (#658/#659 own removing it) —
-  // the renderer no longer exposes any UI to configure it, so it's always off.
-  const llmIntervalSecs = 0;
   const channels = channelTokens();
 
   const result = await sb.startLive({
-    device, channels, windowSecs, intervalSecs, llmIntervalSecs,
+    device, channels, windowSecs, intervalSecs,
     mode: 'record', recordDir: recordDir || undefined,
     // Record mode: capture only the armed strips as session stems (#43).
     arm: armedTokens(),
@@ -2443,7 +2437,7 @@ async function stopLive() {
   // #488/#261: a monitor session that accumulated at least one window builds
   // a session-level Report Card from the whole sessionWindows buffer (every
   // window tick since Start Capture — the capped liveWindows below only
-  // keeps the last 10 for the rolling preview/LLM context), grades it, and
+  // keeps the last 10 for the rolling preview), grades it, and
   // persists it to history tagged as a live-capture source — the same
   // hook a file analysis gets. Record mode keeps its session-saved offer
   // above; the two never show together (sessionDir only exists in record
@@ -2994,8 +2988,8 @@ sb.onLiveEvent((data) => {
   const statsCh = measurementChannel(data.channels, lcStore.getState().measurementSource);
   if (statsCh) updateLiveStatsRow(statsCh);
 
-  // Only the heavier window ticks (which carry masking + window #) accumulate as
-  // LLM trend context and feed the report card.
+  // Only the heavier window ticks (which carry masking + window #) accumulate
+  // to feed the report card.
   if (data.type === 'window' || typeof data.window === 'number') {
     liveWindows.push(data);
     if (liveWindows.length > 10) liveWindows.shift();
@@ -3459,7 +3453,6 @@ document.getElementById('ringout-capture').addEventListener('click', async () =>
     ringoutSetStatus('Listening for the ring…');
     const started = await sb.startLive({
       windowSecs: RINGOUT_CAPTURE_WINDOW_SECS,
-      llmIntervalSecs: 0,
       mode: 'record',
     });
     if (!started.success) {

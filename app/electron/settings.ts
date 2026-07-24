@@ -5,12 +5,8 @@
 //
 //   ~/Library/Application Support/SoundBuddy/settings.json
 //
-// This is separate from llm.json (the AI *provider* config). Settings here are
-// app-behavior flags the UI reads at boot and (later) writes from Preferences.
-//
-// AI is OFF by default: all LLM/AI analysis is disabled unless the user opts in
-// (settings.json `"aiEnabled": true`, or env `SOUND_BUDDY_AI_ENABLED=1`). The AI
-// code stays fully wired in — this flag only gates it.
+// Settings here are app-behavior flags the UI reads at boot and (later)
+// writes from Preferences.
 
 import * as fs from 'fs';
 import * as path from 'path';
@@ -35,7 +31,6 @@ const MIN_SERVICE_DAY = 0;
 const MAX_SERVICE_DAY = 6;
 
 const DEFAULTS: AppSettings = {
-  aiEnabled: false,
   idealProfile: '',
   customIdealProfiles: [],
   storageDir: '',
@@ -144,7 +139,6 @@ function fileInputInstrumentProfiles(file: Partial<AppSettings>): Record<string,
 function writeSettingsFile(file: Partial<AppSettings>): void {
   const persisted: AppSettings = {
     ...file,
-    aiEnabled: file.aiEnabled ?? DEFAULTS.aiEnabled,
     idealProfile: file.idealProfile ?? DEFAULTS.idealProfile,
     customIdealProfiles: fileCustomIdealProfiles(file),
     storageDir: file.storageDir ?? DEFAULTS.storageDir,
@@ -180,11 +174,9 @@ function envBool(name: string): boolean | undefined {
 export function getSettings(): AppSettings {
   const file = readSettingsFile('for read');
 
-  const envAi = envBool('SOUND_BUDDY_AI_ENABLED');
   const envReportFirstUx = envBool('SOUND_BUDDY_REPORT_FIRST_UX');
 
   return {
-    aiEnabled: envAi ?? file.aiEnabled ?? DEFAULTS.aiEnabled,
     idealProfile:
       process.env.SOUND_BUDDY_IDEAL_PROFILE?.trim() || file.idealProfile || DEFAULTS.idealProfile,
     customIdealProfiles: fileCustomIdealProfiles(file),
@@ -193,8 +185,8 @@ export function getSettings(): AppSettings {
     // Rigs have no env layer — they are pure persisted data.
     rigs: fileRigs(file),
     activeRigId: file.activeRigId ?? DEFAULTS.activeRigId,
-    // No env layer — unlike aiEnabled there is no behavior to gate, so this
-    // flag is pure persisted data (like rigs).
+    // No env layer — there is no behavior to gate at launch, so this flag is
+    // pure persisted data (like rigs).
     usageSignalEnabled: file.usageSignalEnabled ?? DEFAULTS.usageSignalEnabled,
     // Channel labels have no env layer — pure persisted data, like rigs.
     channelLabels: fileChannelLabels(file),
@@ -212,12 +204,12 @@ export function getSettings(): AppSettings {
     // No env layer — opting into experimental live adjustments (#522) must
     // be an explicit user action, same rationale as dawWorkspaceEnabled.
     liveAdjustmentsEnabled: file.liveAdjustmentsEnabled ?? DEFAULTS.liveAdjustmentsEnabled,
-    // Env layer mirrors aiEnabled's — dogfooding the report-first-ux epic
-    // (#538) without a UI toggle needs a launch-time override, unlike the
-    // other experimental UI gates above.
+    // A launch-time env override (SOUND_BUDDY_REPORT_FIRST_UX) so the epic
+    // can be dogfooded without a Settings toggle, unlike the other
+    // experimental UI gates above.
     reportFirstUxEnabled: envReportFirstUx ?? file.reportFirstUxEnabled ?? DEFAULTS.reportFirstUxEnabled,
     // No env layer — a church name is user-authored copy for the Share
-    // Image export (#265), not a launch-time behavior toggle like aiEnabled.
+    // Image export (#265), not a launch-time behavior toggle.
     shareChurchName: typeof file.shareChurchName === 'string' ? file.shareChurchName : DEFAULTS.shareChurchName,
     // No env layer — opting into the local weekly reminder (#268) must be an
     // explicit user action, same rationale as crashReportingEnabled.
@@ -230,25 +222,20 @@ export function getSettings(): AppSettings {
 export function updateSettings(patch: Partial<AppSettings>): AppSettings {
   // Persist the patch over the FILE contents (layered on defaults) — never over
   // getSettings()'s env-resolved view. Otherwise a transient env override (e.g.
-  // SOUND_BUDDY_AI_ENABLED=1) would be baked permanently into settings.json,
-  // silently defeating the "AI off by default" contract after the env var is
-  // removed. Env overrides stay transient (read-time only).
+  // SOUND_BUDDY_REPORT_FIRST_UX=1) would be baked permanently into
+  // settings.json, silently defeating the launch-time-only contract after the
+  // env var is removed. Env overrides stay transient (read-time only).
   const file = readSettingsFile('before update');
   writeSettingsFile({ ...file, ...patch });
   // Return the effective settings (env overrides still apply for reads).
   return getSettings();
 }
 
-/** Convenience: is AI/LLM analysis currently allowed? */
-export function isAiEnabled(): boolean {
-  return getSettings().aiEnabled;
-}
-
 // ── Capture rigs (CRUD) ───────────────────────────────────────────────────────
 // All mutations follow the same layered-persistence discipline as
 // updateSettings: read the FILE layer → mutate → write the FILE layer. Env
-// overrides for aiEnabled/idealProfile are therefore never baked into a rig
-// write, and rigs themselves have no env layer.
+// overrides for idealProfile are therefore never baked into a rig write, and
+// rigs themselves have no env layer.
 
 /** All saved rigs, in stored order (env overrides don't touch rigs). */
 export function listRigs(): CaptureRig[] {

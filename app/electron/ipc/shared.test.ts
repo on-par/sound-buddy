@@ -44,16 +44,16 @@ describe('REPO_ROOT', () => {
 });
 
 describe('childEnv', () => {
-  const LLM_SECRET_VARS = ['OPENAI_API_KEY', 'ANTHROPIC_API_KEY', 'GEMINI_API_KEY', 'SOUND_BUDDY_CUSTOM_API_KEY'];
+  const AI_KEY_VARS = ['OPENAI_API_KEY', 'ANTHROPIC_API_KEY', 'GEMINI_API_KEY', 'SOUND_BUDDY_CUSTOM_API_KEY'];
 
   afterEach(() => {
-    for (const v of LLM_SECRET_VARS) delete process.env[v];
+    for (const v of AI_KEY_VARS) delete process.env[v];
   });
 
-  it('strips AI-provider API keys so bundled Python subprocesses never inherit them', () => {
-    for (const v of LLM_SECRET_VARS) process.env[v] = 'sk-should-not-leak';
+  it('strips AI API keys so bundled Python subprocesses never inherit them', () => {
+    for (const v of AI_KEY_VARS) process.env[v] = 'sk-should-not-leak';
     const env = childEnv();
-    for (const v of LLM_SECRET_VARS) expect(env[v]).toBeUndefined();
+    for (const v of AI_KEY_VARS) expect(env[v]).toBeUndefined();
   });
 
   it('passes through unrelated env vars unchanged', () => {

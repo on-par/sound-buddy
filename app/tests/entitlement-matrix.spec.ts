@@ -108,7 +108,7 @@ async function assertMainProcessRejectsAllGates(): Promise<void> {
   ).rejects.toThrow(/Pro license/);
 
   const live = await win.evaluate(() =>
-    (window as any).soundBuddy.startLive({ windowSecs: 1, llmIntervalSecs: 5 }),
+    (window as any).soundBuddy.startLive({ windowSecs: 1 }),
   );
   expect(live.success).toBe(false);
   expect(live.error).toMatch(/Pro license/);

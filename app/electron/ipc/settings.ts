@@ -177,8 +177,8 @@ export function registerSettingsHandlers(): void {
   // than Electron's own app.getVersion() — see app-version.ts for why.
   ipcMain.handle('get-app-version', () => resolveAppVersion(APP_ROOT));
 
-  // get-settings — read app-behavior flags (AI on/off, ideal profile). The
-  // renderer reads this at boot to hide AI affordances when disabled.
+  // get-settings — read app-behavior flags (ideal profile, storage location,
+  // ...). The renderer reads this at boot to hydrate its initial state.
   ipcMain.handle('get-settings', () => getSettings());
 
   // update-settings — persist a partial settings patch (e.g. the ideal EQ
@@ -188,7 +188,6 @@ export function registerSettingsHandlers(): void {
   ipcMain.handle('update-settings', (_event, patch: Record<string, unknown>) => {
     const clean: Partial<ReturnType<typeof getSettings>> = {};
     if (patch && typeof patch === 'object') {
-      if (typeof patch.aiEnabled === 'boolean') clean.aiEnabled = patch.aiEnabled;
       if (typeof patch.idealProfile === 'string') clean.idealProfile = patch.idealProfile;
       // Storage location (#91). Trimmed; an empty string resets to the platform
       // default (~/Music/Sound Buddy). No size/count limit is ever applied.

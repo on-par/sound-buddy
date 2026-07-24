@@ -142,7 +142,6 @@ test.describe.serial('Rigs — save / load / switch', () => {
         recordDir: '',
         intervalMs: 100,
         windowSecs: 3,
-        llmIntervalMs: 60000,
       });
       const rig = s.rigs.find((r: any) => r.name === 'Scarlett Rig');
       await sb.setActiveRig(rig.id);
@@ -178,7 +177,6 @@ test.describe.serial('Rigs — save / load / switch', () => {
         recordDir: '',
         intervalMs: 100,
         windowSecs: 3,
-        llmIntervalMs: 60000,
       });
       const rig = s.rigs.find((r: any) => r.name === 'Big Board');
       await sb.setActiveRig(rig.id);

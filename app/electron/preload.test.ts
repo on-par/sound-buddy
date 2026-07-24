@@ -112,7 +112,7 @@ const INVOKE_TABLE: Array<{ method: BridgeKey; channel: string; args: unknown[] 
   {
     method: 'startLive',
     channel: 'start-live',
-    args: [{ windowSecs: 5, llmIntervalSecs: 10 } satisfies StartLiveOpts],
+    args: [{ windowSecs: 5 } satisfies StartLiveOpts],
   },
   { method: 'stopLive', channel: 'stop-live', args: [] },
   { method: 'revealPath', channel: 'reveal-path', args: ['/tmp/session'] },
