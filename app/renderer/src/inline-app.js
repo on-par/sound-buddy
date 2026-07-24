@@ -101,11 +101,6 @@ const WAVEFORM_COLORS = {
 // lives in analysisStore.historySummary — ReportCardIsland renders it via a
 // reduced, summary-only card when set and no live/file analysis is backing
 // the card (TD-001 slice 4, #422); set by loadHistoryEntry() below.
-// Per-strip collapsed state (#40), keyed by strip index. In-memory only for this
-// slice (persisting into the rig is deferred). Read on every repaint so an
-// incoming meter window never silently re-expands a folded strip.
-let liveCollapsed = new Set();
-function isStripCollapsed(idx) { return window.collapseState.isCollapsed(liveCollapsed, idx); }
 // Named channel groups (#41, #483): [{ name, members:[stripIndex,…], collapsed? }].
 // Organizational only — strips render under their group's header in the live
 // board; a group header collapses to a compact live-summary row (#483), and
@@ -171,6 +166,9 @@ const {
   measurementChannel, measurementSourceBadgeText, measurementSourceOptionLabel,
   liveReportCardSource: lcLiveReportCardSource,
   liveSessionReportCardSource,
+  patchLiveChannel,
+  clampEqPaneWidth, EQ_PANE_RESIZE_STEP,
+  eqPaneView, eqPaneHTML, eqPaneSignature, eqPanePatchPlan,
 } = window.liveCapturePanel;
 // Renamed to avoid colliding with the zero-arg usedChannelCount() wrapper below.
 const lcUsedChannelCount = window.liveCapturePanel.usedChannelCount;
@@ -801,46 +799,59 @@ function stopPlaybackBandLoop(evt) {
   renderScrub(); // whole-file (or carried scrub) state — dismisses the realtime overlay
 }
 
-// Update one channel's existing DOM in place: bars/readouts keep their nodes
-// so the CSS transitions actually animate, and the arc SVG keeps its static
-// grid/tint/label nodes — only the curve path `d`s and the centroid change.
-function patchLiveChannel(el, ch, idx) {
-  // Re-assert collapsed state on every patch so a new window keeps folded strips
-  // folded (#40). The header — name, RMS/peak, clip — is never hidden, so a
-  // collapsed strip still reflects live level and clipping below.
-  const collapsed = isStripCollapsed(idx);
-  el.classList.toggle('collapsed', collapsed);
-  el.classList.toggle('idle', !!ch.idle); // a real tick landing on a prior idle placeholder graduates it
-  const foldBtn = el.querySelector('.live-ch-fold');
-  if (foldBtn) foldBtn.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
-  const curve = liveBandCurve(ch.bands);
-  const name = el.querySelector('.live-ch-name');
-  // Don't clobber the field while the engineer is renaming it in place (#39);
-  // the live tick keeps flowing but their caret/text stays put until they commit.
-  if (document.activeElement !== name) name.textContent = stripLabel(channelConfig[idx], ch, idx);
-  name.classList.toggle('clip', !!ch.clipping);
-  el.querySelector('.live-ch-meta').textContent = ch.idle ? 'Idle' : `RMS ${fmt(ch.rms)} · Peak ${fmt(ch.peak)} dBFS`;
-  const removeBtn = el.querySelector('.live-ch-x');
-  if (removeBtn) removeBtn.disabled = liveRunning;
-  const clipEl = el.querySelector('.live-ch-clip');
-  // Insert just before the remove button (#188) so CLIP lands in the same spot
-  // whether it was there on the first tick (static template order) or shows up
-  // later — .live-ch-x carries the head's margin-left:auto right-alignment.
-  if (ch.clipping && !clipEl) removeBtn.insertAdjacentHTML('beforebegin', '<span class="live-ch-clip">CLIP</span>');
-  else if (!ch.clipping && clipEl) clipEl.remove();
+// patchLiveChannel (the per-strip DOM applier) is now the pure version bridged
+// in from live-capture-panel.ts (#668) — strips no longer carry their own
+// chart, so there's nothing left for this file's copy to do that the pure
+// module doesn't already cover via stripViewAt's `selected`/level-fill fields.
 
-  const arc = veqArcSVG(curve, ch.centroid, idx, true);
-  const chart = el.querySelector('.veq-chart');
-  const lineEl = chart.querySelector('.sb-curve-line');
-  if (arc && lineEl) {
-    lineEl.setAttribute('d', arc.line);
-    chart.querySelector('.sb-curve-fill').setAttribute('d', arc.area);
-    chart.querySelector('.sb-centroid').innerHTML = arc.centroidMark;
-  } else {
-    chart.innerHTML = arc ? arc.svg : '';
+// The channel array backing the EQ pane right now: a live tick's channels
+// while any have arrived this session, else the idle placeholder set — same
+// fallback liveChannelAt() uses for the #39 name resolution, kept in one
+// place so every renderEqPane call site (a tick, a workspace rebuild, the
+// measurement-source picker, a strip click) agrees on "current" (#668).
+function currentEqPaneChannels() {
+  return lastLiveChannels || channelConfig.map(() => window.trackWorkspace.idleChannel(LIVE_BAND_KEYS));
+}
+
+// Patches one EQ pane section's arc + bars in place — mirrors the exact
+// arc-then-bars patch sequence the old per-strip patchLiveChannel used, just
+// applied to the pane's <=2 sections instead of every strip (#668).
+function patchEqPaneSection(sectionEl, patch) {
+  if (!sectionEl || !patch) return;
+  const chart = sectionEl.querySelector('.veq-chart');
+  if (chart) {
+    const lineEl = chart.querySelector('.sb-curve-line');
+    if (patch.arc && lineEl) {
+      lineEl.setAttribute('d', patch.arc.line);
+      chart.querySelector('.sb-curve-fill').setAttribute('d', patch.arc.area);
+      chart.querySelector('.sb-centroid').innerHTML = patch.arc.centroidMark;
+    } else {
+      chart.innerHTML = patch.arc ? patch.arc.svg : '';
+    }
   }
+  patchBarsAndLabels(sectionEl, patch.curve.db);
+}
 
-  patchBarsAndLabels(el, curve.db);
+// Renders/patches the docked live EQ pane (#668): the "Room" (measurement
+// source) and "Selected" (last-clicked strip) sections. Rebuilds the pane's
+// innerHTML only when its visible shape changes (which channel, which label);
+// otherwise patches the existing arcs/bars in place so their CSS transitions
+// keep animating. Guards on the pane body's presence — not every mode/screen
+// renders it (syncSpectrumForMode only shows it in Live mode).
+function renderEqPane(channels) {
+  const el = document.getElementById('live-eq-pane-body');
+  if (!el || !channels) return;
+  const state = lcStore.getState();
+  const view = eqPaneView(channels, channelConfig, state.measurementSource, state.selectedChannel);
+  const signature = eqPaneSignature(view);
+  if (el.dataset.signature !== signature) {
+    el.innerHTML = eqPaneHTML(view);
+    el.dataset.signature = signature;
+    return;
+  }
+  const plan = eqPanePatchPlan(view);
+  patchEqPaneSection(el.querySelector('.eq-pane-primary'), plan.primary);
+  patchEqPaneSection(el.querySelector('.eq-pane-secondary'), plan.secondary);
 }
 
 // Shared "Add track" disabled rule (device channel cap or a capture running,
@@ -878,8 +889,6 @@ function liveWorkspaceToolbarHTML() {
     + `<button type="button" class="ghost-btn" id="live-ws-add"${addDisabled ? ' disabled' : ''}>+ Add track</button>`
     + (advanced ? `<button type="button" class="ghost-btn" id="live-ws-new-group"${liveRunning ? ' disabled' : ''} title="Create a named channel group">+ New group</button>` : '')
     + `<span class="cap" id="live-ws-cap">${used} / ${total} used</span>`
-    + (advanced ? `<button type="button" class="ghost-btn" id="live-collapse-all">Collapse all</button>` : '')
-    + (advanced ? `<button type="button" class="ghost-btn" id="live-expand-all">Expand all</button>` : '')
     + armHTML
     + `</div>`;
 }
@@ -931,11 +940,11 @@ function renderLiveMeters(win) {
   if (stripEls.length === win.channels.length) {
     win.channels.forEach((ch, i) => {
       const el = body.querySelector(`.sb-live-meters .live-ch[data-ch="${i}"]`);
-      if (el) patchLiveChannel(el, ch, i);
+      if (el) patchLiveChannel(el, ch, i, stripViewAt(i, ch), liveRunning);
     });
     // Refresh each group header's live summary (#483) so a collapsed group still
     // reflects current level/clip without touching collapse state — that's
-    // applyLiveCollapsed's job — or rebuilding the DOM.
+    // applyLiveGroupCollapsed's job — or rebuilding the DOM.
     channelGroups.forEach((grp, g) => {
       const summaryEl = body.querySelector(`.sb-live-meters .live-group-head[data-group="${g}"] .live-group-summary`);
       if (!summaryEl) return;
@@ -944,22 +953,24 @@ function renderLiveMeters(win) {
       if (summary.clipping) summaryEl.insertAdjacentHTML('beforeend', '<span class="live-ch-clip">CLIP</span>');
     });
     syncLiveAdjustmentsPanel();
+    renderEqPane(win.channels);
     return;
   }
   body.innerHTML = liveWorkspaceToolbarHTML()
     + `<div class="meter-card sb-live-meters">${liveMetersHTML(win.channels, win.channels.map((c, i) => stripViewAt(i, c)), livePanelView())}</div>`;
   body.querySelectorAll('.sb-live-meters .live-ch-name').forEach(wireLiveNameEdit);
-  applyLiveCollapsed();
+  applyLiveGroupCollapsed();
   syncLiveAdjustmentsPanel();
+  renderEqPane(win.channels);
 }
 
 // Persistent idle track workspace (#188): the center pane renders
 // channelConfig as track lanes the moment the Live tab is active, not only
 // once capture starts. Idle lanes are synthetic all-floor channels rendered
 // through the same veqChannelHTML/liveMetersHTML path the running board uses,
-// so grouping (#41) and per-strip collapse (#40) keep working for free. Shares
-// liveWorkspaceToolbarHTML() with renderLiveMeters so Add/remove read
-// consistently whether idle or (locked) mid-capture.
+// so grouping (#41) keeps working for free. Shares liveWorkspaceToolbarHTML()
+// with renderLiveMeters so Add/remove read consistently whether idle or
+// (locked) mid-capture.
 function renderLiveWorkspace() {
   if (window.dawWorkspaceState.showShell(setStore.getState().settings, currentMode)) { renderDawShell(); return; }
   const body = document.getElementById('spectrum-imperative');
@@ -1001,8 +1012,9 @@ function renderLiveWorkspace() {
   const idleChannels = channelConfig.map(() => window.trackWorkspace.idleChannel(LIVE_BAND_KEYS));
   body.innerHTML = banner + toolbar + `<div class="meter-card sb-live-meters idle">${liveMetersHTML(idleChannels, idleChannels.map((c, i) => stripViewAt(i, c)), livePanelView())}</div>`;
   body.querySelectorAll('.sb-live-meters .live-ch-name').forEach(wireLiveNameEdit);
-  applyLiveCollapsed();
+  applyLiveGroupCollapsed();
   syncLiveAdjustmentsPanel();
+  renderEqPane(idleChannels);
 }
 
 // Experimental live adjustments area (#522): ensure the placeholder panel's
@@ -1098,7 +1110,7 @@ function stripViewAt(idx, ch) {
   return {
     strip: channelConfig[idx] || null,
     displayName: stripLabel(channelConfig[idx], ch, idx),
-    collapsed: isStripCollapsed(idx),
+    selected: lcStore.getState().selectedChannel === idx,
     armed: window.armState.isArmed(channelConfig[idx]),
     groupIndex: groupIndex,
     groupCollapsed: window.groupState.isGroupCollapsed(channelGroups, groupIndex),
@@ -1141,21 +1153,18 @@ function lapObservationContext() {
     liveWindows, ms, lapFocusView(), measurementSourceOptionLabel(channelConfig[idx], idx));
 }
 
-// Collapse controls (#40). One delegated listener on #spectrum-body survives the
-// meter card's rebuilds and covers the per-strip chevrons plus the toolbar's
-// Collapse all / Expand all. Toggling only rewrites .collapsed on the existing
+// Group collapse controls (#483). One delegated listener on #spectrum-body
+// survives the meter card's rebuilds and covers the group header's fold
+// chevron. Toggling only rewrites .collapsed/.group-collapsed on the existing
 // DOM (no full re-render), so it's instant and doesn't disturb the rAF repaint.
-function applyLiveCollapsed() {
+// (Per-strip collapse/fold — #40 — was removed in favor of the docked EQ pane,
+// #668.)
+function applyLiveGroupCollapsed() {
   const wrap = document.querySelector('#spectrum-body .sb-live-meters');
   if (!wrap) return;
   wrap.querySelectorAll('.live-ch').forEach((el) => {
     const idx = parseInt(el.dataset.ch, 10);
-    const collapsed = isStripCollapsed(idx);
-    el.classList.toggle('collapsed', collapsed);
-    const btn = el.querySelector('.live-ch-fold');
-    if (btn) btn.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
-    // A collapsed GROUP hides the member strip entirely (#483) — distinct from
-    // the per-strip fold above, which only compacts its own header.
+    // A collapsed GROUP hides the member strip entirely (#483).
     const g = window.groupState.groupOf(channelGroups, idx);
     el.classList.toggle('group-collapsed', window.groupState.isGroupCollapsed(channelGroups, g));
   });
@@ -1240,25 +1249,24 @@ document.getElementById('spectrum-body').addEventListener('click', (e) => {
     const g = parseInt(gfold.closest('.live-group-head').dataset.group, 10);
     channelGroups = window.groupState.setGroupCollapsed(channelGroups, g, !window.groupState.isGroupCollapsed(channelGroups, g));
     persistChannelGroups();
-    applyLiveCollapsed();
+    applyLiveGroupCollapsed();
     return;
   }
-  const fold = e.target.closest('.live-ch-fold');
-  if (fold) {
-    const idx = parseInt(fold.closest('.live-ch').dataset.ch, 10);
-    liveCollapsed = window.collapseState.toggle(liveCollapsed, idx);
-    applyLiveCollapsed();
-    return;
-  }
-  if (e.target.closest('#live-collapse-all')) {
-    // Count the strips actually on screen (#188) rather than lastLiveChannels,
-    // which stays null/stale in the idle workspace until a real tick lands.
-    const n = document.querySelectorAll('#spectrum-body .sb-live-meters .live-ch').length;
-    liveCollapsed = window.collapseState.collapseAll(Array.from({ length: n }, (_, i) => i));
-    applyLiveCollapsed();
-  } else if (e.target.closest('#live-expand-all')) {
-    liveCollapsed = window.collapseState.expandAll();
-    applyLiveCollapsed();
+  // Strip selection (#668): clicking anywhere on a strip (but not one of its
+  // interactive controls) inspects it in the docked EQ pane's "Selected"
+  // section. Checked last so a click on a button/select/name-edit inside the
+  // strip never also counts as a selection.
+  const stripEl = e.target.closest('.live-ch');
+  if (stripEl && !e.target.closest('button, select, [contenteditable], input')) {
+    const idx = parseInt(stripEl.dataset.ch, 10);
+    lcStore.getState().setSelectedChannel(idx);
+    document.querySelectorAll('#spectrum-body .live-ch').forEach((el) => {
+      const sel = parseInt(el.dataset.ch, 10) === idx;
+      el.classList.toggle('selected', sel);
+      if (sel) el.setAttribute('aria-current', 'true');
+      else el.removeAttribute('aria-current');
+    });
+    renderEqPane(currentEqPaneChannels());
   }
 });
 
@@ -1761,13 +1769,20 @@ scLoadDevices(); // populate the output picker at startup
 
 function syncSpectrumForMode(mode) {
   const title = document.getElementById('spectrum-title');
+  // Docked live EQ pane (#668): shown only in Live mode, sized from the
+  // persisted width (clamped defensively in case settings.json was hand-
+  // edited or corrupted).
+  const eqPane = document.getElementById('live-eq-pane');
+  if (eqPane) eqPane.style.display = mode === 'live' ? 'flex' : 'none';
   if (mode === 'live') {
     title.textContent = SPECTRUM_TITLE.live;
+    if (eqPane) eqPane.style.width = clampEqPaneWidth(setStore.getState().settings?.liveEqPaneWidth) + 'px';
     // Persistent track workspace (#188): the pane renders channelConfig as
     // track rows the moment the Live tab is shown, idle or capturing — the
     // running board only takes over once real windows have actually arrived.
     if (liveRunning && liveWindows.length > 0) renderLiveMeters(liveWindows[liveWindows.length - 1]);
     else renderLiveWorkspace();
+    renderEqPane(currentEqPaneChannels());
     renderPreflight(); // repaint the checklist whenever the Live tab becomes visible
   } else if (mode === 'soundcheck') {
     title.textContent = 'Soundcheck · Meters';
@@ -2105,7 +2120,9 @@ function removeChannelStrip(idx) {
   // Reindex/clear the measurement source (#456) before the splice, using the
   // pre-removal selection.
   lcStore.getState().setMeasurementSource(measurementSourceAfterRemove(lcStore.getState().measurementSource, idx));
-  // Same reindex/clear semantics apply to the focused input (#525).
+  // Same reindex/clear semantics apply to the EQ pane's selection (#668) and
+  // the focused input (#525).
+  lcStore.getState().setSelectedChannel(measurementSourceAfterRemove(lcStore.getState().selectedChannel, idx));
   focusedInputIndex = measurementSourceAfterRemove(focusedInputIndex, idx);
   channelConfig.splice(idx, 1);
   // Drop the removed strip from any group and shift higher indices down so no
@@ -2125,8 +2142,10 @@ function resetChannelConfig() {
   applySavedLabels();
   hydrateChannelGroups();
   // Config is rebuilt on a device switch — old measurement-source indices are
-  // meaningless (#456).
+  // meaningless (#456). The EQ pane's selection (#668) is reset for the same
+  // reason.
   lcStore.getState().setMeasurementSource(null);
+  lcStore.getState().setSelectedChannel(null);
   // Same reasoning applies to the focused input (#525) — it never dangles
   // across a device swap.
   focusedInputIndex = null;
@@ -2257,7 +2276,47 @@ document.getElementById('measurement-source').addEventListener('change', (e) => 
   const value = e.target.value === '' ? null : parseInt(e.target.value, 10);
   lcStore.getState().setMeasurementSource(normalizeMeasurementSource(value, channelConfig.length));
   renderMeasurementBadge();
+  renderEqPane(currentEqPaneChannels());
 });
+
+// Docked live EQ pane resize (#668): drag the handle, or focus it and press
+// ArrowLeft/ArrowRight. The pane is docked to the right edge of #workspace
+// with the handle riding its left edge, so dragging toward the window's
+// center (decreasing clientX) widens the pane and dragging away shrinks it.
+// The final width persists to settings.json so it survives across sessions.
+(function initEqPaneResize() {
+  const pane = document.getElementById('live-eq-pane');
+  const handle = document.getElementById('live-eq-resize');
+  if (!pane || !handle) return;
+  let startX = 0;
+  let startW = 0;
+  function widthFromDrag(clientX) {
+    return clampEqPaneWidth(startW + (startX - clientX));
+  }
+  function onPointerMove(e) {
+    pane.style.width = widthFromDrag(e.clientX) + 'px';
+  }
+  function onPointerUp(e) {
+    document.removeEventListener('pointermove', onPointerMove);
+    document.removeEventListener('pointerup', onPointerUp);
+    void setStore.getState().updateSettings({ liveEqPaneWidth: widthFromDrag(e.clientX) });
+  }
+  handle.addEventListener('pointerdown', (e) => {
+    startX = e.clientX;
+    startW = clampEqPaneWidth(parseFloat(pane.style.width));
+    document.addEventListener('pointermove', onPointerMove);
+    document.addEventListener('pointerup', onPointerUp);
+  });
+  handle.addEventListener('keydown', (e) => {
+    if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+    e.preventDefault();
+    const current = clampEqPaneWidth(parseFloat(pane.style.width));
+    // Matches the drag handle's direction (decreasing clientX widens): ArrowLeft widens, ArrowRight shrinks.
+    const next = clampEqPaneWidth(current + (e.key === 'ArrowLeft' ? EQ_PANE_RESIZE_STEP : -EQ_PANE_RESIZE_STEP));
+    pane.style.width = next + 'px';
+    void setStore.getState().updateSettings({ liveEqPaneWidth: next });
+  });
+})();
 
 document.getElementById('live-start-btn').addEventListener('click', async () => {
   const device = document.getElementById('device-select').value || undefined;

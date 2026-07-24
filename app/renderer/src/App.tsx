@@ -18,7 +18,6 @@ import * as liveCapturePanel from './live-capture-panel';
 import * as crashHooks from './crash-hooks';
 import rootMarkup from './root-markup.html?raw';
 import rigReconcileSrc from '../rig-reconcile.js?raw';
-import collapseStateSrc from '../collapse-state.js?raw';
 import armStateSrc from '../arm-state.js?raw';
 import channelLabelsSrc from '../channel-labels.js?raw';
 import instrumentProfilesSrc from '../instrument-profiles.js?raw';
@@ -62,7 +61,6 @@ import { installStoreBridge } from './stores/bridge';
 // the UI and reads those globals. Ported verbatim — see the source files.
 const BOOT_SCRIPTS = [
   rigReconcileSrc,
-  collapseStateSrc,
   armStateSrc,
   channelLabelsSrc,
   instrumentProfilesSrc,

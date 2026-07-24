@@ -577,6 +577,15 @@
 
     /* Spectrum panel */
     #spectrum-panel { flex:1; display:flex; flex-direction:column; min-width:0; overflow:hidden; }
+
+    /* Docked live EQ pane (#668): one resizable pane replaces the per-strip
+       EQs. EQ_PANE_MIN_W/MAX_W cross-ref: app/renderer/src/live-capture-panel.ts. */
+    #live-eq-pane { display:none; flex-shrink:0; min-width:260px; max-width:640px; background:var(--bg-panel); border-left:1px solid var(--border-default); flex-direction:row; }
+    #live-eq-resize { width:5px; cursor:col-resize; flex-shrink:0; }
+    #live-eq-resize:hover, #live-eq-resize:active { background:var(--border-default); }
+    #live-eq-pane-body { display:flex; flex-direction:column; overflow-y:auto; min-width:0; flex:1; padding:16px 18px; gap:20px; }
+    .eq-pane-header { font:var(--fw-semibold) var(--fs-micro)/1 var(--font-sans); letter-spacing:var(--tracking-caps); text-transform:uppercase; color:var(--text-tertiary); margin-bottom:10px; }
+    .eq-pane-empty-hint { font:var(--fw-regular) var(--fs-label)/1.3 var(--font-sans); color:var(--text-muted); }
     #spectrum-header { display:flex; align-items:center; gap:20px; padding:11px 20px; border-bottom:1px solid var(--border-subtle); background:var(--bg-panel); flex-shrink:0; min-height:52px; }
     #spectrum-title { font:var(--fw-semibold) var(--fs-micro)/1 var(--font-sans); letter-spacing:var(--tracking-caps); text-transform:uppercase; color:var(--text-tertiary); }
     #stats-row { margin-left:auto; display:none; gap:26px; }
@@ -632,19 +641,18 @@
     .live-ch-x:hover:not(:disabled) { color:var(--issue-text); border-color:var(--issue-500); }
     .live-ch-x:disabled { opacity:0.35; cursor:not-allowed; }
 
-    /* Per-strip collapse (#40): a chevron folds a strip to just its header
-       (name + RMS/peak + clip), hiding the arc + bars. Header is the compact
-       one-line summary, so collapsing only hides .veq / .veq-labels. */
-    .live-ch-fold { align-self:center; background:none; border:none; padding:0 2px; margin:-2px 2px -2px -2px; color:var(--text-muted); cursor:pointer; font-size:10px; line-height:1; transition:transform var(--dur-base) var(--ease-out); }
-    .live-ch-fold:hover { color:var(--text-primary); }
-    .live-ch.collapsed .live-ch-fold { transform:rotate(-90deg); }
-    .live-ch.collapsed { padding:8px 0; }
-    .live-ch.collapsed .live-ch-head { margin-bottom:0; }
-    .live-ch.collapsed .veq, .live-ch.collapsed .veq-labels { display:none; }
+    /* Strip selection (#668): clicking a strip highlights it and drives the
+       docked EQ pane's "Selected" section — replaces the old per-strip
+       collapse/fold (#40), which moved off the strip entirely once the chart
+       moved into the shared pane. */
+    .live-ch.selected { background:var(--surface-raised); border-radius:var(--radius-md); margin:0 -10px; padding:14px 10px; box-shadow:inset 3px 0 0 var(--gold-500); }
+    /* Inline level bar (#668): a compact always-on readout replacing the
+       per-strip chart, so a strip still shows signal at a glance. */
+    .live-ch-level { position:relative; width:48px; height:4px; flex:0 0 auto; align-self:center; border-radius:var(--radius-sm); background:var(--meter-track); overflow:hidden; }
+    .live-ch-level-fill { position:absolute; left:0; top:0; bottom:0; border-radius:var(--radius-sm); background:var(--gold-500); transition:width var(--dur-base) var(--ease-out); }
     /* Group-level collapse (#483): a collapsed group hides its member strips
-       entirely (distinct from the per-strip fold above, which only compacts
-       one strip's own header) — strips stay in the DOM so live-tick patching
-       keeps working, CSS just hides them. */
+       entirely — strips stay in the DOM so live-tick patching keeps working,
+       CSS just hides them. */
     .live-ch.group-collapsed { display:none; }
     .live-meters-toolbar { display:flex; align-items:center; gap:8px; margin-bottom:14px; }
     /* Workspace toolbar cap (#188): "N / M used" channel count. */
@@ -1065,6 +1073,7 @@
        workspace width. */
     body.single-column #spectrum-panel { display:none; }
     body.single-column #source-panel { width:100%; flex:1; border-right:none; }
+    body.single-column #live-eq-pane { display:none; }
 
     /* Status pill */
     .pill { display:inline-flex; align-items:center; gap:5px; padding:3px 10px; border-radius:var(--radius-pill); font:var(--fw-semibold) var(--fs-label)/1 var(--font-sans); letter-spacing:var(--tracking-caps); white-space:nowrap; }
