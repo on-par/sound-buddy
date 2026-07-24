@@ -1,8 +1,13 @@
 ---
 import BrandMark from './BrandMark.astro';
 import { WAITLIST_FAQ_ENTRIES } from '../lib/faq';
+import {
+  DEMO_VIDEO_EYEBROW, PLACEHOLDER_HEADING, PLACEHOLDER_BODY,
+  EMBED_HEADING, EMBED_BODY, demoVideoState,
+} from '../lib/demo-video';
 
 const REPO_URL = 'https://github.com/on-par/sound-buddy';
+const demoVideo = demoVideoState(process.env);
 ---
 
 <header class="site-header">
@@ -47,13 +52,33 @@ const REPO_URL = 'https://github.com/on-par/sound-buddy';
 
 <section class="section tight demo-video">
   <div class="container demo-video-card card">
-    <span class="demo-video-icon" aria-hidden="true">▶</span>
-    <h2 class="h2">Demo video coming soon</h2>
-    <p class="lede">
-      We're finishing a walkthrough of Sound Buddy grading a real Sunday recording end to
-      end — capture, report card, and the fix. It'll drop right here, and everyone on the
-      waitlist hears first.
-    </p>
+    {demoVideo.mode === 'placeholder' ? (
+      <Fragment>
+        <span class="demo-video-icon" aria-hidden="true">▶</span>
+        <span class="eyebrow">{DEMO_VIDEO_EYEBROW}</span>
+        <h2 class="h2">{PLACEHOLDER_HEADING}</h2>
+        <p class="lede">{PLACEHOLDER_BODY}</p>
+      </Fragment>
+    ) : (
+      <Fragment>
+        <span class="eyebrow">{DEMO_VIDEO_EYEBROW}</span>
+        <h2 class="h2">{EMBED_HEADING}</h2>
+        <p class="lede">{EMBED_BODY}</p>
+        <div class="demo-video-frame">
+          {demoVideo.mode === 'iframe' ? (
+            <iframe
+              src={demoVideo.embedUrl}
+              title={EMBED_HEADING}
+              loading="lazy"
+              allowfullscreen
+              allow="encrypted-media; picture-in-picture"
+            ></iframe>
+          ) : (
+            <video controls preload="metadata" src={demoVideo.src}></video>
+          )}
+        </div>
+      </Fragment>
+    )}
   </div>
 </section>
 
@@ -182,6 +207,8 @@ const REPO_URL = 'https://github.com/on-par/sound-buddy';
   .demo-video-card { padding: 44px 40px; text-align: center; max-width: 640px; margin: 0 auto; }
   .demo-video-icon { display: inline-flex; align-items: center; justify-content: center; width: 44px; height: 44px; border-radius: 50%; background: var(--gold-tint); color: var(--gold-text); font-size: 18px; margin-bottom: 16px; }
   .demo-video-card .lede { margin: 10px auto 0; }
+  .demo-video-frame { margin-top: 24px; aspect-ratio: 16 / 9; border-radius: var(--radius-md); overflow: hidden; background: var(--neutral-1000); }
+  .demo-video-frame iframe, .demo-video-frame video { width: 100%; height: 100%; border: 0; display: block; }
 
   .trust { background: var(--bg-panel); border-top: 1px solid var(--border-subtle); border-bottom: 1px solid var(--border-subtle); }
   .trust-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 32px; padding: 36px 24px; }
