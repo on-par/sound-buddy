@@ -43,9 +43,9 @@ jobs:
 
       # Media tools + Python analysis deps must be present BEFORE the Vitest
       # steps: the fixture parser tests (#150) shell out to sox/ffprobe and the
-      # spectrum + drift-guard tests run spectrum.py via librosa. Without these
-      # the tests skip; with them they execute and assert real numbers in CI.
-      # librosa is pinned so the fixture band values stay stable across runs.
+      # spectrum + drift-guard tests run spectrum.py via numpy/scipy/soundfile.
+      # Without these the tests skip; with them they execute and assert real
+      # numbers in CI.
       #
       # sox/ffmpeg are cached (~30 transitive codec packages) — an apt mirror
       # stall once left this step hanging for 15+ min on a cache miss; the
@@ -61,7 +61,7 @@ jobs:
         timeout-minutes: 4
         run: |
           python -m pip install --upgrade pip
-          pip install numpy scipy soundfile "librosa==0.11.0"
+          pip install numpy scipy soundfile
 
       - name: Build
         run: npm run build
@@ -122,12 +122,12 @@ jobs:
           if-no-files-found: ignore
           retention-days: 14
 
-      - name: Python audio-engine tests (stream.py + playback.py)
+      - name: Python audio-engine tests (stream.py + playback.py + spectrum.py)
         # sounddevice is stubbed by the tests, so PortAudio isn't needed here.
-        # numpy + scipy + soundfile were installed above alongside librosa.
         run: |
           python packages/audio-engine/scripts/test_stream.py
           python packages/audio-engine/scripts/test_playback.py
+          python packages/audio-engine/scripts/test_spectrum.py
 
   # Electron e2e (#402, TD-008): the stubbed Playwright specs validate the real
   # product shell (report card, live capture, entitlement/licensing gating).

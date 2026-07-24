@@ -12,6 +12,5 @@
 
 numpy>=1.24
 scipy>=1.10
-librosa>=0.10        # spectrum.py: STFT, spectral centroid/rolloff
-soundfile>=0.12      # librosa I/O backend for wav/flac/aiff
+soundfile>=0.12      # spectrum.py: WAV/FLAC/AIFF/OGG decode (ffmpeg subprocess fallback for m4a/aac)
 sounddevice>=0.4     # stream.py: live audio capture

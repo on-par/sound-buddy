@@ -9,7 +9,7 @@ Sound Buddy is a Mac (Electron) desktop app for church audio engineers. It analy
 **Monorepo** (npm workspaces):
 - `packages/shared` — shared TypeScript types
 - `packages/scene-inspector` — M32R .scn scene file parser and diff
-- `packages/audio-engine` — core audio analysis (sox, ffprobe, librosa spectrum)
+- `packages/audio-engine` — core audio analysis (sox, ffprobe, numpy/scipy spectrum)
 - `packages/cli` — `buddy` CLI tool
 - `app/` — Electron desktop app (not a workspace member, has its own package.json)
 
@@ -160,7 +160,7 @@ For automated check arbitration (e.g. the software factory's boss agent):
 - Node.js 20+, TypeScript strict
 - Electron (app/)
 - sox, ffprobe, ffmpeg (bundled in production, on PATH in dev)
-- Python 3 + librosa/numpy/scipy (bundled in production, local venv in dev)
+- Python 3 + numpy/scipy (bundled in production, local venv in dev)
 - Ollama (optional, for local AI narrative)
 - Vitest (unit tests), Playwright (e2e)
 

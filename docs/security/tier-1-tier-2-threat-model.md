@@ -98,7 +98,7 @@ flowchart LR
 
     subgraph Local analysis
         SOX["Bundled sox / ffprobe"]
-        PY["Bundled Python: librosa"]
+        PY["Bundled Python: numpy/scipy"]
         SI["packages/scene-inspector"]
     end
 

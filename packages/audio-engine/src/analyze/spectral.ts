@@ -1,5 +1,5 @@
 // Shared spectral-analysis core (dedupe #2/#15 FFT work). The FFT itself is
-// already shared upstream in spectrum.py (one librosa.stft feeding the fixed
+// already shared upstream in spectrum.py (one STFT feeding the fixed
 // log-grid SpectrumCurve); these primitives operate on that curve.
 // `findSpectralPeaks` serves #15 feedback ring-out peak-picking, `bandEnergy`
 // serves #2 harshness band-energy comparison. Both are grid-agnostic — a

@@ -43,7 +43,7 @@ cd app && npm install && npm run dev   # dev uses PATH sox/ffprobe + a local ven
 |---------|-------------|
 | `@sound-buddy/shared` | Shared TypeScript types |
 | `@sound-buddy/scene-inspector` | M32R .scn scene file parser and diff |
-| `@sound-buddy/audio-engine` | Core audio analysis (sox, ffprobe, librosa spectrum) |
+| `@sound-buddy/audio-engine` | Core audio analysis (sox, ffprobe, numpy/scipy spectrum) |
 | `@sound-buddy/cli` | `buddy` CLI tool |
 
 ## Requirements
@@ -54,7 +54,7 @@ only for the **CLI** and **building from source**:
 - Node.js 20+
 - `sox` — `brew install sox`
 - `ffmpeg/ffprobe` — `brew install ffmpeg`
-- Python 3 + librosa — `pip install librosa numpy`
+- Python 3 + numpy/scipy/soundfile — `pip install -r packages/audio-engine/scripts/requirements.txt`
 - [Ollama](https://ollama.ai) (for local LLM analysis, optional)
 
 Building the macOS app locally additionally needs `dylibbundler` (`brew install

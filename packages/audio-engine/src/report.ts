@@ -132,7 +132,7 @@ export function buildReport(analysis: AudioAnalysis): string {
   lines.push("");
 
   // --- Frequency Band Analysis ---
-  lines.push("[ FREQUENCY BAND ENERGY (librosa, dB RMS) ]");
+  lines.push("[ FREQUENCY BAND ENERGY (dB RMS) ]");
   lines.push(`  Sub-bass   (20-60 Hz):      ${fmt(bands.subBass)} dB`);
   lines.push(`  Bass       (60-250 Hz):     ${fmt(bands.bass)} dB`);
   lines.push(`  Low-mid    (250-500 Hz):    ${fmt(bands.lowMid)} dB`);
