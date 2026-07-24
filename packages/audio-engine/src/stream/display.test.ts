@@ -97,7 +97,7 @@ function countCursorUps(output: string): number {
 describe("render", () => {
   it("renders header and waiting message for null currentWindow", async () => {
     const render = await loadRender();
-    render({ windows: [], currentWindow: null }, "TestDevice", 3, 2.5, 0);
+    render({ windows: [], currentWindow: null }, "TestDevice", 3, 2.5);
 
     expect(stdout).toContain("SOUND BUDDY — LIVE");
     expect(stdout).toContain("TestDevice");
@@ -110,7 +110,7 @@ describe("render", () => {
 
   it("renders waiting message for empty channels array", async () => {
     const render = await loadRender();
-    render(makeState([]), "TestDevice", 1, 1, 0);
+    render(makeState([]), "TestDevice", 1, 1);
 
     expect(stdout).toContain("Waiting for audio...");
   });
@@ -118,7 +118,7 @@ describe("render", () => {
   it("renders the single-channel levels line", async () => {
     const render = await loadRender();
     const state = makeState([makeChannel({ rms: -18.5, peak: -6.2 })]);
-    render(state, "TestDevice", 1, 1, 0);
+    render(state, "TestDevice", 1, 1);
 
     expect(stdout).toContain("RMS: -18.5 dBFS");
     expect(stdout).toContain("Peak: -6.2 dBFS");
@@ -130,7 +130,7 @@ describe("render", () => {
   it("renders all 7 band labels in order", async () => {
     const render = await loadRender();
     const state = makeState([makeChannel()]);
-    render(state, "TestDevice", 1, 1, 0);
+    render(state, "TestDevice", 1, 1);
 
     const labels = [
       "Sub-bass",
@@ -154,7 +154,7 @@ describe("render", () => {
   it("shows the clip badge when clipping is true", async () => {
     const render = await loadRender();
     const state = makeState([makeChannel({ clipping: true })]);
-    render(state, "TestDevice", 1, 1, 0);
+    render(state, "TestDevice", 1, 1);
 
     expect(stdout).toContain(BG_RED);
     expect(stdout).toContain("CLIP: YES");
@@ -176,7 +176,7 @@ describe("render", () => {
         },
       }),
     ]);
-    render(state, "TestDevice", 1, 1, 0);
+    render(state, "TestDevice", 1, 1);
 
     const line = findLine(stdout, "Sub-bass");
     expect(line).toContain("░".repeat(16));
@@ -186,7 +186,7 @@ describe("render", () => {
   it("dbToBar: -6 renders 16 filled blocks", async () => {
     const render = await loadRender();
     const state = makeState([makeChannel({ bands: { sub_bass: -6 } })]);
-    render(state, "TestDevice", 1, 1, 0);
+    render(state, "TestDevice", 1, 1);
 
     const line = findLine(stdout, "Sub-bass");
     expect(line).toContain("█".repeat(16));
@@ -195,21 +195,21 @@ describe("render", () => {
   it("dbToBar: 0 and +3 clamp to 16 filled blocks", async () => {
     const render1 = await loadRender();
     const state0 = makeState([makeChannel({ bands: { sub_bass: 0 } })]);
-    render1(state0, "TestDevice", 1, 1, 0);
+    render1(state0, "TestDevice", 1, 1);
     expect(findLine(stdout, "Sub-bass")).toContain("█".repeat(16));
 
     vi.resetModules();
     resetStdoutCapture();
     const render2 = await loadRender();
     const state3 = makeState([makeChannel({ bands: { sub_bass: 3 } })]);
-    render2(state3, "TestDevice", 1, 1, 0);
+    render2(state3, "TestDevice", 1, 1);
     expect(findLine(stdout, "Sub-bass")).toContain("█".repeat(16));
   });
 
   it("dbToBar: -33 renders half-filled bar", async () => {
     const render = await loadRender();
     const state = makeState([makeChannel({ bands: { sub_bass: -33 } })]);
-    render(state, "TestDevice", 1, 1, 0);
+    render(state, "TestDevice", 1, 1);
 
     const line = findLine(stdout, "Sub-bass");
     expect(line).toContain("█".repeat(8) + "░".repeat(8));
@@ -218,7 +218,7 @@ describe("render", () => {
   it("colorBar: green above -24 dB", async () => {
     const render = await loadRender();
     const state = makeState([makeChannel({ bands: { sub_bass: -20 } })]);
-    render(state, "TestDevice", 1, 1, 0);
+    render(state, "TestDevice", 1, 1);
 
     expect(findLine(stdout, "Sub-bass")).toContain(GREEN);
   });
@@ -226,7 +226,7 @@ describe("render", () => {
   it("colorBar: yellow above -36 dB", async () => {
     const render = await loadRender();
     const state = makeState([makeChannel({ bands: { sub_bass: -30 } })]);
-    render(state, "TestDevice", 1, 1, 0);
+    render(state, "TestDevice", 1, 1);
 
     expect(findLine(stdout, "Sub-bass")).toContain(YELLOW);
   });
@@ -234,7 +234,7 @@ describe("render", () => {
   it("colorBar: dim at or below -36 dB", async () => {
     const render = await loadRender();
     const state = makeState([makeChannel({ bands: { sub_bass: -50 } })]);
-    render(state, "TestDevice", 1, 1, 0);
+    render(state, "TestDevice", 1, 1);
 
     expect(findLine(stdout, "Sub-bass")).toContain(DIM);
   });
@@ -242,7 +242,7 @@ describe("render", () => {
   it("marks only the loudest band", async () => {
     const render = await loadRender();
     const state = makeState([makeChannel()]);
-    render(state, "TestDevice", 1, 1, 0);
+    render(state, "TestDevice", 1, 1);
 
     const midLine = findLine(stdout, "Mid ");
     expect(midLine).toContain("◀ loudest");
@@ -253,7 +253,7 @@ describe("render", () => {
   it("falls back missing band keys to -60", async () => {
     const render = await loadRender();
     const state = makeState([makeChannel({ bands: { mid: -10 } })]);
-    render(state, "TestDevice", 1, 1, 0);
+    render(state, "TestDevice", 1, 1);
 
     const labels = [
       "Sub-bass",
@@ -275,7 +275,7 @@ describe("render", () => {
   it("formats centroid and rolloff", async () => {
     const render = await loadRender();
     const state = makeState([makeChannel({ centroid: 1500, rolloff: 800 })]);
-    render(state, "TestDevice", 1, 1, 0);
+    render(state, "TestDevice", 1, 1);
 
     expect(stdout).toContain("Centroid: 1.5kHz");
     expect(stdout).toContain("Rolloff: 800Hz");
@@ -284,7 +284,7 @@ describe("render", () => {
   it("rounds sub-1kHz centroid values", async () => {
     const render = await loadRender();
     const state = makeState([makeChannel({ centroid: 999.6 })]);
-    render(state, "TestDevice", 1, 1, 0);
+    render(state, "TestDevice", 1, 1);
 
     expect(stdout).toContain("Centroid: 1000Hz");
   });
@@ -292,7 +292,7 @@ describe("render", () => {
   it("formats a zero peak with a + sign", async () => {
     const render = await loadRender();
     const state = makeState([makeChannel({ peak: 0 })]);
-    render(state, "TestDevice", 1, 1, 0);
+    render(state, "TestDevice", 1, 1);
 
     expect(stdout).toContain("Peak: +0.0 dBFS");
   });
@@ -302,7 +302,7 @@ describe("render", () => {
     const kick = makeChannel({ index: 0, name: "Kick", rms: -30 });
     const vox = makeChannel({ index: 1, name: "Vox", rms: -10 });
     const state = makeState([kick, vox]);
-    render(state, "TestDevice", 1, 1, 0);
+    render(state, "TestDevice", 1, 1);
 
     expect(stdout).toContain("CHANNEL OVERVIEW");
     expect(stdout).toContain("CH");
@@ -321,7 +321,7 @@ describe("render", () => {
     const clipped = makeChannel({ index: 0, name: "Kick", rms: -10, clipping: true });
     const clean = makeChannel({ index: 1, name: "Vox", rms: -30, clipping: false });
     const state = makeState([clipped, clean]);
-    render(state, "TestDevice", 1, 1, 0);
+    render(state, "TestDevice", 1, 1);
 
     expect(stdout).toContain(`${BG_RED}YES${RESET}`);
     expect(stdout).toContain("NO");
@@ -338,7 +338,7 @@ describe("render", () => {
     const chB = makeChannel({ index: 1, name: "B", rms: -20, bands: {} });
     const state = makeState([chA, chB]);
 
-    expect(() => render(state, "TestDevice", 1, 1, 0)).not.toThrow();
+    expect(() => render(state, "TestDevice", 1, 1)).not.toThrow();
     expect(stdout).toContain("Presence");
     expect(stdout).toContain("Sub-bass");
   });
@@ -351,7 +351,7 @@ describe("render", () => {
       [chA, chB],
       [{ band: "low_mid", channelA: "Kick", channelB: "Bass", diffDb: 2.34 }]
     );
-    render(state, "TestDevice", 1, 1, 0);
+    render(state, "TestDevice", 1, 1);
 
     expect(stdout).toContain("MASKING ALERTS");
     expect(stdout).toContain("⚠");
@@ -363,32 +363,25 @@ describe("render", () => {
     const chA = makeChannel({ index: 0, name: "Kick", rms: -10 });
     const chB = makeChannel({ index: 1, name: "Bass", rms: -20 });
     const state = makeState([chA, chB], []);
-    render(state, "TestDevice", 1, 1, 0);
+    render(state, "TestDevice", 1, 1);
 
     expect(stdout).toContain("No masking conflicts detected.");
   });
 
-  it("shows the LLM countdown footer when nextLlmIn > 0", async () => {
+  it("shows the quit-hint footer", async () => {
     const render = await loadRender();
     const state = makeState([makeChannel()]);
-    render(state, "TestDevice", 1, 1, 30);
+    render(state, "TestDevice", 1, 1);
 
-    expect(stdout).toContain("Next LLM analysis in: 30s");
-    expect(stdout).toContain("press L = analyze now");
-  });
-
-  it("shows the disabled footer when nextLlmIn is 0", async () => {
-    const render = await loadRender();
-    const state = makeState([makeChannel()]);
-    render(state, "TestDevice", 1, 1, 0);
-
-    expect(stdout).toContain("LLM analysis disabled");
+    expect(stdout).toContain("Press Q = quit");
+    expect(stdout).not.toContain("Next LLM analysis in");
+    expect(stdout).not.toContain("LLM analysis disabled");
   });
 
   it("writes clearLine+col1 prefixed ANSI plumbing on first render", async () => {
     const render = await loadRender();
     const state = makeState([makeChannel()]);
-    render(state, "TestDevice", 1, 1, 0);
+    render(state, "TestDevice", 1, 1);
 
     expect(stdout.startsWith(`${CLEAR_LINE}${COL1}`)).toBe(true);
     expect(stdout).toContain(BOLD);
@@ -402,7 +395,7 @@ describe("render", () => {
     // rather than hardcoding it, so this test tracks buildLines() if its
     // empty-state branch ever gains or loses a line.
     const probeRender = await loadRender();
-    probeRender(emptyState, "TestDevice", 1, 1, 0);
+    probeRender(emptyState, "TestDevice", 1, 1);
     const emptyLineCount = (stdout.match(/\n/g) ?? []).length;
 
     vi.resetModules();
@@ -415,17 +408,17 @@ describe("render", () => {
       [{ band: "low_mid", channelA: "Kick", channelB: "Bass", diffDb: 2.34 }]
     );
 
-    render(multiState, "TestDevice", 1, 1, 0);
+    render(multiState, "TestDevice", 1, 1);
     const firstStdout = stdout;
     expect(countCursorUps(firstStdout)).toBe(0);
     const lineCount = (firstStdout.match(/\n/g) ?? []).length;
 
     stdout = "";
-    render(multiState, "TestDevice", 1, 1, 0);
+    render(multiState, "TestDevice", 1, 1);
     expect(stdout.startsWith(`\x1b[${lineCount}A`)).toBe(true);
 
     stdout = "";
-    render(emptyState, "TestDevice", 1, 1, 0);
+    render(emptyState, "TestDevice", 1, 1);
     expect(stdout.startsWith(`\x1b[${lineCount}A`)).toBe(true);
     expect(stdout).toContain(`\x1b[${lineCount - emptyLineCount}A`);
   });
@@ -433,11 +426,11 @@ describe("render", () => {
   it("does not emit a second cursor-up when the frame grows", async () => {
     const render = await loadRender();
     const emptyState: LiveState = { windows: [], currentWindow: null };
-    render(emptyState, "TestDevice", 1, 1, 0);
+    render(emptyState, "TestDevice", 1, 1);
 
     stdout = "";
     const state = makeState([makeChannel()]);
-    render(state, "TestDevice", 1, 1, 0);
+    render(state, "TestDevice", 1, 1);
 
     expect(stdout.startsWith("\x1b[3A")).toBe(true);
     expect(countCursorUps(stdout)).toBe(1);

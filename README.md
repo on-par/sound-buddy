@@ -6,6 +6,8 @@ Audio analysis and coaching tool for church sound engineers. Analyze recordings,
 
 **Unlimited recordings. Stored on your machine.** No usage caps on any tier — no recording-count, length, or storage limits. Recordings live in a folder you choose (Settings ▸ Storage); point it inside iCloud Drive, Dropbox, or Google Drive if you want your own sync.
 
+**Works with the AI you already have.** Sound Buddy never proxies AI or charges for inference — no vendor lock-in, no metered usage.
+
 ## Quick Start
 
 ### CLI
@@ -54,31 +56,10 @@ only for the **CLI** and **building from source**:
 - `sox` — `brew install sox`
 - `ffmpeg/ffprobe` — `brew install ffmpeg`
 - Python 3 + numpy/scipy/soundfile — `pip install -r packages/audio-engine/scripts/requirements.txt`
-- [Ollama](https://ollama.ai) (for local LLM analysis, optional)
 
 Building the macOS app locally additionally needs `dylibbundler` (`brew install
 dylibbundler`); `app/build/afterPack.js` bundles the native tools + a relocatable Python
 into the `.app`.
-
-## AI narrative (optional)
-
-**Works with the AI you already have.** Sound Buddy never proxies AI or charges for
-inference — you bring your own, either a local Ollama or an API key you already pay for.
-
-The Report Card (score, metrics, recommendations) is fully deterministic and needs **no
-AI**. The optional "AI Engineer" prose narrative is powered by a provider you choose, set in
-`~/Library/Application Support/SoundBuddy/llm.json` (or the `SOUND_BUDDY_LLM_PROVIDER` /
-`SOUND_BUDDY_LLM_MODEL` env vars in dev):
-
-- **Offline — local Ollama** (recommended for a no-cloud machine): `ollama pull llama3.2`,
-  then `{ "provider": "ollama", "model": "llama3.2" }`. Direct HTTP, no account.
-- **Your own subscription / API key — via [pi](https://pi.dev)**: install pi (`npm i -g
-  @earendil-works/pi-coding-agent`, needs Node 22+), run `pi` → `/login` and pick ChatGPT
-  Plus/Pro (Codex), Claude Pro/Max, or Copilot (or set an API key), then
-  `{ "provider": "anthropic", "model": "claude-sonnet-4-6" }` (or `openai`, etc.). The app
-  spawns the `pi` CLI, which reads your shared `~/.pi/agent/auth.json`.
-
-With nothing configured, the panel shows a hint and the rest of the app is unaffected.
 
 ## Development
 

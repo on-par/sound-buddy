@@ -4,16 +4,13 @@ import { PassThrough } from "node:stream";
 
 vi.mock("node:child_process", () => ({ spawn: vi.fn() }));
 vi.mock("./display.js", () => ({ render: vi.fn() }));
-vi.mock("../engineer.js", () => ({ analyzeStream: vi.fn().mockResolvedValue(undefined) }));
 
 import { spawn } from "node:child_process";
 import { render } from "./display.js";
-import { analyzeStream } from "../engineer.js";
 import { buildStreamArgs, startLive, type LiveOptions } from "./index.js";
 
 const base: LiveOptions = {
   windowSecs: 3,
-  llmIntervalSecs: 0,
 };
 
 describe("buildStreamArgs", () => {
@@ -71,7 +68,6 @@ describe("buildStreamArgs", () => {
       device: "M32R",
       channels: [0, 2, 3],
       windowSecs: 5,
-      llmIntervalSecs: 30,
       intervalSecs: 0.1,
       recordPath: "/out.wav",
       sessionDir: "/tmp/sess",
@@ -187,13 +183,12 @@ describe("startLive", () => {
     await flush();
 
     const call = vi.mocked(render).mock.calls.at(-1)!;
-    const [state, deviceLabel, windowNum, windowSecs, countdown] = call;
+    const [state, deviceLabel, windowNum, windowSecs] = call;
     expect((state as { windows: unknown[] }).windows).toHaveLength(1);
     expect((state as { currentWindow: { window: number } }).currentWindow?.window).toBe(1);
     expect(deviceLabel).toBe("Default Device");
     expect(windowNum).toBe(1);
     expect(windowSecs).toBe(base.windowSecs);
-    expect(countdown).toBe(0);
   });
 
   it("uses the configured device as the render label", async () => {
@@ -268,49 +263,6 @@ describe("startLive", () => {
     expect(stdout).toContain("\x1b[?25h");
   });
 
-  it("triggers the LLM once the interval has elapsed, forwarding windows and channel names", async () => {
-    vi.useFakeTimers({ toFake: ["Date"] });
-    vi.setSystemTime(0);
-    const child = makeFakeChild();
-    vi.mocked(spawn).mockReturnValue(child as never);
-
-    void startLive({ windowSecs: 5, llmIntervalSecs: 30, channelNames: ["Vox", "Gtr"] });
-    child.stdout.write(windowLine(1) + "\n");
-    await flush();
-    expect(analyzeStream).not.toHaveBeenCalled();
-
-    vi.setSystemTime(31_000);
-    child.stdout.write(windowLine(2) + "\n");
-    await flush();
-    await flush();
-
-    expect(analyzeStream).toHaveBeenCalledTimes(1);
-    const [windows, channelNames] = vi.mocked(analyzeStream).mock.calls[0]!;
-    expect(windows).toHaveLength(2);
-    expect(channelNames).toEqual(["Vox", "Gtr"]);
-  });
-
-  it("writes an LLM error to stdout and re-renders when analyzeStream rejects", async () => {
-    vi.useFakeTimers({ toFake: ["Date"] });
-    vi.setSystemTime(0);
-    const child = makeFakeChild();
-    vi.mocked(spawn).mockReturnValue(child as never);
-    vi.mocked(analyzeStream).mockRejectedValueOnce(new Error("boom"));
-
-    void startLive({ windowSecs: 5, llmIntervalSecs: 30 });
-    child.stdout.write(windowLine(1) + "\n");
-    await flush();
-
-    vi.setSystemTime(31_000);
-    const renderCallsBefore = vi.mocked(render).mock.calls.length;
-    child.stdout.write(windowLine(2) + "\n");
-    await flush();
-    await flush();
-
-    expect(stdout).toContain("[LLM error:");
-    expect(vi.mocked(render).mock.calls.length).toBeGreaterThan(renderCallsBefore);
-  });
-
   it("exits 0 without logging when stream.py closes with code 0", () => {
     const child = makeFakeChild();
     vi.mocked(spawn).mockReturnValue(child as never);
@@ -344,7 +296,7 @@ describe("startLive", () => {
     expect(process.exit).toHaveBeenCalledWith(1);
   });
 
-  it("handles TTY keypresses: l triggers LLM guard, unknown keys no-op, q kills and exits", () => {
+  it("handles TTY keypresses: unknown keys no-op, q kills and exits", () => {
     const originalIsTTY = process.stdin.isTTY;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any -- non-TTY stdin lacks setRawMode
     const originalSetRawMode = (process.stdin as any).setRawMode;
@@ -362,11 +314,7 @@ describe("startLive", () => {
       vi.mocked(spawn).mockReturnValue(child as never);
       void startLive(base);
 
-      process.stdin.emit("data", "l");
-      expect(analyzeStream).not.toHaveBeenCalled();
-
       process.stdin.emit("data", "x");
-      expect(analyzeStream).not.toHaveBeenCalled();
       expect(child.kill).not.toHaveBeenCalled();
 
       process.stdin.emit("data", "q");
