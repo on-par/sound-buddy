@@ -10,12 +10,9 @@ import {
   cleanupChannelFiles,
   dominantBandLabel,
   formatChannelTable,
-  toAnalysisSummary,
 } from '@sound-buddy/audio-engine'
 import type { ChannelAnalysis, ChannelFile } from '@sound-buddy/audio-engine'
-import type { NarrativePort } from '@sound-buddy/audio-engine/dist/narrative/port.js'
-import { generateInsights } from './insights.js'
-import type { SceneDiff, AnalystInput } from '@sound-buddy/shared'
+import type { SceneDiff } from '@sound-buddy/shared'
 
 export interface AnalyzeOptions {
   /** Two .scn files (before/after) for a scene diff. */
@@ -24,8 +21,6 @@ export interface AnalyzeOptions {
   dir?: string
   /** Emit machine-readable JSON instead of a formatted report. */
   json?: boolean
-  /** Skip the supplementary AI insights pass. */
-  noAi?: boolean
 }
 
 /** Injectable I/O so the command is testable without touching real stdio. */
@@ -33,8 +28,6 @@ export interface AnalyzeIO {
   log?: (s: string) => void
   error?: (s: string) => void
   exit?: (code: number) => void
-  /** Injectable so tests can stub the AI pass without a real provider. */
-  narrativePort?: NarrativePort
 }
 
 function printChannelTable(channelAnalyses: ChannelAnalysis[], log: (s: string) => void): void {
@@ -90,7 +83,6 @@ async function analyzeChannelSafe(
  *     multi-channel WAV that is split into per-channel measurements)
  *   - a `--dir` of per-channel files
  *   - `--json` machine output
- *   - a supplementary AI insights pass (skipped with `--no-ai` or `--json`)
  */
 export async function runAnalyze(
   file: string | undefined,
@@ -173,37 +165,6 @@ export async function runAnalyze(
     } else {
       log('=== Per-Channel Summary ===')
       printChannelTable(channelAnalyses, log)
-      log('')
-    }
-  }
-
-  // --- AI insights / engineer's read (supplementary) ---------------------
-  // The heading matches the domain language of each mode; the section is only
-  // emitted when there is something to show, so no empty header is ever left
-  // dangling.
-  if (!opts.noAi && (channelAnalyses.length > 0 || diff)) {
-    const heading = multiChannel ? "--- Multi-Channel Engineer's Read ---" : '=== AI Insights ==='
-    const input: AnalystInput = {}
-    if (diff) input.diff = diff
-    if (channelAnalyses.length > 0) {
-      input.audio = toAnalysisSummary(channelAnalyses)
-    }
-
-    // The AI call is supplementary — if it fails, keep the measurements already
-    // printed above rather than discarding all output.
-    try {
-      const insights = await generateInsights(input, io.narrativePort)
-      if (insights.length > 0) {
-        log(heading)
-        for (const insight of insights) {
-          const tag = insight.severity === 'warning' ? '⚠' : insight.severity === 'suggestion' ? '→' : 'ℹ'
-          log(`  ${tag} ${insight.message}`)
-        }
-        log('')
-      }
-    } catch (err) {
-      log(heading)
-      log(`  (AI analysis unavailable: ${err instanceof Error ? err.message : String(err)})`)
       log('')
     }
   }

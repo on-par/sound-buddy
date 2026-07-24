@@ -27,14 +27,11 @@ program
   .option('--dir <directory>', 'Analyze directory of per-channel files')
   .option('--scene <file>', 'Scene file for diff (pass twice for before/after)', (v, acc: string[]) => { acc.push(v); return acc }, [] as string[])
   .option('--json', 'Output as JSON')
-  .option('--no-ai', 'Skip AI analysis')
-  .action((file: string | undefined, opts: { dir?: string; scene: string[]; json?: boolean; ai: boolean }) => {
+  .action((file: string | undefined, opts: { dir?: string; scene: string[]; json?: boolean }) => {
     runAnalyze(file, {
       scenes: opts.scene ?? [],
       dir: opts.dir,
       json: opts.json,
-      // Commander stores the negated `--no-ai` flag under `opts.ai` (default true).
-      noAi: opts.ai === false,
     }).catch((err) => {
       console.error(err instanceof Error ? err.message : String(err))
       process.exit(1)
