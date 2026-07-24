@@ -96,7 +96,6 @@ test.describe.serial('Rigs — save / load / switch', () => {
       };
       set('meter-interval', '200');
       set('window-secs', '5');
-      set('llm-interval', '120');
     });
     await win.locator('.live-ch-kind').first().selectOption('stereo');
 
@@ -115,7 +114,6 @@ test.describe.serial('Rigs — save / load / switch', () => {
       mode: 'record',
       intervalMs: 200,
       windowSecs: 5,
-      llmIntervalMs: 120000,
     });
     expect(rigs[0].channelConfig.length).toBeGreaterThanOrEqual(2);
     expect(rigs[0].channelConfig[0]).toMatchObject({ kind: 'stereo' });
@@ -131,7 +129,6 @@ test.describe.serial('Rigs — save / load / switch', () => {
     await expect(win.locator('#live-mode button[data-mode="record"]')).toHaveClass(/active/);
     expect(await win.locator('#meter-interval').inputValue()).toBe('200');
     expect(await win.locator('#window-secs').inputValue()).toBe('5');
-    expect(await win.locator('#llm-interval').inputValue()).toBe('120');
   });
 
   test('loading a rig whose device is absent shows a fallback and does not auto-start', async () => {
@@ -322,7 +319,7 @@ test.describe.serial('Rigs — save / load / switch', () => {
   test('capture-config controls lock on Start and re-enable on Stop', async () => {
     await stubCapture(true);
     const locked = ['#device-select', '#device-refresh-btn', '#record-folder-btn',
-      '#meter-interval', '#window-secs', '#llm-interval'];
+      '#meter-interval', '#window-secs'];
 
     await win.locator('#live-start-btn').click();
     for (const sel of locked) {

@@ -113,11 +113,10 @@
 
     /* ── License gating (#54) ─────────────────────────────────────────
        body.not-pro = no active Pro license. Gated surfaces (Live tab,
-       Soundcheck tab, AI panel body) collapse to an upgrade card
-       (.pro-gate) and their tabs carry a small lock glyph. The free tier
-       keeps the full report card — the app is never locked. Body starts
-       with .not-pro (no flash of Pro UI); boot removes it once the stored
-       key verifies. */
+       Soundcheck tab) collapse to an upgrade card (.pro-gate) and their
+       tabs carry a small lock glyph. The free tier keeps the full report
+       card — the app is never locked. Body starts with .not-pro (no
+       flash of Pro UI); boot removes it once the stored key verifies. */
     .pro-gate { display:none; flex-direction:column; align-items:center; gap:8px; padding:22px 12px; text-align:center; }
     .pro-gate .pg-icon { color:var(--text-muted); }
     .pro-gate .pg-title { font:var(--fw-semibold) var(--fs-body-sm)/1.3 var(--font-sans); color:var(--text-primary); }
@@ -887,8 +886,6 @@
     .spectro-time { font:var(--fw-medium) var(--fs-micro)/1 var(--font-mono); color:var(--text-secondary); font-variant-numeric:tabular-nums; }
     .spectro-playhead { position:absolute; top:0; bottom:0; left:0; width:2px; background:var(--gold-500);
       box-shadow:0 0 6px var(--gold-glow); pointer-events:none; display:none; }
-
-    /* AI panel */
 
     /* ── Report Card ──────────────────────────────────────────────── */
     #reportcard-view { display:none; width:var(--rc-panel-w); flex-shrink:0; flex-direction:column; overflow:hidden; background:var(--bg-app); }
