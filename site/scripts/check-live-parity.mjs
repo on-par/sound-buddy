@@ -21,10 +21,22 @@ const outDirAbs = fileURLToPath(new URL(`../${OUT_DIR}/`, import.meta.url));
 const goldenPath = fileURLToPath(new URL('./live-home.golden.html', import.meta.url));
 const shouldUpdate = process.argv.includes('--update');
 
+// Astro's own env plugin reloads `.env*` files from disk on every build and
+// overwrites process.env with whatever it finds there (astro/dist/env/vite-
+// plugin-env.js's buildStart hook) — so merely deleting a PUBLIC_* key here
+// isn't enough to keep it deterministic if a developer has a site/.env.local
+// with (e.g.) a real PUBLIC_FOUNDING_CHECKOUT_URL. Vite's loadEnv resolves
+// process.env last, so explicitly setting each var below (rather than
+// deleting it) wins over whatever `.env.local` defines (#602).
+const KNOWN_PUBLIC_ENV_VARS = ['PUBLIC_FOUNDING_CHECKOUT_URL', 'PUBLIC_DEMO_VIDEO_URL'];
+
 function sanitizedLiveEnv() {
   const env = { ...process.env };
   for (const key of Object.keys(env)) {
     if (key.startsWith('PUBLIC_')) delete env[key];
+  }
+  for (const key of KNOWN_PUBLIC_ENV_VARS) {
+    env[key] = '';
   }
   env.PUBLIC_SITE_MODE = 'live';
   return env;
@@ -44,7 +56,15 @@ if (result.status !== 0) {
   process.exit(1);
 }
 
-const builtHtml = await readFile(`${outDirAbs}index.html`, 'utf8');
+let builtHtml;
+try {
+  builtHtml = await readFile(`${outDirAbs}index.html`, 'utf8');
+} catch (err) {
+  console.error(
+    `✖ Could not read ${outDirAbs}index.html after a successful astro build (${err.message}) — run \`PUBLIC_SITE_MODE=live npx astro build --outDir ${OUT_DIR}\` in site/ to reproduce (#602).`,
+  );
+  process.exit(1);
+}
 
 if (shouldUpdate) {
   const problems = [...checkLiveHomeLeakMarkers(builtHtml), ...checkLiveHomeStructure(builtHtml)];
@@ -61,10 +81,14 @@ if (shouldUpdate) {
 let goldenHtml;
 try {
   goldenHtml = await readFile(goldenPath, 'utf8');
-} catch {
-  console.error(
-    `✖ No golden found at ${goldenPath} — run \`node scripts/check-live-parity.mjs --update\` once and commit the file (#602).`,
-  );
+} catch (err) {
+  if (err.code === 'ENOENT') {
+    console.error(
+      `✖ No golden found at ${goldenPath} — run \`node scripts/check-live-parity.mjs --update\` once and commit the file (#602).`,
+    );
+  } else {
+    console.error(`✖ Could not read the golden at ${goldenPath}: ${err.message} (#602).`);
+  }
   process.exit(1);
 }
 

@@ -41,6 +41,19 @@ describe('compareLiveHomeToGolden', () => {
     expect(problems.length).toBeGreaterThan(0);
     expect(problems.some((p) => p.includes('0'))).toBe(true);
   });
+
+  it('ignores a footer copyright year that differs across a calendar-year rollover', () => {
+    const golden = '<p class="footer-meta mono">© 2026 <a href="https://onpardev.com" rel="noopener">On PAR Dev</a> · Built for worship teams</p>';
+    const built = '<p class="footer-meta mono">© 2027 <a href="https://onpardev.com" rel="noopener">On PAR Dev</a> · Built for worship teams</p>';
+    expect(compareLiveHomeToGolden(built, golden)).toEqual([]);
+  });
+
+  it('still flags a real content difference elsewhere even when the footer year also differs', () => {
+    const golden = '<p class="footer-meta mono">© 2026 <a href="https://onpardev.com" rel="noopener">On PAR Dev</a> · Built for worship teams</p><h1>Old copy</h1>';
+    const built = '<p class="footer-meta mono">© 2027 <a href="https://onpardev.com" rel="noopener">On PAR Dev</a> · Built for worship teams</p><h1>New copy</h1>';
+    const problems = compareLiveHomeToGolden(built, golden);
+    expect(problems.length).toBeGreaterThan(0);
+  });
 });
 
 describe('checkLiveHomeLeakMarkers', () => {

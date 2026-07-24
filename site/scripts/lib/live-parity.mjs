@@ -27,6 +27,17 @@ const LIVE_SECTION_IDS = ['id="how"', 'id="proof"', 'id="faq"', 'id="pricing"'];
 const LIVE_TIER_NAMES = ['Founding Lifetime', 'Pro Monthly', 'Pro Annual', 'Free'];
 const LIVE_HERO_EYEBROW = 'For church FOH volunteers &amp; worship engineers';
 
+// The footer's copyright year (index.astro: `© {new Date().getFullYear()}`)
+// is the one intentionally build-time-varying byte in the live homepage —
+// normalize it before comparing so the golden doesn't rot at every calendar
+// year rollover (#602).
+const FOOTER_YEAR_RE = /(©\s*)\d{4}(\s*<a href="https:\/\/onpardev\.com")/;
+const FOOTER_YEAR_PLACEHOLDER = '$1YYYY$2';
+
+function normalizeFooterYear(html) {
+  return html.replace(FOOTER_YEAR_RE, FOOTER_YEAR_PLACEHOLDER);
+}
+
 function excerptAround(str, index) {
   const start = Math.max(0, index - EXCERPT_RADIUS);
   const end = Math.min(str.length, index + EXCERPT_RADIUS);
@@ -46,20 +57,22 @@ function firstDiffIndex(a, b) {
  * golden. Returns an array of human-readable problem strings (empty === OK).
  */
 export function compareLiveHomeToGolden(liveHtml, goldenHtml) {
-  if (liveHtml === goldenHtml) return [];
+  const liveNormalized = normalizeFooterYear(liveHtml);
+  const goldenNormalized = normalizeFooterYear(goldenHtml);
+  if (liveNormalized === goldenNormalized) return [];
 
   const problems = [];
 
-  if (liveHtml.length !== goldenHtml.length) {
+  if (liveNormalized.length !== goldenNormalized.length) {
     problems.push(
-      `Live-mode homepage length (${liveHtml.length} chars) differs from the golden (${goldenHtml.length} chars) (#602).`,
+      `Live-mode homepage length (${liveNormalized.length} chars) differs from the golden (${goldenNormalized.length} chars) (#602).`,
     );
   }
 
-  const diffIdx = firstDiffIndex(liveHtml, goldenHtml);
+  const diffIdx = firstDiffIndex(liveNormalized, goldenNormalized);
   if (diffIdx !== -1) {
     problems.push(
-      `Live-mode homepage differs from the golden at character ${diffIdx} — built: "${excerptAround(liveHtml, diffIdx)}" vs golden: "${excerptAround(goldenHtml, diffIdx)}". ` +
+      `Live-mode homepage differs from the golden at character ${diffIdx} — built: "${excerptAround(liveNormalized, diffIdx)}" vs golden: "${excerptAround(goldenNormalized, diffIdx)}". ` +
         'The fix is to undo whatever changed in the live render, not to regenerate the golden. ' +
         'Only regenerate (via `node scripts/check-live-parity.mjs --update`, then commit the file) for an intentional, human-approved change to the live homepage (#602).',
     );
