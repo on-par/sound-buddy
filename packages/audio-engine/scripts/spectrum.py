@@ -94,10 +94,16 @@ def _load_audio(path: str):
     try:
         data, sr = sf.read(path, dtype="float32", always_2d=True)
     except Exception:
-        raw = subprocess.run(
-            ["ffmpeg", "-v", "error", "-i", path, "-f", "wav", "-acodec", "pcm_f32le", "-"],
-            capture_output=True, check=True,
-        ).stdout
+        try:
+            raw = subprocess.run(
+                ["ffmpeg", "-v", "error", "-i", path, "-f", "wav", "-acodec", "pcm_f32le", "-"],
+                capture_output=True, check=True,
+            ).stdout
+        except subprocess.CalledProcessError as ffmpeg_exc:
+            stderr = (ffmpeg_exc.stderr or b"").decode("utf-8", errors="replace").strip()
+            raise RuntimeError(
+                f"ffmpeg could not decode '{path}': {stderr or 'no error output from ffmpeg'}"
+            ) from ffmpeg_exc
         data, sr = sf.read(io.BytesIO(raw), dtype="float32", always_2d=True)
     y = data.mean(axis=1) if data.shape[1] > 1 else data[:, 0]
     return y.astype(np.float32), int(sr)
@@ -126,6 +132,13 @@ def _frames_to_time(idx: np.ndarray, sr: int, hop: int) -> np.ndarray:
 def _rms_frames(y: np.ndarray, frame_length: int, hop_length: int) -> np.ndarray:
     """Centered windowed RMS: zero-pad by frame_length // 2 before framing."""
     ypad = np.pad(y, frame_length // 2, mode="constant")
+    if len(ypad) < frame_length:
+        # Near-empty input (e.g. a corrupted/header-only file decodes to 0
+        # samples) combined with an odd frame_length pads one sample short of
+        # a full window — no frames fit. compute_dynamic_range's empty-array
+        # branch turns this into a clean 0.0 rather than a sliding_window_view
+        # ValueError.
+        return np.zeros(0, dtype=np.float64)
     n = 1 + (len(ypad) - frame_length) // hop_length
     frames = np.lib.stride_tricks.sliding_window_view(ypad, frame_length)[::hop_length][:n]
     return np.sqrt(np.mean(frames.astype(np.float64) ** 2, axis=1))

@@ -17,6 +17,7 @@ import sys
 import json
 import wave
 import struct
+import shutil
 import tempfile
 import subprocess
 import unittest
@@ -29,6 +30,8 @@ try:
     HAVE_SOUNDFILE = True
 except ImportError:
     HAVE_SOUNDFILE = False
+
+HAVE_FFMPEG = shutil.which("ffmpeg") is not None
 
 try:
     import librosa
@@ -175,11 +178,64 @@ class LoadAudio(unittest.TestCase):
         with self.assertRaises(Exception):
             spectrum._load_audio("/nonexistent/path/does-not-exist.wav")
 
+    @unittest.skipUnless(HAVE_SOUNDFILE and HAVE_FFMPEG, "soundfile+ffmpeg not installed")
+    def test_ffmpeg_fallback_decodes_m4a(self):
+        # soundfile (libsndfile) can't read m4a/aac — this exercises the
+        # subprocess fallback's actual success path, not just its error path.
+        sr = 44100
+        tone, _ = _sine(freq=440.0, sr=sr, amplitude=0.5, seconds=0.5)
+        with tempfile.TemporaryDirectory() as tmp:
+            wav_path = os.path.join(tmp, "tone.wav")
+            m4a_path = os.path.join(tmp, "tone.m4a")
+            sf.write(wav_path, tone, sr)
+            subprocess.run(
+                ["ffmpeg", "-v", "error", "-y", "-i", wav_path, "-c:a", "aac", m4a_path],
+                capture_output=True, check=True,
+            )
+            self.assertRaises(Exception, sf.read, m4a_path)  # confirms the fallback is exercised
+            y, loaded_sr = spectrum._load_audio(m4a_path)
+        self.assertEqual(loaded_sr, sr)
+        self.assertEqual(y.dtype, np.float32)
+        # Lossy AAC re-encode: compare RMS level rather than sample-exact.
+        self.assertAlmostEqual(
+            float(np.sqrt(np.mean(y.astype(np.float64) ** 2))),
+            float(np.sqrt(np.mean(tone.astype(np.float64) ** 2))),
+            delta=0.05,
+        )
+
+    @unittest.skipUnless(HAVE_FFMPEG, "ffmpeg not installed")
+    def test_ffmpeg_fallback_failure_includes_stderr(self):
+        # A file soundfile can't read AND ffmpeg can't decode either (not
+        # audio at all) — the raised error must carry ffmpeg's actual stderr
+        # diagnostic, not just "returned non-zero exit status 1".
+        with tempfile.TemporaryDirectory() as tmp:
+            bogus_path = os.path.join(tmp, "not-audio.wav")
+            with open(bogus_path, "wb") as fh:
+                fh.write(b"this is not an audio file at all")
+            with self.assertRaises(Exception) as ctx:
+                spectrum._load_audio(bogus_path)
+        message = str(ctx.exception)
+        self.assertIn("ffmpeg could not decode", message)
+        self.assertNotIn("no error output from ffmpeg", message)
+
 
 class DynamicRangeOfZeros(unittest.TestCase):
     def test_zero_signal_dynamic_range_is_zero(self):
         y = np.zeros(44100, dtype=np.float32)
         self.assertEqual(spectrum.compute_dynamic_range(y, 44100), 0.0)
+
+    def test_zero_length_audio_at_odd_frame_length_does_not_crash(self):
+        # A header-only/corrupted decode can yield 0 samples. At sr=22050 (a
+        # common voice-memo rate), frame_length = int(22050*0.1) = 2205 is
+        # odd, so the centered pad lands one sample short of a full window —
+        # this used to raise a ValueError out of sliding_window_view instead
+        # of the clean 0.0 the empty-rms_frames branch is supposed to give.
+        y = np.zeros(0, dtype=np.float32)
+        self.assertEqual(spectrum.compute_dynamic_range(y, 22050), 0.0)
+
+    def test_rms_frames_returns_empty_for_zero_length_odd_frame(self):
+        rms = spectrum._rms_frames(np.zeros(0, dtype=np.float32), 2205, 1102)
+        self.assertEqual(len(rms), 0)
 
 
 @unittest.skipUnless(HAVE_SOUNDFILE, "soundfile not installed")

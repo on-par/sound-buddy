@@ -2,8 +2,8 @@
 # One-time setup for the Sound Buddy macOS app.
 #
 # The app shells out to three external tools that aren't bundled:
-#   - sox and ffmpeg      → installed via Homebrew
-#   - python + librosa…   → installed into a per-user virtualenv the app looks for
+#   - sox and ffmpeg        → installed via Homebrew
+#   - python + numpy/scipy… → installed into a per-user virtualenv the app looks for
 #
 # Run this once after dropping "Sound Buddy.app" into /Applications. It's safe to
 # re-run. The app finds the venv at:
@@ -52,7 +52,7 @@ echo "==> Installing Python dependencies (this can take a minute)"
 "$VENV_DIR/bin/pip" install --quiet -r "$REQUIREMENTS"
 
 echo "==> Verifying"
-"$VENV_DIR/bin/python" -c "import librosa, soundfile, numpy, scipy; print('    python deps ok')"
+"$VENV_DIR/bin/python" -c "import soundfile, numpy, scipy; print('    python deps ok')"
 
 echo ""
 echo "Setup complete. Launch Sound Buddy from /Applications."
