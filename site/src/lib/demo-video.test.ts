@@ -61,6 +61,14 @@ describe('youtubeVideoId', () => {
   it('returns null when the watch URL has no v param', () => {
     expect(youtubeVideoId('https://www.youtube.com/watch')).toBeNull();
   });
+
+  it('returns null for a youtu.be URL with an empty path', () => {
+    expect(youtubeVideoId('https://youtu.be/')).toBeNull();
+  });
+
+  it('returns null for an /embed/ URL with no id segment', () => {
+    expect(youtubeVideoId('https://www.youtube.com/embed/')).toBeNull();
+  });
 });
 
 describe('vimeoVideoId', () => {
@@ -74,6 +82,10 @@ describe('vimeoVideoId', () => {
 
   it('returns null for a non-Vimeo URL', () => {
     expect(vimeoVideoId('https://www.youtube.com/watch?v=dQw4w9WgXcQ')).toBeNull();
+  });
+
+  it('returns null for a non-URL string', () => {
+    expect(vimeoVideoId('not a url')).toBeNull();
   });
 });
 

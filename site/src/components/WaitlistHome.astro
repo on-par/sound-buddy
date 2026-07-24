@@ -52,16 +52,15 @@ const demoVideo = demoVideoState(process.env);
 
 <section class="section tight demo-video">
   <div class="container demo-video-card card">
+    {demoVideo.mode === 'placeholder' && <span class="demo-video-icon" aria-hidden="true">▶</span>}
+    <span class="eyebrow">{DEMO_VIDEO_EYEBROW}</span>
     {demoVideo.mode === 'placeholder' ? (
       <Fragment>
-        <span class="demo-video-icon" aria-hidden="true">▶</span>
-        <span class="eyebrow">{DEMO_VIDEO_EYEBROW}</span>
         <h2 class="h2">{PLACEHOLDER_HEADING}</h2>
         <p class="lede">{PLACEHOLDER_BODY}</p>
       </Fragment>
     ) : (
       <Fragment>
-        <span class="eyebrow">{DEMO_VIDEO_EYEBROW}</span>
         <h2 class="h2">{EMBED_HEADING}</h2>
         <p class="lede">{EMBED_BODY}</p>
         <div class="demo-video-frame">
