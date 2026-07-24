@@ -66,6 +66,18 @@ describe('checkWaitlistHomeInvariants', () => {
     const problems = checkWaitlistHomeInvariants(html);
     expect(problems.some((p) => p.includes('/privacy'))).toBe(true);
   });
+
+  it('flags an href="/download?src=nav" (query-string case)', () => {
+    const html = `${okHtml}<a href="/download?src=nav">Download</a>`;
+    const problems = checkWaitlistHomeInvariants(html);
+    expect(problems.some((p) => p.includes('/download?src=nav'))).toBe(true);
+  });
+
+  it('flags an href="#pricing?ref=hero" (query-suffixed anchor case)', () => {
+    const html = `${okHtml}<a href="#pricing?ref=hero">Pricing</a>`;
+    const problems = checkWaitlistHomeInvariants(html);
+    expect(problems.some((p) => p.includes('#pricing?ref=hero'))).toBe(true);
+  });
 });
 
 describe('checkLiveHomeInvariants', () => {
@@ -105,6 +117,11 @@ describe('checkLiveHomeInvariants', () => {
     const problems = checkLiveHomeInvariants(html);
     expect(problems.some((p) => p.includes('/privacy'))).toBe(true);
   });
+
+  it('passes when Download/Pricing links carry a query string or prefix variant', () => {
+    const html = `<a href="/download/mac">Download</a><a href="/#pricing">Pricing</a><a href="/terms">Terms</a><a href="/privacy">Privacy</a>`;
+    expect(checkLiveHomeInvariants(html)).toEqual([]);
+  });
 });
 
 describe('checkLegalPageInvariants', () => {
@@ -136,6 +153,12 @@ describe('checkLegalPageInvariants', () => {
     const html = `${okHtml}<a href="#pricing">Pricing</a>`;
     const problems = checkLegalPageInvariants(html, '/terms');
     expect(problems.some((p) => p.includes('#pricing'))).toBe(true);
+  });
+
+  it('flags a /download href with a query string', () => {
+    const html = `${okHtml}<a href="/download?src=nav">Download</a>`;
+    const problems = checkLegalPageInvariants(html, '/terms');
+    expect(problems.some((p) => p.includes('/download?src=nav'))).toBe(true);
   });
 });
 

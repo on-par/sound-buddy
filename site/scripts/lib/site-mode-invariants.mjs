@@ -17,12 +17,25 @@ export function collectAnchorHrefs(html) {
   return out;
 }
 
+// Strip a trailing query string and/or fragment so a tracking param appended
+// later (e.g. "/download?src=nav") can't silently defeat these checks (#601).
+function pathOnly(href) {
+  const hashIdx = href.indexOf('#');
+  return (hashIdx === -1 ? href : href.slice(0, hashIdx)).split('?')[0];
+}
+
+function fragmentOnly(href) {
+  const hashIdx = href.indexOf('#');
+  return hashIdx === -1 ? null : href.slice(hashIdx + 1).split('?')[0];
+}
+
 function isDownloadHref(href) {
-  return href === DOWNLOAD_PATH || href.startsWith(`${DOWNLOAD_PATH}/`);
+  const path = pathOnly(href);
+  return path === DOWNLOAD_PATH || path.startsWith(`${DOWNLOAD_PATH}/`);
 }
 
 function isPricingAnchorHref(href) {
-  return href === PRICING_ANCHOR || href === `/${PRICING_ANCHOR}`;
+  return fragmentOnly(href) === 'pricing' && (pathOnly(href) === '' || pathOnly(href) === '/');
 }
 
 /**
@@ -67,12 +80,13 @@ export function checkLiveHomeInvariants(html) {
   const hrefs = collectAnchorHrefs(html);
   const problems = [];
 
-  for (const href of [DOWNLOAD_PATH, PRICING_ANCHOR, '/terms', '/privacy']) {
-    if (!hrefs.includes(href)) {
-      problems.push(
-        `Live homepage is missing the ${href} link — the live nav must keep Download/Pricing and the legal links (#601).`,
-      );
-    }
+  const missingLink = (label) =>
+    `Live homepage is missing the ${label} link — the live nav must keep Download/Pricing and the legal links (#601).`;
+
+  if (!hrefs.some(isDownloadHref)) problems.push(missingLink(DOWNLOAD_PATH));
+  if (!hrefs.some(isPricingAnchorHref)) problems.push(missingLink(PRICING_ANCHOR));
+  for (const path of ['/terms', '/privacy']) {
+    if (!hrefs.includes(path)) problems.push(missingLink(path));
   }
 
   return problems;

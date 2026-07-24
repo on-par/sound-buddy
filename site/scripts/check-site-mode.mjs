@@ -57,7 +57,13 @@ for (const [mode, outDir] of MODES) {
     problems.push(...checkLegalPageInvariants(html, path).map((p) => `[${mode}] ${p}`));
   }
 
-  const indexHtml = await readFile(`${outDirAbs}index.html`, 'utf8');
+  let indexHtml;
+  try {
+    indexHtml = await readFile(`${outDirAbs}index.html`, 'utf8');
+  } catch {
+    problems.push(`[${mode}] index.html did not build in ${mode} mode — cannot verify homepage nav trim (#601).`);
+    continue;
+  }
   const homeProblems = mode === 'waitlist' ? checkWaitlistHomeInvariants(indexHtml) : checkLiveHomeInvariants(indexHtml);
   problems.push(...homeProblems.map((p) => `[${mode}] ${p}`));
 
