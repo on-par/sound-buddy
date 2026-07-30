@@ -180,6 +180,22 @@
             </div>
           </label>
 
+          <!-- Secondary measurement device (#460) — experimental, hidden unless
+               secondaryMeasurementEnabled. A metering-only room mic, separate
+               from the board capture; blocked/disconnected states and the
+               permanent time-alignment warning render into the nodes below. -->
+          <label class="select-label" id="secondary-measurement-block" style="display:none">
+            <span>Secondary Measurement Device (experimental)</span>
+            <div class="select-row">
+              <div class="select-wrap">
+                <select id="secondary-measurement-device"><option value="">None (use board channel)</option></select>
+                <span class="select-caret" data-icon="chevron-down"></span>
+              </div>
+            </div>
+            <p id="secondary-measurement-status" class="device-hint"></p>
+            <p id="secondary-measurement-warning" class="device-hint"></p>
+          </label>
+
           <!-- Monitor vs Record -->
           <div>
             <div class="seg-label">Mode</div>

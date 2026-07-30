@@ -111,6 +111,37 @@ describe('Docked live EQ pane markup (#668)', () => {
   });
 });
 
+describe('Secondary measurement device source (#460)', () => {
+  it('has the block, device picker, status line, and warning container', () => {
+    expect(markup).toContain('id="secondary-measurement-block"');
+    expect(markup).toContain('id="secondary-measurement-device"');
+    expect(markup).toContain('id="secondary-measurement-status"');
+    expect(markup).toContain('id="secondary-measurement-warning"');
+  });
+
+  it('starts hidden — inline-app.js shows it only when the flag is on', () => {
+    expect(markup).toMatch(/id="secondary-measurement-block"[^>]*style="display:none"/);
+  });
+
+  it('sits directly after the primary measurement-source picker', () => {
+    const primaryIdx = markup.indexOf('id="measurement-source"');
+    const secondaryIdx = markup.indexOf('id="secondary-measurement-block"');
+    expect(primaryIdx).toBeGreaterThan(-1);
+    expect(secondaryIdx).toBeGreaterThan(primaryIdx);
+  });
+
+  it('inline-app.js gates the block on the secondaryMeasurementEnabled setting', () => {
+    expect(inlineApp).toContain('applySecondaryMeasurementSettings');
+    expect(inlineApp).toContain('secondaryMeasurementEnabled');
+  });
+
+  it('inline-app.js routes the Room feed through roomFeed() and polls for reconnect', () => {
+    expect(inlineApp).toContain('roomFeed()');
+    expect(inlineApp).toContain('startSecondaryMeasurement');
+    expect(inlineApp).toContain('SECONDARY_RECONNECT_POLL_MS');
+  });
+});
+
 describe('Existing tabs stay intact under the unified Analyze picker (#543)', () => {
   it('keeps all seven mode tabs, unchanged', () => {
     ['dir', 'live', 'soundcheck', 'recent', 'guide', 'ringout', 'reportcard'].forEach((mode) => {

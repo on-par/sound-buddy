@@ -2295,8 +2295,10 @@ function renderMeasurementSource() {
 // Label which strip the room-analysis indicators are judging (#457) — lives
 // in the header's LIVE indicator so it's visible whenever analysis runs.
 function renderMeasurementBadge() {
-  document.getElementById('measurement-badge').textContent =
-    measurementSourceBadgeText(channelConfig, lcStore.getState().measurementSource);
+  // #460: the badge reads the Room feed — the board strip by default, the
+  // secondary mic when the experimental source is active. roomFeed() returns
+  // the board badge unchanged when the flag is off, so this is byte-identical.
+  document.getElementById('measurement-badge').textContent = roomFeed().badge;
 }
 
 // Lock/unlock every capture-config control while a capture runs (#38). stream.py
@@ -2379,6 +2381,10 @@ async function loadDevices() {
   // once devices were actually found (mirrors the original early returns that
   // skipped this on every non-happy branch).
   if (view.devices.length) resetChannelConfig();
+
+  // #460: keep the experimental secondary-device picker in sync with the fresh
+  // device list (no-op DOM write when the flag is off, block is hidden).
+  if (secondaryFlagOn()) populateSecondaryDevicePicker();
 }
 
 document.getElementById('device-refresh-btn').addEventListener('click', () => loadDevices());
@@ -3159,8 +3165,11 @@ sb.onLiveEvent((data) => {
   // Every event (fast meter ticks + slower window ticks) drives the live view,
   // coalesced to one repaint per animation frame.
   if (currentMode === 'live') scheduleLiveMeters(data);
+  // The room-analysis stats row reads the Room source. When the experimental
+  // secondary source (#460) is active it owns the room, so the board tick must
+  // not clobber the row — the measurement-event handler updates it instead.
   const statsCh = measurementChannel(data.channels, lcStore.getState().measurementSource);
-  if (statsCh) updateLiveStatsRow(statsCh);
+  if (statsCh && !secondaryMeasurementActive()) updateLiveStatsRow(statsCh);
 
   // Only the heavier window ticks (which carry masking + window #) accumulate
   // to feed the report card.
@@ -3177,6 +3186,174 @@ sb.onLiveEvent((data) => {
       Date.now(),
       lapObservationContext());
     syncLiveAdjustmentsPanel();
+  }
+});
+
+/* ══ Secondary measurement device (#460, ADR 0003) ══
+   Experimental, default-off room-mic source metered on a SECOND stream.py
+   process, fully independent of the board capture. All decision logic lives in
+   the pure window.measurementDeviceState module; this block is the DOM +
+   lifecycle glue. With the flag off, secondaryMeasurementActive() is always
+   false and roomFeed() returns the board values unchanged, so the app renders
+   byte-identically to today (the #602 parity guard). The secondary EQ-pane
+   Room-slot *visual* swap is deferred (see PR notes) — badge, room stats, and
+   the graded live report-card source are what switch to the secondary mic. */
+const SECONDARY_RECONNECT_POLL_MS = 5000;
+let secondaryReconnectTimer = null;
+
+// Is a secondary room mic actively measuring (selected, streaming, has data)?
+function secondaryMeasurementActive() {
+  const s = lcStore.getState();
+  return s.secondaryMeasurement.status === 'active' && s.secondaryWindows.length > 0;
+}
+
+// The Room feed the badge and live report-card source read: the board strip by
+// default, the secondary mic channel 0 when active. Board values when off.
+function roomFeed() {
+  const s = lcStore.getState();
+  return window.measurementDeviceState.roomFeed(
+    secondaryMeasurementActive(),
+    s.secondaryWindows,
+    s.secondaryMeasurement.deviceName,
+    liveWindows,
+    s.measurementSource,
+    channelConfig,
+  );
+}
+
+// Whether the experimental flag is on (drives the block's visibility + gating).
+function secondaryFlagOn() {
+  const s = setStore.getState().settings;
+  return !!(s && s.secondaryMeasurementEnabled);
+}
+
+// windowSecs/intervalSecs the measurement stream reuses from the board inputs.
+function secondaryCaptureOpts() {
+  return {
+    windowSecs: parseFloat(document.getElementById('window-secs').value),
+    intervalSecs: parseInt(document.getElementById('meter-interval').value, 10) / 1000,
+  };
+}
+
+function renderSecondaryStatus() {
+  const statusEl = document.getElementById('secondary-measurement-status');
+  const warnEl = document.getElementById('secondary-measurement-warning');
+  if (!statusEl || !warnEl) return;
+  const st = lcStore.getState().secondaryMeasurement;
+  statusEl.innerHTML = window.measurementDeviceState.secondaryStatusHTML(st);
+  // The time-alignment warning is permanent whenever a source is selected.
+  const showWarn = st.deviceName !== '' && st.status !== 'off';
+  warnEl.innerHTML = showWarn ? window.measurementDeviceState.alignmentWarningHTML() : '';
+}
+
+function populateSecondaryDevicePicker() {
+  const sel = document.getElementById('secondary-measurement-device');
+  if (!sel) return;
+  sel.innerHTML = window.measurementDeviceState.secondaryDeviceOptionsHTML(
+    liveDevices, lcStore.getState().secondaryMeasurement.deviceName);
+}
+
+function stopSecondaryReconnectPoll() {
+  if (secondaryReconnectTimer) {
+    clearInterval(secondaryReconnectTimer);
+    secondaryReconnectTimer = null;
+  }
+}
+
+// Poll for the remembered device to re-enumerate while disconnected; auto-resume
+// the stream the moment it reappears (the auto-resume AC). Runs only while the
+// flag is on and the state is 'disconnected'.
+function startSecondaryReconnectPoll() {
+  if (secondaryReconnectTimer) return;
+  secondaryReconnectTimer = setInterval(async () => {
+    if (!secondaryFlagOn() || lcStore.getState().secondaryMeasurement.status !== 'disconnected') {
+      stopSecondaryReconnectPoll();
+      return;
+    }
+    const view = deviceListView(await sb.listDevices());
+    liveDevices = view.devices;
+    const decision = window.measurementDeviceState.reconnectDecision(
+      lcStore.getState().secondaryMeasurement, view.devices);
+    if (decision.shouldRestart) {
+      stopSecondaryReconnectPoll();
+      await lcStore.getState().startSecondaryMeasurement(secondaryCaptureOpts());
+      afterSecondaryStateChange();
+    }
+  }, SECONDARY_RECONNECT_POLL_MS);
+}
+
+// Repaint the Room consumers and manage the reconnect poll after any secondary
+// state change (picker change, start result, disconnect, reconnect).
+function afterSecondaryStateChange() {
+  renderSecondaryStatus();
+  renderMeasurementBadge();
+  syncLiveSource();
+  renderEqPane(currentEqPaneChannels());
+  if (lcStore.getState().secondaryMeasurement.status === 'disconnected' && secondaryFlagOn()) {
+    startSecondaryReconnectPoll();
+  } else {
+    stopSecondaryReconnectPoll();
+  }
+}
+
+// Gate the block's visibility, seed the persisted preference, and refresh the
+// picker/status whenever settings load or change. Called from the settings
+// subscription and at boot.
+function applySecondaryMeasurementSettings(settings) {
+  const block = document.getElementById('secondary-measurement-block');
+  const on = !!(settings && settings.secondaryMeasurementEnabled);
+  if (block) block.style.display = on ? '' : 'none';
+  // Seed the store's preference from persisted settings without re-persisting —
+  // only while idle, so a live selection is never stomped by an unrelated save.
+  const name = (settings && settings.measurementDeviceName) || '';
+  const cur = lcStore.getState().secondaryMeasurement;
+  if (cur.status === 'off' && cur.deviceName !== name) {
+    lcStore.setState({ secondaryMeasurement: { status: 'off', deviceName: name } });
+  }
+  if (on) {
+    populateSecondaryDevicePicker();
+    renderSecondaryStatus();
+  } else {
+    stopSecondaryReconnectPoll();
+  }
+}
+
+// Picker change: '' stops the stream and clears the preference; a device sets
+// the preference by name and starts the stream. Blocked/disconnected states are
+// surfaced (never a silent fallback), and the board capture is never touched.
+(function initSecondaryMeasurementPicker() {
+  const sel = document.getElementById('secondary-measurement-device');
+  if (!sel) return;
+  sel.addEventListener('change', async (e) => {
+    const value = e.target.value;
+    const st = lcStore.getState();
+    if (value === '') {
+      await st.stopSecondaryMeasurement();
+      lcStore.getState().setSecondaryDeviceName('');
+      stopSecondaryReconnectPoll();
+    } else {
+      const dev = liveDevices.find((d) => String(d.index) === value);
+      lcStore.getState().setSecondaryDeviceName(dev ? dev.name : '');
+      await lcStore.getState().startSecondaryMeasurement(secondaryCaptureOpts());
+    }
+    afterSecondaryStateChange();
+  });
+})();
+
+// Bind the store's measurement-event folding, then a thin repaint handler on
+// the same channel (registered after the store so state is already updated).
+lcStore.getState().bindMeasurementEvents();
+sb.onMeasurementEvent((data) => {
+  if (!data) return;
+  // A disconnect (or any status-carrying event) repaints + (re)starts the poll.
+  if (data.measurementEnded) { afterSecondaryStateChange(); return; }
+  if (!secondaryMeasurementActive()) { renderSecondaryStatus(); return; }
+  // Active: the secondary mic owns the Room. Update the room stats every tick;
+  // refresh the badge + graded source on the heavier window ticks.
+  if (data.channels && data.channels[0]) updateLiveStatsRow(data.channels[0]);
+  renderMeasurementBadge();
+  if (data.type === 'window' || typeof data.window === 'number') {
+    syncLiveSource();
   }
 });
 
@@ -3328,7 +3505,11 @@ async function initWhatsNew() {
 // Written into analysisStore.liveSource wherever liveWindows changes (TD-001
 // slice 4, #422) so React (ReportCardIsland) can render it.
 function liveReportCardSource() {
-  return lcLiveReportCardSource(liveWindows, lcStore.getState().measurementSource, channelConfig);
+  // #460: grade from the Room feed — the board strip by default, the secondary
+  // mic channel 0 when active. roomFeed() returns the board windows/source/
+  // config unchanged when the flag is off, so this is byte-identical.
+  const f = roomFeed();
+  return lcLiveReportCardSource(f.windows, f.source, f.config);
 }
 function syncLiveSource() {
   anaStore.getState().setLiveSource(liveReportCardSource());
@@ -4428,6 +4609,11 @@ window.inlineDialogs = { openPhaseDoublingDialog, openFeedbackRingout, saveMixAs
     if (nowEnabled !== liveAdjustmentsWasEnabled && currentMode === 'live') syncSpectrumForMode('live');
     liveAdjustmentsWasEnabled = nowEnabled;
   });
+  // Experimental secondary measurement device gate (#460): show/hide the block
+  // and seed the persisted device preference on settings load and every change.
+  // Absent by default — with the flag off the block stays hidden and no second
+  // process is ever spawned.
+  setStore.subscribe((s) => applySecondaryMeasurementSettings(s.settings));
 })();
 
 /* ══ Init ══ */
