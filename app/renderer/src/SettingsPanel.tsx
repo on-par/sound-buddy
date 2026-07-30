@@ -78,6 +78,7 @@ export default function SettingsPanel() {
   const [loadedPath, setLoadedPath] = useState(DEFAULT_STORAGE_PATH);
   const [usageText, setUsageText] = useState('Calculating disk usage…');
   const [usageSignalEnabled, setUsageSignalEnabled] = useState(false);
+  const [gradingProfile, setGradingProfile] = useState<'casual' | 'broadcast'>('casual');
   const [crashReportingEnabled, setCrashReportingEnabled] = useState(false);
   const [dawWorkspaceEnabled, setDawWorkspaceEnabled] = useState(false);
   const [liveAdjustmentsEnabled, setLiveAdjustmentsEnabled] = useState(false);
@@ -94,6 +95,7 @@ export default function SettingsPanel() {
     setPendingDir(null);
     setUsageText('Calculating disk usage…');
     setUsageSignalEnabled(!!settings?.usageSignalEnabled);
+    setGradingProfile(settings?.gradingProfile ?? 'casual');
     setCrashReportingEnabled(!!settings?.crashReportingEnabled);
     setDawWorkspaceEnabled(!!settings?.dawWorkspaceEnabled);
     setLiveAdjustmentsEnabled(!!settings?.liveAdjustmentsEnabled);
@@ -144,6 +146,7 @@ export default function SettingsPanel() {
     const storagePatch = buildStoragePatch(
       pendingDir,
       {
+        gradingProfile,
         usageSignalEnabled,
         crashReportingEnabled,
         dawWorkspaceEnabled,
@@ -216,6 +219,19 @@ export default function SettingsPanel() {
             Record and analyze as much as you want — no limits on any tier. New recordings are saved here; anything
             you&apos;ve already recorded stays in its current folder.
           </p>
+          <fieldset className="ai-field" id="grading-profile-field">
+            <legend className="ai-field-label">Grading profile</legend>
+            <label className="ai-enable-row">
+              <input type="radio" name="grading-profile" value="casual" checked={gradingProfile === 'casual'} onChange={() => setGradingProfile('casual')} />
+              Casual / volunteer
+            </label>
+            <p className="ai-dialog-note">The original Sound Buddy targets: -20 to -14 dBFS/LUFS and at least 6 dB dynamic range.</p>
+            <label className="ai-enable-row">
+              <input type="radio" name="grading-profile" value="broadcast" checked={gradingProfile === 'broadcast'} onChange={() => setGradingProfile('broadcast')} />
+              Broadcast-ready
+            </label>
+            <p className="ai-dialog-note">A stricter local bar: loudness narrows to -18 to -16 dBFS/LUFS, dynamic range rises to 8 dB, and severe band imbalance falls to 12 dB.</p>
+          </fieldset>
           <button
             type="button"
             id="storage-reset-btn"

@@ -51,6 +51,10 @@ const setStore = window.rendererStores.settings;
 const anaStore = window.rendererStores.analysis;
 const specStore = window.rendererStores.spectrum;
 const curAnalysis = () => anaStore.getState().currentAnalysis;
+// #266: every imperative consumer (saved summaries, share export, and upgrade
+// chrome) uses the same local profile as the React report card. Old embedded
+// grading scripts remain safe and retain the historical casual behavior.
+const activeGrading = () => grading.forProfile?.(setStore.getState().settings?.gradingProfile || 'casual') || grading;
 // The measurement-source selection (#456) lives in liveCaptureStore; this
 // script reads/writes it through the store instead of a module-level var.
 const lcStore = window.rendererStores.liveCapture;
@@ -1950,7 +1954,7 @@ function syncReportCardChrome(state, prevState) {
   if (isHistoryCard) {
     lastReportGrade = state.historySummary.gradeLetter;
   } else if (chromeSource) {
-    lastReportGrade = grading.computeGrade(chromeSource);
+    lastReportGrade = activeGrading().computeGrade(chromeSource);
   } else {
     lastReportGrade = null;
   }
@@ -2017,7 +2021,7 @@ document.getElementById('dir-analyze-btn').addEventListener('click', async () =>
       analyzeFile: (fp) => sb.analyzeFile({ filePath: fp }),
       toSummaryInput: (data, fp) => {
         const src = reportCardSourceFromAnalysis(data);
-        return src ? buildAnalysisSummaryInput(src, grading, 'file') : null;
+        return src ? buildAnalysisSummaryInput(src, activeGrading(), 'file') : null;
       },
       saveSummary: (input) => sb.saveAnalysisSummary(input),
       onProgress: (event) => {
@@ -3383,7 +3387,7 @@ let persistGeneration = 0;
 function persistSummary(src, source) {
   try {
     if (!src) return;
-    const summary = buildAnalysisSummaryInput(src, grading, source);
+    const summary = buildAnalysisSummaryInput(src, activeGrading(), source);
     const generation = ++persistGeneration;
     // The handoff note field (#267) is add-at-save-time only — disabled until
     // this run's own save resolves with the record it wrote.
@@ -3927,9 +3931,9 @@ document.getElementById('reportcard-share-btn').addEventListener('click', async 
 
     let grade, score, metrics;
     if (chromeSource) {
-      grade = grading.computeGrade(chromeSource);
-      score = grading.computeScore(chromeSource);
-      metrics = buildMetricRows(chromeSource, grading)
+      grade = activeGrading().computeGrade(chromeSource);
+      score = activeGrading().computeScore(chromeSource);
+      metrics = buildMetricRows(chromeSource, activeGrading())
         .slice(0, MAX_SHARE_METRICS)
         .map((m) => ({ label: m.name, value: m.unit ? `${m.value} ${m.unit}` : m.value }));
     } else if (isHistoryCard) {

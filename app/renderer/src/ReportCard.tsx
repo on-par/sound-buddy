@@ -69,6 +69,8 @@ export interface ReportCardProps {
   comparison?: ProfileComparison | null;
   isAutoProfile?: boolean;
   grade: GradeResult;
+  /** Local grading context used for the displayed result (#266). */
+  gradingProfileLabel?: string;
   /** Caller formats the date — keeps the component pure (no `new Date()`). */
   dateText: string;
   /** Content-type pill + segment ribbon (PRD 04). Omitted → both hidden. */
@@ -115,6 +117,7 @@ export default function ReportCard({
   comparison,
   isAutoProfile = false,
   grade,
+  gradingProfileLabel = 'Casual / volunteer',
   dateText,
   contentType,
   bandDiffApi,
@@ -179,6 +182,8 @@ export default function ReportCard({
           <span id="rc-filename">{analysis.filename}</span>
           <span>·</span>
           <span id="rc-date">{dateText}</span>
+          <span>·</span>
+          <span id="rc-grading-profile">{gradingProfileLabel} profile</span>
         </div>
       </div>
       <div className="rc-score">

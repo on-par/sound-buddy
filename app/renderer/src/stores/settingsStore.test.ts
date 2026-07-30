@@ -24,6 +24,7 @@ describe('createSettingsStore', () => {
       getSettings: async () => {
         mock.calls.push({ method: 'getSettings', args: [] });
         return {
+          gradingProfile: 'casual' as const,
           idealProfile: '',
           customIdealProfiles: [],
           storageDir: '',
@@ -45,6 +46,7 @@ describe('createSettingsStore', () => {
 
   it('updates settings and records the IPC call', async () => {
     const updated = {
+      gradingProfile: 'casual' as const,
       idealProfile: '',
       customIdealProfiles: [],
       storageDir: '',
@@ -91,6 +93,7 @@ describe('createSettingsStore', () => {
 
   it('captures a rejected updateSettings promise and retains previous settings', async () => {
     const initial = {
+      gradingProfile: 'casual' as const,
       idealProfile: '',
       customIdealProfiles: [],
       storageDir: '',
@@ -143,6 +146,7 @@ describe('createSettingsStore', () => {
   it('binds the default hook to the window preload bridge', async () => {
     const mock = createMockSoundBuddy({
       getSettings: async () => ({
+        gradingProfile: 'casual' as const,
         idealProfile: '',
         customIdealProfiles: [],
         storageDir: '',

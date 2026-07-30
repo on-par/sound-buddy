@@ -55,6 +55,11 @@ interface GradingApi extends GradingPillApi, BandDiffApi {
   analyzeRecordingType(src: ReportCardSource): RecordingType;
   explainGrade(src: ReportCardSource): GradeExplanation;
   computeRecommendations(src: ReportCardSource): string[];
+  profile?: { id: 'casual' | 'broadcast'; label: string };
+}
+
+interface ProfiledGradingApi extends GradingApi {
+  forProfile?(id: 'casual' | 'broadcast'): GradingApi;
 }
 
 interface FeedbackPeak {
@@ -86,7 +91,7 @@ interface InlineDialogsApi {
 }
 
 function getGrading(): GradingApi {
-  return (window as unknown as { grading: GradingApi }).grading;
+  return (window as unknown as { grading: ProfiledGradingApi }).grading;
 }
 function getPhaseDoublingState(): PhaseDoublingApi {
   return (window as unknown as { phaseDoublingState: PhaseDoublingApi }).phaseDoublingState;
@@ -357,6 +362,8 @@ export default function ReportCardIsland() {
     : ((liveSource as ReportCardSource | null) ?? null);
 
   let grade: GradeResult | null = null;
+  let gradingApi: GradingApi = getGrading();
+  let gradingProfileLabel = 'Casual / volunteer';
   let comparison: ProfileComparison | null = null;
   let phaseSignal = false;
   let feedbackPeak: FeedbackPeak | null = null;
@@ -368,7 +375,13 @@ export default function ReportCardIsland() {
   const reportFirstUxOn = getReportFirstUxState()?.isEnabled(settings) ?? false;
 
   if (!isHistoryCard && source) {
-    const grading = getGrading();
+    const baseGrading = getGrading() as ProfiledGradingApi;
+    // Older test/embedded harnesses may expose the pre-#266 grading API.
+    // They retain the historical (casual) behavior until their boot script is
+    // refreshed, rather than making the report card fail to render.
+    const grading = baseGrading.forProfile?.(settings?.gradingProfile ?? 'casual') ?? baseGrading;
+    gradingApi = grading;
+    gradingProfileLabel = grading.profile?.label ?? gradingProfileLabel;
     grade = {
       letter: grading.computeGrade(source),
       score: grading.computeScore(source),
@@ -454,9 +467,10 @@ export default function ReportCardIsland() {
           comparison={comparison}
           isAutoProfile={isAutoProfile}
           grade={grade}
+          gradingProfileLabel={gradingProfileLabel}
           dateText={new Date().toLocaleString()}
           contentType={contentTypeView(source.contentType, source.segments)}
-          bandDiffApi={getGrading()}
+          bandDiffApi={gradingApi}
           frames={reportCardFramesView(source.frames)}
           delta={delta}
           scoreRows={scoreRows}

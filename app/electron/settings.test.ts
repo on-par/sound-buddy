@@ -70,6 +70,17 @@ afterEach(() => {
 });
 
 describe('getSettings defaults', () => {
+  it('defaults an absent or invalid grading profile to casual for existing installs', () => {
+    expect(getSettings().gradingProfile).toBe('casual');
+    writeFile({ gradingProfile: 'anything-else' });
+    expect(getSettings().gradingProfile).toBe('casual');
+  });
+
+  it('persists the selected broadcast profile across reads', () => {
+    expect(updateSettings({ gradingProfile: 'broadcast' }).gradingProfile).toBe('broadcast');
+    expect(readFile().gradingProfile).toBe('broadcast');
+    expect(getSettings().gradingProfile).toBe('broadcast');
+  });
   it('returns rigs=[] and activeRigId=null when no settings.json exists', () => {
     const s = getSettings();
     expect(s.rigs).toEqual([]);

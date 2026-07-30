@@ -188,6 +188,9 @@ export function registerSettingsHandlers(): void {
   ipcMain.handle('update-settings', (_event, patch: Record<string, unknown>) => {
     const clean: Partial<ReturnType<typeof getSettings>> = {};
     if (patch && typeof patch === 'object') {
+      if (patch.gradingProfile === 'casual' || patch.gradingProfile === 'broadcast') {
+        clean.gradingProfile = patch.gradingProfile;
+      }
       if (typeof patch.idealProfile === 'string') clean.idealProfile = patch.idealProfile;
       // Storage location (#91). Trimmed; an empty string resets to the platform
       // default (~/Music/Sound Buddy). No size/count limit is ever applied.

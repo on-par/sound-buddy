@@ -26,6 +26,8 @@
 // the TD-011 PR for the full list.
 
 export interface UpdateSettingsPatch {
+  /** Local grading context. `casual` preserves the original grading thresholds. */
+  gradingProfile?: 'casual' | 'broadcast';
   idealProfile?: string;
   customIdealProfiles?: unknown[];
   storageDir?: string;
@@ -191,6 +193,8 @@ export interface CustomIdealProfile {
 }
 
 export interface AppSettings {
+  /** Selected local grading context (#266). `casual` preserves historic grades. */
+  gradingProfile: 'casual' | 'broadcast';
   /** Selected ideal EQ profile id (PRD 05). Empty = auto by content type. */
   idealProfile: string;
   /** User-authored ideal EQ curves for analysis/report comparison. */

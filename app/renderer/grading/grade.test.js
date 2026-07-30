@@ -4,6 +4,26 @@ const grading = require('../grading.js');
 const { flatBands, makeSrc } = require('./fixtures.js');
 
 describe('computeGrade', () => {
+  it('keeps the casual profile byte-for-byte compatible with the default thresholds', () => {
+    const src = makeSrc({ rms: -19, dynamicRange: 7 });
+    expect(grading.forProfile('casual').computeGrade(src)).toBe(grading.computeGrade(src));
+    expect(grading.forProfile('casual').CONFIG).toBe(grading.CONFIG);
+  });
+
+  it('uses documented stricter broadcast-ready thresholds for the same fixture', () => {
+    const src = makeSrc({ rms: -19, dynamicRange: 7 });
+    const casual = grading.forProfile('casual');
+    const broadcast = grading.forProfile('broadcast');
+    expect(casual.CONFIG.rms).toMatchObject({ acceptableMin: -20, acceptableMax: -14 });
+    expect(broadcast.CONFIG.rms).toMatchObject({ acceptableMin: -18, acceptableMax: -16 });
+    expect(casual.CONFIG.dynamicRange).toMatchObject({ good: 6, check: 3 });
+    expect(broadcast.CONFIG.dynamicRange).toMatchObject({ good: 8, check: 5 });
+    expect(casual.computeGrade(src)).toBe('A');
+    expect(broadcast.computeGrade(src)).toBe('C');
+    expect(broadcast.explainGrade(src).deductions.map((d) => d.target)).toEqual([
+      '-18 to -16 dBFS', '≥ 8 dB',
+    ]);
+  });
   it('is an A for a clean, balanced, in-band recording', () => {
     expect(grading.computeGrade(makeSrc())).toBe('A');
   });

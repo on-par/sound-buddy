@@ -31,6 +31,7 @@ const MIN_SERVICE_DAY = 0;
 const MAX_SERVICE_DAY = 6;
 
 const DEFAULTS: AppSettings = {
+  gradingProfile: 'casual',
   idealProfile: '',
   customIdealProfiles: [],
   storageDir: '',
@@ -110,6 +111,10 @@ function fileLiveEqPaneWidth(file: Partial<AppSettings>): number {
   return typeof v === 'number' && Number.isFinite(v) && v > 0 ? v : DEFAULTS.liveEqPaneWidth;
 }
 
+function fileGradingProfile(file: Partial<AppSettings>): AppSettings['gradingProfile'] {
+  return file.gradingProfile === 'broadcast' ? 'broadcast' : 'casual';
+}
+
 /**
  * The channelLabels map from a raw file view, defaulting to a fresh empty
  * object when the key is absent or corrupted (hand-edited to a non-object or
@@ -155,6 +160,7 @@ function fileInputInstrumentProfiles(file: Partial<AppSettings>): Record<string,
 function writeSettingsFile(file: Partial<AppSettings>): void {
   const persisted: AppSettings = {
     ...file,
+    gradingProfile: fileGradingProfile(file),
     idealProfile: file.idealProfile ?? DEFAULTS.idealProfile,
     customIdealProfiles: fileCustomIdealProfiles(file),
     storageDir: file.storageDir ?? DEFAULTS.storageDir,
@@ -195,6 +201,8 @@ export function getSettings(): AppSettings {
   const envReportFirstUx = envBool('SOUND_BUDDY_REPORT_FIRST_UX');
 
   return {
+    // No env layer: the profile is a user-selected local judgment context.
+    gradingProfile: fileGradingProfile(file),
     idealProfile:
       process.env.SOUND_BUDDY_IDEAL_PROFILE?.trim() || file.idealProfile || DEFAULTS.idealProfile,
     customIdealProfiles: fileCustomIdealProfiles(file),

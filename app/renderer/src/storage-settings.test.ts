@@ -6,6 +6,7 @@ import { DEFAULT_STORAGE_PATH, effectiveStoragePath, loadStorageSeed, buildStora
 import type { AppSettings, StorageUsage } from '../../electron/ipc/api';
 
 const LOADED_SETTINGS: AppSettings = {
+  gradingProfile: 'casual',
   idealProfile: '',
   customIdealProfiles: [],
   storageDir: '',
@@ -26,6 +27,7 @@ const LOADED_SETTINGS: AppSettings = {
 };
 
 const NO_TOGGLES = {
+  gradingProfile: 'casual' as const,
   usageSignalEnabled: false,
   crashReportingEnabled: false,
   dawWorkspaceEnabled: false,
@@ -90,6 +92,9 @@ describe('loadStorageSeed', () => {
 });
 
 describe('buildStoragePatch', () => {
+  it('includes a changed grading profile', () => {
+    expect(buildStoragePatch(null, { ...NO_TOGGLES, gradingProfile: 'broadcast' }, LOADED_SETTINGS)).toEqual({ gradingProfile: 'broadcast' });
+  });
   it('returns null when nothing changed', () => {
     expect(buildStoragePatch(null, NO_TOGGLES, LOADED_SETTINGS)).toBeNull();
   });
@@ -146,6 +151,7 @@ describe('buildStoragePatch', () => {
     const patch = buildStoragePatch(
       '/custom',
       {
+        gradingProfile: 'casual',
         usageSignalEnabled: true,
         crashReportingEnabled: true,
         dawWorkspaceEnabled: true,

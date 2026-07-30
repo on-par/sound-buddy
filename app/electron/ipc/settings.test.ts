@@ -108,6 +108,21 @@ describe('get-settings', () => {
   });
 });
 
+describe('update-settings IPC whitelist — gradingProfile (#266)', () => {
+  it('persists either supported local grading profile', async () => {
+    const handler = handlers.get('update-settings')!;
+    const result = await handler(null, { gradingProfile: 'broadcast' }) as { gradingProfile: string };
+    expect(result.gradingProfile).toBe('broadcast');
+    expect(readFile().gradingProfile).toBe('broadcast');
+  });
+
+  it('ignores an unknown grading profile', async () => {
+    const handler = handlers.get('update-settings')!;
+    await handler(null, { gradingProfile: 'invalid' });
+    expect(readFile().gradingProfile).toBe('casual');
+  });
+});
+
 describe('get-storage-usage', () => {
   it('reports byte size and exists:true for a real dir with a file', async () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'sb-storage-usage-'));

@@ -27,6 +27,7 @@ describe('saveAll', () => {
       updateSettings: async (patch) => {
         mock.calls.push({ method: 'updateSettings', args: [patch] });
         return {
+          gradingProfile: 'casual',
           idealProfile: '', customIdealProfiles: [], storageDir: '', rigs: [], activeRigId: null,
           usageSignalEnabled: false, channelLabels: {}, channelGroups: {}, inputInstrumentProfiles: {},
           crashReportingEnabled: false, dawWorkspaceEnabled: false, liveAdjustmentsEnabled: false,
@@ -90,6 +91,9 @@ describe('SettingsPanel markup', () => {
     expect(html).toContain('id="crash-reporting-toggle"');
     expect(html).toContain('id="daw-workspace-toggle"');
     expect(html).toContain('id="live-adjustments-toggle"');
+    expect(html).toContain('id="grading-profile-field"');
+    expect(html).toContain('Casual / volunteer');
+    expect(html).toContain('Broadcast-ready');
   });
 
   it('hides the storage reset button when the effective path is the default', () => {

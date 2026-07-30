@@ -43,6 +43,7 @@ export async function loadStorageSeed(api: Pick<StorageApi, 'getStorageUsage'>):
 }
 
 export interface StorageToggles {
+  gradingProfile: 'casual' | 'broadcast';
   usageSignalEnabled: boolean;
   crashReportingEnabled: boolean;
   dawWorkspaceEnabled: boolean;
@@ -83,6 +84,9 @@ export function buildStoragePatch(
 ): UpdateSettingsPatch | null {
   const patch: UpdateSettingsPatch = {};
   if (pendingDir !== null) patch.storageDir = pendingDir;
+  if (toggles.gradingProfile !== (loaded?.gradingProfile ?? 'casual')) {
+    patch.gradingProfile = toggles.gradingProfile;
+  }
   for (const key of TOGGLE_KEYS) {
     const current = toggles[key];
     const previous = !!(loaded && loaded[key]);

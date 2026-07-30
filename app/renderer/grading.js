@@ -62,6 +62,30 @@
     truePeak: { ceiling: -1 },
   };
 
+  // #266 — two local judgment contexts. Casual is the exact historical config,
+  // so upgrading never changes a grade until the user deliberately opts into
+  // Broadcast-ready. The stricter profile changes thresholds only: every
+  // existing rule still runs in the same order.
+  const GRADING_PROFILES = {
+    casual: {
+      id: 'casual', label: 'Casual / volunteer', config: CONFIG,
+    },
+    broadcast: {
+      id: 'broadcast', label: 'Broadcast-ready', config: {
+        ...CONFIG,
+        rms: { acceptableMin: -18, acceptableMax: -16, quietEdge: -23, hotEdge: -11 },
+        dynamicRange: { good: 8, check: 5 },
+        bandBalance: { hotDiff: 10, severeHotDiff: 12, quietDiff: -12 },
+        lufs: { acceptableMin: -18, acceptableMax: -16, quietEdge: -23, hotEdge: -11 },
+        truePeak: { ceiling: -3 },
+      },
+    },
+  };
+
+  function profileFor(id) {
+    return GRADING_PROFILES[id] || GRADING_PROFILES.casual;
+  }
+
   // Band label + frequency metadata used to phrase the "too much energy in X"
   // recommendation. Grading-only — the renderer's own band table lives inline.
   const RC_BAND_INFO = {
@@ -125,7 +149,7 @@
   // (> ceiling) can never be true for -Infinity.
   function fmtLufs(v) { return Number.isFinite(v) ? v.toFixed(1) : (v > 0 ? '∞' : '-∞'); }
 
-  function analyzeRecordingType(src) {
+  function analyzeRecordingType(src, config = CONFIG) {
     if (src.clipping || src.peak >= -0.5) return { type: 'clipping', label: 'Clipping', note: 'Signal is clipping. Reduce input gain immediately.', tone: 'issue' };
     if (src.peak > -3 && src.rms > -12) return { type: 'hot', label: 'Hot', note: 'Recording level is very hot. Consider reducing gain.', tone: 'check' };
     if ((src.contentType === 'mixed' || src.contentType === 'music') && src.peak > -12 && src.dynamicRange != null && src.dynamicRange > 15 && src.rms < -25)
@@ -135,33 +159,33 @@
     if (src.peak < -15 && src.rms < -35)
       return { type: 'low_gain', label: 'Low Recording Gain', note: 'Peak and RMS are very low. Increase the USB recording output level.', tone: 'check' };
     if (src.rms < -25) return { type: 'quiet', label: 'Quiet', note: 'Recording is quieter than typical. Consider more gain.', tone: 'check' };
-    if (src.rms >= CONFIG.rms.acceptableMin && src.rms <= CONFIG.rms.hotEdge && src.peak > -6) return { type: 'good', label: 'Good Level', note: 'Recording level is healthy.', tone: 'good' };
+    if (src.rms >= config.rms.acceptableMin && src.rms <= config.rms.hotEdge && src.peak > -6) return { type: 'good', label: 'Good Level', note: 'Recording level is healthy.', tone: 'good' };
     return { type: 'normal', label: 'Normal', note: 'Recording level is within typical range.', tone: 'info' };
   }
 
-  function computeGrade(src) {
+  function computeGrade(src, config = CONFIG) {
     const letters = ['A', 'B', 'C', 'D', 'F'];
     if (src.clipping) return 'F';
     let idx = 0;
     const drop = () => { idx = Math.min(idx + 1, letters.length - 1); };
-    const recType = analyzeRecordingType(src);
+    const recType = analyzeRecordingType(src, config);
     // #135 — true-peak ceiling rule: applies to all recording types.
-    if (measuredLoudness(src.truePeakDbtp) && src.truePeakDbtp > CONFIG.truePeak.ceiling) drop();
+    if (measuredLoudness(src.truePeakDbtp) && src.truePeakDbtp > config.truePeak.ceiling) drop();
     if (recType.type === 'low_gain') {
-      if (src.dynamicRange != null && src.dynamicRange < CONFIG.dynamicRange.check) drop();
-      if (Object.keys(src.bands).some(k => bandDiffFromOthers(src.bands, k) > CONFIG.bandBalance.severeHotDiff)) drop();
+      if (src.dynamicRange != null && src.dynamicRange < config.dynamicRange.check) drop();
+      if (Object.keys(src.bands).some(k => bandDiffFromOthers(src.bands, k) > config.bandBalance.severeHotDiff)) drop();
       return letters[idx];
     }
     const rmsExempt = recType.type === 'dynamic_service';
     if (measuredLoudness(src.lufsIntegrated)) {
       // #135 — real loudness measured: the level rule judges integrated LUFS;
       // the RMS rule does not run (LUFS replaces it, per config).
-      if (!rmsExempt && (src.lufsIntegrated < CONFIG.lufs.acceptableMin || src.lufsIntegrated > CONFIG.lufs.acceptableMax)) drop();
-    } else if (!rmsExempt && (src.rms < CONFIG.rms.acceptableMin || src.rms > CONFIG.rms.acceptableMax)) {
+      if (!rmsExempt && (src.lufsIntegrated < config.lufs.acceptableMin || src.lufsIntegrated > config.lufs.acceptableMax)) drop();
+    } else if (!rmsExempt && (src.rms < config.rms.acceptableMin || src.rms > config.rms.acceptableMax)) {
       drop();
     }
-    if (src.dynamicRange != null && src.dynamicRange < CONFIG.dynamicRange.good) drop();
-    if (Object.keys(src.bands).some(k => bandDiffFromOthers(src.bands, k) > CONFIG.bandBalance.severeHotDiff)) drop();
+    if (src.dynamicRange != null && src.dynamicRange < config.dynamicRange.good) drop();
+    if (Object.keys(src.bands).some(k => bandDiffFromOthers(src.bands, k) > config.bandBalance.severeHotDiff)) drop();
     return letters[idx];
   }
 
@@ -202,7 +226,7 @@
     return skipped;
   }
 
-  function explainGrade(src) {
+  function explainGrade(src, config = CONFIG) {
     // Clipping short-circuits to an automatic F with a single clipping
     // deduction — mirroring computeGrade's src.clipping early return, which
     // never evaluates the other rules. The breakdown reflects that exactly.
@@ -224,22 +248,22 @@
     }
 
     const deductions = [];
-    const recType = analyzeRecordingType(src);
+    const recType = analyzeRecordingType(src, config);
     const maxBandDiff = Object.keys(src.bands).reduce(
       (m, k) => Math.max(m, bandDiffFromOthers(src.bands, k)), 0,
     );
     const bandImbalanceDeduction = () => ({
       rule: 'Band imbalance',
       measured: '+' + maxBandDiff.toFixed(1) + ' dB',
-      target: '≤ +' + CONFIG.bandBalance.severeHotDiff + ' dB vs. other bands',
+      target: '≤ +' + config.bandBalance.severeHotDiff + ' dB vs. other bands',
       letterImpact: 'Drops one letter',
     });
 
-    if (measuredLoudness(src.truePeakDbtp) && src.truePeakDbtp > CONFIG.truePeak.ceiling) {
+    if (measuredLoudness(src.truePeakDbtp) && src.truePeakDbtp > config.truePeak.ceiling) {
       deductions.push({
         rule: 'True peak over ceiling',
         measured: src.truePeakDbtp.toFixed(1) + ' dBTP',
-        target: rcMetricTarget('truePeak'),
+        target: rcMetricTarget('truePeak', config),
         letterImpact: 'Drops one letter',
       });
     }
@@ -247,16 +271,16 @@
     if (recType.type === 'low_gain') {
       // Low-gain takes carry their own rule set (RMS ignored, DR floor relaxed
       // to the "check" threshold), matching computeGrade's low_gain branch.
-      if (src.dynamicRange != null && src.dynamicRange < CONFIG.dynamicRange.check) {
+      if (src.dynamicRange != null && src.dynamicRange < config.dynamicRange.check) {
         deductions.push({
           rule: 'Dynamic range too low',
           measured: src.dynamicRange.toFixed(1) + ' dB',
-          target: '≥ ' + CONFIG.dynamicRange.check + ' dB',
+          target: '≥ ' + config.dynamicRange.check + ' dB',
           letterImpact: 'Drops one letter',
         });
       }
-      if (maxBandDiff > CONFIG.bandBalance.severeHotDiff) deductions.push(bandImbalanceDeduction());
-      return { grade: computeGrade(src), clipping: false, deductions, notMeasured: skippedRules(src) };
+      if (maxBandDiff > config.bandBalance.severeHotDiff) deductions.push(bandImbalanceDeduction());
+      return { grade: computeGrade(src, config), clipping: false, deductions, notMeasured: skippedRules(src) };
     }
 
     // Dynamic-service recordings are RMS-exempt (a quiet whole-file RMS is
@@ -265,75 +289,75 @@
     if (measuredLoudness(src.lufsIntegrated)) {
       // #135 — real loudness measured: LUFS replaces the RMS deduction, same
       // guard order as computeGrade.
-      if (!rmsExempt && (src.lufsIntegrated < CONFIG.lufs.acceptableMin || src.lufsIntegrated > CONFIG.lufs.acceptableMax)) {
+      if (!rmsExempt && (src.lufsIntegrated < config.lufs.acceptableMin || src.lufsIntegrated > config.lufs.acceptableMax)) {
         deductions.push({
           rule: 'Integrated loudness out of band',
           measured: fmtLufs(src.lufsIntegrated) + ' LUFS',
-          target: rcMetricTarget('lufs'),
+          target: rcMetricTarget('lufs', config),
           letterImpact: 'Drops one letter',
         });
       }
-    } else if (!rmsExempt && (src.rms < CONFIG.rms.acceptableMin || src.rms > CONFIG.rms.acceptableMax)) {
+    } else if (!rmsExempt && (src.rms < config.rms.acceptableMin || src.rms > config.rms.acceptableMax)) {
       deductions.push({
         rule: 'RMS out of band',
         measured: src.rms.toFixed(1) + ' dBFS',
-        target: rcMetricTarget('rms'),
+        target: rcMetricTarget('rms', config),
         letterImpact: 'Drops one letter',
       });
     }
-    if (src.dynamicRange != null && src.dynamicRange < CONFIG.dynamicRange.good) {
+    if (src.dynamicRange != null && src.dynamicRange < config.dynamicRange.good) {
       deductions.push({
         rule: 'Dynamic range too low',
         measured: src.dynamicRange.toFixed(1) + ' dB',
         // Same config-sourced target the metrics table shows (#132), so the
         // breakdown and the DR metric row can never disagree. (The low_gain
         // branch above can't reuse it — its floor is the relaxed .check value.)
-        target: rcMetricTarget('dynamicRange'),
+        target: rcMetricTarget('dynamicRange', config),
         letterImpact: 'Drops one letter',
       });
     }
-    if (maxBandDiff > CONFIG.bandBalance.severeHotDiff) deductions.push(bandImbalanceDeduction());
+    if (maxBandDiff > config.bandBalance.severeHotDiff) deductions.push(bandImbalanceDeduction());
 
-    return { grade: computeGrade(src), clipping: false, deductions, notMeasured: skippedRules(src) };
+    return { grade: computeGrade(src, config), clipping: false, deductions, notMeasured: skippedRules(src) };
   }
 
   // Ring arc score, kept within the letter grade's band so the two agree.
-  function computeScore(src) {
-    const grade = computeGrade(src);
+  function computeScore(src, config = CONFIG) {
+    const grade = computeGrade(src, config);
     const bands = { A: [90, 99], B: [80, 89], C: [70, 79], D: [60, 69], F: [38, 55] };
     let score = 100;
-    const rt = analyzeRecordingType(src);
+    const rt = analyzeRecordingType(src, config);
     if (src.clipping) score -= 45;
-    if (measuredLoudness(src.truePeakDbtp) && src.truePeakDbtp > CONFIG.truePeak.ceiling) score -= 9;
+    if (measuredLoudness(src.truePeakDbtp) && src.truePeakDbtp > config.truePeak.ceiling) score -= 9;
     if (rt.type !== 'low_gain' && rt.type !== 'dynamic_service') {
       if (measuredLoudness(src.lufsIntegrated)) {
-        if (src.lufsIntegrated < CONFIG.lufs.acceptableMin || src.lufsIntegrated > CONFIG.lufs.acceptableMax) score -= 9;
-        if (src.lufsIntegrated < CONFIG.lufs.quietEdge || src.lufsIntegrated > CONFIG.lufs.hotEdge) score -= 7;
+        if (src.lufsIntegrated < config.lufs.acceptableMin || src.lufsIntegrated > config.lufs.acceptableMax) score -= 9;
+        if (src.lufsIntegrated < config.lufs.quietEdge || src.lufsIntegrated > config.lufs.hotEdge) score -= 7;
       } else {
-        if (src.rms < CONFIG.rms.acceptableMin || src.rms > CONFIG.rms.acceptableMax) score -= 9;
-        if (src.rms < CONFIG.rms.quietEdge || src.rms > CONFIG.rms.hotEdge) score -= 7;
+        if (src.rms < config.rms.acceptableMin || src.rms > config.rms.acceptableMax) score -= 9;
+        if (src.rms < config.rms.quietEdge || src.rms > config.rms.hotEdge) score -= 7;
       }
     }
-    if (src.dynamicRange != null) { if (src.dynamicRange < CONFIG.dynamicRange.check) score -= 15; else if (src.dynamicRange < CONFIG.dynamicRange.good) score -= 8; }
+    if (src.dynamicRange != null) { if (src.dynamicRange < config.dynamicRange.check) score -= 15; else if (src.dynamicRange < config.dynamicRange.good) score -= 8; }
     let maxDiff = 0;
     for (const k of Object.keys(src.bands)) maxDiff = Math.max(maxDiff, bandDiffFromOthers(src.bands, k));
-    if (maxDiff > CONFIG.bandBalance.severeHotDiff) score -= 14; else if (maxDiff > CONFIG.bandBalance.hotDiff) score -= 7;
+    if (maxDiff > config.bandBalance.severeHotDiff) score -= 14; else if (maxDiff > config.bandBalance.hotDiff) score -= 7;
     const [lo, hi] = bands[grade];
     return Math.round(Math.max(lo, Math.min(hi, score)));
   }
 
-  function computeRecommendations(src) {
+  function computeRecommendations(src, config = CONFIG) {
     const recs = [];
-    const recType = analyzeRecordingType(src);
+    const recType = analyzeRecordingType(src, config);
     if (src.clipping) recs.push('CRITICAL: Clipping detected. Reduce input gain immediately.');
     if (recType.type === 'low_gain' || recType.type === 'dynamic_service') recs.push(recType.note);
     else if (src.rms > -10) recs.push('Your recording is too hot. Reduce gain to avoid clipping.');
     else if (src.rms < -25 && recType.type !== 'low_gain') recs.push('Your recording is too quiet. Increase input gain or fader levels.');
-    if (src.dynamicRange != null && src.dynamicRange < CONFIG.dynamicRange.check) recs.push('Dynamic range is very compressed. Mix may sound lifeless.');
+    if (src.dynamicRange != null && src.dynamicRange < config.dynamicRange.check) recs.push('Dynamic range is very compressed. Mix may sound lifeless.');
     if (src.bands.subBass > -10) recs.push('Too much sub-bass energy. Apply a high-pass filter below 80Hz.');
     for (const k of Object.keys(src.bands)) {
       const diff = bandDiffFromOthers(src.bands, k);
-      if (diff > CONFIG.bandBalance.hotDiff) {
+      if (diff > config.bandBalance.hotDiff) {
         const info = RC_BAND_INFO[k];
         const base = `Too much energy in ${info.label} (${info.freq}). Cut ${Math.min(diff, 10).toFixed(1)} dB around this range.`;
         const contributor = loudestBandContributor(src.channels, k);
@@ -354,29 +378,29 @@
   // that is the visible contradiction this issue resolves. We keep the pill a
   // faithful two-way mirror of the grade rather than adding an intermediate
   // "check" tier, so no previously-flagged level is silently downgraded.
-  function rcRmsStatus(rms) {
-    const c = CONFIG.rms;
+  function rcRmsStatus(rms, config = CONFIG) {
+    const c = config.rms;
     if (rms >= c.acceptableMin && rms <= c.acceptableMax) return 'good';
     return 'issue';
   }
 
-  function rcPeakStatus(peak, clipping) {
-    const c = CONFIG.peak;
+  function rcPeakStatus(peak, clipping, config = CONFIG) {
+    const c = config.peak;
     if (clipping || peak > c.issueAbove) return 'issue';
     if (peak > c.checkAbove) return 'check';
     return 'good';
   }
 
-  function rcDrStatus(dr) {
-    const c = CONFIG.dynamicRange;
+  function rcDrStatus(dr, config = CONFIG) {
+    const c = config.dynamicRange;
     if (dr == null) return 'check';
     if (dr >= c.good) return 'good';
     if (dr >= c.check) return 'check';
     return 'issue';
   }
 
-  function rcCentroidStatus(centroid) {
-    const c = CONFIG.centroid;
+  function rcCentroidStatus(centroid, config = CONFIG) {
+    const c = config.centroid;
     if (!centroid) return 'check';
     if (centroid >= c.min && centroid <= c.max) return 'good';
     return 'check';
@@ -385,13 +409,13 @@
   // #135 — two-way mirrors of the LUFS / true-peak grade rules, same pattern
   // as rcRmsStatus: the acceptable band reads "good", anything the grade
   // deducts for reads "issue".
-  function rcLufsStatus(lufs) {
-    const c = CONFIG.lufs;
+  function rcLufsStatus(lufs, config = CONFIG) {
+    const c = config.lufs;
     return (lufs >= c.acceptableMin && lufs <= c.acceptableMax) ? 'good' : 'issue';
   }
 
-  function rcTruePeakStatus(truePeak) {
-    return truePeak > CONFIG.truePeak.ceiling ? 'issue' : 'good';
+  function rcTruePeakStatus(truePeak, config = CONFIG) {
+    return truePeak > config.truePeak.ceiling ? 'issue' : 'good';
   }
 
   // #132 — the config-derived "good" target shown beside each measured metric on
@@ -402,8 +426,8 @@
   // the peak's "check" ceiling, the DR "good" floor, and the centroid window.
   // Metrics with no target in CONFIG (e.g. Clipping) return null, so the card
   // shows an explicit "—" rather than a fabricated range.
-  function rcMetricTarget(key) {
-    const c = CONFIG;
+  function rcMetricTarget(key, config = CONFIG) {
+    const c = config;
     switch (key) {
       case 'peak':         return '≤ ' + c.peak.checkAbove + ' dBFS';
       case 'rms':          return c.rms.acceptableMin + ' to ' + c.rms.acceptableMax + ' dBFS';
@@ -415,8 +439,38 @@
     }
   }
 
+  // Returns the same grading interface bound to one immutable profile config.
+  // Keeping the chosen config in a wrapper prevents one rendered card from
+  // changing another card's thresholds through global mutable state.
+  function forProfile(id) {
+    const profile = profileFor(id);
+    const config = profile.config;
+    return {
+      CONFIG: config,
+      profile: profile,
+      RC_BAND_INFO: RC_BAND_INFO,
+      bandDiffFromOthers: bandDiffFromOthers,
+      loudestBandContributor: loudestBandContributor,
+      analyzeRecordingType: (src) => analyzeRecordingType(src, config),
+      computeGrade: (src) => computeGrade(src, config),
+      explainGrade: (src) => explainGrade(src, config),
+      computeScore: (src) => computeScore(src, config),
+      computeRecommendations: (src) => computeRecommendations(src, config),
+      rcRmsStatus: (rms) => rcRmsStatus(rms, config),
+      rcPeakStatus: (peak, clipping) => rcPeakStatus(peak, clipping, config),
+      rcDrStatus: (dr) => rcDrStatus(dr, config),
+      rcCentroidStatus: (centroid) => rcCentroidStatus(centroid, config),
+      rcLufsStatus: (lufs) => rcLufsStatus(lufs, config),
+      rcTruePeakStatus: (truePeak) => rcTruePeakStatus(truePeak, config),
+      rcMetricTarget: (key) => rcMetricTarget(key, config),
+    };
+  }
+
   var api = {
     CONFIG: CONFIG,
+    GRADING_PROFILES: GRADING_PROFILES,
+    profileFor: profileFor,
+    forProfile: forProfile,
     RC_BAND_INFO: RC_BAND_INFO,
     bandDiffFromOthers: bandDiffFromOthers,
     loudestBandContributor: loudestBandContributor,
