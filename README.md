@@ -95,6 +95,27 @@ scripts/release.sh minor      # or: minor / major / an explicit x.y.z
 scripts/release.sh --dry-run  # preflight + gate only, no changes
 ```
 
+Normal releases must be Developer ID-signed and notarized. The one-time setup is in
+[`docs/signing-and-notarization.md`](docs/signing-and-notarization.md). Once the
+certificate and the `sound-buddy-notary` keychain profile exist, use this exact
+preflight and publish sequence:
+
+```bash
+SOUND_BUDDY_SIGNING_IDENTITY="Developer ID Application: On PAR Dev, LLC (Q7LB49TPBS)" \
+SOUND_BUDDY_NOTARY_PROFILE=sound-buddy-notary \
+scripts/release.sh --dry-run
+
+SOUND_BUDDY_SIGNING_IDENTITY="Developer ID Application: On PAR Dev, LLC (Q7LB49TPBS)" \
+SOUND_BUDDY_NOTARY_PROFILE=sound-buddy-notary \
+scripts/release.sh --yes
+```
+
+The dry run must report a **signed** build. It verifies the build, lint, and test
+gate and previews the version and publish plan without changing anything. The publish
+command signs, notarizes, staples, and Gatekeeper-checks the app and DMG before it
+publishes the release. Never put Apple credentials or an app-specific password in
+the repository or shell history.
+
 It bumps the version, runs the gate, builds the self-contained `.app`, tags this repo, and
 publishes the zip to the public repo — using your local `gh` auth, so there's no token to
 store. Needs the build tools on your machine (`brew install sox ffmpeg dylibbundler`).
