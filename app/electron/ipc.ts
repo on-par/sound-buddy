@@ -19,6 +19,7 @@
 
 import { registerAnalysisHandlers } from './ipc/analysis';
 import { registerLiveCaptureHandlers } from './ipc/live-capture';
+import { registerMeasurementSourceHandlers } from './ipc/measurement-source';
 import { registerPlaybackHandlers } from './ipc/playback';
 import { registerLicensingHandlers } from './ipc/licensing';
 import { registerSettingsHandlers } from './ipc/settings';
@@ -29,6 +30,7 @@ export { enumerateDevices, type DeviceListResult } from './ipc/live-capture';
 export function registerIpcHandlers(): void {
   registerAnalysisHandlers();
   registerLiveCaptureHandlers();
+  registerMeasurementSourceHandlers();
   registerPlaybackHandlers();
   registerLicensingHandlers();
   registerSettingsHandlers();
