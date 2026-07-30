@@ -91,6 +91,48 @@ test.describe('Sound Buddy E2E — recent services (#147)', () => {
     await expect(window.locator('#recent-list .recent-row')).toHaveCount(10);
   });
 
+  test('exports a distinct oldest-to-newest trend PDF with prior-service deltas', async () => {
+    await stubSummaries([
+      summary({ date: '2026-07-20T09:00:00.000Z', gradeLetter: 'A', score: 92 }),
+      summary({ date: '2026-07-13T09:00:00.000Z', gradeLetter: 'B', score: 84 }),
+      summary({ date: '2026-07-06T09:00:00.000Z', gradeLetter: 'C', score: 76 }),
+    ]);
+    await openRecentTab();
+    await window.evaluate(() => {
+      (window as unknown as { __trendPrintCalls: number; print: () => void }).__trendPrintCalls = 0;
+      window.print = () => {
+        (window as unknown as { __trendPrintCalls: number }).__trendPrintCalls += 1;
+      };
+    });
+
+    await window.locator('#recent-export-trend-btn').click();
+
+    await expect(window.locator('#trend-export-print')).toContainText('Sound Buddy Service Trend');
+    const rows = window.locator('#trend-export-print tbody tr');
+    await expect(rows).toHaveCount(3);
+    await expect(rows.nth(0)).toContainText('C');
+    await expect(rows.nth(0)).toContainText('76/100');
+    await expect(rows.nth(0)).toContainText('First service in this trend');
+    await expect(rows.nth(1)).toContainText('+8 pts vs. last service (C → B)');
+    await expect(rows.nth(2)).toContainText('+8 pts vs. last service (B → A)');
+    expect(await window.evaluate(() => (window as unknown as { __trendPrintCalls: number }).__trendPrintCalls)).toBe(1);
+
+    // Exporting a trend must not share the single report card's print mode.
+    await expect(window.locator('body')).toHaveClass(/printing-trend/);
+    await window.evaluate(() => window.dispatchEvent(new Event('afterprint')));
+    await expect(window.locator('body')).not.toHaveClass(/printing-trend/);
+  });
+
+  test('explains that at least two services are required before exporting a trend', async () => {
+    await stubSummaries([summary()]);
+    await openRecentTab();
+
+    await window.locator('#recent-export-trend-btn').click();
+
+    await expect(window.locator('#recent-trend-hint')).toBeVisible();
+    await expect(window.locator('#recent-trend-hint')).toHaveText('Analyze at least two services to export a trend.');
+  });
+
   test('clicking a row loads the stored grade/score/filename/date with no analysis run', async () => {
     await electronApp.evaluate(({ ipcMain }) => {
       (globalThis as unknown as { __analyzeFileCalls: number }).__analyzeFileCalls = 0;

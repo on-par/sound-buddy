@@ -301,9 +301,12 @@
     /* Recent services list (#147) */
     .recent-row { cursor:pointer; flex-wrap:wrap; }
     .recent-row:hover { background:var(--surface-raised); }
+    .recent-head { display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:8px; }
+    .recent-head .section-label { margin:0; }
     .recent-grade { font:var(--fw-bold) var(--fs-label)/1 var(--font-mono); flex-shrink:0; width:1.2em; text-align:center; }
     .recent-date { font:var(--fw-regular) var(--fs-micro)/1 var(--font-sans); color:var(--text-muted); flex-shrink:0; white-space:nowrap; }
     .recent-empty { text-align:center; padding:12px 0; }
+    .recent-trend-hint { color:var(--text-muted); }
     /* Handoff note secondary line (#267) — its own line under the grade/date row. */
     .recent-note { flex-basis:100%; margin-top:2px; font:var(--fw-regular) var(--fs-micro)/1.3 var(--font-sans); color:var(--text-muted); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
     /* Live-capture-session badge (#261) — distinguishes a live-graded entry from a file analysis. */
@@ -1174,6 +1177,18 @@
       .rc-rec, .rc-why-row, .rc-why-none { border-left-color:#000 !important; }
       .rc-why-detail, .rc-why-detail .measured, .rc-why-impact { color:#333 !important; }
       .rc-heatmap svg, .rc-frame-curve svg { -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+
+      /* #272's trend export is deliberately a separate print surface from a
+         single report card. The body class is only present around window.print. */
+      #trend-export-print { display:none; }
+      body.printing-trend #report-card, body.printing-trend #report-card * { visibility:hidden !important; }
+      body.printing-trend #trend-export-print, body.printing-trend #trend-export-print * { visibility:visible !important; }
+      body.printing-trend #trend-export-print { display:block; position:absolute; left:0; top:0; width:100%; box-sizing:border-box; padding:32px; color:#111; background:#fff !important; }
+      body.printing-trend #trend-export-print h1 { margin:0 0 6px; font:700 24px/1.2 Arial, sans-serif; color:#111; }
+      body.printing-trend .trend-export-subtitle { margin:0 0 24px; font:14px/1.4 Arial, sans-serif; color:#444; }
+      body.printing-trend .trend-export-table { width:100%; border-collapse:collapse; font:14px/1.4 Arial, sans-serif; }
+      body.printing-trend .trend-export-table th, body.printing-trend .trend-export-table td { padding:10px; border:1px solid #bbb; text-align:left; color:#111; }
+      body.printing-trend .trend-export-table th { background:#eee !important; font-weight:700; }
     }
     /* ── Ideal profile (PRD 05) ──────────────────────────────────────── */
     #ideal-profile-wrap { display:none; align-items:center; gap:8px; margin-left:14px; flex-shrink:0; }

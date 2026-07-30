@@ -278,9 +278,13 @@
 
         <!-- RECENT (#147) — last 10 persisted report-card summaries, newest-first. -->
         <div class="tab-content" id="tab-recent">
-          <span class="section-label">Recent Services</span>
+          <div class="recent-head">
+            <span class="section-label">Recent Services</span>
+            <button type="button" class="btn btn-secondary sm" id="recent-export-trend-btn" data-icon="download">Export trend PDF</button>
+          </div>
           <div class="dir-list" id="recent-list"></div>
           <p class="dz-hint recent-empty" id="recent-empty" style="display:none">No analyses yet — analyze a file to build your history.</p>
+          <p class="dz-hint recent-trend-hint" id="recent-trend-hint" role="status" style="display:none">Analyze at least two services to export a trend.</p>
         </div>
 
         <!-- BUILD GUIDE (#367) — Lee's channel build order as a checkable, persistent guide. -->
@@ -404,3 +408,7 @@
     </div>
   </div>
   </div><!-- /#stage -->
+  <!-- Print-only document populated from Recent Services by inline-app.js (#272).
+       It stays separate from the report-card print surface so this export can
+       make a clear, week-by-week budget conversation without changing Export PDF. -->
+  <section id="trend-export-print" aria-hidden="true"></section>

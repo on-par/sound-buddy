@@ -10,6 +10,7 @@ const {
   recTypePillClass, recTypePillHTML, buildMetricRows, metricRowsHTML,
   whyGradeHTML, recListHTML, reportCardSourceFromAnalysis,
   buildAnalysisSummaryInput, strongMixTargetMeta,
+  reportDeltaView,
 } = window.reportCard;
 
 /* ══ Share Image export (#265) + Export PNG's metadata guard (#368) —
@@ -3418,6 +3419,7 @@ let recentSummaries = [];
 async function renderRecentServices() {
   const list = document.getElementById('recent-list');
   const empty = document.getElementById('recent-empty');
+  const trendHint = document.getElementById('recent-trend-hint');
 
   let res;
   try {
@@ -3434,6 +3436,7 @@ async function renderRecentServices() {
   if (recentSummaries.length === 0) {
     list.innerHTML = '';
     empty.style.display = 'block';
+    trendHint.style.display = 'none';
     return;
   }
   empty.style.display = 'none';
@@ -3466,6 +3469,68 @@ async function renderRecentServices() {
     });
   });
 }
+
+// Build the distinct, print-only multi-week report (#272). Recent Services
+// arrives newest-first, while a trend is easier to read oldest-to-newest. The
+// delta therefore compares each row to the row directly before it, using the
+// same reportDeltaView computation as the on-screen report card (#259).
+function renderTrendExport(summaries) {
+  const container = document.getElementById('trend-export-print');
+  container.replaceChildren();
+
+  const heading = document.createElement('h1');
+  heading.textContent = 'Sound Buddy Service Trend';
+  container.appendChild(heading);
+  const subtitle = document.createElement('p');
+  subtitle.className = 'trend-export-subtitle';
+  subtitle.textContent = `${summaries.length} recent services, oldest to newest`;
+  container.appendChild(subtitle);
+
+  const table = document.createElement('table');
+  table.className = 'trend-export-table';
+  const head = document.createElement('thead');
+  const headRow = document.createElement('tr');
+  ['Service date', 'Grade', 'Score', 'Change from prior service'].forEach((label) => {
+    const cell = document.createElement('th');
+    cell.textContent = label;
+    headRow.appendChild(cell);
+  });
+  head.appendChild(headRow);
+  table.appendChild(head);
+
+  const body = document.createElement('tbody');
+  summaries.slice().reverse().forEach((summary, index, chronological) => {
+    const row = document.createElement('tr');
+    const date = document.createElement('td');
+    date.textContent = new Date(summary.date).toLocaleDateString();
+    const grade = document.createElement('td');
+    grade.textContent = String(summary.gradeLetter == null ? '—' : summary.gradeLetter);
+    const score = document.createElement('td');
+    score.textContent = Number.isFinite(summary.score) ? `${Math.round(summary.score)}/100` : '—';
+    const delta = document.createElement('td');
+    const deltaView = index > 0 ? reportDeltaView(summary, chronological[index - 1]) : null;
+    delta.textContent = deltaView ? deltaView.text : 'First service in this trend';
+    row.append(date, grade, score, delta);
+    body.appendChild(row);
+  });
+  table.appendChild(body);
+  container.appendChild(table);
+}
+
+function exportTrendPdf() {
+  const hint = document.getElementById('recent-trend-hint');
+  if (recentSummaries.length < 2) {
+    hint.style.display = 'block';
+    return;
+  }
+  hint.style.display = 'none';
+  renderTrendExport(recentSummaries);
+  document.body.classList.add('printing-trend');
+  window.print();
+}
+
+document.getElementById('recent-export-trend-btn').addEventListener('click', exportTrendPdf);
+window.addEventListener('afterprint', () => document.body.classList.remove('printing-trend'));
 
 // Loads a stored summary into the report card view without re-running any
 // analysis — the row's record is all the report card ever reads (#147).
