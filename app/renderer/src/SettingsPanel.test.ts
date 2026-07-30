@@ -31,7 +31,7 @@ describe('saveAll', () => {
           usageSignalEnabled: false, channelLabels: {}, channelGroups: {}, inputInstrumentProfiles: {},
           crashReportingEnabled: false, dawWorkspaceEnabled: false, liveAdjustmentsEnabled: false,
           reportFirstUxEnabled: false, shareChurchName: '', weeklyReminderEnabled: false, weeklyReminderServiceDay: 0,
-          liveEqPaneWidth: 360,
+          liveEqPaneWidth: 360, secondaryMeasurementEnabled: false, measurementDeviceName: '',
         };
       },
     });

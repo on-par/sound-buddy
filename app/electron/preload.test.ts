@@ -19,6 +19,7 @@ import type {
   AnalysisSummaryInput,
   SetSummaryNoteInput,
   StartLiveOpts,
+  StartMeasurementOpts,
   StartPlaybackOpts,
   FeedbackSubmission,
   DiffScenesOpts,
@@ -116,6 +117,12 @@ const INVOKE_TABLE: Array<{ method: BridgeKey; channel: string; args: unknown[] 
     args: [{ windowSecs: 5 } satisfies StartLiveOpts],
   },
   { method: 'stopLive', channel: 'stop-live', args: [] },
+  {
+    method: 'startMeasurement',
+    channel: 'start-measurement',
+    args: [{ device: '2', windowSecs: 5 } satisfies StartMeasurementOpts],
+  },
+  { method: 'stopMeasurement', channel: 'stop-measurement', args: [] },
   { method: 'revealPath', channel: 'reveal-path', args: ['/tmp/session'] },
   {
     method: 'startPlayback',
@@ -144,6 +151,7 @@ const LISTENERS: BridgeKey[] = [
   'onAnalysisProgress',
   'onPlaybackEvent',
   'onLiveEvent',
+  'onMeasurementEvent',
   'onAnalysisResult',
   'onMenuOpenFile',
   'onUpdateAvailable',
@@ -194,6 +202,7 @@ describe('createBridge — event listeners', () => {
     { method: 'onAnalysisProgress', channel: 'analysis-progress', payload: { status: 'running' }, expectsPayload: true },
     { method: 'onPlaybackEvent', channel: 'playback-event', payload: { kind: 'level' }, expectsPayload: true },
     { method: 'onLiveEvent', channel: 'live-event', payload: { kind: 'meter' }, expectsPayload: true },
+    { method: 'onMeasurementEvent', channel: 'measurement-event', payload: { kind: 'meter' }, expectsPayload: true },
     { method: 'onAnalysisResult', channel: 'analysis-result', payload: { grade: 'B' }, expectsPayload: true },
     { method: 'onMenuOpenFile', channel: 'menu-open-file', payload: '/tmp/file.wav', expectsPayload: true },
     {

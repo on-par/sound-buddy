@@ -6,6 +6,7 @@ import type {
   SoundBuddyApi,
   AnalyzeFileOpts,
   StartLiveOpts,
+  StartMeasurementOpts,
   StartPlaybackOpts,
   UpdateSettingsPatch,
   AnalysisSummaryInput,
@@ -146,6 +147,17 @@ export function createBridge(ipc: IpcRendererLike) {
     startLive: (opts: StartLiveOpts) => ipc.invoke('start-live', opts),
 
     stopLive: () => ipc.invoke('stop-live'),
+
+    // Secondary measurement-only stream (#460, ADR 0003) — a second stream.py
+    // monitor reading a dedicated room mic independently of the board capture.
+    // Events arrive on the separate `measurement-event` channel, never mixed
+    // with `live-event`.
+    startMeasurement: (opts: StartMeasurementOpts) => ipc.invoke('start-measurement', opts),
+
+    stopMeasurement: () => ipc.invoke('stop-measurement'),
+
+    onMeasurementEvent: (cb: (data: unknown) => void) =>
+      ipc.on('measurement-event', (_event, d) => cb(d)),
 
     // Reveal a captured session folder in the OS file manager (#43). Paves the way
     // for "Open in Virtual Soundcheck" (epic #35); for now it opens the folder.
