@@ -87,7 +87,10 @@ export function registerMeasurementSourceHandlers(): void {
       stdio: ['ignore', 'pipe', 'pipe'],
       env: childEnv(),
     });
-    log(`start-measurement: spawned stream.py (device="${opts.device}" window=${opts.windowSecs}s interval=${opts.intervalSecs ?? 0.1}s)`);
+    // Log the interval we actually pass; when omitted, stream.py applies its own
+    // default, so say "default" rather than duplicating that value here.
+    const intervalLabel = opts.intervalSecs && opts.intervalSecs > 0 ? `${opts.intervalSecs}s` : 'default';
+    log(`start-measurement: spawned stream.py (device="${opts.device}" window=${opts.windowSecs}s interval=${intervalLabel})`);
 
     measurementProcess = py;
     const wc = event.sender;

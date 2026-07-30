@@ -3272,6 +3272,11 @@ function startSecondaryReconnectPoll() {
     }
     const view = deviceListView(await sb.listDevices());
     liveDevices = view.devices;
+    // Sync the store's device list to this fresh enumeration so the restart
+    // below resolves the preferred name to its CURRENT index — a device that
+    // reappears at a different index must not be started with a stale one.
+    // setState (not loadDevices) so the board's channelConfig isn't reset.
+    lcStore.setState({ devices: view.devices });
     const decision = window.measurementDeviceState.reconnectDecision(
       lcStore.getState().secondaryMeasurement, view.devices);
     if (decision.shouldRestart) {
