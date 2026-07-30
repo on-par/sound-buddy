@@ -54,6 +54,11 @@ export async function commitShareChurchName(store: SettingsStoreHandle, value: s
   await store.getState().updateSettings({ shareChurchName: value });
 }
 
+/** Removes previously granted Tier 2 network permission without using a toggle. */
+export async function revokeTier2ConsoleConsent(store: SettingsStoreHandle): Promise<void> {
+  await store.getState().updateSettings({ tier2ConsoleConsent: false });
+}
+
 export default function SettingsPanel() {
   const api = useElectron();
   const { settings, dialogOpen } = useStoreShallow(useSettingsStore, (s) => ({
@@ -311,6 +316,24 @@ export default function SettingsPanel() {
           <p className="ai-dialog-note" id="share-church-name-note">
             Optional. Leave blank (default) and shared images contain no identifying information.
           </p>
+          <div className="ai-field" id="tier2-console-consent-setting">
+            <span className="ai-field-label">Console network access</span>
+            <p className="ai-dialog-note">
+              {settings?.tier2ConsoleConsent
+                ? 'Read-only local console access is allowed. It reads channel names, levels, and routing configuration over OSC/UDP on your local subnet only.'
+                : 'Not allowed. Tier 2 features will show their explicit consent notice before any console access.'}
+            </p>
+            {settings?.tier2ConsoleConsent && (
+              <button
+                type="button"
+                id="tier2-console-consent-revoke"
+                className="btn btn-secondary sm"
+                onClick={() => void revokeTier2ConsoleConsent(useSettingsStore)}
+              >
+                Revoke console access
+              </button>
+            )}
+          </div>
         </div>
         <div className="settings-pane" id="settings-pane-about" style={{ display: section === 'about' ? 'flex' : 'none' }}>
           <p className="ai-dialog-version" id="ai-dialog-version">

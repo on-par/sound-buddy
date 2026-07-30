@@ -41,6 +41,8 @@ export interface UpdateSettingsPatch {
   weeklyReminderEnabled?: boolean;
   weeklyReminderServiceDay?: number;
   liveEqPaneWidth?: number;
+  /** Explicit first-run consent for Tier 2 read-only console networking (#378). */
+  tier2ConsoleConsent?: boolean;
 }
 
 export interface AnalyzeFileOpts {
@@ -300,6 +302,11 @@ export interface AppSettings {
    * the default — it does not know or enforce the renderer's clamp range.
    */
   liveEqPaneWidth: number;
+  /**
+   * Explicit permission for Tier 2 console-network features. False by default;
+   * only the first-run disclosure can grant it and Settings can revoke it.
+   */
+  tier2ConsoleConsent: boolean;
 }
 
 // ─── Analysis / storage DTOs (AnalysisSummary moved from electron/storage.ts) ─

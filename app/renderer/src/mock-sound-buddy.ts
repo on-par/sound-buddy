@@ -48,6 +48,7 @@ const DEFAULT_APP_SETTINGS: AppSettings = {
   weeklyReminderEnabled: false,
   weeklyReminderServiceDay: 0,
   liveEqPaneWidth: 360,
+  tier2ConsoleConsent: false,
 };
 
 const DEFAULT_LICENSE_STATE: LicenseState = { tier: 'free', status: 'none' };

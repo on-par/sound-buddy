@@ -109,6 +109,25 @@ describe('getSettings defaults', () => {
   it('defaults inputInstrumentProfiles to {} when unset', () => {
     expect(getSettings().inputInstrumentProfiles).toEqual({});
   });
+
+  it('defaults console-network consent to false when unset', () => {
+    expect(getSettings().tier2ConsoleConsent).toBe(false);
+  });
+});
+
+describe('tier2ConsoleConsent (#378 — explicit console-network consent)', () => {
+  it('persists an explicit grant and supports revocation', () => {
+    expect(updateSettings({ tier2ConsoleConsent: true }).tier2ConsoleConsent).toBe(true);
+    expect(readFile().tier2ConsoleConsent).toBe(true);
+
+    expect(updateSettings({ tier2ConsoleConsent: false }).tier2ConsoleConsent).toBe(false);
+    expect(readFile().tier2ConsoleConsent).toBe(false);
+  });
+
+  it('treats malformed persisted consent as denied', () => {
+    writeFile({ tier2ConsoleConsent: 'yes' });
+    expect(getSettings().tier2ConsoleConsent).toBe(false);
+  });
 });
 
 describe('channelGroups (#483 — persisted per-device named channel groups)', () => {

@@ -48,6 +48,7 @@ const DEFAULTS: AppSettings = {
   weeklyReminderEnabled: false,
   weeklyReminderServiceDay: 0,
   liveEqPaneWidth: 360,
+  tier2ConsoleConsent: false,
 };
 
 function settingsPath(): string {
@@ -171,6 +172,7 @@ function writeSettingsFile(file: Partial<AppSettings>): void {
     weeklyReminderEnabled: file.weeklyReminderEnabled ?? DEFAULTS.weeklyReminderEnabled,
     weeklyReminderServiceDay: fileWeeklyReminderServiceDay(file),
     liveEqPaneWidth: fileLiveEqPaneWidth(file),
+    tier2ConsoleConsent: file.tier2ConsoleConsent === true,
   };
   try {
     fs.writeFileSync(settingsPath(), JSON.stringify(persisted, null, 2));
@@ -235,6 +237,9 @@ export function getSettings(): AppSettings {
     // persists on resize, not a launch-time behavior toggle. Pure persisted
     // data, like `rigs`.
     liveEqPaneWidth: fileLiveEqPaneWidth(file),
+    // Tier 2 network access is deny-by-default. There is deliberately no env
+    // override: consent must be a deliberate in-app decision (#378).
+    tier2ConsoleConsent: file.tier2ConsoleConsent === true,
   };
 }
 

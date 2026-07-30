@@ -54,6 +54,7 @@ import LicensePanel from './LicensePanel';
 import SettingsPanel from './SettingsPanel';
 import ReportCardIsland from './ReportCardIsland';
 import SpectrumPanel from './SpectrumPanel';
+import Tier2ConsentDialog from './Tier2ConsentDialog';
 import { installStoreBridge } from './stores/bridge';
 
 // Boot scripts in their original document order (#303): the 20 UMD helpers
@@ -163,6 +164,7 @@ export default function App() {
     <>
       {createPortal(<LicensePanel />, document.getElementById('license-island')!)}
       {createPortal(<SettingsPanel />, document.getElementById('settings-island')!)}
+      {createPortal(<Tier2ConsentDialog />, document.body)}
       {booted && createPortal(<ReportCardIsland />, document.getElementById('report-card')!)}
       {booted && createPortal(<SpectrumPanel />, document.getElementById('spectrum-island')!)}
     </>

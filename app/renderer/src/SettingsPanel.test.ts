@@ -6,7 +6,7 @@ import { createElement } from 'react';
 import { renderToString } from 'react-dom/server';
 import * as fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import SettingsPanel, { saveAll, type SettingsSection, commitShareChurchName } from './SettingsPanel';
+import SettingsPanel, { saveAll, type SettingsSection, commitShareChurchName, revokeTier2ConsoleConsent } from './SettingsPanel';
 import { ElectronContext } from './useElectron';
 import { createSettingsStore, useSettingsStore } from './stores/settingsStore';
 import { createMockSoundBuddy } from './mock-sound-buddy';
@@ -31,7 +31,7 @@ describe('saveAll', () => {
           usageSignalEnabled: false, channelLabels: {}, channelGroups: {}, inputInstrumentProfiles: {},
           crashReportingEnabled: false, dawWorkspaceEnabled: false, liveAdjustmentsEnabled: false,
           reportFirstUxEnabled: false, shareChurchName: '', weeklyReminderEnabled: false, weeklyReminderServiceDay: 0,
-          liveEqPaneWidth: 360,
+          liveEqPaneWidth: 360, tier2ConsoleConsent: false,
         };
       },
     });
@@ -132,6 +132,15 @@ describe('commitShareChurchName', () => {
     await commitShareChurchName(store, '');
 
     expect(mock.calls).toContainEqual({ method: 'updateSettings', args: [{ shareChurchName: '' }] });
+  });
+});
+
+describe('revokeTier2ConsoleConsent', () => {
+  it('removes the explicit Tier 2 permission through Settings', async () => {
+    const mock = createMockSoundBuddy();
+    const store = createSettingsStore(() => mock.api);
+    await revokeTier2ConsoleConsent(store);
+    expect(mock.calls).toContainEqual({ method: 'updateSettings', args: [{ tier2ConsoleConsent: false }] });
   });
 });
 

@@ -539,6 +539,23 @@ describe('update-settings IPC whitelist — liveEqPaneWidth (#668)', () => {
   );
 });
 
+describe('update-settings IPC whitelist — tier2ConsoleConsent (#378)', () => {
+  it('persists explicit grant and revocation only when the value is boolean', async () => {
+    const handler = handlers.get('update-settings')!;
+    expect((await handler(null, { tier2ConsoleConsent: true }) as { tier2ConsoleConsent: boolean }).tier2ConsoleConsent).toBe(true);
+    expect(readFile().tier2ConsoleConsent).toBe(true);
+
+    expect((await handler(null, { tier2ConsoleConsent: false }) as { tier2ConsoleConsent: boolean }).tier2ConsoleConsent).toBe(false);
+    expect(readFile().tier2ConsoleConsent).toBe(false);
+  });
+
+  it('ignores a non-boolean value, leaving consent denied', async () => {
+    const handler = handlers.get('update-settings')!;
+    expect((await handler(null, { tier2ConsoleConsent: 'true' }) as { tier2ConsoleConsent: boolean }).tier2ConsoleConsent).toBe(false);
+    expect(readFile().tier2ConsoleConsent).toBe(false);
+  });
+});
+
 describe('sanitizeChannelLabels (#482)', () => {
   it('returns null for a non-object value (patch key ignored)', () => {
     expect(sanitizeChannelLabels('nope')).toBeNull();

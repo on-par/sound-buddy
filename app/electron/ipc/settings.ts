@@ -259,6 +259,12 @@ export function registerSettingsHandlers(): void {
       ) {
         clean.liveEqPaneWidth = patch.liveEqPaneWidth;
       }
+      // Tier 2 console networking (#378) is deny-by-default. This IPC
+      // whitelist permits only the boolean persisted by the explicit consent
+      // modal or Settings' revoke control; it never opens a socket itself.
+      if (typeof patch.tier2ConsoleConsent === 'boolean') {
+        clean.tier2ConsoleConsent = patch.tier2ConsoleConsent;
+      }
     }
     const result = updateSettings(clean);
     // Opting out of telemetry (#474) clears the pending queue and the
