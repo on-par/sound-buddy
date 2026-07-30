@@ -47,6 +47,7 @@ export interface StorageToggles {
   crashReportingEnabled: boolean;
   dawWorkspaceEnabled: boolean;
   liveAdjustmentsEnabled: boolean;
+  secondaryMeasurementEnabled: boolean;
   weeklyReminderEnabled: boolean;
   weeklyReminderServiceDay: number;
 }
@@ -61,6 +62,7 @@ type BooleanToggleKey =
   | 'crashReportingEnabled'
   | 'dawWorkspaceEnabled'
   | 'liveAdjustmentsEnabled'
+  | 'secondaryMeasurementEnabled'
   | 'weeklyReminderEnabled';
 
 const TOGGLE_KEYS: (BooleanToggleKey & keyof UpdateSettingsPatch)[] = [
@@ -68,6 +70,7 @@ const TOGGLE_KEYS: (BooleanToggleKey & keyof UpdateSettingsPatch)[] = [
   'crashReportingEnabled',
   'dawWorkspaceEnabled',
   'liveAdjustmentsEnabled',
+  'secondaryMeasurementEnabled',
   'weeklyReminderEnabled',
 ];
 
