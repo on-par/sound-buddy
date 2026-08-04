@@ -12,14 +12,14 @@
     "verify": "npm run check && npm run test && npm run build && node scripts/verify-links.mjs && node scripts/check-download-channel.mjs && node scripts/check-pricing.mjs && node scripts/check-faq.mjs && node scripts/check-homepage-visuals.mjs && node scripts/check-headers.mjs && node scripts/check-browser-page.mjs && node scripts/check-mobile-overflow.mjs && node scripts/check-site-mode.mjs && node scripts/check-live-parity.mjs"
   },
   "dependencies": {
-    "@fontsource-variable/geist": "^5.2.9",
-    "@fontsource-variable/geist-mono": "^5.2.8",
-    "astro": "^7.0.9"
+    "@fontsource-variable/geist": "^5.3.0",
+    "@fontsource-variable/geist-mono": "^5.3.0",
+    "astro": "^7.1.6"
   },
   "devDependencies": {
-    "@astrojs/check": "^0.9.4",
-    "@types/node": "^26.1.1",
-    "playwright": "^1.61.1",
+    "@astrojs/check": "^0.9.10",
+    "@types/node": "^26.1.2",
+    "playwright": "^1.62.1",
     "typescript": "^5.6.0",
     "vitest": "^4.1.10"
   }
