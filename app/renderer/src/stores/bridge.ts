@@ -13,6 +13,7 @@ import { useSpectrumStore } from './spectrumStore';
 import { useLiveCaptureStore } from './liveCaptureStore';
 import { useSceneDiffStore } from './sceneDiffStore';
 import { liveReportCardSource } from '../live-capture-panel';
+import { spectrumTransport, type SpectrumTransport } from '../spectrum-transport';
 
 export interface RendererStores {
   licensing: typeof useLicensingStore;
@@ -25,6 +26,7 @@ export interface RendererStores {
 declare global {
   interface Window {
     rendererStores?: RendererStores;
+    spectrumTransport?: SpectrumTransport;
   }
 }
 
@@ -38,7 +40,8 @@ let crossStoreSubscriptionInstalled = false;
 // constitution's "side effects are injected" rule) — defaults to the real
 // `window` in the running app.
 export function installStoreBridge(
-  target: { rendererStores?: RendererStores } = window as unknown as { rendererStores?: RendererStores }
+  target: { rendererStores?: RendererStores; spectrumTransport?: SpectrumTransport } =
+    window as unknown as { rendererStores?: RendererStores; spectrumTransport?: SpectrumTransport }
 ): RendererStores {
   const stores: RendererStores = {
     licensing: useLicensingStore,
@@ -48,6 +51,7 @@ export function installStoreBridge(
     liveCapture: useLiveCaptureStore,
   };
   target.rendererStores = stores;
+  target.spectrumTransport = spectrumTransport;
 
   if (!crossStoreSubscriptionInstalled) {
     crossStoreSubscriptionInstalled = true;

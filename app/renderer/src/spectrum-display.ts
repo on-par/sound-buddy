@@ -7,7 +7,11 @@
 // logic is a single, unit-tested source of truth reusable by both the runtime
 // (via the `window.spectrumDisplay` bridge — see App.tsx) and <SpectrumDisplay>.
 // Deliberately dependency-free (no DOM, no imports) so it can be lifted as-is
-// for the Expo mobile port (#300/#301).
+// for the Expo mobile port (#300/#301) — except spectrumChartModel below,
+// which needs the pure (also DOM-free) audio-engine comparison function.
+
+import { compareToProfile } from '@sound-buddy/audio-engine/dist/profiles/index.js';
+import type { IdealProfile } from '@sound-buddy/audio-engine/dist/profiles/index.js';
 
 export type BandKey = 'subBass' | 'bass' | 'lowMid' | 'mid' | 'highMid' | 'presence' | 'brilliance';
 
@@ -512,6 +516,85 @@ export function eqBarsHTML(bandDb: number[], targetDb?: number[]): string {
       <div class="eq-plot">${grid}<div class="veq-bars">${bars}</div>${targetSvg}</div>
       <div class="veq-labels">${labels}</div>
     </div>`;
+}
+
+// m:ss clock readout shared by the spectrogram scrubber's elapsed/total
+// transport display (spectrum-transport.ts's playbackClockText). Verbatim
+// port of inline-app.js's scTime.
+export function formatClock(s: number): string {
+  const secs = !isFinite(s) || s < 0 ? 0 : s;
+  const m = Math.floor(secs / 60), sec = Math.floor(secs % 60);
+  return `${m}:${sec < 10 ? '0' : ''}${sec}`;
+}
+
+// Whether spectrum.curve carries enough grid-aligned points to drive the
+// curve-with-target chart (vs the no-curve bar fallback) — the single source
+// of truth for "does this analysis have a usable curve", shared by
+// spectrumChartModel below and SpectrumPanel's panel-chrome derivation
+// (replaces inline-app.js's ipHasCurve).
+export function hasUsableCurve(spectrum: SpectrumData): boolean {
+  const curve = spectrum.curve;
+  return !!(
+    curve &&
+    Array.isArray(curve.freqs) &&
+    Array.isArray(curve.db) &&
+    curve.freqs.length === curve.db.length &&
+    curve.db.length >= 2
+  );
+}
+
+// A single scrubbed frame's band levels, bucketed onto the whole-file curve's
+// frequency grid — the exact expression the spectrogram scrubber uses to
+// redraw the bars for whichever frame is pinned. Falls back to the whole-file
+// average (bandDbFromSpectrum) when there's no usable curve or the index is
+// out of range, so a frames-without-curve payload can't throw.
+export function frameBandDb(spectrum: SpectrumData, index: number): number[] {
+  const frame = spectrum.frames?.[index];
+  if (!hasUsableCurve(spectrum) || !frame) return bandDbFromSpectrum(spectrum);
+  return bandLevelsFromCurve({ freqs: (spectrum.curve as SpectrumCurve).freqs, db: frame.db });
+}
+
+export interface SpectrumChartModel {
+  chartHTML: string;
+  legendHTML: string;
+  centroidHTML: string;
+}
+
+// Single pure source for <SpectrumDisplay>'s chart/legend/centroid HTML —
+// lifted verbatim from SpectrumDisplay.tsx's render body, with one addition:
+// when `selectedFrame` is set, the measured bars come from that frame
+// (frameBandDb) instead of the whole-file average, while the target overlay
+// stays level-matched to the whole-file curve (matching the scrubber's prior
+// renderScrub behavior).
+export function spectrumChartModel(opts: {
+  spectrum: SpectrumData;
+  idealProfile?: IdealProfileLike | null;
+  isAutoProfile?: boolean;
+  isLive?: boolean;
+  selectedFrame?: number | null;
+}): SpectrumChartModel {
+  const { spectrum, idealProfile, isAutoProfile = false, isLive = false, selectedFrame = null } = opts;
+  const curve = spectrum.curve;
+  const curveOk = hasUsableCurve(spectrum);
+  const showTarget = curveOk && !!idealProfile && !isLive;
+  const measuredBandDb = selectedFrame != null ? frameBandDb(spectrum, selectedFrame) : bandDbFromSpectrum(spectrum);
+
+  let chartHTML: string;
+  let legendHTML = '';
+  if (showTarget && curve && idealProfile) {
+    const target = levelMatchedTarget(curve, idealProfile);
+    const targetBandDb = bandLevelsFromCurve({ freqs: curve.freqs, db: target });
+    // compareToProfile only reads profile.dbOffsets at runtime; IdealProfileLike
+    // intentionally narrows the audio-engine IdealProfile shape to the fields
+    // levelMatchedTarget/spectrumLegendHTML actually need.
+    const cmp = compareToProfile(curve, idealProfile as IdealProfile);
+    chartHTML = eqBarsHTML(measuredBandDb, targetBandDb);
+    legendHTML = spectrumLegendHTML(idealProfile, cmp, isAutoProfile);
+  } else {
+    chartHTML = eqBarsHTML(measuredBandDb);
+  }
+  const centroidHTML = eqCentroidHTML(spectrum);
+  return { chartHTML, legendHTML, centroidHTML };
 }
 
 // Per-band presentation state, shared by the build and patch paths so they
