@@ -50,6 +50,11 @@ const setStore = window.rendererStores.settings;
 const anaStore = window.rendererStores.analysis;
 const specStore = window.rendererStores.spectrum;
 const curAnalysis = () => anaStore.getState().currentAnalysis;
+// The <audio> playback transport (TD-001 slice 6a, #695) — installed onto
+// window by installStoreBridge() alongside rendererStores. Owns the analyzed
+// file's <audio> element lifecycle; SpectrogramScrubber (React) drives its
+// discrete state and ~60Hz tick listener.
+const transport = window.spectrumTransport;
 // The measurement-source selection (#456) lives in liveCaptureStore; this
 // script reads/writes it through the store instead of a module-level var.
 const lcStore = window.rendererStores.liveCapture;
@@ -154,8 +159,14 @@ const {
   veqBarsAndLabelsHTML, eqTargetLineSVG, eqCentroidHTML, eqBarsHTML,
   veqLoudestIdx, veqBandView, veqValBottom,
   heatmapSVG, miniCurveSVG, fmtDur, timeAxisHTML, classLabel,
-  patchGridBarsAndBandLabels,
+  patchGridBarsAndBandLabels, patchBarsAndLabels, hasUsableCurve,
+  formatClock: scTime,
 } = window.spectrumDisplay;
+
+// SPECTRUM_TITLE (TD-001 slice 6a, #695) — inline-app.js still writes
+// #spectrum-title directly for the not-yet-migrated live/soundcheck meter
+// modes; spectrum-chrome.ts's spectrumChromeView owns it everywhere else.
+const { SPECTRUM_TITLE } = window.spectrumChrome;
 
 /* ══ Live-capture panel rendering — extracted to live-capture-panel.ts (#307),
    bridged onto window by App.tsx like spectrumDisplay/reportCard. ══ */
@@ -204,10 +215,6 @@ function activeProfile(spectrum) {
   const id = idealProfileId || ipDefaultForContentType(spectrum && spectrum.contentType);
   return IP_BY_ID.get(id) || IP_BY_ID.get('flat');
 }
-function ipHasCurve(spectrum) {
-  const c = spectrum && spectrum.curve;
-  return !!(c && Array.isArray(c.db) && Array.isArray(c.freqs) && c.freqs.length === c.db.length && c.db.length >= 2);
-}
 
 // Writes the resolved active profile into spectrumStore so ReportCardIsland
 // and SpectrumPanel (React) re-render with it (TD-001 slice 4, #422) —
@@ -241,15 +248,6 @@ function initIdealProfileSelect() {
     try { await sb.updateSettings({ idealProfile: idealProfileId }); } catch { /* non-fatal */ }
     syncIdealProfile();
   });
-}
-
-/* Show the header dropdown only when a curve is on screen (file/dir mode). */
-function updateIdealProfileVisibility(spectrum) {
-  const wrap = document.getElementById('ideal-profile-wrap');
-  if (!wrap) return;
-  wrap.style.display = (ipHasCurve(spectrum) && currentMode !== 'live') ? 'flex' : 'none';
-  const sel = document.getElementById('ideal-profile-select');
-  if (sel) sel.value = idealProfileId;
 }
 
 function refreshIdealProfileSelect() {
@@ -326,7 +324,7 @@ function openCurveEditor() {
   curveEl('curve-dialog-title').textContent = custom ? 'Edit Ideal Curve' : 'Create Ideal Curve';
   curveEl('curve-name').value = custom ? custom.label : `Copy of ${base ? base.label : 'Flat / neutral'}`;
   curveEl('curve-delete-btn').disabled = !custom;
-  curveEl('curve-capture-btn').disabled = !(curAnalysis() && ipHasCurve(curAnalysis().spectrum));
+  curveEl('curve-capture-btn').disabled = !(curAnalysis() && hasUsableCurve(curAnalysis().spectrum || {}));
   setCurveStatus('', '');
   setCurveEditorBands(window.idealCurves.bandOffsetsFromProfile(base, IP_GRID_FREQS));
   curveEl('curve-dialog').style.display = 'flex';
@@ -372,7 +370,7 @@ async function saveCurveEditor() {
 
 async function captureCurrentCurveAsIdeal() {
   const name = curveEl('curve-name').value.trim() || 'Current analysis target';
-  if (!(curAnalysis() && ipHasCurve(curAnalysis().spectrum))) {
+  if (!(curAnalysis() && hasUsableCurve(curAnalysis().spectrum || {}))) {
     setCurveStatus('Analyze a file with spectrum data first.', 'err');
     return;
   }
@@ -399,108 +397,28 @@ async function deleteCurveEditor() {
 }
 
 /* ══ Spectrum panel rendering ══
-   The analysis curve/bars view is now React's SpectrumPanel, driven by
-   spectrumStore (TD-001 slice 4, #422); this section keeps driving
-   #spectrum-imperative for the empty/loading/error/live-tab states and the
-   panel chrome (title/stats/ideal-profile visibility, island toggle) React
-   doesn't own — see syncSpectrumChrome below. */
-function setSpectrumState(state, opts = {}) {
-  const body = document.getElementById('spectrum-imperative');
-  // Every setSpectrumState call takes over the panel imperatively — hide the
-  // React island (even if spectrumStore still holds a prior analysis's data)
-  // so a loading/error/empty/live state never shows a stale curve beside or
-  // instead of it. Only syncSpectrumChrome() (a completed analysis or a
-  // mode switch back to a data-backed tab) can show the island again.
-  body.style.display = '';
-  document.getElementById('spectrum-island').style.display = 'none';
-  const statsRow = document.getElementById('stats-row');
-  statsRow.style.display = state === 'populated' ? 'flex' : 'none';
-  const ipWrap = document.getElementById('ideal-profile-wrap');
-  if (ipWrap) ipWrap.style.display = 'none';
+   The whole analysis-spectrum surface — panel display state, the curve/bars,
+   the spectrogram scrubber, and the <audio> playback transport — is now
+   React's SpectrumPanel + spectrumTransport, driven by spectrumStore
+   (TD-001 slice 6a, #695). This section keeps only the two thin e2e/legacy
+   compat shims below (called by name — see the comment on each) and the
+   still-inline #spectrum-imperative renderers for the not-yet-migrated live/
+   soundcheck/DAW meter modes (`specStore.getState().setPanelState('meters')`
+   hands that container back to inline-app.js — see spectrum-chrome.ts's ADR). */
 
-  if (state === 'empty') {
-    body.innerHTML = `<div class="spectrum-empty">${iconSvg('waveform', 44)}<p>${opts.text || 'Load a file to see the spectrum'}</p></div>`;
-  } else if (state === 'loading') {
-    const stageRow = (stage, label) =>
-      `<div class="stage-row" data-stage="${stage}">
-        <span class="stage-icon"><span class="stage-spin"></span><span class="stage-check">${iconSvg('check', 14)}</span></span>
-        <span class="stage-label">${label}</span>
-      </div>`;
-    body.innerHTML = `<div class="spectrum-empty">
-      <p>Analyzing audio…</p>
-      <div class="stage-stepper">
-        ${stageRow('reading', 'Reading file')}
-        ${stageRow('levels', 'Measuring levels')}
-        ${stageRow('spectrum', 'Analyzing spectrum')}
-      </div>
-      <button type="button" id="analysis-cancel-btn" class="btn btn-secondary sm" data-icon="x">Cancel</button>
-    </div>`;
-    hydrateIcons(body);
-    document.getElementById('analysis-cancel-btn').addEventListener('click', () => { void sb.cancelAnalysis(); });
-  } else if (state === 'error') {
-    body.innerHTML = `<div class="spectrum-empty" style="color:var(--issue-text)">${iconSvg('alert-triangle', 40)}<p>Analysis failed</p><p class="sub" style="max-width:340px;color:var(--text-tertiary)">${opts.text || 'Couldn’t decode the audio stream.'}</p></div>`;
-  }
-}
-
-// Panel-header labels. The static markup seeds `curve`; the render paths below
-// keep the header in sync with what's actually drawn (curve vs. fallback meters).
-const SPECTRUM_TITLE = { curve: 'Spectrum · Curve', meters: 'Spectrum · Meters', live: 'Spectrum · Live EQ', liveStopped: 'Spectrum · Live EQ · Stopped' };
-
-// Shows the analysis spectrum island (React's SpectrumPanel, driven by
-// spectrumStore) vs the imperative #spectrum-imperative container based on
-// the current tab mode + whether there's spectrum data to show, and keeps
-// the title/stats-row/ideal-profile-wrap chrome around the island in sync —
-// replaces what renderSpectrum() used to set directly (TD-001 slice 4,
-// #422). Idempotent: safe to call from a mode-tab switch, a completed
-// analysis, or an ideal-profile change.
-function syncSpectrumChrome() {
-  const spectrum = specStore.getState().spectrumData;
-  const island = document.getElementById('spectrum-island');
-  const imperative = document.getElementById('spectrum-imperative');
-  const showIsland = !!spectrum && currentMode !== 'live' && currentMode !== 'soundcheck';
-  island.style.display = showIsland ? '' : 'none';
-  imperative.style.display = showIsland ? 'none' : '';
-  if (!showIsland) return;
-  document.getElementById('stats-row').style.display = 'flex';
-  document.getElementById('spectrum-title').textContent = ipHasCurve(spectrum) ? SPECTRUM_TITLE.curve : SPECTRUM_TITLE.meters;
-  updateIdealProfileVisibility(spectrum);
-}
-
-// Patch existing bar/value/label DOM in place (the update-time counterpart of
-// veqBarsAndLabelsHTML above) — shared by the Live-tab per-channel patch
-// (patchLiveChannel) and the playback-band repaint (renderPlaybackBands, AW-4)
-// so height/value transitions animate via CSS instead of restarting on every
-// repaint, and the two paint paths can't drift out of sync with each other.
-function patchBarsAndLabels(container, dbArray) {
-  const loudestIdx = veqLoudestIdx(dbArray);
-  const vals = container.querySelectorAll('.veq-val');
-  container.querySelectorAll('.veq-bar').forEach((bar, i) => {
-    const v = veqBandView(dbArray[i]);
-    bar.style.height = v.pct.toFixed(2) + '%';
-    bar.classList.toggle('loud', i === loudestIdx);
-    bar.classList.toggle('dim', v.dim);
-    const val = vals[i];
-    if (val) {
-      val.textContent = v.val;
-      val.style.bottom = veqValBottom(v.pct) + '%';
-      val.classList.toggle('hot', v.hot);
-      val.classList.toggle('dim', v.dim);
-    }
-  });
-  container.querySelectorAll('.veq-label').forEach((lb, i) => lb.classList.toggle('loud', i === loudestIdx));
-}
 // e2e/legacy compat shim — report-card-grading.spec.ts's "missing spectrum
 // curve degrades…" test calls window.renderSpectrum(spectrum) directly to
 // drive the no-curve fallback. Routes the raw spectrum object through
 // spectrumStore so React's SpectrumPanel renders it (curve-with-target when
 // usable, the uniform-bars fallback otherwise — SpectrumDisplay.tsx already
-// degrades gracefully, reproducing this function's old two-branch body) and
-// refreshes the panel chrome the same way a real analysis landing would.
-function renderSpectrum(spectrum) {
+// degrades gracefully, reproducing this function's old two-branch body).
+window.renderSpectrum = (spectrum) => {
   specStore.getState().setSpectrumFromAnalysis({ spectrum });
   syncIdealProfile();
-  syncSpectrumChrome();
-}
+};
+// e2e/legacy compat shim — playback-transport.spec.ts drives the scrubber's
+// seek behavior via window.seekPlayback(t) directly.
+window.seekPlayback = (t) => transport.seek(t);
 
 // Coalesce live renders: meter ticks arrive up to ~20/s (and a window tick can
 // land in the same burst), but the meter panel only needs to repaint once per
@@ -517,287 +435,6 @@ function scheduleLiveMeters(win) {
     pendingLiveWin = null;
     if (w && currentMode === 'live') renderLiveMeters(w);
   });
-}
-
-/* ── Time-sampled spectrum: spectrogram heatmap + scrubber (PRD 03) ──
- * heatmapSVG/miniCurveSVG/timeAxisHTML/classLabel are now bridged in from
- * spectrum-display.ts (see the window.spectrumDisplay destructure above,
- * TD-001 slice 4, #422) — the scrubber itself (below) stays inline and
- * consumes them, same as before. */
-
-// The spectrogram strip + scrubber under the curve. Empty string when frames are
-// absent, so the curve renders alone without error.
-function buildFramesSectionHTML(spectrum) {
-  const frames = spectrum.frames;
-  if (!Array.isArray(frames) || frames.length === 0) return '';
-  const single = frames.length === 1;
-  return `<div class="spectro-scrub">
-    <div class="spectro-head">
-      <span class="spectro-title">Spectrogram · time →</span>
-      <span id="scrub-readout" class="scrub-readout">Whole-file average</span>
-      <span class="spectro-hint">${single ? 'single frame — short file' : 'click a column to scrub'}</span>
-      <button id="scrub-reset" class="scrub-reset" type="button">${iconSvg('play', 11)}Average</button>
-    </div>
-    <div class="spectro-transport">
-      <button id="spectro-play-btn" class="spectro-play-btn" type="button" aria-label="Play">${iconSvg('play', 13)}</button>
-      <span id="spectro-time" class="spectro-time">0:00 / 0:00</span>
-    </div>
-    <div id="spectrum-heatmap" class="spectro-heat">${heatmapSVG(frames)}<div id="spectro-playhead" class="spectro-playhead"></div></div>
-    ${timeAxisHTML(frames)}
-  </div>`;
-}
-
-/* Scrubber state — redraws the PRD 02 curve (#spectrum-chart) for a frame. */
-let sgState = null;
-function initSpectrogram(spectrum) {
-  // Preserve the scrubbed frame across DOM rebuilds of the SAME analysis (e.g.
-  // leaving the file tab and returning). A new analysis resets to the average.
-  const carry = sgState && sgState.spectrum === spectrum
-    && sgState.selected != null && sgState.selected < spectrum.frames.length
-    ? sgState.selected : null;
-  sgState = { spectrum, frames: spectrum.frames, selected: carry };
-  const heat = document.getElementById('spectrum-heatmap');
-  if (heat) heat.addEventListener('click', (e) => {
-    const box = heat.getBoundingClientRect();
-    if (box.width <= 0) return;
-    const nF = sgState.frames.length;
-    const i = Math.max(0, Math.min(nF - 1, Math.floor(((e.clientX - box.left) / box.width) * nF)));
-    seekPlayback(sgState.frames[i].t);
-    // Only pin a static frame when playback isn't actively driving the bars
-    // (AW-4, #179) — while playing, renderPlaybackBands already reflects
-    // wherever the seek landed on its very next tick, and pinning here too
-    // would leave a stale sgState.selected that's wrong the moment playback
-    // later advances past it and the user pauses.
-    if (!sbAudio || sbAudio.paused) selectFrame(i);
-  });
-  const reset = document.getElementById('scrub-reset');
-  if (reset) reset.addEventListener('click', () => selectFrame(null));
-  if (carry != null) renderScrub(); // restore a carried scrub; the average curve is already drawn
-  initPlaybackTransport(curAnalysis() && curAnalysis().filePath);
-}
-
-// Bridges SpectrumPanel's (React) frames-host effect to the still-inline
-// spectrogram scrubber + playback transport (TD-001 slice 4, #422): fills
-// the stable #spectrum-frames-host with the scrubber markup and (re)inits it.
-window.inlineSpectrum = {
-  renderFrames(spectrum) {
-    const host = document.getElementById('spectrum-frames-host');
-    if (!host) return;
-    host.innerHTML = buildFramesSectionHTML(spectrum);
-    if (Array.isArray(spectrum.frames) && spectrum.frames.length) initSpectrogram(spectrum);
-  },
-};
-
-/* ── Playback transport (#180) — HTML5 <audio> over the analyzed file, driving
- * a moving playhead + elapsed/total readout on the spectrogram strip. `sbAudio`
- * persists across re-renders of the SAME file (ideal-profile changes, tab
- * switches) so playback isn't interrupted by unrelated DOM rebuilds. */
-let sbAudio = null;
-let sbAudioPath = null;
-// Bumped on every ensurePlaybackAudio call so a call superseded by a newer one
-// (e.g. two analyses started in quick succession) can't win the toFileUrl race
-// and stomp sbAudio/sbAudioPath with a stale file's data after a fresher call
-// already committed.
-let sbGeneration = 0;
-async function ensurePlaybackAudio(filePath) {
-  if (sbAudioPath === filePath) return sbAudio;
-  const gen = ++sbGeneration;
-  // toFileUrl is IPC-backed (sandboxed preload can't reach Node's pathToFileURL
-  // directly), so this crosses a round-trip before the <audio> element exists.
-  const url = await sb.toFileUrl(filePath);
-  if (gen !== sbGeneration) return sbAudio; // superseded — a newer call already won
-  releasePlaybackAudio();
-  // Null when the file is gone (moved/deleted since analysis) — leave sbAudio
-  // unset rather than pointing <audio> at a dead path.
-  sbAudio = url ? new Audio(url) : null;
-  sbAudioPath = filePath;
-  if (sbAudio) {
-    sbAudio.addEventListener('timeupdate', updatePlaybackReadout);
-    sbAudio.addEventListener('loadedmetadata', updatePlaybackReadout);
-    sbAudio.addEventListener('play', updateTransportButton);
-    sbAudio.addEventListener('play', startPlaybackBandLoop);
-    sbAudio.addEventListener('pause', updateTransportButton);
-    sbAudio.addEventListener('pause', stopPlaybackBandLoop);
-    sbAudio.addEventListener('ended', onPlaybackEnded);
-    // An undecodable source (e.g. some AIFF variants sox/ffprobe accept but
-    // Chromium's <audio> can't) fails quietly instead of an uncaught rejection.
-    sbAudio.addEventListener('error', updateTransportButton);
-  }
-  return sbAudio;
-}
-function pauseTransportAudio() {
-  if (sbAudio && !sbAudio.paused) sbAudio.pause();
-}
-// Shared "let go of the current <audio> element" step used both when swapping
-// to a new file (ensurePlaybackAudio) and when clearing back to no file (#206),
-// so the pause+src-clear+null teardown only lives in one place.
-function releasePlaybackAudio() {
-  if (sbAudio) { sbAudio.pause(); sbAudio.src = ''; }
-  sbAudio = null;
-}
-async function initPlaybackTransport(filePath) {
-  if (!filePath || !document.getElementById('spectro-play-btn')) return;
-  await ensurePlaybackAudio(filePath);
-  const btn = document.getElementById('spectro-play-btn'); // re-query: DOM may have rebuilt while awaiting
-  if (!btn) return;
-  // Reads the live sbAudio/sbAudioPath at click time rather than closing over
-  // this call's result, so a superseded call's listener still controls
-  // whichever file actually won ensurePlaybackAudio's race.
-  btn.addEventListener('click', () => {
-    if (!sbAudio) return;
-    if (sbAudio.paused) sbAudio.play().catch(() => updateTransportButton());
-    else sbAudio.pause();
-  });
-  updateTransportButton();
-  updatePlaybackReadout();
-}
-function updateTransportButton() {
-  const btn = document.getElementById('spectro-play-btn');
-  if (!btn || !sbAudio) return;
-  const playing = !sbAudio.paused && !sbAudio.ended;
-  btn.innerHTML = iconSvg(playing ? 'pause' : 'play', 13);
-  btn.setAttribute('aria-label', playing ? 'Pause' : 'Play');
-  btn.classList.toggle('playing', playing);
-}
-function playbackDuration() {
-  if (sbAudio && isFinite(sbAudio.duration) && sbAudio.duration > 0) return sbAudio.duration;
-  const fp = curAnalysis() && curAnalysis().ffprobe && curAnalysis().ffprobe.format;
-  return (fp && fp.durationSeconds) || 0;
-}
-function updatePlaybackReadout() {
-  if (!sbAudio) return;
-  const total = playbackDuration();
-  const timeEl = document.getElementById('spectro-time');
-  if (timeEl) timeEl.textContent = `${scTime(sbAudio.currentTime)} / ${scTime(total)}`;
-  const playhead = document.getElementById('spectro-playhead');
-  if (playhead) {
-    playhead.style.left = `${total > 0 ? Math.max(0, Math.min(1, sbAudio.currentTime / total)) * 100 : 0}%`;
-    playhead.style.display = 'block';
-  }
-}
-function onPlaybackEnded() {
-  if (!sbAudio) return;
-  sbAudio.currentTime = 0;
-  updatePlaybackReadout();
-  updateTransportButton();
-  stopPlaybackBandLoop(); // some UAs fire 'pause' too, but don't rely on it — this is idempotent
-}
-function seekPlayback(t) {
-  if (!sbAudio) return;
-  // Clamp below the real duration: setting currentTime AT duration reads back
-  // as "reached the end" to Chromium, which re-fires 'ended' and immediately
-  // snaps back to 0 — seeking near the final frame would silently undo itself.
-  const duration = playbackDuration();
-  sbAudio.currentTime = duration > 0 ? Math.min(t, Math.max(0, duration - 0.05)) : t;
-  updatePlaybackReadout();
-}
-function selectFrame(i) {
-  if (!sgState) return;
-  sgState.selected = i;
-  renderScrub();
-}
-function renderScrub() {
-  if (!sgState) return;
-  const { spectrum, frames, selected } = sgState;
-  const isAvg = selected == null;
-  // Redraw the AW-2 bars: average = spectrum.bands (same values the initial
-  // render used); a frame buckets its own db onto the whole-file freq grid.
-  const bandDb = isAvg ? bandDbFromSpectrum(spectrum)
-    : bandLevelsFromCurve({ freqs: spectrum.curve.freqs, db: frames[selected].db });
-  const chart = document.getElementById('spectrum-chart');
-  if (chart) {
-    // Keep the ideal target overlaid (PRD 05) while scrubbing. The target stays
-    // level-matched to the whole-file curve so it reads as a fixed reference the
-    // per-frame measured bars move against.
-    const target = levelMatchedTarget(spectrum.curve, activeProfile(spectrum));
-    const targetBandDb = bandLevelsFromCurve({ freqs: spectrum.curve.freqs, db: target });
-    chart.innerHTML = eqBarsHTML(bandDb, targetBandDb);
-  }
-  const readout = document.getElementById('scrub-readout');
-  if (readout) {
-    if (isAvg) readout.textContent = 'Whole-file average';
-    else {
-      const f = frames[selected];
-      readout.textContent = `t = ${fmtDur(f.t)} · ${classLabel(f.class)} · RMS ${fmt(f.rms)} dB`;
-    }
-  }
-  const reset = document.getElementById('scrub-reset');
-  if (reset) reset.classList.toggle('active', !isAvg);
-  const heat = document.getElementById('spectrum-heatmap');
-  if (heat) heat.querySelectorAll('.hm-col').forEach(c =>
-    c.classList.toggle('sel', !isAvg && parseInt(c.dataset.i, 10) === selected));
-}
-
-/* ── Realtime band values during playback (AW-4, #179) ──
- * Sourced entirely from spectrum.frames — the same per-window data the
- * spectrogram/scrubber already carry — so nothing is re-analyzed. Driven by a
- * dedicated rAF loop (started on 'play', stopped on 'pause'/'ended') rather
- * than the audio element's 'timeupdate' (which Chromium throttles to a few
- * Hz), so the loop itself is naturally capped at one repaint per animation
- * frame — the same guarantee scheduleLiveMeters/renderLiveMeters give the
- * Live tab, just achieved by controlling the paint cadence directly instead
- * of coalescing bursty external ticks. */
-const PLAYBACK_AVG_WINDOW_SEC = 0.5; // trailing window for the "window avg" readout
-
-// Nearest frame for a playback position — the same t→x proportion the
-// heatmap playhead uses (updatePlaybackReadout), so the animated bars always
-// match the frame the playhead is currently over.
-function frameIndexAtTime(frames, t, total) {
-  if (!(total > 0)) return 0;
-  return Math.max(0, Math.min(frames.length - 1, Math.floor((t / total) * frames.length)));
-}
-// Mean of frame.rms over the trailing [t - windowSec, t] window — "the
-// average level over the current playback window" — reusing each frame's
-// already-computed RMS rather than deriving a new figure.
-function windowAverageRms(frames, t, windowSec) {
-  let sum = 0, n = 0;
-  for (const f of frames) if (f.t <= t && f.t > t - windowSec && Number.isFinite(f.rms)) { sum += f.rms; n++; }
-  return n ? sum / n : null;
-}
-// Last frame index actually painted by renderPlaybackBands — skips repaint
-// work on ticks where the playhead hasn't crossed into a new frame yet
-// (frames are typically 100ms+ apart, so most of the ~60/s rAF ticks would
-// otherwise recompute and repatch identical output). Reset to -1 whenever a
-// playback session (re)starts, so the first tick after a stopPlaybackBandLoop
-// repaint (e.g. resuming right where a previous session left off, landing on
-// the same frame index) always repaints instead of trusting a stale match.
-let lastRenderedFrameIndex = -1;
-function renderPlaybackBands(t) {
-  if (!sgState || !sgState.frames || !sgState.frames.length) return;
-  const { spectrum, frames } = sgState;
-  const i = frameIndexAtTime(frames, t, playbackDuration());
-  if (i === lastRenderedFrameIndex) return;
-  lastRenderedFrameIndex = i;
-  const chart = document.getElementById('spectrum-chart');
-  if (!chart) return;
-  patchBarsAndLabels(chart, bandLevelsFromCurve({ freqs: spectrum.curve.freqs, db: frames[i].db }));
-  const avg = windowAverageRms(frames, t, PLAYBACK_AVG_WINDOW_SEC);
-  const readout = document.getElementById('scrub-readout');
-  if (readout) readout.textContent = classLabel(frames[i].class) + (avg != null ? ` · Window avg ${fmt(avg)} dB` : '');
-  const heat = document.getElementById('spectrum-heatmap');
-  if (heat) heat.querySelectorAll('.hm-col').forEach(c => c.classList.toggle('sel', parseInt(c.dataset.i, 10) === i));
-}
-let playbackAnimHandle = null;
-function startPlaybackBandLoop() {
-  if (playbackAnimHandle != null || !sbAudio || !sgState || !sgState.frames || !sgState.frames.length) return;
-  lastRenderedFrameIndex = -1;
-  const tick = () => {
-    if (!sbAudio || sbAudio.paused || sbAudio.ended) { playbackAnimHandle = null; return; }
-    renderPlaybackBands(sbAudio.currentTime);
-    playbackAnimHandle = requestAnimationFrame(tick);
-  };
-  playbackAnimHandle = requestAnimationFrame(tick);
-}
-function stopPlaybackBandLoop(evt) {
-  // 'pause' fires asynchronously (a queued task per the HTML media spec), so
-  // the outgoing sbAudio.pause() in ensurePlaybackAudio can still deliver its
-  // event after a newer file's Audio instance has already become the global
-  // sbAudio and started its own loop. Ignore stale instances' events so they
-  // can't cancel a newer file's live loop out from under it (evt is absent
-  // for the direct calls from onPlaybackEnded/tick, which always mean it now).
-  if (evt && evt.target !== sbAudio) return;
-  if (playbackAnimHandle != null) { cancelAnimationFrame(playbackAnimHandle); playbackAnimHandle = null; }
-  renderScrub(); // whole-file (or carried scrub) state — dismisses the realtime overlay
 }
 
 // patchLiveChannel (the per-strip DOM applier) is now the pure version bridged
@@ -926,9 +563,10 @@ function renderLiveMeters(win) {
   if (window.dawWorkspaceState.showShell(setStore.getState().settings, currentMode)) { renderDawShell(); return; }
   const body = document.getElementById('spectrum-imperative');
   if (!win || !win.channels || win.channels.length === 0) {
-    setSpectrumState('empty', { text: 'Waiting for live audio…' });
+    specStore.getState().setPanelState('empty', 'Waiting for live audio…');
     return;
   }
+  specStore.getState().setPanelState('meters'); // hands #spectrum-imperative back to this renderer
   document.getElementById('stats-row').style.display = 'flex';
   const ipWrap = document.getElementById('ideal-profile-wrap');
   if (ipWrap) ipWrap.style.display = 'none'; // no whole-file curve in live mode
@@ -974,6 +612,7 @@ function renderLiveMeters(win) {
 // with renderLiveMeters so Add/remove read consistently whether idle or
 // (locked) mid-capture.
 function renderLiveWorkspace() {
+  specStore.getState().setPanelState('meters'); // hands #spectrum-imperative back to this renderer
   if (window.dawWorkspaceState.showShell(setStore.getState().settings, currentMode)) { renderDawShell(); return; }
   const body = document.getElementById('spectrum-imperative');
   document.getElementById('stats-row').style.display = 'none';
@@ -1039,6 +678,7 @@ function syncLiveAdjustmentsPanel() {
 // Source panel remains the sole capture control surface, so this never
 // renders #live-mode/#live-start-btn/#live-stop-btn.
 function renderDawShell() {
+  specStore.getState().setPanelState('meters'); // hands #spectrum-imperative back to this renderer
   const body = document.getElementById('spectrum-imperative');
   document.getElementById('stats-row').style.display = 'none';
   const ipWrap = document.getElementById('ideal-profile-wrap');
@@ -1569,7 +1209,7 @@ document.querySelectorAll('.mode-tab').forEach(tab => {
     // Live/Soundcheck replace the spectrum area with unrelated content and
     // Soundcheck has its own playback transport — don't leave the analyzed
     // file playing silently in the background with no visible control (#180).
-    if (mode === 'live' || mode === 'soundcheck') pauseTransportAudio();
+    if (mode === 'live' || mode === 'soundcheck') transport.pauseIfPlaying();
 
     document.querySelectorAll('.mode-tab').forEach(t => t.classList.remove('active'));
     tab.classList.add('active');
@@ -1615,11 +1255,6 @@ let scDeviceChannels = 0;   // channel count of the selected output device (0 = 
 let scDevicesLoaded = false;
 let scPlaying = false;
 
-function scTime(s) {
-  if (!isFinite(s) || s < 0) s = 0;
-  const m = Math.floor(s / 60), sec = Math.floor(s % 60);
-  return `${m}:${sec < 10 ? '0' : ''}${sec}`;
-}
 function scShowStatus(msg) { const s = document.getElementById('sc-status'); s.textContent = msg; s.style.display = 'block'; }
 function scHideStatus() { document.getElementById('sc-status').style.display = 'none'; }
 
@@ -1743,7 +1378,7 @@ async function scPlay() {
   el.style.display = 'block'; el.textContent = '0:00 / 0:00';
   scRenderTracks(); // disable routing selects while playing
   scUpdateGuard();
-  setSpectrumState('empty', { text: 'Buffering…' });
+  specStore.getState().setPanelState('empty', 'Buffering…');
 }
 
 async function scStop() {
@@ -1758,10 +1393,11 @@ function scResetTransport() {
   document.getElementById('sc-elapsed').style.display = 'none';
   scRenderTracks();
   scUpdateGuard();
-  if (currentMode === 'soundcheck') setSpectrumState('empty', { text: 'Load a session and press Play to see per-track meters' });
+  if (currentMode === 'soundcheck') specStore.getState().setPanelState('empty', 'Load a session and press Play to see per-track meters');
 }
 
 function scRenderMeters(tracks) {
+  specStore.getState().setPanelState('meters'); // hands #spectrum-imperative back to this renderer
   const body = document.getElementById('spectrum-imperative');
   body.innerHTML = '<div class="meter-card sb-live-meters">' + (tracks || []).map((t) => {
     const rms = Number.isFinite(t.rms) ? t.rms : -120;
@@ -1822,35 +1458,36 @@ function syncSpectrumForMode(mode) {
     renderPreflight(); // repaint the checklist whenever the Live tab becomes visible
   } else if (mode === 'soundcheck') {
     title.textContent = 'Soundcheck · Meters';
-    if (!scPlaying) setSpectrumState('empty', { text: 'Load a session and press Play to see per-track meters' });
+    if (scPlaying) specStore.getState().setPanelState('meters'); // hands #spectrum-imperative back to this renderer
+    else specStore.getState().setPanelState('empty', 'Load a session and press Play to see per-track meters');
   } else if (mode === 'recent') {
     // Recent (#147) has no file-loading UI of its own — a tailored message
     // instead of the generic "Load a file…" copy the fallback branch below
     // would otherwise show (misleading here, since there's nothing to load).
     title.textContent = SPECTRUM_TITLE.curve;
-    if (!curAnalysis()) setSpectrumState('empty', { text: 'Select a recent analysis to load its report card' });
+    if (!curAnalysis()) specStore.getState().setPanelState('empty', 'Select a recent analysis to load its report card');
+    else specStore.getState().setPanelState('populated'); // returning to a data-backed tab shows the island again
   } else if (mode === 'guide') {
     // Build Guide (#367) has no file-loading UI of its own either — mirror
     // the `recent` tailored empty state so it doesn't show the misleading
     // generic "Load a file…" copy.
     title.textContent = SPECTRUM_TITLE.curve;
-    if (!curAnalysis()) setSpectrumState('empty', { text: 'Follow the build order, then load a recording to grade it' });
+    if (!curAnalysis()) specStore.getState().setPanelState('empty', 'Follow the build order, then load a recording to grade it');
+    else specStore.getState().setPanelState('populated');
   } else if (mode === 'dir') {
     // Directory (#270) batch-analyzes a folder — mirror the `recent`/`guide`
     // tailored empty state rather than the generic "Load a file…" copy.
     title.textContent = SPECTRUM_TITLE.curve;
-    if (!curAnalysis()) setSpectrumState('empty', { text: 'Choose a folder to analyze every recording in it' });
+    if (!curAnalysis()) specStore.getState().setPanelState('empty', 'Choose a folder to analyze every recording in it');
+    else specStore.getState().setPanelState('populated');
   } else {
-    // syncSpectrumChrome (below) sets the header to match what's drawn (curve
-    // vs meters) once there's data; seed the curve label for the pre-analysis
-    // empty state.
+    // spectrumChromeView (spectrum-chrome.ts) sets the header to match what's
+    // drawn (curve vs meters) once there's data; seed the curve label for the
+    // pre-analysis empty state.
     title.textContent = SPECTRUM_TITLE.curve;
-    if (!curAnalysis()) setSpectrumState('empty', { text: 'Load a file to see the spectrum' });
+    if (!curAnalysis()) specStore.getState().setPanelState('empty', 'Load a file to see the spectrum');
+    else specStore.getState().setPanelState('populated');
   }
-  // Shows/hides the React spectrum island vs #spectrum-imperative for this
-  // mode and refreshes its title/stats/ideal-profile chrome (TD-001 slice 4,
-  // #422) — a no-op when there's no spectrum data yet.
-  syncSpectrumChrome();
 }
 
 /* ══ File mode ══
@@ -1864,8 +1501,8 @@ window.runFileAnalysis = (fp) => anaStore.getState().startAnalysis(fp);
 
 // Coarse stage progress (#125) — the three stages run in parallel, so this
 // just checks off each stage's row as its subprocess returns. Registered
-// once at module scope; setSpectrumState('loading') (re)renders the rows
-// each run, so there's nothing stale to clear between runs.
+// once at module scope; setPanelState('loading') resets stagesDone on each
+// run, so there's nothing stale to clear between runs.
 sb.onAnalysisProgress((data) => {
   // A batch run (#270) fires this same event per file too — suppressed the
   // same way as the pushed analysis-result below, so a batch file's stage
@@ -1873,8 +1510,7 @@ sb.onAnalysisProgress((data) => {
   // analysis the user started on the Report Card tab.
   if (window.batchAnalysis.shouldSuppressPushedResult(batchRunning)) return;
   if (!data.stage || data.status !== 'done') return;
-  const row = document.querySelector(`#spectrum-body .stage-row[data-stage="${data.stage}"]`);
-  if (row) row.classList.add('done');
+  specStore.getState().markStageDone(data.stage);
 });
 
 // Replaces runFileAnalysis's DOM side effects — a single analysisStore
@@ -1905,21 +1541,21 @@ function syncReportCardChrome(state, prevState) {
 
   if (state.status !== prevState.status) {
     if (state.status === 'analyzing') {
-      pauseTransportAudio(); // don't let a previous file's playback bleed through the loading state (#180)
-      setSpectrumState('loading');
+      transport.pauseIfPlaying(); // don't let a previous file's playback bleed through the loading state (#180)
+      specStore.getState().setPanelState('loading');
     } else if (state.status === 'error') {
-      setSpectrumState('error', { text: state.analysisError || 'Analysis failed' });
+      specStore.getState().setPanelState('error', state.analysisError || 'Analysis failed');
     } else if (state.status === 'cancelled') {
       // Return to the pre-analysis idle state (no report card, no stuck
       // spinner). selectedFilePath is left untouched by cancelAnalysis, so
       // the user can retry without re-picking the file.
-      setSpectrumState('empty');
+      specStore.getState().setPanelState('empty');
     } else if (state.status === 'done') {
       // File input now lives in the Report Card tab's empty state (#203) —
-      // the card flips over the moment analysis succeeds; #spectrum-imperative
-      // clears in favor of the React island (syncSpectrumChrome shows it).
-      document.getElementById('spectrum-imperative').innerHTML = '';
-      syncSpectrumChrome();
+      // the card flips over the moment analysis succeeds. The store already
+      // flipped panelState to 'populated' via bridge.ts's
+      // setSpectrumFromAnalysis subscription, so SpectrumPanel (React)
+      // already shows the island — nothing left to clear/sync here.
       updateStatsRow(state.currentAnalysis.sox, state.currentAnalysis.spectrum);
       syncIdealProfile();
       if (curAnalysis()) persistSummary(getReportCardSource(), 'file');
@@ -2501,7 +2137,7 @@ document.getElementById('live-start-btn').addEventListener('click', async () => 
 
   if (!result.success) {
     stopLive();
-    setSpectrumState('error', { text: result.error || 'Failed to start live capture' });
+    specStore.getState().setPanelState('error', result.error || 'Failed to start live capture');
   } else {
     const rate = Math.round(1 / intervalSecs);
     syncCaptureControls(rate);
@@ -2563,9 +2199,7 @@ async function promoteToRecording() {
   } else {
     liveMode = 'monitor';
     document.getElementById('tab-live').classList.toggle('capture-record', false);
-    setSpectrumState('error', {
-      text: result.error || 'Could not start recording. Monitoring stopped — press Start Capture to resume.',
-    });
+    specStore.getState().setPanelState('error', result.error || 'Could not start recording. Monitoring stopped — press Start Capture to resume.');
     stopLive();
     syncCaptureControls();
   }
@@ -3135,7 +2769,7 @@ function scheduleDawWaveformRender() {
 /* ══ IPC event listeners ══ */
 sb.onLiveEvent((data) => {
   if (!data || data.error) {
-    if (data?.error) setSpectrumState('error', { text: `Live error: ${data.error}` });
+    if (data?.error) specStore.getState().setPanelState('error', `Live error: ${data.error}`);
     return;
   }
 
@@ -3472,7 +3106,7 @@ async function renderRecentServices() {
 // prevSummary (#259) feeds the "vs. last time" delta — only the newest
 // history entry (i === 0) gets one, compared against the second-newest.
 function loadHistoryEntry(summary, prevSummary) {
-  pauseTransportAudio(); // don't leave a previous file's playback running behind the summary card
+  transport.pauseIfPlaying(); // don't leave a previous file's playback running behind the summary card
   anaStore.getState().setHistorySummary(summary);
   // A history entry always wins over whatever was previously on the card
   // (ReportCardIsland's priority: currentAnalysis, else liveSource, else
@@ -3930,11 +3564,9 @@ document.getElementById('reportcard-feedback-btn').addEventListener('click', () 
 document.getElementById('reportcard-clear-btn').addEventListener('click', () => {
   if (!curAnalysis()) return;
   // Release the <audio> element so a re-load of the SAME file starts at 0:00
-  // instead of resuming at its last scrub position (ensurePlaybackAudio keys
-  // on sbAudioPath === filePath).
-  releasePlaybackAudio();
-  sbAudioPath = null;
-  sbGeneration++; // invalidate any in-flight ensurePlaybackAudio
+  // instead of resuming at its last scrub position (spectrumTransport.ensure
+  // keys on the cached filePath).
+  transport.reset();
   // clearAnalysis() nulls currentAnalysis/selectedFilePath and resets status
   // to 'idle' — ReportCardIsland flips #rc-content → #rc-empty reactively,
   // and the dropzone/Analyze button reset themselves from the cleared store.
@@ -3944,7 +3576,7 @@ document.getElementById('reportcard-clear-btn').addEventListener('click', () => 
   // empty state (#206) — but leave an actively-running session's buffer alone
   // so its live meters don't blip empty.
   if (!liveRunning) { liveWindows = []; lapCoaching = window.liveAdjustmentsState.createCoachingState(); syncLiveSource(); document.getElementById('rc-offer').style.display = 'none'; document.getElementById('rc-not-enough').style.display = 'none'; }
-  setSpectrumState('empty');
+  specStore.getState().setPanelState('empty');
 });
 
 // #208: while a live-capture card is showing, the file dropzone is hidden behind it
@@ -4368,7 +4000,7 @@ function closePhaseDoublingDialog() {
 // profile from the current recording (deterministic id → re-click updates it).
 async function saveMixAsTarget() {
   const analysis = curAnalysis();
-  if (!analysis || !ipHasCurve(analysis.spectrum)) return false;
+  if (!analysis || !hasUsableCurve(analysis.spectrum || {})) return false;
   const src = getReportCardSource();
   const meta = strongMixTargetMeta(src ? src.filename : '');
   const profile = window.idealCurves.profileFromMeasuredCurve(analysis.spectrum.curve, IP_GRID_FREQS, meta);
@@ -4455,7 +4087,7 @@ syncReportCardChrome(anaStore.getState(), anaStore.getState());
 syncSingleColumn();
 
 hydrateIcons(document);
-setSpectrumState('empty', { text: 'Load a file to see the spectrum' });
+specStore.getState().setPanelState('empty'); // store default text ('Load a file to see the spectrum') is identical
 // Load devices first so a saved rig can reconcile its device by name and clamp
 // channels against the real device list; then apply the active rig (if any).
 loadDevices().then(initRigs, initRigs);

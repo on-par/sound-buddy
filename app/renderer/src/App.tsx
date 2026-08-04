@@ -11,6 +11,7 @@ import {
 } from '@sound-buddy/audio-engine/dist/profiles/index.js';
 import { findSpectralPeaks } from '@sound-buddy/audio-engine/dist/analyze/spectral.js';
 import * as spectrumDisplay from './spectrum-display';
+import * as spectrumChrome from './spectrum-chrome';
 import * as reportCard from './report-card';
 import * as reportExport from './report-export';
 import * as shareCard from './share-card';
@@ -131,6 +132,11 @@ export default function App() {
     };
     (window as Window & { audioEngineSpectral?: unknown }).audioEngineSpectral = { findSpectralPeaks };
     (window as Window & { spectrumDisplay?: unknown }).spectrumDisplay = spectrumDisplay;
+    // spectrumChrome's SPECTRUM_TITLE is the single source of truth for the
+    // panel's title strings — inline-app.js still writes #spectrum-title
+    // directly for the not-yet-migrated live/soundcheck meter modes (TD-001
+    // slice 6a, #695).
+    (window as Window & { spectrumChrome?: unknown }).spectrumChrome = spectrumChrome;
     (window as Window & { reportCard?: unknown }).reportCard = reportCard;
     // Share Image export (#265) + Export PNG's metadata-stripping guard
     // (#368) — both pure modules, bridged the same way as reportCard so

@@ -2,6 +2,7 @@
 // Licensed under the Sound Buddy Desktop Application License (app/LICENSE).
 
 import { describe, it, expect } from 'vitest';
+import { PROFILES, compareToProfile } from '@sound-buddy/audio-engine/dist/profiles/index.js';
 import {
   DB_MIN,
   DB_MAX,
@@ -44,9 +45,16 @@ import {
   fmtDur,
   timeAxisHTML,
   pickRepresentativeFrames,
+  formatClock,
+  hasUsableCurve,
+  frameBandDb,
+  spectrumChartModel,
   type SpectrumCurvePaths,
   type SpectrumFrame,
+  type SpectrumData,
 } from './spectrum-display';
+
+const flatProfile = PROFILES.find((p) => p.id === 'flat')!;
 
 describe('constants', () => {
   it('exposes the band/scale geometry the rest of the module relies on', () => {
@@ -592,5 +600,101 @@ describe('pickRepresentativeFrames', () => {
     const frames = makeFrames(1);
     const picks = pickRepresentativeFrames(frames);
     expect(picks).toEqual([{ i: 0, tag: 'Start' }]);
+  });
+});
+
+describe('formatClock', () => {
+  it('formats whole seconds as m:ss, zero-padding under 10', () => {
+    expect(formatClock(0)).toBe('0:00');
+    expect(formatClock(5)).toBe('0:05');
+    expect(formatClock(65)).toBe('1:05');
+    expect(formatClock(605)).toBe('10:05');
+  });
+
+  it('treats non-finite or negative input as 0', () => {
+    expect(formatClock(NaN)).toBe('0:00');
+    expect(formatClock(-5)).toBe('0:00');
+    expect(formatClock(Infinity)).toBe('0:00');
+  });
+});
+
+describe('hasUsableCurve', () => {
+  it('is true for a grid-aligned curve with at least 2 points', () => {
+    expect(hasUsableCurve({ curve: { freqs: [20, 200], db: [-10, -20] } })).toBe(true);
+  });
+
+  it('is false when curve is absent, too short, or grid-mismatched', () => {
+    expect(hasUsableCurve({})).toBe(false);
+    expect(hasUsableCurve({ curve: { freqs: [20], db: [-10] } })).toBe(false);
+    expect(hasUsableCurve({ curve: { freqs: [20, 200, 2000], db: [-10, -20] } })).toBe(false);
+  });
+});
+
+describe('frameBandDb', () => {
+  const spectrum: SpectrumData = {
+    bands: { subBass: -40, bass: -30, lowMid: -25, mid: -16, highMid: -22, presence: -28, brilliance: -35 },
+    curve: { freqs: [20, 60, 250, 500, 2000, 4000, 6000], db: [-10, -20, -30, -40, -50, -60, -70] },
+    frames: makeFrames(3, 7),
+  };
+
+  it('buckets the in-range frame onto the whole-file curve grid', () => {
+    expect(frameBandDb(spectrum, 1)).toEqual(
+      bandLevelsFromCurve({ freqs: spectrum.curve!.freqs, db: spectrum.frames![1].db })
+    );
+  });
+
+  it('falls back to the whole-file average when the index is out of range', () => {
+    expect(frameBandDb(spectrum, 99)).toEqual(bandDbFromSpectrum(spectrum));
+    expect(frameBandDb(spectrum, -1)).toEqual(bandDbFromSpectrum(spectrum));
+  });
+
+  it('falls back to the whole-file average when there is no usable curve', () => {
+    const noCurve: SpectrumData = { bands: spectrum.bands, frames: spectrum.frames };
+    expect(frameBandDb(noCurve, 0)).toEqual(bandDbFromSpectrum(noCurve));
+  });
+});
+
+describe('spectrumChartModel', () => {
+  const fixtureSpectrum: SpectrumData = {
+    bands: { subBass: -40, bass: -30, lowMid: -25, mid: -16, highMid: -22, presence: -28, brilliance: -35 },
+    curve: { freqs: [20, 60, 250, 500, 2000, 4000, 6000], db: [-10, -20, -30, -40, -50, -60, -70] },
+    frames: makeFrames(3, 7),
+    spectralCentroid: 1500,
+  };
+
+  it('falls back to bars-only (no legend) when there is no usable curve', () => {
+    const model = spectrumChartModel({ spectrum: { bands: fixtureSpectrum.bands }, idealProfile: flatProfile });
+    expect(model.chartHTML).toContain('veq-bar');
+    expect(model.legendHTML).toBe('');
+  });
+
+  it('renders the target overlay + legend with a curve and a profile', () => {
+    const model = spectrumChartModel({ spectrum: fixtureSpectrum, idealProfile: flatProfile, isAutoProfile: true });
+    const cmp = compareToProfile(fixtureSpectrum.curve, flatProfile);
+    expect(model.chartHTML).toContain('eq-target-svg');
+    expect(model.legendHTML).toBe(spectrumLegendHTML(flatProfile, cmp, true));
+  });
+
+  it('suppresses the target overlay and legend when isLive', () => {
+    const model = spectrumChartModel({ spectrum: fixtureSpectrum, idealProfile: flatProfile, isLive: true });
+    expect(model.chartHTML).not.toContain('eq-target-svg');
+    expect(model.legendHTML).toBe('');
+  });
+
+  it('uses the selected frame\'s bars but keeps the target level-matched to the whole-file curve', () => {
+    const average = spectrumChartModel({ spectrum: fixtureSpectrum, idealProfile: flatProfile });
+    const scrubbed = spectrumChartModel({ spectrum: fixtureSpectrum, idealProfile: flatProfile, selectedFrame: 1 });
+
+    expect(scrubbed.chartHTML).not.toBe(average.chartHTML);
+    // Both keep the same level-matched target line (unaffected by selectedFrame).
+    const target = levelMatchedTarget(fixtureSpectrum.curve!, flatProfile);
+    const targetBandDb = bandLevelsFromCurve({ freqs: fixtureSpectrum.curve!.freqs, db: target });
+    expect(scrubbed.chartHTML).toContain(eqTargetLineSVG(targetBandDb));
+    expect(average.chartHTML).toContain(eqTargetLineSVG(targetBandDb));
+  });
+
+  it('carries the centroid readout through unchanged', () => {
+    const model = spectrumChartModel({ spectrum: fixtureSpectrum });
+    expect(model.centroidHTML).toBe(eqCentroidHTML(fixtureSpectrum));
   });
 });

@@ -10,6 +10,7 @@ import { useSpectrumStore } from './spectrumStore';
 import { useLiveCaptureStore } from './liveCaptureStore';
 import { useSceneDiffStore } from './sceneDiffStore';
 import { createMockSoundBuddy } from '../mock-sound-buddy';
+import { spectrumTransport, type SpectrumTransport } from '../spectrum-transport';
 
 // installStoreBridge()'s cross-store subscription install (guarded by the
 // module-level crossStoreSubscriptionInstalled flag) binds the DEFAULT
@@ -62,6 +63,14 @@ describe('installStoreBridge', () => {
     expect(stores.spectrum).toBe(useSpectrumStore);
     expect(stores.liveCapture).toBe(useLiveCaptureStore);
     expect(target.rendererStores).toBe(stores);
+  });
+
+  it('installs the spectrumTransport singleton on the injected target', () => {
+    const target: { rendererStores?: RendererStores; spectrumTransport?: SpectrumTransport } = {};
+
+    installStoreBridge(target);
+
+    expect(target.spectrumTransport).toBe(spectrumTransport);
   });
 
   it('exposes getState/subscribe on the installed target', () => {
