@@ -106,30 +106,10 @@
 </div>
 
 <!-- Ideal curve editor. User-authored targets are saved in settings.json and
-     compared with the same level-invariant PRD 05 scoring as built-ins. -->
-<div id="curve-dialog" class="rig-dialog" style="display:none" role="dialog" aria-modal="true" aria-labelledby="curve-dialog-title">
-  <div class="rig-dialog-card curve-dialog-card">
-    <div class="rig-dialog-title" id="curve-dialog-title">Ideal Curve</div>
-    <div class="ai-dialog-sub">Shape the target Sound Buddy compares this file against. Values are relative dB offsets, not loudness.</div>
-    <label class="ai-field">
-      <span class="ai-field-label">Name</span>
-      <input type="text" id="curve-name" class="rig-dialog-input" placeholder="Sunday morning target" autocomplete="off" spellcheck="false" maxlength="60" />
-    </label>
-    <div class="curve-editor-grid" id="curve-editor-grid"></div>
-    <div class="ai-test-row">
-      <button type="button" id="curve-capture-btn" class="btn btn-secondary sm" data-icon="waveform">Use current analysis</button>
-      <span class="ai-status" id="curve-status" role="status"></span>
-    </div>
-    <div class="curve-dialog-actions">
-      <button type="button" id="curve-delete-btn" class="btn btn-secondary sm" data-icon="x">Delete</button>
-      <div class="right">
-        <button type="button" id="curve-reset-btn" class="btn btn-secondary sm">Reset flat</button>
-        <button type="button" id="curve-cancel-btn" class="btn btn-secondary sm">Cancel</button>
-        <button type="button" id="curve-save-btn" class="btn btn-primary sm">Save curve</button>
-      </div>
-    </div>
-  </div>
-</div>
+     compared with the same level-invariant PRD 05 scoring as built-ins. Now
+     React's CurveEditorDialog (TD-001 slice 6b, #700), portaled onto this
+     static island node. -->
+<div id="curve-editor-island"></div>
 
 <!-- Rig name / confirm dialog. Electron's renderer has no window.prompt/confirm,
      so Save As…, Rename and Delete drive this small inline modal instead. -->
