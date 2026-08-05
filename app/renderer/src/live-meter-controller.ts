@@ -1,0 +1,72 @@
+// Copyright (c) 2026 Patrick Robinson (on-par). All rights reserved.
+// Licensed under the Sound Buddy Desktop Application License (app/LICENSE).
+
+// Live-meter per-tick patch controller (TD-001 slice 6c, #701): a factory
+// mirroring spectrum-transport.ts's createSpectrumTransport — injected deps
+// so the rAF-coalescing math is unit-tested without a DOM or a real
+// requestAnimationFrame. Ports inline-app.js's old scheduleLiveMeters/
+// pendingLiveWin/liveRenderScheduled coalescing (meter ticks arrive up to
+// ~20/s; the board only needs to repaint once per animation frame), now
+// driven by liveCaptureStore's lastTick instead of the raw IPC event —
+// liveCaptureStore.bindIpcEvents() already owns tick ingestion (single
+// source of truth, ADR-0005: per-tick values never round-trip through the
+// store's own React subscribers — this controller reads the store directly
+// and patches the DOM itself, bypassing React state).
+
+import type { LiveEvent } from './live-capture-panel';
+
+export interface LiveMeterControllerDeps {
+  /** store.subscribe — notified on every store change; the controller reads getState() itself to find the latest tick. */
+  subscribe(onChange: () => void): () => void;
+  getState(): { lastTick: LiveEvent | null };
+  raf(cb: () => void): number;
+  cancelRaf(handle: number): void;
+  /** Applies one coalesced tick straight to the DOM (never through React/the store). */
+  patch(win: LiveEvent): void;
+}
+
+export interface LiveMeterController {
+  start(): void;
+  stop(): void;
+}
+
+export function createLiveMeterController(deps: LiveMeterControllerDeps): LiveMeterController {
+  let pending: LiveEvent | null = null;
+  let scheduled = false;
+  let rafHandle: number | null = null;
+  let unsubscribe: (() => void) | null = null;
+
+  function flush(): void {
+    scheduled = false;
+    rafHandle = null;
+    const win = pending;
+    pending = null;
+    if (win) deps.patch(win);
+  }
+
+  function schedule(win: LiveEvent): void {
+    pending = win;
+    if (scheduled) return;
+    scheduled = true;
+    rafHandle = deps.raf(flush);
+  }
+
+  function onStoreChange(): void {
+    const tick = deps.getState().lastTick;
+    if (tick) schedule(tick);
+  }
+
+  function start(): void {
+    if (unsubscribe) return;
+    unsubscribe = deps.subscribe(onStoreChange);
+  }
+
+  function stop(): void {
+    if (unsubscribe) { unsubscribe(); unsubscribe = null; }
+    if (rafHandle != null) { deps.cancelRaf(rafHandle); rafHandle = null; }
+    scheduled = false;
+    pending = null;
+  }
+
+  return { start, stop };
+}
