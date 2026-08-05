@@ -18,7 +18,7 @@ import type { AppSettings, CustomIdealProfile, UpdateSettingsPatch } from '../..
 import { GRID_FREQS } from '@sound-buddy/audio-engine/dist/profiles/index.js';
 import type { IdealProfileLike, SpectrumCurve, SpectrumData } from '../spectrum-display';
 import { hasUsableCurve } from '../spectrum-display';
-import { resolveActiveProfile, isAutoSelected, curveEditorInit, type IdealCurvesApi } from '../ideal-profiles';
+import { resolveActiveProfile, isAutoSelected, curveEditorInit, CUSTOM_PREFIX, type IdealCurvesApi } from '../ideal-profiles';
 import { useAnalysisStore } from './analysisStore';
 import { extractSpectrum, useSpectrumStore } from './spectrumStore';
 
@@ -86,6 +86,14 @@ export function createIdealProfilesStore(deps: IdealProfilesDeps): UseBoundStore
       }
       get().syncActiveProfile();
       return true;
+    }
+
+    // The custom profile the open editor is editing (undefined for a new
+    // curve) — shared by save()/capture() so both derive `id`/`createdAt`
+    // for the upserted profile from the same lookup.
+    function editingProfile(): CustomIdealProfile | undefined {
+      const { editor, customProfiles } = get();
+      return editor.editingId ? customProfiles.find((p) => p.id === editor.editingId) : undefined;
     }
 
     return {
@@ -162,7 +170,7 @@ export function createIdealProfilesStore(deps: IdealProfilesDeps): UseBoundStore
           return;
         }
         const curves = deps.getCurves();
-        const existing = editor.editingId ? customProfiles.find((p) => p.id === editor.editingId) : undefined;
+        const existing = editingProfile();
         const profile = curves.profileFromBands(editor.bands, GRID_FREQS, {
           id: editor.editingId ?? existing?.id,
           label: name,
@@ -170,7 +178,7 @@ export function createIdealProfilesStore(deps: IdealProfilesDeps): UseBoundStore
           createdAt: existing?.createdAt,
         });
         const next = curves.upsertProfile(customProfiles, profile);
-        if (await persist(next, `custom:${profile.id}`)) get().closeEditor();
+        if (await persist(next, `${CUSTOM_PREFIX}${profile.id}`)) get().closeEditor();
       },
 
       async capture() {
@@ -181,7 +189,7 @@ export function createIdealProfilesStore(deps: IdealProfilesDeps): UseBoundStore
           return;
         }
         const curves = deps.getCurves();
-        const existing = editor.editingId ? customProfiles.find((p) => p.id === editor.editingId) : undefined;
+        const existing = editingProfile();
         const name = editor.name.trim() || 'Current analysis target';
         const profile = curves.profileFromMeasuredCurve(spectrum.curve, GRID_FREQS, {
           id: editor.editingId ?? existing?.id,
@@ -194,7 +202,7 @@ export function createIdealProfilesStore(deps: IdealProfilesDeps): UseBoundStore
         }
         set((state) => ({ editor: { ...state.editor, bands: curves.bandOffsetsFromProfile(profile, GRID_FREQS) } }));
         const next = curves.upsertProfile(customProfiles, profile);
-        if (await persist(next, `custom:${profile.id}`)) get().closeEditor();
+        if (await persist(next, `${CUSTOM_PREFIX}${profile.id}`)) get().closeEditor();
       },
 
       async remove() {
@@ -209,7 +217,7 @@ export function createIdealProfilesStore(deps: IdealProfilesDeps): UseBoundStore
         const profile = curves.profileFromMeasuredCurve(curve, GRID_FREQS, meta);
         if (!profile) return false;
         const next = curves.upsertProfile(get().customProfiles, profile);
-        return persist(next, `custom:${profile.id}`);
+        return persist(next, `${CUSTOM_PREFIX}${profile.id}`);
       },
     };
   });

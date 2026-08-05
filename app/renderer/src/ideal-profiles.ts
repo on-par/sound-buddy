@@ -19,6 +19,8 @@ import { hasUsableCurve, type IdealProfileLike, type SpectrumData } from './spec
 import type { CustomIdealProfile } from '../../electron/ipc/api';
 
 const IP_BY_ID = new Map(AE_PROFILES.map((p) => [p.id, p]));
+/** The #ideal-profile-select value prefix marking a user-authored custom profile. */
+export const CUSTOM_PREFIX = 'custom:';
 
 // The subset of window.idealCurves (ideal-curves.js, a classic UMD script)
 // this module and idealProfilesStore.ts drive — injected as a dep rather
@@ -43,7 +45,7 @@ export interface IdealCurvesApi {
 
 /** Strips the `custom:` value prefix used by the select's custom-profile options; '' if not a custom value. */
 export function customProfileId(value: string): string {
-  return String(value || '').startsWith('custom:') ? String(value).slice(7) : '';
+  return String(value || '').startsWith(CUSTOM_PREFIX) ? String(value).slice(CUSTOM_PREFIX.length) : '';
 }
 
 /** '' (empty selection) means "auto by content type" — mirrors inline's `!idealProfileId`. */
@@ -75,7 +77,7 @@ export function profileSelectOptions(
   return [
     { value: '', label: 'Auto (by content)', group: 'builtin' },
     ...AE_PROFILES.map((p) => ({ value: p.id, label: p.label, group: 'builtin' as const })),
-    ...customProfiles.map((p) => ({ value: `custom:${p.id}`, label: p.label, group: 'custom' as const })),
+    ...customProfiles.map((p) => ({ value: `${CUSTOM_PREFIX}${p.id}`, label: p.label, group: 'custom' as const })),
     { value: '__new', label: 'Create new curve…', group: 'action' as const },
   ];
 }
