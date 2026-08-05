@@ -12,6 +12,7 @@ import { useAnalysisStore } from './analysisStore';
 import { useSpectrumStore } from './spectrumStore';
 import { useLiveCaptureStore } from './liveCaptureStore';
 import { useSceneDiffStore } from './sceneDiffStore';
+import { useIdealProfilesStore } from './idealProfilesStore';
 import { liveReportCardSource } from '../live-capture-panel';
 import { spectrumTransport, type SpectrumTransport } from '../spectrum-transport';
 
@@ -21,6 +22,7 @@ export interface RendererStores {
   analysis: typeof useAnalysisStore;
   spectrum: typeof useSpectrumStore;
   liveCapture: typeof useLiveCaptureStore;
+  idealProfiles: typeof useIdealProfilesStore;
 }
 
 declare global {
@@ -49,6 +51,7 @@ export function installStoreBridge(
     analysis: useAnalysisStore,
     spectrum: useSpectrumStore,
     liveCapture: useLiveCaptureStore,
+    idealProfiles: useIdealProfilesStore,
   };
   target.rendererStores = stores;
   target.spectrumTransport = spectrumTransport;
@@ -87,6 +90,27 @@ export function installStoreBridge(
     // crossStoreSubscriptionInstalled flag so a second App mount can't
     // double-bind them (TD-001 slice 5, #423).
     useLiveCaptureStore.getState().bindIpcEvents();
+
+    // Ideal-profile selection glue (TD-001 slice 6b, #700), replacing
+    // inline-app.js's syncIdealProfile call sites: seed idealProfilesStore
+    // once settings finish their first load, re-resolve the active profile
+    // whenever the analyzed file (and so its content type) changes, and
+    // whenever the selection/custom-profile set itself changes.
+    useSettingsStore.subscribe((state, prevState) => {
+      if (state.settings != null && prevState.settings == null) {
+        useIdealProfilesStore.getState().hydrate(state.settings);
+      }
+    });
+    useAnalysisStore.subscribe((state, prevState) => {
+      if (state.currentAnalysis !== prevState.currentAnalysis) {
+        useIdealProfilesStore.getState().syncActiveProfile();
+      }
+    });
+    useIdealProfilesStore.subscribe((state, prevState) => {
+      if (state.selectedId !== prevState.selectedId || state.customProfiles !== prevState.customProfiles) {
+        useIdealProfilesStore.getState().syncActiveProfile();
+      }
+    });
   }
 
   return stores;

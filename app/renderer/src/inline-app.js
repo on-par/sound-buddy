@@ -127,10 +127,6 @@ let recordDir = '';            // chosen recording folder ('' = default ~/Music/
 // show "Starting…" without prematurely flipping into the recording state.
 let capturePromoting = false;
 let channelConfig = [];        // configured strips: { kind:'mono'|'stereo', a:idx, b:idx }
-let idealProfileId = ''; // active ideal EQ profile; '' = auto by content type (PRD 05)
-let customIdealProfiles = [];
-let curveEditorId = null;
-let curveEditorBands = null;
 let phaseDoublingStep = 0; // current step in the phase/doubling checklist (#370)
 // rcFeedbackPeak/rcPhaseSignal used to be module vars set by renderReportCard();
 // ReportCardIsland (React) now computes them each render and seeds
@@ -152,7 +148,7 @@ function liveChannelAt(idx) { return lastLiveChannels ? lastLiveChannels[idx] : 
 /* ══ Band metadata / meter geometry — extracted to spectrum-display.ts (#305),
    bridged onto window by App.tsx like audioEngineProfiles (#309). ══ */
 const {
-  DB_MIN, DB_MAX, BAND_META, EQ_COLS,
+  DB_MIN, DB_MAX, EQ_COLS,
   CURVE_VB, CURVE_FMIN, CURVE_FMAX,
   escapeHtml, fmtHz, levelMatchedTarget, niceTicks, smoothPath,
   spectrumCurveSVG, spectrumLegendHTML, bandLevelsFromCurve, bandDbFromSpectrum,
@@ -192,209 +188,14 @@ const lcUsedChannelCount = window.liveCapturePanel.usedChannelCount;
 const { installCrashHooks } = window.crashHooks;
 if (sb.reportRendererError) installCrashHooks(window, (input) => sb.reportRendererError(input));
 
-/* ══ Ideal EQ profiles + comparison (PRD 05) ══
-   Data and comparison logic come from @sound-buddy/audio-engine's profiles module
-   (packages/audio-engine/src/profiles/index.ts) via the `window.audioEngineProfiles`
-   bridge App.tsx sets before these boot scripts run — see #309. This is a classic
-   `?raw` script and can't `import`, so it reads the bridge instead of mirroring the
-   data by hand. Comparison is level-invariant (mean-subtraction). */
-const AE = window.audioEngineProfiles;
-const IP_GRID_FREQS = AE.GRID_FREQS;
-const IP_PROFILES = AE.PROFILES;
-const IP_BY_ID = new Map(IP_PROFILES.map(p => [p.id, p]));
-const ipCompare = AE.compareToProfile;
-const ipDefaultForContentType = AE.defaultProfileForContentType;
-function customProfileId(value) { return String(value || '').startsWith('custom:') ? String(value).slice(7) : ''; }
-/** Resolve the profile to compare against: an explicit pick, else auto by content type. */
-function activeProfile(spectrum) {
-  const customId = customProfileId(idealProfileId);
-  if (customId) {
-    const custom = customIdealProfiles.find(p => p.id === customId);
-    if (custom) return { ...custom, source: 'custom' };
-  }
-  const id = idealProfileId || ipDefaultForContentType(spectrum && spectrum.contentType);
-  return IP_BY_ID.get(id) || IP_BY_ID.get('flat');
-}
-
-// Writes the resolved active profile into spectrumStore so ReportCardIsland
-// and SpectrumPanel (React) re-render with it (TD-001 slice 4, #422) —
-// replaces the renderSpectrum()/renderReportCard() calls the profile-select
-// change handler and curve editor used to make directly.
-function syncIdealProfile() {
-  const analysis = curAnalysis();
-  specStore.getState().setIdealProfile(activeProfile(analysis && analysis.spectrum), !idealProfileId);
-}
-
-/* Populate + wire the ideal-profile dropdown (once, at boot). */
-function initIdealProfileSelect() {
-  const sel = document.getElementById('ideal-profile-select');
-  if (!sel) return;
-  const customOptions = customIdealProfiles.length
-    ? `<optgroup label="Custom">${customIdealProfiles.map(p => `<option value="custom:${escapeHtml(p.id)}">${escapeHtml(p.label)}</option>`).join('')}</optgroup>`
-    : '';
-  sel.innerHTML =
-    `<option value="">Auto (by content)</option>` +
-    IP_PROFILES.map(p => `<option value="${p.id}">${p.label}</option>`).join('') +
-    customOptions +
-    `<option value="__new">Create new curve…</option>`;
-  sel.value = idealProfileId;
-  if (sel.value !== idealProfileId) {
-    idealProfileId = '';
-    sel.value = '';
-  }
-  sel.addEventListener('change', async () => {
-    if (sel.value === '__new') { sel.value = idealProfileId; openCurveEditor(); return; }
-    idealProfileId = sel.value;
-    try { await sb.updateSettings({ idealProfile: idealProfileId }); } catch { /* non-fatal */ }
-    syncIdealProfile();
-  });
-}
-
-function refreshIdealProfileSelect() {
-  const sel = document.getElementById('ideal-profile-select');
-  if (!sel) return;
-  const old = sel.cloneNode(false);
-  sel.replaceWith(old);
-  initIdealProfileSelect();
-}
-
-function curveEl(id) { return document.getElementById(id); }
-function selectedCustomProfile() {
-  const id = customProfileId(idealProfileId);
-  return id ? customIdealProfiles.find(p => p.id === id) || null : null;
-}
-
-function curveEditorProfileBase() {
-  const custom = selectedCustomProfile();
-  if (custom) return custom;
-  if (idealProfileId && IP_BY_ID.has(idealProfileId)) return IP_BY_ID.get(idealProfileId);
-  return activeProfile(curAnalysis() && curAnalysis().spectrum);
-}
-
-function setCurveStatus(text, kind) {
-  const el = curveEl('curve-status');
-  if (!el) return;
-  el.textContent = text || '';
-  el.className = 'ai-status' + (kind ? ` ${kind}` : '');
-}
-
-function setCurveEditorBands(values) {
-  curveEditorBands = values.map(v => window.idealCurves.clampDb(v));
-  curveEditorBands.forEach((v, i) => {
-    const range = document.querySelector(`.curve-band-range[data-i="${i}"]`);
-    const num = document.querySelector(`.curve-band-num[data-i="${i}"]`);
-    if (range) range.value = String(v);
-    if (num) num.value = v.toFixed(1);
-  });
-}
-
-function renderCurveEditorRows() {
-  const grid = curveEl('curve-editor-grid');
-  if (!grid || !window.idealCurves) return;
-  grid.innerHTML = BAND_META.map((b, i) => `
-    <div class="curve-row">
-      <label for="curve-band-${i}">${escapeHtml(b.label)}</label>
-      <input id="curve-band-${i}" class="sb-slider curve-band-range" data-i="${i}" type="range" min="-12" max="12" step="0.5" />
-      <input class="curve-band-num" data-i="${i}" type="number" min="-12" max="12" step="0.5" aria-label="${escapeHtml(b.label)} offset dB" />
-    </div>`).join('');
-  grid.querySelectorAll('.curve-band-range').forEach((input) => {
-    input.addEventListener('input', (e) => {
-      const i = parseInt(e.target.dataset.i, 10);
-      curveEditorBands[i] = window.idealCurves.clampDb(e.target.value);
-      const num = document.querySelector(`.curve-band-num[data-i="${i}"]`);
-      if (num) num.value = curveEditorBands[i].toFixed(1);
-    });
-  });
-  grid.querySelectorAll('.curve-band-num').forEach((input) => {
-    input.addEventListener('input', (e) => {
-      const i = parseInt(e.target.dataset.i, 10);
-      curveEditorBands[i] = window.idealCurves.clampDb(e.target.value);
-      const range = document.querySelector(`.curve-band-range[data-i="${i}"]`);
-      if (range) range.value = String(curveEditorBands[i]);
-    });
-  });
-}
-
-function openCurveEditor() {
-  if (!window.idealCurves) return;
-  renderCurveEditorRows();
-  const custom = selectedCustomProfile();
-  const base = curveEditorProfileBase();
-  curveEditorId = custom ? custom.id : null;
-  curveEl('curve-dialog-title').textContent = custom ? 'Edit Ideal Curve' : 'Create Ideal Curve';
-  curveEl('curve-name').value = custom ? custom.label : `Copy of ${base ? base.label : 'Flat / neutral'}`;
-  curveEl('curve-delete-btn').disabled = !custom;
-  curveEl('curve-capture-btn').disabled = !(curAnalysis() && hasUsableCurve(curAnalysis().spectrum || {}));
-  setCurveStatus('', '');
-  setCurveEditorBands(window.idealCurves.bandOffsetsFromProfile(base, IP_GRID_FREQS));
-  curveEl('curve-dialog').style.display = 'flex';
-  curveEl('curve-name').focus();
-  curveEl('curve-name').select();
-}
-
-function closeCurveEditor() {
-  curveEl('curve-dialog').style.display = 'none';
-}
-
-async function persistCustomIdealProfiles(nextProfiles, nextIdealProfile) {
-  customIdealProfiles = window.idealCurves.normalizeProfiles(nextProfiles, IP_GRID_FREQS);
-  idealProfileId = nextIdealProfile;
-  try {
-    await sb.updateSettings({ customIdealProfiles, idealProfile: idealProfileId });
-  } catch {
-    setCurveStatus('Could not save curve settings.', 'err');
-    return false;
-  }
-  refreshIdealProfileSelect();
-  syncIdealProfile();
-  return true;
-}
-
-async function saveCurveEditor() {
-  const name = curveEl('curve-name').value.trim();
-  if (!name) {
-    setCurveStatus('Name the curve first.', 'err');
-    curveEl('curve-name').focus();
-    return;
-  }
-  const existing = selectedCustomProfile();
-  const profile = window.idealCurves.profileFromBands(curveEditorBands, IP_GRID_FREQS, {
-    id: curveEditorId || (existing && existing.id),
-    label: name,
-    description: 'Custom ideal curve',
-    createdAt: existing && existing.createdAt,
-  });
-  const next = window.idealCurves.upsertProfile(customIdealProfiles, profile);
-  if (await persistCustomIdealProfiles(next, `custom:${profile.id}`)) closeCurveEditor();
-}
-
-async function captureCurrentCurveAsIdeal() {
-  const name = curveEl('curve-name').value.trim() || 'Current analysis target';
-  if (!(curAnalysis() && hasUsableCurve(curAnalysis().spectrum || {}))) {
-    setCurveStatus('Analyze a file with spectrum data first.', 'err');
-    return;
-  }
-  const existing = selectedCustomProfile();
-  const profile = window.idealCurves.profileFromMeasuredCurve(curAnalysis().spectrum.curve, IP_GRID_FREQS, {
-    id: curveEditorId || (existing && existing.id),
-    label: name,
-    createdAt: existing && existing.createdAt,
-  });
-  if (!profile) {
-    setCurveStatus('This analysis cannot be used as a target.', 'err');
-    return;
-  }
-  setCurveEditorBands(window.idealCurves.bandOffsetsFromProfile(profile, IP_GRID_FREQS));
-  const next = window.idealCurves.upsertProfile(customIdealProfiles, profile);
-  if (await persistCustomIdealProfiles(next, `custom:${profile.id}`)) closeCurveEditor();
-}
-
-async function deleteCurveEditor() {
-  const custom = selectedCustomProfile();
-  if (!custom) return;
-  const next = window.idealCurves.deleteProfile(customIdealProfiles, custom.id);
-  if (await persistCustomIdealProfiles(next, '')) closeCurveEditor();
-}
+/* ══ Ideal EQ profiles + curve editor (PRD 05) ══
+   Selection state (idealProfileId/customIdealProfiles), the
+   #ideal-profile-select dropdown, and the #curve-dialog curve editor are now
+   idealProfilesStore + IdealProfileSelect/CurveEditorDialog (React) (TD-001
+   slice 6b, #700). The analysis-or-selection → active-profile glue that used
+   to live in this script's syncIdealProfile now lives in bridge.ts's
+   idealProfilesStore subscriptions — see saveMixAsTarget below for the one
+   remaining call site this script drives directly. */
 
 /* ══ Spectrum panel rendering ══
    The whole analysis-spectrum surface — panel display state, the curve/bars,
@@ -414,7 +215,9 @@ async function deleteCurveEditor() {
 // degrades gracefully, reproducing this function's old two-branch body).
 window.renderSpectrum = (spectrum) => {
   specStore.getState().setSpectrumFromAnalysis({ spectrum });
-  syncIdealProfile();
+  // Bypasses analysisStore, so bridge.ts's currentAnalysis subscription never
+  // fires for this shim — resync idealProfilesStore directly instead.
+  window.rendererStores.idealProfiles.getState().syncActiveProfile();
 };
 // e2e/legacy compat shim — playback-transport.spec.ts drives the scrubber's
 // seek behavior via window.seekPlayback(t) directly.
@@ -1554,10 +1357,10 @@ function syncReportCardChrome(state, prevState) {
       // File input now lives in the Report Card tab's empty state (#203) —
       // the card flips over the moment analysis succeeds. The store already
       // flipped panelState to 'populated' via bridge.ts's
-      // setSpectrumFromAnalysis subscription, so SpectrumPanel (React)
-      // already shows the island — nothing left to clear/sync here.
+      // setSpectrumFromAnalysis subscription, and idealProfilesStore already
+      // resynced via bridge.ts's currentAnalysis subscription (TD-001 slice
+      // 6b, #700) — nothing left to clear/sync here.
       updateStatsRow(state.currentAnalysis.sox, state.currentAnalysis.spectrum);
-      syncIdealProfile();
       if (curAnalysis()) persistSummary(getReportCardSource(), 'file');
     }
   }
@@ -3778,22 +3581,6 @@ function renderTrialBanner(state) {
 
 function aiEl(id) { return document.getElementById(id); }
 
-(() => {
-  curveEl('ideal-curve-edit-btn').addEventListener('click', openCurveEditor);
-  curveEl('curve-save-btn').addEventListener('click', saveCurveEditor);
-  curveEl('curve-capture-btn').addEventListener('click', captureCurrentCurveAsIdeal);
-  curveEl('curve-delete-btn').addEventListener('click', deleteCurveEditor);
-  curveEl('curve-reset-btn').addEventListener('click', () => setCurveEditorBands(BAND_META.map(() => 0)));
-  curveEl('curve-cancel-btn').addEventListener('click', closeCurveEditor);
-  curveEl('curve-dialog').addEventListener('click', (e) => { if (e.target === curveEl('curve-dialog')) closeCurveEditor(); });
-  curveEl('curve-name').addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') saveCurveEditor();
-  });
-  document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape' && curveEl('curve-dialog').style.display !== 'none') closeCurveEditor();
-  });
-})();
-
 /* ══ Feedback dialog (#144, in-app submission #472) ══ */
 // Send now POSTs message + category + optional contact email via
 // window.soundBuddy.submitFeedback (validated/built by window.feedbackForm,
@@ -3995,18 +3782,16 @@ function closePhaseDoublingDialog() {
 }
 
 // #263: one-click "save this mix's tone as your target" from the report-card
-// CTA. Reuses the exact profileFromMeasuredCurve → upsert → persist path the
-// "Create new curve…" capture button uses; no new curve logic. Auto-names the
-// profile from the current recording (deterministic id → re-click updates it).
+// CTA. Reuses idealProfilesStore's saveMeasured — the exact
+// profileFromMeasuredCurve → upsert → persist path the "Create new curve…"
+// capture button uses; no new curve logic (TD-001 slice 6b, #700). Auto-names
+// the profile from the current recording (deterministic id → re-click updates it).
 async function saveMixAsTarget() {
   const analysis = curAnalysis();
   if (!analysis || !hasUsableCurve(analysis.spectrum || {})) return false;
   const src = getReportCardSource();
   const meta = strongMixTargetMeta(src ? src.filename : '');
-  const profile = window.idealCurves.profileFromMeasuredCurve(analysis.spectrum.curve, IP_GRID_FREQS, meta);
-  if (!profile) return false;
-  const next = window.idealCurves.upsertProfile(customIdealProfiles, profile);
-  return persistCustomIdealProfiles(next, `custom:${profile.id}`);
+  return window.rendererStores.idealProfiles.getState().saveMeasured(analysis.spectrum.curve, meta);
 }
 
 // Bridges ReportCard.tsx's phase-doubling/feedback-ringout callout buttons to
@@ -4065,13 +3850,8 @@ window.inlineDialogs = { openPhaseDoublingDialog, openFeedbackRingout, saveMixAs
 /* ══ Init ══ */
 (async () => {
   await setStore.getState().loadSettings();
-  const s = setStore.getState().settings;
-  if (s && typeof s.idealProfile === 'string') idealProfileId = s.idealProfile;
-  customIdealProfiles = window.idealCurves
-    ? window.idealCurves.normalizeProfiles(s && s.customIdealProfiles, IP_GRID_FREQS)
-    : [];
-  initIdealProfileSelect();
-  syncIdealProfile();
+  // idealProfilesStore hydration (idealProfileId/customIdealProfiles) now
+  // flows from bridge.ts's settings subscription (TD-001 slice 6b, #700).
   // Reflect the effective default record folder (#482) now that settings have
   // loaded — root-markup.html's static text is only the cold-boot placeholder.
   if (!recordDir) document.getElementById('record-folder-path').textContent = defaultRecordFolderText();
