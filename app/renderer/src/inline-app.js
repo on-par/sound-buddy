@@ -137,7 +137,7 @@ let channelConfig = [];        // configured strips: { kind:'mono'|'stereo', a:i
 // mirrors the store's current values into the module vars above so the ~50
 // read call sites throughout this file don't all have to become
 // lcStore.getState().x.
-function syncLiveCaptureMirror(state) {
+function syncLiveCaptureMirror(state, prevState) {
   liveRunning = state.isCapturing;
   capturePromoting = state.promoting;
   liveWindows = state.liveWindows;
@@ -147,6 +147,33 @@ function syncLiveCaptureMirror(state) {
   liveMode = state.liveMode;
   recordDir = state.recordDir;
   channelConfig = state.channelConfig;
+  if (!prevState) return; // the initial sync call above has no prevState — nothing "changed" yet
+
+  if (state.liveMode !== prevState.liveMode) hideArmHint();
+
+  // Board-SHAPE changes (not the per-tick lastTick/liveWindows/
+  // lastLiveChannels churn bindIpcEvents also writes here) repaint
+  // #live-island synchronously while the Live tab is active — the reliable
+  // replacement for the old per-mutation renderLiveWorkspace()/
+  // renderLiveMeters() call sites (TD-001 slice 6c, #701). This has to be a
+  // synchronous store subscription, not React's own re-render: LiveWorkspace
+  // re-rendering doesn't run its effects synchronously with the store update
+  // that triggered it, and renderLiveWorkspace()/renderLiveMeters() decide
+  // patch-vs-rebuild by querying #live-island's CURRENT DOM — an imperative
+  // read that has to happen right after the mutation, not on React's own
+  // schedule. Per-tick patching (live-meter-controller.ts, mounted by
+  // LiveWorkspace.tsx) stays the separate, animation-frame-coalesced path
+  // for lastTick changes.
+  if (currentMode === 'live' && (
+    state.channelConfig !== prevState.channelConfig
+    || state.channelGroups !== prevState.channelGroups
+    || state.isCapturing !== prevState.isCapturing
+    || state.liveMode !== prevState.liveMode
+    || state.devices !== prevState.devices
+    || state.selectedChannel !== prevState.selectedChannel
+  )) {
+    window.liveWorkspaceRuntime.renderWorkspace();
+  }
 }
 syncLiveCaptureMirror(lcStore.getState());
 lcStore.subscribe(syncLiveCaptureMirror);
@@ -1489,10 +1516,10 @@ document.getElementById('meter-interval').addEventListener('input', (e) => {
 /* ── Monitor / Record toggle ── */
 // Apply a capture mode (used by applyRig — the Source-panel Mode toggle is
 // now React-owned, LiveControls.tsx, and calls lcStore.getState().setLiveMode
-// directly, TD-001 slice 6c, #701). The mirror subscription's modeChanged
-// check (see syncLiveCaptureMirror) covers hideArmHint() for both paths;
-// renderChannelConfig() below re-syncs preflight (the workspace board itself
-// now re-renders reactively from the store, not from this call).
+// directly, TD-001 slice 6c, #701). Either path's store write is picked up
+// by syncLiveCaptureMirror's subscription, which covers hideArmHint() and
+// the #live-island board repaint itself; renderChannelConfig() below just
+// re-syncs preflight.
 function setLiveMode(mode) {
   lcStore.getState().setLiveMode(mode);
   renderChannelConfig();
@@ -1650,8 +1677,9 @@ function resetChannelConfig() {
 // capture lock. The channel list, add, group, and arm controls now live solely
 // in the workspace (#192); this is the shared "config changed" entry point that
 // every mutator (add/remove/kind/source/group/arm/mode/rig) routes through.
-// The workspace board itself (LiveWorkspace.tsx) now re-renders reactively
-// from liveCaptureStore, not from this call (TD-001 slice 6c, #701).
+// The workspace board itself (#live-island) repaints via syncLiveCaptureMirror's
+// store subscription reacting to the store write each of those mutators already
+// made — not from this call (TD-001 slice 6c, #701).
 function renderChannelConfig() {
   // Re-assert the capture lock (#38): a running capture keeps the workspace frozen.
   if (liveRunning) setCaptureControlsLocked(true);

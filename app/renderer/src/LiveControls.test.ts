@@ -112,6 +112,19 @@ describe('LiveControls', () => {
     expect(html).toMatch(/data-mode="monitor"[^>]*disabled=""/);
     expect(html).toMatch(/id="record-folder-btn"[^>]*disabled=""/);
   });
+
+  it('reflects the lock as aria-disabled too (tests/rigs.spec.ts checks both, since the workspace toolbar bakes in `disabled` on rebuild without aria-disabled)', () => {
+    const idle = renderMarkup();
+    expect(idle).toMatch(/id="device-select"[^>]*aria-disabled="false"/);
+    expect(idle).toMatch(/id="device-refresh-btn"[^>]*aria-disabled="false"/);
+    expect(idle).toMatch(/id="record-folder-btn"[^>]*aria-disabled="false"/);
+
+    useLiveCaptureStore.setState({ isCapturing: true });
+    const locked = renderMarkup();
+    expect(locked).toMatch(/id="device-select"[^>]*aria-disabled="true"/);
+    expect(locked).toMatch(/id="device-refresh-btn"[^>]*aria-disabled="true"/);
+    expect(locked).toMatch(/id="record-folder-btn"[^>]*aria-disabled="true"/);
+  });
 });
 
 describe('LiveTransportControls', () => {

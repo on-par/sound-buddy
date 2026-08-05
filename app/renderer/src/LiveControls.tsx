@@ -155,6 +155,7 @@ export default function LiveControls() {
               id="device-select"
               value={selectedDevice}
               disabled={isCapturing}
+              aria-disabled={isCapturing}
               onChange={(e) => changeDevice(runtime(), e.target.value)}
             >
               {devices.length === 0
@@ -174,6 +175,7 @@ export default function LiveControls() {
             className="ghost-btn"
             title="Re-scan input devices"
             disabled={isCapturing}
+            aria-disabled={isCapturing}
             onClick={() => { void runtime()?.loadDevices(); }}
           >
             Refresh
@@ -228,6 +230,7 @@ export default function LiveControls() {
           className="ghost-btn"
           title="Choose recording folder"
           disabled={isCapturing}
+          aria-disabled={isCapturing}
           onClick={() => { void runtime()?.chooseRecordFolder(); }}
         >
           Folder…
