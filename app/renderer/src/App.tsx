@@ -57,6 +57,8 @@ import ReportCardIsland from './ReportCardIsland';
 import SpectrumPanel from './SpectrumPanel';
 import IdealProfileSelect from './IdealProfileSelect';
 import CurveEditorDialog from './CurveEditorDialog';
+import LiveControls, { LiveTransportControls } from './LiveControls';
+import LiveWorkspace from './LiveWorkspace';
 import { installStoreBridge } from './stores/bridge';
 
 // Boot scripts in their original document order (#303): the 20 UMD helpers
@@ -175,6 +177,9 @@ export default function App() {
       {booted && createPortal(<ReportCardIsland />, document.getElementById('report-card')!)}
       {booted && createPortal(<SpectrumPanel />, document.getElementById('spectrum-island')!)}
       {booted && createPortal(<IdealProfileSelect />, document.getElementById('ideal-profile-island')!)}
+      {booted && createPortal(<LiveWorkspace />, document.getElementById('live-island')!)}
+      {booted && createPortal(<LiveControls />, document.getElementById('live-controls-island')!)}
+      {booted && createPortal(<LiveTransportControls />, document.getElementById('live-transport-island')!)}
     </>
   );
 }
