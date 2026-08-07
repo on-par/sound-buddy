@@ -1,25 +1,9 @@
-  <!-- ══ Update banner ══ -->
-  <div id="update-banner" role="status">
-    <span data-icon="arrow-up-circle" class="ub-icon"></span>
-    <span id="update-banner-text">A new version is available.</span>
-    <progress id="update-progress" max="100" value="0" hidden></progress>
-    <button type="button" id="update-download-btn" class="ub-btn">Download</button>
-    <button type="button" id="update-dismiss-btn" class="ub-x" aria-label="Dismiss">✕</button>
-  </div>
-  <!-- ══ License grace banner (#54) ══ -->
-  <div id="license-banner" role="status">
-    <span data-icon="alert-triangle" class="ub-icon"></span>
-    <span class="lb-text" id="license-banner-text"></span>
-    <button type="button" id="license-banner-manage" class="ub-btn">Manage…</button>
-    <button type="button" id="license-banner-dismiss" class="ub-x" aria-label="Dismiss">✕</button>
-  </div>
-  <!-- ══ Trial nudge / upgrade banner (#61) ══ -->
-  <div id="trial-banner" role="status">
-    <span data-icon="sparkles" class="ub-icon"></span>
-    <span class="lb-text" id="trial-banner-text"></span>
-    <button type="button" id="trial-banner-start" class="ub-btn">Start subscription</button>
-    <button type="button" id="trial-banner-dismiss" class="ub-x" aria-label="Dismiss">✕</button>
-  </div>
+  <!-- ══ Update banner (TD-001 slice 6e, #703) — UpdateBanner.tsx renders it. ══ -->
+  <div id="update-banner-island"></div>
+  <!-- ══ License badge/grace banner/trial banner (#54, #61, TD-001 slice 6e, #703)
+       — LicenseChrome.tsx renders all three. ══ -->
+  <div id="license-banner-island"></div>
+  <div id="trial-banner-island"></div>
   <!-- ══ What's-new note (#271) — dismissible, non-blocking, once per update ══ -->
   <div id="whats-new-banner" role="status">
     <span data-icon="sparkles" class="ub-icon"></span>
@@ -84,7 +68,8 @@
     <div id="mode-tabs" role="tablist"></div>
     <div id="header-right">
       <button type="button" id="settings-btn" data-icon="settings" data-size="17" aria-label="Settings" title="Settings"></button>
-      <button type="button" id="license-badge" title="License — click to manage">FREE</button>
+      <!-- LicenseChrome.tsx (TD-001 slice 6e, #703) renders the badge. -->
+      <div id="license-badge-island"></div>
       <div id="live-indicator">
         <div class="pulse sb-pulse"></div>
         <span class="live-txt">LIVE</span>

@@ -2137,171 +2137,19 @@ async function chooseAndAnalyzeFile() {
 window.chooseAndAnalyzeFile = chooseAndAnalyzeFile;
 
 /* ══ License (#54) ══ */
-// Free/Pro state comes from licensingStore (backed by the main process's
-// offline Ed25519 validation); the pure display/entitlement rules live in
-// license-state.js. LicensePanel.tsx now owns the dialog itself — its
-// markup, activation/removal/refresh, and the entitlement poll (TD-001
-// slice 3, #421). This section renders the badge/banners/upgrade-card from
-// licStore's state and wires the surfaces that open the dialog.
+// renderLicenseUi/renderTrialBanner/trialDismissed/dismissTrial + the
+// initLicense() IIFE are gone — LicenseChrome.tsx (TD-001 slice 6e, #703)
+// ports them verbatim, reading licensingStore reactively instead of an
+// explicit store.subscribe callback. The generic [data-license-open]
+// listener below is the one piece LicenseChrome.tsx doesn't own — it's used
+// by the two unrelated paywall .pg-link buttons (Live/Soundcheck pro-gates),
+// still static root-markup.html markup, out of scope for this slice.
+document.querySelectorAll('[data-license-open]').forEach((el) =>
+  el.addEventListener('click', () => licStore.getState().openDialog()));
 
-// Paywall-evaluation refresh trigger (#117): once per session, the first time
-// we observe a subscription in its refresh window, kick the automatic check.
-// The window predicate lives in license-state.js (isInRefreshWindow, shared +
-// unit-tested) so it can't silently drift from the main process's own
-// shouldAutoRefresh() — a polling loop isn't needed since renderLicenseUi
-// runs on every licStore change.
-let refreshKicked = false;
-
-function renderLicenseUi(state) {
-  if (!refreshKicked && window.licenseState.isInRefreshWindow(state)) {
-    refreshKicked = true;
-    // licensingStore.refreshLicense() never throws — a rejected round-trip
-    // just keeps the current state (see its own comment).
-    void licStore.getState().refreshLicense();
-  }
-  const ls = window.licenseState;
-  const b = ls.badge(state);
-
-  const badgeEl = document.getElementById('license-badge');
-  // During the trial the countdown IS the badge copy (#61); the pure helper
-  // owns the exact string so it can't drift from what's under test.
-  const trialText = ls.trialBadgeText(state);
-  badgeEl.textContent = trialText || b.label;
-  badgeEl.classList.toggle('pro', b.pro);
-  badgeEl.classList.toggle('grace', b.grace);
-  badgeEl.classList.toggle('trial', b.trial);
-
-  // The single gating hook: every Pro surface keys off body.not-pro in CSS.
-  document.body.classList.toggle('not-pro', !b.pro);
-
-  const banner = document.getElementById('license-banner');
-  const graceText = ls.graceBannerText(state);
-  if (graceText) {
-    document.getElementById('license-banner-text').textContent = graceText;
-    banner.classList.add('show');
-  } else {
-    banner.classList.remove('show');
-  }
-
-  renderTrialBanner(state);
-
-  // UpgradeMomentum.tsx (TD-001 slice 6e, #703) reads licensingStore directly
-  // via useStoreShallow — no explicit re-render trigger needed here anymore;
-  // activating/removing a key mid-session hides the card reactively.
-}
-
-// The day-3 / day-11 nudge and the day-14 upgrade card (#61). Dismissals are
-// per-milestone in localStorage so a nudge shows once, not every launch.
-function trialDismissed(id) {
-  try { return localStorage.getItem('sb-trial-dismiss-' + id) === '1'; } catch { return false; }
-}
-function dismissTrial(id) {
-  try { localStorage.setItem('sb-trial-dismiss-' + id, '1'); } catch { /* private mode: banner just returns next launch */ }
-}
-
-function renderTrialBanner(state) {
-  const el = document.getElementById('trial-banner');
-  const textEl = document.getElementById('trial-banner-text');
-  let msg = null;
-  let id = null;
-  if (state.status === 'trial') {
-    const nudge = window.licenseState.trialNudge(state);
-    if (nudge) { msg = nudge.text; id = nudge.milestone; }
-  } else if (state.status === 'trial-expired') {
-    msg = 'Your 14-day Pro trial has ended — the report card stays free. Start a subscription to reunlock live monitoring, saved rigs & virtual soundcheck.';
-    id = 'expired';
-  }
-  if (msg && id && !trialDismissed(id)) {
-    textEl.textContent = msg;
-    el.dataset.dismissId = id;
-    el.classList.add('show');
-  } else {
-    el.classList.remove('show');
-  }
-}
-
-(function initLicense() {
-  document.getElementById('license-badge').addEventListener('click', () => licStore.getState().openDialog());
-  document.getElementById('license-banner-manage').addEventListener('click', () => licStore.getState().openDialog());
-  document.getElementById('license-banner-dismiss').addEventListener('click', () =>
-    document.getElementById('license-banner').classList.remove('show'));
-
-  // Trial banner (#61): "Start subscription" opens the license dialog; the ✕
-  // dismisses this milestone for good (so it doesn't nag every launch).
-  document.getElementById('trial-banner-start').addEventListener('click', () => licStore.getState().openDialog());
-  document.getElementById('trial-banner-dismiss').addEventListener('click', () => {
-    const tb = document.getElementById('trial-banner');
-    if (tb.dataset.dismissId) dismissTrial(tb.dataset.dismissId);
-    tb.classList.remove('show');
-  });
-  document.querySelectorAll('[data-license-open]').forEach((el) =>
-    el.addEventListener('click', () => licStore.getState().openDialog()));
-
-  licStore.subscribe((s) => renderLicenseUi(s.licenseStatus || { tier: 'free', status: 'none' }));
-  // Render the free-tier default immediately — LicensePanel.tsx's mount
-  // effect resolves the real state asynchronously; the subscribe above
-  // re-renders once it does.
-  renderLicenseUi(licStore.getState().licenseStatus || { tier: 'free', status: 'none' });
-})();
-
-/* ══ Updates ══ */
-(function initUpdates() {
-  const banner = document.getElementById('update-banner');
-  const text = document.getElementById('update-banner-text');
-  const dlBtn = document.getElementById('update-download-btn');
-  const progress = document.getElementById('update-progress');
-  let info = null;
-  let currentAction = 'download';
-
-  function render(view) {
-    text.textContent = view.text;
-    if (view.primary == null) {
-      dlBtn.hidden = true;
-    } else {
-      dlBtn.hidden = false;
-      dlBtn.textContent = view.primary.label;
-      currentAction = view.primary.action;
-    }
-    progress.hidden = !view.showProgress;
-    progress.value = view.percent;
-    if (view.indeterminate) {
-      progress.removeAttribute('value');
-    } else {
-      progress.setAttribute('value', String(view.percent));
-    }
-  }
-
-  sb.onUpdateAvailable((i) => {
-    info = i;
-    render(window.updateDownloadState.viewFor(null, info));
-    banner.classList.add('show');
-  });
-  sb.onUpdateStatus((s) => {
-    // Feedback for the manual "Check for Updates…" menu item.
-    if (s.state === 'up-to-date') {
-      text.textContent = `You're up to date (v${s.version}).`;
-      dlBtn.hidden = true;
-      progress.hidden = true;
-      banner.classList.add('show');
-      setTimeout(() => banner.classList.remove('show'), 4000);
-    } else if (s.state === 'error') {
-      text.textContent = 'Could not check for updates. Try again later.';
-      dlBtn.hidden = true;
-      progress.hidden = true;
-      banner.classList.add('show');
-      setTimeout(() => banner.classList.remove('show'), 5000);
-    }
-  });
-  sb.onUpdateDownloadStatus((s) => {
-    if (!info) return;
-    render(window.updateDownloadState.viewFor(s.state === 'cancelled' ? null : s, info));
-  });
-  dlBtn.addEventListener('click', () => {
-    if (currentAction === 'install') sb.installUpdate();
-    else sb.downloadUpdate();
-  });
-  document.getElementById('update-dismiss-btn').addEventListener('click', () => banner.classList.remove('show'));
-})();
+// initUpdates() is gone — UpdateBanner.tsx (TD-001 slice 6e, #703) ports it
+// verbatim as a mounted component instead of an IIFE that runs once at
+// script load.
 
 /* ══ Settings dialog (#76, #91, #204) ══ */
 // SettingsPanel.tsx now owns the whole dialog — Storage and About tabs, Save

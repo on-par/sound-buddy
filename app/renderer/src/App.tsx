@@ -70,6 +70,8 @@ import UpgradeMomentum from './UpgradeMomentum';
 import RecentServicesPanel from './RecentServicesPanel';
 import BuildGuidePanel from './BuildGuidePanel';
 import RingoutPanel from './RingoutPanel';
+import LicenseChrome from './LicenseChrome';
+import UpdateBanner from './UpdateBanner';
 import { installStoreBridge } from './stores/bridge';
 
 // Boot scripts in their original document order (#303): the 20 UMD helpers
@@ -208,6 +210,8 @@ export default function App() {
       {booted && createPortal(<RecentServicesPanel />, document.getElementById('tab-recent')!)}
       {booted && createPortal(<BuildGuidePanel />, document.getElementById('tab-guide')!)}
       {booted && createPortal(<RingoutPanel />, document.getElementById('tab-ringout')!)}
+      {booted && <LicenseChrome />}
+      {booted && createPortal(<UpdateBanner />, document.getElementById('update-banner-island')!)}
     </>
   );
 }
