@@ -62,6 +62,8 @@ import LiveWorkspace from './LiveWorkspace';
 import SoundcheckPanel from './SoundcheckPanel';
 import RigControls from './RigControls';
 import PreflightPanel from './PreflightPanel';
+import ModeTabs from './ModeTabs';
+import * as modeSwitch from './mode-switch';
 import { installStoreBridge } from './stores/bridge';
 
 // Boot scripts in their original document order (#303): the 20 UMD helpers
@@ -152,6 +154,10 @@ export default function App() {
     (window as Window & { shareCard?: unknown }).shareCard = shareCard;
     (window as Window & { liveCapturePanel?: unknown }).liveCapturePanel = liveCapturePanel;
     (window as Window & { crashHooks?: unknown }).crashHooks = crashHooks;
+    // inline-app.js still needs applySpectrumForMode/applySingleColumnSync
+    // for the 2 remaining call sites outside ModeTabs.tsx's click handler
+    // (TD-001 slice 6e, #703).
+    (window as Window & { modeSwitch?: unknown }).modeSwitch = modeSwitch;
     // Installed before the boot scripts run — inline-app.js reads
     // window.rendererStores at its top level (TD-001 slice 3, #421).
     installStoreBridge();
@@ -186,6 +192,7 @@ export default function App() {
       {booted && createPortal(<RigControls />, document.getElementById('rig-controls-island')!)}
       {booted && createPortal(<PreflightPanel />, document.getElementById('preflight-island')!)}
       {booted && createPortal(<SoundcheckPanel />, document.getElementById('soundcheck-island')!)}
+      {booted && createPortal(<ModeTabs />, document.getElementById('mode-tabs')!)}
     </>
   );
 }

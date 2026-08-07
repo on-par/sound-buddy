@@ -80,21 +80,8 @@
       <span id="logo-text">Sound<b> Buddy</b></span>
     </div>
     <div class="header-div"></div>
-    <div id="mode-tabs" role="tablist">
-      <!-- Final nav consolidation (#547, epic e17): flag-only entries — hidden by
-           default (see app.css) so the flag-off shell is unchanged. -->
-      <button class="mode-tab" id="nav-analyze" data-mode="analyze" data-icon="activity">Analyze</button>
-      <button class="mode-tab" id="nav-history" data-mode="history" data-icon="clock">History</button>
-      <!-- Directory now ships the #270 batch-analysis workflow, so it drops the
-           #293 "v1.1" roadmap badge and becomes a real destination. -->
-      <button class="mode-tab" data-mode="dir" data-icon="folder">Directory</button>
-      <button class="mode-tab" data-mode="live" data-icon="radio">Live<span class="tab-lock" data-icon="lock" data-size="11"></span></button>
-      <button class="mode-tab" data-mode="soundcheck" data-icon="sliders">Soundcheck<span class="tab-lock" data-icon="lock" data-size="11"></span></button>
-      <button class="mode-tab" data-mode="recent" data-icon="clock">Recent</button>
-      <button class="mode-tab" data-mode="guide" data-icon="clipboard-check">Build Guide</button>
-      <button class="mode-tab" data-mode="ringout" data-icon="waves">Ring Out</button>
-      <button class="mode-tab active" data-mode="reportcard" data-icon="clipboard-check">Report Card</button>
-    </div>
+    <!-- ModeTabs.tsx (TD-001 slice 6e, #703) renders the 9 tab buttons. -->
+    <div id="mode-tabs" role="tablist"></div>
     <div id="header-right">
       <button type="button" id="settings-btn" data-icon="settings" data-size="17" aria-label="Settings" title="Settings"></button>
       <button type="button" id="license-badge" title="License — click to manage">FREE</button>

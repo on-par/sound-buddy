@@ -112,7 +112,7 @@ describe('Live adjustments gate wiring (#522)', () => {
   it('the settingsStore subscriber re-syncs the Live pane on an actual flip', () => {
     const block = enclosingBlock(inlineApp, 'liveAdjustmentsWasEnabled = nowEnabled');
     expect(block).toContain('liveAdjustmentsState.isEnabled(');
-    expect(block).toContain("syncSpectrumForMode('live')");
+    expect(block).toContain("window.modeSwitch.applySpectrumForMode('live')");
   });
 
   it('the Settings dialog has the toggle and note elements (#204)', () => {

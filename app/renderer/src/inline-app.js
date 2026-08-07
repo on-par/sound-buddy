@@ -59,9 +59,13 @@ const transport = window.spectrumTransport;
 // script reads/writes it through the store instead of a module-level var.
 const lcStore = window.rendererStores.liveCapture;
 
-let currentMode = 'reportcard';
 let liveRunning = false;
 let liveWindows = [];
+// TD-001 slice 6e (#703): mode-switch.ts is a real ES module, so it can't
+// read this script's lexical `let` bindings directly the way a top-level
+// `function` declaration (e.g. renderChannelConfig) leaks onto `window`
+// automatically — applySpectrumForMode's ported Live-tab branch needs these.
+window.liveCapture = { isRunning: () => liveRunning, windows: () => liveWindows };
 // Whole-session window accumulator (#261): liveWindows above is capped at 10
 // entries (see the onLiveEvent handler below) for the rolling preview and the
 // report-card source (#208) — nowhere near enough for "the whole session" a
@@ -165,7 +169,7 @@ function syncLiveCaptureMirror(state, prevState) {
   // schedule. Per-tick patching (live-meter-controller.ts, mounted by
   // LiveWorkspace.tsx) stays the separate, animation-frame-coalesced path
   // for lastTick changes.
-  if (currentMode === 'live' && (
+  if (lcStore.getState().appMode === 'live' && (
     state.channelConfig !== prevState.channelConfig
     || state.channelGroups !== prevState.channelGroups
     || state.isCapturing !== prevState.isCapturing
@@ -401,7 +405,7 @@ function renderLiveMeters(win) {
   // even while the DAW shell has taken over rendering below — otherwise every
   // lane name would be stuck unresolved for the whole capture.
   if (win && win.channels && win.channels.length > 0) lastLiveChannels = win.channels;
-  if (window.dawWorkspaceState.showShell(setStore.getState().settings, currentMode)) { renderDawShell(); return; }
+  if (window.dawWorkspaceState.showShell(setStore.getState().settings, lcStore.getState().appMode)) { renderDawShell(); return; }
   const body = document.getElementById('live-island');
   if (!win || !win.channels || win.channels.length === 0) {
     specStore.getState().setPanelState('empty', 'Waiting for live audio…');
@@ -454,7 +458,7 @@ function renderLiveMeters(win) {
 // (locked) mid-capture.
 function renderLiveWorkspace() {
   specStore.getState().setPanelState('meters'); // hides #spectrum-island's React curve view while #live-island renders the board
-  if (window.dawWorkspaceState.showShell(setStore.getState().settings, currentMode)) { renderDawShell(); return; }
+  if (window.dawWorkspaceState.showShell(setStore.getState().settings, lcStore.getState().appMode)) { renderDawShell(); return; }
   const body = document.getElementById('live-island');
   document.getElementById('stats-row').style.display = 'none';
   const ipWrap = document.getElementById('ideal-profile-wrap');
@@ -506,7 +510,7 @@ function renderLiveWorkspace() {
 function syncLiveAdjustmentsPanel() {
   const body = document.getElementById('live-island');
   const html = window.liveAdjustmentsState.panelHTML(
-    setStore.getState().settings, currentMode, liveWindows, lcStore.getState().measurementSource, lapFocusView(), lapCoaching, Date.now());
+    setStore.getState().settings, lcStore.getState().appMode, liveWindows, lcStore.getState().measurementSource, lapFocusView(), lapCoaching, Date.now());
   const existing = body.querySelector('.live-adjustments-panel');
   if (!html) { if (existing) existing.remove(); return; }
   if (!existing) body.insertAdjacentHTML('beforeend', html);
@@ -979,18 +983,17 @@ function updateLiveStatsRow(ch) {
   document.getElementById('stat-centroid').textContent = ch.centroid ? Math.round(ch.centroid).toLocaleString() : '—';
 }
 
-// #542 (epic e17): Recent / Build Guide / Ring-Out have no spectrum and no
-// per-analysis report content of their own — collapse the workspace to one
-// full-width column for them when the report-first-ux flag is on. CSS does
-// the layout; this only owns the branch point.
-function syncSingleColumn() {
-  document.body.classList.toggle('single-column', window.singleColumnState.isSingleColumn(
-    window.reportFirstUxState.isEnabled(setStore.getState().settings), currentMode));
-}
+// syncSingleColumn is gone — mode-switch.ts#applySingleColumnSync (TD-001
+// slice 6e, #703) ports it verbatim; inline-app.js reaches it via
+// window.modeSwitch for the two call sites below that aren't inside
+// switchMode() itself.
 
 // #543 (epic e17): the unified "Analyze" source picker — opened from the
 // Report Card toolbar (see the reportcard-load-btn handler above), never on
 // launch, so there's no full-screen overlay for e2e specs to trip over.
+// Bridged onto window.analyzeSourcePicker.open (TD-001 slice 6e, #703) — the
+// React-owned ModeTabs.tsx now dispatches the 'analyze' tab through this
+// bridge instead of calling the function directly.
 function openAnalyzeSourcePicker() {
   document.getElementById('analyze-source-picker').hidden = false;
   document.querySelector('[data-analyze-source]').focus();
@@ -998,6 +1001,7 @@ function openAnalyzeSourcePicker() {
 function closeAnalyzeSourcePicker() {
   document.getElementById('analyze-source-picker').hidden = true;
 }
+window.analyzeSourcePicker = { open: openAnalyzeSourcePicker };
 // Routing is a simulated tab click — the same idiom used throughout this file
 // (e.g. #rc-offer-btn) — so Live/Soundcheck reach their
 // destination through the real mode-tab handler: Pro gating, transport
@@ -1017,124 +1021,17 @@ document.getElementById('analyze-source-picker').addEventListener('keydown', (e)
   if (e.key === 'Escape') closeAnalyzeSourcePicker();
 });
 
-/* ══ Mode tabs ══ */
-document.querySelectorAll('.mode-tab').forEach(tab => {
-  tab.addEventListener('click', () => {
-    const mode = tab.dataset.mode;
-    // Final nav consolidation (#547, epic e17): the two flag-only entries
-    // are not modes of their own. Analyze opens the #543 source picker over
-    // the current view. History routes to the existing Recent list through
-    // the real recent-tab handler (the simulated-click idiom used throughout
-    // this file), then takes the visible active state itself, since the
-    // recent tab it delegates to is display:none under the flag.
-    if (mode === 'analyze') { openAnalyzeSourcePicker(); return; }
-    if (mode === 'history') {
-      document.querySelector('.mode-tab[data-mode="recent"]').click();
-      tab.classList.add('active');
-      return;
-    }
-    if (mode === currentMode) return;
-    // Opt-in crash reporting (#473): the current screen is a safe breadcrumb
-    // (a name, never content) a crash payload includes as `route`. No-op
-    // when reporting is off or unavailable (main process ignores it either way).
-    sb.recordAppEvent?.('screen.' + (mode === 'reportcard' ? 'reportcard' : mode));
-    // Live/Soundcheck replace the spectrum area with unrelated content and
-    // Soundcheck has its own playback transport — don't leave the analyzed
-    // file playing silently in the background with no visible control (#180).
-    if (mode === 'live' || mode === 'soundcheck') transport.pauseIfPlaying();
-
-    document.querySelectorAll('.mode-tab').forEach(t => t.classList.remove('active'));
-    tab.classList.add('active');
-    // Set currentMode before the mode-specific work so a throw inside it
-    // can't leave currentMode stale and lock the user out of navigating back
-    // via the same-tab guard (#177). liveCaptureStore.appMode mirrors it
-    // (TD-001 slice 6c, #701) — LiveWorkspace.tsx reads it to know when to
-    // show/hide #live-island and re-trigger the bridged board render.
-    currentMode = mode;
-    lcStore.getState().setAppMode(mode);
-
-    if (mode === 'reportcard') {
-      // #177: the report card now shares the screen with the spectrum instead
-      // of replacing the workspace. #workspace stays visible (CSS lays the two
-      // out side by side via #stage; body.rc-active folds the Source panel
-      // away so both get room). The .active toggle is retained so existing
-      // DOM assertions keep holding. syncSpectrumForMode keeps the spectrum in
-      // the right state beside the card — otherwise a stale Live/Soundcheck
-      // spectrum (or pre-analysis empty state) would show next to the grade.
-      // ReportCardIsland (React) always renders from the live store state —
-      // no explicit render call needed here (TD-001 slice 4, #422).
-      document.body.classList.add('rc-active');
-      document.getElementById('reportcard-view').classList.add('active');
-      syncSpectrumForMode('reportcard');
-    } else {
-      document.body.classList.remove('rc-active');
-      document.getElementById('reportcard-view').classList.remove('active');
-      document.querySelectorAll('.tab-content').forEach(tc => tc.classList.remove('active'));
-      document.getElementById(`tab-${mode}`).classList.add('active');
-      syncSpectrumForMode(mode);
-      // Reload on every visit (not just once) so a just-completed analysis
-      // shows up without an app restart (#147).
-      if (mode === 'recent') renderRecentServices();
-      if (mode === 'guide') renderBuildGuide();
-      if (mode === 'ringout') renderRingout();
-    }
-    syncSingleColumn();
-  });
-});
+// Mode tabs (#547 and earlier): the click listener, currentMode var, and
+// syncSpectrumForMode are gone — ModeTabs.tsx (portaled onto #mode-tabs) now
+// renders the tabs and dispatches every click through mode-switch.ts's
+// resolveModeSwitch/switchMode, which liveCaptureStore.appMode drives
+// (TD-001 slice 6e, #703). window.modeSwitch bridges applySpectrumForMode/
+// applySingleColumnSync for the remaining call sites below that aren't
+// inside switchMode() itself.
 
 // Virtual Soundcheck (#46): fully React/store-owned (SoundcheckPanel.tsx,
 // stores/soundcheckStore.ts, TD-001 slice 6d, #702).
 window.rendererStores.soundcheck.getState().loadDevices(); // populate the output picker at startup
-
-function syncSpectrumForMode(mode) {
-  const title = document.getElementById('spectrum-title');
-  // Docked live EQ pane (#668): shown only in Live mode, sized from the
-  // persisted width (clamped defensively in case settings.json was hand-
-  // edited or corrupted).
-  const eqPane = document.getElementById('live-eq-pane');
-  if (eqPane) eqPane.style.display = mode === 'live' ? 'flex' : 'none';
-  if (mode === 'live') {
-    title.textContent = SPECTRUM_TITLE.live;
-    if (eqPane) eqPane.style.width = clampEqPaneWidth(setStore.getState().settings?.liveEqPaneWidth) + 'px';
-    // Persistent track workspace (#188): the pane renders channelConfig as
-    // track rows the moment the Live tab is shown, idle or capturing — the
-    // running board only takes over once real windows have actually arrived.
-    if (liveRunning && liveWindows.length > 0) renderLiveMeters(liveWindows[liveWindows.length - 1]);
-    else renderLiveWorkspace();
-    renderEqPane(currentEqPaneChannels());
-  } else if (mode === 'soundcheck') {
-    title.textContent = 'Soundcheck · Meters';
-    if (window.rendererStores.soundcheck.getState().playing) specStore.getState().setPanelState('meters'); // hands #spectrum-imperative back to this renderer
-    else specStore.getState().setPanelState('empty', 'Load a session and press Play to see per-track meters');
-  } else if (mode === 'recent') {
-    // Recent (#147) has no file-loading UI of its own — a tailored message
-    // instead of the generic "Load a file…" copy the fallback branch below
-    // would otherwise show (misleading here, since there's nothing to load).
-    title.textContent = SPECTRUM_TITLE.curve;
-    if (!curAnalysis()) specStore.getState().setPanelState('empty', 'Select a recent analysis to load its report card');
-    else specStore.getState().setPanelState('populated'); // returning to a data-backed tab shows the island again
-  } else if (mode === 'guide') {
-    // Build Guide (#367) has no file-loading UI of its own either — mirror
-    // the `recent` tailored empty state so it doesn't show the misleading
-    // generic "Load a file…" copy.
-    title.textContent = SPECTRUM_TITLE.curve;
-    if (!curAnalysis()) specStore.getState().setPanelState('empty', 'Follow the build order, then load a recording to grade it');
-    else specStore.getState().setPanelState('populated');
-  } else if (mode === 'dir') {
-    // Directory (#270) batch-analyzes a folder — mirror the `recent`/`guide`
-    // tailored empty state rather than the generic "Load a file…" copy.
-    title.textContent = SPECTRUM_TITLE.curve;
-    if (!curAnalysis()) specStore.getState().setPanelState('empty', 'Choose a folder to analyze every recording in it');
-    else specStore.getState().setPanelState('populated');
-  } else {
-    // spectrumChromeView (spectrum-chrome.ts) sets the header to match what's
-    // drawn (curve vs meters) once there's data; seed the curve label for the
-    // pre-analysis empty state.
-    title.textContent = SPECTRUM_TITLE.curve;
-    if (!curAnalysis()) specStore.getState().setPanelState('empty', 'Load a file to see the spectrum');
-    else specStore.getState().setPanelState('populated');
-  }
-}
 
 /* ══ File mode ══
    The dropzone (click/drag/drop) and the Analyze button now live in
@@ -1816,7 +1713,7 @@ function onCaptureStopped(result) {
   document.getElementById('measurement-badge').textContent = '';
   // "Stopped" distinguishes the frozen EQ from a running one; guard the mode so
   // a tab switch during the stop-live await isn't clobbered.
-  if (currentMode === 'live') document.getElementById('spectrum-title').textContent = SPECTRUM_TITLE.liveStopped;
+  if (lcStore.getState().appMode === 'live') document.getElementById('spectrum-title').textContent = SPECTRUM_TITLE.liveStopped;
 
   // A Record capture writes a session folder of per-strip stems + session.json
   // (#42); offer to reveal it (#43). Paves the way for "Open in Virtual
@@ -3285,7 +3182,7 @@ window.inlineDialogs = { openPhaseDoublingDialog, openFeedbackRingout, saveMixAs
   // #542: re-fold the workspace to a single column whenever the flag (or
   // mode) changes, so toggling it in Settings while on Recent reflows
   // immediately.
-  setStore.subscribe(() => syncSingleColumn());
+  setStore.subscribe(() => window.modeSwitch.applySingleColumnSync());
   // Experimental DAW workspace gate (#516): body class is the entry point
   // #517's workspace shell mounts against. Absent by default — the existing
   // Live Capture UI is untouched until the user opts in.
@@ -3296,7 +3193,7 @@ window.inlineDialogs = { openPhaseDoublingDialog, openFeedbackRingout, saveMixAs
     // Re-render the Live pane immediately on an actual flip so the shell swaps
     // in/out without requiring a tab switch — but not on every settings save,
     // or an unrelated save with the toggle unchanged would clobber the pane.
-    if (nowEnabled !== dawWorkspaceWasEnabled && currentMode === 'live') syncSpectrumForMode('live');
+    if (nowEnabled !== dawWorkspaceWasEnabled && lcStore.getState().appMode === 'live') window.modeSwitch.applySpectrumForMode('live');
     dawWorkspaceWasEnabled = nowEnabled;
   });
   // Experimental live adjustments gate (#522): re-sync the Live pane on an
@@ -3304,7 +3201,7 @@ window.inlineDialogs = { openPhaseDoublingDialog, openFeedbackRingout, saveMixAs
   let liveAdjustmentsWasEnabled = false;
   setStore.subscribe((s) => {
     const nowEnabled = window.liveAdjustmentsState.isEnabled(s.settings);
-    if (nowEnabled !== liveAdjustmentsWasEnabled && currentMode === 'live') syncSpectrumForMode('live');
+    if (nowEnabled !== liveAdjustmentsWasEnabled && lcStore.getState().appMode === 'live') window.modeSwitch.applySpectrumForMode('live');
     liveAdjustmentsWasEnabled = nowEnabled;
   });
 })();
@@ -3326,7 +3223,7 @@ anaStore.subscribe(syncReportCardChrome);
 syncReportCardChrome(anaStore.getState(), anaStore.getState());
 // #542: a flag-already-on first paint on Recent / Guide / Ring-Out must
 // render single-column without requiring a tab click.
-syncSingleColumn();
+window.modeSwitch.applySingleColumnSync();
 
 hydrateIcons(document);
 specStore.getState().setPanelState('empty'); // store default text ('Load a file to see the spectrum') is identical
