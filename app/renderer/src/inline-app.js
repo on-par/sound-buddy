@@ -1933,80 +1933,8 @@ sb.onMenuOpenFile((fp) => {
   runFileAnalysis(fp);
 });
 
-/* ══ First-run onboarding (#69) ══
-   The guided path from launch to first report card. On a genuine first launch a
-   welcome overlay appears whose primary CTA analyzes a bundled demo recording
-   through the normal File pipeline, then reveals the report card — no settings,
-   no file picker, no audio gear. Shows exactly once, gated by window.onboardingState
-   + localStorage (mirrors the trial banner's dismiss idiom). */
-async function initOnboarding() {
-  const dlg = document.getElementById('onboarding-dialog');
-  if (!dlg || !window.onboardingState) return;
-  // Dev/e2e escape hatch (SOUND_BUDDY_DISABLE_ONBOARDING): skip the overlay so
-  // automated specs can drive the UI without the modal scrim in the way. The
-  // overlay is display:none until here, so awaiting the flag causes no flash.
-  try { if (sb.isOnboardingDisabled && (await sb.isOnboardingDisabled())) return; } catch { /* no bridge → show */ }
-  if (!onboardingState.shouldShowOnboarding(window.localStorage)) return;
-
-  const actions = document.getElementById('onboarding-actions');
-  const progress = document.getElementById('onboarding-progress');
-  const copy = document.getElementById('onboarding-copy');
-  const runBtn = document.getElementById('onboarding-run');
-  const skipBtn = document.getElementById('onboarding-skip');
-
-  function close() {
-    // Seen once — completing or skipping both retire the flow for good.
-    onboardingState.markOnboardingSeen(window.localStorage);
-    dlg.style.display = 'none';
-  }
-  function showProgress() { actions.style.display = 'none'; progress.style.display = 'flex'; }
-  function showActions() { progress.style.display = 'none'; actions.style.display = 'flex'; }
-
-  async function runFirstAnalysis() {
-    showProgress();
-    let demo = null;
-    try { demo = await sb.getDemoAudio(); } catch { demo = null; }
-
-    // No bundled demo (e.g. asset missing) — never dead-end: retire onboarding
-    // and hand the user the normal file picker on the Report Card tab instead.
-    if (!demo) {
-      close();
-      document.querySelector('.mode-tab[data-mode="reportcard"]').click();
-      try { const fp = await sb.openFileDialog(); if (fp) { loadFile(fp); runFileAnalysis(fp); } } catch { /* user cancelled */ }
-      return;
-    }
-
-    // Route through the Report Card tab so the shared analysis pipeline +
-    // spectrum render fire exactly as a normal run; the overlay's spinner is
-    // the progress indicator meanwhile. runFileAnalysis flips to the rendered
-    // card on success.
-    document.querySelector('.mode-tab[data-mode="reportcard"]').click();
-    loadFile(demo);
-    await runFileAnalysis(demo);
-
-    if (!curAnalysis()) {
-      // Analysis failed (error surfaced in the spectrum panel). Surface the
-      // reason in the always-visible copy line (the progress row is about to
-      // be hidden), relabel the CTA, and let the user retry or skip.
-      if (copy) copy.textContent = 'That didn’t work — the analysis couldn’t finish. Try again, or skip for now.';
-      runBtn.textContent = 'Try again';
-      showActions();
-      return;
-    }
-    close();
-  }
-
-  runBtn.addEventListener('click', () => { void runFirstAnalysis(); });
-  skipBtn.addEventListener('click', close);
-  // Escape / backdrop click = skip (still counts as seen — one-time by design),
-  // but not while the first analysis is mid-flight.
-  dlg.addEventListener('click', (e) => { if (e.target === dlg && progress.style.display === 'none') close(); });
-  document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape' && dlg.style.display !== 'none' && progress.style.display === 'none') close();
-  });
-
-  dlg.style.display = 'flex';
-}
+// First-run onboarding (#69) is gone — stores/onboardingStore.ts +
+// OnboardingDialog.tsx (TD-001 slice 6f, #704) port initOnboarding verbatim.
 
 /* ══ Post-update "what's new" note (#271) ══
    Closes the loop opened by the in-app "Send Feedback" flow (#143/#144): after
@@ -2456,8 +2384,8 @@ loadDevices().then(
   window.rendererStores.rig.getState().loadRigs,
 );
 
-// First-run onboarding (#69): show the welcome overlay on a genuine first launch.
-void initOnboarding();
+// First-run onboarding (#69) is now App.tsx's
+// `void useOnboardingStore.getState().init();` boot call (TD-001 slice 6f, #704).
 
 // What's-new note (#271): credit shipped, user-requested items after an update.
 void initWhatsNew();

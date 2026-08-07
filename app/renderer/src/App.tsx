@@ -72,6 +72,8 @@ import BuildGuidePanel from './BuildGuidePanel';
 import RingoutPanel from './RingoutPanel';
 import LicenseChrome from './LicenseChrome';
 import UpdateBanner from './UpdateBanner';
+import OnboardingDialog from './OnboardingDialog';
+import { useOnboardingStore } from './stores/onboardingStore';
 import { installStoreBridge } from './stores/bridge';
 
 // Boot scripts in their original document order (#303): the 20 UMD helpers
@@ -178,6 +180,12 @@ export default function App() {
       script.textContent = src;
       document.body.appendChild(script);
     }
+    // First-run onboarding (#69, TD-001 slice 6f, #704): fires once
+    // BOOT_SCRIPTS have synchronously executed above, so window.onboardingState
+    // (onboarding-state.js, one of the 32 helpers) is guaranteed defined —
+    // same ordering guarantee the old `void initOnboarding()` tail call in
+    // inline-app.js relied on.
+    void useOnboardingStore.getState().init();
     // #report-card/#spectrum-island now exist (just injected above) —
     // trigger the second render that portals ReportCardIsland/SpectrumPanel
     // onto them (TD-001 slice 4, #422).
@@ -195,6 +203,7 @@ export default function App() {
       {createPortal(<LicensePanel />, document.getElementById('license-island')!)}
       {createPortal(<SettingsPanel />, document.getElementById('settings-island')!)}
       {createPortal(<CurveEditorDialog />, document.getElementById('curve-editor-island')!)}
+      {booted && createPortal(<OnboardingDialog />, document.getElementById('onboarding-island')!)}
       {booted && createPortal(<ReportCardIsland />, document.getElementById('report-card')!)}
       {booted && createPortal(<SpectrumPanel />, document.getElementById('spectrum-island')!)}
       {booted && createPortal(<IdealProfileSelect />, document.getElementById('ideal-profile-island')!)}
