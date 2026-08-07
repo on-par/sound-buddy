@@ -191,22 +191,9 @@
              RecentServicesPanel.tsx (TD-001 slice 6e, #703) renders its content. -->
         <div class="tab-content" id="tab-recent"></div>
 
-        <!-- BUILD GUIDE (#367) — Lee's channel build order as a checkable, persistent guide. -->
-        <div class="tab-content" id="tab-guide">
-          <!-- PASS MODE (#365) — Rough Pass / Contextual Pass workflow toggle + reminders. -->
-          <div class="pass-mode" role="group" aria-label="Mixing pass">
-            <div class="pass-toggle" id="pass-mode-toggle"></div>
-            <div class="pass-reminder" id="pass-mode-reminder"></div>
-          </div>
-          <div class="bg-head">
-            <span class="section-label">Build Order</span>
-            <span class="bg-progress" id="build-guide-progress"></span>
-            <button type="button" id="build-guide-reset" class="ghost-btn sm" title="Clear progress">Reset</button>
-          </div>
-          <div class="bg-list" id="build-guide-list"></div>
-          <div class="bg-complete" id="build-complete" hidden></div>
-          <button type="button" id="build-guide-review" class="btn btn-secondary sm full" data-icon="clipboard-check">Review in Report Card</button>
-        </div>
+        <!-- BUILD GUIDE (#367) — Lee's channel build order as a checkable, persistent guide.
+             BuildGuidePanel.tsx (TD-001 slice 6e, #703) renders its content. -->
+        <div class="tab-content" id="tab-guide"></div>
 
         <!-- FEEDBACK RING-OUT ASSISTANT (#366) — step-by-step wizard: raise gain to
              just-ringing, capture (mic or manual), suggest a narrow-Q cut, save a

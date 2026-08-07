@@ -2081,74 +2081,10 @@ async function initWhatsNew() {
 // (TD-001 slice 6e, #703) ports them verbatim (loadHistoryEntry calls
 // mode-switch.ts#switchMode directly now, not a simulated tab click).
 
-/* ══ Rough Pass / Contextual Pass toggle (#365) — workflow-phase reminder
-   banner atop the Build Guide tab. Phase persists in sessionStorage (resets
-   on a fresh app launch) via the pure window.passModeState module; this just
-   wires the DOM. ══ */
-function renderPassMode() {
-  const phase = window.passModeState.loadPhase(sessionStorage);
-  document.getElementById('pass-mode-toggle').innerHTML =
-    window.passModeState.toggleHtml(phase, escapeHtml);
-  document.getElementById('pass-mode-reminder').innerHTML =
-    window.passModeState.reminderHtml(window.passModeState.getPhase(phase), escapeHtml);
-}
-
-document.getElementById('pass-mode-toggle').addEventListener('click', (e) => {
-  const btn = e.target.closest('[data-phase]');
-  if (!btn) return;
-  window.passModeState.savePhase(sessionStorage, btn.dataset.phase);
-  renderPassMode();
-});
-
-/* ══ Channel Build-Order Guide (#367) — ordered checklist with starting-point
-   EQ/comp/gate presets. Progress persists in localStorage via the pure
-   window.buildOrderState module; this just wires the DOM. ══ */
-function renderBuildGuide() {
-  renderPassMode();
-  const list = document.getElementById('build-guide-list');
-  const progress = window.buildOrderState.loadProgress(localStorage);
-
-  list.innerHTML = window.buildOrderState.STEPS
-    .map((step, i) => window.buildOrderState.stepRowHtml(step, i, progress, escapeHtml))
-    .join('');
-
-  const done = window.buildOrderState.completedCount(progress);
-  const total = window.buildOrderState.totalSteps();
-  document.getElementById('build-guide-progress').textContent = `${done}/${total} done`;
-
-  const complete = document.getElementById('build-complete');
-  complete.innerHTML = window.buildOrderState.completeMomentHtml(progress, escapeHtml);
-  complete.hidden = !window.buildOrderState.isAllComplete(progress);
-  hydrateIcons(complete);
-}
-
-// Event delegation on the list (rows are re-rendered wholesale on every
-// toggle, so per-row listeners would leak/duplicate) — mirrors how other
-// dynamically-rendered lists in this file wire clicks.
-document.getElementById('build-guide-list').addEventListener('click', (e) => {
-  const row = e.target.closest('[data-step-id]');
-  if (!row) return;
-  const id = row.dataset.stepId;
-  if (e.target.closest('.bg-check')) {
-    const progress = window.buildOrderState.loadProgress(localStorage);
-    const next = window.buildOrderState.toggle(progress, id);
-    window.buildOrderState.saveProgress(localStorage, next);
-    renderBuildGuide();
-  } else if (e.target.closest('.bg-label')) {
-    row.classList.toggle('expanded');
-  }
-});
-
-document.getElementById('build-guide-reset').addEventListener('click', () => {
-  window.buildOrderState.saveProgress(localStorage, window.buildOrderState.emptyProgress());
-  renderBuildGuide();
-});
-
-// Reuses the existing Report Card tab handler so post-service review is one
-// click away from the guide (#367's "links to the Report Card" criterion).
-document.getElementById('build-guide-review').addEventListener('click', () => {
-  document.querySelector('.mode-tab[data-mode="reportcard"]').click();
-});
+// renderPassMode/renderBuildGuide + their delegated listeners are gone —
+// BuildGuidePanel.tsx (TD-001 slice 6e, #703) ports them verbatim
+// (#build-guide-review/#build-complete-share now call mode-switch.ts#switchMode
+// directly instead of simulating a .mode-tab click).
 
 /* ══ Feedback Ring-Out Assistant (#366) ══
    Free, no-console-API wizard: raise gain to just-ringing, capture the
@@ -2327,13 +2263,9 @@ document.getElementById('ringout-profile-list').addEventListener('click', (e) =>
   }
 });
 
-// Share prompt (#374): the Report Card is the shareable export, so the closing
-// moment's "Share your grade" jumps to it — same one-click hop as the guide's
-// "Review in Report Card" button.
-document.getElementById('build-complete').addEventListener('click', (e) => {
-  if (!e.target.closest('#build-complete-share')) return;
-  document.querySelector('.mode-tab[data-mode="reportcard"]').click();
-});
+// Share prompt (#374): the Report Card is the shareable export, so the
+// closing moment's "Share your grade" jumps to it — BuildGuidePanel.tsx's
+// own onClick handles this now (#build-complete is React-rendered).
 
 // renderContentType/renderProfileMatch/renderReportCardFromHistory/
 // renderReportCard are gone — ReportCardIsland (React) now owns all of
