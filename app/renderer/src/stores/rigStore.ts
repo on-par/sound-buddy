@@ -125,14 +125,15 @@ export function createRigStore(getApi: () => RigApiSubset) {
     locked: false,
 
     async loadRigs() {
-      let rigs: CaptureRig[] = [];
-      let activeRigId: string | null = null;
+      let rigs: CaptureRig[];
+      let activeRigId: string | null;
       try {
         const settings = await getApi().getSettings();
         rigs = settings.rigs || [];
         activeRigId = settings.activeRigId || null;
       } catch {
         rigs = [];
+        activeRigId = null;
       }
       const active = rigs.some((r) => r.id === activeRigId) ? activeRigId : null;
       set({ rigs, activeRigId: active });
