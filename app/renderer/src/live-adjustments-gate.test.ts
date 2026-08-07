@@ -91,12 +91,21 @@ describe('Live adjustments gate wiring (#522)', () => {
   });
 
   it('window ticks refresh the adjustments panel', () => {
-    const block = enclosingBlock(inlineApp, 'liveWindows.push');
+    // TD-001 slice 6c (#701): liveCaptureStore.bindIpcEvents() now owns
+    // pushing window ticks into liveWindows (single source of truth) — this
+    // listener's window-tick branch still anchors on sessionWindows.push
+    // (its own session-only accumulator) in the same block.
+    const block = enclosingBlock(inlineApp, 'sessionWindows.push');
     expect(block).toContain('syncLiveAdjustmentsPanel(');
   });
 
   it('starting a capture resets the adjustments panel to the waiting state', () => {
-    const block = enclosingBlock(inlineApp, 'liveRunning = true');
+    // TD-001 slice 6c (#701): the Start button is React-owned now
+    // (LiveTransportControls) and calls lcStore.getState().startCapture()
+    // directly; onCaptureStarting() runs the surrounding side effects
+    // synchronously right after isCapturing flips true, at the same point
+    // the old inline `liveRunning = true` handler used to.
+    const block = functionBody(inlineApp, 'onCaptureStarting');
     expect(block).toContain('syncLiveAdjustmentsPanel(');
   });
 
@@ -183,7 +192,7 @@ describe('Coaching stability wiring (#612)', () => {
   });
 
   it('advanceCoaching is called once per window tick with Date.now() and allCoachingCandidates', () => {
-    const block = enclosingBlock(inlineApp, 'liveWindows.push');
+    const block = enclosingBlock(inlineApp, 'sessionWindows.push');
     expect(block).toContain('window.liveAdjustmentsState.advanceCoaching(');
     expect(block).toContain('window.liveAdjustmentsState.allCoachingCandidates(');
     expect(block).toContain('Date.now()');
@@ -227,7 +236,7 @@ describe('Coaching disposition wiring (#613)', () => {
 
 describe('Outcome evaluation wiring (#614)', () => {
   it('window ticks compute the observation context and pass it to advanceCoaching', () => {
-    const block = enclosingBlock(inlineApp, 'liveWindows.push');
+    const block = enclosingBlock(inlineApp, 'sessionWindows.push');
     expect(block).toContain('lapObservationContext(');
     expect(block).toContain('window.liveAdjustmentsState.advanceCoaching(');
   });

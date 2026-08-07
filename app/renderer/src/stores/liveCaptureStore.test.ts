@@ -447,6 +447,25 @@ describe('createLiveCaptureStore', () => {
     });
   });
 
+  describe('setRunning / setPromoting (TD-001 slice 6c, #701)', () => {
+    it('setRunning sets isCapturing directly, independent of the async startCapture/stopCapture flow', () => {
+      const { store } = makeStore();
+      store.getState().setRunning(true);
+      expect(store.getState().isCapturing).toBe(true);
+      store.getState().setRunning(false);
+      expect(store.getState().isCapturing).toBe(false);
+    });
+
+    it('setPromoting sets the promoting flag, defaulting to false', () => {
+      const { store } = makeStore();
+      expect(store.getState().promoting).toBe(false);
+      store.getState().setPromoting(true);
+      expect(store.getState().promoting).toBe(true);
+      store.getState().setPromoting(false);
+      expect(store.getState().promoting).toBe(false);
+    });
+  });
+
   describe('collapse', () => {
     it('setGroupCollapsed sets the group-level collapsed flag (#483)', () => {
       const { store } = makeStore();
@@ -589,6 +608,15 @@ describe('createLiveCaptureStore', () => {
       store.setState({ liveWindows: [{ type: 'window', window: 1, ts: 0, channels: [], masking: [] }] });
       store.getState().clearLiveWindows();
       expect(store.getState().liveWindows).toEqual([]);
+    });
+  });
+
+  describe('clearLastLiveChannels', () => {
+    it('clears the most-recent-tick channel snapshot (TD-001 slice 6c, #701 — a device switch must not leak a stale reading into the EQ pane)', () => {
+      const { store } = makeStore();
+      store.setState({ lastLiveChannels: [{ index: 0, name: 'Ch 1', rms: -20, peak: -6, clipping: false, centroid: 0, rolloff: 0, bands: {} }] });
+      store.getState().clearLastLiveChannels();
+      expect(store.getState().lastLiveChannels).toBeNull();
     });
   });
 
