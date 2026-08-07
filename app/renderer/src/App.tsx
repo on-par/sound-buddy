@@ -166,9 +166,9 @@ export default function App() {
     // for the 2 remaining call sites outside ModeTabs.tsx's click handler
     // (TD-001 slice 6e, #703).
     (window as Window & { modeSwitch?: unknown }).modeSwitch = modeSwitch;
-    // inline-app.js still needs getReportCardSource/persistSummary for the
-    // AI narrative trigger, saveMixAsTarget, and the live-capture session
-    // persist call (TD-001 slice 6e, #703).
+    // inline-app.js still needs getReportCardSource/persistSummary for
+    // saveMixAsTarget and the live-capture session persist call (TD-001
+    // slice 6e, #703).
     (window as Window & { reportCardChrome?: unknown }).reportCardChrome = reportCardChrome;
     // Installed before the boot scripts run — inline-app.js reads
     // window.rendererStores at its top level (TD-001 slice 3, #421).

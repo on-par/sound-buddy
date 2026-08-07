@@ -64,8 +64,10 @@ export function resolveReportCardChromeSource(
 
 // Port of getReportCardSource (inline-app.js) as a pure function taking both
 // values as params instead of closing over curAnalysis()/anaStore. Still
-// used by the AI narrative trigger and the file-analysis persistSummary call
-// site — resolveReportCardChromeSource above supersedes it for chrome.
+// used by saveMixAsTarget, the file-analysis persistSummary call site, and
+// (indirectly, via ReportCardIsland.tsx's already-computed locals) the
+// phase-doubling dialog's open() call — resolveReportCardChromeSource above
+// supersedes it for chrome.
 export function getReportCardSource(currentAnalysis: unknown, liveSource: unknown): unknown {
   return currentAnalysis ? reportCardSourceFromAnalysis(currentAnalysis) : liveSource;
 }

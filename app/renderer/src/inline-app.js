@@ -2072,10 +2072,12 @@ async function initWhatsNew() {
 // getReportCardSource()/persistSummary() are gone —
 // report-card-chrome.ts#getReportCardSource/persistSummary (TD-001 slice 6e,
 // #703) port them verbatim as pure/injected functions. This file's remaining
-// inline consumers (the AI narrative trigger, saveMixAsTarget, the
-// live-capture session persist call below) reach them via the
-// window.reportCardChrome bridge (App.tsx) — same pattern as
-// window.modeSwitch.
+// inline consumers (saveMixAsTarget, the live-capture session persist call
+// below) reach them via the window.reportCardChrome bridge (App.tsx) — same
+// pattern as window.modeSwitch. stores/phaseDoublingStore.ts (TD-001 slice
+// 6f, #704) also ends up depending on getReportCardSource indirectly, via
+// ReportCardIsland.tsx's already-computed `source`/`phaseSignal` locals
+// passed into usePhaseDoublingStore.getState().open(...).
 
 // renderRecentServices/loadHistoryEntry are gone — RecentServicesPanel.tsx
 // (TD-001 slice 6e, #703) ports them verbatim (loadHistoryEntry calls
