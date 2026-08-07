@@ -58,7 +58,7 @@ export function createOnboardingStore(getApi: () => OnboardingApi) {
 
     async runFirstAnalysis() {
       set({ phase: 'progress' });
-      let demo: string | null = null;
+      let demo: string | null;
       try { demo = await getApi().getDemoAudio(); } catch { demo = null; }
 
       // No bundled demo (e.g. asset missing) — never dead-end: retire
