@@ -144,10 +144,9 @@ describe('DAW workspace timeline shell markup (#517)', () => {
 });
 
 describe('DAW shell preserves existing capture controls (#517)', () => {
-  it('root-markup.html still has the Source-panel capture controls', () => {
-    expect(markup).toContain('id="live-mode"');
-    expect(markup).toContain('id="live-start-btn"');
-    expect(markup).toContain('id="live-stop-btn"');
+  it('root-markup.html still has the Source-panel capture control islands (TD-001 slice 6c, #701: React-owned, not static markup)', () => {
+    expect(markup).toContain('id="live-controls-island"');
+    expect(markup).toContain('id="live-transport-island"');
   });
 
   it('renderDawShell does not duplicate the capture controls', () => {
@@ -196,13 +195,25 @@ describe('DAW playhead (#518)', () => {
   });
 
   it('the Start handler starts the playhead and its ticker', () => {
-    const block = enclosingBlock(inlineApp, 'liveRunning = true;');
+    // TD-001 slice 6c (#701): the Start button is React-owned now
+    // (LiveTransportControls) and calls lcStore.getState().startCapture()
+    // directly for the IPC round trip; onCaptureStarting() runs the
+    // surrounding side effects (playhead/waveform/etc.) synchronously right
+    // after isCapturing flips true, at the same point the old inline
+    // `liveRunning = true` handler used to.
+    const block = functionBody(inlineApp, 'onCaptureStarting');
     expect(block).toContain('dawPlayheadState.start(');
     expect(block).toContain('startPlayheadTicker()');
   });
 
   it('stopLive freezes the playhead and stops its ticker', () => {
-    const body = functionBody(inlineApp, 'stopLive');
+    // TD-001 slice 6c (#701): the playhead/ticker side effects moved into
+    // onCaptureStopping(), called by both stopLive() (the failed-Start and
+    // failed-promote paths) and LiveTransportControls' Stop button (via the
+    // window.liveCaptureRuntime bridge) around the same store.stopCapture()
+    // IPC round trip.
+    expect(functionBody(inlineApp, 'stopLive')).toContain('onCaptureStopping()');
+    const body = functionBody(inlineApp, 'onCaptureStopping');
     expect(body).toContain('dawPlayheadState.stop(');
     expect(body).toContain('stopPlayheadTicker()');
   });
@@ -253,12 +264,17 @@ describe('DAW mix waveform (#520)', () => {
     expect(matches.length).toBeGreaterThanOrEqual(2);
   });
 
-  it('onLiveEvent handles peaks frames before scheduleLiveMeters and returns', () => {
+  it('onLiveEvent handles peaks frames before the meter/window-tick path and returns', () => {
+    // TD-001 slice 6c (#701): live-tick coalescing (formerly scheduleLiveMeters,
+    // rAF-batched here) moved to LiveWorkspace.tsx's live-meter-controller,
+    // driven by liveCaptureStore's lastTick — this listener no longer calls a
+    // meter-render function of its own, only the session-only concerns below
+    // (measurementChannel/updateLiveStatsRow, sessionWindows, coaching).
     const peaksIdx = inlineApp.indexOf("data.type === 'peaks'");
-    const scheduleIdx = inlineApp.indexOf('scheduleLiveMeters(data)');
+    const meterIdx = inlineApp.indexOf('updateLiveStatsRow(statsCh)');
     expect(peaksIdx).toBeGreaterThan(-1);
-    expect(scheduleIdx).toBeGreaterThan(-1);
-    expect(peaksIdx).toBeLessThan(scheduleIdx);
+    expect(meterIdx).toBeGreaterThan(-1);
+    expect(peaksIdx).toBeLessThan(meterIdx);
     const peaksBlock = enclosingBlock(inlineApp, "decodeLanes(data)");
     expect(peaksBlock).toContain('return;');
   });
@@ -280,7 +296,7 @@ describe('DAW mix waveform (#520)', () => {
   });
 
   it('the Start handler resets waveform state and its bucket rate', () => {
-    const block = enclosingBlock(inlineApp, 'liveRunning = true;');
+    const block = functionBody(inlineApp, 'onCaptureStarting');
     expect(block).toContain('dawWaveformState.create(');
     expect(block).toContain('bucketsPerSecond(');
   });
@@ -343,7 +359,7 @@ describe('Per-input waveform lanes (#521)', () => {
   });
 
   it('the Start handler resets waveformLaneStates alongside waveformState', () => {
-    const block = enclosingBlock(inlineApp, 'liveRunning = true;');
+    const block = functionBody(inlineApp, 'onCaptureStarting');
     expect(block).toContain('waveformLaneStates = {}');
   });
 

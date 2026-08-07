@@ -12,7 +12,10 @@ import { useAnalysisStore } from './analysisStore';
 import { useSpectrumStore } from './spectrumStore';
 import { useLiveCaptureStore } from './liveCaptureStore';
 import { useSceneDiffStore } from './sceneDiffStore';
+import { useIdealProfilesStore } from './idealProfilesStore';
 import { liveReportCardSource } from '../live-capture-panel';
+import { roomFeed } from '../measurement-device-state';
+import { spectrumTransport, type SpectrumTransport } from '../spectrum-transport';
 
 export interface RendererStores {
   licensing: typeof useLicensingStore;
@@ -20,11 +23,13 @@ export interface RendererStores {
   analysis: typeof useAnalysisStore;
   spectrum: typeof useSpectrumStore;
   liveCapture: typeof useLiveCaptureStore;
+  idealProfiles: typeof useIdealProfilesStore;
 }
 
 declare global {
   interface Window {
     rendererStores?: RendererStores;
+    spectrumTransport?: SpectrumTransport;
   }
 }
 
@@ -38,7 +43,8 @@ let crossStoreSubscriptionInstalled = false;
 // constitution's "side effects are injected" rule) — defaults to the real
 // `window` in the running app.
 export function installStoreBridge(
-  target: { rendererStores?: RendererStores } = window as unknown as { rendererStores?: RendererStores }
+  target: { rendererStores?: RendererStores; spectrumTransport?: SpectrumTransport } =
+    window as unknown as { rendererStores?: RendererStores; spectrumTransport?: SpectrumTransport }
 ): RendererStores {
   const stores: RendererStores = {
     licensing: useLicensingStore,
@@ -46,8 +52,10 @@ export function installStoreBridge(
     analysis: useAnalysisStore,
     spectrum: useSpectrumStore,
     liveCapture: useLiveCaptureStore,
+    idealProfiles: useIdealProfilesStore,
   };
   target.rendererStores = stores;
+  target.spectrumTransport = spectrumTransport;
 
   if (!crossStoreSubscriptionInstalled) {
     crossStoreSubscriptionInstalled = true;
@@ -58,13 +66,28 @@ export function installStoreBridge(
     });
     // Replaces inline-app.js's syncLiveSource(): the live-capture card's
     // report-card source is derived from liveCaptureStore.liveWindows
-    // wherever that buffer changes (TD-001 slice 5, #423).
+    // wherever that buffer changes (TD-001 slice 5, #423). #460: also reacts
+    // to secondaryWindows/secondaryMeasurement so the graded source follows
+    // the same Room feed as the badge/stats row (roomFeed(), inline-app.js's
+    // secondaryMeasurementActive()) — the secondary mic when active, the
+    // board strip otherwise (byte-identical to #423 when the flag is off).
     useLiveCaptureStore.subscribe((state, prevState) => {
       if (state.liveWindows !== prevState.liveWindows
         || state.measurementSource !== prevState.measurementSource
-        || state.channelConfig !== prevState.channelConfig) {
+        || state.channelConfig !== prevState.channelConfig
+        || state.secondaryWindows !== prevState.secondaryWindows
+        || state.secondaryMeasurement !== prevState.secondaryMeasurement) {
+        const secondaryActive = state.secondaryMeasurement.status === 'active' && state.secondaryWindows.length > 0;
+        const feed = roomFeed(
+          secondaryActive,
+          state.secondaryWindows,
+          state.secondaryMeasurement.deviceName,
+          state.liveWindows,
+          state.measurementSource,
+          state.channelConfig,
+        );
         useAnalysisStore.getState().setLiveSource(
-          liveReportCardSource(state.liveWindows, state.measurementSource, state.channelConfig));
+          liveReportCardSource(feed.windows, feed.source, feed.config));
       }
     });
     // Clearing the audio analysis (#264) also clears any scene-file
@@ -83,6 +106,27 @@ export function installStoreBridge(
     // crossStoreSubscriptionInstalled flag so a second App mount can't
     // double-bind them (TD-001 slice 5, #423).
     useLiveCaptureStore.getState().bindIpcEvents();
+
+    // Ideal-profile selection glue (TD-001 slice 6b, #700), replacing
+    // inline-app.js's syncIdealProfile call sites: seed idealProfilesStore
+    // once settings finish their first load, re-resolve the active profile
+    // whenever the analyzed file (and so its content type) changes, and
+    // whenever the selection/custom-profile set itself changes.
+    useSettingsStore.subscribe((state, prevState) => {
+      if (state.settings != null && prevState.settings == null) {
+        useIdealProfilesStore.getState().hydrate(state.settings);
+      }
+    });
+    useAnalysisStore.subscribe((state, prevState) => {
+      if (state.currentAnalysis !== prevState.currentAnalysis) {
+        useIdealProfilesStore.getState().syncActiveProfile();
+      }
+    });
+    useIdealProfilesStore.subscribe((state, prevState) => {
+      if (state.selectedId !== prevState.selectedId || state.customProfiles !== prevState.customProfiles) {
+        useIdealProfilesStore.getState().syncActiveProfile();
+      }
+    });
   }
 
   return stores;

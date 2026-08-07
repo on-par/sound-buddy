@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Patrick Robinson (on-par). All rights reserved.
 // Licensed under the Sound Buddy Desktop Application License (app/LICENSE).
 
-import { describe, it, expect, afterEach, beforeAll } from 'vitest';
+import { describe, it, expect, afterEach, beforeAll, vi } from 'vitest';
 import { installStoreBridge, type RendererStores } from './bridge';
 import { useLicensingStore } from './licensingStore';
 import { useSettingsStore } from './settingsStore';
@@ -9,7 +9,15 @@ import { useAnalysisStore } from './analysisStore';
 import { useSpectrumStore } from './spectrumStore';
 import { useLiveCaptureStore } from './liveCaptureStore';
 import { useSceneDiffStore } from './sceneDiffStore';
+import { useIdealProfilesStore } from './idealProfilesStore';
 import { createMockSoundBuddy } from '../mock-sound-buddy';
+import { spectrumTransport, type SpectrumTransport } from '../spectrum-transport';
+import type { IdealCurvesApi } from '../ideal-profiles';
+import type { AppSettings } from '../../../electron/ipc/api';
+
+// ideal-curves is a plain classic script (window.idealCurves / module.exports)
+// — idealProfilesStore's default deps read it off window, same as the running app.
+const curves = require('../../ideal-curves.js') as IdealCurvesApi;
 
 // installStoreBridge()'s cross-store subscription install (guarded by the
 // module-level crossStoreSubscriptionInstalled flag) binds the DEFAULT
@@ -17,7 +25,7 @@ import { createMockSoundBuddy } from '../mock-sound-buddy';
 // window.soundBuddy via getSoundBuddy(), so it must exist before the first
 // installStoreBridge() call in this file.
 beforeAll(() => {
-  (globalThis as { window?: unknown }).window = { soundBuddy: createMockSoundBuddy().api };
+  (globalThis as { window?: unknown }).window = { soundBuddy: createMockSoundBuddy().api, idealCurves: curves };
 });
 
 afterEach(() => {
@@ -48,10 +56,16 @@ afterEach(() => {
     nameB: null,
     sceneError: null,
   });
+  useSettingsStore.setState({ settings: null, settingsError: null, dialogOpen: false });
+  useIdealProfilesStore.setState({
+    selectedId: '',
+    customProfiles: [],
+    editor: useIdealProfilesStore.getInitialState().editor,
+  });
 });
 
 describe('installStoreBridge', () => {
-  it('installs all five stores on the injected target and returns them', () => {
+  it('installs all six stores on the injected target and returns them', () => {
     const target: { rendererStores?: RendererStores } = {};
 
     const stores = installStoreBridge(target);
@@ -61,7 +75,16 @@ describe('installStoreBridge', () => {
     expect(stores.analysis).toBe(useAnalysisStore);
     expect(stores.spectrum).toBe(useSpectrumStore);
     expect(stores.liveCapture).toBe(useLiveCaptureStore);
+    expect(stores.idealProfiles).toBe(useIdealProfilesStore);
     expect(target.rendererStores).toBe(stores);
+  });
+
+  it('installs the spectrumTransport singleton on the injected target', () => {
+    const target: { rendererStores?: RendererStores; spectrumTransport?: SpectrumTransport } = {};
+
+    installStoreBridge(target);
+
+    expect(target.spectrumTransport).toBe(spectrumTransport);
   });
 
   it('exposes getState/subscribe on the installed target', () => {
@@ -124,13 +147,15 @@ describe('installStoreBridge', () => {
     installStoreBridge({});
     installStoreBridge({});
 
-    let calls = 0;
-    const unsubscribe = useSpectrumStore.subscribe(() => { calls += 1; });
+    // Spy on the specific action the analysis→spectrum subscription calls
+    // (rather than counting every spectrumStore fire) since a single analysis
+    // change now legitimately touches spectrumStore twice — once via this
+    // subscription, once via the analysis→idealProfiles→spectrum glue below.
+    const spy = vi.spyOn(useSpectrumStore.getState(), 'setSpectrumFromAnalysis');
 
     useAnalysisStore.getState().setAnalysisFromEvent({ type: 'stats', data: { spectrum: { bands: { bass: -1 } } } });
 
-    unsubscribe();
-    expect(calls).toBe(1);
+    expect(spy).toHaveBeenCalledTimes(1);
   });
 
   it('wires liveCaptureStore.liveWindows through to analysisStore.liveSource', () => {
@@ -220,5 +245,64 @@ describe('installStoreBridge', () => {
 
     const source = useAnalysisStore.getState().liveSource as { filename: string } | null;
     expect(source?.filename).toBe('Live capture — Crowd Mic (window #1)');
+  });
+
+  const APP_SETTINGS: AppSettings = {
+    idealProfile: 'flat',
+    customIdealProfiles: [],
+    storageDir: '',
+    rigs: [],
+    activeRigId: null,
+    usageSignalEnabled: false,
+    channelLabels: {},
+    channelGroups: {},
+    inputInstrumentProfiles: {},
+    crashReportingEnabled: false,
+    dawWorkspaceEnabled: false,
+    liveAdjustmentsEnabled: false,
+    reportFirstUxEnabled: false,
+    shareChurchName: '',
+    weeklyReminderEnabled: false,
+    weeklyReminderServiceDay: 0,
+    liveEqPaneWidth: 360,
+    secondaryMeasurementEnabled: false,
+    measurementDeviceName: '',
+  };
+
+  it('seeds idealProfilesStore from settings once they first load, and pushes the resolved profile into spectrumStore', () => {
+    installStoreBridge({});
+
+    useSettingsStore.setState({ settings: APP_SETTINGS });
+
+    expect(useIdealProfilesStore.getState().selectedId).toBe('flat');
+    expect(useSpectrumStore.getState().idealProfile).toEqual(expect.objectContaining({ id: 'flat' }));
+  });
+
+  it('does not re-hydrate idealProfilesStore on a later settings update (only the null→non-null transition seeds it)', async () => {
+    installStoreBridge({});
+    useSettingsStore.setState({ settings: APP_SETTINGS });
+    await useIdealProfilesStore.getState().select('broadcast');
+
+    useSettingsStore.setState({ settings: { ...APP_SETTINGS, crashReportingEnabled: true } });
+
+    expect(useIdealProfilesStore.getState().selectedId).toBe('broadcast');
+  });
+
+  it('wires currentAnalysis changes through to idealProfilesStore, re-resolving the auto profile by content type', () => {
+    installStoreBridge({});
+
+    useAnalysisStore.getState().setAnalysisFromEvent({ type: 'stats', data: { spectrum: { contentType: 'speech' } } });
+
+    expect(useSpectrumStore.getState().idealProfile).toEqual(expect.objectContaining({ id: 'speech-podcast' }));
+    expect(useSpectrumStore.getState().isAutoProfile).toBe(true);
+  });
+
+  it('wires idealProfilesStore selection changes through to spectrumStore', async () => {
+    installStoreBridge({});
+
+    await useIdealProfilesStore.getState().select('worship-service');
+
+    expect(useSpectrumStore.getState().idealProfile).toEqual(expect.objectContaining({ id: 'worship-service' }));
+    expect(useSpectrumStore.getState().isAutoProfile).toBe(false);
   });
 });

@@ -1178,6 +1178,10 @@
     /* ── Ideal profile (PRD 05) ──────────────────────────────────────── */
     #ideal-profile-wrap { display:none; align-items:center; gap:8px; margin-left:14px; flex-shrink:0; }
     #ideal-profile-wrap .ipw-label { font:var(--fw-semibold) var(--fs-micro)/1 var(--font-sans); letter-spacing:var(--tracking-caps); text-transform:uppercase; color:var(--text-tertiary); white-space:nowrap; }
+    /* IdealProfileSelect (React) portals the select + edit button onto this
+       island node — flex row + the same 8px gap #ideal-profile-wrap uses so
+       label/select/button read as one flat row, not a nested block. */
+    #ideal-profile-island { display:flex; align-items:center; gap:8px; }
     #ideal-profile-wrap .select-wrap select { height:var(--control-h-sm); padding:0 30px 0 10px; font:var(--fw-medium) var(--fs-label)/1 var(--font-sans); }
     #ideal-profile-wrap .select-caret { right:9px; }
     #ideal-curve-edit-btn { display:flex; align-items:center; justify-content:center; width:28px; height:28px; padding:0; background:var(--surface); color:var(--text-secondary); border:1px solid var(--border-subtle); border-radius:var(--radius-md); cursor:pointer; transition:var(--transition-control); }

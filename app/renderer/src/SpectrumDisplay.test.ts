@@ -13,6 +13,7 @@ import {
   eqBarsHTML,
   spectrumLegendHTML,
   eqCentroidHTML,
+  frameBandDb,
   type SpectrumData,
 } from './spectrum-display';
 
@@ -85,5 +86,20 @@ describe('SpectrumDisplay', () => {
   it('carries contentClass on the root element', () => {
     const html = renderMarkup({ spectrum: fixtureSpectrum, contentClass: 'foo' });
     expect(html).toContain('class="foo"');
+  });
+
+  it('renders the selected frame\'s bars instead of the whole-file average when selectedFrame is set', () => {
+    const withFrames: SpectrumData = {
+      ...fixtureSpectrum,
+      frames: [{ t: 0, db: fixtureSpectrum.curve!.db }, { t: 1, db: fixtureSpectrum.curve!.db.map((v) => v - 10) }],
+    };
+    const expectedBandDb = frameBandDb(withFrames, 1);
+    const expectedTarget = levelMatchedTarget(withFrames.curve!, flatProfile);
+    const expectedTargetBandDb = bandLevelsFromCurve({ freqs: withFrames.curve!.freqs, db: expectedTarget });
+    const expectedChart = eqBarsHTML(expectedBandDb, expectedTargetBandDb);
+
+    const html = renderMarkup({ spectrum: withFrames, idealProfile: flatProfile, selectedFrame: 1 });
+
+    expect(html).toContain(expectedChart);
   });
 });

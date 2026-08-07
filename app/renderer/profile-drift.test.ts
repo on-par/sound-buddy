@@ -9,17 +9,25 @@ import { fileURLToPath } from 'node:url';
 // static page and couldn't `import` the package. #303 introduced a Vite build,
 // so #309 replaced the mirror: App.tsx now imports the engine's profiles module
 // directly and bridges it onto `window.audioEngineProfiles`, and inline-app.js
-// (still a classic `?raw` script) reads that bridge instead of duplicating data.
-// Drift is now structurally impossible — this test just asserts the wiring
-// stayed in place: the import in App.tsx, and no reintroduced inline literal.
-// #396 (TD-002) switched App.tsx from a deep relative source import to the
-// declared @sound-buddy/audio-engine package's built dist.
+// (still a classic `?raw` script) used to read that bridge instead of
+// duplicating data. TD-001 slice 6b (#700) moved the profile-selection surface
+// (and the resolution logic that reads PROFILES) out of inline-app.js entirely,
+// into ideal-profiles.ts — which, being a real TS module (not a `?raw` classic
+// script), imports the package's built dist directly rather than going through
+// the window bridge. Drift is still structurally impossible — this test just
+// asserts the wiring stayed in place: the import in App.tsx (which still bridges
+// PROFILES onto window for other consumers), the import in ideal-profiles.ts,
+// and no reintroduced inline literal. #396 (TD-002) switched App.tsx from a deep
+// relative source import to the declared @sound-buddy/audio-engine package's
+// built dist.
 
 const appTsxPath = fileURLToPath(new URL('./src/App.tsx', import.meta.url));
 const inlineAppPath = fileURLToPath(new URL('./src/inline-app.js', import.meta.url));
+const idealProfilesTsPath = fileURLToPath(new URL('./src/ideal-profiles.ts', import.meta.url));
 
 const appTsx = fs.readFileSync(appTsxPath, 'utf8');
 const inlineApp = fs.readFileSync(inlineAppPath, 'utf8');
+const idealProfilesTs = fs.readFileSync(idealProfilesTsPath, 'utf8');
 
 describe('renderer imports ideal-EQ profiles from the audio-engine package', () => {
   it('App.tsx imports the engine profiles module', () => {
@@ -33,7 +41,7 @@ describe('renderer imports ideal-EQ profiles from the audio-engine package', () 
     expect(inlineApp).not.toMatch(/const\s+IP_PROFILES\s*=\s*\[/);
   });
 
-  it('inline-app.js reads profiles off the window.audioEngineProfiles bridge', () => {
-    expect(inlineApp).toContain('window.audioEngineProfiles');
+  it('ideal-profiles.ts imports profiles from the audio-engine package directly, not the window.audioEngineProfiles bridge', () => {
+    expect(idealProfilesTs).toContain("'@sound-buddy/audio-engine/dist/profiles/index.js'");
   });
 });

@@ -16,15 +16,8 @@
 // Assumes a single instance per page, same as today's single #spectrum-body
 // panel.
 
-import { compareToProfile } from '@sound-buddy/audio-engine/dist/profiles/index.js';
-import type { IdealProfile } from '@sound-buddy/audio-engine/dist/profiles/index.js';
 import {
-  bandDbFromSpectrum,
-  bandLevelsFromCurve,
-  levelMatchedTarget,
-  eqBarsHTML,
-  spectrumLegendHTML,
-  eqCentroidHTML,
+  spectrumChartModel,
   type SpectrumData,
   type IdealProfileLike,
 } from './spectrum-display';
@@ -40,6 +33,8 @@ export interface SpectrumDisplayProps {
   contentClass?: string;
   /** Live mode: bars only, no target overlay/legend (mirrors updateIdealProfileVisibility's currentMode !== 'live' gate). */
   isLive?: boolean;
+  /** Pinned spectrogram frame; null/undefined → whole-file average bars. */
+  selectedFrame?: number | null;
 }
 
 export default function SpectrumDisplay({
@@ -48,33 +43,11 @@ export default function SpectrumDisplay({
   isAutoProfile = false,
   contentClass,
   isLive = false,
+  selectedFrame = null,
 }: SpectrumDisplayProps) {
-  const curve = spectrum.curve;
-  const curveOk = !!(
-    curve &&
-    Array.isArray(curve.freqs) &&
-    Array.isArray(curve.db) &&
-    curve.freqs.length === curve.db.length &&
-    curve.db.length >= 2
-  );
-  const showTarget = curveOk && !!idealProfile && !isLive;
-
-  let chartHTML: string;
-  let legendHTML = '';
-  if (showTarget && curve && idealProfile) {
-    const bandDb = bandDbFromSpectrum(spectrum);
-    const target = levelMatchedTarget(curve, idealProfile);
-    const targetBandDb = bandLevelsFromCurve({ freqs: curve.freqs, db: target });
-    // compareToProfile only reads profile.dbOffsets at runtime; IdealProfileLike
-    // intentionally narrows the audio-engine IdealProfile shape to the fields
-    // levelMatchedTarget/spectrumLegendHTML actually need.
-    const cmp = compareToProfile(curve, idealProfile as IdealProfile);
-    chartHTML = eqBarsHTML(bandDb, targetBandDb);
-    legendHTML = spectrumLegendHTML(idealProfile, cmp, isAutoProfile);
-  } else {
-    chartHTML = eqBarsHTML(bandDbFromSpectrum(spectrum));
-  }
-  const centroidHTML = eqCentroidHTML(spectrum);
+  const { chartHTML, legendHTML, centroidHTML } = spectrumChartModel({
+    spectrum, idealProfile, isAutoProfile, isLive, selectedFrame,
+  });
 
   return (
     <div className={contentClass}>

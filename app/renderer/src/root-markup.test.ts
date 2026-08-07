@@ -123,11 +123,11 @@ describe('Secondary measurement device source (#460)', () => {
     expect(markup).toMatch(/id="secondary-measurement-block"[^>]*style="display:none"/);
   });
 
-  it('sits directly after the primary measurement-source picker', () => {
-    const primaryIdx = markup.indexOf('id="measurement-source"');
+  it('sits directly after the live-controls island (device picker/measurement-source/mode/record-folder, React-owned per TD-001 slice 6c, #701)', () => {
+    const islandIdx = markup.indexOf('id="live-controls-island"');
     const secondaryIdx = markup.indexOf('id="secondary-measurement-block"');
-    expect(primaryIdx).toBeGreaterThan(-1);
-    expect(secondaryIdx).toBeGreaterThan(primaryIdx);
+    expect(islandIdx).toBeGreaterThan(-1);
+    expect(secondaryIdx).toBeGreaterThan(islandIdx);
   });
 
   it('inline-app.js gates the block on the secondaryMeasurementEnabled setting', () => {

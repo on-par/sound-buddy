@@ -11,6 +11,7 @@ import {
 } from '@sound-buddy/audio-engine/dist/profiles/index.js';
 import { findSpectralPeaks } from '@sound-buddy/audio-engine/dist/analyze/spectral.js';
 import * as spectrumDisplay from './spectrum-display';
+import * as spectrumChrome from './spectrum-chrome';
 import * as reportCard from './report-card';
 import * as reportExport from './report-export';
 import * as shareCard from './share-card';
@@ -55,6 +56,10 @@ import LicensePanel from './LicensePanel';
 import SettingsPanel from './SettingsPanel';
 import ReportCardIsland from './ReportCardIsland';
 import SpectrumPanel from './SpectrumPanel';
+import IdealProfileSelect from './IdealProfileSelect';
+import CurveEditorDialog from './CurveEditorDialog';
+import LiveControls, { LiveTransportControls } from './LiveControls';
+import LiveWorkspace from './LiveWorkspace';
 import { installStoreBridge } from './stores/bridge';
 
 // Boot scripts in their original document order (#303): the 20 UMD helpers
@@ -132,6 +137,11 @@ export default function App() {
     };
     (window as Window & { audioEngineSpectral?: unknown }).audioEngineSpectral = { findSpectralPeaks };
     (window as Window & { spectrumDisplay?: unknown }).spectrumDisplay = spectrumDisplay;
+    // spectrumChrome's SPECTRUM_TITLE is the single source of truth for the
+    // panel's title strings — inline-app.js still writes #spectrum-title
+    // directly for the not-yet-migrated live/soundcheck meter modes (TD-001
+    // slice 6a, #695).
+    (window as Window & { spectrumChrome?: unknown }).spectrumChrome = spectrumChrome;
     (window as Window & { reportCard?: unknown }).reportCard = reportCard;
     // Share Image export (#265) + Export PNG's metadata-stripping guard
     // (#368) — both pure modules, bridged the same way as reportCard so
@@ -168,8 +178,13 @@ export default function App() {
     <>
       {createPortal(<LicensePanel />, document.getElementById('license-island')!)}
       {createPortal(<SettingsPanel />, document.getElementById('settings-island')!)}
+      {createPortal(<CurveEditorDialog />, document.getElementById('curve-editor-island')!)}
       {booted && createPortal(<ReportCardIsland />, document.getElementById('report-card')!)}
       {booted && createPortal(<SpectrumPanel />, document.getElementById('spectrum-island')!)}
+      {booted && createPortal(<IdealProfileSelect />, document.getElementById('ideal-profile-island')!)}
+      {booted && createPortal(<LiveWorkspace />, document.getElementById('live-island')!)}
+      {booted && createPortal(<LiveControls />, document.getElementById('live-controls-island')!)}
+      {booted && createPortal(<LiveTransportControls />, document.getElementById('live-transport-island')!)}
     </>
   );
 }

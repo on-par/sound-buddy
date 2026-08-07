@@ -181,6 +181,11 @@ export interface LiveCaptureState {
   recordDir: string;
 
   isCapturing: boolean;
+  // Transient: true only while a running monitor session is being promoted to
+  // a recording (#458) — mirrors inline-app.js's old capturePromoting module
+  // var, now store-owned (TD-001 slice 6c, #701) so LiveControls can render
+  // the transport's "Starting…" state without prematurely flipping liveMode.
+  promoting: boolean;
 
   liveWindows: LiveEvent[];
   lastTick: LiveEvent | null;
@@ -237,7 +242,21 @@ export interface LiveCaptureState {
 
   startCapture(opts: StartCaptureOpts): Promise<StartCaptureResult | undefined>;
   stopCapture(): Promise<StopCaptureResult | undefined>;
+  // Direct setter for isCapturing (TD-001 slice 6c, #701) — used by the
+  // still-inline capture orchestration (playhead/waveform/rig side effects
+  // that can't yet route through the async startCapture/stopCapture actions)
+  // so isCapturing flips synchronously at the same point inline-app.js's old
+  // `liveRunning = true/false` did.
+  setRunning(running: boolean): void;
+  setPromoting(promoting: boolean): void;
   clearLiveWindows(): void;
+  // A device switch (selectDevice/loadDevices) re-seeds channelConfig for the
+  // new device, but the previous device's most-recent tick snapshot isn't
+  // cleared by those actions (it's tick-ingestion state, owned by
+  // bindIpcEvents) — call this alongside them so a stale reading can't leak
+  // into the EQ pane / #39 label fallback for the new device (TD-001 slice
+  // 6c, #701).
+  clearLastLiveChannels(): void;
   bindIpcEvents(): void;
 
   setRingout(patch: Partial<RingoutState>): void;
@@ -278,6 +297,7 @@ export function createLiveCaptureStore(getApi: () => LiveCaptureApi) {
     recordDir: '',
 
     isCapturing: false,
+    promoting: false,
 
     liveWindows: [],
     lastTick: null,
@@ -486,8 +506,20 @@ export function createLiveCaptureStore(getApi: () => LiveCaptureApi) {
       return result;
     },
 
+    setRunning(running) {
+      set({ isCapturing: running });
+    },
+
+    setPromoting(promoting) {
+      set({ promoting });
+    },
+
     clearLiveWindows() {
       set({ liveWindows: [] });
+    },
+
+    clearLastLiveChannels() {
+      set({ lastLiveChannels: null });
     },
 
     bindIpcEvents() {

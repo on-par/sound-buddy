@@ -50,6 +50,11 @@ const setStore = window.rendererStores.settings;
 const anaStore = window.rendererStores.analysis;
 const specStore = window.rendererStores.spectrum;
 const curAnalysis = () => anaStore.getState().currentAnalysis;
+// The <audio> playback transport (TD-001 slice 6a, #695) — installed onto
+// window by installStoreBridge() alongside rendererStores. Owns the analyzed
+// file's <audio> element lifecycle; SpectrogramScrubber (React) drives its
+// discrete state and ~60Hz tick listener.
+const transport = window.spectrumTransport;
 // The measurement-source selection (#456) lives in liveCaptureStore; this
 // script reads/writes it through the store instead of a module-level var.
 const lcStore = window.rendererStores.liveCapture;
@@ -122,10 +127,57 @@ let recordDir = '';            // chosen recording folder ('' = default ~/Music/
 // show "Starting…" without prematurely flipping into the recording state.
 let capturePromoting = false;
 let channelConfig = [];        // configured strips: { kind:'mono'|'stereo', a:idx, b:idx }
-let idealProfileId = ''; // active ideal EQ profile; '' = auto by content type (PRD 05)
-let customIdealProfiles = [];
-let curveEditorId = null;
-let curveEditorBands = null;
+
+// Single-source-of-truth mirror (TD-001 slice 6c, #701): liveCaptureStore now
+// owns channelConfig/channelGroups/liveDevices(devices)/liveMode/recordDir/
+// liveWindows/lastLiveChannels/isCapturing(liveRunning)/promoting
+// (capturePromoting) — every write to these below routes through a store
+// action (see startLiveCapture/stopLive/resetChannelConfig/addChannelStrip/
+// etc.), never a direct assignment to the module var. This subscription just
+// mirrors the store's current values into the module vars above so the ~50
+// read call sites throughout this file don't all have to become
+// lcStore.getState().x.
+function syncLiveCaptureMirror(state, prevState) {
+  liveRunning = state.isCapturing;
+  capturePromoting = state.promoting;
+  liveWindows = state.liveWindows;
+  channelGroups = state.channelGroups;
+  lastLiveChannels = state.lastLiveChannels;
+  liveDevices = state.devices;
+  liveMode = state.liveMode;
+  recordDir = state.recordDir;
+  channelConfig = state.channelConfig;
+  if (!prevState) return; // the initial sync call above has no prevState — nothing "changed" yet
+
+  if (state.liveMode !== prevState.liveMode) hideArmHint();
+
+  // Board-SHAPE changes (not the per-tick lastTick/liveWindows/
+  // lastLiveChannels churn bindIpcEvents also writes here) repaint
+  // #live-island synchronously while the Live tab is active — the reliable
+  // replacement for the old per-mutation renderLiveWorkspace()/
+  // renderLiveMeters() call sites (TD-001 slice 6c, #701). This has to be a
+  // synchronous store subscription, not React's own re-render: LiveWorkspace
+  // re-rendering doesn't run its effects synchronously with the store update
+  // that triggered it, and renderLiveWorkspace()/renderLiveMeters() decide
+  // patch-vs-rebuild by querying #live-island's CURRENT DOM — an imperative
+  // read that has to happen right after the mutation, not on React's own
+  // schedule. Per-tick patching (live-meter-controller.ts, mounted by
+  // LiveWorkspace.tsx) stays the separate, animation-frame-coalesced path
+  // for lastTick changes.
+  if (currentMode === 'live' && (
+    state.channelConfig !== prevState.channelConfig
+    || state.channelGroups !== prevState.channelGroups
+    || state.isCapturing !== prevState.isCapturing
+    || state.liveMode !== prevState.liveMode
+    || state.devices !== prevState.devices
+    || state.selectedChannel !== prevState.selectedChannel
+  )) {
+    window.liveWorkspaceRuntime.renderWorkspace();
+  }
+}
+syncLiveCaptureMirror(lcStore.getState());
+lcStore.subscribe(syncLiveCaptureMirror);
+
 let phaseDoublingStep = 0; // current step in the phase/doubling checklist (#370)
 // rcFeedbackPeak/rcPhaseSignal used to be module vars set by renderReportCard();
 // ReportCardIsland (React) now computes them each render and seeds
@@ -147,15 +199,21 @@ function liveChannelAt(idx) { return lastLiveChannels ? lastLiveChannels[idx] : 
 /* ══ Band metadata / meter geometry — extracted to spectrum-display.ts (#305),
    bridged onto window by App.tsx like audioEngineProfiles (#309). ══ */
 const {
-  DB_MIN, DB_MAX, BAND_META, EQ_COLS,
+  DB_MIN, DB_MAX, EQ_COLS,
   CURVE_VB, CURVE_FMIN, CURVE_FMAX,
   escapeHtml, fmtHz, levelMatchedTarget, niceTicks, smoothPath,
   spectrumCurveSVG, spectrumLegendHTML, bandLevelsFromCurve, bandDbFromSpectrum,
   veqBarsAndLabelsHTML, eqTargetLineSVG, eqCentroidHTML, eqBarsHTML,
   veqLoudestIdx, veqBandView, veqValBottom,
   heatmapSVG, miniCurveSVG, fmtDur, timeAxisHTML, classLabel,
-  patchGridBarsAndBandLabels,
+  patchGridBarsAndBandLabels, patchBarsAndLabels, hasUsableCurve,
+  formatClock: scTime,
 } = window.spectrumDisplay;
+
+// SPECTRUM_TITLE (TD-001 slice 6a, #695) — inline-app.js still writes
+// #spectrum-title directly for the not-yet-migrated live/soundcheck meter
+// modes; spectrum-chrome.ts's spectrumChromeView owns it everywhere else.
+const { SPECTRUM_TITLE } = window.spectrumChrome;
 
 /* ══ Live-capture panel rendering — extracted to live-capture-panel.ts (#307),
    bridged onto window by App.tsx like spectrumDisplay/reportCard. ══ */
@@ -165,7 +223,6 @@ const {
   groupSummary, groupSummaryText, shouldOfferReportCard,
   normalizeMeasurementSource, measurementSourceAfterRemove, measurementSourceOptionsHTML,
   measurementChannel, measurementSourceBadgeText, measurementSourceOptionLabel,
-  liveReportCardSource: lcLiveReportCardSource,
   liveSessionReportCardSource,
   patchLiveChannel,
   clampEqPaneWidth, EQ_PANE_RESIZE_STEP,
@@ -181,624 +238,45 @@ const lcUsedChannelCount = window.liveCapturePanel.usedChannelCount;
 const { installCrashHooks } = window.crashHooks;
 if (sb.reportRendererError) installCrashHooks(window, (input) => sb.reportRendererError(input));
 
-/* ══ Ideal EQ profiles + comparison (PRD 05) ══
-   Data and comparison logic come from @sound-buddy/audio-engine's profiles module
-   (packages/audio-engine/src/profiles/index.ts) via the `window.audioEngineProfiles`
-   bridge App.tsx sets before these boot scripts run — see #309. This is a classic
-   `?raw` script and can't `import`, so it reads the bridge instead of mirroring the
-   data by hand. Comparison is level-invariant (mean-subtraction). */
-const AE = window.audioEngineProfiles;
-const IP_GRID_FREQS = AE.GRID_FREQS;
-const IP_PROFILES = AE.PROFILES;
-const IP_BY_ID = new Map(IP_PROFILES.map(p => [p.id, p]));
-const ipCompare = AE.compareToProfile;
-const ipDefaultForContentType = AE.defaultProfileForContentType;
-function customProfileId(value) { return String(value || '').startsWith('custom:') ? String(value).slice(7) : ''; }
-/** Resolve the profile to compare against: an explicit pick, else auto by content type. */
-function activeProfile(spectrum) {
-  const customId = customProfileId(idealProfileId);
-  if (customId) {
-    const custom = customIdealProfiles.find(p => p.id === customId);
-    if (custom) return { ...custom, source: 'custom' };
-  }
-  const id = idealProfileId || ipDefaultForContentType(spectrum && spectrum.contentType);
-  return IP_BY_ID.get(id) || IP_BY_ID.get('flat');
-}
-function ipHasCurve(spectrum) {
-  const c = spectrum && spectrum.curve;
-  return !!(c && Array.isArray(c.db) && Array.isArray(c.freqs) && c.freqs.length === c.db.length && c.db.length >= 2);
-}
-
-// Writes the resolved active profile into spectrumStore so ReportCardIsland
-// and SpectrumPanel (React) re-render with it (TD-001 slice 4, #422) —
-// replaces the renderSpectrum()/renderReportCard() calls the profile-select
-// change handler and curve editor used to make directly.
-function syncIdealProfile() {
-  const analysis = curAnalysis();
-  specStore.getState().setIdealProfile(activeProfile(analysis && analysis.spectrum), !idealProfileId);
-}
-
-/* Populate + wire the ideal-profile dropdown (once, at boot). */
-function initIdealProfileSelect() {
-  const sel = document.getElementById('ideal-profile-select');
-  if (!sel) return;
-  const customOptions = customIdealProfiles.length
-    ? `<optgroup label="Custom">${customIdealProfiles.map(p => `<option value="custom:${escapeHtml(p.id)}">${escapeHtml(p.label)}</option>`).join('')}</optgroup>`
-    : '';
-  sel.innerHTML =
-    `<option value="">Auto (by content)</option>` +
-    IP_PROFILES.map(p => `<option value="${p.id}">${p.label}</option>`).join('') +
-    customOptions +
-    `<option value="__new">Create new curve…</option>`;
-  sel.value = idealProfileId;
-  if (sel.value !== idealProfileId) {
-    idealProfileId = '';
-    sel.value = '';
-  }
-  sel.addEventListener('change', async () => {
-    if (sel.value === '__new') { sel.value = idealProfileId; openCurveEditor(); return; }
-    idealProfileId = sel.value;
-    try { await sb.updateSettings({ idealProfile: idealProfileId }); } catch { /* non-fatal */ }
-    syncIdealProfile();
-  });
-}
-
-/* Show the header dropdown only when a curve is on screen (file/dir mode). */
-function updateIdealProfileVisibility(spectrum) {
-  const wrap = document.getElementById('ideal-profile-wrap');
-  if (!wrap) return;
-  wrap.style.display = (ipHasCurve(spectrum) && currentMode !== 'live') ? 'flex' : 'none';
-  const sel = document.getElementById('ideal-profile-select');
-  if (sel) sel.value = idealProfileId;
-}
-
-function refreshIdealProfileSelect() {
-  const sel = document.getElementById('ideal-profile-select');
-  if (!sel) return;
-  const old = sel.cloneNode(false);
-  sel.replaceWith(old);
-  initIdealProfileSelect();
-}
-
-function curveEl(id) { return document.getElementById(id); }
-function selectedCustomProfile() {
-  const id = customProfileId(idealProfileId);
-  return id ? customIdealProfiles.find(p => p.id === id) || null : null;
-}
-
-function curveEditorProfileBase() {
-  const custom = selectedCustomProfile();
-  if (custom) return custom;
-  if (idealProfileId && IP_BY_ID.has(idealProfileId)) return IP_BY_ID.get(idealProfileId);
-  return activeProfile(curAnalysis() && curAnalysis().spectrum);
-}
-
-function setCurveStatus(text, kind) {
-  const el = curveEl('curve-status');
-  if (!el) return;
-  el.textContent = text || '';
-  el.className = 'ai-status' + (kind ? ` ${kind}` : '');
-}
-
-function setCurveEditorBands(values) {
-  curveEditorBands = values.map(v => window.idealCurves.clampDb(v));
-  curveEditorBands.forEach((v, i) => {
-    const range = document.querySelector(`.curve-band-range[data-i="${i}"]`);
-    const num = document.querySelector(`.curve-band-num[data-i="${i}"]`);
-    if (range) range.value = String(v);
-    if (num) num.value = v.toFixed(1);
-  });
-}
-
-function renderCurveEditorRows() {
-  const grid = curveEl('curve-editor-grid');
-  if (!grid || !window.idealCurves) return;
-  grid.innerHTML = BAND_META.map((b, i) => `
-    <div class="curve-row">
-      <label for="curve-band-${i}">${escapeHtml(b.label)}</label>
-      <input id="curve-band-${i}" class="sb-slider curve-band-range" data-i="${i}" type="range" min="-12" max="12" step="0.5" />
-      <input class="curve-band-num" data-i="${i}" type="number" min="-12" max="12" step="0.5" aria-label="${escapeHtml(b.label)} offset dB" />
-    </div>`).join('');
-  grid.querySelectorAll('.curve-band-range').forEach((input) => {
-    input.addEventListener('input', (e) => {
-      const i = parseInt(e.target.dataset.i, 10);
-      curveEditorBands[i] = window.idealCurves.clampDb(e.target.value);
-      const num = document.querySelector(`.curve-band-num[data-i="${i}"]`);
-      if (num) num.value = curveEditorBands[i].toFixed(1);
-    });
-  });
-  grid.querySelectorAll('.curve-band-num').forEach((input) => {
-    input.addEventListener('input', (e) => {
-      const i = parseInt(e.target.dataset.i, 10);
-      curveEditorBands[i] = window.idealCurves.clampDb(e.target.value);
-      const range = document.querySelector(`.curve-band-range[data-i="${i}"]`);
-      if (range) range.value = String(curveEditorBands[i]);
-    });
-  });
-}
-
-function openCurveEditor() {
-  if (!window.idealCurves) return;
-  renderCurveEditorRows();
-  const custom = selectedCustomProfile();
-  const base = curveEditorProfileBase();
-  curveEditorId = custom ? custom.id : null;
-  curveEl('curve-dialog-title').textContent = custom ? 'Edit Ideal Curve' : 'Create Ideal Curve';
-  curveEl('curve-name').value = custom ? custom.label : `Copy of ${base ? base.label : 'Flat / neutral'}`;
-  curveEl('curve-delete-btn').disabled = !custom;
-  curveEl('curve-capture-btn').disabled = !(curAnalysis() && ipHasCurve(curAnalysis().spectrum));
-  setCurveStatus('', '');
-  setCurveEditorBands(window.idealCurves.bandOffsetsFromProfile(base, IP_GRID_FREQS));
-  curveEl('curve-dialog').style.display = 'flex';
-  curveEl('curve-name').focus();
-  curveEl('curve-name').select();
-}
-
-function closeCurveEditor() {
-  curveEl('curve-dialog').style.display = 'none';
-}
-
-async function persistCustomIdealProfiles(nextProfiles, nextIdealProfile) {
-  customIdealProfiles = window.idealCurves.normalizeProfiles(nextProfiles, IP_GRID_FREQS);
-  idealProfileId = nextIdealProfile;
-  try {
-    await sb.updateSettings({ customIdealProfiles, idealProfile: idealProfileId });
-  } catch {
-    setCurveStatus('Could not save curve settings.', 'err');
-    return false;
-  }
-  refreshIdealProfileSelect();
-  syncIdealProfile();
-  return true;
-}
-
-async function saveCurveEditor() {
-  const name = curveEl('curve-name').value.trim();
-  if (!name) {
-    setCurveStatus('Name the curve first.', 'err');
-    curveEl('curve-name').focus();
-    return;
-  }
-  const existing = selectedCustomProfile();
-  const profile = window.idealCurves.profileFromBands(curveEditorBands, IP_GRID_FREQS, {
-    id: curveEditorId || (existing && existing.id),
-    label: name,
-    description: 'Custom ideal curve',
-    createdAt: existing && existing.createdAt,
-  });
-  const next = window.idealCurves.upsertProfile(customIdealProfiles, profile);
-  if (await persistCustomIdealProfiles(next, `custom:${profile.id}`)) closeCurveEditor();
-}
-
-async function captureCurrentCurveAsIdeal() {
-  const name = curveEl('curve-name').value.trim() || 'Current analysis target';
-  if (!(curAnalysis() && ipHasCurve(curAnalysis().spectrum))) {
-    setCurveStatus('Analyze a file with spectrum data first.', 'err');
-    return;
-  }
-  const existing = selectedCustomProfile();
-  const profile = window.idealCurves.profileFromMeasuredCurve(curAnalysis().spectrum.curve, IP_GRID_FREQS, {
-    id: curveEditorId || (existing && existing.id),
-    label: name,
-    createdAt: existing && existing.createdAt,
-  });
-  if (!profile) {
-    setCurveStatus('This analysis cannot be used as a target.', 'err');
-    return;
-  }
-  setCurveEditorBands(window.idealCurves.bandOffsetsFromProfile(profile, IP_GRID_FREQS));
-  const next = window.idealCurves.upsertProfile(customIdealProfiles, profile);
-  if (await persistCustomIdealProfiles(next, `custom:${profile.id}`)) closeCurveEditor();
-}
-
-async function deleteCurveEditor() {
-  const custom = selectedCustomProfile();
-  if (!custom) return;
-  const next = window.idealCurves.deleteProfile(customIdealProfiles, custom.id);
-  if (await persistCustomIdealProfiles(next, '')) closeCurveEditor();
-}
+/* ══ Ideal EQ profiles + curve editor (PRD 05) ══
+   Selection state (idealProfileId/customIdealProfiles), the
+   #ideal-profile-select dropdown, and the #curve-dialog curve editor are now
+   idealProfilesStore + IdealProfileSelect/CurveEditorDialog (React) (TD-001
+   slice 6b, #700). The analysis-or-selection → active-profile glue that used
+   to live in this script's syncIdealProfile now lives in bridge.ts's
+   idealProfilesStore subscriptions — see saveMixAsTarget below for the one
+   remaining call site this script drives directly. */
 
 /* ══ Spectrum panel rendering ══
-   The analysis curve/bars view is now React's SpectrumPanel, driven by
-   spectrumStore (TD-001 slice 4, #422); this section keeps driving
-   #spectrum-imperative for the empty/loading/error/live-tab states and the
-   panel chrome (title/stats/ideal-profile visibility, island toggle) React
-   doesn't own — see syncSpectrumChrome below. */
-function setSpectrumState(state, opts = {}) {
-  const body = document.getElementById('spectrum-imperative');
-  // Every setSpectrumState call takes over the panel imperatively — hide the
-  // React island (even if spectrumStore still holds a prior analysis's data)
-  // so a loading/error/empty/live state never shows a stale curve beside or
-  // instead of it. Only syncSpectrumChrome() (a completed analysis or a
-  // mode switch back to a data-backed tab) can show the island again.
-  body.style.display = '';
-  document.getElementById('spectrum-island').style.display = 'none';
-  const statsRow = document.getElementById('stats-row');
-  statsRow.style.display = state === 'populated' ? 'flex' : 'none';
-  const ipWrap = document.getElementById('ideal-profile-wrap');
-  if (ipWrap) ipWrap.style.display = 'none';
+   The whole analysis-spectrum surface — panel display state, the curve/bars,
+   the spectrogram scrubber, and the <audio> playback transport — is now
+   React's SpectrumPanel + spectrumTransport, driven by spectrumStore
+   (TD-001 slice 6a, #695). This section keeps only the two thin e2e/legacy
+   compat shims below (called by name — see the comment on each) and the
+   still-inline #spectrum-imperative renderers for the not-yet-migrated live/
+   soundcheck/DAW meter modes (`specStore.getState().setPanelState('meters')`
+   hands that container back to inline-app.js — see spectrum-chrome.ts's ADR). */
 
-  if (state === 'empty') {
-    body.innerHTML = `<div class="spectrum-empty">${iconSvg('waveform', 44)}<p>${opts.text || 'Load a file to see the spectrum'}</p></div>`;
-  } else if (state === 'loading') {
-    const stageRow = (stage, label) =>
-      `<div class="stage-row" data-stage="${stage}">
-        <span class="stage-icon"><span class="stage-spin"></span><span class="stage-check">${iconSvg('check', 14)}</span></span>
-        <span class="stage-label">${label}</span>
-      </div>`;
-    body.innerHTML = `<div class="spectrum-empty">
-      <p>Analyzing audio…</p>
-      <div class="stage-stepper">
-        ${stageRow('reading', 'Reading file')}
-        ${stageRow('levels', 'Measuring levels')}
-        ${stageRow('spectrum', 'Analyzing spectrum')}
-      </div>
-      <button type="button" id="analysis-cancel-btn" class="btn btn-secondary sm" data-icon="x">Cancel</button>
-    </div>`;
-    hydrateIcons(body);
-    document.getElementById('analysis-cancel-btn').addEventListener('click', () => { void sb.cancelAnalysis(); });
-  } else if (state === 'error') {
-    body.innerHTML = `<div class="spectrum-empty" style="color:var(--issue-text)">${iconSvg('alert-triangle', 40)}<p>Analysis failed</p><p class="sub" style="max-width:340px;color:var(--text-tertiary)">${opts.text || 'Couldn’t decode the audio stream.'}</p></div>`;
-  }
-}
-
-// Panel-header labels. The static markup seeds `curve`; the render paths below
-// keep the header in sync with what's actually drawn (curve vs. fallback meters).
-const SPECTRUM_TITLE = { curve: 'Spectrum · Curve', meters: 'Spectrum · Meters', live: 'Spectrum · Live EQ', liveStopped: 'Spectrum · Live EQ · Stopped' };
-
-// Shows the analysis spectrum island (React's SpectrumPanel, driven by
-// spectrumStore) vs the imperative #spectrum-imperative container based on
-// the current tab mode + whether there's spectrum data to show, and keeps
-// the title/stats-row/ideal-profile-wrap chrome around the island in sync —
-// replaces what renderSpectrum() used to set directly (TD-001 slice 4,
-// #422). Idempotent: safe to call from a mode-tab switch, a completed
-// analysis, or an ideal-profile change.
-function syncSpectrumChrome() {
-  const spectrum = specStore.getState().spectrumData;
-  const island = document.getElementById('spectrum-island');
-  const imperative = document.getElementById('spectrum-imperative');
-  const showIsland = !!spectrum && currentMode !== 'live' && currentMode !== 'soundcheck';
-  island.style.display = showIsland ? '' : 'none';
-  imperative.style.display = showIsland ? 'none' : '';
-  if (!showIsland) return;
-  document.getElementById('stats-row').style.display = 'flex';
-  document.getElementById('spectrum-title').textContent = ipHasCurve(spectrum) ? SPECTRUM_TITLE.curve : SPECTRUM_TITLE.meters;
-  updateIdealProfileVisibility(spectrum);
-}
-
-// Patch existing bar/value/label DOM in place (the update-time counterpart of
-// veqBarsAndLabelsHTML above) — shared by the Live-tab per-channel patch
-// (patchLiveChannel) and the playback-band repaint (renderPlaybackBands, AW-4)
-// so height/value transitions animate via CSS instead of restarting on every
-// repaint, and the two paint paths can't drift out of sync with each other.
-function patchBarsAndLabels(container, dbArray) {
-  const loudestIdx = veqLoudestIdx(dbArray);
-  const vals = container.querySelectorAll('.veq-val');
-  container.querySelectorAll('.veq-bar').forEach((bar, i) => {
-    const v = veqBandView(dbArray[i]);
-    bar.style.height = v.pct.toFixed(2) + '%';
-    bar.classList.toggle('loud', i === loudestIdx);
-    bar.classList.toggle('dim', v.dim);
-    const val = vals[i];
-    if (val) {
-      val.textContent = v.val;
-      val.style.bottom = veqValBottom(v.pct) + '%';
-      val.classList.toggle('hot', v.hot);
-      val.classList.toggle('dim', v.dim);
-    }
-  });
-  container.querySelectorAll('.veq-label').forEach((lb, i) => lb.classList.toggle('loud', i === loudestIdx));
-}
 // e2e/legacy compat shim — report-card-grading.spec.ts's "missing spectrum
 // curve degrades…" test calls window.renderSpectrum(spectrum) directly to
 // drive the no-curve fallback. Routes the raw spectrum object through
 // spectrumStore so React's SpectrumPanel renders it (curve-with-target when
 // usable, the uniform-bars fallback otherwise — SpectrumDisplay.tsx already
-// degrades gracefully, reproducing this function's old two-branch body) and
-// refreshes the panel chrome the same way a real analysis landing would.
-function renderSpectrum(spectrum) {
+// degrades gracefully, reproducing this function's old two-branch body).
+window.renderSpectrum = (spectrum) => {
   specStore.getState().setSpectrumFromAnalysis({ spectrum });
-  syncIdealProfile();
-  syncSpectrumChrome();
-}
-
-// Coalesce live renders: meter ticks arrive up to ~20/s (and a window tick can
-// land in the same burst), but the meter panel only needs to repaint once per
-// animation frame. Keep the latest event and rebuild at most once per frame.
-let pendingLiveWin = null;
-let liveRenderScheduled = false;
-function scheduleLiveMeters(win) {
-  pendingLiveWin = win;
-  if (liveRenderScheduled) return;
-  liveRenderScheduled = true;
-  requestAnimationFrame(() => {
-    liveRenderScheduled = false;
-    const w = pendingLiveWin;
-    pendingLiveWin = null;
-    if (w && currentMode === 'live') renderLiveMeters(w);
-  });
-}
-
-/* ── Time-sampled spectrum: spectrogram heatmap + scrubber (PRD 03) ──
- * heatmapSVG/miniCurveSVG/timeAxisHTML/classLabel are now bridged in from
- * spectrum-display.ts (see the window.spectrumDisplay destructure above,
- * TD-001 slice 4, #422) — the scrubber itself (below) stays inline and
- * consumes them, same as before. */
-
-// The spectrogram strip + scrubber under the curve. Empty string when frames are
-// absent, so the curve renders alone without error.
-function buildFramesSectionHTML(spectrum) {
-  const frames = spectrum.frames;
-  if (!Array.isArray(frames) || frames.length === 0) return '';
-  const single = frames.length === 1;
-  return `<div class="spectro-scrub">
-    <div class="spectro-head">
-      <span class="spectro-title">Spectrogram · time →</span>
-      <span id="scrub-readout" class="scrub-readout">Whole-file average</span>
-      <span class="spectro-hint">${single ? 'single frame — short file' : 'click a column to scrub'}</span>
-      <button id="scrub-reset" class="scrub-reset" type="button">${iconSvg('play', 11)}Average</button>
-    </div>
-    <div class="spectro-transport">
-      <button id="spectro-play-btn" class="spectro-play-btn" type="button" aria-label="Play">${iconSvg('play', 13)}</button>
-      <span id="spectro-time" class="spectro-time">0:00 / 0:00</span>
-    </div>
-    <div id="spectrum-heatmap" class="spectro-heat">${heatmapSVG(frames)}<div id="spectro-playhead" class="spectro-playhead"></div></div>
-    ${timeAxisHTML(frames)}
-  </div>`;
-}
-
-/* Scrubber state — redraws the PRD 02 curve (#spectrum-chart) for a frame. */
-let sgState = null;
-function initSpectrogram(spectrum) {
-  // Preserve the scrubbed frame across DOM rebuilds of the SAME analysis (e.g.
-  // leaving the file tab and returning). A new analysis resets to the average.
-  const carry = sgState && sgState.spectrum === spectrum
-    && sgState.selected != null && sgState.selected < spectrum.frames.length
-    ? sgState.selected : null;
-  sgState = { spectrum, frames: spectrum.frames, selected: carry };
-  const heat = document.getElementById('spectrum-heatmap');
-  if (heat) heat.addEventListener('click', (e) => {
-    const box = heat.getBoundingClientRect();
-    if (box.width <= 0) return;
-    const nF = sgState.frames.length;
-    const i = Math.max(0, Math.min(nF - 1, Math.floor(((e.clientX - box.left) / box.width) * nF)));
-    seekPlayback(sgState.frames[i].t);
-    // Only pin a static frame when playback isn't actively driving the bars
-    // (AW-4, #179) — while playing, renderPlaybackBands already reflects
-    // wherever the seek landed on its very next tick, and pinning here too
-    // would leave a stale sgState.selected that's wrong the moment playback
-    // later advances past it and the user pauses.
-    if (!sbAudio || sbAudio.paused) selectFrame(i);
-  });
-  const reset = document.getElementById('scrub-reset');
-  if (reset) reset.addEventListener('click', () => selectFrame(null));
-  if (carry != null) renderScrub(); // restore a carried scrub; the average curve is already drawn
-  initPlaybackTransport(curAnalysis() && curAnalysis().filePath);
-}
-
-// Bridges SpectrumPanel's (React) frames-host effect to the still-inline
-// spectrogram scrubber + playback transport (TD-001 slice 4, #422): fills
-// the stable #spectrum-frames-host with the scrubber markup and (re)inits it.
-window.inlineSpectrum = {
-  renderFrames(spectrum) {
-    const host = document.getElementById('spectrum-frames-host');
-    if (!host) return;
-    host.innerHTML = buildFramesSectionHTML(spectrum);
-    if (Array.isArray(spectrum.frames) && spectrum.frames.length) initSpectrogram(spectrum);
-  },
+  // Bypasses analysisStore, so bridge.ts's currentAnalysis subscription never
+  // fires for this shim — resync idealProfilesStore directly instead.
+  window.rendererStores.idealProfiles.getState().syncActiveProfile();
 };
+// e2e/legacy compat shim — playback-transport.spec.ts drives the scrubber's
+// seek behavior via window.seekPlayback(t) directly.
+window.seekPlayback = (t) => transport.seek(t);
 
-/* ── Playback transport (#180) — HTML5 <audio> over the analyzed file, driving
- * a moving playhead + elapsed/total readout on the spectrogram strip. `sbAudio`
- * persists across re-renders of the SAME file (ideal-profile changes, tab
- * switches) so playback isn't interrupted by unrelated DOM rebuilds. */
-let sbAudio = null;
-let sbAudioPath = null;
-// Bumped on every ensurePlaybackAudio call so a call superseded by a newer one
-// (e.g. two analyses started in quick succession) can't win the toFileUrl race
-// and stomp sbAudio/sbAudioPath with a stale file's data after a fresher call
-// already committed.
-let sbGeneration = 0;
-async function ensurePlaybackAudio(filePath) {
-  if (sbAudioPath === filePath) return sbAudio;
-  const gen = ++sbGeneration;
-  // toFileUrl is IPC-backed (sandboxed preload can't reach Node's pathToFileURL
-  // directly), so this crosses a round-trip before the <audio> element exists.
-  const url = await sb.toFileUrl(filePath);
-  if (gen !== sbGeneration) return sbAudio; // superseded — a newer call already won
-  releasePlaybackAudio();
-  // Null when the file is gone (moved/deleted since analysis) — leave sbAudio
-  // unset rather than pointing <audio> at a dead path.
-  sbAudio = url ? new Audio(url) : null;
-  sbAudioPath = filePath;
-  if (sbAudio) {
-    sbAudio.addEventListener('timeupdate', updatePlaybackReadout);
-    sbAudio.addEventListener('loadedmetadata', updatePlaybackReadout);
-    sbAudio.addEventListener('play', updateTransportButton);
-    sbAudio.addEventListener('play', startPlaybackBandLoop);
-    sbAudio.addEventListener('pause', updateTransportButton);
-    sbAudio.addEventListener('pause', stopPlaybackBandLoop);
-    sbAudio.addEventListener('ended', onPlaybackEnded);
-    // An undecodable source (e.g. some AIFF variants sox/ffprobe accept but
-    // Chromium's <audio> can't) fails quietly instead of an uncaught rejection.
-    sbAudio.addEventListener('error', updateTransportButton);
-  }
-  return sbAudio;
-}
-function pauseTransportAudio() {
-  if (sbAudio && !sbAudio.paused) sbAudio.pause();
-}
-// Shared "let go of the current <audio> element" step used both when swapping
-// to a new file (ensurePlaybackAudio) and when clearing back to no file (#206),
-// so the pause+src-clear+null teardown only lives in one place.
-function releasePlaybackAudio() {
-  if (sbAudio) { sbAudio.pause(); sbAudio.src = ''; }
-  sbAudio = null;
-}
-async function initPlaybackTransport(filePath) {
-  if (!filePath || !document.getElementById('spectro-play-btn')) return;
-  await ensurePlaybackAudio(filePath);
-  const btn = document.getElementById('spectro-play-btn'); // re-query: DOM may have rebuilt while awaiting
-  if (!btn) return;
-  // Reads the live sbAudio/sbAudioPath at click time rather than closing over
-  // this call's result, so a superseded call's listener still controls
-  // whichever file actually won ensurePlaybackAudio's race.
-  btn.addEventListener('click', () => {
-    if (!sbAudio) return;
-    if (sbAudio.paused) sbAudio.play().catch(() => updateTransportButton());
-    else sbAudio.pause();
-  });
-  updateTransportButton();
-  updatePlaybackReadout();
-}
-function updateTransportButton() {
-  const btn = document.getElementById('spectro-play-btn');
-  if (!btn || !sbAudio) return;
-  const playing = !sbAudio.paused && !sbAudio.ended;
-  btn.innerHTML = iconSvg(playing ? 'pause' : 'play', 13);
-  btn.setAttribute('aria-label', playing ? 'Pause' : 'Play');
-  btn.classList.toggle('playing', playing);
-}
-function playbackDuration() {
-  if (sbAudio && isFinite(sbAudio.duration) && sbAudio.duration > 0) return sbAudio.duration;
-  const fp = curAnalysis() && curAnalysis().ffprobe && curAnalysis().ffprobe.format;
-  return (fp && fp.durationSeconds) || 0;
-}
-function updatePlaybackReadout() {
-  if (!sbAudio) return;
-  const total = playbackDuration();
-  const timeEl = document.getElementById('spectro-time');
-  if (timeEl) timeEl.textContent = `${scTime(sbAudio.currentTime)} / ${scTime(total)}`;
-  const playhead = document.getElementById('spectro-playhead');
-  if (playhead) {
-    playhead.style.left = `${total > 0 ? Math.max(0, Math.min(1, sbAudio.currentTime / total)) * 100 : 0}%`;
-    playhead.style.display = 'block';
-  }
-}
-function onPlaybackEnded() {
-  if (!sbAudio) return;
-  sbAudio.currentTime = 0;
-  updatePlaybackReadout();
-  updateTransportButton();
-  stopPlaybackBandLoop(); // some UAs fire 'pause' too, but don't rely on it — this is idempotent
-}
-function seekPlayback(t) {
-  if (!sbAudio) return;
-  // Clamp below the real duration: setting currentTime AT duration reads back
-  // as "reached the end" to Chromium, which re-fires 'ended' and immediately
-  // snaps back to 0 — seeking near the final frame would silently undo itself.
-  const duration = playbackDuration();
-  sbAudio.currentTime = duration > 0 ? Math.min(t, Math.max(0, duration - 0.05)) : t;
-  updatePlaybackReadout();
-}
-function selectFrame(i) {
-  if (!sgState) return;
-  sgState.selected = i;
-  renderScrub();
-}
-function renderScrub() {
-  if (!sgState) return;
-  const { spectrum, frames, selected } = sgState;
-  const isAvg = selected == null;
-  // Redraw the AW-2 bars: average = spectrum.bands (same values the initial
-  // render used); a frame buckets its own db onto the whole-file freq grid.
-  const bandDb = isAvg ? bandDbFromSpectrum(spectrum)
-    : bandLevelsFromCurve({ freqs: spectrum.curve.freqs, db: frames[selected].db });
-  const chart = document.getElementById('spectrum-chart');
-  if (chart) {
-    // Keep the ideal target overlaid (PRD 05) while scrubbing. The target stays
-    // level-matched to the whole-file curve so it reads as a fixed reference the
-    // per-frame measured bars move against.
-    const target = levelMatchedTarget(spectrum.curve, activeProfile(spectrum));
-    const targetBandDb = bandLevelsFromCurve({ freqs: spectrum.curve.freqs, db: target });
-    chart.innerHTML = eqBarsHTML(bandDb, targetBandDb);
-  }
-  const readout = document.getElementById('scrub-readout');
-  if (readout) {
-    if (isAvg) readout.textContent = 'Whole-file average';
-    else {
-      const f = frames[selected];
-      readout.textContent = `t = ${fmtDur(f.t)} · ${classLabel(f.class)} · RMS ${fmt(f.rms)} dB`;
-    }
-  }
-  const reset = document.getElementById('scrub-reset');
-  if (reset) reset.classList.toggle('active', !isAvg);
-  const heat = document.getElementById('spectrum-heatmap');
-  if (heat) heat.querySelectorAll('.hm-col').forEach(c =>
-    c.classList.toggle('sel', !isAvg && parseInt(c.dataset.i, 10) === selected));
-}
-
-/* ── Realtime band values during playback (AW-4, #179) ──
- * Sourced entirely from spectrum.frames — the same per-window data the
- * spectrogram/scrubber already carry — so nothing is re-analyzed. Driven by a
- * dedicated rAF loop (started on 'play', stopped on 'pause'/'ended') rather
- * than the audio element's 'timeupdate' (which Chromium throttles to a few
- * Hz), so the loop itself is naturally capped at one repaint per animation
- * frame — the same guarantee scheduleLiveMeters/renderLiveMeters give the
- * Live tab, just achieved by controlling the paint cadence directly instead
- * of coalescing bursty external ticks. */
-const PLAYBACK_AVG_WINDOW_SEC = 0.5; // trailing window for the "window avg" readout
-
-// Nearest frame for a playback position — the same t→x proportion the
-// heatmap playhead uses (updatePlaybackReadout), so the animated bars always
-// match the frame the playhead is currently over.
-function frameIndexAtTime(frames, t, total) {
-  if (!(total > 0)) return 0;
-  return Math.max(0, Math.min(frames.length - 1, Math.floor((t / total) * frames.length)));
-}
-// Mean of frame.rms over the trailing [t - windowSec, t] window — "the
-// average level over the current playback window" — reusing each frame's
-// already-computed RMS rather than deriving a new figure.
-function windowAverageRms(frames, t, windowSec) {
-  let sum = 0, n = 0;
-  for (const f of frames) if (f.t <= t && f.t > t - windowSec && Number.isFinite(f.rms)) { sum += f.rms; n++; }
-  return n ? sum / n : null;
-}
-// Last frame index actually painted by renderPlaybackBands — skips repaint
-// work on ticks where the playhead hasn't crossed into a new frame yet
-// (frames are typically 100ms+ apart, so most of the ~60/s rAF ticks would
-// otherwise recompute and repatch identical output). Reset to -1 whenever a
-// playback session (re)starts, so the first tick after a stopPlaybackBandLoop
-// repaint (e.g. resuming right where a previous session left off, landing on
-// the same frame index) always repaints instead of trusting a stale match.
-let lastRenderedFrameIndex = -1;
-function renderPlaybackBands(t) {
-  if (!sgState || !sgState.frames || !sgState.frames.length) return;
-  const { spectrum, frames } = sgState;
-  const i = frameIndexAtTime(frames, t, playbackDuration());
-  if (i === lastRenderedFrameIndex) return;
-  lastRenderedFrameIndex = i;
-  const chart = document.getElementById('spectrum-chart');
-  if (!chart) return;
-  patchBarsAndLabels(chart, bandLevelsFromCurve({ freqs: spectrum.curve.freqs, db: frames[i].db }));
-  const avg = windowAverageRms(frames, t, PLAYBACK_AVG_WINDOW_SEC);
-  const readout = document.getElementById('scrub-readout');
-  if (readout) readout.textContent = classLabel(frames[i].class) + (avg != null ? ` · Window avg ${fmt(avg)} dB` : '');
-  const heat = document.getElementById('spectrum-heatmap');
-  if (heat) heat.querySelectorAll('.hm-col').forEach(c => c.classList.toggle('sel', parseInt(c.dataset.i, 10) === i));
-}
-let playbackAnimHandle = null;
-function startPlaybackBandLoop() {
-  if (playbackAnimHandle != null || !sbAudio || !sgState || !sgState.frames || !sgState.frames.length) return;
-  lastRenderedFrameIndex = -1;
-  const tick = () => {
-    if (!sbAudio || sbAudio.paused || sbAudio.ended) { playbackAnimHandle = null; return; }
-    renderPlaybackBands(sbAudio.currentTime);
-    playbackAnimHandle = requestAnimationFrame(tick);
-  };
-  playbackAnimHandle = requestAnimationFrame(tick);
-}
-function stopPlaybackBandLoop(evt) {
-  // 'pause' fires asynchronously (a queued task per the HTML media spec), so
-  // the outgoing sbAudio.pause() in ensurePlaybackAudio can still deliver its
-  // event after a newer file's Audio instance has already become the global
-  // sbAudio and started its own loop. Ignore stale instances' events so they
-  // can't cancel a newer file's live loop out from under it (evt is absent
-  // for the direct calls from onPlaybackEnded/tick, which always mean it now).
-  if (evt && evt.target !== sbAudio) return;
-  if (playbackAnimHandle != null) { cancelAnimationFrame(playbackAnimHandle); playbackAnimHandle = null; }
-  renderScrub(); // whole-file (or carried scrub) state — dismisses the realtime overlay
-}
+// Live-tick coalescing (meter ticks arrive up to ~20/s) is now owned by
+// LiveWorkspace.tsx's live-meter-controller (TD-001 slice 6c, #701), driven
+// by liveCaptureStore's lastTick rather than this file's own rAF batching —
+// see window.liveWorkspaceRuntime.patchWorkspaceTick below.
 
 // patchLiveChannel (the per-strip DOM applier) is now the pure version bridged
 // in from live-capture-panel.ts (#668) — strips no longer carry their own
@@ -924,11 +402,12 @@ function renderLiveMeters(win) {
   // lane name would be stuck unresolved for the whole capture.
   if (win && win.channels && win.channels.length > 0) lastLiveChannels = win.channels;
   if (window.dawWorkspaceState.showShell(setStore.getState().settings, currentMode)) { renderDawShell(); return; }
-  const body = document.getElementById('spectrum-imperative');
+  const body = document.getElementById('live-island');
   if (!win || !win.channels || win.channels.length === 0) {
-    setSpectrumState('empty', { text: 'Waiting for live audio…' });
+    specStore.getState().setPanelState('empty', 'Waiting for live audio…');
     return;
   }
+  specStore.getState().setPanelState('meters'); // hides #spectrum-island's React curve view while #live-island renders the board
   document.getElementById('stats-row').style.display = 'flex';
   const ipWrap = document.getElementById('ideal-profile-wrap');
   if (ipWrap) ipWrap.style.display = 'none'; // no whole-file curve in live mode
@@ -974,8 +453,9 @@ function renderLiveMeters(win) {
 // with renderLiveMeters so Add/remove read consistently whether idle or
 // (locked) mid-capture.
 function renderLiveWorkspace() {
+  specStore.getState().setPanelState('meters'); // hides #spectrum-island's React curve view while #live-island renders the board
   if (window.dawWorkspaceState.showShell(setStore.getState().settings, currentMode)) { renderDawShell(); return; }
-  const body = document.getElementById('spectrum-imperative');
+  const body = document.getElementById('live-island');
   document.getElementById('stats-row').style.display = 'none';
   const ipWrap = document.getElementById('ideal-profile-wrap');
   if (ipWrap) ipWrap.style.display = 'none';
@@ -1024,7 +504,7 @@ function renderLiveWorkspace() {
 // render path — including the patch-in-place branches, so a mid-capture
 // settings flip adds/removes the panel without a rebuild.
 function syncLiveAdjustmentsPanel() {
-  const body = document.getElementById('spectrum-imperative');
+  const body = document.getElementById('live-island');
   const html = window.liveAdjustmentsState.panelHTML(
     setStore.getState().settings, currentMode, liveWindows, lcStore.getState().measurementSource, lapFocusView(), lapCoaching, Date.now());
   const existing = body.querySelector('.live-adjustments-panel');
@@ -1039,7 +519,8 @@ function syncLiveAdjustmentsPanel() {
 // Source panel remains the sole capture control surface, so this never
 // renders #live-mode/#live-start-btn/#live-stop-btn.
 function renderDawShell() {
-  const body = document.getElementById('spectrum-imperative');
+  specStore.getState().setPanelState('meters'); // hides #spectrum-island's React curve view while #live-island renders the board
+  const body = document.getElementById('live-island');
   document.getElementById('stats-row').style.display = 'none';
   const ipWrap = document.getElementById('ideal-profile-wrap');
   if (ipWrap) ipWrap.style.display = 'none';
@@ -1238,20 +719,20 @@ document.getElementById('spectrum-body').addEventListener('click', (e) => {
   const armBtn = e.target.closest('.live-ch-arm');
   if (armBtn) {
     const idx = parseInt(armBtn.closest('.live-ch').dataset.ch, 10);
-    channelConfig[idx].armed = !window.armState.isArmed(channelConfig[idx]);
+    lcStore.getState().toggleArm(idx);
     hideArmHint();
     renderChannelConfig();
     return;
   }
   // Workspace Arm all / Disarm all (#191).
   if (e.target.closest('#live-ws-arm-all')) {
-    channelConfig = window.armState.setAllArmed(channelConfig, true);
+    lcStore.getState().setAllArmed(true);
     hideArmHint();
     renderChannelConfig();
     return;
   }
   if (e.target.closest('#live-ws-disarm-all')) {
-    channelConfig = window.armState.setAllArmed(channelConfig, false);
+    lcStore.getState().setAllArmed(false);
     renderChannelConfig();
     return;
   }
@@ -1265,8 +746,7 @@ document.getElementById('spectrum-body').addEventListener('click', (e) => {
   const gfold = e.target.closest('.live-group-fold');
   if (gfold) {
     const g = parseInt(gfold.closest('.live-group-head').dataset.group, 10);
-    channelGroups = window.groupState.setGroupCollapsed(channelGroups, g, !window.groupState.isGroupCollapsed(channelGroups, g));
-    persistChannelGroups();
+    lcStore.getState().toggleGroupCollapse(g);
     applyLiveGroupCollapsed();
     return;
   }
@@ -1328,7 +808,7 @@ document.getElementById('spectrum-body').addEventListener('drop', (e) => {
   if (src.type === 'group') {
     const head = e.target.closest('.live-group-head[data-group]');
     const to = head && parseInt(head.dataset.group, 10);
-    if (head && to >= 0) channelGroups = window.groupState.moveGroup(channelGroups, src.index, to);
+    if (head && to >= 0) lcStore.getState().moveGroup(src.index, to);
   } else {
     const strip = e.target.closest('.live-ch');
     if (strip) {
@@ -1336,10 +816,9 @@ document.getElementById('spectrum-body').addEventListener('drop', (e) => {
       const members = (channelGroups[g] && channelGroups[g].members) || [];
       const from = members.indexOf(src.index);
       const to = members.indexOf(parseInt(strip.dataset.ch, 10));
-      if (g !== -1 && from !== -1 && to !== -1) channelGroups = window.groupState.moveMember(channelGroups, g, from, to);
+      if (g !== -1 && from !== -1 && to !== -1) lcStore.getState().moveChannelInGroup(g, from, to);
     }
   }
-  persistChannelGroups();
   renderChannelConfig();
 });
 document.getElementById('spectrum-body').addEventListener('dragend', () => {
@@ -1374,8 +853,7 @@ document.getElementById('spectrum-body').addEventListener('keydown', (e) => {
     const g = parseInt(groupHandle.closest('.live-group-head').dataset.group, 10);
     const to = g + dir;
     if (to < 0 || to >= channelGroups.length) return;
-    channelGroups = window.groupState.moveGroup(channelGroups, g, to);
-    persistChannelGroups();
+    lcStore.getState().moveGroup(g, to);
     renderChannelConfig();
     document.querySelector(`#spectrum-body .live-group-head[data-group="${to}"] .live-group-drag`)?.focus();
     return;
@@ -1390,8 +868,7 @@ document.getElementById('spectrum-body').addEventListener('keydown', (e) => {
     const to = from + dir;
     if (from === -1 || to < 0 || to >= members.length) return;
     e.preventDefault();
-    channelGroups = window.groupState.moveMember(channelGroups, g, from, to);
-    persistChannelGroups();
+    lcStore.getState().moveChannelInGroup(g, from, to);
     renderChannelConfig();
     document.querySelector(`#spectrum-body .live-ch[data-ch="${idx}"] .live-ch-drag`)?.focus();
   }
@@ -1416,7 +893,7 @@ document.getElementById('spectrum-body').addEventListener('change', (e) => {
   if (kindSel) {
     const idx = parseInt(kindSel.dataset.idx, 10);
     if (!channelConfig[idx]) return;
-    channelConfig[idx] = window.rigKind.switchKind(channelConfig[idx], e.target.value, selectedDeviceChannels());
+    lcStore.getState().setStripKind(idx, e.target.value);
     renderChannelConfig();
     return;
   }
@@ -1424,7 +901,7 @@ document.getElementById('spectrum-body').addEventListener('change', (e) => {
   if (srcSel) {
     const idx = parseInt(srcSel.dataset.idx, 10);
     if (!channelConfig[idx]) return;
-    channelConfig[idx][srcSel.dataset.field] = parseInt(e.target.value, 10);
+    lcStore.getState().setStripSource(idx, srcSel.dataset.field, parseInt(e.target.value, 10));
     renderChannelConfig();
     return;
   }
@@ -1433,8 +910,7 @@ document.getElementById('spectrum-body').addEventListener('change', (e) => {
   const grpSel = e.target.closest('.live-ch-group');
   if (grpSel) {
     const idx = parseInt(grpSel.dataset.idx, 10);
-    channelGroups = window.groupState.assign(channelGroups, idx, parseInt(e.target.value, 10));
-    persistChannelGroups();
+    lcStore.getState().assignGroup(idx, parseInt(e.target.value, 10));
     renderChannelConfig();
     return;
   }
@@ -1465,17 +941,13 @@ function wireLiveNameEdit(nameEl) {
   const commit = () => {
     const strip = channelConfig[idx];
     if (!strip || nameEl.textContent === original) return;
-    strip.label = nameEl.textContent.trim().slice(0, MAX_LABEL_LEN);
-    // Persist the label (#482) so it survives across monitor/live sessions,
-    // keyed by device + strip token (mono "0" / stereo "2-3").
-    const all = (setStore.getState().settings || {}).channelLabels || {};
-    const next = window.channelLabels.recordLabel(
-      all, selectedDeviceName(), window.armState.stripToken(strip), strip.label,
-    );
-    setStore.getState().updateSettings({ channelLabels: next });
+    // setStripLabel (#482) trims/caps the label and persists it keyed by
+    // device + strip token (mono "0" / stereo "2-3") — the store is the
+    // single source of truth for channelConfig now (TD-001 slice 6c, #701).
+    lcStore.getState().setStripLabel(idx, nameEl.textContent);
     // Reflect the resolved name (empty label falls back to the device name /
     // Ch N) and refresh the config row inputs to match.
-    nameEl.textContent = stripLabel(strip, liveChannelAt(idx), idx);
+    nameEl.textContent = stripLabel(channelConfig[idx], liveChannelAt(idx), idx);
     original = nameEl.textContent;
     renderChannelConfig();
   };
@@ -1569,14 +1041,17 @@ document.querySelectorAll('.mode-tab').forEach(tab => {
     // Live/Soundcheck replace the spectrum area with unrelated content and
     // Soundcheck has its own playback transport — don't leave the analyzed
     // file playing silently in the background with no visible control (#180).
-    if (mode === 'live' || mode === 'soundcheck') pauseTransportAudio();
+    if (mode === 'live' || mode === 'soundcheck') transport.pauseIfPlaying();
 
     document.querySelectorAll('.mode-tab').forEach(t => t.classList.remove('active'));
     tab.classList.add('active');
     // Set currentMode before the mode-specific work so a throw inside it
     // can't leave currentMode stale and lock the user out of navigating back
-    // via the same-tab guard (#177).
+    // via the same-tab guard (#177). liveCaptureStore.appMode mirrors it
+    // (TD-001 slice 6c, #701) — LiveWorkspace.tsx reads it to know when to
+    // show/hide #live-island and re-trigger the bridged board render.
     currentMode = mode;
+    lcStore.getState().setAppMode(mode);
 
     if (mode === 'reportcard') {
       // #177: the report card now shares the screen with the spectrum instead
@@ -1615,11 +1090,6 @@ let scDeviceChannels = 0;   // channel count of the selected output device (0 = 
 let scDevicesLoaded = false;
 let scPlaying = false;
 
-function scTime(s) {
-  if (!isFinite(s) || s < 0) s = 0;
-  const m = Math.floor(s / 60), sec = Math.floor(s % 60);
-  return `${m}:${sec < 10 ? '0' : ''}${sec}`;
-}
 function scShowStatus(msg) { const s = document.getElementById('sc-status'); s.textContent = msg; s.style.display = 'block'; }
 function scHideStatus() { document.getElementById('sc-status').style.display = 'none'; }
 
@@ -1743,7 +1213,7 @@ async function scPlay() {
   el.style.display = 'block'; el.textContent = '0:00 / 0:00';
   scRenderTracks(); // disable routing selects while playing
   scUpdateGuard();
-  setSpectrumState('empty', { text: 'Buffering…' });
+  specStore.getState().setPanelState('empty', 'Buffering…');
 }
 
 async function scStop() {
@@ -1758,10 +1228,11 @@ function scResetTransport() {
   document.getElementById('sc-elapsed').style.display = 'none';
   scRenderTracks();
   scUpdateGuard();
-  if (currentMode === 'soundcheck') setSpectrumState('empty', { text: 'Load a session and press Play to see per-track meters' });
+  if (currentMode === 'soundcheck') specStore.getState().setPanelState('empty', 'Load a session and press Play to see per-track meters');
 }
 
 function scRenderMeters(tracks) {
+  specStore.getState().setPanelState('meters'); // hands #spectrum-imperative back to this renderer
   const body = document.getElementById('spectrum-imperative');
   body.innerHTML = '<div class="meter-card sb-live-meters">' + (tracks || []).map((t) => {
     const rms = Number.isFinite(t.rms) ? t.rms : -120;
@@ -1822,35 +1293,36 @@ function syncSpectrumForMode(mode) {
     renderPreflight(); // repaint the checklist whenever the Live tab becomes visible
   } else if (mode === 'soundcheck') {
     title.textContent = 'Soundcheck · Meters';
-    if (!scPlaying) setSpectrumState('empty', { text: 'Load a session and press Play to see per-track meters' });
+    if (scPlaying) specStore.getState().setPanelState('meters'); // hands #spectrum-imperative back to this renderer
+    else specStore.getState().setPanelState('empty', 'Load a session and press Play to see per-track meters');
   } else if (mode === 'recent') {
     // Recent (#147) has no file-loading UI of its own — a tailored message
     // instead of the generic "Load a file…" copy the fallback branch below
     // would otherwise show (misleading here, since there's nothing to load).
     title.textContent = SPECTRUM_TITLE.curve;
-    if (!curAnalysis()) setSpectrumState('empty', { text: 'Select a recent analysis to load its report card' });
+    if (!curAnalysis()) specStore.getState().setPanelState('empty', 'Select a recent analysis to load its report card');
+    else specStore.getState().setPanelState('populated'); // returning to a data-backed tab shows the island again
   } else if (mode === 'guide') {
     // Build Guide (#367) has no file-loading UI of its own either — mirror
     // the `recent` tailored empty state so it doesn't show the misleading
     // generic "Load a file…" copy.
     title.textContent = SPECTRUM_TITLE.curve;
-    if (!curAnalysis()) setSpectrumState('empty', { text: 'Follow the build order, then load a recording to grade it' });
+    if (!curAnalysis()) specStore.getState().setPanelState('empty', 'Follow the build order, then load a recording to grade it');
+    else specStore.getState().setPanelState('populated');
   } else if (mode === 'dir') {
     // Directory (#270) batch-analyzes a folder — mirror the `recent`/`guide`
     // tailored empty state rather than the generic "Load a file…" copy.
     title.textContent = SPECTRUM_TITLE.curve;
-    if (!curAnalysis()) setSpectrumState('empty', { text: 'Choose a folder to analyze every recording in it' });
+    if (!curAnalysis()) specStore.getState().setPanelState('empty', 'Choose a folder to analyze every recording in it');
+    else specStore.getState().setPanelState('populated');
   } else {
-    // syncSpectrumChrome (below) sets the header to match what's drawn (curve
-    // vs meters) once there's data; seed the curve label for the pre-analysis
-    // empty state.
+    // spectrumChromeView (spectrum-chrome.ts) sets the header to match what's
+    // drawn (curve vs meters) once there's data; seed the curve label for the
+    // pre-analysis empty state.
     title.textContent = SPECTRUM_TITLE.curve;
-    if (!curAnalysis()) setSpectrumState('empty', { text: 'Load a file to see the spectrum' });
+    if (!curAnalysis()) specStore.getState().setPanelState('empty', 'Load a file to see the spectrum');
+    else specStore.getState().setPanelState('populated');
   }
-  // Shows/hides the React spectrum island vs #spectrum-imperative for this
-  // mode and refreshes its title/stats/ideal-profile chrome (TD-001 slice 4,
-  // #422) — a no-op when there's no spectrum data yet.
-  syncSpectrumChrome();
 }
 
 /* ══ File mode ══
@@ -1864,8 +1336,8 @@ window.runFileAnalysis = (fp) => anaStore.getState().startAnalysis(fp);
 
 // Coarse stage progress (#125) — the three stages run in parallel, so this
 // just checks off each stage's row as its subprocess returns. Registered
-// once at module scope; setSpectrumState('loading') (re)renders the rows
-// each run, so there's nothing stale to clear between runs.
+// once at module scope; setPanelState('loading') resets stagesDone on each
+// run, so there's nothing stale to clear between runs.
 sb.onAnalysisProgress((data) => {
   // A batch run (#270) fires this same event per file too — suppressed the
   // same way as the pushed analysis-result below, so a batch file's stage
@@ -1873,8 +1345,7 @@ sb.onAnalysisProgress((data) => {
   // analysis the user started on the Report Card tab.
   if (window.batchAnalysis.shouldSuppressPushedResult(batchRunning)) return;
   if (!data.stage || data.status !== 'done') return;
-  const row = document.querySelector(`#spectrum-body .stage-row[data-stage="${data.stage}"]`);
-  if (row) row.classList.add('done');
+  specStore.getState().markStageDone(data.stage);
 });
 
 // Replaces runFileAnalysis's DOM side effects — a single analysisStore
@@ -1905,23 +1376,23 @@ function syncReportCardChrome(state, prevState) {
 
   if (state.status !== prevState.status) {
     if (state.status === 'analyzing') {
-      pauseTransportAudio(); // don't let a previous file's playback bleed through the loading state (#180)
-      setSpectrumState('loading');
+      transport.pauseIfPlaying(); // don't let a previous file's playback bleed through the loading state (#180)
+      specStore.getState().setPanelState('loading');
     } else if (state.status === 'error') {
-      setSpectrumState('error', { text: state.analysisError || 'Analysis failed' });
+      specStore.getState().setPanelState('error', state.analysisError || 'Analysis failed');
     } else if (state.status === 'cancelled') {
       // Return to the pre-analysis idle state (no report card, no stuck
       // spinner). selectedFilePath is left untouched by cancelAnalysis, so
       // the user can retry without re-picking the file.
-      setSpectrumState('empty');
+      specStore.getState().setPanelState('empty');
     } else if (state.status === 'done') {
       // File input now lives in the Report Card tab's empty state (#203) —
-      // the card flips over the moment analysis succeeds; #spectrum-imperative
-      // clears in favor of the React island (syncSpectrumChrome shows it).
-      document.getElementById('spectrum-imperative').innerHTML = '';
-      syncSpectrumChrome();
+      // the card flips over the moment analysis succeeds. The store already
+      // flipped panelState to 'populated' via bridge.ts's
+      // setSpectrumFromAnalysis subscription, and idealProfilesStore already
+      // resynced via bridge.ts's currentAnalysis subscription (TD-001 slice
+      // 6b, #700) — nothing left to clear/sync here.
       updateStatsRow(state.currentAnalysis.sox, state.currentAnalysis.spectrum);
-      syncIdealProfile();
       if (curAnalysis()) persistSummary(getReportCardSource(), 'file');
     }
   }
@@ -2043,41 +1514,32 @@ document.getElementById('meter-interval').addEventListener('input', (e) => {
 });
 
 /* ── Monitor / Record toggle ── */
-// Apply a capture mode to the UI (used by both the toggle and applyRig, so the
-// two paths can't diverge).
+// Apply a capture mode (used by applyRig — the Source-panel Mode toggle is
+// now React-owned, LiveControls.tsx, and calls lcStore.getState().setLiveMode
+// directly, TD-001 slice 6c, #701). Either path's store write is picked up
+// by syncLiveCaptureMirror's subscription, which covers hideArmHint() and
+// the #live-island board repaint itself; renderChannelConfig() below just
+// re-syncs preflight.
 function setLiveMode(mode) {
-  liveMode = mode === 'record' ? 'record' : 'monitor';
-  document.querySelectorAll('#live-mode button').forEach((x) => x.classList.toggle('active', x.dataset.mode === liveMode));
-  document.getElementById('record-folder-row').style.display = liveMode === 'record' ? 'flex' : 'none';
-  // Arm controls (#43) are only meaningful in Record mode.
-  document.getElementById('tab-live').classList.toggle('capture-record', liveMode === 'record');
-  hideArmHint();
+  lcStore.getState().setLiveMode(mode);
   renderChannelConfig();
-  hydrateIcons(document.getElementById('live-mode'));
 }
 // Inline "arm at least one strip" hint near the Start button (#43).
 function showArmHint(msg) { const h = document.getElementById('arm-hint'); h.textContent = msg; h.style.display = 'block'; }
 function hideArmHint() { const h = document.getElementById('arm-hint'); if (h) h.style.display = 'none'; }
 
-// Single source of truth for the Start/Stop/Record transport buttons + the
-// header indicator + the status line, all driven by window.liveTransitionState's
-// pure phase model (#458) from the raw liveRunning/liveMode/capturePromoting
-// flags — start, stop, and promote-to-recording all funnel through here so
-// they can never paint diverging transport states. `meterRate`, when passed,
-// interpolates into the status line ("Recording · meters N/s"); omit it to
-// leave the current status text alone (e.g. the "Connecting…" placeholder).
+// The header #live-indicator (LIVE/REC pill) + #live-status text, driven by
+// window.liveTransitionState's pure phase model (#458) from the raw
+// liveRunning/liveMode/capturePromoting flags. The Start/Stop/Record
+// TRANSPORT BUTTONS themselves are React-owned now (LiveTransportControls,
+// TD-001 slice 6c, #701) and derive the same phase independently; this keeps
+// the two remaining out-of-scope pieces (the header pill, sitting outside
+// #tab-live; the status line, shared with rig-error text) in sync.
+// `meterRate`, when passed, interpolates into the status line ("Recording ·
+// meters N/s"); omit it to leave the current status text alone (e.g. the
+// "Connecting…" placeholder).
 function syncCaptureControls(meterRate) {
   const phase = window.liveTransitionState.capturePhase({ liveRunning, liveMode, promoting: capturePromoting });
-
-  document.getElementById('live-start-btn').style.display = phase === 'idle' ? 'inline-flex' : 'none';
-  document.getElementById('live-stop-btn').style.display = phase === 'idle' ? 'none' : 'inline-flex';
-
-  const recordView = window.liveTransitionState.recordButtonView(phase);
-  const recordBtn = document.getElementById('live-record-btn');
-  recordBtn.style.display = recordView.visible ? 'inline-flex' : 'none';
-  recordBtn.disabled = recordView.disabled;
-  recordBtn.textContent = recordView.label;
-  hydrateIcons(recordBtn);
 
   const indicator = window.liveTransitionState.captureIndicator(phase);
   document.querySelector('#live-indicator .live-txt').textContent = indicator.text;
@@ -2087,17 +1549,13 @@ function syncCaptureControls(meterRate) {
     document.getElementById('live-status').textContent = window.liveTransitionState.statusLabel(phase, meterRate);
   }
 }
-document.querySelectorAll('#live-mode button').forEach((b) => {
-  b.addEventListener('click', () => setLiveMode(b.dataset.mode));
-});
 // Name a new group via the shared dialog and push it onto channelGroups (#41).
 // Called from the workspace toolbar's #live-ws-new-group (#190).
 async function createChannelGroup() {
   const name = await rigDialog({ title: 'New group', value: '', confirmLabel: 'Create', withInput: true });
   const trimmed = (name || '').trim();
   if (!trimmed) return;
-  channelGroups = window.groupState.addGroup(channelGroups, trimmed.slice(0, 40));
-  persistChannelGroups();
+  lcStore.getState().addGroup(trimmed.slice(0, 40));
   renderChannelConfig();
 }
 
@@ -2109,8 +1567,7 @@ async function renameChannelGroup(g) {
   const name = await rigDialog({ title: 'Rename group', value: grp.name, confirmLabel: 'Rename', withInput: true });
   const trimmed = (name || '').trim();
   if (!trimmed) return;
-  channelGroups = window.groupState.renameGroup(channelGroups, g, trimmed.slice(0, 40));
-  persistChannelGroups();
+  lcStore.getState().renameGroup(g, trimmed.slice(0, 40));
   renderChannelConfig();
 }
 
@@ -2126,81 +1583,46 @@ async function deleteChannelGroup(g) {
     withInput: false,
   });
   if (!ok) return;
-  channelGroups = window.groupState.removeGroup(channelGroups, g);
-  persistChannelGroups();
+  lcStore.getState().removeGroup(g);
   renderChannelConfig();
 }
 
 // The effective default recording folder to show when no folder is explicitly
 // chosen (#482): the configured storageDir setting (#91), falling back to the
-// platform default — mirrors ipc/shared.ts's defaultRecordDir().
+// platform default — mirrors ipc/shared.ts's defaultRecordDir(). LiveControls.tsx
+// carries its own copy of this same logic for its React-owned #record-folder-path
+// rendering (TD-001 slice 6c, #701); this one is still used by applyRig below.
 function defaultRecordFolderText() {
   const s = setStore.getState().settings;
   return (s && s.storageDir && s.storageDir.trim()) || '~/Music/Sound Buddy';
 }
 
-document.getElementById('record-folder-btn').addEventListener('click', async () => {
-  const dir = await sb.openDirDialog();
-  if (dir) {
-    recordDir = dir;
-    document.getElementById('record-folder-path').textContent = dir;
-  }
-});
-
 /* ── Channel configuration ── */
 // The selected device's max input channels (0 = default device / unknown).
 function selectedDeviceChannels() {
-  return deviceChannelCount(document.getElementById('device-select').value, liveDevices);
+  return deviceChannelCount(lcStore.getState().selectedDevice, liveDevices);
 }
 
 // The selected device's name, resolved from liveDevices ('' = Default Device),
 // mirroring captureCurrentRig's device-by-name resolution below.
 function selectedDeviceName() {
-  const val = document.getElementById('device-select').value;
+  const val = lcStore.getState().selectedDevice;
   if (val === '') return '';
   const dev = liveDevices.find((d) => String(d.index) === val);
   return dev ? dev.name : '';
 }
 
-// The persisted channel labels (#482) saved for the currently selected device.
-function savedLabelsForDevice() {
-  return ((setStore.getState().settings || {}).channelLabels || {})[selectedDeviceName()] || {};
-}
-
 // The persisted instrument-profile overrides (#524) saved for the currently
-// selected device, mirroring savedLabelsForDevice above (#482).
+// selected device, mirroring liveCaptureStore.ts's withSavedLabels (#482).
 function savedInstrumentProfilesForDevice() {
   return ((setStore.getState().settings || {}).inputInstrumentProfiles || {})[selectedDeviceName()] || {};
 }
 
-// Overlay saved labels onto channelConfig for the current device (#482) —
-// never clobbers a label already present (e.g. loaded from a rig).
-function applySavedLabels() {
-  channelConfig = window.channelLabels.applyLabels(
-    channelConfig,
-    window.armState.allTokens(channelConfig),
-    savedLabelsForDevice(),
-  );
-}
-
-// The persisted channel groups (#483) saved for the currently selected device,
-// mirroring savedLabelsForDevice above (#482).
-function savedGroupsForDevice() {
-  return ((setStore.getState().settings || {}).channelGroups || {})[selectedDeviceName()] || [];
-}
-
-// Hydrate channelGroups from settings.json for the current device (#483).
-// Called from resetChannelConfig() right after applySavedLabels() so a device
-// switch (or app restart) restores both labels and group layout together.
-function hydrateChannelGroups() {
-  channelGroups = savedGroupsForDevice().map((g) => ({
-    name: g.name, members: (g.members || []).slice(), collapsed: !!g.collapsed,
-  }));
-}
-
-// Persist channelGroups (#483) as a full-map replace keyed by device — mirrors
-// channelLabels' write path (#482) exactly. Called from every group mutator
-// (create/rename/delete/assign/reorder/collapse) and from applyRig.
+// Persist the current channelGroups to settings.json for the selected device
+// (#483) — mirrors liveCaptureStore.ts's private persistGroups exactly. Only
+// applyRig needs this directly (every other group mutator routes through a
+// self-persisting store action) because it sets channelGroups via a direct
+// store write, bypassing those actions.
 function persistChannelGroups() {
   const all = (setStore.getState().settings || {}).channelGroups || {};
   const next = Object.assign({}, all, {
@@ -2217,53 +1639,37 @@ function usedChannelCount() {
 // Push a new mono strip onto channelConfig and re-render (#188). Called from
 // the workspace's #live-ws-add.
 function addChannelStrip() {
-  const n = selectedDeviceChannels();
-  const next = Math.min(usedChannelCount(), n - 1);
-  channelConfig.push({ kind: 'mono', a: next, b: Math.min(next + 1, n - 1), armed: true });
+  lcStore.getState().addStrip();
   renderChannelConfig();
 }
 
 // Remove a strip and re-render (#188). Called from the workspace's .live-ch-x;
 // callers may drive this down to zero strips so the workspace empty state
-// stays reachable.
+// stays reachable. removeStrip (#456, #668, #41) already reindexes/clears
+// measurementSource, selectedChannel, and prunes+persists channelGroups
+// atomically — only focusedInputIndex (#525, not store-owned) needs its own
+// reindex here.
 function removeChannelStrip(idx) {
-  // Reindex/clear the measurement source (#456) before the splice, using the
-  // pre-removal selection.
-  lcStore.getState().setMeasurementSource(measurementSourceAfterRemove(lcStore.getState().measurementSource, idx));
-  // Same reindex/clear semantics apply to the EQ pane's selection (#668) and
-  // the focused input (#525).
-  lcStore.getState().setSelectedChannel(measurementSourceAfterRemove(lcStore.getState().selectedChannel, idx));
   focusedInputIndex = measurementSourceAfterRemove(focusedInputIndex, idx);
-  channelConfig.splice(idx, 1);
-  // Drop the removed strip from any group and shift higher indices down so no
-  // dangling reference remains (#41).
-  channelGroups = window.groupState.pruneStrip(channelGroups, idx);
-  persistChannelGroups();
+  lcStore.getState().removeStrip(idx);
   renderChannelConfig();
 }
 
 // Reset the config to the device default: first ≤2 channels as mono strips,
 // then overlay any saved labels and groups for this device (#482, #483) —
-// covers device switches and refresh.
+// covers device switches and refresh. selectDevice (re-invoked for the
+// currently selected device) already does this seeding — single source of
+// truth for it now lives in liveCaptureStore.ts (TD-001 slice 6c, #701).
 function resetChannelConfig() {
-  const n = selectedDeviceChannels();
-  channelConfig = [];
-  for (let i = 0; i < Math.min(2, n); i++) channelConfig.push({ kind: 'mono', a: i, b: (i + 1) % Math.max(n, 1), armed: true });
-  applySavedLabels();
-  hydrateChannelGroups();
-  // Config is rebuilt on a device switch — old measurement-source indices are
-  // meaningless (#456). The EQ pane's selection (#668) is reset for the same
-  // reason.
-  lcStore.getState().setMeasurementSource(null);
-  lcStore.getState().setSelectedChannel(null);
+  lcStore.getState().selectDevice(lcStore.getState().selectedDevice);
   // Same reasoning applies to the focused input (#525) — it never dangles
-  // across a device swap.
+  // across a device swap. (measurementSource/selectedChannel are reset by
+  // selectDevice() itself.)
   focusedInputIndex = null;
   // A stale lastLiveChannels from the previous device must not leak into the
   // EQ pane (#668) on the next renderEqPane call — currentEqPaneChannels()
-  // falls back to it whenever it's non-null, so it has to be cleared here too,
-  // not just measurementSource/selectedChannel above.
-  lastLiveChannels = null;
+  // falls back to it whenever it's non-null, so it has to be cleared here too.
+  lcStore.getState().clearLastLiveChannels();
   renderChannelConfig();
 }
 
@@ -2271,24 +1677,15 @@ function resetChannelConfig() {
 // capture lock. The channel list, add, group, and arm controls now live solely
 // in the workspace (#192); this is the shared "config changed" entry point that
 // every mutator (add/remove/kind/source/group/arm/mode/rig) routes through.
+// The workspace board itself (#live-island) repaints via syncLiveCaptureMirror's
+// store subscription reacting to the store write each of those mutators already
+// made — not from this call (TD-001 slice 6c, #701).
 function renderChannelConfig() {
   // Re-assert the capture lock (#38): a running capture keeps the workspace frozen.
   if (liveRunning) setCaptureControlsLocked(true);
-  // Keep the persistent idle workspace in sync. A running capture owns the pane
-  // via renderLiveMeters on the rAF tick, so only re-render when idle.
-  if (currentMode === 'live' && !liveRunning) renderLiveWorkspace();
   // Preflight checklist (#373) reads channelConfig/device state, so it rides
   // the same "config changed" entry point as the workspace.
   renderPreflight();
-  renderMeasurementSource();
-}
-
-// Refresh the measurement-source picker (#456) from the current strip config
-// and store selection — rides the same "config changed" entry point as the
-// workspace/preflight so it stays in sync whenever strips or labels change.
-function renderMeasurementSource() {
-  document.getElementById('measurement-source').innerHTML =
-    measurementSourceOptionsHTML(channelConfig, lcStore.getState().measurementSource);
   renderMeasurementBadge();
 }
 
@@ -2308,14 +1705,15 @@ function renderMeasurementBadge() {
 // its own lock (setRigControlsEnabled) but is guarded here too, defensively.
 // measurement-source is excluded (#457): it's a renderer-side selection into
 // already-streaming tick data, not a stream.py argument, so switching it
-// mid-capture is safe and is the point of #457's second AC.
+// mid-capture is safe and is the point of #457's second AC. device-select/
+// device-refresh-btn/record-folder-btn/#live-mode buttons are React-owned now
+// (LiveControls.tsx) and derive `disabled` from isCapturing directly — not
+// swept here (TD-001 slice 6c, #701).
 function setCaptureControlsLocked(locked) {
   const set = (el) => { if (el) { el.disabled = locked; el.setAttribute('aria-disabled', String(locked)); } };
-  ['device-select', 'device-refresh-btn', 'record-folder-btn',
-    'meter-interval', 'window-secs', 'rig-select',
+  ['meter-interval', 'window-secs', 'rig-select',
     'live-ws-add', 'live-ws-new-group',
     'live-ws-arm-all', 'live-ws-disarm-all'].forEach((id) => set(document.getElementById(id)));
-  document.querySelectorAll('#live-mode button').forEach(set);
   // Workspace track rows (#188): Add track (above) + each row's remove, read-only
   // while a capture is running.
   document.querySelectorAll('#spectrum-body .live-ch-x').forEach(set);
@@ -2354,51 +1752,75 @@ function setDeviceHint(text, isError) {
   hint.style.display = 'block';
 }
 
+// Device <select>/refresh button/hint are React-owned now (LiveControls.tsx,
+// TD-001 slice 6c, #701) — this fetches the list and hands it to the store
+// (which itself seeds channelConfig/channelGroups for the resolved device),
+// then re-runs the inline-only remainder of the old reset (focusedInputIndex/
+// lastLiveChannels/preflight — see resetChannelConfig).
 async function loadDevices() {
-  const sel = document.getElementById('device-select');
-  const btn = document.getElementById('device-refresh-btn');
-  if (btn) btn.disabled = true;
-  sel.innerHTML = '<option value="">Scanning…</option>';
-  setDeviceHint('');
-
-  const result = await sb.listDevices();
-  sel.innerHTML = '';
-
-  const view = deviceListView(result);
-  liveDevices = view.devices;
-  for (const opt of view.options) {
-    // document.createElement('option') (not innerHTML) so a device name can
-    // never inject markup into the picker.
-    const el = document.createElement('option');
-    el.value = opt.value;
-    el.textContent = opt.label;
-    sel.appendChild(el);
-  }
-  setDeviceHint(view.hint ? view.hint.text : '', view.hint ? view.hint.isError : false);
-  if (btn) btn.disabled = false;
-
+  await lcStore.getState().loadDevices();
   // Seed the channel picker from the (default) device's channel count — only
   // once devices were actually found (mirrors the original early returns that
   // skipped this on every non-happy branch).
-  if (view.devices.length) resetChannelConfig();
+  if (lcStore.getState().devices.length) resetChannelConfig();
 
   // #460: keep the experimental secondary-device picker in sync with the fresh
   // device list (no-op DOM write when the flag is off, block is hidden).
   if (secondaryFlagOn()) populateSecondaryDevicePicker();
 }
 
-document.getElementById('device-refresh-btn').addEventListener('click', () => loadDevices());
-// Switching devices re-seeds the channel config to that device's channel count.
-document.getElementById('device-select').addEventListener('change', () => resetChannelConfig());
-// Measurement source picker (#456): normalize against the current strip count
-// so a stale selection ('' -> null, an index -> the resolved strip) never
-// lands in the store.
-document.getElementById('measurement-source').addEventListener('change', (e) => {
-  const value = e.target.value === '' ? null : parseInt(e.target.value, 10);
-  lcStore.getState().setMeasurementSource(normalizeMeasurementSource(value, channelConfig.length));
-  renderMeasurementBadge();
-  renderEqPane(currentEqPaneChannels());
-});
+// Bridged runtime powering LiveControls.tsx's device/measurement-source/mode/
+// record-folder/start-stop-record controls (TD-001 slice 6c, #701) — the
+// heavier orchestration (validation, playhead/waveform/rig-lock/lapCoaching/
+// session-offer side effects) stays here rather than moving into React,
+// since it's still tightly coupled to the not-yet-migrated DAW shell/
+// live-adjustments/preflight/rig surfaces (see the ADR in the #701 plan).
+window.liveCaptureRuntime = {
+  loadDevices,
+  selectDevice(value) {
+    void value; // store.selectDevice (called by LiveControls itself) already reseeds channelConfig/channelGroups reactively
+    focusedInputIndex = null;
+    lcStore.getState().clearLastLiveChannels();
+    renderPreflight();
+  },
+  // Measurement source picker (#456): normalize against the current strip
+  // count so a stale selection ('' -> null, an index -> the resolved strip)
+  // never lands in the store.
+  changeMeasurementSource(value) {
+    const parsed = value === '' ? null : parseInt(value, 10);
+    lcStore.getState().setMeasurementSource(normalizeMeasurementSource(parsed, channelConfig.length));
+    renderMeasurementBadge();
+    renderEqPane(currentEqPaneChannels());
+  },
+  async chooseRecordFolder() {
+    const dir = await sb.openDirDialog();
+    if (dir) lcStore.getState().setRecordDir(dir);
+  },
+  beforeStartCapture,
+  onCaptureStarting,
+  onCaptureStarted,
+  onCaptureStopping,
+  onCaptureStopped,
+  promoteToRecording,
+};
+
+// Bridged runtime powering LiveWorkspace.tsx's #live-island repaint timing
+// (TD-001 slice 6c, #701) — renderWorkspace() re-triggers whenever board
+// SHAPE changes (replacing the old per-mutation renderLiveWorkspace()/
+// renderLiveMeters() call sites); patchTick() is called by the mounted
+// live-meter-controller for every coalesced live tick. Both still delegate
+// to renderLiveMeters()/renderLiveWorkspace() unchanged internally — those
+// already own the patch-vs-rebuild decision, the DAW shell (#517) hand-off,
+// and the docked EQ pane / live-adjustments panel refresh.
+window.liveWorkspaceRuntime = {
+  renderWorkspace() {
+    if (liveRunning && lcStore.getState().lastTick) renderLiveMeters(lcStore.getState().lastTick);
+    else renderLiveWorkspace();
+  },
+  patchTick(win) {
+    renderLiveMeters(win);
+  },
+};
 
 // Docked live EQ pane resize (#668): drag the handle, or focus it and press
 // ArrowLeft/ArrowRight. The pane is docked to the right edge of #workspace
@@ -2439,28 +1861,45 @@ document.getElementById('measurement-source').addEventListener('change', (e) => 
   });
 })();
 
-document.getElementById('live-start-btn').addEventListener('click', async () => {
-  const device = document.getElementById('device-select').value || undefined;
-  const windowSecs = parseFloat(document.getElementById('window-secs').value);
-  const intervalSecs = parseInt(document.getElementById('meter-interval').value) / 1000;
-  const channels = channelTokens();
+// Start/Stop/Record buttons are React-owned now (LiveTransportControls,
+// TD-001 slice 6c, #701) — they call lcStore.getState().startCapture()/
+// stopCapture() directly for the payload+IPC round trip (which already builds
+// the exact same request this file's old inline handler did — device/
+// channels/mode/recordDir/arm/labels — from store state) and delegate the
+// surrounding side effects to the beforeStartCapture/onCaptureStarting/
+// onCaptureStarted/onCaptureStopping/onCaptureStopped functions below via the
+// window.liveCaptureRuntime bridge (see LiveControls.tsx's
+// startLiveCapture()/stopLiveCapture() for the exact call ordering — it
+// mirrors this file's old liveRunning=true-then-await-then-handle-result
+// shape precisely, since store.startCapture()/stopCapture() flip isCapturing
+// synchronously before their own await point).
 
-  // No configured tracks (#188): the workspace remove can drive channelConfig
-  // to zero, but stream.py silently falls back to its first device channels
-  // when given an empty channel list — block Start rather than start a
-  // capture the UI just showed as empty.
+// No configured tracks (#188): the workspace remove can drive channelConfig
+// to zero, but stream.py silently falls back to its first device channels
+// when given an empty channel list — block Start rather than start a
+// capture the UI just showed as empty. Record mode with nothing armed would
+// spawn an empty session — block that too (#43).
+function beforeStartCapture() {
   if (channelConfig.length === 0) {
-    showArmHint('Add at least one track before starting capture.');
-    return;
+    const reason = 'Add at least one track before starting capture.';
+    showArmHint(reason);
+    return { ok: false, reason };
   }
-  // Record mode with nothing armed would spawn an empty session — block it (#43).
   if (liveMode === 'record' && armedCount() === 0) {
-    showArmHint('Arm at least one strip to record.');
-    return;
+    const reason = 'Arm at least one strip to record.';
+    showArmHint(reason);
+    return { ok: false, reason };
   }
   hideArmHint();
+  return { ok: true };
+}
 
-  liveRunning = true;
+// Runs synchronously right after lcStore.getState().startCapture() flips
+// isCapturing true and resets liveWindows (before its own await resolves) —
+// the same point this file's old inline handler ran these side effects at,
+// right after `liveRunning = true`.
+function onCaptureStarting() {
+  const intervalSecs = parseInt(document.getElementById('meter-interval').value) / 1000;
   // Overwriting the previous state is the reset — the next capture starts
   // from zero (#518).
   playheadState = window.dawPlayheadState.start(Date.now());
@@ -2470,11 +1909,9 @@ document.getElementById('live-start-btn').addEventListener('click', async () => 
   waveformState = window.dawWaveformState.create();
   waveformBucketsPerSec = window.dawWaveformState.bucketsPerSecond(intervalSecs);
   waveformLaneStates = {};
-  liveWindows = [];
   sessionWindows = [];
   // A new capture must not inherit the previous session's cooldowns or active card (#612).
   lapCoaching = window.liveAdjustmentsState.createCoachingState();
-  syncLiveSource();
   syncLiveAdjustmentsPanel();
   // A live capture always wins over a loaded history entry (#147).
   anaStore.getState().setHistorySummary(null);
@@ -2491,26 +1928,14 @@ document.getElementById('live-start-btn').addEventListener('click', async () => 
   document.getElementById('live-status').style.display = 'block';
   document.getElementById('live-status').textContent = 'Connecting…';
   document.getElementById('spectrum-title').textContent = SPECTRUM_TITLE.live;
-  // Keep the persistent workspace up (#188) rather than blanking the pane —
-  // it now reads read-only (Add/remove locked) until the first real window
-  // arrives and the running board takes over.
-  renderLiveWorkspace();
+}
 
-  const result = await sb.startLive({
-    device, channels, windowSecs, intervalSecs,
-    mode: liveMode, recordDir: recordDir || undefined,
-    // Record mode: capture only the armed strips as session stems (#43).
-    arm: liveMode === 'record' ? armedTokens() : undefined,
-    // Record mode: carry display labels into stem filenames + session.json (#482).
-    labels: liveMode === 'record' ? channelConfig.map((s) => (s.label || '').trim()) : undefined,
-  });
-
-  if (!result.success) {
-    stopLive();
-    setSpectrumState('error', { text: result.error || 'Failed to start live capture' });
+function onCaptureStarted(result, meterRate) {
+  if (!result || !result.success) {
+    void stopLive();
+    specStore.getState().setPanelState('error', (result && result.error) || 'Failed to start live capture');
   } else {
-    const rate = Math.round(1 / intervalSecs);
-    syncCaptureControls(rate);
+    syncCaptureControls(meterRate);
     // Guided first-use setup (#294): starting a capture completes setup
     // permanently. Remove any rendered banner immediately rather than calling
     // renderChannelConfig(), which early-outs while liveRunning — the running
@@ -2519,10 +1944,7 @@ document.getElementById('live-start-btn').addEventListener('click', async () => 
     const b = document.querySelector('#spectrum-body .live-setup-banner');
     if (b) b.remove();
   }
-});
-
-document.getElementById('live-stop-btn').addEventListener('click', () => stopLive());
-document.getElementById('live-record-btn').addEventListener('click', () => promoteToRecording());
+}
 
 // Promote a running monitor session to a recording in place (#458): same
 // device, channels, groups, labels, and measurement source carry over
@@ -2531,7 +1953,10 @@ document.getElementById('live-record-btn').addEventListener('click', () => promo
 // for this slice), but the UI never makes the user rebuild the setup. On
 // failure the session drops to a stopped-but-configured state via stopLive()
 // (device/channels/groups/measurement source all preserved) rather than
-// attempting to resume monitoring — see the spec's non-goals.
+// attempting to resume monitoring — see the spec's non-goals. Stays a single
+// bridged function (LiveTransportControls' Record button calls it directly)
+// since its guard/backend-swap/failure-recovery shape doesn't decompose into
+// the same before/starting/started split Start does.
 async function promoteToRecording() {
   const guard = window.liveTransitionState.canPromoteToRecording({
     liveRunning, liveMode, promoting: capturePromoting, armedCount: armedCount(),
@@ -2542,12 +1967,11 @@ async function promoteToRecording() {
   }
   hideArmHint();
 
-  capturePromoting = true;
-  liveMode = 'record';
-  document.getElementById('tab-live').classList.toggle('capture-record', true);
+  lcStore.getState().setPromoting(true);
+  lcStore.getState().setLiveMode('record');
   syncCaptureControls();
 
-  const device = document.getElementById('device-select').value || undefined;
+  const device = lcStore.getState().selectedDevice || undefined;
   const windowSecs = parseFloat(document.getElementById('window-secs').value);
   const intervalSecs = parseInt(document.getElementById('meter-interval').value) / 1000;
   const channels = channelTokens();
@@ -2560,33 +1984,37 @@ async function promoteToRecording() {
     // Record mode: carry display labels into stem filenames + session.json (#482).
     labels: channelConfig.map((s) => (s.label || '').trim()),
   });
-  capturePromoting = false;
+  lcStore.getState().setPromoting(false);
 
   if (result.success) {
-    document.getElementById('record-folder-row').style.display = 'flex';
     syncCaptureControls(Math.round(1 / intervalSecs));
     renderMeasurementBadge();
   } else {
-    liveMode = 'monitor';
-    document.getElementById('tab-live').classList.toggle('capture-record', false);
-    setSpectrumState('error', {
-      text: result.error || 'Could not start recording. Monitoring stopped — press Start Capture to resume.',
-    });
-    stopLive();
+    lcStore.getState().setLiveMode('monitor');
+    specStore.getState().setPanelState('error', result.error || 'Could not start recording. Monitoring stopped — press Start Capture to resume.');
+    await stopLive();
     syncCaptureControls();
   }
 }
 
-async function stopLive() {
-  liveRunning = false;
-  // The failed-Start path also routes through here, so this covers both a
-  // normal stop and a start that never got going (#518).
+// Runs synchronously right after lcStore.getState().stopCapture() flips
+// isCapturing false (before its own await resolves) — the same point this
+// file's old inline handler ran these side effects at, right after
+// `liveRunning = false`. Also invoked directly by promoteToRecording's
+// failure path and onCaptureStarted's failed-start path (both call stopLive()
+// below, which wraps store.stopCapture() + this + onCaptureStopped together
+// for those two internal callers — LiveTransportControls' own Stop button
+// calls store.stopCapture() itself and this/onCaptureStopped via the bridge,
+// see LiveControls.tsx's stopLiveCapture()).
+function onCaptureStopping() {
   playheadState = window.dawPlayheadState.stop(playheadState, Date.now());
   stopPlayheadTicker();
   renderDawPlayhead(); // paint the frozen time
   setRigControlsEnabled(true);
   setCaptureControlsLocked(false); // re-enable config (also the failed-Start path) (#38)
-  const result = await sb.stopLive();
+}
+
+function onCaptureStopped(result) {
   document.getElementById('live-indicator').style.display = 'none';
   document.getElementById('live-status').style.display = 'none';
   syncCaptureControls();
@@ -2634,6 +2062,18 @@ async function stopLive() {
       showLiveNotEnoughData();
     }
   }
+}
+
+// Internal-only orchestration for the two call sites that stop a capture
+// without going through LiveTransportControls' own Stop button (a failed
+// Start, and a failed promote-to-recording) — wraps store.stopCapture() with
+// the same before/after split the button itself uses via the bridge.
+async function stopLive() {
+  const stopPromise = lcStore.getState().stopCapture();
+  onCaptureStopping();
+  const result = await stopPromise;
+  onCaptureStopped(result);
+  return result;
 }
 
 // #261: shown in place of the report-card offer when a monitor session
@@ -2808,26 +2248,29 @@ function applyRig(rig) {
   if (!rig) return;
 
   setLiveMode(rig.mode);
-
-  recordDir = rig.recordDir || '';
-  document.getElementById('record-folder-path').textContent = recordDir || defaultRecordFolderText();
+  lcStore.getState().setRecordDir(rig.recordDir || '');
 
   setSliderVal('meter-interval', rig.intervalMs);
   setSliderVal('window-secs', rig.windowSecs);
 
   const rec = window.rigReconcile.reconcileRigDevice(rig.deviceName, liveDevices);
-  document.getElementById('device-select').value = rec.index;
+  // Just the selectedDevice field — not lcStore.getState().selectDevice(),
+  // which also reseeds channelConfig/channelGroups to the device default;
+  // this function immediately overwrites both with the rig's own clamped
+  // values below, so that reseed would only be wasted (and reverted) work.
+  lcStore.setState({ selectedDevice: String(rec.index) });
   let notice = rec.found ? '' : `Rig device "${rig.deviceName}" not found — select a device.`;
 
   const clamp = window.rigReconcile.clampChannelConfig(rig.channelConfig || [], selectedDeviceChannels());
-  channelConfig = clamp.config.length ? clamp.config : [{ kind: 'mono', a: 0, b: 0 }];
+  const nextConfig = clamp.config.length ? clamp.config : [{ kind: 'mono', a: 0, b: 0 }];
   // Hydrate named groups (#41), dropping any member index beyond the (possibly
   // clamped) strip count so no group references a strip that isn't there.
-  channelGroups = (rig.groups || []).map((g) => ({
-    name: g.name, members: (g.members || []).filter((m) => m < channelConfig.length),
+  const nextGroups = (rig.groups || []).map((g) => ({
+    name: g.name, members: (g.members || []).filter((m) => m < nextConfig.length),
   }));
+  lcStore.setState({ channelConfig: nextConfig, channelGroups: nextGroups });
   // Old rigs without the field resolve to null (default) (#456).
-  lcStore.getState().setMeasurementSource(normalizeMeasurementSource(rig.measurementSource, channelConfig.length));
+  lcStore.getState().setMeasurementSource(normalizeMeasurementSource(rig.measurementSource, nextConfig.length));
   // The applied rig becomes this device's current layout (#483).
   persistChannelGroups();
   renderChannelConfig();
@@ -2964,8 +2407,14 @@ async function initRigs() {
   if (active) applyRig(rigList.find((r) => r.id === active));
   // Re-apply saved labels (#482): loadDevices() may have seeded channelConfig
   // before settingsStore.loadSettings() resolved, so re-overlay now that the
-  // store's settings are available.
-  applySavedLabels();
+  // store's settings are available. Overlays onto the CURRENT channelConfig
+  // (unlike lcStore.getState().selectDevice(), which would also reseed it to
+  // the device default) — a direct store write, same rationale as applyRig's
+  // selectedDevice write above.
+  const savedLabels = ((setStore.getState().settings || {}).channelLabels || {})[selectedDeviceName()] || {};
+  lcStore.setState({
+    channelConfig: window.channelLabels.applyLabels(channelConfig, window.armState.allTokens(channelConfig), savedLabels),
+  });
   renderChannelConfig();
 }
 
@@ -3141,7 +2590,7 @@ function scheduleDawWaveformRender() {
 /* ══ IPC event listeners ══ */
 sb.onLiveEvent((data) => {
   if (!data || data.error) {
-    if (data?.error) setSpectrumState('error', { text: `Live error: ${data.error}` });
+    if (data?.error) specStore.getState().setPanelState('error', `Live error: ${data.error}`);
     return;
   }
 
@@ -3162,9 +2611,14 @@ sb.onLiveEvent((data) => {
     return;
   }
 
-  // Every event (fast meter ticks + slower window ticks) drives the live view,
-  // coalesced to one repaint per animation frame.
-  if (currentMode === 'live') scheduleLiveMeters(data);
+  // Every event (fast meter ticks + slower window ticks) drives the live
+  // view — lcStore.getState().bindIpcEvents() (installed once by bridge.ts)
+  // owns tick ingestion into the store's lastTick/lastLiveChannels/
+  // liveWindows/boardShapeVersion (single source of truth, TD-001 slice 6c,
+  // #701); LiveWorkspace.tsx's live-meter-controller coalesces lastTick
+  // changes into one repaint per animation frame — this listener is reduced
+  // to the session-only concerns bindIpcEvents doesn't own (sessionWindows,
+  // DAW waveform peaks above, live-adjustments coaching below).
   // The room-analysis stats row reads the Room source. When the experimental
   // secondary source (#460) is active it owns the room, so the board tick must
   // not clobber the row — the measurement-event handler updates it instead.
@@ -3174,11 +2628,8 @@ sb.onLiveEvent((data) => {
   // Only the heavier window ticks (which carry masking + window #) accumulate
   // to feed the report card.
   if (data.type === 'window' || typeof data.window === 'number') {
-    liveWindows.push(data);
-    if (liveWindows.length > 10) liveWindows.shift();
     sessionWindows.push(data); // uncapped — see the declaration above (#261)
     document.getElementById('window-badge').textContent = `Window #${data.window}`;
-    syncLiveSource();
     lapCoaching = window.liveAdjustmentsState.advanceCoaching(
       lapCoaching,
       window.liveAdjustmentsState.allCoachingCandidates(
@@ -3292,7 +2743,9 @@ function startSecondaryReconnectPoll() {
 function afterSecondaryStateChange() {
   renderSecondaryStatus();
   renderMeasurementBadge();
-  syncLiveSource();
+  // The graded report-card source itself is kept in sync reactively by
+  // bridge.ts's cross-store subscription (it watches secondaryWindows/
+  // secondaryMeasurement alongside the board fields) — no explicit call here.
   renderEqPane(currentEqPaneChannels());
   if (lcStore.getState().secondaryMeasurement.status === 'disconnected' && secondaryFlagOn()) {
     startSecondaryReconnectPoll();
@@ -3354,12 +2807,12 @@ sb.onMeasurementEvent((data) => {
   if (data.measurementEnded) { afterSecondaryStateChange(); return; }
   if (!secondaryMeasurementActive()) { renderSecondaryStatus(); return; }
   // Active: the secondary mic owns the Room. Update the room stats every tick;
-  // refresh the badge + graded source on the heavier window ticks.
+  // refresh the badge on every tick too. The graded report-card source updates
+  // itself reactively (bridge.ts's cross-store subscription reacts to
+  // secondaryWindows, which bindMeasurementEvents() above only appends to on
+  // the same window ticks this used to gate an explicit syncLiveSource() on).
   if (data.channels && data.channels[0]) updateLiveStatsRow(data.channels[0]);
   renderMeasurementBadge();
-  if (data.type === 'window' || typeof data.window === 'number') {
-    syncLiveSource();
-  }
 });
 
 // A batch run (#270) also triggers this pushed event on every successful
@@ -3505,20 +2958,16 @@ async function initWhatsNew() {
 // the pure, unit-tested grading.js module (#130); the renderer calls through
 // window.grading below.
 
-// Builds the live-capture card's report-card source shape from the rolling
-// liveWindows buffer — mirrors getReportCardSource()'s old live fallback.
-// Written into analysisStore.liveSource wherever liveWindows changes (TD-001
-// slice 4, #422) so React (ReportCardIsland) can render it.
-function liveReportCardSource() {
-  // #460: grade from the Room feed — the board strip by default, the secondary
-  // mic channel 0 when active. roomFeed() returns the board windows/source/
-  // config unchanged when the flag is off, so this is byte-identical.
-  const f = roomFeed();
-  return lcLiveReportCardSource(f.windows, f.source, f.config);
-}
-function syncLiveSource() {
-  anaStore.getState().setLiveSource(liveReportCardSource());
-}
+// The live-capture card's report-card source (the rolling liveWindows buffer,
+// mirroring getReportCardSource()'s old live fallback) is now written into
+// analysisStore.liveSource by bridge.ts's cross-store subscription wherever
+// liveCaptureStore.liveWindows/measurementSource/channelConfig change (TD-001
+// slice 6c, #701 — replacing this file's old syncLiveSource()/
+// liveReportCardSource() glue). #460: that subscription is itself Room-feed
+// aware (roomFeed(), same as this file's badge/stats-row roomFeed() helper) —
+// it also reacts to secondaryWindows/secondaryMeasurement changes, so the
+// graded source switches to the secondary mic exactly like the badge does,
+// without a separate syncLiveSource() call site here.
 
 // getReportCardSource() survives only for its remaining inline consumers (the
 // AI narrative trigger, the file-analysis persistSummary call site) — reads
@@ -3658,7 +3107,7 @@ async function renderRecentServices() {
 // prevSummary (#259) feeds the "vs. last time" delta — only the newest
 // history entry (i === 0) gets one, compared against the second-newest.
 function loadHistoryEntry(summary, prevSummary) {
-  pauseTransportAudio(); // don't leave a previous file's playback running behind the summary card
+  transport.pauseIfPlaying(); // don't leave a previous file's playback running behind the summary card
   anaStore.getState().setHistorySummary(summary);
   // A history entry always wins over whatever was previously on the card
   // (ReportCardIsland's priority: currentAnalysis, else liveSource, else
@@ -3666,7 +3115,7 @@ function loadHistoryEntry(summary, prevSummary) {
   // the empty-state dropzone/Analyze button reset themselves (#206).
   anaStore.getState().clearAnalysis();
   anaStore.getState().setPrevSummary(prevSummary || null);
-  if (!liveRunning) { liveWindows = []; lapCoaching = window.liveAdjustmentsState.createCoachingState(); syncLiveSource(); document.getElementById('rc-offer').style.display = 'none'; document.getElementById('rc-not-enough').style.display = 'none'; }
+  if (!liveRunning) { lcStore.getState().clearLiveWindows(); lapCoaching = window.liveAdjustmentsState.createCoachingState(); document.getElementById('rc-offer').style.display = 'none'; document.getElementById('rc-not-enough').style.display = 'none'; }
   document.querySelector('.mode-tab[data-mode="reportcard"]').click();
 }
 
@@ -4116,11 +3565,9 @@ document.getElementById('reportcard-feedback-btn').addEventListener('click', () 
 document.getElementById('reportcard-clear-btn').addEventListener('click', () => {
   if (!curAnalysis()) return;
   // Release the <audio> element so a re-load of the SAME file starts at 0:00
-  // instead of resuming at its last scrub position (ensurePlaybackAudio keys
-  // on sbAudioPath === filePath).
-  releasePlaybackAudio();
-  sbAudioPath = null;
-  sbGeneration++; // invalidate any in-flight ensurePlaybackAudio
+  // instead of resuming at its last scrub position (spectrumTransport.ensure
+  // keys on the cached filePath).
+  transport.reset();
   // clearAnalysis() nulls currentAnalysis/selectedFilePath and resets status
   // to 'idle' — ReportCardIsland flips #rc-content → #rc-empty reactively,
   // and the dropzone/Analyze button reset themselves from the cleared store.
@@ -4129,8 +3576,8 @@ document.getElementById('reportcard-clear-btn').addEventListener('click', () => 
   // getReportCardSource() fall through to that stale live card instead of the
   // empty state (#206) — but leave an actively-running session's buffer alone
   // so its live meters don't blip empty.
-  if (!liveRunning) { liveWindows = []; lapCoaching = window.liveAdjustmentsState.createCoachingState(); syncLiveSource(); document.getElementById('rc-offer').style.display = 'none'; document.getElementById('rc-not-enough').style.display = 'none'; }
-  setSpectrumState('empty');
+  if (!liveRunning) { lcStore.getState().clearLiveWindows(); lapCoaching = window.liveAdjustmentsState.createCoachingState(); document.getElementById('rc-offer').style.display = 'none'; document.getElementById('rc-not-enough').style.display = 'none'; }
+  specStore.getState().setPanelState('empty');
 });
 
 // #208: while a live-capture card is showing, the file dropzone is hidden behind it
@@ -4331,22 +3778,6 @@ function renderTrialBanner(state) {
 // section keeps the header gear button wired to settingsStore.
 
 function aiEl(id) { return document.getElementById(id); }
-
-(() => {
-  curveEl('ideal-curve-edit-btn').addEventListener('click', openCurveEditor);
-  curveEl('curve-save-btn').addEventListener('click', saveCurveEditor);
-  curveEl('curve-capture-btn').addEventListener('click', captureCurrentCurveAsIdeal);
-  curveEl('curve-delete-btn').addEventListener('click', deleteCurveEditor);
-  curveEl('curve-reset-btn').addEventListener('click', () => setCurveEditorBands(BAND_META.map(() => 0)));
-  curveEl('curve-cancel-btn').addEventListener('click', closeCurveEditor);
-  curveEl('curve-dialog').addEventListener('click', (e) => { if (e.target === curveEl('curve-dialog')) closeCurveEditor(); });
-  curveEl('curve-name').addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') saveCurveEditor();
-  });
-  document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape' && curveEl('curve-dialog').style.display !== 'none') closeCurveEditor();
-  });
-})();
 
 /* ══ Feedback dialog (#144, in-app submission #472) ══ */
 // Send now POSTs message + category + optional contact email via
@@ -4549,18 +3980,16 @@ function closePhaseDoublingDialog() {
 }
 
 // #263: one-click "save this mix's tone as your target" from the report-card
-// CTA. Reuses the exact profileFromMeasuredCurve → upsert → persist path the
-// "Create new curve…" capture button uses; no new curve logic. Auto-names the
-// profile from the current recording (deterministic id → re-click updates it).
+// CTA. Reuses idealProfilesStore's saveMeasured — the exact
+// profileFromMeasuredCurve → upsert → persist path the "Create new curve…"
+// capture button uses; no new curve logic (TD-001 slice 6b, #700). Auto-names
+// the profile from the current recording (deterministic id → re-click updates it).
 async function saveMixAsTarget() {
   const analysis = curAnalysis();
-  if (!analysis || !ipHasCurve(analysis.spectrum)) return false;
+  if (!analysis || !hasUsableCurve(analysis.spectrum || {})) return false;
   const src = getReportCardSource();
   const meta = strongMixTargetMeta(src ? src.filename : '');
-  const profile = window.idealCurves.profileFromMeasuredCurve(analysis.spectrum.curve, IP_GRID_FREQS, meta);
-  if (!profile) return false;
-  const next = window.idealCurves.upsertProfile(customIdealProfiles, profile);
-  return persistCustomIdealProfiles(next, `custom:${profile.id}`);
+  return window.rendererStores.idealProfiles.getState().saveMeasured(analysis.spectrum.curve, meta);
 }
 
 // Bridges ReportCard.tsx's phase-doubling/feedback-ringout callout buttons to
@@ -4624,13 +4053,8 @@ window.inlineDialogs = { openPhaseDoublingDialog, openFeedbackRingout, saveMixAs
 /* ══ Init ══ */
 (async () => {
   await setStore.getState().loadSettings();
-  const s = setStore.getState().settings;
-  if (s && typeof s.idealProfile === 'string') idealProfileId = s.idealProfile;
-  customIdealProfiles = window.idealCurves
-    ? window.idealCurves.normalizeProfiles(s && s.customIdealProfiles, IP_GRID_FREQS)
-    : [];
-  initIdealProfileSelect();
-  syncIdealProfile();
+  // idealProfilesStore hydration (idealProfileId/customIdealProfiles) now
+  // flows from bridge.ts's settings subscription (TD-001 slice 6b, #700).
   // Reflect the effective default record folder (#482) now that settings have
   // loaded — root-markup.html's static text is only the cold-boot placeholder.
   if (!recordDir) document.getElementById('record-folder-path').textContent = defaultRecordFolderText();
@@ -4646,7 +4070,7 @@ syncReportCardChrome(anaStore.getState(), anaStore.getState());
 syncSingleColumn();
 
 hydrateIcons(document);
-setSpectrumState('empty', { text: 'Load a file to see the spectrum' });
+specStore.getState().setPanelState('empty'); // store default text ('Load a file to see the spectrum') is identical
 // Load devices first so a saved rig can reconcile its device by name and clamp
 // channels against the real device list; then apply the active rig (if any).
 loadDevices().then(initRigs, initRigs);
