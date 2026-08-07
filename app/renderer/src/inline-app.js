@@ -1144,7 +1144,10 @@ document.getElementById('dir-analyze-btn').addEventListener('click', async () =>
   } finally {
     batchRunning = false;
     renderDirEmptyState();
-    await renderRecentServices();
+    // RecentServicesPanel.tsx (TD-001 slice 6e, #703) re-fetches on every
+    // appMode transition into 'recent' — the Directory tab (batch analysis
+    // runs here) and Recent are mutually exclusive, so there's no longer a
+    // stale-list case for this batch-completion refresh to cover.
   }
 });
 
@@ -2074,80 +2077,9 @@ async function initWhatsNew() {
 // window.reportCardChrome bridge (App.tsx) — same pattern as
 // window.modeSwitch.
 
-/* ══ Recent Services (#147) — last 10 persisted summaries ══ */
-// The summaries backing the currently-rendered #recent-list, indexed the same
-// as the rows, so a row click reads its record straight from here instead of
-// re-fetching.
-let recentSummaries = [];
-
-async function renderRecentServices() {
-  const list = document.getElementById('recent-list');
-  const empty = document.getElementById('recent-empty');
-
-  let res;
-  try {
-    res = await sb.listAnalysisSummaries();
-  } catch (err) {
-    console.warn('listAnalysisSummaries failed', err);
-    res = null;
-  }
-
-  // Main already caps this list to 10 (listAnalysisSummaries); slice defensively
-  // so the renderer never shows more even if that contract changes.
-  recentSummaries = (res && res.success && Array.isArray(res.summaries)) ? res.summaries.slice(0, 10) : [];
-
-  if (recentSummaries.length === 0) {
-    list.innerHTML = '';
-    empty.style.display = 'block';
-    return;
-  }
-  empty.style.display = 'none';
-
-  list.innerHTML = recentSummaries.map((s, i) => {
-    // gradeLetter is read back off a disk-stored record (#147) — escape it even
-    // in this attribute position, not just as text content, so a crafted record
-    // (e.g. a shared/synced storage folder written to by another install)
-    // can't break out of the style attribute and inject markup.
-    const safeGrade = escapeHtml(s.gradeLetter);
-    // Literal string, never interpolating s.source (#261) — the only two values
-    // written by save-analysis-summary are 'file' (omitted) and 'live'. Mirrors
-    // recent-services.rowHtml, which is the extracted-but-not-yet-wired copy of
-    // this markup (#395 folds the two together).
-    const sourceHtml = s.source === 'live'
-      ? '<span class="recent-source recent-source-live">Live</span>'
-      : '';
-    return `
-    <div class="dir-item recent-row" data-idx="${i}">
-      <span class="recent-grade" style="color:var(--grade-${(s.gradeLetter || '').toLowerCase().replace(/[^a-z]/g, '')})">${safeGrade}</span>${sourceHtml}
-      <span class="dir-name">${escapeHtml(s.sourceFilename)}</span>
-      <span class="recent-date">${escapeHtml(new Date(s.date).toLocaleString())}</span>${s.note ? `<div class="recent-note">${escapeHtml(s.note)}</div>` : ''}
-    </div>`;
-  }).join('');
-
-  list.querySelectorAll('.recent-row').forEach((row) => {
-    row.addEventListener('click', () => {
-      const i = parseInt(row.dataset.idx, 10);
-      loadHistoryEntry(recentSummaries[i], i === 0 ? recentSummaries[1] || null : null);
-    });
-  });
-}
-
-// Loads a stored summary into the report card view without re-running any
-// analysis — the row's record is all the report card ever reads (#147).
-// prevSummary (#259) feeds the "vs. last time" delta — only the newest
-// history entry (i === 0) gets one, compared against the second-newest.
-function loadHistoryEntry(summary, prevSummary) {
-  transport.pauseIfPlaying(); // don't leave a previous file's playback running behind the summary card
-  anaStore.getState().setHistorySummary(summary);
-  // A history entry always wins over whatever was previously on the card
-  // (ReportCardIsland's priority: currentAnalysis, else liveSource, else
-  // historySummary) — clearAnalysis() also resets selectedFilePath/status, so
-  // the empty-state dropzone/Analyze button reset themselves (#206).
-  anaStore.getState().clearAnalysis();
-  anaStore.getState().setPrevSummary(prevSummary || null);
-  if (!liveRunning) { lcStore.getState().clearLiveWindows(); lapCoaching = window.liveAdjustmentsState.createCoachingState(); document.getElementById('rc-offer').style.display = 'none'; document.getElementById('rc-not-enough').style.display = 'none'; }
-  document.querySelector('.mode-tab[data-mode="reportcard"]').click();
-}
+// renderRecentServices/loadHistoryEntry are gone — RecentServicesPanel.tsx
+// (TD-001 slice 6e, #703) ports them verbatim (loadHistoryEntry calls
+// mode-switch.ts#switchMode directly now, not a simulated tab click).
 
 /* ══ Rough Pass / Contextual Pass toggle (#365) — workflow-phase reminder
    banner atop the Build Guide tab. Phase persists in sessionStorage (resets

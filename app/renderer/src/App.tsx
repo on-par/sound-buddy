@@ -67,6 +67,7 @@ import * as modeSwitch from './mode-switch';
 import * as reportCardChrome from './report-card-chrome';
 import ReportCardToolbar from './ReportCardToolbar';
 import UpgradeMomentum from './UpgradeMomentum';
+import RecentServicesPanel from './RecentServicesPanel';
 import { installStoreBridge } from './stores/bridge';
 
 // Boot scripts in their original document order (#303): the 20 UMD helpers
@@ -202,6 +203,7 @@ export default function App() {
       {booted && createPortal(<ModeTabs />, document.getElementById('mode-tabs')!)}
       {booted && createPortal(<ReportCardToolbar />, document.getElementById('rc-toolbar')!)}
       {booted && createPortal(<UpgradeMomentum />, document.getElementById('rc-upgrade-island')!)}
+      {booted && createPortal(<RecentServicesPanel />, document.getElementById('tab-recent')!)}
     </>
   );
 }
