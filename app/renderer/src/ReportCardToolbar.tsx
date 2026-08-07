@@ -12,6 +12,7 @@ import { useAnalysisStore } from './stores/analysisStore';
 import { useSettingsStore } from './stores/settingsStore';
 import { useSpectrumStore } from './stores/spectrumStore';
 import { useLiveCaptureStore } from './stores/liveCaptureStore';
+import { useFeedbackDialogStore } from './stores/feedbackDialogStore';
 import { spectrumTransport } from './spectrum-transport';
 import { resolveReportCardChromeSource, reportCardChromeView, getReportCardSource, persistSummary } from './report-card-chrome';
 import { iconSvg, buildMetricRows, type ReportCardSource, type GradingPillApi } from './report-card';
@@ -35,7 +36,6 @@ interface AnalyzeSourcePickerApi {
   open(): void;
 }
 interface InlineDialogsApi {
-  openFeedbackDialog?(): void;
   openGradeOwnGuide?(): void;
 }
 interface LiveCaptureRunningApi {
@@ -239,7 +239,7 @@ export default function ReportCardToolbar(): JSX.Element {
           id="reportcard-feedback-btn"
           dangerouslySetInnerHTML={{ __html: iconSvg('info', 16) + 'Send Feedback' }}
           /* c8 ignore next -- click dispatch, no jsdom */
-          onClick={() => getInlineDialogs()?.openFeedbackDialog?.()}
+          onClick={() => useFeedbackDialogStore.getState().open()}
         />
         <button
           type="button"

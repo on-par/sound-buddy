@@ -2088,129 +2088,10 @@ document.querySelectorAll('[data-license-open]').forEach((el) =>
 
 function aiEl(id) { return document.getElementById(id); }
 
-/* ══ Feedback dialog (#144, in-app submission #472) ══ */
-// Send now POSTs message + category + optional contact email via
-// window.soundBuddy.submitFeedback (validated/built by window.feedbackForm,
-// #472's pure logic module). The checkbox stays local-only: it reveals the
-// log file in Finder at check-time so the user can attach it to a support
-// email themselves — it is never uploaded automatically.
-const FEEDBACK_DIAG_REVEALED_TEXT = 'Your log file is now selected in Finder. It is never uploaded — attach it to an email to support@soundbuddy.online if you’d like us to see it.';
-const FEEDBACK_DIAG_MISSING_TEXT = 'No diagnostic log exists yet — try again after using the app.';
-const FEEDBACK_DIAG_ERROR_TEXT = 'Could not reveal your log file — try unchecking and checking the box again.';
-const FEEDBACK_SUCCESS_CLOSE_DELAY_MS = 1200;
-
-let feedbackCategoriesPopulated = false;
-
-function populateFeedbackCategories() {
-  if (feedbackCategoriesPopulated) return;
-  const select = aiEl('feedback-category');
-  select.innerHTML = window.feedbackForm.CATEGORIES.map(
-    (c) => `<option value="${escapeHtml(c.id)}">${escapeHtml(c.label)}</option>`
-  ).join('');
-  feedbackCategoriesPopulated = true;
-}
-
-function setFeedbackStatus(text) {
-  aiEl('feedback-status').textContent = text || '';
-}
-
-function openFeedbackDialog() {
-  populateFeedbackCategories();
-  aiEl('feedback-category').value = 'bug';
-  aiEl('feedback-message').value = '';
-  aiEl('feedback-email').value = '';
-  aiEl('feedback-attach-diagnostics').checked = false;
-  aiEl('feedback-dialog-email-instead').style.display = 'none';
-  aiEl('feedback-dialog-send').disabled = false;
-  const hint = aiEl('feedback-diag-hint');
-  hint.style.display = 'none';
-  hint.textContent = '';
-  setFeedbackStatus('');
-  aiEl('feedback-dialog').style.display = 'flex';
-}
-
-function closeFeedbackDialog() {
-  aiEl('feedback-dialog').style.display = 'none';
-}
-
-async function onFeedbackAttachToggle() {
-  const checkbox = aiEl('feedback-attach-diagnostics');
-  const hint = aiEl('feedback-diag-hint');
-  if (!checkbox.checked) {
-    hint.style.display = 'none';
-    return;
-  }
-  let r;
-  try { r = await window.soundBuddy.revealDiagnostics(); }
-  catch { r = null; }
-  // The checkbox may have been unchecked again while the reveal was in flight.
-  if (!checkbox.checked) return;
-  // Distinguish "no log file yet" (r.missing) from an unexpected IPC/main-process
-  // failure (r is null/malformed) — mislabeling the latter as "no log yet" would
-  // send the user chasing app activity instead of retrying the checkbox.
-  if (r && r.revealed) hint.textContent = FEEDBACK_DIAG_REVEALED_TEXT;
-  else if (r && r.missing) hint.textContent = FEEDBACK_DIAG_MISSING_TEXT;
-  else hint.textContent = FEEDBACK_DIAG_ERROR_TEXT;
-  hint.style.display = '';
-}
-
-function feedbackEmailInstead() {
-  void window.soundBuddy.openFeedback();
-  closeFeedbackDialog();
-}
-
-async function sendFeedback() {
-  const fb = window.feedbackForm;
-  const raw = {
-    message: aiEl('feedback-message').value,
-    category: aiEl('feedback-category').value,
-    contactEmail: aiEl('feedback-email').value,
-  };
-
-  const validation = fb.validate(raw);
-  if (!validation.ok) {
-    setFeedbackStatus(validation.error);
-    return;
-  }
-
-  aiEl('feedback-dialog-send').disabled = true;
-  aiEl('feedback-dialog-email-instead').style.display = 'none';
-  setFeedbackStatus('Sending…');
-
-  let result;
-  try {
-    result = await window.soundBuddy.submitFeedback(fb.buildSubmission(raw));
-  } catch {
-    result = {
-      ok: false,
-      retryable: true,
-      error: 'Could not reach the feedback service — check your internet connection and try again.',
-    };
-  }
-
-  if (result && result.ok) {
-    setFeedbackStatus(fb.resultStatus(result).text);
-    setTimeout(closeFeedbackDialog, FEEDBACK_SUCCESS_CLOSE_DELAY_MS);
-    return;
-  }
-
-  const status = fb.resultStatus(result);
-  setFeedbackStatus(status.text);
-  aiEl('feedback-dialog-send').disabled = false;
-  aiEl('feedback-dialog-email-instead').style.display = status.retryable ? 'none' : '';
-}
-
-(() => {
-  aiEl('feedback-dialog-cancel').addEventListener('click', closeFeedbackDialog);
-  aiEl('feedback-dialog-send').addEventListener('click', sendFeedback);
-  aiEl('feedback-dialog-email-instead').addEventListener('click', feedbackEmailInstead);
-  aiEl('feedback-attach-diagnostics').addEventListener('change', onFeedbackAttachToggle);
-  aiEl('feedback-dialog').addEventListener('click', (e) => { if (e.target === aiEl('feedback-dialog')) closeFeedbackDialog(); });
-  document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape' && aiEl('feedback-dialog').style.display !== 'none') closeFeedbackDialog();
-  });
-  window.soundBuddy.onOpenFeedbackDialog(() => openFeedbackDialog());
-})();
+// Feedback dialog (#144, in-app submission #472) is gone —
+// stores/feedbackDialogStore.ts + FeedbackDialog.tsx (TD-001 slice 6f, #704)
+// port openFeedbackDialog/closeFeedbackDialog/onFeedbackAttachToggle/
+// feedbackEmailInstead/sendFeedback verbatim.
 
 /* ══ Actionable path to grading a real service (#142, reworked #295) ══ */
 function openGuideDialog() {
@@ -2307,7 +2188,7 @@ async function saveMixAsTarget() {
 // the still-inline dialogs they open (TD-001 slice 4, #422).
 // openFeedbackDialog/openGuideDialog (TD-001 slice 6e, #703) join this
 // bridge for ReportCardToolbar.tsx's Send Feedback / Grade-own buttons.
-window.inlineDialogs = { openPhaseDoublingDialog, openFeedbackRingout, saveMixAsTarget, openBuildGuide, openFeedbackDialog, openGradeOwnGuide: openGuideDialog };
+window.inlineDialogs = { openPhaseDoublingDialog, openFeedbackRingout, saveMixAsTarget, openBuildGuide, openGradeOwnGuide: openGuideDialog };
 
 (() => {
   aiEl('phase-doubling-close').addEventListener('click', closePhaseDoublingDialog);
