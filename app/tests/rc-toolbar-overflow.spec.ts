@@ -35,14 +35,16 @@ async function resizeTo(width: number): Promise<void> {
 }
 
 // reportcard-load-btn is only shown by the app itself once a live-capture
-// card is on screen (inline-app.js's syncReportCardChrome, driven by
-// analysisStore.liveSource) — this test forces it visible directly to check
-// the toolbar's worst-case (all 6 actions shown) layout without spinning up
-// a real live session. Boot triggers a handful of one-time async store
-// settles (settings hydration, device enumeration) that can re-run
-// syncReportCardChrome and reset the inline override back to `display:none`
-// before this test gets to use it — reapply right before each consumer
-// rather than trusting a single override to survive the whole test.
+// card is on screen (ReportCardToolbar.tsx renders style={{display:
+// view.loadVisible ? '' : 'none'}}, driven by report-card-chrome.ts's
+// reportCardChromeView(analysisStore state)) — this test forces it visible
+// directly to check the toolbar's worst-case (all 6 actions shown) layout
+// without spinning up a real live session. Boot triggers a handful of
+// one-time async store settles (settings hydration, device enumeration)
+// that can re-render ReportCardToolbar and reset the inline override back
+// to `display:none` before this test gets to use it — reapply right before
+// each consumer rather than trusting a single override to survive the whole
+// test.
 async function forceLoadBtnVisible(): Promise<void> {
   await win.evaluate(() => {
     (document.getElementById('reportcard-load-btn') as HTMLElement).style.display = '';
