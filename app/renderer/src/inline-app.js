@@ -111,7 +111,8 @@ const WAVEFORM_COLORS = {
 // board; a group header collapses to a compact live-summary row (#483), and
 // both group order and per-group member order are drag/keyboard-reorderable.
 // Persisted per-device in settings.json (#483, mirroring #482's channelLabels)
-// and also saved into rigs (Pro) via captureCurrentRig/applyRig.
+// and also saved into rigs (Pro) via rig-panel.ts's captureCurrentRigSnapshot/
+// applyRigPatch (TD-001 slice 6d, #702).
 let channelGroups = [];
 // Drag-reorder source (#483): { type:'group'|'strip', index } set on dragstart,
 // cleared on drop/dragend. Module-level because dragover/drop fire on whatever
@@ -207,7 +208,6 @@ const {
   veqLoudestIdx, veqBandView, veqValBottom,
   heatmapSVG, miniCurveSVG, fmtDur, timeAxisHTML, classLabel,
   patchGridBarsAndBandLabels, patchBarsAndLabels, hasUsableCurve,
-  formatClock: scTime,
 } = window.spectrumDisplay;
 
 // SPECTRUM_TITLE (TD-001 slice 6a, #695) — inline-app.js still writes
@@ -1082,197 +1082,9 @@ document.querySelectorAll('.mode-tab').forEach(tab => {
   });
 });
 
-/* ── Virtual Soundcheck (#46) ── */
-let scManifest = null;      // loaded session.json manifest
-let scSessionDir = null;    // chosen session folder
-let scRoutes = [];          // per-track output channel arrays ([c] mono / [l,r] stereo)
-let scDeviceChannels = 0;   // channel count of the selected output device (0 = default)
-let scDevicesLoaded = false;
-let scPlaying = false;
-
-function scShowStatus(msg) { const s = document.getElementById('sc-status'); s.textContent = msg; s.style.display = 'block'; }
-function scHideStatus() { document.getElementById('sc-status').style.display = 'none'; }
-
-async function scLoadDevices() {
-  const sel = document.getElementById('sc-device-select');
-  try {
-    const result = await sb.listOutputDevices();
-    const devices = (result && result.devices) || [];
-    sel.innerHTML = '<option value="">Default output</option>'
-      + devices.map((d) => `<option value="${d.index}" data-ch="${d.channels}">${escapeHtml(d.name)} (${d.channels}ch)</option>`).join('');
-  } catch (err) {
-    sel.innerHTML = '<option value="">Default output</option>';
-  }
-  scDevicesLoaded = true;
-  scSyncDeviceChannels();
-}
-function scSyncDeviceChannels() {
-  const sel = document.getElementById('sc-device-select');
-  const opt = sel.options[sel.selectedIndex];
-  scDeviceChannels = opt && opt.dataset.ch ? parseInt(opt.dataset.ch, 10) : 0;
-  scRenderTracks();
-  scUpdateMixdownNotice();
-  scUpdateGuard();
-}
-
-async function scChooseSession() {
-  const dir = await sb.openDirDialog();
-  if (!dir) return;
-  const result = await sb.readSession(dir);
-  if (!result || !result.success) { scShowStatus((result && result.error) || 'Could not read that session.'); return; }
-  scHideStatus();
-  scSessionDir = dir;
-  scManifest = result.manifest;
-  scRoutes = window.playbackRouting.defaultRoutes(scManifest.tracks);
-  const nameEl = document.getElementById('sc-session-name');
-  nameEl.textContent = dir.split('/').pop();
-  nameEl.style.display = 'block';
-  scRenderTracks();
-  scUpdateMixdownNotice();
-  scUpdateGuard();
-}
-
-// Output-channel options up to the device's channel count (min 2 so a
-// default-output session can still address a stereo pair before enumeration).
-function scChannelOptions(selectedBase, kind) {
-  const max = Math.max(scDeviceChannels || 2, kind === 'stereo' ? 2 : 1);
-  let html = '';
-  if (kind === 'stereo') {
-    for (let c = 0; c + 1 < max; c++) html += `<option value="${c}"${c === selectedBase ? ' selected' : ''}>Ch ${c + 1}-${c + 2}</option>`;
-  } else {
-    for (let c = 0; c < max; c++) html += `<option value="${c}"${c === selectedBase ? ' selected' : ''}>Ch ${c + 1}</option>`;
-  }
-  return html;
-}
-
-function scRenderTracks() {
-  const wrap = document.getElementById('sc-tracks');
-  if (!scManifest || !scManifest.tracks || !scManifest.tracks.length) {
-    wrap.innerHTML = '<div class="sc-empty">Choose a session folder to load its tracks.</div>';
-    return;
-  }
-  wrap.innerHTML = scManifest.tracks.map((t, i) => {
-    const stereo = t.kind === 'stereo';
-    const r = scRoutes[i] || [0];
-    const label = t.label || `Track ${i + 1}`;
-    return `<div class="sc-track" data-idx="${i}">
-      <span class="sc-track-name" title="${escapeHtml(label)}">${escapeHtml(label)}</span>
-      <span class="sc-badge">${stereo ? 'Stereo' : 'Mono'}</span>
-      <select class="sc-route" data-idx="${i}" data-kind="${stereo ? 'stereo' : 'mono'}"${scPlaying ? ' disabled' : ''}>${scChannelOptions(r[0], t.kind)}</select>
-    </div>`;
-  }).join('');
-  wrap.querySelectorAll('.sc-route').forEach((sel) => {
-    sel.addEventListener('change', (e) => {
-      const i = parseInt(e.target.dataset.idx, 10);
-      const base = parseInt(e.target.value, 10);
-      scRoutes[i] = e.target.dataset.kind === 'stereo' ? [base, base + 1] : [base];
-      scUpdateMixdownNotice();
-      scUpdateGuard();
-    });
-  });
-}
-
-function scUpdateMixdownNotice() {
-  const notice = document.getElementById('sc-mixdown-notice');
-  if (!scManifest) { notice.style.display = 'none'; return; }
-  const master = document.getElementById('sc-master-toggle').checked;
-  // Default output (unknown channel count) → let the backend decide and report a
-  // `mixdown` event; only pre-warn when a concrete device is too small, or master.
-  const tooSmall = scDeviceChannels > 0 && window.playbackRouting.needsMixdown(scRoutes, scDeviceChannels, false);
-  if (master || tooSmall) {
-    const req = window.playbackRouting.requiredChannels(scRoutes);
-    notice.textContent = master
-      ? 'Playing a stereo master mixdown.'
-      : `The selected output has ${scDeviceChannels} channels but the routing needs ${req} — playback folds to a stereo master mixdown.`;
-    notice.style.display = 'block';
-  } else {
-    notice.style.display = 'none';
-  }
-}
-
-function scUpdateGuard() {
-  document.getElementById('sc-play-btn').disabled = !(scManifest && scDevicesLoaded && !scPlaying);
-}
-
-async function scPlay() {
-  if (!scManifest) return;
-  scHideStatus();
-  const master = document.getElementById('sc-master-toggle').checked;
-  const deviceVal = document.getElementById('sc-device-select').value;
-  const result = await sb.startPlayback({
-    sessionDir: scSessionDir,
-    device: deviceVal || undefined,
-    route: window.playbackRouting.routeSpec(scRoutes),
-    master: master || undefined,
-  });
-  if (result && result.success === false) { scShowStatus(result.error || 'Could not start playback.'); return; }
-  scPlaying = true;
-  document.getElementById('sc-play-btn').style.display = 'none';
-  document.getElementById('sc-stop-btn').style.display = 'inline-flex';
-  const el = document.getElementById('sc-elapsed');
-  el.style.display = 'block'; el.textContent = '0:00 / 0:00';
-  scRenderTracks(); // disable routing selects while playing
-  scUpdateGuard();
-  specStore.getState().setPanelState('empty', 'Buffering…');
-}
-
-async function scStop() {
-  await sb.stopPlayback();
-  scResetTransport();
-}
-
-function scResetTransport() {
-  scPlaying = false;
-  document.getElementById('sc-play-btn').style.display = 'inline-flex';
-  document.getElementById('sc-stop-btn').style.display = 'none';
-  document.getElementById('sc-elapsed').style.display = 'none';
-  scRenderTracks();
-  scUpdateGuard();
-  if (currentMode === 'soundcheck') specStore.getState().setPanelState('empty', 'Load a session and press Play to see per-track meters');
-}
-
-function scRenderMeters(tracks) {
-  specStore.getState().setPanelState('meters'); // hands #spectrum-imperative back to this renderer
-  const body = document.getElementById('spectrum-imperative');
-  body.innerHTML = '<div class="meter-card sb-live-meters">' + (tracks || []).map((t) => {
-    const rms = Number.isFinite(t.rms) ? t.rms : -120;
-    const pct = Math.max(0, Math.min(100, (rms + 60) / 60 * 100));
-    return `<div class="sc-meter${t.clipping ? ' clip' : ''}">
-      <div class="sc-meter-head">
-        <span class="sc-meter-name">${escapeHtml(t.label || 'Track')}</span>
-        <span class="sc-meter-val">RMS ${fmt(t.rms)} · Peak ${fmt(t.peak)} dBFS</span>
-        ${t.clipping ? '<span class="sc-meter-clip">CLIP</span>' : ''}
-      </div>
-      <div class="sc-meter-bar"><div class="sc-meter-fill" style="width:${pct.toFixed(1)}%"></div></div>
-    </div>`;
-  }).join('') + '</div>';
-}
-
-document.getElementById('sc-choose-btn').addEventListener('click', scChooseSession);
-document.getElementById('sc-device-select').addEventListener('change', scSyncDeviceChannels);
-document.getElementById('sc-master-toggle').addEventListener('change', scUpdateMixdownNotice);
-document.getElementById('sc-play-btn').addEventListener('click', scPlay);
-document.getElementById('sc-stop-btn').addEventListener('click', scStop);
-
-sb.onPlaybackEvent((data) => {
-  if (!data) return;
-  if (data.error) { scShowStatus(String(data.error)); scResetTransport(); return; }
-  if (data.type === 'mixdown') {
-    if (data.active) {
-      const notice = document.getElementById('sc-mixdown-notice');
-      notice.textContent = `Stereo master mixdown — routing needed ${data.requiredChannels} channels, device has ${data.outputChannels}.`;
-      notice.style.display = 'block';
-    }
-  } else if (data.type === 'progress') {
-    if (currentMode === 'soundcheck' && scPlaying) document.getElementById('sc-elapsed').textContent = `${scTime(data.elapsed)} / ${scTime(data.duration)}`;
-  } else if (data.type === 'level') {
-    if (currentMode === 'soundcheck' && scPlaying) scRenderMeters(data.tracks);
-  } else if (data.type === 'ended') {
-    scResetTransport();
-  }
-});
-
-scLoadDevices(); // populate the output picker at startup
+// Virtual Soundcheck (#46): fully React/store-owned (SoundcheckPanel.tsx,
+// stores/soundcheckStore.ts, TD-001 slice 6d, #702).
+window.rendererStores.soundcheck.getState().loadDevices(); // populate the output picker at startup
 
 function syncSpectrumForMode(mode) {
   const title = document.getElementById('spectrum-title');
@@ -1290,10 +1102,9 @@ function syncSpectrumForMode(mode) {
     if (liveRunning && liveWindows.length > 0) renderLiveMeters(liveWindows[liveWindows.length - 1]);
     else renderLiveWorkspace();
     renderEqPane(currentEqPaneChannels());
-    renderPreflight(); // repaint the checklist whenever the Live tab becomes visible
   } else if (mode === 'soundcheck') {
     title.textContent = 'Soundcheck · Meters';
-    if (scPlaying) specStore.getState().setPanelState('meters'); // hands #spectrum-imperative back to this renderer
+    if (window.rendererStores.soundcheck.getState().playing) specStore.getState().setPanelState('meters'); // hands #spectrum-imperative back to this renderer
     else specStore.getState().setPanelState('empty', 'Load a session and press Play to see per-track meters');
   } else if (mode === 'recent') {
     // Recent (#147) has no file-loading UI of its own — a tailored message
@@ -1513,17 +1324,13 @@ document.getElementById('meter-interval').addEventListener('input', (e) => {
   document.getElementById('interval-label').textContent = `${ms} ms · ${Math.round(1000 / ms)}/s`;
 });
 
-/* ── Monitor / Record toggle ── */
-// Apply a capture mode (used by applyRig — the Source-panel Mode toggle is
-// now React-owned, LiveControls.tsx, and calls lcStore.getState().setLiveMode
-// directly, TD-001 slice 6c, #701). Either path's store write is picked up
-// by syncLiveCaptureMirror's subscription, which covers hideArmHint() and
-// the #live-island board repaint itself; renderChannelConfig() below just
-// re-syncs preflight.
-function setLiveMode(mode) {
-  lcStore.getState().setLiveMode(mode);
-  renderChannelConfig();
-}
+/* ── Monitor / Record toggle ──
+   The Source-panel Mode toggle is React-owned (LiveControls.tsx, TD-001
+   slice 6c, #701) and calls lcStore.getState().setLiveMode directly; rig-
+   apply now writes `liveMode` as part of applyRigPatch's returned patch
+   (rig-panel.ts, TD-001 slice 6d, #702). Both paths' store writes are picked
+   up by syncLiveCaptureMirror's subscription (board repaint) — no inline
+   wrapper function is called from here anymore. */
 // Inline "arm at least one strip" hint near the Start button (#43).
 function showArmHint(msg) { const h = document.getElementById('arm-hint'); h.textContent = msg; h.style.display = 'block'; }
 function hideArmHint() { const h = document.getElementById('arm-hint'); if (h) h.style.display = 'none'; }
@@ -1591,7 +1398,8 @@ async function deleteChannelGroup(g) {
 // chosen (#482): the configured storageDir setting (#91), falling back to the
 // platform default — mirrors ipc/shared.ts's defaultRecordDir(). LiveControls.tsx
 // carries its own copy of this same logic for its React-owned #record-folder-path
-// rendering (TD-001 slice 6c, #701); this one is still used by applyRig below.
+// rendering (TD-001 slice 6c, #701); this one is still used by the boot sequence
+// below (cold-boot placeholder text before settings load).
 function defaultRecordFolderText() {
   const s = setStore.getState().settings;
   return (s && s.storageDir && s.storageDir.trim()) || '~/Music/Sound Buddy';
@@ -1604,7 +1412,8 @@ function selectedDeviceChannels() {
 }
 
 // The selected device's name, resolved from liveDevices ('' = Default Device),
-// mirroring captureCurrentRig's device-by-name resolution below.
+// mirroring rig-panel.ts's captureCurrentRigSnapshot's device-by-name
+// resolution (TD-001 slice 6d, #702).
 function selectedDeviceName() {
   const val = lcStore.getState().selectedDevice;
   if (val === '') return '';
@@ -1616,19 +1425,6 @@ function selectedDeviceName() {
 // selected device, mirroring liveCaptureStore.ts's withSavedLabels (#482).
 function savedInstrumentProfilesForDevice() {
   return ((setStore.getState().settings || {}).inputInstrumentProfiles || {})[selectedDeviceName()] || {};
-}
-
-// Persist the current channelGroups to settings.json for the selected device
-// (#483) — mirrors liveCaptureStore.ts's private persistGroups exactly. Only
-// applyRig needs this directly (every other group mutator routes through a
-// self-persisting store action) because it sets channelGroups via a direct
-// store write, bypassing those actions.
-function persistChannelGroups() {
-  const all = (setStore.getState().settings || {}).channelGroups || {};
-  const next = Object.assign({}, all, {
-    [selectedDeviceName()]: channelGroups.map((g) => ({ name: g.name, members: g.members.slice(), collapsed: !!g.collapsed })),
-  });
-  setStore.getState().updateSettings({ channelGroups: next });
 }
 
 // Total device channels consumed by the current config (mono=1, stereo=2).
@@ -1683,9 +1479,9 @@ function resetChannelConfig() {
 function renderChannelConfig() {
   // Re-assert the capture lock (#38): a running capture keeps the workspace frozen.
   if (liveRunning) setCaptureControlsLocked(true);
-  // Preflight checklist (#373) reads channelConfig/device state, so it rides
-  // the same "config changed" entry point as the workspace.
-  renderPreflight();
+  // Preflight checklist (#373) is React/store-owned now (PreflightPanel.tsx,
+  // TD-001 slice 6d, #702) — it recomputes on every render from rigStore +
+  // liveCaptureStore state, no imperative repaint needed here.
   renderMeasurementBadge();
 }
 
@@ -1700,7 +1496,8 @@ function renderMeasurementBadge() {
 // is spawned with a fixed device/channels/mode/dirs set and can't honor a
 // mid-session change, so freezing avoids corrupting the take. Idempotent, and
 // re-selects the live-rendered workspace children each call. The rig picker has
-// its own lock (setRigControlsEnabled) but is guarded here too, defensively.
+// its own lock (rigStore's `locked` field, set via onCaptureStarting/
+// onCaptureStopping below) but is guarded here too, defensively.
 // measurement-source is excluded (#457): it's a renderer-side selection into
 // already-streaming tick data, not a stream.py argument, so switching it
 // mid-capture is safe and is the point of #457's second AC. device-select/
@@ -1775,7 +1572,9 @@ window.liveCaptureRuntime = {
     void value; // store.selectDevice (called by LiveControls itself) already reseeds channelConfig/channelGroups reactively
     focusedInputIndex = null;
     lcStore.getState().clearLastLiveChannels();
-    renderPreflight();
+    // PreflightPanel.tsx recomputes reactively off liveCaptureStore's
+    // selectedDevice/channelConfig/devices — no imperative repaint needed
+    // here (TD-001 slice 6d, #702).
   },
   // Measurement source picker (#456): normalize against the current strip
   // count so a stale selection ('' -> null, an index -> the resolved strip)
@@ -1909,7 +1708,7 @@ function onCaptureStarting() {
   syncLiveAdjustmentsPanel();
   // A live capture always wins over a loaded history entry (#147).
   anaStore.getState().setHistorySummary(null);
-  setRigControlsEnabled(false);
+  window.rendererStores.rig.getState().setLocked(true);
   setCaptureControlsLocked(true); // freeze device/mode/folder/channels/sliders (#38)
 
   document.getElementById('rec-offer').style.display = 'none';
@@ -2004,7 +1803,7 @@ function onCaptureStopping() {
   playheadState = window.dawPlayheadState.stop(playheadState, Date.now());
   stopPlayheadTicker();
   renderDawPlayhead(); // paint the frozen time
-  setRigControlsEnabled(true);
+  window.rendererStores.rig.getState().setLocked(false);
   setCaptureControlsLocked(false); // re-enable config (also the failed-Start path) (#38)
 }
 
@@ -2090,48 +1889,12 @@ document.getElementById('rc-offer-btn').addEventListener('click', () => {
   document.querySelector('.mode-tab[data-mode="reportcard"]').click();
 });
 
-/* ══ Rigs — save / load / switch capture setups (#37, persisted via #36) ══ */
-let rigList = []; // last-loaded CaptureRig[]
-
-// Show (or clear) the muted status line under the Start button.
-function setLiveStatus(text) {
-  const ls = document.getElementById('live-status');
-  if (!ls) return;
-  if (!text) { ls.style.display = 'none'; ls.textContent = ''; return; }
-  ls.textContent = text;
-  ls.style.display = 'block';
-}
-
-// Rig persistence can reject (settings.json unwritable — writeSettingsFile
-// rethrows), so every CRUD call routes failures here rather than leaving the
-// picker silently out of sync with an unhandled rejection.
-function rigError(action, err) {
-  console.error(`rig ${action} failed:`, err);
-  setLiveStatus(`Could not ${action} rig — check that Sound Buddy can write its settings.`);
-}
-
-// Lock the rig picker while a capture is running: applyRig mutates the device,
-// channels, mode and sliders, which would desync the UI from the live stream.
-function setRigControlsEnabled(enabled) {
-  document.getElementById('rig-select').disabled = !enabled;
-  document.getElementById('rig-save-btn').disabled = !enabled;
-  document.getElementById('rig-saveas-btn').disabled = !enabled;
-  if (enabled) {
-    updateRigButtons();
-  } else {
-    document.getElementById('rig-rename-btn').disabled = true;
-    document.getElementById('rig-delete-btn').disabled = true;
-  }
-}
-
-// Set a slider's value programmatically and refresh its label by replaying the
-// same 'input' event its listener already handles — no duplicated label logic.
-function setSliderVal(id, value) {
-  const el = document.getElementById(id);
-  if (!el) return;
-  el.value = value;
-  el.dispatchEvent(new Event('input'));
-}
+/* ══ Rigs — save / load / switch capture setups (#37, persisted via #36) ══
+   Fully React/store-owned (RigControls.tsx/PreflightPanel.tsx,
+   stores/rigStore.ts, TD-001 slice 6d, #702) except rigDialog() below, which
+   stays here as shared modal infrastructure also used by out-of-scope
+   channel-group naming (createChannelGroup/renameChannelGroup/
+   deleteChannelGroup). */
 
 // Small inline modal used in place of window.prompt/confirm (unavailable in the
 // Electron renderer). Resolves to the entered string (input mode), true (confirm
@@ -2174,317 +1937,6 @@ function rigDialog(opts) {
     document.addEventListener('keydown', onKey);
   });
 }
-
-function populateRigSelect(rigs, selectedId) {
-  const sel = document.getElementById('rig-select');
-  sel.innerHTML = '';
-  const placeholder = document.createElement('option');
-  placeholder.value = '';
-  placeholder.textContent = rigs.length ? 'Unsaved setup' : 'No saved rigs';
-  sel.appendChild(placeholder);
-  for (const r of rigs) {
-    const opt = document.createElement('option');
-    opt.value = r.id;
-    opt.textContent = r.name;
-    sel.appendChild(opt);
-  }
-  sel.value = selectedId || '';
-}
-
-function updateRigButtons() {
-  const hasSel = document.getElementById('rig-select').value !== '';
-  document.getElementById('rig-rename-btn').disabled = !hasSel;
-  document.getElementById('rig-delete-btn').disabled = !hasSel;
-}
-
-// Snapshot the current Live-tab setup into a CaptureRig. Device is stored BY
-// NAME (from the selected liveDevices entry) so it survives index reordering;
-// '' means the Default Device. Any per-channel label (#39) is preserved.
-// upsertRig persists whatever object this returns as a full replace of the
-// stored rig (not a merge, see settings.ts), so an existing saved preflight
-// baseline (#373) is carried forward here — otherwise the plain rig Save
-// button would silently delete it every time.
-function captureCurrentRig(name, id) {
-  const rig = {
-    name: name,
-    deviceName: selectedDeviceName(),
-    channelConfig: channelConfig.map((s) => {
-      const strip = { kind: s.kind, a: s.a, b: s.b };
-      // Normalize the label once, at the persistence boundary, so both entry
-      // points (config row + inline header) round-trip an identical stored value
-      // and an all-whitespace label is dropped rather than saved (#39).
-      const label = typeof s.label === 'string' ? s.label.trim().slice(0, MAX_LABEL_LEN) : '';
-      if (label) strip.label = label;
-      return strip;
-    }),
-    // Named channel groups (#41) — organizational only; members are strip indices.
-    groups: channelGroups.map((g) => ({ name: g.name, members: g.members.slice() })),
-    // The selected measurement source (#456) — a strip index, or null for the
-    // default (first track).
-    measurementSource: lcStore.getState().measurementSource,
-    mode: liveMode,
-    recordDir: recordDir,
-    intervalMs: parseInt(document.getElementById('meter-interval').value, 10),
-    windowSecs: parseFloat(document.getElementById('window-secs').value),
-  };
-  if (id) {
-    rig.id = id;
-    const existing = rigList.find((r) => r.id === id);
-    if (existing && existing.baseline) rig.baseline = existing.baseline;
-  }
-  return rig;
-}
-
-// Restore a rig into the Live tab: mode, folder, sliders, then reconcile the
-// device by name and clamp channels to whatever the resolved device exposes.
-// Surfaces a non-fatal notice in #live-status and never auto-starts capture.
-function applyRig(rig) {
-  if (!rig) return;
-
-  setLiveMode(rig.mode);
-  lcStore.getState().setRecordDir(rig.recordDir || '');
-
-  setSliderVal('meter-interval', rig.intervalMs);
-  setSliderVal('window-secs', rig.windowSecs);
-
-  const rec = window.rigReconcile.reconcileRigDevice(rig.deviceName, liveDevices);
-  // Just the selectedDevice field — not lcStore.getState().selectDevice(),
-  // which also reseeds channelConfig/channelGroups to the device default;
-  // this function immediately overwrites both with the rig's own clamped
-  // values below, so that reseed would only be wasted (and reverted) work.
-  lcStore.setState({ selectedDevice: String(rec.index) });
-  let notice = rec.found ? '' : `Rig device "${rig.deviceName}" not found — select a device.`;
-
-  const clamp = window.rigReconcile.clampChannelConfig(rig.channelConfig || [], selectedDeviceChannels());
-  const nextConfig = clamp.config.length ? clamp.config : [{ kind: 'mono', a: 0, b: 0 }];
-  // Hydrate named groups (#41), dropping any member index beyond the (possibly
-  // clamped) strip count so no group references a strip that isn't there.
-  const nextGroups = (rig.groups || []).map((g) => ({
-    name: g.name, members: (g.members || []).filter((m) => m < nextConfig.length),
-  }));
-  lcStore.setState({ channelConfig: nextConfig, channelGroups: nextGroups });
-  // Old rigs without the field resolve to null (default) (#456).
-  lcStore.getState().setMeasurementSource(normalizeMeasurementSource(rig.measurementSource, nextConfig.length));
-  // The applied rig becomes this device's current layout (#483).
-  persistChannelGroups();
-  renderChannelConfig();
-  if (clamp.adjusted) {
-    notice = notice
-      ? notice + ' Some channels were out of range and were clamped.'
-      : 'Some rig channels were out of range for this device and were clamped.';
-  }
-  setLiveStatus(notice);
-}
-
-// Preflight checklist (#373): compare the live channel routing against the
-// active rig's saved baseline and render the green/amber/red rows + banner.
-function currentActiveRig() {
-  const id = document.getElementById('rig-select').value;
-  return id ? rigList.find((r) => r.id === id) : null;
-}
-
-function relativeTime(iso) {
-  const then = new Date(iso).getTime();
-  if (!Number.isFinite(then)) return '';
-  const mins = Math.floor((Date.now() - then) / 60000);
-  if (mins < 1) return 'just now';
-  if (mins < 60) return `${mins}m ago`;
-  const hours = Math.floor(mins / 60);
-  if (hours < 24) return `${hours}h ago`;
-  return `${Math.floor(hours / 24)}d ago`;
-}
-
-function renderPreflight() {
-  const list = document.getElementById('preflight-list');
-  if (!list) return; // not booted yet
-  const rig = currentActiveRig();
-  // Reconcile the device actually selected in the dropdown — the one Start
-  // Capture will use — not the rig's stored deviceName; those two can diverge
-  // (e.g. the engineer changes the dropdown without saving), and validating
-  // the wrong one would let a stale "Ready for service" mask an unvalidated
-  // capture device.
-  const rec = window.rigReconcile.reconcileRigDevice(selectedDeviceName(), liveDevices);
-  const device = { found: rec.found, name: rec.deviceName || 'Default Device', channels: selectedDeviceChannels() };
-  const current = window.preflight.snapshotRig(channelConfig, selectedDeviceName());
-  const baseline = (rig && rig.baseline) || null;
-  const items = window.preflight.buildChecklist({ baseline, current, device });
-  const summary = window.preflight.checklistSummary(items);
-
-  document.getElementById('preflight-saved').textContent = baseline
-    ? `Baseline saved ${relativeTime(baseline.savedAt)}`
-    : 'No baseline saved';
-
-  const banner = document.getElementById('preflight-banner');
-  banner.textContent = summary.ready ? 'Ready for service' : 'Not ready — resolve the items below';
-  banner.className = 'pf-banner ' + (summary.ready ? 'pf-ready' : 'pf-not-ready');
-
-  list.innerHTML = items.map((item) => `
-    <li class="pf-row pf-${item.status}">
-      <span class="pf-dot" aria-hidden="true"></span>
-      <span class="pf-row-body">
-        <span class="pf-row-label">${escapeHtml(item.label)}</span>
-        <span class="pf-row-detail">${escapeHtml(item.detail)}</span>
-      </span>
-    </li>`).join('');
-}
-
-// Save baseline: snapshot the live routing, stamp it, and persist it onto the
-// active rig — seeding a new rig first if none is selected yet, reusing the
-// same capture path as the rig Save button (#373). Pro-gated exactly like the
-// existing rig save path: the IPC handler throws rather than the renderer
-// crashing, so the message surfaces as a status notice instead.
-async function saveBaseline() {
-  const rig = currentActiveRig();
-  const baseline = window.preflight.snapshotRig(channelConfig, selectedDeviceName());
-  baseline.savedAt = new Date().toISOString();
-  const payload = Object.assign(captureCurrentRig(rig ? rig.name : 'Rig', rig ? rig.id : undefined), { baseline: baseline });
-  const prevIds = new Set(rigList.map((r) => r.id));
-  try {
-    const settings = await sb.saveRig(payload);
-    rigList = settings.rigs || [];
-    let savedId = rig ? rig.id : '';
-    if (!savedId) {
-      const created = rigList.find((r) => !prevIds.has(r.id));
-      savedId = created ? created.id : '';
-    }
-    if (savedId) await sb.setActiveRig(savedId);
-    populateRigSelect(rigList, savedId || document.getElementById('rig-select').value);
-    updateRigButtons();
-    setLiveStatus('Baseline saved.');
-  } catch (err) {
-    console.error('save baseline failed:', err);
-    const msg = err && err.message ? String(err.message) : '';
-    setLiveStatus(/Pro license/i.test(msg)
-      ? 'Saving a baseline requires a Pro license.'
-      : 'Could not save baseline — check that Sound Buddy can write its settings.');
-  }
-  renderPreflight();
-}
-document.getElementById('preflight-save-btn').addEventListener('click', saveBaseline);
-
-// Prompt for a name, capture the current setup as a NEW rig, and select it.
-async function rigSaveAs() {
-  const name = await rigDialog({ title: 'Save rig as…', value: '', confirmLabel: 'Save', withInput: true });
-  if (name == null) return;
-  const trimmed = name.trim();
-  if (!trimmed) return;
-  const prevIds = new Set(rigList.map((r) => r.id));
-  try {
-    const settings = await sb.saveRig(captureCurrentRig(trimmed));
-    rigList = settings.rigs || [];
-    const created = rigList.find((r) => !prevIds.has(r.id));
-    const newId = created ? created.id : (rigList.find((r) => r.name === trimmed) || {}).id || '';
-    if (newId) await sb.setActiveRig(newId);
-    populateRigSelect(rigList, newId);
-    updateRigButtons();
-    setLiveStatus(`Saved "${trimmed}".`);
-  } catch (err) { rigError('save', err); }
-  // populateRigSelect sets the <select> value programmatically, which doesn't
-  // fire 'change' — repaint the checklist explicitly so it doesn't keep
-  // showing whatever rig/baseline was active before this Save As (#373).
-  renderPreflight();
-}
-
-async function initRigs() {
-  let activeRigId = null;
-  try {
-    // getSettings() already returns both the saved rigs and the active id, so a
-    // single read seeds the picker (one IPC round trip, and a failure can't wipe
-    // an already-loaded list).
-    const settings = await sb.getSettings();
-    rigList = (settings && settings.rigs) || [];
-    activeRigId = settings && settings.activeRigId ? settings.activeRigId : null;
-  } catch { rigList = []; }
-  const active = rigList.some((r) => r.id === activeRigId) ? activeRigId : '';
-  populateRigSelect(rigList, active);
-  updateRigButtons();
-  if (active) applyRig(rigList.find((r) => r.id === active));
-  // Re-apply saved labels (#482): loadDevices() may have seeded channelConfig
-  // before settingsStore.loadSettings() resolved, so re-overlay now that the
-  // store's settings are available. Overlays onto the CURRENT channelConfig
-  // (unlike lcStore.getState().selectDevice(), which would also reseed it to
-  // the device default) — a direct store write, same rationale as applyRig's
-  // selectedDevice write above.
-  const savedLabels = ((setStore.getState().settings || {}).channelLabels || {})[selectedDeviceName()] || {};
-  lcStore.setState({
-    channelConfig: window.channelLabels.applyLabels(channelConfig, window.armState.allTokens(channelConfig), savedLabels),
-  });
-  renderChannelConfig();
-}
-
-// Selecting a rig restores it and records it as active; the placeholder clears
-// the active selection without touching the current setup.
-document.getElementById('rig-select').addEventListener('change', async (e) => {
-  const id = e.target.value;
-  updateRigButtons();
-  try {
-    await sb.setActiveRig(id || null);
-  } catch (err) { rigError('select', err); return; }
-  if (!id) { renderPreflight(); return; } // deselecting still needs the checklist re-read (applyRig won't fire)
-  const rig = rigList.find((r) => r.id === id);
-  if (rig) applyRig(rig);
-});
-
-// Save: update the selected rig in place; with nothing selected, fall back to
-// Save As so the button is never a no-op.
-document.getElementById('rig-save-btn').addEventListener('click', async () => {
-  const id = document.getElementById('rig-select').value;
-  if (!id) { await rigSaveAs(); return; }
-  const existing = rigList.find((r) => r.id === id);
-  try {
-    const settings = await sb.saveRig(captureCurrentRig(existing ? existing.name : 'Rig', id));
-    rigList = settings.rigs || [];
-    await sb.setActiveRig(id);
-    populateRigSelect(rigList, id);
-    updateRigButtons();
-    setLiveStatus(`Saved "${existing ? existing.name : 'rig'}".`);
-  } catch (err) { rigError('save', err); }
-});
-
-document.getElementById('rig-saveas-btn').addEventListener('click', () => rigSaveAs());
-
-// Rename changes only the name, leaving the captured setup untouched.
-document.getElementById('rig-rename-btn').addEventListener('click', async () => {
-  const id = document.getElementById('rig-select').value;
-  if (!id) return;
-  const existing = rigList.find((r) => r.id === id);
-  if (!existing) return;
-  const name = await rigDialog({ title: 'Rename rig', value: existing.name, confirmLabel: 'Rename', withInput: true });
-  if (name == null) return;
-  const trimmed = name.trim();
-  if (!trimmed) return;
-  try {
-    const settings = await sb.saveRig({ ...existing, name: trimmed });
-    rigList = settings.rigs || [];
-    populateRigSelect(rigList, id);
-    updateRigButtons();
-  } catch (err) { rigError('rename', err); }
-});
-
-// Delete removes the rig; the backend clears activeRigId if it was the active
-// one, so the picker falls back to the placeholder (no rig applied).
-document.getElementById('rig-delete-btn').addEventListener('click', async () => {
-  const id = document.getElementById('rig-select').value;
-  if (!id) return;
-  const existing = rigList.find((r) => r.id === id);
-  const ok = await rigDialog({
-    title: 'Delete rig',
-    msg: `Delete "${existing ? existing.name : 'this rig'}"? This can't be undone.`,
-    confirmLabel: 'Delete',
-    withInput: false,
-  });
-  if (!ok) return;
-  try {
-    const settings = await sb.deleteRig(id);
-    rigList = settings.rigs || [];
-    populateRigSelect(rigList, settings.activeRigId || '');
-    updateRigButtons();
-  } catch (err) { rigError('delete', err); }
-  // Same "programmatic <select> update doesn't fire 'change'" gap as Save As
-  // above — without this the checklist would keep showing the deleted rig's
-  // stale baseline/status (#373).
-  renderPreflight();
-});
 
 // A dedicated interval (not the meter-event rAF path) so the playhead
 // advances even while "Connecting…" before the first meter tick, and keeps
@@ -3880,7 +3332,10 @@ hydrateIcons(document);
 specStore.getState().setPanelState('empty'); // store default text ('Load a file to see the spectrum') is identical
 // Load devices first so a saved rig can reconcile its device by name and clamp
 // channels against the real device list; then apply the active rig (if any).
-loadDevices().then(initRigs, initRigs);
+loadDevices().then(
+  window.rendererStores.rig.getState().loadRigs,
+  window.rendererStores.rig.getState().loadRigs,
+);
 
 // First-run onboarding (#69): show the welcome overlay on a genuine first launch.
 void initOnboarding();

@@ -140,21 +140,7 @@
           <!-- Saved capture setups ("rigs"): pick one to restore device, channels,
                mode, folder and slider cadences; Save / Save As… / Rename / Delete. -->
           <div id="rig-bar" class="rig-bar">
-            <label class="select-label">
-              <span>Rig</span>
-              <div class="select-row">
-                <div class="select-wrap">
-                  <select id="rig-select"><option value="">No saved rigs</option></select>
-                  <span class="select-caret" data-icon="chevron-down"></span>
-                </div>
-              </div>
-            </label>
-            <div class="rig-actions">
-              <button type="button" id="rig-save-btn" class="ghost-btn sm" title="Update the selected rig">Save</button>
-              <button type="button" id="rig-saveas-btn" class="ghost-btn sm" title="Save the current setup as a new rig">Save As…</button>
-              <button type="button" id="rig-rename-btn" class="ghost-btn sm" title="Rename the selected rig">Rename</button>
-              <button type="button" id="rig-delete-btn" class="ghost-btn sm" title="Delete the selected rig">Delete</button>
-            </div>
+            <div id="rig-controls-island"></div>
           </div>
           <div class="hairline"></div>
 
@@ -177,13 +163,7 @@
                save a baseline of the current routing, then compare it against
                the live config to catch drift before the band walks in. ══ -->
           <div class="preflight-panel" id="preflight-panel">
-            <div class="pf-head">
-              <span class="section-label">Preflight</span>
-              <button type="button" id="preflight-save-btn" class="ghost-btn sm" title="Save the current routing as your baseline">Save baseline</button>
-            </div>
-            <span class="pf-saved" id="preflight-saved"></span>
-            <div class="pf-banner" id="preflight-banner"></div>
-            <ul class="pf-list" id="preflight-list"></ul>
+            <div id="preflight-island"></div>
           </div>
           <div class="hairline"></div>
 
@@ -217,30 +197,7 @@
             <span class="pg-msg">Play back a captured session through your console and mix without the band.</span>
             <button type="button" class="pg-link" data-license-open>Upgrade — enter a license key</button>
           </div>
-          <button type="button" class="btn btn-secondary full" id="sc-choose-btn" data-icon="folder">Choose session folder…</button>
-          <div id="sc-session-name" class="sc-session-name" style="display:none"></div>
-          <div class="hairline"></div>
-          <label class="select-label">
-            <span>Output Device</span>
-            <div class="select-row">
-              <div class="select-wrap">
-                <select id="sc-device-select"><option value="">Default output</option></select>
-                <span class="select-caret" data-icon="chevron-down"></span>
-              </div>
-            </div>
-          </label>
-          <div class="chcfg-head"><span class="lbl">Tracks &amp; routing</span></div>
-          <div id="sc-tracks" class="sc-tracks"><div class="sc-empty">Choose a session folder to load its tracks.</div></div>
-          <label class="sc-master">
-            <input type="checkbox" id="sc-master-toggle" />
-            <span>Master mixdown (stereo)</span>
-          </label>
-          <div id="sc-mixdown-notice" class="sc-notice" style="display:none"></div>
-          <div class="hairline"></div>
-          <button class="btn btn-primary full" id="sc-play-btn" data-icon="play" disabled>Play</button>
-          <button class="btn btn-danger full" id="sc-stop-btn" data-icon="square" style="display:none">Stop</button>
-          <div id="sc-elapsed" class="sc-elapsed" style="display:none"></div>
-          <div id="sc-status" class="sc-status" role="alert" style="display:none"></div>
+          <div id="soundcheck-island"></div>
         </div>
 
         <!-- RECENT (#147) — last 10 persisted report-card summaries, newest-first. -->

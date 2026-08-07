@@ -131,8 +131,11 @@ function defaultChannelConfig(deviceChannels: number): StripConfig[] {
 }
 
 // The selected device's name, resolved from the device list ('' = Default
-// Device) — mirrors inline-app.js's selectedDeviceName() (#482).
-function deviceNameFor(selectedValue: string, devices: LiveDevice[]): string {
+// Device) — mirrors inline-app.js's selectedDeviceName() (#482). Exported
+// (TD-001 slice 6d, #702) so rigStore.ts and PreflightPanel.tsx can reuse
+// this exact resolution instead of duplicating it, same rationale as
+// persistGroups below.
+export function deviceNameFor(selectedValue: string, devices: LiveDevice[]): string {
   if (selectedValue === '') return '';
   const dev = devices.find((d) => String(d.index) === selectedValue);
   return dev ? dev.name : '';
@@ -243,21 +246,23 @@ export interface LiveCaptureState {
   setSelectedChannel(source: number | null): void;
 }
 
-export function createLiveCaptureStore(getApi: () => LiveCaptureApi) {
-  // Persist channelGroups (#483) as a full-map replace keyed by device —
-  // mirrors setStripLabel's write path (#482) exactly. Called from every
-  // group mutator (create/rename/delete/assign/reorder/collapse) so the
-  // stored map always reflects the current in-memory group state.
-  function persistGroups(state: LiveCaptureState) {
-    const all = (useSettingsStore.getState().settings || {}).channelGroups || {};
-    const deviceName = deviceNameFor(state.selectedDevice, state.devices);
-    const next = {
-      ...all,
-      [deviceName]: state.channelGroups.map((g) => ({ name: g.name, members: g.members.slice(), collapsed: !!g.collapsed })),
-    };
-    void useSettingsStore.getState().updateSettings({ channelGroups: next });
-  }
+// Persist channelGroups (#483) as a full-map replace keyed by device —
+// mirrors setStripLabel's write path (#482) exactly. Called from every group
+// mutator (create/rename/delete/assign/reorder/collapse) so the stored map
+// always reflects the current in-memory group state. Exported (TD-001 slice
+// 6d, #702) so rigStore.ts can reuse this exact settings-write shape when
+// applying a rig's groups, instead of duplicating it.
+export function persistGroups(state: LiveCaptureState) {
+  const all = (useSettingsStore.getState().settings || {}).channelGroups || {};
+  const deviceName = deviceNameFor(state.selectedDevice, state.devices);
+  const next = {
+    ...all,
+    [deviceName]: state.channelGroups.map((g) => ({ name: g.name, members: g.members.slice(), collapsed: !!g.collapsed })),
+  };
+  void useSettingsStore.getState().updateSettings({ channelGroups: next });
+}
 
+export function createLiveCaptureStore(getApi: () => LiveCaptureApi) {
   return create<LiveCaptureState>()((set, get) => ({
     devices: [],
     deviceHint: null,

@@ -13,6 +13,8 @@ import { useSpectrumStore } from './spectrumStore';
 import { useLiveCaptureStore } from './liveCaptureStore';
 import { useSceneDiffStore } from './sceneDiffStore';
 import { useIdealProfilesStore } from './idealProfilesStore';
+import { useRigStore } from './rigStore';
+import { useSoundcheckStore } from './soundcheckStore';
 import { liveReportCardSource } from '../live-capture-panel';
 import { spectrumTransport, type SpectrumTransport } from '../spectrum-transport';
 
@@ -23,6 +25,8 @@ export interface RendererStores {
   spectrum: typeof useSpectrumStore;
   liveCapture: typeof useLiveCaptureStore;
   idealProfiles: typeof useIdealProfilesStore;
+  rig: typeof useRigStore;
+  soundcheck: typeof useSoundcheckStore;
 }
 
 declare global {
@@ -52,6 +56,8 @@ export function installStoreBridge(
     spectrum: useSpectrumStore,
     liveCapture: useLiveCaptureStore,
     idealProfiles: useIdealProfilesStore,
+    rig: useRigStore,
+    soundcheck: useSoundcheckStore,
   };
   target.rendererStores = stores;
   target.spectrumTransport = spectrumTransport;
@@ -90,6 +96,9 @@ export function installStoreBridge(
     // crossStoreSubscriptionInstalled flag so a second App mount can't
     // double-bind them (TD-001 slice 5, #423).
     useLiveCaptureStore.getState().bindIpcEvents();
+    // Same guard for soundcheckStore's sb.onPlaybackEvent listener (TD-001
+    // slice 6d, #702).
+    useSoundcheckStore.getState().bindIpcEvents();
 
     // Ideal-profile selection glue (TD-001 slice 6b, #700), replacing
     // inline-app.js's syncIdealProfile call sites: seed idealProfilesStore

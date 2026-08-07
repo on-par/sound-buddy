@@ -59,6 +59,9 @@ import IdealProfileSelect from './IdealProfileSelect';
 import CurveEditorDialog from './CurveEditorDialog';
 import LiveControls, { LiveTransportControls } from './LiveControls';
 import LiveWorkspace from './LiveWorkspace';
+import SoundcheckPanel from './SoundcheckPanel';
+import RigControls from './RigControls';
+import PreflightPanel from './PreflightPanel';
 import { installStoreBridge } from './stores/bridge';
 
 // Boot scripts in their original document order (#303): the 20 UMD helpers
@@ -180,6 +183,9 @@ export default function App() {
       {booted && createPortal(<LiveWorkspace />, document.getElementById('live-island')!)}
       {booted && createPortal(<LiveControls />, document.getElementById('live-controls-island')!)}
       {booted && createPortal(<LiveTransportControls />, document.getElementById('live-transport-island')!)}
+      {booted && createPortal(<RigControls />, document.getElementById('rig-controls-island')!)}
+      {booted && createPortal(<PreflightPanel />, document.getElementById('preflight-island')!)}
+      {booted && createPortal(<SoundcheckPanel />, document.getElementById('soundcheck-island')!)}
     </>
   );
 }
