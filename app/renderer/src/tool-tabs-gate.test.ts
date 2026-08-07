@@ -4,6 +4,9 @@
 import { describe, it, expect } from 'vitest';
 import * as fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import { createElement } from 'react';
+import { renderToString } from 'react-dom/server';
+import ModeTabs from './ModeTabs';
 
 // Unified source entry point (#546, epic e17): with report-first-ux on, the
 // Build Guide / Ring Out buttons in #mode-tabs are hidden — they're
@@ -14,10 +17,13 @@ import { fileURLToPath } from 'node:url';
 // source-tabs-gate.test.ts (#544) file-for-file. inline-app.js is
 // coverage-excluded glue (see vitest.config.ts), so its wiring is verified
 // here the same way the sibling gate test encodes its acceptance criteria.
+// The tab buttons themselves moved from static root-markup.html into
+// ModeTabs.tsx (TD-001 slice 6e, #703) — render it the same way
+// ModeTabs.test.ts does rather than scanning root-markup.html for them.
 
 const inlineApp = fs.readFileSync(fileURLToPath(new URL('./inline-app.js', import.meta.url)), 'utf8');
-const rootMarkup = fs.readFileSync(fileURLToPath(new URL('./root-markup.html', import.meta.url)), 'utf8');
 const appCss = fs.readFileSync(fileURLToPath(new URL('./styles/app.css', import.meta.url)), 'utf8');
+const modeTabsMarkup = renderToString(createElement(ModeTabs));
 
 describe('Tool tabs gate (#546)', () => {
   it('app.css hides the Build Guide and Ring Out tabs under report-first-ux', () => {
@@ -28,9 +34,9 @@ describe('Tool tabs gate (#546)', () => {
     expect(appCss.slice(ruleStart, ruleEnd + 1)).toMatch(/display:\s*none;\s*\}$/);
   });
 
-  it('root-markup.html keeps both tab buttons for the flag-off shell', () => {
-    expect(rootMarkup).toContain('data-mode="guide"');
-    expect(rootMarkup).toContain('data-mode="ringout"');
+  it('ModeTabs.tsx keeps both tab buttons for the flag-off shell', () => {
+    expect(modeTabsMarkup).toContain('data-mode="guide"');
+    expect(modeTabsMarkup).toContain('data-mode="ringout"');
   });
 
   it('every display:none on a mode-tab selector is scoped to body.report-first-ux', () => {
@@ -51,8 +57,8 @@ describe('Tool tabs gate (#546)', () => {
   });
 
   it('both tools stay reachable via the e17-06 contextual links', () => {
-    expect(rootMarkup).toContain('<button class="mode-tab" data-mode="guide"');
-    expect(rootMarkup).toContain('<button class="mode-tab" data-mode="ringout"');
+    expect(modeTabsMarkup).toContain('data-mode="guide"');
+    expect(modeTabsMarkup).toContain('data-mode="ringout"');
 
     const buildGuideIdx = inlineApp.indexOf('function openBuildGuide()');
     expect(buildGuideIdx).toBeGreaterThan(-1);

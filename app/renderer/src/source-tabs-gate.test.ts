@@ -4,6 +4,9 @@
 import { describe, it, expect } from 'vitest';
 import * as fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import { createElement } from 'react';
+import { renderToString } from 'react-dom/server';
+import ModeTabs from './ModeTabs';
 
 // Unified source entry point (#544, epic e17): with report-first-ux on, the
 // Directory / Live / Soundcheck buttons in #mode-tabs are hidden — the #543
@@ -21,6 +24,7 @@ const appCss = fs.readFileSync(fileURLToPath(new URL('./styles/app.css', import.
 const analyzeSourceState = fs.readFileSync(fileURLToPath(new URL('../analyze-source-state.js', import.meta.url)), 'utf8');
 const indexHtml = fs.readFileSync(fileURLToPath(new URL('../index.html', import.meta.url)), 'utf8');
 const upgradeMomentum = fs.readFileSync(fileURLToPath(new URL('../upgrade-momentum.js', import.meta.url)), 'utf8');
+const modeTabsMarkup = renderToString(createElement(ModeTabs));
 
 // Strips HTML `<!-- ... -->` and JS `//` line comments so copy assertions
 // only see real, user-visible strings. Repeats the HTML-comment strip until
@@ -46,10 +50,10 @@ describe('Source tabs gate (#544)', () => {
     expect(appCss.slice(ruleStart, ruleEnd + 1)).toMatch(/display:\s*none;\s*\}$/);
   });
 
-  it('root-markup.html keeps all three tab buttons for the flag-off shell', () => {
-    expect(rootMarkup).toContain('data-mode="dir"');
-    expect(rootMarkup).toContain('data-mode="live"');
-    expect(rootMarkup).toContain('data-mode="soundcheck"');
+  it('ModeTabs.tsx keeps all three tab buttons for the flag-off shell', () => {
+    expect(modeTabsMarkup).toContain('data-mode="dir"');
+    expect(modeTabsMarkup).toContain('data-mode="live"');
+    expect(modeTabsMarkup).toContain('data-mode="soundcheck"');
   });
 
   it('every display:none on a source-tab selector is scoped to body.report-first-ux', () => {
@@ -70,9 +74,9 @@ describe('Source tabs gate (#544)', () => {
   });
 
   it('the three flows stay reachable: routing tabs are in the DOM and the picker still simulates a click', () => {
-    expect(rootMarkup).toContain('<button class="mode-tab" data-mode="dir"');
-    expect(rootMarkup).toContain('<button class="mode-tab" data-mode="live"');
-    expect(rootMarkup).toContain('<button class="mode-tab" data-mode="soundcheck"');
+    expect(modeTabsMarkup).toContain('data-mode="dir"');
+    expect(modeTabsMarkup).toContain('data-mode="live"');
+    expect(modeTabsMarkup).toContain('data-mode="soundcheck"');
     expect(inlineApp).toContain('document.querySelector(`.mode-tab[data-mode="${mode}"]`).click();');
     expect(inlineApp).toContain('window.analyzeSourceState.targetModeFor(');
   });

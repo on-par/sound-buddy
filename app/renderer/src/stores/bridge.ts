@@ -15,6 +15,7 @@ import { useSceneDiffStore } from './sceneDiffStore';
 import { useIdealProfilesStore } from './idealProfilesStore';
 import { useRigStore } from './rigStore';
 import { useSoundcheckStore } from './soundcheckStore';
+import { useRingoutStore } from './ringoutStore';
 import { liveReportCardSource } from '../live-capture-panel';
 import { spectrumTransport, type SpectrumTransport } from '../spectrum-transport';
 
@@ -27,6 +28,7 @@ export interface RendererStores {
   idealProfiles: typeof useIdealProfilesStore;
   rig: typeof useRigStore;
   soundcheck: typeof useSoundcheckStore;
+  ringout: typeof useRingoutStore;
 }
 
 declare global {
@@ -58,6 +60,7 @@ export function installStoreBridge(
     idealProfiles: useIdealProfilesStore,
     rig: useRigStore,
     soundcheck: useSoundcheckStore,
+    ringout: useRingoutStore,
   };
   target.rendererStores = stores;
   target.spectrumTransport = spectrumTransport;

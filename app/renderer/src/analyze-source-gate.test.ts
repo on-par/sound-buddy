@@ -18,6 +18,9 @@ const appTsx = fs.readFileSync(fileURLToPath(new URL('./App.tsx', import.meta.ur
 const rootMarkup = fs.readFileSync(fileURLToPath(new URL('./root-markup.html', import.meta.url)), 'utf8');
 const appCss = fs.readFileSync(fileURLToPath(new URL('./styles/app.css', import.meta.url)), 'utf8');
 const analyzeSourceState = fs.readFileSync(fileURLToPath(new URL('../analyze-source-state.js', import.meta.url)), 'utf8');
+// The reportcard-load-btn gating moved into ReportCardToolbar.tsx's onClick
+// (TD-001 slice 6e, #703) — scan it instead of inline-app.js for that piece.
+const reportCardToolbarTsx = fs.readFileSync(fileURLToPath(new URL('./ReportCardToolbar.tsx', import.meta.url)), 'utf8');
 
 describe('Unified Analyze source picker gate (#543)', () => {
   it('App.tsx imports and boots analyze-source-state.js before the inline app script', () => {
@@ -49,10 +52,10 @@ describe('Unified Analyze source picker gate (#543)', () => {
     expect(picker).not.toContain('tab-lock');
   });
 
-  it('inline-app.js gates the picker through reportFirstUxState.isEnabled, never reading settings directly', () => {
-    expect(inlineApp).toContain('window.analyzeSourceState.isPickerEnabled(');
-    expect(inlineApp).toContain('window.reportFirstUxState.isEnabled(setStore.getState().settings)');
-    expect(inlineApp).not.toContain('settings.reportFirstUxEnabled');
+  it('ReportCardToolbar.tsx gates the picker through reportFirstUxState.isEnabled, never reading settings directly', () => {
+    expect(reportCardToolbarTsx).toContain('getAnalyzeSourceState().isPickerEnabled(');
+    expect(reportCardToolbarTsx).toContain('getReportFirstUxState().isEnabled(settings)');
+    expect(reportCardToolbarTsx).not.toContain('settings.reportFirstUxEnabled');
   });
 
   it('inline-app.js routes chosen sources through analyzeSourceState.targetModeFor', () => {

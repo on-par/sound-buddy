@@ -12,6 +12,7 @@ import { useSceneDiffStore } from './sceneDiffStore';
 import { useIdealProfilesStore } from './idealProfilesStore';
 import { useRigStore } from './rigStore';
 import { useSoundcheckStore } from './soundcheckStore';
+import { useRingoutStore } from './ringoutStore';
 import { createMockSoundBuddy } from '../mock-sound-buddy';
 import { spectrumTransport, type SpectrumTransport } from '../spectrum-transport';
 import type { IdealCurvesApi } from '../ideal-profiles';
@@ -67,7 +68,7 @@ afterEach(() => {
 });
 
 describe('installStoreBridge', () => {
-  it('installs all eight stores on the injected target and returns them', () => {
+  it('installs all nine stores on the injected target and returns them', () => {
     const target: { rendererStores?: RendererStores } = {};
 
     const stores = installStoreBridge(target);
@@ -80,6 +81,7 @@ describe('installStoreBridge', () => {
     expect(stores.idealProfiles).toBe(useIdealProfilesStore);
     expect(stores.rig).toBe(useRigStore);
     expect(stores.soundcheck).toBe(useSoundcheckStore);
+    expect(stores.ringout).toBe(useRingoutStore);
     expect(target.rendererStores).toBe(stores);
   });
 

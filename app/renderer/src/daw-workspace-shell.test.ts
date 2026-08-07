@@ -160,7 +160,7 @@ describe('DAW shell preserves existing capture controls (#517)', () => {
 describe('DAW shell re-renders on toggle flip (#517)', () => {
   it('the settingsStore subscriber re-syncs the Live pane on an actual flip', () => {
     const subscriberBlock = enclosingBlock(inlineApp, "classList.toggle('daw-workspace'");
-    expect(subscriberBlock).toContain("syncSpectrumForMode('live')");
+    expect(subscriberBlock).toContain("window.modeSwitch.applySpectrumForMode('live')");
   });
 
   it('only re-syncs on an actual flip, not on every settings save', () => {
