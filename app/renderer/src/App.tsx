@@ -79,10 +79,22 @@ import GradeOwnGuideDialog from './GradeOwnGuideDialog';
 import PhaseDoublingDialog from './PhaseDoublingDialog';
 import { installStoreBridge } from './stores/bridge';
 
-// Boot scripts in their original document order (#303): the 20 UMD helpers
+// Boot scripts in their original document order (#303): the 32 UMD helpers
 // (each attaches to `window`, see the classic-script comment above their old
 // <script src> tags in index.html), then the inline app script that wires up
 // the UI and reads those globals. Ported verbatim — see the source files.
+//
+// UMD helper audit (#424, TD-001 slice 6f, #704): none of the 32 are dead.
+// onboarding-state.js, feedback-form-state.js, grade-own-state.js, and
+// phase-doubling-state.js — the 4 helpers whose DOM wiring moved out of
+// inline-app.js this slice — are now read by the new
+// stores/onboardingStore.ts, stores/feedbackDialogStore.ts,
+// stores/gradeOwnGuideStore.ts, and stores/phaseDoublingStore.ts (+ their
+// dialog components) instead of by inline-app.js. phase-doubling-state.js
+// was already a cross-component dependency via ReportCardIsland.tsx's
+// getPhaseDoublingState().detectPhaseSignal() before this slice, so it was
+// never a removal candidate regardless. No BOOT_SCRIPTS entry is removed and
+// no app/renderer/*.js classic script is deleted.
 const BOOT_SCRIPTS = [
   rigReconcileSrc,
   armStateSrc,
