@@ -154,7 +154,13 @@ test.describe('Live capture (PRD 06) — workspace controls', () => {
 
     test('removing every track reveals the "Add your first track" empty state', async () => {
       const removeBtn = window.locator('.sb-live-meters .live-ch .live-ch-x').first();
+      const tracks = window.locator('.sb-live-meters .live-ch');
       await removeBtn.click();
+      // Wait for the first removal's re-render before firing the second click —
+      // otherwise removeBtn (re-queried as .first() at click time) can still
+      // resolve to the not-yet-removed first track and click it again instead
+      // of the second one, leaving one track stuck forever (#188 flake).
+      await expect(tracks).toHaveCount(1);
       await removeBtn.click();
       await expect(window.locator('#spectrum-body .sb-live-meters')).toHaveCount(0);
       await expect(window.locator('#spectrum-body')).toContainText('Add your first track');
