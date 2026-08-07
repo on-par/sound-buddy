@@ -131,8 +131,11 @@ function defaultChannelConfig(deviceChannels: number): StripConfig[] {
 }
 
 // The selected device's name, resolved from the device list ('' = Default
-// Device) — mirrors inline-app.js's selectedDeviceName() (#482).
-function deviceNameFor(selectedValue: string, devices: LiveDevice[]): string {
+// Device) — mirrors inline-app.js's selectedDeviceName() (#482). Exported
+// (TD-001 slice 6d, #702) so rigStore.ts and PreflightPanel.tsx can reuse
+// this exact resolution instead of duplicating it, same rationale as
+// persistGroups below.
+export function deviceNameFor(selectedValue: string, devices: LiveDevice[]): string {
   if (selectedValue === '') return '';
   const dev = devices.find((d) => String(d.index) === selectedValue);
   return dev ? dev.name : '';

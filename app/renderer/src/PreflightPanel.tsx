@@ -12,18 +12,10 @@
 
 import type { JSX } from 'react';
 import { useStoreShallow } from './stores/useStoreShallow';
-import { useLiveCaptureStore } from './stores/liveCaptureStore';
+import { useLiveCaptureStore, deviceNameFor } from './stores/liveCaptureStore';
 import { useRigStore } from './stores/rigStore';
 import { preflightViewModel, getRigReconcile } from './rig-panel';
-import { deviceChannelCount, type LiveDevice } from './live-capture-panel';
-
-// The selected device's name, resolved from the device list ('' = Default
-// Device) — mirrors liveCaptureStore.ts's own private deviceNameFor.
-function deviceNameFor(selectedValue: string, devices: LiveDevice[]): string {
-  if (selectedValue === '') return '';
-  const dev = devices.find((d) => String(d.index) === selectedValue);
-  return dev ? dev.name : '';
-}
+import { deviceChannelCount } from './live-capture-panel';
 
 export default function PreflightPanel(): JSX.Element {
   const { channelConfig, devices, selectedDevice } = useStoreShallow(useLiveCaptureStore, (s) => ({

@@ -20,7 +20,7 @@
 
 import { create } from 'zustand';
 import { getSoundBuddy } from '../useElectron';
-import { useLiveCaptureStore, persistGroups } from './liveCaptureStore';
+import { useLiveCaptureStore, persistGroups, deviceNameFor } from './liveCaptureStore';
 import { useSettingsStore } from './settingsStore';
 import type { RigApi, SettingsApi, CaptureRig } from '../../../electron/ipc/api';
 import {
@@ -32,7 +32,7 @@ import {
   type CaptureRigSnapshotInput,
   type ExistingRig,
 } from '../rig-panel';
-import { deviceChannelCount, type LiveDevice, type StripConfig } from '../live-capture-panel';
+import { deviceChannelCount, type StripConfig } from '../live-capture-panel';
 
 export type RigApiSubset = Pick<RigApi, 'listRigs' | 'saveRig' | 'deleteRig' | 'setActiveRig'> & Pick<SettingsApi, 'getSettings'>;
 
@@ -52,14 +52,6 @@ export interface RigState {
   remove(id: string): Promise<void>;
   saveBaseline(): Promise<void>;
   setLocked(locked: boolean): void;
-}
-
-// The selected device's name, resolved from the device list ('' = Default
-// Device) — mirrors liveCaptureStore.ts's own private deviceNameFor.
-function deviceNameFor(selectedValue: string, devices: LiveDevice[]): string {
-  if (selectedValue === '') return '';
-  const dev = devices.find((d) => String(d.index) === selectedValue);
-  return dev ? dev.name : '';
 }
 
 interface ChannelLabelsApi {
