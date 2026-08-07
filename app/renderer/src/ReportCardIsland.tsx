@@ -21,6 +21,7 @@ import { useAnalysisStore, type AnalysisStatus } from './stores/analysisStore';
 import { useSpectrumStore } from './stores/spectrumStore';
 import { useSettingsStore } from './stores/settingsStore';
 import { useSceneDiffStore } from './stores/sceneDiffStore';
+import { usePhaseDoublingStore } from './stores/phaseDoublingStore';
 import ReportCard, { type GradeResult } from './ReportCard';
 import SceneChanges from './SceneChanges';
 import { topSceneChanges } from '../../electron/scene-diff-format';
@@ -79,7 +80,6 @@ interface FeedbackRingoutApi {
 }
 
 interface InlineDialogsApi {
-  openPhaseDoublingDialog(): void;
   openFeedbackRingout(): void;
   saveMixAsTarget?(): void | Promise<boolean>;
   openBuildGuide(): void;
@@ -470,7 +470,7 @@ export default function ReportCardIsland() {
               : 'Walk through the common phase & routing bugs — no console access needed.',
           }}
           feedbackRingout={feedbackCallout}
-          onOpenPhaseDoubling={() => getInlineDialogs()?.openPhaseDoublingDialog()}
+          onOpenPhaseDoubling={() => usePhaseDoublingStore.getState().open(source ? { filename: source.filename, detected: phaseSignal } : null)}
           onOpenFeedbackRingout={() => getInlineDialogs()?.openFeedbackRingout()}
           showSaveTarget={showSaveTarget}
           saveTargetSaved={saveTargetSaved}

@@ -187,11 +187,10 @@ function syncLiveCaptureMirror(state, prevState) {
 syncLiveCaptureMirror(lcStore.getState());
 lcStore.subscribe(syncLiveCaptureMirror);
 
-let phaseDoublingStep = 0; // current step in the phase/doubling checklist (#370)
 // rcFeedbackPeak/rcPhaseSignal used to be module vars set by renderReportCard();
 // ReportCardIsland (React) now computes them each render and seeds
 // window.rcCallouts from a passive effect (TD-001 slice 4, #422) — read that
-// instead (see openFeedbackRingout / openPhaseDoublingDialog below).
+// instead (see openFeedbackRingout below).
 function rcCallouts() { return window.rcCallouts || { feedbackPeak: null, phaseSignal: false }; }
 
 /* ══ Formatting helpers ══ */
@@ -2097,30 +2096,14 @@ function aiEl(id) { return document.getElementById(id); }
 // stores/gradeOwnGuideStore.ts + GradeOwnGuideDialog.tsx (TD-001 slice 6f,
 // #704) port openGuideDialog/closeGuideDialog/gradeOwnChooseFile verbatim.
 
-/* ══ Doubling/Phase Bug Detector guided checklist (#370) ══ */
-function renderPhaseDoublingStep() {
-  const { getStep, stepCount, stepHtml, progressDotsHtml, isLastStep } = window.phaseDoublingState;
-  const total = stepCount();
-  aiEl('phase-doubling-body').innerHTML = stepHtml(getStep(phaseDoublingStep), phaseDoublingStep, total, escapeHtml);
-  aiEl('phase-doubling-progress').innerHTML = progressDotsHtml(phaseDoublingStep, total);
-  aiEl('phase-doubling-back').disabled = phaseDoublingStep === 0;
-  aiEl('phase-doubling-next').style.display = isLastStep(phaseDoublingStep) ? 'none' : '';
-}
-
-// Reached via window.inlineDialogs.openPhaseDoublingDialog (ReportCard.tsx's
-// button, TD-001 slice 4, #422) instead of a static listener.
-function openPhaseDoublingDialog() {
-  phaseDoublingStep = 0;
-  const src = window.reportCardChrome.getReportCardSource(curAnalysis(), anaStore.getState().liveSource);
-  aiEl('phase-doubling-context').innerHTML = window.phaseDoublingState.contextLineHtml(
-    src ? { filename: src.filename, detected: rcCallouts().phaseSignal } : null, escapeHtml);
-  renderPhaseDoublingStep();
-  aiEl('phase-doubling-dialog').style.display = 'flex';
-}
-
-function closePhaseDoublingDialog() {
-  aiEl('phase-doubling-dialog').style.display = 'none';
-}
+// Doubling/Phase Bug Detector guided checklist (#370) is gone —
+// stores/phaseDoublingStore.ts + PhaseDoublingDialog.tsx (TD-001 slice 6f,
+// #704) port renderPhaseDoublingStep/openPhaseDoublingDialog/
+// closePhaseDoublingDialog verbatim; ReportCardIsland.tsx now passes
+// { filename, detected } straight into
+// usePhaseDoublingStore.getState().open(...) from its own already-computed
+// source/phaseSignal locals, instead of this file reading them back off
+// window.rcCallouts/window.reportCardChrome.getReportCardSource.
 
 // #263: one-click "save this mix's tone as your target" from the report-card
 // CTA. Reuses idealProfilesStore's saveMeasured — the exact
@@ -2135,25 +2118,10 @@ async function saveMixAsTarget() {
   return window.rendererStores.idealProfiles.getState().saveMeasured(analysis.spectrum.curve, meta);
 }
 
-// Bridges ReportCard.tsx's phase-doubling/feedback-ringout callout buttons to
-// the still-inline dialogs they open (TD-001 slice 4, #422).
-window.inlineDialogs = { openPhaseDoublingDialog, openFeedbackRingout, saveMixAsTarget, openBuildGuide };
-
-(() => {
-  aiEl('phase-doubling-close').addEventListener('click', closePhaseDoublingDialog);
-  aiEl('phase-doubling-next').addEventListener('click', () => {
-    phaseDoublingStep = window.phaseDoublingState.clampIndex(phaseDoublingStep + 1);
-    renderPhaseDoublingStep();
-  });
-  aiEl('phase-doubling-back').addEventListener('click', () => {
-    phaseDoublingStep = window.phaseDoublingState.clampIndex(phaseDoublingStep - 1);
-    renderPhaseDoublingStep();
-  });
-  aiEl('phase-doubling-dialog').addEventListener('click', (e) => { if (e.target === aiEl('phase-doubling-dialog')) closePhaseDoublingDialog(); });
-  document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape' && aiEl('phase-doubling-dialog').style.display !== 'none') closePhaseDoublingDialog();
-  });
-})();
+// Bridges ReportCard.tsx's feedback-ringout callout button to the still-inline
+// dialog it opens (TD-001 slice 4, #422); saveMixAsTarget/openBuildGuide join
+// it for the report card's other two remaining inline-app.js call sites.
+window.inlineDialogs = { openFeedbackRingout, saveMixAsTarget, openBuildGuide };
 
 (() => {
   aiEl('settings-btn').addEventListener('click', () => setStore.getState().openDialog());

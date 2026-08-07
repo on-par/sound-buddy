@@ -76,6 +76,7 @@ import OnboardingDialog from './OnboardingDialog';
 import { useOnboardingStore } from './stores/onboardingStore';
 import FeedbackDialog from './FeedbackDialog';
 import GradeOwnGuideDialog from './GradeOwnGuideDialog';
+import PhaseDoublingDialog from './PhaseDoublingDialog';
 import { installStoreBridge } from './stores/bridge';
 
 // Boot scripts in their original document order (#303): the 20 UMD helpers
@@ -207,6 +208,7 @@ export default function App() {
       {createPortal(<CurveEditorDialog />, document.getElementById('curve-editor-island')!)}
       {createPortal(<FeedbackDialog />, document.getElementById('feedback-dialog-island')!)}
       {createPortal(<GradeOwnGuideDialog />, document.getElementById('guide-dialog-island')!)}
+      {createPortal(<PhaseDoublingDialog />, document.getElementById('phase-doubling-dialog-island')!)}
       {booted && createPortal(<OnboardingDialog />, document.getElementById('onboarding-island')!)}
       {booted && createPortal(<ReportCardIsland />, document.getElementById('report-card')!)}
       {booted && createPortal(<SpectrumPanel />, document.getElementById('spectrum-island')!)}
