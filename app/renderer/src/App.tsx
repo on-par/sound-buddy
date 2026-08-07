@@ -60,6 +60,19 @@ import IdealProfileSelect from './IdealProfileSelect';
 import CurveEditorDialog from './CurveEditorDialog';
 import LiveControls, { LiveTransportControls } from './LiveControls';
 import LiveWorkspace from './LiveWorkspace';
+import SoundcheckPanel from './SoundcheckPanel';
+import RigControls from './RigControls';
+import PreflightPanel from './PreflightPanel';
+import ModeTabs from './ModeTabs';
+import * as modeSwitch from './mode-switch';
+import * as reportCardChrome from './report-card-chrome';
+import ReportCardToolbar from './ReportCardToolbar';
+import UpgradeMomentum from './UpgradeMomentum';
+import RecentServicesPanel from './RecentServicesPanel';
+import BuildGuidePanel from './BuildGuidePanel';
+import RingoutPanel from './RingoutPanel';
+import LicenseChrome from './LicenseChrome';
+import UpdateBanner from './UpdateBanner';
 import { installStoreBridge } from './stores/bridge';
 
 // Boot scripts in their original document order (#303): the 20 UMD helpers
@@ -154,6 +167,14 @@ export default function App() {
     // call them by name.
     (window as Window & { measurementDeviceState?: unknown }).measurementDeviceState = measurementDeviceState;
     (window as Window & { crashHooks?: unknown }).crashHooks = crashHooks;
+    // inline-app.js still needs applySpectrumForMode/applySingleColumnSync
+    // for the 2 remaining call sites outside ModeTabs.tsx's click handler
+    // (TD-001 slice 6e, #703).
+    (window as Window & { modeSwitch?: unknown }).modeSwitch = modeSwitch;
+    // inline-app.js still needs getReportCardSource/persistSummary for the
+    // AI narrative trigger, saveMixAsTarget, and the live-capture session
+    // persist call (TD-001 slice 6e, #703).
+    (window as Window & { reportCardChrome?: unknown }).reportCardChrome = reportCardChrome;
     // Installed before the boot scripts run — inline-app.js reads
     // window.rendererStores at its top level (TD-001 slice 3, #421).
     installStoreBridge();
@@ -185,6 +206,17 @@ export default function App() {
       {booted && createPortal(<LiveWorkspace />, document.getElementById('live-island')!)}
       {booted && createPortal(<LiveControls />, document.getElementById('live-controls-island')!)}
       {booted && createPortal(<LiveTransportControls />, document.getElementById('live-transport-island')!)}
+      {booted && createPortal(<RigControls />, document.getElementById('rig-controls-island')!)}
+      {booted && createPortal(<PreflightPanel />, document.getElementById('preflight-island')!)}
+      {booted && createPortal(<SoundcheckPanel />, document.getElementById('soundcheck-island')!)}
+      {booted && createPortal(<ModeTabs />, document.getElementById('mode-tabs')!)}
+      {booted && createPortal(<ReportCardToolbar />, document.getElementById('rc-toolbar')!)}
+      {booted && createPortal(<UpgradeMomentum />, document.getElementById('rc-upgrade-island')!)}
+      {booted && createPortal(<RecentServicesPanel />, document.getElementById('tab-recent')!)}
+      {booted && createPortal(<BuildGuidePanel />, document.getElementById('tab-guide')!)}
+      {booted && createPortal(<RingoutPanel />, document.getElementById('tab-ringout')!)}
+      {booted && <LicenseChrome />}
+      {booted && createPortal(<UpdateBanner />, document.getElementById('update-banner-island')!)}
     </>
   );
 }

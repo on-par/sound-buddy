@@ -29,7 +29,7 @@ type LicensingStoreHandle = UseBoundStore<StoreApi<LicensingState>>;
 // inline-app.js's own HOSTED_PROVIDER_IDS duplication across the IPC
 // boundary. Keep the wording byte-identical; entitlement-matrix.spec.ts and
 // license.spec.ts assert substrings of it.
-function graceBannerText(state: LicenseState, now: Date): string | null {
+export function graceBannerText(state: LicenseState, now: Date): string | null {
   if (state.status !== 'grace' || !state.graceEndsAt) return null;
   const endMs = Date.parse(state.graceEndsAt);
   if (isNaN(endMs)) return null;

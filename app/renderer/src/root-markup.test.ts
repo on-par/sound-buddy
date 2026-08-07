@@ -4,6 +4,9 @@
 import { describe, it, expect } from 'vitest';
 import * as fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import { createElement } from 'react';
+import { renderToString } from 'react-dom/server';
+import ModeTabs from './ModeTabs';
 
 // Directory tab is a real batch-analysis workflow (#270), replacing the
 // #293 roadmap card. These assertions encode the acceptance criteria — a
@@ -143,9 +146,10 @@ describe('Secondary measurement device source (#460)', () => {
 });
 
 describe('Existing tabs stay intact under the unified Analyze picker (#543)', () => {
-  it('keeps all seven mode tabs, unchanged', () => {
+  it('keeps all seven mode tabs, unchanged (now rendered by ModeTabs.tsx, TD-001 slice 6e, #703)', () => {
+    const modeTabsMarkup = renderToString(createElement(ModeTabs));
     ['dir', 'live', 'soundcheck', 'recent', 'guide', 'ringout', 'reportcard'].forEach((mode) => {
-      expect(markup).toContain(`data-mode="${mode}"`);
+      expect(modeTabsMarkup).toContain(`data-mode="${mode}"`);
     });
   });
 

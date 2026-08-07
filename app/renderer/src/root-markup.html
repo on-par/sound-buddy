@@ -1,25 +1,9 @@
-  <!-- ══ Update banner ══ -->
-  <div id="update-banner" role="status">
-    <span data-icon="arrow-up-circle" class="ub-icon"></span>
-    <span id="update-banner-text">A new version is available.</span>
-    <progress id="update-progress" max="100" value="0" hidden></progress>
-    <button type="button" id="update-download-btn" class="ub-btn">Download</button>
-    <button type="button" id="update-dismiss-btn" class="ub-x" aria-label="Dismiss">✕</button>
-  </div>
-  <!-- ══ License grace banner (#54) ══ -->
-  <div id="license-banner" role="status">
-    <span data-icon="alert-triangle" class="ub-icon"></span>
-    <span class="lb-text" id="license-banner-text"></span>
-    <button type="button" id="license-banner-manage" class="ub-btn">Manage…</button>
-    <button type="button" id="license-banner-dismiss" class="ub-x" aria-label="Dismiss">✕</button>
-  </div>
-  <!-- ══ Trial nudge / upgrade banner (#61) ══ -->
-  <div id="trial-banner" role="status">
-    <span data-icon="sparkles" class="ub-icon"></span>
-    <span class="lb-text" id="trial-banner-text"></span>
-    <button type="button" id="trial-banner-start" class="ub-btn">Start subscription</button>
-    <button type="button" id="trial-banner-dismiss" class="ub-x" aria-label="Dismiss">✕</button>
-  </div>
+  <!-- ══ Update banner (TD-001 slice 6e, #703) — UpdateBanner.tsx renders it. ══ -->
+  <div id="update-banner-island"></div>
+  <!-- ══ License badge/grace banner/trial banner (#54, #61, TD-001 slice 6e, #703)
+       — LicenseChrome.tsx renders all three. ══ -->
+  <div id="license-banner-island"></div>
+  <div id="trial-banner-island"></div>
   <!-- ══ What's-new note (#271) — dismissible, non-blocking, once per update ══ -->
   <div id="whats-new-banner" role="status">
     <span data-icon="sparkles" class="ub-icon"></span>
@@ -80,24 +64,12 @@
       <span id="logo-text">Sound<b> Buddy</b></span>
     </div>
     <div class="header-div"></div>
-    <div id="mode-tabs" role="tablist">
-      <!-- Final nav consolidation (#547, epic e17): flag-only entries — hidden by
-           default (see app.css) so the flag-off shell is unchanged. -->
-      <button class="mode-tab" id="nav-analyze" data-mode="analyze" data-icon="activity">Analyze</button>
-      <button class="mode-tab" id="nav-history" data-mode="history" data-icon="clock">History</button>
-      <!-- Directory now ships the #270 batch-analysis workflow, so it drops the
-           #293 "v1.1" roadmap badge and becomes a real destination. -->
-      <button class="mode-tab" data-mode="dir" data-icon="folder">Directory</button>
-      <button class="mode-tab" data-mode="live" data-icon="radio">Live<span class="tab-lock" data-icon="lock" data-size="11"></span></button>
-      <button class="mode-tab" data-mode="soundcheck" data-icon="sliders">Soundcheck<span class="tab-lock" data-icon="lock" data-size="11"></span></button>
-      <button class="mode-tab" data-mode="recent" data-icon="clock">Recent</button>
-      <button class="mode-tab" data-mode="guide" data-icon="clipboard-check">Build Guide</button>
-      <button class="mode-tab" data-mode="ringout" data-icon="waves">Ring Out</button>
-      <button class="mode-tab active" data-mode="reportcard" data-icon="clipboard-check">Report Card</button>
-    </div>
+    <!-- ModeTabs.tsx (TD-001 slice 6e, #703) renders the 9 tab buttons. -->
+    <div id="mode-tabs" role="tablist"></div>
     <div id="header-right">
       <button type="button" id="settings-btn" data-icon="settings" data-size="17" aria-label="Settings" title="Settings"></button>
-      <button type="button" id="license-badge" title="License — click to manage">FREE</button>
+      <!-- LicenseChrome.tsx (TD-001 slice 6e, #703) renders the badge. -->
+      <div id="license-badge-island"></div>
       <div id="live-indicator">
         <div class="pulse sb-pulse"></div>
         <span class="live-txt">LIVE</span>
@@ -140,21 +112,7 @@
           <!-- Saved capture setups ("rigs"): pick one to restore device, channels,
                mode, folder and slider cadences; Save / Save As… / Rename / Delete. -->
           <div id="rig-bar" class="rig-bar">
-            <label class="select-label">
-              <span>Rig</span>
-              <div class="select-row">
-                <div class="select-wrap">
-                  <select id="rig-select"><option value="">No saved rigs</option></select>
-                  <span class="select-caret" data-icon="chevron-down"></span>
-                </div>
-              </div>
-            </label>
-            <div class="rig-actions">
-              <button type="button" id="rig-save-btn" class="ghost-btn sm" title="Update the selected rig">Save</button>
-              <button type="button" id="rig-saveas-btn" class="ghost-btn sm" title="Save the current setup as a new rig">Save As…</button>
-              <button type="button" id="rig-rename-btn" class="ghost-btn sm" title="Rename the selected rig">Rename</button>
-              <button type="button" id="rig-delete-btn" class="ghost-btn sm" title="Delete the selected rig">Delete</button>
-            </div>
+            <div id="rig-controls-island"></div>
           </div>
           <div class="hairline"></div>
 
@@ -196,13 +154,7 @@
                save a baseline of the current routing, then compare it against
                the live config to catch drift before the band walks in. ══ -->
           <div class="preflight-panel" id="preflight-panel">
-            <div class="pf-head">
-              <span class="section-label">Preflight</span>
-              <button type="button" id="preflight-save-btn" class="ghost-btn sm" title="Save the current routing as your baseline">Save baseline</button>
-            </div>
-            <span class="pf-saved" id="preflight-saved"></span>
-            <div class="pf-banner" id="preflight-banner"></div>
-            <ul class="pf-list" id="preflight-list"></ul>
+            <div id="preflight-island"></div>
           </div>
           <div class="hairline"></div>
 
@@ -236,85 +188,22 @@
             <span class="pg-msg">Play back a captured session through your console and mix without the band.</span>
             <button type="button" class="pg-link" data-license-open>Upgrade — enter a license key</button>
           </div>
-          <button type="button" class="btn btn-secondary full" id="sc-choose-btn" data-icon="folder">Choose session folder…</button>
-          <div id="sc-session-name" class="sc-session-name" style="display:none"></div>
-          <div class="hairline"></div>
-          <label class="select-label">
-            <span>Output Device</span>
-            <div class="select-row">
-              <div class="select-wrap">
-                <select id="sc-device-select"><option value="">Default output</option></select>
-                <span class="select-caret" data-icon="chevron-down"></span>
-              </div>
-            </div>
-          </label>
-          <div class="chcfg-head"><span class="lbl">Tracks &amp; routing</span></div>
-          <div id="sc-tracks" class="sc-tracks"><div class="sc-empty">Choose a session folder to load its tracks.</div></div>
-          <label class="sc-master">
-            <input type="checkbox" id="sc-master-toggle" />
-            <span>Master mixdown (stereo)</span>
-          </label>
-          <div id="sc-mixdown-notice" class="sc-notice" style="display:none"></div>
-          <div class="hairline"></div>
-          <button class="btn btn-primary full" id="sc-play-btn" data-icon="play" disabled>Play</button>
-          <button class="btn btn-danger full" id="sc-stop-btn" data-icon="square" style="display:none">Stop</button>
-          <div id="sc-elapsed" class="sc-elapsed" style="display:none"></div>
-          <div id="sc-status" class="sc-status" role="alert" style="display:none"></div>
+          <div id="soundcheck-island"></div>
         </div>
 
-        <!-- RECENT (#147) — last 10 persisted report-card summaries, newest-first. -->
-        <div class="tab-content" id="tab-recent">
-          <span class="section-label">Recent Services</span>
-          <div class="dir-list" id="recent-list"></div>
-          <p class="dz-hint recent-empty" id="recent-empty" style="display:none">No analyses yet — analyze a file to build your history.</p>
-        </div>
+        <!-- RECENT (#147) — last 10 persisted report-card summaries, newest-first.
+             RecentServicesPanel.tsx (TD-001 slice 6e, #703) renders its content. -->
+        <div class="tab-content" id="tab-recent"></div>
 
-        <!-- BUILD GUIDE (#367) — Lee's channel build order as a checkable, persistent guide. -->
-        <div class="tab-content" id="tab-guide">
-          <!-- PASS MODE (#365) — Rough Pass / Contextual Pass workflow toggle + reminders. -->
-          <div class="pass-mode" role="group" aria-label="Mixing pass">
-            <div class="pass-toggle" id="pass-mode-toggle"></div>
-            <div class="pass-reminder" id="pass-mode-reminder"></div>
-          </div>
-          <div class="bg-head">
-            <span class="section-label">Build Order</span>
-            <span class="bg-progress" id="build-guide-progress"></span>
-            <button type="button" id="build-guide-reset" class="ghost-btn sm" title="Clear progress">Reset</button>
-          </div>
-          <div class="bg-list" id="build-guide-list"></div>
-          <div class="bg-complete" id="build-complete" hidden></div>
-          <button type="button" id="build-guide-review" class="btn btn-secondary sm full" data-icon="clipboard-check">Review in Report Card</button>
-        </div>
+        <!-- BUILD GUIDE (#367) — Lee's channel build order as a checkable, persistent guide.
+             BuildGuidePanel.tsx (TD-001 slice 6e, #703) renders its content. -->
+        <div class="tab-content" id="tab-guide"></div>
 
         <!-- FEEDBACK RING-OUT ASSISTANT (#366) — step-by-step wizard: raise gain to
              just-ringing, capture (mic or manual), suggest a narrow-Q cut, save a
-             per-mic EQ profile. Free — no console API, fully offline. -->
-        <div class="tab-content" id="tab-ringout">
-          <span class="section-label">Ring-Out Assistant</span>
-          <div class="bg-list" id="ringout-step"></div>
-          <div class="ro-nav">
-            <button type="button" id="ringout-prev" class="ghost-btn sm">Back</button>
-            <button type="button" id="ringout-next" class="ghost-btn sm">Next</button>
-          </div>
-
-          <span class="section-label">Capture</span>
-          <button type="button" id="ringout-capture" class="btn btn-secondary sm full" data-icon="waveform">Capture from mic</button>
-          <p class="dz-hint" id="ringout-status"></p>
-          <div class="ro-manual">
-            <input type="number" id="ringout-manual-input" placeholder="Frequency (Hz)" min="20" max="20000" />
-            <button type="button" id="ringout-manual-apply" class="ghost-btn sm">Use this frequency</button>
-          </div>
-
-          <span class="section-label">Suggested cut</span>
-          <div id="ringout-suggestion"></div>
-
-          <span class="section-label">Mic EQ profiles</span>
-          <div class="ro-profile-save">
-            <input type="text" id="ringout-profile-name" placeholder="Mic name (e.g. SM58)" />
-            <button type="button" id="ringout-profile-save" class="ghost-btn sm">Save profile</button>
-          </div>
-          <div id="ringout-profile-list"></div>
-        </div>
+             per-mic EQ profile. Free — no console API, fully offline.
+             RingoutPanel.tsx (TD-001 slice 6e, #703) renders its content. -->
+        <div class="tab-content" id="tab-ringout"></div>
       </div>
     </aside>
 
@@ -354,37 +243,19 @@
 
   <!-- ══ Report Card ══ -->
   <div id="reportcard-view" class="active">
-    <div id="rc-toolbar">
-      <span class="panel-title">Report Card</span>
-      <div class="rc-toolbar-actions">
-        <button class="btn btn-secondary sm" id="reportcard-clear-btn" data-icon="x" disabled>Clear</button>
-        <button class="btn btn-secondary sm" id="reportcard-load-btn" data-icon="file-audio" style="display:none">Load a file…</button>
-        <button class="btn btn-secondary sm" id="reportcard-feedback-btn" data-icon="info">Send Feedback</button>
-        <button class="btn btn-secondary sm" id="reportcard-share-btn" data-icon="download" disabled>Share Image</button>
-        <button class="btn btn-secondary sm" id="reportcard-print-btn" data-icon="download" disabled>Export PDF</button>
-        <button class="btn btn-secondary sm" id="grade-own-btn" data-icon="waveform" disabled>Grade your own service</button>
-      </div>
-    </div>
+    <!-- ReportCardToolbar.tsx (TD-001 slice 6e, #703) renders the toolbar buttons. -->
+    <div id="rc-toolbar"></div>
     <div id="rc-scroll">
       <div id="rc-layout">
       <!-- React island renders #rc-empty/#rc-content (TD-001 slice 4, #422):
            ReportCardIsland, portaled by App.tsx. -->
       <div id="report-card"></div>
       <!-- ══ "Keep improving" momentum card (#58) ══
-           Beside the finished free report card, never over it. Shown only to a
-           free (non-Pro) user, after a card renders, and only when not dismissed
-           for the 7-day conversion window. Copy/tone come from window.upgradeMomentum
-           (score-aware). CTAs open hosted Stripe checkout via sb.openCheckout. -->
-      <aside id="rc-upgrade" hidden aria-label="Upgrade to Pro">
-        <div class="rcu-head">
-          <span class="rcu-heading" id="rcu-heading"></span>
-          <span class="rcu-sub" id="rcu-sub"></span>
-        </div>
-        <ul class="rcu-actions" id="rcu-actions"></ul>
-        <div class="rcu-cta" id="rcu-cta"></div>
-        <p class="rcu-trust" id="rcu-trust"></p>
-        <button type="button" class="rcu-later" id="rcu-later">Maybe later</button>
-      </aside>
+           Beside the finished free report card, never over it. UpgradeMomentum.tsx
+           (TD-001 slice 6e, #703) renders it — shown only to a free (non-Pro) user,
+           after a card renders, and only when not dismissed for the 7-day
+           conversion window. -->
+      <div id="rc-upgrade-island"></div>
       </div>
     </div>
   </div>

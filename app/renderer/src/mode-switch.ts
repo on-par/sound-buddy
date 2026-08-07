@@ -1,0 +1,154 @@
+// Copyright (c) 2026 Patrick Robinson (on-par). All rights reserved.
+// Licensed under the Sound Buddy Desktop Application License (app/LICENSE).
+
+// Pure mode-switch decision + the DOM/store apply side (TD-001 slice 6e,
+// #703) — ports inline-app.js's .mode-tab click listener (the module-level
+// currentMode var, syncSpectrumForMode, syncSingleColumn) into a real ES
+// module. ModeTabs.tsx renders the tab buttons and owns each button's
+// `active` class reactively (data-mode === appMode); this module owns
+// everything else the original click listener's body did.
+// liveCaptureStore.appMode (TD-001 slice 6c, #701) stays the single source
+// of truth for "current mode" — no new store field (see the plan's rejected
+// alternatives for why).
+
+import { getSoundBuddy } from './useElectron';
+import { spectrumTransport } from './spectrum-transport';
+import { useLiveCaptureStore } from './stores/liveCaptureStore';
+import { useSettingsStore } from './stores/settingsStore';
+import { useSpectrumStore } from './stores/spectrumStore';
+import { useAnalysisStore } from './stores/analysisStore';
+import { useSoundcheckStore } from './stores/soundcheckStore';
+import { SPECTRUM_TITLE } from './spectrum-chrome';
+import { clampEqPaneWidth } from './live-capture-panel';
+
+export type ModeSwitchDecision =
+  | { type: 'noop' }
+  | { type: 'openPicker' }
+  | { type: 'redirect'; mode: string }
+  | { type: 'switch'; mode: string };
+
+// Verbatim port of the special-casing at the top of the old .mode-tab click
+// listener (inline-app.js) — pure, no DOM.
+export function resolveModeSwitch(requestedMode: string, currentMode: string): ModeSwitchDecision {
+  if (requestedMode === 'analyze') return { type: 'openPicker' };
+  if (requestedMode === 'history') return { type: 'redirect', mode: 'recent' };
+  if (requestedMode === currentMode) return { type: 'noop' };
+  return { type: 'switch', mode: requestedMode };
+}
+
+// single-column-state.js/report-first-ux-state.js stay classic scripts —
+// read via a typed window cast, matching ReportCardIsland.tsx's
+// getGrading()-style pattern.
+interface SingleColumnStateApi {
+  isSingleColumn(reportFirstUxEnabled: boolean, mode: string): boolean;
+}
+interface ReportFirstUxStateApi {
+  isEnabled(settings: unknown): boolean;
+}
+function getSingleColumnState(): SingleColumnStateApi {
+  return (window as unknown as { singleColumnState: SingleColumnStateApi }).singleColumnState;
+}
+function getReportFirstUxState(): ReportFirstUxStateApi {
+  return (window as unknown as { reportFirstUxState: ReportFirstUxStateApi }).reportFirstUxState;
+}
+
+// The Live tab's meter board (renderLiveMeters/renderLiveWorkspace/
+// renderEqPane/currentEqPaneChannels) is out of scope for this slice (#395's
+// later slice 6f) and stays inline-app.js's — its top-level `function`
+// declarations attach to `window` automatically (same as
+// window.renderChannelConfig, read by rigStore.ts). liveRunning/liveWindows
+// are `let` bindings, which don't, so inline-app.js bridges a read-only
+// accessor for them onto window.liveCapture.
+interface LiveBoardApi {
+  renderLiveMeters(win: unknown): void;
+  renderLiveWorkspace(): void;
+  renderEqPane(channels: unknown): void;
+  currentEqPaneChannels(): unknown;
+}
+interface LiveCaptureRunningApi {
+  isRunning(): boolean;
+  windows(): unknown[];
+}
+function getLiveBoard(): LiveBoardApi {
+  return window as unknown as LiveBoardApi;
+}
+function getLiveCapture(): LiveCaptureRunningApi {
+  return (window as unknown as { liveCapture: LiveCaptureRunningApi }).liveCapture;
+}
+
+// Verbatim port of syncSpectrumForMode (inline-app.js) — keeps the spectrum
+// panel's title + empty/populated/meters state in sync with the active mode.
+export function applySpectrumForMode(mode: string): void {
+  const title = document.getElementById('spectrum-title');
+  const eqPane = document.getElementById('live-eq-pane');
+  if (eqPane) eqPane.style.display = mode === 'live' ? 'flex' : 'none';
+  const curAnalysis = () => useAnalysisStore.getState().currentAnalysis;
+
+  if (mode === 'live') {
+    if (title) title.textContent = SPECTRUM_TITLE.live;
+    if (eqPane) eqPane.style.width = clampEqPaneWidth(useSettingsStore.getState().settings?.liveEqPaneWidth) + 'px';
+    const board = getLiveBoard();
+    const live = getLiveCapture();
+    const windows = live.windows();
+    if (live.isRunning() && windows.length > 0) board.renderLiveMeters(windows[windows.length - 1]);
+    else board.renderLiveWorkspace();
+    board.renderEqPane(board.currentEqPaneChannels());
+  } else if (mode === 'soundcheck') {
+    if (title) title.textContent = 'Soundcheck · Meters';
+    if (useSoundcheckStore.getState().playing) useSpectrumStore.getState().setPanelState('meters');
+    else useSpectrumStore.getState().setPanelState('empty', 'Load a session and press Play to see per-track meters');
+  } else if (mode === 'recent') {
+    if (title) title.textContent = SPECTRUM_TITLE.curve;
+    if (!curAnalysis()) useSpectrumStore.getState().setPanelState('empty', 'Select a recent analysis to load its report card');
+    else useSpectrumStore.getState().setPanelState('populated');
+  } else if (mode === 'guide') {
+    if (title) title.textContent = SPECTRUM_TITLE.curve;
+    if (!curAnalysis()) useSpectrumStore.getState().setPanelState('empty', 'Follow the build order, then load a recording to grade it');
+    else useSpectrumStore.getState().setPanelState('populated');
+  } else if (mode === 'dir') {
+    if (title) title.textContent = SPECTRUM_TITLE.curve;
+    if (!curAnalysis()) useSpectrumStore.getState().setPanelState('empty', 'Choose a folder to analyze every recording in it');
+    else useSpectrumStore.getState().setPanelState('populated');
+  } else {
+    if (title) title.textContent = SPECTRUM_TITLE.curve;
+    if (!curAnalysis()) useSpectrumStore.getState().setPanelState('empty', 'Load a file to see the spectrum');
+    else useSpectrumStore.getState().setPanelState('populated');
+  }
+}
+
+// Verbatim port of syncSingleColumn (inline-app.js) — #542 (epic e17): fold
+// the workspace to one column for Recent/Build Guide/Ring-Out/Directory when
+// the report-first-ux flag is on.
+export function applySingleColumnSync(): void {
+  document.body.classList.toggle('single-column', getSingleColumnState().isSingleColumn(
+    getReportFirstUxState().isEnabled(useSettingsStore.getState().settings),
+    useLiveCaptureStore.getState().appMode));
+}
+
+// Verbatim port of the .mode-tab click listener's body (inline-app.js) minus
+// the tab-active class toggle, which ModeTabs.tsx now owns reactively.
+export function switchMode(mode: string): void {
+  const sb = getSoundBuddy();
+  // Opt-in crash reporting (#473): the current screen is a safe breadcrumb
+  // (a name, never content) a crash payload includes as `route`.
+  sb.recordAppEvent(`screen.${mode === 'reportcard' ? 'reportcard' : mode}`);
+  // Live/Soundcheck replace the spectrum area with unrelated content and
+  // Soundcheck has its own playback transport — don't leave the analyzed
+  // file playing silently in the background with no visible control (#180).
+  if (mode === 'live' || mode === 'soundcheck') spectrumTransport.pauseIfPlaying();
+
+  useLiveCaptureStore.getState().setAppMode(mode);
+
+  if (mode === 'reportcard') {
+    document.body.classList.add('rc-active');
+    document.getElementById('reportcard-view')?.classList.add('active');
+    applySpectrumForMode('reportcard');
+  } else {
+    document.body.classList.remove('rc-active');
+    document.getElementById('reportcard-view')?.classList.remove('active');
+    document.querySelectorAll('.tab-content').forEach((tc) => tc.classList.remove('active'));
+    document.getElementById(`tab-${mode}`)?.classList.add('active');
+    applySpectrumForMode(mode);
+  }
+  applySingleColumnSync();
+}

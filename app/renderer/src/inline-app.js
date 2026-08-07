@@ -59,9 +59,13 @@ const transport = window.spectrumTransport;
 // script reads/writes it through the store instead of a module-level var.
 const lcStore = window.rendererStores.liveCapture;
 
-let currentMode = 'reportcard';
 let liveRunning = false;
 let liveWindows = [];
+// TD-001 slice 6e (#703): mode-switch.ts is a real ES module, so it can't
+// read this script's lexical `let` bindings directly the way a top-level
+// `function` declaration (e.g. renderChannelConfig) leaks onto `window`
+// automatically — applySpectrumForMode's ported Live-tab branch needs these.
+window.liveCapture = { isRunning: () => liveRunning, windows: () => liveWindows };
 // Whole-session window accumulator (#261): liveWindows above is capped at 10
 // entries (see the onLiveEvent handler below) for the rolling preview and the
 // report-card source (#208) — nowhere near enough for "the whole session" a
@@ -75,6 +79,10 @@ let focusedInputIndex = null;
 // Coaching stability state (#612) — advanced once per analysis window, never
 // per render, since syncLiveAdjustmentsPanel() is called from many render paths.
 let lapCoaching = window.liveAdjustmentsState.createCoachingState();
+// ReportCardToolbar.tsx's Clear button (TD-001 slice 6e, #703) needs to
+// reset lapCoaching — a lexical `let` binding an ES module can't reach
+// directly (see window.liveCapture above for the same reasoning).
+window.liveCoaching = { reset: () => { lapCoaching = window.liveAdjustmentsState.createCoachingState(); } };
 // Elapsed-time playhead for the experimental DAW shell (#518): window.dawPlayheadState
 // state, null before the first capture ever starts. Tracked regardless of the
 // DAW toggle so flipping the experiment mid-capture shows correct elapsed time.
@@ -111,7 +119,8 @@ const WAVEFORM_COLORS = {
 // board; a group header collapses to a compact live-summary row (#483), and
 // both group order and per-group member order are drag/keyboard-reorderable.
 // Persisted per-device in settings.json (#483, mirroring #482's channelLabels)
-// and also saved into rigs (Pro) via captureCurrentRig/applyRig.
+// and also saved into rigs (Pro) via rig-panel.ts's captureCurrentRigSnapshot/
+// applyRigPatch (TD-001 slice 6d, #702).
 let channelGroups = [];
 // Drag-reorder source (#483): { type:'group'|'strip', index } set on dragstart,
 // cleared on drop/dragend. Module-level because dragover/drop fire on whatever
@@ -164,7 +173,7 @@ function syncLiveCaptureMirror(state, prevState) {
   // schedule. Per-tick patching (live-meter-controller.ts, mounted by
   // LiveWorkspace.tsx) stays the separate, animation-frame-coalesced path
   // for lastTick changes.
-  if (currentMode === 'live' && (
+  if (lcStore.getState().appMode === 'live' && (
     state.channelConfig !== prevState.channelConfig
     || state.channelGroups !== prevState.channelGroups
     || state.isCapturing !== prevState.isCapturing
@@ -207,7 +216,6 @@ const {
   veqLoudestIdx, veqBandView, veqValBottom,
   heatmapSVG, miniCurveSVG, fmtDur, timeAxisHTML, classLabel,
   patchGridBarsAndBandLabels, patchBarsAndLabels, hasUsableCurve,
-  formatClock: scTime,
 } = window.spectrumDisplay;
 
 // SPECTRUM_TITLE (TD-001 slice 6a, #695) — inline-app.js still writes
@@ -401,7 +409,7 @@ function renderLiveMeters(win) {
   // even while the DAW shell has taken over rendering below — otherwise every
   // lane name would be stuck unresolved for the whole capture.
   if (win && win.channels && win.channels.length > 0) lastLiveChannels = win.channels;
-  if (window.dawWorkspaceState.showShell(setStore.getState().settings, currentMode)) { renderDawShell(); return; }
+  if (window.dawWorkspaceState.showShell(setStore.getState().settings, lcStore.getState().appMode)) { renderDawShell(); return; }
   const body = document.getElementById('live-island');
   if (!win || !win.channels || win.channels.length === 0) {
     specStore.getState().setPanelState('empty', 'Waiting for live audio…');
@@ -454,7 +462,7 @@ function renderLiveMeters(win) {
 // (locked) mid-capture.
 function renderLiveWorkspace() {
   specStore.getState().setPanelState('meters'); // hides #spectrum-island's React curve view while #live-island renders the board
-  if (window.dawWorkspaceState.showShell(setStore.getState().settings, currentMode)) { renderDawShell(); return; }
+  if (window.dawWorkspaceState.showShell(setStore.getState().settings, lcStore.getState().appMode)) { renderDawShell(); return; }
   const body = document.getElementById('live-island');
   document.getElementById('stats-row').style.display = 'none';
   const ipWrap = document.getElementById('ideal-profile-wrap');
@@ -506,7 +514,7 @@ function renderLiveWorkspace() {
 function syncLiveAdjustmentsPanel() {
   const body = document.getElementById('live-island');
   const html = window.liveAdjustmentsState.panelHTML(
-    setStore.getState().settings, currentMode, liveWindows, lcStore.getState().measurementSource, lapFocusView(), lapCoaching, Date.now());
+    setStore.getState().settings, lcStore.getState().appMode, liveWindows, lcStore.getState().measurementSource, lapFocusView(), lapCoaching, Date.now());
   const existing = body.querySelector('.live-adjustments-panel');
   if (!html) { if (existing) existing.remove(); return; }
   if (!existing) body.insertAdjacentHTML('beforeend', html);
@@ -971,6 +979,11 @@ function updateStatsRow(sox, spectrum) {
   setStat('stat-clip', sox.clipping ? 'YES' : 'No', sox.clipping ? 'issue' : '');
   document.getElementById('stat-centroid').textContent = spectrum && spectrum.spectralCentroid ? Math.round(spectrum.spectralCentroid).toLocaleString() : '—';
 }
+// ReportCardToolbar.tsx's status-transition useEffect (TD-001 slice 6e,
+// #703) calls this by name instead of duplicating it as an ES import, since
+// it's still a plain inline-app.js function (leaks onto window automatically
+// as a top-level declaration, same as window.renderChannelConfig).
+window.updateStatsRow = updateStatsRow;
 function updateLiveStatsRow(ch) {
   setStat('stat-rms', fmt(ch.rms), ch.rms > -6 ? 'check' : '');
   setStat('stat-peak', fmt(ch.peak), ch.peak > -1 ? 'issue' : '');
@@ -979,18 +992,17 @@ function updateLiveStatsRow(ch) {
   document.getElementById('stat-centroid').textContent = ch.centroid ? Math.round(ch.centroid).toLocaleString() : '—';
 }
 
-// #542 (epic e17): Recent / Build Guide / Ring-Out have no spectrum and no
-// per-analysis report content of their own — collapse the workspace to one
-// full-width column for them when the report-first-ux flag is on. CSS does
-// the layout; this only owns the branch point.
-function syncSingleColumn() {
-  document.body.classList.toggle('single-column', window.singleColumnState.isSingleColumn(
-    window.reportFirstUxState.isEnabled(setStore.getState().settings), currentMode));
-}
+// syncSingleColumn is gone — mode-switch.ts#applySingleColumnSync (TD-001
+// slice 6e, #703) ports it verbatim; inline-app.js reaches it via
+// window.modeSwitch for the two call sites below that aren't inside
+// switchMode() itself.
 
 // #543 (epic e17): the unified "Analyze" source picker — opened from the
 // Report Card toolbar (see the reportcard-load-btn handler above), never on
 // launch, so there's no full-screen overlay for e2e specs to trip over.
+// Bridged onto window.analyzeSourcePicker.open (TD-001 slice 6e, #703) — the
+// React-owned ModeTabs.tsx now dispatches the 'analyze' tab through this
+// bridge instead of calling the function directly.
 function openAnalyzeSourcePicker() {
   document.getElementById('analyze-source-picker').hidden = false;
   document.querySelector('[data-analyze-source]').focus();
@@ -998,6 +1010,7 @@ function openAnalyzeSourcePicker() {
 function closeAnalyzeSourcePicker() {
   document.getElementById('analyze-source-picker').hidden = true;
 }
+window.analyzeSourcePicker = { open: openAnalyzeSourcePicker };
 // Routing is a simulated tab click — the same idiom used throughout this file
 // (e.g. #rc-offer-btn) — so Live/Soundcheck reach their
 // destination through the real mode-tab handler: Pro gating, transport
@@ -1017,313 +1030,17 @@ document.getElementById('analyze-source-picker').addEventListener('keydown', (e)
   if (e.key === 'Escape') closeAnalyzeSourcePicker();
 });
 
-/* ══ Mode tabs ══ */
-document.querySelectorAll('.mode-tab').forEach(tab => {
-  tab.addEventListener('click', () => {
-    const mode = tab.dataset.mode;
-    // Final nav consolidation (#547, epic e17): the two flag-only entries
-    // are not modes of their own. Analyze opens the #543 source picker over
-    // the current view. History routes to the existing Recent list through
-    // the real recent-tab handler (the simulated-click idiom used throughout
-    // this file), then takes the visible active state itself, since the
-    // recent tab it delegates to is display:none under the flag.
-    if (mode === 'analyze') { openAnalyzeSourcePicker(); return; }
-    if (mode === 'history') {
-      document.querySelector('.mode-tab[data-mode="recent"]').click();
-      tab.classList.add('active');
-      return;
-    }
-    if (mode === currentMode) return;
-    // Opt-in crash reporting (#473): the current screen is a safe breadcrumb
-    // (a name, never content) a crash payload includes as `route`. No-op
-    // when reporting is off or unavailable (main process ignores it either way).
-    sb.recordAppEvent?.('screen.' + (mode === 'reportcard' ? 'reportcard' : mode));
-    // Live/Soundcheck replace the spectrum area with unrelated content and
-    // Soundcheck has its own playback transport — don't leave the analyzed
-    // file playing silently in the background with no visible control (#180).
-    if (mode === 'live' || mode === 'soundcheck') transport.pauseIfPlaying();
+// Mode tabs (#547 and earlier): the click listener, currentMode var, and
+// syncSpectrumForMode are gone — ModeTabs.tsx (portaled onto #mode-tabs) now
+// renders the tabs and dispatches every click through mode-switch.ts's
+// resolveModeSwitch/switchMode, which liveCaptureStore.appMode drives
+// (TD-001 slice 6e, #703). window.modeSwitch bridges applySpectrumForMode/
+// applySingleColumnSync for the remaining call sites below that aren't
+// inside switchMode() itself.
 
-    document.querySelectorAll('.mode-tab').forEach(t => t.classList.remove('active'));
-    tab.classList.add('active');
-    // Set currentMode before the mode-specific work so a throw inside it
-    // can't leave currentMode stale and lock the user out of navigating back
-    // via the same-tab guard (#177). liveCaptureStore.appMode mirrors it
-    // (TD-001 slice 6c, #701) — LiveWorkspace.tsx reads it to know when to
-    // show/hide #live-island and re-trigger the bridged board render.
-    currentMode = mode;
-    lcStore.getState().setAppMode(mode);
-
-    if (mode === 'reportcard') {
-      // #177: the report card now shares the screen with the spectrum instead
-      // of replacing the workspace. #workspace stays visible (CSS lays the two
-      // out side by side via #stage; body.rc-active folds the Source panel
-      // away so both get room). The .active toggle is retained so existing
-      // DOM assertions keep holding. syncSpectrumForMode keeps the spectrum in
-      // the right state beside the card — otherwise a stale Live/Soundcheck
-      // spectrum (or pre-analysis empty state) would show next to the grade.
-      // ReportCardIsland (React) always renders from the live store state —
-      // no explicit render call needed here (TD-001 slice 4, #422).
-      document.body.classList.add('rc-active');
-      document.getElementById('reportcard-view').classList.add('active');
-      syncSpectrumForMode('reportcard');
-    } else {
-      document.body.classList.remove('rc-active');
-      document.getElementById('reportcard-view').classList.remove('active');
-      document.querySelectorAll('.tab-content').forEach(tc => tc.classList.remove('active'));
-      document.getElementById(`tab-${mode}`).classList.add('active');
-      syncSpectrumForMode(mode);
-      // Reload on every visit (not just once) so a just-completed analysis
-      // shows up without an app restart (#147).
-      if (mode === 'recent') renderRecentServices();
-      if (mode === 'guide') renderBuildGuide();
-      if (mode === 'ringout') renderRingout();
-    }
-    syncSingleColumn();
-  });
-});
-
-/* ── Virtual Soundcheck (#46) ── */
-let scManifest = null;      // loaded session.json manifest
-let scSessionDir = null;    // chosen session folder
-let scRoutes = [];          // per-track output channel arrays ([c] mono / [l,r] stereo)
-let scDeviceChannels = 0;   // channel count of the selected output device (0 = default)
-let scDevicesLoaded = false;
-let scPlaying = false;
-
-function scShowStatus(msg) { const s = document.getElementById('sc-status'); s.textContent = msg; s.style.display = 'block'; }
-function scHideStatus() { document.getElementById('sc-status').style.display = 'none'; }
-
-async function scLoadDevices() {
-  const sel = document.getElementById('sc-device-select');
-  try {
-    const result = await sb.listOutputDevices();
-    const devices = (result && result.devices) || [];
-    sel.innerHTML = '<option value="">Default output</option>'
-      + devices.map((d) => `<option value="${d.index}" data-ch="${d.channels}">${escapeHtml(d.name)} (${d.channels}ch)</option>`).join('');
-  } catch (err) {
-    sel.innerHTML = '<option value="">Default output</option>';
-  }
-  scDevicesLoaded = true;
-  scSyncDeviceChannels();
-}
-function scSyncDeviceChannels() {
-  const sel = document.getElementById('sc-device-select');
-  const opt = sel.options[sel.selectedIndex];
-  scDeviceChannels = opt && opt.dataset.ch ? parseInt(opt.dataset.ch, 10) : 0;
-  scRenderTracks();
-  scUpdateMixdownNotice();
-  scUpdateGuard();
-}
-
-async function scChooseSession() {
-  const dir = await sb.openDirDialog();
-  if (!dir) return;
-  const result = await sb.readSession(dir);
-  if (!result || !result.success) { scShowStatus((result && result.error) || 'Could not read that session.'); return; }
-  scHideStatus();
-  scSessionDir = dir;
-  scManifest = result.manifest;
-  scRoutes = window.playbackRouting.defaultRoutes(scManifest.tracks);
-  const nameEl = document.getElementById('sc-session-name');
-  nameEl.textContent = dir.split('/').pop();
-  nameEl.style.display = 'block';
-  scRenderTracks();
-  scUpdateMixdownNotice();
-  scUpdateGuard();
-}
-
-// Output-channel options up to the device's channel count (min 2 so a
-// default-output session can still address a stereo pair before enumeration).
-function scChannelOptions(selectedBase, kind) {
-  const max = Math.max(scDeviceChannels || 2, kind === 'stereo' ? 2 : 1);
-  let html = '';
-  if (kind === 'stereo') {
-    for (let c = 0; c + 1 < max; c++) html += `<option value="${c}"${c === selectedBase ? ' selected' : ''}>Ch ${c + 1}-${c + 2}</option>`;
-  } else {
-    for (let c = 0; c < max; c++) html += `<option value="${c}"${c === selectedBase ? ' selected' : ''}>Ch ${c + 1}</option>`;
-  }
-  return html;
-}
-
-function scRenderTracks() {
-  const wrap = document.getElementById('sc-tracks');
-  if (!scManifest || !scManifest.tracks || !scManifest.tracks.length) {
-    wrap.innerHTML = '<div class="sc-empty">Choose a session folder to load its tracks.</div>';
-    return;
-  }
-  wrap.innerHTML = scManifest.tracks.map((t, i) => {
-    const stereo = t.kind === 'stereo';
-    const r = scRoutes[i] || [0];
-    const label = t.label || `Track ${i + 1}`;
-    return `<div class="sc-track" data-idx="${i}">
-      <span class="sc-track-name" title="${escapeHtml(label)}">${escapeHtml(label)}</span>
-      <span class="sc-badge">${stereo ? 'Stereo' : 'Mono'}</span>
-      <select class="sc-route" data-idx="${i}" data-kind="${stereo ? 'stereo' : 'mono'}"${scPlaying ? ' disabled' : ''}>${scChannelOptions(r[0], t.kind)}</select>
-    </div>`;
-  }).join('');
-  wrap.querySelectorAll('.sc-route').forEach((sel) => {
-    sel.addEventListener('change', (e) => {
-      const i = parseInt(e.target.dataset.idx, 10);
-      const base = parseInt(e.target.value, 10);
-      scRoutes[i] = e.target.dataset.kind === 'stereo' ? [base, base + 1] : [base];
-      scUpdateMixdownNotice();
-      scUpdateGuard();
-    });
-  });
-}
-
-function scUpdateMixdownNotice() {
-  const notice = document.getElementById('sc-mixdown-notice');
-  if (!scManifest) { notice.style.display = 'none'; return; }
-  const master = document.getElementById('sc-master-toggle').checked;
-  // Default output (unknown channel count) → let the backend decide and report a
-  // `mixdown` event; only pre-warn when a concrete device is too small, or master.
-  const tooSmall = scDeviceChannels > 0 && window.playbackRouting.needsMixdown(scRoutes, scDeviceChannels, false);
-  if (master || tooSmall) {
-    const req = window.playbackRouting.requiredChannels(scRoutes);
-    notice.textContent = master
-      ? 'Playing a stereo master mixdown.'
-      : `The selected output has ${scDeviceChannels} channels but the routing needs ${req} — playback folds to a stereo master mixdown.`;
-    notice.style.display = 'block';
-  } else {
-    notice.style.display = 'none';
-  }
-}
-
-function scUpdateGuard() {
-  document.getElementById('sc-play-btn').disabled = !(scManifest && scDevicesLoaded && !scPlaying);
-}
-
-async function scPlay() {
-  if (!scManifest) return;
-  scHideStatus();
-  const master = document.getElementById('sc-master-toggle').checked;
-  const deviceVal = document.getElementById('sc-device-select').value;
-  const result = await sb.startPlayback({
-    sessionDir: scSessionDir,
-    device: deviceVal || undefined,
-    route: window.playbackRouting.routeSpec(scRoutes),
-    master: master || undefined,
-  });
-  if (result && result.success === false) { scShowStatus(result.error || 'Could not start playback.'); return; }
-  scPlaying = true;
-  document.getElementById('sc-play-btn').style.display = 'none';
-  document.getElementById('sc-stop-btn').style.display = 'inline-flex';
-  const el = document.getElementById('sc-elapsed');
-  el.style.display = 'block'; el.textContent = '0:00 / 0:00';
-  scRenderTracks(); // disable routing selects while playing
-  scUpdateGuard();
-  specStore.getState().setPanelState('empty', 'Buffering…');
-}
-
-async function scStop() {
-  await sb.stopPlayback();
-  scResetTransport();
-}
-
-function scResetTransport() {
-  scPlaying = false;
-  document.getElementById('sc-play-btn').style.display = 'inline-flex';
-  document.getElementById('sc-stop-btn').style.display = 'none';
-  document.getElementById('sc-elapsed').style.display = 'none';
-  scRenderTracks();
-  scUpdateGuard();
-  if (currentMode === 'soundcheck') specStore.getState().setPanelState('empty', 'Load a session and press Play to see per-track meters');
-}
-
-function scRenderMeters(tracks) {
-  specStore.getState().setPanelState('meters'); // hands #spectrum-imperative back to this renderer
-  const body = document.getElementById('spectrum-imperative');
-  body.innerHTML = '<div class="meter-card sb-live-meters">' + (tracks || []).map((t) => {
-    const rms = Number.isFinite(t.rms) ? t.rms : -120;
-    const pct = Math.max(0, Math.min(100, (rms + 60) / 60 * 100));
-    return `<div class="sc-meter${t.clipping ? ' clip' : ''}">
-      <div class="sc-meter-head">
-        <span class="sc-meter-name">${escapeHtml(t.label || 'Track')}</span>
-        <span class="sc-meter-val">RMS ${fmt(t.rms)} · Peak ${fmt(t.peak)} dBFS</span>
-        ${t.clipping ? '<span class="sc-meter-clip">CLIP</span>' : ''}
-      </div>
-      <div class="sc-meter-bar"><div class="sc-meter-fill" style="width:${pct.toFixed(1)}%"></div></div>
-    </div>`;
-  }).join('') + '</div>';
-}
-
-document.getElementById('sc-choose-btn').addEventListener('click', scChooseSession);
-document.getElementById('sc-device-select').addEventListener('change', scSyncDeviceChannels);
-document.getElementById('sc-master-toggle').addEventListener('change', scUpdateMixdownNotice);
-document.getElementById('sc-play-btn').addEventListener('click', scPlay);
-document.getElementById('sc-stop-btn').addEventListener('click', scStop);
-
-sb.onPlaybackEvent((data) => {
-  if (!data) return;
-  if (data.error) { scShowStatus(String(data.error)); scResetTransport(); return; }
-  if (data.type === 'mixdown') {
-    if (data.active) {
-      const notice = document.getElementById('sc-mixdown-notice');
-      notice.textContent = `Stereo master mixdown — routing needed ${data.requiredChannels} channels, device has ${data.outputChannels}.`;
-      notice.style.display = 'block';
-    }
-  } else if (data.type === 'progress') {
-    if (currentMode === 'soundcheck' && scPlaying) document.getElementById('sc-elapsed').textContent = `${scTime(data.elapsed)} / ${scTime(data.duration)}`;
-  } else if (data.type === 'level') {
-    if (currentMode === 'soundcheck' && scPlaying) scRenderMeters(data.tracks);
-  } else if (data.type === 'ended') {
-    scResetTransport();
-  }
-});
-
-scLoadDevices(); // populate the output picker at startup
-
-function syncSpectrumForMode(mode) {
-  const title = document.getElementById('spectrum-title');
-  // Docked live EQ pane (#668): shown only in Live mode, sized from the
-  // persisted width (clamped defensively in case settings.json was hand-
-  // edited or corrupted).
-  const eqPane = document.getElementById('live-eq-pane');
-  if (eqPane) eqPane.style.display = mode === 'live' ? 'flex' : 'none';
-  if (mode === 'live') {
-    title.textContent = SPECTRUM_TITLE.live;
-    if (eqPane) eqPane.style.width = clampEqPaneWidth(setStore.getState().settings?.liveEqPaneWidth) + 'px';
-    // Persistent track workspace (#188): the pane renders channelConfig as
-    // track rows the moment the Live tab is shown, idle or capturing — the
-    // running board only takes over once real windows have actually arrived.
-    if (liveRunning && liveWindows.length > 0) renderLiveMeters(liveWindows[liveWindows.length - 1]);
-    else renderLiveWorkspace();
-    renderEqPane(currentEqPaneChannels());
-    renderPreflight(); // repaint the checklist whenever the Live tab becomes visible
-  } else if (mode === 'soundcheck') {
-    title.textContent = 'Soundcheck · Meters';
-    if (scPlaying) specStore.getState().setPanelState('meters'); // hands #spectrum-imperative back to this renderer
-    else specStore.getState().setPanelState('empty', 'Load a session and press Play to see per-track meters');
-  } else if (mode === 'recent') {
-    // Recent (#147) has no file-loading UI of its own — a tailored message
-    // instead of the generic "Load a file…" copy the fallback branch below
-    // would otherwise show (misleading here, since there's nothing to load).
-    title.textContent = SPECTRUM_TITLE.curve;
-    if (!curAnalysis()) specStore.getState().setPanelState('empty', 'Select a recent analysis to load its report card');
-    else specStore.getState().setPanelState('populated'); // returning to a data-backed tab shows the island again
-  } else if (mode === 'guide') {
-    // Build Guide (#367) has no file-loading UI of its own either — mirror
-    // the `recent` tailored empty state so it doesn't show the misleading
-    // generic "Load a file…" copy.
-    title.textContent = SPECTRUM_TITLE.curve;
-    if (!curAnalysis()) specStore.getState().setPanelState('empty', 'Follow the build order, then load a recording to grade it');
-    else specStore.getState().setPanelState('populated');
-  } else if (mode === 'dir') {
-    // Directory (#270) batch-analyzes a folder — mirror the `recent`/`guide`
-    // tailored empty state rather than the generic "Load a file…" copy.
-    title.textContent = SPECTRUM_TITLE.curve;
-    if (!curAnalysis()) specStore.getState().setPanelState('empty', 'Choose a folder to analyze every recording in it');
-    else specStore.getState().setPanelState('populated');
-  } else {
-    // spectrumChromeView (spectrum-chrome.ts) sets the header to match what's
-    // drawn (curve vs meters) once there's data; seed the curve label for the
-    // pre-analysis empty state.
-    title.textContent = SPECTRUM_TITLE.curve;
-    if (!curAnalysis()) specStore.getState().setPanelState('empty', 'Load a file to see the spectrum');
-    else specStore.getState().setPanelState('populated');
-  }
-}
+// Virtual Soundcheck (#46): fully React/store-owned (SoundcheckPanel.tsx,
+// stores/soundcheckStore.ts, TD-001 slice 6d, #702).
+window.rendererStores.soundcheck.getState().loadDevices(); // populate the output picker at startup
 
 /* ══ File mode ══
    The dropzone (click/drag/drop) and the Analyze button now live in
@@ -1348,84 +1065,11 @@ sb.onAnalysisProgress((data) => {
   specStore.getState().markStageDone(data.stage);
 });
 
-// Replaces runFileAnalysis's DOM side effects — a single analysisStore
-// subscription reacting to `status` transitions (TD-001 slice 4, #422).
-// Installed at boot (see the Init section at the bottom of this file).
-// Mirrors ReportCardIsland's own source priority (currentAnalysis wins, else
-// liveSource, else historySummary, else no card at all). Shared by
-// syncReportCardChrome (toolbar/upgrade-card chrome outside #report-card) and
-// the Share Image click handler (#265) so both derive "what card is showing"
-// from one place instead of two independently-maintained copies.
-function resolveReportCardChromeSource(state) {
-  const isHistoryCard = !!state.historySummary && !state.currentAnalysis && !state.liveSource;
-  const chromeSource = state.currentAnalysis
-    ? reportCardSourceFromAnalysis(state.currentAnalysis)
-    : (state.liveSource || null);
-  return { isHistoryCard, chromeSource };
-}
-
-function syncReportCardChrome(state, prevState) {
-  const clearBtn = document.getElementById('reportcard-clear-btn');
-  const loadBtn = document.getElementById('reportcard-load-btn');
-  const printBtn = document.getElementById('reportcard-print-btn');
-  const shareBtn = document.getElementById('reportcard-share-btn');
-  const gradeOwnBtn = document.getElementById('grade-own-btn');
-  const { isHistoryCard, chromeSource } = resolveReportCardChromeSource(state);
-  const isLiveCard = !state.currentAnalysis && !!state.liveSource;
-  const hasCard = isHistoryCard || !!chromeSource;
-
-  if (state.status !== prevState.status) {
-    if (state.status === 'analyzing') {
-      transport.pauseIfPlaying(); // don't let a previous file's playback bleed through the loading state (#180)
-      specStore.getState().setPanelState('loading');
-    } else if (state.status === 'error') {
-      specStore.getState().setPanelState('error', state.analysisError || 'Analysis failed');
-    } else if (state.status === 'cancelled') {
-      // Return to the pre-analysis idle state (no report card, no stuck
-      // spinner). selectedFilePath is left untouched by cancelAnalysis, so
-      // the user can retry without re-picking the file.
-      specStore.getState().setPanelState('empty');
-    } else if (state.status === 'done') {
-      // File input now lives in the Report Card tab's empty state (#203) —
-      // the card flips over the moment analysis succeeds. The store already
-      // flipped panelState to 'populated' via bridge.ts's
-      // setSpectrumFromAnalysis subscription, and idealProfilesStore already
-      // resynced via bridge.ts's currentAnalysis subscription (TD-001 slice
-      // 6b, #700) — nothing left to clear/sync here.
-      updateStatsRow(state.currentAnalysis.sox, state.currentAnalysis.spectrum);
-      if (curAnalysis()) persistSummary(getReportCardSource(), 'file');
-    }
-  }
-
-  // Print/Share/Grade-own just mirror whether a card (file, live, or
-  // history) is showing — a re-analysis in flight still has the prior card
-  // on screen to print/share/grade, same as before this migration
-  // (runFileAnalysis never disabled these while re-analyzing). Clear/Load DO
-  // disable in flight so they can't swap the source out from under the run
-  // and have this continuation flip the card back over a stale reference
-  // (#206/#208).
-  printBtn.disabled = !hasCard;
-  shareBtn.disabled = !hasCard;
-  gradeOwnBtn.disabled = !hasCard;
-  loadBtn.disabled = state.status === 'analyzing';
-  loadBtn.style.display = isLiveCard ? '' : 'none';
-  // Clear only makes sense when the card is backed by a file analysis — a
-  // live-capture (or history) card has no file to clear, and it never makes
-  // sense mid-flight either (#206).
-  clearBtn.disabled = state.status === 'analyzing' || !state.currentAnalysis;
-
-  // Post-report-card upgrade moment (#58): score-aware, so it needs the
-  // latest grade. lastReportGrade/renderUpgradeMomentum stay inline (they own
-  // the imperative #rc-upgrade aside, a React-island sibling, #58/#296).
-  if (isHistoryCard) {
-    lastReportGrade = state.historySummary.gradeLetter;
-  } else if (chromeSource) {
-    lastReportGrade = grading.computeGrade(chromeSource);
-  } else {
-    lastReportGrade = null;
-  }
-  renderUpgradeMomentum();
-}
+// resolveReportCardChromeSource/syncReportCardChrome are gone —
+// report-card-chrome.ts#resolveReportCardChromeSource/reportCardChromeView
+// (TD-001 slice 6e, #703) port them verbatim; ReportCardToolbar.tsx now owns
+// the toolbar buttons via its own useEffect on analysisStore.status,
+// replacing the anaStore.subscribe(syncReportCardChrome) wiring below.
 
 /* ══ Directory mode (#270): batch-analyze a folder of whole-mix recordings.
    Runs the existing single-file analyze pipeline sequentially over every
@@ -1434,7 +1078,7 @@ function syncReportCardChrome(state, prevState) {
    flight for this renderer. Calls analyzeFile directly rather than
    anaStore.getState().startAnalysis() so the batch never drives the
    single-file report-card store's status machine through N spurious
-   transitions (syncReportCardChrome above). ══ */
+   transitions (ReportCardToolbar.tsx's status-transition useEffect). ══ */
 let batchFiles = [];
 let batchRunning = false;
 
@@ -1500,7 +1144,10 @@ document.getElementById('dir-analyze-btn').addEventListener('click', async () =>
   } finally {
     batchRunning = false;
     renderDirEmptyState();
-    await renderRecentServices();
+    // RecentServicesPanel.tsx (TD-001 slice 6e, #703) re-fetches on every
+    // appMode transition into 'recent' — the Directory tab (batch analysis
+    // runs here) and Recent are mutually exclusive, so there's no longer a
+    // stale-list case for this batch-completion refresh to cover.
   }
 });
 
@@ -1513,17 +1160,13 @@ document.getElementById('meter-interval').addEventListener('input', (e) => {
   document.getElementById('interval-label').textContent = `${ms} ms · ${Math.round(1000 / ms)}/s`;
 });
 
-/* ── Monitor / Record toggle ── */
-// Apply a capture mode (used by applyRig — the Source-panel Mode toggle is
-// now React-owned, LiveControls.tsx, and calls lcStore.getState().setLiveMode
-// directly, TD-001 slice 6c, #701). Either path's store write is picked up
-// by syncLiveCaptureMirror's subscription, which covers hideArmHint() and
-// the #live-island board repaint itself; renderChannelConfig() below just
-// re-syncs preflight.
-function setLiveMode(mode) {
-  lcStore.getState().setLiveMode(mode);
-  renderChannelConfig();
-}
+/* ── Monitor / Record toggle ──
+   The Source-panel Mode toggle is React-owned (LiveControls.tsx, TD-001
+   slice 6c, #701) and calls lcStore.getState().setLiveMode directly; rig-
+   apply now writes `liveMode` as part of applyRigPatch's returned patch
+   (rig-panel.ts, TD-001 slice 6d, #702). Both paths' store writes are picked
+   up by syncLiveCaptureMirror's subscription (board repaint) — no inline
+   wrapper function is called from here anymore. */
 // Inline "arm at least one strip" hint near the Start button (#43).
 function showArmHint(msg) { const h = document.getElementById('arm-hint'); h.textContent = msg; h.style.display = 'block'; }
 function hideArmHint() { const h = document.getElementById('arm-hint'); if (h) h.style.display = 'none'; }
@@ -1591,7 +1234,8 @@ async function deleteChannelGroup(g) {
 // chosen (#482): the configured storageDir setting (#91), falling back to the
 // platform default — mirrors ipc/shared.ts's defaultRecordDir(). LiveControls.tsx
 // carries its own copy of this same logic for its React-owned #record-folder-path
-// rendering (TD-001 slice 6c, #701); this one is still used by applyRig below.
+// rendering (TD-001 slice 6c, #701); this one is still used by the boot sequence
+// below (cold-boot placeholder text before settings load).
 function defaultRecordFolderText() {
   const s = setStore.getState().settings;
   return (s && s.storageDir && s.storageDir.trim()) || '~/Music/Sound Buddy';
@@ -1604,7 +1248,8 @@ function selectedDeviceChannels() {
 }
 
 // The selected device's name, resolved from liveDevices ('' = Default Device),
-// mirroring captureCurrentRig's device-by-name resolution below.
+// mirroring rig-panel.ts's captureCurrentRigSnapshot's device-by-name
+// resolution (TD-001 slice 6d, #702).
 function selectedDeviceName() {
   const val = lcStore.getState().selectedDevice;
   if (val === '') return '';
@@ -1616,19 +1261,6 @@ function selectedDeviceName() {
 // selected device, mirroring liveCaptureStore.ts's withSavedLabels (#482).
 function savedInstrumentProfilesForDevice() {
   return ((setStore.getState().settings || {}).inputInstrumentProfiles || {})[selectedDeviceName()] || {};
-}
-
-// Persist the current channelGroups to settings.json for the selected device
-// (#483) — mirrors liveCaptureStore.ts's private persistGroups exactly. Only
-// applyRig needs this directly (every other group mutator routes through a
-// self-persisting store action) because it sets channelGroups via a direct
-// store write, bypassing those actions.
-function persistChannelGroups() {
-  const all = (setStore.getState().settings || {}).channelGroups || {};
-  const next = Object.assign({}, all, {
-    [selectedDeviceName()]: channelGroups.map((g) => ({ name: g.name, members: g.members.slice(), collapsed: !!g.collapsed })),
-  });
-  setStore.getState().updateSettings({ channelGroups: next });
 }
 
 // Total device channels consumed by the current config (mono=1, stereo=2).
@@ -1683,9 +1315,9 @@ function resetChannelConfig() {
 function renderChannelConfig() {
   // Re-assert the capture lock (#38): a running capture keeps the workspace frozen.
   if (liveRunning) setCaptureControlsLocked(true);
-  // Preflight checklist (#373) reads channelConfig/device state, so it rides
-  // the same "config changed" entry point as the workspace.
-  renderPreflight();
+  // Preflight checklist (#373) is React/store-owned now (PreflightPanel.tsx,
+  // TD-001 slice 6d, #702) — it recomputes on every render from rigStore +
+  // liveCaptureStore state, no imperative repaint needed here.
   renderMeasurementBadge();
 }
 
@@ -1702,7 +1334,8 @@ function renderMeasurementBadge() {
 // is spawned with a fixed device/channels/mode/dirs set and can't honor a
 // mid-session change, so freezing avoids corrupting the take. Idempotent, and
 // re-selects the live-rendered workspace children each call. The rig picker has
-// its own lock (setRigControlsEnabled) but is guarded here too, defensively.
+// its own lock (rigStore's `locked` field, set via onCaptureStarting/
+// onCaptureStopping below) but is guarded here too, defensively.
 // measurement-source is excluded (#457): it's a renderer-side selection into
 // already-streaming tick data, not a stream.py argument, so switching it
 // mid-capture is safe and is the point of #457's second AC. device-select/
@@ -1781,7 +1414,9 @@ window.liveCaptureRuntime = {
     void value; // store.selectDevice (called by LiveControls itself) already reseeds channelConfig/channelGroups reactively
     focusedInputIndex = null;
     lcStore.getState().clearLastLiveChannels();
-    renderPreflight();
+    // PreflightPanel.tsx recomputes reactively off liveCaptureStore's
+    // selectedDevice/channelConfig/devices — no imperative repaint needed
+    // here (TD-001 slice 6d, #702).
   },
   // Measurement source picker (#456): normalize against the current strip
   // count so a stale selection ('' -> null, an index -> the resolved strip)
@@ -1915,7 +1550,7 @@ function onCaptureStarting() {
   syncLiveAdjustmentsPanel();
   // A live capture always wins over a loaded history entry (#147).
   anaStore.getState().setHistorySummary(null);
-  setRigControlsEnabled(false);
+  window.rendererStores.rig.getState().setLocked(true);
   setCaptureControlsLocked(true); // freeze device/mode/folder/channels/sliders (#38)
 
   document.getElementById('rec-offer').style.display = 'none';
@@ -2010,7 +1645,7 @@ function onCaptureStopping() {
   playheadState = window.dawPlayheadState.stop(playheadState, Date.now());
   stopPlayheadTicker();
   renderDawPlayhead(); // paint the frozen time
-  setRigControlsEnabled(true);
+  window.rendererStores.rig.getState().setLocked(false);
   setCaptureControlsLocked(false); // re-enable config (also the failed-Start path) (#38)
 }
 
@@ -2023,7 +1658,7 @@ function onCaptureStopped(result) {
   document.getElementById('measurement-badge').textContent = '';
   // "Stopped" distinguishes the frozen EQ from a running one; guard the mode so
   // a tab switch during the stop-live await isn't clobbered.
-  if (currentMode === 'live') document.getElementById('spectrum-title').textContent = SPECTRUM_TITLE.liveStopped;
+  if (lcStore.getState().appMode === 'live') document.getElementById('spectrum-title').textContent = SPECTRUM_TITLE.liveStopped;
 
   // A Record capture writes a session folder of per-strip stems + session.json
   // (#42); offer to reveal it (#43). Paves the way for "Open in Virtual
@@ -2055,7 +1690,7 @@ function onCaptureStopped(result) {
     const sessionSrc = liveSessionReportCardSource(sessionWindows, lcStore.getState().measurementSource, channelConfig);
     if (sessionSrc) {
       anaStore.getState().setLiveSource(sessionSrc); // freeze the session card onto the Report Card tab
-      persistSummary(sessionSrc, 'live');
+      window.reportCardChrome.persistSummary(sessionSrc, 'live');
       document.getElementById('rc-offer').style.display = 'flex';
       hydrateIcons(document.getElementById('rc-offer'));
     } else {
@@ -2096,48 +1731,12 @@ document.getElementById('rc-offer-btn').addEventListener('click', () => {
   document.querySelector('.mode-tab[data-mode="reportcard"]').click();
 });
 
-/* ══ Rigs — save / load / switch capture setups (#37, persisted via #36) ══ */
-let rigList = []; // last-loaded CaptureRig[]
-
-// Show (or clear) the muted status line under the Start button.
-function setLiveStatus(text) {
-  const ls = document.getElementById('live-status');
-  if (!ls) return;
-  if (!text) { ls.style.display = 'none'; ls.textContent = ''; return; }
-  ls.textContent = text;
-  ls.style.display = 'block';
-}
-
-// Rig persistence can reject (settings.json unwritable — writeSettingsFile
-// rethrows), so every CRUD call routes failures here rather than leaving the
-// picker silently out of sync with an unhandled rejection.
-function rigError(action, err) {
-  console.error(`rig ${action} failed:`, err);
-  setLiveStatus(`Could not ${action} rig — check that Sound Buddy can write its settings.`);
-}
-
-// Lock the rig picker while a capture is running: applyRig mutates the device,
-// channels, mode and sliders, which would desync the UI from the live stream.
-function setRigControlsEnabled(enabled) {
-  document.getElementById('rig-select').disabled = !enabled;
-  document.getElementById('rig-save-btn').disabled = !enabled;
-  document.getElementById('rig-saveas-btn').disabled = !enabled;
-  if (enabled) {
-    updateRigButtons();
-  } else {
-    document.getElementById('rig-rename-btn').disabled = true;
-    document.getElementById('rig-delete-btn').disabled = true;
-  }
-}
-
-// Set a slider's value programmatically and refresh its label by replaying the
-// same 'input' event its listener already handles — no duplicated label logic.
-function setSliderVal(id, value) {
-  const el = document.getElementById(id);
-  if (!el) return;
-  el.value = value;
-  el.dispatchEvent(new Event('input'));
-}
+/* ══ Rigs — save / load / switch capture setups (#37, persisted via #36) ══
+   Fully React/store-owned (RigControls.tsx/PreflightPanel.tsx,
+   stores/rigStore.ts, TD-001 slice 6d, #702) except rigDialog() below, which
+   stays here as shared modal infrastructure also used by out-of-scope
+   channel-group naming (createChannelGroup/renameChannelGroup/
+   deleteChannelGroup). */
 
 // Small inline modal used in place of window.prompt/confirm (unavailable in the
 // Electron renderer). Resolves to the entered string (input mode), true (confirm
@@ -2180,317 +1779,6 @@ function rigDialog(opts) {
     document.addEventListener('keydown', onKey);
   });
 }
-
-function populateRigSelect(rigs, selectedId) {
-  const sel = document.getElementById('rig-select');
-  sel.innerHTML = '';
-  const placeholder = document.createElement('option');
-  placeholder.value = '';
-  placeholder.textContent = rigs.length ? 'Unsaved setup' : 'No saved rigs';
-  sel.appendChild(placeholder);
-  for (const r of rigs) {
-    const opt = document.createElement('option');
-    opt.value = r.id;
-    opt.textContent = r.name;
-    sel.appendChild(opt);
-  }
-  sel.value = selectedId || '';
-}
-
-function updateRigButtons() {
-  const hasSel = document.getElementById('rig-select').value !== '';
-  document.getElementById('rig-rename-btn').disabled = !hasSel;
-  document.getElementById('rig-delete-btn').disabled = !hasSel;
-}
-
-// Snapshot the current Live-tab setup into a CaptureRig. Device is stored BY
-// NAME (from the selected liveDevices entry) so it survives index reordering;
-// '' means the Default Device. Any per-channel label (#39) is preserved.
-// upsertRig persists whatever object this returns as a full replace of the
-// stored rig (not a merge, see settings.ts), so an existing saved preflight
-// baseline (#373) is carried forward here — otherwise the plain rig Save
-// button would silently delete it every time.
-function captureCurrentRig(name, id) {
-  const rig = {
-    name: name,
-    deviceName: selectedDeviceName(),
-    channelConfig: channelConfig.map((s) => {
-      const strip = { kind: s.kind, a: s.a, b: s.b };
-      // Normalize the label once, at the persistence boundary, so both entry
-      // points (config row + inline header) round-trip an identical stored value
-      // and an all-whitespace label is dropped rather than saved (#39).
-      const label = typeof s.label === 'string' ? s.label.trim().slice(0, MAX_LABEL_LEN) : '';
-      if (label) strip.label = label;
-      return strip;
-    }),
-    // Named channel groups (#41) — organizational only; members are strip indices.
-    groups: channelGroups.map((g) => ({ name: g.name, members: g.members.slice() })),
-    // The selected measurement source (#456) — a strip index, or null for the
-    // default (first track).
-    measurementSource: lcStore.getState().measurementSource,
-    mode: liveMode,
-    recordDir: recordDir,
-    intervalMs: parseInt(document.getElementById('meter-interval').value, 10),
-    windowSecs: parseFloat(document.getElementById('window-secs').value),
-  };
-  if (id) {
-    rig.id = id;
-    const existing = rigList.find((r) => r.id === id);
-    if (existing && existing.baseline) rig.baseline = existing.baseline;
-  }
-  return rig;
-}
-
-// Restore a rig into the Live tab: mode, folder, sliders, then reconcile the
-// device by name and clamp channels to whatever the resolved device exposes.
-// Surfaces a non-fatal notice in #live-status and never auto-starts capture.
-function applyRig(rig) {
-  if (!rig) return;
-
-  setLiveMode(rig.mode);
-  lcStore.getState().setRecordDir(rig.recordDir || '');
-
-  setSliderVal('meter-interval', rig.intervalMs);
-  setSliderVal('window-secs', rig.windowSecs);
-
-  const rec = window.rigReconcile.reconcileRigDevice(rig.deviceName, liveDevices);
-  // Just the selectedDevice field — not lcStore.getState().selectDevice(),
-  // which also reseeds channelConfig/channelGroups to the device default;
-  // this function immediately overwrites both with the rig's own clamped
-  // values below, so that reseed would only be wasted (and reverted) work.
-  lcStore.setState({ selectedDevice: String(rec.index) });
-  let notice = rec.found ? '' : `Rig device "${rig.deviceName}" not found — select a device.`;
-
-  const clamp = window.rigReconcile.clampChannelConfig(rig.channelConfig || [], selectedDeviceChannels());
-  const nextConfig = clamp.config.length ? clamp.config : [{ kind: 'mono', a: 0, b: 0 }];
-  // Hydrate named groups (#41), dropping any member index beyond the (possibly
-  // clamped) strip count so no group references a strip that isn't there.
-  const nextGroups = (rig.groups || []).map((g) => ({
-    name: g.name, members: (g.members || []).filter((m) => m < nextConfig.length),
-  }));
-  lcStore.setState({ channelConfig: nextConfig, channelGroups: nextGroups });
-  // Old rigs without the field resolve to null (default) (#456).
-  lcStore.getState().setMeasurementSource(normalizeMeasurementSource(rig.measurementSource, nextConfig.length));
-  // The applied rig becomes this device's current layout (#483).
-  persistChannelGroups();
-  renderChannelConfig();
-  if (clamp.adjusted) {
-    notice = notice
-      ? notice + ' Some channels were out of range and were clamped.'
-      : 'Some rig channels were out of range for this device and were clamped.';
-  }
-  setLiveStatus(notice);
-}
-
-// Preflight checklist (#373): compare the live channel routing against the
-// active rig's saved baseline and render the green/amber/red rows + banner.
-function currentActiveRig() {
-  const id = document.getElementById('rig-select').value;
-  return id ? rigList.find((r) => r.id === id) : null;
-}
-
-function relativeTime(iso) {
-  const then = new Date(iso).getTime();
-  if (!Number.isFinite(then)) return '';
-  const mins = Math.floor((Date.now() - then) / 60000);
-  if (mins < 1) return 'just now';
-  if (mins < 60) return `${mins}m ago`;
-  const hours = Math.floor(mins / 60);
-  if (hours < 24) return `${hours}h ago`;
-  return `${Math.floor(hours / 24)}d ago`;
-}
-
-function renderPreflight() {
-  const list = document.getElementById('preflight-list');
-  if (!list) return; // not booted yet
-  const rig = currentActiveRig();
-  // Reconcile the device actually selected in the dropdown — the one Start
-  // Capture will use — not the rig's stored deviceName; those two can diverge
-  // (e.g. the engineer changes the dropdown without saving), and validating
-  // the wrong one would let a stale "Ready for service" mask an unvalidated
-  // capture device.
-  const rec = window.rigReconcile.reconcileRigDevice(selectedDeviceName(), liveDevices);
-  const device = { found: rec.found, name: rec.deviceName || 'Default Device', channels: selectedDeviceChannels() };
-  const current = window.preflight.snapshotRig(channelConfig, selectedDeviceName());
-  const baseline = (rig && rig.baseline) || null;
-  const items = window.preflight.buildChecklist({ baseline, current, device });
-  const summary = window.preflight.checklistSummary(items);
-
-  document.getElementById('preflight-saved').textContent = baseline
-    ? `Baseline saved ${relativeTime(baseline.savedAt)}`
-    : 'No baseline saved';
-
-  const banner = document.getElementById('preflight-banner');
-  banner.textContent = summary.ready ? 'Ready for service' : 'Not ready — resolve the items below';
-  banner.className = 'pf-banner ' + (summary.ready ? 'pf-ready' : 'pf-not-ready');
-
-  list.innerHTML = items.map((item) => `
-    <li class="pf-row pf-${item.status}">
-      <span class="pf-dot" aria-hidden="true"></span>
-      <span class="pf-row-body">
-        <span class="pf-row-label">${escapeHtml(item.label)}</span>
-        <span class="pf-row-detail">${escapeHtml(item.detail)}</span>
-      </span>
-    </li>`).join('');
-}
-
-// Save baseline: snapshot the live routing, stamp it, and persist it onto the
-// active rig — seeding a new rig first if none is selected yet, reusing the
-// same capture path as the rig Save button (#373). Pro-gated exactly like the
-// existing rig save path: the IPC handler throws rather than the renderer
-// crashing, so the message surfaces as a status notice instead.
-async function saveBaseline() {
-  const rig = currentActiveRig();
-  const baseline = window.preflight.snapshotRig(channelConfig, selectedDeviceName());
-  baseline.savedAt = new Date().toISOString();
-  const payload = Object.assign(captureCurrentRig(rig ? rig.name : 'Rig', rig ? rig.id : undefined), { baseline: baseline });
-  const prevIds = new Set(rigList.map((r) => r.id));
-  try {
-    const settings = await sb.saveRig(payload);
-    rigList = settings.rigs || [];
-    let savedId = rig ? rig.id : '';
-    if (!savedId) {
-      const created = rigList.find((r) => !prevIds.has(r.id));
-      savedId = created ? created.id : '';
-    }
-    if (savedId) await sb.setActiveRig(savedId);
-    populateRigSelect(rigList, savedId || document.getElementById('rig-select').value);
-    updateRigButtons();
-    setLiveStatus('Baseline saved.');
-  } catch (err) {
-    console.error('save baseline failed:', err);
-    const msg = err && err.message ? String(err.message) : '';
-    setLiveStatus(/Pro license/i.test(msg)
-      ? 'Saving a baseline requires a Pro license.'
-      : 'Could not save baseline — check that Sound Buddy can write its settings.');
-  }
-  renderPreflight();
-}
-document.getElementById('preflight-save-btn').addEventListener('click', saveBaseline);
-
-// Prompt for a name, capture the current setup as a NEW rig, and select it.
-async function rigSaveAs() {
-  const name = await rigDialog({ title: 'Save rig as…', value: '', confirmLabel: 'Save', withInput: true });
-  if (name == null) return;
-  const trimmed = name.trim();
-  if (!trimmed) return;
-  const prevIds = new Set(rigList.map((r) => r.id));
-  try {
-    const settings = await sb.saveRig(captureCurrentRig(trimmed));
-    rigList = settings.rigs || [];
-    const created = rigList.find((r) => !prevIds.has(r.id));
-    const newId = created ? created.id : (rigList.find((r) => r.name === trimmed) || {}).id || '';
-    if (newId) await sb.setActiveRig(newId);
-    populateRigSelect(rigList, newId);
-    updateRigButtons();
-    setLiveStatus(`Saved "${trimmed}".`);
-  } catch (err) { rigError('save', err); }
-  // populateRigSelect sets the <select> value programmatically, which doesn't
-  // fire 'change' — repaint the checklist explicitly so it doesn't keep
-  // showing whatever rig/baseline was active before this Save As (#373).
-  renderPreflight();
-}
-
-async function initRigs() {
-  let activeRigId = null;
-  try {
-    // getSettings() already returns both the saved rigs and the active id, so a
-    // single read seeds the picker (one IPC round trip, and a failure can't wipe
-    // an already-loaded list).
-    const settings = await sb.getSettings();
-    rigList = (settings && settings.rigs) || [];
-    activeRigId = settings && settings.activeRigId ? settings.activeRigId : null;
-  } catch { rigList = []; }
-  const active = rigList.some((r) => r.id === activeRigId) ? activeRigId : '';
-  populateRigSelect(rigList, active);
-  updateRigButtons();
-  if (active) applyRig(rigList.find((r) => r.id === active));
-  // Re-apply saved labels (#482): loadDevices() may have seeded channelConfig
-  // before settingsStore.loadSettings() resolved, so re-overlay now that the
-  // store's settings are available. Overlays onto the CURRENT channelConfig
-  // (unlike lcStore.getState().selectDevice(), which would also reseed it to
-  // the device default) — a direct store write, same rationale as applyRig's
-  // selectedDevice write above.
-  const savedLabels = ((setStore.getState().settings || {}).channelLabels || {})[selectedDeviceName()] || {};
-  lcStore.setState({
-    channelConfig: window.channelLabels.applyLabels(channelConfig, window.armState.allTokens(channelConfig), savedLabels),
-  });
-  renderChannelConfig();
-}
-
-// Selecting a rig restores it and records it as active; the placeholder clears
-// the active selection without touching the current setup.
-document.getElementById('rig-select').addEventListener('change', async (e) => {
-  const id = e.target.value;
-  updateRigButtons();
-  try {
-    await sb.setActiveRig(id || null);
-  } catch (err) { rigError('select', err); return; }
-  if (!id) { renderPreflight(); return; } // deselecting still needs the checklist re-read (applyRig won't fire)
-  const rig = rigList.find((r) => r.id === id);
-  if (rig) applyRig(rig);
-});
-
-// Save: update the selected rig in place; with nothing selected, fall back to
-// Save As so the button is never a no-op.
-document.getElementById('rig-save-btn').addEventListener('click', async () => {
-  const id = document.getElementById('rig-select').value;
-  if (!id) { await rigSaveAs(); return; }
-  const existing = rigList.find((r) => r.id === id);
-  try {
-    const settings = await sb.saveRig(captureCurrentRig(existing ? existing.name : 'Rig', id));
-    rigList = settings.rigs || [];
-    await sb.setActiveRig(id);
-    populateRigSelect(rigList, id);
-    updateRigButtons();
-    setLiveStatus(`Saved "${existing ? existing.name : 'rig'}".`);
-  } catch (err) { rigError('save', err); }
-});
-
-document.getElementById('rig-saveas-btn').addEventListener('click', () => rigSaveAs());
-
-// Rename changes only the name, leaving the captured setup untouched.
-document.getElementById('rig-rename-btn').addEventListener('click', async () => {
-  const id = document.getElementById('rig-select').value;
-  if (!id) return;
-  const existing = rigList.find((r) => r.id === id);
-  if (!existing) return;
-  const name = await rigDialog({ title: 'Rename rig', value: existing.name, confirmLabel: 'Rename', withInput: true });
-  if (name == null) return;
-  const trimmed = name.trim();
-  if (!trimmed) return;
-  try {
-    const settings = await sb.saveRig({ ...existing, name: trimmed });
-    rigList = settings.rigs || [];
-    populateRigSelect(rigList, id);
-    updateRigButtons();
-  } catch (err) { rigError('rename', err); }
-});
-
-// Delete removes the rig; the backend clears activeRigId if it was the active
-// one, so the picker falls back to the placeholder (no rig applied).
-document.getElementById('rig-delete-btn').addEventListener('click', async () => {
-  const id = document.getElementById('rig-select').value;
-  if (!id) return;
-  const existing = rigList.find((r) => r.id === id);
-  const ok = await rigDialog({
-    title: 'Delete rig',
-    msg: `Delete "${existing ? existing.name : 'this rig'}"? This can't be undone.`,
-    confirmLabel: 'Delete',
-    withInput: false,
-  });
-  if (!ok) return;
-  try {
-    const settings = await sb.deleteRig(id);
-    rigList = settings.rigs || [];
-    populateRigSelect(rigList, settings.activeRigId || '');
-    updateRigButtons();
-  } catch (err) { rigError('delete', err); }
-  // Same "programmatic <select> update doesn't fire 'change'" gap as Save As
-  // above — without this the checklist would keep showing the deleted rig's
-  // stale baseline/status (#373).
-  renderPreflight();
-});
 
 // A dedicated interval (not the meter-event rAF path) so the playhead
 // advances even while "Connecting…" before the first meter tick, and keeps
@@ -2969,363 +2257,38 @@ async function initWhatsNew() {
 // graded source switches to the secondary mic exactly like the badge does,
 // without a separate syncLiveSource() call site here.
 
-// getReportCardSource() survives only for its remaining inline consumers (the
-// AI narrative trigger, the file-analysis persistSummary call site) — reads
-// curAnalysis()/liveSource from the stores instead of the old
-// currentAnalysis/liveWindows module vars.
-function getReportCardSource() {
-  const analysis = curAnalysis();
-  if (analysis) {
-    const { sox, spectrum, ffprobe, loudness } = analysis;
-    return {
-      filename: (ffprobe.format.filename || '').split('/').pop() || 'Untitled',
-      rms: sox.rmsDbfs, peak: sox.peakDbfs, dynamicRange: sox.dynamicRangeDb,
-      clipping: sox.clipping, centroid: spectrum.spectralCentroid,
-      bands: { ...spectrum.bands },
-      // Whole-file curve (PRD 05) + speech/music delineation (PRD 04) — absent on
-      // older analyses / live capture.
-      curve: spectrum.curve || null,
-      contentType: spectrum.contentType || null,
-      segments: spectrum.segments || null,
-      // Time-sampled snapshots (PRD 03) for the "Spectrum Over Time" section.
-      frames: spectrum.frames,
-      // EBU R128 loudness measurement (#134) — null when ffmpeg was unavailable
-      // or its output couldn't be parsed; the report card falls back to the
-      // RMS-based rows only.
-      lufsIntegrated: loudness ? loudness.integratedLufs : null,
-      loudnessRange: loudness ? loudness.loudnessRange : null,
-      truePeakDbtp: loudness ? loudness.truePeakDbtp : null,
-    };
-  }
-  return anaStore.getState().liveSource;
-}
+// getReportCardSource()/persistSummary() are gone —
+// report-card-chrome.ts#getReportCardSource/persistSummary (TD-001 slice 6e,
+// #703) port them verbatim as pure/injected functions. This file's remaining
+// inline consumers (the AI narrative trigger, saveMixAsTarget, the
+// live-capture session persist call below) reach them via the
+// window.reportCardChrome bridge (App.tsx) — same pattern as
+// window.modeSwitch.
 
-// Guards persistSummary's async chain against out-of-order resolution
-// (#267): each call gets the next generation number, and a chain only applies
-// its resolved state if it's still the newest call — otherwise a slower older
-// run finishing after a newer re-analysis would stamp the wrong prevSummary/
-// lastSavedSummaryFile onto the card that's actually on screen.
-let persistGeneration = 0;
+// renderRecentServices/loadHistoryEntry are gone — RecentServicesPanel.tsx
+// (TD-001 slice 6e, #703) ports them verbatim (loadHistoryEntry calls
+// mode-switch.ts#switchMode directly now, not a simulated tab click).
 
-// Persist a discrete report-card summary for the recent-services list (#147),
-// tagged with its source ('file' | 'live', #261) so Recent Services can badge
-// a live-capture session distinctly from a file analysis. Fire-and-forget:
-// never block or fail the report card on a storage error (main logs and
-// swallows). Callers decide whether src is gradeable — this no longer gates
-// on curAnalysis() itself, so the live-capture session path (which has no
-// currentAnalysis) can call it too.
-function persistSummary(src, source) {
-  try {
-    if (!src) return;
-    const summary = buildAnalysisSummaryInput(src, grading, source);
-    const generation = ++persistGeneration;
-    // The handoff note field (#267) is add-at-save-time only — disabled until
-    // this run's own save resolves with the record it wrote.
-    anaStore.getState().setLastSavedSummaryFile(null);
-    // Read the previous newest entry BEFORE saving this run, so summaries[0]
-    // is genuinely "last time" and never the record we are about to write (#259).
-    sb.listAnalysisSummaries()
-      .then((res) => {
-        if (generation !== persistGeneration) return; // superseded by a newer analysis
-        const prev = res && res.success && Array.isArray(res.summaries) && res.summaries[0] ? res.summaries[0] : null;
-        anaStore.getState().setPrevSummary(prev);
-      })
-      .catch(() => {
-        if (generation === persistGeneration) anaStore.getState().setPrevSummary(null);
-      })
-      .then(() => sb.saveAnalysisSummary(summary))
-      .then((r) => {
-        if (generation !== persistGeneration) return; // superseded by a newer analysis
-        anaStore.getState().setLastSavedSummaryFile(r && r.success ? r.file || null : null);
-      })
-      .catch((err) => console.warn('persistSummary failed', err));
-  } catch (err) {
-    console.warn('persistSummary failed', err);
-  }
-}
+// renderPassMode/renderBuildGuide + their delegated listeners are gone —
+// BuildGuidePanel.tsx (TD-001 slice 6e, #703) ports them verbatim
+// (#build-guide-review/#build-complete-share now call mode-switch.ts#switchMode
+// directly instead of simulating a .mode-tab click).
 
-/* ══ Recent Services (#147) — last 10 persisted summaries ══ */
-// The summaries backing the currently-rendered #recent-list, indexed the same
-// as the rows, so a row click reads its record straight from here instead of
-// re-fetching.
-let recentSummaries = [];
-
-async function renderRecentServices() {
-  const list = document.getElementById('recent-list');
-  const empty = document.getElementById('recent-empty');
-
-  let res;
-  try {
-    res = await sb.listAnalysisSummaries();
-  } catch (err) {
-    console.warn('listAnalysisSummaries failed', err);
-    res = null;
-  }
-
-  // Main already caps this list to 10 (listAnalysisSummaries); slice defensively
-  // so the renderer never shows more even if that contract changes.
-  recentSummaries = (res && res.success && Array.isArray(res.summaries)) ? res.summaries.slice(0, 10) : [];
-
-  if (recentSummaries.length === 0) {
-    list.innerHTML = '';
-    empty.style.display = 'block';
-    return;
-  }
-  empty.style.display = 'none';
-
-  list.innerHTML = recentSummaries.map((s, i) => {
-    // gradeLetter is read back off a disk-stored record (#147) — escape it even
-    // in this attribute position, not just as text content, so a crafted record
-    // (e.g. a shared/synced storage folder written to by another install)
-    // can't break out of the style attribute and inject markup.
-    const safeGrade = escapeHtml(s.gradeLetter);
-    // Literal string, never interpolating s.source (#261) — the only two values
-    // written by save-analysis-summary are 'file' (omitted) and 'live'. Mirrors
-    // recent-services.rowHtml, which is the extracted-but-not-yet-wired copy of
-    // this markup (#395 folds the two together).
-    const sourceHtml = s.source === 'live'
-      ? '<span class="recent-source recent-source-live">Live</span>'
-      : '';
-    return `
-    <div class="dir-item recent-row" data-idx="${i}">
-      <span class="recent-grade" style="color:var(--grade-${(s.gradeLetter || '').toLowerCase().replace(/[^a-z]/g, '')})">${safeGrade}</span>${sourceHtml}
-      <span class="dir-name">${escapeHtml(s.sourceFilename)}</span>
-      <span class="recent-date">${escapeHtml(new Date(s.date).toLocaleString())}</span>${s.note ? `<div class="recent-note">${escapeHtml(s.note)}</div>` : ''}
-    </div>`;
-  }).join('');
-
-  list.querySelectorAll('.recent-row').forEach((row) => {
-    row.addEventListener('click', () => {
-      const i = parseInt(row.dataset.idx, 10);
-      loadHistoryEntry(recentSummaries[i], i === 0 ? recentSummaries[1] || null : null);
-    });
-  });
-}
-
-// Loads a stored summary into the report card view without re-running any
-// analysis — the row's record is all the report card ever reads (#147).
-// prevSummary (#259) feeds the "vs. last time" delta — only the newest
-// history entry (i === 0) gets one, compared against the second-newest.
-function loadHistoryEntry(summary, prevSummary) {
-  transport.pauseIfPlaying(); // don't leave a previous file's playback running behind the summary card
-  anaStore.getState().setHistorySummary(summary);
-  // A history entry always wins over whatever was previously on the card
-  // (ReportCardIsland's priority: currentAnalysis, else liveSource, else
-  // historySummary) — clearAnalysis() also resets selectedFilePath/status, so
-  // the empty-state dropzone/Analyze button reset themselves (#206).
-  anaStore.getState().clearAnalysis();
-  anaStore.getState().setPrevSummary(prevSummary || null);
-  if (!liveRunning) { lcStore.getState().clearLiveWindows(); lapCoaching = window.liveAdjustmentsState.createCoachingState(); document.getElementById('rc-offer').style.display = 'none'; document.getElementById('rc-not-enough').style.display = 'none'; }
-  document.querySelector('.mode-tab[data-mode="reportcard"]').click();
-}
-
-/* ══ Rough Pass / Contextual Pass toggle (#365) — workflow-phase reminder
-   banner atop the Build Guide tab. Phase persists in sessionStorage (resets
-   on a fresh app launch) via the pure window.passModeState module; this just
-   wires the DOM. ══ */
-function renderPassMode() {
-  const phase = window.passModeState.loadPhase(sessionStorage);
-  document.getElementById('pass-mode-toggle').innerHTML =
-    window.passModeState.toggleHtml(phase, escapeHtml);
-  document.getElementById('pass-mode-reminder').innerHTML =
-    window.passModeState.reminderHtml(window.passModeState.getPhase(phase), escapeHtml);
-}
-
-document.getElementById('pass-mode-toggle').addEventListener('click', (e) => {
-  const btn = e.target.closest('[data-phase]');
-  if (!btn) return;
-  window.passModeState.savePhase(sessionStorage, btn.dataset.phase);
-  renderPassMode();
-});
-
-/* ══ Channel Build-Order Guide (#367) — ordered checklist with starting-point
-   EQ/comp/gate presets. Progress persists in localStorage via the pure
-   window.buildOrderState module; this just wires the DOM. ══ */
-function renderBuildGuide() {
-  renderPassMode();
-  const list = document.getElementById('build-guide-list');
-  const progress = window.buildOrderState.loadProgress(localStorage);
-
-  list.innerHTML = window.buildOrderState.STEPS
-    .map((step, i) => window.buildOrderState.stepRowHtml(step, i, progress, escapeHtml))
-    .join('');
-
-  const done = window.buildOrderState.completedCount(progress);
-  const total = window.buildOrderState.totalSteps();
-  document.getElementById('build-guide-progress').textContent = `${done}/${total} done`;
-
-  const complete = document.getElementById('build-complete');
-  complete.innerHTML = window.buildOrderState.completeMomentHtml(progress, escapeHtml);
-  complete.hidden = !window.buildOrderState.isAllComplete(progress);
-  hydrateIcons(complete);
-}
-
-// Event delegation on the list (rows are re-rendered wholesale on every
-// toggle, so per-row listeners would leak/duplicate) — mirrors how other
-// dynamically-rendered lists in this file wire clicks.
-document.getElementById('build-guide-list').addEventListener('click', (e) => {
-  const row = e.target.closest('[data-step-id]');
-  if (!row) return;
-  const id = row.dataset.stepId;
-  if (e.target.closest('.bg-check')) {
-    const progress = window.buildOrderState.loadProgress(localStorage);
-    const next = window.buildOrderState.toggle(progress, id);
-    window.buildOrderState.saveProgress(localStorage, next);
-    renderBuildGuide();
-  } else if (e.target.closest('.bg-label')) {
-    row.classList.toggle('expanded');
-  }
-});
-
-document.getElementById('build-guide-reset').addEventListener('click', () => {
-  window.buildOrderState.saveProgress(localStorage, window.buildOrderState.emptyProgress());
-  renderBuildGuide();
-});
-
-// Reuses the existing Report Card tab handler so post-service review is one
-// click away from the guide (#367's "links to the Report Card" criterion).
-document.getElementById('build-guide-review').addEventListener('click', () => {
-  document.querySelector('.mode-tab[data-mode="reportcard"]').click();
-});
-
-/* ══ Feedback Ring-Out Assistant (#366) ══
-   Free, no-console-API wizard: raise gain to just-ringing, capture the
-   ringing frequency (mic or manual), suggest a narrow-Q cut, optionally save
-   a per-mic EQ profile. All wizard/DSP/profile logic lives in the tested
-   window.feedbackRingout module (mirrors window.buildOrderState above); this
-   is thin DOM glue only. */
-const RINGOUT_CAPTURE_WINDOW_SECS = 3; // meter-smoothing window passed to start-live
-const RINGOUT_CAPTURE_MS = 4000; // wall-clock record duration for a ring-out sample
-
-let ringoutStepIndex = 0; // ephemeral — not persisted, unlike profiles
-let ringoutCut = null; // last suggested { freq, gainDb, q }
-
-function ringoutSetStatus(msg) {
-  document.getElementById('ringout-status').textContent = msg || '';
-}
-
-function ringoutDegradeToManual(msg) {
-  ringoutSetStatus(msg);
-  document.getElementById('ringout-manual-input').focus();
-}
-
-function renderRingout() {
-  const ro = window.feedbackRingout;
-  document.getElementById('ringout-step').innerHTML = ro.stepHtml(ringoutStepIndex, escapeHtml);
-  document.getElementById('ringout-prev').disabled = ro.isFirstStep(ringoutStepIndex);
-  document.getElementById('ringout-next').disabled = ro.isLastStep(ringoutStepIndex);
-  document.getElementById('ringout-suggestion').innerHTML = ro.suggestionHtml(ringoutCut, escapeHtml);
-
-  const profiles = ro.loadProfiles(localStorage);
-  document.getElementById('ringout-profile-list').innerHTML =
-    profiles.profiles.map((p) => ro.profileRowHtml(p, escapeHtml)).join('');
-}
-
-document.getElementById('ringout-prev').addEventListener('click', () => {
-  ringoutStepIndex = window.feedbackRingout.clampStep(ringoutStepIndex - 1);
-  renderRingout();
-});
-
-document.getElementById('ringout-next').addEventListener('click', () => {
-  ringoutStepIndex = window.feedbackRingout.clampStep(ringoutStepIndex + 1);
-  renderRingout();
-});
-
-document.getElementById('ringout-manual-apply').addEventListener('click', () => {
-  const ro = window.feedbackRingout;
-  const input = document.getElementById('ringout-manual-input');
-  const freq = ro.parseManualFrequency(input.value);
-  if (freq === null) {
-    ringoutSetStatus(`Enter a frequency between ${ro.MIN_FREQ_HZ} and ${ro.MAX_FREQ_HZ} Hz.`);
-    return;
-  }
-  ringoutCut = ro.suggestCut(freq);
-  ringoutSetStatus('');
-  renderRingout();
-});
-
-function ringoutDelay(ms) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-// Best-effort mic capture: record a few seconds via the existing start-live/
-// stop-live (record mode) pipeline, read the stem it wrote, run it through
-// the existing analyze-file pipeline for a fine spectrum curve, then find the
-// ring with the shared findSpectralPeaks core. Any failure (no mic, no
-// entitlement, empty curve, no clear peak) degrades to manual entry — capture
-// is a convenience, manual entry is the guaranteed path.
-document.getElementById('ringout-capture').addEventListener('click', async () => {
-  const ro = window.feedbackRingout;
-  const btn = document.getElementById('ringout-capture');
-  btn.disabled = true;
-  try {
-    const view = deviceListView(await sb.listDevices());
-    if (!view.devices.length) {
-      ringoutDegradeToManual('No mic detected — enter the frequency manually.');
-      return;
-    }
-
-    ringoutSetStatus('Listening for the ring…');
-    const started = await sb.startLive({
-      windowSecs: RINGOUT_CAPTURE_WINDOW_SECS,
-      mode: 'record',
-    });
-    if (!started.success) {
-      ringoutDegradeToManual(started.error || 'Live capture unavailable — enter the frequency manually.');
-      return;
-    }
-
-    await ringoutDelay(RINGOUT_CAPTURE_MS);
-    const stopped = await sb.stopLive();
-    if (!stopped || !stopped.sessionDir) {
-      ringoutDegradeToManual('Capture failed — enter the frequency manually.');
-      return;
-    }
-
-    const session = await sb.readSession(stopped.sessionDir);
-    const track = session && session.success && session.manifest.tracks[0];
-    if (!track) {
-      ringoutDegradeToManual('Capture failed — enter the frequency manually.');
-      return;
-    }
-
-    const analysis = await sb.analyzeFile({ filePath: `${stopped.sessionDir}/${track.file}` });
-    const curve = analysis && analysis.success && analysis.data
-      && analysis.data.spectrum && analysis.data.spectrum.curve;
-    if (!curve) {
-      ringoutDegradeToManual('Could not analyze the capture — enter the frequency manually.');
-      return;
-    }
-
-    const ring = ro.identifyRing(curve, window.audioEngineSpectral.findSpectralPeaks);
-    if (!ring) {
-      ringoutDegradeToManual('No clear ring detected — try again or enter the frequency manually.');
-      return;
-    }
-
-    ringoutCut = ro.suggestCut(ring.freq);
-    ringoutSetStatus(`Captured ${ro.formatCut(ringoutCut)}.`);
-    renderRingout();
-  } finally {
-    btn.disabled = false;
-  }
-});
+// ringoutSetStatus/ringoutDegradeToManual/renderRingout + the ring-out
+// listeners are gone — stores/ringoutStore.ts + RingoutPanel.tsx (TD-001
+// slice 6e, #703) port them verbatim (same injected-API async-store shape
+// as rigStore.ts).
 
 // #372: launch the ring-out wizard from the report card, seeded with the
 // detected ring. Reuses the mode-tab click so the transition is the exact
-// navigation the user already knows (renderRingout runs inside it). Now
-// reached via window.inlineDialogs.openFeedbackRingout (ReportCard.tsx's
-// button, TD-001 slice 4, #422) instead of a static listener — see the
+// navigation the user already knows. Reached via
+// window.inlineDialogs.openFeedbackRingout (ReportCard.tsx's button,
+// TD-001 slice 4, #422) instead of a static listener — see the
 // window.inlineDialogs assignment below.
 function openFeedbackRingout() {
-  const ro = window.feedbackRingout;
   const feedbackPeak = rcCallouts().feedbackPeak;
-  if (feedbackPeak) {
-    ringoutCut = ro.suggestCut(feedbackPeak.freq);
-    ringoutStepIndex = ro.stepIndexById('cut');
-  }
+  window.rendererStores.ringout.getState().start(feedbackPeak ? feedbackPeak.freq : null);
   document.querySelector('.mode-tab[data-mode="ringout"]').click();
-  ringoutSetStatus(feedbackPeak ? ro.handoffStatus(feedbackPeak.freq) : '');
 }
 
 // #545 (epic e17): forward link from the Report Card to the Build Guide —
@@ -3336,441 +2299,45 @@ function openBuildGuide() {
   document.querySelector('.mode-tab[data-mode="guide"]').click();
 }
 
-document.getElementById('ringout-profile-save').addEventListener('click', () => {
-  const nameInput = document.getElementById('ringout-profile-name');
-  const name = nameInput.value.trim();
-  if (!name || !ringoutCut) return;
-  const ro = window.feedbackRingout;
-  ro.saveProfile(localStorage, ro.loadProfiles(localStorage), { mic: name, cuts: [ringoutCut] });
-  nameInput.value = '';
-  renderRingout();
-});
-
-// Event delegation on the list (re-rendered wholesale on every change) —
-// mirrors the build-guide-list pattern above.
-document.getElementById('ringout-profile-list').addEventListener('click', (e) => {
-  const row = e.target.closest('[data-mic]');
-  if (!row) return;
-  const mic = row.dataset.mic;
-  const ro = window.feedbackRingout;
-  if (e.target.closest('.ro-profile-recall')) {
-    const profile = ro.getProfile(ro.loadProfiles(localStorage), mic);
-    if (profile && profile.cuts[0]) {
-      ringoutCut = profile.cuts[0];
-      renderRingout();
-    }
-  } else if (e.target.closest('.ro-profile-delete')) {
-    ro.deleteProfile(localStorage, ro.loadProfiles(localStorage), mic);
-    renderRingout();
-  }
-});
-
-// Share prompt (#374): the Report Card is the shareable export, so the closing
-// moment's "Share your grade" jumps to it — same one-click hop as the guide's
-// "Review in Report Card" button.
-document.getElementById('build-complete').addEventListener('click', (e) => {
-  if (!e.target.closest('#build-complete-share')) return;
-  document.querySelector('.mode-tab[data-mode="reportcard"]').click();
-});
+// Share prompt (#374): the Report Card is the shareable export, so the
+// closing moment's "Share your grade" jumps to it — BuildGuidePanel.tsx's
+// own onClick handles this now (#build-complete is React-rendered).
 
 // renderContentType/renderProfileMatch/renderReportCardFromHistory/
 // renderReportCard are gone — ReportCardIsland (React) now owns all of
 // #report-card's rendering, driven by analysisStore/spectrumStore (TD-001
-// slice 4, #422). syncReportCardChrome (above) + renderUpgradeMomentum
-// (below) are what's left for this script to keep in sync: the toolbar
-// buttons and the #rc-upgrade momentum aside, both outside #report-card.
-
-/* ══ "Keep improving" momentum card (#58) ══
-   Beside the finished free report card, never over it. Copy/tone come from the
-   pure window.upgradeMomentum module; this owns only the DOM + dismissal store.
-   Shown when: a report card has rendered, the user is free (non-Pro), and no
-   "Maybe later" dismissal is active for the 7-day conversion window. */
-const RCU_DISMISS_KEY = 'sb-upgrade-momentum-dismissed-at';
-// Records that a report card has been shown to a free user once (#296) — its
-// absence marks this install's first-value moment, when the upsell holds back.
-const RCU_FIRST_SEEN_KEY = 'sb-first-report-seen-at';
-let lastReportGrade = null;
-let rcuRevealTimer = null; // pending first-result reveal
-let rcuHoldUntil = 0; // ms epoch the first-result hold expires (session)
-
-function upgradeMomentumDismissedAt() {
-  try { return localStorage.getItem(RCU_DISMISS_KEY); } catch { return null; }
-}
-function dismissUpgradeMomentum() {
-  try { localStorage.setItem(RCU_DISMISS_KEY, String(Date.now())); }
-  catch { /* private mode: the card simply returns next launch */ }
-}
-
-function upgradeMomentumFirstSeenAt() {
-  try { return localStorage.getItem(RCU_FIRST_SEEN_KEY); } catch { return null; }
-}
-function markUpgradeMomentumFirstSeen() {
-  try { localStorage.setItem(RCU_FIRST_SEEN_KEY, String(Date.now())); }
-  catch { /* private mode: the card just shows undelayed */ }
-}
-
-function renderUpgradeMomentum() {
-  const el = document.getElementById('rc-upgrade');
-  const um = window.upgradeMomentum;
-  // Guard the module load (sibling onboarding code guards likewise) and wait
-  // for the license to resolve — never flash the card before we know the tier.
-  if (!el || !um) return;
-  const licenseStatus = licStore.getState().licenseStatus;
-  const show = lastReportGrade !== null
-    && licenseStatus !== null
-    && um.shouldShowForLicense(licenseStatus)
-    && !um.isDismissed(upgradeMomentumDismissedAt());
-  if (!show) {
-    // A mid-hold Pro activation, dismissal, or report clear must cancel the
-    // pending reveal (the timer callback re-enters this function anyway —
-    // this is belt-and-braces against a stale timer resurfacing the card).
-    clearTimeout(rcuRevealTimer);
-    rcuRevealTimer = null;
-    el.hidden = true;
-    return;
-  }
-
-  // First-result softened reveal (#296): hold the card back so the grade owns
-  // the screen, then ease it in as a follow-on invitation. The first-seen
-  // flag is only written once the card actually shows below — not merely
-  // when the hold is scheduled — so quitting mid-hold or clearing the report
-  // doesn't silently burn the flag and skip the soft reveal on the next real
-  // sighting. It's also only written on this show===true path, so a Pro/trial
-  // user's first analysis never burns it — their first *free-tier* card (e.g.
-  // after trial expiry) still gets the softened reveal.
-  const delay = um.revealDelayMs(upgradeMomentumFirstSeenAt());
-  if (delay > 0 && !rcuHoldUntil) rcuHoldUntil = Date.now() + delay; // once per session
-  if (Date.now() < rcuHoldUntil) {
-    el.hidden = true;
-    clearTimeout(rcuRevealTimer);
-    rcuRevealTimer = setTimeout(renderUpgradeMomentum, rcuHoldUntil - Date.now());
-    return;
-  }
-  if (upgradeMomentumFirstSeenAt() == null) markUpgradeMomentumFirstSeen();
-
-  const tone = um.toneForGrade(lastReportGrade);
-  document.getElementById('rcu-heading').textContent = tone.heading;
-  document.getElementById('rcu-sub').textContent = tone.sub;
-
-  document.getElementById('rcu-actions').innerHTML = um.ACTIONS.map(a =>
-    `<li class="rcu-action">
-      <span class="rcu-lock">${iconSvg('lock', 15)}</span>
-      <span class="rcu-atext">
-        <span class="rcu-atitle">${escapeHtml(a.title)}</span>
-        <span class="rcu-ahint">${escapeHtml(a.hint)}</span>
-      </span>
-    </li>`).join('');
-
-  const cta = document.getElementById('rcu-cta');
-  cta.innerHTML = um.PLANS.map(p =>
-    `<button type="button" class="btn ${p.primary ? 'btn-primary' : 'btn-secondary'} rcu-btn" data-checkout-plan="${escapeHtml(p.plan)}">${escapeHtml(p.label)}</button>`
-  ).join('');
-  cta.querySelectorAll('[data-checkout-plan]').forEach((btn) =>
-    btn.addEventListener('click', () => {
-      // openCheckout returns a Promise (ipcRenderer.invoke); swallow both a
-      // synchronous throw (preload missing) and an async rejection so a failed
-      // open never surfaces as an unhandled rejection.
-      try { sb.openCheckout(btn.dataset.checkoutPlan)?.catch(() => {}); } catch { /* preload missing */ }
-    }));
-
-  document.getElementById('rcu-trust').textContent = um.TRUST_COPY;
-  el.hidden = false;
-}
-
-document.getElementById('rcu-later').addEventListener('click', () => {
-  dismissUpgradeMomentum();
-  document.getElementById('rc-upgrade').hidden = true;
-});
-
-// renderReportCardFrames is gone — ReportCard.tsx renders "Spectrum Over
-// Time" from reportCardFramesView (report-card.ts), TD-001 slice 4, #422.
-
-// Share Image (#265): a one-click, purpose-built 1200×630 PNG for social
-// posting — distinct from Export PDF (window.print(), untouched above). Model
-// → draw ops → render is entirely the pure share-card.ts module; this handler
-// is only the impure glue (source lookup, canvas, save dialog), same split
-// report-export.ts already established for Export PNG (#368).
-document.getElementById('reportcard-share-btn').addEventListener('click', async () => {
-  try {
-    const state = anaStore.getState();
-    const { isHistoryCard, chromeSource } = resolveReportCardChromeSource(state);
-
-    let grade, score, metrics;
-    if (chromeSource) {
-      grade = grading.computeGrade(chromeSource);
-      score = grading.computeScore(chromeSource);
-      metrics = buildMetricRows(chromeSource, grading)
-        .slice(0, MAX_SHARE_METRICS)
-        .map((m) => ({ label: m.name, value: m.unit ? `${m.value} ${m.unit}` : m.value }));
-    } else if (isHistoryCard) {
-      // A history-only card has no raw sox/spectrum data to build metric
-      // rows from — share the grade/score alone rather than block entirely.
-      grade = state.historySummary.gradeLetter;
-      score = state.historySummary.score;
-      metrics = [];
-    } else {
-      return; // no card on screen to share
-    }
-
-    const churchNameSetting = (setStore.getState().settings || {}).shareChurchName || '';
-    const model = buildShareCardModel({
-      grade,
-      score,
-      headline: 'Mix graded by Sound Buddy',
-      metrics,
-      churchName: churchNameSetting,
-    });
-    const ops = shareCardDrawOps(model);
-
-    // AC-2 privacy guard: the image must carry no identifying information by
-    // default — assert the source filename/path never leaked into an op,
-    // and the raw church-name setting didn't either when the model omitted it.
-    const basename = chromeSource ? (chromeSource.filename || '') : (state.historySummary.sourceFilename || '');
-    const fullPath = state.currentAnalysis?.ffprobe?.format?.filename || '';
-    assertNoIdentifyingText(ops, [basename, fullPath, model.churchName === null ? churchNameSetting : '']);
-
-    const canvas = document.createElement('canvas');
-    canvas.width = SHARE_CARD_WIDTH;
-    canvas.height = SHARE_CARD_HEIGHT;
-    const ctx = canvas.getContext('2d');
-    renderShareCard(ctx, ops);
-
-    const blob = await new Promise((resolve, reject) => {
-      canvas.toBlob((b) => (b ? resolve(b) : reject(new Error('canvas.toBlob returned null'))), 'image/png');
-    });
-    const bytes = new Uint8Array(await blob.arrayBuffer());
-    assertPngMetadataStripped(bytes);
-
-    const dateEl = document.getElementById('rc-date');
-    const dateText = (dateEl && dateEl.textContent) || '';
-    await sb.saveReportImage(bytes, buildShareFilename(dateText));
-    // { saved: false } just means the user cancelled the native save dialog
-    // — not an error, nothing further to do.
-  } catch (err) {
-    console.error('share image failed:', err);
-    const reason = err && err.message ? err.message : String(err);
-    window.alert(`Could not create the share image: ${reason}. Try again, or use Export PDF instead.`);
-  }
-});
-
-document.getElementById('reportcard-print-btn').addEventListener('click', () => window.print());
-document.getElementById('reportcard-feedback-btn').addEventListener('click', () => {
-  openFeedbackDialog();
-});
-
-// #206: once a report card is showing, the file-loading dropzone is hidden
-// behind it (it only lives in the empty state). Clear resets to that empty
-// state so a different file can be loaded in-window — no menu navigation or
-// relaunch needed.
-document.getElementById('reportcard-clear-btn').addEventListener('click', () => {
-  if (!curAnalysis()) return;
-  // Release the <audio> element so a re-load of the SAME file starts at 0:00
-  // instead of resuming at its last scrub position (spectrumTransport.ensure
-  // keys on the cached filePath).
-  transport.reset();
-  // clearAnalysis() nulls currentAnalysis/selectedFilePath and resets status
-  // to 'idle' — ReportCardIsland flips #rc-content → #rc-empty reactively,
-  // and the dropzone/Analyze button reset themselves from the cleared store.
-  anaStore.getState().clearAnalysis();
-  // A finished live-capture session's rolling buffer would otherwise make
-  // getReportCardSource() fall through to that stale live card instead of the
-  // empty state (#206) — but leave an actively-running session's buffer alone
-  // so its live meters don't blip empty.
-  if (!liveRunning) { lcStore.getState().clearLiveWindows(); lapCoaching = window.liveAdjustmentsState.createCoachingState(); document.getElementById('rc-offer').style.display = 'none'; document.getElementById('rc-not-enough').style.display = 'none'; }
-  specStore.getState().setPanelState('empty');
-});
+// slice 4, #422). The report-card toolbar buttons + the #rc-upgrade momentum
+// aside are gone from this script too — ReportCardToolbar.tsx/
+// UpgradeMomentum.tsx (TD-001 slice 6e, #703) own them now, both deriving
+// from report-card-chrome.ts#reportCardChromeView.
 
 // #208: while a live-capture card is showing, the file dropzone is hidden behind it
 // (#rc-empty only renders when no card is present) and Clear is disabled (no file to
-// release). This toolbar button — visible only for the live-capture card — opens the
-// picker and analyzes directly. The resulting file card replaces the live card via
-// getReportCardSource() priority; liveWindows is left untouched so the Live tab's
-// window history survives.
+// release). ReportCardToolbar.tsx's Load button (visible only for the live-capture
+// card) still reaches this by name — it's a 3-line function with no other
+// dependents left after this migration, so it's bridged rather than ported.
 async function chooseAndAnalyzeFile() {
   try {
     const fp = await sb.openFileDialog();
     if (fp) { loadFile(fp); await runFileAnalysis(fp); }
   } catch { /* user cancelled */ }
 }
-
-// #543 (epic e17): with report-first-ux on, "Load a file…" is the entry point
-// to the unified source picker rather than straight to the OS file dialog.
-// Flag off, the behavior is byte-identical to before.
-document.getElementById('reportcard-load-btn').addEventListener('click', () => {
-  if (window.analyzeSourceState.isPickerEnabled(
-        window.reportFirstUxState.isEnabled(setStore.getState().settings))) {
-    openAnalyzeSourcePicker();
-  } else {
-    chooseAndAnalyzeFile();
-  }
-});
+window.chooseAndAnalyzeFile = chooseAndAnalyzeFile;
 
 /* ══ License (#54) ══ */
-// Free/Pro state comes from licensingStore (backed by the main process's
-// offline Ed25519 validation); the pure display/entitlement rules live in
-// license-state.js. LicensePanel.tsx now owns the dialog itself — its
-// markup, activation/removal/refresh, and the entitlement poll (TD-001
-// slice 3, #421). This section renders the badge/banners/upgrade-card from
-// licStore's state and wires the surfaces that open the dialog.
+// renderLicenseUi/renderTrialBanner/trialDismissed/dismissTrial + the
+// initLicense() IIFE are gone — LicenseChrome.tsx (TD-001 slice 6e, #703)
+// ports them verbatim, reading licensingStore reactively instead of an
+// explicit store.subscribe callback. The generic [data-license-open]
+// listener below is the one piece LicenseChrome.tsx doesn't own — it's used
+// by the two unrelated paywall .pg-link buttons (Live/Soundcheck pro-gates),
+// still static root-markup.html markup, out of scope for this slice.
+document.querySelectorAll('[data-license-open]').forEach((el) =>
+  el.addEventListener('click', () => licStore.getState().openDialog()));
 
-// Paywall-evaluation refresh trigger (#117): once per session, the first time
-// we observe a subscription in its refresh window, kick the automatic check.
-// The window predicate lives in license-state.js (isInRefreshWindow, shared +
-// unit-tested) so it can't silently drift from the main process's own
-// shouldAutoRefresh() — a polling loop isn't needed since renderLicenseUi
-// runs on every licStore change.
-let refreshKicked = false;
-
-function renderLicenseUi(state) {
-  if (!refreshKicked && window.licenseState.isInRefreshWindow(state)) {
-    refreshKicked = true;
-    // licensingStore.refreshLicense() never throws — a rejected round-trip
-    // just keeps the current state (see its own comment).
-    void licStore.getState().refreshLicense();
-  }
-  const ls = window.licenseState;
-  const b = ls.badge(state);
-
-  const badgeEl = document.getElementById('license-badge');
-  // During the trial the countdown IS the badge copy (#61); the pure helper
-  // owns the exact string so it can't drift from what's under test.
-  const trialText = ls.trialBadgeText(state);
-  badgeEl.textContent = trialText || b.label;
-  badgeEl.classList.toggle('pro', b.pro);
-  badgeEl.classList.toggle('grace', b.grace);
-  badgeEl.classList.toggle('trial', b.trial);
-
-  // The single gating hook: every Pro surface keys off body.not-pro in CSS.
-  document.body.classList.toggle('not-pro', !b.pro);
-
-  const banner = document.getElementById('license-banner');
-  const graceText = ls.graceBannerText(state);
-  if (graceText) {
-    document.getElementById('license-banner-text').textContent = graceText;
-    banner.classList.add('show');
-  } else {
-    banner.classList.remove('show');
-  }
-
-  renderTrialBanner(state);
-
-  // Activating/removing a key mid-session flips whether the upgrade card belongs
-  // on the report (#58) — re-evaluate so it hides the instant a user goes Pro.
-  renderUpgradeMomentum();
-}
-
-// The day-3 / day-11 nudge and the day-14 upgrade card (#61). Dismissals are
-// per-milestone in localStorage so a nudge shows once, not every launch.
-function trialDismissed(id) {
-  try { return localStorage.getItem('sb-trial-dismiss-' + id) === '1'; } catch { return false; }
-}
-function dismissTrial(id) {
-  try { localStorage.setItem('sb-trial-dismiss-' + id, '1'); } catch { /* private mode: banner just returns next launch */ }
-}
-
-function renderTrialBanner(state) {
-  const el = document.getElementById('trial-banner');
-  const textEl = document.getElementById('trial-banner-text');
-  let msg = null;
-  let id = null;
-  if (state.status === 'trial') {
-    const nudge = window.licenseState.trialNudge(state);
-    if (nudge) { msg = nudge.text; id = nudge.milestone; }
-  } else if (state.status === 'trial-expired') {
-    msg = 'Your 14-day Pro trial has ended — the report card stays free. Start a subscription to reunlock live monitoring, saved rigs & virtual soundcheck.';
-    id = 'expired';
-  }
-  if (msg && id && !trialDismissed(id)) {
-    textEl.textContent = msg;
-    el.dataset.dismissId = id;
-    el.classList.add('show');
-  } else {
-    el.classList.remove('show');
-  }
-}
-
-(function initLicense() {
-  document.getElementById('license-badge').addEventListener('click', () => licStore.getState().openDialog());
-  document.getElementById('license-banner-manage').addEventListener('click', () => licStore.getState().openDialog());
-  document.getElementById('license-banner-dismiss').addEventListener('click', () =>
-    document.getElementById('license-banner').classList.remove('show'));
-
-  // Trial banner (#61): "Start subscription" opens the license dialog; the ✕
-  // dismisses this milestone for good (so it doesn't nag every launch).
-  document.getElementById('trial-banner-start').addEventListener('click', () => licStore.getState().openDialog());
-  document.getElementById('trial-banner-dismiss').addEventListener('click', () => {
-    const tb = document.getElementById('trial-banner');
-    if (tb.dataset.dismissId) dismissTrial(tb.dataset.dismissId);
-    tb.classList.remove('show');
-  });
-  document.querySelectorAll('[data-license-open]').forEach((el) =>
-    el.addEventListener('click', () => licStore.getState().openDialog()));
-
-  licStore.subscribe((s) => renderLicenseUi(s.licenseStatus || { tier: 'free', status: 'none' }));
-  // Render the free-tier default immediately — LicensePanel.tsx's mount
-  // effect resolves the real state asynchronously; the subscribe above
-  // re-renders once it does.
-  renderLicenseUi(licStore.getState().licenseStatus || { tier: 'free', status: 'none' });
-})();
-
-/* ══ Updates ══ */
-(function initUpdates() {
-  const banner = document.getElementById('update-banner');
-  const text = document.getElementById('update-banner-text');
-  const dlBtn = document.getElementById('update-download-btn');
-  const progress = document.getElementById('update-progress');
-  let info = null;
-  let currentAction = 'download';
-
-  function render(view) {
-    text.textContent = view.text;
-    if (view.primary == null) {
-      dlBtn.hidden = true;
-    } else {
-      dlBtn.hidden = false;
-      dlBtn.textContent = view.primary.label;
-      currentAction = view.primary.action;
-    }
-    progress.hidden = !view.showProgress;
-    progress.value = view.percent;
-    if (view.indeterminate) {
-      progress.removeAttribute('value');
-    } else {
-      progress.setAttribute('value', String(view.percent));
-    }
-  }
-
-  sb.onUpdateAvailable((i) => {
-    info = i;
-    render(window.updateDownloadState.viewFor(null, info));
-    banner.classList.add('show');
-  });
-  sb.onUpdateStatus((s) => {
-    // Feedback for the manual "Check for Updates…" menu item.
-    if (s.state === 'up-to-date') {
-      text.textContent = `You're up to date (v${s.version}).`;
-      dlBtn.hidden = true;
-      progress.hidden = true;
-      banner.classList.add('show');
-      setTimeout(() => banner.classList.remove('show'), 4000);
-    } else if (s.state === 'error') {
-      text.textContent = 'Could not check for updates. Try again later.';
-      dlBtn.hidden = true;
-      progress.hidden = true;
-      banner.classList.add('show');
-      setTimeout(() => banner.classList.remove('show'), 5000);
-    }
-  });
-  sb.onUpdateDownloadStatus((s) => {
-    if (!info) return;
-    render(window.updateDownloadState.viewFor(s.state === 'cancelled' ? null : s, info));
-  });
-  dlBtn.addEventListener('click', () => {
-    if (currentAction === 'install') sb.installUpdate();
-    else sb.downloadUpdate();
-  });
-  document.getElementById('update-dismiss-btn').addEventListener('click', () => banner.classList.remove('show'));
-})();
+// initUpdates() is gone — UpdateBanner.tsx (TD-001 slice 6e, #703) ports it
+// verbatim as a mounted component instead of an IIFE that runs once at
+// script load.
 
 /* ══ Settings dialog (#76, #91, #204) ══ */
 // SettingsPanel.tsx now owns the whole dialog — Storage and About tabs, Save
@@ -3927,7 +2494,9 @@ async function gradeOwnChooseFile() {
 }
 
 (() => {
-  document.getElementById('grade-own-btn').addEventListener('click', openGuideDialog);
+  // grade-own-btn's listener moved to ReportCardToolbar.tsx's onClick (TD-001
+  // slice 6e, #703) — window.inlineDialogs.openGradeOwnGuide bridges this
+  // function for it, since the button is now a React-rendered element.
   aiEl('guide-dialog-close').addEventListener('click', closeGuideDialog);
   aiEl('guide-choose-file').addEventListener('click', gradeOwnChooseFile);
   aiEl('guide-dialog-open-site').addEventListener('click', () => {
@@ -3968,7 +2537,7 @@ function renderPhaseDoublingStep() {
 // button, TD-001 slice 4, #422) instead of a static listener.
 function openPhaseDoublingDialog() {
   phaseDoublingStep = 0;
-  const src = getReportCardSource();
+  const src = window.reportCardChrome.getReportCardSource(curAnalysis(), anaStore.getState().liveSource);
   aiEl('phase-doubling-context').innerHTML = window.phaseDoublingState.contextLineHtml(
     src ? { filename: src.filename, detected: rcCallouts().phaseSignal } : null, escapeHtml);
   renderPhaseDoublingStep();
@@ -3987,14 +2556,16 @@ function closePhaseDoublingDialog() {
 async function saveMixAsTarget() {
   const analysis = curAnalysis();
   if (!analysis || !hasUsableCurve(analysis.spectrum || {})) return false;
-  const src = getReportCardSource();
+  const src = window.reportCardChrome.getReportCardSource(curAnalysis(), anaStore.getState().liveSource);
   const meta = strongMixTargetMeta(src ? src.filename : '');
   return window.rendererStores.idealProfiles.getState().saveMeasured(analysis.spectrum.curve, meta);
 }
 
 // Bridges ReportCard.tsx's phase-doubling/feedback-ringout callout buttons to
 // the still-inline dialogs they open (TD-001 slice 4, #422).
-window.inlineDialogs = { openPhaseDoublingDialog, openFeedbackRingout, saveMixAsTarget, openBuildGuide };
+// openFeedbackDialog/openGuideDialog (TD-001 slice 6e, #703) join this
+// bridge for ReportCardToolbar.tsx's Send Feedback / Grade-own buttons.
+window.inlineDialogs = { openPhaseDoublingDialog, openFeedbackRingout, saveMixAsTarget, openBuildGuide, openFeedbackDialog, openGradeOwnGuide: openGuideDialog };
 
 (() => {
   aiEl('phase-doubling-close').addEventListener('click', closePhaseDoublingDialog);
@@ -4021,7 +2592,7 @@ window.inlineDialogs = { openPhaseDoublingDialog, openFeedbackRingout, saveMixAs
   // #542: re-fold the workspace to a single column whenever the flag (or
   // mode) changes, so toggling it in Settings while on Recent reflows
   // immediately.
-  setStore.subscribe(() => syncSingleColumn());
+  setStore.subscribe(() => window.modeSwitch.applySingleColumnSync());
   // Experimental DAW workspace gate (#516): body class is the entry point
   // #517's workspace shell mounts against. Absent by default — the existing
   // Live Capture UI is untouched until the user opts in.
@@ -4032,7 +2603,7 @@ window.inlineDialogs = { openPhaseDoublingDialog, openFeedbackRingout, saveMixAs
     // Re-render the Live pane immediately on an actual flip so the shell swaps
     // in/out without requiring a tab switch — but not on every settings save,
     // or an unrelated save with the toggle unchanged would clobber the pane.
-    if (nowEnabled !== dawWorkspaceWasEnabled && currentMode === 'live') syncSpectrumForMode('live');
+    if (nowEnabled !== dawWorkspaceWasEnabled && lcStore.getState().appMode === 'live') window.modeSwitch.applySpectrumForMode('live');
     dawWorkspaceWasEnabled = nowEnabled;
   });
   // Experimental live adjustments gate (#522): re-sync the Live pane on an
@@ -4040,7 +2611,7 @@ window.inlineDialogs = { openPhaseDoublingDialog, openFeedbackRingout, saveMixAs
   let liveAdjustmentsWasEnabled = false;
   setStore.subscribe((s) => {
     const nowEnabled = window.liveAdjustmentsState.isEnabled(s.settings);
-    if (nowEnabled !== liveAdjustmentsWasEnabled && currentMode === 'live') syncSpectrumForMode('live');
+    if (nowEnabled !== liveAdjustmentsWasEnabled && lcStore.getState().appMode === 'live') window.modeSwitch.applySpectrumForMode('live');
     liveAdjustmentsWasEnabled = nowEnabled;
   });
   // Experimental secondary measurement device gate (#460): show/hide the block
@@ -4060,20 +2631,21 @@ window.inlineDialogs = { openPhaseDoublingDialog, openFeedbackRingout, saveMixAs
   if (!recordDir) document.getElementById('record-folder-path').textContent = defaultRecordFolderText();
 })();
 
-// Drives the report-card toolbar (Clear/Load/Print/Grade-own) + the
-// #rc-upgrade momentum aside from analysisStore — ReportCardIsland (React)
-// owns #report-card itself (TD-001 slice 4, #422).
-anaStore.subscribe(syncReportCardChrome);
-syncReportCardChrome(anaStore.getState(), anaStore.getState());
+// ReportCardToolbar.tsx/UpgradeMomentum.tsx (TD-001 slice 6e, #703) now
+// drive the report-card toolbar + the #rc-upgrade momentum aside directly
+// from analysisStore/licensingStore — no boot wiring needed here.
 // #542: a flag-already-on first paint on Recent / Guide / Ring-Out must
 // render single-column without requiring a tab click.
-syncSingleColumn();
+window.modeSwitch.applySingleColumnSync();
 
 hydrateIcons(document);
 specStore.getState().setPanelState('empty'); // store default text ('Load a file to see the spectrum') is identical
 // Load devices first so a saved rig can reconcile its device by name and clamp
 // channels against the real device list; then apply the active rig (if any).
-loadDevices().then(initRigs, initRigs);
+loadDevices().then(
+  window.rendererStores.rig.getState().loadRigs,
+  window.rendererStores.rig.getState().loadRigs,
+);
 
 // First-run onboarding (#69): show the welcome overlay on a genuine first launch.
 void initOnboarding();
