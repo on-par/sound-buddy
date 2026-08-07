@@ -184,7 +184,10 @@ export default function ReportCardToolbar(): JSX.Element {
      tests/e2e/report-card-basics.spec.ts and report-first-ux.spec.ts. */
   useEffect(() => {
     applyStatusTransition(status, currentAnalysis, liveSource);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // Deliberately keyed on `status` alone, matching syncReportCardChrome's
+    // original `state.status !== prevState.status` guard — currentAnalysis/
+    // liveSource are read for their value at the moment status transitions,
+    // not to re-run this effect on their own changes.
   }, [status]);
   /* c8 ignore stop */
 
