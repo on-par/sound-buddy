@@ -69,6 +69,7 @@ import ReportCardToolbar from './ReportCardToolbar';
 import UpgradeMomentum from './UpgradeMomentum';
 import RecentServicesPanel from './RecentServicesPanel';
 import BuildGuidePanel from './BuildGuidePanel';
+import RingoutPanel from './RingoutPanel';
 import { installStoreBridge } from './stores/bridge';
 
 // Boot scripts in their original document order (#303): the 20 UMD helpers
@@ -206,6 +207,7 @@ export default function App() {
       {booted && createPortal(<UpgradeMomentum />, document.getElementById('rc-upgrade-island')!)}
       {booted && createPortal(<RecentServicesPanel />, document.getElementById('tab-recent')!)}
       {booted && createPortal(<BuildGuidePanel />, document.getElementById('tab-guide')!)}
+      {booted && createPortal(<RingoutPanel />, document.getElementById('tab-ringout')!)}
     </>
   );
 }
