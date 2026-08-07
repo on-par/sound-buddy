@@ -64,6 +64,9 @@ import RigControls from './RigControls';
 import PreflightPanel from './PreflightPanel';
 import ModeTabs from './ModeTabs';
 import * as modeSwitch from './mode-switch';
+import * as reportCardChrome from './report-card-chrome';
+import ReportCardToolbar from './ReportCardToolbar';
+import UpgradeMomentum from './UpgradeMomentum';
 import { installStoreBridge } from './stores/bridge';
 
 // Boot scripts in their original document order (#303): the 20 UMD helpers
@@ -158,6 +161,10 @@ export default function App() {
     // for the 2 remaining call sites outside ModeTabs.tsx's click handler
     // (TD-001 slice 6e, #703).
     (window as Window & { modeSwitch?: unknown }).modeSwitch = modeSwitch;
+    // inline-app.js still needs getReportCardSource/persistSummary for the
+    // AI narrative trigger, saveMixAsTarget, and the live-capture session
+    // persist call (TD-001 slice 6e, #703).
+    (window as Window & { reportCardChrome?: unknown }).reportCardChrome = reportCardChrome;
     // Installed before the boot scripts run — inline-app.js reads
     // window.rendererStores at its top level (TD-001 slice 3, #421).
     installStoreBridge();
@@ -193,6 +200,8 @@ export default function App() {
       {booted && createPortal(<PreflightPanel />, document.getElementById('preflight-island')!)}
       {booted && createPortal(<SoundcheckPanel />, document.getElementById('soundcheck-island')!)}
       {booted && createPortal(<ModeTabs />, document.getElementById('mode-tabs')!)}
+      {booted && createPortal(<ReportCardToolbar />, document.getElementById('rc-toolbar')!)}
+      {booted && createPortal(<UpgradeMomentum />, document.getElementById('rc-upgrade-island')!)}
     </>
   );
 }

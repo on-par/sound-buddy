@@ -79,6 +79,10 @@ let focusedInputIndex = null;
 // Coaching stability state (#612) — advanced once per analysis window, never
 // per render, since syncLiveAdjustmentsPanel() is called from many render paths.
 let lapCoaching = window.liveAdjustmentsState.createCoachingState();
+// ReportCardToolbar.tsx's Clear button (TD-001 slice 6e, #703) needs to
+// reset lapCoaching — a lexical `let` binding an ES module can't reach
+// directly (see window.liveCapture above for the same reasoning).
+window.liveCoaching = { reset: () => { lapCoaching = window.liveAdjustmentsState.createCoachingState(); } };
 // Elapsed-time playhead for the experimental DAW shell (#518): window.dawPlayheadState
 // state, null before the first capture ever starts. Tracked regardless of the
 // DAW toggle so flipping the experiment mid-capture shows correct elapsed time.
@@ -975,6 +979,11 @@ function updateStatsRow(sox, spectrum) {
   setStat('stat-clip', sox.clipping ? 'YES' : 'No', sox.clipping ? 'issue' : '');
   document.getElementById('stat-centroid').textContent = spectrum && spectrum.spectralCentroid ? Math.round(spectrum.spectralCentroid).toLocaleString() : '—';
 }
+// ReportCardToolbar.tsx's status-transition useEffect (TD-001 slice 6e,
+// #703) calls this by name instead of duplicating it as an ES import, since
+// it's still a plain inline-app.js function (leaks onto window automatically
+// as a top-level declaration, same as window.renderChannelConfig).
+window.updateStatsRow = updateStatsRow;
 function updateLiveStatsRow(ch) {
   setStat('stat-rms', fmt(ch.rms), ch.rms > -6 ? 'check' : '');
   setStat('stat-peak', fmt(ch.peak), ch.peak > -1 ? 'issue' : '');
@@ -1056,84 +1065,11 @@ sb.onAnalysisProgress((data) => {
   specStore.getState().markStageDone(data.stage);
 });
 
-// Replaces runFileAnalysis's DOM side effects — a single analysisStore
-// subscription reacting to `status` transitions (TD-001 slice 4, #422).
-// Installed at boot (see the Init section at the bottom of this file).
-// Mirrors ReportCardIsland's own source priority (currentAnalysis wins, else
-// liveSource, else historySummary, else no card at all). Shared by
-// syncReportCardChrome (toolbar/upgrade-card chrome outside #report-card) and
-// the Share Image click handler (#265) so both derive "what card is showing"
-// from one place instead of two independently-maintained copies.
-function resolveReportCardChromeSource(state) {
-  const isHistoryCard = !!state.historySummary && !state.currentAnalysis && !state.liveSource;
-  const chromeSource = state.currentAnalysis
-    ? reportCardSourceFromAnalysis(state.currentAnalysis)
-    : (state.liveSource || null);
-  return { isHistoryCard, chromeSource };
-}
-
-function syncReportCardChrome(state, prevState) {
-  const clearBtn = document.getElementById('reportcard-clear-btn');
-  const loadBtn = document.getElementById('reportcard-load-btn');
-  const printBtn = document.getElementById('reportcard-print-btn');
-  const shareBtn = document.getElementById('reportcard-share-btn');
-  const gradeOwnBtn = document.getElementById('grade-own-btn');
-  const { isHistoryCard, chromeSource } = resolveReportCardChromeSource(state);
-  const isLiveCard = !state.currentAnalysis && !!state.liveSource;
-  const hasCard = isHistoryCard || !!chromeSource;
-
-  if (state.status !== prevState.status) {
-    if (state.status === 'analyzing') {
-      transport.pauseIfPlaying(); // don't let a previous file's playback bleed through the loading state (#180)
-      specStore.getState().setPanelState('loading');
-    } else if (state.status === 'error') {
-      specStore.getState().setPanelState('error', state.analysisError || 'Analysis failed');
-    } else if (state.status === 'cancelled') {
-      // Return to the pre-analysis idle state (no report card, no stuck
-      // spinner). selectedFilePath is left untouched by cancelAnalysis, so
-      // the user can retry without re-picking the file.
-      specStore.getState().setPanelState('empty');
-    } else if (state.status === 'done') {
-      // File input now lives in the Report Card tab's empty state (#203) —
-      // the card flips over the moment analysis succeeds. The store already
-      // flipped panelState to 'populated' via bridge.ts's
-      // setSpectrumFromAnalysis subscription, and idealProfilesStore already
-      // resynced via bridge.ts's currentAnalysis subscription (TD-001 slice
-      // 6b, #700) — nothing left to clear/sync here.
-      updateStatsRow(state.currentAnalysis.sox, state.currentAnalysis.spectrum);
-      if (curAnalysis()) persistSummary(getReportCardSource(), 'file');
-    }
-  }
-
-  // Print/Share/Grade-own just mirror whether a card (file, live, or
-  // history) is showing — a re-analysis in flight still has the prior card
-  // on screen to print/share/grade, same as before this migration
-  // (runFileAnalysis never disabled these while re-analyzing). Clear/Load DO
-  // disable in flight so they can't swap the source out from under the run
-  // and have this continuation flip the card back over a stale reference
-  // (#206/#208).
-  printBtn.disabled = !hasCard;
-  shareBtn.disabled = !hasCard;
-  gradeOwnBtn.disabled = !hasCard;
-  loadBtn.disabled = state.status === 'analyzing';
-  loadBtn.style.display = isLiveCard ? '' : 'none';
-  // Clear only makes sense when the card is backed by a file analysis — a
-  // live-capture (or history) card has no file to clear, and it never makes
-  // sense mid-flight either (#206).
-  clearBtn.disabled = state.status === 'analyzing' || !state.currentAnalysis;
-
-  // Post-report-card upgrade moment (#58): score-aware, so it needs the
-  // latest grade. lastReportGrade/renderUpgradeMomentum stay inline (they own
-  // the imperative #rc-upgrade aside, a React-island sibling, #58/#296).
-  if (isHistoryCard) {
-    lastReportGrade = state.historySummary.gradeLetter;
-  } else if (chromeSource) {
-    lastReportGrade = grading.computeGrade(chromeSource);
-  } else {
-    lastReportGrade = null;
-  }
-  renderUpgradeMomentum();
-}
+// resolveReportCardChromeSource/syncReportCardChrome are gone —
+// report-card-chrome.ts#resolveReportCardChromeSource/reportCardChromeView
+// (TD-001 slice 6e, #703) port them verbatim; ReportCardToolbar.tsx now owns
+// the toolbar buttons via its own useEffect on analysisStore.status,
+// replacing the anaStore.subscribe(syncReportCardChrome) wiring below.
 
 /* ══ Directory mode (#270): batch-analyze a folder of whole-mix recordings.
    Runs the existing single-file analyze pipeline sequentially over every
@@ -1142,7 +1078,7 @@ function syncReportCardChrome(state, prevState) {
    flight for this renderer. Calls analyzeFile directly rather than
    anaStore.getState().startAnalysis() so the batch never drives the
    single-file report-card store's status machine through N spurious
-   transitions (syncReportCardChrome above). ══ */
+   transitions (ReportCardToolbar.tsx's status-transition useEffect). ══ */
 let batchFiles = [];
 let batchRunning = false;
 
@@ -1745,7 +1681,7 @@ function onCaptureStopped(result) {
     const sessionSrc = liveSessionReportCardSource(sessionWindows, lcStore.getState().measurementSource, channelConfig);
     if (sessionSrc) {
       anaStore.getState().setLiveSource(sessionSrc); // freeze the session card onto the Report Card tab
-      persistSummary(sessionSrc, 'live');
+      window.reportCardChrome.persistSummary(sessionSrc, 'live');
       document.getElementById('rc-offer').style.display = 'flex';
       hydrateIcons(document.getElementById('rc-offer'));
     } else {
@@ -2130,80 +2066,13 @@ async function initWhatsNew() {
 // slice 6c, #701 — replacing this file's old syncLiveSource()/
 // liveReportCardSource() glue).
 
-// getReportCardSource() survives only for its remaining inline consumers (the
-// AI narrative trigger, the file-analysis persistSummary call site) — reads
-// curAnalysis()/liveSource from the stores instead of the old
-// currentAnalysis/liveWindows module vars.
-function getReportCardSource() {
-  const analysis = curAnalysis();
-  if (analysis) {
-    const { sox, spectrum, ffprobe, loudness } = analysis;
-    return {
-      filename: (ffprobe.format.filename || '').split('/').pop() || 'Untitled',
-      rms: sox.rmsDbfs, peak: sox.peakDbfs, dynamicRange: sox.dynamicRangeDb,
-      clipping: sox.clipping, centroid: spectrum.spectralCentroid,
-      bands: { ...spectrum.bands },
-      // Whole-file curve (PRD 05) + speech/music delineation (PRD 04) — absent on
-      // older analyses / live capture.
-      curve: spectrum.curve || null,
-      contentType: spectrum.contentType || null,
-      segments: spectrum.segments || null,
-      // Time-sampled snapshots (PRD 03) for the "Spectrum Over Time" section.
-      frames: spectrum.frames,
-      // EBU R128 loudness measurement (#134) — null when ffmpeg was unavailable
-      // or its output couldn't be parsed; the report card falls back to the
-      // RMS-based rows only.
-      lufsIntegrated: loudness ? loudness.integratedLufs : null,
-      loudnessRange: loudness ? loudness.loudnessRange : null,
-      truePeakDbtp: loudness ? loudness.truePeakDbtp : null,
-    };
-  }
-  return anaStore.getState().liveSource;
-}
-
-// Guards persistSummary's async chain against out-of-order resolution
-// (#267): each call gets the next generation number, and a chain only applies
-// its resolved state if it's still the newest call — otherwise a slower older
-// run finishing after a newer re-analysis would stamp the wrong prevSummary/
-// lastSavedSummaryFile onto the card that's actually on screen.
-let persistGeneration = 0;
-
-// Persist a discrete report-card summary for the recent-services list (#147),
-// tagged with its source ('file' | 'live', #261) so Recent Services can badge
-// a live-capture session distinctly from a file analysis. Fire-and-forget:
-// never block or fail the report card on a storage error (main logs and
-// swallows). Callers decide whether src is gradeable — this no longer gates
-// on curAnalysis() itself, so the live-capture session path (which has no
-// currentAnalysis) can call it too.
-function persistSummary(src, source) {
-  try {
-    if (!src) return;
-    const summary = buildAnalysisSummaryInput(src, grading, source);
-    const generation = ++persistGeneration;
-    // The handoff note field (#267) is add-at-save-time only — disabled until
-    // this run's own save resolves with the record it wrote.
-    anaStore.getState().setLastSavedSummaryFile(null);
-    // Read the previous newest entry BEFORE saving this run, so summaries[0]
-    // is genuinely "last time" and never the record we are about to write (#259).
-    sb.listAnalysisSummaries()
-      .then((res) => {
-        if (generation !== persistGeneration) return; // superseded by a newer analysis
-        const prev = res && res.success && Array.isArray(res.summaries) && res.summaries[0] ? res.summaries[0] : null;
-        anaStore.getState().setPrevSummary(prev);
-      })
-      .catch(() => {
-        if (generation === persistGeneration) anaStore.getState().setPrevSummary(null);
-      })
-      .then(() => sb.saveAnalysisSummary(summary))
-      .then((r) => {
-        if (generation !== persistGeneration) return; // superseded by a newer analysis
-        anaStore.getState().setLastSavedSummaryFile(r && r.success ? r.file || null : null);
-      })
-      .catch((err) => console.warn('persistSummary failed', err));
-  } catch (err) {
-    console.warn('persistSummary failed', err);
-  }
-}
+// getReportCardSource()/persistSummary() are gone —
+// report-card-chrome.ts#getReportCardSource/persistSummary (TD-001 slice 6e,
+// #703) port them verbatim as pure/injected functions. This file's remaining
+// inline consumers (the AI narrative trigger, saveMixAsTarget, the
+// live-capture session persist call below) reach them via the
+// window.reportCardChrome bridge (App.tsx) — same pattern as
+// window.modeSwitch.
 
 /* ══ Recent Services (#147) — last 10 persisted summaries ══ */
 // The summaries backing the currently-rendered #recent-list, indexed the same
@@ -2537,234 +2406,23 @@ document.getElementById('build-complete').addEventListener('click', (e) => {
 // renderContentType/renderProfileMatch/renderReportCardFromHistory/
 // renderReportCard are gone — ReportCardIsland (React) now owns all of
 // #report-card's rendering, driven by analysisStore/spectrumStore (TD-001
-// slice 4, #422). syncReportCardChrome (above) + renderUpgradeMomentum
-// (below) are what's left for this script to keep in sync: the toolbar
-// buttons and the #rc-upgrade momentum aside, both outside #report-card.
-
-/* ══ "Keep improving" momentum card (#58) ══
-   Beside the finished free report card, never over it. Copy/tone come from the
-   pure window.upgradeMomentum module; this owns only the DOM + dismissal store.
-   Shown when: a report card has rendered, the user is free (non-Pro), and no
-   "Maybe later" dismissal is active for the 7-day conversion window. */
-const RCU_DISMISS_KEY = 'sb-upgrade-momentum-dismissed-at';
-// Records that a report card has been shown to a free user once (#296) — its
-// absence marks this install's first-value moment, when the upsell holds back.
-const RCU_FIRST_SEEN_KEY = 'sb-first-report-seen-at';
-let lastReportGrade = null;
-let rcuRevealTimer = null; // pending first-result reveal
-let rcuHoldUntil = 0; // ms epoch the first-result hold expires (session)
-
-function upgradeMomentumDismissedAt() {
-  try { return localStorage.getItem(RCU_DISMISS_KEY); } catch { return null; }
-}
-function dismissUpgradeMomentum() {
-  try { localStorage.setItem(RCU_DISMISS_KEY, String(Date.now())); }
-  catch { /* private mode: the card simply returns next launch */ }
-}
-
-function upgradeMomentumFirstSeenAt() {
-  try { return localStorage.getItem(RCU_FIRST_SEEN_KEY); } catch { return null; }
-}
-function markUpgradeMomentumFirstSeen() {
-  try { localStorage.setItem(RCU_FIRST_SEEN_KEY, String(Date.now())); }
-  catch { /* private mode: the card just shows undelayed */ }
-}
-
-function renderUpgradeMomentum() {
-  const el = document.getElementById('rc-upgrade');
-  const um = window.upgradeMomentum;
-  // Guard the module load (sibling onboarding code guards likewise) and wait
-  // for the license to resolve — never flash the card before we know the tier.
-  if (!el || !um) return;
-  const licenseStatus = licStore.getState().licenseStatus;
-  const show = lastReportGrade !== null
-    && licenseStatus !== null
-    && um.shouldShowForLicense(licenseStatus)
-    && !um.isDismissed(upgradeMomentumDismissedAt());
-  if (!show) {
-    // A mid-hold Pro activation, dismissal, or report clear must cancel the
-    // pending reveal (the timer callback re-enters this function anyway —
-    // this is belt-and-braces against a stale timer resurfacing the card).
-    clearTimeout(rcuRevealTimer);
-    rcuRevealTimer = null;
-    el.hidden = true;
-    return;
-  }
-
-  // First-result softened reveal (#296): hold the card back so the grade owns
-  // the screen, then ease it in as a follow-on invitation. The first-seen
-  // flag is only written once the card actually shows below — not merely
-  // when the hold is scheduled — so quitting mid-hold or clearing the report
-  // doesn't silently burn the flag and skip the soft reveal on the next real
-  // sighting. It's also only written on this show===true path, so a Pro/trial
-  // user's first analysis never burns it — their first *free-tier* card (e.g.
-  // after trial expiry) still gets the softened reveal.
-  const delay = um.revealDelayMs(upgradeMomentumFirstSeenAt());
-  if (delay > 0 && !rcuHoldUntil) rcuHoldUntil = Date.now() + delay; // once per session
-  if (Date.now() < rcuHoldUntil) {
-    el.hidden = true;
-    clearTimeout(rcuRevealTimer);
-    rcuRevealTimer = setTimeout(renderUpgradeMomentum, rcuHoldUntil - Date.now());
-    return;
-  }
-  if (upgradeMomentumFirstSeenAt() == null) markUpgradeMomentumFirstSeen();
-
-  const tone = um.toneForGrade(lastReportGrade);
-  document.getElementById('rcu-heading').textContent = tone.heading;
-  document.getElementById('rcu-sub').textContent = tone.sub;
-
-  document.getElementById('rcu-actions').innerHTML = um.ACTIONS.map(a =>
-    `<li class="rcu-action">
-      <span class="rcu-lock">${iconSvg('lock', 15)}</span>
-      <span class="rcu-atext">
-        <span class="rcu-atitle">${escapeHtml(a.title)}</span>
-        <span class="rcu-ahint">${escapeHtml(a.hint)}</span>
-      </span>
-    </li>`).join('');
-
-  const cta = document.getElementById('rcu-cta');
-  cta.innerHTML = um.PLANS.map(p =>
-    `<button type="button" class="btn ${p.primary ? 'btn-primary' : 'btn-secondary'} rcu-btn" data-checkout-plan="${escapeHtml(p.plan)}">${escapeHtml(p.label)}</button>`
-  ).join('');
-  cta.querySelectorAll('[data-checkout-plan]').forEach((btn) =>
-    btn.addEventListener('click', () => {
-      // openCheckout returns a Promise (ipcRenderer.invoke); swallow both a
-      // synchronous throw (preload missing) and an async rejection so a failed
-      // open never surfaces as an unhandled rejection.
-      try { sb.openCheckout(btn.dataset.checkoutPlan)?.catch(() => {}); } catch { /* preload missing */ }
-    }));
-
-  document.getElementById('rcu-trust').textContent = um.TRUST_COPY;
-  el.hidden = false;
-}
-
-document.getElementById('rcu-later').addEventListener('click', () => {
-  dismissUpgradeMomentum();
-  document.getElementById('rc-upgrade').hidden = true;
-});
-
-// renderReportCardFrames is gone — ReportCard.tsx renders "Spectrum Over
-// Time" from reportCardFramesView (report-card.ts), TD-001 slice 4, #422.
-
-// Share Image (#265): a one-click, purpose-built 1200×630 PNG for social
-// posting — distinct from Export PDF (window.print(), untouched above). Model
-// → draw ops → render is entirely the pure share-card.ts module; this handler
-// is only the impure glue (source lookup, canvas, save dialog), same split
-// report-export.ts already established for Export PNG (#368).
-document.getElementById('reportcard-share-btn').addEventListener('click', async () => {
-  try {
-    const state = anaStore.getState();
-    const { isHistoryCard, chromeSource } = resolveReportCardChromeSource(state);
-
-    let grade, score, metrics;
-    if (chromeSource) {
-      grade = grading.computeGrade(chromeSource);
-      score = grading.computeScore(chromeSource);
-      metrics = buildMetricRows(chromeSource, grading)
-        .slice(0, MAX_SHARE_METRICS)
-        .map((m) => ({ label: m.name, value: m.unit ? `${m.value} ${m.unit}` : m.value }));
-    } else if (isHistoryCard) {
-      // A history-only card has no raw sox/spectrum data to build metric
-      // rows from — share the grade/score alone rather than block entirely.
-      grade = state.historySummary.gradeLetter;
-      score = state.historySummary.score;
-      metrics = [];
-    } else {
-      return; // no card on screen to share
-    }
-
-    const churchNameSetting = (setStore.getState().settings || {}).shareChurchName || '';
-    const model = buildShareCardModel({
-      grade,
-      score,
-      headline: 'Mix graded by Sound Buddy',
-      metrics,
-      churchName: churchNameSetting,
-    });
-    const ops = shareCardDrawOps(model);
-
-    // AC-2 privacy guard: the image must carry no identifying information by
-    // default — assert the source filename/path never leaked into an op,
-    // and the raw church-name setting didn't either when the model omitted it.
-    const basename = chromeSource ? (chromeSource.filename || '') : (state.historySummary.sourceFilename || '');
-    const fullPath = state.currentAnalysis?.ffprobe?.format?.filename || '';
-    assertNoIdentifyingText(ops, [basename, fullPath, model.churchName === null ? churchNameSetting : '']);
-
-    const canvas = document.createElement('canvas');
-    canvas.width = SHARE_CARD_WIDTH;
-    canvas.height = SHARE_CARD_HEIGHT;
-    const ctx = canvas.getContext('2d');
-    renderShareCard(ctx, ops);
-
-    const blob = await new Promise((resolve, reject) => {
-      canvas.toBlob((b) => (b ? resolve(b) : reject(new Error('canvas.toBlob returned null'))), 'image/png');
-    });
-    const bytes = new Uint8Array(await blob.arrayBuffer());
-    assertPngMetadataStripped(bytes);
-
-    const dateEl = document.getElementById('rc-date');
-    const dateText = (dateEl && dateEl.textContent) || '';
-    await sb.saveReportImage(bytes, buildShareFilename(dateText));
-    // { saved: false } just means the user cancelled the native save dialog
-    // — not an error, nothing further to do.
-  } catch (err) {
-    console.error('share image failed:', err);
-    const reason = err && err.message ? err.message : String(err);
-    window.alert(`Could not create the share image: ${reason}. Try again, or use Export PDF instead.`);
-  }
-});
-
-document.getElementById('reportcard-print-btn').addEventListener('click', () => window.print());
-document.getElementById('reportcard-feedback-btn').addEventListener('click', () => {
-  openFeedbackDialog();
-});
-
-// #206: once a report card is showing, the file-loading dropzone is hidden
-// behind it (it only lives in the empty state). Clear resets to that empty
-// state so a different file can be loaded in-window — no menu navigation or
-// relaunch needed.
-document.getElementById('reportcard-clear-btn').addEventListener('click', () => {
-  if (!curAnalysis()) return;
-  // Release the <audio> element so a re-load of the SAME file starts at 0:00
-  // instead of resuming at its last scrub position (spectrumTransport.ensure
-  // keys on the cached filePath).
-  transport.reset();
-  // clearAnalysis() nulls currentAnalysis/selectedFilePath and resets status
-  // to 'idle' — ReportCardIsland flips #rc-content → #rc-empty reactively,
-  // and the dropzone/Analyze button reset themselves from the cleared store.
-  anaStore.getState().clearAnalysis();
-  // A finished live-capture session's rolling buffer would otherwise make
-  // getReportCardSource() fall through to that stale live card instead of the
-  // empty state (#206) — but leave an actively-running session's buffer alone
-  // so its live meters don't blip empty.
-  if (!liveRunning) { lcStore.getState().clearLiveWindows(); lapCoaching = window.liveAdjustmentsState.createCoachingState(); document.getElementById('rc-offer').style.display = 'none'; document.getElementById('rc-not-enough').style.display = 'none'; }
-  specStore.getState().setPanelState('empty');
-});
+// slice 4, #422). The report-card toolbar buttons + the #rc-upgrade momentum
+// aside are gone from this script too — ReportCardToolbar.tsx/
+// UpgradeMomentum.tsx (TD-001 slice 6e, #703) own them now, both deriving
+// from report-card-chrome.ts#reportCardChromeView.
 
 // #208: while a live-capture card is showing, the file dropzone is hidden behind it
 // (#rc-empty only renders when no card is present) and Clear is disabled (no file to
-// release). This toolbar button — visible only for the live-capture card — opens the
-// picker and analyzes directly. The resulting file card replaces the live card via
-// getReportCardSource() priority; liveWindows is left untouched so the Live tab's
-// window history survives.
+// release). ReportCardToolbar.tsx's Load button (visible only for the live-capture
+// card) still reaches this by name — it's a 3-line function with no other
+// dependents left after this migration, so it's bridged rather than ported.
 async function chooseAndAnalyzeFile() {
   try {
     const fp = await sb.openFileDialog();
     if (fp) { loadFile(fp); await runFileAnalysis(fp); }
   } catch { /* user cancelled */ }
 }
-
-// #543 (epic e17): with report-first-ux on, "Load a file…" is the entry point
-// to the unified source picker rather than straight to the OS file dialog.
-// Flag off, the behavior is byte-identical to before.
-document.getElementById('reportcard-load-btn').addEventListener('click', () => {
-  if (window.analyzeSourceState.isPickerEnabled(
-        window.reportFirstUxState.isEnabled(setStore.getState().settings))) {
-    openAnalyzeSourcePicker();
-  } else {
-    chooseAndAnalyzeFile();
-  }
-});
+window.chooseAndAnalyzeFile = chooseAndAnalyzeFile;
 
 /* ══ License (#54) ══ */
 // Free/Pro state comes from licensingStore (backed by the main process's
@@ -2815,9 +2473,9 @@ function renderLicenseUi(state) {
 
   renderTrialBanner(state);
 
-  // Activating/removing a key mid-session flips whether the upgrade card belongs
-  // on the report (#58) — re-evaluate so it hides the instant a user goes Pro.
-  renderUpgradeMomentum();
+  // UpgradeMomentum.tsx (TD-001 slice 6e, #703) reads licensingStore directly
+  // via useStoreShallow — no explicit re-render trigger needed here anymore;
+  // activating/removing a key mid-session hides the card reactively.
 }
 
 // The day-3 / day-11 nudge and the day-14 upgrade card (#61). Dismissals are
@@ -3088,7 +2746,9 @@ async function gradeOwnChooseFile() {
 }
 
 (() => {
-  document.getElementById('grade-own-btn').addEventListener('click', openGuideDialog);
+  // grade-own-btn's listener moved to ReportCardToolbar.tsx's onClick (TD-001
+  // slice 6e, #703) — window.inlineDialogs.openGradeOwnGuide bridges this
+  // function for it, since the button is now a React-rendered element.
   aiEl('guide-dialog-close').addEventListener('click', closeGuideDialog);
   aiEl('guide-choose-file').addEventListener('click', gradeOwnChooseFile);
   aiEl('guide-dialog-open-site').addEventListener('click', () => {
@@ -3129,7 +2789,7 @@ function renderPhaseDoublingStep() {
 // button, TD-001 slice 4, #422) instead of a static listener.
 function openPhaseDoublingDialog() {
   phaseDoublingStep = 0;
-  const src = getReportCardSource();
+  const src = window.reportCardChrome.getReportCardSource(curAnalysis(), anaStore.getState().liveSource);
   aiEl('phase-doubling-context').innerHTML = window.phaseDoublingState.contextLineHtml(
     src ? { filename: src.filename, detected: rcCallouts().phaseSignal } : null, escapeHtml);
   renderPhaseDoublingStep();
@@ -3148,14 +2808,16 @@ function closePhaseDoublingDialog() {
 async function saveMixAsTarget() {
   const analysis = curAnalysis();
   if (!analysis || !hasUsableCurve(analysis.spectrum || {})) return false;
-  const src = getReportCardSource();
+  const src = window.reportCardChrome.getReportCardSource(curAnalysis(), anaStore.getState().liveSource);
   const meta = strongMixTargetMeta(src ? src.filename : '');
   return window.rendererStores.idealProfiles.getState().saveMeasured(analysis.spectrum.curve, meta);
 }
 
 // Bridges ReportCard.tsx's phase-doubling/feedback-ringout callout buttons to
 // the still-inline dialogs they open (TD-001 slice 4, #422).
-window.inlineDialogs = { openPhaseDoublingDialog, openFeedbackRingout, saveMixAsTarget, openBuildGuide };
+// openFeedbackDialog/openGuideDialog (TD-001 slice 6e, #703) join this
+// bridge for ReportCardToolbar.tsx's Send Feedback / Grade-own buttons.
+window.inlineDialogs = { openPhaseDoublingDialog, openFeedbackRingout, saveMixAsTarget, openBuildGuide, openFeedbackDialog, openGradeOwnGuide: openGuideDialog };
 
 (() => {
   aiEl('phase-doubling-close').addEventListener('click', closePhaseDoublingDialog);
@@ -3216,11 +2878,9 @@ window.inlineDialogs = { openPhaseDoublingDialog, openFeedbackRingout, saveMixAs
   if (!recordDir) document.getElementById('record-folder-path').textContent = defaultRecordFolderText();
 })();
 
-// Drives the report-card toolbar (Clear/Load/Print/Grade-own) + the
-// #rc-upgrade momentum aside from analysisStore — ReportCardIsland (React)
-// owns #report-card itself (TD-001 slice 4, #422).
-anaStore.subscribe(syncReportCardChrome);
-syncReportCardChrome(anaStore.getState(), anaStore.getState());
+// ReportCardToolbar.tsx/UpgradeMomentum.tsx (TD-001 slice 6e, #703) now
+// drive the report-card toolbar + the #rc-upgrade momentum aside directly
+// from analysisStore/licensingStore — no boot wiring needed here.
 // #542: a flag-already-on first paint on Recent / Guide / Ring-Out must
 // render single-column without requiring a tab click.
 window.modeSwitch.applySingleColumnSync();

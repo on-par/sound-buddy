@@ -279,37 +279,19 @@
 
   <!-- ══ Report Card ══ -->
   <div id="reportcard-view" class="active">
-    <div id="rc-toolbar">
-      <span class="panel-title">Report Card</span>
-      <div class="rc-toolbar-actions">
-        <button class="btn btn-secondary sm" id="reportcard-clear-btn" data-icon="x" disabled>Clear</button>
-        <button class="btn btn-secondary sm" id="reportcard-load-btn" data-icon="file-audio" style="display:none">Load a file…</button>
-        <button class="btn btn-secondary sm" id="reportcard-feedback-btn" data-icon="info">Send Feedback</button>
-        <button class="btn btn-secondary sm" id="reportcard-share-btn" data-icon="download" disabled>Share Image</button>
-        <button class="btn btn-secondary sm" id="reportcard-print-btn" data-icon="download" disabled>Export PDF</button>
-        <button class="btn btn-secondary sm" id="grade-own-btn" data-icon="waveform" disabled>Grade your own service</button>
-      </div>
-    </div>
+    <!-- ReportCardToolbar.tsx (TD-001 slice 6e, #703) renders the toolbar buttons. -->
+    <div id="rc-toolbar"></div>
     <div id="rc-scroll">
       <div id="rc-layout">
       <!-- React island renders #rc-empty/#rc-content (TD-001 slice 4, #422):
            ReportCardIsland, portaled by App.tsx. -->
       <div id="report-card"></div>
       <!-- ══ "Keep improving" momentum card (#58) ══
-           Beside the finished free report card, never over it. Shown only to a
-           free (non-Pro) user, after a card renders, and only when not dismissed
-           for the 7-day conversion window. Copy/tone come from window.upgradeMomentum
-           (score-aware). CTAs open hosted Stripe checkout via sb.openCheckout. -->
-      <aside id="rc-upgrade" hidden aria-label="Upgrade to Pro">
-        <div class="rcu-head">
-          <span class="rcu-heading" id="rcu-heading"></span>
-          <span class="rcu-sub" id="rcu-sub"></span>
-        </div>
-        <ul class="rcu-actions" id="rcu-actions"></ul>
-        <div class="rcu-cta" id="rcu-cta"></div>
-        <p class="rcu-trust" id="rcu-trust"></p>
-        <button type="button" class="rcu-later" id="rcu-later">Maybe later</button>
-      </aside>
+           Beside the finished free report card, never over it. UpgradeMomentum.tsx
+           (TD-001 slice 6e, #703) renders it — shown only to a free (non-Pro) user,
+           after a card renders, and only when not dismissed for the 7-day
+           conversion window. -->
+      <div id="rc-upgrade-island"></div>
       </div>
     </div>
   </div>
