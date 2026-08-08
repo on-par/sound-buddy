@@ -23,12 +23,14 @@ const gradingMock: GradingPillApi & BandDiffApi & {
   analyzeRecordingType(): { type: string; label: string; note: string; tone: 'good' };
   explainGrade(): { grade: string; clipping: boolean; deductions: never[]; notMeasured: never[] };
   computeRecommendations(): string[];
+  getGradingProfile(): { id: string; label: string };
 } = {
   computeGrade: () => 'A',
   computeScore: () => 92,
   analyzeRecordingType: () => ({ type: 'music', label: 'Music', note: 'Balanced', tone: 'good' }),
   explainGrade: () => ({ grade: 'A', clipping: false, deductions: [], notMeasured: [] }),
   computeRecommendations: () => ['Sounds great'],
+  getGradingProfile: () => ({ id: 'casual', label: 'Casual / volunteer' }),
   rcPeakStatus: () => 'good',
   rcRmsStatus: () => 'good',
   rcDrStatus: () => 'good',

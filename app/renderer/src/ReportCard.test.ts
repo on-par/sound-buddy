@@ -37,6 +37,7 @@ function buildGrade(src: ReportCardSource): GradeResult {
     explain: grading.explainGrade(src),
     recommendations: grading.computeRecommendations(src),
     metrics: buildMetricRows(src, grading),
+    gradingProfileLabel: grading.getGradingProfile().label,
   };
 }
 

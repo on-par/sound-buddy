@@ -50,6 +50,7 @@ export interface StorageToggles {
   secondaryMeasurementEnabled: boolean;
   weeklyReminderEnabled: boolean;
   weeklyReminderServiceDay: number;
+  gradingProfile: 'casual' | 'broadcast';
 }
 
 // The boolean-valued StorageToggles keys — deliberately excludes
@@ -96,6 +97,12 @@ export function buildStoragePatch(
   const previousDay = loaded?.weeklyReminderServiceDay ?? 0;
   if (toggles.weeklyReminderServiceDay !== previousDay) {
     patch.weeklyReminderServiceDay = toggles.weeklyReminderServiceDay;
+  }
+  // gradingProfile (#266) is a string enum, not a boolean — diffed separately
+  // from the boolean TOGGLE_KEYS loop above, same as weeklyReminderServiceDay.
+  const previousGradingProfile = loaded?.gradingProfile ?? 'casual';
+  if (toggles.gradingProfile !== previousGradingProfile) {
+    patch.gradingProfile = toggles.gradingProfile;
   }
   return Object.keys(patch).length ? patch : null;
 }

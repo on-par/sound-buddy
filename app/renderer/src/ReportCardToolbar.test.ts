@@ -36,6 +36,7 @@ beforeEach(() => {
       computeScore: () => 95,
       analyzeRecordingType: () => ({ label: 'Full Mix' }),
       computeRecommendations: () => [],
+      getGradingProfile: () => ({ label: 'Casual / volunteer' }),
     },
     updateStatsRow,
   };

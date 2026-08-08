@@ -89,7 +89,7 @@ function fakeSettings(overrides: Partial<AppSettings> = {}): AppSettings {
     crashReportingEnabled: false, dawWorkspaceEnabled: false, liveAdjustmentsEnabled: false,
     reportFirstUxEnabled: false, shareChurchName: '', weeklyReminderEnabled: false,
     weeklyReminderServiceDay: 0, liveEqPaneWidth: 360, secondaryMeasurementEnabled: false,
-    measurementDeviceName: '',
+    measurementDeviceName: '', gradingProfile: 'casual',
     ...overrides,
   };
 }

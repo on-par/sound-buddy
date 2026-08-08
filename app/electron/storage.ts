@@ -32,7 +32,8 @@ function isAnalysisSummary(value: unknown): value is AnalysisSummary {
     typeof v.recordingType === 'string' &&
     Array.isArray(v.topFixes) &&
     (v.note === undefined || typeof v.note === 'string') &&
-    (v.source === undefined || typeof v.source === 'string')
+    (v.source === undefined || typeof v.source === 'string') &&
+    (v.gradingProfileLabel === undefined || typeof v.gradingProfileLabel === 'string')
   );
 }
 

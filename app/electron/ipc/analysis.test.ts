@@ -698,6 +698,39 @@ describe('save-analysis-summary IPC handler', () => {
     const written = saveAnalysisSummaryMock.mock.calls[0][1];
     expect('source' in written).toBe(false);
   });
+
+  it('persists gradingProfileLabel when the payload carries one (#266)', async () => {
+    const handler = handlers.get('save-analysis-summary') as SaveSummaryHandler;
+
+    await handler(undefined, {
+      sourceFilename: 'sunday.wav',
+      gradeLetter: 'B',
+      score: 87,
+      recordingType: 'service',
+      topFixes: [],
+      gradingProfileLabel: 'Broadcast-ready',
+    });
+
+    expect(saveAnalysisSummaryMock).toHaveBeenCalledWith(
+      path.join(defaultRecordDir(), 'history'),
+      expect.objectContaining({ gradingProfileLabel: 'Broadcast-ready' }),
+    );
+  });
+
+  it('omits the gradingProfileLabel key when the payload carries no label at all (#266)', async () => {
+    const handler = handlers.get('save-analysis-summary') as SaveSummaryHandler;
+
+    await handler(undefined, {
+      sourceFilename: 'sunday.wav',
+      gradeLetter: 'B',
+      score: 87,
+      recordingType: 'service',
+      topFixes: [],
+    });
+
+    const written = saveAnalysisSummaryMock.mock.calls[0][1];
+    expect('gradingProfileLabel' in written).toBe(false);
+  });
 });
 
 describe('list-analysis-summaries IPC handler', () => {

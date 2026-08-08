@@ -44,6 +44,7 @@ interface GradingApi {
   computeScore(src: ReportCardSource): number;
   analyzeRecordingType(src: ReportCardSource): { label: string };
   computeRecommendations(src: ReportCardSource): string[];
+  getGradingProfile(): { label: string };
 }
 function getGrading(): GradingApi {
   return (window as unknown as { grading: GradingApi }).grading;

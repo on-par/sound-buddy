@@ -827,6 +827,7 @@ describe('buildAnalysisSummaryInput', () => {
       computeScore: vi.fn().mockReturnValue(83),
       analyzeRecordingType: vi.fn().mockReturnValue({ label: 'Live service mix' }),
       computeRecommendations: vi.fn().mockReturnValue(['fix one', 'fix two']),
+      getGradingProfile: vi.fn().mockReturnValue({ label: 'Casual / volunteer' }),
       ...overrides,
     };
   }
@@ -843,11 +844,18 @@ describe('buildAnalysisSummaryInput', () => {
       recordingType: 'Live service mix',
       topFixes: ['fix one', 'fix two'],
       source: 'file',
+      gradingProfileLabel: 'Casual / volunteer',
     });
     expect(g.computeGrade).toHaveBeenCalledWith(src);
     expect(g.computeScore).toHaveBeenCalledWith(src);
     expect(g.analyzeRecordingType).toHaveBeenCalledWith(src);
     expect(g.computeRecommendations).toHaveBeenCalledWith(src);
+  });
+
+  it('#266 — tags the summary with the active grading profile label', () => {
+    const g = fakeGrading({ getGradingProfile: vi.fn().mockReturnValue({ label: 'Broadcast-ready' }) });
+    const input = buildAnalysisSummaryInput(src, g, 'file');
+    expect(input.gradingProfileLabel).toBe('Broadcast-ready');
   });
 
   it(`truncates topFixes to MAX_TOP_FIXES (${MAX_TOP_FIXES})`, () => {

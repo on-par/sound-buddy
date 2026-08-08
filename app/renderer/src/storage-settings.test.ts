@@ -25,6 +25,7 @@ const LOADED_SETTINGS: AppSettings = {
   liveEqPaneWidth: 360,
   secondaryMeasurementEnabled: false,
   measurementDeviceName: '',
+  gradingProfile: 'casual',
 };
 
 const NO_TOGGLES = {
@@ -35,6 +36,7 @@ const NO_TOGGLES = {
   secondaryMeasurementEnabled: false,
   weeklyReminderEnabled: false,
   weeklyReminderServiceDay: 0,
+  gradingProfile: 'casual' as const,
 };
 
 describe('effectiveStoragePath', () => {
@@ -151,6 +153,16 @@ describe('buildStoragePatch', () => {
     expect(buildStoragePatch(null, NO_TOGGLES, LOADED_SETTINGS)).toBeNull();
   });
 
+  it('includes only gradingProfile when just the profile changed', () => {
+    expect(buildStoragePatch(null, { ...NO_TOGGLES, gradingProfile: 'broadcast' }, LOADED_SETTINGS)).toEqual({
+      gradingProfile: 'broadcast',
+    });
+  });
+
+  it('omits gradingProfile when unchanged from the loaded default (casual)', () => {
+    expect(buildStoragePatch(null, NO_TOGGLES, LOADED_SETTINGS)).toBeNull();
+  });
+
   it('merges every changed field into a single patch', () => {
     const patch = buildStoragePatch(
       '/custom',
@@ -162,6 +174,7 @@ describe('buildStoragePatch', () => {
         secondaryMeasurementEnabled: true,
         weeklyReminderEnabled: true,
         weeklyReminderServiceDay: 5,
+        gradingProfile: 'broadcast',
       },
       LOADED_SETTINGS
     );
@@ -174,6 +187,7 @@ describe('buildStoragePatch', () => {
       secondaryMeasurementEnabled: true,
       weeklyReminderEnabled: true,
       weeklyReminderServiceDay: 5,
+      gradingProfile: 'broadcast',
     });
   });
 

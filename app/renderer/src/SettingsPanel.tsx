@@ -79,6 +79,7 @@ export default function SettingsPanel() {
   const [secondaryMeasurementEnabled, setSecondaryMeasurementEnabled] = useState(false);
   const [weeklyReminderEnabled, setWeeklyReminderEnabled] = useState(false);
   const [weeklyReminderServiceDay, setWeeklyReminderServiceDay] = useState(0);
+  const [gradingProfile, setGradingProfile] = useState<'casual' | 'broadcast'>('casual');
 
   /* c8 ignore start -- fetches the storage seed and app version on open;
      needs a real Electron bridge round-trip, exercised by settings.spec.ts.
@@ -96,6 +97,7 @@ export default function SettingsPanel() {
     setSecondaryMeasurementEnabled(!!settings?.secondaryMeasurementEnabled);
     setWeeklyReminderEnabled(!!settings?.weeklyReminderEnabled);
     setWeeklyReminderServiceDay(settings?.weeklyReminderServiceDay ?? 0);
+    setGradingProfile(settings?.gradingProfile === 'broadcast' ? 'broadcast' : 'casual');
     let cancelled = false;
     void (async () => {
       const storageSeed = await loadStorageSeed(api);
@@ -148,6 +150,7 @@ export default function SettingsPanel() {
         secondaryMeasurementEnabled,
         weeklyReminderEnabled,
         weeklyReminderServiceDay,
+        gradingProfile,
       },
       settings
     );
@@ -309,6 +312,26 @@ export default function SettingsPanel() {
             Off unless you turn it on. Sound Buddy shows a local notification on this Mac the evening before your
             service day, reminding you to record and grade it. Nothing leaves your machine — no account, no email, no
             server.
+          </p>
+          <label className="ai-field" id="grading-profile-field">
+            <span className="ai-field-label">Grading strictness</span>
+            <div className="select-wrap">
+              <select
+                id="grading-profile-select"
+                aria-label="Grading strictness"
+                value={gradingProfile}
+                onChange={(e) => setGradingProfile(e.target.value as 'casual' | 'broadcast')}
+              >
+                <option value="casual">Casual / volunteer</option>
+                <option value="broadcast">Broadcast-ready</option>
+              </select>
+              <span className="select-caret" data-icon="chevron-down" />
+            </div>
+          </label>
+          <p className="ai-dialog-note" id="grading-profile-note">
+            Casual / volunteer grades against today's thresholds. Broadcast-ready tightens
+            every level, dynamic-range, and balance target — the same recording may grade
+            lower. The report card always shows which profile graded it.
           </p>
           <label className="ai-field" id="share-church-name-field">
             <span className="ai-field-label">Church name (for shared images)</span>

@@ -56,6 +56,7 @@ interface GradingApi extends GradingPillApi, BandDiffApi {
   analyzeRecordingType(src: ReportCardSource): RecordingType;
   explainGrade(src: ReportCardSource): GradeExplanation;
   computeRecommendations(src: ReportCardSource): string[];
+  getGradingProfile(): { id: string; label: string };
 }
 
 interface FeedbackPeak {
@@ -114,6 +115,8 @@ interface HistorySummary {
   topFixes: string[];
   /** Optional one-line handoff note for the next volunteer (#267). */
   note?: string;
+  /** Label of the grading-strictness profile active when this grade was produced (#266). Older persisted records predate this field. */
+  gradingProfileLabel?: string;
 }
 
 // Renders a stored summary-only record (#147) — no metrics/bands/spectrum/
@@ -135,6 +138,9 @@ function HistoryCard({ summary, delta }: { summary: HistorySummary; delta?: Repo
       <div className="rc-score">
         <div id="rc-ring" dangerouslySetInnerHTML={{ __html: gradeRingHTML(summary.gradeLetter, summary.score) }} />
         <div id="rc-rec-type" className="rc-rectype pill">{summary.recordingType}</div>
+        {summary.gradingProfileLabel && (
+          <div className="rc-rectype pill" id="rc-grading-profile">{summary.gradingProfileLabel}</div>
+        )}
         {delta && (
           <div id="rc-delta" className={`rc-delta ${delta.direction}`}>{delta.text}</div>
         )}
@@ -376,6 +382,7 @@ export default function ReportCardIsland() {
       explain: grading.explainGrade(source),
       recommendations: grading.computeRecommendations(source),
       metrics: buildMetricRows(source, grading),
+      gradingProfileLabel: grading.getGradingProfile().label,
     };
 
     scoreRows = reportFirstUxOn ? buildScoreRows(source, grading, grade.explain) : null;

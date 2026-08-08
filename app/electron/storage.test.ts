@@ -265,6 +265,32 @@ describe('listAnalysisSummaries', () => {
     expect(bySource['live-session.wav'].source).toBe('live');
     expect('source' in bySource['legacy.wav']).toBe(false);
   });
+
+  it('round-trips a record with gradingProfileLabel, and a legacy no-label record unchanged (#266)', async () => {
+    const historyDir = path.join(dir, 'history');
+    const labeled: AnalysisSummary = {
+      ...base,
+      sourceFilename: 'broadcast.wav',
+      gradingProfileLabel: 'Broadcast-ready',
+    };
+    const legacy: AnalysisSummary = { ...base, sourceFilename: 'legacy-no-label.wav' };
+    await saveAnalysisSummary(historyDir, labeled);
+    await saveAnalysisSummary(historyDir, legacy);
+
+    const result = await listAnalysisSummaries(historyDir);
+    const bySource = Object.fromEntries(result.map((r) => [r.sourceFilename, r]));
+    expect(bySource['broadcast.wav'].gradingProfileLabel).toBe('Broadcast-ready');
+    expect('gradingProfileLabel' in bySource['legacy-no-label.wav']).toBe(false);
+  });
+
+  it('skips a record whose gradingProfileLabel field is the wrong type (#266)', async () => {
+    const historyDir = path.join(dir, 'history');
+    await saveAnalysisSummary(historyDir, base);
+    fs.writeFileSync(path.join(historyDir, 'bad-grading-profile-label.json'), JSON.stringify({ ...base, gradingProfileLabel: 42 }));
+
+    const result = await listAnalysisSummaries(historyDir);
+    expect(result).toEqual([base]);
+  });
 });
 
 describe('setAnalysisSummaryNote', () => {

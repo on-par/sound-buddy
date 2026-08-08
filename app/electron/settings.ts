@@ -50,6 +50,7 @@ const DEFAULTS: AppSettings = {
   liveEqPaneWidth: 360,
   secondaryMeasurementEnabled: false,
   measurementDeviceName: '',
+  gradingProfile: 'casual',
 };
 
 function settingsPath(): string {
@@ -160,6 +161,18 @@ function fileMeasurementDeviceName(file: Partial<AppSettings>): string {
 }
 
 /**
+ * The gradingProfile value from a raw file view, defaulting to
+ * DEFAULTS.gradingProfile when the key is absent or corrupted (hand-edited
+ * to anything other than the two known ids) — mirrors
+ * fileMeasurementDeviceName's discipline (#266).
+ */
+function fileGradingProfile(file: Partial<AppSettings>): AppSettings['gradingProfile'] {
+  return file.gradingProfile === 'casual' || file.gradingProfile === 'broadcast'
+    ? file.gradingProfile
+    : DEFAULTS.gradingProfile;
+}
+
+/**
  * Persist the file layer, preserving any fields not being changed — including
  * unknown top-level keys a future version may add. Callers pass the mutated file
  * view — never getSettings()'s env-resolved view — so transient env overrides
@@ -188,6 +201,7 @@ function writeSettingsFile(file: Partial<AppSettings>): void {
     liveEqPaneWidth: fileLiveEqPaneWidth(file),
     secondaryMeasurementEnabled: file.secondaryMeasurementEnabled ?? DEFAULTS.secondaryMeasurementEnabled,
     measurementDeviceName: fileMeasurementDeviceName(file),
+    gradingProfile: fileGradingProfile(file),
   };
   try {
     fs.writeFileSync(settingsPath(), JSON.stringify(persisted, null, 2));
@@ -259,6 +273,8 @@ export function getSettings(): AppSettings {
     // No env layer — the preferred measurement device is user-chosen persisted
     // data matched by name (#460), like `rigs`.
     measurementDeviceName: fileMeasurementDeviceName(file),
+    // No env layer — pure persisted preference, like measurementDeviceName.
+    gradingProfile: fileGradingProfile(file),
   };
 }
 

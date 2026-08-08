@@ -47,6 +47,7 @@ export interface GradeResult {
   explain: GradeExplanation;
   recommendations: string[];
   metrics: MetricRow[];
+  gradingProfileLabel: string;
 }
 
 export interface PhaseDoublingView {
@@ -188,6 +189,7 @@ export default function ReportCard({
           className={recTypePillClass(grade.recType)}
           dangerouslySetInnerHTML={{ __html: recTypePillHTML(grade.recType) }}
         />
+        <div className="rc-rectype pill" id="rc-grading-profile">{grade.gradingProfileLabel}</div>
         {delta && (
           <div id="rc-delta" className={`rc-delta ${delta.direction}`}>{delta.text}</div>
         )}

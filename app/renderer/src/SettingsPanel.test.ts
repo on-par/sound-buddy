@@ -31,7 +31,7 @@ describe('saveAll', () => {
           usageSignalEnabled: false, channelLabels: {}, channelGroups: {}, inputInstrumentProfiles: {},
           crashReportingEnabled: false, dawWorkspaceEnabled: false, liveAdjustmentsEnabled: false,
           reportFirstUxEnabled: false, shareChurchName: '', weeklyReminderEnabled: false, weeklyReminderServiceDay: 0,
-          liveEqPaneWidth: 360, secondaryMeasurementEnabled: false, measurementDeviceName: '',
+          liveEqPaneWidth: 360, secondaryMeasurementEnabled: false, measurementDeviceName: '', gradingProfile: 'casual',
         };
       },
     });
@@ -151,6 +151,7 @@ describe('storage toggle seeding on dialog open (#522, #204)', () => {
     expect(src).toContain('setCrashReportingEnabled(!!settings?.crashReportingEnabled)');
     expect(src).toContain('setDawWorkspaceEnabled(!!settings?.dawWorkspaceEnabled)');
     expect(src).toContain('setLiveAdjustmentsEnabled(!!settings?.liveAdjustmentsEnabled)');
+    expect(src).toContain("setGradingProfile(settings?.gradingProfile === 'broadcast' ? 'broadcast' : 'casual')");
   });
 });
 

@@ -497,6 +497,38 @@ describe('update-settings IPC whitelist — measurementDeviceName (#460)', () =>
   });
 });
 
+describe('update-settings IPC whitelist — gradingProfile (#266)', () => {
+  it("accepts 'casual' and persists it", async () => {
+    const handler = handlers.get('update-settings');
+    const result = (await handler!(null, { gradingProfile: 'casual' })) as {
+      gradingProfile: string;
+    };
+    expect(result.gradingProfile).toBe('casual');
+    expect(readFile().gradingProfile).toBe('casual');
+  });
+
+  it("accepts 'broadcast' and persists it", async () => {
+    const handler = handlers.get('update-settings');
+    const result = (await handler!(null, { gradingProfile: 'broadcast' })) as {
+      gradingProfile: string;
+    };
+    expect(result.gradingProfile).toBe('broadcast');
+    expect(readFile().gradingProfile).toBe('broadcast');
+  });
+
+  it.each(['strict', 'CASUAL', true, 1, null])(
+    'ignores an invalid gradingProfile value (%p), leaving the stored value unchanged',
+    async (bad) => {
+      const handler = handlers.get('update-settings');
+      const result = (await handler!(null, { gradingProfile: bad })) as {
+        gradingProfile: string;
+      };
+      expect(result.gradingProfile).toBe('casual');
+      expect(readFile().gradingProfile).toBe('casual');
+    },
+  );
+});
+
 describe('sanitizeShareChurchName (#265)', () => {
   it('returns null for a non-string value (patch key ignored)', () => {
     expect(sanitizeShareChurchName(42)).toBeNull();

@@ -23,6 +23,7 @@ let computeGrade: ReturnType<typeof vi.fn>;
 let computeScore: ReturnType<typeof vi.fn>;
 let analyzeRecordingType: ReturnType<typeof vi.fn>;
 let computeRecommendations: ReturnType<typeof vi.fn>;
+let getGradingProfile: ReturnType<typeof vi.fn>;
 let mock: ReturnType<typeof createMockSoundBuddy>;
 
 beforeEach(() => {
@@ -30,10 +31,11 @@ beforeEach(() => {
   computeScore = vi.fn(() => 95);
   analyzeRecordingType = vi.fn(() => ({ label: 'Full Mix' }));
   computeRecommendations = vi.fn(() => ['Tighten low end', 'Tame 3kHz', 'Watch clipping', 'Extra']);
+  getGradingProfile = vi.fn(() => ({ label: 'Casual / volunteer' }));
   mock = createMockSoundBuddy();
   (globalThis as { window?: unknown }).window = {
     soundBuddy: mock.api,
-    grading: { computeGrade, computeScore, analyzeRecordingType, computeRecommendations },
+    grading: { computeGrade, computeScore, analyzeRecordingType, computeRecommendations, getGradingProfile },
   };
 });
 
