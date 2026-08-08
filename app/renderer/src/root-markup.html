@@ -10,22 +10,9 @@
     <span class="lb-text" id="whats-new-text"></span>
     <button type="button" id="whats-new-dismiss" class="ub-x" aria-label="Dismiss">✕</button>
   </div>
-  <!-- ══ First-run onboarding welcome (#69) ══ -->
-  <div id="onboarding-dialog" class="rig-dialog" style="display:none" role="dialog" aria-modal="true" aria-labelledby="onboarding-title">
-    <div class="rig-dialog-card onboarding-card">
-      <div class="onboarding-mark" data-icon="waveform" aria-hidden="true"></div>
-      <h2 id="onboarding-title" class="onboarding-title">Welcome to Sound Buddy</h2>
-      <p class="onboarding-copy" id="onboarding-copy">Sound Buddy scores your mix and hands back a clear report card — an overall grade, level and dynamics readouts, and the EQ moves that matter. No setup, no settings, and no audio gear required to get started. Run your first analysis on a sample recording and see your report card in seconds.</p>
-      <div class="onboarding-actions" id="onboarding-actions">
-        <button type="button" id="onboarding-skip" class="btn btn-secondary">Skip for now</button>
-        <button type="button" id="onboarding-run" class="btn btn-primary" data-icon="waveform">Run your first analysis</button>
-      </div>
-      <div class="onboarding-progress" id="onboarding-progress" style="display:none">
-        <span class="spin"></span>
-        <span id="onboarding-progress-text">Analyzing your first recording…</span>
-      </div>
-    </div>
-  </div>
+  <!-- ══ First-run onboarding welcome (#69) — OnboardingDialog.tsx (TD-001
+       slice 6f, #704) renders it. ══ -->
+  <div id="onboarding-island"></div>
   <!-- ══ Unified "Analyze" source picker (#543, epic e17) ══
        Report-first-ux only: the entry point for a new analysis, offering the
        three real ways to get audio in. Additive — Directory/Live/Soundcheck

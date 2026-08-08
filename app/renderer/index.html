@@ -23,87 +23,17 @@
      into this static node — see App.tsx. -->
 <div id="settings-island"></div>
 
-<!-- Feedback dialog (#144, in-app submission #472). Send now POSTs the message
-     + category + optional contact email to the worker ingestion endpoint
-     (#475) — the main process attaches app version/macOS version itself, so
-     the renderer can neither add nor omit that context, and nothing else
-     (no audio, secrets, license keys, or file paths) ever goes in the
-     payload. "Attach diagnostics" stays local-only: it reveals the
-     persistent log file in Finder so the user can attach it to a support
-     email themselves — it is never uploaded automatically. A non-retryable
-     failure offers "Email instead", which falls back to the original #143
-     mailto behavior. -->
-<div id="feedback-dialog" class="rig-dialog" style="display:none" role="dialog" aria-modal="true" aria-labelledby="feedback-dialog-title">
-  <div class="rig-dialog-card">
-    <div class="rig-dialog-title" id="feedback-dialog-title">Send Feedback</div>
-    <div class="ai-dialog-sub">Sends your message to the Sound Buddy team along with your app version and macOS version. Never audio, recordings, license keys, file paths, or anything else from your machine.</div>
-    <label class="ai-field">
-      <span class="ai-field-label">Category</span>
-      <select id="feedback-category" class="rig-dialog-input"></select>
-    </label>
-    <label class="ai-field">
-      <span class="ai-field-label">Message</span>
-      <textarea id="feedback-message" class="rig-dialog-input" rows="4" maxlength="4000" placeholder="What happened, or what would help?"></textarea>
-    </label>
-    <label class="ai-field">
-      <span class="ai-field-label">Email for a reply (optional)</span>
-      <input type="email" id="feedback-email" class="rig-dialog-input" placeholder="you@example.com" autocomplete="off" />
-    </label>
-    <label class="ai-enable-row"><input type="checkbox" id="feedback-attach-diagnostics" />Reveal my diagnostic log (never uploaded)</label>
-    <p class="ai-dialog-note" id="feedback-diag-hint" style="display:none"></p>
-    <span class="ai-status" id="feedback-status" role="status"></span>
-    <div class="rig-dialog-actions">
-      <button type="button" id="feedback-dialog-email-instead" class="btn btn-secondary sm" style="display:none">Email instead</button>
-      <button type="button" id="feedback-dialog-cancel" class="btn btn-secondary sm">Cancel</button>
-      <button type="button" id="feedback-dialog-send" class="btn btn-primary sm">Send Feedback</button>
-    </div>
-  </div>
-</div>
+<!-- Feedback dialog (#144, in-app submission #472) — FeedbackDialog.tsx
+     (TD-001 slice 6f, #704) renders it. -->
+<div id="feedback-dialog-island"></div>
 
-<!-- Actionable path to grading a real service (#295 rework of #142). Entry
-     point is the toolbar's "Grade your own service" button, enabled in
-     lockstep with Export PDF once a report card has rendered. A user who
-     already has a recording (or livestream video) picks it right from here
-     and lands directly in analysis; a user with nothing yet picks the
-     capture path that fits their setup. Never auto-opens — only shows on
-     click, so it can't cover the #69 welcome overlay or an e2e run. -->
-<div id="guide-dialog" class="rig-dialog" style="display:none" role="dialog" aria-modal="true" aria-labelledby="guide-dialog-title">
-  <div class="rig-dialog-card guide-dialog-card">
-    <div class="rig-dialog-title" id="guide-dialog-title">Grade your own service</div>
-    <div class="ai-dialog-sub">Start from what you already have — a recording, a livestream video, or neither.</div>
-    <div class="guide-have-file">
-      <div class="guide-have-file-heading">Already have a recording or livestream file?</div>
-      <button type="button" id="guide-choose-file" class="btn btn-primary" data-icon="file-audio">Choose a file to grade…</button>
-      <div class="guide-have-file-hint">wav · aif · aiff · flac · mp3 · ogg · m4a — or a video file; Sound Buddy grades its audio track. You can also drop a file on the Report Card anytime.</div>
-    </div>
-    <div class="guide-need-capture-heading">Need to capture one first? Pick what fits your setup:</div>
-    <div class="guide-list" id="guide-paths"></div>
-    <div class="rig-dialog-actions">
-      <button type="button" id="guide-dialog-close" class="btn btn-secondary sm">Close</button>
-      <button type="button" id="guide-dialog-open-site" class="btn btn-secondary sm" data-icon="external-link">Read the full capture guide</button>
-    </div>
-  </div>
-</div>
+<!-- Actionable path to grading a real service (#295 rework of #142) —
+     GradeOwnGuideDialog.tsx (TD-001 slice 6f, #704) renders it. -->
+<div id="guide-dialog-island"></div>
 
-<!-- Doubling/Phase Bug Detector (#370): a static, fully-offline guided
-     checklist for the "weird, robotic, doubled" system sound — routing
-     mistakes that sum a source into the mix twice. Entry point is the
-     Report Card's "Run phase check" callout. Never auto-opens — only shows
-     on click, so it can't cover the #69 welcome overlay or an e2e run. -->
-<div id="phase-doubling-dialog" class="rig-dialog" style="display:none" role="dialog" aria-modal="true" aria-labelledby="phase-doubling-title">
-  <div class="rig-dialog-card guide-dialog-card">
-    <div class="rig-dialog-title" id="phase-doubling-title">Phase &amp; Doubling Check</div>
-    <div class="ai-dialog-sub">A guided walkthrough of the routing mistakes behind a weird, robotic, or doubled system sound. No console access needed.</div>
-    <div id="phase-doubling-context" class="pd-context-slot"></div>
-    <div id="phase-doubling-progress" class="pd-progress"></div>
-    <div id="phase-doubling-body" class="pd-body"></div>
-    <div class="rig-dialog-actions">
-      <button type="button" id="phase-doubling-back" class="btn btn-secondary sm">Back</button>
-      <button type="button" id="phase-doubling-next" class="btn btn-primary sm">Next</button>
-      <button type="button" id="phase-doubling-close" class="btn btn-secondary sm">Done</button>
-    </div>
-  </div>
-</div>
+<!-- Doubling/Phase Bug Detector (#370) — PhaseDoublingDialog.tsx (TD-001
+     slice 6f, #704) renders it. -->
+<div id="phase-doubling-dialog-island"></div>
 
 <!-- Ideal curve editor. User-authored targets are saved in settings.json and
      compared with the same level-invariant PRD 05 scoring as built-ins. Now

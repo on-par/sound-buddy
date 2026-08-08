@@ -73,12 +73,29 @@ import BuildGuidePanel from './BuildGuidePanel';
 import RingoutPanel from './RingoutPanel';
 import LicenseChrome from './LicenseChrome';
 import UpdateBanner from './UpdateBanner';
+import OnboardingDialog from './OnboardingDialog';
+import { useOnboardingStore } from './stores/onboardingStore';
+import FeedbackDialog from './FeedbackDialog';
+import GradeOwnGuideDialog from './GradeOwnGuideDialog';
+import PhaseDoublingDialog from './PhaseDoublingDialog';
 import { installStoreBridge } from './stores/bridge';
 
-// Boot scripts in their original document order (#303): the 20 UMD helpers
+// Boot scripts in their original document order (#303): the 32 UMD helpers
 // (each attaches to `window`, see the classic-script comment above their old
 // <script src> tags in index.html), then the inline app script that wires up
 // the UI and reads those globals. Ported verbatim — see the source files.
+//
+// UMD helper audit (#424, TD-001 slice 6f, #704): none of the 32 are dead.
+// onboarding-state.js, feedback-form-state.js, grade-own-state.js, and
+// phase-doubling-state.js — the 4 helpers whose DOM wiring moved out of
+// inline-app.js this slice — are now read by the new
+// stores/onboardingStore.ts, stores/feedbackDialogStore.ts,
+// stores/gradeOwnGuideStore.ts, and stores/phaseDoublingStore.ts (+ their
+// dialog components) instead of by inline-app.js. phase-doubling-state.js
+// was already a cross-component dependency via ReportCardIsland.tsx's
+// getPhaseDoublingState().detectPhaseSignal() before this slice, so it was
+// never a removal candidate regardless. No BOOT_SCRIPTS entry is removed and
+// no app/renderer/*.js classic script is deleted.
 const BOOT_SCRIPTS = [
   rigReconcileSrc,
   armStateSrc,
@@ -171,9 +188,9 @@ export default function App() {
     // for the 2 remaining call sites outside ModeTabs.tsx's click handler
     // (TD-001 slice 6e, #703).
     (window as Window & { modeSwitch?: unknown }).modeSwitch = modeSwitch;
-    // inline-app.js still needs getReportCardSource/persistSummary for the
-    // AI narrative trigger, saveMixAsTarget, and the live-capture session
-    // persist call (TD-001 slice 6e, #703).
+    // inline-app.js still needs getReportCardSource/persistSummary for
+    // saveMixAsTarget and the live-capture session persist call (TD-001
+    // slice 6e, #703).
     (window as Window & { reportCardChrome?: unknown }).reportCardChrome = reportCardChrome;
     // Installed before the boot scripts run — inline-app.js reads
     // window.rendererStores at its top level (TD-001 slice 3, #421).
@@ -183,6 +200,12 @@ export default function App() {
       script.textContent = src;
       document.body.appendChild(script);
     }
+    // First-run onboarding (#69, TD-001 slice 6f, #704): fires once
+    // BOOT_SCRIPTS have synchronously executed above, so window.onboardingState
+    // (onboarding-state.js, one of the 32 helpers) is guaranteed defined —
+    // same ordering guarantee the old `void initOnboarding()` tail call in
+    // inline-app.js relied on.
+    void useOnboardingStore.getState().init();
     // #report-card/#spectrum-island now exist (just injected above) —
     // trigger the second render that portals ReportCardIsland/SpectrumPanel
     // onto them (TD-001 slice 4, #422).
@@ -200,6 +223,18 @@ export default function App() {
       {createPortal(<LicensePanel />, document.getElementById('license-island')!)}
       {createPortal(<SettingsPanel />, document.getElementById('settings-island')!)}
       {createPortal(<CurveEditorDialog />, document.getElementById('curve-editor-island')!)}
+      {/* FeedbackDialog/GradeOwnGuideDialog/PhaseDoublingDialog read
+          window.feedbackForm/gradeOwnState/phaseDoublingState (BOOT_SCRIPTS
+          helpers) during render, so — like OnboardingDialog — they can't
+          render before `booted`: on the very first render those globals
+          don't exist yet, throwing and taking down the whole tree (#704
+          post-merge fix). Their portal targets are static index.html nodes
+          (unlike onboarding-island), but that only covers the DOM-target
+          half of the ordering requirement, not this one. */}
+      {booted && createPortal(<FeedbackDialog />, document.getElementById('feedback-dialog-island')!)}
+      {booted && createPortal(<GradeOwnGuideDialog />, document.getElementById('guide-dialog-island')!)}
+      {booted && createPortal(<PhaseDoublingDialog />, document.getElementById('phase-doubling-dialog-island')!)}
+      {booted && createPortal(<OnboardingDialog />, document.getElementById('onboarding-island')!)}
       {booted && createPortal(<ReportCardIsland />, document.getElementById('report-card')!)}
       {booted && createPortal(<SpectrumPanel />, document.getElementById('spectrum-island')!)}
       {booted && createPortal(<IdealProfileSelect />, document.getElementById('ideal-profile-island')!)}

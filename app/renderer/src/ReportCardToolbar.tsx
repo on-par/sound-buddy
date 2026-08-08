@@ -12,6 +12,8 @@ import { useAnalysisStore } from './stores/analysisStore';
 import { useSettingsStore } from './stores/settingsStore';
 import { useSpectrumStore } from './stores/spectrumStore';
 import { useLiveCaptureStore } from './stores/liveCaptureStore';
+import { useFeedbackDialogStore } from './stores/feedbackDialogStore';
+import { useGradeOwnGuideStore } from './stores/gradeOwnGuideStore';
 import { spectrumTransport } from './spectrum-transport';
 import { resolveReportCardChromeSource, reportCardChromeView, getReportCardSource, persistSummary } from './report-card-chrome';
 import { iconSvg, buildMetricRows, type ReportCardSource, type GradingPillApi } from './report-card';
@@ -34,10 +36,6 @@ interface ReportFirstUxStateApi {
 interface AnalyzeSourcePickerApi {
   open(): void;
 }
-interface InlineDialogsApi {
-  openFeedbackDialog?(): void;
-  openGradeOwnGuide?(): void;
-}
 interface LiveCaptureRunningApi {
   isRunning(): boolean;
 }
@@ -55,9 +53,6 @@ function getReportFirstUxState(): ReportFirstUxStateApi {
 }
 function getAnalyzeSourcePicker(): AnalyzeSourcePickerApi | undefined {
   return (window as unknown as { analyzeSourcePicker?: AnalyzeSourcePickerApi }).analyzeSourcePicker;
-}
-function getInlineDialogs(): InlineDialogsApi | undefined {
-  return (window as unknown as { inlineDialogs?: InlineDialogsApi }).inlineDialogs;
 }
 function getLiveCapture(): LiveCaptureRunningApi {
   return (window as unknown as { liveCapture: LiveCaptureRunningApi }).liveCapture;
@@ -239,7 +234,7 @@ export default function ReportCardToolbar(): JSX.Element {
           id="reportcard-feedback-btn"
           dangerouslySetInnerHTML={{ __html: iconSvg('info', 16) + 'Send Feedback' }}
           /* c8 ignore next -- click dispatch, no jsdom */
-          onClick={() => getInlineDialogs()?.openFeedbackDialog?.()}
+          onClick={() => useFeedbackDialogStore.getState().open()}
         />
         <button
           type="button"
@@ -266,7 +261,7 @@ export default function ReportCardToolbar(): JSX.Element {
           disabled={view.gradeOwnDisabled}
           dangerouslySetInnerHTML={{ __html: iconSvg('waveform', 16) + 'Grade your own service' }}
           /* c8 ignore next -- click dispatch, no jsdom */
-          onClick={() => getInlineDialogs()?.openGradeOwnGuide?.()}
+          onClick={() => useGradeOwnGuideStore.getState().open()}
         />
       </div>
     </>

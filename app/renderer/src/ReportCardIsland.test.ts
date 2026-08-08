@@ -51,7 +51,7 @@ const feedbackRingoutMock = {
   }),
 };
 const audioEngineSpectralMock = { findSpectralPeaks: () => [] };
-const inlineDialogsMock = { openPhaseDoublingDialog: () => {}, openFeedbackRingout: () => {}, openBuildGuide: () => {} };
+const inlineDialogsMock = { openFeedbackRingout: () => {}, openBuildGuide: () => {} };
 
 const ANALYSIS = {
   sox: { rmsDbfs: -18, peakDbfs: -6, dynamicRangeDb: 12, clipping: false },
