@@ -62,6 +62,65 @@
     truePeak: { ceiling: -1 },
   };
 
+  // #266 — Broadcast-ready tightens every grade/score-gating threshold by this
+  // many dB in the stricter direction (raise floors, lower ceilings). One named
+  // constant applied uniformly, per the issue's "fixed, documented offset" —
+  // not a bespoke delta per metric.
+  const BROADCAST_STRICTNESS_OFFSET_DB = 2;
+
+  // Immutable snapshot of the casual/default thresholds, captured once at
+  // module load before any profile is ever applied. configForProfile always
+  // derives from THIS, never from CONFIG's current (possibly already-shifted)
+  // values, so switching profiles back and forth never compounds an offset.
+  const BASE_CONFIG = JSON.parse(JSON.stringify(CONFIG));
+
+  const GRADING_PROFILES = {
+    casual: { id: 'casual', label: 'Casual / volunteer' },
+    broadcast: { id: 'broadcast', label: 'Broadcast-ready' },
+  };
+
+  let activeGradingProfileId = 'casual';
+
+  // Pure: returns a NEW config object, never mutates BASE_CONFIG or CONFIG.
+  // Unknown profileId falls back to 'casual' (BASE_CONFIG unshifted).
+  // centroid and bandBalance.quietDiff are left unchanged for both profiles —
+  // neither ever gates computeGrade/computeScore (centroid only feeds the
+  // report card's tonal-balance pill via rcCentroidStatus; quietDiff only
+  // feeds report-card.ts's cosmetic "Too Quiet" band verdict) — shifting them
+  // would be silent scope creep beyond e2-03's graded rule set.
+  function configForProfile(profileId) {
+    const cfg = JSON.parse(JSON.stringify(BASE_CONFIG));
+    if (profileId === 'broadcast') {
+      const d = BROADCAST_STRICTNESS_OFFSET_DB;
+      cfg.rms.acceptableMin += d; cfg.rms.acceptableMax -= d;
+      cfg.rms.quietEdge += d; cfg.rms.hotEdge -= d;
+      cfg.lufs.acceptableMin += d; cfg.lufs.acceptableMax -= d;
+      cfg.lufs.quietEdge += d; cfg.lufs.hotEdge -= d;
+      cfg.dynamicRange.good += d; cfg.dynamicRange.check += d;
+      cfg.bandBalance.hotDiff -= d; cfg.bandBalance.severeHotDiff -= d;
+      cfg.truePeak.ceiling -= d;
+      cfg.peak.issueAbove -= d; cfg.peak.checkAbove -= d;
+    }
+    return cfg;
+  }
+
+  // Merges the profile's shifted values into CONFIG's EXISTING nested objects
+  // (Object.assign per top-level key) rather than reassigning CONFIG or any of
+  // its nested objects — every function in this file, and report-card.ts's
+  // direct `grading.CONFIG.bandBalance.*` reads, re-read CONFIG fresh on every
+  // call, so this is the one place that needs to change for the whole app to
+  // pick up the active profile.
+  function setGradingProfile(profileId) {
+    const id = profileId === 'broadcast' ? 'broadcast' : 'casual';
+    const next = configForProfile(id);
+    Object.keys(next).forEach((key) => { Object.assign(CONFIG[key], next[key]); });
+    activeGradingProfileId = id;
+  }
+
+  function getGradingProfile() {
+    return GRADING_PROFILES[activeGradingProfileId];
+  }
+
   // Band label + frequency metadata used to phrase the "too much energy in X"
   // recommendation. Grading-only — the renderer's own band table lives inline.
   const RC_BAND_INFO = {
@@ -418,6 +477,11 @@
   var api = {
     CONFIG: CONFIG,
     RC_BAND_INFO: RC_BAND_INFO,
+    BROADCAST_STRICTNESS_OFFSET_DB: BROADCAST_STRICTNESS_OFFSET_DB,
+    GRADING_PROFILES: GRADING_PROFILES,
+    configForProfile: configForProfile,
+    setGradingProfile: setGradingProfile,
+    getGradingProfile: getGradingProfile,
     bandDiffFromOthers: bandDiffFromOthers,
     loudestBandContributor: loudestBandContributor,
     analyzeRecordingType: analyzeRecordingType,
