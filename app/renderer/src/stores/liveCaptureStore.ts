@@ -29,8 +29,23 @@ import {
   type ChannelWindowData,
   type ListDevicesResult,
 } from '../live-capture-panel';
+import {
+  deviceIndexForName,
+  applyStartResult,
+  applyStreamEnded,
+  type SecondaryMeasurementState,
+} from '../measurement-device-state';
 
-export type LiveCaptureApi = Pick<LiveApi, 'listDevices' | 'startLive' | 'stopLive' | 'onLiveEvent'> &
+export type LiveCaptureApi = Pick<
+  LiveApi,
+  | 'listDevices'
+  | 'startLive'
+  | 'stopLive'
+  | 'onLiveEvent'
+  | 'startMeasurement'
+  | 'stopMeasurement'
+  | 'onMeasurementEvent'
+> &
   Pick<DialogApi, 'openDirDialog'>;
 
 // Rolling live-window buffer cap — mirrors the inline `if (liveWindows.length
@@ -199,6 +214,13 @@ export interface LiveCaptureState {
   // becoming the room's measurement source.
   selectedChannel: number | null;
 
+  // Experimental secondary measurement-device source (#460, ADR 0003). Fully
+  // independent of the board capture above: its own status machine and its own
+  // rolling window buffer (channel 0 = the room mic). All transitions go
+  // through the pure helpers in measurement-device-state.ts.
+  secondaryMeasurement: SecondaryMeasurementState;
+  secondaryWindows: LiveEvent[];
+
   loadDevices(): Promise<void>;
   selectDevice(value: string): void;
   setLiveMode(mode: 'monitor' | 'record'): void;
@@ -244,6 +266,11 @@ export interface LiveCaptureState {
 
   setMeasurementSource(source: number | null): void;
   setSelectedChannel(source: number | null): void;
+
+  setSecondaryDeviceName(name: string): void;
+  startSecondaryMeasurement(opts: StartCaptureOpts): Promise<void>;
+  stopSecondaryMeasurement(): Promise<void>;
+  bindMeasurementEvents(): void;
 }
 
 // Persist channelGroups (#483) as a full-map replace keyed by device —
@@ -289,6 +316,9 @@ export function createLiveCaptureStore(getApi: () => LiveCaptureApi) {
 
     measurementSource: null,
     selectedChannel: null,
+
+    secondaryMeasurement: { status: 'off', deviceName: '' },
+    secondaryWindows: [],
 
     async loadDevices() {
       const result = (await getApi().listDevices()) as ListDevicesResult;
@@ -548,6 +578,77 @@ export function createLiveCaptureStore(getApi: () => LiveCaptureApi) {
     // channelConfig during the TD-001 migration, not necessarily this store's).
     setSelectedChannel(source) {
       set({ selectedChannel: source });
+    },
+
+    // ── Secondary measurement source (#460) ──────────────────────────────────
+
+    // Set (or clear with '') the preferred device and persist it by NAME so it
+    // survives restart and disconnect/reconnect cycles — mirrors setStripLabel's
+    // write path (#482). The running stream, if any, is left untouched here;
+    // callers drive start/stop separately.
+    setSecondaryDeviceName(name) {
+      set((state) => ({ secondaryMeasurement: { ...state.secondaryMeasurement, deviceName: name } }));
+      void useSettingsStore.getState().updateSettings({ measurementDeviceName: name });
+    },
+
+    // Start the secondary stream for the currently-remembered device. Resolving
+    // the persisted NAME to a live index can fail (device absent) — that is a
+    // surfaced 'disconnected' state with NO API call and NO fallback to the
+    // board source, per ADR 0003.
+    async startSecondaryMeasurement(opts) {
+      const { deviceName } = get().secondaryMeasurement;
+      const device = deviceIndexForName(get().devices, deviceName);
+      if (device === null) {
+        set({ secondaryMeasurement: { status: 'disconnected', deviceName }, secondaryWindows: [] });
+        return;
+      }
+      set({ secondaryMeasurement: { status: 'starting', deviceName }, secondaryWindows: [] });
+      const result = (await getApi().startMeasurement({
+        device,
+        windowSecs: opts.windowSecs,
+        intervalSecs: opts.intervalSecs,
+      })) as { success: boolean; micAccess?: string; error?: string };
+      set((state) => ({ secondaryMeasurement: applyStartResult(state.secondaryMeasurement, result) }));
+    },
+
+    // Explicit stop — clears only the running stream and its window buffer, not
+    // the persisted device preference (so re-selecting resumes the same device).
+    async stopSecondaryMeasurement() {
+      await getApi().stopMeasurement();
+      set((state) => ({
+        secondaryMeasurement: { status: 'off', deviceName: state.secondaryMeasurement.deviceName },
+        secondaryWindows: [],
+      }));
+    },
+
+    // Bind the separate measurement-event channel (ADR 0003 namespacing). An
+    // unexpected end flags 'disconnected'; error payloads store the error; window
+    // ticks buffer into secondaryWindows with the same cap as the board buffer.
+    bindMeasurementEvents() {
+      getApi().onMeasurementEvent((data) => {
+        const evt = data as
+          | (LiveEvent & { error?: string; measurementEnded?: boolean })
+          | { error: string }
+          | { measurementEnded: boolean }
+          | null;
+        if (!evt) return;
+        if ((evt as { measurementEnded?: boolean }).measurementEnded) {
+          set((state) => ({ secondaryMeasurement: applyStreamEnded(state.secondaryMeasurement, false) }));
+          return;
+        }
+        if ((evt as { error?: string }).error) {
+          set({ lastError: (evt as { error: string }).error });
+          return;
+        }
+        const tick = evt as LiveEvent;
+        if (tick.type === 'window' || typeof (tick as { window?: number }).window === 'number') {
+          set((state) => {
+            const next = [...state.secondaryWindows, tick];
+            if (next.length > LIVE_WINDOWS_CAP) next.shift();
+            return { secondaryWindows: next };
+          });
+        }
+      });
     },
   }));
 }

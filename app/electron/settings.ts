@@ -48,6 +48,8 @@ const DEFAULTS: AppSettings = {
   weeklyReminderEnabled: false,
   weeklyReminderServiceDay: 0,
   liveEqPaneWidth: 360,
+  secondaryMeasurementEnabled: false,
+  measurementDeviceName: '',
 };
 
 function settingsPath(): string {
@@ -145,6 +147,19 @@ function fileInputInstrumentProfiles(file: Partial<AppSettings>): Record<string,
 }
 
 /**
+ * The measurementDeviceName value from a raw file view, defaulting to
+ * `DEFAULTS.measurementDeviceName` ('') when the key is absent or corrupted
+ * (hand-edited to a non-string) — mirrors shareChurchName's typeof-string
+ * discipline (#460). An empty string is a valid, meaningful value (no device
+ * chosen), so only a non-string falls back.
+ */
+function fileMeasurementDeviceName(file: Partial<AppSettings>): string {
+  return typeof file.measurementDeviceName === 'string'
+    ? file.measurementDeviceName
+    : DEFAULTS.measurementDeviceName;
+}
+
+/**
  * Persist the file layer, preserving any fields not being changed — including
  * unknown top-level keys a future version may add. Callers pass the mutated file
  * view — never getSettings()'s env-resolved view — so transient env overrides
@@ -171,6 +186,8 @@ function writeSettingsFile(file: Partial<AppSettings>): void {
     weeklyReminderEnabled: file.weeklyReminderEnabled ?? DEFAULTS.weeklyReminderEnabled,
     weeklyReminderServiceDay: fileWeeklyReminderServiceDay(file),
     liveEqPaneWidth: fileLiveEqPaneWidth(file),
+    secondaryMeasurementEnabled: file.secondaryMeasurementEnabled ?? DEFAULTS.secondaryMeasurementEnabled,
+    measurementDeviceName: fileMeasurementDeviceName(file),
   };
   try {
     fs.writeFileSync(settingsPath(), JSON.stringify(persisted, null, 2));
@@ -235,6 +252,13 @@ export function getSettings(): AppSettings {
     // persists on resize, not a launch-time behavior toggle. Pure persisted
     // data, like `rigs`.
     liveEqPaneWidth: fileLiveEqPaneWidth(file),
+    // No env layer — opting into the experimental secondary measurement source
+    // (#460) must be an explicit user action, same rationale as
+    // dawWorkspaceEnabled.
+    secondaryMeasurementEnabled: file.secondaryMeasurementEnabled ?? DEFAULTS.secondaryMeasurementEnabled,
+    // No env layer — the preferred measurement device is user-chosen persisted
+    // data matched by name (#460), like `rigs`.
+    measurementDeviceName: fileMeasurementDeviceName(file),
   };
 }
 

@@ -34,6 +34,23 @@ async function resizeTo(width: number): Promise<void> {
   await win.waitForFunction((w) => window.innerWidth <= w, width);
 }
 
+// reportcard-load-btn is only shown by the app itself once a live-capture
+// card is on screen (ReportCardToolbar.tsx renders style={{display:
+// view.loadVisible ? '' : 'none'}}, driven by report-card-chrome.ts's
+// reportCardChromeView(analysisStore state)) — this test forces it visible
+// directly to check the toolbar's worst-case (all 6 actions shown) layout
+// without spinning up a real live session. Boot triggers a handful of
+// one-time async store settles (settings hydration, device enumeration)
+// that can re-render ReportCardToolbar and reset the inline override back
+// to `display:none` before this test gets to use it — reapply right before
+// each consumer rather than trusting a single override to survive the whole
+// test.
+async function forceLoadBtnVisible(): Promise<void> {
+  await win.evaluate(() => {
+    (document.getElementById('reportcard-load-btn') as HTMLElement).style.display = '';
+  });
+}
+
 test.describe.serial('report-card toolbar overflow (#478)', () => {
   test.afterEach(async () => {
     await app?.close();
@@ -43,9 +60,7 @@ test.describe.serial('report-card toolbar overflow (#478)', () => {
     test(`all toolbar actions stay within the panel at ${width}px`, async () => {
       await launch();
 
-      await win.evaluate(() => {
-        (document.getElementById('reportcard-load-btn') as HTMLElement).style.display = '';
-      });
+      await forceLoadBtnVisible();
 
       await resizeTo(width);
 
@@ -63,6 +78,7 @@ test.describe.serial('report-card toolbar overflow (#478)', () => {
 
       expect(overflow).toBe(true);
 
+      await forceLoadBtnVisible();
       for (const id of ACTION_BUTTON_IDS) {
         const visible = await win.evaluate(
           (buttonId) => document.getElementById(buttonId)?.offsetParent !== null,
@@ -84,6 +100,7 @@ test.describe.serial('report-card toolbar overflow (#478)', () => {
       }, EPSILON_PX);
       expect(noHorizontalScroll).toBe(true);
 
+      await forceLoadBtnVisible();
       for (const id of ACTION_BUTTON_IDS) {
         const isDisabled = await win.evaluate(
           (buttonId) => (document.getElementById(buttonId) as HTMLButtonElement)?.disabled,

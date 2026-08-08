@@ -691,6 +691,121 @@ describe('createLiveCaptureStore', () => {
     });
   });
 
+  describe('secondary measurement source (#460)', () => {
+    const SECONDARY_DEVICES: LiveDevice[] = [
+      { index: 0, name: 'Built-in Microphone', channels: 2, default_sr: 48000 },
+      { index: 2, name: 'USB Measurement Mic', channels: 1, default_sr: 48000 },
+    ];
+
+    it('starts off with no secondary source and an empty window buffer', () => {
+      const { store } = makeStore();
+      expect(store.getState().secondaryMeasurement).toEqual({ status: 'off', deviceName: '' });
+      expect(store.getState().secondaryWindows).toEqual([]);
+    });
+
+    it('setSecondaryDeviceName sets the name and persists it via useSettingsStore', () => {
+      const updateSettingsSpy = vi.fn().mockResolvedValue(undefined);
+      useSettingsStore.setState({ settings: {} as never, updateSettings: updateSettingsSpy });
+      const { store } = makeStore();
+
+      store.getState().setSecondaryDeviceName('USB Measurement Mic');
+
+      expect(store.getState().secondaryMeasurement.deviceName).toBe('USB Measurement Mic');
+      expect(updateSettingsSpy).toHaveBeenCalledWith({ measurementDeviceName: 'USB Measurement Mic' });
+    });
+
+    it('startSecondaryMeasurement resolves the name to an index and applies an active result', async () => {
+      const startMeasurement = vi.fn().mockResolvedValue({ success: true });
+      const { store } = makeStore({ startMeasurement });
+      store.setState({
+        devices: SECONDARY_DEVICES,
+        secondaryMeasurement: { status: 'off', deviceName: 'USB Measurement Mic' },
+      });
+
+      await store.getState().startSecondaryMeasurement({ windowSecs: 5, intervalSecs: 0.1 });
+
+      expect(startMeasurement).toHaveBeenCalledWith({ device: '2', windowSecs: 5, intervalSecs: 0.1 });
+      expect(store.getState().secondaryMeasurement.status).toBe('active');
+    });
+
+    it('startSecondaryMeasurement goes disconnected without an API call when the device is absent', async () => {
+      const startMeasurement = vi.fn();
+      const { store } = makeStore({ startMeasurement });
+      store.setState({
+        devices: SECONDARY_DEVICES,
+        secondaryMeasurement: { status: 'off', deviceName: 'Ghost Interface' },
+      });
+
+      await store.getState().startSecondaryMeasurement({ windowSecs: 5, intervalSecs: 0.1 });
+
+      expect(startMeasurement).not.toHaveBeenCalled();
+      expect(store.getState().secondaryMeasurement.status).toBe('disconnected');
+    });
+
+    it('startSecondaryMeasurement surfaces a blocked mic result', async () => {
+      const startMeasurement = vi.fn().mockResolvedValue({ success: false, micAccess: 'denied' });
+      const { store } = makeStore({ startMeasurement });
+      store.setState({
+        devices: SECONDARY_DEVICES,
+        secondaryMeasurement: { status: 'off', deviceName: 'USB Measurement Mic' },
+      });
+
+      await store.getState().startSecondaryMeasurement({ windowSecs: 5, intervalSecs: 0.1 });
+
+      expect(store.getState().secondaryMeasurement).toEqual({
+        status: 'blocked',
+        deviceName: 'USB Measurement Mic',
+        micAccess: 'denied',
+      });
+    });
+
+    it('stopSecondaryMeasurement clears the stream and windows but keeps the preference', async () => {
+      const stopMeasurement = vi.fn().mockResolvedValue({ success: true });
+      const { store } = makeStore({ stopMeasurement });
+      store.setState({
+        secondaryMeasurement: { status: 'active', deviceName: 'USB Measurement Mic' },
+        secondaryWindows: [{ window: 1 } as never],
+      });
+
+      await store.getState().stopSecondaryMeasurement();
+
+      expect(stopMeasurement).toHaveBeenCalled();
+      expect(store.getState().secondaryMeasurement).toEqual({ status: 'off', deviceName: 'USB Measurement Mic' });
+      expect(store.getState().secondaryWindows).toEqual([]);
+    });
+
+    it('bindMeasurementEvents flags disconnect on measurementEnded', () => {
+      const { store, mock } = makeStore();
+      store.setState({ secondaryMeasurement: { status: 'active', deviceName: 'USB Mic' } });
+      store.getState().bindMeasurementEvents();
+
+      mock.emit('onMeasurementEvent', { measurementEnded: true, code: 1 });
+
+      expect(store.getState().secondaryMeasurement.status).toBe('disconnected');
+    });
+
+    it('bindMeasurementEvents stores an error payload in lastError', () => {
+      const { store, mock } = makeStore();
+      store.getState().bindMeasurementEvents();
+
+      mock.emit('onMeasurementEvent', { error: 'boom' });
+
+      expect(store.getState().lastError).toBe('boom');
+    });
+
+    it('bindMeasurementEvents buffers window ticks with the cap', () => {
+      const { store, mock } = makeStore();
+      store.getState().bindMeasurementEvents();
+
+      for (let i = 0; i < LIVE_WINDOWS_CAP + 3; i++) {
+        mock.emit('onMeasurementEvent', { window: i });
+      }
+
+      expect(store.getState().secondaryWindows).toHaveLength(LIVE_WINDOWS_CAP);
+      expect((store.getState().secondaryWindows[0] as { window: number }).window).toBe(3);
+    });
+  });
+
   it('binds the default hook to the window preload bridge', async () => {
     (globalThis as { window?: unknown }).window = {
       soundBuddy: createMockSoundBuddy({

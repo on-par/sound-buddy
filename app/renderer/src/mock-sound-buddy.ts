@@ -48,6 +48,8 @@ const DEFAULT_APP_SETTINGS: AppSettings = {
   weeklyReminderEnabled: false,
   weeklyReminderServiceDay: 0,
   liveEqPaneWidth: 360,
+  secondaryMeasurementEnabled: false,
+  measurementDeviceName: '',
 };
 
 const DEFAULT_LICENSE_STATE: LicenseState = { tier: 'free', status: 'none' };
@@ -123,6 +125,9 @@ export function createMockSoundBuddy(overrides: Partial<SoundBuddyApi> = {}): Mo
     openDirDialog: invoke('openDirDialog', null),
     startLive: invoke('startLive', undefined),
     stopLive: invoke('stopLive', { success: true, sessionDir: null }),
+    startMeasurement: invoke('startMeasurement', { success: true }),
+    stopMeasurement: invoke('stopMeasurement', { success: true }),
+    onMeasurementEvent: listen<[unknown]>('onMeasurementEvent'),
     revealPath: invoke('revealPath', { success: true }),
     startPlayback: invoke('startPlayback', undefined),
     stopPlayback: invoke('stopPlayback', { success: true }),
