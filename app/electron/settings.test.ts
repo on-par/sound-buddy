@@ -451,6 +451,32 @@ describe('measurementDeviceName (#460 — persisted preferred device, matched by
   });
 });
 
+describe('gradingProfile (#266 — grading-strictness profile, default casual)', () => {
+  it("defaults to 'casual' when settings.json is absent", () => {
+    expect(getSettings().gradingProfile).toBe('casual');
+  });
+
+  it("defaults to 'casual' when the file exists without the key", () => {
+    writeFile({ idealProfile: '' });
+    expect(getSettings().gradingProfile).toBe('casual');
+  });
+
+  it("round-trips 'broadcast' through updateSettings, the raw file, and a fresh read", () => {
+    const updated = updateSettings({ gradingProfile: 'broadcast' });
+    expect(updated.gradingProfile).toBe('broadcast');
+    expect(readFile().gradingProfile).toBe('broadcast');
+    expect(getSettings().gradingProfile).toBe('broadcast');
+  });
+
+  it.each(['strict', 'CASUAL', true, 1, null])(
+    "hydrates a corrupted gradingProfile value (%p) back to the default 'casual'",
+    (corrupted) => {
+      writeFile({ gradingProfile: corrupted });
+      expect(getSettings().gradingProfile).toBe('casual');
+    },
+  );
+});
+
 describe('customIdealProfiles', () => {
   const curve = {
     id: 'sunday',

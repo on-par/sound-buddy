@@ -275,6 +275,13 @@ export function registerSettingsHandlers(): void {
           .trim()
           .slice(0, MAX_MEASUREMENT_DEVICE_NAME_LEN);
       }
+      // Grading-strictness profile (#266) — a pure UI/grading gate, consumed by
+      // grading.js via the renderer's settings→CONFIG sync (stores/bridge.ts).
+      // Allow-listed to the two known ids; anything else is silently ignored,
+      // leaving the stored value unchanged.
+      if (patch.gradingProfile === 'casual' || patch.gradingProfile === 'broadcast') {
+        clean.gradingProfile = patch.gradingProfile;
+      }
     }
     const result = updateSettings(clean);
     // Opting out of telemetry (#474) clears the pending queue and the

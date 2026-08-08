@@ -43,6 +43,7 @@ export interface UpdateSettingsPatch {
   liveEqPaneWidth?: number;
   secondaryMeasurementEnabled?: boolean;
   measurementDeviceName?: string;
+  gradingProfile?: 'casual' | 'broadcast';
 }
 
 export interface AnalyzeFileOpts {
@@ -335,6 +336,14 @@ export interface AppSettings {
    * so the preference auto-resumes when the device re-enumerates. No env layer.
    */
   measurementDeviceName: string;
+  /**
+   * Grading-strictness profile (#266): 'casual' (default, today's fixed
+   * thresholds, byte-identical) or 'broadcast' (every grade/score-gating
+   * threshold tightened by the fixed BROADCAST_STRICTNESS_OFFSET_DB, see
+   * grading.js). No env layer — pure persisted preference, like
+   * measurementDeviceName.
+   */
+  gradingProfile: 'casual' | 'broadcast';
 }
 
 // ─── Analysis / storage DTOs (AnalysisSummary moved from electron/storage.ts) ─
