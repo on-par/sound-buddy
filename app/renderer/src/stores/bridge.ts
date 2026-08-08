@@ -21,6 +21,13 @@ import { liveReportCardSource } from '../live-capture-panel';
 import { roomFeed } from '../measurement-device-state';
 import { spectrumTransport, type SpectrumTransport } from '../spectrum-transport';
 
+interface GradingProfileSyncApi {
+  setGradingProfile(id: string): void;
+}
+function getGradingForProfileSync(): GradingProfileSyncApi {
+  return (window as unknown as { grading: GradingProfileSyncApi }).grading;
+}
+
 export interface RendererStores {
   licensing: typeof useLicensingStore;
   settings: typeof useSettingsStore;
@@ -141,6 +148,17 @@ export function installStoreBridge(
     useIdealProfilesStore.subscribe((state, prevState) => {
       if (state.selectedId !== prevState.selectedId || state.customProfiles !== prevState.customProfiles) {
         useIdealProfilesStore.getState().syncActiveProfile();
+      }
+    });
+
+    // Grading-strictness profile (#266): keep grading.js's live CONFIG in sync
+    // with the persisted setting. Every report-card consumer (ReportCardIsland,
+    // the toolbar's Share Image, buildMetricRows/bandBreakdownHTML) reads CONFIG
+    // off the same window.grading singleton, so this one mutation point is
+    // enough for the whole app to agree — see grading.js's setGradingProfile.
+    useSettingsStore.subscribe((state, prevState) => {
+      if (state.settings?.gradingProfile !== prevState.settings?.gradingProfile) {
+        getGradingForProfileSync().setGradingProfile(state.settings?.gradingProfile ?? 'casual');
       }
     });
   }

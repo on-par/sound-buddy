@@ -50,6 +50,7 @@ const DEFAULT_APP_SETTINGS: AppSettings = {
   liveEqPaneWidth: 360,
   secondaryMeasurementEnabled: false,
   measurementDeviceName: '',
+  gradingProfile: 'casual',
 };
 
 const DEFAULT_LICENSE_STATE: LicenseState = { tier: 'free', status: 'none' };

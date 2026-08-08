@@ -21,6 +21,14 @@ import type { AppSettings } from '../../../electron/ipc/api';
 // ideal-curves is a plain classic script (window.idealCurves / module.exports)
 // — idealProfilesStore's default deps read it off window, same as the running app.
 const curves = require('../../ideal-curves.js') as IdealCurvesApi;
+// grading is a plain classic script (window.grading / module.exports) — the
+// #266 settings→CONFIG sync subscription in bridge.ts reads it off window,
+// same as the running app.
+const grading = require('../../grading.js') as {
+  getGradingProfile(): { id: string; label: string };
+  setGradingProfile(id: string): void;
+  CONFIG: { rms: { acceptableMin: number } };
+};
 
 // installStoreBridge()'s cross-store subscription install (guarded by the
 // module-level crossStoreSubscriptionInstalled flag) binds the DEFAULT
@@ -28,7 +36,11 @@ const curves = require('../../ideal-curves.js') as IdealCurvesApi;
 // window.soundBuddy via getSoundBuddy(), so it must exist before the first
 // installStoreBridge() call in this file.
 beforeAll(() => {
-  (globalThis as { window?: unknown }).window = { soundBuddy: createMockSoundBuddy().api, idealCurves: curves };
+  (globalThis as { window?: unknown }).window = {
+    soundBuddy: createMockSoundBuddy().api,
+    idealCurves: curves,
+    grading,
+  };
 });
 
 afterEach(() => {
@@ -65,6 +77,9 @@ afterEach(() => {
     customProfiles: [],
     editor: useIdealProfilesStore.getInitialState().editor,
   });
+  // #266 — reset grading.js's shared CONFIG singleton so a profile switch in
+  // one test never leaks into the next.
+  grading.setGradingProfile('casual');
 });
 
 describe('installStoreBridge', () => {
@@ -273,6 +288,7 @@ describe('installStoreBridge', () => {
     liveEqPaneWidth: 360,
     secondaryMeasurementEnabled: false,
     measurementDeviceName: '',
+    gradingProfile: 'casual',
   };
 
   it('seeds idealProfilesStore from settings once they first load, and pushes the resolved profile into spectrumStore', () => {
@@ -282,6 +298,29 @@ describe('installStoreBridge', () => {
 
     expect(useIdealProfilesStore.getState().selectedId).toBe('flat');
     expect(useSpectrumStore.getState().idealProfile).toEqual(expect.objectContaining({ id: 'flat' }));
+  });
+
+  it('#266 — syncs grading.js CONFIG to the casual profile on first settings load', () => {
+    installStoreBridge({});
+
+    useSettingsStore.setState({ settings: APP_SETTINGS });
+
+    expect(grading.getGradingProfile().id).toBe('casual');
+  });
+
+  it('#266 — switching gradingProfile to broadcast shifts grading.js CONFIG, and switching back restores it', () => {
+    installStoreBridge({});
+    useSettingsStore.setState({ settings: APP_SETTINGS });
+
+    useSettingsStore.setState({ settings: { ...APP_SETTINGS, gradingProfile: 'broadcast' } });
+
+    expect(grading.getGradingProfile().id).toBe('broadcast');
+    expect(grading.CONFIG.rms.acceptableMin).toBe(-18);
+
+    useSettingsStore.setState({ settings: { ...APP_SETTINGS, gradingProfile: 'casual' } });
+
+    expect(grading.getGradingProfile().id).toBe('casual');
+    expect(grading.CONFIG.rms.acceptableMin).toBe(-20);
   });
 
   it('does not re-hydrate idealProfilesStore on a later settings update (only the null→non-null transition seeds it)', async () => {
