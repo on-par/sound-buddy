@@ -1,9 +1,10 @@
 <!-- Edit before each release; contents become the "## What's new" section of the release notes. -->
 
-- **Send feedback from inside the app** — report issues or ideas with safe, redacted diagnostic context; nothing is sent without your explicit action.
-- **Opt-in crash reporting** — off by default; crash payloads are redacted before anything leaves your Mac.
-- **Opt-in usage telemetry** — explicit opt-in, privacy-safe, off by default; helps us learn which features matter.
-- **Guided Live tab setup** — first use walks you through capture setup, and monitoring now clearly leads to a Report Card.
-- **Live channel management** — collapsible groups, drag-to-reorder, persistent channel labels, and a recording folder setting.
-- **Report card "vs. last time" delta** and console-style minor gridlines on EQ/analyzer surfaces.
-- **Browser Lite decibel meter** with weighted modes and target ranges.
+- **Grading-strictness profiles** — choose "Casual / volunteer" or "Broadcast-ready" judging, so a small volunteer team and a full production crew aren't held to the same bar.
+- **Export a multi-week trend PDF** — pull the last several services into one report to show budget-holders real progress over time, not just a single grade.
+- **Tier 2 console-network consent modal** — before Sound Buddy ever reads channel data from your console over the network, it now asks first and says exactly what it reads.
+- **Secondary audio-device measurement source** — capture from a second device, not just the primary one.
+- **Live EQ redesigned** — moved into a resizable right-hand pane with a new 48-point granular analyzer grid, replacing the old 7-band bars.
+- **Cleaner navigation** — top bar reduced to Analyze / History, with Build Guide and Ring-Out Assistant linked contextually from the Report Card instead of living in the nav.
+- **Smaller, faster install** — trimmed the packaged Python runtime and swapped a heavy audio library for numpy/scipy, cutting real download size.
+- **Legal pages reachable from every site mode**, plus a full renderer-migration pass for stability (the old inline app script continues shrinking as more of the UI moves to React).
