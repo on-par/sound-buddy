@@ -47,7 +47,9 @@ export function buildSessionDir(dir?: string): string {
 }
 
 // ─── Microphone (Core Audio) permission ─────────────────────────────────────
-type MicAccess = 'granted' | 'denied' | 'not-determined' | 'restricted' | 'unknown';
+// Exported (#460) so measurement-source.ts reuses the exact same TCC gate for
+// the secondary measurement stream instead of duplicating the permission logic.
+export type MicAccess = 'granted' | 'denied' | 'not-determined' | 'restricted' | 'unknown';
 
 // macOS gates Core Audio microphone capture behind TCC. Device *enumeration*
 // works without it, but capture (start-live) yields silence unless the app holds
@@ -58,7 +60,7 @@ type MicAccess = 'granted' | 'denied' | 'not-determined' | 'restricted' | 'unkno
 // system permission dialog. Listing devices only *reads* the status (no dialog,
 // so opening the Live tab never surprises the user or blocks automation); the
 // dialog is requested lazily from start-live, when the user actively records.
-async function ensureMicrophoneAccess(prompt: boolean): Promise<MicAccess> {
+export async function ensureMicrophoneAccess(prompt: boolean): Promise<MicAccess> {
   if (process.platform !== 'darwin') return 'granted';
   const status = systemPreferences.getMediaAccessStatus('microphone');
   if (status === 'granted') return 'granted';

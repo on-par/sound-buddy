@@ -432,6 +432,71 @@ describe('update-settings IPC whitelist — reportFirstUxEnabled (#538)', () => 
   });
 });
 
+describe('update-settings IPC whitelist — secondaryMeasurementEnabled (#460)', () => {
+  it('accepts a boolean and persists it', async () => {
+    const handler = handlers.get('update-settings');
+    const result = (await handler!(null, { secondaryMeasurementEnabled: true })) as {
+      secondaryMeasurementEnabled: boolean;
+    };
+    expect(result.secondaryMeasurementEnabled).toBe(true);
+    expect(readFile().secondaryMeasurementEnabled).toBe(true);
+  });
+
+  it('ignores a string value, leaving the setting at its default', async () => {
+    const handler = handlers.get('update-settings');
+    const result = (await handler!(null, { secondaryMeasurementEnabled: 'true' })) as {
+      secondaryMeasurementEnabled: boolean;
+    };
+    expect(result.secondaryMeasurementEnabled).toBe(false);
+  });
+
+  it('ignores a number value, leaving the setting at its default', async () => {
+    const handler = handlers.get('update-settings');
+    const result = (await handler!(null, { secondaryMeasurementEnabled: 1 })) as {
+      secondaryMeasurementEnabled: boolean;
+    };
+    expect(result.secondaryMeasurementEnabled).toBe(false);
+  });
+});
+
+describe('update-settings IPC whitelist — measurementDeviceName (#460)', () => {
+  it('accepts a string, trims it, and persists it', async () => {
+    const handler = handlers.get('update-settings');
+    const result = (await handler!(null, { measurementDeviceName: '  USB Mic  ' })) as {
+      measurementDeviceName: string;
+    };
+    expect(result.measurementDeviceName).toBe('USB Mic');
+    expect(readFile().measurementDeviceName).toBe('USB Mic');
+  });
+
+  it('accepts an empty string (clears the preference)', async () => {
+    const handler = handlers.get('update-settings');
+    await handler!(null, { measurementDeviceName: 'USB Mic' });
+    const result = (await handler!(null, { measurementDeviceName: '' })) as {
+      measurementDeviceName: string;
+    };
+    expect(result.measurementDeviceName).toBe('');
+    expect(readFile().measurementDeviceName).toBe('');
+  });
+
+  it('truncates past the 128-char cap', async () => {
+    const handler = handlers.get('update-settings');
+    const long = 'a'.repeat(200);
+    const result = (await handler!(null, { measurementDeviceName: long })) as {
+      measurementDeviceName: string;
+    };
+    expect(result.measurementDeviceName).toBe('a'.repeat(128));
+  });
+
+  it('ignores a non-string value, leaving the setting at its default', async () => {
+    const handler = handlers.get('update-settings');
+    const result = (await handler!(null, { measurementDeviceName: 42 })) as {
+      measurementDeviceName: string;
+    };
+    expect(result.measurementDeviceName).toBe('');
+  });
+});
+
 describe('sanitizeShareChurchName (#265)', () => {
   it('returns null for a non-string value (patch key ignored)', () => {
     expect(sanitizeShareChurchName(42)).toBeNull();

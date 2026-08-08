@@ -16,6 +16,7 @@ import * as reportCard from './report-card';
 import * as reportExport from './report-export';
 import * as shareCard from './share-card';
 import * as liveCapturePanel from './live-capture-panel';
+import * as measurementDeviceState from './measurement-device-state';
 import * as crashHooks from './crash-hooks';
 import rootMarkup from './root-markup.html?raw';
 import rigReconcileSrc from '../rig-reconcile.js?raw';
@@ -178,6 +179,10 @@ export default function App() {
     (window as Window & { reportExport?: unknown }).reportExport = reportExport;
     (window as Window & { shareCard?: unknown }).shareCard = shareCard;
     (window as Window & { liveCapturePanel?: unknown }).liveCapturePanel = liveCapturePanel;
+    // Secondary measurement-device source (#460) — pure state/view helpers,
+    // bridged like liveCapturePanel so inline-app.js's classic-script glue can
+    // call them by name.
+    (window as Window & { measurementDeviceState?: unknown }).measurementDeviceState = measurementDeviceState;
     (window as Window & { crashHooks?: unknown }).crashHooks = crashHooks;
     // inline-app.js still needs applySpectrumForMode/applySingleColumnSync
     // for the 2 remaining call sites outside ModeTabs.tsx's click handler

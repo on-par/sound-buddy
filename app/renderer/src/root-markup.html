@@ -107,6 +107,25 @@
                row: React-owned (LiveControls.tsx, TD-001 slice 6c, #701). -->
           <div id="live-controls-island"></div>
 
+          <!-- Secondary measurement device (#460) — experimental, hidden unless
+               secondaryMeasurementEnabled. A metering-only room mic, separate
+               from the board capture; blocked/disconnected states and the
+               permanent time-alignment warning render into the nodes below.
+               Still bridged (inline-app.js), not part of the #701 6c island —
+               it's a new, not-yet-migrated surface (see LiveControls.tsx's
+               header note on scoped-out sub-surfaces). -->
+          <label class="select-label" id="secondary-measurement-block" style="display:none">
+            <span>Secondary Measurement Device (experimental)</span>
+            <div class="select-row">
+              <div class="select-wrap">
+                <select id="secondary-measurement-device"><option value="">None (use board channel)</option></select>
+                <span class="select-caret" data-icon="chevron-down"></span>
+              </div>
+            </div>
+            <p id="secondary-measurement-status" class="device-hint"></p>
+            <p id="secondary-measurement-warning" class="device-hint"></p>
+          </label>
+
           <div class="slider">
             <div class="slider-head"><span class="lbl">Meter rate</span><span class="val" id="interval-label">100 ms</span></div>
             <input type="range" class="sb-slider" id="meter-interval" min="50" max="500" step="10" value="100" />

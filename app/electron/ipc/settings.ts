@@ -46,6 +46,10 @@ const MAX_PROFILE_ID_LEN = 64;
 // renderer's share-card.ts MAX_CHURCH_NAME_LEN. Defined here too since main
 // can't import from the renderer program.
 const MAX_SHARE_CHURCH_NAME_LEN = 40;
+// Cap on the persisted secondary measurement device name (#460). OS device
+// names are short; the cap only guards a hand-crafted settings.json payload
+// from bloating the stored preference.
+const MAX_MEASUREMENT_DEVICE_NAME_LEN = 128;
 // Valid range for weeklyReminderServiceDay (#268) — 0 = Sunday … 6 = Saturday,
 // matching Date.prototype.getDay().
 const MIN_SERVICE_DAY = 0;
@@ -258,6 +262,18 @@ export function registerSettingsHandlers(): void {
         patch.liveEqPaneWidth > 0
       ) {
         clean.liveEqPaneWidth = patch.liveEqPaneWidth;
+      }
+      // Opt-in experimental secondary measurement source (#460) — a pure UI
+      // gate, consumed by the renderer only.
+      if (typeof patch.secondaryMeasurementEnabled === 'boolean') {
+        clean.secondaryMeasurementEnabled = patch.secondaryMeasurementEnabled;
+      }
+      // Preferred secondary measurement device, matched by name (#460).
+      // Trimmed and capped; an empty string is valid (clears the preference).
+      if (typeof patch.measurementDeviceName === 'string') {
+        clean.measurementDeviceName = patch.measurementDeviceName
+          .trim()
+          .slice(0, MAX_MEASUREMENT_DEVICE_NAME_LEN);
       }
     }
     const result = updateSettings(clean);

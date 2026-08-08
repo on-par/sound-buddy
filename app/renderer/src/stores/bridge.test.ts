@@ -271,6 +271,8 @@ describe('installStoreBridge', () => {
     weeklyReminderEnabled: false,
     weeklyReminderServiceDay: 0,
     liveEqPaneWidth: 360,
+    secondaryMeasurementEnabled: false,
+    measurementDeviceName: '',
   };
 
   it('seeds idealProfilesStore from settings once they first load, and pushes the resolved profile into spectrumStore', () => {

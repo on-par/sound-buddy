@@ -41,6 +41,8 @@ export interface UpdateSettingsPatch {
   weeklyReminderEnabled?: boolean;
   weeklyReminderServiceDay?: number;
   liveEqPaneWidth?: number;
+  secondaryMeasurementEnabled?: boolean;
+  measurementDeviceName?: string;
 }
 
 export interface AnalyzeFileOpts {
@@ -70,6 +72,23 @@ export interface StartLiveOpts {
   // Record mode: per-strip display labels aligned index-for-index with
   // `channels`; '' = unlabeled. Only sent in record mode (#482).
   labels?: string[];
+}
+
+/**
+ * Options for the secondary measurement-only stream (#460, ADR 0003). A second
+ * stream.py monitor process reading a dedicated room mic (USB measurement mic
+ * or the Mac's built-in mic) independently of the board's multitrack capture.
+ * Always monitor mode — it never records stems (no session-dir), so it carries
+ * neither `mode`, `recordDir`, `arm`, nor `labels`.
+ */
+export interface StartMeasurementOpts {
+  // Input device index-as-string or name, resolved by the renderer from the
+  // persisted device NAME at start time (resilient to device reordering, same
+  // rationale as CaptureRig.deviceName).
+  device: string;
+  windowSecs: number;
+  // Meter cadence in seconds (default 0.1 in stream.py), mirrors StartLiveOpts.
+  intervalSecs?: number;
 }
 
 export interface StartPlaybackOpts {
@@ -300,6 +319,22 @@ export interface AppSettings {
    * the default — it does not know or enforce the renderer's clamp range.
    */
   liveEqPaneWidth: number;
+  /**
+   * Opt-in experimental secondary measurement-device source (#460, ADR 0003).
+   * Default false (off). Pure persisted UI gate — when false the app behaves
+   * byte-identically to today (no secondary picker, no second process); when
+   * true the Live tab exposes a measurement-only room-mic source separate from
+   * the board capture. No env layer: enabling an experiment must be an explicit
+   * user action, same rationale as `dawWorkspaceEnabled`.
+   */
+  secondaryMeasurementEnabled: boolean;
+  /**
+   * Persisted preferred secondary measurement device, matched by NAME (#460).
+   * Default '' (= none chosen). Pure persisted data like `rigs`, matched by
+   * name (resilient to reordering, same rationale as `CaptureRig.deviceName`)
+   * so the preference auto-resumes when the device re-enumerates. No env layer.
+   */
+  measurementDeviceName: string;
 }
 
 // ─── Analysis / storage DTOs (AnalysisSummary moved from electron/storage.ts) ─
@@ -509,6 +544,13 @@ export interface LiveApi {
   startLive(opts: StartLiveOpts): Promise<unknown>;
   stopLive(): Promise<StopLiveResult>;
   onLiveEvent(cb: (data: unknown) => void): void;
+  // Secondary measurement-only stream (#460). Events arrive on a separate
+  // `measurement-event` channel (ADR 0003 event namespacing), never mixed with
+  // `live-event`, so the board capture and the room measurement stay fully
+  // independent.
+  startMeasurement(opts: StartMeasurementOpts): Promise<unknown>;
+  stopMeasurement(): Promise<OperationResult>;
+  onMeasurementEvent(cb: (data: unknown) => void): void;
 }
 
 export interface PlaybackApi {

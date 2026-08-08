@@ -397,6 +397,60 @@ describe('liveEqPaneWidth (#668 — persisted Live EQ pane width, renderer clamp
   });
 });
 
+describe('secondaryMeasurementEnabled (#460 — experimental secondary measurement source, default off)', () => {
+  it('defaults to false when settings.json is absent', () => {
+    expect(getSettings().secondaryMeasurementEnabled).toBe(false);
+  });
+
+  it('defaults to false when the file exists without the key', () => {
+    writeFile({ idealProfile: '' });
+    expect(getSettings().secondaryMeasurementEnabled).toBe(false);
+  });
+
+  it('flips on and back off, persisting each value to the raw file and surviving a fresh read', () => {
+    const on = updateSettings({ secondaryMeasurementEnabled: true });
+    expect(on.secondaryMeasurementEnabled).toBe(true);
+    expect(readFile().secondaryMeasurementEnabled).toBe(true);
+    expect(getSettings().secondaryMeasurementEnabled).toBe(true);
+
+    const off = updateSettings({ secondaryMeasurementEnabled: false });
+    expect(off.secondaryMeasurementEnabled).toBe(false);
+    expect(readFile().secondaryMeasurementEnabled).toBe(false);
+  });
+});
+
+describe('measurementDeviceName (#460 — persisted preferred device, matched by name, default empty)', () => {
+  it('defaults to empty when settings.json is absent', () => {
+    expect(getSettings().measurementDeviceName).toBe('');
+  });
+
+  it('defaults to empty when the file exists without the key', () => {
+    writeFile({ idealProfile: '' });
+    expect(getSettings().measurementDeviceName).toBe('');
+  });
+
+  it('round-trips a value through updateSettings, the raw file, and a fresh read', () => {
+    const updated = updateSettings({ measurementDeviceName: 'USB Measurement Mic' });
+    expect(updated.measurementDeviceName).toBe('USB Measurement Mic');
+    expect(readFile().measurementDeviceName).toBe('USB Measurement Mic');
+    expect(getSettings().measurementDeviceName).toBe('USB Measurement Mic');
+  });
+
+  it.each([42, null, {}, ['a']])(
+    'hydrates a corrupted measurementDeviceName value (%p) back to the default empty string',
+    (corrupted) => {
+      writeFile({ measurementDeviceName: corrupted });
+      expect(getSettings().measurementDeviceName).toBe('');
+    },
+  );
+
+  it('has no env layer — a stored preference is pure persisted data', () => {
+    updateSettings({ measurementDeviceName: 'Built-in Microphone' });
+    // No SOUND_BUDDY_* override exists; the file value is the effective value.
+    expect(getSettings().measurementDeviceName).toBe('Built-in Microphone');
+  });
+});
+
 describe('customIdealProfiles', () => {
   const curve = {
     id: 'sunday',

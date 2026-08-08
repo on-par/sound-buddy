@@ -18,6 +18,7 @@ import { useSoundcheckStore } from './soundcheckStore';
 import { useRingoutStore } from './ringoutStore';
 import { useFeedbackDialogStore } from './feedbackDialogStore';
 import { liveReportCardSource } from '../live-capture-panel';
+import { roomFeed } from '../measurement-device-state';
 import { spectrumTransport, type SpectrumTransport } from '../spectrum-transport';
 
 export interface RendererStores {
@@ -75,13 +76,28 @@ export function installStoreBridge(
     });
     // Replaces inline-app.js's syncLiveSource(): the live-capture card's
     // report-card source is derived from liveCaptureStore.liveWindows
-    // wherever that buffer changes (TD-001 slice 5, #423).
+    // wherever that buffer changes (TD-001 slice 5, #423). #460: also reacts
+    // to secondaryWindows/secondaryMeasurement so the graded source follows
+    // the same Room feed as the badge/stats row (roomFeed(), inline-app.js's
+    // secondaryMeasurementActive()) — the secondary mic when active, the
+    // board strip otherwise (byte-identical to #423 when the flag is off).
     useLiveCaptureStore.subscribe((state, prevState) => {
       if (state.liveWindows !== prevState.liveWindows
         || state.measurementSource !== prevState.measurementSource
-        || state.channelConfig !== prevState.channelConfig) {
+        || state.channelConfig !== prevState.channelConfig
+        || state.secondaryWindows !== prevState.secondaryWindows
+        || state.secondaryMeasurement !== prevState.secondaryMeasurement) {
+        const secondaryActive = state.secondaryMeasurement.status === 'active' && state.secondaryWindows.length > 0;
+        const feed = roomFeed(
+          secondaryActive,
+          state.secondaryWindows,
+          state.secondaryMeasurement.deviceName,
+          state.liveWindows,
+          state.measurementSource,
+          state.channelConfig,
+        );
         useAnalysisStore.getState().setLiveSource(
-          liveReportCardSource(state.liveWindows, state.measurementSource, state.channelConfig));
+          liveReportCardSource(feed.windows, feed.source, feed.config));
       }
     });
     // Clearing the audio analysis (#264) also clears any scene-file

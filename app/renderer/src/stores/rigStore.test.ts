@@ -88,7 +88,8 @@ function fakeSettings(overrides: Partial<AppSettings> = {}): AppSettings {
     usageSignalEnabled: false, channelLabels: {}, channelGroups: {}, inputInstrumentProfiles: {},
     crashReportingEnabled: false, dawWorkspaceEnabled: false, liveAdjustmentsEnabled: false,
     reportFirstUxEnabled: false, shareChurchName: '', weeklyReminderEnabled: false,
-    weeklyReminderServiceDay: 0, liveEqPaneWidth: 360,
+    weeklyReminderServiceDay: 0, liveEqPaneWidth: 360, secondaryMeasurementEnabled: false,
+    measurementDeviceName: '',
     ...overrides,
   };
 }
