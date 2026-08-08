@@ -85,6 +85,14 @@ describe('trendReportHtml', () => {
     expect(html).toContain(delta!.text);
   });
 
+  it('does not mislabel a malformed mid-history row as "First recorded service"', () => {
+    const malformedMiddle: AnalysisSummary = { ...OLDER, gradeLetter: '' };
+    const rows = buildTrendReportRows([NEWER, malformedMiddle, OLDEST]);
+    const html = trendReportHtml(rows);
+    expect(html.match(/First recorded service/g)).toHaveLength(1);
+    expect(html).toContain('No comparison available');
+  });
+
   it('HTML-escapes a gradeLetter containing angle brackets/ampersands', () => {
     const unsafe: AnalysisSummary = { ...NEWER, gradeLetter: '<b>&' };
     const rows = buildTrendReportRows([unsafe, OLDER]);

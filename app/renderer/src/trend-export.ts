@@ -39,13 +39,19 @@ export function trendReportHtml(rows: TrendReportRow[]): string {
   if (rows.length < MIN_TREND_ENTRIES) {
     return '<p class="trend-report-empty">Not enough history yet — analyze at least 2 services to export a trend PDF.</p>';
   }
-  const body = rows.map((r) => `
+  const body = rows.map((r, i) => {
+    // A null delta means either "this is the chronologically first row" (i === 0)
+    // or "reportDeltaView rejected a malformed record further down the history" —
+    // those are different facts and must not both read "First recorded service".
+    const deltaText = r.delta ? r.delta.text : i === 0 ? 'First recorded service' : 'No comparison available';
+    return `
     <tr>
       <td>${escapeHtml(new Date(r.date).toLocaleDateString())}</td>
       <td>${escapeHtml(r.gradeLetter)}</td>
       <td>${Math.round(r.score)}</td>
-      <td>${escapeHtml(r.delta ? r.delta.text : 'First recorded service')}</td>
-    </tr>`).join('');
+      <td>${escapeHtml(deltaText)}</td>
+    </tr>`;
+  }).join('');
   return `
     <h1>Sound Buddy — Service Trend</h1>
     <table class="trend-table">

@@ -92,7 +92,9 @@ export function RecentServicesList({ summaries }: { summaries: AnalysisSummary[]
       </div>
       {!hasTrendHistory && (
         <p className="dz-hint" id="trend-export-hint">
-          Export trend PDF needs at least 2 services in your history — analyze one more to unlock it.
+          {summaries.length === 0
+            ? 'Export trend PDF needs at least 2 services in your history — analyze 2 services to unlock it.'
+            : 'Export trend PDF needs at least 2 services in your history — analyze one more to unlock it.'}
         </p>
       )}
       <div className="dir-list" id="recent-list">

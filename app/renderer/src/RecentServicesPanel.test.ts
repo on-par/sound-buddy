@@ -128,16 +128,19 @@ describe('RecentServicesList', () => {
     expect(html).toContain('check bass');
   });
 
-  it('disables the trend export button and shows the hint with fewer than 2 summaries', () => {
+  it('disables the trend export button and shows a 1-more hint with exactly 1 summary', () => {
     const html = renderList([SUMMARY_A]);
     expect(html).toMatch(/id="recent-trend-export-btn"[^>]*disabled=""/);
     expect(html).toContain('id="trend-export-hint"');
+    expect(html).toContain('analyze one more');
   });
 
-  it('disables the trend export button and shows the hint with zero summaries', () => {
+  it('disables the trend export button and shows a 2-more hint with zero summaries', () => {
     const html = renderList([]);
     expect(html).toMatch(/id="recent-trend-export-btn"[^>]*disabled=""/);
     expect(html).toContain('id="trend-export-hint"');
+    expect(html).not.toContain('analyze one more');
+    expect(html).toContain('analyze 2 services');
   });
 
   it('enables the trend export button and hides the hint with 2+ summaries', () => {
