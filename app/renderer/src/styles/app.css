@@ -328,6 +328,10 @@
     .pass-reminder-list { list-style:none; display:flex; flex-direction:column; gap:2px; margin-top:4px; }
     .pass-reminder-list li { font:var(--fw-regular) var(--fs-micro)/1.4 var(--font-mono); color:var(--text-muted); }
 
+    /* Trend PDF export (#272) */
+    .rs-head { display:flex; align-items:center; justify-content:space-between; gap:8px; }
+    .trend-report { display:none; }
+
     /* Channel Build-Order Guide (#367) */
     .bg-head { display:flex; align-items:center; gap:8px; }
     .bg-head .section-label { flex-shrink:0; }
@@ -1174,6 +1178,20 @@
       .rc-rec, .rc-why-row, .rc-why-none { border-left-color:#000 !important; }
       .rc-why-detail, .rc-why-detail .measured, .rc-why-impact { color:#333 !important; }
       .rc-heatmap svg, .rc-frame-curve svg { -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+
+      /* Trend PDF (#272) — a distinct print target from #report-card. Only
+         active while body carries .print-trend (exportTrendPdf toggles it
+         immediately around window.print()). */
+      body.print-trend #report-card, body.print-trend #report-card * { visibility:hidden !important; }
+      body.print-trend #trend-report, body.print-trend #trend-report * { visibility:visible !important; }
+      body.print-trend .trend-report {
+        display:block !important; position:absolute; left:0; top:0; width:100%; max-width:none;
+        margin:0; padding:12px; background:#fff !important; color:#000 !important;
+      }
+      body.print-trend .trend-table, body.print-trend .trend-table th, body.print-trend .trend-table td {
+        border:1px solid #ccc !important; border-collapse:collapse; padding:6px 10px; color:#111 !important;
+      }
+      body.print-trend .trend-report-empty { color:#000 !important; }
     }
     /* ── Ideal profile (PRD 05) ──────────────────────────────────────── */
     #ideal-profile-wrap { display:none; align-items:center; gap:8px; margin-left:14px; flex-shrink:0; }

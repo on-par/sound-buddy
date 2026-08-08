@@ -13,6 +13,8 @@ import { useLiveCaptureStore } from './stores/liveCaptureStore';
 import { useAnalysisStore } from './stores/analysisStore';
 import { spectrumTransport } from './spectrum-transport';
 import { switchMode } from './mode-switch';
+import { iconSvg } from './report-card';
+import { buildTrendReportRows, trendReportHtml, MIN_TREND_ENTRIES } from './trend-export';
 import type { AnalysisSummary } from '../../electron/ipc/api';
 
 interface LiveCaptureRunningApi {
@@ -54,14 +56,45 @@ export function loadHistoryEntry(summary: AnalysisSummary, prevSummary: Analysis
   switchMode('reportcard');
 }
 
+// Writes the trend PDF's HTML into the always-present, normally-hidden
+// #trend-report node, toggles body.print-trend so the print CSS swaps which
+// of #report-card/#trend-report is visible, then triggers the browser print
+// dialog — a second, distinct export action from the report card's own
+// #reportcard-print-btn (#272).
+export function exportTrendPdf(summaries: AnalysisSummary[]): void {
+  const container = document.getElementById('trend-report');
+  if (!container) return;
+  container.innerHTML = trendReportHtml(buildTrendReportRows(summaries));
+  document.body.classList.add('print-trend');
+  window.print(); // blocks until the print dialog closes (same assumption reportcard-print-btn's window.print() call relies on)
+  document.body.classList.remove('print-trend');
+}
+
 // Pure render of the fetched list — split out from the default export so
 // it's directly testable via renderToString against an explicit
 // `summaries` array, without needing the fetch effect (no jsdom) to run.
 export function RecentServicesList({ summaries }: { summaries: AnalysisSummary[] }): JSX.Element {
   const hasSummaries = summaries.length > 0;
+  const hasTrendHistory = summaries.length >= MIN_TREND_ENTRIES;
   return (
     <>
-      <span className="section-label">Recent Services</span>
+      <div className="rs-head">
+        <span className="section-label">Recent Services</span>
+        <button
+          type="button"
+          className="btn btn-secondary sm"
+          id="recent-trend-export-btn"
+          disabled={!hasTrendHistory}
+          dangerouslySetInnerHTML={{ __html: iconSvg('download', 16) + 'Export trend PDF' }}
+          /* c8 ignore next -- click dispatch, no jsdom, mirrors reportcard-print-btn */
+          onClick={() => exportTrendPdf(summaries)}
+        />
+      </div>
+      {!hasTrendHistory && (
+        <p className="dz-hint" id="trend-export-hint">
+          Export trend PDF needs at least 2 services in your history — analyze one more to unlock it.
+        </p>
+      )}
       <div className="dir-list" id="recent-list">
         {summaries.map((s, i) => (
           <div

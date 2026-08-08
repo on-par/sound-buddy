@@ -4,7 +4,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { createElement } from 'react';
 import { renderToString } from 'react-dom/server';
-import RecentServicesPanel, { RecentServicesList, loadHistoryEntry } from './RecentServicesPanel';
+import RecentServicesPanel, { RecentServicesList, loadHistoryEntry, exportTrendPdf } from './RecentServicesPanel';
 import { useAnalysisStore } from './stores/analysisStore';
 import { useLiveCaptureStore } from './stores/liveCaptureStore';
 import { spectrumTransport } from './spectrum-transport';
@@ -42,11 +42,13 @@ function makeClassList() {
   };
 }
 function makeFakeElement() {
-  return { style: { display: '' } as Record<string, string>, textContent: '', classList: makeClassList() };
+  return { style: { display: '' } as Record<string, string>, textContent: '', innerHTML: '', classList: makeClassList() };
 }
 
 let elements: Record<string, ReturnType<typeof makeFakeElement>>;
 let liveIsRunning: ReturnType<typeof vi.fn>;
+let fakeBody: { classList: ReturnType<typeof makeClassList> };
+let printSpy: ReturnType<typeof vi.fn>;
 
 beforeEach(() => {
   elements = {
@@ -55,18 +57,22 @@ beforeEach(() => {
     'reportcard-view': makeFakeElement(),
     'spectrum-title': makeFakeElement(),
     'live-eq-pane': makeFakeElement(),
+    'trend-report': makeFakeElement(),
   };
   liveIsRunning = vi.fn(() => false);
+  fakeBody = { classList: makeClassList() };
   (globalThis as { document?: unknown }).document = {
     getElementById: (id: string) => elements[id] ?? null,
     querySelectorAll: () => [],
-    body: { classList: makeClassList() },
+    body: fakeBody,
   };
+  printSpy = vi.fn();
   (globalThis as { window?: unknown }).window = {
     liveCapture: { isRunning: liveIsRunning },
     soundBuddy: createMockSoundBuddy().api,
     singleColumnState: { isSingleColumn: () => false },
     reportFirstUxState: { isEnabled: () => false },
+    print: printSpy,
   };
 });
 
@@ -120,6 +126,48 @@ describe('RecentServicesList', () => {
     const html = renderList([SUMMARY_A, SUMMARY_B]);
     expect(html).toContain('recent-note');
     expect(html).toContain('check bass');
+  });
+
+  it('disables the trend export button and shows the hint with fewer than 2 summaries', () => {
+    const html = renderList([SUMMARY_A]);
+    expect(html).toMatch(/id="recent-trend-export-btn"[^>]*disabled=""/);
+    expect(html).toContain('id="trend-export-hint"');
+  });
+
+  it('disables the trend export button and shows the hint with zero summaries', () => {
+    const html = renderList([]);
+    expect(html).toMatch(/id="recent-trend-export-btn"[^>]*disabled=""/);
+    expect(html).toContain('id="trend-export-hint"');
+  });
+
+  it('enables the trend export button and hides the hint with 2+ summaries', () => {
+    const html = renderList([SUMMARY_A, SUMMARY_B]);
+    expect(html).toMatch(/id="recent-trend-export-btn"(?![^>]*disabled)[^>]*>/);
+    expect(html).not.toContain('id="trend-export-hint"');
+  });
+});
+
+describe('exportTrendPdf', () => {
+  it('writes the trend table into #trend-report and toggles print-trend around window.print()', () => {
+    printSpy.mockImplementation(() => {
+      expect(fakeBody.classList.contains('print-trend')).toBe(true);
+    });
+    exportTrendPdf([SUMMARY_A, SUMMARY_B]);
+    expect(elements['trend-report'].innerHTML).toContain('<table');
+    expect(printSpy).toHaveBeenCalledTimes(1);
+    expect(fakeBody.classList.contains('print-trend')).toBe(false);
+  });
+
+  it('still writes the "not enough history" message and prints without crashing with fewer than 2 summaries', () => {
+    exportTrendPdf([SUMMARY_A]);
+    expect(elements['trend-report'].innerHTML).toContain('Not enough history yet');
+    expect(printSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('does nothing when #trend-report is missing from the DOM', () => {
+    delete elements['trend-report'];
+    expect(() => exportTrendPdf([SUMMARY_A, SUMMARY_B])).not.toThrow();
+    expect(printSpy).not.toHaveBeenCalled();
   });
 });
 
