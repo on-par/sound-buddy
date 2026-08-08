@@ -223,9 +223,17 @@ export default function App() {
       {createPortal(<LicensePanel />, document.getElementById('license-island')!)}
       {createPortal(<SettingsPanel />, document.getElementById('settings-island')!)}
       {createPortal(<CurveEditorDialog />, document.getElementById('curve-editor-island')!)}
-      {createPortal(<FeedbackDialog />, document.getElementById('feedback-dialog-island')!)}
-      {createPortal(<GradeOwnGuideDialog />, document.getElementById('guide-dialog-island')!)}
-      {createPortal(<PhaseDoublingDialog />, document.getElementById('phase-doubling-dialog-island')!)}
+      {/* FeedbackDialog/GradeOwnGuideDialog/PhaseDoublingDialog read
+          window.feedbackForm/gradeOwnState/phaseDoublingState (BOOT_SCRIPTS
+          helpers) during render, so — like OnboardingDialog — they can't
+          render before `booted`: on the very first render those globals
+          don't exist yet, throwing and taking down the whole tree (#704
+          post-merge fix). Their portal targets are static index.html nodes
+          (unlike onboarding-island), but that only covers the DOM-target
+          half of the ordering requirement, not this one. */}
+      {booted && createPortal(<FeedbackDialog />, document.getElementById('feedback-dialog-island')!)}
+      {booted && createPortal(<GradeOwnGuideDialog />, document.getElementById('guide-dialog-island')!)}
+      {booted && createPortal(<PhaseDoublingDialog />, document.getElementById('phase-doubling-dialog-island')!)}
       {booted && createPortal(<OnboardingDialog />, document.getElementById('onboarding-island')!)}
       {booted && createPortal(<ReportCardIsland />, document.getElementById('report-card')!)}
       {booted && createPortal(<SpectrumPanel />, document.getElementById('spectrum-island')!)}
