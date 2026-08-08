@@ -80,6 +80,13 @@ export default function SettingsPanel() {
   const [weeklyReminderEnabled, setWeeklyReminderEnabled] = useState(false);
   const [weeklyReminderServiceDay, setWeeklyReminderServiceDay] = useState(0);
   const [gradingProfile, setGradingProfile] = useState<'casual' | 'broadcast'>('casual');
+  // Eagerly seeded from the store (like shareChurchName) rather than
+  // useState(false) — this is a status display + immediate-commit Revoke
+  // button, not a Save-gated form field, so it must reflect the persisted
+  // value on first render, not just after the dialog-open effect re-syncs it.
+  const [consoleNetworkConsentGranted, setConsoleNetworkConsentGranted] = useState(
+    () => !!settings?.consoleNetworkConsentGranted
+  );
 
   /* c8 ignore start -- fetches the storage seed and app version on open;
      needs a real Electron bridge round-trip, exercised by settings.spec.ts.
@@ -98,6 +105,7 @@ export default function SettingsPanel() {
     setWeeklyReminderEnabled(!!settings?.weeklyReminderEnabled);
     setWeeklyReminderServiceDay(settings?.weeklyReminderServiceDay ?? 0);
     setGradingProfile(settings?.gradingProfile === 'broadcast' ? 'broadcast' : 'casual');
+    setConsoleNetworkConsentGranted(!!settings?.consoleNetworkConsentGranted);
     let cancelled = false;
     void (async () => {
       const storageSeed = await loadStorageSeed(api);
@@ -350,6 +358,27 @@ export default function SettingsPanel() {
           </label>
           <p className="ai-dialog-note" id="share-church-name-note">
             Optional. Leave blank (default) and shared images contain no identifying information.
+          </p>
+          <div className="ai-enable-row" id="console-network-consent-row">
+            <span>Console network access: {consoleNetworkConsentGranted ? 'Granted' : 'Not granted'}</span>
+            {consoleNetworkConsentGranted && (
+              <button
+                type="button"
+                id="console-network-consent-revoke-btn"
+                className="btn btn-secondary sm"
+                onClick={() => {
+                  setConsoleNetworkConsentGranted(false);
+                  void useSettingsStore.getState().updateSettings({ consoleNetworkConsentGranted: false });
+                }}
+              >
+                Revoke access
+              </button>
+            )}
+          </div>
+          <p className="ai-dialog-note" id="console-network-consent-note">
+            Granted only when you explicitly allow it from the prompt shown the first time a live-console
+            feature is turned on — there is no toggle here to turn it on. Revoking takes effect immediately
+            and blocks further console reads until you grant it again.
           </p>
         </div>
         <div className="settings-pane" id="settings-pane-about" style={{ display: section === 'about' ? 'flex' : 'none' }}>

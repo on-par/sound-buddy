@@ -51,6 +51,7 @@ const DEFAULT_APP_SETTINGS: AppSettings = {
   secondaryMeasurementEnabled: false,
   measurementDeviceName: '',
   gradingProfile: 'casual',
+  consoleNetworkConsentGranted: false,
 };
 
 const DEFAULT_LICENSE_STATE: LicenseState = { tier: 'free', status: 'none' };

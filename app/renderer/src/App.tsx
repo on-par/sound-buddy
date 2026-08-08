@@ -72,6 +72,7 @@ import RecentServicesPanel from './RecentServicesPanel';
 import BuildGuidePanel from './BuildGuidePanel';
 import RingoutPanel from './RingoutPanel';
 import LicenseChrome from './LicenseChrome';
+import ConsoleNetworkConsentDialog from './ConsoleNetworkConsentDialog';
 import UpdateBanner from './UpdateBanner';
 import OnboardingDialog from './OnboardingDialog';
 import { useOnboardingStore } from './stores/onboardingStore';
@@ -251,6 +252,7 @@ export default function App() {
       {booted && createPortal(<BuildGuidePanel />, document.getElementById('tab-guide')!)}
       {booted && createPortal(<RingoutPanel />, document.getElementById('tab-ringout')!)}
       {booted && <LicenseChrome />}
+      {booted && <ConsoleNetworkConsentDialog />}
       {booted && createPortal(<UpdateBanner />, document.getElementById('update-banner-island')!)}
     </>
   );

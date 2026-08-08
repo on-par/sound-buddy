@@ -51,6 +51,7 @@ const DEFAULTS: AppSettings = {
   secondaryMeasurementEnabled: false,
   measurementDeviceName: '',
   gradingProfile: 'casual',
+  consoleNetworkConsentGranted: false,
 };
 
 function settingsPath(): string {
@@ -202,6 +203,7 @@ function writeSettingsFile(file: Partial<AppSettings>): void {
     secondaryMeasurementEnabled: file.secondaryMeasurementEnabled ?? DEFAULTS.secondaryMeasurementEnabled,
     measurementDeviceName: fileMeasurementDeviceName(file),
     gradingProfile: fileGradingProfile(file),
+    consoleNetworkConsentGranted: file.consoleNetworkConsentGranted ?? DEFAULTS.consoleNetworkConsentGranted,
   };
   try {
     fs.writeFileSync(settingsPath(), JSON.stringify(persisted, null, 2));
@@ -275,6 +277,10 @@ export function getSettings(): AppSettings {
     measurementDeviceName: fileMeasurementDeviceName(file),
     // No env layer — pure persisted preference, like measurementDeviceName.
     gradingProfile: fileGradingProfile(file),
+    // No env layer — granting Tier 2 console-network access (#378) must be an
+    // explicit user action via the consent modal, same rationale as
+    // `dawWorkspaceEnabled`.
+    consoleNetworkConsentGranted: file.consoleNetworkConsentGranted ?? DEFAULTS.consoleNetworkConsentGranted,
   };
 }
 

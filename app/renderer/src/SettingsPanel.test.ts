@@ -31,7 +31,7 @@ describe('saveAll', () => {
           usageSignalEnabled: false, channelLabels: {}, channelGroups: {}, inputInstrumentProfiles: {},
           crashReportingEnabled: false, dawWorkspaceEnabled: false, liveAdjustmentsEnabled: false,
           reportFirstUxEnabled: false, shareChurchName: '', weeklyReminderEnabled: false, weeklyReminderServiceDay: 0,
-          liveEqPaneWidth: 360, secondaryMeasurementEnabled: false, measurementDeviceName: '', gradingProfile: 'casual',
+          liveEqPaneWidth: 360, secondaryMeasurementEnabled: false, measurementDeviceName: '', gradingProfile: 'casual', consoleNetworkConsentGranted: false,
         };
       },
     });
@@ -115,6 +115,50 @@ describe('SettingsPanel markup', () => {
   });
 });
 
+describe('console network consent status (#378)', () => {
+  it('renders "Not granted" and no Revoke button by default (no persisted settings)', () => {
+    const html = renderMarkup();
+    expect(html).toContain('id="console-network-consent-row"');
+    expect(html).toContain('Not granted');
+    expect(html).not.toContain('id="console-network-consent-revoke-btn"');
+  });
+
+  it('renders "Not granted" and no Revoke button when consent is not granted', () => {
+    useSettingsStore.setState({ settings: { consoleNetworkConsentGranted: false } as unknown as AppSettings });
+    const html = renderMarkup();
+    expect(html).toContain('Not granted');
+    expect(html).not.toContain('id="console-network-consent-revoke-btn"');
+  });
+
+  it('renders "Granted" and the Revoke button when consent is granted', () => {
+    useSettingsStore.setState({ settings: { consoleNetworkConsentGranted: true } as unknown as AppSettings });
+    const html = renderMarkup();
+    expect(html).toContain('Granted');
+    expect(html).toContain('id="console-network-consent-revoke-btn"');
+    expect(html).toContain('Revoke access');
+  });
+
+  it('has no checkbox capable of granting access — only a revoke button', () => {
+    useSettingsStore.setState({ settings: { consoleNetworkConsentGranted: true } as unknown as AppSettings });
+    const html = renderMarkup();
+    expect(html).not.toMatch(/id="console-network-consent[^"]*"[^>]*type="checkbox"/);
+  });
+
+  // Revoke commits immediately via updateSettings — not gated behind the
+  // Save button — the same "not gated behind Save" discipline
+  // commitShareChurchName uses, because a security revoke should never be
+  // lost by a user who clicks it then closes the dialog with Cancel. Click
+  // dispatch itself needs jsdom (not available in this harness, per the
+  // file's existing convention for other buttons), so this asserts the
+  // wiring exists in source, same pattern the storage-toggle-seeding test
+  // below uses against SettingsPanel.tsx.
+  it('the Revoke button commits consoleNetworkConsentGranted:false immediately via updateSettings', () => {
+    const src = fs.readFileSync(fileURLToPath(new URL('./SettingsPanel.tsx', import.meta.url)), 'utf8');
+    expect(src).toContain('id="console-network-consent-revoke-btn"');
+    expect(src).toContain("updateSettings({ consoleNetworkConsentGranted: false })");
+  });
+});
+
 describe('commitShareChurchName', () => {
   it('persists the church name via settingsStore.updateSettings', async () => {
     const mock = createMockSoundBuddy();
@@ -152,6 +196,7 @@ describe('storage toggle seeding on dialog open (#522, #204)', () => {
     expect(src).toContain('setDawWorkspaceEnabled(!!settings?.dawWorkspaceEnabled)');
     expect(src).toContain('setLiveAdjustmentsEnabled(!!settings?.liveAdjustmentsEnabled)');
     expect(src).toContain("setGradingProfile(settings?.gradingProfile === 'broadcast' ? 'broadcast' : 'casual')");
+    expect(src).toContain('setConsoleNetworkConsentGranted(!!settings?.consoleNetworkConsentGranted)');
   });
 });
 
