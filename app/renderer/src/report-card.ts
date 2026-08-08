@@ -756,6 +756,7 @@ export interface SummaryGradingApi {
   computeScore(src: ReportCardSource): number;
   analyzeRecordingType(src: ReportCardSource): { label: string };
   computeRecommendations(src: ReportCardSource): string[];
+  getGradingProfile(): { label: string };
 }
 
 export const MAX_TOP_FIXES = 3;
@@ -767,6 +768,7 @@ export interface AnalysisSummaryInputShape {
   recordingType: string;
   topFixes: string[];
   source: AnalysisSummarySource;
+  gradingProfileLabel: string;
 }
 
 export function buildAnalysisSummaryInput(
@@ -781,6 +783,7 @@ export function buildAnalysisSummaryInput(
     recordingType: grading.analyzeRecordingType(src).label,
     topFixes: grading.computeRecommendations(src).slice(0, MAX_TOP_FIXES),
     source,
+    gradingProfileLabel: grading.getGradingProfile().label,
   };
 }
 
