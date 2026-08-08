@@ -101,7 +101,7 @@ function settings(overrides: Partial<AppSettings> = {}): AppSettings {
     crashReportingEnabled: false, dawWorkspaceEnabled: false, liveAdjustmentsEnabled: false,
     reportFirstUxEnabled: false, shareChurchName: '', weeklyReminderEnabled: false,
     weeklyReminderServiceDay: 0, liveEqPaneWidth: 360, secondaryMeasurementEnabled: false,
-    measurementDeviceName: '', gradingProfile: 'casual',
+    measurementDeviceName: '', gradingProfile: 'casual', consoleNetworkConsentGranted: false,
     ...overrides,
   };
 }

@@ -262,6 +262,28 @@ describe('dawWorkspaceEnabled (#516 — experimental DAW workspace, default off)
   });
 });
 
+describe('consoleNetworkConsentGranted (#378 — Tier 2 consent gate, default off)', () => {
+  it('defaults to false when settings.json is absent', () => {
+    expect(getSettings().consoleNetworkConsentGranted).toBe(false);
+  });
+
+  it('defaults to false when the file exists without the key', () => {
+    writeFile({ idealProfile: '' });
+    expect(getSettings().consoleNetworkConsentGranted).toBe(false);
+  });
+
+  it('flips on and back off, persisting each value to the raw file and surviving a fresh read', () => {
+    const on = updateSettings({ consoleNetworkConsentGranted: true });
+    expect(on.consoleNetworkConsentGranted).toBe(true);
+    expect(readFile().consoleNetworkConsentGranted).toBe(true);
+    expect(getSettings().consoleNetworkConsentGranted).toBe(true);
+
+    const off = updateSettings({ consoleNetworkConsentGranted: false });
+    expect(off.consoleNetworkConsentGranted).toBe(false);
+    expect(readFile().consoleNetworkConsentGranted).toBe(false);
+  });
+});
+
 describe('liveAdjustmentsEnabled (#522 — experimental live adjustments, default off)', () => {
   it('defaults to false when settings.json is absent', () => {
     expect(getSettings().liveAdjustmentsEnabled).toBe(false);

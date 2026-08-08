@@ -282,6 +282,12 @@ export function registerSettingsHandlers(): void {
       if (patch.gradingProfile === 'casual' || patch.gradingProfile === 'broadcast') {
         clean.gradingProfile = patch.gradingProfile;
       }
+      // Tier 2 (console-network) consent (#378) — can only be driven to true by
+      // the renderer's consent-modal grant() action; Settings only ever sends
+      // false (revoke).
+      if (typeof patch.consoleNetworkConsentGranted === 'boolean') {
+        clean.consoleNetworkConsentGranted = patch.consoleNetworkConsentGranted;
+      }
     }
     const result = updateSettings(clean);
     // Opting out of telemetry (#474) clears the pending queue and the

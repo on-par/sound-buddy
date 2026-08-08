@@ -525,8 +525,35 @@ describe('update-settings IPC whitelist — gradingProfile (#266)', () => {
       };
       expect(result.gradingProfile).toBe('casual');
       expect(readFile().gradingProfile).toBe('casual');
-    },
+    }
   );
+});
+
+describe('update-settings IPC whitelist — consoleNetworkConsentGranted (#378)', () => {
+  it('accepts a boolean and persists it', async () => {
+    const handler = handlers.get('update-settings');
+    const result = (await handler!(null, { consoleNetworkConsentGranted: true })) as {
+      consoleNetworkConsentGranted: boolean;
+    };
+    expect(result.consoleNetworkConsentGranted).toBe(true);
+    expect(readFile().consoleNetworkConsentGranted).toBe(true);
+  });
+
+  it('ignores a string value, leaving the setting at its default', async () => {
+    const handler = handlers.get('update-settings');
+    const result = (await handler!(null, { consoleNetworkConsentGranted: 'true' })) as {
+      consoleNetworkConsentGranted: boolean;
+    };
+    expect(result.consoleNetworkConsentGranted).toBe(false);
+  });
+
+  it('ignores a number value, leaving the setting at its default', async () => {
+    const handler = handlers.get('update-settings');
+    const result = (await handler!(null, { consoleNetworkConsentGranted: 1 })) as {
+      consoleNetworkConsentGranted: boolean;
+    };
+    expect(result.consoleNetworkConsentGranted).toBe(false);
+  });
 });
 
 describe('sanitizeShareChurchName (#265)', () => {

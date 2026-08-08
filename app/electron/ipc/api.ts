@@ -44,6 +44,7 @@ export interface UpdateSettingsPatch {
   secondaryMeasurementEnabled?: boolean;
   measurementDeviceName?: string;
   gradingProfile?: 'casual' | 'broadcast';
+  consoleNetworkConsentGranted?: boolean;
 }
 
 export interface AnalyzeFileOpts {
@@ -344,6 +345,15 @@ export interface AppSettings {
    * measurementDeviceName.
    */
   gradingProfile: 'casual' | 'broadcast';
+  /**
+   * Tier 2 (console-network / OSC-UDP) consent (#378). Default false (off).
+   * Can only ever be set to `true` by the first-run
+   * ConsoleNetworkConsentDialog's explicit "Allow" click — Settings may only
+   * ever set it back to `false` (revoke). No env layer: granting console
+   * network access must be an explicit user action, same rationale as
+   * `dawWorkspaceEnabled`.
+   */
+  consoleNetworkConsentGranted: boolean;
 }
 
 // ─── Analysis / storage DTOs (AnalysisSummary moved from electron/storage.ts) ─
