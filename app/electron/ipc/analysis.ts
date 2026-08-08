@@ -189,6 +189,11 @@ export function registerAnalysisHandlers(): void {
         // byte-identical to today's — only a live-capture session payload
         // adds the key.
         ...(payload?.source === 'live' ? { source: 'live' as const } : {}),
+        // Same spread-omit for gradingProfileLabel (#266): only a payload
+        // that actually carries the active profile's label adds the key, so
+        // a caller (or an older renderer build) that doesn't supply one
+        // writes a byte-identical record to today's.
+        ...(payload?.gradingProfileLabel ? { gradingProfileLabel: String(payload.gradingProfileLabel) } : {}),
       };
       const file = await saveAnalysisSummary(historyDir(), summary);
       log(`saved analysis summary: ${file}`);

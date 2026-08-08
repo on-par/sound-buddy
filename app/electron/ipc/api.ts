@@ -365,6 +365,10 @@ export interface AnalysisSummary {
    *  already-written history JSON files stay valid; readers treat a missing
    *  value as 'file'. */
   source?: 'file' | 'live';
+  /** Label of the grading-strictness profile active when this grade was
+   *  produced (#266), e.g. "Casual / volunteer" or "Broadcast-ready".
+   *  Optional so already-written history JSON files stay valid. */
+  gradingProfileLabel?: string;
 }
 
 /** The renderer submits everything but the server-stamped `date`. */
