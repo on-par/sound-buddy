@@ -27,22 +27,29 @@ import {
 } from './measurement-device-state';
 import { iconSvg } from './report-card';
 import type { LiveDevice } from './live-capture-panel';
-import type { LiveCaptureRuntime } from './LiveControls';
+import { runtime } from './LiveControls';
 
 const SECONDARY_RECONNECT_POLL_MS = 5000;
 
-function runtime(): LiveCaptureRuntime | undefined {
-  return window.liveCaptureRuntime;
+// Pure parsing step split out of secondaryCaptureOptsFromDom (#724 code
+// review) so the fallback-default/unit-conversion logic is directly
+// unit-testable without a DOM — only the two document.getElementById reads
+// below need the (untestable, no-jsdom) DOM wrapper.
+export function parseCaptureOpts(windowSecsValue: string | undefined, meterIntervalValue: string | undefined): StartCaptureOpts {
+  return {
+    windowSecs: parseFloat(windowSecsValue ?? '3'),
+    intervalSecs: parseInt(meterIntervalValue ?? '100', 10) / 1000,
+  };
 }
 
+/* c8 ignore start -- DOM reads, no jsdom in this harness; the fallback/parsing
+   logic itself is tested directly via parseCaptureOpts above. */
 export function secondaryCaptureOptsFromDom(): StartCaptureOpts {
   const windowSecsEl = document.getElementById('window-secs') as HTMLInputElement | null;
   const meterIntervalEl = document.getElementById('meter-interval') as HTMLInputElement | null;
-  return {
-    windowSecs: parseFloat(windowSecsEl?.value ?? '3'),
-    intervalSecs: parseInt(meterIntervalEl?.value ?? '100', 10) / 1000,
-  };
+  return parseCaptureOpts(windowSecsEl?.value, meterIntervalEl?.value);
 }
+/* c8 ignore stop */
 
 export async function selectSecondaryDevice(
   value: string,

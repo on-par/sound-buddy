@@ -83,7 +83,10 @@ declare global {
   }
 }
 
-function runtime(): LiveCaptureRuntime | undefined {
+// Exported so other React-owned islands reading window.liveCaptureRuntime
+// (e.g. SecondaryMeasurementPanel.tsx, #724) share this one lookup instead of
+// duplicating it.
+export function runtime(): LiveCaptureRuntime | undefined {
   return window.liveCaptureRuntime;
 }
 
