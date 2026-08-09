@@ -863,6 +863,39 @@ describe('createLiveCaptureStore', () => {
 
       expect(store.getState().lastMeasurementChannels).toBeNull();
     });
+
+    it('pollSecondaryReconnect restarts the stream and returns true when the remembered device reappears', async () => {
+      const startMeasurement = vi.fn().mockResolvedValue({ success: true });
+      const listDevices = vi.fn().mockResolvedValue({ success: true, devices: SECONDARY_DEVICES });
+      const { store } = makeStore({ startMeasurement, listDevices });
+      store.setState({
+        devices: [],
+        secondaryMeasurement: { status: 'disconnected', deviceName: 'USB Measurement Mic' },
+      });
+
+      const restarted = await store.getState().pollSecondaryReconnect({ windowSecs: 5, intervalSecs: 0.1 });
+
+      expect(restarted).toBe(true);
+      expect(startMeasurement).toHaveBeenCalledWith({ device: '2', windowSecs: 5, intervalSecs: 0.1 });
+      expect(store.getState().secondaryMeasurement.status).toBe('active');
+      expect(store.getState().devices).toEqual(SECONDARY_DEVICES);
+    });
+
+    it('pollSecondaryReconnect returns false and makes no startMeasurement call when the remembered device is still absent', async () => {
+      const startMeasurement = vi.fn();
+      const listDevices = vi.fn().mockResolvedValue({ success: true, devices: [] });
+      const { store } = makeStore({ startMeasurement, listDevices });
+      store.setState({
+        devices: [],
+        secondaryMeasurement: { status: 'disconnected', deviceName: 'USB Measurement Mic' },
+      });
+
+      const restarted = await store.getState().pollSecondaryReconnect({ windowSecs: 5, intervalSecs: 0.1 });
+
+      expect(restarted).toBe(false);
+      expect(startMeasurement).not.toHaveBeenCalled();
+      expect(store.getState().secondaryMeasurement.status).toBe('disconnected');
+    });
   });
 
   it('binds the default hook to the window preload bridge', async () => {

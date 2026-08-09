@@ -1400,10 +1400,6 @@ async function loadDevices() {
   // once devices were actually found (mirrors the original early returns that
   // skipped this on every non-happy branch).
   if (lcStore.getState().devices.length) resetChannelConfig();
-
-  // #460: keep the experimental secondary-device picker in sync with the fresh
-  // device list (no-op DOM write when the flag is off, block is hidden).
-  if (secondaryFlagOn()) populateSecondaryDevicePicker();
 }
 
 // Bridged runtime powering LiveControls.tsx's device/measurement-source/mode/
@@ -1441,6 +1437,7 @@ window.liveCaptureRuntime = {
   onCaptureStopping,
   onCaptureStopped,
   promoteToRecording,
+  afterSecondaryMeasurementChange: afterSecondaryStateChange,
 };
 
 // Bridged runtime powering LiveWorkspace.tsx's #live-island repaint timing
@@ -1935,15 +1932,16 @@ sb.onLiveEvent((data) => {
 /* ══ Secondary measurement device (#460, ADR 0003) ══
    Experimental, default-off room-mic source metered on a SECOND stream.py
    process, fully independent of the board capture. All decision logic lives in
-   the pure window.measurementDeviceState module; this block is the DOM +
-   lifecycle glue. With the flag off, secondaryMeasurementActive() is always
-   false and roomFeed()/secondaryRoomOverride() return the board values
-   unchanged, so the app renders byte-identically to today (the #602 parity
-   guard). When active, the secondary mic owns the Room everywhere: badge,
-   room stats, the graded live report-card source, AND the EQ pane's Room
-   slot (the once-deferred visual swap — see secondaryRoomOverride below). */
-const SECONDARY_RECONNECT_POLL_MS = 5000;
-let secondaryReconnectTimer = null;
+   the pure window.measurementDeviceState module. With the flag off,
+   secondaryMeasurementActive() is always false and roomFeed()/
+   secondaryRoomOverride() return the board values unchanged, so the app
+   renders byte-identically to today (the #602 parity guard). When active, the
+   secondary mic owns the Room everywhere: badge, room stats, the graded live
+   report-card source, AND the EQ pane's Room slot (the once-deferred visual
+   swap — see secondaryRoomOverride below). The device picker, status/warning
+   text, and the reconnect-poll scheduling are now React-owned
+   (SecondaryMeasurementPanel.tsx, #724) — this block keeps only the
+   still-imperative Room-consumer glue. */
 
 // Is a secondary room mic actively measuring (selected, streaming, has data)?
 function secondaryMeasurementActive() {
@@ -1980,140 +1978,25 @@ function secondaryRoomOverride() {
   );
 }
 
-// Whether the experimental flag is on (drives the block's visibility + gating).
-function secondaryFlagOn() {
-  const s = setStore.getState().settings;
-  return !!(s && s.secondaryMeasurementEnabled);
-}
-
-// windowSecs/intervalSecs the measurement stream reuses from the board inputs.
-function secondaryCaptureOpts() {
-  return {
-    windowSecs: parseFloat(document.getElementById('window-secs').value),
-    intervalSecs: parseInt(document.getElementById('meter-interval').value, 10) / 1000,
-  };
-}
-
-function renderSecondaryStatus() {
-  const statusEl = document.getElementById('secondary-measurement-status');
-  const warnEl = document.getElementById('secondary-measurement-warning');
-  if (!statusEl || !warnEl) return;
-  const st = lcStore.getState().secondaryMeasurement;
-  statusEl.innerHTML = window.measurementDeviceState.secondaryStatusHTML(st);
-  // The time-alignment warning is permanent whenever a source is selected.
-  const showWarn = st.deviceName !== '' && st.status !== 'off';
-  warnEl.innerHTML = showWarn ? window.measurementDeviceState.alignmentWarningHTML() : '';
-}
-
-function populateSecondaryDevicePicker() {
-  const sel = document.getElementById('secondary-measurement-device');
-  if (!sel) return;
-  sel.innerHTML = window.measurementDeviceState.secondaryDeviceOptionsHTML(
-    liveDevices, lcStore.getState().secondaryMeasurement.deviceName);
-}
-
-function stopSecondaryReconnectPoll() {
-  if (secondaryReconnectTimer) {
-    clearInterval(secondaryReconnectTimer);
-    secondaryReconnectTimer = null;
-  }
-}
-
-// Poll for the remembered device to re-enumerate while disconnected; auto-resume
-// the stream the moment it reappears (the auto-resume AC). Runs only while the
-// flag is on and the state is 'disconnected'.
-function startSecondaryReconnectPoll() {
-  if (secondaryReconnectTimer) return;
-  secondaryReconnectTimer = setInterval(async () => {
-    if (!secondaryFlagOn() || lcStore.getState().secondaryMeasurement.status !== 'disconnected') {
-      stopSecondaryReconnectPoll();
-      return;
-    }
-    const view = deviceListView(await sb.listDevices());
-    liveDevices = view.devices;
-    // Sync the store's device list to this fresh enumeration so the restart
-    // below resolves the preferred name to its CURRENT index — a device that
-    // reappears at a different index must not be started with a stale one.
-    // setState (not loadDevices) so the board's channelConfig isn't reset.
-    lcStore.setState({ devices: view.devices });
-    const decision = window.measurementDeviceState.reconnectDecision(
-      lcStore.getState().secondaryMeasurement, view.devices);
-    if (decision.shouldRestart) {
-      stopSecondaryReconnectPoll();
-      await lcStore.getState().startSecondaryMeasurement(secondaryCaptureOpts());
-      afterSecondaryStateChange();
-    }
-  }, SECONDARY_RECONNECT_POLL_MS);
-}
-
-// Repaint the Room consumers and manage the reconnect poll after any secondary
-// state change (picker change, start result, disconnect, reconnect).
+// Repaint the still-imperative Room badge/EQ-pane slot after a secondary
+// state change (device selection/start/stop/reconnect). Status text/
+// warning and the reconnect-poll scheduling are now React-owned
+// (SecondaryMeasurementPanel.tsx, #724), reading directly off the store —
+// exposed to it via window.liveCaptureRuntime.afterSecondaryMeasurementChange.
 function afterSecondaryStateChange() {
-  renderSecondaryStatus();
   renderMeasurementBadge();
-  // The graded report-card source itself is kept in sync reactively by
-  // bridge.ts's cross-store subscription (it watches secondaryWindows/
-  // secondaryMeasurement alongside the board fields) — no explicit call here.
   renderEqPane(currentEqPaneChannels());
-  if (lcStore.getState().secondaryMeasurement.status === 'disconnected' && secondaryFlagOn()) {
-    startSecondaryReconnectPoll();
-  } else {
-    stopSecondaryReconnectPoll();
-  }
 }
-
-// Gate the block's visibility, seed the persisted preference, and refresh the
-// picker/status whenever settings load or change. Called from the settings
-// subscription and at boot.
-function applySecondaryMeasurementSettings(settings) {
-  const block = document.getElementById('secondary-measurement-block');
-  const on = !!(settings && settings.secondaryMeasurementEnabled);
-  if (block) block.style.display = on ? '' : 'none';
-  // Seed the store's preference from persisted settings without re-persisting —
-  // only while idle, so a live selection is never stomped by an unrelated save.
-  const name = (settings && settings.measurementDeviceName) || '';
-  const cur = lcStore.getState().secondaryMeasurement;
-  if (cur.status === 'off' && cur.deviceName !== name) {
-    lcStore.setState({ secondaryMeasurement: { status: 'off', deviceName: name } });
-  }
-  if (on) {
-    populateSecondaryDevicePicker();
-    renderSecondaryStatus();
-  } else {
-    stopSecondaryReconnectPoll();
-  }
-}
-
-// Picker change: '' stops the stream and clears the preference; a device sets
-// the preference by name and starts the stream. Blocked/disconnected states are
-// surfaced (never a silent fallback), and the board capture is never touched.
-(function initSecondaryMeasurementPicker() {
-  const sel = document.getElementById('secondary-measurement-device');
-  if (!sel) return;
-  sel.addEventListener('change', async (e) => {
-    const value = e.target.value;
-    const st = lcStore.getState();
-    if (value === '') {
-      await st.stopSecondaryMeasurement();
-      lcStore.getState().setSecondaryDeviceName('');
-      stopSecondaryReconnectPoll();
-    } else {
-      const dev = liveDevices.find((d) => String(d.index) === value);
-      lcStore.getState().setSecondaryDeviceName(dev ? dev.name : '');
-      await lcStore.getState().startSecondaryMeasurement(secondaryCaptureOpts());
-    }
-    afterSecondaryStateChange();
-  });
-})();
 
 // Bind the store's measurement-event folding, then a thin repaint handler on
 // the same channel (registered after the store so state is already updated).
 lcStore.getState().bindMeasurementEvents();
 sb.onMeasurementEvent((data) => {
   if (!data) return;
-  // A disconnect (or any status-carrying event) repaints + (re)starts the poll.
+  // A disconnect (or any status-carrying event) repaints the badge/EQ pane —
+  // status text/reconnect scheduling are React-owned now (#724).
   if (data.measurementEnded) { afterSecondaryStateChange(); return; }
-  if (!secondaryMeasurementActive()) { renderSecondaryStatus(); return; }
+  if (!secondaryMeasurementActive()) return;
   // Active: the secondary mic owns the Room. Update the room stats every tick;
   // refresh the badge on every tick too. The graded report-card source updates
   // itself reactively (bridge.ts's cross-store subscription reacts to
@@ -2369,11 +2252,6 @@ window.inlineDialogs = { openFeedbackRingout, saveMixAsTarget, openBuildGuide };
     if (nowEnabled !== liveAdjustmentsWasEnabled && lcStore.getState().appMode === 'live') window.modeSwitch.applySpectrumForMode('live');
     liveAdjustmentsWasEnabled = nowEnabled;
   });
-  // Experimental secondary measurement device gate (#460): show/hide the block
-  // and seed the persisted device preference on settings load and every change.
-  // Absent by default — with the flag off the block stays hidden and no second
-  // process is ever spawned.
-  setStore.subscribe((s) => applySecondaryMeasurementSettings(s.settings));
 })();
 
 /* ══ Init ══ */

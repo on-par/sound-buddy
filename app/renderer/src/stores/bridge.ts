@@ -161,6 +161,20 @@ export function installStoreBridge(
         getGradingForProfileSync().setGradingProfile(state.settings?.gradingProfile ?? 'casual');
       }
     });
+
+    // #460/#724: seed the secondary-device picker's remembered NAME from the
+    // persisted measurementDeviceName setting, only while idle ('off') so a
+    // live selection or an in-flight reconnect is never stomped by an
+    // unrelated settings save — mirrors inline-app.js's old
+    // applySecondaryMeasurementSettings seed step.
+    useSettingsStore.subscribe((state, prevState) => {
+      const name = state.settings?.measurementDeviceName ?? '';
+      if (name === (prevState.settings?.measurementDeviceName ?? '')) return;
+      const cur = useLiveCaptureStore.getState().secondaryMeasurement;
+      if (cur.status === 'off' && cur.deviceName !== name) {
+        useLiveCaptureStore.setState({ secondaryMeasurement: { status: 'off', deviceName: name } });
+      }
+    });
   }
 
   return stores;

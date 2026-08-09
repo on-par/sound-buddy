@@ -114,34 +114,33 @@ describe('Docked live EQ pane markup (#668)', () => {
   });
 });
 
-describe('Secondary measurement device source (#460)', () => {
-  it('has the block, device picker, status line, and warning container', () => {
-    expect(markup).toContain('id="secondary-measurement-block"');
-    expect(markup).toContain('id="secondary-measurement-device"');
-    expect(markup).toContain('id="secondary-measurement-status"');
-    expect(markup).toContain('id="secondary-measurement-warning"');
-  });
-
-  it('starts hidden — inline-app.js shows it only when the flag is on', () => {
-    expect(markup).toMatch(/id="secondary-measurement-block"[^>]*style="display:none"/);
-  });
-
-  it('sits directly after the live-controls island (device picker/measurement-source/mode/record-folder, React-owned per TD-001 slice 6c, #701)', () => {
+describe('Secondary measurement device source (#460, React-owned per #724)', () => {
+  it('has the empty island, sitting directly after the live-controls island (device picker/measurement-source/mode/record-folder, React-owned per TD-001 slice 6c, #701)', () => {
     const islandIdx = markup.indexOf('id="live-controls-island"');
-    const secondaryIdx = markup.indexOf('id="secondary-measurement-block"');
+    const secondaryIdx = markup.indexOf('id="secondary-measurement-island"');
     expect(islandIdx).toBeGreaterThan(-1);
     expect(secondaryIdx).toBeGreaterThan(islandIdx);
   });
 
-  it('inline-app.js gates the block on the secondaryMeasurementEnabled setting', () => {
-    expect(inlineApp).toContain('applySecondaryMeasurementSettings');
-    expect(inlineApp).toContain('secondaryMeasurementEnabled');
+  it('no longer carries the old static-markup block — it is React-owned now (SecondaryMeasurementPanel.tsx)', () => {
+    expect(markup).not.toContain('id="secondary-measurement-block"');
+    expect(markup).not.toContain('id="secondary-measurement-device"');
+    expect(markup).not.toContain('id="secondary-measurement-status"');
+    expect(markup).not.toContain('id="secondary-measurement-warning"');
   });
 
-  it('inline-app.js routes the Room feed through roomFeed() and polls for reconnect', () => {
+  it('inline-app.js no longer defines the ported DOM-writer/lifecycle glue', () => {
+    expect(inlineApp).not.toContain('applySecondaryMeasurementSettings');
+    expect(inlineApp).not.toContain('initSecondaryMeasurementPicker');
+    expect(inlineApp).not.toContain('renderSecondaryStatus');
+    expect(inlineApp).not.toContain('populateSecondaryDevicePicker');
+    expect(inlineApp).not.toContain('SECONDARY_RECONNECT_POLL_MS');
+    expect(inlineApp).not.toContain('secondaryReconnectTimer');
+  });
+
+  it('inline-app.js still routes the Room feed through roomFeed(), and exposes afterSecondaryMeasurementChange to the React runtime', () => {
     expect(inlineApp).toContain('roomFeed()');
-    expect(inlineApp).toContain('startSecondaryMeasurement');
-    expect(inlineApp).toContain('SECONDARY_RECONNECT_POLL_MS');
+    expect(inlineApp).toContain('afterSecondaryMeasurementChange');
   });
 });
 

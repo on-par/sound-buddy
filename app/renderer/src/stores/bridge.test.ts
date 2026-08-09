@@ -62,7 +62,10 @@ afterEach(() => {
     idealProfile: null,
     isAutoProfile: false,
   });
-  useLiveCaptureStore.setState({ liveWindows: [], measurementSource: null, channelConfig: [] });
+  useLiveCaptureStore.setState({
+    liveWindows: [], measurementSource: null, channelConfig: [],
+    secondaryMeasurement: { status: 'off', deviceName: '' },
+  });
   useSceneDiffStore.setState({
     status: 'idle',
     scenePaths: [],
@@ -322,6 +325,40 @@ describe('installStoreBridge', () => {
 
     expect(grading.getGradingProfile().id).toBe('casual');
     expect(grading.CONFIG.rms.acceptableMin).toBe(-20);
+  });
+
+  it('#460/#724 — seeds liveCaptureStore.secondaryMeasurement.deviceName from persisted measurementDeviceName on first settings load, while idle', () => {
+    installStoreBridge({});
+
+    useSettingsStore.setState({ settings: { ...APP_SETTINGS, measurementDeviceName: 'USB Measurement Mic' } });
+
+    expect(useLiveCaptureStore.getState().secondaryMeasurement).toEqual({
+      status: 'off',
+      deviceName: 'USB Measurement Mic',
+    });
+  });
+
+  it('#460/#724 — does not overwrite deviceName while a live selection or reconnect is in flight (status !== off)', () => {
+    installStoreBridge({});
+    useSettingsStore.setState({ settings: APP_SETTINGS });
+    useLiveCaptureStore.setState({ secondaryMeasurement: { status: 'active', deviceName: 'USB Measurement Mic' } });
+
+    useSettingsStore.setState({ settings: { ...APP_SETTINGS, measurementDeviceName: 'Some Other Mic' } });
+
+    expect(useLiveCaptureStore.getState().secondaryMeasurement).toEqual({
+      status: 'active',
+      deviceName: 'USB Measurement Mic',
+    });
+  });
+
+  it('#460/#724 — a settings update that leaves measurementDeviceName unchanged is a no-op', () => {
+    installStoreBridge({});
+    useSettingsStore.setState({ settings: { ...APP_SETTINGS, measurementDeviceName: 'USB Measurement Mic' } });
+    const before = useLiveCaptureStore.getState().secondaryMeasurement;
+
+    useSettingsStore.setState({ settings: { ...APP_SETTINGS, measurementDeviceName: 'USB Measurement Mic', crashReportingEnabled: true } });
+
+    expect(useLiveCaptureStore.getState().secondaryMeasurement).toBe(before);
   });
 
   it('does not re-hydrate idealProfilesStore on a later settings update (only the null→non-null transition seeds it)', async () => {
