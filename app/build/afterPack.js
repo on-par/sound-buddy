@@ -268,36 +268,67 @@ function verifyTrimmedMediaLibs(binDir, libDir, shared) {
   if (!buildMachineFfmpeg) {
     throw new Error('afterPack: "ffmpeg" not found on build machine (brew install ffmpeg) — needed to synthesize verify-gate fixtures');
   }
-  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'sb-ffmpeg-fixtures-'));
+
+  // Run the verify-gate binaries from a plain tmp dir, NOT from inside the
+  // still-mid-build .app bundle. Once Contents/Info.plist exists, macOS treats
+  // the path as a real app bundle and applies bundle-scoped Gatekeeper/AMFI
+  // enforcement to anything executed from within it — an ad-hoc-signed helper
+  // that runs fine standalone can get rejected there, and on some macOS
+  // versions the resulting failure has been observed to make LaunchServices
+  // register-then-immediately-unregister the bundle (macOS "trashing" the
+  // in-progress .app out from under the running process, hanging the build
+  // indefinitely — seen 2026-08-08, no OS-side error surfaced to this script).
+  // Copying the exact same files outside any .app-shaped path sidesteps that
+  // enforcement while still verifying the byte-identical binaries/dylibs that
+  // ship in the bundle.
+  const verifyDir = fs.mkdtempSync(path.join(os.tmpdir(), 'sb-media-verify-'));
   try {
-    for (const format of shared.MEDIA_FIXTURE_FORMATS) {
-      const fixturePath = path.join(tmpDir, format.file);
-      execFileSync(buildMachineFfmpeg, ['-y', ...format.encodeArgs.slice(0, -1), fixturePath], { stdio: ['ignore', 'ignore', 'pipe'] });
-
-      const probeOut = execFileSync(
-        path.join(binDir, 'ffprobe'),
-        ['-v', 'error', '-show_entries', 'stream=codec_type', '-of', 'json', fixturePath],
-        { stdio: ['ignore', 'pipe', 'pipe'], encoding: 'utf8' },
-      );
-      if (!shared.hasAudioStream(probeOut)) {
-        throw new Error(`afterPack: bundled ffprobe found no audio stream in the ${format.name} fixture`);
-      }
-
-      // Byte output (raw PCM-in-WAV on stdout), not utf8 — capture as a Buffer.
-      const pcmOut = execFileSync(
-        path.join(binDir, 'ffmpeg'),
-        ['-v', 'error', '-i', fixturePath, '-f', 'wav', '-acodec', 'pcm_f32le', '-'],
-        { stdio: ['ignore', 'pipe', 'pipe'] },
-      );
-      if (pcmOut.length === 0) {
-        throw new Error(`afterPack: bundled ffmpeg produced no PCM output decoding the ${format.name} fixture`);
-      }
+    const verifyBin = path.join(verifyDir, 'bin');
+    const verifyLib = path.join(verifyDir, 'lib');
+    fs.mkdirSync(verifyBin, { recursive: true });
+    fs.mkdirSync(verifyLib, { recursive: true });
+    for (const tool of ['ffprobe', 'ffmpeg', 'sox']) {
+      const dest = path.join(verifyBin, tool);
+      fs.copyFileSync(path.join(binDir, tool), dest);
+      fs.chmodSync(dest, 0o755);
     }
-  } finally {
-    fs.rmSync(tmpDir, { recursive: true, force: true });
-  }
+    for (const libName of bundledLibNames) {
+      fs.copyFileSync(path.join(libDir, libName), path.join(verifyLib, libName));
+    }
 
-  sh(`"${path.join(binDir, 'sox')}" --version`);
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'sb-ffmpeg-fixtures-'));
+    try {
+      for (const format of shared.MEDIA_FIXTURE_FORMATS) {
+        const fixturePath = path.join(tmpDir, format.file);
+        execFileSync(buildMachineFfmpeg, ['-y', ...format.encodeArgs.slice(0, -1), fixturePath], { stdio: ['ignore', 'ignore', 'pipe'] });
+
+        const probeOut = execFileSync(
+          path.join(verifyBin, 'ffprobe'),
+          ['-v', 'error', '-show_entries', 'stream=codec_type', '-of', 'json', fixturePath],
+          { stdio: ['ignore', 'pipe', 'pipe'], encoding: 'utf8' },
+        );
+        if (!shared.hasAudioStream(probeOut)) {
+          throw new Error(`afterPack: bundled ffprobe found no audio stream in the ${format.name} fixture`);
+        }
+
+        // Byte output (raw PCM-in-WAV on stdout), not utf8 — capture as a Buffer.
+        const pcmOut = execFileSync(
+          path.join(verifyBin, 'ffmpeg'),
+          ['-v', 'error', '-i', fixturePath, '-f', 'wav', '-acodec', 'pcm_f32le', '-'],
+          { stdio: ['ignore', 'pipe', 'pipe'] },
+        );
+        if (pcmOut.length === 0) {
+          throw new Error(`afterPack: bundled ffmpeg produced no PCM output decoding the ${format.name} fixture`);
+        }
+      }
+    } finally {
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
+
+    sh(`"${path.join(verifyBin, 'sox')}" --version`);
+  } finally {
+    fs.rmSync(verifyDir, { recursive: true, force: true });
+  }
 
   const libSize = sh(`du -sh "${libDir}"`);
   log(`verified trimmed media libs (${libSize})`);
