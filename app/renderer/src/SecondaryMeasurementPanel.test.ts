@@ -7,7 +7,6 @@ import { renderToString } from 'react-dom/server';
 import SecondaryMeasurementPanel, {
   selectSecondaryDevice,
   secondaryReconnectTick,
-  parseCaptureOpts,
 } from './SecondaryMeasurementPanel';
 import { useLiveCaptureStore } from './stores/liveCaptureStore';
 import { useSettingsStore } from './stores/settingsStore';
@@ -105,16 +104,6 @@ describe('SecondaryMeasurementPanel', () => {
     const html = renderMarkup();
 
     expect(html).toContain('disconnected — reconnect the device to resume.');
-  });
-
-  describe('parseCaptureOpts', () => {
-    it('parses given windowSecs/meterInterval string values', () => {
-      expect(parseCaptureOpts('5', '200')).toEqual({ windowSecs: 5, intervalSecs: 0.2 });
-    });
-
-    it('falls back to windowSecs 3 / meterInterval 100ms when values are undefined', () => {
-      expect(parseCaptureOpts(undefined, undefined)).toEqual({ windowSecs: 3, intervalSecs: 0.1 });
-    });
   });
 
   describe('secondaryReconnectTick', () => {

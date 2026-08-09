@@ -22,6 +22,7 @@ import {
   type EqPaneRoomOverride,
 } from './live-capture-panel';
 import { escapeHtml } from './spectrum-display';
+import type { StartCaptureOpts } from './stores/liveCaptureStore';
 
 export type SecondaryMeasurementStatus =
   | 'off'
@@ -226,4 +227,16 @@ export function roomPaneOverride(
   const ch = lastMeasurementChannels?.[0] ?? lastWindow?.channels?.[0] ?? null;
   if (!ch) return null;
   return { ch, label: deviceName };
+}
+
+// Shared by LiveControls.tsx's onStart() and SecondaryMeasurementPanel.tsx's
+// secondaryCaptureOptsFromDom() (#724 code review) — both read the same
+// #window-secs/#meter-interval inputs to build capture opts for the board
+// capture and the secondary measurement mic respectively, so the
+// fallback-default/unit-conversion logic lives in one place instead of two.
+export function parseCaptureOpts(windowSecsValue: string | undefined, meterIntervalValue: string | undefined): StartCaptureOpts {
+  return {
+    windowSecs: parseFloat(windowSecsValue ?? '3'),
+    intervalSecs: parseInt(meterIntervalValue ?? '100', 10) / 1000,
+  };
 }
