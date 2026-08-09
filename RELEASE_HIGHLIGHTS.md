@@ -9,3 +9,4 @@
 - **Smaller, faster install** — trimmed the packaged Python runtime and swapped a heavy audio library for numpy/scipy, cutting real download size.
 - **Legal pages reachable from every site mode**, plus a full renderer-migration pass for stability (the old inline app script continues shrinking as more of the UI moves to React).
 - **Fixed live-capture meter/EQ flicker** — the live view no longer strobes to "Waiting for live audio…" during capture; a channel-less waveform-envelope frame was briefly overwriting the real meter tick every interval (#720).
+- **Secondary measurement device now owns the whole Room view** — when the experimental secondary mic source is active, the big live EQ pane switches to it too, matching the badge, stats, and report-card source that already did (#460).
