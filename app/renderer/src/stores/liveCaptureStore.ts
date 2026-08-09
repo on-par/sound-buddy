@@ -537,6 +537,12 @@ export function createLiveCaptureStore(getApi: () => LiveCaptureApi) {
           set({ lastError: (evt as { error?: string })?.error ?? null });
           return;
         }
+        // 'peaks' frames (#520, ADR 0004) carry no channels — they're the DAW
+        // waveform lane's data, consumed separately by inline-app.js's own
+        // onLiveEvent handler. Letting one become lastTick blanks the live
+        // meter/EQ panel to "Waiting for live audio…" every time one arrives,
+        // flickering the board at the tick rate (#720).
+        if ((evt as { type?: string }).type === 'peaks') return;
         const tick = evt as LiveEvent;
         const channels = tick.channels;
         set((state) => {

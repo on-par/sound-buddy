@@ -671,6 +671,19 @@ describe('createLiveCaptureStore', () => {
       expect(store.getState().liveWindows).toHaveLength(1);
     });
 
+    it('a peaks frame does not touch lastTick/lastLiveChannels/boardShapeVersion (#720)', () => {
+      const { store, mock } = makeStore();
+      store.getState().bindIpcEvents();
+      const meter = { type: 'meter', ts: 0, channels: [{ index: 0, name: 'A', bands: {}, rms: -10, peak: -5, clipping: false, centroid: 100, rolloff: 200 }] };
+      mock.emit('onLiveEvent', meter);
+      expect(store.getState().boardShapeVersion).toBe(1);
+      mock.emit('onLiveEvent', { type: 'peaks', ts: 1, lanes: {} });
+      expect(store.getState().lastTick).toEqual(meter);
+      expect(store.getState().lastLiveChannels).toEqual(meter.channels);
+      expect(store.getState().boardShapeVersion).toBe(1);
+      expect(store.getState().liveWindows).toEqual([]);
+    });
+
     it('a tick leaves channelGroups (incl. collapsed) untouched (#483)', () => {
       const { store, mock } = makeStore();
       store.setState({ channelGroups: [{ name: 'Drums', members: [0, 1], collapsed: true }] });
