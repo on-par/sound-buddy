@@ -8,3 +8,4 @@
 - **Cleaner navigation** — top bar reduced to Analyze / History, with Build Guide and Ring-Out Assistant linked contextually from the Report Card instead of living in the nav.
 - **Smaller, faster install** — trimmed the packaged Python runtime and swapped a heavy audio library for numpy/scipy, cutting real download size.
 - **Legal pages reachable from every site mode**, plus a full renderer-migration pass for stability (the old inline app script continues shrinking as more of the UI moves to React).
+- **Fixed live-capture meter/EQ flicker** — the live view no longer strobes to "Waiting for live audio…" during capture; a channel-less waveform-envelope frame was briefly overwriting the real meter tick every interval (#720).
