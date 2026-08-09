@@ -287,20 +287,36 @@ export interface EqPaneView {
   secondaryIsPrimary: boolean;
 }
 
+// #460 (ADR 0003): when the experimental secondary measurement device is
+// active it owns the Room, so the pane's primary slot swaps to its channel-0
+// reading + device-name label instead of the board's measurement-source strip.
+// The sentinel idx keeps the override distinct from every board strip index in
+// eqPaneSignature (so activate/deactivate always rebuilds the pane) and makes
+// secondaryIsPrimary structurally impossible while the secondary owns the
+// room (selectedChannel is always >= 0).
+export const EQ_PANE_ROOM_OVERRIDE_IDX = -1;
+export interface EqPaneRoomOverride { ch: LiveMeterChannel; label: string }
+
 // Resolves the pane's two slots from the same inputs the runtime already
 // tracks: measurementSource (the "Room" reading — see measurementChannel's
 // fallback-to-channel-0 contract, mirrored here so the two never disagree)
 // and selectedChannel (the "Selected" reading, #668's new per-strip click
 // target). `primary` is null only when there are no channels at all;
 // `secondary` is null whenever selectedChannel isn't a live channel index.
+// `roomOverride` (#460) replaces the primary slot with the secondary room
+// mic's reading when the experimental source is active; null/omitted keeps
+// the board behavior byte-identical (the #602 parity guard).
 export function eqPaneView(
   channels: LiveMeterChannel[],
   config: StripConfig[],
   measurementSource: number | null,
   selectedChannel: number | null,
+  roomOverride: EqPaneRoomOverride | null = null,
 ): EqPaneView {
   let primary: EqPaneSection | null = null;
-  if (channels.length > 0) {
+  if (roomOverride) {
+    primary = { idx: EQ_PANE_ROOM_OVERRIDE_IDX, label: roomOverride.label, ch: roomOverride.ch };
+  } else if (channels.length > 0) {
     const idx = measurementSource != null && channels[measurementSource] ? measurementSource : 0;
     primary = { idx, label: measurementSourceOptionLabel(config[idx], idx), ch: channels[idx] };
   }

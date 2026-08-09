@@ -329,7 +329,12 @@ function renderEqPane(channels) {
   const el = document.getElementById('live-eq-pane-body');
   if (!el || !channels) return;
   const state = lcStore.getState();
-  const view = eqPaneView(channels, channelConfig, state.measurementSource, state.selectedChannel);
+  // #460: when the experimental secondary source is active it owns the Room —
+  // the pane's primary slot swaps to the room mic's channel 0 + device name.
+  // secondaryRoomOverride() is null whenever the flag is off or the source
+  // isn't active, keeping this call byte-identical to the board-only path
+  // (the #602 parity guard).
+  const view = eqPaneView(channels, channelConfig, state.measurementSource, state.selectedChannel, secondaryRoomOverride());
   const signature = eqPaneSignature(view);
   if (el.dataset.signature !== signature) {
     el.innerHTML = eqPaneHTML(view);
@@ -1932,10 +1937,11 @@ sb.onLiveEvent((data) => {
    process, fully independent of the board capture. All decision logic lives in
    the pure window.measurementDeviceState module; this block is the DOM +
    lifecycle glue. With the flag off, secondaryMeasurementActive() is always
-   false and roomFeed() returns the board values unchanged, so the app renders
-   byte-identically to today (the #602 parity guard). The secondary EQ-pane
-   Room-slot *visual* swap is deferred (see PR notes) — badge, room stats, and
-   the graded live report-card source are what switch to the secondary mic. */
+   false and roomFeed()/secondaryRoomOverride() return the board values
+   unchanged, so the app renders byte-identically to today (the #602 parity
+   guard). When active, the secondary mic owns the Room everywhere: badge,
+   room stats, the graded live report-card source, AND the EQ pane's Room
+   slot (the once-deferred visual swap — see secondaryRoomOverride below). */
 const SECONDARY_RECONNECT_POLL_MS = 5000;
 let secondaryReconnectTimer = null;
 
@@ -1956,6 +1962,21 @@ function roomFeed() {
     liveWindows,
     s.measurementSource,
     channelConfig,
+  );
+}
+
+// The EQ pane's Room-slot override (#460 visual swap): the secondary mic's
+// channel-0 reading + device name when the source is active, null otherwise
+// (board behavior byte-identical — the #602 parity guard). Reads the store's
+// lastMeasurementChannels (meter cadence) with the window buffer as fallback,
+// via the pure roomPaneOverride helper.
+function secondaryRoomOverride() {
+  const s = lcStore.getState();
+  return window.measurementDeviceState.roomPaneOverride(
+    secondaryMeasurementActive(),
+    s.secondaryWindows,
+    s.lastMeasurementChannels,
+    s.secondaryMeasurement.deviceName,
   );
 }
 
@@ -2100,6 +2121,12 @@ sb.onMeasurementEvent((data) => {
   // the same window ticks this used to gate an explicit syncLiveSource() on).
   if (data.channels && data.channels[0]) updateLiveStatsRow(data.channels[0]);
   renderMeasurementBadge();
+  // The EQ pane's Room slot follows the same tick (#460 visual swap):
+  // bindMeasurementEvents() ran first on this channel (registration order),
+  // so the store's lastMeasurementChannels already carries this tick — the
+  // pane's signature is unchanged mid-stream, so this patches the arcs in
+  // place at meter cadence, exactly like a board tick does.
+  renderEqPane(currentEqPaneChannels());
 });
 
 // A batch run (#270) also triggers this pushed event on every successful

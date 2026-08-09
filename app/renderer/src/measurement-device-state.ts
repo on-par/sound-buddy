@@ -18,6 +18,8 @@ import {
   type LiveDevice,
   type StripConfig,
   type LiveEvent,
+  type ChannelWindowData,
+  type EqPaneRoomOverride,
 } from './live-capture-panel';
 import { escapeHtml } from './spectrum-display';
 
@@ -171,10 +173,12 @@ export interface RoomFeed {
 }
 
 /**
- * The Room feed the badge, Room EQ pane slot, and live report-card source all
- * read. Defaults to the board feed (a strip of the multitrack stream). When the
- * secondary source is active, it switches to the secondary stream's channel 0
- * as a single mono strip, with a badge that flags it as not time-aligned.
+ * The Room feed the badge and live report-card source read (the EQ pane's
+ * Room slot reads roomPaneOverride below — same activation rule, tick-shaped
+ * data). Defaults to the board feed (a strip of the multitrack stream). When
+ * the secondary source is active, it switches to the secondary stream's
+ * channel 0 as a single mono strip, with a badge that flags it as not
+ * time-aligned.
  */
 export function roomFeed(
   secondaryActive: boolean,
@@ -198,4 +202,28 @@ export function roomFeed(
     config: SECONDARY_MONO_CONFIG,
     badge: `Measuring: ${secondaryDeviceName} (secondary — not time-aligned)`,
   };
+}
+
+/**
+ * The EQ pane's Room-slot override (#460 visual swap — closes the gap where
+ * only the badge/stats row/report-card source switched to the secondary mic).
+ * Null while the secondary source isn't active, so the pane renders the board
+ * slot byte-identically (the #602 parity guard). When active, the room mic's
+ * channel-0 reading + device-name label take the primary slot. The latest
+ * meter tick's channels (meter cadence) win over the slower window buffer so
+ * the pane moves at the same rate as the board slots; the window buffer is the
+ * fallback for the gap before the first meter tick lands. eqPaneHTML escapes
+ * the device-name label the same way it escapes strip labels.
+ */
+export function roomPaneOverride(
+  secondaryActive: boolean,
+  secondaryWindows: LiveEvent[],
+  lastMeasurementChannels: ChannelWindowData[] | null,
+  deviceName: string,
+): EqPaneRoomOverride | null {
+  if (!secondaryActive) return null;
+  const lastWindow = secondaryWindows[secondaryWindows.length - 1];
+  const ch = lastMeasurementChannels?.[0] ?? lastWindow?.channels?.[0] ?? null;
+  if (!ch) return null;
+  return { ch, label: deviceName };
 }

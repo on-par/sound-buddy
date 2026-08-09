@@ -29,6 +29,7 @@ import {
   eqPaneHTML,
   eqPaneSignature,
   eqPanePatchPlan,
+  EQ_PANE_ROOM_OVERRIDE_IDX,
   deviceOptionLabel,
   deviceListView,
   deviceChannelCount,
@@ -61,6 +62,7 @@ import {
   type PanelView,
   type LiveEvent,
   type WindowData,
+  type EqPaneRoomOverride,
 } from './live-capture-panel';
 
 const css = fs.readFileSync(fileURLToPath(new URL('./styles/app.css', import.meta.url)), 'utf8');
@@ -1335,6 +1337,46 @@ describe('eqPaneView', () => {
   });
 });
 
+describe('eqPaneView room override (#460)', () => {
+  const config: StripConfig[] = [
+    { kind: 'mono', a: 0, b: 1, label: 'Kick' },
+    { kind: 'mono', a: 1, b: 2, label: 'Vocals' },
+  ];
+  const ROOM_MIC_CH: LiveMeterChannel = {
+    name: 'Room', rms: -32, peak: -14, clipping: false, centroid: 900,
+    bands: { sub_bass: -44, bass: -36, low_mid: -30, mid: -26, high_mid: -34, presence: -46, brilliance: -62 },
+  };
+  const override: EqPaneRoomOverride = { ch: ROOM_MIC_CH, label: 'MacBook Pro Microphone' };
+
+  it('replaces the primary slot with the secondary room reading + device name', () => {
+    const view = eqPaneView(LIVE_CHANNELS, config, 0, null, override);
+    expect(view.primary).toEqual({
+      idx: EQ_PANE_ROOM_OVERRIDE_IDX,
+      label: 'MacBook Pro Microphone',
+      ch: ROOM_MIC_CH,
+    });
+  });
+
+  it('still yields a primary when the board has no channels at all', () => {
+    const view = eqPaneView([], config, null, null, override);
+    expect(view.primary?.ch).toBe(ROOM_MIC_CH);
+  });
+
+  it('leaves the Selected slot on the board strip and never marks it as the room source', () => {
+    // Selected = the old measurement-source strip: without the override this
+    // is secondaryIsPrimary; with the room mic owning the Room it must not be.
+    const view = eqPaneView(LIVE_CHANNELS, config, 1, 1, override);
+    expect(view.secondary).toEqual({ idx: 1, label: 'Vocals', ch: LIVE_CHANNELS[1] });
+    expect(view.secondaryIsPrimary).toBe(false);
+  });
+
+  it('an omitted and an explicit-null override are byte-identical to the board view (#602 parity guard)', () => {
+    expect(eqPaneView(LIVE_CHANNELS, config, 0, 1, null)).toEqual(eqPaneView(LIVE_CHANNELS, config, 0, 1));
+    expect(eqPaneHTML(eqPaneView(LIVE_CHANNELS, config, 0, 1, null)))
+      .toBe(eqPaneHTML(eqPaneView(LIVE_CHANNELS, config, 0, 1)));
+  });
+});
+
 describe('eqPaneHTML', () => {
   const config: StripConfig[] = [
     { kind: 'mono', a: 0, b: 1, label: 'Kick' },
@@ -1412,6 +1454,31 @@ describe('eqPaneHTML', () => {
     const html = eqPaneHTML(view);
     expect((html.match(/data-band="/g) || [])).toHaveLength(7);
   });
+
+  it('renders "Room — <device name>" when the secondary override owns the room (#460)', () => {
+    const view = eqPaneView(LIVE_CHANNELS, config, 0, null, { ch: LIVE_CHANNELS[1], label: 'MacBook Pro Microphone' });
+    const html = eqPaneHTML(view);
+    expect(html).toContain('Room — MacBook Pro Microphone');
+    expect(html).not.toContain('Room — Kick');
+  });
+
+  it('escapes the override device name (#460)', () => {
+    const view = eqPaneView(LIVE_CHANNELS, config, 0, null, { ch: LIVE_CHANNELS[1], label: '<Evil> & "Mic"' });
+    const html = eqPaneHTML(view);
+    expect(html).toContain('Room — &lt;Evil&gt; &amp; &quot;Mic&quot;');
+    expect(html).not.toContain('<Evil>');
+  });
+
+  it('feeds the primary section from the override channel, not the board strip (#460)', () => {
+    // LIVE_CHANNELS[1]'s loudest band is bass (index 1); the board strip 0's is
+    // mid (index 3) — the loud label proves whose data the Room section renders.
+    const view = eqPaneView(LIVE_CHANNELS, config, 0, null, { ch: LIVE_CHANNELS[1], label: 'USB Mic' });
+    const html = eqPaneHTML(view);
+    const primarySection = html.split('eq-pane-secondary')[0];
+    const labelMatch = primarySection.match(/<span class="veq-label(?: loud)?" [^>]*>/g) || [];
+    expect(labelMatch[1]).toContain('loud');
+    expect(labelMatch[3]).not.toContain('loud');
+  });
 });
 
 describe('eqPaneSignature', () => {
@@ -1470,6 +1537,29 @@ describe('eqPaneSignature', () => {
     const gridChannelB: LiveMeterChannel = { ...LIVE_CHANNELS[0], curve: Array.from({ length: 48 }, () => -10) };
     const a = eqPaneSignature(eqPaneView([gridChannelA, LIVE_CHANNELS[1]], config, 0, null));
     const b = eqPaneSignature(eqPaneView([gridChannelB, LIVE_CHANNELS[1]], config, 0, null));
+    expect(a).toBe(b);
+  });
+
+  it('changes when the room override activates and restores when it deactivates (#460)', () => {
+    const override: EqPaneRoomOverride = { ch: LIVE_CHANNELS[1], label: 'MacBook Pro Microphone' };
+    const board = eqPaneSignature(eqPaneView(LIVE_CHANNELS, config, 0, null));
+    const active = eqPaneSignature(eqPaneView(LIVE_CHANNELS, config, 0, null, override));
+    const restored = eqPaneSignature(eqPaneView(LIVE_CHANNELS, config, 0, null, null));
+    expect(active).not.toBe(board);
+    expect(restored).toBe(board);
+  });
+
+  it('changes when the override device name changes (#460)', () => {
+    const a = eqPaneSignature(eqPaneView(LIVE_CHANNELS, config, 0, null, { ch: LIVE_CHANNELS[1], label: 'USB Mic' }));
+    const b = eqPaneSignature(eqPaneView(LIVE_CHANNELS, config, 0, null, { ch: LIVE_CHANNELS[1], label: 'Built-in Mic' }));
+    expect(a).not.toBe(b);
+  });
+
+  it('is stable across two override ticks with the same device (#460 — patch, not rebuild, mid-stream)', () => {
+    const tickA: LiveMeterChannel = { ...LIVE_CHANNELS[1], rms: -30 };
+    const tickB: LiveMeterChannel = { ...LIVE_CHANNELS[1], rms: -12 };
+    const a = eqPaneSignature(eqPaneView(LIVE_CHANNELS, config, 0, null, { ch: tickA, label: 'USB Mic' }));
+    const b = eqPaneSignature(eqPaneView(LIVE_CHANNELS, config, 0, null, { ch: tickB, label: 'USB Mic' }));
     expect(a).toBe(b);
   });
 });
