@@ -22,7 +22,15 @@ import {
   type EqPaneRoomOverride,
 } from './live-capture-panel';
 import { escapeHtml } from './spectrum-display';
-import type { StartCaptureOpts } from './stores/liveCaptureStore';
+
+// Board/secondary-stream start options — defined here (not stores/liveCaptureStore.ts)
+// because parseCaptureOpts below is the function that produces this exact shape;
+// the store imports it from here to keep this module's pure helpers free of any
+// dependency on the store that consumes them.
+export interface StartCaptureOpts {
+  windowSecs: number;
+  intervalSecs: number;
+}
 
 export type SecondaryMeasurementStatus =
   | 'off'

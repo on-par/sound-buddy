@@ -35,7 +35,10 @@ import {
   applyStreamEnded,
   reconnectDecision,
   type SecondaryMeasurementState,
+  type StartCaptureOpts,
 } from '../measurement-device-state';
+
+export type { StartCaptureOpts };
 
 export type LiveCaptureApi = Pick<
   LiveApi,
@@ -65,11 +68,6 @@ export interface RingoutCut {
 export interface RingoutState {
   stepIndex: number;
   cut: RingoutCut | null;
-}
-
-export interface StartCaptureOpts {
-  windowSecs: number;
-  intervalSecs: number;
 }
 
 export interface StartCaptureResult {
