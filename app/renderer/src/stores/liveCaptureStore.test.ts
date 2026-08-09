@@ -714,6 +714,7 @@ describe('createLiveCaptureStore', () => {
       const { store } = makeStore();
       expect(store.getState().secondaryMeasurement).toEqual({ status: 'off', deviceName: '' });
       expect(store.getState().secondaryWindows).toEqual([]);
+      expect(store.getState().lastMeasurementChannels).toBeNull();
     });
 
     it('setSecondaryDeviceName sets the name and persists it via useSettingsStore', () => {
@@ -816,6 +817,51 @@ describe('createLiveCaptureStore', () => {
 
       expect(store.getState().secondaryWindows).toHaveLength(LIVE_WINDOWS_CAP);
       expect((store.getState().secondaryWindows[0] as { window: number }).window).toBe(3);
+    });
+
+    it('bindMeasurementEvents tracks the latest tick channels for the Room pane (#460 visual swap)', () => {
+      const { store, mock } = makeStore();
+      store.getState().bindMeasurementEvents();
+
+      const meterCh = [{ index: 0, name: 'Room', rms: -20 }];
+      mock.emit('onMeasurementEvent', { type: 'meter', ts: 1, channels: meterCh });
+
+      // Meter ticks refresh the pane reading but never buffer as windows.
+      expect(store.getState().lastMeasurementChannels).toBe(meterCh);
+      expect(store.getState().secondaryWindows).toEqual([]);
+
+      // A window tick refreshes the reading too (it also carries channels).
+      const windowCh = [{ index: 0, name: 'Room', rms: -24 }];
+      mock.emit('onMeasurementEvent', { window: 1, ts: 2, channels: windowCh });
+      expect(store.getState().lastMeasurementChannels).toBe(windowCh);
+      expect(store.getState().secondaryWindows).toHaveLength(1);
+    });
+
+    it('startSecondaryMeasurement clears the previous device’s last reading', async () => {
+      const startMeasurement = vi.fn().mockResolvedValue({ success: true });
+      const { store } = makeStore({ startMeasurement });
+      store.setState({
+        devices: SECONDARY_DEVICES,
+        secondaryMeasurement: { status: 'off', deviceName: 'USB Measurement Mic' },
+        lastMeasurementChannels: [{ index: 0, name: 'Stale' } as never],
+      });
+
+      await store.getState().startSecondaryMeasurement({ windowSecs: 5, intervalSecs: 0.1 });
+
+      expect(store.getState().lastMeasurementChannels).toBeNull();
+    });
+
+    it('stopSecondaryMeasurement clears the last reading alongside the window buffer', async () => {
+      const { store } = makeStore();
+      store.setState({
+        secondaryMeasurement: { status: 'active', deviceName: 'USB Measurement Mic' },
+        secondaryWindows: [{ window: 1 } as never],
+        lastMeasurementChannels: [{ index: 0, name: 'Room' } as never],
+      });
+
+      await store.getState().stopSecondaryMeasurement();
+
+      expect(store.getState().lastMeasurementChannels).toBeNull();
     });
   });
 

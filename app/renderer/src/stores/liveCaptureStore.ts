@@ -220,6 +220,11 @@ export interface LiveCaptureState {
   // through the pure helpers in measurement-device-state.ts.
   secondaryMeasurement: SecondaryMeasurementState;
   secondaryWindows: LiveEvent[];
+  // The most recent measurement tick's channels (meter cadence — mirrors
+  // lastLiveChannels for the board), so the EQ pane's Room slot (#460 visual
+  // swap) moves at tick rate instead of the slower window cadence. Cleared on
+  // start/stop so a stale reading can't leak across device switches.
+  lastMeasurementChannels: ChannelWindowData[] | null;
 
   loadDevices(): Promise<void>;
   selectDevice(value: string): void;
@@ -319,6 +324,7 @@ export function createLiveCaptureStore(getApi: () => LiveCaptureApi) {
 
     secondaryMeasurement: { status: 'off', deviceName: '' },
     secondaryWindows: [],
+    lastMeasurementChannels: null,
 
     async loadDevices() {
       const result = (await getApi().listDevices()) as ListDevicesResult;
@@ -605,10 +611,18 @@ export function createLiveCaptureStore(getApi: () => LiveCaptureApi) {
       const { deviceName } = get().secondaryMeasurement;
       const device = deviceIndexForName(get().devices, deviceName);
       if (device === null) {
-        set({ secondaryMeasurement: { status: 'disconnected', deviceName }, secondaryWindows: [] });
+        set({
+          secondaryMeasurement: { status: 'disconnected', deviceName },
+          secondaryWindows: [],
+          lastMeasurementChannels: null,
+        });
         return;
       }
-      set({ secondaryMeasurement: { status: 'starting', deviceName }, secondaryWindows: [] });
+      set({
+        secondaryMeasurement: { status: 'starting', deviceName },
+        secondaryWindows: [],
+        lastMeasurementChannels: null,
+      });
       const result = (await getApi().startMeasurement({
         device,
         windowSecs: opts.windowSecs,
@@ -624,12 +638,15 @@ export function createLiveCaptureStore(getApi: () => LiveCaptureApi) {
       set((state) => ({
         secondaryMeasurement: { status: 'off', deviceName: state.secondaryMeasurement.deviceName },
         secondaryWindows: [],
+        lastMeasurementChannels: null,
       }));
     },
 
     // Bind the separate measurement-event channel (ADR 0003 namespacing). An
-    // unexpected end flags 'disconnected'; error payloads store the error; window
-    // ticks buffer into secondaryWindows with the same cap as the board buffer.
+    // unexpected end flags 'disconnected'; error payloads store the error; every
+    // channel-carrying tick refreshes lastMeasurementChannels (the EQ pane's
+    // meter-cadence Room reading, #460 visual swap); window ticks buffer into
+    // secondaryWindows with the same cap as the board buffer.
     bindMeasurementEvents() {
       getApi().onMeasurementEvent((data) => {
         const evt = data as
@@ -647,6 +664,9 @@ export function createLiveCaptureStore(getApi: () => LiveCaptureApi) {
           return;
         }
         const tick = evt as LiveEvent;
+        if (tick.channels && tick.channels.length > 0) {
+          set({ lastMeasurementChannels: tick.channels });
+        }
         if (tick.type === 'window' || typeof (tick as { window?: number }).window === 'number') {
           set((state) => {
             const next = [...state.secondaryWindows, tick];

@@ -11,9 +11,10 @@ import {
   secondaryStatusHTML,
   alignmentWarningHTML,
   roomFeed,
+  roomPaneOverride,
   type SecondaryMeasurementState,
 } from './measurement-device-state';
-import type { LiveDevice, LiveEvent, StripConfig } from './live-capture-panel';
+import type { LiveDevice, LiveEvent, StripConfig, ChannelWindowData } from './live-capture-panel';
 
 function dev(index: number, name: string, channels = 2): LiveDevice {
   return { index, name, channels, default_sr: 48000 };
@@ -212,5 +213,38 @@ describe('roomFeed', () => {
     expect(feed.source).toBe(0);
     expect(feed.config).toEqual([{ kind: 'mono', a: 0, b: 0 }]);
     expect(feed.badge).toBe('Measuring: USB Mic (secondary — not time-aligned)');
+  });
+});
+
+describe('roomPaneOverride (#460 EQ-pane visual swap)', () => {
+  function ch(rms: number): ChannelWindowData {
+    return {
+      index: 0, name: 'Room', kind: 'mono', rms, peak: rms + 6, clipping: false,
+      centroid: 900, rolloff: 8000,
+      bands: { sub_bass: -44, bass: -36, low_mid: -30, mid: -26, high_mid: -34, presence: -46, brilliance: -62 },
+    };
+  }
+  const windowTick = { window: 1, ts: 1, channels: [ch(-40)], masking: [] } as unknown as LiveEvent;
+
+  it('returns null while the secondary source is inactive (board pane byte-identical)', () => {
+    expect(roomPaneOverride(false, [windowTick], [ch(-20)], 'USB Mic')).toBeNull();
+  });
+
+  it('serves the latest meter-tick channel 0 with the device-name label when active', () => {
+    const meter = [ch(-20)];
+    expect(roomPaneOverride(true, [windowTick], meter, 'USB Mic')).toEqual({
+      ch: meter[0],
+      label: 'USB Mic',
+    });
+  });
+
+  it('falls back to the last window tick before the first meter tick lands', () => {
+    const override = roomPaneOverride(true, [windowTick], null, 'USB Mic');
+    expect(override?.ch).toBe((windowTick as { channels: ChannelWindowData[] }).channels[0]);
+    expect(override?.label).toBe('USB Mic');
+  });
+
+  it('returns null when active but no reading exists yet (defensive)', () => {
+    expect(roomPaneOverride(true, [], null, 'USB Mic')).toBeNull();
   });
 });
