@@ -12,6 +12,7 @@ import {
   alignmentWarningHTML,
   roomFeed,
   roomPaneOverride,
+  parseCaptureOpts,
   type SecondaryMeasurementState,
 } from './measurement-device-state';
 import type { LiveDevice, LiveEvent, StripConfig, ChannelWindowData } from './live-capture-panel';
@@ -246,5 +247,15 @@ describe('roomPaneOverride (#460 EQ-pane visual swap)', () => {
 
   it('returns null when active but no reading exists yet (defensive)', () => {
     expect(roomPaneOverride(true, [], null, 'USB Mic')).toBeNull();
+  });
+});
+
+describe('parseCaptureOpts (#724 code review)', () => {
+  it('parses given windowSecs/meterInterval string values', () => {
+    expect(parseCaptureOpts('5', '200')).toEqual({ windowSecs: 5, intervalSecs: 0.2 });
+  });
+
+  it('falls back to windowSecs 3 / meterInterval 100ms when values are undefined', () => {
+    expect(parseCaptureOpts(undefined, undefined)).toEqual({ windowSecs: 3, intervalSecs: 0.1 });
   });
 });

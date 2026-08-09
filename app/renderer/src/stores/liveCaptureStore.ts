@@ -33,8 +33,12 @@ import {
   deviceIndexForName,
   applyStartResult,
   applyStreamEnded,
+  reconnectDecision,
   type SecondaryMeasurementState,
+  type StartCaptureOpts,
 } from '../measurement-device-state';
+
+export type { StartCaptureOpts };
 
 export type LiveCaptureApi = Pick<
   LiveApi,
@@ -64,11 +68,6 @@ export interface RingoutCut {
 export interface RingoutState {
   stepIndex: number;
   cut: RingoutCut | null;
-}
-
-export interface StartCaptureOpts {
-  windowSecs: number;
-  intervalSecs: number;
 }
 
 export interface StartCaptureResult {
@@ -275,6 +274,7 @@ export interface LiveCaptureState {
   setSecondaryDeviceName(name: string): void;
   startSecondaryMeasurement(opts: StartCaptureOpts): Promise<void>;
   stopSecondaryMeasurement(): Promise<void>;
+  pollSecondaryReconnect(opts: StartCaptureOpts): Promise<boolean>;
   bindMeasurementEvents(): void;
 }
 
@@ -640,6 +640,22 @@ export function createLiveCaptureStore(getApi: () => LiveCaptureApi) {
         secondaryWindows: [],
         lastMeasurementChannels: null,
       }));
+    },
+
+    // One reconnect-poll tick (#460, #724): re-enumerate devices, and if the
+    // remembered device has reappeared, restart the stream via the existing
+    // startSecondaryMeasurement action. Mirrors inline-app.js's old
+    // startSecondaryReconnectPoll interval body; the setInterval scheduling
+    // itself now lives in SecondaryMeasurementPanel.tsx.
+    async pollSecondaryReconnect(opts) {
+      const result = (await getApi().listDevices()) as ListDevicesResult;
+      const view = deviceListView(result);
+      set({ devices: view.devices });
+      const decision = reconnectDecision(get().secondaryMeasurement, view.devices);
+      if (decision.shouldRestart) {
+        await get().startSecondaryMeasurement(opts);
+      }
+      return decision.shouldRestart;
     },
 
     // Bind the separate measurement-event channel (ADR 0003 namespacing). An

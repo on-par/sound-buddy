@@ -34,6 +34,7 @@ import { useLiveCaptureStore, type StartCaptureResult, type StopCaptureResult } 
 import { useSettingsStore } from './stores/settingsStore';
 import { iconSvg } from './report-card';
 import { deviceOptionLabel, measurementSourceOptionsHTML } from './live-capture-panel';
+import { parseCaptureOpts } from './measurement-device-state';
 
 export interface LiveCaptureRuntime {
   /** Refreshes the device list and re-seeds channel config/groups for the (possibly new) default device. */
@@ -56,6 +57,11 @@ export interface LiveCaptureRuntime {
   onCaptureStopped(result: StopCaptureResult | undefined): void;
   /** Promotes a running monitor session to a recording in place (#458) — its own guard/orchestration stays bridged. */
   promoteToRecording(): Promise<void>;
+  /** Repaints the still-imperative Room badge/EQ-pane slot after a secondary-
+   *  measurement device selection/start/stop/reconnect (#460, #724) —
+   *  renderMeasurementBadge()/renderEqPane() stay imperative and out of
+   *  scope for this component. */
+  afterSecondaryMeasurementChange?(): void;
 }
 
 export type CapturePhase = 'idle' | 'monitoring' | 'starting-record' | 'recording';
@@ -78,7 +84,10 @@ declare global {
   }
 }
 
-function runtime(): LiveCaptureRuntime | undefined {
+// Exported so other React-owned islands reading window.liveCaptureRuntime
+// (e.g. SecondaryMeasurementPanel.tsx, #724) share this one lookup instead of
+// duplicating it.
+export function runtime(): LiveCaptureRuntime | undefined {
   return window.liveCaptureRuntime;
 }
 
@@ -254,8 +263,7 @@ export function LiveTransportControls() {
   function onStart() {
     const windowSecsEl = document.getElementById('window-secs') as HTMLInputElement | null;
     const meterIntervalEl = document.getElementById('meter-interval') as HTMLInputElement | null;
-    const windowSecs = parseFloat(windowSecsEl?.value ?? '3');
-    const intervalSecs = parseInt(meterIntervalEl?.value ?? '100', 10) / 1000;
+    const { windowSecs, intervalSecs } = parseCaptureOpts(windowSecsEl?.value, meterIntervalEl?.value);
     void startLiveCapture(runtime(), windowSecs, intervalSecs);
   }
 

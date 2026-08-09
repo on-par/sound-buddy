@@ -23,6 +23,15 @@ import {
 } from './live-capture-panel';
 import { escapeHtml } from './spectrum-display';
 
+// Board/secondary-stream start options — defined here (not stores/liveCaptureStore.ts)
+// because parseCaptureOpts below is the function that produces this exact shape;
+// the store imports it from here to keep this module's pure helpers free of any
+// dependency on the store that consumes them.
+export interface StartCaptureOpts {
+  windowSecs: number;
+  intervalSecs: number;
+}
+
 export type SecondaryMeasurementStatus =
   | 'off'
   | 'starting'
@@ -226,4 +235,16 @@ export function roomPaneOverride(
   const ch = lastMeasurementChannels?.[0] ?? lastWindow?.channels?.[0] ?? null;
   if (!ch) return null;
   return { ch, label: deviceName };
+}
+
+// Shared by LiveControls.tsx's onStart() and SecondaryMeasurementPanel.tsx's
+// secondaryCaptureOptsFromDom() (#724 code review) — both read the same
+// #window-secs/#meter-interval inputs to build capture opts for the board
+// capture and the secondary measurement mic respectively, so the
+// fallback-default/unit-conversion logic lives in one place instead of two.
+export function parseCaptureOpts(windowSecsValue: string | undefined, meterIntervalValue: string | undefined): StartCaptureOpts {
+  return {
+    windowSecs: parseFloat(windowSecsValue ?? '3'),
+    intervalSecs: parseInt(meterIntervalValue ?? '100', 10) / 1000,
+  };
 }

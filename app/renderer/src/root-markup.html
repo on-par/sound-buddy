@@ -108,23 +108,11 @@
           <div id="live-controls-island"></div>
 
           <!-- Secondary measurement device (#460) — experimental, hidden unless
-               secondaryMeasurementEnabled. A metering-only room mic, separate
-               from the board capture; blocked/disconnected states and the
-               permanent time-alignment warning render into the nodes below.
-               Still bridged (inline-app.js), not part of the #701 6c island —
-               it's a new, not-yet-migrated surface (see LiveControls.tsx's
-               header note on scoped-out sub-surfaces). -->
-          <label class="select-label" id="secondary-measurement-block" style="display:none">
-            <span>Secondary Measurement Device (experimental)</span>
-            <div class="select-row">
-              <div class="select-wrap">
-                <select id="secondary-measurement-device"><option value="">None (use board channel)</option></select>
-                <span class="select-caret" data-icon="chevron-down"></span>
-              </div>
-            </div>
-            <p id="secondary-measurement-status" class="device-hint"></p>
-            <p id="secondary-measurement-warning" class="device-hint"></p>
-          </label>
+               secondaryMeasurementEnabled. React-owned
+               (SecondaryMeasurementPanel.tsx, #724), portaled by App.tsx —
+               mirrors #live-controls-island. Renders nothing while the flag
+               is off. -->
+          <div id="secondary-measurement-island"></div>
 
           <div class="slider">
             <div class="slider-head"><span class="lbl">Meter rate</span><span class="val" id="interval-label">100 ms</span></div>
