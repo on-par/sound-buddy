@@ -27,6 +27,7 @@ const os = require('os');
 const path = require('path');
 const crypto = require('crypto');
 const { pathToFileURL } = require('url');
+const RESOURCE_LAYOUT = require('../electron/resource-layout.json');
 
 // Pinned relocatable CPython (python-build-standalone). Bump deliberately.
 const PY_TAG = '20260623';
@@ -58,8 +59,8 @@ module.exports = async function afterPack(context) {
   const appName = `${context.packager.appInfo.productFilename}.app`;
   const appPath = path.join(context.appOutDir, appName);
   const resources = path.join(appPath, 'Contents', 'Resources');
-  const binDir = path.join(resources, 'bin');
-  const libDir = path.join(resources, 'lib');
+  const binDir = path.join(resources, RESOURCE_LAYOUT.bin.resourcesSubdir);
+  const libDir = path.join(resources, RESOURCE_LAYOUT.lib.resourcesSubdir);
   const scriptsDir = path.join(__dirname, '..', '..', 'packages', 'audio-engine', 'scripts');
   const requirements = path.join(scriptsDir, 'requirements.txt');
 
@@ -145,7 +146,7 @@ module.exports = async function afterPack(context) {
   }
 
   log('copying Python runtime into app');
-  const pyDest = path.join(resources, 'python');
+  const pyDest = path.join(resources, RESOURCE_LAYOUT.python.resourcesSubdir);
   fs.rmSync(pyDest, { recursive: true, force: true });
   // cp -R preserves symlinks/permissions/signatures of the standalone build.
   sh(`cp -R "${pyCache}" "${pyDest}"`);

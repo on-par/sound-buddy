@@ -11,24 +11,17 @@ const handlers = new Map<string, (...args: unknown[]) => unknown>();
 
 vi.mock('electron', () => ({
   ipcMain: { handle: (ch: string, fn: (...args: unknown[]) => unknown) => handlers.set(ch, fn) },
-  // shared.ts (imported via the './shared' importActual below for the real
-  // readNdjsonLines) reads app.isPackaged at module scope — provide a stub.
   app: { isPackaged: false },
 }));
 vi.mock('../logger', () => ({ log: vi.fn(), logWarn: vi.fn(), logError: vi.fn() }));
 const isEntitledMock = vi.fn();
 vi.mock('../license', () => ({ isEntitled: (...a: unknown[]) => isEntitledMock(...a) }));
-// Reuse the REAL readNdjsonLines (pure) but stub the tool-resolution helpers so
-// no bundled/dev Python path is touched.
-vi.mock('./shared', async () => {
-  const actualShared = await vi.importActual<typeof import('./shared')>('./shared');
-  return {
-    pythonBin: () => 'python3',
-    childEnv: () => ({}),
-    STREAM_SCRIPT: '/fake/stream.py',
-    readNdjsonLines: actualShared.readNdjsonLines,
-  };
-});
+// Stub the tool-resolution helpers so no bundled/dev Python path is touched.
+vi.mock('./shared', () => ({
+  pythonBin: () => 'python3',
+  childEnv: () => ({}),
+  STREAM_SCRIPT: '/fake/stream.py',
+}));
 // The TCC gate is owned by live-capture.ts (#460 reuses its exact export);
 // mock it so this suite drives granted/blocked without an Electron sandbox.
 const ensureMicrophoneAccessMock = vi.fn();
@@ -49,7 +42,13 @@ vi.mock('./engine-loader', async () => {
   const { buildStreamArgs } = await vi.importActual<typeof import('@sound-buddy/audio-engine/dist/stream/index.js')>(
     '@sound-buddy/audio-engine/dist/stream/index.js',
   );
-  return { loadEngineParsers: () => ({ buildStreamArgs }) };
+  const { readNdjsonLines } = await vi.importActual<typeof import('@sound-buddy/audio-engine/dist/ndjson.js')>(
+    '@sound-buddy/audio-engine/dist/ndjson.js',
+  );
+  return {
+    loadEngineParsers: () => ({ buildStreamArgs }),
+    loadEngineUtils: () => ({ readNdjsonLines }),
+  };
 });
 
 /** A stand-in for the spawned Python child, with a spy-able kill(). */

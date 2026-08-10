@@ -5,20 +5,14 @@
 // source of sox/ffprobe/spectrum/ebur128 analysis. #396 declares the engine
 // as a `file:` dependency in app/package.json so the coupling is visible to
 // npm and static analysis, but runtime loading still goes through
-// createRequire: the app's main process compiles CommonJS (see
+// bundled-cjs-loader.ts: the app's main process compiles CommonJS (see
 // app/tsconfig.json) and the packaged .app ships zero node_modules
 // (Contents/Resources/engine instead), so a normal ESM import can't be used
 // at runtime. Instead the engine gains a second, CJS-only build of just the
 // parser subtree (packages/audio-engine/dist-cjs — see that package's
-// tsconfig.cjs.json), which this module loads at runtime via createRequire
-// from a path resolved packaged-vs-dev, mirroring the toolBin()/SCRIPTS_DIR
-// pattern in ./shared.
+// tsconfig.cjs.json), loaded here via loadBundledCjs('engine', ...).
 
-import { createRequire } from 'node:module';
-import * as fs from 'fs';
-import * as path from 'path';
-import { app } from 'electron';
-import { REPO_ROOT } from './shared';
+import { bundledResourceDir, loadBundledCjs } from '../bundled-cjs-loader';
 
 type EngineSox = typeof import('@sound-buddy/audio-engine/dist-cjs/analyze/sox');
 type EngineFfprobe = typeof import('@sound-buddy/audio-engine/dist-cjs/analyze/ffprobe');
@@ -28,16 +22,13 @@ type EngineOrchestrate = typeof import('@sound-buddy/audio-engine/dist-cjs/analy
 type EngineExtract = typeof import('@sound-buddy/audio-engine/dist-cjs/analyze/extract');
 type EngineStream = typeof import('@sound-buddy/audio-engine/dist-cjs/stream/index');
 type EnginePlayback = typeof import('@sound-buddy/audio-engine/dist-cjs/playback/index');
+type EngineNdjson = typeof import('@sound-buddy/audio-engine/dist-cjs/ndjson');
 
 export type { LiveOptions } from '@sound-buddy/audio-engine/dist-cjs/stream/index';
 export type { PlaybackOptions } from '@sound-buddy/audio-engine/dist-cjs/playback/index';
 
 export function engineParsersDir(): string {
-  if (app.isPackaged) {
-    const bundled = path.join(process.resourcesPath, 'engine');
-    if (fs.existsSync(bundled)) return bundled;
-  }
-  return path.join(REPO_ROOT, 'packages', 'audio-engine', 'dist-cjs');
+  return bundledResourceDir('engine');
 }
 
 export interface EngineParsers {
@@ -60,35 +51,40 @@ let cachedParsers: EngineParsers | undefined;
 export function loadEngineParsers(): EngineParsers {
   if (cachedParsers) return cachedParsers;
 
-  const dir = engineParsersDir();
-  const req = createRequire(__filename);
-  try {
-    const sox: EngineSox = req(path.join(dir, 'analyze', 'sox.js'));
-    const ffprobe: EngineFfprobe = req(path.join(dir, 'analyze', 'ffprobe.js'));
-    const spectrum: EngineSpectrum = req(path.join(dir, 'analyze', 'spectrum.js'));
-    const ebur128: EngineEbur128 = req(path.join(dir, 'analyze', 'ebur128.js'));
-    const orchestrate: EngineOrchestrate = req(path.join(dir, 'analyze', 'orchestrate.js'));
-    const extract: EngineExtract = req(path.join(dir, 'analyze', 'extract.js'));
-    const stream: EngineStream = req(path.join(dir, 'stream', 'index.js'));
-    const playback: EnginePlayback = req(path.join(dir, 'playback', 'index.js'));
+  const sox = loadBundledCjs<EngineSox>('engine', 'analyze/sox.js');
+  const ffprobe = loadBundledCjs<EngineFfprobe>('engine', 'analyze/ffprobe.js');
+  const spectrum = loadBundledCjs<EngineSpectrum>('engine', 'analyze/spectrum.js');
+  const ebur128 = loadBundledCjs<EngineEbur128>('engine', 'analyze/ebur128.js');
+  const orchestrate = loadBundledCjs<EngineOrchestrate>('engine', 'analyze/orchestrate.js');
+  const extract = loadBundledCjs<EngineExtract>('engine', 'analyze/extract.js');
+  const stream = loadBundledCjs<EngineStream>('engine', 'stream/index.js');
+  const playback = loadBundledCjs<EnginePlayback>('engine', 'playback/index.js');
 
-    cachedParsers = {
-      runSox: sox.runSox,
-      runFfprobe: ffprobe.runFfprobe,
-      runSpectrum: spectrum.runSpectrum,
-      runEbur128: ebur128.runEbur128,
-      parseEbur128Summary: ebur128.parseEbur128Summary,
-      analyzeAudio: orchestrate.analyzeAudio,
-      isVideoFile: extract.isVideoFile,
-      extractAudioToWav: extract.extractAudioToWav,
-      buildStreamArgs: stream.buildStreamArgs,
-      buildPlaybackArgs: playback.buildPlaybackArgs,
-    };
-    return cachedParsers;
-  } catch (err) {
-    throw new Error(
-      `audio-engine parsers not found at ${dir} — run \`npm run build\` at the repo root first (builds packages/audio-engine/dist-cjs)`,
-      { cause: err },
-    );
-  }
+  cachedParsers = {
+    runSox: sox.runSox,
+    runFfprobe: ffprobe.runFfprobe,
+    runSpectrum: spectrum.runSpectrum,
+    runEbur128: ebur128.runEbur128,
+    parseEbur128Summary: ebur128.parseEbur128Summary,
+    analyzeAudio: orchestrate.analyzeAudio,
+    isVideoFile: extract.isVideoFile,
+    extractAudioToWav: extract.extractAudioToWav,
+    buildStreamArgs: stream.buildStreamArgs,
+    buildPlaybackArgs: playback.buildPlaybackArgs,
+  };
+  return cachedParsers;
+}
+
+export interface EngineUtils {
+  readNdjsonLines: EngineNdjson['readNdjsonLines'];
+}
+
+let cachedUtils: EngineUtils | undefined;
+
+// Loaded lazily (first call), not at module top — mirrors loadEngineParsers.
+export function loadEngineUtils(): EngineUtils {
+  if (cachedUtils) return cachedUtils;
+  const ndjson = loadBundledCjs<EngineNdjson>('engine', 'ndjson.js');
+  cachedUtils = { readNdjsonLines: ndjson.readNdjsonLines };
+  return cachedUtils;
 }

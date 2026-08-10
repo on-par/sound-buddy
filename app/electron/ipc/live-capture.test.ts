@@ -38,16 +38,12 @@ vi.mock('../license', () => ({ isEntitled: (...a: unknown[]) => isEntitledMock(.
 const getSettingsMock = vi.fn();
 vi.mock('../settings', () => ({ getSettings: () => getSettingsMock() }));
 const defaultRecordDirMock = vi.fn();
-vi.mock('./shared', async () => {
-  const actualShared = await vi.importActual<typeof import('./shared')>('./shared');
-  return {
-    pythonBin: () => 'python3',
-    childEnv: () => ({}),
-    STREAM_SCRIPT: '/fake/stream.py',
-    defaultRecordDir: () => defaultRecordDirMock(),
-    readNdjsonLines: actualShared.readNdjsonLines,
-  };
-});
+vi.mock('./shared', () => ({
+  pythonBin: () => 'python3',
+  childEnv: () => ({}),
+  STREAM_SCRIPT: '/fake/stream.py',
+  defaultRecordDir: () => defaultRecordDirMock(),
+}));
 const spawnMock = vi.fn();
 vi.mock('child_process', () => ({
   spawn: (...args: unknown[]) => spawnMock(...args),
@@ -62,7 +58,13 @@ vi.mock('./engine-loader', async () => {
   const { buildStreamArgs } = await vi.importActual<typeof import('@sound-buddy/audio-engine/dist/stream/index.js')>(
     '@sound-buddy/audio-engine/dist/stream/index.js',
   );
-  return { loadEngineParsers: () => ({ buildStreamArgs }) };
+  const { readNdjsonLines } = await vi.importActual<typeof import('@sound-buddy/audio-engine/dist/ndjson.js')>(
+    '@sound-buddy/audio-engine/dist/ndjson.js',
+  );
+  return {
+    loadEngineParsers: () => ({ buildStreamArgs }),
+    loadEngineUtils: () => ({ readNdjsonLines }),
+  };
 });
 
 /** A stand-in for the spawned Python child, with a spy-able kill(). */

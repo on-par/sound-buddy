@@ -1,53 +1,19 @@
 // Copyright (c) 2026 Patrick Robinson (on-par). All rights reserved.
 // Licensed under the Sound Buddy Desktop Application License (app/LICENSE).
 
-import { execFile } from 'node:child_process';
-import { promisify } from 'node:util';
-
-export const SOX_TIMEOUT_MS = 60_000;
-export const FFPROBE_TIMEOUT_MS = 30_000;
-export const SPECTRUM_TIMEOUT_MS = 300_000;
-// ebur128 decodes the whole file with 4x true-peak oversampling; long service
-// recordings need the same headroom as the spectrum analysis.
-export const EBUR128_TIMEOUT_MS = 300_000;
-
-const execFileAsync = promisify(execFile);
-
-export class SubprocessTimeoutError extends Error {
-  constructor(public readonly stage: string, public readonly timeoutMs: number) {
-    super(`${stage} timed out after ${timeoutMs} ms`);
-    this.name = 'SubprocessTimeoutError';
-  }
-}
-
 // Shared abort-detection predicate (#125) — the single source of truth for
 // "was this rejection caused by an AbortSignal", reused by every caller that
 // needs to tell a user cancellation apart from a genuine failure.
+//
+// This is a deliberate, drift-tested duplicate of
+// packages/audio-engine/src/analyze/timeout.ts's isAbortError rather than a
+// loadBundledCjs('engine', ...) call (#745): its only caller, run-analysis.ts,
+// is documented as "Pure, Electron-free run orchestration... unit-testable
+// without a fake Electron event.sender", and loadBundledCjs transitively
+// imports Electron's `app` — routing this predicate through it would give
+// run-analysis.ts an Electron/dist-cjs-build dependency it doesn't otherwise
+// have. timeout.test.ts's drift guard asserts the two copies stay identical.
 export function isAbortError(err: unknown): boolean {
   const e = err as { name?: string; code?: string } | null | undefined;
   return e?.name === 'AbortError' || e?.code === 'ABORT_ERR';
-}
-
-export async function execFileWithTimeout(
-  bin: string,
-  args: string[],
-  options: { encoding: 'utf8'; maxBuffer?: number; env?: NodeJS.ProcessEnv; signal?: AbortSignal },
-  stage: string,
-  timeoutMs: number,
-): Promise<{ stdout: string; stderr: string }> {
-  try {
-    const result = await execFileAsync(bin, args, {
-      ...options,
-      timeout: timeoutMs,
-      killSignal: 'SIGKILL',
-    });
-    return { stdout: result.stdout ?? '', stderr: result.stderr ?? '' };
-  } catch (err) {
-    const e = err as { killed?: boolean };
-    // An abort (user cancellation) surfaces as `killed: true` too — check it
-    // first so a cancellation isn't mislabeled a SubprocessTimeoutError.
-    if (isAbortError(err) || options.signal?.aborted) throw err;
-    if (e.killed) throw new SubprocessTimeoutError(stage, timeoutMs);
-    throw err;
-  }
 }

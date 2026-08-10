@@ -18,7 +18,8 @@
 // the handle a later start() already installed.
 
 import { spawn } from 'child_process';
-import { readNdjsonLines, type NdjsonSource } from './shared';
+import type { NdjsonSource } from '@sound-buddy/audio-engine/dist-cjs/ndjson';
+import { loadEngineUtils } from './engine-loader';
 
 export type PythonStreamSpawn = (
   command: string,
@@ -98,7 +99,7 @@ export function createPythonStreamSlot(deps: PythonStreamDeps): PythonStreamSlot
       if (text) deps.logWarn(`${opts.label} stderr: ${text}`);
     });
 
-    readNdjsonLines(py.stdout, opts.onLine);
+    loadEngineUtils().readNdjsonLines(py.stdout, opts.onLine);
 
     py.on('error', (...a: unknown[]) => {
       const err = a[0] as Error;

@@ -34,7 +34,13 @@ vi.mock('./engine-loader', async () => {
   const { buildPlaybackArgs } = await vi.importActual<
     typeof import('@sound-buddy/audio-engine/dist/playback/index.js')
   >('@sound-buddy/audio-engine/dist/playback/index.js');
-  return { loadEngineParsers: () => ({ buildPlaybackArgs }) };
+  const { readNdjsonLines } = await vi.importActual<typeof import('@sound-buddy/audio-engine/dist/ndjson.js')>(
+    '@sound-buddy/audio-engine/dist/ndjson.js',
+  );
+  return {
+    loadEngineParsers: () => ({ buildPlaybackArgs }),
+    loadEngineUtils: () => ({ readNdjsonLines }),
+  };
 });
 
 import { registerPlaybackHandlers } from './playback';
