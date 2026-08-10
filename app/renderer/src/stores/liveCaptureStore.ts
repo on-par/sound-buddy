@@ -203,6 +203,11 @@ export interface LiveCaptureState {
   // var, now store-owned (TD-001 slice 6c, #701) so LiveControls can render
   // the transport's "Starting…" state without prematurely flipping liveMode.
   promoting: boolean;
+  // Transient: true only for the duration of stopLiveCapture's stopCapture()
+  // await (#729) — mirrors `promoting` for the same reason, giving the
+  // top-bar RecordButton (and #live-stop-btn) a genuine "Stopping…" state
+  // instead of jumping straight from recording to idle.
+  stopping: boolean;
 
   liveWindows: LiveEvent[];
   lastTick: LiveEvent | null;
@@ -273,6 +278,7 @@ export interface LiveCaptureState {
   // `liveRunning = true/false` did.
   setRunning(running: boolean): void;
   setPromoting(promoting: boolean): void;
+  setStopping(stopping: boolean): void;
   clearLiveWindows(): void;
   // A device switch (selectDevice/loadDevices) re-seeds channelConfig for the
   // new device, but the previous device's most-recent tick snapshot isn't
@@ -329,6 +335,7 @@ export function createLiveCaptureStore(getApi: () => LiveCaptureApi) {
 
     isCapturing: false,
     promoting: false,
+    stopping: false,
 
     liveWindows: [],
     lastTick: null,
@@ -555,6 +562,10 @@ export function createLiveCaptureStore(getApi: () => LiveCaptureApi) {
 
     setPromoting(promoting) {
       set({ promoting });
+    },
+
+    setStopping(stopping) {
+      set({ stopping });
     },
 
     clearLiveWindows() {
