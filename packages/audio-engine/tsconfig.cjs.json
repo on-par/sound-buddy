@@ -23,6 +23,8 @@
     "src/prompts/system-engineer.ts",
     "src/prompts/system-multi-channel.ts",
     "src/prompts/system-analyst.ts",
-    "src/prompts/system-live.ts"
+    "src/prompts/system-live.ts",
+    "src/stream/index.ts",
+    "src/playback/index.ts"
   ]
 }
