@@ -12,6 +12,7 @@ import * as fs from 'fs';
 import { log, logWarn, logError } from '../logger';
 import { isEntitled } from '../license';
 import { pythonBin, childEnv, PLAYBACK_SCRIPT, readNdjsonLines } from './shared';
+import { loadEngineParsers } from './engine-loader';
 import type { StartPlaybackOpts } from './api';
 
 // The current virtual-soundcheck playback child (playback.py). Held at module
@@ -70,13 +71,13 @@ export function registerPlaybackHandlers(): void {
       playbackProcess = null;
     }
 
-    const args: string[] = [opts.sessionDir];
-    if (opts.device) args.push('--device', opts.device);
-    if (opts.route) args.push('--route', opts.route);
-    if (opts.intervalSecs && opts.intervalSecs > 0) {
-      args.push('--interval', String(opts.intervalSecs));
-    }
-    if (opts.master) args.push('--master');
+    const args = loadEngineParsers().buildPlaybackArgs({
+      sessionDir: opts.sessionDir,
+      device: opts.device,
+      route: opts.route,
+      intervalSecs: opts.intervalSecs,
+      master: opts.master,
+    });
 
     const py = spawn(pythonBin(), [PLAYBACK_SCRIPT, ...args], {
       stdio: ['ignore', 'pipe', 'pipe'],

@@ -26,6 +26,11 @@ type EngineSpectrum = typeof import('@sound-buddy/audio-engine/dist-cjs/analyze/
 type EngineEbur128 = typeof import('@sound-buddy/audio-engine/dist-cjs/analyze/ebur128');
 type EngineOrchestrate = typeof import('@sound-buddy/audio-engine/dist-cjs/analyze/orchestrate');
 type EngineExtract = typeof import('@sound-buddy/audio-engine/dist-cjs/analyze/extract');
+type EngineStream = typeof import('@sound-buddy/audio-engine/dist-cjs/stream/index');
+type EnginePlayback = typeof import('@sound-buddy/audio-engine/dist-cjs/playback/index');
+
+export type { LiveOptions } from '@sound-buddy/audio-engine/dist-cjs/stream/index';
+export type { PlaybackOptions } from '@sound-buddy/audio-engine/dist-cjs/playback/index';
 
 export function engineParsersDir(): string {
   if (app.isPackaged) {
@@ -44,6 +49,8 @@ export interface EngineParsers {
   analyzeAudio: EngineOrchestrate['analyzeAudio'];
   isVideoFile: EngineExtract['isVideoFile'];
   extractAudioToWav: EngineExtract['extractAudioToWav'];
+  buildStreamArgs: EngineStream['buildStreamArgs'];
+  buildPlaybackArgs: EnginePlayback['buildPlaybackArgs'];
 }
 
 let cachedParsers: EngineParsers | undefined;
@@ -62,6 +69,8 @@ export function loadEngineParsers(): EngineParsers {
     const ebur128: EngineEbur128 = req(path.join(dir, 'analyze', 'ebur128.js'));
     const orchestrate: EngineOrchestrate = req(path.join(dir, 'analyze', 'orchestrate.js'));
     const extract: EngineExtract = req(path.join(dir, 'analyze', 'extract.js'));
+    const stream: EngineStream = req(path.join(dir, 'stream', 'index.js'));
+    const playback: EnginePlayback = req(path.join(dir, 'playback', 'index.js'));
 
     cachedParsers = {
       runSox: sox.runSox,
@@ -72,6 +81,8 @@ export function loadEngineParsers(): EngineParsers {
       analyzeAudio: orchestrate.analyzeAudio,
       isVideoFile: extract.isVideoFile,
       extractAudioToWav: extract.extractAudioToWav,
+      buildStreamArgs: stream.buildStreamArgs,
+      buildPlaybackArgs: playback.buildPlaybackArgs,
     };
     return cachedParsers;
   } catch (err) {

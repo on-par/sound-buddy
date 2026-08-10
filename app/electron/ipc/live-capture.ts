@@ -13,6 +13,7 @@ import * as fs from 'fs';
 import { log, logWarn, logError } from '../logger';
 import { isEntitled } from '../license';
 import { pythonBin, childEnv, STREAM_SCRIPT, defaultRecordDir, readNdjsonLines } from './shared';
+import { loadEngineParsers, type LiveOptions } from './engine-loader';
 import type { StartLiveOpts } from './api';
 
 let liveProcess: ChildProcess | null = null;
@@ -184,19 +185,12 @@ export function registerLiveCaptureHandlers(): void {
       liveProcess = null;
     }
 
-    const args: string[] = [];
-    if (opts.device) args.push(opts.device);
-    else args.push('');
-    args.push(String(opts.windowSecs));
-    if (opts.channels && opts.channels.length > 0) {
-      args.push(opts.channels.join(','));
-    } else {
-      args.push('');
-    }
-
-    if (opts.intervalSecs && opts.intervalSecs > 0) {
-      args.push('--interval', String(opts.intervalSecs));
-    }
+    const liveOptions: LiveOptions = {
+      device: opts.device,
+      windowSecs: opts.windowSecs,
+      channels: opts.channels,
+      intervalSecs: opts.intervalSecs,
+    };
 
     // Record mode: derive a session folder and tell stream.py to capture one
     // stem per armed strip into it (plus session.json). Arm tokens select which
@@ -204,21 +198,16 @@ export function registerLiveCaptureHandlers(): void {
     if (opts.mode === 'record') {
       try {
         liveSessionDir = buildSessionDir(opts.recordDir);
-        args.push('--session-dir', liveSessionDir);
-        if (opts.arm && opts.arm.length > 0) {
-          args.push('--arm', opts.arm.join(','));
-        }
-        // Per-strip display labels (#482), carried into stem filenames and
-        // session.json track labels. Omitted when every label is blank so a
-        // capture with no labels entered doesn't pass a useless all-empty array.
-        if (opts.labels && opts.labels.some((l) => typeof l === 'string' && l.trim() !== '')) {
-          args.push('--labels', JSON.stringify(opts.labels));
-        }
+        liveOptions.sessionDir = liveSessionDir;
+        liveOptions.armTokens = opts.arm;
+        liveOptions.labels = opts.labels;
       } catch (err) {
         logError('start-live: could not prepare recording folder', err);
         return { success: false, error: `Could not prepare recording folder: ${String(err)}` };
       }
     }
+
+    const args = loadEngineParsers().buildStreamArgs(liveOptions);
 
     const py = spawn(pythonBin(), [STREAM_SCRIPT, ...args], {
       stdio: ['ignore', 'pipe', 'pipe'],
