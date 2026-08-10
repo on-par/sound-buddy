@@ -62,8 +62,10 @@ describe('SettingsPanel markup', () => {
     expect(html).toContain('id="settings-dialog"');
     expect(html).toContain('style="display:none"');
     expect(html).toContain('id="settings-tab-btn-storage"');
+    expect(html).toContain('id="settings-tab-btn-audio"');
     expect(html).toContain('id="settings-tab-btn-about"');
     expect(html).toContain('id="settings-pane-storage"');
+    expect(html).toContain('id="settings-pane-audio"');
     expect(html).toContain('id="settings-pane-about"');
   });
 
@@ -78,6 +80,17 @@ describe('SettingsPanel markup', () => {
     expect(html).toContain('id="settings-tab-btn-storage" role="tab" aria-selected="true"');
     expect(html).toMatch(/id="settings-pane-storage" style="display:flex"/);
     expect(html).toMatch(/id="settings-pane-about" style="display:none"/);
+  });
+
+  it('defaults to the Audio tab inactive and its pane hidden', () => {
+    const html = renderMarkup();
+    expect(html).toContain('id="settings-tab-btn-audio" role="tab" aria-selected="false"');
+    expect(html).toMatch(/id="settings-pane-audio" style="display:none"/);
+  });
+
+  it('wires the Audio tab button to setSection("audio")', () => {
+    const src = fs.readFileSync(fileURLToPath(new URL('./SettingsPanel.tsx', import.meta.url)), 'utf8');
+    expect(src).toContain("onClick={() => setSection('audio')}");
   });
 
   it('renders the storage pane copy verbatim, including the no-caps guardrail line', () => {
@@ -202,10 +215,11 @@ describe('storage toggle seeding on dialog open (#522, #204)', () => {
 
 // SettingsSection type import is exercised for its type only — a runtime
 // assertion would be redundant, but the import must resolve (compile-time
-// proof the export still exists post-#657's AI-tab removal).
+// proof the export still exists post-#657's AI-tab removal, now widened for
+// the #726 Audio tab).
 describe('SettingsSection', () => {
-  it('excludes the removed ai section', () => {
-    const sections: SettingsSection[] = ['storage', 'about'];
-    expect(sections).toEqual(['storage', 'about']);
+  it('includes storage, audio, and about', () => {
+    const sections: SettingsSection[] = ['storage', 'audio', 'about'];
+    expect(sections).toEqual(['storage', 'audio', 'about']);
   });
 });

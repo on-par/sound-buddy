@@ -21,7 +21,7 @@ import { DEFAULT_STORAGE_PATH, effectiveStoragePath, loadStorageSeed, buildStora
 import type { UpdateSettingsPatch } from '../../electron/ipc/api';
 import { MAX_CHURCH_NAME_LEN } from './share-card';
 
-export type SettingsSection = 'storage' | 'about';
+export type SettingsSection = 'storage' | 'audio' | 'about';
 
 // Day-of-week options for the weekly reminder's service-day <select> (#268),
 // index-aligned with Date.prototype.getDay() (0 = Sunday … 6 = Saturday).
@@ -193,6 +193,16 @@ export default function SettingsPanel() {
             onClick={() => setSection('storage')}
           >
             Storage
+          </button>
+          <button
+            type="button"
+            className={'settings-tab' + (section === 'audio' ? ' active' : '')}
+            id="settings-tab-btn-audio"
+            role="tab"
+            aria-selected={section === 'audio'}
+            onClick={() => setSection('audio')}
+          >
+            Audio
           </button>
           <button
             type="button"
@@ -379,6 +389,11 @@ export default function SettingsPanel() {
             Granted only when you explicitly allow it from the prompt shown the first time a live-console
             feature is turned on — there is no toggle here to turn it on. Revoking takes effect immediately
             and blocks further console reads until you grant it again.
+          </p>
+        </div>
+        <div className="settings-pane" id="settings-pane-audio" style={{ display: section === 'audio' ? 'flex' : 'none' }}>
+          <p className="ai-dialog-note" id="settings-audio-placeholder">
+            Audio source settings are coming soon.
           </p>
         </div>
         <div className="settings-pane" id="settings-pane-about" style={{ display: section === 'about' ? 'flex' : 'none' }}>
