@@ -139,6 +139,12 @@ export function switchMode(mode: string): void {
 
   useLiveCaptureStore.getState().setAppMode(mode);
 
+  // #727: the Live tab's #tab-live node relocated out of #source-panel into
+  // #spectrum-panel, leaving #source-panel with nothing to show while Live
+  // is active — collapse it via this class the same way rc-active already
+  // does for the Report Card tab.
+  document.body.classList.toggle('live-active', mode === 'live');
+
   if (mode === 'reportcard') {
     document.body.classList.add('rc-active');
     document.getElementById('reportcard-view')?.classList.add('active');

@@ -14,6 +14,19 @@ import { launchApp, renameHeader } from './e2e-helpers';
 let electronApp: ElectronApplication;
 let window: Page;
 
+// #727: the rig picker, input device + refresh, measurement source, and
+// record-folder row relocated off the Live tab into Settings → Audio.
+async function openAudioSettings(win: Page): Promise<void> {
+  await win.locator('#settings-btn').click();
+  await win.locator('#settings-tab-btn-audio').click();
+  await expect(win.locator('#settings-pane-audio')).toBeVisible();
+}
+
+async function closeSettings(win: Page): Promise<void> {
+  await win.locator('#settings-dialog-cancel').click();
+  await expect(win.locator('#settings-dialog')).toBeHidden();
+}
+
 test.describe('Live capture (PRD 06)', () => {
   test.beforeAll(async () => {
     ({ electronApp, window } = await launchApp());
@@ -27,32 +40,49 @@ test.describe('Live capture (PRD 06)', () => {
     await window.locator('.mode-tab[data-mode="live"]').click();
     await expect(window.locator('#tab-live')).toHaveClass(/active/);
     // Re-enumerate against the stubbed 8-channel device (the boot-time scan
-    // ran before the stub was installed).
+    // ran before the stub was installed). device-refresh-btn is Settings-owned
+    // now (#727).
+    await openAudioSettings(window);
     await window.locator('#device-refresh-btn').click();
+    await closeSettings(window);
     await expect(window.locator('#spectrum-body .live-ch')).toHaveCount(2);
   });
 
   // The rail's channel list/add/group/arm controls now live solely in the
-  // workspace (#192) — the rail keeps only capture setup + transport.
-  test('the left rail is slimmed to capture setup + transport', async () => {
+  // workspace (#192). #727 removed the rail's own capture-setup controls too
+  // (rig picker, device, measurement source, cadence sliders, record folder)
+  // — they moved into Settings → Audio — leaving only Mode + transport on the
+  // Live tab itself.
+  test('the Live tab keeps only Mode + transport; capture setup lives in Settings → Audio', async () => {
     await expect(window.locator('#chcfg')).toHaveCount(0);
     await expect(window.locator('#arm-all-btn')).toHaveCount(0);
-    await expect(window.locator('#rig-bar')).toBeVisible();
-    await expect(window.locator('#device-select')).toBeVisible();
+    await expect(window.locator('#rig-bar')).toHaveCount(0);
+    await expect(window.locator('#device-select')).toBeHidden();
     await expect(window.locator('#live-mode')).toBeVisible();
-    await expect(window.locator('#meter-interval')).toBeVisible();
     await expect(window.locator('#live-start-btn')).toBeVisible();
+
+    await openAudioSettings(window);
+    await expect(window.locator('#rig-select')).toBeVisible();
+    await expect(window.locator('#device-select')).toBeVisible();
+    await expect(window.locator('#meter-interval')).toBeVisible();
+    await closeSettings(window);
   });
 
   test('Monitor/Record toggle reveals the recording folder', async () => {
+    await openAudioSettings(window);
     const folderRow = window.locator('#record-folder-row');
     await expect(folderRow).toBeHidden();
+    await closeSettings(window);
 
     await window.locator('#live-mode button[data-mode="record"]').click();
+    await openAudioSettings(window);
     await expect(folderRow).toBeVisible();
+    await closeSettings(window);
 
     await window.locator('#live-mode button[data-mode="monitor"]').click();
+    await openAudioSettings(window);
     await expect(folderRow).toBeHidden();
+    await closeSettings(window);
   });
 
   test('channel picker adds up to the device channel count, with mono/stereo', async () => {

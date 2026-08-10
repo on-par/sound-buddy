@@ -54,7 +54,6 @@ test.describe.serial('License gating (#54)', () => {
     await win.locator('.mode-tab[data-mode="live"]').click();
     await expect(win.locator('#tab-live .pro-gate')).toBeVisible();
     await expect(win.locator('#live-start-btn')).toBeHidden();
-    await expect(win.locator('#rig-bar #rig-select')).toBeHidden();
     await win.locator('.mode-tab[data-mode="soundcheck"]').click();
     await expect(win.locator('#tab-soundcheck .pro-gate')).toBeVisible();
     await expect(win.locator('#sc-play-btn')).toBeHidden();
@@ -107,7 +106,6 @@ test.describe.serial('License gating (#54)', () => {
     await win.locator('.mode-tab[data-mode="live"]').click();
     await expect(win.locator('#tab-live .pro-gate')).toBeHidden();
     await expect(win.locator('#live-start-btn')).toBeVisible();
-    await expect(win.locator('#rig-bar #rig-select')).toBeVisible();
 
     // And it persisted for the next launch.
     const stored = JSON.parse(fs.readFileSync(path.join(USER_DATA, 'license.json'), 'utf8'));

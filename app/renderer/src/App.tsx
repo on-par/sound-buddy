@@ -59,11 +59,8 @@ import SpectrumPanel from './SpectrumPanel';
 import IdealProfileSelect from './IdealProfileSelect';
 import CurveEditorDialog from './CurveEditorDialog';
 import LiveControls, { LiveTransportControls } from './LiveControls';
-import SecondaryMeasurementPanel from './SecondaryMeasurementPanel';
-import CaptureCadenceControls from './CaptureCadenceControls';
 import LiveWorkspace from './LiveWorkspace';
 import SoundcheckPanel from './SoundcheckPanel';
-import RigControls from './RigControls';
 import PreflightPanel from './PreflightPanel';
 import ModeTabs from './ModeTabs';
 import * as modeSwitch from './mode-switch';
@@ -224,7 +221,7 @@ export default function App() {
   return (
     <>
       {createPortal(<LicensePanel />, document.getElementById('license-island')!)}
-      {createPortal(<SettingsPanel />, document.getElementById('settings-island')!)}
+      {createPortal(<SettingsPanel booted={booted} />, document.getElementById('settings-island')!)}
       {createPortal(<CurveEditorDialog />, document.getElementById('curve-editor-island')!)}
       {/* FeedbackDialog/GradeOwnGuideDialog/PhaseDoublingDialog read
           window.feedbackForm/gradeOwnState/phaseDoublingState (BOOT_SCRIPTS
@@ -243,10 +240,7 @@ export default function App() {
       {booted && createPortal(<IdealProfileSelect />, document.getElementById('ideal-profile-island')!)}
       {booted && createPortal(<LiveWorkspace />, document.getElementById('live-island')!)}
       {booted && createPortal(<LiveControls />, document.getElementById('live-controls-island')!)}
-      {booted && createPortal(<SecondaryMeasurementPanel />, document.getElementById('secondary-measurement-island')!)}
-      {booted && createPortal(<CaptureCadenceControls />, document.getElementById('capture-cadence-island')!)}
       {booted && createPortal(<LiveTransportControls />, document.getElementById('live-transport-island')!)}
-      {booted && createPortal(<RigControls />, document.getElementById('rig-controls-island')!)}
       {booted && createPortal(<PreflightPanel />, document.getElementById('preflight-island')!)}
       {booted && createPortal(<SoundcheckPanel />, document.getElementById('soundcheck-island')!)}
       {booted && createPortal(<ModeTabs />, document.getElementById('mode-tabs')!)}

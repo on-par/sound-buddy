@@ -9,16 +9,18 @@ import { fileURLToPath } from 'node:url';
 import SettingsPanel, { saveAll, type SettingsSection, commitShareChurchName } from './SettingsPanel';
 import { ElectronContext } from './useElectron';
 import { createSettingsStore, useSettingsStore } from './stores/settingsStore';
+import { useLiveCaptureStore } from './stores/liveCaptureStore';
 import { createMockSoundBuddy } from './mock-sound-buddy';
 import type { AppSettings } from '../../electron/ipc/api';
 
 afterEach(() => {
   useSettingsStore.setState({ settings: null, settingsError: null, dialogOpen: false });
+  useLiveCaptureStore.setState({ isCapturing: false });
 });
 
-function renderMarkup(): string {
+function renderMarkup(booted = false): string {
   const mock = createMockSoundBuddy();
-  return renderToString(createElement(ElectronContext.Provider, { value: mock.api }, createElement(SettingsPanel)));
+  return renderToString(createElement(ElectronContext.Provider, { value: mock.api }, createElement(SettingsPanel, { booted })));
 }
 
 describe('saveAll', () => {
@@ -125,6 +127,54 @@ describe('SettingsPanel markup', () => {
     useSettingsStore.setState({ settings: { shareChurchName: 'Grace Chapel' } as unknown as AppSettings });
     const html = renderMarkup();
     expect(html).toMatch(/id="share-church-name-input"[^>]*value="Grace Chapel"/);
+  });
+});
+
+// The Audio pane composes RigControls/LiveSourceSettings/
+// SecondaryMeasurementPanel/CaptureCadenceControls directly as JSX (no
+// createPortal — see this file's header and the #727 plan for why), gated by
+// the `booted` prop App.tsx now passes through so they don't mount before
+// the boot scripts these subcomponents transitively depend on
+// (window.liveCaptureRuntime et al.) have run.
+describe('Audio pane composition (#727)', () => {
+  it('renders the moved controls when booted', () => {
+    useSettingsStore.setState({ settings: { secondaryMeasurementEnabled: true } as unknown as AppSettings });
+    const html = renderMarkup(true);
+    expect(html).toContain('id="rig-select"');
+    expect(html).toContain('id="device-select"');
+    expect(html).toContain('id="measurement-source"');
+    expect(html).toContain('id="secondary-measurement-device"');
+    expect(html).toContain('id="meter-interval"');
+    expect(html).toContain('id="window-secs"');
+  });
+
+  it('does not render the secondary-measurement device select when the experimental flag is off', () => {
+    const html = renderMarkup(true);
+    expect(html).toContain('id="rig-select"');
+    expect(html).not.toContain('id="secondary-measurement-device"');
+  });
+
+  it('renders none of the moved controls when not booted', () => {
+    const html = renderMarkup(false);
+    expect(html).not.toContain('id="rig-select"');
+    expect(html).not.toContain('id="device-select"');
+    expect(html).not.toContain('id="measurement-source"');
+    expect(html).not.toContain('id="meter-interval"');
+    expect(html).not.toContain('id="window-secs"');
+  });
+
+  it('shows no capture-lock note while idle', () => {
+    const html = renderMarkup(true);
+    expect(html).not.toContain('id="settings-audio-capture-lock-note"');
+  });
+
+  it('shows the capture-lock note while capturing, without claiming measurement source or the secondary device are locked', () => {
+    useLiveCaptureStore.setState({ isCapturing: true });
+    const html = renderMarkup(true);
+    expect(html).toContain('id="settings-audio-capture-lock-note"');
+    const note = html.match(/<p class="ai-dialog-note" id="settings-audio-capture-lock-note">(.*?)<\/p>/)?.[1] ?? '';
+    expect(note).not.toMatch(/measurement source[^.]*locked/i);
+    expect(note).not.toMatch(/secondary measurement[^.]*locked/i);
   });
 });
 

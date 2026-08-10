@@ -102,6 +102,10 @@
        Narrow windows stack the two vertically so neither clips. */
     #stage { display:flex; flex:1; overflow:hidden; }
     body.rc-active #source-panel { display:none; }
+    /* #727: #tab-live relocated into #spectrum-panel, leaving #source-panel
+       with nothing to show while Live is active — collapse it the same way,
+       freeing its width for #spectrum-panel's existing flex:1. */
+    body.live-active #source-panel { display:none; }
     @media (max-width:1000px) {
       body.rc-active #stage { flex-direction:column; }
       body.rc-active #reportcard-view { width:100%; flex:1; }
@@ -436,7 +440,6 @@
     .device-hint.is-error { color:var(--issue-text); }
 
     /* Rig picker (saved capture setups) */
-    .rig-bar { display:flex; flex-direction:column; gap:8px; }
     .rig-actions { display:flex; gap:6px; }
     .rig-actions .ghost-btn { flex:1; padding:0 6px; }
     /* Name / confirm dialog for Save As… / Rename / Delete */
@@ -563,12 +566,11 @@
     /* Capture lock (#38): while a capture runs, config controls freeze (stream.py
        can't honor mid-session changes) and a quiet caption explains why. */
     .capture-locked-note { display:none; align-items:center; gap:6px; font:var(--fw-regular) var(--fs-micro)/1.3 var(--font-sans); color:var(--text-muted); margin:4px 0; }
-    #tab-live.capture-locked .capture-locked-note { display:flex; }
-    #tab-live.capture-locked #device-select:disabled,
-    #tab-live.capture-locked #device-refresh-btn:disabled,
-    #tab-live.capture-locked #record-folder-btn:disabled,
-    #tab-live.capture-locked #live-mode button:disabled,
-    #tab-live.capture-locked .sb-slider:disabled { opacity:0.5; cursor:not-allowed; }
+    /* #727: device-select/device-refresh-btn/record-folder-btn/.sb-slider
+       moved into Settings → Audio (SettingsPanel.tsx shows its own
+       capture-lock note there) — only #live-mode's buttons remain under
+       #tab-live. */
+    #tab-live.capture-locked #live-mode button:disabled { opacity:0.5; cursor:not-allowed; }
 
     /* Recording indicator + recording offer banner */
     #live-indicator .rec-dot { width:8px; height:8px; border-radius:50%; background:var(--issue-500); box-shadow:0 0 8px rgba(229,72,77,0.6); }

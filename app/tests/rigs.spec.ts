@@ -69,6 +69,20 @@ async function launch(devices: unknown): Promise<{ app: ElectronApplication; win
   return { app, win };
 }
 
+// #727: the rig picker, input device + refresh, and meter-rate/window
+// sliders relocated off the Live tab into Settings → Audio, so every
+// interaction with them now goes through the Settings dialog first.
+async function openAudioSettings(win: Page): Promise<void> {
+  await win.locator('#settings-btn').click();
+  await win.locator('#settings-tab-btn-audio').click();
+  await expect(win.locator('#settings-pane-audio')).toBeVisible();
+}
+
+async function closeSettings(win: Page): Promise<void> {
+  await win.locator('#settings-dialog-cancel').click();
+  await expect(win.locator('#settings-dialog')).toBeHidden();
+}
+
 test.describe.serial('Rigs — save / load / switch', () => {
   let app: ElectronApplication;
   let win: Page;
@@ -84,10 +98,11 @@ test.describe.serial('Rigs — save / load / switch', () => {
   test('Save As… captures the current setup as a new, active rig', async () => {
     ({ app, win } = await launch(EIGHT_CH));
 
-    // Pick the real device (Default Device stores an empty deviceName), switch to
-    // Record mode, dial the sliders, and make the first strip stereo.
+    // Pick the real device (Default Device stores an empty deviceName), dial
+    // the sliders (Settings → Audio), then switch to Record mode and make
+    // the first strip stereo (both still on the Live tab).
+    await openAudioSettings(win);
     await win.locator('#device-select').selectOption('0');
-    await win.locator('#live-mode button[data-mode="record"]').click();
     await win.evaluate(() => {
       // meter-interval/window-secs are React-controlled inputs (#725). React
       // patches each controlled <input>'s `value` property with its own
@@ -110,8 +125,11 @@ test.describe.serial('Rigs — save / load / switch', () => {
       set('meter-interval', '200');
       set('window-secs', '5');
     });
+    await closeSettings(win);
+    await win.locator('#live-mode button[data-mode="record"]').click();
     await win.locator('.live-ch-kind').first().selectOption('stereo');
 
+    await openAudioSettings(win);
     await win.locator('#rig-saveas-btn').click();
     await expect(win.locator('#rig-dialog')).toBeVisible();
     await win.locator('#rig-dialog-input').fill('Main Board');
@@ -137,11 +155,13 @@ test.describe.serial('Rigs — save / load / switch', () => {
     ({ app, win } = await launch(EIGHT_CH));
 
     // No manual selection: the active rig is restored on boot.
+    await openAudioSettings(win);
     await expect(win.locator('#rig-select option:checked')).toHaveText('Main Board');
     expect(await win.locator('#device-select').inputValue()).toBe('0');
-    await expect(win.locator('#live-mode button[data-mode="record"]')).toHaveClass(/active/);
     expect(await win.locator('#meter-interval').inputValue()).toBe('200');
     expect(await win.locator('#window-secs').inputValue()).toBe('5');
+    await closeSettings(win);
+    await expect(win.locator('#live-mode button[data-mode="record"]')).toHaveClass(/active/);
   });
 
   test('loading a rig whose device is absent shows a fallback and does not auto-start', async () => {
@@ -166,12 +186,15 @@ test.describe.serial('Rigs — save / load / switch', () => {
     await win.waitForLoadState('domcontentloaded');
     await win.locator('.mode-tab[data-mode="live"]').click();
 
-    await expect(win.locator('#rig-select option:checked')).toHaveText('Scarlett Rig');
     await expect(win.locator('#live-status')).toContainText('not found');
-    expect(await win.locator('#device-select').inputValue()).toBe('');
     // Not auto-started: Start visible, Stop hidden.
     await expect(win.locator('#live-start-btn')).toBeVisible();
     await expect(win.locator('#live-stop-btn')).toBeHidden();
+
+    await openAudioSettings(win);
+    await expect(win.locator('#rig-select option:checked')).toHaveText('Scarlett Rig');
+    expect(await win.locator('#device-select').inputValue()).toBe('');
+    await closeSettings(win);
   });
 
   test('loading a rig with out-of-range channels clamps them without throwing', async () => {
@@ -199,10 +222,13 @@ test.describe.serial('Rigs — save / load / switch', () => {
     await win.waitForLoadState('domcontentloaded');
     await win.locator('.mode-tab[data-mode="live"]').click();
 
-    await expect(win.locator('#rig-select option:checked')).toHaveText('Big Board');
     await expect(win.locator('#live-status')).toContainText('out of range');
     // Both strips still render (nothing thrown); the stereo legs were clamped.
     await expect(win.locator('#spectrum-body .live-ch')).toHaveCount(2);
+
+    await openAudioSettings(win);
+    await expect(win.locator('#rig-select option:checked')).toHaveText('Big Board');
+    await closeSettings(win);
   });
 
   test('per-channel labels round-trip through a rig save + relaunch (#39)', async () => {
@@ -211,9 +237,11 @@ test.describe.serial('Rigs — save / load / switch', () => {
     await win.reload();
     await win.waitForLoadState('domcontentloaded');
     await win.locator('.mode-tab[data-mode="live"]').click();
+    await openAudioSettings(win);
     await win.locator('#device-refresh-btn').click();
     // Pick the real device before labelling (a device change re-seeds the config).
     await win.locator('#device-select').selectOption('0');
+    await closeSettings(win);
     await expect(win.locator('#spectrum-body .live-ch')).toHaveCount(2);
 
     // Name both strips (contenteditable workspace header), then save as a new,
@@ -227,10 +255,12 @@ test.describe.serial('Rigs — save / load / switch', () => {
     }
     await renameHeader(0, 'Kick');
     await renameHeader(1, 'SL Vox');
+    await openAudioSettings(win);
     await win.locator('#rig-saveas-btn').click();
     await win.locator('#rig-dialog-input').fill('Labeled Board');
     await win.locator('#rig-dialog-ok').click();
     await expect(win.locator('#rig-select option:checked')).toHaveText('Labeled Board');
+    await closeSettings(win);
 
     // The persisted rig carries the labels in its channelConfig.
     const rigs = await win.evaluate(() => (window as any).soundBuddy.listRigs());
@@ -241,7 +271,9 @@ test.describe.serial('Rigs — save / load / switch', () => {
     // Relaunch: the active rig restores the labels into the workspace headers.
     await app.close();
     ({ app, win } = await launch(EIGHT_CH));
+    await openAudioSettings(win);
     await expect(win.locator('#rig-select option:checked')).toHaveText('Labeled Board');
+    await closeSettings(win);
     const restored = win.locator('#spectrum-body .live-ch .live-ch-name');
     await expect(restored.nth(0)).toHaveText('Kick');
     await expect(restored.nth(1)).toHaveText('SL Vox');
@@ -252,8 +284,10 @@ test.describe.serial('Rigs — save / load / switch', () => {
     await win.reload();
     await win.waitForLoadState('domcontentloaded');
     await win.locator('.mode-tab[data-mode="live"]').click();
+    await openAudioSettings(win);
     await win.locator('#device-refresh-btn').click();
     await win.locator('#device-select').selectOption('0');
+    await closeSettings(win);
     await expect(win.locator('#spectrum-body .live-ch')).toHaveCount(2);
 
     // Create a group and assign both strips to it.
@@ -264,10 +298,12 @@ test.describe.serial('Rigs — save / load / switch', () => {
     await win.locator('#spectrum-body .live-ch').nth(1).locator('.live-ch-group').selectOption({ label: 'Drums' });
 
     // Save as an active rig; the persisted rig carries the group + members.
+    await openAudioSettings(win);
     await win.locator('#rig-saveas-btn').click();
     await win.locator('#rig-dialog-input').fill('Grouped Board');
     await win.locator('#rig-dialog-ok').click();
     await expect(win.locator('#rig-select option:checked')).toHaveText('Grouped Board');
+    await closeSettings(win);
     const rigs = await win.evaluate(() => (window as unknown as { soundBuddy: { listRigs: () => Promise<unknown[]> } }).soundBuddy.listRigs());
     const saved = (rigs as Array<{ name: string; groups?: unknown }>).find((r) => r.name === 'Grouped Board');
     expect(saved!.groups).toEqual([{ name: 'Drums', members: [0, 1] }]);
@@ -275,13 +311,16 @@ test.describe.serial('Rigs — save / load / switch', () => {
     // Relaunch: the active rig restores group membership (both strips show Drums).
     await app.close();
     ({ app, win } = await launch(EIGHT_CH));
+    await openAudioSettings(win);
     await expect(win.locator('#rig-select option:checked')).toHaveText('Grouped Board');
+    await closeSettings(win);
     const groups = win.locator('#spectrum-body .live-ch .live-ch-group');
     await expect(groups.nth(0)).toHaveValue('0');
     await expect(groups.nth(1)).toHaveValue('0');
   });
 
   test('deleting a rig removes it from the picker and from listRigs()', async () => {
+    await openAudioSettings(win);
     await win.locator('#rig-select').selectOption({ label: 'Big Board' });
     await win.locator('#rig-delete-btn').click();
     await expect(win.locator('#rig-dialog')).toBeVisible();
@@ -290,6 +329,7 @@ test.describe.serial('Rigs — save / load / switch', () => {
     const rigs = await win.evaluate(() => (window as any).soundBuddy.listRigs());
     expect(rigs.find((r: any) => r.name === 'Big Board')).toBeUndefined();
     await expect(win.locator('#rig-select option', { hasText: 'Big Board' })).toHaveCount(0);
+    await closeSettings(win);
   });
 
   test('the rig picker locks while a capture is running and unlocks on stop', async () => {
@@ -306,12 +346,16 @@ test.describe.serial('Rigs — save / load / switch', () => {
     await win.locator('.mode-tab[data-mode="live"]').click();
 
     await win.locator('#live-start-btn').click();
+    await openAudioSettings(win);
     await expect(win.locator('#rig-select')).toBeDisabled();
     await expect(win.locator('#rig-saveas-btn')).toBeDisabled();
+    await closeSettings(win);
 
     await win.locator('#live-stop-btn').click();
+    await openAudioSettings(win);
     await expect(win.locator('#rig-select')).toBeEnabled();
     await expect(win.locator('#rig-saveas-btn')).toBeEnabled();
+    await closeSettings(win);
   });
 
   // Capture-config lock (#38).
@@ -333,10 +377,13 @@ test.describe.serial('Rigs — save / load / switch', () => {
       '#meter-interval', '#window-secs'];
 
     await win.locator('#live-start-btn').click();
+    await openAudioSettings(win);
     for (const sel of locked) {
       await expect(win.locator(sel)).toBeDisabled();
       await expect(win.locator(sel)).toHaveAttribute('aria-disabled', 'true');
     }
+    await expect(win.locator('#settings-audio-capture-lock-note')).toBeVisible();
+    await closeSettings(win);
     await expect(win.locator('#live-mode button').first()).toBeDisabled();
     await expect(win.locator('#spectrum-body .live-ch-kind').first()).toBeDisabled();
     // The workspace toolbar's Add track is rebuilt (not just re-flagged) by
@@ -344,16 +391,17 @@ test.describe.serial('Rigs — save / load / switch', () => {
     // — the rebuilt markup bakes in `disabled` (via defDisabled) but not
     // aria-disabled, so only `disabled` is asserted here.
     await expect(win.locator('#live-ws-add')).toBeDisabled();
-    await expect(win.locator('#capture-locked-note')).toBeVisible();
 
     await win.locator('#live-stop-btn').click();
+    await openAudioSettings(win);
     for (const sel of locked) {
       await expect(win.locator(sel)).toBeEnabled();
       await expect(win.locator(sel)).toHaveAttribute('aria-disabled', 'false');
     }
+    await expect(win.locator('#settings-audio-capture-lock-note')).toBeHidden();
+    await closeSettings(win);
     await expect(win.locator('#live-mode button').first()).toBeEnabled();
     await expect(win.locator('#live-ws-add')).toBeEnabled();
-    await expect(win.locator('#capture-locked-note')).toBeHidden();
   });
 
   test('a failed Start re-enables the config controls (no stuck lock)', async () => {
@@ -362,9 +410,11 @@ test.describe.serial('Rigs — save / load / switch', () => {
     // startLive resolves { success:false } → stopLive() runs → controls unlocked.
     // (A failed start also swaps #spectrum-body to the error state, so the
     // workspace toolbar itself is gone — nothing there left to assert on.)
+    await openAudioSettings(win);
     await expect(win.locator('#device-select')).toBeEnabled();
     await expect(win.locator('#meter-interval')).toBeEnabled();
-    await expect(win.locator('#capture-locked-note')).toBeHidden();
+    await expect(win.locator('#settings-audio-capture-lock-note')).toBeHidden();
+    await closeSettings(win);
     await expect(win.locator('#live-start-btn')).toBeVisible();
   });
 

@@ -1,0 +1,155 @@
+// Copyright (c) 2026 Patrick Robinson (on-par). All rights reserved.
+// Licensed under the Sound Buddy Desktop Application License (app/LICENSE).
+
+import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest';
+import { createElement } from 'react';
+import { renderToString } from 'react-dom/server';
+import LiveSourceSettings, { changeDevice, type LiveCaptureRuntime } from './LiveSourceSettings';
+import { useLiveCaptureStore } from './stores/liveCaptureStore';
+import { useSettingsStore } from './stores/settingsStore';
+import type { LiveDevice, StripConfig } from './live-capture-panel';
+
+// The pure classic scripts liveTransitionState/armState/groupState/rigKind/
+// channelLabels — real modules (not hand-rolled stubs), same convention as
+// liveCaptureStore.test.ts.
+const liveTransitionState = require('../live-transition-state.js');
+const armState = require('../arm-state.js');
+const groupState = require('../group-state.js');
+const rigKind = require('../rig-kind.js');
+const channelLabels = require('../channel-labels.js');
+
+beforeEach(() => {
+  (globalThis as { window?: unknown }).window = { liveTransitionState, armState, groupState, rigKind, channelLabels };
+});
+
+afterEach(() => {
+  delete (globalThis as { window?: unknown }).window;
+  useLiveCaptureStore.setState({
+    devices: [], deviceHint: null, selectedDevice: '', channelConfig: [], measurementSource: null,
+    liveMode: 'monitor', recordDir: '', isCapturing: false, promoting: false,
+  });
+  useSettingsStore.setState({ settings: null, settingsError: null });
+});
+
+const DEVICES: LiveDevice[] = [
+  { index: 0, name: 'Scarlett 18i20', channels: 8, default_sr: 48000 },
+];
+const CONFIG: StripConfig[] = [{ kind: 'mono', a: 0, b: 1, label: 'Vocal' }];
+
+function renderMarkup(): string {
+  return renderToString(createElement(LiveSourceSettings));
+}
+
+describe('LiveSourceSettings', () => {
+  it('renders the device select with a Default Device placeholder when no devices are loaded', () => {
+    const html = renderMarkup();
+    expect(html).toContain('id="device-select"');
+    expect(html).toContain('Loading devices…');
+  });
+
+  it('renders real devices plus the Default Device option', () => {
+    useLiveCaptureStore.setState({ devices: DEVICES });
+    const html = renderMarkup();
+    expect(html).toContain('<option value="" selected="">Default Device</option>');
+    expect(html).toContain('Scarlett 18i20');
+  });
+
+  it('shows the device hint text when present', () => {
+    useLiveCaptureStore.setState({ deviceHint: { text: 'No microphone or audio interface is connected.', isError: false } });
+    const html = renderMarkup();
+    expect(html).toContain('id="device-hint"');
+    expect(html).toContain('No microphone or audio interface is connected.');
+    expect(html).not.toContain('is-error');
+  });
+
+  it('flags an error device hint with the is-error class', () => {
+    useLiveCaptureStore.setState({ deviceHint: { text: 'Blocked.', isError: true } });
+    const html = renderMarkup();
+    expect(html).toContain('class="device-hint is-error"');
+  });
+
+  it('renders measurement-source options from channelConfig, selecting the store value', () => {
+    useLiveCaptureStore.setState({ channelConfig: CONFIG, measurementSource: 0 });
+    const html = renderMarkup();
+    expect(html).toContain('id="measurement-source"');
+    expect(html).toContain('Vocal');
+  });
+
+  it('shows the record-folder row only in record mode', () => {
+    expect(renderMarkup()).toContain('id="record-folder-row" style="display:none"');
+    useLiveCaptureStore.setState({ liveMode: 'record' });
+    expect(renderMarkup()).toContain('id="record-folder-row" style="display:flex"');
+  });
+
+  it('shows the configured recordDir, falling back to the settings storageDir default', () => {
+    useLiveCaptureStore.setState({ liveMode: 'record', recordDir: '/tmp/takes' });
+    expect(renderMarkup()).toContain('/tmp/takes');
+
+    useLiveCaptureStore.setState({ recordDir: '' });
+    useSettingsStore.setState({ settings: { storageDir: '/Volumes/Audio' } as never });
+    expect(renderMarkup()).toContain('/Volumes/Audio');
+
+    useSettingsStore.setState({ settings: { storageDir: '' } as never });
+    expect(renderMarkup()).toContain('~/Music/Sound Buddy');
+  });
+
+  it('disables device/record-folder controls while capturing', () => {
+    useLiveCaptureStore.setState({ isCapturing: true, liveMode: 'record' });
+    const html = renderMarkup();
+    expect(html).toMatch(/id="device-select"[^>]*disabled=""/);
+    expect(html).toMatch(/id="device-refresh-btn"[^>]*disabled=""/);
+    expect(html).toMatch(/id="record-folder-btn"[^>]*disabled=""/);
+  });
+
+  it('does not disable the measurement-source select while capturing (#457: safe to switch mid-capture)', () => {
+    useLiveCaptureStore.setState({ isCapturing: true, channelConfig: CONFIG, measurementSource: 0 });
+    const html = renderMarkup();
+    expect(html).not.toMatch(/id="measurement-source"[^>]*disabled/);
+  });
+
+  it('reflects the lock as aria-disabled too (tests/rigs.spec.ts checks both, since the workspace toolbar bakes in `disabled` on rebuild without aria-disabled)', () => {
+    const idle = renderMarkup();
+    expect(idle).toMatch(/id="device-select"[^>]*aria-disabled="false"/);
+    expect(idle).toMatch(/id="device-refresh-btn"[^>]*aria-disabled="false"/);
+    expect(idle).toMatch(/id="record-folder-btn"[^>]*aria-disabled="false"/);
+
+    useLiveCaptureStore.setState({ isCapturing: true });
+    const locked = renderMarkup();
+    expect(locked).toMatch(/id="device-select"[^>]*aria-disabled="true"/);
+    expect(locked).toMatch(/id="device-refresh-btn"[^>]*aria-disabled="true"/);
+    expect(locked).toMatch(/id="record-folder-btn"[^>]*aria-disabled="true"/);
+  });
+});
+
+// changeDevice is tested directly here rather than by clicking a rendered
+// select — LiveSourceSettings uses hooks internally, so calling the component
+// function outside a React render throws "invalid hook call" (no jsdom in
+// this harness to mount it for real); the click-path integration is covered
+// by tests/e2e/live-capture.spec.ts.
+describe('changeDevice', () => {
+  function mockRuntime(overrides: Partial<LiveCaptureRuntime> = {}): LiveCaptureRuntime {
+    return {
+      loadDevices: vi.fn(async () => {}),
+      selectDevice: vi.fn(),
+      changeMeasurementSource: vi.fn(),
+      chooseRecordFolder: vi.fn(async () => {}),
+      beforeStartCapture: vi.fn(() => ({ ok: true }) as const),
+      onCaptureStarting: vi.fn(),
+      onCaptureStarted: vi.fn(),
+      onCaptureStopping: vi.fn(),
+      onCaptureStopped: vi.fn(),
+      promoteToRecording: vi.fn(async () => {}),
+      ...overrides,
+    };
+  }
+
+  it('writes the selection into the store and delegates the re-seed to the runtime', () => {
+    const rt = mockRuntime();
+    const selectDevice = vi.spyOn(useLiveCaptureStore.getState(), 'selectDevice');
+
+    changeDevice(rt, '0');
+
+    expect(selectDevice).toHaveBeenCalledWith('0');
+    expect(rt.selectDevice).toHaveBeenCalledWith('0');
+  });
+});

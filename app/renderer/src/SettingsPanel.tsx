@@ -11,15 +11,28 @@
 // (index.html) so the existing e2e suite (app/tests/e2e/settings.spec.ts)
 // keeps driving the same selectors. The dialog stays permanently in the DOM —
 // `display` toggles via `dialogOpen`.
+//
+// The Audio pane (#726's scaffold) composes RigControls/LiveSourceSettings/
+// SecondaryMeasurementPanel/CaptureCadenceControls directly as JSX (#727) —
+// no createPortal, unlike the Live tab's static-markup islands, since this
+// dialog is 100% React-owned already and has no static per-control DOM
+// anchor to portal onto. The `booted` prop (passed from App.tsx) gates their
+// mount timing in place of the {booted && createPortal(...)} guard those
+// components previously got for free from App.tsx.
 
 import { useEffect, useState } from 'react';
 import type { StoreApi, UseBoundStore } from 'zustand';
 import { useElectron } from './useElectron';
 import { useStoreShallow } from './stores/useStoreShallow';
 import { useSettingsStore, type SettingsState } from './stores/settingsStore';
+import { useLiveCaptureStore } from './stores/liveCaptureStore';
 import { DEFAULT_STORAGE_PATH, effectiveStoragePath, loadStorageSeed, buildStoragePatch } from './storage-settings';
 import type { UpdateSettingsPatch } from '../../electron/ipc/api';
 import { MAX_CHURCH_NAME_LEN } from './share-card';
+import RigControls from './RigControls';
+import LiveSourceSettings from './LiveSourceSettings';
+import SecondaryMeasurementPanel from './SecondaryMeasurementPanel';
+import CaptureCadenceControls from './CaptureCadenceControls';
 
 export type SettingsSection = 'storage' | 'audio' | 'about';
 
@@ -54,12 +67,13 @@ export async function commitShareChurchName(store: SettingsStoreHandle, value: s
   await store.getState().updateSettings({ shareChurchName: value });
 }
 
-export default function SettingsPanel() {
+export default function SettingsPanel({ booted = false }: { booted?: boolean }) {
   const api = useElectron();
   const { settings, dialogOpen } = useStoreShallow(useSettingsStore, (s) => ({
     settings: s.settings,
     dialogOpen: s.dialogOpen,
   }));
+  const isCapturing = useStoreShallow(useLiveCaptureStore, (s) => s.isCapturing);
 
   const [version, setVersion] = useState('');
   // Seeded eagerly from the store's current settings (not just the
@@ -392,9 +406,17 @@ export default function SettingsPanel() {
           </p>
         </div>
         <div className="settings-pane" id="settings-pane-audio" style={{ display: section === 'audio' ? 'flex' : 'none' }}>
-          <p className="ai-dialog-note" id="settings-audio-placeholder">
-            Audio source settings are coming soon.
-          </p>
+          {isCapturing && (
+            <p className="ai-dialog-note" id="settings-audio-capture-lock-note">
+              A capture is running — the rig, input device, record folder, and meter cadence
+              sliders are locked until it stops. Measurement source and the secondary
+              measurement device can still be changed.
+            </p>
+          )}
+          {booted && <RigControls />}
+          {booted && <LiveSourceSettings />}
+          {booted && <SecondaryMeasurementPanel />}
+          {booted && <CaptureCadenceControls />}
         </div>
         <div className="settings-pane" id="settings-pane-about" style={{ display: section === 'about' ? 'flex' : 'none' }}>
           <p className="ai-dialog-version" id="ai-dialog-version">
