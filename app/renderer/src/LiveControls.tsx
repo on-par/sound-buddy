@@ -1,33 +1,39 @@
 // Copyright (c) 2026 Patrick Robinson (on-par). All rights reserved.
 // Licensed under the Sound Buddy Desktop Application License (app/LICENSE).
 
-// The #tab-live Mode toggle + the Start/Stop/Record transport (TD-001 slice
-// 6c, #701; narrowed by #727, which split the device picker/measurement
+// The #tab-live Mode toggle + the Start/Stop transport (TD-001 slice 6c,
+// #701; narrowed by #727, which split the device picker/measurement
 // source/record-folder row out into LiveSourceSettings.tsx and relocated
-// them into Settings → Audio) — portaled by App.tsx onto
-// #live-controls-island (this file's default export, LiveControls, now Mode
-// only) and #live-transport-island (LiveTransportControls), replacing
-// inline-app.js's setLiveMode/setCaptureControlsLocked/syncCaptureControls
-// DOM-writers for this region. Two separate components (not one component
-// with two internal createPortal calls) because react-dom's server renderer
-// doesn't support portals at all — see LiveControls.test.ts's header note —
-// and because root-markup.html's #tab-live interleaves these controls with
-// still-bridged, out-of-scope markup (the preflight panel), so they can't
-// share one contiguous portal target either. Button visibility/labels are
-// derived from the same pure window.liveTransitionState module inline-app.js
-// used, fed by liveCaptureStore state instead of the old liveRunning/
-// liveMode/capturePromoting module vars.
+// them into Settings → Audio; narrowed again by #729, which moved the
+// Record button out of LiveTransportControls entirely into RecordButton.tsx/
+// #record-button-island in the top bar — see that file's header for the new
+// surface) — portaled by App.tsx onto #live-controls-island (this file's
+// default export, LiveControls, Mode only) and #live-transport-island
+// (LiveTransportControls, Start/Stop only), replacing inline-app.js's
+// setLiveMode/setCaptureControlsLocked/syncCaptureControls DOM-writers for
+// this region. Two separate components (not one component with two internal
+// createPortal calls) because react-dom's server renderer doesn't support
+// portals at all — see LiveControls.test.ts's header note — and because
+// root-markup.html's #tab-live interleaves these controls with still-
+// bridged, out-of-scope markup (the preflight panel), so they can't share
+// one contiguous portal target either.
 //
 // #live-status, #arm-hint, #rec-offer/#rc-offer/#rc-not-enough, and
 // #live-rc-cue stay OUT of both islands (still static markup, still written
 // by several other still-inline functions — rig-apply error text,
 // group-mutation arm hints, the post-stop session offers) — pulling those
 // into React here would double-own DOM nodes that other bridged code also
-// writes directly. The Start/Stop/Record click handlers delegate to
+// writes directly. The Start/Stop click handlers delegate to
 // `window.liveCaptureRuntime` (inline-app.js) for the side-effect-heavy
 // orchestration (playhead/waveform/rig-lock/lapCoaching/session offers) that
 // stays out of 6c's scope — see the ADR in the #701 plan on why those coupled
 // sub-surfaces (DAW shell, live-adjustments, preflight, rigs) stay bridged.
+// `window.liveTransitionState`'s capturePhase/recordButtonView classic
+// scripts are left untouched (still load-bearing for inline-app.js's header
+// REC/LIVE indicator and the promoteToRecording() guard) but are no longer
+// read from this file — LiveTransportControls' idle/non-idle split is just
+// `!isCapturing` now, and RecordButton.tsx derives its own phase from
+// record-transport.ts instead.
 
 import { useStoreShallow } from './stores/useStoreShallow';
 import { useLiveCaptureStore, type StartCaptureResult, type StopCaptureResult } from './stores/liveCaptureStore';
@@ -112,10 +118,12 @@ export async function startLiveCapture(
 }
 
 export async function stopLiveCapture(rt: LiveCaptureRuntime | undefined): Promise<void> {
+  useLiveCaptureStore.getState().setStopping(true);
   const stopPromise = useLiveCaptureStore.getState().stopCapture();
   rt?.onCaptureStopping();
   const result = await stopPromise;
   rt?.onCaptureStopped(result);
+  useLiveCaptureStore.getState().setStopping(false);
 }
 
 export function recordCapture(rt: LiveCaptureRuntime | undefined): Promise<void> {
@@ -154,14 +162,7 @@ export default function LiveControls() {
 }
 
 export function LiveTransportControls() {
-  const { liveMode, isCapturing, promoting } = useStoreShallow(useLiveCaptureStore, (s) => ({
-    liveMode: s.liveMode,
-    isCapturing: s.isCapturing,
-    promoting: s.promoting,
-  }));
-
-  const phase = window.liveTransitionState.capturePhase({ liveRunning: isCapturing, liveMode, promoting });
-  const recordView = window.liveTransitionState.recordButtonView(phase);
+  const { isCapturing } = useStoreShallow(useLiveCaptureStore, (s) => ({ isCapturing: s.isCapturing }));
 
   function onStart() {
     const { windowSecs, meterIntervalMs } = useLiveCaptureStore.getState();
@@ -173,35 +174,22 @@ export function LiveTransportControls() {
     void stopLiveCapture(runtime());
   }
 
-  function onRecord() {
-    void recordCapture(runtime());
-  }
-
   return (
     <>
       <button
         className="btn btn-primary full"
         id="live-start-btn"
-        style={{ display: phase === 'idle' ? 'inline-flex' : 'none' }}
+        style={{ display: !isCapturing ? 'inline-flex' : 'none' }}
         onClick={onStart}
         dangerouslySetInnerHTML={{ __html: iconSvg('play', 16) + 'Start Capture' }}
       />
       <button
         className="btn btn-danger full"
         id="live-stop-btn"
-        style={{ display: phase === 'idle' ? 'none' : 'inline-flex' }}
+        style={{ display: !isCapturing ? 'none' : 'inline-flex' }}
         onClick={onStop}
         dangerouslySetInnerHTML={{ __html: iconSvg('square', 16) + 'Stop Capture' }}
       />
-      {recordView.visible && (
-        <button
-          className="btn btn-danger full"
-          id="live-record-btn"
-          disabled={recordView.disabled}
-          onClick={onRecord}
-          dangerouslySetInnerHTML={{ __html: iconSvg('circle', 16) + recordView.label }}
-        />
-      )}
     </>
   );
 }

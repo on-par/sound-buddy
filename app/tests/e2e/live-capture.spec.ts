@@ -366,6 +366,41 @@ test.describe('Live capture (PRD 06)', () => {
     await expect(window.locator('#rec-offer')).toBeHidden();
   });
 
+  test('the top-bar Record button promotes a running monitor session to a recording (#458, #729)', async () => {
+    await electronApp.evaluate(({ ipcMain }) => {
+      ipcMain.removeHandler('reveal-path');
+      ipcMain.handle('reveal-path', (_e, p) => {
+        (globalThis as Record<string, unknown>).__revealed = p; return { success: true };
+      });
+    });
+    // #live-ws-arm-all only renders in Record mode (inline-app.js's armHTML,
+    // "Record mode only"), but canPromoteToRecording (live-transition-state.js)
+    // still requires an armed strip even when promoting from Monitor mode —
+    // arm state lives on channelConfig and survives a mode switch. So: switch
+    // to Record mode to reach the arm-all button, arm, then switch back to
+    // Monitor before starting (also guards against the preceding "record mode
+    // captures a session..." test leaving liveMode on 'record', since this
+    // suite's beforeEach doesn't reset it).
+    await window.locator('#live-mode button[data-mode="record"]').click();
+    await window.locator('#live-ws-arm-all').click();
+    await window.locator('#live-mode button[data-mode="monitor"]').click();
+    await window.locator('#live-start-btn').click(); // starts in monitor mode
+    await expect(window.locator('#live-stop-btn')).toBeVisible();
+    await expect(window.locator('#live-indicator .live-txt')).toHaveText('LIVE');
+
+    const recordBtn = window.locator('#record-button');
+    await expect(recordBtn).toBeEnabled();
+    await recordBtn.focus();
+    await window.keyboard.press('Enter'); // keyboard parity check
+    await expect(window.locator('#live-indicator .live-txt')).toHaveText('REC');
+    await expect(recordBtn).toHaveAttribute('aria-pressed', 'true');
+
+    await recordBtn.click();
+    await expect(window.locator('#live-start-btn')).toBeVisible();
+    await expect(window.locator('#rec-offer')).toBeVisible();
+    await expect(window.locator('#rec-offer-text')).toContainText('Session saved');
+  });
+
   test('Record mode with nothing armed blocks Start with a hint (#43)', async () => {
     await window.locator('#live-mode button[data-mode="record"]').click();
     await window.locator('#live-ws-disarm-all').click();

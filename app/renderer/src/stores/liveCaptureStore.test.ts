@@ -491,6 +491,15 @@ describe('createLiveCaptureStore', () => {
       store.getState().setPromoting(false);
       expect(store.getState().promoting).toBe(false);
     });
+
+    it('setStopping sets the stopping flag, defaulting to false (#729)', () => {
+      const { store } = makeStore();
+      expect(store.getState().stopping).toBe(false);
+      store.getState().setStopping(true);
+      expect(store.getState().stopping).toBe(true);
+      store.getState().setStopping(false);
+      expect(store.getState().stopping).toBe(false);
+    });
   });
 
   describe('collapse', () => {
