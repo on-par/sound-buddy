@@ -53,35 +53,17 @@ vi.mock('child_process', () => ({
   spawn: (...args: unknown[]) => spawnMock(...args),
   ChildProcess: class {},
 }));
-// Faithful copy of the real buildStreamArgs mapping (minus the unused
-// --record branch, which live-capture.ts never sets) so every existing
-// exact-argv assertion below keeps passing — the real mapping's correctness
-// is owned by packages/audio-engine/src/stream/index.test.ts; this mock only
-// proves live-capture.ts wires opts → LiveOptions → spawn correctly.
-vi.mock('./engine-loader', () => ({
-  loadEngineParsers: () => ({
-    buildStreamArgs: (opts: {
-      device?: string;
-      channels?: string[];
-      windowSecs: number;
-      intervalSecs?: number;
-      sessionDir?: string;
-      armTokens?: string[];
-      labels?: string[];
-    }) => {
-      const args: string[] = [opts.device ? opts.device : ''];
-      args.push(String(opts.windowSecs));
-      args.push(opts.channels && opts.channels.length > 0 ? opts.channels.join(',') : '');
-      if (opts.intervalSecs && opts.intervalSecs > 0) args.push('--interval', String(opts.intervalSecs));
-      if (opts.sessionDir) args.push('--session-dir', opts.sessionDir);
-      if (opts.armTokens && opts.armTokens.length > 0) args.push('--arm', opts.armTokens.join(','));
-      if (opts.labels && opts.labels.some((l) => typeof l === 'string' && l.trim() !== '')) {
-        args.push('--labels', JSON.stringify(opts.labels));
-      }
-      return args;
-    },
-  }),
-}));
+// Use the REAL buildStreamArgs (from the engine's built ESM dist) instead of
+// hand-copying its mapping logic, so this mock can't drift from the source of
+// truth in packages/audio-engine/src/stream/index.ts. This mock only proves
+// live-capture.ts wires opts → LiveOptions → spawn correctly; the mapping
+// itself is owned/tested by packages/audio-engine/src/stream/index.test.ts.
+vi.mock('./engine-loader', async () => {
+  const { buildStreamArgs } = await vi.importActual<typeof import('@sound-buddy/audio-engine/dist/stream/index.js')>(
+    '@sound-buddy/audio-engine/dist/stream/index.js',
+  );
+  return { loadEngineParsers: () => ({ buildStreamArgs }) };
+});
 
 /** A stand-in for the spawned Python child, with a spy-able kill(). */
 function fakeProc() {

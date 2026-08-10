@@ -26,28 +26,16 @@ vi.mock('../license', () => ({ isEntitled: isEntitledMock }));
 
 const spawnMock = vi.hoisted(() => vi.fn());
 vi.mock('child_process', () => ({ spawn: (...args: unknown[]) => spawnMock(...args), ChildProcess: class {} }));
-// Faithful copy of the real buildPlaybackArgs mapping (see live-capture.test.ts
-// for the same pattern) so any future exact-argv assertion here stays accurate;
-// the real mapping's correctness is owned by
-// packages/audio-engine/src/playback/index.test.ts.
-vi.mock('./engine-loader', () => ({
-  loadEngineParsers: () => ({
-    buildPlaybackArgs: (opts: {
-      sessionDir: string;
-      device?: string;
-      route?: string;
-      intervalSecs?: number;
-      master?: boolean;
-    }) => {
-      const args: string[] = [opts.sessionDir];
-      if (opts.device) args.push('--device', opts.device);
-      if (opts.route) args.push('--route', opts.route);
-      if (opts.intervalSecs && opts.intervalSecs > 0) args.push('--interval', String(opts.intervalSecs));
-      if (opts.master) args.push('--master');
-      return args;
-    },
-  }),
-}));
+// Use the REAL buildPlaybackArgs (from the engine's built ESM dist) instead of
+// hand-copying its mapping logic (see live-capture.test.ts for the same
+// pattern), so this mock can't drift from the source of truth in
+// packages/audio-engine/src/playback/index.ts.
+vi.mock('./engine-loader', async () => {
+  const { buildPlaybackArgs } = await vi.importActual<
+    typeof import('@sound-buddy/audio-engine/dist/playback/index.js')
+  >('@sound-buddy/audio-engine/dist/playback/index.js');
+  return { loadEngineParsers: () => ({ buildPlaybackArgs }) };
+});
 
 import { registerPlaybackHandlers } from './playback';
 import { logWarn, logError } from '../logger';

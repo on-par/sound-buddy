@@ -40,34 +40,17 @@ vi.mock('child_process', () => ({
   spawn: (...args: unknown[]) => spawnMock(...args),
   ChildProcess: class {},
 }));
-// Faithful copy of the real buildStreamArgs mapping (see live-capture.test.ts
-// for the same pattern) — only the device/windowSecs/channels/intervalSecs
-// branches are exercised here since measurement-source.ts never sets
+// Use the REAL buildStreamArgs (from the engine's built ESM dist) instead of
+// hand-copying its mapping logic (see live-capture.test.ts for the same
+// pattern) — only the device/windowSecs/channels/intervalSecs branches are
+// exercised here since measurement-source.ts never sets
 // sessionDir/armTokens/labels.
-vi.mock('./engine-loader', () => ({
-  loadEngineParsers: () => ({
-    buildStreamArgs: (opts: {
-      device?: string;
-      channels?: string[];
-      windowSecs: number;
-      intervalSecs?: number;
-      sessionDir?: string;
-      armTokens?: string[];
-      labels?: string[];
-    }) => {
-      const args: string[] = [opts.device ? opts.device : ''];
-      args.push(String(opts.windowSecs));
-      args.push(opts.channels && opts.channels.length > 0 ? opts.channels.join(',') : '');
-      if (opts.intervalSecs && opts.intervalSecs > 0) args.push('--interval', String(opts.intervalSecs));
-      if (opts.sessionDir) args.push('--session-dir', opts.sessionDir);
-      if (opts.armTokens && opts.armTokens.length > 0) args.push('--arm', opts.armTokens.join(','));
-      if (opts.labels && opts.labels.some((l) => typeof l === 'string' && l.trim() !== '')) {
-        args.push('--labels', JSON.stringify(opts.labels));
-      }
-      return args;
-    },
-  }),
-}));
+vi.mock('./engine-loader', async () => {
+  const { buildStreamArgs } = await vi.importActual<typeof import('@sound-buddy/audio-engine/dist/stream/index.js')>(
+    '@sound-buddy/audio-engine/dist/stream/index.js',
+  );
+  return { loadEngineParsers: () => ({ buildStreamArgs }) };
+});
 
 /** A stand-in for the spawned Python child, with a spy-able kill(). */
 function fakeProc() {
