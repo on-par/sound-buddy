@@ -41,7 +41,6 @@ export interface UpdateSettingsPatch {
   weeklyReminderEnabled?: boolean;
   weeklyReminderServiceDay?: number;
   liveEqPaneWidth?: number;
-  secondaryMeasurementEnabled?: boolean;
   measurementDeviceName?: string;
   gradingProfile?: 'casual' | 'broadcast';
   consoleNetworkConsentGranted?: boolean;
@@ -321,15 +320,6 @@ export interface AppSettings {
    * the default — it does not know or enforce the renderer's clamp range.
    */
   liveEqPaneWidth: number;
-  /**
-   * Opt-in experimental secondary measurement-device source (#460, ADR 0003).
-   * Default false (off). Pure persisted UI gate — when false the app behaves
-   * byte-identically to today (no secondary picker, no second process); when
-   * true the Live tab exposes a measurement-only room-mic source separate from
-   * the board capture. No env layer: enabling an experiment must be an explicit
-   * user action, same rationale as `dawWorkspaceEnabled`.
-   */
-  secondaryMeasurementEnabled: boolean;
   /**
    * Persisted preferred secondary measurement device, matched by NAME (#460).
    * Default '' (= none chosen). Pure persisted data like `rigs`, matched by

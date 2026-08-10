@@ -263,11 +263,6 @@ export function registerSettingsHandlers(): void {
       ) {
         clean.liveEqPaneWidth = patch.liveEqPaneWidth;
       }
-      // Opt-in experimental secondary measurement source (#460) — a pure UI
-      // gate, consumed by the renderer only.
-      if (typeof patch.secondaryMeasurementEnabled === 'boolean') {
-        clean.secondaryMeasurementEnabled = patch.secondaryMeasurementEnabled;
-      }
       // Preferred secondary measurement device, matched by name (#460).
       // Trimmed and capped; an empty string is valid (clears the preference).
       if (typeof patch.measurementDeviceName === 'string') {

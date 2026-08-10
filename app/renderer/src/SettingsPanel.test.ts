@@ -35,7 +35,7 @@ describe('saveAll', () => {
           usageSignalEnabled: false, channelLabels: {}, channelGroups: {}, inputInstrumentProfiles: {},
           crashReportingEnabled: false, dawWorkspaceEnabled: false, liveAdjustmentsEnabled: false,
           reportFirstUxEnabled: false, shareChurchName: '', weeklyReminderEnabled: false, weeklyReminderServiceDay: 0,
-          liveEqPaneWidth: 360, secondaryMeasurementEnabled: false, measurementDeviceName: '', gradingProfile: 'casual', consoleNetworkConsentGranted: false,
+          liveEqPaneWidth: 360, measurementDeviceName: '', gradingProfile: 'casual', consoleNetworkConsentGranted: false,
         };
       },
     });
@@ -150,7 +150,6 @@ describe('SettingsPanel markup', () => {
 // app/tests/entitlement-matrix.spec.ts, not here.
 describe('Audio pane composition (#727)', () => {
   it('renders the moved controls when booted', () => {
-    useSettingsStore.setState({ settings: { secondaryMeasurementEnabled: true } as unknown as AppSettings });
     const html = renderMarkup(true);
     expect(html).toContain('id="rig-select"');
     expect(html).toContain('id="device-select"');
@@ -160,10 +159,16 @@ describe('Audio pane composition (#727)', () => {
     expect(html).toContain('id="window-secs"');
   });
 
-  it('does not render the secondary-measurement device select when the experimental flag is off', () => {
+  it('renders the secondary-measurement device select even with no settings loaded, defaulted to None', () => {
     const html = renderMarkup(true);
-    expect(html).toContain('id="rig-select"');
-    expect(html).not.toContain('id="secondary-measurement-device"');
+    expect(html).toContain('id="secondary-measurement-device"');
+    expect(html).not.toContain('id="secondary-measurement-toggle"');
+  });
+
+  it('shows no "experimental" copy next to the secondary measurement device', () => {
+    const html = renderMarkup(true);
+    expect(html).not.toContain('Secondary Measurement Device (experimental)');
+    expect(html).not.toContain('secondary-measurement-toggle');
   });
 
   it('renders none of the moved controls when not booted', () => {

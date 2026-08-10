@@ -1,15 +1,16 @@
 // Copyright (c) 2026 Patrick Robinson (on-par). All rights reserved.
 // Licensed under the Sound Buddy Desktop Application License (app/LICENSE).
 
-// The experimental secondary measurement-device block (#460) — a metering-only
-// room mic, independent of the board capture — ported off inline-app.js's
-// static-markup/DOM-writer glue to React (TD-001 relocation, #724; relocated
-// from the Live tab into Settings → Audio by #727). Rendered directly as JSX
-// inside SettingsPanel.tsx's #settings-pane-audio (no createPortal — see that
-// file's header for why): it renders null while
-// settingsStore.secondaryMeasurementEnabled is off, otherwise derives its
-// markup from liveCaptureStore's secondaryMeasurement/devices state via the
-// unchanged pure helpers in measurement-device-state.ts.
+// The secondary measurement-device block (#460, first-class per #730) — a
+// metering-only room mic, independent of the board capture — ported off
+// inline-app.js's static-markup/DOM-writer glue to React (TD-001 relocation,
+// #724; relocated from the Live tab into Settings → Audio by #727). Rendered
+// directly as JSX inside SettingsPanel.tsx's #settings-pane-audio (no
+// createPortal — see that file's header for why): it always renders,
+// deriving its markup from liveCaptureStore's secondaryMeasurement/devices
+// state via the unchanged pure helpers in measurement-device-state.ts —
+// picking "None" (the default) leaves measurement off, exactly like every
+// other device picker in the app.
 // renderMeasurementBadge()/renderEqPane() stay imperative and out of scope —
 // reached via one new optional method on the existing
 // window.liveCaptureRuntime object (LiveControls.tsx's LiveCaptureRuntime
@@ -19,7 +20,6 @@
 import { useEffect, type JSX } from 'react';
 import { useStoreShallow } from './stores/useStoreShallow';
 import { useLiveCaptureStore, type StartCaptureOpts } from './stores/liveCaptureStore';
-import { useSettingsStore } from './stores/settingsStore';
 import {
   deviceIndexForName,
   secondaryStatusHTML,
@@ -54,15 +54,14 @@ export async function selectSecondaryDevice(
   runtime()?.afterSecondaryMeasurementChange?.();
 }
 
-export async function secondaryReconnectTick(enabled: boolean, opts: StartCaptureOpts): Promise<boolean> {
-  if (!enabled || useLiveCaptureStore.getState().secondaryMeasurement.status !== 'disconnected') return false;
+export async function secondaryReconnectTick(opts: StartCaptureOpts): Promise<boolean> {
+  if (useLiveCaptureStore.getState().secondaryMeasurement.status !== 'disconnected') return false;
   const restarted = await useLiveCaptureStore.getState().pollSecondaryReconnect(opts);
   if (restarted) runtime()?.afterSecondaryMeasurementChange?.();
   return restarted;
 }
 
-export default function SecondaryMeasurementPanel(): JSX.Element | null {
-  const enabled = useStoreShallow(useSettingsStore, (s) => !!s.settings?.secondaryMeasurementEnabled);
+export default function SecondaryMeasurementPanel(): JSX.Element {
   const { devices, secondaryMeasurement } = useStoreShallow(useLiveCaptureStore, (s) => ({
     devices: s.devices,
     secondaryMeasurement: s.secondaryMeasurement,
@@ -73,22 +72,20 @@ export default function SecondaryMeasurementPanel(): JSX.Element | null {
      directly in SecondaryMeasurementPanel.test.ts. Exercised end-to-end by
      tests/e2e/live-capture-workspace.spec.ts. */
   useEffect(() => {
-    if (!enabled || secondaryMeasurement.status !== 'disconnected') return;
+    if (secondaryMeasurement.status !== 'disconnected') return;
     const id = setInterval(() => {
-      void secondaryReconnectTick(enabled, secondaryCaptureOpts());
+      void secondaryReconnectTick(secondaryCaptureOpts());
     }, SECONDARY_RECONNECT_POLL_MS);
     return () => clearInterval(id);
-  }, [enabled, secondaryMeasurement.status]);
+  }, [secondaryMeasurement.status]);
   /* c8 ignore stop */
-
-  if (!enabled) return null;
 
   const selectedValue = deviceIndexForName(devices, secondaryMeasurement.deviceName) ?? '';
   const showWarning = secondaryMeasurement.deviceName !== '' && secondaryMeasurement.status !== 'off';
 
   return (
     <label className="select-label" id="secondary-measurement-block">
-      <span>Secondary Measurement Device (experimental)</span>
+      <span>Secondary Measurement Device</span>
       <div className="select-row">
         <div className="select-wrap">
           <select

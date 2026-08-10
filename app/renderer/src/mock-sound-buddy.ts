@@ -48,7 +48,6 @@ const DEFAULT_APP_SETTINGS: AppSettings = {
   weeklyReminderEnabled: false,
   weeklyReminderServiceDay: 0,
   liveEqPaneWidth: 360,
-  secondaryMeasurementEnabled: false,
   measurementDeviceName: '',
   gradingProfile: 'casual',
   consoleNetworkConsentGranted: false,

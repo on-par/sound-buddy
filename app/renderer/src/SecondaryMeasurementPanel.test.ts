@@ -10,7 +10,6 @@ import SecondaryMeasurementPanel, {
   secondaryCaptureOpts,
 } from './SecondaryMeasurementPanel';
 import { useLiveCaptureStore } from './stores/liveCaptureStore';
-import { useSettingsStore } from './stores/settingsStore';
 import type { LiveDevice } from './live-capture-panel';
 
 const INITIAL_LIVE_CAPTURE_STATE = useLiveCaptureStore.getInitialState();
@@ -34,7 +33,6 @@ afterEach(() => {
     setSecondaryDeviceName: INITIAL_LIVE_CAPTURE_STATE.setSecondaryDeviceName,
     pollSecondaryReconnect: INITIAL_LIVE_CAPTURE_STATE.pollSecondaryReconnect,
   });
-  useSettingsStore.setState({ settings: null, settingsError: null });
 });
 
 const DEVICES: LiveDevice[] = [
@@ -47,18 +45,24 @@ function renderMarkup(): string {
 }
 
 describe('SecondaryMeasurementPanel', () => {
-  it('renders nothing when secondaryMeasurementEnabled is off', () => {
-    useSettingsStore.setState({ settings: { secondaryMeasurementEnabled: false } as never });
-    expect(renderMarkup()).toBe('');
+  it('renders the picker defaulted to None with no warning when no device is selected', () => {
+    useLiveCaptureStore.setState({
+      secondaryMeasurement: { status: 'off', deviceName: '' },
+    });
+
+    const html = renderMarkup();
+
+    expect(html).toContain('id="secondary-measurement-device"');
+    expect(html).not.toMatch(/<option value="[^"]+" selected>/);
+    expect(html).toMatch(/id="secondary-measurement-warning"[^>]*><\/p>/);
   });
 
-  it('renders nothing when settings have not loaded yet', () => {
-    useSettingsStore.setState({ settings: null });
-    expect(renderMarkup()).toBe('');
+  it('renders no "(experimental)" copy anywhere in its markup', () => {
+    const html = renderMarkup();
+    expect(html).not.toContain('experimental');
   });
 
   it('shows the starting status text and the alignment warning while starting', () => {
-    useSettingsStore.setState({ settings: { secondaryMeasurementEnabled: true } as never });
     useLiveCaptureStore.setState({
       secondaryMeasurement: { status: 'starting', deviceName: 'USB Mic' },
       devices: DEVICES,
@@ -71,7 +75,6 @@ describe('SecondaryMeasurementPanel', () => {
   });
 
   it('shows the active status text, the alignment warning, and resolves the select value to the device index', () => {
-    useSettingsStore.setState({ settings: { secondaryMeasurementEnabled: true } as never });
     useLiveCaptureStore.setState({
       secondaryMeasurement: { status: 'active', deviceName: 'USB Mic' },
       devices: DEVICES,
@@ -86,7 +89,6 @@ describe('SecondaryMeasurementPanel', () => {
   });
 
   it('shows the blocked status text', () => {
-    useSettingsStore.setState({ settings: { secondaryMeasurementEnabled: true } as never });
     useLiveCaptureStore.setState({
       secondaryMeasurement: { status: 'blocked', deviceName: 'USB Mic', micAccess: 'denied' },
       devices: DEVICES,
@@ -98,7 +100,6 @@ describe('SecondaryMeasurementPanel', () => {
   });
 
   it('shows the disconnected status text', () => {
-    useSettingsStore.setState({ settings: { secondaryMeasurementEnabled: true } as never });
     useLiveCaptureStore.setState({
       secondaryMeasurement: { status: 'disconnected', deviceName: 'USB Mic' },
       devices: DEVICES,
@@ -125,7 +126,7 @@ describe('SecondaryMeasurementPanel', () => {
         pollSecondaryReconnect,
       });
 
-      const restarted = await secondaryReconnectTick(true, { windowSecs: 3, intervalSecs: 0.1 });
+      const restarted = await secondaryReconnectTick({ windowSecs: 3, intervalSecs: 0.1 });
 
       expect(restarted).toBe(false);
       expect(pollSecondaryReconnect).toHaveBeenCalledWith({ windowSecs: 3, intervalSecs: 0.1 });
@@ -143,23 +144,10 @@ describe('SecondaryMeasurementPanel', () => {
         pollSecondaryReconnect,
       });
 
-      const restarted = await secondaryReconnectTick(true, { windowSecs: 3, intervalSecs: 0.1 });
+      const restarted = await secondaryReconnectTick({ windowSecs: 3, intervalSecs: 0.1 });
 
       expect(restarted).toBe(true);
       expect(useLiveCaptureStore.getState().secondaryMeasurement.status).toBe('active');
-    });
-
-    it('resolves false without calling pollSecondaryReconnect when the flag is off', async () => {
-      const pollSecondaryReconnect = vi.fn();
-      useLiveCaptureStore.setState({
-        secondaryMeasurement: { status: 'disconnected', deviceName: 'USB Measurement Mic' },
-        pollSecondaryReconnect,
-      });
-
-      const restarted = await secondaryReconnectTick(false, { windowSecs: 3, intervalSecs: 0.1 });
-
-      expect(restarted).toBe(false);
-      expect(pollSecondaryReconnect).not.toHaveBeenCalled();
     });
 
     it('resolves false without calling pollSecondaryReconnect when status is not disconnected', async () => {
@@ -169,7 +157,7 @@ describe('SecondaryMeasurementPanel', () => {
         pollSecondaryReconnect,
       });
 
-      const restarted = await secondaryReconnectTick(true, { windowSecs: 3, intervalSecs: 0.1 });
+      const restarted = await secondaryReconnectTick({ windowSecs: 3, intervalSecs: 0.1 });
 
       expect(restarted).toBe(false);
       expect(pollSecondaryReconnect).not.toHaveBeenCalled();
