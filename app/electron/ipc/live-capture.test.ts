@@ -53,6 +53,17 @@ vi.mock('child_process', () => ({
   spawn: (...args: unknown[]) => spawnMock(...args),
   ChildProcess: class {},
 }));
+// Use the REAL buildStreamArgs (from the engine's built ESM dist) instead of
+// hand-copying its mapping logic, so this mock can't drift from the source of
+// truth in packages/audio-engine/src/stream/index.ts. This mock only proves
+// live-capture.ts wires opts → LiveOptions → spawn correctly; the mapping
+// itself is owned/tested by packages/audio-engine/src/stream/index.test.ts.
+vi.mock('./engine-loader', async () => {
+  const { buildStreamArgs } = await vi.importActual<typeof import('@sound-buddy/audio-engine/dist/stream/index.js')>(
+    '@sound-buddy/audio-engine/dist/stream/index.js',
+  );
+  return { loadEngineParsers: () => ({ buildStreamArgs }) };
+});
 
 /** A stand-in for the spawned Python child, with a spy-able kill(). */
 function fakeProc() {

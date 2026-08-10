@@ -40,6 +40,17 @@ vi.mock('child_process', () => ({
   spawn: (...args: unknown[]) => spawnMock(...args),
   ChildProcess: class {},
 }));
+// Use the REAL buildStreamArgs (from the engine's built ESM dist) instead of
+// hand-copying its mapping logic (see live-capture.test.ts for the same
+// pattern) — only the device/windowSecs/channels/intervalSecs branches are
+// exercised here since measurement-source.ts never sets
+// sessionDir/armTokens/labels.
+vi.mock('./engine-loader', async () => {
+  const { buildStreamArgs } = await vi.importActual<typeof import('@sound-buddy/audio-engine/dist/stream/index.js')>(
+    '@sound-buddy/audio-engine/dist/stream/index.js',
+  );
+  return { loadEngineParsers: () => ({ buildStreamArgs }) };
+});
 
 /** A stand-in for the spawned Python child, with a spy-able kill(). */
 function fakeProc() {
@@ -92,36 +103,6 @@ beforeEach(async () => {
 
 afterEach(() => {
   vi.useRealTimers();
-});
-
-describe('buildMeasurementArgs', () => {
-  it('builds [device, windowSecs, "0"] with no interval', () => {
-    expect(mod.buildMeasurementArgs({ device: '2', windowSecs: 5 })).toEqual(['2', '5', '0']);
-  });
-
-  it('appends --interval when a positive cadence is given', () => {
-    expect(mod.buildMeasurementArgs({ device: '2', windowSecs: 5, intervalSecs: 0.5 })).toEqual([
-      '2',
-      '5',
-      '0',
-      '--interval',
-      '0.5',
-    ]);
-  });
-
-  it('omits --interval for a zero or missing cadence', () => {
-    expect(mod.buildMeasurementArgs({ device: '', windowSecs: 3, intervalSecs: 0 })).toEqual([
-      '',
-      '3',
-      '0',
-    ]);
-  });
-
-  it('always uses the mono channel token "0" and never a --session-dir', () => {
-    const args = mod.buildMeasurementArgs({ device: '4', windowSecs: 2, intervalSecs: 0.1 });
-    expect(args[2]).toBe('0');
-    expect(args).not.toContain('--session-dir');
-  });
 });
 
 describe('start-measurement handler', () => {

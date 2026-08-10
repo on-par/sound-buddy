@@ -111,6 +111,18 @@ describe('loadEngineParsers', () => {
     expect(typeof parsers.analyzeAudio).toBe('function');
     expect(typeof parsers.isVideoFile).toBe('function');
     expect(typeof parsers.extractAudioToWav).toBe('function');
+    expect(typeof parsers.buildStreamArgs).toBe('function');
+    expect(typeof parsers.buildPlaybackArgs).toBe('function');
+  });
+
+  it('buildStreamArgs from the loaded module maps a minimal LiveOptions to positional argv', () => {
+    const { buildStreamArgs } = loadEngineParsers();
+    expect(buildStreamArgs({ windowSecs: 3 })).toEqual(['', '3', '']);
+  });
+
+  it('buildPlaybackArgs from the loaded module maps a minimal PlaybackOptions to positional argv', () => {
+    const { buildPlaybackArgs } = loadEngineParsers();
+    expect(buildPlaybackArgs({ sessionDir: '/tmp/session-1' })).toEqual(['/tmp/session-1']);
   });
 
   it('isVideoFile from the loaded module recognizes a video extension', () => {

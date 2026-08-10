@@ -19,6 +19,7 @@ import { log, logWarn, logError } from '../logger';
 import { isEntitled } from '../license';
 import { pythonBin, childEnv, STREAM_SCRIPT, readNdjsonLines } from './shared';
 import { ensureMicrophoneAccess } from './live-capture';
+import { loadEngineParsers } from './engine-loader';
 import type { StartMeasurementOpts } from './api';
 
 let measurementProcess: ChildProcess | null = null;
@@ -38,17 +39,6 @@ const MEASUREMENT_CHANNEL_TOKEN = '0';
 // killing the child (so the mic is released and the process isn't orphaned).
 // Mirrors stop-live's 2s fallback, minus the session-finalize wait.
 const STOP_GRACE_MS = 2000;
-
-// Pure, unit-tested argv builder for the measurement stream.py invocation:
-// [device, windowSecs, '0'] plus ['--interval', N] when a positive cadence is
-// given. Never `--session-dir` (monitor mode only), never an arm/labels list.
-export function buildMeasurementArgs(opts: StartMeasurementOpts): string[] {
-  const args = [opts.device, String(opts.windowSecs), MEASUREMENT_CHANNEL_TOKEN];
-  if (opts.intervalSecs && opts.intervalSecs > 0) {
-    args.push('--interval', String(opts.intervalSecs));
-  }
-  return args;
-}
 
 export function registerMeasurementSourceHandlers(): void {
   // start-measurement — spawn the measurement-only stream.py monitor. Gated by
@@ -83,7 +73,13 @@ export function registerMeasurementSourceHandlers(): void {
     }
 
     expectedStop = false;
-    const py = spawn(pythonBin(), [STREAM_SCRIPT, ...buildMeasurementArgs(opts)], {
+    const args = loadEngineParsers().buildStreamArgs({
+      device: opts.device,
+      windowSecs: opts.windowSecs,
+      channels: [MEASUREMENT_CHANNEL_TOKEN],
+      intervalSecs: opts.intervalSecs,
+    });
+    const py = spawn(pythonBin(), [STREAM_SCRIPT, ...args], {
       stdio: ['ignore', 'pipe', 'pipe'],
       env: childEnv(),
     });

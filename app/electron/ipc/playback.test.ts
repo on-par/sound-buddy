@@ -26,6 +26,16 @@ vi.mock('../license', () => ({ isEntitled: isEntitledMock }));
 
 const spawnMock = vi.hoisted(() => vi.fn());
 vi.mock('child_process', () => ({ spawn: (...args: unknown[]) => spawnMock(...args), ChildProcess: class {} }));
+// Use the REAL buildPlaybackArgs (from the engine's built ESM dist) instead of
+// hand-copying its mapping logic (see live-capture.test.ts for the same
+// pattern), so this mock can't drift from the source of truth in
+// packages/audio-engine/src/playback/index.ts.
+vi.mock('./engine-loader', async () => {
+  const { buildPlaybackArgs } = await vi.importActual<
+    typeof import('@sound-buddy/audio-engine/dist/playback/index.js')
+  >('@sound-buddy/audio-engine/dist/playback/index.js');
+  return { loadEngineParsers: () => ({ buildPlaybackArgs }) };
+});
 
 import { registerPlaybackHandlers } from './playback';
 import { logWarn, logError } from '../logger';

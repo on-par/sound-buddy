@@ -11,8 +11,13 @@ export { cleanup as cleanupChannelFiles };
 export type { AudioAnalysis, LoudnessStats, ChannelFile, ChannelAnalysis } from "./types.js";
 
 // Multitrack session playback (output path) — #45.
-export { buildPlaybackArgs, startPlayback } from "./playback/index.js";
-export type { PlaybackOptions, PlaybackHandle } from "./playback/index.js";
+export { buildPlaybackArgs } from "./playback/index.js";
+export type { PlaybackOptions } from "./playback/index.js";
+
+// Live capture argv mapping — the single source of truth for stream.py's CLI
+// contract (#743).
+export { buildStreamArgs } from "./stream/index.js";
+export type { LiveOptions } from "./stream/index.js";
 export type {
   PlaybackEvent,
   MixdownEvent,
