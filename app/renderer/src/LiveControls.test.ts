@@ -25,7 +25,7 @@ afterEach(() => {
   delete (globalThis as { window?: unknown }).window;
   useLiveCaptureStore.setState({
     devices: [], deviceHint: null, selectedDevice: '', channelConfig: [], measurementSource: null,
-    liveMode: 'monitor', recordDir: '', isCapturing: false, promoting: false,
+    liveMode: 'monitor', recordDir: '', isCapturing: false, promoting: false, stopping: false,
   });
   useSettingsStore.setState({ settings: null, settingsError: null });
 });
@@ -61,27 +61,12 @@ describe('LiveTransportControls', () => {
     expect(html).toContain('id="live-stop-btn" style="display:none"');
   });
 
-  it('shows Stop Capture (not Start) while capturing, and hides the record button in record mode', () => {
+  it('shows Stop Capture (not Start) while capturing, with no record button — that moved to RecordButton.tsx (#729)', () => {
     useLiveCaptureStore.setState({ isCapturing: true, liveMode: 'record' });
     const html = renderTransportMarkup();
     expect(html).toContain('id="live-start-btn" style="display:none"');
     expect(html).toContain('id="live-stop-btn" style="display:inline-flex"');
     expect(html).not.toContain('id="live-record-btn"');
-  });
-
-  it('shows the Start Recording button while monitoring', () => {
-    useLiveCaptureStore.setState({ isCapturing: true, liveMode: 'monitor' });
-    const html = renderTransportMarkup();
-    expect(html).toContain('id="live-record-btn"');
-    expect(html).toContain('Start Recording');
-  });
-
-  it('shows a disabled Starting… record button mid-promotion', () => {
-    useLiveCaptureStore.setState({ isCapturing: true, liveMode: 'monitor', promoting: true });
-    const html = renderTransportMarkup();
-    expect(html).toContain('id="live-record-btn"');
-    expect(html).toMatch(/id="live-record-btn" disabled=""/);
-    expect(html).toContain('Starting…');
   });
 });
 
@@ -164,6 +149,29 @@ describe('startLiveCapture / stopLiveCapture / recordCapture', () => {
 
     expect(order).toEqual(['stopping', 'ipc', 'stopped']);
     expect(rt.onCaptureStopped).toHaveBeenCalledWith({ success: true, sessionDir: '/tmp/session' });
+  });
+
+  it('stopLiveCapture flips the store\'s stopping flag true before stopCapture() and false after the IPC result resolves (#729)', async () => {
+    const order: string[] = [];
+    const rt = mockRuntime({
+      onCaptureStopping: vi.fn(() => order.push('bridge:onCaptureStopping')),
+      onCaptureStopped: vi.fn(() => order.push('bridge:onCaptureStopped')),
+    });
+    useLiveCaptureStore.setState({
+      stopCapture: vi.fn(async () => {
+        order.push('ipc:stopping=' + useLiveCaptureStore.getState().stopping);
+        await Promise.resolve();
+        return { success: true, sessionDir: null };
+      }),
+    });
+
+    expect(useLiveCaptureStore.getState().stopping).toBe(false);
+    const stopPromise = stopLiveCapture(rt);
+    expect(useLiveCaptureStore.getState().stopping).toBe(true);
+    await stopPromise;
+
+    expect(order).toEqual(['ipc:stopping=true', 'bridge:onCaptureStopping', 'bridge:onCaptureStopped']);
+    expect(useLiveCaptureStore.getState().stopping).toBe(false);
   });
 
   it('recordCapture delegates to the bridged promoteToRecording', async () => {
