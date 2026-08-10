@@ -287,8 +287,8 @@ export interface EqPaneView {
   secondaryIsPrimary: boolean;
 }
 
-// #460 (ADR 0003): when the experimental secondary measurement device is
-// active it owns the Room, so the pane's primary slot swaps to its channel-0
+// #460 (ADR 0003): when the secondary measurement device is active it owns
+// the Room, so the pane's primary slot swaps to its channel-0
 // reading + device-name label instead of the board's measurement-source strip.
 // The sentinel idx keeps the override distinct from every board strip index in
 // eqPaneSignature (so activate/deactivate always rebuilds the pane) and makes
@@ -304,7 +304,7 @@ export interface EqPaneRoomOverride { ch: LiveMeterChannel; label: string }
 // target). `primary` is null only when there are no channels at all;
 // `secondary` is null whenever selectedChannel isn't a live channel index.
 // `roomOverride` (#460) replaces the primary slot with the secondary room
-// mic's reading when the experimental source is active; null/omitted keeps
+// mic's reading when the secondary source is active; null/omitted keeps
 // the board behavior byte-identical (the #602 parity guard).
 export function eqPaneView(
   channels: LiveMeterChannel[],

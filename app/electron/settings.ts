@@ -48,7 +48,6 @@ const DEFAULTS: AppSettings = {
   weeklyReminderEnabled: false,
   weeklyReminderServiceDay: 0,
   liveEqPaneWidth: 360,
-  secondaryMeasurementEnabled: false,
   measurementDeviceName: '',
   gradingProfile: 'casual',
   consoleNetworkConsentGranted: false,
@@ -200,7 +199,6 @@ function writeSettingsFile(file: Partial<AppSettings>): void {
     weeklyReminderEnabled: file.weeklyReminderEnabled ?? DEFAULTS.weeklyReminderEnabled,
     weeklyReminderServiceDay: fileWeeklyReminderServiceDay(file),
     liveEqPaneWidth: fileLiveEqPaneWidth(file),
-    secondaryMeasurementEnabled: file.secondaryMeasurementEnabled ?? DEFAULTS.secondaryMeasurementEnabled,
     measurementDeviceName: fileMeasurementDeviceName(file),
     gradingProfile: fileGradingProfile(file),
     consoleNetworkConsentGranted: file.consoleNetworkConsentGranted ?? DEFAULTS.consoleNetworkConsentGranted,
@@ -268,10 +266,6 @@ export function getSettings(): AppSettings {
     // persists on resize, not a launch-time behavior toggle. Pure persisted
     // data, like `rigs`.
     liveEqPaneWidth: fileLiveEqPaneWidth(file),
-    // No env layer — opting into the experimental secondary measurement source
-    // (#460) must be an explicit user action, same rationale as
-    // dawWorkspaceEnabled.
-    secondaryMeasurementEnabled: file.secondaryMeasurementEnabled ?? DEFAULTS.secondaryMeasurementEnabled,
     // No env layer — the preferred measurement device is user-chosen persisted
     // data matched by name (#460), like `rigs`.
     measurementDeviceName: fileMeasurementDeviceName(file),

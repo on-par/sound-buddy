@@ -102,7 +102,6 @@ export default function SettingsPanel({ booted = false }: { booted?: boolean }) 
   const [crashReportingEnabled, setCrashReportingEnabled] = useState(false);
   const [dawWorkspaceEnabled, setDawWorkspaceEnabled] = useState(false);
   const [liveAdjustmentsEnabled, setLiveAdjustmentsEnabled] = useState(false);
-  const [secondaryMeasurementEnabled, setSecondaryMeasurementEnabled] = useState(false);
   const [weeklyReminderEnabled, setWeeklyReminderEnabled] = useState(false);
   const [weeklyReminderServiceDay, setWeeklyReminderServiceDay] = useState(0);
   const [gradingProfile, setGradingProfile] = useState<'casual' | 'broadcast'>('casual');
@@ -127,7 +126,6 @@ export default function SettingsPanel({ booted = false }: { booted?: boolean }) 
     setCrashReportingEnabled(!!settings?.crashReportingEnabled);
     setDawWorkspaceEnabled(!!settings?.dawWorkspaceEnabled);
     setLiveAdjustmentsEnabled(!!settings?.liveAdjustmentsEnabled);
-    setSecondaryMeasurementEnabled(!!settings?.secondaryMeasurementEnabled);
     setWeeklyReminderEnabled(!!settings?.weeklyReminderEnabled);
     setWeeklyReminderServiceDay(settings?.weeklyReminderServiceDay ?? 0);
     setGradingProfile(settings?.gradingProfile === 'broadcast' ? 'broadcast' : 'casual');
@@ -181,7 +179,6 @@ export default function SettingsPanel({ booted = false }: { booted?: boolean }) 
         crashReportingEnabled,
         dawWorkspaceEnabled,
         liveAdjustmentsEnabled,
-        secondaryMeasurementEnabled,
         weeklyReminderEnabled,
         weeklyReminderServiceDay,
         gradingProfile,
@@ -310,20 +307,6 @@ export default function SettingsPanel({ booted = false }: { booted?: boolean }) 
           <p className="ai-dialog-note" id="live-adjustments-note">
             Off unless you turn it on. An early, experimental area for mix suggestions while you monitor or record in
             Live Capture. Nothing is analyzed or sent anywhere — turn this off anytime to hide it.
-          </p>
-          <label className="ai-enable-row">
-            <input
-              type="checkbox"
-              id="secondary-measurement-toggle"
-              checked={secondaryMeasurementEnabled}
-              onChange={(e) => setSecondaryMeasurementEnabled(e.target.checked)}
-            />
-            Use a secondary measurement device (experimental)
-          </label>
-          <p className="ai-dialog-note" id="secondary-measurement-note">
-            Off unless you turn it on. Lets you measure the room from a separate mic (a USB measurement mic or the
-            built-in mic) while the board keeps recording. This second source is metering only and may not be
-            time-aligned with the multitrack session — turn this off anytime to hide it.
           </p>
           <label className="ai-enable-row">
             <input

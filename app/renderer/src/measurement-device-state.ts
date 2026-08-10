@@ -1,8 +1,8 @@
 // Copyright (c) 2026 Patrick Robinson (on-par). All rights reserved.
 // Licensed under the Sound Buddy Desktop Application License (app/LICENSE).
 
-// Pure state + view helpers for the experimental secondary measurement-device
-// source (#460, ADR 0003). All decision logic lives here as side-effect-free
+// Pure state + view helpers for the secondary measurement-device source
+// (#460, ADR 0003). All decision logic lives here as side-effect-free
 // functions (constitution: pure functions preferred, side effects injected) so
 // the store and inline-app.js wiring stay thin: they map IPC results/events
 // through these transitions and render the HTML these builders return.

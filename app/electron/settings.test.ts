@@ -419,28 +419,6 @@ describe('liveEqPaneWidth (#668 — persisted Live EQ pane width, renderer clamp
   });
 });
 
-describe('secondaryMeasurementEnabled (#460 — experimental secondary measurement source, default off)', () => {
-  it('defaults to false when settings.json is absent', () => {
-    expect(getSettings().secondaryMeasurementEnabled).toBe(false);
-  });
-
-  it('defaults to false when the file exists without the key', () => {
-    writeFile({ idealProfile: '' });
-    expect(getSettings().secondaryMeasurementEnabled).toBe(false);
-  });
-
-  it('flips on and back off, persisting each value to the raw file and surviving a fresh read', () => {
-    const on = updateSettings({ secondaryMeasurementEnabled: true });
-    expect(on.secondaryMeasurementEnabled).toBe(true);
-    expect(readFile().secondaryMeasurementEnabled).toBe(true);
-    expect(getSettings().secondaryMeasurementEnabled).toBe(true);
-
-    const off = updateSettings({ secondaryMeasurementEnabled: false });
-    expect(off.secondaryMeasurementEnabled).toBe(false);
-    expect(readFile().secondaryMeasurementEnabled).toBe(false);
-  });
-});
-
 describe('measurementDeviceName (#460 — persisted preferred device, matched by name, default empty)', () => {
   it('defaults to empty when settings.json is absent', () => {
     expect(getSettings().measurementDeviceName).toBe('');
@@ -828,6 +806,50 @@ describe('legacy AI-flag settings migration (#659)', () => {
 
     const raw = readFile();
     expect(raw[LEGACY_AI_KEY]).toBe(true);
+    expect(raw.idealProfile).toBe('concert');
+    expect(raw.storageDir).toBe('/tmp/somewhere');
+  });
+});
+
+describe('legacy secondaryMeasurementEnabled settings retirement (#730)', () => {
+  // Mirrors the LEGACY_AI_KEY test above: #730 retires the experimental
+  // secondary-measurement opt-in flag the same way #659 retired the legacy
+  // AI-enabled flag — getSettings() simply stops including the key, no
+  // migration function.
+  const LEGACY_KEY = 'secondaryMeasurementEnabled';
+
+  it('loads a pre-#730 settings.json with the stale key cleanly, dropping it from getSettings() while preserving every other setting', () => {
+    writeFile({
+      [LEGACY_KEY]: true,
+      idealProfile: 'broadcast',
+      storageDir: '/tmp/somewhere',
+      rigs: [],
+      activeRigId: null,
+    });
+
+    let s: ReturnType<typeof getSettings> | undefined;
+    expect(() => {
+      s = getSettings();
+    }).not.toThrow();
+
+    expect(LEGACY_KEY in (s as object)).toBe(false);
+    expect(s?.idealProfile).toBe('broadcast');
+    expect(s?.storageDir).toBe('/tmp/somewhere');
+  });
+
+  it('round-trips the stale key untouched through a subsequent updateSettings write', () => {
+    writeFile({
+      [LEGACY_KEY]: true,
+      idealProfile: 'broadcast',
+      storageDir: '/tmp/somewhere',
+      rigs: [],
+      activeRigId: null,
+    });
+
+    updateSettings({ idealProfile: 'concert' });
+
+    const raw = readFile();
+    expect(raw[LEGACY_KEY]).toBe(true);
     expect(raw.idealProfile).toBe('concert');
     expect(raw.storageDir).toBe('/tmp/somewhere');
   });

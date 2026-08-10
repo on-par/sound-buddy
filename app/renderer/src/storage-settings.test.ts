@@ -23,7 +23,6 @@ const LOADED_SETTINGS: AppSettings = {
   weeklyReminderEnabled: false,
   weeklyReminderServiceDay: 0,
   liveEqPaneWidth: 360,
-  secondaryMeasurementEnabled: false,
   measurementDeviceName: '',
   gradingProfile: 'casual',
   consoleNetworkConsentGranted: false,
@@ -34,7 +33,6 @@ const NO_TOGGLES = {
   crashReportingEnabled: false,
   dawWorkspaceEnabled: false,
   liveAdjustmentsEnabled: false,
-  secondaryMeasurementEnabled: false,
   weeklyReminderEnabled: false,
   weeklyReminderServiceDay: 0,
   gradingProfile: 'casual' as const,
@@ -132,12 +130,6 @@ describe('buildStoragePatch', () => {
     });
   });
 
-  it('includes only secondaryMeasurementEnabled when just that toggle changed', () => {
-    expect(buildStoragePatch(null, { ...NO_TOGGLES, secondaryMeasurementEnabled: true }, LOADED_SETTINGS)).toEqual({
-      secondaryMeasurementEnabled: true,
-    });
-  });
-
   it('includes only weeklyReminderEnabled when just that toggle changed', () => {
     expect(buildStoragePatch(null, { ...NO_TOGGLES, weeklyReminderEnabled: true }, LOADED_SETTINGS)).toEqual({
       weeklyReminderEnabled: true,
@@ -172,7 +164,6 @@ describe('buildStoragePatch', () => {
         crashReportingEnabled: true,
         dawWorkspaceEnabled: true,
         liveAdjustmentsEnabled: true,
-        secondaryMeasurementEnabled: true,
         weeklyReminderEnabled: true,
         weeklyReminderServiceDay: 5,
         gradingProfile: 'broadcast',
@@ -185,7 +176,6 @@ describe('buildStoragePatch', () => {
       crashReportingEnabled: true,
       dawWorkspaceEnabled: true,
       liveAdjustmentsEnabled: true,
-      secondaryMeasurementEnabled: true,
       weeklyReminderEnabled: true,
       weeklyReminderServiceDay: 5,
       gradingProfile: 'broadcast',

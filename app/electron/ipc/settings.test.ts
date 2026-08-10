@@ -432,33 +432,6 @@ describe('update-settings IPC whitelist — reportFirstUxEnabled (#538)', () => 
   });
 });
 
-describe('update-settings IPC whitelist — secondaryMeasurementEnabled (#460)', () => {
-  it('accepts a boolean and persists it', async () => {
-    const handler = handlers.get('update-settings');
-    const result = (await handler!(null, { secondaryMeasurementEnabled: true })) as {
-      secondaryMeasurementEnabled: boolean;
-    };
-    expect(result.secondaryMeasurementEnabled).toBe(true);
-    expect(readFile().secondaryMeasurementEnabled).toBe(true);
-  });
-
-  it('ignores a string value, leaving the setting at its default', async () => {
-    const handler = handlers.get('update-settings');
-    const result = (await handler!(null, { secondaryMeasurementEnabled: 'true' })) as {
-      secondaryMeasurementEnabled: boolean;
-    };
-    expect(result.secondaryMeasurementEnabled).toBe(false);
-  });
-
-  it('ignores a number value, leaving the setting at its default', async () => {
-    const handler = handlers.get('update-settings');
-    const result = (await handler!(null, { secondaryMeasurementEnabled: 1 })) as {
-      secondaryMeasurementEnabled: boolean;
-    };
-    expect(result.secondaryMeasurementEnabled).toBe(false);
-  });
-});
-
 describe('update-settings IPC whitelist — measurementDeviceName (#460)', () => {
   it('accepts a string, trims it, and persists it', async () => {
     const handler = handlers.get('update-settings');
