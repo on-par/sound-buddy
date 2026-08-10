@@ -14,6 +14,10 @@ import { useSettingsStore } from './stores/settingsStore';
 import { useSpectrumStore } from './stores/spectrumStore';
 import { useAnalysisStore } from './stores/analysisStore';
 import { useSoundcheckStore } from './stores/soundcheckStore';
+
+// The pure rig-reconcile.js classic-script — real module (not a hand-rolled
+// stub), same convention as arm-state.test.ts/group-state.test.ts.
+const rigReconcile = require('../rig-reconcile.js');
 import { spectrumTransport } from './spectrum-transport';
 import { createMockSoundBuddy } from './mock-sound-buddy';
 import type { AppSettings } from '../../electron/ipc/api';
@@ -95,6 +99,7 @@ beforeEach(() => {
       onCaptureStarting: vi.fn(),
       onCaptureStarted: vi.fn(),
     },
+    rigReconcile,
   };
 });
 
@@ -102,8 +107,8 @@ afterEach(() => {
   delete (globalThis as { document?: unknown }).document;
   delete (globalThis as { window?: unknown }).window;
   vi.restoreAllMocks();
-  useLiveCaptureStore.setState({ appMode: 'reportcard', isCapturing: false, deviceHint: null, startCapture: REAL_START_CAPTURE });
-  useRigStore.setState({ activeRigId: null });
+  useLiveCaptureStore.setState({ appMode: 'reportcard', isCapturing: false, deviceHint: null, devices: [], startCapture: REAL_START_CAPTURE });
+  useRigStore.setState({ activeRigId: null, rigs: [] });
   useSettingsStore.setState({ settings: null, settingsError: null });
   useAnalysisStore.setState({ currentAnalysis: null });
   useSoundcheckStore.setState({ playing: false });
@@ -346,5 +351,44 @@ describe('switchMode', () => {
     switchMode('recent');
 
     expect(startCapture).not.toHaveBeenCalled();
+  });
+
+  // Regression (PR #740 CI): the active rig's named device no longer being
+  // enumerated must block auto-start even though deviceHint itself is fine
+  // (other devices exist, no permission error) — mirrors
+  // tests/rigs.spec.ts's "loading a rig whose device is absent shows a
+  // fallback and does not auto-start".
+  it('does not auto-start when the active rig references a device that is no longer present', () => {
+    useRigStore.setState({
+      activeRigId: 'rig-1',
+      rigs: [{
+        id: 'rig-1', name: 'Scarlett Rig', deviceName: 'Scarlett 18i20',
+        channelConfig: [], mode: 'monitor', recordDir: '', intervalMs: 100, windowSecs: 3,
+      }],
+    });
+    useLiveCaptureStore.setState({ devices: [{ index: 0, name: 'Other Interface', channels: 8, default_sr: 48000 }] });
+    const startCapture = vi.spyOn(useLiveCaptureStore.getState(), 'startCapture')
+      .mockResolvedValue(undefined);
+
+    switchMode('live');
+
+    expect(startCapture).not.toHaveBeenCalled();
+  });
+
+  it('auto-starts when the active rig references a device that is still present', () => {
+    useRigStore.setState({
+      activeRigId: 'rig-1',
+      rigs: [{
+        id: 'rig-1', name: 'Scarlett Rig', deviceName: 'Scarlett 18i20',
+        channelConfig: [], mode: 'monitor', recordDir: '', intervalMs: 100, windowSecs: 3,
+      }],
+    });
+    useLiveCaptureStore.setState({ devices: [{ index: 0, name: 'Scarlett 18i20', channels: 8, default_sr: 48000 }] });
+    const startCapture = vi.spyOn(useLiveCaptureStore.getState(), 'startCapture')
+      .mockResolvedValue(undefined);
+
+    switchMode('live');
+
+    expect(startCapture).toHaveBeenCalledTimes(1);
   });
 });
