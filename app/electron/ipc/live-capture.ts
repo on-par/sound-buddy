@@ -7,16 +7,17 @@
 // stream.py.
 
 import { ipcMain, systemPreferences } from 'electron';
-import { spawn, ChildProcess } from 'child_process';
+import { spawn } from 'child_process';
 import * as path from 'path';
 import * as fs from 'fs';
 import { log, logWarn, logError } from '../logger';
 import { isEntitled } from '../license';
-import { pythonBin, childEnv, STREAM_SCRIPT, defaultRecordDir, readNdjsonLines } from './shared';
+import { pythonBin, childEnv, STREAM_SCRIPT, defaultRecordDir } from './shared';
 import { loadEngineParsers, type LiveOptions } from './engine-loader';
+import { createPythonStreamSlot } from './python-stream';
 import type { StartLiveOpts } from './api';
 
-let liveProcess: ChildProcess | null = null;
+const liveSlot = createPythonStreamSlot({ log, logWarn, logError });
 // Directory of the current/last multitrack session (Record mode) — per-strip
 // stems + session.json — so stop-live can hand it back to the renderer. null in
 // Monitor mode.
@@ -180,11 +181,6 @@ export function registerLiveCaptureHandlers(): void {
       };
     }
 
-    if (liveProcess) {
-      liveProcess.kill();
-      liveProcess = null;
-    }
-
     const liveOptions: LiveOptions = {
       device: opts.device,
       windowSecs: opts.windowSecs,
@@ -208,46 +204,28 @@ export function registerLiveCaptureHandlers(): void {
     }
 
     const args = loadEngineParsers().buildStreamArgs(liveOptions);
-
-    const py = spawn(pythonBin(), [STREAM_SCRIPT, ...args], {
-      stdio: ['ignore', 'pipe', 'pipe'],
-      env: childEnv(),
-    });
     log(`start-live: spawned stream.py (device="${opts.device ?? ''}" window=${opts.windowSecs}s interval=${opts.intervalSecs ?? 0.1}s mode=${opts.mode ?? 'monitor'})`);
 
-    liveProcess = py;
     const wc = event.sender;
-
-    // stderr was previously piped but never read (lost errors + risked backpressure).
-    py.stderr.on('data', (chunk: Buffer) => {
-      const text = chunk.toString().trim();
-      if (text) logWarn(`start-live stderr: ${text}`);
-    });
-
-    readNdjsonLines(py.stdout, (data) => {
-      // Forward to renderer
-      if (!wc.isDestroyed()) {
-        wc.send('live-event', data);
-      }
-    });
-
-    py.on('error', (err: Error) => {
-      logError('start-live: stream.py process error', err);
-      if (!wc.isDestroyed()) {
-        wc.send('live-event', { error: err.message });
-      }
-    });
-
-    py.on('close', (code: number | null) => {
-      liveProcess = null;
-      if (code !== 0 && code !== null) {
-        logError(`start-live: stream.py exited with code ${code}`);
-        if (!wc.isDestroyed()) {
-          wc.send('live-event', { error: `stream.py exited with code ${code}` });
+    liveSlot.start({
+      command: pythonBin(),
+      args: [STREAM_SCRIPT, ...args],
+      env: childEnv(),
+      label: 'start-live',
+      onLine: (data) => {
+        if (!wc.isDestroyed()) wc.send('live-event', data);
+      },
+      onError: (err) => {
+        if (!wc.isDestroyed()) wc.send('live-event', { error: err.message });
+      },
+      onExit: ({ code }) => {
+        if (code !== 0 && code !== null) {
+          logError(`start-live: stream.py exited with code ${code}`);
+          if (!wc.isDestroyed()) wc.send('live-event', { error: `stream.py exited with code ${code}` });
+        } else {
+          log('start-live: stream.py closed cleanly');
         }
-      } else {
-        log('start-live: stream.py closed cleanly');
-      }
+      },
     });
 
     return { success: true };
@@ -255,32 +233,15 @@ export function registerLiveCaptureHandlers(): void {
 
   // stop-live
   ipcMain.handle('stop-live', async () => {
-    const proc = liveProcess;
-    liveProcess = null;
     const sessionDirPath = liveSessionDir;
     liveSessionDir = null;
 
-    let closedCleanly = false;
-    if (proc) {
-      // SIGTERM triggers stream.py's signal handler, which closes every stem
-      // header and writes session.json. Wait for the child to actually exit
-      // before we inspect the folder, so we never offer a half-written session.
-      // If it doesn't exit in time, force-kill it (so the mic is released and the
-      // process isn't orphaned) and don't offer the possibly-incomplete session.
-      closedCleanly = await new Promise<boolean>((resolve) => {
-        let settled = false;
-        const settle = (ok: boolean) => { if (!settled) { settled = true; resolve(ok); } };
-        proc.once('close', () => settle(true));
-        proc.kill(); // SIGTERM
-        setTimeout(() => {
-          if (!settled) {
-            logWarn('stop-live: stream.py did not exit in time; sending SIGKILL');
-            try { proc.kill('SIGKILL'); } catch { /* already gone */ }
-          }
-          settle(false);
-        }, 2000);
-      });
-    }
+    // SIGTERM triggers stream.py's signal handler, which closes every stem
+    // header and writes session.json. liveSlot.stop() waits for the child to
+    // actually exit before we inspect the folder, so we never offer a
+    // half-written session — and force-kills it after a grace period (so the
+    // mic is released and the process isn't orphaned) if it doesn't.
+    const { closedCleanly } = await liveSlot.stop();
 
     // Only offer the session if the child finalized cleanly and actually wrote a
     // manifest — session.json is the completion marker (stream.py writes it last,

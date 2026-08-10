@@ -6,19 +6,19 @@
 // the Virtual Soundcheck feature (#45/#46).
 
 import { ipcMain, shell } from 'electron';
-import { spawn, ChildProcess } from 'child_process';
 import * as path from 'path';
 import * as fs from 'fs';
 import { log, logWarn, logError } from '../logger';
 import { isEntitled } from '../license';
-import { pythonBin, childEnv, PLAYBACK_SCRIPT, readNdjsonLines } from './shared';
+import { pythonBin, childEnv, PLAYBACK_SCRIPT } from './shared';
 import { loadEngineParsers } from './engine-loader';
+import { createPythonStreamSlot } from './python-stream';
 import type { StartPlaybackOpts } from './api';
 
 // The current virtual-soundcheck playback child (playback.py). Held at module
-// scope — like start-live's liveProcess — so stop-playback can SIGTERM it for
-// a clean close.
-let playbackProcess: ChildProcess | null = null;
+// scope — like start-live's liveSlot — so stop-playback can SIGTERM it for a
+// clean close.
+const playbackSlot = createPythonStreamSlot({ log, logWarn, logError });
 
 export function registerPlaybackHandlers(): void {
   // reveal-path — open a captured session folder in the OS file manager (#43).
@@ -64,13 +64,6 @@ export function registerPlaybackHandlers(): void {
       return { success: false, error: 'No session directory provided.' };
     }
 
-    // A new playback replaces any in-flight one — SIGTERM the old child so its
-    // finalize() closes the stream before we open a second one on the device.
-    if (playbackProcess) {
-      playbackProcess.kill();
-      playbackProcess = null;
-    }
-
     const args = loadEngineParsers().buildPlaybackArgs({
       sessionDir: opts.sessionDir,
       device: opts.device,
@@ -78,46 +71,31 @@ export function registerPlaybackHandlers(): void {
       intervalSecs: opts.intervalSecs,
       master: opts.master,
     });
-
-    const py = spawn(pythonBin(), [PLAYBACK_SCRIPT, ...args], {
-      stdio: ['ignore', 'pipe', 'pipe'],
-      env: childEnv(),
-    });
     log(`start-playback: spawned playback.py (session="${opts.sessionDir}" device="${opts.device ?? ''}" route="${opts.route ?? ''}" master=${opts.master ?? false})`);
 
-    playbackProcess = py;
     const wc = event.sender;
-
-    py.stderr.on('data', (chunk: Buffer) => {
-      const text = chunk.toString().trim();
-      if (text) logWarn(`start-playback stderr: ${text}`);
-    });
-
-    readNdjsonLines(py.stdout, (data) => {
-      if (!wc.isDestroyed()) {
-        wc.send('playback-event', data);
-      }
-    });
-
-    py.on('error', (err: Error) => {
-      logError('start-playback: playback.py process error', err);
-      if (!wc.isDestroyed()) {
-        wc.send('playback-event', { error: err.message });
-      }
-    });
-
-    py.on('close', (code: number | null) => {
-      // Only clear the handle if this child is still the current one — a rapid
-      // restart may have already replaced it.
-      if (playbackProcess === py) playbackProcess = null;
-      if (code !== 0 && code !== null) {
-        logError(`start-playback: playback.py exited with code ${code}`);
-        if (!wc.isDestroyed()) {
-          wc.send('playback-event', { error: `playback.py exited with code ${code}` });
+    // A new playback replaces any in-flight one — playbackSlot.start() kills
+    // the old child so its finalize() closes the stream before we open a
+    // second one on the device.
+    playbackSlot.start({
+      command: pythonBin(),
+      args: [PLAYBACK_SCRIPT, ...args],
+      env: childEnv(),
+      label: 'start-playback',
+      onLine: (data) => {
+        if (!wc.isDestroyed()) wc.send('playback-event', data);
+      },
+      onError: (err) => {
+        if (!wc.isDestroyed()) wc.send('playback-event', { error: err.message });
+      },
+      onExit: ({ code }) => {
+        if (code !== 0 && code !== null) {
+          logError(`start-playback: playback.py exited with code ${code}`);
+          if (!wc.isDestroyed()) wc.send('playback-event', { error: `playback.py exited with code ${code}` });
+        } else {
+          log('start-playback: playback.py closed cleanly');
         }
-      } else {
-        log('start-playback: playback.py closed cleanly');
-      }
+      },
     });
 
     return { success: true };
@@ -126,23 +104,7 @@ export function registerPlaybackHandlers(): void {
   // stop-playback — SIGTERM the playback child so playback.py's signal handler
   // closes the output stream cleanly; SIGKILL as a fallback if it doesn't exit.
   ipcMain.handle('stop-playback', async () => {
-    const proc = playbackProcess;
-    playbackProcess = null;
-    if (!proc) return { success: true };
-
-    await new Promise<void>((resolveStop) => {
-      let settled = false;
-      const settle = () => { if (!settled) { settled = true; resolveStop(); } };
-      proc.once('close', settle);
-      proc.kill(); // SIGTERM
-      setTimeout(() => {
-        if (!settled) {
-          logWarn('stop-playback: playback.py did not exit in time; sending SIGKILL');
-          try { proc.kill('SIGKILL'); } catch { /* already gone */ }
-        }
-        settle();
-      }, 2000);
-    });
+    await playbackSlot.stop();
     return { success: true };
   });
 }
