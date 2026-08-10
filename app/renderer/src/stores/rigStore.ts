@@ -101,7 +101,7 @@ export function createRigStore(getApi: () => RigApiSubset) {
     const live = useLiveCaptureStore.getState();
     const deviceChannels = deviceChannelCount(live.selectedDevice, live.devices);
     const { patch, notice } = applyRigPatch(rig, live.devices, deviceChannels);
-    useLiveCaptureStore.setState(patch);
+    useLiveCaptureStore.setState({ ...patch, rigApplyNotice: notice || null });
     persistGroups(useLiveCaptureStore.getState());
     setLiveStatusText(notice);
     window.renderChannelConfig?.();

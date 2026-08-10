@@ -9,6 +9,7 @@ import {
   applySingleColumnSync,
 } from './mode-switch';
 import { useLiveCaptureStore } from './stores/liveCaptureStore';
+import { useRigStore } from './stores/rigStore';
 import { useSettingsStore } from './stores/settingsStore';
 import { useSpectrumStore } from './stores/spectrumStore';
 import { useAnalysisStore } from './stores/analysisStore';
@@ -50,6 +51,14 @@ let liveIsRunning: ReturnType<typeof vi.fn>;
 let liveWindowsFn: ReturnType<typeof vi.fn>;
 let mock: ReturnType<typeof createMockSoundBuddy>;
 
+// zustand's `set` copies the current state's own properties (including a
+// vi.spyOn-replaced startCapture) forward into every later state object, so
+// vi.restoreAllMocks() — which only restores the exact object it was spied
+// on — can't undo a mock once a later setState call has propagated it past
+// that snapshot. Force it back to the pristine action after every test
+// instead of relying on restoreAllMocks for this one store method.
+const REAL_START_CAPTURE = useLiveCaptureStore.getState().startCapture;
+
 beforeEach(() => {
   elements = {
     'spectrum-title': makeFakeElement(),
@@ -81,6 +90,11 @@ beforeEach(() => {
     reportFirstUxState: { isEnabled },
     renderLiveMeters, renderLiveWorkspace, renderEqPane, currentEqPaneChannels,
     liveCapture: { isRunning: liveIsRunning, windows: liveWindowsFn },
+    liveCaptureRuntime: {
+      beforeStartCapture: () => ({ ok: true }),
+      onCaptureStarting: vi.fn(),
+      onCaptureStarted: vi.fn(),
+    },
   };
 });
 
@@ -88,7 +102,8 @@ afterEach(() => {
   delete (globalThis as { document?: unknown }).document;
   delete (globalThis as { window?: unknown }).window;
   vi.restoreAllMocks();
-  useLiveCaptureStore.setState({ appMode: 'reportcard' });
+  useLiveCaptureStore.setState({ appMode: 'reportcard', isCapturing: false, deviceHint: null, rigApplyNotice: null, startCapture: REAL_START_CAPTURE });
+  useRigStore.setState({ activeRigId: null });
   useSettingsStore.setState({ settings: null, settingsError: null });
   useAnalysisStore.setState({ currentAnalysis: null });
   useSoundcheckStore.setState({ playing: false });
@@ -277,5 +292,106 @@ describe('switchMode', () => {
     switchMode('live');
     switchMode('recent');
     expect(bodyClassList.contains('live-active')).toBe(false);
+  });
+
+  // #728: entering the Live tab with a last-used (active) rig auto-starts
+  // board monitoring, the same startCapture path the Start Capture button
+  // uses — no manual click required.
+  it('auto-starts monitoring when entering live with an active rig', () => {
+    useRigStore.setState({ activeRigId: 'rig-1' });
+    const startCapture = vi.spyOn(useLiveCaptureStore.getState(), 'startCapture')
+      .mockResolvedValue(undefined);
+
+    switchMode('live');
+
+    expect(startCapture).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not auto-start when no rig is active', () => {
+    const startCapture = vi.spyOn(useLiveCaptureStore.getState(), 'startCapture')
+      .mockResolvedValue(undefined);
+
+    switchMode('live');
+
+    expect(startCapture).not.toHaveBeenCalled();
+  });
+
+  it('does not auto-start a second time when already capturing', () => {
+    useRigStore.setState({ activeRigId: 'rig-1' });
+    useLiveCaptureStore.setState({ isCapturing: true });
+    const startCapture = vi.spyOn(useLiveCaptureStore.getState(), 'startCapture')
+      .mockResolvedValue(undefined);
+
+    switchMode('live');
+
+    expect(startCapture).not.toHaveBeenCalled();
+  });
+
+  it('does not auto-start when the device hint is an error', () => {
+    useRigStore.setState({ activeRigId: 'rig-1' });
+    useLiveCaptureStore.setState({ deviceHint: { text: 'blocked', isError: true } });
+    const startCapture = vi.spyOn(useLiveCaptureStore.getState(), 'startCapture')
+      .mockResolvedValue(undefined);
+
+    switchMode('live');
+
+    expect(startCapture).not.toHaveBeenCalled();
+  });
+
+  it('does not auto-start when switching to a mode other than live', () => {
+    useRigStore.setState({ activeRigId: 'rig-1' });
+    const startCapture = vi.spyOn(useLiveCaptureStore.getState(), 'startCapture')
+      .mockResolvedValue(undefined);
+
+    switchMode('recent');
+
+    expect(startCapture).not.toHaveBeenCalled();
+  });
+
+  // Regression (PR #740 CI, round 1): the active rig's named device no
+  // longer being enumerated must block auto-start even though deviceHint
+  // itself is fine (other devices exist, no permission error) — mirrors
+  // tests/rigs.spec.ts's "loading a rig whose device is absent shows a
+  // fallback and does not auto-start". rigStore.applyRigById is what sets
+  // rigApplyNotice from rig-panel.ts's reconciliation; this test exercises
+  // the auto-start gate's read side directly.
+  it('does not auto-start when the just-applied rig left a rigApplyNotice (device not found)', () => {
+    useRigStore.setState({ activeRigId: 'rig-1' });
+    useLiveCaptureStore.setState({ rigApplyNotice: 'Rig device "Scarlett 18i20" not found — select a device.' });
+    const startCapture = vi.spyOn(useLiveCaptureStore.getState(), 'startCapture')
+      .mockResolvedValue(undefined);
+
+    switchMode('live');
+
+    expect(startCapture).not.toHaveBeenCalled();
+  });
+
+  // Regression (PR #740 CI, round 2): a rig applying successfully but needing
+  // its channels clamped ALSO produces a rigApplyNotice (rig-panel.ts's
+  // applyRigPatch returns the same notice field for both cases) — this must
+  // block auto-start too, otherwise inline-app.js's reactive #live-status
+  // renderer (driven by isCapturing/meterRate) overwrites the clamp notice
+  // with "Monitoring…" before anyone can see it. Mirrors tests/rigs.spec.ts's
+  // "loading a rig with out-of-range channels clamps them without throwing".
+  it('does not auto-start when the just-applied rig left a rigApplyNotice (channels clamped)', () => {
+    useRigStore.setState({ activeRigId: 'rig-1' });
+    useLiveCaptureStore.setState({ rigApplyNotice: 'Some rig channels were out of range for this device and were clamped.' });
+    const startCapture = vi.spyOn(useLiveCaptureStore.getState(), 'startCapture')
+      .mockResolvedValue(undefined);
+
+    switchMode('live');
+
+    expect(startCapture).not.toHaveBeenCalled();
+  });
+
+  it('auto-starts when the active rig applied with no notice', () => {
+    useRigStore.setState({ activeRigId: 'rig-1' });
+    useLiveCaptureStore.setState({ rigApplyNotice: null });
+    const startCapture = vi.spyOn(useLiveCaptureStore.getState(), 'startCapture')
+      .mockResolvedValue(undefined);
+
+    switchMode('live');
+
+    expect(startCapture).toHaveBeenCalledTimes(1);
   });
 });

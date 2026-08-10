@@ -50,7 +50,7 @@ afterEach(() => {
   useLiveCaptureStore.setState({
     devices: [], selectedDevice: '', channelConfig: [], channelGroups: [],
     liveMode: 'monitor', recordDir: '', measurementSource: null,
-    meterIntervalMs: 100, windowSecs: 3,
+    meterIntervalMs: 100, windowSecs: 3, rigApplyNotice: null,
   });
   useSettingsStore.setState({ settings: null, settingsError: null });
 });
@@ -159,6 +159,29 @@ describe('createRigStore', () => {
       const { store } = makeStore({ setActiveRig: async () => { throw new Error('nope'); } });
       await store.getState().selectRig('rig-1');
       expect(fakeDoc.liveStatus.textContent).toBe('Could not select rig — check that Sound Buddy can write its settings.');
+    });
+
+    // Regression (PR #740 CI): rigApplyNotice must land on the store, not
+    // just setLiveStatusText's DOM text — the #728 auto-start gate
+    // (live-auto-start.ts) reads it from liveCaptureStore to decide whether
+    // to skip auto-starting monitoring on a rig that needs attention.
+    it('sets rigApplyNotice on liveCaptureStore when the rig device is not found', async () => {
+      const rig = makeRig({ deviceName: 'Missing Interface' });
+      const { store } = makeStore({ setActiveRig: async () => fakeSettings() });
+      store.setState({ rigs: [rig] });
+      useLiveCaptureStore.setState({ devices: DEVICES, selectedDevice: '' });
+      await store.getState().selectRig('rig-1');
+      expect(useLiveCaptureStore.getState().rigApplyNotice)
+        .toBe('Rig device "Missing Interface" not found — select a device.');
+    });
+
+    it('clears rigApplyNotice on liveCaptureStore when the rig applies cleanly', async () => {
+      const rig = makeRig();
+      const { store } = makeStore({ setActiveRig: async () => fakeSettings() });
+      store.setState({ rigs: [rig] });
+      useLiveCaptureStore.setState({ devices: DEVICES, selectedDevice: '', rigApplyNotice: 'stale notice' });
+      await store.getState().selectRig('rig-1');
+      expect(useLiveCaptureStore.getState().rigApplyNotice).toBeNull();
     });
   });
 
