@@ -234,6 +234,11 @@ test.describe.serial('Rigs — save / load / switch', () => {
   test('per-channel labels round-trip through a rig save + relaunch (#39)', async () => {
     // Back to the 8-channel interface for a clean two-strip default config.
     await stubDevices(app, EIGHT_CH);
+    // Clear the active rig (carried over from an earlier test) so #728's
+    // auto-start doesn't lock #device-refresh-btn before this test's own
+    // device-refresh + reselect resets the config — order-independent
+    // rather than relying on a leftover rig happening to not resolve.
+    await win.evaluate(() => (window as any).soundBuddy.setActiveRig(''));
     await win.reload();
     await win.waitForLoadState('domcontentloaded');
     await win.locator('.mode-tab[data-mode="live"]').click();
@@ -281,6 +286,10 @@ test.describe.serial('Rigs — save / load / switch', () => {
 
   test('named groups round-trip through a rig save + relaunch (#41)', async () => {
     await stubDevices(app, EIGHT_CH);
+    // Clear the active rig (carried over from an earlier test) so #728's
+    // auto-start doesn't lock #device-refresh-btn before this test's own
+    // device-refresh + reselect resets the config.
+    await win.evaluate(() => (window as any).soundBuddy.setActiveRig(''));
     await win.reload();
     await win.waitForLoadState('domcontentloaded');
     await win.locator('.mode-tab[data-mode="live"]').click();
@@ -341,6 +350,10 @@ test.describe.serial('Rigs — save / load / switch', () => {
       ipcMain.removeHandler('stop-live');
       ipcMain.handle('stop-live', () => ({ success: true }));
     });
+    // This test drives Start/Stop manually to assert the lock/unlock
+    // transition itself — clear the active rig (carried over from an
+    // earlier test) so #728's auto-start doesn't beat it to Start.
+    await win.evaluate(() => (window as any).soundBuddy.setActiveRig(''));
     await win.reload();
     await win.waitForLoadState('domcontentloaded');
     await win.locator('.mode-tab[data-mode="live"]').click();
@@ -366,6 +379,10 @@ test.describe.serial('Rigs — save / load / switch', () => {
       ipcMain.removeHandler('stop-live');
       ipcMain.handle('stop-live', () => ({ success: true }));
     }, success);
+    // Every caller of this helper drives Start manually to assert the
+    // lock behavior itself — clear the active rig (carried over from an
+    // earlier test) so #728's auto-start doesn't beat it to Start.
+    await win.evaluate(() => (window as any).soundBuddy.setActiveRig(''));
     await win.reload();
     await win.waitForLoadState('domcontentloaded');
     await win.locator('.mode-tab[data-mode="live"]').click();
