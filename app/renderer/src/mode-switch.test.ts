@@ -9,6 +9,7 @@ import {
   applySingleColumnSync,
 } from './mode-switch';
 import { useLiveCaptureStore } from './stores/liveCaptureStore';
+import { useRigStore } from './stores/rigStore';
 import { useSettingsStore } from './stores/settingsStore';
 import { useSpectrumStore } from './stores/spectrumStore';
 import { useAnalysisStore } from './stores/analysisStore';
@@ -50,6 +51,14 @@ let liveIsRunning: ReturnType<typeof vi.fn>;
 let liveWindowsFn: ReturnType<typeof vi.fn>;
 let mock: ReturnType<typeof createMockSoundBuddy>;
 
+// zustand's `set` copies the current state's own properties (including a
+// vi.spyOn-replaced startCapture) forward into every later state object, so
+// vi.restoreAllMocks() — which only restores the exact object it was spied
+// on — can't undo a mock once a later setState call has propagated it past
+// that snapshot. Force it back to the pristine action after every test
+// instead of relying on restoreAllMocks for this one store method.
+const REAL_START_CAPTURE = useLiveCaptureStore.getState().startCapture;
+
 beforeEach(() => {
   elements = {
     'spectrum-title': makeFakeElement(),
@@ -81,6 +90,11 @@ beforeEach(() => {
     reportFirstUxState: { isEnabled },
     renderLiveMeters, renderLiveWorkspace, renderEqPane, currentEqPaneChannels,
     liveCapture: { isRunning: liveIsRunning, windows: liveWindowsFn },
+    liveCaptureRuntime: {
+      beforeStartCapture: () => ({ ok: true }),
+      onCaptureStarting: vi.fn(),
+      onCaptureStarted: vi.fn(),
+    },
   };
 });
 
@@ -88,7 +102,8 @@ afterEach(() => {
   delete (globalThis as { document?: unknown }).document;
   delete (globalThis as { window?: unknown }).window;
   vi.restoreAllMocks();
-  useLiveCaptureStore.setState({ appMode: 'reportcard' });
+  useLiveCaptureStore.setState({ appMode: 'reportcard', isCapturing: false, deviceHint: null, startCapture: REAL_START_CAPTURE });
+  useRigStore.setState({ activeRigId: null });
   useSettingsStore.setState({ settings: null, settingsError: null });
   useAnalysisStore.setState({ currentAnalysis: null });
   useSoundcheckStore.setState({ playing: false });
@@ -277,5 +292,59 @@ describe('switchMode', () => {
     switchMode('live');
     switchMode('recent');
     expect(bodyClassList.contains('live-active')).toBe(false);
+  });
+
+  // #728: entering the Live tab with a last-used (active) rig auto-starts
+  // board monitoring, the same startCapture path the Start Capture button
+  // uses — no manual click required.
+  it('auto-starts monitoring when entering live with an active rig', () => {
+    useRigStore.setState({ activeRigId: 'rig-1' });
+    const startCapture = vi.spyOn(useLiveCaptureStore.getState(), 'startCapture')
+      .mockResolvedValue(undefined);
+
+    switchMode('live');
+
+    expect(startCapture).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not auto-start when no rig is active', () => {
+    const startCapture = vi.spyOn(useLiveCaptureStore.getState(), 'startCapture')
+      .mockResolvedValue(undefined);
+
+    switchMode('live');
+
+    expect(startCapture).not.toHaveBeenCalled();
+  });
+
+  it('does not auto-start a second time when already capturing', () => {
+    useRigStore.setState({ activeRigId: 'rig-1' });
+    useLiveCaptureStore.setState({ isCapturing: true });
+    const startCapture = vi.spyOn(useLiveCaptureStore.getState(), 'startCapture')
+      .mockResolvedValue(undefined);
+
+    switchMode('live');
+
+    expect(startCapture).not.toHaveBeenCalled();
+  });
+
+  it('does not auto-start when the device hint is an error', () => {
+    useRigStore.setState({ activeRigId: 'rig-1' });
+    useLiveCaptureStore.setState({ deviceHint: { text: 'blocked', isError: true } });
+    const startCapture = vi.spyOn(useLiveCaptureStore.getState(), 'startCapture')
+      .mockResolvedValue(undefined);
+
+    switchMode('live');
+
+    expect(startCapture).not.toHaveBeenCalled();
+  });
+
+  it('does not auto-start when switching to a mode other than live', () => {
+    useRigStore.setState({ activeRigId: 'rig-1' });
+    const startCapture = vi.spyOn(useLiveCaptureStore.getState(), 'startCapture')
+      .mockResolvedValue(undefined);
+
+    switchMode('recent');
+
+    expect(startCapture).not.toHaveBeenCalled();
   });
 });

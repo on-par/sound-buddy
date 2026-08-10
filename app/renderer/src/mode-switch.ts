@@ -14,12 +14,16 @@
 import { getSoundBuddy } from './useElectron';
 import { spectrumTransport } from './spectrum-transport';
 import { useLiveCaptureStore } from './stores/liveCaptureStore';
+import { useRigStore } from './stores/rigStore';
 import { useSettingsStore } from './stores/settingsStore';
 import { useSpectrumStore } from './stores/spectrumStore';
 import { useAnalysisStore } from './stores/analysisStore';
 import { useSoundcheckStore } from './stores/soundcheckStore';
 import { SPECTRUM_TITLE } from './spectrum-chrome';
 import { clampEqPaneWidth } from './live-capture-panel';
+import { decideLiveAutoStart } from './live-auto-start';
+import { startLiveCapture, runtime } from './LiveControls';
+import { captureOptsFromCadence } from './measurement-device-state';
 
 export type ModeSwitchDecision =
   | { type: 'noop' }
@@ -125,6 +129,25 @@ export function applySingleColumnSync(): void {
     useLiveCaptureStore.getState().appMode));
 }
 
+// #728: on landing on the Live tab, auto-start monitoring using the
+// last-used rig's device/channel-config/measurement-source — already
+// hydrated onto liveCaptureStore by rigStore's loadRigs()/applyRigById at
+// boot. decideLiveAutoStart is the pure gate; this just wires its 'start'
+// verdict to the exact startLiveCapture() path the Start Capture button
+// uses, so failures (Pro license, mic denied) surface through the same
+// existing onCaptureStarted -> spectrum panel error state.
+function maybeAutoStartLive(): void {
+  const live = useLiveCaptureStore.getState();
+  const decision = decideLiveAutoStart({
+    isCapturing: live.isCapturing,
+    activeRigId: useRigStore.getState().activeRigId,
+    deviceHint: live.deviceHint,
+  });
+  if (decision.type !== 'start') return;
+  const opts = captureOptsFromCadence(live.windowSecs, live.meterIntervalMs);
+  void startLiveCapture(runtime(), opts.windowSecs, opts.intervalSecs);
+}
+
 // Verbatim port of the .mode-tab click listener's body (inline-app.js) minus
 // the tab-active class toggle, which ModeTabs.tsx now owns reactively.
 export function switchMode(mode: string): void {
@@ -144,6 +167,8 @@ export function switchMode(mode: string): void {
   // is active — collapse it via this class the same way rc-active already
   // does for the Report Card tab.
   document.body.classList.toggle('live-active', mode === 'live');
+
+  if (mode === 'live') maybeAutoStartLive();
 
   if (mode === 'reportcard') {
     document.body.classList.add('rc-active');
