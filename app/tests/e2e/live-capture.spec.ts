@@ -366,6 +366,31 @@ test.describe('Live capture (PRD 06)', () => {
     await expect(window.locator('#rec-offer')).toBeHidden();
   });
 
+  test('the top-bar Record button promotes a running monitor session to a recording (#458, #729)', async () => {
+    await electronApp.evaluate(({ ipcMain }) => {
+      ipcMain.removeHandler('reveal-path');
+      ipcMain.handle('reveal-path', (_e, p) => {
+        (globalThis as Record<string, unknown>).__revealed = p; return { success: true };
+      });
+    });
+    await window.locator('#live-ws-arm-all').click();
+    await window.locator('#live-start-btn').click(); // starts in monitor mode (default)
+    await expect(window.locator('#live-stop-btn')).toBeVisible();
+    await expect(window.locator('#live-indicator .live-txt')).toHaveText('LIVE');
+
+    const recordBtn = window.locator('#record-button');
+    await expect(recordBtn).toBeEnabled();
+    await recordBtn.focus();
+    await window.keyboard.press('Enter'); // keyboard parity check
+    await expect(window.locator('#live-indicator .live-txt')).toHaveText('REC');
+    await expect(recordBtn).toHaveAttribute('aria-pressed', 'true');
+
+    await recordBtn.click();
+    await expect(window.locator('#live-start-btn')).toBeVisible();
+    await expect(window.locator('#rec-offer')).toBeVisible();
+    await expect(window.locator('#rec-offer-text')).toContainText('Session saved');
+  });
+
   test('Record mode with nothing armed blocks Start with a hint (#43)', async () => {
     await window.locator('#live-mode button[data-mode="record"]').click();
     await window.locator('#live-ws-disarm-all').click();
