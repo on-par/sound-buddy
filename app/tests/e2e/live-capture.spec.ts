@@ -373,12 +373,17 @@ test.describe('Live capture (PRD 06)', () => {
         (globalThis as Record<string, unknown>).__revealed = p; return { success: true };
       });
     });
-    // The preceding test ("record mode captures a session...") leaves
-    // liveMode set to 'record' and this suite's beforeEach doesn't reset it
-    // (only device/channel config) — force monitor mode explicitly so this
-    // test doesn't depend on run order.
-    await window.locator('#live-mode button[data-mode="monitor"]').click();
+    // #live-ws-arm-all only renders in Record mode (inline-app.js's armHTML,
+    // "Record mode only"), but canPromoteToRecording (live-transition-state.js)
+    // still requires an armed strip even when promoting from Monitor mode —
+    // arm state lives on channelConfig and survives a mode switch. So: switch
+    // to Record mode to reach the arm-all button, arm, then switch back to
+    // Monitor before starting (also guards against the preceding "record mode
+    // captures a session..." test leaving liveMode on 'record', since this
+    // suite's beforeEach doesn't reset it).
+    await window.locator('#live-mode button[data-mode="record"]').click();
     await window.locator('#live-ws-arm-all').click();
+    await window.locator('#live-mode button[data-mode="monitor"]').click();
     await window.locator('#live-start-btn').click(); // starts in monitor mode
     await expect(window.locator('#live-stop-btn')).toBeVisible();
     await expect(window.locator('#live-indicator .live-txt')).toHaveText('LIVE');
