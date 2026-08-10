@@ -14,31 +14,21 @@
 // with live-capture's `live-event` (ADR 0003's event-namespacing requirement).
 
 import { ipcMain } from 'electron';
-import { spawn, ChildProcess } from 'child_process';
 import { log, logWarn, logError } from '../logger';
 import { isEntitled } from '../license';
-import { pythonBin, childEnv, STREAM_SCRIPT, readNdjsonLines } from './shared';
+import { pythonBin, childEnv, STREAM_SCRIPT } from './shared';
 import { ensureMicrophoneAccess } from './live-capture';
 import { loadEngineParsers } from './engine-loader';
+import { createPythonStreamSlot } from './python-stream';
 import type { StartMeasurementOpts } from './api';
 
-let measurementProcess: ChildProcess | null = null;
-// True while a stop-measurement is in flight (or completed) so the child's
-// `close` isn't mistaken for a mid-session device disconnect. A clean stop sets
-// this before killing; a USB unplug leaves it false, so stream.py exiting on
-// its own emits the disconnect signal.
-let expectedStop = false;
+const measurementSlot = createPythonStreamSlot({ log, logWarn, logError });
 
 // The measurement source is always the device's first input, captured as one
 // mono strip — it's a metering source only (a single room mic), never a
 // multitrack rig, so it needs exactly one channel token and never a stereo
 // pair or an arm list.
 const MEASUREMENT_CHANNEL_TOKEN = '0';
-
-// How long stop-measurement waits for a graceful SIGTERM exit before force-
-// killing the child (so the mic is released and the process isn't orphaned).
-// Mirrors stop-live's 2s fallback, minus the session-finalize wait.
-const STOP_GRACE_MS = 2000;
 
 export function registerMeasurementSourceHandlers(): void {
   // start-measurement — spawn the measurement-only stream.py monitor. Gated by
@@ -67,62 +57,40 @@ export function registerMeasurementSourceHandlers(): void {
       };
     }
 
-    if (measurementProcess) {
-      measurementProcess.kill();
-      measurementProcess = null;
-    }
-
-    expectedStop = false;
     const args = loadEngineParsers().buildStreamArgs({
       device: opts.device,
       windowSecs: opts.windowSecs,
       channels: [MEASUREMENT_CHANNEL_TOKEN],
       intervalSecs: opts.intervalSecs,
     });
-    const py = spawn(pythonBin(), [STREAM_SCRIPT, ...args], {
-      stdio: ['ignore', 'pipe', 'pipe'],
-      env: childEnv(),
-    });
     // Log the interval we actually pass; when omitted, stream.py applies its own
     // default, so say "default" rather than duplicating that value here.
     const intervalLabel = opts.intervalSecs && opts.intervalSecs > 0 ? `${opts.intervalSecs}s` : 'default';
     log(`start-measurement: spawned stream.py (device="${opts.device}" window=${opts.windowSecs}s interval=${intervalLabel})`);
 
-    measurementProcess = py;
     const wc = event.sender;
-
-    py.stderr.on('data', (chunk: Buffer) => {
-      const text = chunk.toString().trim();
-      if (text) logWarn(`start-measurement stderr: ${text}`);
-    });
-
-    readNdjsonLines(py.stdout, (data) => {
-      if (!wc.isDestroyed()) {
-        wc.send('measurement-event', data);
-      }
-    });
-
-    py.on('error', (err: Error) => {
-      logError('start-measurement: stream.py process error', err);
-      if (!wc.isDestroyed()) {
-        wc.send('measurement-event', { error: err.message });
-      }
-    });
-
-    py.on('close', (code: number | null) => {
-      measurementProcess = null;
-      // An unexpected exit (e.g. a mid-session USB unplug makes stream.py exit)
-      // is the renderer's DISCONNECT trigger — a distinct, non-fatal state that
-      // never touches the board capture. A clean stop set expectedStop, so it
-      // needs no event.
-      if (!expectedStop) {
-        logWarn(`start-measurement: stream.py ended unexpectedly (code ${code})`);
-        if (!wc.isDestroyed()) {
-          wc.send('measurement-event', { measurementEnded: true, code });
+    measurementSlot.start({
+      command: pythonBin(),
+      args: [STREAM_SCRIPT, ...args],
+      env: childEnv(),
+      label: 'start-measurement',
+      onLine: (data) => {
+        if (!wc.isDestroyed()) wc.send('measurement-event', data);
+      },
+      onError: (err) => {
+        if (!wc.isDestroyed()) wc.send('measurement-event', { error: err.message });
+      },
+      onExit: ({ code, expected }) => {
+        // An unexpected exit (e.g. a mid-session USB unplug makes stream.py exit)
+        // is the renderer's DISCONNECT trigger — a distinct, non-fatal state that
+        // never touches the board capture. A clean stop needs no event.
+        if (!expected) {
+          logWarn(`start-measurement: stream.py ended unexpectedly (code ${code})`);
+          if (!wc.isDestroyed()) wc.send('measurement-event', { measurementEnded: true, code });
+        } else {
+          log('start-measurement: stream.py closed after stop');
         }
-      } else {
-        log('start-measurement: stream.py closed after stop');
-      }
+      },
     });
 
     return { success: true };
@@ -133,34 +101,7 @@ export function registerMeasurementSourceHandlers(): void {
   // after a grace window if the child doesn't exit. Mirrors stop-live's
   // shutdown, minus the session-dir finalize logic (measurement never records).
   ipcMain.handle('stop-measurement', async () => {
-    const proc = measurementProcess;
-    measurementProcess = null;
-    expectedStop = true;
-    if (!proc) return { success: true };
-
-    await new Promise<void>((resolve) => {
-      let settled = false;
-      const settle = () => {
-        if (!settled) {
-          settled = true;
-          resolve();
-        }
-      };
-      proc.once('close', settle);
-      proc.kill(); // SIGTERM
-      setTimeout(() => {
-        if (!settled) {
-          logWarn('stop-measurement: stream.py did not exit in time; sending SIGKILL');
-          try {
-            proc.kill('SIGKILL');
-          } catch {
-            /* already gone */
-          }
-        }
-        settle();
-      }, STOP_GRACE_MS);
-    });
-
+    await measurementSlot.stop();
     return { success: true };
   });
 }
