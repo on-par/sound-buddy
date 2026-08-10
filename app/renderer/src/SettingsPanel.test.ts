@@ -10,12 +10,14 @@ import SettingsPanel, { saveAll, type SettingsSection, commitShareChurchName } f
 import { ElectronContext } from './useElectron';
 import { createSettingsStore, useSettingsStore } from './stores/settingsStore';
 import { useLiveCaptureStore } from './stores/liveCaptureStore';
+import { useLicensingStore } from './stores/licensingStore';
 import { createMockSoundBuddy } from './mock-sound-buddy';
 import type { AppSettings } from '../../electron/ipc/api';
 
 afterEach(() => {
   useSettingsStore.setState({ settings: null, settingsError: null, dialogOpen: false });
   useLiveCaptureStore.setState({ isCapturing: false });
+  useLicensingStore.setState({ licenseStatus: null });
 });
 
 function renderMarkup(booted = false): string {
@@ -136,8 +138,22 @@ describe('SettingsPanel markup', () => {
 // the `booted` prop App.tsx now passes through so they don't mount before
 // the boot scripts these subcomponents transitively depend on
 // (window.liveCaptureRuntime et al.) have run.
+//
+// These controls used to be children of #tab-live, so the CSS rule
+// `body.not-pro #tab-live > :not(.pro-gate) { display:none !important; }`
+// (app.css) hid them from free-tier users for free. Now that they live
+// inside the Settings dialog (outside #tab-live), that CSS no longer reaches
+// them, so the Audio pane gates on `licenseStatus` directly — the same
+// `tier === 'pro'` check LicenseChrome.tsx's `badge()` uses to drive
+// `body.not-pro` in the first place — showing the same pro-gate upgrade
+// card the Live tab shows instead of the controls.
+function withPro(): void {
+  useLicensingStore.setState({ licenseStatus: { tier: 'pro', status: 'valid', kind: 'lifetime' } });
+}
+
 describe('Audio pane composition (#727)', () => {
-  it('renders the moved controls when booted', () => {
+  it('renders the moved controls when booted and licensed', () => {
+    withPro();
     useSettingsStore.setState({ settings: { secondaryMeasurementEnabled: true } as unknown as AppSettings });
     const html = renderMarkup(true);
     expect(html).toContain('id="rig-select"');
@@ -149,12 +165,14 @@ describe('Audio pane composition (#727)', () => {
   });
 
   it('does not render the secondary-measurement device select when the experimental flag is off', () => {
+    withPro();
     const html = renderMarkup(true);
     expect(html).toContain('id="rig-select"');
     expect(html).not.toContain('id="secondary-measurement-device"');
   });
 
-  it('renders none of the moved controls when not booted', () => {
+  it('renders none of the moved controls when not booted, even when licensed', () => {
+    withPro();
     const html = renderMarkup(false);
     expect(html).not.toContain('id="rig-select"');
     expect(html).not.toContain('id="device-select"');
@@ -164,17 +182,48 @@ describe('Audio pane composition (#727)', () => {
   });
 
   it('shows no capture-lock note while idle', () => {
+    withPro();
     const html = renderMarkup(true);
     expect(html).not.toContain('id="settings-audio-capture-lock-note"');
   });
 
   it('shows the capture-lock note while capturing, without claiming measurement source or the secondary device are locked', () => {
+    withPro();
     useLiveCaptureStore.setState({ isCapturing: true });
     const html = renderMarkup(true);
     expect(html).toContain('id="settings-audio-capture-lock-note"');
     const note = html.match(/<p class="ai-dialog-note" id="settings-audio-capture-lock-note">(.*?)<\/p>/)?.[1] ?? '';
     expect(note).not.toMatch(/measurement source[^.]*locked/i);
     expect(note).not.toMatch(/secondary measurement[^.]*locked/i);
+  });
+
+  // #727 follow-up fix: without this gate, a free-tier user opening
+  // Settings → Audio could configure and save rigs, pick devices, and tune
+  // capture cadence — a paywall bypass, since the Live tab's Pro upgrade
+  // card no longer covers this surface once it moved outside #tab-live.
+  it('shows the Pro upgrade card instead of the controls when not licensed, even when booted', () => {
+    const html = renderMarkup(true);
+    expect(html).toContain('id="settings-audio-pro-gate"');
+    expect(html).toContain('Live monitoring is a Pro feature');
+    expect(html).not.toContain('id="rig-select"');
+    expect(html).not.toContain('id="device-select"');
+    expect(html).not.toContain('id="measurement-source"');
+    expect(html).not.toContain('id="meter-interval"');
+    expect(html).not.toContain('id="window-secs"');
+    expect(html).not.toContain('id="settings-audio-capture-lock-note"');
+  });
+
+  it('treats an active trial or grace period as licensed (matches LicenseChrome.badge()\'s tier-only check)', () => {
+    useLicensingStore.setState({ licenseStatus: { tier: 'pro', status: 'trial', kind: 'subscription', trialEndsAt: new Date(Date.now() + 86400000).toISOString() } });
+    const html = renderMarkup(true);
+    expect(html).not.toContain('id="settings-audio-pro-gate"');
+    expect(html).toContain('id="rig-select"');
+  });
+
+  it('wires the Settings Audio-pane upgrade link to open the license dialog', () => {
+    const src = fs.readFileSync(fileURLToPath(new URL('./SettingsPanel.tsx', import.meta.url)), 'utf8');
+    expect(src).toContain('id="settings-audio-pro-gate"');
+    expect(src).toContain('useLicensingStore.getState().openDialog()');
   });
 });
 

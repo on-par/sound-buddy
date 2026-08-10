@@ -19,6 +19,14 @@
 // anchor to portal onto. The `booted` prop (passed from App.tsx) gates their
 // mount timing in place of the {booted && createPortal(...)} guard those
 // components previously got for free from App.tsx.
+//
+// These controls used to be children of #tab-live, so app.css's
+// `body.not-pro #tab-live > :not(.pro-gate) { display:none !important; }`
+// hid them from free-tier users for free. Now that they live here instead,
+// that CSS rule no longer reaches them, so this pane gates on
+// `licenseStatus` directly via LicenseChrome.tsx's `badge()` (the same
+// tier==='pro' check that drives `body.not-pro` in the first place),
+// showing the same upgrade card #tab-live's .pro-gate shows in its place.
 
 import { useEffect, useState } from 'react';
 import type { StoreApi, UseBoundStore } from 'zustand';
@@ -26,9 +34,12 @@ import { useElectron } from './useElectron';
 import { useStoreShallow } from './stores/useStoreShallow';
 import { useSettingsStore, type SettingsState } from './stores/settingsStore';
 import { useLiveCaptureStore } from './stores/liveCaptureStore';
+import { useLicensingStore } from './stores/licensingStore';
 import { DEFAULT_STORAGE_PATH, effectiveStoragePath, loadStorageSeed, buildStoragePatch } from './storage-settings';
 import type { UpdateSettingsPatch } from '../../electron/ipc/api';
 import { MAX_CHURCH_NAME_LEN } from './share-card';
+import { iconSvg } from './report-card';
+import { badge } from './LicenseChrome';
 import RigControls from './RigControls';
 import LiveSourceSettings from './LiveSourceSettings';
 import SecondaryMeasurementPanel from './SecondaryMeasurementPanel';
@@ -74,6 +85,8 @@ export default function SettingsPanel({ booted = false }: { booted?: boolean }) 
     dialogOpen: s.dialogOpen,
   }));
   const isCapturing = useStoreShallow(useLiveCaptureStore, (s) => s.isCapturing);
+  const licenseStatus = useStoreShallow(useLicensingStore, (s) => s.licenseStatus);
+  const isPro = badge(licenseStatus).pro;
 
   const [version, setVersion] = useState('');
   // Seeded eagerly from the store's current settings (not just the
@@ -406,17 +419,31 @@ export default function SettingsPanel({ booted = false }: { booted?: boolean }) 
           </p>
         </div>
         <div className="settings-pane" id="settings-pane-audio" style={{ display: section === 'audio' ? 'flex' : 'none' }}>
-          {isCapturing && (
+          {!isPro && (
+            <div className="pro-gate" id="settings-audio-pro-gate">
+              <span className="pg-icon" dangerouslySetInnerHTML={{ __html: iconSvg('lock', 22) }} />
+              <span className="pg-title">Live monitoring is a Pro feature</span>
+              <span className="pg-msg">Capture and monitor multi-channel audio in real time, with saved rigs.</span>
+              <button
+                type="button"
+                className="pg-link"
+                onClick={() => useLicensingStore.getState().openDialog()}
+              >
+                Upgrade — enter a license key
+              </button>
+            </div>
+          )}
+          {isPro && isCapturing && (
             <p className="ai-dialog-note" id="settings-audio-capture-lock-note">
               A capture is running — the rig, input device, record folder, and meter cadence
               sliders are locked until it stops. Measurement source and the secondary
               measurement device can still be changed.
             </p>
           )}
-          {booted && <RigControls />}
-          {booted && <LiveSourceSettings />}
-          {booted && <SecondaryMeasurementPanel />}
-          {booted && <CaptureCadenceControls />}
+          {isPro && booted && <RigControls />}
+          {isPro && booted && <LiveSourceSettings />}
+          {isPro && booted && <SecondaryMeasurementPanel />}
+          {isPro && booted && <CaptureCadenceControls />}
         </div>
         <div className="settings-pane" id="settings-pane-about" style={{ display: section === 'about' ? 'flex' : 'none' }}>
           <p className="ai-dialog-version" id="ai-dialog-version">

@@ -127,6 +127,11 @@
     .pro-gate .pg-msg { font:var(--fw-regular) var(--fs-label)/1.45 var(--font-sans); color:var(--text-secondary); }
     .pro-gate .pg-link { background:none; border:none; padding:0; cursor:pointer; color:var(--gold-text); font:var(--fw-medium) var(--fs-label)/1.3 var(--font-sans); text-decoration:underline; text-underline-offset:2px; }
     .pro-gate .pg-link:hover { filter:brightness(1.1); }
+    /* Settings → Audio's pro-gate (#727) is conditionally rendered in JSX
+       (SettingsPanel.tsx), not shown via the body.not-pro #tab-live rule
+       above — it lives outside #tab-live now, so it needs its own override
+       of .pro-gate's default display:none. */
+    #settings-audio-pro-gate.pro-gate { display:flex; }
 
     /* Unified "Analyze" source picker (#543, epic e17): the three answers to
        "where's the audio coming from?", offered as an overlay dialog at the
@@ -564,12 +569,10 @@
     /* Workspace toolbar's Arm all / Disarm all + count (#191), Record mode only. */
     .live-ws-arm { display:flex; align-items:center; gap:6px; margin-left:auto; }
     /* Capture lock (#38): while a capture runs, config controls freeze (stream.py
-       can't honor mid-session changes) and a quiet caption explains why. */
-    .capture-locked-note { display:none; align-items:center; gap:6px; font:var(--fw-regular) var(--fs-micro)/1.3 var(--font-sans); color:var(--text-muted); margin:4px 0; }
-    /* #727: device-select/device-refresh-btn/record-folder-btn/.sb-slider
-       moved into Settings → Audio (SettingsPanel.tsx shows its own
-       capture-lock note there) — only #live-mode's buttons remain under
-       #tab-live. */
+       can't honor mid-session changes). #727 moved device-select/
+       device-refresh-btn/record-folder-btn/.sb-slider (and the explanatory
+       caption, now #settings-audio-capture-lock-note) into Settings → Audio
+       — only #live-mode's buttons remain under #tab-live. */
     #tab-live.capture-locked #live-mode button:disabled { opacity:0.5; cursor:not-allowed; }
 
     /* Recording indicator + recording offer banner */
