@@ -25,17 +25,20 @@
 
   // Analysis windows required before candidates show (≈9s at the default 3s window).
   var MIN_WINDOWS = 3;
-  // A band this far (dB) above the mean of the others is a buildup candidate;
-  // mirrors grading.js CONFIG.bandBalance.hotDiff.
-  var HOT_DIFF_DB = 12;
-  // A band this far (dB) below the mean of the others is a buried-range candidate;
-  // mirrors grading.js CONFIG.bandBalance.quietDiff.
-  var QUIET_DIFF_DB = -15;
   var MAX_CANDIDATES = 3;
 
+  // #746 — grading.js (#131; TD-013) is the single normative threshold source. These
+  // read window.grading.CONFIG fresh on every call (never cached at boot) so switching
+  // grading profile mid-session can never leave live coaching judging a signal by
+  // different numbers than the report card. quietDiff is read too even though
+  // grading.js never shifts it for broadcast — reading CONFIG inherits that decision
+  // instead of re-encoding it.
+  function hotDiffDb() { return window.grading.CONFIG.bandBalance.hotDiff; }
+  function quietDiffDb() { return window.grading.CONFIG.bandBalance.quietDiff; }
   // Peak (dBFS) above which the live signal reads as clipping-adjacent; mirrors
   // grading.js CONFIG.peak.issueAbove so the live card and the report card agree.
-  var CLIP_RISK_PEAK_DBFS = -1;
+  function clipRiskPeakDbfs() { return window.grading.CONFIG.peak.issueAbove; }
+
   // Ranking tiers. A critical condition (clipping risk) always outranks a tonal
   // balance improvement, no matter how confident the tonal candidate is.
   var CATEGORY_PRIORITY = { clipping: 2, tonal: 1 };
@@ -104,21 +107,6 @@
       .replace(/'/g, '&#39;');
   }
 
-  // Reimplemented locally (rather than requiring grading.js's bandDiffFromOthers)
-  // because this classic script can't require a module in the browser — same
-  // math, snake_case keys.
-  function diffFromOthers(averages, key) {
-    var sum = 0;
-    var count = 0;
-    for (var i = 0; i < BAND_KEYS.length; i++) {
-      var k = BAND_KEYS[i];
-      if (k === key) continue;
-      sum += averages[k];
-      count++;
-    }
-    return averages[key] - (sum / count);
-  }
-
   /** Non-commanding overall-mix adjustment candidates derived from the live
    *  windows' band averages. [] unless MIN_WINDOWS usable windows have
    *  accumulated. Averaging is a plain arithmetic mean across windows — a
@@ -136,7 +124,7 @@
     }
 
     var candidates = [];
-    var lowSeverity = Math.max(diffFromOthers(averages, 'sub_bass'), diffFromOthers(averages, 'bass')) - HOT_DIFF_DB;
+    var lowSeverity = Math.max(window.grading.bandDiffFromOthers(averages, 'sub_bass'), window.grading.bandDiffFromOthers(averages, 'bass')) - hotDiffDb();
     if (lowSeverity > 0) {
       candidates.push({
         id: 'low-end',
@@ -152,7 +140,7 @@
         action: 'Consider a small cut in the 60–250 Hz range, or a high-pass on channels that don’t need lows.',
       });
     }
-    var harshSeverity = Math.max(diffFromOthers(averages, 'high_mid'), diffFromOthers(averages, 'presence')) - HOT_DIFF_DB;
+    var harshSeverity = Math.max(window.grading.bandDiffFromOthers(averages, 'high_mid'), window.grading.bandDiffFromOthers(averages, 'presence')) - hotDiffDb();
     if (harshSeverity > 0) {
       candidates.push({
         id: 'harshness',
@@ -168,7 +156,7 @@
         action: 'Consider a gentle cut in the 2–6 kHz range.',
       });
     }
-    var vocalSeverity = QUIET_DIFF_DB - diffFromOthers(averages, 'mid');
+    var vocalSeverity = quietDiffDb() - window.grading.bandDiffFromOthers(averages, 'mid');
     if (vocalSeverity > 0) {
       candidates.push({
         id: 'vocal-clarity',
@@ -253,8 +241,8 @@
 
     var candidates = [];
     var lowDiff = Math.max(dev.sub_bass, dev.bass);
-    if (lowDiff > HOT_DIFF_DB) {
-      var lowCleanupSeverity = lowDiff - HOT_DIFF_DB;
+    if (lowDiff > hotDiffDb()) {
+      var lowCleanupSeverity = lowDiff - hotDiffDb();
       candidates.push({
         id: 'input-low-cleanup',
         title: 'Low-end cleanup',
@@ -268,8 +256,8 @@
         why: 'Low end this input doesn’t need still eats headroom and muddies the mix.',
         action: 'Consider a small cut below 250 Hz on this input, or a high-pass.',
       });
-    } else if (lowDiff < QUIET_DIFF_DB) {
-      var lowSupportSeverity = QUIET_DIFF_DB - lowDiff;
+    } else if (lowDiff < quietDiffDb()) {
+      var lowSupportSeverity = quietDiffDb() - lowDiff;
       candidates.push({
         id: 'input-low-support',
         title: 'Low-end support',
@@ -285,8 +273,8 @@
       });
     }
     var upperDiff = Math.max(dev.high_mid, dev.presence);
-    if (upperDiff > HOT_DIFF_DB) {
-      var highBuildupSeverity = upperDiff - HOT_DIFF_DB;
+    if (upperDiff > hotDiffDb()) {
+      var highBuildupSeverity = upperDiff - hotDiffDb();
       candidates.push({
         id: 'input-high-buildup',
         title: 'Upper-mid buildup',
@@ -300,8 +288,8 @@
         why: 'Extra 2–6 kHz on one input is what makes a single source stick out as harsh.',
         action: 'Consider a gentle cut in the 2–6 kHz range on this input.',
       });
-    } else if (upperDiff < QUIET_DIFF_DB) {
-      var highSupportSeverity = QUIET_DIFF_DB - upperDiff;
+    } else if (upperDiff < quietDiffDb()) {
+      var highSupportSeverity = quietDiffDb() - upperDiff;
       candidates.push({
         id: 'input-high-support',
         title: 'Presence support',
@@ -372,9 +360,9 @@
       if (levels[j].peak > maxPeak) maxPeak = levels[j].peak;
       if (levels[j].clipping === true) anyClipping = true;
     }
-    if (!anyClipping && maxPeak <= CLIP_RISK_PEAK_DBFS) return [];
+    if (!anyClipping && maxPeak <= clipRiskPeakDbfs()) return [];
 
-    var severityDb = maxPeak - CLIP_RISK_PEAK_DBFS;
+    var severityDb = maxPeak - clipRiskPeakDbfs();
     // A measured `clipping === true` is not an inference — force confidence
     // to 1 rather than let a barely-past-threshold peak read as low-evidence.
     var confidence = anyClipping ? 1 : candidateConfidence(severityDb, levels.length);
@@ -1195,8 +1183,6 @@
     inputHasEnoughData: inputHasEnoughData,
     inputCandidates: inputCandidates,
     MIN_WINDOWS: MIN_WINDOWS,
-    HOT_DIFF_DB: HOT_DIFF_DB,
-    QUIET_DIFF_DB: QUIET_DIFF_DB,
     MAX_CANDIDATES: MAX_CANDIDATES,
     clipCandidates: clipCandidates,
     candidateConfidence: candidateConfidence,
@@ -1207,7 +1193,6 @@
     MIN_CONFIDENCE: MIN_CONFIDENCE,
     HIGH_CONFIDENCE: HIGH_CONFIDENCE,
     CATEGORY_PRIORITY: CATEGORY_PRIORITY,
-    CLIP_RISK_PEAK_DBFS: CLIP_RISK_PEAK_DBFS,
     CONFIDENCE_FULL_WINDOWS: CONFIDENCE_FULL_WINDOWS,
     createCoachingState: createCoachingState,
     advanceCoaching: advanceCoaching,

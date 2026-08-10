@@ -1,11 +1,11 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 
 // live-adjustments-state is a plain classic script (window.liveAdjustmentsState / module.exports).
 const {
   isEnabled, showPanel, panelHTML, hasEnoughData, mixCandidates, MIN_WINDOWS,
   inputHasEnoughData, inputCandidates,
   clipCandidates, candidateConfidence, confidenceLabel, rankCandidates, selectCoachingCandidate,
-  coachingCardHTML, MIN_CONFIDENCE, HIGH_CONFIDENCE, CATEGORY_PRIORITY, CLIP_RISK_PEAK_DBFS,
+  coachingCardHTML, MIN_CONFIDENCE, HIGH_CONFIDENCE, CATEGORY_PRIORITY,
   CONFIDENCE_FULL_WINDOWS,
   createCoachingState, advanceCoaching, allCoachingCandidates,
   PERSISTENCE_WINDOWS, RETAIN_CONFIDENCE, RECOVERY_WINDOWS, REPLACEMENT_MARGIN,
@@ -32,7 +32,6 @@ const {
   MIN_CONFIDENCE: number;
   HIGH_CONFIDENCE: number;
   CATEGORY_PRIORITY: Record<string, number>;
-  CLIP_RISK_PEAK_DBFS: number;
   CONFIDENCE_FULL_WINDOWS: number;
   createCoachingState: () => CoachingState;
   advanceCoaching: (prev: CoachingState | null | undefined, candidates: unknown, now: number, context?: ObservationContext) => CoachingState;
@@ -64,6 +63,22 @@ const {
   acknowledgeOutcome: (state: CoachingState, now: number) => CoachingState;
   outcomeCardHTML: (outcome: Outcome | null, focusName?: string | null) => string;
 };
+
+const grading = require('./grading.js') as {
+  CONFIG: { bandBalance: { hotDiff: number; quietDiff: number }; peak: { issueAbove: number } };
+  setGradingProfile: (id: string) => void;
+  bandDiffFromOthers: (bands: Record<string, number>, key: string) => number;
+  rcPeakStatus: (peak: number, clipping: boolean) => string;
+};
+
+beforeEach(() => {
+  (globalThis as { window?: unknown }).window = { grading };
+});
+
+afterEach(() => {
+  grading.setGradingProfile('casual');
+  delete (globalThis as { window?: unknown }).window;
+});
 
 type CoachingCandidate = Record<string, unknown> & { id: string; confidence: number; severityDb: number; category: string; metric?: string | null };
 type ObservationSource = { measurementSource: number; focusIndex: number | null; label: string | null };
@@ -650,7 +665,7 @@ describe('clipCandidates', () => {
   });
 
   it('emits one clip-risk candidate with category clipping when peaks exceed the threshold', () => {
-    const peak = CLIP_RISK_PEAK_DBFS + 3;
+    const peak = grading.CONFIG.peak.issueAbove + 3;
     const windows = [mkLevelWindow([{ peak }]), mkLevelWindow([{ peak }]), mkLevelWindow([{ peak }])];
     const candidates = clipCandidates(windows);
     expect(candidates).toHaveLength(1);
@@ -680,6 +695,24 @@ describe('clipCandidates', () => {
     expect(clipCandidates(windows, 0)).toEqual([]);
     expect(clipCandidates(windows, 1)).toHaveLength(1);
     expect(clipCandidates(windows, 7)).toEqual([]); // falls back to channel 0
+  });
+});
+
+describe('broadcast grading profile parity with the report card (#746)', () => {
+  it('flags an 11 dB band buildup and a -2 dBFS peak under broadcast, matching the report card, and stays silent under casual', () => {
+    const hotBass = { ...FLAT, bass: FLAT.bass + 11 };
+    const bandWindows = [mkWindow(hotBass), mkWindow(hotBass), mkWindow(hotBass)];
+    const peakWindows = [mkLevelWindow([{ peak: -2 }]), mkLevelWindow([{ peak: -2 }]), mkLevelWindow([{ peak: -2 }])];
+
+    grading.setGradingProfile('casual');
+    expect(mixCandidates(bandWindows).some((c) => c.id === 'low-end')).toBe(false);
+    expect(clipCandidates(peakWindows)).toEqual([]);
+    expect(grading.rcPeakStatus(-2, false)).not.toBe('issue');
+
+    grading.setGradingProfile('broadcast');
+    expect(mixCandidates(bandWindows).some((c) => c.id === 'low-end')).toBe(true);
+    expect(clipCandidates(peakWindows).some((c) => c.id === 'clip-risk')).toBe(true);
+    expect(grading.rcPeakStatus(-2, false)).toBe('issue');
   });
 });
 
@@ -1548,7 +1581,7 @@ describe('Outcome evaluation (#614)', () => {
     });
 
     it('clipCandidates emits peak level', () => {
-      const peak = CLIP_RISK_PEAK_DBFS + 3;
+      const peak = grading.CONFIG.peak.issueAbove + 3;
       const windows = [mkLevelWindow([{ peak }]), mkLevelWindow([{ peak }]), mkLevelWindow([{ peak }])];
       expect(clipCandidates(windows)[0].metric).toBe('peak level');
     });
