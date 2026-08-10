@@ -95,6 +95,22 @@ test.describe.serial('Rigs — save / load / switch', () => {
     await app?.close();
   });
 
+  // #728: with an active rig that resolves cleanly, landing on the Live tab
+  // now legitimately auto-starts a REAL capture (this file doesn't stub
+  // start-live/stop-live except in the two spots that explicitly need to,
+  // so auto-start spawns the actual stream.py). Reloading the renderer
+  // (win.reload()) does NOT stop a capture already running in the main
+  // process — nothing else in this suite guarantees a test starts idle, so
+  // a capture auto-started by one test (most commonly at a relaunch-to-
+  // verify-persistence step, once the rig it's verifying resolves cleanly)
+  // was carrying over and permanently locking device controls for every
+  // test after it. stopLive() is a safe no-op when nothing is running (see
+  // live-capture.ts's stop-live handler — it guards on `if (proc)`).
+  test.afterEach(async () => {
+    if (!win || win.isClosed()) return;
+    await win.evaluate(() => (window as any).soundBuddy.stopLive()).catch(() => {});
+  });
+
   test('Save As… captures the current setup as a new, active rig', async () => {
     ({ app, win } = await launch(EIGHT_CH));
 
