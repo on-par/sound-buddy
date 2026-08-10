@@ -14,10 +14,6 @@ import { useSettingsStore } from './stores/settingsStore';
 import { useSpectrumStore } from './stores/spectrumStore';
 import { useAnalysisStore } from './stores/analysisStore';
 import { useSoundcheckStore } from './stores/soundcheckStore';
-
-// The pure rig-reconcile.js classic-script — real module (not a hand-rolled
-// stub), same convention as arm-state.test.ts/group-state.test.ts.
-const rigReconcile = require('../rig-reconcile.js');
 import { spectrumTransport } from './spectrum-transport';
 import { createMockSoundBuddy } from './mock-sound-buddy';
 import type { AppSettings } from '../../electron/ipc/api';
@@ -99,7 +95,6 @@ beforeEach(() => {
       onCaptureStarting: vi.fn(),
       onCaptureStarted: vi.fn(),
     },
-    rigReconcile,
   };
 });
 
@@ -107,8 +102,8 @@ afterEach(() => {
   delete (globalThis as { document?: unknown }).document;
   delete (globalThis as { window?: unknown }).window;
   vi.restoreAllMocks();
-  useLiveCaptureStore.setState({ appMode: 'reportcard', isCapturing: false, deviceHint: null, devices: [], startCapture: REAL_START_CAPTURE });
-  useRigStore.setState({ activeRigId: null, rigs: [] });
+  useLiveCaptureStore.setState({ appMode: 'reportcard', isCapturing: false, deviceHint: null, rigApplyNotice: null, startCapture: REAL_START_CAPTURE });
+  useRigStore.setState({ activeRigId: null });
   useSettingsStore.setState({ settings: null, settingsError: null });
   useAnalysisStore.setState({ currentAnalysis: null });
   useSoundcheckStore.setState({ playing: false });
@@ -353,20 +348,16 @@ describe('switchMode', () => {
     expect(startCapture).not.toHaveBeenCalled();
   });
 
-  // Regression (PR #740 CI): the active rig's named device no longer being
-  // enumerated must block auto-start even though deviceHint itself is fine
-  // (other devices exist, no permission error) — mirrors
+  // Regression (PR #740 CI, round 1): the active rig's named device no
+  // longer being enumerated must block auto-start even though deviceHint
+  // itself is fine (other devices exist, no permission error) — mirrors
   // tests/rigs.spec.ts's "loading a rig whose device is absent shows a
-  // fallback and does not auto-start".
-  it('does not auto-start when the active rig references a device that is no longer present', () => {
-    useRigStore.setState({
-      activeRigId: 'rig-1',
-      rigs: [{
-        id: 'rig-1', name: 'Scarlett Rig', deviceName: 'Scarlett 18i20',
-        channelConfig: [], mode: 'monitor', recordDir: '', intervalMs: 100, windowSecs: 3,
-      }],
-    });
-    useLiveCaptureStore.setState({ devices: [{ index: 0, name: 'Other Interface', channels: 8, default_sr: 48000 }] });
+  // fallback and does not auto-start". rigStore.applyRigById is what sets
+  // rigApplyNotice from rig-panel.ts's reconciliation; this test exercises
+  // the auto-start gate's read side directly.
+  it('does not auto-start when the just-applied rig left a rigApplyNotice (device not found)', () => {
+    useRigStore.setState({ activeRigId: 'rig-1' });
+    useLiveCaptureStore.setState({ rigApplyNotice: 'Rig device "Scarlett 18i20" not found — select a device.' });
     const startCapture = vi.spyOn(useLiveCaptureStore.getState(), 'startCapture')
       .mockResolvedValue(undefined);
 
@@ -375,15 +366,27 @@ describe('switchMode', () => {
     expect(startCapture).not.toHaveBeenCalled();
   });
 
-  it('auto-starts when the active rig references a device that is still present', () => {
-    useRigStore.setState({
-      activeRigId: 'rig-1',
-      rigs: [{
-        id: 'rig-1', name: 'Scarlett Rig', deviceName: 'Scarlett 18i20',
-        channelConfig: [], mode: 'monitor', recordDir: '', intervalMs: 100, windowSecs: 3,
-      }],
-    });
-    useLiveCaptureStore.setState({ devices: [{ index: 0, name: 'Scarlett 18i20', channels: 8, default_sr: 48000 }] });
+  // Regression (PR #740 CI, round 2): a rig applying successfully but needing
+  // its channels clamped ALSO produces a rigApplyNotice (rig-panel.ts's
+  // applyRigPatch returns the same notice field for both cases) — this must
+  // block auto-start too, otherwise inline-app.js's reactive #live-status
+  // renderer (driven by isCapturing/meterRate) overwrites the clamp notice
+  // with "Monitoring…" before anyone can see it. Mirrors tests/rigs.spec.ts's
+  // "loading a rig with out-of-range channels clamps them without throwing".
+  it('does not auto-start when the just-applied rig left a rigApplyNotice (channels clamped)', () => {
+    useRigStore.setState({ activeRigId: 'rig-1' });
+    useLiveCaptureStore.setState({ rigApplyNotice: 'Some rig channels were out of range for this device and were clamped.' });
+    const startCapture = vi.spyOn(useLiveCaptureStore.getState(), 'startCapture')
+      .mockResolvedValue(undefined);
+
+    switchMode('live');
+
+    expect(startCapture).not.toHaveBeenCalled();
+  });
+
+  it('auto-starts when the active rig applied with no notice', () => {
+    useRigStore.setState({ activeRigId: 'rig-1' });
+    useLiveCaptureStore.setState({ rigApplyNotice: null });
     const startCapture = vi.spyOn(useLiveCaptureStore.getState(), 'startCapture')
       .mockResolvedValue(undefined);
 

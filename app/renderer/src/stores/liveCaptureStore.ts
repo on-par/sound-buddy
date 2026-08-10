@@ -176,6 +176,13 @@ function savedGroupsFor(deviceName: string): ChannelGroup[] {
 export interface LiveCaptureState {
   devices: LiveDevice[];
   deviceHint: DeviceHint | null;
+  // The notice rig-panel.ts's applyRigPatch returns when hydrating the active
+  // rig (device not found, or channels clamped) — null when the rig applied
+  // cleanly. Historically this only ever reached setLiveStatusText's DOM
+  // text; stored here too so anything (like the #728 auto-start gate) can
+  // check "did the rig I just landed on need a fallback" without re-deriving
+  // the reconciliation. Set by rigStore.applyRigById every time it runs.
+  rigApplyNotice: string | null;
   selectedDevice: string;
 
   channelConfig: StripConfig[];
@@ -308,6 +315,7 @@ export function createLiveCaptureStore(getApi: () => LiveCaptureApi) {
   return create<LiveCaptureState>()((set, get) => ({
     devices: [],
     deviceHint: null,
+    rigApplyNotice: null,
     selectedDevice: '',
 
     channelConfig: [],

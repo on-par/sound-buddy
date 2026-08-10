@@ -7,7 +7,7 @@ import { decideLiveAutoStart } from './live-auto-start';
 describe('decideLiveAutoStart', () => {
   it('skips when a capture is already running', () => {
     expect(decideLiveAutoStart({
-      isCapturing: true, activeRigId: 'rig-1', deviceHint: null, activeRigDeviceFound: true,
+      isCapturing: true, activeRigId: 'rig-1', deviceHint: null, rigApplyNotice: null,
     })).toEqual({ type: 'skip', reason: 'already-monitoring' });
   });
 
@@ -16,25 +16,26 @@ describe('decideLiveAutoStart', () => {
       isCapturing: false,
       activeRigId: 'rig-1',
       deviceHint: { text: 'Mic access denied', isError: true },
-      activeRigDeviceFound: true,
+      rigApplyNotice: null,
     })).toEqual({ type: 'skip', reason: 'device-blocked' });
   });
 
   it('skips when no rig is active', () => {
     expect(decideLiveAutoStart({
-      isCapturing: false, activeRigId: null, deviceHint: null, activeRigDeviceFound: true,
+      isCapturing: false, activeRigId: null, deviceHint: null, rigApplyNotice: null,
     })).toEqual({ type: 'skip', reason: 'no-last-used-device' });
   });
 
-  it('skips when the active rig references a device that is no longer present', () => {
+  it('skips when the just-applied rig left a notice (device not found, or channels clamped)', () => {
     expect(decideLiveAutoStart({
-      isCapturing: false, activeRigId: 'rig-1', deviceHint: null, activeRigDeviceFound: false,
-    })).toEqual({ type: 'skip', reason: 'rig-device-not-found' });
+      isCapturing: false, activeRigId: 'rig-1', deviceHint: null,
+      rigApplyNotice: 'Rig device "Scarlett 18i20" not found — select a device.',
+    })).toEqual({ type: 'skip', reason: 'rig-apply-notice' });
   });
 
-  it('starts when not capturing, a rig is active, and there is no device hint', () => {
+  it('starts when not capturing, a rig is active, and there is no device hint or rig notice', () => {
     expect(decideLiveAutoStart({
-      isCapturing: false, activeRigId: 'rig-1', deviceHint: null, activeRigDeviceFound: true,
+      isCapturing: false, activeRigId: 'rig-1', deviceHint: null, rigApplyNotice: null,
     })).toEqual({ type: 'start' });
   });
 
@@ -43,7 +44,7 @@ describe('decideLiveAutoStart', () => {
       isCapturing: false,
       activeRigId: 'rig-1',
       deviceHint: { text: 'macOS will ask for microphone permission', isError: false },
-      activeRigDeviceFound: true,
+      rigApplyNotice: null,
     })).toEqual({ type: 'start' });
   });
 });

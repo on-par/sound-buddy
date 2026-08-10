@@ -24,7 +24,6 @@ import { clampEqPaneWidth } from './live-capture-panel';
 import { decideLiveAutoStart } from './live-auto-start';
 import { startLiveCapture, runtime } from './LiveControls';
 import { captureOptsFromCadence } from './measurement-device-state';
-import { getRigReconcile } from './rig-panel';
 
 export type ModeSwitchDecision =
   | { type: 'noop' }
@@ -139,19 +138,11 @@ export function applySingleColumnSync(): void {
 // existing onCaptureStarted -> spectrum panel error state.
 function maybeAutoStartLive(): void {
   const live = useLiveCaptureStore.getState();
-  const rigState = useRigStore.getState();
-  const activeRig = rigState.rigs.find((r) => r.id === rigState.activeRigId) ?? null;
-  // Re-run the exact reconciliation rig-panel.ts's applyRigPatch already used
-  // to hydrate this rig at boot/selection — its "device not found" result
-  // otherwise only reaches setLiveStatusText's DOM text, never any store
-  // field decideLiveAutoStart could read.
-  const activeRigDeviceFound = !activeRig
-    || getRigReconcile().reconcileRigDevice(activeRig.deviceName, live.devices).found;
   const decision = decideLiveAutoStart({
     isCapturing: live.isCapturing,
-    activeRigId: rigState.activeRigId,
+    activeRigId: useRigStore.getState().activeRigId,
     deviceHint: live.deviceHint,
-    activeRigDeviceFound,
+    rigApplyNotice: live.rigApplyNotice,
   });
   if (decision.type !== 'start') return;
   const opts = captureOptsFromCadence(live.windowSecs, live.meterIntervalMs);
