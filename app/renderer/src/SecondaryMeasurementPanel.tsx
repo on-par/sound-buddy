@@ -3,17 +3,18 @@
 
 // The experimental secondary measurement-device block (#460) — a metering-only
 // room mic, independent of the board capture — ported off inline-app.js's
-// static-markup/DOM-writer glue to React (TD-001 relocation, #724). Portaled
-// by App.tsx onto #secondary-measurement-island, immediately after
-// LiveControls.tsx's #live-controls-island, mirroring that component's
-// pattern: it renders null while settingsStore.secondaryMeasurementEnabled is
-// off, otherwise derives its markup from liveCaptureStore's
-// secondaryMeasurement/devices state via the unchanged pure helpers in
-// measurement-device-state.ts. renderMeasurementBadge()/renderEqPane() stay
-// imperative and out of scope — reached via one new optional method on the
-// existing window.liveCaptureRuntime object (LiveControls.tsx's
-// LiveCaptureRuntime interface), the same way LiveControls.tsx's own
-// onChange handlers reach bridged orchestration.
+// static-markup/DOM-writer glue to React (TD-001 relocation, #724; relocated
+// from the Live tab into Settings → Audio by #727). Rendered directly as JSX
+// inside SettingsPanel.tsx's #settings-pane-audio (no createPortal — see that
+// file's header for why): it renders null while
+// settingsStore.secondaryMeasurementEnabled is off, otherwise derives its
+// markup from liveCaptureStore's secondaryMeasurement/devices state via the
+// unchanged pure helpers in measurement-device-state.ts.
+// renderMeasurementBadge()/renderEqPane() stay imperative and out of scope —
+// reached via one new optional method on the existing
+// window.liveCaptureRuntime object (LiveControls.tsx's LiveCaptureRuntime
+// interface), the same way LiveSourceSettings.tsx's own onChange handlers
+// reach bridged orchestration.
 
 import { useEffect, type JSX } from 'react';
 import { useStoreShallow } from './stores/useStoreShallow';

@@ -1,14 +1,16 @@
 // Copyright (c) 2026 Patrick Robinson (on-par). All rights reserved.
 // Licensed under the Sound Buddy Desktop Application License (app/LICENSE).
 
-// The #rig-bar picker + Save/Save As/Rename/Delete actions (TD-001 slice 6d,
-// #702) — portaled by App.tsx onto #rig-controls-island inside #rig-bar,
-// replacing inline-app.js's populateRigSelect/updateRigButtons/rig CRUD
-// listeners for this region. Name prompts still go through window.rigDialog
-// (inline-app.js's shared modal shell, also used by out-of-scope channel-
-// group naming — see rig-panel.ts's header comment for why it stays
-// imperative). The Save button's own "no active rig yet" prompt lives in
-// rigStore.ts's save() action, not here — see that file's header.
+// The rig picker + Save/Save As/Rename/Delete actions (TD-001 slice 6d, #702;
+// relocated from the Live tab's #rig-bar into Settings → Audio by #727) —
+// rendered directly as JSX inside SettingsPanel.tsx's #settings-pane-audio
+// (no createPortal — see that file's header for why), replacing
+// inline-app.js's populateRigSelect/updateRigButtons/rig CRUD listeners for
+// this region. Name prompts still go through window.rigDialog (inline-app.js's
+// shared modal shell, also used by out-of-scope channel-group naming — see
+// rig-panel.ts's header comment for why it stays imperative). The Save
+// button's own "no active rig yet" prompt lives in rigStore.ts's save()
+// action, not here — see that file's header.
 
 import type { JSX } from 'react';
 import { useStoreShallow } from './stores/useStoreShallow';

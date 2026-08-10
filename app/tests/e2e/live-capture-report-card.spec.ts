@@ -54,7 +54,11 @@ async function startMonitorCapture() {
   await expect(window.locator('#tab-live')).toHaveClass(/active/);
   // Re-enumerate against the stubbed 8-channel device so the workspace has
   // its default strips (mirrors live-capture.spec.ts's beforeEach).
+  // device-refresh-btn is Settings-owned now (#727).
+  await window.locator('#settings-btn').click();
+  await window.locator('#settings-tab-btn-audio').click();
   await window.locator('#device-refresh-btn').click();
+  await window.locator('#settings-dialog-cancel').click();
   await expect(window.locator('#spectrum-body .live-ch')).toHaveCount(2);
   await window.locator('#live-start-btn').click();
   await expect(window.locator('#live-stop-btn')).toBeVisible();

@@ -1,16 +1,18 @@
 // Copyright (c) 2026 Patrick Robinson (on-par). All rights reserved.
 // Licensed under the Sound Buddy Desktop Application License (app/LICENSE).
 
-// The meter-rate (#meter-interval) and window (#window-secs) sliders on the
-// Live tab, ported off static markup + inline-app.js's imperative label-
-// repaint/capture-lock-sweep wiring into React (#725) — the last of the
-// "conspicuous leftovers" setCaptureControlsLocked's old comment called out.
-// Backed directly by liveCaptureStore's meterIntervalMs/windowSecs fields,
-// portaled by App.tsx onto #capture-cadence-island (root-markup.html),
-// mirroring SecondaryMeasurementPanel.tsx's pattern. Element ids/classnames/
-// min/max/step/default-value match today's static markup exactly, so the
-// untouched Playwright specs (tests/rigs.spec.ts, tests/e2e/live-capture.spec.ts)
-// keep locating and asserting on the same nodes with no spec changes.
+// The meter-rate (#meter-interval) and window (#window-secs) sliders, ported
+// off static markup + inline-app.js's imperative label-repaint/capture-lock-
+// sweep wiring into React (#725) — the last of the "conspicuous leftovers"
+// setCaptureControlsLocked's old comment called out; relocated from the Live
+// tab into Settings → Audio by #727. Backed directly by liveCaptureStore's
+// meterIntervalMs/windowSecs fields, rendered directly as JSX inside
+// SettingsPanel.tsx's #settings-pane-audio (no createPortal — see that
+// file's header for why), mirroring SecondaryMeasurementPanel.tsx's pattern.
+// Element ids/classnames/min/max/step/default-value match the original
+// static markup exactly, so tests/rigs.spec.ts and
+// tests/e2e/live-capture.spec.ts keep locating and asserting on the same
+// nodes, just behind Settings → Audio now.
 
 import { useStoreShallow } from './stores/useStoreShallow';
 import { useLiveCaptureStore } from './stores/liveCaptureStore';

@@ -54,7 +54,18 @@ test.describe.serial('License gating (#54)', () => {
     await win.locator('.mode-tab[data-mode="live"]').click();
     await expect(win.locator('#tab-live .pro-gate')).toBeVisible();
     await expect(win.locator('#live-start-btn')).toBeHidden();
-    await expect(win.locator('#rig-bar #rig-select')).toBeHidden();
+
+    // #727: the rig/device/measurement/cadence controls relocated into
+    // Settings → Audio, outside #tab-live, so they need their own pro-gate
+    // (SettingsPanel.tsx) — verify a free-tier user sees the upgrade card
+    // there too, not the live controls.
+    await win.locator('#settings-btn').click();
+    await win.locator('#settings-tab-btn-audio').click();
+    await expect(win.locator('#settings-audio-pro-gate')).toBeVisible();
+    await expect(win.locator('#rig-select')).toBeHidden();
+    await expect(win.locator('#device-select')).toBeHidden();
+    await win.locator('#settings-dialog-cancel').click();
+
     await win.locator('.mode-tab[data-mode="soundcheck"]').click();
     await expect(win.locator('#tab-soundcheck .pro-gate')).toBeVisible();
     await expect(win.locator('#sc-play-btn')).toBeHidden();
@@ -107,7 +118,14 @@ test.describe.serial('License gating (#54)', () => {
     await win.locator('.mode-tab[data-mode="live"]').click();
     await expect(win.locator('#tab-live .pro-gate')).toBeHidden();
     await expect(win.locator('#live-start-btn')).toBeVisible();
-    await expect(win.locator('#rig-bar #rig-select')).toBeVisible();
+
+    // Settings → Audio's pro-gate (#727) clears too, revealing the real controls.
+    await win.locator('#settings-btn').click();
+    await win.locator('#settings-tab-btn-audio').click();
+    await expect(win.locator('#settings-audio-pro-gate')).toBeHidden();
+    await expect(win.locator('#rig-select')).toBeVisible();
+    await expect(win.locator('#device-select')).toBeVisible();
+    await win.locator('#settings-dialog-cancel').click();
 
     // And it persisted for the next launch.
     const stored = JSON.parse(fs.readFileSync(path.join(USER_DATA, 'license.json'), 'utf8'));

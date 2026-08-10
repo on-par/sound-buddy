@@ -14,6 +14,18 @@ import { launchApp } from './e2e-helpers';
 let electronApp: ElectronApplication;
 let window: Page;
 
+// #727: device-refresh-btn relocated off the Live tab into Settings → Audio.
+async function openAudioSettings(win: Page): Promise<void> {
+  await win.locator('#settings-btn').click();
+  await win.locator('#settings-tab-btn-audio').click();
+  await expect(win.locator('#settings-pane-audio')).toBeVisible();
+}
+
+async function closeSettings(win: Page): Promise<void> {
+  await win.locator('#settings-dialog-cancel').click();
+  await expect(win.locator('#settings-dialog')).toBeHidden();
+}
+
 // Two live channels with distinct spectral shapes: Vocals is mid-heavy,
 // Band is bass-heavy. Band keys are snake_case (LIVE_BAND_KEYS).
 const LIVE_CHANNELS = [
@@ -44,8 +56,11 @@ test.describe('Live capture (PRD 06) — workspace controls', () => {
     await window.locator('.mode-tab[data-mode="live"]').click();
     await expect(window.locator('#tab-live')).toHaveClass(/active/);
     // Re-enumerate against the stubbed 8-channel device (the boot-time scan
-    // ran before the stub was installed).
+    // ran before the stub was installed). device-refresh-btn is Settings-owned
+    // now (#727).
+    await openAudioSettings(window);
     await window.locator('#device-refresh-btn').click();
+    await closeSettings(window);
     await expect(window.locator('#spectrum-body .live-ch')).toHaveCount(2);
   });
 
@@ -186,7 +201,9 @@ test.describe('Live capture (PRD 06) — workspace controls', () => {
       await window.locator('#live-start-btn').click();
       await expect(window.locator('#live-ws-add')).toBeDisabled();
       await expect(window.locator('.sb-live-meters .live-ch .live-ch-x').first()).toBeDisabled();
-      await expect(window.locator('#capture-locked-note')).toBeVisible();
+      await openAudioSettings(window);
+      await expect(window.locator('#settings-audio-capture-lock-note')).toBeVisible();
+      await closeSettings(window);
 
       await window.locator('#live-stop-btn').click();
       await expect(window.locator('#live-ws-add')).toBeEnabled();

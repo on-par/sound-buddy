@@ -263,4 +263,19 @@ describe('switchMode', () => {
     switchMode('recent');
     expect(bodyClassList.contains('single-column')).toBe(true);
   });
+
+  // #727: #tab-live relocated out of #source-panel into #spectrum-panel;
+  // app.css's `body.live-active #source-panel { display:none; }` (mirroring
+  // the existing rc-active rule) collapses the now-empty left column
+  // whenever the Live tab is the active mode.
+  it('adds live-active to body when switching to live', () => {
+    switchMode('live');
+    expect(bodyClassList.contains('live-active')).toBe(true);
+  });
+
+  it('removes live-active when switching away from live', () => {
+    switchMode('live');
+    switchMode('recent');
+    expect(bodyClassList.contains('live-active')).toBe(false);
+  });
 });

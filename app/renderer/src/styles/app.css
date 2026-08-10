@@ -102,6 +102,10 @@
        Narrow windows stack the two vertically so neither clips. */
     #stage { display:flex; flex:1; overflow:hidden; }
     body.rc-active #source-panel { display:none; }
+    /* #727: #tab-live relocated into #spectrum-panel, leaving #source-panel
+       with nothing to show while Live is active — collapse it the same way,
+       freeing its width for #spectrum-panel's existing flex:1. */
+    body.live-active #source-panel { display:none; }
     @media (max-width:1000px) {
       body.rc-active #stage { flex-direction:column; }
       body.rc-active #reportcard-view { width:100%; flex:1; }
@@ -179,9 +183,11 @@
     #nav-analyze, #nav-history { display:none; }
     body.report-first-ux #nav-analyze, body.report-first-ux #nav-history { display:inline-flex; }
     body.not-pro #tab-live > :not(.pro-gate),
-    body.not-pro #tab-soundcheck > :not(.pro-gate) { display:none !important; }
+    body.not-pro #tab-soundcheck > :not(.pro-gate),
+    body.not-pro #settings-pane-audio > :not(.pro-gate) { display:none !important; }
     body.not-pro #tab-live .pro-gate,
-    body.not-pro #tab-soundcheck .pro-gate { display:flex; }
+    body.not-pro #tab-soundcheck .pro-gate,
+    body.not-pro #settings-pane-audio .pro-gate { display:flex; }
 
     /* Free/Pro badge in the header (click to manage the license). */
     #license-badge {
@@ -436,7 +442,6 @@
     .device-hint.is-error { color:var(--issue-text); }
 
     /* Rig picker (saved capture setups) */
-    .rig-bar { display:flex; flex-direction:column; gap:8px; }
     .rig-actions { display:flex; gap:6px; }
     .rig-actions .ghost-btn { flex:1; padding:0 6px; }
     /* Name / confirm dialog for Save As… / Rename / Delete */
@@ -561,14 +566,11 @@
     /* Workspace toolbar's Arm all / Disarm all + count (#191), Record mode only. */
     .live-ws-arm { display:flex; align-items:center; gap:6px; margin-left:auto; }
     /* Capture lock (#38): while a capture runs, config controls freeze (stream.py
-       can't honor mid-session changes) and a quiet caption explains why. */
-    .capture-locked-note { display:none; align-items:center; gap:6px; font:var(--fw-regular) var(--fs-micro)/1.3 var(--font-sans); color:var(--text-muted); margin:4px 0; }
-    #tab-live.capture-locked .capture-locked-note { display:flex; }
-    #tab-live.capture-locked #device-select:disabled,
-    #tab-live.capture-locked #device-refresh-btn:disabled,
-    #tab-live.capture-locked #record-folder-btn:disabled,
-    #tab-live.capture-locked #live-mode button:disabled,
-    #tab-live.capture-locked .sb-slider:disabled { opacity:0.5; cursor:not-allowed; }
+       can't honor mid-session changes). #727 moved device-select/
+       device-refresh-btn/record-folder-btn/.sb-slider (and the explanatory
+       caption, now #settings-audio-capture-lock-note) into Settings → Audio
+       — only #live-mode's buttons remain under #tab-live. */
+    #tab-live.capture-locked #live-mode button:disabled { opacity:0.5; cursor:not-allowed; }
 
     /* Recording indicator + recording offer banner */
     #live-indicator .rec-dot { width:8px; height:8px; border-radius:50%; background:var(--issue-500); box-shadow:0 0 8px rgba(229,72,77,0.6); }

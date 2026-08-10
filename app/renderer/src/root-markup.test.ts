@@ -115,11 +115,8 @@ describe('Docked live EQ pane markup (#668)', () => {
 });
 
 describe('Secondary measurement device source (#460, React-owned per #724)', () => {
-  it('has the empty island, sitting directly after the live-controls island (device picker/measurement-source/mode/record-folder, React-owned per TD-001 slice 6c, #701)', () => {
-    const islandIdx = markup.indexOf('id="live-controls-island"');
-    const secondaryIdx = markup.indexOf('id="secondary-measurement-island"');
-    expect(islandIdx).toBeGreaterThan(-1);
-    expect(secondaryIdx).toBeGreaterThan(islandIdx);
+  it('no longer carries a portal-target island in root-markup.html — #727 relocated it into SettingsPanel.tsx as direct JSX', () => {
+    expect(markup).not.toContain('id="secondary-measurement-island"');
   });
 
   it('no longer carries the old static-markup block — it is React-owned now (SecondaryMeasurementPanel.tsx)', () => {

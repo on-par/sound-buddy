@@ -1,18 +1,18 @@
 // Copyright (c) 2026 Patrick Robinson (on-par). All rights reserved.
 // Licensed under the Sound Buddy Desktop Application License (app/LICENSE).
 
-// The #tab-live capture controls — device picker, measurement source, mode
-// segmented, record-folder row, and the Start/Stop/Record transport (TD-001
-// slice 6c, #701) — portaled by App.tsx onto #live-controls-island (this
-// file's default export, LiveControls) and #live-transport-island
-// (LiveTransportControls), replacing inline-app.js's loadDevices/
-// renderChannelConfig/setLiveMode/setCaptureControlsLocked/
-// syncCaptureControls DOM-writers for this region. Two separate components
-// (not one component with two internal createPortal calls) because
-// react-dom's server renderer doesn't support portals at all — see
-// LiveControls.test.ts's header note — and because root-markup.html's
-// #tab-live interleaves these controls with still-bridged, out-of-scope
-// markup (meter-rate/window sliders, the preflight panel), so they can't
+// The #tab-live Mode toggle + the Start/Stop/Record transport (TD-001 slice
+// 6c, #701; narrowed by #727, which split the device picker/measurement
+// source/record-folder row out into LiveSourceSettings.tsx and relocated
+// them into Settings → Audio) — portaled by App.tsx onto
+// #live-controls-island (this file's default export, LiveControls, now Mode
+// only) and #live-transport-island (LiveTransportControls), replacing
+// inline-app.js's setLiveMode/setCaptureControlsLocked/syncCaptureControls
+// DOM-writers for this region. Two separate components (not one component
+// with two internal createPortal calls) because react-dom's server renderer
+// doesn't support portals at all — see LiveControls.test.ts's header note —
+// and because root-markup.html's #tab-live interleaves these controls with
+// still-bridged, out-of-scope markup (the preflight panel), so they can't
 // share one contiguous portal target either. Button visibility/labels are
 // derived from the same pure window.liveTransitionState module inline-app.js
 // used, fed by liveCaptureStore state instead of the old liveRunning/
@@ -31,9 +31,7 @@
 
 import { useStoreShallow } from './stores/useStoreShallow';
 import { useLiveCaptureStore, type StartCaptureResult, type StopCaptureResult } from './stores/liveCaptureStore';
-import { useSettingsStore } from './stores/settingsStore';
 import { iconSvg } from './report-card';
-import { deviceOptionLabel, measurementSourceOptionsHTML } from './live-capture-panel';
 import { captureOptsFromCadence } from './measurement-device-state';
 
 export interface LiveCaptureRuntime {
@@ -124,129 +122,34 @@ export function recordCapture(rt: LiveCaptureRuntime | undefined): Promise<void>
   return rt?.promoteToRecording() ?? Promise.resolve();
 }
 
-// Device <select> changed: writes the selection into the store (so the
-// controlled <select>'s value stays in sync) and delegates the re-seed of
-// channel config/groups/preflight for the newly selected device to the
-// bridged runtime.
-export function changeDevice(rt: LiveCaptureRuntime | undefined, value: string): void {
-  useLiveCaptureStore.getState().selectDevice(value);
-  rt?.selectDevice(value);
-}
-
 export default function LiveControls() {
-  const { devices, deviceHint, selectedDevice, channelConfig, measurementSource, liveMode, recordDir, isCapturing } =
-    useStoreShallow(useLiveCaptureStore, (s) => ({
-      devices: s.devices,
-      deviceHint: s.deviceHint,
-      selectedDevice: s.selectedDevice,
-      channelConfig: s.channelConfig,
-      measurementSource: s.measurementSource,
-      liveMode: s.liveMode,
-      recordDir: s.recordDir,
-      isCapturing: s.isCapturing,
-    }));
-  const storageDir = useStoreShallow(useSettingsStore, (s) => s.settings?.storageDir ?? null);
-
-  const devicePlaceholder = devices.length > 0
-    ? 'Default Device'
-    : (deviceHint?.text || 'Loading devices…');
-  // Mirrors inline-app.js's defaultRecordFolderText() (#91) — the configured
-  // storageDir setting, falling back to the platform default.
-  const defaultRecordFolderText = (storageDir && storageDir.trim()) || '~/Music/Sound Buddy';
+  const { liveMode, isCapturing } = useStoreShallow(useLiveCaptureStore, (s) => ({
+    liveMode: s.liveMode,
+    isCapturing: s.isCapturing,
+  }));
 
   return (
-    <>
-      <label className="select-label">
-        <span>Input Device</span>
-        <div className="select-row">
-          <div className="select-wrap">
-            <select
-              id="device-select"
-              value={selectedDevice}
-              disabled={isCapturing}
-              aria-disabled={isCapturing}
-              onChange={(e) => changeDevice(runtime(), e.target.value)}
-            >
-              {devices.length === 0
-                ? <option value="">{devicePlaceholder}</option>
-                : (
-                  <>
-                    <option value="">Default Device</option>
-                    {devices.map((d) => <option key={d.index} value={String(d.index)}>{deviceOptionLabel(d)}</option>)}
-                  </>
-                )}
-            </select>
-            <span className="select-caret" dangerouslySetInnerHTML={{ __html: iconSvg('chevron-down', 16) }} />
-          </div>
-          <button
-            type="button"
-            id="device-refresh-btn"
-            className="ghost-btn"
-            title="Re-scan input devices"
-            disabled={isCapturing}
-            aria-disabled={isCapturing}
-            onClick={() => { void runtime()?.loadDevices(); }}
-          >
-            Refresh
-          </button>
-        </div>
-      </label>
-      {deviceHint?.text && (
-        <p id="device-hint" className={`device-hint${deviceHint.isError ? ' is-error' : ''}`}>{deviceHint.text}</p>
-      )}
-
-      <label className="select-label">
-        <span>Measurement Source</span>
-        <div className="select-row">
-          <div className="select-wrap">
-            <select
-              id="measurement-source"
-              value={measurementSource == null ? '' : String(measurementSource)}
-              dangerouslySetInnerHTML={{ __html: measurementSourceOptionsHTML(channelConfig, measurementSource) }}
-              onChange={(e) => runtime()?.changeMeasurementSource(e.target.value)}
-            />
-            <span className="select-caret" dangerouslySetInnerHTML={{ __html: iconSvg('chevron-down', 16) }} />
-          </div>
-        </div>
-      </label>
-
-      <div>
-        <div className="seg-label">Mode</div>
-        <div className="segmented" id="live-mode">
-          <button
-            type="button"
-            data-mode="monitor"
-            className={liveMode === 'monitor' ? 'active' : ''}
-            disabled={isCapturing}
-            onClick={() => useLiveCaptureStore.getState().setLiveMode('monitor')}
-            dangerouslySetInnerHTML={{ __html: iconSvg('activity', 16) + 'Monitor' }}
-          />
-          <button
-            type="button"
-            data-mode="record"
-            className={liveMode === 'record' ? 'active' : ''}
-            disabled={isCapturing}
-            onClick={() => useLiveCaptureStore.getState().setLiveMode('record')}
-            dangerouslySetInnerHTML={{ __html: iconSvg('circle', 16) + 'Record' }}
-          />
-        </div>
-      </div>
-
-      <div className="record-row" id="record-folder-row" style={{ display: liveMode === 'record' ? 'flex' : 'none' }}>
+    <div>
+      <div className="seg-label">Mode</div>
+      <div className="segmented" id="live-mode">
         <button
           type="button"
-          id="record-folder-btn"
-          className="ghost-btn"
-          title="Choose recording folder"
+          data-mode="monitor"
+          className={liveMode === 'monitor' ? 'active' : ''}
           disabled={isCapturing}
-          aria-disabled={isCapturing}
-          onClick={() => { void runtime()?.chooseRecordFolder(); }}
-        >
-          Folder…
-        </button>
-        <span className="record-path" id="record-folder-path">{recordDir || defaultRecordFolderText}</span>
+          onClick={() => useLiveCaptureStore.getState().setLiveMode('monitor')}
+          dangerouslySetInnerHTML={{ __html: iconSvg('activity', 16) + 'Monitor' }}
+        />
+        <button
+          type="button"
+          data-mode="record"
+          className={liveMode === 'record' ? 'active' : ''}
+          disabled={isCapturing}
+          onClick={() => useLiveCaptureStore.getState().setLiveMode('record')}
+          dangerouslySetInnerHTML={{ __html: iconSvg('circle', 16) + 'Record' }}
+        />
       </div>
-    </>
+    </div>
   );
 }
 

@@ -11,6 +11,14 @@ import { launchApp, renameHeader } from './e2e-helpers';
 let electronApp: ElectronApplication;
 let window: Page;
 
+// #727: device-refresh-btn relocated off the Live tab into Settings → Audio.
+async function refreshDevices(win: Page): Promise<void> {
+  await win.locator('#settings-btn').click();
+  await win.locator('#settings-tab-btn-audio').click();
+  await win.locator('#device-refresh-btn').click();
+  await win.locator('#settings-dialog-cancel').click();
+}
+
 test.describe('Inline track definition (#189)', () => {
   test.beforeAll(async () => {
     ({ electronApp, window } = await launchApp());
@@ -24,7 +32,7 @@ test.describe('Inline track definition (#189)', () => {
     await window.reload();
     await window.waitForLoadState('domcontentloaded');
     await window.locator('.mode-tab[data-mode="live"]').click();
-    await window.locator('#device-refresh-btn').click();
+    await refreshDevices(window);
     await expect(window.locator('#spectrum-body .live-ch')).toHaveCount(2);
   });
 
@@ -70,7 +78,7 @@ test.describe('Inline track definition (#189)', () => {
         devices: [{ index: 0, name: 'Fake 4ch Interface', channels: 4, default_sr: 48000 }],
       }));
     });
-    await window.locator('#device-refresh-btn').click();
+    await refreshDevices(window);
     await expect(window.locator('#spectrum-body .live-ch')).toHaveCount(2);
     await expect(window.locator('.live-ch[data-ch="0"] .live-ch-src option')).toHaveCount(4);
 
@@ -87,7 +95,10 @@ test.describe('Inline track definition (#189)', () => {
 
   test('the header kind and source controls freeze while a capture is running', async () => {
     await window.locator('#live-start-btn').click();
-    await expect(window.locator('#capture-locked-note')).toBeVisible();
+    await window.locator('#settings-btn').click();
+    await window.locator('#settings-tab-btn-audio').click();
+    await expect(window.locator('#settings-audio-capture-lock-note')).toBeVisible();
+    await window.locator('#settings-dialog-cancel').click();
     const kindSels = window.locator('#spectrum-body .live-ch-kind');
     const srcSels = window.locator('#spectrum-body .live-ch-src');
     for (let i = 0; i < await kindSels.count(); i++) await expect(kindSels.nth(i)).toBeDisabled();
