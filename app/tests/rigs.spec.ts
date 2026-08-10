@@ -108,7 +108,20 @@ test.describe.serial('Rigs — save / load / switch', () => {
   // live-capture.ts's stop-live handler — it guards on `if (proc)`).
   test.afterEach(async () => {
     if (!win || win.isClosed()) return;
-    await win.evaluate(() => (window as any).soundBuddy.stopLive()).catch(() => {});
+    // Click the real Stop button rather than calling soundBuddy.stopLive()
+    // directly — the button's onStop routes through stopLiveCapture(), which
+    // updates liveCaptureStore's isCapturing (and runs the runtime's
+    // onCaptureStopping/onCaptureStopped hooks) on top of the IPC call.
+    // Calling stopLive() alone kills the main-process stream.py but leaves
+    // the renderer's own isCapturing stuck true, so device controls stayed
+    // locked for the next test even though nothing was actually running.
+    try {
+      const stopBtn = win.locator('#live-stop-btn');
+      if (await stopBtn.isVisible().catch(() => false)) await stopBtn.click();
+    } catch {
+      // Best-effort cleanup; a genuinely broken stop is the next test's
+      // problem to surface, not something to hide a real failure behind here.
+    }
   });
 
   test('Save As… captures the current setup as a new, active rig', async () => {
