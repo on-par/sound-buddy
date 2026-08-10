@@ -11,14 +11,19 @@ import * as fs from 'fs';
 import { log, logWarn, logError } from '../logger';
 import { isEntitled } from '../license';
 import { pythonBin, childEnv, PLAYBACK_SCRIPT } from './shared';
-import { loadEngineParsers } from './engine-loader';
+import { loadEngineParsers, loadEngineUtils } from './engine-loader';
 import { createPythonStreamSlot } from './python-stream';
 import type { StartPlaybackOpts } from './api';
 
 // The current virtual-soundcheck playback child (playback.py). Held at module
 // scope — like start-live's liveSlot — so stop-playback can SIGTERM it for a
 // clean close.
-const playbackSlot = createPythonStreamSlot({ log, logWarn, logError });
+const playbackSlot = createPythonStreamSlot({
+  log,
+  logWarn,
+  logError,
+  readNdjsonLines: (source, onLine) => loadEngineUtils().readNdjsonLines(source, onLine),
+});
 
 export function registerPlaybackHandlers(): void {
   // reveal-path — open a captured session folder in the OS file manager (#43).

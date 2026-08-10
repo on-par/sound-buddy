@@ -1,0 +1,10 @@
+{
+  "bin":             { "resourcesSubdir": "bin",             "devDir": null, "devDirBase": null, "extraResourceFrom": null },
+  "lib":              { "resourcesSubdir": "lib",              "devDir": null, "devDirBase": null, "extraResourceFrom": null },
+  "python":           { "resourcesSubdir": "python",           "devDir": null, "devDirBase": null, "extraResourceFrom": null },
+  "scripts":          { "resourcesSubdir": "scripts",          "devDir": "packages/audio-engine/scripts",     "devDirBase": "repoRoot", "extraResourceFrom": "../packages/audio-engine/scripts" },
+  "engine":           { "resourcesSubdir": "engine",           "devDir": "packages/audio-engine/dist-cjs",    "devDirBase": "repoRoot", "extraResourceFrom": "../packages/audio-engine/dist-cjs" },
+  "license-policy":   { "resourcesSubdir": "license-policy",   "devDir": "packages/license-policy/dist-cjs",  "devDirBase": "repoRoot", "extraResourceFrom": "../packages/license-policy/dist-cjs" },
+  "scene-inspector":  { "resourcesSubdir": "scene-inspector",  "devDir": "packages/scene-inspector/dist-cjs", "devDirBase": "repoRoot", "extraResourceFrom": "../packages/scene-inspector/dist-cjs" },
+  "assets":           { "resourcesSubdir": "assets",           "devDir": "assets",                            "devDirBase": "appRoot",  "extraResourceFrom": "assets" }
+}

@@ -29,6 +29,7 @@
     "electron-builder": "^24.13.3",
     "playwright": "^1.61.1",
     "typescript": "^5",
-    "vitest": "^4.1.10"
+    "vitest": "^4.1.10",
+    "yaml": "^2.4.2"
   }
 }

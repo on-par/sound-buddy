@@ -4,7 +4,6 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import * as path from 'node:path';
 import * as fs from 'node:fs';
-import { EventEmitter } from 'node:events';
 
 vi.mock('electron', () => ({
   app: { isPackaged: false, getPath: () => '/tmp/sound-buddy-test' },
@@ -14,12 +13,10 @@ import {
   REPO_ROOT,
   findRepoRoot,
   childEnv,
-  readNdjsonLines,
   toolBin,
   platformDefaultStorageDir,
   defaultRecordDir,
 } from './shared';
-import { readNdjsonLines as engineReadNdjsonLines } from '@sound-buddy/audio-engine/dist/ndjson.js';
 
 describe('findRepoRoot', () => {
   it('walks up from a nested source directory to find the repo containing packages/audio-engine', () => {
@@ -138,81 +135,5 @@ describe('pythonBin', () => {
       vi.doUnmock('node:fs');
       vi.resetModules();
     }
-  });
-});
-
-describe('readNdjsonLines', () => {
-  const collect = () => {
-    const seen: unknown[] = [];
-    const em = new EventEmitter();
-    readNdjsonLines(em, (d) => seen.push(d));
-    return { em, seen };
-  };
-
-  it('parses complete newline-terminated lines, including multiple objects per chunk', () => {
-    const { em, seen } = collect();
-    em.emit('data', Buffer.from('{"a":1}\n{"b":2}\n'));
-    expect(seen).toEqual([{ a: 1 }, { b: 2 }]);
-  });
-
-  it('reassembles a line split across two chunks', () => {
-    const { em, seen } = collect();
-    em.emit('data', Buffer.from('{"win'));
-    em.emit('data', Buffer.from('dow":2}\n'));
-    expect(seen).toEqual([{ window: 2 }]);
-  });
-
-  it('ignores non-JSON lines', () => {
-    const { em, seen } = collect();
-    em.emit('data', Buffer.from('garbage\n{"ok":true}\n'));
-    expect(seen).toEqual([{ ok: true }]);
-  });
-
-  it('skips blank/whitespace-only lines', () => {
-    const { em, seen } = collect();
-    em.emit('data', Buffer.from('\n   \n{"x":1}\n'));
-    expect(seen).toEqual([{ x: 1 }]);
-  });
-
-  it('does not deliver a trailing partial line with no newline', () => {
-    const { em, seen } = collect();
-    em.emit('data', Buffer.from('{"x":1}'));
-    expect(seen).toEqual([]);
-  });
-});
-
-describe('readNdjsonLines drift guard (#279)', () => {
-  // The app's copy of readNdjsonLines cannot yet delegate to the engine at
-  // runtime (the packaged .app ships zero node_modules — see
-  // app/electron/ipc/engine-loader.ts). Until it does, this proves the two
-  // hand-maintained copies still behave identically over one fixture chunk
-  // sequence covering every documented behavior.
-  const CHUNKS = [
-    '{"a":1}\n{"b":2}\n',
-    '{"win',
-    'dow":2}\n',
-    '\n   \n',
-    'garbage\n',
-    '{"x":1}',
-  ];
-  const EXPECTED = [{ a: 1 }, { b: 2 }, { window: 2 }];
-
-  function run(fn: typeof readNdjsonLines) {
-    const seen: unknown[] = [];
-    const em = new EventEmitter();
-    fn(em, (d) => seen.push(d));
-    for (const chunk of CHUNKS) {
-      em.emit('data', Buffer.from(chunk));
-    }
-    return seen;
-  }
-
-  it('produces identical results to the audio-engine copy', () => {
-    const appResult = run(readNdjsonLines);
-    const engineResult = run(engineReadNdjsonLines);
-
-    expect(appResult).toEqual(EXPECTED);
-    expect(engineResult).toEqual(EXPECTED);
-    expect(appResult).toEqual(engineResult);
   });
 });
