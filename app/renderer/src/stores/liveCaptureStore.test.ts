@@ -52,6 +52,33 @@ describe('createLiveCaptureStore', () => {
     expect(s.ringout).toEqual({ stepIndex: 0, cut: null });
     expect(s.measurementSource).toBeNull();
     expect(s.selectedChannel).toBeNull();
+    expect(s.meterIntervalMs).toBe(100);
+    expect(s.windowSecs).toBe(3);
+  });
+
+  describe('capture cadence (#725)', () => {
+    it('setMeterIntervalMs sets meterIntervalMs and leaves windowSecs untouched', () => {
+      const { store } = makeStore();
+      store.getState().setMeterIntervalMs(250);
+      expect(store.getState().meterIntervalMs).toBe(250);
+      expect(store.getState().windowSecs).toBe(3);
+    });
+
+    it('setWindowSecs sets windowSecs and leaves meterIntervalMs untouched', () => {
+      const { store } = makeStore();
+      store.getState().setWindowSecs(7.5);
+      expect(store.getState().windowSecs).toBe(7.5);
+      expect(store.getState().meterIntervalMs).toBe(100);
+    });
+
+    it('both values survive an unrelated action', () => {
+      const { store } = makeStore();
+      store.getState().setMeterIntervalMs(250);
+      store.getState().setWindowSecs(7.5);
+      store.getState().setLiveMode('record');
+      expect(store.getState().meterIntervalMs).toBe(250);
+      expect(store.getState().windowSecs).toBe(7.5);
+    });
   });
 
   describe('loadDevices / selectDevice', () => {

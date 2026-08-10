@@ -22,18 +22,12 @@ function makeFakeElement(initialValue = '') {
 }
 
 function makeFakeDocument() {
-  const meterInterval = makeFakeElement('100');
-  const windowSecs = makeFakeElement('3');
   const liveStatus = makeFakeElement('');
   const elements: Record<string, ReturnType<typeof makeFakeElement>> = {
-    'meter-interval': meterInterval,
-    'window-secs': windowSecs,
     'live-status': liveStatus,
   };
   return {
     doc: { getElementById: (id: string) => elements[id] ?? null },
-    meterInterval,
-    windowSecs,
     liveStatus,
   };
 }
@@ -56,6 +50,7 @@ afterEach(() => {
   useLiveCaptureStore.setState({
     devices: [], selectedDevice: '', channelConfig: [], channelGroups: [],
     liveMode: 'monitor', recordDir: '', measurementSource: null,
+    meterIntervalMs: 100, windowSecs: 3,
   });
   useSettingsStore.setState({ settings: null, settingsError: null });
 });
@@ -102,13 +97,15 @@ describe('createRigStore', () => {
 
   describe('loadRigs', () => {
     it('seeds the picker and applies the active rig', async () => {
-      const rig = makeRig();
+      const rig = makeRig({ intervalMs: 200, windowSecs: 5 });
       const { store } = makeStore({ getSettings: async () => fakeSettings({ rigs: [rig], activeRigId: 'rig-1' }) });
       useLiveCaptureStore.setState({ devices: DEVICES, selectedDevice: '0' });
       await store.getState().loadRigs();
       expect(store.getState().rigs).toEqual([rig]);
       expect(store.getState().activeRigId).toBe('rig-1');
       expect(useLiveCaptureStore.getState().selectedDevice).toBe('0');
+      expect(useLiveCaptureStore.getState().meterIntervalMs).toBe(200);
+      expect(useLiveCaptureStore.getState().windowSecs).toBe(5);
       expect(renderChannelConfig).toHaveBeenCalled();
     });
 
@@ -138,13 +135,15 @@ describe('createRigStore', () => {
 
   describe('selectRig', () => {
     it('applies the selected rig and calls the capture-lock bridge', async () => {
-      const rig = makeRig();
+      const rig = makeRig({ intervalMs: 250, windowSecs: 7.5 });
       const { store } = makeStore({ setActiveRig: async () => fakeSettings() });
       store.setState({ rigs: [rig] });
       useLiveCaptureStore.setState({ devices: DEVICES, selectedDevice: '' });
       await store.getState().selectRig('rig-1');
       expect(store.getState().activeRigId).toBe('rig-1');
       expect(useLiveCaptureStore.getState().selectedDevice).toBe('0');
+      expect(useLiveCaptureStore.getState().meterIntervalMs).toBe(250);
+      expect(useLiveCaptureStore.getState().windowSecs).toBe(7.5);
       expect(renderChannelConfig).toHaveBeenCalled();
     });
 
@@ -193,6 +192,21 @@ describe('createRigStore', () => {
       expect(fakeDoc.liveStatus.textContent).toBe('Saved "Main Board".');
     });
 
+    it('snapshots the current liveCaptureStore cadence, not a stale/DOM value (#725)', async () => {
+      let saved: CaptureRig | undefined;
+      const { store } = makeStore({
+        saveRig: async (rig) => { saved = rig; return fakeSettings({ rigs: [rig] }); },
+        setActiveRig: async () => fakeSettings(),
+      });
+      store.setState({ rigs: [makeRig()], activeRigId: 'rig-1' });
+      useLiveCaptureStore.setState({ meterIntervalMs: 200, windowSecs: 5 });
+
+      await store.getState().save();
+
+      expect(saved?.intervalMs).toBe(200);
+      expect(saved?.windowSecs).toBe(5);
+    });
+
     it('surfaces an error status when saveRig rejects', async () => {
       const { store } = makeStore({ saveRig: async () => { throw new Error('disk full'); } });
       store.setState({ rigs: [makeRig()], activeRigId: 'rig-1' });
@@ -224,6 +238,20 @@ describe('createRigStore', () => {
       const { store } = makeStore({ saveRig: async () => { throw new Error('nope'); } });
       await store.getState().saveAs('New Rig');
       expect(fakeDoc.liveStatus.textContent).toBe('Could not save rig — check that Sound Buddy can write its settings.');
+    });
+
+    it('snapshots the current liveCaptureStore cadence, not a stale/DOM value (#725)', async () => {
+      let saved: CaptureRig | undefined;
+      const { store } = makeStore({
+        saveRig: async (rig) => { saved = rig; return fakeSettings({ rigs: [rig] }); },
+        setActiveRig: async () => fakeSettings(),
+      });
+      useLiveCaptureStore.setState({ meterIntervalMs: 250, windowSecs: 7.5 });
+
+      await store.getState().saveAs('Drum Kit');
+
+      expect(saved?.intervalMs).toBe(250);
+      expect(saved?.windowSecs).toBe(7.5);
     });
   });
 

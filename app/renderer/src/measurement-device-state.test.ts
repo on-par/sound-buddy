@@ -12,7 +12,9 @@ import {
   alignmentWarningHTML,
   roomFeed,
   roomPaneOverride,
-  parseCaptureOpts,
+  meterIntervalLabel,
+  windowSecsLabel,
+  captureOptsFromCadence,
   type SecondaryMeasurementState,
 } from './measurement-device-state';
 import type { LiveDevice, LiveEvent, StripConfig, ChannelWindowData } from './live-capture-panel';
@@ -250,12 +252,22 @@ describe('roomPaneOverride (#460 EQ-pane visual swap)', () => {
   });
 });
 
-describe('parseCaptureOpts (#724 code review)', () => {
-  it('parses given windowSecs/meterInterval string values', () => {
-    expect(parseCaptureOpts('5', '200')).toEqual({ windowSecs: 5, intervalSecs: 0.2 });
+describe('meterIntervalLabel (#725)', () => {
+  it('formats the ms + derived rate', () => {
+    expect(meterIntervalLabel(100)).toBe('100 ms · 10/s');
+    expect(meterIntervalLabel(200)).toBe('200 ms · 5/s');
   });
+});
 
-  it('falls back to windowSecs 3 / meterInterval 100ms when values are undefined', () => {
-    expect(parseCaptureOpts(undefined, undefined)).toEqual({ windowSecs: 3, intervalSecs: 0.1 });
+describe('windowSecsLabel (#725)', () => {
+  it('formats seconds to one decimal place', () => {
+    expect(windowSecsLabel(3)).toBe('3.0s');
+    expect(windowSecsLabel(5.5)).toBe('5.5s');
+  });
+});
+
+describe('captureOptsFromCadence (#725)', () => {
+  it('converts the meter-interval ms to intervalSecs, passing windowSecs through', () => {
+    expect(captureOptsFromCadence(5, 200)).toEqual({ windowSecs: 5, intervalSecs: 0.2 });
   });
 });

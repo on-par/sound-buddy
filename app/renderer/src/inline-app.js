@@ -1156,13 +1156,9 @@ document.getElementById('dir-analyze-btn').addEventListener('click', async () =>
 });
 
 /* ══ Live mode ══ */
-document.getElementById('window-secs').addEventListener('input', (e) => {
-  document.getElementById('window-secs-label').textContent = parseFloat(e.target.value).toFixed(1) + 's';
-});
-document.getElementById('meter-interval').addEventListener('input', (e) => {
-  const ms = parseInt(e.target.value);
-  document.getElementById('interval-label').textContent = `${ms} ms · ${Math.round(1000 / ms)}/s`;
-});
+// #meter-interval/#window-secs's label repaint is React-owned now
+// (CaptureCadenceControls.tsx, #725) — it derives the label text itself from
+// meterIntervalLabel/windowSecsLabel on every render.
 
 /* ── Monitor / Record toggle ──
    The Source-panel Mode toggle is React-owned (LiveControls.tsx, TD-001
@@ -1345,10 +1341,12 @@ function renderMeasurementBadge() {
 // mid-capture is safe and is the point of #457's second AC. device-select/
 // device-refresh-btn/record-folder-btn/#live-mode buttons are React-owned now
 // (LiveControls.tsx) and derive `disabled` from isCapturing directly — not
-// swept here (TD-001 slice 6c, #701).
+// swept here (TD-001 slice 6c, #701) — and #meter-interval/#window-secs are
+// React-owned now (CaptureCadenceControls.tsx, #725) and derive `disabled`
+// from isCapturing directly — not swept here either.
 function setCaptureControlsLocked(locked) {
   const set = (el) => { if (el) { el.disabled = locked; el.setAttribute('aria-disabled', String(locked)); } };
-  ['meter-interval', 'window-secs', 'rig-select',
+  ['rig-select',
     'live-ws-add', 'live-ws-new-group',
     'live-ws-arm-all', 'live-ws-disarm-all'].forEach((id) => set(document.getElementById(id)));
   // Workspace track rows (#188): Add track (above) + each row's remove, read-only
@@ -1535,7 +1533,7 @@ function beforeStartCapture() {
 // the same point this file's old inline handler ran these side effects at,
 // right after `liveRunning = true`.
 function onCaptureStarting() {
-  const intervalSecs = parseInt(document.getElementById('meter-interval').value) / 1000;
+  const intervalSecs = lcStore.getState().meterIntervalMs / 1000;
   // Overwriting the previous state is the reset — the next capture starts
   // from zero (#518).
   playheadState = window.dawPlayheadState.start(Date.now());
@@ -1608,8 +1606,8 @@ async function promoteToRecording() {
   syncCaptureControls();
 
   const device = lcStore.getState().selectedDevice || undefined;
-  const windowSecs = parseFloat(document.getElementById('window-secs').value);
-  const intervalSecs = parseInt(document.getElementById('meter-interval').value) / 1000;
+  const windowSecs = lcStore.getState().windowSecs;
+  const intervalSecs = lcStore.getState().meterIntervalMs / 1000;
   const channels = channelTokens();
 
   const result = await sb.startLive({

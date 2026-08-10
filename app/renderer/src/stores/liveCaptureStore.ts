@@ -34,6 +34,8 @@ import {
   applyStartResult,
   applyStreamEnded,
   reconnectDecision,
+  DEFAULT_METER_INTERVAL_MS,
+  DEFAULT_WINDOW_SECS,
   type SecondaryMeasurementState,
   type StartCaptureOpts,
 } from '../measurement-device-state';
@@ -182,6 +184,12 @@ export interface LiveCaptureState {
   liveMode: 'monitor' | 'record';
   recordDir: string;
 
+  // Capture-cadence sliders (#725), ported off inline-app.js's static
+  // #meter-interval/#window-secs DOM-owned inputs — same home as the other
+  // capture-config fields above (liveMode, recordDir).
+  meterIntervalMs: number;
+  windowSecs: number;
+
   isCapturing: boolean;
   // Transient: true only while a running monitor session is being promoted to
   // a recording (#458) — mirrors inline-app.js's old capturePromoting module
@@ -230,6 +238,8 @@ export interface LiveCaptureState {
   setLiveMode(mode: 'monitor' | 'record'): void;
   setRecordDir(dir: string): void;
   setAppMode(mode: string): void;
+  setMeterIntervalMs(ms: number): void;
+  setWindowSecs(secs: number): void;
 
   addStrip(): void;
   removeStrip(idx: number): void;
@@ -306,6 +316,9 @@ export function createLiveCaptureStore(getApi: () => LiveCaptureApi) {
     liveMode: 'monitor',
     recordDir: '',
 
+    meterIntervalMs: DEFAULT_METER_INTERVAL_MS,
+    windowSecs: DEFAULT_WINDOW_SECS,
+
     isCapturing: false,
     promoting: false,
 
@@ -366,6 +379,17 @@ export function createLiveCaptureStore(getApi: () => LiveCaptureApi) {
 
     setAppMode(mode) {
       set({ appMode: mode });
+    },
+
+    // No settings-persistence call here — this preserves "no persistence for
+    // the raw slider value" exactly as today; only the rig Save/Save As path
+    // persists these (rigStore.ts's currentLiveSnapshotInput/applyRigById).
+    setMeterIntervalMs(ms) {
+      set({ meterIntervalMs: ms });
+    },
+
+    setWindowSecs(secs) {
+      set({ windowSecs: secs });
     },
 
     addStrip() {

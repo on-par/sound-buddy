@@ -160,18 +160,8 @@ export function applyRigPatch(
   };
 }
 
-/* c8 ignore start -- small DOM helpers, no jsdom in this harness; exercised
-   by tests/rigs.spec.ts's slider-value / #live-status assertions. */
-
-// Set a slider's value programmatically and refresh its label by replaying
-// the same 'input' event its listener already handles — port of
-// inline-app.js's setSliderVal, no duplicated label logic.
-export function setSliderVal(id: string, value: number): void {
-  const el = document.getElementById(id) as HTMLInputElement | null;
-  if (!el) return;
-  el.value = String(value);
-  el.dispatchEvent(new Event('input'));
-}
+/* c8 ignore start -- small DOM helper, no jsdom in this harness; exercised
+   by tests/rigs.spec.ts's #live-status assertions. */
 
 // Show (or clear) the muted status line under the Start button — port of
 // inline-app.js's setLiveStatus.

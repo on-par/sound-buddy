@@ -24,12 +24,37 @@ import {
 import { escapeHtml } from './spectrum-display';
 
 // Board/secondary-stream start options — defined here (not stores/liveCaptureStore.ts)
-// because parseCaptureOpts below is the function that produces this exact shape;
-// the store imports it from here to keep this module's pure helpers free of any
-// dependency on the store that consumes them.
+// because captureOptsFromCadence below is the function that produces this exact
+// shape; the store imports it from here to keep this module's pure helpers free of
+// any dependency on the store that consumes them.
 export interface StartCaptureOpts {
   windowSecs: number;
   intervalSecs: number;
+}
+
+// Defaults for the two capture-cadence sliders (#725) — match the static
+// markup's original value="100"/value="3", now the seed for
+// liveCaptureStore's meterIntervalMs/windowSecs fields.
+export const DEFAULT_METER_INTERVAL_MS = 100;
+export const DEFAULT_WINDOW_SECS = 3;
+
+// Label text for the meter-rate slider — exact port of inline-app.js's
+// deleted #meter-interval 'input' listener body (#725).
+export function meterIntervalLabel(ms: number): string {
+  return `${ms} ms · ${Math.round(1000 / ms)}/s`;
+}
+
+// Label text for the window slider — exact port of inline-app.js's deleted
+// #window-secs 'input' listener body (#725).
+export function windowSecsLabel(secs: number): string {
+  return `${secs.toFixed(1)}s`;
+}
+
+// Numeric replacement for parseCaptureOpts (#725) — the store now holds real
+// numbers, so this just converts units (ms -> secs) instead of also parsing
+// strings with fallback defaults.
+export function captureOptsFromCadence(windowSecs: number, meterIntervalMs: number): StartCaptureOpts {
+  return { windowSecs, intervalSecs: meterIntervalMs / 1000 };
 }
 
 export type SecondaryMeasurementStatus =
@@ -235,16 +260,4 @@ export function roomPaneOverride(
   const ch = lastMeasurementChannels?.[0] ?? lastWindow?.channels?.[0] ?? null;
   if (!ch) return null;
   return { ch, label: deviceName };
-}
-
-// Shared by LiveControls.tsx's onStart() and SecondaryMeasurementPanel.tsx's
-// secondaryCaptureOptsFromDom() (#724 code review) — both read the same
-// #window-secs/#meter-interval inputs to build capture opts for the board
-// capture and the secondary measurement mic respectively, so the
-// fallback-default/unit-conversion logic lives in one place instead of two.
-export function parseCaptureOpts(windowSecsValue: string | undefined, meterIntervalValue: string | undefined): StartCaptureOpts {
-  return {
-    windowSecs: parseFloat(windowSecsValue ?? '3'),
-    intervalSecs: parseInt(meterIntervalValue ?? '100', 10) / 1000,
-  };
 }

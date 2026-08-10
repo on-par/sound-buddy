@@ -26,7 +26,6 @@ import type { RigApi, SettingsApi, CaptureRig } from '../../../electron/ipc/api'
 import {
   captureCurrentRigSnapshot,
   applyRigPatch,
-  setSliderVal,
   setLiveStatusText,
   getPreflight,
   type CaptureRigSnapshotInput,
@@ -68,13 +67,10 @@ function getArmState(): ArmStateApi {
 }
 
 // Builds captureCurrentRigSnapshot()'s `live` input from the current
-// liveCaptureStore state plus the two still-static capture-config sliders
-// (out of scope for this slice — same precedent LiveTransportControls.onStart
-// already reads them directly via document.getElementById).
+// liveCaptureStore state — intervalMs/windowSecs (#725) now come straight
+// from the store, same as every other field here.
 function currentLiveSnapshotInput(): CaptureRigSnapshotInput {
   const live = useLiveCaptureStore.getState();
-  const intervalEl = document.getElementById('meter-interval') as HTMLInputElement | null;
-  const windowEl = document.getElementById('window-secs') as HTMLInputElement | null;
   return {
     channelConfig: live.channelConfig,
     channelGroups: live.channelGroups,
@@ -82,8 +78,8 @@ function currentLiveSnapshotInput(): CaptureRigSnapshotInput {
     liveMode: live.liveMode,
     recordDir: live.recordDir,
     selectedDeviceName: deviceNameFor(live.selectedDevice, live.devices),
-    intervalMs: parseInt(intervalEl?.value ?? '100', 10),
-    windowSecs: parseFloat(windowEl?.value ?? '3'),
+    intervalMs: live.meterIntervalMs,
+    windowSecs: live.windowSecs,
   };
 }
 
@@ -100,8 +96,8 @@ export function createRigStore(getApi: () => RigApiSubset) {
   function applyRigById(id: string, rigs: CaptureRig[]): void {
     const rig = rigs.find((r) => r.id === id);
     if (!rig) return;
-    setSliderVal('meter-interval', rig.intervalMs);
-    setSliderVal('window-secs', rig.windowSecs);
+    useLiveCaptureStore.getState().setMeterIntervalMs(rig.intervalMs);
+    useLiveCaptureStore.getState().setWindowSecs(rig.windowSecs);
     const live = useLiveCaptureStore.getState();
     const deviceChannels = deviceChannelCount(live.selectedDevice, live.devices);
     const { patch, notice } = applyRigPatch(rig, live.devices, deviceChannels);
