@@ -7,6 +7,7 @@ import { renderToString } from 'react-dom/server';
 import SecondaryMeasurementPanel, {
   selectSecondaryDevice,
   secondaryReconnectTick,
+  secondaryCaptureOpts,
 } from './SecondaryMeasurementPanel';
 import { useLiveCaptureStore } from './stores/liveCaptureStore';
 import { useSettingsStore } from './stores/settingsStore';
@@ -26,6 +27,8 @@ afterEach(() => {
   useLiveCaptureStore.setState({
     devices: [],
     secondaryMeasurement: { status: 'off', deviceName: '' },
+    meterIntervalMs: INITIAL_LIVE_CAPTURE_STATE.meterIntervalMs,
+    windowSecs: INITIAL_LIVE_CAPTURE_STATE.windowSecs,
     startSecondaryMeasurement: INITIAL_LIVE_CAPTURE_STATE.startSecondaryMeasurement,
     stopSecondaryMeasurement: INITIAL_LIVE_CAPTURE_STATE.stopSecondaryMeasurement,
     setSecondaryDeviceName: INITIAL_LIVE_CAPTURE_STATE.setSecondaryDeviceName,
@@ -104,6 +107,14 @@ describe('SecondaryMeasurementPanel', () => {
     const html = renderMarkup();
 
     expect(html).toContain('disconnected — reconnect the device to resume.');
+  });
+
+  describe('secondaryCaptureOpts (#725)', () => {
+    it('reads the store cadence fields and converts ms to secs — no DOM stubbing needed', () => {
+      useLiveCaptureStore.setState({ meterIntervalMs: 200, windowSecs: 5 });
+
+      expect(secondaryCaptureOpts()).toEqual({ windowSecs: 5, intervalSecs: 0.2 });
+    });
   });
 
   describe('secondaryReconnectTick', () => {

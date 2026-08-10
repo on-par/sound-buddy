@@ -24,7 +24,7 @@ import {
   secondaryStatusHTML,
   secondaryDeviceOptionsHTML,
   alignmentWarningHTML,
-  parseCaptureOpts,
+  captureOptsFromCadence,
 } from './measurement-device-state';
 import { iconSvg } from './report-card';
 import type { LiveDevice } from './live-capture-panel';
@@ -32,15 +32,10 @@ import { runtime } from './LiveControls';
 
 const SECONDARY_RECONNECT_POLL_MS = 5000;
 
-/* c8 ignore start -- DOM reads, no jsdom in this harness; the fallback/parsing
-   logic itself is tested directly via measurement-device-state.ts's
-   parseCaptureOpts. */
-export function secondaryCaptureOptsFromDom(): StartCaptureOpts {
-  const windowSecsEl = document.getElementById('window-secs') as HTMLInputElement | null;
-  const meterIntervalEl = document.getElementById('meter-interval') as HTMLInputElement | null;
-  return parseCaptureOpts(windowSecsEl?.value, meterIntervalEl?.value);
+export function secondaryCaptureOpts(): StartCaptureOpts {
+  const { windowSecs, meterIntervalMs } = useLiveCaptureStore.getState();
+  return captureOptsFromCadence(windowSecs, meterIntervalMs);
 }
-/* c8 ignore stop */
 
 export async function selectSecondaryDevice(
   value: string,
@@ -79,7 +74,7 @@ export default function SecondaryMeasurementPanel(): JSX.Element | null {
   useEffect(() => {
     if (!enabled || secondaryMeasurement.status !== 'disconnected') return;
     const id = setInterval(() => {
-      void secondaryReconnectTick(enabled, secondaryCaptureOptsFromDom());
+      void secondaryReconnectTick(enabled, secondaryCaptureOpts());
     }, SECONDARY_RECONNECT_POLL_MS);
     return () => clearInterval(id);
   }, [enabled, secondaryMeasurement.status]);
@@ -100,7 +95,7 @@ export default function SecondaryMeasurementPanel(): JSX.Element | null {
             value={selectedValue}
             dangerouslySetInnerHTML={{ __html: secondaryDeviceOptionsHTML(devices, secondaryMeasurement.deviceName) }}
             /* c8 ignore next -- change dispatch, no jsdom */
-            onChange={(e) => { void selectSecondaryDevice(e.target.value, devices, secondaryCaptureOptsFromDom()); }}
+            onChange={(e) => { void selectSecondaryDevice(e.target.value, devices, secondaryCaptureOpts()); }}
           />
           <span className="select-caret" dangerouslySetInnerHTML={{ __html: iconSvg('chevron-down', 16) }} />
         </div>
