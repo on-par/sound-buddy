@@ -373,8 +373,13 @@ test.describe('Live capture (PRD 06)', () => {
         (globalThis as Record<string, unknown>).__revealed = p; return { success: true };
       });
     });
+    // The preceding test ("record mode captures a session...") leaves
+    // liveMode set to 'record' and this suite's beforeEach doesn't reset it
+    // (only device/channel config) — force monitor mode explicitly so this
+    // test doesn't depend on run order.
+    await window.locator('#live-mode button[data-mode="monitor"]').click();
     await window.locator('#live-ws-arm-all').click();
-    await window.locator('#live-start-btn').click(); // starts in monitor mode (default)
+    await window.locator('#live-start-btn').click(); // starts in monitor mode
     await expect(window.locator('#live-stop-btn')).toBeVisible();
     await expect(window.locator('#live-indicator .live-txt')).toHaveText('LIVE');
 
