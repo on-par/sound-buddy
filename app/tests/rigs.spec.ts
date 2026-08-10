@@ -92,7 +92,12 @@ test.describe.serial('Rigs — save / load / switch', () => {
       const set = (id: string, v: string) => {
         const el = document.getElementById(id) as HTMLInputElement;
         el.value = v;
-        el.dispatchEvent(new Event('input'));
+        // bubbles: true — the meter-interval/window-secs sliders are React-owned
+        // (#725) and React's synthetic event system listens via delegation at the
+        // root container, not on the element itself, so a non-bubbling Event
+        // never reaches its onChange (real browser input events always bubble;
+        // only a bare `new Event()` defaults to non-bubbling).
+        el.dispatchEvent(new Event('input', { bubbles: true }));
       };
       set('meter-interval', '200');
       set('window-secs', '5');
