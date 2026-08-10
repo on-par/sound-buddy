@@ -18,11 +18,16 @@ import { log, logWarn, logError } from '../logger';
 import { isEntitled } from '../license';
 import { pythonBin, childEnv, STREAM_SCRIPT } from './shared';
 import { ensureMicrophoneAccess } from './live-capture';
-import { loadEngineParsers } from './engine-loader';
+import { loadEngineParsers, loadEngineUtils } from './engine-loader';
 import { createPythonStreamSlot } from './python-stream';
 import type { StartMeasurementOpts } from './api';
 
-const measurementSlot = createPythonStreamSlot({ log, logWarn, logError });
+const measurementSlot = createPythonStreamSlot({
+  log,
+  logWarn,
+  logError,
+  readNdjsonLines: (source, onLine) => loadEngineUtils().readNdjsonLines(source, onLine),
+});
 
 // The measurement source is always the device's first input, captured as one
 // mono strip — it's a metering source only (a single room mic), never a

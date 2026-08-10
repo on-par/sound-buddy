@@ -6,12 +6,15 @@ import { EventEmitter } from 'events';
 
 const childProcessSpawnMock = vi.hoisted(() => vi.fn());
 vi.mock('child_process', () => ({ spawn: (...args: unknown[]) => childProcessSpawnMock(...args) }));
-// python-stream.ts imports no Electron module itself, but it imports the pure
-// readNdjsonLines helper from ./shared, which reads app.isPackaged at module
-// scope — stub the minimum shared.ts needs to load under Vitest.
-vi.mock('electron', () => ({ app: { isPackaged: false } }));
 
 import { createPythonStreamSlot, DEFAULT_STOP_GRACE_MS, type PythonStreamChild, type PythonStreamExitInfo } from './python-stream';
+// python-stream.ts takes readNdjsonLines as an injected dependency (callers
+// wire it to loadEngineUtils().readNdjsonLines) rather than importing
+// ./engine-loader itself — python-stream.ts stays free of the Electron `app`
+// import and built dist-cjs artifact that engine-loader.ts requires. Use the
+// real implementation here (from the engine's built ESM dist) so this suite
+// exercises real NDJSON parsing instead of a hand-copied stand-in.
+import { readNdjsonLines } from '@sound-buddy/audio-engine/dist/ndjson.js';
 
 /** A stand-in for the spawned Python child, with a spy-able kill(). */
 function fakeProc() {
@@ -29,6 +32,7 @@ function fakeProc() {
 function fakeDeps(spawnMock: ReturnType<typeof vi.fn>) {
   return {
     spawn: spawnMock as unknown as Parameters<typeof createPythonStreamSlot>[0]['spawn'],
+    readNdjsonLines,
     log: vi.fn(),
     logWarn: vi.fn(),
     logError: vi.fn(),
@@ -289,7 +293,7 @@ describe('createPythonStreamSlot', () => {
   it('default spawn wraps child_process.spawn when deps.spawn is omitted', () => {
     const proc = fakeProc();
     childProcessSpawnMock.mockReturnValueOnce(proc);
-    const deps = { log: vi.fn(), logWarn: vi.fn(), logError: vi.fn() };
+    const deps = { readNdjsonLines, log: vi.fn(), logWarn: vi.fn(), logError: vi.fn() };
     const slot = createPythonStreamSlot(deps);
 
     slot.start({

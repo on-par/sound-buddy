@@ -13,11 +13,16 @@ import * as fs from 'fs';
 import { log, logWarn, logError } from '../logger';
 import { isEntitled } from '../license';
 import { pythonBin, childEnv, STREAM_SCRIPT, defaultRecordDir } from './shared';
-import { loadEngineParsers, type LiveOptions } from './engine-loader';
+import { loadEngineParsers, loadEngineUtils, type LiveOptions } from './engine-loader';
 import { createPythonStreamSlot } from './python-stream';
 import type { StartLiveOpts } from './api';
 
-const liveSlot = createPythonStreamSlot({ log, logWarn, logError });
+const liveSlot = createPythonStreamSlot({
+  log,
+  logWarn,
+  logError,
+  readNdjsonLines: (source, onLine) => loadEngineUtils().readNdjsonLines(source, onLine),
+});
 // Directory of the current/last multitrack session (Record mode) — per-strip
 // stems + session.json — so stop-live can hand it back to the renderer. null in
 // Monitor mode.

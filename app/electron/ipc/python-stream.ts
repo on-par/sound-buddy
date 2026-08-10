@@ -19,7 +19,6 @@
 
 import { spawn } from 'child_process';
 import type { NdjsonSource } from '@sound-buddy/audio-engine/dist-cjs/ndjson';
-import { loadEngineUtils } from './engine-loader';
 
 export type PythonStreamSpawn = (
   command: string,
@@ -35,8 +34,14 @@ export interface PythonStreamChild {
   kill(signal?: NodeJS.Signals): boolean;
 }
 
+export type PythonStreamReadNdjsonLines = (
+  source: NdjsonSource,
+  onLine: (data: Record<string, unknown>) => void,
+) => void;
+
 export interface PythonStreamDeps {
   spawn?: PythonStreamSpawn;
+  readNdjsonLines: PythonStreamReadNdjsonLines;
   log: (msg: string) => void;
   logWarn: (msg: string, ...extra: unknown[]) => void;
   logError: (msg: string, ...extra: unknown[]) => void;
@@ -99,7 +104,7 @@ export function createPythonStreamSlot(deps: PythonStreamDeps): PythonStreamSlot
       if (text) deps.logWarn(`${opts.label} stderr: ${text}`);
     });
 
-    loadEngineUtils().readNdjsonLines(py.stdout, opts.onLine);
+    deps.readNdjsonLines(py.stdout, opts.onLine);
 
     py.on('error', (...a: unknown[]) => {
       const err = a[0] as Error;
