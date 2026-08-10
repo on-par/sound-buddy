@@ -80,6 +80,19 @@
     .mode-tab svg { flex-shrink:0; }
 
     #header-right { margin-left:auto; display:flex; align-items:center; gap:14px; -webkit-app-region:no-drag; }
+    #record-button-island { display:flex; align-items:center; }
+    .record-btn {
+      display:flex; align-items:center; gap:6px; height:30px; padding:0 12px;
+      border:1px solid var(--border-default); border-radius:var(--radius-sm);
+      background:transparent; color:var(--text-secondary);
+      font:var(--fw-semibold) var(--fs-label)/1 var(--font-sans); cursor:pointer;
+    }
+    .record-btn:hover:not(:disabled) { color:var(--text-primary); background:var(--surface); }
+    .record-btn:disabled { opacity:0.45; cursor:default; }
+    .record-btn--recording { background:var(--issue-500); border-color:var(--issue-500); color:#fff; }
+    .record-btn--recording:hover:not(:disabled) { background:var(--issue-text); }
+    .record-btn--recording svg { animation:sbpulse var(--dur-pulse) var(--ease-in-out) infinite; }
+    .record-btn--stopping { background:var(--issue-tint); border-color:var(--issue-border); color:var(--issue-text); }
     #live-indicator { display:none; align-items:center; gap:8px; font:var(--fw-semibold) 11px/1 var(--font-sans); letter-spacing:0.06em; color:var(--text-secondary); }
     #live-indicator .pulse { width:8px; height:8px; border-radius:50%; background:var(--issue-500); box-shadow:0 0 8px rgba(229,72,77,0.6); }
     #live-indicator .live-txt { color:var(--issue-text); }
@@ -188,6 +201,12 @@
     body.not-pro #tab-live .pro-gate,
     body.not-pro #tab-soundcheck .pro-gate,
     body.not-pro #settings-pane-audio .pro-gate { display:flex; }
+    /* #record-button-island (#729) lives in #header-right, outside all three
+       gated containers above — needs its own rule or a free-tier user gets a
+       working Record button in the header with no Pro gate (the exact class
+       of bug the #727 follow-up fixed for #settings-pane-audio). See
+       RecordButton.test.ts's "gates the top-bar Record button..." test. */
+    body.not-pro #record-button-island { display:none !important; }
 
     /* Free/Pro badge in the header (click to manage the license). */
     #license-badge {

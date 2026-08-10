@@ -59,6 +59,7 @@ import SpectrumPanel from './SpectrumPanel';
 import IdealProfileSelect from './IdealProfileSelect';
 import CurveEditorDialog from './CurveEditorDialog';
 import LiveControls, { LiveTransportControls } from './LiveControls';
+import RecordButton from './RecordButton';
 import LiveWorkspace from './LiveWorkspace';
 import SoundcheckPanel from './SoundcheckPanel';
 import PreflightPanel from './PreflightPanel';
@@ -241,6 +242,7 @@ export default function App() {
       {booted && createPortal(<LiveWorkspace />, document.getElementById('live-island')!)}
       {booted && createPortal(<LiveControls />, document.getElementById('live-controls-island')!)}
       {booted && createPortal(<LiveTransportControls />, document.getElementById('live-transport-island')!)}
+      {booted && createPortal(<RecordButton />, document.getElementById('record-button-island')!)}
       {booted && createPortal(<PreflightPanel />, document.getElementById('preflight-island')!)}
       {booted && createPortal(<SoundcheckPanel />, document.getElementById('soundcheck-island')!)}
       {booted && createPortal(<ModeTabs />, document.getElementById('mode-tabs')!)}
