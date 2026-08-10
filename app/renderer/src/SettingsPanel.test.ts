@@ -139,21 +139,17 @@ describe('SettingsPanel markup', () => {
 // the boot scripts these subcomponents transitively depend on
 // (window.liveCaptureRuntime et al.) have run.
 //
-// These controls used to be children of #tab-live, so the CSS rule
-// `body.not-pro #tab-live > :not(.pro-gate) { display:none !important; }`
-// (app.css) hid them from free-tier users for free. Now that they live
-// inside the Settings dialog (outside #tab-live), that CSS no longer reaches
-// them, so the Audio pane gates on `licenseStatus` directly — the same
-// `tier === 'pro'` check LicenseChrome.tsx's `badge()` uses to drive
-// `body.not-pro` in the first place — showing the same pro-gate upgrade
-// card the Live tab shows instead of the controls.
-function withPro(): void {
-  useLicensingStore.setState({ licenseStatus: { tier: 'pro', status: 'valid', kind: 'lifetime' } });
-}
-
+// These controls used to be children of #tab-live, gated for free by the CSS
+// rule `body.not-pro #tab-live > :not(.pro-gate) { display:none !important; }`
+// (app.css). Rather than re-deriving Pro status in JS, the Audio pane joins
+// that same rule (`body.not-pro #settings-pane-audio > :not(.pro-gate)`) —
+// the pro-gate card and the moved controls are both always rendered here
+// when booted, and CSS alone decides which is visible. Since this harness
+// renders via `renderToString` with no CSS engine, the pro/free visibility
+// split itself is covered live by app/tests/license.spec.ts and
+// app/tests/entitlement-matrix.spec.ts, not here.
 describe('Audio pane composition (#727)', () => {
-  it('renders the moved controls when booted and licensed', () => {
-    withPro();
+  it('renders the moved controls when booted', () => {
     useSettingsStore.setState({ settings: { secondaryMeasurementEnabled: true } as unknown as AppSettings });
     const html = renderMarkup(true);
     expect(html).toContain('id="rig-select"');
@@ -165,14 +161,12 @@ describe('Audio pane composition (#727)', () => {
   });
 
   it('does not render the secondary-measurement device select when the experimental flag is off', () => {
-    withPro();
     const html = renderMarkup(true);
     expect(html).toContain('id="rig-select"');
     expect(html).not.toContain('id="secondary-measurement-device"');
   });
 
-  it('renders none of the moved controls when not booted, even when licensed', () => {
-    withPro();
+  it('renders none of the moved controls when not booted', () => {
     const html = renderMarkup(false);
     expect(html).not.toContain('id="rig-select"');
     expect(html).not.toContain('id="device-select"');
@@ -182,13 +176,11 @@ describe('Audio pane composition (#727)', () => {
   });
 
   it('shows no capture-lock note while idle', () => {
-    withPro();
     const html = renderMarkup(true);
     expect(html).not.toContain('id="settings-audio-capture-lock-note"');
   });
 
   it('shows the capture-lock note while capturing, without claiming measurement source or the secondary device are locked', () => {
-    withPro();
     useLiveCaptureStore.setState({ isCapturing: true });
     const html = renderMarkup(true);
     expect(html).toContain('id="settings-audio-capture-lock-note"');
@@ -197,26 +189,17 @@ describe('Audio pane composition (#727)', () => {
     expect(note).not.toMatch(/secondary measurement[^.]*locked/i);
   });
 
-  // #727 follow-up fix: without this gate, a free-tier user opening
-  // Settings → Audio could configure and save rigs, pick devices, and tune
-  // capture cadence — a paywall bypass, since the Live tab's Pro upgrade
-  // card no longer covers this surface once it moved outside #tab-live.
-  it('shows the Pro upgrade card instead of the controls when not licensed, even when booted', () => {
+  // #727 follow-up fix: without a gate reaching this pane, a free-tier user
+  // opening Settings → Audio could configure and save rigs, pick devices,
+  // and tune capture cadence — a paywall bypass, since the Live tab's Pro
+  // upgrade card no longer covers this surface once it moved outside
+  // #tab-live. The pro-gate card renders alongside the controls (both always
+  // present when booted); app.css's body.not-pro rule (asserted below)
+  // is what actually decides which one is visible.
+  it('always renders the Pro upgrade card next to the controls when booted', () => {
     const html = renderMarkup(true);
     expect(html).toContain('id="settings-audio-pro-gate"');
     expect(html).toContain('Live monitoring is a Pro feature');
-    expect(html).not.toContain('id="rig-select"');
-    expect(html).not.toContain('id="device-select"');
-    expect(html).not.toContain('id="measurement-source"');
-    expect(html).not.toContain('id="meter-interval"');
-    expect(html).not.toContain('id="window-secs"');
-    expect(html).not.toContain('id="settings-audio-capture-lock-note"');
-  });
-
-  it('treats an active trial or grace period as licensed (matches LicenseChrome.badge()\'s tier-only check)', () => {
-    useLicensingStore.setState({ licenseStatus: { tier: 'pro', status: 'trial', kind: 'subscription', trialEndsAt: new Date(Date.now() + 86400000).toISOString() } });
-    const html = renderMarkup(true);
-    expect(html).not.toContain('id="settings-audio-pro-gate"');
     expect(html).toContain('id="rig-select"');
   });
 
@@ -224,6 +207,18 @@ describe('Audio pane composition (#727)', () => {
     const src = fs.readFileSync(fileURLToPath(new URL('./SettingsPanel.tsx', import.meta.url)), 'utf8');
     expect(src).toContain('id="settings-audio-pro-gate"');
     expect(src).toContain('useLicensingStore.getState().openDialog()');
+  });
+
+  // Guards the boundary-violation fix: SettingsPanel must not re-derive Pro
+  // status from licenseStatus/badge() — it must reuse the single body.not-pro
+  // gating hook (LicenseChrome.tsx) via the same CSS rule #tab-live and
+  // #tab-soundcheck already use.
+  it('gates the Audio pane via the shared body.not-pro CSS rule, not its own license check', () => {
+    const src = fs.readFileSync(fileURLToPath(new URL('./SettingsPanel.tsx', import.meta.url)), 'utf8');
+    expect(src).not.toContain('badge(');
+    expect(src).not.toContain('licenseStatus');
+    const css = fs.readFileSync(fileURLToPath(new URL('./styles/app.css', import.meta.url)), 'utf8');
+    expect(css).toContain('body.not-pro #settings-pane-audio > :not(.pro-gate)');
   });
 });
 
