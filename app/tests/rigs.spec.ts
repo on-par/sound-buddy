@@ -89,14 +89,22 @@ test.describe.serial('Rigs — save / load / switch', () => {
     await win.locator('#device-select').selectOption('0');
     await win.locator('#live-mode button[data-mode="record"]').click();
     await win.evaluate(() => {
+      // meter-interval/window-secs are React-controlled inputs (#725). React
+      // patches each controlled <input>'s `value` property with its own
+      // tracking setter so it can tell a real DOM mutation apart from a
+      // change React itself just rendered; plain `el.value = v` goes through
+      // that patched setter, so React's tracked "last known value" silently
+      // updates too and it sees no difference when the input event arrives,
+      // never firing onChange. Setting through the ORIGINAL native prototype
+      // setter bypasses React's tracker, so the subsequent bubbling input
+      // event is correctly seen as a real change (see the well-documented
+      // React controlled-input testing gotcha, e.g. facebook/react#11488).
+      const nativeInputValueSetter = Object.getOwnPropertyDescriptor(
+        window.HTMLInputElement.prototype, 'value',
+      )!.set!;
       const set = (id: string, v: string) => {
         const el = document.getElementById(id) as HTMLInputElement;
-        el.value = v;
-        // bubbles: true — the meter-interval/window-secs sliders are React-owned
-        // (#725) and React's synthetic event system listens via delegation at the
-        // root container, not on the element itself, so a non-bubbling Event
-        // never reaches its onChange (real browser input events always bubble;
-        // only a bare `new Event()` defaults to non-bubbling).
+        nativeInputValueSetter.call(el, v);
         el.dispatchEvent(new Event('input', { bubbles: true }));
       };
       set('meter-interval', '200');
