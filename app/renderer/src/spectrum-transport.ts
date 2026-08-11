@@ -50,6 +50,37 @@ export function frameIndexFromClick(clientX: number, boxLeft: number, boxWidth: 
   return Math.max(0, Math.min(frameCount - 1, Math.floor(((clientX - boxLeft) / boxWidth) * frameCount)));
 }
 
+// Arrow-key nudge increment for the playback transport (#754).
+export const SEEK_NUDGE_SEC = 5;
+
+// Continuous seek target (seconds) for a click/drag at clientX on a full-width
+// seek bar. Unlike frameIndexFromClick this is NOT quantized to frame columns —
+// the whole point of the bar is landing anywhere. Returns null for a zero-width
+// bar or an unknown duration; the fraction is clamped to [0,1].
+export function seekTimeFromBarClick(
+  clientX: number,
+  boxLeft: number,
+  boxWidth: number,
+  duration: number,
+): number | null {
+  if (!(boxWidth > 0) || !(duration > 0)) return null;
+  const frac = Math.max(0, Math.min(1, (clientX - boxLeft) / boxWidth));
+  return frac * duration;
+}
+
+// New playhead time for an arrow-key nudge, or null if `key` isn't a seek key.
+// Floors at 0; the caller's seek() applies the upper-bound end guard via
+// clampSeekTime, so no duration argument is needed here.
+export function seekNudgeTarget(
+  key: string,
+  currentTime: number,
+  nudgeSec: number = SEEK_NUDGE_SEC,
+): number | null {
+  if (key === 'ArrowLeft') return Math.max(0, currentTime - nudgeSec);
+  if (key === 'ArrowRight') return currentTime + nudgeSec;
+  return null;
+}
+
 export function playheadPercent(currentTime: number, duration: number): number {
   return duration > 0 ? Math.max(0, Math.min(1, currentTime / duration)) * 100 : 0;
 }
