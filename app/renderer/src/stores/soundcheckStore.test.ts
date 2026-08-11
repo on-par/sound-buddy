@@ -6,6 +6,7 @@ import { createSoundcheckStore, type SoundcheckApi } from './soundcheckStore';
 import { useLiveCaptureStore } from './liveCaptureStore';
 import { useSpectrumStore } from './spectrumStore';
 import { createMockSoundBuddy } from '../mock-sound-buddy';
+import { recordButtonView } from '../record-transport';
 import type { SessionManifest } from '../soundcheck-panel';
 
 // playback-routing.js is a real, pure classic-script module — same
@@ -18,7 +19,7 @@ beforeEach(() => {
 
 afterEach(() => {
   delete (globalThis as { window?: unknown }).window;
-  useLiveCaptureStore.setState({ appMode: 'reportcard' });
+  useLiveCaptureStore.setState({ appMode: 'reportcard', isCapturing: false, promoting: false, stopping: false, liveMode: 'monitor' });
 });
 
 function makeStore(overrides: Partial<Parameters<typeof createMockSoundBuddy>[0]> = {}) {
@@ -307,6 +308,50 @@ describe('createSoundcheckStore', () => {
       mock.emit('onPlaybackEvent', { type: 'ended' });
       expect(store.getState().playing).toBe(false);
       expect(store.getState().elapsedText).toBeNull();
+    });
+  });
+
+  describe('does not touch Live capture (#758)', () => {
+    it('play() from an idle Live state leaves capture state and the Record button idle', async () => {
+      useLiveCaptureStore.setState({ appMode: 'soundcheck', isCapturing: false, promoting: false, stopping: false, liveMode: 'monitor' });
+      const { store } = makeStore({ startPlayback: async () => ({ success: true }) });
+      store.setState({ manifest: MANIFEST, sessionDir: '/tmp/s', routes: [[0], [2, 3]], devicesLoaded: true });
+      await store.getState().play();
+
+      expect(store.getState().playing).toBe(true);
+      expect(useLiveCaptureStore.getState().isCapturing).toBe(false);
+      expect(useLiveCaptureStore.getState().promoting).toBe(false);
+      expect(useLiveCaptureStore.getState().stopping).toBe(false);
+
+      const { isCapturing, liveMode, promoting, stopping } = useLiveCaptureStore.getState();
+      expect(recordButtonView({ liveRunning: isCapturing, liveMode, promoting, stopping }).phase).toBe('idle');
+    });
+
+    it('play() does not stop or mutate an already-running Live capture (criterion #3)', async () => {
+      useLiveCaptureStore.setState({ appMode: 'soundcheck', isCapturing: true, promoting: false, stopping: false, liveMode: 'record' });
+      const { store } = makeStore({ startPlayback: async () => ({ success: true }) });
+      store.setState({ manifest: MANIFEST, sessionDir: '/tmp/s', routes: [[0], [2, 3]], devicesLoaded: true });
+      await store.getState().play();
+
+      expect(useLiveCaptureStore.getState().isCapturing).toBe(true);
+      expect(useLiveCaptureStore.getState().liveMode).toBe('record');
+      expect(useLiveCaptureStore.getState().promoting).toBe(false);
+      expect(useLiveCaptureStore.getState().stopping).toBe(false);
+    });
+
+    it('a playback event through bindIpcEvents never mutates Live capture state', () => {
+      useLiveCaptureStore.setState({ appMode: 'soundcheck', isCapturing: false, promoting: false, stopping: false });
+      const { store, mock } = makeStore();
+      store.getState().bindIpcEvents();
+      store.setState({ playing: true });
+
+      mock.emit('onPlaybackEvent', { type: 'progress', elapsed: 5, duration: 60 });
+      mock.emit('onPlaybackEvent', { type: 'level', tracks: [{ label: 'Vocal', rms: -20, peak: -10, clipping: false }] });
+      mock.emit('onPlaybackEvent', { type: 'ended' });
+
+      expect(useLiveCaptureStore.getState().isCapturing).toBe(false);
+      expect(useLiveCaptureStore.getState().promoting).toBe(false);
+      expect(useLiveCaptureStore.getState().stopping).toBe(false);
     });
   });
 });
