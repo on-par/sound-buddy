@@ -134,3 +134,13 @@ export function mixdownNoticeText(
 export function playGuardOk(manifest: SessionManifest | null, devicesLoaded: boolean, playing: boolean): boolean {
   return !!(manifest && devicesLoaded && !playing);
 }
+
+// True when two manifests describe the same track layout — same track count and
+// the same `kind` at every index. Used by chooseSession (#755) to decide
+// whether a re-import of the same session can keep the user's existing routing
+// instead of reseeding sequential defaults.
+export function sameTrackShape(a: SessionManifest | null, b: SessionManifest | null): boolean {
+  if (!a || !b) return false;
+  if (a.tracks.length !== b.tracks.length) return false;
+  return a.tracks.every((t, i) => t.kind === b.tracks[i].kind);
+}

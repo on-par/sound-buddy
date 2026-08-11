@@ -23,6 +23,7 @@ import {
   outputDeviceListView,
   mixdownNoticeText,
   getPlaybackRouting,
+  sameTrackShape,
   type SessionManifest,
   type SoundcheckOutputDevice,
   type SoundcheckMeterTrack,
@@ -124,13 +125,23 @@ export function createSoundcheckStore(getApi: () => SoundcheckApi) {
         return;
       }
       const manifest = result.manifest ?? null;
-      const routes = manifest ? getPlaybackRouting().defaultRoutes(manifest.tracks) : [];
+      const prev = get();
+      // #755: re-importing the same session with an unchanged track layout must
+      // preserve the routing the user set via setRoute — only reseed defaults
+      // for a new session or a changed track shape.
+      const keepPriorRoutes =
+        manifest !== null && dir === prev.sessionDir && sameTrackShape(prev.manifest, manifest);
+      const routes = manifest
+        ? keepPriorRoutes
+          ? prev.routes
+          : getPlaybackRouting().defaultRoutes(manifest.tracks)
+        : [];
       set({
         statusMessage: null,
         sessionDir: dir,
         manifest,
         routes,
-        mixdownNotice: mixdownNoticeText(manifest, routes, get().deviceChannels, get().master),
+        mixdownNotice: mixdownNoticeText(manifest, routes, prev.deviceChannels, prev.master),
       });
     },
 
