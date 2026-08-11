@@ -5,6 +5,7 @@ import { describe, it, expect, vi } from 'vitest';
 import {
   PLAYBACK_AVG_WINDOW_SEC,
   SEEK_END_GUARD_SEC,
+  SEEK_NUDGE_SEC,
   clampSeekTime,
   resolveDuration,
   frameIndexAtTime,
@@ -16,6 +17,8 @@ import {
   playbackReadoutText,
   clampSelectedFrame,
   analysisPlaybackInputs,
+  seekTimeFromBarClick,
+  seekNudgeTarget,
   createSpectrumTransport,
   type TransportAudio,
   type SpectrumTransportDeps,
@@ -173,6 +176,57 @@ describe('analysisPlaybackInputs', () => {
     expect(analysisPlaybackInputs({ filePath: 7 })).toEqual({ filePath: null, fallbackDuration: 0 });
     expect(analysisPlaybackInputs({ ffprobe: { format: { durationSeconds: 'nope' } } }))
       .toEqual({ filePath: null, fallbackDuration: 0 });
+  });
+});
+
+describe('seekTimeFromBarClick', () => {
+  it('maps a click x-position proportionally across the bar to seconds', () => {
+    expect(seekTimeFromBarClick(50, 0, 100, 10)).toBe(5);
+    expect(seekTimeFromBarClick(0, 0, 100, 10)).toBe(0);
+    expect(seekTimeFromBarClick(75, 0, 100, 20)).toBe(15);
+  });
+
+  it('clamps the fraction to [0,1] outside the bar bounds', () => {
+    expect(seekTimeFromBarClick(-20, 0, 100, 10)).toBe(0);
+    expect(seekTimeFromBarClick(500, 0, 100, 10)).toBe(10);
+  });
+
+  it('returns null for a zero-width bar', () => {
+    expect(seekTimeFromBarClick(10, 0, 0, 10)).toBeNull();
+  });
+
+  it('returns null for a non-positive duration', () => {
+    expect(seekTimeFromBarClick(10, 0, 100, 0)).toBeNull();
+    expect(seekTimeFromBarClick(10, 0, 100, -5)).toBeNull();
+  });
+});
+
+describe('seekNudgeTarget', () => {
+  it('ArrowLeft subtracts the nudge and floors at 0', () => {
+    expect(seekNudgeTarget('ArrowLeft', 10)).toBe(10 - SEEK_NUDGE_SEC);
+    expect(seekNudgeTarget('ArrowLeft', 1)).toBe(0);
+  });
+
+  it('ArrowRight adds the nudge with no upper clamp (seek() clamps the end)', () => {
+    expect(seekNudgeTarget('ArrowRight', 10)).toBe(10 + SEEK_NUDGE_SEC);
+  });
+
+  it('respects a custom nudgeSec', () => {
+    expect(seekNudgeTarget('ArrowLeft', 10, 2)).toBe(8);
+    expect(seekNudgeTarget('ArrowRight', 10, 2)).toBe(12);
+  });
+
+  it('returns null for any non-arrow key', () => {
+    expect(seekNudgeTarget('Enter', 10)).toBeNull();
+    expect(seekNudgeTarget(' ', 10)).toBeNull();
+    expect(seekNudgeTarget('ArrowUp', 10)).toBeNull();
+  });
+});
+
+describe('SEEK_NUDGE_SEC', () => {
+  it('is a positive finite number', () => {
+    expect(Number.isFinite(SEEK_NUDGE_SEC)).toBe(true);
+    expect(SEEK_NUDGE_SEC).toBeGreaterThan(0);
   });
 });
 

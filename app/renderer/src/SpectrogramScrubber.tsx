@@ -15,7 +15,7 @@
 // repaint — see the ADR in the #695 plan. Only discrete transitions (play,
 // pause, ended, a new file, a frame pin/unpin) re-render React.
 
-import { useEffect, useRef, useState, type MouseEvent } from 'react';
+import { useEffect, useRef, useState, type MouseEvent, type PointerEvent } from 'react';
 import { iconSvg } from './report-card';
 import { useStoreShallow } from './stores/useStoreShallow';
 import { useSpectrumStore } from './stores/spectrumStore';
@@ -29,6 +29,9 @@ import {
   frameIndexAtTime,
   windowAverageRms,
   PLAYBACK_AVG_WINDOW_SEC,
+  seekTimeFromBarClick,
+  seekNudgeTarget,
+  clampSeekTime,
 } from './spectrum-transport';
 import {
   heatmapSVG,
@@ -57,6 +60,7 @@ export default function SpectrogramScrubber({ spectrum, idealProfile, filePath }
   const readoutRef = useRef<HTMLSpanElement | null>(null);
   const timeRef = useRef<HTMLSpanElement | null>(null);
   const heatRef = useRef<HTMLDivElement | null>(null);
+  const seekBarRef = useRef<HTMLDivElement | null>(null);
   // Last frame index actually painted by the tick listener — skips repaint
   // work on ticks where the playhead hasn't crossed into a new frame yet.
   // Reset to -1 whenever a playback session (re)starts (the resting-state
@@ -83,11 +87,14 @@ export default function SpectrogramScrubber({ spectrum, idealProfile, filePath }
   // discrete transition and every animation-frame tick alike.
   function applyReadout(): void {
     if (timeRef.current) timeRef.current.textContent = playbackClockText(spectrumTransport.currentTime(), spectrumTransport.duration());
+    const pct = playheadPercent(spectrumTransport.currentTime(), spectrumTransport.duration());
     const playhead = document.getElementById('spectro-playhead');
     if (playhead) {
-      playhead.style.left = `${playheadPercent(spectrumTransport.currentTime(), spectrumTransport.duration())}%`;
+      playhead.style.left = `${pct}%`;
       playhead.style.display = 'block';
     }
+    const fill = document.getElementById('spectro-seekbar-fill');
+    if (fill) fill.style.width = `${pct}%`;
   }
 
   useEffect(() => {
@@ -142,6 +149,52 @@ export default function SpectrogramScrubber({ spectrum, idealProfile, filePath }
     // wherever the seek landed on its very next tick.
     if (!spectrumTransport.isPlaying()) selectFrame(i);
   }
+
+  // Pins the nearest frame after a seek-bar/keyboard seek, mirroring
+  // onHeatClick's pause-only pin above (#754).
+  function pinFrameAfterSeek(t: number): void {
+    if (spectrumTransport.isPlaying() || !frames) return;
+    selectFrame(frameIndexAtTime(frames, clampSeekTime(t, spectrumTransport.duration()), spectrumTransport.duration()));
+  }
+
+  function seekFromPointer(clientX: number): void {
+    const box = seekBarRef.current?.getBoundingClientRect();
+    if (!box) return;
+    const t = seekTimeFromBarClick(clientX, box.left, box.width, spectrumTransport.duration());
+    if (t == null) return;
+    spectrumTransport.seek(t);
+    pinFrameAfterSeek(t);
+  }
+
+  function onSeekBarPointerDown(e: PointerEvent<HTMLDivElement>): void {
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    seekFromPointer(e.clientX);
+    const move = (ev: globalThis.PointerEvent) => seekFromPointer(ev.clientX);
+    const up = () => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+  }
+
+  useEffect(() => {
+    function onKeyDown(e: KeyboardEvent): void {
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+      const target = e.target as HTMLElement | null;
+      if (target && (target.tagName === 'INPUT' || target.tagName === 'SELECT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) return;
+      // Ignore when the report-card spectrum panel isn't visible (component
+      // stays mounted under display:none when another tab is active).
+      if (!heatRef.current || heatRef.current.offsetParent === null) return;
+      const t = seekNudgeTarget(e.key, spectrumTransport.currentTime());
+      if (t == null) return;
+      e.preventDefault();
+      spectrumTransport.seek(t);
+      pinFrameAfterSeek(t);
+    }
+    document.addEventListener('keydown', onKeyDown);
+    return () => document.removeEventListener('keydown', onKeyDown);
+  }, [frames]);
   /* c8 ignore stop */
 
   if (!frames || !frames.length) return null;
@@ -178,6 +231,14 @@ export default function SpectrogramScrubber({ spectrum, idealProfile, filePath }
           onClick={() => spectrumTransport.toggle()}
           dangerouslySetInnerHTML={{ __html: iconSvg(playing ? 'pause' : 'play', 13) }}
         />
+        <div
+          id="spectro-seekbar"
+          className="spectro-seekbar"
+          ref={seekBarRef}
+          onPointerDown={onSeekBarPointerDown}
+        >
+          <div id="spectro-seekbar-fill" className="spectro-seekbar-fill" />
+        </div>
         <span id="spectro-time" className="spectro-time" ref={timeRef}>
           {playbackClockText(spectrumTransport.currentTime(), spectrumTransport.duration())}
         </span>

@@ -162,4 +162,52 @@ test.describe('playback transport (#180)', () => {
     await expect(playBtn).toHaveAttribute('aria-label', 'Play');
     await expect(readout).toHaveText('Whole-file average');
   });
+
+  test('seek bar click and arrow-key nudge scrub the playhead while paused and while playing (#754)', async () => {
+    const playbackFrames = FAKE_ANALYSIS.spectrum.frames.map((f, i) => ({ ...f, t: i * 0.15 }));
+    await electronApp.evaluate(({ ipcMain }, analysis) => {
+      ipcMain.removeHandler('analyze-file');
+      ipcMain.handle('analyze-file', () => ({ success: true, data: analysis }));
+    }, { ...FAKE_ANALYSIS, filePath: realFixturePath, spectrum: { ...FAKE_ANALYSIS.spectrum, frames: playbackFrames } });
+
+    await window.locator('.mode-tab[data-mode="reportcard"]').click();
+    await loadAndAnalyze(window, realFixturePath);
+
+    const playBtn = window.locator('#spectro-play-btn');
+    const seekBar = window.locator('#spectro-seekbar');
+    const playhead = window.locator('#spectro-playhead');
+
+    await expect(seekBar).toBeVisible();
+
+    // Click the seek bar at ~75% width while paused — the playhead jumps
+    // there and playback stays idle (the click alone must not start it).
+    const box = await seekBar.boundingBox();
+    await seekBar.click({ position: { x: Math.round(box!.width * 0.75), y: Math.round(box!.height / 2) } });
+    await expect(playBtn).toHaveAttribute('aria-label', 'Play');
+    const leftAfterClick = await playhead.evaluate((el) => parseFloat((el as HTMLElement).style.left));
+    expect(leftAfterClick).toBeGreaterThan(60);
+
+    // ArrowLeft nudges the playhead backward by SEEK_NUDGE_SEC.
+    await window.locator('body').press('ArrowLeft');
+    const leftAfterLeft = await playhead.evaluate((el) => parseFloat((el as HTMLElement).style.left));
+    expect(leftAfterLeft).toBeLessThan(leftAfterClick);
+
+    // ArrowRight nudges the playhead forward again.
+    await window.locator('body').press('ArrowRight');
+    const leftAfterRight = await playhead.evaluate((el) => parseFloat((el as HTMLElement).style.left));
+    expect(leftAfterRight).toBeGreaterThan(leftAfterLeft);
+
+    // Reset to the start, then start playback and scrub via the seek bar —
+    // the click seeks without leaving the playing state.
+    await window.evaluate(() => (window as unknown as { seekPlayback: (t: number) => void }).seekPlayback(0));
+    await playBtn.click();
+    await expect(playBtn).toHaveClass(/playing/);
+    await seekBar.click({ position: { x: Math.round(box!.width * 0.5), y: Math.round(box!.height / 2) } });
+    await expect(playBtn).toHaveClass(/playing/);
+
+    // Pause and reset the scrub selection so later tests start clean.
+    await playBtn.click();
+    await expect(playBtn).toHaveAttribute('aria-label', 'Play');
+    await window.locator('#scrub-reset').click();
+  });
 });
