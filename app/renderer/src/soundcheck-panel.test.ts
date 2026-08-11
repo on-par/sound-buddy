@@ -7,6 +7,7 @@ import {
   soundcheckTrackListView,
   mixdownNoticeText,
   playGuardOk,
+  sameTrackShape,
   type SessionManifest,
 } from './soundcheck-panel';
 
@@ -143,5 +144,32 @@ describe('playGuardOk', () => {
 
   it('is false while playing', () => {
     expect(playGuardOk(manifest, true, true)).toBe(false);
+  });
+});
+
+describe('sameTrackShape', () => {
+  it('is true when both manifests have the same track count and kinds', () => {
+    const a: SessionManifest = { tracks: [{ kind: 'mono' }, { kind: 'stereo' }] };
+    const b: SessionManifest = { tracks: [{ kind: 'mono', label: 'Vocal' }, { kind: 'stereo' }] };
+    expect(sameTrackShape(a, b)).toBe(true);
+  });
+
+  it('is false when the track counts differ', () => {
+    const a: SessionManifest = { tracks: [{ kind: 'mono' }, { kind: 'stereo' }] };
+    const b: SessionManifest = { tracks: [{ kind: 'mono' }] };
+    expect(sameTrackShape(a, b)).toBe(false);
+  });
+
+  it('is false when a kind differs at the same index', () => {
+    const a: SessionManifest = { tracks: [{ kind: 'mono' }, { kind: 'stereo' }] };
+    const b: SessionManifest = { tracks: [{ kind: 'mono' }, { kind: 'mono' }] };
+    expect(sameTrackShape(a, b)).toBe(false);
+  });
+
+  it('is false when either manifest is null', () => {
+    const a: SessionManifest = { tracks: [{ kind: 'mono' }] };
+    expect(sameTrackShape(null, a)).toBe(false);
+    expect(sameTrackShape(a, null)).toBe(false);
+    expect(sameTrackShape(null, null)).toBe(false);
   });
 });

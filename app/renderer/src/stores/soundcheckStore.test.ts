@@ -117,6 +117,37 @@ describe('createSoundcheckStore', () => {
       expect(s.manifest).toEqual(MANIFEST);
       expect(s.routes).toEqual([[0], [1, 2]]);
     });
+
+    it('preserves previously-set routes when re-importing the same session', async () => {
+      const { store } = makeStore({
+        openDirDialog: async () => '/tmp/session',
+        readSession: async () => ({ success: true, manifest: MANIFEST }),
+      });
+      store.setState({ sessionDir: '/tmp/session', manifest: MANIFEST, routes: [[3], [4, 5]] });
+      await store.getState().chooseSession();
+      expect(store.getState().routes).toEqual([[3], [4, 5]]);
+    });
+
+    it('reseeds default routes when importing a different session directory', async () => {
+      const { store } = makeStore({
+        openDirDialog: async () => '/tmp/B',
+        readSession: async () => ({ success: true, manifest: MANIFEST }),
+      });
+      store.setState({ sessionDir: '/tmp/A', manifest: MANIFEST, routes: [[3], [4, 5]] });
+      await store.getState().chooseSession();
+      expect(store.getState().routes).toEqual([[0], [1, 2]]);
+    });
+
+    it('reseeds default routes when the same directory\'s track shape changed', async () => {
+      const changedManifest: SessionManifest = { tracks: [{ kind: 'mono' }] };
+      const { store } = makeStore({
+        openDirDialog: async () => '/tmp/session',
+        readSession: async () => ({ success: true, manifest: changedManifest }),
+      });
+      store.setState({ sessionDir: '/tmp/session', manifest: MANIFEST, routes: [[3], [4, 5]] });
+      await store.getState().chooseSession();
+      expect(store.getState().routes).toEqual([[0]]);
+    });
   });
 
   describe('setRoute', () => {
