@@ -34,6 +34,7 @@ import { useEffect, type JSX } from 'react';
 import { useStoreShallow } from './stores/useStoreShallow';
 import { useLiveCaptureStore } from './stores/liveCaptureStore';
 import { createLiveMeterController } from './live-meter-controller';
+import { liveLevelReadout, patchLevelReadout } from './live-level-readout';
 import type { LiveEvent } from './live-capture-panel';
 
 export interface LiveWorkspaceRuntime {
@@ -56,14 +57,37 @@ export default function LiveWorkspace(): JSX.Element | null {
      harness (renderToString doesn't run effects) — exercised by
      tests/e2e/live-capture.spec.ts. createLiveMeterController's own
      coalescing logic is exhaustively unit-tested in
-     live-meter-controller.test.ts against fake deps. */
+     live-meter-controller.test.ts against fake deps. The header level readout
+     (#767) is a second patched surface: the same coalesced store snapshot
+     drives the board repaint (patchTick, still gated to fresh tick objects so
+     capture-state notifications cannot repaint stale data over the idle
+     workspace) and liveLevelReadout/patchLevelReadout for #live-level-readout. */
   useEffect(() => {
+    let lastPatchedTick: LiveEvent | null = null;
     const controller = createLiveMeterController({
       subscribe: useLiveCaptureStore.subscribe,
-      getState: () => ({ lastTick: useLiveCaptureStore.getState().lastTick }),
+      getState: () => {
+        const s = useLiveCaptureStore.getState();
+        return {
+          lastTick: s.lastTick,
+          isCapturing: s.isCapturing,
+          measurementSource: s.measurementSource,
+          lastMeasurementChannels: s.lastMeasurementChannels,
+          // Mirror inline-app.js's secondaryMeasurementActive(): status
+          // 'active' AND accumulated windows.
+          secondaryActive: s.secondaryMeasurement.status === 'active' && s.secondaryWindows.length > 0,
+        };
+      },
       raf: (cb) => requestAnimationFrame(cb),
       cancelRaf: (handle) => cancelAnimationFrame(handle),
-      patch: (win) => window.liveWorkspaceRuntime?.patchTick(win),
+      patch: (snap) => {
+        if (snap.lastTick && snap.lastTick !== lastPatchedTick) {
+          lastPatchedTick = snap.lastTick;
+          window.liveWorkspaceRuntime?.patchTick(snap.lastTick);
+        }
+        const el = document.getElementById('live-level-readout');
+        if (el) patchLevelReadout(el, liveLevelReadout(snap));
+      },
     });
     controller.start();
     return () => controller.stop();

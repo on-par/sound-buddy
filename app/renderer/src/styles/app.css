@@ -98,6 +98,20 @@
     #live-indicator .live-txt { color:var(--issue-text); }
     #window-badge, #measurement-badge { color:var(--text-muted); font-family:var(--font-mono); }
 
+    /* #767 header live-level readout — rightmost in #header-right; relative
+       dBFS until calibrated SPL (reference mic) lands. Patched by
+       live-level-readout.ts at animation rate, not React-rendered. Display is
+       owned by the inline style + patchLevelReadout's flex/none flip. */
+    .live-level { align-items:baseline; gap:6px; font-family:var(--font-mono);
+      font-size:13px; line-height:1; color:var(--text-secondary); }
+    .live-level .live-level-note { font:var(--fw-semibold) 10px/1 var(--font-sans);
+      letter-spacing:0.06em; color:var(--text-muted); }
+    .live-level .live-level-rms { font-weight:var(--fw-semibold); font-size:17px; }
+    .live-level .live-level-unit { font:var(--fw-regular) 10px/1 var(--font-sans); color:var(--text-muted); }
+    .live-level .live-level-peak { font-size:11px; color:var(--text-muted); }
+    .live-level .live-level-rel { font:var(--fw-regular) 9px/1 var(--font-sans);
+      letter-spacing:0.05em; color:var(--text-tertiary); }
+
     @keyframes sbpulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:.45;transform:scale(.6)} }
     .sb-pulse { animation:sbpulse var(--dur-pulse) var(--ease-in-out) infinite; }
     @keyframes sbspin { to{transform:rotate(360deg)} }

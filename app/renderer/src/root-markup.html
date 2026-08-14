@@ -65,6 +65,19 @@
         <span id="window-badge"></span>
         <span id="measurement-badge"></span>
       </div>
+      <!-- #767: live dB readout, top-right — relative/dBFS until a calibrated
+           reference mic enables true SPL (follow-on). React-agnostic; patched at
+           animation rate by live-level-readout.ts via LiveWorkspace's
+           live-meter-controller (ADR-0005). -->
+      <div id="live-level-readout" class="live-level" style="display:none"
+           role="meter" aria-valuemin="-120" aria-valuemax="0" aria-valuenow="-120"
+           title="Relative level in dBFS — not calibrated SPL. A calibrated reference microphone is required for true SPL readings.">
+        <span class="live-level-note">LEVEL</span>
+        <span class="live-level-rms" id="live-level-rms">—</span>
+        <span class="live-level-unit">dBFS</span>
+        <span class="live-level-peak" id="live-level-peak">pk —</span>
+        <span class="live-level-rel">relative</span>
+      </div>
     </div>
   </div>
 
