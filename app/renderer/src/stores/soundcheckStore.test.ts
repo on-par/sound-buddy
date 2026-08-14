@@ -5,10 +5,11 @@ import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest';
 import { createSoundcheckStore, type SoundcheckApi } from './soundcheckStore';
 import { useLiveCaptureStore } from './liveCaptureStore';
 import { useSpectrumStore } from './spectrumStore';
+import { useSettingsStore } from './settingsStore';
 import { createMockSoundBuddy } from '../mock-sound-buddy';
 import { recordButtonView } from '../record-transport';
 import type { SessionManifest } from '../soundcheck-panel';
-import type { SessionPeaksDto } from '../../../electron/ipc/api';
+import type { AppSettings, SessionPeaksDto } from '../../../electron/ipc/api';
 
 // playback-routing.js is a real, pure classic-script module — same
 // convention as liveCaptureStore.test.ts's armState/groupState requires.
@@ -21,7 +22,18 @@ beforeEach(() => {
 afterEach(() => {
   delete (globalThis as { window?: unknown }).window;
   useLiveCaptureStore.setState({ appMode: 'reportcard', isCapturing: false, promoting: false, stopping: false, liveMode: 'monitor' });
+  useSettingsStore.setState({ settings: null, settingsError: null });
 });
+
+/** A complete settings seed (with empty buses) so a bus test can spread + add. */
+const SEED_SETTINGS: AppSettings = {
+  idealProfile: '', customIdealProfiles: [], storageDir: '', rigs: [], activeRigId: null,
+  usageSignalEnabled: false, channelLabels: {}, channelGroups: {}, inputInstrumentProfiles: {},
+  crashReportingEnabled: false, dawWorkspaceEnabled: false, liveAdjustmentsEnabled: false,
+  reportFirstUxEnabled: false, shareChurchName: '', weeklyReminderEnabled: false,
+  weeklyReminderServiceDay: 0, liveEqPaneWidth: 360, measurementDeviceName: '',
+  gradingProfile: 'casual', consoleNetworkConsentGranted: false, soundcheckBuses: [],
+};
 
 function makeStore(overrides: Partial<Parameters<typeof createMockSoundBuddy>[0]> = {}) {
   const mock = createMockSoundBuddy(overrides);
@@ -149,6 +161,56 @@ describe('createSoundcheckStore', () => {
       store.setState({ sessionDir: '/tmp/session', manifest: MANIFEST, routes: [[3], [4, 5]] });
       await store.getState().chooseSession();
       expect(store.getState().routes).toEqual([[0]]);
+    });
+
+    it('auto-routes a track matching a saved bus pattern to the bus output on a NEW session (#756)', async () => {
+      useSettingsStore.setState({
+        settings: {
+          ...SEED_SETTINGS,
+          soundcheckBuses: [{ id: 'b1', name: 'Acoustic Guitar', pattern: 'ag', outputChannel: 3 }],
+        },
+      });
+      const manifest: SessionManifest = { tracks: [{ kind: 'mono', label: 'AG' }, { kind: 'stereo' }] };
+      const { store } = makeStore({
+        openDirDialog: async () => '/tmp/brand-new',
+        readSession: async () => ({ success: true, manifest }),
+      });
+      await store.getState().chooseSession();
+      expect(store.getState().routes).toEqual([[3], [1, 2]]);
+    });
+
+    it('auto-routes on a reimport whose track shape changed, matching the stem basename (#756)', async () => {
+      useSettingsStore.setState({
+        settings: {
+          ...SEED_SETTINGS,
+          soundcheckBuses: [{ id: 'b1', name: 'Kick', pattern: 'kick', outputChannel: 0 }],
+        },
+      });
+      const changed: SessionManifest = { tracks: [{ kind: 'mono', file: '/tmp/session/kick.wav' }] };
+      const { store } = makeStore({
+        openDirDialog: async () => '/tmp/session',
+        readSession: async () => ({ success: true, manifest: changed }),
+      });
+      store.setState({ sessionDir: '/tmp/session', manifest: MANIFEST, routes: [[5]] });
+      await store.getState().chooseSession();
+      expect(store.getState().routes).toEqual([[0]]);
+    });
+
+    it('preserves prior routes on a same-session reimport even when a bus would match (ADR-0012, #756)', async () => {
+      useSettingsStore.setState({
+        settings: {
+          ...SEED_SETTINGS,
+          soundcheckBuses: [{ id: 'b1', name: 'Acoustic Guitar', pattern: 'ag', outputChannel: 3 }],
+        },
+      });
+      const manifest: SessionManifest = { tracks: [{ kind: 'mono', label: 'AG' }, { kind: 'stereo' }] };
+      const { store } = makeStore({
+        openDirDialog: async () => '/tmp/session',
+        readSession: async () => ({ success: true, manifest }),
+      });
+      store.setState({ sessionDir: '/tmp/session', manifest, routes: [[7], [8, 9]] });
+      await store.getState().chooseSession();
+      expect(store.getState().routes).toEqual([[7], [8, 9]]);
     });
 
     it('triggers generation on a successful read-session and lands peaks in ready state', async () => {

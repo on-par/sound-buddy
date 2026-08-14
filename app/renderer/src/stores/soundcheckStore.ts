@@ -30,9 +30,11 @@ import {
   mixdownNoticeText,
   getPlaybackRouting,
   sameTrackShape,
+  applyBusRoutes,
   type SessionManifest,
   type SoundcheckOutputDevice,
 } from '../soundcheck-panel';
+import { useSettingsStore } from './settingsStore';
 
 export type SoundcheckApi = Pick<
   PlaybackApi,
@@ -150,10 +152,16 @@ export function createSoundcheckStore(getApi: () => SoundcheckApi) {
       // for a new session or a changed track shape.
       const keepPriorRoutes =
         manifest !== null && dir === prev.sessionDir && sameTrackShape(prev.manifest, manifest);
+      // #756: on the route-(re)seed path only, layer the persisted saved-bus
+      // routing over the seeded defaults so always-the-same tracks (e.g. an
+      // "AG" stem) auto-route to their saved outputs. The keepPriorRoutes
+      // branch is byte-unchanged (ADR-0012) — bus matching never clobbers the
+      // user's manual setRoute overrides.
+      const buses = useSettingsStore.getState().settings?.soundcheckBuses || [];
       const routes = manifest
         ? keepPriorRoutes
           ? prev.routes
-          : getPlaybackRouting().defaultRoutes(manifest.tracks)
+          : applyBusRoutes(manifest.tracks, getPlaybackRouting().defaultRoutes(manifest.tracks), buses)
         : [];
       set({
         statusMessage: null,
