@@ -78,14 +78,15 @@ else
 fi
 
 # Python analysis helpers (stream.py, playback.py, spectrum.py). Require
-# numpy + scipy + soundfile — spectrum.py hard-requires soundfile at import
+# numpy + soundfile — spectrum.py hard-requires soundfile at import
 # time (sys.exit(1) if missing), so the probe must include it or this whole
 # block aborts the run instead of skipping. sounddevice is stubbed by the
-# stream/playback tests. Skipped with a note if no suitable interpreter is found.
+# stream/playback tests. No scipy (#665): the DSP is numpy-only. Skipped with
+# a note if no suitable interpreter is found.
 PYTHON="${SOUND_BUDDY_PYTHON:-}"
 if [[ -z "$PYTHON" ]]; then
   for cand in ./.venv/bin/python3 python3; do
-    if command -v "$cand" >/dev/null 2>&1 && "$cand" -c 'import numpy, scipy, soundfile' >/dev/null 2>&1; then
+    if command -v "$cand" >/dev/null 2>&1 && "$cand" -c 'import numpy, soundfile' >/dev/null 2>&1; then
       PYTHON="$cand"; break
     fi
   done
@@ -100,14 +101,14 @@ if [[ -n "$PYTHON" ]]; then
   echo "==> python tests (spectrum.py) via $PYTHON"
   "$PYTHON" packages/audio-engine/scripts/test_spectrum.py
 else
-  echo "==> python tests skipped (no interpreter with numpy+scipy+soundfile)"
+  echo "==> python tests skipped (no interpreter with numpy+soundfile)"
 fi
 
 # spike helpers (spike_dual_capture.py, spike_waveform_transport.py) are
-# plain Python (no numpy/scipy — the modules keep both out of their analysis
+# plain Python (no numpy — the modules keep it out of their analysis
 # helpers so these run on any python3), so they're gated on interpreter
-# presence only — independent of the numpy+scipy probe above, which would
-# otherwise skip these tests on a host that lacks numpy/scipy but has a
+# presence only — independent of the numpy probe above, which would
+# otherwise skip these tests on a host that lacks numpy but has a
 # perfectly good plain python3.
 PYTHON_PLAIN="${SOUND_BUDDY_PYTHON:-}"
 if [[ -z "$PYTHON_PLAIN" ]]; then

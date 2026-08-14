@@ -18,8 +18,8 @@ import { runEbur128 } from "./ebur128.js";
 //
 // Tools may be absent on a given machine (fresh checkout, CI without media
 // tools). Each block skips cleanly when its tool is missing — matching the
-// e2e Python conventions — while CI installs sox/ffprobe/numpy/scipy/soundfile
-// so they run.
+// e2e Python conventions — while CI installs sox/ffprobe/numpy/soundfile
+// so they run. No scipy (numpy-only DSP, #665).
 
 const fixture = (name: string): string =>
   fileURLToPath(new URL(`../../test-fixtures/${name}`, import.meta.url));
@@ -40,9 +40,9 @@ function toolAvailable(cmd: string, args: string[]): boolean {
 const HAS_SOX = toolAvailable("sox", ["--version"]);
 const HAS_FFPROBE = toolAvailable("ffprobe", ["-version"]);
 const HAS_FFMPEG = toolAvailable("ffmpeg", ["-version"]);
-// spectrum.py shells out to `python3`; it needs numpy/scipy/soundfile. Probe
+// spectrum.py shells out to `python3`; it needs numpy/soundfile. Probe
 // the exact interpreter the parser will use so the gate matches reality.
-const HAS_SPECTRUM_DEPS = toolAvailable("python3", ["-c", "import numpy, scipy, soundfile"]);
+const HAS_SPECTRUM_DEPS = toolAvailable("python3", ["-c", "import numpy, soundfile"]);
 
 describe.skipIf(!HAS_SOX)("sox stat parser (fixture)", () => {
   it("tone.wav: peak/RMS dBFS, length, no clipping", async () => {
@@ -90,7 +90,7 @@ describe.skipIf(!HAS_FFPROBE)("ffprobe parser (fixture)", () => {
 });
 
 describe.skipIf(!HAS_SPECTRUM_DEPS)("spectrum parser (fixture)", () => {
-  // spectrum.py's cold numpy/scipy import can still exceed vitest's 5 s
+  // spectrum.py's cold numpy import can still exceed vitest's 5 s
   // default on a fresh CI runner; give each spawn generous headroom.
   const SPECTRUM_TIMEOUT = 60_000;
 

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-spectrum.py — Frequency-band + fine-grained spectral analysis using numpy/scipy.
+spectrum.py — Frequency-band + fine-grained spectral analysis using numpy.
 
 Usage: python3 spectrum.py <audio_file_path>
 
@@ -28,11 +28,10 @@ import numpy as np
 
 try:
     import soundfile as sf
-    from scipy.signal import get_window
 except ImportError:
     print(
         json.dumps({
-            "error": "soundfile/scipy not installed. Run: "
+            "error": "soundfile not installed. Run: "
                      "pip install -r packages/audio-engine/scripts/requirements.txt",
         }),
         file=sys.stdout,
@@ -115,7 +114,10 @@ def _stft_mag(y: np.ndarray, n_fft: int, hop: int) -> np.ndarray:
     test_spectrum.py for the reference semantics this must match."""
     pad = n_fft // 2
     ypad = np.pad(y, pad, mode="constant")          # zero-padded, centered framing
-    window = get_window("hann", n_fft, fftbins=True)
+    # Periodic Hann — exactly what get_window("hann", n_fft, fftbins=True)
+    # returned, now computed in numpy so the runtime needs no scientific
+    # Python dependency (#665).
+    window = 0.5 - 0.5 * np.cos(2.0 * np.pi * np.arange(n_fft) / n_fft)
     n_frames = 1 + (len(ypad) - n_fft) // hop
     frames = np.lib.stride_tricks.sliding_window_view(ypad, n_fft)[::hop][:n_frames]
     return np.abs(np.fft.rfft(frames * window, axis=1)).T

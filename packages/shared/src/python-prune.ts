@@ -62,10 +62,10 @@ export function isPrunablePythonDir(relDir: string): boolean {
   }
 
   if (basename === TESTING_DIR) {
-    // numpy/testing is a load-bearing exception: scipy.signal imports it at
-    // import time (verified with numpy 2.4.6 / scipy 1.18.0), so deleting it
-    // breaks the app with a missing-module error. numpy/testing/tests is still
-    // pruned above by the `tests` rule.
+    // numpy/testing is a load-bearing exception: numpy.testing gets imported
+    // at import time by numpy-adjacent packages (verified with numpy 2.4.6),
+    // so deleting it breaks the app with a missing-module error.
+    // numpy/testing/tests is still pruned above by the `tests` rule.
     const isNumpyTesting =
       underSitePackages.length === 2 && underSitePackages[0] === NUMPY_DIR && underSitePackages[1] === TESTING_DIR;
     return !isNumpyTesting;

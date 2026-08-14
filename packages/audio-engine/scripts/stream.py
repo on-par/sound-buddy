@@ -49,7 +49,7 @@ The "window" events carry the heavier context used by the (gated) LLM path. The
 workspace's mix lane plus one "strip{i}" lane per configured strip, in
 configured order (#520, #521, ADR 0004).
 
-Dependencies: pip install sounddevice numpy scipy soundfile
+Dependencies: pip install sounddevice numpy soundfile
 """
 
 from __future__ import annotations
@@ -69,7 +69,6 @@ from datetime import datetime, timezone
 
 try:
     import sounddevice as sd
-    from scipy import signal as scipy_signal
     from spectrum import GRID_POINTS, _grid_freqs, _band_edges, curve_from_power
 except ImportError as e:
     print(json.dumps({"error": f"missing dependency: {e}"}), flush=True)
@@ -363,6 +362,22 @@ def compute_band_rms_db(freqs, power_spectrum, low, high):
     return float(10.0 * np.log10(band_power + 1e-12))
 
 
+def _windowed_stft(sig: np.ndarray, sample_rate: int, nperseg: int, hop: int) -> tuple[np.ndarray, np.ndarray]:
+    """STFT with the replaced library's stft defaults (window
+    'hann_periodic', boundary 'zeros', padded, scaling 'spectrum'), ported
+    to numpy so the packaged runtime needs no scientific Python dependency
+    (#665). Returns (freqs, Zxx) with Zxx shaped (nperseg//2 + 1, T)."""
+    win = 0.5 - 0.5 * np.cos(2.0 * np.pi * np.arange(nperseg) / nperseg)
+    pad = nperseg // 2
+    x = np.pad(sig, pad, mode="constant")                  # boundary='zeros'
+    nadd = (-(len(x) - nperseg) % hop) % nperseg           # padded=True
+    x = np.pad(x, (0, nadd), mode="constant")
+    frames = np.lib.stride_tricks.sliding_window_view(x, nperseg)[::hop]
+    Zxx = np.fft.rfft(frames * win, axis=1) / win.sum()    # scaling='spectrum'
+    freqs = np.fft.rfftfreq(nperseg, 1.0 / sample_rate)
+    return freqs, Zxx.T
+
+
 def analyze_signal(sig: np.ndarray, sample_rate: int, cols: np.ndarray | None = None) -> dict:
     """
     Per-strip acoustic metrics for one collapsed signal.
@@ -385,9 +400,7 @@ def analyze_signal(sig: np.ndarray, sample_rate: int, cols: np.ndarray | None = 
     nperseg = min(4096, sig.size)
     if nperseg >= 32:
         hop = max(1, nperseg // 4)
-        freqs, _t, Zxx = scipy_signal.stft(
-            sig, fs=sample_rate, nperseg=nperseg, noverlap=nperseg - hop
-        )
+        freqs, Zxx = _windowed_stft(sig, sample_rate, nperseg, hop)
         power = np.mean(np.abs(Zxx) ** 2, axis=1)
     else:
         freqs = np.array([0.0])

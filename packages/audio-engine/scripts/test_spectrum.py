@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """
-Unit tests for spectrum.py's pure numpy/scipy DSP helpers (#662 — librosa removal).
+Unit tests for spectrum.py's pure numpy DSP helpers (#662 — librosa removal,
+#665 — scipy removal).
 
 Run: python3 packages/audio-engine/scripts/test_spectrum.py
-Requires numpy + scipy. `soundfile`-dependent tests skip when soundfile is
+Requires numpy. `soundfile`-dependent tests skip when soundfile is
 absent (same HAVE_SOUNDFILE guard as test_stream.py/test_playback.py). The
 librosa-parity tests skip unless librosa is importable — they run in the dev
 venv (which has both librosa and the new deps) and nowhere else; this is the
@@ -78,6 +79,21 @@ class NoLibrosaGuard(unittest.TestCase):
         self.assertNotIn("librosa", source)
 
 
+class NoScipyGuard(unittest.TestCase):
+    """#665: the get_window → numpy port must leave no scipy behind, so the
+    packaged runtime can drop scipy entirely. Mirrors NoLibrosaGuard (#662):
+    checked against the module's own namespace (this test file does not import
+    scipy, so sys.modules would be a no-op here) and the file's source."""
+
+    def test_scipy_not_imported(self):
+        self.assertNotIn("scipy", vars(spectrum))
+
+    def test_source_has_no_scipy_token(self):
+        with open(_SPECTRUM_PATH, "r", encoding="utf-8") as fh:
+            source = fh.read()
+        self.assertNotIn("scipy", source)
+
+
 class StftShape(unittest.TestCase):
     def test_shape_matches_centered_framing(self):
         y, _sr = _sine()
@@ -88,7 +104,7 @@ class StftShape(unittest.TestCase):
 
 @unittest.skipUnless(HAVE_LIBROSA, "librosa not installed — parity check skipped")
 class LibrosaParity(unittest.TestCase):
-    """Drift guard: the numpy/scipy port must numerically match librosa 0.11.0."""
+    """Drift guard: the numpy port must numerically match librosa 0.11.0."""
 
     def setUp(self):
         self.y, self.sr = _sine()

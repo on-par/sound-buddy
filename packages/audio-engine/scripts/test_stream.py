@@ -3,8 +3,10 @@
 Unit tests for stream.py's pure analysis/parsing helpers.
 
 Run: python3 packages/audio-engine/scripts/test_stream.py
-Requires numpy + scipy. `sounddevice` is stubbed so the tests run on hosts
+Requires numpy. `sounddevice` is stubbed so the tests run on hosts
 without PortAudio (e.g. CI), since stream.py imports it at module load.
+The scipy-parity drift tests skip when scipy is absent (it only exists in the
+dev venv, #665).
 """
 
 import io
@@ -30,12 +32,21 @@ if "sounddevice" not in sys.modules:
 import numpy as np
 
 # soundfile drives the WAV stems; it may be absent on hosts that only ship
-# numpy+scipy, so the stem/manifest tests skip rather than fail there.
+# numpy, so the stem/manifest tests skip rather than fail there.
 try:
     import soundfile as sf
     HAVE_SOUNDFILE = True
 except ImportError:
     HAVE_SOUNDFILE = False
+
+# scipy is only needed for the _windowed_stft parity drift test (#665) — the
+# runtime itself no longer ships it. SkipUnless so CI (scipy-free) runs the
+# rest of the suite and only the dev venv exercises the parity check.
+try:
+    import scipy.signal
+    HAVE_SCIPY = True
+except ImportError:
+    HAVE_SCIPY = False
 
 _HERE = os.path.dirname(__file__)
 _spec = importlib.util.spec_from_file_location("stream", os.path.join(_HERE, "stream.py"))
@@ -128,6 +139,90 @@ class AnalyzeGroups(unittest.TestCase):
         frames = np.zeros((16, 2), dtype=np.float32)
         out = stream.analyze_groups(frames, self.sr, stream.parse_channel_groups("0", 2))
         self.assertEqual(len(out), 1)
+
+
+class NoScipyGuard(unittest.TestCase):
+    """#665: the scipy.signal.stft → numpy port must leave no scipy behind, so
+    the packaged runtime can drop scipy entirely. Mirrors NoLibrosaGuard in
+    test_spectrum.py (#662): checked against the module's own namespace (this
+    test file imports scipy only for the parity drift check below, which is why
+    we don't use sys.modules) and the file's source."""
+
+    def test_scipy_not_imported(self):
+        self.assertNotIn("scipy", vars(stream))
+
+    def test_source_has_no_scipy_token(self):
+        with open(os.path.join(_HERE, "stream.py"), "r", encoding="utf-8") as fh:
+            source = fh.read()
+        self.assertNotIn("scipy", source)
+
+
+class WindowedStft(unittest.TestCase):
+    """Shape/behavior contract for the numpy STFT (#665). The framing (centered
+    zero-pad + end-pad to an integer frame count) is pinned here against the
+    pre-scipy port's expected shape; the numeric values are pinned by the
+    ScipyParity drift test below in the dev venv."""
+
+    def setUp(self):
+        self.sr = 48000
+        t = np.arange(int(0.2 * self.sr)) / self.sr
+        self.tone = (0.5 * np.sin(2 * np.pi * 1000 * t)).astype(np.float32)
+
+    def test_freqs_and_zxx_shape(self):
+        freqs, Zxx = stream._windowed_stft(self.tone, self.sr, 4096, 1024)
+        self.assertEqual(freqs.shape, (4096 // 2 + 1,))
+        # 0.2 s @ 48 kHz = 9600 samples, centered pad (4096) + end-pad
+        # (640) → len 14336 → 1 + (14336-4096)/1024 = 11 frames.
+        self.assertEqual(Zxx.shape, (4096 // 2 + 1, 11))
+
+    def test_power_mean_shape_matches_band_input(self):
+        freqs, Zxx = stream._windowed_stft(self.tone, self.sr, 4096, 1024)
+        power = np.mean(np.abs(Zxx) ** 2, axis=1)
+        self.assertEqual(power.shape, freqs.shape)
+
+    def test_small_signal_matches_zeros_branch_power(self):
+        # nperseg = min(4096, sig.size) < 32 → the zeros branch in analyze_signal
+        # never reaches _windowed_stft; the STFT itself must still not raise for
+        # the smallest nperseg that the pads permit (nperseg >= 2).
+        freqs, Zxx = stream._windowed_stft(np.zeros(32, dtype=np.float32), self.sr, 32, 8)
+        self.assertEqual(freqs.shape, (17,))
+        self.assertTrue(np.all(np.abs(Zxx) == 0.0))
+
+
+@unittest.skipUnless(HAVE_SCIPY, "scipy not installed — parity check skipped")
+class ScipyParity(unittest.TestCase):
+    """Drift guard: the numpy _windowed_stft must numerically match
+    scipy.signal.stft under scipy 1.18 defaults (hann_periodic, boundary='zeros',
+    padded, scaling='spectrum'). The dev venv ships scipy, so this runs there
+    and in no CI job (#665) — the same pattern #662 established for librosa."""
+
+    def setUp(self):
+        self.sr = 48000
+        t = np.arange(int(0.2 * self.sr)) / self.sr
+        self.tone = (0.5 * np.sin(2 * np.pi * 1000 * t)).astype(np.float32)
+        rng = np.random.default_rng(0)
+        self.noise = rng.uniform(-0.5, 0.5, size=int(0.2 * self.sr)).astype(np.float32)
+
+    def _assert_matches_scipy(self, sig, nperseg, hop):
+        freqs, Zxx = stream._windowed_stft(sig, self.sr, nperseg, hop)
+        f_t, _t, Z_t = scipy.signal.stft(
+            sig, fs=self.sr, nperseg=nperseg, noverlap=nperseg - hop
+        )
+        np.testing.assert_array_equal(freqs, f_t)
+        self.assertEqual(Zxx.shape, Z_t.shape)
+        np.testing.assert_allclose(Zxx, Z_t, atol=1e-6)
+
+    def test_tone_matches_scipy(self):
+        self._assert_matches_scipy(self.tone, 4096, 1024)
+
+    def test_noise_matches_scipy(self):
+        self._assert_matches_scipy(self.noise, 4096, 1024)
+
+    def test_small_nperseg_matches_scipy(self):
+        self._assert_matches_scipy(self.noise, 256, 64)
+
+    def test_meter_window_matches_scipy(self):
+        self._assert_matches_scipy(self.tone, 2048, 512)
 
 
 class TestAnalyzerCurve(unittest.TestCase):
