@@ -427,7 +427,11 @@ test.describe.serial('Rigs — save / load / switch', () => {
     await expect(win.locator('#rig-saveas-btn')).toBeDisabled();
     await closeSettings(win);
 
+    // #776: a Record-button stop only demotes back to monitoring (rig picker
+    // stays locked) — drive the stop ceremony directly for a genuinely full
+    // stop, then the controls unlock.
     await win.locator('#record-button').click();
+    await stopCaptureIfRunning(win);
     await openAudioSettings(win);
     await expect(win.locator('#rig-select')).toBeEnabled();
     await expect(win.locator('#rig-saveas-btn')).toBeEnabled();
@@ -472,7 +476,11 @@ test.describe.serial('Rigs — save / load / switch', () => {
     await expect(win.locator('#live-ws-add')).toBeDisabled();
     await expect(win.locator('#live-ws-arm-all')).toBeDisabled();
 
+    // #776: a Record-button stop only demotes back to monitoring (config stays
+    // capture-locked) — drive the stop ceremony directly for a genuinely full
+    // stop before asserting the controls re-enable.
     await win.locator('#record-button').click();
+    await stopCaptureIfRunning(win);
     await openAudioSettings(win);
     for (const sel of locked) {
       await expect(win.locator(sel)).toBeEnabled();

@@ -51,6 +51,12 @@ export interface LiveCaptureRuntime {
   onCaptureStopping(): void;
   /** Runs the post-stop side effects once the IPC result resolves (sessionDir drives the "reveal session folder" offer). */
   onCaptureStopped(result: StopCaptureResult | undefined): void;
+  /** #776: called by stopLiveCapture right before the automatic monitor-resume
+   *  that follows a record stop; tells the runtime the next capture start is a
+   *  resume of the always-monitoring Live tab (not a fresh user session), so
+   *  onCaptureStarting preserves the just-shown post-record session offers
+   *  instead of clearing them. Consumed by the runtime on the next start. */
+  onResumeMonitoringStart?(): void;
   /** Promotes a running monitor session to a recording in place (#458) — its own guard/orchestration stays bridged. */
   promoteToRecording(): Promise<void>;
   /** Repaints the still-imperative Room badge/EQ-pane slot after a secondary-
@@ -110,12 +116,25 @@ export async function startLiveCapture(
 }
 
 export async function stopLiveCapture(rt: LiveCaptureRuntime | undefined): Promise<void> {
+  const live = useLiveCaptureStore.getState();
+  const stopIsRecordStop = live.liveMode === 'record' && live.isCapturing;
   useLiveCaptureStore.getState().setStopping(true);
   const stopPromise = useLiveCaptureStore.getState().stopCapture();
   rt?.onCaptureStopping();
   const result = await stopPromise;
   rt?.onCaptureStopped(result);
   useLiveCaptureStore.getState().setStopping(false);
+  // #776: the Live tab is always-monitoring (ADR-0014) — stopping a record
+  // returns to a live monitor session (Record button idle, meters running)
+  // instead of ending capture entirely. Mirrors recordCapture's normalize-
+  // then-start shape; onResumeMonitoringStart keeps the just-shown session
+  // offers on screen across the restart.
+  if (!stopIsRecordStop) return;
+  const next = useLiveCaptureStore.getState();
+  if (next.liveMode !== 'monitor') useLiveCaptureStore.getState().setLiveMode('monitor');
+  rt?.onResumeMonitoringStart?.();
+  const opts = captureOptsFromCadence(next.windowSecs, next.meterIntervalMs);
+  await startLiveCapture(rt, opts.windowSecs, opts.intervalSecs);
 }
 
 // The top-bar Record button's promote action (#729, #757): promotes a running

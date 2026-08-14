@@ -146,6 +146,13 @@ let channelConfig = [];        // configured strips: { kind:'mono'|'stereo', a:i
 // mirrors the store's current values into the module vars above so the ~50
 // read call sites throughout this file don't all have to become
 // lcStore.getState().x.
+// #776: set by window.liveCaptureRuntime.onResumeMonitoringStart() immediately
+// before the automatic monitor-resume that follows a record stop. onCaptureStarting
+// consumes it: a resume must preserve the just-shown post-record session offers
+// (rec-offer/rc-offer/rc-not-enough/live-rc-cue) instead of clearing them the way
+// a fresh user-initiated session does.
+let resumeMonitoringStart = false;
+
 function syncLiveCaptureMirror(state, prevState) {
   liveRunning = state.isCapturing;
   capturePromoting = state.promoting;
@@ -1455,6 +1462,7 @@ window.liveCaptureRuntime = {
   onCaptureStarted,
   onCaptureStopping,
   onCaptureStopped,
+  onResumeMonitoringStart() { resumeMonitoringStart = true; },
   promoteToRecording,
   afterSecondaryMeasurementChange: afterSecondaryStateChange,
 };
@@ -1579,10 +1587,18 @@ function onCaptureStarting() {
   window.rendererStores.rig.getState().setLocked(true);
   setCaptureControlsLocked(true); // freeze device/mode/folder/channels/sliders (#38)
 
-  document.getElementById('rec-offer').style.display = 'none';
-  document.getElementById('rc-offer').style.display = 'none';
-  document.getElementById('rc-not-enough').style.display = 'none';
-  document.getElementById('live-rc-cue').style.display = 'none';
+  // #776: a resume (the monitor-restart that follows a record stop) must keep
+  // the just-shown post-record session offers on screen — only a fresh
+  // user-initiated session clears them. The flag is one-way: consumed here on
+  // the first capture start, then back to false.
+  if (resumeMonitoringStart) {
+    resumeMonitoringStart = false;
+  } else {
+    document.getElementById('rec-offer').style.display = 'none';
+    document.getElementById('rc-offer').style.display = 'none';
+    document.getElementById('rc-not-enough').style.display = 'none';
+    document.getElementById('live-rc-cue').style.display = 'none';
+  }
   document.getElementById('live-indicator').style.display = 'flex';
   syncCaptureControls();
   renderMeasurementBadge();

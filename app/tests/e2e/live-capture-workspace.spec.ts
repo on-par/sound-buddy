@@ -1,5 +1,5 @@
 import { test, expect, type ElectronApplication, type Page } from '@playwright/test';
-import { launchApp } from './e2e-helpers';
+import { launchApp, stopCaptureIfRunning } from './e2e-helpers';
 
 // Live capture workspace controls — split out of e2e.spec.ts as its own file
 // (#225): "Workspace arm controls (#191)" and "Persistent track workspace
@@ -53,6 +53,11 @@ test.describe('Live capture (PRD 06) — workspace controls', () => {
   });
 
   test.beforeEach(async () => {
+    // #776: a record stop only demotes back to a monitor session (capture keeps
+    // running, config stays locked) — reset to a genuinely idle board first so
+    // this shared beforeEach's #device-refresh-btn click isn't blocked by a
+    // dangling monitor session from the previous test.
+    await stopCaptureIfRunning(window);
     await window.locator('.mode-tab[data-mode="live"]').click();
     await expect(window.locator('#tab-live')).toHaveClass(/active/);
     // Re-enumerate against the stubbed 8-channel device (the boot-time scan
@@ -107,13 +112,13 @@ test.describe('Live capture (PRD 06) — workspace controls', () => {
       await expect(window.locator('#arm-hint')).toBeVisible();
       await expect(window.locator('#arm-hint')).toContainText('Arm at least one strip');
       await expect(window.locator('#live-indicator .live-txt')).toHaveText('LIVE');
-      // Arming stays live while monitoring (#757) — re-arm, record, then stop
-      // so the next test starts idle (a dangling capture would wedge this
-      // suite's shared-session beforeEach).
+      // Arming stays live while monitoring (#757) — re-arm, record, then stop.
+      // The stop demotes back to monitoring (#776); the beforeEach's
+      // stopCaptureIfRunning reset fully stops the board for the next test.
       await window.locator('#live-ws-arm-all').click();
       await window.locator('#record-button').click();
       await expect(window.locator('#live-indicator .live-txt')).toHaveText('REC');
-      await window.locator('#record-button').click(); // stop
+      await window.locator('#record-button').click(); // stop → monitoring resumes
       await expect(window.locator('#record-button')).toBeEnabled();
     });
 
@@ -128,7 +133,7 @@ test.describe('Live capture (PRD 06) — workspace controls', () => {
       await expect(window.locator('#live-ws-arm-all')).toBeDisabled();
       await expect(window.locator('#live-ws-disarm-all')).toBeDisabled();
 
-      await window.locator('#record-button').click();
+      await window.locator('#record-button').click(); // stop → monitoring resumes
       await expect(window.locator('#record-button')).toBeEnabled();
     });
   });
@@ -195,8 +200,11 @@ test.describe('Live capture (PRD 06) — workspace controls', () => {
       await expect(window.locator('#settings-audio-capture-lock-note')).toBeVisible();
       await closeSettings(window);
 
-      await window.locator('#record-button').click(); // stop
-      await expect(window.locator('#live-ws-add')).toBeEnabled();
+      await window.locator('#record-button').click(); // stop → monitoring resumes (#776)
+      // #776: always-monitoring — a record stop keeps the board live, so Add
+      // stays read-only (config capture-locked while monitoring) instead of
+      // re-enabling the way the old full stop did.
+      await expect(window.locator('#live-ws-add')).toBeDisabled();
     });
   });
 
