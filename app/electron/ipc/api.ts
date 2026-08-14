@@ -571,11 +571,45 @@ export interface LiveApi {
   onMeasurementEvent(cb: (data: unknown) => void): void;
 }
 
+// ─── Soundcheck waveform-peak DTOs (new — #734) ──────────────────────────────
+// Mirror the JSON document waveform_peaks.py writes: per-track min/max buckets
+// at bucketsPerSecond, b64-packed as interleaved u8 min/max bytes per track
+// (ADR-0004 encoding). Stereo stems fold to ONE combined lane per track.
+
+/** One track's decoded peak buckets. `data` is the base64 of the interleaved
+ *  u8 min/max byte pairs (min0, max0, min1, max1, ...); each pair covers
+ *  1/bucketsPerSecond seconds of audio, and `bucketCount` = length of `data`
+ *  / 2 (the last bucket absorbs a partial remainder). */
+export interface TrackPeaksDto {
+  index: number;
+  label: string;
+  kind: 'mono' | 'stereo';
+  bucketCount: number;
+  data: string;
+}
+
+/** The full per-track waveform-peak document for a loaded Soundcheck session. */
+export interface SessionPeaksDto {
+  bucketsPerSecond: number;
+  tracks: TrackPeaksDto[];
+}
+
+/** The generate-session-peaks envelope. `cached` distinguishes a fresh
+ *  on-disk cache hit from a freshly generated document. */
+export type GenerateSessionPeaksResult =
+  | { success: true; cached: boolean; peaks: SessionPeaksDto }
+  | { success: false; error: string };
+
 export interface PlaybackApi {
   listOutputDevices(): Promise<unknown>;
   startPlayback(opts: StartPlaybackOpts): Promise<unknown>;
   stopPlayback(): Promise<OperationResult>;
   readSession(sessionDir: string): Promise<unknown>;
+  // Soundcheck per-track waveform peaks (#734): decode every stem into
+  // min/max peak buckets (ADR-0004 encoding) in the background, cached under
+  // userData so re-loads are instant. Like read-session, waveform data is
+  // derived local data — no Pro gate ("data never locks").
+  generateSessionPeaks(sessionDir: string): Promise<GenerateSessionPeaksResult>;
   onPlaybackEvent(cb: (data: unknown) => void): void;
   revealPath(targetPath: string): Promise<OperationResult>;
 }

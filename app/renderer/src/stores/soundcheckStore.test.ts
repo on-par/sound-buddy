@@ -8,6 +8,7 @@ import { useSpectrumStore } from './spectrumStore';
 import { createMockSoundBuddy } from '../mock-sound-buddy';
 import { recordButtonView } from '../record-transport';
 import type { SessionManifest } from '../soundcheck-panel';
+import type { SessionPeaksDto } from '../../../electron/ipc/api';
 
 // playback-routing.js is a real, pure classic-script module — same
 // convention as liveCaptureStore.test.ts's armState/groupState requires.
@@ -148,6 +149,58 @@ describe('createSoundcheckStore', () => {
       store.setState({ sessionDir: '/tmp/session', manifest: MANIFEST, routes: [[3], [4, 5]] });
       await store.getState().chooseSession();
       expect(store.getState().routes).toEqual([[0]]);
+    });
+
+    it('triggers generation on a successful read-session and lands peaks in ready state', async () => {
+      const peaks: SessionPeaksDto = {
+        bucketsPerSecond: 50,
+        tracks: [{ index: 0, label: 'Vocal', kind: 'mono', bucketCount: 5, data: 'AA==' }],
+      };
+      const { store, mock } = makeStore({
+        openDirDialog: async () => '/tmp/session',
+        readSession: async () => ({ success: true, manifest: MANIFEST }),
+        generateSessionPeaks: async () => {
+          mock.calls.push({ method: 'generateSessionPeaks', args: ['/tmp/session'] });
+          return { success: true as const, cached: false, peaks };
+        },
+      });
+      await store.getState().chooseSession();
+      expect(mock.calls).toContainEqual({ method: 'generateSessionPeaks', args: ['/tmp/session'] });
+      expect(store.getState().peaks).toEqual(peaks);
+      expect(store.getState().peaksStatus).toBe('ready');
+      expect(store.getState().statusMessage).toBeNull();
+    });
+
+    it('marks peaks error on failed generation while keeping the loaded session intact', async () => {
+      const { store } = makeStore({
+        openDirDialog: async () => '/tmp/session',
+        readSession: async () => ({ success: true, manifest: MANIFEST }),
+        generateSessionPeaks: async () => ({ success: false as const, error: 'boom' }),
+      });
+      await store.getState().chooseSession();
+      const s = store.getState();
+      expect(s.peaksStatus).toBe('error');
+      expect(s.peaks).toBeNull();
+      expect(s.manifest).toEqual(MANIFEST);
+      expect(s.sessionDir).toBe('/tmp/session');
+      // Generation failure is silent — never clobbers the workflow status.
+      expect(s.statusMessage).toBeNull();
+    });
+
+    it('clears prior peaks before generating for a re-import', async () => {
+      const priorPeaks: SessionPeaksDto = {
+        bucketsPerSecond: 50,
+        tracks: [{ index: 0, label: 'Old', kind: 'mono', bucketCount: 2, data: 'AQ==' }],
+      };
+      const { store } = makeStore({
+        openDirDialog: async () => '/tmp/session',
+        readSession: async () => ({ success: true, manifest: MANIFEST }),
+        generateSessionPeaks: async () => ({ success: false as const, error: 'boom' }),
+      });
+      store.setState({ peaks: priorPeaks, peaksStatus: 'ready' });
+      await store.getState().chooseSession();
+      expect(store.getState().peaks).toBeNull();
+      expect(store.getState().peaksStatus).toBe('error');
     });
   });
 

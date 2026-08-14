@@ -5,14 +5,15 @@
 // ipc.ts): reveal/read a captured session folder and drive playback.py for
 // the Virtual Soundcheck feature (#45/#46).
 
-import { ipcMain, shell } from 'electron';
+import { ipcMain, shell, app } from 'electron';
 import * as path from 'path';
 import * as fs from 'fs';
 import { log, logWarn, logError } from '../logger';
 import { isEntitled } from '../license';
-import { pythonBin, childEnv, PLAYBACK_SCRIPT } from './shared';
+import { pythonBin, childEnv, PLAYBACK_SCRIPT, WAVEFORM_PEAKS_SCRIPT } from './shared';
 import { loadEngineParsers, loadEngineUtils } from './engine-loader';
 import { createPythonStreamSlot } from './python-stream';
+import { runWaveformPeaks, peaksSlot } from './waveform-peaks';
 import type { StartPlaybackOpts } from './api';
 
 // The current virtual-soundcheck playback child (playback.py). Held at module
@@ -105,6 +106,39 @@ export function registerPlaybackHandlers(): void {
     });
 
     return { success: true };
+  });
+
+  // generate-session-peaks — Soundcheck per-track waveform data (#734). Decode
+  // every track's stem into ADR-0004 min/max peak buckets via waveform_peaks.py
+  // in a background child (never blocking the renderer on a multi-minute
+  // decode), cached under userData/soundcheck-peaks so re-loads are instant.
+  // No Pro-gate: like read-session ("data never locks"), waveform data is
+  // derived local data; the Soundcheck feature UI is already Pro-gated in the
+  // renderer.
+  ipcMain.handle('generate-session-peaks', async (_event, sessionDir: string) => {
+    if (!sessionDir || typeof sessionDir !== 'string') {
+      return { success: false, error: 'No session directory provided.' };
+    }
+    return runWaveformPeaks(sessionDir, {
+      python: pythonBin(),
+      script: WAVEFORM_PEAKS_SCRIPT,
+      env: childEnv(),
+      cacheDir: path.join(app.getPath('userData'), 'soundcheck-peaks'),
+      slot: peaksSlot,
+      stat: (p) => {
+        try {
+          return fs.statSync(p).mtimeMs;
+        } catch {
+          return null;
+        }
+      },
+      readFile: (p) => fs.readFileSync(p, 'utf8'),
+      mkdir: (p) => fs.mkdirSync(p, { recursive: true }),
+      log,
+      logWarn,
+      logError,
+      onProgress: (line) => log(`generate-session-peaks: ${JSON.stringify(line)}`),
+    });
   });
 
   // stop-playback — SIGTERM the playback child so playback.py's signal handler

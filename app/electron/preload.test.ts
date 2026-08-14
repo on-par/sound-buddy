@@ -136,6 +136,7 @@ const INVOKE_TABLE: Array<{ method: BridgeKey; channel: string; args: unknown[] 
   },
   { method: 'stopPlayback', channel: 'stop-playback', args: [] },
   { method: 'readSession', channel: 'read-session', args: ['/tmp/session'] },
+  { method: 'generateSessionPeaks', channel: 'generate-session-peaks', args: ['/tmp/session'] },
   { method: 'checkForUpdates', channel: 'check-for-updates', args: [] },
   { method: 'openReleasePage', channel: 'open-release-page', args: ['https://example.com'] },
   { method: 'downloadUpdate', channel: 'download-update', args: [] },
