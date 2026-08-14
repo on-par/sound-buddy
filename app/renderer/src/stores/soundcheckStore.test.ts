@@ -271,6 +271,63 @@ describe('createSoundcheckStore', () => {
     });
   });
 
+  describe('seekTo', () => {
+    it('is a no-op without a loaded manifest', async () => {
+      const { store, mock } = makeStore();
+      await store.getState().seekTo(30);
+      expect(mock.calls).toEqual([]);
+    });
+
+    it('re-invokes startPlayback with startOffsetSecs and hands the panel to buffering', async () => {
+      const { store, mock } = makeStore({
+        startPlayback: async (opts) => {
+          mock.calls.push({ method: 'startPlayback', args: [opts] });
+          return { success: true };
+        },
+      });
+      store.setState({ manifest: MANIFEST, sessionDir: '/tmp/s', routes: [[0], [1, 2]] });
+      const spy = vi.spyOn(useSpectrumStore.getState(), 'setPanelState');
+      await store.getState().seekTo(30);
+      expect(mock.calls).toContainEqual({
+        method: 'startPlayback',
+        args: [{ sessionDir: '/tmp/s', route: '0:0,1:1-2', startOffsetSecs: 30 }],
+      });
+      expect(store.getState().playing).toBe(true);
+      expect(store.getState().elapsedText).toBe('0:00 / 0:00');
+      expect(spy).toHaveBeenCalledWith('empty', 'Buffering…');
+      spy.mockRestore();
+    });
+
+    it('clamps a negative seek to 0', async () => {
+      const { store, mock } = makeStore({
+        startPlayback: async (opts) => {
+          mock.calls.push({ method: 'startPlayback', args: [opts] });
+          return { success: true };
+        },
+      });
+      store.setState({ manifest: MANIFEST, sessionDir: '/tmp/s', routes: [[0]] });
+      // spy+restore so the shared spectrumStore.setPanelState mock's call
+      // history stays clean for the sibling resetTransport test (vitest
+      // spyOn reuses the mock zustand copies into new state objects).
+      const spy = vi.spyOn(useSpectrumStore.getState(), 'setPanelState');
+      await store.getState().seekTo(-5);
+      expect(mock.calls).toContainEqual({
+        method: 'startPlayback',
+        args: [{ sessionDir: '/tmp/s', route: '0:0', startOffsetSecs: 0 }],
+      });
+      expect(spy).toHaveBeenCalledWith('empty', 'Buffering…');
+      spy.mockRestore();
+    });
+
+    it('surfaces a status message and stays stopped when the restart fails', async () => {
+      const { store } = makeStore({ startPlayback: async () => ({ success: false, error: 'device busy' }) });
+      store.setState({ manifest: MANIFEST, sessionDir: '/tmp/s', routes: [[0]] });
+      await store.getState().seekTo(30);
+      expect(store.getState().playing).toBe(false);
+      expect(store.getState().statusMessage).toBe('device busy');
+    });
+  });
+
   describe('stop / resetTransport', () => {
     it('stop() stops playback and resets the transport', async () => {
       const { store, mock } = makeStore({

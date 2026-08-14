@@ -67,6 +67,7 @@ export interface SoundcheckState {
   setRoute(trackIndex: number, base: number): void;
   setMaster(master: boolean): void;
   play(): Promise<void>;
+  seekTo(seconds: number): Promise<void>;
   stop(): Promise<void>;
   resetTransport(): void;
   bindIpcEvents(): void;
@@ -197,6 +198,31 @@ export function createSoundcheckStore(getApi: () => SoundcheckApi) {
         device: state.selectedDevice || undefined,
         route: getPlaybackRouting().routeSpec(state.routes),
         master: state.master || undefined,
+      })) as { success?: boolean; error?: string } | undefined;
+      if (result?.success === false) {
+        set({ statusMessage: result.error || 'Could not start playback.' });
+        return;
+      }
+      set({ playing: true, elapsedText: '0:00 / 0:00' });
+      useSpectrumStore.getState().setPanelState('empty', 'Buffering…');
+    },
+
+    // #736 scrub-seek: the ONLY seek mechanism is ADR-0013's restart-with-
+    // start-offset — re-invoke startPlayback with startOffsetSecs and the
+    // ADR-0010 playbackSlot SIGTERMs the in-flight child and re-spawns at the
+    // offset. Body deliberately mirrors play() (same guards/success/failure
+    // handling) but is NOT refactored to share — play() stays byte-identical
+    // so play-from-start argv is unchanged (#733's contract).
+    async seekTo(seconds) {
+      const state = get();
+      if (!state.manifest) return;
+      set({ statusMessage: null });
+      const result = (await getApi().startPlayback({
+        sessionDir: state.sessionDir ?? '',
+        device: state.selectedDevice || undefined,
+        route: getPlaybackRouting().routeSpec(state.routes),
+        master: state.master || undefined,
+        startOffsetSecs: Math.max(0, seconds),
       })) as { success?: boolean; error?: string } | undefined;
       if (result?.success === false) {
         set({ statusMessage: result.error || 'Could not start playback.' });
