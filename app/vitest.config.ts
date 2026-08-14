@@ -81,8 +81,13 @@ export default defineConfig({
       // MARGIN 2 for statements/lines (stable across platforms) and MARGIN 3
       // for branches/functions (these drift most between macOS and the
       // Ubuntu CI runner — see packages/cli's 91.7% local / 84.6% CI split).
-      // Next ratchet step is #424, which deletes inline-app.js outright.
-      thresholds: { statements: 94, branches: 88, functions: 91, lines: 95 },
+      // Re-measured 2026-08-14 (#317): statements 96.32 / branches 92.29 /
+      // functions 93.02 / lines 96.62 — only branches supports a higher
+      // floor (88 → 89, measured-minus-margin 92.29 - 3 = 89.29); statements
+      // and lines are unchanged (96.32 - 2 = 94, 96.62 - 2 = 94) and
+      // functions stays 91 (93.02 - 3 = 90 would ratchet DOWN). Next ratchet
+      // step is #424, which deletes inline-app.js outright.
+      thresholds: { statements: 94, branches: 89, functions: 91, lines: 95 },
     },
   },
 });
