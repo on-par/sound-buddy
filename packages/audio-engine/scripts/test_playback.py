@@ -94,6 +94,49 @@ class ParseRouteSpec(unittest.TestCase):
             playback.parse_route_spec("", _tracks("mono"))
 
 
+class RouteUpdateFromLine(unittest.TestCase):
+    """The NDJSON stdin command -> route map helper (#759). Same spec grammar
+    as --route, wrapped in a {"type":"set-routes","spec":...} envelope; any
+    malformed/unknown command raises ValueError so the listener can reject it
+    and keep the previous routes."""
+
+    def test_valid_mixed_spec(self):
+        routes = playback.route_update_from_line(
+            '{"type":"set-routes","spec":"0:0,1:2-3"}', _tracks("mono", "stereo"))
+        self.assertEqual(routes, [[0], [2, 3]])
+
+    def test_unknown_type_raises(self):
+        with self.assertRaises(ValueError):
+            playback.route_update_from_line('{"type":"nope","spec":"0:0"}', _tracks("mono"))
+
+    def test_non_json_raises(self):
+        with self.assertRaises(ValueError):
+            playback.route_update_from_line("not json", _tracks("mono"))
+
+    def test_valid_json_non_object_raises(self):
+        with self.assertRaises(ValueError):
+            playback.route_update_from_line("[1, 2]", _tracks("mono"))
+
+    def test_non_string_spec_raises(self):
+        with self.assertRaises(ValueError):
+            playback.route_update_from_line('{"type":"set-routes","spec":42}', _tracks("mono"))
+
+    def test_absent_spec_raises(self):
+        with self.assertRaises(ValueError):
+            playback.route_update_from_line('{"type":"set-routes"}', _tracks("mono"))
+
+    def test_empty_line_raises(self):
+        with self.assertRaises(ValueError):
+            playback.route_update_from_line("", _tracks("mono"))
+        with self.assertRaises(ValueError):
+            playback.route_update_from_line("   ", _tracks("mono"))
+
+    def test_arity_mismatch_spec_raises(self):
+        with self.assertRaises(ValueError):
+            playback.route_update_from_line(
+                '{"type":"set-routes","spec":"0:0-1"}', _tracks("mono"))
+
+
 class RequiredChannelsAndMode(unittest.TestCase):
     def test_required_is_max_index_plus_one(self):
         self.assertEqual(playback.required_output_channels([[0], [2, 3]]), 4)
@@ -446,6 +489,9 @@ class PlaybackIntegration(unittest.TestCase):
         mix = next(l for l in lines if l.get("type") == "mixdown")
         self.assertFalse(mix["active"])
         self.assertEqual(mix["requiredChannels"], 4)
+        # The discrete stream opens at the device's FULL channel count (#759)
+        # so every in-device re-route stays addressable without reopening it.
+        self.assertEqual(out.shape[1], 8)
         # Kick only on ch0; OH L on ch2, R on ch3; ch1 silent.
         self.assertGreater(out.shape[0], 0)
         self.assertAlmostEqual(float(np.max(out[:, 0])), 0.5, delta=0.01)
@@ -621,6 +667,86 @@ class SigtermFinalizes(unittest.TestCase):
             if proc.poll() is None:
                 proc.kill()
             shutil.rmtree(work, ignore_errors=True)
+
+
+@unittest.skipUnless(HAVE_SOUNDFILE, "soundfile not installed")
+class LiveStdinReroute(unittest.TestCase):
+    """A running playback.py accepts NDJSON set-routes commands on stdin and
+    atomically swaps the mix map between blocks (#759) — no stop/restart."""
+
+    def _spawn(self, work):
+        session_dir = os.path.join(work, "session")
+        # A long session (fake stream drains ~1 block/10ms) so the process is
+        # still playing when we push a re-route, and stays playing long enough
+        # for both the pre-swap and post-swap phases to reach the capture.
+        _make_session(session_dir, frames=48000 * 10)
+        fake_dir = os.path.join(work, "fake")
+        os.makedirs(fake_dir)
+        with open(os.path.join(fake_dir, "sounddevice.py"), "w") as f:
+            f.write(_FAKE_SOUNDDEVICE)
+        env = dict(os.environ)
+        env["PYTHONPATH"] = fake_dir + os.pathsep + env.get("PYTHONPATH", "")
+        env["PLAYBACK_CAPTURE"] = os.path.join(work, "capture.npy")
+        env["FAKE_DEVICE_CHANNELS"] = "8"
+        proc = subprocess.Popen(
+            [sys.executable, os.path.join(_HERE, "playback.py"), session_dir,
+             "--device", "0", "--route", "0:0,1:2-3", "--interval", "0.05"],
+            stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env,
+        )
+        return proc, env["PLAYBACK_CAPTURE"]
+
+    def _teardown(self, proc, work):
+        for stream in (proc.stdin, proc.stdout, proc.stderr):
+            if stream is not None:
+                stream.close()
+        if proc.poll() is None:
+            proc.kill()
+        shutil.rmtree(work, ignore_errors=True)
+
+    def test_stdin_reroute_moves_kick_to_ch1_live(self):
+        work = tempfile.mkdtemp()
+        proc, capture = self._spawn(work)
+        try:
+            # Let playback get well underway, then confirm the process is live.
+            time.sleep(0.3)
+            self.assertIsNone(proc.poll(), "process exited before re-route")
+            # Push the full routing spec over stdin: Kick mono → ch1, OH → ch2-3.
+            proc.stdin.write(b'{"type":"set-routes","spec":"0:1,1:2-3"}\n')
+            proc.stdin.flush()
+            time.sleep(0.3)
+            proc.send_signal(signal.SIGTERM)
+            self.assertEqual(proc.wait(timeout=5), 0)
+            out = proc.stdout.read().decode()
+            self.assertNotIn('"type": "ended"', out)
+            captured = np.load(capture)
+            # Kick reached ch0 (pre-swap phase) AND ch1 (post-swap phase), while
+            # OH never left ch2-3 — the re-route hit the live mix graph.
+            self.assertAlmostEqual(float(np.max(captured[:, 0])), 0.5, delta=0.01)
+            self.assertAlmostEqual(float(np.max(captured[:, 1])), 0.5, delta=0.01)
+            self.assertAlmostEqual(float(np.max(captured[:, 2])), 0.3, delta=0.01)
+            self.assertAlmostEqual(float(np.max(captured[:, 3])), 0.7, delta=0.01)
+        finally:
+            self._teardown(proc, work)
+
+    def test_garbage_stdin_line_is_ignored(self):
+        work = tempfile.mkdtemp()
+        proc, capture = self._spawn(work)
+        try:
+            time.sleep(0.3)
+            proc.stdin.write(b"this is not json\n")
+            proc.stdin.flush()
+            time.sleep(0.3)
+            self.assertIsNone(proc.poll(), "process died on a bad command")
+            proc.send_signal(signal.SIGTERM)
+            self.assertEqual(proc.wait(timeout=5), 0)
+            err = proc.stderr.read().decode()
+            self.assertIn("route update rejected", err)
+            captured = np.load(capture)
+            # No swap happened: Kick stayed on ch0, ch1 stayed silent.
+            self.assertAlmostEqual(float(np.max(captured[:, 0])), 0.5, delta=0.01)
+            self.assertAlmostEqual(float(np.max(np.abs(captured[:, 1]))), 0.0, delta=0.01)
+        finally:
+            self._teardown(proc, work)
 
 
 if __name__ == "__main__":
