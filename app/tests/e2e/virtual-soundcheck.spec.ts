@@ -49,8 +49,14 @@ test.describe('Virtual Soundcheck (#46)', () => {
         },
       }));
       ipcMain.removeHandler('start-playback');
+      // __pbCalls records every start-playback invocation so a test can count
+      // restarts (the #736 seek is one restart per gesture); __pb stays the
+      // most recent opts for the existing assertions.
+      (globalThis as Record<string, unknown>).__pbCalls = [];
       ipcMain.handle('start-playback', (_e, opts) => {
-        (globalThis as Record<string, unknown>).__pb = opts; return { success: true };
+        (globalThis as Record<string, unknown>).__pb = opts;
+        ((globalThis as Record<string, unknown>).__pbCalls as unknown[]).push(opts);
+        return { success: true };
       });
       ipcMain.removeHandler('stop-playback');
       ipcMain.handle('stop-playback', () => ({ success: true }));
@@ -138,5 +144,43 @@ test.describe('Virtual Soundcheck (#46)', () => {
     await sendPlaybackEvent({ type: 'ended' });
     await expect(window.locator('#sc-play-btn')).toBeVisible();
     await expect(window.locator('#sc-stop-btn')).toBeHidden();
+  });
+
+  test('renders a live playhead while playing and click-seeks on the waveform', async () => {
+    await window.locator('#sc-choose-btn').click();
+    await window.locator('#sc-play-btn').click();
+    await expect(window.locator('#sc-stop-btn')).toBeVisible();
+
+    // The playhead mounts with the lanes and turns visible on the first
+    // coalesced progress tick (the same tick the readout rides).
+    await sendPlaybackEvent({ type: 'progress', elapsed: 2, duration: 10 });
+    await expect(window.locator('#sc-elapsed')).toContainText('0:02 / 0:10');
+    await expect(window.locator('#sc-playhead')).toHaveCSS('display', 'block');
+    const left = await window.locator('#sc-playhead').evaluate((el) => (el as HTMLElement).style.left);
+    expect(left).toMatch(/px$/);
+
+    // A click inside the canvas column commits exactly one restart-based seek:
+    // the stubbed start-playback handler records a second invocation carrying
+    // a positive startOffsetSecs (ADR-0013 restart-with-start-offset). The
+    // stubbed peaks give a 0.04s shared timeline (2 buckets @ 50 bps), so the
+    // canvas-centre click lands somewhere in (0, 0.04).
+    const waves = await window.locator('#sc-waveforms').boundingBox();
+    const canvas = await window.locator('.sc-waveform-canvas').first().boundingBox();
+    expect(waves).not.toBeNull();
+    expect(canvas).not.toBeNull();
+    await window.locator('#sc-waveforms').click({
+      position: { x: canvas!.x - waves!.x + canvas!.width / 2, y: canvas!.y - waves!.y + canvas!.height / 2 },
+    });
+    const calls = (await electronApp.evaluate(
+      () => (globalThis as Record<string, unknown>).__pbCalls,
+    )) as Array<{ startOffsetSecs?: number }>;
+    expect(calls).toHaveLength(2);
+    expect(calls[1].startOffsetSecs).toBeGreaterThan(0);
+    expect(calls[1].startOffsetSecs).toBeLessThan(0.04);
+
+    // The playhead survives the seek (still playing) and hides on stop.
+    await expect(window.locator('#sc-playhead')).toBeVisible();
+    await window.locator('#sc-stop-btn').click();
+    await expect(window.locator('#sc-playhead')).toHaveCount(0);
   });
 });
