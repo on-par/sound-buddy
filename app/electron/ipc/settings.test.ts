@@ -502,14 +502,37 @@ describe('update-settings IPC whitelist — gradingProfile (#266)', () => {
   );
 });
 
-describe('update-settings IPC whitelist — consoleNetworkConsentGranted (#378)', () => {
-  it('accepts a boolean and persists it', async () => {
+describe('update-settings IPC whitelist — consoleNetworkConsentGranted (#378 / ADR-0006)', () => {
+  it('rejects a true patch — the flag stays false, the generic patch path can never grant', async () => {
     const handler = handlers.get('update-settings');
     const result = (await handler!(null, { consoleNetworkConsentGranted: true })) as {
       consoleNetworkConsentGranted: boolean;
     };
+    expect(result.consoleNetworkConsentGranted).toBe(false);
+    expect(readFile().consoleNetworkConsentGranted).toBe(false);
+  });
+
+  it('drops a true patch even when consent is already granted (a true patch is never the writer)', async () => {
+    await handlers.get('grant-console-network-consent')!(null);
+    expect(readFile().consoleNetworkConsentGranted).toBe(true);
+
+    const handler = handlers.get('update-settings');
+    const result = (await handler!(null, { consoleNetworkConsentGranted: true })) as {
+      consoleNetworkConsentGranted: boolean;
+    };
+    // The true patch was dropped — the stored true came from the grant IPC, not
+    // this patch path, and no further state changed.
     expect(result.consoleNetworkConsentGranted).toBe(true);
     expect(readFile().consoleNetworkConsentGranted).toBe(true);
+  });
+
+  it('persists a false patch (revoke) and only ever false through this path', async () => {
+    const handler = handlers.get('update-settings');
+    const result = (await handler!(null, { consoleNetworkConsentGranted: false })) as {
+      consoleNetworkConsentGranted: boolean;
+    };
+    expect(result.consoleNetworkConsentGranted).toBe(false);
+    expect(readFile().consoleNetworkConsentGranted).toBe(false);
   });
 
   it('ignores a string value, leaving the setting at its default', async () => {
@@ -526,6 +549,73 @@ describe('update-settings IPC whitelist — consoleNetworkConsentGranted (#378)'
       consoleNetworkConsentGranted: boolean;
     };
     expect(result.consoleNetworkConsentGranted).toBe(false);
+  });
+});
+
+describe('grant-console-network-consent (#747 — the only IPC that writes consent=true)', () => {
+  it('persists true, readable back via get-settings', async () => {
+    const handler = handlers.get('grant-console-network-consent');
+    expect(handler).toBeTypeOf('function');
+
+    const result = (await handler!(null)) as { consoleNetworkConsentGranted: boolean };
+
+    expect(result.consoleNetworkConsentGranted).toBe(true);
+    expect(readFile().consoleNetworkConsentGranted).toBe(true);
+
+    const settings = (await handlers.get('get-settings')!(null)) as {
+      consoleNetworkConsentGranted: boolean;
+    };
+    expect(settings.consoleNetworkConsentGranted).toBe(true);
+  });
+});
+
+describe('update-settings whitelist exactness (#747)', () => {
+  it('persists a valid value for every spec key that declares sanitizePatch', async () => {
+    const handler = handlers.get('update-settings');
+    const patch = {
+      idealProfile: 'broadcast',
+      storageDir: '/tmp/rec',
+      usageSignalEnabled: true,
+      channelLabels: {},
+      channelGroups: {},
+      inputInstrumentProfiles: {},
+      crashReportingEnabled: true,
+      dawWorkspaceEnabled: true,
+      liveAdjustmentsEnabled: true,
+      reportFirstUxEnabled: true,
+      shareChurchName: 'Grace Chapel',
+      weeklyReminderEnabled: true,
+      weeklyReminderServiceDay: 0,
+      liveEqPaneWidth: 360,
+      measurementDeviceName: 'USB Mic',
+      gradingProfile: 'casual',
+      consoleNetworkConsentGranted: false,
+    };
+
+    await handler!(null, patch);
+
+    const stored = readFile();
+    for (const key of Object.keys(patch)) {
+      expect(stored[key]).toEqual(patch[key]);
+    }
+  });
+
+  it('ignores every AppSettings key without sanitizePatch, plus an unknown key', async () => {
+    const handler = handlers.get('update-settings');
+    await handler!(null, {
+      customIdealProfiles: [{ id: 'x', label: 'x', description: '', freqs: [], dbOffsets: [] }],
+      rigs: [{ id: 'r1', name: 'Rig' }],
+      activeRigId: 'r1',
+      bogus: 1,
+    });
+
+    // The patched values are dropped — the stored file only carries the
+    // backfilled defaults, and the unknown key is never written.
+    const stored = readFile();
+    expect(stored.customIdealProfiles).toEqual([]);
+    expect(stored.rigs).toEqual([]);
+    expect(stored.activeRigId).toBeNull();
+    expect(stored.bogus).toBeUndefined();
   });
 });
 

@@ -34,6 +34,9 @@ import {
   upsertRig,
   deleteRig,
   setActiveRig,
+  grantConsoleNetworkConsent,
+  SETTING_SPECS,
+  type AppSettings,
   type CaptureRig,
 } from './settings';
 import { logWarn } from './logger';
@@ -765,6 +768,63 @@ describe('SOUND_BUDDY_IDEAL_PROFILE env override', () => {
     updateSettings({ idealProfile: 'broadcast' });
     process.env.SOUND_BUDDY_IDEAL_PROFILE = 'jazz';
     expect(getSettings().idealProfile).toBe('jazz');
+  });
+});
+
+describe('SETTING_SPECS — the single owner of every field invariant (#747)', () => {
+  /** A complete AppSettings default, mirroring the pre-#747 DEFAULTS literal. */
+  const fullDefaults: AppSettings = {
+    idealProfile: '',
+    customIdealProfiles: [],
+    storageDir: '',
+    rigs: [],
+    activeRigId: null,
+    usageSignalEnabled: false,
+    channelLabels: {},
+    channelGroups: {},
+    inputInstrumentProfiles: {},
+    crashReportingEnabled: false,
+    dawWorkspaceEnabled: false,
+    liveAdjustmentsEnabled: false,
+    reportFirstUxEnabled: false,
+    shareChurchName: '',
+    weeklyReminderEnabled: false,
+    weeklyReminderServiceDay: 0,
+    liveEqPaneWidth: 360,
+    measurementDeviceName: '',
+    gradingProfile: 'casual',
+    consoleNetworkConsentGranted: false,
+  };
+
+  it('covers every AppSettings key — and no extras (compile-time + runtime set equality)', () => {
+    // Compile-time: if AppSettings gains a key without a spec entry, the
+    // mapped-type assignment below fails `tsc`.
+    const _exhaustive: { [K in keyof AppSettings]: unknown } = SETTING_SPECS;
+    expect(_exhaustive).toBeDefined();
+
+    expect(Object.keys(SETTING_SPECS).sort()).toEqual(Object.keys(fullDefaults).sort());
+  });
+
+  it('declares each field default exactly where the spec says it lives', () => {
+    // Spot-checks the high-risk defaults now that DEFAULTS is gone: the spec
+    // is the single source, so a wrong entry silently changes the default.
+    expect(SETTING_SPECS.idealProfile.default).toBe('');
+    expect(SETTING_SPECS.activeRigId.default).toBeNull();
+    expect(SETTING_SPECS.liveEqPaneWidth.default).toBe(360);
+    expect(SETTING_SPECS.gradingProfile.default).toBe('casual');
+    expect(SETTING_SPECS.consoleNetworkConsentGranted.default).toBe(false);
+  });
+});
+
+describe('grantConsoleNetworkConsent (#747 — the only path that writes consent=true)', () => {
+  it('persists true, survives a fresh read, and returns the updated settings', () => {
+    expect(getSettings().consoleNetworkConsentGranted).toBe(false);
+
+    const after = grantConsoleNetworkConsent();
+
+    expect(after.consoleNetworkConsentGranted).toBe(true);
+    expect(readFile().consoleNetworkConsentGranted).toBe(true);
+    expect(getSettings().consoleNetworkConsentGranted).toBe(true);
   });
 });
 

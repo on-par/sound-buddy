@@ -14,11 +14,13 @@
 import { create } from 'zustand';
 import type { StoreApi, UseBoundStore } from 'zustand';
 import { useSettingsStore } from './settingsStore';
-import type { AppSettings, UpdateSettingsPatch } from '../../../electron/ipc/api';
+import type { AppSettings } from '../../../electron/ipc/api';
 
 export interface ConsoleNetworkConsentDeps {
   getSettings(): AppSettings | null;
-  updateSettings(patch: UpdateSettingsPatch): Promise<void>;
+  // ADR-0006 (#747): grant goes through the dedicated settingsStore action /
+  // grant IPC — never the generic update-settings patch, which is revoke-only.
+  grantConsoleNetworkConsent(): Promise<void>;
 }
 
 export interface ConsoleNetworkConsentState {
@@ -45,7 +47,7 @@ export function createConsoleNetworkConsentStore(
     },
 
     async grant() {
-      await deps.updateSettings({ consoleNetworkConsentGranted: true });
+      await deps.grantConsoleNetworkConsent();
       set({ dialogOpen: false });
       const resolvers = pendingResolvers;
       pendingResolvers = [];
@@ -63,5 +65,5 @@ export function createConsoleNetworkConsentStore(
 
 export const useConsoleNetworkConsentStore = createConsoleNetworkConsentStore({
   getSettings: () => useSettingsStore.getState().settings,
-  updateSettings: (patch) => useSettingsStore.getState().updateSettings(patch),
+  grantConsoleNetworkConsent: () => useSettingsStore.getState().grantConsoleNetworkConsent(),
 });

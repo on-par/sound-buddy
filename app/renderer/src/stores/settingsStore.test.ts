@@ -122,6 +122,52 @@ describe('createSettingsStore', () => {
     expect(store.getState().settingsError).toBe('write failed');
   });
 
+  it('grantConsoleNetworkConsent records the IPC call and updates settings state (#747)', async () => {
+    const updated = {
+      idealProfile: '',
+      customIdealProfiles: [],
+      storageDir: '',
+      rigs: [],
+      activeRigId: null,
+      usageSignalEnabled: false,
+      channelLabels: {}, channelGroups: {}, inputInstrumentProfiles: {}, crashReportingEnabled: false, dawWorkspaceEnabled: false, liveAdjustmentsEnabled: false, reportFirstUxEnabled: false, shareChurchName: '', weeklyReminderEnabled: false, weeklyReminderServiceDay: 0, liveEqPaneWidth: 360, measurementDeviceName: '', gradingProfile: 'casual' as const, consoleNetworkConsentGranted: true,
+    };
+    const mock = createMockSoundBuddy({
+      grantConsoleNetworkConsent: async () => {
+        mock.calls.push({ method: 'grantConsoleNetworkConsent', args: [] });
+        return updated;
+      },
+    });
+    const store = createSettingsStore(() => mock.api);
+
+    await store.getState().grantConsoleNetworkConsent();
+
+    expect(store.getState().settings).toEqual(updated);
+    expect(mock.calls).toContainEqual({ method: 'grantConsoleNetworkConsent', args: [] });
+  });
+
+  it('captures a rejected grantConsoleNetworkConsent promise as an error', async () => {
+    const mock = createMockSoundBuddy({
+      grantConsoleNetworkConsent: () => Promise.reject(new Error('write failed')),
+    });
+    const store = createSettingsStore(() => mock.api);
+
+    await store.getState().grantConsoleNetworkConsent();
+
+    expect(store.getState().settingsError).toBe('write failed');
+  });
+
+  it('captures a rejected grantConsoleNetworkConsent promise that is not an Error instance', async () => {
+    const mock = createMockSoundBuddy({
+      grantConsoleNetworkConsent: () => Promise.reject('write failed'),
+    });
+    const store = createSettingsStore(() => mock.api);
+
+    await store.getState().grantConsoleNetworkConsent();
+
+    expect(store.getState().settingsError).toBe('write failed');
+  });
+
   it('starts with the dialog closed', () => {
     const mock = createMockSoundBuddy();
     const store = createSettingsStore(() => mock.api);
