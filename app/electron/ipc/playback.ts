@@ -14,7 +14,7 @@ import { pythonBin, childEnv, PLAYBACK_SCRIPT, WAVEFORM_PEAKS_SCRIPT } from './s
 import { loadEngineParsers, loadEngineUtils } from './engine-loader';
 import { createPythonStreamSlot } from './python-stream';
 import { runWaveformPeaks, peaksSlot } from './waveform-peaks';
-import type { StartPlaybackOpts } from './api';
+import type { StartPlaybackOpts, SetPlaybackRoutesOpts } from './api';
 
 // The current virtual-soundcheck playback child (playback.py). Held at module
 // scope — like start-live's liveSlot — so stop-playback can SIGTERM it for a
@@ -145,6 +145,21 @@ export function registerPlaybackHandlers(): void {
   // closes the output stream cleanly; SIGKILL as a fallback if it doesn't exit.
   ipcMain.handle('stop-playback', async () => {
     await playbackSlot.stop();
+    return { success: true };
+  });
+
+  // set-playback-routes — live re-route while playing (#759). Pushes the full
+  // routing spec as an NDJSON set-routes command to the running playback.py
+  // child's stdin; playback.py swaps the mix map atomically between blocks.
+  // Fire-and-forget: no entitlement re-check (no device/lock change; we only
+  // write to our own child's stdin), and { success: true } even when no child
+  // is running (the slot no-ops). playback.py validates the spec itself and
+  // logs a rejection to stderr — the renderer never sees a failure surface.
+  ipcMain.handle('set-playback-routes', async (_event, opts: SetPlaybackRoutesOpts) => {
+    if (!opts || typeof opts.route !== 'string' || !opts.route.trim()) {
+      return { success: false, error: 'A routing spec is required.' };
+    }
+    playbackSlot.send(JSON.stringify({ type: 'set-routes', spec: opts.route }) + '\n');
     return { success: true };
   });
 }

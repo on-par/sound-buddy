@@ -23,12 +23,19 @@ import type { NdjsonSource } from '@sound-buddy/audio-engine/dist-cjs/ndjson';
 export type PythonStreamSpawn = (
   command: string,
   args: readonly string[],
-  options: { stdio: ['ignore', 'pipe', 'pipe']; env: NodeJS.ProcessEnv },
+  options: { stdio: ['pipe', 'pipe', 'pipe']; env: NodeJS.ProcessEnv },
 ) => PythonStreamChild;
 
 export interface PythonStreamChild {
   stdout: NdjsonSource;
   stderr: { on(event: 'data', listener: (chunk: Buffer) => void): unknown };
+  // stdin is piped for every child (#759) so the slot can push commands (the
+  // live-route channel) to a running playback.py; live-capture and
+  // measurement-source children never read it.
+  stdin: {
+    write(data: string): unknown;
+    on(event: 'error', listener: (err: Error) => void): unknown;
+  };
   on(event: string, listener: (...a: unknown[]) => void): unknown;
   once(event: string, listener: (...a: unknown[]) => void): unknown;
   kill(signal?: NodeJS.Signals): boolean;
@@ -71,6 +78,10 @@ export interface PythonStreamSlot {
   start(opts: PythonStreamStartOptions): void;
   stop(graceMs?: number): Promise<PythonStreamStopResult>;
   isRunning(): boolean;
+  // Push one command line to the running child's stdin (#759). No-op when no
+  // child is current; a write failure on an already-dead pipe is swallowed
+  // ('close' clears current). Fire-and-forget — callers treat it as best-effort.
+  send(data: string): void;
 }
 
 export const DEFAULT_STOP_GRACE_MS = 2000;
@@ -82,7 +93,7 @@ export const DEFAULT_STOP_GRACE_MS = 2000;
 function defaultSpawn(
   command: string,
   args: readonly string[],
-  options: { stdio: ['ignore', 'pipe', 'pipe']; env: NodeJS.ProcessEnv },
+  options: { stdio: ['pipe', 'pipe', 'pipe']; env: NodeJS.ProcessEnv },
 ): PythonStreamChild {
   return spawn(command, args as string[], options) as unknown as PythonStreamChild;
 }
@@ -95,9 +106,15 @@ export function createPythonStreamSlot(deps: PythonStreamDeps): PythonStreamSlot
   function start(opts: PythonStreamStartOptions): void {
     if (current) current.kill();
 
-    const py = spawnFn(opts.command, opts.args, { stdio: ['ignore', 'pipe', 'pipe'], env: opts.env });
+    const py = spawnFn(opts.command, opts.args, { stdio: ['pipe', 'pipe', 'pipe'], env: opts.env });
     current = py;
     stopRequested = false;
+
+    // An async EPIPE on an already-dead pipe would otherwise surface as an
+    // unhandled 'error' and crash main; the pipe closing is not an error here.
+    py.stdin.on('error', () => {
+      /* child closed stdin */
+    });
 
     py.stderr.on('data', (chunk: Buffer) => {
       const text = chunk.toString().trim();
@@ -150,5 +167,14 @@ export function createPythonStreamSlot(deps: PythonStreamDeps): PythonStreamSlot
     });
   }
 
-  return { start, stop, isRunning: () => current !== null };
+  function send(data: string): void {
+    if (!current) return;
+    try {
+      current.stdin.write(data);
+    } catch {
+      /* child gone — 'close' clears current */
+    }
+  }
+
+  return { start, stop, isRunning: () => current !== null, send };
 }

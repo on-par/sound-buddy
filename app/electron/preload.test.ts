@@ -21,6 +21,7 @@ import type {
   StartLiveOpts,
   StartMeasurementOpts,
   StartPlaybackOpts,
+  SetPlaybackRoutesOpts,
   FeedbackSubmission,
   DiffScenesOpts,
 } from './ipc/api';
@@ -135,6 +136,11 @@ const INVOKE_TABLE: Array<{ method: BridgeKey; channel: string; args: unknown[] 
     args: [{ sessionDir: '/tmp/session' } satisfies StartPlaybackOpts],
   },
   { method: 'stopPlayback', channel: 'stop-playback', args: [] },
+  {
+    method: 'setPlaybackRoutes',
+    channel: 'set-playback-routes',
+    args: [{ route: '0:1,1:2-3' } satisfies SetPlaybackRoutesOpts],
+  },
   { method: 'readSession', channel: 'read-session', args: ['/tmp/session'] },
   { method: 'generateSessionPeaks', channel: 'generate-session-peaks', args: ['/tmp/session'] },
   { method: 'checkForUpdates', channel: 'check-for-updates', args: [] },

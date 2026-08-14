@@ -59,10 +59,14 @@ function fakeProc() {
   const proc = new EventEmitter() as EventEmitter & {
     stdout: EventEmitter;
     stderr: EventEmitter;
+    stdin: EventEmitter & { write: ReturnType<typeof vi.fn> };
     kill: ReturnType<typeof vi.fn>;
   };
   proc.stdout = new EventEmitter();
   proc.stderr = new EventEmitter();
+  const stdin = new EventEmitter() as EventEmitter & { write: ReturnType<typeof vi.fn> };
+  stdin.write = vi.fn();
+  proc.stdin = stdin;
   proc.kill = vi.fn();
   return proc;
 }
@@ -349,5 +353,40 @@ describe('generate-session-peaks', () => {
 
     const result = await p;
     expect(result).toEqual({ success: false, error: 'waveform peak generation failed (exit 1).' });
+  });
+});
+
+describe('set-playback-routes', () => {
+  it('writes the full set-routes command to the running child stdin and returns success', async () => {
+    const proc = fakeProc();
+    spawnMock.mockReturnValueOnce(proc);
+    const start = handlers.get('start-playback') as Handler;
+    await start({ sender: fakeSender() }, { sessionDir: '/s' });
+
+    const handler = handlers.get('set-playback-routes') as Handler;
+    const result = await handler(null, { route: '0:1,1:2-3' });
+    expect(result).toEqual({ success: true });
+    expect(proc.stdin.write).toHaveBeenCalledWith('{"type":"set-routes","spec":"0:1,1:2-3"}\n');
+  });
+
+  it('rejects a missing, empty, or non-string route with the required-spec error', async () => {
+    const handler = handlers.get('set-playback-routes') as Handler;
+    const missing = await handler(null, undefined);
+    expect(missing).toEqual({ success: false, error: 'A routing spec is required.' });
+    const emptyOpts = await handler(null, {});
+    expect(emptyOpts).toEqual({ success: false, error: 'A routing spec is required.' });
+    const emptyRoute = await handler(null, { route: '' });
+    expect(emptyRoute).toEqual({ success: false, error: 'A routing spec is required.' });
+    const whitespaceRoute = await handler(null, { route: '   ' });
+    expect(whitespaceRoute).toEqual({ success: false, error: 'A routing spec is required.' });
+    const nonStringRoute = await handler(null, { route: 42 });
+    expect(nonStringRoute).toEqual({ success: false, error: 'A routing spec is required.' });
+  });
+
+  it('returns success (no-op) when nothing is running', async () => {
+    const handler = handlers.get('set-playback-routes') as Handler;
+    const result = await handler(null, { route: '0:0' });
+    expect(result).toEqual({ success: true });
+    expect(spawnMock).not.toHaveBeenCalled();
   });
 });

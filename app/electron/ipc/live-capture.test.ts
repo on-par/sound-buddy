@@ -72,10 +72,14 @@ function fakeProc() {
   const proc = new EventEmitter() as EventEmitter & {
     stdout: EventEmitter;
     stderr: EventEmitter;
+    stdin: EventEmitter & { write: ReturnType<typeof vi.fn> };
     kill: ReturnType<typeof vi.fn>;
   };
   proc.stdout = new EventEmitter();
   proc.stderr = new EventEmitter();
+  const stdin = new EventEmitter() as EventEmitter & { write: ReturnType<typeof vi.fn> };
+  stdin.write = vi.fn();
+  proc.stdin = stdin;
   proc.kill = vi.fn();
   return proc;
 }
