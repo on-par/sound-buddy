@@ -13,7 +13,7 @@
 // meter cards were removed (#760): playback shows only the track list, the
 // waveform lanes, and the seeking playhead.
 
-import { useEffect, useMemo, useRef, type JSX, type PointerEvent } from 'react';
+import { useCallback, useEffect, useMemo, useRef, type JSX, type PointerEvent } from 'react';
 import { useStoreShallow } from './stores/useStoreShallow';
 import { useSoundcheckStore } from './stores/soundcheckStore';
 import { createSoundcheckTransportController } from './soundcheck-transport-controller';
@@ -163,8 +163,17 @@ export default function SoundcheckPanel(): JSX.Element {
   /* c8 ignore start -- real canvas-DOM wiring, no jsdom in this harness
      (renderToString doesn't run effects); the decode/column/draw geometry is
      exhaustively unit-tested in soundcheck-waveform.test.ts and this wiring
-     is gated by tests/e2e/virtual-soundcheck.spec.ts. */
-  useEffect(() => {
+     is gated by tests/e2e/virtual-soundcheck.spec.ts — including the #735
+     window-resize re-paint, whose backing-store-follows-clientWidth assertion
+     the spec's "re-paints waveform lane canvases when the window is resized"
+     test drives. */
+  // The shared draw body, stable per timeline: measures the first canvas,
+  // derives the shared pxPerSecond, sizes every lane canvas from its current
+  // clientWidth/clientHeight, and paints. Ran once per peaks document (the
+  // [timeline] effect below) and again on every window 'resize' so a flexible
+  // .sc-waveform-canvas re-measures instead of going stale at the pre-resize
+  // width (the #735 defect this fixes).
+  const paintLanes = useCallback(() => {
     if (!timeline) return;
     const container = document.getElementById('sc-waveforms');
     const firstCanvas = container?.querySelector<HTMLCanvasElement>('.sc-waveform-canvas');
@@ -194,6 +203,20 @@ export default function SoundcheckPanel(): JSX.Element {
       );
     }
   }, [timeline]);
+
+  // The peaks-change path: re-paint once per timeline, exactly as shipped.
+  useEffect(() => {
+    paintLanes();
+  }, [paintLanes]);
+
+  // The #735 resize re-paint: a resizable window can change the flexible
+  // lane canvases' CSS width after the one-shot paint above, so re-paint on
+  // every window resize; cleanup removes the listener on unmount/re-paint
+  // identity change so none accumulates.
+  useEffect(() => {
+    window.addEventListener('resize', paintLanes);
+    return () => window.removeEventListener('resize', paintLanes);
+  }, [paintLanes]);
   /* c8 ignore stop */
 
   // #759: routing stays editable during playback now (soundcheckTrackListView
