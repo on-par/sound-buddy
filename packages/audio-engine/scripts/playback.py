@@ -525,7 +525,7 @@ def main():
         elif a == "--interval" and i + 1 < len(args):
             interval_secs = float(args[i + 1]); i += 2
         elif a == "--start-at" and i + 1 < len(args):
-            start_secs = float(args[i + 1]); i += 2
+            start_secs = max(0.0, float(args[i + 1])); i += 2
         elif a == "--master":
             force_master = True; i += 1
         else:

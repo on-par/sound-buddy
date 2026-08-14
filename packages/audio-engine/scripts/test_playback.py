@@ -564,6 +564,24 @@ class PlaybackIntegration(unittest.TestCase):
         self.assertIn("ended", types_seen)
         self.assertNotIn("error", types_seen)
 
+    def test_negative_start_at_clamps_to_zero(self):
+        # A negative --start-at must clamp to 0:00 at the CLI boundary, not
+        # just inside compute_start_frame — elapsed must never go negative
+        # and audio must start at sample 0, same as no --start-at at all.
+        proc, lines, out = self._run(
+            ["--device", "0", "--route", "0:0,1:2-3", "--interval", "0.02",
+             "--start-at", "-3"],
+            frames=480000, ramp_kick=True,
+        )
+        self.assertEqual(proc.returncode, 0, proc.stderr.decode())
+        progress = [l for l in lines if l.get("type") == "progress"]
+        self.assertTrue(progress)
+        self.assertGreaterEqual(progress[0]["elapsed"], 0.0)
+        self.assertLessEqual(progress[0]["elapsed"], 0.02 + 0.1)
+        self.assertGreater(out.shape[0], 0)
+        first_nz = int(np.argmax(np.abs(out[:, 0]) > 0))
+        self.assertAlmostEqual(float(out[first_nz, 0]), 0.0, delta=0.01)
+
 
 @unittest.skipUnless(HAVE_SOUNDFILE, "soundfile not installed")
 class SigtermFinalizes(unittest.TestCase):
