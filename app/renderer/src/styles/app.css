@@ -81,13 +81,17 @@
 
     #header-right { margin-left:auto; display:flex; align-items:center; gap:14px; -webkit-app-region:no-drag; }
     #record-button-island { display:flex; align-items:center; }
+    /* #777: the Record control is a no-text red-circle toggle — idle/monitoring
+       is a red ring (transparent fill); recording is the solid-red
+       pressed/highlighted state (record-btn--recording), which STAYS while
+       recording; the transient disabled starting/stopping phases are dimmed
+       (.record-btn:disabled / .record-btn--stopping tint). */
     .record-btn {
-      display:flex; align-items:center; gap:6px; height:30px; padding:0 12px;
-      border:1px solid var(--border-default); border-radius:var(--radius-sm);
-      background:transparent; color:var(--text-secondary);
-      font:var(--fw-semibold) var(--fs-label)/1 var(--font-sans); cursor:pointer;
+      display:flex; align-items:center; justify-content:center; width:30px; height:30px; padding:0;
+      border:1px solid var(--issue-500); border-radius:50%;
+      background:transparent; color:var(--issue-500); cursor:pointer;
     }
-    .record-btn:hover:not(:disabled) { color:var(--text-primary); background:var(--surface); }
+    .record-btn:hover:not(:disabled) { background:var(--surface); }
     .record-btn:disabled { opacity:0.45; cursor:default; }
     .record-btn--recording { background:var(--issue-500); border-color:var(--issue-500); color:#fff; }
     .record-btn--recording:hover:not(:disabled) { background:var(--issue-text); }

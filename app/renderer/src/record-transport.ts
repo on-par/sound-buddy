@@ -19,10 +19,13 @@ export interface RecordButtonInput {
   stopping: boolean;
 }
 
+// The Record control is a no-text red-circle toggle (#777): no visible label
+// is rendered in any phase — the ariaLabel carries the state for screen
+// readers and the recording phase's pressed state comes from the
+// record-btn--recording CSS class (RecordButton.tsx) plus aria-pressed.
 export interface RecordButtonViewModel {
   phase: RecordButtonPhase;
   disabled: boolean;
-  label: string;
   ariaLabel: string;
 }
 
@@ -36,18 +39,17 @@ export function recordButtonPhase(input: RecordButtonInput): RecordButtonPhase {
 export function recordButtonView(input: RecordButtonInput): RecordButtonViewModel {
   const phase = recordButtonPhase(input);
   if (phase === 'starting') {
-    return { phase, disabled: true, label: 'Starting…', ariaLabel: 'Starting recording' };
+    return { phase, disabled: true, ariaLabel: 'Starting recording' };
   }
   if (phase === 'recording') {
-    return { phase, disabled: false, label: 'Recording', ariaLabel: 'Recording — press to stop' };
+    return { phase, disabled: false, ariaLabel: 'Recording — press to stop' };
   }
   if (phase === 'stopping') {
-    return { phase, disabled: true, label: 'Stopping…', ariaLabel: 'Stopping recording' };
+    return { phase, disabled: true, ariaLabel: 'Stopping recording' };
   }
   return {
     phase: 'idle',
     disabled: false,
-    label: 'Record',
     ariaLabel: 'Record — press to start recording',
   };
 }

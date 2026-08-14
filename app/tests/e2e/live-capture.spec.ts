@@ -383,6 +383,8 @@ test.describe('Live capture (PRD 06)', () => {
     await window.keyboard.press('Enter'); // keyboard parity check
     await expect(window.locator('#live-indicator .live-txt')).toHaveText('REC');
     await expect(recordBtn).toHaveAttribute('aria-pressed', 'true');
+    // #777: the pressed/highlighted state stays on while recording.
+    await expect(recordBtn).toHaveClass(/record-btn--recording/);
 
     await recordBtn.click(); // stop
     await expect(window.locator('#record-button')).toBeEnabled();
@@ -463,6 +465,8 @@ test.describe('Live capture (PRD 06)', () => {
     await recordBtn.click(); // stop the recording → monitoring resumes
     await expect(readout).toBeVisible(); // always-monitoring: meters/readout stay live
     await expect(recordBtn).toBeEnabled();
-    await expect(recordBtn).toHaveText('Record');
+    // #777: the Record control is a no-text red circle — the icon is the only
+    // visible content, so the button exposes no text label.
+    await expect(recordBtn).toHaveText('');
   });
 });
