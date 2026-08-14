@@ -14,6 +14,7 @@ function makeFakeDeps(overrides: Partial<SoundcheckTransportControllerDeps> = {}
   let lastMeterTick: SoundcheckMeterTrack[] | null = null;
   const listeners = new Set<() => void>();
   const patchElapsed = vi.fn();
+  const patchPlayhead = vi.fn();
   const patchMeters = vi.fn();
   const cancelRaf = vi.fn();
   const raf = vi.fn((cb: () => void) => {
@@ -26,12 +27,14 @@ function makeFakeDeps(overrides: Partial<SoundcheckTransportControllerDeps> = {}
     raf,
     cancelRaf,
     patchElapsed,
+    patchPlayhead,
     patchMeters,
     ...overrides,
   };
   return {
     deps,
     patchElapsed,
+    patchPlayhead,
     patchMeters,
     raf,
     cancelRaf,
@@ -76,6 +79,31 @@ describe('createSoundcheckTransportController', () => {
     flushRaf();
     expect(patchElapsed).toHaveBeenCalledWith({ elapsed: 1, duration: 10 });
     expect(patchMeters).toHaveBeenCalledWith(tracks);
+  });
+
+  it('patches the playhead on the same coalesced elapsed tick as the readout', () => {
+    const { deps, notifyElapsed, raf, flushRaf, patchElapsed, patchPlayhead } = makeFakeDeps();
+    const controller = createSoundcheckTransportController(deps);
+    controller.start();
+    notifyElapsed({ elapsed: 1, duration: 10 });
+    notifyElapsed({ elapsed: 2, duration: 10 });
+    notifyElapsed({ elapsed: 3, duration: 10 });
+    expect(raf).toHaveBeenCalledTimes(1);
+    flushRaf();
+    expect(patchElapsed).toHaveBeenCalledTimes(1);
+    expect(patchElapsed).toHaveBeenCalledWith({ elapsed: 3, duration: 10 });
+    expect(patchPlayhead).toHaveBeenCalledTimes(1);
+    expect(patchPlayhead).toHaveBeenCalledWith({ elapsed: 3, duration: 10 });
+  });
+
+  it('does not patch the playhead on a meter-only tick', () => {
+    const { deps, notifyMeters, flushRaf, patchMeters, patchPlayhead } = makeFakeDeps();
+    const controller = createSoundcheckTransportController(deps);
+    controller.start();
+    notifyMeters([{ rms: -10, peak: -5, clipping: false }]);
+    flushRaf();
+    expect(patchMeters).toHaveBeenCalledTimes(1);
+    expect(patchPlayhead).not.toHaveBeenCalled();
   });
 
   it('patches only the tick kind that changed', () => {
