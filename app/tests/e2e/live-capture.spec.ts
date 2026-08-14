@@ -434,18 +434,21 @@ test.describe('Live capture (PRD 06)', () => {
 
   test('shows a live dBFS readout top-right while monitoring and hides it on stop (#767)', async () => {
     const readout = window.locator('#live-level-readout');
+    const recordBtn = window.locator('#record-button');
     await expect(readout).toBeHidden();
-    await window.locator('#live-start-btn').click();
-    await expect(window.locator('#live-stop-btn')).toBeVisible();
+
+    await window.locator('#live-ws-arm-all').click();
+    await recordBtn.click();
+    await expect(window.locator('#live-indicator .live-txt')).toHaveText('REC');
     await expect(readout).toBeVisible();
-    await expect(window.locator('#live-level-rms')).toHaveText('—'); // capturing, no tick yet
     await sendLiveTick(LIVE_CHANNELS); // channel 0: rms -18, peak -6
     await expect(window.locator('#live-level-rms')).toHaveText('-18.0');
     await expect(window.locator('#live-level-peak')).toHaveText('pk -6.0');
     await sendLiveTick([{ ...LIVE_CHANNELS[0], rms: -12, peak: -3 }, LIVE_CHANNELS[1]]);
     await expect(window.locator('#live-level-rms')).toHaveText('-12.0'); // real-time update
     await expect(window.locator('#live-level-readout')).toHaveAttribute('title', /not calibrated SPL/);
-    await window.locator('#live-stop-btn').click();
+    await recordBtn.click(); // stop monitoring
+    await expect(recordBtn).toBeEnabled();
     await expect(readout).toBeHidden();
   });
 });
