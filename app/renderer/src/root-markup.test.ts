@@ -40,9 +40,9 @@ describe('Directory tab batch-analyzes a folder of recordings (#270)', () => {
 });
 
 describe('Live monitoring visibly leads to a Report Card (#488)', () => {
-  it('shows a pre-start cue that capture builds a live Report Card', () => {
+  it('shows a pre-start cue that listening builds a live Report Card', () => {
     expect(markup).toContain('id="live-rc-cue"');
-    expect(markup).toContain('Capture builds a live Report Card as it runs.');
+    expect(markup).toContain('Listening builds a live Report Card as it runs.');
     // Idle-visible: the cue must NOT start hidden.
     expect(markup).not.toMatch(/id="live-rc-cue"[^>]*display:none/);
   });
@@ -71,7 +71,37 @@ describe('Live monitoring visibly leads to a Report Card (#488)', () => {
   it('has a not-enough-data state for a session too short to grade (#261)', () => {
     expect(markup).toMatch(/id="rc-not-enough" class="rec-offer" style="display:none"/);
     expect(markup).toContain('Not enough data');
-    expect(markup).toContain('capture at least a few seconds of audio');
+    expect(markup).toContain('monitor at least a few seconds of audio');
+  });
+});
+
+describe('Live tab reads as always-listening, never capture (#777)', () => {
+  // The AC's no-"capture" wording rule covers the Live tab UI (the #tab-live
+  // block) and the Analyze source-picker's live option — NOT the separate
+  // soundcheck copy ("Play back a captured session..."), which stays as-is.
+  it('purges every user-visible "capture" from the #tab-live block', () => {
+    const liveTabStart = markup.indexOf('<div class="tab-content" id="tab-live">');
+    const liveTabEnd = markup.indexOf('id="spectrum-header"');
+    expect(liveTabStart).toBeGreaterThan(-1);
+    expect(liveTabEnd).toBeGreaterThan(liveTabStart);
+    const liveTab = markup.slice(liveTabStart, liveTabEnd);
+    expect(liveTab).not.toMatch(/>[^<]*[Cc]apture[^<]*</);
+  });
+
+  it('purges "capture" from the Analyze source-picker live option', () => {
+    const liveOptionStart = markup.indexOf('data-analyze-source="live"');
+    const liveOptionEnd = markup.indexOf('</button>', liveOptionStart);
+    expect(liveOptionStart).toBeGreaterThan(-1);
+    expect(liveOptionEnd).toBeGreaterThan(liveOptionStart);
+    const liveOption = markup.slice(liveOptionStart, liveOptionEnd);
+    expect(liveOption).not.toMatch(/[Cc]apture/);
+  });
+
+  it('rewords the two runtime Live-tab strings in inline-app.js to listening/monitoring vocabulary', () => {
+    expect(inlineApp).toContain("'Add at least one track before starting listening.'");
+    expect(inlineApp).not.toContain("'Add at least one track before starting capture.'");
+    expect(inlineApp).toContain("'Failed to start live listening'");
+    expect(inlineApp).not.toContain("'Failed to start live capture'");
   });
 });
 

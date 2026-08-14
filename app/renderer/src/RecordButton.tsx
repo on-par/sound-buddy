@@ -49,7 +49,7 @@ export default function RecordButton(): JSX.Element | null {
       aria-label={view.ariaLabel}
       aria-pressed={view.phase === 'recording' || view.phase === 'stopping'}
       onClick={onClick}
-      dangerouslySetInnerHTML={{ __html: iconSvg('circle', 16) + view.label }}
+      dangerouslySetInnerHTML={{ __html: iconSvg('circle', 16) }}
     />
   );
 }

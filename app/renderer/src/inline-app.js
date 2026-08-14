@@ -1559,7 +1559,7 @@ window.liveWorkspaceRuntime = {
 // startLiveCapture callers (auto-start, tests).
 function beforeStartCapture() {
   if (channelConfig.length === 0) {
-    const reason = 'Add at least one track before starting capture.';
+    const reason = 'Add at least one track before starting listening.';
     showArmHint(reason);
     return { ok: false, reason };
   }
@@ -1627,7 +1627,7 @@ function onCaptureStarting() {
 function onCaptureStarted(result, meterRate) {
   if (!result || !result.success) {
     void stopLive();
-    specStore.getState().setPanelState('error', (result && result.error) || 'Failed to start live capture');
+    specStore.getState().setPanelState('error', (result && result.error) || 'Failed to start live listening');
   } else {
     syncCaptureControls(meterRate);
     // Guided first-use setup (#294): starting a capture completes setup

@@ -42,10 +42,11 @@ describe('recordButtonPhase', () => {
 describe('recordButtonView', () => {
   it('idle-enabled with no monitor session running (press starts capture) (#757)', () => {
     const view = recordButtonView(input());
+    // The record button is a no-text red-circle toggle (#777): the view model
+    // no longer carries a visible label, only the a11y label.
     expect(view).toEqual({
       phase: 'idle',
       disabled: false,
-      label: 'Record',
       ariaLabel: 'Record — press to start recording',
     });
   });
@@ -55,7 +56,6 @@ describe('recordButtonView', () => {
     expect(view).toEqual({
       phase: 'idle',
       disabled: false,
-      label: 'Record',
       ariaLabel: 'Record — press to start recording',
     });
   });
@@ -65,7 +65,6 @@ describe('recordButtonView', () => {
     expect(view).toEqual({
       phase: 'starting',
       disabled: true,
-      label: 'Starting…',
       ariaLabel: 'Starting recording',
     });
   });
@@ -75,7 +74,6 @@ describe('recordButtonView', () => {
     expect(view).toEqual({
       phase: 'recording',
       disabled: false,
-      label: 'Recording',
       ariaLabel: 'Recording — press to stop',
     });
   });
@@ -85,7 +83,6 @@ describe('recordButtonView', () => {
     expect(view).toEqual({
       phase: 'stopping',
       disabled: true,
-      label: 'Stopping…',
       ariaLabel: 'Stopping recording',
     });
   });

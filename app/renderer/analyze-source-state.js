@@ -13,7 +13,7 @@
   // acceptance criteria call for exactly these three choices.
   var ANALYZE_SOURCES = [
     { id: 'file', label: 'Analyze a file', hint: 'Drop in a recording you already have.', icon: 'file-audio' },
-    { id: 'live', label: 'Start live capture', hint: 'Capture multi-channel audio from the console right now.', icon: 'radio' },
+    { id: 'live', label: 'Start live listening', hint: 'Monitor multi-channel audio from the console right now.', icon: 'radio' },
     { id: 'soundcheck', label: 'Load a soundcheck session', hint: 'Play back a captured session and mix without the band.', icon: 'sliders' }
   ];
 

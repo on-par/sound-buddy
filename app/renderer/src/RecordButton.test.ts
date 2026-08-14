@@ -25,6 +25,21 @@ function renderMarkup(): string {
   return renderToString(createElement(RecordButton));
 }
 
+// The record button is a no-text red-circle toggle (#777): the circle icon is
+// the only visible content in every phase; the aria-label carries the state.
+// `>…<` (text-node delimiters) is how the no-visible-text assertions avoid
+// matching the aria-label/aria-pressed attribute values.
+function expectNoVisibleText(html: string) {
+  expect(html).not.toContain('>Record<');
+  expect(html).not.toContain('>Recording<');
+  expect(html).not.toContain('>Starting…<');
+  expect(html).not.toContain('>Stopping…<');
+}
+
+function expectCircleIcon(html: string) {
+  expect(html).toMatch(/id="record-button"[^>]*>\s*<svg/);
+}
+
 describe('RecordButton (#729)', () => {
   it('renders nothing when appMode is not live', () => {
     useLiveCaptureStore.setState({ appMode: 'reportcard' });
@@ -36,7 +51,8 @@ describe('RecordButton (#729)', () => {
     const html = renderMarkup();
     expect(html).toContain('id="record-button"');
     expect(html).not.toMatch(/id="record-button"[^>]*disabled=""/);
-    expect(html).toContain('Record');
+    expectNoVisibleText(html);
+    expectCircleIcon(html);
     expect(html).toContain('aria-label="Record — press to start recording"');
   });
 
@@ -45,31 +61,37 @@ describe('RecordButton (#729)', () => {
     const html = renderMarkup();
     expect(html).toContain('id="record-button"');
     expect(html).not.toMatch(/id="record-button"[^>]*disabled=""/);
+    expectNoVisibleText(html);
+    expectCircleIcon(html);
     expect(html).toContain('aria-label="Record — press to start recording"');
   });
 
-  it('renders a disabled Starting… button while promoting', () => {
+  it('renders a disabled button while promoting, with no visible text', () => {
     useLiveCaptureStore.setState({ appMode: 'live', isCapturing: true, liveMode: 'monitor', promoting: true });
     const html = renderMarkup();
     expect(html).toMatch(/id="record-button"[^>]*disabled=""/);
-    expect(html).toContain('Starting…');
+    expectNoVisibleText(html);
+    expectCircleIcon(html);
     expect(html).toContain('aria-label="Starting recording"');
   });
 
-  it('renders an enabled Recording button with aria-pressed=true while recording', () => {
+  it('renders an enabled Recording button with aria-pressed=true and the persisted record-btn--recording pressed state while recording', () => {
     useLiveCaptureStore.setState({ appMode: 'live', isCapturing: true, liveMode: 'record' });
     const html = renderMarkup();
     expect(html).not.toMatch(/id="record-button"[^>]*disabled=""/);
-    expect(html).toContain('Recording');
+    expect(html).toMatch(/class="record-btn record-btn--recording"/);
+    expectNoVisibleText(html);
+    expectCircleIcon(html);
     expect(html).toContain('aria-pressed="true"');
     expect(html).toContain('aria-label="Recording — press to stop"');
   });
 
-  it('renders a disabled Stopping… button while stopping', () => {
+  it('renders a disabled Stopping… button while stopping, with no visible text', () => {
     useLiveCaptureStore.setState({ appMode: 'live', isCapturing: true, liveMode: 'record', stopping: true });
     const html = renderMarkup();
     expect(html).toMatch(/id="record-button"[^>]*disabled=""/);
-    expect(html).toContain('Stopping…');
+    expectNoVisibleText(html);
+    expectCircleIcon(html);
     expect(html).toContain('aria-pressed="true"');
     expect(html).toContain('aria-label="Stopping recording"');
   });
