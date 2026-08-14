@@ -42,6 +42,7 @@ export const SCRIPTS_DIR = app.isPackaged /* c8 ignore next */
 export const SPECTRUM_SCRIPT = path.join(SCRIPTS_DIR, 'spectrum.py');
 export const STREAM_SCRIPT = path.join(SCRIPTS_DIR, 'stream.py');
 export const PLAYBACK_SCRIPT = path.join(SCRIPTS_DIR, 'playback.py');
+export const WAVEFORM_PEAKS_SCRIPT = path.join(SCRIPTS_DIR, 'waveform_peaks.py');
 
 // Bundled demo recording for the first-run onboarding flow (#69). Like the
 // Python scripts it must live OUTSIDE the asar archive so the external

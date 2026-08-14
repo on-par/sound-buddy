@@ -127,6 +127,7 @@ jobs:
         run: |
           python packages/audio-engine/scripts/test_stream.py
           python packages/audio-engine/scripts/test_playback.py
+          python packages/audio-engine/scripts/test_waveform_peaks.py
           python packages/audio-engine/scripts/test_spectrum.py
 
   # Electron e2e (#402, TD-008): the stubbed Playwright specs validate the real

@@ -95,6 +95,8 @@ if [[ -n "$PYTHON" ]]; then
   "$PYTHON" packages/audio-engine/scripts/test_stream.py
   echo "==> python tests (playback.py) via $PYTHON"
   "$PYTHON" packages/audio-engine/scripts/test_playback.py
+  echo "==> python tests (waveform_peaks.py) via $PYTHON"
+  "$PYTHON" packages/audio-engine/scripts/test_waveform_peaks.py
   echo "==> python tests (spectrum.py) via $PYTHON"
   "$PYTHON" packages/audio-engine/scripts/test_spectrum.py
 else

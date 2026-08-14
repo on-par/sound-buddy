@@ -18,7 +18,12 @@ import { create } from 'zustand';
 import { getSoundBuddy } from '../useElectron';
 import { useLiveCaptureStore } from './liveCaptureStore';
 import { useSpectrumStore } from './spectrumStore';
-import type { PlaybackApi, DialogApi } from '../../../electron/ipc/api';
+import type {
+  PlaybackApi,
+  DialogApi,
+  GenerateSessionPeaksResult,
+  SessionPeaksDto,
+} from '../../../electron/ipc/api';
 import {
   outputDeviceListView,
   mixdownNoticeText,
@@ -29,7 +34,10 @@ import {
   type SoundcheckMeterTrack,
 } from '../soundcheck-panel';
 
-export type SoundcheckApi = Pick<PlaybackApi, 'listOutputDevices' | 'startPlayback' | 'stopPlayback' | 'readSession' | 'onPlaybackEvent'> &
+export type SoundcheckApi = Pick<
+  PlaybackApi,
+  'listOutputDevices' | 'startPlayback' | 'stopPlayback' | 'readSession' | 'onPlaybackEvent' | 'generateSessionPeaks'
+> &
   Pick<DialogApi, 'openDirDialog'>;
 
 export interface SoundcheckState {
@@ -47,6 +55,11 @@ export interface SoundcheckState {
   statusMessage: string | null;
   lastElapsedTick: { elapsed: number; duration: number } | null;
   lastMeterTick: SoundcheckMeterTrack[] | null;
+  // Per-track waveform peaks (#734), generated in the background after a
+  // successful read-session. Auxiliary: generation failure is silent and never
+  // blocks the soundcheck workflow (story 3 renders these, not this slice).
+  peaks: SessionPeaksDto | null;
+  peaksStatus: 'idle' | 'generating' | 'ready' | 'error';
 
   loadDevices(): Promise<void>;
   selectDevice(value: string): void;
@@ -94,6 +107,8 @@ export function createSoundcheckStore(getApi: () => SoundcheckApi) {
     statusMessage: null,
     lastElapsedTick: null,
     lastMeterTick: null,
+    peaks: null,
+    peaksStatus: 'idle',
 
     async loadDevices() {
       const result = await getApi().listOutputDevices();
@@ -143,6 +158,20 @@ export function createSoundcheckStore(getApi: () => SoundcheckApi) {
         routes,
         mixdownNotice: mixdownNoticeText(manifest, routes, prev.deviceChannels, prev.master),
       });
+
+      // #734: trigger background per-track waveform-peak generation after a
+      // successful read-session. The manifest/routes are already set above, so
+      // the load itself never blocks on the (minutes-scale for a full-length
+      // session) decode. Failure is deliberately SILENT — waveform is an
+      // auxiliary background artifact and must not clobber the workflow's
+      // statusMessage or block soundcheck.
+      set({ peaks: null, peaksStatus: 'generating' });
+      const peaksResult = (await getApi().generateSessionPeaks(dir)) as GenerateSessionPeaksResult | null | undefined;
+      if (peaksResult?.success) {
+        set({ peaks: peaksResult.peaks, peaksStatus: 'ready' });
+      } else {
+        set({ peaksStatus: 'error' });
+      }
     },
 
     setRoute(trackIndex, base) {

@@ -44,7 +44,15 @@ vi.mock('./engine-loader', async () => {
 });
 
 import { registerPlaybackHandlers } from './playback';
-import { logWarn, logError } from '../logger';
+import { log, logWarn, logError } from '../logger';
+import { peakCachePathFor } from './waveform-peaks';
+import { WAVEFORM_PEAKS_SCRIPT } from './shared';
+import type { SessionPeaksDto } from './api';
+
+const PEAKS: SessionPeaksDto = {
+  bucketsPerSecond: 50,
+  tracks: [{ index: 0, label: 'Kick', kind: 'mono', bucketCount: 5, data: 'AA==' }],
+};
 
 /** A stand-in for the spawned Python child, with a spy-able kill(). */
 function fakeProc() {
@@ -265,5 +273,81 @@ describe('stop-playback', () => {
 
     expect(proc.kill).toHaveBeenCalledWith('SIGKILL');
     await expect(p).resolves.toEqual({ success: true });
+  });
+});
+
+describe('generate-session-peaks', () => {
+  // Mirrors the mocked app.getPath('userData') in the electron mock above.
+  const cacheDir = '/tmp/sound-buddy-test/soundcheck-peaks';
+  let sessionDir: string;
+
+  beforeEach(() => {
+    sessionDir = fs.mkdtempSync(path.join(os.tmpdir(), 'sb-peaks-session-'));
+  });
+
+  afterEach(() => {
+    fs.rmSync(sessionDir, { recursive: true, force: true });
+  });
+
+  it('returns an error when no session directory is given', async () => {
+    const handler = handlers.get('generate-session-peaks') as Handler;
+    const result = await handler(null, '');
+    expect(result).toEqual({ success: false, error: 'No session directory provided.' });
+    expect(spawnMock).not.toHaveBeenCalled();
+  });
+
+  it('serves a fresh cache without spawning', async () => {
+    fs.writeFileSync(path.join(sessionDir, 'session.json'), JSON.stringify({ tracks: [{ file: 'a.wav' }] }));
+    fs.writeFileSync(path.join(sessionDir, 'a.wav'), 'stem');
+    const cachePath = peakCachePathFor(sessionDir, cacheDir);
+    fs.mkdirSync(path.dirname(cachePath), { recursive: true });
+    fs.writeFileSync(cachePath, JSON.stringify(PEAKS));
+    const future = Date.now() + 60_000;
+    fs.utimesSync(cachePath, new Date(future), new Date(future));
+
+    const handler = handlers.get('generate-session-peaks') as Handler;
+    const result = await handler(null, sessionDir);
+    expect(result).toEqual({ success: true, cached: true, peaks: PEAKS });
+    expect(spawnMock).not.toHaveBeenCalled();
+  });
+
+  it('spawns waveform_peaks.py on a cache miss and serves the generated document', async () => {
+    const proc = fakeProc();
+    spawnMock.mockReturnValueOnce(proc);
+    fs.writeFileSync(path.join(sessionDir, 'session.json'), JSON.stringify({ tracks: [{ file: 'a.wav' }] }));
+    fs.writeFileSync(path.join(sessionDir, 'a.wav'), 'stem');
+    const cachePath = peakCachePathFor(sessionDir, cacheDir);
+
+    const handler = handlers.get('generate-session-peaks') as Handler;
+    const p = handler(null, sessionDir);
+
+    expect(spawnMock).toHaveBeenCalledTimes(1);
+    const [, args] = spawnMock.mock.calls[0] as [string, string[]];
+    expect(args).toEqual([WAVEFORM_PEAKS_SCRIPT, sessionDir, '--out', cachePath]);
+
+    // A progress line on the child's stdout is forwarded to onProgress and
+    // logged (the handler's onProgress → log wiring).
+    proc.stdout.emit('data', Buffer.from('{"type":"done","tracks":1}\n'));
+    expect(log).toHaveBeenCalledWith('generate-session-peaks: {"type":"done","tracks":1}');
+
+    fs.mkdirSync(path.dirname(cachePath), { recursive: true });
+    fs.writeFileSync(cachePath, JSON.stringify(PEAKS));
+    proc.emit('close', 0);
+
+    const result = await p;
+    expect(result).toEqual({ success: true, cached: false, peaks: PEAKS });
+  });
+
+  it('returns an actionable error when the child exits non-zero', async () => {
+    const proc = fakeProc();
+    spawnMock.mockReturnValueOnce(proc);
+    fs.writeFileSync(path.join(sessionDir, 'session.json'), JSON.stringify({ tracks: [{ file: 'a.wav' }] }));
+
+    const handler = handlers.get('generate-session-peaks') as Handler;
+    const p = handler(null, sessionDir);
+    proc.emit('close', 1);
+
+    const result = await p;
+    expect(result).toEqual({ success: false, error: 'waveform peak generation failed (exit 1).' });
   });
 });
