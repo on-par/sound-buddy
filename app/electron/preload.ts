@@ -49,6 +49,10 @@ export function createBridge(ipc: IpcRendererLike) {
     updateSettings: (patch: UpdateSettingsPatch) =>
       ipc.invoke('update-settings', patch),
 
+    // ADR-0006 (#747) — the consent modal's Allow click routes here instead of
+    // the update-settings patch path, which is permanently revoke-only.
+    grantConsoleNetworkConsent: () => ipc.invoke('grant-console-network-consent'),
+
     // Storage location + disk usage (#91). Informational only — Sound Buddy caps
     // nothing; this reports where recordings live and how much disk they use.
     getStorageUsage: () => ipc.invoke('get-storage-usage'),

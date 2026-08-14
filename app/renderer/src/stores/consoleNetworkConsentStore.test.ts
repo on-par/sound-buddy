@@ -3,25 +3,25 @@
 
 import { describe, it, expect, vi } from 'vitest';
 import { createConsoleNetworkConsentStore, type ConsoleNetworkConsentDeps } from './consoleNetworkConsentStore';
-import type { AppSettings, UpdateSettingsPatch } from '../../../electron/ipc/api';
+import type { AppSettings } from '../../../electron/ipc/api';
 
 function createFakeDeps(granted: boolean) {
-  const updateSettings = vi.fn(async (_patch: UpdateSettingsPatch) => {});
+  const grantConsoleNetworkConsent = vi.fn(async () => {});
   const getSettings = vi.fn((): AppSettings | null => ({ consoleNetworkConsentGranted: granted }) as AppSettings);
-  const deps: ConsoleNetworkConsentDeps = { getSettings, updateSettings };
-  return { deps, getSettings, updateSettings };
+  const deps: ConsoleNetworkConsentDeps = { getSettings, grantConsoleNetworkConsent };
+  return { deps, getSettings, grantConsoleNetworkConsent };
 }
 
 describe('createConsoleNetworkConsentStore (#378)', () => {
   it('requestConsent() resolves true immediately without opening the dialog when already granted', async () => {
-    const { deps, updateSettings } = createFakeDeps(true);
+    const { deps, grantConsoleNetworkConsent } = createFakeDeps(true);
     const store = createConsoleNetworkConsentStore(deps);
 
     const result = await store.getState().requestConsent();
 
     expect(result).toBe(true);
     expect(store.getState().dialogOpen).toBe(false);
-    expect(updateSettings).not.toHaveBeenCalled();
+    expect(grantConsoleNetworkConsent).not.toHaveBeenCalled();
   });
 
   it('requestConsent() opens the dialog when consent is not already granted', () => {
@@ -33,8 +33,8 @@ describe('createConsoleNetworkConsentStore (#378)', () => {
     expect(store.getState().dialogOpen).toBe(true);
   });
 
-  it('grant() persists consent, closes the dialog, and resolves a pending requestConsent() with true', async () => {
-    const { deps, updateSettings } = createFakeDeps(false);
+  it('grant() persists consent via grantConsoleNetworkConsent, closes the dialog, and resolves a pending requestConsent() with true', async () => {
+    const { deps, grantConsoleNetworkConsent } = createFakeDeps(false);
     const store = createConsoleNetworkConsentStore(deps);
 
     const pending = store.getState().requestConsent();
@@ -42,13 +42,13 @@ describe('createConsoleNetworkConsentStore (#378)', () => {
 
     await store.getState().grant();
 
-    expect(updateSettings).toHaveBeenCalledWith({ consoleNetworkConsentGranted: true });
+    expect(grantConsoleNetworkConsent).toHaveBeenCalledTimes(1);
     expect(store.getState().dialogOpen).toBe(false);
     await expect(pending).resolves.toBe(true);
   });
 
   it('decline() closes the dialog without persisting anything and resolves a pending requestConsent() with false', async () => {
-    const { deps, updateSettings } = createFakeDeps(false);
+    const { deps, grantConsoleNetworkConsent } = createFakeDeps(false);
     const store = createConsoleNetworkConsentStore(deps);
 
     const pending = store.getState().requestConsent();
@@ -56,7 +56,7 @@ describe('createConsoleNetworkConsentStore (#378)', () => {
 
     store.getState().decline();
 
-    expect(updateSettings).not.toHaveBeenCalled();
+    expect(grantConsoleNetworkConsent).not.toHaveBeenCalled();
     expect(store.getState().dialogOpen).toBe(false);
     await expect(pending).resolves.toBe(false);
   });

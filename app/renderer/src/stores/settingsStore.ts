@@ -13,6 +13,11 @@ export interface SettingsState {
   dialogOpen: boolean;
   loadSettings(): Promise<void>;
   updateSettings(patch: UpdateSettingsPatch): Promise<void>;
+  // ADR-0006 (#747) — grants Tier 2 console-network consent through the
+  // dedicated grant IPC (the generic update-settings patch is revoke-only).
+  // Keeps the in-memory settings state in sync so requestConsent()'s
+  // already-granted fast path keeps working.
+  grantConsoleNetworkConsent(): Promise<void>;
   openDialog(): void;
   closeDialog(): void;
 }
@@ -33,6 +38,13 @@ export function createSettingsStore(getApi: () => SettingsStoreApi) {
     async updateSettings(patch) {
       try {
         set({ settings: await getApi().updateSettings(patch) });
+      } catch (err) {
+        set({ settingsError: err instanceof Error ? err.message : String(err) });
+      }
+    },
+    async grantConsoleNetworkConsent() {
+      try {
+        set({ settings: await getApi().grantConsoleNetworkConsent() });
       } catch (err) {
         set({ settingsError: err instanceof Error ? err.message : String(err) });
       }

@@ -50,6 +50,11 @@ const INVOKE_TABLE: Array<{ method: BridgeKey; channel: string; args: unknown[] 
     channel: 'update-settings',
     args: [{ storageDir: '/tmp/rec' } satisfies UpdateSettingsPatch],
   },
+  {
+    method: 'grantConsoleNetworkConsent',
+    channel: 'grant-console-network-consent',
+    args: [],
+  },
   { method: 'getStorageUsage', channel: 'get-storage-usage', args: [] },
   { method: 'getLicense', channel: 'get-license', args: [] },
   { method: 'activateLicense', channel: 'activate-license', args: ['SB-TEST-KEY'] },

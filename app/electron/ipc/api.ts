@@ -514,6 +514,9 @@ export interface AppInfoApi {
 export interface SettingsApi {
   getSettings(): Promise<AppSettings>;
   updateSettings(patch: UpdateSettingsPatch): Promise<AppSettings>;
+  // ADR-0006 (#747): the only path that sets consoleNetworkConsentGranted=true
+  // — the generic update-settings patch path is revoke-only (false).
+  grantConsoleNetworkConsent(): Promise<AppSettings>;
 }
 
 export interface StorageApi {

@@ -93,6 +93,7 @@ export function createMockSoundBuddy(overrides: Partial<SoundBuddyApi> = {}): Mo
     getSettings: invoke('getSettings', DEFAULT_APP_SETTINGS),
     toFileUrl: invoke('toFileUrl', ''),
     updateSettings: invoke('updateSettings', DEFAULT_APP_SETTINGS),
+    grantConsoleNetworkConsent: invoke('grantConsoleNetworkConsent', DEFAULT_APP_SETTINGS),
     getStorageUsage: invoke('getStorageUsage', DEFAULT_STORAGE_USAGE),
     getLicense: invoke('getLicense', DEFAULT_LICENSE_STATE),
     activateLicense: invoke('activateLicense', DEFAULT_LICENSE_STATE),

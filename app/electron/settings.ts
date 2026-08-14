@@ -27,30 +27,290 @@ import type {
 // importers of './settings' don't need to change their import path.
 export type { AppSettings, CaptureRig, CaptureRigChannel, PreflightBaseline, CustomIdealProfile, PersistedChannelGroup };
 
+// ── Per-field invariants (SETTING_SPECS) ────────────────────────────────────
+// Every AppSettings field's default, file-layer sanitizer, IPC-patch
+// sanitizer, and (for the three env-backed fields) read-time env layering is
+// declared exactly once here (#747). getSettings()/writeSettingsFile() and the
+// update-settings IPC whitelist all derive from SETTING_SPECS, so a new
+// setting is one spec entry plus the AppSettings/UpdateSettingsPatch types in
+// ipc/api.ts — not ~8 scattered edit sites.
+
+// Cap on a single channel label's stored length (#482) — same value as the
+// renderer's MAX_LABEL_LEN (liveCaptureStore.ts / inline-app.js). Kept in sync
+// by settings-length-caps-drift.test.ts since the renderer and this
+// main-process guard must agree on what "too long" means.
+export const MAX_CHANNEL_LABEL_LEN = 40;
+// Cap on a group name's stored length (#483) — same value/rationale as
+// MAX_CHANNEL_LABEL_LEN, kept as its own named constant since a group name and
+// a channel label are conceptually distinct fields that happen to share a cap.
+const MAX_GROUP_NAME_LEN = 40;
+// Cap on a stored instrument-profile override id (#524) — mirrors the
+// renderer's instrument-profiles.js MAX_PROFILE_ID_LEN, guarded by
+// settings-length-caps-drift.test.ts.
+export const MAX_PROFILE_ID_LEN = 64;
+// Cap on the persisted Share Image church-name setting (#265) — mirrors the
+// renderer's share-card.ts MAX_CHURCH_NAME_LEN, guarded by
+// settings-length-caps-drift.test.ts. Defined here too since main can't import
+// from the renderer program.
+export const MAX_SHARE_CHURCH_NAME_LEN = 40;
+// Cap on the persisted secondary measurement device name (#460). OS device
+// names are short; the cap only guards a hand-crafted settings.json payload
+// from bloating the stored preference.
+const MAX_MEASUREMENT_DEVICE_NAME_LEN = 128;
+// Valid range for weeklyReminderServiceDay (#268) — 0 = Sunday … 6 = Saturday,
+// matching Date.prototype.getDay().
 const MIN_SERVICE_DAY = 0;
 const MAX_SERVICE_DAY = 6;
 
-const DEFAULTS: AppSettings = {
-  idealProfile: '',
-  customIdealProfiles: [],
-  storageDir: '',
-  rigs: [],
-  activeRigId: null,
-  usageSignalEnabled: false,
-  channelLabels: {},
-  channelGroups: {},
-  inputInstrumentProfiles: {},
-  crashReportingEnabled: false,
-  dawWorkspaceEnabled: false,
-  liveAdjustmentsEnabled: false,
-  reportFirstUxEnabled: false,
-  shareChurchName: '',
-  weeklyReminderEnabled: false,
-  weeklyReminderServiceDay: 0,
-  liveEqPaneWidth: 360,
-  measurementDeviceName: '',
-  gradingProfile: 'casual',
-  consoleNetworkConsentGranted: false,
+/** A plain, non-array, non-null object. */
+function isPlainObject(v: unknown): v is Record<string, unknown> {
+  return typeof v === 'object' && v !== null && !Array.isArray(v);
+}
+
+// Guards the update-settings whitelist for channelLabels (#482): `null` when
+// `value` isn't a plain non-array object (the patch key is then ignored
+// entirely, leaving the stored map untouched). Otherwise rebuilds the map
+// from scratch — callers send the FULL next map, so this replaces rather than
+// deep-merges with whatever was previously stored.
+export function sanitizeChannelLabels(value: unknown): Record<string, Record<string, string>> | null {
+  if (!isPlainObject(value)) return null;
+
+  const clean: Record<string, Record<string, string>> = {};
+  for (const [deviceName, tokenMap] of Object.entries(value)) {
+    if (!isPlainObject(tokenMap)) continue;
+    const labels: Record<string, string> = {};
+    for (const [token, label] of Object.entries(tokenMap)) {
+      if (token === '' || typeof label !== 'string') continue;
+      const trimmed = label.trim().slice(0, MAX_CHANNEL_LABEL_LEN);
+      if (trimmed === '') continue;
+      labels[token] = trimmed;
+    }
+    if (Object.keys(labels).length > 0) clean[deviceName] = labels;
+  }
+  return clean;
+}
+
+// Guards the update-settings whitelist for channelGroups (#483): `null` when
+// `value` isn't a plain non-array object (the patch key is then ignored
+// entirely, leaving the stored map untouched). Otherwise rebuilds the map
+// from scratch — callers send the FULL next map, so this replaces rather than
+// deep-merges with whatever was previously stored. Mirrors
+// sanitizeChannelLabels's discipline, extended for the group shape:
+//  - a group needs a non-empty (post-trim) `name`, capped at MAX_GROUP_NAME_LEN
+//  - `members` is filtered to non-negative integers, deduped in order
+//  - `collapsed` is kept only when it's literally `true`
+//  - a group with an empty `members` list is still kept (a named empty group
+//    is legal — "No strips assigned"); a device whose group list ends up
+//    empty is dropped (absence hydrates to [], same as channelLabels)
+export function sanitizeChannelGroups(value: unknown): Record<string, PersistedChannelGroup[]> | null {
+  if (!isPlainObject(value)) return null;
+
+  const clean: Record<string, PersistedChannelGroup[]> = {};
+  for (const [deviceName, groupList] of Object.entries(value)) {
+    if (!Array.isArray(groupList)) continue;
+    const groups: PersistedChannelGroup[] = [];
+    for (const g of groupList) {
+      if (!isPlainObject(g) || typeof g.name !== 'string') continue;
+      const name = g.name.trim().slice(0, MAX_GROUP_NAME_LEN);
+      if (name === '') continue;
+      const seen = new Set<number>();
+      const members: number[] = [];
+      if (Array.isArray(g.members)) {
+        for (const m of g.members) {
+          if (Number.isInteger(m) && (m as number) >= 0 && !seen.has(m as number)) {
+            seen.add(m as number);
+            members.push(m as number);
+          }
+        }
+      }
+      const group: PersistedChannelGroup = { name, members };
+      if (g.collapsed === true) group.collapsed = true;
+      groups.push(group);
+    }
+    if (groups.length > 0) clean[deviceName] = groups;
+  }
+  return clean;
+}
+
+// Guards the update-settings whitelist for inputInstrumentProfiles (#524):
+// `null` when `value` isn't a plain non-array object (the patch key is then
+// ignored entirely, leaving the stored map untouched). Otherwise rebuilds the
+// map from scratch — callers send the FULL next map, so this replaces rather
+// than deep-merges with whatever was previously stored. Exact mirror of
+// sanitizeChannelLabels. Deliberately does NOT validate the profile id against
+// the renderer's built-in profile list — that list lives in instrument-
+// profiles.js and an unknown id is already treated as "auto" on read
+// (effectiveProfileId), so structural sanitization is sufficient here and
+// keeps the main process decoupled from the renderer's profile catalog.
+export function sanitizeInputInstrumentProfiles(value: unknown): Record<string, Record<string, string>> | null {
+  if (!isPlainObject(value)) return null;
+
+  const clean: Record<string, Record<string, string>> = {};
+  for (const [deviceName, tokenMap] of Object.entries(value)) {
+    if (!isPlainObject(tokenMap)) continue;
+    const profiles: Record<string, string> = {};
+    for (const [token, profileId] of Object.entries(tokenMap)) {
+      if (token === '' || typeof profileId !== 'string') continue;
+      const trimmed = profileId.trim().slice(0, MAX_PROFILE_ID_LEN);
+      if (trimmed === '') continue;
+      profiles[token] = trimmed;
+    }
+    if (Object.keys(profiles).length > 0) clean[deviceName] = profiles;
+  }
+  return clean;
+}
+
+// Guards the update-settings whitelist for shareChurchName (#265): `null`
+// when `value` isn't a string (the patch key is then ignored entirely,
+// leaving the stored setting untouched). Otherwise trims and caps the
+// length — an empty string is a valid, meaningful result (it's how the user
+// clears the name back to the privacy-preserving default).
+export function sanitizeShareChurchName(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  return value.trim().slice(0, MAX_SHARE_CHURCH_NAME_LEN);
+}
+
+/**
+ * Per-field spec describing one AppSettings field's invariants (#747): its
+ * default value, its file-layer sanitizer, its (optional) IPC-patch
+ * sanitizer, and its (optional) read-time env layering. SETTING_SPECS is the
+ * single owner — getSettings()/writeSettingsFile() iterate it and the
+ * update-settings IPC whitelist derives from sanitizePatch.
+ *
+ * Generic over the field's VALUE type (not its key): the map is declared as
+ * `{ [K in keyof AppSettings]: SettingSpec<AppSettings[K]> }`, so T is e.g.
+ * `string` for idealProfile or `boolean` for usageSignalEnabled.
+ */
+export interface SettingSpec<T> {
+  default: T;
+  sanitizeFile: (v: unknown) => T;
+  sanitizePatch?: (v: unknown) => T | undefined;
+  envRead?: (fileValue: T) => T;
+}
+
+// Every key of AppSettings gets exactly one entry — enforced at compile time
+// by the mapped type and at runtime by settings.test.ts's spec-coverage test.
+// Each entry lifts the field's semantics verbatim from the pre-#747 code so
+// behavior is byte-identical.
+export const SETTING_SPECS: { [K in keyof AppSettings]: SettingSpec<AppSettings[K]> } = {
+  idealProfile: {
+    default: '',
+    sanitizeFile: (v) => ((v ?? SETTING_SPECS.idealProfile.default) as string),
+    sanitizePatch: (v) => (typeof v === 'string' ? v : undefined),
+    envRead: (f) => process.env.SOUND_BUDDY_IDEAL_PROFILE?.trim() || f,
+  },
+  customIdealProfiles: {
+    // Returns the stored array by reference, exactly as the pre-#747
+    // fileCustomIdealProfiles did — not patchable via IPC (profiles have their
+    // own CRUD surface), no env layer.
+    default: [],
+    sanitizeFile: (v) => (Array.isArray(v) ? v : SETTING_SPECS.customIdealProfiles.default),
+  },
+  storageDir: {
+    default: '',
+    sanitizeFile: (v) => ((v ?? SETTING_SPECS.storageDir.default) as string),
+    sanitizePatch: (v) => (typeof v === 'string' ? v.trim() : undefined),
+    envRead: (f) => process.env.SOUND_BUDDY_STORAGE_DIR?.trim() || f,
+  },
+  rigs: {
+    default: [],
+    // Fresh array literal for the default case so callers can never mutate a
+    // shared default — not patchable via IPC (rigs have dedicated CRUD IPC).
+    sanitizeFile: (v) => (Array.isArray(v) ? v : []),
+  },
+  activeRigId: {
+    default: null,
+    sanitizeFile: (v) => ((v ?? SETTING_SPECS.activeRigId.default) as string | null),
+  },
+  usageSignalEnabled: {
+    default: false,
+    sanitizeFile: (v) => ((v ?? SETTING_SPECS.usageSignalEnabled.default) as boolean),
+    sanitizePatch: (v) => (typeof v === 'boolean' ? v : undefined),
+  },
+  channelLabels: {
+    default: {},
+    sanitizeFile: (v) => (isPlainObject(v) ? (v as Record<string, Record<string, string>>) : {}),
+    sanitizePatch: (v) => sanitizeChannelLabels(v) ?? undefined,
+  },
+  channelGroups: {
+    default: {},
+    sanitizeFile: (v) => (isPlainObject(v) ? (v as Record<string, PersistedChannelGroup[]>) : {}),
+    sanitizePatch: (v) => sanitizeChannelGroups(v) ?? undefined,
+  },
+  inputInstrumentProfiles: {
+    default: {},
+    sanitizeFile: (v) => (isPlainObject(v) ? (v as Record<string, Record<string, string>>) : {}),
+    sanitizePatch: (v) => sanitizeInputInstrumentProfiles(v) ?? undefined,
+  },
+  crashReportingEnabled: {
+    default: false,
+    sanitizeFile: (v) => ((v ?? SETTING_SPECS.crashReportingEnabled.default) as boolean),
+    sanitizePatch: (v) => (typeof v === 'boolean' ? v : undefined),
+  },
+  dawWorkspaceEnabled: {
+    default: false,
+    sanitizeFile: (v) => ((v ?? SETTING_SPECS.dawWorkspaceEnabled.default) as boolean),
+    sanitizePatch: (v) => (typeof v === 'boolean' ? v : undefined),
+  },
+  liveAdjustmentsEnabled: {
+    default: false,
+    sanitizeFile: (v) => ((v ?? SETTING_SPECS.liveAdjustmentsEnabled.default) as boolean),
+    sanitizePatch: (v) => (typeof v === 'boolean' ? v : undefined),
+  },
+  reportFirstUxEnabled: {
+    default: false,
+    sanitizeFile: (v) => ((v ?? SETTING_SPECS.reportFirstUxEnabled.default) as boolean),
+    sanitizePatch: (v) => (typeof v === 'boolean' ? v : undefined),
+    envRead: (f) => envBool('SOUND_BUDDY_REPORT_FIRST_UX') ?? f,
+  },
+  shareChurchName: {
+    default: '',
+    sanitizeFile: (v) => (typeof v === 'string' ? v : SETTING_SPECS.shareChurchName.default),
+    sanitizePatch: (v) => sanitizeShareChurchName(v) ?? undefined,
+  },
+  weeklyReminderEnabled: {
+    default: false,
+    sanitizeFile: (v) => ((v ?? SETTING_SPECS.weeklyReminderEnabled.default) as boolean),
+    sanitizePatch: (v) => (typeof v === 'boolean' ? v : undefined),
+  },
+  weeklyReminderServiceDay: {
+    default: 0,
+    sanitizeFile: (v) =>
+      typeof v === 'number' && Number.isInteger(v) && v >= MIN_SERVICE_DAY && v <= MAX_SERVICE_DAY
+        ? v
+        : SETTING_SPECS.weeklyReminderServiceDay.default,
+    sanitizePatch: (v) =>
+      typeof v === 'number' && Number.isInteger(v) && v >= MIN_SERVICE_DAY && v <= MAX_SERVICE_DAY
+        ? v
+        : undefined,
+  },
+  liveEqPaneWidth: {
+    default: 360,
+    sanitizeFile: (v) => (typeof v === 'number' && Number.isFinite(v) && v > 0 ? v : SETTING_SPECS.liveEqPaneWidth.default),
+    sanitizePatch: (v) => (typeof v === 'number' && Number.isFinite(v) && v > 0 ? v : undefined),
+  },
+  measurementDeviceName: {
+    default: '',
+    sanitizeFile: (v) => (typeof v === 'string' ? v : SETTING_SPECS.measurementDeviceName.default),
+    sanitizePatch: (v) => (typeof v === 'string' ? v.trim().slice(0, MAX_MEASUREMENT_DEVICE_NAME_LEN) : undefined),
+  },
+  gradingProfile: {
+    default: 'casual',
+    sanitizeFile: (v) => (v === 'casual' || v === 'broadcast' ? v : SETTING_SPECS.gradingProfile.default),
+    sanitizePatch: (v) => (v === 'casual' || v === 'broadcast' ? v : undefined),
+  },
+  // Tier 2 (console-network) consent (#378 / ADR-0006). sanitizeFile is
+  // unchanged from today so updateSettings({ consoleNetworkConsentGranted:
+  // true }) (settings.test.ts) and grantConsoleNetworkConsent() still persist
+  // true. sanitizePatch REJECTS true — a true patch is dropped at the
+  // update-settings IPC boundary, so Settings can only ever revoke (false);
+  // granting goes exclusively through the dedicated grant-console-network-
+  // consent IPC (ipc/settings.ts → grantConsoleNetworkConsent()).
+  consoleNetworkConsentGranted: {
+    default: false,
+    sanitizeFile: (v) => ((v ?? SETTING_SPECS.consoleNetworkConsentGranted.default) as boolean),
+    sanitizePatch: (v) => (v === false ? false : undefined),
+  },
 };
 
 function settingsPath(): string {
@@ -73,136 +333,23 @@ function readSettingsFile(context: string): Partial<AppSettings> {
 }
 
 /**
- * The rigs array from a raw file view, defaulting to a fresh empty array when
- * the key is absent or corrupted (hand-edited to a non-array). Always returns a
- * new array for the default case so callers can never mutate a shared default.
- */
-function fileRigs(file: Partial<AppSettings>): CaptureRig[] {
-  return Array.isArray(file.rigs) ? file.rigs : [];
-}
-
-function fileCustomIdealProfiles(file: Partial<AppSettings>): CustomIdealProfile[] {
-  return Array.isArray(file.customIdealProfiles) ? file.customIdealProfiles : [];
-}
-
-/**
- * The weeklyReminderServiceDay value from a raw file view, defaulting to
- * `DEFAULTS.weeklyReminderServiceDay` when the key is absent or corrupted
- * (hand-edited to a non-integer or out-of-range value) — mirrors fileRigs's
- * "corrupted value falls back to the default" discipline.
- */
-function fileWeeklyReminderServiceDay(file: Partial<AppSettings>): number {
-  const v = file.weeklyReminderServiceDay;
-  return typeof v === 'number' && Number.isInteger(v) && v >= MIN_SERVICE_DAY && v <= MAX_SERVICE_DAY
-    ? v
-    : DEFAULTS.weeklyReminderServiceDay;
-}
-
-/**
- * The liveEqPaneWidth value from a raw file view, defaulting to
- * `DEFAULTS.liveEqPaneWidth` when the key is absent or corrupted (hand-edited
- * to a non-number, non-finite, or non-positive value) — mirrors
- * fileWeeklyReminderServiceDay's discipline (#668). Deliberately does NOT
- * clamp to [EQ_PANE_MIN_W, EQ_PANE_MAX_W] — that range lives in the renderer
- * (live-capture-panel.ts's clampEqPaneWidth) and is applied there; main only
- * guards against a structurally invalid value reaching the renderer at all.
- */
-function fileLiveEqPaneWidth(file: Partial<AppSettings>): number {
-  const v = file.liveEqPaneWidth;
-  return typeof v === 'number' && Number.isFinite(v) && v > 0 ? v : DEFAULTS.liveEqPaneWidth;
-}
-
-/**
- * The channelLabels map from a raw file view, defaulting to a fresh empty
- * object when the key is absent or corrupted (hand-edited to a non-object or
- * an array). Always returns a new object for the default case so callers can
- * never mutate a shared default.
- */
-function fileChannelLabels(file: Partial<AppSettings>): Record<string, Record<string, string>> {
-  const v = file.channelLabels;
-  return v && typeof v === 'object' && !Array.isArray(v) ? v : {};
-}
-
-/**
- * The channelGroups map from a raw file view, defaulting to a fresh empty
- * object when the key is absent or corrupted (hand-edited to a non-object or
- * an array) — mirrors fileChannelLabels (#482) for #483's per-device groups.
- * Always returns a new object for the default case so callers can never
- * mutate a shared default.
- */
-function fileChannelGroups(file: Partial<AppSettings>): Record<string, PersistedChannelGroup[]> {
-  const v = file.channelGroups;
-  return v && typeof v === 'object' && !Array.isArray(v) ? v : {};
-}
-
-/**
- * The inputInstrumentProfiles map from a raw file view, defaulting to a
- * fresh empty object when the key is absent or corrupted (hand-edited to a
- * non-object or an array) — exact mirror of fileChannelLabels (#524). Always
- * returns a new object for the default case so callers can never mutate a
- * shared default.
- */
-function fileInputInstrumentProfiles(file: Partial<AppSettings>): Record<string, Record<string, string>> {
-  const v = file.inputInstrumentProfiles;
-  return v && typeof v === 'object' && !Array.isArray(v) ? v : {};
-}
-
-/**
- * The measurementDeviceName value from a raw file view, defaulting to
- * `DEFAULTS.measurementDeviceName` ('') when the key is absent or corrupted
- * (hand-edited to a non-string) — mirrors shareChurchName's typeof-string
- * discipline (#460). An empty string is a valid, meaningful value (no device
- * chosen), so only a non-string falls back.
- */
-function fileMeasurementDeviceName(file: Partial<AppSettings>): string {
-  return typeof file.measurementDeviceName === 'string'
-    ? file.measurementDeviceName
-    : DEFAULTS.measurementDeviceName;
-}
-
-/**
- * The gradingProfile value from a raw file view, defaulting to
- * DEFAULTS.gradingProfile when the key is absent or corrupted (hand-edited
- * to anything other than the two known ids) — mirrors
- * fileMeasurementDeviceName's discipline (#266).
- */
-function fileGradingProfile(file: Partial<AppSettings>): AppSettings['gradingProfile'] {
-  return file.gradingProfile === 'casual' || file.gradingProfile === 'broadcast'
-    ? file.gradingProfile
-    : DEFAULTS.gradingProfile;
-}
-
-/**
  * Persist the file layer, preserving any fields not being changed — including
- * unknown top-level keys a future version may add. Callers pass the mutated file
+ * unknown top-level keys a future version may add. Every known key is
+ * backfilled through its SETTING_SPECS.sanitizeFile so a corrupted or absent
+ * value is repaired to the field's default. Callers pass the mutated file
  * view — never getSettings()'s env-resolved view — so transient env overrides
  * stay read-time only. Rethrows a write failure so a lost save surfaces to the
  * caller instead of resolving as a silent success.
  */
 function writeSettingsFile(file: Partial<AppSettings>): void {
-  const persisted: AppSettings = {
-    ...file,
-    idealProfile: file.idealProfile ?? DEFAULTS.idealProfile,
-    customIdealProfiles: fileCustomIdealProfiles(file),
-    storageDir: file.storageDir ?? DEFAULTS.storageDir,
-    rigs: fileRigs(file),
-    activeRigId: file.activeRigId ?? DEFAULTS.activeRigId,
-    usageSignalEnabled: file.usageSignalEnabled ?? DEFAULTS.usageSignalEnabled,
-    channelLabels: fileChannelLabels(file),
-    channelGroups: fileChannelGroups(file),
-    inputInstrumentProfiles: fileInputInstrumentProfiles(file),
-    crashReportingEnabled: file.crashReportingEnabled ?? DEFAULTS.crashReportingEnabled,
-    dawWorkspaceEnabled: file.dawWorkspaceEnabled ?? DEFAULTS.dawWorkspaceEnabled,
-    liveAdjustmentsEnabled: file.liveAdjustmentsEnabled ?? DEFAULTS.liveAdjustmentsEnabled,
-    reportFirstUxEnabled: file.reportFirstUxEnabled ?? DEFAULTS.reportFirstUxEnabled,
-    shareChurchName: typeof file.shareChurchName === 'string' ? file.shareChurchName : DEFAULTS.shareChurchName,
-    weeklyReminderEnabled: file.weeklyReminderEnabled ?? DEFAULTS.weeklyReminderEnabled,
-    weeklyReminderServiceDay: fileWeeklyReminderServiceDay(file),
-    liveEqPaneWidth: fileLiveEqPaneWidth(file),
-    measurementDeviceName: fileMeasurementDeviceName(file),
-    gradingProfile: fileGradingProfile(file),
-    consoleNetworkConsentGranted: file.consoleNetworkConsentGranted ?? DEFAULTS.consoleNetworkConsentGranted,
-  };
+  const persisted: Record<string, unknown> = { ...file };
+  for (const key of Object.keys(SETTING_SPECS) as Array<keyof AppSettings>) {
+    // The heterogeneous mapped-type union (one SettingSpec per field) is not
+    // directly indexable-and-callable under tsc --noEmit, so each entry is
+    // widened to the shared SettingSpec<union> shape (see getSettings below).
+    const spec = SETTING_SPECS[key] as SettingSpec<AppSettings[keyof AppSettings]>;
+    persisted[key] = spec.sanitizeFile(file[key]);
+  }
   try {
     fs.writeFileSync(settingsPath(), JSON.stringify(persisted, null, 2));
   } catch (err) {
@@ -220,62 +367,13 @@ function envBool(name: string): boolean | undefined {
 /** Read settings, layering file over defaults and env overrides over the file. */
 export function getSettings(): AppSettings {
   const file = readSettingsFile('for read');
-
-  const envReportFirstUx = envBool('SOUND_BUDDY_REPORT_FIRST_UX');
-
-  return {
-    idealProfile:
-      process.env.SOUND_BUDDY_IDEAL_PROFILE?.trim() || file.idealProfile || DEFAULTS.idealProfile,
-    customIdealProfiles: fileCustomIdealProfiles(file),
-    storageDir:
-      process.env.SOUND_BUDDY_STORAGE_DIR?.trim() || file.storageDir || DEFAULTS.storageDir,
-    // Rigs have no env layer — they are pure persisted data.
-    rigs: fileRigs(file),
-    activeRigId: file.activeRigId ?? DEFAULTS.activeRigId,
-    // No env layer — there is no behavior to gate at launch, so this flag is
-    // pure persisted data (like rigs).
-    usageSignalEnabled: file.usageSignalEnabled ?? DEFAULTS.usageSignalEnabled,
-    // Channel labels have no env layer — pure persisted data, like rigs.
-    channelLabels: fileChannelLabels(file),
-    // Channel groups (#483) have no env layer — pure persisted data, like rigs.
-    channelGroups: fileChannelGroups(file),
-    // Instrument-profile overrides (#524) have no env layer — pure persisted
-    // data, like channelLabels.
-    inputInstrumentProfiles: fileInputInstrumentProfiles(file),
-    // No env layer — opt-in crash reporting (#473) must be an explicit user
-    // action, same rationale as usageSignalEnabled.
-    crashReportingEnabled: file.crashReportingEnabled ?? DEFAULTS.crashReportingEnabled,
-    // No env layer — opting into the experimental DAW workspace (#516) must
-    // be an explicit user action, same rationale as crashReportingEnabled.
-    dawWorkspaceEnabled: file.dawWorkspaceEnabled ?? DEFAULTS.dawWorkspaceEnabled,
-    // No env layer — opting into experimental live adjustments (#522) must
-    // be an explicit user action, same rationale as dawWorkspaceEnabled.
-    liveAdjustmentsEnabled: file.liveAdjustmentsEnabled ?? DEFAULTS.liveAdjustmentsEnabled,
-    // A launch-time env override (SOUND_BUDDY_REPORT_FIRST_UX) so the epic
-    // can be dogfooded without a Settings toggle, unlike the other
-    // experimental UI gates above.
-    reportFirstUxEnabled: envReportFirstUx ?? file.reportFirstUxEnabled ?? DEFAULTS.reportFirstUxEnabled,
-    // No env layer — a church name is user-authored copy for the Share
-    // Image export (#265), not a launch-time behavior toggle.
-    shareChurchName: typeof file.shareChurchName === 'string' ? file.shareChurchName : DEFAULTS.shareChurchName,
-    // No env layer — opting into the local weekly reminder (#268) must be an
-    // explicit user action, same rationale as crashReportingEnabled.
-    weeklyReminderEnabled: file.weeklyReminderEnabled ?? DEFAULTS.weeklyReminderEnabled,
-    weeklyReminderServiceDay: fileWeeklyReminderServiceDay(file),
-    // No env layer — the pane width is a UI layout preference the renderer
-    // persists on resize, not a launch-time behavior toggle. Pure persisted
-    // data, like `rigs`.
-    liveEqPaneWidth: fileLiveEqPaneWidth(file),
-    // No env layer — the preferred measurement device is user-chosen persisted
-    // data matched by name (#460), like `rigs`.
-    measurementDeviceName: fileMeasurementDeviceName(file),
-    // No env layer — pure persisted preference, like measurementDeviceName.
-    gradingProfile: fileGradingProfile(file),
-    // No env layer — granting Tier 2 console-network access (#378) must be an
-    // explicit user action via the consent modal, same rationale as
-    // `dawWorkspaceEnabled`.
-    consoleNetworkConsentGranted: file.consoleNetworkConsentGranted ?? DEFAULTS.consoleNetworkConsentGranted,
-  };
+  const result: Record<string, unknown> = {};
+  for (const key of Object.keys(SETTING_SPECS) as Array<keyof AppSettings>) {
+    const spec = SETTING_SPECS[key] as SettingSpec<AppSettings[keyof AppSettings]>;
+    const fileValue = spec.sanitizeFile(file[key]);
+    result[key] = spec.envRead ? spec.envRead(fileValue) : fileValue;
+  }
+  return result as unknown as AppSettings;
 }
 
 /** Merge and persist a partial update; returns the new settings. */
@@ -291,15 +389,26 @@ export function updateSettings(patch: Partial<AppSettings>): AppSettings {
   return getSettings();
 }
 
+/**
+ * The only main-side path that sets consoleNetworkConsentGranted=true
+ * (ADR-0006 / #747). The generic update-settings patch path's sanitizePatch
+ * rejects true, so this dedicated IPC-backed function is how the first-run
+ * consent modal's Allow click persists consent.
+ */
+export function grantConsoleNetworkConsent(): AppSettings {
+  return updateSettings({ consoleNetworkConsentGranted: true });
+}
+
 // ── Capture rigs (CRUD) ───────────────────────────────────────────────────────
 // All mutations follow the same layered-persistence discipline as
 // updateSettings: read the FILE layer → mutate → write the FILE layer. Env
 // overrides for idealProfile are therefore never baked into a rig write, and
-// rigs themselves have no env layer.
+// rigs themselves have no env layer. File-layer sanitization lives in
+// SETTING_SPECS (spec.sanitizeFile), not duplicated here.
 
 /** All saved rigs, in stored order (env overrides don't touch rigs). */
 export function listRigs(): CaptureRig[] {
-  return fileRigs(readSettingsFile('for listRigs'));
+  return SETTING_SPECS.rigs.sanitizeFile(readSettingsFile('for listRigs').rigs);
 }
 
 /** Find one rig by id, or undefined. */
@@ -320,7 +429,7 @@ export function upsertRig(rig: Omit<CaptureRig, 'id'> & { id?: string }): AppSet
   const next: CaptureRig = { ...rig, id };
 
   const file = readSettingsFile('before upsertRig');
-  const rigs = [...fileRigs(file)];
+  const rigs = [...SETTING_SPECS.rigs.sanitizeFile(file.rigs)];
   const idx = rigs.findIndex((r) => r.id === id);
   if (idx >= 0) rigs[idx] = next;
   else rigs.push(next);
@@ -335,12 +444,12 @@ export function upsertRig(rig: Omit<CaptureRig, 'id'> & { id?: string }): AppSet
  */
 export function deleteRig(id: string): AppSettings {
   const file = readSettingsFile('before deleteRig');
-  const current = fileRigs(file);
+  const current = SETTING_SPECS.rigs.sanitizeFile(file.rigs);
   // Unknown id — nothing to remove, so skip the write entirely.
   if (!current.some((r) => r.id === id)) return getSettings();
 
   const rigs = current.filter((r) => r.id !== id);
-  const activeRigId = file.activeRigId === id ? null : (file.activeRigId ?? DEFAULTS.activeRigId);
+  const activeRigId = file.activeRigId === id ? null : (file.activeRigId ?? SETTING_SPECS.activeRigId.default);
 
   writeSettingsFile({ ...file, rigs, activeRigId });
   return getSettings();
@@ -352,7 +461,7 @@ export function deleteRig(id: string): AppSettings {
  */
 export function setActiveRig(id: string | null): AppSettings {
   const file = readSettingsFile('before setActiveRig');
-  const rigs = fileRigs(file);
+  const rigs = SETTING_SPECS.rigs.sanitizeFile(file.rigs);
   if (id !== null && !rigs.some((r) => r.id === id)) {
     // Unknown id — leave the selection untouched.
     return getSettings();

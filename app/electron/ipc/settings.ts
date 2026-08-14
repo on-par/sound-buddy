@@ -19,8 +19,10 @@ import {
   upsertRig,
   deleteRig,
   setActiveRig,
+  SETTING_SPECS,
+  grantConsoleNetworkConsent,
+  type AppSettings,
   type CaptureRig,
-  type PersistedChannelGroup,
 } from '../settings';
 import { isEntitled } from '../license';
 import { dirSizeBytes, formatBytes } from '../storage';
@@ -28,130 +30,16 @@ import { APP_ROOT, defaultRecordDir, platformDefaultStorageDir } from './shared'
 
 const DEFAULT_EXPORT_FILENAME = 'report.png';
 const PNG_EXTENSION = '.png';
-// Cap on a single channel label's stored length (#482) — same value as the
-// renderer's MAX_LABEL_LEN (liveCaptureStore.ts / inline-app.js), kept in
-// sync by convention since the renderer and this main-process guard must
-// agree on what "too long" means.
-const MAX_CHANNEL_LABEL_LEN = 40;
-// Cap on a group name's stored length (#483) — same value/rationale as
-// MAX_CHANNEL_LABEL_LEN, kept as its own named constant since a group name and
-// a channel label are conceptually distinct fields that happen to share a cap.
-const MAX_GROUP_NAME_LEN = 40;
-// Cap on a stored instrument-profile override id (#524) — mirrors the
-// renderer's instrument-profiles.js MAX_PROFILE_ID_LEN, kept in sync by
-// convention since the renderer and this main-process guard must agree on
-// what "too long" means.
-const MAX_PROFILE_ID_LEN = 64;
-// Cap on the persisted Share Image church-name setting (#265) — mirrors the
-// renderer's share-card.ts MAX_CHURCH_NAME_LEN. Defined here too since main
-// can't import from the renderer program.
-const MAX_SHARE_CHURCH_NAME_LEN = 40;
-// Cap on the persisted secondary measurement device name (#460). OS device
-// names are short; the cap only guards a hand-crafted settings.json payload
-// from bloating the stored preference.
-const MAX_MEASUREMENT_DEVICE_NAME_LEN = 128;
-// Valid range for weeklyReminderServiceDay (#268) — 0 = Sunday … 6 = Saturday,
-// matching Date.prototype.getDay().
-const MIN_SERVICE_DAY = 0;
-const MAX_SERVICE_DAY = 6;
 
-/** A plain, non-array, non-null object. */
-function isPlainObject(v: unknown): v is Record<string, unknown> {
-  return typeof v === 'object' && v !== null && !Array.isArray(v);
-}
-
-// Guards the update-settings whitelist for channelLabels (#482): `null` when
-// `value` isn't a plain non-array object (the patch key is then ignored
-// entirely, leaving the stored map untouched). Otherwise rebuilds the map
-// from scratch — callers send the FULL next map, so this replaces rather than
-// deep-merges with whatever was previously stored.
-export function sanitizeChannelLabels(value: unknown): Record<string, Record<string, string>> | null {
-  if (!isPlainObject(value)) return null;
-
-  const clean: Record<string, Record<string, string>> = {};
-  for (const [deviceName, tokenMap] of Object.entries(value)) {
-    if (!isPlainObject(tokenMap)) continue;
-    const labels: Record<string, string> = {};
-    for (const [token, label] of Object.entries(tokenMap)) {
-      if (token === '' || typeof label !== 'string') continue;
-      const trimmed = label.trim().slice(0, MAX_CHANNEL_LABEL_LEN);
-      if (trimmed === '') continue;
-      labels[token] = trimmed;
-    }
-    if (Object.keys(labels).length > 0) clean[deviceName] = labels;
-  }
-  return clean;
-}
-
-// Guards the update-settings whitelist for channelGroups (#483): `null` when
-// `value` isn't a plain non-array object (the patch key is then ignored
-// entirely, leaving the stored map untouched). Otherwise rebuilds the map
-// from scratch — callers send the FULL next map, so this replaces rather than
-// deep-merges with whatever was previously stored. Mirrors
-// sanitizeChannelLabels's discipline, extended for the group shape:
-//  - a group needs a non-empty (post-trim) `name`, capped at MAX_GROUP_NAME_LEN
-//  - `members` is filtered to non-negative integers, deduped in order
-//  - `collapsed` is kept only when it's literally `true`
-//  - a group with an empty `members` list is still kept (a named empty group
-//    is legal — "No strips assigned"); a device whose group list ends up
-//    empty is dropped (absence hydrates to [], same as channelLabels)
-export function sanitizeChannelGroups(value: unknown): Record<string, PersistedChannelGroup[]> | null {
-  if (!isPlainObject(value)) return null;
-
-  const clean: Record<string, PersistedChannelGroup[]> = {};
-  for (const [deviceName, groupList] of Object.entries(value)) {
-    if (!Array.isArray(groupList)) continue;
-    const groups: PersistedChannelGroup[] = [];
-    for (const g of groupList) {
-      if (!isPlainObject(g) || typeof g.name !== 'string') continue;
-      const name = g.name.trim().slice(0, MAX_GROUP_NAME_LEN);
-      if (name === '') continue;
-      const seen = new Set<number>();
-      const members: number[] = [];
-      if (Array.isArray(g.members)) {
-        for (const m of g.members) {
-          if (Number.isInteger(m) && (m as number) >= 0 && !seen.has(m as number)) {
-            seen.add(m as number);
-            members.push(m as number);
-          }
-        }
-      }
-      const group: PersistedChannelGroup = { name, members };
-      if (g.collapsed === true) group.collapsed = true;
-      groups.push(group);
-    }
-    if (groups.length > 0) clean[deviceName] = groups;
-  }
-  return clean;
-}
-
-// Guards the update-settings whitelist for inputInstrumentProfiles (#524):
-// `null` when `value` isn't a plain non-array object (the patch key is then
-// ignored entirely, leaving the stored map untouched). Otherwise rebuilds the
-// map from scratch — callers send the FULL next map, so this replaces rather
-// than deep-merges with whatever was previously stored. Exact mirror of
-// sanitizeChannelLabels. Deliberately does NOT validate the profile id against
-// the renderer's built-in profile list — that list lives in instrument-
-// profiles.js and an unknown id is already treated as "auto" on read
-// (effectiveProfileId), so structural sanitization is sufficient here and
-// keeps the main process decoupled from the renderer's profile catalog.
-export function sanitizeInputInstrumentProfiles(value: unknown): Record<string, Record<string, string>> | null {
-  if (!isPlainObject(value)) return null;
-
-  const clean: Record<string, Record<string, string>> = {};
-  for (const [deviceName, tokenMap] of Object.entries(value)) {
-    if (!isPlainObject(tokenMap)) continue;
-    const profiles: Record<string, string> = {};
-    for (const [token, profileId] of Object.entries(tokenMap)) {
-      if (token === '' || typeof profileId !== 'string') continue;
-      const trimmed = profileId.trim().slice(0, MAX_PROFILE_ID_LEN);
-      if (trimmed === '') continue;
-      profiles[token] = trimmed;
-    }
-    if (Object.keys(profiles).length > 0) clean[deviceName] = profiles;
-  }
-  return clean;
-}
+// The per-field sanitizers moved into settings.ts with SETTING_SPECS (#747);
+// re-exported here so existing importers of './settings' (the IPC module) —
+// e.g. ipc/settings.test.ts — keep their import path.
+export {
+  sanitizeChannelLabels,
+  sanitizeChannelGroups,
+  sanitizeInputInstrumentProfiles,
+  sanitizeShareChurchName,
+} from '../settings';
 
 // Pure helper behind the save-report-image handler (#368): basename-strips a
 // suggested filename (defense-in-depth against a tampered IPC argument — the
@@ -165,16 +53,6 @@ export function safeExportFilename(name: string): string {
   return basename.toLowerCase().endsWith(PNG_EXTENSION) ? basename : `${basename}${PNG_EXTENSION}`;
 }
 
-// Guards the update-settings whitelist for shareChurchName (#265): `null`
-// when `value` isn't a string (the patch key is then ignored entirely,
-// leaving the stored setting untouched). Otherwise trims and caps the
-// length — an empty string is a valid, meaningful result (it's how the user
-// clears the name back to the privacy-preserving default).
-export function sanitizeShareChurchName(value: unknown): string | null {
-  if (typeof value !== 'string') return null;
-  return value.trim().slice(0, MAX_SHARE_CHURCH_NAME_LEN);
-}
-
 export function registerSettingsHandlers(): void {
   // get-app-version — the installed app version, shown in the AI Engineer
   // dialog (#202). Reads package.json directly via resolveAppVersion rather
@@ -186,102 +64,23 @@ export function registerSettingsHandlers(): void {
   ipcMain.handle('get-settings', () => getSettings());
 
   // update-settings — persist a partial settings patch (e.g. the ideal EQ
-  // profile the user picks in the spectrum header, PRD 05). Only known,
-  // type-checked keys are accepted so a stray patch can't pollute settings.json.
-  // Returns the merged settings so the renderer stays in sync.
+  // profile the user picks in the spectrum header, PRD 05). The whitelist is
+  // generic: a patch key is accepted only if its SETTING_SPECS entry declares
+  // sanitizePatch and that sanitizer returns a non-undefined value, so a
+  // stray patch can't pollute settings.json. Returns the merged settings so
+  // the renderer stays in sync.
   ipcMain.handle('update-settings', (_event, patch: Record<string, unknown>) => {
     const clean: Partial<ReturnType<typeof getSettings>> = {};
     if (patch && typeof patch === 'object') {
-      if (typeof patch.idealProfile === 'string') clean.idealProfile = patch.idealProfile;
-      // Storage location (#91). Trimmed; an empty string resets to the platform
-      // default (~/Music/Sound Buddy). No size/count limit is ever applied.
-      if (typeof patch.storageDir === 'string') clean.storageDir = patch.storageDir.trim();
-      // Opt-in anonymous usage counts (#145) — gates all recording/sending in
-      // telemetry.ts (#474).
-      if (typeof patch.usageSignalEnabled === 'boolean') {
-        clean.usageSignalEnabled = patch.usageSignalEnabled;
-      }
-      // Persisted per-device channel labels (#482). Replaces the whole stored
-      // map — callers always send the full next map, never a partial merge.
-      const labels = sanitizeChannelLabels(patch.channelLabels);
-      if (labels) clean.channelLabels = labels;
-      // Persisted per-device named channel groups (#483). Same full-map
-      // replace discipline as channelLabels.
-      const groups = sanitizeChannelGroups(patch.channelGroups);
-      if (groups) clean.channelGroups = groups;
-      // Persisted per-device instrument-profile overrides for live inputs
-      // (#524). Same full-map replace discipline as channelLabels.
-      const instrumentProfiles = sanitizeInputInstrumentProfiles(patch.inputInstrumentProfiles);
-      if (instrumentProfiles) clean.inputInstrumentProfiles = instrumentProfiles;
-      // Opt-in crash reporting (#473) — gates all capture/sending in
-      // crash-reporting.ts.
-      if (typeof patch.crashReportingEnabled === 'boolean') {
-        clean.crashReportingEnabled = patch.crashReportingEnabled;
-      }
-      // Opt-in experimental DAW-style Live workspace (#516) — a pure UI gate,
-      // consumed by the renderer only.
-      if (typeof patch.dawWorkspaceEnabled === 'boolean') {
-        clean.dawWorkspaceEnabled = patch.dawWorkspaceEnabled;
-      }
-      // Opt-in experimental live adjustments area (#522) — a pure UI gate,
-      // consumed by the renderer only.
-      if (typeof patch.liveAdjustmentsEnabled === 'boolean') {
-        clean.liveAdjustmentsEnabled = patch.liveAdjustmentsEnabled;
-      }
-      // Opt-in report-first-ux epic gate (#538) — a pure UI gate, consumed by
-      // the renderer only; also env-overridable at read time
-      // (SOUND_BUDDY_REPORT_FIRST_UX).
-      if (typeof patch.reportFirstUxEnabled === 'boolean') {
-        clean.reportFirstUxEnabled = patch.reportFirstUxEnabled;
-      }
-      // Optional church name for the Share Image export (#265). '' is a
-      // valid, meaningful value (it's the privacy-preserving default), so
-      // this is gated on the sanitizer's null (invalid input), not falsiness.
-      const shareChurchName = sanitizeShareChurchName(patch.shareChurchName);
-      if (shareChurchName !== null) clean.shareChurchName = shareChurchName;
-      // Opt-in local weekly reminder (#268). Fully local — no server, no
-      // telemetry. Re-armed below once the patch is persisted.
-      if (typeof patch.weeklyReminderEnabled === 'boolean') {
-        clean.weeklyReminderEnabled = patch.weeklyReminderEnabled;
-      }
-      if (
-        typeof patch.weeklyReminderServiceDay === 'number' &&
-        Number.isInteger(patch.weeklyReminderServiceDay) &&
-        patch.weeklyReminderServiceDay >= MIN_SERVICE_DAY &&
-        patch.weeklyReminderServiceDay <= MAX_SERVICE_DAY
-      ) {
-        clean.weeklyReminderServiceDay = patch.weeklyReminderServiceDay;
-      }
-      // Persisted Live EQ pane width (#668). Main only sanitizes a
-      // structurally invalid value (non-number, non-finite, non-positive) —
-      // the [EQ_PANE_MIN_W, EQ_PANE_MAX_W] clamp is the renderer's job
-      // (live-capture-panel.ts's clampEqPaneWidth), not enforced here.
-      if (
-        typeof patch.liveEqPaneWidth === 'number' &&
-        Number.isFinite(patch.liveEqPaneWidth) &&
-        patch.liveEqPaneWidth > 0
-      ) {
-        clean.liveEqPaneWidth = patch.liveEqPaneWidth;
-      }
-      // Preferred secondary measurement device, matched by name (#460).
-      // Trimmed and capped; an empty string is valid (clears the preference).
-      if (typeof patch.measurementDeviceName === 'string') {
-        clean.measurementDeviceName = patch.measurementDeviceName
-          .trim()
-          .slice(0, MAX_MEASUREMENT_DEVICE_NAME_LEN);
-      }
-      // Grading-strictness profile (#266) — a pure UI/grading gate, consumed by
-      // grading.js via the renderer's settings→CONFIG sync (stores/bridge.ts).
-      // Allow-listed to the two known ids; anything else is silently ignored,
-      // leaving the stored value unchanged.
-      if (patch.gradingProfile === 'casual' || patch.gradingProfile === 'broadcast') {
-        clean.gradingProfile = patch.gradingProfile;
-      }
-      // Tier 2 (console-network) consent (#378) — can only be driven to true by
-      // the renderer's consent-modal grant() action; Settings only ever sends
-      // false (revoke).
-      if (typeof patch.consoleNetworkConsentGranted === 'boolean') {
-        clean.consoleNetworkConsentGranted = patch.consoleNetworkConsentGranted;
+      for (const key of Object.keys(patch)) {
+        const spec = SETTING_SPECS[key as keyof AppSettings];
+        if (!spec?.sanitizePatch) continue;
+        // Cast keeps the heterogeneous mapped-type union (one SettingSpec per
+        // field) callable under tsc --noEmit; the assignment cast on `clean`
+        // below is required because the union's return type isn't a single
+        // AppSettings[K].
+        const sanitized = (spec.sanitizePatch as (v: unknown) => unknown)(patch[key]);
+        if (sanitized !== undefined) (clean as Record<string, unknown>)[key] = sanitized;
       }
     }
     const result = updateSettings(clean);
@@ -295,6 +94,12 @@ export function registerSettingsHandlers(): void {
     }
     return result;
   });
+
+  // grant-console-network-consent — the ONLY main-side path that writes
+  // consoleNetworkConsentGranted=true (ADR-0006 / #747). The generic
+  // update-settings patch path above rejects true (the spec's sanitizePatch
+  // drops it), so the first-run consent modal's Allow click routes here.
+  ipcMain.handle('grant-console-network-consent', () => grantConsoleNetworkConsent());
 
   // get-storage-usage — where recordings live and how much disk they use (#91).
   // Purely informational: the byte count is shown in Settings, never compared
