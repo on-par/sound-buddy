@@ -75,6 +75,16 @@ describe('LiveSourceSettings', () => {
     expect(html).toContain('Vocal');
   });
 
+  it('renders the board source-quality hint under the Measurement Source select (#461), capturing or not', () => {
+    expect(renderMarkup()).toContain('id="measurement-source-hint"');
+    expect(renderMarkup()).toContain('may already be EQ');
+
+    useLiveCaptureStore.setState({ isCapturing: true });
+    const locked = renderMarkup();
+    expect(locked).toContain('id="measurement-source-hint"');
+    expect(locked).toContain('may already be EQ');
+  });
+
   it('always shows the record-folder row (#757 — the mode toggle that gated it is gone)', () => {
     expect(renderMarkup()).toContain('id="record-folder-row"');
     useLiveCaptureStore.setState({ liveMode: 'record' });
