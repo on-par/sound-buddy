@@ -19,11 +19,12 @@
 // stays a single `window.soundBuddy` object (see api.contract.test.ts for the
 // coverage/drift guards).
 //
-// A few payloads stay `Promise<unknown>` deliberately: `analyzeFile`'s `data`
-// and the streaming event callbacks (`onLiveEvent`, `onPlaybackEvent`,
-// `onAnalysisResult`) — sharpening those would drag audio-engine's node-only
-// types or a large heterogeneous event union into the renderer program. See
-// the TD-011 PR for the full list.
+// A few payloads stay `Promise<unknown>` deliberately: the streaming event
+// callbacks (`onLiveEvent`, `onPlaybackEvent`, `onAnalysisResult`) —
+// sharpening those would drag a large heterogeneous event union into the
+// renderer program. `analyzeFile`'s `data` is typed now (#748): it carries the
+// mirrored AnalysisPayloadDto, so audio-engine's node-only types still never
+// enter the renderer program. See the TD-011 PR for the full list.
 
 export interface UpdateSettingsPatch {
   idealProfile?: string;
@@ -408,11 +409,122 @@ export interface SetSummaryNoteInput {
 
 export type SetSummaryNoteResult = OperationResult;
 
-/** analyze-file resolves to a typed envelope; `data` is the audio-engine analysis,
- *  kept `unknown` at the boundary so audio-engine's node-only types don't enter the
- *  renderer program (see the file header). */
+// ─── Analyze-file DTOs (new — #748) ─────────────────────────────────────────
+// Mirror @sound-buddy/shared's AnalysisPayload. Deliberately duplicated rather
+// than imported: this file must stay dependency-free (see the file header),
+// same rationale as the SceneDiffDto block above. Kept in sync by
+// app/renderer/src/analysis-payload-drift.test.ts (the only tree whose test
+// files are typechecked, so a drift fails `tsc`).
+
+export interface AnalysisPayloadSoxDto {
+  samplesRead: number;
+  lengthSeconds: number;
+  scaledBy: number;
+  maximumAmplitude: number;
+  minimumAmplitude: number;
+  midlineAmplitude: number;
+  meanNorm: number;
+  meanAmplitude: number;
+  rmsAmplitude: number;
+  maximumDelta: number;
+  minimumDelta: number;
+  meanDelta: number;
+  rmsDelta: number;
+  roughFrequency: number;
+  volumeAdjustment: number;
+  rmsDbfs: number;
+  peakDbfs: number;
+  dynamicRangeDb: number;
+  clipping: boolean;
+}
+
+export interface AnalysisPayloadFormatDto {
+  filename: string;
+  formatName: string;
+  formatLongName: string;
+  durationSeconds: number;
+  sizeBytes: number;
+  bitRate: number;
+  tags: Record<string, string>;
+}
+
+export interface AnalysisPayloadStreamDto {
+  codecName: string;
+  codecLongName: string;
+  channels: number;
+  channelLayout: string;
+  sampleRate: number;
+  bitDepth: number | null;
+  bitRate: number | null;
+  durationSeconds: number | null;
+}
+
+export interface AnalysisPayloadFfprobeDto {
+  format: AnalysisPayloadFormatDto;
+  stream: AnalysisPayloadStreamDto;
+}
+
+export interface AnalysisPayloadBandsDto {
+  subBass: number;
+  bass: number;
+  lowMid: number;
+  mid: number;
+  highMid: number;
+  presence: number;
+  brilliance: number;
+}
+
+export interface AnalysisPayloadCurveDto {
+  freqs: number[];
+  db: number[];
+}
+
+export type AnalysisPayloadContentClassDto = 'speech' | 'music' | 'silence' | 'unknown';
+export type AnalysisPayloadContentTypeDto = 'speech' | 'music' | 'mixed' | 'silence';
+
+export interface AnalysisPayloadFrameDto {
+  t: number;
+  db: number[];
+  rms: number;
+  class: AnalysisPayloadContentClassDto;
+}
+
+export interface AnalysisPayloadSegmentDto {
+  class: AnalysisPayloadContentClassDto;
+  start: number;
+  end: number;
+}
+
+export interface AnalysisPayloadSpectrumDto {
+  bands: AnalysisPayloadBandsDto;
+  spectralCentroid: number;
+  spectralRolloff85: number;
+  dynamicRange: number;
+  curve?: AnalysisPayloadCurveDto;
+  frames?: AnalysisPayloadFrameDto[];
+  segments?: AnalysisPayloadSegmentDto[];
+  contentType?: AnalysisPayloadContentTypeDto;
+}
+
+export interface AnalysisPayloadLoudnessDto {
+  integratedLufs: number;
+  loudnessRange: number;
+  truePeakDbtp: number;
+}
+
+export interface AnalysisPayloadDto {
+  filePath: string;
+  sox: AnalysisPayloadSoxDto;
+  ffprobe: AnalysisPayloadFfprobeDto;
+  spectrum: AnalysisPayloadSpectrumDto;
+  loudness: AnalysisPayloadLoudnessDto | null;
+}
+
+/** analyze-file resolves to a typed envelope; `data` is the audio-engine analysis
+ *  mirrored as AnalysisPayloadDto (#748) so audio-engine's node-only types stay
+ *  out of the renderer program (see the file header). */
 export type AnalyzeFileResult =
-  | { success: true; data: unknown }
+  | { success: true; data: AnalysisPayloadDto }
   | { success: false; cancelled?: boolean; error?: string };
 
 export interface CancelAnalysisResult {

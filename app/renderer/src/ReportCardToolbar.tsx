@@ -17,6 +17,7 @@ import { useGradeOwnGuideStore } from './stores/gradeOwnGuideStore';
 import { spectrumTransport } from './spectrum-transport';
 import { resolveReportCardChromeSource, reportCardChromeView, getReportCardSource, persistSummary } from './report-card-chrome';
 import { iconSvg, buildMetricRows, type ReportCardSource, type GradingPillApi } from './report-card';
+import type { AnalysisPayload } from '@sound-buddy/shared';
 import * as reportExport from './report-export';
 import * as shareCard from './share-card';
 
@@ -147,7 +148,7 @@ async function shareImage(): Promise<void> {
 // (inline-app.js) — extracted to a standalone function so it's testable
 // without a real DOM (no jsdom in this harness); the useEffect below is
 // thin wiring only.
-export function applyStatusTransition(status: string, currentAnalysis: unknown, liveSource: unknown): void {
+export function applyStatusTransition(status: string, currentAnalysis: AnalysisPayload | null, liveSource: ReportCardSource | null): void {
   if (status === 'analyzing') {
     spectrumTransport.pauseIfPlaying(); // don't let a previous file's playback bleed through the loading state (#180)
     useSpectrumStore.getState().setPanelState('loading');
@@ -156,8 +157,7 @@ export function applyStatusTransition(status: string, currentAnalysis: unknown, 
   } else if (status === 'cancelled') {
     useSpectrumStore.getState().setPanelState('empty');
   } else if (status === 'done' && currentAnalysis) {
-    const a = currentAnalysis as { sox: unknown; spectrum: unknown };
-    getUpdateStatsRow()?.(a.sox, a.spectrum);
+    getUpdateStatsRow()?.(currentAnalysis.sox, currentAnalysis.spectrum);
     persistSummary(getReportCardSource(currentAnalysis, liveSource), 'file');
   }
 }

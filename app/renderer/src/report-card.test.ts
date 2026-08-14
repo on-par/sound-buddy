@@ -41,6 +41,7 @@ import {
   type SummaryGradingApi,
   type ReportCardSource,
 } from './report-card';
+import type { AnalysisPayload } from '@sound-buddy/shared';
 
 const require = createRequire(import.meta.url);
 const grading = require('../grading.js');
@@ -529,18 +530,61 @@ describe('bandMeterHTML', () => {
 
 describe('reportCardSourceFromAnalysis', () => {
   const analysis = {
-    sox: { rmsDbfs: -18, peakDbfs: -6, dynamicRangeDb: 12, clipping: false },
+    filePath: '/fake/path/silence.wav',
+    sox: {
+      samplesRead: 441000,
+      lengthSeconds: 10,
+      scaledBy: 1,
+      maximumAmplitude: 0.9,
+      minimumAmplitude: -0.9,
+      midlineAmplitude: 0,
+      meanNorm: 0.2,
+      meanAmplitude: 0.1,
+      rmsAmplitude: 0.2,
+      maximumDelta: 0.8,
+      minimumDelta: 0,
+      meanDelta: 0.1,
+      rmsDelta: 0.15,
+      roughFrequency: 440,
+      volumeAdjustment: 0,
+      rmsDbfs: -18,
+      peakDbfs: -6,
+      dynamicRangeDb: 12,
+      clipping: false,
+    },
     spectrum: {
       spectralCentroid: 1200,
-      bands: { bass: -18, mid: -16 },
+      spectralRolloff85: 4800,
+      dynamicRange: 12,
+      bands: { subBass: -30, bass: -18, lowMid: -20, mid: -16, highMid: -19, presence: -21, brilliance: -23 },
       curve: { freqs: [100], db: [-10] },
       contentType: 'speech',
       segments: [{ start: 0, end: 1, class: 'speech' }],
-      frames: [{ t: 0, db: [-10], rms: -18 }],
+      frames: [{ t: 0, db: [-10], rms: -18, class: 'speech' }],
     },
-    ffprobe: { format: { filename: '/fake/path/silence.wav' } },
+    ffprobe: {
+      format: {
+        filename: '/fake/path/silence.wav',
+        formatName: 'wav',
+        formatLongName: 'WAV / WAVE (Waveform Audio)',
+        durationSeconds: 10,
+        sizeBytes: 100,
+        bitRate: 800,
+        tags: {},
+      },
+      stream: {
+        codecName: 'pcm_s16le',
+        codecLongName: 'PCM signed 16-bit little-endian',
+        channels: 1,
+        channelLayout: 'mono',
+        sampleRate: 44100,
+        bitDepth: 16,
+        bitRate: 705600,
+        durationSeconds: 10,
+      },
+    },
     loudness: { integratedLufs: -20, loudnessRange: 5, truePeakDbtp: -1 },
-  };
+  } satisfies AnalysisPayload;
 
   it('maps a well-formed analysis onto the report-card source shape', () => {
     const src = reportCardSourceFromAnalysis(analysis);
@@ -551,11 +595,11 @@ describe('reportCardSourceFromAnalysis', () => {
       dynamicRange: 12,
       clipping: false,
       centroid: 1200,
-      bands: { bass: -18, mid: -16 },
+      bands: { subBass: -30, bass: -18, lowMid: -20, mid: -16, highMid: -19, presence: -21, brilliance: -23 },
       curve: { freqs: [100], db: [-10] },
       contentType: 'speech',
       segments: [{ start: 0, end: 1, class: 'speech' }],
-      frames: [{ t: 0, db: [-10], rms: -18 }],
+      frames: [{ t: 0, db: [-10], rms: -18, class: 'speech' }],
       lufsIntegrated: -20,
       loudnessRange: 5,
       truePeakDbtp: -1,
@@ -570,14 +614,18 @@ describe('reportCardSourceFromAnalysis', () => {
   });
 
   it('falls back to "Untitled" when ffprobe carries no filename', () => {
-    const src = reportCardSourceFromAnalysis({ ...analysis, ffprobe: { format: {} } });
+    // The malformed ffprobe literal is deliberately off-contract — the guard
+    // it exercises is runtime-only defense (#748).
+    const src = reportCardSourceFromAnalysis({ ...analysis, ffprobe: { format: {} } } as unknown as AnalysisPayload);
     expect(src?.filename).toBe('Untitled');
   });
 
   it.each([null, undefined, 42, {}, { sox: analysis.sox }, { spectrum: analysis.spectrum }])(
     'returns null for a malformed analysis: %j',
     (bad) => {
-      expect(reportCardSourceFromAnalysis(bad)).toBeNull();
+      // The malformed cases are deliberately off-contract — they exercise the
+      // unchanged runtime guard, which stays as defense-in-depth (#748).
+      expect(reportCardSourceFromAnalysis(bad as unknown as AnalysisPayload)).toBeNull();
     }
   );
 });

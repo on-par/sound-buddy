@@ -17,6 +17,8 @@ import {
   type ReportCardSource,
   type AnalysisSummarySource,
 } from './report-card';
+import type { AnalysisPayload } from '@sound-buddy/shared';
+import type { AnalysisSummary } from '../../electron/ipc/api';
 
 export interface ReportCardChromeView {
   isHistoryCard: boolean;
@@ -32,9 +34,9 @@ export interface ReportCardChromeView {
 }
 
 interface ChromeSourceState {
-  currentAnalysis: unknown;
-  liveSource: unknown;
-  historySummary: unknown;
+  currentAnalysis: AnalysisPayload | null;
+  liveSource: ReportCardSource | null;
+  historySummary: AnalysisSummary | null;
 }
 
 // grading.js stays a classic script — read via a typed window cast, matching
@@ -55,7 +57,7 @@ function getGrading(): GradingApi {
 // so both derive "what card is showing" from one place.
 export function resolveReportCardChromeSource(
   state: ChromeSourceState
-): { isHistoryCard: boolean; chromeSource: unknown | null } {
+): { isHistoryCard: boolean; chromeSource: ReportCardSource | null } {
   const isHistoryCard = !!state.historySummary && !state.currentAnalysis && !state.liveSource;
   const chromeSource = state.currentAnalysis
     ? reportCardSourceFromAnalysis(state.currentAnalysis)
@@ -69,7 +71,7 @@ export function resolveReportCardChromeSource(
 // (indirectly, via ReportCardIsland.tsx's already-computed locals) the
 // phase-doubling dialog's open() call — resolveReportCardChromeSource above
 // supersedes it for chrome.
-export function getReportCardSource(currentAnalysis: unknown, liveSource: unknown): unknown {
+export function getReportCardSource(currentAnalysis: AnalysisPayload | null, liveSource: ReportCardSource | null): ReportCardSource | null {
   return currentAnalysis ? reportCardSourceFromAnalysis(currentAnalysis) : liveSource;
 }
 
@@ -84,10 +86,10 @@ export function reportCardChromeView(
   const isLiveCard = !state.currentAnalysis && !!state.liveSource;
   const hasCard = isHistoryCard || !!chromeSource;
 
-  const lastReportGrade = isHistoryCard
-    ? (state.historySummary as { gradeLetter: string }).gradeLetter
+  const lastReportGrade = isHistoryCard && state.historySummary
+    ? state.historySummary.gradeLetter
     : chromeSource
-      ? getGrading().computeGrade(chromeSource as ReportCardSource)
+      ? getGrading().computeGrade(chromeSource)
       : null;
 
   return {
@@ -113,10 +115,10 @@ let persistGeneration = 0;
 // (#147), tagged with its source ('file' | 'live', #261). Fire-and-forget:
 // never block or fail the report card on a storage error. Verbatim port of
 // persistSummary (inline-app.js).
-export function persistSummary(src: unknown, source: AnalysisSummarySource): void {
+export function persistSummary(src: ReportCardSource | null, source: AnalysisSummarySource): void {
   try {
     if (!src) return;
-    const summary = buildAnalysisSummaryInput(src as ReportCardSource, getGrading(), source);
+    const summary = buildAnalysisSummaryInput(src, getGrading(), source);
     const generation = ++persistGeneration;
     const sb = getSoundBuddy();
     // The handoff note field (#267) is add-at-save-time only — disabled

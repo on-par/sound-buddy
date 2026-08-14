@@ -10,14 +10,88 @@ import {
 } from './report-card-chrome';
 import { useAnalysisStore } from './stores/analysisStore';
 import { createMockSoundBuddy } from './mock-sound-buddy';
+import type { ReportCardSource } from './report-card';
+import type { AnalysisSummary } from '../../electron/ipc/api';
+import type { AnalysisPayload } from '@sound-buddy/shared';
 
 const ANALYSIS = {
-  sox: { rmsDbfs: -18, peakDbfs: -3, dynamicRangeDb: 12, clipping: false },
-  spectrum: { spectralCentroid: 1200, bands: { bass: -3 } },
-  ffprobe: { format: { filename: '/tmp/service.wav' } },
-};
+  filePath: '/tmp/service.wav',
+  sox: {
+    samplesRead: 441000,
+    lengthSeconds: 10,
+    scaledBy: 1,
+    maximumAmplitude: 0.9,
+    minimumAmplitude: -0.9,
+    midlineAmplitude: 0,
+    meanNorm: 0.2,
+    meanAmplitude: 0.1,
+    rmsAmplitude: 0.2,
+    maximumDelta: 0.8,
+    minimumDelta: 0,
+    meanDelta: 0.1,
+    rmsDelta: 0.15,
+    roughFrequency: 440,
+    volumeAdjustment: 0,
+    rmsDbfs: -18,
+    peakDbfs: -3,
+    dynamicRangeDb: 12,
+    clipping: false,
+  },
+  spectrum: {
+    spectralCentroid: 1200,
+    spectralRolloff85: 4800,
+    dynamicRange: 12,
+    bands: { subBass: -30, bass: -3, lowMid: -20, mid: -16, highMid: -19, presence: -21, brilliance: -23 },
+  },
+  ffprobe: {
+    format: {
+      filename: '/tmp/service.wav',
+      formatName: 'wav',
+      formatLongName: 'WAV / WAVE (Waveform Audio)',
+      durationSeconds: 10,
+      sizeBytes: 441000,
+      bitRate: 1411200,
+      tags: {},
+    },
+    stream: {
+      codecName: 'pcm_s16le',
+      codecLongName: 'PCM signed 16-bit little-endian',
+      channels: 1,
+      channelLayout: 'mono',
+      sampleRate: 44100,
+      bitDepth: 16,
+      bitRate: 705600,
+      durationSeconds: 10,
+    },
+  },
+  loudness: { integratedLufs: -20, loudnessRange: 5, truePeakDbtp: -1 },
+} satisfies AnalysisPayload;
 
-const HISTORY_SUMMARY = { gradeLetter: 'B', score: 80, sourceFilename: 'service.wav' };
+function makeLiveSource(filename: string): ReportCardSource {
+  return {
+    filename,
+    rms: -18,
+    peak: -6,
+    dynamicRange: null,
+    clipping: false,
+    centroid: 1200,
+    bands: { subBass: -30, bass: -22, lowMid: -18, mid: -16, highMid: -18, presence: -20, brilliance: -24 },
+  };
+}
+
+function makeSummary(overrides: Partial<AnalysisSummary> = {}): AnalysisSummary {
+  return {
+    date: '2026-01-01T00:00:00.000Z',
+    sourceFilename: 'service.wav',
+    gradeLetter: 'B',
+    score: 80,
+    recordingType: 'Full Mix',
+    topFixes: ['Tighten low end'],
+    ...overrides,
+  };
+}
+
+const HISTORY_SUMMARY = makeSummary();
 
 let computeGrade: ReturnType<typeof vi.fn>;
 let computeScore: ReturnType<typeof vi.fn>;
@@ -62,7 +136,7 @@ describe('resolveReportCardChromeSource', () => {
   });
 
   it('falls back to liveSource when there is no currentAnalysis', () => {
-    const liveSource = { filename: 'Live capture' };
+    const liveSource = makeLiveSource('Live capture');
     expect(resolveReportCardChromeSource({ currentAnalysis: null, liveSource, historySummary: null }))
       .toEqual({ isHistoryCard: false, chromeSource: liveSource });
   });
@@ -79,7 +153,7 @@ describe('getReportCardSource', () => {
   });
 
   it('returns liveSource verbatim with no currentAnalysis', () => {
-    const liveSource = { filename: 'Live capture' };
+    const liveSource = makeLiveSource('Live capture');
     expect(getReportCardSource(null, liveSource)).toBe(liveSource);
   });
 });
@@ -97,7 +171,7 @@ describe('reportCardChromeView', () => {
   });
 
   it('live card: Load is visible, grade computed from the live source, Clear disabled (no file)', () => {
-    const liveSource = { filename: 'Live capture' };
+    const liveSource = makeLiveSource('Live capture');
     const view = reportCardChromeView({ currentAnalysis: null, liveSource, historySummary: null, status: 'idle' });
     expect(computeGrade).toHaveBeenCalledWith(liveSource);
     expect(view).toMatchObject({ isLiveCard: true, hasCard: true, lastReportGrade: 'A', loadVisible: true, clearDisabled: true });
@@ -144,7 +218,7 @@ describe('persistSummary', () => {
   });
 
   it('sets prevSummary from the newest existing entry before saving', async () => {
-    const prev = { gradeLetter: 'C', sourceFilename: 'last-week.wav' };
+    const prev = makeSummary({ gradeLetter: 'C', sourceFilename: 'last-week.wav' });
     mock.api.listAnalysisSummaries = vi.fn().mockResolvedValue({ success: true, summaries: [prev] });
     mock.api.saveAnalysisSummary = vi.fn().mockResolvedValue({ success: true, file: 'x.json' });
 
@@ -162,7 +236,7 @@ describe('persistSummary', () => {
     let resolveFirst!: (v: { success: boolean; summaries: unknown[] }) => void;
     mock.api.listAnalysisSummaries = vi.fn()
       .mockImplementationOnce(() => new Promise((resolve) => { resolveFirst = resolve; }))
-      .mockResolvedValueOnce({ success: true, summaries: [{ gradeLetter: 'D', sourceFilename: 'second.wav' }] });
+      .mockResolvedValueOnce({ success: true, summaries: [makeSummary({ gradeLetter: 'D', sourceFilename: 'second.wav' })] });
     mock.api.saveAnalysisSummary = vi.fn()
       .mockResolvedValueOnce({ success: true, file: 'gen2.json' })
       .mockResolvedValueOnce({ success: true, file: 'gen1-stale.json' });
@@ -171,7 +245,7 @@ describe('persistSummary', () => {
     persistSummary(getReportCardSource(ANALYSIS, null), 'file'); // generation 2 (resolves fully first)
 
     await vi.waitFor(() => expect(useAnalysisStore.getState().lastSavedSummaryFile).toBe('gen2.json'));
-    expect(useAnalysisStore.getState().prevSummary).toEqual({ gradeLetter: 'D', sourceFilename: 'second.wav' });
+    expect(useAnalysisStore.getState().prevSummary).toEqual(makeSummary({ gradeLetter: 'D', sourceFilename: 'second.wav' }));
 
     resolveFirst({ success: true, summaries: [] }); // generation 1 finally resolves — must not overwrite gen 2's state
     await Promise.resolve();
@@ -180,13 +254,13 @@ describe('persistSummary', () => {
     await Promise.resolve();
 
     expect(useAnalysisStore.getState().lastSavedSummaryFile).toBe('gen2.json');
-    expect(useAnalysisStore.getState().prevSummary).toEqual({ gradeLetter: 'D', sourceFilename: 'second.wav' });
+    expect(useAnalysisStore.getState().prevSummary).toEqual(makeSummary({ gradeLetter: 'D', sourceFilename: 'second.wav' }));
   });
 
   it('swallows a listAnalysisSummaries rejection and clears prevSummary', async () => {
     mock.api.listAnalysisSummaries = vi.fn().mockRejectedValue(new Error('disk error'));
     mock.api.saveAnalysisSummary = vi.fn().mockResolvedValue({ success: true, file: 'x.json' });
-    useAnalysisStore.setState({ prevSummary: { gradeLetter: 'Z', sourceFilename: 'stale.wav' } });
+    useAnalysisStore.setState({ prevSummary: makeSummary({ gradeLetter: 'Z', sourceFilename: 'stale.wav' }) });
 
     persistSummary(getReportCardSource(ANALYSIS, null), 'file');
     await vi.waitFor(() => expect(useAnalysisStore.getState().prevSummary).toBeNull());

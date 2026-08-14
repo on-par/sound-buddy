@@ -4,8 +4,75 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { createRingoutStore, type RingoutApi, type RingoutProfile } from './ringoutStore';
 import { createMockSoundBuddy } from '../mock-sound-buddy';
+import type { AnalysisPayloadDto } from '../../../electron/ipc/api';
 
 const feedbackRingout = require('../../feedback-ringout-state.js');
+
+// A complete contract-shaped analyze-file payload (#748) with a configurable
+// spectrum curve — the ringout capture path only reads analysis.spectrum.curve.
+function makePayload(curve?: { freqs: number[]; db: number[] }): AnalysisPayloadDto {
+  return {
+    filePath: '/tmp/session-1/ch1.wav',
+    sox: {
+      samplesRead: 441000,
+      lengthSeconds: 10,
+      scaledBy: 1,
+      maximumAmplitude: 0.9,
+      minimumAmplitude: -0.9,
+      midlineAmplitude: 0,
+      meanNorm: 0.2,
+      meanAmplitude: 0.1,
+      rmsAmplitude: 0.2,
+      maximumDelta: 0.8,
+      minimumDelta: 0,
+      meanDelta: 0.1,
+      rmsDelta: 0.15,
+      roughFrequency: 440,
+      volumeAdjustment: 0,
+      rmsDbfs: -18,
+      peakDbfs: -6,
+      dynamicRangeDb: 12,
+      clipping: false,
+    },
+    ffprobe: {
+      format: {
+        filename: '/tmp/session-1/ch1.wav',
+        formatName: 'wav',
+        formatLongName: 'WAV / WAVE (Waveform Audio)',
+        durationSeconds: 10,
+        sizeBytes: 441000,
+        bitRate: 1411200,
+        tags: {},
+      },
+      stream: {
+        codecName: 'pcm_s16le',
+        codecLongName: 'PCM signed 16-bit little-endian',
+        channels: 1,
+        channelLayout: 'mono',
+        sampleRate: 44100,
+        bitDepth: 16,
+        bitRate: 705600,
+        durationSeconds: 10,
+      },
+    },
+    spectrum: {
+      bands: {
+        subBass: -30,
+        bass: -22,
+        lowMid: -18,
+        mid: -16,
+        highMid: -18,
+        presence: -20,
+        brilliance: -24,
+      },
+      spectralCentroid: 1200,
+      spectralRolloff85: 4800,
+      dynamicRange: 12,
+      ...(curve ? { curve } : {}),
+    },
+    loudness: { integratedLufs: -20, loudnessRange: 5, truePeakDbtp: -1 },
+  };
+}
 
 function fakeStorage(initial: Record<string, string> = {}) {
   const store = { ...initial };
@@ -160,7 +227,7 @@ describe('captureFromMic', () => {
       startLive: () => Promise.resolve({ success: true }),
       stopLive: () => Promise.resolve({ success: true, sessionDir: '/tmp/session-1' }),
       readSession: () => Promise.resolve({ success: true, manifest: { tracks: [{ file: 'ch1.wav' }] } }),
-      analyzeFile: () => Promise.resolve({ success: true, data: { spectrum: {} } }),
+      analyzeFile: () => Promise.resolve({ success: true, data: makePayload() }),
     });
     await runCaptureFromMic(store);
     expect(store.getState().status).toBe('Could not analyze the capture — enter the frequency manually.');
@@ -176,7 +243,7 @@ describe('captureFromMic', () => {
       startLive: () => Promise.resolve({ success: true }),
       stopLive: () => Promise.resolve({ success: true, sessionDir: '/tmp/session-1' }),
       readSession: () => Promise.resolve({ success: true, manifest: { tracks: [{ file: 'ch1.wav' }] } }),
-      analyzeFile: () => Promise.resolve({ success: true, data: { spectrum: { curve: { freqs: [100], db: [-10] } } } }),
+      analyzeFile: () => Promise.resolve({ success: true, data: makePayload({ freqs: [100], db: [-10] }) }),
     });
     await runCaptureFromMic(store);
     expect(store.getState().status).toBe('No clear ring detected — try again or enter the frequency manually.');
@@ -192,7 +259,7 @@ describe('captureFromMic', () => {
       startLive: () => Promise.resolve({ success: true }),
       stopLive: () => Promise.resolve({ success: true, sessionDir: '/tmp/session-1' }),
       readSession: () => Promise.resolve({ success: true, manifest: { tracks: [{ file: 'ch1.wav' }] } }),
-      analyzeFile: () => Promise.resolve({ success: true, data: { spectrum: { curve: { freqs: [3150], db: [-4] } } } }),
+      analyzeFile: () => Promise.resolve({ success: true, data: makePayload({ freqs: [3150], db: [-4] }) }),
     });
     await runCaptureFromMic(store);
     expect(store.getState().cut).toEqual(feedbackRingout.suggestCut(3150));

@@ -10,12 +10,73 @@ import { useSettingsStore } from './stores/settingsStore';
 import { useSpectrumStore } from './stores/spectrumStore';
 import { spectrumTransport } from './spectrum-transport';
 import { createMockSoundBuddy } from './mock-sound-buddy';
+import type { ReportCardSource } from './report-card';
+import type { AnalysisPayload } from '@sound-buddy/shared';
 
 const ANALYSIS = {
-  sox: { rmsDbfs: -18, peakDbfs: -3, dynamicRangeDb: 12, clipping: false },
-  spectrum: { spectralCentroid: 1200, bands: { bass: -3 } },
-  ffprobe: { format: { filename: '/tmp/service.wav' } },
-};
+  filePath: '/tmp/service.wav',
+  sox: {
+    samplesRead: 441000,
+    lengthSeconds: 10,
+    scaledBy: 1,
+    maximumAmplitude: 0.9,
+    minimumAmplitude: -0.9,
+    midlineAmplitude: 0,
+    meanNorm: 0.2,
+    meanAmplitude: 0.1,
+    rmsAmplitude: 0.2,
+    maximumDelta: 0.8,
+    minimumDelta: 0,
+    meanDelta: 0.1,
+    rmsDelta: 0.15,
+    roughFrequency: 440,
+    volumeAdjustment: 0,
+    rmsDbfs: -18,
+    peakDbfs: -3,
+    dynamicRangeDb: 12,
+    clipping: false,
+  },
+  spectrum: {
+    spectralCentroid: 1200,
+    spectralRolloff85: 4800,
+    dynamicRange: 12,
+    bands: { subBass: -30, bass: -3, lowMid: -20, mid: -16, highMid: -19, presence: -21, brilliance: -23 },
+  },
+  ffprobe: {
+    format: {
+      filename: '/tmp/service.wav',
+      formatName: 'wav',
+      formatLongName: 'WAV / WAVE (Waveform Audio)',
+      durationSeconds: 10,
+      sizeBytes: 441000,
+      bitRate: 1411200,
+      tags: {},
+    },
+    stream: {
+      codecName: 'pcm_s16le',
+      codecLongName: 'PCM signed 16-bit little-endian',
+      channels: 1,
+      channelLayout: 'mono',
+      sampleRate: 44100,
+      bitDepth: 16,
+      bitRate: 705600,
+      durationSeconds: 10,
+    },
+  },
+  loudness: { integratedLufs: -20, loudnessRange: 5, truePeakDbtp: -1 },
+} satisfies AnalysisPayload;
+
+function makeLiveSource(filename: string): ReportCardSource {
+  return {
+    filename,
+    rms: -18,
+    peak: -6,
+    dynamicRange: null,
+    clipping: false,
+    centroid: 1200,
+    bands: { subBass: -30, bass: -22, lowMid: -18, mid: -16, highMid: -18, presence: -20, brilliance: -24 },
+  };
+}
 
 function renderMarkup(): string {
   return renderToString(createElement(ReportCardToolbar));
@@ -72,7 +133,7 @@ describe('ReportCardToolbar', () => {
   });
 
   it('live card: Load visible, Clear stays disabled (no file to clear)', () => {
-    useAnalysisStore.setState({ liveSource: { filename: 'Live capture' } });
+    useAnalysisStore.setState({ liveSource: makeLiveSource('Live capture') });
     const html = renderMarkup();
     expect(html).not.toMatch(/id="reportcard-load-btn"[^>]*style="display:none"/);
     expect(html).toMatch(/id="reportcard-clear-btn"[^>]*disabled=""/);

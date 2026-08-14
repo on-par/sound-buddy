@@ -2,10 +2,20 @@
 // (scene-inspector, audio-engine, cli). These are the flat,
 // serialization-safe shapes that cross package boundaries.
 //
-// Intentionally NOT consumed by app/ (a separately-bundled, proprietary Electron
-// target) or by audio-engine's rich *internal* analysis types (SoxStats,
-// AudioAnalysis, SpectrumResult live in audio-engine/src/types.ts). audio-engine
-// depends on this package only to PRODUCE the boundary summary below.
+// Mostly NOT consumed by app/ (a separately-bundled, proprietary Electron
+// target): the one exception is AnalysisPayload (analysis-payload.ts), which
+// app/electron and app/renderer type-import to type the analyze-file IPC seam
+// (see the scene-diff precedent in app/electron/scene-diff-format.ts).
+// audio-engine's rich *internal* analysis types (SoxStats, AudioAnalysis,
+// SpectrumResult live in audio-engine/src/types.ts) stay out of this package
+// — AnalysisPayload mirrors them at the boundary instead.
+
+export type {
+  AnalysisPayload, AnalysisPayloadSox, AnalysisPayloadFormat, AnalysisPayloadStream,
+  AnalysisPayloadFfprobe, AnalysisPayloadBands, AnalysisPayloadCurve,
+  AnalysisPayloadContentClass, AnalysisPayloadContentType, AnalysisPayloadFrame,
+  AnalysisPayloadSegment, AnalysisPayloadSpectrum, AnalysisPayloadLoudness,
+} from './analysis-payload.js'
 
 export { buildReleaseNotes, INSTALL_INTRO, UNSIGNED_STEPS } from './install-instructions.js'
 export type { BuildReleaseNotesOptions } from './install-instructions.js'
@@ -134,21 +144,24 @@ export interface Insight {
   severity: 'info' | 'warning' | 'suggestion'
 }
 
+/** AI-analyst input summary (epic #656), not yet wired — see AudioAnalysisResult. */
 export interface AnalystInput {
   diff?: SceneDiff
   audio?: AudioAnalysisResult
 }
 
 /**
- * Flat, JSON/IPC-safe per-channel analysis summary. This is the boundary shape
- * consumed by the CLI insights pass and emitted to machine-readable output — deliberately a
- * primitive-only subset of audio-engine's internal ChannelAnalysis. Produced by
+ * AI-analyst input summary (epic #656) — a flat, JSON/IPC-safe per-channel
+ * analysis summary that an AI-analyst feature will consume. NOT yet wired and
+ * NOT the analyze-file boundary shape: that is AnalysisPayload
+ * (analysis-payload.ts). Kept for the future analyst feature; produced by
  * audio-engine's toAnalysisSummary().
  */
 export interface AudioAnalysisResult {
   channels: ChannelResult[]
 }
 
+/** One channel's entry in an AI-analyst input summary (epic #656), not yet wired. */
 export interface ChannelResult {
   name: string
   rmsDbfs: number

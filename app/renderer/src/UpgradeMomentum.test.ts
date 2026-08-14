@@ -14,6 +14,21 @@ import UpgradeMomentum, {
 } from './UpgradeMomentum';
 import { useLicensingStore } from './stores/licensingStore';
 import { useAnalysisStore } from './stores/analysisStore';
+import type { AnalysisSummary } from '../../electron/ipc/api';
+
+// Full contract-shaped literal for the now-typed historySummary store field
+// (#748) — UpgradeMomentum only reads gradeLetter, but the store field demands
+// the whole AnalysisSummary shape.
+function makeSummary(gradeLetter: string): AnalysisSummary {
+  return {
+    date: '2026-08-06T12:00:00Z',
+    sourceFilename: 'service.wav',
+    gradeLetter,
+    score: 90,
+    recordingType: 'Full Mix',
+    topFixes: [],
+  };
+}
 
 const NOW = new Date('2026-08-06T12:00:00Z');
 const PRO_STATUS = { tier: 'pro', status: 'valid' } as const;
@@ -153,7 +168,7 @@ describe('UpgradeMomentum', () => {
 
   it('renders visible for a free user with a grade, not first-seen', () => {
     useLicensingStore.setState({ licenseStatus: FREE_STATUS });
-    useAnalysisStore.setState({ historySummary: { gradeLetter: 'A' } });
+    useAnalysisStore.setState({ historySummary: makeSummary('A') });
     const html = renderMarkup();
     expect(html).not.toMatch(/id="rc-upgrade"[^>]*hidden=""/);
     expect(html).toContain('Nice mix');
@@ -164,14 +179,14 @@ describe('UpgradeMomentum', () => {
 
   it('shows the "Keep improving" tone for a non-A/B grade', () => {
     useLicensingStore.setState({ licenseStatus: FREE_STATUS });
-    useAnalysisStore.setState({ historySummary: { gradeLetter: 'D' } });
+    useAnalysisStore.setState({ historySummary: makeSummary('D') });
     const html = renderMarkup();
     expect(html).toContain('Keep improving');
   });
 
   it('stays hidden for a Pro license even with a grade', () => {
     useLicensingStore.setState({ licenseStatus: PRO_STATUS });
-    useAnalysisStore.setState({ historySummary: { gradeLetter: 'A' } });
+    useAnalysisStore.setState({ historySummary: makeSummary('A') });
     const html = renderMarkup();
     expect(html).toMatch(/id="rc-upgrade"[^>]*hidden=""/);
   });
@@ -179,7 +194,7 @@ describe('UpgradeMomentum', () => {
   it('stays hidden for a fresh install (first-seen not yet recorded)', () => {
     (globalThis as { localStorage?: unknown }).localStorage = fakeStorage();
     useLicensingStore.setState({ licenseStatus: FREE_STATUS });
-    useAnalysisStore.setState({ historySummary: { gradeLetter: 'A' } });
+    useAnalysisStore.setState({ historySummary: makeSummary('A') });
     const html = renderMarkup();
     expect(html).toMatch(/id="rc-upgrade"[^>]*hidden=""/);
   });
@@ -190,7 +205,7 @@ describe('UpgradeMomentum', () => {
       'sb-upgrade-momentum-dismissed-at': String(Date.now()),
     });
     useLicensingStore.setState({ licenseStatus: FREE_STATUS });
-    useAnalysisStore.setState({ historySummary: { gradeLetter: 'A' } });
+    useAnalysisStore.setState({ historySummary: makeSummary('A') });
     const html = renderMarkup();
     expect(html).toMatch(/id="rc-upgrade"[^>]*hidden=""/);
   });

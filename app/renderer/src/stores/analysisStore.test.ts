@@ -4,6 +4,99 @@
 import { describe, it, expect, afterEach } from 'vitest';
 import { createAnalysisStore, useAnalysisStore } from './analysisStore';
 import { createMockSoundBuddy } from '../mock-sound-buddy';
+import type { AnalysisPayloadDto, AnalysisSummary } from '../../../electron/ipc/api';
+import type { ReportCardSource } from '../report-card';
+
+// A complete contract-shaped analyze-file payload (#748) so mock overrides
+// compile against the now-typed AnalyzeFileResult.data.
+function makePayload(): AnalysisPayloadDto {
+  return {
+    filePath: '/path/to/file.wav',
+    sox: {
+      samplesRead: 441000,
+      lengthSeconds: 10,
+      scaledBy: 1,
+      maximumAmplitude: 0.9,
+      minimumAmplitude: -0.9,
+      midlineAmplitude: 0,
+      meanNorm: 0.2,
+      meanAmplitude: 0.1,
+      rmsAmplitude: 0.2,
+      maximumDelta: 0.8,
+      minimumDelta: 0,
+      meanDelta: 0.1,
+      rmsDelta: 0.15,
+      roughFrequency: 440,
+      volumeAdjustment: 0,
+      rmsDbfs: -18,
+      peakDbfs: -6,
+      dynamicRangeDb: 12,
+      clipping: false,
+    },
+    ffprobe: {
+      format: {
+        filename: '/path/to/file.wav',
+        formatName: 'wav',
+        formatLongName: 'WAV / WAVE (Waveform Audio)',
+        durationSeconds: 10,
+        sizeBytes: 441000,
+        bitRate: 1411200,
+        tags: {},
+      },
+      stream: {
+        codecName: 'pcm_s16le',
+        codecLongName: 'PCM signed 16-bit little-endian',
+        channels: 1,
+        channelLayout: 'mono',
+        sampleRate: 44100,
+        bitDepth: 16,
+        bitRate: 705600,
+        durationSeconds: 10,
+      },
+    },
+    spectrum: {
+      bands: {
+        subBass: -30,
+        bass: -22,
+        lowMid: -18,
+        mid: -16,
+        highMid: -18,
+        presence: -20,
+        brilliance: -24,
+      },
+      spectralCentroid: 1200,
+      spectralRolloff85: 4800,
+      dynamicRange: 12,
+    },
+    loudness: { integratedLufs: -20, loudnessRange: 5, truePeakDbtp: -1 },
+  };
+}
+
+// Full contract-shaped literals for the now-typed historySummary/liveSource/
+// prevSummary store fields (#748).
+function makeSummary(overrides: Partial<AnalysisSummary> = {}): AnalysisSummary {
+  return {
+    date: '2026-01-01T00:00:00.000Z',
+    sourceFilename: 'sermon.wav',
+    gradeLetter: 'B',
+    score: 80,
+    recordingType: 'Full Mix',
+    topFixes: ['Tighten low end'],
+    ...overrides,
+  };
+}
+
+function makeLiveSource(filename: string): ReportCardSource {
+  return {
+    filename,
+    rms: -18,
+    peak: -6,
+    dynamicRange: null,
+    clipping: false,
+    centroid: 1200,
+    bands: { subBass: -30, bass: -22, lowMid: -18, mid: -16, highMid: -18, presence: -20, brilliance: -24 },
+  };
+}
 
 afterEach(() => {
   delete (globalThis as { window?: unknown }).window;
@@ -42,7 +135,7 @@ describe('createAnalysisStore', () => {
     const mock = createMockSoundBuddy({
       analyzeFile: async (opts) => {
         mock.calls.push({ method: 'analyzeFile', args: [opts] });
-        return { success: true, data: { score: 42 } };
+        return { success: true, data: makePayload() };
       },
     });
     const store = createAnalysisStore(() => mock.api);
@@ -53,7 +146,7 @@ describe('createAnalysisStore', () => {
 
     await pending;
 
-    expect(store.getState().currentAnalysis).toEqual({ score: 42 });
+    expect(store.getState().currentAnalysis).toEqual(makePayload());
     expect(store.getState().isAnalyzing).toBe(false);
     expect(store.getState().status).toBe('done');
     expect(store.getState().analysisError).toBeNull();
@@ -65,10 +158,10 @@ describe('createAnalysisStore', () => {
 
   it('a successful startAnalysis clears a stale history summary', async () => {
     const mock = createMockSoundBuddy({
-      analyzeFile: async () => ({ success: true, data: { score: 1 } }),
+      analyzeFile: async () => ({ success: true, data: makePayload() }),
     });
     const store = createAnalysisStore(() => mock.api);
-    store.setState({ historySummary: { sourceFilename: 'old.wav' } });
+    store.setState({ historySummary: makeSummary({ sourceFilename: 'old.wav' }) });
 
     await store.getState().startAnalysis('/path/to/file.wav');
 
@@ -181,7 +274,7 @@ describe('createAnalysisStore', () => {
     const mock = createMockSoundBuddy({
       analyzeFile: async (opts) => {
         mock.calls.push({ method: 'analyzeFile', args: [opts] });
-        return { success: true, data: { score: 1 } };
+        return { success: true, data: makePayload() };
       },
     });
     (globalThis as { window?: unknown }).window = { soundBuddy: mock.api };
@@ -207,7 +300,7 @@ describe('createAnalysisStore', () => {
     const mock = createMockSoundBuddy();
     const store = createAnalysisStore(() => mock.api);
     store.setState({
-      currentAnalysis: { score: 1 },
+      currentAnalysis: makePayload(),
       selectedFilePath: '/path/to/file.wav',
       status: 'done',
     });
@@ -222,7 +315,7 @@ describe('createAnalysisStore', () => {
   it('clearAnalysis also resets prevSummary to null (#259)', () => {
     const mock = createMockSoundBuddy();
     const store = createAnalysisStore(() => mock.api);
-    store.setState({ prevSummary: { score: 83, gradeLetter: 'B' } });
+    store.setState({ prevSummary: makeSummary({ score: 83, gradeLetter: 'B' }) });
 
     store.getState().clearAnalysis();
 
@@ -232,20 +325,20 @@ describe('createAnalysisStore', () => {
   it('clearAnalysis leaves historySummary/liveSource untouched (callers clear those separately)', () => {
     const mock = createMockSoundBuddy();
     const store = createAnalysisStore(() => mock.api);
-    store.setState({ historySummary: { sourceFilename: 'x.wav' }, liveSource: { filename: 'live' } });
+    store.setState({ historySummary: makeSummary({ sourceFilename: 'x.wav' }), liveSource: makeLiveSource('live') });
 
     store.getState().clearAnalysis();
 
-    expect(store.getState().historySummary).toEqual({ sourceFilename: 'x.wav' });
-    expect(store.getState().liveSource).toEqual({ filename: 'live' });
+    expect(store.getState().historySummary).toEqual(makeSummary({ sourceFilename: 'x.wav' }));
+    expect(store.getState().liveSource).toEqual(makeLiveSource('live'));
   });
 
   it('setHistorySummary stores a Recent Services record', () => {
     const mock = createMockSoundBuddy();
     const store = createAnalysisStore(() => mock.api);
 
-    store.getState().setHistorySummary({ sourceFilename: 'sermon.wav' });
-    expect(store.getState().historySummary).toEqual({ sourceFilename: 'sermon.wav' });
+    store.getState().setHistorySummary(makeSummary({ sourceFilename: 'sermon.wav' }));
+    expect(store.getState().historySummary).toEqual(makeSummary({ sourceFilename: 'sermon.wav' }));
 
     store.getState().setHistorySummary(null);
     expect(store.getState().historySummary).toBeNull();
@@ -256,7 +349,7 @@ describe('createAnalysisStore', () => {
     const store = createAnalysisStore(() => mock.api);
     store.setState({ lastSavedSummaryFile: 'x.json' });
 
-    store.getState().setHistorySummary({ sourceFilename: 'sermon.wav' });
+    store.getState().setHistorySummary(makeSummary({ sourceFilename: 'sermon.wav' }));
 
     expect(store.getState().lastSavedSummaryFile).toBeNull();
   });
@@ -286,8 +379,8 @@ describe('createAnalysisStore', () => {
     const mock = createMockSoundBuddy();
     const store = createAnalysisStore(() => mock.api);
 
-    store.getState().setLiveSource({ filename: 'Live capture — Main (window #1)' });
-    expect(store.getState().liveSource).toEqual({ filename: 'Live capture — Main (window #1)' });
+    store.getState().setLiveSource(makeLiveSource('Live capture — Main (window #1)'));
+    expect(store.getState().liveSource).toEqual(makeLiveSource('Live capture — Main (window #1)'));
 
     store.getState().setLiveSource(null);
     expect(store.getState().liveSource).toBeNull();
@@ -297,8 +390,8 @@ describe('createAnalysisStore', () => {
     const mock = createMockSoundBuddy();
     const store = createAnalysisStore(() => mock.api);
 
-    store.getState().setPrevSummary({ score: 83, gradeLetter: 'B' });
-    expect(store.getState().prevSummary).toEqual({ score: 83, gradeLetter: 'B' });
+    store.getState().setPrevSummary(makeSummary({ score: 83, gradeLetter: 'B' }));
+    expect(store.getState().prevSummary).toEqual(makeSummary({ score: 83, gradeLetter: 'B' }));
 
     store.getState().setPrevSummary(null);
     expect(store.getState().prevSummary).toBeNull();
@@ -308,7 +401,7 @@ describe('createAnalysisStore', () => {
     it('sets currentAnalysis and clears a stale history summary for a stats event', () => {
       const mock = createMockSoundBuddy();
       const store = createAnalysisStore(() => mock.api);
-      store.setState({ historySummary: { sourceFilename: 'old.wav' } });
+      store.setState({ historySummary: makeSummary({ sourceFilename: 'old.wav' }) });
 
       store.getState().setAnalysisFromEvent({ type: 'stats', data: { score: 5 } });
 
@@ -323,11 +416,11 @@ describe('createAnalysisStore', () => {
     ])('ignores %s', (_label, evt) => {
       const mock = createMockSoundBuddy();
       const store = createAnalysisStore(() => mock.api);
-      store.setState({ currentAnalysis: { score: 1 } });
+      store.setState({ currentAnalysis: makePayload() });
 
       store.getState().setAnalysisFromEvent(evt);
 
-      expect(store.getState().currentAnalysis).toEqual({ score: 1 });
+      expect(store.getState().currentAnalysis).toEqual(makePayload());
     });
   });
 });
