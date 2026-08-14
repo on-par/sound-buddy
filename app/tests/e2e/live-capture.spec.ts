@@ -51,15 +51,19 @@ test.describe('Live capture (PRD 06)', () => {
   // The rail's channel list/add/group/arm controls now live solely in the
   // workspace (#192). #727 removed the rail's own capture-setup controls too
   // (rig picker, device, measurement source, cadence sliders, record folder)
-  // — they moved into Settings → Audio — leaving only Mode + transport on the
-  // Live tab itself.
-  test('the Live tab keeps only Mode + transport; capture setup lives in Settings → Audio', async () => {
+  // — they moved into Settings → Audio. #757 removed the Mode toggle, the
+  // preflight gate, and the Start/Stop transport entirely — the top-bar
+  // #record-button is the sole capture control on the Live tab.
+  test('the Live tab carries no in-tab transport; the top-bar Record button is the sole capture control (#757)', async () => {
     await expect(window.locator('#chcfg')).toHaveCount(0);
     await expect(window.locator('#arm-all-btn')).toHaveCount(0);
     await expect(window.locator('#rig-bar')).toHaveCount(0);
     await expect(window.locator('#device-select')).toBeHidden();
-    await expect(window.locator('#live-mode')).toBeVisible();
-    await expect(window.locator('#live-start-btn')).toBeVisible();
+    await expect(window.locator('#live-mode')).toHaveCount(0);
+    await expect(window.locator('#live-start-btn')).toHaveCount(0);
+    await expect(window.locator('#live-stop-btn')).toHaveCount(0);
+    await expect(window.locator('#preflight-panel')).toHaveCount(0);
+    await expect(window.locator('#record-button')).toBeVisible();
 
     await openAudioSettings(window);
     await expect(window.locator('#rig-select')).toBeVisible();
@@ -68,20 +72,10 @@ test.describe('Live capture (PRD 06)', () => {
     await closeSettings(window);
   });
 
-  test('Monitor/Record toggle reveals the recording folder', async () => {
+  test('the record-folder row is always visible in Settings → Audio (#757)', async () => {
     await openAudioSettings(window);
     const folderRow = window.locator('#record-folder-row');
-    await expect(folderRow).toBeHidden();
-    await closeSettings(window);
-
-    await window.locator('#live-mode button[data-mode="record"]').click();
-    await openAudioSettings(window);
     await expect(folderRow).toBeVisible();
-    await closeSettings(window);
-
-    await window.locator('#live-mode button[data-mode="monitor"]').click();
-    await openAudioSettings(window);
-    await expect(folderRow).toBeHidden();
     await closeSettings(window);
   });
 
@@ -255,8 +249,8 @@ test.describe('Live capture (PRD 06)', () => {
     // A running capture keeps the tick-rendered board live-patched rather than
     // resynced to idle placeholders (which carry no device name) on every
     // renderChannelConfig() triggered by a label commit.
-    await window.locator('#live-start-btn').click();
-    await expect(window.locator('#live-stop-btn')).toBeVisible();
+    await window.locator('#record-button').click();
+    await expect(window.locator('#live-indicator .live-txt')).toHaveText('REC');
 
     // Two backend channels that carry device names → the fallback path.
     const named = [
@@ -310,8 +304,8 @@ test.describe('Live capture (PRD 06)', () => {
     const clean = [{ ...LIVE_CHANNELS[0], name: 'Ch 1' }, { ...LIVE_CHANNELS[1], name: 'Ch 2' }];
     await sendLiveTick(clean);
 
-    await window.locator('#live-stop-btn').click();
-    await expect(window.locator('#live-start-btn')).toBeVisible();
+    await window.locator('#record-button').click(); // stop
+    await expect(window.locator('#record-button')).toBeEnabled();
   });
 
   test('a new tick updates bars and arc in place', async () => {
@@ -341,21 +335,20 @@ test.describe('Live capture (PRD 06)', () => {
     await expect(pane.locator('.sb-spectrum-curve')).toHaveAttribute('data-marker', 'kept');
   });
 
-  test('record mode captures a session and offers to reveal the folder (#43)', async () => {
+  test('the top-bar Record button records a session and offers to reveal the folder (#43, #757)', async () => {
     await electronApp.evaluate(({ ipcMain }) => {
       ipcMain.removeHandler('reveal-path');
       ipcMain.handle('reveal-path', (_e, p) => {
         (globalThis as Record<string, unknown>).__revealed = p; return { success: true };
       });
     });
-    await window.locator('#live-mode button[data-mode="record"]').click();
-    await window.locator('#live-ws-arm-all').click(); // normalize armed state
-    await window.locator('#live-start-btn').click();
-    await expect(window.locator('#live-stop-btn')).toBeVisible();
+    // Arm all (always visible now, #757) to normalize armed state.
+    await window.locator('#live-ws-arm-all').click();
+    await window.locator('#record-button').click();
     await expect(window.locator('#live-indicator .live-txt')).toHaveText('REC');
 
-    await window.locator('#live-stop-btn').click();
-    await expect(window.locator('#live-start-btn')).toBeVisible();
+    await window.locator('#record-button').click();
+    await expect(window.locator('#record-button')).toBeEnabled();
     // stop-live returns a sessionDir (stubbed) → the session offer appears and
     // "Open folder" reveals that dir via reveal-path.
     await expect(window.locator('#rec-offer')).toBeVisible();
@@ -366,28 +359,16 @@ test.describe('Live capture (PRD 06)', () => {
     await expect(window.locator('#rec-offer')).toBeHidden();
   });
 
-  test('the top-bar Record button promotes a running monitor session to a recording (#458, #729)', async () => {
+  test('the top-bar Record button is the sole capture transport, keyboard-driven too (#458, #729, #757)', async () => {
     await electronApp.evaluate(({ ipcMain }) => {
       ipcMain.removeHandler('reveal-path');
       ipcMain.handle('reveal-path', (_e, p) => {
         (globalThis as Record<string, unknown>).__revealed = p; return { success: true };
       });
     });
-    // #live-ws-arm-all only renders in Record mode (inline-app.js's armHTML,
-    // "Record mode only"), but canPromoteToRecording (live-transition-state.js)
-    // still requires an armed strip even when promoting from Monitor mode —
-    // arm state lives on channelConfig and survives a mode switch. So: switch
-    // to Record mode to reach the arm-all button, arm, then switch back to
-    // Monitor before starting (also guards against the preceding "record mode
-    // captures a session..." test leaving liveMode on 'record', since this
-    // suite's beforeEach doesn't reset it).
-    await window.locator('#live-mode button[data-mode="record"]').click();
+    // #757: no mode toggle to juggle — the arm cluster is always visible and
+    // an idle Record press starts monitoring then promotes in place (#458).
     await window.locator('#live-ws-arm-all').click();
-    await window.locator('#live-mode button[data-mode="monitor"]').click();
-    await window.locator('#live-start-btn').click(); // starts in monitor mode
-    await expect(window.locator('#live-stop-btn')).toBeVisible();
-    await expect(window.locator('#live-indicator .live-txt')).toHaveText('LIVE');
-
     const recordBtn = window.locator('#record-button');
     await expect(recordBtn).toBeEnabled();
     await recordBtn.focus();
@@ -395,28 +376,28 @@ test.describe('Live capture (PRD 06)', () => {
     await expect(window.locator('#live-indicator .live-txt')).toHaveText('REC');
     await expect(recordBtn).toHaveAttribute('aria-pressed', 'true');
 
-    await recordBtn.click();
-    await expect(window.locator('#live-start-btn')).toBeVisible();
+    await recordBtn.click(); // stop
+    await expect(window.locator('#record-button')).toBeEnabled();
     await expect(window.locator('#rec-offer')).toBeVisible();
     await expect(window.locator('#rec-offer-text')).toContainText('Session saved');
   });
 
-  test('Record mode with nothing armed blocks Start with a hint (#43)', async () => {
-    await window.locator('#live-mode button[data-mode="record"]').click();
+  test('Record with nothing armed blocks the Record press with a hint (#43, #757)', async () => {
     await window.locator('#live-ws-disarm-all').click();
     await expect(window.locator('#live-ws-arm-count')).toContainText('0 /');
-    await window.locator('#live-start-btn').click();
-    // No capture spawned: hint shown, Start still visible, Stop hidden.
+    await window.locator('#record-button').click();
+    // The promote is blocked: hint shown, and the session stays a monitor
+    // session (no REC indicator).
     await expect(window.locator('#arm-hint')).toBeVisible();
     await expect(window.locator('#arm-hint')).toContainText('Arm at least one strip');
-    await expect(window.locator('#live-start-btn')).toBeVisible();
-    await expect(window.locator('#live-stop-btn')).toBeHidden();
-    // Re-arm → Start works and the hint clears.
+    await expect(window.locator('#live-indicator .live-txt')).toHaveText('LIVE');
+    // Re-arm → Record works and the hint clears.
     await window.locator('#live-ws-arm-all').click();
-    await window.locator('#live-start-btn').click();
-    await expect(window.locator('#live-stop-btn')).toBeVisible();
+    await window.locator('#record-button').click();
+    await expect(window.locator('#live-indicator .live-txt')).toHaveText('REC');
     await expect(window.locator('#arm-hint')).toBeHidden();
-    await window.locator('#live-stop-btn').click();
+    await window.locator('#record-button').click(); // stop
+    await expect(window.locator('#record-button')).toBeEnabled();
   });
 
   test('Record passes only the armed strips as arm tokens (#43)', async () => {
@@ -426,21 +407,24 @@ test.describe('Live capture (PRD 06)', () => {
         (globalThis as Record<string, unknown>).__start = opts; return { success: true };
       });
     });
-    await window.locator('#live-mode button[data-mode="record"]').click();
     await window.locator('#live-ws-arm-all').click();
     const arms = window.locator('#spectrum-body .live-ch-arm');
     const total = await arms.count();
     await arms.first().click(); // disarm strip 0
     await expect(arms.first()).toHaveAttribute('aria-pressed', 'false');
 
-    await window.locator('#live-start-btn').click();
-    await expect(window.locator('#live-stop-btn')).toBeVisible();
+    await window.locator('#record-button').click();
+    await expect(window.locator('#live-indicator .live-txt')).toHaveText('REC');
+    // The promote's start-live carries the armed subset (the monitor start
+    // runs first with mode 'monitor' and no arm tokens; the promote's call
+    // wins the last-write __start).
     const opts = (await electronApp.evaluate(
       () => (globalThis as Record<string, unknown>).__start,
-    )) as { arm?: string[] };
+    )) as { arm?: string[]; mode?: string };
+    expect(opts.mode).toBe('record');
     expect(opts.arm).toBeDefined();
     expect(opts.arm!.length).toBe(total - 1); // exactly one strip disarmed
-    await window.locator('#live-stop-btn').click();
+    await window.locator('#record-button').click(); // stop
     // Restore the plain success stub for any later tests.
     await electronApp.evaluate(({ ipcMain }) => {
       ipcMain.removeHandler('start-live');

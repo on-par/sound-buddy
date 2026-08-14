@@ -79,7 +79,7 @@ async function assertRendererGated(): Promise<void> {
 
   await win.locator('.mode-tab[data-mode="live"]').click();
   await expect(win.locator('#tab-live .pro-gate')).toBeVisible();
-  await expect(win.locator('#live-start-btn')).toBeHidden();
+  await expect(win.locator('#record-button')).toBeHidden();
 
   await win.locator('.mode-tab[data-mode="soundcheck"]').click();
   await expect(win.locator('#tab-soundcheck .pro-gate')).toBeVisible();
@@ -96,7 +96,7 @@ async function assertRendererUngated(badgeText: string): Promise<void> {
   await expect(win.locator('.mode-tab[data-mode="live"] .tab-lock')).toBeHidden();
 
   await win.locator('.mode-tab[data-mode="live"]').click();
-  await expect(win.locator('#live-start-btn')).toBeVisible();
+  await expect(win.locator('#record-button')).toBeVisible();
 }
 
 // Drives all three main-process gates to their reject boundary via

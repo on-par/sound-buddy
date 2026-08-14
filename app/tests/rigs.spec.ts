@@ -83,6 +83,39 @@ async function closeSettings(win: Page): Promise<void> {
   await expect(win.locator('#settings-dialog')).toBeHidden();
 }
 
+// Stops any running capture via the renderer's own stopLiveCapture()
+// orchestration (LiveControls.tsx) — phase-agnostic, so it ends both a
+// monitor session (auto-start) and a record session. Uses the store + the
+// bridged runtime hooks rather than clicking #record-button, whose idle
+// press *promotes* a monitor session instead of stopping it (#757).
+async function stopCaptureIfRunning(win: Page): Promise<void> {
+  await win.evaluate(async () => {
+    const w = window as unknown as {
+      rendererStores: {
+        liveCapture: {
+          getState: () => {
+            isCapturing: boolean;
+            setStopping: (v: boolean) => void;
+            stopCapture: () => Promise<unknown>;
+          };
+        };
+      };
+      liveCaptureRuntime: {
+        onCaptureStopping: () => void;
+        onCaptureStopped: (r: unknown) => void;
+      };
+    };
+    const lc = w.rendererStores.liveCapture.getState();
+    if (!lc.isCapturing) return;
+    lc.setStopping(true);
+    const stopPromise = lc.stopCapture();
+    w.liveCaptureRuntime.onCaptureStopping();
+    const result = await stopPromise;
+    w.liveCaptureRuntime.onCaptureStopped(result);
+    lc.setStopping(false);
+  });
+}
+
 test.describe.serial('Rigs — save / load / switch', () => {
   let app: ElectronApplication;
   let win: Page;
@@ -108,16 +141,17 @@ test.describe.serial('Rigs — save / load / switch', () => {
   // live-capture.ts's stop-live handler — it guards on `if (proc)`).
   test.afterEach(async () => {
     if (!win || win.isClosed()) return;
-    // Click the real Stop button rather than calling soundBuddy.stopLive()
-    // directly — the button's onStop routes through stopLiveCapture(), which
-    // updates liveCaptureStore's isCapturing (and runs the runtime's
-    // onCaptureStopping/onCaptureStopped hooks) on top of the IPC call.
-    // Calling stopLive() alone kills the main-process stream.py but leaves
-    // the renderer's own isCapturing stuck true, so device controls stayed
-    // locked for the next test even though nothing was actually running.
     try {
-      const stopBtn = win.locator('#live-stop-btn');
-      if (await stopBtn.isVisible().catch(() => false)) await stopBtn.click();
+      // #757: the top-bar Record button is the sole transport, and its idle
+      // press *promotes* a running monitor session rather than stopping it —
+      // so cleanup can't just click Stop (an idle press would start
+      // recording). Instead it drives the exact stopLiveCapture()
+      // orchestration (LiveControls.tsx): flip stopping, stopCapture() flips
+      // isCapturing + runs the stop IPC, then the runtime's
+      // onCaptureStopping/onCaptureStopped hooks run the renderer-side side
+      // effects (rig unlock, playhead freeze, session offers) — the same
+      // before/after split the button's onStop uses, just phase-agnostic.
+      await stopCaptureIfRunning(win);
     } catch {
       // Best-effort cleanup; a genuinely broken stop is the next test's
       // problem to surface, not something to hide a real failure behind here.
@@ -128,8 +162,9 @@ test.describe.serial('Rigs — save / load / switch', () => {
     ({ app, win } = await launch(EIGHT_CH));
 
     // Pick the real device (Default Device stores an empty deviceName), dial
-    // the sliders (Settings → Audio), then switch to Record mode and make
-    // the first strip stereo (both still on the Live tab).
+    // the sliders (Settings → Audio), then make the first strip stereo. #757:
+    // the Record-mode toggle is gone, so the saved rig carries the store's
+    // always-monitor mode.
     await openAudioSettings(win);
     await win.locator('#device-select').selectOption('0');
     await win.evaluate(() => {
@@ -155,7 +190,6 @@ test.describe.serial('Rigs — save / load / switch', () => {
       set('window-secs', '5');
     });
     await closeSettings(win);
-    await win.locator('#live-mode button[data-mode="record"]').click();
     await win.locator('.live-ch-kind').first().selectOption('stereo');
 
     await openAudioSettings(win);
@@ -171,7 +205,7 @@ test.describe.serial('Rigs — save / load / switch', () => {
     expect(rigs[0]).toMatchObject({
       name: 'Main Board',
       deviceName: 'Fake 8ch Interface',
-      mode: 'record',
+      mode: 'monitor',
       intervalMs: 200,
       windowSecs: 5,
     });
@@ -190,7 +224,6 @@ test.describe.serial('Rigs — save / load / switch', () => {
     expect(await win.locator('#meter-interval').inputValue()).toBe('200');
     expect(await win.locator('#window-secs').inputValue()).toBe('5');
     await closeSettings(win);
-    await expect(win.locator('#live-mode button[data-mode="record"]')).toHaveClass(/active/);
   });
 
   test('loading a rig whose device is absent shows a fallback and does not auto-start', async () => {
@@ -216,9 +249,10 @@ test.describe.serial('Rigs — save / load / switch', () => {
     await win.locator('.mode-tab[data-mode="live"]').click();
 
     await expect(win.locator('#live-status')).toContainText('not found');
-    // Not auto-started: Start visible, Stop hidden.
-    await expect(win.locator('#live-start-btn')).toBeVisible();
-    await expect(win.locator('#live-stop-btn')).toBeHidden();
+    // Not auto-started: no capture running, so the top-bar Record button is
+    // idle and enabled.
+    await expect(win.locator('#live-indicator')).toBeHidden();
+    await expect(win.locator('#record-button')).toBeEnabled();
 
     await openAudioSettings(win);
     await expect(win.locator('#rig-select option:checked')).toHaveText('Scarlett Rig');
@@ -387,13 +421,13 @@ test.describe.serial('Rigs — save / load / switch', () => {
     await win.waitForLoadState('domcontentloaded');
     await win.locator('.mode-tab[data-mode="live"]').click();
 
-    await win.locator('#live-start-btn').click();
+    await win.locator('#record-button').click();
     await openAudioSettings(win);
     await expect(win.locator('#rig-select')).toBeDisabled();
     await expect(win.locator('#rig-saveas-btn')).toBeDisabled();
     await closeSettings(win);
 
-    await win.locator('#live-stop-btn').click();
+    await win.locator('#record-button').click();
     await openAudioSettings(win);
     await expect(win.locator('#rig-select')).toBeEnabled();
     await expect(win.locator('#rig-saveas-btn')).toBeEnabled();
@@ -422,7 +456,7 @@ test.describe.serial('Rigs — save / load / switch', () => {
     const locked = ['#device-select', '#device-refresh-btn', '#record-folder-btn',
       '#meter-interval', '#window-secs'];
 
-    await win.locator('#live-start-btn').click();
+    await win.locator('#record-button').click();
     await openAudioSettings(win);
     for (const sel of locked) {
       await expect(win.locator(sel)).toBeDisabled();
@@ -430,15 +464,15 @@ test.describe.serial('Rigs — save / load / switch', () => {
     }
     await expect(win.locator('#settings-audio-capture-lock-note')).toBeVisible();
     await closeSettings(win);
-    await expect(win.locator('#live-mode button').first()).toBeDisabled();
     await expect(win.locator('#spectrum-body .live-ch-kind').first()).toBeDisabled();
     // The workspace toolbar's Add track is rebuilt (not just re-flagged) by
     // Start's renderLiveWorkspace() call, which runs AFTER setCaptureControlsLocked()
     // — the rebuilt markup bakes in `disabled` (via defDisabled) but not
     // aria-disabled, so only `disabled` is asserted here.
     await expect(win.locator('#live-ws-add')).toBeDisabled();
+    await expect(win.locator('#live-ws-arm-all')).toBeDisabled();
 
-    await win.locator('#live-stop-btn').click();
+    await win.locator('#record-button').click();
     await openAudioSettings(win);
     for (const sel of locked) {
       await expect(win.locator(sel)).toBeEnabled();
@@ -446,27 +480,29 @@ test.describe.serial('Rigs — save / load / switch', () => {
     }
     await expect(win.locator('#settings-audio-capture-lock-note')).toBeHidden();
     await closeSettings(win);
-    await expect(win.locator('#live-mode button').first()).toBeEnabled();
     await expect(win.locator('#live-ws-add')).toBeEnabled();
+    await expect(win.locator('#live-ws-arm-all')).toBeEnabled();
   });
 
   test('a failed Start re-enables the config controls (no stuck lock)', async () => {
     await stubCapture(false);
-    await win.locator('#live-start-btn').click();
-    // startLive resolves { success:false } → stopLive() runs → controls unlocked.
-    // (A failed start also swaps #spectrum-body to the error state, so the
-    // workspace toolbar itself is gone — nothing there left to assert on.)
+    await win.locator('#record-button').click();
+    // The idle Record press starts monitoring; startLive resolves
+    // { success:false } → stopLive() runs → controls unlocked and the promote
+    // never happens. (The failed start also swaps #spectrum-body to the error
+    // state, so the workspace toolbar itself is gone — nothing there left to
+    // assert on.)
     await openAudioSettings(win);
     await expect(win.locator('#device-select')).toBeEnabled();
     await expect(win.locator('#meter-interval')).toBeEnabled();
     await expect(win.locator('#settings-audio-capture-lock-note')).toBeHidden();
     await closeSettings(win);
-    await expect(win.locator('#live-start-btn')).toBeVisible();
+    await expect(win.locator('#record-button')).toBeEnabled();
   });
 
   test('the capture lock re-asserts idempotently on every config-changed callback', async () => {
     await stubCapture(true);
-    await win.locator('#live-start-btn').click();
+    await win.locator('#record-button').click();
     // Start's renderLiveWorkspace() rebuilds the pane right after the initial
     // lock, so only `disabled` (baked into the rebuilt markup) is guaranteed
     // yet — see the aria-disabled note on the Start/Stop test above.
@@ -479,6 +515,6 @@ test.describe.serial('Rigs — save / load / switch', () => {
     await win.evaluate(() => (window as unknown as { renderChannelConfig: () => void }).renderChannelConfig());
     await expect(win.locator('#spectrum-body .live-ch-kind').first()).toBeDisabled();
     await expect(win.locator('#spectrum-body .live-ch-kind').first()).toHaveAttribute('aria-disabled', 'true');
-    await win.locator('#live-stop-btn').click();
+    await win.locator('#record-button').click();
   });
 });

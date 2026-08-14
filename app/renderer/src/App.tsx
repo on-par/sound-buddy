@@ -58,11 +58,9 @@ import ReportCardIsland from './ReportCardIsland';
 import SpectrumPanel from './SpectrumPanel';
 import IdealProfileSelect from './IdealProfileSelect';
 import CurveEditorDialog from './CurveEditorDialog';
-import LiveControls, { LiveTransportControls } from './LiveControls';
 import RecordButton from './RecordButton';
 import LiveWorkspace from './LiveWorkspace';
 import SoundcheckPanel from './SoundcheckPanel';
-import PreflightPanel from './PreflightPanel';
 import ModeTabs from './ModeTabs';
 import * as modeSwitch from './mode-switch';
 import * as reportCardChrome from './report-card-chrome';
@@ -240,10 +238,10 @@ export default function App() {
       {booted && createPortal(<SpectrumPanel />, document.getElementById('spectrum-island')!)}
       {booted && createPortal(<IdealProfileSelect />, document.getElementById('ideal-profile-island')!)}
       {booted && createPortal(<LiveWorkspace />, document.getElementById('live-island')!)}
-      {booted && createPortal(<LiveControls />, document.getElementById('live-controls-island')!)}
-      {booted && createPortal(<LiveTransportControls />, document.getElementById('live-transport-island')!)}
+      {/* #757: the Live tab's in-tab controls are gone — no portals to
+          LiveControls / LiveTransportControls / PreflightPanel. The top-bar
+          RecordButton portal below is the sole Live-capture surface. */}
       {booted && createPortal(<RecordButton />, document.getElementById('record-button-island')!)}
-      {booted && createPortal(<PreflightPanel />, document.getElementById('preflight-island')!)}
       {booted && createPortal(<SoundcheckPanel />, document.getElementById('soundcheck-island')!)}
       {booted && createPortal(<ModeTabs />, document.getElementById('mode-tabs')!)}
       {booted && createPortal(<ReportCardToolbar />, document.getElementById('rc-toolbar')!)}

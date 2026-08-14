@@ -31,13 +31,13 @@ describe('RecordButton (#729)', () => {
     expect(renderMarkup()).toBe('');
   });
 
-  it('renders a disabled Record button when idle and no monitor session is running', () => {
+  it('renders an enabled Record button when idle with no monitor session running (press starts capture) (#757)', () => {
     useLiveCaptureStore.setState({ appMode: 'live', isCapturing: false });
     const html = renderMarkup();
     expect(html).toContain('id="record-button"');
-    expect(html).toMatch(/id="record-button"[^>]*disabled=""/);
+    expect(html).not.toMatch(/id="record-button"[^>]*disabled=""/);
     expect(html).toContain('Record');
-    expect(html).toContain('aria-label="Recording unavailable — monitoring is not active"');
+    expect(html).toContain('aria-label="Record — press to start recording"');
   });
 
   it('renders an enabled Record button while monitoring', () => {
@@ -45,7 +45,7 @@ describe('RecordButton (#729)', () => {
     const html = renderMarkup();
     expect(html).toContain('id="record-button"');
     expect(html).not.toMatch(/id="record-button"[^>]*disabled=""/);
-    expect(html).toContain('aria-label="Start recording"');
+    expect(html).toContain('aria-label="Record — press to start recording"');
   });
 
   it('renders a disabled Starting… button while promoting', () => {

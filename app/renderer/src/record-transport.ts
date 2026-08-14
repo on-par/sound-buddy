@@ -46,9 +46,9 @@ export function recordButtonView(input: RecordButtonInput): RecordButtonViewMode
   }
   return {
     phase: 'idle',
-    disabled: !input.liveRunning,
+    disabled: false,
     label: 'Record',
-    ariaLabel: input.liveRunning ? 'Start recording' : 'Recording unavailable — monitoring is not active',
+    ariaLabel: 'Record — press to start recording',
   };
 }
 

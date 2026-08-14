@@ -2,16 +2,17 @@
 // Licensed under the Sound Buddy Desktop Application License (app/LICENSE).
 
 // The persistent top-bar Record control (#729), portaled by App.tsx onto
-// #record-button-island in #header-right. Additive to LiveControls.tsx's
-// Mode toggle and LiveTransportControls' Start/Stop transport (both left
-// unchanged) — this button owns only promoting a running monitor session to
-// a recording (#458) and stopping it, via the same bridged
-// recordCapture/stopLiveCapture helpers LiveControls.tsx already exports.
-// Visible only while the Live tab is the active mode (`appMode === 'live'`)
-// and Pro-gated via the shared body.not-pro CSS hook on
-// #record-button-island (app.css) rather than re-deriving license status
-// here — see the #729 plan's ADR (the #727 postmortem this pattern guards
-// against).
+// #record-button-island in #header-right. The SOLE Live-capture transport
+// (#757): the Live tab's old in-tab Mode toggle and Start/Stop CTA are gone,
+// so this button alone cycles Record (idle) → Recording → Stopping → Record.
+// An idle press flows into recordCapture(runtime()), which starts monitoring
+// first when no session is live and then promotes in place (#458) via the
+// same bridged recordCapture helper LiveControls.tsx exports; a Recording
+// press stops via stopLiveCapture. Visible only while the Live tab is the
+// active mode (`appMode === 'live'`) and Pro-gated via the shared body.not-pro
+// CSS hook on #record-button-island (app.css) rather than re-deriving license
+// status here — see the #729 plan's ADR (the #727 postmortem this pattern
+// guards against).
 
 import type { JSX } from 'react';
 import { useStoreShallow } from './stores/useStoreShallow';

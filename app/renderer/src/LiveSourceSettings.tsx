@@ -32,14 +32,13 @@ export function changeDevice(rt: LiveCaptureRuntime | undefined, value: string):
 }
 
 export default function LiveSourceSettings() {
-  const { devices, deviceHint, selectedDevice, channelConfig, measurementSource, liveMode, recordDir, isCapturing } =
+  const { devices, deviceHint, selectedDevice, channelConfig, measurementSource, recordDir, isCapturing } =
     useStoreShallow(useLiveCaptureStore, (s) => ({
       devices: s.devices,
       deviceHint: s.deviceHint,
       selectedDevice: s.selectedDevice,
       channelConfig: s.channelConfig,
       measurementSource: s.measurementSource,
-      liveMode: s.liveMode,
       recordDir: s.recordDir,
       isCapturing: s.isCapturing,
     }));
@@ -108,7 +107,10 @@ export default function LiveSourceSettings() {
         </div>
       </label>
 
-      <div className="record-row" id="record-folder-row" style={{ display: liveMode === 'record' ? 'flex' : 'none' }}>
+      {/* The record-folder row renders always (#757) — the mode toggle that
+          used to gate it is gone, and the top-bar Record button records to
+          this folder regardless of mode. */}
+      <div className="record-row" id="record-folder-row">
         <button
           type="button"
           id="record-folder-btn"

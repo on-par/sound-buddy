@@ -66,7 +66,6 @@ export interface StripView {   // per-strip state the caller resolves from its s
 export interface PanelView {
   deviceChannels: number;      // selectedDeviceChannels()
   liveRunning: boolean;
-  liveMode: 'monitor' | 'record';
   groups: ChannelGroup[];      // channelGroups
   instrumentProfiles?: { id: string; label: string }[]; // window.instrumentProfiles.PROFILES (#524)
 }
@@ -236,9 +235,7 @@ export function veqChannelHTML(ch: LiveMeterChannel, idx: number, stripView: Str
   return `<div class="live-ch${selected ? ' selected' : ''}${ch.idle ? ' idle' : ''}${stripView.groupCollapsed ? ' group-collapsed' : ''}" data-ch="${idx}"${selected ? ' aria-current="true"' : ''} tabindex="0" role="button" aria-label="Select ${escapeHtml(displayName)} to inspect in the EQ pane">
     <div class="live-ch-head">
       ${dragHTML}
-      ${panel.liveMode === 'record'
-        ? `<button type="button" class="live-ch-arm" data-idx="${idx}" aria-pressed="${armed}" aria-label="${armed ? 'Disarm' : 'Arm'} track for recording" title="${armed ? 'Armed for recording — click to disarm' : 'Disarmed — click to arm'}"${panel.liveRunning ? ' disabled' : ''}></button>`
-        : ''}
+      <button type="button" class="live-ch-arm" data-idx="${idx}" aria-pressed="${armed}" aria-label="${armed ? 'Disarm' : 'Arm'} track for recording" title="${armed ? 'Armed for recording — click to disarm' : 'Disarmed — click to arm'}"${panel.liveRunning ? ' disabled' : ''}></button>
       <span class="live-ch-name${ch.clipping ? ' clip' : ''}" contenteditable="true" spellcheck="false" role="textbox" aria-label="Channel name — click to rename" title="Click to rename">${escapeHtml(displayName)}</span>
       ${defHTML}
       ${groupHTML}
@@ -472,11 +469,14 @@ export function groupSummaryText(s: GroupSummary): string {
 }
 
 // #488: after a capture stops, offer "View report card" only when the session
-// actually built one — monitor mode with at least one accumulated window tick.
-// (Record mode keeps its own "Session saved" offer; a capture stopped before
-// the first window has nothing to show.)
-export function shouldOfferReportCard(mode: string, windowCount: number): boolean {
-  return mode === 'monitor' && windowCount > 0;
+// actually built one — at least one accumulated window tick. (#757) The old
+// monitor-mode-only requirement is dropped: with the Live tab's mode toggle
+// gone, every user-initiated stop is a record session, so keeping the mode
+// gate would make #488/#261's live session card unreachable. (Record mode's
+// "Session saved" offer is separate and shows alongside it.) A capture
+// stopped before the first window has nothing to show.
+export function shouldOfferReportCard(windowCount: number): boolean {
+  return windowCount > 0;
 }
 
 // Live board strip HTML grouped under named-group headers (#41); ungrouped strips

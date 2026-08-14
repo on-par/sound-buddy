@@ -1,43 +1,35 @@
 // Copyright (c) 2026 Patrick Robinson (on-par). All rights reserved.
 // Licensed under the Sound Buddy Desktop Application License (app/LICENSE).
 
-// The #tab-live Mode toggle + the Start/Stop transport (TD-001 slice 6c,
-// #701; narrowed by #727, which split the device picker/measurement
-// source/record-folder row out into LiveSourceSettings.tsx and relocated
-// them into Settings → Audio; narrowed again by #729, which moved the
-// Record button out of LiveTransportControls entirely into RecordButton.tsx/
-// #record-button-island in the top bar — see that file's header for the new
-// surface) — portaled by App.tsx onto #live-controls-island (this file's
-// default export, LiveControls, Mode only) and #live-transport-island
-// (LiveTransportControls, Start/Stop only), replacing inline-app.js's
-// setLiveMode/setCaptureControlsLocked/syncCaptureControls DOM-writers for
-// this region. Two separate components (not one component with two internal
-// createPortal calls) because react-dom's server renderer doesn't support
-// portals at all — see LiveControls.test.ts's header note — and because
-// root-markup.html's #tab-live interleaves these controls with still-
-// bridged, out-of-scope markup (the preflight panel), so they can't share
-// one contiguous portal target either.
+// The Live-capture runtime bridge + capture orchestration helpers (TD-001
+// slice 6c, #701, narrowed by #727, #729). The #tab-live Mode toggle
+// (LiveControls) and the Start/Stop transport (LiveTransportControls) are
+// GONE (#757): the Live tab is permanently monitor-mode and the top-bar
+// Record button (#729, RecordButton.tsx / #record-button-island) is the sole
+// capture transport, so the old in-tab control components no longer exist.
+// What remains is the window.liveCaptureRuntime bridge type + accessor
+// (runtime()), the extracted startLiveCapture/stopLiveCapture ordering
+// helpers, and recordCapture — the promote-in-place orchestration (#458) the
+// top-bar Record button's idle press flows into (starting monitoring first
+// when nothing is live, #757). #arm-hint is still written by inline-app.js's
+// showArmHint (beforeStartCapture's guard and promoteToRecording's preflight
+// guard both surface their blocking reasons through it).
 //
 // #live-status, #arm-hint, #rec-offer/#rc-offer/#rc-not-enough, and
-// #live-rc-cue stay OUT of both islands (still static markup, still written
-// by several other still-inline functions — rig-apply error text,
-// group-mutation arm hints, the post-stop session offers) — pulling those
-// into React here would double-own DOM nodes that other bridged code also
-// writes directly. The Start/Stop click handlers delegate to
+// #live-rc-cue stay out of React entirely (still static root-markup.html
+// markup, still written by several still-inline functions — rig-apply error
+// text, group-mutation arm hints, the post-stop session offers) — pulling
+// those into React here would double-own DOM nodes that other bridged code
+// also writes directly. The capture click handlers delegate to
 // `window.liveCaptureRuntime` (inline-app.js) for the side-effect-heavy
 // orchestration (playhead/waveform/rig-lock/lapCoaching/session offers) that
 // stays out of 6c's scope — see the ADR in the #701 plan on why those coupled
 // sub-surfaces (DAW shell, live-adjustments, preflight, rigs) stay bridged.
-// `window.liveTransitionState`'s capturePhase/recordButtonView classic
-// scripts are left untouched (still load-bearing for inline-app.js's header
-// REC/LIVE indicator and the promoteToRecording() guard) but are no longer
-// read from this file — LiveTransportControls' idle/non-idle split is just
-// `!isCapturing` now, and RecordButton.tsx derives its own phase from
-// record-transport.ts instead.
+// `window.liveTransitionState`'s capturePhase classic script is left
+// untouched (still load-bearing for inline-app.js's header REC/LIVE
+// indicator) but is no longer read from this file.
 
-import { useStoreShallow } from './stores/useStoreShallow';
 import { useLiveCaptureStore, type StartCaptureResult, type StopCaptureResult } from './stores/liveCaptureStore';
-import { iconSvg } from './report-card';
 import { captureOptsFromCadence } from './measurement-device-state';
 
 export interface LiveCaptureRuntime {
@@ -126,70 +118,21 @@ export async function stopLiveCapture(rt: LiveCaptureRuntime | undefined): Promi
   useLiveCaptureStore.getState().setStopping(false);
 }
 
-export function recordCapture(rt: LiveCaptureRuntime | undefined): Promise<void> {
+// The top-bar Record button's promote action (#729, #757): promotes a running
+// monitor session to a recording in place (#458). With the Live tab's mode
+// toggle gone, an idle press (nothing live) starts monitoring FIRST — the tab
+// is always-monitoring, so the button never needs to be disabled — then
+// promotes. liveMode is normalized back to 'monitor' before that start so a
+// stopped record session can be recorded again, and honoring
+// beforeStartCapture's #arm-hint guard means a blocked start (e.g. an empty
+// channel config) returns without ever touching promoteToRecording.
+export async function recordCapture(rt: LiveCaptureRuntime | undefined): Promise<void> {
+  const live = useLiveCaptureStore.getState();
+  if (!live.isCapturing) {
+    if (live.liveMode !== 'monitor') useLiveCaptureStore.getState().setLiveMode('monitor');
+    const opts = captureOptsFromCadence(live.windowSecs, live.meterIntervalMs);
+    await startLiveCapture(rt, opts.windowSecs, opts.intervalSecs);
+    if (!useLiveCaptureStore.getState().isCapturing) return; // blocked start — beforeStartCapture already surfaced #arm-hint
+  }
   return rt?.promoteToRecording() ?? Promise.resolve();
-}
-
-export default function LiveControls() {
-  const { liveMode, isCapturing } = useStoreShallow(useLiveCaptureStore, (s) => ({
-    liveMode: s.liveMode,
-    isCapturing: s.isCapturing,
-  }));
-
-  return (
-    <div>
-      <div className="seg-label">Mode</div>
-      <div className="segmented" id="live-mode">
-        <button
-          type="button"
-          data-mode="monitor"
-          className={liveMode === 'monitor' ? 'active' : ''}
-          disabled={isCapturing}
-          onClick={() => useLiveCaptureStore.getState().setLiveMode('monitor')}
-          dangerouslySetInnerHTML={{ __html: iconSvg('activity', 16) + 'Monitor' }}
-        />
-        <button
-          type="button"
-          data-mode="record"
-          className={liveMode === 'record' ? 'active' : ''}
-          disabled={isCapturing}
-          onClick={() => useLiveCaptureStore.getState().setLiveMode('record')}
-          dangerouslySetInnerHTML={{ __html: iconSvg('circle', 16) + 'Record' }}
-        />
-      </div>
-    </div>
-  );
-}
-
-export function LiveTransportControls() {
-  const { isCapturing } = useStoreShallow(useLiveCaptureStore, (s) => ({ isCapturing: s.isCapturing }));
-
-  function onStart() {
-    const { windowSecs, meterIntervalMs } = useLiveCaptureStore.getState();
-    const opts = captureOptsFromCadence(windowSecs, meterIntervalMs);
-    void startLiveCapture(runtime(), opts.windowSecs, opts.intervalSecs);
-  }
-
-  function onStop() {
-    void stopLiveCapture(runtime());
-  }
-
-  return (
-    <>
-      <button
-        className="btn btn-primary full"
-        id="live-start-btn"
-        style={{ display: !isCapturing ? 'inline-flex' : 'none' }}
-        onClick={onStart}
-        dangerouslySetInnerHTML={{ __html: iconSvg('play', 16) + 'Start Capture' }}
-      />
-      <button
-        className="btn btn-danger full"
-        id="live-stop-btn"
-        style={{ display: !isCapturing ? 'none' : 'inline-flex' }}
-        onClick={onStop}
-        dangerouslySetInnerHTML={{ __html: iconSvg('square', 16) + 'Stop Capture' }}
-      />
-    </>
-  );
 }

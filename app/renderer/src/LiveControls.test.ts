@@ -2,9 +2,7 @@
 // Licensed under the Sound Buddy Desktop Application License (app/LICENSE).
 
 import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest';
-import { createElement } from 'react';
-import { renderToString } from 'react-dom/server';
-import LiveControls, { LiveTransportControls, startLiveCapture, stopLiveCapture, recordCapture, type LiveCaptureRuntime } from './LiveControls';
+import { startLiveCapture, stopLiveCapture, recordCapture, type LiveCaptureRuntime } from './LiveControls';
 import { useLiveCaptureStore } from './stores/liveCaptureStore';
 import { useSettingsStore } from './stores/settingsStore';
 
@@ -17,6 +15,11 @@ const groupState = require('../group-state.js');
 const rigKind = require('../rig-kind.js');
 const channelLabels = require('../channel-labels.js');
 
+// The store's real actions, captured once so afterEach can restore any
+// startCapture/stopCapture a test stubbed out — otherwise a leftover mock's
+// call history leaks into a later test's vi.spyOn on the same property.
+const INITIAL_LIVE_CAPTURE_STATE = useLiveCaptureStore.getInitialState();
+
 beforeEach(() => {
   (globalThis as { window?: unknown }).window = { liveTransitionState, armState, groupState, rigKind, channelLabels };
 });
@@ -26,57 +29,18 @@ afterEach(() => {
   useLiveCaptureStore.setState({
     devices: [], deviceHint: null, selectedDevice: '', channelConfig: [], measurementSource: null,
     liveMode: 'monitor', recordDir: '', isCapturing: false, promoting: false, stopping: false,
+    startCapture: INITIAL_LIVE_CAPTURE_STATE.startCapture,
+    stopCapture: INITIAL_LIVE_CAPTURE_STATE.stopCapture,
   });
   useSettingsStore.setState({ settings: null, settingsError: null });
 });
 
-function renderMarkup(): string {
-  return renderToString(createElement(LiveControls));
-}
-
-function renderTransportMarkup(): string {
-  return renderToString(createElement(LiveTransportControls));
-}
-
-describe('LiveControls', () => {
-  it('marks the active mode button from liveMode', () => {
-    useLiveCaptureStore.setState({ liveMode: 'record' });
-    const html = renderMarkup();
-    expect(html).toMatch(/data-mode="record" class="active"/);
-    expect(html).not.toMatch(/data-mode="monitor" class="active"/);
-  });
-
-  it('disables the mode buttons while capturing', () => {
-    useLiveCaptureStore.setState({ isCapturing: true });
-    const html = renderMarkup();
-    expect(html).toMatch(/data-mode="monitor"[^>]*disabled=""/);
-    expect(html).toMatch(/data-mode="record"[^>]*disabled=""/);
-  });
-});
-
-describe('LiveTransportControls', () => {
-  it('shows Start Capture (not Stop) while idle', () => {
-    const html = renderTransportMarkup();
-    expect(html).toContain('id="live-start-btn" style="display:inline-flex"');
-    expect(html).toContain('id="live-stop-btn" style="display:none"');
-  });
-
-  it('shows Stop Capture (not Start) while capturing, with no record button — that moved to RecordButton.tsx (#729)', () => {
-    useLiveCaptureStore.setState({ isCapturing: true, liveMode: 'record' });
-    const html = renderTransportMarkup();
-    expect(html).toContain('id="live-start-btn" style="display:none"');
-    expect(html).toContain('id="live-stop-btn" style="display:inline-flex"');
-    expect(html).not.toContain('id="live-record-btn"');
-  });
-});
-
 // Extracted handlers (startLiveCapture/stopLiveCapture/recordCapture) are
-// tested directly here rather than by clicking rendered buttons —
-// LiveControls uses hooks internally, so calling the component function
-// outside a React render throws "invalid hook call" (no jsdom in this
-// harness to mount it for real); the click-path integration is covered by
-// tests/e2e/live-capture.spec.ts. changeDevice moved to
-// LiveSourceSettings.test.ts (#727) along with the component it now backs.
+// tested directly here — the old LiveControls/LiveTransportControls
+// components are gone (#757), so there are no rendered buttons to click;
+// the click-path integration is covered by tests/e2e/live-capture.spec.ts.
+// changeDevice moved to LiveSourceSettings.test.ts (#727) along with the
+// component it now backs.
 describe('startLiveCapture / stopLiveCapture / recordCapture', () => {
   function mockRuntime(overrides: Partial<LiveCaptureRuntime> = {}): LiveCaptureRuntime {
     return {
@@ -174,13 +138,79 @@ describe('startLiveCapture / stopLiveCapture / recordCapture', () => {
     expect(useLiveCaptureStore.getState().stopping).toBe(false);
   });
 
-  it('recordCapture delegates to the bridged promoteToRecording', async () => {
+  it('recordCapture promotes directly when a monitor session is already running', async () => {
     const rt = mockRuntime();
+    useLiveCaptureStore.setState({ isCapturing: true, liveMode: 'monitor' });
+    const startCapture = vi.spyOn(useLiveCaptureStore.getState(), 'startCapture');
+
     await recordCapture(rt);
+
+    expect(startCapture).not.toHaveBeenCalled();
     expect(rt.promoteToRecording).toHaveBeenCalledTimes(1);
   });
 
-  it('recordCapture is a safe no-op when no runtime is bridged yet', async () => {
+  it('recordCapture starts monitoring first, then promotes, when idle (#757)', async () => {
+    const rt = mockRuntime();
+    useLiveCaptureStore.setState({
+      isCapturing: false,
+      liveMode: 'monitor',
+      windowSecs: 3,
+      meterIntervalMs: 100,
+      // Mirrors the real action's synchronous prelude: startCapture flips
+      // isCapturing true before its own await point, so recordCapture sees a
+      // live session right after startLiveCapture resolves it.
+      startCapture: vi.fn(async () => {
+        useLiveCaptureStore.setState({ isCapturing: true });
+        return { success: true };
+      }),
+    });
+
+    await recordCapture(rt);
+
+    expect(rt.beforeStartCapture).toHaveBeenCalledTimes(1);
+    expect(useLiveCaptureStore.getState().isCapturing).toBe(true);
+    expect(rt.promoteToRecording).toHaveBeenCalledTimes(1);
+  });
+
+  it('recordCapture does not promote when beforeStartCapture blocked the start', async () => {
+    const rt = mockRuntime({ beforeStartCapture: vi.fn(() => ({ ok: false, reason: 'Add at least one track before starting capture.' })) });
+    useLiveCaptureStore.setState({ isCapturing: false, liveMode: 'monitor' });
+
+    await recordCapture(rt);
+
+    expect(useLiveCaptureStore.getState().isCapturing).toBe(false);
+    expect(rt.promoteToRecording).not.toHaveBeenCalled();
+  });
+
+  it('recordCapture normalizes liveMode back to monitor after a stopped record session (#757)', async () => {
+    const rt = mockRuntime();
+    useLiveCaptureStore.setState({
+      isCapturing: false,
+      liveMode: 'record',
+      startCapture: vi.fn(async () => {
+        useLiveCaptureStore.setState({ isCapturing: true });
+        return { success: true };
+      }),
+    });
+
+    await recordCapture(rt);
+
+    expect(useLiveCaptureStore.getState().liveMode).toBe('monitor');
+    expect(rt.promoteToRecording).toHaveBeenCalledTimes(1);
+  });
+
+  it('recordCapture never crashes with no runtime bridged — it still starts via the store, then simply has nothing to promote', async () => {
+    useLiveCaptureStore.setState({
+      isCapturing: false,
+      liveMode: 'monitor',
+      startCapture: vi.fn(async () => {
+        useLiveCaptureStore.setState({ isCapturing: true });
+        return { success: true };
+      }),
+    });
+
     await expect(recordCapture(undefined)).resolves.toBeUndefined();
+
+    expect(useLiveCaptureStore.getState().isCapturing).toBe(true);
   });
 });

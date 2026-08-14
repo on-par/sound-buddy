@@ -90,7 +90,6 @@ function panelView(overrides: Partial<PanelView> = {}): PanelView {
   return {
     deviceChannels: 8,
     liveRunning: false,
-    liveMode: 'monitor',
     groups: [],
     ...overrides,
   };
@@ -405,21 +404,18 @@ describe('veqChannelHTML', () => {
     expect(html).toContain('live-ch-x" title="Remove track" aria-label="Remove track" disabled');
   });
 
-  it('renders an arm button with correct aria-pressed/label in record mode, none in monitor mode', () => {
-    const armed = veqChannelHTML(LIVE_CHANNELS[0], 0, stripView({ armed: true }), panelView({ liveMode: 'record' }));
+  it('renders an arm toggle on every strip regardless of mode (#757)', () => {
+    const armed = veqChannelHTML(LIVE_CHANNELS[0], 0, stripView({ armed: true }), panelView());
     expect(armed).toContain('live-ch-arm');
     expect(armed).toContain('aria-pressed="true"');
     expect(armed).toContain('Disarm track for recording');
 
-    const disarmed = veqChannelHTML(LIVE_CHANNELS[0], 0, stripView({ armed: false }), panelView({ liveMode: 'record' }));
+    const disarmed = veqChannelHTML(LIVE_CHANNELS[0], 0, stripView({ armed: false }), panelView());
     expect(disarmed).toContain('aria-pressed="false"');
     expect(disarmed).toContain('Arm track for recording');
 
-    const armedRunning = veqChannelHTML(LIVE_CHANNELS[0], 0, stripView({ armed: true }), panelView({ liveMode: 'record', liveRunning: true }));
+    const armedRunning = veqChannelHTML(LIVE_CHANNELS[0], 0, stripView({ armed: true }), panelView({ liveRunning: true }));
     expect(armedRunning).toContain('live-ch-arm" data-idx="0" aria-pressed="true" aria-label="Disarm track for recording" title="Armed for recording — click to disarm" disabled');
-
-    const monitor = veqChannelHTML(LIVE_CHANNELS[0], 0, stripView(), panelView({ liveMode: 'monitor' }));
-    expect(monitor).not.toContain('live-ch-arm');
   });
 
   it('adds a clip class and CLIP badge when the channel is clipping', () => {
@@ -590,17 +586,13 @@ describe('groupSummaryText', () => {
   });
 });
 
-describe('shouldOfferReportCard (#488)', () => {
-  it('offers after a monitor session that accumulated windows', () => {
-    expect(shouldOfferReportCard('monitor', 1)).toBe(true);
-    expect(shouldOfferReportCard('monitor', 10)).toBe(true);
+describe('shouldOfferReportCard (#488, #757)', () => {
+  it('offers after a session that accumulated windows', () => {
+    expect(shouldOfferReportCard(1)).toBe(true);
+    expect(shouldOfferReportCard(10)).toBe(true);
   });
   it('does not offer when no window tick ever arrived', () => {
-    expect(shouldOfferReportCard('monitor', 0)).toBe(false);
-  });
-  it('does not offer for record mode (it has its own session-saved offer)', () => {
-    expect(shouldOfferReportCard('record', 5)).toBe(false);
-    expect(shouldOfferReportCard('record', 0)).toBe(false);
+    expect(shouldOfferReportCard(0)).toBe(false);
   });
 });
 
