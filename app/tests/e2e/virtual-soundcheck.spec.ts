@@ -30,6 +30,24 @@ test.describe('Virtual Soundcheck (#46)', () => {
       ipcMain.removeHandler('open-dir-dialog');
       ipcMain.handle('open-dir-dialog', () => dir);
       // read-session is NOT stubbed — it reads the committed fixture session.json.
+      // generate-session-peaks IS stubbed (#735): the real handler spawns
+      // waveform_peaks.py, which needs numpy/soundfile on python3 — absent on
+      // the CI runner (and #734's contract is silent failure), so the real
+      // path would make the waveform-lane assertion non-deterministic. A
+      // deterministic 2-track peaks document exercises the same renderer
+      // wiring (store -> timeline -> lane canvases) the real pipeline feeds.
+      ipcMain.removeHandler('generate-session-peaks');
+      ipcMain.handle('generate-session-peaks', () => ({
+        success: true,
+        cached: false,
+        peaks: {
+          bucketsPerSecond: 50,
+          tracks: [
+            { index: 0, label: 'Kick', kind: 'mono', bucketCount: 1, data: Buffer.from([0, 255]).toString('base64') },
+            { index: 1, label: 'OH', kind: 'stereo', bucketCount: 2, data: Buffer.from([64, 192, 32, 224]).toString('base64') },
+          ],
+        },
+      }));
       ipcMain.removeHandler('start-playback');
       ipcMain.handle('start-playback', (_e, opts) => {
         (globalThis as Record<string, unknown>).__pb = opts; return { success: true };
@@ -63,6 +81,16 @@ test.describe('Virtual Soundcheck (#46)', () => {
     await expect(tracks.nth(1).locator('.sc-track-name')).toHaveText('OH');
     await expect(tracks.nth(1).locator('.sc-badge')).toHaveText('Stereo');
     await expect(tracks.nth(0).locator('.sc-route')).toBeVisible();
+
+    // #735: one stacked waveform lane per track (canvas-wiring gate for the
+    // /* c8 ignore */ draw effect — Playwright auto-waits for the stubbed
+    // peaks generation to land).
+    const lanes = window.locator('#sc-waveforms .sc-waveform-lane');
+    await expect(lanes).toHaveCount(2);
+    await expect(lanes.nth(0).locator('.sc-waveform-name')).toHaveText('Kick');
+    await expect(lanes.nth(1).locator('.sc-waveform-name')).toHaveText('OH');
+    await expect(lanes.nth(0).locator('canvas')).toBeVisible();
+    await expect(lanes.nth(1).locator('canvas')).toBeVisible();
   });
 
   test('routes on a big device, plays, updates transport + meters, stops', async () => {
