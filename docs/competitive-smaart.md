@@ -137,8 +137,8 @@ SPL monitoring. Those tune *systems* (PA + room); Sound Buddy analyzes
 ## 5. Roadmap gaps worth considering
 
 Lead candidate — the **live SPL readout** idea from the same field-feedback
-conversation (a follow-on issue is filed separately once there's a pick; no issue
-number exists yet):
+conversation, which has since shipped as **#767** (the prominent top-right live
+level readout, explicitly relative dBFS per ADR-0013; see §5.1):
 
 ### 5.1 Live SPL readout in the Live tab
 
@@ -156,7 +156,9 @@ alignment. It is a readout, not a measurement instrument.
 **Be explicit about calibration:** the app's readouts are **dBFS**, and that is
 the honest version. Calibrated absolute SPL (a known SPL source sets the
 0-reference) is the deeper form and clearly out of scope for now — do not imply
-the live readout is a calibrated SPL meter.
+the live readout is a calibrated SPL meter. This calibration-honesty note is
+exactly what the shipped readout carries: it shipped as **#767** (the prominent
+top-right `#live-level-readout`, relative dBFS per ADR-0013).
 
 ### 5.2 RTA-to-target overlay in real time
 
