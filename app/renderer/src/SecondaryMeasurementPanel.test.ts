@@ -110,6 +110,47 @@ describe('SecondaryMeasurementPanel', () => {
     expect(html).toContain('disconnected — reconnect the device to resume.');
   });
 
+  describe('measurement-source quality hint (#461)', () => {
+    it('renders no device hint when None is selected', () => {
+      useLiveCaptureStore.setState({
+        secondaryMeasurement: { status: 'off', deviceName: '' },
+        devices: DEVICES,
+      });
+
+      expect(renderMarkup()).not.toContain('id="secondary-measurement-hint"');
+    });
+
+    it('cautions that a built-in computer microphone is not a calibrated measurement', () => {
+      useLiveCaptureStore.setState({
+        secondaryMeasurement: { status: 'active', deviceName: 'Built-in Microphone' },
+        devices: DEVICES,
+      });
+
+      const html = renderMarkup();
+
+      expect(html).toContain('id="secondary-measurement-hint"');
+      expect(html).toContain('not a calibrated measurement');
+    });
+
+    it('marks a dedicated measurement mic as a stronger source', () => {
+      useLiveCaptureStore.setState({
+        secondaryMeasurement: { status: 'active', deviceName: 'USB Measurement Mic' },
+        devices: DEVICES,
+      });
+
+      expect(renderMarkup()).toContain('stronger source');
+    });
+
+    it('labels an unrecognized external device with the external-input copy', () => {
+      useLiveCaptureStore.setState({
+        secondaryMeasurement: { status: 'active', deviceName: 'Scarlett 18i20' },
+        devices: DEVICES,
+      });
+
+      expect(renderMarkup()).toContain('Fine for rough trends');
+    });
+  });
+
   describe('secondaryCaptureOpts (#725)', () => {
     it('reads the store cadence fields and converts ms to secs — no DOM stubbing needed', () => {
       useLiveCaptureStore.setState({ meterIntervalMs: 200, windowSecs: 5 });

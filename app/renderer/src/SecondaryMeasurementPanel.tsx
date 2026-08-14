@@ -28,6 +28,7 @@ import {
   captureOptsFromCadence,
 } from './measurement-device-state';
 import { iconSvg } from './report-card';
+import { sourceHintForDevice } from './measurement-source-hints';
 import type { LiveDevice } from './live-capture-panel';
 import { runtime } from './LiveControls';
 
@@ -100,6 +101,14 @@ export default function SecondaryMeasurementPanel(): JSX.Element {
       </div>
       <p id="secondary-measurement-status" className="device-hint" dangerouslySetInnerHTML={{ __html: secondaryStatusHTML(secondaryMeasurement) }} />
       <p id="secondary-measurement-warning" className="device-hint" dangerouslySetInnerHTML={{ __html: showWarning ? alignmentWarningHTML() : '' }} />
+      {/* Informational source-quality hint (#461): shown whenever a device is
+          chosen (any status), hidden for None. Classification lives in
+          measurement-source-hints.ts — the single source of truth. */}
+      {secondaryMeasurement.deviceName !== '' && (
+        <p className="device-hint" id="secondary-measurement-hint">
+          {sourceHintForDevice(secondaryMeasurement.deviceName).copy}
+        </p>
+      )}
     </label>
   );
 }

@@ -18,6 +18,7 @@ import { useLiveCaptureStore } from './stores/liveCaptureStore';
 import { useSettingsStore } from './stores/settingsStore';
 import { iconSvg } from './report-card';
 import { deviceOptionLabel, measurementSourceOptionsHTML } from './live-capture-panel';
+import { boardSourceHint } from './measurement-source-hints';
 import { runtime, type LiveCaptureRuntime } from './LiveControls';
 
 export type { LiveCaptureRuntime };
@@ -106,6 +107,9 @@ export default function LiveSourceSettings() {
           </div>
         </div>
       </label>
+      {/* The board source is always a board feed (#461) — one hedged hint
+          under the select, no per-strip classification. */}
+      <p className="device-hint" id="measurement-source-hint">{boardSourceHint().copy}</p>
 
       {/* The record-folder row renders always (#757) — the mode toggle that
           used to gate it is gone, and the top-bar Record button records to
