@@ -145,6 +145,10 @@ function maybeAutoStartLive(): void {
     rigApplyNotice: live.rigApplyNotice,
   });
   if (decision.type !== 'start') return;
+  // #776: auto-start is monitoring ONLY (#728/ADR-0008) — a record-mode rig
+  // hydrates liveMode='record' (rig-panel.ts applyRigPatch), so normalize back
+  // to monitor before starting, exactly as recordCapture does (#757).
+  if (live.liveMode !== 'monitor') useLiveCaptureStore.getState().setLiveMode('monitor');
   const opts = captureOptsFromCadence(live.windowSecs, live.meterIntervalMs);
   void startLiveCapture(runtime(), opts.windowSecs, opts.intervalSecs);
 }

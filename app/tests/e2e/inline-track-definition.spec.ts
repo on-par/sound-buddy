@@ -104,7 +104,10 @@ test.describe('Inline track definition (#189)', () => {
     for (let i = 0; i < await kindSels.count(); i++) await expect(kindSels.nth(i)).toBeDisabled();
     for (let i = 0; i < await srcSels.count(); i++) await expect(srcSels.nth(i)).toBeDisabled();
 
-    await window.locator('#record-button').click(); // stop
-    await expect(window.locator('.live-ch[data-ch="0"] .live-ch-kind')).toBeEnabled();
+    await window.locator('#record-button').click(); // stop → monitoring resumes (#776)
+    // #776: always-monitoring — a record stop keeps the board live, so the
+    // header kind stays disabled (monitoring locks config) instead of
+    // re-enabling the way the old full stop did.
+    await expect(window.locator('.live-ch[data-ch="0"] .live-ch-kind')).toBeDisabled();
   });
 });

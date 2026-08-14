@@ -2,7 +2,7 @@
 // Licensed under the Sound Buddy Desktop Application License (app/LICENSE).
 
 import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest';
-import { startLiveCapture, stopLiveCapture, recordCapture, type LiveCaptureRuntime } from './LiveControls';
+import { startLiveCapture, stopLiveCapture, stopCaptureIfRunning, recordCapture, type LiveCaptureRuntime } from './LiveControls';
 import { useLiveCaptureStore } from './stores/liveCaptureStore';
 import { useSettingsStore } from './stores/settingsStore';
 
@@ -136,6 +136,123 @@ describe('startLiveCapture / stopLiveCapture / recordCapture', () => {
 
     expect(order).toEqual(['ipc:stopping=true', 'bridge:onCaptureStopping', 'bridge:onCaptureStopped']);
     expect(useLiveCaptureStore.getState().stopping).toBe(false);
+  });
+
+  // #776: the Live tab is always-monitoring (ADR-0014) — a record stop must
+  // demote back to a live monitor session (Record button idle, meters running)
+  // instead of fully ending capture. The exact call order pins the ceremony:
+  // stop IPC → onCaptureStopping → onCaptureStopped → resume flag →
+  // beforeStartCapture → start IPC → onCaptureStarting → onCaptureStarted.
+  it('stopLiveCapture stops a recording then resumes monitoring, keeping the board live (#776)', async () => {
+    const order: string[] = [];
+    const rt = mockRuntime({
+      onCaptureStopping: vi.fn(() => order.push('stopping')),
+      onCaptureStopped: vi.fn(() => order.push('stopped')),
+      onResumeMonitoringStart: vi.fn(() => order.push('resume-flag')),
+      beforeStartCapture: vi.fn(() => {
+        order.push('before');
+        return { ok: true } as const;
+      }),
+      onCaptureStarting: vi.fn(() => order.push('starting')),
+      onCaptureStarted: vi.fn(() => order.push('started')),
+    });
+    useLiveCaptureStore.setState({
+      liveMode: 'record',
+      isCapturing: true,
+      windowSecs: 3,
+      meterIntervalMs: 100,
+      stopCapture: vi.fn(async () => {
+        useLiveCaptureStore.setState({ isCapturing: false });
+        order.push('ipc-stop');
+        await Promise.resolve();
+        return { success: true, sessionDir: '/tmp/session' };
+      }),
+      startCapture: vi.fn(async () => {
+        useLiveCaptureStore.setState({ isCapturing: true });
+        order.push('ipc-start');
+        await Promise.resolve();
+        return { success: true };
+      }),
+    });
+
+    await stopLiveCapture(rt);
+
+    expect(order).toEqual(['ipc-stop', 'stopping', 'stopped', 'resume-flag', 'before', 'ipc-start', 'starting', 'started']);
+    expect(useLiveCaptureStore.getState().liveMode).toBe('monitor');
+    expect(useLiveCaptureStore.getState().isCapturing).toBe(true);
+    expect(useLiveCaptureStore.getState().stopping).toBe(false);
+    expect(rt.onCaptureStopped).toHaveBeenCalledWith({ success: true, sessionDir: '/tmp/session' });
+    expect(rt.onResumeMonitoringStart).toHaveBeenCalledTimes(1);
+  });
+
+  // Defensive branch: RecordButton only ever issues 'stop' for a record
+  // session, so stopping a monitor session must stay a plain full stop — no
+  // resume, no startCapture call (#776).
+  it('stopLiveCapture does not resume monitoring when stopping a monitor session (#776)', async () => {
+    const rt = mockRuntime({ onResumeMonitoringStart: vi.fn() });
+    useLiveCaptureStore.setState({
+      liveMode: 'monitor',
+      isCapturing: true,
+      stopCapture: vi.fn(async () => {
+        useLiveCaptureStore.setState({ isCapturing: false });
+        return { success: true, sessionDir: null };
+      }),
+      startCapture: vi.fn(async () => {
+        useLiveCaptureStore.setState({ isCapturing: true });
+        return { success: true };
+      }),
+    });
+
+    await stopLiveCapture(rt);
+
+    expect(useLiveCaptureStore.getState().isCapturing).toBe(false);
+    expect(useLiveCaptureStore.getState().liveMode).toBe('monitor');
+    expect(rt.onResumeMonitoringStart).not.toHaveBeenCalled();
+    expect(useLiveCaptureStore.getState().startCapture).not.toHaveBeenCalled();
+  });
+
+  // #776: stopCaptureIfRunning is the one production entry point for "drive
+  // the board fully idle" — bridged onto window.stopLiveCaptureIfRunning
+  // (App.tsx) for e2e/automation callers that need this and can't use the
+  // Record button (whose idle press promotes rather than stops, #757).
+  it('stopCaptureIfRunning is a no-op when nothing is capturing', async () => {
+    const rt = mockRuntime();
+    useLiveCaptureStore.setState({ isCapturing: false });
+    const stopCapture = vi.spyOn(useLiveCaptureStore.getState(), 'stopCapture');
+
+    await stopCaptureIfRunning(rt);
+
+    expect(stopCapture).not.toHaveBeenCalled();
+    expect(rt.onCaptureStopping).not.toHaveBeenCalled();
+    expect(rt.onCaptureStopped).not.toHaveBeenCalled();
+  });
+
+  // Distinguishes stopCaptureIfRunning from stopLiveCapture: stopping a
+  // record session must NOT take stopLiveCapture's resume-to-monitoring
+  // branch — callers of this helper need a genuinely idle board, not one
+  // that's been restarted into monitoring.
+  it('stopCaptureIfRunning stops a recording without resuming monitoring (#776)', async () => {
+    const rt = mockRuntime({ onResumeMonitoringStart: vi.fn() });
+    useLiveCaptureStore.setState({
+      liveMode: 'record',
+      isCapturing: true,
+      stopCapture: vi.fn(async () => {
+        useLiveCaptureStore.setState({ isCapturing: false });
+        return { success: true, sessionDir: '/tmp/session' };
+      }),
+      startCapture: vi.fn(async () => {
+        useLiveCaptureStore.setState({ isCapturing: true });
+        return { success: true };
+      }),
+    });
+
+    await stopCaptureIfRunning(rt);
+
+    expect(useLiveCaptureStore.getState().isCapturing).toBe(false);
+    expect(useLiveCaptureStore.getState().stopping).toBe(false);
+    expect(rt.onCaptureStopped).toHaveBeenCalledWith({ success: true, sessionDir: '/tmp/session' });
+    expect(rt.onResumeMonitoringStart).not.toHaveBeenCalled();
+    expect(useLiveCaptureStore.getState().startCapture).not.toHaveBeenCalled();
   });
 
   it('recordCapture promotes directly when a monitor session is already running', async () => {

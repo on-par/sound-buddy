@@ -18,6 +18,7 @@ import * as shareCard from './share-card';
 import * as liveCapturePanel from './live-capture-panel';
 import * as measurementDeviceState from './measurement-device-state';
 import * as crashHooks from './crash-hooks';
+import { stopCaptureIfRunning as stopLiveCaptureIfRunning } from './LiveControls';
 import rootMarkup from './root-markup.html?raw';
 import rigReconcileSrc from '../rig-reconcile.js?raw';
 import armStateSrc from '../arm-state.js?raw';
@@ -183,6 +184,14 @@ export default function App() {
     // call them by name.
     (window as Window & { measurementDeviceState?: unknown }).measurementDeviceState = measurementDeviceState;
     (window as Window & { crashHooks?: unknown }).crashHooks = crashHooks;
+    // #776: bridges the single production "stop ceremony" (LiveControls.tsx's
+    // stopCaptureIfRunning, built on the same runStopCeremony stopLiveCapture
+    // uses) onto window so Playwright specs can drive a genuinely idle board
+    // without re-implementing the setStopping/stopCapture/hook ordering
+    // themselves — see e2e-helpers.ts's stopCaptureIfRunning and
+    // rigs.spec.ts's afterEach cleanup, the two callers.
+    (window as Window & { stopLiveCaptureIfRunning?: typeof stopLiveCaptureIfRunning }).stopLiveCaptureIfRunning =
+      stopLiveCaptureIfRunning;
     // inline-app.js still needs applySpectrumForMode/applySingleColumnSync
     // for the 2 remaining call sites outside ModeTabs.tsx's click handler
     // (TD-001 slice 6e, #703).

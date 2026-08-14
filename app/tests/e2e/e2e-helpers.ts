@@ -170,6 +170,26 @@ export async function renameHeader(window: Page, head: Locator, value: string) {
   await window.keyboard.press('Enter');
 }
 
+// #776: the always-monitoring Live tab has no button that fully stops capture —
+// a Record-button stop only demotes a record session back to a monitor session.
+// Tests/automation that need a genuinely idle board (config unlocked, readout
+// hidden) call the same production stop ceremony App.tsx bridges onto
+// window.stopLiveCaptureIfRunning (LiveControls.tsx's stopCaptureIfRunning) —
+// the single place that ordering (setStopping -> stopCapture() -> bridged
+// hooks -> clear stopping) is implemented, rather than re-deriving it here.
+// Defensive about boot: safe to call right after launchApp() returns, when
+// stopLiveCaptureIfRunning/liveCaptureRuntime may not be installed yet
+// (nothing can be capturing then anyway).
+export async function stopCaptureIfRunning(window: Page): Promise<void> {
+  await window.evaluate(async () => {
+    const w = window as unknown as {
+      stopLiveCaptureIfRunning?: (rt: unknown) => Promise<void>;
+      liveCaptureRuntime?: unknown;
+    };
+    await w.stopLiveCaptureIfRunning?.(w.liveCaptureRuntime);
+  });
+}
+
 // Every launchApp() call gets its own --user-data-dir suffix. The original
 // single-file suite launched Electron exactly once, so one shared directory
 // was fine; now that each split file (and each describe within settings.spec.ts)

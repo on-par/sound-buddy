@@ -102,7 +102,7 @@ afterEach(() => {
   delete (globalThis as { document?: unknown }).document;
   delete (globalThis as { window?: unknown }).window;
   vi.restoreAllMocks();
-  useLiveCaptureStore.setState({ appMode: 'reportcard', isCapturing: false, deviceHint: null, rigApplyNotice: null, startCapture: REAL_START_CAPTURE });
+  useLiveCaptureStore.setState({ appMode: 'reportcard', isCapturing: false, liveMode: 'monitor', deviceHint: null, rigApplyNotice: null, startCapture: REAL_START_CAPTURE });
   useRigStore.setState({ activeRigId: null });
   useSettingsStore.setState({ settings: null, settingsError: null });
   useAnalysisStore.setState({ currentAnalysis: null });
@@ -325,6 +325,23 @@ describe('switchMode', () => {
     switchMode('live');
 
     expect(startCapture).not.toHaveBeenCalled();
+  });
+
+  // #776: a record-mode last-used rig hydrates liveMode='record' (rig-panel.ts's
+  // applyRigPatch keeps the rig's saved record intent), but auto-start is
+  // monitoring ONLY (#728/ADR-0008) — the start-live payload mode is derived
+  // from the store field, so normalizing it first guarantees the auto-start can
+  // never begin a record session.
+  it('auto-start normalizes a record-mode rig to monitor before starting, never recording (#776)', () => {
+    useRigStore.setState({ activeRigId: 'rig-1' });
+    useLiveCaptureStore.setState({ liveMode: 'record' });
+    const startCapture = vi.spyOn(useLiveCaptureStore.getState(), 'startCapture')
+      .mockResolvedValue(undefined);
+
+    switchMode('live');
+
+    expect(useLiveCaptureStore.getState().liveMode).toBe('monitor');
+    expect(startCapture).toHaveBeenCalledTimes(1);
   });
 
   it('does not auto-start when the device hint is an error', () => {

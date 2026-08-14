@@ -1,5 +1,5 @@
 import { test, expect, type ElectronApplication, type Page } from '@playwright/test';
-import { launchApp, renameHeader } from './e2e-helpers';
+import { launchApp, renameHeader, stopCaptureIfRunning } from './e2e-helpers';
 
 // Live capture (PRD 06) — split out of e2e.spec.ts as its own file (#225).
 // Covers the rail, channel picker, per-strip meters, and Record-mode capture
@@ -37,6 +37,11 @@ test.describe('Live capture (PRD 06)', () => {
   });
 
   test.beforeEach(async () => {
+    // #776: a record stop only demotes back to a monitor session (capture keeps
+    // running, config stays locked) — reset to a genuinely idle board first so
+    // this shared beforeEach's #device-refresh-btn click isn't blocked by a
+    // dangling monitor session from the previous test.
+    await stopCaptureIfRunning(window);
     await window.locator('.mode-tab[data-mode="live"]').click();
     await expect(window.locator('#tab-live')).toHaveClass(/active/);
     // Re-enumerate against the stubbed 8-channel device (the boot-time scan
@@ -349,6 +354,9 @@ test.describe('Live capture (PRD 06)', () => {
 
     await window.locator('#record-button').click();
     await expect(window.locator('#record-button')).toBeEnabled();
+    // #776: the stop demotes back to a monitor session — LIVE indicator (not
+    // REC) and the session offer survive the resume.
+    await expect(window.locator('#live-indicator .live-txt')).toHaveText('LIVE');
     // stop-live returns a sessionDir (stubbed) → the session offer appears and
     // "Open folder" reveals that dir via reveal-path.
     await expect(window.locator('#rec-offer')).toBeVisible();
@@ -378,6 +386,9 @@ test.describe('Live capture (PRD 06)', () => {
 
     await recordBtn.click(); // stop
     await expect(window.locator('#record-button')).toBeEnabled();
+    // #776: the stop demotes back to a monitor session — the LIVE indicator
+    // and the session offer stay visible across the resume.
+    await expect(window.locator('#live-indicator .live-txt')).toHaveText('LIVE');
     await expect(window.locator('#rec-offer')).toBeVisible();
     await expect(window.locator('#rec-offer-text')).toContainText('Session saved');
   });
@@ -432,12 +443,14 @@ test.describe('Live capture (PRD 06)', () => {
     });
   });
 
-  test('shows a live dBFS readout top-right while monitoring and hides it on stop (#767)', async () => {
+  // #767/#776: the top-right dBFS readout is a live board meter, so it shows
+  // while capturing (recording) and STAYS visible after a record stop —
+  // monitoring resumes (ADR-0014 always-monitoring), the readout is not a
+  // record-only artifact.
+  test('shows a live dBFS readout top-right while recording and keeps it visible after the stop, monitoring resumes (#767, #776)', async () => {
     const readout = window.locator('#live-level-readout');
     const recordBtn = window.locator('#record-button');
     await expect(readout).toBeHidden();
-
-    await window.locator('#live-ws-arm-all').click();
     await recordBtn.click();
     await expect(window.locator('#live-indicator .live-txt')).toHaveText('REC');
     await expect(readout).toBeVisible();
@@ -447,8 +460,9 @@ test.describe('Live capture (PRD 06)', () => {
     await sendLiveTick([{ ...LIVE_CHANNELS[0], rms: -12, peak: -3 }, LIVE_CHANNELS[1]]);
     await expect(window.locator('#live-level-rms')).toHaveText('-12.0'); // real-time update
     await expect(window.locator('#live-level-readout')).toHaveAttribute('title', /not calibrated SPL/);
-    await recordBtn.click(); // stop monitoring
+    await recordBtn.click(); // stop the recording → monitoring resumes
+    await expect(readout).toBeVisible(); // always-monitoring: meters/readout stay live
     await expect(recordBtn).toBeEnabled();
-    await expect(readout).toBeHidden();
+    await expect(recordBtn).toHaveText('Record');
   });
 });
