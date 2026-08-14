@@ -1,7 +1,7 @@
 // electron-builder afterPack hook — makes the macOS .app fully self-contained.
 //
 // The app shells out to sox, ffprobe/ffmpeg and a Python interpreter
-// (numpy/scipy/…). None of those ship with macOS, so a download-only user hit
+// (numpy/…). None of those ship with macOS, so a download-only user hit
 // "spawn sox ENOENT". This hook bundles them INTO the app so it runs with zero
 // external setup:
 //
@@ -137,8 +137,10 @@ module.exports = async function afterPack(context) {
     const pruned = prunePythonRuntime(path.join(tmp, 'python'), shared);
     log(`pruned Python runtime (${pruned} entries removed: pip/setuptools/wheel, test suites, __pycache__)`);
     // Fail the build if pruning broke any runtime import (e.g. numpy.testing,
-    // which scipy pulls in at import time, or the _*_data native-lib dirs).
-    sh(`"${py}" -c "import numpy, soundfile, sounddevice; from scipy.signal import get_window"`);
+    // which some libs pull in at import time, or the _*_data native-lib dirs).
+    // Probes exactly the imports the audio-engine scripts need — numpy,
+    // soundfile, sounddevice; no scipy (#665).
+    sh(`"${py}" -c "import numpy, soundfile, sounddevice"`);
     fs.renameSync(path.join(tmp, 'python'), pyCache);
     fs.rmSync(tmp, { recursive: true, force: true });
   } else {

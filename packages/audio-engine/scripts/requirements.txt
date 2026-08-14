@@ -9,8 +9,10 @@
 #
 # The Electron app invokes `python3` from PATH, so that interpreter must have
 # these installed (activate the venv before launching, or point the app at it).
+#
+# numpy is the only heavy dependency: all DSP (spectrum.py, stream.py) is
+# numpy-only, so the packaged runtime ships no scipy (#665).
 
 numpy>=1.24
-scipy>=1.10
 soundfile>=0.12      # spectrum.py: WAV/FLAC/AIFF/OGG decode (ffmpeg subprocess fallback for m4a/aac)
 sounddevice>=0.4     # stream.py: live audio capture

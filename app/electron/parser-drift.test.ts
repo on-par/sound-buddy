@@ -90,11 +90,11 @@ const HAS_SOX = ok('sox', ['--version']);
 const HAS_FFPROBE = ok('ffprobe', ['-version']);
 const HAS_FFMPEG = ok('ffmpeg', ['-version']);
 
-// Resolve one Python interpreter with the spectrum deps (numpy/scipy/
-// soundfile). Both copies must use the SAME interpreter for their outputs to
-// be comparable, so we pin it: the app copy via SOUND_BUDDY_PYTHON, the
-// audio-engine copy (which spawns bare `python3`) via a PATH prepend to that
-// interpreter's directory.
+// Resolve one Python interpreter with the spectrum deps (numpy/soundfile —
+// no scipy, numpy-only DSP #665). Both copies must use the SAME interpreter
+// for their outputs to be comparable, so we pin it: the app copy via
+// SOUND_BUDDY_PYTHON, the audio-engine copy (which spawns bare `python3`) via
+// a PATH prepend to that interpreter's directory.
 function resolveSpectrumPython(): string | null {
   const candidates = [
     process.env.SOUND_BUDDY_PYTHON,
@@ -103,7 +103,7 @@ function resolveSpectrumPython(): string | null {
   ].filter((c): c is string => Boolean(c));
   for (const c of candidates) {
     const exists = c === 'python3' || fs.existsSync(c);
-    if (exists && ok(c, ['-c', 'import numpy, scipy, soundfile'])) return c;
+    if (exists && ok(c, ['-c', 'import numpy, soundfile'])) return c;
   }
   return null;
 }
@@ -152,7 +152,7 @@ describe.skipIf(!SPECTRUM_PYTHON)('spectrum parser: app copy === audio-engine co
   // bands + centroid/rolloff/dynamic range + content type) — not the large
   // frames/segments arrays, which are explicitly out of scope for #150.
   //
-  // spectrum.py's cold numpy/scipy import alone can exceed vitest's 5 s
+  // spectrum.py's cold numpy import alone can exceed vitest's 5 s
   // default on a fresh CI runner — worse under the root aggregated coverage run
   // (#438), where audio-engine's spectrum tests compete for the same
   // interpreter. Same headroom as audio-engine's fixtures.test.ts.
