@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import type { AnalysisPayload } from "@sound-buddy/shared";
 
 const soxResult = { rmsDbfs: -9, peakDbfs: -6 } as unknown;
 const ffprobeResult = { stream: { channels: 1 } } as unknown;
@@ -148,5 +149,83 @@ describe("analyzeAudio (orchestrate)", () => {
       "analyzeAudio: opts.spectrum.scriptPath is required unless opts.noSpectrum is true",
     );
     expect(mocks.runSpectrumMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("AnalysisPayload conformance (#748)", () => {
+  // Compile-time anchor: the wire payload the app's analyze-file seam ships
+  // IS this function's return shape. A drift in AudioAnalysis away from the
+  // shared AnalysisPayload contract becomes a tsc error here, so the boundary
+  // contract can't silently diverge from what the producer actually emits.
+  const conforms: AnalysisPayload = null as unknown as Awaited<ReturnType<typeof analyzeAudio>>;
+
+  const emitted = {
+    filePath: "/tmp/take.wav",
+    sox: {
+      samplesRead: 441000,
+      lengthSeconds: 10,
+      scaledBy: 1,
+      maximumAmplitude: 0.9,
+      minimumAmplitude: -0.9,
+      midlineAmplitude: 0,
+      meanNorm: 0.2,
+      meanAmplitude: 0.1,
+      rmsAmplitude: 0.2,
+      maximumDelta: 0.8,
+      minimumDelta: 0,
+      meanDelta: 0.1,
+      rmsDelta: 0.15,
+      roughFrequency: 440,
+      volumeAdjustment: 0,
+      rmsDbfs: -18,
+      peakDbfs: -6,
+      dynamicRangeDb: 12,
+      clipping: false,
+    },
+    ffprobe: {
+      format: {
+        filename: "/tmp/take.wav",
+        formatName: "wav",
+        formatLongName: "WAV / WAVE (Waveform Audio)",
+        durationSeconds: 10,
+        sizeBytes: 441000,
+        bitRate: 1411200,
+        tags: {},
+      },
+      stream: {
+        codecName: "pcm_s16le",
+        codecLongName: "PCM signed 16-bit little-endian",
+        channels: 1,
+        channelLayout: "mono",
+        sampleRate: 44100,
+        bitDepth: 16,
+        bitRate: 705600,
+        durationSeconds: 10,
+      },
+    },
+    spectrum: {
+      bands: {
+        subBass: -30,
+        bass: -22,
+        lowMid: -18,
+        mid: -16,
+        highMid: -18,
+        presence: -20,
+        brilliance: -24,
+      },
+      spectralCentroid: 1200,
+      spectralRolloff85: 4800,
+      dynamicRange: 12,
+    },
+    loudness: { integratedLufs: -20, loudnessRange: 5, truePeakDbtp: -1 },
+  } satisfies AnalysisPayload;
+
+  it("the fixture literal above is the real wire shape (compile-time checked via satisfies)", () => {
+    expect(emitted.filePath).toBe("/tmp/take.wav");
+    expect(emitted.spectrum.bands.subBass).toBe(-30);
+    expect(emitted.spectrum.spectralRolloff85).toBe(4800);
+    expect(emitted.ffprobe.stream.channels).toBe(1);
+    expect(emitted.loudness?.integratedLufs).toBe(-20);
+    expect(conforms).toBeNull();
   });
 });

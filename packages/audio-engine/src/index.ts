@@ -56,9 +56,11 @@ export type { SpectralPeak, FindPeaksOptions } from "./analyze/spectral.js";
 export { assessChannelGain, assessGainStructure, gainHealthLabel, GAIN_TARGET_DBFS } from "./analyze/gain-structure.js";
 export type { ChannelGainHealth, GainStructureReport, GainStatus } from "./analyze/gain-structure.js";
 
-// Canonical IPC-safe analysis summary (TD-015): the flat, serialization-safe
-// per-channel shape that crosses package boundaries. Produced here, defined
-// in @sound-buddy/shared.
+// AI-analyst input summary (epic #656), not yet wired: the flat per-channel
+// shape that will feed the AI-analyst feature. NOT the canonical analyze-file
+// boundary contract — that is AnalysisPayload (packages/shared/src/
+// analysis-payload.ts), which the Electron app types its IPC seam against.
+// Produced here, defined in @sound-buddy/shared.
 export { toAnalysisSummary, toChannelResult } from "./summary.js";
 export type { AudioAnalysisResult, ChannelResult } from "@sound-buddy/shared";
 
