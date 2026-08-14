@@ -49,6 +49,13 @@ Output: JSON lines on stdout.
 `progress.elapsed` is the session-relative position; a --start-at offset is
 reflected from the first tick. `duration` is always the full session length.
 
+Commands: NDJSON lines on stdin, one per line, read by a daemon listener
+thread while playing (#759). Each line is a full command:
+  {"type":"set-routes","spec":"0:1,1:2-3"}  — atomically replace the live route
+     map with `spec` (same grammar as --route) between audio blocks, without
+     stopping or reopening the output stream. A malformed/unknown command is
+     logged to stderr and the previous routes stay in effect.
+
 Dependencies: pip install sounddevice numpy soundfile
 """
 
@@ -176,6 +183,33 @@ def parse_route_spec(spec: str, tracks: list[dict]) -> list[list[int]]:
         raise ValueError(f"tracks not routed: {missing}")
 
     return [routes[i] for i in range(len(tracks))]
+
+
+def route_update_from_line(line: str, tracks: list[dict]) -> list[list[int]]:
+    """
+    Parse one NDJSON stdin command into a full route map (#759).
+
+    The only understood command is {"type":"set-routes","spec":...}, whose
+    `spec` is a routing spec in exactly the --route grammar (validated by
+    parse_route_spec: every track exactly once, mono→1 channel, stereo→pair,
+    non-negative). Raises ValueError on an empty line, non-JSON input, a
+    non-object command, an unknown "type", or an absent/non-string "spec" — so
+    the stdin listener can reject the command and keep the previous routes.
+    """
+    if not line or not line.strip():
+        raise ValueError("empty command line")
+    try:
+        cmd = json.loads(line)
+    except ValueError:
+        raise ValueError("command is not JSON")
+    if not isinstance(cmd, dict):
+        raise ValueError("command is not an object")
+    if cmd.get("type") != "set-routes":
+        raise ValueError(f"unknown command type: {cmd.get('type')!r}")
+    spec = cmd.get("spec")
+    if not isinstance(spec, str):
+        raise ValueError("set-routes requires a string spec")
+    return parse_route_spec(spec, tracks)
 
 
 def required_output_channels(routes: list[list[int]]) -> int:
@@ -353,7 +387,11 @@ def play_session(session_dir: str, device_index, route_spec: str,
             n_out = 2
             gain = master_gain(len(tracks))
         else:
-            n_out = required
+            # Open the discrete stream at the device's FULL channel count
+            # (#759): a sounddevice OutputStream's width is fixed at open, so
+            # every in-device re-route (required <= device_channels by
+            # construction) must be addressable without reopening the stream.
+            n_out = device_channels
             gain = 1.0
 
         total_frames = max((h.frames for h in handles), default=0)
@@ -396,6 +434,12 @@ def _run_output_stream(handles, tracks, routes, n_out, master, gain,
     producer_done = threading.Event()
     finished = threading.Event()
 
+    # The live route map (#759). The stdin listener swaps it atomically under
+    # the lock; the producer copies it each block so a re-route takes effect on
+    # the next block with no stream reopen.
+    routes_lock = threading.Lock()
+    shared_routes = [list(r) for r in routes]
+
     meter_lock = threading.Lock()
     latest_levels: list[dict] = [track_level(t["label"], np.zeros((0, 1), np.float32)) for t in tracks]
     played = {"frames": 0}
@@ -407,7 +451,9 @@ def _run_output_stream(handles, tracks, routes, n_out, master, gain,
                 n = max((b.shape[0] for b in blocks), default=0)
                 if n == 0:
                     break
-                mixed = mix_block(blocks, routes, n_out, master, gain)
+                with routes_lock:
+                    routes_now = [list(r) for r in shared_routes]
+                mixed = mix_block(blocks, routes_now, n_out, master, gain)
                 with meter_lock:
                     latest_levels[:] = [track_level(t["label"], b)
                                         for t, b in zip(tracks, blocks)]
@@ -429,6 +475,26 @@ def _run_output_stream(handles, tracks, routes, n_out, master, gain,
                 block_q.put_nowait(None)
             except queue.Full:
                 pass
+
+    def apply_command(line):
+        # Best-effort push (#759): a malformed/unknown command is logged to
+        # stderr and leaves the current routing in effect — playback never dies
+        # on a bad command, and the renderer gets no error surface for it.
+        try:
+            new_routes = route_update_from_line(line, tracks)
+        except ValueError as e:
+            print(f"playback: route update rejected: {e}", file=sys.stderr, flush=True)
+            return
+        with routes_lock:
+            shared_routes[:] = [list(r) for r in new_routes]
+
+    def stdin_listener():
+        # Daemon: blocks on read; dies with the process on exit. When stdin is
+        # a TTY or EOF the thread simply blocks/dies harmlessly.
+        for line in sys.stdin:
+            if stop.is_set():
+                break
+            apply_command(line)
 
     def callback(outdata, frames, time_info, status):
         if stop.is_set():
@@ -466,6 +532,9 @@ def _run_output_stream(handles, tracks, routes, n_out, master, gain,
 
     prod_thread = threading.Thread(target=producer, daemon=True)
     prod_thread.start()
+
+    stdin_thread = threading.Thread(target=stdin_listener, daemon=True)
+    stdin_thread.start()
 
     with sd.OutputStream(
         device=device_index,

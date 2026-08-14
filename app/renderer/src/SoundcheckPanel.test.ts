@@ -70,10 +70,11 @@ describe('SoundcheckPanel', () => {
     expect(html).not.toContain('Choose a session folder to load its tracks.');
   });
 
-  it('disables track route selects while playing', () => {
+  it('keeps track route selects enabled while playing (hot-swap, #759)', () => {
     const manifest: SessionManifest = { tracks: [{ kind: 'mono' }] };
     useSoundcheckStore.setState({ manifest, routes: [[0]], playing: true });
-    expect(renderMarkup()).toContain('data-kind="mono" disabled=""');
+    expect(renderMarkup()).toContain('<select class="sc-route" data-idx="0" data-kind="mono">');
+    expect(renderMarkup()).not.toContain('data-kind="mono" disabled=""');
   });
 
   it('enables track route selects when not playing', () => {

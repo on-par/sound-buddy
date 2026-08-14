@@ -21,12 +21,21 @@ function fakeProc() {
   const proc = new EventEmitter() as EventEmitter & {
     stdout: EventEmitter;
     stderr: EventEmitter;
+    stdin: EventEmitter & { write: ReturnType<typeof vi.fn> };
     kill: ReturnType<typeof vi.fn>;
   };
   proc.stdout = new EventEmitter();
   proc.stderr = new EventEmitter();
+  const stdin = new EventEmitter() as EventEmitter & { write: ReturnType<typeof vi.fn> };
+  stdin.write = vi.fn();
+  proc.stdin = stdin;
   proc.kill = vi.fn();
-  return proc as unknown as PythonStreamChild & { stdout: EventEmitter; stderr: EventEmitter; kill: ReturnType<typeof vi.fn> };
+  return proc as unknown as PythonStreamChild & {
+    stdout: EventEmitter;
+    stderr: EventEmitter;
+    stdin: EventEmitter & { write: ReturnType<typeof vi.fn> };
+    kill: ReturnType<typeof vi.fn>;
+  };
 }
 
 function fakeDeps(spawnMock: ReturnType<typeof vi.fn>) {
@@ -308,9 +317,42 @@ describe('createPythonStreamSlot', () => {
     expect(childProcessSpawnMock).toHaveBeenCalledWith(
       'python3',
       ['stream.py'],
-      { stdio: ['ignore', 'pipe', 'pipe'], env: { FOO: 'bar' } },
+      { stdio: ['pipe', 'pipe', 'pipe'], env: { FOO: 'bar' } },
     );
     expect(slot.isRunning()).toBe(true);
+  });
+
+  it('send() writes the exact payload to the running child stdin', () => {
+    const proc = fakeProc();
+    const spawnMock = vi.fn().mockReturnValueOnce(proc);
+    const deps = fakeDeps(spawnMock);
+    const slot = createPythonStreamSlot(deps);
+
+    slot.start({ command: 'python3', args: [], env: {}, label: 'x', onLine: vi.fn(), onExit: vi.fn() });
+    slot.send('{"type":"set-routes","spec":"0:1,1:2-3"}\n');
+
+    expect(proc.stdin.write).toHaveBeenCalledTimes(1);
+    expect(proc.stdin.write).toHaveBeenCalledWith('{"type":"set-routes","spec":"0:1,1:2-3"}\n');
+  });
+
+  it('send() is a safe no-op with nothing running', () => {
+    const spawnMock = vi.fn();
+    const deps = fakeDeps(spawnMock);
+    const slot = createPythonStreamSlot(deps);
+
+    expect(() => slot.send('anything')).not.toThrow();
+    expect(spawnMock).not.toHaveBeenCalled();
+  });
+
+  it('send() swallows an exception from a dead child stdin write', () => {
+    const proc = fakeProc();
+    proc.stdin.write = vi.fn(() => { throw new Error('EPIPE'); });
+    const spawnMock = vi.fn().mockReturnValueOnce(proc);
+    const deps = fakeDeps(spawnMock);
+    const slot = createPythonStreamSlot(deps);
+
+    slot.start({ command: 'python3', args: [], env: {}, label: 'x', onLine: vi.fn(), onExit: vi.fn() });
+    expect(() => slot.send('data')).not.toThrow();
   });
 });
 

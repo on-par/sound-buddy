@@ -8,6 +8,7 @@ import type {
   StartLiveOpts,
   StartMeasurementOpts,
   StartPlaybackOpts,
+  SetPlaybackRoutesOpts,
   UpdateSettingsPatch,
   AnalysisSummaryInput,
   SetSummaryNoteInput,
@@ -173,6 +174,11 @@ export function createBridge(ipc: IpcRendererLike) {
     startPlayback: (opts: StartPlaybackOpts) => ipc.invoke('start-playback', opts),
 
     stopPlayback: () => ipc.invoke('stop-playback'),
+
+    // Live re-route while playing (#759) — the renderer pushes the full
+    // routing spec over IPC; the main process writes it to playback.py's stdin.
+    setPlaybackRoutes: (opts: SetPlaybackRoutesOpts) =>
+      ipc.invoke('set-playback-routes', opts),
 
     // Read a captured session's session.json manifest for the Soundcheck UI (#46).
     readSession: (sessionDir: string) => ipc.invoke('read-session', sessionDir),

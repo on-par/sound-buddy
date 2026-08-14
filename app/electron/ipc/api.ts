@@ -107,6 +107,12 @@ export interface StartPlaybackOpts {
   master?: boolean;
 }
 
+export interface SetPlaybackRoutesOpts {
+  // Full routing spec in playback.py's grammar, e.g. "0:0,1:2-3". Sent whole
+  // (idempotent, last-wins) so a hot-swap can't interleave partial edits.
+  route: string;
+}
+
 export interface AnalysisProgress {
   stage?: string;
   status: string;
@@ -604,6 +610,9 @@ export interface PlaybackApi {
   listOutputDevices(): Promise<unknown>;
   startPlayback(opts: StartPlaybackOpts): Promise<unknown>;
   stopPlayback(): Promise<OperationResult>;
+  // Live re-route while playing (#759) — pushes the full routing spec to the
+  // running playback.py child; no stop/restart, no device/lock change.
+  setPlaybackRoutes(opts: SetPlaybackRoutesOpts): Promise<OperationResult>;
   readSession(sessionDir: string): Promise<unknown>;
   // Soundcheck per-track waveform peaks (#734): decode every stem into
   // min/max peak buckets (ADR-0004 encoding) in the background, cached under

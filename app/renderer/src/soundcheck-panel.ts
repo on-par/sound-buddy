@@ -36,7 +36,6 @@ export interface SoundcheckTrackView {
   stereo: boolean;
   routeBase: number;
   options: SoundcheckChannelOption[];
-  disabled: boolean;
 }
 
 // The shape `scRenderMeters` consumed per track (stream.py's 'level' event).
@@ -85,11 +84,13 @@ function soundcheckChannelOptions(selectedBase: number, stereo: boolean, deviceC
 // One view-model row per session track — port of scRenderTracks; returns []
 // when there's no manifest/tracks (the component renders the `.sc-empty`
 // message itself, replacing scRenderTracks's early-return HTML string).
+// Routing stays editable while playback runs (#759): the view model carries no
+// `disabled` field, and the component's setRoute handler hot-swaps the live
+// engine via setPlaybackRoutes rather than requiring Stop first.
 export function soundcheckTrackListView(
   manifest: SessionManifest | null,
   routes: number[][],
   deviceChannels: number,
-  playing: boolean,
 ): SoundcheckTrackView[] {
   if (!manifest || !manifest.tracks || !manifest.tracks.length) return [];
   return manifest.tracks.map((t, i) => {
@@ -103,7 +104,6 @@ export function soundcheckTrackListView(
       stereo,
       routeBase,
       options: soundcheckChannelOptions(routeBase, stereo, deviceChannels),
-      disabled: playing,
     };
   });
 }

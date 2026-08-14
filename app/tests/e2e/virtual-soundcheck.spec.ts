@@ -60,6 +60,12 @@ test.describe('Virtual Soundcheck (#46)', () => {
       });
       ipcMain.removeHandler('stop-playback');
       ipcMain.handle('stop-playback', () => ({ success: true }));
+      // Live re-route while playing (#759): capture the pushed spec so the
+      // hot-swap test can assert what reached the (stubbed) engine.
+      ipcMain.removeHandler('set-playback-routes');
+      ipcMain.handle('set-playback-routes', (_e, opts) => {
+        (globalThis as Record<string, unknown>).__routes = opts; return { success: true };
+      });
     }, SESSION_DIR);
     await window.reload();
     await window.waitForLoadState('domcontentloaded');
@@ -135,6 +141,26 @@ test.describe('Virtual Soundcheck (#46)', () => {
     await window.locator('#sc-play-btn').click();
     await expect(window.locator('#sc-stop-btn')).toBeVisible();
     await window.locator('#sc-stop-btn').click();
+  });
+
+  test('hot-swaps a track route while playing without stopping (#759)', async () => {
+    await window.locator('#sc-choose-btn').click();
+    await window.locator('#sc-device-select').selectOption({ label: 'MOTU 8ch (8ch)' });
+    await window.locator('#sc-play-btn').click();
+    await expect(window.locator('#sc-stop-btn')).toBeVisible();
+
+    const firstRoute = window.locator('#sc-tracks .sc-track').nth(0).locator('.sc-route');
+    await expect(firstRoute).toBeEnabled();
+    await firstRoute.selectOption('1');
+
+    const routes = (await electronApp.evaluate(
+      () => (globalThis as Record<string, unknown>).__routes,
+    )) as { route?: string };
+    expect(routes.route).toBe('0:1,1:1-2');
+
+    // Playback never stopped — the Stop control is still the transport.
+    await expect(window.locator('#sc-stop-btn')).toBeVisible();
+    await expect(window.locator('#sc-play-btn')).toBeHidden();
   });
 
   test('an ended event resets the transport', async () => {
