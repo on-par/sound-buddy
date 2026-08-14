@@ -13,12 +13,13 @@
 // meter cards were removed (#760): playback shows only the track list, the
 // waveform lanes, and the seeking playhead.
 
-import { useCallback, useEffect, useMemo, useRef, type JSX, type PointerEvent } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type JSX, type PointerEvent } from 'react';
 import { useStoreShallow } from './stores/useStoreShallow';
 import { useSoundcheckStore } from './stores/soundcheckStore';
+import { useSettingsStore } from './stores/settingsStore';
 import { createSoundcheckTransportController } from './soundcheck-transport-controller';
 import { soundcheckPlayheadLeftPx, soundcheckSeekTargetFromClick } from './soundcheck-playhead';
-import { soundcheckTrackListView, playGuardOk } from './soundcheck-panel';
+import { soundcheckTrackListView, soundcheckChannelOptions, playGuardOk } from './soundcheck-panel';
 import { iconSvg } from './report-card';
 import { formatClock } from './spectrum-display';
 import {
@@ -77,6 +78,17 @@ export default function SoundcheckPanel(): JSX.Element {
     peaks: s.peaks,
     peaksStatus: s.peaksStatus,
   }));
+
+  // Saved buses (#756): the persisted label-pattern → output-channel list,
+  // read straight off the settings store. Add/delete/retune below persist the
+  // FULL next array through the generic update-settings IPC (whitelist derived
+  // from SETTING_SPECS.soundcheckBuses).
+  const buses = useStoreShallow(useSettingsStore, (s) => s.settings?.soundcheckBuses);
+
+  // Add-bus form fields (local state — the persisted array lives in settings).
+  const [busName, setBusName] = useState('');
+  const [busPattern, setBusPattern] = useState('');
+  const [busChannel, setBusChannel] = useState(0);
 
   // The shared-timeline lane model (#735): decode runs once per peaks object
   // (one per session load), never per render — a full-length session's ~180k
@@ -224,6 +236,34 @@ export default function SoundcheckPanel(): JSX.Element {
   const tracks = soundcheckTrackListView(manifest, routes, deviceChannels);
   const playOk = playGuardOk(manifest, devicesLoaded, playing);
 
+  /* c8 ignore start -- saved-bus add/delete/retune handlers: pure IPC dispatch
+     invoked only from the DOM onChange/onClick wiring below; this renderToString
+     harness has no jsdom to fire those events, so the wiring is excluded per the
+     file's established pattern (see patchElapsedDom / scrubPlayheadTo above) and
+     the sanitizer/persistence logic they rely on is unit-tested in
+     settings.test.ts + soundcheckStore.test.ts. */
+  function addBus(): void {
+    const name = busName.trim();
+    const pattern = busPattern.trim();
+    if (name === '' || pattern === '') return;
+    const next = [...(buses ?? []), { id: crypto.randomUUID(), name, pattern, outputChannel: busChannel }];
+    void useSettingsStore.getState().updateSettings({ soundcheckBuses: next });
+    setBusName('');
+    setBusPattern('');
+    setBusChannel(0);
+  }
+
+  function deleteBus(id: string): void {
+    void useSettingsStore.getState().updateSettings({ soundcheckBuses: (buses ?? []).filter((b) => b.id !== id) });
+  }
+
+  function setBusOutput(id: string, base: number): void {
+    void useSettingsStore.getState().updateSettings({
+      soundcheckBuses: (buses ?? []).map((b) => (b.id === id ? { ...b, outputChannel: base } : b)),
+    });
+  }
+  /* c8 ignore stop */
+
   return (
     <>
       <button
@@ -290,6 +330,80 @@ export default function SoundcheckPanel(): JSX.Element {
           <div className="sc-waveforms-hint">Generating waveforms…</div>
         </div>
       ) : null}
+      {/* Saved buses (#756) — persisted label-pattern → output-channel routing.
+          A bus applies on the next session import/reseed, never retroactively to
+          an already-loaded session (ADR-0012). */}
+      <div className="chcfg-head"><span className="lbl">Saved buses</span></div>
+      <div id="sc-buses" className="sc-buses">
+        {buses != null && buses.length > 0 && buses.map((bus) => (
+          <div className="sc-bus" data-bus-id={bus.id} key={bus.id}>
+            <span className="sc-bus-name" title={bus.name}>{bus.name}</span>
+            <span className="sc-bus-pattern sc-badge">{bus.pattern}</span>
+            <select
+              className="sc-bus-route"
+              aria-label={`${bus.name} output channel`}
+              value={bus.outputChannel}
+              /* c8 ignore next -- select onChange, no jsdom in this harness */
+              onChange={(e) => setBusOutput(bus.id, parseInt(e.target.value, 10))}
+            >
+              {soundcheckChannelOptions(bus.outputChannel, false, deviceChannels).map((o) => (
+                <option key={o.value} value={o.value}>{o.label}</option>
+              ))}
+            </select>
+            <button
+              type="button"
+              className="btn btn-secondary sm sc-bus-delete"
+              id={`sc-bus-delete-${bus.id}`}
+              /* c8 ignore next -- click dispatch, no jsdom */
+              onClick={() => deleteBus(bus.id)}
+            >
+              Delete
+            </button>
+          </div>
+        ))}
+        {buses != null && buses.length === 0 && (
+          <div className="sc-empty">No saved buses yet.</div>
+        )}
+        <div className="sc-bus-add">
+          <input
+            id="sc-bus-name"
+            className="sc-bus-name-input"
+            placeholder="Bus name"
+            value={busName}
+            /* c8 ignore next -- input onChange, no jsdom in this harness */
+            onChange={(e) => setBusName(e.target.value)}
+          />
+          <input
+            id="sc-bus-pattern"
+            className="sc-bus-pattern-input"
+            placeholder="Pattern (e.g. ag)"
+            value={busPattern}
+            /* c8 ignore next -- input onChange, no jsdom in this harness */
+            onChange={(e) => setBusPattern(e.target.value)}
+          />
+          <select
+            id="sc-bus-add-channel"
+            className="sc-bus-add-channel"
+            value={busChannel}
+            /* c8 ignore next -- select onChange, no jsdom in this harness */
+            onChange={(e) => setBusChannel(parseInt(e.target.value, 10))}
+          >
+            {soundcheckChannelOptions(busChannel, false, deviceChannels).map((o) => (
+              <option key={o.value} value={o.value}>{o.label}</option>
+            ))}
+          </select>
+          <button
+            type="button"
+            className="btn btn-secondary sm"
+            id="sc-bus-add"
+            disabled={busName.trim() === '' || busPattern.trim() === ''}
+            /* c8 ignore next -- click dispatch, no jsdom */
+            onClick={() => addBus()}
+          >
+            Add
+          </button>
+        </div>
+      </div>
       <label className="sc-master">
         <input
           type="checkbox"

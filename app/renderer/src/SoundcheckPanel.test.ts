@@ -13,7 +13,19 @@ import { createElement } from 'react';
 import { renderToString } from 'react-dom/server';
 import SoundcheckPanel from './SoundcheckPanel';
 import { useSoundcheckStore } from './stores/soundcheckStore';
+import { useSettingsStore } from './stores/settingsStore';
 import type { SessionManifest } from './soundcheck-panel';
+import type { AppSettings } from '../../electron/ipc/api';
+
+/** A complete settings seed (empty buses) so a bus test can spread + add. */
+const SEED_SETTINGS: AppSettings = {
+  idealProfile: '', customIdealProfiles: [], storageDir: '', rigs: [], activeRigId: null,
+  usageSignalEnabled: false, channelLabels: {}, channelGroups: {}, inputInstrumentProfiles: {},
+  crashReportingEnabled: false, dawWorkspaceEnabled: false, liveAdjustmentsEnabled: false,
+  reportFirstUxEnabled: false, shareChurchName: '', weeklyReminderEnabled: false,
+  weeklyReminderServiceDay: 0, liveEqPaneWidth: 360, measurementDeviceName: '',
+  gradingProfile: 'casual', consoleNetworkConsentGranted: false, soundcheckBuses: [],
+};
 
 afterEach(() => {
   useSoundcheckStore.setState({
@@ -25,6 +37,7 @@ afterEach(() => {
     // leak the waveform block into the next — zustand setState merges.
     peaks: null, peaksStatus: 'idle',
   });
+  useSettingsStore.setState({ settings: null, settingsError: null });
 });
 
 function b64(bytes: number[]): string {
@@ -203,5 +216,53 @@ describe('SoundcheckPanel', () => {
     const html = renderMarkup();
     expect(html).toContain('Generating waveforms');
     expect(html).not.toContain('sc-playhead');
+  });
+
+  describe('saved buses section (#756)', () => {
+    it('renders the section header and the add-bus form controls', () => {
+      const html = renderMarkup();
+      expect(html).toContain('Saved buses');
+      expect(html).toContain('id="sc-bus-name"');
+      expect(html).toContain('id="sc-bus-pattern"');
+      expect(html).toContain('id="sc-bus-add"');
+    });
+
+    it('shows the empty hint while no buses are saved', () => {
+      useSettingsStore.setState({ settings: SEED_SETTINGS });
+      expect(renderMarkup()).toContain('No saved buses yet.');
+    });
+
+    it('renders a saved bus with its name, pattern badge, output select, and delete control', () => {
+      useSettingsStore.setState({
+        settings: {
+          ...SEED_SETTINGS,
+          soundcheckBuses: [{ id: 'b1', name: 'Acoustic Guitar', pattern: 'ag', outputChannel: 3 }],
+        },
+      });
+      const html = renderMarkup();
+      expect(html).toContain('Acoustic Guitar');
+      expect(html).toContain('data-bus-id="b1"');
+      expect(html).toContain('class="sc-bus-pattern sc-badge"');
+      expect(html).toContain('id="sc-bus-delete-b1"');
+      // The bus output select offers mono channel options (Ch 1..4 at 4ch).
+      useSoundcheckStore.setState({ deviceChannels: 4 });
+      expect(renderMarkup()).toContain('Ch 4');
+    });
+
+    it('renders multiple saved buses as separate rows', () => {
+      useSettingsStore.setState({
+        settings: {
+          ...SEED_SETTINGS,
+          soundcheckBuses: [
+            { id: 'b1', name: 'Acoustic Guitar', pattern: 'ag', outputChannel: 3 },
+            { id: 'b2', name: 'Kick', pattern: 'kick', outputChannel: 0 },
+          ],
+        },
+      });
+      const html = renderMarkup();
+      expect(html).toContain('data-bus-id="b1"');
+      expect(html).toContain('data-bus-id="b2"');
+      expect(html).toContain('Kick');
+    });
   });
 });
