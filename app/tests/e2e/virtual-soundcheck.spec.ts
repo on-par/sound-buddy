@@ -105,6 +105,54 @@ test.describe('Virtual Soundcheck (#46)', () => {
     await expect(lanes.nth(1).locator('canvas')).toBeVisible();
   });
 
+  test('re-paints waveform lane canvases when the window is resized (#735)', async () => {
+    await window.locator('#sc-choose-btn').click();
+    const canvases = window.locator('#sc-waveforms .sc-waveform-canvas');
+    await expect(canvases).toHaveCount(2);
+
+    // The draw effect (deps [timeline]) painted exactly once, at the initial
+    // 260px-wide source column — record each lane's backing-store width as the
+    // pre-resize baseline.
+    const widthsBefore = await canvases.evaluateAll(
+      (els) => els.map((el) => parseInt((el as HTMLCanvasElement).getAttribute('width') ?? '0', 10)),
+    );
+    expect(widthsBefore.length).toBe(2);
+    expect(widthsBefore.every((w) => w > 0)).toBe(true);
+
+    // #source-panel is a fixed 260px column (--panel-w:260px), so a bare window
+    // resize never changes the lane canvases' clientWidth. Widen the panel so
+    // the flexible .sc-waveform-canvas lanes actually grow — the exact layout
+    // change that leaves a one-shot [timeline] paint stale — then resize the
+    // window to fire window 'resize' in the renderer, which must re-paint.
+    await window.evaluate(() => {
+      const panel = document.querySelector('#source-panel') as HTMLElement | null;
+      if (panel) panel.style.width = '520px';
+    });
+    await electronApp.evaluate(({ BrowserWindow }) => {
+      BrowserWindow.getAllWindows()[0].setSize(1600, 1000);
+    });
+
+    // The CSS width change lands asynchronously; wait until the first lane's
+    // clientWidth actually grows so the backing-store assertions below prove a
+    // re-paint rather than a no-op.
+    await expect.poll(() => canvases.nth(0).evaluate((el) => (el as HTMLCanvasElement).clientWidth))
+      .toBeGreaterThan(widthsBefore[0]);
+
+    // The fix: every canvas backing store follows its new clientWidth. On the
+    // shipped code (no resize listener) the backing stores stay at widthsBefore,
+    // so this assertion fails red.
+    const after = await canvases.evaluateAll(
+      (els) => els.map((el) => ({
+        backing: parseInt((el as HTMLCanvasElement).getAttribute('width') ?? '0', 10),
+        client: (el as HTMLCanvasElement).clientWidth,
+      })),
+    );
+    for (let i = 0; i < after.length; i++) {
+      expect(after[i].backing).toBe(Math.round(after[i].client));
+      expect(after[i].backing).not.toBe(widthsBefore[i]);
+    }
+  });
+
   test('plays, updates transport, shows no per-track meter cards, stops', async () => {
     await window.locator('#sc-choose-btn').click();
     await window.locator('#sc-device-select').selectOption({ label: 'MOTU 8ch (8ch)' });
