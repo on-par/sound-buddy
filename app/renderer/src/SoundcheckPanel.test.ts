@@ -165,4 +165,42 @@ describe('SoundcheckPanel', () => {
     expect(html).toContain('>OH</span>');
     expect(html).not.toContain('Generating waveforms');
   });
+
+  it('renders the playhead inside the lane block while playing', () => {
+    useSoundcheckStore.setState({
+      peaks: {
+        bucketsPerSecond: 50,
+        tracks: [
+          { index: 0, label: 'Kick', kind: 'mono', bucketCount: 2, data: b64([0, 255, 64, 192]) },
+        ],
+      },
+      peaksStatus: 'ready',
+      playing: true,
+    });
+    const html = renderMarkup();
+    expect(html).toContain('id="sc-playhead"');
+    expect(html).toContain('class="sc-playhead"');
+    expect(html).toContain('sc-waveform-lane');
+  });
+
+  it('does not render the playhead while not playing', () => {
+    useSoundcheckStore.setState({
+      peaks: {
+        bucketsPerSecond: 50,
+        tracks: [
+          { index: 0, label: 'Kick', kind: 'mono', bucketCount: 2, data: b64([0, 255, 64, 192]) },
+        ],
+      },
+      peaksStatus: 'ready',
+      playing: false,
+    });
+    expect(renderMarkup()).not.toContain('id="sc-playhead"');
+  });
+
+  it('never renders the playhead in the generating-waveforms block', () => {
+    useSoundcheckStore.setState({ peaks: null, peaksStatus: 'generating', playing: true });
+    const html = renderMarkup();
+    expect(html).toContain('Generating waveforms');
+    expect(html).not.toContain('sc-playhead');
+  });
 });

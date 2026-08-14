@@ -25,6 +25,8 @@ export interface SoundcheckTransportControllerDeps {
   cancelRaf(handle: number): void;
   /** Applies one coalesced elapsed/duration tick straight to the DOM. */
   patchElapsed(tick: { elapsed: number; duration: number }): void;
+  /** Applies one coalesced elapsed/duration tick to the playhead DOM. */
+  patchPlayhead(tick: { elapsed: number; duration: number }): void;
   /** Applies one coalesced set of per-track meter values straight to the DOM. */
   patchMeters(tracks: SoundcheckMeterTrack[]): void;
 }
@@ -49,6 +51,7 @@ export function createSoundcheckTransportController(deps: SoundcheckTransportCon
     const meters = pendingMeters;
     pendingMeters = null;
     if (elapsed) deps.patchElapsed(elapsed);
+    if (elapsed) deps.patchPlayhead(elapsed);
     if (meters) deps.patchMeters(meters);
   }
 

@@ -619,8 +619,11 @@
     .sc-badge { flex:0 0 auto; font:var(--fw-semibold) var(--fs-micro)/1 var(--font-sans); color:var(--text-muted); border:1px solid var(--border-subtle); border-radius:var(--radius-sm); padding:1px 5px; letter-spacing:0.04em; text-transform:uppercase; }
     .sc-route { flex:0 0 auto; height:var(--control-h-sm); padding:0 6px; border-radius:var(--radius-md); background:var(--surface-raised); color:var(--text-primary); border:1px solid var(--border-default); font:var(--fw-medium) var(--fs-label)/1 var(--font-sans); }
     .sc-route:disabled { opacity:0.5; cursor:not-allowed; }
-    .sc-waveforms { display:flex; flex-direction:column; gap:8px; margin:8px 0; }
+    .sc-waveforms { position:relative; display:flex; flex-direction:column; gap:8px; margin:8px 0; }
     .sc-waveforms-hint { font:var(--fw-regular) var(--fs-micro)/1.3 var(--font-sans); color:var(--text-muted); }
+    /* Soundcheck playhead (#736) — overlay line across the waveform lanes. */
+    .sc-playhead { position:absolute; top:0; bottom:0; left:0; width:2px; background:var(--gold-500);
+      box-shadow:0 0 6px var(--gold-glow); pointer-events:none; display:none; }
     .sc-waveform-lane { display:flex; align-items:center; gap:8px; }
     .sc-waveform-name { flex:0 0 auto; min-width:52px; font:var(--fw-medium) var(--fs-micro)/1 var(--font-sans); color:var(--text-muted); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
     .sc-waveform-canvas { flex:1 1 auto; width:100%; height:36px; background:var(--surface-inset); border:1px solid var(--border-subtle); border-radius:var(--radius-md); display:block; }

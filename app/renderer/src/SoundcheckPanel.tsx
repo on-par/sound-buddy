@@ -11,11 +11,12 @@
 // React entirely via the mounted soundcheck-transport-controller, which
 // patches #sc-elapsed/#spectrum-imperative directly — see that file's header.
 
-import { useEffect, useMemo, type JSX } from 'react';
+import { useEffect, useMemo, useRef, type JSX, type PointerEvent } from 'react';
 import { useStoreShallow } from './stores/useStoreShallow';
 import { useSoundcheckStore } from './stores/soundcheckStore';
 import { useSpectrumStore } from './stores/spectrumStore';
 import { createSoundcheckTransportController } from './soundcheck-transport-controller';
+import { soundcheckPlayheadLeftPx, soundcheckSeekTargetFromClick } from './soundcheck-playhead';
 import { soundcheckTrackListView, playGuardOk, type SoundcheckMeterTrack } from './soundcheck-panel';
 import { iconSvg, fmt } from './report-card';
 import { escapeHtml, formatClock } from './spectrum-display';
@@ -33,6 +34,23 @@ import {
 function patchElapsedDom(tick: { elapsed: number; duration: number }): void {
   const el = document.getElementById('sc-elapsed');
   if (el) el.textContent = `${formatClock(tick.elapsed)} / ${formatClock(tick.duration)}`;
+}
+
+// #736 playhead applier: positions the #sc-playhead overlay over the lane
+// block from the same coalesced elapsed tick the readout rides. Measures the
+// name/canvas widths from the DOM each tick — cheap at the 0.1s progress
+// cadence and always correct on resize (no cached geometry to go stale).
+function patchPlayheadDom(tick: { elapsed: number; duration: number }): void {
+  const playhead = document.getElementById('sc-playhead');
+  const container = document.getElementById('sc-waveforms');
+  if (!playhead || !container) return;
+  const name = container.querySelector('.sc-waveform-name');
+  const canvas = container.querySelector('.sc-waveform-canvas');
+  if (!name || !canvas) return;
+  const left = soundcheckPlayheadLeftPx(tick.elapsed, tick.duration, name.clientWidth, canvas.clientWidth);
+  if (left == null) return;
+  playhead.style.left = `${left}px`;
+  playhead.style.display = 'block';
 }
 
 // Verbatim port of inline-app.js's scRenderMeters markup/RMS-to-percent math.
@@ -82,6 +100,65 @@ export default function SoundcheckPanel(): JSX.Element {
   // buckets stay out of every re-render.
   const timeline = useMemo(() => sessionPeakTimeline(peaks), [peaks]);
 
+  /* c8 ignore start -- #736 click/drag-to-seek interaction glue: no jsdom in
+     this renderToString harness to fire pointer events, so the geometry math
+     (soundcheckPlayheadLeftPx / soundcheckSeekTargetFromClick) is unit-tested
+     in soundcheck-playhead.test.ts and the DOM+event wiring is gated by
+     tests/e2e/virtual-soundcheck.spec.ts. */
+  const waveformsRef = useRef<HTMLDivElement | null>(null);
+  const lastClientXRef = useRef(0);
+
+  // Measures the seekable canvas column [containerLeft + nameWidthPx, +
+  // canvasWidthPx] from the live DOM and maps clientX → a continuous seek
+  // time, or null for the track-name column / invalid geometry / duration.
+  function measuredSeek(clientX: number): { t: number; durationSecs: number; nameWidthPx: number; canvasWidthPx: number } | null {
+    const container = waveformsRef.current;
+    if (!container || !timeline) return null;
+    const rect = container.getBoundingClientRect();
+    const name = container.querySelector('.sc-waveform-name');
+    const canvas = container.querySelector('.sc-waveform-canvas');
+    if (!name || !canvas) return null;
+    const t = soundcheckSeekTargetFromClick(clientX, rect.left, name.clientWidth, canvas.clientWidth, timeline.sessionDurationSecs);
+    if (t == null) return null;
+    return { t, durationSecs: timeline.sessionDurationSecs, nameWidthPx: name.clientWidth, canvasWidthPx: canvas.clientWidth };
+  }
+
+  // Visual scrub only — the playhead follows the pointer via imperative
+  // style.left writes (no React re-render, no backend call). ADR-0013's seek
+  // is a full child restart, so the backend commit happens exactly once, on
+  // pointerup, never per move.
+  function scrubPlayheadTo(clientX: number): void {
+    lastClientXRef.current = clientX;
+    const m = measuredSeek(clientX);
+    if (!m) return;
+    const playhead = document.getElementById('sc-playhead');
+    if (!playhead) return;
+    const left = soundcheckPlayheadLeftPx(m.t, m.durationSecs, m.nameWidthPx, m.canvasWidthPx);
+    if (left != null) playhead.style.left = `${left}px`;
+  }
+
+  function onWaveformPointerDown(e: PointerEvent<HTMLDivElement>): void {
+    if (!playing) return;
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    scrubPlayheadTo(e.clientX); // instant visual feedback, no backend call
+    const move = (ev: globalThis.PointerEvent) => scrubPlayheadTo(ev.clientX);
+    const up = () => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+      // The playing re-check guards against a stop landing mid-drag.
+      if (!useSoundcheckStore.getState().playing) return;
+      // Commit the backend seek exactly once, on release (ADR-0013 restart
+      // seek). A click is down+up with no movement → the single
+      // release-commit is the click-seek.
+      const m = measuredSeek(lastClientXRef.current);
+      if (!m) return;
+      void useSoundcheckStore.getState().seekTo(m.t);
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+  }
+  /* c8 ignore stop */
+
   /* c8 ignore start -- real rAF + DOM-patching wiring, no jsdom in this
      harness — see the module-header note above. */
   useEffect(() => {
@@ -94,6 +171,7 @@ export default function SoundcheckPanel(): JSX.Element {
       raf: (cb) => requestAnimationFrame(cb),
       cancelRaf: (handle) => cancelAnimationFrame(handle),
       patchElapsed: patchElapsedDom,
+      patchPlayhead: patchPlayheadDom,
       patchMeters: patchMetersDom,
     });
     controller.start();
@@ -193,13 +271,14 @@ export default function SoundcheckPanel(): JSX.Element {
           ))}
       </div>
       {timeline != null ? (
-        <div id="sc-waveforms" className="sc-waveforms">
+        <div id="sc-waveforms" className="sc-waveforms" ref={waveformsRef} onPointerDown={onWaveformPointerDown}>
           {timeline.lanes.map((lane) => (
             <div className="sc-waveform-lane" data-idx={lane.index} key={lane.index}>
               <span className="sc-waveform-name" title={lane.label}>{lane.label}</span>
               <canvas className="sc-waveform-canvas" data-idx={lane.index} />
             </div>
           ))}
+          {playing && <div id="sc-playhead" className="sc-playhead" />}
         </div>
       ) : peaksStatus === 'generating' ? (
         <div id="sc-waveforms" className="sc-waveforms">
