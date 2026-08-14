@@ -20,10 +20,14 @@ export default defineConfig({
       // Vitest 4's v8 provider does more accurate AST-aware coverage
       // remapping (#224) — branches/functions in particular came out lower
       // than the old (less precise) v2 numbers even though nothing here
-      // changed behaviorally. Floors are recalibrated a few points below the
-      // new measured baseline (~31/32/36/32), same ratchet-not-alarm intent
-      // as before.
-      thresholds: { statements: 28, branches: 28, functions: 32, lines: 28 },
+      // changed behaviorally. Ratcheted 2026-08-14 (#317): after adding
+      // analyze/spectrum.test.ts (the last no-test runtime module — the AI
+      // carve-out deleted llm/engineer/display, and #324/#329/#330/#332 covered
+      // the rest), the package measures statements 100 / branches 97.77 /
+      // functions 100 / lines 100 locally. Floors are measured-minus-margin
+      // (2 for statements/lines, 3 for branches/functions, the #401
+      // convention) so a regression can't slip through without failing a gate.
+      thresholds: { statements: 98, branches: 94, functions: 97, lines: 98 },
     },
   },
 });

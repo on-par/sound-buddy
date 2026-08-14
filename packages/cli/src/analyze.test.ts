@@ -295,4 +295,182 @@ describe('buddy analyze — scene diff', () => {
     expect(t.err.join('\n')).toMatch(/exactly two/i)
     expect(t.code).toBe(1)
   })
+
+  it('fails with an actionable error when a scene file is missing', async () => {
+    vi.mocked(existsSync).mockReturnValue(false)
+    const t = capture()
+
+    await runAnalyze(undefined, { scenes: ['missing.scn', 'after.scn'] }, t.io)
+
+    expect(t.err.join('\n')).toContain('scene file not found: missing.scn')
+    expect(t.code).toBe(1)
+  })
+
+  it('runs a scene diff alone (no audio file) and skips the audio report', async () => {
+    const t = capture()
+
+    await runAnalyze(undefined, { scenes: ['before.scn', 'after.scn'] }, t.io)
+
+    expect(t.out.join('\n')).toContain('3 changes detected')
+    expect(t.out.join('\n')).not.toContain('=== Per-Channel Summary ===')
+    expect(t.code).toBeUndefined()
+  })
+
+  it('emits { diff, channels } JSON when --json is combined with --scene', async () => {
+    const t = capture()
+    await runAnalyze('/tmp/mix.wav', { scenes: ['before.scn', 'after.scn'], json: true }, t.io)
+
+    const parsed = JSON.parse(t.out.join(''))
+    expect(parsed.diff).toMatchObject({ summary: '3 changes detected' })
+    expect(parsed.channels).toHaveLength(1)
+  })
+
+  it('omits the optional spectrum additive fields from JSON when the analysis lacks them', async () => {
+    const bare = {
+      ...mockAnalysis,
+      spectrum: {
+        bands: mockAnalysis.spectrum.bands,
+        spectralCentroid: mockAnalysis.spectrum.spectralCentroid,
+        spectralRolloff85: mockAnalysis.spectrum.spectralRolloff85,
+        dynamicRange: mockAnalysis.spectrum.dynamicRange,
+      },
+    }
+    vi.mocked(analyzeAudio).mockResolvedValue(bare)
+    const t = capture()
+
+    await runAnalyze('/tmp/mix.wav', { json: true }, t.io)
+
+    const ch = JSON.parse(t.out.join('')).channels[0]
+    expect(ch.curve).toBeUndefined()
+    expect(ch.frames).toBeUndefined()
+    expect(ch.contentType).toBeUndefined()
+    expect(ch.segments).toBeUndefined()
+  })
+})
+
+describe('buddy analyze — error paths', () => {
+  it('prints Usage and exits 1 when no file, dir or scene is provided', async () => {
+    const t = capture()
+    await runAnalyze(undefined, {}, t.io)
+    expect(t.err.join('\n')).toMatch(/Usage: buddy analyze/)
+    expect(t.code).toBe(1)
+  })
+
+  it('reports "Analysis failed" and exits 1 when analyzing a single file throws', async () => {
+    vi.mocked(analyzeAudio).mockRejectedValueOnce(new Error('ffprobe crash'))
+    const t = capture()
+
+    await runAnalyze('/tmp/mix.wav', {}, t.io)
+
+    expect(t.err.join('\n')).toContain('Analysis failed: Error: ffprobe crash')
+    expect(t.code).toBe(1)
+  })
+
+  it('reports a per-channel warning but keeps going when one channel fails', async () => {
+    vi.mocked(extractChannels).mockResolvedValue([
+      { index: 0, name: 'kick.wav', tmpPath: '/tmp/session/kick.wav', needsCleanup: true },
+      { index: 1, name: 'snare.wav', tmpPath: '/tmp/session/snare.wav', needsCleanup: true },
+    ])
+    vi.mocked(analyzeAudio)
+      .mockResolvedValueOnce(withChannels(32))
+      .mockRejectedValueOnce(new Error('bad channel'))
+      .mockResolvedValue(withChannels(1))
+    const t = capture()
+
+    await runAnalyze('/tmp/session.wav', {}, t.io)
+
+    expect(t.err.join('\n')).toContain('Warning: failed to analyze channel')
+    expect(t.out.join('\n')).toContain('mock multi-channel report')
+    expect(t.code).toBeUndefined()
+  })
+
+  it('fails with an actionable error when channel extraction throws', async () => {
+    vi.mocked(extractChannels).mockRejectedValueOnce(new Error('no sox'))
+    vi.mocked(analyzeAudio).mockResolvedValueOnce(withChannels(32))
+    const t = capture()
+
+    await runAnalyze('/tmp/session.wav', {}, t.io)
+
+    expect(t.err.join('\n')).toContain('Failed to extract channels: Error: no sox')
+    expect(t.code).toBe(1)
+  })
+
+  it('reports "Failed to read directory" and exits 1 when loadChannelFiles throws', async () => {
+    vi.mocked(loadChannelFiles).mockRejectedValueOnce(new Error('EACCES'))
+    const t = capture()
+
+    await runAnalyze(undefined, { dir: '/tmp/session' }, t.io)
+
+    expect(t.err.join('\n')).toContain('Failed to read directory: Error: EACCES')
+    expect(t.code).toBe(1)
+  })
+
+  it('reports "No audio files found" and exits 1 for an empty directory', async () => {
+    vi.mocked(loadChannelFiles).mockResolvedValue([])
+    const t = capture()
+
+    await runAnalyze(undefined, { dir: '/tmp/session' }, t.io)
+
+    expect(t.err.join('\n')).toContain('No audio files found in: /tmp/session')
+    expect(t.code).toBe(1)
+  })
+
+  it('reports "All channel analyses failed" and exits 1 when every channel fails', async () => {
+    vi.mocked(loadChannelFiles).mockResolvedValue([
+      { index: 0, name: 'kick.wav', tmpPath: '/tmp/session/kick.wav', needsCleanup: false },
+      { index: 1, name: 'snare.wav', tmpPath: '/tmp/session/snare.wav', needsCleanup: false },
+    ])
+    vi.mocked(analyzeAudio).mockRejectedValue(new Error('corrupt file'))
+    const t = capture()
+
+    await runAnalyze(undefined, { dir: '/tmp/session' }, t.io)
+
+    expect(t.err.join('\n')).toContain('All channel analyses failed.')
+    expect(t.err.join('\n')).toMatch(/Warning: failed to analyze channel/)
+    expect(t.code).toBe(1)
+  })
+
+  it('returns null (no report, no exit) when every extracted channel of a multi-channel file fails', async () => {
+    vi.mocked(extractChannels).mockResolvedValue([
+      { index: 0, name: 'kick.wav', tmpPath: '/tmp/session/kick.wav', needsCleanup: true },
+      { index: 1, name: 'snare.wav', tmpPath: '/tmp/session/snare.wav', needsCleanup: true },
+    ])
+    vi.mocked(analyzeAudio)
+      .mockResolvedValueOnce(withChannels(32))
+      .mockRejectedValue(new Error('corrupt file'))
+    const t = capture()
+
+    await runAnalyze('/tmp/session.wav', {}, t.io)
+
+    expect(t.err.join('\n')).toMatch(/Warning: failed to analyze channel/)
+    expect(t.out).toHaveLength(0)
+    expect(t.code).toBe(1)
+  })
+})
+
+describe('buddy analyze — default stdio (no io injected)', () => {
+  it('logs to console.log when no io is provided', async () => {
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+    try {
+      await runAnalyze('/tmp/mix.wav', {})
+      expect(logSpy).toHaveBeenCalled()
+      expect(logSpy.mock.calls.join('\n')).toContain('-9.11')
+    } finally {
+      logSpy.mockRestore()
+    }
+  })
+
+  it('falls back to console.error when no io.error is provided on an error path', async () => {
+    vi.mocked(existsSync).mockReturnValue(false)
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const exitMock = vi.fn()
+    try {
+      await runAnalyze('/tmp/missing.wav', {}, { exit: exitMock })
+      expect(errorSpy).toHaveBeenCalled()
+      expect(errorSpy.mock.calls.join('\n')).toContain('Error: file not found')
+      expect(exitMock).toHaveBeenCalledWith(1)
+    } finally {
+      errorSpy.mockRestore()
+    }
+  })
 })
