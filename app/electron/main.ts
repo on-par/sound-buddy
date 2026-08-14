@@ -24,7 +24,7 @@ import {
   recordAppEvent,
 } from './crash-reporting';
 import { recordTelemetryEvent } from './telemetry';
-import { ensureTrialStarted } from './license';
+import { ensureTrialStarted, getLicenseState } from './license';
 import { maybeRefreshLicense } from './license-refresh';
 import { scheduleWeeklyReminder } from './weekly-reminder';
 
@@ -287,8 +287,11 @@ app.whenReady().then(() => {
   // Upgrade CTA (#58): open the hosted Stripe checkout for a plan in the user's
   // browser. Sound Buddy never handles card data; the real Payment Links are
   // provisioned in #56 (checkout.ts holds the placeholder/override mapping).
+  // The customer email known to the local license store is passed along so a
+  // lapsed subscriber re-upgrading lands in Stripe with their address pre-filled
+  // (#56) — a user with no stored email gets the plain link.
   ipcMain.handle('open-checkout', (_event, plan?: string) => {
-    void shell.openExternal(checkoutUrl(plan));
+    void shell.openExternal(checkoutUrl(plan, getLicenseState().email));
   });
   ipcMain.handle('open-feedback', () => openFeedback());
   ipcMain.handle('submit-feedback', async (_event, input) => {

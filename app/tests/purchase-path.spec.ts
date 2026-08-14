@@ -2,7 +2,7 @@ import { test, expect, type ElectronApplication, type Page } from '@playwright/t
 import { _electron as electron } from 'playwright';
 import * as path from 'path';
 import * as fs from 'fs';
-import { NO_TRIAL_ENV, makeLicenseKey } from './license-fixture';
+import { NO_TRIAL_ENV, makeLicenseKey, seedProLicense } from './license-fixture';
 
 // Purchase-path smoke test (#140): proves the app-side "money-in → access-out"
 // funnel is wired correctly end to end. checkout.test.ts unit-tests
@@ -14,10 +14,13 @@ import { NO_TRIAL_ENV, makeLicenseKey } from './license-fixture';
 // URL (never the hardcoded DEFAULT_URLS placeholder) — plus that a pasted
 // license key unlocks Pro without a restart. The live-sandbox app leg (a real
 // Stripe-minted key, blocked by #116) is a manual pre-launch gate — see the PR
-// body.
+// body. The #56 describe block re-runs the real handler against a stored key
+// whose subscription has lapsed past grace, proving the momentum CTA deep-links
+// with the customer's email pre-filled (`?prefilled_email=...`).
 
 const MAIN = path.join(__dirname, '..', 'dist', 'electron', 'main.js');
 const USER_DATA = path.join(__dirname, '..', 'test-results', 'purchase-path-userdata');
+const PREFILL_USER_DATA = path.join(__dirname, '..', 'test-results', 'purchase-path-prefill-userdata');
 
 const CHECKOUT_ENV = {
   SOUND_BUDDY_CHECKOUT_MONTHLY_URL: 'https://sandbox.test/checkout/monthly-smoke',
@@ -48,9 +51,9 @@ const FAKE_ANALYSIS = {
 let app: ElectronApplication;
 let win: Page;
 
-async function launch(): Promise<void> {
+async function launch(userDataDir: string = USER_DATA): Promise<void> {
   app = await electron.launch({
-    args: [MAIN, `--user-data-dir=${USER_DATA}`],
+    args: [MAIN, `--user-data-dir=${userDataDir}`],
     env: { ...process.env, ...NO_TRIAL_ENV, ...CHECKOUT_ENV },
   });
   win = await app.firstWindow();
@@ -150,5 +153,38 @@ test.describe.serial('Purchase path smoke test (#140)', () => {
     await expect(win.locator('#rc-content')).toBeVisible();
     await expect(win.locator('#rc-upgrade')).toBeHidden();
     await expect(win.locator('.mode-tab[data-mode="live"] .tab-lock')).toBeHidden();
+  });
+});
+
+test.describe.serial('Purchase path smoke — prefilled email (#56)', () => {
+  // A subscription key expired well past the 7-day grace period: tier resolves
+  // to 'free' (momentum card shows) while the key's email claim is retained —
+  // exactly the re-upgrade funnel the pre-fill targets.
+  const LAPSED_EMAIL = 'lapsed@test.local';
+  const PAST_GRACE_MS = 40 * 24 * 60 * 60 * 1000;
+
+  test.beforeAll(async () => {
+    fs.rmSync(PREFILL_USER_DATA, { recursive: true, force: true });
+    seedProLicense(PREFILL_USER_DATA, {
+      kind: 'subscription',
+      email: LAPSED_EMAIL,
+      expiresAt: new Date(Date.now() - PAST_GRACE_MS).toISOString(),
+    });
+    await launch(PREFILL_USER_DATA);
+    await analyzeAndOpenReportCard();
+  });
+
+  test.afterAll(async () => {
+    await app?.close();
+  });
+
+  test('a lapsed subscriber lands in Stripe with their email pre-filled', async () => {
+    // The expired-but-email-retaining key keeps the momentum card up (tier free).
+    await expect(win.locator('#rc-upgrade')).toBeVisible();
+
+    await win.locator('#rcu-cta [data-checkout-plan="monthly"]').click();
+    await expect
+      .poll(async () => (await openedUrls()).at(-1))
+      .toBe(`${CHECKOUT_ENV.SOUND_BUDDY_CHECKOUT_MONTHLY_URL}?prefilled_email=lapsed%40test.local`);
   });
 });

@@ -71,14 +71,22 @@ vi.mock('./auto-updater', () => ({
   installUpdate: vi.fn(),
 }));
 vi.mock('electron-updater', () => ({ autoUpdater: {} }));
-vi.mock('./checkout', () => ({ checkoutUrl: vi.fn((plan?: string) => `https://example.com/checkout/${plan}`) }));
+vi.mock('./checkout', () => ({
+  checkoutUrl: vi.fn(
+    (plan?: string, email?: string) =>
+      `https://example.com/checkout/${plan}${email ? `?prefilled_email=${email}` : ''}`,
+  ),
+}));
 vi.mock('./capture-guide', () => ({ captureGuideUrl: vi.fn(() => 'https://example.com/guide') }));
 vi.mock('./feedback', () => ({
   openFeedback: vi.fn(),
   revealDiagnosticLog: vi.fn(),
   submitFeedback: vi.fn(),
 }));
-vi.mock('./license', () => ({ ensureTrialStarted: vi.fn() }));
+vi.mock('./license', () => ({
+  ensureTrialStarted: vi.fn(),
+  getLicenseState: vi.fn(() => ({ email: 'pro@test.local' })),
+}));
 vi.mock('./license-refresh', () => ({ maybeRefreshLicense: vi.fn().mockResolvedValue(undefined) }));
 vi.mock('./weekly-reminder', () => ({ scheduleWeeklyReminder: vi.fn() }));
 
@@ -92,7 +100,7 @@ import { wireAutoUpdater, checkForUpdates, downloadUpdate, installUpdate } from 
 import { checkoutUrl } from './checkout';
 import { captureGuideUrl } from './capture-guide';
 import { openFeedback, revealDiagnosticLog, submitFeedback } from './feedback';
-import { ensureTrialStarted } from './license';
+import { ensureTrialStarted, getLicenseState } from './license';
 import { maybeRefreshLicense } from './license-refresh';
 import { scheduleWeeklyReminder } from './weekly-reminder';
 import {
@@ -379,11 +387,23 @@ describe('lifecycle (whenReady callback)', () => {
     expect(recordTelemetryEvent).toHaveBeenCalledWith('screen.live');
   });
 
-  it('open-checkout handler opens the checkout URL for the given plan', () => {
+  it('open-checkout handler opens the checkout URL with the stored license email pre-filled', () => {
     const calls = (ipcMain.handle as ReturnType<typeof vi.fn>).mock.calls;
     const handler = calls.find((c) => c[0] === 'open-checkout')?.[1];
     handler(undefined, 'monthly');
-    expect(shell.openExternal).toHaveBeenCalledWith(checkoutUrl('monthly'));
+    expect(shell.openExternal).toHaveBeenCalledWith(checkoutUrl('monthly', 'pro@test.local'));
+  });
+
+  it('open-checkout handler passes no email when the license store has none', () => {
+    vi.mocked(getLicenseState).mockReturnValue({ email: undefined });
+    try {
+      const calls = (ipcMain.handle as ReturnType<typeof vi.fn>).mock.calls;
+      const handler = calls.find((c) => c[0] === 'open-checkout')?.[1];
+      handler(undefined, 'monthly');
+      expect(shell.openExternal).toHaveBeenCalledWith(checkoutUrl('monthly', undefined));
+    } finally {
+      vi.mocked(getLicenseState).mockReturnValue({ email: 'pro@test.local' });
+    }
   });
 
   it('reveal-diagnostics handler calls revealDiagnosticLog', () => {
