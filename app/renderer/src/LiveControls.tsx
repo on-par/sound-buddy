@@ -115,15 +115,24 @@ export async function startLiveCapture(
   rt?.onCaptureStarted(result, Math.round(1 / intervalSecs));
 }
 
-export async function stopLiveCapture(rt: LiveCaptureRuntime | undefined): Promise<void> {
-  const live = useLiveCaptureStore.getState();
-  const stopIsRecordStop = live.liveMode === 'record' && live.isCapturing;
+// The stop half of stopLiveCapture's ordering (flip stopping -> stopCapture()
+// -> bridged before/after hooks -> clear stopping), split out so
+// stopCaptureIfRunning below can run exactly this and stop short of
+// stopLiveCapture's post-record resume-to-monitoring tail.
+async function runStopCeremony(rt: LiveCaptureRuntime | undefined): Promise<StopCaptureResult | undefined> {
   useLiveCaptureStore.getState().setStopping(true);
   const stopPromise = useLiveCaptureStore.getState().stopCapture();
   rt?.onCaptureStopping();
   const result = await stopPromise;
   rt?.onCaptureStopped(result);
   useLiveCaptureStore.getState().setStopping(false);
+  return result;
+}
+
+export async function stopLiveCapture(rt: LiveCaptureRuntime | undefined): Promise<void> {
+  const live = useLiveCaptureStore.getState();
+  const stopIsRecordStop = live.liveMode === 'record' && live.isCapturing;
+  await runStopCeremony(rt);
   // #776: the Live tab is always-monitoring (ADR-0014) — stopping a record
   // returns to a live monitor session (Record button idle, meters running)
   // instead of ending capture entirely. Mirrors recordCapture's normalize-
@@ -135,6 +144,19 @@ export async function stopLiveCapture(rt: LiveCaptureRuntime | undefined): Promi
   rt?.onResumeMonitoringStart?.();
   const opts = captureOptsFromCadence(next.windowSecs, next.meterIntervalMs);
   await startLiveCapture(rt, opts.windowSecs, opts.intervalSecs);
+}
+
+// The one production entry point for "drive the board fully idle, if it
+// isn't already" (#776) — no button reaches this state (a Record-button stop
+// only demotes a record session back to monitoring, per stopLiveCapture
+// above), so e2e/automation callers that need a genuinely idle board (config
+// unlocked, readout hidden) call this instead of re-deriving the stop
+// ceremony themselves. Runs the same runStopCeremony as stopLiveCapture but
+// never takes its post-record resume-to-monitoring branch. Bridged onto
+// window by App.tsx so Playwright's page.evaluate() can reach it.
+export async function stopCaptureIfRunning(rt: LiveCaptureRuntime | undefined): Promise<void> {
+  if (!useLiveCaptureStore.getState().isCapturing) return;
+  await runStopCeremony(rt);
 }
 
 // The top-bar Record button's promote action (#729, #757): promotes a running

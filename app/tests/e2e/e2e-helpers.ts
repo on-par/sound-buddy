@@ -173,37 +173,20 @@ export async function renameHeader(window: Page, head: Locator, value: string) {
 // #776: the always-monitoring Live tab has no button that fully stops capture —
 // a Record-button stop only demotes a record session back to a monitor session.
 // Tests/automation that need a genuinely idle board (config unlocked, readout
-// hidden) drive the stop ceremony directly, mirroring stopLiveCapture's
-// ordering without the resume. Defensive about boot: safe to call right after
-// launchApp() returns, when rendererStores/liveCaptureRuntime may not be
-// installed yet (nothing can be capturing then anyway).
+// hidden) call the same production stop ceremony App.tsx bridges onto
+// window.stopLiveCaptureIfRunning (LiveControls.tsx's stopCaptureIfRunning) —
+// the single place that ordering (setStopping -> stopCapture() -> bridged
+// hooks -> clear stopping) is implemented, rather than re-deriving it here.
+// Defensive about boot: safe to call right after launchApp() returns, when
+// stopLiveCaptureIfRunning/liveCaptureRuntime may not be installed yet
+// (nothing can be capturing then anyway).
 export async function stopCaptureIfRunning(window: Page): Promise<void> {
   await window.evaluate(async () => {
     const w = window as unknown as {
-      rendererStores?: {
-        liveCapture?: {
-          getState: () => {
-            isCapturing: boolean;
-            setStopping: (v: boolean) => void;
-            stopCapture: () => Promise<unknown>;
-          };
-        };
-      };
-      liveCaptureRuntime?: {
-        onCaptureStopping?: () => void;
-        onCaptureStopped?: (r: unknown) => void;
-      };
+      stopLiveCaptureIfRunning?: (rt: unknown) => Promise<void>;
+      liveCaptureRuntime?: unknown;
     };
-    const lc = w.rendererStores?.liveCapture;
-    if (!lc || !w.liveCaptureRuntime) return;
-    const state = lc.getState();
-    if (!state.isCapturing) return;
-    state.setStopping(true);
-    const stopPromise = state.stopCapture();
-    w.liveCaptureRuntime.onCaptureStopping?.();
-    const result = await stopPromise;
-    w.liveCaptureRuntime.onCaptureStopped?.(result);
-    state.setStopping(false);
+    await w.stopLiveCaptureIfRunning?.(w.liveCaptureRuntime);
   });
 }
 

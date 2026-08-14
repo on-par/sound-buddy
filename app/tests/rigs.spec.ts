@@ -83,36 +83,21 @@ async function closeSettings(win: Page): Promise<void> {
   await expect(win.locator('#settings-dialog')).toBeHidden();
 }
 
-// Stops any running capture via the renderer's own stopLiveCapture()
-// orchestration (LiveControls.tsx) — phase-agnostic, so it ends both a
-// monitor session (auto-start) and a record session. Uses the store + the
-// bridged runtime hooks rather than clicking #record-button, whose idle
-// press *promotes* a monitor session instead of stopping it (#757).
+// Stops any running capture via the renderer's own stop ceremony
+// (LiveControls.tsx's stopCaptureIfRunning, bridged onto
+// window.stopLiveCaptureIfRunning by App.tsx) — phase-agnostic, so it ends
+// both a monitor session (auto-start) and a record session, and never takes
+// stopLiveCapture's post-record resume-to-monitoring branch. Calls the one
+// production implementation of that ordering rather than re-deriving it here
+// — used instead of clicking #record-button, whose idle press *promotes* a
+// monitor session instead of stopping it (#757).
 async function stopCaptureIfRunning(win: Page): Promise<void> {
   await win.evaluate(async () => {
     const w = window as unknown as {
-      rendererStores: {
-        liveCapture: {
-          getState: () => {
-            isCapturing: boolean;
-            setStopping: (v: boolean) => void;
-            stopCapture: () => Promise<unknown>;
-          };
-        };
-      };
-      liveCaptureRuntime: {
-        onCaptureStopping: () => void;
-        onCaptureStopped: (r: unknown) => void;
-      };
+      stopLiveCaptureIfRunning?: (rt: unknown) => Promise<void>;
+      liveCaptureRuntime?: unknown;
     };
-    const lc = w.rendererStores.liveCapture.getState();
-    if (!lc.isCapturing) return;
-    lc.setStopping(true);
-    const stopPromise = lc.stopCapture();
-    w.liveCaptureRuntime.onCaptureStopping();
-    const result = await stopPromise;
-    w.liveCaptureRuntime.onCaptureStopped(result);
-    lc.setStopping(false);
+    await w.stopLiveCaptureIfRunning?.(w.liveCaptureRuntime);
   });
 }
 

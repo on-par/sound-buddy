@@ -2,7 +2,7 @@
 // Licensed under the Sound Buddy Desktop Application License (app/LICENSE).
 
 import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest';
-import { startLiveCapture, stopLiveCapture, recordCapture, type LiveCaptureRuntime } from './LiveControls';
+import { startLiveCapture, stopLiveCapture, stopCaptureIfRunning, recordCapture, type LiveCaptureRuntime } from './LiveControls';
 import { useLiveCaptureStore } from './stores/liveCaptureStore';
 import { useSettingsStore } from './stores/settingsStore';
 
@@ -207,6 +207,50 @@ describe('startLiveCapture / stopLiveCapture / recordCapture', () => {
 
     expect(useLiveCaptureStore.getState().isCapturing).toBe(false);
     expect(useLiveCaptureStore.getState().liveMode).toBe('monitor');
+    expect(rt.onResumeMonitoringStart).not.toHaveBeenCalled();
+    expect(useLiveCaptureStore.getState().startCapture).not.toHaveBeenCalled();
+  });
+
+  // #776: stopCaptureIfRunning is the one production entry point for "drive
+  // the board fully idle" — bridged onto window.stopLiveCaptureIfRunning
+  // (App.tsx) for e2e/automation callers that need this and can't use the
+  // Record button (whose idle press promotes rather than stops, #757).
+  it('stopCaptureIfRunning is a no-op when nothing is capturing', async () => {
+    const rt = mockRuntime();
+    useLiveCaptureStore.setState({ isCapturing: false });
+    const stopCapture = vi.spyOn(useLiveCaptureStore.getState(), 'stopCapture');
+
+    await stopCaptureIfRunning(rt);
+
+    expect(stopCapture).not.toHaveBeenCalled();
+    expect(rt.onCaptureStopping).not.toHaveBeenCalled();
+    expect(rt.onCaptureStopped).not.toHaveBeenCalled();
+  });
+
+  // Distinguishes stopCaptureIfRunning from stopLiveCapture: stopping a
+  // record session must NOT take stopLiveCapture's resume-to-monitoring
+  // branch — callers of this helper need a genuinely idle board, not one
+  // that's been restarted into monitoring.
+  it('stopCaptureIfRunning stops a recording without resuming monitoring (#776)', async () => {
+    const rt = mockRuntime({ onResumeMonitoringStart: vi.fn() });
+    useLiveCaptureStore.setState({
+      liveMode: 'record',
+      isCapturing: true,
+      stopCapture: vi.fn(async () => {
+        useLiveCaptureStore.setState({ isCapturing: false });
+        return { success: true, sessionDir: '/tmp/session' };
+      }),
+      startCapture: vi.fn(async () => {
+        useLiveCaptureStore.setState({ isCapturing: true });
+        return { success: true };
+      }),
+    });
+
+    await stopCaptureIfRunning(rt);
+
+    expect(useLiveCaptureStore.getState().isCapturing).toBe(false);
+    expect(useLiveCaptureStore.getState().stopping).toBe(false);
+    expect(rt.onCaptureStopped).toHaveBeenCalledWith({ success: true, sessionDir: '/tmp/session' });
     expect(rt.onResumeMonitoringStart).not.toHaveBeenCalled();
     expect(useLiveCaptureStore.getState().startCapture).not.toHaveBeenCalled();
   });
