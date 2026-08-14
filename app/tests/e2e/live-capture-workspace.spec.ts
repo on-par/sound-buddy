@@ -107,6 +107,14 @@ test.describe('Live capture (PRD 06) — workspace controls', () => {
       await expect(window.locator('#arm-hint')).toBeVisible();
       await expect(window.locator('#arm-hint')).toContainText('Arm at least one strip');
       await expect(window.locator('#live-indicator .live-txt')).toHaveText('LIVE');
+      // Arming stays live while monitoring (#757) — re-arm, record, then stop
+      // so the next test starts idle (a dangling capture would wedge this
+      // suite's shared-session beforeEach).
+      await window.locator('#live-ws-arm-all').click();
+      await window.locator('#record-button').click();
+      await expect(window.locator('#live-indicator .live-txt')).toHaveText('REC');
+      await window.locator('#record-button').click(); // stop
+      await expect(window.locator('#record-button')).toBeEnabled();
     });
 
     test('workspace arm controls lock while a capture is running', async () => {

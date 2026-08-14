@@ -375,8 +375,8 @@ function liveWorkspaceToolbarHTML() {
   const armHTML = advanced
     ? `<span class="live-ws-arm">`
       + `<span class="arm-count" id="live-ws-arm-count">${armedCount()} / ${channelConfig.length} armed</span>`
-      + `<button type="button" class="ghost-btn sm" id="live-ws-arm-all"${liveRunning ? ' disabled' : ''} title="Arm every track for recording">Arm all</button>`
-      + `<button type="button" class="ghost-btn sm" id="live-ws-disarm-all"${liveRunning ? ' disabled' : ''} title="Disarm every track">Disarm all</button>`
+      + `<button type="button" class="ghost-btn sm" id="live-ws-arm-all"${liveRunning && liveMode === 'record' ? ' disabled' : ''} title="Arm every track for recording">Arm all</button>`
+      + `<button type="button" class="ghost-btn sm" id="live-ws-disarm-all"${liveRunning && liveMode === 'record' ? ' disabled' : ''} title="Disarm every track">Disarm all</button>`
       + `</span>`
     : '';
   return `<div class="live-meters-toolbar">`
@@ -1353,14 +1353,27 @@ function renderMeasurementBadge() {
 function setCaptureControlsLocked(locked) {
   const set = (el) => { if (el) { el.disabled = locked; el.setAttribute('aria-disabled', String(locked)); } };
   ['rig-select',
-    'live-ws-add', 'live-ws-new-group',
-    'live-ws-arm-all', 'live-ws-disarm-all'].forEach((id) => set(document.getElementById(id)));
+    'live-ws-add', 'live-ws-new-group'].forEach((id) => set(document.getElementById(id)));
   // Workspace track rows (#188): Add track (above) + each row's remove, read-only
   // while a capture is running.
   document.querySelectorAll('#spectrum-body .live-ch-x').forEach(set);
-  // Workspace per-track arm toggle (#191), frozen mid-capture with the rest —
-  // the workspace is outside #tab-live, so this explicit sweep is required.
-  document.querySelectorAll('#spectrum-body .live-ch-arm').forEach(set);
+  // Workspace per-track arm toggle + Arm all / Disarm all (#191, #757):
+  // record-enable stays LIVE while a MONITOR session runs — the tab is
+  // always-monitoring and arming only matters at promote time, so an engineer
+  // who pressed Record with nothing armed (promote blocked, #arm-hint) can
+  // arm and press again without being stuck. The arm controls freeze only once
+  // the session is actually RECORDING (promoteToRecording re-asserts the lock
+  // right after flipping liveMode to 'record'). The workspace sits outside
+  // #tab-live, so this explicit sweep is required either way.
+  const armLocked = locked && liveMode === 'record';
+  ['live-ws-arm-all', 'live-ws-disarm-all'].forEach((id) => {
+    const el = document.getElementById(id);
+    if (el) { el.disabled = armLocked; el.setAttribute('aria-disabled', String(armLocked)); }
+  });
+  document.querySelectorAll('#spectrum-body .live-ch-arm').forEach((el) => {
+    el.disabled = armLocked;
+    el.setAttribute('aria-disabled', String(armLocked));
+  });
   // Inline track definition (#189): kind toggle + source picker(s), frozen
   // mid-capture (stream.py can't honor a mid-session channel change).
   // veqChannelHTML already stamps `disabled` at build time; this re-asserts it
@@ -1644,6 +1657,10 @@ async function promoteToRecording() {
   lcStore.getState().setPromoting(true);
   lcStore.getState().setLiveMode('record');
   syncCaptureControls();
+  // #757: arming stays live while monitoring, so the lock has to be re-
+  // asserted here — the monitor start locked config but deliberately left the
+  // arm controls enabled; flipping to 'record' is what freezes them.
+  setCaptureControlsLocked(true);
 
   const device = lcStore.getState().selectedDevice || undefined;
   const windowSecs = lcStore.getState().windowSecs;

@@ -159,10 +159,22 @@ describe('DAW shell and the sole top-bar Record transport (#757)', () => {
     expect(body).not.toContain('id="live-stop-btn"');
   });
 
-  it('the workspace arm cluster renders always (not record-mode gated) — armHTML drops the liveMode check', () => {
+  it('the workspace arm cluster renders always (not record-mode gated) — armHTML drops the render gate', () => {
     const body = functionBody(inlineApp, 'liveWorkspaceToolbarHTML');
     expect(body).toContain('live-ws-arm-count');
-    expect(body).not.toContain("liveMode === 'record'");
+    expect(body).not.toContain("advanced && liveMode === 'record'");
+  });
+
+  it('arm controls stay usable while monitoring and freeze only while recording (#757)', () => {
+    // A blocked promote (nothing armed) leaves a monitor session running with
+    // the config locked — arming must remain live there so the engineer can
+    // arm and press Record again. The template bakes the disabled state off
+    // `liveRunning && liveMode === 'record'`, and the runtime lock sweep keys
+    // the arm controls off the same condition.
+    const toolbar = functionBody(inlineApp, 'liveWorkspaceToolbarHTML');
+    expect(toolbar).toContain("liveRunning && liveMode === 'record'");
+    const lockBody = functionBody(inlineApp, 'setCaptureControlsLocked');
+    expect(lockBody).toContain("const armLocked = locked && liveMode === 'record'");
   });
 });
 
