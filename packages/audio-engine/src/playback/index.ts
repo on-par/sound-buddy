@@ -8,6 +8,8 @@ export interface PlaybackOptions {
   route?: string;
   // Progress/level cadence in seconds (default 0.1 in playback.py).
   intervalSecs?: number;
+  // Start playback at this many seconds into the session; omitted/≤0 plays from the start.
+  startOffsetSecs?: number;
   // Force the stereo master mixdown fold even on a big-enough device.
   master?: boolean;
 }
@@ -25,6 +27,9 @@ export function buildPlaybackArgs(opts: PlaybackOptions): string[] {
   }
   if (opts.intervalSecs && opts.intervalSecs > 0) {
     args.push("--interval", String(opts.intervalSecs));
+  }
+  if (opts.startOffsetSecs && opts.startOffsetSecs > 0) {
+    args.push("--start-at", String(opts.startOffsetSecs));
   }
   if (opts.master) {
     args.push("--master");

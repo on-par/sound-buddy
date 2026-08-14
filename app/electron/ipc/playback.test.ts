@@ -219,6 +219,27 @@ describe('start-playback', () => {
     expect(logError).not.toHaveBeenCalled();
     expect(sender.sent).toEqual([]);
   });
+
+  it('passes --start-at through to the spawned child when startOffsetSecs is set', async () => {
+    const proc = fakeProc();
+    spawnMock.mockReturnValueOnce(proc);
+    const handler = handlers.get('start-playback') as Handler;
+    await handler({ sender: fakeSender() }, { sessionDir: '/s', startOffsetSecs: 5 });
+
+    const [, args] = spawnMock.mock.calls[0] as [string, string[]];
+    expect(args).toContain('--start-at');
+    expect(args[args.indexOf('--start-at') + 1]).toBe('5');
+  });
+
+  it('omits --start-at when startOffsetSecs is not provided', async () => {
+    const proc = fakeProc();
+    spawnMock.mockReturnValueOnce(proc);
+    const handler = handlers.get('start-playback') as Handler;
+    await handler({ sender: fakeSender() }, { sessionDir: '/s' });
+
+    const [, args] = spawnMock.mock.calls[0] as [string, string[]];
+    expect(args).not.toContain('--start-at');
+  });
 });
 
 describe('stop-playback', () => {

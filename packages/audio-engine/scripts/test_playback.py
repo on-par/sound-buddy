@@ -208,6 +208,53 @@ class TrackLevel(unittest.TestCase):
         self.assertFalse(lvl["clipping"])
 
 
+class StartOffsetHelpers(unittest.TestCase):
+    """Pure seek/elapsed math for --start-at (#733)."""
+
+    def test_compute_start_frame_zero_plays_from_start(self):
+        self.assertEqual(playback.compute_start_frame(48000, 480000, 0.0), 0)
+
+    def test_compute_start_frame_maps_seconds_to_frames(self):
+        # 5.0s @ 48k on a 10s (480000-frame) session → halfway.
+        self.assertEqual(playback.compute_start_frame(48000, 480000, 5.0), 240000)
+
+    def test_compute_start_frame_clamps_negative_to_zero(self):
+        self.assertEqual(playback.compute_start_frame(48000, 480000, -3.0), 0)
+
+    def test_compute_start_frame_rounds_fractional_seconds(self):
+        # 0.5s → exactly 24000 frames; a hair over rounds up to the next frame.
+        self.assertEqual(playback.compute_start_frame(48000, 480000, 0.5), 24000)
+        self.assertEqual(playback.compute_start_frame(48000, 480000, 0.50003), 24001)
+
+    def test_compute_start_frame_clamps_past_end_to_total_frames(self):
+        self.assertEqual(playback.compute_start_frame(48000, 480000, 10.0), 480000)
+        self.assertEqual(playback.compute_start_frame(48000, 480000, 15.0), 480000)
+
+    def test_compute_start_frame_empty_session_returns_zero(self):
+        self.assertEqual(playback.compute_start_frame(48000, 0, 5.0), 0)
+
+    def test_session_elapsed_normal_tick(self):
+        self.assertAlmostEqual(
+            playback.session_elapsed(5.0, 48000, 48000, 10.0), 6.0, delta=1e-9
+        )
+
+    def test_session_elapsed_zero_offset_matches_legacy_formula(self):
+        self.assertAlmostEqual(
+            playback.session_elapsed(0.0, 48000, 48000, 10.0), 48000 / 48000, delta=1e-9
+        )
+
+    def test_session_elapsed_clamps_at_duration(self):
+        # offset + played/sr overshoots the 10s session → capped at 10.0.
+        self.assertAlmostEqual(
+            playback.session_elapsed(9.0, 96000, 48000, 10.0), 10.0, delta=1e-9
+        )
+
+    def test_session_elapsed_zero_sample_rate_uses_offset_only(self):
+        self.assertAlmostEqual(
+            playback.session_elapsed(5.0, 48000, 0, 10.0), 5.0, delta=1e-9
+        )
+
+
 @unittest.skipUnless(HAVE_SOUNDFILE, "soundfile not installed")
 class LoadManifest(unittest.TestCase):
     def setUp(self):
@@ -257,11 +304,15 @@ class LoadManifest(unittest.TestCase):
             playback.load_manifest(self.dir)
 
 
-def _make_session(session_dir, sample_rate=48000, frames=4096):
-    """A two-track session on disk: mono Kick (const 0.5) + stereo OH (L 0.3 / R
-    0.7), matching the routing integration assertions."""
+def _make_session(session_dir, sample_rate=48000, frames=4096, ramp_kick=False):
+    """A two-track session on disk: mono Kick (const 0.5, or a 0→1 ramp when
+    `ramp_kick` is set so position is encoded in the sample value) + stereo OH
+    (L 0.3 / R 0.7), matching the routing integration assertions."""
     os.makedirs(session_dir, exist_ok=True)
-    kick = np.full((frames, 1), 0.5, dtype=np.float32)
+    if ramp_kick:
+        kick = np.linspace(0.0, 1.0, frames, dtype=np.float32).reshape((frames, 1))
+    else:
+        kick = np.full((frames, 1), 0.5, dtype=np.float32)
     oh = np.zeros((frames, 2), dtype=np.float32)
     oh[:, 0] = 0.3
     oh[:, 1] = 0.7
@@ -361,10 +412,10 @@ class PlaybackIntegration(unittest.TestCase):
     routes each track to its output channel, emits the JSON envelope, and folds
     to stereo master when the device is too small."""
 
-    def _run(self, args, device_channels=8, timeout=15):
+    def _run(self, args, device_channels=8, timeout=15, frames=4096, ramp_kick=False):
         work = tempfile.mkdtemp()
         session_dir = os.path.join(work, "session")
-        _make_session(session_dir)
+        _make_session(session_dir, frames=frames, ramp_kick=ramp_kick)
         fake_dir = os.path.join(work, "fake")
         os.makedirs(fake_dir)
         with open(os.path.join(fake_dir, "sounddevice.py"), "w") as f:
@@ -440,6 +491,96 @@ class PlaybackIntegration(unittest.TestCase):
         proc, lines, _out = self._run(["--device", "0", "--route", "0:0"])  # OH unrouted
         self.assertEqual(proc.returncode, 1)
         self.assertTrue(any("error" in l for l in lines))
+
+    def test_start_at_offsets_audio_and_elapsed(self):
+        # A 10s session with a ramp kick: --start-at 5 must begin audio at the
+        # ramp's midpoint (frame 240000 ≈ 0.5), not 0:00, and report elapsed
+        # from 5.0 from the first tick through ~10.0 at the end.
+        interval = 0.02
+        proc, lines, out = self._run(
+            ["--device", "0", "--route", "0:0,1:2-3", "--interval", str(interval),
+             "--start-at", "5"],
+            frames=480000, ramp_kick=True,
+        )
+        self.assertEqual(proc.returncode, 0, proc.stderr.decode())
+        types_seen = [l.get("type") for l in lines]
+        self.assertIn("ended", types_seen)
+        progress = [l for l in lines if l.get("type") == "progress"]
+        self.assertTrue(progress)
+        # First tick already reflects the offset (never 0:00).
+        self.assertGreaterEqual(progress[0]["elapsed"], 5.0)
+        self.assertLessEqual(progress[0]["elapsed"], 5.0 + interval + 0.1)
+        # Last tick lands on the full-session duration.
+        self.assertAlmostEqual(progress[-1]["elapsed"], 10.0, delta=0.1)
+        self.assertGreater(out.shape[0], 0)
+        # The fake device may capture a leading under-run silence block before
+        # the first real block and zero-pads the final short block — restrict
+        # the assertions to the real audio span (first..last nonzero sample).
+        nz = np.flatnonzero(np.abs(out[:, 0]) > 0)
+        first_nz = int(nz[0])
+        last_nz = int(nz[-1])
+        # Audio starts at the ramp midpoint (0.5), not 0:00.
+        self.assertAlmostEqual(float(out[first_nz, 0]), 0.5, delta=0.01)
+        # Every real kick sample is at/after the midpoint — the ramp never
+        # regresses, so any pre-offset (0:00-era) sample would violate this.
+        self.assertGreaterEqual(float(np.min(out[first_nz:last_nz + 1, 0])), 0.5 - 0.01)
+
+    def test_start_at_full_play_control_starts_at_zero(self):
+        # The same ramp session with no --start-at must begin at 0:00 (sample 0).
+        _proc, lines, out = self._run(
+            ["--device", "0", "--route", "0:0,1:2-3", "--interval", "0.02"],
+            frames=480000, ramp_kick=True,
+        )
+        self.assertGreater(out.shape[0], 0)
+        first_nz = int(np.argmax(np.abs(out[:, 0]) > 0))
+        self.assertAlmostEqual(float(out[first_nz, 0]), 0.0, delta=0.01)
+
+    def test_start_at_near_end_ends_promptly(self):
+        # 9.999s into a 10s session leaves ~48 frames: playback ends quickly
+        # with a natural `ended` and almost no captured output.
+        proc, lines, out = self._run(
+            ["--device", "0", "--route", "0:0,1:2-3", "--interval", "0.02",
+             "--start-at", "9.999"],
+            frames=480000, ramp_kick=True,
+        )
+        self.assertEqual(proc.returncode, 0, proc.stderr.decode())
+        types_seen = [l.get("type") for l in lines]
+        self.assertIn("ended", types_seen)
+        self.assertNotIn("error", types_seen)
+        # A full 10s play-back captures ~469 blocks; a 48-frame tail is 1 real
+        # block (plus at most a leading under-run silence block).
+        self.assertLess(out.shape[0], 1024 * 10)
+
+    def test_start_at_beyond_duration_ends_cleanly(self):
+        # An offset past the session end must not crash: playback starts at EOF,
+        # drains nothing, and emits a natural `ended`.
+        proc, lines, _out = self._run(
+            ["--device", "0", "--route", "0:0,1:2-3", "--interval", "0.02",
+             "--start-at", "15"],
+            frames=480000,
+        )
+        self.assertEqual(proc.returncode, 0, proc.stderr.decode())
+        types_seen = [l.get("type") for l in lines]
+        self.assertIn("ended", types_seen)
+        self.assertNotIn("error", types_seen)
+
+    def test_negative_start_at_clamps_to_zero(self):
+        # A negative --start-at must clamp to 0:00 at the CLI boundary, not
+        # just inside compute_start_frame — elapsed must never go negative
+        # and audio must start at sample 0, same as no --start-at at all.
+        proc, lines, out = self._run(
+            ["--device", "0", "--route", "0:0,1:2-3", "--interval", "0.02",
+             "--start-at", "-3"],
+            frames=480000, ramp_kick=True,
+        )
+        self.assertEqual(proc.returncode, 0, proc.stderr.decode())
+        progress = [l for l in lines if l.get("type") == "progress"]
+        self.assertTrue(progress)
+        self.assertGreaterEqual(progress[0]["elapsed"], 0.0)
+        self.assertLessEqual(progress[0]["elapsed"], 0.02 + 0.1)
+        self.assertGreater(out.shape[0], 0)
+        first_nz = int(np.argmax(np.abs(out[:, 0]) > 0))
+        self.assertAlmostEqual(float(out[first_nz, 0]), 0.0, delta=0.01)
 
 
 @unittest.skipUnless(HAVE_SOUNDFILE, "soundfile not installed")
