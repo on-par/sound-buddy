@@ -59,11 +59,11 @@ export default function LiveWorkspace(): JSX.Element | null {
      coalescing logic is exhaustively unit-tested in
      live-meter-controller.test.ts against fake deps. The header level readout
      (#767) is a second patched surface: the same coalesced store snapshot
-     drives the board repaint (patchTick, still gated on isCapturing && lastTick
-     — mirroring renderWorkspace's own liveRunning && lastTick guard, so a stop
-     with a stale lastTick can't repaint the board over the idle workspace) and
-     liveLevelReadout/patchLevelReadout for #live-level-readout. */
+     drives the board repaint (patchTick, still gated to fresh tick objects so
+     capture-state notifications cannot repaint stale data over the idle
+     workspace) and liveLevelReadout/patchLevelReadout for #live-level-readout. */
   useEffect(() => {
+    let lastPatchedTick: LiveEvent | null = null;
     const controller = createLiveMeterController({
       subscribe: useLiveCaptureStore.subscribe,
       getState: () => {
@@ -81,7 +81,10 @@ export default function LiveWorkspace(): JSX.Element | null {
       raf: (cb) => requestAnimationFrame(cb),
       cancelRaf: (handle) => cancelAnimationFrame(handle),
       patch: (snap) => {
-        if (snap.isCapturing && snap.lastTick) window.liveWorkspaceRuntime?.patchTick(snap.lastTick);
+        if (snap.lastTick && snap.lastTick !== lastPatchedTick) {
+          lastPatchedTick = snap.lastTick;
+          window.liveWorkspaceRuntime?.patchTick(snap.lastTick);
+        }
         const el = document.getElementById('live-level-readout');
         if (el) patchLevelReadout(el, liveLevelReadout(snap));
       },
