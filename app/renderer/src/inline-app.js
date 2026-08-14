@@ -153,6 +153,15 @@ let channelConfig = [];        // configured strips: { kind:'mono'|'stereo', a:i
 // a fresh user-initiated session does.
 let resumeMonitoringStart = false;
 
+// #776: the just-frozen session report-card source (onCaptureStopped's
+// anaStore.setLiveSource(sessionSrc)), stashed only across an auto-resume.
+// The resume's startCapture() synchronously resets liveCaptureStore.liveWindows
+// to [], which fires bridge.ts's cross-store subscription and re-derives
+// analysisStore.liveSource from that now-empty rolling buffer — clobbering the
+// frozen card before the user ever sees it. onCaptureStarting's resume branch
+// restores this right after that clobber. Consumed once, like resumeMonitoringStart.
+let frozenLiveSourceForResume = null;
+
 function syncLiveCaptureMirror(state, prevState) {
   liveRunning = state.isCapturing;
   capturePromoting = state.promoting;
@@ -1593,6 +1602,14 @@ function onCaptureStarting() {
   // the first capture start, then back to false.
   if (resumeMonitoringStart) {
     resumeMonitoringStart = false;
+    // #776: LiveControls.tsx's startLiveCapture() already called store.startCapture()
+    // (liveWindows: []) before invoking this hook — that synchronously fired
+    // bridge.ts's cross-store subscription and re-derived (clobbered)
+    // analysisStore.liveSource from the now-empty rolling buffer. Undo it.
+    if (frozenLiveSourceForResume) {
+      anaStore.getState().setLiveSource(frozenLiveSourceForResume);
+      frozenLiveSourceForResume = null;
+    }
   } else {
     document.getElementById('rec-offer').style.display = 'none';
     document.getElementById('rc-offer').style.display = 'none';
@@ -1669,6 +1686,17 @@ async function promoteToRecording() {
     return;
   }
   hideArmHint();
+
+  // #776: promoting an already-running monitor session to a recording never
+  // routes through onCaptureStarting() (that path is only for an idle→monitor
+  // start) — but since #776's stop-demotes-to-monitoring change, a monitor
+  // session can now be running with a PREVIOUS record's stale session offers
+  // still on screen (deliberately preserved across that auto-resume). A user-
+  // initiated promote is a genuinely new session, so clear them here too.
+  document.getElementById('rec-offer').style.display = 'none';
+  document.getElementById('rc-offer').style.display = 'none';
+  document.getElementById('rc-not-enough').style.display = 'none';
+  document.getElementById('live-rc-cue').style.display = 'none';
 
   lcStore.getState().setPromoting(true);
   lcStore.getState().setLiveMode('record');
@@ -1764,6 +1792,7 @@ function onCaptureStopped(result) {
     const sessionSrc = liveSessionReportCardSource(sessionWindows, lcStore.getState().measurementSource, channelConfig);
     if (sessionSrc) {
       anaStore.getState().setLiveSource(sessionSrc); // freeze the session card onto the Report Card tab
+      frozenLiveSourceForResume = sessionSrc; // #776: survive the auto-resume's liveWindows reset (see onCaptureStarting)
       window.reportCardChrome.persistSummary(sessionSrc, 'live');
       document.getElementById('rc-offer').style.display = 'flex';
       hydrateIcons(document.getElementById('rc-offer'));
