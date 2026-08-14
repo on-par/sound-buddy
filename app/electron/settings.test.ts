@@ -759,6 +759,76 @@ describe('writeSettingsFile failure', () => {
   });
 });
 
+describe('soundcheckBuses (#756 — persisted named bus definitions for Virtual Soundcheck)', () => {
+  it('round-trips a full bus array through an update, the raw file, and a fresh read', () => {
+    const buses = [
+      { id: 'b1', name: 'Acoustic Guitar', pattern: 'ag', outputChannel: 3 },
+      { id: 'b2', name: 'Kick', pattern: 'kick', outputChannel: 0 },
+    ];
+    const after = updateSettings({ soundcheckBuses: buses });
+    expect(after.soundcheckBuses).toEqual(buses);
+    expect(readFile().soundcheckBuses).toEqual(buses);
+    expect(getSettings().soundcheckBuses).toEqual(buses);
+  });
+
+  it('defaults to [] when settings.json is absent or lacks the key', () => {
+    expect(getSettings().soundcheckBuses).toEqual([]);
+    writeFile({ idealProfile: '' });
+    expect(getSettings().soundcheckBuses).toEqual([]);
+  });
+
+  it('treats a corrupted soundcheckBuses value (string/object) as []', () => {
+    writeFile({ soundcheckBuses: 'nope' });
+    expect(getSettings().soundcheckBuses).toEqual([]);
+    writeFile({ soundcheckBuses: { not: 'an array' } });
+    expect(getSettings().soundcheckBuses).toEqual([]);
+  });
+
+  it('drops invalid entries and dedupes by id keeping the first occurrence', () => {
+    const buses = [
+      { id: 'b1', name: 'Acoustic Guitar', pattern: 'ag', outputChannel: 3 },
+      { id: 'b1', name: 'Duplicate', pattern: 'dup', outputChannel: 5 },
+      { id: 'b2', name: '', pattern: 'x', outputChannel: 1 },
+      { id: 'b3', name: 'Blank Pattern', pattern: '   ', outputChannel: 1 },
+      { id: 'b4', name: 'No Alphanumeric', pattern: '!!!', outputChannel: 1 },
+      { id: 'b5', name: 'Negative Channel', pattern: 'x', outputChannel: -2 },
+      { id: 'b6', name: 'Fractional Channel', pattern: 'x', outputChannel: 1.5 },
+      { id: 'b7', name: 'String Channel', pattern: 'x', outputChannel: '3' },
+      { id: '', name: 'Empty Id', pattern: 'x', outputChannel: 1 },
+      { id: 'b8', name: 'Missing Pattern', outputChannel: 1 },
+      'not an object',
+      42,
+    ];
+    const after = updateSettings({ soundcheckBuses: buses });
+    expect(after.soundcheckBuses).toEqual([{ id: 'b1', name: 'Acoustic Guitar', pattern: 'ag', outputChannel: 3 }]);
+  });
+
+  it('trims and caps name/pattern at the named length caps', () => {
+    const long = 'x'.repeat(60);
+    const after = updateSettings({
+      soundcheckBuses: [{ id: 'b1', name: `  ${long}  `, pattern: long, outputChannel: 1 }],
+    });
+    expect(after.soundcheckBuses).toEqual([
+      { id: 'b1', name: 'x'.repeat(40), pattern: 'x'.repeat(40), outputChannel: 1 },
+    ]);
+  });
+
+  it('unrelated updates preserve stored soundcheckBuses', () => {
+    const buses = [{ id: 'b1', name: 'AG', pattern: 'ag', outputChannel: 3 }];
+    updateSettings({ soundcheckBuses: buses });
+    updateSettings({ idealProfile: 'broadcast' });
+    expect(readFile().soundcheckBuses).toEqual(buses);
+    expect(getSettings().soundcheckBuses).toEqual(buses);
+  });
+
+  it('survives a rigs write untouched', () => {
+    const buses = [{ id: 'b1', name: 'AG', pattern: 'ag', outputChannel: 3 }];
+    updateSettings({ soundcheckBuses: buses });
+    upsertRig(makeRig());
+    expect(readFile().soundcheckBuses).toEqual(buses);
+  });
+});
+
 describe('SOUND_BUDDY_IDEAL_PROFILE env override', () => {
   afterEach(() => {
     delete process.env.SOUND_BUDDY_IDEAL_PROFILE;
@@ -794,6 +864,7 @@ describe('SETTING_SPECS — the single owner of every field invariant (#747)', (
     measurementDeviceName: '',
     gradingProfile: 'casual',
     consoleNetworkConsentGranted: false,
+    soundcheckBuses: [],
   };
 
   it('covers every AppSettings key — and no extras (compile-time + runtime set equality)', () => {

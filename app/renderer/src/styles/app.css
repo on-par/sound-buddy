@@ -636,6 +636,19 @@
     .sc-elapsed { text-align:center; font:var(--fw-regular) var(--fs-label)/1 var(--font-mono); color:var(--text-muted); }
     .sc-status { padding:8px 10px; border-radius:var(--radius-md); border:1px solid var(--issue-500); color:var(--issue-text); font:var(--fw-regular) var(--fs-micro)/1.3 var(--font-sans); text-align:center; }
 
+    /* Saved soundcheck buses (#756): persisted label-pattern → output-channel
+       routing, listed between the tracks & routing list and the master toggle. */
+    .sc-buses { display:flex; flex-direction:column; gap:6px; margin:6px 0; }
+    .sc-bus { display:flex; align-items:center; gap:6px; }
+    .sc-bus-name { flex:1 1 80px; min-width:0; font:var(--fw-medium) var(--fs-label)/1 var(--font-sans); color:var(--text-primary); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .sc-bus-pattern { max-width:120px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .sc-bus-route { flex:0 0 auto; height:var(--control-h-sm); padding:0 6px; border-radius:var(--radius-md); background:var(--surface-raised); color:var(--text-primary); border:1px solid var(--border-default); font:var(--fw-medium) var(--fs-label)/1 var(--font-sans); }
+    .sc-bus-delete { flex:0 0 auto; }
+    .sc-bus-add { display:flex; align-items:center; gap:6px; margin-top:4px; }
+    .sc-bus-add input { flex:1 1 0; min-width:0; height:var(--control-h-sm); padding:0 8px; border-radius:var(--radius-md); background:var(--surface-raised); color:var(--text-primary); border:1px solid var(--border-default); font:var(--fw-medium) var(--fs-label)/1 var(--font-sans); }
+    .sc-bus-add input::placeholder { color:var(--text-tertiary); }
+    .sc-bus-add select { flex:0 0 auto; height:var(--control-h-sm); padding:0 6px; border-radius:var(--radius-md); background:var(--surface-raised); color:var(--text-primary); border:1px solid var(--border-default); font:var(--fw-medium) var(--fs-label)/1 var(--font-sans); }
+
     /* Spectrum panel */
     #spectrum-panel { flex:1; display:flex; flex-direction:column; min-width:0; overflow:hidden; }
 

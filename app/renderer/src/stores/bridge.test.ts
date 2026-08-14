@@ -292,6 +292,7 @@ describe('installStoreBridge', () => {
     measurementDeviceName: '',
     gradingProfile: 'casual',
     consoleNetworkConsentGranted: false,
+    soundcheckBuses: [],
   };
 
   it('seeds idealProfilesStore from settings once they first load, and pushes the resolved profile into spectrumStore', () => {

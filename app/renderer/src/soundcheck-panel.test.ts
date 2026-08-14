@@ -8,8 +8,12 @@ import {
   mixdownNoticeText,
   playGuardOk,
   sameTrackShape,
+  busPatternMatches,
+  applyBusRoutes,
   type SessionManifest,
+  type SessionManifestTrack,
 } from './soundcheck-panel';
+import type { SoundcheckBus } from '../../electron/ipc/api';
 
 // The pure playback-routing.js classic-script this module reads off
 // `window.playbackRouting` — real module, same convention as
@@ -173,5 +177,78 @@ describe('sameTrackShape', () => {
     expect(sameTrackShape(null, a)).toBe(false);
     expect(sameTrackShape(a, null)).toBe(false);
     expect(sameTrackShape(null, null)).toBe(false);
+  });
+});
+
+describe('busPatternMatches', () => {
+  it('matches an exact label case-insensitively', () => {
+    expect(busPatternMatches('AG', 'ag')).toBe(true);
+    expect(busPatternMatches('ag', 'AG')).toBe(true);
+  });
+
+  it('matches a case-insensitive substring', () => {
+    expect(busPatternMatches('AG Left', 'ag')).toBe(true);
+    expect(busPatternMatches('acoustic-guitar', 'guitar')).toBe(true);
+  });
+
+  it('does not match when the pattern is absent from the label', () => {
+    expect(busPatternMatches('Vocal', 'ag')).toBe(false);
+  });
+
+  it('never matches an empty label', () => {
+    expect(busPatternMatches('', 'ag')).toBe(false);
+    expect(busPatternMatches('   ', 'ag')).toBe(false);
+  });
+
+  it('never matches an empty pattern', () => {
+    expect(busPatternMatches('AG', '')).toBe(false);
+    expect(busPatternMatches('AG', '   ')).toBe(false);
+  });
+});
+
+describe('applyBusRoutes', () => {
+  const buses: SoundcheckBus[] = [{ id: 'b1', name: 'Acoustic Guitar', pattern: 'ag', outputChannel: 3 }];
+
+  it('routes a matched mono track to the bus output channel', () => {
+    const tracks: SessionManifestTrack[] = [{ kind: 'mono', label: 'AG' }];
+    expect(applyBusRoutes(tracks, [[0]], buses)).toEqual([[3]]);
+  });
+
+  it('routes a matched stereo track to the adjacent pair [c, c+1]', () => {
+    const tracks: SessionManifestTrack[] = [{ kind: 'stereo', label: 'AG' }];
+    expect(applyBusRoutes(tracks, [[0, 1]], buses)).toEqual([[3, 4]]);
+  });
+
+  it('leaves an unmatched track on its base route', () => {
+    const tracks: SessionManifestTrack[] = [{ kind: 'mono', label: 'Vocal' }];
+    expect(applyBusRoutes(tracks, [[2]], buses)).toEqual([[2]]);
+  });
+
+  it('first matching bus in definition order wins when several match', () => {
+    const tracks: SessionManifestTrack[] = [{ kind: 'mono', label: 'AG' }];
+    const twoBuses: SoundcheckBus[] = [
+      { id: 'b1', name: 'Acoustic Guitar', pattern: 'ag', outputChannel: 3 },
+      { id: 'b2', name: 'Broad', pattern: 'a', outputChannel: 7 },
+    ];
+    expect(applyBusRoutes(tracks, [[0]], twoBuses)).toEqual([[3]]);
+  });
+
+  it('leaves every base route untouched when there are no buses', () => {
+    const tracks: SessionManifestTrack[] = [{ kind: 'mono', label: 'AG' }, { kind: 'mono', label: 'Vocal' }];
+    expect(applyBusRoutes(tracks, [[5], [6]], [])).toEqual([[5], [6]]);
+  });
+
+  it('matches on the stem basename when the label is blank', () => {
+    const tracks: SessionManifestTrack[] = [{ kind: 'mono', file: '/tmp/session/ag-left.wav' }];
+    expect(applyBusRoutes(tracks, [[0]], buses)).toEqual([[3]]);
+  });
+
+  it('returns exactly one route per track', () => {
+    const tracks: SessionManifestTrack[] = [
+      { kind: 'mono', label: 'AG' },
+      { kind: 'stereo', label: 'OH' },
+      { kind: 'mono' },
+    ];
+    expect(applyBusRoutes(tracks, [[0], [1, 2], [4]], buses)).toEqual([[3], [1, 2], [4]]);
   });
 });
