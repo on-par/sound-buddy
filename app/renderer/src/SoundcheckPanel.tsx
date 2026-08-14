@@ -215,7 +215,9 @@ export default function SoundcheckPanel(): JSX.Element {
   }, [timeline]);
   /* c8 ignore stop */
 
-  const tracks = soundcheckTrackListView(manifest, routes, deviceChannels, playing);
+  // #759: routing stays editable during playback now (soundcheckTrackListView
+  // carries no `disabled` field) — no `playing` arg to pass here anymore.
+  const tracks = soundcheckTrackListView(manifest, routes, deviceChannels);
   const playOk = playGuardOk(manifest, devicesLoaded, playing);
 
   return (
@@ -261,7 +263,6 @@ export default function SoundcheckPanel(): JSX.Element {
                 className="sc-route"
                 data-idx={t.index}
                 data-kind={t.stereo ? 'stereo' : 'mono'}
-                disabled={t.disabled}
                 value={t.routeBase}
                 onChange={(e) => useSoundcheckStore.getState().setRoute(t.index, parseInt(e.target.value, 10))}
               >

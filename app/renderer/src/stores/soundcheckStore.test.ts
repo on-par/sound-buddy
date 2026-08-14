@@ -225,6 +225,23 @@ describe('createSoundcheckStore', () => {
       store.getState().setRoute(5, 0);
       expect(store.getState().routes).toEqual([[0], [1, 2]]);
     });
+
+    it('hot-swaps the FULL route spec to the running engine while playing (#759)', () => {
+      const { store, mock } = makeStore();
+      store.setState({ manifest: MANIFEST, routes: [[0], [1, 2]], playing: true });
+      store.getState().setRoute(0, 3);
+      expect(mock.calls).toContainEqual({
+        method: 'setPlaybackRoutes',
+        args: [{ route: '0:3,1:1-2' }],
+      });
+    });
+
+    it('sends nothing while stopped (the next play() resends the full spec)', () => {
+      const { store, mock } = makeStore();
+      store.setState({ manifest: MANIFEST, routes: [[0], [1, 2]], playing: false });
+      store.getState().setRoute(0, 3);
+      expect(mock.calls).toEqual([]);
+    });
   });
 
   describe('setMaster', () => {

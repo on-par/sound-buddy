@@ -36,7 +36,13 @@ import {
 
 export type SoundcheckApi = Pick<
   PlaybackApi,
-  'listOutputDevices' | 'startPlayback' | 'stopPlayback' | 'readSession' | 'onPlaybackEvent' | 'generateSessionPeaks'
+  | 'listOutputDevices'
+  | 'startPlayback'
+  | 'stopPlayback'
+  | 'setPlaybackRoutes'
+  | 'readSession'
+  | 'onPlaybackEvent'
+  | 'generateSessionPeaks'
 > &
   Pick<DialogApi, 'openDirDialog'>;
 
@@ -182,6 +188,14 @@ export function createSoundcheckStore(getApi: () => SoundcheckApi) {
       const nextRoute = track.kind === 'stereo' ? [base, base + 1] : [base];
       const routes = state.routes.map((r, i) => (i === trackIndex ? nextRoute : r));
       set({ routes, mixdownNotice: mixdownNoticeText(state.manifest, routes, state.deviceChannels, state.master) });
+      // Hot-swap while playing (#759): push the FULL routing spec to the
+      // running playback.py (idempotent, last-wins) so audio actually moves.
+      // zustand `set` is synchronous, so `get().playing` reflects the new
+      // state here. Nothing is sent while stopped — the next play() already
+      // sends the full spec via startPlayback.
+      if (get().playing) {
+        void getApi().setPlaybackRoutes({ route: getPlaybackRouting().routeSpec(routes) });
+      }
     },
 
     setMaster(master) {

@@ -38,28 +38,28 @@ describe('outputDeviceListView', () => {
 
 describe('soundcheckTrackListView', () => {
   it('returns [] when there is no manifest', () => {
-    expect(soundcheckTrackListView(null, [], 0, false)).toEqual([]);
+    expect(soundcheckTrackListView(null, [], 0)).toEqual([]);
   });
 
   it('returns [] when the manifest has no tracks', () => {
-    expect(soundcheckTrackListView({ tracks: [] }, [], 0, false)).toEqual([]);
+    expect(soundcheckTrackListView({ tracks: [] }, [], 0)).toEqual([]);
   });
 
   it('falls back to "Track N" when a track has no label', () => {
     const manifest: SessionManifest = { tracks: [{ kind: 'mono' }] };
-    const rows = soundcheckTrackListView(manifest, [[0]], 2, false);
+    const rows = soundcheckTrackListView(manifest, [[0]], 2);
     expect(rows[0].label).toBe('Track 1');
   });
 
   it('uses the track label when present', () => {
     const manifest: SessionManifest = { tracks: [{ kind: 'mono', label: 'Vocal' }] };
-    const rows = soundcheckTrackListView(manifest, [[0]], 2, false);
+    const rows = soundcheckTrackListView(manifest, [[0]], 2);
     expect(rows[0].label).toBe('Vocal');
   });
 
   it('builds mono channel options up to max(deviceChannels, 1)', () => {
     const manifest: SessionManifest = { tracks: [{ kind: 'mono' }] };
-    const rows = soundcheckTrackListView(manifest, [[1]], 4, false);
+    const rows = soundcheckTrackListView(manifest, [[1]], 4);
     expect(rows[0].stereo).toBe(false);
     expect(rows[0].routeBase).toBe(1);
     expect(rows[0].options).toEqual([
@@ -72,7 +72,7 @@ describe('soundcheckTrackListView', () => {
 
   it('builds stereo channel options as adjacent pairs up to max(deviceChannels, 2)', () => {
     const manifest: SessionManifest = { tracks: [{ kind: 'stereo' }] };
-    const rows = soundcheckTrackListView(manifest, [[0, 1]], 4, false);
+    const rows = soundcheckTrackListView(manifest, [[0, 1]], 4);
     expect(rows[0].stereo).toBe(true);
     expect(rows[0].options).toEqual([
       { value: 0, label: 'Ch 1-2', selected: true },
@@ -83,20 +83,22 @@ describe('soundcheckTrackListView', () => {
 
   it('defaults deviceChannels to 2 minimum when unknown (0 = default output)', () => {
     const manifest: SessionManifest = { tracks: [{ kind: 'stereo' }] };
-    const rows = soundcheckTrackListView(manifest, [[0, 1]], 0, false);
+    const rows = soundcheckTrackListView(manifest, [[0, 1]], 0);
     expect(rows[0].options).toEqual([{ value: 0, label: 'Ch 1-2', selected: true }]);
   });
 
   it('defaults a missing route to channel 0', () => {
     const manifest: SessionManifest = { tracks: [{ kind: 'mono' }] };
-    const rows = soundcheckTrackListView(manifest, [], 2, false);
+    const rows = soundcheckTrackListView(manifest, [], 2);
     expect(rows[0].routeBase).toBe(0);
   });
 
-  it('disables every row while playing', () => {
+  it('never carries a disabled field (routing stays editable while playing)', () => {
     const manifest: SessionManifest = { tracks: [{ kind: 'mono' }, { kind: 'stereo' }] };
-    const rows = soundcheckTrackListView(manifest, [[0], [1, 2]], 4, true);
-    expect(rows.every((r) => r.disabled)).toBe(true);
+    const rows = soundcheckTrackListView(manifest, [[0], [1, 2]], 4);
+    expect(rows).toHaveLength(2);
+    expect(rows[0]).not.toHaveProperty('disabled');
+    expect(rows[1]).not.toHaveProperty('disabled');
   });
 });
 
