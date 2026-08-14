@@ -17,6 +17,7 @@
 // imported globally).
 
 import { MAX_NOTE_LENGTH } from '../../electron/ipc/api';
+import type { AnalysisPayload } from '@sound-buddy/shared';
 import {
   escapeHtml, toPct, DIM_DB, HOT_DB, GRID, BAND_META,
   heatmapSVG, miniCurveSVG, fmtDur, classLabel, pickRepresentativeFrames,
@@ -521,29 +522,18 @@ export function recListHTML(recs: string[], escapeText: boolean): string {
 
 /* ── Analysis → report-card source (getReportCardSource()'s file branch,
    inline-app.js:2354–2376) ── */
-export interface AnalysisLike {
-  sox?: { rmsDbfs: number; peakDbfs: number; dynamicRangeDb: number | null; clipping: boolean } | null;
-  spectrum?: {
-    spectralCentroid?: number;
-    bands?: Record<string, number>;
-    curve?: unknown;
-    contentType?: string | null;
-    segments?: unknown;
-    frames?: unknown;
-  } | null;
-  ffprobe?: { format?: { filename?: string } } | null;
-  loudness?: { integratedLufs?: number | null; loudnessRange?: number | null; truePeakDbtp?: number | null } | null;
-}
 
-// The analysis payload stays `unknown` at the render boundary (TD-011) — this
-// narrows it to the ReportCardSource shape the card renders from, mirroring
-// getReportCardSource()'s file branch. Returns null for a shape too malformed
-// to build a card from (missing sox/spectrum).
-export function reportCardSourceFromAnalysis(analysis: unknown): ReportCardSource | null {
+// The analysis payload is typed against the shared AnalysisPayload contract
+// (#748) — this narrows it to the ReportCardSource shape the card renders
+// from, mirroring getReportCardSource()'s file branch. Returns null for a
+// shape too malformed to build a card from (missing sox/spectrum). The guards
+// below are runtime-only defense against producer/disk drift now that the
+// param is typed — the analyzer never emits null here, but a stale payload on
+// disk or a future producer change still can.
+export function reportCardSourceFromAnalysis(analysis: AnalysisPayload): ReportCardSource | null {
   if (typeof analysis !== 'object' || analysis === null) return null;
-  const a = analysis as AnalysisLike;
-  if (!a.sox || !a.spectrum) return null;
-  const { sox, spectrum, ffprobe, loudness } = a;
+  if (!analysis.sox || !analysis.spectrum) return null;
+  const { sox, spectrum, ffprobe, loudness } = analysis;
   return {
     filename: (ffprobe?.format?.filename || '').split('/').pop() || 'Untitled',
     rms: sox.rmsDbfs,

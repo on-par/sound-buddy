@@ -12,7 +12,8 @@ import { useSpectrumStore } from './stores/spectrumStore';
 import { useSettingsStore } from './stores/settingsStore';
 import { createMockSoundBuddy } from './mock-sound-buddy';
 import type { GradingPillApi, BandDiffApi } from './report-card';
-import type { AppSettings } from '../../electron/ipc/api';
+import type { AppSettings, AnalysisSummary } from '../../electron/ipc/api';
+import type { AnalysisPayload } from '@sound-buddy/shared';
 
 const require = createRequire(import.meta.url);
 const reportFirstUxState = require('../report-first-ux-state.js');
@@ -56,18 +57,74 @@ const audioEngineSpectralMock = { findSpectralPeaks: () => [] };
 const inlineDialogsMock = { openFeedbackRingout: () => {}, openBuildGuide: () => {} };
 
 const ANALYSIS = {
-  sox: { rmsDbfs: -18, peakDbfs: -6, dynamicRangeDb: 12, clipping: false },
+  filePath: '/fake/silence.wav',
+  sox: {
+    samplesRead: 441000,
+    lengthSeconds: 10,
+    scaledBy: 1,
+    maximumAmplitude: 0.9,
+    minimumAmplitude: -0.9,
+    midlineAmplitude: 0,
+    meanNorm: 0.2,
+    meanAmplitude: 0.1,
+    rmsAmplitude: 0.2,
+    maximumDelta: 0.8,
+    minimumDelta: 0,
+    meanDelta: 0.1,
+    rmsDelta: 0.15,
+    roughFrequency: 440,
+    volumeAdjustment: 0,
+    rmsDbfs: -18,
+    peakDbfs: -6,
+    dynamicRangeDb: 12,
+    clipping: false,
+  },
   spectrum: {
     spectralCentroid: 1200,
+    spectralRolloff85: 4800,
+    dynamicRange: 12,
     bands: { subBass: -20, bass: -18, lowMid: -22, mid: -16, highMid: -25, presence: -30, brilliance: -35 },
-    curve: null,
     contentType: 'speech',
-    segments: null,
     frames: [],
   },
-  ffprobe: { format: { filename: '/fake/silence.wav' } },
+  ffprobe: {
+    format: {
+      filename: '/fake/silence.wav',
+      formatName: 'wav',
+      formatLongName: 'WAV / WAVE (Waveform Audio)',
+      durationSeconds: 10,
+      sizeBytes: 441000,
+      bitRate: 1411200,
+      tags: {},
+    },
+    stream: {
+      codecName: 'pcm_s16le',
+      codecLongName: 'PCM signed 16-bit little-endian',
+      channels: 1,
+      channelLayout: 'mono',
+      sampleRate: 44100,
+      bitDepth: 16,
+      bitRate: 705600,
+      durationSeconds: 10,
+    },
+  },
   loudness: null,
-};
+} satisfies AnalysisPayload;
+
+// Full contract-shaped literal for the now-typed prevSummary store field
+// (#748) — the "vs. last time" delta reads only score/gradeLetter, but the
+// store field demands the whole AnalysisSummary shape.
+function makeSummary(overrides: Partial<AnalysisSummary> = {}): AnalysisSummary {
+  return {
+    date: '2026-07-01T09:00:00.000Z',
+    sourceFilename: 'prev.wav',
+    gradeLetter: 'B',
+    score: 83,
+    recordingType: 'Music',
+    topFixes: [],
+    ...overrides,
+  };
+}
 
 beforeEach(() => {
   (globalThis as { window?: unknown }).window = {
@@ -250,7 +307,7 @@ describe('ReportCardIsland', () => {
   it('shows the "vs. last time" delta on the fresh file-analysis card when prevSummary is set (#259)', () => {
     useAnalysisStore.setState({
       currentAnalysis: ANALYSIS,
-      prevSummary: { score: 83, gradeLetter: 'B' },
+      prevSummary: makeSummary({ score: 83, gradeLetter: 'B' }),
     });
 
     const html = renderMarkup();
@@ -277,7 +334,7 @@ describe('ReportCardIsland', () => {
         recordingType: 'Music',
         topFixes: [],
       },
-      prevSummary: { score: 83, gradeLetter: 'B' },
+      prevSummary: makeSummary({ score: 83, gradeLetter: 'B' }),
     });
 
     const html = renderMarkup();
@@ -297,7 +354,7 @@ describe('ReportCardIsland', () => {
         centroid: 1200,
         bands: { subBass: -20, bass: -18, lowMid: -22, mid: -16, highMid: -25, presence: -30, brilliance: -35 },
       },
-      prevSummary: { score: 83, gradeLetter: 'B' },
+      prevSummary: makeSummary({ score: 83, gradeLetter: 'B' }),
     });
 
     const html = renderMarkup();

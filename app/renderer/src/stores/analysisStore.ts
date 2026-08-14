@@ -3,13 +3,16 @@
 
 import { create } from 'zustand';
 import { getSoundBuddy } from '../useElectron';
-import type { AnalysisApi, AnalysisProgress } from '../../../electron/ipc/api';
+import type { AnalysisApi, AnalysisProgress, AnalysisSummary } from '../../../electron/ipc/api';
+import type { AnalysisPayload } from '@sound-buddy/shared';
+import type { ReportCardSource } from '../report-card';
 
 export type AnalysisStatus = 'idle' | 'analyzing' | 'done' | 'cancelled' | 'error';
 
 export interface AnalysisState {
-  // AnalyzeFileResult.data is deliberately unknown at the boundary (TD-011).
-  currentAnalysis: unknown;
+  // The analyze-file payload, typed against the shared AnalysisPayload
+  // contract (#748) — no longer unknown at the boundary.
+  currentAnalysis: AnalysisPayload | null;
   isAnalyzing: boolean;
   status: AnalysisStatus;
   analysisProgress: AnalysisProgress | null;
@@ -20,14 +23,14 @@ export interface AnalysisState {
   selectedFilePath: string | null;
   // A stored report-card summary loaded from Recent Services (#147) — set by
   // setHistorySummary(), read when currentAnalysis/liveSource are both empty.
-  historySummary: unknown | null;
+  historySummary: AnalysisSummary | null;
   // The live-capture card's resolved report-card source shape (mirrors
   // getReportCardSource()'s live fallback), written by the still-inline live
   // capture code as windows arrive/clear (#208, TD-001 slice 4).
-  liveSource: unknown | null;
+  liveSource: ReportCardSource | null;
   // The persisted summary immediately preceding the card currently shown —
   // feeds the "vs. last time" delta, #259.
-  prevSummary: unknown | null;
+  prevSummary: AnalysisSummary | null;
   // Basename of the record saveAnalysisSummary just wrote for the currently-
   // shown fresh card (#267) — null until that fire-and-forget save resolves,
   // and whenever a historical card is loaded instead (the handoff note is
@@ -39,9 +42,9 @@ export interface AnalysisState {
   bindIpcEvents(): void;
   selectFile(filePath: string): void;
   clearAnalysis(): void;
-  setHistorySummary(summary: unknown | null): void;
-  setLiveSource(source: unknown | null): void;
-  setPrevSummary(summary: unknown | null): void;
+  setHistorySummary(summary: AnalysisSummary | null): void;
+  setLiveSource(source: ReportCardSource | null): void;
+  setPrevSummary(summary: AnalysisSummary | null): void;
   setLastSavedSummaryFile(file: string | null): void;
   // The sb.onAnalysisResult 'stats' push path (inline-app.js, #208) — a
   // real-time re-analysis result pushed from the main process outside the
@@ -93,7 +96,9 @@ export function createAnalysisStore(getApi: () => AnalysisApi) {
     bindIpcEvents() {
       const api = getApi();
       api.onAnalysisProgress((p) => set({ analysisProgress: p }));
-      api.onAnalysisResult((data) => set({ currentAnalysis: data, isAnalyzing: false }));
+      // The 'analysis-result' stream stays a deliberately-`unknown` envelope
+      // (TD-011) — the pre-existing single cast is the allowed escape.
+      api.onAnalysisResult((data) => set({ currentAnalysis: data as AnalysisPayload, isAnalyzing: false }));
     },
     selectFile(filePath) {
       set({ selectedFilePath: filePath });
@@ -116,7 +121,9 @@ export function createAnalysisStore(getApi: () => AnalysisApi) {
     setAnalysisFromEvent(data) {
       const evt = data as { type?: string; data?: unknown } | null;
       if (evt && evt.type === 'stats' && evt.data) {
-        set({ currentAnalysis: evt.data, historySummary: null });
+        // The runtime `type === 'stats' && data` guard is the shape validation
+        // (the pre-existing narrowing), so this is the single allowed cast.
+        set({ currentAnalysis: evt.data as AnalysisPayload, historySummary: null });
       }
     },
   }));
