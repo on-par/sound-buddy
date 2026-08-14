@@ -180,7 +180,10 @@ test.describe.serial('Purchase path smoke — prefilled email (#56)', () => {
 
   test('a lapsed subscriber lands in Stripe with their email pre-filled', async () => {
     // The expired-but-email-retaining key keeps the momentum card up (tier free).
-    await expect(win.locator('#rc-upgrade')).toBeVisible();
+    // The card's first-result hold (#296) is a 6s window from boot (the Upgrade
+    // Momentum component resolves it once at mount, before the helper's
+    // first-seen pre-seed lands) — wait it out like momentum.spec.ts does.
+    await expect(win.locator('#rc-upgrade')).toBeVisible({ timeout: 15_000 });
 
     await win.locator('#rcu-cta [data-checkout-plan="monthly"]').click();
     await expect
