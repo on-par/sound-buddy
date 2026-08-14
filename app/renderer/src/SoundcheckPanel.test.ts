@@ -21,8 +21,15 @@ afterEach(() => {
     selectedDevice: '', deviceChannels: 0, master: false, playing: false,
     elapsedText: null, mixdownNotice: null, statusMessage: null,
     lastElapsedTick: null, lastMeterTick: null,
+    // #735: a peaks document (or its status) left over from one test would
+    // leak the waveform block into the next — zustand setState merges.
+    peaks: null, peaksStatus: 'idle',
   });
 });
+
+function b64(bytes: number[]): string {
+  return Buffer.from(bytes).toString('base64');
+}
 
 function renderMarkup(): string {
   return renderToString(createElement(SoundcheckPanel));
@@ -114,5 +121,48 @@ describe('SoundcheckPanel', () => {
     const html = renderMarkup();
     expect(html).toContain('role="alert"');
     expect(html).toContain('Could not start playback.');
+  });
+
+  it('renders no waveform block before any session/peaks load', () => {
+    expect(renderMarkup()).not.toContain('id="sc-waveforms"');
+    expect(renderMarkup()).not.toContain('Generating waveforms');
+  });
+
+  it('shows the generating hint while peaks are being produced', () => {
+    useSoundcheckStore.setState({ peaks: null, peaksStatus: 'generating' });
+    const html = renderMarkup();
+    expect(html).toContain('id="sc-waveforms"');
+    expect(html).toContain('Generating waveforms');
+    expect(html).not.toContain('sc-waveform-lane');
+  });
+
+  it('stays silent on a peaks generation error', () => {
+    useSoundcheckStore.setState({ peaks: null, peaksStatus: 'error' });
+    const html = renderMarkup();
+    expect(html).not.toContain('id="sc-waveforms"');
+    expect(html).not.toContain('Generating waveforms');
+  });
+
+  it('renders one waveform lane per track when peaks are ready', () => {
+    useSoundcheckStore.setState({
+      peaks: {
+        bucketsPerSecond: 50,
+        tracks: [
+          { index: 0, label: 'Kick', kind: 'mono', bucketCount: 2, data: b64([0, 255, 64, 192]) },
+          { index: 1, label: 'OH', kind: 'stereo', bucketCount: 1, data: b64([32, 224]) },
+        ],
+      },
+      peaksStatus: 'ready',
+    });
+    const html = renderMarkup();
+    expect(html).toContain('id="sc-waveforms"');
+    expect(html).toContain('class="sc-waveform-lane" data-idx="0"');
+    expect(html).toContain('class="sc-waveform-lane" data-idx="1"');
+    expect(html).toContain('class="sc-waveform-name"');
+    expect(html).toContain('class="sc-waveform-canvas" data-idx="0"');
+    expect(html).toContain('class="sc-waveform-canvas" data-idx="1"');
+    expect(html).toContain('>Kick</span>');
+    expect(html).toContain('>OH</span>');
+    expect(html).not.toContain('Generating waveforms');
   });
 });

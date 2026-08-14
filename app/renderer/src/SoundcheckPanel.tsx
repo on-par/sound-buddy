@@ -11,7 +11,7 @@
 // React entirely via the mounted soundcheck-transport-controller, which
 // patches #sc-elapsed/#spectrum-imperative directly — see that file's header.
 
-import { useEffect, type JSX } from 'react';
+import { useEffect, useMemo, type JSX } from 'react';
 import { useStoreShallow } from './stores/useStoreShallow';
 import { useSoundcheckStore } from './stores/soundcheckStore';
 import { useSpectrumStore } from './stores/spectrumStore';
@@ -19,6 +19,11 @@ import { createSoundcheckTransportController } from './soundcheck-transport-cont
 import { soundcheckTrackListView, playGuardOk, type SoundcheckMeterTrack } from './soundcheck-panel';
 import { iconSvg, fmt } from './report-card';
 import { escapeHtml, formatClock } from './spectrum-display';
+import {
+  sessionPeakTimeline,
+  drawSoundcheckWaveform,
+  type WaveformCanvasLike,
+} from './soundcheck-waveform';
 
 /* c8 ignore start -- real DOM-patching wiring, no jsdom in this harness
    (renderToString doesn't run effects) — exercised by
@@ -54,6 +59,7 @@ export default function SoundcheckPanel(): JSX.Element {
   const {
     manifest, sessionDir, devices, selectedDevice, deviceChannels, devicesLoaded,
     master, playing, elapsedText, mixdownNotice, statusMessage, routes,
+    peaks, peaksStatus,
   } = useStoreShallow(useSoundcheckStore, (s) => ({
     manifest: s.manifest,
     sessionDir: s.sessionDir,
@@ -67,7 +73,14 @@ export default function SoundcheckPanel(): JSX.Element {
     mixdownNotice: s.mixdownNotice,
     statusMessage: s.statusMessage,
     routes: s.routes,
+    peaks: s.peaks,
+    peaksStatus: s.peaksStatus,
   }));
+
+  // The shared-timeline lane model (#735): decode runs once per peaks object
+  // (one per session load), never per render — a full-length session's ~180k
+  // buckets stay out of every re-render.
+  const timeline = useMemo(() => sessionPeakTimeline(peaks), [peaks]);
 
   /* c8 ignore start -- real rAF + DOM-patching wiring, no jsdom in this
      harness — see the module-header note above. */
@@ -86,6 +99,42 @@ export default function SoundcheckPanel(): JSX.Element {
     controller.start();
     return () => controller.stop();
   }, []);
+  /* c8 ignore stop */
+
+  /* c8 ignore start -- real canvas-DOM wiring, no jsdom in this harness
+     (renderToString doesn't run effects); the decode/column/draw geometry is
+     exhaustively unit-tested in soundcheck-waveform.test.ts and this wiring
+     is gated by tests/e2e/virtual-soundcheck.spec.ts. */
+  useEffect(() => {
+    if (!timeline) return;
+    const container = document.getElementById('sc-waveforms');
+    const firstCanvas = container?.querySelector<HTMLCanvasElement>('.sc-waveform-canvas');
+    const firstWidth = firstCanvas?.clientWidth ?? 0;
+    // The shared-scale invariant (story 3 #735): one pxPerSecond derived from
+    // the FIRST canvas's width and the LONGEST track's duration, applied to
+    // every lane so they all share one time axis aligned at x=0.
+    const pxPerSecond = timeline.sessionDurationSecs > 0 ? firstWidth / timeline.sessionDurationSecs : 0;
+    if (pxPerSecond <= 0) return;
+    for (const lane of timeline.lanes) {
+      const canvas = container?.querySelector<HTMLCanvasElement>(`.sc-waveform-canvas[data-idx="${lane.index}"]`);
+      if (!canvas) continue;
+      const canvasWidth = canvas.clientWidth;
+      const canvasHeight = canvas.clientHeight;
+      if (canvasWidth <= 0 || canvasHeight <= 0) continue;
+      canvas.width = canvasWidth;
+      canvas.height = canvasHeight;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) continue;
+      drawSoundcheckWaveform(
+        ctx as unknown as WaveformCanvasLike,
+        lane.pairs,
+        timeline.bucketsPerSecond,
+        pxPerSecond,
+        canvasWidth,
+        canvasHeight,
+      );
+    }
+  }, [timeline]);
   /* c8 ignore stop */
 
   const tracks = soundcheckTrackListView(manifest, routes, deviceChannels, playing);
@@ -143,6 +192,20 @@ export default function SoundcheckPanel(): JSX.Element {
             </div>
           ))}
       </div>
+      {timeline != null ? (
+        <div id="sc-waveforms" className="sc-waveforms">
+          {timeline.lanes.map((lane) => (
+            <div className="sc-waveform-lane" data-idx={lane.index} key={lane.index}>
+              <span className="sc-waveform-name" title={lane.label}>{lane.label}</span>
+              <canvas className="sc-waveform-canvas" data-idx={lane.index} />
+            </div>
+          ))}
+        </div>
+      ) : peaksStatus === 'generating' ? (
+        <div id="sc-waveforms" className="sc-waveforms">
+          <div className="sc-waveforms-hint">Generating waveforms…</div>
+        </div>
+      ) : null}
       <label className="sc-master">
         <input
           type="checkbox"
