@@ -141,6 +141,33 @@ describe('Secondary measurement device source (#460, React-owned per #724)', () 
   });
 });
 
+describe('Header live dBFS readout (#767)', () => {
+  it('renders #live-level-readout at the right end of #header-right, after #live-indicator', () => {
+    const headerRightIdx = markup.indexOf('id="header-right"');
+    const liveIndicatorIdx = markup.indexOf('id="live-indicator"');
+    const readoutIdx = markup.indexOf('id="live-level-readout"');
+    expect(headerRightIdx).toBeGreaterThan(-1);
+    expect(liveIndicatorIdx).toBeGreaterThan(headerRightIdx);
+    expect(readoutIdx).toBeGreaterThan(liveIndicatorIdx);
+  });
+
+  it('starts hidden — patched visible only while an input device is actively monitoring', () => {
+    expect(markup).toMatch(/id="live-level-readout"[^>]*style="display:none"/);
+  });
+
+  it('is persistently labeled relative/dBFS and carries the calibrated-SPL honesty title', () => {
+    expect(markup).toContain('dBFS');
+    expect(markup).toContain('relative');
+    expect(markup).toContain('not calibrated SPL');
+    expect(markup).toContain('A calibrated reference microphone is required for true SPL readings.');
+  });
+
+  it('has value slots for the rms and peak readouts', () => {
+    expect(markup).toContain('id="live-level-rms"');
+    expect(markup).toContain('id="live-level-peak"');
+  });
+});
+
 describe('Existing tabs stay intact under the unified Analyze picker (#543)', () => {
   it('keeps all seven mode tabs, unchanged (now rendered by ModeTabs.tsx, TD-001 slice 6e, #703)', () => {
     const modeTabsMarkup = renderToString(createElement(ModeTabs));
