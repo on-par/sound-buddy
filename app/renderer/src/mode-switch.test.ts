@@ -117,6 +117,7 @@ function settings(overrides: Partial<AppSettings> = {}): AppSettings {
     reportFirstUxEnabled: false, shareChurchName: '', weeklyReminderEnabled: false,
     weeklyReminderServiceDay: 0, liveEqPaneWidth: 360,
     measurementDeviceName: '', gradingProfile: 'casual', consoleNetworkConsentGranted: false,
+    soundcheckBuses: [],
     ...overrides,
   };
 }

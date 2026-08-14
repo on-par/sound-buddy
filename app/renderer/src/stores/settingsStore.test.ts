@@ -30,7 +30,7 @@ describe('createSettingsStore', () => {
           rigs: [],
           activeRigId: null,
           usageSignalEnabled: false,
-          channelLabels: {}, channelGroups: {}, inputInstrumentProfiles: {}, crashReportingEnabled: true, dawWorkspaceEnabled: false, liveAdjustmentsEnabled: false, reportFirstUxEnabled: false, shareChurchName: '', weeklyReminderEnabled: false, weeklyReminderServiceDay: 0, liveEqPaneWidth: 360, measurementDeviceName: '', gradingProfile: 'casual' as const, consoleNetworkConsentGranted: false,
+          channelLabels: {}, channelGroups: {}, inputInstrumentProfiles: {}, crashReportingEnabled: true, dawWorkspaceEnabled: false, liveAdjustmentsEnabled: false, reportFirstUxEnabled: false, shareChurchName: '', weeklyReminderEnabled: false, weeklyReminderServiceDay: 0, liveEqPaneWidth: 360, measurementDeviceName: '', gradingProfile: 'casual' as const, consoleNetworkConsentGranted: false, soundcheckBuses: [],
         };
       },
     });
@@ -51,7 +51,7 @@ describe('createSettingsStore', () => {
       rigs: [],
       activeRigId: null,
       usageSignalEnabled: false,
-      channelLabels: {}, channelGroups: {}, inputInstrumentProfiles: {}, crashReportingEnabled: true, dawWorkspaceEnabled: false, liveAdjustmentsEnabled: false, reportFirstUxEnabled: false, shareChurchName: '', weeklyReminderEnabled: false, weeklyReminderServiceDay: 0, liveEqPaneWidth: 360, measurementDeviceName: '', gradingProfile: 'casual' as const, consoleNetworkConsentGranted: false,
+      channelLabels: {}, channelGroups: {}, inputInstrumentProfiles: {}, crashReportingEnabled: true, dawWorkspaceEnabled: false, liveAdjustmentsEnabled: false, reportFirstUxEnabled: false, shareChurchName: '', weeklyReminderEnabled: false, weeklyReminderServiceDay: 0, liveEqPaneWidth: 360, measurementDeviceName: '', gradingProfile: 'casual' as const, consoleNetworkConsentGranted: false, soundcheckBuses: [],
     };
     const mock = createMockSoundBuddy({
       updateSettings: async (patch) => {
@@ -97,7 +97,7 @@ describe('createSettingsStore', () => {
       rigs: [],
       activeRigId: null,
       usageSignalEnabled: false,
-      channelLabels: {}, channelGroups: {}, inputInstrumentProfiles: {}, crashReportingEnabled: false, dawWorkspaceEnabled: false, liveAdjustmentsEnabled: false, reportFirstUxEnabled: false, shareChurchName: '', weeklyReminderEnabled: false, weeklyReminderServiceDay: 0, liveEqPaneWidth: 360, measurementDeviceName: '', gradingProfile: 'casual' as const, consoleNetworkConsentGranted: false,
+      channelLabels: {}, channelGroups: {}, inputInstrumentProfiles: {}, crashReportingEnabled: false, dawWorkspaceEnabled: false, liveAdjustmentsEnabled: false, reportFirstUxEnabled: false, shareChurchName: '', weeklyReminderEnabled: false, weeklyReminderServiceDay: 0, liveEqPaneWidth: 360, measurementDeviceName: '', gradingProfile: 'casual' as const, consoleNetworkConsentGranted: false, soundcheckBuses: [],
     };
     const mock = createMockSoundBuddy({
       updateSettings: () => Promise.reject(new Error('write failed')),
@@ -130,7 +130,7 @@ describe('createSettingsStore', () => {
       rigs: [],
       activeRigId: null,
       usageSignalEnabled: false,
-      channelLabels: {}, channelGroups: {}, inputInstrumentProfiles: {}, crashReportingEnabled: false, dawWorkspaceEnabled: false, liveAdjustmentsEnabled: false, reportFirstUxEnabled: false, shareChurchName: '', weeklyReminderEnabled: false, weeklyReminderServiceDay: 0, liveEqPaneWidth: 360, measurementDeviceName: '', gradingProfile: 'casual' as const, consoleNetworkConsentGranted: true,
+      channelLabels: {}, channelGroups: {}, inputInstrumentProfiles: {}, crashReportingEnabled: false, dawWorkspaceEnabled: false, liveAdjustmentsEnabled: false, reportFirstUxEnabled: false, shareChurchName: '', weeklyReminderEnabled: false, weeklyReminderServiceDay: 0, liveEqPaneWidth: 360, measurementDeviceName: '', gradingProfile: 'casual' as const, consoleNetworkConsentGranted: true, soundcheckBuses: [],
     };
     const mock = createMockSoundBuddy({
       grantConsoleNetworkConsent: async () => {
@@ -195,7 +195,7 @@ describe('createSettingsStore', () => {
         rigs: [],
         activeRigId: null,
         usageSignalEnabled: false,
-        channelLabels: {}, channelGroups: {}, inputInstrumentProfiles: {}, crashReportingEnabled: true, dawWorkspaceEnabled: false, liveAdjustmentsEnabled: false, reportFirstUxEnabled: false, shareChurchName: '', weeklyReminderEnabled: false, weeklyReminderServiceDay: 0, liveEqPaneWidth: 360, measurementDeviceName: '', gradingProfile: 'casual' as const, consoleNetworkConsentGranted: false,
+        channelLabels: {}, channelGroups: {}, inputInstrumentProfiles: {}, crashReportingEnabled: true, dawWorkspaceEnabled: false, liveAdjustmentsEnabled: false, reportFirstUxEnabled: false, shareChurchName: '', weeklyReminderEnabled: false, weeklyReminderServiceDay: 0, liveEqPaneWidth: 360, measurementDeviceName: '', gradingProfile: 'casual' as const, consoleNetworkConsentGranted: false, soundcheckBuses: [],
       }),
     });
     (globalThis as { window?: unknown }).window = { soundBuddy: mock.api };

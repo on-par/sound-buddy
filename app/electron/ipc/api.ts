@@ -45,6 +45,7 @@ export interface UpdateSettingsPatch {
   measurementDeviceName?: string;
   gradingProfile?: 'casual' | 'broadcast';
   consoleNetworkConsentGranted?: boolean;
+  soundcheckBuses?: SoundcheckBus[];
 }
 
 export interface AnalyzeFileOpts {
@@ -206,6 +207,25 @@ export interface PersistedChannelGroup {
   collapsed?: boolean;
 }
 
+/**
+ * One persisted Virtual Soundcheck bus (#756): a label/filename match
+ * `pattern` plus a saved output-channel `base`. When a multi-track session's
+ * routes are (re)seeded, any track whose label or stem basename matches the
+ * pattern auto-routes to that bus's output channel. A newly-defined bus does
+ * NOT retro-route an already-loaded session — it applies on the next
+ * import/reseed (see the chooseSession keepPriorRoutes branch, ADR-0012).
+ */
+export interface SoundcheckBus {
+  /** Stable id, generated on create, for React keys and update/delete. */
+  id: string;
+  /** Display name, e.g. "Acoustic Guitar". */
+  name: string;
+  /** Match pattern, e.g. "ag". Lowercased at match time. */
+  pattern: string;
+  /** 0-indexed output-channel base the bus routes matched tracks to. */
+  outputChannel: number;
+}
+
 export interface CustomIdealProfile {
   id: string;
   label: string;
@@ -353,6 +373,14 @@ export interface AppSettings {
    * `dawWorkspaceEnabled`.
    */
   consoleNetworkConsentGranted: boolean;
+  /**
+   * Persisted named soundcheck bus definitions (#756): a label/filename
+   * pattern plus a saved output-channel base. When a multi-track session's
+   * routes are (re)seeded, tracks whose label or stem basename matches a
+   * bus's pattern auto-route to that bus's output (first match in definition
+   * order wins). Default []. No env layer — pure persisted data, like `rigs`.
+   */
+  soundcheckBuses: SoundcheckBus[];
 }
 
 // ─── Analysis / storage DTOs (AnalysisSummary moved from electron/storage.ts) ─

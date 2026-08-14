@@ -52,6 +52,7 @@ const DEFAULT_APP_SETTINGS: AppSettings = {
   measurementDeviceName: '',
   gradingProfile: 'casual',
   consoleNetworkConsentGranted: false,
+  soundcheckBuses: [],
 };
 
 const DEFAULT_LICENSE_STATE: LicenseState = { tier: 'free', status: 'none' };

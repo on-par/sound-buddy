@@ -26,6 +26,7 @@ const LOADED_SETTINGS: AppSettings = {
   measurementDeviceName: '',
   gradingProfile: 'casual',
   consoleNetworkConsentGranted: false,
+  soundcheckBuses: [],
 };
 
 const NO_TOGGLES = {

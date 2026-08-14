@@ -20,12 +20,13 @@ import type {
   PreflightBaseline,
   CustomIdealProfile,
   PersistedChannelGroup,
+  SoundcheckBus,
 } from './ipc/api';
 
 // These DTOs are homed in ipc/api.ts (TD-011, #405) — the renderer-safe
 // boundary type both tsc programs share — and re-exported here so existing
 // importers of './settings' don't need to change their import path.
-export type { AppSettings, CaptureRig, CaptureRigChannel, PreflightBaseline, CustomIdealProfile, PersistedChannelGroup };
+export type { AppSettings, CaptureRig, CaptureRigChannel, PreflightBaseline, CustomIdealProfile, PersistedChannelGroup, SoundcheckBus };
 
 // ── Per-field invariants (SETTING_SPECS) ────────────────────────────────────
 // Every AppSettings field's default, file-layer sanitizer, IPC-patch
@@ -61,6 +62,13 @@ const MAX_MEASUREMENT_DEVICE_NAME_LEN = 128;
 // matching Date.prototype.getDay().
 const MIN_SERVICE_DAY = 0;
 const MAX_SERVICE_DAY = 6;
+// Cap on a saved soundcheck bus name (#756) — mirrors MAX_GROUP_NAME_LEN's
+// cap/rationale; a bus name is a short display label, not prose.
+export const MAX_BUS_NAME_LEN = 40;
+// Cap on a saved soundcheck bus match pattern (#756) — same value/rationale
+// as MAX_BUS_NAME_LEN, kept as its own named constant since a pattern and a
+// name are conceptually distinct fields that happen to share a cap.
+export const MAX_BUS_PATTERN_LEN = 40;
 
 /** A plain, non-array, non-null object. */
 function isPlainObject(v: unknown): v is Record<string, unknown> {
@@ -168,6 +176,40 @@ export function sanitizeInputInstrumentProfiles(value: unknown): Record<string, 
 export function sanitizeShareChurchName(value: unknown): string | null {
   if (typeof value !== 'string') return null;
   return value.trim().slice(0, MAX_SHARE_CHURCH_NAME_LEN);
+}
+
+// Guards the update-settings whitelist for soundcheckBuses (#756): `null` when
+// `value` isn't an array (the patch key is then ignored entirely, leaving the
+// stored list untouched). Otherwise rebuilds the array from scratch — callers
+// send the FULL next list, so this replaces rather than deep-merges with
+// whatever was previously stored (same discipline as sanitizeChannelGroups).
+// Per entry, skip unless: it's a plain object; `id`/`name`/`pattern` are
+// non-empty (post-trim) strings capped at their named length caps; `pattern`
+// contains at least one [A-Za-z0-9] char (a pattern with no alphanumeric
+// content can never match anything, so it's malformed, not merely useless);
+// `outputChannel` is a non-negative integer. Duplicate ids are dropped
+// keeping the first occurrence.
+export function sanitizeSoundcheckBuses(value: unknown): SoundcheckBus[] | null {
+  if (!Array.isArray(value)) return null;
+
+  const clean: SoundcheckBus[] = [];
+  const seen = new Set<string>();
+  for (const entry of value) {
+    if (!isPlainObject(entry)) continue;
+    if (typeof entry.id !== 'string') continue;
+    const id = entry.id.trim().slice(0, MAX_BUS_NAME_LEN);
+    if (id === '' || seen.has(id)) continue;
+    if (typeof entry.name !== 'string') continue;
+    const name = entry.name.trim().slice(0, MAX_BUS_NAME_LEN);
+    if (name === '') continue;
+    if (typeof entry.pattern !== 'string') continue;
+    const pattern = entry.pattern.trim().slice(0, MAX_BUS_PATTERN_LEN);
+    if (pattern === '' || !/[A-Za-z0-9]/.test(pattern)) continue;
+    if (!Number.isInteger(entry.outputChannel) || (entry.outputChannel as number) < 0) continue;
+    seen.add(id);
+    clean.push({ id, name, pattern, outputChannel: entry.outputChannel as number });
+  }
+  return clean;
 }
 
 /**
@@ -310,6 +352,11 @@ export const SETTING_SPECS: { [K in keyof AppSettings]: SettingSpec<AppSettings[
     default: false,
     sanitizeFile: (v) => ((v ?? SETTING_SPECS.consoleNetworkConsentGranted.default) as boolean),
     sanitizePatch: (v) => (v === false ? false : undefined),
+  },
+  soundcheckBuses: {
+    default: [],
+    sanitizeFile: (v) => sanitizeSoundcheckBuses(v) ?? [],
+    sanitizePatch: (v) => sanitizeSoundcheckBuses(v) ?? undefined,
   },
 };
 

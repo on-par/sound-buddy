@@ -552,6 +552,38 @@ describe('update-settings IPC whitelist — consoleNetworkConsentGranted (#378 /
   });
 });
 
+describe('update-settings IPC whitelist — soundcheckBuses (#756)', () => {
+  const valid = [{ id: 'b1', name: 'Acoustic Guitar', pattern: 'ag', outputChannel: 3 }];
+
+  it('accepts a valid bus array and persists it', async () => {
+    const handler = handlers.get('update-settings');
+    const result = (await handler!(null, { soundcheckBuses: valid })) as {
+      soundcheckBuses: Array<{ id: string; name: string; pattern: string; outputChannel: number }>;
+    };
+    expect(result.soundcheckBuses).toEqual(valid);
+    expect(readFile().soundcheckBuses).toEqual(valid);
+  });
+
+  it('sanitizes malformed entries through the patch whitelist before persisting', async () => {
+    const handler = handlers.get('update-settings');
+    const result = (await handler!(null, {
+      soundcheckBuses: [valid[0], { id: 'b2', name: 'Bad', pattern: '!!!', outputChannel: 1 }],
+    })) as { soundcheckBuses: unknown[] };
+    expect(result.soundcheckBuses).toEqual(valid);
+    expect(readFile().soundcheckBuses).toEqual(valid);
+  });
+
+  it('ignores a non-array value, leaving the stored list unchanged', async () => {
+    await handlers.get('update-settings')!(null, { soundcheckBuses: valid });
+    const handler = handlers.get('update-settings');
+    const result = (await handler!(null, { soundcheckBuses: 'nope' })) as {
+      soundcheckBuses: unknown[];
+    };
+    expect(result.soundcheckBuses).toEqual(valid);
+    expect(readFile().soundcheckBuses).toEqual(valid);
+  });
+});
+
 describe('grant-console-network-consent (#747 — the only IPC that writes consent=true)', () => {
   it('persists true, readable back via get-settings', async () => {
     const handler = handlers.get('grant-console-network-consent');
