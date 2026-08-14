@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Patrick Robinson (on-par). All rights reserved.
 // Licensed under the Sound Buddy Desktop Application License (app/LICENSE).
 
-import { describe, it, expect, afterEach } from 'vitest';
+import { describe, it, expect, afterEach, beforeEach } from 'vitest';
 import { createElement } from 'react';
 import { renderToString } from 'react-dom/server';
 import * as fs from 'node:fs';
@@ -14,7 +14,18 @@ import { useLicensingStore } from './stores/licensingStore';
 import { createMockSoundBuddy } from './mock-sound-buddy';
 import type { AppSettings } from '../../electron/ipc/api';
 
+// PreflightSettings (composed into the Audio pane, #757) reads the pure
+// classic scripts window.rigReconcile/window.preflight — real modules, same
+// convention as PreflightSettings.test.ts.
+const rigReconcile = require('../rig-reconcile.js');
+const preflight = require('../preflight.js');
+
+beforeEach(() => {
+  (globalThis as { window?: unknown }).window = { rigReconcile, preflight };
+});
+
 afterEach(() => {
+  delete (globalThis as { window?: unknown }).window;
   useSettingsStore.setState({ settings: null, settingsError: null, dialogOpen: false });
   useLiveCaptureStore.setState({ isCapturing: false });
   useLicensingStore.setState({ licenseStatus: null });
@@ -178,6 +189,17 @@ describe('Audio pane composition (#727)', () => {
     expect(html).not.toContain('id="measurement-source"');
     expect(html).not.toContain('id="meter-interval"');
     expect(html).not.toContain('id="window-secs"');
+    expect(html).not.toContain('id="preflight-save-btn"');
+    expect(html).not.toContain('id="preflight-list"');
+  });
+
+  it('composes the preflight checklist + Save baseline in the Audio pane when booted (#757)', () => {
+    const html = renderMarkup(true);
+    expect(html).toContain('id="preflight-save-btn"');
+    expect(html).toContain('id="preflight-saved"');
+    expect(html).toContain('id="preflight-banner"');
+    expect(html).toContain('id="preflight-list"');
+    expect(html).toContain('pf-row');
   });
 
   it('shows no capture-lock note while idle', () => {
