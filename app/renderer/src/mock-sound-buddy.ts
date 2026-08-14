@@ -14,6 +14,7 @@ import type {
   AppSettings,
   LicenseState,
   StorageUsage,
+  AnalysisPayloadDto,
 } from '../../electron/ipc/api';
 
 export interface RecordedCall {
@@ -64,6 +65,71 @@ const DEFAULT_STORAGE_USAGE: StorageUsage = {
   exists: false,
 };
 
+// A complete, representative analyze-file payload (#748) — the mock default
+// must be a real contract-shaped literal now that AnalyzeFileResult.data is
+// typed, so `satisfies SoundBuddyApi` below compiles and consumers never see
+// `undefined` where a full analysis belongs.
+const DEFAULT_ANALYSIS_PAYLOAD: AnalysisPayloadDto = {
+  filePath: '/mock/path/service.wav',
+  sox: {
+    samplesRead: 441000,
+    lengthSeconds: 10,
+    scaledBy: 1,
+    maximumAmplitude: 0.9,
+    minimumAmplitude: -0.9,
+    midlineAmplitude: 0,
+    meanNorm: 0.2,
+    meanAmplitude: 0.1,
+    rmsAmplitude: 0.2,
+    maximumDelta: 0.8,
+    minimumDelta: 0,
+    meanDelta: 0.1,
+    rmsDelta: 0.15,
+    roughFrequency: 440,
+    volumeAdjustment: 0,
+    rmsDbfs: -18,
+    peakDbfs: -6,
+    dynamicRangeDb: 12,
+    clipping: false,
+  },
+  ffprobe: {
+    format: {
+      filename: '/mock/path/service.wav',
+      formatName: 'wav',
+      formatLongName: 'WAV / WAVE (Waveform Audio)',
+      durationSeconds: 10,
+      sizeBytes: 441000,
+      bitRate: 1411200,
+      tags: {},
+    },
+    stream: {
+      codecName: 'pcm_s16le',
+      codecLongName: 'PCM signed 16-bit little-endian',
+      channels: 1,
+      channelLayout: 'mono',
+      sampleRate: 44100,
+      bitDepth: 16,
+      bitRate: 705600,
+      durationSeconds: 10,
+    },
+  },
+  spectrum: {
+    bands: {
+      subBass: -30,
+      bass: -22,
+      lowMid: -18,
+      mid: -16,
+      highMid: -18,
+      presence: -20,
+      brilliance: -24,
+    },
+    spectralCentroid: 1200,
+    spectralRolloff85: 4800,
+    dynamicRange: 12,
+  },
+  loudness: { integratedLufs: -20, loudnessRange: 5, truePeakDbtp: -1 },
+};
+
 export function createMockSoundBuddy(overrides: Partial<SoundBuddyApi> = {}): MockSoundBuddy {
   const calls: RecordedCall[] = [];
   const listeners = new Map<keyof SoundBuddyApi, Array<(...args: unknown[]) => void>>();
@@ -110,7 +176,7 @@ export function createMockSoundBuddy(overrides: Partial<SoundBuddyApi> = {}): Mo
     saveRig: invoke('saveRig', DEFAULT_APP_SETTINGS),
     deleteRig: invoke('deleteRig', DEFAULT_APP_SETTINGS),
     setActiveRig: invoke('setActiveRig', DEFAULT_APP_SETTINGS),
-    analyzeFile: invoke('analyzeFile', { success: true, data: undefined }),
+    analyzeFile: invoke('analyzeFile', { success: true, data: DEFAULT_ANALYSIS_PAYLOAD }),
     saveAnalysisSummary: invoke('saveAnalysisSummary', { success: true, file: 'mock-summary.json' }),
     setAnalysisSummaryNote: invoke('setAnalysisSummaryNote', { success: true }),
     listAnalysisSummaries: invoke('listAnalysisSummaries', { success: true, summaries: [] }),

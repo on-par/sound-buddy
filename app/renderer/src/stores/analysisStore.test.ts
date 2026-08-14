@@ -4,6 +4,72 @@
 import { describe, it, expect, afterEach } from 'vitest';
 import { createAnalysisStore, useAnalysisStore } from './analysisStore';
 import { createMockSoundBuddy } from '../mock-sound-buddy';
+import type { AnalysisPayloadDto } from '../../../electron/ipc/api';
+
+// A complete contract-shaped analyze-file payload (#748) so mock overrides
+// compile against the now-typed AnalyzeFileResult.data.
+function makePayload(): AnalysisPayloadDto {
+  return {
+    filePath: '/path/to/file.wav',
+    sox: {
+      samplesRead: 441000,
+      lengthSeconds: 10,
+      scaledBy: 1,
+      maximumAmplitude: 0.9,
+      minimumAmplitude: -0.9,
+      midlineAmplitude: 0,
+      meanNorm: 0.2,
+      meanAmplitude: 0.1,
+      rmsAmplitude: 0.2,
+      maximumDelta: 0.8,
+      minimumDelta: 0,
+      meanDelta: 0.1,
+      rmsDelta: 0.15,
+      roughFrequency: 440,
+      volumeAdjustment: 0,
+      rmsDbfs: -18,
+      peakDbfs: -6,
+      dynamicRangeDb: 12,
+      clipping: false,
+    },
+    ffprobe: {
+      format: {
+        filename: '/path/to/file.wav',
+        formatName: 'wav',
+        formatLongName: 'WAV / WAVE (Waveform Audio)',
+        durationSeconds: 10,
+        sizeBytes: 441000,
+        bitRate: 1411200,
+        tags: {},
+      },
+      stream: {
+        codecName: 'pcm_s16le',
+        codecLongName: 'PCM signed 16-bit little-endian',
+        channels: 1,
+        channelLayout: 'mono',
+        sampleRate: 44100,
+        bitDepth: 16,
+        bitRate: 705600,
+        durationSeconds: 10,
+      },
+    },
+    spectrum: {
+      bands: {
+        subBass: -30,
+        bass: -22,
+        lowMid: -18,
+        mid: -16,
+        highMid: -18,
+        presence: -20,
+        brilliance: -24,
+      },
+      spectralCentroid: 1200,
+      spectralRolloff85: 4800,
+      dynamicRange: 12,
+    },
+    loudness: { integratedLufs: -20, loudnessRange: 5, truePeakDbtp: -1 },
+  };
+}
 
 afterEach(() => {
   delete (globalThis as { window?: unknown }).window;
@@ -42,7 +108,7 @@ describe('createAnalysisStore', () => {
     const mock = createMockSoundBuddy({
       analyzeFile: async (opts) => {
         mock.calls.push({ method: 'analyzeFile', args: [opts] });
-        return { success: true, data: { score: 42 } };
+        return { success: true, data: makePayload() };
       },
     });
     const store = createAnalysisStore(() => mock.api);
@@ -53,7 +119,7 @@ describe('createAnalysisStore', () => {
 
     await pending;
 
-    expect(store.getState().currentAnalysis).toEqual({ score: 42 });
+    expect(store.getState().currentAnalysis).toEqual(makePayload());
     expect(store.getState().isAnalyzing).toBe(false);
     expect(store.getState().status).toBe('done');
     expect(store.getState().analysisError).toBeNull();
@@ -65,7 +131,7 @@ describe('createAnalysisStore', () => {
 
   it('a successful startAnalysis clears a stale history summary', async () => {
     const mock = createMockSoundBuddy({
-      analyzeFile: async () => ({ success: true, data: { score: 1 } }),
+      analyzeFile: async () => ({ success: true, data: makePayload() }),
     });
     const store = createAnalysisStore(() => mock.api);
     store.setState({ historySummary: { sourceFilename: 'old.wav' } });
@@ -181,7 +247,7 @@ describe('createAnalysisStore', () => {
     const mock = createMockSoundBuddy({
       analyzeFile: async (opts) => {
         mock.calls.push({ method: 'analyzeFile', args: [opts] });
-        return { success: true, data: { score: 1 } };
+        return { success: true, data: makePayload() };
       },
     });
     (globalThis as { window?: unknown }).window = { soundBuddy: mock.api };
