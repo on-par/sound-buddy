@@ -74,9 +74,10 @@ export function registerPlaybackHandlers(): void {
       device: opts.device,
       route: opts.route,
       intervalSecs: opts.intervalSecs,
+      startOffsetSecs: opts.startOffsetSecs,
       master: opts.master,
     });
-    log(`start-playback: spawned playback.py (session="${opts.sessionDir}" device="${opts.device ?? ''}" route="${opts.route ?? ''}" master=${opts.master ?? false})`);
+    log(`start-playback: spawned playback.py (session="${opts.sessionDir}" device="${opts.device ?? ''}" route="${opts.route ?? ''}" start=${opts.startOffsetSecs ?? 0} master=${opts.master ?? false})`);
 
     const wc = event.sender;
     // A new playback replaces any in-flight one — playbackSlot.start() kills

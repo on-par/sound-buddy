@@ -101,6 +101,8 @@ export interface StartPlaybackOpts {
   route?: string;
   // Progress/level cadence in seconds (default 0.1 in playback.py).
   intervalSecs?: number;
+  // Start playback at this many seconds into the session; omitted/≤0 plays from the start.
+  startOffsetSecs?: number;
   // Force the stereo master mixdown fold even on a big-enough device.
   master?: boolean;
 }

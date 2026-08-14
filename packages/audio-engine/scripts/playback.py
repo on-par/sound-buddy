@@ -9,7 +9,7 @@ patterns proven in stream.py (InputStream + worker thread + SIGTERM finalize()).
 
 Usage:
   python3 scripts/playback.py <session_dir> --device <index|name> --route <spec>
-                              [--interval S] [--master]
+                              [--interval S] [--start-at S] [--master]
 
 Positional:
   session_dir   folder holding session.json + stem WAVs (from stream.py --session-dir)
@@ -19,6 +19,9 @@ Options:
   --route SPEC  track → output-channel map (see grammar below); required unless
                 --master folds everything to stereo regardless.
   --interval S  progress/level cadence in seconds (default 0.1)
+  --start-at S  begin playback S seconds into the session (default 0.0; negative
+                clamps to 0). Every stem is seeked to the offset frame before
+                the producer starts, so audio begins at that position.
   --master      force the stereo master mixdown fold even if the device is big
                 enough for discrete routing.
 
@@ -42,6 +45,9 @@ Output: JSON lines on stdout.
   {"type":"progress","elapsed":…,"duration":…}          — every --interval
   {"type":"level","tracks":[{label,rms,peak,clipping},…]} — every --interval
   {"type":"ended"}                                       — when playback reaches the end
+
+`progress.elapsed` is the session-relative position; a --start-at offset is
+reflected from the first tick. `duration` is always the full session length.
 
 Dependencies: pip install sounddevice numpy soundfile
 """
@@ -260,6 +266,20 @@ def track_level(label: str, block: np.ndarray) -> dict:
     }
 
 
+def compute_start_frame(sample_rate: int, total_frames: int, start_secs: float) -> int:
+    """Seek frame for --start-at: start_secs → frame, clamped to [0, total_frames].
+    Non-positive offsets return 0 (play from start)."""
+    if start_secs <= 0:
+        return 0
+    return min(int(round(start_secs * sample_rate)), total_frames)
+
+
+def session_elapsed(start_secs: float, played_frames: int, sample_rate: int, duration: float) -> float:
+    """Progress `elapsed` for one tick: session-relative position (offset + frames played),
+    clamped so it never overshoots the session duration."""
+    return min(start_secs + (played_frames / sample_rate if sample_rate else 0.0), duration)
+
+
 def find_output_device(name_or_index: str):
     """Resolve an output device by index or (case-insensitive) name substring.
     Returns the device index, or None if nothing matches."""
@@ -278,7 +298,7 @@ def find_output_device(name_or_index: str):
 
 
 def play_session(session_dir: str, device_index, route_spec: str,
-                 interval_secs: float, force_master: bool):
+                 interval_secs: float, force_master: bool, start_secs: float = 0.0):
     manifest = load_manifest(session_dir)
     sample_rate = manifest["sampleRate"]
     tracks = manifest["tracks"]
@@ -339,6 +359,14 @@ def play_session(session_dir: str, device_index, route_spec: str,
         total_frames = max((h.frames for h in handles), default=0)
         duration = total_frames / sample_rate if sample_rate else 0.0
 
+        # A --start-at offset seeks every stem to the same frame before the
+        # producer starts, so the first read (and therefore the first output
+        # block) begins at that session position. soundfile clamps the seek at
+        # EOF, which is exactly the "offset past the end" behavior we want.
+        start_frame = compute_start_frame(sample_rate, total_frames, start_secs)
+        for h in handles:
+            h.seek(start_frame)
+
         print(json.dumps({
             "type": "mixdown",
             "active": master,
@@ -350,7 +378,7 @@ def play_session(session_dir: str, device_index, route_spec: str,
 
         _run_output_stream(
             handles, tracks, routes, n_out, master, gain,
-            device_index, sample_rate, duration, interval_secs,
+            device_index, sample_rate, duration, interval_secs, start_secs,
         )
     finally:
         for h in handles:
@@ -359,7 +387,7 @@ def play_session(session_dir: str, device_index, route_spec: str,
 
 
 def _run_output_stream(handles, tracks, routes, n_out, master, gain,
-                       device_index, sample_rate, duration, interval_secs):
+                       device_index, sample_rate, duration, interval_secs, start_secs):
     """Drive the OutputStream: a producer thread reads+mixes blocks onto a
     bounded queue, the RT callback drains it into the device, and the main loop
     emits progress/level ticks until playback ends or a stop signal arrives."""
@@ -458,7 +486,7 @@ def _run_output_stream(handles, tracks, routes, n_out, master, gain,
             if sleep > 0:
                 time.sleep(sleep)
 
-            elapsed = played["frames"] / sample_rate if sample_rate else 0.0
+            elapsed = session_elapsed(start_secs, played["frames"], sample_rate, duration)
             print(json.dumps({
                 "type": "progress",
                 "elapsed": elapsed,
@@ -483,6 +511,7 @@ def main():
     device_arg = ""
     route_spec = ""
     interval_secs = 0.1
+    start_secs = 0.0
     force_master = False
     positional: list[str] = []
 
@@ -495,6 +524,8 @@ def main():
             route_spec = args[i + 1]; i += 2
         elif a == "--interval" and i + 1 < len(args):
             interval_secs = float(args[i + 1]); i += 2
+        elif a == "--start-at" and i + 1 < len(args):
+            start_secs = float(args[i + 1]); i += 2
         elif a == "--master":
             force_master = True; i += 1
         else:
@@ -525,7 +556,7 @@ def main():
                 sys.exit(1)
 
     try:
-        play_session(session_dir, device_index, route_spec, interval_secs, force_master)
+        play_session(session_dir, device_index, route_spec, interval_secs, force_master, start_secs)
     except ValueError as e:
         print(json.dumps({"error": str(e)}), flush=True)
         sys.exit(1)
