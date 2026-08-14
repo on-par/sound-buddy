@@ -20,7 +20,7 @@ afterEach(() => {
     manifest: null, sessionDir: null, routes: [], devices: [], devicesLoaded: false,
     selectedDevice: '', deviceChannels: 0, master: false, playing: false,
     elapsedText: null, mixdownNotice: null, statusMessage: null,
-    lastElapsedTick: null, lastMeterTick: null,
+    lastElapsedTick: null,
     // #735: a peaks document (or its status) left over from one test would
     // leak the waveform block into the next — zustand setState merges.
     peaks: null, peaksStatus: 'idle',

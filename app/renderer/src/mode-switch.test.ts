@@ -158,17 +158,18 @@ describe('applySpectrumForMode', () => {
     expect(renderLiveWorkspace).not.toHaveBeenCalled();
   });
 
-  it('soundcheck: shows meters while playing', () => {
+  it('soundcheck: keeps the panel empty (no meters) while playing', () => {
     useSoundcheckStore.setState({ playing: true });
     applySpectrumForMode('soundcheck');
-    expect(elements['spectrum-title'].textContent).toBe('Soundcheck · Meters');
-    expect(useSpectrumStore.getState().panelState).toBe('meters');
+    expect(elements['spectrum-title'].textContent).toBe('Soundcheck');
+    expect(useSpectrumStore.getState().panelState).toBe('empty');
+    expect(useSpectrumStore.getState().panelText).toBe('Playing — use the waveform playhead to navigate');
   });
 
   it('soundcheck: shows an empty prompt when not playing', () => {
     applySpectrumForMode('soundcheck');
     expect(useSpectrumStore.getState().panelState).toBe('empty');
-    expect(useSpectrumStore.getState().panelText).toBe('Load a session and press Play to see per-track meters');
+    expect(useSpectrumStore.getState().panelText).toBe('Load a session and press Play to start playback');
   });
 
   it.each(['recent', 'guide', 'dir'] as const)('%s: shows a tailored empty state with no analysis', (mode) => {

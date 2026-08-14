@@ -98,9 +98,12 @@ export function applySpectrumForMode(mode: string): void {
     else board.renderLiveWorkspace();
     board.renderEqPane(board.currentEqPaneChannels());
   } else if (mode === 'soundcheck') {
-    if (title) title.textContent = 'Soundcheck · Meters';
-    if (useSoundcheckStore.getState().playing) useSpectrumStore.getState().setPanelState('meters');
-    else useSpectrumStore.getState().setPanelState('empty', 'Load a session and press Play to see per-track meters');
+    if (title) title.textContent = 'Soundcheck';
+    // #760: soundcheck playback is tracks + playhead only — the panel stays in
+    // 'empty' (spectrumChromeView → showStats:false hides the header stats-row)
+    // in both playing and idle states; it never flips into 'meters'.
+    if (useSoundcheckStore.getState().playing) useSpectrumStore.getState().setPanelState('empty', 'Playing — use the waveform playhead to navigate');
+    else useSpectrumStore.getState().setPanelState('empty', 'Load a session and press Play to start playback');
   } else if (mode === 'recent') {
     if (title) title.textContent = SPECTRUM_TITLE.curve;
     if (!curAnalysis()) useSpectrumStore.getState().setPanelState('empty', 'Select a recent analysis to load its report card');

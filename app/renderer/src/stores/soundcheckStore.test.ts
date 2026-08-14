@@ -369,7 +369,7 @@ describe('createSoundcheckStore', () => {
 
       useLiveCaptureStore.setState({ appMode: 'soundcheck' });
       store.getState().resetTransport();
-      expect(spy).toHaveBeenCalledWith('empty', 'Load a session and press Play to see per-track meters');
+      expect(spy).toHaveBeenCalledWith('empty', 'Load a session and press Play to start playback');
       spy.mockRestore();
     });
   });
@@ -417,15 +417,6 @@ describe('createSoundcheckStore', () => {
       store.setState({ playing: false });
       mock.emit('onPlaybackEvent', { type: 'progress', elapsed: 6, duration: 60 });
       expect(store.getState().lastElapsedTick).toEqual({ elapsed: 5, duration: 60 });
-    });
-
-    it('ingests a level tick only while the soundcheck tab is active and playing', () => {
-      const { store, mock } = bind();
-      useLiveCaptureStore.setState({ appMode: 'soundcheck' });
-      store.setState({ playing: true });
-      const tracks = [{ label: 'Vocal', rms: -20, peak: -10, clipping: false }];
-      mock.emit('onPlaybackEvent', { type: 'level', tracks });
-      expect(store.getState().lastMeterTick).toEqual(tracks);
     });
 
     it('resets the transport when playback ends, regardless of gating', () => {

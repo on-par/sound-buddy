@@ -57,7 +57,7 @@ export interface WaveformCanvasLike {
 const QUANT_LEVELS = 256;
 
 // The waveform stroke color — literal #EBB93C mirroring the --gold-500 token
-// the existing .sc-meter-fill uses (canvas cannot resolve CSS custom
+// the soundcheck playhead uses (canvas cannot resolve CSS custom
 // properties, same rationale as inline-app.js's WAVEFORM_COLORS).
 export const WAVEFORM_LANE_HEX = '#EBB93C';
 
