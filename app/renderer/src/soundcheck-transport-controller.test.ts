@@ -3,7 +3,6 @@
 
 import { describe, it, expect, vi } from 'vitest';
 import { createSoundcheckTransportController, type SoundcheckTransportControllerDeps } from './soundcheck-transport-controller';
-import type { SoundcheckMeterTrack } from './soundcheck-panel';
 
 type ElapsedTick = { elapsed: number; duration: number };
 
@@ -11,11 +10,9 @@ function makeFakeDeps(overrides: Partial<SoundcheckTransportControllerDeps> = {}
   let queued: (() => void) | null = null;
   let nextHandle = 1;
   let lastElapsedTick: ElapsedTick | null = null;
-  let lastMeterTick: SoundcheckMeterTrack[] | null = null;
   const listeners = new Set<() => void>();
   const patchElapsed = vi.fn();
   const patchPlayhead = vi.fn();
-  const patchMeters = vi.fn();
   const cancelRaf = vi.fn();
   const raf = vi.fn((cb: () => void) => {
     queued = cb;
@@ -23,23 +20,20 @@ function makeFakeDeps(overrides: Partial<SoundcheckTransportControllerDeps> = {}
   });
   const deps: SoundcheckTransportControllerDeps = {
     subscribe: (onChange) => { listeners.add(onChange); return () => listeners.delete(onChange); },
-    getState: () => ({ lastElapsedTick, lastMeterTick }),
+    getState: () => ({ lastElapsedTick }),
     raf,
     cancelRaf,
     patchElapsed,
     patchPlayhead,
-    patchMeters,
     ...overrides,
   };
   return {
     deps,
     patchElapsed,
     patchPlayhead,
-    patchMeters,
     raf,
     cancelRaf,
     notifyElapsed(tick: ElapsedTick) { lastElapsedTick = tick; listeners.forEach((l) => l()); },
-    notifyMeters(tracks: SoundcheckMeterTrack[]) { lastMeterTick = tracks; listeners.forEach((l) => l()); },
     notifyUnrelated() { listeners.forEach((l) => l()); },
     flushRaf() { const cb = queued; queued = null; if (cb) cb(); },
     listenerCount: () => listeners.size,
@@ -67,20 +61,6 @@ describe('createSoundcheckTransportController', () => {
     expect(patchElapsed).toHaveBeenCalledWith({ elapsed: 3, duration: 10 });
   });
 
-  it('flushes elapsed and meter ticks independently within the same frame', () => {
-    const { deps, notifyElapsed, notifyMeters, raf, flushRaf, patchElapsed, patchMeters } = makeFakeDeps();
-    const controller = createSoundcheckTransportController(deps);
-    controller.start();
-    const tracks: SoundcheckMeterTrack[] = [{ label: 'Vocal', rms: -20, peak: -10, clipping: false }];
-    notifyElapsed({ elapsed: 1, duration: 10 });
-    notifyMeters(tracks);
-    // One coalesced burst still schedules only one rAF, even though it carries two independent tick kinds.
-    expect(raf).toHaveBeenCalledTimes(1);
-    flushRaf();
-    expect(patchElapsed).toHaveBeenCalledWith({ elapsed: 1, duration: 10 });
-    expect(patchMeters).toHaveBeenCalledWith(tracks);
-  });
-
   it('patches the playhead on the same coalesced elapsed tick as the readout', () => {
     const { deps, notifyElapsed, raf, flushRaf, patchElapsed, patchPlayhead } = makeFakeDeps();
     const controller = createSoundcheckTransportController(deps);
@@ -94,26 +74,6 @@ describe('createSoundcheckTransportController', () => {
     expect(patchElapsed).toHaveBeenCalledWith({ elapsed: 3, duration: 10 });
     expect(patchPlayhead).toHaveBeenCalledTimes(1);
     expect(patchPlayhead).toHaveBeenCalledWith({ elapsed: 3, duration: 10 });
-  });
-
-  it('does not patch the playhead on a meter-only tick', () => {
-    const { deps, notifyMeters, flushRaf, patchMeters, patchPlayhead } = makeFakeDeps();
-    const controller = createSoundcheckTransportController(deps);
-    controller.start();
-    notifyMeters([{ rms: -10, peak: -5, clipping: false }]);
-    flushRaf();
-    expect(patchMeters).toHaveBeenCalledTimes(1);
-    expect(patchPlayhead).not.toHaveBeenCalled();
-  });
-
-  it('patches only the tick kind that changed', () => {
-    const { deps, notifyMeters, flushRaf, patchElapsed, patchMeters } = makeFakeDeps();
-    const controller = createSoundcheckTransportController(deps);
-    controller.start();
-    notifyMeters([{ rms: -10, peak: -5, clipping: false }]);
-    flushRaf();
-    expect(patchMeters).toHaveBeenCalledTimes(1);
-    expect(patchElapsed).not.toHaveBeenCalled();
   });
 
   it('does not schedule on a store notification with neither tick present', () => {

@@ -105,7 +105,7 @@ test.describe('Virtual Soundcheck (#46)', () => {
     await expect(lanes.nth(1).locator('canvas')).toBeVisible();
   });
 
-  test('routes on a big device, plays, updates transport + meters, stops', async () => {
+  test('plays, updates transport, shows no per-track meter cards, stops', async () => {
     await window.locator('#sc-choose-btn').click();
     await window.locator('#sc-device-select').selectOption({ label: 'MOTU 8ch (8ch)' });
     await expect(window.locator('#sc-mixdown-notice')).toBeHidden();
@@ -120,13 +120,15 @@ test.describe('Virtual Soundcheck (#46)', () => {
 
     await sendPlaybackEvent({ type: 'progress', elapsed: 2, duration: 10 });
     await expect(window.locator('#sc-elapsed')).toContainText('0:02 / 0:10');
+
+    // #760: the soundcheck playback view is tracks + playhead only — a level
+    // event must NOT write RMS/Peak/CLIP meter cards into the shared spectrum
+    // panel (regression guard: no stats readouts in soundcheck mode).
     await sendPlaybackEvent({ type: 'level', tracks: [
       { label: 'Kick', rms: -12, peak: -6, clipping: false },
       { label: 'OH', rms: -20, peak: -9, clipping: true },
     ] });
-    const meters = window.locator('#spectrum-body .sc-meter');
-    await expect(meters).toHaveCount(2);
-    await expect(meters.nth(1)).toHaveClass(/clip/);
+    await expect(window.locator('#spectrum-body .sc-meter')).toHaveCount(0);
 
     await window.locator('#sc-stop-btn').click();
     await expect(window.locator('#sc-play-btn')).toBeVisible();

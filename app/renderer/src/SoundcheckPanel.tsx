@@ -7,19 +7,20 @@
 // #soundcheck-island, replacing inline-app.js's scLoadDevices/scChooseSession/
 // scRenderTracks/scUpdateMixdownNotice/scPlay/scStop DOM-writers for this
 // region. Structural twin of LiveWorkspace.tsx/LiveControls.tsx: state lives
-// in soundcheckStore, and per-tick elapsed/meter values (ADR-0005) bypass
-// React entirely via the mounted soundcheck-transport-controller, which
-// patches #sc-elapsed/#spectrum-imperative directly — see that file's header.
+// in soundcheckStore, and per-tick elapsed values (ADR-0005) bypass React
+// entirely via the mounted soundcheck-transport-controller, which patches
+// #sc-elapsed/#sc-playhead directly — see that file's header. The per-track
+// meter cards were removed (#760): playback shows only the track list, the
+// waveform lanes, and the seeking playhead.
 
 import { useEffect, useMemo, useRef, type JSX, type PointerEvent } from 'react';
 import { useStoreShallow } from './stores/useStoreShallow';
 import { useSoundcheckStore } from './stores/soundcheckStore';
-import { useSpectrumStore } from './stores/spectrumStore';
 import { createSoundcheckTransportController } from './soundcheck-transport-controller';
 import { soundcheckPlayheadLeftPx, soundcheckSeekTargetFromClick } from './soundcheck-playhead';
-import { soundcheckTrackListView, playGuardOk, type SoundcheckMeterTrack } from './soundcheck-panel';
-import { iconSvg, fmt } from './report-card';
-import { escapeHtml, formatClock } from './spectrum-display';
+import { soundcheckTrackListView, playGuardOk } from './soundcheck-panel';
+import { iconSvg } from './report-card';
+import { formatClock } from './spectrum-display';
 import {
   sessionPeakTimeline,
   drawSoundcheckWaveform,
@@ -53,24 +54,6 @@ function patchPlayheadDom(tick: { elapsed: number; duration: number }): void {
   playhead.style.display = 'block';
 }
 
-// Verbatim port of inline-app.js's scRenderMeters markup/RMS-to-percent math.
-function patchMetersDom(tracks: SoundcheckMeterTrack[]): void {
-  useSpectrumStore.getState().setPanelState('meters'); // hands #spectrum-imperative back to this renderer
-  const body = document.getElementById('spectrum-imperative');
-  if (!body) return;
-  body.innerHTML = '<div class="meter-card sb-live-meters">' + tracks.map((t) => {
-    const rms = Number.isFinite(t.rms) ? t.rms : -120;
-    const pct = Math.max(0, Math.min(100, (rms + 60) / 60 * 100));
-    return `<div class="sc-meter${t.clipping ? ' clip' : ''}">
-      <div class="sc-meter-head">
-        <span class="sc-meter-name">${escapeHtml(t.label || 'Track')}</span>
-        <span class="sc-meter-val">RMS ${fmt(t.rms)} · Peak ${fmt(t.peak)} dBFS</span>
-        ${t.clipping ? '<span class="sc-meter-clip">CLIP</span>' : ''}
-      </div>
-      <div class="sc-meter-bar"><div class="sc-meter-fill" style="width:${pct.toFixed(1)}%"></div></div>
-    </div>`;
-  }).join('') + '</div>';
-}
 /* c8 ignore stop */
 
 export default function SoundcheckPanel(): JSX.Element {
@@ -166,13 +149,11 @@ export default function SoundcheckPanel(): JSX.Element {
       subscribe: useSoundcheckStore.subscribe,
       getState: () => ({
         lastElapsedTick: useSoundcheckStore.getState().lastElapsedTick,
-        lastMeterTick: useSoundcheckStore.getState().lastMeterTick,
       }),
       raf: (cb) => requestAnimationFrame(cb),
       cancelRaf: (handle) => cancelAnimationFrame(handle),
       patchElapsed: patchElapsedDom,
       patchPlayhead: patchPlayheadDom,
-      patchMeters: patchMetersDom,
     });
     controller.start();
     return () => controller.stop();

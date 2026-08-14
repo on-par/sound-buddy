@@ -9,10 +9,11 @@
 // liveCaptureStore.ts's factory pattern — an injected API so side effects
 // stay testable — and reads the pure playback-routing.js classic-script off
 // `window` via soundcheck-panel.ts's typed accessor, same convention as
-// liveCaptureStore.ts's armState/groupState/rigKind reads. `lastElapsedTick`/
-// `lastMeterTick` are bypass fields (ADR-0005): soundcheck-transport-
-// controller.ts reads them directly and patches the DOM, never through a
-// React re-render.
+// liveCaptureStore.ts's armState/groupState/rigKind reads. `lastElapsedTick`
+// is a bypass field (ADR-0005): soundcheck-transport-controller.ts reads it
+// directly and patches the DOM, never through a React re-render. The per-track
+// meter stream was dropped in #760 — the playback view is tracks + playhead
+// only, so the 'level' playback-event branch no longer exists.
 
 import { create } from 'zustand';
 import { getSoundBuddy } from '../useElectron';
@@ -31,7 +32,6 @@ import {
   sameTrackShape,
   type SessionManifest,
   type SoundcheckOutputDevice,
-  type SoundcheckMeterTrack,
 } from '../soundcheck-panel';
 
 export type SoundcheckApi = Pick<
@@ -60,7 +60,6 @@ export interface SoundcheckState {
   mixdownNotice: string | null;
   statusMessage: string | null;
   lastElapsedTick: { elapsed: number; duration: number } | null;
-  lastMeterTick: SoundcheckMeterTrack[] | null;
   // Per-track waveform peaks (#734), generated in the background after a
   // successful read-session. Auxiliary: generation failure is silent and never
   // blocks the soundcheck workflow (story 3 renders these, not this slice).
@@ -93,7 +92,6 @@ interface PlaybackEventData {
   active?: boolean;
   elapsed?: number;
   duration?: number;
-  tracks?: SoundcheckMeterTrack[];
   requiredChannels?: number;
   outputChannels?: number;
 }
@@ -113,7 +111,6 @@ export function createSoundcheckStore(getApi: () => SoundcheckApi) {
     mixdownNotice: null,
     statusMessage: null,
     lastElapsedTick: null,
-    lastMeterTick: null,
     peaks: null,
     peaksStatus: 'idle',
 
@@ -254,7 +251,7 @@ export function createSoundcheckStore(getApi: () => SoundcheckApi) {
     resetTransport() {
       set({ playing: false, elapsedText: null });
       if (useLiveCaptureStore.getState().appMode === 'soundcheck') {
-        useSpectrumStore.getState().setPanelState('empty', 'Load a session and press Play to see per-track meters');
+        useSpectrumStore.getState().setPanelState('empty', 'Load a session and press Play to start playback');
       }
     },
 
@@ -276,12 +273,6 @@ export function createSoundcheckStore(getApi: () => SoundcheckApi) {
         if (evt.type === 'progress') {
           if (useLiveCaptureStore.getState().appMode === 'soundcheck' && get().playing) {
             set({ lastElapsedTick: { elapsed: evt.elapsed ?? 0, duration: evt.duration ?? 0 } });
-          }
-          return;
-        }
-        if (evt.type === 'level') {
-          if (useLiveCaptureStore.getState().appMode === 'soundcheck' && get().playing) {
-            set({ lastMeterTick: evt.tracks ?? [] });
           }
           return;
         }

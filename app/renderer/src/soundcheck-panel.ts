@@ -38,14 +38,6 @@ export interface SoundcheckTrackView {
   options: SoundcheckChannelOption[];
 }
 
-// The shape `scRenderMeters` consumed per track (stream.py's 'level' event).
-export interface SoundcheckMeterTrack {
-  label?: string;
-  rms: number;
-  peak: number;
-  clipping: boolean;
-}
-
 interface PlaybackRoutingApi {
   defaultRoutes(tracks: SessionManifestTrack[]): number[][];
   routeSpec(routes: number[][]): string;
