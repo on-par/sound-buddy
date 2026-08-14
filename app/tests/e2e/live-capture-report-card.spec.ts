@@ -7,7 +7,8 @@ import { launchApp } from './e2e-helpers';
 // context (#208) use — grades it, and persists it to history tagged as a
 // live-capture source. Split into its own file (following report-card-basics
 // .spec.ts / live-capture.spec.ts's pattern) so it can run as a standalone
-// Electron session.
+// Electron session. #757: the top-bar Record button is the sole transport, and
+// the report-card offer now fires after a record session too.
 
 let electronApp: ElectronApplication;
 let window: Page;
@@ -49,7 +50,7 @@ async function savedSummaries(electronApp: ElectronApplication): Promise<Array<R
   >;
 }
 
-async function startMonitorCapture() {
+async function startCapture() {
   await window.locator('.mode-tab[data-mode="live"]').click();
   await expect(window.locator('#tab-live')).toHaveClass(/active/);
   // Re-enumerate against the stubbed 8-channel device so the workspace has
@@ -60,8 +61,12 @@ async function startMonitorCapture() {
   await window.locator('#device-refresh-btn').click();
   await window.locator('#settings-dialog-cancel').click();
   await expect(window.locator('#spectrum-body .live-ch')).toHaveCount(2);
-  await window.locator('#live-start-btn').click();
-  await expect(window.locator('#live-stop-btn')).toBeVisible();
+  // #757: the top-bar Record button is the sole transport — an idle press
+  // starts monitoring then promotes in place, so every capture here is a
+  // record session (the report-card offer fires for those too now).
+  await window.locator('#live-ws-arm-all').click();
+  await window.locator('#record-button').click();
+  await expect(window.locator('#live-indicator .live-txt')).toHaveText('REC');
 }
 
 test.describe('Live-capture session report card (#261)', () => {
@@ -73,16 +78,16 @@ test.describe('Live-capture session report card (#261)', () => {
     await electronApp.close();
   });
 
-  test('a monitor session with 3+ window ticks builds, shows, and persists a graded card', async () => {
+  test('a capture session with 3+ window ticks builds, shows, and persists a graded card', async () => {
     await stubSaveAnalysisSummary(electronApp);
-    await startMonitorCapture();
+    await startCapture();
 
     await sendWindowTick(electronApp, 1);
     await sendWindowTick(electronApp, 2);
     await sendWindowTick(electronApp, 3);
 
-    await window.locator('#live-stop-btn').click();
-    await expect(window.locator('#live-start-btn')).toBeVisible();
+    await window.locator('#record-button').click();
+    await expect(window.locator('#record-button')).toBeEnabled();
 
     await expect(window.locator('#rc-offer')).toBeVisible();
     await window.locator('#rc-offer-btn').click();
@@ -120,7 +125,7 @@ test.describe('Live-capture session report card (#261)', () => {
 
   test('a session longer than the 10-entry rolling preview buffer still averages every window (regression)', async () => {
     await stubSaveAnalysisSummary(electronApp);
-    await startMonitorCapture();
+    await startCapture();
 
     // 12 window ticks: the first 2 are quiet (-40 dBFS), the remaining 10 are
     // normal (-18 dBFS). liveWindows (the rolling-preview buffer the meters/
@@ -132,8 +137,8 @@ test.describe('Live-capture session report card (#261)', () => {
     await sendWindowTick(electronApp, 2, -40);
     for (let n = 3; n <= 12; n++) await sendWindowTick(electronApp, n, -18);
 
-    await window.locator('#live-stop-btn').click();
-    await expect(window.locator('#live-start-btn')).toBeVisible();
+    await window.locator('#record-button').click();
+    await expect(window.locator('#record-button')).toBeEnabled();
     await expect(window.locator('#rc-offer')).toBeVisible();
     await window.locator('#rc-offer-btn').click();
     await expect(window.locator('#rc-content')).toBeVisible();
@@ -145,14 +150,14 @@ test.describe('Live-capture session report card (#261)', () => {
     await expect(window.locator('#rc-metrics-body')).toContainText('-21.7');
   });
 
-  test('a monitor session with only 1 window tick degrades to "not enough data" (no crash, no save)', async () => {
+  test('a capture session with only 1 window tick degrades to "not enough data" (no crash, no save)', async () => {
     await stubSaveAnalysisSummary(electronApp);
-    await startMonitorCapture();
+    await startCapture();
 
     await sendWindowTick(electronApp, 1);
 
-    await window.locator('#live-stop-btn').click();
-    await expect(window.locator('#live-start-btn')).toBeVisible();
+    await window.locator('#record-button').click();
+    await expect(window.locator('#record-button')).toBeEnabled();
 
     await expect(window.locator('#rc-not-enough')).toBeVisible();
     await expect(window.locator('#rc-not-enough')).toContainText('Not enough data');
@@ -160,9 +165,9 @@ test.describe('Live-capture session report card (#261)', () => {
     expect(await savedSummaries(electronApp)).toHaveLength(0);
 
     // The app is still responsive — starting a fresh capture clears the state.
-    await window.locator('#live-start-btn').click();
-    await expect(window.locator('#live-stop-btn')).toBeVisible();
+    await window.locator('#record-button').click();
+    await expect(window.locator('#live-indicator .live-txt')).toHaveText('REC');
     await expect(window.locator('#rc-not-enough')).toBeHidden();
-    await window.locator('#live-stop-btn').click();
+    await window.locator('#record-button').click();
   });
 });

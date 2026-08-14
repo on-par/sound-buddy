@@ -4,7 +4,7 @@
 import { describe, it, expect, afterEach, beforeEach } from 'vitest';
 import { createElement } from 'react';
 import { renderToString } from 'react-dom/server';
-import PreflightPanel from './PreflightPanel';
+import PreflightSettings from './PreflightSettings';
 import { useLiveCaptureStore } from './stores/liveCaptureStore';
 import { useRigStore } from './stores/rigStore';
 import type { CaptureRig } from '../../electron/ipc/api';
@@ -26,7 +26,7 @@ afterEach(() => {
 });
 
 function renderMarkup(): string {
-  return renderToString(createElement(PreflightPanel));
+  return renderToString(createElement(PreflightSettings));
 }
 
 const DEVICES: LiveDevice[] = [{ index: 0, name: 'Scarlett 18i20', channels: 8, default_sr: 48000 }];
@@ -39,7 +39,9 @@ function makeRig(overrides: Partial<CaptureRig> = {}): CaptureRig {
   };
 }
 
-describe('PreflightPanel', () => {
+// #757: the checklist moved from the Live tab (PreflightPanel) into
+// Settings → Audio (PreflightSettings) — same view-model, same assertions.
+describe('PreflightSettings', () => {
   it('always renders the save-baseline button', () => {
     expect(renderMarkup()).toContain('id="preflight-save-btn"');
   });

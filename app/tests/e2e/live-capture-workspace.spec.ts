@@ -65,32 +65,18 @@ test.describe('Live capture (PRD 06) — workspace controls', () => {
   });
 
   // Workspace arm controls (#191): the record-arm cluster lives on the
-  // main-pane track workspace, Record mode only. Drives #spectrum-body's
-  // controls directly.
+  // main-pane track workspace. #757 removed the Record-mode gate — arm
+  // toggles + the Arm all toolbar render unconditionally (DAW record-enable).
+  // Drives #spectrum-body's controls directly.
   test.describe('Workspace arm controls (#191)', () => {
-    test('per-track toggle and toolbar cluster render only in Record mode', async () => {
-      // Force Monitor explicitly — an earlier test in this describe may have
-      // left liveMode as 'record'.
-      await window.locator('#live-mode button[data-mode="monitor"]').click();
-      await expect(window.locator('#spectrum-body .live-ch-arm')).toHaveCount(0);
-      await expect(window.locator('#live-ws-arm-all')).toHaveCount(0);
-      await expect(window.locator('#live-ws-disarm-all')).toHaveCount(0);
-      await expect(window.locator('#live-ws-arm-count')).toHaveCount(0);
-
-      await window.locator('#live-mode button[data-mode="record"]').click();
+    test('per-track arm toggles and the Arm all toolbar render unconditionally (#757)', async () => {
       await expect(window.locator('#spectrum-body .live-ch-arm')).toHaveCount(2);
       await expect(window.locator('#live-ws-arm-all')).toBeVisible();
       await expect(window.locator('#live-ws-disarm-all')).toBeVisible();
       await expect(window.locator('#live-ws-arm-count')).toContainText('2 / 2 armed');
-
-      // Switching back to Monitor removes them again (JS-gated, not CSS).
-      await window.locator('#live-mode button[data-mode="monitor"]').click();
-      await expect(window.locator('#spectrum-body .live-ch-arm')).toHaveCount(0);
-      await expect(window.locator('#live-ws-arm-all')).toHaveCount(0);
     });
 
     test('arming a single track from the workspace flips aria-pressed', async () => {
-      await window.locator('#live-mode button[data-mode="record"]').click();
       const wsArm = window.locator('#spectrum-body .live-ch-arm').first();
       await expect(wsArm).toHaveAttribute('aria-pressed', 'true');
 
@@ -104,7 +90,6 @@ test.describe('Live capture (PRD 06) — workspace controls', () => {
     });
 
     test('workspace Arm all / Disarm all', async () => {
-      await window.locator('#live-mode button[data-mode="record"]').click();
       const arms = window.locator('#spectrum-body .live-ch-arm');
 
       await window.locator('#live-ws-disarm-all').click();
@@ -117,19 +102,24 @@ test.describe('Live capture (PRD 06) — workspace controls', () => {
     });
 
     test('starting with nothing armed is blocked from the workspace controls too', async () => {
-      await window.locator('#live-mode button[data-mode="record"]').click();
       await window.locator('#live-ws-disarm-all').click();
-      await window.locator('#live-start-btn').click();
+      await window.locator('#record-button').click();
       await expect(window.locator('#arm-hint')).toBeVisible();
       await expect(window.locator('#arm-hint')).toContainText('Arm at least one strip');
-      await expect(window.locator('#live-start-btn')).toBeVisible();
-      await expect(window.locator('#live-stop-btn')).toBeHidden();
+      await expect(window.locator('#live-indicator .live-txt')).toHaveText('LIVE');
+      // Arming stays live while monitoring (#757) — re-arm, record, then stop
+      // so the next test starts idle (a dangling capture would wedge this
+      // suite's shared-session beforeEach).
+      await window.locator('#live-ws-arm-all').click();
+      await window.locator('#record-button').click();
+      await expect(window.locator('#live-indicator .live-txt')).toHaveText('REC');
+      await window.locator('#record-button').click(); // stop
+      await expect(window.locator('#record-button')).toBeEnabled();
     });
 
     test('workspace arm controls lock while a capture is running', async () => {
-      await window.locator('#live-mode button[data-mode="record"]').click();
-      await window.locator('#live-start-btn').click();
-      await expect(window.locator('#live-stop-btn')).toBeVisible();
+      await window.locator('#record-button').click();
+      await expect(window.locator('#live-indicator .live-txt')).toHaveText('REC');
       await sendLiveTick(LIVE_CHANNELS);
 
       const arms = window.locator('#spectrum-body .live-ch-arm');
@@ -138,7 +128,8 @@ test.describe('Live capture (PRD 06) — workspace controls', () => {
       await expect(window.locator('#live-ws-arm-all')).toBeDisabled();
       await expect(window.locator('#live-ws-disarm-all')).toBeDisabled();
 
-      await window.locator('#live-stop-btn').click();
+      await window.locator('#record-button').click();
+      await expect(window.locator('#record-button')).toBeEnabled();
     });
   });
 
@@ -182,13 +173,12 @@ test.describe('Live capture (PRD 06) — workspace controls', () => {
       await expect(window.locator('#live-ws-add')).toBeVisible();
       await expect(window.locator('#live-ws-add')).toBeEnabled();
 
-      // Start Capture must refuse an empty config rather than let stream.py
-      // silently fall back to its own default channels (#188).
-      await window.locator('#live-start-btn').click();
+      // The top-bar Record button must refuse an empty config rather than let
+      // stream.py silently fall back to its own default channels (#188).
+      await window.locator('#record-button').click();
       await expect(window.locator('#arm-hint')).toBeVisible();
       await expect(window.locator('#arm-hint')).toContainText('Add at least one track');
-      await expect(window.locator('#live-start-btn')).toBeVisible();
-      await expect(window.locator('#live-stop-btn')).toBeHidden();
+      await expect(window.locator('#record-button')).toBeEnabled();
     });
 
     test('workspace Add disables at the device channel cap', async () => {
@@ -198,14 +188,14 @@ test.describe('Live capture (PRD 06) — workspace controls', () => {
     });
 
     test('workspace Add / remove are read-only while a capture is running', async () => {
-      await window.locator('#live-start-btn').click();
+      await window.locator('#record-button').click();
       await expect(window.locator('#live-ws-add')).toBeDisabled();
       await expect(window.locator('.sb-live-meters .live-ch .live-ch-x').first()).toBeDisabled();
       await openAudioSettings(window);
       await expect(window.locator('#settings-audio-capture-lock-note')).toBeVisible();
       await closeSettings(window);
 
-      await window.locator('#live-stop-btn').click();
+      await window.locator('#record-button').click(); // stop
       await expect(window.locator('#live-ws-add')).toBeEnabled();
     });
   });

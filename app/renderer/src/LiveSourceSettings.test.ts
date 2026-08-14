@@ -75,10 +75,10 @@ describe('LiveSourceSettings', () => {
     expect(html).toContain('Vocal');
   });
 
-  it('shows the record-folder row only in record mode', () => {
-    expect(renderMarkup()).toContain('id="record-folder-row" style="display:none"');
+  it('always shows the record-folder row (#757 — the mode toggle that gated it is gone)', () => {
+    expect(renderMarkup()).toContain('id="record-folder-row"');
     useLiveCaptureStore.setState({ liveMode: 'record' });
-    expect(renderMarkup()).toContain('id="record-folder-row" style="display:flex"');
+    expect(renderMarkup()).toContain('id="record-folder-row"');
   });
 
   it('shows the configured recordDir, falling back to the settings storageDir default', () => {

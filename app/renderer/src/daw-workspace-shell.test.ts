@@ -128,7 +128,7 @@ describe('DAW workspace timeline shell markup (#517)', () => {
 
   it('renders a muted empty-state row when channelConfig is empty', () => {
     const body = functionBody(inlineApp, 'renderDawShell');
-    expect(body).toContain('Add tracks from the Source panel');
+    expect(body).toContain('Add tracks to see channel lanes');
   });
 
   it('patches in place instead of rebuilding every tick', () => {
@@ -137,16 +137,19 @@ describe('DAW workspace timeline shell markup (#517)', () => {
     expect(body).toContain('laneSignature');
   });
 
-  it('points users at the Source panel for capture controls', () => {
+  it('points users at the top-bar Record button for capture controls (#757)', () => {
     const body = functionBody(inlineApp, 'renderDawShell');
-    expect(body).toContain('Source panel');
+    expect(body).toContain('Start and stop recording from the top-bar Record button');
   });
 });
 
-describe('DAW shell preserves existing capture controls (#517)', () => {
-  it('root-markup.html still has the Source-panel capture control islands (TD-001 slice 6c, #701: React-owned, not static markup)', () => {
-    expect(markup).toContain('id="live-controls-island"');
-    expect(markup).toContain('id="live-transport-island"');
+describe('DAW shell and the sole top-bar Record transport (#757)', () => {
+  it('root-markup.html no longer carries the in-tab capture-control islands; the top-bar Record button is the sole surface', () => {
+    expect(markup).not.toContain('id="live-controls-island"');
+    expect(markup).not.toContain('id="live-transport-island"');
+    expect(markup).not.toContain('id="live-mode"');
+    expect(markup).not.toContain('id="preflight-panel"');
+    expect(markup).toContain('id="record-button-island"');
   });
 
   it('renderDawShell does not duplicate the capture controls', () => {
@@ -154,6 +157,24 @@ describe('DAW shell preserves existing capture controls (#517)', () => {
     expect(body).not.toContain('id="live-mode"');
     expect(body).not.toContain('id="live-start-btn"');
     expect(body).not.toContain('id="live-stop-btn"');
+  });
+
+  it('the workspace arm cluster renders always (not record-mode gated) — armHTML drops the render gate', () => {
+    const body = functionBody(inlineApp, 'liveWorkspaceToolbarHTML');
+    expect(body).toContain('live-ws-arm-count');
+    expect(body).not.toContain("advanced && liveMode === 'record'");
+  });
+
+  it('arm controls stay usable while monitoring and freeze only while recording (#757)', () => {
+    // A blocked promote (nothing armed) leaves a monitor session running with
+    // the config locked — arming must remain live there so the engineer can
+    // arm and press Record again. The template bakes the disabled state off
+    // `liveRunning && liveMode === 'record'`, and the runtime lock sweep keys
+    // the arm controls off the same condition.
+    const toolbar = functionBody(inlineApp, 'liveWorkspaceToolbarHTML');
+    expect(toolbar).toContain("liveRunning && liveMode === 'record'");
+    const lockBody = functionBody(inlineApp, 'setCaptureControlsLocked');
+    expect(lockBody).toContain("const armLocked = locked && liveMode === 'record'");
   });
 });
 

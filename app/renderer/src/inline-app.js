@@ -368,13 +368,15 @@ function liveWorkspaceToolbarHTML() {
   const advanced = window.liveSetupState.showAdvancedControls(channelConfig.length);
   // + New group (#190): names a group via the shared dialog and pushes it onto
   // channelGroups. Disabled mid-capture like every other config control (#38).
-  // Arm all / Disarm all + armed count (#191), Record mode only (JS-gated — the
-  // workspace sits outside #tab-live, so CSS gating can't reach it).
-  const armHTML = advanced && liveMode === 'record'
+  // Arm all / Disarm all + armed count (#191) — rendered always now that the
+  // mode toggle is gone (#757): the Live tab is always-monitoring, so record-
+  // enable is a permanent DAW-style affordance, not a record-mode gate (JS-
+  // gated — the workspace sits outside #tab-live, so CSS gating can't reach it).
+  const armHTML = advanced
     ? `<span class="live-ws-arm">`
       + `<span class="arm-count" id="live-ws-arm-count">${armedCount()} / ${channelConfig.length} armed</span>`
-      + `<button type="button" class="ghost-btn sm" id="live-ws-arm-all"${liveRunning ? ' disabled' : ''} title="Arm every track for recording">Arm all</button>`
-      + `<button type="button" class="ghost-btn sm" id="live-ws-disarm-all"${liveRunning ? ' disabled' : ''} title="Disarm every track">Disarm all</button>`
+      + `<button type="button" class="ghost-btn sm" id="live-ws-arm-all"${liveRunning && liveMode === 'record' ? ' disabled' : ''} title="Arm every track for recording">Arm all</button>`
+      + `<button type="button" class="ghost-btn sm" id="live-ws-disarm-all"${liveRunning && liveMode === 'record' ? ' disabled' : ''} title="Disarm every track">Disarm all</button>`
       + `</span>`
     : '';
   return `<div class="live-meters-toolbar">`
@@ -492,9 +494,9 @@ function renderLiveWorkspace() {
   const toolbar = liveWorkspaceToolbarHTML();
   // First-use banner (#294): the real first-launch shape (loadDevices() seeds
   // 2 idle tracks automatically) still needs the guide — steps 1-2 read done,
-  // step 3 ("Start monitoring/recording") stays active and points at Start
-  // Capture. It sits above the toolbar; the power workspace beneath stays
-  // fully visible and functional.
+  // step 3 ("Start monitoring/recording") stays active and points at the
+  // top-bar Record button (#757). It sits above the toolbar; the power
+  // workspace beneath stays fully visible and functional.
   const banner = window.liveSetupState.shouldShowGuide(window.localStorage)
     ? `<div class="live-setup-banner" role="note">`
       + `<span class="lsb-title">Getting set up</span>`
@@ -528,8 +530,8 @@ function syncLiveAdjustmentsPanel() {
 // Timeline-oriented DAW shell (#517, epic #515): swapped in for the meter
 // workspace on the Live tab when the experimental toggle (#516) is on. UI-only
 // vertical slice — no playhead/waveform math, just the shell layout. The
-// Source panel remains the sole capture control surface, so this never
-// renders #live-mode/#live-start-btn/#live-stop-btn.
+// top-bar Record button is the sole capture control surface (#757), so this
+// never renders #live-mode/#live-start-btn/#live-stop-btn.
 function renderDawShell() {
   specStore.getState().setPanelState('meters'); // hides #spectrum-island's React curve view while #live-island renders the board
   const body = document.getElementById('live-island');
@@ -569,7 +571,7 @@ function renderDawShell() {
       + `<span class="daw-lane-name">${laneNames[idx]}</span>`
       + `<span class="daw-lane-body"><canvas class="daw-channel-waveform"></canvas></span>`
       + `</div>`).join('')}</div>`
-    : `<div class="daw-lane daw-empty-state">Add tracks from the Source panel to see channel lanes</div>`;
+    : `<div class="daw-lane daw-empty-state">Add tracks to see channel lanes</div>`;
 
   // Seed the time from state so a mid-capture full rebuild (lane signature
   // change) never flashes 0:00 (#518).
@@ -579,7 +581,7 @@ function renderDawShell() {
     + `<span class="daw-transport-title">Live Workspace</span>`
     + `<span class="daw-transport-state daw-transport-state-${transportChip.toLowerCase()}">${transportChip}</span>`
     + `<span class="daw-transport-time">${window.dawPlayheadState.formatElapsed(seededElapsed)}</span>`
-    + `<span class="daw-transport-hint">Start and stop capture from the Source panel</span>`
+    + `<span class="daw-transport-hint">Start and stop recording from the top-bar Record button</span>`
     + `</div>`
     + `<div class="daw-playhead"></div>`
     + `<div class="daw-ruler"></div>`
@@ -617,7 +619,6 @@ function livePanelView() {
   return {
     deviceChannels: selectedDeviceChannels(),
     liveRunning,
-    liveMode,
     groups: channelGroups,
     instrumentProfiles: window.instrumentProfiles.PROFILES.map((p) => ({ id: p.id, label: p.label })),
   };
@@ -1155,29 +1156,33 @@ document.getElementById('dir-analyze-btn').addEventListener('click', async () =>
   }
 });
 
-/* ══ Live mode ══ */
+/* ── Live mode ── */
 // #meter-interval/#window-secs's label repaint is React-owned now
 // (CaptureCadenceControls.tsx, #725) — it derives the label text itself from
 // meterIntervalLabel/windowSecsLabel on every render.
 
-/* ── Monitor / Record toggle ──
-   The Source-panel Mode toggle is React-owned (LiveControls.tsx, TD-001
-   slice 6c, #701) and calls lcStore.getState().setLiveMode directly; rig-
-   apply now writes `liveMode` as part of applyRigPatch's returned patch
-   (rig-panel.ts, TD-001 slice 6d, #702). Both paths' store writes are picked
-   up by syncLiveCaptureMirror's subscription (board repaint) — no inline
-   wrapper function is called from here anymore. */
+/* ── Mode is internal now (#757) ──
+   The Source-panel Mode toggle is GONE — the Live tab is permanently
+   monitor-mode and the top-bar Record button is the sole transport. liveMode
+   still feeds the backend startLive({ mode, arm, labels }) contract and the
+   header REC/LIVE indicator (capturePhase), and rig-apply writes it as part
+   of applyRigPatch's returned patch (rig-panel.ts, TD-001 slice 6d, #702) —
+   it just has no UI of its own anymore. recordCapture (LiveControls.tsx)
+   normalizes it back to 'monitor' before an idle start so a stopped record
+   session can be recorded again. Both store writes are picked up by
+   syncLiveCaptureMirror's subscription (board repaint) — no inline wrapper
+   function is called from here anymore. */
 // Inline "arm at least one strip" hint near the Start button (#43).
 function showArmHint(msg) { const h = document.getElementById('arm-hint'); h.textContent = msg; h.style.display = 'block'; }
 function hideArmHint() { const h = document.getElementById('arm-hint'); if (h) h.style.display = 'none'; }
 
 // The header #live-indicator (LIVE/REC pill) + #live-status text, driven by
 // window.liveTransitionState's pure phase model (#458) from the raw
-// liveRunning/liveMode/capturePromoting flags. The Start/Stop/Record
-// TRANSPORT BUTTONS themselves are React-owned now (LiveTransportControls,
-// TD-001 slice 6c, #701) and derive the same phase independently; this keeps
-// the two remaining out-of-scope pieces (the header pill, sitting outside
-// #tab-live; the status line, shared with rig-error text) in sync.
+// liveRunning/liveMode/capturePromoting flags. The TRANSPORT BUTTON itself is
+// React-owned now (RecordButton.tsx + record-transport.ts, #729) and derives
+// the same phase independently; this keeps the two remaining out-of-scope
+// pieces (the header pill, sitting outside #tab-live; the status line, shared
+// with rig-error text) in sync.
 // `meterRate`, when passed, interpolates into the status line ("Recording ·
 // meters N/s"); omit it to leave the current status text alone (e.g. the
 // "Connecting…" placeholder).
@@ -1232,9 +1237,9 @@ async function deleteChannelGroup(g) {
 
 // The effective default recording folder to show when no folder is explicitly
 // chosen (#482): the configured storageDir setting (#91), falling back to the
-// platform default — mirrors ipc/shared.ts's defaultRecordDir(). LiveControls.tsx
+// platform default — mirrors ipc/shared.ts's defaultRecordDir(). LiveSourceSettings.tsx
 // carries its own copy of this same logic for its React-owned #record-folder-path
-// rendering (TD-001 slice 6c, #701); this one is still used by the boot sequence
+// rendering (#727); this one is still used by the boot sequence
 // below (cold-boot placeholder text before settings load).
 function defaultRecordFolderText() {
   const s = setStore.getState().settings;
@@ -1339,22 +1344,36 @@ function renderMeasurementBadge() {
 // measurement-source is excluded (#457): it's a renderer-side selection into
 // already-streaming tick data, not a stream.py argument, so switching it
 // mid-capture is safe and is the point of #457's second AC. device-select/
-// device-refresh-btn/record-folder-btn/#live-mode buttons are React-owned now
-// (LiveControls.tsx) and derive `disabled` from isCapturing directly — not
-// swept here (TD-001 slice 6c, #701) — and #meter-interval/#window-secs are
-// React-owned now (CaptureCadenceControls.tsx, #725) and derive `disabled`
-// from isCapturing directly — not swept here either.
+// device-refresh-btn/record-folder-btn are React-owned now
+// (LiveSourceSettings.tsx) and derive `disabled` from isCapturing directly —
+// not swept here (#727) — #meter-interval/#window-secs are React-owned now
+// (CaptureCadenceControls.tsx, #725) and derive `disabled` from isCapturing
+// directly — not swept here either — and the old #live-mode buttons are gone
+// entirely (#757).
 function setCaptureControlsLocked(locked) {
   const set = (el) => { if (el) { el.disabled = locked; el.setAttribute('aria-disabled', String(locked)); } };
   ['rig-select',
-    'live-ws-add', 'live-ws-new-group',
-    'live-ws-arm-all', 'live-ws-disarm-all'].forEach((id) => set(document.getElementById(id)));
+    'live-ws-add', 'live-ws-new-group'].forEach((id) => set(document.getElementById(id)));
   // Workspace track rows (#188): Add track (above) + each row's remove, read-only
   // while a capture is running.
   document.querySelectorAll('#spectrum-body .live-ch-x').forEach(set);
-  // Workspace per-track arm toggle (#191), frozen mid-capture with the rest —
-  // the workspace is outside #tab-live, so this explicit sweep is required.
-  document.querySelectorAll('#spectrum-body .live-ch-arm').forEach(set);
+  // Workspace per-track arm toggle + Arm all / Disarm all (#191, #757):
+  // record-enable stays LIVE while a MONITOR session runs — the tab is
+  // always-monitoring and arming only matters at promote time, so an engineer
+  // who pressed Record with nothing armed (promote blocked, #arm-hint) can
+  // arm and press again without being stuck. The arm controls freeze only once
+  // the session is actually RECORDING (promoteToRecording re-asserts the lock
+  // right after flipping liveMode to 'record'). The workspace sits outside
+  // #tab-live, so this explicit sweep is required either way.
+  const armLocked = locked && liveMode === 'record';
+  ['live-ws-arm-all', 'live-ws-disarm-all'].forEach((id) => {
+    const el = document.getElementById(id);
+    if (el) { el.disabled = armLocked; el.setAttribute('aria-disabled', String(armLocked)); }
+  });
+  document.querySelectorAll('#spectrum-body .live-ch-arm').forEach((el) => {
+    el.disabled = armLocked;
+    el.setAttribute('aria-disabled', String(armLocked));
+  });
   // Inline track definition (#189): kind toggle + source picker(s), frozen
   // mid-capture (stream.py can't honor a mid-session channel change).
   // veqChannelHTML already stamps `disabled` at build time; this re-asserts it
@@ -1387,8 +1406,8 @@ function setDeviceHint(text, isError) {
   hint.style.display = 'block';
 }
 
-// Device <select>/refresh button/hint are React-owned now (LiveControls.tsx,
-// TD-001 slice 6c, #701) — this fetches the list and hands it to the store
+// Device <select>/refresh button/hint are React-owned now (LiveSourceSettings.tsx,
+// #727) — this fetches the list and hands it to the store
 // (which itself seeds channelConfig/channelGroups for the resolved device),
 // then re-runs the inline-only remainder of the old reset (focusedInputIndex/
 // lastLiveChannels/preflight — see resetChannelConfig).
@@ -1400,19 +1419,21 @@ async function loadDevices() {
   if (lcStore.getState().devices.length) resetChannelConfig();
 }
 
-// Bridged runtime powering LiveControls.tsx's device/measurement-source/mode/
-// record-folder/start-stop-record controls (TD-001 slice 6c, #701) — the
-// heavier orchestration (validation, playhead/waveform/rig-lock/lapCoaching/
-// session-offer side effects) stays here rather than moving into React,
-// since it's still tightly coupled to the not-yet-migrated DAW shell/
-// live-adjustments/preflight/rig surfaces (see the ADR in the #701 plan).
+// Bridged runtime powering LiveSourceSettings.tsx's device/measurement-source/
+// record-folder controls and RecordButton.tsx's recordCapture/stopLiveCapture
+// (TD-001 slice 6c #701, #727, #729; #757 removed the mode/start-stop controls
+// this used to power) — the heavier orchestration (validation, playhead/
+// waveform/rig-lock/lapCoaching/session-offer side effects) stays here rather
+// than moving into React, since it's still tightly coupled to the
+// not-yet-migrated DAW shell/live-adjustments/preflight/rig surfaces (see the
+// ADR in the #701 plan).
 window.liveCaptureRuntime = {
   loadDevices,
   selectDevice(value) {
-    void value; // store.selectDevice (called by LiveControls itself) already reseeds channelConfig/channelGroups reactively
+    void value; // store.selectDevice (called by LiveSourceSettings itself) already reseeds channelConfig/channelGroups reactively
     focusedInputIndex = null;
     lcStore.getState().clearLastLiveChannels();
-    // PreflightPanel.tsx recomputes reactively off liveCaptureStore's
+    // PreflightSettings.tsx recomputes reactively off liveCaptureStore's
     // selectedDevice/channelConfig/devices — no imperative repaint needed
     // here (TD-001 slice 6d, #702).
   },
@@ -1495,13 +1516,15 @@ window.liveWorkspaceRuntime = {
   });
 })();
 
-// Start/Stop/Record buttons are React-owned now (LiveTransportControls,
-// TD-001 slice 6c, #701) — they call lcStore.getState().startCapture()/
-// stopCapture() directly for the payload+IPC round trip (which already builds
-// the exact same request this file's old inline handler did — device/
-// channels/mode/recordDir/arm/labels — from store state) and delegate the
-// surrounding side effects to the beforeStartCapture/onCaptureStarting/
-// onCaptureStarted/onCaptureStopping/onCaptureStopped functions below via the
+// The capture transport is React-owned now (#729, #757): RecordButton.tsx's
+// top-bar Record button is the sole control — an idle press routes through
+// recordCapture() (LiveControls.tsx), which starts monitoring first then
+// promotes (#458); a Recording press routes through stopLiveCapture(). Both
+// delegate the payload+IPC round trip (which already builds the exact same
+// request this file's old inline handler did — device/channels/mode/
+// recordDir/arm/labels — from store state) and the surrounding side effects
+// to the beforeStartCapture/onCaptureStarting/onCaptureStarted/
+// onCaptureStopping/onCaptureStopped functions below via the
 // window.liveCaptureRuntime bridge (see LiveControls.tsx's
 // startLiveCapture()/stopLiveCapture() for the exact call ordering — it
 // mirrors this file's old liveRunning=true-then-await-then-handle-result
@@ -1512,7 +1535,11 @@ window.liveWorkspaceRuntime = {
 // to zero, but stream.py silently falls back to its first device channels
 // when given an empty channel list — block Start rather than start a
 // capture the UI just showed as empty. Record mode with nothing armed would
-// spawn an empty session — block that too (#43).
+// spawn an empty session — block that too (#43). (#757) The arm branch is
+// now unreachable through the Record button's monitor-start path (recordCapture
+// normalizes liveMode to 'monitor' before starting, so this always reads the
+// monitor branch), but it stays as a harmless defensive guard for direct
+// startLiveCapture callers (auto-start, tests).
 function beforeStartCapture() {
   if (channelConfig.length === 0) {
     const reason = 'Add at least one track before starting capture.';
@@ -1588,10 +1615,36 @@ function onCaptureStarted(result, meterRate) {
 // failure the session drops to a stopped-but-configured state via stopLive()
 // (device/channels/groups/measurement source all preserved) rather than
 // attempting to resume monitoring — see the spec's non-goals. Stays a single
-// bridged function (LiveTransportControls' Record button calls it directly)
+// bridged function (RecordButton's Record press calls it via recordCapture)
 // since its guard/backend-swap/failure-recovery shape doesn't decompose into
 // the same before/starting/started split Start does.
+//
+// #757: a bad Record press is blocked INLINE by the preflight checklist first
+// (device connected / channel routing in range / baseline match — the same
+// pure window.preflight rules the Settings → Audio PreflightSettings panel
+// renders), surfacing the failing items' detail strings through #arm-hint.
+// With the mode toggle gone there's no separate "record preview" screen to
+// catch these, so the guard is the last line of defense before promoting.
+function preflightBlockReason() {
+  const rigState = window.rendererStores.rig.getState();
+  const activeRig = rigState.rigs.find((r) => r.id === rigState.activeRigId) || null;
+  const rec = window.rigReconcile.reconcileRigDevice(selectedDeviceName(), liveDevices);
+  const items = window.preflight.buildChecklist({
+    baseline: activeRig ? activeRig.baseline : null,
+    current: window.preflight.snapshotRig(channelConfig, rec.deviceName),
+    device: { found: rec.found, name: rec.deviceName, channels: selectedDeviceChannels() },
+  });
+  const summary = window.preflight.checklistSummary(items);
+  if (summary.ready) return null;
+  return items.filter((i) => i.status === 'fail').map((i) => i.detail).join(' ');
+}
+
 async function promoteToRecording() {
+  const preflightReason = preflightBlockReason();
+  if (preflightReason) {
+    showArmHint(preflightReason);
+    return;
+  }
   const guard = window.liveTransitionState.canPromoteToRecording({
     liveRunning, liveMode, promoting: capturePromoting, armedCount: armedCount(),
   });
@@ -1604,6 +1657,10 @@ async function promoteToRecording() {
   lcStore.getState().setPromoting(true);
   lcStore.getState().setLiveMode('record');
   syncCaptureControls();
+  // #757: arming stays live while monitoring, so the lock has to be re-
+  // asserted here — the monitor start locked config but deliberately left the
+  // arm controls enabled; flipping to 'record' is what freezes them.
+  setCaptureControlsLocked(true);
 
   const device = lcStore.getState().selectedDevice || undefined;
   const windowSecs = lcStore.getState().windowSecs;
@@ -1625,7 +1682,7 @@ async function promoteToRecording() {
     renderMeasurementBadge();
   } else {
     lcStore.getState().setLiveMode('monitor');
-    specStore.getState().setPanelState('error', result.error || 'Could not start recording. Monitoring stopped — press Start Capture to resume.');
+    specStore.getState().setPanelState('error', result.error || 'Could not start recording. Monitoring stopped — press the Record button to start again.');
     await stopLive();
     syncCaptureControls();
   }
@@ -1637,9 +1694,9 @@ async function promoteToRecording() {
 // `liveRunning = false`. Also invoked directly by promoteToRecording's
 // failure path and onCaptureStarted's failed-start path (both call stopLive()
 // below, which wraps store.stopCapture() + this + onCaptureStopped together
-// for those two internal callers — LiveTransportControls' own Stop button
-// calls store.stopCapture() itself and this/onCaptureStopped via the bridge,
-// see LiveControls.tsx's stopLiveCapture()).
+// for those two internal callers — RecordButton's own Stop press calls
+// stopCapture() itself and this/onCaptureStopped via the bridge, see
+// LiveControls.tsx's stopLiveCapture()).
 function onCaptureStopping() {
   playheadState = window.dawPlayheadState.stop(playheadState, Date.now());
   stopPlayheadTicker();
@@ -1676,16 +1733,18 @@ function onCaptureStopped(result) {
     hydrateIcons(document.getElementById('rec-offer'));
   }
 
-  // #488/#261: a monitor session that accumulated at least one window builds
-  // a session-level Report Card from the whole sessionWindows buffer (every
+  // #488/#261: a session that accumulated at least one window builds a
+  // session-level Report Card from the whole sessionWindows buffer (every
   // window tick since Start Capture — the capped liveWindows below only
-  // keeps the last 10 for the rolling preview), grades it, and
-  // persists it to history tagged as a live-capture source — the same
-  // hook a file analysis gets. Record mode keeps its session-saved offer
-  // above; the two never show together (sessionDir only exists in record
-  // mode). A session too short/silent to produce usable windows degrades to
-  // the "not enough data" state instead of a nonsensical grade.
-  if (shouldOfferReportCard(liveMode, liveWindows.length)) {
+  // keeps the last 10 for the rolling preview), grades it, and persists it
+  // to history tagged as a live-capture source — the same hook a file
+  // analysis gets. (#757) The old monitor-mode-only gate is gone: with the
+  // mode toggle removed, every user-initiated stop is a record session, so a
+  // record session's "Session saved" offer (sessionDir above) shows together
+  // with this report-card offer — keeping #488/#261 reachable. A session too
+  // short/silent to produce usable windows degrades to the "not enough data"
+  // state instead of a nonsensical grade.
+  if (shouldOfferReportCard(liveWindows.length)) {
     const sessionSrc = liveSessionReportCardSource(sessionWindows, lcStore.getState().measurementSource, channelConfig);
     if (sessionSrc) {
       anaStore.getState().setLiveSource(sessionSrc); // freeze the session card onto the Report Card tab
@@ -1699,7 +1758,7 @@ function onCaptureStopped(result) {
 }
 
 // Internal-only orchestration for the two call sites that stop a capture
-// without going through LiveTransportControls' own Stop button (a failed
+// without going through RecordButton's own Stop press (a failed
 // Start, and a failed promote-to-recording) — wraps store.stopCapture() with
 // the same before/after split the button itself uses via the bridge.
 async function stopLive() {

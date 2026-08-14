@@ -53,7 +53,7 @@ test.describe.serial('License gating (#54)', () => {
     await expect(win.locator('.mode-tab[data-mode="soundcheck"] .tab-lock')).toBeVisible();
     await win.locator('.mode-tab[data-mode="live"]').click();
     await expect(win.locator('#tab-live .pro-gate')).toBeVisible();
-    await expect(win.locator('#live-start-btn')).toBeHidden();
+    await expect(win.locator('#record-button')).toBeHidden();
 
     // #727: the rig/device/measurement/cadence controls relocated into
     // Settings → Audio, outside #tab-live, so they need their own pro-gate
@@ -117,7 +117,7 @@ test.describe.serial('License gating (#54)', () => {
     await expect(win.locator('.mode-tab[data-mode="live"] .tab-lock')).toBeHidden();
     await win.locator('.mode-tab[data-mode="live"]').click();
     await expect(win.locator('#tab-live .pro-gate')).toBeHidden();
-    await expect(win.locator('#live-start-btn')).toBeVisible();
+    await expect(win.locator('#record-button')).toBeVisible();
 
     // Settings → Audio's pro-gate (#727) clears too, revealing the real controls.
     await win.locator('#settings-btn').click();
@@ -158,7 +158,7 @@ test.describe.serial('License gating (#54)', () => {
     await expect(win.locator('#license-banner-text')).toContainText('expired');
     // Still Pro during grace.
     await win.locator('.mode-tab[data-mode="live"]').click();
-    await expect(win.locator('#live-start-btn')).toBeVisible();
+    await expect(win.locator('#record-button')).toBeVisible();
   });
 
   test('past the grace window the app reverts to free — data kept, nothing locked', async () => {

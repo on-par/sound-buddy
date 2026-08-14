@@ -39,7 +39,6 @@ export interface LiveCapturePanelProps {
   onStart: () => void;
   onStop: () => void;
   meterEvents: LiveEvent[];          // stream.py JSON-lines events, oldest→newest
-  liveMode?: 'monitor' | 'record';   // default 'monitor'
   groups?: ChannelGroup[];           // default []
   measurementSource?: number | null;                       // strip index judging the room; default null (first track)
   onSelectMeasurementSource?: (source: number | null) => void;
@@ -53,7 +52,6 @@ export default function LiveCapturePanel({
   onStart,
   onStop,
   meterEvents,
-  liveMode = 'monitor',
   groups = [],
   measurementSource = null,
   onSelectMeasurementSource,
@@ -65,7 +63,7 @@ export default function LiveCapturePanel({
 
   let metersHTML = '';
   if (latestTick) {
-    const panel: PanelView = { deviceChannels: deviceChannelCount(selectedDevice, devices), liveRunning: isLive, liveMode, groups };
+    const panel: PanelView = { deviceChannels: deviceChannelCount(selectedDevice, devices), liveRunning: isLive, groups };
     const stripViews: StripView[] = latestTick.channels.map((ch, idx) => {
       const strip = channels[idx] ?? null;
       const groupIndex = groups.findIndex((g) => g.members.includes(idx));

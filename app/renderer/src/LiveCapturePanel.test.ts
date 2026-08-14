@@ -69,7 +69,7 @@ function findById(node: ReactNode, id: string): ReactElement<{ id?: string; onCl
 describe('LiveCapturePanel', () => {
   it('renders the exact liveMetersHTML output for the equivalent StripView/PanelView inputs (markup identity)', () => {
     const props = baseProps();
-    const panel: PanelView = { deviceChannels: deviceChannelCount(props.selectedDevice, devices), liveRunning: props.isLive, liveMode: 'monitor', groups: [] };
+    const panel: PanelView = { deviceChannels: deviceChannelCount(props.selectedDevice, devices), liveRunning: props.isLive, groups: [] };
     const stripViews: StripView[] = FIXTURE_CHANNELS.map((ch, idx) => ({
       strip: channelsConfig[idx] ?? null,
       displayName: ch.name,
@@ -115,7 +115,7 @@ describe('LiveCapturePanel', () => {
   });
 
   it('treats a strip with no armed field as armed by default (mirrors window.armState.isArmed)', () => {
-    const html = renderMarkup(baseProps({ liveMode: 'record' }));
+    const html = renderMarkup(baseProps());
     // channelsConfig entries carry no `armed` field; default-armed means both
     // render as pressed/"Disarm", not unarmed/"Arm".
     expect(html).toContain('aria-pressed="true"');
@@ -123,7 +123,7 @@ describe('LiveCapturePanel', () => {
   });
 
   it('honors an explicit armed:false strip as disarmed', () => {
-    const html = renderMarkup(baseProps({ liveMode: 'record', channels: [{ kind: 'mono', a: 0, b: 1, armed: false }, channelsConfig[1]] }));
+    const html = renderMarkup(baseProps({ channels: [{ kind: 'mono', a: 0, b: 1, armed: false }, channelsConfig[1]] }));
     expect(html).toContain('aria-pressed="false"');
   });
 

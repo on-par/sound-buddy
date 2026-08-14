@@ -52,7 +52,7 @@
       {
         key: 'device',
         label: 'Choose your input device',
-        hint: 'Pick your interface or console under Input Device in the Source panel.',
+        hint: 'Pick your interface or console under Input Device in Settings → Audio.',
         done: deviceReady,
       },
       {
@@ -64,7 +64,7 @@
       {
         key: 'start',
         label: liveMode === 'record' ? 'Start recording' : 'Start monitoring',
-        hint: 'Press Start Capture in the Source panel when you’re ready.',
+        hint: 'Press the top-bar Record button when you’re ready.',
         done: false,
       },
     ];

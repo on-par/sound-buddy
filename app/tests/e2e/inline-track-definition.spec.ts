@@ -94,7 +94,7 @@ test.describe('Inline track definition (#189)', () => {
   });
 
   test('the header kind and source controls freeze while a capture is running', async () => {
-    await window.locator('#live-start-btn').click();
+    await window.locator('#record-button').click();
     await window.locator('#settings-btn').click();
     await window.locator('#settings-tab-btn-audio').click();
     await expect(window.locator('#settings-audio-capture-lock-note')).toBeVisible();
@@ -104,7 +104,7 @@ test.describe('Inline track definition (#189)', () => {
     for (let i = 0; i < await kindSels.count(); i++) await expect(kindSels.nth(i)).toBeDisabled();
     for (let i = 0; i < await srcSels.count(); i++) await expect(srcSels.nth(i)).toBeDisabled();
 
-    await window.locator('#live-stop-btn').click();
+    await window.locator('#record-button').click(); // stop
     await expect(window.locator('.live-ch[data-ch="0"] .live-ch-kind')).toBeEnabled();
   });
 });

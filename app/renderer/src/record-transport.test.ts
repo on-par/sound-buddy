@@ -40,23 +40,23 @@ describe('recordButtonPhase', () => {
 });
 
 describe('recordButtonView', () => {
-  it('idle-disabled: no monitor running', () => {
+  it('idle-enabled with no monitor session running (press starts capture) (#757)', () => {
     const view = recordButtonView(input());
     expect(view).toEqual({
       phase: 'idle',
-      disabled: true,
+      disabled: false,
       label: 'Record',
-      ariaLabel: 'Recording unavailable — monitoring is not active',
+      ariaLabel: 'Record — press to start recording',
     });
   });
 
-  it('idle-enabled: monitoring, ready to record', () => {
+  it('idle-enabled while monitoring, same view (the button is never idle-disabled on the Live tab)', () => {
     const view = recordButtonView(input({ liveRunning: true, liveMode: 'monitor' }));
     expect(view).toEqual({
       phase: 'idle',
       disabled: false,
       label: 'Record',
-      ariaLabel: 'Start recording',
+      ariaLabel: 'Record — press to start recording',
     });
   });
 

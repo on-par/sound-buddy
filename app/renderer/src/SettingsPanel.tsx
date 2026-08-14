@@ -45,6 +45,7 @@ import RigControls from './RigControls';
 import LiveSourceSettings from './LiveSourceSettings';
 import SecondaryMeasurementPanel from './SecondaryMeasurementPanel';
 import CaptureCadenceControls from './CaptureCadenceControls';
+import PreflightSettings from './PreflightSettings';
 
 export type SettingsSection = 'storage' | 'audio' | 'about';
 
@@ -424,6 +425,9 @@ export default function SettingsPanel({ booted = false }: { booted?: boolean }) 
           {booted && <LiveSourceSettings />}
           {booted && <SecondaryMeasurementPanel />}
           {booted && <CaptureCadenceControls />}
+          {/* Preflight checklist + Save baseline (#757): relocated here from the
+              Live tab's PreflightPanel — same view-model the old panel used. */}
+          {booted && <PreflightSettings />}
         </div>
         <div className="settings-pane" id="settings-pane-about" style={{ display: section === 'about' ? 'flex' : 'none' }}>
           <p className="ai-dialog-version" id="ai-dialog-version">

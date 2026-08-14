@@ -58,8 +58,8 @@ describe('Live monitoring visibly leads to a Report Card (#488)', () => {
     expect(markup).toMatch(/id="rc-offer-btn"[^>]*>View report card/);
   });
 
-  it('gates the offer on the pure monitor-with-windows rule', () => {
-    expect(inlineApp).toContain('shouldOfferReportCard(liveMode, liveWindows.length)');
+  it('gates the offer on the pure window-count rule (#488, #757 — the mode requirement is gone, so record sessions offer the card too)', () => {
+    expect(inlineApp).toContain('shouldOfferReportCard(liveWindows.length)');
   });
 
   it('navigates to the Report Card tab from the offer button', () => {
@@ -72,6 +72,41 @@ describe('Live monitoring visibly leads to a Report Card (#488)', () => {
     expect(markup).toMatch(/id="rc-not-enough" class="rec-offer" style="display:none"/);
     expect(markup).toContain('Not enough data');
     expect(markup).toContain('capture at least a few seconds of audio');
+  });
+});
+
+describe('Always-monitoring Live tab with a top-bar-only transport (#757)', () => {
+  it('removes the in-tab Mode toggle, preflight gate, and Start/Stop transport from #tab-live', () => {
+    expect(markup).not.toContain('id="live-controls-island"');
+    expect(markup).not.toContain('id="live-transport-island"');
+    expect(markup).not.toContain('id="live-mode"');
+    expect(markup).not.toContain('id="preflight-panel"');
+    expect(markup).not.toContain('id="preflight-island"');
+  });
+
+  it('keeps the top-bar Record button island and the still-inline status/offer rows', () => {
+    expect(markup).toContain('id="record-button-island"');
+    expect(markup).toContain('id="live-status"');
+    expect(markup).toContain('id="live-rc-cue"');
+    expect(markup).toContain('id="arm-hint"');
+    expect(markup).toContain('id="rec-offer"');
+    expect(markup).toContain('id="rc-offer"');
+  });
+
+  it('no longer references the removed in-tab controls in App.tsx', () => {
+    const appSrc = fs.readFileSync(fileURLToPath(new URL('./App.tsx', import.meta.url)), 'utf8');
+    expect(appSrc).not.toContain('live-controls-island');
+    expect(appSrc).not.toContain('live-transport-island');
+    expect(appSrc).not.toContain('preflight-island');
+    expect(appSrc).toContain("document.getElementById('record-button-island')");
+  });
+
+  it('promoteToRecording consults the preflight checklist before promoting (#757 inline guard)', () => {
+    expect(inlineApp).toContain('window.preflight.buildChecklist');
+    expect(inlineApp).toContain('window.preflight.checklistSummary');
+    const promoteBlock = inlineApp.slice(inlineApp.indexOf('async function promoteToRecording'));
+    expect(promoteBlock.indexOf('preflightBlockReason')).toBeGreaterThan(-1);
+    expect(promoteBlock.indexOf('preflightBlockReason')).toBeLessThan(promoteBlock.indexOf('canPromoteToRecording'));
   });
 });
 

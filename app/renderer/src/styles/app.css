@@ -274,6 +274,11 @@
 
     .tab-content { display:none; flex-direction:column; gap:16px; }
     .tab-content.active { display:flex; }
+    /* #757: the Live tab's in-tab Mode toggle / preflight gate / Start-Stop
+       transport are gone, so its vertical rhythm tightens from the .tab-content
+       16px default down to 8px — the remaining status/offer rows read as one
+       compact header above the DAW-ish meter board. */
+    #tab-live { gap:8px; }
 
     .section-label { font:var(--fw-semibold) var(--fs-micro)/1 var(--font-sans); letter-spacing:var(--tracking-caps); text-transform:uppercase; color:var(--text-muted); }
     .hairline { height:1px; background:var(--border-subtle); }
@@ -557,14 +562,6 @@
     }
     .sb-slider::-webkit-slider-thumb:hover { transform:scale(1.15); box-shadow:0 0 0 4px var(--gold-tint); }
 
-    /* Segmented toggle (Monitor / Record) */
-    .seg-label { font:var(--fw-medium) var(--fs-label)/1 var(--font-sans); color:var(--text-tertiary); letter-spacing:var(--tracking-label); margin-bottom:6px; }
-    .segmented { display:flex; gap:4px; padding:4px; background:var(--surface-inset); border:1px solid var(--border-subtle); border-radius:var(--radius-lg); }
-    .segmented button { flex:1; height:var(--control-h-sm); border:none; border-radius:var(--radius-md); background:transparent; color:var(--text-secondary); font:var(--fw-medium) var(--fs-label)/1 var(--font-sans); cursor:pointer; display:inline-flex; align-items:center; justify-content:center; gap:6px; transition:background-color var(--dur-fast) var(--ease-out),color var(--dur-fast) var(--ease-out); }
-    .segmented button:hover { color:var(--text-primary); }
-    .segmented button.active { background:var(--surface-raised); color:var(--text-primary); box-shadow:var(--highlight-top); }
-    .segmented button.active[data-mode="record"] { color:var(--issue-text); }
-
     /* Record folder row */
     .record-row { display:flex; align-items:center; gap:8px; }
     .record-path { flex:1; min-width:0; font:var(--fw-regular) var(--fs-micro)/1.3 var(--font-mono); color:var(--text-muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
@@ -582,14 +579,16 @@
     .live-ch-arm[aria-pressed="true"] { border-color:var(--issue-500); }
     .live-ch-arm[aria-pressed="true"]::before { background:var(--issue-500); box-shadow:0 0 6px -1px var(--issue-500); }
     .live-ch-arm:disabled { opacity:0.4; cursor:not-allowed; }
-    /* Workspace toolbar's Arm all / Disarm all + count (#191), Record mode only. */
+    /* Workspace toolbar's Arm all / Disarm all + count (#191) — always rendered
+       now that the mode toggle is gone (#757). */
     .live-ws-arm { display:flex; align-items:center; gap:6px; margin-left:auto; }
     /* Capture lock (#38): while a capture runs, config controls freeze (stream.py
        can't honor mid-session changes). #727 moved device-select/
        device-refresh-btn/record-folder-btn/.sb-slider (and the explanatory
        caption, now #settings-audio-capture-lock-note) into Settings → Audio
-       — only #live-mode's buttons remain under #tab-live. */
-    #tab-live.capture-locked #live-mode button:disabled { opacity:0.5; cursor:not-allowed; }
+       and #757 removed #live-mode entirely, so nothing remains under
+       #tab-live to sweep — the workspace controls are JS-locked via
+       setCaptureControlsLocked (inline-app.js). */
 
     /* Recording indicator + recording offer banner */
     #live-indicator .rec-dot { width:8px; height:8px; border-radius:50%; background:var(--issue-500); box-shadow:0 0 8px rgba(229,72,77,0.6); }
