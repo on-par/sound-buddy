@@ -27,6 +27,7 @@ import {
   type StripConfig,
   type ChannelGroup,
   type LiveEvent,
+  type WindowData,
   type ChannelWindowData,
   type ListDevicesResult,
 } from '../live-capture-panel';
@@ -246,7 +247,7 @@ export interface LiveCaptureState {
   // instead of jumping straight from recording to idle.
   stopping: boolean;
 
-  liveWindows: LiveEvent[];
+  liveWindows: WindowData[];
   lastTick: LiveEvent | null;
   lastLiveChannels: ChannelWindowData[] | null;
   // Bumped whenever a tick's channel count differs from the previous tick's
@@ -754,8 +755,9 @@ export function createLiveCaptureStore(getApi: () => LiveCaptureApi) {
           return patch;
         });
         if (tick.type === 'window' || typeof (tick as { window?: number }).window === 'number') {
+          const windowTick = tick as WindowData;
           set((state) => {
-            const next = [...state.liveWindows, tick];
+            const next = [...state.liveWindows, windowTick];
             if (next.length > LIVE_WINDOWS_CAP) next.shift();
             return { liveWindows: next };
           });

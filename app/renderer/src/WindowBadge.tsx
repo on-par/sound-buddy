@@ -18,8 +18,6 @@ export default function WindowBadge(): JSX.Element {
     isCapturing: s.isCapturing,
   }));
   const last = isCapturing && liveWindows.length > 0 ? liveWindows[liveWindows.length - 1] : null;
-  // liveWindows only ever accumulates window ticks (bindIpcEvents appends them
-  // on the window-tick branch), so every entry carries `.window`.
-  const text = last ? `Window #${(last as { window: number }).window}` : '';
+  const text = last ? `Window #${last.window}` : '';
   return <span id="window-badge">{text}</span>;
 }
