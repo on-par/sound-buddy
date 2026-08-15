@@ -42,6 +42,7 @@ import {
 import {
   lapFocusView,
   lapObservationContext,
+  liveWorkspaceViewState,
   type LiveWorkspaceViewState,
 } from '../live-workspace-view';
 import type { AppSettings } from '../../../electron/ipc/api';
@@ -377,27 +378,11 @@ export function persistGroups(state: LiveCaptureState) {
 }
 
 // Builds the LiveWorkspaceViewState snapshot the pure live-workspace-view
-// derivations take — the store's own fields + the settings the 
-// instrument-profile/adjustments-panel reads resolve through.
+// derivations take — routed through the one shared builder (#710
+// shotgun-surgery fix) so this store's field list can't drift from
+// LiveWorkspace.tsx/LiveCapturePanel.tsx/LiveEqPane.tsx's.
 function liveCaptureViewSnapshot(state: LiveCaptureState): LiveWorkspaceViewState {
-  return {
-    channelConfig: state.channelConfig,
-    channelGroups: state.channelGroups,
-    devices: state.devices,
-    selectedDevice: state.selectedDevice,
-    isCapturing: state.isCapturing,
-    liveMode: state.liveMode,
-    appMode: state.appMode,
-    selectedChannel: state.selectedChannel,
-    measurementSource: state.measurementSource,
-    focusedInputIndex: state.focusedInputIndex,
-    lastTick: state.lastTick,
-    lastLiveChannels: state.lastLiveChannels,
-    liveWindows: state.liveWindows,
-    settings: (useSettingsStore.getState().settings as AppSettings | null) ?? null,
-    lapCoaching: state.lapCoaching,
-    playheadElapsedMs: 0,
-  };
+  return liveWorkspaceViewState(state, (useSettingsStore.getState().settings as AppSettings | null) ?? null);
 }
 
 // Maps a LapAction onto window.liveAdjustmentsState's reducers, feeding

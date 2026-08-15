@@ -7,7 +7,7 @@ import { renderToString } from 'react-dom/server';
 import LiveCapturePanel from './LiveCapturePanel';
 import { useLiveCaptureStore } from './stores/liveCaptureStore';
 import { useSettingsStore } from './stores/settingsStore';
-import type { LiveDevice, LiveEvent } from './live-capture-panel';
+import type { LiveDevice, ChannelWindowData } from './live-capture-panel';
 import type { AppSettings } from '../../electron/ipc/api';
 
 // The pure helper classic-scripts the board reads off `window` — real modules
@@ -33,7 +33,7 @@ const CONFIG = [
   { kind: 'mono' as const, a: 1, b: 2, armed: false },
 ];
 
-const TICK_CHANNELS = [
+const TICK_CHANNELS: ChannelWindowData[] = [
   { index: 0, name: 'Vocals', rms: -18, peak: -6, clipping: false, centroid: 2400, rolloff: 8000,
     bands: { sub_bass: -58, bass: -30, low_mid: -24, mid: -12, high_mid: -20, presence: -28, brilliance: -80 } },
   { index: 1, name: 'Band', rms: -22, peak: -9, clipping: false, centroid: 300, rolloff: 5000,
@@ -115,8 +115,8 @@ describe('LiveCapturePanel', () => {
   it('renders the running card from the latest tick once capturing with a lastTick', () => {
     useLiveCaptureStore.setState({
       isCapturing: true,
-      lastTick: { type: 'meter', ts: 0, channels: TICK_CHANNELS } as unknown as LiveEvent,
-      lastLiveChannels: TICK_CHANNELS as never,
+      lastTick: { type: 'meter', ts: 0, channels: TICK_CHANNELS },
+      lastLiveChannels: TICK_CHANNELS,
     });
     const html = renderMarkup();
     expect(html).toContain('meter-card sb-live-meters">');
