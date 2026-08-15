@@ -56,29 +56,13 @@ function getReportFirstUxState(): ReportFirstUxStateApi {
   return (window as unknown as { reportFirstUxState: ReportFirstUxStateApi }).reportFirstUxState;
 }
 
-// The Live tab's meter board (renderLiveMeters/renderLiveWorkspace/
-// renderEqPane/currentEqPaneChannels) is out of scope for this slice (#395's
-// later slice 6f) and stays inline-app.js's — its top-level `function`
-// declarations attach to `window` automatically (same as
-// window.renderChannelConfig, read by rigStore.ts). liveRunning/liveWindows
-// are `let` bindings, which don't, so inline-app.js bridges a read-only
-// accessor for them onto window.liveCapture.
-interface LiveBoardApi {
-  renderLiveMeters(win: unknown): void;
-  renderLiveWorkspace(): void;
-  renderEqPane(channels: unknown): void;
-  currentEqPaneChannels(): unknown;
-}
-interface LiveCaptureRunningApi {
-  isRunning(): boolean;
-  windows(): unknown[];
-}
-function getLiveBoard(): LiveBoardApi {
-  return window as unknown as LiveBoardApi;
-}
-function getLiveCapture(): LiveCaptureRunningApi {
-  return (window as unknown as { liveCapture: LiveCaptureRunningApi }).liveCapture;
-}
+// The Live tab's meter board + docked EQ pane are React-rendered now (slice
+// 6g, #710): LiveCapturePanel/LiveEqPane/LiveStatsRow subscribe to
+// liveCaptureStore's discrete fields, so the old
+// renderLiveMeters/renderLiveWorkspace/renderEqPane/currentEqPaneChannels
+// bridge (window.liveCapture, inline-app.js) is gone — applySpectrumForMode's
+// live branch only drives the chrome (title, pane width, panelState) and lets
+// the components render reactively.
 
 // Verbatim port of syncSpectrumForMode (inline-app.js) — keeps the spectrum
 // panel's title + empty/populated/meters state in sync with the active mode.
@@ -91,12 +75,11 @@ export function applySpectrumForMode(mode: string): void {
   if (mode === 'live') {
     if (title) title.textContent = SPECTRUM_TITLE.live;
     if (eqPane) eqPane.style.width = clampEqPaneWidth(useSettingsStore.getState().settings?.liveEqPaneWidth) + 'px';
-    const board = getLiveBoard();
-    const live = getLiveCapture();
-    const windows = live.windows();
-    if (live.isRunning() && windows.length > 0) board.renderLiveMeters(windows[windows.length - 1]);
-    else board.renderLiveWorkspace();
-    board.renderEqPane(board.currentEqPaneChannels());
+    // The board/EQ/stats surfaces render reactively from liveCaptureStore
+    // (LiveCapturePanel/LiveEqPane/LiveStatsRow, slice 6g #710) — no
+    // imperative render call. 'meters' hands #spectrum-imperative back and
+    // hides SpectrumPanel's React curve view while the board shows.
+    useSpectrumStore.getState().setPanelState('meters');
   } else if (mode === 'soundcheck') {
     if (title) title.textContent = 'Soundcheck';
     // #760: soundcheck playback is tracks + playhead only — the panel stays in

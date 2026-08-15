@@ -61,6 +61,8 @@ import IdealProfileSelect from './IdealProfileSelect';
 import CurveEditorDialog from './CurveEditorDialog';
 import RecordButton from './RecordButton';
 import LiveWorkspace from './LiveWorkspace';
+import LiveEqPane from './LiveEqPane';
+import LiveStatsRow from './LiveStatsRow';
 import SoundcheckPanel from './SoundcheckPanel';
 import ModeTabs from './ModeTabs';
 import * as modeSwitch from './mode-switch';
@@ -247,6 +249,17 @@ export default function App() {
       {booted && createPortal(<SpectrumPanel />, document.getElementById('spectrum-island')!)}
       {booted && createPortal(<IdealProfileSelect />, document.getElementById('ideal-profile-island')!)}
       {booted && createPortal(<LiveWorkspace />, document.getElementById('live-island')!)}
+      {/* #710: the docked live EQ pane + header stats row are React-rendered
+          (LiveEqPane/LiveStatsRow) — portaled onto the same containers
+          inline-app.js's renderEqPane/updateStatsRow used to own. */}
+      {booted && createPortal(<LiveEqPane />, document.getElementById('live-eq-pane-body')!)}
+      {booted && createPortal(<LiveStatsRow />, document.getElementById('stats-row')!)}
+      {/* #710: the docked live EQ pane is React-rendered (LiveEqPane),
+          portaled onto the same container inline-app.js's renderEqPane used
+          to own; the header stats row stays static #stats-row markup, written
+          by live-board.ts's patchStatsRow (ReportCardToolbar for file mode,
+          LiveWorkspace's meter-controller for live mode). */}
+      {booted && createPortal(<LiveEqPane />, document.getElementById('live-eq-pane-body')!)}
       {/* #757: the Live tab's in-tab controls are gone — no portals to
           LiveControls / LiveTransportControls / PreflightPanel. The top-bar
           RecordButton portal below is the sole Live-capture surface. */}

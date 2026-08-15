@@ -19,9 +19,10 @@ const armState = require('../../arm-state.js');
 const groupState = require('../../group-state.js');
 const rigKind = require('../../rig-kind.js');
 const channelLabels = require('../../channel-labels.js');
+const liveAdjustmentsState = require('../../live-adjustments-state.js');
 
 beforeEach(() => {
-  (globalThis as { window?: unknown }).window = { armState, groupState, rigKind, channelLabels };
+  (globalThis as { window?: unknown }).window = { armState, groupState, rigKind, channelLabels, liveAdjustmentsState };
 });
 
 afterEach(() => {
@@ -54,6 +55,10 @@ describe('createLiveCaptureStore', () => {
     expect(s.selectedChannel).toBeNull();
     expect(s.meterIntervalMs).toBe(100);
     expect(s.windowSecs).toBe(3);
+    expect(s.focusedInputIndex).toBeNull();
+    // lapCoaching is lazily created on first use (window.liveAdjustmentsState
+    // isn't available at store-module load) — null until an action seeds it.
+    expect(s.lapCoaching).toBeNull();
   });
 
   describe('capture cadence (#725)', () => {
@@ -942,5 +947,108 @@ describe('createLiveCaptureStore', () => {
       armState, groupState, rigKind,
     };
     await expect(useLiveCaptureStore.getState().loadDevices()).resolves.toBeUndefined();
+  });
+
+  describe('lap coaching + focused input (slice 6g, #710)', () => {
+    // A clipping candidate clears the confidence gate (confidence 1 ≥
+    // MIN_CONFIDENCE) so advanceCoaching can promote it — exercising the
+    // store action's delegation end-to-end rather than stubbing the reducer.
+    const CLIP = [{ id: 'clip-risk', category: 'clipping', confidence: 1, severityDb: 2 }];
+
+    it('setLapCoaching writes the given coaching state as-is', () => {
+      const { store } = makeStore();
+      const coaching = { active: null };
+      store.getState().setLapCoaching(coaching as never);
+      expect(store.getState().lapCoaching).toBe(coaching);
+    });
+
+    it('advanceLapCoaching lazily seeds coaching and promotes a persistent candidate to active', () => {
+      const { store } = makeStore();
+      store.getState().advanceLapCoaching(CLIP, 1000, {});
+      store.getState().advanceLapCoaching(CLIP, 2000, {});
+      const coaching = store.getState().lapCoaching as { active: { id: string } | null };
+      expect(coaching.active?.id).toBe('clip-risk');
+    });
+
+    it('advanceLapCoaching does not promote a candidate below the confidence gate', () => {
+      const { store } = makeStore();
+      const weak = [{ id: 'clip-risk', category: 'clipping', confidence: 0.1, severityDb: 0 }];
+      for (let i = 0; i < 5; i++) store.getState().advanceLapCoaching(weak, i * 1000, {});
+      const coaching = store.getState().lapCoaching as { active: unknown };
+      expect(coaching.active).toBeNull();
+    });
+
+    it('applyLapAction snooze writes a snoozeUntil from the injected now clock', () => {
+      const { store } = makeStore();
+      store.getState().applyLapAction('snooze', 5000, {});
+      const coaching = store.getState().lapCoaching as { snoozeUntil: number | null };
+      expect(coaching.snoozeUntil).toBe(5000 + 300000);
+    });
+
+    it('applyLapAction acknowledge marks the active candidate acknowledged', () => {
+      const { store } = makeStore();
+      store.getState().advanceLapCoaching(CLIP, 1000, {});
+      store.getState().advanceLapCoaching(CLIP, 2000, {});
+      store.getState().applyLapAction('acknowledge', 3000, {});
+      const coaching = store.getState().lapCoaching as { acknowledgedId: string | null };
+      expect(coaching.acknowledgedId).toBe('clip-risk');
+    });
+
+    it('applyLapAction tried starts an observation window via markTriedCoaching', () => {
+      const { store } = makeStore();
+      store.getState().advanceLapCoaching(CLIP, 1000, {});
+      store.getState().advanceLapCoaching(CLIP, 2000, {});
+      store.getState().applyLapAction('tried', 3000, { measurementSource: 0, focusIndex: null, label: null, mixValid: true, inputValid: false, clipping: false });
+      const coaching = store.getState().lapCoaching as { observing: { id: string } | null };
+      expect(coaching.observing?.id).toBe('clip-risk');
+    });
+
+    it('applyLapAction resume clears an active snooze', () => {
+      const { store } = makeStore();
+      store.getState().applyLapAction('snooze', 5000, {});
+      store.getState().applyLapAction('resume', 6000, {});
+      const coaching = store.getState().lapCoaching as { snoozeUntil: number | null };
+      expect(coaching.snoozeUntil).toBeNull();
+    });
+
+    it('applyLapAction dismiss suppresses the active candidate', () => {
+      const { store } = makeStore();
+      store.getState().advanceLapCoaching(CLIP, 1000, {});
+      store.getState().advanceLapCoaching(CLIP, 2000, {});
+      store.getState().applyLapAction('dismiss', 3000, {});
+      const coaching = store.getState().lapCoaching as { active: unknown; dismissed: Record<string, unknown> };
+      expect(coaching.active).toBeNull();
+      expect(coaching.dismissed['clip-risk']).toBeTruthy();
+    });
+
+    it('applyLapAction outcome-ack returns to monitoring after an outcome (no-op without one)', () => {
+      const { store } = makeStore();
+      store.getState().applyLapAction('outcome-ack', 1000, {});
+      const coaching = store.getState().lapCoaching as { outcome: unknown; active: unknown };
+      expect(coaching.outcome).toBeNull();
+      expect(coaching.active).toBeNull();
+    });
+
+    it('resetLapCoaching replaces coaching with a fresh empty state', () => {
+      const { store } = makeStore();
+      store.getState().applyLapAction('snooze', 5000, {});
+      store.getState().resetLapCoaching();
+      const coaching = store.getState().lapCoaching as {
+        active: unknown; snoozeUntil: number | null; cooldowns: unknown; outcome: unknown;
+      };
+      expect(coaching.active).toBeNull();
+      expect(coaching.snoozeUntil).toBeNull();
+      expect(coaching.cooldowns).toEqual({});
+      expect(coaching.outcome).toBeNull();
+    });
+
+    it('setFocusedInputIndex stores the focused input index, defaulting to null', () => {
+      const { store } = makeStore();
+      expect(store.getState().focusedInputIndex).toBeNull();
+      store.getState().setFocusedInputIndex(2);
+      expect(store.getState().focusedInputIndex).toBe(2);
+      store.getState().setFocusedInputIndex(null);
+      expect(store.getState().focusedInputIndex).toBeNull();
+    });
   });
 });

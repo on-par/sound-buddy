@@ -1,222 +1,221 @@
 // Copyright (c) 2026 Patrick Robinson (on-par). All rights reserved.
 // Licensed under the Sound Buddy Desktop Application License (app/LICENSE).
 
-import { describe, it, expect, vi } from 'vitest';
-import { createElement, type ReactElement, type ReactNode } from 'react';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { createElement } from 'react';
 import { renderToString } from 'react-dom/server';
-import LiveCapturePanel, { type LiveCapturePanelProps } from './LiveCapturePanel';
+import LiveCapturePanel from './LiveCapturePanel';
+import { useLiveCaptureStore } from './stores/liveCaptureStore';
+import { useSettingsStore } from './stores/settingsStore';
 import {
-  deviceOptionLabel,
-  deviceChannelCount,
   liveMetersHTML,
-  measurementSourceOptionLabel,
-  type LiveDevice,
   type StripConfig,
-  type StripView,
-  type PanelView,
   type ChannelWindowData,
-  type MeterData,
 } from './live-capture-panel';
+import { stripViewAt, livePanelView, liveBoardState } from './live-board';
 
-const devices: LiveDevice[] = [
-  { index: 0, name: 'Scarlett 18i20', channels: 18, default_sr: 48000 },
-  { index: 1, name: 'Built-in Microphone', channels: 2, default_sr: 44100 },
-];
+// The pure helper classic-scripts the board's view functions read off window
+// — real modules, same convention as live-board.test.ts.
+const armState = require('../arm-state.js');
+const groupState = require('../group-state.js');
+const instrumentProfiles = require('../instrument-profiles.js');
+const rigReconcile = require('../rig-reconcile.js');
+const liveSetupState = require('../live-setup-state.js');
+const trackWorkspace = require('../track-workspace.js');
+const liveAdjustmentsState = require('../live-adjustments-state.js');
+const dawWorkspaceState = require('../daw-workspace-state.js');
+const dawWaveformState = require('../daw-waveform-state.js');
+const dawPlayheadState = require('../daw-playhead-state.js');
 
-// Shaped like the e2e LIVE_CHANNELS fixture (live-capture.spec.ts:79-84).
-const FIXTURE_CHANNELS: ChannelWindowData[] = [
-  { index: 0, name: 'Vocals', rms: -18, peak: -6, clipping: false, centroid: 2400, rolloff: 8000,
-    bands: { sub_bass: -58, bass: -30, low_mid: -24, mid: -12, high_mid: -20, presence: -28, brilliance: -80 } },
-  { index: 1, name: 'Band', rms: -22, peak: -9, clipping: false, centroid: 300, rolloff: 5000,
-    bands: { sub_bass: -20, bass: -10, low_mid: -26, mid: -30, high_mid: -34, presence: -40, brilliance: -50 } },
-];
-
-const meterEvent: MeterData = { type: 'meter', ts: 0, channels: FIXTURE_CHANNELS };
-
-const channelsConfig: StripConfig[] = [{ kind: 'mono', a: 0, b: 1 }, { kind: 'mono', a: 1, b: 2 }];
-
-function baseProps(overrides: Partial<LiveCapturePanelProps> = {}): LiveCapturePanelProps {
+function makeStorage(): Storage {
+  const store = new Map<string, string>();
   return {
-    devices,
-    selectedDevice: '',
-    channels: channelsConfig,
-    isLive: false,
-    onStart: () => {},
-    onStop: () => {},
-    meterEvents: [meterEvent],
-    ...overrides,
+    getItem: (k: string) => (store.has(k) ? store.get(k)! : null),
+    setItem: (k: string, v: string) => { store.set(k, v); },
+    removeItem: (k: string) => { store.delete(k); },
+    clear: () => store.clear(),
+    key: (i: number) => Array.from(store.keys())[i] ?? null,
+    get length() { return store.size; },
+  } as unknown as Storage;
+}
+
+const CONFIG: StripConfig[] = [{ kind: 'mono', a: 0, b: 1 }, { kind: 'mono', a: 1, b: 2 }];
+
+function tickChannels(): ChannelWindowData[] {
+  return [
+    { index: 0, name: 'Vocals', rms: -18, peak: -6, clipping: false, centroid: 2400, rolloff: 8000,
+      bands: { sub_bass: -58, bass: -30, low_mid: -24, mid: -12, high_mid: -20, presence: -28, brilliance: -80 } },
+    { index: 1, name: 'Band', rms: -22, peak: -9, clipping: false, centroid: 300, rolloff: 5000,
+      bands: { sub_bass: -20, bass: -10, low_mid: -26, mid: -30, high_mid: -34, presence: -40, brilliance: -50 } },
+  ];
+}
+
+beforeEach(() => {
+  const storage = makeStorage();
+  (globalThis as { window?: unknown }).window = {
+    localStorage: storage,
+    armState,
+    groupState,
+    instrumentProfiles,
+    rigReconcile,
+    liveSetupState,
+    trackWorkspace,
+    liveAdjustmentsState,
+    dawWorkspaceState,
+    dawWaveformState,
+    dawPlayheadState,
   };
-}
+  useSettingsStore.setState({ settings: {
+    idealProfile: '', customIdealProfiles: [], storageDir: '', rigs: [], activeRigId: null,
+    usageSignalEnabled: false, channelLabels: {}, channelGroups: {}, inputInstrumentProfiles: {},
+    crashReportingEnabled: false, dawWorkspaceEnabled: false, liveAdjustmentsEnabled: false,
+    reportFirstUxEnabled: false, shareChurchName: '', weeklyReminderEnabled: false,
+    weeklyReminderServiceDay: 0, liveEqPaneWidth: 360, measurementDeviceName: '',
+    gradingProfile: 'casual', consoleNetworkConsentGranted: false, soundcheckBuses: [],
+  }, settingsError: null });
+  useLiveCaptureStore.setState({
+    appMode: 'live',
+    isCapturing: false,
+    liveMode: 'monitor',
+    channelConfig: CONFIG,
+    channelGroups: [],
+    selectedChannel: null,
+    measurementSource: null,
+    selectedDevice: '',
+    devices: [{ index: 0, name: 'Scarlett 18i20', channels: 8, default_sr: 48000 }],
+    lastTick: null,
+    lastLiveChannels: null,
+    liveWindows: [],
+    lapCoaching: null,
+    focusedInputIndex: null,
+    secondaryMeasurement: { status: 'off', deviceName: '' },
+    secondaryWindows: [],
+    lastMeasurementChannels: null,
+    boardShapeVersion: 0,
+  });
+});
 
-function renderMarkup(props: LiveCapturePanelProps): string {
-  return renderToString(createElement(LiveCapturePanel, props));
-}
+afterEach(() => {
+  delete (globalThis as { window?: unknown }).window;
+  useSettingsStore.setState({ settings: null, settingsError: null });
+  useLiveCaptureStore.setState({
+    appMode: 'reportcard',
+    isCapturing: false,
+    liveMode: 'monitor',
+    channelConfig: [],
+    channelGroups: [],
+    selectedChannel: null,
+    measurementSource: null,
+    selectedDevice: '',
+    devices: [],
+    lastTick: null,
+    lastLiveChannels: null,
+    liveWindows: [],
+    lapCoaching: null,
+    focusedInputIndex: null,
+    secondaryMeasurement: { status: 'off', deviceName: '' },
+    secondaryWindows: [],
+    lastMeasurementChannels: null,
+    boardShapeVersion: 0,
+  });
+});
 
-function findById(node: ReactNode, id: string): ReactElement<{ id?: string; onClick?: () => void }> | null {
-  if (node == null || typeof node !== 'object') return null;
-  if (Array.isArray(node)) {
-    for (const child of node) {
-      const found = findById(child, id);
-      if (found) return found;
-    }
-    return null;
-  }
-  const el = node as ReactElement<{ id?: string; children?: ReactNode }>;
-  if (el.props?.id === id) return el as ReactElement<{ id?: string; onClick?: () => void }>;
-  return findById(el.props?.children ?? null, id);
+function renderMarkup(): string {
+  return renderToString(createElement(LiveCapturePanel));
 }
 
 describe('LiveCapturePanel', () => {
-  it('renders the exact liveMetersHTML output for the equivalent StripView/PanelView inputs (markup identity)', () => {
-    const props = baseProps();
-    const panel: PanelView = { deviceChannels: deviceChannelCount(props.selectedDevice, devices), liveRunning: props.isLive, groups: [] };
-    const stripViews: StripView[] = FIXTURE_CHANNELS.map((ch, idx) => ({
-      strip: channelsConfig[idx] ?? null,
-      displayName: ch.name,
-      selected: false,
-      armed: !!channelsConfig[idx] && channelsConfig[idx].armed !== false,
-      groupIndex: -1,
-      groupCollapsed: false,
-      instrumentProfileId: 'generic',
-      instrumentAuto: true,
-    }));
-    const expectedMeters = liveMetersHTML(FIXTURE_CHANNELS, stripViews, panel);
-
-    const html = renderMarkup(props);
-
-    expect(html).toContain(expectedMeters);
-    expect(html).toContain('Default Device');
-    expect(html).toContain(deviceOptionLabel(devices[0]));
-    expect(html).toContain(deviceOptionLabel(devices[1]));
+  it('renders null off the live tab', () => {
+    useLiveCaptureStore.setState({ appMode: 'reportcard' });
+    expect(renderMarkup()).toBe('');
   });
 
-  it('shows the start button and hides stop when not live', () => {
-    const html = renderMarkup(baseProps({ isLive: false }));
-    expect(html).toMatch(/id="live-start-btn"[^>]*>/);
-    expect(html).not.toMatch(/id="live-start-btn"[^>]*style="display:none"/);
-    expect(html).toMatch(/id="live-stop-btn"[^>]*style="display:none"/);
-  });
-
-  it('hides the start button and shows stop when live', () => {
-    const html = renderMarkup(baseProps({ isLive: true }));
-    expect(html).toMatch(/id="live-start-btn"[^>]*style="display:none"/);
-    expect(html).toMatch(/id="live-stop-btn"[^>]*style="display:inline-flex"/);
-  });
-
-  it('shows the waiting placeholder and no meters when there are no meter events', () => {
-    const html = renderMarkup(baseProps({ meterEvents: [] }));
-    expect(html).toContain('Waiting for live audio…');
+  it('renders the guided first-use hero for an empty config', () => {
+    useLiveCaptureStore.setState({ channelConfig: [] });
+    const html = renderMarkup();
+    expect(html).toContain('live-setup-hero');
+    expect(html).toContain('Set up your live check');
+    expect(html).toContain('Add your first track');
     expect(html).not.toContain('sb-live-meters');
   });
 
-  it('shows the waiting placeholder when every event has an empty channel list', () => {
-    const html = renderMarkup(baseProps({ meterEvents: [{ type: 'meter', ts: 0, channels: [] }] }));
-    expect(html).toContain('Waiting for live audio…');
+  it('renders the toolbar + idle meter card for a seeded config', () => {
+    const html = renderMarkup();
+    expect(html).toContain('id="live-ws-add"');
+    expect(html).toContain('id="live-ws-cap">2 / 8 used</span>');
+    expect(html).toContain('class="meter-card sb-live-meters idle"');
+    expect(html).toContain('>Idle<');
   });
 
-  it('treats a strip with no armed field as armed by default (mirrors window.armState.isArmed)', () => {
-    const html = renderMarkup(baseProps());
-    // channelsConfig entries carry no `armed` field; default-armed means both
-    // render as pressed/"Disarm", not unarmed/"Arm".
-    expect(html).toContain('aria-pressed="true"');
-    expect(html).not.toContain('aria-pressed="false"');
-  });
-
-  it('honors an explicit armed:false strip as disarmed', () => {
-    const html = renderMarkup(baseProps({ channels: [{ kind: 'mono', a: 0, b: 1, armed: false }, channelsConfig[1]] }));
-    expect(html).toContain('aria-pressed="false"');
-  });
-
-  it('resolves each strip\'s groupIndex from the groups prop', () => {
-    const html = renderMarkup(baseProps({ groups: [{ name: 'Drums', members: [1] }] }));
-    expect(html).toContain('<option value="0" selected>Drums</option>');
-  });
-
-  it('resolves each strip\'s groupCollapsed from the owning group (#483)', () => {
-    const html = renderMarkup(baseProps({ groups: [{ name: 'Drums', members: [1], collapsed: true }] }));
-    expect(html).toMatch(/class="live-ch[^"]*\bgroup-collapsed\b[^"]*" data-ch="1"/);
-    expect(html).not.toMatch(/class="live-ch[^"]*\bgroup-collapsed\b[^"]*" data-ch="0"/);
-  });
-
-  it('picks the last event with a non-empty channel list as the latest tick', () => {
-    const html = renderMarkup(baseProps({
-      meterEvents: [meterEvent, { type: 'meter', ts: 1, channels: [] }],
-    }));
-    // Trailing empty-channel event is skipped; the real tick's strip names still render.
+  it('renders the liveMetersHTML markup byte-identically for a tick snapshot', () => {
+    const channels = tickChannels();
+    useLiveCaptureStore.setState({
+      isCapturing: true,
+      lastTick: { type: 'meter', ts: 0, channels } as never,
+      lastLiveChannels: channels,
+      boardShapeVersion: 1,
+    });
+    const boardState = liveBoardState();
+    const expectedMeters = liveMetersHTML(
+      channels,
+      channels.map((c, i) => stripViewAt(CONFIG, c, i, boardState)),
+      livePanelView(boardState),
+    );
+    const html = renderMarkup();
+    expect(html).toContain(expectedMeters);
+    expect(html).toContain('class="meter-card sb-live-meters"');
     expect(html).toContain('Vocals');
+    expect(html).toContain('Band');
   });
 
-  it('falls back to a null strip when a tick channel has no matching config entry', () => {
-    const html = renderMarkup(baseProps({ channels: [] }));
-    // No strip configured for either channel -> both default to mono, channel 0.
-    expect((html.match(/<option value="0" selected>Ch 1<\/option>/g) || []).length).toBe(2);
+  it('appends the live adjustments panel when the experiment is enabled', () => {
+    useSettingsStore.setState({
+      settings: {
+        ...useSettingsStore.getState().settings!,
+        liveAdjustmentsEnabled: true,
+      },
+    });
+    const html = renderMarkup();
+    expect(html).toContain('class="live-adjustments-panel"');
+    expect(html).toContain('Live adjustments');
   });
 
-  it('falls back to "Ch N" when a tick channel carries no name', () => {
-    const nameless = { ...FIXTURE_CHANNELS[0], name: undefined as unknown as string };
-    const html = renderMarkup(baseProps({ meterEvents: [{ type: 'meter', ts: 0, channels: [nameless, FIXTURE_CHANNELS[1]] }] }));
-    expect(html).toContain('title="Click to rename">Ch 1</span>');
+  it('omits the adjustments panel when the experiment is disabled', () => {
+    const html = renderMarkup();
+    expect(html).not.toContain('live-adjustments-panel');
   });
 
-  it('wires #live-start-btn/#live-stop-btn onClick to onStart/onStop without touching the DOM', () => {
-    const onStart = vi.fn();
-    const onStop = vi.fn();
-    const element = LiveCapturePanel(baseProps({ onStart, onStop }));
-
-    const startBtn = findById(element, 'live-start-btn');
-    const stopBtn = findById(element, 'live-stop-btn');
-
-    expect(startBtn?.props.onClick).toBe(onStart);
-    expect(stopBtn?.props.onClick).toBe(onStop);
+  it('renders the DAW shell branch when the experimental toggle is on', () => {
+    useSettingsStore.setState({
+      settings: {
+        ...useSettingsStore.getState().settings!,
+        dawWorkspaceEnabled: true,
+      },
+    });
+    const html = renderMarkup();
+    expect(html).toContain('class="daw-shell"');
+    expect(html).toContain('daw-transport');
+    expect(html).toContain('daw-mix-lane');
+    expect(html).toContain('daw-lane-name">Overall mix</span>');
+    expect(html).toContain('data-ch="0"');
+    expect(html).not.toContain('sb-live-meters');
   });
 
-  describe('measurement source select', () => {
-    it('renders the default option plus one option per configured strip', () => {
-      const html = renderMarkup(baseProps());
-      expect(html).toContain('id="measurement-source"');
-      expect(html).toContain('First track (default)');
-      channelsConfig.forEach((strip, i) => {
-        expect(html).toContain(`>${measurementSourceOptionLabel(strip, i)}<`);
-      });
-    });
+  it('shows the first-use banner for a seeded config while the guide is incomplete', () => {
+    const html = renderMarkup();
+    expect(html).toContain('id="live-setup-skip"');
+    expect(html).toContain('Getting set up');
+  });
 
-    it('marks the option matching measurementSource as selected', () => {
-      const html = renderMarkup(baseProps({ measurementSource: 1 }));
-      expect(html).toMatch(/<option value="1"[^>]*selected[^>]*>/);
-    });
+  it('hides the first-use banner once the guide has been dismissed', () => {
+    liveSetupState.markSetupComplete((globalThis as { window: { localStorage: Storage } }).window.localStorage);
+    const html = renderMarkup();
+    expect(html).not.toContain('live-setup-skip');
+  });
 
-    it('defaults to the "First track (default)" option when measurementSource is null', () => {
-      const html = renderMarkup(baseProps({ measurementSource: null }));
-      expect(html).toMatch(/<option value=""[^>]*selected[^>]*>First track \(default\)<\/option>/);
-    });
-
-    it('is not disabled while live (mid-capture source switching, #457)', () => {
-      const html = renderMarkup(baseProps({ isLive: true }));
-      expect(html).not.toMatch(/id="measurement-source"[^>]*disabled/);
-    });
-
-    it('is not disabled when not live', () => {
-      const html = renderMarkup(baseProps({ isLive: false }));
-      expect(html).not.toMatch(/id="measurement-source"[^>]*disabled/);
-    });
-
-    it('option values carry no device indices or names', () => {
-      const html = renderMarkup(baseProps());
-      const selectMatch = html.match(/<select id="measurement-source"[^>]*>([\s\S]*?)<\/select>/);
-      expect(selectMatch).toBeTruthy();
-      expect(selectMatch![1]).not.toContain('Scarlett');
-      expect(selectMatch![1]).not.toContain('Built-in Microphone');
-    });
-
-    it('wires onChange to onSelectMeasurementSource, mapping "" to null and a digit string to a number', () => {
-      const onSelectMeasurementSource = vi.fn();
-      const element = LiveCapturePanel(baseProps({ onSelectMeasurementSource }));
-      const select = findById(element, 'measurement-source') as ReactElement<{ onChange?: (e: { target: { value: string } }) => void }> | null;
-      expect(select).toBeTruthy();
-      select!.props.onChange!({ target: { value: '1' } });
-      expect(onSelectMeasurementSource).toHaveBeenCalledWith(1);
-      select!.props.onChange!({ target: { value: '' } });
-      expect(onSelectMeasurementSource).toHaveBeenCalledWith(null);
-    });
+  it('hides the first-use banner while capturing', () => {
+    useLiveCaptureStore.setState({ isCapturing: true });
+    const html = renderMarkup();
+    expect(html).not.toContain('live-setup-skip');
   });
 });

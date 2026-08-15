@@ -73,16 +73,13 @@ window.liveCapture = { isRunning: () => liveRunning, windows: () => liveWindows 
 // window tick with no cap, reset alongside liveWindows at each capture start,
 // and is what the session report card is built from at Stop Capture.
 let sessionWindows = [];
-// Focused input for the per-input instrument-aware adjustment candidates
-// (#525) — ephemeral, per-session only, never persisted.
-let focusedInputIndex = null;
-// Coaching stability state (#612) — advanced once per analysis window, never
-// per render, since syncLiveAdjustmentsPanel() is called from many render paths.
-let lapCoaching = window.liveAdjustmentsState.createCoachingState();
-// ReportCardToolbar.tsx's Clear button (TD-001 slice 6e, #703) needs to
-// reset lapCoaching — a lexical `let` binding an ES module can't reach
-// directly (see window.liveCapture above for the same reasoning).
-window.liveCoaching = { reset: () => { lapCoaching = window.liveAdjustmentsState.createCoachingState(); } };
+// Focused input (#525) + coaching stability state (#612) moved onto
+// liveCaptureStore by slice 6g (#710) so the React adjustments panel reads/
+// writes them through store actions (setFocusedInputIndex/advanceLapCoaching/
+// applyLapAction/resetLapCoaching).
+// ReportCardToolbar.tsx's Clear button (TD-001 slice 6e, #703) needs to reset
+// lapCoaching — the bridge now delegates to the store (slice 6g, #710).
+window.liveCoaching = { reset: () => lcStore.getState().resetLapCoaching() };
 // Elapsed-time playhead for the experimental DAW shell (#518): window.dawPlayheadState
 // state, null before the first capture ever starts. Tracked regardless of the
 // DAW toggle so flipping the experiment mid-capture shows correct elapsed time.
@@ -176,29 +173,9 @@ function syncLiveCaptureMirror(state, prevState) {
 
   if (state.liveMode !== prevState.liveMode) hideArmHint();
 
-  // Board-SHAPE changes (not the per-tick lastTick/liveWindows/
-  // lastLiveChannels churn bindIpcEvents also writes here) repaint
-  // #live-island synchronously while the Live tab is active — the reliable
-  // replacement for the old per-mutation renderLiveWorkspace()/
-  // renderLiveMeters() call sites (TD-001 slice 6c, #701). This has to be a
-  // synchronous store subscription, not React's own re-render: LiveWorkspace
-  // re-rendering doesn't run its effects synchronously with the store update
-  // that triggered it, and renderLiveWorkspace()/renderLiveMeters() decide
-  // patch-vs-rebuild by querying #live-island's CURRENT DOM — an imperative
-  // read that has to happen right after the mutation, not on React's own
-  // schedule. Per-tick patching (live-meter-controller.ts, mounted by
-  // LiveWorkspace.tsx) stays the separate, animation-frame-coalesced path
-  // for lastTick changes.
-  if (lcStore.getState().appMode === 'live' && (
-    state.channelConfig !== prevState.channelConfig
-    || state.channelGroups !== prevState.channelGroups
-    || state.isCapturing !== prevState.isCapturing
-    || state.liveMode !== prevState.liveMode
-    || state.devices !== prevState.devices
-    || state.selectedChannel !== prevState.selectedChannel
-  )) {
-    window.liveWorkspaceRuntime.renderWorkspace();
-  }
+  // #710: the board/EQ/stats surface is React-rendered now (LiveCapturePanel/
+  // LiveEqPane/LiveStatsRow subscribe to the store's discrete fields), so the
+  // old synchronous renderWorkspace repaint branch is gone.
 }
 syncLiveCaptureMirror(lcStore.getState());
 lcStore.subscribe(syncLiveCaptureMirror);
@@ -210,9 +187,9 @@ lcStore.subscribe(syncLiveCaptureMirror);
 function rcCallouts() { return window.rcCallouts || { feedbackPeak: null, phaseSignal: false }; }
 
 /* ══ Formatting helpers ══ */
-// Resolve a strip's display name: label → backend name → "Ch N" (see #39).
-function stripLabel(strip, ch, index) { return window.rigReconcile.resolveStripLabel(strip, ch, index); }
-const MAX_LABEL_LEN = 40; // shared cap for both label entry points (config row + live header)
+// (#710) stripLabel() moved to live-board.ts (resolveStripName) — the inline
+// name-edit wiring that used it moved to LiveCapturePanel.tsx. liveChannelAt()
+// stays: the window-tick handler's coaching focus view still resolves names.
 // The backend live channel for a strip index (or null before any tick), so the
 // label fallback resolves the same way from every call site (#39).
 function liveChannelAt(idx) { return lastLiveChannels ? lastLiveChannels[idx] : null; }
@@ -222,15 +199,11 @@ function liveChannelAt(idx) { return lastLiveChannels ? lastLiveChannels[idx] : 
 
 /* ══ Band metadata / meter geometry — extracted to spectrum-display.ts (#305),
    bridged onto window by App.tsx like audioEngineProfiles (#309). ══ */
+// (#710) Most of spectrumDisplay's bindings moved out with the deleted
+// renderers (per-strip charts, EQ pane, stats row, DAW shell) — only what
+// remains is destructured.
 const {
-  DB_MIN, DB_MAX, EQ_COLS,
-  CURVE_VB, CURVE_FMIN, CURVE_FMAX,
-  escapeHtml, fmtHz, levelMatchedTarget, niceTicks, smoothPath,
-  spectrumCurveSVG, spectrumLegendHTML, bandLevelsFromCurve, bandDbFromSpectrum,
-  veqBarsAndLabelsHTML, eqTargetLineSVG, eqCentroidHTML, eqBarsHTML,
-  veqLoudestIdx, veqBandView, veqValBottom,
-  heatmapSVG, miniCurveSVG, fmtDur, timeAxisHTML, classLabel,
-  patchGridBarsAndBandLabels, patchBarsAndLabels, hasUsableCurve,
+  escapeHtml, hasUsableCurve,
 } = window.spectrumDisplay;
 
 // SPECTRUM_TITLE (TD-001 slice 6a, #695) — inline-app.js still writes
@@ -240,16 +213,16 @@ const { SPECTRUM_TITLE } = window.spectrumChrome;
 
 /* ══ Live-capture panel rendering — extracted to live-capture-panel.ts (#307),
    bridged onto window by App.tsx like spectrumDisplay/reportCard. ══ */
+// (#710) The board/EQ-pane/stats HTML builders (liveMetersHTML/eqPaneHTML/
+// veqArcSVG/…) moved out with the deleted renderers — the pure view + patch
+// modules (live-capture-panel.ts/live-board.ts) own them now.
 const {
-  LIVE_BAND_KEYS, deviceListView, deviceChannelCount,
-  liveBandCurve, veqArcSVG, liveMetersHTML,
-  groupSummary, groupSummaryText, shouldOfferReportCard,
-  normalizeMeasurementSource, measurementSourceAfterRemove, measurementSourceOptionsHTML,
-  measurementChannel, measurementSourceBadgeText, measurementSourceOptionLabel,
+  deviceChannelCount,
+  shouldOfferReportCard,
+  normalizeMeasurementSource, measurementSourceAfterRemove,
+  measurementSourceOptionLabel,
   liveSessionReportCardSource,
-  patchLiveChannel,
   clampEqPaneWidth, EQ_PANE_RESIZE_STEP,
-  eqPaneView, eqPaneHTML, eqPaneSignature, eqPanePatchPlan,
 } = window.liveCapturePanel;
 // Renamed to avoid colliding with the zero-arg usedChannelCount() wrapper below.
 const lcUsedChannelCount = window.liveCapturePanel.usedChannelCount;
@@ -297,446 +270,34 @@ window.renderSpectrum = (spectrum) => {
 window.seekPlayback = (t) => transport.seek(t);
 
 // Live-tick coalescing (meter ticks arrive up to ~20/s) is now owned by
-// LiveWorkspace.tsx's live-meter-controller (TD-001 slice 6c, #701), driven
-// by liveCaptureStore's lastTick rather than this file's own rAF batching —
-// see window.liveWorkspaceRuntime.patchWorkspaceTick below.
+// LiveWorkspace.tsx's live-meter-controller (TD-001 slice 6c, #701, extended
+// #710), driven by liveCaptureStore's lastTick rather than this file's own
+// rAF batching — its patch() drives live-board.ts's patch appliers directly.
 
 // patchLiveChannel (the per-strip DOM applier) is now the pure version bridged
 // in from live-capture-panel.ts (#668) — strips no longer carry their own
 // chart, so there's nothing left for this file's copy to do that the pure
 // module doesn't already cover via stripViewAt's `selected`/level-fill fields.
 
-// The channel array backing the EQ pane right now: a live tick's channels
-// while any have arrived this session, else the idle placeholder set — same
-// fallback liveChannelAt() uses for the #39 name resolution, kept in one
-// place so every renderEqPane call site (a tick, a workspace rebuild, the
-// measurement-source picker, a strip click) agrees on "current" (#668).
-function currentEqPaneChannels() {
-  return lastLiveChannels || channelConfig.map(() => window.trackWorkspace.idleChannel(LIVE_BAND_KEYS));
-}
+// ══ Live-workspace board + docked EQ pane + stats row (slice 6g, #710) ══
+// renderLiveWorkspace/renderLiveMeters/renderEqPane/patchEqPaneSection/
+// currentEqPaneChannels/liveWorkspaceToolbarHTML/liveSetupStepsHTML/
+// liveSetupStepsView/renderDawShell/stripViewAt/livePanelView/lapFocusView/
+// lapObservationContext/applyLiveGroupCollapsed/selectStrip/wireLiveNameEdit/
+// setStat/updateStatsRow/updateLiveStatsRow and the live-adjustments-panel + window.liveWorkspaceRuntime wiring all moved to the React components +
+// live-board.ts (LiveCapturePanel/LiveEqPane/LiveStatsRow, driven by
+// liveCaptureStore; per-tick values patched by live-board.ts's appliers on
+// LiveWorkspace's live-meter-controller, ADR-0005). This script keeps the
+// capture-config CRUD handlers (add/remove/arm/group/kind/source/reorder) and
+// the capture lifecycle (6i), DAW playhead/waveform (6j), and secondary-room
+// badge (6k) — but no inline listener drives the board/EQ/stats surface.
 
-// Patches one EQ pane section's arc + bars in place — mirrors the exact
-// arc-then-bars patch sequence the old per-strip patchLiveChannel used, just
-// applied to the pane's <=2 sections instead of every strip (#668).
-function patchEqPaneSection(sectionEl, patch) {
-  if (!sectionEl || !patch) return;
-  const chart = sectionEl.querySelector('.veq-chart');
-  if (chart) {
-    const lineEl = chart.querySelector('.sb-curve-line');
-    if (patch.arc && lineEl) {
-      lineEl.setAttribute('d', patch.arc.line);
-      chart.querySelector('.sb-curve-fill').setAttribute('d', patch.arc.area);
-      chart.querySelector('.sb-centroid').innerHTML = patch.arc.centroidMark;
-    } else {
-      chart.innerHTML = patch.arc ? patch.arc.svg : '';
-    }
-  }
-  if (patch.gridDb) patchGridBarsAndBandLabels(sectionEl, patch.gridDb, patch.loudestIdx);
-  else patchBarsAndLabels(sectionEl, patch.curve.db);
-}
-
-// Renders/patches the docked live EQ pane (#668): the "Room" (measurement
-// source) and "Selected" (last-clicked strip) sections. Rebuilds the pane's
-// innerHTML only when its visible shape changes (which channel, which label);
-// otherwise patches the existing arcs/bars in place so their CSS transitions
-// keep animating. Guards on the pane body's presence — not every mode/screen
-// renders it (syncSpectrumForMode only shows it in Live mode).
-function renderEqPane(channels) {
-  const el = document.getElementById('live-eq-pane-body');
-  if (!el || !channels) return;
-  const state = lcStore.getState();
-  // #460: when the experimental secondary source is active it owns the Room —
-  // the pane's primary slot swaps to the room mic's channel 0 + device name.
-  // secondaryRoomOverride() is null whenever the flag is off or the source
-  // isn't active, keeping this call byte-identical to the board-only path
-  // (the #602 parity guard).
-  const view = eqPaneView(channels, channelConfig, state.measurementSource, state.selectedChannel, secondaryRoomOverride());
-  const signature = eqPaneSignature(view);
-  if (el.dataset.signature !== signature) {
-    el.innerHTML = eqPaneHTML(view);
-    el.dataset.signature = signature;
-    return;
-  }
-  const plan = eqPanePatchPlan(view);
-  patchEqPaneSection(el.querySelector('.eq-pane-primary'), plan.primary);
-  patchEqPaneSection(el.querySelector('.eq-pane-secondary'), plan.secondary);
-}
-
-// Shared "Add track" disabled rule (device channel cap or a capture running,
-// #38) — used by both the toolbar's + Add track (#188) and the guided
-// zero-track hero's Add your first track CTA (#294) so the two never drift.
-function addTrackDisabled(used, total) {
-  return !window.trackWorkspace.addEnabled(used, total, liveRunning);
-}
-
-// Shared by the idle workspace and the running live board (#188): one toolbar
-// carries Add track + a used/total count, plus Collapse/Expand all, so the
-// pane reads the same whether idle or mid-capture. Add is disabled at the
-// device channel cap or while a capture is running (config is locked, #38).
-function liveWorkspaceToolbarHTML() {
-  const total = selectedDeviceChannels();
-  const used = usedChannelCount();
-  const addDisabled = addTrackDisabled(used, total);
-  // Advanced controls (new group, collapse/expand, arm-all) stay out of the way
-  // until the user has at least one track — a guided first-use setup (#294)
-  // covers the zero-track state instead, so a brand-new user never sees
-  // power-user chrome with nothing yet to act on.
-  const advanced = window.liveSetupState.showAdvancedControls(channelConfig.length);
-  // + New group (#190): names a group via the shared dialog and pushes it onto
-  // channelGroups. Disabled mid-capture like every other config control (#38).
-  // Arm all / Disarm all + armed count (#191) — rendered always now that the
-  // mode toggle is gone (#757): the Live tab is always-monitoring, so record-
-  // enable is a permanent DAW-style affordance, not a record-mode gate (JS-
-  // gated — the workspace sits outside #tab-live, so CSS gating can't reach it).
-  const armHTML = advanced
-    ? `<span class="live-ws-arm">`
-      + `<span class="arm-count" id="live-ws-arm-count">${armedCount()} / ${channelConfig.length} armed</span>`
-      + `<button type="button" class="ghost-btn sm" id="live-ws-arm-all"${liveRunning && liveMode === 'record' ? ' disabled' : ''} title="Arm every track for recording">Arm all</button>`
-      + `<button type="button" class="ghost-btn sm" id="live-ws-disarm-all"${liveRunning && liveMode === 'record' ? ' disabled' : ''} title="Disarm every track">Disarm all</button>`
-      + `</span>`
-    : '';
-  return `<div class="live-meters-toolbar">`
-    + `<button type="button" class="ghost-btn" id="live-ws-add"${addDisabled ? ' disabled' : ''}>+ Add track</button>`
-    + (advanced ? `<button type="button" class="ghost-btn" id="live-ws-new-group"${liveRunning ? ' disabled' : ''} title="Create a named channel group">+ New group</button>` : '')
-    + `<span class="cap" id="live-ws-cap">${used} / ${total} used</span>`
-    + armHTML
-    + `</div>`;
-}
-
-// Shared renderer for the guided first-use setup's 3-step list (#294) — used
-// by both the zero-track hero and the post-seed banner. Steps come from the
-// pure window.liveSetupState.setupSteps() so done/active state never drifts
-// from the toolbar gating above.
-function liveSetupStepsHTML(steps) {
-  return steps.map((s, i) =>
-    `<li class="ls-step${s.done ? ' done' : ''}${s.active ? ' active' : ''}">`
-    + `<span class="ls-num">${s.done ? iconSvg('check', 12) : i + 1}</span>`
-    + `<span class="ls-body"><span class="ls-label">${s.label}</span>`
-    + (s.active ? `<span class="ls-hint">${s.hint}</span>` : '')
-    + `</span></li>`).join('');
-}
-
-// View adapter bridging this module's mutable state onto the setupSteps() view
-// shape (#294) — mirrors stripViewAt/livePanelView above.
-function liveSetupStepsView() {
-  return window.liveSetupState.setupSteps({
-    deviceReady: liveDevices.length > 0,
-    trackCount: channelConfig.length,
-    liveMode: liveMode,
-  });
-}
-
-function renderLiveMeters(win) {
-  // Keep lastLiveChannels (#39 device-name fallback for stripLabel) flowing
-  // even while the DAW shell has taken over rendering below — otherwise every
-  // lane name would be stuck unresolved for the whole capture.
-  if (win && win.channels && win.channels.length > 0) lastLiveChannels = win.channels;
-  if (window.dawWorkspaceState.showShell(setStore.getState().settings, lcStore.getState().appMode)) { renderDawShell(); return; }
-  const body = document.getElementById('live-island');
-  if (!win || !win.channels || win.channels.length === 0) {
-    specStore.getState().setPanelState('empty', 'Waiting for live audio…');
-    return;
-  }
-  specStore.getState().setPanelState('meters'); // hides #spectrum-island's React curve view while #live-island renders the board
-  document.getElementById('stats-row').style.display = 'flex';
-  const ipWrap = document.getElementById('ideal-profile-wrap');
-  if (ipWrap) ipWrap.style.display = 'none'; // no whole-file curve in live mode
-
-  // Patch in place while the strip set is unchanged (bar heights keep their CSS
-  // transitions); rebuild only when the shape changes. Match by .live-ch COUNT so
-  // interleaved group headers (#41) don't force a rebuild, and address strips by
-  // data-ch since grouping reorders them. Grouping is fixed during a capture
-  // (config is locked, #38), so the arrangement is stable across ticks.
-  const stripEls = body.querySelectorAll('.sb-live-meters .live-ch');
-  if (stripEls.length === win.channels.length) {
-    win.channels.forEach((ch, i) => {
-      const el = body.querySelector(`.sb-live-meters .live-ch[data-ch="${i}"]`);
-      if (el) patchLiveChannel(el, ch, i, stripViewAt(i, ch), liveRunning);
-    });
-    // Refresh each group header's live summary (#483) so a collapsed group still
-    // reflects current level/clip without touching collapse state — that's
-    // applyLiveGroupCollapsed's job — or rebuilding the DOM.
-    channelGroups.forEach((grp, g) => {
-      const summaryEl = body.querySelector(`.sb-live-meters .live-group-head[data-group="${g}"] .live-group-summary`);
-      if (!summaryEl) return;
-      const summary = groupSummary(win.channels, grp.members);
-      summaryEl.textContent = groupSummaryText(summary);
-      if (summary.clipping) summaryEl.insertAdjacentHTML('beforeend', '<span class="live-ch-clip">CLIP</span>');
-    });
-    syncLiveAdjustmentsPanel();
-    renderEqPane(win.channels);
-    return;
-  }
-  body.innerHTML = liveWorkspaceToolbarHTML()
-    + `<div class="meter-card sb-live-meters">${liveMetersHTML(win.channels, win.channels.map((c, i) => stripViewAt(i, c)), livePanelView())}</div>`;
-  body.querySelectorAll('.sb-live-meters .live-ch-name').forEach(wireLiveNameEdit);
-  applyLiveGroupCollapsed();
-  syncLiveAdjustmentsPanel();
-  renderEqPane(win.channels);
-}
-
-// Persistent idle track workspace (#188): the center pane renders
-// channelConfig as track lanes the moment the Live tab is active, not only
-// once capture starts. Idle lanes are synthetic all-floor channels rendered
-// through the same veqChannelHTML/liveMetersHTML path the running board uses,
-// so grouping (#41) keeps working for free. Shares liveWorkspaceToolbarHTML()
-// with renderLiveMeters so Add/remove read consistently whether idle or
-// (locked) mid-capture.
-function renderLiveWorkspace() {
-  specStore.getState().setPanelState('meters'); // hides #spectrum-island's React curve view while #live-island renders the board
-  if (window.dawWorkspaceState.showShell(setStore.getState().settings, lcStore.getState().appMode)) { renderDawShell(); return; }
-  const body = document.getElementById('live-island');
-  document.getElementById('stats-row').style.display = 'none';
-  const ipWrap = document.getElementById('ideal-profile-wrap');
-  if (ipWrap) ipWrap.style.display = 'none';
-
-  // Guided first-use setup (#294): a zero-track workspace shows an
-  // instructional hero (no toolbar — that's what made this read as a blank
-  // technical canvas) instead of the toolbar + bare empty state. It renders
-  // permanently at zero tracks, guide-completed or not (acceptance criterion),
-  // with live done/active step state.
-  if (window.trackWorkspace.isEmpty(channelConfig.length)) {
-    const addDisabled = addTrackDisabled(usedChannelCount(), selectedDeviceChannels());
-    body.innerHTML = `<div class="live-setup-hero">`
-      + iconSvg('radio', 34)
-      + `<h2 class="lsh-title">Set up your live check</h2>`
-      + `<p class="lsh-sub">Three steps from silence to live meters.</p>`
-      + `<ol class="ls-steps">${liveSetupStepsHTML(liveSetupStepsView())}</ol>`
-      + `<button type="button" class="btn btn-primary" id="live-ws-add"${addDisabled ? ' disabled' : ''}>${iconSvg('plus', 16)}Add your first track</button>`
-      + `</div>`;
-    return;
-  }
-
-  const toolbar = liveWorkspaceToolbarHTML();
-  // First-use banner (#294): the real first-launch shape (loadDevices() seeds
-  // 2 idle tracks automatically) still needs the guide — steps 1-2 read done,
-  // step 3 ("Start monitoring/recording") stays active and points at the
-  // top-bar Record button (#757). It sits above the toolbar; the power
-  // workspace beneath stays fully visible and functional.
-  const banner = window.liveSetupState.shouldShowGuide(window.localStorage)
-    ? `<div class="live-setup-banner" role="note">`
-      + `<span class="lsb-title">Getting set up</span>`
-      + `<ol class="ls-steps compact">${liveSetupStepsHTML(liveSetupStepsView())}</ol>`
-      + `<button type="button" class="ghost-btn sm" id="live-setup-skip">Dismiss</button>`
-      + `</div>`
-    : '';
-
-  const idleChannels = channelConfig.map(() => window.trackWorkspace.idleChannel(LIVE_BAND_KEYS));
-  body.innerHTML = banner + toolbar + `<div class="meter-card sb-live-meters idle">${liveMetersHTML(idleChannels, idleChannels.map((c, i) => stripViewAt(i, c)), livePanelView())}</div>`;
-  body.querySelectorAll('.sb-live-meters .live-ch-name').forEach(wireLiveNameEdit);
-  applyLiveGroupCollapsed();
-  syncLiveAdjustmentsPanel();
-  renderEqPane(idleChannels);
-}
-
-// Experimental live adjustments area (#522): ensure the placeholder panel's
-// presence in the Live pane matches the toggle. Called from every Live
-// render path — including the patch-in-place branches, so a mid-capture
-// settings flip adds/removes the panel without a rebuild.
-function syncLiveAdjustmentsPanel() {
-  const body = document.getElementById('live-island');
-  const html = window.liveAdjustmentsState.panelHTML(
-    setStore.getState().settings, lcStore.getState().appMode, liveWindows, lcStore.getState().measurementSource, lapFocusView(), lapCoaching, Date.now());
-  const existing = body.querySelector('.live-adjustments-panel');
-  if (!html) { if (existing) existing.remove(); return; }
-  if (!existing) body.insertAdjacentHTML('beforeend', html);
-  else if (existing.outerHTML !== html) existing.outerHTML = html;
-}
-
-// Timeline-oriented DAW shell (#517, epic #515): swapped in for the meter
-// workspace on the Live tab when the experimental toggle (#516) is on. UI-only
-// vertical slice — no playhead/waveform math, just the shell layout. The
-// top-bar Record button is the sole capture control surface (#757), so this
-// never renders #live-mode/#live-start-btn/#live-stop-btn.
-function renderDawShell() {
-  specStore.getState().setPanelState('meters'); // hides #spectrum-island's React curve view while #live-island renders the board
-  const body = document.getElementById('live-island');
-  document.getElementById('stats-row').style.display = 'none';
-  const ipWrap = document.getElementById('ideal-profile-wrap');
-  if (ipWrap) ipWrap.style.display = 'none';
-
-  const laneNames = channelConfig.map((strip, idx) => escapeHtml(stripLabel(strip, liveChannelAt(idx), idx)));
-  // Joined with a NUL separator (can't appear in an escaped label) as a safe
-  // fingerprint for "did anything about the lanes themselves change" — a rig
-  // swap with the same channel count changes labels without changing length.
-  const laneSignature = laneNames.join('\u0000');
-  const transportChip = window.dawWorkspaceState.transportLabel(liveRunning, liveMode);
-  const captureMode = window.dawWaveformState.captureModeToken(liveRunning, liveMode);
-
-  // Patch in place on the rAF meter tick (mirrors renderLiveMeters' strip-count
-  // check) so the shell doesn't rebuild its DOM every frame during a capture —
-  // only touch the transport chip, and only when its own text actually moved.
-  const existingShell = body.querySelector('.daw-shell');
-  if (existingShell && existingShell.dataset.laneSignature === laneSignature) {
-    const chip = body.querySelector('.daw-transport-state');
-    if (chip && chip.textContent !== transportChip) {
-      chip.textContent = transportChip;
-      chip.className = `daw-transport-state daw-transport-state-${transportChip.toLowerCase()}`;
-    }
-    const mixLane = body.querySelector('.daw-mix-lane');
-    if (mixLane && mixLane.dataset.captureMode !== captureMode) mixLane.dataset.captureMode = captureMode;
-    renderDawPlayhead(); // refresh the readout/line on meter-tick patch renders too
-    renderDawWaveform(); // refresh the mix waveform on meter-tick patch renders too (#520)
-    syncLiveAdjustmentsPanel();
-    return;
-  }
-
-  const laneHTML = channelConfig.length > 0
-    ? `<div class="daw-channel-lanes">${channelConfig.map((strip, idx) =>
-      `<div class="daw-lane daw-channel-lane" data-ch="${idx}">`
-      + `<span class="daw-lane-name">${laneNames[idx]}</span>`
-      + `<span class="daw-lane-body"><canvas class="daw-channel-waveform"></canvas></span>`
-      + `</div>`).join('')}</div>`
-    : `<div class="daw-lane daw-empty-state">Add tracks to see channel lanes</div>`;
-
-  // Seed the time from state so a mid-capture full rebuild (lane signature
-  // change) never flashes 0:00 (#518).
-  const seededElapsed = window.dawPlayheadState.elapsedMs(playheadState, Date.now());
-  body.innerHTML = `<div class="daw-shell">`
-    + `<div class="daw-transport">`
-    + `<span class="daw-transport-title">Live Workspace</span>`
-    + `<span class="daw-transport-state daw-transport-state-${transportChip.toLowerCase()}">${transportChip}</span>`
-    + `<span class="daw-transport-time">${window.dawPlayheadState.formatElapsed(seededElapsed)}</span>`
-    + `<span class="daw-transport-hint">Start and stop recording from the top-bar Record button</span>`
-    + `</div>`
-    + `<div class="daw-playhead"></div>`
-    + `<div class="daw-ruler"></div>`
-    + `<div class="daw-lane daw-mix-lane" data-capture-mode="${captureMode}">`
-    + `<span class="daw-lane-name">Overall mix</span>`
-    + `<span class="daw-lane-body"><canvas class="daw-mix-waveform"></canvas></span>`
-    + `</div>`
-    + laneHTML
-    + `</div>`;
-  body.querySelector('.daw-shell').dataset.laneSignature = laneSignature;
-  renderDawPlayhead(); // position the line after the rebuild
-  renderDawWaveform(); // repaint waveform history after a mid-capture rebuild (#520)
-  syncLiveAdjustmentsPanel();
-}
-
-// Thin adapters bridging this module's mutable state (channelConfig,
-// liveRunning, channelGroups, …) onto the StripView/PanelView shapes the pure
-// live-capture-panel.ts functions take as parameters (#307).
-function stripViewAt(idx, ch) {
-  const groupIndex = window.groupState.groupOf(channelGroups, idx);
-  const token = channelConfig[idx] ? window.armState.stripToken(channelConfig[idx]) : String(idx);
-  const savedProfiles = savedInstrumentProfilesForDevice();
-  return {
-    strip: channelConfig[idx] || null,
-    displayName: stripLabel(channelConfig[idx], ch, idx),
-    selected: lcStore.getState().selectedChannel === idx,
-    armed: window.armState.isArmed(channelConfig[idx]),
-    groupIndex: groupIndex,
-    groupCollapsed: window.groupState.isGroupCollapsed(channelGroups, groupIndex),
-    instrumentProfileId: window.instrumentProfiles.effectiveProfileId(savedProfiles, token, channelConfig[idx] && channelConfig[idx].label),
-    instrumentAuto: !(savedProfiles[token] && window.instrumentProfiles.isKnownProfileId(savedProfiles[token])),
-  };
-}
-function livePanelView() {
-  return {
-    deviceChannels: selectedDeviceChannels(),
-    liveRunning,
-    groups: channelGroups,
-    instrumentProfiles: window.instrumentProfiles.PROFILES.map((p) => ({ id: p.id, label: p.label })),
-  };
-}
-
-// The focused-input view for the per-input instrument-aware adjustment
-// candidates panel (#525): every current input strip's display name and
-// effective instrument profile, plus which one (if any) is focused.
-function lapFocusView() {
-  const savedProfiles = savedInstrumentProfilesForDevice();
-  return {
-    focusedIndex: focusedInputIndex,
-    inputs: channelConfig.map((strip, idx) => ({
-      index: idx,
-      name: stripLabel(strip, liveChannelAt(idx), idx),
-      profile: window.instrumentProfiles.profileById(
-        window.instrumentProfiles.effectiveProfileId(savedProfiles, window.armState.stripToken(strip), strip && strip.label)),
-    })),
-  };
-}
-
-// Observation context for #614: which source/scope the coaching evaluation is
-// measuring, and whether this window's reading is usable.
-function lapObservationContext() {
-  const ms = lcStore.getState().measurementSource;
-  const idx = ms == null ? 0 : ms;
-  return window.liveAdjustmentsState.observationContext(
-    liveWindows, ms, lapFocusView(), measurementSourceOptionLabel(channelConfig[idx], idx));
-}
-
-// Group collapse controls (#483). One delegated listener on #spectrum-body
-// survives the meter card's rebuilds and covers the group header's fold
-// chevron. Toggling only rewrites .collapsed/.group-collapsed on the existing
-// DOM (no full re-render), so it's instant and doesn't disturb the rAF repaint.
-// (Per-strip collapse/fold — #40 — was removed in favor of the docked EQ pane,
-// #668.)
-function applyLiveGroupCollapsed() {
-  const wrap = document.querySelector('#spectrum-body .sb-live-meters');
-  if (!wrap) return;
-  wrap.querySelectorAll('.live-ch').forEach((el) => {
-    const idx = parseInt(el.dataset.ch, 10);
-    // A collapsed GROUP hides the member strip entirely (#483).
-    const g = window.groupState.groupOf(channelGroups, idx);
-    el.classList.toggle('group-collapsed', window.groupState.isGroupCollapsed(channelGroups, g));
-  });
-  // Group headers own an explicit collapsed flag now (#483), replacing the old
-  // all-members-collapsed derivation from #41's per-strip-only fold.
-  wrap.querySelectorAll('.live-group-head[data-group]').forEach((head) => {
-    const g = parseInt(head.dataset.group, 10);
-    if (g < 0) return;
-    const collapsed = window.groupState.isGroupCollapsed(channelGroups, g);
-    head.classList.toggle('collapsed', collapsed);
-    const btn = head.querySelector('.live-group-fold');
-    if (btn) btn.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
-  });
-}
-
-// Strip selection (#668): drives the docked EQ pane's "Selected" section.
-// Shared by the click handler (below) and the keydown handler (further down,
-// Enter/Space on a focused strip) so mouse and keyboard stay in sync — a
-// strip is `tabindex="0"`/`role="button"` (live-capture-panel.ts) precisely
-// so this isn't mouse-only.
-function selectStrip(idx) {
-  lcStore.getState().setSelectedChannel(idx);
-  document.querySelectorAll('#spectrum-body .live-ch').forEach((el) => {
-    const sel = parseInt(el.dataset.ch, 10) === idx;
-    el.classList.toggle('selected', sel);
-    if (sel) el.setAttribute('aria-current', 'true');
-    else el.removeAttribute('aria-current');
-  });
-  renderEqPane(currentEqPaneChannels());
-}
 document.getElementById('spectrum-body').addEventListener('click', (e) => {
-  // Guided first-use setup dismiss (#294): retire the banner permanently
-  // without requiring a first capture. renderChannelConfig() early-outs while
-  // liveRunning (a capture may already be starting), so remove the rendered
-  // banner node directly rather than relying solely on a re-render — the same
-  // fix the capture-start success handler below needs for the same reason.
-  if (e.target.closest('#live-setup-skip')) {
-    window.liveSetupState.markSetupComplete(window.localStorage);
-    const skipBanner = document.querySelector('#spectrum-body .live-setup-banner');
-    if (skipBanner) skipBanner.remove();
-    renderChannelConfig();
-    return;
-  }
-  // Live coaching dispositions (#613) — engineer control over the active card.
-  // Delegated like every other lap- control so it survives panel re-renders.
-  const lapActionBtn = e.target.closest('[data-lap-action]');
-  if (lapActionBtn) {
-    const lapNow = Date.now();
-    const lapAction = lapActionBtn.dataset.lapAction;
-    const lap = window.liveAdjustmentsState;
-    if (lapAction === 'acknowledge') lapCoaching = lap.acknowledgeCoaching(lapCoaching);
-    else if (lapAction === 'tried') lapCoaching = lap.markTriedCoaching(lapCoaching, lapNow, lapObservationContext());
-    else if (lapAction === 'snooze') lapCoaching = lap.snoozeCoaching(lapCoaching, lapNow);
-    else if (lapAction === 'dismiss') lapCoaching = lap.dismissCoaching(lapCoaching, lapNow);
-    else if (lapAction === 'resume') lapCoaching = lap.resumeCoaching(lapCoaching);
-    else if (lapAction === 'outcome-ack') lapCoaching = lap.acknowledgeOutcome(lapCoaching, lapNow);
-    syncLiveAdjustmentsPanel();
-    return;
-  }
+  // #710: the #live-setup-skip dismiss, [data-lap-action] dispositions, and
+  // strip-selection branches moved to LiveCapturePanel's delegated handlers.
   // Workspace Add track (#188). Delegated (rather than re-wired per render) so
+  // it survives the React board re-renders below.
+// Workspace Add track (#188). Delegated (rather than re-wired per render) so
   // it survives renderLiveWorkspace()/renderLiveMeters() rebuilding the pane.
   if (e.target.closest('#live-ws-add')) { addChannelStrip(); return; }
   // Workspace + New group (#190).
@@ -771,22 +332,18 @@ document.getElementById('spectrum-body').addEventListener('click', (e) => {
   const gDel = e.target.closest('.live-group-del');
   if (gDel) { deleteChannelGroup(parseInt(gDel.closest('.live-group-head').dataset.group, 10)); return; }
   // Group header fold (#483): collapse the whole group to a compact summary
-  // row (replaces #41's collapse-every-member behavior).
+  // row (replaces #41's collapse-every-member behavior). (#710) The collapse
+  // classes are React-rendered from channelGroups (liveMetersHTML already
+  // encodes header .collapsed/aria-expanded + member .group-collapsed), so the
+  // old imperative applyLiveGroupCollapsed() applier is gone.
   const gfold = e.target.closest('.live-group-fold');
   if (gfold) {
     const g = parseInt(gfold.closest('.live-group-head').dataset.group, 10);
     lcStore.getState().toggleGroupCollapse(g);
-    applyLiveGroupCollapsed();
     return;
   }
-  // Strip selection (#668): clicking anywhere on a strip (but not one of its
-  // interactive controls) inspects it in the docked EQ pane's "Selected"
-  // section. Checked last so a click on a button/select/name-edit inside the
-  // strip never also counts as a selection.
-  const stripEl = e.target.closest('.live-ch');
-  if (stripEl && !e.target.closest('button, select, [contenteditable], input')) {
-    selectStrip(parseInt(stripEl.dataset.ch, 10));
-  }
+  // (#710) Strip selection (#668) moved to LiveCapturePanel's delegated click
+  // handler (the board does not subscribe to selectedChannel).
 });
 
 // Drag-reorder (#483): whole groups via .live-group-drag, or tracks within a
@@ -859,21 +416,9 @@ document.getElementById('spectrum-body').addEventListener('dragend', () => {
 // track by one position — an accessible, deterministic alternative to HTML5
 // drag-and-drop. Re-renders (grouping change) then re-focuses the moved
 // handle, since the rebuild would otherwise drop keyboard focus.
+// (#710) Strip selection via keyboard (Enter/Space) moved to
+// LiveCapturePanel's delegated keydown handler.
 document.getElementById('spectrum-body').addEventListener('keydown', (e) => {
-  // Strip selection via keyboard (#668): Enter/Space while a strip itself
-  // (not one of its interactive children — e.target === stripEl only holds
-  // when the strip's own tabindex="0" wrapper has focus) has focus mirrors
-  // the click handler above. Not gated on liveRunning — selection is a
-  // renderer-side view state, unrelated to the capture lock (like
-  // measurement-source).
-  if (e.key === 'Enter' || e.key === ' ') {
-    const stripEl = e.target.closest('.live-ch');
-    if (stripEl && e.target === stripEl) {
-      e.preventDefault();
-      selectStrip(parseInt(stripEl.dataset.ch, 10));
-    }
-    return;
-  }
   if (liveRunning || (e.key !== 'ArrowUp' && e.key !== 'ArrowDown')) return;
   const dir = e.key === 'ArrowUp' ? -1 : 1;
   const groupHandle = e.target.closest('.live-group-drag');
@@ -906,18 +451,10 @@ document.getElementById('spectrum-body').addEventListener('keydown', (e) => {
 // Inline track definition (#189): the header's kind toggle + source picker(s)
 // fire 'change' (not 'click'), so they need their own delegated listener —
 // same delegation rationale as the click handler above, so the wiring
-// survives renderLiveWorkspace()/renderLiveMeters() rebuilding the pane.
-// Routes through renderChannelConfig() (not a bare renderLiveWorkspace()) so
-// the capture lock and the workspace stay in sync.
+// survives the React board re-renders. Routes through renderChannelConfig()
+// (not a bare re-render) so the capture lock and the workspace stay in sync.
+// (#710) The .lap-focus-select focused-input branch moved to LiveCapturePanel.
 document.getElementById('spectrum-body').addEventListener('change', (e) => {
-  // Focused-input selector for the per-input instrument-aware adjustment
-  // candidates panel (#525) — ephemeral, so it just re-syncs the panel.
-  const focusSel = e.target.closest('.lap-focus-select');
-  if (focusSel) {
-    focusedInputIndex = focusSel.value === '' ? null : parseInt(focusSel.value, 10);
-    syncLiveAdjustmentsPanel();
-    return;
-  }
   const kindSel = e.target.closest('.live-ch-kind');
   if (kindSel) {
     const idx = parseInt(kindSel.dataset.idx, 10);
@@ -956,62 +493,10 @@ document.getElementById('spectrum-body').addEventListener('change', (e) => {
   }
 });
 
-// Make a live meter header name click-to-edit (#39): commit on blur/Enter into
-// the matching channelConfig strip's label, Escape cancels. Writing the label
-// keeps the config rows and the persisted rig in sync via renderChannelConfig().
-function wireLiveNameEdit(nameEl) {
-  const idx = parseInt(nameEl.closest('.live-ch').dataset.ch, 10);
-  // Snapshot the displayed text when the edit begins. Committing only when the
-  // text actually changed means a plain focus→blur (or an Escape that restores
-  // the snapshot) is a no-op, so the resolved fallback is never pinned as an
-  // explicit label — the field keeps following the device name / "Ch N".
-  let original = nameEl.textContent;
-  nameEl.addEventListener('focus', () => { original = nameEl.textContent; });
-  const commit = () => {
-    const strip = channelConfig[idx];
-    if (!strip || nameEl.textContent === original) return;
-    // setStripLabel (#482) trims/caps the label and persists it keyed by
-    // device + strip token (mono "0" / stereo "2-3") — the store is the
-    // single source of truth for channelConfig now (TD-001 slice 6c, #701).
-    lcStore.getState().setStripLabel(idx, nameEl.textContent);
-    // Reflect the resolved name (empty label falls back to the device name /
-    // Ch N) and refresh the config row inputs to match.
-    nameEl.textContent = stripLabel(channelConfig[idx], liveChannelAt(idx), idx);
-    original = nameEl.textContent;
-    renderChannelConfig();
-  };
-  nameEl.addEventListener('blur', commit);
-  nameEl.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') { e.preventDefault(); nameEl.blur(); }
-    else if (e.key === 'Escape') { e.preventDefault(); nameEl.textContent = original; nameEl.blur(); }
-  });
-}
-
-/* ══ Stats row ══ */
-function setStat(id, value, tone) {
-  const el = document.getElementById(id);
-  el.textContent = value;
-  el.className = 'stat-num' + (tone ? ' ' + tone : '');
-}
-function updateStatsRow(sox, spectrum) {
-  setStat('stat-rms', fmt(sox.rmsDbfs), sox.rmsDbfs > -6 ? 'check' : '');
-  setStat('stat-peak', fmt(sox.peakDbfs), sox.peakDbfs > -1 ? 'issue' : '');
-  setStat('stat-dr', fmt(sox.dynamicRangeDb), sox.dynamicRangeDb < 6 ? 'check' : '');
-  setStat('stat-clip', sox.clipping ? 'YES' : 'No', sox.clipping ? 'issue' : '');
-  document.getElementById('stat-centroid').textContent = spectrum && spectrum.spectralCentroid ? Math.round(spectrum.spectralCentroid).toLocaleString() : '—';
-}
-// ReportCardToolbar.tsx's status-transition useEffect (TD-001 slice 6e,
-// #703) calls this by name instead of duplicating it as an ES import, since
-// it's still a plain inline-app.js function (leaks onto window automatically
-// as a top-level declaration, same as window.renderChannelConfig).
-window.updateStatsRow = updateStatsRow;
-function updateLiveStatsRow(ch) {
-  setStat('stat-rms', fmt(ch.rms), ch.rms > -6 ? 'check' : '');
-  setStat('stat-peak', fmt(ch.peak), ch.peak > -1 ? 'issue' : '');
-  setStat('stat-dr', '—', '');
-  setStat('stat-clip', ch.clipping ? 'CLIP' : 'No', ch.clipping ? 'issue' : '');
-  document.getElementById('stat-centroid').textContent = ch.centroid ? Math.round(ch.centroid).toLocaleString() : '—';
-}
+// (#710) wireLiveNameEdit + the stats-row writers (setStat/updateStatsRow/
+// updateLiveStatsRow + window.updateStatsRow) moved to LiveCapturePanel.tsx +
+// live-board.ts (LiveStatsRow renders the cells; live-board.ts's patchStatsRow
+// patches them at meter cadence).
 
 // syncSingleColumn is gone — mode-switch.ts#applySingleColumnSync (TD-001
 // slice 6e, #703) ports it verbatim; inline-app.js reaches it via
@@ -1300,10 +785,10 @@ function addChannelStrip() {
 // callers may drive this down to zero strips so the workspace empty state
 // stays reachable. removeStrip (#456, #668, #41) already reindexes/clears
 // measurementSource, selectedChannel, and prunes+persists channelGroups
-// atomically — only focusedInputIndex (#525, not store-owned) needs its own
+// atomically — focusedInputIndex (#525, store-owned since #710) needs the same
 // reindex here.
 function removeChannelStrip(idx) {
-  focusedInputIndex = measurementSourceAfterRemove(focusedInputIndex, idx);
+  lcStore.getState().setFocusedInputIndex(measurementSourceAfterRemove(lcStore.getState().focusedInputIndex, idx));
   lcStore.getState().removeStrip(idx);
   renderChannelConfig();
 }
@@ -1318,10 +803,9 @@ function resetChannelConfig() {
   // Same reasoning applies to the focused input (#525) — it never dangles
   // across a device swap. (measurementSource/selectedChannel are reset by
   // selectDevice() itself.)
-  focusedInputIndex = null;
+  lcStore.getState().setFocusedInputIndex(null);
   // A stale lastLiveChannels from the previous device must not leak into the
-  // EQ pane (#668) on the next renderEqPane call — currentEqPaneChannels()
-  // falls back to it whenever it's non-null, so it has to be cleared here too.
+  // EQ pane (#668) — it has to be cleared here too.
   lcStore.getState().clearLastLiveChannels();
   renderChannelConfig();
 }
@@ -1425,8 +909,8 @@ function setDeviceHint(text, isError) {
 // Device <select>/refresh button/hint are React-owned now (LiveSourceSettings.tsx,
 // #727) — this fetches the list and hands it to the store
 // (which itself seeds channelConfig/channelGroups for the resolved device),
-// then re-runs the inline-only remainder of the old reset (focusedInputIndex/
-// lastLiveChannels/preflight — see resetChannelConfig).
+// then re-runs the inline-only remainder of the old reset (lastLiveChannels/
+// preflight — see resetChannelConfig).
 async function loadDevices() {
   await lcStore.getState().loadDevices();
   // Seed the channel picker from the (default) device's channel count — only
@@ -1447,7 +931,7 @@ window.liveCaptureRuntime = {
   loadDevices,
   selectDevice(value) {
     void value; // store.selectDevice (called by LiveSourceSettings itself) already reseeds channelConfig/channelGroups reactively
-    focusedInputIndex = null;
+    lcStore.getState().setFocusedInputIndex(null);
     lcStore.getState().clearLastLiveChannels();
     // PreflightSettings.tsx recomputes reactively off liveCaptureStore's
     // selectedDevice/channelConfig/devices — no imperative repaint needed
@@ -1456,11 +940,14 @@ window.liveCaptureRuntime = {
   // Measurement source picker (#456): normalize against the current strip
   // count so a stale selection ('' -> null, an index -> the resolved strip)
   // never lands in the store.
+  // Measurement source picker (#456): normalize against the current strip
+  // count so a stale selection ('' -> null, an index -> the resolved strip)
+  // never lands in the store. (#710) The EQ pane re-renders reactively from
+  // measurementSource (LiveEqPane) — no renderEqPane call.
   changeMeasurementSource(value) {
     const parsed = value === '' ? null : parseInt(value, 10);
     lcStore.getState().setMeasurementSource(normalizeMeasurementSource(parsed, channelConfig.length));
     renderMeasurementBadge();
-    renderEqPane(currentEqPaneChannels());
   },
   async chooseRecordFolder() {
     const dir = await sb.openDirDialog();
@@ -1476,23 +963,12 @@ window.liveCaptureRuntime = {
   afterSecondaryMeasurementChange: afterSecondaryStateChange,
 };
 
-// Bridged runtime powering LiveWorkspace.tsx's #live-island repaint timing
-// (TD-001 slice 6c, #701) — renderWorkspace() re-triggers whenever board
-// SHAPE changes (replacing the old per-mutation renderLiveWorkspace()/
-// renderLiveMeters() call sites); patchTick() is called by the mounted
-// live-meter-controller for every coalesced live tick. Both still delegate
-// to renderLiveMeters()/renderLiveWorkspace() unchanged internally — those
-// already own the patch-vs-rebuild decision, the DAW shell (#517) hand-off,
-// and the docked EQ pane / live-adjustments panel refresh.
-window.liveWorkspaceRuntime = {
-  renderWorkspace() {
-    if (liveRunning && lcStore.getState().lastTick) renderLiveMeters(lcStore.getState().lastTick);
-    else renderLiveWorkspace();
-  },
-  patchTick(win) {
-    renderLiveMeters(win);
-  },
-};
+// (#710) window.liveWorkspaceRuntime is gone: the board/EQ/stats surface is
+// React-rendered (LiveCapturePanel/LiveEqPane/LiveStatsRow) and LiveWorkspace's
+// live-meter-controller drives live-board.ts's patch appliers directly. This
+// one bridge stays for the React DAW-shell branch's post-render repaint (the
+// 6j playhead/waveform renderers stay here).
+window.liveDawShellRepaint = () => { renderDawPlayhead(); renderDawWaveform(); };
 
 // Docked live EQ pane resize (#668): drag the handle, or focus it and press
 // ArrowLeft/ArrowRight. The pane is docked to the right edge of #workspace
@@ -1588,9 +1064,9 @@ function onCaptureStarting() {
   waveformBucketsPerSec = window.dawWaveformState.bucketsPerSecond(intervalSecs);
   waveformLaneStates = {};
   sessionWindows = [];
-  // A new capture must not inherit the previous session's cooldowns or active card (#612).
-  lapCoaching = window.liveAdjustmentsState.createCoachingState();
-  syncLiveAdjustmentsPanel();
+  // A new capture must not inherit the previous session's cooldowns or active
+  // card (#612) — the store reset re-renders the React adjustments panel.
+  lcStore.getState().resetLapCoaching();
   // A live capture always wins over a loaded history entry (#147).
   anaStore.getState().setHistorySummary(null);
   window.rendererStores.rig.getState().setLocked(true);
@@ -2010,24 +1486,32 @@ sb.onLiveEvent((data) => {
   // changes into one repaint per animation frame — this listener is reduced
   // to the session-only concerns bindIpcEvents doesn't own (sessionWindows,
   // DAW waveform peaks above, live-adjustments coaching below).
-  // The room-analysis stats row reads the Room source. When the experimental
-  // secondary source (#460) is active it owns the room, so the board tick must
-  // not clobber the row — the measurement-event handler updates it instead.
-  const statsCh = measurementChannel(data.channels, lcStore.getState().measurementSource);
-  if (statsCh && !secondaryMeasurementActive()) updateLiveStatsRow(statsCh);
+  // (#710) The room-analysis stats row is patched by live-board.ts's
+  // patchStatsRow on the controller path — no updateLiveStatsRow here.
 
   // Only the heavier window ticks (which carry masking + window #) accumulate
-  // to feed the report card.
+  // to feed the report card. The coaching advance routes through the store so
+  // the React adjustments panel re-renders (the focus view is rebuilt here —
+  // lapFocusView moved to live-board.ts, and inline-app.js can't import it).
   if (data.type === 'window' || typeof data.window === 'number') {
     sessionWindows.push(data); // uncapped — see the declaration above (#261)
     document.getElementById('window-badge').textContent = `Window #${data.window}`;
-    lapCoaching = window.liveAdjustmentsState.advanceCoaching(
-      lapCoaching,
-      window.liveAdjustmentsState.allCoachingCandidates(
-        liveWindows, lcStore.getState().measurementSource, lapFocusView()),
-      Date.now(),
-      lapObservationContext());
-    syncLiveAdjustmentsPanel();
+    const ms = lcStore.getState().measurementSource;
+    const idx = ms == null ? 0 : ms;
+    const focusView = {
+      focusedIndex: lcStore.getState().focusedInputIndex,
+      inputs: channelConfig.map((strip, i) => ({
+        index: i,
+        name: window.rigReconcile.resolveStripLabel(strip, liveChannelAt(i), i),
+        profile: window.instrumentProfiles.profileById(
+          window.instrumentProfiles.effectiveProfileId(
+            savedInstrumentProfilesForDevice(), window.armState.stripToken(strip), strip && strip.label)),
+      })),
+    };
+    const candidates = window.liveAdjustmentsState.allCoachingCandidates(liveWindows, ms, focusView);
+    const context = window.liveAdjustmentsState.observationContext(
+      liveWindows, ms, focusView, measurementSourceOptionLabel(channelConfig[idx], idx));
+    lcStore.getState().advanceLapCoaching(candidates, Date.now(), context);
   }
 });
 
@@ -2065,29 +1549,19 @@ function roomFeed() {
   );
 }
 
-// The EQ pane's Room-slot override (#460 visual swap): the secondary mic's
-// channel-0 reading + device name when the source is active, null otherwise
-// (board behavior byte-identical — the #602 parity guard). Reads the store's
-// lastMeasurementChannels (meter cadence) with the window buffer as fallback,
-// via the pure roomPaneOverride helper.
-function secondaryRoomOverride() {
-  const s = lcStore.getState();
-  return window.measurementDeviceState.roomPaneOverride(
-    secondaryMeasurementActive(),
-    s.secondaryWindows,
-    s.lastMeasurementChannels,
-    s.secondaryMeasurement.deviceName,
-  );
-}
+// (#710) The EQ pane's Room-slot override (secondaryRoomOverride) moved to
+// live-board.ts's patchEqPane/LiveEqPane — no inline renderEqPane call site
+// remains.
 
-// Repaint the still-imperative Room badge/EQ-pane slot after a secondary
-// state change (device selection/start/stop/reconnect). Status text/
-// warning and the reconnect-poll scheduling are now React-owned
-// (SecondaryMeasurementPanel.tsx, #724), reading directly off the store —
-// exposed to it via window.liveCaptureRuntime.afterSecondaryMeasurementChange.
+// Repaint the still-imperative Room badge after a secondary state change
+// (device selection/start/stop/reconnect). Status text/warning and the
+// reconnect-poll scheduling are now React-owned (SecondaryMeasurementPanel.tsx,
+// #724), reading directly off the store — exposed to it via
+// window.liveCaptureRuntime.afterSecondaryMeasurementChange. (#710) The EQ
+// pane re-renders reactively from secondaryMeasurement (LiveEqPane) +
+// patchEqPane on the controller path — no renderEqPane call.
 function afterSecondaryStateChange() {
   renderMeasurementBadge();
-  renderEqPane(currentEqPaneChannels());
 }
 
 // Bind the store's measurement-event folding, then a thin repaint handler on
@@ -2095,23 +1569,16 @@ function afterSecondaryStateChange() {
 lcStore.getState().bindMeasurementEvents();
 sb.onMeasurementEvent((data) => {
   if (!data) return;
-  // A disconnect (or any status-carrying event) repaints the badge/EQ pane —
-  // status text/reconnect scheduling are React-owned now (#724).
+  // A disconnect (or any status-carrying event) repaints the badge — status
+  // text/reconnect scheduling are React-owned now (#724).
   if (data.measurementEnded) { afterSecondaryStateChange(); return; }
   if (!secondaryMeasurementActive()) return;
-  // Active: the secondary mic owns the Room. Update the room stats every tick;
-  // refresh the badge on every tick too. The graded report-card source updates
-  // itself reactively (bridge.ts's cross-store subscription reacts to
-  // secondaryWindows, which bindMeasurementEvents() above only appends to on
-  // the same window ticks this used to gate an explicit syncLiveSource() on).
-  if (data.channels && data.channels[0]) updateLiveStatsRow(data.channels[0]);
+  // Active: the secondary mic owns the Room. Refresh the badge on every tick;
+  // the room stats row + the EQ pane's Room slot are patched by
+  // patchStatsRow/patchEqPane on the controller path (the store's
+  // lastMeasurementChannels/secondaryWindows changes they read fire the
+  // controller's coalesced patch) — no inline writers here (#710).
   renderMeasurementBadge();
-  // The EQ pane's Room slot follows the same tick (#460 visual swap):
-  // bindMeasurementEvents() ran first on this channel (registration order),
-  // so the store's lastMeasurementChannels already carries this tick — the
-  // pane's signature is unchanged mid-stream, so this patches the arcs in
-  // place at meter cadence, exactly like a board tick does.
-  renderEqPane(currentEqPaneChannels());
 });
 
 // A batch run (#270) also triggers this pushed event on every successful

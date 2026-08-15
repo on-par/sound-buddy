@@ -83,13 +83,11 @@ function renderMarkup(): string {
 }
 
 let mock: ReturnType<typeof createMockSoundBuddy>;
-let updateStatsRow: ReturnType<typeof vi.fn>;
 
 beforeEach(() => {
   mock = createMockSoundBuddy();
   mock.api.listAnalysisSummaries = vi.fn().mockResolvedValue({ success: true, summaries: [] });
   mock.api.saveAnalysisSummary = vi.fn().mockResolvedValue({ success: true, file: 'x.json' });
-  updateStatsRow = vi.fn();
   (globalThis as { window?: unknown }).window = {
     soundBuddy: mock.api,
     grading: {
@@ -99,7 +97,6 @@ beforeEach(() => {
       computeRecommendations: () => [],
       getGradingProfile: () => ({ label: 'Casual / volunteer' }),
     },
-    updateStatsRow,
   };
 });
 
@@ -182,9 +179,8 @@ describe('applyStatusTransition', () => {
     expect(useSpectrumStore.getState().panelState).toBe('empty');
   });
 
-  it('done: updates the stats row and persists a file summary', async () => {
+  it('done: persists a file summary (the stats row is React-rendered by LiveStatsRow, #710)', async () => {
     applyStatusTransition('done', ANALYSIS, null);
-    expect(updateStatsRow).toHaveBeenCalledWith(ANALYSIS.sox, ANALYSIS.spectrum);
     await vi.waitFor(() => expect(mock.api.saveAnalysisSummary).toHaveBeenCalledWith(
       expect.objectContaining({ source: 'file', sourceFilename: 'service.wav' })
     ));
@@ -192,11 +188,11 @@ describe('applyStatusTransition', () => {
 
   it('done with no currentAnalysis: no-ops (defensive — should not happen in practice)', () => {
     applyStatusTransition('done', null, null);
-    expect(updateStatsRow).not.toHaveBeenCalled();
+    expect(mock.api.saveAnalysisSummary).not.toHaveBeenCalled();
   });
 
   it('idle: no-ops', () => {
     applyStatusTransition('idle', null, null);
-    expect(updateStatsRow).not.toHaveBeenCalled();
+    expect(mock.api.saveAnalysisSummary).not.toHaveBeenCalled();
   });
 });

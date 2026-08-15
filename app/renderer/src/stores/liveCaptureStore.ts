@@ -122,8 +122,21 @@ interface GroupStateApi {
 interface RigKindApi {
   switchKind(strip: StripConfig, kind: string, maxChannels: number): StripConfig;
 }
+interface LiveAdjustmentsStateApi {
+  createCoachingState(): unknown;
+  advanceCoaching(current: unknown, candidates: unknown, now: number, context: unknown): unknown;
+  acknowledgeCoaching(state: unknown): unknown;
+  markTriedCoaching(state: unknown, now: number, context?: unknown): unknown;
+  snoozeCoaching(state: unknown, now: number): unknown;
+  dismissCoaching(state: unknown, now: number): unknown;
+  resumeCoaching(state: unknown): unknown;
+  acknowledgeOutcome(state: unknown, now: number): unknown;
+}
 function getArmState(): ArmStateApi {
   return (window as unknown as { armState: ArmStateApi }).armState;
+}
+function getLiveAdjustmentsState(): LiveAdjustmentsStateApi {
+  return (window as unknown as { liveAdjustmentsState: LiveAdjustmentsStateApi }).liveAdjustmentsState;
 }
 function getChannelLabels(): ChannelLabelsApi {
   return (window as unknown as { channelLabels: ChannelLabelsApi }).channelLabels;
@@ -233,6 +246,18 @@ export interface LiveCaptureState {
   // becoming the room's measurement source.
   selectedChannel: number | null;
 
+  // Focused input for the per-input instrument-aware adjustment candidates
+  // (#525) — ephemeral, per-session only, never persisted (moved off
+  // inline-app.js's module var by slice 6g, #710 so the React adjustments
+  // panel reads/writes it through the store).
+  focusedInputIndex: number | null;
+  // Coaching stability state (#612) — advanced once per analysis window, never
+  // per render (slice 6g, #710). Lazily created: the classic-script module
+  // isn't available at store-module load, so null here means "create a fresh
+  // state on first use" (createCoachingState), which renders byte-identically
+  // to a real fresh state (no candidates → the monitoring card).
+  lapCoaching: unknown;
+
   // Experimental secondary measurement-device source (#460, ADR 0003). Fully
   // independent of the board capture above: its own status machine and its own
   // rolling window buffer (channel 0 = the room mic). All transitions go
@@ -294,6 +319,12 @@ export interface LiveCaptureState {
   setMeasurementSource(source: number | null): void;
   setSelectedChannel(source: number | null): void;
 
+  setLapCoaching(coaching: unknown): void;
+  resetLapCoaching(): void;
+  advanceLapCoaching(candidates: unknown, now: number, context: unknown): void;
+  applyLapAction(action: string, now: number, context?: unknown): void;
+  setFocusedInputIndex(index: number | null): void;
+
   setSecondaryDeviceName(name: string): void;
   startSecondaryMeasurement(opts: StartCaptureOpts): Promise<void>;
   stopSecondaryMeasurement(): Promise<void>;
@@ -349,6 +380,9 @@ export function createLiveCaptureStore(getApi: () => LiveCaptureApi) {
 
     measurementSource: null,
     selectedChannel: null,
+
+    focusedInputIndex: null,
+    lapCoaching: null,
 
     secondaryMeasurement: { status: 'off', deviceName: '' },
     secondaryWindows: [],
@@ -633,6 +667,51 @@ export function createLiveCaptureStore(getApi: () => LiveCaptureApi) {
     // channelConfig during the TD-001 migration, not necessarily this store's).
     setSelectedChannel(source) {
       set({ selectedChannel: source });
+    },
+
+    // ── Live coaching state (#612/#613, slice 6g #710) ──────────────────────
+    // The React live-adjustments panel reads lapCoaching/focusedInputIndex
+    // directly; the still-inline capture orchestration routes every write
+    // through these actions so the panel re-renders reactively. The reducers
+    // themselves live in the pure live-adjustments-state.js classic script.
+
+    setLapCoaching(coaching) {
+      set({ lapCoaching: coaching });
+    },
+
+    resetLapCoaching() {
+      set({ lapCoaching: getLiveAdjustmentsState().createCoachingState() });
+    },
+
+    // Once per analysis window (inline-app.js's onLiveEvent window-tick
+    // branch) — never per render. `current` is lazily seeded when nothing has
+    // been created yet (a fresh createCoachingState renders identically).
+    advanceLapCoaching(candidates, now, context) {
+      const lap = getLiveAdjustmentsState();
+      const current = get().lapCoaching ?? lap.createCoachingState();
+      set({ lapCoaching: lap.advanceCoaching(current, candidates, now, context) });
+    },
+
+    // The six disposition reducers (#613) plus the outcome ack (#614), routed
+    // by the [data-lap-action] click value — port of inline-app.js's
+    // click-listener branch, now store-owned so the panel re-renders. `context`
+    // (an observationContext() result) is only meaningful for the 'tried'
+    // reducer (#614).
+    applyLapAction(action, now, context) {
+      const lap = getLiveAdjustmentsState();
+      const current = get().lapCoaching ?? lap.createCoachingState();
+      let next = current;
+      if (action === 'acknowledge') next = lap.acknowledgeCoaching(current);
+      else if (action === 'tried') next = lap.markTriedCoaching(current, now, context);
+      else if (action === 'snooze') next = lap.snoozeCoaching(current, now);
+      else if (action === 'dismiss') next = lap.dismissCoaching(current, now);
+      else if (action === 'resume') next = lap.resumeCoaching(current);
+      else if (action === 'outcome-ack') next = lap.acknowledgeOutcome(current, now);
+      set({ lapCoaching: next });
+    },
+
+    setFocusedInputIndex(index) {
+      set({ focusedInputIndex: index });
     },
 
     // ── Secondary measurement source (#460) ──────────────────────────────────

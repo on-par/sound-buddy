@@ -43,12 +43,6 @@ let tabContentEls: FakeElement[];
 let bodyClassList: ReturnType<typeof makeClassList>;
 let isSingleColumn: ReturnType<typeof vi.fn>;
 let isEnabled: ReturnType<typeof vi.fn>;
-let renderLiveMeters: ReturnType<typeof vi.fn>;
-let renderLiveWorkspace: ReturnType<typeof vi.fn>;
-let renderEqPane: ReturnType<typeof vi.fn>;
-let currentEqPaneChannels: ReturnType<typeof vi.fn>;
-let liveIsRunning: ReturnType<typeof vi.fn>;
-let liveWindowsFn: ReturnType<typeof vi.fn>;
 let mock: ReturnType<typeof createMockSoundBuddy>;
 
 // zustand's `set` copies the current state's own properties (including a
@@ -71,12 +65,6 @@ beforeEach(() => {
   bodyClassList = makeClassList();
   isSingleColumn = vi.fn(() => false);
   isEnabled = vi.fn(() => false);
-  renderLiveMeters = vi.fn();
-  renderLiveWorkspace = vi.fn();
-  renderEqPane = vi.fn();
-  currentEqPaneChannels = vi.fn(() => ['ch']);
-  liveIsRunning = vi.fn(() => false);
-  liveWindowsFn = vi.fn(() => []);
   mock = createMockSoundBuddy();
 
   (globalThis as { document?: unknown }).document = {
@@ -88,8 +76,6 @@ beforeEach(() => {
     soundBuddy: mock.api,
     singleColumnState: { isSingleColumn },
     reportFirstUxState: { isEnabled },
-    renderLiveMeters, renderLiveWorkspace, renderEqPane, currentEqPaneChannels,
-    liveCapture: { isRunning: liveIsRunning, windows: liveWindowsFn },
     liveCaptureRuntime: {
       beforeStartCapture: () => ({ ok: true }),
       onCaptureStarting: vi.fn(),
@@ -141,22 +127,16 @@ describe('resolveModeSwitch', () => {
 });
 
 describe('applySpectrumForMode', () => {
-  it('live: shows the docked EQ pane and renders the workspace when not running', () => {
+  it('live: shows the docked EQ pane + Live EQ title and hands the panel to meters', () => {
     useSettingsStore.setState({ settings: settings({ liveEqPaneWidth: 400 }) });
     applySpectrumForMode('live');
     expect(elements['spectrum-title'].textContent).toBe('Spectrum · Live EQ');
     expect(elements['live-eq-pane'].style.display).toBe('flex');
     expect(elements['live-eq-pane'].style.width).toBe('400px');
-    expect(renderLiveWorkspace).toHaveBeenCalled();
-    expect(renderEqPane).toHaveBeenCalledWith(['ch']);
-  });
-
-  it('live: renders the latest meter window when running with data', () => {
-    liveIsRunning.mockReturnValue(true);
-    liveWindowsFn.mockReturnValue(['w1', 'w2']);
-    applySpectrumForMode('live');
-    expect(renderLiveMeters).toHaveBeenCalledWith('w2');
-    expect(renderLiveWorkspace).not.toHaveBeenCalled();
+    // The board/EQ/stats surfaces render reactively from liveCaptureStore
+    // (LiveCapturePanel/LiveEqPane/LiveStatsRow, slice 6g #710); 'meters'
+    // hands the panel back and hides SpectrumPanel's curve view.
+    expect(useSpectrumStore.getState().panelState).toBe('meters');
   });
 
   it('soundcheck: keeps the panel empty (no meters) while playing', () => {

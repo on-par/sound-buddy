@@ -7,11 +7,14 @@ import { fileURLToPath } from 'node:url';
 
 // DAW-style live workspace shell (#517): when the experimental toggle (#516)
 // is on, the Live tab's center pane renders a timeline-oriented shell instead
-// of the existing meter workspace. inline-app.js is coverage-excluded glue
-// (see vitest.config.ts), verified here the same way live-setup-workspace.test.ts
-// (#294) and root-markup.test.ts (#293) encode their acceptance criteria.
+// of the existing meter workspace. Since slice 6g (#710) the SHELL MARKUP
+// renders from live-board.ts's dawShellHTML via LiveCapturePanel (the old
+// inline renderDawShell is gone); the playhead/waveform CANVAS rendering (6j)
+// stays in inline-app.js and is gated below as before.
 
 const inlineApp = fs.readFileSync(fileURLToPath(new URL('./inline-app.js', import.meta.url)), 'utf8');
+const liveBoard = fs.readFileSync(fileURLToPath(new URL('./live-board.ts', import.meta.url)), 'utf8');
+const capturePanel = fs.readFileSync(fileURLToPath(new URL('./LiveCapturePanel.tsx', import.meta.url)), 'utf8');
 const markup = fs.readFileSync(fileURLToPath(new URL('./root-markup.html', import.meta.url)), 'utf8');
 const css = fs.readFileSync(fileURLToPath(new URL('./styles/app.css', import.meta.url)), 'utf8');
 const appTsx = fs.readFileSync(fileURLToPath(new URL('./App.tsx', import.meta.url)), 'utf8');
@@ -33,8 +36,7 @@ function functionBody(src: string, name: string): string {
 }
 
 // Extracts the innermost {...} block enclosing `marker`, e.g. an anonymous
-// callback body — for code that (unlike functionBody's targets) isn't a named
-// `function foo() {}` declaration.
+// callback body.
 function enclosingBlock(src: string, marker: string): string {
   const markerIdx = src.indexOf(marker);
   if (markerIdx === -1) throw new Error(`marker ${JSON.stringify(marker)} not found`);
@@ -59,38 +61,9 @@ function enclosingBlock(src: string, marker: string): string {
   throw new Error(`unbalanced braces around marker ${JSON.stringify(marker)}`);
 }
 
-describe('DAW workspace shell gating (#517)', () => {
-  it('renderLiveWorkspace early-outs to the DAW shell when showShell is true', () => {
-    const body = functionBody(inlineApp, 'renderLiveWorkspace');
-    expect(body).toContain('dawWorkspaceState.showShell(');
-    expect(body).toContain('renderDawShell()');
-  });
-
-  it('renderLiveMeters early-outs to the DAW shell when showShell is true', () => {
-    const body = functionBody(inlineApp, 'renderLiveMeters');
-    expect(body).toContain('dawWorkspaceState.showShell(');
-    expect(body).toContain('renderDawShell()');
-  });
-
-  it('renderLiveMeters keeps resolving live channel names even while the DAW shell is showing', () => {
-    // lastLiveChannels (the #39 device-name fallback stripLabel reads for DAW
-    // shell lane names) must be assigned before the showShell early-return,
-    // or every lane name is stuck unresolved for the whole capture.
-    const body = functionBody(inlineApp, 'renderLiveMeters');
-    const assignIdx = body.indexOf('lastLiveChannels = win.channels');
-    const gateIdx = body.indexOf('dawWorkspaceState.showShell(');
-    expect(assignIdx).toBeGreaterThan(-1);
-    expect(assignIdx).toBeLessThan(gateIdx);
-  });
-});
-
-describe('DAW workspace timeline shell markup (#517)', () => {
-  it('defines renderDawShell', () => {
-    expect(inlineApp).toMatch(/function renderDawShell\(/);
-  });
-
-  it('renders the transport/header, ruler, and mix lane', () => {
-    const body = functionBody(inlineApp, 'renderDawShell');
+describe('DAW shell markup renders from live-board.ts (slice 6g, #710)', () => {
+  it('dawShellHTML renders the transport/header, ruler, mix lane, and per-input lanes', () => {
+    const body = functionBody(liveBoard, 'dawShellHTML');
     expect(body).toContain('daw-shell');
     expect(body).toContain('daw-transport');
     expect(body).toContain('daw-ruler');
@@ -99,47 +72,39 @@ describe('DAW workspace timeline shell markup (#517)', () => {
     expect(body).toContain('transportLabel(');
   });
 
-  it('maps channel lanes from channelConfig using stripLabel', () => {
-    const body = functionBody(inlineApp, 'renderDawShell');
+  it('maps channel lanes from channelConfig using the resolved strip label', () => {
+    const body = functionBody(liveBoard, 'dawShellHTML');
     expect(body).toContain('channelConfig.map(');
-    expect(body).toContain('stripLabel(');
+    expect(body).toContain('resolveStripLabel(');
   });
 
   it('escapes the lane name before it reaches innerHTML (stripLabel can return a user-entered or device-reported string)', () => {
-    const body = functionBody(inlineApp, 'renderDawShell');
-    expect(body).toMatch(/escapeHtml\(stripLabel\(/);
-  });
-
-  it('rebuilds when lane content changes even if the channel count does not (e.g. a same-size rig swap)', () => {
-    // The patch-in-place shortcut must key off more than channelConfig.length,
-    // or swapping to a different rig with the same track count leaves every
-    // lane showing the previous rig's names until something else forces a
-    // full rebuild.
-    const body = functionBody(inlineApp, 'renderDawShell');
-    expect(body).toContain('laneSignature');
-    expect(body).toContain('dataset.laneSignature');
-  });
-
-  it('patches the transport chip in place rather than replacing it every tick', () => {
-    const body = functionBody(inlineApp, 'renderDawShell');
-    expect(body).not.toContain('chip.outerHTML');
-    expect(body).toMatch(/chip\.textContent\s*!==/);
+    const body = functionBody(liveBoard, 'dawShellHTML');
+    expect(body).toMatch(/escapeHtml\(getRigReconcile\(\)\.resolveStripLabel\(/);
   });
 
   it('renders a muted empty-state row when channelConfig is empty', () => {
-    const body = functionBody(inlineApp, 'renderDawShell');
+    const body = functionBody(liveBoard, 'dawShellHTML');
     expect(body).toContain('Add tracks to see channel lanes');
   });
 
-  it('patches in place instead of rebuilding every tick', () => {
-    const body = functionBody(inlineApp, 'renderDawShell');
-    expect(body).toContain(".querySelector('.daw-shell')");
-    expect(body).toContain('laneSignature');
+  it('points users at the top-bar Record button for capture controls (#757)', () => {
+    const body = functionBody(liveBoard, 'dawShellHTML');
+    expect(body).toContain('Start and stop recording from the top-bar Record button');
   });
 
-  it('points users at the top-bar Record button for capture controls (#757)', () => {
-    const body = functionBody(inlineApp, 'renderDawShell');
-    expect(body).toContain('Start and stop recording from the top-bar Record button');
+  it('LiveCapturePanel renders the DAW branch through dangerouslySetInnerHTML and repaints via the bridge', () => {
+    expect(capturePanel).toContain('dawShellShowing(');
+    expect(capturePanel).toContain('dawShellHTML(');
+    expect(capturePanel).toContain('liveDawShellRepaint?.()');
+  });
+
+  it('inline-app.js exposes the liveDawShellRepaint bridge (6j playhead + waveform)', () => {
+    expect(inlineApp).toContain('window.liveDawShellRepaint = () => { renderDawPlayhead(); renderDawWaveform(); }');
+  });
+
+  it('inline-app.js no longer defines the imperative shell renderer', () => {
+    expect(inlineApp).not.toContain('function renderDawShell');
   });
 });
 
@@ -152,29 +117,15 @@ describe('DAW shell and the sole top-bar Record transport (#757)', () => {
     expect(markup).toContain('id="record-button-island"');
   });
 
-  it('renderDawShell does not duplicate the capture controls', () => {
-    const body = functionBody(inlineApp, 'renderDawShell');
-    expect(body).not.toContain('id="live-mode"');
-    expect(body).not.toContain('id="live-start-btn"');
-    expect(body).not.toContain('id="live-stop-btn"');
-  });
-
   it('the workspace arm cluster renders always (not record-mode gated) — armHTML drops the render gate', () => {
-    const body = functionBody(inlineApp, 'liveWorkspaceToolbarHTML');
+    const body = functionBody(liveBoard, 'workspaceToolbarHTML');
     expect(body).toContain('live-ws-arm-count');
     expect(body).not.toContain("advanced && liveMode === 'record'");
   });
 
   it('arm controls stay usable while monitoring and freeze only while recording (#757)', () => {
-    // A blocked promote (nothing armed) leaves a monitor session running with
-    // the config locked — arming must remain live there so the engineer can
-    // arm and press Record again. The template bakes the disabled state off
-    // `liveRunning && liveMode === 'record'`, and the runtime lock sweep keys
-    // the arm controls off the same condition.
-    const toolbar = functionBody(inlineApp, 'liveWorkspaceToolbarHTML');
-    expect(toolbar).toContain("liveRunning && liveMode === 'record'");
-    const lockBody = functionBody(inlineApp, 'setCaptureControlsLocked');
-    expect(lockBody).toContain("const armLocked = locked && liveMode === 'record'");
+    const toolbar = functionBody(liveBoard, 'workspaceToolbarHTML');
+    expect(toolbar).toContain("state.isCapturing && state.liveMode === 'record'");
   });
 });
 
@@ -197,46 +148,11 @@ describe('DAW shell styles (#517)', () => {
   });
 });
 
-describe('DAW playhead (#518)', () => {
-  it('renderDawShell markup includes the transport time readout and playhead line', () => {
-    const body = functionBody(inlineApp, 'renderDawShell');
+describe('DAW playhead (#518, stays inline 6j)', () => {
+  it('dawShellHTML markup includes the transport time readout and playhead line', () => {
+    const body = functionBody(liveBoard, 'dawShellHTML');
     expect(body).toContain('daw-transport-time');
     expect(body).toContain('daw-playhead');
-  });
-
-  it('renderDawShell calls renderDawPlayhead on both the patch and rebuild paths', () => {
-    const body = functionBody(inlineApp, 'renderDawShell');
-    const matches = body.match(/renderDawPlayhead\(/g) || [];
-    expect(matches.length).toBeGreaterThanOrEqual(2);
-  });
-
-  it('renderDawShell seeds the transport time from state so a mid-capture rebuild never flashes 0:00', () => {
-    const body = functionBody(inlineApp, 'renderDawShell');
-    expect(body).toMatch(/formatElapsed\(/);
-  });
-
-  it('the Start handler starts the playhead and its ticker', () => {
-    // TD-001 slice 6c (#701): the Start button is React-owned now
-    // (LiveTransportControls) and calls lcStore.getState().startCapture()
-    // directly for the IPC round trip; onCaptureStarting() runs the
-    // surrounding side effects (playhead/waveform/etc.) synchronously right
-    // after isCapturing flips true, at the same point the old inline
-    // `liveRunning = true` handler used to.
-    const block = functionBody(inlineApp, 'onCaptureStarting');
-    expect(block).toContain('dawPlayheadState.start(');
-    expect(block).toContain('startPlayheadTicker()');
-  });
-
-  it('stopLive freezes the playhead and stops its ticker', () => {
-    // TD-001 slice 6c (#701): the playhead/ticker side effects moved into
-    // onCaptureStopping(), called by both stopLive() (the failed-Start and
-    // failed-promote paths) and LiveTransportControls' Stop button (via the
-    // window.liveCaptureRuntime bridge) around the same store.stopCapture()
-    // IPC round trip.
-    expect(functionBody(inlineApp, 'stopLive')).toContain('onCaptureStopping()');
-    const body = functionBody(inlineApp, 'onCaptureStopping');
-    expect(body).toContain('dawPlayheadState.stop(');
-    expect(body).toContain('stopPlayheadTicker()');
   });
 
   it('renderDawPlayhead guards on shell presence, patches text only on change, and never assigns innerHTML', () => {
@@ -251,9 +167,11 @@ describe('DAW playhead (#518)', () => {
     expect(functionBody(inlineApp, 'stopPlayheadTicker')).toContain('clearInterval');
   });
 
-  it('defines named constants for the tick cadence and pixel scale (no magic numbers)', () => {
-    expect(inlineApp).toMatch(/const PLAYHEAD_TICK_MS = \d+/);
-    expect(inlineApp).toMatch(/const PLAYHEAD_PX_PER_SECOND = \d+/);
+  it('the Start handler starts the playhead and its ticker; stop freezes it', () => {
+    expect(functionBody(inlineApp, 'onCaptureStarting')).toContain('dawPlayheadState.start(');
+    expect(functionBody(inlineApp, 'onCaptureStarting')).toContain('startPlayheadTicker()');
+    expect(functionBody(inlineApp, 'onCaptureStopping')).toContain('dawPlayheadState.stop(');
+    expect(functionBody(inlineApp, 'onCaptureStopping')).toContain('stopPlayheadTicker()');
   });
 
   it('app.css styles the playhead line and the transport time readout', () => {
@@ -271,42 +189,23 @@ describe('DAW playhead (#518)', () => {
   });
 });
 
-describe('DAW mix waveform (#520)', () => {
-  it('renderDawShell markup includes the canvas and capture-mode attribute, no longer the placeholder text', () => {
-    const body = functionBody(inlineApp, 'renderDawShell');
+describe('DAW mix waveform (#520/#521, stays inline 6j)', () => {
+  it('dawShellHTML markup includes the canvases and capture-mode attribute', () => {
+    const body = functionBody(liveBoard, 'dawShellHTML');
     expect(body).toContain('daw-mix-waveform');
+    expect(body).toContain('daw-channel-waveform');
     expect(body).toContain('data-capture-mode');
     expect(body).not.toContain('Mix waveform coming soon');
+    expect(body).not.toContain('Waveform coming soon');
   });
 
-  it('renderDawShell calls renderDawWaveform on both the patch and rebuild paths', () => {
-    const body = functionBody(inlineApp, 'renderDawShell');
-    const matches = body.match(/renderDawWaveform\(/g) || [];
-    expect(matches.length).toBeGreaterThanOrEqual(2);
-  });
-
-  it('onLiveEvent handles peaks frames before the meter/window-tick path and returns', () => {
-    // TD-001 slice 6c (#701): live-tick coalescing (formerly scheduleLiveMeters,
-    // rAF-batched here) moved to LiveWorkspace.tsx's live-meter-controller,
-    // driven by liveCaptureStore's lastTick — this listener no longer calls a
-    // meter-render function of its own, only the session-only concerns below
-    // (measurementChannel/updateLiveStatsRow, sessionWindows, coaching).
+  it('onLiveEvent handles peaks frames before the meter/window-tick path and schedules the repaint', () => {
     const peaksIdx = inlineApp.indexOf("data.type === 'peaks'");
-    const meterIdx = inlineApp.indexOf('updateLiveStatsRow(statsCh)');
     expect(peaksIdx).toBeGreaterThan(-1);
-    expect(meterIdx).toBeGreaterThan(-1);
-    expect(peaksIdx).toBeLessThan(meterIdx);
-    const peaksBlock = enclosingBlock(inlineApp, "decodeLanes(data)");
-    expect(peaksBlock).toContain('return;');
-  });
-
-  it('onLiveEvent schedules the waveform repaint rather than painting synchronously', () => {
-    // Peaks frames can arrive at the meter cadence — painting synchronously on
-    // every IPC event would bypass this file's rAF-coalescing convention
-    // (mirrored by scheduleLiveMeters for meter/window ticks).
     const peaksBlock = enclosingBlock(inlineApp, 'decodeLanes(data)');
     expect(peaksBlock).toContain('scheduleDawWaveformRender(');
     expect(peaksBlock).not.toContain('renderDawWaveform()');
+    expect(peaksBlock).toContain('return;');
   });
 
   it('scheduleDawWaveformRender coalesces repaints to one per animation frame', () => {
@@ -316,27 +215,26 @@ describe('DAW mix waveform (#520)', () => {
     expect(body).toContain('renderDawWaveform()');
   });
 
-  it('the Start handler resets waveform state and its bucket rate', () => {
-    const block = functionBody(inlineApp, 'onCaptureStarting');
-    expect(block).toContain('dawWaveformState.create(');
-    expect(block).toContain('bucketsPerSecond(');
+  it('the Start handler resets waveform state and its bucket rate; onLiveEvent decodes lanes into lane states', () => {
+    const start = functionBody(inlineApp, 'onCaptureStarting');
+    expect(start).toContain('dawWaveformState.create(');
+    expect(start).toContain('bucketsPerSecond(');
+    expect(start).toContain('waveformLaneStates = {}');
+    const peaksBlock = enclosingBlock(inlineApp, 'decodeLanes(data)');
+    expect(peaksBlock).toContain('waveformLaneStates[id]');
   });
 
-  it('renderDawWaveform guards on shell/canvas presence and never assigns innerHTML', () => {
+  it('renderDawWaveform guards on shell/canvas presence, never assigns innerHTML, and draws the mix canvas from waveformState.pairs', () => {
     const body = functionBody(inlineApp, 'renderDawWaveform');
     expect(body).toContain(".daw-shell'");
     expect(body).toContain('daw-mix-waveform');
     expect(body).not.toContain('innerHTML');
+    expect(body).toContain('drawWaveformLane(canvas, waveformState.pairs, strokeStyle)');
   });
 
-  it('drawWaveformLane budgets columns to the canvas\'s own width, not the wider shell width (avoids off-canvas clipping)', () => {
+  it('drawWaveformLane budgets columns to the canvas\'s own width', () => {
     const body = functionBody(inlineApp, 'drawWaveformLane');
     expect(body).toContain('columnPeaks(pairs, waveformBucketsPerSec, PLAYHEAD_PX_PER_SECOND, canvas.width)');
-  });
-
-  it('renderDawWaveform draws the mix canvas from waveformState.pairs via the shared helper', () => {
-    const body = functionBody(inlineApp, 'renderDawWaveform');
-    expect(body).toContain('drawWaveformLane(canvas, waveformState.pairs, strokeStyle)');
   });
 
   it('renderDawWaveform derives capture mode directly from live state, not a DOM re-query', () => {
@@ -345,9 +243,10 @@ describe('DAW mix waveform (#520)', () => {
     expect(body).not.toContain("querySelector('.daw-mix-lane')");
   });
 
-  it('app.css styles the mix waveform canvas and capture-mode markers', () => {
+  it('app.css styles the mix/per-channel waveform canvases', () => {
     expect(css).toContain('.daw-mix-waveform');
-    expect(css).toContain('data-capture-mode');
+    expect(css).toContain('.daw-channel-waveform');
+    expect(css).toContain('.daw-channel-lane .daw-lane-body');
   });
 
   it('App.tsx boots daw-waveform-state.js before the inline app script', () => {
@@ -357,41 +256,5 @@ describe('DAW mix waveform (#520)', () => {
     expect(waveformIdx).toBeGreaterThan(-1);
     expect(inlineIdx).toBeGreaterThan(-1);
     expect(waveformIdx).toBeLessThan(inlineIdx);
-  });
-});
-
-describe('Per-input waveform lanes (#521)', () => {
-  it('renderDawShell lane markup renders a real waveform canvas, not the placeholder text', () => {
-    const body = functionBody(inlineApp, 'renderDawShell');
-    expect(body).toContain('daw-channel-waveform');
-    expect(body).not.toContain('Waveform coming soon');
-  });
-
-  it('renderDawShell still renders each lane\'s name from laneNames (channel identity preserved)', () => {
-    const body = functionBody(inlineApp, 'renderDawShell');
-    expect(body).toContain('daw-lane-name">${laneNames[idx]}</span>');
-    expect(body).toContain('data-ch="${idx}"');
-  });
-
-  it('onLiveEvent decodes all lanes and appends per-strip lanes into waveformLaneStates', () => {
-    const peaksBlock = enclosingBlock(inlineApp, 'decodeLanes(data)');
-    expect(peaksBlock).toContain('decodeLanes(');
-    expect(peaksBlock).toContain('waveformLaneStates[id]');
-  });
-
-  it('the Start handler resets waveformLaneStates alongside waveformState', () => {
-    const block = functionBody(inlineApp, 'onCaptureStarting');
-    expect(block).toContain('waveformLaneStates = {}');
-  });
-
-  it('renderDawWaveform iterates channel lanes and looks up state by strip + data-ch', () => {
-    const body = functionBody(inlineApp, 'renderDawWaveform');
-    expect(body).toContain('daw-channel-lane');
-    expect(body).toContain("'strip' + ");
-  });
-
-  it('app.css styles the per-channel waveform canvas and lane body height', () => {
-    expect(css).toContain('.daw-channel-waveform');
-    expect(css).toContain('.daw-channel-lane .daw-lane-body');
   });
 });

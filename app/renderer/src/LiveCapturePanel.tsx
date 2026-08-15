@@ -1,134 +1,205 @@
 // Copyright (c) 2026 Patrick Robinson (on-par). All rights reserved.
 // Licensed under the Sound Buddy Desktop Application License (app/LICENSE).
 
-// Presentational counterpart to live-capture-panel.ts (#307, epic #302): the
-// device picker, start/stop transport, and per-channel vertical-EQ meters
-// rendered today by inline-app.js's imperative renderLiveMeters/
-// renderLiveWorkspace, from the shared module's functions, so there is one
-// source of truth for the live-capture panel's HTML. NOT mounted into the
-// running app yet — inline-app.js still drives the live tab via the
-// window.liveCapturePanel bridge (see App.tsx). Mounting is a later epic
-// slice, once the imperative per-tick DOM patching (patchLiveChannel) is also
-// componentized — a React mount here would fight that today. Runtime label
-// resolution (window.rigReconcile.resolveStripLabel) and collapse
-// persistence stay with the imperative renderer until then; this component
-// falls back to `ch.name` (or "Ch N"), which real stream.py ticks always
-// carry.
-//
-// Assumes a single instance per page, same as today's single #spectrum-body
-// panel.
+// The mounted live-workspace board (slice 6g, #710), rendered by
+// LiveWorkspace into #live-island — the rewritten replacement for the legacy
+// presentational shell this file used to export. Subscribes ONLY to discrete
+// store fields (appMode/channelConfig/channelGroups/isCapturing/liveMode/
+// devices/selectedDevice/boardShapeVersion/lastTick!==null/settings/
+// lapCoaching/focusedInputIndex); per-tick data (lastTick/lastLiveChannels/
+// liveWindows/lastMeasurementChannels) is read as one-time getState()
+// snapshots at render time, never subscribed (ADR-0005). The board's HTML
+// comes from the pure live-board.ts builders through dangerouslySetInnerHTML,
+// so React's string-diff only rebuilds the DOM on discrete changes and the
+// DOM stays byte-identical to the imperative renderers it replaces. Every
+// per-tick DOM write happens in live-board.ts's patch appliers, driven by
+// LiveWorkspace's live-meter-controller.
 
+import { useLayoutEffect, useState, type JSX, type MouseEvent as ReactMouseEvent, type KeyboardEvent as ReactKeyboardEvent, type ChangeEvent as ReactChangeEvent } from 'react';
+import { useStoreShallow } from './stores/useStoreShallow';
+import { useLiveCaptureStore } from './stores/liveCaptureStore';
+import { useSettingsStore } from './stores/settingsStore';
+import { useSpectrumStore } from './stores/spectrumStore';
 import {
-  deviceOptionLabel,
-  deviceChannelCount,
-  liveMetersHTML,
-  measurementSourceOptionLabel,
-  type LiveDevice,
-  type StripConfig,
-  type ChannelGroup,
-  type LiveEvent,
-  type StripView,
-  type PanelView,
-} from './live-capture-panel';
+  boardHTML,
+  dawShellHTML,
+  dawShellShowing,
+  heroHTML,
+  liveAdjustmentsPanelHTML,
+  liveBoardState,
+  workspaceIsEmpty,
+  markSetupGuideComplete,
+  resolveStripName,
+  lapFocusView,
+  lapObservationContext,
+  patchEqPane,
+} from './live-board';
 
-export interface LiveCapturePanelProps {
-  devices: LiveDevice[];
-  selectedDevice: string;            // '' = Default Device
-  channels: StripConfig[];           // configured strips (channelConfig)
-  isLive: boolean;
-  onStart: () => void;
-  onStop: () => void;
-  meterEvents: LiveEvent[];          // stream.py JSON-lines events, oldest→newest
-  groups?: ChannelGroup[];           // default []
-  measurementSource?: number | null;                       // strip index judging the room; default null (first track)
-  onSelectMeasurementSource?: (source: number | null) => void;
+declare global {
+  interface Window {
+    // 6g bridge: the React DAW-shell branch repaints playhead + waveforms
+    // after each render (6j functions stay in inline-app.js).
+    liveDawShellRepaint?: () => void;
+    // renderChannelConfig (6h/6i, rigs.spec.ts) — the inline-app.js function
+    // the inline name-edit commit re-asserts through.
+    renderChannelConfig?: () => void;
+  }
 }
 
-export default function LiveCapturePanel({
-  devices,
-  selectedDevice,
-  channels,
-  isLive,
-  onStart,
-  onStop,
-  meterEvents,
-  groups = [],
-  measurementSource = null,
-  onSelectMeasurementSource,
-}: LiveCapturePanelProps) {
-  let latestTick: LiveEvent | undefined;
-  for (let i = meterEvents.length - 1; i >= 0; i--) {
-    if (meterEvents[i].channels?.length > 0) { latestTick = meterEvents[i]; break; }
-  }
+// Make a live meter header name click-to-edit (#39): commit on blur/Enter into
+// the matching channelConfig strip's label, Escape cancels. Port of
+// inline-app.js's wireLiveNameEdit, now store-driven.
+/* c8 ignore start -- DOM-wiring glue, no jsdom in this harness
+   (renderToString doesn't run effects); exercised by
+   tests/e2e/live-capture.spec.ts ("per-channel labels: workspace inline rename
+   and fallback (#39)"). */
+function wireLiveNameEdit(nameEl: HTMLElement): void {
+  const idx = parseInt(nameEl.closest('.live-ch')?.getAttribute('data-ch') ?? '', 10);
+  let original = nameEl.textContent;
+  nameEl.addEventListener('focus', () => { original = nameEl.textContent; });
+  const commit = () => {
+    const strip = useLiveCaptureStore.getState().channelConfig[idx];
+    if (!strip || nameEl.textContent === original) return;
+    useLiveCaptureStore.getState().setStripLabel(idx, nameEl.textContent ?? '');
+    const resolved = resolveStripName(
+      useLiveCaptureStore.getState().channelConfig[idx],
+      useLiveCaptureStore.getState().lastLiveChannels?.[idx] ?? null,
+      idx,
+    );
+    nameEl.textContent = resolved;
+    original = resolved;
+    window.renderChannelConfig?.();
+  };
+  nameEl.addEventListener('blur', commit);
+  nameEl.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); nameEl.blur(); }
+    else if (e.key === 'Escape') { e.preventDefault(); nameEl.textContent = original; nameEl.blur(); }
+  });
+}
 
-  let metersHTML = '';
-  if (latestTick) {
-    const panel: PanelView = { deviceChannels: deviceChannelCount(selectedDevice, devices), liveRunning: isLive, groups };
-    const stripViews: StripView[] = latestTick.channels.map((ch, idx) => {
-      const strip = channels[idx] ?? null;
-      const groupIndex = groups.findIndex((g) => g.members.includes(idx));
-      return {
-        strip,
-        displayName: ch.name ?? `Ch ${idx + 1}`,
-        // No "selected channel" concept in this not-yet-mounted component (see
-        // header comment) — every strip renders as unselected (#668).
-        selected: false,
-        // Mirrors window.armState.isArmed: a strip is armed unless explicitly
-        // disarmed, so config with no `armed` field (e.g. loaded via
-        // clampChannelConfig) still reads as armed.
-        armed: !!strip && strip.armed !== false,
-        groupIndex,
-        groupCollapsed: !!groups[groupIndex]?.collapsed,
-        // Instrument-profile assignment (#524) isn't wired into this
-        // not-yet-mounted component — no persisted overrides are available
-        // here, so every strip reads as Auto/generic, matching the "no
-        // instrumentProfiles supplied" graceful degrade in veqChannelHTML.
-        instrumentProfileId: 'generic',
-        instrumentAuto: true,
-      };
+// Strip selection (#668): drives the docked EQ pane's "Selected" section.
+// Toggles the .selected/aria-current classes on the current DOM imperatively
+// (the board does NOT subscribe to selectedChannel — patchEqPane + React's
+// LiveEqPane react), matching inline-app.js's selectStrip().
+function selectStrip(idx: number): void {
+  useLiveCaptureStore.getState().setSelectedChannel(idx);
+  document.querySelectorAll('#spectrum-body .live-ch').forEach((el) => {
+    const sel = parseInt((el as HTMLElement).dataset.ch ?? '', 10) === idx;
+    el.classList.toggle('selected', sel);
+    if (sel) el.setAttribute('aria-current', 'true');
+    else el.removeAttribute('aria-current');
+  });
+  patchEqPane(useLiveCaptureStore.getState());
+}
+/* c8 ignore stop */
+
+export default function LiveCapturePanel(): JSX.Element | null {
+  const { appMode, channelConfig, channelGroups, isCapturing, liveMode, devices, selectedDevice, boardShapeVersion, hasTick } =
+    useStoreShallow(useLiveCaptureStore, (s) => ({
+      appMode: s.appMode,
+      channelConfig: s.channelConfig,
+      channelGroups: s.channelGroups,
+      isCapturing: s.isCapturing,
+      liveMode: s.liveMode,
+      devices: s.devices,
+      selectedDevice: s.selectedDevice,
+      boardShapeVersion: s.boardShapeVersion,
+      hasTick: s.lastTick !== null,
+    }));
+  const settings = useStoreShallow(useSettingsStore, (s) => s.settings);
+  const lapCoaching = useStoreShallow(useLiveCaptureStore, (s) => s.lapCoaching);
+  const focusedInputIndex = useStoreShallow(useLiveCaptureStore, (s) => s.focusedInputIndex);
+
+  // Local dismiss state: forcing a re-render lets bannerHTML re-read
+  // localStorage after markSetupComplete (the guide is gated on it).
+  const [, setGuideDismissed] = useState(false);
+
+  if (appMode !== 'live') return null;
+
+  const state = liveBoardState();
+  const dawShell = dawShellShowing(settings, appMode);
+  const adjustmentsHTML = liveAdjustmentsPanelHTML(state);
+
+  // Board renders: DAW shell (#517), the zero-track hero (#294), or the meter
+  // workspace. The adjustments panel follows the shell/board (matches the old
+  // syncLiveAdjustmentsPanel call sites) but not the hero (which never synced
+  // it). Rendered via dangerouslySetInnerHTML so the DOM is byte-identical to
+  // the imperative renderers and React only rebuilds on discrete changes.
+  let innerHTML: string;
+  if (dawShell) innerHTML = dawShellHTML(state) + adjustmentsHTML;
+  else if (workspaceIsEmpty(state.channelConfig)) innerHTML = heroHTML(state);
+  else innerHTML = boardHTML(state) + adjustmentsHTML;
+
+  /* c8 ignore start -- delegated DOM handlers + effect wiring, no jsdom in
+     this harness (renderToString doesn't run effects or dispatch events);
+     exercised by tests/e2e/live-capture.spec.ts, live-capture-workspace.spec.ts,
+     named-channel-groups.spec.ts, and live-capture-report-card.spec.ts. */
+  useLayoutEffect(() => {
+    // Mirror the old renderers' hide-the-React-curve-view while the board is
+    // live — but never clobber the failed-start error/loading state, which is
+    // set after the board's own render in the capture IPC flow (last-writer
+    // wins in the old synchronous code; React's async commit would otherwise
+    // erase it).
+    const panel = useSpectrumStore.getState();
+    if (panel.panelState !== 'error' && panel.panelState !== 'loading') panel.setPanelState('meters');
+    // Re-wire inline name edits after a DOM rebuild; nodes React keeps are
+    // skipped (they already carry their wiring).
+    document.querySelectorAll('#live-island .sb-live-meters .live-ch-name').forEach((nameEl) => {
+      const el = nameEl as HTMLElement;
+      if (el.dataset.nameWired) return;
+      el.dataset.nameWired = '1';
+      wireLiveNameEdit(el);
     });
-    metersHTML = liveMetersHTML(latestTick.channels, stripViews, panel);
-  }
+    if (dawShell) window.liveDawShellRepaint?.();
+  }, [dawShell, appMode, boardShapeVersion, channelConfig, channelGroups, isCapturing, liveMode, devices, selectedDevice, hasTick, lapCoaching, focusedInputIndex, settings]);
+
+  const handleClick = (e: ReactMouseEvent<HTMLDivElement>) => {
+    const target = e.target as HTMLElement;
+    // Guided first-use setup dismiss (#294): retire the banner permanently.
+    if (target.closest('#live-setup-skip')) {
+      markSetupGuideComplete(window.localStorage);
+      setGuideDismissed(true);
+      return;
+    }
+    // Live coaching dispositions (#613/#614) — port of the inline click branch.
+    const lapActionBtn = target.closest('[data-lap-action]');
+    if (lapActionBtn) {
+      const s = useLiveCaptureStore.getState();
+      const focus = lapFocusView(s.channelConfig, s.lastLiveChannels, s.focusedInputIndex, liveBoardState());
+      const context = lapObservationContext(s.liveWindows, s.measurementSource, focus, s.channelConfig);
+      s.applyLapAction(lapActionBtn.getAttribute('data-lap-action') ?? '', Date.now(), context);
+      return;
+    }
+    // Strip selection (#668): clicking anywhere on a strip (but not one of its
+    // interactive controls) inspects it in the docked EQ pane.
+    const stripEl = target.closest('.live-ch');
+    if (stripEl && !target.closest('button, select, [contenteditable], input')) {
+      selectStrip(parseInt(stripEl.getAttribute('data-ch') ?? '', 10));
+    }
+  };
+
+  const handleKeyDown = (e: ReactKeyboardEvent<HTMLDivElement>) => {
+    if (e.key !== 'Enter' && e.key !== ' ') return;
+    const target = e.target as HTMLElement;
+    const stripEl = target.closest('.live-ch');
+    if (stripEl && target === stripEl) {
+      e.preventDefault();
+      selectStrip(parseInt(stripEl.getAttribute('data-ch') ?? '', 10));
+    }
+  };
+
+  const handleChange = (e: ReactChangeEvent<HTMLDivElement>) => {
+    // Focused-input selector (#525) — ephemeral, routes through the store so
+    // the React adjustments panel re-renders.
+    const sel = (e.target as HTMLElement).closest('.lap-focus-select') as HTMLSelectElement | null;
+    if (!sel) return;
+    useLiveCaptureStore.getState().setFocusedInputIndex(sel.value === '' ? null : parseInt(sel.value, 10));
+  };
+  /* c8 ignore stop */
 
   return (
-    <div>
-      <div className="select-wrap">
-        <select id="device-select" defaultValue={selectedDevice}>
-          <option value="">Default Device</option>
-          {devices.map((d) => <option key={d.index} value={String(d.index)}>{deviceOptionLabel(d)}</option>)}
-        </select>
-      </div>
-      <div className="select-wrap">
-        <select
-          id="measurement-source"
-          defaultValue={measurementSource == null ? '' : String(measurementSource)}
-          onChange={(e) => onSelectMeasurementSource?.(e.target.value === '' ? null : parseInt(e.target.value, 10))}
-        >
-          <option value="">First track (default)</option>
-          {channels.map((strip, i) => <option key={i} value={String(i)}>{measurementSourceOptionLabel(strip, i)}</option>)}
-        </select>
-      </div>
-      <button
-        type="button"
-        id="live-start-btn"
-        className="btn btn-primary full"
-        onClick={onStart}
-        style={{ display: isLive ? 'none' : undefined }}
-      >
-        Start Capture
-      </button>
-      <button
-        type="button"
-        id="live-stop-btn"
-        className="btn btn-danger full"
-        onClick={onStop}
-        style={{ display: isLive ? 'inline-flex' : 'none' }}
-      >
-        Stop Capture
-      </button>
-      {latestTick
-        ? <div className="meter-card sb-live-meters" dangerouslySetInnerHTML={{ __html: metersHTML }} />
-        : <div className="spectrum-empty">Waiting for live audio…</div>}
+    <div onClick={handleClick} onKeyDown={handleKeyDown} onChange={handleChange}>
+      <div dangerouslySetInnerHTML={{ __html: innerHTML }} />
     </div>
   );
 }

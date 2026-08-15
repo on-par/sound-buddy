@@ -64,9 +64,6 @@ function getLiveCoaching(): LiveCoachingApi | undefined {
 function getChooseAndAnalyzeFile(): (() => Promise<void>) | undefined {
   return (window as unknown as { chooseAndAnalyzeFile?: () => Promise<void> }).chooseAndAnalyzeFile;
 }
-function getUpdateStatsRow(): ((sox: unknown, spectrum: unknown) => void) | undefined {
-  return (window as unknown as { updateStatsRow?: (sox: unknown, spectrum: unknown) => void }).updateStatsRow;
-}
 
 // Share Image (#265): a one-click, purpose-built 1200×630 PNG for social
 // posting — distinct from Export PDF (window.print()). Model → draw ops →
@@ -147,7 +144,8 @@ async function shareImage(): Promise<void> {
 // Verbatim port of syncReportCardChrome's status-transition side effects
 // (inline-app.js) — extracted to a standalone function so it's testable
 // without a real DOM (no jsdom in this harness); the useEffect below is
-// thin wiring only.
+// thin wiring only. (slice 6g #710) The file-analysis header stats row is
+// React-rendered by LiveStatsRow from analysisStore — no imperative writer.
 export function applyStatusTransition(status: string, currentAnalysis: AnalysisPayload | null, liveSource: ReportCardSource | null): void {
   if (status === 'analyzing') {
     spectrumTransport.pauseIfPlaying(); // don't let a previous file's playback bleed through the loading state (#180)
@@ -157,7 +155,8 @@ export function applyStatusTransition(status: string, currentAnalysis: AnalysisP
   } else if (status === 'cancelled') {
     useSpectrumStore.getState().setPanelState('empty');
   } else if (status === 'done' && currentAnalysis) {
-    getUpdateStatsRow()?.(currentAnalysis.sox, currentAnalysis.spectrum);
+    // The stats row is React-rendered by LiveStatsRow from analysisStore
+    // (slice 6g #710) — no imperative stats-row write here.
     persistSummary(getReportCardSource(currentAnalysis, liveSource), 'file');
   }
 }
