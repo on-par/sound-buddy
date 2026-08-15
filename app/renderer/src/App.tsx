@@ -95,6 +95,7 @@ import LiveSessionOffers from './LiveSessionOffers';
 import WindowBadge from './WindowBadge';
 import RigDialog from './RigDialog';
 import type { LiveCaptureRuntime, LiveTransitionState } from './LiveControls';
+import type { LiveSetupStepsApi } from './live-workspace-view';
 
 // Boot scripts in their original document order (#303): the 32 UMD helpers
 // (each attaches to `window`, see the classic-script comment above their old
@@ -242,6 +243,8 @@ export default function App() {
       preflight: () => (window as unknown as { preflight: PreflightApi }).preflight,
       rigReconcile: () => (window as unknown as { rigReconcile: RigReconcileApi }).rigReconcile,
       armState: () => (window as unknown as { armState: ArmStateApi }).armState,
+      liveSetupState: () => (window as unknown as { liveSetupState: LiveSetupStepsApi }).liveSetupState,
+      storage: window.localStorage,
       liveCapturePanelApi: liveCapturePanel,
       reportCardChrome,
       dawShell: () => (window as unknown as { dawShellRuntime?: DawShellSeam }).dawShellRuntime ?? null,

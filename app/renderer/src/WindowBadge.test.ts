@@ -6,7 +6,7 @@ import { createElement } from 'react';
 import { renderToString } from 'react-dom/server';
 import WindowBadge from './WindowBadge';
 import { useLiveCaptureStore } from './stores/liveCaptureStore';
-import type { LiveEvent } from './live-capture-panel';
+import type { WindowData } from './live-capture-panel';
 
 // WindowBadge (TD-001 slice 6i, #712) — the header #window-badge span inside
 // the static #live-indicator pill, derived from liveWindows + isCapturing.
@@ -15,7 +15,7 @@ describe('WindowBadge (TD-001 slice 6i, #712)', () => {
     useLiveCaptureStore.setState({ liveWindows: [], isCapturing: false });
   });
 
-  function windowTick(n: number): LiveEvent {
+  function windowTick(n: number): WindowData {
     return { type: 'window', window: n, ts: n * 1000, channels: [], masking: [] };
   }
 

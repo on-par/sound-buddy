@@ -24,15 +24,18 @@ export default function RigDialog(): JSX.Element {
     withInput: s.withInput,
   }));
 
-  // The input's local draft — seeded from the store's value when the dialog
-  // (re)opens (a render-phase update so renderToString reflects the seed), then
-  // owned by the user's typing until OK/Cancel.
+  // The input's local draft — seeded from the store's value on every open (a
+  // render-phase update so renderToString reflects the seed), then owned by
+  // the user's typing until OK/Cancel. Reseeds on the isOpen rising edge
+  // rather than on value inequality — two opens in a row can carry the same
+  // value (e.g. rigStore.saveAs always opens with value: ''), and each one
+  // must still clear whatever the user typed and cancelled last time.
   const [draft, setDraft] = useState('');
-  const seededValue = useRef<string | null>(null);
-  if (isOpen && seededValue.current !== value) {
-    seededValue.current = value;
+  const wasOpen = useRef(false);
+  if (isOpen && !wasOpen.current) {
     setDraft(value);
   }
+  wasOpen.current = isOpen;
 
   const inputRef = useRef<HTMLInputElement>(null);
   const okRef = useRef<HTMLButtonElement>(null);

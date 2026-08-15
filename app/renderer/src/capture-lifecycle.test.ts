@@ -8,7 +8,7 @@ import { useAnalysisStore } from './stores/analysisStore';
 import { useSpectrumStore } from './stores/spectrumStore';
 import { useRigStore } from './stores/rigStore';
 import { useSettingsStore } from './stores/settingsStore';
-import { shouldOfferReportCard, liveSessionReportCardSource, normalizeMeasurementSource, type LiveEvent, type LiveDevice } from './live-capture-panel';
+import { shouldOfferReportCard, liveSessionReportCardSource, normalizeMeasurementSource, type WindowData, type LiveDevice } from './live-capture-panel';
 import { SPECTRUM_TITLE } from './spectrum-chrome';
 import { createMockSoundBuddy } from './mock-sound-buddy';
 
@@ -28,7 +28,7 @@ const DEVICES: LiveDevice[] = [{ index: 0, name: 'Scarlett 18i20', channels: 8, 
 
 // A usable live window tick (masking + channels carry the session report-card
 // source's per-channel bands).
-function windowTick(n: number): LiveEvent {
+function windowTick(n: number): WindowData {
   return {
     type: 'window',
     window: n,
@@ -72,6 +72,8 @@ function makeLifecycle(overrides: Partial<CaptureLifecycleDeps> = {}) {
   };
   const dawShell = { startPlayhead: vi.fn(), stopPlayhead: vi.fn(), resetWaveform: vi.fn() };
   const reportCardChrome = { persistSummary: vi.fn() };
+  const liveSetupState = { markSetupComplete: vi.fn(), hasCompletedSetup: vi.fn(), shouldShowGuide: vi.fn(), setupSteps: vi.fn(), showAdvancedControls: vi.fn() };
+  const storage = {} as Storage;
   const deps: CaptureLifecycleDeps = {
     getLc: () => useLiveCaptureStore.getState(),
     getAna: () => useAnalysisStore.getState(),
@@ -82,6 +84,8 @@ function makeLifecycle(overrides: Partial<CaptureLifecycleDeps> = {}) {
     preflight: () => preflight,
     rigReconcile: () => rigReconcile,
     armState: () => armState,
+    liveSetupState: () => liveSetupState,
+    storage,
     liveCapturePanelApi: { shouldOfferReportCard, liveSessionReportCardSource, normalizeMeasurementSource },
     reportCardChrome,
     dawShell: () => dawShell,
@@ -89,7 +93,7 @@ function makeLifecycle(overrides: Partial<CaptureLifecycleDeps> = {}) {
     ...overrides,
   };
   const lifecycle = createCaptureLifecycle(deps);
-  return { lifecycle, deps, doc, sb, dawShell, reportCardChrome };
+  return { lifecycle, deps, doc, sb, dawShell, reportCardChrome, liveSetupState };
 }
 
 beforeEach(() => {
@@ -273,7 +277,7 @@ describe('createCaptureLifecycle — onCaptureStarted', () => {
   });
 
   it('a successful start sets the phase status, marks setup complete, and removes the banner', () => {
-    const { lifecycle, doc } = makeLifecycle();
+    const { lifecycle, doc, liveSetupState, deps } = makeLifecycle();
     const banner = makeFakeEl();
     doc.els['spectrum-body'].querySelector.mockReturnValue(banner);
     useLiveCaptureStore.setState({ isCapturing: true, liveMode: 'monitor', promoting: false });
@@ -283,8 +287,7 @@ describe('createCaptureLifecycle — onCaptureStarted', () => {
     expect(useLiveCaptureStore.getState().liveStatusText).toBe('Monitoring · meters 10/s');
     expect(doc.els['spectrum-body'].querySelector).toHaveBeenCalledWith('.live-setup-banner');
     expect(banner.remove).toHaveBeenCalled();
-    const setup = (window as unknown as { liveSetupState: { markSetupComplete: ReturnType<typeof vi.fn> } }).liveSetupState;
-    expect(setup.markSetupComplete).toHaveBeenCalled();
+    expect(liveSetupState.markSetupComplete).toHaveBeenCalledWith(deps.storage);
   });
 });
 

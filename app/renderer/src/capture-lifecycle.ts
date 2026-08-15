@@ -32,6 +32,7 @@ import type { ReportCardSource } from './report-card';
 import type { SoundBuddyApi, StartLiveOpts, PreflightBaseline } from '../../electron/ipc/api';
 import type { PreflightChecklistItem, PreflightSnapshot } from './rig-panel';
 import { SPECTRUM_TITLE } from './spectrum-chrome';
+import type { LiveSetupStepsApi } from './live-workspace-view';
 
 // The still-inline 6j painters' seam (inline-app.js's window.dawShellRuntime) —
 // the lifecycle calls these wrappers instead of the module vars themselves.
@@ -74,6 +75,8 @@ export interface CaptureLifecycleDeps {
   preflight(): PreflightApi;
   rigReconcile(): RigReconcileApi;
   armState(): ArmStateApi;
+  liveSetupState(): LiveSetupStepsApi;
+  storage: Storage;
   liveCapturePanelApi: {
     shouldOfferReportCard(windows: number): boolean;
     liveSessionReportCardSource(win: LiveEvent[], src: number | null, cfg: StripConfig[]): ReportCardSource | null;
@@ -219,11 +222,12 @@ export function createCaptureLifecycle(deps: CaptureLifecycleDeps): {
     deps.getLc().setLiveStatusText(deps.liveTransition().statusLabel(capturePhaseFromStore(), meterRate));
     syncLiveIndicator();
     // Guided first-use setup (#294): starting a capture completes setup
-    // permanently. window.liveSetupState is a boot-injected classic script
-    // (App.tsx's BOOT_SCRIPTS), read off window like the other classic
-    // scripts' accessors. Remove any rendered banner immediately rather than
-    // waiting for the board's next re-render.
-    (window as unknown as { liveSetupState: { markSetupComplete(storage: Storage): void } }).liveSetupState.markSetupComplete(window.localStorage);
+    // permanently. deps.liveSetupState() is App.tsx's accessor for the
+    // boot-injected classic script (window.liveSetupState), wired the same
+    // way as liveTransition/preflight/rigReconcile/armState. Remove any
+    // rendered banner immediately rather than waiting for the board's next
+    // re-render.
+    deps.liveSetupState().markSetupComplete(deps.storage);
     const body = deps.doc.getElementById('spectrum-body');
     const banner = body?.querySelector('.live-setup-banner');
     if (banner) banner.remove();
