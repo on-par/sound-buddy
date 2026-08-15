@@ -15,6 +15,15 @@ import ModeTabs from './ModeTabs';
 
 const markup = fs.readFileSync(fileURLToPath(new URL('./root-markup.html', import.meta.url)), 'utf8');
 const inlineApp = fs.readFileSync(fileURLToPath(new URL('./inline-app.js', import.meta.url)), 'utf8');
+// TD-001 slice 6i (#712): the post-stop session chrome, the #live-status line,
+// the window badge, and the capture lifecycle moved off the static markup +
+// inline-app.js onto React islands / capture-lifecycle.ts — read those sources
+// for the surface assertions below.
+const lifecycleTs = fs.readFileSync(fileURLToPath(new URL('./capture-lifecycle.ts', import.meta.url)), 'utf8');
+const liveCaptureStoreTs = fs.readFileSync(fileURLToPath(new URL('./stores/liveCaptureStore.ts', import.meta.url)), 'utf8');
+const liveStatusLineTsx = fs.readFileSync(fileURLToPath(new URL('./LiveStatusLine.tsx', import.meta.url)), 'utf8');
+const liveSessionOffersTsx = fs.readFileSync(fileURLToPath(new URL('./LiveSessionOffers.tsx', import.meta.url)), 'utf8');
+const windowBadgeTsx = fs.readFileSync(fileURLToPath(new URL('./WindowBadge.tsx', import.meta.url)), 'utf8');
 
 describe('Directory tab batch-analyzes a folder of recordings (#270)', () => {
   it('has a real folder picker, Analyze All CTA, and results list — now rendered by DirectoryPanel.tsx onto the empty #tab-dir island (TD-001 slice 6h, #711)', () => {
@@ -42,38 +51,42 @@ describe('Directory tab batch-analyzes a folder of recordings (#270)', () => {
 });
 
 describe('Live monitoring visibly leads to a Report Card (#488)', () => {
-  it('shows a pre-start cue that listening builds a live Report Card', () => {
-    expect(markup).toContain('id="live-rc-cue"');
-    expect(markup).toContain('Listening builds a live Report Card as it runs.');
-    // Idle-visible: the cue must NOT start hidden.
-    expect(markup).not.toMatch(/id="live-rc-cue"[^>]*display:none/);
+  it('shows a pre-start cue that listening builds a live Report Card (LiveSessionOffers.tsx)', () => {
+    expect(liveSessionOffersTsx).toContain('id="live-rc-cue"');
+    expect(liveSessionOffersTsx).toContain('Listening builds a live Report Card as it runs.');
+    // The cue is store-driven (liveCueVisible), idle-visible by default.
+    expect(liveSessionOffersTsx).toContain('liveCueVisible');
   });
 
   it('hides the cue while a capture runs and restores it on stop', () => {
-    expect(inlineApp).toContain("document.getElementById('live-rc-cue').style.display = 'none'");
-    expect(inlineApp).toContain("document.getElementById('live-rc-cue').style.display = 'block'");
+    expect(liveCaptureStoreTs).toContain('setLiveCueVisible(visible)');
+    // onCaptureStarting (fresh session) + promoteToRecording hide it;
+    // onCaptureStopped restores it.
+    expect(lifecycleTs).toContain('lc.setLiveCueVisible(false)');
+    expect(lifecycleTs).toContain('lc.setLiveCueVisible(true)');
   });
 
   it('has a report-card offer row reusing the rec-offer pattern', () => {
-    expect(markup).toMatch(/id="rc-offer" class="rec-offer" style="display:none"/);
-    expect(markup).toContain('Report card ready.');
-    expect(markup).toMatch(/id="rc-offer-btn"[^>]*>View report card/);
+    expect(liveSessionOffersTsx).toContain('id="rc-offer"');
+    expect(liveSessionOffersTsx).toContain('className="rec-offer"');
+    expect(liveSessionOffersTsx).toContain('Report card ready.');
+    expect(liveSessionOffersTsx).toContain('id="rc-offer-btn"');
+    expect(liveSessionOffersTsx).toContain('View report card');
   });
 
   it('gates the offer on the pure window-count rule (#488, #757 — the mode requirement is gone, so record sessions offer the card too)', () => {
-    expect(inlineApp).toContain('shouldOfferReportCard(liveWindows.length)');
+    expect(lifecycleTs).toContain('shouldOfferReportCard(lc.liveWindows.length)');
   });
 
   it('navigates to the Report Card tab from the offer button', () => {
-    expect(inlineApp).toMatch(
-      /rc-offer-btn'\)\.addEventListener\('click'[\s\S]{0,200}mode-tab\[data-mode="reportcard"\]'\)\.click\(\)/
-    );
+    expect(liveSessionOffersTsx).toContain('id="rc-offer-btn"');
+    expect(liveSessionOffersTsx).toContain("switchMode('reportcard')");
   });
 
   it('has a not-enough-data state for a session too short to grade (#261)', () => {
-    expect(markup).toMatch(/id="rc-not-enough" class="rec-offer" style="display:none"/);
-    expect(markup).toContain('Not enough data');
-    expect(markup).toContain('monitor at least a few seconds of audio');
+    expect(liveSessionOffersTsx).toContain('id="rc-not-enough"');
+    expect(liveSessionOffersTsx).toContain('Not enough data');
+    expect(liveSessionOffersTsx).toContain('monitor at least a few seconds of audio');
   });
 });
 
@@ -100,11 +113,11 @@ describe('Live tab reads as always-listening, never capture (#777)', () => {
     expect(liveOption).not.toMatch(/[Cc]apture/);
   });
 
-  it('rewords the two runtime Live-tab strings in inline-app.js to listening/monitoring vocabulary', () => {
-    expect(inlineApp).toContain("'Add at least one track before starting listening.'");
-    expect(inlineApp).not.toContain("'Add at least one track before starting capture.'");
-    expect(inlineApp).toContain("'Failed to start live listening'");
-    expect(inlineApp).not.toContain("'Failed to start live capture'");
+  it('rewords the two runtime Live-tab strings to listening/monitoring vocabulary (capture-lifecycle.ts)', () => {
+    expect(lifecycleTs).toContain("'Add at least one track before starting listening.'");
+    expect(lifecycleTs).not.toContain("'Add at least one track before starting capture.'");
+    expect(lifecycleTs).toContain("'Failed to start live listening'");
+    expect(lifecycleTs).not.toContain("'Failed to start live capture'");
   });
 });
 
@@ -117,15 +130,19 @@ describe('Always-monitoring Live tab with a top-bar-only transport (#757)', () =
     expect(markup).not.toContain('id="preflight-island"');
   });
 
-  it('keeps the top-bar Record button island and the still-inline status/offer rows', () => {
+  it('keeps the top-bar Record button island and the React-owned status/offer/window-badge islands', () => {
     expect(markup).toContain('id="record-button-island"');
-    expect(markup).toContain('id="live-status"');
-    expect(markup).toContain('id="live-rc-cue"');
+    expect(markup).toContain('id="live-status-island"');
+    expect(markup).toContain('id="live-session-offers-island"');
     // TD-001 slice 6h (#711): the arm hint moved to LiveArmHint.tsx, portaled
     // onto this island; the React span keeps id="arm-hint" (LiveArmHint.test.ts).
     expect(markup).toContain('id="arm-hint-island"');
-    expect(markup).toContain('id="rec-offer"');
-    expect(markup).toContain('id="rc-offer"');
+    expect(markup).toContain('id="window-badge-island"');
+    // The actual nodes are rendered by the islands.
+    expect(liveStatusLineTsx).toContain('id="live-status"');
+    expect(liveSessionOffersTsx).toContain('id="rec-offer"');
+    expect(liveSessionOffersTsx).toContain('id="rc-offer"');
+    expect(windowBadgeTsx).toContain('id="window-badge"');
   });
 
   it('no longer references the removed in-tab controls in App.tsx', () => {
@@ -137,9 +154,9 @@ describe('Always-monitoring Live tab with a top-bar-only transport (#757)', () =
   });
 
   it('promoteToRecording consults the preflight checklist before promoting (#757 inline guard)', () => {
-    expect(inlineApp).toContain('window.preflight.buildChecklist');
-    expect(inlineApp).toContain('window.preflight.checklistSummary');
-    const promoteBlock = inlineApp.slice(inlineApp.indexOf('async function promoteToRecording'));
+    expect(lifecycleTs).toContain('buildChecklist({');
+    expect(lifecycleTs).toContain('checklistSummary(items)');
+    const promoteBlock = lifecycleTs.slice(lifecycleTs.indexOf('async function promoteToRecording'));
     expect(promoteBlock.indexOf('preflightBlockReason')).toBeGreaterThan(-1);
     expect(promoteBlock.indexOf('preflightBlockReason')).toBeLessThan(promoteBlock.indexOf('canPromoteToRecording'));
   });
@@ -205,9 +222,12 @@ describe('Secondary measurement device source (#460, React-owned per #724)', () 
     expect(inlineApp).not.toContain('secondaryReconnectTimer');
   });
 
-  it('exposes afterSecondaryMeasurementChange to the React runtime (kept as a no-op until 6k — the Room badge is MeasurementBadge.tsx now, TD-001 slice 6h #711)', () => {
+  it('exposes afterSecondaryMeasurementChange on the lifecycle runtime (kept as a no-op until 6k — the Room badge is MeasurementBadge.tsx now, TD-001 slice 6h #711)', () => {
+    expect(lifecycleTs).toContain('afterSecondaryMeasurementChange');
+    expect(lifecycleTs).toContain('/* no-op until 6k */');
+    // The inline onMeasurementEvent handler (6k non-goal) stays and keeps
+    // calling its own no-op.
     expect(inlineApp).toContain('afterSecondaryStateChange');
-    expect(inlineApp).toContain('afterSecondaryMeasurementChange');
     expect(inlineApp).not.toContain('function renderMeasurementBadge');
   });
 });

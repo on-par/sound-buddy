@@ -15,19 +15,19 @@
 // by the runtime's beforeStartCapture/promoteToRecording and rendered by
 // LiveArmHint.tsx (TD-001 slice 6h, #711).
 //
-// #live-status, #rec-offer/#rc-offer/#rc-not-enough, and
-// #live-rc-cue stay out of React entirely (still static root-markup.html
-// markup, still written by several still-inline functions — rig-apply error
-// text, the post-stop session offers) — pulling those into React here would
-// double-own DOM nodes that other bridged code also writes directly. The
-// capture click handlers delegate to
-// `window.liveCaptureRuntime` (inline-app.js) for the side-effect-heavy
+// #live-status, #rec-offer/#rc-offer/#rc-not-enough, and #live-rc-cue are
+// React-owned now (TD-001 slice 6i, #712): LiveStatusLine.tsx +
+// LiveSessionOffers.tsx render them from liveCaptureStore
+// (liveStatusText/sessionOffers/liveCueVisible), written by the capture-lifecycle
+// module and rigStore. The capture click handlers delegate to
+// `window.liveCaptureRuntime` (installed by App.tsx from capture-lifecycle.ts,
+// the port of inline-app.js's lifecycle) for the side-effect-heavy
 // orchestration (playhead/waveform/rig-lock/lapCoaching/session offers) that
 // stays out of 6c's scope — see the ADR in the #701 plan on why those coupled
 // sub-surfaces (DAW shell, live-adjustments, preflight, rigs) stay bridged.
 // `window.liveTransitionState`'s capturePhase classic script is left
-// untouched (still load-bearing for inline-app.js's header REC/LIVE
-// indicator) but is no longer read from this file.
+// untouched (still load-bearing for the capture-lifecycle module's header
+// REC/LIVE indicator applier) but is no longer read from this file.
 
 import { useLiveCaptureStore, type StartCaptureResult, type StopCaptureResult } from './stores/liveCaptureStore';
 import { captureOptsFromCadence } from './measurement-device-state';

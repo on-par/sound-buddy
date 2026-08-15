@@ -26,7 +26,6 @@ import type { RigApi, SettingsApi, CaptureRig } from '../../../electron/ipc/api'
 import {
   captureCurrentRigSnapshot,
   applyRigPatch,
-  setLiveStatusText,
   getPreflight,
   type CaptureRigSnapshotInput,
   type ExistingRig,
@@ -103,7 +102,7 @@ export function createRigStore(getApi: () => RigApiSubset) {
     const { patch, notice } = applyRigPatch(rig, live.devices, deviceChannels);
     useLiveCaptureStore.setState({ ...patch, rigApplyNotice: notice || null });
     persistGroups(useLiveCaptureStore.getState());
-    setLiveStatusText(notice);
+    useLiveCaptureStore.getState().setLiveStatusText(notice);
     // The board + measurement badge re-render reactively from liveCaptureStore
     // (LiveCapturePanel/MeasurementBadge, TD-001 slice 6h #711) — the old
     // window.renderChannelConfig?.() sweep is gone.
@@ -147,7 +146,7 @@ export function createRigStore(getApi: () => RigApiSubset) {
       try {
         await getApi().setActiveRig(id || null);
       } catch {
-        setLiveStatusText(rigErrorMessage('select'));
+        useLiveCaptureStore.getState().setLiveStatusText(rigErrorMessage('select'));
         return;
       }
       set({ activeRigId: id || null });
@@ -173,9 +172,9 @@ export function createRigStore(getApi: () => RigApiSubset) {
         const settings = await getApi().saveRig(snapshot);
         await getApi().setActiveRig(state.activeRigId);
         set({ rigs: settings.rigs || [], activeRigId: state.activeRigId });
-        setLiveStatusText(`Saved "${existing ? existing.name : 'rig'}".`);
+        useLiveCaptureStore.getState().setLiveStatusText(`Saved "${existing ? existing.name : 'rig'}".`);
       } catch {
-        setLiveStatusText(rigErrorMessage('save'));
+        useLiveCaptureStore.getState().setLiveStatusText(rigErrorMessage('save'));
       }
     },
 
@@ -192,9 +191,9 @@ export function createRigStore(getApi: () => RigApiSubset) {
         const newId = created ? created.id : (rigs.find((r) => r.name === trimmed)?.id ?? '');
         if (newId) await getApi().setActiveRig(newId);
         set({ rigs, activeRigId: newId || null });
-        setLiveStatusText(`Saved "${trimmed}".`);
+        useLiveCaptureStore.getState().setLiveStatusText(`Saved "${trimmed}".`);
       } catch {
-        setLiveStatusText(rigErrorMessage('save'));
+        useLiveCaptureStore.getState().setLiveStatusText(rigErrorMessage('save'));
       }
     },
 
@@ -207,7 +206,7 @@ export function createRigStore(getApi: () => RigApiSubset) {
         const settings = await getApi().saveRig({ ...existing, name: trimmed });
         set({ rigs: settings.rigs || [] });
       } catch {
-        setLiveStatusText(rigErrorMessage('rename'));
+        useLiveCaptureStore.getState().setLiveStatusText(rigErrorMessage('rename'));
       }
     },
 
@@ -216,7 +215,7 @@ export function createRigStore(getApi: () => RigApiSubset) {
         const settings = await getApi().deleteRig(id);
         set({ rigs: settings.rigs || [], activeRigId: settings.activeRigId || null });
       } catch {
-        setLiveStatusText(rigErrorMessage('delete'));
+        useLiveCaptureStore.getState().setLiveStatusText(rigErrorMessage('delete'));
       }
     },
 
@@ -239,10 +238,10 @@ export function createRigStore(getApi: () => RigApiSubset) {
         }
         if (savedId) await getApi().setActiveRig(savedId);
         set({ rigs, activeRigId: savedId || state.activeRigId });
-        setLiveStatusText('Baseline saved.');
+        useLiveCaptureStore.getState().setLiveStatusText('Baseline saved.');
       } catch (err) {
         const msg = err instanceof Error ? err.message : '';
-        setLiveStatusText(/Pro license/i.test(msg)
+        useLiveCaptureStore.getState().setLiveStatusText(/Pro license/i.test(msg)
           ? 'Saving a baseline requires a Pro license.'
           : 'Could not save baseline — check that Sound Buddy can write its settings.');
       }

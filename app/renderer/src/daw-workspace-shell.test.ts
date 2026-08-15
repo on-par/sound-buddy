@@ -22,6 +22,9 @@ const appTsx = fs.readFileSync(fileURLToPath(new URL('./App.tsx', import.meta.ur
 const workspaceViewTs = fs.readFileSync(fileURLToPath(new URL('./live-workspace-view.ts', import.meta.url)), 'utf8');
 const liveCapturePanelTsx = fs.readFileSync(fileURLToPath(new URL('./LiveCapturePanel.tsx', import.meta.url)), 'utf8');
 const liveCapturePanelTs = fs.readFileSync(fileURLToPath(new URL('./live-capture-panel.ts', import.meta.url)), 'utf8');
+// TD-001 slice 6i (#712): the capture lifecycle moved here — its start/stop
+// drives the still-inline 6j painters through the window.dawShellRuntime seam.
+const lifecycleTs = fs.readFileSync(fileURLToPath(new URL('./capture-lifecycle.ts', import.meta.url)), 'utf8');
 
 function functionBody(src: string, name: string): string {
   const marker = `function ${name}(`;
@@ -189,17 +192,27 @@ describe('DAW playhead (#518)', () => {
     expect(inlineApp).toMatch(/playheadElapsedMs: \(\) =>/);
   });
 
-  it('the Start handler starts the playhead and its ticker', () => {
-    const block = functionBody(inlineApp, 'onCaptureStarting');
-    expect(block).toContain('dawPlayheadState.start(');
-    expect(block).toContain('startPlayheadTicker()');
+  it('the capture lifecycle starts the playhead and its ticker via the dawShell seam (TD-001 slice 6i)', () => {
+    const block = enclosingBlock(lifecycleTs, 'shell?.startPlayhead(Date.now())');
+    expect(block).toContain('shell?.startPlayhead(Date.now())');
+    expect(block).toContain('shell?.resetWaveform(intervalSecs)');
   });
 
-  it('stopLive freezes the playhead and stops its ticker', () => {
-    expect(functionBody(inlineApp, 'stopLive')).toContain('onCaptureStopping()');
-    const body = functionBody(inlineApp, 'onCaptureStopping');
-    expect(body).toContain('dawPlayheadState.stop(');
-    expect(body).toContain('stopPlayheadTicker()');
+  it('onCaptureStopping freezes the playhead and stops its ticker through the dawShell seam', () => {
+    const stopBody = enclosingBlock(lifecycleTs, 'deps.dawShell()?.stopPlayhead()');
+    expect(stopBody).toContain('deps.dawShell()?.stopPlayhead()');
+    // The still-inline wrapper itself freezes the playhead, stops the ticker,
+    // and repaints the frozen time.
+    const wrapper = enclosingBlock(inlineApp, 'playheadState = window.dawPlayheadState.stop(');
+    expect(wrapper).toContain('stopPlayheadTicker()');
+    expect(wrapper).toContain('renderDawPlayhead()');
+  });
+
+  it('window.dawShellRuntime exposes the startPlayhead/stopPlayhead/resetWaveform seam', () => {
+    expect(inlineApp).toMatch(/startPlayhead\(nowMs\) \{/);
+    expect(inlineApp).toMatch(/stopPlayhead\(\) \{/);
+    expect(inlineApp).toMatch(/resetWaveform\(intervalSecs\) \{/);
+    expect(inlineApp).toContain('window.dawShellRuntime = {');
   });
 
   it('renderDawPlayhead guards on shell presence, patches text only on change, and never assigns innerHTML', () => {
@@ -246,14 +259,15 @@ describe('DAW mix waveform (#520)', () => {
     expect(liveCapturePanelTsx).toContain('renderWaveform');
   });
 
-  it('onLiveEvent handles peaks frames before the meter/window-tick path and returns', () => {
-    // TD-001 slice 6g (#710): the meter path marker is now the store-owned
-    // coaching advance, not the deleted updateLiveStatsRow call.
+  it('onLiveEvent handles peaks frames before the window-tick path and returns', () => {
+    // TD-001 slice 6i (#712): the window-tick marker is now the delegated
+    // window.captureLifecycle.onWindowTick call (session accumulation moved
+    // to capture-lifecycle.ts).
     const peaksIdx = inlineApp.indexOf("data.type === 'peaks'");
-    const meterIdx = inlineApp.indexOf('lcStore.getState().advanceLapCoaching()');
+    const tickIdx = inlineApp.indexOf('window.captureLifecycle?.onWindowTick?.(data)');
     expect(peaksIdx).toBeGreaterThan(-1);
-    expect(meterIdx).toBeGreaterThan(-1);
-    expect(peaksIdx).toBeLessThan(meterIdx);
+    expect(tickIdx).toBeGreaterThan(-1);
+    expect(peaksIdx).toBeLessThan(tickIdx);
     const peaksBlock = enclosingBlock(inlineApp, "decodeLanes(data)");
     expect(peaksBlock).toContain('return;');
   });
@@ -271,10 +285,14 @@ describe('DAW mix waveform (#520)', () => {
     expect(body).toContain('renderDawWaveform()');
   });
 
-  it('the Start handler resets waveform state and its bucket rate', () => {
-    const block = functionBody(inlineApp, 'onCaptureStarting');
-    expect(block).toContain('dawWaveformState.create(');
-    expect(block).toContain('bucketsPerSecond(');
+  it('the capture lifecycle resets waveform state and its bucket rate via the dawShell seam', () => {
+    const block = enclosingBlock(lifecycleTs, 'shell?.resetWaveform(intervalSecs)');
+    expect(block).toContain('shell?.resetWaveform(intervalSecs)');
+    // The still-inline wrapper re-creates the waveform state and re-aligns the
+    // bucket rate to this capture's meter interval (#520).
+    const wrapper = enclosingBlock(inlineApp, 'waveformBucketsPerSec = window.dawWaveformState.bucketsPerSecond(intervalSecs)');
+    expect(wrapper).toContain('waveformState = window.dawWaveformState.create();');
+    expect(wrapper).toContain('waveformLaneStates = {};');
   });
 
   it('renderDawWaveform guards on shell/canvas presence and never assigns innerHTML', () => {
@@ -332,9 +350,10 @@ describe('Per-input waveform lanes (#521)', () => {
     expect(peaksBlock).toContain('waveformLaneStates[id]');
   });
 
-  it('the Start handler resets waveformLaneStates alongside waveformState', () => {
-    const block = functionBody(inlineApp, 'onCaptureStarting');
-    expect(block).toContain('waveformLaneStates = {}');
+  it('the capture lifecycle resets waveformLaneStates alongside waveformState via the dawShell seam', () => {
+    const wrapper = enclosingBlock(inlineApp, 'waveformBucketsPerSec = window.dawWaveformState.bucketsPerSecond(intervalSecs)');
+    expect(wrapper).toContain('waveformLaneStates = {};');
+    expect(wrapper).toContain('waveformState = window.dawWaveformState.create();');
   });
 
   it('renderDawWaveform iterates channel lanes and looks up state by strip + data-ch', () => {
