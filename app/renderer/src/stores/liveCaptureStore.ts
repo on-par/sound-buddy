@@ -19,6 +19,7 @@ import type { LiveApi, DialogApi, StartLiveOpts } from '../../../electron/ipc/ap
 import {
   deviceListView,
   deviceChannelCount,
+  deviceNameFor,
   usedChannelCount,
   measurementSourceAfterRemove,
   type LiveDevice,
@@ -48,6 +49,11 @@ import {
 import type { AppSettings } from '../../../electron/ipc/api';
 
 export type { StartCaptureOpts };
+// deviceNameFor lives in live-capture-panel.ts (TD-001 slice 6h, #711) so the
+// still-classic inline-app.js reaches it through window.liveCapturePanel, but
+// it stays exported here for the store/React consumers that imported it from
+// this module before the move (rigStore.ts, PreflightSettings.tsx).
+export { deviceNameFor };
 
 // The engineer's disposition over the live-adjustments coaching card (#613,
 // #614) — routed through window.liveAdjustmentsState's reducers by
@@ -178,17 +184,6 @@ function defaultChannelConfig(deviceChannels: number): StripConfig[] {
   return cfg;
 }
 
-// The selected device's name, resolved from the device list ('' = Default
-// Device) — mirrors inline-app.js's selectedDeviceName() (#482). Exported
-// (TD-001 slice 6d, #702) so rigStore.ts and PreflightPanel.tsx can reuse
-// this exact resolution instead of duplicating it, same rationale as
-// persistGroups below.
-export function deviceNameFor(selectedValue: string, devices: LiveDevice[]): string {
-  if (selectedValue === '') return '';
-  const dev = devices.find((d) => String(d.index) === selectedValue);
-  return dev ? dev.name : '';
-}
-
 // Overlay persisted channel labels (#482) for `deviceName` onto a freshly
 // seeded channel config — shared by loadDevices()/selectDevice().
 function withSavedLabels(cfg: StripConfig[], deviceName: string): StripConfig[] {
@@ -265,6 +260,13 @@ export interface LiveCaptureState {
   // becoming the room's measurement source.
   selectedChannel: number | null;
 
+  // The inline "arm at least one strip" hint near the Start button (#43) —
+  // store-owned since TD-001 slice 6h (#711): the 6i capture-lifecycle
+  // callbacks write showArmHint/hideArmHint here and LiveArmHint.tsx renders
+  // #arm-hint reactively, replacing the deleted DOM-writing showArmHint/
+  // hideArmHint in inline-app.js.
+  armHint: { visible: boolean; text: string };
+
   // Focused input for the per-input instrument-aware adjustment candidates
   // (#525) — ephemeral, per-session only, never persisted. Store-owned so the
   // React live-adjustments panel renders reactively from it (TD-001 slice 6g,
@@ -340,6 +342,12 @@ export interface LiveCaptureState {
   setSelectedChannel(source: number | null): void;
 
   setFocusedInputIndex(idx: number | null): void;
+  /** Shows the inline arm hint (beforeStartCapture/promoteToRecording's
+   *  blocking reasons surface through it, #43) — replaces the deleted
+   *  DOM-writing showArmHint in inline-app.js (TD-001 slice 6h, #711). */
+  showArmHint(text: string): void;
+  /** Hides the inline arm hint — replaces the deleted hideArmHint. */
+  hideArmHint(): void;
   /** Applies one coaching disposition (acknowledge/tried/snooze/dismiss/
    *  resume/outcome-ack) through window.liveAdjustmentsState's reducers and
    *  writes the result to lapCoaching (#613, #614). markTriedCoaching receives
@@ -437,6 +445,7 @@ export function createLiveCaptureStore(getApi: () => LiveCaptureApi) {
     selectedChannel: null,
     focusedInputIndex: null,
     lapCoaching: null,
+    armHint: { visible: false, text: '' },
 
     secondaryMeasurement: { status: 'off', deviceName: '' },
     secondaryWindows: [],
@@ -455,6 +464,12 @@ export function createLiveCaptureStore(getApi: () => LiveCaptureApi) {
           channelGroups: savedGroupsFor(deviceName),
           measurementSource: null,
           selectedChannel: null,
+          // TD-001 slice 6h (#711): the deleted inline resetChannelConfig()
+          // wrapper cleared the focused input + last tick snapshot alongside
+          // loadDevices' re-seed — absorbed here so the wrappers are fully
+          // replaced.
+          focusedInputIndex: null,
+          lastLiveChannels: null,
         });
       }
     },
@@ -469,6 +484,11 @@ export function createLiveCaptureStore(getApi: () => LiveCaptureApi) {
         channelGroups: savedGroupsFor(deviceName),
         measurementSource: null,
         selectedChannel: null,
+        // TD-001 slice 6h (#711): the deleted resetChannelConfig() /
+        // window.liveCaptureRuntime.selectDevice wrappers cleared these — see
+        // loadDevices above.
+        focusedInputIndex: null,
+        lastLiveChannels: null,
       });
     },
 
@@ -731,6 +751,19 @@ export function createLiveCaptureStore(getApi: () => LiveCaptureApi) {
     // removeStrip).
     setFocusedInputIndex(idx) {
       set({ focusedInputIndex: idx });
+    },
+
+    // The inline arm hint (#43) — ported from inline-app.js's showArmHint/
+    // hideArmHint (TD-001 slice 6h, #711): the 6i capture-lifecycle callbacks
+    // write these and LiveArmHint.tsx renders #arm-hint reactively. hideArmHint
+    // keeps the last text (only toggles visibility), mirroring the old DOM
+    // write which only flipped display.
+    showArmHint(text) {
+      set({ armHint: { visible: true, text } });
+    },
+
+    hideArmHint() {
+      set((state) => ({ armHint: { ...state.armHint, visible: false } }));
     },
 
     lapDispose(action, now = Date.now()) {

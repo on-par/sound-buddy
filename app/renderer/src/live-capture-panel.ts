@@ -68,6 +68,10 @@ export interface StripView {   // per-strip state the caller resolves from its s
 export interface PanelView {
   deviceChannels: number;      // selectedDeviceChannels()
   liveRunning: boolean;
+  // TD-001 slice 6h (#711): the per-strip arm button's disabled stamp derives
+  // from `liveRunning && liveMode === 'record'` — the #757 rule that arming
+  // stays live while a monitor session runs. Threaded through livePanelView.
+  liveMode: 'monitor' | 'record';
   groups: ChannelGroup[];      // channelGroups
   instrumentProfiles?: { id: string; label: string }[]; // window.instrumentProfiles.PROFILES (#524)
 }
@@ -237,7 +241,7 @@ export function veqChannelHTML(ch: LiveMeterChannel, idx: number, stripView: Str
   return `<div class="live-ch${selected ? ' selected' : ''}${ch.idle ? ' idle' : ''}${stripView.groupCollapsed ? ' group-collapsed' : ''}" data-ch="${idx}"${selected ? ' aria-current="true"' : ''} tabindex="0" role="button" aria-label="Select ${escapeHtml(displayName)} to inspect in the EQ pane">
     <div class="live-ch-head">
       ${dragHTML}
-      <button type="button" class="live-ch-arm" data-idx="${idx}" aria-pressed="${armed}" aria-label="${armed ? 'Disarm' : 'Arm'} track for recording" title="${armed ? 'Armed for recording — click to disarm' : 'Disarmed — click to arm'}"${panel.liveRunning ? ' disabled' : ''}></button>
+      <button type="button" class="live-ch-arm" data-idx="${idx}" aria-pressed="${armed}" aria-label="${armed ? 'Disarm' : 'Arm'} track for recording" title="${armed ? 'Armed for recording — click to disarm' : 'Disarmed — click to arm'}"${panel.liveRunning && panel.liveMode === 'record' ? ' disabled' : ''}></button>
       <span class="live-ch-name${ch.clipping ? ' clip' : ''}" contenteditable="true" spellcheck="false" role="textbox" aria-label="Channel name — click to rename" title="Click to rename">${escapeHtml(displayName)}</span>
       ${defHTML}
       ${groupHTML}
@@ -644,6 +648,17 @@ export function deviceChannelCount(selectedValue: string, devices: LiveDevice[])
   }
   const dev = devices.find((d) => String(d.index) === selectedValue);
   return dev ? dev.channels : DEFAULT_DEVICE_CHANNELS;
+}
+
+// The selected device's name, resolved from the device list ('' = Default
+// Device). Lives here alongside deviceChannelCount (TD-001 slice 6h, #711) so
+// the still-classic inline-app.js reaches it through window.liveCapturePanel
+// (preflightBlockReason) exactly like deviceChannelCount; liveCaptureStore.ts
+// re-exports it for its store/React consumers (rigStore, PreflightSettings).
+export function deviceNameFor(selectedValue: string, devices: LiveDevice[]): string {
+  if (selectedValue === '') return '';
+  const dev = devices.find((d) => String(d.index) === selectedValue);
+  return dev ? dev.name : '';
 }
 
 // Resolves loadDevices' branching (mic blocked / list error / empty / happy

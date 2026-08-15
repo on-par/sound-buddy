@@ -71,6 +71,7 @@ import UpgradeMomentum from './UpgradeMomentum';
 import RecentServicesPanel from './RecentServicesPanel';
 import BuildGuidePanel from './BuildGuidePanel';
 import RingoutPanel from './RingoutPanel';
+import DirectoryPanel from './DirectoryPanel';
 import LicenseChrome from './LicenseChrome';
 import ConsoleNetworkConsentDialog from './ConsoleNetworkConsentDialog';
 import UpdateBanner from './UpdateBanner';
@@ -79,6 +80,9 @@ import { useOnboardingStore } from './stores/onboardingStore';
 import FeedbackDialog from './FeedbackDialog';
 import GradeOwnGuideDialog from './GradeOwnGuideDialog';
 import PhaseDoublingDialog from './PhaseDoublingDialog';
+import AnalyzeSourcePicker from './AnalyzeSourcePicker';
+import LiveArmHint from './LiveArmHint';
+import MeasurementBadge from './MeasurementBadge';
 import { installStoreBridge } from './stores/bridge';
 
 // Boot scripts in their original document order (#303): the 32 UMD helpers
@@ -263,8 +267,16 @@ export default function App() {
       {booted && createPortal(<RecentServicesPanel />, document.getElementById('tab-recent')!)}
       {booted && createPortal(<BuildGuidePanel />, document.getElementById('tab-guide')!)}
       {booted && createPortal(<RingoutPanel />, document.getElementById('tab-ringout')!)}
+      {/* TD-001 slice 6h (#711): the Directory tab's batch panel, portaled
+          onto the now-empty #tab-dir node. */}
+      {booted && createPortal(<DirectoryPanel />, document.getElementById('tab-dir')!)}
+      {/* TD-001 slice 6h (#711): the Live tab's arm hint + header measurement
+          badge, portaled onto their root-markup islands. */}
+      {booted && createPortal(<LiveArmHint />, document.getElementById('arm-hint-island')!)}
+      {booted && createPortal(<MeasurementBadge />, document.getElementById('measurement-badge-island')!)}
       {booted && <LicenseChrome />}
       {booted && <ConsoleNetworkConsentDialog />}
+      {booted && <AnalyzeSourcePicker />}
       {booted && createPortal(<UpdateBanner />, document.getElementById('update-banner-island')!)}
     </>
   );

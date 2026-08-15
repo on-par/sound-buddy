@@ -261,3 +261,26 @@ export function roomPaneOverride(
   if (!ch) return null;
   return { ch, label: deviceName };
 }
+
+// The live header's measurement-badge text (TD-001 slice 6h, #711): port of
+// inline-app.js's renderMeasurementBadge — now a pure derivation from
+// liveCaptureStore state, rendered reactively by MeasurementBadge.tsx. Empty
+// unless a capture is running (mirrors the old onCaptureStopped clear); the
+// secondary source's badge when active (with windows), else the board strip's
+// measurementSourceBadgeText.
+export interface MeasurementBadgeInput {
+  isCapturing: boolean;
+  secondaryStatus: SecondaryMeasurementStatus;
+  secondaryWindows: LiveEvent[];
+  secondaryDeviceName: string;
+  measurementSource: number | null;
+  channelConfig: StripConfig[];
+}
+
+export function measurementBadgeView(input: MeasurementBadgeInput): string {
+  if (!input.isCapturing) return '';
+  if (input.secondaryStatus === 'active' && input.secondaryWindows.length > 0) {
+    return `Measuring: ${input.secondaryDeviceName} (secondary — not time-aligned)`;
+  }
+  return measurementSourceBadgeText(input.channelConfig, input.measurementSource);
+}

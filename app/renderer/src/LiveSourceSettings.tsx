@@ -19,17 +19,14 @@ import { useSettingsStore } from './stores/settingsStore';
 import { iconSvg } from './report-card';
 import { deviceOptionLabel, measurementSourceOptionsHTML } from './live-capture-panel';
 import { boardSourceHint } from './measurement-source-hints';
-import { runtime, type LiveCaptureRuntime } from './LiveControls';
+import { runtime } from './LiveControls';
 
-export type { LiveCaptureRuntime };
-
-// Device <select> changed: writes the selection into the store (so the
-// controlled <select>'s value stays in sync) and delegates the re-seed of
-// channel config/groups/preflight for the newly selected device to the
-// bridged runtime.
-export function changeDevice(rt: LiveCaptureRuntime | undefined, value: string): void {
+// Device <select> changed: writes the selection into the store (which
+// re-seeds channel config/groups and clears the focused input + last tick
+// snapshot — the deleted inline resetChannelConfig()/
+// window.liveCaptureRuntime.selectDevice wrappers, TD-001 slice 6h #711).
+export function changeDevice(value: string): void {
   useLiveCaptureStore.getState().selectDevice(value);
-  rt?.selectDevice(value);
 }
 
 export default function LiveSourceSettings() {
@@ -63,7 +60,7 @@ export default function LiveSourceSettings() {
               value={selectedDevice}
               disabled={isCapturing}
               aria-disabled={isCapturing}
-              onChange={(e) => changeDevice(runtime(), e.target.value)}
+              onChange={(e) => changeDevice(e.target.value)}
             >
               {devices.length === 0
                 ? <option value="">{devicePlaceholder}</option>
@@ -83,7 +80,7 @@ export default function LiveSourceSettings() {
             title="Re-scan input devices"
             disabled={isCapturing}
             aria-disabled={isCapturing}
-            onClick={() => { void runtime()?.loadDevices(); }}
+            onClick={() => { void useLiveCaptureStore.getState().loadDevices(); }}
           >
             Refresh
           </button>

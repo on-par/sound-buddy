@@ -197,6 +197,38 @@ describe('createLiveCaptureStore', () => {
       await store.getState().loadDevices();
       expect(store.getState().measurementSource).toBeNull();
     });
+
+    // TD-001 slice 6h (#711): the inline resetChannelConfig() and
+    // window.liveCaptureRuntime.selectDevice wrappers both cleared the focused
+    // input + last tick snapshot on a device switch; those resets are absorbed
+    // into the store actions so the deleted wrappers are fully replaced.
+    it('selectDevice resets focusedInputIndex and lastLiveChannels (absorbed resetChannelConfig)', () => {
+      const { store } = makeStore();
+      store.setState({ devices: DEVICES, focusedInputIndex: 1, lastLiveChannels: [{ index: 0 }] as never });
+      store.getState().selectDevice('0');
+      expect(store.getState().focusedInputIndex).toBeNull();
+      expect(store.getState().lastLiveChannels).toBeNull();
+    });
+
+    it('loadDevices resets focusedInputIndex and lastLiveChannels when it reseeds the config', async () => {
+      const { store } = makeStore({
+        listDevices: async () => ({ success: true, micAccess: 'granted', devices: DEVICES }),
+      });
+      store.setState({ focusedInputIndex: 1, lastLiveChannels: [{ index: 0 }] as never });
+      await store.getState().loadDevices();
+      expect(store.getState().focusedInputIndex).toBeNull();
+      expect(store.getState().lastLiveChannels).toBeNull();
+    });
+
+    it('loadDevices leaves the focused input + last tick alone when no devices are found', async () => {
+      const { store } = makeStore({
+        listDevices: async () => ({ success: true, devices: [] }),
+      });
+      store.setState({ focusedInputIndex: 1, lastLiveChannels: [{ index: 0 }] as never });
+      await store.getState().loadDevices();
+      expect(store.getState().focusedInputIndex).toBe(1);
+      expect(store.getState().lastLiveChannels).toEqual([{ index: 0 }]);
+    });
   });
 
   describe('measurementSource', () => {
@@ -1080,6 +1112,33 @@ describe('createLiveCaptureStore', () => {
       // The write path is the same one lapDispose uses.
       store.getState().advanceLapCoaching();
       expect(store.getState().lapCoaching).toEqual(base);
+    });
+  });
+
+  describe('arm hint (TD-001 slice 6h, #711)', () => {
+    it('starts hidden with empty text', () => {
+      const { store } = makeStore();
+      expect(store.getState().armHint).toEqual({ visible: false, text: '' });
+    });
+
+    it('showArmHint sets the visible flag and the message text', () => {
+      const { store } = makeStore();
+      store.getState().showArmHint('Arm at least one strip to record.');
+      expect(store.getState().armHint).toEqual({ visible: true, text: 'Arm at least one strip to record.' });
+    });
+
+    it('showArmHint replaces an earlier message', () => {
+      const { store } = makeStore();
+      store.getState().showArmHint('first');
+      store.getState().showArmHint('second');
+      expect(store.getState().armHint.text).toBe('second');
+    });
+
+    it('hideArmHint clears the visible flag', () => {
+      const { store } = makeStore();
+      store.getState().showArmHint('Arm at least one strip to record.');
+      store.getState().hideArmHint();
+      expect(store.getState().armHint.visible).toBe(false);
     });
   });
 });

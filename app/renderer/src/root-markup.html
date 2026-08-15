@@ -14,29 +14,12 @@
        slice 6f, #704) renders it. ══ -->
   <div id="onboarding-island"></div>
   <!-- ══ Unified "Analyze" source picker (#543, epic e17) ══
-       Report-first-ux only: the entry point for a new analysis, offering the
-       three real ways to get audio in. Additive — Directory/Live/Soundcheck
-       tabs keep working; this just routes to them via a simulated tab click,
-       so Pro gating and every other destination behavior stays unchanged. -->
-  <div class="source-picker" id="analyze-source-picker" role="dialog" aria-modal="true"
-       aria-labelledby="source-picker-title" hidden>
-    <div class="sp-panel">
-      <h2 class="sp-title" id="source-picker-title">Where&rsquo;s the audio coming from?</h2>
-      <button type="button" class="sp-choice" data-analyze-source="file" data-icon="file-audio">
-        <span class="sp-label">Analyze a file</span>
-        <span class="sp-hint">Drop in a recording you already have.</span>
-      </button>
-      <button type="button" class="sp-choice" data-analyze-source="live" data-icon="radio">
-        <span class="sp-label">Start live listening</span>
-        <span class="sp-hint">Monitor multi-channel audio from the console right now.</span>
-      </button>
-      <button type="button" class="sp-choice" data-analyze-source="soundcheck" data-icon="sliders">
-        <span class="sp-label">Load a soundcheck session</span>
-        <span class="sp-hint">Play back a captured session and mix without the band.</span>
-      </button>
-      <button type="button" class="sp-cancel" id="source-picker-cancel">Cancel</button>
-    </div>
-  </div>
+       The first-run Analyze entry point, offering the three real ways to get
+       audio in. AnalyzeSourcePicker.tsx (TD-001 slice 6h, #711) renders the
+       overlay reactively from analyzeSourceStore — it is no longer static
+       markup, so there is nothing here. The app.css flag-off rule for
+       #analyze-source-picker still gates the overlay even if the store is
+       ever opened. -->
   <!-- ══ Header ══ -->
   <div id="header">
     <div id="logo">
@@ -63,7 +46,10 @@
         <div class="pulse sb-pulse"></div>
         <span class="live-txt">LIVE</span>
         <span id="window-badge"></span>
-        <span id="measurement-badge"></span>
+        <!-- #measurement-badge is MeasurementBadge.tsx (TD-001 slice 6h,
+             #711), portaled onto this island; it renders the span reactively
+             from liveCaptureStore via measurementBadgeView. -->
+        <span id="measurement-badge-island"></span>
       </div>
       <!-- #767: live dB readout, top-right — relative/dBFS until a calibrated
            reference mic enables true SPL (follow-on). React-agnostic; patched at
@@ -90,16 +76,9 @@
       <div class="panel-head"><span class="panel-title">Source</span></div>
       <div class="panel-body">
         <!-- DIR (#270) — batch-analyze a folder of whole-mix recordings.
-             Runs the existing single-file analyze pipeline sequentially over
-             every audio file found, rendering one row per result. -->
-        <div class="tab-content" id="tab-dir">
-          <button type="button" class="btn btn-primary" id="dir-choose-btn" data-icon="folder">Choose a folder&hellip;</button>
-          <div class="dir-path" id="dir-path"></div>
-          <button type="button" class="btn btn-primary" id="dir-analyze-btn" disabled>Analyze all</button>
-          <div class="dir-progress" id="dir-progress"></div>
-          <div class="dir-list" id="dir-results"></div>
-          <div class="dir-empty" id="dir-empty" style="display:none">No audio files in that folder — pick a folder containing your service recordings.</div>
-        </div>
+             DirectoryPanel.tsx (TD-001 slice 6h, #711) renders its content
+             from directoryStore, portaled onto this empty node. -->
+        <div class="tab-content" id="tab-dir"></div>
 
         <!-- #tab-live relocated into #spectrum-panel by #727 — the rig picker /
              device / measurement source / secondary measurement device /
@@ -168,7 +147,10 @@
              offer rows — all still written by inline-app.js. -->
         <div id="live-status" style="display:none; font:var(--fw-regular) var(--fs-label)/1.3 var(--font-sans); color:var(--text-muted); text-align:center"></div>
         <div id="live-rc-cue" style="font:var(--fw-regular) var(--fs-label)/1.3 var(--font-sans); color:var(--text-muted); text-align:center">Listening builds a live Report Card as it runs.</div>
-        <div id="arm-hint" class="arm-hint" role="alert" style="display:none"></div>
+        <!-- #arm-hint is LiveArmHint.tsx (TD-001 slice 6h, #711), portaled
+             onto this island; it renders the #arm-hint div reactively from
+             liveCaptureStore.armHint. -->
+        <div id="arm-hint-island"></div>
         <div id="rec-offer" class="rec-offer" style="display:none">
           <span class="ro-text" id="rec-offer-text"></span>
           <button type="button" class="btn btn-secondary sm" id="rec-offer-btn" data-icon="folder">Open folder</button>

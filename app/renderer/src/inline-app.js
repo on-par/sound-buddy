@@ -6,8 +6,7 @@
 /* ══ Icon set + report-card renderers — extracted to report-card.ts (#306),
    bridged onto window by App.tsx like spectrumDisplay (#305). ══ */
 const {
-  iconSvg, reportCardSourceFromAnalysis,
-  buildAnalysisSummaryInput, strongMixTargetMeta,
+  iconSvg, strongMixTargetMeta,
 } = window.reportCard;
 
 /* ══ Share Image export (#265) + Export PNG's metadata guard (#368) —
@@ -90,7 +89,8 @@ let waveformBucketsPerSec = window.dawWaveformState.WAVEFORM_BUCKETS_PER_SEC;
 // stream.py's build_peak_lanes index) -> its own window.dawWaveformState
 // state. Reset alongside waveformState on every capture Start. The
 // strip{idx} <-> data-ch="${idx}" mapping is safe because channel config is
-// locked during capture (setCaptureControlsLocked(true)).
+// locked during capture (the disabled stamps derive from isCapturing/liveMode
+// at render time — TD-001 slice 6h, #711).
 let waveformLaneStates = {};
 let waveformRenderScheduled = false;
 // Recording-vs-monitoring waveform stroke, matching the transport-chip colors
@@ -113,10 +113,6 @@ const WAVEFORM_COLORS = {
 // and also saved into rigs (Pro) via rig-panel.ts's captureCurrentRigSnapshot/
 // applyRigPatch (TD-001 slice 6d, #702).
 let channelGroups = [];
-// Drag-reorder source (#483): { type:'group'|'strip', index } set on dragstart,
-// cleared on drop/dragend. Module-level because dragover/drop fire on whatever
-// element is currently under the pointer, not the element that started the drag.
-let liveDragSrc = null;
 let lastLiveChannels = null;   // channels from the most recent meter tick (for #39 label fallbacks)
 let liveDevices = [];          // last device list (for channel-count lookup)
 let liveMode = 'monitor';      // 'monitor' | 'record'
@@ -132,8 +128,8 @@ let channelConfig = [];        // configured strips: { kind:'mono'|'stereo', a:i
 // owns channelConfig/channelGroups/liveDevices(devices)/liveMode/recordDir/
 // liveWindows/lastLiveChannels/isCapturing(liveRunning)/promoting
 // (capturePromoting) — every write to these below routes through a store
-// action (see startLiveCapture/stopLive/resetChannelConfig/addChannelStrip/
-// etc.), never a direct assignment to the module var. This subscription just
+// action (see startLiveCapture/stopLive and the 6h store actions), never a
+// direct assignment to the module var. This subscription just
 // mirrors the store's current values into the module vars above so the ~50
 // read call sites throughout this file don't all have to become
 // lcStore.getState().x.
@@ -165,11 +161,12 @@ function syncLiveCaptureMirror(state, prevState) {
   channelConfig = state.channelConfig;
   if (!prevState) return; // the initial sync call above has no prevState — nothing "changed" yet
 
-  if (state.liveMode !== prevState.liveMode) hideArmHint();
+  if (state.liveMode !== prevState.liveMode) lcStore.getState().hideArmHint();
   // TD-001 slice 6g (#710): the board-shape renderWorkspace() call this used
   // to make is gone — React's LiveCapturePanel re-renders from the same
   // discrete fields (useSyncExternalStore), so this subscription is purely the
-  // module-var mirror for the ~50 read call sites in this file.
+  // module-var mirror for the ~50 read call sites in this file. The arm hint
+  // is store-owned (6h) — LiveArmHint.tsx renders it reactively.
 }
 syncLiveCaptureMirror(lcStore.getState());
 lcStore.subscribe(syncLiveCaptureMirror);
@@ -194,7 +191,7 @@ function rcCallouts() { return window.rcCallouts || { feedbackPeak: null, phaseS
 const {
   DB_MIN, DB_MAX, EQ_COLS,
   CURVE_VB, CURVE_FMIN, CURVE_FMAX,
-  escapeHtml, fmtHz, levelMatchedTarget, niceTicks, smoothPath,
+  fmtHz, levelMatchedTarget, niceTicks, smoothPath,
   spectrumCurveSVG, spectrumLegendHTML, bandLevelsFromCurve, bandDbFromSpectrum,
   veqBarsAndLabelsHTML, eqTargetLineSVG, eqCentroidHTML, eqBarsHTML,
   veqLoudestIdx, veqBandView, veqValBottom,
@@ -272,255 +269,32 @@ window.seekPlayback = (t) => transport.seek(t);
 // waveform/playhead painters are reached via window.dawShellRuntime (TD-001
 // slice 6g, #710).
 
-// The meter board, the docked EQ pane, and the live-adjustments panel are
-// React/store-owned now (TD-001 slice 6g, #710): LiveCapturePanel renders
-// #live-island from liveCaptureStore's discrete state and LiveEqPane renders
-// #live-eq-pane-body, so this script no longer owns renderLiveMeters/
-// renderLiveWorkspace/renderDawShell/syncLiveAdjustmentsPanel/renderEqPane/
-// currentEqPaneChannels or their helpers (stripViewAt/livePanelView/
-// lapFocusView/lapObservationContext/applyLiveGroupCollapsed/selectStrip/
-// wireLiveNameEdit/liveWorkspaceToolbarHTML/liveSetupStepsHTML/liveSetupStepsView/
-// addTrackDisabled). Per-tick patching is live-meter-controller.ts's
-// createLiveMeterController (mounted by LiveWorkspace.tsx), which calls the
-// pure appliers (patchLiveChannel/patchGroupSummaries/patchEqPaneSection/
-// patchStatsRow) against the React-rendered DOM and the 6j DAW painters via
-// window.dawShellRuntime. What stays here is the capture-controls /
-// channel-group CRUD delegation (slice 6h): the #spectrum-body listeners below
-// keep the 6h branches only, so a click on a React-rendered control still
-// reaches them by bubbling.
-
-// Capture controls / channel-group CRUD (6h) — the ADD/REMOVE/ARM/ARM-ALL/
-// NEW-GROUP/RENAME/DELETE branches of the old #spectrum-body click listener.
-// Strip selection, group fold, setup-skip dismiss, and the lap dispositions
-// moved to LiveCapturePanel.tsx's delegated handlers (6g) and are no longer
-// handled here.
-document.getElementById('spectrum-body').addEventListener('click', (e) => {
-  // Workspace Add track (#188). Delegated so it survives the React island
-  // rebuilding the pane.
-  if (e.target.closest('#live-ws-add')) { addChannelStrip(); return; }
-  // Workspace + New group (#190).
-  if (e.target.closest('#live-ws-new-group')) { createChannelGroup(); return; }
-  // Workspace per-row remove (#188).
-  const rmBtn = e.target.closest('.live-ch-x');
-  if (rmBtn) { removeChannelStrip(parseInt(rmBtn.closest('.live-ch').dataset.ch, 10)); return; }
-  // Workspace per-track arm toggle (#191).
-  const armBtn = e.target.closest('.live-ch-arm');
-  if (armBtn) {
-    const idx = parseInt(armBtn.closest('.live-ch').dataset.ch, 10);
-    lcStore.getState().toggleArm(idx);
-    hideArmHint();
-    renderChannelConfig();
-    return;
-  }
-  // Workspace Arm all / Disarm all (#191).
-  if (e.target.closest('#live-ws-arm-all')) {
-    lcStore.getState().setAllArmed(true);
-    hideArmHint();
-    renderChannelConfig();
-    return;
-  }
-  if (e.target.closest('#live-ws-disarm-all')) {
-    lcStore.getState().setAllArmed(false);
-    renderChannelConfig();
-    return;
-  }
-  // Group header rename / delete (#190): reuse the shared group dialog/handlers.
-  const gRename = e.target.closest('.live-group-rename');
-  if (gRename) { renameChannelGroup(parseInt(gRename.closest('.live-group-head').dataset.group, 10)); return; }
-  const gDel = e.target.closest('.live-group-del');
-  if (gDel) { deleteChannelGroup(parseInt(gDel.closest('.live-group-head').dataset.group, 10)); return; }
-});
-
-// Drag-reorder (#483): whole groups via .live-group-drag, or tracks within a
-// group via .live-ch-drag. Delegated on #spectrum-body — same rationale as the
-// click/change listeners — so wiring survives the React island's innerHTML
-// rebuilds. Cross-group moves stay out of scope here; that's still the
-// per-strip .live-ch-group dropdown (#33 follow-up).
-document.getElementById('spectrum-body').addEventListener('dragstart', (e) => {
-  if (liveRunning) { e.preventDefault(); return; }
-  const groupHandle = e.target.closest('.live-group-drag');
-  const stripHandle = !groupHandle && e.target.closest('.live-ch-drag');
-  if (!groupHandle && !stripHandle) return;
-  liveDragSrc = groupHandle
-    ? { type: 'group', index: parseInt(groupHandle.closest('.live-group-head').dataset.group, 10) }
-    : { type: 'strip', index: parseInt(stripHandle.closest('.live-ch').dataset.ch, 10) };
-  e.dataTransfer.effectAllowed = 'move';
-  e.dataTransfer.setData('text/plain', String(liveDragSrc.index));
-});
-document.getElementById('spectrum-body').addEventListener('dragover', (e) => {
-  if (!liveDragSrc) return;
-  let target = null;
-  if (liveDragSrc.type === 'group') {
-    const head = e.target.closest('.live-group-head[data-group]');
-    if (head && parseInt(head.dataset.group, 10) >= 0) target = head;
-  } else {
-    const strip = e.target.closest('.live-ch');
-    if (strip) {
-      const srcGroup = window.groupState.groupOf(channelGroups, liveDragSrc.index);
-      if (srcGroup !== -1 && window.groupState.groupOf(channelGroups, parseInt(strip.dataset.ch, 10)) === srcGroup) target = strip;
-    }
-  }
-  document.querySelectorAll('#spectrum-body .drag-over').forEach((el) => { if (el !== target) el.classList.remove('drag-over'); });
-  if (!target) return;
-  e.preventDefault();
-  e.dataTransfer.dropEffect = 'move';
-  target.classList.add('drag-over');
-});
-document.getElementById('spectrum-body').addEventListener('dragleave', (e) => {
-  const el = e.target.closest('.live-group-head, .live-ch');
-  if (el) el.classList.remove('drag-over');
-});
-document.getElementById('spectrum-body').addEventListener('drop', (e) => {
-  document.querySelectorAll('#spectrum-body .drag-over').forEach((el) => el.classList.remove('drag-over'));
-  const src = liveDragSrc;
-  liveDragSrc = null;
-  if (!src) return;
-  e.preventDefault();
-  if (src.type === 'group') {
-    const head = e.target.closest('.live-group-head[data-group]');
-    const to = head && parseInt(head.dataset.group, 10);
-    if (head && to >= 0) lcStore.getState().moveGroup(src.index, to);
-  } else {
-    const strip = e.target.closest('.live-ch');
-    if (strip) {
-      const g = window.groupState.groupOf(channelGroups, src.index);
-      const members = (channelGroups[g] && channelGroups[g].members) || [];
-      const from = members.indexOf(src.index);
-      const to = members.indexOf(parseInt(strip.dataset.ch, 10));
-      if (g !== -1 && from !== -1 && to !== -1) lcStore.getState().moveChannelInGroup(g, from, to);
-    }
-  }
-  renderChannelConfig();
-});
-document.getElementById('spectrum-body').addEventListener('dragend', () => {
-  liveDragSrc = null;
-  document.querySelectorAll('#spectrum-body .drag-over').forEach((el) => el.classList.remove('drag-over'));
-});
-
-// Keyboard reorder (#483): Arrow Up/Down on a drag handle moves its group or
-// track by one position — an accessible, deterministic alternative to HTML5
-// drag-and-drop. Re-renders (grouping change) then re-focuses the moved
-// handle, since the rebuild would otherwise drop keyboard focus. (The
-// Enter/Space strip-select branch moved to LiveCapturePanel.tsx, 6g.)
-document.getElementById('spectrum-body').addEventListener('keydown', (e) => {
-  if (liveRunning || (e.key !== 'ArrowUp' && e.key !== 'ArrowDown')) return;
-  const dir = e.key === 'ArrowUp' ? -1 : 1;
-  const groupHandle = e.target.closest('.live-group-drag');
-  if (groupHandle) {
-    e.preventDefault();
-    const g = parseInt(groupHandle.closest('.live-group-head').dataset.group, 10);
-    const to = g + dir;
-    if (to < 0 || to >= channelGroups.length) return;
-    lcStore.getState().moveGroup(g, to);
-    renderChannelConfig();
-    document.querySelector(`#spectrum-body .live-group-head[data-group="${to}"] .live-group-drag`)?.focus();
-    return;
-  }
-  const stripHandle = e.target.closest('.live-ch-drag');
-  if (stripHandle) {
-    const idx = parseInt(stripHandle.closest('.live-ch').dataset.ch, 10);
-    const g = window.groupState.groupOf(channelGroups, idx);
-    if (g === -1) return;
-    const members = channelGroups[g].members;
-    const from = members.indexOf(idx);
-    const to = from + dir;
-    if (from === -1 || to < 0 || to >= members.length) return;
-    e.preventDefault();
-    lcStore.getState().moveChannelInGroup(g, from, to);
-    renderChannelConfig();
-    document.querySelector(`#spectrum-body .live-ch[data-ch="${idx}"] .live-ch-drag`)?.focus();
-  }
-});
-
-// Inline track definition (#189): the header's kind toggle + source picker(s)
-// fire 'change' (not 'click'), so they need their own delegated listener —
-// same delegation rationale as the click handler above, so the wiring
-// survives the React island rebuilding the pane. Routes through
-// renderChannelConfig() (not a bare renderLiveWorkspace()) so the capture lock
-// and the workspace stay in sync. (The .lap-focus-select branch moved to
-// LiveCapturePanel.tsx's delegated onChange, 6g.)
-document.getElementById('spectrum-body').addEventListener('change', (e) => {
-  const kindSel = e.target.closest('.live-ch-kind');
-  if (kindSel) {
-    const idx = parseInt(kindSel.dataset.idx, 10);
-    if (!channelConfig[idx]) return;
-    lcStore.getState().setStripKind(idx, e.target.value);
-    renderChannelConfig();
-    return;
-  }
-  const srcSel = e.target.closest('.live-ch-src');
-  if (srcSel) {
-    const idx = parseInt(srcSel.dataset.idx, 10);
-    if (!channelConfig[idx]) return;
-    lcStore.getState().setStripSource(idx, srcSel.dataset.field, parseInt(e.target.value, 10));
-    renderChannelConfig();
-    return;
-  }
-  // Per-track group assignment (#190): write through groupState with its
-  // exclusive-membership rules, then re-render the workspace.
-  const grpSel = e.target.closest('.live-ch-group');
-  if (grpSel) {
-    const idx = parseInt(grpSel.dataset.idx, 10);
-    lcStore.getState().assignGroup(idx, parseInt(e.target.value, 10));
-    renderChannelConfig();
-    return;
-  }
-  // Per-input instrument-profile override (#524): write through recordOverride
-  // with its full-map replace discipline, then re-render the workspace.
-  const profileSel = e.target.closest('.live-ch-profile');
-  if (profileSel) {
-    const idx = parseInt(profileSel.dataset.idx, 10);
-    if (!channelConfig[idx]) return;
-    const all = (setStore.getState().settings || {}).inputInstrumentProfiles || {};
-    const next = window.instrumentProfiles.recordOverride(all, selectedDeviceName(), window.armState.stripToken(channelConfig[idx]), e.target.value);
-    setStore.getState().updateSettings({ inputInstrumentProfiles: next });
-    renderChannelConfig();
-  }
-});
-// The stats row is React/pure-module-owned now (TD-001 slice 6g, #710):
-// statsRowView/liveStatsRowView + patchStatsRow live in live-workspace-view.ts.
-// The file-analysis write lives in ReportCardToolbar.tsx's applyStatusTransition
-// ('done' branch); the live write lives in LiveWorkspace.tsx's meter-controller
-// patch callback. setStat/updateStatsRow/updateLiveStatsRow and the
-// window.updateStatsRow bridge are gone.
+// The meter board, the docked EQ pane, the live-adjustments panel, the
+// capture controls, and the channel-group CRUD are React/store-owned now
+// (TD-001 slices 6g #710 + 6h #711): LiveCapturePanel renders #live-island
+// from liveCaptureStore's discrete state and owns every board interaction
+// (strip select, group fold, setup-skip dismiss, lap dispositions, inline
+// rename, add/remove/arm/arm-all/kind/src/group/profile/drag-reorder, and
+// group CRUD) through its delegated handlers — the #spectrum-body click/
+// change/drag/keydown listeners are gone. Per-tick patching is
+// live-meter-controller.ts's createLiveMeterController (mounted by
+// LiveWorkspace.tsx), which calls the pure appliers (patchLiveChannel/
+// patchGroupSummaries/patchEqPaneSection/patchStatsRow) against the
+// React-rendered DOM and the 6j DAW painters via window.dawShellRuntime. The
+// stats row is pure-module-owned (statsRowView/liveStatsRowView +
+// patchStatsRow in live-workspace-view.ts).
 
 // syncSingleColumn is gone — mode-switch.ts#applySingleColumnSync (TD-001
 // slice 6e, #703) ports it verbatim; inline-app.js reaches it via
 // window.modeSwitch for the two call sites below that aren't inside
 // switchMode() itself.
 
-// #543 (epic e17): the unified "Analyze" source picker — opened from the
-// Report Card toolbar (see the reportcard-load-btn handler above), never on
-// launch, so there's no full-screen overlay for e2e specs to trip over.
-// Bridged onto window.analyzeSourcePicker.open (TD-001 slice 6e, #703) — the
-// React-owned ModeTabs.tsx now dispatches the 'analyze' tab through this
-// bridge instead of calling the function directly.
-function openAnalyzeSourcePicker() {
-  document.getElementById('analyze-source-picker').hidden = false;
-  document.querySelector('[data-analyze-source]').focus();
-}
-function closeAnalyzeSourcePicker() {
-  document.getElementById('analyze-source-picker').hidden = true;
-}
-window.analyzeSourcePicker = { open: openAnalyzeSourcePicker };
-// Routing is a simulated tab click — the same idiom used throughout this file
-// (e.g. #rc-offer-btn) — so Live/Soundcheck reach their
-// destination through the real mode-tab handler: Pro gating, transport
-// pausing, spectrum sync, syncSingleColumn() all fire exactly as if the user
-// had clicked the tab themselves.
-document.querySelectorAll('[data-analyze-source]').forEach(btn => {
-  btn.addEventListener('click', () => {
-    const mode = window.analyzeSourceState.targetModeFor(btn.dataset.analyzeSource);
-    closeAnalyzeSourcePicker();
-    if (mode === null) { chooseAndAnalyzeFile(); return; }
-    if (mode === undefined) { console.error(`analyze-source-picker: unrecognized source "${btn.dataset.analyzeSource}"`); return; }
-    document.querySelector(`.mode-tab[data-mode="${mode}"]`).click();
-  });
-});
-document.getElementById('source-picker-cancel').addEventListener('click', closeAnalyzeSourcePicker);
-document.getElementById('analyze-source-picker').addEventListener('keydown', (e) => {
-  if (e.key === 'Escape') closeAnalyzeSourcePicker();
-});
+// #543 (epic e17): the unified "Analyze" source picker is React-owned now
+// (TD-001 slice 6h, #711) — AnalyzeSourcePicker.tsx renders the overlay from
+// analyzeSourceStore and routes choices through analyzeSourceState.targetModeFor
+// / switchMode / window.chooseAndAnalyzeFile. The static markup and the
+// window.analyzeSourcePicker open/close bridge are gone; ModeTabs.tsx and
+// ReportCardToolbar.tsx open it via useAnalyzeSourceStore.getState().open().
 
 // Mode tabs (#547 and earlier): the click listener, currentMode var, and
 // syncSpectrumForMode are gone — ModeTabs.tsx (portaled onto #mode-tabs) now
@@ -552,7 +326,7 @@ sb.onAnalysisProgress((data) => {
   // same way as the pushed analysis-result below, so a batch file's stage
   // completion can't check off a stage row for a concurrent single-file
   // analysis the user started on the Report Card tab.
-  if (window.batchAnalysis.shouldSuppressPushedResult(batchRunning)) return;
+  if (window.batchAnalysis.shouldSuppressPushedResult(window.rendererStores.directory.getState().running)) return;
   if (!data.stage || data.status !== 'done') return;
   specStore.getState().markStageDone(data.stage);
 });
@@ -563,85 +337,12 @@ sb.onAnalysisProgress((data) => {
 // the toolbar buttons via its own useEffect on analysisStore.status,
 // replacing the anaStore.subscribe(syncReportCardChrome) wiring below.
 
-/* ══ Directory mode (#270): batch-analyze a folder of whole-mix recordings.
-   Runs the existing single-file analyze pipeline sequentially over every
-   audio file found in a chosen folder (batchAnalysis.runBatch, #270) —
-   strictly sequential because analyze-file supersedes any run still in
-   flight for this renderer. Calls analyzeFile directly rather than
-   anaStore.getState().startAnalysis() so the batch never drives the
-   single-file report-card store's status machine through N spurious
-   transitions (ReportCardToolbar.tsx's status-transition useEffect). ══ */
-let batchFiles = [];
-let batchRunning = false;
-
-function renderDirEmptyState() {
-  const empty = document.getElementById('dir-empty');
-  const analyzeBtn = document.getElementById('dir-analyze-btn');
-  const chooseBtn = document.getElementById('dir-choose-btn');
-  empty.style.display = batchFiles.length === 0 ? 'block' : 'none';
-  analyzeBtn.disabled = batchRunning || batchFiles.length === 0;
-  chooseBtn.disabled = batchRunning;
-}
-
-document.getElementById('dir-choose-btn').addEventListener('click', async () => {
-  // A batch already in flight owns #dir-path/#dir-results/batchFiles until it
-  // finishes — picking a new folder mid-run would repaint the panel out from
-  // under it while its onProgress callback keeps appending the OLD folder's
-  // rows under the NEW folder's path. The button is also disabled while
-  // running (renderDirEmptyState), this guard covers a click already queued
-  // just before that disable took effect.
-  if (batchRunning) return;
-  const dir = await sb.openDirDialog();
-  if (!dir) return;
-  document.getElementById('dir-path').textContent = dir;
-  document.getElementById('dir-results').innerHTML = '';
-  document.getElementById('dir-progress').textContent = '';
-  let res;
-  try {
-    res = await sb.listFolderAudio(dir);
-  } catch (err) {
-    console.warn('listFolderAudio failed', err);
-    res = null;
-  }
-  batchFiles = (res && res.success && Array.isArray(res.files)) ? res.files : [];
-  document.getElementById('dir-empty').textContent = window.batchAnalysis.dirEmptyMessage(res);
-  renderDirEmptyState();
-});
-
-document.getElementById('dir-analyze-btn').addEventListener('click', async () => {
-  if (batchRunning || batchFiles.length === 0) return;
-  batchRunning = true;
-  const analyzeBtn = document.getElementById('dir-analyze-btn');
-  const progress = document.getElementById('dir-progress');
-  const results = document.getElementById('dir-results');
-  analyzeBtn.disabled = true;
-  results.innerHTML = '';
-  progress.textContent = window.batchAnalysis.progressText(0, batchFiles.length);
-
-  try {
-    const rows = await window.batchAnalysis.runBatch(batchFiles, {
-      analyzeFile: (fp) => sb.analyzeFile({ filePath: fp }),
-      toSummaryInput: (data, fp) => {
-        const src = reportCardSourceFromAnalysis(data);
-        return src ? buildAnalysisSummaryInput(src, grading, 'file') : null;
-      },
-      saveSummary: (input) => sb.saveAnalysisSummary(input),
-      onProgress: (event) => {
-        if (event.status === 'running') return;
-        progress.textContent = window.batchAnalysis.progressText(event.index + 1, event.total);
-        results.insertAdjacentHTML('beforeend', window.batchAnalysis.batchRowHtml(event, event.index, escapeHtml));
-      },
-    });
-    progress.textContent = window.batchAnalysis.summaryText(rows);
-  } finally {
-    batchRunning = false;
-    renderDirEmptyState();
-    // RecentServicesPanel.tsx (TD-001 slice 6e, #703) re-fetches on every
-    // appMode transition into 'recent' — the Directory tab (batch analysis
-    // runs here) and Recent are mutually exclusive, so there's no longer a
-    // stale-list case for this batch-completion refresh to cover.
-  }
-});
+/* ══ Directory mode (#270) is React/store-owned now (TD-001 slice 6h, #711):
+   directoryStore + DirectoryPanel.tsx own the batch state (#dir-choose-btn/
+   #dir-path/#dir-analyze-btn/#dir-progress/#dir-results/#dir-empty) — this
+   script's batchFiles/batchRunning vars and the two #dir-* listeners are
+   gone. The two pushed-event handlers below read the running flag from the
+   bridged store instead of the deleted batchRunning module var. ══ */
 
 /* ── Live mode ── */
 // #meter-interval/#window-secs's label repaint is React-owned now
@@ -659,9 +360,10 @@ document.getElementById('dir-analyze-btn').addEventListener('click', async () =>
    session can be recorded again. Both store writes are picked up by
    syncLiveCaptureMirror's subscription (board repaint) — no inline wrapper
    function is called from here anymore. */
-// Inline "arm at least one strip" hint near the Start button (#43).
-function showArmHint(msg) { const h = document.getElementById('arm-hint'); h.textContent = msg; h.style.display = 'block'; }
-function hideArmHint() { const h = document.getElementById('arm-hint'); if (h) h.style.display = 'none'; }
+// Inline "arm at least one strip" hint near the Start button (#43) — the
+// DOM-writing showArmHint/hideArmHint are gone (TD-001 slice 6h, #711); the
+// 6i functions below write liveCaptureStore.armHint and LiveArmHint.tsx
+// renders #arm-hint reactively.
 
 // The header #live-indicator (LIVE/REC pill) + #live-status text, driven by
 // window.liveTransitionState's pure phase model (#458) from the raw
@@ -684,246 +386,42 @@ function syncCaptureControls(meterRate) {
     document.getElementById('live-status').textContent = window.liveTransitionState.statusLabel(phase, meterRate);
   }
 }
-// Name a new group via the shared dialog and push it onto channelGroups (#41).
-// Called from the workspace toolbar's #live-ws-new-group (#190).
-async function createChannelGroup() {
-  const name = await rigDialog({ title: 'New group', value: '', confirmLabel: 'Create', withInput: true });
-  const trimmed = (name || '').trim();
-  if (!trimmed) return;
-  lcStore.getState().addGroup(trimmed.slice(0, 40));
-  renderChannelConfig();
-}
+// Channel-group CRUD (createChannelGroup/renameChannelGroup/
+// deleteChannelGroup) + defaultRecordFolderText are gone (TD-001 slice 6h,
+// #711): the group prompts live in LiveCapturePanel.tsx (same shared
+// rigDialog), and the cold-boot #record-folder-path default is rendered
+// reactively by LiveSourceSettings.tsx from settingsStore.
 
-// Rename group g in place via the shared dialog, leaving its members untouched
-// (#190). Reached from the workspace group header's rename control.
-async function renameChannelGroup(g) {
-  const grp = channelGroups[g];
-  if (!grp) return;
-  const name = await rigDialog({ title: 'Rename group', value: grp.name, confirmLabel: 'Rename', withInput: true });
-  const trimmed = (name || '').trim();
-  if (!trimmed) return;
-  lcStore.getState().renameGroup(g, trimmed.slice(0, 40));
-  renderChannelConfig();
-}
+/* ── Channel configuration ──
+   The channel-config helpers (selectedDeviceChannels/selectedDeviceName/
+   addChannelStrip/removeChannelStrip/resetChannelConfig/renderChannelConfig/
+   renderMeasurementBadge/setCaptureControlsLocked/channelTokens/armedTokens/
+   armedCount/setDeviceHint/loadDevices) are gone (TD-001 slice 6h, #711):
+   the board's disabled/aria-disabled lock state derives from store fields at
+   render time (isCapturing/liveMode/deviceChannelCount), the measurement
+   badge + arm hint are React islands, the capture-lock sweep's arm behavior
+   is the veqChannelHTML `liveRunning && liveMode === 'record'` stamp, and
+   device loading/selection are liveCaptureStore actions. The 6i functions
+   below read the token/arm helpers straight off window.armState. */
 
-// Delete group g (#190). Its members fall back to Ungrouped — channelConfig is
-// untouched, so no track is lost. Confirmed via the shared dialog.
-async function deleteChannelGroup(g) {
-  const grp = channelGroups[g];
-  if (!grp) return;
-  const ok = await rigDialog({
-    title: 'Delete group',
-    msg: `Delete "${grp.name}"? Its tracks move to Ungrouped.`,
-    confirmLabel: 'Delete',
-    withInput: false,
-  });
-  if (!ok) return;
-  lcStore.getState().removeGroup(g);
-  renderChannelConfig();
-}
-
-// The effective default recording folder to show when no folder is explicitly
-// chosen (#482): the configured storageDir setting (#91), falling back to the
-// platform default — mirrors ipc/shared.ts's defaultRecordDir(). LiveSourceSettings.tsx
-// carries its own copy of this same logic for its React-owned #record-folder-path
-// rendering (#727); this one is still used by the boot sequence
-// below (cold-boot placeholder text before settings load).
-function defaultRecordFolderText() {
-  const s = setStore.getState().settings;
-  return (s && s.storageDir && s.storageDir.trim()) || '~/Music/Sound Buddy';
-}
-
-/* ── Channel configuration ── */
-// The selected device's max input channels (0 = default device / unknown).
-function selectedDeviceChannels() {
-  return deviceChannelCount(lcStore.getState().selectedDevice, liveDevices);
-}
-
-// The selected device's name, resolved from liveDevices ('' = Default Device),
-// mirroring rig-panel.ts's captureCurrentRigSnapshot's device-by-name
-// resolution (TD-001 slice 6d, #702).
-function selectedDeviceName() {
-  const val = lcStore.getState().selectedDevice;
-  if (val === '') return '';
-  const dev = liveDevices.find((d) => String(d.index) === val);
-  return dev ? dev.name : '';
-}
-
-// The persisted instrument-profile overrides (#524) / total-used-channel-count
-// wrapper were only used by the board/EQ-pane renderers this slice deleted
-// (TD-001 slice 6g, #710) — the pure live-workspace-view module derives them
-// from its snapshot.
-
-// Push a new mono strip onto channelConfig and re-render (#188). Called from
-// the workspace's #live-ws-add.
-function addChannelStrip() {
-  lcStore.getState().addStrip();
-  renderChannelConfig();
-}
-
-// Remove a strip and re-render (#188). Called from the workspace's .live-ch-x;
-// callers may drive this down to zero strips so the workspace empty state
-// stays reachable. removeStrip (#456, #668, #41) atomically reindexes/clears
-// measurementSource, selectedChannel, focusedInputIndex (#525, store-owned now,
-// TD-001 slice 6g #710), and prunes+persists channelGroups.
-function removeChannelStrip(idx) {
-  lcStore.getState().removeStrip(idx);
-  renderChannelConfig();
-}
-
-// Reset the config to the device default: first ≤2 channels as mono strips,
-// then overlay any saved labels and groups for this device (#482, #483) —
-// covers device switches and refresh. selectDevice (re-invoked for the
-// currently selected device) already does this seeding — single source of
-// truth for it now lives in liveCaptureStore.ts (TD-001 slice 6c, #701).
-function resetChannelConfig() {
-  lcStore.getState().selectDevice(lcStore.getState().selectedDevice);
-  // Same reasoning applies to the focused input (#525) — it never dangles
-  // across a device swap. (measurementSource/selectedChannel are reset by
-  // selectDevice() itself.)
-  lcStore.getState().setFocusedInputIndex(null);
-  // A stale lastLiveChannels from the previous device must not leak into the
-  // EQ pane (#668) on the next LiveEqPane render — currentEqPaneChannels()
-  // falls back to it whenever it's non-null, so it has to be cleared here too.
-  lcStore.getState().clearLastLiveChannels();
-  renderChannelConfig();
-}
-
-// Config changed: re-sync the center-pane track workspace and re-assert the
-// capture lock. The channel list, add, group, and arm controls now live solely
-// in the workspace (#192); this is the shared "config changed" entry point that
-// every mutator (add/remove/kind/source/group/arm/mode/rig) routes through.
-// The workspace board itself (#live-island) repaints via syncLiveCaptureMirror's
-// store subscription reacting to the store write each of those mutators already
-// made — not from this call (TD-001 slice 6c, #701).
-function renderChannelConfig() {
-  // Re-assert the capture lock (#38): a running capture keeps the workspace frozen.
-  if (liveRunning) setCaptureControlsLocked(true);
-  // Preflight checklist (#373) is React/store-owned now (PreflightPanel.tsx,
-  // TD-001 slice 6d, #702) — it recomputes on every render from rigStore +
-  // liveCaptureStore state, no imperative repaint needed here.
-  renderMeasurementBadge();
-}
-
-// Label which strip the room-analysis indicators are judging (#457) — lives
-// in the header's LIVE indicator so it's visible whenever analysis runs.
-function renderMeasurementBadge() {
-  // #460: the badge reads the Room feed — the board strip by default, the
-  // secondary mic when the experimental source is active. roomFeed() returns
-  // the board badge unchanged when the flag is off, so this is byte-identical.
-  document.getElementById('measurement-badge').textContent = roomFeed().badge;
-}
-
-// Lock/unlock every capture-config control while a capture runs (#38). stream.py
-// is spawned with a fixed device/channels/mode/dirs set and can't honor a
-// mid-session change, so freezing avoids corrupting the take. Idempotent, and
-// re-selects the live-rendered workspace children each call. The rig picker has
-// its own lock (rigStore's `locked` field, set via onCaptureStarting/
-// onCaptureStopping below) but is guarded here too, defensively.
-// measurement-source is excluded (#457): it's a renderer-side selection into
-// already-streaming tick data, not a stream.py argument, so switching it
-// mid-capture is safe and is the point of #457's second AC. device-select/
-// device-refresh-btn/record-folder-btn are React-owned now
-// (LiveSourceSettings.tsx) and derive `disabled` from isCapturing directly —
-// not swept here (#727) — #meter-interval/#window-secs are React-owned now
-// (CaptureCadenceControls.tsx, #725) and derive `disabled` from isCapturing
-// directly — not swept here either — and the old #live-mode buttons are gone
-// entirely (#757).
-function setCaptureControlsLocked(locked) {
-  const set = (el) => { if (el) { el.disabled = locked; el.setAttribute('aria-disabled', String(locked)); } };
-  ['rig-select',
-    'live-ws-add', 'live-ws-new-group'].forEach((id) => set(document.getElementById(id)));
-  // Workspace track rows (#188): Add track (above) + each row's remove, read-only
-  // while a capture is running.
-  document.querySelectorAll('#spectrum-body .live-ch-x').forEach(set);
-  // Workspace per-track arm toggle + Arm all / Disarm all (#191, #757):
-  // record-enable stays LIVE while a MONITOR session runs — the tab is
-  // always-monitoring and arming only matters at promote time, so an engineer
-  // who pressed Record with nothing armed (promote blocked, #arm-hint) can
-  // arm and press again without being stuck. The arm controls freeze only once
-  // the session is actually RECORDING (promoteToRecording re-asserts the lock
-  // right after flipping liveMode to 'record'). The workspace sits outside
-  // #tab-live, so this explicit sweep is required either way.
-  const armLocked = locked && liveMode === 'record';
-  ['live-ws-arm-all', 'live-ws-disarm-all'].forEach((id) => {
-    const el = document.getElementById(id);
-    if (el) { el.disabled = armLocked; el.setAttribute('aria-disabled', String(armLocked)); }
-  });
-  document.querySelectorAll('#spectrum-body .live-ch-arm').forEach((el) => {
-    el.disabled = armLocked;
-    el.setAttribute('aria-disabled', String(armLocked));
-  });
-  // Inline track definition (#189): kind toggle + source picker(s), frozen
-  // mid-capture (stream.py can't honor a mid-session channel change).
-  // veqChannelHTML already stamps `disabled` at build time; this re-asserts it
-  // after any re-render triggered while running.
-  document.querySelectorAll('#spectrum-body .live-ch-kind, #spectrum-body .live-ch-src, #spectrum-body .live-ch-group, #spectrum-body .live-ch-profile').forEach(set);
-  // Group header rename/delete controls (#190), frozen mid-capture with the rest.
-  document.querySelectorAll('#spectrum-body .live-group-rename, #spectrum-body .live-group-del').forEach(set);
-  // Drag-reorder handles (#483): reordering is disabled mid-capture like every
-  // other config control — the board is patched by data-ch and grouping is
-  // assumed stable across ticks while a capture runs.
-  document.querySelectorAll('#spectrum-body .live-group-drag, #spectrum-body .live-ch-drag').forEach(set);
-  const tab = document.getElementById('tab-live');
-  if (tab) tab.classList.toggle('capture-locked', locked);
-}
-
-// Build the stream.py channel tokens ("N" mono, "N-M" stereo) from the config.
-// A stereo strip whose two legs collapsed to the same channel (possible on the
-// last device channel) degrades to a mono token rather than a bogus "N-N" pair.
-function channelTokens() { return window.armState.allTokens(channelConfig); }
-// Armed subset of channelTokens() — what Record mode captures as session stems (#43).
-function armedTokens() { return window.armState.armedTokens(channelConfig); }
-function armedCount() { return window.armState.armedCount(channelConfig); }
-
-function setDeviceHint(text, isError) {
-  const hint = document.getElementById('device-hint');
-  if (!hint) return;
-  if (!text) { hint.style.display = 'none'; hint.textContent = ''; return; }
-  hint.textContent = text;
-  hint.classList.toggle('is-error', !!isError);
-  hint.style.display = 'block';
-}
-
-// Device <select>/refresh button/hint are React-owned now (LiveSourceSettings.tsx,
-// #727) — this fetches the list and hands it to the store
-// (which itself seeds channelConfig/channelGroups for the resolved device),
-// then re-runs the inline-only remainder of the old reset (focusedInputIndex/
-// lastLiveChannels/preflight — see resetChannelConfig).
-async function loadDevices() {
-  await lcStore.getState().loadDevices();
-  // Seed the channel picker from the (default) device's channel count — only
-  // once devices were actually found (mirrors the original early returns that
-  // skipped this on every non-happy branch).
-  if (lcStore.getState().devices.length) resetChannelConfig();
-}
-
-// Bridged runtime powering LiveSourceSettings.tsx's device/measurement-source/
+// Bridged runtime powering LiveSourceSettings.tsx's measurement-source/
 // record-folder controls and RecordButton.tsx's recordCapture/stopLiveCapture
 // (TD-001 slice 6c #701, #727, #729; #757 removed the mode/start-stop controls
-// this used to power) — the heavier orchestration (validation, playhead/
-// waveform/rig-lock/lapCoaching/session-offer side effects) stays here rather
-// than moving into React, since it's still tightly coupled to the
-// not-yet-migrated DAW shell/live-adjustments/preflight/rig surfaces (see the
-// ADR in the #701 plan).
+// this used to power; TD-001 slice 6h #711 removed loadDevices/selectDevice —
+// LiveSourceSettings calls the store actions directly now) — the heavier
+// orchestration (validation, playhead/waveform/rig-lock/lapCoaching/
+// session-offer side effects) stays here rather than moving into React, since
+// it's still tightly coupled to the not-yet-migrated DAW shell/
+// live-adjustments/preflight/rig surfaces (see the ADR in the #701 plan).
 window.liveCaptureRuntime = {
-  loadDevices,
-  selectDevice(value) {
-    void value; // store.selectDevice (called by LiveSourceSettings itself) already reseeds channelConfig/channelGroups reactively
-    lcStore.getState().setFocusedInputIndex(null);
-    lcStore.getState().clearLastLiveChannels();
-    // PreflightSettings.tsx recomputes reactively off liveCaptureStore's
-    // selectedDevice/channelConfig/devices — no imperative repaint needed
-    // here (TD-001 slice 6d, #702).
-  },
   // Measurement source picker (#456): normalize against the current strip
   // count so a stale selection ('' -> null, an index -> the resolved strip)
   // never lands in the store. The docked EQ pane re-renders reactively from
-  // measurementSource (LiveEqPane, TD-001 slice 6g #710).
+  // measurementSource (LiveEqPane, TD-001 slice 6g #710) and the badge is
+  // MeasurementBadge.tsx (reactive, 6h).
   changeMeasurementSource(value) {
     const parsed = value === '' ? null : parseInt(value, 10);
     lcStore.getState().setMeasurementSource(normalizeMeasurementSource(parsed, channelConfig.length));
-    renderMeasurementBadge();
   },
   async chooseRecordFolder() {
     const dir = await sb.openDirDialog();
@@ -971,15 +469,15 @@ window.liveCaptureRuntime = {
 function beforeStartCapture() {
   if (channelConfig.length === 0) {
     const reason = 'Add at least one track before starting listening.';
-    showArmHint(reason);
+    lcStore.getState().showArmHint(reason);
     return { ok: false, reason };
   }
-  if (liveMode === 'record' && armedCount() === 0) {
+  if (liveMode === 'record' && window.armState.armedCount(channelConfig) === 0) {
     const reason = 'Arm at least one strip to record.';
-    showArmHint(reason);
+    lcStore.getState().showArmHint(reason);
     return { ok: false, reason };
   }
-  hideArmHint();
+  lcStore.getState().hideArmHint();
   return { ok: true };
 }
 
@@ -1007,7 +505,9 @@ function onCaptureStarting() {
   // A live capture always wins over a loaded history entry (#147).
   anaStore.getState().setHistorySummary(null);
   window.rendererStores.rig.getState().setLocked(true);
-  setCaptureControlsLocked(true); // freeze device/mode/folder/channels/sliders (#38)
+  // The workspace controls lock derives from liveCaptureStore at render time
+  // (isCapturing/liveMode) — the old setCaptureControlsLocked(true) sweep is
+  // gone (TD-001 slice 6h, #711).
 
   // #776: a resume (the monitor-restart that follows a record stop) must keep
   // the just-shown post-record session offers on screen — only a fresh
@@ -1031,7 +531,6 @@ function onCaptureStarting() {
   }
   document.getElementById('live-indicator').style.display = 'flex';
   syncCaptureControls();
-  renderMeasurementBadge();
   document.getElementById('live-status').style.display = 'block';
   document.getElementById('live-status').textContent = 'Connecting…';
   document.getElementById('spectrum-title').textContent = SPECTRUM_TITLE.live;
@@ -1044,9 +543,9 @@ function onCaptureStarted(result, meterRate) {
   } else {
     syncCaptureControls(meterRate);
     // Guided first-use setup (#294): starting a capture completes setup
-    // permanently. Remove any rendered banner immediately rather than calling
-    // renderChannelConfig(), which early-outs while liveRunning — the running
-    // board takes the pane over on the first tick anyway.
+    // permanently. Remove any rendered banner immediately rather than waiting
+    // for the board's next re-render — the running board takes the pane over
+    // on the first tick anyway.
     window.liveSetupState.markSetupComplete(window.localStorage);
     const b = document.querySelector('#spectrum-body .live-setup-banner');
     if (b) b.remove();
@@ -1074,11 +573,18 @@ function onCaptureStarted(result, meterRate) {
 function preflightBlockReason() {
   const rigState = window.rendererStores.rig.getState();
   const activeRig = rigState.rigs.find((r) => r.id === rigState.activeRigId) || null;
-  const rec = window.rigReconcile.reconcileRigDevice(selectedDeviceName(), liveDevices);
+  // The deleted selectedDeviceChannels()/selectedDeviceName() resolve through
+  // the pure live-capture-panel helpers (TD-001 slice 6h, #711).
+  const deviceName = window.liveCapturePanel.deviceNameFor(lcStore.getState().selectedDevice, liveDevices);
+  const rec = window.rigReconcile.reconcileRigDevice(deviceName, liveDevices);
   const items = window.preflight.buildChecklist({
     baseline: activeRig ? activeRig.baseline : null,
     current: window.preflight.snapshotRig(channelConfig, rec.deviceName),
-    device: { found: rec.found, name: rec.deviceName, channels: selectedDeviceChannels() },
+    device: {
+      found: rec.found,
+      name: rec.deviceName,
+      channels: deviceChannelCount(lcStore.getState().selectedDevice, liveDevices),
+    },
   });
   const summary = window.preflight.checklistSummary(items);
   if (summary.ready) return null;
@@ -1088,17 +594,17 @@ function preflightBlockReason() {
 async function promoteToRecording() {
   const preflightReason = preflightBlockReason();
   if (preflightReason) {
-    showArmHint(preflightReason);
+    lcStore.getState().showArmHint(preflightReason);
     return;
   }
   const guard = window.liveTransitionState.canPromoteToRecording({
-    liveRunning, liveMode, promoting: capturePromoting, armedCount: armedCount(),
+    liveRunning, liveMode, promoting: capturePromoting, armedCount: window.armState.armedCount(channelConfig),
   });
   if (!guard.ok) {
-    showArmHint(guard.reason);
+    lcStore.getState().showArmHint(guard.reason);
     return;
   }
-  hideArmHint();
+  lcStore.getState().hideArmHint();
 
   // #776: promoting an already-running monitor session to a recording never
   // routes through onCaptureStarting() (that path is only for an idle→monitor
@@ -1114,21 +620,23 @@ async function promoteToRecording() {
   lcStore.getState().setPromoting(true);
   lcStore.getState().setLiveMode('record');
   syncCaptureControls();
-  // #757: arming stays live while monitoring, so the lock has to be re-
-  // asserted here — the monitor start locked config but deliberately left the
-  // arm controls enabled; flipping to 'record' is what freezes them.
-  setCaptureControlsLocked(true);
+  // #757: arming stays live while monitoring, so flipping to 'record' is what
+  // freezes the arm controls — the board re-renders from liveCaptureStore
+  // (liveMode), so the old setCaptureControlsLocked(true) re-assert is gone
+  // (TD-001 slice 6h, #711).
 
   const device = lcStore.getState().selectedDevice || undefined;
   const windowSecs = lcStore.getState().windowSecs;
   const intervalSecs = lcStore.getState().meterIntervalMs / 1000;
-  const channels = channelTokens();
+  // The deleted channelTokens()/armedTokens() read window.armState directly
+  // (TD-001 slice 6h, #711).
+  const channels = window.armState.allTokens(channelConfig);
 
   const result = await sb.startLive({
     device, channels, windowSecs, intervalSecs,
     mode: 'record', recordDir: recordDir || undefined,
     // Record mode: capture only the armed strips as session stems (#43).
-    arm: armedTokens(),
+    arm: window.armState.armedTokens(channelConfig),
     // Record mode: carry display labels into stem filenames + session.json (#482).
     labels: channelConfig.map((s) => (s.label || '').trim()),
   });
@@ -1136,7 +644,6 @@ async function promoteToRecording() {
 
   if (result.success) {
     syncCaptureControls(Math.round(1 / intervalSecs));
-    renderMeasurementBadge();
   } else {
     lcStore.getState().setLiveMode('monitor');
     specStore.getState().setPanelState('error', result.error || 'Could not start recording. Monitoring stopped — press the Record button to start again.');
@@ -1159,7 +666,8 @@ function onCaptureStopping() {
   stopPlayheadTicker();
   renderDawPlayhead(); // paint the frozen time
   window.rendererStores.rig.getState().setLocked(false);
-  setCaptureControlsLocked(false); // re-enable config (also the failed-Start path) (#38)
+  // The workspace controls unlock derives from liveCaptureStore at render
+  // time — the old setCaptureControlsLocked(false) sweep is gone (6h).
 }
 
 function onCaptureStopped(result) {
@@ -1167,8 +675,9 @@ function onCaptureStopped(result) {
   document.getElementById('live-status').style.display = 'none';
   syncCaptureControls();
   document.getElementById('live-rc-cue').style.display = 'block';
+  // The measurement badge clears reactively (MeasurementBadge.tsx derives an
+  // empty text from isCapturing — TD-001 slice 6h, #711). window-badge is 6i.
   document.getElementById('window-badge').textContent = '';
-  document.getElementById('measurement-badge').textContent = '';
   // "Stopped" distinguishes the frozen EQ from a running one; guard the mode so
   // a tab switch during the stop-live await isn't clobbered.
   if (lcStore.getState().appMode === 'live') document.getElementById('spectrum-title').textContent = SPECTRUM_TITLE.liveStopped;
@@ -1250,9 +759,8 @@ document.getElementById('rc-offer-btn').addEventListener('click', () => {
 /* ══ Rigs — save / load / switch capture setups (#37, persisted via #36) ══
    Fully React/store-owned (RigControls.tsx/PreflightPanel.tsx,
    stores/rigStore.ts, TD-001 slice 6d, #702) except rigDialog() below, which
-   stays here as shared modal infrastructure also used by out-of-scope
-   channel-group naming (createChannelGroup/renameChannelGroup/
-   deleteChannelGroup). */
+   stays here as shared modal infrastructure also used by channel-group naming
+   in LiveCapturePanel.tsx (TD-001 slice 6h, #711). */
 
 // Small inline modal used in place of window.prompt/confirm (unavailable in the
 // Electron renderer). Resolves to the entered string (input mode), true (confirm
@@ -1465,61 +973,33 @@ sb.onLiveEvent((data) => {
    reconnect-poll scheduling are React-owned (SecondaryMeasurementPanel.tsx,
    #724) — this block keeps only the still-imperative Room-consumer glue. */
 
-// Is a secondary room mic actively measuring (selected, streaming, has data)?
-function secondaryMeasurementActive() {
-  const s = lcStore.getState();
-  return s.secondaryMeasurement.status === 'active' && s.secondaryWindows.length > 0;
-}
-
-// The Room feed the badge and live report-card source read: the board strip by
-// default, the secondary mic channel 0 when active. Board values when off.
-function roomFeed() {
-  const s = lcStore.getState();
-  return window.measurementDeviceState.roomFeed(
-    secondaryMeasurementActive(),
-    s.secondaryWindows,
-    s.secondaryMeasurement.deviceName,
-    liveWindows,
-    s.measurementSource,
-    channelConfig,
-  );
-}
-
-// Repaint the still-imperative Room badge after a secondary state change
-// (device selection/start/stop/reconnect). Status text/warning and the
-// reconnect-poll scheduling are now React-owned (SecondaryMeasurementPanel.tsx,
-// #724), reading directly off the store — exposed to it via
-// window.liveCaptureRuntime.afterSecondaryMeasurementChange. The EQ pane's
-// Room slot re-renders reactively from the store's secondary fields (LiveEqPane)
-// and its arcs are patched per tick by the meter controller.
-function afterSecondaryStateChange() {
-  renderMeasurementBadge();
-}
-
-// Bind the store's measurement-event folding, then a thin repaint handler on
-// the same channel (registered after the store so state is already updated).
+// The Room badge is MeasurementBadge.tsx now (TD-001 slice 6h, #711),
+// derived reactively from liveCaptureStore via the pure measurementBadgeView —
+// the old inline secondaryMeasurementActive()/roomFeed()/renderMeasurementBadge()
+// glue is gone. The store's own bindMeasurementEvents() (below) owns the
+// measurement-event folding; this listener is reduced to the one still-bridged
+// call surface 6k removes.
+//
+// afterSecondaryStateChange: the Room badge is MeasurementBadge.tsx now,
+// derived from liveCaptureStore — the 6k slice removes this method from the
+// runtime. Kept (not deleted) so root-markup.test.ts and
+// SecondaryMeasurementPanel.tsx's optional call stay green within this slice's
+// boundaries.
+function afterSecondaryStateChange() {}
 lcStore.getState().bindMeasurementEvents();
 sb.onMeasurementEvent((data) => {
   if (!data) return;
-  // A disconnect (or any status-carrying event) repaints the badge — status
-  // text/reconnect scheduling are React-owned now (#724).
+  // afterSecondaryStateChange is a documented no-op until 6k (the badge is
+  // reactive); kept so SecondaryMeasurementPanel's optional call stays green.
   if (data.measurementEnded) { afterSecondaryStateChange(); return; }
-  if (!secondaryMeasurementActive()) return;
-  // Active: the secondary mic owns the Room. The room stats row is patched by
-  // the meter controller (LiveWorkspace.tsx mirrors this old
-  // updateLiveStatsRow path when snap.secondaryActive); refresh the badge on
-  // every tick too. The graded report-card source updates itself reactively
-  // (bridge.ts's cross-store subscription reacts to secondaryWindows, which
-  // bindMeasurementEvents() above only appends to on the same window ticks
-  // this used to gate an explicit syncLiveSource() on).
-  renderMeasurementBadge();
 });
 
 // A batch run (#270) also triggers this pushed event on every successful
 // analyze-file call — left alone, it would flip the Report Card N times
-// mid-batch. Suppressed only while a batch is actually running.
+// mid-batch. Suppressed only while a batch is actually running (the Directory
+// tab's batch state is directoryStore-owned, TD-001 slice 6h #711).
 sb.onAnalysisResult((data) => {
-  if (window.batchAnalysis.shouldSuppressPushedResult(batchRunning)) return;
+  if (window.batchAnalysis.shouldSuppressPushedResult(window.rendererStores.directory.getState().running)) return;
   anaStore.getState().setAnalysisFromEvent(data);
 });
 
@@ -1761,10 +1241,9 @@ window.inlineDialogs = { openFeedbackRingout, saveMixAsTarget, openBuildGuide };
 (async () => {
   await setStore.getState().loadSettings();
   // idealProfilesStore hydration (idealProfileId/customIdealProfiles) now
-  // flows from bridge.ts's settings subscription (TD-001 slice 6b, #700).
-  // Reflect the effective default record folder (#482) now that settings have
-  // loaded — root-markup.html's static text is only the cold-boot placeholder.
-  if (!recordDir) document.getElementById('record-folder-path').textContent = defaultRecordFolderText();
+  // flows from bridge.ts's settings subscription (TD-001 slice 6b, #700). The
+  // cold-boot #record-folder-path default write is gone (TD-001 slice 6h,
+  // #711) — LiveSourceSettings.tsx renders it reactively from settingsStore.
 })();
 
 // ReportCardToolbar.tsx/UpgradeMomentum.tsx (TD-001 slice 6e, #703) now
@@ -1778,7 +1257,8 @@ hydrateIcons(document);
 specStore.getState().setPanelState('empty'); // store default text ('Load a file to see the spectrum') is identical
 // Load devices first so a saved rig can reconcile its device by name and clamp
 // channels against the real device list; then apply the active rig (if any).
-loadDevices().then(
+// Device loading is a store action now (TD-001 slice 6h, #711).
+lcStore.getState().loadDevices().then(
   window.rendererStores.rig.getState().loadRigs,
   window.rendererStores.rig.getState().loadRigs,
 );

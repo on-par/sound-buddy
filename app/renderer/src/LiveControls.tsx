@@ -11,16 +11,16 @@
 // (runtime()), the extracted startLiveCapture/stopLiveCapture ordering
 // helpers, and recordCapture — the promote-in-place orchestration (#458) the
 // top-bar Record button's idle press flows into (starting monitoring first
-// when nothing is live, #757). #arm-hint is still written by inline-app.js's
-// showArmHint (beforeStartCapture's guard and promoteToRecording's preflight
-// guard both surface their blocking reasons through it).
+// when nothing is live, #757). #arm-hint is liveCaptureStore.armHint written
+// by the runtime's beforeStartCapture/promoteToRecording and rendered by
+// LiveArmHint.tsx (TD-001 slice 6h, #711).
 //
-// #live-status, #arm-hint, #rec-offer/#rc-offer/#rc-not-enough, and
+// #live-status, #rec-offer/#rc-offer/#rc-not-enough, and
 // #live-rc-cue stay out of React entirely (still static root-markup.html
 // markup, still written by several still-inline functions — rig-apply error
-// text, group-mutation arm hints, the post-stop session offers) — pulling
-// those into React here would double-own DOM nodes that other bridged code
-// also writes directly. The capture click handlers delegate to
+// text, the post-stop session offers) — pulling those into React here would
+// double-own DOM nodes that other bridged code also writes directly. The
+// capture click handlers delegate to
 // `window.liveCaptureRuntime` (inline-app.js) for the side-effect-heavy
 // orchestration (playhead/waveform/rig-lock/lapCoaching/session offers) that
 // stays out of 6c's scope — see the ADR in the #701 plan on why those coupled
@@ -33,10 +33,6 @@ import { useLiveCaptureStore, type StartCaptureResult, type StopCaptureResult } 
 import { captureOptsFromCadence } from './measurement-device-state';
 
 export interface LiveCaptureRuntime {
-  /** Refreshes the device list and re-seeds channel config/groups for the (possibly new) default device. */
-  loadDevices(): Promise<void>;
-  /** Device <select> changed — re-seeds channel config/groups for the newly selected device. */
-  selectDevice(value: string): void;
   /** Measurement-source <select> changed — normalizes + persists the selection and refreshes the badge/EQ pane. */
   changeMeasurementSource(value: string): void;
   /** Opens the folder-choose dialog and stores the result as the record folder. */
@@ -59,10 +55,11 @@ export interface LiveCaptureRuntime {
   onResumeMonitoringStart?(): void;
   /** Promotes a running monitor session to a recording in place (#458) — its own guard/orchestration stays bridged. */
   promoteToRecording(): Promise<void>;
-  /** Repaints the still-imperative Room badge after a secondary-measurement
-   *  device selection/start/stop/reconnect (#460, #724) —
-   *  renderMeasurementBadge() stays imperative and out of scope; the EQ pane's
-   *  Room slot is React-owned (LiveEqPane, TD-001 slice 6g #710). */
+  /** Repaints the Room badge after a secondary-measurement device selection/
+   *  start/stop/reconnect (#460, #724) — the badge is MeasurementBadge.tsx
+   *  (reactive) now, so this is a documented no-op until slice 6k removes it
+   *  from the runtime; the EQ pane's Room slot is React-owned (LiveEqPane,
+   *  TD-001 slice 6g #710). */
   afterSecondaryMeasurementChange?(): void;
 }
 

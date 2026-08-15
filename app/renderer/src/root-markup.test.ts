@@ -17,10 +17,12 @@ const markup = fs.readFileSync(fileURLToPath(new URL('./root-markup.html', impor
 const inlineApp = fs.readFileSync(fileURLToPath(new URL('./inline-app.js', import.meta.url)), 'utf8');
 
 describe('Directory tab batch-analyzes a folder of recordings (#270)', () => {
-  it('has a real folder picker, Analyze All CTA, and results list', () => {
-    expect(markup).toContain('id="dir-choose-btn"');
-    expect(markup).toContain('id="dir-analyze-btn"');
-    expect(markup).toContain('id="dir-results"');
+  it('has a real folder picker, Analyze All CTA, and results list — now rendered by DirectoryPanel.tsx onto the empty #tab-dir island (TD-001 slice 6h, #711)', () => {
+    const directoryPanel = fs.readFileSync(fileURLToPath(new URL('./DirectoryPanel.tsx', import.meta.url)), 'utf8');
+    expect(directoryPanel).toContain('id="dir-choose-btn"');
+    expect(directoryPanel).toContain('id="dir-analyze-btn"');
+    expect(directoryPanel).toContain('id="dir-results"');
+    expect(markup).toMatch(/<div class="tab-content" id="tab-dir"><\/div>/);
   });
 
   it('no longer carries the #293 roadmap markup or its v1.1 badge', () => {
@@ -88,12 +90,13 @@ describe('Live tab reads as always-listening, never capture (#777)', () => {
     expect(liveTab).not.toMatch(/>[^<]*[Cc]apture[^<]*</);
   });
 
-  it('purges "capture" from the Analyze source-picker live option', () => {
-    const liveOptionStart = markup.indexOf('data-analyze-source="live"');
-    const liveOptionEnd = markup.indexOf('</button>', liveOptionStart);
+  it('purges "capture" from the Analyze source-picker live option (TD-001 slice 6h, #711 — now AnalyzeSourcePicker.tsx)', () => {
+    const pickerTsx = fs.readFileSync(fileURLToPath(new URL('./AnalyzeSourcePicker.tsx', import.meta.url)), 'utf8');
+    const liveOptionStart = pickerTsx.indexOf("id: 'live'");
+    const liveOptionEnd = pickerTsx.indexOf('}', liveOptionStart);
     expect(liveOptionStart).toBeGreaterThan(-1);
     expect(liveOptionEnd).toBeGreaterThan(liveOptionStart);
-    const liveOption = markup.slice(liveOptionStart, liveOptionEnd);
+    const liveOption = pickerTsx.slice(liveOptionStart, liveOptionEnd);
     expect(liveOption).not.toMatch(/[Cc]apture/);
   });
 
@@ -118,7 +121,9 @@ describe('Always-monitoring Live tab with a top-bar-only transport (#757)', () =
     expect(markup).toContain('id="record-button-island"');
     expect(markup).toContain('id="live-status"');
     expect(markup).toContain('id="live-rc-cue"');
-    expect(markup).toContain('id="arm-hint"');
+    // TD-001 slice 6h (#711): the arm hint moved to LiveArmHint.tsx, portaled
+    // onto this island; the React span keeps id="arm-hint" (LiveArmHint.test.ts).
+    expect(markup).toContain('id="arm-hint-island"');
     expect(markup).toContain('id="rec-offer"');
     expect(markup).toContain('id="rc-offer"');
   });
@@ -200,9 +205,10 @@ describe('Secondary measurement device source (#460, React-owned per #724)', () 
     expect(inlineApp).not.toContain('secondaryReconnectTimer');
   });
 
-  it('inline-app.js still routes the Room feed through roomFeed(), and exposes afterSecondaryMeasurementChange to the React runtime', () => {
-    expect(inlineApp).toContain('roomFeed()');
+  it('exposes afterSecondaryMeasurementChange to the React runtime (kept as a no-op until 6k — the Room badge is MeasurementBadge.tsx now, TD-001 slice 6h #711)', () => {
+    expect(inlineApp).toContain('afterSecondaryStateChange');
     expect(inlineApp).toContain('afterSecondaryMeasurementChange');
+    expect(inlineApp).not.toContain('function renderMeasurementBadge');
   });
 });
 
@@ -241,8 +247,10 @@ describe('Existing tabs stay intact under the unified Analyze picker (#543)', ()
     });
   });
 
-  it('leaves the Directory batch-analysis panel in place', () => {
-    expect(markup).toContain('id="dir-choose-btn"');
-    expect(markup).toContain('id="dir-analyze-btn"');
+  it('leaves the Directory batch-analysis panel in place (DirectoryPanel.tsx renders onto the empty #tab-dir island)', () => {
+    const directoryPanel = fs.readFileSync(fileURLToPath(new URL('./DirectoryPanel.tsx', import.meta.url)), 'utf8');
+    expect(directoryPanel).toContain('id="dir-choose-btn"');
+    expect(directoryPanel).toContain('id="dir-analyze-btn"');
+    expect(markup).toContain('id="tab-dir"');
   });
 });

@@ -10,13 +10,13 @@
 // the device list) lives in rig-panel.ts's pure functions; this store wires
 // them to IPC and to liveCaptureStore's state.
 //
-// Every UI-facing action here has no `window.renderChannelConfig?.()` bridge
-// call EXCEPT the two that actually mutate liveCaptureStore's channelConfig/
-// liveMode/selectedDevice (loadRigs/selectRig, via applyRigById) — save/
-// saveAs/rename/remove/saveBaseline only touch this store's own `rigs`/
+// Every UI-facing action here writes liveCaptureStore (or this store's own
+// rigs/activeRigId); the board + measurement badge re-render reactively from
+// liveCaptureStore (LiveCapturePanel/MeasurementBadge, TD-001 slice 6h #711),
+// so there is no `window.renderChannelConfig?.()` bridge call anywhere —
+// save/saveAs/rename/remove/saveBaseline only touch this store's own `rigs`/
 // `activeRigId`, which RigControls.tsx/PreflightPanel.tsx already re-render
-// from reactively, unlike the old imperative populateRigSelect()/
-// renderPreflight() call sites they replace.
+// from reactively.
 
 import { create } from 'zustand';
 import { getSoundBuddy } from '../useElectron';
@@ -104,7 +104,9 @@ export function createRigStore(getApi: () => RigApiSubset) {
     useLiveCaptureStore.setState({ ...patch, rigApplyNotice: notice || null });
     persistGroups(useLiveCaptureStore.getState());
     setLiveStatusText(notice);
-    window.renderChannelConfig?.();
+    // The board + measurement badge re-render reactively from liveCaptureStore
+    // (LiveCapturePanel/MeasurementBadge, TD-001 slice 6h #711) — the old
+    // window.renderChannelConfig?.() sweep is gone.
   }
 
   return create<RigState>()((set, get) => ({
@@ -138,7 +140,7 @@ export function createRigStore(getApi: () => RigApiSubset) {
       useLiveCaptureStore.setState({
         channelConfig: getChannelLabels().applyLabels(live.channelConfig, getArmState().allTokens(live.channelConfig), savedLabels),
       });
-      window.renderChannelConfig?.();
+      // The board re-renders reactively — no window.renderChannelConfig?.() (6h).
     },
 
     async selectRig(id) {
@@ -152,9 +154,8 @@ export function createRigStore(getApi: () => RigApiSubset) {
       if (id) applyRigById(id, get().rigs);
       // populateRigSelect's old "programmatic <select> doesn't fire 'change'"
       // gap no longer applies (React re-renders on the store write above) —
-      // this covers both the apply and deselect branches uniformly, a
-      // harmless no-op cost since PreflightPanel recomputes on every render.
-      window.renderChannelConfig?.();
+      // this covers both the apply and deselect branches uniformly; the board
+      // + badge re-render reactively, so no window.renderChannelConfig?.() (6h).
     },
 
     async save() {

@@ -156,6 +156,11 @@ describe('livePanelView', () => {
     expect(view.instrumentProfiles).toEqual(instrumentProfiles.PROFILES.map((p: { id: string; label: string }) => ({ id: p.id, label: p.label })));
   });
 
+  it('threads liveMode through — the per-strip arm stamp derives from it (#711)', () => {
+    expect(livePanelView(makeState({ liveMode: 'record' })).liveMode).toBe('record');
+    expect(livePanelView(makeState({ liveMode: 'monitor' })).liveMode).toBe('monitor');
+  });
+
   it('falls back to the default-device channel count', () => {
     expect(livePanelView(makeState()).deviceChannels).toBe(8);
   });

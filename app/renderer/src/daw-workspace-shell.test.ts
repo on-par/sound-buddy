@@ -21,6 +21,7 @@ const css = fs.readFileSync(fileURLToPath(new URL('./styles/app.css', import.met
 const appTsx = fs.readFileSync(fileURLToPath(new URL('./App.tsx', import.meta.url)), 'utf8');
 const workspaceViewTs = fs.readFileSync(fileURLToPath(new URL('./live-workspace-view.ts', import.meta.url)), 'utf8');
 const liveCapturePanelTsx = fs.readFileSync(fileURLToPath(new URL('./LiveCapturePanel.tsx', import.meta.url)), 'utf8');
+const liveCapturePanelTs = fs.readFileSync(fileURLToPath(new URL('./live-capture-panel.ts', import.meta.url)), 'utf8');
 
 function functionBody(src: string, name: string): string {
   const marker = `function ${name}(`;
@@ -142,8 +143,12 @@ describe('DAW shell and the sole top-bar Record transport (#757)', () => {
   it('arm controls stay usable while monitoring and freeze only while recording (#757)', () => {
     const toolbar = functionBody(workspaceViewTs, 'liveWorkspaceToolbarHTML');
     expect(toolbar).toContain("state.isCapturing && state.liveMode === 'record'");
-    const lockBody = functionBody(inlineApp, 'setCaptureControlsLocked');
-    expect(lockBody).toContain("const armLocked = locked && liveMode === 'record'");
+    // TD-001 slice 6h (#711): the per-strip arm stamp derives from the panel
+    // state (liveRunning && liveMode === 'record') in veqChannelHTML — the
+    // inline setCaptureControlsLocked armLocked sweep is gone. The behavior is
+    // unit-pinned in live-capture-panel.test.ts.
+    expect(liveCapturePanelTs).toContain('panel.liveRunning && panel.liveMode === \'record\'');
+    expect(inlineApp).not.toContain('function setCaptureControlsLocked');
   });
 });
 

@@ -34,13 +34,11 @@ function makeFakeDocument() {
 
 let fakeDoc: ReturnType<typeof makeFakeDocument>;
 let rigDialog: ReturnType<typeof vi.fn>;
-let renderChannelConfig: ReturnType<typeof vi.fn>;
 
 beforeEach(() => {
   fakeDoc = makeFakeDocument();
   rigDialog = vi.fn();
-  renderChannelConfig = vi.fn();
-  (globalThis as { window?: unknown }).window = { rigReconcile, preflight, armState, channelLabels, rigDialog, renderChannelConfig };
+  (globalThis as { window?: unknown }).window = { rigReconcile, preflight, armState, channelLabels, rigDialog };
   (globalThis as { document?: unknown }).document = fakeDoc.doc;
 });
 
@@ -107,7 +105,6 @@ describe('createRigStore', () => {
       expect(useLiveCaptureStore.getState().selectedDevice).toBe('0');
       expect(useLiveCaptureStore.getState().meterIntervalMs).toBe(200);
       expect(useLiveCaptureStore.getState().windowSecs).toBe(5);
-      expect(renderChannelConfig).toHaveBeenCalled();
     });
 
     it('leaves activeRigId null when the saved id is not among the rigs', async () => {
@@ -135,7 +132,7 @@ describe('createRigStore', () => {
   });
 
   describe('selectRig', () => {
-    it('applies the selected rig and calls the capture-lock bridge', async () => {
+    it('applies the selected rig', async () => {
       const rig = makeRig({ intervalMs: 250, windowSecs: 7.5 });
       const { store } = makeStore({ setActiveRig: async () => fakeSettings() });
       store.setState({ rigs: [rig] });
@@ -145,7 +142,6 @@ describe('createRigStore', () => {
       expect(useLiveCaptureStore.getState().selectedDevice).toBe('0');
       expect(useLiveCaptureStore.getState().meterIntervalMs).toBe(250);
       expect(useLiveCaptureStore.getState().windowSecs).toBe(7.5);
-      expect(renderChannelConfig).toHaveBeenCalled();
     });
 
     it('deselecting clears activeRigId without touching the current setup', async () => {
@@ -153,7 +149,6 @@ describe('createRigStore', () => {
       store.setState({ rigs: [makeRig()], activeRigId: 'rig-1' });
       await store.getState().selectRig('');
       expect(store.getState().activeRigId).toBeNull();
-      expect(renderChannelConfig).toHaveBeenCalled();
     });
 
     it('surfaces an error status when setActiveRig rejects', async () => {
