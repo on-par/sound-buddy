@@ -136,6 +136,17 @@ export default function LiveCapturePanel(): JSX.Element | null {
   // started the drag — no re-render is wanted mid-drag either.
   const liveDragSrc = useRef<{ type: 'group' | 'strip'; index: number } | null>(null);
 
+  // Board root ref + native 'change' listener (TD-001 slice 6h, #711 fix):
+  // React's onChange prop never fires for a native change event bubbling from
+  // a <select> that isn't part of React's own tree — the board's kind/src/
+  // group/profile/lap-focus selects are all raw markup from
+  // dangerouslySetInnerHTML, so React's ChangeEventPlugin (which needs a
+  // value-tracker it only installs on elements it created) silently drops
+  // them. onClick/onKeyDown/onDrag* aren't affected — they don't need that
+  // per-element tracking — so only 'change' needs this native listener.
+  const boardRootRef = useRef<HTMLDivElement>(null);
+  const onBoardChangeRef = useRef<(e: ChangeEvent<HTMLDivElement>) => void>(() => {});
+
   /* c8 ignore start -- effect wiring + imperative chrome, no jsdom in this
      harness (renderToString doesn't run effects) — exercised by
      tests/e2e/live-capture.spec.ts (stats row shows while capturing, spectrum
@@ -389,6 +400,18 @@ export default function LiveCapturePanel(): JSX.Element | null {
       void useSettingsStore.getState().updateSettings({ inputInstrumentProfiles: next });
     }
   }
+  onBoardChangeRef.current = onBoardChange;
+
+  // Native 'change' listener (see boardRootRef's comment above) — attached
+  // once, reads the always-current onBoardChange via the ref so it never goes
+  // stale across re-renders.
+  useEffect(() => {
+    const el = boardRootRef.current;
+    if (!el) return;
+    const listener = (e: Event) => onBoardChangeRef.current(e as unknown as ChangeEvent<HTMLDivElement>);
+    el.addEventListener('change', listener);
+    return () => el.removeEventListener('change', listener);
+  }, []);
 
   function onNameFocus(e: FocusEvent<HTMLDivElement>): void {
     const name = nameElOf(e.target);
@@ -521,10 +544,10 @@ export default function LiveCapturePanel(): JSX.Element | null {
 
   return (
     <div
+      ref={boardRootRef}
       className="live-board-root"
       onClick={onBoardClick}
       onKeyDown={onBoardKeyDown}
-      onChange={onBoardChange}
       onFocus={onNameFocus}
       onBlur={onNameBlur}
       onDragStart={onDragStart}
