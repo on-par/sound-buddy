@@ -11,16 +11,16 @@
 // (runtime()), the extracted startLiveCapture/stopLiveCapture ordering
 // helpers, and recordCapture — the promote-in-place orchestration (#458) the
 // top-bar Record button's idle press flows into (starting monitoring first
-// when nothing is live, #757). #arm-hint is still written by inline-app.js's
-// showArmHint (beforeStartCapture's guard and promoteToRecording's preflight
-// guard both surface their blocking reasons through it).
+// when nothing is live, #757). #arm-hint is liveCaptureStore.armHint written
+// by the runtime's beforeStartCapture/promoteToRecording and rendered by
+// LiveArmHint.tsx (TD-001 slice 6h, #711).
 //
-// #live-status, #arm-hint, #rec-offer/#rc-offer/#rc-not-enough, and
+// #live-status, #rec-offer/#rc-offer/#rc-not-enough, and
 // #live-rc-cue stay out of React entirely (still static root-markup.html
 // markup, still written by several still-inline functions — rig-apply error
-// text, group-mutation arm hints, the post-stop session offers) — pulling
-// those into React here would double-own DOM nodes that other bridged code
-// also writes directly. The capture click handlers delegate to
+// text, the post-stop session offers) — pulling those into React here would
+// double-own DOM nodes that other bridged code also writes directly. The
+// capture click handlers delegate to
 // `window.liveCaptureRuntime` (inline-app.js) for the side-effect-heavy
 // orchestration (playhead/waveform/rig-lock/lapCoaching/session offers) that
 // stays out of 6c's scope — see the ADR in the #701 plan on why those coupled

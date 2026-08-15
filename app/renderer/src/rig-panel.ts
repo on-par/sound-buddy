@@ -120,8 +120,9 @@ export function getRigReconcile(): RigReconcileApi {
 // it's accepted for signature parity with the store-side call site but the
 // clamp always bounds against the newly-RESOLVED device below, mirroring
 // applyRig's own `lcStore.setState({selectedDevice: rec.index})` immediately
-// followed by re-reading selectedDeviceChannels() off the just-updated store
-// — a stale pre-apply value would clamp against the wrong device.
+// followed by re-reading the resolved device's channel count off the
+// just-updated store — a stale pre-apply value would clamp against the wrong
+// device.
 export function applyRigPatch(
   rig: CaptureRig,
   devices: LiveDevice[],

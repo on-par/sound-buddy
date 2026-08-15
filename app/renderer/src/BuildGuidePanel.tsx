@@ -54,7 +54,7 @@ function getBuildOrderState(): BuildOrderState {
 }
 function getHydrateIcons(): (root: Element) => void {
   // hydrateIcons is a top-level `function` declaration in inline-app.js, so
-  // it attaches to `window` automatically (same as window.renderChannelConfig).
+  // it attaches to `window` automatically (same as window.liveCaptureRuntime).
   return (window as unknown as { hydrateIcons: (root: Element) => void }).hydrateIcons;
 }
 

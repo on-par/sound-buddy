@@ -10,13 +10,13 @@
 // the device list) lives in rig-panel.ts's pure functions; this store wires
 // them to IPC and to liveCaptureStore's state.
 //
-// Every UI-facing action here has no `window.renderChannelConfig?.()` bridge
-// call EXCEPT the two that actually mutate liveCaptureStore's channelConfig/
-// liveMode/selectedDevice (loadRigs/selectRig, via applyRigById) — save/
-// saveAs/rename/remove/saveBaseline only touch this store's own `rigs`/
+// Every UI-facing action here writes liveCaptureStore (or this store's own
+// rigs/activeRigId); the board + measurement badge re-render reactively from
+// liveCaptureStore (LiveCapturePanel/MeasurementBadge, TD-001 slice 6h #711),
+// so there is no `window.renderChannelConfig?.()` bridge call anywhere —
+// save/saveAs/rename/remove/saveBaseline only touch this store's own `rigs`/
 // `activeRigId`, which RigControls.tsx/PreflightPanel.tsx already re-render
-// from reactively, unlike the old imperative populateRigSelect()/
-// renderPreflight() call sites they replace.
+// from reactively.
 
 import { create } from 'zustand';
 import { getSoundBuddy } from '../useElectron';
