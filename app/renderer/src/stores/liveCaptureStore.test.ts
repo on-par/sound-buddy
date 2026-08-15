@@ -943,4 +943,143 @@ describe('createLiveCaptureStore', () => {
     };
     await expect(useLiveCaptureStore.getState().loadDevices()).resolves.toBeUndefined();
   });
+
+  describe('focused input + live-adjustments coaching state (TD-001 slice 6g, #710)', () => {
+    // The pure helper classic-scripts lapDispose/advanceLapCoaching resolve
+    // through (lapObservationContext -> lapFocusView reads rigReconcile/
+    // instrumentProfiles; the coaching reducers + allCoachingCandidates read
+    // liveAdjustmentsState/grading).
+    const rigReconcile = require('../../rig-reconcile.js');
+    const instrumentProfiles = require('../../instrument-profiles.js');
+    const liveAdjustmentsState = require('../../live-adjustments-state.js');
+    const grading = require('../../grading.js');
+
+    beforeEach(() => {
+      (globalThis as { window?: unknown }).window = {
+        armState, groupState, rigKind, channelLabels,
+        rigReconcile, instrumentProfiles, liveAdjustmentsState, grading,
+      };
+      useSettingsStore.setState({
+        settings: {
+          inputInstrumentProfiles: {},
+          channelLabels: {},
+          channelGroups: {},
+        } as never,
+      });
+    });
+
+    it('starts with no focused input and no coaching state', () => {
+      const { store } = makeStore();
+      expect(store.getState().focusedInputIndex).toBeNull();
+      expect(store.getState().lapCoaching).toBeNull();
+    });
+
+    it('setFocusedInputIndex stores the value as given', () => {
+      const { store } = makeStore();
+      store.getState().setFocusedInputIndex(2);
+      expect(store.getState().focusedInputIndex).toBe(2);
+      store.getState().setFocusedInputIndex(null);
+      expect(store.getState().focusedInputIndex).toBeNull();
+    });
+
+    it('removeStrip shifts/clears the focused input index like the other runtime selections', () => {
+      const { store } = makeStore();
+      store.setState({
+        channelConfig: [{ kind: 'mono', a: 0, b: 1 }, { kind: 'mono', a: 1, b: 2 }],
+        focusedInputIndex: 1,
+      });
+      store.getState().removeStrip(0);
+      expect(store.getState().focusedInputIndex).toBe(0);
+      store.setState({ channelConfig: [{ kind: 'mono', a: 0, b: 1 }], focusedInputIndex: 0 });
+      store.getState().removeStrip(0);
+      expect(store.getState().focusedInputIndex).toBeNull();
+    });
+
+    it('resetLapCoaching seeds a fresh coaching state from liveAdjustmentsState', () => {
+      const { store } = makeStore();
+      const base = liveAdjustmentsState.createCoachingState();
+      expect(base).toEqual({ active: null, activeSince: null, pendingId: null, pendingCount: 0, pendingCandidate: null, clearCount: 0, cooldowns: {}, acknowledgedId: null, snoozeUntil: null, dismissed: {}, observing: null, outcome: null });
+      store.setState({ lapCoaching: { active: { id: 'x' } } });
+      store.getState().resetLapCoaching();
+      expect(store.getState().lapCoaching).toEqual(base);
+    });
+
+    it('lapDispose applies the acknowledge reducer and writes lapCoaching', () => {
+      const { store } = makeStore();
+      const active = liveAdjustmentsState.createCoachingState();
+      const withActive = { ...active, active: { id: 'low-end', title: 't', category: 'tonal', severityDb: 4, confidence: 0.8 } };
+      store.setState({ lapCoaching: withActive });
+      store.getState().lapDispose('acknowledge');
+      expect((store.getState().lapCoaching as { acknowledgedId: string }).acknowledgedId).toBe('low-end');
+    });
+
+    it('lapDispose passes the observation context to markTriedCoaching (#614)', () => {
+      const { store } = makeStore();
+      const active = liveAdjustmentsState.createCoachingState();
+      store.setState({
+        channelConfig: [{ kind: 'mono', a: 0, b: 1 }, { kind: 'mono', a: 1, b: 2 }],
+        focusedInputIndex: 1,
+        measurementSource: 0,
+        lapCoaching: { ...active, active: { id: 'low-end', title: 't', category: 'tonal', severityDb: 4, confidence: 0.8 } },
+      });
+      store.getState().lapDispose('tried', 1000);
+      const observing = (store.getState().lapCoaching as { observing: { source: { measurementSource: number; focusIndex: number; label: string }; until: number } }).observing;
+      expect(observing.source).toEqual({ measurementSource: 0, focusIndex: 1, label: 'Track 1' });
+      expect(observing.until).toBe(1000 + liveAdjustmentsState.OBSERVATION_WINDOW_MS);
+    });
+
+    it('lapDispose routes every disposition through its reducer with an injected now', () => {
+      const { store } = makeStore();
+      const base = liveAdjustmentsState.createCoachingState();
+      store.setState({ lapCoaching: base });
+
+      store.getState().lapDispose('snooze', 500);
+      expect((store.getState().lapCoaching as { snoozeUntil: number | null }).snoozeUntil).toBe(500 + liveAdjustmentsState.SNOOZE_MS);
+
+      store.getState().lapDispose('resume');
+      expect((store.getState().lapCoaching as { snoozeUntil: number | null }).snoozeUntil).toBeNull();
+
+      store.setState({
+        lapCoaching: { ...base, active: { id: 'clip-risk', title: 't', category: 'clipping', severityDb: 2, confidence: 1 } },
+      });
+      store.getState().lapDispose('dismiss', 700);
+      const dismissed = store.getState().lapCoaching as { active: unknown; dismissed: Record<string, { severityDb: number; at: number }> };
+      expect(dismissed.active).toBeNull();
+      expect(dismissed.dismissed['clip-risk']).toEqual({ severityDb: 2, at: 700 });
+
+      store.setState({ lapCoaching: { ...base, outcome: { id: 'low-end', title: 't', category: 'tonal', scope: 'mix' } } });
+      store.getState().lapDispose('outcome-ack', 900);
+      expect((store.getState().lapCoaching as { outcome: unknown }).outcome).toBeNull();
+    });
+
+    it('lapDispose defaults now to Date.now()', () => {
+      const { store } = makeStore();
+      const base = liveAdjustmentsState.createCoachingState();
+      store.setState({ lapCoaching: base });
+      const spy = vi.spyOn(Date, 'now').mockReturnValue(12345);
+      try {
+        store.getState().lapDispose('snooze');
+      } finally {
+        spy.mockRestore();
+      }
+      expect((store.getState().lapCoaching as { snoozeUntil: number }).snoozeUntil).toBe(12345 + liveAdjustmentsState.SNOOZE_MS);
+    });
+
+    it('advanceLapCoaching advances from allCoachingCandidates with the observation context and Date.now()', () => {
+      const { store } = makeStore();
+      const base = liveAdjustmentsState.createCoachingState();
+      store.setState({ lapCoaching: base });
+      const spy = vi.spyOn(Date, 'now').mockReturnValue(50000);
+      try {
+        store.getState().advanceLapCoaching();
+      } finally {
+        spy.mockRestore();
+      }
+      // No windows accumulated -> no candidates -> still the monitoring state.
+      expect(store.getState().lapCoaching).toEqual(base);
+      // The write path is the same one lapDispose uses.
+      store.getState().advanceLapCoaching();
+      expect(store.getState().lapCoaching).toEqual(base);
+    });
+  });
 });
