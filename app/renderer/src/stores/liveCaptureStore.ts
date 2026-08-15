@@ -100,6 +100,16 @@ export interface StopCaptureResult {
   sessionDir: string | null;
 }
 
+// The post-stop session offer rows (TD-001 slice 6i, #712) — discrete
+// lifecycle state the 6i capture-lifecycle module writes and the
+// LiveSessionOffers.tsx island renders: sessionDir shows #rec-offer,
+// reportCard shows #rc-offer, notEnoughData shows #rc-not-enough.
+export interface SessionOffers {
+  sessionDir: string | null;
+  reportCard: boolean;
+  notEnoughData: boolean;
+}
+
 /* ── Typed `window.*` accessors for the pure helper classic-scripts ──
  * Mirrors ReportCardIsland.tsx's getGrading()/getPhaseDoublingState() style:
  * these modules are boot-injected once (App.tsx's BOOT_SCRIPTS) and read off
@@ -267,6 +277,18 @@ export interface LiveCaptureState {
   // hideArmHint in inline-app.js.
   armHint: { visible: boolean; text: string };
 
+  // Post-stop session chrome (TD-001 slice 6i, #712): sessionOffers drives
+  // LiveSessionOffers.tsx's three offer rows, liveCueVisible drives the
+  // #live-rc-cue cue (idle-visible, hidden while a capture runs — the #776
+  // resume keeps it visible across the auto monitor-restart), and
+  // liveStatusText drives LiveStatusLine.tsx's shared #live-status line
+  // (written by both the capture-lifecycle module for capture status and by
+  // rigStore for rig-apply notices — single-owned now, replacing rig-panel.ts's
+  // deleted DOM helper).
+  sessionOffers: SessionOffers;
+  liveCueVisible: boolean;
+  liveStatusText: string | null;
+
   // Focused input for the per-input instrument-aware adjustment candidates
   // (#525) — ephemeral, per-session only, never persisted. Store-owned so the
   // React live-adjustments panel renders reactively from it (TD-001 slice 6g,
@@ -348,6 +370,16 @@ export interface LiveCaptureState {
   showArmHint(text: string): void;
   /** Hides the inline arm hint — replaces the deleted hideArmHint. */
   hideArmHint(): void;
+  /** Patches the post-stop session offer rows (TD-001 slice 6i, #712) —
+   *  sessionDir/#rec-offer, reportCard/#rc-offer, notEnoughData/#rc-not-enough.
+   *  setSessionOffers merges a partial patch so the three offers are written
+   *  independently. */
+  setSessionOffers(patch: Partial<SessionOffers>): void;
+  /** Shows/hides the #live-rc-cue "listening builds a live Report Card" cue. */
+  setLiveCueVisible(visible: boolean): void;
+  /** Sets the shared #live-status line text (capture status + rig notices);
+   *  null/'' hides the line. */
+  setLiveStatusText(text: string | null): void;
   /** Applies one coaching disposition (acknowledge/tried/snooze/dismiss/
    *  resume/outcome-ack) through window.liveAdjustmentsState's reducers and
    *  writes the result to lapCoaching (#613, #614). markTriedCoaching receives
@@ -446,6 +478,12 @@ export function createLiveCaptureStore(getApi: () => LiveCaptureApi) {
     focusedInputIndex: null,
     lapCoaching: null,
     armHint: { visible: false, text: '' },
+
+    // Idle post-stop chrome defaults (TD-001 slice 6i, #712): no offers, the
+    // live-report-card cue visible, no status text.
+    sessionOffers: { sessionDir: null, reportCard: false, notEnoughData: false },
+    liveCueVisible: true,
+    liveStatusText: null,
 
     secondaryMeasurement: { status: 'off', deviceName: '' },
     secondaryWindows: [],
@@ -764,6 +802,18 @@ export function createLiveCaptureStore(getApi: () => LiveCaptureApi) {
 
     hideArmHint() {
       set((state) => ({ armHint: { ...state.armHint, visible: false } }));
+    },
+
+    setSessionOffers(patch) {
+      set((state) => ({ sessionOffers: { ...state.sessionOffers, ...patch } }));
+    },
+
+    setLiveCueVisible(visible) {
+      set({ liveCueVisible: visible });
+    },
+
+    setLiveStatusText(text) {
+      set({ liveStatusText: text });
     },
 
     lapDispose(action, now = Date.now()) {

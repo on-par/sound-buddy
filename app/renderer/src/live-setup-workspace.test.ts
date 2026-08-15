@@ -20,6 +20,9 @@ import { fileURLToPath } from 'node:url';
 
 const liveCapturePanelTsx = fs.readFileSync(fileURLToPath(new URL('./LiveCapturePanel.tsx', import.meta.url)), 'utf8');
 const inlineApp = fs.readFileSync(fileURLToPath(new URL('./inline-app.js', import.meta.url)), 'utf8');
+// TD-001 slice 6i (#712): the capture-start success path (onCaptureStarted →
+// markSetupComplete + banner removal) moved here from inline-app.js.
+const lifecycleTs = fs.readFileSync(fileURLToPath(new URL('./capture-lifecycle.ts', import.meta.url)), 'utf8');
 
 describe('Live tab guided first-use setup (#294)', () => {
   it('the board island renders an instructional hero when the workspace is empty', () => {
@@ -39,7 +42,7 @@ describe('Live tab guided first-use setup (#294)', () => {
   it('marks setup complete both on dismiss and on first successful capture start', () => {
     const occurrences =
       (liveCapturePanelTsx.split('markSetupComplete').length - 1)
-      + (inlineApp.split('markSetupComplete').length - 1);
+      + (lifecycleTs.split('markSetupComplete').length - 1);
     expect(occurrences).toBeGreaterThanOrEqual(2);
   });
 
@@ -59,10 +62,10 @@ describe('Live tab guided first-use setup (#294)', () => {
   });
 
   it('the capture-start success path also removes the rendered banner directly', () => {
-    // onCaptureStarted (still inline, 6i) removes the banner node when a
-    // capture actually starts, because renderChannelConfig() early-outs while
-    // liveRunning.
-    const onStarted = inlineApp.slice(inlineApp.indexOf('markSetupComplete'));
+    // onCaptureStarted (capture-lifecycle.ts, TD-001 slice 6i) removes the
+    // banner node when a capture actually starts, because the board render
+    // path early-outs while liveRunning.
+    const onStarted = lifecycleTs.slice(lifecycleTs.indexOf('markSetupComplete'));
     expect(onStarted).toContain('.live-setup-banner');
     expect(onStarted).toContain('.remove()');
   });

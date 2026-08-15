@@ -42,18 +42,12 @@
 <div id="curve-editor-island"></div>
 
 <!-- Rig name / confirm dialog. Electron's renderer has no window.prompt/confirm,
-     so Save As…, Rename and Delete drive this small inline modal instead. -->
-<div id="rig-dialog" class="rig-dialog" style="display:none" role="dialog" aria-modal="true" aria-labelledby="rig-dialog-title">
-  <div class="rig-dialog-card">
-    <div class="rig-dialog-title" id="rig-dialog-title"></div>
-    <div class="rig-dialog-msg" id="rig-dialog-msg" style="display:none"></div>
-    <input type="text" id="rig-dialog-input" class="rig-dialog-input" placeholder="Rig name" autocomplete="off" spellcheck="false" />
-    <div class="rig-dialog-actions">
-      <button type="button" id="rig-dialog-cancel" class="btn btn-secondary sm">Cancel</button>
-      <button type="button" id="rig-dialog-ok" class="btn btn-primary sm">Save</button>
-    </div>
-  </div>
-</div>
+     so Save As…, Rename and Delete drive this small inline modal instead.
+     Now RigDialog.tsx (TD-001 slice 6i, #712) renders it reactively from
+     rigDialogStore, portaled onto this static island; it keeps the same ids
+     (#rig-dialog/-title/-msg/-input/-ok/-cancel) and the window.rigDialog
+     promise API so the rig/group prompts are unchanged. -->
+<div id="rig-dialog-island"></div>
 
 <!-- License entry/status dialog (#54) — opened from the header badge, the
      Help ▸ License… menu item, and every "Upgrade" link. Validation is fully

@@ -17,38 +17,21 @@ const preflight = require('../../preflight.js');
 const armState = require('../../arm-state.js');
 const channelLabels = require('../../channel-labels.js');
 
-function makeFakeElement(initialValue = '') {
-  return { value: initialValue, style: { display: '' }, textContent: '', dispatchEvent: vi.fn() };
-}
-
-function makeFakeDocument() {
-  const liveStatus = makeFakeElement('');
-  const elements: Record<string, ReturnType<typeof makeFakeElement>> = {
-    'live-status': liveStatus,
-  };
-  return {
-    doc: { getElementById: (id: string) => elements[id] ?? null },
-    liveStatus,
-  };
-}
-
-let fakeDoc: ReturnType<typeof makeFakeDocument>;
 let rigDialog: ReturnType<typeof vi.fn>;
 
 beforeEach(() => {
-  fakeDoc = makeFakeDocument();
   rigDialog = vi.fn();
   (globalThis as { window?: unknown }).window = { rigReconcile, preflight, armState, channelLabels, rigDialog };
-  (globalThis as { document?: unknown }).document = fakeDoc.doc;
 });
 
 afterEach(() => {
   delete (globalThis as { window?: unknown }).window;
-  delete (globalThis as { document?: unknown }).document;
   useLiveCaptureStore.setState({
     devices: [], selectedDevice: '', channelConfig: [], channelGroups: [],
     liveMode: 'monitor', recordDir: '', measurementSource: null,
     meterIntervalMs: 100, windowSecs: 3, rigApplyNotice: null,
+    sessionOffers: { sessionDir: null, reportCard: false, notEnoughData: false },
+    liveCueVisible: true, liveStatusText: null,
   });
   useSettingsStore.setState({ settings: null, settingsError: null });
 });
@@ -154,7 +137,7 @@ describe('createRigStore', () => {
     it('surfaces an error status when setActiveRig rejects', async () => {
       const { store } = makeStore({ setActiveRig: async () => { throw new Error('nope'); } });
       await store.getState().selectRig('rig-1');
-      expect(fakeDoc.liveStatus.textContent).toBe('Could not select rig — check that Sound Buddy can write its settings.');
+      expect(useLiveCaptureStore.getState().liveStatusText).toBe('Could not select rig — check that Sound Buddy can write its settings.');
     });
 
     // Regression (PR #740 CI): rigApplyNotice must land on the store, not
@@ -208,7 +191,7 @@ describe('createRigStore', () => {
       store.setState({ rigs: [makeRig()], activeRigId: 'rig-1' });
       await store.getState().save();
       expect(store.getState().rigs[0].name).toBe('Main Board');
-      expect(fakeDoc.liveStatus.textContent).toBe('Saved "Main Board".');
+      expect(useLiveCaptureStore.getState().liveStatusText).toBe('Saved "Main Board".');
     });
 
     it('snapshots the current liveCaptureStore cadence, not a stale/DOM value (#725)', async () => {
@@ -230,7 +213,7 @@ describe('createRigStore', () => {
       const { store } = makeStore({ saveRig: async () => { throw new Error('disk full'); } });
       store.setState({ rigs: [makeRig()], activeRigId: 'rig-1' });
       await store.getState().save();
-      expect(fakeDoc.liveStatus.textContent).toBe('Could not save rig — check that Sound Buddy can write its settings.');
+      expect(useLiveCaptureStore.getState().liveStatusText).toBe('Could not save rig — check that Sound Buddy can write its settings.');
     });
   });
 
@@ -244,7 +227,7 @@ describe('createRigStore', () => {
       await store.getState().saveAs('Drum Kit');
       expect(store.getState().rigs).toEqual([created]);
       expect(store.getState().activeRigId).toBe('new-1');
-      expect(fakeDoc.liveStatus.textContent).toBe('Saved "Drum Kit".');
+      expect(useLiveCaptureStore.getState().liveStatusText).toBe('Saved "Drum Kit".');
     });
 
     it('ignores an all-whitespace name', async () => {
@@ -256,7 +239,7 @@ describe('createRigStore', () => {
     it('surfaces an error status when saveRig rejects', async () => {
       const { store } = makeStore({ saveRig: async () => { throw new Error('nope'); } });
       await store.getState().saveAs('New Rig');
-      expect(fakeDoc.liveStatus.textContent).toBe('Could not save rig — check that Sound Buddy can write its settings.');
+      expect(useLiveCaptureStore.getState().liveStatusText).toBe('Could not save rig — check that Sound Buddy can write its settings.');
     });
 
     it('snapshots the current liveCaptureStore cadence, not a stale/DOM value (#725)', async () => {
@@ -299,7 +282,7 @@ describe('createRigStore', () => {
       const { store } = makeStore({ saveRig: async () => { throw new Error('nope'); } });
       store.setState({ rigs: [makeRig()] });
       await store.getState().rename('rig-1', 'New Name');
-      expect(fakeDoc.liveStatus.textContent).toBe('Could not rename rig — check that Sound Buddy can write its settings.');
+      expect(useLiveCaptureStore.getState().liveStatusText).toBe('Could not rename rig — check that Sound Buddy can write its settings.');
     });
   });
 
@@ -315,7 +298,7 @@ describe('createRigStore', () => {
     it('surfaces an error status when deleteRig rejects', async () => {
       const { store } = makeStore({ deleteRig: async () => { throw new Error('nope'); } });
       await store.getState().remove('rig-1');
-      expect(fakeDoc.liveStatus.textContent).toBe('Could not delete rig — check that Sound Buddy can write its settings.');
+      expect(useLiveCaptureStore.getState().liveStatusText).toBe('Could not delete rig — check that Sound Buddy can write its settings.');
     });
   });
 
@@ -329,7 +312,7 @@ describe('createRigStore', () => {
       useLiveCaptureStore.setState({ channelConfig: [{ kind: 'mono', a: 0, b: 0 }], devices: DEVICES, selectedDevice: '0' });
       await store.getState().saveBaseline();
       expect(store.getState().activeRigId).toBe('seeded-1');
-      expect(fakeDoc.liveStatus.textContent).toBe('Baseline saved.');
+      expect(useLiveCaptureStore.getState().liveStatusText).toBe('Baseline saved.');
     });
 
     it('attaches the baseline to the already-active rig', async () => {
@@ -349,13 +332,13 @@ describe('createRigStore', () => {
     it('reports the Pro-license message distinctly from a generic save failure', async () => {
       const { store } = makeStore({ saveRig: async () => { throw new Error('requires a Pro license'); } });
       await store.getState().saveBaseline();
-      expect(fakeDoc.liveStatus.textContent).toBe('Saving a baseline requires a Pro license.');
+      expect(useLiveCaptureStore.getState().liveStatusText).toBe('Saving a baseline requires a Pro license.');
     });
 
     it('reports a generic failure message for a non-license error', async () => {
       const { store } = makeStore({ saveRig: async () => { throw new Error('disk full'); } });
       await store.getState().saveBaseline();
-      expect(fakeDoc.liveStatus.textContent).toBe('Could not save baseline — check that Sound Buddy can write its settings.');
+      expect(useLiveCaptureStore.getState().liveStatusText).toBe('Could not save baseline — check that Sound Buddy can write its settings.');
     });
   });
 

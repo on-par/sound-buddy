@@ -23,6 +23,9 @@ const workspaceViewTs = fs.readFileSync(fileURLToPath(new URL('./live-workspace-
 const settingsPanelTsx = fs.readFileSync(fileURLToPath(new URL('./SettingsPanel.tsx', import.meta.url)), 'utf8');
 const css = fs.readFileSync(fileURLToPath(new URL('./styles/app.css', import.meta.url)), 'utf8');
 const appTsx = fs.readFileSync(fileURLToPath(new URL('./App.tsx', import.meta.url)), 'utf8');
+// TD-001 slice 6i (#712): the capture lifecycle (whose onCaptureStarting calls
+// resetLapCoaching and whose onWindowTick advances coaching) moved here.
+const lifecycleTs = fs.readFileSync(fileURLToPath(new URL('./capture-lifecycle.ts', import.meta.url)), 'utf8');
 
 function functionBody(src: string, name: string): string {
   const marker = `function ${name}(`;
@@ -98,15 +101,18 @@ describe('Live adjustments gate wiring (#522)', () => {
     expect(body).toContain('measurementSource');
   });
 
-  it('window ticks advance the coaching state machine through the store (not inline-app.js)', () => {
-    const block = enclosingBlock(inlineApp, 'lcStore.getState().advanceLapCoaching()');
-    expect(block).toContain('sessionWindows.push');
-    expect(block).toContain('advanceLapCoaching()');
+  it('window ticks advance the coaching state machine through the lifecycle (not inline-app.js)', () => {
+    const block = enclosingBlock(lifecycleTs, 'sessionWindows.push(data)');
+    expect(block).toContain('sessionWindows.push(data)');
+    expect(block).toContain('deps.getLc().advanceLapCoaching()');
+    // inline-app.js just forwards the window tick to window.captureLifecycle.
+    expect(inlineApp).toContain('window.captureLifecycle?.onWindowTick?.(data)');
+    expect(inlineApp).not.toContain('lcStore.getState().advanceLapCoaching()');
   });
 
   it('starting a capture resets the coaching state through the store', () => {
-    const block = functionBody(inlineApp, 'onCaptureStarting');
-    expect(block).toContain('lcStore.getState().resetLapCoaching()');
+    const block = enclosingBlock(lifecycleTs, 'lc.resetLapCoaching()');
+    expect(block).toContain('lc.resetLapCoaching()');
   });
 
   it('the settingsStore subscriber re-syncs the Live pane on an actual flip', () => {
@@ -200,10 +206,13 @@ describe('Coaching stability wiring (#612)', () => {
   });
 
   it('createCoachingState is reachable from every reset path (boot seed, capture start, Clear, history load)', () => {
-    // The reset path is one store function called from three places; count the
-    // call sites across the still-inline script and the React components.
+    // The reset path is one store function called from multiple places; count
+    // the call sites across the still-inline boot seed and the 6i lifecycle
+    // module (which replaced inline-app.js's onCaptureStarting) plus the store
+    // action's own createCoachingState reach.
     const sites =
-      inlineApp.split('resetLapCoaching').length - 1
+      lifecycleTs.split('resetLapCoaching').length - 1
+      + inlineApp.split('resetLapCoaching').length - 1
       + liveCaptureStoreTs.split('createCoachingState()').length - 1;
     expect(sites).toBeGreaterThanOrEqual(3);
   });

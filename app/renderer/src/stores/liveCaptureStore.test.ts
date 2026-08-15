@@ -1141,4 +1141,52 @@ describe('createLiveCaptureStore', () => {
       expect(store.getState().armHint.visible).toBe(false);
     });
   });
+
+  describe('post-stop session chrome (TD-001 slice 6i, #712)', () => {
+    it('starts with no offers, the live cue visible, and no status text', () => {
+      const { store } = makeStore();
+      expect(store.getState().sessionOffers).toEqual({ sessionDir: null, reportCard: false, notEnoughData: false });
+      expect(store.getState().liveCueVisible).toBe(true);
+      expect(store.getState().liveStatusText).toBeNull();
+    });
+
+    it('setSessionOffers merges a partial patch onto the existing offers', () => {
+      const { store } = makeStore();
+      store.getState().setSessionOffers({ sessionDir: '/tmp/session' });
+      expect(store.getState().sessionOffers).toEqual({ sessionDir: '/tmp/session', reportCard: false, notEnoughData: false });
+      store.getState().setSessionOffers({ reportCard: true });
+      expect(store.getState().sessionOffers).toEqual({ sessionDir: '/tmp/session', reportCard: true, notEnoughData: false });
+      store.getState().setSessionOffers({ sessionDir: null, notEnoughData: true });
+      expect(store.getState().sessionOffers).toEqual({ sessionDir: null, reportCard: true, notEnoughData: true });
+    });
+
+    it('setLiveCueVisible hides/shows the #live-rc-cue cue', () => {
+      const { store } = makeStore();
+      store.getState().setLiveCueVisible(false);
+      expect(store.getState().liveCueVisible).toBe(false);
+      store.getState().setLiveCueVisible(true);
+      expect(store.getState().liveCueVisible).toBe(true);
+    });
+
+    it('setLiveStatusText stores the text as given; null hides the status line', () => {
+      const { store } = makeStore();
+      store.getState().setLiveStatusText('Monitoring · meters 10/s');
+      expect(store.getState().liveStatusText).toBe('Monitoring · meters 10/s');
+      store.getState().setLiveStatusText(null);
+      expect(store.getState().liveStatusText).toBeNull();
+      store.getState().setLiveStatusText('Connecting…');
+      expect(store.getState().liveStatusText).toBe('Connecting…');
+    });
+
+    it('the session chrome fields survive an unrelated store action', () => {
+      const { store } = makeStore();
+      store.getState().setSessionOffers({ sessionDir: '/tmp/s' });
+      store.getState().setLiveCueVisible(false);
+      store.getState().setLiveStatusText('x');
+      store.getState().setLiveMode('record');
+      expect(store.getState().sessionOffers.sessionDir).toBe('/tmp/s');
+      expect(store.getState().liveCueVisible).toBe(false);
+      expect(store.getState().liveStatusText).toBe('x');
+    });
+  });
 });

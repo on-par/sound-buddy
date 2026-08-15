@@ -159,19 +159,13 @@ export function applyRigPatch(
   };
 }
 
-/* c8 ignore start -- small DOM helper, no jsdom in this harness; exercised
-   by tests/rigs.spec.ts's #live-status assertions. */
-
 // Show (or clear) the muted status line under the Start button — port of
-// inline-app.js's setLiveStatus.
-export function setLiveStatusText(text: string | null): void {
-  const ls = document.getElementById('live-status');
-  if (!ls) return;
-  if (!text) { ls.style.display = 'none'; ls.textContent = ''; return; }
-  ls.textContent = text;
-  ls.style.display = 'block';
-}
-/* c8 ignore stop */
+// inline-app.js's setLiveStatus. TD-001 slice 6i (#712) deleted this DOM
+// helper entirely: the shared #live-status node is single-owned now, written
+// by rigStore (and the capture-lifecycle module) via
+// liveCaptureStore.setLiveStatusText and rendered reactively by
+// LiveStatusLine.tsx. The ambient `window.rigDialog` declaration above stays —
+// RigDialog.tsx (TD-001 slice 6i, #712) implements it.
 
 export interface RigOptionsView {
   placeholder: string;

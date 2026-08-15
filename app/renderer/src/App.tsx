@@ -77,6 +77,11 @@ import ConsoleNetworkConsentDialog from './ConsoleNetworkConsentDialog';
 import UpdateBanner from './UpdateBanner';
 import OnboardingDialog from './OnboardingDialog';
 import { useOnboardingStore } from './stores/onboardingStore';
+import { useLiveCaptureStore } from './stores/liveCaptureStore';
+import { useAnalysisStore } from './stores/analysisStore';
+import { useSpectrumStore } from './stores/spectrumStore';
+import { useRigStore } from './stores/rigStore';
+import { getSoundBuddy } from './useElectron';
 import FeedbackDialog from './FeedbackDialog';
 import GradeOwnGuideDialog from './GradeOwnGuideDialog';
 import PhaseDoublingDialog from './PhaseDoublingDialog';
@@ -84,6 +89,12 @@ import AnalyzeSourcePicker from './AnalyzeSourcePicker';
 import LiveArmHint from './LiveArmHint';
 import MeasurementBadge from './MeasurementBadge';
 import { installStoreBridge } from './stores/bridge';
+import { createCaptureLifecycle, type DawShellSeam, type PreflightApi, type RigReconcileApi, type ArmStateApi } from './capture-lifecycle';
+import LiveStatusLine from './LiveStatusLine';
+import LiveSessionOffers from './LiveSessionOffers';
+import WindowBadge from './WindowBadge';
+import RigDialog from './RigDialog';
+import type { LiveCaptureRuntime, LiveTransitionState } from './LiveControls';
 
 // Boot scripts in their original document order (#303): the 32 UMD helpers
 // (each attaches to `window`, see the classic-script comment above their old
@@ -213,6 +224,31 @@ export default function App() {
       script.textContent = src;
       document.body.appendChild(script);
     }
+    // TD-001 slice 6i (#712): install the capture-lifecycle module's runtime
+    // onto window.liveCaptureRuntime (the identical LiveCaptureRuntime bridge
+    // LiveControls.tsx's startLiveCapture/stopLiveCapture/recordCapture and
+    // mode-switch.ts's maybeAutoStartLive already call) and its onWindowTick
+    // onto window.captureLifecycle (inline-app.js's onLiveEvent window-tick
+    // branch) — replacing the deleted inline-app.js runtime assignment. The
+    // accessor deps are lazy so they resolve the boot-injected classic scripts
+    // only when a callback actually runs.
+    const lifecycle = createCaptureLifecycle({
+      getLc: () => useLiveCaptureStore.getState(),
+      getAna: () => useAnalysisStore.getState(),
+      getSpec: () => useSpectrumStore.getState(),
+      getRig: () => useRigStore.getState(),
+      sb: getSoundBuddy(),
+      liveTransition: () => (window as unknown as { liveTransitionState: LiveTransitionState }).liveTransitionState,
+      preflight: () => (window as unknown as { preflight: PreflightApi }).preflight,
+      rigReconcile: () => (window as unknown as { rigReconcile: RigReconcileApi }).rigReconcile,
+      armState: () => (window as unknown as { armState: ArmStateApi }).armState,
+      liveCapturePanelApi: liveCapturePanel,
+      reportCardChrome,
+      dawShell: () => (window as unknown as { dawShellRuntime?: DawShellSeam }).dawShellRuntime ?? null,
+      doc: document,
+    });
+    (window as unknown as { liveCaptureRuntime?: LiveCaptureRuntime }).liveCaptureRuntime = lifecycle.runtime;
+    window.captureLifecycle = { onWindowTick: lifecycle.onWindowTick };
     // First-run onboarding (#69, TD-001 slice 6f, #704): fires once
     // BOOT_SCRIPTS have synchronously executed above, so window.onboardingState
     // (onboarding-state.js, one of the 32 helpers) is guaranteed defined —
@@ -274,6 +310,15 @@ export default function App() {
           badge, portaled onto their root-markup islands. */}
       {booted && createPortal(<LiveArmHint />, document.getElementById('arm-hint-island')!)}
       {booted && createPortal(<MeasurementBadge />, document.getElementById('measurement-badge-island')!)}
+      {/* TD-001 slice 6i (#712): the post-stop session chrome + shared status
+          line, rendered from liveCaptureStore (sessionOffers/liveCueVisible/
+          liveStatusText) by these islands; the header #window-badge span inside
+          the static #live-indicator pill derives from liveWindows. RigDialog
+          replaces inline-app.js's rigDialog() modal with the same promise API. */}
+      {booted && createPortal(<LiveStatusLine />, document.getElementById('live-status-island')!)}
+      {booted && createPortal(<LiveSessionOffers />, document.getElementById('live-session-offers-island')!)}
+      {booted && createPortal(<WindowBadge />, document.getElementById('window-badge-island')!)}
+      {booted && createPortal(<RigDialog />, document.getElementById('rig-dialog-island')!)}
       {booted && <LicenseChrome />}
       {booted && <ConsoleNetworkConsentDialog />}
       {booted && <AnalyzeSourcePicker />}
