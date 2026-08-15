@@ -163,6 +163,14 @@ export interface InstrumentProfilesApi {
   effectiveProfileId(overridesForDevice: Record<string, string> | null | undefined, token: string, label: string | undefined): string;
   isKnownProfileId(id: string): boolean;
   profileById(id: string): { id: string; label: string; bands: Record<string, number> };
+  // TD-001 slice 6h (#711): the per-strip profile override write, reached by
+  // LiveCapturePanel's delegated .live-ch-profile branch (was inline-app.js).
+  recordOverride(
+    all: Record<string, Record<string, string>> | null | undefined,
+    deviceName: string,
+    token: string,
+    profileId: string,
+  ): Record<string, Record<string, string>>;
 }
 export interface LiveSetupStepsApi {
   setupSteps(view: { deviceReady: boolean; trackCount: number; liveMode: string }): LiveSetupStep[];

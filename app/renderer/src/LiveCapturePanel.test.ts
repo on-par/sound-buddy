@@ -4,7 +4,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { createElement } from 'react';
 import { renderToString } from 'react-dom/server';
-import LiveCapturePanel from './LiveCapturePanel';
+import LiveCapturePanel, { normalizeGroupName } from './LiveCapturePanel';
 import { useLiveCaptureStore } from './stores/liveCaptureStore';
 import { useSettingsStore } from './stores/settingsStore';
 import type { LiveDevice, ChannelWindowData } from './live-capture-panel';
@@ -175,5 +175,26 @@ describe('LiveCapturePanel', () => {
     expect(html).not.toContain('id="live-mode"');
     expect(html).not.toContain('id="live-start-btn"');
     expect(html).not.toContain('id="live-stop-btn"');
+  });
+});
+
+describe('normalizeGroupName (TD-001 slice 6h, #711)', () => {
+  it('trims a dialog-entered group name', () => {
+    expect(normalizeGroupName('  Drums  ')).toBe('Drums');
+  });
+
+  it('caps the name at MAX_LABEL_LEN (40)', () => {
+    expect(normalizeGroupName('a'.repeat(60))).toBe('a'.repeat(40));
+  });
+
+  it('returns null for an empty or whitespace-only name', () => {
+    expect(normalizeGroupName('')).toBeNull();
+    expect(normalizeGroupName('   ')).toBeNull();
+  });
+
+  it('returns null for non-string dialog results (cancel/confirm-mode)', () => {
+    expect(normalizeGroupName(null)).toBeNull();
+    expect(normalizeGroupName(true)).toBeNull();
+    expect(normalizeGroupName(false)).toBeNull();
   });
 });

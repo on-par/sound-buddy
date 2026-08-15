@@ -18,17 +18,30 @@
 // fold, setup-skip dismiss, lap dispositions, lap-focus-select, inline rename)
 // are delegated handlers on this wrapper div — the content is
 // dangerouslySetInnerHTML, so React-owned handlers must ride an ancestor. The
-// capture controls / channel-group CRUD (add/remove/arm/arm-all/kind/src/
-// group/profile/drag-reorder) stay on inline-app.js's #spectrum-body
-// listeners (slice 6h) — clicks on React-rendered controls bubble to them
-// unchanged.
+// 6h branches (TD-001 slice 6h, #711) live here too now: the capture controls
+// + channel-group CRUD (add/remove/arm/arm-all/kind/src/group/profile/drag-
+// reorder) moved off inline-app.js's #spectrum-body listeners, so the only
+// remaining inline-app.js listeners for this surface are the 6i lifecycle
+// callbacks. Group CRUD prompts reuse the shared imperative rigDialog (same
+// modal RigControls uses); drag-reorder state is a useRef (dragover/drop fire
+// on whatever element is under the pointer, not the drag source).
 
-import { useEffect, type ChangeEvent, type FocusEvent, type JSX, type KeyboardEvent, type MouseEvent } from 'react';
+import {
+  useEffect,
+  useRef,
+  type ChangeEvent,
+  type DragEvent,
+  type FocusEvent,
+  type JSX,
+  type KeyboardEvent,
+  type MouseEvent,
+} from 'react';
 import { useStoreShallow } from './stores/useStoreShallow';
-import { useLiveCaptureStore, type LapAction } from './stores/liveCaptureStore';
+import { useLiveCaptureStore, MAX_LABEL_LEN, type LapAction } from './stores/liveCaptureStore';
 import { useSettingsStore } from './stores/settingsStore';
 import { useSpectrumStore } from './stores/spectrumStore';
 import { iconSvg } from './report-card';
+import { deviceNameFor } from './live-capture-panel';
 import {
   liveAdjustmentsPanelHTML,
   liveSetupStepsHTML,
@@ -42,6 +55,9 @@ import {
   getLiveSetupState,
   getDawWorkspaceState,
   getDawShellRuntime,
+  getGroupState,
+  getArmState,
+  getInstrumentProfiles,
   liveWorkspaceViewState,
 } from './live-workspace-view';
 
@@ -76,6 +92,17 @@ function stripIndexIn(nameEl: Element): number {
 }
 /* c8 ignore stop */
 
+// Normalize a shared-dialog group-name result (#190) — trim, reject empty
+// (cancel/confirm-mode resolve to non-strings or blanks), cap at
+// MAX_LABEL_LEN. Ported from inline-app.js's createChannelGroup/
+// renameChannelGroup (TD-001 slice 6h, #711); pure so it's unit-testable.
+export function normalizeGroupName(raw: string | boolean | null): string | null {
+  if (typeof raw !== 'string') return null;
+  const trimmed = raw.trim();
+  if (!trimmed) return null;
+  return trimmed.slice(0, MAX_LABEL_LEN);
+}
+
 export default function LiveCapturePanel(): JSX.Element | null {
   const s = useStoreShallow(useLiveCaptureStore, (st) => ({
     channelConfig: st.channelConfig,
@@ -102,6 +129,12 @@ export default function LiveCapturePanel(): JSX.Element | null {
 
   const showShell = getDawWorkspaceState().showShell(settings, s.appMode);
   const laneSignature = showShell ? dawShellPatchView(state).laneSignature : '';
+
+  // Drag-reorder source (#483): { type:'group'|'strip', index } set on
+  // dragstart, cleared on drop/dragend. A ref (not state) because dragover/
+  // drop fire on whatever element is under the pointer, not the element that
+  // started the drag — no re-render is wanted mid-drag either.
+  const liveDragSrc = useRef<{ type: 'group' | 'strip'; index: number } | null>(null);
 
   /* c8 ignore start -- effect wiring + imperative chrome, no jsdom in this
      harness (renderToString doesn't run effects) — exercised by
@@ -190,6 +223,40 @@ export default function LiveCapturePanel(): JSX.Element | null {
       if (Number.isInteger(g)) useLiveCaptureStore.getState().toggleGroupCollapse(g);
       return;
     }
+    // ── 6h capture controls / channel-group CRUD (moved from inline-app.js's
+    // #spectrum-body click listener, TD-001 slice 6h #711) ────────────────────
+    // Workspace Add track (#188) + + New group (#190).
+    if (target.closest('#live-ws-add')) { useLiveCaptureStore.getState().addStrip(); return; }
+    if (target.closest('#live-ws-new-group')) { void createChannelGroup(); return; }
+    // Workspace per-row remove (#188).
+    const rmBtn = target.closest('.live-ch-x');
+    if (rmBtn) {
+      useLiveCaptureStore.getState().removeStrip(parseInt(rmBtn.closest('.live-ch')?.getAttribute('data-ch') ?? '', 10));
+      return;
+    }
+    // Workspace per-track arm toggle (#191) — arming clears the arm hint.
+    const armBtn = target.closest('.live-ch-arm');
+    if (armBtn) {
+      const idx = parseInt(armBtn.closest('.live-ch')?.getAttribute('data-ch') ?? '', 10);
+      useLiveCaptureStore.getState().toggleArm(idx);
+      useLiveCaptureStore.getState().hideArmHint();
+      return;
+    }
+    // Workspace Arm all / Disarm all (#191).
+    if (target.closest('#live-ws-arm-all')) {
+      useLiveCaptureStore.getState().setAllArmed(true);
+      useLiveCaptureStore.getState().hideArmHint();
+      return;
+    }
+    if (target.closest('#live-ws-disarm-all')) {
+      useLiveCaptureStore.getState().setAllArmed(false);
+      return;
+    }
+    // Group header rename / delete (#190): reuse the shared group dialog.
+    const gRename = target.closest('.live-group-rename');
+    if (gRename) { void renameChannelGroup(parseInt(gRename.closest('.live-group-head')?.getAttribute('data-group') ?? '', 10)); return; }
+    const gDel = target.closest('.live-group-del');
+    if (gDel) { void deleteChannelGroup(parseInt(gDel.closest('.live-group-head')?.getAttribute('data-group') ?? '', 10)); return; }
     // Strip selection (#668): clicking anywhere on a strip (but not one of its
     // interactive controls) inspects it in the docked EQ pane. The selected
     // class + aria-current derive from stripViewAt's `selected` field, so the
@@ -226,6 +293,43 @@ export default function LiveCapturePanel(): JSX.Element | null {
         if (Number.isInteger(idx)) useLiveCaptureStore.getState().setSelectedChannel(idx);
       }
     }
+    // Keyboard reorder (#483): Arrow Up/Down on a drag handle moves its group
+    // or track by one position — an accessible, deterministic alternative to
+    // HTML5 drag-and-drop (ported from inline-app.js's #spectrum-body keydown
+    // listener, TD-001 slice 6h #711). Frozen while capturing like the drag.
+    if (useLiveCaptureStore.getState().isCapturing || (e.key !== 'ArrowUp' && e.key !== 'ArrowDown')) return;
+    const dir = e.key === 'ArrowUp' ? -1 : 1;
+    const groupHandle = target.closest('.live-group-drag');
+    if (groupHandle) {
+      e.preventDefault();
+      const g = parseInt(groupHandle.closest('.live-group-head')?.getAttribute('data-group') ?? '', 10);
+      const to = g + dir;
+      const groups = useLiveCaptureStore.getState().channelGroups;
+      if (to < 0 || to >= groups.length) return;
+      useLiveCaptureStore.getState().moveGroup(g, to);
+      // React re-renders on the store write; re-focus the moved handle after
+      // the sync flush so the next Arrow press stays on it (#483).
+      requestAnimationFrame(() => {
+        document.querySelector<HTMLElement>(`#spectrum-body .live-group-head[data-group="${to}"] .live-group-drag`)?.focus();
+      });
+      return;
+    }
+    const stripHandle = target.closest('.live-ch-drag');
+    if (stripHandle) {
+      const idx = parseInt(stripHandle.closest('.live-ch')?.getAttribute('data-ch') ?? '', 10);
+      const groups = useLiveCaptureStore.getState().channelGroups;
+      const g = getGroupState().groupOf(groups, idx);
+      if (g === -1) return;
+      const members = groups[g].members;
+      const from = members.indexOf(idx);
+      const to = from + dir;
+      if (from === -1 || to < 0 || to >= members.length) return;
+      e.preventDefault();
+      useLiveCaptureStore.getState().moveChannelInGroup(g, from, to);
+      requestAnimationFrame(() => {
+        document.querySelector<HTMLElement>(`#spectrum-body .live-ch[data-ch="${idx}"] .live-ch-drag`)?.focus();
+      });
+    }
   }
 
   function onBoardChange(e: ChangeEvent<HTMLDivElement>): void {
@@ -236,6 +340,53 @@ export default function LiveCapturePanel(): JSX.Element | null {
     if (focusSel) {
       const value = (e.target as unknown as HTMLSelectElement).value;
       useLiveCaptureStore.getState().setFocusedInputIndex(value === '' ? null : parseInt(value, 10));
+      return;
+    }
+    // ── 6h inline track definition (#189) / group assignment (#190) / profile
+    // override (#524) — moved from inline-app.js's #spectrum-body change
+    // listener (TD-001 slice 6h #711). The board re-renders reactively. ──────
+    const kindSel = target.closest('.live-ch-kind');
+    if (kindSel) {
+      const idx = parseInt(kindSel.getAttribute('data-idx') ?? '', 10);
+      const lc = useLiveCaptureStore.getState();
+      if (!lc.channelConfig[idx]) return;
+      lc.setStripKind(idx, (e.target as unknown as HTMLSelectElement).value);
+      return;
+    }
+    const srcSel = target.closest('.live-ch-src');
+    if (srcSel) {
+      const idx = parseInt(srcSel.getAttribute('data-idx') ?? '', 10);
+      const lc = useLiveCaptureStore.getState();
+      if (!lc.channelConfig[idx]) return;
+      lc.setStripSource(
+        idx,
+        srcSel.getAttribute('data-field') as 'a' | 'b',
+        parseInt((e.target as unknown as HTMLSelectElement).value, 10),
+      );
+      return;
+    }
+    // Per-track group assignment (#190): write through groupState with its
+    // exclusive-membership rules.
+    const grpSel = target.closest('.live-ch-group');
+    if (grpSel) {
+      const idx = parseInt(grpSel.getAttribute('data-idx') ?? '', 10);
+      useLiveCaptureStore.getState().assignGroup(idx, parseInt((e.target as unknown as HTMLSelectElement).value, 10));
+      return;
+    }
+    // Per-input instrument-profile override (#524): write through
+    // recordOverride with its full-map replace discipline, then persist via
+    // settingsStore exactly as the inline listener did.
+    const profileSel = target.closest('.live-ch-profile');
+    if (profileSel) {
+      const idx = parseInt(profileSel.getAttribute('data-idx') ?? '', 10);
+      const lc = useLiveCaptureStore.getState();
+      const strip = lc.channelConfig[idx];
+      if (!strip) return;
+      const all = (useSettingsStore.getState().settings || {}).inputInstrumentProfiles || {};
+      const deviceName = deviceNameFor(lc.selectedDevice, lc.devices);
+      const next = getInstrumentProfiles().recordOverride(
+        all, deviceName, getArmState().stripToken(strip), (e.target as unknown as HTMLSelectElement).value);
+      void useSettingsStore.getState().updateSettings({ inputInstrumentProfiles: next });
     }
   }
 
@@ -252,12 +403,119 @@ export default function LiveCapturePanel(): JSX.Element | null {
     if (!strip || name.textContent === original) return;
     // setStripLabel (#482) trims/caps and persists keyed by device + strip
     // token; the board re-renders from the store, so the resolved name (label
-    // falls back to the device name / Ch N) flows through stripViewAt.
+    // falls back to the device name / Ch N) flows through stripViewAt. The
+    // measurement badge is MeasurementBadge.tsx now, derived reactively — the
+    // old window.renderMeasurementBadge() call is gone (TD-001 slice 6h #711).
     useLiveCaptureStore.getState().setStripLabel(stripIndexIn(name), name.textContent ?? '');
-    // Keep the header badge's measurement label in sync (renderMeasurementBadge
-    // is still-inline 6k chrome, reached by name like the 6h mutators do).
-    (window as unknown as { renderMeasurementBadge?: () => void }).renderMeasurementBadge?.();
     nameOriginals.set(name, name.textContent ?? '');
+  }
+
+  // ── 6h group CRUD (#41, #190) — shared dialog stays imperative (the same
+  // rigDialog RigControls uses); the store write re-renders the board. ──────
+  async function createChannelGroup(): Promise<void> {
+    const name = await window.rigDialog?.({ title: 'New group', value: '', confirmLabel: 'Create', withInput: true });
+    const trimmed = normalizeGroupName(name ?? null);
+    if (!trimmed) return;
+    useLiveCaptureStore.getState().addGroup(trimmed);
+  }
+
+  async function renameChannelGroup(g: number): Promise<void> {
+    const grp = useLiveCaptureStore.getState().channelGroups[g];
+    if (!grp) return;
+    const name = await window.rigDialog?.({ title: 'Rename group', value: grp.name, confirmLabel: 'Rename', withInput: true });
+    const trimmed = normalizeGroupName(name ?? null);
+    if (!trimmed) return;
+    useLiveCaptureStore.getState().renameGroup(g, trimmed);
+  }
+
+  async function deleteChannelGroup(g: number): Promise<void> {
+    const grp = useLiveCaptureStore.getState().channelGroups[g];
+    if (!grp) return;
+    const ok = await window.rigDialog?.({
+      title: 'Delete group',
+      msg: `Delete "${grp.name}"? Its tracks move to Ungrouped.`,
+      confirmLabel: 'Delete',
+      withInput: false,
+    });
+    if (!ok) return;
+    useLiveCaptureStore.getState().removeGroup(g);
+  }
+
+  // ── 6h drag-reorder (#483) — ported from inline-app.js's #spectrum-body
+  // drag listeners. Whole groups via .live-group-drag, or tracks within a
+  // group via .live-ch-drag; cross-group moves stay on the .live-ch-group
+  // dropdown. Uses getGroupState().groupOf for same-group validation. ──────
+  function onDragStart(e: DragEvent<HTMLDivElement>): void {
+    if (useLiveCaptureStore.getState().isCapturing) { e.preventDefault(); return; }
+    const target = e.target as Element;
+    const groupHandle = target.closest('.live-group-drag');
+    const stripHandle = target.closest('.live-ch-drag');
+    if (!groupHandle && !stripHandle) return;
+    if (groupHandle) {
+      liveDragSrc.current = { type: 'group', index: parseInt(groupHandle.closest('.live-group-head')?.getAttribute('data-group') ?? '', 10) };
+    } else if (stripHandle) {
+      liveDragSrc.current = { type: 'strip', index: parseInt(stripHandle.closest('.live-ch')?.getAttribute('data-ch') ?? '', 10) };
+    }
+    if (!liveDragSrc.current) return;
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', String(liveDragSrc.current.index));
+  }
+
+  function onDragOver(e: DragEvent<HTMLDivElement>): void {
+    const src = liveDragSrc.current;
+    if (!src) return;
+    const target = e.target as Element;
+    let dropTarget: Element | null = null;
+    if (src.type === 'group') {
+      const head = target.closest('.live-group-head[data-group]');
+      if (head && parseInt(head.getAttribute('data-group') ?? '', 10) >= 0) dropTarget = head;
+    } else {
+      const strip = target.closest('.live-ch');
+      if (strip) {
+        const groups = useLiveCaptureStore.getState().channelGroups;
+        const srcGroup = getGroupState().groupOf(groups, src.index);
+        if (srcGroup !== -1 && getGroupState().groupOf(groups, parseInt(strip.getAttribute('data-ch') ?? '', 10)) === srcGroup) dropTarget = strip;
+      }
+    }
+    document.querySelectorAll('#spectrum-body .drag-over').forEach((el) => { if (el !== dropTarget) el.classList.remove('drag-over'); });
+    if (!dropTarget) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    dropTarget.classList.add('drag-over');
+  }
+
+  function onDragLeave(e: DragEvent<HTMLDivElement>): void {
+    const el = (e.target as Element).closest('.live-group-head, .live-ch');
+    if (el) el.classList.remove('drag-over');
+  }
+
+  function onDrop(e: DragEvent<HTMLDivElement>): void {
+    document.querySelectorAll('#spectrum-body .drag-over').forEach((el) => el.classList.remove('drag-over'));
+    const src = liveDragSrc.current;
+    liveDragSrc.current = null;
+    if (!src) return;
+    e.preventDefault();
+    const target = e.target as Element;
+    const lc = useLiveCaptureStore.getState();
+    if (src.type === 'group') {
+      const head = target.closest('.live-group-head[data-group]');
+      const to = head ? parseInt(head.getAttribute('data-group') ?? '', 10) : -1;
+      if (head && to >= 0) lc.moveGroup(src.index, to);
+    } else {
+      const strip = target.closest('.live-ch');
+      if (strip) {
+        const g = getGroupState().groupOf(lc.channelGroups, src.index);
+        const members = (lc.channelGroups[g] && lc.channelGroups[g].members) || [];
+        const from = members.indexOf(src.index);
+        const to = members.indexOf(parseInt(strip.getAttribute('data-ch') ?? '', 10));
+        if (g !== -1 && from !== -1 && to !== -1) lc.moveChannelInGroup(g, from, to);
+      }
+    }
+  }
+
+  function onDragEnd(): void {
+    liveDragSrc.current = null;
+    document.querySelectorAll('#spectrum-body .drag-over').forEach((el) => el.classList.remove('drag-over'));
   }
   /* c8 ignore stop */
 
@@ -269,6 +527,11 @@ export default function LiveCapturePanel(): JSX.Element | null {
       onChange={onBoardChange}
       onFocus={onNameFocus}
       onBlur={onNameBlur}
+      onDragStart={onDragStart}
+      onDragOver={onDragOver}
+      onDragLeave={onDragLeave}
+      onDrop={onDrop}
+      onDragEnd={onDragEnd}
       dangerouslySetInnerHTML={{ __html: body }}
     />
   );
