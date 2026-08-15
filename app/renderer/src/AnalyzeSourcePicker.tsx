@@ -11,6 +11,7 @@
 // keeps gating the flag-off case even if the store is ever opened.
 
 import type { JSX } from 'react';
+import { useStoreShallow } from './stores/useStoreShallow';
 import { useAnalyzeSourceStore } from './stores/analyzeSourceStore';
 import { switchMode } from './mode-switch';
 import { iconSvg } from './report-card';
@@ -34,7 +35,9 @@ const SOURCES = [
 ];
 
 export default function AnalyzeSourcePicker(): JSX.Element | null {
-  const isOpen = useAnalyzeSourceStore((s) => s.isOpen);
+  // useStoreShallow (not the bound hook) so renderToString reads the LIVE
+  // store — see useStoreShallow.ts's header for why zustand's own hook can't.
+  const isOpen = useStoreShallow(useAnalyzeSourceStore, (s) => s.isOpen);
   if (!isOpen) return null;
 
   /* c8 ignore start -- click/Escape dispatch, no jsdom in this harness
