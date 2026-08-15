@@ -8,18 +8,23 @@ import { fileURLToPath } from 'node:url';
 // Unified "Analyze" source picker gate (#543, epic e17): offers exactly
 // three choices (file / live / soundcheck) at the moment a new analysis
 // starts, routing each to the flow the corresponding existing tab already
-// drives, unchanged. inline-app.js is coverage-excluded glue (see
-// vitest.config.ts), so its wiring is verified here the same way
-// single-column-gate.test.ts and ai-dock-gate.test.ts encode their
-// acceptance criteria.
+// drives, unchanged. Since TD-001 slice 6h (#711) the picker is React-owned
+// (AnalyzeSourcePicker.tsx + analyzeSourceStore.ts, replacing inline-app.js's
+// static overlay + window.analyzeSourcePicker open/close bridge) — the
+// picker's markup/dispatch acceptance criteria are encoded here the same way
+// single-column-gate.test.ts and ai-dock-gate.test.ts encode theirs. The
+// routing logic itself (analyzeSourceState.targetModeFor) stays a classic
+// script, unit-tested in analyze-source-state.js's own suite.
 
 const inlineApp = fs.readFileSync(fileURLToPath(new URL('./inline-app.js', import.meta.url)), 'utf8');
 const appTsx = fs.readFileSync(fileURLToPath(new URL('./App.tsx', import.meta.url)), 'utf8');
+const pickerTsx = fs.readFileSync(fileURLToPath(new URL('./AnalyzeSourcePicker.tsx', import.meta.url)), 'utf8');
+const pickerStoreTs = fs.readFileSync(fileURLToPath(new URL('./stores/analyzeSourceStore.ts', import.meta.url)), 'utf8');
 const rootMarkup = fs.readFileSync(fileURLToPath(new URL('./root-markup.html', import.meta.url)), 'utf8');
 const appCss = fs.readFileSync(fileURLToPath(new URL('./styles/app.css', import.meta.url)), 'utf8');
 const analyzeSourceState = fs.readFileSync(fileURLToPath(new URL('../analyze-source-state.js', import.meta.url)), 'utf8');
-// The reportcard-load-btn gating moved into ReportCardToolbar.tsx's onClick
-// (TD-001 slice 6e, #703) — scan it instead of inline-app.js for that piece.
+// The reportcard-load-btn gating lives in ReportCardToolbar.tsx's onClick
+// (TD-001 slice 6e, #703) — scan it for that piece.
 const reportCardToolbarTsx = fs.readFileSync(fileURLToPath(new URL('./ReportCardToolbar.tsx', import.meta.url)), 'utf8');
 
 describe('Unified Analyze source picker gate (#543)', () => {
@@ -32,24 +37,34 @@ describe('Unified Analyze source picker gate (#543)', () => {
     expect(analyzeSourceIdx).toBeLessThan(inlineIdx);
   });
 
-  it('root-markup.html has exactly three data-analyze-source choices, one per source', () => {
-    const matches = rootMarkup.match(/data-analyze-source=/g) || [];
-    expect(matches.length).toBe(3);
-    expect(rootMarkup).toContain('data-analyze-source="file"');
-    expect(rootMarkup).toContain('data-analyze-source="live"');
-    expect(rootMarkup).toContain('data-analyze-source="soundcheck"');
+  it('App.tsx mounts AnalyzeSourcePicker as a direct child (like LicenseChrome), gated on booted', () => {
+    expect(appTsx).toContain("import AnalyzeSourcePicker from './AnalyzeSourcePicker';");
+    expect(appTsx).toContain('booted && <AnalyzeSourcePicker />');
   });
 
-  it('root-markup.html hides the picker so flag-off never paints it (no flash)', () => {
-    expect(rootMarkup).toMatch(/id="analyze-source-picker"[^>]*\bhidden\b/);
+  it('AnalyzeSourcePicker has exactly three data-analyze-source choices, one per source', () => {
+    // The SOURCES table drives the rendered choices — it carries exactly the
+    // three ids, mapped through one data-analyze-source binding. The rendered
+    // three-button output is pinned by AnalyzeSourcePicker.test.tsx.
+    expect(pickerTsx).toContain('data-analyze-source={s.id}');
+    expect(pickerTsx).toContain("{ id: 'file', icon: 'file-audio'");
+    expect(pickerTsx).toContain("{ id: 'live', icon: 'radio'");
+    expect(pickerTsx).toContain("{ id: 'soundcheck', icon: 'sliders'");
+    const ids = ['file', 'live', 'soundcheck'];
+    const sourceLines = (pickerTsx.match(/\{ id: '[a-z]+', icon: '[a-z-]+'/g) || []);
+    expect(sourceLines).toHaveLength(3);
+    expect(ids.every((id) => pickerTsx.includes(`id: '${id}'`))).toBe(true);
+  });
+
+  it('root-markup no longer carries the static overlay — the picker renders nothing until the store opens it (no flash)', () => {
+    expect(rootMarkup).not.toContain('id="analyze-source-picker"');
+    expect(pickerStoreTs).toContain('isOpen: false');
+    expect(pickerTsx).toContain('if (!isOpen) return null;');
   });
 
   it('the picker markup does not duplicate the Pro gate or tab lock', () => {
-    const pickerMatch = rootMarkup.match(/<div class="source-picker"[\s\S]*?<\/div>\s*<\/div>/);
-    expect(pickerMatch).not.toBeNull();
-    const picker = pickerMatch![0];
-    expect(picker).not.toContain('pro-gate');
-    expect(picker).not.toContain('tab-lock');
+    expect(pickerTsx).not.toContain('pro-gate');
+    expect(pickerTsx).not.toContain('tab-lock');
   });
 
   it('ReportCardToolbar.tsx gates the picker through reportFirstUxState.isEnabled, never reading settings directly', () => {
@@ -58,27 +73,37 @@ describe('Unified Analyze source picker gate (#543)', () => {
     expect(reportCardToolbarTsx).not.toContain('settings.reportFirstUxEnabled');
   });
 
-  it('inline-app.js routes chosen sources through analyzeSourceState.targetModeFor', () => {
-    expect(inlineApp).toContain('window.analyzeSourceState.targetModeFor(');
+  it('AnalyzeSourcePicker routes chosen sources through analyzeSourceState.targetModeFor', () => {
+    expect(pickerTsx).toContain('window as unknown as { analyzeSourceState: AnalyzeSourceStateApi }');
+    expect(pickerTsx).toContain('targetModeFor(id)');
   });
 
-  it('inline-app.js surfaces an error instead of silently no-opping on an unrecognized source id', () => {
+  it('AnalyzeSourcePicker surfaces an error instead of silently no-opping on an unrecognized source id', () => {
     // targetModeFor returns undefined for an unknown id specifically so a typo
     // "fails loudly instead of silently no-op'ing" (analyze-source-state.js) —
-    // the picker's click handler must honor that contract, not just close.
-    expect(inlineApp).toMatch(/mode === undefined[\s\S]{0,160}console\.error/);
+    // the picker's choice dispatch must honor that contract, not just close.
+    expect(pickerTsx).toMatch(/mode === undefined[\s\S]{0,160}console\.error/);
   });
 
   it('inline-app.js still falls back to chooseAndAnalyzeFile when the flag is off (additive guarantee)', () => {
     expect(inlineApp).toContain('function chooseAndAnalyzeFile()');
-    expect(inlineApp).toContain('chooseAndAnalyzeFile();');
+    expect(inlineApp).toContain('window.chooseAndAnalyzeFile = chooseAndAnalyzeFile');
   });
 
-  it('inline-app.js opens/closes the picker and wires cancel + Escape', () => {
-    expect(inlineApp).toContain('function openAnalyzeSourcePicker()');
-    expect(inlineApp).toContain('function closeAnalyzeSourcePicker()');
-    expect(inlineApp).toContain("getElementById('source-picker-cancel')");
-    expect(inlineApp).toMatch(/key === 'Escape'[\s\S]{0,120}closeAnalyzeSourcePicker\(\)/);
+  it('the file source routes through the bridged chooseAndAnalyzeFile', () => {
+    expect(pickerTsx).toContain('getChooseAndAnalyzeFile()?.()');
+  });
+
+  it('AnalyzeSourcePicker wires cancel + Escape to the store close action', () => {
+    expect(pickerTsx).toContain('id="source-picker-cancel"');
+    expect(pickerTsx).toContain("if (e.key === 'Escape') useAnalyzeSourceStore.getState().close()");
+    expect(pickerTsx).toContain('onClick={() => useAnalyzeSourceStore.getState().close()}');
+  });
+
+  it('ModeTabs opens the picker through the store, not a window bridge', () => {
+    const modeTabsTsx = fs.readFileSync(fileURLToPath(new URL('./ModeTabs.tsx', import.meta.url)), 'utf8');
+    expect(modeTabsTsx).toContain('useAnalyzeSourceStore.getState().open()');
+    expect(modeTabsTsx).not.toContain('getAnalyzeSourcePicker()');
   });
 
   it('app.css contains the belt-and-braces flag-off rule', () => {

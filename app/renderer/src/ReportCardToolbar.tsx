@@ -14,6 +14,7 @@ import { useSpectrumStore } from './stores/spectrumStore';
 import { useLiveCaptureStore } from './stores/liveCaptureStore';
 import { useFeedbackDialogStore } from './stores/feedbackDialogStore';
 import { useGradeOwnGuideStore } from './stores/gradeOwnGuideStore';
+import { useAnalyzeSourceStore } from './stores/analyzeSourceStore';
 import { spectrumTransport } from './spectrum-transport';
 import { resolveReportCardChromeSource, reportCardChromeView, getReportCardSource, persistSummary } from './report-card-chrome';
 import { iconSvg, buildMetricRows, type ReportCardSource, type GradingPillApi } from './report-card';
@@ -35,9 +36,6 @@ interface AnalyzeSourceStateApi {
 interface ReportFirstUxStateApi {
   isEnabled(settings: unknown): boolean;
 }
-interface AnalyzeSourcePickerApi {
-  open(): void;
-}
 function getGrading(): GradingApi {
   return (window as unknown as { grading: GradingApi }).grading;
 }
@@ -46,9 +44,6 @@ function getAnalyzeSourceState(): AnalyzeSourceStateApi {
 }
 function getReportFirstUxState(): ReportFirstUxStateApi {
   return (window as unknown as { reportFirstUxState: ReportFirstUxStateApi }).reportFirstUxState;
-}
-function getAnalyzeSourcePicker(): AnalyzeSourcePickerApi | undefined {
-  return (window as unknown as { analyzeSourcePicker?: AnalyzeSourcePickerApi }).analyzeSourcePicker;
 }
 function getChooseAndAnalyzeFile(): (() => Promise<void>) | undefined {
   return (window as unknown as { chooseAndAnalyzeFile?: () => Promise<void> }).chooseAndAnalyzeFile;
@@ -212,7 +207,9 @@ export default function ReportCardToolbar(): JSX.Element {
           /* c8 ignore next -- click dispatch, no jsdom */
           onClick={() => {
             if (getAnalyzeSourceState().isPickerEnabled(getReportFirstUxState().isEnabled(settings))) {
-              getAnalyzeSourcePicker()?.open();
+              // TD-001 slice 6h (#711): the picker is analyzeSourceStore-owned
+              // now — open() replaces the deleted window.analyzeSourcePicker bridge.
+              useAnalyzeSourceStore.getState().open();
             } else {
               void getChooseAndAnalyzeFile()?.();
             }

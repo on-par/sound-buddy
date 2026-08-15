@@ -11,18 +11,9 @@
 import { useState, type JSX } from 'react';
 import { useStoreShallow } from './stores/useStoreShallow';
 import { useLiveCaptureStore } from './stores/liveCaptureStore';
+import { useAnalyzeSourceStore } from './stores/analyzeSourceStore';
 import { resolveModeSwitch, switchMode } from './mode-switch';
 import { iconSvg } from './report-card';
-
-interface AnalyzeSourcePickerApi {
-  open(): void;
-}
-/* c8 ignore start -- only reachable from handleClick's ignored click dispatch
-   below (no jsdom, so click events can't fire in this harness). */
-function getAnalyzeSourcePicker(): AnalyzeSourcePickerApi | undefined {
-  return (window as unknown as { analyzeSourcePicker?: AnalyzeSourcePickerApi }).analyzeSourcePicker;
-}
-/* c8 ignore stop */
 
 interface TabDef {
   mode: string;
@@ -66,7 +57,9 @@ export default function ModeTabs(): JSX.Element {
   function handleClick(mode: string): void {
     const decision = resolveModeSwitch(mode, useLiveCaptureStore.getState().appMode);
     if (decision.type === 'noop') return;
-    if (decision.type === 'openPicker') { getAnalyzeSourcePicker()?.open(); return; }
+    // TD-001 slice 6h (#711): the picker is analyzeSourceStore-owned now —
+    // open() replaces the deleted window.analyzeSourcePicker bridge.
+    if (decision.type === 'openPicker') { useAnalyzeSourceStore.getState().open(); return; }
     if (decision.type === 'redirect') {
       handleClick(decision.mode);
       setHistoryActive(true);

@@ -79,6 +79,7 @@ import { useOnboardingStore } from './stores/onboardingStore';
 import FeedbackDialog from './FeedbackDialog';
 import GradeOwnGuideDialog from './GradeOwnGuideDialog';
 import PhaseDoublingDialog from './PhaseDoublingDialog';
+import AnalyzeSourcePicker from './AnalyzeSourcePicker';
 import { installStoreBridge } from './stores/bridge';
 
 // Boot scripts in their original document order (#303): the 32 UMD helpers
@@ -265,6 +266,7 @@ export default function App() {
       {booted && createPortal(<RingoutPanel />, document.getElementById('tab-ringout')!)}
       {booted && <LicenseChrome />}
       {booted && <ConsoleNetworkConsentDialog />}
+      {booted && <AnalyzeSourcePicker />}
       {booted && createPortal(<UpdateBanner />, document.getElementById('update-banner-island')!)}
     </>
   );

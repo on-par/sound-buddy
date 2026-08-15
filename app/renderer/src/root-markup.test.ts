@@ -88,12 +88,13 @@ describe('Live tab reads as always-listening, never capture (#777)', () => {
     expect(liveTab).not.toMatch(/>[^<]*[Cc]apture[^<]*</);
   });
 
-  it('purges "capture" from the Analyze source-picker live option', () => {
-    const liveOptionStart = markup.indexOf('data-analyze-source="live"');
-    const liveOptionEnd = markup.indexOf('</button>', liveOptionStart);
+  it('purges "capture" from the Analyze source-picker live option (TD-001 slice 6h, #711 — now AnalyzeSourcePicker.tsx)', () => {
+    const pickerTsx = fs.readFileSync(fileURLToPath(new URL('./AnalyzeSourcePicker.tsx', import.meta.url)), 'utf8');
+    const liveOptionStart = pickerTsx.indexOf("id: 'live'");
+    const liveOptionEnd = pickerTsx.indexOf('}', liveOptionStart);
     expect(liveOptionStart).toBeGreaterThan(-1);
     expect(liveOptionEnd).toBeGreaterThan(liveOptionStart);
-    const liveOption = markup.slice(liveOptionStart, liveOptionEnd);
+    const liveOption = pickerTsx.slice(liveOptionStart, liveOptionEnd);
     expect(liveOption).not.toMatch(/[Cc]apture/);
   });
 
