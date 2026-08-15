@@ -62,7 +62,6 @@ import CurveEditorDialog from './CurveEditorDialog';
 import RecordButton from './RecordButton';
 import LiveWorkspace from './LiveWorkspace';
 import LiveEqPane from './LiveEqPane';
-import LiveStatsRow from './LiveStatsRow';
 import SoundcheckPanel from './SoundcheckPanel';
 import ModeTabs from './ModeTabs';
 import * as modeSwitch from './mode-switch';

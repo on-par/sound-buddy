@@ -17,7 +17,7 @@
 
 import { useLayoutEffect, useState, type JSX, type MouseEvent as ReactMouseEvent, type KeyboardEvent as ReactKeyboardEvent, type ChangeEvent as ReactChangeEvent } from 'react';
 import { useStoreShallow } from './stores/useStoreShallow';
-import { useLiveCaptureStore } from './stores/liveCaptureStore';
+import { useLiveCaptureStore, deviceNameFor } from './stores/liveCaptureStore';
 import { useSettingsStore } from './stores/settingsStore';
 import { useSpectrumStore } from './stores/spectrumStore';
 import {
@@ -26,13 +26,13 @@ import {
   dawShellShowing,
   heroHTML,
   liveAdjustmentsPanelHTML,
+  liveBoardShowing,
   liveBoardState,
   workspaceIsEmpty,
   markSetupGuideComplete,
   resolveStripName,
   lapFocusView,
   lapObservationContext,
-  patchEqPane,
 } from './live-board';
 
 declare global {
@@ -83,29 +83,26 @@ function wireLiveNameEdit(nameEl: HTMLElement): void {
 // LiveEqPane react), matching inline-app.js's selectStrip().
 function selectStrip(idx: number): void {
   useLiveCaptureStore.getState().setSelectedChannel(idx);
-  document.querySelectorAll('#spectrum-body .live-ch').forEach((el) => {
-    const sel = parseInt((el as HTMLElement).dataset.ch ?? '', 10) === idx;
-    el.classList.toggle('selected', sel);
-    if (sel) el.setAttribute('aria-current', 'true');
-    else el.removeAttribute('aria-current');
-  });
-  patchEqPane(useLiveCaptureStore.getState());
 }
 /* c8 ignore stop */
 
 export default function LiveCapturePanel(): JSX.Element | null {
-  const { appMode, channelConfig, channelGroups, isCapturing, liveMode, devices, selectedDevice, boardShapeVersion, hasTick } =
-    useStoreShallow(useLiveCaptureStore, (s) => ({
-      appMode: s.appMode,
-      channelConfig: s.channelConfig,
-      channelGroups: s.channelGroups,
-      isCapturing: s.isCapturing,
-      liveMode: s.liveMode,
-      devices: s.devices,
-      selectedDevice: s.selectedDevice,
-      boardShapeVersion: s.boardShapeVersion,
-      hasTick: s.lastTick !== null,
-    }));
+  const {
+    appMode, channelConfig, channelGroups, isCapturing, liveMode, devices, selectedDevice,
+    boardShapeVersion, hasTick, selectedChannel, measurementSource,
+  } = useStoreShallow(useLiveCaptureStore, (s) => ({
+    appMode: s.appMode,
+    channelConfig: s.channelConfig,
+    channelGroups: s.channelGroups,
+    isCapturing: s.isCapturing,
+    liveMode: s.liveMode,
+    devices: s.devices,
+    selectedDevice: s.selectedDevice,
+    boardShapeVersion: s.boardShapeVersion,
+    hasTick: s.lastTick !== null,
+    selectedChannel: s.selectedChannel,
+    measurementSource: s.measurementSource,
+  }));
   const settings = useStoreShallow(useSettingsStore, (s) => s.settings);
   const lapCoaching = useStoreShallow(useLiveCaptureStore, (s) => s.lapCoaching);
   const focusedInputIndex = useStoreShallow(useLiveCaptureStore, (s) => s.focusedInputIndex);
@@ -142,6 +139,14 @@ export default function LiveCapturePanel(): JSX.Element | null {
     // erase it).
     const panel = useSpectrumStore.getState();
     if (panel.panelState !== 'error' && panel.panelState !== 'loading') panel.setPanelState('meters');
+    // The header stats row + ideal-profile wrap: flex while the meter board is
+    // showing (capturing with a tick), none while idle — the chrome the old
+    // renderLiveMeters/renderLiveWorkspace toggled (mirrors renderLiveMeters'
+    // 'flex' vs renderLiveWorkspace's 'none').
+    const row = document.getElementById('stats-row');
+    if (row) row.style.display = liveBoardShowing(liveBoardState()) ? 'flex' : 'none';
+    const ipWrap = document.getElementById('ideal-profile-wrap');
+    if (ipWrap) ipWrap.style.display = 'none';
     // Re-wire inline name edits after a DOM rebuild; nodes React keeps are
     // skipped (they already carry their wiring).
     document.querySelectorAll('#live-island .sb-live-meters .live-ch-name').forEach((nameEl) => {
@@ -151,7 +156,7 @@ export default function LiveCapturePanel(): JSX.Element | null {
       wireLiveNameEdit(el);
     });
     if (dawShell) window.liveDawShellRepaint?.();
-  }, [dawShell, appMode, boardShapeVersion, channelConfig, channelGroups, isCapturing, liveMode, devices, selectedDevice, hasTick, lapCoaching, focusedInputIndex, settings]);
+  }, [dawShell, appMode, boardShapeVersion, channelConfig, channelGroups, isCapturing, liveMode, devices, selectedDevice, hasTick, selectedChannel, measurementSource, lapCoaching, focusedInputIndex, settings]);
 
   const handleClick = (e: ReactMouseEvent<HTMLDivElement>) => {
     const target = e.target as HTMLElement;
@@ -165,8 +170,15 @@ export default function LiveCapturePanel(): JSX.Element | null {
     const lapActionBtn = target.closest('[data-lap-action]');
     if (lapActionBtn) {
       const s = useLiveCaptureStore.getState();
-      const focus = lapFocusView(s.channelConfig, s.lastLiveChannels, s.focusedInputIndex, liveBoardState());
-      const context = lapObservationContext(s.liveWindows, s.measurementSource, focus, s.channelConfig);
+      const deviceName = deviceNameFor(s.selectedDevice, s.devices);
+      const savedProfiles = ((useSettingsStore.getState().settings || {}).inputInstrumentProfiles || {})[deviceName] || {};
+      const focus = lapFocusView({
+        focusedIndex: s.focusedInputIndex,
+        channelConfig: s.channelConfig,
+        channels: s.lastLiveChannels,
+        savedInstrumentProfiles: savedProfiles,
+      });
+      const context = lapObservationContext(s.liveWindows, s.measurementSource, focus);
       s.applyLapAction(lapActionBtn.getAttribute('data-lap-action') ?? '', Date.now(), context);
       return;
     }

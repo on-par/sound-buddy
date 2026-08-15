@@ -17,6 +17,7 @@ import { useGradeOwnGuideStore } from './stores/gradeOwnGuideStore';
 import { spectrumTransport } from './spectrum-transport';
 import { resolveReportCardChromeSource, reportCardChromeView, getReportCardSource, persistSummary } from './report-card-chrome';
 import { iconSvg, buildMetricRows, type ReportCardSource, type GradingPillApi } from './report-card';
+import { fileStatsRowView, patchStatsRow } from './live-board';
 import type { AnalysisPayload } from '@sound-buddy/shared';
 import * as reportExport from './report-export';
 import * as shareCard from './share-card';
@@ -155,8 +156,16 @@ export function applyStatusTransition(status: string, currentAnalysis: AnalysisP
   } else if (status === 'cancelled') {
     useSpectrumStore.getState().setPanelState('empty');
   } else if (status === 'done' && currentAnalysis) {
-    // The stats row is React-rendered by LiveStatsRow from analysisStore
-    // (slice 6g #710) — no imperative stats-row write here.
+    const row = typeof document !== 'undefined' ? document.getElementById('stats-row') : null;
+    // live-board's fileStatsRowView reads the analysis payload's sox/spectrum
+    // maps (rmsDbfs/peakDbfs/dynamicRangeDb/clipping/spectralCentroid) — the
+    // concrete AnalysisPayload types widen through the generic map shape.
+    if (row) {
+      patchStatsRow(row, fileStatsRowView(
+        currentAnalysis.sox as unknown as Record<string, unknown>,
+        currentAnalysis.spectrum as unknown as Record<string, unknown>,
+      ));
+    }
     persistSummary(getReportCardSource(currentAnalysis, liveSource), 'file');
   }
 }

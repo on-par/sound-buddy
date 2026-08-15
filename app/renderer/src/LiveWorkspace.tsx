@@ -9,7 +9,7 @@
 // round-trip through React state: the live-meter-controller mounted below
 // coalesces every store change into ONE snapshot per animation frame and
 // patches the React-rendered DOM straight from liveCaptureStore — the board
-// strips (patchBoardTick), the docked EQ pane (patchEqPane), the header stats
+// strips (patchLiveBoard), the docked EQ pane (patchEqPane), the header stats
 // row (patchStatsRow), and the top-right dB readout (patchLevelReadout) — all
 // never through React. This replaces inline-app.js's
 // window.liveWorkspaceRuntime.patchTick/renderWorkspace, which are deleted.
@@ -17,11 +17,35 @@
 import { useEffect, type JSX } from 'react';
 import { useStoreShallow } from './stores/useStoreShallow';
 import { useLiveCaptureStore } from './stores/liveCaptureStore';
+import { useSettingsStore } from './stores/settingsStore';
 import { createLiveMeterController } from './live-meter-controller';
 import { liveLevelReadout, patchLevelReadout } from './live-level-readout';
-import { patchBoardTick, patchEqPane, patchStatsRow } from './live-board';
-import type { LiveEvent } from './live-capture-panel';
+import {
+  liveStatsRowView,
+  patchEqPane,
+  patchLiveBoard,
+  patchStatsRow,
+  eqPaneViewFor,
+  type LiveBoardDeps,
+} from './live-board';
+import { deviceNameFor, type LiveCaptureState } from './stores/liveCaptureStore';
+import { measurementChannel, type LiveEvent } from './live-capture-panel';
 import LiveCapturePanel from './LiveCapturePanel';
+
+// The per-tick patch inputs resolved from the stores each coalesced snapshot —
+// mirrors inline-app.js's old renderLiveMeters patch path (channelConfig/
+// channelGroups/selectedChannel/isCapturing + saved instrument profiles).
+function liveBoardDeps(state: LiveCaptureState): LiveBoardDeps {
+  const deviceName = deviceNameFor(state.selectedDevice, state.devices);
+  const savedInstrumentProfiles = ((useSettingsStore.getState().settings || {}).inputInstrumentProfiles || {})[deviceName] || {};
+  return {
+    channelConfig: state.channelConfig,
+    channelGroups: state.channelGroups,
+    selectedChannel: state.selectedChannel,
+    isCapturing: state.isCapturing,
+    savedInstrumentProfiles,
+  };
+}
 
 export default function LiveWorkspace(): JSX.Element {
   const appMode = useStoreShallow(useLiveCaptureStore, (s) => s.appMode);
@@ -52,12 +76,21 @@ export default function LiveWorkspace(): JSX.Element {
         // Fresh tick objects repaint the board (gated exactly like the old
         // window.liveWorkspaceRuntime.patchTick gating); the EQ pane, stats
         // row, and header readout refresh on every coalesced snapshot.
+        const state = useLiveCaptureStore.getState();
         if (snap.lastTick && snap.lastTick !== lastPatchedTick) {
           lastPatchedTick = snap.lastTick;
-          patchBoardTick(useLiveCaptureStore.getState());
+          const island = document.getElementById('live-island');
+          if (island) patchLiveBoard(island, snap.lastTick, liveBoardDeps(state));
         }
-        patchEqPane(useLiveCaptureStore.getState());
-        patchStatsRow(useLiveCaptureStore.getState(), 'live');
+        const eqPaneBody = document.getElementById('live-eq-pane-body');
+        if (eqPaneBody) patchEqPane(eqPaneBody, eqPaneViewFor(state));
+        // The Room channel drives the header stats row (the secondary room mic
+        // when active, else the measurement-source board strip) — #460.
+        const roomCh = snap.secondaryActive
+          ? (snap.lastMeasurementChannels?.[0] ?? null)
+          : measurementChannel(snap.lastTick?.channels, snap.measurementSource);
+        const statsRow = document.getElementById('stats-row');
+        if (statsRow && roomCh) patchStatsRow(statsRow, liveStatsRowView(roomCh));
         const el = document.getElementById('live-level-readout');
         if (el) patchLevelReadout(el, liveLevelReadout(snap));
       },

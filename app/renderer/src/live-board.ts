@@ -227,65 +227,73 @@ export function resolveStripName(strip: StripConfig | null, ch: LiveMeterChannel
 }
 
 // Strip view adapter — port of inline-app.js's stripViewAt(idx, ch), taking
-// the config/channel/idx + board state as parameters instead of reading the
-// module-level vars (#307 pattern).
-export function stripViewAt(config: StripConfig[], ch: LiveMeterChannel, idx: number, state: LiveBoardState): StripView {
-  const groupIndex = getGroupState().groupOf(state.channelGroups, idx);
-  const token = config[idx] ? getArmState().stripToken(config[idx]) : String(idx);
-  const savedProfiles = savedInstrumentProfilesForDevice(state);
+// its inputs as one StripViewInput struct instead of reading the module-level
+// vars (#307 pattern).
+export function stripViewAt(input: StripViewInput): StripView {
+  const { index: idx, ch, channelConfig, channelGroups, selectedChannel, savedInstrumentProfiles } = input;
+  const groupIndex = getGroupState().groupOf(channelGroups, idx);
+  const token = channelConfig[idx] ? getArmState().stripToken(channelConfig[idx]) : String(idx);
   return {
-    strip: config[idx] || null,
-    displayName: getRigReconcile().resolveStripLabel(config[idx], ch, idx),
-    selected: state.selectedChannel === idx,
-    armed: getArmState().isArmed(config[idx]),
+    strip: channelConfig[idx] || null,
+    displayName: getRigReconcile().resolveStripLabel(channelConfig[idx], ch, idx),
+    selected: selectedChannel === idx,
+    armed: getArmState().isArmed(channelConfig[idx]),
     groupIndex,
-    groupCollapsed: getGroupState().isGroupCollapsed(state.channelGroups, groupIndex),
-    instrumentProfileId: getInstrumentProfiles().effectiveProfileId(savedProfiles, token, config[idx] && config[idx].label),
-    instrumentAuto: !(savedProfiles[token] && getInstrumentProfiles().isKnownProfileId(savedProfiles[token])),
+    groupCollapsed: getGroupState().isGroupCollapsed(channelGroups, groupIndex),
+    instrumentProfileId: getInstrumentProfiles().effectiveProfileId(savedInstrumentProfiles, token, channelConfig[idx] && channelConfig[idx].label),
+    instrumentAuto: !(savedInstrumentProfiles[token] && getInstrumentProfiles().isKnownProfileId(savedInstrumentProfiles[token])),
   };
 }
 
 // Panel view adapter — port of inline-app.js's livePanelView().
-export function livePanelView(state: LiveBoardState): PanelView {
+export function livePanelView(input: LivePanelViewInput): PanelView {
   return {
-    deviceChannels: deviceChannelCount(state.selectedDevice, state.devices),
-    liveRunning: state.isCapturing,
-    groups: state.channelGroups,
+    deviceChannels: input.deviceChannels,
+    liveRunning: input.liveRunning,
+    groups: input.channelGroups,
     instrumentProfiles: getInstrumentProfiles().PROFILES.map((p) => ({ id: p.id, label: p.label })),
   };
 }
 
+// The channel array backing the EQ pane right now (#668): a live tick's
+// channels while any have arrived this session, else the idle placeholder set —
+// the same fallback liveChannelAt() uses for the #39 name resolution, kept in
+// one place so every patch/render call site agrees on "current". Port of
+// inline-app.js's currentEqPaneChannels().
+export function currentPaneChannels(
+  lastLiveChannels: LiveMeterChannel[] | null | undefined,
+  channelConfig: StripConfig[],
+): LiveMeterChannel[] {
+  return lastLiveChannels && lastLiveChannels.length > 0 ? lastLiveChannels : idleChannelsFor(channelConfig);
+}
+
 // Focused-input view for the per-input instrument-aware adjustment candidates
 // panel (#525) — port of inline-app.js's lapFocusView().
-export function lapFocusView(
-  config: StripConfig[],
-  channels: LiveMeterChannel[] | null,
-  focusedIndex: number | null,
-  state: LiveBoardState,
-): LapFocusView {
-  const savedProfiles = savedInstrumentProfilesForDevice(state);
+export function lapFocusView(input: LapFocusInput): LapFocusView {
+  const { focusedIndex, channelConfig, channels, savedInstrumentProfiles } = input;
   const profs = getInstrumentProfiles();
   return {
     focusedIndex,
-    inputs: config.map((strip, idx) => ({
+    inputs: channelConfig.map((strip, idx) => ({
       index: idx,
       name: getRigReconcile().resolveStripLabel(strip, channels ? channels[idx] : null, idx),
       profile: profs.profileById(
-        profs.effectiveProfileId(savedProfiles, getArmState().stripToken(strip), strip && strip.label)),
+        profs.effectiveProfileId(savedInstrumentProfiles, getArmState().stripToken(strip), strip && strip.label)),
     })),
   };
 }
 
 // Observation context for #614 — port of inline-app.js's lapObservationContext().
 export function lapObservationContext(
-  liveWindows: LiveEvent[],
+  windows: LiveEvent[],
   measurementSource: number | null,
-  focus: LapFocusView,
-  config: StripConfig[],
+  focusView: LapFocusView,
 ): unknown {
   const idx = measurementSource == null ? 0 : measurementSource;
-  return getLiveAdjustmentsState().observationContext(
-    liveWindows, measurementSource, focus, measurementSourceOptionLabel(config[idx], idx));
+  // The source display label the evaluation context carries: the focused
+  // input's resolved name for the resolved measurement source strip.
+  const sourceName = focusView.inputs[idx]?.name ?? '';
+  return getLiveAdjustmentsState().observationContext(windows, measurementSource, focusView, sourceName);
 }
 
 // Shared "Add track" disabled rule (device channel cap or a capture running,
@@ -374,10 +382,22 @@ export function boardHTML(state: LiveBoardState): string {
   const config = state.channelConfig;
   const usingIdle = !(state.isCapturing && state.lastTick?.channels?.length);
   const channels = usingIdle ? idleChannelsFor(config) : state.lastTick!.channels as LiveMeterChannel[];
-  const stripViews = channels.map((c, i) => stripViewAt(config, c, i, state));
+  const savedProfiles = savedInstrumentProfilesForDevice(state);
+  const stripViews = channels.map((c, i) => stripViewAt({
+    index: i,
+    ch: c,
+    channelConfig: config,
+    channelGroups: state.channelGroups,
+    selectedChannel: state.selectedChannel,
+    savedInstrumentProfiles: savedProfiles,
+  }));
   return bannerHTML(state)
     + workspaceToolbarHTML(state)
-    + `<div class="meter-card sb-live-meters${usingIdle ? ' idle' : ''}">${liveMetersHTML(channels, stripViews, livePanelView(state))}</div>`;
+    + `<div class="meter-card sb-live-meters${usingIdle ? ' idle' : ''}">${liveMetersHTML(channels, stripViews, livePanelView({
+      deviceChannels: deviceChannelCount(state.selectedDevice, state.devices),
+      liveRunning: state.isCapturing,
+      channelGroups: state.channelGroups,
+    }))}</div>`;
 }
 
 // Timeline-oriented DAW shell markup (#517, epic #515) — port of
@@ -429,15 +449,16 @@ export function liveStatsRowView(ch: LiveMeterChannel): LiveStatsRowView {
 }
 
 // File stats-row view — port of inline-app.js's updateStatsRow() (996).
-export function fileStatsRowView(sox: unknown, spectrum: unknown): LiveStatsRowView {
-  const s = sox as { rmsDbfs?: number; peakDbfs?: number; dynamicRangeDb?: number; clipping?: boolean } | null | undefined;
-  const sp = spectrum as { spectralCentroid?: number } | null | undefined;
-  const rmsDbfs = s && typeof s.rmsDbfs === 'number' ? s.rmsDbfs : NaN;
-  const peakDbfs = s && typeof s.peakDbfs === 'number' ? s.peakDbfs : NaN;
-  const drDb = s && typeof s.dynamicRangeDb === 'number' ? s.dynamicRangeDb : NaN;
-  const clipping = !!(s && s.clipping);
-  const centroid = sp && typeof sp.spectralCentroid === 'number'
-    ? Math.round(sp.spectralCentroid).toLocaleString()
+export function fileStatsRowView(
+  sox: Record<string, unknown> | null | undefined,
+  spectrum: Record<string, unknown> | null | undefined,
+): LiveStatsRowView {
+  const rmsDbfs = typeof sox?.rmsDbfs === 'number' ? sox.rmsDbfs : NaN;
+  const peakDbfs = typeof sox?.peakDbfs === 'number' ? sox.peakDbfs : NaN;
+  const drDb = typeof sox?.dynamicRangeDb === 'number' ? sox.dynamicRangeDb : NaN;
+  const clipping = !!(sox && sox.clipping);
+  const centroid = spectrum && typeof spectrum.spectralCentroid === 'number'
+    ? Math.round(spectrum.spectralCentroid).toLocaleString()
     : '—';
   return {
     rms: { text: fmt(rmsDbfs), tone: rmsDbfs > -6 ? 'check' : '' },
@@ -468,10 +489,26 @@ export function liveBoardShowing(state: LiveBoardState): boolean {
 // Resolves the EQ pane's channel set the same way the board resolves its own
 // (tick channels while capturing, idle placeholders otherwise) so React's
 // LiveEqPane render and the patchEqPane applier always converge.
-function eqPaneChannelsFor(state: LiveCaptureState): LiveMeterChannel[] {
-  if (state.isCapturing && state.lastTick?.channels?.length) return state.lastTick.channels as LiveMeterChannel[];
-  if (state.isCapturing && state.lastLiveChannels?.length) return state.lastLiveChannels;
-  return idleChannelsFor(state.channelConfig);
+export function eqPaneChannelsFor(state: LiveCaptureState): LiveMeterChannel[] {
+  if (!state.isCapturing) return idleChannelsFor(state.channelConfig);
+  return currentPaneChannels(state.lastTick?.channels ?? state.lastLiveChannels, state.channelConfig);
+}
+
+// The full EqPaneView the controller's patchEqPane writes and LiveEqPane
+// renders — port of inline-app.js's renderEqPane() view resolution (channels,
+// measurement source, selected channel, and the #460 secondary Room override).
+export function eqPaneViewFor(state: LiveCaptureState): EqPaneView {
+  const channels = eqPaneChannelsFor(state);
+  const secondaryActive = state.secondaryMeasurement.status === 'active' && state.secondaryWindows.length > 0;
+  const roomOverride = secondaryActive
+    ? getMeasurementDeviceState().roomPaneOverride(
+      secondaryActive,
+      state.secondaryWindows,
+      state.lastMeasurementChannels,
+      state.secondaryMeasurement.deviceName,
+    )
+    : null;
+  return eqPaneView(channels, state.channelConfig, state.measurementSource, state.selectedChannel, roomOverride);
 }
 
 function boardStateFrom(state: LiveCaptureState): LiveBoardState {
@@ -502,12 +539,18 @@ function boardStateFrom(state: LiveCaptureState): LiveBoardState {
 // — port of inline-app.js's syncLiveAdjustmentsPanel()'s panelHTML call, with
 // the coaching/focused-input views resolved from store state.
 export function liveAdjustmentsPanelHTML(state: LiveBoardState): string {
+  const savedProfiles = savedInstrumentProfilesForDevice(state);
   return getLiveAdjustmentsState().panelHTML(
     state.settings,
     state.appMode,
     state.liveWindows,
     state.measurementSource,
-    lapFocusView(state.channelConfig, state.lastLiveChannels, state.focusedInputIndex, state),
+    lapFocusView({
+      focusedIndex: state.focusedInputIndex,
+      channelConfig: state.channelConfig,
+      channels: state.lastLiveChannels,
+      savedInstrumentProfiles: savedProfiles,
+    }),
     state.lapCoaching,
     Date.now(),
   );
@@ -544,36 +587,57 @@ function patchEqPaneSection(sectionEl: Element | null, patch: EqPanePatchPlan['p
   else patchBarsAndLabels(sectionEl, patch.curve.db);
 }
 
-function setStat(id: string, value: string, tone: string): void {
-  const el = document.getElementById(id);
+function setStat(root: Element, id: string, value: string, tone: string): void {
+  const el = root.querySelector(`#${id}`);
   if (!el) return;
   el.textContent = value;
   el.className = 'stat-num' + (tone ? ' ' + tone : '');
 }
 /* c8 ignore stop */
 
+// The pure "what changed" plan for one coalesced tick on the board (slice 6g
+// #710) — the per-strip view + group-summary deltas, computed once per tick and
+// consumed by patchLiveBoard. Fully unit-tested; the applier is c8-ignored.
+export interface LiveBoardPatchPlan {
+  stripViews: StripView[];
+  summaries: Array<{ group: number; text: string; clipping: boolean }>;
+}
+
+export function liveBoardPatchPlan(tick: LiveEvent, deps: LiveBoardDeps): LiveBoardPatchPlan {
+  const channels = (tick.channels ?? []) as LiveMeterChannel[];
+  const stripViews = channels.map((ch, i) => stripViewAt({
+    index: i,
+    ch,
+    channelConfig: deps.channelConfig,
+    channelGroups: deps.channelGroups,
+    selectedChannel: deps.selectedChannel,
+    savedInstrumentProfiles: deps.savedInstrumentProfiles,
+  }));
+  const summaries = deps.channelGroups.map((grp, g) => {
+    const summary = groupSummary(channels, grp.members);
+    return { group: g, text: groupSummaryText(summary), clipping: summary.clipping };
+  });
+  return { stripViews, summaries };
+}
+
 /* c8 ignore start -- DOM-patching applier, no jsdom in this harness; exercised
    by tests/e2e/live-capture.spec.ts (board strips patch in place between
    ticks, group summaries refresh) + named-channel-groups.spec.ts. */
-export function patchBoardTick(state: LiveCaptureState): void {
-  const win = state.lastTick;
-  const body = document.getElementById('live-island');
-  if (!body || !win || !win.channels || win.channels.length === 0) return;
-  const boardState = boardStateFrom(state);
-  // Patch in place only while the strip set is unchanged; a shape change is
-  // React's job (LiveCapturePanel rebuilds via boardShapeVersion).
-  const stripEls = body.querySelectorAll('.sb-live-meters .live-ch');
-  if (stripEls.length !== win.channels.length) return;
-  win.channels.forEach((ch, i) => {
-    const el = body.querySelector(`.sb-live-meters .live-ch[data-ch="${i}"]`);
-    if (el) patchLiveChannel(el, ch, i, stripViewAt(state.channelConfig, ch, i, boardState), state.isCapturing);
+export function patchLiveBoard(root: Element, tick: LiveEvent, deps: LiveBoardDeps): void {
+  const channels = tick.channels;
+  if (!channels || channels.length === 0) return;
+  const stripEls = root.querySelectorAll('.sb-live-meters .live-ch');
+  if (stripEls.length !== channels.length) return;
+  const plan = liveBoardPatchPlan(tick, deps);
+  channels.forEach((ch, i) => {
+    const el = root.querySelector(`.sb-live-meters .live-ch[data-ch="${i}"]`);
+    if (el) patchLiveChannel(el, ch, i, plan.stripViews[i], deps.isCapturing);
   });
-  state.channelGroups.forEach((grp, g) => {
-    const summaryEl = body.querySelector(`.sb-live-meters .live-group-head[data-group="${g}"] .live-group-summary`);
+  plan.summaries.forEach((s) => {
+    const summaryEl = root.querySelector(`.sb-live-meters .live-group-head[data-group="${s.group}"] .live-group-summary`);
     if (!summaryEl) return;
-    const summary = groupSummary(win.channels as LiveMeterChannel[], grp.members);
-    summaryEl.textContent = groupSummaryText(summary);
-    if (summary.clipping) summaryEl.insertAdjacentHTML('beforeend', '<span class="live-ch-clip">CLIP</span>');
+    summaryEl.textContent = s.text;
+    if (s.clipping) summaryEl.insertAdjacentHTML('beforeend', '<span class="live-ch-clip">CLIP</span>');
   });
 }
 /* c8 ignore stop */
@@ -581,51 +645,29 @@ export function patchBoardTick(state: LiveCaptureState): void {
 /* c8 ignore start -- DOM-patching applier, no jsdom in this harness; exercised
    by tests/e2e/live-capture.spec.ts (the "a new tick updates bars and arc in
    place" case asserts the .sb-spectrum-curve node is patched, never rebuilt). */
-export function patchEqPane(state: LiveCaptureState): void {
-  const el = document.getElementById('live-eq-pane-body');
-  if (!el) return;
-  const boardState = boardStateFrom(state);
-  const channels = eqPaneChannelsFor(state);
-  const roomOverride = getMeasurementDeviceState().roomPaneOverride(
-    boardState.secondaryActive,
-    state.secondaryWindows,
-    state.lastMeasurementChannels,
-    state.secondaryMeasurement.deviceName,
-  );
-  const view = eqPaneView(channels, state.channelConfig, state.measurementSource, state.selectedChannel, roomOverride);
+export function patchEqPane(root: Element, view: EqPaneView): void {
   const signature = eqPaneSignature(view);
-  if (el.dataset.signature !== signature) {
-    el.innerHTML = eqPaneHTML(view);
-    el.dataset.signature = signature;
+  if (root.dataset.signature !== signature) {
+    root.innerHTML = eqPaneHTML(view);
+    root.dataset.signature = signature;
     return;
   }
   const plan = eqPanePatchPlan(view);
-  patchEqPaneSection(el.querySelector('.eq-pane-primary'), plan.primary);
-  patchEqPaneSection(el.querySelector('.eq-pane-secondary'), plan.secondary);
+  patchEqPaneSection(root.querySelector('.eq-pane-primary'), plan.primary);
+  patchEqPaneSection(root.querySelector('.eq-pane-secondary'), plan.secondary);
 }
 /* c8 ignore stop */
 
 /* c8 ignore start -- DOM-patching applier, no jsdom in this harness; exercised
    by tests/e2e/live-capture.spec.ts (live stats cells update at meter cadence,
    row visibility follows the board). */
-export function patchStatsRow(state: LiveCaptureState, mode: 'live' | 'file'): void {
-  // File-mode cells + display are React-rendered by LiveStatsRow from
-  // analysisStore — nothing to patch here.
-  if (mode === 'file') return;
-  const row = document.getElementById('stats-row');
-  if (!row) return;
-  const boardState = boardStateFrom(state);
-  row.style.display = liveBoardShowing(boardState) ? 'flex' : 'none';
-  const ch = boardState.secondaryActive
-    ? measurementChannel(state.lastMeasurementChannels ?? undefined, 0)
-    : measurementChannel(state.lastTick?.channels ?? undefined, state.measurementSource);
-  if (!ch) return;
-  const view = liveStatsRowView(ch);
-  setStat('stat-rms', view.rms.text, view.rms.tone);
-  setStat('stat-peak', view.peak.text, view.peak.tone);
-  setStat('stat-dr', view.dr.text, view.dr.tone);
-  setStat('stat-clip', view.clip.text, view.clip.tone);
-  const centroidEl = document.getElementById('stat-centroid');
+export function patchStatsRow(root: Element, view: LiveStatsRowView): void {
+  setStat(root, 'stat-rms', view.rms.text, view.rms.tone);
+  setStat(root, 'stat-peak', view.peak.text, view.peak.tone);
+  setStat(root, 'stat-dr', view.dr.text, view.dr.tone);
+  setStat(root, 'stat-clip', view.clip.text, view.clip.tone);
+  const centroidEl = root.querySelector('#stat-centroid');
   if (centroidEl) centroidEl.textContent = view.centroid;
 }
 /* c8 ignore stop */
+1786763791

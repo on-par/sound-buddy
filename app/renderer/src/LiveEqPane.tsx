@@ -24,7 +24,7 @@ import {
   eqPaneSignature,
   type LiveMeterChannel,
 } from './live-capture-panel';
-import { idleChannelsFor } from './live-board';
+import { currentPaneChannels } from './live-board';
 import { roomPaneOverride } from './measurement-device-state';
 
 export default function LiveEqPane(): JSX.Element {
@@ -46,8 +46,8 @@ export default function LiveEqPane(): JSX.Element {
   // capturing, idle placeholders otherwise) so the pane and board agree, and
   // matches patchEqPane's eqPaneChannelsFor exactly.
   const channels: LiveMeterChannel[] = isCapturing
-    ? ((snap.lastTick?.channels?.length ? snap.lastTick.channels : snap.lastLiveChannels) as LiveMeterChannel[]) || idleChannelsFor(channelConfig)
-    : idleChannelsFor(channelConfig);
+    ? currentPaneChannels(snap.lastTick?.channels ?? snap.lastLiveChannels, channelConfig)
+    : currentPaneChannels(null, channelConfig);
   const roomOverride = secondaryActive
     ? roomPaneOverride(secondaryActive, snap.secondaryWindows, snap.lastMeasurementChannels, secondaryMeasurement.deviceName)
     : null;
