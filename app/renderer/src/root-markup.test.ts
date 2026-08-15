@@ -205,9 +205,10 @@ describe('Secondary measurement device source (#460, React-owned per #724)', () 
     expect(inlineApp).not.toContain('secondaryReconnectTimer');
   });
 
-  it('inline-app.js still routes the Room feed through roomFeed(), and exposes afterSecondaryMeasurementChange to the React runtime', () => {
-    expect(inlineApp).toContain('roomFeed()');
+  it('exposes afterSecondaryMeasurementChange to the React runtime (kept as a no-op until 6k — the Room badge is MeasurementBadge.tsx now, TD-001 slice 6h #711)', () => {
+    expect(inlineApp).toContain('afterSecondaryStateChange');
     expect(inlineApp).toContain('afterSecondaryMeasurementChange');
+    expect(inlineApp).not.toContain('function renderMeasurementBadge');
   });
 });
 

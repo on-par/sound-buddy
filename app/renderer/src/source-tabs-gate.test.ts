@@ -73,12 +73,15 @@ describe('Source tabs gate (#544)', () => {
     expect(hideIdx).toBeGreaterThan(baseIdx);
   });
 
-  it('the three flows stay reachable: routing tabs are in the DOM and the picker still simulates a click', () => {
+  it('the three flows stay reachable: routing tabs are in the DOM and the picker routes through switchMode (TD-001 slice 6h, #711)', () => {
+    const pickerTsx = fs.readFileSync(fileURLToPath(new URL('./AnalyzeSourcePicker.tsx', import.meta.url)), 'utf8');
     expect(modeTabsMarkup).toContain('data-mode="dir"');
     expect(modeTabsMarkup).toContain('data-mode="live"');
     expect(modeTabsMarkup).toContain('data-mode="soundcheck"');
-    expect(inlineApp).toContain('document.querySelector(`.mode-tab[data-mode="${mode}"]`).click();');
-    expect(inlineApp).toContain('window.analyzeSourceState.targetModeFor(');
+    // The picker used to simulate a tab click; it now calls switchMode directly
+    // (mode-switch.ts) — same destination, one less DOM round trip.
+    expect(pickerTsx).toContain('switchMode(mode)');
+    expect(pickerTsx).toContain('targetModeFor(id)');
   });
 
   it('analyze-source-state.js still routes live and soundcheck through targetModeFor', () => {

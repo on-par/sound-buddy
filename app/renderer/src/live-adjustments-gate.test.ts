@@ -164,11 +164,13 @@ describe('Per-input instrument-aware adjustment candidates (#525)', () => {
     expect(body).toContain('focusedInputIndex: measurementSourceAfterRemove(');
   });
 
-  it('a device switch clears the focused input through the store', () => {
-    // resetChannelConfig and window.liveCaptureRuntime.selectDevice both route
-    // the reset through the store.
-    const occurrences = inlineApp.split('lcStore.getState().setFocusedInputIndex(null)').length - 1;
-    expect(occurrences).toBeGreaterThanOrEqual(2);
+  it('a device switch clears the focused input through the store (TD-001 slice 6h, #711)', () => {
+    // The deleted resetChannelConfig()/window.liveCaptureRuntime.selectDevice
+    // wrappers were absorbed into liveCaptureStore's selectDevice/loadDevices
+    // (covered by liveCaptureStore.test.ts) — inline-app.js no longer re-asserts
+    // the reset itself.
+    expect(liveCaptureStoreTs).toContain('focusedInputIndex: null,');
+    expect(inlineApp).not.toContain('lcStore.getState().setFocusedInputIndex(null)');
   });
 
   it('app.css styles the focused-input selector and candidate list', () => {

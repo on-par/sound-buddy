@@ -253,7 +253,7 @@ test.describe('Live capture (PRD 06)', () => {
   test('per-channel labels: workspace inline rename and fallback (#39)', async () => {
     // A running capture keeps the tick-rendered board live-patched rather than
     // resynced to idle placeholders (which carry no device name) on every
-    // renderChannelConfig() triggered by a label commit.
+    // label-commit re-render.
     await window.locator('#record-button').click();
     await expect(window.locator('#live-indicator .live-txt')).toHaveText('REC');
 

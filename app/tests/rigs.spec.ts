@@ -454,10 +454,10 @@ test.describe.serial('Rigs — save / load / switch', () => {
     await expect(win.locator('#settings-audio-capture-lock-note')).toBeVisible();
     await closeSettings(win);
     await expect(win.locator('#spectrum-body .live-ch-kind').first()).toBeDisabled();
-    // The workspace toolbar's Add track is rebuilt (not just re-flagged) by
-    // Start's renderLiveWorkspace() call, which runs AFTER setCaptureControlsLocked()
-    // — the rebuilt markup bakes in `disabled` (via defDisabled) but not
-    // aria-disabled, so only `disabled` is asserted here.
+    // The workspace toolbar's Add track is rebuilt by Start's React board
+    // re-render (TD-001 slice 6h, #711) — the rebuilt markup bakes in
+    // `disabled` (derived from isCapturing) but not aria-disabled, so only
+    // `disabled` is asserted here.
     await expect(win.locator('#live-ws-add')).toBeDisabled();
     await expect(win.locator('#live-ws-arm-all')).toBeDisabled();
 
@@ -493,21 +493,20 @@ test.describe.serial('Rigs — save / load / switch', () => {
     await expect(win.locator('#record-button')).toBeEnabled();
   });
 
-  test('the capture lock re-asserts idempotently on every config-changed callback', async () => {
+  test('the capture lock derives from store state on every re-render (no imperative re-assert needed)', async () => {
     await stubCapture(true);
     await win.locator('#record-button').click();
-    // Start's renderLiveWorkspace() rebuilds the pane right after the initial
-    // lock, so only `disabled` (baked into the rebuilt markup) is guaranteed
-    // yet — see the aria-disabled note on the Start/Stop test above.
+    // Start's React board rebuild bakes in `disabled` (via the store-derived
+    // stamps) but not aria-disabled, so only `disabled` is asserted here.
     await expect(win.locator('#spectrum-body .live-ch-kind').first()).toBeDisabled();
-    // Every mutator (arm/rename/group/kind change) funnels through
-    // renderChannelConfig() as its "config changed" callback; while a capture
-    // is running it doesn't rebuild the workspace pane (that's owned by the
-    // rAF tick, #188) but must re-assert the lock without erroring. With no
-    // further rebuild after this point, aria-disabled now holds too.
-    await win.evaluate(() => (window as unknown as { renderChannelConfig: () => void }).renderChannelConfig());
+    // Every config mutator funnels through the store; the board re-renders with
+    // the disabled stamps re-derived from liveCaptureStore.isCapturing at render
+    // time (TD-001 slice 6h, #711) — the old window.renderChannelConfig()
+    // capture-lock re-assert is gone, and the lock still holds after a write.
+    await win.evaluate(() => {
+      (window as unknown as { rendererStores: { liveCapture: { getState: () => { setStripKind: (idx: number, kind: string) => void } } } }).rendererStores.liveCapture.getState().setStripKind(0, 'stereo');
+    });
     await expect(win.locator('#spectrum-body .live-ch-kind').first()).toBeDisabled();
-    await expect(win.locator('#spectrum-body .live-ch-kind').first()).toHaveAttribute('aria-disabled', 'true');
     await win.locator('#record-button').click();
   });
 });
