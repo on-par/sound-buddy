@@ -71,6 +71,7 @@ import UpgradeMomentum from './UpgradeMomentum';
 import RecentServicesPanel from './RecentServicesPanel';
 import BuildGuidePanel from './BuildGuidePanel';
 import RingoutPanel from './RingoutPanel';
+import DirectoryPanel from './DirectoryPanel';
 import LicenseChrome from './LicenseChrome';
 import ConsoleNetworkConsentDialog from './ConsoleNetworkConsentDialog';
 import UpdateBanner from './UpdateBanner';
@@ -264,6 +265,9 @@ export default function App() {
       {booted && createPortal(<RecentServicesPanel />, document.getElementById('tab-recent')!)}
       {booted && createPortal(<BuildGuidePanel />, document.getElementById('tab-guide')!)}
       {booted && createPortal(<RingoutPanel />, document.getElementById('tab-ringout')!)}
+      {/* TD-001 slice 6h (#711): the Directory tab's batch panel, portaled
+          onto the now-empty #tab-dir node. */}
+      {booted && createPortal(<DirectoryPanel />, document.getElementById('tab-dir')!)}
       {booted && <LicenseChrome />}
       {booted && <ConsoleNetworkConsentDialog />}
       {booted && <AnalyzeSourcePicker />}

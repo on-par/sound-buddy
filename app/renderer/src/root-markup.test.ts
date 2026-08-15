@@ -17,10 +17,12 @@ const markup = fs.readFileSync(fileURLToPath(new URL('./root-markup.html', impor
 const inlineApp = fs.readFileSync(fileURLToPath(new URL('./inline-app.js', import.meta.url)), 'utf8');
 
 describe('Directory tab batch-analyzes a folder of recordings (#270)', () => {
-  it('has a real folder picker, Analyze All CTA, and results list', () => {
-    expect(markup).toContain('id="dir-choose-btn"');
-    expect(markup).toContain('id="dir-analyze-btn"');
-    expect(markup).toContain('id="dir-results"');
+  it('has a real folder picker, Analyze All CTA, and results list — now rendered by DirectoryPanel.tsx onto the empty #tab-dir island (TD-001 slice 6h, #711)', () => {
+    const directoryPanel = fs.readFileSync(fileURLToPath(new URL('./DirectoryPanel.tsx', import.meta.url)), 'utf8');
+    expect(directoryPanel).toContain('id="dir-choose-btn"');
+    expect(directoryPanel).toContain('id="dir-analyze-btn"');
+    expect(directoryPanel).toContain('id="dir-results"');
+    expect(markup).toMatch(/<div class="tab-content" id="tab-dir"><\/div>/);
   });
 
   it('no longer carries the #293 roadmap markup or its v1.1 badge', () => {
@@ -242,8 +244,10 @@ describe('Existing tabs stay intact under the unified Analyze picker (#543)', ()
     });
   });
 
-  it('leaves the Directory batch-analysis panel in place', () => {
-    expect(markup).toContain('id="dir-choose-btn"');
-    expect(markup).toContain('id="dir-analyze-btn"');
+  it('leaves the Directory batch-analysis panel in place (DirectoryPanel.tsx renders onto the empty #tab-dir island)', () => {
+    const directoryPanel = fs.readFileSync(fileURLToPath(new URL('./DirectoryPanel.tsx', import.meta.url)), 'utf8');
+    expect(directoryPanel).toContain('id="dir-choose-btn"');
+    expect(directoryPanel).toContain('id="dir-analyze-btn"');
+    expect(markup).toContain('id="tab-dir"');
   });
 });

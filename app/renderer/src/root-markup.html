@@ -73,16 +73,9 @@
       <div class="panel-head"><span class="panel-title">Source</span></div>
       <div class="panel-body">
         <!-- DIR (#270) — batch-analyze a folder of whole-mix recordings.
-             Runs the existing single-file analyze pipeline sequentially over
-             every audio file found, rendering one row per result. -->
-        <div class="tab-content" id="tab-dir">
-          <button type="button" class="btn btn-primary" id="dir-choose-btn" data-icon="folder">Choose a folder&hellip;</button>
-          <div class="dir-path" id="dir-path"></div>
-          <button type="button" class="btn btn-primary" id="dir-analyze-btn" disabled>Analyze all</button>
-          <div class="dir-progress" id="dir-progress"></div>
-          <div class="dir-list" id="dir-results"></div>
-          <div class="dir-empty" id="dir-empty" style="display:none">No audio files in that folder — pick a folder containing your service recordings.</div>
-        </div>
+             DirectoryPanel.tsx (TD-001 slice 6h, #711) renders its content
+             from directoryStore, portaled onto this empty node. -->
+        <div class="tab-content" id="tab-dir"></div>
 
         <!-- #tab-live relocated into #spectrum-panel by #727 — the rig picker /
              device / measurement source / secondary measurement device /

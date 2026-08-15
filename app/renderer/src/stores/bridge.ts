@@ -17,6 +17,7 @@ import { useRigStore } from './rigStore';
 import { useSoundcheckStore } from './soundcheckStore';
 import { useRingoutStore } from './ringoutStore';
 import { useFeedbackDialogStore } from './feedbackDialogStore';
+import { useDirectoryStore } from './directoryStore';
 import { liveReportCardSource } from '../live-capture-panel';
 import { roomFeed } from '../measurement-device-state';
 import { spectrumTransport, type SpectrumTransport } from '../spectrum-transport';
@@ -38,6 +39,10 @@ export interface RendererStores {
   rig: typeof useRigStore;
   soundcheck: typeof useSoundcheckStore;
   ringout: typeof useRingoutStore;
+  // TD-001 slice 6h (#711): the Directory-tab batch state — inline-app.js's
+  // two pushed-event handlers read `directory.getState().running` to suppress
+  // batch-driven Report-Card updates, replacing the deleted batchRunning var.
+  directory: typeof useDirectoryStore;
 }
 
 declare global {
@@ -70,6 +75,7 @@ export function installStoreBridge(
     rig: useRigStore,
     soundcheck: useSoundcheckStore,
     ringout: useRingoutStore,
+    directory: useDirectoryStore,
   };
   target.rendererStores = stores;
   target.spectrumTransport = spectrumTransport;
