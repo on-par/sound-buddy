@@ -76,13 +76,15 @@ the records Resend needs:
    - **DKIM**: the `resend._domainkey` TXT record (Resend's `dkim.soundbuddy.online`
      selector) on `soundbuddy.online`.
 3. Confirm Resend shows **"Verified"** for the domain before sending live.
-4. Align the existing `_dmarc.soundbuddy.online` record to a **monitored
-   `p=none`** policy first, then tighten to `p=quarantine`/`p=reject` only once
-   DKIM alignment is observed passing in real mail (§6).
+4. Publish the `_dmarc.soundbuddy.online` record as a **monitoring-only
+   `p=none`** policy per `worker/docs/dmarc-provisioning.md` (#643), then
+   tighten to `p=quarantine`/`p=reject` only once alignment is observed passing
+   in real mail (§6).
 5. Sanity-check the published records:
    ```bash
    dig +short TXT soundbuddy.online
    dig +short TXT resend._domainkey.soundbuddy.online
+   dig +short TXT _dmarc.soundbuddy.online
    ```
 
 The same domain verification also covers `hello@soundbuddy.online` and
@@ -168,8 +170,8 @@ This is the issue's Verification section — a human step, never a CI test:
    **Delivered** (not bounced).
 4. Send a copy to an external mailbox and inspect the raw headers for aligned
    **SPF / DKIM / DMARC** — the mailcheck recommendation from the 2026-07-21
-   issue audit comment. If DKIM is not aligned, fix the §2 records before
-   tightening DMARC.
+   issue audit comment, detailed in `worker/docs/dmarc-provisioning.md` §4. If
+   DKIM is not aligned, fix the §2 records before tightening DMARC.
 
 ## 7. No-secret-in-repo scan
 
@@ -196,7 +198,7 @@ in parens is where to do it.
 - [ ] `RESEND_API_KEY` set via `wrangler secret put` — test `re_test_...` then live `re_...` (§1)
 - [ ] `RESEND_API_KEY` never committed; may appear only by name (§1, §7)
 - [ ] Resend domain `soundbuddy.online` verified: SPF include `send.soundbuddy.online` + `resend._domainkey` DKIM (§2)
-- [ ] `_dmarc.soundbuddy.online` aligned with a monitored `p=none` before tightening (§2)
+- [ ] `_dmarc.soundbuddy.online` published monitoring-only `p=none` per `worker/docs/dmarc-provisioning.md` (#643) before tightening (§2)
 - [ ] `FROM_EMAIL = hello@soundbuddy.online` verified sender on the domain (§3)
 - [ ] `SUPPORT_EMAIL = support@soundbuddy.online` is a real, monitored inbox; MX/forwarding delivers (§3)
 - [ ] `WAITLIST_AUDIENCE_ID` set in `worker/wrangler.jsonc` `vars` (optional; empty = sync skipped + logged) (§4)
