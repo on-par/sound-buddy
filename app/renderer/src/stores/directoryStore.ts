@@ -75,7 +75,7 @@ interface BatchAnalysisApi {
   dirEmptyMessage(res: unknown): string;
 }
 
-interface GradingApi extends SummaryGradingApi {}
+type GradingApi = SummaryGradingApi;
 
 function getBatchAnalysis(): BatchAnalysisApi {
   return (window as unknown as { batchAnalysis: BatchAnalysisApi }).batchAnalysis;
@@ -128,7 +128,7 @@ export function createDirectoryStore(getApi: () => DirectoryApi) {
       try {
         const rows = await batch.runBatch(state.files, {
           analyzeFile: (fp) => getApi().analyzeFile({ filePath: fp }),
-          toSummaryInput: (data, fp) => {
+          toSummaryInput: (data, _fp) => {
             // Mirrors analysisStore's cast: analyze-file's DTO is the mirrored
             // renderer shape of @sound-buddy/shared's AnalysisPayload.
             const src = reportCardSourceFromAnalysis(data as AnalysisPayload);

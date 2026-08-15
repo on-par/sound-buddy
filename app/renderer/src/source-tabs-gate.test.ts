@@ -18,13 +18,15 @@ import ModeTabs from './ModeTabs';
 // wiring is verified here the same way the other gate tests encode their
 // acceptance criteria.
 
-const inlineApp = fs.readFileSync(fileURLToPath(new URL('./inline-app.js', import.meta.url)), 'utf8');
 const rootMarkup = fs.readFileSync(fileURLToPath(new URL('./root-markup.html', import.meta.url)), 'utf8');
 const appCss = fs.readFileSync(fileURLToPath(new URL('./styles/app.css', import.meta.url)), 'utf8');
 const analyzeSourceState = fs.readFileSync(fileURLToPath(new URL('../analyze-source-state.js', import.meta.url)), 'utf8');
 const indexHtml = fs.readFileSync(fileURLToPath(new URL('../index.html', import.meta.url)), 'utf8');
 const upgradeMomentum = fs.readFileSync(fileURLToPath(new URL('../upgrade-momentum.js', import.meta.url)), 'utf8');
 const modeTabsMarkup = renderToString(createElement(ModeTabs));
+// TD-001 slice 6h (#711): the picker's routing lives in AnalyzeSourcePicker.tsx
+// (switchMode/targetModeFor) — the old inline-app.js click-simulation is gone.
+const pickerTsx = fs.readFileSync(fileURLToPath(new URL('./AnalyzeSourcePicker.tsx', import.meta.url)), 'utf8');
 
 // Strips HTML `<!-- ... -->` and JS `//` line comments so copy assertions
 // only see real, user-visible strings. Repeats the HTML-comment strip until
@@ -74,7 +76,6 @@ describe('Source tabs gate (#544)', () => {
   });
 
   it('the three flows stay reachable: routing tabs are in the DOM and the picker routes through switchMode (TD-001 slice 6h, #711)', () => {
-    const pickerTsx = fs.readFileSync(fileURLToPath(new URL('./AnalyzeSourcePicker.tsx', import.meta.url)), 'utf8');
     expect(modeTabsMarkup).toContain('data-mode="dir"');
     expect(modeTabsMarkup).toContain('data-mode="live"');
     expect(modeTabsMarkup).toContain('data-mode="soundcheck"');
