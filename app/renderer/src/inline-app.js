@@ -174,8 +174,8 @@ function syncLiveCaptureMirror(state, prevState) {
   if (state.liveMode !== prevState.liveMode) hideArmHint();
 
   // #710: the board/EQ/stats surface is React-rendered now (LiveCapturePanel/
-  // LiveEqPane/LiveStatsRow subscribe to the store's discrete fields), so the
-  // old synchronous renderWorkspace repaint branch is gone.
+  // LiveEqPane subscribe to the store's discrete fields), so the old
+  // synchronous renderWorkspace repaint branch is gone.
 }
 syncLiveCaptureMirror(lcStore.getState());
 lcStore.subscribe(syncLiveCaptureMirror);
@@ -285,8 +285,8 @@ window.seekPlayback = (t) => transport.seek(t);
 // liveSetupStepsView/renderDawShell/stripViewAt/livePanelView/lapFocusView/
 // lapObservationContext/applyLiveGroupCollapsed/selectStrip/wireLiveNameEdit/
 // setStat/updateStatsRow/updateLiveStatsRow and the live-adjustments-panel + window.liveWorkspaceRuntime wiring all moved to the React components +
-// live-board.ts (LiveCapturePanel/LiveEqPane/LiveStatsRow, driven by
-// liveCaptureStore; per-tick values patched by live-board.ts's appliers on
+// live-board.ts (LiveCapturePanel/LiveEqPane, driven by liveCaptureStore;
+// per-tick values patched by live-board.ts's appliers on
 // LiveWorkspace's live-meter-controller, ADR-0005). This script keeps the
 // capture-config CRUD handlers (add/remove/arm/group/kind/source/reorder) and
 // the capture lifecycle (6i), DAW playhead/waveform (6j), and secondary-room
@@ -493,10 +493,10 @@ document.getElementById('spectrum-body').addEventListener('change', (e) => {
   }
 });
 
-// (#710) wireLiveNameEdit + the stats-row writers (setStat/updateStatsRow/
-// updateLiveStatsRow + window.updateStatsRow) moved to LiveCapturePanel.tsx +
-// live-board.ts (LiveStatsRow renders the cells; live-board.ts's patchStatsRow
-// patches them at meter cadence).
+// (#710) wireLiveNameEdit moved to LiveCapturePanel.tsx; the stats-row writers
+// (setStat/updateStatsRow/updateLiveStatsRow + window.updateStatsRow) moved to
+// live-board.ts's patchStatsRow (ReportCardToolbar for file mode, the
+// meter-controller for live mode).
 
 // syncSingleColumn is gone — mode-switch.ts#applySingleColumnSync (TD-001
 // slice 6e, #703) ports it verbatim; inline-app.js reaches it via
@@ -964,7 +964,7 @@ window.liveCaptureRuntime = {
 };
 
 // (#710) window.liveWorkspaceRuntime is gone: the board/EQ/stats surface is
-// React-rendered (LiveCapturePanel/LiveEqPane/LiveStatsRow) and LiveWorkspace's
+// React-rendered (LiveCapturePanel/LiveEqPane) and LiveWorkspace's
 // live-meter-controller drives live-board.ts's patch appliers directly. This
 // one bridge stays for the React DAW-shell branch's post-render repaint (the
 // 6j playhead/waveform renderers stay here).

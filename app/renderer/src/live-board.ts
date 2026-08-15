@@ -9,7 +9,7 @@
 // the PURE views take a LiveBoardState view-input shape (built by
 // liveBoardState() from the stores) and read classic scripts off `window` via
 // typed accessors (same style as liveCaptureStore.ts reads armState/
-// groupState); the c8-ignored DOM appliers (patchBoardTick/patchEqPane/
+// groupState); the c8-ignored DOM appliers (patchLiveBoard/patchEqPane/
 // patchStatsRow) are the per-tick writers driven by LiveWorkspace's
 // live-meter-controller, never through React state.
 
@@ -17,8 +17,6 @@ import {
   LIVE_BAND_KEYS,
   deviceChannelCount,
   liveMetersHTML,
-  measurementChannel,
-  measurementSourceOptionLabel,
   eqPaneView,
   eqPaneHTML,
   eqPaneSignature,
@@ -36,6 +34,7 @@ import {
   type PanelView,
   type EqPaneRoomOverride,
   type EqPanePatchPlan,
+  type EqPaneView,
 } from './live-capture-panel';
 import { escapeHtml, patchBarsAndLabels, patchGridBarsAndBandLabels, type SpectrumCurvePaths } from './spectrum-display';
 import { iconSvg, fmt } from './report-card';
@@ -76,7 +75,7 @@ interface InstrumentProfilesApi {
   isKnownProfileId(id: string): boolean;
 }
 interface RigReconcileApi {
-  resolveStripLabel(strip: StripConfig | null, ch: LiveMeterChannel | null, index: number): string;
+  resolveStripLabel(strip: StripConfig | null, ch: LiveMeterChannel | null | undefined, index: number): string;
 }
 interface LiveAdjustmentsStateApi {
   panelHTML(
@@ -156,6 +155,49 @@ export interface SetupStep {
 export interface LapFocusView {
   focusedIndex: number | null;
   inputs: Array<{ index: number; name: string; profile: unknown }>;
+}
+
+// The per-tick patch inputs the live-meter-controller resolves from
+// liveCaptureStore + useSettingsStore each coalesced snapshot (slice 6g #710)
+// — mirrors inline-app.js's old renderLiveMeters patch path, which read
+// channelConfig/channelGroups/selectedChannel/liveRunning/
+// savedInstrumentProfilesForDevice() directly.
+export interface LiveBoardDeps {
+  channelConfig: StripConfig[];
+  channelGroups: ChannelGroup[];
+  selectedChannel: number | null;
+  isCapturing: boolean;
+  savedInstrumentProfiles: Record<string, string>;
+}
+
+// Port of inline-app.js's stripViewAt(idx, ch) view-input shape: everything
+// the per-strip view adapter resolves from, carried as one input struct so the
+// adapter is a pure function of its inputs (classic scripts read via window
+// accessors, same as liveCaptureStore.ts).
+export interface StripViewInput {
+  index: number;
+  /** The tick channel (or the idle placeholder channel) for this strip. */
+  ch: LiveMeterChannel | undefined;
+  channelConfig: StripConfig[];
+  channelGroups: ChannelGroup[];
+  selectedChannel: number | null;
+  savedInstrumentProfiles: Record<string, string>;
+}
+
+// Port of inline-app.js's livePanelView() view-input shape.
+export interface LivePanelViewInput {
+  deviceChannels: number;
+  liveRunning: boolean;
+  channelGroups: ChannelGroup[];
+}
+
+// Port of inline-app.js's lapFocusView() view-input shape (#525).
+export interface LapFocusInput {
+  focusedIndex: number | null;
+  channelConfig: StripConfig[];
+  /** The tick channels (lastLiveChannels), null before the first tick. */
+  channels: LiveMeterChannel[] | null;
+  savedInstrumentProfiles: Record<string, string>;
 }
 
 export interface LiveStatsRowView {
@@ -646,10 +688,13 @@ export function patchLiveBoard(root: Element, tick: LiveEvent, deps: LiveBoardDe
    by tests/e2e/live-capture.spec.ts (the "a new tick updates bars and arc in
    place" case asserts the .sb-spectrum-curve node is patched, never rebuilt). */
 export function patchEqPane(root: Element, view: EqPaneView): void {
+  // dataset/attribute writes live on the HTMLElement surface; callers always
+  // pass the #live-eq-pane-body element.
+  const el = root as HTMLElement;
   const signature = eqPaneSignature(view);
-  if (root.dataset.signature !== signature) {
-    root.innerHTML = eqPaneHTML(view);
-    root.dataset.signature = signature;
+  if (el.dataset.signature !== signature) {
+    el.innerHTML = eqPaneHTML(view);
+    el.dataset.signature = signature;
     return;
   }
   const plan = eqPanePatchPlan(view);

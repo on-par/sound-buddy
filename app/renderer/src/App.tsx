@@ -248,11 +248,6 @@ export default function App() {
       {booted && createPortal(<SpectrumPanel />, document.getElementById('spectrum-island')!)}
       {booted && createPortal(<IdealProfileSelect />, document.getElementById('ideal-profile-island')!)}
       {booted && createPortal(<LiveWorkspace />, document.getElementById('live-island')!)}
-      {/* #710: the docked live EQ pane + header stats row are React-rendered
-          (LiveEqPane/LiveStatsRow) — portaled onto the same containers
-          inline-app.js's renderEqPane/updateStatsRow used to own. */}
-      {booted && createPortal(<LiveEqPane />, document.getElementById('live-eq-pane-body')!)}
-      {booted && createPortal(<LiveStatsRow />, document.getElementById('stats-row')!)}
       {/* #710: the docked live EQ pane is React-rendered (LiveEqPane),
           portaled onto the same container inline-app.js's renderEqPane used
           to own; the header stats row stays static #stats-row markup, written

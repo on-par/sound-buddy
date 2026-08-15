@@ -103,10 +103,6 @@ function channel(overrides: Partial<LiveMeterChannel> = {}): LiveMeterChannel {
 
 
 
-function savedProfiles(overrides: Partial<Record<string, string>> = {}): Record<string, string> {
-  return overrides;
-}
-
 function windowTick(channels: LiveMeterChannel[]): LiveEvent {
   return { type: 'window', window: 1, ts: 0, channels } as unknown as LiveEvent;
 }
