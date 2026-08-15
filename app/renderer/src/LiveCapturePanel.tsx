@@ -150,7 +150,8 @@ export default function LiveCapturePanel(): JSX.Element | null {
   /* c8 ignore start -- effect wiring + imperative chrome, no jsdom in this
      harness (renderToString doesn't run effects) — exercised by
      tests/e2e/live-capture.spec.ts (stats row shows while capturing, spectrum
-     panel stays in meters mode) and live-capture-workspace.spec.ts. */
+     panel stays in meters mode), live-capture-workspace.spec.ts, and (the
+     rAF playhead-ticker hook below) daw-shell.spec.ts. */
   useEffect(() => {
     if (s.appMode !== 'live') return;
     const statsRow = document.getElementById('stats-row');
