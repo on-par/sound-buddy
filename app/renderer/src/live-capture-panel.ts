@@ -25,6 +25,8 @@ import {
   veqBarsAndLabelsHTML,
   veqLoudestIdx,
   toPct,
+  patchBarsAndLabels,
+  patchGridBarsAndBandLabels,
   type BarColumn,
   type SpectrumCurve,
   type SpectrumCurvePaths,
@@ -444,6 +446,51 @@ export function eqPanePatchPlan(view: EqPaneView): EqPanePatchPlan {
     secondary: view.secondary && secondaryParts ? planFor(view.secondary, 'pane-b', secondaryParts) : null,
   };
 }
+
+/* c8 ignore start -- DOM-patching appliers, no jsdom in this harness
+   (renderToString only) — same precedent as patchLiveChannel below;
+   exercised by tests/e2e/live-capture.spec.ts's "a new tick updates bars and
+   arc in place" (patchEqPaneSection) and named-channel-groups.spec.ts's
+   group-summary assertions (patchGroupSummaries). */
+// Patches one EQ pane section's arc + bars in place — mirrors the exact
+// arc-then-bars patch sequence the old per-strip patchLiveChannel used, just
+// applied to the pane's <=2 sections instead of every strip (#668). Port of
+// inline-app.js's patchEqPaneSection (TD-001 slice 6g, #710). eqPanePatchPlan
+// always produces path data (wantPaths: true), so the object/string narrowing
+// keeps the same runtime behavior the classic script had.
+export function patchEqPaneSection(sectionEl: Element | null, patch: EqPaneSectionPatch | null): void {
+  if (!sectionEl || !patch) return;
+  const chart = sectionEl.querySelector('.veq-chart');
+  if (chart) {
+    const lineEl = chart.querySelector('.sb-curve-line');
+    const arc = patch.arc;
+    const paths = typeof arc === 'object' && arc !== null ? arc : null;
+    if (paths && lineEl) {
+      lineEl.setAttribute('d', paths.line);
+      chart.querySelector('.sb-curve-fill')?.setAttribute('d', paths.area);
+      chart.querySelector('.sb-centroid')!.innerHTML = paths.centroidMark;
+    } else {
+      chart.innerHTML = arc ? (typeof arc === 'object' ? arc.svg : arc) : '';
+    }
+  }
+  if (patch.gridDb) patchGridBarsAndBandLabels(sectionEl, patch.gridDb, patch.loudestIdx);
+  else patchBarsAndLabels(sectionEl, patch.curve.db);
+}
+
+// Refreshes each group header's live summary so a collapsed group still
+// reflects current level/clip without touching collapse state or rebuilding
+// the DOM (#483). Port of renderLiveMeters' patch-path group-summary block
+// (TD-001 slice 6g, #710).
+export function patchGroupSummaries(wrap: Element, channels: LiveMeterChannel[], groups: ChannelGroup[]): void {
+  groups.forEach((grp, g) => {
+    const summaryEl = wrap.querySelector(`.live-group-head[data-group="${g}"] .live-group-summary`);
+    if (!summaryEl) return;
+    const summary = groupSummary(channels, grp.members);
+    summaryEl.textContent = groupSummaryText(summary);
+    if (summary.clipping) summaryEl.insertAdjacentHTML('beforeend', '<span class="live-ch-clip">CLIP</span>');
+  });
+}
+/* c8 ignore stop */
 
 // Group-level summary (#483): a compact "N tracks · Peak X dBFS" readout shown
 // on a collapsed group's header so an engineer can still see the group is
