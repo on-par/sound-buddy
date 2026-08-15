@@ -320,7 +320,11 @@ export function eqPaneView(
     primary = { idx, label: measurementSourceOptionLabel(config[idx], idx), ch: channels[idx] };
   }
   let secondary: EqPaneSection | null = null;
-  if (selectedChannel != null && selectedChannel >= 0 && selectedChannel < channels.length) {
+  // Guard against a stale selection that only exists in the tick data (e.g.
+  // lastLiveChannels carrying more channels than channelConfig): a strip that
+  // no longer exists in config must not render a "Selected" section (#710).
+  if (selectedChannel != null && selectedChannel >= 0
+    && selectedChannel < channels.length && selectedChannel < config.length) {
     secondary = { idx: selectedChannel, label: measurementSourceOptionLabel(config[selectedChannel], selectedChannel), ch: channels[selectedChannel] };
   }
   const secondaryIsPrimary = !!(primary && secondary && primary.idx === secondary.idx);
