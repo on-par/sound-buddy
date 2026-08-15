@@ -1308,6 +1308,13 @@ describe('eqPaneView', () => {
     expect(eqPaneView(LIVE_CHANNELS, config, null, -1).secondary).toBeNull();
   });
 
+  it('secondary is null when selectedChannel only exists in stale tick data (#710)', () => {
+    // A tick channel set larger than channelConfig (e.g. a stale
+    // lastLiveChannels after a config change) must not resurrect a
+    // "Selected" section for a strip that no longer exists.
+    expect(eqPaneView(LIVE_CHANNELS, [config[0]], null, 1).secondary).toBeNull();
+  });
+
   it('resolves secondary from a valid selectedChannel', () => {
     const view = eqPaneView(LIVE_CHANNELS, config, null, 1);
     expect(view.secondary).toEqual({ idx: 1, label: 'Vocals', ch: LIVE_CHANNELS[1] });

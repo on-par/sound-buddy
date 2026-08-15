@@ -5,13 +5,21 @@ import { describe, it, expect } from 'vitest';
 import * as fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
-// Experimental live adjustments area (#522): a static placeholder panel gated
-// behind liveAdjustmentsEnabled, mirroring the #516 dawWorkspaceEnabled
-// pattern file-for-file. inline-app.js is coverage-excluded glue (see
-// vitest.config.ts), verified here the same way daw-workspace-shell.test.ts
-// (#517) encodes its acceptance criteria.
+// Experimental live adjustments area (#522): a placeholder panel gated behind
+// liveAdjustmentsEnabled, mirroring the #516 dawWorkspaceEnabled pattern.
+// The panel's rendering moved out of inline-app.js (syncLiveAdjustmentsPanel)
+// into the pure live-workspace-view.ts liveAdjustmentsPanelHTML builder + the
+// React LiveCapturePanel island, and the focused-input/coaching state moved
+// into liveCaptureStore (TD-001 slice 6g, #710) — the rendering/coaching
+// acceptance criteria are enforced by live-workspace-view.test.ts,
+// liveCaptureStore.test.ts, and LiveCapturePanel.test.ts. This gate keeps the
+// app.css/SettingsPanel/App.tsx assertions and pins the 6g acceptance rule:
+// no inline-app.js listener owns the lap- surfaces anymore.
 
 const inlineApp = fs.readFileSync(fileURLToPath(new URL('./inline-app.js', import.meta.url)), 'utf8');
+const liveCaptureStoreTs = fs.readFileSync(fileURLToPath(new URL('./stores/liveCaptureStore.ts', import.meta.url)), 'utf8');
+const liveCapturePanelTsx = fs.readFileSync(fileURLToPath(new URL('./LiveCapturePanel.tsx', import.meta.url)), 'utf8');
+const workspaceViewTs = fs.readFileSync(fileURLToPath(new URL('./live-workspace-view.ts', import.meta.url)), 'utf8');
 const settingsPanelTsx = fs.readFileSync(fileURLToPath(new URL('./SettingsPanel.tsx', import.meta.url)), 'utf8');
 const css = fs.readFileSync(fileURLToPath(new URL('./styles/app.css', import.meta.url)), 'utf8');
 const appTsx = fs.readFileSync(fileURLToPath(new URL('./App.tsx', import.meta.url)), 'utf8');
@@ -59,54 +67,46 @@ function enclosingBlock(src: string, marker: string): string {
   throw new Error(`unbalanced braces around marker ${JSON.stringify(marker)}`);
 }
 
+// Extracts an object-literal method body (store actions / bridge members are
+// `name() { … }`, not `function name(` declarations). The signature is matched
+// with a trailing ` {` so an interface member (`name(): void;`) never matches.
+function methodBody(src: string, signature: string): string {
+  const brace = src.indexOf(`${signature} {`);
+  if (brace === -1) throw new Error(`method ${signature} not found`);
+  let depth = 0;
+  for (let i = brace; i < src.length; i++) {
+    if (src[i] === '{') depth++;
+    else if (src[i] === '}') {
+      depth--;
+      if (depth === 0) return src.slice(brace, i + 1);
+    }
+  }
+  throw new Error(`unbalanced braces around ${signature}`);
+}
+
 describe('Live adjustments gate wiring (#522)', () => {
-  it('renderDawShell calls syncLiveAdjustmentsPanel', () => {
-    const body = functionBody(inlineApp, 'renderDawShell');
-    expect(body).toContain('syncLiveAdjustmentsPanel(');
-    expect(body.split('syncLiveAdjustmentsPanel(').length).toBeGreaterThanOrEqual(3);
+  it('the board island renders the panel from liveAdjustmentsPanelHTML (render coverage in LiveCapturePanel.test.ts)', () => {
+    expect(liveCapturePanelTsx).toContain('liveAdjustmentsPanelHTML(state)');
+    expect(workspaceViewTs).toContain('export function liveAdjustmentsPanelHTML(');
   });
 
-  it('renderLiveMeters calls syncLiveAdjustmentsPanel on both the patch and rebuild paths', () => {
-    const body = functionBody(inlineApp, 'renderLiveMeters');
-    expect(body).toContain('syncLiveAdjustmentsPanel(');
-    expect(body.split('syncLiveAdjustmentsPanel(').length).toBeGreaterThanOrEqual(3);
-  });
-
-  it('renderLiveWorkspace calls syncLiveAdjustmentsPanel', () => {
-    const body = functionBody(inlineApp, 'renderLiveWorkspace');
-    expect(body).toContain('syncLiveAdjustmentsPanel(');
-  });
-
-  it('syncLiveAdjustmentsPanel reads panelHTML and manages the panel element', () => {
-    const body = functionBody(inlineApp, 'syncLiveAdjustmentsPanel');
-    expect(body).toContain('liveAdjustmentsState.panelHTML(');
-    expect(body).toContain('.live-adjustments-panel');
-  });
-
-  it('syncLiveAdjustmentsPanel passes live window data through and replaces stale panels', () => {
-    const body = functionBody(inlineApp, 'syncLiveAdjustmentsPanel');
+  it('liveAdjustmentsPanelHTML reads panelHTML and passes the live window data + measurement source through', () => {
+    // live-workspace-view.test.ts asserts the exact panelHTML delegation.
+    const body = functionBody(workspaceViewTs, 'liveAdjustmentsPanelHTML');
+    expect(body).toContain('panelHTML(');
     expect(body).toContain('liveWindows');
     expect(body).toContain('measurementSource');
-    expect(body).toContain('outerHTML');
   });
 
-  it('window ticks refresh the adjustments panel', () => {
-    // TD-001 slice 6c (#701): liveCaptureStore.bindIpcEvents() now owns
-    // pushing window ticks into liveWindows (single source of truth) — this
-    // listener's window-tick branch still anchors on sessionWindows.push
-    // (its own session-only accumulator) in the same block.
-    const block = enclosingBlock(inlineApp, 'sessionWindows.push');
-    expect(block).toContain('syncLiveAdjustmentsPanel(');
+  it('window ticks advance the coaching state machine through the store (not inline-app.js)', () => {
+    const block = enclosingBlock(inlineApp, 'lcStore.getState().advanceLapCoaching()');
+    expect(block).toContain('sessionWindows.push');
+    expect(block).toContain('advanceLapCoaching()');
   });
 
-  it('starting a capture resets the adjustments panel to the waiting state', () => {
-    // TD-001 slice 6c (#701): the Start button is React-owned now
-    // (LiveTransportControls) and calls lcStore.getState().startCapture()
-    // directly; onCaptureStarting() runs the surrounding side effects
-    // synchronously right after isCapturing flips true, at the same point
-    // the old inline `liveRunning = true` handler used to.
+  it('starting a capture resets the coaching state through the store', () => {
     const block = functionBody(inlineApp, 'onCaptureStarting');
-    expect(block).toContain('syncLiveAdjustmentsPanel(');
+    expect(block).toContain('lcStore.getState().resetLapCoaching()');
   });
 
   it('the settingsStore subscriber re-syncs the Live pane on an actual flip', () => {
@@ -147,31 +147,28 @@ describe('Live adjustments gate wiring (#522)', () => {
 });
 
 describe('Per-input instrument-aware adjustment candidates (#525)', () => {
-  it('syncLiveAdjustmentsPanel builds and passes the focus view', () => {
-    const body = functionBody(inlineApp, 'syncLiveAdjustmentsPanel');
-    expect(body).toContain('lapFocusView(');
+  it('lapFocusView resolves each input strip\'s effective instrument profile in the pure view module', () => {
+    // live-workspace-view.test.ts asserts the resolution; pin the home.
+    expect(workspaceViewTs).toContain('export function lapFocusView(');
+    expect(workspaceViewTs).toContain('effectiveProfileId(');
   });
 
-  it('lapFocusView resolves each input strip\'s effective instrument profile', () => {
-    const body = functionBody(inlineApp, 'lapFocusView');
-    expect(body).toContain('instrumentProfiles.profileById(');
-    expect(body).toContain('effectiveProfileId(');
+  it('focusedInputIndex is store-owned; the React panel renders it and the delegated select writes it', () => {
+    expect(liveCaptureStoreTs).toContain('setFocusedInputIndex(');
+    expect(liveCapturePanelTsx).toContain('.lap-focus-select');
+    expect(liveCapturePanelTsx).toContain('setFocusedInputIndex(');
   });
 
-  it('the .lap-focus-select change listener updates focusedInputIndex and re-syncs the panel', () => {
-    const block = enclosingBlock(inlineApp, "closest('.lap-focus-select')");
-    expect(block).toContain('focusedInputIndex');
-    expect(block).toContain('syncLiveAdjustmentsPanel(');
+  it('removing a track shifts/clears the focused input index in the store', () => {
+    const body = methodBody(liveCaptureStoreTs, 'removeStrip(idx)');
+    expect(body).toContain('focusedInputIndex: measurementSourceAfterRemove(');
   });
 
-  it('removing a track shifts/clears the focused input index', () => {
-    const block = enclosingBlock(inlineApp, 'measurementSourceAfterRemove(focusedInputIndex');
-    expect(block).toBeTruthy();
-  });
-
-  it('resetChannelConfig clears the focused input on a device switch', () => {
-    const body = functionBody(inlineApp, 'resetChannelConfig');
-    expect(body).toContain('focusedInputIndex = null');
+  it('a device switch clears the focused input through the store', () => {
+    // resetChannelConfig and window.liveCaptureRuntime.selectDevice both route
+    // the reset through the store.
+    const occurrences = inlineApp.split('lcStore.getState().setFocusedInputIndex(null)').length - 1;
+    expect(occurrences).toBeGreaterThanOrEqual(2);
   });
 
   it('app.css styles the focused-input selector and candidate list', () => {
@@ -181,47 +178,60 @@ describe('Per-input instrument-aware adjustment candidates (#525)', () => {
 });
 
 describe('Coaching stability wiring (#612)', () => {
-  it('declares lapCoaching, seeded from createCoachingState()', () => {
-    expect(inlineApp).toContain('let lapCoaching = window.liveAdjustmentsState.createCoachingState();');
+  it('the store owns lapCoaching and seeds fresh state via resetLapCoaching', () => {
+    expect(liveCaptureStoreTs).toContain('lapCoaching:');
+    expect(methodBody(liveCaptureStoreTs, 'resetLapCoaching()')).toContain('createCoachingState()');
   });
 
-  it('syncLiveAdjustmentsPanel passes lapCoaching to panelHTML', () => {
-    const body = functionBody(inlineApp, 'syncLiveAdjustmentsPanel');
-    expect(body).toContain('liveAdjustmentsState.panelHTML(');
+  it('liveAdjustmentsPanelHTML passes lapCoaching to panelHTML', () => {
+    const body = functionBody(workspaceViewTs, 'liveAdjustmentsPanelHTML');
+    expect(body).toContain('panelHTML(');
     expect(body).toContain('lapCoaching');
   });
 
-  it('advanceCoaching is called once per window tick with Date.now() and allCoachingCandidates', () => {
-    const block = enclosingBlock(inlineApp, 'sessionWindows.push');
-    expect(block).toContain('window.liveAdjustmentsState.advanceCoaching(');
-    expect(block).toContain('window.liveAdjustmentsState.allCoachingCandidates(');
-    expect(block).toContain('Date.now()');
-    // Must run before the render call so the card reflects this window's decision.
-    expect(block.indexOf('advanceCoaching(')).toBeLessThan(block.indexOf('syncLiveAdjustmentsPanel('));
+  it('advanceLapCoaching is the once-per-window-tick advance with allCoachingCandidates and the observation context', () => {
+    const body = methodBody(liveCaptureStoreTs, 'advanceLapCoaching()');
+    expect(body).toContain('advanceCoaching(');
+    expect(body).toContain('allCoachingCandidates(');
+    expect(body).toContain('Date.now()');
+    expect(body).toContain('lapObservationContext(');
   });
 
-  it('createCoachingState() is called at capture start and at each liveWindows reset (at least 3 sites)', () => {
-    const matches = inlineApp.match(/createCoachingState\(\)/g) || [];
-    expect(matches.length).toBeGreaterThanOrEqual(3);
+  it('createCoachingState is reachable from every reset path (boot seed, capture start, Clear, history load)', () => {
+    // The reset path is one store function called from three places; count the
+    // call sites across the still-inline script and the React components.
+    const sites =
+      inlineApp.split('resetLapCoaching').length - 1
+      + liveCaptureStoreTs.split('createCoachingState()').length - 1;
+    expect(sites).toBeGreaterThanOrEqual(3);
   });
 });
 
 describe('Coaching disposition wiring (#613)', () => {
-  it('syncLiveAdjustmentsPanel passes Date.now() as the 7th argument to panelHTML', () => {
-    const body = functionBody(inlineApp, 'syncLiveAdjustmentsPanel');
+  it('liveAdjustmentsPanelHTML passes Date.now() as the 7th argument to panelHTML', () => {
+    const body = functionBody(workspaceViewTs, 'liveAdjustmentsPanelHTML');
     expect(body).toContain('panelHTML(');
     expect(body).toContain('Date.now()');
   });
 
-  it('the spectrum-body click handler routes data-lap-action clicks to all five disposition reducers', () => {
-    const block = enclosingBlock(inlineApp, "closest('[data-lap-action]')");
-    expect(block).toContain('lap.acknowledgeCoaching(');
-    expect(block).toContain('lap.markTriedCoaching(');
-    expect(block).toContain('lap.snoozeCoaching(');
-    expect(block).toContain('lap.dismissCoaching(');
-    expect(block).toContain('lap.resumeCoaching(');
-    expect(block).toContain('lapCoaching =');
-    expect(block).toContain('syncLiveAdjustmentsPanel(');
+  it('the React island routes data-lap-action clicks through the store\'s lapDispose, which reaches every reducer', () => {
+    // liveCaptureStore.test.ts asserts each reducer; pin the homes.
+    expect(liveCapturePanelTsx).toContain("closest('[data-lap-action]')");
+    expect(liveCapturePanelTsx).toContain('lapDispose(');
+    const reducerBody = functionBody(liveCaptureStoreTs, 'lapDisposeReducer');
+    expect(reducerBody).toContain('acknowledgeCoaching(');
+    expect(reducerBody).toContain('markTriedCoaching(');
+    expect(reducerBody).toContain('snoozeCoaching(');
+    expect(reducerBody).toContain('dismissCoaching(');
+    expect(reducerBody).toContain('resumeCoaching(');
+    expect(reducerBody).toContain('acknowledgeOutcome(');
+  });
+
+  it('no inline-app.js listener owns the lap- surfaces anymore (6g acceptance)', () => {
+    expect(inlineApp).not.toContain("closest('[data-lap-action]')");
+    expect(inlineApp).not.toContain("closest('.lap-focus-select')");
+    expect(inlineApp).not.toMatch(/function syncLiveAdjustmentsPanel\(/);
+    expect(inlineApp).not.toContain('window.liveCoaching');
   });
 
   it('app.css styles the disposition actions, cue, observing line, and snoozed card', () => {
@@ -235,28 +245,25 @@ describe('Coaching disposition wiring (#613)', () => {
 });
 
 describe('Outcome evaluation wiring (#614)', () => {
-  it('window ticks compute the observation context and pass it to advanceCoaching', () => {
-    const block = enclosingBlock(inlineApp, 'sessionWindows.push');
-    expect(block).toContain('lapObservationContext(');
-    expect(block).toContain('window.liveAdjustmentsState.advanceCoaching(');
+  it('advanceLapCoaching computes the observation context from store state and passes it to advanceCoaching', () => {
+    const body = methodBody(liveCaptureStoreTs, 'advanceLapCoaching()');
+    expect(body).toContain('lapObservationContext(');
+    expect(body).toContain('advanceCoaching(');
   });
 
-  it('the spectrum-body click handler routes outcome-ack and passes context to markTriedCoaching', () => {
-    const block = enclosingBlock(inlineApp, "closest('[data-lap-action]')");
-    expect(block).toContain('lap.acknowledgeOutcome(');
-    expect(block).toContain('markTriedCoaching(lapCoaching, lapNow, lapObservationContext())');
+  it('lapDispose routes outcome-ack and passes the observation context to markTriedCoaching', () => {
+    const body = functionBody(liveCaptureStoreTs, 'lapDisposeReducer');
+    expect(body).toContain('acknowledgeOutcome(');
+    expect(body).toContain('markTriedCoaching(lapCoaching, now, lapObservationContext(snapshot))');
   });
 
-  it('lapObservationContext derives context from observationContext, liveWindows, lapFocusView, and measurementSourceOptionLabel', () => {
-    const body = functionBody(inlineApp, 'lapObservationContext');
-    expect(body).toContain('liveAdjustmentsState.observationContext(');
+  it('lapObservationContext derives context in the pure view module from observationContext, liveWindows, lapFocusView, and measurementSourceOptionLabel', () => {
+    // live-workspace-view.test.ts asserts the derivation; pin the home.
+    const body = functionBody(workspaceViewTs, 'lapObservationContext');
+    expect(body).toContain('observationContext(');
     expect(body).toContain('liveWindows');
     expect(body).toContain('lapFocusView(');
     expect(body).toContain('measurementSourceOptionLabel(');
-  });
-
-  it('inline-app.js imports measurementSourceOptionLabel', () => {
-    expect(inlineApp).toContain('measurementSourceOptionLabel');
   });
 
   it('app.css styles the outcome card', () => {

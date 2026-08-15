@@ -39,8 +39,20 @@ import {
   type SecondaryMeasurementState,
   type StartCaptureOpts,
 } from '../measurement-device-state';
+import {
+  lapFocusView,
+  lapObservationContext,
+  liveWorkspaceViewState,
+  type LiveWorkspaceViewState,
+} from '../live-workspace-view';
+import type { AppSettings } from '../../../electron/ipc/api';
 
 export type { StartCaptureOpts };
+
+// The engineer's disposition over the live-adjustments coaching card (#613,
+// #614) — routed through window.liveAdjustmentsState's reducers by
+// lapDispose (TD-001 slice 6g, #710).
+export type LapAction = 'acknowledge' | 'tried' | 'snooze' | 'dismiss' | 'resume' | 'outcome-ack';
 
 export type LiveCaptureApi = Pick<
   LiveApi,
@@ -133,6 +145,26 @@ function getGroupState(): GroupStateApi {
 }
 function getRigKind(): RigKindApi {
   return (window as unknown as { rigKind: RigKindApi }).rigKind;
+}
+
+// The live-adjustments classic script (#522) — the coaching state machine and
+// the panel/observation-context builders, read via a typed accessor the same
+// way as the other pure helper scripts. lapDispose/advanceLapCoaching route
+// every coaching write through this so the store stays the single owner of
+// lapCoaching (TD-001 slice 6g, #710).
+interface LiveAdjustmentsApi {
+  createCoachingState(): unknown;
+  acknowledgeCoaching(state: unknown): unknown;
+  markTriedCoaching(state: unknown, now: number, context: unknown): unknown;
+  snoozeCoaching(state: unknown, now: number): unknown;
+  dismissCoaching(state: unknown, now: number): unknown;
+  resumeCoaching(state: unknown): unknown;
+  acknowledgeOutcome(state: unknown, now: number): unknown;
+  advanceCoaching(prev: unknown, candidates: unknown[], now: number, context: unknown): unknown;
+  allCoachingCandidates(windows: LiveEvent[], measurementSource: number | null, focusView: unknown): unknown[];
+}
+function getLiveAdjustmentsState(): LiveAdjustmentsApi {
+  return (window as unknown as { liveAdjustmentsState: LiveAdjustmentsApi }).liveAdjustmentsState;
 }
 
 // First <= 2 device channels as mono strips — the device-default seed used by
@@ -233,6 +265,19 @@ export interface LiveCaptureState {
   // becoming the room's measurement source.
   selectedChannel: number | null;
 
+  // Focused input for the per-input instrument-aware adjustment candidates
+  // (#525) — ephemeral, per-session only, never persisted. Store-owned so the
+  // React live-adjustments panel renders reactively from it (TD-001 slice 6g,
+  // #710).
+  focusedInputIndex: number | null;
+  // Coaching stability state (#612) — advanced once per analysis window, never
+  // per render. Store-owned so the React adjustments panel re-renders on
+  // disposition clicks and window-tick advances instead of a bridged
+  // syncLiveAdjustmentsPanel() call. Seeded as null; the boot script
+  // (inline-app.js) calls resetLapCoaching() to establish the canonical fresh
+  // state, mirroring the old module-var seed.
+  lapCoaching: unknown;
+
   // Experimental secondary measurement-device source (#460, ADR 0003). Fully
   // independent of the board capture above: its own status machine and its own
   // rolling window buffer (channel 0 = the room mic). All transitions go
@@ -294,6 +339,21 @@ export interface LiveCaptureState {
   setMeasurementSource(source: number | null): void;
   setSelectedChannel(source: number | null): void;
 
+  setFocusedInputIndex(idx: number | null): void;
+  /** Applies one coaching disposition (acknowledge/tried/snooze/dismiss/
+   *  resume/outcome-ack) through window.liveAdjustmentsState's reducers and
+   *  writes the result to lapCoaching (#613, #614). markTriedCoaching receives
+   *  lapObservationContext computed from current store state. */
+  lapDispose(action: LapAction, now?: number): void;
+  /** A fresh coaching state — the capture-start and report-card Clear reset
+   *  (replaces window.liveCoaching.reset). */
+  resetLapCoaching(): void;
+  /** Advance the coaching state machine once for the current window tick —
+   *  the window-tick branch of inline-app.js's onLiveEvent calls this instead
+   *  of computing the advance itself (the candidate/context derivations now
+   *  live in the pure live-workspace-view module). */
+  advanceLapCoaching(): void;
+
   setSecondaryDeviceName(name: string): void;
   startSecondaryMeasurement(opts: StartCaptureOpts): Promise<void>;
   stopSecondaryMeasurement(): Promise<void>;
@@ -315,6 +375,32 @@ export function persistGroups(state: LiveCaptureState) {
     [deviceName]: state.channelGroups.map((g) => ({ name: g.name, members: g.members.slice(), collapsed: !!g.collapsed })),
   };
   void useSettingsStore.getState().updateSettings({ channelGroups: next });
+}
+
+// Builds the LiveWorkspaceViewState snapshot the pure live-workspace-view
+// derivations take — routed through the one shared builder (#710
+// shotgun-surgery fix) so this store's field list can't drift from
+// LiveWorkspace.tsx/LiveCapturePanel.tsx/LiveEqPane.tsx's.
+function liveCaptureViewSnapshot(state: LiveCaptureState): LiveWorkspaceViewState {
+  return liveWorkspaceViewState(state, (useSettingsStore.getState().settings as AppSettings | null) ?? null);
+}
+
+// Maps a LapAction onto window.liveAdjustmentsState's reducers, feeding
+// markTriedCoaching the observation context derived from the snapshot. Pure
+// switch over the action — extracted so lapDispose itself stays a thin write.
+function lapDisposeReducer(
+  lap: LiveAdjustmentsApi,
+  action: LapAction,
+  lapCoaching: unknown,
+  now: number,
+  snapshot: LiveWorkspaceViewState,
+): unknown {
+  if (action === 'acknowledge') return lap.acknowledgeCoaching(lapCoaching);
+  if (action === 'tried') return lap.markTriedCoaching(lapCoaching, now, lapObservationContext(snapshot));
+  if (action === 'snooze') return lap.snoozeCoaching(lapCoaching, now);
+  if (action === 'dismiss') return lap.dismissCoaching(lapCoaching, now);
+  if (action === 'resume') return lap.resumeCoaching(lapCoaching);
+  return lap.acknowledgeOutcome(lapCoaching, now);
 }
 
 export function createLiveCaptureStore(getApi: () => LiveCaptureApi) {
@@ -349,6 +435,8 @@ export function createLiveCaptureStore(getApi: () => LiveCaptureApi) {
 
     measurementSource: null,
     selectedChannel: null,
+    focusedInputIndex: null,
+    lapCoaching: null,
 
     secondaryMeasurement: { status: 'off', deviceName: '' },
     secondaryWindows: [],
@@ -428,6 +516,9 @@ export function createLiveCaptureStore(getApi: () => LiveCaptureApi) {
         // Same reindex contract as measurementSource (#668): the removed
         // strip's own selection resets to null, strips above it shift down.
         selectedChannel: measurementSourceAfterRemove(state.selectedChannel, idx),
+        // Same reindex contract for the focused input (#525) — it never dangles
+        // across a strip removal (mirrors the old inline-app.js handling).
+        focusedInputIndex: measurementSourceAfterRemove(state.focusedInputIndex, idx),
       });
       persistGroups(get());
     },
@@ -633,6 +724,37 @@ export function createLiveCaptureStore(getApi: () => LiveCaptureApi) {
     // channelConfig during the TD-001 migration, not necessarily this store's).
     setSelectedChannel(source) {
       set({ selectedChannel: source });
+    },
+
+    // Focused-input selection (#525) — runtime, ephemeral; stored as given
+    // like setMeasurementSource/setSelectedChannel (reindexing happens in
+    // removeStrip).
+    setFocusedInputIndex(idx) {
+      set({ focusedInputIndex: idx });
+    },
+
+    lapDispose(action, now = Date.now()) {
+      const s = get();
+      const lap = getLiveAdjustmentsState();
+      const next = lapDisposeReducer(lap, action, s.lapCoaching, now, liveCaptureViewSnapshot(s));
+      set({ lapCoaching: next });
+    },
+
+    resetLapCoaching() {
+      set({ lapCoaching: getLiveAdjustmentsState().createCoachingState() });
+    },
+
+    advanceLapCoaching() {
+      const s = get();
+      const lap = getLiveAdjustmentsState();
+      const snapshot = liveCaptureViewSnapshot(s);
+      const next = lap.advanceCoaching(
+        s.lapCoaching,
+        lap.allCoachingCandidates(s.liveWindows, s.measurementSource, lapFocusView(snapshot)),
+        Date.now(),
+        lapObservationContext(snapshot),
+      );
+      set({ lapCoaching: next });
     },
 
     // ── Secondary measurement source (#460) ──────────────────────────────────
