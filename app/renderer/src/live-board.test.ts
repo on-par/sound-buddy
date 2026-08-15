@@ -7,6 +7,9 @@ import {
   livePanelView,
   lapFocusView,
   lapObservationContext,
+  currentPaneChannels,
+  liveBoardPatchPlan,
+  eqPaneViewFor,
   workspaceToolbarHTML,
   setupStepsHTML,
   setupStepsView,
@@ -43,6 +46,7 @@ const liveAdjustmentsState = require('../live-adjustments-state.js');
 const dawWorkspaceState = require('../daw-workspace-state.js');
 const dawWaveformState = require('../daw-waveform-state.js');
 const dawPlayheadState = require('../daw-playhead-state.js');
+import { roomPaneOverride } from './measurement-device-state';
 
 function makeStorage(): Storage {
   const store = new Map<string, string>();
@@ -72,6 +76,7 @@ beforeEach(() => {
     dawWorkspaceState,
     dawWaveformState,
     dawPlayheadState,
+    measurementDeviceState: { roomPaneOverride },
   };
 });
 
@@ -94,6 +99,12 @@ function channel(overrides: Partial<LiveMeterChannel> = {}): LiveMeterChannel {
     clipping: false,
     ...overrides,
   } as LiveMeterChannel;
+}
+
+
+
+function savedProfiles(overrides: Partial<Record<string, string>> = {}): Record<string, string> {
+  return overrides;
 }
 
 function windowTick(channels: LiveMeterChannel[]): LiveEvent {
@@ -134,49 +145,42 @@ function makeBoardState(overrides: Partial<LiveBoardState> = {}): LiveBoardState
 
 describe('stripViewAt', () => {
   it('resolves displayName through rigReconcile (label → channel name → Ch N)', () => {
-    const state = makeBoardState();
-    const labeled = stripViewAt([strip({ label: 'Kick' })], channel(), 0, state);
-    expect(labeled.displayName).toBe('Kick');
-    const named = stripViewAt([strip()], channel({ name: 'USB Audio 1' }), 0, state);
-    expect(named.displayName).toBe('USB Audio 1');
-    const fallback = stripViewAt([strip()], channel(), 0, state);
-    expect(fallback.displayName).toBe('Ch 1');
+    expect(stripViewAt({ index: 0, ch: channel(), channelConfig: [strip({ label: 'Kick' })], channelGroups: [], selectedChannel: null, savedInstrumentProfiles: {} }).displayName).toBe('Kick');
+    expect(stripViewAt({ index: 0, ch: channel({ name: 'USB Audio 1' }), channelConfig: [strip()], channelGroups: [], selectedChannel: null, savedInstrumentProfiles: {} }).displayName).toBe('USB Audio 1');
+    expect(stripViewAt({ index: 0, ch: channel(), channelConfig: [strip()], channelGroups: [], selectedChannel: null, savedInstrumentProfiles: {} }).displayName).toBe('Ch 1');
   });
 
   it('marks a strip selected when its index is selectedChannel (#668)', () => {
-    const state = makeBoardState({ selectedChannel: 1 });
-    expect(stripViewAt([strip(), strip()], channel(), 0, state).selected).toBe(false);
-    expect(stripViewAt([strip(), strip()], channel(), 1, state).selected).toBe(true);
+    const input = (idx: number) => ({ index: idx, ch: channel(), channelConfig: [strip(), strip()], channelGroups: [], selectedChannel: 1, savedInstrumentProfiles: {} });
+    expect(stripViewAt(input(0)).selected).toBe(false);
+    expect(stripViewAt(input(1)).selected).toBe(true);
   });
 
   it('resolves armed via armState (default-armed unless armed:false)', () => {
-    const state = makeBoardState();
-    expect(stripViewAt([strip()], channel(), 0, state).armed).toBe(true);
-    expect(stripViewAt([strip({ armed: false })], channel(), 0, state).armed).toBe(false);
+    expect(stripViewAt({ index: 0, ch: channel(), channelConfig: [strip()], channelGroups: [], selectedChannel: null, savedInstrumentProfiles: {} }).armed).toBe(true);
+    expect(stripViewAt({ index: 0, ch: channel(), channelConfig: [strip({ armed: false })], channelGroups: [], selectedChannel: null, savedInstrumentProfiles: {} }).armed).toBe(false);
   });
 
   it('resolves group index + collapse state via groupState (#483)', () => {
     const groups: ChannelGroup[] = [{ name: 'Drums', members: [1], collapsed: true }];
-    const state = makeBoardState({ channelGroups: groups });
-    expect(stripViewAt([strip(), strip()], channel(), 0, state).groupIndex).toBe(-1);
-    expect(stripViewAt([strip(), strip()], channel(), 0, state).groupCollapsed).toBe(false);
-    expect(stripViewAt([strip(), strip()], channel(), 1, state).groupIndex).toBe(0);
-    expect(stripViewAt([strip(), strip()], channel(), 1, state).groupCollapsed).toBe(true);
+    const input = (idx: number) => ({ index: idx, ch: channel(), channelConfig: [strip(), strip()], channelGroups: groups, selectedChannel: null, savedInstrumentProfiles: {} });
+    expect(stripViewAt(input(0)).groupIndex).toBe(-1);
+    expect(stripViewAt(input(0)).groupCollapsed).toBe(false);
+    expect(stripViewAt(input(1)).groupIndex).toBe(0);
+    expect(stripViewAt(input(1)).groupCollapsed).toBe(true);
   });
 
   it('resolves the effective instrument profile + auto flag (#524)', () => {
-    const state = makeBoardState({
-      selectedDevice: '0',
-      settings: {
-        ...makeBoardState().settings,
-        inputInstrumentProfiles: { 'Scarlett 18i20': { '0': 'vocal' } },
-      } as LiveBoardState['settings'],
+    const withOverride = stripViewAt({
+      index: 0, ch: channel(), channelConfig: [strip({ a: 0 })], channelGroups: [], selectedChannel: null,
+      savedInstrumentProfiles: { '0': 'vocal' },
     });
-    const withOverride = stripViewAt([strip({ a: 0 })], channel(), 0, state);
     expect(withOverride.instrumentProfileId).toBe('vocal');
     expect(withOverride.instrumentAuto).toBe(false);
-    // No override → label-inferred + auto.
-    const auto = stripViewAt([strip({ a: 0 }), strip({ label: 'Kick drum', a: 1, b: 2 })], channel(), 1, state);
+    const auto = stripViewAt({
+      index: 1, ch: channel(), channelConfig: [strip({ a: 0 }), strip({ label: 'Kick drum', a: 1, b: 2 })], channelGroups: [], selectedChannel: null,
+      savedInstrumentProfiles: {},
+    });
     expect(auto.instrumentProfileId).toBe('kick');
     expect(auto.instrumentAuto).toBe(true);
   });
@@ -184,8 +188,7 @@ describe('stripViewAt', () => {
 
 describe('livePanelView', () => {
   it('exposes deviceChannels, liveRunning, groups, and the profile catalog', () => {
-    const state = makeBoardState({ isCapturing: true, selectedDevice: '0' });
-    const panel = livePanelView(state);
+    const panel = livePanelView({ deviceChannels: 8, liveRunning: true, channelGroups: [] });
     expect(panel.deviceChannels).toBe(8);
     expect(panel.liveRunning).toBe(true);
     expect(panel.groups).toEqual([]);
@@ -195,18 +198,12 @@ describe('livePanelView', () => {
 
 describe('lapFocusView', () => {
   it('resolves each input name + effective profile and carries focusedIndex', () => {
-    const state = makeBoardState({
-      settings: {
-        ...makeBoardState().settings,
-        inputInstrumentProfiles: { '': { '0': 'bass' } },
-      } as LiveBoardState['settings'],
+    const focus = lapFocusView({
+      focusedIndex: 1,
+      channelConfig: [strip({ label: 'Bass', a: 0 }), strip({ a: 1, b: 2 })],
+      channels: [channel(), channel()],
+      savedInstrumentProfiles: { '0': 'bass' },
     });
-    const focus = lapFocusView(
-      [strip({ label: 'Bass', a: 0 }), strip({ a: 1, b: 2 })],
-      [channel(), channel()],
-      1,
-      state,
-    );
     expect(focus.focusedIndex).toBe(1);
     expect(focus.inputs).toHaveLength(2);
     expect(focus.inputs[0].name).toBe('Bass');
@@ -215,19 +212,91 @@ describe('lapFocusView', () => {
   });
 
   it('falls back to the channel name when a lane carries no label', () => {
-    const state = makeBoardState();
-    const focus = lapFocusView([strip()], [channel({ name: 'Vox' })], null, state);
+    const focus = lapFocusView({ focusedIndex: null, channelConfig: [strip()], channels: [channel({ name: 'Vox' })], savedInstrumentProfiles: {} });
     expect(focus.inputs[0].name).toBe('Vox');
   });
 });
 
 describe('lapObservationContext', () => {
-  it('delegates to liveAdjustmentsState.observationContext with the source label', () => {
+  it('delegates to liveAdjustmentsState.observationContext with the focused input name as the source label', () => {
     const spy = vi.spyOn(liveAdjustmentsState, 'observationContext').mockReturnValue({ mixValid: true });
-    const focus: LapFocusView = { focusedIndex: null, inputs: [] };
-    const out = lapObservationContext([], null, focus, [strip({ label: 'Room' })]);
+    const focus: LapFocusView = { focusedIndex: 0, inputs: [{ index: 0, name: 'Room', profile: { id: 'generic' } }] };
+    const out = lapObservationContext([], null, focus);
     expect(spy).toHaveBeenCalledWith([], null, focus, 'Room');
     expect(out).toEqual({ mixValid: true });
+  });
+});
+
+describe('currentPaneChannels', () => {
+  it('returns the tick channels when present, else idle placeholders for the config', () => {
+    const tick = [channel({ name: 'Vocals' })];
+    expect(currentPaneChannels(tick, [strip(), strip()])).toHaveLength(1);
+    expect(currentPaneChannels(tick, [strip(), strip()])[0].name).toBe('Vocals');
+    const idle = currentPaneChannels(null, [strip(), strip()]);
+    expect(idle).toHaveLength(2);
+    expect(idle[0].idle).toBe(true);
+    expect(currentPaneChannels([], [strip()])[0].idle).toBe(true);
+  });
+});
+
+describe('liveBoardPatchPlan', () => {
+  it('derives per-strip views + group summary deltas from the tick and deps', () => {
+    const groups: ChannelGroup[] = [{ name: 'Drums', members: [1] }];
+    const tick = windowTick([channel({ name: 'Vocals', clipping: true }), channel({ name: 'Kick' })]);
+    const plan = liveBoardPatchPlan(tick, {
+      channelConfig: [strip({ label: 'V' }), strip()],
+      channelGroups: groups,
+      selectedChannel: 1,
+      isCapturing: true,
+      savedInstrumentProfiles: {},
+    });
+    expect(plan.stripViews).toHaveLength(2);
+    expect(plan.stripViews[0].displayName).toBe('V');
+    expect(plan.stripViews[0].selected).toBe(false);
+    expect(plan.stripViews[1].selected).toBe(true);
+    expect(plan.summaries).toHaveLength(1);
+    expect(plan.summaries[0].group).toBe(0);
+    expect(plan.summaries[0].text).toContain('1 track');
+    expect(plan.summaries[0].clipping).toBe(false);
+  });
+
+  it('handles a channel-less tick with no strips or summaries', () => {
+    const plan = liveBoardPatchPlan({ type: 'window', window: 1, ts: 0 } as never, {
+      channelConfig: [], channelGroups: [], selectedChannel: null, isCapturing: true, savedInstrumentProfiles: {},
+    });
+    expect(plan.stripViews).toEqual([]);
+    expect(plan.summaries).toEqual([]);
+  });
+});
+
+describe('eqPaneViewFor', () => {
+  it('resolves the pane view from store state, with the secondary Room override when active', () => {
+    const view = eqPaneViewFor({
+      isCapturing: true,
+      lastTick: { type: 'meter', ts: 0, channels: [channel({ name: 'Vocals' })] } as never,
+      lastLiveChannels: [channel({ name: 'Vocals' })],
+      channelConfig: [strip()],
+      measurementSource: null,
+      selectedChannel: null,
+      secondaryMeasurement: { status: 'off', deviceName: '' },
+      secondaryWindows: [],
+      lastMeasurementChannels: null,
+    } as never);
+    expect(view.primary?.ch.name).toBe('Vocals');
+    expect(view.primary?.idx).toBe(0);
+
+    const secondary = eqPaneViewFor({
+      isCapturing: true,
+      lastTick: null,
+      lastLiveChannels: null,
+      channelConfig: [strip()],
+      measurementSource: null,
+      selectedChannel: null,
+      secondaryMeasurement: { status: 'active', deviceName: 'USB Mic' },
+      secondaryWindows: [{ type: 'window', window: 1 } as never],
+      lastMeasurementChannels: [channel({ name: 'Room Mic' })],
+    } as never);
+    expect(secondary.primary?.label).toBe('USB Mic');
   });
 });
 

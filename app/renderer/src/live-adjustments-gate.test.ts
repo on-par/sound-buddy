@@ -135,7 +135,8 @@ describe('Per-input instrument-aware adjustment candidates (#525)', () => {
     expect(focus).toContain('effectiveProfileId(');
     const obs = functionBody(liveBoard, 'lapObservationContext');
     expect(obs).toContain('getLiveAdjustmentsState().observationContext(');
-    expect(obs).toContain('measurementSourceOptionLabel(');
+    // The source label comes from the focused input's resolved name (#710).
+    expect(obs).toContain('focusView.inputs[idx]?.name');
   });
 
   it('LiveCapturePanel routes .lap-focus-select changes to setFocusedInputIndex', () => {

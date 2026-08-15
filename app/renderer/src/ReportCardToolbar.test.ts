@@ -5,6 +5,25 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { createElement } from 'react';
 import { renderToString } from 'react-dom/server';
 import ReportCardToolbar, { applyStatusTransition } from './ReportCardToolbar';
+
+// slice 6g (#710): the file-analysis header stats row is written through
+// live-board.ts's fileStatsRowView/patchStatsRow (the old window.updateStatsRow
+// bridge is deleted) — mock the module so the status-transition effect can be
+// asserted without a real DOM.
+const { fileStatsRowViewMock, patchStatsRowMock } = vi.hoisted(() => ({
+  fileStatsRowViewMock: vi.fn(() => ({
+    rms: { text: '-18.0', tone: '' },
+    peak: { text: '-3.0', tone: '' },
+    dr: { text: '12.0', tone: '' },
+    clip: { text: 'No', tone: '' },
+    centroid: '1,200',
+  })),
+  patchStatsRowMock: vi.fn(),
+}));
+vi.mock('./live-board', () => ({
+  fileStatsRowView: fileStatsRowViewMock,
+  patchStatsRow: patchStatsRowMock,
+}));
 import { useAnalysisStore } from './stores/analysisStore';
 import { useSettingsStore } from './stores/settingsStore';
 import { useSpectrumStore } from './stores/spectrumStore';
@@ -179,11 +198,20 @@ describe('applyStatusTransition', () => {
     expect(useSpectrumStore.getState().panelState).toBe('empty');
   });
 
-  it('done: persists a file summary (the stats row is React-rendered by LiveStatsRow, #710)', async () => {
+  it('done: writes the file stats row via fileStatsRowView/patchStatsRow and persists the summary', async () => {
+    // No DOM in this harness — the row lookup is guarded on element presence,
+    // so absent #stats-row means the applier is skipped (still covered below).
+    const statsRowEl = { querySelector: () => null };
+    (globalThis as { document?: unknown }).document = {
+      getElementById: (id: string) => (id === 'stats-row' ? statsRowEl : null),
+    };
     applyStatusTransition('done', ANALYSIS, null);
+    expect(fileStatsRowViewMock).toHaveBeenCalledWith(ANALYSIS.sox, ANALYSIS.spectrum);
+    expect(patchStatsRowMock).toHaveBeenCalledWith(statsRowEl, expect.objectContaining({ centroid: '1,200' }));
     await vi.waitFor(() => expect(mock.api.saveAnalysisSummary).toHaveBeenCalledWith(
       expect.objectContaining({ source: 'file', sourceFilename: 'service.wav' })
     ));
+    delete (globalThis as { document?: unknown }).document;
   });
 
   it('done with no currentAnalysis: no-ops (defensive — should not happen in practice)', () => {

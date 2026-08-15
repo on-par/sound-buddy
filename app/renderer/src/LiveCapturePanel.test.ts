@@ -158,8 +158,19 @@ describe('LiveCapturePanel', () => {
     const boardState = liveBoardState();
     const expectedMeters = liveMetersHTML(
       channels,
-      channels.map((c, i) => stripViewAt(CONFIG, c, i, boardState)),
-      livePanelView(boardState),
+      channels.map((c, i) => stripViewAt({
+        index: i,
+        ch: c,
+        channelConfig: CONFIG,
+        channelGroups: boardState.channelGroups,
+        selectedChannel: boardState.selectedChannel,
+        savedInstrumentProfiles: {},
+      })),
+      livePanelView({
+        deviceChannels: boardState.devices.length ? 8 : 0,
+        liveRunning: boardState.isCapturing,
+        channelGroups: boardState.channelGroups,
+      }),
     );
     const html = renderMarkup();
     expect(html).toContain(expectedMeters);
