@@ -11,6 +11,10 @@ import { spectrumTransport } from './spectrum-transport';
 import { createMockSoundBuddy } from './mock-sound-buddy';
 import type { AnalysisSummary } from '../../electron/ipc/api';
 
+// loadHistoryEntry's clear path calls resetLapCoaching (store-owned coaching
+// state, TD-001 slice 6g #710) — the classic script it reads off window.
+const liveAdjustmentsState = require('../live-adjustments-state.js');
+
 const SUMMARY_A: AnalysisSummary = {
   date: '2026-08-01T12:00:00Z', sourceFilename: 'sunday.wav', gradeLetter: 'A', score: 95,
   recordingType: 'Full Mix', topFixes: [],
@@ -46,7 +50,6 @@ function makeFakeElement() {
 }
 
 let elements: Record<string, ReturnType<typeof makeFakeElement>>;
-let liveIsRunning: ReturnType<typeof vi.fn>;
 let fakeBody: { classList: ReturnType<typeof makeClassList> };
 let printSpy: ReturnType<typeof vi.fn>;
 
@@ -59,7 +62,6 @@ beforeEach(() => {
     'live-eq-pane': makeFakeElement(),
     'trend-report': makeFakeElement(),
   };
-  liveIsRunning = vi.fn(() => false);
   fakeBody = { classList: makeClassList() };
   (globalThis as { document?: unknown }).document = {
     getElementById: (id: string) => elements[id] ?? null,
@@ -68,8 +70,8 @@ beforeEach(() => {
   };
   printSpy = vi.fn();
   (globalThis as { window?: unknown }).window = {
-    liveCapture: { isRunning: liveIsRunning },
     soundBuddy: createMockSoundBuddy().api,
+    liveAdjustmentsState,
     singleColumnState: { isSingleColumn: () => false },
     reportFirstUxState: { isEnabled: () => false },
     print: printSpy,
@@ -80,7 +82,7 @@ afterEach(() => {
   delete (globalThis as { document?: unknown }).document;
   delete (globalThis as { window?: unknown }).window;
   vi.restoreAllMocks();
-  useLiveCaptureStore.setState({ appMode: 'reportcard' });
+  useLiveCaptureStore.setState({ appMode: 'reportcard', isCapturing: false });
   useAnalysisStore.setState({
     currentAnalysis: null, liveSource: null, historySummary: null, prevSummary: null, status: 'idle',
   });
@@ -202,8 +204,7 @@ describe('loadHistoryEntry', () => {
   });
 
   it('leaves an actively-running capture session untouched', () => {
-    liveIsRunning.mockReturnValue(true);
-    useLiveCaptureStore.setState({ liveWindows: [{ type: 'window', window: 1, ts: 0, masking: [], channels: [] }] });
+    useLiveCaptureStore.setState({ isCapturing: true, liveWindows: [{ type: 'window', window: 1, ts: 0, masking: [], channels: [] }] });
     loadHistoryEntry(SUMMARY_A, null);
     expect(useLiveCaptureStore.getState().liveWindows).toHaveLength(1);
     expect(elements['rc-offer'].style.display).toBe('');

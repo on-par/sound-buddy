@@ -17,13 +17,6 @@ import { iconSvg } from './report-card';
 import { buildTrendReportRows, trendReportHtml, MIN_TREND_ENTRIES } from './trend-export';
 import type { AnalysisSummary } from '../../electron/ipc/api';
 
-interface LiveCaptureRunningApi {
-  isRunning(): boolean;
-}
-function getLiveCapture(): LiveCaptureRunningApi | undefined {
-  return (window as unknown as { liveCapture?: LiveCaptureRunningApi }).liveCapture;
-}
-
 // CSS-custom-property-safe grade class — verbatim port of the inline
 // expression in renderRecentServices (inline-app.js).
 function gradeColorVar(gradeLetter: string): string {
@@ -45,9 +38,10 @@ export function loadHistoryEntry(summary: AnalysisSummary, prevSummary: Analysis
   // historySummary) — clearAnalysis() also resets selectedFilePath/status.
   useAnalysisStore.getState().clearAnalysis();
   useAnalysisStore.getState().setPrevSummary(prevSummary || null);
-  if (!getLiveCapture()?.isRunning()) {
+  if (!useLiveCaptureStore.getState().isCapturing) {
     useLiveCaptureStore.getState().clearLiveWindows();
-    (window as unknown as { liveCoaching?: { reset(): void } }).liveCoaching?.reset();
+    // #710: resetLapCoaching() replaces the deleted window.liveCoaching bridge.
+    useLiveCaptureStore.getState().resetLapCoaching();
     const rcOffer = document.getElementById('rc-offer');
     const rcNotEnough = document.getElementById('rc-not-enough');
     if (rcOffer) rcOffer.style.display = 'none';

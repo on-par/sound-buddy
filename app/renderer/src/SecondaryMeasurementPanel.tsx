@@ -11,11 +11,11 @@
 // state via the unchanged pure helpers in measurement-device-state.ts —
 // picking "None" (the default) leaves measurement off, exactly like every
 // other device picker in the app.
-// renderMeasurementBadge()/renderEqPane() stay imperative and out of scope —
-// reached via one new optional method on the existing
-// window.liveCaptureRuntime object (LiveControls.tsx's LiveCaptureRuntime
-// interface), the same way LiveSourceSettings.tsx's own onChange handlers
-// reach bridged orchestration.
+// renderMeasurementBadge() stays imperative and out of scope; the EQ pane's
+// Room slot is React-owned now (LiveEqPane, TD-001 slice 6g #710) — reached
+// via one new optional method on the existing window.liveCaptureRuntime
+// object (LiveControls.tsx's LiveCaptureRuntime interface), the same way
+// LiveSourceSettings.tsx's own onChange handlers reach bridged orchestration.
 
 import { useEffect, type JSX } from 'react';
 import { useStoreShallow } from './stores/useStoreShallow';

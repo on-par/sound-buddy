@@ -20,7 +20,6 @@ import { useSpectrumStore } from './stores/spectrumStore';
 import { useAnalysisStore } from './stores/analysisStore';
 import { useSoundcheckStore } from './stores/soundcheckStore';
 import { SPECTRUM_TITLE } from './spectrum-chrome';
-import { clampEqPaneWidth } from './live-capture-panel';
 import { decideLiveAutoStart } from './live-auto-start';
 import { startLiveCapture, runtime } from './LiveControls';
 import { captureOptsFromCadence } from './measurement-device-state';
@@ -56,47 +55,25 @@ function getReportFirstUxState(): ReportFirstUxStateApi {
   return (window as unknown as { reportFirstUxState: ReportFirstUxStateApi }).reportFirstUxState;
 }
 
-// The Live tab's meter board (renderLiveMeters/renderLiveWorkspace/
-// renderEqPane/currentEqPaneChannels) is out of scope for this slice (#395's
-// later slice 6f) and stays inline-app.js's — its top-level `function`
-// declarations attach to `window` automatically (same as
-// window.renderChannelConfig, read by rigStore.ts). liveRunning/liveWindows
-// are `let` bindings, which don't, so inline-app.js bridges a read-only
-// accessor for them onto window.liveCapture.
-interface LiveBoardApi {
-  renderLiveMeters(win: unknown): void;
-  renderLiveWorkspace(): void;
-  renderEqPane(channels: unknown): void;
-  currentEqPaneChannels(): unknown;
-}
-interface LiveCaptureRunningApi {
-  isRunning(): boolean;
-  windows(): unknown[];
-}
-function getLiveBoard(): LiveBoardApi {
-  return window as unknown as LiveBoardApi;
-}
-function getLiveCapture(): LiveCaptureRunningApi {
-  return (window as unknown as { liveCapture: LiveCaptureRunningApi }).liveCapture;
-}
+// The Live tab's meter board + docked EQ pane are React-owned now (TD-001
+// slice 6g, #710): LiveCapturePanel renders #live-island from liveCaptureStore's
+// discrete state and LiveEqPane owns #live-eq-pane's visibility/width/resize,
+// so applySpectrumForMode's live branch no longer calls renderLiveMeters/
+// renderLiveWorkspace/renderEqPane/currentEqPaneChannels — the board and pane
+// render reactively from appMode, and this branch keeps only the spectrum
+// title write.
 
 // Verbatim port of syncSpectrumForMode (inline-app.js) — keeps the spectrum
 // panel's title + empty/populated/meters state in sync with the active mode.
 export function applySpectrumForMode(mode: string): void {
   const title = document.getElementById('spectrum-title');
-  const eqPane = document.getElementById('live-eq-pane');
-  if (eqPane) eqPane.style.display = mode === 'live' ? 'flex' : 'none';
   const curAnalysis = () => useAnalysisStore.getState().currentAnalysis;
 
   if (mode === 'live') {
     if (title) title.textContent = SPECTRUM_TITLE.live;
-    if (eqPane) eqPane.style.width = clampEqPaneWidth(useSettingsStore.getState().settings?.liveEqPaneWidth) + 'px';
-    const board = getLiveBoard();
-    const live = getLiveCapture();
-    const windows = live.windows();
-    if (live.isRunning() && windows.length > 0) board.renderLiveMeters(windows[windows.length - 1]);
-    else board.renderLiveWorkspace();
-    board.renderEqPane(board.currentEqPaneChannels());
+    // The docked EQ pane's visibility/width live in LiveEqPane's own effect
+    // (TD-001 slice 6g, #710) — the pane is always mounted and toggles from
+    // appMode, so there is nothing to write here.
   } else if (mode === 'soundcheck') {
     if (title) title.textContent = 'Soundcheck';
     // #760: soundcheck playback is tracks + playhead only — the panel stays in

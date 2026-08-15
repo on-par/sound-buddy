@@ -1,23 +1,87 @@
 // Copyright (c) 2026 Patrick Robinson (on-par). All rights reserved.
 // Licensed under the Sound Buddy Desktop Application License (app/LICENSE).
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { createElement } from 'react';
 import { renderToString } from 'react-dom/server';
 import LiveWorkspace from './LiveWorkspace';
+import { useLiveCaptureStore } from './stores/liveCaptureStore';
+import { useSettingsStore } from './stores/settingsStore';
+import type { AppSettings } from '../../electron/ipc/api';
 
-// LiveWorkspace always renders null — it hands #live-island back to the
-// bridged imperative renderer (window.liveWorkspaceRuntime, inline-app.js),
-// the same handoff SpectrumPanel uses for panelState 'meters' (see the
-// header comment). Its actual behavior — WHEN the bridged renderer re-runs —
-// lives in effects that don't run under renderToString (no jsdom in this
-// harness); that reactivity is exercised by tests/e2e/live-capture.spec.ts.
-// This test just pins the render-null contract so a future edit can't
-// accidentally make it try to own #live-island's markup directly (see the
-// file header for why that doesn't fit the DOM-query-based patch-vs-rebuild
-// logic renderLiveMeters()/renderLiveWorkspace() use).
+// LiveWorkspace renders the <LiveCapturePanel> board island (TD-001 slice 6g,
+// #710) — the per-tick meter controller and #live-island visibility wiring it
+// also owns run in effects that don't fire under renderToString (no jsdom in
+// this harness); that reactivity is exercised by tests/e2e/live-capture.spec.ts
+// and live-capture-workspace.spec.ts. This test pins the render contract: the
+// board markup is produced on the Live tab and nothing renders off it.
+
+const trackWorkspace = require('../track-workspace.js');
+const armState = require('../arm-state.js');
+const groupState = require('../group-state.js');
+const rigReconcile = require('../rig-reconcile.js');
+const instrumentProfiles = require('../instrument-profiles.js');
+const liveSetupState = require('../live-setup-state.js');
+const liveAdjustmentsState = require('../live-adjustments-state.js');
+const dawWorkspaceState = require('../daw-workspace-state.js');
+const dawPlayheadState = require('../daw-playhead-state.js');
+const dawWaveformState = require('../daw-waveform-state.js');
+const grading = require('../grading.js');
+
+function settings(overrides: Partial<AppSettings> = {}): AppSettings {
+  return {
+    idealProfile: '', customIdealProfiles: [], storageDir: '', rigs: [], activeRigId: null,
+    usageSignalEnabled: false, channelLabels: {}, channelGroups: {}, inputInstrumentProfiles: {},
+    crashReportingEnabled: false, dawWorkspaceEnabled: false, liveAdjustmentsEnabled: false,
+    reportFirstUxEnabled: false, shareChurchName: '', weeklyReminderEnabled: false,
+    weeklyReminderServiceDay: 0, liveEqPaneWidth: 360,
+    measurementDeviceName: '', gradingProfile: 'casual', consoleNetworkConsentGranted: false,
+    soundcheckBuses: [],
+    ...overrides,
+  };
+}
+
+beforeEach(() => {
+  (globalThis as { window?: unknown }).window = {
+    trackWorkspace, armState, groupState, rigReconcile, instrumentProfiles,
+    liveSetupState, liveAdjustmentsState, dawWorkspaceState, dawPlayheadState,
+    dawWaveformState, grading,
+    localStorage: { getItem: () => null, setItem: () => {} },
+  };
+  useLiveCaptureStore.setState({
+    channelConfig: [{ kind: 'mono', a: 0, b: 1, armed: true }, { kind: 'mono', a: 1, b: 2, armed: true }],
+    channelGroups: [],
+    devices: [{ index: 0, name: 'Scarlett 18i20', channels: 8, default_sr: 48000 }],
+    selectedDevice: '',
+    isCapturing: false,
+    liveMode: 'monitor',
+    appMode: 'live',
+    selectedChannel: null,
+    measurementSource: null,
+    focusedInputIndex: null,
+    lapCoaching: null,
+    liveWindows: [],
+    lastTick: null,
+    lastLiveChannels: null,
+  });
+  useSettingsStore.setState({ settings: settings() });
+});
+
+afterEach(() => {
+  delete (globalThis as { window?: unknown }).window;
+  useLiveCaptureStore.setState({ appMode: 'reportcard', isCapturing: false, liveWindows: [], lastTick: null, lastLiveChannels: null });
+  useSettingsStore.setState({ settings: null, settingsError: null });
+});
+
 describe('LiveWorkspace', () => {
-  it('always renders null, handing #live-island to the bridged imperative renderer', () => {
+  it('renders the LiveCapturePanel board island on the Live tab', () => {
+    const html = renderToString(createElement(LiveWorkspace));
+    expect(html).toContain('live-meters-toolbar');
+    expect(html).toContain('meter-card sb-live-meters idle');
+  });
+
+  it('renders nothing off the Live tab — the board island gates itself on appMode', () => {
+    useLiveCaptureStore.setState({ appMode: 'reportcard' });
     expect(renderToString(createElement(LiveWorkspace))).toBe('');
   });
 });

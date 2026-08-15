@@ -89,36 +89,36 @@ export interface StatsRowView {
  * Mirrors liveCaptureStore.ts's getArmState()-style pattern: these modules are
  * boot-injected once (App.tsx's BOOT_SCRIPTS) and read off `window` rather than
  * imported, so the view shares the exact same instances inline-app.js reads. */
-interface TrackWorkspaceApi {
+export interface TrackWorkspaceApi {
   idleChannel(bandKeys: string[]): LiveMeterChannel;
   addEnabled(usedChannels: number, totalChannels: number, capturing: boolean): boolean;
   isEmpty(configuredCount: number): boolean;
 }
-interface GroupStateApi {
+export interface GroupStateApi {
   groupOf(groups: ChannelGroup[], idx: number): number;
   isGroupCollapsed(groups: ChannelGroup[], g: number): boolean;
 }
-interface ArmStateApi {
+export interface ArmStateApi {
   stripToken(strip: StripConfig): string;
   isArmed(strip: StripConfig | null | undefined): boolean;
   armedCount(cfg: StripConfig[]): number;
 }
-interface RigReconcileApi {
+export interface RigReconcileApi {
   resolveStripLabel(strip: StripConfig | null | undefined, ch: LiveMeterChannel | null | undefined, index: number): string;
 }
-interface InstrumentProfilesApi {
+export interface InstrumentProfilesApi {
   PROFILES: Array<{ id: string; label: string }>;
   effectiveProfileId(overridesForDevice: Record<string, string> | null | undefined, token: string, label: string | undefined): string;
   isKnownProfileId(id: string): boolean;
   profileById(id: string): { id: string; label: string; bands: Record<string, number> };
 }
-interface LiveSetupStepsApi {
+export interface LiveSetupStepsApi {
   setupSteps(view: { deviceReady: boolean; trackCount: number; liveMode: string }): LiveSetupStep[];
   shouldShowGuide(storage: { getItem(key: string): string | null; setItem(key: string, value: string): void } | null): boolean;
   markSetupComplete(storage: { getItem(key: string): string | null; setItem(key: string, value: string): void } | null): void;
   showAdvancedControls(trackCount: number): boolean;
 }
-interface LiveAdjustmentsStateApi {
+export interface LiveAdjustmentsStateApi {
   panelHTML(
     settings: AppSettings | null,
     mode: string,
@@ -136,45 +136,62 @@ interface LiveAdjustmentsStateApi {
   ): unknown;
   createCoachingState(): unknown;
 }
-interface DawWorkspaceStateApi {
+export interface DawWorkspaceStateApi {
   showShell(settings: AppSettings | null, mode: string): boolean;
   transportLabel(liveRunning: boolean, liveMode: string): string;
 }
-interface DawPlayheadStateApi {
+export interface DawPlayheadStateApi {
   elapsedMs(state: unknown, nowMs: number): number;
   formatElapsed(ms: number): string;
 }
-interface DawWaveformStateApi {
+export interface DawWaveformStateApi {
   captureModeToken(liveRunning: boolean, liveMode: string): string;
 }
-function getTrackWorkspace(): TrackWorkspaceApi {
+
+// The 6j seam the React DAW-shell effect and the meter-controller patch path
+// use to reach the still-inline waveform/playhead painters (inline-app.js
+// installs window.dawShellRuntime). Also carries the seeded elapsed-time
+// readout the shell rebuilds from so a mid-capture rebuild never flashes 0:00.
+export interface DawShellRuntime {
+  renderPlayhead(): void;
+  renderWaveform(): void;
+  playheadElapsedMs(): number;
+}
+export function getDawShellRuntime(): DawShellRuntime | undefined {
+  return (window as unknown as { dawShellRuntime?: DawShellRuntime }).dawShellRuntime;
+}
+
+// The live-workspace accessors are exported so the React islands and the
+// meter-controller patch path read the same classic-script instances without
+// re-declaring the typed casts (never bare `any`).
+export function getTrackWorkspace(): TrackWorkspaceApi {
   return (window as unknown as { trackWorkspace: TrackWorkspaceApi }).trackWorkspace;
 }
-function getGroupState(): GroupStateApi {
+export function getGroupState(): GroupStateApi {
   return (window as unknown as { groupState: GroupStateApi }).groupState;
 }
-function getArmState(): ArmStateApi {
+export function getArmState(): ArmStateApi {
   return (window as unknown as { armState: ArmStateApi }).armState;
 }
-function getRigReconcile(): RigReconcileApi {
+export function getRigReconcile(): RigReconcileApi {
   return (window as unknown as { rigReconcile: RigReconcileApi }).rigReconcile;
 }
-function getInstrumentProfiles(): InstrumentProfilesApi {
+export function getInstrumentProfiles(): InstrumentProfilesApi {
   return (window as unknown as { instrumentProfiles: InstrumentProfilesApi }).instrumentProfiles;
 }
-function getLiveSetupState(): LiveSetupStepsApi {
+export function getLiveSetupState(): LiveSetupStepsApi {
   return (window as unknown as { liveSetupState: LiveSetupStepsApi }).liveSetupState;
 }
-function getLiveAdjustmentsState(): LiveAdjustmentsStateApi {
+export function getLiveAdjustmentsState(): LiveAdjustmentsStateApi {
   return (window as unknown as { liveAdjustmentsState: LiveAdjustmentsStateApi }).liveAdjustmentsState;
 }
-function getDawWorkspaceState(): DawWorkspaceStateApi {
+export function getDawWorkspaceState(): DawWorkspaceStateApi {
   return (window as unknown as { dawWorkspaceState: DawWorkspaceStateApi }).dawWorkspaceState;
 }
-function getDawPlayheadState(): DawPlayheadStateApi {
+export function getDawPlayheadState(): DawPlayheadStateApi {
   return (window as unknown as { dawPlayheadState: DawPlayheadStateApi }).dawPlayheadState;
 }
-function getDawWaveformState(): DawWaveformStateApi {
+export function getDawWaveformState(): DawWaveformStateApi {
   return (window as unknown as { dawWaveformState: DawWaveformStateApi }).dawWaveformState;
 }
 

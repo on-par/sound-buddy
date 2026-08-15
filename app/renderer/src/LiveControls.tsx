@@ -59,10 +59,10 @@ export interface LiveCaptureRuntime {
   onResumeMonitoringStart?(): void;
   /** Promotes a running monitor session to a recording in place (#458) — its own guard/orchestration stays bridged. */
   promoteToRecording(): Promise<void>;
-  /** Repaints the still-imperative Room badge/EQ-pane slot after a secondary-
-   *  measurement device selection/start/stop/reconnect (#460, #724) —
-   *  renderMeasurementBadge()/renderEqPane() stay imperative and out of
-   *  scope for this component. */
+  /** Repaints the still-imperative Room badge after a secondary-measurement
+   *  device selection/start/stop/reconnect (#460, #724) —
+   *  renderMeasurementBadge() stays imperative and out of scope; the EQ pane's
+   *  Room slot is React-owned (LiveEqPane, TD-001 slice 6g #710). */
   afterSecondaryMeasurementChange?(): void;
 }
 

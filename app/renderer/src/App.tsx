@@ -61,6 +61,7 @@ import IdealProfileSelect from './IdealProfileSelect';
 import CurveEditorDialog from './CurveEditorDialog';
 import RecordButton from './RecordButton';
 import LiveWorkspace from './LiveWorkspace';
+import LiveEqPane from './LiveEqPane';
 import SoundcheckPanel from './SoundcheckPanel';
 import ModeTabs from './ModeTabs';
 import * as modeSwitch from './mode-switch';
@@ -247,6 +248,10 @@ export default function App() {
       {booted && createPortal(<SpectrumPanel />, document.getElementById('spectrum-island')!)}
       {booted && createPortal(<IdealProfileSelect />, document.getElementById('ideal-profile-island')!)}
       {booted && createPortal(<LiveWorkspace />, document.getElementById('live-island')!)}
+      {/* #710: the docked EQ pane is its own island portaled onto the static
+          #live-eq-pane-body root-markup node — it owns its own visibility/
+          width/resize, so mode-switch.ts no longer writes the pane. */}
+      {booted && createPortal(<LiveEqPane />, document.getElementById('live-eq-pane-body')!)}
       {/* #757: the Live tab's in-tab controls are gone — no portals to
           LiveControls / LiveTransportControls / PreflightPanel. The top-bar
           RecordButton portal below is the sole Live-capture surface. */}

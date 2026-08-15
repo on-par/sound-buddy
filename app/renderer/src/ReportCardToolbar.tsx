@@ -17,6 +17,7 @@ import { useGradeOwnGuideStore } from './stores/gradeOwnGuideStore';
 import { spectrumTransport } from './spectrum-transport';
 import { resolveReportCardChromeSource, reportCardChromeView, getReportCardSource, persistSummary } from './report-card-chrome';
 import { iconSvg, buildMetricRows, type ReportCardSource, type GradingPillApi } from './report-card';
+import { statsRowView, patchStatsRow } from './live-workspace-view';
 import type { AnalysisPayload } from '@sound-buddy/shared';
 import * as reportExport from './report-export';
 import * as shareCard from './share-card';
@@ -37,12 +38,6 @@ interface ReportFirstUxStateApi {
 interface AnalyzeSourcePickerApi {
   open(): void;
 }
-interface LiveCaptureRunningApi {
-  isRunning(): boolean;
-}
-interface LiveCoachingApi {
-  reset(): void;
-}
 function getGrading(): GradingApi {
   return (window as unknown as { grading: GradingApi }).grading;
 }
@@ -55,17 +50,8 @@ function getReportFirstUxState(): ReportFirstUxStateApi {
 function getAnalyzeSourcePicker(): AnalyzeSourcePickerApi | undefined {
   return (window as unknown as { analyzeSourcePicker?: AnalyzeSourcePickerApi }).analyzeSourcePicker;
 }
-function getLiveCapture(): LiveCaptureRunningApi {
-  return (window as unknown as { liveCapture: LiveCaptureRunningApi }).liveCapture;
-}
-function getLiveCoaching(): LiveCoachingApi | undefined {
-  return (window as unknown as { liveCoaching?: LiveCoachingApi }).liveCoaching;
-}
 function getChooseAndAnalyzeFile(): (() => Promise<void>) | undefined {
   return (window as unknown as { chooseAndAnalyzeFile?: () => Promise<void> }).chooseAndAnalyzeFile;
-}
-function getUpdateStatsRow(): ((sox: unknown, spectrum: unknown) => void) | undefined {
-  return (window as unknown as { updateStatsRow?: (sox: unknown, spectrum: unknown) => void }).updateStatsRow;
 }
 
 // Share Image (#265): a one-click, purpose-built 1200×630 PNG for social
@@ -157,7 +143,10 @@ export function applyStatusTransition(status: string, currentAnalysis: AnalysisP
   } else if (status === 'cancelled') {
     useSpectrumStore.getState().setPanelState('empty');
   } else if (status === 'done' && currentAnalysis) {
-    getUpdateStatsRow()?.(currentAnalysis.sox, currentAnalysis.spectrum);
+    // #710: the file-analysis stats row is now a pure view + DOM applier from
+    // live-workspace-view.ts (patchStatsRow is c8-ignored, e2e-gated), not the
+    // deleted window.updateStatsRow bridge.
+    patchStatsRow(statsRowView(currentAnalysis.sox, currentAnalysis.spectrum));
     persistSummary(getReportCardSource(currentAnalysis, liveSource), 'file');
   }
 }
@@ -201,9 +190,10 @@ export default function ReportCardToolbar(): JSX.Element {
             if (!currentAnalysis) return;
             spectrumTransport.reset();
             useAnalysisStore.getState().clearAnalysis();
-            if (!getLiveCapture().isRunning()) {
+            if (!useLiveCaptureStore.getState().isCapturing) {
               useLiveCaptureStore.getState().clearLiveWindows();
-              getLiveCoaching()?.reset();
+              // #710: resetLapCoaching() replaces the deleted window.liveCoaching bridge.
+              useLiveCaptureStore.getState().resetLapCoaching();
               const rcOffer = document.getElementById('rc-offer');
               const rcNotEnough = document.getElementById('rc-not-enough');
               if (rcOffer) rcOffer.style.display = 'none';
