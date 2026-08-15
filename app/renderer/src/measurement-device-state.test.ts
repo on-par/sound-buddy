@@ -12,6 +12,7 @@ import {
   alignmentWarningHTML,
   roomFeed,
   roomPaneOverride,
+  measurementBadgeView,
   meterIntervalLabel,
   windowSecsLabel,
   captureOptsFromCadence,
@@ -216,6 +217,42 @@ describe('roomFeed', () => {
     expect(feed.source).toBe(0);
     expect(feed.config).toEqual([{ kind: 'mono', a: 0, b: 0 }]);
     expect(feed.badge).toBe('Measuring: USB Mic (secondary — not time-aligned)');
+  });
+});
+
+describe('measurementBadgeView (TD-001 slice 6h, #711)', () => {
+  const config: StripConfig[] = [
+    { kind: 'mono', a: 0, b: 0, label: 'Kick' },
+    { kind: 'mono', a: 1, b: 1, label: 'Vox' },
+  ];
+  const secondaryWindows: LiveEvent[] = [{ window: 1 } as unknown as LiveEvent];
+
+  it('is empty while idle (nothing capturing)', () => {
+    expect(measurementBadgeView({
+      isCapturing: false, secondaryStatus: 'off', secondaryWindows: [], secondaryDeviceName: '',
+      measurementSource: null, channelConfig: config,
+    })).toBe('');
+  });
+
+  it('names the measurement-source strip while capturing', () => {
+    expect(measurementBadgeView({
+      isCapturing: true, secondaryStatus: 'off', secondaryWindows: [], secondaryDeviceName: '',
+      measurementSource: 1, channelConfig: config,
+    })).toBe('Measuring: Vox');
+  });
+
+  it('flags the secondary device when the secondary source is active with windows', () => {
+    expect(measurementBadgeView({
+      isCapturing: true, secondaryStatus: 'active', secondaryWindows, secondaryDeviceName: 'USB Mic',
+      measurementSource: 1, channelConfig: config,
+    })).toBe('Measuring: USB Mic (secondary — not time-aligned)');
+  });
+
+  it('stays on the board strip when the secondary source is active but has no windows yet', () => {
+    expect(measurementBadgeView({
+      isCapturing: true, secondaryStatus: 'active', secondaryWindows: [], secondaryDeviceName: 'USB Mic',
+      measurementSource: 0, channelConfig: config,
+    })).toBe('Measuring: Kick');
   });
 });
 

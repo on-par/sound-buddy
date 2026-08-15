@@ -293,6 +293,10 @@ export function livePanelView(state: LiveWorkspaceViewState): PanelView {
   return {
     deviceChannels: deviceChannelCount(state.selectedDevice, state.devices),
     liveRunning: state.isCapturing,
+    // TD-001 slice 6h (#711): the per-strip arm button's disabled stamp derives
+    // from `liveRunning && liveMode === 'record'` (arming stays live while
+    // monitoring, #757) — see veqChannelHTML.
+    liveMode: state.liveMode,
     groups: state.channelGroups,
     instrumentProfiles: getInstrumentProfiles().PROFILES.map((p) => ({ id: p.id, label: p.label })),
   };

@@ -33,6 +33,7 @@ import {
   deviceOptionLabel,
   deviceListView,
   deviceChannelCount,
+  deviceNameFor,
   usedChannelCount,
   channelOptions,
   liveBandCurve,
@@ -90,6 +91,7 @@ function panelView(overrides: Partial<PanelView> = {}): PanelView {
   return {
     deviceChannels: 8,
     liveRunning: false,
+    liveMode: 'monitor',
     groups: [],
     ...overrides,
   };
@@ -177,6 +179,20 @@ describe('deviceChannelCount', () => {
 
   it('falls back to DEFAULT_DEVICE_CHANNELS for an unknown value', () => {
     expect(deviceChannelCount('99', devices)).toBe(DEFAULT_DEVICE_CHANNELS);
+  });
+});
+
+describe('deviceNameFor', () => {
+  it('resolves a matching device index to its name', () => {
+    expect(deviceNameFor('1', devices)).toBe('Built-in Microphone');
+  });
+
+  it('resolves the "" (Default Device) selection to an empty name', () => {
+    expect(deviceNameFor('', devices)).toBe('');
+  });
+
+  it('resolves an unknown value to an empty name', () => {
+    expect(deviceNameFor('99', devices)).toBe('');
   });
 });
 
@@ -413,9 +429,20 @@ describe('veqChannelHTML', () => {
     const disarmed = veqChannelHTML(LIVE_CHANNELS[0], 0, stripView({ armed: false }), panelView());
     expect(disarmed).toContain('aria-pressed="false"');
     expect(disarmed).toContain('Arm track for recording');
+  });
 
-    const armedRunning = veqChannelHTML(LIVE_CHANNELS[0], 0, stripView({ armed: true }), panelView({ liveRunning: true }));
-    expect(armedRunning).toContain('live-ch-arm" data-idx="0" aria-pressed="true" aria-label="Disarm track for recording" title="Armed for recording — click to disarm" disabled');
+  // TD-001 slice 6h (#711): the inline setCaptureControlsLocked sweep kept the
+  // arm controls live while a MONITOR session ran (`armLocked = locked &&
+  // liveMode === 'record'`); the per-strip stamp now derives that from the
+  // panel state instead, so the #757 "arming stays live while monitoring" rule
+  // holds without the imperative re-assert.
+  it('keeps the arm toggle enabled while monitoring and disables it only while recording (#757)', () => {
+    const monitoring = veqChannelHTML(LIVE_CHANNELS[0], 0, stripView({ armed: true }), panelView({ liveRunning: true, liveMode: 'monitor' }));
+    expect(monitoring).toContain('live-ch-arm" data-idx="0" aria-pressed="true" aria-label="Disarm track for recording" title="Armed for recording — click to disarm"');
+    expect(monitoring).not.toMatch(/live-ch-arm[^>]*\bdisabled\b/);
+
+    const recording = veqChannelHTML(LIVE_CHANNELS[0], 0, stripView({ armed: true }), panelView({ liveRunning: true, liveMode: 'record' }));
+    expect(recording).toContain('live-ch-arm" data-idx="0" aria-pressed="true" aria-label="Disarm track for recording" title="Armed for recording — click to disarm" disabled');
   });
 
   it('adds a clip class and CLIP badge when the channel is clipping', () => {
