@@ -7,7 +7,7 @@ import { renderToString } from 'react-dom/server';
 import LiveEqPane from './LiveEqPane';
 import { useLiveCaptureStore } from './stores/liveCaptureStore';
 import { useSettingsStore } from './stores/settingsStore';
-import { eqPaneHTML, eqPaneView, eqPaneSignature, type EqPaneView } from './live-capture-panel';
+import { eqPaneHTML, eqPaneView, type EqPaneView } from './live-capture-panel';
 import type { LiveEvent } from './live-capture-panel';
 import type { AppSettings } from '../../electron/ipc/api';
 

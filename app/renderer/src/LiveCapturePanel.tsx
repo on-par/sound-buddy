@@ -42,7 +42,6 @@ import {
   getLiveSetupState,
   getDawWorkspaceState,
   getDawShellRuntime,
-  getRigReconcile,
   type LiveWorkspaceViewState,
 } from './live-workspace-view';
 
