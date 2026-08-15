@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { sendDunningEmail, sendLicenseEmail } from "./delivery";
+import { sendDunningEmail, sendLicenseEmail, sendWaitlistConfirmationEmail } from "./delivery";
 import type { Env } from "./index";
 
 function makeEnv(overrides: Partial<Env> = {}): Env {
@@ -24,6 +24,7 @@ function makeEnv(overrides: Partial<Env> = {}): Env {
 
 function requestBody(fetchMock: ReturnType<typeof vi.fn>): {
   from: string;
+  reply_to: string;
   to: string[];
   subject: string;
   text: string;
@@ -33,6 +34,7 @@ function requestBody(fetchMock: ReturnType<typeof vi.fn>): {
   const init = calls[0][1];
   return JSON.parse(init.body as string) as {
     from: string;
+    reply_to: string;
     to: string[];
     subject: string;
     text: string;
@@ -257,6 +259,87 @@ describe("dunning email delivery (#118)", () => {
       sendDunningEmail(
         makeEnv(),
         { to: "a@b.c" },
+        { fetch: throwingFetch as unknown as typeof fetch },
+      ),
+    ).resolves.toEqual({ ok: false });
+  });
+});
+
+describe("waitlist confirmation email delivery (#639, #609)", () => {
+  it("Scenario: sends via Resend with the right shape incl. reply_to", async () => {
+    const env = makeEnv();
+    const fetchMock = vi.fn(async () => ({ ok: true, status: 200 }));
+
+    const result = await sendWaitlistConfirmationEmail(
+      env,
+      { to: "pat@example.com" },
+      { fetch: fetchMock as unknown as typeof fetch },
+    );
+
+    expect(result).toEqual({ ok: true });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const calls = fetchMock.mock.calls as unknown as [string, RequestInit][];
+    expect(calls[0][0]).toBe("https://api.resend.com/emails");
+
+    const init = calls[0][1];
+    expect(init.method).toBe("POST");
+    expect(init.headers).toEqual({
+      Authorization: `Bearer ${env.RESEND_API_KEY}`,
+      "Content-Type": "application/json",
+    });
+
+    const body = requestBody(fetchMock);
+    expect(body.from).toBe(env.FROM_EMAIL);
+    expect(body.reply_to).toBe(env.SUPPORT_EMAIL);
+    expect(body.to).toEqual(["pat@example.com"]);
+    expect(body.subject).toBe("You're on the Sound Buddy waitlist");
+    for (const content of [body.text, body.html]) {
+      expect(content).toContain(env.SUPPORT_EMAIL);
+      expect(content).toContain("Just reply");
+    }
+  });
+
+  it("Scenario: missing RESEND_API_KEY is skipped", async () => {
+    const fetchMock = vi.fn(async () => ({ ok: true, status: 200 }));
+
+    await expect(
+      sendWaitlistConfirmationEmail(
+        makeEnv({ RESEND_API_KEY: "" }),
+        { to: "pat@example.com" },
+        { fetch: fetchMock as unknown as typeof fetch },
+      ),
+    ).resolves.toEqual({ ok: false });
+
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("Scenario: Resend 500 is non-fatal", async () => {
+    const failingStatus = vi.fn(async () => ({ ok: false, status: 500 }));
+    const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    await expect(
+      sendWaitlistConfirmationEmail(
+        makeEnv(),
+        { to: "pat@example.com" },
+        { fetch: failingStatus as unknown as typeof fetch },
+      ),
+    ).resolves.toEqual({ ok: false });
+    expect(consoleErrorSpy).toHaveBeenCalledWith("waitlist confirmation send failed", {
+      status: 500,
+    });
+
+    consoleErrorSpy.mockRestore();
+  });
+
+  it("Scenario: a thrown fetch is non-fatal", async () => {
+    const throwingFetch = vi.fn(async () => {
+      throw new Error("network down");
+    });
+
+    await expect(
+      sendWaitlistConfirmationEmail(
+        makeEnv(),
+        { to: "pat@example.com" },
         { fetch: throwingFetch as unknown as typeof fetch },
       ),
     ).resolves.toEqual({ ok: false });

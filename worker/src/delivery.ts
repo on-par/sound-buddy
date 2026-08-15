@@ -244,6 +244,9 @@ export async function sendWaitlistConfirmationEmail(
       },
       body: JSON.stringify({
         from: env.FROM_EMAIL,
+        // The copy invites the reader to "Just reply" — pin the reply target to
+        // the monitored support inbox instead of defaulting to the from address.
+        reply_to: env.SUPPORT_EMAIL,
         to: [params.to],
         subject,
         text,

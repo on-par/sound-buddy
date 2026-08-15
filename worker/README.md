@@ -16,6 +16,14 @@ best-effort license email delivery (#114) are all implemented. A Stripe
 sandbox end-to-end test harness (#121, manual/local gate) covers the full
 purchase/renewal/cancel/founding/refund/hardening test plan.
 
+The waitlist signup flow (#599) is implemented too: `POST /api/waitlist` stores
+a signup in `WAITLIST_KV`, then best-effort (via `ctx.waitUntil`) sends a
+confirmation email (`reply_to` = `SUPPORT_EMAIL`) and mirrors the contact into
+a Resend Audience. Both sends are configured via the `RESEND_API_KEY` secret and
+the `WAITLIST_AUDIENCE_ID` var, skip-and-log when unset, and can never fail a
+stored signup — see `docs/waitlist-email-provisioning.md` for the human
+provisioning steps.
+
 ## Routes
 
 | Method | Path                   | Status                             |
@@ -24,6 +32,10 @@ purchase/renewal/cancel/founding/refund/hardening test plan.
 | POST   | `/api/stripe/webhook`  | `200` — verify + idempotency (#108)|
 | GET    | `/api/license`         | `200`/`202`/`4xx`/`410`/`429` (#112) |
 | GET    | `/activate`            | `200` — self-contained HTML (#112) |
+| POST   | `/api/ingest`          | `202` — feedback/crash/telemetry (#475) |
+| POST   | `/api/waitlist`        | `200` — signup + KV storage (#599) |
+| GET    | `/api/waitlist/invitees` | `200`/`401` — list invitees (#642) |
+| POST   | `/api/waitlist/invite` | `200`/`400`/`401`/`413`/`500` — mark invited (#642) |
 | _any_  | anything else          | `404`                              |
 
 A known path with the wrong method returns `405` with an `Allow` header.
@@ -74,19 +86,23 @@ fallback directly.
 
 - **Worker name** `sound-buddy-api` (distinct from the site's `sound-buddy`).
 - **Routes** on `soundbuddy.online` for `/api/stripe/*`, `/api/license`,
-  `/activate`.
-- **KV** `LICENSE_KV` — namespace id is set out-of-band (H4); the checked-in
-  value is a placeholder.
+  `/activate`, `/api/ingest`, and the `/api/waitlist*` endpoints (#599/#642).
+- **KV** `LICENSE_KV`, `EVENTS_KV`, `WAITLIST_KV` — namespace ids are set
+  out-of-band (H4); the checked-in values are placeholders.
 - **Vars** `FOUNDING_CAP`, `FROM_EMAIL`, `SUPPORT_EMAIL`,
-  `CUSTOMER_PORTAL_URL`, `APP_ORIGIN`.
+  `CUSTOMER_PORTAL_URL`, `APP_ORIGIN`, `LICENSE_SIGNING_KID`,
+  `LICENSE_PUBLIC_KEY`, `WAITLIST_AUDIENCE_ID` (#640, non-secret; empty = the
+  Audience sync is skipped and logged).
 
 **Secrets** (`STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`,
-`LICENSE_SIGNING_PRIVATE_KEY`, `RESEND_API_KEY`) are **never** stored in this
-repo — they are provisioned with `wrangler secret put` (H4).
+`LICENSE_SIGNING_PRIVATE_KEY`, `RESEND_API_KEY`, `WAITLIST_ADMIN_TOKEN` (#642))
+are **never** stored in this repo — they are provisioned with
+`wrangler secret put` (H4).
 
 Subscription and founding mints email the key via Resend after the key is
 stored. Delivery is best-effort: a send failure is logged and never fails the
-webhook; `/activate` remains the redundant key-delivery path.
+webhook; `/activate` remains the redundant key-delivery path. The waitlist
+confirmation email and Audience sync follow the same best-effort pattern.
 
 ### Security note (normative)
 
