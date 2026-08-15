@@ -34,18 +34,16 @@ type PersistedCaptureRig = CaptureRig & {
   measurementSource?: number | null;
 };
 
-// Ambient globals this slice's React/store code calls into inline-app.js
-// for: rigDialog() (the shared name-prompt modal, also used by out-of-scope
-// channel-group naming — stays imperative infrastructure) and
-// renderChannelConfig() (re-asserts the capture lock + refreshes the
-// measurement badge after a rig-apply store write, same bridge pattern
-// LiveControls.tsx uses for window.liveCaptureRuntime). Declared once here
-// rather than per-caller so rigStore.ts, RigControls.tsx, and PreflightPanel
-// all see the same ambient shape.
+// Ambient globals this slice's React/store code calls into inline-app.js for:
+// rigDialog() (the shared name-prompt modal, also used by channel-group
+// naming — stays imperative infrastructure). renderChannelConfig() was removed
+// with TD-001 slice 6h (#711): the board + measurement badge re-render
+// reactively from liveCaptureStore, so nothing reaches it anymore. Declared
+// once here rather than per-caller so rigStore.ts, RigControls.tsx, and
+// PreflightPanel all see the same ambient shape.
 declare global {
   interface Window {
     rigDialog?(opts: { title?: string; msg?: string; value?: string; confirmLabel?: string; withInput?: boolean }): Promise<string | boolean | null>;
-    renderChannelConfig?(): void;
   }
 }
 

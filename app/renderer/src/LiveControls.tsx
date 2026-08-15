@@ -33,10 +33,6 @@ import { useLiveCaptureStore, type StartCaptureResult, type StopCaptureResult } 
 import { captureOptsFromCadence } from './measurement-device-state';
 
 export interface LiveCaptureRuntime {
-  /** Refreshes the device list and re-seeds channel config/groups for the (possibly new) default device. */
-  loadDevices(): Promise<void>;
-  /** Device <select> changed — re-seeds channel config/groups for the newly selected device. */
-  selectDevice(value: string): void;
   /** Measurement-source <select> changed — normalizes + persists the selection and refreshes the badge/EQ pane. */
   changeMeasurementSource(value: string): void;
   /** Opens the folder-choose dialog and stores the result as the record folder. */
@@ -59,10 +55,11 @@ export interface LiveCaptureRuntime {
   onResumeMonitoringStart?(): void;
   /** Promotes a running monitor session to a recording in place (#458) — its own guard/orchestration stays bridged. */
   promoteToRecording(): Promise<void>;
-  /** Repaints the still-imperative Room badge after a secondary-measurement
-   *  device selection/start/stop/reconnect (#460, #724) —
-   *  renderMeasurementBadge() stays imperative and out of scope; the EQ pane's
-   *  Room slot is React-owned (LiveEqPane, TD-001 slice 6g #710). */
+  /** Repaints the Room badge after a secondary-measurement device selection/
+   *  start/stop/reconnect (#460, #724) — the badge is MeasurementBadge.tsx
+   *  (reactive) now, so this is a documented no-op until slice 6k removes it
+   *  from the runtime; the EQ pane's Room slot is React-owned (LiveEqPane,
+   *  TD-001 slice 6g #710). */
   afterSecondaryMeasurementChange?(): void;
 }
 

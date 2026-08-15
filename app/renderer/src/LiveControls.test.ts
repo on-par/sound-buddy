@@ -44,8 +44,6 @@ afterEach(() => {
 describe('startLiveCapture / stopLiveCapture / recordCapture', () => {
   function mockRuntime(overrides: Partial<LiveCaptureRuntime> = {}): LiveCaptureRuntime {
     return {
-      loadDevices: vi.fn(async () => {}),
-      selectDevice: vi.fn(),
       changeMeasurementSource: vi.fn(),
       chooseRecordFolder: vi.fn(async () => {}),
       beforeStartCapture: vi.fn(() => ({ ok: true }) as const),

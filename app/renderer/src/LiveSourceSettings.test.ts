@@ -4,7 +4,7 @@
 import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest';
 import { createElement } from 'react';
 import { renderToString } from 'react-dom/server';
-import LiveSourceSettings, { changeDevice, type LiveCaptureRuntime } from './LiveSourceSettings';
+import LiveSourceSettings, { changeDevice } from './LiveSourceSettings';
 import { useLiveCaptureStore } from './stores/liveCaptureStore';
 import { useSettingsStore } from './stores/settingsStore';
 import type { LiveDevice, StripConfig } from './live-capture-panel';
@@ -137,29 +137,11 @@ describe('LiveSourceSettings', () => {
 // this harness to mount it for real); the click-path integration is covered
 // by tests/e2e/live-capture.spec.ts.
 describe('changeDevice', () => {
-  function mockRuntime(overrides: Partial<LiveCaptureRuntime> = {}): LiveCaptureRuntime {
-    return {
-      loadDevices: vi.fn(async () => {}),
-      selectDevice: vi.fn(),
-      changeMeasurementSource: vi.fn(),
-      chooseRecordFolder: vi.fn(async () => {}),
-      beforeStartCapture: vi.fn(() => ({ ok: true }) as const),
-      onCaptureStarting: vi.fn(),
-      onCaptureStarted: vi.fn(),
-      onCaptureStopping: vi.fn(),
-      onCaptureStopped: vi.fn(),
-      promoteToRecording: vi.fn(async () => {}),
-      ...overrides,
-    };
-  }
-
-  it('writes the selection into the store and delegates the re-seed to the runtime', () => {
-    const rt = mockRuntime();
+  it('writes the selection into the store, which re-seeds the config and clears the runtime selections (TD-001 slice 6h, #711)', () => {
     const selectDevice = vi.spyOn(useLiveCaptureStore.getState(), 'selectDevice');
 
-    changeDevice(rt, '0');
+    changeDevice('0');
 
     expect(selectDevice).toHaveBeenCalledWith('0');
-    expect(rt.selectDevice).toHaveBeenCalledWith('0');
   });
 });
