@@ -42,6 +42,14 @@ import { signLicenseKey } from '../tests/license-fixture';
 
 const licenseFile = () => path.join(userDataDir, 'license.json');
 
+// The pre-#564 DEV signing key that EMBEDDED_PUBLIC_KEY_PEM shipped until the
+// production keypair replaced it. Pinned here as a regression guard — the base64
+// body may only ever appear in this file (the retired-key grep excludes it).
+const RETIRED_DEV_KEY_PEM = `-----BEGIN PUBLIC KEY-----
+MCowBQYDK2VwAyEA19ANezS8KTFwY4NWqH/V8A3qyKR+28cEqXb7018NEWk=
+-----END PUBLIC KEY-----`;
+const RETIRED_DEV_KEY_B64 = 'MCowBQYDK2VwAyEA19ANezS8KTFwY4NWqH/V8A3qyKR+28cEqXb7018NEWk=';
+
 // Test signing keypair — the module verifies against it via the
 // SOUND_BUDDY_LICENSE_PUBKEY override (same override the e2e specs use).
 const { publicKey: testPub, privateKey: testPriv } = generateKeyPairSync('ed25519');
@@ -79,6 +87,18 @@ describe('licensePublicKey', () => {
     // (they verify against throwaway test keypairs via the env override).
     delete process.env.SOUND_BUDDY_LICENSE_PUBKEY;
     expect(licensePublicKey().asymmetricKeyType).toBe('ed25519');
+  });
+
+  it('the embedded key is the production key, not the retired DEV key (#564)', () => {
+    // #564 shipped the production signing keypair; the retired DEV key must be
+    // gone from EMBEDDED_PUBLIC_KEY_PEM. Reverting to it would invalidate every
+    // license minted by the live webhook, so this pins the swap in CI. The base64
+    // body (RETIRED_DEV_KEY_B64) is the pre-#564 embedded value; it may only
+    // appear here, never in EMBEDDED_PUBLIC_KEY_PEM.
+    delete process.env.SOUND_BUDDY_LICENSE_PUBKEY;
+    const embedded = licensePublicKey().export({ type: 'spki', format: 'pem' } as const).toString();
+    expect(embedded).not.toBe(RETIRED_DEV_KEY_PEM);
+    expect(embedded).not.toContain(RETIRED_DEV_KEY_B64);
   });
 
   it('parses a PEM-formatted env override, not just base64 DER', () => {

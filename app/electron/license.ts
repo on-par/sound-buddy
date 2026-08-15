@@ -41,14 +41,18 @@ import { loadLicensePolicy } from './license-policy-loader';
 const policy = loadLicensePolicy();
 
 /**
- * DEV public key — the production signing keypair replaces this before
- * checkout ships (key issuance is out of scope here, see #56, the Stripe
- * checkout + license provisioning webhook). Generate a pair + sign test keys
- * with scripts/license-keygen.mjs.
+ * PRODUCTION public key — the signing keypair installed for checkout go-live
+ * (#564). Keys are minted by the Stripe checkout + license provisioning webhook
+ * (#56) using the private half, which is held out-of-band (never in the repo):
+ * `wrangler secret put LICENSE_SIGNING_PRIVATE_KEY` on the Worker, fed from
+ * `$HOME/SoundBuddy-keys/license-priv.pem` per worker/docs/live-provisioning.md.
+ * The base64 body here must match worker/wrangler.jsonc's LICENSE_PUBLIC_KEY and
+ * the generated $HOME/SoundBuddy-keys/license-pub.pem. Rotation means re-embedding
+ * a new key here (and in wrangler.jsonc) and bumping LICENSE_SIGNING_KID.
  * Override for tests/e2e via SOUND_BUDDY_LICENSE_PUBKEY (PEM, or base64 SPKI DER).
  */
 const EMBEDDED_PUBLIC_KEY_PEM = `-----BEGIN PUBLIC KEY-----
-MCowBQYDK2VwAyEA19ANezS8KTFwY4NWqH/V8A3qyKR+28cEqXb7018NEWk=
+MCowBQYDK2VwAyEAE3n7W2BjebrXMomCqgbA3ozIrfij8ahQB7Q/kHJVA7c=
 -----END PUBLIC KEY-----`;
 
 /** Days a subscription key stays Pro after `expiresAt` (with a banner) — shared policy (TD-006). */

@@ -11,7 +11,11 @@ design rationale — this doc is just the reproduction steps.
    should show `sound_buddy_pro_monthly`, `sound_buddy_pro_annual`,
    `sound_buddy_founding_lifetime`, and three Payment Links (Founding capped at
    300 completed sessions). If not, the epic's "Sandbox artifacts" section has
-   the provisioning steps.
+   the provisioning steps. If the `price_...`/`plink_...` ids differ from the
+   defaults in `worker/src/e2e/env.ts` (provisioned 2026-07-08), set the
+   `SANDBOX_MONTHLY_PRICE_ID`, `SANDBOX_ANNUAL_PRICE_ID`,
+   `SANDBOX_FOUNDING_PRICE_ID`, and `SANDBOX_FOUNDING_PAYMENT_LINK_ID` overrides
+   to the re-provisioned ids.
 3. Create `.env.local` at the **repo root** (gitignored) with:
    ```
    STRIPE_SECRET_KEY=sk_test_...
@@ -20,11 +24,16 @@ design rationale — this doc is just the reproduction steps.
    WORKER_BASE_URL=http://127.0.0.1:8787
    LICENSE_PUBLIC_KEY="-----BEGIN PUBLIC KEY-----\n...\n-----END PUBLIC KEY-----"
    ```
-   Never commit this file. Never paste its values into a chat, PR, or log.
+   `LICENSE_PUBLIC_KEY` must be the **production** key embedded in
+   `app/electron/license.ts` and `worker/wrangler.jsonc` (the key installed by
+   #564 — never the retired DEV key), so the harness proves webhook → mint →
+   app-verify with the real keypair. Never commit this file. Never paste its
+   values into a chat, PR, or log.
 4. In a separate terminal, start the Worker against the same sandbox account:
    `cd worker && npm run dev` (needs its own `.dev.vars` with
-   `LICENSE_SIGNING_PRIVATE_KEY` etc. — see the main README's "Config &
-   bindings" section).
+   `LICENSE_SIGNING_PRIVATE_KEY` = the same production `$HOME/SoundBuddy-keys/license-priv.pem`
+   plus `STRIPE_SECRET_KEY`/`STRIPE_WEBHOOK_SECRET`/`RESEND_API_KEY` — see the
+   main README's "Config & bindings" section).
 
 ## 2. (Optional) seed a real paid Checkout Session
 
