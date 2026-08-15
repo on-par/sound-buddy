@@ -171,6 +171,22 @@ export default function LiveCapturePanel(): JSX.Element | null {
     getDawShellRuntime()?.renderPlayhead?.();
     getDawShellRuntime()?.renderWaveform?.();
   }, [showShell, laneSignature]);
+
+  // Native 'change' listener (see boardRootRef's comment above) — must stay
+  // above the `appMode !== 'live'` early return below (Rules of Hooks: no
+  // conditional hook calls), so it guards internally instead. Depends on
+  // s.appMode so it re-binds whenever the board div mounts/unmounts (the
+  // whole returned tree flips between this div and `null`, so boardRootRef's
+  // node is a fresh element each time appMode re-enters 'live'). Reads the
+  // always-current onBoardChange via the ref so it never goes stale.
+  useEffect(() => {
+    if (s.appMode !== 'live') return;
+    const el = boardRootRef.current;
+    if (!el) return;
+    const listener = (e: Event) => onBoardChangeRef.current(e as unknown as ChangeEvent<HTMLDivElement>);
+    el.addEventListener('change', listener);
+    return () => el.removeEventListener('change', listener);
+  }, [s.appMode]);
   /* c8 ignore stop */
 
   if (s.appMode !== 'live') return null;
@@ -400,18 +416,10 @@ export default function LiveCapturePanel(): JSX.Element | null {
       void useSettingsStore.getState().updateSettings({ inputInstrumentProfiles: next });
     }
   }
+  // Keeps the native listener (declared above, before the appMode early
+  // return) calling the current render's onBoardChange instead of a stale
+  // closure.
   onBoardChangeRef.current = onBoardChange;
-
-  // Native 'change' listener (see boardRootRef's comment above) — attached
-  // once, reads the always-current onBoardChange via the ref so it never goes
-  // stale across re-renders.
-  useEffect(() => {
-    const el = boardRootRef.current;
-    if (!el) return;
-    const listener = (e: Event) => onBoardChangeRef.current(e as unknown as ChangeEvent<HTMLDivElement>);
-    el.addEventListener('change', listener);
-    return () => el.removeEventListener('change', listener);
-  }, []);
 
   function onNameFocus(e: FocusEvent<HTMLDivElement>): void {
     const name = nameElOf(e.target);
