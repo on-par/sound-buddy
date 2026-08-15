@@ -64,6 +64,58 @@ export interface LiveWorkspaceViewState {
   playheadElapsedMs: number;
 }
 
+// The slice of liveCaptureStore's state that liveWorkspaceViewState() reads —
+// named here instead of importing LiveCaptureState so this pure module stays
+// free of a dependency on the store that consumes it (mirrors
+// deviceNameFor/savedInstrumentProfilesForDevice's existing pattern below).
+export interface LiveWorkspaceStoreSlice {
+  channelConfig: StripConfig[];
+  channelGroups: ChannelGroup[];
+  devices: LiveDevice[];
+  selectedDevice: string;
+  isCapturing: boolean;
+  liveMode: 'monitor' | 'record';
+  appMode: string;
+  selectedChannel: number | null;
+  measurementSource: number | null;
+  focusedInputIndex: number | null;
+  lastTick: LiveEvent | null;
+  lastLiveChannels: ChannelWindowData[] | null;
+  liveWindows: LiveEvent[];
+  lapCoaching: unknown;
+}
+
+// The one builder for LiveWorkspaceViewState (#710 shotgun-surgery fix):
+// LiveWorkspace.tsx's applyLiveTick, LiveCapturePanel.tsx, and LiveEqPane.tsx
+// each read the same liveCaptureStore fields (a mix of subscribed-for-rerender
+// and imperatively-read-at-render-time, per ADR-0005) plus settings and the
+// seeded playhead elapsed time — assembling that snapshot here once means the
+// 18-field shape only needs to grow in one place.
+export function liveWorkspaceViewState(
+  lc: LiveWorkspaceStoreSlice,
+  settings: AppSettings | null,
+  playheadElapsedMs = 0,
+): LiveWorkspaceViewState {
+  return {
+    channelConfig: lc.channelConfig,
+    channelGroups: lc.channelGroups,
+    devices: lc.devices,
+    selectedDevice: lc.selectedDevice,
+    isCapturing: lc.isCapturing,
+    liveMode: lc.liveMode,
+    appMode: lc.appMode,
+    selectedChannel: lc.selectedChannel,
+    measurementSource: lc.measurementSource,
+    focusedInputIndex: lc.focusedInputIndex,
+    lastTick: lc.lastTick,
+    lastLiveChannels: lc.lastLiveChannels,
+    liveWindows: lc.liveWindows,
+    settings,
+    lapCoaching: lc.lapCoaching,
+    playheadElapsedMs,
+  };
+}
+
 export interface LapFocusView {
   focusedIndex: number | null;
   inputs: Array<{

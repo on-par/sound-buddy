@@ -42,7 +42,7 @@ import {
   getLiveSetupState,
   getDawWorkspaceState,
   getDawShellRuntime,
-  type LiveWorkspaceViewState,
+  liveWorkspaceViewState,
 } from './live-workspace-view';
 
 // The still-classic live-setup-state.js accessor's storage contract (a
@@ -98,24 +98,7 @@ export default function LiveCapturePanel(): JSX.Element | null {
   // render time, never via subscription. boardShapeVersion (also subscribed
   // above) is what re-renders the board when a tick's channel count changes.
   const lc = useLiveCaptureStore.getState();
-  const state: LiveWorkspaceViewState = {
-    channelConfig: s.channelConfig,
-    channelGroups: s.channelGroups,
-    devices: s.devices,
-    selectedDevice: s.selectedDevice,
-    isCapturing: s.isCapturing,
-    liveMode: s.liveMode,
-    appMode: s.appMode,
-    selectedChannel: s.selectedChannel,
-    measurementSource: s.measurementSource,
-    focusedInputIndex: s.focusedInputIndex,
-    lastTick: lc.lastTick,
-    lastLiveChannels: lc.lastLiveChannels,
-    liveWindows: s.liveWindows,
-    settings,
-    lapCoaching: s.lapCoaching,
-    playheadElapsedMs: getDawShellRuntime()?.playheadElapsedMs?.() ?? 0,
-  };
+  const state = liveWorkspaceViewState(lc, settings, getDawShellRuntime()?.playheadElapsedMs?.() ?? 0);
 
   const showShell = getDawWorkspaceState().showShell(settings, s.appMode);
   const laneSignature = showShell ? dawShellPatchView(state).laneSignature : '';

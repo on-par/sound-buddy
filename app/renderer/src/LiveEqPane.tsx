@@ -26,7 +26,7 @@ import {
   type EqPaneView,
 } from './live-capture-panel';
 import { roomPaneOverride } from './measurement-device-state';
-import { currentEqPaneChannels, type LiveWorkspaceViewState } from './live-workspace-view';
+import { currentEqPaneChannels, liveWorkspaceViewState } from './live-workspace-view';
 
 export default function LiveEqPane(): JSX.Element {
   const s = useStoreShallow(useLiveCaptureStore, (st) => ({
@@ -45,24 +45,7 @@ export default function LiveEqPane(): JSX.Element {
   // falls back to idle placeholders before the first tick); boardShapeVersion
   // is what re-renders it when a tick's channel count changes.
   const lc = useLiveCaptureStore.getState();
-  const state: LiveWorkspaceViewState = {
-    channelConfig: s.channelConfig,
-    channelGroups: lc.channelGroups,
-    devices: lc.devices,
-    selectedDevice: lc.selectedDevice,
-    isCapturing: lc.isCapturing,
-    liveMode: lc.liveMode,
-    appMode: lc.appMode,
-    selectedChannel: s.selectedChannel,
-    measurementSource: s.measurementSource,
-    focusedInputIndex: lc.focusedInputIndex,
-    lastTick: lc.lastTick,
-    lastLiveChannels: lc.lastLiveChannels,
-    liveWindows: lc.liveWindows,
-    settings,
-    lapCoaching: lc.lapCoaching,
-    playheadElapsedMs: 0,
-  };
+  const state = liveWorkspaceViewState(lc, settings);
 
   // #460 (ADR 0003): when the experimental secondary source is active it owns
   // the Room — the pane's primary slot swaps to the room mic's channel 0 +

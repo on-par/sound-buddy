@@ -44,7 +44,7 @@ import {
   dawShellPatchView,
   getDawWorkspaceState,
   getDawShellRuntime,
-  type LiveWorkspaceViewState,
+  liveWorkspaceViewState,
 } from './live-workspace-view';
 import { roomPaneOverride } from './measurement-device-state';
 import type { LiveEvent } from './live-capture-panel';
@@ -59,24 +59,7 @@ function applyLiveTick(snap: LiveMeterSnapshot): void {
   const lc = useLiveCaptureStore.getState();
   const tick = snap.lastTick;
   if (!tick || !tick.channels || tick.channels.length === 0) return;
-  const state: LiveWorkspaceViewState = {
-    channelConfig: lc.channelConfig,
-    channelGroups: lc.channelGroups,
-    devices: lc.devices,
-    selectedDevice: lc.selectedDevice,
-    isCapturing: lc.isCapturing,
-    liveMode: lc.liveMode,
-    appMode: lc.appMode,
-    selectedChannel: lc.selectedChannel,
-    measurementSource: lc.measurementSource,
-    focusedInputIndex: lc.focusedInputIndex,
-    lastTick: lc.lastTick,
-    lastLiveChannels: lc.lastLiveChannels,
-    liveWindows: lc.liveWindows,
-    settings: useSettingsStore.getState().settings,
-    lapCoaching: lc.lapCoaching,
-    playheadElapsedMs: 0,
-  };
+  const state = liveWorkspaceViewState(lc, useSettingsStore.getState().settings);
   const body = document.getElementById('live-island');
   if (!body) return;
 
