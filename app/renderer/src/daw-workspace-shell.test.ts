@@ -11,9 +11,13 @@ import { fileURLToPath } from 'node:url';
 // (renderDawShell) into the pure live-workspace-view.ts dawShellHTML builder
 // + the React LiveCapturePanel island (TD-001 slice 6g, #710) — those markup
 // acceptance criteria are enforced by live-workspace-view.test.ts and
-// LiveCapturePanel.test.ts. This gate keeps the still-inline 6j wiring tests
-// (playhead/waveform painters, tickers), the App.tsx boot-order assertions,
-// and the #757/#517 absence rules against their new homes.
+// LiveCapturePanel.test.ts. TD-001 slice 6j (#713) moved the playhead/waveform
+// painters + tickers off inline-app.js entirely, onto daw-shell-runtime.ts
+// (unit-tested in daw-shell-runtime.test.ts) — this gate now pins their
+// absence from inline-app.js, their presence in the new homes, and that the
+// unchanged seam consumers (capture-lifecycle.ts, LiveCapturePanel.tsx,
+// live-workspace-view.ts) still reach them the same way, plus the App.tsx
+// boot-order assertions and the #757/#517 absence rules.
 
 const inlineApp = fs.readFileSync(fileURLToPath(new URL('./inline-app.js', import.meta.url)), 'utf8');
 const markup = fs.readFileSync(fileURLToPath(new URL('./root-markup.html', import.meta.url)), 'utf8');
@@ -23,8 +27,11 @@ const workspaceViewTs = fs.readFileSync(fileURLToPath(new URL('./live-workspace-
 const liveCapturePanelTsx = fs.readFileSync(fileURLToPath(new URL('./LiveCapturePanel.tsx', import.meta.url)), 'utf8');
 const liveCapturePanelTs = fs.readFileSync(fileURLToPath(new URL('./live-capture-panel.ts', import.meta.url)), 'utf8');
 // TD-001 slice 6i (#712): the capture lifecycle moved here — its start/stop
-// drives the still-inline 6j painters through the window.dawShellRuntime seam.
+// drives the daw-shell-runtime.ts painters through the window.dawShellRuntime
+// seam (unchanged by 6j — see the "DAW shell seam consumers" describe below).
 const lifecycleTs = fs.readFileSync(fileURLToPath(new URL('./capture-lifecycle.ts', import.meta.url)), 'utf8');
+// TD-001 slice 6j (#713): the new home for the playhead/waveform painters.
+const dawShellRuntimeTs = fs.readFileSync(fileURLToPath(new URL('./daw-shell-runtime.ts', import.meta.url)), 'utf8');
 
 function functionBody(src: string, name: string): string {
   const marker = `function ${name}(`;
@@ -174,196 +181,95 @@ describe('DAW shell styles (#517)', () => {
   });
 });
 
-describe('DAW playhead (#518)', () => {
-  it('the shell markup includes the transport time readout and playhead line', () => {
-    // live-workspace-view.test.ts asserts dawShellHTML renders both.
-    expect(workspaceViewTs).toContain('daw-transport-time');
-    expect(workspaceViewTs).toContain('daw-playhead');
+describe('DAW playhead/waveform painters moved off inline-app.js (TD-001 slice 6j, #713)', () => {
+  it('inline-app.js no longer owns any part of the playhead/waveform painting surface', () => {
+    expect(inlineApp).not.toMatch(/function renderDawPlayhead\(/);
+    expect(inlineApp).not.toMatch(/function renderDawWaveform\(/);
+    expect(inlineApp).not.toMatch(/function drawWaveformLane\(/);
+    expect(inlineApp).not.toMatch(/function scheduleDawWaveformRender\(/);
+    expect(inlineApp).not.toMatch(/startPlayheadTicker/);
+    expect(inlineApp).not.toMatch(/stopPlayheadTicker/);
+    expect(inlineApp).not.toMatch(/window\.dawShellRuntime\s*=/);
+    expect(inlineApp).not.toMatch(/PLAYHEAD_TICK_MS/);
+    expect(inlineApp).not.toMatch(/WAVEFORM_COLORS/);
   });
 
-  it('the 6j bridge re-paints the playhead after a shell render, and the meter tick path refreshes it', () => {
-    expect(inlineApp).toContain('renderPlayhead: renderDawPlayhead');
-    expect(liveCapturePanelTsx).toContain('renderPlayhead');
-    expect(functionBody(inlineApp, 'renderDawPlayhead')).toContain('dawPlayheadState');
+  it('inline-app.js no longer has a peaks branch or the playhead-state module var seed', () => {
+    expect(inlineApp).not.toMatch(/data\.type === 'peaks'/);
+    expect(inlineApp).not.toMatch(/playheadState = window\.dawPlayheadState\.start/);
   });
 
-  it('the shell seeds the transport time from state so a mid-capture rebuild never flashes 0:00', () => {
-    expect(workspaceViewTs).toMatch(/formatElapsed\(seededElapsed\)/);
-    expect(inlineApp).toMatch(/playheadElapsedMs: \(\) =>/);
+  it('daw-shell-runtime.ts is the new home for the painters, scheduling, and the peaks-event bridge', () => {
+    expect(dawShellRuntimeTs).toContain('export function createDawShellRuntime(');
+    expect(dawShellRuntimeTs).toContain('WAVEFORM_COLORS');
+    expect(dawShellRuntimeTs).toContain('PLAYHEAD_PX_PER_SECOND');
+    expect(dawShellRuntimeTs).toContain('DAW_TIMELINE_INSET_PX');
+    expect(dawShellRuntimeTs).toContain('export function drawDawWaveformLane(');
+    expect(dawShellRuntimeTs).toContain('function scheduleWaveformRender(');
+    expect(dawShellRuntimeTs).toContain('function bindLiveEvents(');
+    expect(dawShellRuntimeTs).toContain('function ingestPeaks(');
   });
 
-  it('the capture lifecycle starts the playhead and its ticker via the dawShell seam (TD-001 slice 6i)', () => {
+  it('App.tsx installs the runtime onto window.dawShellRuntime and binds its live-event listener', () => {
+    expect(appTsx).toContain('createDawShellRuntime({');
+    expect(appTsx).toContain('.dawShellRuntime = dawShellRuntime;');
+    expect(appTsx).toContain('dawShellRuntime.bindLiveEvents()');
+  });
+
+  it('LiveCapturePanel.tsx drives the playhead with a requestAnimationFrame loop', () => {
+    expect(liveCapturePanelTsx).toContain('requestAnimationFrame(tick)');
+  });
+});
+
+describe('DAW shell seam consumers unchanged by the 6j migration', () => {
+  it('the capture lifecycle still starts the playhead and resets the waveform via the dawShell seam', () => {
     const block = enclosingBlock(lifecycleTs, 'shell?.startPlayhead(Date.now())');
     expect(block).toContain('shell?.startPlayhead(Date.now())');
     expect(block).toContain('shell?.resetWaveform(intervalSecs)');
   });
 
-  it('onCaptureStopping freezes the playhead and stops its ticker through the dawShell seam', () => {
+  it('the capture lifecycle still freezes the playhead through the dawShell seam on stop', () => {
     const stopBody = enclosingBlock(lifecycleTs, 'deps.dawShell()?.stopPlayhead()');
     expect(stopBody).toContain('deps.dawShell()?.stopPlayhead()');
-    // The still-inline wrapper itself freezes the playhead, stops the ticker,
-    // and repaints the frozen time.
-    const wrapper = enclosingBlock(inlineApp, 'playheadState = window.dawPlayheadState.stop(');
-    expect(wrapper).toContain('stopPlayheadTicker()');
-    expect(wrapper).toContain('renderDawPlayhead()');
   });
 
-  it('window.dawShellRuntime exposes the startPlayhead/stopPlayhead/resetWaveform seam', () => {
-    expect(inlineApp).toMatch(/startPlayhead\(nowMs\) \{/);
-    expect(inlineApp).toMatch(/stopPlayhead\(\) \{/);
-    expect(inlineApp).toMatch(/resetWaveform\(intervalSecs\) \{/);
-    expect(inlineApp).toContain('window.dawShellRuntime = {');
-  });
-
-  it('renderDawPlayhead guards on shell presence, patches text only on change, and never assigns innerHTML', () => {
-    const body = functionBody(inlineApp, 'renderDawPlayhead');
-    expect(body).toContain(".daw-shell'");
-    expect(body).toMatch(/textContent\s*!==/);
-    expect(body).not.toContain('innerHTML');
-  });
-
-  it('startPlayheadTicker uses PLAYHEAD_TICK_MS; stopPlayheadTicker clears the interval', () => {
-    expect(functionBody(inlineApp, 'startPlayheadTicker')).toContain('PLAYHEAD_TICK_MS');
-    expect(functionBody(inlineApp, 'stopPlayheadTicker')).toContain('clearInterval');
-  });
-
-  it('defines named constants for the tick cadence and pixel scale (no magic numbers)', () => {
-    expect(inlineApp).toMatch(/const PLAYHEAD_TICK_MS = \d+/);
-    expect(inlineApp).toMatch(/const PLAYHEAD_PX_PER_SECOND = \d+/);
-  });
-
-  it('app.css styles the playhead line and the transport time readout', () => {
-    expect(css).toContain('.daw-playhead');
-    expect(css).toContain('.daw-transport-time');
-  });
-
-  it('App.tsx boots daw-playhead-state.js before the inline app script', () => {
-    expect(appTsx).toContain('daw-playhead-state.js?raw');
-    const playheadIdx = appTsx.indexOf('dawPlayheadStateSrc,');
-    const inlineIdx = appTsx.indexOf('inlineAppSrc,');
-    expect(playheadIdx).toBeGreaterThan(-1);
-    expect(inlineIdx).toBeGreaterThan(-1);
-    expect(playheadIdx).toBeLessThan(inlineIdx);
-  });
-});
-
-describe('DAW mix waveform (#520)', () => {
-  it('the shell markup includes the canvas and capture-mode attribute, no longer the placeholder text', () => {
-    expect(workspaceViewTs).toContain('daw-mix-waveform');
-    expect(workspaceViewTs).toContain('data-capture-mode');
-    expect(workspaceViewTs).not.toContain('Mix waveform coming soon');
-  });
-
-  it('the 6j bridge re-paints the waveform after a shell render and on the meter tick path', () => {
-    expect(inlineApp).toContain('renderWaveform: renderDawWaveform');
+  it('LiveCapturePanel.tsx still re-paints the playhead/waveform after a shell rebuild', () => {
+    expect(liveCapturePanelTsx).toContain('renderPlayhead');
     expect(liveCapturePanelTsx).toContain('renderWaveform');
   });
 
-  it('onLiveEvent handles peaks frames before the window-tick path and returns', () => {
-    // TD-001 slice 6i (#712): the window-tick marker is now the delegated
-    // window.captureLifecycle.onWindowTick call (session accumulation moved
-    // to capture-lifecycle.ts).
-    const peaksIdx = inlineApp.indexOf("data.type === 'peaks'");
-    const tickIdx = inlineApp.indexOf('window.captureLifecycle?.onWindowTick?.(data)');
-    expect(peaksIdx).toBeGreaterThan(-1);
-    expect(tickIdx).toBeGreaterThan(-1);
-    expect(peaksIdx).toBeLessThan(tickIdx);
-    const peaksBlock = enclosingBlock(inlineApp, "decodeLanes(data)");
-    expect(peaksBlock).toContain('return;');
+  it('live-workspace-view.ts still builds the shell markup and seeds the transport time from state', () => {
+    expect(workspaceViewTs).toContain('export function dawShellHTML(');
+    expect(workspaceViewTs).toContain('export function dawShellPatchView(');
+    expect(workspaceViewTs).toMatch(/formatElapsed\(seededElapsed\)/);
   });
 
-  it('onLiveEvent schedules the waveform repaint rather than painting synchronously', () => {
-    const peaksBlock = enclosingBlock(inlineApp, 'decodeLanes(data)');
-    expect(peaksBlock).toContain('scheduleDawWaveformRender(');
-    expect(peaksBlock).not.toContain('renderDawWaveform()');
-  });
-
-  it('scheduleDawWaveformRender coalesces repaints to one per animation frame', () => {
-    const body = functionBody(inlineApp, 'scheduleDawWaveformRender');
-    expect(body).toContain('waveformRenderScheduled');
-    expect(body).toContain('requestAnimationFrame(');
-    expect(body).toContain('renderDawWaveform()');
-  });
-
-  it('the capture lifecycle resets waveform state and its bucket rate via the dawShell seam', () => {
-    const block = enclosingBlock(lifecycleTs, 'shell?.resetWaveform(intervalSecs)');
-    expect(block).toContain('shell?.resetWaveform(intervalSecs)');
-    // The still-inline wrapper re-creates the waveform state and re-aligns the
-    // bucket rate to this capture's meter interval (#520).
-    const wrapper = enclosingBlock(inlineApp, 'waveformBucketsPerSec = window.dawWaveformState.bucketsPerSecond(intervalSecs)');
-    expect(wrapper).toContain('waveformState = window.dawWaveformState.create();');
-    expect(wrapper).toContain('waveformLaneStates = {};');
-  });
-
-  it('renderDawWaveform guards on shell/canvas presence and never assigns innerHTML', () => {
-    const body = functionBody(inlineApp, 'renderDawWaveform');
-    expect(body).toContain(".daw-shell'");
-    expect(body).toContain('daw-mix-waveform');
-    expect(body).not.toContain('innerHTML');
-  });
-
-  it('drawWaveformLane budgets columns to the canvas\'s own width, not the wider shell width (avoids off-canvas clipping)', () => {
-    const body = functionBody(inlineApp, 'drawWaveformLane');
-    expect(body).toContain('columnPeaks(pairs, waveformBucketsPerSec, PLAYHEAD_PX_PER_SECOND, canvas.width)');
-  });
-
-  it('renderDawWaveform draws the mix canvas from waveformState.pairs via the shared helper', () => {
-    const body = functionBody(inlineApp, 'renderDawWaveform');
-    expect(body).toContain('drawWaveformLane(canvas, waveformState.pairs, strokeStyle)');
-  });
-
-  it('renderDawWaveform derives capture mode directly from live state, not a DOM re-query', () => {
-    const body = functionBody(inlineApp, 'renderDawWaveform');
-    expect(body).toContain('dawWaveformState.captureModeToken(liveRunning, liveMode)');
-    expect(body).not.toContain("querySelector('.daw-mix-lane')");
-  });
-
-  it('app.css styles the mix waveform canvas and capture-mode markers', () => {
-    expect(css).toContain('.daw-mix-waveform');
-    expect(css).toContain('data-capture-mode');
-  });
-
-  it('App.tsx boots daw-waveform-state.js before the inline app script', () => {
-    expect(appTsx).toContain('daw-waveform-state.js?raw');
-    const waveformIdx = appTsx.indexOf('dawWaveformStateSrc,');
-    const inlineIdx = appTsx.indexOf('inlineAppSrc,');
-    expect(waveformIdx).toBeGreaterThan(-1);
-    expect(inlineIdx).toBeGreaterThan(-1);
-    expect(waveformIdx).toBeLessThan(inlineIdx);
-  });
-});
-
-describe('Per-input waveform lanes (#521)', () => {
-  it('dawShellHTML lane markup renders a real waveform canvas, not the placeholder text', () => {
+  it('the shell markup includes the transport time readout, playhead line, and waveform canvases', () => {
+    expect(workspaceViewTs).toContain('daw-transport-time');
+    expect(workspaceViewTs).toContain('daw-playhead');
+    expect(workspaceViewTs).toContain('daw-mix-waveform');
     expect(workspaceViewTs).toContain('daw-channel-waveform');
-    expect(workspaceViewTs).not.toContain('Waveform coming soon');
+    expect(workspaceViewTs).toContain('data-capture-mode');
   });
 
-  it('dawShellHTML still renders each lane\'s name from the resolved lane names (channel identity preserved)', () => {
-    expect(workspaceViewTs).toContain('daw-lane-name">${laneNames[idx]}</span>');
-    expect(workspaceViewTs).toContain('data-ch="${idx}"');
-  });
-
-  it('onLiveEvent decodes all lanes and appends per-strip lanes into waveformLaneStates', () => {
-    const peaksBlock = enclosingBlock(inlineApp, 'decodeLanes(data)');
-    expect(peaksBlock).toContain('decodeLanes(');
-    expect(peaksBlock).toContain('waveformLaneStates[id]');
-  });
-
-  it('the capture lifecycle resets waveformLaneStates alongside waveformState via the dawShell seam', () => {
-    const wrapper = enclosingBlock(inlineApp, 'waveformBucketsPerSec = window.dawWaveformState.bucketsPerSecond(intervalSecs)');
-    expect(wrapper).toContain('waveformLaneStates = {};');
-    expect(wrapper).toContain('waveformState = window.dawWaveformState.create();');
-  });
-
-  it('renderDawWaveform iterates channel lanes and looks up state by strip + data-ch', () => {
-    const body = functionBody(inlineApp, 'renderDawWaveform');
-    expect(body).toContain('daw-channel-lane');
-    expect(body).toContain("'strip' + ");
-  });
-
-  it('app.css styles the per-channel waveform canvas and lane body height', () => {
+  it('app.css styles the playhead, transport time, and waveform canvases', () => {
+    expect(css).toContain('.daw-playhead');
+    expect(css).toContain('.daw-transport-time');
+    expect(css).toContain('.daw-mix-waveform');
     expect(css).toContain('.daw-channel-waveform');
     expect(css).toContain('.daw-channel-lane .daw-lane-body');
+  });
+
+  it('App.tsx still boots the daw-playhead-state.js/daw-waveform-state.js classic scripts before the inline app script', () => {
+    expect(appTsx).toContain('daw-playhead-state.js?raw');
+    expect(appTsx).toContain('daw-waveform-state.js?raw');
+    const playheadIdx = appTsx.indexOf('dawPlayheadStateSrc,');
+    const waveformIdx = appTsx.indexOf('dawWaveformStateSrc,');
+    const inlineIdx = appTsx.indexOf('inlineAppSrc,');
+    expect(playheadIdx).toBeGreaterThan(-1);
+    expect(waveformIdx).toBeGreaterThan(-1);
+    expect(inlineIdx).toBeGreaterThan(-1);
+    expect(playheadIdx).toBeLessThan(inlineIdx);
+    expect(waveformIdx).toBeLessThan(inlineIdx);
   });
 });

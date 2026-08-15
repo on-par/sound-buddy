@@ -161,9 +161,10 @@ export default function LiveCapturePanel(): JSX.Element | null {
   }, [s.appMode, s.isCapturing, showShell]);
 
   // DAW shell (#517/#518/#520): stamp the lane fingerprint (the React
-  // rebuild-decision key for same-count rig swaps) and hand the still-inline
-  // waveform/playhead painters (slice 6j) the shell to paint after every
-  // rebuild — the meter controller re-paints them per tick thereafter.
+  // rebuild-decision key for same-count rig swaps) and hand the
+  // daw-shell-runtime.ts painters (TD-001 slice 6j, #713) the shell to paint
+  // after every rebuild — the meter controller re-paints them per tick
+  // thereafter.
   useEffect(() => {
     if (!showShell) return;
     const shell = document.getElementById('live-island')?.querySelector('.daw-shell');
@@ -171,6 +172,22 @@ export default function LiveCapturePanel(): JSX.Element | null {
     getDawShellRuntime()?.renderPlayhead?.();
     getDawShellRuntime()?.renderWaveform?.();
   }, [showShell, laneSignature]);
+
+  // The playhead ticker (TD-001 slice 6j, #713): a requestAnimationFrame loop
+  // driving renderPlayhead every frame while the shell is mounted and
+  // capturing — replaces the old 100ms setInterval owned by inline-app.js.
+  // Active during "Connecting…" and whenever meter events stall, exactly like
+  // the old interval (but at frame rate), so the playhead never freezes early.
+  useEffect(() => {
+    if (!showShell || !s.isCapturing) return;
+    let rafHandle = 0;
+    const tick = (): void => {
+      getDawShellRuntime()?.renderPlayhead?.();
+      rafHandle = requestAnimationFrame(tick);
+    };
+    rafHandle = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(rafHandle);
+  }, [showShell, s.isCapturing]);
 
   // Native 'change' listener (see boardRootRef's comment above) — must stay
   // above the `appMode !== 'live'` early return below (Rules of Hooks: no

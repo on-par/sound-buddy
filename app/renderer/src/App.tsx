@@ -90,6 +90,7 @@ import LiveArmHint from './LiveArmHint';
 import MeasurementBadge from './MeasurementBadge';
 import { installStoreBridge } from './stores/bridge';
 import { createCaptureLifecycle, type DawShellSeam, type PreflightApi, type RigReconcileApi, type ArmStateApi } from './capture-lifecycle';
+import { createDawShellRuntime, type DawShellRuntime, type DawPlayheadStateApi, type DawWaveformStateApi } from './daw-shell-runtime';
 import LiveStatusLine from './LiveStatusLine';
 import LiveSessionOffers from './LiveSessionOffers';
 import WindowBadge from './WindowBadge';
@@ -225,6 +226,27 @@ export default function App() {
       script.textContent = src;
       document.body.appendChild(script);
     }
+    // TD-001 slice 6j (#713): install the DAW shell's animation-rate runtime
+    // onto window.dawShellRuntime — the same seam name/API capture-lifecycle's
+    // dawShell() dep and live-workspace-view.ts's getDawShellRuntime()
+    // consumers already read, now backed by daw-shell-runtime.ts instead of
+    // inline-app.js's module vars. bindLiveEvents() registers the runtime's
+    // own 'peaks' listener — inline-app.js's onLiveEvent no longer owns it.
+    const dawShellRuntime = createDawShellRuntime({
+      doc: document,
+      now: Date.now,
+      raf: (cb) => requestAnimationFrame(cb),
+      cancelRaf: (handle) => cancelAnimationFrame(handle),
+      subscribeLiveEvent: (cb) => getSoundBuddy().onLiveEvent(cb),
+      getCaptureState: () => {
+        const lc = useLiveCaptureStore.getState();
+        return { isCapturing: lc.isCapturing, liveMode: lc.liveMode };
+      },
+      dawPlayheadState: (window as unknown as { dawPlayheadState: DawPlayheadStateApi }).dawPlayheadState,
+      dawWaveformState: (window as unknown as { dawWaveformState: DawWaveformStateApi }).dawWaveformState,
+    });
+    (window as unknown as { dawShellRuntime?: DawShellRuntime }).dawShellRuntime = dawShellRuntime;
+    dawShellRuntime.bindLiveEvents();
     // TD-001 slice 6i (#712): install the capture-lifecycle module's runtime
     // onto window.liveCaptureRuntime (the identical LiveCaptureRuntime bridge
     // LiveControls.tsx's startLiveCapture/stopLiveCapture/recordCapture and
