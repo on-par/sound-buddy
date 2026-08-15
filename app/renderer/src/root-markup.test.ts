@@ -121,7 +121,9 @@ describe('Always-monitoring Live tab with a top-bar-only transport (#757)', () =
     expect(markup).toContain('id="record-button-island"');
     expect(markup).toContain('id="live-status"');
     expect(markup).toContain('id="live-rc-cue"');
-    expect(markup).toContain('id="arm-hint"');
+    // TD-001 slice 6h (#711): the arm hint moved to LiveArmHint.tsx, portaled
+    // onto this island; the React span keeps id="arm-hint" (LiveArmHint.test.ts).
+    expect(markup).toContain('id="arm-hint-island"');
     expect(markup).toContain('id="rec-offer"');
     expect(markup).toContain('id="rc-offer"');
   });
