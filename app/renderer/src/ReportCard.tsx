@@ -39,6 +39,7 @@ import {
   type ReportDeltaView,
   type ScoreRow,
 } from './report-card';
+import type { TroubleshootingItem } from './report-card-troubleshooting';
 
 export interface GradeResult {
   letter: string;
@@ -80,6 +81,8 @@ export interface ReportCardProps {
   frames?: FramesSectionView | null;
   /** "vs. last time" comparison vs. the previous persisted summary (#259). Omitted/null → hidden. */
   delta?: ReportDeltaView | null;
+  /** Deterministic rule-narrative troubleshooting list (#862). Omitted/null/empty → section hidden. */
+  troubleshooting?: TroubleshootingItem[] | null;
   /** Score-circle expandable metric rows (#540, report-first-ux epic). Non-null → the flag-on
    *  treatment renders (rows replace the metric table, "Why This Grade" is dropped); null/omitted
    *  → today's markup renders unchanged. */
@@ -122,6 +125,7 @@ export default function ReportCard({
   frames,
   delta,
   scoreRows,
+  troubleshooting,
   phaseDoubling,
   feedbackRingout,
   onOpenPhaseDoubling,
@@ -274,6 +278,16 @@ export default function ReportCard({
           <h2>Spectrum Over Time</h2>
           <div className="rc-heatmap" id="rc-heatmap" dangerouslySetInnerHTML={{ __html: frames.heatmapHTML }} />
           <div className="rc-frame-curves" id="rc-frame-curves" dangerouslySetInnerHTML={{ __html: frames.curvesHTML }} />
+        </div>
+      )}
+      {troubleshooting && troubleshooting.length > 0 && (
+        <div className="rc-section" id="rc-troubleshooting-section">
+          <h2>Troubleshooting</h2>
+          <div className="rc-troubleshooting" id="rc-troubleshooting">
+            {troubleshooting.map((item) => (
+              <p className="rc-troubleshooting-item" key={item.ruleId}>{item.narrative}</p>
+            ))}
+          </div>
         </div>
       )}
       {showSaveTarget && (
