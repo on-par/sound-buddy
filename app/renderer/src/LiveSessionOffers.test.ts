@@ -46,6 +46,10 @@ describe('LiveSessionOffers (TD-001 slice 6i, #712)', () => {
     expect(html).toContain('Session saved <b>Sunday Service 2026-08-15</b>.');
     expect(html).toContain('id="rec-offer-btn"');
     expect(html).toContain('Open folder');
+    // #865: the folder icon must render as a real <svg> element, not as
+    // escaped SVG markup text (iconSvg returns a raw string).
+    expect(html).toMatch(/id="rec-offer-btn"[^>]*>(?:(?!<\/button>)[\s\S])*?<svg width="16"/);
+    expect(html).not.toMatch(/&lt;svg/);
   });
 
   it('renders the report-card and not-enough-data rows from their flags', () => {
@@ -55,6 +59,10 @@ describe('LiveSessionOffers (TD-001 slice 6i, #712)', () => {
     expect(html).toContain('Report card ready.');
     expect(html).toContain('id="rc-offer-btn"');
     expect(html).toContain('View report card');
+    // #865: the clipboard-check icon must render as a real <svg> element, not
+    // as escaped SVG markup text.
+    expect(html).toMatch(/id="rc-offer-btn"[^>]*>(?:(?!<\/button>)[\s\S])*?<svg width="16"/);
+    expect(html).not.toMatch(/&lt;svg/);
     expect(html).toMatch(/id="rc-not-enough"[^>]*style="display:flex"/);
     expect(html).toContain('Not enough data — monitor at least a few seconds of audio to generate a report card.');
   });
