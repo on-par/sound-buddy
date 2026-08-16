@@ -89,6 +89,15 @@ export {
 } from "./analyze/phase-narrative.js";
 export type { PhaseRuleHit } from "./analyze/phase-narrative.js";
 
+// Gain narrative (story 5 of #375 / #838): deterministic troubleshooting
+// prose registered under the 'gain' rule type through the #834 registry.
+export {
+  GAIN_NARRATIVE_TEMPLATE,
+  gainNarrativeData,
+  renderGainNarrative,
+} from "./analyze/gain-narrative.js";
+export type { GainRuleHit } from "./analyze/gain-narrative.js";
+
 // Post-service gain-structure health (#369): per-channel RMS-vs-target read
 // derived from the existing sox measurements — no live console metering.
 export { assessChannelGain, assessGainStructure, gainHealthLabel, GAIN_TARGET_DBFS } from "./analyze/gain-structure.js";
