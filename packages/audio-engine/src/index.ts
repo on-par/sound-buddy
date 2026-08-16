@@ -80,6 +80,15 @@ export {
 } from "./analyze/gate-narrative.js";
 export type { GateRuleHit } from "./analyze/gate-narrative.js";
 
+// Phase narrative (story 4 of #375 / #837): deterministic troubleshooting
+// prose registered under the 'phase' rule type through the #834 registry.
+export {
+  PHASE_NARRATIVE_TEMPLATE,
+  phaseNarrativeData,
+  renderPhaseNarrative,
+} from "./analyze/phase-narrative.js";
+export type { PhaseRuleHit } from "./analyze/phase-narrative.js";
+
 // Post-service gain-structure health (#369): per-channel RMS-vs-target read
 // derived from the existing sox measurements — no live console metering.
 export { assessChannelGain, assessGainStructure, gainHealthLabel, GAIN_TARGET_DBFS } from "./analyze/gain-structure.js";
