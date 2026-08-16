@@ -71,6 +71,15 @@ export {
   renderHarshnessNarrative,
 } from "./analyze/harshness-narrative.js";
 
+// Gate narrative (story 3 of #375 / #836): deterministic troubleshooting
+// prose registered under the 'gate' rule type through the #834 registry.
+export {
+  GATE_NARRATIVE_TEMPLATE,
+  gateNarrativeData,
+  renderGateNarrative,
+} from "./analyze/gate-narrative.js";
+export type { GateRuleHit } from "./analyze/gate-narrative.js";
+
 // Post-service gain-structure health (#369): per-channel RMS-vs-target read
 // derived from the existing sox measurements — no live console metering.
 export { assessChannelGain, assessGainStructure, gainHealthLabel, GAIN_TARGET_DBFS } from "./analyze/gain-structure.js";
