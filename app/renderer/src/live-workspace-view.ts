@@ -37,6 +37,9 @@ import {
 import { escapeHtml } from './spectrum-display';
 import { fmt, iconSvg } from './report-card';
 import type { AppSettings } from '../../electron/ipc/api';
+import type { DawShellRuntime } from './daw-shell-runtime';
+
+export type { DawShellRuntime } from './daw-shell-runtime';
 
 // One immutable snapshot of everything a board-level view derivation reads.
 // Discrete board shape comes from liveCaptureStore; lastTick/lastLiveChannels
@@ -209,14 +212,10 @@ export interface DawWaveformStateApi {
 }
 
 // The 6j seam the React DAW-shell effect and the meter-controller patch path
-// use to reach the still-inline waveform/playhead painters (inline-app.js
-// installs window.dawShellRuntime). Also carries the seeded elapsed-time
-// readout the shell rebuilds from so a mid-capture rebuild never flashes 0:00.
-export interface DawShellRuntime {
-  renderPlayhead(): void;
-  renderWaveform(): void;
-  playheadElapsedMs(): number;
-}
+// use to reach daw-shell-runtime.ts's waveform/playhead painters
+// (App.tsx installs the runtime onto window.dawShellRuntime). Also carries
+// the seeded elapsed-time readout the shell rebuilds from so a mid-capture
+// rebuild never flashes 0:00.
 export function getDawShellRuntime(): DawShellRuntime | undefined {
   return (window as unknown as { dawShellRuntime?: DawShellRuntime }).dawShellRuntime;
 }

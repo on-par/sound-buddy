@@ -56,7 +56,6 @@ const transport = window.spectrumTransport;
 // script reads/writes it through the store instead of a module-level var.
 const lcStore = window.rendererStores.liveCapture;
 
-let liveRunning = false;
 // Focused input for the per-input instrument-aware adjustment candidates
 // (#525) and the coaching stability state (#612) are store-owned now (TD-001
 // slice 6g, #710): lcStore.getState().focusedInputIndex / lapCoaching, with
@@ -65,65 +64,20 @@ let liveRunning = false;
 // (the live-adjustments classic script isn't on window yet); this boot seed
 // establishes the canonical fresh state, mirroring the old module-var seed.
 lcStore.getState().resetLapCoaching();
-// Elapsed-time playhead for the experimental DAW shell (#518): window.dawPlayheadState
-// state, null before the first capture ever starts. Tracked regardless of the
-// DAW toggle so flipping the experiment mid-capture shows correct elapsed time.
-let playheadState = null;
-let playheadTimer = null;
-const PLAYHEAD_TICK_MS = 100;        // patch cadence — smooth without rebuild cost
-const PLAYHEAD_PX_PER_SECOND = 8;    // one 40px ruler division = 5s
-const DAW_TIMELINE_INSET_PX = 4;     // matches the ruler's margin: 8px 4px horizontal inset
-// Mix waveform lane for the experimental DAW shell (#520, ADR 0004):
-// window.dawWaveformState state, reset (assigned fresh) on every capture Start.
-let waveformState = window.dawWaveformState.create();
-let waveformBucketsPerSec = window.dawWaveformState.WAVEFORM_BUCKETS_PER_SEC;
-// Per-input waveform lanes (#521): lane id ("strip0", "strip1", …, matching
-// stream.py's build_peak_lanes index) -> its own window.dawWaveformState
-// state. Reset alongside waveformState on every capture Start. The
-// strip{idx} <-> data-ch="${idx}" mapping is safe because channel config is
-// locked during capture (the disabled stamps derive from isCapturing/liveMode
-// at render time — TD-001 slice 6h, #711).
-let waveformLaneStates = {};
-let waveformRenderScheduled = false;
-// Recording-vs-monitoring waveform stroke, matching the transport-chip colors
-// (--issue-text/--gold-text/--text-muted in app.css) — canvas drawing can't
-// read CSS custom properties, so these are named constants here (#520).
-const WAVEFORM_COLORS = {
-  recording: '#F26D71',
-  monitoring: '#F3CA5E',
-  stopped: '#565D6B',
-};
 // A stored report-card summary loaded from the Recent Services list (#147) now
 // lives in analysisStore.historySummary — ReportCardIsland renders it via a
 // reduced, summary-only card when set and no live/file analysis is backing
 // the card (TD-001 slice 4, #422); set by loadHistoryEntry() below.
-// liveMode feeds the backend startLive contract and the still-inline 6j DAW
-// painters (captureModeToken) — the only module-level live-capture state left
-// here after TD-001 slice 6i (#712). Everything else (channel config/groups,
-// devices, recordDir, promoting, liveWindows) moved to liveCaptureStore and is
-// read through it or the React islands.
-let liveMode = 'monitor';      // 'monitor' | 'record'
 
-// Single-source-of-truth mirror (TD-001 slice 6c, #701): this subscription
-// keeps the two module vars the still-inline 6j painters still read
-// (liveRunning → state.isCapturing, liveMode → state.liveMode) in sync with
-// liveCaptureStore. TD-001 slice 6i (#712) narrowed it: the lifecycle moved to
-// capture-lifecycle.ts (via window.captureLifecycle/window.liveCaptureRuntime)
-// and the post-session chrome to the React islands, so nothing else here reads
-// a mirrored module var anymore.
-function syncLiveCaptureMirror(state, prevState) {
-  liveRunning = state.isCapturing;
-  liveMode = state.liveMode;
-  if (!prevState) return; // the initial sync call above has no prevState — nothing "changed" yet
-
+// TD-001 slice 6j (#713): the DAW shell's playhead/waveform module state and
+// the liveRunning/liveMode mirror vars those painters used to read are gone —
+// daw-shell-runtime.ts owns that state in its own closure and reads capture
+// state straight from liveCaptureStore (no mirror needed). The only remaining
+// piece of the old mirror subscription is the arm-hint hide-on-liveMode-change
+// side effect (TD-001 slice 6c, #701) — kept as its own slim subscription.
+lcStore.subscribe((state, prevState) => {
   if (state.liveMode !== prevState.liveMode) lcStore.getState().hideArmHint();
-  // TD-001 slice 6g (#710): the board-shape renderWorkspace() call this used
-  // to make is gone — React's LiveCapturePanel re-renders from the same
-  // discrete fields (useSyncExternalStore). The arm hint is store-owned (6h) —
-  // LiveArmHint.tsx renders it reactively.
-}
-syncLiveCaptureMirror(lcStore.getState());
-lcStore.subscribe(syncLiveCaptureMirror);
+});
 
 // rcFeedbackPeak/rcPhaseSignal used to be module vars set by renderReportCard();
 // ReportCardIsland (React) now computes them each render and seeds
@@ -210,9 +164,9 @@ window.seekPlayback = (t) => transport.seek(t);
 // LiveWorkspace.tsx's live-meter-controller (TD-001 slice 6c, #701), driven
 // by liveCaptureStore's lastTick rather than this file's own rAF batching.
 // The per-tick DOM appliers it calls (patchLiveChannel/patchGroupSummaries/
-// patchEqPaneSection/patchStatsRow) are pure modules, and the 6j DAW
-// waveform/playhead painters are reached via window.dawShellRuntime (TD-001
-// slice 6g, #710).
+// patchEqPaneSection/patchStatsRow) are pure modules, and the DAW
+// waveform/playhead painters are reached via window.dawShellRuntime
+// (daw-shell-runtime.ts, TD-001 slice 6j, #713).
 
 // The meter board, the docked EQ pane, the live-adjustments panel, the
 // capture controls, and the channel-group CRUD are React/store-owned now
@@ -225,7 +179,7 @@ window.seekPlayback = (t) => transport.seek(t);
 // live-meter-controller.ts's createLiveMeterController (mounted by
 // LiveWorkspace.tsx), which calls the pure appliers (patchLiveChannel/
 // patchGroupSummaries/patchEqPaneSection/patchStatsRow) against the
-// React-rendered DOM and the 6j DAW painters via window.dawShellRuntime. The
+// React-rendered DOM and the DAW painters via window.dawShellRuntime. The
 // stats row is pure-module-owned (statsRowView/liveStatsRowView +
 // patchStatsRow in live-workspace-view.ts).
 
@@ -302,9 +256,9 @@ sb.onAnalysisProgress((data) => {
    of applyRigPatch's returned patch (rig-panel.ts, TD-001 slice 6d, #702) —
    it just has no UI of its own anymore. recordCapture (LiveControls.tsx)
    normalizes it back to 'monitor' before an idle start so a stopped record
-   session can be recorded again. Both store writes are picked up by
-   syncLiveCaptureMirror's subscription (board repaint) — no inline wrapper
-   function is called from here anymore. */
+   session can be recorded again. Both store writes are picked up by the
+   arm-hint subscription above (board repaint) — no inline wrapper function is
+   called from here anymore. */
 // TD-001 slice 6i (#712): the live-capture lifecycle (beforeStartCapture/
 // onCaptureStarting/onCaptureStarted/promoteToRecording/preflightBlockReason/
 // onCaptureStopping/onCaptureStopped/stopLive/showLiveNotEnoughData/
@@ -319,9 +273,9 @@ sb.onAnalysisProgress((data) => {
 // #rec-offer/#rc-offer/#rc-not-enough, #window-badge) is rendered by the
 // LiveStatusLine/LiveSessionOffers/WindowBadge React islands from
 // liveCaptureStore. The rig/group name prompt is RigDialog.tsx +
-// rigDialogStore now, keeping the window.rigDialog promise API. The 6j DAW
-// playhead/waveform painters stay here, reached through window.dawShellRuntime
-// (startPlayhead/stopPlayhead/resetWaveform) below.
+// rigDialogStore now, keeping the window.rigDialog promise API. TD-001 slice
+// 6j (#713) moved the DAW playhead/waveform painters to daw-shell-runtime.ts,
+// installed onto window.dawShellRuntime by App.tsx.
 
 /* ══ Rigs — save / load / switch capture setups (#37, persisted via #36) ══
    Fully React/store-owned (RigControls.tsx/PreflightPanel.tsx,
@@ -330,152 +284,10 @@ sb.onAnalysisProgress((data) => {
    keeps the window.rigDialog promise API LiveCapturePanel.tsx's group
    prompts call. */
 
-// A dedicated interval (not the meter-event rAF path) so the playhead
-// advances even while "Connecting…" before the first meter tick, and keeps
-// advancing if meter events stall (#518).
-function startPlayheadTicker() {
-  stopPlayheadTicker();
-  playheadTimer = setInterval(renderDawPlayhead, PLAYHEAD_TICK_MS);
-}
-function stopPlayheadTicker() {
-  if (playheadTimer) { clearInterval(playheadTimer); playheadTimer = null; }
-}
-
-// 6j seam (TD-001 slice 6g, #710): the DAW shell markup is React-owned
-// (LiveCapturePanel) but the waveform/playhead canvas painting stays inline
-// until slice 6j — this bridge lets LiveCapturePanel's shell effect and the
-// meter-controller patch path reach renderDawPlayhead/renderDawWaveform, and
-// lets dawShellHTML seed the transport readout from the still-module-local
-// playheadState (so a mid-capture rebuild never flashes 0:00, #518). TD-001
-// slice 6i (#712) adds the three start/stop/reset wrappers the capture-lifecycle
-// module calls (deps.dawShell()) so onCaptureStarting/Stopping's playhead/
-// waveform side effects are unchanged in effect without the lifecycle touching
-// the module vars directly.
-window.dawShellRuntime = {
-  renderPlayhead: renderDawPlayhead,
-  renderWaveform: renderDawWaveform,
-  playheadElapsedMs: () => window.dawPlayheadState.elapsedMs(playheadState, Date.now()),
-  startPlayhead(nowMs) {
-    playheadState = window.dawPlayheadState.start(nowMs);
-    startPlayheadTicker();
-  },
-  stopPlayhead() {
-    playheadState = window.dawPlayheadState.stop(playheadState, Date.now());
-    stopPlayheadTicker();
-    renderDawPlayhead(); // paint the frozen time
-  },
-  resetWaveform(intervalSecs) {
-    waveformState = window.dawWaveformState.create();
-    waveformBucketsPerSec = window.dawWaveformState.bucketsPerSecond(intervalSecs);
-    waveformLaneStates = {};
-  },
-};
-
-// Patches the DAW shell's transport time and playhead line in place — never
-// rebuilds DOM (#518).
-function renderDawPlayhead() {
-  const shell = document.querySelector('.daw-shell');
-  if (!shell) return; // DAW toggle off or not on Live tab
-  const elapsed = window.dawPlayheadState.elapsedMs(playheadState, Date.now());
-  const timeEl = shell.querySelector('.daw-transport-time');
-  const text = window.dawPlayheadState.formatElapsed(elapsed);
-  if (timeEl && timeEl.textContent !== text) timeEl.textContent = text;
-  const line = shell.querySelector('.daw-playhead');
-  if (line) {
-    const maxPx = Math.max(0, shell.clientWidth - DAW_TIMELINE_INSET_PX * 2);
-    line.style.transform = `translateX(${window.dawPlayheadState.offsetPx(elapsed, PLAYHEAD_PX_PER_SECOND, maxPx)}px)`;
-    line.classList.toggle('advancing', window.dawPlayheadState.isAdvancing(playheadState));
-  }
-}
-
-// Draws one waveform lane's canvas in place — sized to its own `.daw-lane-body`
-// parent, budgeted to the canvas's own drawable width so nothing is ever
-// generated past its right edge (#520). Empty `pairs` leaves a cleared
-// canvas (the "empty" state); silence draws a 1px hairline (min 1px tall).
-function drawWaveformLane(canvas, pairs, strokeStyle) {
-  const laneBody = canvas.parentElement;
-  const width = laneBody.clientWidth;
-  const height = laneBody.clientHeight;
-  if (canvas.width !== width) canvas.width = width;
-  if (canvas.height !== height) canvas.height = height;
-
-  const ctx = canvas.getContext('2d');
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
-  if (canvas.width === 0 || canvas.height === 0) return;
-
-  const cols = window.dawWaveformState.columnPeaks(pairs, waveformBucketsPerSec, PLAYHEAD_PX_PER_SECOND, canvas.width);
-  if (cols.length === 0) return;
-
-  ctx.strokeStyle = strokeStyle;
-  ctx.lineWidth = 1;
-
-  const midY = canvas.height / 2;
-  cols.forEach((col, x) => {
-    const yTop = midY - col.max * midY;
-    const yBottom = Math.max(yTop + 1, midY - col.min * midY); // min 1px tall — silence draws a hairline
-    ctx.beginPath();
-    ctx.moveTo(x + 0.5, yTop);
-    ctx.lineTo(x + 0.5, yBottom);
-    ctx.stroke();
-  });
-}
-
-// Patches the DAW shell's waveform canvases in place — never rebuilds DOM
-// (#520, #521): the mix lane plus one canvas per per-input channel lane.
-function renderDawWaveform() {
-  const shell = document.querySelector('.daw-shell');
-  if (!shell) return; // DAW toggle off or not on Live tab
-  const canvas = shell.querySelector('.daw-mix-waveform');
-  if (!canvas) return;
-
-  const captureMode = window.dawWaveformState.captureModeToken(liveRunning, liveMode);
-  const strokeStyle = WAVEFORM_COLORS[captureMode] || WAVEFORM_COLORS.stopped;
-
-  drawWaveformLane(canvas, waveformState.pairs, strokeStyle);
-
-  shell.querySelectorAll('.daw-channel-lane').forEach((lane) => {
-    const laneCanvas = lane.querySelector('.daw-channel-waveform');
-    if (!laneCanvas) return;
-    const state = waveformLaneStates['strip' + lane.dataset.ch];
-    drawWaveformLane(laneCanvas, state ? state.pairs : [], strokeStyle);
-  });
-}
-
-// Coalesces peaks-frame repaints to one per animation frame, mirroring
-// scheduleLiveMeters' rAF batching — peaks frames can arrive at the meter
-// cadence (up to several per second), and each repaint forces a layout read
-// (clientWidth/clientHeight), so batching avoids uncoalesced, redundant
-// paint work (#520).
-function scheduleDawWaveformRender() {
-  if (waveformRenderScheduled) return;
-  waveformRenderScheduled = true;
-  requestAnimationFrame(() => {
-    waveformRenderScheduled = false;
-    renderDawWaveform();
-  });
-}
-
 /* ══ IPC event listeners ══ */
 sb.onLiveEvent((data) => {
   if (!data || data.error) {
     if (data?.error) specStore.getState().setPanelState('error', `Live error: ${data.error}`);
-    return;
-  }
-
-  // Mix-waveform peak frames (#520, ADR 0004) carry no channels — handle and
-  // return before the meter/stats paths below, which would otherwise treat a
-  // peaks frame as a channel-less (and thus useless) meter/window tick.
-  if (data.type === 'peaks') {
-    const lanes = window.dawWaveformState.decodeLanes(data);
-    if (lanes) {
-      if (lanes.mix) waveformState = window.dawWaveformState.append(waveformState, lanes.mix);
-      for (const id of Object.keys(lanes)) {
-        if (id === 'mix') continue;
-        waveformLaneStates[id] = window.dawWaveformState.append(
-          waveformLaneStates[id] || window.dawWaveformState.create(), lanes[id]);
-      }
-      scheduleDawWaveformRender();
-    }
     return;
   }
 
@@ -485,19 +297,20 @@ sb.onLiveEvent((data) => {
   // liveWindows/boardShapeVersion (single source of truth, TD-001 slice 6c,
   // #701); LiveWorkspace.tsx's live-meter-controller coalesces lastTick
   // changes into one repaint per animation frame — this listener is reduced
-  // to the session-only concerns bindIpcEvents doesn't own (DAW waveform
-  // peaks above, and the window-tick session accumulation + coaching advance,
-  // which TD-001 slice 6i (#712) delegated to window.captureLifecycle). The
-  // room stats row is patched by the meter controller (TD-001 slice 6g #710)
-  // — the board tick no longer writes it here, and the secondary mic owns
-  // the row when active (LiveWorkspace.tsx mirrors the old onMeasurementEvent
-  // path).
+  // to the session-only concern bindIpcEvents doesn't own (the window-tick
+  // session accumulation + coaching advance, which TD-001 slice 6i (#712)
+  // delegated to window.captureLifecycle). DAW waveform 'peaks' frames are a
+  // separate listener registered by daw-shell-runtime.ts's bindLiveEvents
+  // (TD-001 slice 6j, #713), not this handler. The room stats row is patched
+  // by the meter controller (TD-001 slice 6g #710) — the board tick no longer
+  // writes it here, and the secondary mic owns the row when active
+  // (LiveWorkspace.tsx mirrors the old onMeasurementEvent path).
 
   // Only the heavier window ticks (which carry masking + window #) accumulate
   // to feed the report card — sessionWindows lives inside capture-lifecycle.ts
-  // now, so this branch just forwards the tick (the peaks/error branches above
-  // stay inline; captureLifecycle is installed by App.tsx before any live
-  // event can arrive).
+  // now, so this branch just forwards the tick (the error branch above stays
+  // inline; captureLifecycle is installed by App.tsx before any live event
+  // can arrive).
   if (data.type === 'window' || typeof data.window === 'number') {
     window.captureLifecycle?.onWindowTick?.(data);
   }

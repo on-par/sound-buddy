@@ -737,10 +737,11 @@ export function createLiveCaptureStore(getApi: () => LiveCaptureApi) {
           return;
         }
         // 'peaks' frames (#520, ADR 0004) carry no channels — they're the DAW
-        // waveform lane's data, consumed separately by inline-app.js's own
-        // onLiveEvent handler. Letting one become lastTick blanks the live
-        // meter/EQ panel to "Waiting for live audio…" every time one arrives,
-        // flickering the board at the tick rate (#720).
+        // waveform lane's data, consumed separately by the daw-shell-runtime
+        // module's own onLiveEvent listener (TD-001 slice 6j, #713). Letting
+        // one become lastTick blanks the live meter/EQ panel to "Waiting for
+        // live audio…" every time one arrives, flickering the board at the
+        // tick rate (#720).
         if ((evt as { type?: string }).type === 'peaks') return;
         const tick = evt as LiveEvent;
         const channels = tick.channels;
