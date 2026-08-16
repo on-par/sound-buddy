@@ -49,7 +49,9 @@ export default function LiveSessionOffers(): JSX.Element {
             useLiveCaptureStore.getState().setSessionOffers({ sessionDir: null });
           }}
         >
-          {iconSvg('folder', 16)}Open folder
+          {/* #865: iconSvg returns a raw SVG string — must go through
+              dangerouslySetInnerHTML or React escapes it as literal text. */}
+          <span className="ro-icon" dangerouslySetInnerHTML={{ __html: iconSvg('folder', 16) }} />Open folder
         </button>
       </div>
       <div id="rc-offer" className="rec-offer" style={{ display: reportCard ? 'flex' : 'none' }}>
@@ -64,7 +66,9 @@ export default function LiveSessionOffers(): JSX.Element {
             switchMode('reportcard');
           }}
         >
-          {iconSvg('clipboard-check', 16)}View report card
+          {/* #865: iconSvg returns a raw SVG string — must go through
+              dangerouslySetInnerHTML or React escapes it as literal text. */}
+          <span className="ro-icon" dangerouslySetInnerHTML={{ __html: iconSvg('clipboard-check', 16) }} />View report card
         </button>
       </div>
       <div id="rc-not-enough" className="rec-offer" style={{ display: notEnoughData ? 'flex' : 'none' }}>
