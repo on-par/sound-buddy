@@ -1210,6 +1210,7 @@
     .rc-why-none { display:flex; align-items:center; gap:12px; padding:13px 15px; background:var(--good-tint); border:1px solid var(--good-border); border-left:3px solid var(--good-text); border-radius:var(--radius-md); }
     .rc-why-none .rc-why-icon { color:var(--good-text); }
     .rc-why-none-text { font:var(--fw-regular) var(--fs-body-sm)/1.5 var(--font-sans); color:var(--text-secondary); }
+    .rc-troubleshooting-empty { padding:13px 15px; background:var(--good-tint); border:1px solid var(--good-border); border-left:3px solid var(--good-text); border-radius:var(--radius-md); font:var(--fw-regular) var(--fs-body-sm)/1.5 var(--font-sans); color:var(--text-secondary); }
 
     /* ── Print (Export PDF) ───────────────────────────────────────── */
     @media print {
@@ -1219,7 +1220,7 @@
       #report-card { position:absolute; left:0; top:0; width:100%; max-width:none; margin:0; padding:12px; background:#fff !important; }
       /* The upgrade card never appears on an exported PDF (#58). */
       #rc-upgrade { display:none !important; }
-      .rc-header h1, .rc-meta, .rc-section h2, .mt-metric, .mt-value, .rc-rec-text, .rc-band-verdict, .rc-ring-label, .rc-empty, .rc-why-rule, .rc-why-none-text { color:#000 !important; }
+      .rc-header h1, .rc-meta, .rc-section h2, .mt-metric, .mt-value, .rc-rec-text, .rc-band-verdict, .rc-ring-label, .rc-empty, .rc-why-rule, .rc-why-none-text, .rc-troubleshooting-empty { color:#000 !important; }
       .rc-header, .rc-section h2 { border-color:#ccc !important; }
       /* Handoff note (#267) — the input/"(optional)" hint are interactive-only
          chrome; the exported PDF shows the note as plain text, never an empty
@@ -1228,9 +1229,9 @@
       #rc-note-text[hidden] { display:none !important; }
       #rc-note-text { display:block !important; color:#000 !important; }
       .metric-table td, .metric-table th { border-color:#ccc !important; color:#111 !important; }
-      .rc-bands, .rc-rec, .rc-frame, .rc-why-row, .rc-why-none { background:#f7f7f7 !important; box-shadow:none !important; }
+      .rc-bands, .rc-rec, .rc-frame, .rc-why-row, .rc-why-none, .rc-troubleshooting-empty { background:#f7f7f7 !important; box-shadow:none !important; }
       .rc-frame-tag { color:#000 !important; }
-      .rc-rec, .rc-why-row, .rc-why-none { border-left-color:#000 !important; }
+      .rc-rec, .rc-why-row, .rc-why-none, .rc-troubleshooting-empty { border-left-color:#000 !important; }
       .rc-why-detail, .rc-why-detail .measured, .rc-why-impact { color:#333 !important; }
       .rc-heatmap svg, .rc-frame-curve svg { -webkit-print-color-adjust:exact; print-color-adjust:exact; }
 

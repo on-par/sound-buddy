@@ -39,7 +39,7 @@ import {
   type ReportDeltaView,
   type ScoreRow,
 } from './report-card';
-import type { TroubleshootingItem } from './report-card-troubleshooting';
+import { TROUBLESHOOTING_EMPTY_MESSAGE, type TroubleshootingItem } from './report-card-troubleshooting';
 
 export interface GradeResult {
   letter: string;
@@ -81,7 +81,9 @@ export interface ReportCardProps {
   frames?: FramesSectionView | null;
   /** "vs. last time" comparison vs. the previous persisted summary (#259). Omitted/null → hidden. */
   delta?: ReportDeltaView | null;
-  /** Deterministic rule-narrative troubleshooting list (#862). Omitted/null/empty → section hidden. */
+  /** Deterministic rule-narrative troubleshooting list (#862). null/undefined →
+   *  section hidden (no usable curve); [] → calm empty-state message (#863);
+   *  non-empty → the rendered item rows. */
   troubleshooting?: TroubleshootingItem[] | null;
   /** Score-circle expandable metric rows (#540, report-first-ux epic). Non-null → the flag-on
    *  treatment renders (rows replace the metric table, "Why This Grade" is dropped); null/omitted
@@ -288,6 +290,12 @@ export default function ReportCard({
               <p className="rc-troubleshooting-item" key={item.ruleId}>{item.narrative}</p>
             ))}
           </div>
+        </div>
+      )}
+      {troubleshooting && troubleshooting.length === 0 && (
+        <div className="rc-section" id="rc-troubleshooting-section">
+          <h2>Troubleshooting</h2>
+          <p className="rc-troubleshooting-empty" id="rc-troubleshooting-empty">{TROUBLESHOOTING_EMPTY_MESSAGE}</p>
         </div>
       )}
       {showSaveTarget && (
