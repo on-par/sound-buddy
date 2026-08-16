@@ -44,6 +44,19 @@ const files: Record<string, string> = {
   '../index.html': fs.readFileSync(fileURLToPath(new URL('../index.html', import.meta.url)), 'utf8'),
   '../single-column-state.js': fs.readFileSync(fileURLToPath(new URL('../single-column-state.js', import.meta.url)), 'utf8'),
   '../upgrade-momentum.js': fs.readFileSync(fileURLToPath(new URL('../upgrade-momentum.js', import.meta.url)), 'utf8'),
+  // The eight #839 Troubleshooting-section files (#864): the #657 gate predates
+  // the section, so these extend the removed-surface scan over it — the view
+  // module, the #861 renderer registry, the four self-registering
+  // rule-renderers/* adapters, and the two report-card components that wire
+  // the section.
+  'ReportCard.tsx': fs.readFileSync(fileURLToPath(new URL('./ReportCard.tsx', import.meta.url)), 'utf8'),
+  'ReportCardIsland.tsx': fs.readFileSync(fileURLToPath(new URL('./ReportCardIsland.tsx', import.meta.url)), 'utf8'),
+  'report-card-troubleshooting.ts': fs.readFileSync(fileURLToPath(new URL('./report-card-troubleshooting.ts', import.meta.url)), 'utf8'),
+  'rule-renderer-store.ts': fs.readFileSync(fileURLToPath(new URL('./rule-renderer-store.ts', import.meta.url)), 'utf8'),
+  'rule-renderers/harshness.ts': fs.readFileSync(fileURLToPath(new URL('./rule-renderers/harshness.ts', import.meta.url)), 'utf8'),
+  'rule-renderers/gate.ts': fs.readFileSync(fileURLToPath(new URL('./rule-renderers/gate.ts', import.meta.url)), 'utf8'),
+  'rule-renderers/phase.ts': fs.readFileSync(fileURLToPath(new URL('./rule-renderers/phase.ts', import.meta.url)), 'utf8'),
+  'rule-renderers/gain.ts': fs.readFileSync(fileURLToPath(new URL('./rule-renderers/gain.ts', import.meta.url)), 'utf8'),
 };
 
 describe('AI carve-out gate (#657)', () => {
@@ -82,4 +95,64 @@ describe('AI carve-out gate (#657)', () => {
   it('the dedicated dock-gate test file no longer exists (its whole subject was the dock)', () => {
     expect(fs.existsSync(fileURLToPath(new URL('./' + 'ai-dock-gate.test.ts', import.meta.url)))).toBe(false);
   });
+});
+
+// AI carve-out (#864): story 4 (final) of #839 proves the finished
+// Troubleshooting section — the #861 renderer-store seam, the #862
+// deterministic rule-narrative render path, and the #863 empty state — stays
+// inside the #656 carve-out bar. The section must make no AI configuration
+// (no API-key/endpoint/model/provider token) and no network call; its narrative
+// comes only from registered deterministic template renderers. The banned
+// tokens are built by string concatenation (never spelled literally, matching
+// the #657 convention) so this file never trips its own greps. The "narrative"
+// / "llm" substrings are deliberately NOT banned here — the section
+// legitimately imports the ADR-0028 rule-narrative modules; only the
+// AI-configuration/network tokens above are banned.
+const TROUBLESHOOTING_FILES: Record<string, string> = {
+  'ReportCard.tsx': fs.readFileSync(fileURLToPath(new URL('./ReportCard.tsx', import.meta.url)), 'utf8'),
+  'ReportCardIsland.tsx': fs.readFileSync(fileURLToPath(new URL('./ReportCardIsland.tsx', import.meta.url)), 'utf8'),
+  'report-card-troubleshooting.ts': fs.readFileSync(fileURLToPath(new URL('./report-card-troubleshooting.ts', import.meta.url)), 'utf8'),
+  'rule-renderer-store.ts': fs.readFileSync(fileURLToPath(new URL('./rule-renderer-store.ts', import.meta.url)), 'utf8'),
+  'rule-renderers/harshness.ts': fs.readFileSync(fileURLToPath(new URL('./rule-renderers/harshness.ts', import.meta.url)), 'utf8'),
+  'rule-renderers/gate.ts': fs.readFileSync(fileURLToPath(new URL('./rule-renderers/gate.ts', import.meta.url)), 'utf8'),
+  'rule-renderers/phase.ts': fs.readFileSync(fileURLToPath(new URL('./rule-renderers/phase.ts', import.meta.url)), 'utf8'),
+  'rule-renderers/gain.ts': fs.readFileSync(fileURLToPath(new URL('./rule-renderers/gain.ts', import.meta.url)), 'utf8'),
+};
+
+const AI_CONFIG_TOKENS = [
+  'api' + 'Key',
+  'api-' + 'key',
+  'api_' + 'key',
+  'open' + 'ai',
+  'oll' + 'ama',
+  'ai' + 'Enabled',
+  'base' + 'Url',
+  'Bearer ',
+];
+
+const NETWORK_TOKENS = [
+  'fetch(',
+  'XMLHttp' + 'Request',
+  'Web' + 'Socket',
+  'Event' + 'Source',
+  'http' + '://',
+  'https' + '://',
+  'send' + 'Beacon',
+  'ax' + 'ios',
+];
+
+describe('AI carve-out gate — Troubleshooting section (#864)', () => {
+  for (const [name, content] of Object.entries(TROUBLESHOOTING_FILES)) {
+    for (const token of AI_CONFIG_TOKENS) {
+      it(`${name} makes no AI configuration call (no "${token}")`, () => {
+        expect(content).not.toContain(token);
+      });
+    }
+
+    for (const token of NETWORK_TOKENS) {
+      it(`${name} makes no network call (no "${token}")`, () => {
+        expect(content).not.toContain(token);
+      });
+    }
+  }
 });
