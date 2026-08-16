@@ -6,6 +6,7 @@ import { createElement } from 'react';
 import { renderToString } from 'react-dom/server';
 import { createRequire } from 'node:module';
 import ReportCardIsland from './ReportCardIsland';
+import { TROUBLESHOOTING_EMPTY_MESSAGE } from './report-card-troubleshooting';
 import { ElectronContext } from './useElectron';
 import { useAnalysisStore } from './stores/analysisStore';
 import { useSpectrumStore } from './stores/spectrumStore';
@@ -434,7 +435,7 @@ describe('ReportCardIsland — troubleshooting section (#862)', () => {
     expect(html).not.toContain('rc-troubleshooting-section');
   });
 
-  it('omits the section when a usable curve fires no rules', () => {
+  it('renders the calm empty-state message when a usable curve fires no rules (#863)', () => {
     const noHitAnalysis = {
       ...ANALYSIS,
       spectrum: { ...ANALYSIS.spectrum, curve: { freqs: TROUBLESHOOT_FREQS, db: NO_HIT_DB } },
@@ -443,7 +444,12 @@ describe('ReportCardIsland — troubleshooting section (#862)', () => {
 
     const html = renderMarkup();
 
-    expect(html).not.toContain('rc-troubleshooting-section');
+    // The full card renders without throwing; the empty state surfaces the calm
+    // message and no error.
+    expect(html).toContain('id="rc-content"');
+    expect(html).toContain('id="rc-troubleshooting-section"');
+    expect(html).toContain('id="rc-troubleshooting-empty"');
+    expect(html).toContain(TROUBLESHOOTING_EMPTY_MESSAGE);
   });
 });
 

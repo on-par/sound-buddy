@@ -25,6 +25,11 @@ export interface TroubleshootingItem {
   narrative: string;
 }
 
+/** Calm empty-state copy for a clean mix: a usable curve fired no harshness
+ *  rules. Rendered only when the section has a measured curve but zero hits —
+ *  never for a card with no curve. Story 3 of #839. */
+export const TROUBLESHOOTING_EMPTY_MESSAGE = 'No harshness issues detected — the measured bands sit clean.';
+
 /** Maps each fired rule through the given renderer; a null renderer (the
  *  ADR-0038 miss) returns an empty list — the graceful no-crash path. The
  *  renderer is injected per the constitution, so the miss is unit-testable. */

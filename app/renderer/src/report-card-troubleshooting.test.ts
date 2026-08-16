@@ -6,10 +6,14 @@
 // are built by calling the real engine against the same fixed frequency grid
 // rules.test.ts uses — not hand-mocked — so the section renders exactly what
 // the shipped engine fires.
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { evaluateRules } from '@sound-buddy/audio-engine/dist/analyze/rules.js';
 import type { SpectrumCurve } from '@sound-buddy/audio-engine/dist/types.js';
-import { troubleshootHits, troubleshootingSectionView } from './report-card-troubleshooting';
+import {
+  troubleshootHits,
+  troubleshootingSectionView,
+  TROUBLESHOOTING_EMPTY_MESSAGE,
+} from './report-card-troubleshooting';
 
 // Same fixed ascending grid as packages/audio-engine/src/analyze/rules.test.ts,
 // so every measured/reference band in the generic rule table lands on known
@@ -68,6 +72,10 @@ describe('troubleshootingSectionView (#862)', () => {
     const flat = curve(Array(FREQS.length).fill(-40));
     expect(troubleshootingSectionView(evaluateRules(flat))).toEqual([]);
   });
+
+  it('pins the calm no-hits empty-state copy for a clean mix (#863)', () => {
+    expect(TROUBLESHOOTING_EMPTY_MESSAGE).toBe('No harshness issues detected — the measured bands sit clean.');
+  });
 });
 
 describe('troubleshootHits (#862)', () => {
@@ -76,5 +84,12 @@ describe('troubleshootHits (#862)', () => {
     expect(fired.length).toBeGreaterThan(0);
 
     expect(troubleshootHits(fired, null)).toEqual([]);
+  });
+
+  it('never invokes the renderer for an empty hit list — zero renderer/LLM calls (#863)', () => {
+    const spy = vi.fn();
+
+    expect(troubleshootHits([], spy)).toEqual([]);
+    expect(spy).not.toHaveBeenCalled();
   });
 });

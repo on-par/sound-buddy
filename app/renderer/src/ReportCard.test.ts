@@ -6,6 +6,7 @@ import { createElement } from 'react';
 import { renderToString } from 'react-dom/server';
 import { createRequire } from 'node:module';
 import ReportCard, { type GradeResult } from './ReportCard';
+import { TROUBLESHOOTING_EMPTY_MESSAGE } from './report-card-troubleshooting';
 import {
   buildMetricRows,
   gradeRingHTML,
@@ -421,14 +422,24 @@ describe('ReportCard — troubleshooting section (#862)', () => {
     expect(html).toContain('id="rc-recommendations"');
   });
 
-  it('omits the section when troubleshooting is null, undefined, or empty', () => {
+  it('omits the section when troubleshooting is null or undefined (no usable curve)', () => {
     const nullHtml = renderMarkup({ analysis: src, grade, dateText: 'now', troubleshooting: null });
     expect(nullHtml).not.toContain('rc-troubleshooting-section');
 
     const undefinedHtml = renderMarkup({ analysis: src, grade, dateText: 'now' });
     expect(undefinedHtml).not.toContain('rc-troubleshooting-section');
+  });
 
-    const emptyHtml = renderMarkup({ analysis: src, grade, dateText: 'now', troubleshooting: [] });
-    expect(emptyHtml).not.toContain('rc-troubleshooting-section');
+  it('renders the calm empty-state message when a usable curve fired no rules (#863)', () => {
+    const html = renderMarkup({ analysis: src, grade, dateText: 'now', troubleshooting: [] });
+
+    expect(html).toContain('id="rc-troubleshooting-section"');
+    expect(html).toContain('id="rc-troubleshooting-empty"');
+    expect(html).toContain(TROUBLESHOOTING_EMPTY_MESSAGE);
+    expect(html).not.toContain('rc-troubleshooting-item');
+    // "supplements, not replaces": every existing grading section still renders.
+    expect(html).toContain('id="rc-metrics-section"');
+    expect(html).toContain('id="rc-why-section"');
+    expect(html).toContain('id="rc-recommendations"');
   });
 });
