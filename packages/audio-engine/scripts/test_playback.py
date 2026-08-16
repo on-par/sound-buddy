@@ -713,7 +713,12 @@ class LiveStdinReroute(unittest.TestCase):
             # Push the full routing spec over stdin: Kick mono → ch1, OH → ch2-3.
             proc.stdin.write(b'{"type":"set-routes","spec":"0:1,1:2-3"}\n')
             proc.stdin.flush()
-            time.sleep(0.3)
+            # A re-route only applies to blocks the producer hasn't mixed yet, and
+            # up to QUEUE_BLOCKS (20) already-mixed blocks — ~427ms of audio,
+            # draining at ~1 block/10ms wall time — may still be in flight on the
+            # old routing. Wait past that worst case so the post-swap capture
+            # reliably contains at least one re-routed block.
+            time.sleep(0.6)
             proc.send_signal(signal.SIGTERM)
             self.assertEqual(proc.wait(timeout=5), 0)
             out = proc.stdout.read().decode()
