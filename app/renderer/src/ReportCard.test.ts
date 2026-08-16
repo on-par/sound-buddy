@@ -391,3 +391,44 @@ describe('ReportCard — handoff note (#267)', () => {
     expect(MAX_NOTE_LENGTH).toBe(200);
   });
 });
+
+describe('ReportCard — troubleshooting section (#862)', () => {
+  const src: ReportCardSource = { ...makeSrc(), filename: 'x.wav' };
+  const grade = buildGrade(src);
+
+  it('renders the section from troubleshooting items while keeping every grading section (#862)', () => {
+    const html = renderMarkup({
+      analysis: src,
+      grade,
+      dateText: 'now',
+      troubleshooting: [
+        {
+          ruleId: 'harsh',
+          narrative:
+            'The mix reads as Quacky/harsh: the 2–4 kHz region sits 20.0 dB above the ' +
+            '500 Hz–2 kHz body (threshold 6 dB). Cut 2–4 kHz to tame it.',
+        },
+      ],
+    });
+
+    expect(html).toContain('id="rc-troubleshooting-section"');
+    expect(html).toContain('id="rc-troubleshooting"');
+    expect(html).toContain('rc-troubleshooting-item');
+    expect(html).toContain('The mix reads as Quacky/harsh');
+    // "supplements, not replaces": every existing grading section still renders.
+    expect(html).toContain('id="rc-metrics-section"');
+    expect(html).toContain('id="rc-why-section"');
+    expect(html).toContain('id="rc-recommendations"');
+  });
+
+  it('omits the section when troubleshooting is null, undefined, or empty', () => {
+    const nullHtml = renderMarkup({ analysis: src, grade, dateText: 'now', troubleshooting: null });
+    expect(nullHtml).not.toContain('rc-troubleshooting-section');
+
+    const undefinedHtml = renderMarkup({ analysis: src, grade, dateText: 'now' });
+    expect(undefinedHtml).not.toContain('rc-troubleshooting-section');
+
+    const emptyHtml = renderMarkup({ analysis: src, grade, dateText: 'now', troubleshooting: [] });
+    expect(emptyHtml).not.toContain('rc-troubleshooting-section');
+  });
+});

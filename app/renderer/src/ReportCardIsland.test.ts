@@ -126,6 +126,17 @@ function makeSummary(overrides: Partial<AnalysisSummary> = {}): AnalysisSummary 
   };
 }
 
+// #862 troubleshooting fixtures — the same fixed frequency grid as
+// packages/audio-engine/src/analyze/rules.test.ts so the harshness engine
+// fires on known indices.
+const TROUBLESHOOT_FREQS = [80, 200, 400, 800, 1600, 3000, 4200, 5000, 7000, 10000];
+// Fires only `harsh`: the 2–4 kHz band (idx 5) sits 20 dB over the 500 Hz–2 kHz
+// reference (idx 3,4); edgy's 3.5–6 kHz reference (idx 6,7 = -25) makes its
+// excess 5 < 8, and muddy's low end matches its reference.
+const FIRING_DB = [-40, -40, -40, -40, -40, -20, -25, -25, -40, -40];
+// A flat grid — no rule fires (every band equals its reference).
+const NO_HIT_DB = TROUBLESHOOT_FREQS.map(() => -40);
+
 beforeEach(() => {
   (globalThis as { window?: unknown }).window = {
     grading: gradingMock,
@@ -239,6 +250,8 @@ describe('ReportCardIsland', () => {
 
     expect(html).toContain('Live capture — Main (window #1)');
     expect(html).toContain('id="rc-content"');
+    // liveSource carries no curve, so the troubleshooting section renders nothing (#862).
+    expect(html).not.toContain('rc-troubleshooting-section');
   });
 
   it('currentAnalysis wins over liveSource when both are present', () => {
@@ -391,6 +404,46 @@ describe('ReportCardIsland', () => {
 
     expect(html).toContain('metric-table');
     expect(html).not.toContain('rc-metric-rows');
+  });
+});
+
+describe('ReportCardIsland — troubleshooting section (#862)', () => {
+  it('renders the section from a curve that fires a harshness rule, keeping every grading section', () => {
+    const firingAnalysis = {
+      ...ANALYSIS,
+      spectrum: { ...ANALYSIS.spectrum, curve: { freqs: TROUBLESHOOT_FREQS, db: FIRING_DB } },
+    };
+    useAnalysisStore.setState({ currentAnalysis: firingAnalysis, status: 'done' });
+
+    const html = renderMarkup();
+
+    expect(html).toContain('id="rc-troubleshooting-section"');
+    expect(html).toContain('The mix reads as Quacky/harsh');
+    expect(html).toContain('Cut 2–4 kHz to tame it.');
+    // supplements, not replaces — the grading sections still render.
+    expect(html).toContain('id="rc-metrics-section"');
+    expect(html).toContain('id="rc-why-section"');
+    expect(html).toContain('id="rc-recommendations"');
+  });
+
+  it('omits the section when the analysis carries no curve', () => {
+    useAnalysisStore.setState({ currentAnalysis: ANALYSIS, status: 'done' });
+
+    const html = renderMarkup();
+
+    expect(html).not.toContain('rc-troubleshooting-section');
+  });
+
+  it('omits the section when a usable curve fires no rules', () => {
+    const noHitAnalysis = {
+      ...ANALYSIS,
+      spectrum: { ...ANALYSIS.spectrum, curve: { freqs: TROUBLESHOOT_FREQS, db: NO_HIT_DB } },
+    };
+    useAnalysisStore.setState({ currentAnalysis: noHitAnalysis, status: 'done' });
+
+    const html = renderMarkup();
+
+    expect(html).not.toContain('rc-troubleshooting-section');
   });
 });
 

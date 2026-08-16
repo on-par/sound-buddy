@@ -15,6 +15,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { compareToProfile } from '@sound-buddy/audio-engine/dist/profiles/index.js';
 import type { IdealProfile } from '@sound-buddy/audio-engine/dist/profiles/index.js';
+import { evaluateRules } from '@sound-buddy/audio-engine/dist/analyze/rules.js';
+import { troubleshootingSectionView, type TroubleshootingItem } from './report-card-troubleshooting';
 import { useElectron } from './useElectron';
 import { useStoreShallow } from './stores/useStoreShallow';
 import { useAnalysisStore, type AnalysisStatus } from './stores/analysisStore';
@@ -370,6 +372,7 @@ export default function ReportCardIsland() {
   let scoreRows: ScoreRow[] | null = null;
   let showSaveTarget = false;
   let saveTargetSaved = false;
+  let troubleshooting: TroubleshootingItem[] | null = null;
 
   const reportFirstUxOn = getReportFirstUxState()?.isEnabled(settings) ?? false;
 
@@ -404,6 +407,12 @@ export default function ReportCardIsland() {
     const targetMeta = showSaveTarget ? strongMixTargetMeta(source.filename) : null;
     const ip = idealProfile as { id?: string; source?: string } | null;
     saveTargetSaved = !!targetMeta && ip?.source === 'custom' && ip.id === targetMeta.id;
+
+    // Deterministic Troubleshooting section (#862, story 2 of #839): fired
+    // harshness-rule hits from the curve render through the #861 rule-narrative
+    // store — no usable curve (or none firing) means no section, never an error.
+    const curve = hasUsableCurve(source.curve) ? source.curve : null;
+    troubleshooting = curve ? troubleshootingSectionView(evaluateRules(curve)) : null;
   }
 
   // "vs. last time" delta (#259) — only for the fresh file-analysis card and
@@ -467,6 +476,7 @@ export default function ReportCardIsland() {
           frames={reportCardFramesView(source.frames)}
           delta={delta}
           scoreRows={scoreRows}
+          troubleshooting={troubleshooting}
           phaseDoubling={{
             detected: phaseSignal,
             title: phaseSignal
