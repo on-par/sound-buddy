@@ -31,6 +31,24 @@ const ROOT_MARKUP_ONLY_TOKENS = [
   'llm-' + 'interval',
 ];
 
+// The eight #839 Troubleshooting-section files (#864): the #657 gate predates
+// the section, so these extend the removed-surface scan over it — the view
+// module, the #861 renderer registry, the four self-registering
+// rule-renderers/* adapters, and the two report-card components that wire
+// the section. Declared once here and reused by both the #657 removed-surface
+// scan below and the #864 AI-configuration/network scan further down, so the
+// section's file list has a single source of truth.
+const TROUBLESHOOTING_FILES: Record<string, string> = {
+  'ReportCard.tsx': fs.readFileSync(fileURLToPath(new URL('./ReportCard.tsx', import.meta.url)), 'utf8'),
+  'ReportCardIsland.tsx': fs.readFileSync(fileURLToPath(new URL('./ReportCardIsland.tsx', import.meta.url)), 'utf8'),
+  'report-card-troubleshooting.ts': fs.readFileSync(fileURLToPath(new URL('./report-card-troubleshooting.ts', import.meta.url)), 'utf8'),
+  'rule-renderer-store.ts': fs.readFileSync(fileURLToPath(new URL('./rule-renderer-store.ts', import.meta.url)), 'utf8'),
+  'rule-renderers/harshness.ts': fs.readFileSync(fileURLToPath(new URL('./rule-renderers/harshness.ts', import.meta.url)), 'utf8'),
+  'rule-renderers/gate.ts': fs.readFileSync(fileURLToPath(new URL('./rule-renderers/gate.ts', import.meta.url)), 'utf8'),
+  'rule-renderers/phase.ts': fs.readFileSync(fileURLToPath(new URL('./rule-renderers/phase.ts', import.meta.url)), 'utf8'),
+  'rule-renderers/gain.ts': fs.readFileSync(fileURLToPath(new URL('./rule-renderers/gain.ts', import.meta.url)), 'utf8'),
+};
+
 const files: Record<string, string> = {
   'root-markup.html': fs.readFileSync(fileURLToPath(new URL('./root-markup.html', import.meta.url)), 'utf8'),
   'inline-app.js': fs.readFileSync(fileURLToPath(new URL('./inline-app.js', import.meta.url)), 'utf8'),
@@ -44,19 +62,7 @@ const files: Record<string, string> = {
   '../index.html': fs.readFileSync(fileURLToPath(new URL('../index.html', import.meta.url)), 'utf8'),
   '../single-column-state.js': fs.readFileSync(fileURLToPath(new URL('../single-column-state.js', import.meta.url)), 'utf8'),
   '../upgrade-momentum.js': fs.readFileSync(fileURLToPath(new URL('../upgrade-momentum.js', import.meta.url)), 'utf8'),
-  // The eight #839 Troubleshooting-section files (#864): the #657 gate predates
-  // the section, so these extend the removed-surface scan over it — the view
-  // module, the #861 renderer registry, the four self-registering
-  // rule-renderers/* adapters, and the two report-card components that wire
-  // the section.
-  'ReportCard.tsx': fs.readFileSync(fileURLToPath(new URL('./ReportCard.tsx', import.meta.url)), 'utf8'),
-  'ReportCardIsland.tsx': fs.readFileSync(fileURLToPath(new URL('./ReportCardIsland.tsx', import.meta.url)), 'utf8'),
-  'report-card-troubleshooting.ts': fs.readFileSync(fileURLToPath(new URL('./report-card-troubleshooting.ts', import.meta.url)), 'utf8'),
-  'rule-renderer-store.ts': fs.readFileSync(fileURLToPath(new URL('./rule-renderer-store.ts', import.meta.url)), 'utf8'),
-  'rule-renderers/harshness.ts': fs.readFileSync(fileURLToPath(new URL('./rule-renderers/harshness.ts', import.meta.url)), 'utf8'),
-  'rule-renderers/gate.ts': fs.readFileSync(fileURLToPath(new URL('./rule-renderers/gate.ts', import.meta.url)), 'utf8'),
-  'rule-renderers/phase.ts': fs.readFileSync(fileURLToPath(new URL('./rule-renderers/phase.ts', import.meta.url)), 'utf8'),
-  'rule-renderers/gain.ts': fs.readFileSync(fileURLToPath(new URL('./rule-renderers/gain.ts', import.meta.url)), 'utf8'),
+  ...TROUBLESHOOTING_FILES,
 };
 
 describe('AI carve-out gate (#657)', () => {
@@ -107,17 +113,8 @@ describe('AI carve-out gate (#657)', () => {
 // the #657 convention) so this file never trips its own greps. The "narrative"
 // / "llm" substrings are deliberately NOT banned here — the section
 // legitimately imports the ADR-0028 rule-narrative modules; only the
-// AI-configuration/network tokens above are banned.
-const TROUBLESHOOTING_FILES: Record<string, string> = {
-  'ReportCard.tsx': fs.readFileSync(fileURLToPath(new URL('./ReportCard.tsx', import.meta.url)), 'utf8'),
-  'ReportCardIsland.tsx': fs.readFileSync(fileURLToPath(new URL('./ReportCardIsland.tsx', import.meta.url)), 'utf8'),
-  'report-card-troubleshooting.ts': fs.readFileSync(fileURLToPath(new URL('./report-card-troubleshooting.ts', import.meta.url)), 'utf8'),
-  'rule-renderer-store.ts': fs.readFileSync(fileURLToPath(new URL('./rule-renderer-store.ts', import.meta.url)), 'utf8'),
-  'rule-renderers/harshness.ts': fs.readFileSync(fileURLToPath(new URL('./rule-renderers/harshness.ts', import.meta.url)), 'utf8'),
-  'rule-renderers/gate.ts': fs.readFileSync(fileURLToPath(new URL('./rule-renderers/gate.ts', import.meta.url)), 'utf8'),
-  'rule-renderers/phase.ts': fs.readFileSync(fileURLToPath(new URL('./rule-renderers/phase.ts', import.meta.url)), 'utf8'),
-  'rule-renderers/gain.ts': fs.readFileSync(fileURLToPath(new URL('./rule-renderers/gain.ts', import.meta.url)), 'utf8'),
-};
+// AI-configuration/network tokens above are banned. `TROUBLESHOOTING_FILES` is
+// declared once, above, and reused here.
 
 const AI_CONFIG_TOKENS = [
   'api' + 'Key',

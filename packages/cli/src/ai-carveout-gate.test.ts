@@ -34,7 +34,7 @@ function collectAllTsFiles(dir: string): string[] {
 const TOKENS = [
   '--no-' + 'ai',
   'no' + 'Ai',
-  'insights',
+  'insig' + 'hts',
   'generate' + 'Insights',
   'Analyst' + 'Input',
   'Narrative' + 'Port',
@@ -43,7 +43,10 @@ const TOKENS = [
   'earen' + 'dil',
 ];
 
-const REMOVED_FILES = ['src/insights.ts', 'src/insights.test.ts'];
+const REMOVED_FILES = [
+  'src/' + 'insig' + 'hts' + '.ts',
+  'src/' + 'insig' + 'hts' + '.test.ts',
+];
 
 describe('AI carve-out gate (#661)', () => {
   const scannedFiles = collectAllTsFiles(cliSrc);
