@@ -1,0 +1,3 @@
+# Raw console captures may contain volunteer names — never commit them.
+*.local.scn
+__pycache__/
