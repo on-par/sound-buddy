@@ -51,6 +51,11 @@ export type { BandKey, BandMeta } from "./bands.js";
 export { findSpectralPeaks, bandEnergy, localEnvelope } from "./analyze/spectral.js";
 export type { SpectralPeak, FindPeaksOptions } from "./analyze/spectral.js";
 
+// Harshness rules engine (#381): data-driven symptom-to-frequency rules over
+// the shared spectral core. Renderer/narrative consumption is #375.
+export { RULE_TABLE, evaluateRules, rulesForInstrument } from "./analyze/rules.js";
+export type { HarshnessRule, RuleSuggestion, BandCondition, FiredRule, RuleMove } from "./analyze/rules.js";
+
 // Post-service gain-structure health (#369): per-channel RMS-vs-target read
 // derived from the existing sox measurements — no live console metering.
 export { assessChannelGain, assessGainStructure, gainHealthLabel, GAIN_TARGET_DBFS } from "./analyze/gain-structure.js";
