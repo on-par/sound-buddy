@@ -44,3 +44,11 @@ description = "Path exclude (see file header) for the gitignored app/test-result
 paths = [
   '''^app/test-results/''',
 ]
+
+[[allowlists]]
+description = "Path excludes for gitignored operational/build directories (same rule as app/test-results/): .factory/ holds factory run state (plans, logs, queues — local agent artifacts, never committed), app/release/ holds previous local build output (Electron framework resources.pak binary tripped the generic-key rule), and .env.local is the developer's local env with test keys. None of these can be committed, so a full local verify.sh must not fail on them. CI is unaffected — its runner never has these directories."
+paths = [
+  '''^\.factory/''',
+  '''^app/release/''',
+  '''^\.env\.local$''',
+]
