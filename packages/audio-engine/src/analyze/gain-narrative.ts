@@ -37,12 +37,13 @@ export interface GainRuleHit {
  *  directs. */
 export function gainNarrativeData(hit: GainRuleHit): RuleNarrativeData {
   const distanceDb = Math.abs(hit.levelDbfs - hit.targetDbfs);
+  const isAbove = hit.levelDbfs > hit.targetDbfs;
   return {
     channel: hit.channel,
     status: hit.status,
     levelDbfs: fmt(hit.levelDbfs, 1),
     distanceDb: fmt(distanceDb, 1),
-    direction: hit.status === "hot" ? "above" : "below",
+    direction: isAbove ? "above" : "below",
     targetDbfs: fmt(hit.targetDbfs, 0),
     instruction: hit.instruction,
   };
