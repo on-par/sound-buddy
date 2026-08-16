@@ -56,6 +56,13 @@ export type { SpectralPeak, FindPeaksOptions } from "./analyze/spectral.js";
 export { RULE_TABLE, evaluateRules, rulesForInstrument } from "./analyze/rules.js";
 export type { HarshnessRule, RuleSuggestion, BandCondition, FiredRule, RuleMove } from "./analyze/rules.js";
 
+// Rule-narrative templating layer (#834): deterministic rule-type-keyed
+// template registry + pure placeholder renderer. Stories 2-5 register their
+// rule type's template through registerRuleTemplate; story 6 consumes
+// renderRuleNarrative. Zero LLM involvement.
+export { registerRuleTemplate, getRuleTemplate, renderRuleNarrative } from "./analyze/rule-narrative.js";
+export type { RuleType, RuleNarrativeData } from "./analyze/rule-narrative.js";
+
 // Post-service gain-structure health (#369): per-channel RMS-vs-target read
 // derived from the existing sox measurements — no live console metering.
 export { assessChannelGain, assessGainStructure, gainHealthLabel, GAIN_TARGET_DBFS } from "./analyze/gain-structure.js";
