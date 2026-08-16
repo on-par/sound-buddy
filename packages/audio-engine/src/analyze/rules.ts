@@ -185,16 +185,15 @@ export function rulesForInstrument(instrumentId?: string): HarshnessRule[] {
  * bandEnergy primitive. Returns a new FiredRule[] sorted by excessDb
  * descending. A rule fires iff both its bands are finite on the curve and
  * excessDb >= minExcessDb (within EXCESS_EPSILON); non-finite bands never
- * fire. Falsy/mismatched/empty curves yield [] via bandEnergy's guards.
+ * fire. An undefined curve yields [] directly; mismatched/empty curves yield
+ * [] via bandEnergy's own guards.
  */
 export function evaluateRules(curve: SpectrumCurve | undefined, instrumentId?: string): FiredRule[] {
-  // bandEnergy's own guard treats a falsy/invalid curve as -Infinity energy,
-  // so this cast is safe: evaluateRules never reads the curve directly.
-  const c = curve as SpectrumCurve;
+  if (!curve) return [];
   const fired: FiredRule[] = [];
   for (const rule of rulesForInstrument(instrumentId)) {
-    const measuredDb = bandEnergy(c, rule.condition.band.lowHz, rule.condition.band.highHz);
-    const referenceDb = bandEnergy(c, rule.condition.reference.lowHz, rule.condition.reference.highHz);
+    const measuredDb = bandEnergy(curve, rule.condition.band.lowHz, rule.condition.band.highHz);
+    const referenceDb = bandEnergy(curve, rule.condition.reference.lowHz, rule.condition.reference.highHz);
     if (!Number.isFinite(measuredDb) || !Number.isFinite(referenceDb)) continue;
     const excessDb = measuredDb - referenceDb;
     if (excessDb >= rule.condition.minExcessDb - EXCESS_EPSILON) {
