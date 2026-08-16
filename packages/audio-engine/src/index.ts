@@ -63,6 +63,14 @@ export type { HarshnessRule, RuleSuggestion, BandCondition, FiredRule, RuleMove 
 export { registerRuleTemplate, getRuleTemplate, renderRuleNarrative } from "./analyze/rule-narrative.js";
 export type { RuleType, RuleNarrativeData } from "./analyze/rule-narrative.js";
 
+// Harshness narrative (story 2 of #375 / #835): deterministic troubleshooting
+// prose registered under the 'harshness' rule type through the #834 registry.
+export {
+  HARSHNESS_NARRATIVE_TEMPLATE,
+  harshnessNarrativeData,
+  renderHarshnessNarrative,
+} from "./analyze/harshness-narrative.js";
+
 // Post-service gain-structure health (#369): per-channel RMS-vs-target read
 // derived from the existing sox measurements — no live console metering.
 export { assessChannelGain, assessGainStructure, gainHealthLabel, GAIN_TARGET_DBFS } from "./analyze/gain-structure.js";
