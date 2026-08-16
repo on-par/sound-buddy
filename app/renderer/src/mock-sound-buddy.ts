@@ -173,6 +173,9 @@ export function createMockSoundBuddy(overrides: Partial<SoundBuddyApi> = {}): Mo
     revealDiagnostics: invoke('revealDiagnostics', { revealed: true }),
     submitFeedback: invoke('submitFeedback', { ok: true as const }),
     onOpenFeedbackDialog: listen<[]>('onOpenFeedbackDialog'),
+    // Skill-tree onboarding dialog (#382) — Help-menu push channel, same
+    // event-map registration as the other on* dialog listeners.
+    onOpenSkillTreeDialog: listen<[]>('onOpenSkillTreeDialog'),
     listRigs: invoke('listRigs', []),
     saveRig: invoke('saveRig', DEFAULT_APP_SETTINGS),
     deleteRig: invoke('deleteRig', DEFAULT_APP_SETTINGS),

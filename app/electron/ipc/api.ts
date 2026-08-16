@@ -788,6 +788,9 @@ export interface FeedbackApi {
   revealDiagnostics(): Promise<RevealDiagnosticsResult>;
   submitFeedback(input: FeedbackSubmission): Promise<SubmitFeedbackResult>;
   onOpenFeedbackDialog(cb: () => void): void;
+  // Skill-tree onboarding dialog (#382) — Help ▸ "Skill Tree…" pushes the
+  // renderer open, mirroring onOpenFeedbackDialog's menu-push channel.
+  onOpenSkillTreeDialog(cb: () => void): void;
 }
 
 /**

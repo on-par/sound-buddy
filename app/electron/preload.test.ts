@@ -160,6 +160,7 @@ const INVOKE_TABLE: Array<{ method: BridgeKey; channel: string; args: unknown[] 
 const LISTENERS: BridgeKey[] = [
   'onOpenLicenseDialog',
   'onOpenFeedbackDialog',
+  'onOpenSkillTreeDialog',
   'onAnalysisProgress',
   'onPlaybackEvent',
   'onLiveEvent',
@@ -211,6 +212,7 @@ describe('createBridge — event listeners', () => {
   }> = [
     { method: 'onOpenLicenseDialog', channel: 'open-license-dialog', payload: undefined, expectsPayload: false },
     { method: 'onOpenFeedbackDialog', channel: 'open-feedback-dialog', payload: undefined, expectsPayload: false },
+    { method: 'onOpenSkillTreeDialog', channel: 'open-skill-tree-dialog', payload: undefined, expectsPayload: false },
     { method: 'onAnalysisProgress', channel: 'analysis-progress', payload: { status: 'running' }, expectsPayload: true },
     { method: 'onPlaybackEvent', channel: 'playback-event', payload: { kind: 'level' }, expectsPayload: true },
     { method: 'onLiveEvent', channel: 'live-event', payload: { kind: 'meter' }, expectsPayload: true },
