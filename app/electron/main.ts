@@ -104,6 +104,7 @@ export interface MenuDeps {
   checkForUpdates: () => void;
   openLicenseDialog: () => void;
   sendFeedback: () => void;
+  openSkillTreeDialog: () => void;
 }
 
 export function getMenuTemplate(deps: MenuDeps): Electron.MenuItemConstructorOptions[] {
@@ -168,6 +169,12 @@ export function getMenuTemplate(deps: MenuDeps): Electron.MenuItemConstructorOpt
         {
           label: 'Send Feedback…',
           click: () => deps.sendFeedback(),
+        },
+        {
+          // Skill-tree onboarding (#382) — the renderer owns the dialog; the
+          // same menu-push channel as License…/Send Feedback….
+          label: 'Skill Tree…',
+          click: () => deps.openSkillTreeDialog(),
         },
       ],
     },
@@ -238,6 +245,9 @@ function buildMenu(): void {
     // explicit "Email instead" fallback on a non-retryable failure, and
     // sendFeedbackFromMenu's own fallback when there's no window to push to.
     sendFeedback: () => sendFeedbackFromMenu(mainWindow),
+    // #382: Help ▸ "Skill Tree…" pushes the renderer open to the skill-tree
+    // dialog (the channel preload.onOpenSkillTreeDialog subscribes to).
+    openSkillTreeDialog: () => mainWindow?.webContents.send('open-skill-tree-dialog'),
   });
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));
 }

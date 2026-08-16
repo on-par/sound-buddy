@@ -89,6 +89,9 @@ export function createBridge(ipc: IpcRendererLike) {
     // firing a mailto directly.
     submitFeedback: (input: FeedbackSubmission) => ipc.invoke('submit-feedback', input),
     onOpenFeedbackDialog: (cb: () => void) => ipc.on('open-feedback-dialog', () => cb()),
+    // Skill-tree onboarding dialog (#382) — Help ▸ "Skill Tree…" pushes the
+    // renderer open, same menu-push shape as onOpenFeedbackDialog.
+    onOpenSkillTreeDialog: (cb: () => void) => ipc.on('open-skill-tree-dialog', () => cb()),
 
     // Capture rigs (#36) — backend only for now; the Live-tab UI arrives in #37.
     listRigs: () => ipc.invoke('list-rigs'),

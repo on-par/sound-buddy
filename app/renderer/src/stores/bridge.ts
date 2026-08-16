@@ -17,6 +17,7 @@ import { useRigStore } from './rigStore';
 import { useSoundcheckStore } from './soundcheckStore';
 import { useRingoutStore } from './ringoutStore';
 import { useFeedbackDialogStore } from './feedbackDialogStore';
+import { useSkillTreeStore } from './skillTreeStore';
 import { useDirectoryStore } from './directoryStore';
 import { liveReportCardSource } from '../live-capture-panel';
 import { roomFeed } from '../measurement-device-state';
@@ -135,6 +136,9 @@ export function installStoreBridge(
     // Same guard for feedbackDialogStore's FeedbackApi.onOpenFeedbackDialog
     // listener — the Help-menu push channel (TD-001 slice 6f, #704).
     useFeedbackDialogStore.getState().bindIpcEvents();
+    // Same guard for skillTreeStore's SkillTreeApi.onOpenSkillTreeDialog
+    // listener — the Help ▸ "Skill Tree…" push channel (#382).
+    useSkillTreeStore.getState().bindIpcEvents();
 
     // Ideal-profile selection glue (TD-001 slice 6b, #700), replacing
     // inline-app.js's syncIdealProfile call sites: seed idealProfilesStore

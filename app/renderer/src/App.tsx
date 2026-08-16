@@ -52,6 +52,7 @@ import reportFirstUxStateSrc from '../report-first-ux-state.js?raw';
 import singleColumnStateSrc from '../single-column-state.js?raw';
 import analyzeSourceStateSrc from '../analyze-source-state.js?raw';
 import batchAnalysisSrc from '../batch-analysis.js?raw';
+import skillTreeStateSrc from '../skill-tree-state.js?raw';
 import inlineAppSrc from './inline-app.js?raw';
 import LicensePanel from './LicensePanel';
 import SettingsPanel from './SettingsPanel';
@@ -76,7 +77,9 @@ import LicenseChrome from './LicenseChrome';
 import ConsoleNetworkConsentDialog from './ConsoleNetworkConsentDialog';
 import UpdateBanner from './UpdateBanner';
 import OnboardingDialog from './OnboardingDialog';
+import SkillTreeDialog from './SkillTreeDialog';
 import { useOnboardingStore } from './stores/onboardingStore';
+import { useSkillTreeStore } from './stores/skillTreeStore';
 import { useLiveCaptureStore } from './stores/liveCaptureStore';
 import { useAnalysisStore } from './stores/analysisStore';
 import { useSpectrumStore } from './stores/spectrumStore';
@@ -98,12 +101,12 @@ import RigDialog from './RigDialog';
 import type { LiveCaptureRuntime, LiveTransitionState } from './LiveControls';
 import type { LiveSetupStepsApi } from './live-workspace-view';
 
-// Boot scripts in their original document order (#303): the 32 UMD helpers
+// Boot scripts in their original document order (#303): the 33 UMD helpers
 // (each attaches to `window`, see the classic-script comment above their old
 // <script src> tags in index.html), then the inline app script that wires up
 // the UI and reads those globals. Ported verbatim — see the source files.
 //
-// UMD helper audit (#424, TD-001 slice 6f, #704): none of the 32 are dead.
+// UMD helper audit (#424, TD-001 slice 6f, #704): none of the 33 are dead.
 // onboarding-state.js, feedback-form-state.js, grade-own-state.js, and
 // phase-doubling-state.js — the 4 helpers whose DOM wiring moved out of
 // inline-app.js this slice — are now read by the new
@@ -112,8 +115,10 @@ import type { LiveSetupStepsApi } from './live-workspace-view';
 // dialog components) instead of by inline-app.js. phase-doubling-state.js
 // was already a cross-component dependency via ReportCardIsland.tsx's
 // getPhaseDoublingState().detectPhaseSignal() before this slice, so it was
-// never a removal candidate regardless. No BOOT_SCRIPTS entry is removed and
-// no app/renderer/*.js classic script is deleted.
+// never a removal candidate regardless. skill-tree-state.js is the 33rd
+// helper (#382) — read by stores/skillTreeStore.ts + SkillTreeDialog.tsx.
+// No BOOT_SCRIPTS entry is removed and no app/renderer/*.js classic script
+// is deleted.
 const BOOT_SCRIPTS = [
   rigReconcileSrc,
   armStateSrc,
@@ -147,6 +152,7 @@ const BOOT_SCRIPTS = [
   singleColumnStateSrc,
   analyzeSourceStateSrc,
   batchAnalysisSrc,
+  skillTreeStateSrc,
   inlineAppSrc,
 ];
 
@@ -280,6 +286,9 @@ export default function App() {
     // same ordering guarantee the old `void initOnboarding()` tail call in
     // inline-app.js relied on.
     void useOnboardingStore.getState().init();
+    // Skill-tree onboarding (#382): hydrates progress after BOOT_SCRIPTS so
+    // window.skillTreeState exists — same ordering guarantee as onboarding.
+    useSkillTreeStore.getState().init();
     // #report-card/#spectrum-island now exist (just injected above) —
     // trigger the second render that portals ReportCardIsland/SpectrumPanel
     // onto them (TD-001 slice 4, #422).
@@ -309,6 +318,10 @@ export default function App() {
       {booted && createPortal(<GradeOwnGuideDialog />, document.getElementById('guide-dialog-island')!)}
       {booted && createPortal(<PhaseDoublingDialog />, document.getElementById('phase-doubling-dialog-island')!)}
       {booted && createPortal(<OnboardingDialog />, document.getElementById('onboarding-island')!)}
+      {/* #382: the skill-tree dialog reads window.skillTreeState (a
+          BOOT_SCRIPTS helper) during render, so it's booted-gated like the
+          other classic-script-reading dialogs above. */}
+      {booted && createPortal(<SkillTreeDialog />, document.getElementById('skill-tree-island')!)}
       {booted && createPortal(<ReportCardIsland />, document.getElementById('report-card')!)}
       {booted && createPortal(<SpectrumPanel />, document.getElementById('spectrum-island')!)}
       {booted && createPortal(<IdealProfileSelect />, document.getElementById('ideal-profile-island')!)}

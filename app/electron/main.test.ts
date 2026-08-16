@@ -187,6 +187,7 @@ describe('getMenuTemplate', () => {
       checkForUpdates: vi.fn(),
       openLicenseDialog: vi.fn(),
       sendFeedback: vi.fn(),
+      openSkillTreeDialog: vi.fn(),
     };
   }
 
@@ -220,13 +221,14 @@ describe('getMenuTemplate', () => {
     expect(roles).toEqual(['undo', 'redo', 'cut', 'copy', 'paste', 'selectAll']);
   });
 
-  it('Help submenu includes Check for Updates…, License…, Send Feedback…', () => {
+  it('Help submenu includes Check for Updates…, License…, Send Feedback…, Skill Tree…', () => {
     const template = getMenuTemplate(makeDeps());
     const helpSubmenu = template[3].submenu as Electron.MenuItemConstructorOptions[];
     const labels = helpSubmenu.map((item) => item.label).filter(Boolean);
     expect(labels).toContain('Check for Updates…');
     expect(labels).toContain('License…');
     expect(labels).toContain('Send Feedback…');
+    expect(labels).toContain('Skill Tree…');
   });
 
   it('invoking each item click calls the matching dep exactly once', () => {
@@ -250,6 +252,9 @@ describe('getMenuTemplate', () => {
 
     (helpSubmenu.find((item) => item.label === 'Send Feedback…')?.click as () => void)();
     expect(deps.sendFeedback).toHaveBeenCalledTimes(1);
+
+    (helpSubmenu.find((item) => item.label === 'Skill Tree…')?.click as () => void)();
+    expect(deps.openSkillTreeDialog).toHaveBeenCalledTimes(1);
   });
 });
 
