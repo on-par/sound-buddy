@@ -15,7 +15,8 @@ against a church M32R (2026-08-16, findings recorded in
 `docs/848-m32r-console-discovery`, commit bb813fa) answered all four with
 measured data rather than assumptions: a full 2103-node scene capture at
 350 ms timeout / 3 retries lost zero queries; RTT on church WiFi was a 4.3 ms
-median with a 93.3 ms p95/max tail; the console has no authentication of any
+median with a 7.9 ms p95 and a 93.3 ms max tail; the console has no
+authentication of any
 kind and answers broadcast discovery, so read-only is a guarantee this app's
 own client code must enforce, not one the console can enforce; and a naive
 unicast subnet sweep was actively harmful (it caused macOS to cache reject
@@ -117,7 +118,7 @@ possibly-revised merge of that file.
 - [Issue #371 — spike: OSC/console-API feasibility assessment](https://github.com/on-par/sound-buddy/issues/371)
 - [Issue #848 correction comment (2026-08-16)](https://github.com/on-par/sound-buddy/issues/848#issuecomment-5309116840)
 - [docs/discovery/m32r-discovery-findings.md (branch docs/848-m32r-console-discovery, commit bb813fa)](https://github.com/on-par/sound-buddy/blob/bb813fa/docs/discovery/m32r-discovery-findings.md)
-- [docs/security/tier-1-tier-2-threat-model.md](../security/tier-1-tier-2-threat-model.md)
+- [docs/security/tier-1-tier-2-threat-model.md](docs/security/tier-1-tier-2-threat-model.md)
 - [ADR-0006 — Tier 2 console-network consent is granted only by the first-run modal](docs/adr/0006-tier-2-console-network-consent-is-granted-only-by-the-first-run-modal-never-by-a-settings-toggle.md)
 - [ADR-0010 — Python child-process stream lifecycle is owned by one deep module](docs/adr/0010-python-child-process-stream-lifecycle-is-owned-by-one-deep-module-never-re-copied-per-domain.md)
 - [ADR-0048 — Shared OSC transport encode/decode for the M32R console ships as a verification-only pass](docs/adr/0048-shared-osc-transport-encode-decode-for-the-m32r-console-ships-as-a-verification-only-pass-because-the-feature-already-landed.md)
