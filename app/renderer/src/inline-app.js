@@ -368,54 +368,12 @@ sb.onMenuOpenFile((fp) => {
 // First-run onboarding (#69) is gone — stores/onboardingStore.ts +
 // OnboardingDialog.tsx (TD-001 slice 6f, #704) port initOnboarding verbatim.
 
-/* ══ Post-update "what's new" note (#271) ══
-   Closes the loop opened by the in-app "Send Feedback" flow (#143/#144): after
-   the user updates, a dismissible, non-blocking banner credits shipped,
-   user-requested items — "You asked, we shipped: …". Bundled with the release
-   and read from disk (never fetched), gated once-per-version by
-   window.whatsNewState + localStorage (mirrors the onboarding "seen once"
-   idiom above). Never shows for a build that ships no note or an empty one. */
-async function initWhatsNew() {
-  const banner = document.getElementById('whats-new-banner');
-  if (!banner || !window.whatsNewState) return;
-  // Dev/e2e escape hatch (SOUND_BUDDY_DISABLE_ONBOARDING): reuse the app's
-  // established "suppress first-run surfaces in e2e" switch so automated
-  // specs aren't disrupted by a banner appearing mid-run.
-  try { if (sb.isOnboardingDisabled && (await sb.isOnboardingDisabled())) return; } catch { /* no bridge → proceed */ }
-
-  const [version, md] = await Promise.all([
-    sb.getAppVersion().catch(() => ''),
-    sb.getWhatsNew().catch(() => null),
-  ]);
-  if (!version) return;
-
-  // A genuine first launch shows the onboarding overlay instead — crediting
-  // "shipped" changes to someone who just installed today (no prior version
-  // to compare against) would be a non-sequitur competing with that overlay.
-  // Mark this version seen so it doesn't retroactively appear later either.
-  if (window.onboardingState && !onboardingState.hasSeenOnboarding(window.localStorage)) {
-    whatsNewState.markSeen(window.localStorage, version);
-    return;
-  }
-
-  const note = whatsNewState.parseNote(md);
-  if (!note || whatsNewState.hasSeen(window.localStorage, version)) return;
-
-  const text = document.getElementById('whats-new-text');
-  if (text) {
-    text.textContent = note.title ? `${note.title}: ${note.items.join(' • ')}` : note.items.join(' • ');
-  }
-
-  const dismissBtn = document.getElementById('whats-new-dismiss');
-  if (dismissBtn) {
-    dismissBtn.addEventListener('click', () => {
-      whatsNewState.markSeen(window.localStorage, version);
-      banner.classList.remove('show');
-    });
-  }
-
-  banner.classList.add('show');
-}
+// Post-update "what's new" note (#271) is gone — WhatsNewBanner.tsx (TD-001
+// slice 6k, #714) ports initWhatsNew verbatim as a mounted component instead
+// of an IIFE-adjacent call that ran once at script load. whats-new-state.js /
+// onboarding-state.js stay unchanged classic scripts, read via a typed window
+// cast — same pattern UpdateBanner.tsx already established for
+// update-download-state.js.
 
 /* ══ Report Card ══ */
 // Grading (grade/score/recommendations + recording-type + band-diff) lives in
@@ -622,5 +580,5 @@ lcStore.getState().loadDevices().then(
 // First-run onboarding (#69) is now App.tsx's
 // `void useOnboardingStore.getState().init();` boot call (TD-001 slice 6f, #704).
 
-// What's-new note (#271): credit shipped, user-requested items after an update.
-void initWhatsNew();
+// What's-new note (#271) is now WhatsNewBanner.tsx's own mount effect
+// (TD-001 slice 6k, #714) — no boot wiring needed here.
