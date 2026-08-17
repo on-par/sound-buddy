@@ -1,3 +1,5 @@
+import { assertReadOnlyOscMessage } from './read-only-guard.js'
+
 export type OscType = 'f' | 'i' | 's' | 'b'
 
 export type OscArg =
@@ -98,6 +100,7 @@ export function encodeOscMessage(message: OscMessage): Uint8Array {
   if (!message.address.startsWith('/')) {
     throw new OscError(`OSC message address must start with '/': got "${message.address}"`)
   }
+  assertReadOnlyOscMessage(message)
   const out: number[] = []
 
   const addressBytes = Array.from(new TextEncoder().encode(message.address))
@@ -190,3 +193,4 @@ export function decodeOscMessage(packet: Uint8Array): DecodedOscMessage {
 }
 
 export { normalizeReplyAddress, replyAddressMatches } from './address.js'
+export { assertReadOnlyOscMessage } from './read-only-guard.js'
