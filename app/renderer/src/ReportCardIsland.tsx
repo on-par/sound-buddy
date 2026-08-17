@@ -24,6 +24,9 @@ import { useSpectrumStore } from './stores/spectrumStore';
 import { useSettingsStore } from './stores/settingsStore';
 import { useSceneDiffStore } from './stores/sceneDiffStore';
 import { usePhaseDoublingStore } from './stores/phaseDoublingStore';
+import { useRingoutStore } from './stores/ringoutStore';
+import { useIdealProfilesStore } from './stores/idealProfilesStore';
+import { switchMode } from './mode-switch';
 import ReportCard, { type GradeResult } from './ReportCard';
 import SceneChanges from './SceneChanges';
 import { topSceneChanges } from '../../electron/scene-diff-format';
@@ -82,12 +85,6 @@ interface FeedbackRingoutApi {
   reportCardCallout(peak: FeedbackPeak | null): FeedbackRingoutCalloutView;
 }
 
-interface InlineDialogsApi {
-  openFeedbackRingout(): void;
-  saveMixAsTarget?(): void | Promise<boolean>;
-  openBuildGuide(): void;
-}
-
 function getGrading(): GradingApi {
   return (window as unknown as { grading: GradingApi }).grading;
 }
@@ -100,9 +97,6 @@ function getFeedbackRingout(): FeedbackRingoutApi {
 function getFindSpectralPeaks(): unknown {
   return (window as unknown as { audioEngineSpectral: { findSpectralPeaks: unknown } }).audioEngineSpectral
     .findSpectralPeaks;
-}
-function getInlineDialogs(): InlineDialogsApi | undefined {
-  return (window as unknown as { inlineDialogs?: InlineDialogsApi }).inlineDialogs;
 }
 function getReportFirstUxState(): { isEnabled(s: unknown): boolean } | undefined {
   return (window as unknown as { reportFirstUxState?: { isEnabled(s: unknown): boolean } }).reportFirstUxState;
@@ -488,16 +482,29 @@ export default function ReportCardIsland() {
           }}
           feedbackRingout={feedbackCallout}
           onOpenPhaseDoubling={() => usePhaseDoublingStore.getState().open(source ? { filename: source.filename, detected: phaseSignal } : null)}
-          onOpenFeedbackRingout={() => getInlineDialogs()?.openFeedbackRingout()}
+          /* c8 ignore start -- interaction-only glue; no jsdom in this harness to
+             click the button (renderToString doesn't run DOM events). */
+          onOpenFeedbackRingout={() => {
+            useRingoutStore.getState().start(feedbackPeak ? feedbackPeak.freq : null);
+            switchMode('ringout');
+          }}
+          /* c8 ignore stop */
           showSaveTarget={showSaveTarget}
           saveTargetSaved={saveTargetSaved}
-          /* c8 ignore next -- interaction-only glue; no jsdom in this harness to
+          /* c8 ignore start -- interaction-only glue; no jsdom in this harness to
              click the button (renderToString doesn't run DOM events). */
-          onSaveAsTarget={() => { void getInlineDialogs()?.saveMixAsTarget?.(); }}
+          onSaveAsTarget={() => {
+            // Reproduces the old saveMixAsTarget()'s exact gate: it only ever acted on
+            // curAnalysis() (a file analysis), never liveSource, even though
+            // showSaveTarget above is source-generic — preserve that, don't widen it.
+            if (!currentAnalysis || !source || !hasUsableCurve(source.curve)) return;
+            void useIdealProfilesStore.getState().saveMeasured(source.curve, strongMixTargetMeta(source.filename));
+          }}
+          /* c8 ignore stop */
           contextualLinks={reportFirstUxOn}
           /* c8 ignore next -- interaction-only glue; no jsdom in this harness to
              click the button (renderToString doesn't run DOM events). */
-          onOpenBuildGuide={() => getInlineDialogs()?.openBuildGuide()}
+          onOpenBuildGuide={() => switchMode('guide')}
           noteValue={noteDraft}
           noteEditable={!!lastSavedSummaryFile}
           onNoteChange={setNoteDraft}

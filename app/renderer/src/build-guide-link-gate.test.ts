@@ -5,26 +5,23 @@ import { describe, it, expect } from 'vitest';
 import * as fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
-// Contextual "Review in Build Guide" link gate (#545, epic e17): inline-app.js
-// is coverage-excluded glue (see vitest.config.ts), so its wiring is verified
-// here the same way single-column-gate.test.ts / report-first-ux-gate.test.ts
-// encode their acceptance criteria.
+// Contextual "Review in Build Guide" link gate (#545, epic e17): the surface
+// is ReportCardIsland.tsx-owned now (TD-001 slice 6k, #714) — openBuildGuide
+// was ported from inline-app.js's coverage-excluded glue into an inline
+// onOpenBuildGuide handler calling mode-switch.ts#switchMode directly,
+// replacing the simulated .mode-tab click and the window.inlineDialogs
+// bridge.
 
 const inlineApp = fs.readFileSync(fileURLToPath(new URL('./inline-app.js', import.meta.url)), 'utf8');
+const reportCardIslandTsx = fs.readFileSync(fileURLToPath(new URL('./ReportCardIsland.tsx', import.meta.url)), 'utf8');
 
 describe('Build Guide link gate (#545)', () => {
-  it('inline-app.js defines openBuildGuide, navigating via the guide mode-tab', () => {
-    const fnStart = inlineApp.indexOf('function openBuildGuide()');
-    expect(fnStart).toBeGreaterThan(-1);
-    const fnBody = inlineApp.slice(fnStart, fnStart + 200);
-    expect(fnBody).toContain('.mode-tab[data-mode="guide"]');
+  it('ReportCardIsland.tsx navigates to the Build Guide via switchMode', () => {
+    expect(reportCardIslandTsx).toContain("onOpenBuildGuide={() => switchMode('guide')}");
   });
 
-  it('window.inlineDialogs exposes openBuildGuide to the React bridge', () => {
-    const bridgeLine = inlineApp
-      .split('\n')
-      .find((line) => line.includes('window.inlineDialogs = {'));
-    expect(bridgeLine).toBeDefined();
-    expect(bridgeLine).toContain('openBuildGuide');
+  it('inline-app.js no longer defines openBuildGuide or the window.inlineDialogs bridge', () => {
+    expect(inlineApp).not.toContain('function openBuildGuide()');
+    expect(inlineApp).not.toContain('window.inlineDialogs');
   });
 });

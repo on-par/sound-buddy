@@ -415,25 +415,11 @@ sb.onMenuOpenFile((fp) => {
 // slice 6e, #703) port them verbatim (same injected-API async-store shape
 // as rigStore.ts).
 
-// #372: launch the ring-out wizard from the report card, seeded with the
-// detected ring. Reuses the mode-tab click so the transition is the exact
-// navigation the user already knows. Reached via
-// window.inlineDialogs.openFeedbackRingout (ReportCard.tsx's button,
-// TD-001 slice 4, #422) instead of a static listener — see the
-// window.inlineDialogs assignment below.
-function openFeedbackRingout() {
-  const feedbackPeak = rcCallouts().feedbackPeak;
-  window.rendererStores.ringout.getState().start(feedbackPeak ? feedbackPeak.freq : null);
-  document.querySelector('.mode-tab[data-mode="ringout"]').click();
-}
-
-// #545 (epic e17): forward link from the Report Card to the Build Guide —
-// the mirror of #build-guide-review's Report-Card link. Reuses the mode-tab
-// click so navigation is identical to the user clicking the tab. Reached via
-// window.inlineDialogs.openBuildGuide (ReportCard.tsx's flag-on link).
-function openBuildGuide() {
-  document.querySelector('.mode-tab[data-mode="guide"]').click();
-}
+// #372/#545 (epic e17): the feedback-ringout callout button and the
+// Build-Guide forward link are gone — ReportCardIsland.tsx (TD-001 slice 6k,
+// #714) ports openFeedbackRingout/openBuildGuide as inline onClick handlers
+// calling mode-switch.ts#switchMode directly, instead of simulating a
+// .mode-tab click through the old window bridge.
 
 // Share prompt (#374): the Report Card is the shareable export, so the
 // closing moment's "Share your grade" jumps to it — BuildGuidePanel.tsx's
@@ -501,22 +487,10 @@ function aiEl(id) { return document.getElementById(id); }
 // window.rcCallouts/window.reportCardChrome.getReportCardSource.
 
 // #263: one-click "save this mix's tone as your target" from the report-card
-// CTA. Reuses idealProfilesStore's saveMeasured — the exact
-// profileFromMeasuredCurve → upsert → persist path the "Create new curve…"
-// capture button uses; no new curve logic (TD-001 slice 6b, #700). Auto-names
-// the profile from the current recording (deterministic id → re-click updates it).
-async function saveMixAsTarget() {
-  const analysis = curAnalysis();
-  if (!analysis || !hasUsableCurve(analysis.spectrum || {})) return false;
-  const src = window.reportCardChrome.getReportCardSource(curAnalysis(), anaStore.getState().liveSource);
-  const meta = strongMixTargetMeta(src ? src.filename : '');
-  return window.rendererStores.idealProfiles.getState().saveMeasured(analysis.spectrum.curve, meta);
-}
-
-// Bridges ReportCard.tsx's feedback-ringout callout button to the still-inline
-// dialog it opens (TD-001 slice 4, #422); saveMixAsTarget/openBuildGuide join
-// it for the report card's other two remaining inline-app.js call sites.
-window.inlineDialogs = { openFeedbackRingout, saveMixAsTarget, openBuildGuide };
+// CTA is gone — ReportCardIsland.tsx's onSaveAsTarget (TD-001 slice 6k, #714)
+// ports saveMixAsTarget as an inline handler calling
+// useIdealProfilesStore.getState().saveMeasured directly, reproducing the
+// same currentAnalysis-only gate (never liveSource) byte-for-byte.
 
 (() => {
   aiEl('settings-btn').addEventListener('click', () => setStore.getState().openDialog());

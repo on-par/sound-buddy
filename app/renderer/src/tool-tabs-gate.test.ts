@@ -21,8 +21,8 @@ import ModeTabs from './ModeTabs';
 // ModeTabs.tsx (TD-001 slice 6e, #703) — render it the same way
 // ModeTabs.test.ts does rather than scanning root-markup.html for them.
 
-const inlineApp = fs.readFileSync(fileURLToPath(new URL('./inline-app.js', import.meta.url)), 'utf8');
 const appCss = fs.readFileSync(fileURLToPath(new URL('./styles/app.css', import.meta.url)), 'utf8');
+const reportCardIslandTsx = fs.readFileSync(fileURLToPath(new URL('./ReportCardIsland.tsx', import.meta.url)), 'utf8');
 const modeTabsMarkup = renderToString(createElement(ModeTabs));
 
 describe('Tool tabs gate (#546)', () => {
@@ -56,23 +56,11 @@ describe('Tool tabs gate (#546)', () => {
     expect(hideIdx).toBeGreaterThan(baseIdx);
   });
 
-  it('both tools stay reachable via the e17-06 contextual links', () => {
+  it('both tools stay reachable via the e17-06 contextual links (ReportCardIsland.tsx, TD-001 slice 6k #714)', () => {
     expect(modeTabsMarkup).toContain('data-mode="guide"');
     expect(modeTabsMarkup).toContain('data-mode="ringout"');
 
-    const buildGuideIdx = inlineApp.indexOf('function openBuildGuide()');
-    expect(buildGuideIdx).toBeGreaterThan(-1);
-    const buildGuideBody = inlineApp.slice(buildGuideIdx, inlineApp.indexOf('\n}', buildGuideIdx));
-    expect(buildGuideBody).toContain('.mode-tab[data-mode="guide"]');
-
-    const ringoutIdx = inlineApp.indexOf('function openFeedbackRingout()');
-    expect(ringoutIdx).toBeGreaterThan(-1);
-    expect(inlineApp.slice(ringoutIdx, ringoutIdx + 400)).toContain('.mode-tab[data-mode="ringout"]');
-
-    const dialogsLine = inlineApp.slice(inlineApp.indexOf('window.inlineDialogs = {'));
-    const dialogsLineEnd = dialogsLine.indexOf('\n');
-    const dialogsDecl = dialogsLine.slice(0, dialogsLineEnd);
-    expect(dialogsDecl).toContain('openBuildGuide');
-    expect(dialogsDecl).toContain('openFeedbackRingout');
+    expect(reportCardIslandTsx).toContain("onOpenBuildGuide={() => switchMode('guide')}");
+    expect(reportCardIslandTsx).toContain("switchMode('ringout')");
   });
 });
