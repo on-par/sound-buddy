@@ -16,7 +16,7 @@ import { useFeedbackDialogStore } from './stores/feedbackDialogStore';
 import { useGradeOwnGuideStore } from './stores/gradeOwnGuideStore';
 import { useAnalyzeSourceStore } from './stores/analyzeSourceStore';
 import { spectrumTransport } from './spectrum-transport';
-import { resolveReportCardChromeSource, reportCardChromeView, getReportCardSource, persistSummary } from './report-card-chrome';
+import { resolveReportCardChromeSource, reportCardChromeView, getReportCardSource, persistSummary, chooseAndAnalyzeFile } from './report-card-chrome';
 import { iconSvg, buildMetricRows, type ReportCardSource, type GradingPillApi } from './report-card';
 import { statsRowView, patchStatsRow } from './live-workspace-view';
 import type { AnalysisPayload } from '@sound-buddy/shared';
@@ -45,10 +45,6 @@ function getAnalyzeSourceState(): AnalyzeSourceStateApi {
 function getReportFirstUxState(): ReportFirstUxStateApi {
   return (window as unknown as { reportFirstUxState: ReportFirstUxStateApi }).reportFirstUxState;
 }
-function getChooseAndAnalyzeFile(): (() => Promise<void>) | undefined {
-  return (window as unknown as { chooseAndAnalyzeFile?: () => Promise<void> }).chooseAndAnalyzeFile;
-}
-
 // Share Image (#265): a one-click, purpose-built 1200×630 PNG for social
 // posting — distinct from Export PDF (window.print()). Model → draw ops →
 // render is entirely the pure share-card.ts module; this is only the impure
@@ -211,7 +207,7 @@ export default function ReportCardToolbar(): JSX.Element {
               // now — open() replaces the deleted window.analyzeSourcePicker bridge.
               useAnalyzeSourceStore.getState().open();
             } else {
-              void getChooseAndAnalyzeFile()?.();
+              void chooseAndAnalyzeFile();
             }
           }}
         />

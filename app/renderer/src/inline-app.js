@@ -191,9 +191,10 @@ window.seekPlayback = (t) => transport.seek(t);
 // #543 (epic e17): the unified "Analyze" source picker is React-owned now
 // (TD-001 slice 6h, #711) — AnalyzeSourcePicker.tsx renders the overlay from
 // analyzeSourceStore and routes choices through analyzeSourceState.targetModeFor
-// / switchMode / window.chooseAndAnalyzeFile. The static markup and the
-// window.analyzeSourcePicker open/close bridge are gone; ModeTabs.tsx and
-// ReportCardToolbar.tsx open it via useAnalyzeSourceStore.getState().open().
+// / switchMode / report-card-chrome.ts#chooseAndAnalyzeFile (TD-001 slice 6k,
+// #714). The static markup and the window.analyzeSourcePicker open/close
+// bridge are gone; ModeTabs.tsx and ReportCardToolbar.tsx open it via
+// useAnalyzeSourceStore.getState().open().
 
 // Mode tabs (#547 and earlier): the click listener, currentMode var, and
 // syncSpectrumForMode are gone — ModeTabs.tsx (portaled onto #mode-tabs) now
@@ -332,23 +333,13 @@ sb.onLiveEvent((data) => {
 // The Room badge is MeasurementBadge.tsx now (TD-001 slice 6h, #711),
 // derived reactively from liveCaptureStore via the pure measurementBadgeView —
 // the old inline secondaryMeasurementActive()/roomFeed()/renderMeasurementBadge()
-// glue is gone. The store's own bindMeasurementEvents() (below) owns the
-// measurement-event folding; this listener is reduced to the one still-bridged
-// call surface 6k removes.
-//
-// afterSecondaryStateChange: the Room badge is MeasurementBadge.tsx now,
-// derived from liveCaptureStore — the 6k slice removes this method from the
-// runtime. Kept (not deleted) so root-markup.test.ts and
-// SecondaryMeasurementPanel.tsx's optional call stay green within this slice's
-// boundaries.
-function afterSecondaryStateChange() {}
+// glue is gone. The last surviving dead no-op and the onMeasurementEvent
+// listener that called it are deleted outright too (TD-001 slice 6k, #714) —
+// that listener only ever called the no-op; liveCaptureStore's own
+// bindMeasurementEvents() (below) independently registers its own
+// onMeasurementEvent handler that folds measurementEnded into
+// secondaryMeasurement state, so nothing else needs replacing.
 lcStore.getState().bindMeasurementEvents();
-sb.onMeasurementEvent((data) => {
-  if (!data) return;
-  // afterSecondaryStateChange is a documented no-op until 6k (the badge is
-  // reactive); kept so SecondaryMeasurementPanel's optional call stays green.
-  if (data.measurementEnded) { afterSecondaryStateChange(); return; }
-});
 
 // A batch run (#270) also triggers this pushed event on every successful
 // analyze-file call — left alone, it would flip the Report Card N times
@@ -368,54 +359,12 @@ sb.onMenuOpenFile((fp) => {
 // First-run onboarding (#69) is gone — stores/onboardingStore.ts +
 // OnboardingDialog.tsx (TD-001 slice 6f, #704) port initOnboarding verbatim.
 
-/* ══ Post-update "what's new" note (#271) ══
-   Closes the loop opened by the in-app "Send Feedback" flow (#143/#144): after
-   the user updates, a dismissible, non-blocking banner credits shipped,
-   user-requested items — "You asked, we shipped: …". Bundled with the release
-   and read from disk (never fetched), gated once-per-version by
-   window.whatsNewState + localStorage (mirrors the onboarding "seen once"
-   idiom above). Never shows for a build that ships no note or an empty one. */
-async function initWhatsNew() {
-  const banner = document.getElementById('whats-new-banner');
-  if (!banner || !window.whatsNewState) return;
-  // Dev/e2e escape hatch (SOUND_BUDDY_DISABLE_ONBOARDING): reuse the app's
-  // established "suppress first-run surfaces in e2e" switch so automated
-  // specs aren't disrupted by a banner appearing mid-run.
-  try { if (sb.isOnboardingDisabled && (await sb.isOnboardingDisabled())) return; } catch { /* no bridge → proceed */ }
-
-  const [version, md] = await Promise.all([
-    sb.getAppVersion().catch(() => ''),
-    sb.getWhatsNew().catch(() => null),
-  ]);
-  if (!version) return;
-
-  // A genuine first launch shows the onboarding overlay instead — crediting
-  // "shipped" changes to someone who just installed today (no prior version
-  // to compare against) would be a non-sequitur competing with that overlay.
-  // Mark this version seen so it doesn't retroactively appear later either.
-  if (window.onboardingState && !onboardingState.hasSeenOnboarding(window.localStorage)) {
-    whatsNewState.markSeen(window.localStorage, version);
-    return;
-  }
-
-  const note = whatsNewState.parseNote(md);
-  if (!note || whatsNewState.hasSeen(window.localStorage, version)) return;
-
-  const text = document.getElementById('whats-new-text');
-  if (text) {
-    text.textContent = note.title ? `${note.title}: ${note.items.join(' • ')}` : note.items.join(' • ');
-  }
-
-  const dismissBtn = document.getElementById('whats-new-dismiss');
-  if (dismissBtn) {
-    dismissBtn.addEventListener('click', () => {
-      whatsNewState.markSeen(window.localStorage, version);
-      banner.classList.remove('show');
-    });
-  }
-
-  banner.classList.add('show');
-}
+// Post-update "what's new" note (#271) is gone — WhatsNewBanner.tsx (TD-001
+// slice 6k, #714) ports initWhatsNew verbatim as a mounted component instead
+// of an IIFE-adjacent call that ran once at script load. whats-new-state.js /
+// onboarding-state.js stay unchanged classic scripts, read via a typed window
+// cast — same pattern UpdateBanner.tsx already established for
+// update-download-state.js.
 
 /* ══ Report Card ══ */
 // Grading (grade/score/recommendations + recording-type + band-diff) lives in
@@ -457,25 +406,11 @@ async function initWhatsNew() {
 // slice 6e, #703) port them verbatim (same injected-API async-store shape
 // as rigStore.ts).
 
-// #372: launch the ring-out wizard from the report card, seeded with the
-// detected ring. Reuses the mode-tab click so the transition is the exact
-// navigation the user already knows. Reached via
-// window.inlineDialogs.openFeedbackRingout (ReportCard.tsx's button,
-// TD-001 slice 4, #422) instead of a static listener — see the
-// window.inlineDialogs assignment below.
-function openFeedbackRingout() {
-  const feedbackPeak = rcCallouts().feedbackPeak;
-  window.rendererStores.ringout.getState().start(feedbackPeak ? feedbackPeak.freq : null);
-  document.querySelector('.mode-tab[data-mode="ringout"]').click();
-}
-
-// #545 (epic e17): forward link from the Report Card to the Build Guide —
-// the mirror of #build-guide-review's Report-Card link. Reuses the mode-tab
-// click so navigation is identical to the user clicking the tab. Reached via
-// window.inlineDialogs.openBuildGuide (ReportCard.tsx's flag-on link).
-function openBuildGuide() {
-  document.querySelector('.mode-tab[data-mode="guide"]').click();
-}
+// #372/#545 (epic e17): the feedback-ringout callout button and the
+// Build-Guide forward link are gone — ReportCardIsland.tsx (TD-001 slice 6k,
+// #714) ports openFeedbackRingout/openBuildGuide as inline onClick handlers
+// calling mode-switch.ts#switchMode directly, instead of simulating a
+// .mode-tab click through the old window bridge.
 
 // Share prompt (#374): the Report Card is the shareable export, so the
 // closing moment's "Share your grade" jumps to it — BuildGuidePanel.tsx's
@@ -491,16 +426,10 @@ function openBuildGuide() {
 
 // #208: while a live-capture card is showing, the file dropzone is hidden behind it
 // (#rc-empty only renders when no card is present) and Clear is disabled (no file to
-// release). ReportCardToolbar.tsx's Load button (visible only for the live-capture
-// card) still reaches this by name — it's a 3-line function with no other
-// dependents left after this migration, so it's bridged rather than ported.
-async function chooseAndAnalyzeFile() {
-  try {
-    const fp = await sb.openFileDialog();
-    if (fp) { loadFile(fp); await runFileAnalysis(fp); }
-  } catch { /* user cancelled */ }
-}
-window.chooseAndAnalyzeFile = chooseAndAnalyzeFile;
+// release). chooseAndAnalyzeFile is gone — report-card-chrome.ts's export
+// (TD-001 slice 6k, #714) is imported directly by ReportCardToolbar.tsx's
+// Load button and AnalyzeSourcePicker.tsx's file choice, replacing both
+// components' independent window.chooseAndAnalyzeFile reads.
 
 /* ══ License (#54) ══ */
 // renderLicenseUi/renderTrialBanner/trialDismissed/dismissTrial + the
@@ -543,22 +472,10 @@ function aiEl(id) { return document.getElementById(id); }
 // window.rcCallouts/window.reportCardChrome.getReportCardSource.
 
 // #263: one-click "save this mix's tone as your target" from the report-card
-// CTA. Reuses idealProfilesStore's saveMeasured — the exact
-// profileFromMeasuredCurve → upsert → persist path the "Create new curve…"
-// capture button uses; no new curve logic (TD-001 slice 6b, #700). Auto-names
-// the profile from the current recording (deterministic id → re-click updates it).
-async function saveMixAsTarget() {
-  const analysis = curAnalysis();
-  if (!analysis || !hasUsableCurve(analysis.spectrum || {})) return false;
-  const src = window.reportCardChrome.getReportCardSource(curAnalysis(), anaStore.getState().liveSource);
-  const meta = strongMixTargetMeta(src ? src.filename : '');
-  return window.rendererStores.idealProfiles.getState().saveMeasured(analysis.spectrum.curve, meta);
-}
-
-// Bridges ReportCard.tsx's feedback-ringout callout button to the still-inline
-// dialog it opens (TD-001 slice 4, #422); saveMixAsTarget/openBuildGuide join
-// it for the report card's other two remaining inline-app.js call sites.
-window.inlineDialogs = { openFeedbackRingout, saveMixAsTarget, openBuildGuide };
+// CTA is gone — ReportCardIsland.tsx's onSaveAsTarget (TD-001 slice 6k, #714)
+// ports saveMixAsTarget as an inline handler calling
+// useIdealProfilesStore.getState().saveMeasured directly, reproducing the
+// same currentAnalysis-only gate (never liveSource) byte-for-byte.
 
 (() => {
   aiEl('settings-btn').addEventListener('click', () => setStore.getState().openDialog());
@@ -622,5 +539,5 @@ lcStore.getState().loadDevices().then(
 // First-run onboarding (#69) is now App.tsx's
 // `void useOnboardingStore.getState().init();` boot call (TD-001 slice 6f, #704).
 
-// What's-new note (#271): credit shipped, user-requested items after an update.
-void initWhatsNew();
+// What's-new note (#271) is now WhatsNewBanner.tsx's own mount effect
+// (TD-001 slice 6k, #714) — no boot wiring needed here.

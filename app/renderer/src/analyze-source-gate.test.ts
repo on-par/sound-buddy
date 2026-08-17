@@ -85,13 +85,14 @@ describe('Unified Analyze source picker gate (#543)', () => {
     expect(pickerTsx).toMatch(/mode === undefined[\s\S]{0,160}console\.error/);
   });
 
-  it('inline-app.js still falls back to chooseAndAnalyzeFile when the flag is off (additive guarantee)', () => {
-    expect(inlineApp).toContain('function chooseAndAnalyzeFile()');
-    expect(inlineApp).toContain('window.chooseAndAnalyzeFile = chooseAndAnalyzeFile');
+  it('inline-app.js no longer defines chooseAndAnalyzeFile — AnalyzeSourcePicker.tsx imports it directly (TD-001 slice 6k, #714)', () => {
+    expect(inlineApp).not.toContain('function chooseAndAnalyzeFile()');
+    expect(inlineApp).not.toContain('window.chooseAndAnalyzeFile = chooseAndAnalyzeFile');
+    expect(pickerTsx).toContain("import { chooseAndAnalyzeFile } from './report-card-chrome';");
   });
 
-  it('the file source routes through the bridged chooseAndAnalyzeFile', () => {
-    expect(pickerTsx).toContain('getChooseAndAnalyzeFile()?.()');
+  it('the file source routes through the imported chooseAndAnalyzeFile', () => {
+    expect(pickerTsx).toContain('void chooseAndAnalyzeFile()');
   });
 
   it('AnalyzeSourcePicker wires cancel + Escape to the store close action', () => {

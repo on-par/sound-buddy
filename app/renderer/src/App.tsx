@@ -76,6 +76,7 @@ import DirectoryPanel from './DirectoryPanel';
 import LicenseChrome from './LicenseChrome';
 import ConsoleNetworkConsentDialog from './ConsoleNetworkConsentDialog';
 import UpdateBanner from './UpdateBanner';
+import WhatsNewBanner from './WhatsNewBanner';
 import OnboardingDialog from './OnboardingDialog';
 import SkillTreeDialog from './SkillTreeDialog';
 import { useOnboardingStore } from './stores/onboardingStore';
@@ -361,6 +362,7 @@ export default function App() {
       {booted && <ConsoleNetworkConsentDialog />}
       {booted && <AnalyzeSourcePicker />}
       {booted && createPortal(<UpdateBanner />, document.getElementById('update-banner-island')!)}
+      {booted && createPortal(<WhatsNewBanner />, document.getElementById('whats-new-banner-island')!)}
     </>
   );
 }

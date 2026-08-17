@@ -15,15 +15,13 @@ import { useStoreShallow } from './stores/useStoreShallow';
 import { useAnalyzeSourceStore } from './stores/analyzeSourceStore';
 import { switchMode } from './mode-switch';
 import { iconSvg } from './report-card';
+import { chooseAndAnalyzeFile } from './report-card-chrome';
 
 interface AnalyzeSourceStateApi {
   targetModeFor(id: string): string | null | undefined;
 }
 function getAnalyzeSourceState(): AnalyzeSourceStateApi {
   return (window as unknown as { analyzeSourceState: AnalyzeSourceStateApi }).analyzeSourceState;
-}
-function getChooseAndAnalyzeFile(): (() => Promise<void>) | undefined {
-  return (window as unknown as { chooseAndAnalyzeFile?: () => Promise<void> }).chooseAndAnalyzeFile;
 }
 
 // The three answers to "where's the audio coming from?" (#543) — mirrors
@@ -48,7 +46,7 @@ export default function AnalyzeSourcePicker(): JSX.Element | null {
   function choose(id: string): void {
     const mode = getAnalyzeSourceState().targetModeFor(id);
     useAnalyzeSourceStore.getState().close();
-    if (mode === null) { getChooseAndAnalyzeFile()?.(); return; }
+    if (mode === null) { void chooseAndAnalyzeFile(); return; }
     if (mode === undefined) { console.error(`analyze-source-picker: unrecognized source "${id}"`); return; }
     switchMode(mode);
   }

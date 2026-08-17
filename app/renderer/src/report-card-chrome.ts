@@ -106,6 +106,19 @@ export function reportCardChromeView(
   };
 }
 
+// Port of chooseAndAnalyzeFile (inline-app.js) — the "Load a file…" report-
+// card CTA and the Analyze-source-picker's file choice both call this
+// directly now instead of reading window.chooseAndAnalyzeFile.
+export async function chooseAndAnalyzeFile(): Promise<void> {
+  try {
+    const fp = await getSoundBuddy().openFileDialog();
+    if (fp) {
+      useAnalysisStore.getState().selectFile(fp);
+      await useAnalysisStore.getState().startAnalysis(fp);
+    }
+  } catch { /* user cancelled */ }
+}
+
 // Guards persistSummary's async chain against out-of-order resolution
 // (#267): each call gets the next generation number, and a chain only
 // applies its resolved state if it's still the newest call.

@@ -7,6 +7,7 @@ import {
   getReportCardSource,
   reportCardChromeView,
   persistSummary,
+  chooseAndAnalyzeFile,
 } from './report-card-chrome';
 import { useAnalysisStore } from './stores/analysisStore';
 import { createMockSoundBuddy } from './mock-sound-buddy';
@@ -114,10 +115,12 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  vi.restoreAllMocks();
   delete (globalThis as { window?: unknown }).window;
   useAnalysisStore.setState({
     currentAnalysis: null, liveSource: null, historySummary: null,
     prevSummary: null, lastSavedSummaryFile: null,
+    selectedFilePath: null, status: 'idle',
   });
 });
 
@@ -292,5 +295,36 @@ describe('persistSummary', () => {
     expect(() => persistSummary(getReportCardSource(ANALYSIS, null), 'file')).not.toThrow();
     expect(warnSpy).toHaveBeenCalledWith('persistSummary failed', expect.any(Error));
     warnSpy.mockRestore();
+  });
+});
+
+describe('chooseAndAnalyzeFile', () => {
+  it('selects and starts analysis on the file the dialog returns', async () => {
+    mock.api.openFileDialog = vi.fn().mockResolvedValue('/tmp/picked.wav');
+    mock.api.analyzeFile = vi.fn().mockResolvedValue({ success: true, data: ANALYSIS });
+
+    await chooseAndAnalyzeFile();
+
+    expect(mock.api.analyzeFile).toHaveBeenCalledWith({ filePath: '/tmp/picked.wav' });
+    expect(useAnalysisStore.getState().selectedFilePath).toBe('/tmp/picked.wav');
+    expect(useAnalysisStore.getState().currentAnalysis).toEqual(ANALYSIS);
+    expect(useAnalysisStore.getState().status).toBe('done');
+  });
+
+  it('does nothing when the dialog is dismissed with no file', async () => {
+    mock.api.openFileDialog = vi.fn().mockResolvedValue(null);
+    mock.api.analyzeFile = vi.fn();
+
+    await chooseAndAnalyzeFile();
+
+    expect(mock.api.analyzeFile).not.toHaveBeenCalled();
+    expect(useAnalysisStore.getState().selectedFilePath).toBeNull();
+  });
+
+  it('swallows a rejected dialog (user cancelled) without throwing', async () => {
+    mock.api.openFileDialog = vi.fn().mockRejectedValue(new Error('dialog cancelled'));
+
+    await expect(chooseAndAnalyzeFile()).resolves.toBeUndefined();
+    expect(useAnalysisStore.getState().selectedFilePath).toBeNull();
   });
 });

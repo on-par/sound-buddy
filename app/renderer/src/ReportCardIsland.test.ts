@@ -55,7 +55,6 @@ const feedbackRingoutMock = {
   }),
 };
 const audioEngineSpectralMock = { findSpectralPeaks: () => [] };
-const inlineDialogsMock = { openFeedbackRingout: () => {}, openBuildGuide: () => {} };
 
 const ANALYSIS = {
   filePath: '/fake/silence.wav',
@@ -144,7 +143,6 @@ beforeEach(() => {
     phaseDoublingState: phaseDoublingStateMock,
     feedbackRingout: feedbackRingoutMock,
     audioEngineSpectral: audioEngineSpectralMock,
-    inlineDialogs: inlineDialogsMock,
     reportFirstUxState,
   };
 });
