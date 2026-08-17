@@ -222,13 +222,15 @@ describe('Secondary measurement device source (#460, React-owned per #724)', () 
     expect(inlineApp).not.toContain('secondaryReconnectTimer');
   });
 
-  it('exposes afterSecondaryMeasurementChange on the lifecycle runtime (kept as a no-op until 6k — the Room badge is MeasurementBadge.tsx now, TD-001 slice 6h #711)', () => {
+  it('exposes afterSecondaryMeasurementChange on the lifecycle runtime (still a no-op — the Room badge is MeasurementBadge.tsx now, TD-001 slice 6h #711; distinct from inline-app.js, out of scope for 6k — see #714)', () => {
     expect(lifecycleTs).toContain('afterSecondaryMeasurementChange');
     expect(lifecycleTs).toContain('/* no-op until 6k */');
-    // The inline onMeasurementEvent handler (6k non-goal) stays and keeps
-    // calling its own no-op.
-    expect(inlineApp).toContain('afterSecondaryStateChange');
     expect(inlineApp).not.toContain('function renderMeasurementBadge');
+  });
+
+  it('inline-app.js no longer defines afterSecondaryStateChange or its redundant onMeasurementEvent listener (TD-001 slice 6k, #714)', () => {
+    expect(inlineApp).not.toContain('afterSecondaryStateChange');
+    expect(inlineApp).toContain('lcStore.getState().bindMeasurementEvents();');
   });
 });
 

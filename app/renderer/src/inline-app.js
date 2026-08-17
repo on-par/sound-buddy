@@ -333,23 +333,13 @@ sb.onLiveEvent((data) => {
 // The Room badge is MeasurementBadge.tsx now (TD-001 slice 6h, #711),
 // derived reactively from liveCaptureStore via the pure measurementBadgeView —
 // the old inline secondaryMeasurementActive()/roomFeed()/renderMeasurementBadge()
-// glue is gone. The store's own bindMeasurementEvents() (below) owns the
-// measurement-event folding; this listener is reduced to the one still-bridged
-// call surface 6k removes.
-//
-// afterSecondaryStateChange: the Room badge is MeasurementBadge.tsx now,
-// derived from liveCaptureStore — the 6k slice removes this method from the
-// runtime. Kept (not deleted) so root-markup.test.ts and
-// SecondaryMeasurementPanel.tsx's optional call stay green within this slice's
-// boundaries.
-function afterSecondaryStateChange() {}
+// glue is gone. The last surviving dead no-op and the onMeasurementEvent
+// listener that called it are deleted outright too (TD-001 slice 6k, #714) —
+// that listener only ever called the no-op; liveCaptureStore's own
+// bindMeasurementEvents() (below) independently registers its own
+// onMeasurementEvent handler that folds measurementEnded into
+// secondaryMeasurement state, so nothing else needs replacing.
 lcStore.getState().bindMeasurementEvents();
-sb.onMeasurementEvent((data) => {
-  if (!data) return;
-  // afterSecondaryStateChange is a documented no-op until 6k (the badge is
-  // reactive); kept so SecondaryMeasurementPanel's optional call stays green.
-  if (data.measurementEnded) { afterSecondaryStateChange(); return; }
-});
 
 // A batch run (#270) also triggers this pushed event on every successful
 // analyze-file call — left alone, it would flip the Report Card N times
