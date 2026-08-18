@@ -28,7 +28,7 @@ function makeKv(): {
   return { kv, store, getSpy, putSpy };
 }
 
-function makeEnv(kv: KVNamespace): Env {
+function makeEnv(kv: KVNamespace, overrides: Partial<Env> = {}): Env {
   return {
     LICENSE_KV: {} as KVNamespace,
     EVENTS_KV: kv,
@@ -45,7 +45,13 @@ function makeEnv(kv: KVNamespace): Env {
     LICENSE_SIGNING_KID: "test-kid",
     LICENSE_PUBLIC_KEY: "",
     GITHUB_ISSUES_TOKEN: "",
+    ...overrides,
   } satisfies Env;
+}
+
+/** `fetch` double that always resolves the given `Response`. */
+function makeFetch(response: Response): ReturnType<typeof vi.fn> {
+  return vi.fn(async () => response);
 }
 
 const ctx = {
@@ -354,6 +360,29 @@ describe("POST /api/ingest (#475)", () => {
       expect(res.status).toBe(400);
       expect(await res.json()).toEqual({ error: "invalid_field", field: "message" });
     });
+
+    it.each([["   "], ["too short"], ["\n\t "]])(
+      "below-minimum-length message %j → 400 invalid_field message, no fetch call, no KV write",
+      async (message) => {
+        const { kv, putSpy } = makeKv();
+        const fetchSpy = makeFetch(new Response(JSON.stringify({ number: 1 }), { status: 201 }));
+        const env = makeEnv(kv, { GITHUB_ISSUES_TOKEN: "ghp_test_token" });
+
+        const res = await handleIngestEvent(
+          request({ ...validFeedback, message }),
+          env,
+          ctx,
+          { ...deps, fetch: fetchSpy as unknown as typeof fetch },
+        );
+
+        expect(res.status).toBe(400);
+        expect(await res.json()).toEqual({ error: "invalid_field", field: "message" });
+        expect(fetchSpy).not.toHaveBeenCalled();
+        expect(putSpy.mock.calls.some((call) => String(call[0]).startsWith("ingest:"))).toBe(
+          false,
+        );
+      },
+    );
   });
 
   describe("feedback category/contactEmail/platform (#472)", () => {
@@ -1025,7 +1054,7 @@ describe("POST /api/ingest (#475)", () => {
       let last!: Response;
       for (let i = 0; i < 31; i++) {
         last = await handleIngestEvent(
-          request({ ...validFeedback, message: `msg ${i}` }, "1.2.3.4"),
+          request({ ...validCrash, message: `msg ${i}` }, "1.2.3.4"),
           env,
           ctx,
           deps,
@@ -1059,6 +1088,193 @@ describe("POST /api/ingest (#475)", () => {
         (call) => call[0] === "rl:ingest:1.2.3.4",
       );
       expect(rateLimitPutCall?.[2]).toEqual({ expirationTtl: 60 });
+    });
+
+    it("feedback-specific bucket: second feedback from the same IP within the window → 429 before any fetch/KV write; crash from the same IP is unaffected", async () => {
+      const { kv, store, putSpy } = makeKv();
+      const fetchSpy = makeFetch(new Response(JSON.stringify({ number: 1 }), { status: 201 }));
+      const env = makeEnv(kv, { GITHUB_ISSUES_TOKEN: "ghp_test_token" });
+      const feedbackDeps = { ...deps, fetch: fetchSpy as unknown as typeof fetch };
+
+      const first = await handleIngestEvent(
+        request(validFeedback, "1.2.3.4"),
+        env,
+        ctx,
+        feedbackDeps,
+      );
+      expect(first.status).toBe(202);
+      expect(fetchSpy).toHaveBeenCalledTimes(1);
+
+      const fetchCallsBeforeSecond = fetchSpy.mock.calls.length;
+      const ingestPutCallsBeforeSecond = putSpy.mock.calls.filter((call) =>
+        String(call[0]).startsWith("ingest:"),
+      ).length;
+
+      const second = await handleIngestEvent(
+        request(validFeedback, "1.2.3.4"),
+        env,
+        ctx,
+        feedbackDeps,
+      );
+      expect(second.status).toBe(429);
+      expect(await second.json()).toEqual({ error: "rate_limited" });
+      expect(fetchSpy).toHaveBeenCalledTimes(fetchCallsBeforeSecond);
+      const ingestPutCallsAfterSecond = putSpy.mock.calls.filter((call) =>
+        String(call[0]).startsWith("ingest:"),
+      ).length;
+      expect(ingestPutCallsAfterSecond).toBe(ingestPutCallsBeforeSecond);
+
+      const third = await handleIngestEvent(
+        request(validCrash, "1.2.3.4"),
+        env,
+        ctx,
+        feedbackDeps,
+      );
+      expect(third.status).toBe(202);
+
+      expect(store.has("rl:ingest:feedback:1.2.3.4")).toBe(true);
+      const feedbackRateLimitPutCall = putSpy.mock.calls.find(
+        (call) => call[0] === "rl:ingest:feedback:1.2.3.4",
+      );
+      expect(feedbackRateLimitPutCall?.[2]).toEqual({ expirationTtl: 60 });
+    });
+  });
+
+  describe("feedback → GitHub issue routing (#930)", () => {
+    it("successful issue creation → 202, fetch called once with the GitHub URL, no ingest:* KV write for that event", async () => {
+      const { kv, putSpy } = makeKv();
+      const fetchSpy = makeFetch(new Response(JSON.stringify({ number: 7 }), { status: 201 }));
+      const env = makeEnv(kv, { GITHUB_ISSUES_TOKEN: "ghp_test_token" });
+
+      const res = await handleIngestEvent(request(validFeedback), env, ctx, {
+        ...deps,
+        fetch: fetchSpy as unknown as typeof fetch,
+      });
+
+      expect(res.status).toBe(202);
+      expect(fetchSpy).toHaveBeenCalledTimes(1);
+      const [url] = fetchSpy.mock.calls[0] as [string];
+      expect(url).toBe("https://api.github.com/repos/on-par/sound-buddy/issues");
+      expect(putSpy.mock.calls.some((call) => String(call[0]).startsWith("ingest:"))).toBe(false);
+    });
+
+    it("KV fallback on non-2xx GitHub response: 202, event stored in KV with the existing key/ttl, and a status-only console.error (no message text)", async () => {
+      const { kv, store, putSpy } = makeKv();
+      const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+      const fetchSpy = makeFetch(new Response("", { status: 500 }));
+      const env = makeEnv(kv, { GITHUB_ISSUES_TOKEN: "ghp_test_token" });
+
+      const res = await handleIngestEvent(request(validFeedback), env, ctx, {
+        ...deps,
+        fetch: fetchSpy as unknown as typeof fetch,
+      });
+
+      expect(res.status).toBe(202);
+      const ingestPutCall = putSpy.mock.calls.find((call) =>
+        String(call[0]).startsWith("ingest:"),
+      );
+      expect(ingestPutCall?.[0]).toBe(`ingest:feedback:${NOW.toISOString()}:${FIXED_ID}`);
+      expect(ingestPutCall?.[2]).toEqual({ expirationTtl: 90 * 24 * 60 * 60 });
+      const stored = JSON.parse(store.get(ingestPutCall![0] as string)!) as StoredIngestEvent;
+      expect(stored.event).toEqual(validFeedback);
+
+      expect(consoleErrorSpy).toHaveBeenCalled();
+      const errorArgs = consoleErrorSpy.mock.calls.flat().map((arg) => JSON.stringify(arg));
+      expect(errorArgs.some((s) => s.includes(validFeedback.message))).toBe(false);
+
+      consoleErrorSpy.mockRestore();
+    });
+
+    it("KV fallback on fetch rejection: same 202 + KV-write behavior as a non-2xx response", async () => {
+      const { kv, store, putSpy } = makeKv();
+      const fetchSpy = vi.fn(async () => {
+        throw new Error("timeout");
+      });
+      const env = makeEnv(kv, { GITHUB_ISSUES_TOKEN: "ghp_test_token" });
+
+      const res = await handleIngestEvent(request(validFeedback), env, ctx, {
+        ...deps,
+        fetch: fetchSpy as unknown as typeof fetch,
+      });
+
+      expect(res.status).toBe(202);
+      const ingestPutCall = putSpy.mock.calls.find((call) =>
+        String(call[0]).startsWith("ingest:"),
+      );
+      expect(ingestPutCall).toBeDefined();
+      const stored = JSON.parse(store.get(ingestPutCall![0] as string)!) as StoredIngestEvent;
+      expect(stored.event).toEqual(validFeedback);
+    });
+
+    it("unset GITHUB_ISSUES_TOKEN makes no network call and stores the event in KV (unchanged pre-#930 behavior)", async () => {
+      const { kv, store, putSpy } = makeKv();
+      const fetchSpy = vi.fn();
+      const env = makeEnv(kv); // default empty token
+
+      const res = await handleIngestEvent(request(validFeedback), env, ctx, {
+        ...deps,
+        fetch: fetchSpy as unknown as typeof fetch,
+      });
+
+      expect(res.status).toBe(202);
+      expect(fetchSpy).not.toHaveBeenCalled();
+      const ingestPutCall = putSpy.mock.calls.find((call) =>
+        String(call[0]).startsWith("ingest:"),
+      );
+      expect(ingestPutCall).toBeDefined();
+      const stored = JSON.parse(store.get(ingestPutCall![0] as string)!) as StoredIngestEvent;
+      expect(stored.event).toEqual(validFeedback);
+    });
+
+    it("a contactEmail is retained privately: issue is created AND the event is also written to KV", async () => {
+      const { kv, store, putSpy } = makeKv();
+      const fetchSpy = makeFetch(new Response(JSON.stringify({ number: 9 }), { status: 201 }));
+      const env = makeEnv(kv, { GITHUB_ISSUES_TOKEN: "ghp_test_token" });
+
+      const res = await handleIngestEvent(
+        request({ ...validFeedback, contactEmail: "pat@example.test" }),
+        env,
+        ctx,
+        { ...deps, fetch: fetchSpy as unknown as typeof fetch },
+      );
+
+      expect(res.status).toBe(202);
+      expect(fetchSpy).toHaveBeenCalledTimes(1);
+      const ingestPutCall = putSpy.mock.calls.find((call) =>
+        String(call[0]).startsWith("ingest:"),
+      );
+      expect(ingestPutCall).toBeDefined();
+      const stored = JSON.parse(store.get(ingestPutCall![0] as string)!) as StoredIngestEvent;
+      expect((stored.event as { contactEmail: string }).contactEmail).toBe("pat@example.test");
+    });
+
+    it("crash and telemetry make no GitHub call and are stored exactly as before, even with a token configured", async () => {
+      const { kv, store, putSpy } = makeKv();
+      const fetchSpy = vi.fn();
+      const env = makeEnv(kv, { GITHUB_ISSUES_TOKEN: "ghp_test_token" });
+      const routedDeps = { ...deps, fetch: fetchSpy as unknown as typeof fetch };
+
+      const crashRes = await handleIngestEvent(request(validCrash), env, ctx, routedDeps);
+      const telemetryRes = await handleIngestEvent(request(validTelemetry), env, ctx, routedDeps);
+
+      expect(crashRes.status).toBe(202);
+      expect(telemetryRes.status).toBe(202);
+      expect(fetchSpy).not.toHaveBeenCalled();
+
+      const crashPutCall = putSpy.mock.calls.find((call) =>
+        String(call[0]).startsWith("ingest:crash:"),
+      );
+      const telemetryPutCall = putSpy.mock.calls.find((call) =>
+        String(call[0]).startsWith("ingest:telemetry:"),
+      );
+      expect(crashPutCall).toBeDefined();
+      expect(telemetryPutCall).toBeDefined();
+      const storedCrash = JSON.parse(store.get(crashPutCall![0] as string)!) as StoredIngestEvent;
+      const storedTelemetry = JSON.parse(
+        store.get(telemetryPutCall![0] as string)!,
+      ) as StoredIngestEvent;
+      expect(storedCrash.event).toEqual(validCrash);
+      expect(storedTelemetry.event).toEqual(validTelemetry);
     });
   });
 
