@@ -56,6 +56,7 @@
     var contactEmail = (input && input.contactEmail) ? String(input.contactEmail).trim() : '';
     var submission = { message: message, category: category };
     if (contactEmail) submission.contactEmail = contactEmail;
+    if (input && input.attachDiagnostics === true) submission.attachDiagnostics = true;
     return submission;
   }
 

@@ -23,12 +23,14 @@ interface SubmissionInput {
   message?: unknown;
   category?: unknown;
   contactEmail?: unknown;
+  attachDiagnostics?: unknown;
 }
 
 interface Submission {
   message: string;
   category: string;
   contactEmail?: string;
+  attachDiagnostics?: boolean;
 }
 
 interface SubmitResult {
@@ -152,6 +154,26 @@ describe('buildSubmission', () => {
 
   it('coerces a missing category to "other"', () => {
     expect(buildSubmission({ message: 'hi' })).toEqual({ message: 'hi', category: 'other' });
+  });
+
+  it('includes attachDiagnostics: true when the raw input has attachDiagnostics: true', () => {
+    const submission = buildSubmission({ message: 'hi', category: 'bug', attachDiagnostics: true });
+    expect(submission.attachDiagnostics).toBe(true);
+  });
+
+  it('omits attachDiagnostics when the raw input has attachDiagnostics: false', () => {
+    const submission = buildSubmission({ message: 'hi', category: 'bug', attachDiagnostics: false });
+    expect(submission).not.toHaveProperty('attachDiagnostics');
+  });
+
+  it('omits attachDiagnostics when absent', () => {
+    const submission = buildSubmission({ message: 'hi', category: 'bug' });
+    expect(submission).not.toHaveProperty('attachDiagnostics');
+  });
+
+  it('omits attachDiagnostics for a truthy non-boolean value like "1"', () => {
+    const submission = buildSubmission({ message: 'hi', category: 'bug', attachDiagnostics: '1' });
+    expect(submission).not.toHaveProperty('attachDiagnostics');
   });
 });
 

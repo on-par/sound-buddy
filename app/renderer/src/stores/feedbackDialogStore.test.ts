@@ -17,10 +17,16 @@ function feedbackFormMock(overrides: Partial<{
   return {
     CATEGORIES,
     validate: overrides.validate ?? (() => ({ ok: true })),
-    buildSubmission: (input: { message: string; category: string; contactEmail: string }) => ({
+    buildSubmission: (input: {
+      message: string;
+      category: string;
+      contactEmail: string;
+      attachDiagnostics: boolean;
+    }) => ({
       message: input.message,
       category: input.category,
       ...(input.contactEmail ? { contactEmail: input.contactEmail } : {}),
+      ...(input.attachDiagnostics === true ? { attachDiagnostics: true } : {}),
     }),
     resultStatus: overrides.resultStatus ?? ((result: { ok: boolean; error?: string; retryable?: boolean }) => (
       result.ok
@@ -212,6 +218,33 @@ describe('createFeedbackDialogStore', () => {
       expect(store.getState().sending).toBe(false);
       expect(store.getState().emailInsteadVisible).toBe(true);
       expect(store.getState().status).toBe('That category is not accepted.');
+    });
+
+    it('forwards attachDiagnostics: true to submitFeedback when the checkbox is checked', async () => {
+      const submitFeedback = vi.fn().mockResolvedValue({ ok: true });
+      mock.api.submitFeedback = submitFeedback;
+      const store = createFeedbackDialogStore(() => mock.api);
+      store.getState().setMessage('it broke');
+      store.setState({ attachDiagnostics: true });
+
+      await store.getState().send();
+
+      expect(submitFeedback).toHaveBeenCalledWith(
+        expect.objectContaining({ attachDiagnostics: true })
+      );
+    });
+
+    it('omits attachDiagnostics from the submitted object when the checkbox is unchecked', async () => {
+      const submitFeedback = vi.fn().mockResolvedValue({ ok: true });
+      mock.api.submitFeedback = submitFeedback;
+      const store = createFeedbackDialogStore(() => mock.api);
+      store.getState().setMessage('it broke');
+      store.setState({ attachDiagnostics: false });
+
+      await store.getState().send();
+
+      const submitted = submitFeedback.mock.calls[0][0];
+      expect(submitted).not.toHaveProperty('attachDiagnostics');
     });
 
     it('a thrown submitFeedback falls back to a retryable connection-error status', async () => {

@@ -11,6 +11,10 @@
 // must stay in sync with), and POSTs to the #475 ingestion endpoint. Never
 // fires on a timer or automatically — only on an explicit user action. Does
 // not touch usageSignalEnabled or any telemetry/collection code (#145).
+//
+// #931: an opted-in "attach diagnostics" checkbox additionally sends a
+// redacted, size-bounded tail of the local log file — see logTail() and
+// readDiagnosticLogTail() below, and ADR 0064's follow-up decision.
 
 import { app, shell } from 'electron';
 import * as fs from 'fs';
@@ -24,6 +28,9 @@ const SUBMIT_TIMEOUT_MS = 5000;
 const MAX_MESSAGE_LENGTH = 4000;
 const MAX_CONTACT_EMAIL_LENGTH = 254; // matches the worker's ingest.ts bound
 const CONTACT_EMAIL_PATTERN = /^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$/;
+const MAX_LOG_TAIL_LINES = 200;
+const MAX_LOG_TAIL_CHARS = 8000; // worker bound is 8192; leaves headroom for the cap
+const MAX_LOG_READ_BYTES = 64 * 1024; // logger.ts never rotates — bound the read, not the file
 
 export const FEEDBACK_CATEGORIES = ['bug', 'idea', 'question', 'other'] as const;
 export type FeedbackCategory = (typeof FEEDBACK_CATEGORIES)[number];
@@ -51,7 +58,12 @@ export function redactFeedbackText(input: string): string {
     .replace(/\/Users\/[^/\s]+/g, '/Users/[redacted]');
 }
 
-type ValidatedSubmission = { message: string; category: FeedbackCategory; contactEmail?: string };
+type ValidatedSubmission = {
+  message: string;
+  category: FeedbackCategory;
+  contactEmail?: string;
+  attachDiagnostics: boolean;
+};
 
 function validateSubmission(
   input: unknown
@@ -59,7 +71,7 @@ function validateSubmission(
   if (typeof input !== 'object' || input === null) {
     return { ok: false, error: 'Enter a short message describing your feedback.' };
   }
-  const { message, category, contactEmail } = input as Partial<FeedbackSubmission>;
+  const { message, category, contactEmail, attachDiagnostics } = input as Partial<FeedbackSubmission>;
 
   if (typeof message !== 'string' || !message.trim()) {
     return { ok: false, error: 'Enter a short message describing what happened or what would help.' };
@@ -90,8 +102,57 @@ function validateSubmission(
       message: trimmedMessage,
       category: category as FeedbackCategory,
       ...(contactEmail ? { contactEmail } : {}),
+      attachDiagnostics: attachDiagnostics === true,
     },
   };
+}
+
+/**
+ * Reduce log text to the tail the feedback payload may carry: the last
+ * MAX_LOG_TAIL_LINES lines, then hard-capped to the last MAX_LOG_TAIL_CHARS
+ * characters with any leading partial line dropped. Applied twice by
+ * submitFeedback — once to the raw read, once after redaction, because a
+ * redaction placeholder can be longer than the text it replaces.
+ */
+export function logTail(text: string): string {
+  const lines = text.split('\n');
+  let tail = lines.slice(-MAX_LOG_TAIL_LINES).join('\n');
+  if (tail.length > MAX_LOG_TAIL_CHARS) {
+    tail = tail.slice(-MAX_LOG_TAIL_CHARS);
+    const firstNewline = tail.indexOf('\n');
+    if (firstNewline !== -1) tail = tail.slice(firstNewline + 1);
+  }
+  return tail;
+}
+
+/**
+ * Read the tail of the diagnostic log for an opted-in feedback submission
+ * (#931). Bounded: reads at most MAX_LOG_READ_BYTES from the end of the file,
+ * then reduces to logTail(). Returns undefined — never throws — when no log
+ * exists yet or the read fails, so a submission is never blocked by it.
+ */
+export function readDiagnosticLogTail(): string | undefined {
+  const p = getLogFilePath();
+  if (!p || !fs.existsSync(p)) {
+    logWarn('feedback diagnostics: log file does not exist yet');
+    return undefined;
+  }
+  let fd: number | undefined;
+  try {
+    const { size } = fs.statSync(p);
+    const length = Math.min(size, MAX_LOG_READ_BYTES);
+    if (length <= 0) return undefined;
+    const buffer = Buffer.alloc(length);
+    fd = fs.openSync(p, 'r');
+    fs.readSync(fd, buffer, 0, length, size - length);
+    const tail = logTail(buffer.toString('utf8'));
+    return tail || undefined;
+  } catch (err) {
+    logWarn(`feedback diagnostics: log read failed: ${err instanceof Error ? err.constructor.name : String(err)}`);
+    return undefined;
+  } finally {
+    if (fd !== undefined) fs.closeSync(fd);
+  }
 }
 
 /**
@@ -105,13 +166,14 @@ function validateSubmission(
  */
 export async function submitFeedback(
   input: unknown,
-  fetchFn: typeof fetch = fetch
+  fetchFn: typeof fetch = fetch,
+  readTail: () => string | undefined = readDiagnosticLogTail
 ): Promise<SubmitFeedbackResult> {
   const validated = validateSubmission(input);
   if (!validated.ok) {
     return { ok: false, retryable: false, error: validated.error };
   }
-  const { message, category, contactEmail } = validated.value;
+  const { message, category, contactEmail, attachDiagnostics } = validated.value;
 
   // Redaction placeholders (e.g. "[redacted-email]") can be longer than the
   // text they replace, so a message just under MAX_MESSAGE_LENGTH can grow
@@ -127,6 +189,15 @@ export async function submitFeedback(
     };
   }
 
+  // #931: the log tail is redacted and re-capped here — a redaction
+  // placeholder can be longer than what it replaces, so the cap must be the
+  // last thing applied before the payload is built.
+  let diagnosticLog: string | undefined;
+  if (attachDiagnostics) {
+    const raw = readTail();
+    if (raw) diagnosticLog = logTail(redactFeedbackText(raw)) || undefined;
+  }
+
   const payload = {
     type: 'feedback' as const,
     appVersion: app.getVersion(),
@@ -135,6 +206,7 @@ export async function submitFeedback(
     message: redactedMessage,
     category,
     ...(contactEmail ? { contactEmail } : {}),
+    ...(diagnosticLog ? { diagnosticLog } : {}),
   };
 
   try {

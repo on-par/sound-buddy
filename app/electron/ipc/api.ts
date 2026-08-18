@@ -634,6 +634,8 @@ export interface FeedbackSubmission {
   message: string;
   category: FeedbackCategory;
   contactEmail?: string;
+  /** #931: opt-in — main attaches a redacted, bounded tail of the log file. */
+  attachDiagnostics?: boolean;
 }
 
 export type SubmitFeedbackResult =

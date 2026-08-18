@@ -94,10 +94,23 @@ function buildIssueBody(event: FeedbackEvent, receivedAt: string): string {
     `- Reply address: ${event.contactEmail !== undefined ? "provided" : "not provided"}`,
   ];
 
+  const diagnostics =
+    event.diagnosticLog !== undefined
+      ? [
+          "",
+          "<details><summary>Diagnostic log</summary>",
+          "",
+          codeFence(event.diagnosticLog),
+          "",
+          "</details>",
+        ]
+      : [];
+
   return [
     "### Feedback",
     "",
     codeFence(event.message),
+    ...diagnostics,
     "",
     "---",
     "",
