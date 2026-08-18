@@ -58,12 +58,38 @@ function buildIssueTitle(event: FeedbackEvent): string {
   return `${prefix}${truncatedSnippet}`;
 }
 
+// The issue body is rendered as GitHub-flavored Markdown on a PUBLIC repo, and
+// every field below is unauthenticated user input. Left unescaped, a
+// submitter could @mention-spam arbitrary GitHub users (triggering real
+// notifications), inject fake "---"-delimited metadata to mislead a human
+// triager, or embed phishing links — none of which need any credential.
+// A fenced code block (for the free-text message) and inline code spans (for
+// the short fields) render their contents as literal text, defeating GFM
+// mention/link/heading interpretation while keeping the values verbatim.
+
+/** Wraps `text` in a GFM code fence long enough that no backtick run inside
+ * `text` can prematurely close it. */
+function codeFence(text: string): string {
+  const longestBacktickRun = Math.max(0, ...(text.match(/`+/g) ?? []).map((run) => run.length));
+  const fence = "`".repeat(Math.max(3, longestBacktickRun + 1));
+  return `${fence}\n${text}\n${fence}`;
+}
+
+/** Wraps `text` in a GFM inline code span, escaping any backticks it contains
+ * so it can't break out of the span (and so it can't be linkified/mentioned). */
+function inlineCode(text: string): string {
+  const longestBacktickRun = Math.max(0, ...(text.match(/`+/g) ?? []).map((run) => run.length));
+  const delimiter = "`".repeat(longestBacktickRun + 1);
+  const padding = text.startsWith("`") || text.endsWith("`") ? " " : "";
+  return `${delimiter}${padding}${text}${padding}${delimiter}`;
+}
+
 function buildIssueBody(event: FeedbackEvent, receivedAt: string): string {
   const metadata = [
     `- Category: ${event.category ?? "other"}`,
-    `- App version: ${event.appVersion}`,
-    ...(event.osVersion !== undefined ? [`- macOS version: ${event.osVersion}`] : []),
-    ...(event.platform !== undefined ? [`- Platform: ${event.platform}`] : []),
+    `- App version: ${inlineCode(event.appVersion)}`,
+    ...(event.osVersion !== undefined ? [`- macOS version: ${inlineCode(event.osVersion)}`] : []),
+    ...(event.platform !== undefined ? [`- Platform: ${inlineCode(event.platform)}`] : []),
     `- Received: ${receivedAt}`,
     `- Reply address: ${event.contactEmail !== undefined ? "provided" : "not provided"}`,
   ];
@@ -71,7 +97,7 @@ function buildIssueBody(event: FeedbackEvent, receivedAt: string): string {
   return [
     "### Feedback",
     "",
-    event.message,
+    codeFence(event.message),
     "",
     "---",
     "",

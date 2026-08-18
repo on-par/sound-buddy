@@ -76,10 +76,48 @@ describe("buildFeedbackIssue", () => {
     const longMessage = `${"word ".repeat(30)}\nmore\ntext here to push past eighty characters total length`;
     const issue = buildFeedbackIssue({ ...minimalEvent, message: longMessage }, RECEIVED_AT);
 
-    const titleText = issue.title.replace(/^Feedback \(other\): /, "");
-    expect(titleText.length).toBeLessThanOrEqual(80);
-    expect(titleText.endsWith("…")).toBe(true);
-    expect(titleText).not.toContain("\n");
+    expect(issue.title.length).toBeLessThanOrEqual(80);
+    expect(issue.title.endsWith("…")).toBe(true);
+    expect(issue.title).not.toContain("\n");
+  });
+
+  it("fences the message in a GFM code block so @mentions and markdown links in it don't render live", () => {
+    const message = "cc @some-victim please see [click here](https://evil.example/phish)";
+    const issue = buildFeedbackIssue({ ...minimalEvent, message }, RECEIVED_AT);
+
+    const fenceStart = issue.body.indexOf("```");
+    const fenceEnd = issue.body.indexOf("```", fenceStart + 3);
+    expect(fenceStart).toBeGreaterThanOrEqual(0);
+    expect(fenceEnd).toBeGreaterThan(fenceStart);
+    const fencedRegion = issue.body.slice(fenceStart, fenceEnd + 3);
+    expect(fencedRegion).toContain(message);
+  });
+
+  it("widens the code fence when the message itself contains a backtick run, so the message can't break out of it", () => {
+    const message = "look: ```js\nconst x = 1\n``` — nested fence attempt";
+    const issue = buildFeedbackIssue({ ...minimalEvent, message }, RECEIVED_AT);
+
+    // The outer fence must be longer than any backtick run the message contains.
+    const outerFenceMatch = issue.body.match(/^`{3,}$/m);
+    expect(outerFenceMatch).not.toBeNull();
+    expect(outerFenceMatch![0].length).toBeGreaterThan(3);
+  });
+
+  it("wraps appVersion/osVersion/platform in inline code spans so an @mention or link in them doesn't render live", () => {
+    const issue = buildFeedbackIssue(
+      { ...fullEvent, appVersion: "1.0.0", osVersion: "@admin", platform: "[x](evil.test)" },
+      RECEIVED_AT,
+    );
+
+    expect(issue.body).toContain("`1.0.0`");
+    expect(issue.body).toContain("`@admin`");
+    expect(issue.body).toContain("`[x](evil.test)`");
+  });
+
+  it("widens the inline code span (and pads it) when a metadata field itself contains a backtick", () => {
+    const issue = buildFeedbackIssue({ ...minimalEvent, platform: "`x`" }, RECEIVED_AT);
+
+    expect(issue.body).toContain("`` `x` ``");
   });
 });
 
