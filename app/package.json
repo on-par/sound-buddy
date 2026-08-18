@@ -19,6 +19,7 @@
   },
   "dependencies": {
     "@sound-buddy/audio-engine": "file:../packages/audio-engine",
+    "@sound-buddy/console": "file:../packages/console",
     "electron-updater": "^6.3.9"
   },
   "devDependencies": {
