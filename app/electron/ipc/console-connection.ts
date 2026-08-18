@@ -99,7 +99,7 @@ export async function queryConsole<T>(
         cleanup();
         reject(
           new Error(
-            `No reply from console at ${ip}:${CONSOLE_OSC_PORT} for "${requestAddress}" after ${maxRetries} retries (${timeoutMs}ms each) — the console is offline or unreachable.`
+            `No reply from console at ${ip}:${CONSOLE_OSC_PORT} for "${requestAddress}" after ${maxRetries} retries (${timeoutMs}ms each) — check the IP is correct and the console is powered on and reachable on the network.`
           )
         );
       }, timeoutMs);
