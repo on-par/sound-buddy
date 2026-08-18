@@ -15,7 +15,7 @@ import type { FeedbackApi, FeedbackSubmission, SubmitFeedbackResult } from '../.
 interface FeedbackValidation { ok: boolean; error?: string }
 interface FeedbackStatusView { text: string; retryable: boolean }
 interface FeedbackCategoryOption { id: string; label: string }
-interface FeedbackFormRaw { message: string; category: string; contactEmail: string }
+interface FeedbackFormRaw { message: string; category: string; contactEmail: string; attachDiagnostics: boolean }
 interface FeedbackFormApi {
   CATEGORIES: FeedbackCategoryOption[];
   validate(input: FeedbackFormRaw): FeedbackValidation;
@@ -108,8 +108,8 @@ export function createFeedbackDialogStore(getApi: () => FeedbackApi) {
     },
 
     async send() {
-      const { message, category, contactEmail } = get();
-      const raw = { message, category, contactEmail };
+      const { message, category, contactEmail, attachDiagnostics } = get();
+      const raw = { message, category, contactEmail, attachDiagnostics };
       const fb = getFeedbackForm();
 
       const validation = fb.validate(raw);
