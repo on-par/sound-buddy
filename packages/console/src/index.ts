@@ -194,3 +194,16 @@ export function decodeOscMessage(packet: Uint8Array): DecodedOscMessage {
 
 export { normalizeReplyAddress, replyAddressMatches } from './address.js'
 export { assertReadOnlyOscMessage } from './read-only-guard.js'
+export type {
+  ChannelStrip,
+  ChannelPreamp,
+  ChannelGate,
+  ChannelDynamics,
+  ChannelEq,
+} from './channel-strip.js'
+export {
+  parseChannelStrips,
+  buildChannelFaderPath,
+  buildHeadampGainPath,
+  buildDcaFaderPath,
+} from './channel-strip.js'
