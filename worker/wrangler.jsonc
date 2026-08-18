@@ -43,9 +43,9 @@
   // shown in license email; CUSTOMER_PORTAL_URL is the Stripe Customer Portal
   // link shown in license email; APP_ORIGIN is the desktop app's activation
   // origin. Secrets (STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET,
-  // LICENSE_SIGNING_PRIVATE_KEY, RESEND_API_KEY, WAITLIST_ADMIN_TOKEN (#642))
-  // are set out-of-band (H4) via `wrangler secret put` and never appear in
-  // this file.
+  // LICENSE_SIGNING_PRIVATE_KEY, RESEND_API_KEY, WAITLIST_ADMIN_TOKEN (#642),
+  // GITHUB_ISSUES_TOKEN (#929)) are set out-of-band (H4) via
+  // `wrangler secret put` and never appear in this file.
   "vars": {
     "FOUNDING_CAP": "300",
     "FROM_EMAIL": "hello@soundbuddy.online",

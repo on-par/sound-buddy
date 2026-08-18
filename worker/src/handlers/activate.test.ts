@@ -17,6 +17,7 @@ const env = {
   RESEND_API_KEY: "re_test_unused",
   LICENSE_SIGNING_KID: "test-kid",
   LICENSE_PUBLIC_KEY: "",
+  GITHUB_ISSUES_TOKEN: "",
 } satisfies Env;
 
 const ctx = {
