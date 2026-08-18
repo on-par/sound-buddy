@@ -7,10 +7,16 @@
 
 import { json } from "../http";
 import type { Env } from "../index";
+import { createFeedbackIssue } from "../github-issues";
 
 const MAX_BODY_BYTES = 32 * 1024; // bound attacker-supplied body before JSON.parse
 const RATE_LIMIT_WINDOW_SECONDS = 60;
 const RATE_LIMIT_MAX_REQUESTS = 30; // per client IP per window
+// #930: feedback now files a public GitHub issue, so it needs a stricter gate
+// than the shared bucket. Its own key namespace keeps crash/telemetry unaffected.
+const FEEDBACK_RATE_LIMIT_WINDOW_SECONDS = 60;
+const FEEDBACK_RATE_LIMIT_MAX_REQUESTS = 1; // per client IP per window
+const MIN_FEEDBACK_MESSAGE_LENGTH = 10; // trimmed; rejects empty/whitespace/garbage
 const EVENT_TTL_SECONDS = 90 * 24 * 60 * 60; // events self-expire from KV after 90 days
 const MAX_MESSAGE_LENGTH = 4000; // feedback.message
 const MAX_CRASH_MESSAGE_LENGTH = 2000; // crash.message
@@ -245,7 +251,11 @@ export function validateIngestEvent(body: unknown): ValidationResult {
 
   if (type === "feedback") {
     const message = body.message;
-    if (typeof message !== "string" || !message || message.length > MAX_MESSAGE_LENGTH) {
+    if (
+      typeof message !== "string" ||
+      message.trim().length < MIN_FEEDBACK_MESSAGE_LENGTH ||
+      message.length > MAX_MESSAGE_LENGTH
+    ) {
       return { ok: false, error: "invalid_field", field: "message", status: 400 };
     }
     const category = body.category;
@@ -421,6 +431,8 @@ export function redactIngestEvent(event: IngestEvent): IngestEvent {
 export interface IngestDeps {
   now?: () => Date;
   randomId?: () => string;
+  /** Injected into `createFeedbackIssue` so tests never hit the network. */
+  fetch?: typeof fetch;
 }
 
 /** Resolves `true` when the request is within the per-client-IP rate limit.
@@ -433,6 +445,19 @@ async function withinRateLimit(env: Env, ip: string): Promise<boolean> {
   if (count >= RATE_LIMIT_MAX_REQUESTS) return false;
   await env.EVENTS_KV.put(key, String(count + 1), {
     expirationTtl: RATE_LIMIT_WINDOW_SECONDS,
+  });
+  return true;
+}
+
+/** Feedback-only bucket, stricter than the shared one because feedback now
+ * files a public GitHub issue. Same best-effort caveat as `withinRateLimit`. */
+async function withinFeedbackRateLimit(env: Env, ip: string): Promise<boolean> {
+  const key = `rl:ingest:feedback:${ip}`;
+  const current = await env.EVENTS_KV.get(key);
+  const count = current ? Number.parseInt(current, 10) : 0;
+  if (count >= FEEDBACK_RATE_LIMIT_MAX_REQUESTS) return false;
+  await env.EVENTS_KV.put(key, String(count + 1), {
+    expirationTtl: FEEDBACK_RATE_LIMIT_WINDOW_SECONDS,
   });
   return true;
 }
@@ -474,10 +499,27 @@ export async function handleIngestEvent(
     );
   }
 
-  const event = redactIngestEvent(validated.event);
+  if (validated.event.type === "feedback" && !(await withinFeedbackRateLimit(env, ip))) {
+    return json({ error: "rate_limited" }, 429);
+  }
 
+  const event = redactIngestEvent(validated.event);
   const receivedAt = (deps.now ?? (() => new Date()))().toISOString();
   const id = (deps.randomId ?? (() => crypto.randomUUID()))();
+
+  if (event.type === "feedback") {
+    const created = await createFeedbackIssue(env, { event, receivedAt }, { fetch: deps.fetch });
+    // A submitted reply address must not be published to the public repo, so when
+    // one is present the event is still stored privately in KV (#930 ADR).
+    if (created.ok && event.contactEmail === undefined) {
+      return json({ status: "accepted", id }, 202);
+    }
+    if (!created.ok) {
+      // Outcome only — never the message, per the file-header security rule.
+      console.warn("feedback issue unavailable — stored in EVENTS_KV instead");
+    }
+  }
+
   await env.EVENTS_KV.put(
     `ingest:${event.type}:${receivedAt}:${id}`,
     JSON.stringify({ receivedAt, event } satisfies StoredIngestEvent),
