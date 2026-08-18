@@ -59,7 +59,7 @@ export default function FeedbackDialog(): JSX.Element {
     >
       <div className="rig-dialog-card">
         <div className="rig-dialog-title" id="feedback-dialog-title">Send Feedback</div>
-        <div className="ai-dialog-sub">Sends your message to the Sound Buddy team along with your app version and macOS version. Never audio, recordings, license keys, file paths, or anything else from your machine.</div>
+        <div className="ai-dialog-sub">Sends your message to the Sound Buddy team along with your app version and macOS version. Never audio or recordings. Email addresses and license keys are stripped from the text before sending. Nothing else from your machine is sent unless you attach your diagnostic log below.</div>
         <label className="ai-field">
           <span className="ai-field-label">Category</span>
           <select
@@ -105,7 +105,7 @@ export default function FeedbackDialog(): JSX.Element {
             /* c8 ignore next -- click dispatch, no jsdom */
             onChange={(e) => { void useFeedbackDialogStore.getState().toggleAttachDiagnostics(e.target.checked); }}
           />
-          Reveal my diagnostic log (never uploaded)
+          Include my diagnostic log
         </label>
         <p className="ai-dialog-note" id="feedback-diag-hint" style={{ display: diagHint ? '' : 'none' }}>{diagHint}</p>
         <span className="ai-status" id="feedback-status" role="status">{status}</span>
