@@ -20,8 +20,9 @@ import { handleInvite, handleListInvitees } from "./handlers/waitlist-invite";
 /**
  * Environment bindings declared in wrangler.jsonc. Secret values
  * (STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET, LICENSE_SIGNING_PRIVATE_KEY,
- * RESEND_API_KEY) are injected out-of-band via `wrangler secret put` and are
- * added to this interface by the stories that consume them.
+ * RESEND_API_KEY, GITHUB_ISSUES_TOKEN) are injected out-of-band via
+ * `wrangler secret put` and are added to this interface by the stories that
+ * consume them.
  */
 export interface Env {
   /** KV namespace holding issued licenses / activation state. */
@@ -87,6 +88,16 @@ export interface Env {
    * that hasn't provisioned it.
    */
   WAITLIST_ADMIN_TOKEN?: string;
+  /**
+   * Fine-grained GitHub PAT used to file feedback issues on `on-par/sound-buddy`
+   * (#929, epic #927). Scoped to that one repository with the single `issues:write`
+   * permission — no other repo, no other permission. Secret; set via
+   * `wrangler secret put GITHUB_ISSUES_TOKEN` (see
+   * docs/github-issues-token-provisioning.md) and never logged. Fine-grained PATs
+   * expire, so a consumer must treat an empty or rejected token as a handled path,
+   * not an assertion.
+   */
+  GITHUB_ISSUES_TOKEN: string;
 }
 
 type RouteHandler = (

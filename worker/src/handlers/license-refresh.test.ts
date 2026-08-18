@@ -56,6 +56,7 @@ function makeEnv(kv: KVNamespace): Env {
     RESEND_API_KEY: "re_test_unused",
     LICENSE_SIGNING_KID: "test-kid",
     LICENSE_PUBLIC_KEY: SPKI_PEM,
+    GITHUB_ISSUES_TOKEN: "",
   } satisfies Env;
 }
 

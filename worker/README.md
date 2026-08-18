@@ -95,7 +95,10 @@ fallback directly.
   Audience sync is skipped and logged).
 
 **Secrets** (`STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`,
-`LICENSE_SIGNING_PRIVATE_KEY`, `RESEND_API_KEY`, `WAITLIST_ADMIN_TOKEN` (#642))
+`LICENSE_SIGNING_PRIVATE_KEY`, `RESEND_API_KEY`, `WAITLIST_ADMIN_TOKEN` (#642),
+`GITHUB_ISSUES_TOKEN` (#929, scoped to `on-par/sound-buddy` /
+`issues:write` only for feedback issue creation — see
+[`docs/github-issues-token-provisioning.md`](docs/github-issues-token-provisioning.md)))
 are **never** stored in this repo — they are provisioned with
 `wrangler secret put` (H4).
 

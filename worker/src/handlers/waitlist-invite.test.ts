@@ -58,6 +58,7 @@ function makeEnv(kv: KVNamespace, adminToken = "test-admin-token"): Env {
     LICENSE_PUBLIC_KEY: "",
     WAITLIST_AUDIENCE_ID: "",
     WAITLIST_ADMIN_TOKEN: adminToken,
+    GITHUB_ISSUES_TOKEN: "",
   } satisfies Env;
 }
 
