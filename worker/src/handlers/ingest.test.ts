@@ -532,6 +532,99 @@ describe("POST /api/ingest (#475)", () => {
     });
   });
 
+  describe("feedback diagnosticLog (#931)", () => {
+    it("accepts a feedback event with a diagnosticLog string and carries it into the rebuilt event", async () => {
+      const { kv, store, putSpy } = makeKv();
+      const env = makeEnv(kv);
+
+      const res = await handleIngestEvent(
+        request({ ...validFeedback, diagnosticLog: "line one\nline two" }),
+        env,
+        ctx,
+        deps,
+      );
+
+      expect(res.status).toBe(202);
+      const ingestPutCall = putSpy.mock.calls.find((call) =>
+        String(call[0]).startsWith("ingest:"),
+      );
+      const stored = JSON.parse(store.get(ingestPutCall![0] as string)!) as StoredIngestEvent;
+      const event = stored.event as { diagnosticLog: string };
+      expect(event.diagnosticLog).toBe("line one\nline two");
+    });
+
+    it("a non-string diagnosticLog → 400 invalid_field diagnosticLog", async () => {
+      const { kv } = makeKv();
+      const env = makeEnv(kv);
+
+      const res = await handleIngestEvent(
+        request({ ...validFeedback, diagnosticLog: 12345 }),
+        env,
+        ctx,
+        deps,
+      );
+
+      expect(res.status).toBe(400);
+      expect(await res.json()).toEqual({ error: "invalid_field", field: "diagnosticLog" });
+    });
+
+    it("a diagnosticLog longer than 8192 chars → 400 invalid_field diagnosticLog", async () => {
+      const { kv } = makeKv();
+      const env = makeEnv(kv);
+
+      const res = await handleIngestEvent(
+        request({ ...validFeedback, diagnosticLog: "x".repeat(8193) }),
+        env,
+        ctx,
+        deps,
+      );
+
+      expect(res.status).toBe(400);
+      expect(await res.json()).toEqual({ error: "invalid_field", field: "diagnosticLog" });
+    });
+
+    it("accepts a diagnosticLog exactly 8192 chars", async () => {
+      const { kv } = makeKv();
+      const env = makeEnv(kv);
+
+      const res = await handleIngestEvent(
+        request({ ...validFeedback, diagnosticLog: "x".repeat(8192) }),
+        env,
+        ctx,
+        deps,
+      );
+
+      expect(res.status).toBe(202);
+    });
+
+    it("redacts emails, license strings, and home paths inside diagnosticLog while leaving contactEmail untouched", async () => {
+      const { kv, store, putSpy } = makeKv();
+      const env = makeEnv(kv);
+
+      const res = await handleIngestEvent(
+        request({
+          ...validFeedback,
+          contactEmail: "pat@example.test",
+          diagnosticLog: "seen pat@leak.test, key SB1.abc.def, at /Users/patrick/x",
+        }),
+        env,
+        ctx,
+        deps,
+      );
+
+      expect(res.status).toBe(202);
+      const ingestPutCall = putSpy.mock.calls.find((call) =>
+        String(call[0]).startsWith("ingest:"),
+      );
+      const stored = JSON.parse(store.get(ingestPutCall![0] as string)!) as StoredIngestEvent;
+      const event = stored.event as { diagnosticLog: string; contactEmail: string };
+      expect(event.diagnosticLog).toBe(
+        "seen [redacted-email], key [redacted-license], at /Users/[redacted]/x",
+      );
+      expect(event.contactEmail).toBe("pat@example.test");
+    });
+  });
+
   describe("crash fields", () => {
     it("stack over 8000 chars → 400 invalid_field stack", async () => {
       const { kv } = makeKv();
@@ -1248,6 +1341,26 @@ describe("POST /api/ingest (#475)", () => {
       expect((stored.event as { contactEmail: string }).contactEmail).toBe("pat@example.test");
     });
 
+    it("a feedback POST carrying a diagnosticLog files an issue with the redacted value (#931)", async () => {
+      const { kv } = makeKv();
+      const fetchSpy = makeFetch(new Response(JSON.stringify({ number: 11 }), { status: 201 }));
+      const env = makeEnv(kv, { GITHUB_ISSUES_TOKEN: "ghp_test_token" });
+
+      const res = await handleIngestEvent(
+        request({ ...validFeedback, diagnosticLog: "log line with pat@example.test" }),
+        env,
+        ctx,
+        { ...deps, fetch: fetchSpy as unknown as typeof fetch },
+      );
+
+      expect(res.status).toBe(202);
+      expect(fetchSpy).toHaveBeenCalledTimes(1);
+      const [, init] = fetchSpy.mock.calls[0] as [string, RequestInit];
+      const issueBody = JSON.parse(init.body as string) as { body: string };
+      expect(issueBody.body).toContain("[redacted-email]");
+      expect(issueBody.body).not.toContain("pat@example.test");
+    });
+
     it("crash and telemetry make no GitHub call and are stored exactly as before, even with a token configured", async () => {
       const { kv, store, putSpy } = makeKv();
       const fetchSpy = vi.fn();
@@ -1434,6 +1547,34 @@ describe("POST /api/ingest (#475)", () => {
       } as IngestEvent;
       expect(redactIngestEvent(event)).toEqual({
         type: "crash",
+        appVersion: "1.0.0",
+        message: "hit [redacted-email]",
+      });
+    });
+
+    it("redacts diagnosticLog alongside message on a feedback event", () => {
+      const event = {
+        type: "feedback",
+        appVersion: "1.0.0",
+        message: "hit pat@example.com",
+        diagnosticLog: "log line with pat@example.com and /Users/pat/x",
+      } as IngestEvent;
+      expect(redactIngestEvent(event)).toEqual({
+        type: "feedback",
+        appVersion: "1.0.0",
+        message: "hit [redacted-email]",
+        diagnosticLog: "log line with [redacted-email] and /Users/[redacted]/x",
+      });
+    });
+
+    it("feedback event with no diagnosticLog is left without a diagnosticLog field", () => {
+      const event = {
+        type: "feedback",
+        appVersion: "1.0.0",
+        message: "hit pat@example.com",
+      } as IngestEvent;
+      expect(redactIngestEvent(event)).toEqual({
+        type: "feedback",
         appVersion: "1.0.0",
         message: "hit [redacted-email]",
       });

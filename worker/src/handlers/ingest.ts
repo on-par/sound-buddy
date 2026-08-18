@@ -19,6 +19,7 @@ const FEEDBACK_RATE_LIMIT_MAX_REQUESTS = 1; // per client IP per window
 const MIN_FEEDBACK_MESSAGE_LENGTH = 10; // trimmed; rejects empty/whitespace/garbage
 const EVENT_TTL_SECONDS = 90 * 24 * 60 * 60; // events self-expire from KV after 90 days
 const MAX_MESSAGE_LENGTH = 4000; // feedback.message
+const MAX_DIAGNOSTIC_LOG_LENGTH = 8192; // #931: opt-in log tail; app caps at 8000 post-redaction
 const MAX_CRASH_MESSAGE_LENGTH = 2000; // crash.message
 const MAX_STACK_LENGTH = 8000; // crash.stack
 const MAX_SHORT_FIELD_LENGTH = 32; // appVersion, osVersion
@@ -64,6 +65,8 @@ export interface FeedbackEvent {
   category?: FeedbackCategory;
   contactEmail?: string;
   platform?: string;
+  /** #931: opt-in, redacted, bounded tail of the local log file. */
+  diagnosticLog?: string;
 }
 
 export interface CrashEvent {
@@ -129,6 +132,7 @@ const ALLOWED_FIELDS: Record<IngestEventType, ReadonlySet<string>> = {
     "category",
     "contactEmail",
     "platform",
+    "diagnosticLog",
   ]),
   crash: new Set([
     "type",
@@ -275,6 +279,13 @@ export function validateIngestEvent(body: unknown): ValidationResult {
     if (platform !== undefined && !isShortField(platform, false)) {
       return { ok: false, error: "invalid_field", field: "platform", status: 400 };
     }
+    const diagnosticLog = body.diagnosticLog;
+    if (
+      diagnosticLog !== undefined &&
+      (typeof diagnosticLog !== "string" || diagnosticLog.length > MAX_DIAGNOSTIC_LOG_LENGTH)
+    ) {
+      return { ok: false, error: "invalid_field", field: "diagnosticLog", status: 400 };
+    }
     return {
       ok: true,
       event: {
@@ -285,6 +296,7 @@ export function validateIngestEvent(body: unknown): ValidationResult {
         ...(category !== undefined ? { category: category as FeedbackCategory } : {}),
         ...(contactEmail !== undefined ? { contactEmail: contactEmail as string } : {}),
         ...(platform !== undefined ? { platform: platform as string } : {}),
+        ...(diagnosticLog !== undefined ? { diagnosticLog: diagnosticLog as string } : {}),
       },
     };
   }
@@ -410,7 +422,13 @@ export function redactIngestEvent(event: IngestEvent): IngestEvent {
     // into a dedicated field — it is NOT unintended PII like a stray email
     // caught inside free-text `message`, so it is stored as-is, unlike the
     // deny-listed `email`/`userEmail` keys, which are rejected outright.
-    return { ...event, message: redactText(event.message) };
+    return {
+      ...event,
+      message: redactText(event.message),
+      ...(event.diagnosticLog !== undefined
+        ? { diagnosticLog: redactText(event.diagnosticLog) }
+        : {}),
+    };
   }
   if (event.type === "crash") {
     return {
