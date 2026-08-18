@@ -39,12 +39,15 @@ function throwawayKeypair() {
 }
 
 /** Decode a base64url segment to bytes (test-side mirror of fromBase64Url). */
-function fromB64url(s: string): Buffer {
-  return Buffer.from(s.replace(/-/g, "+").replace(/_/g, "/"), "base64");
+function fromB64url(s: string): Uint8Array {
+  const binary = atob(s.replace(/-/g, "+").replace(/_/g, "/"));
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  return bytes;
 }
 
 function decodePayload(key: string): LicensePayload {
-  return JSON.parse(fromB64url(key.split(".")[1]).toString("utf8"));
+  return JSON.parse(new TextDecoder().decode(fromB64url(key.split(".")[1])));
 }
 
 /**
@@ -232,11 +235,7 @@ describe("worker license signing — SB1 format & interop (#109)", () => {
     const [prefix, payloadSeg, sigSeg] = key.split(".");
     const bytes = fromB64url(payloadSeg);
     bytes[0] ^= 0x01;
-    const tamperedSeg = bytes
-      .toString("base64")
-      .replace(/\+/g, "-")
-      .replace(/\//g, "_")
-      .replace(/=+$/, "");
+    const tamperedSeg = bytesToB64url(bytes);
     const tampered = `${prefix}.${tamperedSeg}.${sigSeg}`;
     expect(tampered).not.toBe(key);
 
@@ -308,11 +307,9 @@ describe("worker license signing — SB1 format & interop (#109)", () => {
 
 /** base64url-encode raw bytes (test-side mirror of toBase64Url in license-sign.ts). */
 function bytesToB64url(bytes: Uint8Array): string {
-  return Buffer.from(bytes)
-    .toString("base64")
-    .replace(/\+/g, "-")
-    .replace(/\//g, "_")
-    .replace(/=+$/, "");
+  let binary = "";
+  for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 }
 
 /** Sign arbitrary (possibly non-JSON) bytes and assemble a structurally-valid SB1 key. */
