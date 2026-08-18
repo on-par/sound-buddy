@@ -7,6 +7,8 @@ import {
   redactFeedbackText,
   submitFeedback,
   openFeedback,
+  logTail,
+  readDiagnosticLogTail,
 } from './feedback';
 import { getLogFilePath, logWarn } from './logger';
 
@@ -24,6 +26,10 @@ vi.mock('electron', () => ({
 
 vi.mock('fs', () => ({
   existsSync: vi.fn(),
+  statSync: vi.fn(),
+  openSync: vi.fn(),
+  readSync: vi.fn(),
+  closeSync: vi.fn(),
 }));
 
 vi.mock('./logger', () => ({
@@ -152,6 +158,139 @@ describe('redactFeedbackText', () => {
 
   it('passes through text with no sensitive content unchanged', () => {
     expect(redactFeedbackText('everything is fine here')).toBe('everything is fine here');
+  });
+});
+
+describe('logTail', () => {
+  it('leaves a short input unchanged', () => {
+    expect(logTail('line one\nline two')).toBe('line one\nline two');
+  });
+
+  it('keeps only the last 200 lines of a 300-line input', () => {
+    const lines = Array.from({ length: 300 }, (_, i) => `line ${i + 1}`);
+    const result = logTail(lines.join('\n')).split('\n');
+    expect(result[0]).toBe('line 101');
+    expect(result[result.length - 1]).toBe('line 300');
+    expect(result.length).toBe(200);
+  });
+
+  it('caps a single 20,000-char line to at most 8000 chars', () => {
+    const result = logTail('x'.repeat(20000));
+    expect(result.length).toBeLessThanOrEqual(8000);
+  });
+
+  it('drops the leading partial line when the char cap bisects one', () => {
+    const lines = Array.from({ length: 10 }, (_, i) => `${i}`.repeat(2000));
+    const result = logTail(lines.join('\n'));
+    expect(result.length).toBeLessThanOrEqual(8000);
+    // The result must start at a line boundary — the first char sequence
+    // present must be a full repeated-digit line, not a partial suffix of one.
+    const firstLine = result.split('\n')[0];
+    expect(firstLine.length).toBeLessThanOrEqual(2000);
+    expect(new Set(firstLine.split('')).size).toBe(1);
+  });
+});
+
+describe('readDiagnosticLogTail', () => {
+  beforeEach(() => {
+    vi.mocked(getLogFilePath).mockReset();
+    vi.mocked(fs.existsSync).mockReset();
+    vi.mocked(fs.statSync).mockReset();
+    vi.mocked(fs.openSync).mockReset();
+    vi.mocked(fs.readSync).mockReset();
+    vi.mocked(fs.closeSync).mockReset();
+    vi.mocked(logWarn).mockClear();
+  });
+
+  it('returns undefined and logWarns when getLogFilePath() is empty', () => {
+    vi.mocked(getLogFilePath).mockReturnValue('');
+
+    const result = readDiagnosticLogTail();
+
+    expect(result).toBeUndefined();
+    expect(logWarn).toHaveBeenCalled();
+  });
+
+  it('returns undefined when the log file does not exist', () => {
+    vi.mocked(getLogFilePath).mockReturnValue('/Users/test/Library/Logs/SoundBuddy/app.log');
+    vi.mocked(fs.existsSync).mockReturnValue(false);
+
+    const result = readDiagnosticLogTail();
+
+    expect(result).toBeUndefined();
+  });
+
+  it('returns undefined for a zero-byte file', () => {
+    vi.mocked(getLogFilePath).mockReturnValue('/Users/test/Library/Logs/SoundBuddy/app.log');
+    vi.mocked(fs.existsSync).mockReturnValue(true);
+    vi.mocked(fs.statSync).mockReturnValue({ size: 0 } as fs.Stats);
+
+    const result = readDiagnosticLogTail();
+
+    expect(result).toBeUndefined();
+    expect(fs.openSync).not.toHaveBeenCalled();
+  });
+
+  it('reads a bounded tail with position === size - length for a small file', () => {
+    const content = 'hello log tail';
+    vi.mocked(getLogFilePath).mockReturnValue('/Users/test/Library/Logs/SoundBuddy/app.log');
+    vi.mocked(fs.existsSync).mockReturnValue(true);
+    vi.mocked(fs.statSync).mockReturnValue({ size: content.length } as fs.Stats);
+    vi.mocked(fs.openSync).mockReturnValue(7);
+    vi.mocked(fs.readSync).mockImplementation((_fd, buffer) => {
+      (buffer as Buffer).write(content);
+      return content.length;
+    });
+
+    const result = readDiagnosticLogTail();
+
+    expect(fs.readSync).toHaveBeenCalledWith(7, expect.anything(), 0, content.length, 0);
+    expect(result).toBe(content);
+    expect(fs.closeSync).toHaveBeenCalledWith(7);
+  });
+
+  it('bounds the read to the last 64KB for a 200,000-byte file', () => {
+    vi.mocked(getLogFilePath).mockReturnValue('/Users/test/Library/Logs/SoundBuddy/app.log');
+    vi.mocked(fs.existsSync).mockReturnValue(true);
+    vi.mocked(fs.statSync).mockReturnValue({ size: 200000 } as fs.Stats);
+    vi.mocked(fs.openSync).mockReturnValue(9);
+    vi.mocked(fs.readSync).mockImplementation((_fd, buffer) => {
+      (buffer as Buffer).write('tail content');
+      return 65536;
+    });
+
+    readDiagnosticLogTail();
+
+    expect(fs.readSync).toHaveBeenCalledWith(9, expect.anything(), 0, 65536, 200000 - 65536);
+  });
+
+  it('returns undefined and logWarns when statSync throws', () => {
+    vi.mocked(getLogFilePath).mockReturnValue('/Users/test/Library/Logs/SoundBuddy/app.log');
+    vi.mocked(fs.existsSync).mockReturnValue(true);
+    vi.mocked(fs.statSync).mockImplementation(() => {
+      throw new Error('stat failed');
+    });
+
+    const result = readDiagnosticLogTail();
+
+    expect(result).toBeUndefined();
+    expect(logWarn).toHaveBeenCalled();
+  });
+
+  it('closes the fd even when readSync throws', () => {
+    vi.mocked(getLogFilePath).mockReturnValue('/Users/test/Library/Logs/SoundBuddy/app.log');
+    vi.mocked(fs.existsSync).mockReturnValue(true);
+    vi.mocked(fs.statSync).mockReturnValue({ size: 100 } as fs.Stats);
+    vi.mocked(fs.openSync).mockReturnValue(11);
+    vi.mocked(fs.readSync).mockImplementation(() => {
+      throw new Error('read failed');
+    });
+
+    const result = readDiagnosticLogTail();
+
+    expect(result).toBeUndefined();
+    expect(fs.closeSync).toHaveBeenCalledWith(11);
+    expect(logWarn).toHaveBeenCalled();
   });
 });
 
@@ -430,6 +569,88 @@ describe('submitFeedback', () => {
       const loggedText = vi.mocked(logWarn).mock.calls.map((c) => String(c[0])).join(' ');
       expect(loggedText).not.toContain('super secret body');
       expect(loggedText).not.toContain('pat@example.test');
+    });
+  });
+
+  describe('diagnosticLog (#931)', () => {
+    it('attachDiagnostics: true sends a redacted diagnosticLog', async () => {
+      const fetchFn = okFetch();
+      const readTail = vi.fn().mockReturnValue(
+        'contact pat@example.com, key SB1.abc.def, log at /Users/patrick/Library/Logs/app.log'
+      );
+
+      await submitFeedback({ message: 'it broke', category: 'bug', attachDiagnostics: true }, fetchFn, readTail);
+
+      expect(readTail).toHaveBeenCalledTimes(1);
+      const body = JSON.parse(fetchFn.mock.calls[0][1].body as string);
+      expect(body.diagnosticLog).toBe(
+        'contact [redacted-email], key [redacted-license], log at /Users/[redacted]/Library/Logs/app.log'
+      );
+      expect(body.diagnosticLog).not.toContain('pat@example.com');
+      expect(body.diagnosticLog).not.toContain('SB1.abc.def');
+      expect(body.diagnosticLog).not.toContain('/Users/patrick');
+    });
+
+    it('attachDiagnostics omitted sends no diagnosticLog key and never calls the reader', async () => {
+      const fetchFn = okFetch();
+      const readTail = vi.fn();
+
+      await submitFeedback({ message: 'it broke', category: 'bug' }, fetchFn, readTail);
+
+      expect(readTail).not.toHaveBeenCalled();
+      const body = JSON.parse(fetchFn.mock.calls[0][1].body as string);
+      expect('diagnosticLog' in body).toBe(false);
+    });
+
+    it('attachDiagnostics: false sends no diagnosticLog key and never calls the reader', async () => {
+      const fetchFn = okFetch();
+      const readTail = vi.fn();
+
+      await submitFeedback({ message: 'it broke', category: 'bug', attachDiagnostics: false }, fetchFn, readTail);
+
+      expect(readTail).not.toHaveBeenCalled();
+      const body = JSON.parse(fetchFn.mock.calls[0][1].body as string);
+      expect('diagnosticLog' in body).toBe(false);
+    });
+
+    it('a true flag whose reader returns undefined still submits successfully with no diagnosticLog key', async () => {
+      const fetchFn = okFetch();
+      const readTail = vi.fn().mockReturnValue(undefined);
+
+      const result = await submitFeedback(
+        { message: 'it broke', category: 'bug', attachDiagnostics: true },
+        fetchFn,
+        readTail
+      );
+
+      expect(result).toEqual({ ok: true });
+      const body = JSON.parse(fetchFn.mock.calls[0][1].body as string);
+      expect('diagnosticLog' in body).toBe(false);
+    });
+
+    it('the sent diagnosticLog stays <= 8000 chars when redaction expands the tail past the cap', async () => {
+      const fetchFn = okFetch();
+      const readTail = vi.fn().mockReturnValue('a@b.co\n'.repeat(2000));
+
+      await submitFeedback({ message: 'it broke', category: 'bug', attachDiagnostics: true }, fetchFn, readTail);
+
+      const body = JSON.parse(fetchFn.mock.calls[0][1].body as string);
+      expect(body.diagnosticLog.length).toBeLessThanOrEqual(8000);
+    });
+
+    it('a non-boolean attachDiagnostics is treated as false — no reader call, no field', async () => {
+      const fetchFn = okFetch();
+      const readTail = vi.fn();
+
+      await submitFeedback(
+        { message: 'it broke', category: 'bug', attachDiagnostics: 'yes' },
+        fetchFn,
+        readTail
+      );
+
+      expect(readTail).not.toHaveBeenCalled();
+      const body = JSON.parse(fetchFn.mock.calls[0][1].body as string);
+      expect('diagnosticLog' in body).toBe(false);
     });
   });
 
