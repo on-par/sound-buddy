@@ -119,6 +119,39 @@ describe("buildFeedbackIssue", () => {
 
     expect(issue.body).toContain("`` `x` ``");
   });
+
+  it("renders a collapsible Diagnostic log block with the tail when diagnosticLog is present (#931)", () => {
+    const diagnosticLog = "line one\nline two";
+    const issue = buildFeedbackIssue({ ...minimalEvent, diagnosticLog }, RECEIVED_AT);
+
+    expect(issue.body).toContain("<details><summary>Diagnostic log</summary>");
+    expect(issue.body).toContain(diagnosticLog);
+    expect(issue.body).toContain("</details>");
+  });
+
+  it("omits the Diagnostic log block entirely when diagnosticLog is absent", () => {
+    const issue = buildFeedbackIssue(minimalEvent, RECEIVED_AT);
+
+    expect(issue.body).not.toContain("<details>");
+    expect(issue.body).not.toContain("Diagnostic log");
+  });
+
+  it("widens the diagnostic log fence when the log itself contains a backtick run", () => {
+    const diagnosticLog = "trace: ```js\nconst x = 1\n``` end";
+    const issue = buildFeedbackIssue({ ...minimalEvent, diagnosticLog }, RECEIVED_AT);
+
+    const fenceMatches = issue.body.match(/^`{4,}$/gm) ?? [];
+    expect(fenceMatches.length).toBeGreaterThan(0);
+  });
+
+  it("title and labels are unaffected by the diagnosticLog field", () => {
+    const withLog = buildFeedbackIssue({ ...minimalEvent, diagnosticLog: "x" }, RECEIVED_AT);
+    const withoutLog = buildFeedbackIssue(minimalEvent, RECEIVED_AT);
+
+    expect(withLog.title).toBe(withoutLog.title);
+    expect(withLog.labels).toEqual(withoutLog.labels);
+    expect(withLog.assignees).toEqual(withoutLog.assignees);
+  });
 });
 
 describe("createFeedbackIssue", () => {
