@@ -120,3 +120,15 @@ describe('rc-toolbar wraps instead of clipping (#478)', () => {
     );
   });
 });
+
+describe('Feedback message textarea sizing (#926)', () => {
+  it('overrides the shared single-line input height for multi-line inputs', () => {
+    expect(appCss).toContain(
+      'textarea.rig-dialog-input { height:auto; min-height:calc(var(--control-h) * 2); padding:8px 12px; line-height:1.4; resize:vertical; }',
+    );
+  });
+
+  it('leaves the single-line .rig-dialog-input rule at the fixed control height', () => {
+    expect(appCss).toContain('.rig-dialog-input { height:var(--control-h); padding:0 12px;');
+  });
+});
