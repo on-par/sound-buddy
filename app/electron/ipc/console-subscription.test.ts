@@ -11,6 +11,7 @@ import {
   type ConsoleSubscriptionSocket,
 } from './console-subscription';
 import { ConsoleNetworkConsentError } from '../console-network-consent';
+import { CONSOLE_OSC_PORT } from './console-discovery';
 import { decodeOscMessage } from '@sound-buddy/console/dist-cjs/index.js';
 
 function fakeSocket(): ConsoleSubscriptionSocket & { send: ReturnType<typeof vi.fn> } {
@@ -55,7 +56,7 @@ describe('startSubscriptionRenewal', () => {
     const handle = startSubscriptionRenewal(deps, GRANTED, '192.168.1.77', vi.fn());
 
     for (const call of socket.send.mock.calls) {
-      expect(call[1]).toBe(10023);
+      expect(call[1]).toBe(CONSOLE_OSC_PORT);
       expect(call[2]).toBe('192.168.1.77');
     }
     handle.stop();
@@ -275,6 +276,29 @@ describe('startSubscriptionRenewal', () => {
 
     expect(socket.send).not.toHaveBeenCalled();
     expect(onEvent).not.toHaveBeenCalled();
+  });
+
+  it('does not leave a dangling stall timer armed if onEvent calls stop() synchronously from a reconnect event', async () => {
+    vi.useFakeTimers();
+    const socket = fakeSocket();
+    const deps: ConsoleSubscriptionDeps = { socket, log: vi.fn() };
+    const handle: { stop?: () => void } = {};
+    const onEvent = vi.fn((event: { type: string }) => {
+      if (event.type === 'reconnect') handle.stop!();
+    });
+
+    Object.assign(handle, startSubscriptionRenewal(deps, GRANTED, '192.168.1.77', onEvent));
+    (handle as unknown as ReturnType<typeof startSubscriptionRenewal>).onMeterFrame();
+
+    await vi.advanceTimersByTimeAsync(DEFAULT_METER_FRAME_STALL_MS);
+    expect(onEvent).toHaveBeenCalledWith({ type: 'reconnect' });
+    expect(vi.getTimerCount()).toBe(0);
+
+    onEvent.mockClear();
+    socket.send.mockClear();
+    await vi.advanceTimersByTimeAsync(DEFAULT_METER_FRAME_STALL_MS * 3);
+    expect(onEvent).not.toHaveBeenCalled();
+    expect(socket.send).not.toHaveBeenCalled();
   });
 
   it('calling onMeterFrame after stop() does not resurrect the stall timer or emit events', async () => {

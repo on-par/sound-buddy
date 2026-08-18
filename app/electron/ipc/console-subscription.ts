@@ -86,6 +86,10 @@ export function startSubscriptionRenewal(
       if (stopped) return;
       deps.log(`console-subscription: no /meters frame from ${ip} for ${frameStallMs}ms — reconnecting`);
       onEvent({ type: 'reconnect' });
+      // onEvent may call stop() synchronously (e.g. to tear down and
+      // reconnect) — re-check before re-arming so stop() from inside the
+      // handler can't leave a dangling timer that outlives it.
+      if (stopped) return;
       armStallTimer();
     }, frameStallMs);
   };
