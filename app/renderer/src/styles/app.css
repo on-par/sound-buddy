@@ -493,6 +493,11 @@
     .rig-dialog-msg { font:var(--fw-regular) var(--fs-label)/1.4 var(--font-sans); color:var(--text-secondary); }
     .rig-dialog-input { height:var(--control-h); padding:0 12px; background:var(--surface); color:var(--text-primary); border:1px solid var(--border-default); border-radius:var(--radius-md); font:var(--fw-regular) var(--fs-body-sm)/1 var(--font-sans); outline:none; }
     .rig-dialog-input:focus { border-color:var(--gold-500); box-shadow:var(--glow-focus); }
+    /* Multi-line inputs (e.g. #feedback-message, #926) share .rig-dialog-input's
+       look but must not inherit its fixed single-line height/padding, or the
+       rows attribute gets squashed to ~1 visible line with text touching the
+       edges. Element-qualified so no single-line control can match. */
+    textarea.rig-dialog-input { height:auto; min-height:calc(var(--control-h) * 2); padding:8px 12px; line-height:1.4; resize:vertical; }
     .rig-dialog-actions { display:flex; justify-content:flex-end; gap:8px; }
 
     /* First-run onboarding welcome (#69) — reuses the .rig-dialog scrim. */
