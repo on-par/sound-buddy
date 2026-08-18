@@ -1158,9 +1158,9 @@ describe("POST /api/ingest (#475)", () => {
       expect(putSpy.mock.calls.some((call) => String(call[0]).startsWith("ingest:"))).toBe(false);
     });
 
-    it("KV fallback on non-2xx GitHub response: 202, event stored in KV with the existing key/ttl, and a status-only console.warn (no message text)", async () => {
+    it("KV fallback on non-2xx GitHub response: 202, event stored in KV with the existing key/ttl, and a status-only console.error (no message text)", async () => {
       const { kv, store, putSpy } = makeKv();
-      const consoleWarnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+      const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
       const fetchSpy = makeFetch(new Response("", { status: 500 }));
       const env = makeEnv(kv, { GITHUB_ISSUES_TOKEN: "ghp_test_token" });
 
@@ -1178,11 +1178,11 @@ describe("POST /api/ingest (#475)", () => {
       const stored = JSON.parse(store.get(ingestPutCall![0] as string)!) as StoredIngestEvent;
       expect(stored.event).toEqual(validFeedback);
 
-      expect(consoleWarnSpy).toHaveBeenCalled();
-      const warnedArgs = consoleWarnSpy.mock.calls.flat().map((arg) => JSON.stringify(arg));
-      expect(warnedArgs.some((s) => s.includes(validFeedback.message))).toBe(false);
+      expect(consoleErrorSpy).toHaveBeenCalled();
+      const errorArgs = consoleErrorSpy.mock.calls.flat().map((arg) => JSON.stringify(arg));
+      expect(errorArgs.some((s) => s.includes(validFeedback.message))).toBe(false);
 
-      consoleWarnSpy.mockRestore();
+      consoleErrorSpy.mockRestore();
     });
 
     it("KV fallback on fetch rejection: same 202 + KV-write behavior as a non-2xx response", async () => {

@@ -514,10 +514,7 @@ export async function handleIngestEvent(
     if (created.ok && event.contactEmail === undefined) {
       return json({ status: "accepted", id }, 202);
     }
-    if (!created.ok) {
-      // Outcome only — never the message, per the file-header security rule.
-      console.warn("feedback issue unavailable — stored in EVENTS_KV instead");
-    }
+    // Failure is already logged by createFeedbackIssue; fall through to the KV fallback below.
   }
 
   await env.EVENTS_KV.put(
