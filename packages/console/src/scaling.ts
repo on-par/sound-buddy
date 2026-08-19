@@ -322,3 +322,44 @@ const EQ_FREQ_SPAN_RATIO = 1000
 export function oscToEqFreqHz(f: number): number {
   return EQ_FREQ_MIN_HZ * EQ_FREQ_SPAN_RATIO ** f
 }
+
+// EQ band gain: the console reports each parametric EQ band's gain as a
+// normalized 0..1 float and displays it in dB over a symmetric -15..+15 dB
+// range, where f = 0.5 is flat (0 dB, the band applying no boost or cut). Like
+// pan and trim and unlike the four minimum-plus-span conversions above, this
+// range has a real midpoint landmark -- flat is the value an engineer looks for
+// -- so the conversion is expressed in the center-offset form. The formula was
+// verified live against the M32R's own /node engineering-unit text during the
+// #848 discovery session (verify_scaling.py, on the
+// docs/848-m32r-console-discovery branch); the measured float/text pairs from
+// that run were not committed as a fixture file, so the tests assert the
+// formula's own output at the boundaries and representative interior points
+// rather than claiming to replay a captured console reading.
+
+// The normalized value the console uses for a flat band (0 dB).
+const OSC_EQ_GAIN_CENTER = 0.5
+
+// Full width of the displayed EQ gain range: -15..+15 dB spans 30 dB. Named
+// separately from the pan and trim spans so a future range correction to one
+// control cannot silently move another.
+const EQ_GAIN_RANGE_SPAN_DB = 30
+
+/**
+ * Converts a raw OSC EQ band gain float (0..1, 0.5 = flat) to the console's
+ * displayed band gain in dB (-15 = maximum cut, 0 = flat, +15 = maximum boost).
+ *
+ * Linear, unlike the frequency conversions: equal steps of travel add equal dB.
+ *
+ * Applies to the raw OSC float on an EQ band's gain parameter. It is NOT for
+ * `ChannelEq.bands[].gain` as produced by `parseChannelStrips`, which comes from
+ * the console's `/ch/NN/eq/N` engineering-unit text line and is already in dB --
+ * converting that value again would double-convert. This mirrors the same caveat
+ * on `oscToEqFreqHz` and `ChannelEq.bands[].freq`.
+ *
+ * Total and unrounded, like every conversion above: the value is neither clamped
+ * nor rounded, so a caller that needs the console's rounded dB display rounds at
+ * the display edge.
+ */
+export function oscToEqGainDb(f: number): number {
+  return (f - OSC_EQ_GAIN_CENTER) * EQ_GAIN_RANGE_SPAN_DB
+}
