@@ -3,6 +3,9 @@ import { describe, it, expect } from 'vitest'
 import { diffScenes, parseScene } from './index.js'
 import type { Scene, SceneChange } from '@sound-buddy/shared'
 
+const CAPTURE_PATH = new URL('../../console/src/capture-2026-08-16.scn', import.meta.url)
+const CAPTURE = readFileSync(CAPTURE_PATH, 'utf8')
+
 function makeScene(overrides: Partial<Scene> = {}): Scene {
   return {
     name: 'Test Scene',
@@ -163,7 +166,7 @@ describe('diffScenes', () => {
     expect(result.bySection.main).toEqual([])
   })
 
-  it('self-diffs the committed real-console capture with zero changes (#887)', () => {
+  it('self-diffs the committed real-console capture with zero changes (#887, #893)', () => {
     const content = readFileSync(
       new URL('../../console/src/capture-2026-08-16.scn', import.meta.url),
       'utf8',
@@ -172,6 +175,9 @@ describe('diffScenes', () => {
     const result = diffScenes(scene, scene)
     expect(result.changes).toEqual([])
     expect(result.summary).toBe('No differences found')
+    expect(result.bySection.channels).toEqual([])
+    expect(result.bySection.dcas).toEqual([])
+    expect(result.bySection.main).toEqual([])
   })
 
   it('treats two NaN faders as equal, not a change (#887)', () => {
@@ -221,6 +227,29 @@ describe('diffScenes', () => {
       path: 'channels[0].mix.fader',
       from: Number.NEGATIVE_INFINITY,
       to: -5,
+    })
+  })
+
+  it('still detects a genuine fader move against the real-console capture (#893)', () => {
+    const a = parseScene(CAPTURE)
+    const b = parseScene(CAPTURE)
+    const from = a.channels[4].mix.fader
+    b.channels[4].mix.fader = from - 3
+    b.dcas[7].level = a.dcas[7].level + 1
+
+    const result = diffScenes(a, b)
+    expect(result.changes).toHaveLength(2)
+
+    const faderChange = result.bySection.channels.find(
+      (c: SceneChange) => c.path === 'channels[4].mix.fader',
+    )
+    expect(faderChange).toMatchObject({ path: 'channels[4].mix.fader', from, to: from - 3 })
+
+    const dcaChange = result.bySection.dcas.find((c: SceneChange) => c.path === 'dcas[7].level')
+    expect(dcaChange).toMatchObject({
+      path: 'dcas[7].level',
+      from: a.dcas[7].level,
+      to: a.dcas[7].level + 1,
     })
   })
 })

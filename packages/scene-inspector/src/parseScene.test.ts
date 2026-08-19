@@ -4,6 +4,9 @@ import { parseScene } from './index.js'
 
 const VALID_HEADER = '#4.0# "TPC Sunday" "" %000000000 1'
 
+const CAPTURE_PATH = new URL('../../console/src/capture-2026-08-16.scn', import.meta.url)
+const CAPTURE = readFileSync(CAPTURE_PATH, 'utf8')
+
 function assertNoNaN(value: unknown, path: string): void {
   if (typeof value === 'number') {
     expect(Number.isNaN(value), `${path} was NaN`).toBe(false)
@@ -147,5 +150,58 @@ describe('parseScene', () => {
       .filter((c) => c.fader === Number.NEGATIVE_INFINITY)
       .map((c) => c.index)
     expect(infiniteChannels).toEqual([1, 13, 14, 15, 16, 23, 24])
+  })
+
+  it('parses the committed real-console capture header as version 2.7 (#893)', () => {
+    const scene = parseScene(CAPTURE)
+    expect(scene.version).toBe('2.7')
+    expect(scene.name).toBe('TPC M32R A capture')
+  })
+
+  it('parses all 8 DCAs from the committed real-console capture (#893)', () => {
+    const scene = parseScene(CAPTURE)
+    expect(scene.dcas).toHaveLength(8)
+    expect(scene.dcas.map((d) => d.name)).toEqual([
+      'Vocals',
+      'Vocal FX',
+      'Band',
+      'Drums',
+      'Tracks',
+      'Video',
+      'Speaking',
+      'Jams',
+    ])
+    expect(scene.dcas.map((d) => d.on)).toEqual([
+      false, false, false, false, false, true, true, true,
+    ])
+    ;[0, -9.1, -0.4, -0.3, 0.1, 0, -0.2, -21.4].forEach((expected, i) =>
+      expect(scene.dcas[i].level).toBeCloseTo(expected, 5),
+    )
+  })
+
+  it('parses real channel names from the committed capture (#893)', () => {
+    const scene = parseScene(CAPTURE)
+    expect(scene.channels[0].name).toBe('')
+    expect(scene.channels[1].name).toBe('Vox 1')
+    expect(scene.channels[24].name).toBe('Kick')
+    expect(scene.channels[31].name).toBe('MD 2')
+    // Channels 01, 13, 14, 15 are blank in the capture; the remaining 28 are named.
+    expect(scene.channels.filter((c) => c.name !== '').length).toBe(28)
+  })
+
+  // The M32R writes some EQ frequencies in k-shorthand (`1k09`, `2k43`,
+  // `10k74`) alongside plain Hz (`328.1`). parseScene's eq regex only accepts
+  // `(-oo|[\d+\-.]+)` for the freq token, so a k-shorthand line never matches
+  // and that band is silently skipped — channel 01 parses only 1 of its 4 EQ
+  // bands. This is a known gap (#893 follow-up); documented here rather than
+  // fixed, since fixing it changes parseScene's output contract.
+  it('documents that k-shorthand EQ frequencies from the console are not yet parsed (#893)', () => {
+    const scene = parseScene(CAPTURE)
+    expect(scene.channels[0].eq.bands).toHaveLength(1)
+    expect(scene.channels[0].eq.bands[0]).toMatchObject({ type: 'PEQ', gain: -6.25 })
+    expect(scene.channels[0].eq.bands[0].freq).toBeCloseTo(328.1, 5)
+    scene.channels.forEach((ch) =>
+      ch.eq.bands.forEach((b) => expect(Number.isFinite(b.freq)).toBe(true)),
+    )
   })
 })
