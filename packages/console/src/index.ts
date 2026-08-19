@@ -242,3 +242,13 @@ export {
   assembleSceneFile,
   parseNodeReplyLine,
 } from './scene-capture.js'
+export type { StoredSceneEntry } from './scene-inventory.js'
+export {
+  SceneInventoryError,
+  SCENE_INVENTORY_SLOT_COUNT,
+  SCENE_INVENTORY_PATH_PREFIX,
+  SCENE_INVENTORY_NODE_PATHS,
+  SCENE_CONTENTS_UNREADABLE_NOTICE,
+  buildSceneInventoryPath,
+  parseStoredSceneLine,
+} from './scene-inventory.js'
