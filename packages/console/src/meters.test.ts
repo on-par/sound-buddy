@@ -1,7 +1,14 @@
 import { describe, it, expect } from 'vitest'
 import { decodeOscMessage, encodeOscMessage, OscError } from './index.js'
 import type { DecodedOscMessage } from './index.js'
-import { decodeMeterBlob, decodeMeters1Blob, decodeMeters1Message } from './meters.js'
+import {
+  decodeMeterBlob,
+  decodeMeters1Blob,
+  decodeMeters1Message,
+  buildMetersSubscribeMessage,
+  meterFrameIntervalMs,
+  METERS_1_ADDRESS,
+} from './meters.js'
 
 const METERS_1_VALUE_COUNT = 96
 const METERS_1_BLOB_BYTES = 4 + METERS_1_VALUE_COUNT * 4
@@ -144,6 +151,82 @@ describe('decodeMeters1Message', () => {
     }
     expect(() => decodeMeters1Message(message)).toThrow(OscError)
     expect(() => decodeMeters1Message(message)).toThrow(/blob/i)
+  })
+})
+
+describe('buildMetersSubscribeMessage — AC: default subscribe streams at ~20Hz', () => {
+  it('builds the bare ,s form when timeFactor is omitted', () => {
+    const message = buildMetersSubscribeMessage(METERS_1_ADDRESS)
+    expect(message.address).toBe('/meters')
+    expect(message.args).toEqual([{ type: 's', value: METERS_1_ADDRESS }])
+
+    const decoded = decodeOscMessage(encodeOscMessage(message))
+    expect(decoded.typeTags).toBe(',s')
+    expect(decoded.args).toEqual([{ type: 's', value: METERS_1_ADDRESS }])
+  })
+})
+
+describe('buildMetersSubscribeMessage — AC: throttle form is always ,siii with tf last', () => {
+  it.each([1, 20, 40, 99])('produces exactly ,siii with the time factor as the last int (tf=%d)', (tf) => {
+    const message = buildMetersSubscribeMessage(METERS_1_ADDRESS, tf)
+    const decoded = decodeOscMessage(encodeOscMessage(message))
+    expect(decoded.typeTags).toBe(',siii')
+    expect(decoded.args).toEqual([
+      { type: 's', value: METERS_1_ADDRESS },
+      { type: 'i', value: 0 },
+      { type: 'i', value: 0 },
+      { type: 'i', value: tf },
+    ])
+  })
+
+  it('never produces the ,si form (single-int chn_meter_id form) at any valid tf', () => {
+    for (const tf of [1, 20, 40, 99]) {
+      const decoded = decodeOscMessage(encodeOscMessage(buildMetersSubscribeMessage(METERS_1_ADDRESS, tf)))
+      expect(decoded.typeTags).not.toBe(',si')
+    }
+  })
+
+  it('does not throw the read-only guard when encoding the throttle form', () => {
+    expect(() => encodeOscMessage(buildMetersSubscribeMessage(METERS_1_ADDRESS, 20))).not.toThrow()
+  })
+})
+
+describe('buildMetersSubscribeMessage — AC: boundaries and errors', () => {
+  it.each([1, 99])('builds successfully at the tf boundary %d', (tf) => {
+    expect(() => buildMetersSubscribeMessage(METERS_1_ADDRESS, tf)).not.toThrow()
+  })
+
+  it.each([0, 100, -1, 1.5, NaN])('throws OscError naming the 1..99 range for invalid tf %s', (tf) => {
+    expect(() => buildMetersSubscribeMessage(METERS_1_ADDRESS, tf)).toThrow(OscError)
+    expect(() => buildMetersSubscribeMessage(METERS_1_ADDRESS, tf)).toThrow(/1\.\.99/)
+  })
+
+  it('throws OscError when the meter block does not name a meter set', () => {
+    expect(() => buildMetersSubscribeMessage('/config/1', 20)).toThrow(OscError)
+    expect(() => buildMetersSubscribeMessage('/config/1', 20)).toThrow(/meter set/)
+  })
+})
+
+describe('meterFrameIntervalMs — AC: interval scales with time factor', () => {
+  it('is 50ms when timeFactor is omitted (~20 Hz default)', () => {
+    expect(meterFrameIntervalMs()).toBe(50)
+  })
+
+  it('is 1000ms at tf=20 (~1 Hz)', () => {
+    expect(meterFrameIntervalMs(20)).toBe(1000)
+  })
+
+  it('is 2000ms at tf=40 (~0.5 Hz)', () => {
+    expect(meterFrameIntervalMs(40)).toBe(2000)
+  })
+
+  it('is 4950ms at tf=99', () => {
+    expect(meterFrameIntervalMs(99)).toBe(4950)
+  })
+
+  it('throws OscError for an invalid time factor', () => {
+    expect(() => meterFrameIntervalMs(0)).toThrow(OscError)
+    expect(() => meterFrameIntervalMs(0)).toThrow(/1\.\.99/)
   })
 })
 

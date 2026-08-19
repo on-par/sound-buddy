@@ -222,4 +222,14 @@ export {
   oscToLevelDb,
 } from './scaling.js'
 export type { Meters1Snapshot } from './meters.js'
-export { decodeMeterBlob, decodeMeters1Blob, decodeMeters1Message } from './meters.js'
+export {
+  decodeMeterBlob,
+  decodeMeters1Blob,
+  decodeMeters1Message,
+  buildMetersSubscribeMessage,
+  meterFrameIntervalMs,
+  METERS_1_ADDRESS,
+  METER_TIME_FACTOR_INTERVAL_MS,
+  METER_TIME_FACTOR_MIN,
+  METER_TIME_FACTOR_MAX,
+} from './meters.js'
