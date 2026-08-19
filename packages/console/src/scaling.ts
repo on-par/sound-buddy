@@ -50,3 +50,29 @@ const PAN_RANGE_SPAN = 200
 export function oscToPan(f: number): number {
   return (f - OSC_PAN_CENTER) * PAN_RANGE_SPAN
 }
+
+// Preamp trim: the console reports channel trim gain as a normalized 0..1
+// float and displays it in dB over a -18..+18 dB range, with 0.5 as unity
+// (0 dB). The formula below was verified live against the M32R's own /node
+// engineering-unit text during the #848 discovery session (verify_scaling.py,
+// on the docs/848-m32r-console-discovery branch); the measured float/text
+// pairs from that run were not committed as a fixture file, so the tests
+// assert the formula's own output at the boundaries and representative
+// interior points rather than claiming to replay a captured console reading.
+
+// The normalized value the console uses for unity trim (0 dB).
+const OSC_TRIM_CENTER = 0.5
+
+// Full width of the displayed trim range: -18..+18 dB spans 36 dB.
+const TRIM_RANGE_SPAN = 36
+
+/**
+ * Converts a raw OSC preamp trim float (0..1, 0.5 = unity) to the console's
+ * displayed trim gain in dB (-18 = minimum, 0 = unity, +18 = maximum).
+ *
+ * Linear and total: the value is neither clamped nor rounded, so a caller that
+ * needs the console's rounded display rounds at the display edge.
+ */
+export function oscToTrimDb(f: number): number {
+  return (f - OSC_TRIM_CENTER) * TRIM_RANGE_SPAN
+}
