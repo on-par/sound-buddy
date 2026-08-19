@@ -10,7 +10,10 @@ import { fileURLToPath } from 'node:url'
 // `*.local.scn` and gitignored. This test is the enforcement.
 
 const REPO_ROOT = fileURLToPath(new URL('../../../', import.meta.url))
-const SCRUBBED_FIXTURE = 'packages/console/src/capture-2026-08-16.scn'
+const SCRUBBED_FIXTURES = [
+  'packages/console/src/capture-2026-08-16.scn',
+  'packages/console/src/capture-2026-08-16-after.scn',
+]
 const RAW_CAPTURE_PATTERN = '*.local.scn'
 
 function trackedFiles(): string[] {
@@ -38,10 +41,10 @@ describe('console capture fixture hygiene (#893)', () => {
     ).toContain(RAW_CAPTURE_PATTERN)
   })
 
-  it('keeps the scrubbed real-console capture committed', () => {
+  it.each(SCRUBBED_FIXTURES)('keeps the scrubbed real-console capture %s committed', (fixture) => {
     expect(
       trackedFiles(),
-      `expected the scrubbed capture at ${SCRUBBED_FIXTURE} to remain tracked`,
-    ).toContain(SCRUBBED_FIXTURE)
+      `expected the scrubbed capture at ${fixture} to remain tracked`,
+    ).toContain(fixture)
   })
 })
