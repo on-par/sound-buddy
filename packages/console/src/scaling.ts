@@ -149,3 +149,42 @@ const GATE_THRESHOLD_SPAN_DB = 80
 export function oscToGateThresholdDb(f: number): number {
   return GATE_THRESHOLD_MIN_DB + f * GATE_THRESHOLD_SPAN_DB
 }
+
+// Gate range: the console reports the channel gate's range -- how far the gate
+// attenuates the signal while closed -- as a normalized 0..1 float and displays
+// it in dB over a 3..60 dB range. Unlike the gate threshold above, the bottom
+// of this range is not zero: the shallowest gate the console will apply still
+// attenuates by 3 dB. The formula below was verified live against the M32R's
+// own /node engineering-unit text during the #848 discovery session
+// (verify_scaling.py, on the docs/848-m32r-console-discovery branch); the
+// measured float/text pairs from that run were not committed as a fixture file,
+// so the tests assert the formula's own output at the boundaries and
+// representative interior points rather than claiming to replay a captured
+// console reading.
+//
+// Like the headamp and gate-threshold ranges and unlike pan and trim, this
+// range has no meaningful midpoint landmark, so the conversion is expressed as
+// minimum-plus-span rather than the center-offset form those two use.
+
+// The displayed range at the bottom of the gate range control (f = 0).
+const GATE_RANGE_MIN_DB = 3
+
+// Full width of the displayed gate range: 3..60 spans 57 dB.
+const GATE_RANGE_SPAN_DB = 57
+
+/**
+ * Converts a raw OSC gate range float (0..1) to the console's displayed gate
+ * range in dB (3 = minimum attenuation, 60 = maximum attenuation).
+ *
+ * Applies to the raw OSC float on the channel gate's range parameter. It is
+ * NOT for `ChannelGate.range` as produced by `parseChannelStrips`, which comes
+ * from the console's `/ch/NN/gate` engineering-unit text line and is already in
+ * dB -- converting that value again would double-convert. This mirrors the same
+ * caveat on `oscToGateThresholdDb` and `ChannelGate.thr`.
+ *
+ * Linear and total: the value is neither clamped nor rounded, so a caller that
+ * needs the console's rounded display rounds at the display edge.
+ */
+export function oscToGateRangeDb(f: number): number {
+  return GATE_RANGE_MIN_DB + f * GATE_RANGE_SPAN_DB
+}
