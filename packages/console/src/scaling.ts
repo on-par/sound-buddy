@@ -276,3 +276,49 @@ const HPF_SPAN_RATIO = 20
 export function oscToHpfHz(f: number): number {
   return HPF_MIN_HZ * HPF_SPAN_RATIO ** f
 }
+
+// EQ band frequency: the console reports each parametric EQ band's centre
+// frequency as a normalized 0..1 float and displays it in Hz over the full
+// 20 Hz..20 kHz audio sweep. Like the HPF cutoff above and unlike every linear
+// conversion before it, this control is logarithmic -- a constant ratio per
+// unit of travel, which is how a frequency control has to behave to feel even
+// under the finger -- so f = 0.5 lands near 632 Hz rather than at the
+// arithmetic midpoint of 10010 Hz. The formula was verified live against the
+// M32R's own /node engineering-unit text during the #848 discovery session
+// (verify_scaling.py, on the docs/848-m32r-console-discovery branch); the
+// measured float/text pairs from that run were not committed as a fixture
+// file, so the tests assert the formula's own output at the boundaries and
+// representative interior points rather than claiming to replay a captured
+// console reading.
+
+// The displayed centre frequency at the bottom of the EQ sweep (f = 0).
+const EQ_FREQ_MIN_HZ = 20
+
+// The multiplier across the full sweep: 20 Hz * 1000 = 20 kHz at f = 1. Named
+// separately from HPF_SPAN_RATIO (and from EQ_FREQ_MIN_HZ) so a future range
+// correction to one control cannot silently move the other -- the two sweeps
+// sharing a 20 Hz floor is a coincidence, not a shared quantity.
+const EQ_FREQ_SPAN_RATIO = 1000
+
+/**
+ * Converts a raw OSC EQ band frequency float (0..1) to the console's displayed
+ * band centre frequency in Hz (20 = minimum, 20000 = maximum).
+ *
+ * Logarithmic, not linear: each equal step of travel multiplies the centre
+ * frequency by a constant ratio, so the sweep midpoint is ~632.5 Hz, not
+ * 10010 Hz.
+ *
+ * Applies to the raw OSC float on an EQ band's frequency parameter. It is NOT
+ * for `ChannelEq.bands[].freq` as produced by `parseChannelStrips`, which comes
+ * from the console's `/ch/NN/eq/N` engineering-unit text line and is already a
+ * display string in Hz (e.g. "2k5") -- converting that value again would
+ * double-convert. This mirrors the same caveat on `oscToHpfHz` and
+ * `ChannelStrip.preamp.hpf.freq`.
+ *
+ * Total and unrounded, like every conversion above: the value is neither
+ * clamped nor rounded, so a caller that needs the console's Hz display (which
+ * abbreviates kilohertz) formats at the display edge.
+ */
+export function oscToEqFreqHz(f: number): number {
+  return EQ_FREQ_MIN_HZ * EQ_FREQ_SPAN_RATIO ** f
+}

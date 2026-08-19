@@ -8,6 +8,7 @@ import {
   oscToGateRangeDb,
   oscToDynamicsThresholdDb,
   oscToHpfHz,
+  oscToEqFreqHz,
 } from './scaling.js'
 
 interface OnStateFixture {
@@ -427,5 +428,64 @@ describe('oscToHpfHz -- channel HPF cutoff conversion', () => {
     const quarterStepRatio = oscToHpfHz(0.5) / oscToHpfHz(0.25)
     const nextStepRatio = oscToHpfHz(0.75) / oscToHpfHz(0.5)
     expect(quarterStepRatio).toBeCloseTo(nextStepRatio, HPF_PRECISION)
+  })
+})
+
+interface EqFreqFixture {
+  label: string // human label for the point on the sweep
+  raw: number // the raw OSC float, 0..1
+  expected: number // the console's displayed band centre in Hz, 20..20000
+}
+
+// Boundary + representative interior points. Asserted with toBeCloseTo, not
+// toBe: the constitution forbids floating-point comparison without epsilon
+// tolerance, so one rule applies uniformly to every row rather than only the
+// rows where exactness happens to hold. The interior expectations are
+// irrational (20 * 1000 ** 0.25 and friends), so they are written to more
+// digits than EQ_FREQ_PRECISION asserts.
+const EQ_FREQ_FIXTURES: EqFreqFixture[] = [
+  { label: 'minimum centre', raw: 0, expected: 20 },
+  { label: 'quarter travel', raw: 0.25, expected: 112.46826503806983 },
+  { label: 'sweep midpoint', raw: 0.5, expected: 632.4555320336758 },
+  { label: 'three-quarter travel', raw: 0.75, expected: 3556.5588200778457 },
+  { label: 'maximum centre', raw: 1, expected: 20000 },
+]
+
+const EQ_FREQ_PRECISION = 6 // decimal places for toBeCloseTo
+
+// The arithmetic midpoint of 20..20000 Hz -- what a linear sweep would return
+// at f = 0.5, and what this logarithmic conversion must NOT return.
+const EQ_FREQ_LINEAR_MIDPOINT_HZ = 10010
+
+describe('oscToEqFreqHz -- EQ band centre frequency conversion', () => {
+  for (const f of EQ_FREQ_FIXTURES) {
+    it(`converts ${f.label} eq freq raw ${f.raw} to ${f.expected} Hz`, () => {
+      expect(oscToEqFreqHz(f.raw)).toBeCloseTo(f.expected, EQ_FREQ_PRECISION)
+    })
+  }
+
+  it('converts the minimum eq freq value to 20 Hz (AC1)', () => {
+    expect(oscToEqFreqHz(0)).toBeCloseTo(20, EQ_FREQ_PRECISION)
+  })
+
+  it('holds the eq freq range boundary at 20000 Hz (AC2)', () => {
+    expect(oscToEqFreqHz(1)).toBeCloseTo(20000, EQ_FREQ_PRECISION)
+  })
+
+  it('is monotonically increasing across the eq freq sweep', () => {
+    const centres = EQ_FREQ_FIXTURES.map((f) => oscToEqFreqHz(f.raw))
+    for (let i = 1; i < centres.length; i++) {
+      expect(centres[i]).toBeGreaterThan(centres[i - 1])
+    }
+  })
+
+  it('sweeps logarithmically, not linearly -- the midpoint is well below the arithmetic mean', () => {
+    expect(oscToEqFreqHz(0.5)).toBeLessThan(EQ_FREQ_LINEAR_MIDPOINT_HZ)
+  })
+
+  it('spans a constant ratio per unit of travel -- equal steps multiply, not add', () => {
+    const quarterStepRatio = oscToEqFreqHz(0.5) / oscToEqFreqHz(0.25)
+    const nextStepRatio = oscToEqFreqHz(0.75) / oscToEqFreqHz(0.5)
+    expect(quarterStepRatio).toBeCloseTo(nextStepRatio, EQ_FREQ_PRECISION)
   })
 })
