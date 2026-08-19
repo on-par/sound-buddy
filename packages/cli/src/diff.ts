@@ -12,6 +12,14 @@ interface DiffResult {
   exitCode: number
 }
 
+/** A fader/level at the M32R's -inf position (`-oo` in the .scn), see #887. */
+const MINUS_INFINITY_LABEL = '-∞'
+
+function formatChangeValue(v: unknown): string {
+  if (v === Number.NEGATIVE_INFINITY) return MINUS_INFINITY_LABEL
+  return String(v)
+}
+
 function formatHumanReadable(diff: SceneDiff): string {
   if (diff.changes.length === 0) {
     return 'No differences found\n'
@@ -23,8 +31,8 @@ function formatHumanReadable(diff: SceneDiff): string {
     if (changes.length === 0) return
     lines.push(`${section}:`)
     for (const c of changes) {
-      const from = typeof c.from === 'boolean' ? String(c.from) : String(c.from)
-      const to = typeof c.to === 'boolean' ? String(c.to) : String(c.to)
+      const from = formatChangeValue(c.from)
+      const to = formatChangeValue(c.to)
       lines.push(`  ${c.label}: ${from} → ${to}`)
     }
     lines.push('')

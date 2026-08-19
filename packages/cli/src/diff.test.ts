@@ -155,4 +155,26 @@ describe('runDiff', () => {
     expect(stdout).toBe('')
     expect(stderr).toBe('Error: a plain string failure')
   })
+
+  it('renders -Infinity as -∞ rather than the literal string "-Infinity" (#887)', async () => {
+    mockParseScene.mockReturnValueOnce(mockSceneA).mockReturnValueOnce(mockSceneB)
+    mockDiffScenes.mockReturnValue({
+      summary: '1 change detected',
+      changes: [
+        { path: 'channels[0].mix.fader', label: 'Vox 1 — fader', from: Number.NEGATIVE_INFINITY, to: -5 },
+      ],
+      bySection: {
+        channels: [
+          { path: 'channels[0].mix.fader', label: 'Vox 1 — fader', from: Number.NEGATIVE_INFINITY, to: -5 },
+        ],
+        dcas: [],
+        main: [],
+      },
+    })
+
+    const { stdout } = await runDiff('scene-a.scn', 'scene-b.scn', {})
+
+    expect(stdout).toContain('-∞ → -5')
+    expect(stdout).not.toContain('-Infinity')
+  })
 })
