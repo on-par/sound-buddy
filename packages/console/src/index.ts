@@ -221,3 +221,5 @@ export {
   oscToEqQ,
   oscToLevelDb,
 } from './scaling.js'
+export type { Meters1Snapshot } from './meters.js'
+export { decodeMeterBlob, decodeMeters1Blob, decodeMeters1Message } from './meters.js'
