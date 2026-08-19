@@ -207,4 +207,4 @@ export {
   buildHeadampGainPath,
   buildDcaFaderPath,
 } from './channel-strip.js'
-export { oscToOnState, oscToPan, oscToTrimDb } from './scaling.js'
+export { oscToOnState, oscToPan, oscToTrimDb, oscToHeadampGainDb } from './scaling.js'

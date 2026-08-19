@@ -76,3 +76,39 @@ const TRIM_RANGE_SPAN = 36
 export function oscToTrimDb(f: number): number {
   return (f - OSC_TRIM_CENTER) * TRIM_RANGE_SPAN
 }
+
+// Headamp gain: the console reports the physical XLR mic preamp's analog gain
+// as a normalized 0..1 float on `/headamp/NNN/gain` and displays it in dB over
+// a -12..+60 dB range. This is the hardware preamp stage, addressed per
+// physical input and independent of channel routing -- distinct from the
+// per-channel digital trim above, which has its own narrower range. The
+// formula below was verified live against the M32R's own /node
+// engineering-unit text during the #848 discovery session (verify_scaling.py,
+// on the docs/848-m32r-console-discovery branch); the measured float/text
+// pairs from that run were not committed as a fixture file, so the tests
+// assert the formula's own output at the boundaries and representative
+// interior points rather than claiming to replay a captured console reading.
+//
+// Unlike pan and trim, this range is asymmetric -- 0 dB sits at f = 1/6, not at
+// the midpoint -- so the conversion is expressed as minimum-plus-span rather
+// than the center-offset form the two conversions above use.
+
+// The displayed gain at the bottom of the headamp range (f = 0).
+const HEADAMP_GAIN_MIN_DB = -12
+
+// Full width of the displayed headamp range: -12..+60 dB spans 72 dB.
+const HEADAMP_GAIN_SPAN_DB = 72
+
+/**
+ * Converts a raw OSC headamp gain float (0..1) to the console's displayed mic
+ * preamp gain in dB (-12 = minimum, +60 = maximum).
+ *
+ * Applies to the physical headamp (`/headamp/NNN/gain`), not to per-channel
+ * trim -- see `oscToTrimDb` for the digital channel stage.
+ *
+ * Linear and total: the value is neither clamped nor rounded, so a caller that
+ * needs the console's rounded display rounds at the display edge.
+ */
+export function oscToHeadampGainDb(f: number): number {
+  return HEADAMP_GAIN_MIN_DB + f * HEADAMP_GAIN_SPAN_DB
+}
