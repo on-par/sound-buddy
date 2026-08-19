@@ -746,3 +746,82 @@ describe('oscToLevelDb -- fader and send level conversion', () => {
     expect(floorSlope).toBeGreaterThan(lowerSlope)
   })
 })
+
+// Each in-scope segment of the fader taper as the straight line the console
+// applies to it: dB = raw * slopeDb + interceptDb. These mirror the
+// module-private slope and intercept constants in scaling.ts on purpose --
+// a test that re-derived them from the implementation could not detect the
+// implementation changing, because it would pass for any slopes at all. The
+// oscToLevelDb assertions below tie the two together, so a slope edit in
+// scaling.ts that is not mirrored here fails this suite rather than drifting
+// out of sight.
+interface LevelSegmentLine {
+  label: string // human name for the segment, matching scaling.ts's comments
+  slopeDb: number // dB added per unit of travel on this segment
+  interceptDb: number // dB this segment's line would give at raw = 0
+}
+
+const LEVEL_FLOOR_LINE: LevelSegmentLine = { label: 'floor', slopeDb: 480, interceptDb: -90 }
+const LEVEL_LOWER_LINE: LevelSegmentLine = { label: 'lower', slopeDb: 160, interceptDb: -70 }
+const LEVEL_MID_LINE: LevelSegmentLine = { label: 'mid', slopeDb: 80, interceptDb: -50 }
+const LEVEL_UPPER_LINE: LevelSegmentLine = { label: 'upper', slopeDb: 40, interceptDb: -30 }
+
+// Evaluates one segment's line at a raw value, ignoring which segment the
+// console would actually select there -- that is the point: continuity means
+// asking a segment for a value just outside its own domain and getting the
+// neighbouring segment's answer.
+function levelSegmentDb(line: LevelSegmentLine, raw: number): number {
+  return raw * line.slopeDb + line.interceptDb
+}
+
+interface LevelBoundaryFixture {
+  raw: number // the breakpoint where the taper switches lines
+  below: LevelSegmentLine // the segment governing travel just under the breakpoint
+  above: LevelSegmentLine // the segment governing the breakpoint itself and above
+  expected: number // the dB both lines must produce there
+}
+
+const LEVEL_BOUNDARY_FIXTURES: LevelBoundaryFixture[] = [
+  { raw: 0.5, below: LEVEL_MID_LINE, above: LEVEL_UPPER_LINE, expected: -10 },
+  { raw: 0.25, below: LEVEL_LOWER_LINE, above: LEVEL_MID_LINE, expected: -30 },
+  { raw: 0.0625, below: LEVEL_FLOOR_LINE, above: LEVEL_LOWER_LINE, expected: -60 },
+]
+
+// How far below a breakpoint the one-sided approach samples. Small enough that
+// the segment's own slope contributes a negligible dB change, large enough to
+// stay well clear of float64 spacing at these magnitudes.
+const LEVEL_BOUNDARY_APPROACH = 1e-6
+
+// The largest dB change tolerated between the sample just below a breakpoint
+// and the breakpoint itself. The steepest segment is the floor's 480 dB per
+// unit, so an honest curve moves at most 480 * 1e-6 = 0.00048 dB across the
+// approach step; anything larger is a genuine step in the display, not slope.
+const LEVEL_MAX_BOUNDARY_JUMP_DB = 0.001
+
+describe('oscToLevelDb -- segment boundary continuity', () => {
+  for (const f of LEVEL_BOUNDARY_FIXTURES) {
+    it(`both segment formulas agree at the ${f.raw} boundary -- ${f.below.label} meets ${f.above.label}`, () => {
+      expect(levelSegmentDb(f.below, f.raw)).toBeCloseTo(
+        levelSegmentDb(f.above, f.raw),
+        LEVEL_PRECISION,
+      )
+    })
+
+    it(`both segment formulas give ${f.expected} dB at the ${f.raw} boundary`, () => {
+      expect(levelSegmentDb(f.below, f.raw)).toBeCloseTo(f.expected, LEVEL_PRECISION)
+      expect(levelSegmentDb(f.above, f.raw)).toBeCloseTo(f.expected, LEVEL_PRECISION)
+    })
+
+    it(`oscToLevelDb returns the shared value at the ${f.raw} boundary -- the shipped taper matches both lines`, () => {
+      expect(oscToLevelDb(f.raw)).toBeCloseTo(levelSegmentDb(f.below, f.raw), LEVEL_PRECISION)
+      expect(oscToLevelDb(f.raw)).toBeCloseTo(levelSegmentDb(f.above, f.raw), LEVEL_PRECISION)
+    })
+
+    it(`shows no visible step approaching the ${f.raw} boundary from below`, () => {
+      const justBelow = oscToLevelDb(f.raw - LEVEL_BOUNDARY_APPROACH)
+      const atBoundary = oscToLevelDb(f.raw)
+      expect(Math.abs(atBoundary - justBelow)).toBeLessThan(LEVEL_MAX_BOUNDARY_JUMP_DB)
+      expect(atBoundary).toBeGreaterThan(justBelow)
+    })
+  }
+})
