@@ -213,4 +213,5 @@ export {
   oscToTrimDb,
   oscToHeadampGainDb,
   oscToGateThresholdDb,
+  oscToGateRangeDb,
 } from './scaling.js'
