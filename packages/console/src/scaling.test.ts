@@ -10,6 +10,7 @@ import {
   oscToHpfHz,
   oscToEqFreqHz,
   oscToEqGainDb,
+  oscToEqQ,
 } from './scaling.js'
 
 interface OnStateFixture {
@@ -542,5 +543,64 @@ describe('oscToEqGainDb -- EQ band gain conversion', () => {
 
   it('is symmetric about the flat centre -- equal cut and boost at mirrored inputs', () => {
     expect(oscToEqGainDb(0.25)).toBeCloseTo(-oscToEqGainDb(0.75), EQ_GAIN_PRECISION)
+  })
+})
+
+interface EqQFixture {
+  label: string // human label for the point on the range
+  raw: number // the raw OSC float, 0..1
+  expected: number // the console's displayed band Q, 10..0.3 (unitless)
+}
+
+// Boundary + representative interior points. Interior values are the formula's
+// own output at quarter-travel steps, carried to enough places for the
+// toBeCloseTo tolerance below. Asserted with toBeCloseTo, not toBe: the
+// constitution forbids floating-point comparison without epsilon tolerance, so
+// one rule applies uniformly to every row rather than only the rows where
+// exactness happens to hold.
+const EQ_Q_FIXTURES: EqQFixture[] = [
+  { label: 'widest bandwidth', raw: 0, expected: 10 },
+  { label: 'quarter travel', raw: 0.25, expected: 4.161791 },
+  { label: 'sweep midpoint', raw: 0.5, expected: 1.732051 },
+  { label: 'three-quarter travel', raw: 0.75, expected: 0.720843 },
+  { label: 'narrowest bandwidth', raw: 1, expected: 0.3 },
+]
+
+const EQ_Q_PRECISION = 5 // decimal places for toBeCloseTo
+
+// The arithmetic midpoint of the 10..0.3 range -- what a linear sweep would
+// return at f = 0.5, and what this exponential conversion must NOT return.
+const EQ_Q_LINEAR_MIDPOINT = 5.15
+
+describe('oscToEqQ -- EQ band eq q conversion', () => {
+  for (const f of EQ_Q_FIXTURES) {
+    it(`converts ${f.label} eq q raw ${f.raw} to Q ${f.expected}`, () => {
+      expect(oscToEqQ(f.raw)).toBeCloseTo(f.expected, EQ_Q_PRECISION)
+    })
+  }
+
+  it('converts the minimum eq q value to Q 10 (AC1)', () => {
+    expect(oscToEqQ(0)).toBeCloseTo(10, EQ_Q_PRECISION)
+  })
+
+  it('holds the eq q range boundary at Q 0.3 (AC2)', () => {
+    expect(oscToEqQ(1)).toBeCloseTo(0.3, EQ_Q_PRECISION)
+  })
+
+  it('is monotonically decreasing across the eq q sweep -- more travel means narrower', () => {
+    const qs = EQ_Q_FIXTURES.map((f) => oscToEqQ(f.raw))
+    for (let i = 1; i < qs.length; i++) {
+      expect(qs[i]).toBeLessThan(qs[i - 1])
+    }
+  })
+
+  it('sweeps exponentially, not linearly -- the eq q midpoint is well below the arithmetic mean', () => {
+    expect(oscToEqQ(0.5)).toBeLessThan(EQ_Q_LINEAR_MIDPOINT)
+  })
+
+  it('divides by a constant ratio per unit of eq q travel -- equal steps multiply, not subtract', () => {
+    const quarterStepRatio = oscToEqQ(0.5) / oscToEqQ(0.25)
+    const nextStepRatio = oscToEqQ(0.75) / oscToEqQ(0.5)
+    expect(quarterStepRatio).toBeCloseTo(nextStepRatio, EQ_Q_PRECISION)
   })
 })
