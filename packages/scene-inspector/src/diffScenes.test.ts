@@ -1,5 +1,6 @@
+import { readFileSync } from 'node:fs'
 import { describe, it, expect } from 'vitest'
-import { diffScenes } from './index.js'
+import { diffScenes, parseScene } from './index.js'
 import type { Scene, SceneChange } from '@sound-buddy/shared'
 
 function makeScene(overrides: Partial<Scene> = {}): Scene {
@@ -160,5 +161,66 @@ describe('diffScenes', () => {
     expect(result.bySection.channels.length).toBeGreaterThan(0)
     expect(result.bySection.dcas.length).toBeGreaterThan(0)
     expect(result.bySection.main).toEqual([])
+  })
+
+  it('self-diffs the committed real-console capture with zero changes (#887)', () => {
+    const content = readFileSync(
+      new URL('../../console/src/capture-2026-08-16.scn', import.meta.url),
+      'utf8',
+    )
+    const scene = parseScene(content)
+    const result = diffScenes(scene, scene)
+    expect(result.changes).toEqual([])
+    expect(result.summary).toBe('No differences found')
+  })
+
+  it('treats two NaN faders as equal, not a change (#887)', () => {
+    const sceneA = makeScene({
+      channels: makeScene().channels.map((ch, i) =>
+        i === 0 ? { ...ch, mix: { ...ch.mix, fader: NaN } } : ch
+      ),
+    })
+    const sceneB = makeScene({
+      channels: makeScene().channels.map((ch, i) =>
+        i === 0 ? { ...ch, mix: { ...ch.mix, fader: NaN } } : ch
+      ),
+    })
+    const result = diffScenes(sceneA, sceneB)
+    expect(result.changes).toEqual([])
+  })
+
+  it('treats -0 and 0 as equal, not a change (#887)', () => {
+    const sceneA = makeScene({
+      channels: makeScene().channels.map((ch, i) =>
+        i === 0 ? { ...ch, mix: { ...ch.mix, fader: -0 } } : ch
+      ),
+    })
+    const sceneB = makeScene({
+      channels: makeScene().channels.map((ch, i) =>
+        i === 0 ? { ...ch, mix: { ...ch.mix, fader: 0 } } : ch
+      ),
+    })
+    const result = diffScenes(sceneA, sceneB)
+    expect(result.changes).toEqual([])
+  })
+
+  it('still reports a genuine -Infinity to finite move (#887)', () => {
+    const sceneA = makeScene({
+      channels: makeScene().channels.map((ch, i) =>
+        i === 0 ? { ...ch, mix: { ...ch.mix, fader: Number.NEGATIVE_INFINITY } } : ch
+      ),
+    })
+    const sceneB = makeScene({
+      channels: makeScene().channels.map((ch, i) =>
+        i === 0 ? { ...ch, mix: { ...ch.mix, fader: -5 } } : ch
+      ),
+    })
+    const result = diffScenes(sceneA, sceneB)
+    const change = result.changes.find((c: SceneChange) => c.path === 'channels[0].mix.fader')
+    expect(change).toMatchObject({
+      path: 'channels[0].mix.fader',
+      from: Number.NEGATIVE_INFINITY,
+      to: -5,
+    })
   })
 })

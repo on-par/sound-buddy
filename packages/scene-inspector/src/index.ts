@@ -31,8 +31,30 @@ function parseQuotedString(s: string): string {
   return m ? m[1] : s
 }
 
+/**
+ * The M32R writes a fader or level parked at negative infinity as `-oo`, which
+ * parseFloat cannot read (#887). Map it to -Infinity, and floor anything else
+ * parseFloat can't read to 0, so a parsed Scene never carries NaN — NaN !== NaN
+ * made diffScenes report a phantom change for every -oo channel, including on a
+ * scene diffed against itself.
+ */
+const MINUS_INFINITY_TOKEN = '-oo'
+
 function parseFloat2(s: string): number {
-  return parseFloat(s.replace('+', ''))
+  if (s === MINUS_INFINITY_TOKEN) return Number.NEGATIVE_INFINITY
+  const n = parseFloat(s.replace('+', ''))
+  return Number.isNaN(n) ? 0 : n
+}
+
+/**
+ * NaN-safe numeric equality for scene fields (#887). Plain `!==` reports NaN as
+ * different from itself, which turned every unparseable console value into a
+ * phantom change. Object.is would fix that but would then report -0 vs 0 as a
+ * change (a fader written `-0.0` vs `+0`), so compare with === plus an explicit
+ * NaN case instead.
+ */
+function sameNumber(a: number, b: number): boolean {
+  return a === b || (Number.isNaN(a) && Number.isNaN(b))
 }
 
 export function parseScene(content: string): Scene {
@@ -53,7 +75,7 @@ export function parseScene(content: string): Scene {
 
   for (const line of lines.slice(1)) {
     // /ch/NN/mix ON|OFF fader ...
-    const mixMatch = line.match(/^\/ch\/(\d+)\/mix\s+(ON|OFF)\s+([\d+\-.]+)/)
+    const mixMatch = line.match(/^\/ch\/(\d+)\/mix\s+(ON|OFF)\s+(-oo|[\d+\-.]+)/)
     if (mixMatch) {
       const ch = getOrCreateChannel(scene.channels, parseInt(mixMatch[1], 10) - 1)
       ch.mix.on = mixMatch[2] === 'ON'
@@ -62,7 +84,7 @@ export function parseScene(content: string): Scene {
     }
 
     // /ch/NN/preamp gain ...
-    const preampMatch = line.match(/^\/ch\/(\d+)\/preamp\s+([\d+\-.]+)/)
+    const preampMatch = line.match(/^\/ch\/(\d+)\/preamp\s+(-oo|[\d+\-.]+)/)
     if (preampMatch) {
       const ch = getOrCreateChannel(scene.channels, parseInt(preampMatch[1], 10) - 1)
       ch.preamp.gain = parseFloat2(preampMatch[2])
@@ -70,7 +92,7 @@ export function parseScene(content: string): Scene {
     }
 
     // /ch/NN/eq/B type freq gain q
-    const eqMatch = line.match(/^\/ch\/(\d+)\/eq\/(\d+)\s+(\w+)\s+([\d+\-.]+)\s+([\d+\-.]+)\s+([\d+\-.]+)/)
+    const eqMatch = line.match(/^\/ch\/(\d+)\/eq\/(\d+)\s+(\w+)\s+(-oo|[\d+\-.]+)\s+(-oo|[\d+\-.]+)\s+(-oo|[\d+\-.]+)/)
     if (eqMatch) {
       const ch = getOrCreateChannel(scene.channels, parseInt(eqMatch[1], 10) - 1)
       const band: EQBand = {
@@ -94,7 +116,7 @@ export function parseScene(content: string): Scene {
     }
 
     // /dca/N ON|OFF level
-    const dcaMatch = line.match(/^\/dca\/(\d+)\s+(ON|OFF)\s+([\d+\-.]+)/)
+    const dcaMatch = line.match(/^\/dca\/(\d+)\s+(ON|OFF)\s+(-oo|[\d+\-.]+)/)
     if (dcaMatch) {
       const dca = getOrCreateDCA(scene.dcas, parseInt(dcaMatch[1], 10) - 1)
       dca.on = dcaMatch[2] === 'ON'
@@ -126,10 +148,10 @@ export function diffScenes(a: Scene, b: Scene): SceneDiff {
     if (chA.mix.on !== chB.mix.on) {
       changes.push({ path: `channels[${i}].mix.on`, label: `${name} — mute`, from: chA.mix.on, to: chB.mix.on })
     }
-    if (chA.mix.fader !== chB.mix.fader) {
+    if (!sameNumber(chA.mix.fader, chB.mix.fader)) {
       changes.push({ path: `channels[${i}].mix.fader`, label: `${name} — fader`, from: chA.mix.fader, to: chB.mix.fader })
     }
-    if (chA.preamp.gain !== chB.preamp.gain) {
+    if (!sameNumber(chA.preamp.gain, chB.preamp.gain)) {
       changes.push({ path: `channels[${i}].preamp.gain`, label: `${name} — gain`, from: chA.preamp.gain, to: chB.preamp.gain })
     }
   }
@@ -143,7 +165,7 @@ export function diffScenes(a: Scene, b: Scene): SceneDiff {
     if (dA.on !== dB.on) {
       changes.push({ path: `dcas[${i}].on`, label: `${name} — on`, from: dA.on, to: dB.on })
     }
-    if (dA.level !== dB.level) {
+    if (!sameNumber(dA.level, dB.level)) {
       changes.push({ path: `dcas[${i}].level`, label: `${name} — level`, from: dA.level, to: dB.level })
     }
   }
