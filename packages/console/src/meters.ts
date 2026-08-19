@@ -1,5 +1,5 @@
 import { OscError } from './index.js'
-import type { DecodedOscMessage } from './index.js'
+import type { DecodedOscMessage, OscMessage } from './index.js'
 import { normalizeReplyAddress } from './address.js'
 
 // The M32R's meter blob interior is little-endian, unlike every other value
@@ -15,7 +15,7 @@ const LITTLE_ENDIAN = true
 const COUNT_FIELD_BYTES = 4
 const FLOAT32_BYTES = 4
 
-const METERS_1_ADDRESS = '/meters/1'
+export const METERS_1_ADDRESS = '/meters/1'
 const METERS_1_BAND_SIZE = 32 // channels per band
 const METERS_1_BANDS = 3 // input level, gate GR, dynamics GR
 const METERS_1_VALUE_COUNT = METERS_1_BAND_SIZE * METERS_1_BANDS // 96
@@ -110,4 +110,61 @@ export function decodeMeters1Message(message: DecodedOscMessage): Meters1Snapsho
   }
 
   return decodeMeters1Blob(first.value)
+}
+
+// Throttle grammar (#883, per the #848 discovery session). The console
+// answers a bare `,s` subscribe at ~20 Hz. Throttling requires the FULL
+// four-argument form — `/meters ,siii "<block>" 0 0 <tf>` — where the LAST
+// int is the time factor and the frame interval is 50ms x tf. The `,si`
+// form does NOT throttle: its single int is read as chn_meter_id and the
+// stream stays at ~20 Hz, so this module never emits it.
+const METERS_SUBSCRIBE_ADDRESS = '/meters'
+const METERS_SUBSCRIBE_RESERVED_ARG = 0 // the two leading ints are unused positional filler
+export const METER_TIME_FACTOR_INTERVAL_MS = 50
+export const METER_TIME_FACTOR_MIN = 1
+export const METER_TIME_FACTOR_MAX = 99
+
+function assertTimeFactor(timeFactor: number): void {
+  if (!Number.isInteger(timeFactor) || timeFactor < METER_TIME_FACTOR_MIN || timeFactor > METER_TIME_FACTOR_MAX) {
+    throw new OscError(
+      `meter time factor must be an integer in ${METER_TIME_FACTOR_MIN}..${METER_TIME_FACTOR_MAX} (frame interval = ${METER_TIME_FACTOR_INTERVAL_MS}ms x factor); got ${timeFactor}. Omit the time factor entirely for the console's ~20 Hz default — do not send the single-int ",si" form, which is read as chn_meter_id and does not throttle.`,
+    )
+  }
+}
+
+/**
+ * Builds the /meters subscribe message for one meter block. Omit timeFactor
+ * for the console's default ~20 Hz stream (the `,s` form); supply it for the
+ * `,siii` throttle form, whose last int is the time factor.
+ */
+export function buildMetersSubscribeMessage(meterBlock: string, timeFactor?: number): OscMessage {
+  if (!meterBlock.startsWith('/meters/')) {
+    throw new OscError(
+      `meter block must name a meter set such as "/meters/1" (got "${meterBlock}"); a typo'd block subscribes to nothing with no error from the console`,
+    )
+  }
+
+  if (timeFactor === undefined) {
+    return { address: METERS_SUBSCRIBE_ADDRESS, args: [{ type: 's', value: meterBlock }] }
+  }
+
+  assertTimeFactor(timeFactor)
+  return {
+    address: METERS_SUBSCRIBE_ADDRESS,
+    args: [
+      { type: 's', value: meterBlock },
+      { type: 'i', value: METERS_SUBSCRIBE_RESERVED_ARG },
+      { type: 'i', value: METERS_SUBSCRIBE_RESERVED_ARG },
+      { type: 'i', value: timeFactor },
+    ],
+  }
+}
+
+/** Expected interval between pushes, in ms, for a given time factor (default ~20 Hz). */
+export function meterFrameIntervalMs(timeFactor?: number): number {
+  if (timeFactor === undefined) {
+    return METER_TIME_FACTOR_INTERVAL_MS
+  }
+  assertTimeFactor(timeFactor)
+  return METER_TIME_FACTOR_INTERVAL_MS * timeFactor
 }
