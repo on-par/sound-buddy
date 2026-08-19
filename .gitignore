@@ -27,3 +27,9 @@ SoundBuddy-keys/
 # Local wrangler state (KV simulation, build cache)
 worker/.wrangler/
 site/.wrangler/
+
+# Unscrubbed console captures (#893). Raw .scn dumps off the M32R carry
+# identifying material; only the scrubbed capture committed under
+# packages/console/src is allowed in this public repo, and git history is
+# permanent. Name any local raw capture `*.local.scn`.
+*.local.scn
