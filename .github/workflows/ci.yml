@@ -186,7 +186,11 @@ jobs:
   # browser check (#495, guards horizontal scroll at 320/360/390px viewports).
   site:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    # Historical runs finish in ~2 min; this bounds a stuck step (e.g. an apt
+    # mirror stall during `playwright install --with-deps`, see #974) so it
+    # fails fast instead of hanging for hours unnoticed. Was 5, which left no
+    # margin for a slow mirror day.
+    timeout-minutes: 12
     defaults:
       run:
         working-directory: site
@@ -201,6 +205,15 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
+
+      # Skips the Chromium binary re-download on a cache hit; the apt-managed
+      # OS deps (--with-deps) still install every run since the runner VM is
+      # fresh each time, but this removes one source of slow-mirror exposure.
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-playwright-${{ hashFiles('site/package-lock.json') }}
 
       - name: Install Playwright Chromium
         run: npx playwright install --with-deps chromium
