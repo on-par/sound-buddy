@@ -408,3 +408,78 @@ const EQ_Q_DECAY_RATIO = 0.03
 export function oscToEqQ(f: number): number {
   return EQ_Q_MAX * EQ_Q_DECAY_RATIO ** f
 }
+
+// Fader and send level: the console reports both a channel fader
+// (`/ch/NN/mix/fader`) and a send level as a normalized 0..1 float and displays
+// them in dB. Unlike every conversion above -- which is either linear across the
+// whole range or exponential across the whole range -- this taper is
+// PIECEWISE LINEAR: the console trades resolution for range, giving the top of
+// the travel a gentle 40 dB-per-unit slope where an engineer makes fine
+// adjustments, and steepening to 80 and then 160 dB-per-unit further down where
+// only coarse moves matter. The three segments meet exactly (both f = 0.5 and
+// f = 0.25 give the same dB from either neighbouring line), so the curve is
+// continuous with no step at a boundary.
+//
+// This story implements the three UPPER segments only -- f >= 0.0625, which is
+// -60 dB and up, the normal working range. The segment below 0.0625 and the
+// "-oo" / -Infinity floor are out of scope here and land in the follow-on story
+// under epic #880; see the note on the trailing return below.
+//
+// The three breakpoints below are measured console readings from the #848
+// discovery session, not formula output: 0.522972 -> -9.1 dB,
+// 0.357771 -> -21.4 dB, 0.642229 -> -4.3 dB, each agreeing with the formula to
+// better than 0.05 dB.
+
+// Normalized value where the console's taper breaks from the top segment to the
+// mid segment.
+const LEVEL_UPPER_SEGMENT_MIN = 0.5
+
+// Normalized value where the taper breaks from the mid segment to the lower
+// in-scope segment.
+const LEVEL_MID_SEGMENT_MIN = 0.25
+
+// Slope (dB per unit of travel) and intercept (dB at f = 0 on that segment's
+// line) for each of the three in-scope segments. Named per segment so a future
+// correction to one cannot silently move another -- the same rule the frequency
+// and Q span ratios above follow.
+const LEVEL_UPPER_SLOPE_DB = 40
+const LEVEL_UPPER_INTERCEPT_DB = -30
+const LEVEL_MID_SLOPE_DB = 80
+const LEVEL_MID_INTERCEPT_DB = -50
+const LEVEL_LOWER_SLOPE_DB = 160
+const LEVEL_LOWER_INTERCEPT_DB = -70
+
+/**
+ * Converts a raw OSC fader or send level float (0..1) to the console's
+ * displayed level in dB over the upper working range (+10 dB at f = 1 down to
+ * -60 dB at f = 0.0625).
+ *
+ * Piecewise linear, unlike every conversion above: three straight segments meet
+ * at f = 0.5 and f = 0.25, so equal steps of travel add equal dB *within* a
+ * segment but the dB-per-unit slope triples from top to bottom of the in-scope
+ * range.
+ *
+ * Only the three upper segments are implemented. Below f = 0.0625 the return
+ * value is the lowest in-scope segment linearly extrapolated -- NOT the
+ * console's real behavior, which floors at "-oo". That segment and the
+ * -Infinity floor belong to the follow-on story under epic #880, which turns
+ * the trailing return below into an `f >= 0.0625` guarded branch. Do not
+ * "fix" the missing lower guard here; the three upper formulas are pinned by
+ * measured console readings.
+ *
+ * Applies to the raw OSC float on a fader or send level parameter. It is NOT
+ * for `ChannelStrip.fader` as produced by `parseChannelStrips`, which comes
+ * from the console's `/ch/NN/mix` engineering-unit text line and is already in
+ * dB (or -Infinity for "-oo") -- converting that value again would
+ * double-convert. This mirrors the same caveat on `oscToEqFreqHz` and
+ * `ChannelEq.bands[].freq`.
+ *
+ * Total and unrounded, like every conversion above: the value is neither
+ * clamped nor rounded and never throws, so a caller that needs the console's
+ * rounded dB display rounds at the display edge.
+ */
+export function oscToLevelDb(f: number): number {
+  if (f >= LEVEL_UPPER_SEGMENT_MIN) return f * LEVEL_UPPER_SLOPE_DB + LEVEL_UPPER_INTERCEPT_DB
+  if (f >= LEVEL_MID_SEGMENT_MIN) return f * LEVEL_MID_SLOPE_DB + LEVEL_MID_INTERCEPT_DB
+  return f * LEVEL_LOWER_SLOPE_DB + LEVEL_LOWER_INTERCEPT_DB
+}

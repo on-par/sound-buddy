@@ -219,4 +219,5 @@ export {
   oscToEqFreqHz,
   oscToEqGainDb,
   oscToEqQ,
+  oscToLevelDb,
 } from './scaling.js'

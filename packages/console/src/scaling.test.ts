@@ -11,6 +11,7 @@ import {
   oscToEqFreqHz,
   oscToEqGainDb,
   oscToEqQ,
+  oscToLevelDb,
 } from './scaling.js'
 
 interface OnStateFixture {
@@ -602,5 +603,96 @@ describe('oscToEqQ -- EQ band eq q conversion', () => {
     const quarterStepRatio = oscToEqQ(0.5) / oscToEqQ(0.25)
     const nextStepRatio = oscToEqQ(0.75) / oscToEqQ(0.5)
     expect(quarterStepRatio).toBeCloseTo(nextStepRatio, EQ_Q_PRECISION)
+  })
+})
+
+interface LevelFixture {
+  label: string // human label for the point on the taper
+  raw: number // the raw OSC float, 0..1
+  expected: number // the console's displayed level in dB
+}
+
+// Measured console readings from the #848 discovery session -- real float/dB
+// pairs read off the desk, not formula output. These are the story's acceptance
+// criteria and are asserted to the 0.05 dB tolerance the issue specifies.
+const LEVEL_MEASURED_FIXTURES: LevelFixture[] = [
+  { label: 'near-unity level', raw: 0.522972, expected: -9.1 },
+  { label: 'low-mid level', raw: 0.357771, expected: -21.4 },
+  { label: 'near top of range', raw: 0.642229, expected: -4.3 },
+]
+
+// toBeCloseTo(expected, 1) passes when |actual - expected| < 0.05 -- exactly
+// the tolerance the issue specifies for the measured breakpoints, expressed in
+// the same form the sibling conversions above use.
+const LEVEL_MEASURED_PRECISION = 1
+
+// Segment boundaries and representative interior points. Values here are the
+// formula's own output, carried to enough places for the tolerance below.
+// Asserted with toBeCloseTo, not toBe: the constitution forbids
+// floating-point comparison without epsilon tolerance, so one rule applies
+// uniformly to every row rather than only the rows where exactness happens to
+// hold.
+const LEVEL_SEGMENT_FIXTURES: LevelFixture[] = [
+  { label: 'bottom of the in-scope range', raw: 0.0625, expected: -60 },
+  { label: 'lower segment interior', raw: 0.15, expected: -46 },
+  { label: 'lower/mid segment boundary', raw: 0.25, expected: -30 },
+  { label: 'mid segment interior', raw: 0.375, expected: -20 },
+  { label: 'mid/upper segment boundary', raw: 0.5, expected: -10 },
+  { label: 'upper segment interior', raw: 0.75, expected: 0 },
+  { label: 'maximum level', raw: 1, expected: 10 },
+]
+
+const LEVEL_PRECISION = 6 // decimal places for toBeCloseTo
+
+describe('oscToLevelDb -- fader and send level conversion', () => {
+  for (const f of LEVEL_MEASURED_FIXTURES) {
+    it(`converts measured fader reading raw ${f.raw} to ${f.expected} dB`, () => {
+      expect(oscToLevelDb(f.raw)).toBeCloseTo(f.expected, LEVEL_MEASURED_PRECISION)
+    })
+  }
+
+  it('matches the measured fader breakpoint for near-unity level (AC1)', () => {
+    expect(oscToLevelDb(0.522972)).toBeCloseTo(-9.1, LEVEL_MEASURED_PRECISION)
+  })
+
+  it('matches the measured fader breakpoint for low-mid level (AC2)', () => {
+    expect(oscToLevelDb(0.357771)).toBeCloseTo(-21.4, LEVEL_MEASURED_PRECISION)
+  })
+
+  it('matches the measured fader breakpoint near top of range (AC3)', () => {
+    expect(oscToLevelDb(0.642229)).toBeCloseTo(-4.3, LEVEL_MEASURED_PRECISION)
+  })
+
+  for (const f of LEVEL_SEGMENT_FIXTURES) {
+    it(`converts ${f.label} fader raw ${f.raw} to ${f.expected} dB`, () => {
+      expect(oscToLevelDb(f.raw)).toBeCloseTo(f.expected, LEVEL_PRECISION)
+    })
+  }
+
+  it('holds the fader range top at +10 dB', () => {
+    expect(oscToLevelDb(1)).toBeCloseTo(10, LEVEL_PRECISION)
+  })
+
+  it('is monotonically increasing across the in-scope fader taper', () => {
+    const levels = LEVEL_SEGMENT_FIXTURES.map((f) => oscToLevelDb(f.raw))
+    for (let i = 1; i < levels.length; i++) {
+      expect(levels[i]).toBeGreaterThan(levels[i - 1])
+    }
+  })
+
+  it('is linear within the upper fader segment -- equal steps of travel add equal dB', () => {
+    const firstStep = oscToLevelDb(0.75) - oscToLevelDb(0.625)
+    const nextStep = oscToLevelDb(0.875) - oscToLevelDb(0.75)
+    expect(firstStep).toBeCloseTo(nextStep, LEVEL_PRECISION)
+  })
+
+  it('steepens toward the bottom of the fader taper -- the lower segment adds more dB per unit than the upper', () => {
+    const upperSlope = oscToLevelDb(0.75) - oscToLevelDb(0.5)
+    const lowerSlope = oscToLevelDb(0.25) - oscToLevelDb(0.0625)
+    expect(lowerSlope / (0.25 - 0.0625)).toBeGreaterThan(upperSlope / (0.75 - 0.5))
+  })
+
+  it('resolves a NaN fader value to NaN rather than throwing', () => {
+    expect(oscToLevelDb(NaN)).toBeNaN()
   })
 })
