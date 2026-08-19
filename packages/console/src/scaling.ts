@@ -24,3 +24,29 @@ const ON_THRESHOLD = 0.5
 export function oscToOnState(value: number): boolean {
   return value >= ON_THRESHOLD
 }
+
+// Pan: the console reports position as a normalized 0..1 float where 0.5 is
+// dead center, and displays it as -100 (hard left) .. +100 (hard right). The
+// formula below was verified live against the M32R's own /node engineering-unit
+// text during the #848 discovery session (verify_scaling.py, on the
+// docs/848-m32r-console-discovery branch); the measured float/text pairs from
+// that run were not committed as a fixture file, so the tests assert the
+// formula's own output at the boundaries and representative interior points
+// rather than claiming to replay a captured console reading.
+
+// The normalized value the console uses for dead center.
+const OSC_PAN_CENTER = 0.5
+
+// Full width of the displayed position range: -100..+100 spans 200 units.
+const PAN_RANGE_SPAN = 200
+
+/**
+ * Converts a raw OSC pan float (0..1, 0.5 = center) to the console's displayed
+ * position (-100 = hard left, 0 = center, +100 = hard right).
+ *
+ * Linear and total: the value is neither clamped nor rounded, so a caller that
+ * needs the console's integer display rounds at the display edge.
+ */
+export function oscToPan(f: number): number {
+  return (f - OSC_PAN_CENTER) * PAN_RANGE_SPAN
+}
