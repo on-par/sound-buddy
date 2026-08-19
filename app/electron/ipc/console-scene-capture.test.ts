@@ -118,7 +118,7 @@ describe('captureSceneFromConsole', () => {
         note: 'note',
         queryOptions: { timeoutMs: 1, maxRetries: 0 },
       })
-    ).rejects.toThrow(new RegExp(droppedPath.replace(/\//g, '\\/')));
+    ).rejects.toThrow(droppedPath);
   });
 
   it('sends nothing but /node, and every argument is a member of SCENE_NODE_PATHS (AC4)', async () => {

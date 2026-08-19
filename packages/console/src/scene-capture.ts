@@ -233,7 +233,7 @@ export function assembleSceneFile(header: string, lines: ReadonlyMap<string, str
 export function parseNodeReplyLine(expectedPath: string, message: DecodedOscMessage): string | null {
   if (!replyAddressMatches('/node', message.address)) return null
   if (message.args.length !== 1 || message.args[0].type !== 's') return null
-  const line = message.args[0].value.replace(/\s+$/, '')
+  const line = message.args[0].value.trimEnd()
   const firstToken = line.split(/\s/, 1)[0]
   if (normalizeReplyAddress(firstToken) !== normalizeReplyAddress(expectedPath)) return null
   return line
