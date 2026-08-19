@@ -9,6 +9,7 @@ import {
   oscToDynamicsThresholdDb,
   oscToHpfHz,
   oscToEqFreqHz,
+  oscToEqGainDb,
 } from './scaling.js'
 
 interface OnStateFixture {
@@ -487,5 +488,59 @@ describe('oscToEqFreqHz -- EQ band centre frequency conversion', () => {
     const quarterStepRatio = oscToEqFreqHz(0.5) / oscToEqFreqHz(0.25)
     const nextStepRatio = oscToEqFreqHz(0.75) / oscToEqFreqHz(0.5)
     expect(quarterStepRatio).toBeCloseTo(nextStepRatio, EQ_FREQ_PRECISION)
+  })
+})
+
+interface EqGainFixture {
+  label: string // human label for the point on the range
+  raw: number // the raw OSC float, 0..1
+  expected: number // the console's displayed band gain in dB, -15..+15
+}
+
+// Boundary + representative interior points. Asserted with toBeCloseTo, not
+// toBe: the constitution forbids floating-point comparison without epsilon
+// tolerance, so one rule applies uniformly to every row rather than only the
+// rows where exactness happens to hold.
+const EQ_GAIN_FIXTURES: EqGainFixture[] = [
+  { label: 'maximum cut', raw: 0, expected: -15 },
+  { label: 'quarter travel', raw: 0.25, expected: -7.5 },
+  { label: 'flat', raw: 0.5, expected: 0 },
+  { label: 'three-quarter travel', raw: 0.75, expected: 7.5 },
+  { label: 'maximum boost', raw: 1, expected: 15 },
+]
+
+const EQ_GAIN_PRECISION = 6 // decimal places for toBeCloseTo
+
+describe('oscToEqGainDb -- EQ band gain conversion', () => {
+  for (const f of EQ_GAIN_FIXTURES) {
+    it(`converts ${f.label} eq gain raw ${f.raw} to ${f.expected} dB`, () => {
+      expect(oscToEqGainDb(f.raw)).toBeCloseTo(f.expected, EQ_GAIN_PRECISION)
+    })
+  }
+
+  it('converts the eq gain centre to 0 dB -- flat (AC1)', () => {
+    expect(oscToEqGainDb(0.5)).toBeCloseTo(0, EQ_GAIN_PRECISION)
+  })
+
+  it('holds the eq gain range boundaries at -15 and +15 dB (AC2)', () => {
+    expect(oscToEqGainDb(0)).toBeCloseTo(-15, EQ_GAIN_PRECISION)
+    expect(oscToEqGainDb(1)).toBeCloseTo(15, EQ_GAIN_PRECISION)
+  })
+
+  it('is monotonically increasing across the eq gain range', () => {
+    const gains = EQ_GAIN_FIXTURES.map((f) => oscToEqGainDb(f.raw))
+    for (let i = 1; i < gains.length; i++) {
+      expect(gains[i]).toBeGreaterThan(gains[i - 1])
+    }
+  })
+
+  it('is linear -- equal steps of travel add equal dB, unlike the frequency sweeps', () => {
+    const firstStep = oscToEqGainDb(0.5) - oscToEqGainDb(0.25)
+    const nextStep = oscToEqGainDb(0.75) - oscToEqGainDb(0.5)
+    expect(firstStep).toBeCloseTo(nextStep, EQ_GAIN_PRECISION)
+  })
+
+  it('is symmetric about the flat centre -- equal cut and boost at mirrored inputs', () => {
+    expect(oscToEqGainDb(0.25)).toBeCloseTo(-oscToEqGainDb(0.75), EQ_GAIN_PRECISION)
   })
 })

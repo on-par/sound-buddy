@@ -217,4 +217,5 @@ export {
   oscToDynamicsThresholdDb,
   oscToHpfHz,
   oscToEqFreqHz,
+  oscToEqGainDb,
 } from './scaling.js'
