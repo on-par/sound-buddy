@@ -420,15 +420,15 @@ export function oscToEqQ(f: number): number {
 // f = 0.25 give the same dB from either neighbouring line), so the curve is
 // continuous with no step at a boundary.
 //
-// This story implements the three UPPER segments only -- f >= 0.0625, which is
-// -60 dB and up, the normal working range. The segment below 0.0625 and the
-// "-oo" / -Infinity floor are out of scope here and land in the follow-on story
-// under epic #880; see the note on the trailing return below.
+// The taper is complete: four linear segments over 0 < f <= 1, breaking at
+// 0.5, 0.25 and 0.0625, floored to -Infinity at and below 0.
 //
-// The three breakpoints below are measured console readings from the #848
-// discovery session, not formula output: 0.522972 -> -9.1 dB,
+// The three upper breakpoints below are measured console readings from the
+// #848 discovery session, not formula output: 0.522972 -> -9.1 dB,
 // 0.357771 -> -21.4 dB, 0.642229 -> -4.3 dB, each agreeing with the formula to
-// better than 0.05 dB.
+// better than 0.05 dB. The floor segment's slope and intercept come from the
+// M32R taper definition and are pinned by the exact -60 dB agreement with the
+// segment above it at 0.0625, not by a separate measured reading.
 
 // Normalized value where the console's taper breaks from the top segment to the
 // mid segment.
@@ -449,23 +449,34 @@ const LEVEL_MID_INTERCEPT_DB = -50
 const LEVEL_LOWER_SLOPE_DB = 160
 const LEVEL_LOWER_INTERCEPT_DB = -70
 
+// Normalized value where the taper breaks from the lowest in-scope segment to
+// the steep floor segment. -60 dB from either neighbouring line, so the curve
+// stays continuous across the break.
+const LEVEL_LOWER_SEGMENT_MIN = 0.0625
+
+// Slope and intercept for the floor segment. Three times steeper again than the
+// segment above it: the console spends the bottom sixteenth of the travel
+// covering 30 dB, from about -90 dB just off the stop up to -60 dB at
+// LEVEL_LOWER_SEGMENT_MIN.
+const LEVEL_FLOOR_SLOPE_DB = 480
+const LEVEL_FLOOR_INTERCEPT_DB = -90
+
+// At or below this raw value the console stops displaying a number and shows
+// "-oo". Represented as -Infinity, matching the value parseChannelStrips
+// already produces for the "-oo" token in channel-strip.ts, so both paths agree
+// on one representation of "fully down".
+const LEVEL_FLOOR_MAX = 0
+const LEVEL_FLOOR_DB = -Infinity
+
 /**
  * Converts a raw OSC fader or send level float (0..1) to the console's
- * displayed level in dB over the upper working range (+10 dB at f = 1 down to
- * -60 dB at f = 0.0625).
+ * displayed level in dB across the full range: +10 dB at f = 1 down to about
+ * -90 dB just above the stop, and -Infinity at or below f = 0.
  *
- * Piecewise linear, unlike every conversion above: three straight segments meet
- * at f = 0.5 and f = 0.25, so equal steps of travel add equal dB *within* a
- * segment but the dB-per-unit slope triples from top to bottom of the in-scope
- * range.
- *
- * Only the three upper segments are implemented. Below f = 0.0625 the return
- * value is the lowest in-scope segment linearly extrapolated -- NOT the
- * console's real behavior, which floors at "-oo". That segment and the
- * -Infinity floor belong to the follow-on story under epic #880, which turns
- * the trailing return below into an `f >= 0.0625` guarded branch. Do not
- * "fix" the missing lower guard here; the three upper formulas are pinned by
- * measured console readings.
+ * Piecewise linear, unlike every conversion above: four straight segments meet
+ * at f = 0.5, f = 0.25 and f = 0.0625, so equal steps of travel add equal dB
+ * *within* a segment but the dB-per-unit slope steepens from top to bottom of
+ * the range.
  *
  * Applies to the raw OSC float on a fader or send level parameter. It is NOT
  * for `ChannelStrip.fader` as produced by `parseChannelStrips`, which comes
@@ -481,5 +492,7 @@ const LEVEL_LOWER_INTERCEPT_DB = -70
 export function oscToLevelDb(f: number): number {
   if (f >= LEVEL_UPPER_SEGMENT_MIN) return f * LEVEL_UPPER_SLOPE_DB + LEVEL_UPPER_INTERCEPT_DB
   if (f >= LEVEL_MID_SEGMENT_MIN) return f * LEVEL_MID_SLOPE_DB + LEVEL_MID_INTERCEPT_DB
-  return f * LEVEL_LOWER_SLOPE_DB + LEVEL_LOWER_INTERCEPT_DB
+  if (f >= LEVEL_LOWER_SEGMENT_MIN) return f * LEVEL_LOWER_SLOPE_DB + LEVEL_LOWER_INTERCEPT_DB
+  if (f <= LEVEL_FLOOR_MAX) return LEVEL_FLOOR_DB
+  return f * LEVEL_FLOOR_SLOPE_DB + LEVEL_FLOOR_INTERCEPT_DB
 }

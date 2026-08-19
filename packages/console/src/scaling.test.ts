@@ -644,6 +644,15 @@ const LEVEL_SEGMENT_FIXTURES: LevelFixture[] = [
 
 const LEVEL_PRECISION = 6 // decimal places for toBeCloseTo
 
+// The floor segment, below the lowest measured breakpoint. Expected values are
+// the formula's own output; the 0.0625 row is carried over deliberately, since
+// its -60 dB is the continuity check against the segment above.
+const LEVEL_FLOOR_SEGMENT_FIXTURES: LevelFixture[] = [
+  { label: 'just above the floor', raw: 0.0001, expected: -89.952 },
+  { label: 'floor segment interior', raw: 0.03, expected: -75.6 },
+  { label: 'floor/lower segment boundary', raw: 0.0625, expected: -60 },
+]
+
 describe('oscToLevelDb -- fader and send level conversion', () => {
   for (const f of LEVEL_MEASURED_FIXTURES) {
     it(`converts measured fader reading raw ${f.raw} to ${f.expected} dB`, () => {
@@ -694,5 +703,46 @@ describe('oscToLevelDb -- fader and send level conversion', () => {
 
   it('resolves a NaN fader value to NaN rather than throwing', () => {
     expect(oscToLevelDb(NaN)).toBeNaN()
+  })
+
+  for (const f of LEVEL_FLOOR_SEGMENT_FIXTURES) {
+    it(`applies the floor segment formula to ${f.label} fader raw ${f.raw} -> ${f.expected} dB`, () => {
+      expect(oscToLevelDb(f.raw)).toBeCloseTo(f.expected, LEVEL_PRECISION)
+    })
+  }
+
+  it('floors a fully-down fader to -Infinity rather than a misleading number (AC1)', () => {
+    expect(oscToLevelDb(0)).toBe(-Infinity)
+    expect(oscToLevelDb(0)).not.toBeNaN()
+  })
+
+  it('floors a negative fader value to -Infinity', () => {
+    expect(oscToLevelDb(-0.5)).toBe(-Infinity)
+  })
+
+  it('floors -Infinity itself to -Infinity', () => {
+    expect(oscToLevelDb(-Infinity)).toBe(-Infinity)
+  })
+
+  it('applies the steep floor-segment slope between the stop and 0.0625 (AC2)', () => {
+    expect(oscToLevelDb(0.03)).toBeCloseTo(0.03 * 480 - 90, LEVEL_PRECISION)
+  })
+
+  it('meets the segment above it exactly at the floor breakpoint', () => {
+    expect(oscToLevelDb(0.0625)).toBeCloseTo(-60, LEVEL_PRECISION)
+    expect(oscToLevelDb(0.0624)).toBeLessThan(oscToLevelDb(0.0625))
+  })
+
+  it('returns no NaN for any finite fader input, floor included', () => {
+    const raws = [-1, -0.5, 0, 0.0001, 0.03, 0.0625, 0.15, 0.25, 0.5, 0.75, 1]
+    for (const raw of raws) {
+      expect(oscToLevelDb(raw)).not.toBeNaN()
+    }
+  })
+
+  it('steepens below the floor breakpoint -- the floor segment adds more dB per unit than the segment above', () => {
+    const floorSlope = (oscToLevelDb(0.0625) - oscToLevelDb(0.03)) / (0.0625 - 0.03)
+    const lowerSlope = (oscToLevelDb(0.25) - oscToLevelDb(0.0625)) / (0.25 - 0.0625)
+    expect(floorSlope).toBeGreaterThan(lowerSlope)
   })
 })
