@@ -363,3 +363,48 @@ const EQ_GAIN_RANGE_SPAN_DB = 30
 export function oscToEqGainDb(f: number): number {
   return (f - OSC_EQ_GAIN_CENTER) * EQ_GAIN_RANGE_SPAN_DB
 }
+
+// EQ band Q: the console reports each parametric EQ band's Q -- its bandwidth,
+// how wide a slice of the spectrum the band acts on -- as a normalized 0..1
+// float and displays it as a unitless value from 10 down to 0.3. This is the
+// only conversion in this file that runs BACKWARDS: more travel means a lower
+// number, because a higher Q is a narrower band. Like the two frequency sweeps
+// above and unlike every linear conversion, it is exponential -- a constant
+// ratio per unit of travel -- but the ratio is below 1, so the value decays
+// rather than grows, and f = 0.5 lands near 1.73 rather than at the arithmetic
+// midpoint of 5.15. The formula was verified live against the M32R's own /node
+// engineering-unit text during the #848 discovery session (verify_scaling.py,
+// on the docs/848-m32r-console-discovery branch); the measured float/text pairs
+// from that run were not committed as a fixture file, so the tests assert the
+// formula's own output at the boundaries and representative interior points
+// rather than claiming to replay a captured console reading.
+
+// The displayed Q at the wide end of the sweep (f = 0).
+const EQ_Q_MAX = 10
+
+// The multiplier across the full sweep: 10 * 0.03 = 0.3 at f = 1. Named
+// separately from EQ_FREQ_SPAN_RATIO and HPF_SPAN_RATIO so a future range
+// correction to one control cannot silently move another.
+const EQ_Q_DECAY_RATIO = 0.03
+
+/**
+ * Converts a raw OSC EQ band Q float (0..1) to the console's displayed band Q
+ * (10 = widest bandwidth, 0.3 = narrowest). Unitless.
+ *
+ * Exponential and inverted: each equal step of travel divides the Q by a
+ * constant ratio, so the sweep midpoint is ~1.73, not 5.15, and the result
+ * falls as f rises -- the opposite direction to every other conversion here.
+ *
+ * Applies to the raw OSC float on an EQ band's Q parameter. It is NOT for
+ * `ChannelEq.bands[].q` as produced by `parseChannelStrips`, which comes from
+ * the console's `/ch/NN/eq/N` engineering-unit text line and is already a Q
+ * value -- converting that value again would double-convert. This mirrors the
+ * same caveat on `oscToEqFreqHz` and `ChannelEq.bands[].freq`.
+ *
+ * Total and unrounded, like every conversion above: the value is neither
+ * clamped nor rounded, so a caller that needs the console's rounded Q display
+ * rounds at the display edge.
+ */
+export function oscToEqQ(f: number): number {
+  return EQ_Q_MAX * EQ_Q_DECAY_RATIO ** f
+}
