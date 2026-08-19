@@ -7,6 +7,7 @@ import {
   oscToGateThresholdDb,
   oscToGateRangeDb,
   oscToDynamicsThresholdDb,
+  oscToHpfHz,
 } from './scaling.js'
 
 interface OnStateFixture {
@@ -367,5 +368,64 @@ describe('oscToDynamicsThresholdDb -- dynamics threshold conversion', () => {
       oscToGateThresholdDb(0),
       DYNAMICS_THRESHOLD_PRECISION,
     )
+  })
+})
+
+interface HpfFixture {
+  label: string // human label for the point on the sweep
+  raw: number // the raw OSC float, 0..1
+  expected: number // the console's displayed HPF cutoff in Hz, 20..400
+}
+
+// Boundary + representative interior points. Asserted with toBeCloseTo, not
+// toBe: the constitution forbids floating-point comparison without epsilon
+// tolerance, so one rule applies uniformly to every row rather than only the
+// rows where exactness happens to hold. The interior expectations are
+// irrational (20 * 20 ** 0.25 and friends), so they are written to more
+// digits than HPF_PRECISION asserts.
+const HPF_FIXTURES: HpfFixture[] = [
+  { label: 'minimum cutoff', raw: 0, expected: 20 },
+  { label: 'quarter travel', raw: 0.25, expected: 42.294850537622565 },
+  { label: 'sweep midpoint', raw: 0.5, expected: 89.44271909999159 },
+  { label: 'three-quarter travel', raw: 0.75, expected: 189.14832180063516 },
+  { label: 'maximum cutoff', raw: 1, expected: 400 },
+]
+
+const HPF_PRECISION = 8 // decimal places for toBeCloseTo
+
+// The arithmetic midpoint of 20..400 Hz -- what a linear sweep would return at
+// f = 0.5, and what this logarithmic conversion must NOT return.
+const HPF_LINEAR_MIDPOINT_HZ = 210
+
+describe('oscToHpfHz -- channel HPF cutoff conversion', () => {
+  for (const f of HPF_FIXTURES) {
+    it(`converts ${f.label} hpf raw ${f.raw} to ${f.expected} Hz`, () => {
+      expect(oscToHpfHz(f.raw)).toBeCloseTo(f.expected, HPF_PRECISION)
+    })
+  }
+
+  it('converts the minimum hpf value to 20 Hz (AC1)', () => {
+    expect(oscToHpfHz(0)).toBeCloseTo(20, HPF_PRECISION)
+  })
+
+  it('holds the hpf range boundary at 400 Hz (AC2)', () => {
+    expect(oscToHpfHz(1)).toBeCloseTo(400, HPF_PRECISION)
+  })
+
+  it('is monotonically increasing across the hpf sweep', () => {
+    const cutoffs = HPF_FIXTURES.map((f) => oscToHpfHz(f.raw))
+    for (let i = 1; i < cutoffs.length; i++) {
+      expect(cutoffs[i]).toBeGreaterThan(cutoffs[i - 1])
+    }
+  })
+
+  it('sweeps logarithmically, not linearly -- the midpoint is well below the arithmetic mean', () => {
+    expect(oscToHpfHz(0.5)).toBeLessThan(HPF_LINEAR_MIDPOINT_HZ)
+  })
+
+  it('spans a constant ratio per unit of travel -- equal steps multiply, not add', () => {
+    const quarterStepRatio = oscToHpfHz(0.5) / oscToHpfHz(0.25)
+    const nextStepRatio = oscToHpfHz(0.75) / oscToHpfHz(0.5)
+    expect(quarterStepRatio).toBeCloseTo(nextStepRatio, HPF_PRECISION)
   })
 })

@@ -233,3 +233,46 @@ const DYNAMICS_THRESHOLD_SPAN_DB = 60
 export function oscToDynamicsThresholdDb(f: number): number {
   return DYNAMICS_THRESHOLD_MIN_DB + f * DYNAMICS_THRESHOLD_SPAN_DB
 }
+
+// HPF cutoff: the console reports the channel high-pass filter's corner
+// frequency as a normalized 0..1 float and displays it in Hz over a 20..400 Hz
+// sweep. Unlike every conversion above, this one is logarithmic rather than
+// linear -- the control sweeps a constant ratio per unit of travel, which is
+// how a frequency control has to behave to feel even under the finger, so
+// f = 0.5 lands near 89 Hz rather than at the arithmetic midpoint of 210 Hz.
+// The formula was verified live against the M32R's own /node engineering-unit
+// text during the #848 discovery session (verify_scaling.py, on the
+// docs/848-m32r-console-discovery branch); the measured float/text pairs from
+// that run were not committed as a fixture file, so the tests assert the
+// formula's own output at the boundaries and representative interior points
+// rather than claiming to replay a captured console reading.
+
+// The displayed cutoff at the bottom of the HPF sweep (f = 0).
+const HPF_MIN_HZ = 20
+
+// The multiplier across the full sweep: 20 Hz * 20 = 400 Hz at f = 1. It is a
+// coincidence, not a shared quantity, that this equals HPF_MIN_HZ -- the two
+// are named separately so a future range correction to one cannot silently
+// move the other.
+const HPF_SPAN_RATIO = 20
+
+/**
+ * Converts a raw OSC channel HPF float (0..1) to the console's displayed
+ * high-pass cutoff in Hz (20 = minimum, 400 = maximum).
+ *
+ * Logarithmic, not linear: each equal step of travel multiplies the cutoff by
+ * a constant ratio, so the sweep midpoint is ~89.4 Hz, not 210 Hz.
+ *
+ * Applies to the raw OSC float on the channel HPF frequency parameter. It is
+ * NOT for `ChannelStrip.preamp.hpf.freq` as produced by `parseChannelStrips`,
+ * which comes from the console's `/ch/NN/preamp` engineering-unit text line
+ * and is already in Hz -- converting that value again would double-convert.
+ * This mirrors the same caveat on `oscToGateThresholdDb` and `ChannelGate.thr`.
+ *
+ * Total and unrounded, like every conversion above: the value is neither
+ * clamped nor rounded, so a caller that needs the console's integer Hz display
+ * rounds at the display edge.
+ */
+export function oscToHpfHz(f: number): number {
+  return HPF_MIN_HZ * HPF_SPAN_RATIO ** f
+}

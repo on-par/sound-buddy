@@ -215,4 +215,5 @@ export {
   oscToGateThresholdDb,
   oscToGateRangeDb,
   oscToDynamicsThresholdDb,
+  oscToHpfHz,
 } from './scaling.js'
