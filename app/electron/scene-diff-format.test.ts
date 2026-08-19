@@ -63,6 +63,16 @@ describe('topSceneChanges', () => {
     expect(topSceneChanges(diff)).toEqual([{ label: 'Kick — mute', from: '—', to: '—' }]);
   });
 
+  it('renders -Infinity as -∞ rather than the literal string "-Infinity" (#887)', () => {
+    const diff: SceneDiff = {
+      changes: [change({ from: Number.NEGATIVE_INFINITY, to: -5 })],
+      summary: '1 change found',
+      bySection: { channels: [], dcas: [], main: [] },
+    };
+
+    expect(topSceneChanges(diff)).toEqual([{ label: 'Kick — mute', from: '-∞', to: '-5.0' }]);
+  });
+
   it('falls back to String() for other value types', () => {
     const diff: SceneDiff = {
       changes: [change({ from: 'A', to: 'B' })],

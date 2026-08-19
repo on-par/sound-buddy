@@ -15,9 +15,15 @@ import type { SceneDiff } from '@sound-buddy/shared';
 
 export const TOP_SCENE_CHANGES = 3;
 
+/** A fader/level at the M32R's -inf position (`-oo` in the .scn), see #887. */
+export const MINUS_INFINITY_LABEL = '-∞';
+
 function formatValue(v: unknown): string {
   if (typeof v === 'boolean') return v ? 'on' : 'off';
-  if (typeof v === 'number') return v.toFixed(1);
+  if (typeof v === 'number') {
+    if (v === Number.NEGATIVE_INFINITY) return MINUS_INFINITY_LABEL;
+    return v.toFixed(1);
+  }
   if (v === null || v === undefined) return '—';
   return String(v);
 }
