@@ -188,3 +188,48 @@ const GATE_RANGE_SPAN_DB = 57
 export function oscToGateRangeDb(f: number): number {
   return GATE_RANGE_MIN_DB + f * GATE_RANGE_SPAN_DB
 }
+
+// Dynamics threshold: the console reports the channel compressor's threshold --
+// the level above which gain reduction starts -- as a normalized 0..1 float and
+// displays it in dB over a -60..0 dB range, where f = 0 is the lowest threshold
+// (compressing almost everything) and f = 1 is unity (0 dB, effectively never
+// compressing). Note this span is narrower than the gate threshold's -80..0:
+// the two thresholds are separate parameters with separate ranges and must not
+// share a conversion. The formula below was verified live against the M32R's
+// own /node engineering-unit text during the #848 discovery session
+// (verify_scaling.py, on the docs/848-m32r-console-discovery branch); the
+// measured float/text pairs from that run were not committed as a fixture file,
+// so the tests assert the formula's own output at the boundaries and
+// representative interior points rather than claiming to replay a captured
+// console reading.
+//
+// Like the headamp, gate-threshold, and gate-range spans and unlike pan and
+// trim, this range has no meaningful midpoint landmark, so the conversion is
+// expressed as minimum-plus-span rather than the center-offset form those two
+// use.
+
+// The displayed threshold at the bottom of the dynamics range (f = 0).
+const DYNAMICS_THRESHOLD_MIN_DB = -60
+
+// Full width of the displayed dynamics threshold range: -60..0 spans 60 dB.
+const DYNAMICS_THRESHOLD_SPAN_DB = 60
+
+/**
+ * Converts a raw OSC dynamics (compressor) threshold float (0..1) to the
+ * console's displayed threshold in dB (-60 = minimum, 0 = maximum).
+ *
+ * Applies to the raw OSC float on the channel dynamics threshold parameter. It
+ * is NOT for `ChannelDynamics.thr` as produced by `parseChannelStrips`, which
+ * comes from the console's `/ch/NN/dyn` engineering-unit text line and is
+ * already in dB -- converting that value again would double-convert. This
+ * mirrors the same caveat on `oscToGateThresholdDb` and `ChannelGate.thr`.
+ *
+ * Distinct from `oscToGateThresholdDb`: the gate threshold floor is -80 dB,
+ * the dynamics threshold floor is -60 dB.
+ *
+ * Linear and total: the value is neither clamped nor rounded, so a caller that
+ * needs the console's rounded display rounds at the display edge.
+ */
+export function oscToDynamicsThresholdDb(f: number): number {
+  return DYNAMICS_THRESHOLD_MIN_DB + f * DYNAMICS_THRESHOLD_SPAN_DB
+}
