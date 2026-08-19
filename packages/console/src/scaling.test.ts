@@ -6,6 +6,7 @@ import {
   oscToHeadampGainDb,
   oscToGateThresholdDb,
   oscToGateRangeDb,
+  oscToDynamicsThresholdDb,
 } from './scaling.js'
 
 interface OnStateFixture {
@@ -310,6 +311,61 @@ describe('oscToGateRangeDb -- gate range conversion', () => {
     expect(oscToGateRangeDb(1)).not.toBeCloseTo(
       oscToGateThresholdDb(1),
       GATE_RANGE_PRECISION,
+    )
+  })
+})
+
+interface DynamicsThresholdFixture {
+  label: string // human label for the point on the range
+  raw: number // the raw OSC float, 0..1
+  expected: number // the console's displayed dynamics threshold in dB, -60..0
+}
+
+// Boundary + representative interior points. Asserted with toBeCloseTo, not
+// toBe: the constitution forbids floating-point comparison without epsilon
+// tolerance, so one rule applies uniformly to every row rather than only the
+// rows where exactness happens to hold.
+const DYNAMICS_THRESHOLD_FIXTURES: DynamicsThresholdFixture[] = [
+  { label: 'minimum threshold', raw: 0, expected: -60 },
+  { label: 'quarter travel', raw: 0.25, expected: -45 },
+  { label: 'range midpoint', raw: 0.5, expected: -30 },
+  { label: 'three-quarter travel', raw: 0.75, expected: -15 },
+  { label: 'maximum threshold', raw: 1, expected: 0 },
+]
+
+const DYNAMICS_THRESHOLD_PRECISION = 10 // decimal places for toBeCloseTo
+
+describe('oscToDynamicsThresholdDb -- dynamics threshold conversion', () => {
+  for (const f of DYNAMICS_THRESHOLD_FIXTURES) {
+    it(`converts ${f.label} dynamics threshold raw ${f.raw} to ${f.expected} dB`, () => {
+      expect(oscToDynamicsThresholdDb(f.raw)).toBeCloseTo(
+        f.expected,
+        DYNAMICS_THRESHOLD_PRECISION,
+      )
+    })
+  }
+
+  it('converts the minimum dynamics threshold value to -60 dB (AC1)', () => {
+    expect(oscToDynamicsThresholdDb(0)).toBeCloseTo(-60, DYNAMICS_THRESHOLD_PRECISION)
+  })
+
+  it('holds the dynamics threshold boundary at 0 dB (AC2)', () => {
+    expect(oscToDynamicsThresholdDb(1)).toBeCloseTo(0, DYNAMICS_THRESHOLD_PRECISION)
+  })
+
+  it('is monotonically increasing across the dynamics threshold range', () => {
+    const thresholds = DYNAMICS_THRESHOLD_FIXTURES.map((f) =>
+      oscToDynamicsThresholdDb(f.raw),
+    )
+    for (let i = 1; i < thresholds.length; i++) {
+      expect(thresholds[i]).toBeGreaterThan(thresholds[i - 1])
+    }
+  })
+
+  it('is a distinct conversion from gate threshold -- the dynamics floor is -60, the gate floor is -80', () => {
+    expect(oscToDynamicsThresholdDb(0)).not.toBeCloseTo(
+      oscToGateThresholdDb(0),
+      DYNAMICS_THRESHOLD_PRECISION,
     )
   })
 })
