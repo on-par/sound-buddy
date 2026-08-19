@@ -112,3 +112,40 @@ const HEADAMP_GAIN_SPAN_DB = 72
 export function oscToHeadampGainDb(f: number): number {
   return HEADAMP_GAIN_MIN_DB + f * HEADAMP_GAIN_SPAN_DB
 }
+
+// Gate threshold: the console reports the channel gate's threshold as a
+// normalized 0..1 float and displays it in dB over a -80..0 dB range, where
+// f = 0 is the fully-open floor (-80 dB, effectively never gating) and f = 1 is
+// the top of the range (0 dB). The formula below was verified live against the
+// M32R's own /node engineering-unit text during the #848 discovery session
+// (verify_scaling.py, on the docs/848-m32r-console-discovery branch); the
+// measured float/text pairs from that run were not committed as a fixture file,
+// so the tests assert the formula's own output at the boundaries and
+// representative interior points rather than claiming to replay a captured
+// console reading.
+//
+// Like the headamp range and unlike pan and trim, this range has no meaningful
+// midpoint landmark, so the conversion is expressed as minimum-plus-span rather
+// than the center-offset form those two use.
+
+// The displayed threshold at the bottom of the gate range (f = 0).
+const GATE_THRESHOLD_MIN_DB = -80
+
+// Full width of the displayed gate threshold range: -80..0 spans 80 dB.
+const GATE_THRESHOLD_SPAN_DB = 80
+
+/**
+ * Converts a raw OSC gate threshold float (0..1) to the console's displayed
+ * gate threshold in dB (-80 = minimum, 0 = maximum).
+ *
+ * Applies to the raw OSC float on the channel gate's threshold parameter. It is
+ * NOT for `ChannelGate.thr` as produced by `parseChannelStrips`, which comes
+ * from the console's `/ch/NN/gate` engineering-unit text line and is already in
+ * dB -- converting that value again would double-convert.
+ *
+ * Linear and total: the value is neither clamped nor rounded, so a caller that
+ * needs the console's rounded display rounds at the display edge.
+ */
+export function oscToGateThresholdDb(f: number): number {
+  return GATE_THRESHOLD_MIN_DB + f * GATE_THRESHOLD_SPAN_DB
+}

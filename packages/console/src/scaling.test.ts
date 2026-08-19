@@ -1,5 +1,11 @@
 import { describe, it, expect } from 'vitest'
-import { oscToOnState, oscToPan, oscToTrimDb, oscToHeadampGainDb } from './scaling.js'
+import {
+  oscToOnState,
+  oscToPan,
+  oscToTrimDb,
+  oscToHeadampGainDb,
+  oscToGateThresholdDb,
+} from './scaling.js'
 
 interface OnStateFixture {
   useSite: string // human label, e.g. 'channel on/mute'
@@ -196,5 +202,59 @@ describe('oscToHeadampGainDb -- headamp (mic preamp) gain conversion', () => {
   it('is a distinct conversion from channel trim -- the hardware preamp is not the digital stage', () => {
     expect(oscToHeadampGainDb(0)).not.toBeCloseTo(oscToTrimDb(0), HEADAMP_GAIN_PRECISION)
     expect(oscToHeadampGainDb(1)).not.toBeCloseTo(oscToTrimDb(1), HEADAMP_GAIN_PRECISION)
+  })
+})
+
+interface GateThresholdFixture {
+  label: string // human label, e.g. 'minimum threshold'
+  raw: number // the normalized OSC value on the channel gate's threshold
+  expected: number // the console's displayed gate threshold in dB, -80..0
+}
+
+// Boundary + representative interior points. Asserted with toBeCloseTo, not
+// toBe: the constitution forbids floating-point comparison without epsilon
+// tolerance, so one rule applies uniformly to every row rather than only the
+// rows where exactness happens to hold.
+const GATE_THRESHOLD_FIXTURES: GateThresholdFixture[] = [
+  { label: 'minimum threshold', raw: 0, expected: -80 },
+  { label: 'quarter travel', raw: 0.25, expected: -60 },
+  { label: 'range midpoint', raw: 0.5, expected: -40 },
+  { label: 'three-quarter travel', raw: 0.75, expected: -20 },
+  { label: 'maximum threshold', raw: 1, expected: 0 },
+]
+
+const GATE_THRESHOLD_PRECISION = 10 // decimal places for toBeCloseTo
+
+describe('oscToGateThresholdDb -- gate threshold conversion', () => {
+  for (const f of GATE_THRESHOLD_FIXTURES) {
+    it(`converts ${f.label} gate threshold raw ${f.raw} to ${f.expected} dB`, () => {
+      expect(oscToGateThresholdDb(f.raw)).toBeCloseTo(f.expected, GATE_THRESHOLD_PRECISION)
+    })
+  }
+
+  it('converts the minimum gate threshold value to -80 dB (AC1)', () => {
+    expect(oscToGateThresholdDb(0)).toBeCloseTo(-80, GATE_THRESHOLD_PRECISION)
+  })
+
+  it('holds the gate threshold range boundary at 0 dB (AC2)', () => {
+    expect(oscToGateThresholdDb(1)).toBeCloseTo(0, GATE_THRESHOLD_PRECISION)
+  })
+
+  it('is monotonically increasing across the gate threshold range', () => {
+    const thresholds = GATE_THRESHOLD_FIXTURES.map((f) => oscToGateThresholdDb(f.raw))
+    for (let i = 1; i < thresholds.length; i++) {
+      expect(thresholds[i]).toBeGreaterThan(thresholds[i - 1])
+    }
+  })
+
+  it('is a distinct conversion from headamp gain -- a threshold is not a preamp gain', () => {
+    expect(oscToGateThresholdDb(0)).not.toBeCloseTo(
+      oscToHeadampGainDb(0),
+      GATE_THRESHOLD_PRECISION,
+    )
+    expect(oscToGateThresholdDb(1)).not.toBeCloseTo(
+      oscToHeadampGainDb(1),
+      GATE_THRESHOLD_PRECISION,
+    )
   })
 })
