@@ -118,11 +118,17 @@ describe('fetchSceneInventory', () => {
       log: vi.fn(),
     };
 
-    await expect(
-      fetchSceneInventory(deps, GRANTED, '192.168.1.77', {
+    try {
+      await fetchSceneInventory(deps, GRANTED, '192.168.1.77', {
         queryOptions: { timeoutMs: 1, maxRetries: 0 },
-      }),
-    ).rejects.toThrow(new RegExp(`192\\.168\\.1\\.77.*${droppedPath.replace(/\//g, '\\/')}.*2 of 100`));
+      });
+      expect.fail('expected fetchSceneInventory to throw');
+    } catch (err) {
+      const message = (err as Error).message;
+      expect(message).toContain('192.168.1.77');
+      expect(message).toContain(droppedPath);
+      expect(message).toContain('2 of 100');
+    }
   });
 
   it('never resolves with a partial inventory when a slot fails', async () => {
