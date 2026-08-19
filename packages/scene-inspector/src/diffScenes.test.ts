@@ -166,7 +166,7 @@ describe('diffScenes', () => {
     expect(result.bySection.main).toEqual([])
   })
 
-  it('self-diffs the committed real-console capture with zero changes (#887)', () => {
+  it('self-diffs the committed real-console capture with zero changes (#887, #893)', () => {
     const content = readFileSync(
       new URL('../../console/src/capture-2026-08-16.scn', import.meta.url),
       'utf8',
@@ -175,6 +175,9 @@ describe('diffScenes', () => {
     const result = diffScenes(scene, scene)
     expect(result.changes).toEqual([])
     expect(result.summary).toBe('No differences found')
+    expect(result.bySection.channels).toEqual([])
+    expect(result.bySection.dcas).toEqual([])
+    expect(result.bySection.main).toEqual([])
   })
 
   it('treats two NaN faders as equal, not a change (#887)', () => {
@@ -225,17 +228,6 @@ describe('diffScenes', () => {
       from: Number.NEGATIVE_INFINITY,
       to: -5,
     })
-  })
-
-  it('reports no changes in any bySection bucket for two independent parses of the capture (#893)', () => {
-    const a = parseScene(CAPTURE)
-    const b = parseScene(CAPTURE)
-    const result = diffScenes(a, b)
-    expect(result.changes).toEqual([])
-    expect(result.summary).toBe('No differences found')
-    expect(result.bySection.channels).toEqual([])
-    expect(result.bySection.dcas).toEqual([])
-    expect(result.bySection.main).toEqual([])
   })
 
   it('still detects a genuine fader move against the real-console capture (#893)', () => {
