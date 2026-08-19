@@ -5,6 +5,7 @@ import {
   oscToTrimDb,
   oscToHeadampGainDb,
   oscToGateThresholdDb,
+  oscToGateRangeDb,
 } from './scaling.js'
 
 interface OnStateFixture {
@@ -255,6 +256,60 @@ describe('oscToGateThresholdDb -- gate threshold conversion', () => {
     expect(oscToGateThresholdDb(1)).not.toBeCloseTo(
       oscToHeadampGainDb(1),
       GATE_THRESHOLD_PRECISION,
+    )
+  })
+})
+
+interface GateRangeFixture {
+  label: string // human label, e.g. 'minimum range'
+  raw: number // the normalized OSC value on the channel gate's range parameter
+  expected: number // the console's displayed gate range in dB, 3..60
+}
+
+// Boundary + representative interior points. Asserted with toBeCloseTo, not
+// toBe: the constitution forbids floating-point comparison without epsilon
+// tolerance, so one rule applies uniformly to every row rather than only the
+// rows where exactness happens to hold.
+const GATE_RANGE_FIXTURES: GateRangeFixture[] = [
+  { label: 'minimum range', raw: 0, expected: 3 },
+  { label: 'quarter travel', raw: 0.25, expected: 17.25 },
+  { label: 'range midpoint', raw: 0.5, expected: 31.5 },
+  { label: 'three-quarter travel', raw: 0.75, expected: 45.75 },
+  { label: 'maximum range', raw: 1, expected: 60 },
+]
+
+const GATE_RANGE_PRECISION = 10 // decimal places for toBeCloseTo
+
+describe('oscToGateRangeDb -- gate range conversion', () => {
+  for (const f of GATE_RANGE_FIXTURES) {
+    it(`converts ${f.label} gate range raw ${f.raw} to ${f.expected} dB`, () => {
+      expect(oscToGateRangeDb(f.raw)).toBeCloseTo(f.expected, GATE_RANGE_PRECISION)
+    })
+  }
+
+  it('converts the minimum gate range value to 3 dB (AC1)', () => {
+    expect(oscToGateRangeDb(0)).toBeCloseTo(3, GATE_RANGE_PRECISION)
+  })
+
+  it('holds the gate range boundary at 60 dB (AC2)', () => {
+    expect(oscToGateRangeDb(1)).toBeCloseTo(60, GATE_RANGE_PRECISION)
+  })
+
+  it('is monotonically increasing across the gate range', () => {
+    const ranges = GATE_RANGE_FIXTURES.map((f) => oscToGateRangeDb(f.raw))
+    for (let i = 1; i < ranges.length; i++) {
+      expect(ranges[i]).toBeGreaterThan(ranges[i - 1])
+    }
+  })
+
+  it('is a distinct conversion from gate threshold -- range is attenuation depth, not a trigger level', () => {
+    expect(oscToGateRangeDb(0)).not.toBeCloseTo(
+      oscToGateThresholdDb(0),
+      GATE_RANGE_PRECISION,
+    )
+    expect(oscToGateRangeDb(1)).not.toBeCloseTo(
+      oscToGateThresholdDb(1),
+      GATE_RANGE_PRECISION,
     )
   })
 })
