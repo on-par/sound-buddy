@@ -114,7 +114,9 @@ describe('createFeedbackDialogStore', () => {
 
       await store.getState().toggleAttachDiagnostics(true);
 
-      expect(store.getState().diagHint).toContain('now selected in Finder');
+      expect(store.getState().diagHint).toContain('last 200 lines');
+      expect(store.getState().diagHint).toContain('public GitHub issue');
+      expect(store.getState().diagHint).not.toContain('never uploaded');
     });
 
     it('checking and missing sets the missing hint', async () => {
@@ -124,6 +126,7 @@ describe('createFeedbackDialogStore', () => {
       await store.getState().toggleAttachDiagnostics(true);
 
       expect(store.getState().diagHint).toContain('No diagnostic log exists yet');
+      expect(store.getState().diagHint).toContain('nothing will be attached');
     });
 
     it('checking and an unexpected/failed reveal sets the error hint', async () => {
@@ -132,7 +135,8 @@ describe('createFeedbackDialogStore', () => {
 
       await store.getState().toggleAttachDiagnostics(true);
 
-      expect(store.getState().diagHint).toContain('Could not reveal your log file');
+      expect(store.getState().diagHint).toContain('Could not open your log file in Finder');
+      expect(store.getState().diagHint).toContain('still be attached');
     });
 
     it('guards the in-flight-uncheck race: unchecked again before reveal resolves leaves the hint alone', async () => {

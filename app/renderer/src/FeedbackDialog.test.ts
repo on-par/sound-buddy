@@ -111,4 +111,19 @@ describe('FeedbackDialog', () => {
 
     expect(html).toMatch(/id="feedback-dialog-email-instead"[^>]*style="display:none"/);
   });
+
+  it('labels the diagnostics checkbox as including the log, not revealing it', () => {
+    const html = renderMarkup();
+
+    expect(html).toContain('Include my diagnostic log');
+    expect(html).not.toContain('never uploaded');
+  });
+
+  it('discloses what is never sent without claiming nothing leaves the machine', () => {
+    const html = renderMarkup();
+
+    expect(html).toContain('Never audio or recordings');
+    expect(html).toContain('Email addresses and license keys are stripped');
+    expect(html).not.toContain('anything else from your machine');
+  });
 });

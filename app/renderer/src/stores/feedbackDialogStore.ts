@@ -26,9 +26,9 @@ function getFeedbackForm(): FeedbackFormApi {
   return (window as unknown as { feedbackForm: FeedbackFormApi }).feedbackForm;
 }
 
-const FEEDBACK_DIAG_REVEALED_TEXT = 'Your log file is now selected in Finder. It is never uploaded — attach it to an email to support@soundbuddy.online if you’d like us to see it.';
-const FEEDBACK_DIAG_MISSING_TEXT = 'No diagnostic log exists yet — try again after using the app.';
-const FEEDBACK_DIAG_ERROR_TEXT = 'Could not reveal your log file — try unchecking and checking the box again.';
+const FEEDBACK_DIAG_REVEALED_TEXT = 'The last 200 lines of your log will be sent with your feedback — email addresses, license keys, and your home folder name are removed first. It is posted to a public GitHub issue, so review the file (now selected in Finder) before you send.';
+const FEEDBACK_DIAG_MISSING_TEXT = 'No diagnostic log exists yet — nothing will be attached. Try again after using the app.';
+const FEEDBACK_DIAG_ERROR_TEXT = 'Could not open your log file in Finder — your log will still be attached when you send. Uncheck the box if you’d rather not include it.';
 const FEEDBACK_SUCCESS_CLOSE_DELAY_MS = 1200;
 
 export interface FeedbackDialogState {
