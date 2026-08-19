@@ -19,6 +19,7 @@ import {
   decodeOscMessage,
   replyAddressMatches,
   type DecodedOscMessage,
+  type OscArg,
 } from '@sound-buddy/console/dist-cjs/index.js';
 import { assertConsoleNetworkConsent } from '../console-network-consent';
 import type { AppSettings } from './api';
@@ -40,6 +41,8 @@ const EXPECTED_STATUS_REPLY_ARG_COUNT = 3;
 export interface ConsoleQueryOptions {
   timeoutMs?: number;
   maxRetries?: number;
+  /** Args to send with the request — /node carries the node path as one string arg (#888). */
+  requestArgs?: OscArg[];
 }
 
 /** `/status` replies `sss`: state ("active"), ip, console name. */
@@ -75,7 +78,7 @@ export async function queryConsole<T>(
   const timeoutMs = options?.timeoutMs ?? DEFAULT_CONNECTION_QUERY_TIMEOUT_MS;
   const maxRetries = options?.maxRetries ?? DEFAULT_CONNECTION_QUERY_MAX_RETRIES;
   const socket = deps.createSocket?.() ?? defaultCreateSocket();
-  const request = encodeOscMessage({ address: requestAddress, args: [] });
+  const request = encodeOscMessage({ address: requestAddress, args: options?.requestArgs ?? [] });
 
   return new Promise<T>((resolve, reject) => {
     let settled = false;

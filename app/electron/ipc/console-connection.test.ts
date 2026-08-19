@@ -279,6 +279,37 @@ describe('queryConsole', () => {
     await expect(promise).resolves.toEqual({ ip: '192.168.1.77', model: 'M32R', firmware: '4.02', name: 'FOH' });
     expect(createSocketMock).toHaveBeenCalledWith('udp4');
   });
+
+  it('encodes options.requestArgs onto the wire (#888: /node carries the path as one string arg)', async () => {
+    const socket = fakeSocket();
+    const deps: ConsoleDiscoveryDeps = { createSocket: () => socket, log: vi.fn() };
+
+    const promise = queryConsole(deps, '192.168.1.77', '/node', () => 'ok', {
+      requestArgs: [{ type: 's', value: '/ch/01/config' }],
+    });
+    const call = socket.send.mock.calls[0] as [Uint8Array, number, string];
+    const decoded = decodeOscMessage(new Uint8Array(call[0]));
+    expect(decoded.address).toBe('/node');
+    expect(decoded.args).toEqual([{ type: 's', value: '/ch/01/config' }]);
+
+    socket.emit('message', Buffer.from(encodeOscMessage({ address: '/node', args: [] })), {
+      address: '192.168.1.77',
+    });
+    await promise;
+  });
+
+  it('sends a zero-arg message when options.requestArgs is omitted', async () => {
+    const socket = fakeSocket();
+    const deps: ConsoleDiscoveryDeps = { createSocket: () => socket, log: vi.fn() };
+
+    const promise = queryConsole(deps, '192.168.1.77', '/xinfo', parseXInfoReply);
+    const call = socket.send.mock.calls[0] as [Uint8Array, number, string];
+    const decoded = decodeOscMessage(new Uint8Array(call[0]));
+    expect(decoded.args).toEqual([]);
+
+    socket.emit('message', xinfoReplyBuffer('192.168.1.77', 'FOH', 'M32R', '4.02'), { address: '192.168.1.77' });
+    await promise;
+  });
 });
 
 describe('fetchConsoleIdentity', () => {

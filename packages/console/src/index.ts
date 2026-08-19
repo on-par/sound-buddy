@@ -233,3 +233,12 @@ export {
   METER_TIME_FACTOR_MIN,
   METER_TIME_FACTOR_MAX,
 } from './meters.js'
+export {
+  SceneCaptureError,
+  SCENE_FILE_VERSION,
+  SCENE_NODE_PATHS,
+  SCENE_NODE_PATH_COUNT,
+  buildSceneHeader,
+  assembleSceneFile,
+  parseNodeReplyLine,
+} from './scene-capture.js'
