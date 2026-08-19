@@ -71,8 +71,8 @@ describe('decodeMeterBlob — AC: little-endian is honored (hex-pinned)', () => 
 
 describe('decodeMeterBlob — AC: malformed blob fails loudly', () => {
   it('throws when the blob is shorter than the 4-byte count field', () => {
-    expect(() => decodeMeterBlob(fromHex('0102'))).toThrow(OscError)
-    expect(() => decodeMeterBlob(fromHex('0102'))).toThrow(/count/i)
+    expect(() => decodeMeterBlob(fromHex('010203'))).toThrow(OscError)
+    expect(() => decodeMeterBlob(fromHex('010203'))).toThrow(/count/i)
   })
 
   it('throws when the declared count does not match the byte length', () => {
@@ -92,6 +92,14 @@ describe('decodeMeterBlob — AC: malformed blob fails loudly', () => {
 
   it('throws when a /meters/1 blob does not carry exactly 96 values', () => {
     const blob = buildMeterBlob([1, 2, 3])
+    expect(() => decodeMeters1Blob(blob)).toThrow(OscError)
+    expect(() => decodeMeters1Blob(blob)).toThrow(/meters\/1/)
+    expect(() => decodeMeters1Blob(blob)).toThrow(/96/)
+  })
+
+  it('rejects a structurally valid but empty (count 0) blob as not a /meters/1 frame', () => {
+    const blob = buildMeterBlob([])
+    expect(blob.byteLength).toBe(4)
     expect(() => decodeMeters1Blob(blob)).toThrow(OscError)
     expect(() => decodeMeters1Blob(blob)).toThrow(/meters\/1/)
     expect(() => decodeMeters1Blob(blob)).toThrow(/96/)
