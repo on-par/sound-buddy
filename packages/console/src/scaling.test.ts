@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { oscToOnState, oscToPan, oscToTrimDb } from './scaling.js'
+import { oscToOnState, oscToPan, oscToTrimDb, oscToHeadampGainDb } from './scaling.js'
 
 interface OnStateFixture {
   useSite: string // human label, e.g. 'channel on/mute'
@@ -148,5 +148,53 @@ describe('oscToTrimDb -- preamp trim gain conversion', () => {
     for (let i = 1; i < gains.length; i++) {
       expect(gains[i]).toBeGreaterThan(gains[i - 1])
     }
+  })
+})
+
+interface HeadampGainFixture {
+  label: string // human label, e.g. 'minimum gain'
+  raw: number // the normalized OSC value on /headamp/NNN/gain
+  expected: number // the console's displayed headamp gain in dB, -12..+60
+}
+
+// Boundary + representative interior points. Asserted with toBeCloseTo, not
+// toBe: the constitution forbids floating-point comparison without epsilon
+// tolerance, so one rule applies uniformly to every row rather than only the
+// rows where exactness happens to hold.
+const HEADAMP_GAIN_FIXTURES: HeadampGainFixture[] = [
+  { label: 'minimum gain', raw: 0, expected: -12 },
+  { label: 'quarter travel', raw: 0.25, expected: 6 },
+  { label: 'range midpoint', raw: 0.5, expected: 24 },
+  { label: 'three-quarter travel', raw: 0.75, expected: 42 },
+  { label: 'maximum gain', raw: 1, expected: 60 },
+]
+
+const HEADAMP_GAIN_PRECISION = 10 // decimal places for toBeCloseTo
+
+describe('oscToHeadampGainDb -- headamp (mic preamp) gain conversion', () => {
+  for (const f of HEADAMP_GAIN_FIXTURES) {
+    it(`converts ${f.label} headamp raw ${f.raw} to ${f.expected} dB`, () => {
+      expect(oscToHeadampGainDb(f.raw)).toBeCloseTo(f.expected, HEADAMP_GAIN_PRECISION)
+    })
+  }
+
+  it('converts the minimum headamp value to -12 dB (AC1)', () => {
+    expect(oscToHeadampGainDb(0)).toBeCloseTo(-12, HEADAMP_GAIN_PRECISION)
+  })
+
+  it('holds the headamp range boundary at +60 dB (AC2)', () => {
+    expect(oscToHeadampGainDb(1)).toBeCloseTo(60, HEADAMP_GAIN_PRECISION)
+  })
+
+  it('is monotonically increasing across the headamp range', () => {
+    const gains = HEADAMP_GAIN_FIXTURES.map((f) => oscToHeadampGainDb(f.raw))
+    for (let i = 1; i < gains.length; i++) {
+      expect(gains[i]).toBeGreaterThan(gains[i - 1])
+    }
+  })
+
+  it('is a distinct conversion from channel trim -- the hardware preamp is not the digital stage', () => {
+    expect(oscToHeadampGainDb(0)).not.toBeCloseTo(oscToTrimDb(0), HEADAMP_GAIN_PRECISION)
+    expect(oscToHeadampGainDb(1)).not.toBeCloseTo(oscToTrimDb(1), HEADAMP_GAIN_PRECISION)
   })
 })
