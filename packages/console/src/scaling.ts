@@ -264,9 +264,10 @@ const HPF_SPAN_RATIO = 20
  * a constant ratio, so the sweep midpoint is ~89.4 Hz, not 210 Hz.
  *
  * Applies to the raw OSC float on the channel HPF frequency parameter. It is
- * NOT for any already-converted Hz value read from a `/node` engineering-unit
- * text line -- converting that again would double-convert, the same caveat
- * that applies to `oscToGateThresholdDb` and `ChannelGate.thr`.
+ * NOT for `ChannelStrip.preamp.hpf.freq` as produced by `parseChannelStrips`,
+ * which comes from the console's `/ch/NN/preamp` engineering-unit text line
+ * and is already in Hz -- converting that value again would double-convert.
+ * This mirrors the same caveat on `oscToGateThresholdDb` and `ChannelGate.thr`.
  *
  * Total and unrounded, like every conversion above: the value is neither
  * clamped nor rounded, so a caller that needs the console's integer Hz display
