@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { oscToOnState, oscToPan } from './scaling.js'
+import { oscToOnState, oscToPan, oscToTrimDb } from './scaling.js'
 
 interface OnStateFixture {
   useSite: string // human label, e.g. 'channel on/mute'
@@ -103,6 +103,50 @@ describe('oscToPan -- pan position conversion', () => {
     const positions = PAN_FIXTURES.map((f) => oscToPan(f.raw))
     for (let i = 1; i < positions.length; i++) {
       expect(positions[i]).toBeGreaterThan(positions[i - 1])
+    }
+  })
+})
+
+interface TrimFixture {
+  label: string // human label, e.g. 'minimum trim'
+  raw: number // the normalized OSC value on the channel's preamp trim
+  expected: number // the console's displayed trim gain in dB, -18..+18
+}
+
+// Boundary + representative interior points. Asserted with toBeCloseTo, not
+// toBe: the constitution forbids floating-point comparison without epsilon
+// tolerance, so one rule applies uniformly to every row rather than only the
+// rows where exactness happens to hold.
+const TRIM_FIXTURES: TrimFixture[] = [
+  { label: 'minimum trim', raw: 0, expected: -18 },
+  { label: 'half cut', raw: 0.25, expected: -9 },
+  { label: 'unity', raw: 0.5, expected: 0 },
+  { label: 'half boost', raw: 0.75, expected: 9 },
+  { label: 'maximum trim', raw: 1, expected: 18 },
+]
+
+const TRIM_PRECISION = 10 // decimal places for toBeCloseTo
+
+describe('oscToTrimDb -- preamp trim gain conversion', () => {
+  for (const f of TRIM_FIXTURES) {
+    it(`converts ${f.label} trim raw ${f.raw} to ${f.expected} dB`, () => {
+      expect(oscToTrimDb(f.raw)).toBeCloseTo(f.expected, TRIM_PRECISION)
+    })
+  }
+
+  it('converts the unity trim value to 0 dB (AC1)', () => {
+    expect(oscToTrimDb(0.5)).toBeCloseTo(0, TRIM_PRECISION)
+  })
+
+  it('holds the trim range boundaries at -18 and +18 dB (AC2)', () => {
+    expect(oscToTrimDb(0)).toBeCloseTo(-18, TRIM_PRECISION)
+    expect(oscToTrimDb(1)).toBeCloseTo(18, TRIM_PRECISION)
+  })
+
+  it('is monotonically increasing across the trim range', () => {
+    const gains = TRIM_FIXTURES.map((f) => oscToTrimDb(f.raw))
+    for (let i = 1; i < gains.length; i++) {
+      expect(gains[i]).toBeGreaterThan(gains[i - 1])
     }
   })
 })
