@@ -2,11 +2,17 @@
 // Licensed under the Sound Buddy Desktop Application License (app/LICENSE).
 
 import { describe, it, expect } from 'vitest';
-import { createConsoleStore, CONSENT_DECLINED_MESSAGE } from './consoleStore';
+import {
+  createConsoleStore,
+  CONSENT_DECLINED_MESSAGE,
+  NO_CONSOLE_SELECTED_MESSAGE,
+  LIVE_STATE_FAILED_MESSAGE,
+} from './consoleStore';
 import { createMockSoundBuddy } from '../mock-sound-buddy';
 
 const CONSOLE_A = { ip: '10.0.0.5', model: 'M32R', firmware: '4.0' };
 const IDENTITY_A = { ip: '10.0.0.5', model: 'M32R', firmware: '4.0', name: 'Main' };
+const CHANNEL_1 = { index: 1, name: 'Kick', faderDb: -10.5, on: true };
 
 function allow() {
   return Promise.resolve(true);
@@ -28,6 +34,9 @@ describe('createConsoleStore', () => {
     expect(s.identity).toBeNull();
     expect(s.identityStatus).toBe('idle');
     expect(s.manualIp).toBe('');
+    expect(s.liveChannels).toEqual([]);
+    expect(s.liveStateStatus).toBe('idle');
+    expect(s.liveStateError).toBeNull();
   });
 
   describe('scan', () => {
@@ -278,6 +287,138 @@ describe('createConsoleStore', () => {
       await store.getState().submitManualIp();
 
       expect(mock.calls).toContainEqual({ method: 'fetchConsoleIdentity', args: ['10.0.0.5'] });
+    });
+  });
+
+  describe('startLiveState / stopLiveState', () => {
+    it('errors with NO_CONSOLE_SELECTED_MESSAGE and never calls the bridge when nothing is selected', async () => {
+      const mock = createMockSoundBuddy();
+      const store = createConsoleStore(() => mock.api, allow);
+
+      await store.getState().startLiveState();
+
+      expect(store.getState().liveStateStatus).toBe('error');
+      expect(store.getState().liveStateError).toBe(NO_CONSOLE_SELECTED_MESSAGE);
+      expect(mock.calls.find((c) => c.method === 'startConsoleLiveState')).toBeUndefined();
+    });
+
+    it('a declined consent errors with CONSENT_DECLINED_MESSAGE and never calls the bridge', async () => {
+      const mock = createMockSoundBuddy();
+      const store = createConsoleStore(() => mock.api, decline);
+      store.setState({ selectedIp: '10.0.0.5' });
+
+      await store.getState().startLiveState();
+
+      expect(store.getState().liveStateStatus).toBe('error');
+      expect(store.getState().liveStateError).toBe(CONSENT_DECLINED_MESSAGE);
+      expect(mock.calls.find((c) => c.method === 'startConsoleLiveState')).toBeUndefined();
+    });
+
+    it('a successful start reaches watching and passes selectedIp to startConsoleLiveState', async () => {
+      const mock = createMockSoundBuddy({
+        startConsoleLiveState: async (ip: string) => {
+          mock.calls.push({ method: 'startConsoleLiveState', args: [ip] });
+          return { success: true };
+        },
+      });
+      const store = createConsoleStore(() => mock.api, allow);
+      store.setState({ selectedIp: '10.0.0.5' });
+
+      await store.getState().startLiveState();
+
+      expect(store.getState().liveStateStatus).toBe('watching');
+      expect(store.getState().liveStateError).toBeNull();
+      expect(mock.calls).toContainEqual({ method: 'startConsoleLiveState', args: ['10.0.0.5'] });
+    });
+
+    it('a { success: false } start surfaces the backend error and clears liveChannels', async () => {
+      const mock = createMockSoundBuddy({
+        startConsoleLiveState: async () => ({ success: false, error: 'No reply from the console.' }),
+      });
+      const store = createConsoleStore(() => mock.api, allow);
+      store.setState({ selectedIp: '10.0.0.5', liveChannels: [CHANNEL_1] });
+
+      await store.getState().startLiveState();
+
+      expect(store.getState().liveStateStatus).toBe('error');
+      expect(store.getState().liveStateError).toBe('No reply from the console.');
+      expect(store.getState().liveChannels).toEqual([]);
+    });
+
+    it('a throwing bridge yields LIVE_STATE_FAILED_MESSAGE', async () => {
+      const mock = createMockSoundBuddy({
+        startConsoleLiveState: async () => {
+          throw new Error('bridge disconnected');
+        },
+      });
+      const store = createConsoleStore(() => mock.api, allow);
+      store.setState({ selectedIp: '10.0.0.5' });
+
+      await store.getState().startLiveState();
+
+      expect(store.getState().liveStateStatus).toBe('error');
+      expect(store.getState().liveStateError).toBe(LIVE_STATE_FAILED_MESSAGE);
+    });
+
+    it('an emitted snapshot populates liveChannels and sets watching', async () => {
+      const mock = createMockSoundBuddy();
+      const store = createConsoleStore(() => mock.api, allow);
+      store.setState({ selectedIp: '10.0.0.5' });
+
+      await store.getState().startLiveState();
+      mock.emit('onConsoleLiveState', { channels: [CHANNEL_1] });
+
+      expect(store.getState().liveChannels).toEqual([CHANNEL_1]);
+      expect(store.getState().liveStateStatus).toBe('watching');
+    });
+
+    it('an emitted { error } sets liveStateStatus error with that message', async () => {
+      const mock = createMockSoundBuddy();
+      const store = createConsoleStore(() => mock.api, allow);
+      store.setState({ selectedIp: '10.0.0.5' });
+
+      await store.getState().startLiveState();
+      mock.emit('onConsoleLiveState', { error: 'the console did not answer' });
+
+      expect(store.getState().liveStateStatus).toBe('error');
+      expect(store.getState().liveStateError).toBe('the console did not answer');
+    });
+
+    it('a second startLiveState does not register a second listener', async () => {
+      const mock = createMockSoundBuddy();
+      const store = createConsoleStore(() => mock.api, allow);
+      store.setState({ selectedIp: '10.0.0.5' });
+
+      await store.getState().startLiveState();
+      await store.getState().startLiveState();
+
+      expect(mock.calls.filter((c) => c.method === 'onConsoleLiveState')).toHaveLength(1);
+    });
+
+    it('stopLiveState returns the store to idle', async () => {
+      const mock = createMockSoundBuddy();
+      const store = createConsoleStore(() => mock.api, allow);
+      store.setState({ liveStateStatus: 'watching', liveChannels: [CHANNEL_1] });
+
+      await store.getState().stopLiveState();
+
+      expect(store.getState().liveStateStatus).toBe('idle');
+      expect(store.getState().liveStateError).toBeNull();
+    });
+
+    it('a throwing stop yields LIVE_STATE_FAILED_MESSAGE', async () => {
+      const mock = createMockSoundBuddy({
+        stopConsoleLiveState: async () => {
+          throw new Error('bridge disconnected');
+        },
+      });
+      const store = createConsoleStore(() => mock.api, allow);
+      store.setState({ liveStateStatus: 'watching' });
+
+      await store.getState().stopLiveState();
+
+      expect(store.getState().liveStateStatus).toBe('error');
+      expect(store.getState().liveStateError).toBe(LIVE_STATE_FAILED_MESSAGE);
     });
   });
 });

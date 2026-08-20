@@ -39,6 +39,7 @@ import type {
   ListFolderAudioResult,
   CancelAnalysisResult,
   ConsoleIdentityDto,
+  ConsoleChannelStateDto,
 } from './api';
 import { createMockSoundBuddy } from '../../renderer/src/mock-sound-buddy';
 
@@ -50,6 +51,7 @@ import type { getSettings } from '../settings';
 import type { getLicenseState } from '../license';
 import type { revealDiagnosticLog, submitFeedback } from '../feedback';
 import type { ConsoleIdentity } from './console-discovery';
+import type { ConsoleChannelState } from './console-channel-state';
 
 // ─── Composition coverage ────────────────────────────────────────────────────
 // The intersection of every domain sub-interface must describe exactly the
@@ -119,6 +121,13 @@ type _ConsoleDtoMatches = ConsoleIdentity extends ConsoleIdentityDto ? true : ne
 type _ConsoleDtoMatchesBack = ConsoleIdentityDto extends ConsoleIdentity ? true : never;
 const consoleDtoForward: _ConsoleDtoMatches = true;
 const consoleDtoBackward: _ConsoleDtoMatchesBack = true;
+
+// ConsoleChannelStateDto (#977) must stay structurally identical to what
+// console-channel-state.ts's readChannelStates actually returns.
+type _ConsoleChannelStateDtoMatches = ConsoleChannelState extends ConsoleChannelStateDto ? true : never;
+type _ConsoleChannelStateDtoMatchesBack = ConsoleChannelStateDto extends ConsoleChannelState ? true : never;
+const consoleChannelStateDtoForward: _ConsoleChannelStateDtoMatches = true;
+const consoleChannelStateDtoBackward: _ConsoleChannelStateDtoMatchesBack = true;
 
 // analyze-file (ipc/analysis.ts) has three literal return shapes. The success
 // `data` is the full audio-engine analysis mirrored as AnalysisPayloadDto
@@ -255,6 +264,8 @@ describe('SoundBuddyApi composition (TD-011, #405)', () => {
     expect(stopLiveDrift.sessionDir).toBeNull();
     expect(consoleDtoForward).toBe(true);
     expect(consoleDtoBackward).toBe(true);
+    expect(consoleChannelStateDtoForward).toBe(true);
+    expect(consoleChannelStateDtoBackward).toBe(true);
     expect(analyzeFileOkDrift.success).toBe(true);
     expect(analyzeFileCancelledDrift.success).toBe(false);
     expect(analyzeFileErrDrift.success).toBe(false);

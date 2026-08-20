@@ -15,6 +15,7 @@ import type {
   LicenseState,
   StorageUsage,
   AnalysisPayloadDto,
+  ConsoleLiveStateEvent,
 } from '../../electron/ipc/api';
 
 export interface RecordedCall {
@@ -192,6 +193,9 @@ export function createMockSoundBuddy(overrides: Partial<SoundBuddyApi> = {}): Mo
     diffScenes: invoke('diffScenes', { ok: false as const, error: '' }),
     scanConsoles: invoke('scanConsoles', { success: true as const, consoles: [] }),
     fetchConsoleIdentity: invoke('fetchConsoleIdentity', { success: false as const, error: 'not mocked' }),
+    startConsoleLiveState: invoke('startConsoleLiveState', { success: true as const }),
+    stopConsoleLiveState: invoke('stopConsoleLiveState', { success: true }),
+    onConsoleLiveState: listen<[ConsoleLiveStateEvent]>('onConsoleLiveState'),
     isOnboardingDisabled: invoke('isOnboardingDisabled', false),
     listDevices: invoke('listDevices', undefined),
     listOutputDevices: invoke('listOutputDevices', undefined),

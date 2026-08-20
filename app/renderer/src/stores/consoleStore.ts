@@ -11,15 +11,20 @@
 import { create } from 'zustand';
 import type { StoreApi, UseBoundStore } from 'zustand';
 import { getSoundBuddy } from '../useElectron';
-import type { ConsoleApi, ConsoleIdentityDto } from '../../../electron/ipc/api';
+import type { ConsoleApi, ConsoleIdentityDto, ConsoleChannelStateDto } from '../../../electron/ipc/api';
 import { useConsoleNetworkConsentStore } from './consoleNetworkConsentStore';
 
 export type ConsoleScanStatus = 'idle' | 'scanning' | 'done' | 'error';
 export type ConsoleIdentityStatus = 'idle' | 'loading' | 'loaded' | 'error';
 export type ConsoleIdentitySource = 'scan' | 'manual';
+export type ConsoleLiveStateStatus = 'idle' | 'starting' | 'watching' | 'error';
 
 export const CONSENT_DECLINED_MESSAGE =
   'Console access is off. Choose "Allow read-only access" when Sound Buddy asks, then scan again.';
+export const NO_CONSOLE_SELECTED_MESSAGE =
+  'Choose a console from the scan results, or enter its IP, before watching channel state.';
+export const LIVE_STATE_FAILED_MESSAGE =
+  "Couldn't watch the console's channel state. Check the console is powered on and reachable on the network, then try again.";
 
 export interface ConsoleState {
   scanStatus: ConsoleScanStatus;
@@ -31,10 +36,15 @@ export interface ConsoleState {
   identityStatus: ConsoleIdentityStatus;
   identityError: string | null;
   manualIp: string;
+  liveChannels: ConsoleChannelStateDto[];
+  liveStateStatus: ConsoleLiveStateStatus;
+  liveStateError: string | null;
   scan(): Promise<void>;
   selectConsole(ip: string): Promise<void>;
   setManualIp(value: string): void;
   submitManualIp(): Promise<void>;
+  startLiveState(): Promise<void>;
+  stopLiveState(): Promise<void>;
 }
 
 const INITIAL_STATE = {
@@ -47,6 +57,9 @@ const INITIAL_STATE = {
   identityStatus: 'idle' as ConsoleIdentityStatus,
   identityError: null as string | null,
   manualIp: '',
+  liveChannels: [] as ConsoleChannelStateDto[],
+  liveStateStatus: 'idle' as ConsoleLiveStateStatus,
+  liveStateError: null as string | null,
 };
 
 export function createConsoleStore(
@@ -59,6 +72,10 @@ export function createConsoleStore(
   // store state, mirroring sceneDiffStore.ts's requestId guard.
   let scanRequestId = 0;
   let identityRequestId = 0;
+  // Bound once, on the first startLiveState call — a second start must not
+  // register a second onConsoleLiveState listener (it would double-apply
+  // every future snapshot).
+  let liveStateBound = false;
 
   return create<ConsoleState>()((set, get) => ({
     ...INITIAL_STATE,
@@ -147,6 +164,50 @@ export function createConsoleStore(
             "Couldn't read the console's identity. Check the IP is correct and the console is powered on and reachable on the network.",
           identity: null,
         });
+      }
+    },
+
+    async startLiveState() {
+      const ip = get().selectedIp;
+      if (!ip) {
+        set({ liveStateStatus: 'error', liveStateError: NO_CONSOLE_SELECTED_MESSAGE });
+        return;
+      }
+      if (!(await requestConsent())) {
+        set({ liveStateStatus: 'error', liveStateError: CONSENT_DECLINED_MESSAGE, liveChannels: [] });
+        return;
+      }
+      if (!liveStateBound) {
+        liveStateBound = true;
+        getApi().onConsoleLiveState((evt) => {
+          if ('error' in evt) {
+            set({ liveStateStatus: 'error', liveStateError: evt.error });
+            return;
+          }
+          set({ liveChannels: evt.channels, liveStateStatus: 'watching', liveStateError: null });
+        });
+      }
+      // Set 'starting' after the listener bind so a push that lands during
+      // the round trip below can't be lost.
+      set({ liveStateStatus: 'starting', liveStateError: null });
+      try {
+        const result = await getApi().startConsoleLiveState(ip);
+        if (result.success) {
+          set({ liveStateStatus: 'watching', liveStateError: null });
+        } else {
+          set({ liveStateStatus: 'error', liveStateError: result.error, liveChannels: [] });
+        }
+      } catch {
+        set({ liveStateStatus: 'error', liveStateError: LIVE_STATE_FAILED_MESSAGE, liveChannels: [] });
+      }
+    },
+
+    async stopLiveState() {
+      try {
+        await getApi().stopConsoleLiveState();
+        set({ liveStateStatus: 'idle', liveStateError: null });
+      } catch {
+        set({ liveStateStatus: 'error', liveStateError: LIVE_STATE_FAILED_MESSAGE });
       }
     },
   }));

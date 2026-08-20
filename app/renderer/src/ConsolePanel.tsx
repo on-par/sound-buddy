@@ -10,15 +10,25 @@
 // per ADR-0006, the consent modal itself (not this panel) is the only path
 // that ever grants consent; this panel only requests it.
 //
-// READ-ONLY BY CONSTRUCTION (#884 ADR): every control here maps to one of
-// three read actions — scan, select a found console, or submit a manual IP —
-// none of which write to the console. console-read-only-gate.test.ts pins
-// this.
+// READ-ONLY BY CONSTRUCTION (#884, #977 ADR): every control here maps to one
+// of a handful of read actions — scan, select a found console, submit a
+// manual IP, or watch/stop watching live channel state — none of which write
+// to the console. The live channel rows themselves are display-only (plain
+// <span>s, no input/button/handler). console-read-only-gate.test.ts pins this.
 
 import type { JSX } from 'react';
 import { useStoreShallow } from './stores/useStoreShallow';
 import { useConsoleStore } from './stores/consoleStore';
 import { useLiveCaptureStore } from './stores/liveCaptureStore';
+
+const FADER_DB_DECIMALS = 1;
+
+/** Fader position in engineering units (R1b). The console's "-oo" arrives as
+ *  -Infinity and reads as the fader being all the way down. */
+export function formatFaderDb(db: number): string {
+  if (!Number.isFinite(db)) return '-∞ dB';
+  return `${db.toFixed(FADER_DB_DECIMALS)} dB`;
+}
 
 export default function ConsolePanel(): JSX.Element | null {
   const appMode = useStoreShallow(useLiveCaptureStore, (s) => s.appMode);
@@ -32,6 +42,9 @@ export default function ConsolePanel(): JSX.Element | null {
     identityStatus: st.identityStatus,
     identityError: st.identityError,
     manualIp: st.manualIp,
+    liveChannels: st.liveChannels,
+    liveStateStatus: st.liveStateStatus,
+    liveStateError: st.liveStateError,
   }));
 
   if (appMode !== 'live') return null;
@@ -100,6 +113,43 @@ export default function ConsolePanel(): JSX.Element | null {
             <dd>{s.identity.ip}</dd>
           </dl>
         </>
+      )}
+
+      <button
+        type="button"
+        id="console-live-toggle"
+        className="btn btn-secondary"
+        disabled={!s.selectedIp}
+        /* c8 ignore next 4 -- click dispatch, no jsdom */
+        onClick={() =>
+          s.liveStateStatus === 'watching' || s.liveStateStatus === 'starting'
+            ? void useConsoleStore.getState().stopLiveState()
+            : void useConsoleStore.getState().startLiveState()
+        }
+      >
+        {s.liveStateStatus === 'watching' || s.liveStateStatus === 'starting' ? 'Stop watching' : 'Watch channel state'}
+      </button>
+
+      {s.liveStateError && (
+        <p id="console-live-error" role="alert">
+          {s.liveStateError}
+        </p>
+      )}
+
+      {s.liveStateStatus === 'starting' && s.liveChannels.length === 0 && (
+        <p id="console-live-waiting">Reading channel state…</p>
+      )}
+
+      {s.liveChannels.length > 0 && (
+        <ul id="console-live-channels">
+          {s.liveChannels.map((c) => (
+            <li key={c.index} data-channel-index={c.index} className="console-channel-row">
+              <span className="console-channel-name">{c.name === '' ? `Ch ${c.index}` : c.name}</span>
+              <span className="console-channel-fader">{formatFaderDb(c.faderDb)}</span>
+              <span className={c.on ? 'console-channel-on' : 'console-channel-off'}>{c.on ? 'ON' : 'OFF'}</span>
+            </li>
+          ))}
+        </ul>
       )}
 
       <label htmlFor="console-manual-ip">Console IP (fallback)</label>
