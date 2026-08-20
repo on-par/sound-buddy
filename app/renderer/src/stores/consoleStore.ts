@@ -11,7 +11,14 @@
 import { create } from 'zustand';
 import type { StoreApi, UseBoundStore } from 'zustand';
 import { getSoundBuddy } from '../useElectron';
-import type { ConsoleApi, ConsoleIdentityDto, ConsoleChannelStateDto, ConsoleLinkStateDto } from '../../../electron/ipc/api';
+import type {
+  ConsoleApi,
+  ConsoleIdentityDto,
+  ConsoleChannelStateDto,
+  ConsoleLinkStateDto,
+  SceneDiffDto,
+  AnalysisApi,
+} from '../../../electron/ipc/api';
 import { useConsoleNetworkConsentStore } from './consoleNetworkConsentStore';
 
 export type ConsoleScanStatus = 'idle' | 'scanning' | 'done' | 'error';
@@ -19,6 +26,7 @@ export type ConsoleIdentityStatus = 'idle' | 'loading' | 'loaded' | 'error';
 export type ConsoleIdentitySource = 'scan' | 'manual';
 export type ConsoleLiveStateStatus = 'idle' | 'starting' | 'watching' | 'error';
 export type ConsoleCaptureStatus = 'idle' | 'capturing' | 'done' | 'cancelled' | 'error';
+export type ConsoleSceneDiffStatus = 'idle' | 'diffing' | 'done' | 'error';
 
 export const CONSENT_DECLINED_MESSAGE =
   'Console access is off. Choose "Allow read-only access" when Sound Buddy asks, then scan again.';
@@ -30,6 +38,8 @@ export const CAPTURE_FAILED_MESSAGE =
   "Couldn't capture the console scene. Check the console is powered on and reachable, then try again.";
 export const CAPTURE_LOCAL_ONLY_MESSAGE =
   'Scene captures are saved locally on this Mac. Nothing is uploaded or shared; scrub channel labels before exporting.';
+export const SCENE_DIFF_FAILED_MESSAGE =
+  "Couldn't compare those scene captures. Check both files still exist, then try again.";
 
 /** The one literal for "no signal yet" link state (#886) — shared by
  *  INITIAL_STATE and every reset below so there is exactly one copy. */
@@ -60,6 +70,12 @@ export interface ConsoleState {
   captureTotal: number;
   captureFilePath: string | null;
   captureError: string | null;
+  captureHistory: string[];
+  sceneDiffStatus: ConsoleSceneDiffStatus;
+  sceneDiff: SceneDiffDto | null;
+  sceneDiffNameA: string | null;
+  sceneDiffNameB: string | null;
+  sceneDiffError: string | null;
   scan(): Promise<void>;
   selectConsole(ip: string): Promise<void>;
   setManualIp(value: string): void;
@@ -68,6 +84,7 @@ export interface ConsoleState {
   stopLiveState(): Promise<void>;
   startSceneCapture(): Promise<void>;
   cancelSceneCapture(): Promise<void>;
+  compareLastSceneCaptures(): Promise<void>;
 }
 
 const INITIAL_STATE = {
@@ -90,10 +107,16 @@ const INITIAL_STATE = {
   captureTotal: 0,
   captureFilePath: null as string | null,
   captureError: null as string | null,
+  captureHistory: [] as string[],
+  sceneDiffStatus: 'idle' as ConsoleSceneDiffStatus,
+  sceneDiff: null as SceneDiffDto | null,
+  sceneDiffNameA: null as string | null,
+  sceneDiffNameB: null as string | null,
+  sceneDiffError: null as string | null,
 };
 
 export function createConsoleStore(
-  getApi: () => ConsoleApi,
+  getApi: () => ConsoleApi & Pick<AnalysisApi, 'diffScenes'>,
   requestConsent: () => Promise<boolean>
 ): UseBoundStore<StoreApi<ConsoleState>> {
   // Bumped on every scan/selectConsole/submitManualIp call so an in-flight
@@ -288,7 +311,8 @@ export function createConsoleStore(
       try {
         const result = await getApi().startConsoleSceneCapture(ip);
         if (result.success) {
-          set({ captureStatus: 'done', captureFilePath: result.filePath, captureError: null });
+          const captureHistory = [...get().captureHistory, result.filePath].slice(-2);
+          set({ captureStatus: 'done', captureFilePath: result.filePath, captureError: null, captureHistory });
         } else {
           set({
             captureStatus: result.cancelled ? 'cancelled' : 'error',
@@ -306,6 +330,28 @@ export function createConsoleStore(
         await getApi().cancelConsoleSceneCapture();
       } catch {
         set({ captureStatus: 'error', captureError: CAPTURE_FAILED_MESSAGE });
+      }
+    },
+
+    async compareLastSceneCaptures() {
+      const [pathA, pathB] = get().captureHistory;
+      if (!pathA || !pathB) return;
+      set({ sceneDiffStatus: 'diffing', sceneDiff: null, sceneDiffError: null, sceneDiffNameA: null, sceneDiffNameB: null });
+      try {
+        const result = await getApi().diffScenes({ pathA, pathB });
+        if (result.ok) {
+          set({
+            sceneDiffStatus: 'done',
+            sceneDiff: result.diff,
+            sceneDiffNameA: result.nameA,
+            sceneDiffNameB: result.nameB,
+            sceneDiffError: null,
+          });
+        } else {
+          set({ sceneDiffStatus: 'error', sceneDiff: null, sceneDiffError: result.error });
+        }
+      } catch {
+        set({ sceneDiffStatus: 'error', sceneDiff: null, sceneDiffError: SCENE_DIFF_FAILED_MESSAGE });
       }
     },
   }));
