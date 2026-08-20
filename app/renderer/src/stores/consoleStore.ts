@@ -91,7 +91,7 @@ export function createConsoleStore(
 
     async selectConsole(ip) {
       if (!(await requestConsent())) {
-        set({ scanError: CONSENT_DECLINED_MESSAGE });
+        set({ identityStatus: 'error', identityError: CONSENT_DECLINED_MESSAGE, identity: null });
         return;
       }
 
@@ -125,7 +125,7 @@ export function createConsoleStore(
       if (ip === '') return;
 
       if (!(await requestConsent())) {
-        set({ scanError: CONSENT_DECLINED_MESSAGE });
+        set({ identityStatus: 'error', identityError: CONSENT_DECLINED_MESSAGE, identity: null });
         return;
       }
 

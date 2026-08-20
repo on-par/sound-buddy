@@ -170,14 +170,16 @@ describe('createConsoleStore', () => {
       expect(store.getState().identity).toBeNull();
     });
 
-    it('a declined consent leaves identityStatus untouched and never calls fetchConsoleIdentity', async () => {
+    it('a declined consent sets identityError to CONSENT_DECLINED_MESSAGE, clears any identity, and never calls fetchConsoleIdentity', async () => {
       const mock = createMockSoundBuddy();
       const store = createConsoleStore(() => mock.api, decline);
+      store.setState({ identity: IDENTITY_A, identityStatus: 'loaded' });
 
       await store.getState().selectConsole('10.0.0.5');
 
-      expect(store.getState().identityStatus).toBe('idle');
-      expect(store.getState().scanError).toBe(CONSENT_DECLINED_MESSAGE);
+      expect(store.getState().identityStatus).toBe('error');
+      expect(store.getState().identityError).toBe(CONSENT_DECLINED_MESSAGE);
+      expect(store.getState().identity).toBeNull();
       expect(mock.calls.find((c) => c.method === 'fetchConsoleIdentity')).toBeUndefined();
     });
   });
@@ -222,14 +224,15 @@ describe('createConsoleStore', () => {
       expect(store.getState().identityStatus).toBe('idle');
     });
 
-    it('a declined consent sets CONSENT_DECLINED_MESSAGE and never calls fetchConsoleIdentity', async () => {
+    it('a declined consent sets identityError to CONSENT_DECLINED_MESSAGE and never calls fetchConsoleIdentity', async () => {
       const mock = createMockSoundBuddy();
       const store = createConsoleStore(() => mock.api, decline);
       store.getState().setManualIp('10.0.0.5');
 
       await store.getState().submitManualIp();
 
-      expect(store.getState().scanError).toBe(CONSENT_DECLINED_MESSAGE);
+      expect(store.getState().identityStatus).toBe('error');
+      expect(store.getState().identityError).toBe(CONSENT_DECLINED_MESSAGE);
       expect(mock.calls.find((c) => c.method === 'fetchConsoleIdentity')).toBeUndefined();
     });
 
