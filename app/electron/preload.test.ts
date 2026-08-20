@@ -107,6 +107,8 @@ const INVOKE_TABLE: Array<{ method: BridgeKey; channel: string; args: unknown[] 
     channel: 'diff-scenes',
     args: [{ pathA: '/tmp/before.scn', pathB: '/tmp/after.scn' } satisfies DiffScenesOpts],
   },
+  { method: 'scanConsoles', channel: 'scan-consoles', args: [] },
+  { method: 'fetchConsoleIdentity', channel: 'fetch-console-identity', args: ['192.168.1.50'] },
   { method: 'isOnboardingDisabled', channel: 'onboarding-disabled', args: [] },
   { method: 'listDevices', channel: 'list-devices', args: [] },
   { method: 'listOutputDevices', channel: 'list-output-devices', args: [] },

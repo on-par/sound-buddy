@@ -135,6 +135,11 @@ export function createBridge(ipc: IpcRendererLike) {
     // Scene-file diff (#264) — parses and diffs two dropped M32R .scn files.
     diffScenes: (opts: DiffScenesOpts) => ipc.invoke('diff-scenes', opts),
 
+    // Console reads (#884) — READ-ONLY: scan the network for a console and
+    // read one console's identity. No write channel exists in this domain.
+    scanConsoles: () => ipc.invoke('scan-consoles'),
+    fetchConsoleIdentity: (ip: string) => ipc.invoke('fetch-console-identity', ip),
+
     // Dev/e2e switch (SOUND_BUDDY_DISABLE_ONBOARDING) for the first-run overlay (#69).
     isOnboardingDisabled: () => ipc.invoke('onboarding-disabled'),
 

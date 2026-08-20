@@ -20,6 +20,7 @@ import type {
   LicenseApi,
   AnalysisApi,
   LiveApi,
+  ConsoleApi,
   PlaybackApi,
   DialogApi,
   UpdateApi,
@@ -37,6 +38,7 @@ import type {
   ListSummariesResult,
   ListFolderAudioResult,
   CancelAnalysisResult,
+  ConsoleIdentityDto,
 } from './api';
 import { createMockSoundBuddy } from '../../renderer/src/mock-sound-buddy';
 
@@ -47,6 +49,7 @@ import { createMockSoundBuddy } from '../../renderer/src/mock-sound-buddy';
 import type { getSettings } from '../settings';
 import type { getLicenseState } from '../license';
 import type { revealDiagnosticLog, submitFeedback } from '../feedback';
+import type { ConsoleIdentity } from './console-discovery';
 
 // ─── Composition coverage ────────────────────────────────────────────────────
 // The intersection of every domain sub-interface must describe exactly the
@@ -61,6 +64,7 @@ type SubInterfaceIntersection = AppInfoApi &
   LicenseApi &
   AnalysisApi &
   LiveApi &
+  ConsoleApi &
   PlaybackApi &
   DialogApi &
   UpdateApi &
@@ -108,6 +112,13 @@ const storageUsageDrift: StorageUsage = {
 
 // stop-live (ipc/live-capture.ts) always resolves { success: true, sessionDir }.
 const stopLiveDrift: StopLiveResult = { success: true, sessionDir: null };
+
+// ConsoleIdentityDto (#884) must stay structurally identical to what
+// console-discovery/console-connection actually return.
+type _ConsoleDtoMatches = ConsoleIdentity extends ConsoleIdentityDto ? true : never;
+type _ConsoleDtoMatchesBack = ConsoleIdentityDto extends ConsoleIdentity ? true : never;
+const consoleDtoForward: _ConsoleDtoMatches = true;
+const consoleDtoBackward: _ConsoleDtoMatchesBack = true;
 
 // analyze-file (ipc/analysis.ts) has three literal return shapes. The success
 // `data` is the full audio-engine analysis mirrored as AnalysisPayloadDto
@@ -199,6 +210,7 @@ describe('SoundBuddyApi composition (TD-011, #405)', () => {
     const licenseSlice: LicenseApi = api;
     const analysisSlice: AnalysisApi = api;
     const liveSlice: LiveApi = api;
+    const consoleSlice: ConsoleApi = api;
     const playbackSlice: PlaybackApi = api;
     const dialogSlice: DialogApi = api;
     const updateSlice: UpdateApi = api;
@@ -214,6 +226,7 @@ describe('SoundBuddyApi composition (TD-011, #405)', () => {
       licenseSlice,
       analysisSlice,
       liveSlice,
+      consoleSlice,
       playbackSlice,
       dialogSlice,
       updateSlice,
@@ -222,7 +235,7 @@ describe('SoundBuddyApi composition (TD-011, #405)', () => {
       listenerSlice,
     ];
 
-    expect(slices).toHaveLength(13);
+    expect(slices).toHaveLength(14);
     for (const slice of slices) expect(slice).toBeTruthy();
   });
 
@@ -240,6 +253,8 @@ describe('SoundBuddyApi composition (TD-011, #405)', () => {
     expect(submitFeedbackDrift).toBeNull();
     expect(storageUsageDrift.path).toBe('/tmp/sound-buddy');
     expect(stopLiveDrift.sessionDir).toBeNull();
+    expect(consoleDtoForward).toBe(true);
+    expect(consoleDtoBackward).toBe(true);
     expect(analyzeFileOkDrift.success).toBe(true);
     expect(analyzeFileCancelledDrift.success).toBe(false);
     expect(analyzeFileErrDrift.success).toBe(false);

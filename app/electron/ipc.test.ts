@@ -3,8 +3,8 @@
 
 // registerIpcHandlers is a thin fan-out: it must call every domain's
 // register*Handlers exactly once, and in a fixed order. This test mocks the
-// six ipc/ modules so a dropped handler registration fails loudly instead of
-// silently leaving a channel unwired.
+// seven ipc/ modules so a dropped handler registration fails loudly instead
+// of silently leaving a channel unwired.
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
@@ -15,6 +15,7 @@ const mocks = vi.hoisted(() => ({
   registerPlaybackHandlers: vi.fn(),
   registerLicensingHandlers: vi.fn(),
   registerSettingsHandlers: vi.fn(),
+  registerConsoleHandlers: vi.fn(),
 }));
 
 vi.mock('./ipc/analysis', () => ({
@@ -40,6 +41,9 @@ vi.mock('./ipc/licensing', () => ({
 vi.mock('./ipc/settings', () => ({
   registerSettingsHandlers: mocks.registerSettingsHandlers,
 }));
+vi.mock('./ipc/console', () => ({
+  registerConsoleHandlers: mocks.registerConsoleHandlers,
+}));
 
 import { registerIpcHandlers } from './ipc';
 
@@ -56,7 +60,7 @@ describe('registerIpcHandlers', () => {
     }
   });
 
-  it('registers the six domains in the same order the source lists them', () => {
+  it('registers the seven domains in the same order the source lists them', () => {
     const callOrder: string[] = [];
     for (const mock of Object.values(mocks)) {
       mock.mockImplementation(() => callOrder.push(mock.getMockName()));
@@ -68,6 +72,7 @@ describe('registerIpcHandlers', () => {
     mocks.registerPlaybackHandlers.mockName('registerPlaybackHandlers');
     mocks.registerLicensingHandlers.mockName('registerLicensingHandlers');
     mocks.registerSettingsHandlers.mockName('registerSettingsHandlers');
+    mocks.registerConsoleHandlers.mockName('registerConsoleHandlers');
 
     registerIpcHandlers();
 
@@ -78,6 +83,7 @@ describe('registerIpcHandlers', () => {
       'registerPlaybackHandlers',
       'registerLicensingHandlers',
       'registerSettingsHandlers',
+      'registerConsoleHandlers',
     ]);
   });
 });

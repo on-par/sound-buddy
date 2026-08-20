@@ -11,6 +11,7 @@
 //   ipc/playback.ts      — virtual-soundcheck playback (start/stop-playback)
 //   ipc/licensing.ts     — license get/activate/remove
 //   ipc/settings.ts      — app settings, capture rigs, native dialogs
+//   ipc/console.ts        — console scan + identity reads (#884)
 //
 // Re-exports below preserve the surface other modules import from './ipc':
 // main.ts (registerIpcHandlers), the parser drift-guard test (runSox/
@@ -23,6 +24,7 @@ import { registerMeasurementSourceHandlers } from './ipc/measurement-source';
 import { registerPlaybackHandlers } from './ipc/playback';
 import { registerLicensingHandlers } from './ipc/licensing';
 import { registerSettingsHandlers } from './ipc/settings';
+import { registerConsoleHandlers } from './ipc/console';
 
 export { runSox, runFfprobe, runSpectrum, runEbur128 } from './ipc/analysis';
 export { enumerateDevices, type DeviceListResult } from './ipc/live-capture';
@@ -34,4 +36,5 @@ export function registerIpcHandlers(): void {
   registerPlaybackHandlers();
   registerLicensingHandlers();
   registerSettingsHandlers();
+  registerConsoleHandlers();
 }

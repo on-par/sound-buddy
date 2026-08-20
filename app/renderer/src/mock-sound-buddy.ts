@@ -190,6 +190,8 @@ export function createMockSoundBuddy(overrides: Partial<SoundBuddyApi> = {}): Mo
     getDemoAudio: invoke('getDemoAudio', null),
     getWhatsNew: invoke('getWhatsNew', null),
     diffScenes: invoke('diffScenes', { ok: false as const, error: '' }),
+    scanConsoles: invoke('scanConsoles', { success: true as const, consoles: [] }),
+    fetchConsoleIdentity: invoke('fetchConsoleIdentity', { success: false as const, error: 'not mocked' }),
     isOnboardingDisabled: invoke('isOnboardingDisabled', false),
     listDevices: invoke('listDevices', undefined),
     listOutputDevices: invoke('listOutputDevices', undefined),
