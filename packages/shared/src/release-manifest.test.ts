@@ -376,8 +376,9 @@ describe('summarizeReleaseNotes', () => {
 });
 
 describe('ELECTRON_UPDATER_MANIFEST_FILENAME', () => {
-  it('is "latest-mac.yml", exported from the package index (#625)', async () => {
-    const { ELECTRON_UPDATER_MANIFEST_FILENAME } = await import('./index.js');
+  it('exports the release-channel constants the CLI scripts import from the package index', async () => {
+    const { ELECTRON_UPDATER_MANIFEST_FILENAME, RELEASES_REPO } = await import('./index.js');
     expect(ELECTRON_UPDATER_MANIFEST_FILENAME).toBe('latest-mac.yml');
+    expect(RELEASES_REPO).toBe('on-par/sound-buddy-releases');
   });
 });
