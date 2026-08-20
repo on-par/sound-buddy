@@ -648,6 +648,34 @@ export interface StopLiveResult {
   sessionDir: string | null;
 }
 
+// ─── Console DTOs (#884) ──────────────────────────────────────────────────
+/** One console's identity as the renderer sees it — the structural mirror of
+ *  ipc/console-discovery.ts's ConsoleIdentity. `name` is present only once a
+ *  /xinfo reply has been read (a broadcast /info scan reply has no name). */
+export interface ConsoleIdentityDto {
+  ip: string;
+  model: string;
+  firmware: string;
+  name?: string;
+  serverVersion?: string;
+  oscServer?: string;
+}
+
+export type ScanConsolesResult =
+  | { success: true; consoles: ConsoleIdentityDto[] }
+  | { success: false; error: string };
+
+export type FetchConsoleIdentityResult =
+  | { success: true; identity: ConsoleIdentityDto }
+  | { success: false; error: string };
+
+/** Console network reads (#884, #848). READ-ONLY BY CONSTRUCTION — see the
+ *  ADR: no channel in this slice may write to the console. */
+export interface ConsoleApi {
+  scanConsoles(): Promise<ScanConsolesResult>;
+  fetchConsoleIdentity(ip: string): Promise<FetchConsoleIdentityResult>;
+}
+
 // ─── Domain sub-interfaces ───────────────────────────────────────────────────
 // SoundBuddyApi is composed from these so a client can depend on a narrow
 // slice (e.g. `AnalysisApi`) instead of the full bridge. The runtime bridge
@@ -821,6 +849,7 @@ export interface SoundBuddyApi
     LicenseApi,
     AnalysisApi,
     LiveApi,
+    ConsoleApi,
     PlaybackApi,
     DialogApi,
     UpdateApi,
