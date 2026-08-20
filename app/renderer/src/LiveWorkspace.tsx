@@ -45,6 +45,7 @@ import {
   getDawWorkspaceState,
   getDawShellRuntime,
   liveWorkspaceViewState,
+  boardRunning,
 } from './live-workspace-view';
 import { roomPaneOverride } from './measurement-device-state';
 import type { LiveEvent } from './live-capture-panel';
@@ -147,7 +148,10 @@ export default function LiveWorkspace(): JSX.Element {
         const s = useLiveCaptureStore.getState();
         return {
           lastTick: s.lastTick,
-          isCapturing: s.isCapturing,
+          // #847: hold the header #live-level-readout visible across a
+          // record-stop demote (ADR-0013/ADR-0014 put the readout on this
+          // snapshot) — see boardRunning() in live-workspace-view.ts.
+          isCapturing: boardRunning(s),
           measurementSource: s.measurementSource,
           lastMeasurementChannels: s.lastMeasurementChannels,
           // Mirror inline-app.js's secondaryMeasurementActive(): status

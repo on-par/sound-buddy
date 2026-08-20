@@ -63,6 +63,7 @@ beforeEach(() => {
     liveWindows: [],
     lastTick: null,
     lastLiveChannels: null,
+    demoting: false,
   });
   useSettingsStore.setState({ settings: settings() });
 });
