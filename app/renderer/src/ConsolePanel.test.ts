@@ -228,6 +228,23 @@ describe('ConsolePanel (#884)', () => {
       expect(html).toContain('Stop watching');
     });
 
+    it('shows a waiting line while starting with no channels yet', () => {
+      useConsoleStore.setState({ selectedIp: CONSOLE_A.ip, liveStateStatus: 'starting', liveChannels: [] });
+
+      const html = renderMarkup();
+
+      expect(html).toContain('id="console-live-waiting"');
+      expect(html).toMatch(/Reading channel state/);
+    });
+
+    it('does not show the waiting line once channels have arrived, even mid-restart', () => {
+      useConsoleStore.setState({ selectedIp: CONSOLE_A.ip, liveStateStatus: 'starting', liveChannels: [CHANNEL_1] });
+
+      const html = renderMarkup();
+
+      expect(html).not.toContain('id="console-live-waiting"');
+    });
+
     it('renders populated liveChannels with name, formatted dB, and ON/OFF', () => {
       useConsoleStore.setState({ selectedIp: CONSOLE_A.ip, liveStateStatus: 'watching', liveChannels: [CHANNEL_1] });
 
