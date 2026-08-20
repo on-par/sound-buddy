@@ -21,6 +21,7 @@ import type { JSX } from 'react';
 import { useStoreShallow } from './stores/useStoreShallow';
 import { useConsoleStore } from './stores/consoleStore';
 import { useLiveCaptureStore } from './stores/liveCaptureStore';
+import type { ConsoleLinkStateDto } from '../../electron/ipc/api';
 
 const FADER_DB_DECIMALS = 1;
 
@@ -62,6 +63,20 @@ export function meterBarPercent(linear: number): number {
   return ((db - METER_FLOOR_DBFS) / (METER_CEILING_DBFS - METER_FLOOR_DBFS)) * FULL_SCALE_PERCENT;
 }
 
+export const CONSOLE_OFFLINE_MESSAGE =
+  'Console offline — it stopped answering. Check it is powered on and on this network; Sound Buddy reconnects on its own as soon as it answers again.';
+export const CONSOLE_METERS_DEGRADED_MESSAGE =
+  'Console meters unavailable — the console may already have four remote clients connected. Channel state is still being polled, and meters resume on their own once the console sends them again.';
+
+/** The one degraded-state sentence for the current link (#886), or null when
+ *  the link is healthy or not yet known. Offline wins over degraded meters:
+ *  a console that is gone explains the missing meters. */
+export function consoleLinkMessage(link: ConsoleLinkStateDto): string | null {
+  if (link.status === 'offline') return CONSOLE_OFFLINE_MESSAGE;
+  if (link.metersDegraded) return CONSOLE_METERS_DEGRADED_MESSAGE;
+  return null;
+}
+
 export default function ConsolePanel(): JSX.Element | null {
   const appMode = useStoreShallow(useLiveCaptureStore, (s) => s.appMode);
   const s = useStoreShallow(useConsoleStore, (st) => ({
@@ -78,9 +93,12 @@ export default function ConsolePanel(): JSX.Element | null {
     liveStateStatus: st.liveStateStatus,
     liveStateError: st.liveStateError,
     liveMeters: st.liveMeters,
+    link: st.link,
   }));
 
   if (appMode !== 'live') return null;
+
+  const linkMessage = consoleLinkMessage(s.link);
 
   return (
     <div className="console-panel">
@@ -166,6 +184,12 @@ export default function ConsolePanel(): JSX.Element | null {
       {s.liveStateError && (
         <p id="console-live-error" role="alert">
           {s.liveStateError}
+        </p>
+      )}
+
+      {linkMessage && (
+        <p id="console-link-status" role="status">
+          {linkMessage}
         </p>
       )}
 
