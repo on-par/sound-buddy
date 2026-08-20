@@ -1,0 +1,157 @@
+// Copyright (c) 2026 Patrick Robinson (on-par). All rights reserved.
+// Licensed under the Sound Buddy Desktop Application License (app/LICENSE).
+
+// Console scan/identity state (#884): a createXStore(deps) factory mirroring
+// sceneDiffStore.ts's shape — the same `create<T>()` + requestId staleness
+// guard style. Every network action gates on
+// useConsoleNetworkConsentStore's requestConsent() (Tier 2 / ADR-0006) before
+// ever calling the bridge; a decline leaves the store idle with an
+// actionable message and sends nothing.
+
+import { create } from 'zustand';
+import type { StoreApi, UseBoundStore } from 'zustand';
+import { getSoundBuddy } from '../useElectron';
+import type { ConsoleApi, ConsoleIdentityDto } from '../../../electron/ipc/api';
+import { useConsoleNetworkConsentStore } from './consoleNetworkConsentStore';
+
+export type ConsoleScanStatus = 'idle' | 'scanning' | 'done' | 'error';
+export type ConsoleIdentityStatus = 'idle' | 'loading' | 'loaded' | 'error';
+export type ConsoleIdentitySource = 'scan' | 'manual';
+
+export const CONSENT_DECLINED_MESSAGE =
+  'Console access is off. Choose "Allow read-only access" when Sound Buddy asks, then scan again.';
+
+export interface ConsoleState {
+  scanStatus: ConsoleScanStatus;
+  found: ConsoleIdentityDto[];
+  scanError: string | null;
+  selectedIp: string | null;
+  identity: ConsoleIdentityDto | null;
+  identitySource: ConsoleIdentitySource | null;
+  identityStatus: ConsoleIdentityStatus;
+  identityError: string | null;
+  manualIp: string;
+  scan(): Promise<void>;
+  selectConsole(ip: string): Promise<void>;
+  setManualIp(value: string): void;
+  submitManualIp(): Promise<void>;
+}
+
+const INITIAL_STATE = {
+  scanStatus: 'idle' as ConsoleScanStatus,
+  found: [] as ConsoleIdentityDto[],
+  scanError: null as string | null,
+  selectedIp: null as string | null,
+  identity: null as ConsoleIdentityDto | null,
+  identitySource: null as ConsoleIdentitySource | null,
+  identityStatus: 'idle' as ConsoleIdentityStatus,
+  identityError: null as string | null,
+  manualIp: '',
+};
+
+export function createConsoleStore(
+  getApi: () => ConsoleApi,
+  requestConsent: () => Promise<boolean>
+): UseBoundStore<StoreApi<ConsoleState>> {
+  // Bumped on every scan/selectConsole/submitManualIp call so an in-flight
+  // reply can tell it's been superseded (e.g. two scans in quick succession)
+  // and skip applying its now-stale result — private closure plumbing, not
+  // store state, mirroring sceneDiffStore.ts's requestId guard.
+  let scanRequestId = 0;
+  let identityRequestId = 0;
+
+  return create<ConsoleState>()((set, get) => ({
+    ...INITIAL_STATE,
+
+    async scan() {
+      if (!(await requestConsent())) {
+        set({ scanStatus: 'idle', scanError: CONSENT_DECLINED_MESSAGE });
+        return;
+      }
+
+      const myRequestId = (scanRequestId += 1);
+      set({ scanStatus: 'scanning', scanError: null });
+      try {
+        const result = await getApi().scanConsoles();
+        if (myRequestId !== scanRequestId) return;
+        if (result.success) {
+          set({ scanStatus: 'done', found: result.consoles, scanError: null });
+        } else {
+          set({ scanStatus: 'error', scanError: result.error, found: [] });
+        }
+      } catch {
+        if (myRequestId !== scanRequestId) return;
+        set({
+          scanStatus: 'error',
+          scanError: "Couldn't scan for a console. Check this Mac is on the same network as the console, then try again.",
+          found: [],
+        });
+      }
+    },
+
+    async selectConsole(ip) {
+      if (!(await requestConsent())) {
+        set({ scanError: CONSENT_DECLINED_MESSAGE });
+        return;
+      }
+
+      const myRequestId = (identityRequestId += 1);
+      set({ selectedIp: ip, identityStatus: 'loading', identitySource: 'scan', identityError: null });
+      try {
+        const result = await getApi().fetchConsoleIdentity(ip);
+        if (myRequestId !== identityRequestId) return;
+        if (result.success) {
+          set({ identity: result.identity, identityStatus: 'loaded', identityError: null });
+        } else {
+          set({ identityStatus: 'error', identityError: result.error, identity: null });
+        }
+      } catch {
+        if (myRequestId !== identityRequestId) return;
+        set({
+          identityStatus: 'error',
+          identityError:
+            "Couldn't read the console's identity. Check the IP is correct and the console is powered on and reachable on the network.",
+          identity: null,
+        });
+      }
+    },
+
+    setManualIp(value) {
+      set({ manualIp: value });
+    },
+
+    async submitManualIp() {
+      const ip = get().manualIp.trim();
+      if (ip === '') return;
+
+      if (!(await requestConsent())) {
+        set({ scanError: CONSENT_DECLINED_MESSAGE });
+        return;
+      }
+
+      const myRequestId = (identityRequestId += 1);
+      set({ selectedIp: ip, identityStatus: 'loading', identitySource: 'manual', identityError: null });
+      try {
+        const result = await getApi().fetchConsoleIdentity(ip);
+        if (myRequestId !== identityRequestId) return;
+        if (result.success) {
+          set({ identity: result.identity, identityStatus: 'loaded', identityError: null });
+        } else {
+          set({ identityStatus: 'error', identityError: result.error, identity: null });
+        }
+      } catch {
+        if (myRequestId !== identityRequestId) return;
+        set({
+          identityStatus: 'error',
+          identityError:
+            "Couldn't read the console's identity. Check the IP is correct and the console is powered on and reachable on the network.",
+          identity: null,
+        });
+      }
+    },
+  }));
+}
+
+export const useConsoleStore = createConsoleStore(getSoundBuddy, () =>
+  useConsoleNetworkConsentStore.getState().requestConsent()
+);
