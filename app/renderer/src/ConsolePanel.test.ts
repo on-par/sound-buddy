@@ -12,6 +12,8 @@ import ConsolePanel, {
   consoleLinkMessage,
   captureProgressPercent,
   captureStatusLine,
+  formatSceneValue,
+  sceneDiffGroups,
   CONSOLE_OFFLINE_MESSAGE,
   CONSOLE_METERS_DEGRADED_MESSAGE,
 } from './ConsolePanel';
@@ -44,6 +46,25 @@ const CONSOLE_INITIAL_STATE = {
   captureTotal: 0,
   captureFilePath: null,
   captureError: null,
+  captureHistory: [],
+  sceneDiffStatus: 'idle' as const,
+  sceneDiff: null,
+  sceneDiffNameA: null,
+  sceneDiffNameB: null,
+  sceneDiffError: null,
+};
+const DIFF = {
+  changes: [
+    { path: '/ch/01/mix/on', label: 'Kick — mute', from: true, to: false },
+    { path: '/dca/1/on', label: 'Band — DCA', from: false, to: true },
+    { path: '/main/st/mix/fader', label: 'Main — fader', from: -3, to: 0 },
+  ],
+  summary: '3 changes',
+  bySection: {
+    channels: [{ path: '/ch/01/mix/on', label: 'Kick — mute', from: true, to: false }],
+    dcas: [{ path: '/dca/1/on', label: 'Band — DCA', from: false, to: true }],
+    main: [{ path: '/main/st/mix/fader', label: 'Main — fader', from: -3, to: 0 }],
+  },
 };
 
 function renderMarkup(): string {
@@ -506,6 +527,84 @@ describe('ConsolePanel (#884)', () => {
       const html = renderMarkup();
 
       expect(html).toMatch(/nothing is uploaded or shared/i);
+    });
+  });
+
+  describe('scene diff helpers', () => {
+    it('formats unknown diff values into stable display strings', () => {
+      expect(formatSceneValue(true)).toBe('on');
+      expect(formatSceneValue(false)).toBe('off');
+      expect(formatSceneValue(-3.25)).toBe('-3.3');
+      expect(formatSceneValue(null)).toBe('—');
+    });
+
+    it('returns only non-empty grouped sections', () => {
+      expect(sceneDiffGroups({ ...DIFF, bySection: { channels: DIFF.bySection.channels, dcas: [], main: [] } })).toEqual([
+        { key: 'channels', title: 'Channels', changes: DIFF.bySection.channels },
+      ]);
+    });
+  });
+
+  describe('scene diff controls (#892)', () => {
+    it('disables compare until two captures exist', () => {
+      const html = renderMarkup();
+
+      expect(html).toMatch(/id="console-diff"[^>]*disabled/);
+    });
+
+    it('enables compare once two captures exist', () => {
+      useConsoleStore.setState({ captureHistory: ['/mock/before.local.scn', '/mock/after.local.scn'] });
+
+      const html = renderMarkup();
+
+      expect(html).not.toMatch(/id="console-diff"[^>]*disabled/);
+    });
+
+    it('shows the clean no-differences state', () => {
+      useConsoleStore.setState({
+        captureHistory: ['/mock/before.local.scn', '/mock/after.local.scn'],
+        sceneDiffStatus: 'done',
+        sceneDiff: { changes: [], summary: '0 changes', bySection: { channels: [], dcas: [], main: [] } },
+      });
+
+      const html = renderMarkup();
+
+      expect(html).toContain('id="console-diff-empty"');
+      expect(html).toMatch(/No differences/);
+    });
+
+    it('renders grouped channel, DCA, and main changes with from/to values', () => {
+      useConsoleStore.setState({
+        captureHistory: ['/mock/before.local.scn', '/mock/after.local.scn'],
+        sceneDiffStatus: 'done',
+        sceneDiff: DIFF,
+        sceneDiffNameA: 'Before',
+        sceneDiffNameB: 'After',
+      });
+
+      const html = renderMarkup();
+
+      expect(html).toContain('id="console-diff-results"');
+      expect(html).toContain('Before');
+      expect(html).toContain('After');
+      expect(html).toContain('Channels');
+      expect(html).toContain('DCA');
+      expect(html).toContain('Main');
+      expect(html).toContain('Kick — mute');
+      expect(html).toMatch(/on.*→.*off/);
+      expect(html).toContain('Main — fader');
+    });
+
+    it('renders diff errors as alerts', () => {
+      useConsoleStore.setState({
+        sceneDiffStatus: 'error',
+        sceneDiffError: "Couldn't compare those scene captures.",
+      });
+
+      const html = renderMarkup();
+
+      expect(html).toContain('id="console-diff-error"');
+      expect(html).toContain('role="alert"');
     });
   });
 });

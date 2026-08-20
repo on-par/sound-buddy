@@ -109,7 +109,8 @@ describe('Console IPC surface is read-only by construction (#884 ADR, #977 ADR, 
         /\.startLiveState\(\)/.test(upToNextTag) ||
         /\.stopLiveState\(\)/.test(upToNextTag) ||
         /\.startSceneCapture\(\)/.test(upToNextTag) ||
-        /\.cancelSceneCapture\(\)/.test(upToNextTag);
+        /\.cancelSceneCapture\(\)/.test(upToNextTag) ||
+        /\.compareLastSceneCaptures\(\)/.test(upToNextTag);
       expect(isKnownReadAction).toBe(true);
     }
   });

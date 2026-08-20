@@ -21,7 +21,7 @@ import type { JSX } from 'react';
 import { useStoreShallow } from './stores/useStoreShallow';
 import { useConsoleStore } from './stores/consoleStore';
 import { useLiveCaptureStore } from './stores/liveCaptureStore';
-import type { ConsoleLinkStateDto } from '../../electron/ipc/api';
+import type { ConsoleLinkStateDto, SceneChangeDto, SceneDiffDto } from '../../electron/ipc/api';
 import { CAPTURE_LOCAL_ONLY_MESSAGE } from './stores/consoleStore';
 
 const FADER_DB_DECIMALS = 1;
@@ -95,6 +95,28 @@ export function captureStatusLine(
   return null;
 }
 
+export function formatSceneValue(value: unknown): string {
+  if (value === null || value === undefined || value === '') return '—';
+  if (typeof value === 'number') {
+    if (!Number.isFinite(value)) return value === -Infinity ? '-∞' : '—';
+    return Number.isInteger(value) ? String(value) : value.toFixed(1);
+  }
+  if (typeof value === 'boolean') return value ? 'on' : 'off';
+  return String(value);
+}
+
+type SceneDiffGroup = { key: keyof SceneDiffDto['bySection']; title: string; changes: SceneChangeDto[] };
+
+export function sceneDiffGroups(diff: SceneDiffDto | null): SceneDiffGroup[] {
+  if (!diff) return [];
+  const groups: SceneDiffGroup[] = [
+    { key: 'channels', title: 'Channels', changes: diff.bySection.channels },
+    { key: 'dcas', title: 'DCA', changes: diff.bySection.dcas },
+    { key: 'main', title: 'Main', changes: diff.bySection.main },
+  ];
+  return groups.filter((g) => g.changes.length > 0);
+}
+
 export default function ConsolePanel(): JSX.Element | null {
   const appMode = useStoreShallow(useLiveCaptureStore, (s) => s.appMode);
   const s = useStoreShallow(useConsoleStore, (st) => ({
@@ -117,6 +139,12 @@ export default function ConsolePanel(): JSX.Element | null {
     captureTotal: st.captureTotal,
     captureFilePath: st.captureFilePath,
     captureError: st.captureError,
+    captureHistory: st.captureHistory,
+    sceneDiffStatus: st.sceneDiffStatus,
+    sceneDiff: st.sceneDiff,
+    sceneDiffNameA: st.sceneDiffNameA,
+    sceneDiffNameB: st.sceneDiffNameB,
+    sceneDiffError: st.sceneDiffError,
   }));
 
   if (appMode !== 'live') return null;
@@ -124,6 +152,8 @@ export default function ConsolePanel(): JSX.Element | null {
   const linkMessage = consoleLinkMessage(s.link);
   const captureLine = captureStatusLine(s.captureStatus, s.captureDone, s.captureTotal, s.captureFilePath);
   const capturePercent = captureProgressPercent(s.captureDone, s.captureTotal);
+  const diffGroups = sceneDiffGroups(s.sceneDiff);
+  const totalSceneChanges = s.sceneDiff?.changes.length ?? 0;
 
   return (
     <div className="console-panel">
@@ -285,6 +315,50 @@ export default function ConsolePanel(): JSX.Element | null {
           <p id="console-capture-error" role="alert">
             {s.captureError}
           </p>
+        )}
+        <div className="console-diff-actions">
+          <button
+            type="button"
+            id="console-diff"
+            className="btn btn-secondary"
+            disabled={s.captureHistory.length < 2 || s.sceneDiffStatus === 'diffing'}
+            /* c8 ignore next -- click dispatch, no jsdom */
+            onClick={() => void useConsoleStore.getState().compareLastSceneCaptures()}
+          >
+            {s.sceneDiffStatus === 'diffing' ? 'Comparing…' : 'Compare last two'}
+          </button>
+        </div>
+        {s.sceneDiffStatus === 'diffing' && <p id="console-diff-status">Comparing local captures…</p>}
+        {s.sceneDiffStatus === 'error' && s.sceneDiffError && (
+          <p id="console-diff-error" role="alert">
+            {s.sceneDiffError}
+          </p>
+        )}
+        {s.sceneDiffStatus === 'done' && totalSceneChanges === 0 && (
+          <p id="console-diff-empty">No differences between these two captures.</p>
+        )}
+        {s.sceneDiffStatus === 'done' && totalSceneChanges > 0 && (
+          <div id="console-diff-results">
+            <p className="console-diff-summary">
+              {s.sceneDiffNameA ?? 'Before'} → {s.sceneDiffNameB ?? 'After'} · {totalSceneChanges} change
+              {totalSceneChanges === 1 ? '' : 's'}
+            </p>
+            {diffGroups.map((group) => (
+              <section key={group.key} className="console-diff-group" aria-labelledby={`console-diff-${group.key}`}>
+                <h5 id={`console-diff-${group.key}`}>{group.title}</h5>
+                <ul>
+                  {group.changes.map((change) => (
+                    <li key={change.path} className="console-diff-row">
+                      <span className="console-diff-label">{change.label}</span>
+                      <span className="console-diff-values">
+                        {formatSceneValue(change.from)} → {formatSceneValue(change.to)}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            ))}
+          </div>
         )}
       </section>
 

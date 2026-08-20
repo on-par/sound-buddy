@@ -8,6 +8,7 @@ import {
   NO_CONSOLE_SELECTED_MESSAGE,
   LIVE_STATE_FAILED_MESSAGE,
   CAPTURE_FAILED_MESSAGE,
+  SCENE_DIFF_FAILED_MESSAGE,
   INITIAL_CONSOLE_LINK,
 } from './consoleStore';
 import { createMockSoundBuddy } from '../mock-sound-buddy';
@@ -15,6 +16,18 @@ import { createMockSoundBuddy } from '../mock-sound-buddy';
 const CONSOLE_A = { ip: '10.0.0.5', model: 'M32R', firmware: '4.0' };
 const IDENTITY_A = { ip: '10.0.0.5', model: 'M32R', firmware: '4.0', name: 'Main' };
 const CHANNEL_1 = { index: 1, name: 'Kick', faderDb: -10.5, on: true };
+const DIFF = {
+  changes: [
+    { path: '/ch/01/mix/on', label: 'Kick — mute', from: true, to: false },
+    { path: '/dca/1/on', label: 'Band — DCA', from: false, to: true },
+  ],
+  summary: '2 changes',
+  bySection: {
+    channels: [{ path: '/ch/01/mix/on', label: 'Kick — mute', from: true, to: false }],
+    dcas: [{ path: '/dca/1/on', label: 'Band — DCA', from: false, to: true }],
+    main: [],
+  },
+};
 
 function allow() {
   return Promise.resolve(true);
@@ -46,6 +59,10 @@ describe('createConsoleStore', () => {
     expect(s.captureTotal).toBe(0);
     expect(s.captureFilePath).toBeNull();
     expect(s.captureError).toBeNull();
+    expect(s.captureHistory).toEqual([]);
+    expect(s.sceneDiffStatus).toBe('idle');
+    expect(s.sceneDiff).toBeNull();
+    expect(s.sceneDiffError).toBeNull();
   });
 
   describe('scan', () => {
@@ -537,6 +554,7 @@ describe('createConsoleStore', () => {
 
       expect(store.getState().captureStatus).toBe('done');
       expect(store.getState().captureFilePath).toBe('/mock/userData/console-captures/capture.local.scn');
+      expect(store.getState().captureHistory).toEqual(['/mock/userData/console-captures/capture.local.scn']);
       expect(mock.calls).toContainEqual({ method: 'startConsoleSceneCapture', args: ['10.0.0.5'] });
     });
 
@@ -601,6 +619,74 @@ describe('createConsoleStore', () => {
       await store.getState().cancelSceneCapture();
 
       expect(mock.calls).toContainEqual({ method: 'cancelConsoleSceneCapture', args: [] });
+    });
+
+    it('keeps only the last two capture paths for comparison', async () => {
+      let n = 0;
+      const mock = createMockSoundBuddy({
+        startConsoleSceneCapture: async () => {
+          n += 1;
+          return { success: true, filePath: `/mock/capture-${n}.local.scn` };
+        },
+      });
+      const store = createConsoleStore(() => mock.api, allow);
+      store.setState({ selectedIp: '10.0.0.5' });
+
+      await store.getState().startSceneCapture();
+      await store.getState().startSceneCapture();
+      await store.getState().startSceneCapture();
+
+      expect(store.getState().captureHistory).toEqual(['/mock/capture-2.local.scn', '/mock/capture-3.local.scn']);
+    });
+  });
+
+  describe('compareLastSceneCaptures', () => {
+    it('does nothing until two captures exist', async () => {
+      const mock = createMockSoundBuddy();
+      const store = createConsoleStore(() => mock.api, allow);
+      store.setState({ captureHistory: ['/mock/one.local.scn'] });
+
+      await store.getState().compareLastSceneCaptures();
+
+      expect(store.getState().sceneDiffStatus).toBe('idle');
+      expect(mock.calls.find((c) => c.method === 'diffScenes')).toBeUndefined();
+    });
+
+    it('calls diffScenes for the last two captures and stores grouped diff data', async () => {
+      const mock = createMockSoundBuddy({
+        diffScenes: async (opts) => {
+          mock.calls.push({ method: 'diffScenes', args: [opts] });
+          return { ok: true, diff: DIFF, nameA: 'Before', nameB: 'After' };
+        },
+      });
+      const store = createConsoleStore(() => mock.api, allow);
+      store.setState({ captureHistory: ['/mock/before.local.scn', '/mock/after.local.scn'] });
+
+      await store.getState().compareLastSceneCaptures();
+
+      expect(mock.calls).toContainEqual({
+        method: 'diffScenes',
+        args: [{ pathA: '/mock/before.local.scn', pathB: '/mock/after.local.scn' }],
+      });
+      expect(store.getState().sceneDiffStatus).toBe('done');
+      expect(store.getState().sceneDiff).toEqual(DIFF);
+      expect(store.getState().sceneDiffNameA).toBe('Before');
+      expect(store.getState().sceneDiffNameB).toBe('After');
+    });
+
+    it('stores an actionable error when diffScenes rejects', async () => {
+      const mock = createMockSoundBuddy({
+        diffScenes: async () => {
+          throw new Error('bridge disconnected');
+        },
+      });
+      const store = createConsoleStore(() => mock.api, allow);
+      store.setState({ captureHistory: ['/mock/before.local.scn', '/mock/after.local.scn'] });
+
+      await store.getState().compareLastSceneCaptures();
+
+      expect(store.getState().sceneDiffStatus).toBe('error');
+      expect(store.getState().sceneDiffError).toBe(SCENE_DIFF_FAILED_MESSAGE);
     });
   });
 });
