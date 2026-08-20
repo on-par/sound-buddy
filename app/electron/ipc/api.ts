@@ -669,11 +669,39 @@ export type FetchConsoleIdentityResult =
   | { success: true; identity: ConsoleIdentityDto }
   | { success: false; error: string };
 
-/** Console network reads (#884, #848). READ-ONLY BY CONSTRUCTION — see the
- *  ADR: no channel in this slice may write to the console. */
+/** One input channel's live state as the renderer sees it — the structural
+ *  mirror of ipc/console-channel-state.ts's ConsoleChannelState. `faderDb` is
+ *  engineering units (R1b), -Infinity for the console's "-oo". */
+export interface ConsoleChannelStateDto {
+  index: number;
+  name: string;
+  faderDb: number;
+  on: boolean;
+}
+
+/** One console-live-state push: a whole-snapshot replacement, never a delta. */
+export interface ConsoleLiveStateDto {
+  channels: ConsoleChannelStateDto[];
+}
+
+/** What arrives on the `console-live-state` channel — a snapshot, or a walk
+ *  failure the panel can show. */
+export type ConsoleLiveStateEvent = ConsoleLiveStateDto | { error: string };
+
+export type StartConsoleLiveStateResult =
+  | { success: true }
+  | { success: false; error: string };
+
+/** Console network reads (#884, #848, #977). READ-ONLY BY CONSTRUCTION — see
+ *  the ADR: no channel in this slice may write to the console. */
 export interface ConsoleApi {
   scanConsoles(): Promise<ScanConsolesResult>;
   fetchConsoleIdentity(ip: string): Promise<FetchConsoleIdentityResult>;
+  // Live channel state (#977). Both are reads: start begins a poll of the
+  // console's /node channel table, stop ends it. No write channel exists.
+  startConsoleLiveState(ip: string): Promise<StartConsoleLiveStateResult>;
+  stopConsoleLiveState(): Promise<OperationResult>;
+  onConsoleLiveState(cb: (data: ConsoleLiveStateEvent) => void): void;
 }
 
 // ─── Domain sub-interfaces ───────────────────────────────────────────────────
