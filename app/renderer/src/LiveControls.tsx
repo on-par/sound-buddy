@@ -129,18 +129,28 @@ async function runStopCeremony(rt: LiveCaptureRuntime | undefined): Promise<Stop
 export async function stopLiveCapture(rt: LiveCaptureRuntime | undefined): Promise<void> {
   const live = useLiveCaptureStore.getState();
   const stopIsRecordStop = live.liveMode === 'record' && live.isCapturing;
-  await runStopCeremony(rt);
-  // #776: the Live tab is always-monitoring (ADR-0014) — stopping a record
-  // returns to a live monitor session (Record button idle, meters running)
-  // instead of ending capture entirely. Mirrors recordCapture's normalize-
-  // then-start shape; onResumeMonitoringStart keeps the just-shown session
-  // offers on screen across the restart.
-  if (!stopIsRecordStop) return;
-  const next = useLiveCaptureStore.getState();
-  if (next.liveMode !== 'monitor') useLiveCaptureStore.getState().setLiveMode('monitor');
-  rt?.onResumeMonitoringStart?.();
-  const opts = captureOptsFromCadence(next.windowSecs, next.meterIntervalMs);
-  await startLiveCapture(rt, opts.windowSecs, opts.intervalSecs);
+  // #847: hold the board's running shape across the stop IPC — stopCapture()
+  // flips isCapturing false before awaiting it, and React paints that whole
+  // window, so without this the workspace flashes its idle card, un-disables
+  // every capture-locked control, and drops the header stats row / level
+  // readout before the monitor session restarts.
+  if (stopIsRecordStop) useLiveCaptureStore.getState().setDemoting(true);
+  try {
+    await runStopCeremony(rt);
+    // #776: the Live tab is always-monitoring (ADR-0014) — stopping a record
+    // returns to a live monitor session (Record button idle, meters running)
+    // instead of ending capture entirely. Mirrors recordCapture's normalize-
+    // then-start shape; onResumeMonitoringStart keeps the just-shown session
+    // offers on screen across the restart.
+    if (!stopIsRecordStop) return;
+    const next = useLiveCaptureStore.getState();
+    if (next.liveMode !== 'monitor') useLiveCaptureStore.getState().setLiveMode('monitor');
+    rt?.onResumeMonitoringStart?.();
+    const opts = captureOptsFromCadence(next.windowSecs, next.meterIntervalMs);
+    await startLiveCapture(rt, opts.windowSecs, opts.intervalSecs);
+  } finally {
+    if (stopIsRecordStop) useLiveCaptureStore.getState().setDemoting(false);
+  }
 }
 
 // The one production entry point for "drive the board fully idle, if it

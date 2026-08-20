@@ -28,7 +28,7 @@ afterEach(() => {
   delete (globalThis as { window?: unknown }).window;
   useLiveCaptureStore.setState({
     devices: [], deviceHint: null, selectedDevice: '', channelConfig: [], measurementSource: null,
-    liveMode: 'monitor', recordDir: '', isCapturing: false, promoting: false, stopping: false,
+    liveMode: 'monitor', recordDir: '', isCapturing: false, promoting: false, stopping: false, demoting: false,
     startCapture: INITIAL_LIVE_CAPTURE_STATE.startCapture,
     stopCapture: INITIAL_LIVE_CAPTURE_STATE.stopCapture,
   });
@@ -209,6 +209,81 @@ describe('startLiveCapture / stopLiveCapture / recordCapture', () => {
     expect(useLiveCaptureStore.getState().startCapture).not.toHaveBeenCalled();
   });
 
+  // #847: demoting must already be true by the time stopCapture() flips
+  // isCapturing false (so the board never paints its idle shape), must still
+  // be true through the resumed monitor start, and must be false once
+  // stopLiveCapture has fully resolved.
+  it('stopLiveCapture holds demoting true across the whole record-stop demote, clearing it only after the resume resolves (#847)', async () => {
+    const rt = mockRuntime();
+    const demotingDuringStop: boolean[] = [];
+    const demotingDuringStart: boolean[] = [];
+    useLiveCaptureStore.setState({
+      liveMode: 'record',
+      isCapturing: true,
+      stopCapture: vi.fn(async () => {
+        demotingDuringStop.push(useLiveCaptureStore.getState().demoting);
+        useLiveCaptureStore.setState({ isCapturing: false });
+        await Promise.resolve();
+        return { success: true, sessionDir: null };
+      }),
+      startCapture: vi.fn(async () => {
+        demotingDuringStart.push(useLiveCaptureStore.getState().demoting);
+        useLiveCaptureStore.setState({ isCapturing: true });
+        await Promise.resolve();
+        return { success: true };
+      }),
+    });
+
+    expect(useLiveCaptureStore.getState().demoting).toBe(false);
+    await stopLiveCapture(rt);
+
+    expect(demotingDuringStop).toEqual([true]);
+    expect(demotingDuringStart).toEqual([true]);
+    expect(useLiveCaptureStore.getState().demoting).toBe(false);
+  });
+
+  // Defensive branch: a monitor-session stop is a genuine full stop (no
+  // resume tail), so it must never hold the board in its running shape.
+  it('stopLiveCapture never sets demoting when stopping a monitor session (#847)', async () => {
+    const rt = mockRuntime();
+    let demotingDuringStop: boolean | undefined;
+    useLiveCaptureStore.setState({
+      liveMode: 'monitor',
+      isCapturing: true,
+      stopCapture: vi.fn(async () => {
+        demotingDuringStop = useLiveCaptureStore.getState().demoting;
+        useLiveCaptureStore.setState({ isCapturing: false });
+        return { success: true, sessionDir: null };
+      }),
+    });
+
+    await stopLiveCapture(rt);
+
+    expect(demotingDuringStop).toBe(false);
+    expect(useLiveCaptureStore.getState().demoting).toBe(false);
+  });
+
+  // A failed/thrown resumed start must not leave the board frozen in its
+  // running shape with stale meters — the finally clears demoting regardless.
+  it('stopLiveCapture clears demoting even when the resumed monitor start fails (#847)', async () => {
+    const rt = mockRuntime();
+    useLiveCaptureStore.setState({
+      liveMode: 'record',
+      isCapturing: true,
+      stopCapture: vi.fn(async () => {
+        useLiveCaptureStore.setState({ isCapturing: false });
+        return { success: true, sessionDir: null };
+      }),
+      startCapture: vi.fn(async () => {
+        return { success: false };
+      }),
+    });
+
+    await stopLiveCapture(rt);
+
+    expect(useLiveCaptureStore.getState().demoting).toBe(false);
+  });
+
   // #776: stopCaptureIfRunning is the one production entry point for "drive
   // the board fully idle" — bridged onto window.stopLiveCaptureIfRunning
   // (App.tsx) for e2e/automation callers that need this and can't use the
@@ -251,6 +326,27 @@ describe('startLiveCapture / stopLiveCapture / recordCapture', () => {
     expect(rt.onCaptureStopped).toHaveBeenCalledWith({ success: true, sessionDir: '/tmp/session' });
     expect(rt.onResumeMonitoringStart).not.toHaveBeenCalled();
     expect(useLiveCaptureStore.getState().startCapture).not.toHaveBeenCalled();
+  });
+
+  // #847: stopCaptureIfRunning is the "drive fully idle" entry point — it
+  // never demotes, it stops, so the board must not hold its running shape.
+  it('stopCaptureIfRunning never sets demoting on a record session (#847)', async () => {
+    const rt = mockRuntime();
+    let demotingDuringStop: boolean | undefined;
+    useLiveCaptureStore.setState({
+      liveMode: 'record',
+      isCapturing: true,
+      stopCapture: vi.fn(async () => {
+        demotingDuringStop = useLiveCaptureStore.getState().demoting;
+        useLiveCaptureStore.setState({ isCapturing: false });
+        return { success: true, sessionDir: '/tmp/session' };
+      }),
+    });
+
+    await stopCaptureIfRunning(rt);
+
+    expect(demotingDuringStop).toBe(false);
+    expect(useLiveCaptureStore.getState().demoting).toBe(false);
   });
 
   it('recordCapture promotes directly when a monitor session is already running', async () => {
