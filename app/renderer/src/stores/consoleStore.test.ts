@@ -7,6 +7,7 @@ import {
   CONSENT_DECLINED_MESSAGE,
   NO_CONSOLE_SELECTED_MESSAGE,
   LIVE_STATE_FAILED_MESSAGE,
+  INITIAL_CONSOLE_LINK,
 } from './consoleStore';
 import { createMockSoundBuddy } from '../mock-sound-buddy';
 
@@ -38,6 +39,7 @@ describe('createConsoleStore', () => {
     expect(s.liveStateStatus).toBe('idle');
     expect(s.liveStateError).toBeNull();
     expect(s.liveMeters).toEqual([]);
+    expect(s.link).toEqual(INITIAL_CONSOLE_LINK);
   });
 
   describe('scan', () => {
@@ -452,6 +454,42 @@ describe('createConsoleStore', () => {
 
       expect(store.getState().liveStateStatus).toBe('error');
       expect(store.getState().liveStateError).toBe(LIVE_STATE_FAILED_MESSAGE);
+    });
+
+    it('a { link } push updates link and leaves liveChannels / liveMeters / liveStateStatus untouched', async () => {
+      const mock = createMockSoundBuddy();
+      const store = createConsoleStore(() => mock.api, allow);
+      store.setState({ selectedIp: '10.0.0.5' });
+
+      await store.getState().startLiveState();
+      mock.emit('onConsoleLiveState', { channels: [CHANNEL_1] });
+      mock.emit('onConsoleLiveState', { meters: { inputs: [0.5] } });
+      mock.emit('onConsoleLiveState', { link: { status: 'offline', metersDegraded: false } });
+
+      expect(store.getState().link).toEqual({ status: 'offline', metersDegraded: false });
+      expect(store.getState().liveChannels).toEqual([CHANNEL_1]);
+      expect(store.getState().liveMeters).toEqual([0.5]);
+      expect(store.getState().liveStateStatus).toBe('watching');
+    });
+
+    it('startLiveState resets link to INITIAL_CONSOLE_LINK', async () => {
+      const mock = createMockSoundBuddy();
+      const store = createConsoleStore(() => mock.api, allow);
+      store.setState({ selectedIp: '10.0.0.5', link: { status: 'offline', metersDegraded: true } });
+
+      await store.getState().startLiveState();
+
+      expect(store.getState().link).toEqual(INITIAL_CONSOLE_LINK);
+    });
+
+    it('stopLiveState resets link to INITIAL_CONSOLE_LINK', async () => {
+      const mock = createMockSoundBuddy();
+      const store = createConsoleStore(() => mock.api, allow);
+      store.setState({ liveStateStatus: 'watching', link: { status: 'offline', metersDegraded: true } });
+
+      await store.getState().stopLiveState();
+
+      expect(store.getState().link).toEqual(INITIAL_CONSOLE_LINK);
     });
   });
 });

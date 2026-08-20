@@ -1,12 +1,15 @@
 // Copyright (c) 2026 Patrick Robinson (on-par). All rights reserved.
 // Licensed under the Sound Buddy Desktop Application License (app/LICENSE).
 
-// The thin IPC surface for #884/#977/#978: wires #876's discoverConsoles,
-// #877's fetchConsoleIdentity, and #977's live channel-state poll plus #883's
-// meter subscription to the renderer. start/stop-console-live-state start and
-// stop both the channel poll and the meter subscription together. All four
-// channels are reads — see the #884 ADR and this PR's ADR (console IPC
-// surface is read-only by construction, pinned by
+// The thin IPC surface for #884/#977/#978/#886: wires #876's discoverConsoles,
+// #877's fetchConsoleIdentity, #977's live channel-state poll, #883's meter
+// subscription, and #877's /status heartbeat to the renderer.
+// start/stop-console-live-state start and stop the channel poll, the meter
+// subscription, and the heartbeat together, folding heartbeat results and
+// meter-subscription liveness events through console-link.ts's
+// reduceConsoleLink into one derived link state pushed on the same channel
+// (#886). All four channels are reads — see the #884 ADR and this PR's ADR
+// (console IPC surface is read-only by construction, pinned by
 // console-read-only-gate.test.ts). Consent (ADR-0006/ADR-0013) is asserted
 // inside the delegated modules via assertConsoleNetworkConsent; main
 // revalidates a manually-entered IP before ever touching the network because
@@ -16,9 +19,10 @@ import { ipcMain } from 'electron';
 import { log, logWarn } from '../logger';
 import { getSettings } from '../settings';
 import { discoverConsoles } from './console-discovery';
-import { fetchConsoleIdentity } from './console-connection';
+import { fetchConsoleIdentity, startConsoleHeartbeat } from './console-connection';
 import { startChannelStateSubscription, type ChannelStateSubscriptionHandle } from './console-channel-state';
 import { startMeterSubscription, type MeterSubscriptionHandle } from './console-meters';
+import { reduceConsoleLink, INITIAL_CONSOLE_LINK_STATE, type ConsoleLinkState, type ConsoleLinkInput } from './console-link';
 import type {
   ScanConsolesResult,
   FetchConsoleIdentityResult,
@@ -53,12 +57,17 @@ function actionableError(err: unknown, fallback: string): string {
 // stacking a second poll loop; module-level so both handlers can reach it.
 let liveStateHandle: ChannelStateSubscriptionHandle | null = null;
 let meterHandle: MeterSubscriptionHandle | null = null;
+let heartbeatStop: (() => void) | null = null;
+let linkState: ConsoleLinkState = INITIAL_CONSOLE_LINK_STATE;
 
 function stopLiveStateSubscription(): void {
   liveStateHandle?.stop();
   liveStateHandle = null;
   meterHandle?.stop();
   meterHandle = null;
+  heartbeatStop?.();
+  heartbeatStop = null;
+  linkState = INITIAL_CONSOLE_LINK_STATE;
 }
 
 export function registerConsoleHandlers(): void {
@@ -106,6 +115,12 @@ export function registerConsoleHandlers(): void {
     stopLiveStateSubscription(); // a second start replaces the first, never stacks
     const wc = event.sender;
     try {
+      const pushLink = (input: ConsoleLinkInput) => {
+        const next = reduceConsoleLink(linkState, input);
+        if (next === linkState) return; // edge-triggered: no push when nothing changed
+        linkState = next;
+        if (!wc.isDestroyed()) wc.send('console-live-state', { link: next });
+      };
       liveStateHandle = startChannelStateSubscription(
         { log },
         getSettings(),
@@ -122,15 +137,22 @@ export function registerConsoleHandlers(): void {
         getSettings(),
         ip,
         (snapshot) => {
+          pushLink({ type: 'meter-frame' });
           if (!wc.isDestroyed()) wc.send('console-live-state', { meters: { inputs: snapshot.inputs } });
         },
-        // Liveness events are logged, not surfaced: degraded/offline UI is R5's
-        // scope, and the channel poll keeps running either way.
+        // #886: liveness events are surfaced via pushLink (metersDegraded) as
+        // well as logged — the channel poll keeps running either way.
         (event) => {
           log(`console-live-state: meter subscription ${event.type} for ${ip}`);
+          pushLink({ type: 'subscription', event });
         },
         { timeFactor: CONSOLE_METER_TIME_FACTOR }
       );
+      // Each heartbeat poll is queryConsole with the default 350ms timeout and
+      // 3 retries (<=1.4s), fired on a fixed 5s interval — no backoff growth,
+      // no unbounded loop (#886 acceptance criterion). Started last, inside
+      // this try, so a thrown consent error is handled by the existing catch.
+      heartbeatStop = startConsoleHeartbeat({ log }, getSettings(), ip, (status) => pushLink({ type: 'heartbeat', status }));
       return { success: true };
     } catch (err) {
       stopLiveStateSubscription();

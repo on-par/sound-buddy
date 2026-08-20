@@ -11,7 +11,7 @@
 import { create } from 'zustand';
 import type { StoreApi, UseBoundStore } from 'zustand';
 import { getSoundBuddy } from '../useElectron';
-import type { ConsoleApi, ConsoleIdentityDto, ConsoleChannelStateDto } from '../../../electron/ipc/api';
+import type { ConsoleApi, ConsoleIdentityDto, ConsoleChannelStateDto, ConsoleLinkStateDto } from '../../../electron/ipc/api';
 import { useConsoleNetworkConsentStore } from './consoleNetworkConsentStore';
 
 export type ConsoleScanStatus = 'idle' | 'scanning' | 'done' | 'error';
@@ -25,6 +25,10 @@ export const NO_CONSOLE_SELECTED_MESSAGE =
   'Choose a console from the scan results, or enter its IP, before watching channel state.';
 export const LIVE_STATE_FAILED_MESSAGE =
   "Couldn't watch the console's channel state. Check the console is powered on and reachable on the network, then try again.";
+
+/** The one literal for "no signal yet" link state (#886) — shared by
+ *  INITIAL_STATE and every reset below so there is exactly one copy. */
+export const INITIAL_CONSOLE_LINK: ConsoleLinkStateDto = { status: 'unknown', metersDegraded: false };
 
 export interface ConsoleState {
   scanStatus: ConsoleScanStatus;
@@ -42,6 +46,10 @@ export interface ConsoleState {
   /** Meter input levels, linear 0..1, index 0 = channel 1 (#978). Independent
    *  of liveChannels — cleared everywhere liveChannels is cleared. */
   liveMeters: number[];
+  /** Console link health (#886) — reachability + meter-subscription liveness.
+   *  Independent of liveStateStatus: a healthy watch session can still show
+   *  an offline console or degraded meters mid-session. */
+  link: ConsoleLinkStateDto;
   scan(): Promise<void>;
   selectConsole(ip: string): Promise<void>;
   setManualIp(value: string): void;
@@ -64,6 +72,7 @@ const INITIAL_STATE = {
   liveStateStatus: 'idle' as ConsoleLiveStateStatus,
   liveStateError: null as string | null,
   liveMeters: [] as number[],
+  link: INITIAL_CONSOLE_LINK,
 };
 
 export function createConsoleStore(
@@ -178,7 +187,13 @@ export function createConsoleStore(
         return;
       }
       if (!(await requestConsent())) {
-        set({ liveStateStatus: 'error', liveStateError: CONSENT_DECLINED_MESSAGE, liveChannels: [], liveMeters: [] });
+        set({
+          liveStateStatus: 'error',
+          liveStateError: CONSENT_DECLINED_MESSAGE,
+          liveChannels: [],
+          liveMeters: [],
+          link: INITIAL_CONSOLE_LINK,
+        });
         return;
       }
       if (!liveStateBound) {
@@ -192,28 +207,44 @@ export function createConsoleStore(
             set({ liveMeters: evt.meters.inputs });
             return;
           }
+          if ('link' in evt) {
+            set({ link: evt.link });
+            return;
+          }
           set({ liveChannels: evt.channels, liveStateStatus: 'watching', liveStateError: null });
         });
       }
       // Set 'starting' after the listener bind so a push that lands during
       // the round trip below can't be lost.
-      set({ liveStateStatus: 'starting', liveStateError: null });
+      set({ liveStateStatus: 'starting', liveStateError: null, link: INITIAL_CONSOLE_LINK });
       try {
         const result = await getApi().startConsoleLiveState(ip);
         if (result.success) {
           set({ liveStateStatus: 'watching', liveStateError: null });
         } else {
-          set({ liveStateStatus: 'error', liveStateError: result.error, liveChannels: [], liveMeters: [] });
+          set({
+            liveStateStatus: 'error',
+            liveStateError: result.error,
+            liveChannels: [],
+            liveMeters: [],
+            link: INITIAL_CONSOLE_LINK,
+          });
         }
       } catch {
-        set({ liveStateStatus: 'error', liveStateError: LIVE_STATE_FAILED_MESSAGE, liveChannels: [], liveMeters: [] });
+        set({
+          liveStateStatus: 'error',
+          liveStateError: LIVE_STATE_FAILED_MESSAGE,
+          liveChannels: [],
+          liveMeters: [],
+          link: INITIAL_CONSOLE_LINK,
+        });
       }
     },
 
     async stopLiveState() {
       try {
         await getApi().stopConsoleLiveState();
-        set({ liveStateStatus: 'idle', liveStateError: null, liveMeters: [] });
+        set({ liveStateStatus: 'idle', liveStateError: null, liveMeters: [], link: INITIAL_CONSOLE_LINK });
       } catch {
         set({ liveStateStatus: 'error', liveStateError: LIVE_STATE_FAILED_MESSAGE });
       }

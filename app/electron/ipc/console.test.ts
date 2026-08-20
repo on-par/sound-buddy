@@ -16,7 +16,11 @@ vi.mock('../settings', () => ({ getSettings: (...a: unknown[]) => getSettingsMoc
 const discoverConsolesMock = vi.fn();
 vi.mock('./console-discovery', () => ({ discoverConsoles: (...a: unknown[]) => discoverConsolesMock(...a) }));
 const fetchConsoleIdentityMock = vi.fn();
-vi.mock('./console-connection', () => ({ fetchConsoleIdentity: (...a: unknown[]) => fetchConsoleIdentityMock(...a) }));
+const startConsoleHeartbeatMock = vi.fn();
+vi.mock('./console-connection', () => ({
+  fetchConsoleIdentity: (...a: unknown[]) => fetchConsoleIdentityMock(...a),
+  startConsoleHeartbeat: (...a: unknown[]) => startConsoleHeartbeatMock(...a),
+}));
 const startChannelStateSubscriptionMock = vi.fn();
 vi.mock('./console-channel-state', () => ({
   startChannelStateSubscription: (...a: unknown[]) => startChannelStateSubscriptionMock(...a),
@@ -73,6 +77,8 @@ beforeEach(() => {
   startChannelStateSubscriptionMock.mockReset();
   startMeterSubscriptionMock.mockReset();
   startMeterSubscriptionMock.mockReturnValue({ stop: vi.fn() });
+  startConsoleHeartbeatMock.mockReset();
+  startConsoleHeartbeatMock.mockReturnValue(vi.fn());
   registerConsoleHandlers();
 });
 
@@ -349,7 +355,7 @@ describe('start-console-live-state / stop-console-live-state', () => {
   });
 
   it.each([{ type: 'degraded-to-polling' }, { type: 'reconnect' }])(
-    'logs a meter subscription %j event and sends nothing',
+    'logs a meter subscription %j event, still logs, and pushes a degraded link state',
     async (subscriptionEvent) => {
       let onEvent!: (event: unknown) => void;
       startChannelStateSubscriptionMock.mockReturnValue({ stop: vi.fn() });
@@ -362,7 +368,7 @@ describe('start-console-live-state / stop-console-live-state', () => {
       await startLiveState(event, '10.0.0.5');
       onEvent(subscriptionEvent);
 
-      expect(sent).toEqual([]);
+      expect(sent).toContainEqual(['console-live-state', { link: { status: 'unknown', metersDegraded: true } }]);
       expect(logMock).toHaveBeenCalledWith(expect.stringContaining(subscriptionEvent.type));
     }
   );
@@ -408,5 +414,137 @@ describe('start-console-live-state / stop-console-live-state', () => {
     expect(result).toEqual({ success: false, error: 'Console network access requires consent' });
     expect(channelStop).toHaveBeenCalledTimes(1);
     expect(logWarnMock).toHaveBeenCalled();
+  });
+
+  it('starts a heartbeat with the validated ip and consent-carrying settings', async () => {
+    startChannelStateSubscriptionMock.mockReturnValue({ stop: vi.fn() });
+    const { event } = makeFakeEvent();
+
+    await startLiveState(event, '10.0.0.5');
+
+    expect(startConsoleHeartbeatMock).toHaveBeenCalledWith(
+      { log: expect.any(Function) },
+      { consoleNetworkConsentGranted: true },
+      '10.0.0.5',
+      expect.any(Function)
+    );
+  });
+
+  it('an offline heartbeat callback sends exactly one link push', async () => {
+    let onStatusChange!: (status: 'online' | 'offline') => void;
+    startChannelStateSubscriptionMock.mockReturnValue({ stop: vi.fn() });
+    startConsoleHeartbeatMock.mockImplementation((_deps, _settings, _ip, onChange) => {
+      onStatusChange = onChange;
+      return vi.fn();
+    });
+    const { event, sent } = makeFakeEvent();
+
+    await startLiveState(event, '10.0.0.5');
+    onStatusChange('offline');
+
+    expect(sent).toContainEqual(['console-live-state', { link: { status: 'offline', metersDegraded: false } }]);
+    expect(sent.filter(([ch, payload]) => ch === 'console-live-state' && 'link' in (payload as object))).toHaveLength(1);
+  });
+
+  it('a repeated identical heartbeat status sends nothing further (edge-triggered)', async () => {
+    let onStatusChange!: (status: 'online' | 'offline') => void;
+    startChannelStateSubscriptionMock.mockReturnValue({ stop: vi.fn() });
+    startConsoleHeartbeatMock.mockImplementation((_deps, _settings, _ip, onChange) => {
+      onStatusChange = onChange;
+      return vi.fn();
+    });
+    const { event, sent } = makeFakeEvent();
+
+    await startLiveState(event, '10.0.0.5');
+    onStatusChange('offline');
+    onStatusChange('offline');
+
+    expect(sent.filter(([ch, payload]) => ch === 'console-live-state' && 'link' in (payload as object))).toHaveLength(1);
+  });
+
+  it('an online heartbeat after offline sends the recovery push', async () => {
+    let onStatusChange!: (status: 'online' | 'offline') => void;
+    startChannelStateSubscriptionMock.mockReturnValue({ stop: vi.fn() });
+    startConsoleHeartbeatMock.mockImplementation((_deps, _settings, _ip, onChange) => {
+      onStatusChange = onChange;
+      return vi.fn();
+    });
+    const { event, sent } = makeFakeEvent();
+
+    await startLiveState(event, '10.0.0.5');
+    onStatusChange('offline');
+    onStatusChange('online');
+
+    expect(sent).toContainEqual(['console-live-state', { link: { status: 'online', metersDegraded: false } }]);
+  });
+
+  it('a meter frame after a degraded subscription event clears metersDegraded and still sends the meters push', async () => {
+    let onFrame!: (snapshot: unknown) => void;
+    let onEvent!: (event: unknown) => void;
+    startChannelStateSubscriptionMock.mockReturnValue({ stop: vi.fn() });
+    startMeterSubscriptionMock.mockImplementation((_deps, _settings, _ip, frame, event) => {
+      onFrame = frame;
+      onEvent = event;
+      return { stop: vi.fn() };
+    });
+    const { event, sent } = makeFakeEvent();
+
+    await startLiveState(event, '10.0.0.5');
+    onEvent({ type: 'degraded-to-polling' });
+    onFrame({ inputs: [0.5] });
+
+    expect(sent).toContainEqual(['console-live-state', { link: { status: 'unknown', metersDegraded: false } }]);
+    expect(sent).toContainEqual(['console-live-state', { meters: { inputs: [0.5] } }]);
+  });
+
+  it('a destroyed webContents swallows the heartbeat link push without throwing', async () => {
+    let onStatusChange!: (status: 'online' | 'offline') => void;
+    startChannelStateSubscriptionMock.mockReturnValue({ stop: vi.fn() });
+    startConsoleHeartbeatMock.mockImplementation((_deps, _settings, _ip, onChange) => {
+      onStatusChange = onChange;
+      return vi.fn();
+    });
+    const { event, sent, setDestroyed } = makeFakeEvent();
+
+    await startLiveState(event, '10.0.0.5');
+    setDestroyed(true);
+    expect(() => onStatusChange('offline')).not.toThrow();
+
+    expect(sent).toEqual([]);
+  });
+
+  it('stop-console-live-state stops the heartbeat', async () => {
+    const heartbeatStop = vi.fn();
+    startChannelStateSubscriptionMock.mockReturnValue({ stop: vi.fn() });
+    startConsoleHeartbeatMock.mockReturnValue(heartbeatStop);
+    const { event } = makeFakeEvent();
+    await startLiveState(event, '10.0.0.5');
+
+    await stopLiveState();
+
+    expect(heartbeatStop).toHaveBeenCalledTimes(1);
+  });
+
+  it('a second start stops the first heartbeat, and the next link push starts again from the initial state', async () => {
+    const firstHeartbeatStop = vi.fn();
+    const secondHeartbeatStop = vi.fn();
+    let secondOnStatusChange!: (status: 'online' | 'offline') => void;
+    startChannelStateSubscriptionMock.mockReturnValue({ stop: vi.fn() });
+    startConsoleHeartbeatMock
+      .mockImplementationOnce(() => firstHeartbeatStop)
+      .mockImplementationOnce((_deps, _settings, _ip, onChange) => {
+        secondOnStatusChange = onChange;
+        return secondHeartbeatStop;
+      });
+    const { event, sent } = makeFakeEvent();
+
+    await startLiveState(event, '10.0.0.5');
+    await startLiveState(event, '10.0.0.6');
+
+    expect(firstHeartbeatStop).toHaveBeenCalledTimes(1);
+    expect(secondHeartbeatStop).not.toHaveBeenCalled();
+
+    secondOnStatusChange('offline');
+    expect(sent).toContainEqual(['console-live-state', { link: { status: 'offline', metersDegraded: false } }]);
   });
 });

@@ -4,7 +4,15 @@
 import { describe, it, expect, afterEach } from 'vitest';
 import { createElement } from 'react';
 import { renderToString } from 'react-dom/server';
-import ConsolePanel, { formatFaderDb, meterDbfs, formatMeterDbfs, meterBarPercent } from './ConsolePanel';
+import ConsolePanel, {
+  formatFaderDb,
+  meterDbfs,
+  formatMeterDbfs,
+  meterBarPercent,
+  consoleLinkMessage,
+  CONSOLE_OFFLINE_MESSAGE,
+  CONSOLE_METERS_DEGRADED_MESSAGE,
+} from './ConsolePanel';
 import { useConsoleStore } from './stores/consoleStore';
 import { useLiveCaptureStore } from './stores/liveCaptureStore';
 
@@ -28,6 +36,7 @@ const CONSOLE_INITIAL_STATE = {
   liveStateStatus: 'idle' as const,
   liveStateError: null,
   liveMeters: [],
+  link: { status: 'unknown' as const, metersDegraded: false },
 };
 
 function renderMarkup(): string {
@@ -355,6 +364,47 @@ describe('ConsolePanel (#884)', () => {
 
       const matches = html.match(/-∞ dBFS/g) ?? [];
       expect(matches).toHaveLength(2);
+    });
+  });
+
+  describe('consoleLinkMessage (#886)', () => {
+    it('returns null for a healthy link', () => {
+      expect(consoleLinkMessage({ status: 'online', metersDegraded: false })).toBeNull();
+    });
+
+    it('returns null for an unknown link', () => {
+      expect(consoleLinkMessage({ status: 'unknown', metersDegraded: false })).toBeNull();
+    });
+
+    it('returns CONSOLE_OFFLINE_MESSAGE for an offline link', () => {
+      expect(consoleLinkMessage({ status: 'offline', metersDegraded: false })).toBe(CONSOLE_OFFLINE_MESSAGE);
+    });
+
+    it('returns CONSOLE_METERS_DEGRADED_MESSAGE for degraded meters on an online link', () => {
+      expect(consoleLinkMessage({ status: 'online', metersDegraded: true })).toBe(CONSOLE_METERS_DEGRADED_MESSAGE);
+    });
+
+    it('prioritises the offline message when both offline and meters degraded', () => {
+      expect(consoleLinkMessage({ status: 'offline', metersDegraded: true })).toBe(CONSOLE_OFFLINE_MESSAGE);
+    });
+  });
+
+  describe('link status rendering (#886)', () => {
+    it('renders the offline message with #console-link-status when the link is offline', () => {
+      useConsoleStore.setState({ link: { status: 'offline', metersDegraded: false } });
+
+      const html = renderMarkup();
+
+      expect(html).toContain('id="console-link-status"');
+      expect(html).toContain(CONSOLE_OFFLINE_MESSAGE);
+    });
+
+    it('renders no link status markup when the link is healthy', () => {
+      useConsoleStore.setState({ link: { status: 'online', metersDegraded: false } });
+
+      const html = renderMarkup();
+
+      expect(html).not.toContain('id="console-link-status"');
     });
   });
 });
