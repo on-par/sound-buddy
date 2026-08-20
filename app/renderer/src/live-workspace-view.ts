@@ -50,6 +50,8 @@ export interface LiveWorkspaceViewState {
   channelGroups: ChannelGroup[];
   devices: LiveDevice[];
   selectedDevice: string;
+  /** True when the board should render as live — capturing, or holding the
+   *  running shape across a record→monitor demote (#847). See boardRunning(). */
   isCapturing: boolean;
   liveMode: 'monitor' | 'record';
   appMode: string;
@@ -77,6 +79,9 @@ export interface LiveWorkspaceStoreSlice {
   devices: LiveDevice[];
   selectedDevice: string;
   isCapturing: boolean;
+  // Transient: true for the whole record→monitor demote (#847) — see
+  // liveCaptureStore.ts and boardRunning() below.
+  demoting: boolean;
   liveMode: 'monitor' | 'record';
   appMode: string;
   selectedChannel: number | null;
@@ -86,6 +91,16 @@ export interface LiveWorkspaceStoreSlice {
   lastLiveChannels: ChannelWindowData[] | null;
   liveWindows: LiveEvent[];
   lapCoaching: unknown;
+}
+
+// #847: "should the Live surface render as live". True while a capture is
+// running AND for the whole record→monitor demote, during which isCapturing
+// is false only because stopCapture() flips it before awaiting the stopLive
+// IPC. Every Live-surface render decision goes through this — reading
+// liveCaptureStore.isCapturing directly is what made the board flash the
+// idle card for the duration of that IPC.
+export function boardRunning(lc: { isCapturing: boolean; demoting: boolean }): boolean {
+  return lc.isCapturing || lc.demoting;
 }
 
 // The one builder for LiveWorkspaceViewState (#710 shotgun-surgery fix):
@@ -104,7 +119,7 @@ export function liveWorkspaceViewState(
     channelGroups: lc.channelGroups,
     devices: lc.devices,
     selectedDevice: lc.selectedDevice,
-    isCapturing: lc.isCapturing,
+    isCapturing: boardRunning(lc),
     liveMode: lc.liveMode,
     appMode: lc.appMode,
     selectedChannel: lc.selectedChannel,
