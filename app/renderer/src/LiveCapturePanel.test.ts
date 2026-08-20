@@ -87,6 +87,7 @@ beforeEach(() => {
     liveWindows: [],
     lastTick: null,
     lastLiveChannels: null,
+    demoting: false,
   });
   useSettingsStore.setState({ settings: settings() });
 });
@@ -123,6 +124,21 @@ describe('LiveCapturePanel', () => {
     expect(html).not.toContain('meter-card sb-live-meters idle');
     expect(html).toContain('>Vocals</span>');
     expect(html).toContain('>Band</span>');
+  });
+
+  it('keeps the running board while demoting a record stop back to monitoring (#847)', () => {
+    useLiveCaptureStore.setState({
+      isCapturing: false, // stopCapture() already flipped it
+      demoting: true, // …but the monitor session is about to resume
+      liveMode: 'record',
+      lastTick: { type: 'meter', ts: 0, channels: TICK_CHANNELS },
+      lastLiveChannels: TICK_CHANNELS,
+    });
+    const html = renderMarkup();
+    expect(html).toContain('meter-card sb-live-meters">');
+    expect(html).not.toContain('meter-card sb-live-meters idle'); // no transient idle card
+    expect(html).toContain('id="live-ws-disarm-all" disabled'); // capture-locked controls stay locked
+    expect(html).toContain('id="live-ws-add" disabled');
   });
 
   it('renders the guided first-use hero at zero tracks (no toolbar, CTA present)', () => {
