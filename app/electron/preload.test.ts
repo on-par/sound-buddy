@@ -109,6 +109,8 @@ const INVOKE_TABLE: Array<{ method: BridgeKey; channel: string; args: unknown[] 
   },
   { method: 'scanConsoles', channel: 'scan-consoles', args: [] },
   { method: 'fetchConsoleIdentity', channel: 'fetch-console-identity', args: ['192.168.1.50'] },
+  { method: 'startConsoleLiveState', channel: 'start-console-live-state', args: ['192.168.1.50'] },
+  { method: 'stopConsoleLiveState', channel: 'stop-console-live-state', args: [] },
   { method: 'isOnboardingDisabled', channel: 'onboarding-disabled', args: [] },
   { method: 'listDevices', channel: 'list-devices', args: [] },
   { method: 'listOutputDevices', channel: 'list-output-devices', args: [] },
@@ -172,6 +174,7 @@ const LISTENERS: BridgeKey[] = [
   'onUpdateAvailable',
   'onUpdateStatus',
   'onUpdateDownloadStatus',
+  'onConsoleLiveState',
   'removeAllListeners',
 ];
 
@@ -234,6 +237,7 @@ describe('createBridge — event listeners', () => {
       payload: { state: 'done', version: '1.2.3' },
       expectsPayload: true,
     },
+    { method: 'onConsoleLiveState', channel: 'console-live-state', payload: { channels: [] }, expectsPayload: true },
   ];
 
   it.each(LISTENER_TABLE)(

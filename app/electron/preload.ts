@@ -18,6 +18,7 @@ import type {
   UpdateDownloadStatus,
   FeedbackSubmission,
   DiffScenesOpts,
+  ConsoleLiveStateEvent,
 } from './ipc/api';
 
 // The slice of Electron's IpcRenderer the bridge actually uses. Injected so
@@ -139,6 +140,13 @@ export function createBridge(ipc: IpcRendererLike) {
     // read one console's identity. No write channel exists in this domain.
     scanConsoles: () => ipc.invoke('scan-consoles'),
     fetchConsoleIdentity: (ip: string) => ipc.invoke('fetch-console-identity', ip),
+
+    // Live channel state (#977) — READ-ONLY: start/stop a poll of the console's
+    // channel table; snapshots arrive on the `console-live-state` channel.
+    startConsoleLiveState: (ip: string) => ipc.invoke('start-console-live-state', ip),
+    stopConsoleLiveState: () => ipc.invoke('stop-console-live-state'),
+    onConsoleLiveState: (cb: (data: ConsoleLiveStateEvent) => void) =>
+      ipc.on('console-live-state', (_event, d) => cb(d)),
 
     // Dev/e2e switch (SOUND_BUDDY_DISABLE_ONBOARDING) for the first-run overlay (#69).
     isOnboardingDisabled: () => ipc.invoke('onboarding-disabled'),
