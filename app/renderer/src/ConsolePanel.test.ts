@@ -4,13 +4,15 @@
 import { describe, it, expect, afterEach } from 'vitest';
 import { createElement } from 'react';
 import { renderToString } from 'react-dom/server';
-import ConsolePanel from './ConsolePanel';
+import ConsolePanel, { formatFaderDb } from './ConsolePanel';
 import { useConsoleStore } from './stores/consoleStore';
 import { useLiveCaptureStore } from './stores/liveCaptureStore';
 
 const CONSOLE_A = { ip: '10.0.0.5', model: 'M32R', firmware: '4.0' };
 const CONSOLE_B = { ip: '10.0.0.9', model: 'M32R', firmware: '4.0' };
 const IDENTITY_A = { ip: '10.0.0.5', model: 'M32R', firmware: '4.0', name: 'Main Console' };
+const CHANNEL_1 = { index: 1, name: 'Kick', faderDb: -10.5, on: true };
+const CHANNEL_3_UNNAMED = { index: 3, name: '', faderDb: 0, on: false };
 
 const CONSOLE_INITIAL_STATE = {
   scanStatus: 'idle' as const,
@@ -22,6 +24,9 @@ const CONSOLE_INITIAL_STATE = {
   identityStatus: 'idle' as const,
   identityError: null,
   manualIp: '',
+  liveChannels: [],
+  liveStateStatus: 'idle' as const,
+  liveStateError: null,
 };
 
 function renderMarkup(): string {
@@ -186,5 +191,71 @@ describe('ConsolePanel (#884)', () => {
     const html = renderMarkup();
 
     expect(html).not.toMatch(/capture/i);
+  });
+
+  describe('formatFaderDb', () => {
+    it('formats a finite dB value to one decimal', () => {
+      expect(formatFaderDb(-10.5)).toBe('-10.5 dB');
+      expect(formatFaderDb(0)).toBe('0.0 dB');
+    });
+
+    it('formats -Infinity as the console "-oo" reading', () => {
+      expect(formatFaderDb(-Infinity)).toBe('-∞ dB');
+    });
+  });
+
+  describe('live channel state', () => {
+    it('disables the watch toggle with no selectedIp', () => {
+      const html = renderMarkup();
+
+      expect(html).toMatch(/id="console-live-toggle"[^>]*disabled/);
+      expect(html).toContain('Watch channel state');
+    });
+
+    it('enables the watch toggle once a console is selected', () => {
+      useConsoleStore.setState({ selectedIp: CONSOLE_A.ip });
+
+      const html = renderMarkup();
+
+      expect(html).not.toMatch(/id="console-live-toggle"[^>]*disabled/);
+    });
+
+    it('flips the toggle label to Stop watching while watching', () => {
+      useConsoleStore.setState({ selectedIp: CONSOLE_A.ip, liveStateStatus: 'watching' });
+
+      const html = renderMarkup();
+
+      expect(html).toContain('Stop watching');
+    });
+
+    it('renders populated liveChannels with name, formatted dB, and ON/OFF', () => {
+      useConsoleStore.setState({ selectedIp: CONSOLE_A.ip, liveStateStatus: 'watching', liveChannels: [CHANNEL_1] });
+
+      const html = renderMarkup();
+
+      expect(html).toContain('id="console-live-channels"');
+      expect(html).toContain('Kick');
+      expect(html).toContain('-10.5 dB');
+      expect(html).toContain('ON');
+    });
+
+    it('falls back to "Ch N" for an unnamed channel', () => {
+      useConsoleStore.setState({ selectedIp: CONSOLE_A.ip, liveStateStatus: 'watching', liveChannels: [CHANNEL_3_UNNAMED] });
+
+      const html = renderMarkup();
+
+      expect(html).toContain('Ch 3');
+      expect(html).toContain('OFF');
+    });
+
+    it('renders liveStateError in a role="alert" node', () => {
+      useConsoleStore.setState({ liveStateStatus: 'error', liveStateError: "Couldn't watch the console's channel state." });
+
+      const html = renderMarkup();
+
+      expect(html).toContain('id="console-live-error"');
+      expect(html).toContain('role="alert"');
+      expect(html).toMatch(/watch the console.{1,10}s channel state/);
+    });
   });
 });
