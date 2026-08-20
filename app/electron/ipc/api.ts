@@ -692,11 +692,21 @@ export interface ConsoleMeterFrameDto {
   inputs: number[];
 }
 
+/** How the console link looks right now (#886). Structural mirror of
+ *  ipc/console-link.ts's ConsoleLinkState. `status` is console reachability;
+ *  `metersDegraded` is meter-subscription health only — channel state keeps
+ *  being polled either way. */
+export interface ConsoleLinkStateDto {
+  status: 'unknown' | 'online' | 'offline';
+  metersDegraded: boolean;
+}
+
 /** What arrives on the `console-live-state` channel — a channel snapshot, a
- *  meter frame, or a failure the panel can show. */
+ *  meter frame, a link-state change (#886), or a failure the panel can show. */
 export type ConsoleLiveStateEvent =
   | ConsoleLiveStateDto
   | { meters: ConsoleMeterFrameDto }
+  | { link: ConsoleLinkStateDto }
   | { error: string };
 
 export type StartConsoleLiveStateResult =
