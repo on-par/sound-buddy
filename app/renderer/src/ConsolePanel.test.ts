@@ -10,6 +10,8 @@ import ConsolePanel, {
   formatMeterDbfs,
   meterBarPercent,
   consoleLinkMessage,
+  captureProgressPercent,
+  captureStatusLine,
   CONSOLE_OFFLINE_MESSAGE,
   CONSOLE_METERS_DEGRADED_MESSAGE,
 } from './ConsolePanel';
@@ -37,6 +39,11 @@ const CONSOLE_INITIAL_STATE = {
   liveStateError: null,
   liveMeters: [],
   link: { status: 'unknown' as const, metersDegraded: false },
+  captureStatus: 'idle' as const,
+  captureDone: 0,
+  captureTotal: 0,
+  captureFilePath: null,
+  captureError: null,
 };
 
 function renderMarkup(): string {
@@ -193,14 +200,6 @@ describe('ConsolePanel (#884)', () => {
 
     expect(html).toContain('console-readonly-note');
     expect(html).toMatch(/only reads/i);
-  });
-
-  it('never renders the word "capture" anywhere in the markup', () => {
-    useConsoleStore.setState({ scanStatus: 'done', found: [CONSOLE_A] });
-
-    const html = renderMarkup();
-
-    expect(html).not.toMatch(/capture/i);
   });
 
   describe('formatFaderDb', () => {
@@ -405,6 +404,108 @@ describe('ConsolePanel (#884)', () => {
       const html = renderMarkup();
 
       expect(html).not.toContain('id="console-link-status"');
+    });
+  });
+
+  describe('captureProgressPercent', () => {
+    it('is 0 when total is 0', () => {
+      expect(captureProgressPercent(0, 0)).toBe(0);
+    });
+
+    it('is approximately 50 at half progress', () => {
+      expect(captureProgressPercent(1051, 2103)).toBeCloseTo(50, 0);
+    });
+
+    it('clamps an over-count to 100', () => {
+      expect(captureProgressPercent(2200, 2103)).toBe(100);
+    });
+  });
+
+  describe('captureStatusLine', () => {
+    it('describes progress while capturing', () => {
+      expect(captureStatusLine('capturing', 501, 2103, null)).toMatch(/501 of 2103/);
+    });
+
+    it('names the destination and stays-local guarantee once done', () => {
+      const line = captureStatusLine('done', 2103, 2103, '/mock/userData/console-captures/capture-x.local.scn');
+      expect(line).toContain('/mock/userData/console-captures/capture-x.local.scn');
+      expect(line).toMatch(/stays on this Mac/i);
+    });
+
+    it('reports cancellation', () => {
+      expect(captureStatusLine('cancelled', 5, 2103, null)).toMatch(/cancelled/i);
+    });
+
+    it('returns null when idle or error', () => {
+      expect(captureStatusLine('idle', 0, 0, null)).toBeNull();
+      expect(captureStatusLine('error', 0, 0, null)).toBeNull();
+    });
+  });
+
+  describe('capture controls', () => {
+    it('disables the capture button with no selectedIp', () => {
+      const html = renderMarkup();
+
+      expect(html).toMatch(/id="console-capture"[^>]*disabled/);
+      expect(html).toContain('Capture scene');
+    });
+
+    it('enables the capture button once a console is selected', () => {
+      useConsoleStore.setState({ selectedIp: CONSOLE_A.ip });
+
+      const html = renderMarkup();
+
+      expect(html).not.toMatch(/id="console-capture"[^>]*disabled/);
+    });
+
+    it('shows Capturing, a Cancel button, and progress while capturing', () => {
+      useConsoleStore.setState({
+        selectedIp: CONSOLE_A.ip,
+        captureStatus: 'capturing',
+        captureDone: 501,
+        captureTotal: 2103,
+      });
+
+      const html = renderMarkup();
+
+      expect(html).toContain('Capturing');
+      expect(html).toContain('id="console-capture-cancel"');
+      expect(html).toContain('id="console-capture-progress"');
+      expect(html).toContain('id="console-capture-percent"');
+    });
+
+    it('renders the saved path and the stays-on-this-Mac sentence when done', () => {
+      useConsoleStore.setState({
+        selectedIp: CONSOLE_A.ip,
+        captureStatus: 'done',
+        captureFilePath: '/mock/userData/console-captures/capture-x.local.scn',
+      });
+
+      const html = renderMarkup();
+
+      expect(html).toContain('id="console-capture-status"');
+      expect(html).toContain('/mock/userData/console-captures/capture-x.local.scn');
+      expect(html).toMatch(/stays on this Mac/i);
+    });
+
+    it('renders #console-capture-error with role="alert" when capture errors', () => {
+      useConsoleStore.setState({
+        selectedIp: CONSOLE_A.ip,
+        captureStatus: 'error',
+        captureError: "Couldn't capture the console scene.",
+      });
+
+      const html = renderMarkup();
+
+      expect(html).toContain('id="console-capture-error"');
+      expect(html).toContain('role="alert"');
+      expect(html).toMatch(/Couldn(?:'|&#x27;)t capture the console scene/);
+    });
+
+    it('states captures stay local and nothing is uploaded', () => {
+      const html = renderMarkup();
+
+      expect(html).toMatch(/nothing is uploaded or shared/i);
     });
   });
 });

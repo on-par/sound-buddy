@@ -18,6 +18,7 @@ export type ConsoleScanStatus = 'idle' | 'scanning' | 'done' | 'error';
 export type ConsoleIdentityStatus = 'idle' | 'loading' | 'loaded' | 'error';
 export type ConsoleIdentitySource = 'scan' | 'manual';
 export type ConsoleLiveStateStatus = 'idle' | 'starting' | 'watching' | 'error';
+export type ConsoleCaptureStatus = 'idle' | 'capturing' | 'done' | 'cancelled' | 'error';
 
 export const CONSENT_DECLINED_MESSAGE =
   'Console access is off. Choose "Allow read-only access" when Sound Buddy asks, then scan again.';
@@ -25,6 +26,10 @@ export const NO_CONSOLE_SELECTED_MESSAGE =
   'Choose a console from the scan results, or enter its IP, before watching channel state.';
 export const LIVE_STATE_FAILED_MESSAGE =
   "Couldn't watch the console's channel state. Check the console is powered on and reachable on the network, then try again.";
+export const CAPTURE_FAILED_MESSAGE =
+  "Couldn't capture the console scene. Check the console is powered on and reachable, then try again.";
+export const CAPTURE_LOCAL_ONLY_MESSAGE =
+  'Scene captures are saved locally on this Mac. Nothing is uploaded or shared; scrub channel labels before exporting.';
 
 /** The one literal for "no signal yet" link state (#886) — shared by
  *  INITIAL_STATE and every reset below so there is exactly one copy. */
@@ -50,12 +55,19 @@ export interface ConsoleState {
    *  Independent of liveStateStatus: a healthy watch session can still show
    *  an offline console or degraded meters mid-session. */
   link: ConsoleLinkStateDto;
+  captureStatus: ConsoleCaptureStatus;
+  captureDone: number;
+  captureTotal: number;
+  captureFilePath: string | null;
+  captureError: string | null;
   scan(): Promise<void>;
   selectConsole(ip: string): Promise<void>;
   setManualIp(value: string): void;
   submitManualIp(): Promise<void>;
   startLiveState(): Promise<void>;
   stopLiveState(): Promise<void>;
+  startSceneCapture(): Promise<void>;
+  cancelSceneCapture(): Promise<void>;
 }
 
 const INITIAL_STATE = {
@@ -73,6 +85,11 @@ const INITIAL_STATE = {
   liveStateError: null as string | null,
   liveMeters: [] as number[],
   link: INITIAL_CONSOLE_LINK,
+  captureStatus: 'idle' as ConsoleCaptureStatus,
+  captureDone: 0,
+  captureTotal: 0,
+  captureFilePath: null as string | null,
+  captureError: null as string | null,
 };
 
 export function createConsoleStore(
@@ -89,6 +106,7 @@ export function createConsoleStore(
   // register a second onConsoleLiveState listener (it would double-apply
   // every future snapshot).
   let liveStateBound = false;
+  let captureProgressBound = false;
 
   return create<ConsoleState>()((set, get) => ({
     ...INITIAL_STATE,
@@ -247,6 +265,47 @@ export function createConsoleStore(
         set({ liveStateStatus: 'idle', liveStateError: null, liveMeters: [], link: INITIAL_CONSOLE_LINK });
       } catch {
         set({ liveStateStatus: 'error', liveStateError: LIVE_STATE_FAILED_MESSAGE });
+      }
+    },
+
+    async startSceneCapture() {
+      const ip = get().selectedIp;
+      if (!ip) {
+        set({ captureStatus: 'error', captureError: NO_CONSOLE_SELECTED_MESSAGE });
+        return;
+      }
+      if (!(await requestConsent())) {
+        set({ captureStatus: 'error', captureError: CONSENT_DECLINED_MESSAGE });
+        return;
+      }
+      if (!captureProgressBound) {
+        captureProgressBound = true;
+        getApi().onConsoleSceneCaptureProgress(({ done, total }) => {
+          set({ captureDone: done, captureTotal: total });
+        });
+      }
+      set({ captureStatus: 'capturing', captureDone: 0, captureTotal: 0, captureFilePath: null, captureError: null });
+      try {
+        const result = await getApi().startConsoleSceneCapture(ip);
+        if (result.success) {
+          set({ captureStatus: 'done', captureFilePath: result.filePath, captureError: null });
+        } else {
+          set({
+            captureStatus: result.cancelled ? 'cancelled' : 'error',
+            captureFilePath: null,
+            captureError: result.error,
+          });
+        }
+      } catch {
+        set({ captureStatus: 'error', captureFilePath: null, captureError: CAPTURE_FAILED_MESSAGE });
+      }
+    },
+
+    async cancelSceneCapture() {
+      try {
+        await getApi().cancelConsoleSceneCapture();
+      } catch {
+        set({ captureStatus: 'error', captureError: CAPTURE_FAILED_MESSAGE });
       }
     },
   }));

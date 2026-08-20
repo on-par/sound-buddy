@@ -713,6 +713,15 @@ export type StartConsoleLiveStateResult =
   | { success: true }
   | { success: false; error: string };
 
+export interface ConsoleSceneCaptureProgressDto {
+  done: number;
+  total: number;
+}
+
+export type StartConsoleSceneCaptureResult =
+  | { success: true; filePath: string }
+  | { success: false; cancelled?: boolean; error: string };
+
 /** Console network reads (#884, #848, #977). READ-ONLY BY CONSTRUCTION — see
  *  the ADR: no channel in this slice may write to the console. */
 export interface ConsoleApi {
@@ -724,6 +733,11 @@ export interface ConsoleApi {
   startConsoleLiveState(ip: string): Promise<StartConsoleLiveStateResult>;
   stopConsoleLiveState(): Promise<OperationResult>;
   onConsoleLiveState(cb: (data: ConsoleLiveStateEvent) => void): void;
+  // Local scene capture (#889). The console walk is read-only; the only write
+  // is the completed `.local.scn` file under the app-managed userData folder.
+  startConsoleSceneCapture(ip: string): Promise<StartConsoleSceneCaptureResult>;
+  cancelConsoleSceneCapture(): Promise<OperationResult>;
+  onConsoleSceneCaptureProgress(cb: (data: ConsoleSceneCaptureProgressDto) => void): void;
 }
 
 // ─── Domain sub-interfaces ───────────────────────────────────────────────────

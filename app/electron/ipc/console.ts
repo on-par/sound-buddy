@@ -15,18 +15,24 @@
 // revalidates a manually-entered IP before ever touching the network because
 // the renderer is never trusted (threat-model.test.ts discipline).
 
-import { ipcMain } from 'electron';
+import { app, ipcMain } from 'electron';
+import { createSocket } from 'dgram';
+import * as fs from 'fs';
+import * as path from 'path';
 import { log, logWarn } from '../logger';
 import { getSettings } from '../settings';
 import { discoverConsoles } from './console-discovery';
+import type { ConsoleDiscoverySocket } from './console-discovery';
 import { fetchConsoleIdentity, startConsoleHeartbeat } from './console-connection';
 import { startChannelStateSubscription, type ChannelStateSubscriptionHandle } from './console-channel-state';
 import { startMeterSubscription, type MeterSubscriptionHandle } from './console-meters';
+import { captureSceneToFile } from './console-scene-capture';
 import { reduceConsoleLink, INITIAL_CONSOLE_LINK_STATE, type ConsoleLinkState, type ConsoleLinkInput } from './console-link';
 import type {
   ScanConsolesResult,
   FetchConsoleIdentityResult,
   StartConsoleLiveStateResult,
+  StartConsoleSceneCaptureResult,
   OperationResult,
 } from './api';
 
@@ -59,6 +65,7 @@ let liveStateHandle: ChannelStateSubscriptionHandle | null = null;
 let meterHandle: MeterSubscriptionHandle | null = null;
 let heartbeatStop: (() => void) | null = null;
 let linkState: ConsoleLinkState = INITIAL_CONSOLE_LINK_STATE;
+let sceneCaptureAbort: AbortController | null = null;
 
 function stopLiveStateSubscription(): void {
   liveStateHandle?.stop();
@@ -167,6 +174,63 @@ export function registerConsoleHandlers(): void {
 
   ipcMain.handle('stop-console-live-state', async (): Promise<OperationResult> => {
     stopLiveStateSubscription();
+    return { success: true };
+  });
+
+  ipcMain.handle('start-console-scene-capture', async (event, ip: unknown): Promise<StartConsoleSceneCaptureResult> => {
+    if (!isValidConsoleIp(ip)) {
+      return {
+        success: false,
+        error: 'Enter the console IP as four numbers separated by dots, for example 192.168.1.50.',
+      };
+    }
+    if (sceneCaptureAbort) {
+      return { success: false, error: 'A console scene capture is already running.' };
+    }
+
+    const wc = event.sender;
+    const capturesDir = path.join(app.getPath('userData'), 'console-captures');
+    const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const filePath = path.join(capturesDir, `console-capture-${stamp}.local.scn`);
+    sceneCaptureAbort = new AbortController();
+    try {
+      await fs.promises.mkdir(capturesDir, { recursive: true });
+      await captureSceneToFile(
+        {
+          createSocket: () => createSocket('udp4') as unknown as ConsoleDiscoverySocket,
+          log,
+          writeFile: (target, contents) => fs.promises.writeFile(target, contents, 'utf8'),
+        },
+        getSettings(),
+        ip,
+        filePath,
+        {
+          name: `Sound Buddy capture ${new Date().toISOString()}`,
+          note: 'local read-only capture; scrub channel labels before exporting or sharing',
+          signal: sceneCaptureAbort.signal,
+          onProgress: (done, total) => {
+            if (!wc.isDestroyed()) wc.send('console-scene-capture-progress', { done, total });
+          },
+        }
+      );
+      return { success: true, filePath };
+    } catch (err) {
+      const cancelled = sceneCaptureAbort?.signal.aborted === true;
+      const error = cancelled
+        ? 'Scene capture cancelled. Nothing was saved.'
+        : actionableError(
+            err,
+            "Couldn't capture the console scene. Check the console is powered on and reachable, then try again."
+          );
+      logWarn(`start-console-scene-capture failed: ${error}`);
+      return { success: false, cancelled, error };
+    } finally {
+      sceneCaptureAbort = null;
+    }
+  });
+
+  ipcMain.handle('cancel-console-scene-capture', async (): Promise<OperationResult> => {
+    sceneCaptureAbort?.abort();
     return { success: true };
   });
 }

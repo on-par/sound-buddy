@@ -22,6 +22,7 @@ import { useStoreShallow } from './stores/useStoreShallow';
 import { useConsoleStore } from './stores/consoleStore';
 import { useLiveCaptureStore } from './stores/liveCaptureStore';
 import type { ConsoleLinkStateDto } from '../../electron/ipc/api';
+import { CAPTURE_LOCAL_ONLY_MESSAGE } from './stores/consoleStore';
 
 const FADER_DB_DECIMALS = 1;
 
@@ -77,6 +78,23 @@ export function consoleLinkMessage(link: ConsoleLinkStateDto): string | null {
   return null;
 }
 
+export function captureProgressPercent(done: number, total: number): number {
+  if (total <= 0) return 0;
+  return Math.min(100, Math.max(0, (done / total) * 100));
+}
+
+export function captureStatusLine(
+  status: 'idle' | 'capturing' | 'done' | 'cancelled' | 'error',
+  done: number,
+  total: number,
+  filePath: string | null
+): string | null {
+  if (status === 'capturing') return total > 0 ? `Capturing ${done} of ${total} scene values…` : 'Starting scene capture…';
+  if (status === 'done' && filePath) return `Saved to ${filePath}. It stays on this Mac until you choose to share it.`;
+  if (status === 'cancelled') return 'Scene capture cancelled. No partial file was saved.';
+  return null;
+}
+
 export default function ConsolePanel(): JSX.Element | null {
   const appMode = useStoreShallow(useLiveCaptureStore, (s) => s.appMode);
   const s = useStoreShallow(useConsoleStore, (st) => ({
@@ -94,11 +112,18 @@ export default function ConsolePanel(): JSX.Element | null {
     liveStateError: st.liveStateError,
     liveMeters: st.liveMeters,
     link: st.link,
+    captureStatus: st.captureStatus,
+    captureDone: st.captureDone,
+    captureTotal: st.captureTotal,
+    captureFilePath: st.captureFilePath,
+    captureError: st.captureError,
   }));
 
   if (appMode !== 'live') return null;
 
   const linkMessage = consoleLinkMessage(s.link);
+  const captureLine = captureStatusLine(s.captureStatus, s.captureDone, s.captureTotal, s.captureFilePath);
+  const capturePercent = captureProgressPercent(s.captureDone, s.captureTotal);
 
   return (
     <div className="console-panel">
@@ -218,6 +243,50 @@ export default function ConsolePanel(): JSX.Element | null {
           })}
         </ul>
       )}
+
+      <section className="console-scene-capture" aria-labelledby="console-capture-title">
+        <h4 id="console-capture-title">Scene capture</h4>
+        <p id="console-capture-privacy">{CAPTURE_LOCAL_ONLY_MESSAGE}</p>
+        <div className="console-capture-actions">
+          <button
+            type="button"
+            id="console-capture"
+            className="btn btn-secondary"
+            disabled={!s.selectedIp || s.captureStatus === 'capturing'}
+            /* c8 ignore next -- click dispatch, no jsdom */
+            onClick={() => void useConsoleStore.getState().startSceneCapture()}
+          >
+            {s.captureStatus === 'capturing' ? 'Capturing…' : 'Capture scene'}
+          </button>
+          {s.captureStatus === 'capturing' && (
+            <button
+              type="button"
+              id="console-capture-cancel"
+              className="btn btn-secondary"
+              /* c8 ignore next -- click dispatch, no jsdom */
+              onClick={() => void useConsoleStore.getState().cancelSceneCapture()}
+            >
+              Cancel
+            </button>
+          )}
+        </div>
+        {s.captureStatus === 'capturing' && (
+          <div id="console-capture-progress" className="console-capture-progress">
+            <span className="console-capture-progress-bar" style={{ width: `${capturePercent}%` }} />
+            <span id="console-capture-percent">{Math.round(capturePercent)}%</span>
+          </div>
+        )}
+        {captureLine && (
+          <p id="console-capture-status" role="status">
+            {captureLine}
+          </p>
+        )}
+        {s.captureStatus === 'error' && s.captureError && (
+          <p id="console-capture-error" role="alert">
+            {s.captureError}
+          </p>
+        )}
+      </section>
 
       <label htmlFor="console-manual-ip">Console IP (fallback)</label>
       <p>Use this when the scan finds nothing — a different subnet or a blocked broadcast. Scanning is the primary path.</p>

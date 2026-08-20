@@ -111,6 +111,8 @@ const INVOKE_TABLE: Array<{ method: BridgeKey; channel: string; args: unknown[] 
   { method: 'fetchConsoleIdentity', channel: 'fetch-console-identity', args: ['192.168.1.50'] },
   { method: 'startConsoleLiveState', channel: 'start-console-live-state', args: ['192.168.1.50'] },
   { method: 'stopConsoleLiveState', channel: 'stop-console-live-state', args: [] },
+  { method: 'startConsoleSceneCapture', channel: 'start-console-scene-capture', args: ['192.168.1.50'] },
+  { method: 'cancelConsoleSceneCapture', channel: 'cancel-console-scene-capture', args: [] },
   { method: 'isOnboardingDisabled', channel: 'onboarding-disabled', args: [] },
   { method: 'listDevices', channel: 'list-devices', args: [] },
   { method: 'listOutputDevices', channel: 'list-output-devices', args: [] },
@@ -175,6 +177,7 @@ const LISTENERS: BridgeKey[] = [
   'onUpdateStatus',
   'onUpdateDownloadStatus',
   'onConsoleLiveState',
+  'onConsoleSceneCaptureProgress',
   'removeAllListeners',
 ];
 
@@ -238,6 +241,12 @@ describe('createBridge — event listeners', () => {
       expectsPayload: true,
     },
     { method: 'onConsoleLiveState', channel: 'console-live-state', payload: { channels: [] }, expectsPayload: true },
+    {
+      method: 'onConsoleSceneCaptureProgress',
+      channel: 'console-scene-capture-progress',
+      payload: { done: 1, total: 2103 },
+      expectsPayload: true,
+    },
   ];
 
   it.each(LISTENER_TABLE)(

@@ -27,10 +27,15 @@ export interface SceneCaptureOptions {
   note: string;
   queryOptions?: ConsoleQueryOptions;
   onProgress?: (done: number, total: number) => void;
+  signal?: AbortSignal;
 }
 
 export interface SceneCaptureDeps extends ConsoleDiscoveryDeps {
   writeFile: (filePath: string, contents: string) => Promise<void>;
+}
+
+function throwIfAborted(signal: AbortSignal | undefined): void {
+  if (signal?.aborted) throw new Error('Scene capture cancelled. Nothing was saved.');
 }
 
 // Sequential, not parallel: the measured baseline (350ms / 3 retries, ~250
@@ -46,6 +51,7 @@ export async function captureSceneFromConsole(
 
   const lines = new Map<string, string>();
   for (const path of SCENE_NODE_PATHS) {
+    throwIfAborted(options.signal);
     try {
       const line = await queryConsole(
         deps,
@@ -54,8 +60,10 @@ export async function captureSceneFromConsole(
         (message) => parseNodeReplyLine(path, message),
         { ...options.queryOptions, requestArgs: [{ type: 's', value: path }] }
       );
+      throwIfAborted(options.signal);
       lines.set(path, line);
     } catch (err) {
+      if (options.signal?.aborted) throw err;
       throw new Error(
         `Scene capture failed: the console at ${ip} did not answer "${path}" ` +
           `(${lines.size} of ${SCENE_NODE_PATH_COUNT} paths captured). Nothing was saved — ` +

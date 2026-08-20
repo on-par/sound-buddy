@@ -196,6 +196,12 @@ export function createMockSoundBuddy(overrides: Partial<SoundBuddyApi> = {}): Mo
     startConsoleLiveState: invoke('startConsoleLiveState', { success: true as const }),
     stopConsoleLiveState: invoke('stopConsoleLiveState', { success: true }),
     onConsoleLiveState: listen<[ConsoleLiveStateEvent]>('onConsoleLiveState'),
+    startConsoleSceneCapture: invoke('startConsoleSceneCapture', {
+      success: true as const,
+      filePath: '/mock/userData/console-captures/capture.local.scn',
+    }),
+    cancelConsoleSceneCapture: invoke('cancelConsoleSceneCapture', { success: true }),
+    onConsoleSceneCaptureProgress: listen<[{ done: number; total: number }]>('onConsoleSceneCaptureProgress'),
     isOnboardingDisabled: invoke('isOnboardingDisabled', false),
     listDevices: invoke('listDevices', undefined),
     listOutputDevices: invoke('listOutputDevices', undefined),

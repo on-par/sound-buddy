@@ -3,8 +3,10 @@
 
 // Executable form of the #884 ADR's "no write path exists" acceptance
 // criterion, widened by #977's ADR to cover the live channel-state poll: the
-// console IPC surface is read-only by construction. A future slice that
-// needs a write path must delete/rewrite this gate in the same PR — a
+// console IPC surface is read-only by construction. #889 adds local scene
+// capture: the console walk is still read-only (/node), and the only write is
+// a completed `.local.scn` file under app-managed storage. A future slice that
+// needs a console write path must delete/rewrite this gate in the same PR — a
 // visible, reviewable decision instead of a silent one.
 
 import { describe, it, expect } from 'vitest';
@@ -27,6 +29,10 @@ const consoleSubscriptionTs = fs.readFileSync(
   'utf8'
 );
 const consoleLinkTs = fs.readFileSync(fileURLToPath(new URL('../../electron/ipc/console-link.ts', import.meta.url)), 'utf8');
+const consoleSceneCaptureTs = fs.readFileSync(
+  fileURLToPath(new URL('../../electron/ipc/console-scene-capture.ts', import.meta.url)),
+  'utf8'
+);
 
 // OSC/console write vocabulary that has no legitimate reason to appear in
 // any of the three files below. Deliberately excludes bare "set"/"store" —
@@ -36,14 +42,16 @@ const consoleLinkTs = fs.readFileSync(fileURLToPath(new URL('../../electron/ipc/
 const WRITE_VERB_PATTERN =
   /\/set\/|\/recall|\bsaveScene\b|\bstoreScene\b|\bwriteConsole\b|\bsetFader\b|\bmuteChannel\b|\bunmuteChannel\b|\brecallScene\b/i;
 
-describe('Console IPC surface is read-only by construction (#884 ADR, #977 ADR)', () => {
-  it('registers exactly four ipcMain.handle channels: scan-consoles, fetch-console-identity, start-console-live-state, stop-console-live-state', () => {
+describe('Console IPC surface is read-only by construction (#884 ADR, #977 ADR, #889)', () => {
+  it('registers only the known read/local-capture ipcMain.handle channels', () => {
     const matches = [...consoleIpcTs.matchAll(/ipcMain\.handle\(\s*'([^']+)'/g)].map((m) => m[1]);
     expect(matches).toEqual([
       'scan-consoles',
       'fetch-console-identity',
       'start-console-live-state',
       'stop-console-live-state',
+      'start-console-scene-capture',
+      'cancel-console-scene-capture',
     ]);
   });
 
@@ -53,6 +61,7 @@ describe('Console IPC surface is read-only by construction (#884 ADR, #977 ADR)'
     ['app/electron/ipc/console-meters.ts', () => consoleMetersTs],
     ['app/electron/ipc/console-subscription.ts', () => consoleSubscriptionTs],
     ['app/electron/ipc/console-link.ts', () => consoleLinkTs],
+    ['app/electron/ipc/console-scene-capture.ts', () => consoleSceneCaptureTs],
     ['app/renderer/src/ConsolePanel.tsx', () => consolePanelTsx],
     ['app/renderer/src/stores/consoleStore.ts', () => consoleStoreTs],
   ])('%s contains no console write-verb vocabulary', (_label, getSrc) => {
@@ -71,6 +80,12 @@ describe('Console IPC surface is read-only by construction (#884 ADR, #977 ADR)'
   it('console-channel-state.ts sends only /node requests', () => {
     const addresses = [...consoleChannelStateTs.matchAll(/queryConsole\([\s\S]{0,200}?'(\/[^']+)'/g)].map((m) => m[1]);
     expect(addresses).toEqual(['/node']);
+  });
+
+  it('console-scene-capture.ts sends only /node requests and writes only after the complete read succeeds', () => {
+    const addresses = [...consoleSceneCaptureTs.matchAll(/queryConsole\([\s\S]{0,200}?'(\/[^']+)'/g)].map((m) => m[1]);
+    expect(addresses).toEqual(['/node']);
+    expect(consoleSceneCaptureTs.indexOf('captureSceneFromConsole')).toBeLessThan(consoleSceneCaptureTs.indexOf('deps.writeFile'));
   });
 
   it('the meter path opens no write address — only /renew and /xremote reads, decoding /meters/1', () => {
@@ -92,7 +107,9 @@ describe('Console IPC surface is read-only by construction (#884 ADR, #977 ADR)'
         /\.selectConsole\(/.test(upToNextTag) ||
         /\.submitManualIp\(\)/.test(upToNextTag) ||
         /\.startLiveState\(\)/.test(upToNextTag) ||
-        /\.stopLiveState\(\)/.test(upToNextTag);
+        /\.stopLiveState\(\)/.test(upToNextTag) ||
+        /\.startSceneCapture\(\)/.test(upToNextTag) ||
+        /\.cancelSceneCapture\(\)/.test(upToNextTag);
       expect(isKnownReadAction).toBe(true);
     }
   });
