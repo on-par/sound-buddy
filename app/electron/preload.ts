@@ -19,6 +19,7 @@ import type {
   FeedbackSubmission,
   DiffScenesOpts,
   ConsoleLiveStateEvent,
+  ConsoleSceneCaptureProgressDto,
 } from './ipc/api';
 
 // The slice of Electron's IpcRenderer the bridge actually uses. Injected so
@@ -147,6 +148,10 @@ export function createBridge(ipc: IpcRendererLike) {
     stopConsoleLiveState: () => ipc.invoke('stop-console-live-state'),
     onConsoleLiveState: (cb: (data: ConsoleLiveStateEvent) => void) =>
       ipc.on('console-live-state', (_event, d) => cb(d)),
+    startConsoleSceneCapture: (ip: string) => ipc.invoke('start-console-scene-capture', ip),
+    cancelConsoleSceneCapture: () => ipc.invoke('cancel-console-scene-capture'),
+    onConsoleSceneCaptureProgress: (cb: (data: ConsoleSceneCaptureProgressDto) => void) =>
+      ipc.on('console-scene-capture-progress', (_event, d) => cb(d)),
 
     // Dev/e2e switch (SOUND_BUDDY_DISABLE_ONBOARDING) for the first-run overlay (#69).
     isOnboardingDisabled: () => ipc.invoke('onboarding-disabled'),

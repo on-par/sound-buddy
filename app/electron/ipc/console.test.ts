@@ -6,6 +6,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 const handlers = new Map<string, (...args: unknown[]) => unknown>();
 
 vi.mock('electron', () => ({
+  app: { getPath: () => '/tmp/sound-buddy-console-test' },
   ipcMain: { handle: (ch: string, fn: (...args: unknown[]) => unknown) => handlers.set(ch, fn) },
 }));
 const logMock = vi.fn();
@@ -28,6 +29,10 @@ vi.mock('./console-channel-state', () => ({
 const startMeterSubscriptionMock = vi.fn();
 vi.mock('./console-meters', () => ({
   startMeterSubscription: (...a: unknown[]) => startMeterSubscriptionMock(...a),
+}));
+const captureSceneToFileMock = vi.fn();
+vi.mock('./console-scene-capture', () => ({
+  captureSceneToFile: (...a: unknown[]) => captureSceneToFileMock(...a),
 }));
 
 import { registerConsoleHandlers, isValidConsoleIp, CONSOLE_METER_TIME_FACTOR } from './console';
@@ -67,6 +72,14 @@ function stopLiveState() {
   return (handlers.get('stop-console-live-state') as Handler)();
 }
 
+function startSceneCapture(event: unknown, ip: unknown) {
+  return (handlers.get('start-console-scene-capture') as Handler)(event, ip);
+}
+
+function cancelSceneCapture() {
+  return (handlers.get('cancel-console-scene-capture') as Handler)();
+}
+
 beforeEach(() => {
   handlers.clear();
   logMock.mockClear();
@@ -79,6 +92,8 @@ beforeEach(() => {
   startMeterSubscriptionMock.mockReturnValue({ stop: vi.fn() });
   startConsoleHeartbeatMock.mockReset();
   startConsoleHeartbeatMock.mockReturnValue(vi.fn());
+  captureSceneToFileMock.mockReset();
+  captureSceneToFileMock.mockResolvedValue('scene text');
   registerConsoleHandlers();
 });
 
@@ -546,5 +561,110 @@ describe('start-console-live-state / stop-console-live-state', () => {
 
     secondOnStatusChange('offline');
     expect(sent).toContainEqual(['console-live-state', { link: { status: 'offline', metersDegraded: false } }]);
+  });
+});
+
+describe('start-console-scene-capture / cancel-console-scene-capture', () => {
+  it('rejects a malformed IP without touching the capture engine', async () => {
+    const { event } = makeFakeEvent();
+
+    const result = await startSceneCapture(event, 'not-an-ip');
+
+    expect(result).toEqual({
+      success: false,
+      error: 'Enter the console IP as four numbers separated by dots, for example 192.168.1.50.',
+    });
+    expect(captureSceneToFileMock).not.toHaveBeenCalled();
+  });
+
+  it('captures to the app-managed console-captures folder and returns the local file path', async () => {
+    const { event } = makeFakeEvent();
+
+    const result = await startSceneCapture(event, '10.0.0.5');
+
+    expect(result).toMatchObject({ success: true });
+    expect((result as { filePath: string }).filePath).toMatch(/\/tmp\/sound-buddy-console-test\/console-captures\/console-capture-.*\.local\.scn$/);
+    expect(captureSceneToFileMock).toHaveBeenCalledWith(
+      expect.objectContaining({ createSocket: expect.any(Function), log: expect.any(Function), writeFile: expect.any(Function) }),
+      { consoleNetworkConsentGranted: true },
+      '10.0.0.5',
+      (result as { filePath: string }).filePath,
+      expect.objectContaining({
+        name: expect.stringContaining('Sound Buddy capture'),
+        note: expect.stringContaining('scrub channel labels'),
+        signal: expect.any(AbortSignal),
+        onProgress: expect.any(Function),
+      })
+    );
+  });
+
+  it('forwards progress on console-scene-capture-progress', async () => {
+    const { event, sent } = makeFakeEvent();
+    captureSceneToFileMock.mockImplementation(async (_deps, _settings, _ip, _file, options) => {
+      options.onProgress(501, 2103);
+      return 'scene text';
+    });
+
+    await startSceneCapture(event, '10.0.0.5');
+
+    expect(sent).toContainEqual(['console-scene-capture-progress', { done: 501, total: 2103 }]);
+  });
+
+  it('skips progress sends when the sender is destroyed', async () => {
+    const { event, sent, setDestroyed } = makeFakeEvent();
+    setDestroyed(true);
+    captureSceneToFileMock.mockImplementation(async (_deps, _settings, _ip, _file, options) => {
+      options.onProgress(1, 2103);
+      return 'scene text';
+    });
+
+    await startSceneCapture(event, '10.0.0.5');
+
+    expect(sent).toEqual([]);
+  });
+
+  it('cancel aborts the in-flight capture and the handler reports no saved partial', async () => {
+    const { event } = makeFakeEvent();
+    let signal!: AbortSignal;
+    let rejectCapture!: (err: Error) => void;
+    captureSceneToFileMock.mockImplementation((_deps, _settings, _ip, _file, options) => {
+      signal = options.signal;
+      return new Promise((_resolve, reject) => {
+        rejectCapture = reject;
+      });
+    });
+
+    const pending = startSceneCapture(event, '10.0.0.5');
+    await vi.waitFor(() => expect(captureSceneToFileMock).toHaveBeenCalled());
+    await cancelSceneCapture();
+    expect(signal.aborted).toBe(true);
+    rejectCapture(new Error('Scene capture cancelled. Nothing was saved.'));
+
+    await expect(pending).resolves.toEqual({
+      success: false,
+      cancelled: true,
+      error: 'Scene capture cancelled. Nothing was saved.',
+    });
+  });
+
+  it('rejects a second start while one capture is running', async () => {
+    const { event } = makeFakeEvent();
+    let resolveCapture!: (text: string) => void;
+    captureSceneToFileMock.mockImplementation(
+      () => new Promise<string>((resolve) => {
+        resolveCapture = resolve;
+      })
+    );
+
+    const pending = startSceneCapture(event, '10.0.0.5');
+    await vi.waitFor(() => expect(captureSceneToFileMock).toHaveBeenCalled());
+
+    await expect(startSceneCapture(event, '10.0.0.5')).resolves.toEqual({
+      success: false,
+      error: 'A console scene capture is already running.',
+    });
+
+    resolveCapture('scene text');
+    await pending;
   });
 });

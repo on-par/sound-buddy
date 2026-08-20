@@ -7,6 +7,7 @@ import {
   CONSENT_DECLINED_MESSAGE,
   NO_CONSOLE_SELECTED_MESSAGE,
   LIVE_STATE_FAILED_MESSAGE,
+  CAPTURE_FAILED_MESSAGE,
   INITIAL_CONSOLE_LINK,
 } from './consoleStore';
 import { createMockSoundBuddy } from '../mock-sound-buddy';
@@ -40,6 +41,11 @@ describe('createConsoleStore', () => {
     expect(s.liveStateError).toBeNull();
     expect(s.liveMeters).toEqual([]);
     expect(s.link).toEqual(INITIAL_CONSOLE_LINK);
+    expect(s.captureStatus).toBe('idle');
+    expect(s.captureDone).toBe(0);
+    expect(s.captureTotal).toBe(0);
+    expect(s.captureFilePath).toBeNull();
+    expect(s.captureError).toBeNull();
   });
 
   describe('scan', () => {
@@ -490,6 +496,111 @@ describe('createConsoleStore', () => {
       await store.getState().stopLiveState();
 
       expect(store.getState().link).toEqual(INITIAL_CONSOLE_LINK);
+    });
+  });
+
+  describe('startSceneCapture / cancelSceneCapture', () => {
+    it('errors with NO_CONSOLE_SELECTED_MESSAGE and never calls the bridge when nothing is selected', async () => {
+      const mock = createMockSoundBuddy();
+      const store = createConsoleStore(() => mock.api, allow);
+
+      await store.getState().startSceneCapture();
+
+      expect(store.getState().captureStatus).toBe('error');
+      expect(store.getState().captureError).toBe(NO_CONSOLE_SELECTED_MESSAGE);
+      expect(mock.calls.find((c) => c.method === 'startConsoleSceneCapture')).toBeUndefined();
+    });
+
+    it('a declined consent errors with CONSENT_DECLINED_MESSAGE and never calls the bridge', async () => {
+      const mock = createMockSoundBuddy();
+      const store = createConsoleStore(() => mock.api, decline);
+      store.setState({ selectedIp: '10.0.0.5' });
+
+      await store.getState().startSceneCapture();
+
+      expect(store.getState().captureStatus).toBe('error');
+      expect(store.getState().captureError).toBe(CONSENT_DECLINED_MESSAGE);
+      expect(mock.calls.find((c) => c.method === 'startConsoleSceneCapture')).toBeUndefined();
+    });
+
+    it('a successful capture records the local file path and passes selectedIp to the bridge', async () => {
+      const mock = createMockSoundBuddy({
+        startConsoleSceneCapture: async (ip: string) => {
+          mock.calls.push({ method: 'startConsoleSceneCapture', args: [ip] });
+          return { success: true, filePath: '/mock/userData/console-captures/capture.local.scn' };
+        },
+      });
+      const store = createConsoleStore(() => mock.api, allow);
+      store.setState({ selectedIp: '10.0.0.5' });
+
+      await store.getState().startSceneCapture();
+
+      expect(store.getState().captureStatus).toBe('done');
+      expect(store.getState().captureFilePath).toBe('/mock/userData/console-captures/capture.local.scn');
+      expect(mock.calls).toContainEqual({ method: 'startConsoleSceneCapture', args: ['10.0.0.5'] });
+    });
+
+    it('progress pushes update captureDone and captureTotal while the capture is running', async () => {
+      let resolveCapture!: (v: { success: true; filePath: string }) => void;
+      const mock = createMockSoundBuddy({
+        startConsoleSceneCapture: () => new Promise((resolve) => { resolveCapture = resolve; }),
+      });
+      const store = createConsoleStore(() => mock.api, allow);
+      store.setState({ selectedIp: '10.0.0.5' });
+
+      const pending = store.getState().startSceneCapture();
+      await Promise.resolve();
+      mock.emit('onConsoleSceneCaptureProgress', { done: 501, total: 2103 });
+
+      expect(store.getState().captureStatus).toBe('capturing');
+      expect(store.getState().captureDone).toBe(501);
+      expect(store.getState().captureTotal).toBe(2103);
+
+      resolveCapture({ success: true, filePath: '/mock/capture.local.scn' });
+      await pending;
+    });
+
+    it('a cancelled result sets cancelled status and no file path', async () => {
+      const mock = createMockSoundBuddy({
+        startConsoleSceneCapture: async () => ({ success: false, cancelled: true, error: 'Scene capture cancelled. Nothing was saved.' }),
+      });
+      const store = createConsoleStore(() => mock.api, allow);
+      store.setState({ selectedIp: '10.0.0.5' });
+
+      await store.getState().startSceneCapture();
+
+      expect(store.getState().captureStatus).toBe('cancelled');
+      expect(store.getState().captureFilePath).toBeNull();
+      expect(store.getState().captureError).toMatch(/cancelled/i);
+    });
+
+    it('a throwing bridge yields CAPTURE_FAILED_MESSAGE', async () => {
+      const mock = createMockSoundBuddy({
+        startConsoleSceneCapture: async () => {
+          throw new Error('bridge disconnected');
+        },
+      });
+      const store = createConsoleStore(() => mock.api, allow);
+      store.setState({ selectedIp: '10.0.0.5' });
+
+      await store.getState().startSceneCapture();
+
+      expect(store.getState().captureStatus).toBe('error');
+      expect(store.getState().captureError).toBe(CAPTURE_FAILED_MESSAGE);
+    });
+
+    it('cancelSceneCapture delegates to the bridge', async () => {
+      const mock = createMockSoundBuddy({
+        cancelConsoleSceneCapture: async () => {
+          mock.calls.push({ method: 'cancelConsoleSceneCapture', args: [] });
+          return { success: true };
+        },
+      });
+      const store = createConsoleStore(() => mock.api, allow);
+
+      await store.getState().cancelSceneCapture();
+
+      expect(mock.calls).toContainEqual({ method: 'cancelConsoleSceneCapture', args: [] });
     });
   });
 });
