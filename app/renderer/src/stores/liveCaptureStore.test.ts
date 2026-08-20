@@ -532,6 +532,15 @@ describe('createLiveCaptureStore', () => {
       store.getState().setStopping(false);
       expect(store.getState().stopping).toBe(false);
     });
+
+    it('setDemoting sets the demoting flag, defaulting to false (#847)', () => {
+      const { store } = makeStore();
+      expect(store.getState().demoting).toBe(false);
+      store.getState().setDemoting(true);
+      expect(store.getState().demoting).toBe(true);
+      store.getState().setDemoting(false);
+      expect(store.getState().demoting).toBe(false);
+    });
   });
 
   describe('collapse', () => {

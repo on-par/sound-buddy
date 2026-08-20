@@ -59,6 +59,7 @@ import {
   getArmState,
   getInstrumentProfiles,
   liveWorkspaceViewState,
+  boardRunning,
 } from './live-workspace-view';
 
 // The still-classic live-setup-state.js accessor's storage contract (a
@@ -110,6 +111,7 @@ export default function LiveCapturePanel(): JSX.Element | null {
     devices: st.devices,
     selectedDevice: st.selectedDevice,
     isCapturing: st.isCapturing,
+    demoting: st.demoting,
     liveMode: st.liveMode,
     appMode: st.appMode,
     selectedChannel: st.selectedChannel,
@@ -155,11 +157,11 @@ export default function LiveCapturePanel(): JSX.Element | null {
   useEffect(() => {
     if (s.appMode !== 'live') return;
     const statsRow = document.getElementById('stats-row');
-    if (statsRow) statsRow.style.display = s.isCapturing && !showShell ? 'flex' : 'none';
+    if (statsRow) statsRow.style.display = boardRunning(s) && !showShell ? 'flex' : 'none';
     const ipWrap = document.getElementById('ideal-profile-wrap');
     if (ipWrap) ipWrap.style.display = 'none';
     useSpectrumStore.getState().setPanelState('meters'); // hide #spectrum-island's React curve view while the board renders
-  }, [s.appMode, s.isCapturing, showShell]);
+  }, [s.appMode, s.isCapturing, s.demoting, showShell]);
 
   // DAW shell (#517/#518/#520): stamp the lane fingerprint (the React
   // rebuild-decision key for same-count rig swaps) and hand the

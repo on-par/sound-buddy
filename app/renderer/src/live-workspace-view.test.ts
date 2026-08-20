@@ -18,6 +18,7 @@ import {
   liveAdjustmentsPanelHTML,
   statsRowView,
   liveStatsRowView,
+  boardRunning,
   type LiveWorkspaceViewState,
 } from './live-workspace-view';
 import type { LiveDevice, StripConfig, ChannelGroup, LiveEvent, LiveMeterChannel } from './live-capture-panel';
@@ -104,6 +105,20 @@ beforeEach(() => {
 
 afterEach(() => {
   delete (globalThis as { window?: unknown }).window;
+});
+
+describe('boardRunning (#847)', () => {
+  it('returns true when isCapturing is true and demoting false', () => {
+    expect(boardRunning({ isCapturing: true, demoting: false })).toBe(true);
+  });
+
+  it('returns true when isCapturing is false and demoting true (holds the board live across the stop IPC)', () => {
+    expect(boardRunning({ isCapturing: false, demoting: true })).toBe(true);
+  });
+
+  it('returns false when both are false', () => {
+    expect(boardRunning({ isCapturing: false, demoting: false })).toBe(false);
+  });
 });
 
 describe('stripViewAt', () => {

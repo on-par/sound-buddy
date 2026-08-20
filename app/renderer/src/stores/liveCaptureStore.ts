@@ -246,6 +246,12 @@ export interface LiveCaptureState {
   // top-bar RecordButton (and #live-stop-btn) a genuine "Stopping…" state
   // instead of jumping straight from recording to idle.
   stopping: boolean;
+  // Transient: true for the whole record→monitor demote (#847) — from just
+  // before stopLiveCapture's stopCapture() until the resumed monitor session
+  // has started. isCapturing is false for the stop IPC's duration, but the
+  // Live tab is still monitoring by ADR-0015's contract, so the board must
+  // keep rendering live — see boardRunning() in live-workspace-view.ts.
+  demoting: boolean;
 
   liveWindows: WindowData[];
   lastTick: LiveEvent | null;
@@ -349,6 +355,7 @@ export interface LiveCaptureState {
   setRunning(running: boolean): void;
   setPromoting(promoting: boolean): void;
   setStopping(stopping: boolean): void;
+  setDemoting(demoting: boolean): void;
   clearLiveWindows(): void;
   // A device switch (selectDevice/loadDevices) re-seeds channelConfig for the
   // new device, but the previous device's most-recent tick snapshot isn't
@@ -463,6 +470,7 @@ export function createLiveCaptureStore(getApi: () => LiveCaptureApi) {
     isCapturing: false,
     promoting: false,
     stopping: false,
+    demoting: false,
 
     liveWindows: [],
     lastTick: null,
@@ -716,6 +724,10 @@ export function createLiveCaptureStore(getApi: () => LiveCaptureApi) {
 
     setStopping(stopping) {
       set({ stopping });
+    },
+
+    setDemoting(demoting) {
+      set({ demoting });
     },
 
     clearLiveWindows() {
