@@ -19,14 +19,12 @@
 // own wiring discoverConsoles/queryConsoleAtAddress to a live consumer.
 
 import * as dgram from 'dgram';
-import {
-  encodeOscMessage,
-  decodeOscMessage,
-  replyAddressMatches,
-  type DecodedOscMessage,
-} from '@sound-buddy/console/dist-cjs/index.js';
+import type { DecodedOscMessage } from '@sound-buddy/console/dist-cjs/index.js';
+import { loadConsoleModule } from '../console-loader';
 import { assertConsoleNetworkConsent } from '../console-network-consent';
 import type { AppSettings } from './api';
+
+const { encodeOscMessage, decodeOscMessage, replyAddressMatches } = loadConsoleModule();
 
 export const CONSOLE_OSC_PORT = 10023;
 export const BROADCAST_ADDRESS = '255.255.255.255';

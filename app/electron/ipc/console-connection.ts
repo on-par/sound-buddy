@@ -14,13 +14,8 @@
 // RTT p95 7.9ms, max 93.3ms, zero of 2103 queries lost at that setting.
 
 import * as dgram from 'dgram';
-import {
-  encodeOscMessage,
-  decodeOscMessage,
-  replyAddressMatches,
-  type DecodedOscMessage,
-  type OscArg,
-} from '@sound-buddy/console/dist-cjs/index.js';
+import type { DecodedOscMessage, OscArg } from '@sound-buddy/console/dist-cjs/index.js';
+import { loadConsoleModule } from '../console-loader';
 import { assertConsoleNetworkConsent } from '../console-network-consent';
 import type { AppSettings } from './api';
 import {
@@ -31,6 +26,8 @@ import {
   type ConsoleDiscoverySocket,
   type ConsoleDiscoveryDeps,
 } from './console-discovery';
+
+const { encodeOscMessage, decodeOscMessage, replyAddressMatches } = loadConsoleModule();
 
 export const DEFAULT_CONNECTION_QUERY_TIMEOUT_MS = 350;
 export const DEFAULT_CONNECTION_QUERY_MAX_RETRIES = 3;

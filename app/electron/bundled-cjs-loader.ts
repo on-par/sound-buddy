@@ -18,10 +18,14 @@ import RESOURCE_LAYOUT from './resource-layout.json';
 
 export type ResourceName = keyof typeof RESOURCE_LAYOUT;
 
+function isPackagedApp(): boolean {
+  return app?.isPackaged === true;
+}
+
 export function bundledResourceDir(resourceName: ResourceName): string {
   const entry = RESOURCE_LAYOUT[resourceName];
   // c8 ignore start -- packaged-app path resolution; vitest always runs unpackaged.
-  if (app.isPackaged) {
+  if (isPackagedApp()) {
     const bundled = path.join(process.resourcesPath, entry.resourcesSubdir);
     if (fs.existsSync(bundled)) return bundled;
   }
