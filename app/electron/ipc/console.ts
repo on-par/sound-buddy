@@ -114,13 +114,13 @@ export function registerConsoleHandlers(): void {
     }
     stopLiveStateSubscription(); // a second start replaces the first, never stacks
     const wc = event.sender;
-    const pushLink = (input: ConsoleLinkInput) => {
-      const next = reduceConsoleLink(linkState, input);
-      if (next === linkState) return; // edge-triggered: no push when nothing changed
-      linkState = next;
-      if (!wc.isDestroyed()) wc.send('console-live-state', { link: next });
-    };
     try {
+      const pushLink = (input: ConsoleLinkInput) => {
+        const next = reduceConsoleLink(linkState, input);
+        if (next === linkState) return; // edge-triggered: no push when nothing changed
+        linkState = next;
+        if (!wc.isDestroyed()) wc.send('console-live-state', { link: next });
+      };
       liveStateHandle = startChannelStateSubscription(
         { log },
         getSettings(),
