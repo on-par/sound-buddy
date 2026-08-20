@@ -26,6 +26,7 @@ const consoleSubscriptionTs = fs.readFileSync(
   fileURLToPath(new URL('../../electron/ipc/console-subscription.ts', import.meta.url)),
   'utf8'
 );
+const consoleLinkTs = fs.readFileSync(fileURLToPath(new URL('../../electron/ipc/console-link.ts', import.meta.url)), 'utf8');
 
 // OSC/console write vocabulary that has no legitimate reason to appear in
 // any of the three files below. Deliberately excludes bare "set"/"store" —
@@ -51,6 +52,7 @@ describe('Console IPC surface is read-only by construction (#884 ADR, #977 ADR)'
     ['app/electron/ipc/console-channel-state.ts', () => consoleChannelStateTs],
     ['app/electron/ipc/console-meters.ts', () => consoleMetersTs],
     ['app/electron/ipc/console-subscription.ts', () => consoleSubscriptionTs],
+    ['app/electron/ipc/console-link.ts', () => consoleLinkTs],
     ['app/renderer/src/ConsolePanel.tsx', () => consolePanelTsx],
     ['app/renderer/src/stores/consoleStore.ts', () => consoleStoreTs],
   ])('%s contains no console write-verb vocabulary', (_label, getSrc) => {
