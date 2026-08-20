@@ -103,6 +103,10 @@ export function startChannelStateSubscription(
         (err) => {
           if (!stopped) {
             deps.log(`console-channel-state: walk failed for ${ip}: ${String(err)}`);
+            // readChannelStates always rejects with `new Error(...)` (see above), so the
+            // non-Error branch is unreachable through this module's own call chain — kept
+            // only as a defensive fallback against a future readChannelStates change.
+            /* c8 ignore next */
             onError(err instanceof Error ? err.message : String(err));
           }
         }

@@ -205,4 +205,71 @@ describe('startChannelStateSubscription', () => {
     expect(onSnapshot).toHaveBeenCalledTimes(1);
     expect(onError).not.toHaveBeenCalled();
   });
+
+  it('stop() called while a walk is in flight suppresses that walk\'s onSnapshot once it resolves', async () => {
+    vi.useFakeTimers();
+    let resolveMix!: (v: string) => void;
+    queryConsoleMock
+      .mockResolvedValueOnce('/ch/01/config "Kick" 1 RD 1') // config resolves immediately
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            resolveMix = resolve; // mix stays pending until we release it below
+          })
+      );
+    const onSnapshot = vi.fn();
+
+    const handle = startChannelStateSubscription(deps(), GRANTED, IP, onSnapshot, vi.fn(), {
+      channelCount: 1,
+      pollIntervalMs: 1000,
+    });
+    await vi.advanceTimersByTimeAsync(0);
+
+    handle.stop();
+    resolveMix('/ch/01/mix ON +0 OFF +0');
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(onSnapshot).not.toHaveBeenCalled();
+  });
+
+  it('stop() called while a walk is in flight suppresses that walk\'s onError once it rejects', async () => {
+    vi.useFakeTimers();
+    let rejectMix!: (err: unknown) => void;
+    queryConsoleMock
+      .mockResolvedValueOnce('/ch/01/config "Kick" 1 RD 1') // config resolves immediately
+      .mockImplementationOnce(
+        () =>
+          new Promise((_resolve, reject) => {
+            rejectMix = reject; // mix stays pending until we release it below
+          })
+      );
+    const onError = vi.fn();
+
+    const handle = startChannelStateSubscription(deps(), GRANTED, IP, vi.fn(), onError, {
+      channelCount: 1,
+      pollIntervalMs: 1000,
+    });
+    await vi.advanceTimersByTimeAsync(0);
+
+    handle.stop();
+    rejectMix(new Error('no reply'));
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(onError).not.toHaveBeenCalled();
+  });
+
+  it('uses DEFAULT_CHANNEL_POLL_INTERVAL_MS when pollIntervalMs is omitted', async () => {
+    vi.useFakeTimers();
+    queryConsoleMock.mockResolvedValue('/ch/01/config "Kick" 1 RD 1');
+    const onSnapshot = vi.fn();
+
+    const handle = startChannelStateSubscription(deps(), GRANTED, IP, onSnapshot, vi.fn(), { channelCount: 1 });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(onSnapshot).toHaveBeenCalledTimes(1);
+
+    await vi.advanceTimersByTimeAsync(1000); // DEFAULT_CHANNEL_POLL_INTERVAL_MS
+    expect(onSnapshot).toHaveBeenCalledTimes(2);
+
+    handle.stop();
+  });
 });
