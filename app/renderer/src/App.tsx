@@ -75,6 +75,7 @@ import RingoutPanel from './RingoutPanel';
 import DirectoryPanel from './DirectoryPanel';
 import LicenseChrome from './LicenseChrome';
 import ConsoleNetworkConsentDialog from './ConsoleNetworkConsentDialog';
+import ConsolePanel from './ConsolePanel';
 import UpdateBanner from './UpdateBanner';
 import WhatsNewBanner from './WhatsNewBanner';
 import OnboardingDialog from './OnboardingDialog';
@@ -356,6 +357,9 @@ export default function App() {
           replaces inline-app.js's rigDialog() modal with the same promise API. */}
       {booted && createPortal(<LiveStatusLine />, document.getElementById('live-status-island')!)}
       {booted && createPortal(<LiveSessionOffers />, document.getElementById('live-session-offers-island')!)}
+      {/* #884: the Console panel — scan/found list/identity read — portaled
+          onto the static root-markup island inside #tab-live. */}
+      {booted && createPortal(<ConsolePanel />, document.getElementById('console-panel-island')!)}
       {booted && createPortal(<WindowBadge />, document.getElementById('window-badge-island')!)}
       {booted && createPortal(<RigDialog />, document.getElementById('rig-dialog-island')!)}
       {booted && <LicenseChrome />}
