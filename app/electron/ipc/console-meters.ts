@@ -15,17 +15,8 @@
 // bridge entry, no renderer consumer yet — R4b owns wiring this to the UI.
 
 import * as dgram from 'dgram';
-import {
-  encodeOscMessage,
-  decodeOscMessage,
-  replyAddressMatches,
-  buildMetersSubscribeMessage,
-  meterFrameIntervalMs,
-  decodeMeters1Message,
-  METERS_1_ADDRESS,
-  type Meters1Snapshot,
-  type DecodedOscMessage,
-} from '@sound-buddy/console/dist-cjs/index.js';
+import type { DecodedOscMessage, Meters1Snapshot } from '@sound-buddy/console/dist-cjs/index.js';
+import { loadConsoleModule } from '../console-loader';
 import { assertConsoleNetworkConsent } from '../console-network-consent';
 import type { AppSettings } from './api';
 import { CONSOLE_OSC_PORT, type ConsoleDiscoveryDeps, type ConsoleDiscoverySocket } from './console-discovery';
@@ -35,6 +26,16 @@ import {
   type ConsoleSubscriptionEvent,
   type ConsoleSubscriptionHandle,
 } from './console-subscription';
+
+const {
+  encodeOscMessage,
+  decodeOscMessage,
+  replyAddressMatches,
+  buildMetersSubscribeMessage,
+  meterFrameIntervalMs,
+  decodeMeters1Message,
+  METERS_1_ADDRESS,
+} = loadConsoleModule();
 
 // A stall window must outlast several throttled frames or a healthy heavily
 // throttled stream (tf=99 => 4950ms between frames) would look like a lapse.

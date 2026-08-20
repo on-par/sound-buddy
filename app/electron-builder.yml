@@ -55,6 +55,12 @@ extraResources:
     to: engine
     filter:
       - "**/*"
+  # Compiled CommonJS build of the M32R console OSC helpers (#876+) — loaded
+  # at runtime by electron/console-loader.ts from Contents/Resources/console.
+  - from: ../packages/console/dist-cjs
+    to: console
+    filter:
+      - "**/*"
   # Compiled CommonJS build of the isomorphic license policy (TD-006, #400) —
   # loaded at runtime by electron/license-policy-loader.ts from
   # Contents/Resources/license-policy.
@@ -142,6 +148,7 @@ mac:
     - "Contents/Resources/lib/"
     - "Contents/Resources/scripts/"
     - "Contents/Resources/engine/"
+    - "Contents/Resources/console/"
     - "Contents/Resources/license-policy/"
     - "Contents/Resources/scene-inspector/"
     - "Contents/Resources/assets/"

@@ -13,10 +13,12 @@
 // initial /meters subscription and decoding meter payloads are both out of
 // scope here — see #878's ADRs.
 
-import { encodeOscMessage } from '@sound-buddy/console/dist-cjs/index.js';
+import { loadConsoleModule } from '../console-loader';
 import { assertConsoleNetworkConsent } from '../console-network-consent';
 import type { AppSettings } from './api';
 import { CONSOLE_OSC_PORT } from './console-discovery';
+
+const { encodeOscMessage } = loadConsoleModule();
 
 export const DEFAULT_SUBSCRIPTION_RENEWAL_INTERVAL_MS = 5000; // well inside the console's ~10s silent-lapse window
 export const DEFAULT_METER_FRAME_STALL_MS = 3000; // no /meters frame for this long after frames were flowing => reconnect signal

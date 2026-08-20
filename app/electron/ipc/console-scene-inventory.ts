@@ -12,15 +12,15 @@
 // recall is a write the encodeOscMessage guard refuses at the encoder.
 
 import {
-  SCENE_INVENTORY_NODE_PATHS,
-  SCENE_INVENTORY_SLOT_COUNT,
-  parseStoredSceneLine,
-  type StoredSceneEntry,
-} from '@sound-buddy/console/dist-cjs/index.js';
+  loadConsoleModule,
+} from '../console-loader';
+import type { StoredSceneEntry } from '@sound-buddy/console/dist-cjs/index.js';
 import { assertConsoleNetworkConsent } from '../console-network-consent';
 import type { AppSettings } from './api';
 import type { ConsoleDiscoveryDeps } from './console-discovery';
 import { queryConsole, type ConsoleQueryOptions } from './console-connection';
+
+const { SCENE_INVENTORY_NODE_PATHS, SCENE_INVENTORY_SLOT_COUNT, parseStoredSceneLine } = loadConsoleModule();
 
 export interface SceneInventoryOptions {
   queryOptions?: ConsoleQueryOptions;

@@ -12,11 +12,13 @@
 // opened (ADR-0006/ADR-0013); the walk composes console-connection.ts's
 // queryConsole with parseChannelStrips, reusing its socket lifecycle.
 
-import { parseChannelStrips, parseNodeReplyLine } from '@sound-buddy/console/dist-cjs/index.js';
+import { loadConsoleModule } from '../console-loader';
 import { assertConsoleNetworkConsent } from '../console-network-consent';
 import type { AppSettings } from './api';
 import type { ConsoleDiscoveryDeps } from './console-discovery';
 import { queryConsole, type ConsoleQueryOptions } from './console-connection';
+
+const { parseChannelStrips, parseNodeReplyLine } = loadConsoleModule();
 
 export const CONSOLE_CHANNEL_COUNT = 32; // M32R input channels
 export const DEFAULT_CHANNEL_POLL_INTERVAL_MS = 1000;

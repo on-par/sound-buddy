@@ -8,10 +8,19 @@
 
 import * as path from 'path';
 import * as fs from 'fs';
+import * as os from 'os';
 import { app } from 'electron';
 import { log } from '../logger';
 import { getSettings } from '../settings';
 import RESOURCE_LAYOUT from '../resource-layout.json';
+
+function isPackagedApp(): boolean {
+  return app?.isPackaged === true;
+}
+
+function appPath(name: Parameters<typeof app.getPath>[0]): string {
+  return app?.getPath?.(name) ?? os.tmpdir();
+}
 
 // Dev repo root. Only meaningful when running from a checkout — inside a
 // packaged .app REPO_ROOT is never dereferenced (toolBin/SCRIPTS_DIR/pythonBin
@@ -36,7 +45,7 @@ export const REPO_ROOT = findRepoRoot(__dirname);
 // The Python scripts ship as extraResources (Contents/Resources/scripts) in a
 // packaged .app; in dev they live in the monorepo.
 // c8 ignore: packaged-app path resolution; vitest always runs unpackaged.
-export const SCRIPTS_DIR = app.isPackaged /* c8 ignore next */
+export const SCRIPTS_DIR = isPackagedApp() /* c8 ignore next */
   ? path.join(process.resourcesPath, RESOURCE_LAYOUT.scripts.resourcesSubdir)
   : path.join(REPO_ROOT, RESOURCE_LAYOUT.scripts.devDir);
 export const SPECTRUM_SCRIPT = path.join(SCRIPTS_DIR, 'spectrum.py');
@@ -50,7 +59,7 @@ export const WAVEFORM_PEAKS_SCRIPT = path.join(SCRIPTS_DIR, 'waveform_peaks.py')
 // (Contents/Resources/assets) in a packaged .app; in dev it lives under app/assets.
 export const APP_ROOT = path.resolve(__dirname, '..', '..', '..');
 // c8 ignore: packaged-app path resolution; vitest always runs unpackaged.
-export const DEMO_AUDIO = app.isPackaged /* c8 ignore next */
+export const DEMO_AUDIO = isPackagedApp() /* c8 ignore next */
   ? path.join(process.resourcesPath, RESOURCE_LAYOUT.assets.resourcesSubdir, 'demo.wav')
   : path.join(APP_ROOT, RESOURCE_LAYOUT.assets.devDir, 'demo.wav');
 
@@ -59,7 +68,7 @@ export const DEMO_AUDIO = app.isPackaged /* c8 ignore next */
 // user-requested items. Same packaged-vs-dev resolution as DEMO_AUDIO; ships
 // via the same `assets` extraResources mapping in electron-builder.yml.
 // c8 ignore: packaged-app path resolution; vitest always runs unpackaged.
-export const WHATS_NEW_NOTE = app.isPackaged /* c8 ignore next */
+export const WHATS_NEW_NOTE = isPackagedApp() /* c8 ignore next */
   ? path.join(process.resourcesPath, RESOURCE_LAYOUT.assets.resourcesSubdir, 'whats-new.md')
   : path.join(APP_ROOT, RESOURCE_LAYOUT.assets.devDir, 'whats-new.md');
 
@@ -67,7 +76,7 @@ export const WHATS_NEW_NOTE = app.isPackaged /* c8 ignore next */
 // packaged .app (see build/afterPack.js). In dev they come from PATH. Resolving
 // to the bundled copy means the app never depends on a Homebrew install.
 // c8 ignore: packaged-app path resolution; vitest always runs unpackaged.
-const BUNDLED_BIN_DIR = app.isPackaged /* c8 ignore next */
+const BUNDLED_BIN_DIR = isPackagedApp() /* c8 ignore next */
   ? path.join(process.resourcesPath, RESOURCE_LAYOUT.bin.resourcesSubdir)
   : null;
 export function toolBin(name: string): string {
@@ -115,10 +124,10 @@ export function pythonBin(): string {
     // Bundled relocatable interpreter (Contents/Resources/python) — packaged
     // apps. c8 ignore: packaged-app path resolution; vitest always runs unpackaged.
     /* c8 ignore start */
-    app.isPackaged
+    isPackagedApp()
       ? path.join(process.resourcesPath, RESOURCE_LAYOUT.python.resourcesSubdir, 'bin', 'python3')
       : /* c8 ignore stop */ undefined,
-    path.join(app.getPath('userData'), 'venv', 'bin', 'python3'),
+    path.join(appPath('userData'), 'venv', 'bin', 'python3'),
     path.join(REPO_ROOT, '.venv', 'bin', 'python3'),
   ].filter((p): p is string => Boolean(p));
   cachedPython = candidates.find((p) => fs.existsSync(p)) ?? 'python3';
@@ -133,7 +142,7 @@ export function pythonBin(): string {
 // the user has ever picked one — hence living here with the other shared
 // path/tool resolution rather than in either domain module.
 export function platformDefaultStorageDir(): string {
-  return path.join(app.getPath('music'), 'Sound Buddy');
+  return path.join(appPath('music'), 'Sound Buddy');
 }
 
 // Default folder for Record-mode captures when the renderer doesn't pass one:

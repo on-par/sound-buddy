@@ -11,16 +11,20 @@
 // "no callers yet" shape; C1b owns wiring a capture UI to it.
 
 import {
+  loadConsoleModule,
+} from '../console-loader';
+import { assertConsoleNetworkConsent } from '../console-network-consent';
+import type { AppSettings } from './api';
+import type { ConsoleDiscoveryDeps } from './console-discovery';
+import { queryConsole, type ConsoleQueryOptions } from './console-connection';
+
+const {
   SCENE_NODE_PATHS,
   SCENE_NODE_PATH_COUNT,
   buildSceneHeader,
   assembleSceneFile,
   parseNodeReplyLine,
-} from '@sound-buddy/console/dist-cjs/index.js';
-import { assertConsoleNetworkConsent } from '../console-network-consent';
-import type { AppSettings } from './api';
-import type { ConsoleDiscoveryDeps } from './console-discovery';
-import { queryConsole, type ConsoleQueryOptions } from './console-connection';
+} = loadConsoleModule();
 
 export interface SceneCaptureOptions {
   name: string;
