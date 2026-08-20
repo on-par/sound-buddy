@@ -18,6 +18,14 @@ const consoleChannelStateTs = fs.readFileSync(
   fileURLToPath(new URL('../../electron/ipc/console-channel-state.ts', import.meta.url)),
   'utf8'
 );
+const consoleMetersTs = fs.readFileSync(
+  fileURLToPath(new URL('../../electron/ipc/console-meters.ts', import.meta.url)),
+  'utf8'
+);
+const consoleSubscriptionTs = fs.readFileSync(
+  fileURLToPath(new URL('../../electron/ipc/console-subscription.ts', import.meta.url)),
+  'utf8'
+);
 
 // OSC/console write vocabulary that has no legitimate reason to appear in
 // any of the three files below. Deliberately excludes bare "set"/"store" —
@@ -41,6 +49,8 @@ describe('Console IPC surface is read-only by construction (#884 ADR, #977 ADR)'
   it.each([
     ['app/electron/ipc/console.ts', () => consoleIpcTs],
     ['app/electron/ipc/console-channel-state.ts', () => consoleChannelStateTs],
+    ['app/electron/ipc/console-meters.ts', () => consoleMetersTs],
+    ['app/electron/ipc/console-subscription.ts', () => consoleSubscriptionTs],
     ['app/renderer/src/ConsolePanel.tsx', () => consolePanelTsx],
     ['app/renderer/src/stores/consoleStore.ts', () => consoleStoreTs],
   ])('%s contains no console write-verb vocabulary', (_label, getSrc) => {
@@ -59,6 +69,13 @@ describe('Console IPC surface is read-only by construction (#884 ADR, #977 ADR)'
   it('console-channel-state.ts sends only /node requests', () => {
     const addresses = [...consoleChannelStateTs.matchAll(/queryConsole\([\s\S]{0,200}?'(\/[^']+)'/g)].map((m) => m[1]);
     expect(addresses).toEqual(['/node']);
+  });
+
+  it('the meter path opens no write address — only /renew and /xremote reads, decoding /meters/1', () => {
+    const quoted = [...`${consoleMetersTs}\n${consoleSubscriptionTs}`.matchAll(/'(\/[a-z0-9/]+)'/gi)].map((m) => m[1]);
+    const uniqueSorted = [...new Set(quoted)].sort();
+    expect(uniqueSorted).toEqual(['/renew', '/xremote']);
+    expect(consoleMetersTs).toContain('METERS_1_ADDRESS');
   });
 
   it('ConsolePanel.tsx has no <form action, and every button maps to a known read action', () => {
@@ -82,6 +99,7 @@ describe('Console IPC surface is read-only by construction (#884 ADR, #977 ADR)'
     const start = consolePanelTsx.indexOf('id="console-live-channels"');
     expect(start).toBeGreaterThan(-1);
     const block = consolePanelTsx.slice(start, consolePanelTsx.indexOf('</ul>', start));
+    expect(block).toContain('console-channel-meter');
     for (const forbidden of ['<button', '<input', 'onClick', 'onChange']) {
       expect(block).not.toContain(forbidden);
     }

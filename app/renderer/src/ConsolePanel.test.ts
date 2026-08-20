@@ -4,7 +4,7 @@
 import { describe, it, expect, afterEach } from 'vitest';
 import { createElement } from 'react';
 import { renderToString } from 'react-dom/server';
-import ConsolePanel, { formatFaderDb } from './ConsolePanel';
+import ConsolePanel, { formatFaderDb, meterDbfs, formatMeterDbfs, meterBarPercent } from './ConsolePanel';
 import { useConsoleStore } from './stores/consoleStore';
 import { useLiveCaptureStore } from './stores/liveCaptureStore';
 
@@ -27,6 +27,7 @@ const CONSOLE_INITIAL_STATE = {
   liveChannels: [],
   liveStateStatus: 'idle' as const,
   liveStateError: null,
+  liveMeters: [],
 };
 
 function renderMarkup(): string {
@@ -273,6 +274,87 @@ describe('ConsolePanel (#884)', () => {
       expect(html).toContain('id="console-live-error"');
       expect(html).toContain('role="alert"');
       expect(html).toMatch(/watch the console.{1,10}s channel state/);
+    });
+  });
+
+  describe('meterDbfs', () => {
+    it('maps full scale (1) to 0 dBFS', () => {
+      expect(meterDbfs(1)).toBeCloseTo(0, 5);
+    });
+
+    it('maps half amplitude (0.5) to approximately -6.02 dBFS', () => {
+      expect(meterDbfs(0.5)).toBeCloseTo(-6.02, 2);
+    });
+
+    it('treats silence and non-positive/NaN readings as -Infinity', () => {
+      expect(meterDbfs(0)).toBe(-Infinity);
+      expect(meterDbfs(-0.1)).toBe(-Infinity);
+      expect(meterDbfs(NaN)).toBe(-Infinity);
+    });
+  });
+
+  describe('formatMeterDbfs', () => {
+    it('formats full scale to one decimal', () => {
+      expect(formatMeterDbfs(1)).toBe('0.0 dBFS');
+    });
+
+    it('formats silence as the -∞ reading', () => {
+      expect(formatMeterDbfs(0)).toBe('-∞ dBFS');
+    });
+  });
+
+  describe('meterBarPercent', () => {
+    it('is 100 at full scale', () => {
+      expect(meterBarPercent(1)).toBe(100);
+    });
+
+    it('clamps above full scale to 100', () => {
+      expect(meterBarPercent(2)).toBe(100);
+    });
+
+    it('is 0 at silence', () => {
+      expect(meterBarPercent(0)).toBe(0);
+    });
+
+    it('is 0 exactly at the -60 dBFS floor', () => {
+      expect(meterBarPercent(0.001)).toBe(0);
+    });
+
+    it('lands strictly between 0 and 100 for a mid-window value', () => {
+      const pct = meterBarPercent(0.1);
+      expect(pct).toBeGreaterThan(0);
+      expect(pct).toBeLessThan(100);
+    });
+  });
+
+  describe('meter markup', () => {
+    it('draws a fill bar and dBFS readout for each channel with a frame', () => {
+      useConsoleStore.setState({
+        selectedIp: CONSOLE_A.ip,
+        liveStateStatus: 'watching',
+        liveChannels: [CHANNEL_1],
+        liveMeters: [0.5],
+      });
+
+      const html = renderMarkup();
+
+      expect(html).toContain('console-channel-meter-fill');
+      expect(html).toContain('width:');
+      expect(html).toContain(formatMeterDbfs(0.5));
+    });
+
+    it('reads -∞ dBFS at 0% fill for every row when the meter frame has not arrived yet', () => {
+      useConsoleStore.setState({
+        selectedIp: CONSOLE_A.ip,
+        liveStateStatus: 'watching',
+        liveChannels: [CHANNEL_1, CHANNEL_3_UNNAMED],
+        liveMeters: [],
+      });
+
+      const html = renderMarkup();
+
+      const matches = html.match(/-∞ dBFS/g) ?? [];
+      expect(matches).toHaveLength(2);
     });
   });
 });

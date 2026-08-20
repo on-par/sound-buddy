@@ -684,9 +684,20 @@ export interface ConsoleLiveStateDto {
   channels: ConsoleChannelStateDto[];
 }
 
-/** What arrives on the `console-live-state` channel — a snapshot, or a walk
- *  failure the panel can show. */
-export type ConsoleLiveStateEvent = ConsoleLiveStateDto | { error: string };
+/** One /meters/1 push reduced to what the panel draws: the 32 input levels for
+ *  channels 1..32 in order, linear and unscaled exactly as the console reports
+ *  them (0..1 where 1.0 is digital full scale, with headroom above). Conversion
+ *  to dB happens at the display edge — see ConsolePanel.tsx's meterDbfs. */
+export interface ConsoleMeterFrameDto {
+  inputs: number[];
+}
+
+/** What arrives on the `console-live-state` channel — a channel snapshot, a
+ *  meter frame, or a failure the panel can show. */
+export type ConsoleLiveStateEvent =
+  | ConsoleLiveStateDto
+  | { meters: ConsoleMeterFrameDto }
+  | { error: string };
 
 export type StartConsoleLiveStateResult =
   | { success: true }
@@ -697,8 +708,9 @@ export type StartConsoleLiveStateResult =
 export interface ConsoleApi {
   scanConsoles(): Promise<ScanConsolesResult>;
   fetchConsoleIdentity(ip: string): Promise<FetchConsoleIdentityResult>;
-  // Live channel state (#977). Both are reads: start begins a poll of the
-  // console's /node channel table, stop ends it. No write channel exists.
+  // Live channel state + meters (#977, #978). Both are reads: start begins a
+  // poll of the console's /node channel table and a throttled /meters push
+  // subscription, stop ends both. No write channel exists.
   startConsoleLiveState(ip: string): Promise<StartConsoleLiveStateResult>;
   stopConsoleLiveState(): Promise<OperationResult>;
   onConsoleLiveState(cb: (data: ConsoleLiveStateEvent) => void): void;

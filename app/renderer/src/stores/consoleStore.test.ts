@@ -37,6 +37,7 @@ describe('createConsoleStore', () => {
     expect(s.liveChannels).toEqual([]);
     expect(s.liveStateStatus).toBe('idle');
     expect(s.liveStateError).toBeNull();
+    expect(s.liveMeters).toEqual([]);
   });
 
   describe('scan', () => {
@@ -312,6 +313,7 @@ describe('createConsoleStore', () => {
       expect(store.getState().liveStateStatus).toBe('error');
       expect(store.getState().liveStateError).toBe(CONSENT_DECLINED_MESSAGE);
       expect(mock.calls.find((c) => c.method === 'startConsoleLiveState')).toBeUndefined();
+      expect(store.getState().liveMeters).toEqual([]);
     });
 
     it('a successful start reaches watching and passes selectedIp to startConsoleLiveState', async () => {
@@ -336,13 +338,14 @@ describe('createConsoleStore', () => {
         startConsoleLiveState: async () => ({ success: false, error: 'No reply from the console.' }),
       });
       const store = createConsoleStore(() => mock.api, allow);
-      store.setState({ selectedIp: '10.0.0.5', liveChannels: [CHANNEL_1] });
+      store.setState({ selectedIp: '10.0.0.5', liveChannels: [CHANNEL_1], liveMeters: [0.5] });
 
       await store.getState().startLiveState();
 
       expect(store.getState().liveStateStatus).toBe('error');
       expect(store.getState().liveStateError).toBe('No reply from the console.');
       expect(store.getState().liveChannels).toEqual([]);
+      expect(store.getState().liveMeters).toEqual([]);
     });
 
     it('a throwing bridge yields LIVE_STATE_FAILED_MESSAGE', async () => {
@@ -352,12 +355,13 @@ describe('createConsoleStore', () => {
         },
       });
       const store = createConsoleStore(() => mock.api, allow);
-      store.setState({ selectedIp: '10.0.0.5' });
+      store.setState({ selectedIp: '10.0.0.5', liveMeters: [0.5] });
 
       await store.getState().startLiveState();
 
       expect(store.getState().liveStateStatus).toBe('error');
       expect(store.getState().liveStateError).toBe(LIVE_STATE_FAILED_MESSAGE);
+      expect(store.getState().liveMeters).toEqual([]);
     });
 
     it('an emitted snapshot populates liveChannels and sets watching', async () => {
@@ -370,6 +374,34 @@ describe('createConsoleStore', () => {
 
       expect(store.getState().liveChannels).toEqual([CHANNEL_1]);
       expect(store.getState().liveStateStatus).toBe('watching');
+    });
+
+    it('an emitted meter frame sets liveMeters and leaves liveChannels/liveStateStatus/liveStateError untouched', async () => {
+      const mock = createMockSoundBuddy();
+      const store = createConsoleStore(() => mock.api, allow);
+      store.setState({ selectedIp: '10.0.0.5' });
+
+      await store.getState().startLiveState();
+      mock.emit('onConsoleLiveState', { channels: [CHANNEL_1] });
+      mock.emit('onConsoleLiveState', { meters: { inputs: [0.5, 0.25] } });
+
+      expect(store.getState().liveMeters).toEqual([0.5, 0.25]);
+      expect(store.getState().liveChannels).toEqual([CHANNEL_1]);
+      expect(store.getState().liveStateStatus).toBe('watching');
+      expect(store.getState().liveStateError).toBeNull();
+    });
+
+    it('a channel snapshot arriving after a meter frame leaves liveMeters intact', async () => {
+      const mock = createMockSoundBuddy();
+      const store = createConsoleStore(() => mock.api, allow);
+      store.setState({ selectedIp: '10.0.0.5' });
+
+      await store.getState().startLiveState();
+      mock.emit('onConsoleLiveState', { meters: { inputs: [0.5, 0.25] } });
+      mock.emit('onConsoleLiveState', { channels: [CHANNEL_1] });
+
+      expect(store.getState().liveMeters).toEqual([0.5, 0.25]);
+      expect(store.getState().liveChannels).toEqual([CHANNEL_1]);
     });
 
     it('an emitted { error } sets liveStateStatus error with that message', async () => {
@@ -395,15 +427,16 @@ describe('createConsoleStore', () => {
       expect(mock.calls.filter((c) => c.method === 'onConsoleLiveState')).toHaveLength(1);
     });
 
-    it('stopLiveState returns the store to idle', async () => {
+    it('stopLiveState returns the store to idle and clears liveMeters', async () => {
       const mock = createMockSoundBuddy();
       const store = createConsoleStore(() => mock.api, allow);
-      store.setState({ liveStateStatus: 'watching', liveChannels: [CHANNEL_1] });
+      store.setState({ liveStateStatus: 'watching', liveChannels: [CHANNEL_1], liveMeters: [0.5] });
 
       await store.getState().stopLiveState();
 
       expect(store.getState().liveStateStatus).toBe('idle');
       expect(store.getState().liveStateError).toBeNull();
+      expect(store.getState().liveMeters).toEqual([]);
     });
 
     it('a throwing stop yields LIVE_STATE_FAILED_MESSAGE', async () => {

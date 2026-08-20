@@ -39,6 +39,9 @@ export interface ConsoleState {
   liveChannels: ConsoleChannelStateDto[];
   liveStateStatus: ConsoleLiveStateStatus;
   liveStateError: string | null;
+  /** Meter input levels, linear 0..1, index 0 = channel 1 (#978). Independent
+   *  of liveChannels — cleared everywhere liveChannels is cleared. */
+  liveMeters: number[];
   scan(): Promise<void>;
   selectConsole(ip: string): Promise<void>;
   setManualIp(value: string): void;
@@ -60,6 +63,7 @@ const INITIAL_STATE = {
   liveChannels: [] as ConsoleChannelStateDto[],
   liveStateStatus: 'idle' as ConsoleLiveStateStatus,
   liveStateError: null as string | null,
+  liveMeters: [] as number[],
 };
 
 export function createConsoleStore(
@@ -174,7 +178,7 @@ export function createConsoleStore(
         return;
       }
       if (!(await requestConsent())) {
-        set({ liveStateStatus: 'error', liveStateError: CONSENT_DECLINED_MESSAGE, liveChannels: [] });
+        set({ liveStateStatus: 'error', liveStateError: CONSENT_DECLINED_MESSAGE, liveChannels: [], liveMeters: [] });
         return;
       }
       if (!liveStateBound) {
@@ -182,6 +186,10 @@ export function createConsoleStore(
         getApi().onConsoleLiveState((evt) => {
           if ('error' in evt) {
             set({ liveStateStatus: 'error', liveStateError: evt.error });
+            return;
+          }
+          if ('meters' in evt) {
+            set({ liveMeters: evt.meters.inputs });
             return;
           }
           set({ liveChannels: evt.channels, liveStateStatus: 'watching', liveStateError: null });
@@ -195,17 +203,17 @@ export function createConsoleStore(
         if (result.success) {
           set({ liveStateStatus: 'watching', liveStateError: null });
         } else {
-          set({ liveStateStatus: 'error', liveStateError: result.error, liveChannels: [] });
+          set({ liveStateStatus: 'error', liveStateError: result.error, liveChannels: [], liveMeters: [] });
         }
       } catch {
-        set({ liveStateStatus: 'error', liveStateError: LIVE_STATE_FAILED_MESSAGE, liveChannels: [] });
+        set({ liveStateStatus: 'error', liveStateError: LIVE_STATE_FAILED_MESSAGE, liveChannels: [], liveMeters: [] });
       }
     },
 
     async stopLiveState() {
       try {
         await getApi().stopConsoleLiveState();
-        set({ liveStateStatus: 'idle', liveStateError: null });
+        set({ liveStateStatus: 'idle', liveStateError: null, liveMeters: [] });
       } catch {
         set({ liveStateStatus: 'error', liveStateError: LIVE_STATE_FAILED_MESSAGE });
       }
