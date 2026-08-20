@@ -21,8 +21,12 @@ const startChannelStateSubscriptionMock = vi.fn();
 vi.mock('./console-channel-state', () => ({
   startChannelStateSubscription: (...a: unknown[]) => startChannelStateSubscriptionMock(...a),
 }));
+const startMeterSubscriptionMock = vi.fn();
+vi.mock('./console-meters', () => ({
+  startMeterSubscription: (...a: unknown[]) => startMeterSubscriptionMock(...a),
+}));
 
-import { registerConsoleHandlers, isValidConsoleIp } from './console';
+import { registerConsoleHandlers, isValidConsoleIp, CONSOLE_METER_TIME_FACTOR } from './console';
 
 type Handler = (...args: unknown[]) => Promise<Record<string, unknown>>;
 
@@ -67,6 +71,8 @@ beforeEach(() => {
   discoverConsolesMock.mockReset();
   fetchConsoleIdentityMock.mockReset();
   startChannelStateSubscriptionMock.mockReset();
+  startMeterSubscriptionMock.mockReset();
+  startMeterSubscriptionMock.mockReturnValue({ stop: vi.fn() });
   registerConsoleHandlers();
 });
 
@@ -293,5 +299,114 @@ describe('start-console-live-state / stop-console-live-state', () => {
       error:
         "Couldn't start watching the console's channel state. Check the IP is correct and the console is powered on and reachable on the network.",
     });
+  });
+
+  it('starts the meter subscription with the throttled time factor and the same validated ip', async () => {
+    startChannelStateSubscriptionMock.mockReturnValue({ stop: vi.fn() });
+    const { event } = makeFakeEvent();
+
+    await startLiveState(event, '10.0.0.5');
+
+    expect(startMeterSubscriptionMock).toHaveBeenCalledWith(
+      { log: expect.any(Function) },
+      { consoleNetworkConsentGranted: true },
+      '10.0.0.5',
+      expect.any(Function),
+      expect.any(Function),
+      { timeFactor: CONSOLE_METER_TIME_FACTOR }
+    );
+  });
+
+  it('forwards a meter frame as { meters: { inputs } } on console-live-state, dropping gate/dynamics bands', async () => {
+    let onFrame!: (snapshot: unknown) => void;
+    startChannelStateSubscriptionMock.mockReturnValue({ stop: vi.fn() });
+    startMeterSubscriptionMock.mockImplementation((_deps, _settings, _ip, frame) => {
+      onFrame = frame;
+      return { stop: vi.fn() };
+    });
+    const { event, sent } = makeFakeEvent();
+
+    await startLiveState(event, '10.0.0.5');
+    onFrame({ inputs: [0.5, 0.25], gateGainReduction: [1], dynamicsGainReduction: [1] });
+
+    expect(sent).toContainEqual(['console-live-state', { meters: { inputs: [0.5, 0.25] } }]);
+  });
+
+  it('skips the meter send when the sender is destroyed', async () => {
+    let onFrame!: (snapshot: unknown) => void;
+    startChannelStateSubscriptionMock.mockReturnValue({ stop: vi.fn() });
+    startMeterSubscriptionMock.mockImplementation((_deps, _settings, _ip, frame) => {
+      onFrame = frame;
+      return { stop: vi.fn() };
+    });
+    const { event, sent, setDestroyed } = makeFakeEvent();
+
+    await startLiveState(event, '10.0.0.5');
+    setDestroyed(true);
+    onFrame({ inputs: [0.5] });
+
+    expect(sent).toEqual([]);
+  });
+
+  it.each([{ type: 'degraded-to-polling' }, { type: 'reconnect' }])(
+    'logs a meter subscription %j event and sends nothing',
+    async (subscriptionEvent) => {
+      let onEvent!: (event: unknown) => void;
+      startChannelStateSubscriptionMock.mockReturnValue({ stop: vi.fn() });
+      startMeterSubscriptionMock.mockImplementation((_deps, _settings, _ip, _frame, event) => {
+        onEvent = event;
+        return { stop: vi.fn() };
+      });
+      const { event, sent } = makeFakeEvent();
+
+      await startLiveState(event, '10.0.0.5');
+      onEvent(subscriptionEvent);
+
+      expect(sent).toEqual([]);
+      expect(logMock).toHaveBeenCalledWith(expect.stringContaining(subscriptionEvent.type));
+    }
+  );
+
+  it('stop-console-live-state stops the meter handle as well as the channel handle', async () => {
+    const channelStop = vi.fn();
+    const meterStop = vi.fn();
+    startChannelStateSubscriptionMock.mockReturnValue({ stop: channelStop });
+    startMeterSubscriptionMock.mockReturnValue({ stop: meterStop });
+    const { event } = makeFakeEvent();
+    await startLiveState(event, '10.0.0.5');
+
+    await stopLiveState();
+
+    expect(channelStop).toHaveBeenCalledTimes(1);
+    expect(meterStop).toHaveBeenCalledTimes(1);
+  });
+
+  it('a second start stops the first meter handle before creating the second (never stacks)', async () => {
+    const firstMeterStop = vi.fn();
+    const secondMeterStop = vi.fn();
+    startChannelStateSubscriptionMock.mockReturnValue({ stop: vi.fn() });
+    startMeterSubscriptionMock.mockReturnValueOnce({ stop: firstMeterStop }).mockReturnValueOnce({ stop: secondMeterStop });
+    const { event } = makeFakeEvent();
+
+    await startLiveState(event, '10.0.0.5');
+    await startLiveState(event, '10.0.0.6');
+
+    expect(firstMeterStop).toHaveBeenCalledTimes(1);
+    expect(secondMeterStop).not.toHaveBeenCalled();
+  });
+
+  it('a throwing startMeterSubscription returns { success: false } with an actionable message and stops the already-created channel handle', async () => {
+    const channelStop = vi.fn();
+    startChannelStateSubscriptionMock.mockReturnValue({ stop: channelStop });
+    startMeterSubscriptionMock.mockImplementation(() => {
+      throw new Error('Console network access requires consent');
+    });
+    const { event } = makeFakeEvent();
+
+    const result = await startLiveState(event, '10.0.0.5');
+
+    expect(result).toEqual({ success: false, error: 'Console network access requires consent' });
+    expect(channelStop).toHaveBeenCalledTimes(1);
+    expect(logWarnMock).toHaveBeenCalled();
   });
 });

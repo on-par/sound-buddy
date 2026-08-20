@@ -1,10 +1,12 @@
 // Copyright (c) 2026 Patrick Robinson (on-par). All rights reserved.
 // Licensed under the Sound Buddy Desktop Application License (app/LICENSE).
 
-// The thin IPC surface for #884/#977: wires #876's discoverConsoles, #877's
-// fetchConsoleIdentity, and #977's live channel-state poll to the renderer.
-// All four channels are reads — see the #884 ADR and this PR's ADR (console
-// IPC surface is read-only by construction, pinned by
+// The thin IPC surface for #884/#977/#978: wires #876's discoverConsoles,
+// #877's fetchConsoleIdentity, and #977's live channel-state poll plus #883's
+// meter subscription to the renderer. start/stop-console-live-state start and
+// stop both the channel poll and the meter subscription together. All four
+// channels are reads — see the #884 ADR and this PR's ADR (console IPC
+// surface is read-only by construction, pinned by
 // console-read-only-gate.test.ts). Consent (ADR-0006/ADR-0013) is asserted
 // inside the delegated modules via assertConsoleNetworkConsent; main
 // revalidates a manually-entered IP before ever touching the network because
@@ -16,6 +18,7 @@ import { getSettings } from '../settings';
 import { discoverConsoles } from './console-discovery';
 import { fetchConsoleIdentity } from './console-connection';
 import { startChannelStateSubscription, type ChannelStateSubscriptionHandle } from './console-channel-state';
+import { startMeterSubscription, type MeterSubscriptionHandle } from './console-meters';
 import type {
   ScanConsolesResult,
   FetchConsoleIdentityResult,
@@ -25,6 +28,12 @@ import type {
 
 const IPV4_PATTERN = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/;
 const MAX_OCTET = 255;
+
+// The console streams /meters at ~20 Hz unthrottled. Frames land in
+// consoleStore (discrete React state), so throttle at the source instead of
+// re-rendering the channel list at animation rate — see this PR's ADR and
+// ADR-0005. #883's grammar: frame interval = 50ms x time factor.
+export const CONSOLE_METER_TIME_FACTOR = 4; // 200ms frames (5 Hz)
 
 export function isValidConsoleIp(ip: unknown): ip is string {
   if (typeof ip !== 'string') return false;
@@ -43,10 +52,13 @@ function actionableError(err: unknown, fallback: string): string {
 // A second start-console-live-state replaces the first handle instead of
 // stacking a second poll loop; module-level so both handlers can reach it.
 let liveStateHandle: ChannelStateSubscriptionHandle | null = null;
+let meterHandle: MeterSubscriptionHandle | null = null;
 
 function stopLiveStateSubscription(): void {
   liveStateHandle?.stop();
   liveStateHandle = null;
+  meterHandle?.stop();
+  meterHandle = null;
 }
 
 export function registerConsoleHandlers(): void {
@@ -105,8 +117,23 @@ export function registerConsoleHandlers(): void {
           if (!wc.isDestroyed()) wc.send('console-live-state', { error });
         }
       );
+      meterHandle = startMeterSubscription(
+        { log },
+        getSettings(),
+        ip,
+        (snapshot) => {
+          if (!wc.isDestroyed()) wc.send('console-live-state', { meters: { inputs: snapshot.inputs } });
+        },
+        // Liveness events are logged, not surfaced: degraded/offline UI is R5's
+        // scope, and the channel poll keeps running either way.
+        (event) => {
+          log(`console-live-state: meter subscription ${event.type} for ${ip}`);
+        },
+        { timeFactor: CONSOLE_METER_TIME_FACTOR }
+      );
       return { success: true };
     } catch (err) {
+      stopLiveStateSubscription();
       const error = actionableError(
         err,
         "Couldn't start watching the console's channel state. Check the IP is correct and the console is powered on and reachable on the network."

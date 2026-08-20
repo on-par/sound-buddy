@@ -40,6 +40,7 @@ import type {
   CancelAnalysisResult,
   ConsoleIdentityDto,
   ConsoleChannelStateDto,
+  ConsoleMeterFrameDto,
 } from './api';
 import { createMockSoundBuddy } from '../../renderer/src/mock-sound-buddy';
 
@@ -52,6 +53,7 @@ import type { getLicenseState } from '../license';
 import type { revealDiagnosticLog, submitFeedback } from '../feedback';
 import type { ConsoleIdentity } from './console-discovery';
 import type { ConsoleChannelState } from './console-channel-state';
+import type { Meters1Snapshot } from '@sound-buddy/console/dist-cjs/index.js';
 
 // ─── Composition coverage ────────────────────────────────────────────────────
 // The intersection of every domain sub-interface must describe exactly the
@@ -128,6 +130,13 @@ type _ConsoleChannelStateDtoMatches = ConsoleChannelState extends ConsoleChannel
 type _ConsoleChannelStateDtoMatchesBack = ConsoleChannelStateDto extends ConsoleChannelState ? true : never;
 const consoleChannelStateDtoForward: _ConsoleChannelStateDtoMatches = true;
 const consoleChannelStateDtoBackward: _ConsoleChannelStateDtoMatchesBack = true;
+
+// ConsoleMeterFrameDto (#978) must stay structurally identical to the
+// package's own Meters1Snapshot['inputs'] — only inputs cross the bridge.
+type _ConsoleMeterFrameDtoMatches = Meters1Snapshot['inputs'] extends ConsoleMeterFrameDto['inputs'] ? true : never;
+type _ConsoleMeterFrameDtoMatchesBack = ConsoleMeterFrameDto['inputs'] extends Meters1Snapshot['inputs'] ? true : never;
+const consoleMeterFrameDtoForward: _ConsoleMeterFrameDtoMatches = true;
+const consoleMeterFrameDtoBackward: _ConsoleMeterFrameDtoMatchesBack = true;
 
 // analyze-file (ipc/analysis.ts) has three literal return shapes. The success
 // `data` is the full audio-engine analysis mirrored as AnalysisPayloadDto
@@ -266,6 +275,8 @@ describe('SoundBuddyApi composition (TD-011, #405)', () => {
     expect(consoleDtoBackward).toBe(true);
     expect(consoleChannelStateDtoForward).toBe(true);
     expect(consoleChannelStateDtoBackward).toBe(true);
+    expect(consoleMeterFrameDtoForward).toBe(true);
+    expect(consoleMeterFrameDtoBackward).toBe(true);
     expect(analyzeFileOkDrift.success).toBe(true);
     expect(analyzeFileCancelledDrift.success).toBe(false);
     expect(analyzeFileErrDrift.success).toBe(false);

@@ -88,6 +88,10 @@ describe('src/styles/app.css', () => {
     expect(appCss).toContain('.eq-grid.minor');
     expect(appCss).toContain('.eq-grid.major');
   });
+
+  it('carries the console channel meter fill rule (#978)', () => {
+    expect(appCss).toContain('.console-channel-meter-fill');
+  });
 });
 
 describe('Settings dialog CSS (#204)', () => {
