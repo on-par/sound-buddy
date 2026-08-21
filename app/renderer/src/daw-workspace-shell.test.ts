@@ -463,7 +463,7 @@ describe('arrangement header and lane-column boundary (#1048)', () => {
   });
 
   it('one shared rule re-bases every timeline child by exactly one head width, with no numeric offset', () => {
-    const rebase = css.match(/\.daw-ruler-tick\s*,\s*\.daw-gridline\s*\{[^}]*\}/);
+    const rebase = css.match(/\.daw-ruler-tick\s*,\s*\.daw-gridline\s*,\s*\.daw-playhead\s*\{[^}]*\}/);
     expect(rebase).not.toBeNull();
     expect(rebase![0]).toMatch(/transform:\s*translateX\(calc\(-1 \* var\(--daw-head-w\)\)\)/);
     const tickRule = css.match(/\.daw-ruler-tick\s*\{[^}]*\}/);
@@ -472,12 +472,6 @@ describe('arrangement header and lane-column boundary (#1048)', () => {
     expect(gridlineRule).not.toBeNull();
     expect(tickRule![0]).not.toMatch(/transform|left:\s*\d/);
     expect(gridlineRule![0]).not.toMatch(/transform|left:\s*\d/);
-  });
-
-  it('the playhead is not re-based — its frame is already the shell', () => {
-    const rebase = css.match(/\.daw-ruler-tick\s*,\s*\.daw-gridline\s*\{[^}]*\}/);
-    expect(rebase).not.toBeNull();
-    expect(rebase![0]).not.toContain('daw-playhead');
   });
 
   it('the head column opens with a ruler gutter that shares the ruler row height', () => {
@@ -518,6 +512,54 @@ describe('arrangement header and lane-column boundary (#1048)', () => {
   it('the ruler origin and the first gridline of every lane are the same edge', () => {
     expect(dawRulerTicks(DAW_TIMELINE_SPAN_SECS)[0].xPx).toBe(DAW_TIMELINE_ORIGIN_PX);
     expect(dawLaneGridlines(DAW_TIMELINE_SPAN_SECS)[0].xPx).toBe(DAW_TIMELINE_ORIGIN_PX);
+  });
+});
+
+describe('the arrangement playhead spans both timeline regions (#1049)', () => {
+  it('dawShellHTML emits one segment per region and none at the shell level', () => {
+    const body = functionBody(workspaceViewTs, 'dawShellHTML');
+    expect(body).toContain('daw-playhead daw-playhead-ruler');
+    expect(body).toContain('daw-playhead daw-playhead-lanes');
+    expect(body).not.toContain('<div class="daw-playhead"></div>');
+  });
+
+  it('the playhead re-bases through the same shared rule as the ticks and gridlines', () => {
+    const rebase = css.match(/\.daw-ruler-tick\s*,\s*\.daw-gridline\s*,\s*\.daw-playhead\s*\{[^}]*\}/);
+    expect(rebase).not.toBeNull();
+    expect(rebase![0]).toMatch(/transform:\s*translateX\(calc\(-1 \* var\(--daw-head-w\)\)\)/);
+    // A playhead-local transform would shadow the shared re-base.
+    const rule = css.match(/\.daw-playhead\s*\{[^}]*\}/);
+    expect(rule).not.toBeNull();
+    expect(rule![0]).not.toContain('transform');
+    expect(rule![0]).not.toMatch(/left:\s*[1-9]/);
+  });
+
+  it('each segment spans its own region, not a shell-relative offset', () => {
+    const rule = css.match(/\.daw-playhead\s*\{[^}]*\}/);
+    expect(rule![0]).toMatch(/top:\s*0/);
+    expect(rule![0]).toMatch(/bottom:\s*0/);
+    const laneColumn = css.match(/\.daw-lane-column\s*\{[^}]*\}/);
+    expect(laneColumn).not.toBeNull();
+    expect(laneColumn![0]).toMatch(/position:\s*relative/);
+  });
+
+  it('renderPlayhead computes one x and writes it to every segment', () => {
+    const body = functionBody(dawShellRuntimeTs, 'renderPlayhead');
+    expect(body).toContain("querySelectorAll('.daw-playhead')");
+    expect(body).toContain('style.left');
+    expect(body).not.toContain('style.transform');
+    expect((body.match(/dawPlayheadX\(/g) ?? []).length).toBe(1);
+  });
+
+  it('the one shared x lands on the ruler tick and the lane gridline for the same instant', () => {
+    const MS = 1000;
+    const wide = dawTimelineX(DAW_TIMELINE_SPAN_SECS) + DAW_TIMELINE_INSET_PX;
+    for (const tick of dawRulerTicks(DAW_TIMELINE_SPAN_SECS)) {
+      expect(dawPlayheadX(tick.timeSecs * MS, wide)).toBe(tick.xPx);
+    }
+    for (const line of dawLaneGridlines(DAW_TIMELINE_SPAN_SECS)) {
+      expect(dawPlayheadX(line.timeSecs * MS, wide)).toBe(line.xPx);
+    }
   });
 });
 

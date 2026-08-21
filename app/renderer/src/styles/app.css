@@ -963,11 +963,16 @@
        read by .daw-ruler-gutter, so the two paired rows never drift. */
     .daw-ruler { position:relative; overflow:hidden; height:var(--daw-ruler-row-h); box-sizing:border-box; border-radius:var(--radius-sm); background:var(--surface-inset); }
     .daw-ruler-tick { position:absolute; top:0; bottom:0; width:1px; background:var(--border-subtle); }
-    /* The playhead's inline transform is the shell-local x straight from
-       dawPlayheadX (#1034, ADR-0086), so this rule carries no left offset of
-       its own — left:0 makes translateX(x) land exactly on the ruler tick and
-       lane gridline for the same instant. */
-    .daw-playhead { position:absolute; top:48px; bottom:8px; left:0; width:2px; border-radius:1px; background:var(--text-muted); pointer-events:none; }
+    /* The playhead's two region segments (#1049): one anchored in the ruler row,
+       one over the lane column, so the arrangement shows one vertically aligned
+       indicator across both. Each segment spans its OWN region (top:0; bottom:0) —
+       the retired top:48px/bottom:8px offsets belonged to the pre-arrangement
+       full-width shell. The inline `left` renderPlayhead writes is the shell-local
+       x from dawPlayheadX (ADR-0086), the same coordinate on the same property a
+       ruler tick or a gridline carries; the transform slot belongs to the shared
+       re-base below (ADR-0090), so this rule must never add a transform or a
+       numeric left of its own. */
+    .daw-playhead { position:absolute; top:0; bottom:0; left:0; width:2px; border-radius:1px; background:var(--text-muted); pointer-events:none; }
     .daw-playhead.advancing { background:var(--gold-text); }
     /* Arrangement frame (#1042/#1048): the semantic structure the arrangement
        view is built from — a track-head column (filled per track by #1043)
@@ -1002,7 +1007,7 @@
     .daw-master-head { display:flex; align-items:center; height:var(--daw-master-row-h); box-sizing:border-box; padding:0 9px; border-top:1px solid var(--border-strong); }
     .daw-master-head-name { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font:var(--fw-semibold) var(--fs-body-sm)/1.3 var(--font-sans); color:var(--text-primary); }
     .daw-timeline { display:flex; flex-direction:column; flex:1 1 auto; min-width:0; overflow:hidden; }
-    .daw-lane-column { display:flex; flex-direction:column; }
+    .daw-lane-column { position:relative; display:flex; flex-direction:column; }
     .daw-lane { position:relative; display:flex; align-items:center; gap:14px; padding:14px 12px; border-bottom:1px solid var(--border-subtle); }
     .daw-lane-name { flex:0 0 140px; font:var(--fw-medium) var(--fs-label)/1.3 var(--font-sans); color:var(--text-secondary); }
     .daw-lane-body { flex:1; font:var(--fw-regular) var(--fs-label)/1.3 var(--font-sans); color:var(--text-muted); }
@@ -1013,14 +1018,16 @@
     .daw-lane-grid { position:absolute; inset:0; overflow:hidden; pointer-events:none; }
     .daw-gridline { position:absolute; top:0; bottom:0; width:1px; background:var(--gridline-minor); }
     .daw-gridline.major { background:var(--gridline-major); }
-    /* Ruler ticks and lane gridlines carry the SHELL-local x from dawTimelineX
-       (ADR-0086), but their row boxes now start at the timeline column's left
-       edge, which is exactly var(--daw-head-w) from the shell's left edge — so
-       one shared translate re-bases every timeline child back into the shell
-       frame (ADR-0090). The playhead is a .daw-shell child and is deliberately
-       NOT in this list: its frame already is the shell's. Any future absolutely
-       positioned ruler/lane child joins this selector list — never its own offset. */
-    .daw-ruler-tick, .daw-gridline { transform:translateX(calc(-1 * var(--daw-head-w))); }
+    /* Ruler ticks, lane gridlines, and the playhead all carry the SHELL-local x
+       from dawTimelineX/dawPlayheadX (ADR-0086), but their row boxes now start
+       at the timeline column's left edge, which is exactly var(--daw-head-w)
+       from the shell's left edge — so one shared translate re-bases every
+       timeline child back into the shell frame (ADR-0090). The playhead joins
+       this list (#1049): its two region segments now live inside the timeline
+       column too, so their frame is the timeline column, same as a tick or a
+       gridline. Any future absolutely positioned ruler/lane child joins this
+       selector list — never its own offset. */
+    .daw-ruler-tick, .daw-gridline, .daw-playhead { transform:translateX(calc(-1 * var(--daw-head-w))); }
     .daw-mix-lane { height:var(--daw-master-row-h); box-sizing:border-box; border-top:1px solid var(--border-strong); background:var(--surface-raised); }
     .daw-mix-lane .daw-lane-body { height:100%; }
     .daw-mix-waveform { display:block; width:100%; height:100%; }

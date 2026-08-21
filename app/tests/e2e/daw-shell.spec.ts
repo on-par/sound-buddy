@@ -69,7 +69,8 @@ test.describe('DAW shell playback + waveform rendering (#713)', () => {
     await expect(window.locator('.daw-shell')).toBeVisible();
     await expect(window.locator('.daw-mix-waveform')).toBeVisible();
     await expect(window.locator('.daw-transport-time')).toHaveText('0:00');
-    await expect(window.locator('.daw-playhead')).toBeVisible();
+    await expect(window.locator('.daw-playhead-ruler')).toBeVisible();
+    await expect(window.locator('.daw-playhead-lanes')).toBeVisible();
     // The fake device boots with the 2-strip device default (#188).
     await expect(window.locator('.daw-channel-lane')).toHaveCount(2);
   });
@@ -78,10 +79,10 @@ test.describe('DAW shell playback + waveform rendering (#713)', () => {
     await window.locator('#record-button').click();
     await expect(window.locator('.daw-transport-time')).not.toHaveText('0:00', { timeout: 5000 });
 
-    const firstTransform = await window.locator('.daw-playhead').evaluate((el) => (el as HTMLElement).style.transform);
+    const firstLeft = await window.locator('.daw-playhead-lanes').evaluate((el) => (el as HTMLElement).style.left);
     await expect(async () => {
-      const transform = await window.locator('.daw-playhead').evaluate((el) => (el as HTMLElement).style.transform);
-      expect(transform).not.toBe(firstTransform);
+      const left = await window.locator('.daw-playhead-lanes').evaluate((el) => (el as HTMLElement).style.left);
+      expect(left).not.toBe(firstLeft);
     }).toPass({ timeout: 3000 });
 
     await window.locator('#record-button').click(); // stop -> monitoring resumes (#776)

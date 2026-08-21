@@ -21,7 +21,7 @@
 // branch.
 
 export const DAW_TIMELINE_PX_PER_SECOND = 8; // one 40px ruler division = 5s
-export const DAW_TIMELINE_INSET_PX = 4; // the playhead's right-edge inset (dawPlayheadX) — matches the ruler's margin: 8px 4px horizontal inset
+export const DAW_TIMELINE_INSET_PX = 4; // The playhead's right-edge inset — the arrangement's right margin, the x the playhead parks at instead of walking off the timeline column (kept, not retired: the timeline column's right edge is the shell's right edge)
 // The shared t=0 edge for the arrangement view's ruler ticks, lane
 // gridlines and playhead (#1026/#1031) — the track-head column's right
 // edge in shell-local pixels (docs/design/session-tab.md's 208px column).
@@ -290,10 +290,19 @@ export function createDawShellRuntime(deps: DawShellRuntimeDeps): DawShellRuntim
     const timeEl = shell.querySelector('.daw-transport-time');
     const text = deps.dawPlayheadState.formatElapsed(elapsed);
     if (timeEl && timeEl.textContent !== text) timeEl.textContent = text;
-    const line = shell.querySelector('.daw-playhead') as HTMLElement | null;
-    if (line) {
-      line.style.transform = `translateX(${dawPlayheadX(elapsed, shell.clientWidth)}px)`;
-      line.classList.toggle('advancing', deps.dawPlayheadState.isAdvancing(playheadState));
+    // One instant is one number: the x and the advancing flag are computed once
+    // and written to EVERY .daw-playhead segment (ruler + lane column) in the same
+    // pass, so the two regions are structurally incapable of disagreeing (#1049).
+    // The x rides `left` — the same property a ruler tick or gridline carries —
+    // because the transform slot belongs to the shared head-width re-base in
+    // app.css (ADR-0090).
+    const x = dawPlayheadX(elapsed, shell.clientWidth);
+    const advancing = deps.dawPlayheadState.isAdvancing(playheadState);
+    const segments = shell.querySelectorAll('.daw-playhead');
+    for (let i = 0; i < segments.length; i++) {
+      const segment = segments[i] as HTMLElement;
+      segment.style.left = `${x}px`;
+      segment.classList.toggle('advancing', advancing);
     }
   }
 

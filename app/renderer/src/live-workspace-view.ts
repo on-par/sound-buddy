@@ -521,6 +521,14 @@ export function dawShellHTML(state: LiveWorkspaceViewState): string {
   // the head column open for the ruler row so every head row lines up with its
   // lane row. Empty for now — zoom/follow controls are #995.
   const rulerGutterHTML = `<div class="daw-ruler-gutter"></div>`;
+  // The playhead's two region segments (#1049, ADR: two region segments): one in
+  // the ruler row, one over the lane column, so the arrangement shows a single
+  // vertically aligned indicator across both. Both carry .daw-playhead, so
+  // renderPlayhead writes the SAME shell-local x to both in one pass, and both
+  // re-base into the timeline column through the one shared translate (ADR-0090).
+  // Emitted last in each region so they paint above the ticks and the lanes.
+  const rulerPlayheadHTML = `<span class="daw-playhead daw-playhead-ruler"></span>`;
+  const lanePlayheadHTML = `<span class="daw-playhead daw-playhead-lanes"></span>`;
   const headHTML = rows.map((row) =>
     `<div class="daw-track-head" data-ch="${row.index}">`
     + `<span class="daw-track-head-index">${row.index + 1}</span>`
@@ -559,7 +567,6 @@ export function dawShellHTML(state: LiveWorkspaceViewState): string {
     + `<span class="daw-transport-time">${getDawPlayheadState().formatElapsed(seededElapsed)}</span>`
     + `<span class="daw-transport-hint">Start and stop recording from the top-bar Record button</span>`
     + `</div>`
-    + `<div class="daw-playhead"></div>`
     // The semantic arrangement frame (#1042): the track-head column and the
     // timeline column that owns the ruler and every lane row. Per-track head
     // rows come from dawTrackRows (#1043); the overall-mix row is the last
@@ -569,14 +576,16 @@ export function dawShellHTML(state: LiveWorkspaceViewState): string {
     // the shared t=0 boundary the ruler origin and every lane row start from.
     // The ruler and lane children keep emitting shell-local x from
     // dawTimelineX (ADR-0086), re-based into the timeline column by the
-    // shared CSS translate (ADR-0090).
+    // shared CSS translate (ADR-0090). The playhead is two region segments,
+    // not a shell child (#1049): one in the ruler, one over the lane column.
     + `<div class="daw-arrangement">`
     + `<div class="daw-track-heads">${rulerGutterHTML}${headRowsHTML}${masterHeadHTML}</div>`
     + `<div class="daw-timeline">`
-    + `<div class="daw-ruler">${rulerTicks}</div>`
+    + `<div class="daw-ruler">${rulerTicks}${rulerPlayheadHTML}</div>`
     + `<div class="daw-lane-column">`
     + laneHTML
     + mixLaneHTML
+    + lanePlayheadHTML
     + `</div>`
     + `</div>`
     + `</div>`
