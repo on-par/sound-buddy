@@ -571,7 +571,14 @@
        recipe (not display:none, which some AT drops from the described-by
        lookup); the 1px / -1px / inset(50%) values are the recipe itself. */
     .settings-note-hidden { position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip:rect(0 0 0 0); clip-path:inset(50%); white-space:nowrap; border:0; }
-    .settings-help-strip { min-height:34px; margin:4px 0 0; padding-top:10px; border-top:1px solid var(--border-subtle); font:var(--fw-regular) var(--fs-label)/1.4 var(--font-sans); color:var(--text-tertiary); }
+    /* Fixed height + a 3-line clamp (#1007), not min-height: the row notes
+       range from one sentence to ~80 words (usage-signal, crash-reporting),
+       so an unbounded strip grows ~60px taller on hover/focus and shoves
+       Save/Cancel down mid-interaction — Playwright's actionability check
+       (and a real pointer mid-click) sees that as the button never settling.
+       Full copy is still reachable via aria-describedby on the control; the
+       strip is a visual affordance only (aria-hidden below). */
+    .settings-help-strip { height:62px; margin:4px 0 0; padding-top:10px; border-top:1px solid var(--border-subtle); font:var(--fw-regular) var(--fs-label)/1.4 var(--font-sans); color:var(--text-tertiary); overflow:hidden; display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical; }
     .ai-dialog-version { font:var(--fw-regular) var(--fs-micro)/1.4 var(--font-mono); color:var(--text-muted); margin:6px 0 0; text-align:center; }
     /* "Grade your own service" guide dialog (#142, actionable rework #295) */
     .guide-dialog-card { width:min(480px,calc(100vw - 48px)); }
