@@ -564,6 +564,15 @@ describe('Settings row grid (#1009)', () => {
     }
   });
 
+  it('substitutes no role-based control for any Settings toggle', () => {
+    const html = renderMarkup(true);
+    expect(html).not.toContain('role="switch"');
+    expect(html).not.toContain('role="checkbox"');
+    for (const id of ['weekly-reminder-toggle', 'usage-signal-toggle', 'crash-reporting-toggle', 'daw-workspace-toggle', 'live-adjustments-toggle']) {
+      expect(html).not.toMatch(new RegExp(`<button[^>]*id="${id}"`));
+    }
+  });
+
   it('keeps the pro-gate a direct child of the Audio pane', () => {
     const html = renderMarkup(true);
     expect(html).toMatch(/id="settings-pane-audio"[^>]*>\s*<div class="pro-gate"/);
