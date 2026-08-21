@@ -479,6 +479,33 @@ describe('commitShareChurchName', () => {
   });
 });
 
+// Debounced church-name persistence (#1020): the input's onChange/onBlur and
+// the unmount cleanup effect all wire through a churchNameCommitter instance
+// rather than calling commitShareChurchName directly (that call now lives
+// only in the committer's injected `commit` dep and in its own definition).
+// Click/input dispatch needs jsdom (not available in this harness), so this
+// follows the file's established source-assertion pattern (see the
+// console-consent Revoke test above).
+describe('debounced church-name persistence (#1020)', () => {
+  it('the input commits via the debounced committer, not directly, on change and blur', () => {
+    const src = fs.readFileSync(fileURLToPath(new URL('./SettingsPanel.tsx', import.meta.url)), 'utf8');
+    expect(src).toContain('churchNameCommitter.change(e.target.value)');
+    expect(src).toContain('churchNameCommitter.flush()');
+  });
+
+  it('cancels the debounced committer on unmount', () => {
+    const src = fs.readFileSync(fileURLToPath(new URL('./SettingsPanel.tsx', import.meta.url)), 'utf8');
+    expect(src).toContain('() => churchNameCommitter.cancel()');
+  });
+
+  it('handleSave no longer calls commitShareChurchName directly — it flushes the committer', () => {
+    const src = fs.readFileSync(fileURLToPath(new URL('./SettingsPanel.tsx', import.meta.url)), 'utf8');
+    const directCallCount = (src.match(/commitShareChurchName\(useSettingsStore, shareChurchName\)/g) ?? []).length;
+    expect(directCallCount).toBe(0);
+    expect(src).toContain('createChurchNameCommitter({');
+  });
+});
+
 // Instant-apply Settings controls (#1018, epic #1000): the seven non-storage,
 // non-church-name controls render straight from settingsStore's persisted
 // `settings` (via instantSettingValues) and commit on change (via
