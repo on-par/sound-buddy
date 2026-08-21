@@ -10,6 +10,11 @@ import { launchApp } from './e2e-helpers';
 let electronApp: ElectronApplication;
 let window: Page;
 
+// Sub-pixel device-ratio noise: two boundingBox() reads of a card that did
+// not move can differ by a fraction of a pixel, so compare with a tolerance
+// instead of exact equality (constitution: no float compare without epsilon).
+const BOX_EPSILON_PX = 1;
+
 test.describe('Settings dialog (#204)', () => {
   test.beforeAll(async () => {
     ({ electronApp, window } = await launchApp());
@@ -160,5 +165,39 @@ test.describe('Settings dialog (#204)', () => {
       ipcMain.removeHandler('open-dir-dialog');
     });
     await window.evaluate(() => (window as any).soundBuddy.updateSettings({ storageDir: '' }));
+  });
+
+  test('the dialog navigates via a left rail, with no horizontal tab strip', async () => {
+    await window.locator('#settings-btn').click();
+    await expect(window.locator('#settings-dialog .settings-rail')).toBeVisible();
+    await expect(window.locator('#settings-dialog .settings-tabs')).toHaveCount(0);
+    await expect(window.locator('#settings-tab-btn-general')).toHaveClass(/active/);
+    await window.locator('#settings-tab-btn-labs').click();
+    await expect(window.locator('#settings-tab-btn-labs')).toHaveClass(/active/);
+    await expect(window.locator('#settings-tab-btn-general')).not.toHaveClass(/active/);
+    await window.locator('#settings-dialog-cancel').click();
+  });
+
+  test('the card, rail and footer keep their geometry across a section switch', async () => {
+    await window.locator('#settings-btn').click();
+    const card = window.locator('.settings-dialog-card');
+    const footer = window.locator('#settings-dialog .settings-footer');
+    const before = { card: await card.boundingBox(), footer: await footer.boundingBox() };
+    // Storage is the tallest section — the one that used to grow the card.
+    await window.locator('#settings-tab-btn-storage').click();
+    await expect(window.locator('#settings-pane-storage')).toBeVisible();
+    const after = { card: await card.boundingBox(), footer: await footer.boundingBox() };
+    expect(Math.abs(after.card!.height - before.card!.height)).toBeLessThanOrEqual(BOX_EPSILON_PX);
+    expect(Math.abs(after.card!.width - before.card!.width)).toBeLessThanOrEqual(BOX_EPSILON_PX);
+    expect(Math.abs(after.footer!.y - before.footer!.y)).toBeLessThanOrEqual(BOX_EPSILON_PX);
+    await expect(window.locator('#settings-dialog-save')).toBeVisible();
+    await window.locator('#settings-dialog-cancel').click();
+  });
+
+  test('the title-bar close control closes the dialog without saving', async () => {
+    await window.locator('#settings-btn').click();
+    await expect(window.locator('#settings-dialog-title')).toHaveText('Settings');
+    await window.locator('#settings-dialog-close').click();
+    await expect(window.locator('#settings-dialog')).toBeHidden();
   });
 });

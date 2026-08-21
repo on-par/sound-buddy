@@ -16,6 +16,11 @@ let electronApp: ElectronApplication;
 let window: Page;
 const fixturePath = () => path.join(__dirname, '..', 'fixtures', 'silence.wav');
 
+// #1008: the Settings chrome widened .settings-dialog-card to 760px and gave
+// it a fixed height. Every rule is scoped to .settings-dialog-card, so a
+// dialog on the bare shared card must still be the 340px auto-height card.
+const SHARED_CARD_W = 340;
+
 test.describe('Utility dialogs (#704)', () => {
   test.beforeAll(async () => {
     ({ electronApp, window } = await launchApp());
@@ -32,6 +37,17 @@ test.describe('Utility dialogs (#704)', () => {
     await window.locator('#reportcard-feedback-btn').click();
     await expect(window.locator('#feedback-dialog')).toBeVisible();
 
+    await window.locator('#feedback-dialog-cancel').click();
+    await expect(window.locator('#feedback-dialog')).toBeHidden();
+  });
+
+  test('the shared dialog card is unaffected by the Settings chrome (#1008)', async () => {
+    await window.locator('#reportcard-feedback-btn').click();
+    const card = window.locator('#feedback-dialog .rig-dialog-card');
+    await expect(card).toBeVisible();
+    await expect(card).not.toHaveClass(/settings-dialog-card/);
+    const box = await card.boundingBox();
+    expect(Math.abs(box!.width - SHARED_CARD_W)).toBeLessThanOrEqual(1);
     await window.locator('#feedback-dialog-cancel').click();
     await expect(window.locator('#feedback-dialog')).toBeHidden();
   });

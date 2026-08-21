@@ -94,12 +94,43 @@ describe('src/styles/app.css', () => {
   });
 });
 
-describe('Settings dialog CSS (#204)', () => {
-  it('has the new tabbed-modal classes', () => {
+describe('Settings dialog CSS (#204, chrome #1008)', () => {
+  it('has the Settings-scoped chrome classes', () => {
     expect(appCss).toContain('.settings-dialog-card');
-    expect(appCss).toContain('.settings-tabs');
-    expect(appCss).toContain('.settings-tab.active');
+    expect(appCss).toContain('.settings-titlebar');
+    expect(appCss).toContain('.settings-close-btn');
+    expect(appCss).toContain('.settings-body');
+    expect(appCss).toContain('.settings-rail');
+    expect(appCss).toContain('.settings-rail-item.active');
+    expect(appCss).toContain('.settings-panes');
     expect(appCss).toContain('.settings-pane');
+    expect(appCss).toContain('.settings-footer');
+  });
+
+  it('no longer holds the horizontal tab-strip rules the rail replaced (#1008)', () => {
+    expect(appCss).not.toContain('.settings-tabs');
+    expect(appCss).not.toContain('.settings-tab ');
+    expect(appCss).not.toContain('.settings-tab.active');
+  });
+
+  it('sizes the Settings card and rail from tokens, never literals (#1008)', () => {
+    expect(appCss).toContain('.settings-dialog-card { width:var(--settings-card-w); height:var(--settings-card-h);');
+    expect(appCss).toContain('flex:0 0 var(--settings-rail-w)');
+    expect(appCss).toContain('height:var(--control-h-sm)');
+    expect(tokensCss).toContain('--settings-card-w:min(760px,calc(100vw - 48px))');
+    expect(tokensCss).toContain('--settings-card-h:min(560px,calc(100vh - 96px))');
+    expect(tokensCss).toContain('--settings-rail-w:176px');
+  });
+
+  it('leaves the shared .rig-dialog-card untouched so other dialogs are unaffected (#1008)', () => {
+    expect(appCss).toContain('.rig-dialog-card { width:min(340px,calc(100vw - 48px));');
+    // No Settings chrome rule may target the shared card.
+    expect(appCss).not.toMatch(/\.rig-dialog-card\s*\{[^}]*--settings-card-w/);
+  });
+
+  it('lets the Settings pane scroll inside the fixed frame instead of growing the card', () => {
+    expect(appCss).toContain('.settings-pane { display:flex; flex-direction:column; flex:1; min-height:0; gap:12px; overflow-y:auto; }');
+    expect(appCss).not.toContain('max-height:min(72vh, 640px)');
   });
 
   it('no longer holds the two separate dialog-card classes it replaced', () => {

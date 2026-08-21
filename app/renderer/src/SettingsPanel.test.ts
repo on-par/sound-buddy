@@ -81,7 +81,7 @@ describe('saveAll', () => {
 });
 
 describe('SettingsPanel markup', () => {
-  it('renders hidden by default with all top-level tabs and panes present', () => {
+  it('renders hidden by default with all top-level rail rows and panes present', () => {
     const html = renderMarkup();
     expect(html).toContain('id="settings-dialog"');
     expect(html).toContain('style="display:none"');
@@ -151,6 +151,58 @@ describe('SettingsPanel markup', () => {
     useSettingsStore.setState({ settings: { shareChurchName: 'Grace Chapel' } as unknown as AppSettings });
     const html = renderMarkup();
     expect(html).toMatch(/id="share-church-name-input"[^>]*value="Grace Chapel"/);
+  });
+});
+
+describe('Settings chrome (#1008)', () => {
+  it('renders the section list as a vertical rail, not a horizontal tab strip', () => {
+    const html = renderMarkup();
+    expect(html).toContain('class="settings-rail" role="tablist" aria-orientation="vertical"');
+    expect(html).not.toContain('class="settings-tabs"');
+    expect(html).not.toContain('class="settings-tab"');
+  });
+
+  it('gives every section a rail row that keeps its tab id, role and selected state', () => {
+    const html = renderMarkup();
+    for (const section of SETTINGS_SECTIONS) {
+      const re = new RegExp(
+        `class="settings-rail-item[^"]*" id="settings-tab-btn-${section}" role="tab" aria-selected="(true|false)"`
+      );
+      expect(html).toMatch(re);
+    }
+  });
+
+  it('marks only the default General row active', () => {
+    const html = renderMarkup();
+    expect(html).toContain('class="settings-rail-item active" id="settings-tab-btn-general"');
+    expect(html).toContain('class="settings-rail-item" id="settings-tab-btn-audio"');
+  });
+
+  it('renders a title bar holding the dialog title and a labelled close control', () => {
+    const html = renderMarkup();
+    const bar = html.match(/<div class="settings-titlebar">[\s\S]*?<\/div><\/div>/)?.[0] ?? '';
+    expect(bar).toContain('id="settings-dialog-title"');
+    expect(bar).toContain('id="settings-dialog-close"');
+    expect(bar).toContain('aria-label="Close settings"');
+  });
+
+  it('wraps the rail and panes in the fixed-height body, and the help strip + actions in the footer', () => {
+    const html = renderMarkup();
+    expect(html).toContain('class="settings-body"');
+    expect(html).toContain('class="settings-panes"');
+    const footer = html.match(/<div class="settings-footer">[\s\S]*$/)?.[0] ?? '';
+    expect(footer).toContain('id="settings-help-strip"');
+    expect(footer).toContain('id="settings-dialog-cancel"');
+    expect(footer).toContain('id="settings-dialog-save"');
+  });
+
+  // Click dispatch needs jsdom (absent from this harness by convention — see
+  // the console-consent Revoke test above), so the close control's wiring is
+  // asserted in source here and driven for real by settings.spec.ts.
+  it('closes without saving from the backdrop, the title-bar control and Cancel via one handler', () => {
+    const src = fs.readFileSync(fileURLToPath(new URL('./SettingsPanel.tsx', import.meta.url)), 'utf8');
+    expect(src).toContain('const closeSettingsDialog = () => useSettingsStore.getState().closeDialog();');
+    expect((src.match(/onClick={closeSettingsDialog}/g) ?? []).length).toBe(2);
   });
 });
 
