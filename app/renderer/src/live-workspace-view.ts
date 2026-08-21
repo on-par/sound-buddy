@@ -435,6 +435,27 @@ export function meterCardHTML(state: LiveWorkspaceViewState): { html: string; id
   };
 }
 
+// One arrangement track row (#1043). `name` is already HTML-escaped — strip
+// labels are user-entered — so callers interpolate it raw and never re-escape.
+export interface DawTrackRow {
+  index: number;
+  name: string;
+}
+
+// The single ordered per-track list both arrangement columns render from
+// (ADR-0087 made the frame column-major, so every row is emitted twice — a head
+// row and a lane row — and nothing in the DOM enforces that the two lists agree).
+// dawShellHTML maps this one array into both columns and dawShellPatchView
+// fingerprints it, so the rows cannot reorder, diverge in count, or resolve
+// their names differently. Unarmed configured tracks are included: arming
+// governs what records, never what the arrangement shows.
+export function dawTrackRows(state: LiveWorkspaceViewState): DawTrackRow[] {
+  return state.channelConfig.map((strip, idx) => ({
+    index: idx,
+    name: escapeHtml(getRigReconcile().resolveStripLabel(strip, liveChannelAt(state, idx), idx)),
+  }));
+}
+
 // The shared DAW-shell patch view (#517): the lane fingerprint (for "did the
 // lanes themselves change" — a same-count rig swap changes labels without
 // length), the transport chip text, and the mix-lane capture-mode token. The
@@ -447,10 +468,8 @@ export interface DawShellPatchView {
 }
 
 export function dawShellPatchView(state: LiveWorkspaceViewState): DawShellPatchView {
-  const laneNames = state.channelConfig.map((strip, idx) =>
-    escapeHtml(getRigReconcile().resolveStripLabel(strip, liveChannelAt(state, idx), idx)));
   return {
-    laneSignature: laneNames.join('\u0000'),
+    laneSignature: dawTrackRows(state).map((row) => row.name).join('\u0000'),
     transportChip: getDawWorkspaceState().transportLabel(state.isCapturing, state.liveMode),
     captureMode: getDawWaveformState().captureModeToken(state.isCapturing, state.liveMode),
   };
@@ -460,17 +479,21 @@ export function dawShellPatchView(state: LiveWorkspaceViewState): DawShellPatchV
 // the timeline shell only — the waveform/playhead canvas PAINTING stays inline
 // (slice 6j) and is reachable via the window.dawShellRuntime bridge.
 export function dawShellHTML(state: LiveWorkspaceViewState): string {
-  const laneNames = state.channelConfig.map((strip, idx) =>
-    escapeHtml(getRigReconcile().resolveStripLabel(strip, liveChannelAt(state, idx), idx)));
+  const rows = dawTrackRows(state);
   const { transportChip, captureMode } = dawShellPatchView(state);
   const seededElapsed = state.playheadElapsedMs;
   const laneGrid = `<span class="daw-lane-grid">${dawLaneGridlines(DAW_TIMELINE_SPAN_SECS)
     .map((line) => `<span class="daw-gridline${line.isMajor ? ' major' : ''}" style="left:${line.xPx}px"></span>`)
     .join('')}</span>`;
-  const laneHTML = state.channelConfig.length > 0
-    ? `<div class="daw-channel-lanes">${state.channelConfig.map((strip, idx) =>
-      `<div class="daw-lane daw-channel-lane" data-ch="${idx}">`
-      + `<span class="daw-lane-name">${laneNames[idx]}</span>`
+  const headHTML = rows.map((row) =>
+    `<div class="daw-track-head" data-ch="${row.index}">`
+    + `<span class="daw-track-head-index">${row.index + 1}</span>`
+    + `<span class="daw-track-head-name">${row.name}</span>`
+    + `</div>`).join('');
+  const laneHTML = rows.length > 0
+    ? `<div class="daw-channel-lanes">${rows.map((row) =>
+      `<div class="daw-lane daw-channel-lane" data-ch="${row.index}">`
+      + `<span class="daw-lane-name">${row.name}</span>`
       + `<span class="daw-lane-body"><canvas class="daw-channel-waveform"></canvas></span>`
       + laneGrid
       + `</div>`).join('')}</div>`
@@ -488,12 +511,12 @@ export function dawShellHTML(state: LiveWorkspaceViewState): string {
     + `<div class="daw-playhead"></div>`
     // The semantic arrangement frame (#1042): the track-head column and the
     // timeline column that owns the ruler and every lane row. Per-track head
-    // rows land in #1043, the overall-mix row and status line in #1044, the
-    // two-column layout in #1028. The ruler and lane rows stay full-shell-width
-    // boxes so their tick/gridline x values remain the shell-local coordinates
-    // ADR-0086 defines.
+    // rows come from dawTrackRows (#1043); the overall-mix row and status line
+    // are #1044, the two-column layout is #1028. The ruler and lane rows stay
+    // full-shell-width boxes so their tick/gridline x values remain the
+    // shell-local coordinates ADR-0086 defines.
     + `<div class="daw-arrangement">`
-    + `<div class="daw-track-heads"></div>`
+    + `<div class="daw-track-heads">${headHTML}</div>`
     + `<div class="daw-timeline">`
     + `<div class="daw-ruler">${rulerTicks}</div>`
     + `<div class="daw-lane-column">`

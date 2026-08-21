@@ -343,6 +343,47 @@ describe('semantic arrangement frame (#1042)', () => {
   });
 });
 
+describe('configured track rows render from one shared list (#1043)', () => {
+  it('live-workspace-view.ts exports the shared per-track row list', () => {
+    expect(workspaceViewTs).toContain('export function dawTrackRows(');
+  });
+
+  it('dawShellHTML derives both columns from that one list, not a second channelConfig map', () => {
+    const body = functionBody(workspaceViewTs, 'dawShellHTML');
+    expect(body).toContain('dawTrackRows(state)');
+    expect(body).toContain('daw-track-head');
+    expect(body).toContain('daw-channel-lane');
+    expect(body).not.toContain('state.channelConfig.map(');
+  });
+
+  it('dawShellPatchView fingerprints the same shared list', () => {
+    expect(functionBody(workspaceViewTs, 'dawShellPatchView')).toContain('dawTrackRows(');
+  });
+
+  it('the head rows stay inside the head column', () => {
+    const body = functionBody(workspaceViewTs, 'dawShellHTML');
+    expect(body.indexOf('daw-track-heads')).toBeLessThan(body.indexOf('daw-timeline'));
+  });
+
+  it('app.css styles the head row', () => {
+    expect(css).toContain('.daw-track-head');
+    expect(css).toContain('.daw-track-head-index');
+    expect(css).toContain('.daw-track-head-name');
+  });
+
+  it('head and lane rows share one height source, and neither hardcodes a height literal', () => {
+    expect(css).toContain('--daw-track-row-h');
+    const headRule = css.match(/\.daw-track-head\s*\{[^}]*\}/);
+    const laneRule = css.match(/\.daw-channel-lane\s*\{[^}]*\}/);
+    expect(headRule).not.toBeNull();
+    expect(laneRule).not.toBeNull();
+    expect(headRule![0]).toMatch(/height:\s*var\(--daw-track-row-h\)/);
+    expect(laneRule![0]).toMatch(/height:\s*var\(--daw-track-row-h\)/);
+    expect(headRule![0]).not.toMatch(/height:\s*\d/);
+    expect(laneRule![0]).not.toMatch(/height:\s*\d/);
+  });
+});
+
 describe('playhead placement derives from the shared timeline geometry (#1034)', () => {
   // Wide enough that no clamp applies anywhere in the default span.
   const UNCLAMPED_WIDTH_PX = dawTimelineX(DAW_TIMELINE_SPAN_SECS) + DAW_TIMELINE_INSET_PX;
