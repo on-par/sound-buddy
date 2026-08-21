@@ -948,7 +948,7 @@
        the Live tab: transport bar on top, a placeholder ruler strip, then
        full-width stacked lanes with hairline dividers. UI-only — no real
        waveform/time math in this slice. */
-    .daw-shell { position:relative; display:flex; flex-direction:column; flex:1; min-height:0; --daw-track-row-h:64px; --daw-master-row-h:60px; --daw-status-line-h:26px; }
+    .daw-shell { position:relative; display:flex; flex-direction:column; flex:1; min-height:0; --daw-ruler-row-h:26px; --daw-track-row-h:64px; --daw-master-row-h:60px; --daw-status-line-h:26px; }
     .daw-transport { display:flex; align-items:center; gap:12px; padding:10px 4px; border-bottom:1px solid var(--border-subtle); }
     .daw-transport-title { font:var(--fw-semibold) var(--fs-body)/1 var(--font-sans); color:var(--text-primary); }
     .daw-transport-state { font:var(--fw-medium) var(--fs-micro)/1 var(--font-sans); letter-spacing:var(--tracking-caps); text-transform:uppercase; padding:3px 8px; border-radius:var(--radius-md); background:var(--surface-raised); color:var(--text-muted); }
@@ -958,8 +958,10 @@
     .daw-transport-hint { margin-left:auto; font:var(--fw-regular) var(--fs-label)/1.3 var(--font-sans); color:var(--text-muted); }
     /* Ticks are absolutely positioned children emitted by dawShellHTML from
        dawRulerTicks() — the ruler carries no spacing value of its own (#1032,
-       ADR-0086). margin-left is 0 so a tick's inline left is shell-local x. */
-    .daw-ruler { position:relative; overflow:hidden; height:20px; margin:8px 0; border-radius:var(--radius-sm); background:var(--surface-inset); }
+       ADR-0086). margin-left is 0 so a tick's inline left is shell-local x.
+       The row's height comes from the shared --daw-ruler-row-h (#1048), also
+       read by .daw-ruler-gutter, so the two paired rows never drift. */
+    .daw-ruler { position:relative; overflow:hidden; height:var(--daw-ruler-row-h); box-sizing:border-box; border-radius:var(--radius-sm); background:var(--surface-inset); }
     .daw-ruler-tick { position:absolute; top:0; bottom:0; width:1px; background:var(--border-subtle); }
     /* The playhead's inline transform is the shell-local x straight from
        dawPlayheadX (#1034, ADR-0086), so this rule carries no left offset of
@@ -967,17 +969,23 @@
        lane gridline for the same instant. */
     .daw-playhead { position:absolute; top:48px; bottom:8px; left:0; width:2px; border-radius:1px; background:var(--text-muted); pointer-events:none; }
     .daw-playhead.advancing { background:var(--gold-text); }
-    /* Arrangement frame (#1042): the semantic structure the arrangement view is
-       built from — a track-head column (filled per track by #1043) beside the
-       timeline column that owns the ruler and the lane rows. The side-by-side
-       two-column layout, the ruler gutter and the full-height playhead land with
-       #1028; until then the frame is a plain column, so the empty head column
-       adds no height and the ruler and lanes keep the full-shell-width boxes
-       their shell-local tick/gridline coordinates assume (ADR-0086). The head
-       width is never hardcoded here — dawShellHTML emits --daw-head-w from
-       DAW_TIMELINE_ORIGIN_PX. */
-    .daw-arrangement { position:relative; display:flex; flex-direction:column; flex:1; min-height:0; }
-    .daw-track-heads { display:flex; flex-direction:column; width:var(--daw-head-w); }
+    /* Arrangement frame (#1042/#1048): the semantic structure the arrangement
+       view is built from — a track-head column (filled per track by #1043)
+       beside the timeline column that owns the ruler and the lane rows. The
+       two columns now sit side by side: the head column is fixed at
+       var(--daw-head-w) and the timeline column's left edge IS that boundary,
+       so the ruler's t=0 origin and every lane row's left edge coincide with
+       it. The head width is never hardcoded here — dawShellHTML emits
+       --daw-head-w from DAW_TIMELINE_ORIGIN_PX. The ruler ticks and lane
+       gridlines keep the single shell-local x from dawTimelineX (ADR-0086)
+       and are re-based into the timeline column by the shared translate below
+       (ADR-0090). */
+    .daw-arrangement { position:relative; display:flex; flex-direction:row; flex:1; min-height:0; }
+    .daw-track-heads { display:flex; flex-direction:column; flex:0 0 var(--daw-head-w); width:var(--daw-head-w); }
+    /* The ruler row's head cell: the head column's first child, matching the
+       ruler's height from the same --daw-ruler-row-h so every head row sits
+       on its lane row (#1048). */
+    .daw-ruler-gutter { flex:0 0 auto; height:var(--daw-ruler-row-h); box-sizing:border-box; }
     /* Per-track head rows (#1043): the head column and the lane column render
        the same ordered dawTrackRows list, so their rows read one shared height
        — content-sized rows would silently break the head/lane alignment #1028
@@ -993,7 +1001,7 @@
        (arm/mute/solo, colour strip) must never sweep it (ADR-0087). */
     .daw-master-head { display:flex; align-items:center; height:var(--daw-master-row-h); box-sizing:border-box; padding:0 9px; border-top:1px solid var(--border-strong); }
     .daw-master-head-name { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font:var(--fw-semibold) var(--fs-body-sm)/1.3 var(--font-sans); color:var(--text-primary); }
-    .daw-timeline { display:flex; flex-direction:column; min-width:0; }
+    .daw-timeline { display:flex; flex-direction:column; flex:1 1 auto; min-width:0; overflow:hidden; }
     .daw-lane-column { display:flex; flex-direction:column; }
     .daw-lane { position:relative; display:flex; align-items:center; gap:14px; padding:14px 12px; border-bottom:1px solid var(--border-subtle); }
     .daw-lane-name { flex:0 0 140px; font:var(--fw-medium) var(--fs-label)/1.3 var(--font-sans); color:var(--text-secondary); }
@@ -1005,6 +1013,14 @@
     .daw-lane-grid { position:absolute; inset:0; overflow:hidden; pointer-events:none; }
     .daw-gridline { position:absolute; top:0; bottom:0; width:1px; background:var(--gridline-minor); }
     .daw-gridline.major { background:var(--gridline-major); }
+    /* Ruler ticks and lane gridlines carry the SHELL-local x from dawTimelineX
+       (ADR-0086), but their row boxes now start at the timeline column's left
+       edge, which is exactly var(--daw-head-w) from the shell's left edge — so
+       one shared translate re-bases every timeline child back into the shell
+       frame (ADR-0090). The playhead is a .daw-shell child and is deliberately
+       NOT in this list: its frame already is the shell's. Any future absolutely
+       positioned ruler/lane child joins this selector list — never its own offset. */
+    .daw-ruler-tick, .daw-gridline { transform:translateX(calc(-1 * var(--daw-head-w))); }
     .daw-mix-lane { height:var(--daw-master-row-h); box-sizing:border-box; border-top:1px solid var(--border-strong); background:var(--surface-raised); }
     .daw-mix-lane .daw-lane-body { height:100%; }
     .daw-mix-waveform { display:block; width:100%; height:100%; }
@@ -1016,7 +1032,12 @@
     .daw-channel-lane { height:var(--daw-track-row-h); box-sizing:border-box; }
     .daw-channel-lane .daw-lane-body { height:100%; }
     .daw-channel-waveform { display:block; width:100%; height:100%; }
-    .daw-empty-state { color:var(--text-muted); font:var(--fw-regular) var(--fs-label)/1.3 var(--font-sans); justify-content:center; text-align:center; }
+    .daw-empty-state { height:var(--daw-track-row-h); box-sizing:border-box; color:var(--text-muted); font:var(--fw-regular) var(--fs-label)/1.3 var(--font-sans); justify-content:center; text-align:center; }
+    /* The empty state's head cell — the paired head row opposite .daw-empty-state
+       (ADR-0087: every row is emitted twice), so the master row stays aligned with
+       the mix lane when no tracks are configured. Not a .daw-track-head: it carries
+       no index or name and never comes from dawTrackRows. */
+    .daw-empty-head { height:var(--daw-track-row-h); box-sizing:border-box; border-bottom:1px solid var(--border-subtle); }
     /* The arrangement status line (#1044): shell chrome below .daw-arrangement,
        not a third arrangement child — track-count summary and capture state on
        the left, the selected device on the right (docs/design/session-tab.md,

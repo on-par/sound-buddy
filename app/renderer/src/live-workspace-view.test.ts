@@ -448,6 +448,30 @@ describe('dawShellHTML / dawShellPatchView', () => {
   it('is pure — equal state renders an identical frame with no DOM or store reads (#1042)', () => {
     expect(dawShellHTML(makeState())).toBe(dawShellHTML(makeState()));
   });
+
+  it('opens the head column with a ruler gutter, ahead of any track head (#1048)', () => {
+    const html = dawShellHTML(makeState());
+    const heads = html.indexOf('<div class="daw-track-heads">');
+    const gutter = html.indexOf('<div class="daw-ruler-gutter"></div>');
+    const firstHead = html.indexOf('class="daw-track-head"');
+    expect(gutter).toBeGreaterThan(heads);
+    expect(gutter).toBeLessThan(firstHead);
+    expect(html.split('<div class="daw-ruler-gutter"></div>').length - 1).toBe(1);
+    const timelineSlice = html.slice(html.indexOf('<div class="daw-timeline">'));
+    expect(timelineSlice).not.toContain('daw-ruler-gutter');
+  });
+
+  it('pairs the zero-track empty state with an empty head cell (#1048)', () => {
+    const html = dawShellHTML(makeState({ channelConfig: [] }));
+    const headsSlice = html.slice(html.indexOf('<div class="daw-track-heads">'), html.indexOf('<div class="daw-timeline">'));
+    expect(headsSlice.split('class="daw-empty-head"').length - 1).toBe(1);
+    expect(html.split('daw-empty-state').length - 1).toBe(1);
+    expect(html).toContain('class="daw-master-head"');
+  });
+
+  it('emits no empty head cell when tracks are configured (#1048)', () => {
+    expect(dawShellHTML(makeState())).not.toContain('daw-empty-head');
+  });
 });
 
 describe('dawTrackRows / configured track rows (#1043)', () => {

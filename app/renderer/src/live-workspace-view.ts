@@ -517,11 +517,18 @@ export function dawShellHTML(state: LiveWorkspaceViewState): string {
   const laneGrid = `<span class="daw-lane-grid">${dawLaneGridlines(DAW_TIMELINE_SPAN_SECS)
     .map((line) => `<span class="daw-gridline${line.isMajor ? ' major' : ''}" style="left:${line.xPx}px"></span>`)
     .join('')}</span>`;
+  // The ruler row's head cell (#1048): the head column's first child, holding
+  // the head column open for the ruler row so every head row lines up with its
+  // lane row. Empty for now — zoom/follow controls are #995.
+  const rulerGutterHTML = `<div class="daw-ruler-gutter"></div>`;
   const headHTML = rows.map((row) =>
     `<div class="daw-track-head" data-ch="${row.index}">`
     + `<span class="daw-track-head-index">${row.index + 1}</span>`
     + `<span class="daw-track-head-name">${row.name}</span>`
     + `</div>`).join('');
+  const headRowsHTML = rows.length > 0
+    ? headHTML
+    : `<div class="daw-empty-head"></div>`;
   const laneHTML = rows.length > 0
     ? `<div class="daw-channel-lanes">${rows.map((row) =>
       `<div class="daw-lane daw-channel-lane" data-ch="${row.index}">`
@@ -557,12 +564,14 @@ export function dawShellHTML(state: LiveWorkspaceViewState): string {
     // timeline column that owns the ruler and every lane row. Per-track head
     // rows come from dawTrackRows (#1043); the overall-mix row is the last
     // paired row in each column (#1044, ADR-0087) and the status line below is
-    // shell chrome outside the arrangement, not a third child of it. The
-    // two-column layout is still #1028. The ruler and lane rows stay
-    // full-shell-width boxes so their tick/gridline x values remain the
-    // shell-local coordinates ADR-0086 defines.
+    // shell chrome outside the arrangement, not a third child of it. The two
+    // columns now sit side by side (#1048): the timeline column's left edge is
+    // the shared t=0 boundary the ruler origin and every lane row start from.
+    // The ruler and lane children keep emitting shell-local x from
+    // dawTimelineX (ADR-0086), re-based into the timeline column by the
+    // shared CSS translate (ADR-0090).
     + `<div class="daw-arrangement">`
-    + `<div class="daw-track-heads">${headHTML}${masterHeadHTML}</div>`
+    + `<div class="daw-track-heads">${rulerGutterHTML}${headRowsHTML}${masterHeadHTML}</div>`
     + `<div class="daw-timeline">`
     + `<div class="daw-ruler">${rulerTicks}</div>`
     + `<div class="daw-lane-column">`
