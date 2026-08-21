@@ -167,3 +167,56 @@ describe('Feedback message textarea sizing (#926)', () => {
     expect(appCss).toContain('.rig-dialog-input { height:var(--control-h); padding:0 12px;');
   });
 });
+
+describe('Settings row grid (#1009)', () => {
+  it('adds the control-column-width and row-gap tokens', () => {
+    expect(tokensCss).toContain('--settings-control-w:260px');
+    expect(tokensCss).toContain('--settings-row-gap:14px');
+  });
+
+  it('lays out every row class as a two-column grid keyed on the token', () => {
+    expect(appCss).toContain('grid-template-columns:1fr var(--settings-control-w)');
+    expect(appCss).toContain('.settings-pane .ai-field,');
+    expect(appCss).toContain('.settings-pane .select-label,');
+    expect(appCss).toContain('.settings-pane .ai-enable-row,');
+    expect(appCss).toContain('.settings-pane .slider,');
+  });
+
+  it('gives the group header a small-caps hairline divider', () => {
+    expect(appCss).toContain('.settings-group-title');
+    const match = appCss.match(/\.settings-group-title\s*\{[^}]*\}/);
+    expect(match).not.toBeNull();
+    const rule = match ? match[0] : '';
+    expect(rule).toContain('text-transform:uppercase');
+    expect(rule).toContain('letter-spacing:var(--tracking-caps)');
+    expect(rule).toContain('border-bottom:1px solid var(--border-subtle)');
+  });
+
+  it('compacts controls to --control-h-sm only inside the Settings pane', () => {
+    expect(appCss).toContain('.settings-pane .select-wrap select { height:var(--control-h-sm)');
+    expect(appCss).toContain('.settings-pane .rig-dialog-input { height:var(--control-h-sm)');
+    expect(appCss).toContain('.settings-pane .ghost-btn { height:var(--control-h-sm)');
+  });
+
+  it('leaves the shared base row rules byte-unchanged so other dialogs are untouched', () => {
+    expect(appCss).toContain('.ai-field { display:flex; flex-direction:column; gap:5px; }');
+    expect(appCss).toContain('.select-label { display:flex; flex-direction:column; gap:6px; width:100%; }');
+    expect(appCss).toContain('.ai-enable-row { display:flex; align-items:center; gap:8px;');
+  });
+
+  it('introduces no new hardcoded color, height, radius or font-size literal', () => {
+    const start = appCss.indexOf('/* Settings row grid (#1009');
+    const end = appCss.indexOf('/* Storage pane (#91)');
+    expect(start).toBeGreaterThan(-1);
+    expect(end).toBeGreaterThan(start);
+    // Strip comments before scanning for literals — the block's own header
+    // comment references issue numbers like "#1009" and "#999", which are
+    // not CSS color values but would otherwise false-positive the hex check.
+    const block = appCss.slice(start, end).replace(/\/\*[\s\S]*?\*\//g, '');
+    expect(block).not.toMatch(/#[0-9a-fA-F]{3,8}\b/);
+    expect(block).not.toMatch(/rgba?\(/);
+    expect(block).not.toMatch(/height:\d+px/);
+    expect(block).not.toMatch(/border-radius:\d+px/);
+    expect(block).not.toMatch(/font-size:\d+px/);
+  });
+});

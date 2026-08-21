@@ -40,7 +40,7 @@
 // #tab-live/#tab-soundcheck rule) hides/shows them exactly like the Live tab
 // always did.
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import type { StoreApi, UseBoundStore } from 'zustand';
 import { useElectron } from './useElectron';
 import { useStoreShallow } from './stores/useStoreShallow';
@@ -174,6 +174,19 @@ function SettingsNote({ control, className = 'ai-dialog-note' }: { control: Sett
     <p className={`${className} settings-note-hidden`} id={entry.noteId}>
       {entry.text}
     </p>
+  );
+}
+
+// Small-caps group header + hairline divider (#1009) — the wrapper the
+// Settings row grid keys off. Related rows go inside one of these; the
+// two-column layout itself comes from app.css's .settings-pane block, so no
+// row markup (including the five composed Audio components) has to change.
+function SettingsGroup({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <section className="settings-group">
+      <h3 className="settings-group-title">{title}</h3>
+      {children}
+    </section>
   );
 }
 
@@ -346,152 +359,164 @@ export default function SettingsPanel({ booted = false }: { booted?: boolean }) 
           </div>
           <div className="settings-panes">
         <div className="settings-pane" id="settings-pane-general" style={{ display: section === 'general' ? 'flex' : 'none' }}>
-          <label className="ai-field" id="grading-profile-field" {...helpFor('gradingProfile')}>
-            <span className="ai-field-label">Grading strictness</span>
-            <div className="select-wrap">
-              <select
-                id="grading-profile-select"
-                aria-label="Grading strictness"
-                aria-describedby={settingsHelpNoteId('gradingProfile')}
-                value={gradingProfile}
-                onChange={(e) => setGradingProfile(e.target.value as 'casual' | 'broadcast')}
-              >
-                <option value="casual">Casual / volunteer</option>
-                <option value="broadcast">Broadcast-ready</option>
-              </select>
-              <span className="select-caret" data-icon="chevron-down" />
-            </div>
-          </label>
-          <SettingsNote control="gradingProfile" />
-          <label className="ai-enable-row" {...helpFor('weeklyReminder')}>
-            <input
-              type="checkbox"
-              id="weekly-reminder-toggle"
-              aria-describedby={settingsHelpNoteId('weeklyReminder')}
-              checked={weeklyReminderEnabled}
-              onChange={(e) => setWeeklyReminderEnabled(e.target.checked)}
-            />
-            Remind me to grade my weekly service
-          </label>
-          <label className="ai-field" {...helpFor('weeklyReminder')}>
-            <span className="ai-field-label">Service day</span>
-            <div className="select-wrap">
-              <select
-                id="weekly-reminder-day"
-                aria-label="Service day"
+          <SettingsGroup title="Grading">
+            <label className="ai-field" id="grading-profile-field" {...helpFor('gradingProfile')}>
+              <span className="ai-field-label">Grading strictness</span>
+              <div className="select-wrap">
+                <select
+                  id="grading-profile-select"
+                  aria-label="Grading strictness"
+                  aria-describedby={settingsHelpNoteId('gradingProfile')}
+                  value={gradingProfile}
+                  onChange={(e) => setGradingProfile(e.target.value as 'casual' | 'broadcast')}
+                >
+                  <option value="casual">Casual / volunteer</option>
+                  <option value="broadcast">Broadcast-ready</option>
+                </select>
+                <span className="select-caret" data-icon="chevron-down" />
+              </div>
+            </label>
+            <SettingsNote control="gradingProfile" />
+          </SettingsGroup>
+          <SettingsGroup title="Reminders">
+            <label className="ai-enable-row" {...helpFor('weeklyReminder')}>
+              <span className="settings-row-label">Remind me to grade my weekly service</span>
+              <input
+                type="checkbox"
+                id="weekly-reminder-toggle"
                 aria-describedby={settingsHelpNoteId('weeklyReminder')}
-                value={weeklyReminderServiceDay}
-                onChange={(e) => setWeeklyReminderServiceDay(Number(e.target.value))}
-              >
-                {DAY_LABELS.map((label, i) => (
-                  <option key={label} value={i}>
-                    {label}
-                  </option>
-                ))}
-              </select>
-              <span className="select-caret" data-icon="chevron-down" />
-            </div>
-          </label>
-          <SettingsNote control="weeklyReminder" />
-          <label className="ai-field" id="share-church-name-field" {...helpFor('shareChurchName')}>
-            <span className="ai-field-label">Church name (for shared images)</span>
-            <input
-              type="text"
-              id="share-church-name-input"
-              className="rig-dialog-input"
-              placeholder="Leave blank to keep shared images anonymous"
-              autoComplete="off"
-              spellCheck={false}
-              maxLength={MAX_CHURCH_NAME_LEN}
-              aria-describedby={settingsHelpNoteId('shareChurchName')}
-              value={shareChurchName}
-              onChange={(e) => setShareChurchName(e.target.value)}
-              onBlur={() => void commitShareChurchName(useSettingsStore, shareChurchName)}
-            />
-          </label>
-          <SettingsNote control="shareChurchName" />
+                checked={weeklyReminderEnabled}
+                onChange={(e) => setWeeklyReminderEnabled(e.target.checked)}
+              />
+            </label>
+            <label className="ai-field" {...helpFor('weeklyReminder')}>
+              <span className="ai-field-label">Service day</span>
+              <div className="select-wrap">
+                <select
+                  id="weekly-reminder-day"
+                  aria-label="Service day"
+                  aria-describedby={settingsHelpNoteId('weeklyReminder')}
+                  value={weeklyReminderServiceDay}
+                  onChange={(e) => setWeeklyReminderServiceDay(Number(e.target.value))}
+                >
+                  {DAY_LABELS.map((label, i) => (
+                    <option key={label} value={i}>
+                      {label}
+                    </option>
+                  ))}
+                </select>
+                <span className="select-caret" data-icon="chevron-down" />
+              </div>
+            </label>
+            <SettingsNote control="weeklyReminder" />
+          </SettingsGroup>
+          <SettingsGroup title="Sharing">
+            <label className="ai-field" id="share-church-name-field" {...helpFor('shareChurchName')}>
+              <span className="ai-field-label">Church name (for shared images)</span>
+              <input
+                type="text"
+                id="share-church-name-input"
+                className="rig-dialog-input"
+                placeholder="Leave blank to keep shared images anonymous"
+                autoComplete="off"
+                spellCheck={false}
+                maxLength={MAX_CHURCH_NAME_LEN}
+                aria-describedby={settingsHelpNoteId('shareChurchName')}
+                value={shareChurchName}
+                onChange={(e) => setShareChurchName(e.target.value)}
+                onBlur={() => void commitShareChurchName(useSettingsStore, shareChurchName)}
+              />
+            </label>
+            <SettingsNote control="shareChurchName" />
+          </SettingsGroup>
         </div>
         <div className="settings-pane" id="settings-pane-storage" style={{ display: section === 'storage' ? 'flex' : 'none' }}>
-          <label className="ai-field" {...helpFor('storageDir')}>
-            <span>Storage folder</span>
-            <div className="storage-path-row">
-              <span className="storage-path" id="storage-path">
-                {storagePath}
-              </span>
-              <button
-                type="button"
-                id="storage-change-btn"
-                className="btn btn-secondary sm"
-                data-icon="folder"
-                aria-describedby={settingsHelpNoteId('storageDir')}
-                onClick={() => void handleChooseStorageFolder()}
-              >
-                Change…
-              </button>
-            </div>
-          </label>
-          <p className="storage-usage" id="storage-usage">
-            {usageText}
-          </p>
-          <p className="storage-unlimited">Unlimited recordings. Stored on your machine.</p>
-          <SettingsNote control="storageDir" className="storage-note" />
-          <button
-            type="button"
-            id="storage-reset-btn"
-            className="btn btn-secondary sm"
-            style={{ display: storagePath === defaultPath ? 'none' : undefined }}
-            onClick={() => setPendingDir('')}
-          >
-            Use default
-          </button>
+          <SettingsGroup title="Location">
+            <label className="ai-field" {...helpFor('storageDir')}>
+              <span>Storage folder</span>
+              <div className="storage-path-row">
+                <span className="storage-path" id="storage-path">
+                  {storagePath}
+                </span>
+                <button
+                  type="button"
+                  id="storage-change-btn"
+                  className="btn btn-secondary sm"
+                  data-icon="folder"
+                  aria-describedby={settingsHelpNoteId('storageDir')}
+                  onClick={() => void handleChooseStorageFolder()}
+                >
+                  Change…
+                </button>
+              </div>
+            </label>
+            <p className="storage-usage" id="storage-usage">
+              {usageText}
+            </p>
+            <p className="storage-unlimited">Unlimited recordings. Stored on your machine.</p>
+            <SettingsNote control="storageDir" className="storage-note" />
+            <button
+              type="button"
+              id="storage-reset-btn"
+              className="btn btn-secondary sm"
+              style={{ display: storagePath === defaultPath ? 'none' : undefined }}
+              onClick={() => setPendingDir('')}
+            >
+              Use default
+            </button>
+          </SettingsGroup>
         </div>
         <div className="settings-pane" id="settings-pane-privacy" style={{ display: section === 'privacy' ? 'flex' : 'none' }}>
-          <label className="ai-enable-row" {...helpFor('usageSignal')}>
-            <input
-              type="checkbox"
-              id="usage-signal-toggle"
-              aria-describedby={settingsHelpNoteId('usageSignal')}
-              checked={usageSignalEnabled}
-              onChange={(e) => setUsageSignalEnabled(e.target.checked)}
-            />
-            Share anonymous usage counts
-          </label>
-          <SettingsNote control="usageSignal" />
-          <label className="ai-enable-row" {...helpFor('crashReporting')}>
-            <input
-              type="checkbox"
-              id="crash-reporting-toggle"
-              aria-describedby={settingsHelpNoteId('crashReporting')}
-              checked={crashReportingEnabled}
-              onChange={(e) => setCrashReportingEnabled(e.target.checked)}
-            />
-            Send crash reports
-          </label>
-          <SettingsNote control="crashReporting" />
+          <SettingsGroup title="Diagnostics">
+            <label className="ai-enable-row" {...helpFor('usageSignal')}>
+              <span className="settings-row-label">Share anonymous usage counts</span>
+              <input
+                type="checkbox"
+                id="usage-signal-toggle"
+                aria-describedby={settingsHelpNoteId('usageSignal')}
+                checked={usageSignalEnabled}
+                onChange={(e) => setUsageSignalEnabled(e.target.checked)}
+              />
+            </label>
+            <SettingsNote control="usageSignal" />
+            <label className="ai-enable-row" {...helpFor('crashReporting')}>
+              <span className="settings-row-label">Send crash reports</span>
+              <input
+                type="checkbox"
+                id="crash-reporting-toggle"
+                aria-describedby={settingsHelpNoteId('crashReporting')}
+                checked={crashReportingEnabled}
+                onChange={(e) => setCrashReportingEnabled(e.target.checked)}
+              />
+            </label>
+            <SettingsNote control="crashReporting" />
+          </SettingsGroup>
         </div>
         <div className="settings-pane" id="settings-pane-labs" style={{ display: section === 'labs' ? 'flex' : 'none' }}>
-          <label className="ai-enable-row" {...helpFor('dawWorkspace')}>
-            <input
-              type="checkbox"
-              id="daw-workspace-toggle"
-              aria-describedby={settingsHelpNoteId('dawWorkspace')}
-              checked={dawWorkspaceEnabled}
-              onChange={(e) => setDawWorkspaceEnabled(e.target.checked)}
-            />
-            Try the experimental DAW-style Live workspace
-          </label>
-          <SettingsNote control="dawWorkspace" />
-          <label className="ai-enable-row" {...helpFor('liveAdjustments')}>
-            <input
-              type="checkbox"
-              id="live-adjustments-toggle"
-              aria-describedby={settingsHelpNoteId('liveAdjustments')}
-              checked={liveAdjustmentsEnabled}
-              onChange={(e) => setLiveAdjustmentsEnabled(e.target.checked)}
-            />
-            Try experimental live adjustments
-          </label>
-          <SettingsNote control="liveAdjustments" />
+          <SettingsGroup title="Experiments">
+            <label className="ai-enable-row" {...helpFor('dawWorkspace')}>
+              <span className="settings-row-label">Try the experimental DAW-style Live workspace</span>
+              <input
+                type="checkbox"
+                id="daw-workspace-toggle"
+                aria-describedby={settingsHelpNoteId('dawWorkspace')}
+                checked={dawWorkspaceEnabled}
+                onChange={(e) => setDawWorkspaceEnabled(e.target.checked)}
+              />
+            </label>
+            <SettingsNote control="dawWorkspace" />
+            <label className="ai-enable-row" {...helpFor('liveAdjustments')}>
+              <span className="settings-row-label">Try experimental live adjustments</span>
+              <input
+                type="checkbox"
+                id="live-adjustments-toggle"
+                aria-describedby={settingsHelpNoteId('liveAdjustments')}
+                checked={liveAdjustmentsEnabled}
+                onChange={(e) => setLiveAdjustmentsEnabled(e.target.checked)}
+              />
+            </label>
+            <SettingsNote control="liveAdjustments" />
+          </SettingsGroup>
         </div>
         <div className="settings-pane" id="settings-pane-audio" style={{ display: section === 'audio' ? 'flex' : 'none' }}>
           <div className="pro-gate" id="settings-audio-pro-gate">
@@ -514,44 +539,66 @@ export default function SettingsPanel({ booted = false }: { booted?: boolean }) 
               changed.
             </p>
           )}
-          {booted && <RigControls />}
-          {booted && <LiveSourceSettings />}
-          {booted && <SecondaryMeasurementPanel />}
-          {booted && <CaptureCadenceControls />}
+          {booted && (
+            <SettingsGroup title="Rig">
+              <RigControls />
+            </SettingsGroup>
+          )}
+          {booted && (
+            <SettingsGroup title="Input">
+              <LiveSourceSettings />
+            </SettingsGroup>
+          )}
+          {booted && (
+            <SettingsGroup title="Measurement">
+              <SecondaryMeasurementPanel />
+            </SettingsGroup>
+          )}
+          {booted && (
+            <SettingsGroup title="Metering">
+              <CaptureCadenceControls />
+            </SettingsGroup>
+          )}
           {/* Preflight checklist + Save baseline (#757): relocated here from the
               Live tab's PreflightPanel — same view-model the old panel used. */}
           {booted && <PreflightSettings />}
         </div>
         <div className="settings-pane" id="settings-pane-console" style={{ display: section === 'console' ? 'flex' : 'none' }}>
-          <div
-            className="ai-enable-row"
-            id="console-network-consent-row"
-            aria-describedby={settingsHelpNoteId('consoleNetworkConsent')}
-            {...helpFor('consoleNetworkConsent')}
-          >
-            <span>Console network access: {consoleNetworkConsentGranted ? 'Granted' : 'Not granted'}</span>
-            {consoleNetworkConsentGranted && (
-              <button
-                type="button"
-                id="console-network-consent-revoke-btn"
-                className="btn btn-secondary sm"
-                aria-describedby={settingsHelpNoteId('consoleNetworkConsent')}
-                onClick={() => {
-                  setConsoleNetworkConsentGranted(false);
-                  void useSettingsStore.getState().updateSettings({ consoleNetworkConsentGranted: false });
-                }}
-              >
-                Revoke access
-              </button>
-            )}
-          </div>
-          <SettingsNote control="consoleNetworkConsent" />
+          <SettingsGroup title="Network access">
+            <div
+              className="ai-enable-row"
+              id="console-network-consent-row"
+              aria-describedby={settingsHelpNoteId('consoleNetworkConsent')}
+              {...helpFor('consoleNetworkConsent')}
+            >
+              <span className="settings-row-label">
+                Console network access: {consoleNetworkConsentGranted ? 'Granted' : 'Not granted'}
+              </span>
+              {consoleNetworkConsentGranted && (
+                <button
+                  type="button"
+                  id="console-network-consent-revoke-btn"
+                  className="btn btn-secondary sm"
+                  aria-describedby={settingsHelpNoteId('consoleNetworkConsent')}
+                  onClick={() => {
+                    setConsoleNetworkConsentGranted(false);
+                    void useSettingsStore.getState().updateSettings({ consoleNetworkConsentGranted: false });
+                  }}
+                >
+                  Revoke access
+                </button>
+              )}
+            </div>
+            <SettingsNote control="consoleNetworkConsent" />
+          </SettingsGroup>
         </div>
         <div className="settings-pane" id="settings-pane-about" style={{ display: section === 'about' ? 'flex' : 'none' }}>
-          <p className="ai-dialog-version" id="ai-dialog-version">
-            {version}
-          </p>
-          <p className="ai-dialog-note">Licensed under the Sound Buddy Desktop Application License.</p>
+          <SettingsGroup title="Application">
+            <p className="ai-dialog-version" id="ai-dialog-version">
+              {version}
+            </p>
+            <p className="ai-dialog-note">Licensed under the Sound Buddy Desktop Application License.</p>
+          </SettingsGroup>
         </div>
           </div>
         </div>
