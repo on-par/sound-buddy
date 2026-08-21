@@ -1,5 +1,6 @@
 import { test, expect, type ElectronApplication, type Page } from '@playwright/test';
 import { launchApp } from './e2e-helpers';
+import type { SettingsApi, AppSettings, UpdateSettingsPatch } from '../../electron/ipc/api';
 
 // Unified Settings dialog (#204) — combines the AI provider settings (#76)
 // and Storage settings (#91) dialogs into one tabbed modal opened from a
@@ -19,24 +20,19 @@ let window: Page;
 const BOX_EPSILON_PX = 1;
 
 // The preload bridge (app/electron/preload.ts) is injected onto window at
-// runtime; the Playwright process has no ambient type for it, so declare the
-// two members these specs use rather than casting to `any`.
-interface SettingsBridge {
-  getSettings(): Promise<Record<string, unknown>>;
-  updateSettings(patch: Record<string, unknown>): Promise<unknown>;
-}
-
-async function persistedSetting(page: Page, key: string): Promise<unknown> {
+// runtime; the Playwright process has no ambient type for it, so cast to the
+// real SettingsApi contract rather than to `any`.
+async function persistedSetting(page: Page, key: keyof AppSettings): Promise<unknown> {
   return page.evaluate(
     async (k) =>
-      (await (window as unknown as { soundBuddy: SettingsBridge }).soundBuddy.getSettings())[k],
+      (await (window as unknown as { soundBuddy: SettingsApi }).soundBuddy.getSettings())[k],
     key,
   );
 }
 
-async function patchSettings(page: Page, patch: Record<string, unknown>): Promise<void> {
+async function patchSettings(page: Page, patch: UpdateSettingsPatch): Promise<void> {
   await page.evaluate(
-    (p) => (window as unknown as { soundBuddy: SettingsBridge }).soundBuddy.updateSettings(p),
+    (p) => (window as unknown as { soundBuddy: SettingsApi }).soundBuddy.updateSettings(p),
     patch,
   );
 }
