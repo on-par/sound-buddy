@@ -235,13 +235,6 @@ export default function SettingsPanel({ booted = false }: { booted?: boolean }) 
   const helpFor = (control: SettingsControl) => settingsHelpHandlers(control, setActiveHelp);
   const [defaultPath, setDefaultPath] = useState(DEFAULT_STORAGE_PATH);
   const [usageText, setUsageText] = useState('Calculating disk usage…');
-  // Eagerly seeded from the store (like shareChurchName) rather than
-  // useState(false) — this is a status display + immediate-commit Revoke
-  // button, so it must reflect the persisted value on first render, not just
-  // after the dialog-open effect re-syncs it.
-  const [consoleNetworkConsentGranted, setConsoleNetworkConsentGranted] = useState(
-    () => !!settings?.consoleNetworkConsentGranted
-  );
 
   /* c8 ignore start -- fetches the storage seed and app version on open;
      needs a real Electron bridge round-trip, exercised by settings.spec.ts.
@@ -252,7 +245,6 @@ export default function SettingsPanel({ booted = false }: { booted?: boolean }) 
     setSection('general');
     setActiveHelp(null);
     setUsageText('Calculating disk usage…');
-    setConsoleNetworkConsentGranted(!!settings?.consoleNetworkConsentGranted);
     let cancelled = false;
     void (async () => {
       const storageSeed = await loadStorageSeed(api);
@@ -289,6 +281,10 @@ export default function SettingsPanel({ booted = false }: { booted?: boolean }) 
 
   const storagePath = storageFolderDisplay(settings, defaultPath);
   const controlValues = instantSettingValues(settings);
+  // Derived, never mirrored (#1022): the row is a pure display of the persisted
+  // flag, so a grant made outside this dialog (ADR-0006's first-run modal) or a
+  // revoke here is reflected on the next render with no reopen.
+  const consoleNetworkConsentGranted = !!settings?.consoleNetworkConsentGranted;
 
   return (
     <div
@@ -563,7 +559,6 @@ export default function SettingsPanel({ booted = false }: { booted?: boolean }) 
                   className="btn btn-secondary sm"
                   aria-describedby={settingsHelpNoteId('consoleNetworkConsent')}
                   onClick={() => {
-                    setConsoleNetworkConsentGranted(false);
                     void useSettingsStore.getState().updateSettings({ consoleNetworkConsentGranted: false });
                   }}
                 >

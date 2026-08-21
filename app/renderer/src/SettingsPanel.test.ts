@@ -406,18 +406,23 @@ describe('console network consent status (#378)', () => {
     expect(html).not.toMatch(/id="console-network-consent[^"]*"[^>]*type="checkbox"/);
   });
 
-  // Revoke commits immediately via updateSettings — not gated behind the
-  // Save button — the same "not gated behind Save" discipline
-  // commitShareChurchName uses, because a security revoke should never be
-  // lost by a user who clicks it then closes the dialog with Cancel. Click
-  // dispatch itself needs jsdom (not available in this harness, per the
-  // file's existing convention for other buttons), so this asserts the
-  // wiring exists in source, same pattern the storage-toggle-seeding test
-  // below uses against SettingsPanel.tsx.
+  // Revoke commits immediately via updateSettings, per ADR-0084's
+  // commit-on-change rule — every Settings control persists on change, so a
+  // security revoke can never be lost by a user who clicks it then closes
+  // the dialog. Click dispatch itself needs jsdom (not available in this
+  // harness), so this asserts the wiring exists in source, the same
+  // source-assertion convention this file uses elsewhere (see
+  // batch-settings-gate.test.ts for the tree-wide version of this check).
   it('the Revoke button commits consoleNetworkConsentGranted:false immediately via updateSettings', () => {
     const src = fs.readFileSync(fileURLToPath(new URL('./SettingsPanel.tsx', import.meta.url)), 'utf8');
     expect(src).toContain('id="console-network-consent-revoke-btn"');
     expect(src).toContain("updateSettings({ consoleNetworkConsentGranted: false })");
+  });
+
+  it('the consent row derives from settingsStore with no local mirror (#1022)', () => {
+    const src = fs.readFileSync(fileURLToPath(new URL('./SettingsPanel.tsx', import.meta.url)), 'utf8');
+    expect(src).toContain('const consoleNetworkConsentGranted = !!settings?.consoleNetworkConsentGranted');
+    expect(src).not.toContain('setConsoleNetworkConsent' + 'Granted');
   });
 });
 
@@ -492,7 +497,6 @@ describe('the Done action (#1021)', () => {
     const src = fs.readFileSync(fileURLToPath(new URL('./SettingsPanel.tsx', import.meta.url)), 'utf8');
     expect(src).toMatch(/id="settings-dialog-done"[\s\S]{0,200}onClick=\{closeSettingsDialog\}/);
     expect(src).not.toContain('function handleSave');
-    expect(src).not.toContain('buildStoragePatch');
   });
 
   it('closing the dialog sends no updateSettings patch', async () => {
