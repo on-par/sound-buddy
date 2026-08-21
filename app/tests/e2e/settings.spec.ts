@@ -119,7 +119,8 @@ test.describe('Settings dialog (#204)', () => {
 
     await window.locator('#settings-btn').click();
     await window.locator('#settings-tab-btn-storage').click();
-    const defaultPath = await window.locator('#storage-path').textContent();
+    const defaultPath = (await window.locator('#storage-path').textContent()) ?? '';
+    expect(defaultPath).not.toBe('');
     await expect(window.locator('#storage-reset-btn')).toBeHidden();
 
     await window.locator('#storage-change-btn').click();
@@ -138,7 +139,7 @@ test.describe('Settings dialog (#204)', () => {
     // Reset is itself an instant-apply action — no back-door updateSettings
     // restore is needed after this.
     await window.locator('#storage-reset-btn').click();
-    await expect(window.locator('#storage-path')).toHaveText(defaultPath!);
+    await expect(window.locator('#storage-path')).toHaveText(defaultPath);
     await expect.poll(() => persistedSetting(window, 'storageDir')).toBe('');
     await window.locator('#settings-dialog-done').click();
 
