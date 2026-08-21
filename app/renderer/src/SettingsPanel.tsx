@@ -47,7 +47,7 @@ import SecondaryMeasurementPanel from './SecondaryMeasurementPanel';
 import CaptureCadenceControls from './CaptureCadenceControls';
 import PreflightSettings from './PreflightSettings';
 
-export type SettingsSection = 'storage' | 'audio' | 'about';
+export type SettingsSection = 'storage' | 'audio' | 'console' | 'about';
 
 // Day-of-week options for the weekly reminder's service-day <select> (#268),
 // index-aligned with Date.prototype.getDay() (0 = Sunday … 6 = Saturday).
@@ -230,6 +230,16 @@ export default function SettingsPanel({ booted = false }: { booted?: boolean }) 
           </button>
           <button
             type="button"
+            className={'settings-tab' + (section === 'console' ? ' active' : '')}
+            id="settings-tab-btn-console"
+            role="tab"
+            aria-selected={section === 'console'}
+            onClick={() => setSection('console')}
+          >
+            Console
+          </button>
+          <button
+            type="button"
             className={'settings-tab' + (section === 'about' ? ' active' : '')}
             id="settings-tab-btn-about"
             role="tab"
@@ -379,6 +389,37 @@ export default function SettingsPanel({ booted = false }: { booted?: boolean }) 
           <p className="ai-dialog-note" id="share-church-name-note">
             Optional. Leave blank (default) and shared images contain no identifying information.
           </p>
+        </div>
+        <div className="settings-pane" id="settings-pane-audio" style={{ display: section === 'audio' ? 'flex' : 'none' }}>
+          <div className="pro-gate" id="settings-audio-pro-gate">
+            <span className="pg-icon" dangerouslySetInnerHTML={{ __html: iconSvg('lock', 22) }} />
+            <span className="pg-title">Live monitoring is a Pro feature</span>
+            <span className="pg-msg">Capture and monitor multi-channel audio in real time, with saved rigs.</span>
+            <button
+              type="button"
+              className="pg-link"
+              onClick={() => useLicensingStore.getState().openDialog()}
+            >
+              Upgrade — enter a license key
+            </button>
+          </div>
+          {isCapturing && (
+            <p className="ai-dialog-note" id="settings-audio-capture-lock-note">
+              A capture is running — the rig, record folder, and meter cadence sliders are
+              locked until it stops. Input device changes restart capture on the selected
+              device. Measurement source and the secondary measurement device can still be
+              changed.
+            </p>
+          )}
+          {booted && <RigControls />}
+          {booted && <LiveSourceSettings />}
+          {booted && <SecondaryMeasurementPanel />}
+          {booted && <CaptureCadenceControls />}
+          {/* Preflight checklist + Save baseline (#757): relocated here from the
+              Live tab's PreflightPanel — same view-model the old panel used. */}
+          {booted && <PreflightSettings />}
+        </div>
+        <div className="settings-pane" id="settings-pane-console" style={{ display: section === 'console' ? 'flex' : 'none' }}>
           <div className="ai-enable-row" id="console-network-consent-row">
             <span>Console network access: {consoleNetworkConsentGranted ? 'Granted' : 'Not granted'}</span>
             {consoleNetworkConsentGranted && (
@@ -400,34 +441,6 @@ export default function SettingsPanel({ booted = false }: { booted?: boolean }) 
             feature is turned on — there is no toggle here to turn it on. Revoking takes effect immediately
             and blocks further console reads until you grant it again.
           </p>
-        </div>
-        <div className="settings-pane" id="settings-pane-audio" style={{ display: section === 'audio' ? 'flex' : 'none' }}>
-          <div className="pro-gate" id="settings-audio-pro-gate">
-            <span className="pg-icon" dangerouslySetInnerHTML={{ __html: iconSvg('lock', 22) }} />
-            <span className="pg-title">Live monitoring is a Pro feature</span>
-            <span className="pg-msg">Capture and monitor multi-channel audio in real time, with saved rigs.</span>
-            <button
-              type="button"
-              className="pg-link"
-              onClick={() => useLicensingStore.getState().openDialog()}
-            >
-              Upgrade — enter a license key
-            </button>
-          </div>
-          {isCapturing && (
-            <p className="ai-dialog-note" id="settings-audio-capture-lock-note">
-              A capture is running — the rig, input device, record folder, and meter cadence
-              sliders are locked until it stops. Measurement source and the secondary
-              measurement device can still be changed.
-            </p>
-          )}
-          {booted && <RigControls />}
-          {booted && <LiveSourceSettings />}
-          {booted && <SecondaryMeasurementPanel />}
-          {booted && <CaptureCadenceControls />}
-          {/* Preflight checklist + Save baseline (#757): relocated here from the
-              Live tab's PreflightPanel — same view-model the old panel used. */}
-          {booted && <PreflightSettings />}
         </div>
         <div className="settings-pane" id="settings-pane-about" style={{ display: section === 'about' ? 'flex' : 'none' }}>
           <p className="ai-dialog-version" id="ai-dialog-version">

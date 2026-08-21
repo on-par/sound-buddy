@@ -442,11 +442,12 @@ test.describe.serial('Rigs — save / load / switch', () => {
 
   test('capture-config controls lock on Start and re-enable on Stop', async () => {
     await stubCapture(true);
-    const locked = ['#device-select', '#device-refresh-btn', '#record-folder-btn',
-      '#meter-interval', '#window-secs'];
+    const locked = ['#device-refresh-btn', '#record-folder-btn', '#meter-interval', '#window-secs'];
 
     await win.locator('#record-button').click();
     await openAudioSettings(win);
+    await expect(win.locator('#device-select')).toBeEnabled();
+    await expect(win.locator('#device-select')).toHaveAttribute('aria-disabled', 'false');
     for (const sel of locked) {
       await expect(win.locator(sel)).toBeDisabled();
       await expect(win.locator(sel)).toHaveAttribute('aria-disabled', 'true');

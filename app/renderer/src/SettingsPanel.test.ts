@@ -73,15 +73,17 @@ describe('saveAll', () => {
 });
 
 describe('SettingsPanel markup', () => {
-  it('renders hidden by default with both top-level tabs and panes present', () => {
+  it('renders hidden by default with all top-level tabs and panes present', () => {
     const html = renderMarkup();
     expect(html).toContain('id="settings-dialog"');
     expect(html).toContain('style="display:none"');
     expect(html).toContain('id="settings-tab-btn-storage"');
     expect(html).toContain('id="settings-tab-btn-audio"');
+    expect(html).toContain('id="settings-tab-btn-console"');
     expect(html).toContain('id="settings-tab-btn-about"');
     expect(html).toContain('id="settings-pane-storage"');
     expect(html).toContain('id="settings-pane-audio"');
+    expect(html).toContain('id="settings-pane-console"');
     expect(html).toContain('id="settings-pane-about"');
   });
 
@@ -104,9 +106,20 @@ describe('SettingsPanel markup', () => {
     expect(html).toMatch(/id="settings-pane-audio" style="display:none"/);
   });
 
+  it('defaults to the Console tab inactive and its pane hidden', () => {
+    const html = renderMarkup();
+    expect(html).toContain('id="settings-tab-btn-console" role="tab" aria-selected="false"');
+    expect(html).toMatch(/id="settings-pane-console" style="display:none"/);
+  });
+
   it('wires the Audio tab button to setSection("audio")', () => {
     const src = fs.readFileSync(fileURLToPath(new URL('./SettingsPanel.tsx', import.meta.url)), 'utf8');
     expect(src).toContain("onClick={() => setSection('audio')}");
+  });
+
+  it('wires the Console tab button to setSection("console")', () => {
+    const src = fs.readFileSync(fileURLToPath(new URL('./SettingsPanel.tsx', import.meta.url)), 'utf8');
+    expect(src).toContain("onClick={() => setSection('console')}");
   });
 
   it('renders the storage pane copy verbatim, including the no-caps guardrail line', () => {
@@ -213,6 +226,8 @@ describe('Audio pane composition (#727)', () => {
     const html = renderMarkup(true);
     expect(html).toContain('id="settings-audio-capture-lock-note"');
     const note = html.match(/<p class="ai-dialog-note" id="settings-audio-capture-lock-note">(.*?)<\/p>/)?.[1] ?? '';
+    expect(note).not.toMatch(/input device[^.]*locked/i);
+    expect(note).toMatch(/Input device changes restart capture/i);
     expect(note).not.toMatch(/measurement source[^.]*locked/i);
     expect(note).not.toMatch(/secondary measurement[^.]*locked/i);
   });
@@ -251,6 +266,14 @@ describe('Audio pane composition (#727)', () => {
 });
 
 describe('console network consent status (#378)', () => {
+  it('renders console network consent inside the Console pane, not the Storage pane', () => {
+    const html = renderMarkup();
+    const storagePane = html.match(/id="settings-pane-storage"[\s\S]*?id="settings-pane-audio"/)?.[0] ?? '';
+    const consolePane = html.match(/id="settings-pane-console"[\s\S]*?id="settings-pane-about"/)?.[0] ?? '';
+    expect(storagePane).not.toContain('id="console-network-consent-row"');
+    expect(consolePane).toContain('id="console-network-consent-row"');
+  });
+
   it('renders "Not granted" and no Revoke button by default (no persisted settings)', () => {
     const html = renderMarkup();
     expect(html).toContain('id="console-network-consent-row"');
@@ -340,8 +363,8 @@ describe('storage toggle seeding on dialog open (#522, #204)', () => {
 // proof the export still exists post-#657's AI-tab removal, now widened for
 // the #726 Audio tab).
 describe('SettingsSection', () => {
-  it('includes storage, audio, and about', () => {
-    const sections: SettingsSection[] = ['storage', 'audio', 'about'];
-    expect(sections).toEqual(['storage', 'audio', 'about']);
+  it('includes storage, audio, console, and about', () => {
+    const sections: SettingsSection[] = ['storage', 'audio', 'console', 'about'];
+    expect(sections).toEqual(['storage', 'audio', 'console', 'about']);
   });
 });

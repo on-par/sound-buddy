@@ -8,6 +8,7 @@ import LiveSourceSettings, { changeDevice } from './LiveSourceSettings';
 import { useLiveCaptureStore } from './stores/liveCaptureStore';
 import { useSettingsStore } from './stores/settingsStore';
 import type { LiveDevice, StripConfig } from './live-capture-panel';
+import type { LiveCaptureRuntime } from './LiveControls';
 
 // The pure classic scripts liveTransitionState/armState/groupState/rigKind/
 // channelLabels — real modules (not hand-rolled stubs), same convention as
@@ -17,6 +18,7 @@ const armState = require('../arm-state.js');
 const groupState = require('../group-state.js');
 const rigKind = require('../rig-kind.js');
 const channelLabels = require('../channel-labels.js');
+const INITIAL_LIVE_CAPTURE_STATE = useLiveCaptureStore.getInitialState();
 
 beforeEach(() => {
   (globalThis as { window?: unknown }).window = { liveTransitionState, armState, groupState, rigKind, channelLabels };
@@ -26,7 +28,9 @@ afterEach(() => {
   delete (globalThis as { window?: unknown }).window;
   useLiveCaptureStore.setState({
     devices: [], deviceHint: null, selectedDevice: '', channelConfig: [], measurementSource: null,
-    liveMode: 'monitor', recordDir: '', isCapturing: false, promoting: false,
+    liveMode: 'monitor', recordDir: '', isCapturing: false, promoting: false, stopping: false, demoting: false,
+    startCapture: INITIAL_LIVE_CAPTURE_STATE.startCapture,
+    stopCapture: INITIAL_LIVE_CAPTURE_STATE.stopCapture,
   });
   useSettingsStore.setState({ settings: null, settingsError: null });
 });
@@ -103,10 +107,11 @@ describe('LiveSourceSettings', () => {
     expect(renderMarkup()).toContain('~/Music/Sound Buddy');
   });
 
-  it('disables device/record-folder controls while capturing', () => {
+  it('keeps the input-device select enabled while capturing, but still locks refresh and record folder', () => {
     useLiveCaptureStore.setState({ isCapturing: true, liveMode: 'record' });
     const html = renderMarkup();
-    expect(html).toMatch(/id="device-select"[^>]*disabled=""/);
+    const deviceSelect = html.match(/<select id="device-select"[^>]*>/)?.[0] ?? '';
+    expect(deviceSelect).not.toContain(' disabled');
     expect(html).toMatch(/id="device-refresh-btn"[^>]*disabled=""/);
     expect(html).toMatch(/id="record-folder-btn"[^>]*disabled=""/);
   });
@@ -117,7 +122,7 @@ describe('LiveSourceSettings', () => {
     expect(html).not.toMatch(/id="measurement-source"[^>]*disabled/);
   });
 
-  it('reflects the lock as aria-disabled too (tests/rigs.spec.ts checks both, since the workspace toolbar bakes in `disabled` on rebuild without aria-disabled)', () => {
+  it('reflects the remaining locked controls as aria-disabled too', () => {
     const idle = renderMarkup();
     expect(idle).toMatch(/id="device-select"[^>]*aria-disabled="false"/);
     expect(idle).toMatch(/id="device-refresh-btn"[^>]*aria-disabled="false"/);
@@ -125,7 +130,7 @@ describe('LiveSourceSettings', () => {
 
     useLiveCaptureStore.setState({ isCapturing: true });
     const locked = renderMarkup();
-    expect(locked).toMatch(/id="device-select"[^>]*aria-disabled="true"/);
+    expect(locked).toMatch(/id="device-select"[^>]*aria-disabled="false"/);
     expect(locked).toMatch(/id="device-refresh-btn"[^>]*aria-disabled="true"/);
     expect(locked).toMatch(/id="record-folder-btn"[^>]*aria-disabled="true"/);
   });
@@ -137,11 +142,54 @@ describe('LiveSourceSettings', () => {
 // this harness to mount it for real); the click-path integration is covered
 // by tests/e2e/live-capture.spec.ts.
 describe('changeDevice', () => {
-  it('writes the selection into the store, which re-seeds the config and clears the runtime selections (TD-001 slice 6h, #711)', () => {
+  function mockRuntime(): LiveCaptureRuntime {
+    return {
+      changeMeasurementSource: vi.fn(),
+      chooseRecordFolder: vi.fn(async () => {}),
+      beforeStartCapture: vi.fn(() => ({ ok: true }) as const),
+      onCaptureStarting: vi.fn(),
+      onCaptureStarted: vi.fn(),
+      onCaptureStopping: vi.fn(),
+      onCaptureStopped: vi.fn(),
+      promoteToRecording: vi.fn(async () => {}),
+    };
+  }
+
+  it('writes the selection into the store, which re-seeds the config and clears the runtime selections (TD-001 slice 6h, #711)', async () => {
     const selectDevice = vi.spyOn(useLiveCaptureStore.getState(), 'selectDevice');
 
-    changeDevice('0');
+    await changeDevice('0');
 
     expect(selectDevice).toHaveBeenCalledWith('0');
+  });
+
+  it('stops a running capture, switches the selected input, then restarts with the current cadence', async () => {
+    const order: string[] = [];
+    const rt = mockRuntime();
+    useLiveCaptureStore.setState({
+      devices: DEVICES,
+      selectedDevice: '',
+      isCapturing: true,
+      windowSecs: 5,
+      meterIntervalMs: 250,
+      stopCapture: vi.fn(async () => {
+        order.push('stop');
+        useLiveCaptureStore.setState({ isCapturing: false });
+        return { success: true, sessionDir: null };
+      }),
+      startCapture: vi.fn(async (opts) => {
+        order.push(`start:${opts.windowSecs}/${opts.intervalSecs}`);
+        useLiveCaptureStore.setState({ isCapturing: true });
+        return { success: true };
+      }),
+    });
+
+    await changeDevice('0', rt);
+
+    expect(order).toEqual(['stop', 'start:5/0.25']);
+    expect(useLiveCaptureStore.getState().selectedDevice).toBe('0');
+    expect(useLiveCaptureStore.getState().isCapturing).toBe(true);
+    expect(rt.onCaptureStopping).toHaveBeenCalledTimes(1);
+    expect(rt.onCaptureStarting).toHaveBeenCalledTimes(1);
   });
 });
