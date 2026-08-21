@@ -46,6 +46,7 @@ import LiveSourceSettings from './LiveSourceSettings';
 import SecondaryMeasurementPanel from './SecondaryMeasurementPanel';
 import CaptureCadenceControls from './CaptureCadenceControls';
 import PreflightSettings from './PreflightSettings';
+import { SETTINGS_HELP_ENTRIES, resolveSettingsHelp, settingsHelpHandlers, settingsHelpNoteId } from './settings-help';
 
 export type SettingsSection = 'general' | 'audio' | 'console' | 'storage' | 'privacy' | 'labs' | 'about';
 
@@ -151,6 +152,21 @@ export async function commitShareChurchName(store: SettingsStoreHandle, value: s
   await store.getState().updateSettings({ shareChurchName: value });
 }
 
+// Renders a single row's help note from SETTINGS_HELP_ENTRIES (#1007) — the
+// same table backs both this always-in-DOM, visually-hidden paragraph and
+// the footer help strip, so the two copies of this prose can never drift.
+// `className` defaults to the shared `.ai-dialog-note` styling, but the
+// storage note keeps its own `storage-note` class (#storage-note) instead.
+function SettingsNote({ control, className = 'ai-dialog-note' }: { control: SettingsControl; className?: string }) {
+  const entry = SETTINGS_HELP_ENTRIES.find((e) => e.control === control);
+  if (!entry) return null;
+  return (
+    <p className={`${className} settings-note-hidden`} id={entry.noteId}>
+      {entry.text}
+    </p>
+  );
+}
+
 export default function SettingsPanel({ booted = false }: { booted?: boolean }) {
   const api = useElectron();
   const { settings, dialogOpen } = useStoreShallow(useSettingsStore, (s) => ({
@@ -166,6 +182,11 @@ export default function SettingsPanel({ booted = false }: { booted?: boolean }) 
   const [shareChurchName, setShareChurchName] = useState(() => settings?.shareChurchName ?? '');
 
   const [section, setSection] = useState<SettingsSection>('general');
+  // The row currently hovered or keyboard-focused (#1007) — drives the
+  // footer help strip via resolveSettingsHelp; null means "nothing active",
+  // which falls back to the current section's one-line description.
+  const [activeHelp, setActiveHelp] = useState<SettingsControl | null>(null);
+  const helpFor = (control: SettingsControl) => settingsHelpHandlers(control, setActiveHelp);
   const [pendingDir, setPendingDir] = useState<string | null>(null);
   const [defaultPath, setDefaultPath] = useState(DEFAULT_STORAGE_PATH);
   const [loadedPath, setLoadedPath] = useState(DEFAULT_STORAGE_PATH);
@@ -192,6 +213,7 @@ export default function SettingsPanel({ booted = false }: { booted?: boolean }) 
   useEffect(() => {
     if (!dialogOpen) return;
     setSection('general');
+    setActiveHelp(null);
     setPendingDir(null);
     setUsageText('Calculating disk usage…');
     setUsageSignalEnabled(!!settings?.usageSignalEnabled);
@@ -287,19 +309,23 @@ export default function SettingsPanel({ booted = false }: { booted?: boolean }) 
               id={`settings-tab-btn-${name}`}
               role="tab"
               aria-selected={section === name}
-              onClick={() => setSection(name)}
+              onClick={() => {
+                setSection(name);
+                setActiveHelp(null);
+              }}
             >
               {SECTION_LABELS[name]}
             </button>
           ))}
         </div>
         <div className="settings-pane" id="settings-pane-general" style={{ display: section === 'general' ? 'flex' : 'none' }}>
-          <label className="ai-field" id="grading-profile-field">
+          <label className="ai-field" id="grading-profile-field" {...helpFor('gradingProfile')}>
             <span className="ai-field-label">Grading strictness</span>
             <div className="select-wrap">
               <select
                 id="grading-profile-select"
                 aria-label="Grading strictness"
+                aria-describedby={settingsHelpNoteId('gradingProfile')}
                 value={gradingProfile}
                 onChange={(e) => setGradingProfile(e.target.value as 'casual' | 'broadcast')}
               >
@@ -309,26 +335,24 @@ export default function SettingsPanel({ booted = false }: { booted?: boolean }) 
               <span className="select-caret" data-icon="chevron-down" />
             </div>
           </label>
-          <p className="ai-dialog-note" id="grading-profile-note">
-            Casual / volunteer grades against today's thresholds. Broadcast-ready tightens
-            every level, dynamic-range, and balance target — the same recording may grade
-            lower. The report card always shows which profile graded it.
-          </p>
-          <label className="ai-enable-row">
+          <SettingsNote control="gradingProfile" />
+          <label className="ai-enable-row" {...helpFor('weeklyReminder')}>
             <input
               type="checkbox"
               id="weekly-reminder-toggle"
+              aria-describedby={settingsHelpNoteId('weeklyReminder')}
               checked={weeklyReminderEnabled}
               onChange={(e) => setWeeklyReminderEnabled(e.target.checked)}
             />
             Remind me to grade my weekly service
           </label>
-          <label className="ai-field">
+          <label className="ai-field" {...helpFor('weeklyReminder')}>
             <span className="ai-field-label">Service day</span>
             <div className="select-wrap">
               <select
                 id="weekly-reminder-day"
                 aria-label="Service day"
+                aria-describedby={settingsHelpNoteId('weeklyReminder')}
                 value={weeklyReminderServiceDay}
                 onChange={(e) => setWeeklyReminderServiceDay(Number(e.target.value))}
               >
@@ -341,12 +365,8 @@ export default function SettingsPanel({ booted = false }: { booted?: boolean }) 
               <span className="select-caret" data-icon="chevron-down" />
             </div>
           </label>
-          <p className="ai-dialog-note" id="weekly-reminder-note">
-            Off unless you turn it on. Sound Buddy shows a local notification on this Mac the evening before your
-            service day, reminding you to record and grade it. Nothing leaves your machine — no account, no email, no
-            server.
-          </p>
-          <label className="ai-field" id="share-church-name-field">
+          <SettingsNote control="weeklyReminder" />
+          <label className="ai-field" id="share-church-name-field" {...helpFor('shareChurchName')}>
             <span className="ai-field-label">Church name (for shared images)</span>
             <input
               type="text"
@@ -356,23 +376,29 @@ export default function SettingsPanel({ booted = false }: { booted?: boolean }) 
               autoComplete="off"
               spellCheck={false}
               maxLength={MAX_CHURCH_NAME_LEN}
+              aria-describedby={settingsHelpNoteId('shareChurchName')}
               value={shareChurchName}
               onChange={(e) => setShareChurchName(e.target.value)}
               onBlur={() => void commitShareChurchName(useSettingsStore, shareChurchName)}
             />
           </label>
-          <p className="ai-dialog-note" id="share-church-name-note">
-            Optional. Leave blank (default) and shared images contain no identifying information.
-          </p>
+          <SettingsNote control="shareChurchName" />
         </div>
         <div className="settings-pane" id="settings-pane-storage" style={{ display: section === 'storage' ? 'flex' : 'none' }}>
-          <label className="ai-field">
+          <label className="ai-field" {...helpFor('storageDir')}>
             <span>Storage folder</span>
             <div className="storage-path-row">
               <span className="storage-path" id="storage-path">
                 {storagePath}
               </span>
-              <button type="button" id="storage-change-btn" className="btn btn-secondary sm" data-icon="folder" onClick={() => void handleChooseStorageFolder()}>
+              <button
+                type="button"
+                id="storage-change-btn"
+                className="btn btn-secondary sm"
+                data-icon="folder"
+                aria-describedby={settingsHelpNoteId('storageDir')}
+                onClick={() => void handleChooseStorageFolder()}
+              >
                 Change…
               </button>
             </div>
@@ -381,10 +407,7 @@ export default function SettingsPanel({ booted = false }: { booted?: boolean }) 
             {usageText}
           </p>
           <p className="storage-unlimited">Unlimited recordings. Stored on your machine.</p>
-          <p className="storage-note" id="storage-note">
-            Record and analyze as much as you want — no limits on any tier. New recordings are saved here; anything
-            you&apos;ve already recorded stays in its current folder.
-          </p>
+          <SettingsNote control="storageDir" className="storage-note" />
           <button
             type="button"
             id="storage-reset-btn"
@@ -396,49 +419,52 @@ export default function SettingsPanel({ booted = false }: { booted?: boolean }) 
           </button>
         </div>
         <div className="settings-pane" id="settings-pane-privacy" style={{ display: section === 'privacy' ? 'flex' : 'none' }}>
-          <label className="ai-enable-row">
-            <input type="checkbox" id="usage-signal-toggle" checked={usageSignalEnabled} onChange={(e) => setUsageSignalEnabled(e.target.checked)} />
+          <label className="ai-enable-row" {...helpFor('usageSignal')}>
+            <input
+              type="checkbox"
+              id="usage-signal-toggle"
+              aria-describedby={settingsHelpNoteId('usageSignal')}
+              checked={usageSignalEnabled}
+              onChange={(e) => setUsageSignalEnabled(e.target.checked)}
+            />
             Share anonymous usage counts
           </label>
-          <p className="ai-dialog-note" id="usage-signal-note">
-            Off unless you turn it on. When enabled, Sound Buddy sends only anonymous usage counts — which features get
-            used (app opened, analysis run, report viewed or exported, feedback sent) plus app version, macOS version,
-            platform, an anonymous install/session id, and the hour it happened — never audio, recordings, church or
-            file names, file paths, prompts, or report text. Your audio never leaves your machine.
-          </p>
-          <label className="ai-enable-row">
-            <input type="checkbox" id="crash-reporting-toggle" checked={crashReportingEnabled} onChange={(e) => setCrashReportingEnabled(e.target.checked)} />
+          <SettingsNote control="usageSignal" />
+          <label className="ai-enable-row" {...helpFor('crashReporting')}>
+            <input
+              type="checkbox"
+              id="crash-reporting-toggle"
+              aria-describedby={settingsHelpNoteId('crashReporting')}
+              checked={crashReportingEnabled}
+              onChange={(e) => setCrashReportingEnabled(e.target.checked)}
+            />
             Send crash reports
           </label>
-          <p className="ai-dialog-note" id="crash-reporting-note">
-            Off unless you turn it on. When enabled, a crash sends only: app version, macOS version, the error message
-            and stack trace (emails, license keys, and folder paths removed — file names are reduced to their base
-            name), which screen you were on, and the names of recent app actions. Never recordings, audio, full file
-            paths, or anything you typed.
-          </p>
+          <SettingsNote control="crashReporting" />
         </div>
         <div className="settings-pane" id="settings-pane-labs" style={{ display: section === 'labs' ? 'flex' : 'none' }}>
-          <label className="ai-enable-row">
-            <input type="checkbox" id="daw-workspace-toggle" checked={dawWorkspaceEnabled} onChange={(e) => setDawWorkspaceEnabled(e.target.checked)} />
+          <label className="ai-enable-row" {...helpFor('dawWorkspace')}>
+            <input
+              type="checkbox"
+              id="daw-workspace-toggle"
+              aria-describedby={settingsHelpNoteId('dawWorkspace')}
+              checked={dawWorkspaceEnabled}
+              onChange={(e) => setDawWorkspaceEnabled(e.target.checked)}
+            />
             Try the experimental DAW-style Live workspace
           </label>
-          <p className="ai-dialog-note" id="daw-workspace-note">
-            Off unless you turn it on. An early, experimental take on a DAW-style recording workspace for the Live tab.
-            Your current Live Capture workflow stays the default — turn this off anytime to go back.
-          </p>
-          <label className="ai-enable-row">
+          <SettingsNote control="dawWorkspace" />
+          <label className="ai-enable-row" {...helpFor('liveAdjustments')}>
             <input
               type="checkbox"
               id="live-adjustments-toggle"
+              aria-describedby={settingsHelpNoteId('liveAdjustments')}
               checked={liveAdjustmentsEnabled}
               onChange={(e) => setLiveAdjustmentsEnabled(e.target.checked)}
             />
             Try experimental live adjustments
           </label>
-          <p className="ai-dialog-note" id="live-adjustments-note">
-            Off unless you turn it on. An early, experimental area for mix suggestions while you monitor or record in
-            Live Capture. Nothing is analyzed or sent anywhere — turn this off anytime to hide it.
-          </p>
+          <SettingsNote control="liveAdjustments" />
         </div>
         <div className="settings-pane" id="settings-pane-audio" style={{ display: section === 'audio' ? 'flex' : 'none' }}>
           <div className="pro-gate" id="settings-audio-pro-gate">
@@ -470,13 +496,19 @@ export default function SettingsPanel({ booted = false }: { booted?: boolean }) 
           {booted && <PreflightSettings />}
         </div>
         <div className="settings-pane" id="settings-pane-console" style={{ display: section === 'console' ? 'flex' : 'none' }}>
-          <div className="ai-enable-row" id="console-network-consent-row">
+          <div
+            className="ai-enable-row"
+            id="console-network-consent-row"
+            aria-describedby={settingsHelpNoteId('consoleNetworkConsent')}
+            {...helpFor('consoleNetworkConsent')}
+          >
             <span>Console network access: {consoleNetworkConsentGranted ? 'Granted' : 'Not granted'}</span>
             {consoleNetworkConsentGranted && (
               <button
                 type="button"
                 id="console-network-consent-revoke-btn"
                 className="btn btn-secondary sm"
+                aria-describedby={settingsHelpNoteId('consoleNetworkConsent')}
                 onClick={() => {
                   setConsoleNetworkConsentGranted(false);
                   void useSettingsStore.getState().updateSettings({ consoleNetworkConsentGranted: false });
@@ -486,11 +518,7 @@ export default function SettingsPanel({ booted = false }: { booted?: boolean }) 
               </button>
             )}
           </div>
-          <p className="ai-dialog-note" id="console-network-consent-note">
-            Granted only when you explicitly allow it from the prompt shown the first time a live-console
-            feature is turned on — there is no toggle here to turn it on. Revoking takes effect immediately
-            and blocks further console reads until you grant it again.
-          </p>
+          <SettingsNote control="consoleNetworkConsent" />
         </div>
         <div className="settings-pane" id="settings-pane-about" style={{ display: section === 'about' ? 'flex' : 'none' }}>
           <p className="ai-dialog-version" id="ai-dialog-version">
@@ -498,6 +526,12 @@ export default function SettingsPanel({ booted = false }: { booted?: boolean }) 
           </p>
           <p className="ai-dialog-note">Licensed under the Sound Buddy Desktop Application License.</p>
         </div>
+        {/* Visual-only affordance (#1007) — screen readers already get this
+            copy through each control's aria-describedby, so an announced
+            strip would double-read it on every hover. */}
+        <p className="settings-help-strip" id="settings-help-strip" aria-hidden="true">
+          {resolveSettingsHelp(activeHelp, section)}
+        </p>
         <div className="rig-dialog-actions">
           <button
             type="button"
