@@ -33,15 +33,16 @@ test.describe('Settings dialog (#204)', () => {
     await expect(window.locator('#settings-island #settings-dialog')).toHaveCount(1);
   });
 
-  test('the gear opens the dialog on the Storage tab by default', async () => {
+  test('the gear opens the dialog on the General tab by default', async () => {
     await window.locator('#settings-btn').click();
     await expect(window.locator('#settings-dialog')).toBeVisible();
-    await expect(window.locator('#settings-tab-btn-storage')).toHaveClass(/active/);
-    await expect(window.locator('#settings-pane-storage')).toBeVisible();
+    await expect(window.locator('#settings-tab-btn-general')).toHaveClass(/active/);
+    await expect(window.locator('#settings-pane-general')).toBeVisible();
   });
 
   test('Escape closes the dialog', async () => {
     await window.locator('#settings-btn').click();
+    await window.locator('#settings-tab-btn-storage').click();
     await expect(window.locator('#settings-dialog')).toBeVisible();
     await window.keyboard.press('Escape');
     await expect(window.locator('#settings-dialog')).toBeHidden();
@@ -77,6 +78,7 @@ test.describe('Settings dialog (#204)', () => {
     }, chosen);
 
     await window.locator('#settings-btn').click();
+    await window.locator('#settings-tab-btn-storage').click();
     await window.locator('#storage-change-btn').click();
     await expect(window.locator('#storage-path')).toHaveText(chosen);
     await window.locator('#settings-dialog-save').click();
@@ -84,6 +86,7 @@ test.describe('Settings dialog (#204)', () => {
 
     // Reopen: get-storage-usage reflects the persisted folder.
     await window.locator('#settings-btn').click();
+    await window.locator('#settings-tab-btn-storage').click();
     await expect(window.locator('#storage-path')).toHaveText(chosen);
     // Now that a custom folder is set, the reset action is offered.
     await expect(window.locator('#storage-reset-btn')).toBeVisible();
@@ -100,6 +103,7 @@ test.describe('Settings dialog (#204)', () => {
   // no collection/network code anywhere. Lives in the same Settings dialog.
   test('usage-signal toggle is off by default with honest copy', async () => {
     await window.locator('#settings-btn').click();
+    await window.locator('#settings-tab-btn-privacy').click();
     await expect(window.locator('#usage-signal-toggle')).toBeVisible();
     await expect(window.locator('#usage-signal-toggle')).not.toBeChecked();
     await expect(window.locator('#usage-signal-note')).toContainText('anonymous');
@@ -109,11 +113,13 @@ test.describe('Settings dialog (#204)', () => {
 
   test('checking the usage-signal toggle persists across a reopen, then restores to off', async () => {
     await window.locator('#settings-btn').click();
+    await window.locator('#settings-tab-btn-privacy').click();
     await window.locator('#usage-signal-toggle').check();
     await window.locator('#settings-dialog-save').click();
     await expect(window.locator('#settings-dialog')).toBeHidden();
 
     await window.locator('#settings-btn').click();
+    await window.locator('#settings-tab-btn-privacy').click();
     await expect(window.locator('#usage-signal-toggle')).toBeChecked();
 
     // Restore the default-OFF state so no ON preference leaks into later tests.
@@ -122,6 +128,7 @@ test.describe('Settings dialog (#204)', () => {
     await expect(window.locator('#settings-dialog')).toBeHidden();
 
     await window.locator('#settings-btn').click();
+    await window.locator('#settings-tab-btn-privacy').click();
     await expect(window.locator('#usage-signal-toggle')).not.toBeChecked();
     await window.locator('#settings-dialog-cancel').click();
   });
@@ -137,12 +144,14 @@ test.describe('Settings dialog (#204)', () => {
     }, chosen);
 
     await window.locator('#settings-btn').click();
+    await window.locator('#settings-tab-btn-storage').click();
     await window.locator('#storage-change-btn').click();
     await expect(window.locator('#storage-path')).toHaveText(chosen);
     await window.locator('#settings-dialog-save').click();
     await expect(window.locator('#settings-dialog')).toBeHidden();
 
     await window.locator('#settings-btn').click();
+    await window.locator('#settings-tab-btn-storage').click();
     await expect(window.locator('#storage-path')).toHaveText(chosen);
     await window.locator('#settings-dialog-cancel').click();
 

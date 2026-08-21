@@ -47,7 +47,78 @@ import SecondaryMeasurementPanel from './SecondaryMeasurementPanel';
 import CaptureCadenceControls from './CaptureCadenceControls';
 import PreflightSettings from './PreflightSettings';
 
-export type SettingsSection = 'storage' | 'audio' | 'console' | 'about';
+export type SettingsSection = 'general' | 'audio' | 'console' | 'storage' | 'privacy' | 'labs' | 'about';
+
+export const SETTINGS_SECTIONS: readonly SettingsSection[] = [
+  'general',
+  'audio',
+  'console',
+  'storage',
+  'privacy',
+  'labs',
+  'about',
+];
+
+const SECTION_LABELS: Record<SettingsSection, string> = {
+  general: 'General',
+  audio: 'Audio',
+  console: 'Console',
+  storage: 'Storage',
+  privacy: 'Privacy',
+  labs: 'Labs',
+  about: 'About',
+};
+
+export type SettingsControl =
+  | 'gradingProfile'
+  | 'weeklyReminder'
+  | 'weeklyReminderServiceDay'
+  | 'shareChurchName'
+  | 'rig'
+  | 'inputDevice'
+  | 'measurementSource'
+  | 'secondaryMeasurementDevice'
+  | 'meterRate'
+  | 'meterWindow'
+  | 'preflight'
+  | 'consoleNetworkConsent'
+  | 'storageDir'
+  | 'diskUsage'
+  | 'usageSignal'
+  | 'crashReporting'
+  | 'dawWorkspace'
+  | 'liveAdjustments'
+  | 'version'
+  | 'license';
+
+const SETTING_SECTION_TARGETS: readonly { setting: SettingsControl; section: SettingsSection }[] = [
+  { setting: 'gradingProfile', section: 'general' },
+  { setting: 'weeklyReminder', section: 'general' },
+  { setting: 'weeklyReminderServiceDay', section: 'general' },
+  { setting: 'shareChurchName', section: 'general' },
+  { setting: 'rig', section: 'audio' },
+  { setting: 'inputDevice', section: 'audio' },
+  { setting: 'measurementSource', section: 'audio' },
+  { setting: 'secondaryMeasurementDevice', section: 'audio' },
+  { setting: 'meterRate', section: 'audio' },
+  { setting: 'meterWindow', section: 'audio' },
+  { setting: 'preflight', section: 'audio' },
+  { setting: 'consoleNetworkConsent', section: 'console' },
+  { setting: 'storageDir', section: 'storage' },
+  { setting: 'diskUsage', section: 'storage' },
+  { setting: 'usageSignal', section: 'privacy' },
+  { setting: 'crashReporting', section: 'privacy' },
+  { setting: 'dawWorkspace', section: 'labs' },
+  { setting: 'liveAdjustments', section: 'labs' },
+  { setting: 'version', section: 'about' },
+  { setting: 'license', section: 'about' },
+];
+
+export function settingsSectionFor(setting: SettingsControl): SettingsSection {
+  const target = SETTING_SECTION_TARGETS.find((entry) => entry.setting === setting);
+  if (!target) throw new Error(`No Settings section mapped for ${setting}`);
+  return target.section;
+}
 
 // Day-of-week options for the weekly reminder's service-day <select> (#268),
 // index-aligned with Date.prototype.getDay() (0 = Sunday … 6 = Saturday).
@@ -94,7 +165,7 @@ export default function SettingsPanel({ booted = false }: { booted?: boolean }) 
   // the persisted value — the effect below only re-syncs it on reopen.
   const [shareChurchName, setShareChurchName] = useState(() => settings?.shareChurchName ?? '');
 
-  const [section, setSection] = useState<SettingsSection>('storage');
+  const [section, setSection] = useState<SettingsSection>('general');
   const [pendingDir, setPendingDir] = useState<string | null>(null);
   const [defaultPath, setDefaultPath] = useState(DEFAULT_STORAGE_PATH);
   const [loadedPath, setLoadedPath] = useState(DEFAULT_STORAGE_PATH);
@@ -120,7 +191,7 @@ export default function SettingsPanel({ booted = false }: { booted?: boolean }) 
      so effects never run under renderToString. */
   useEffect(() => {
     if (!dialogOpen) return;
-    setSection('storage');
+    setSection('general');
     setPendingDir(null);
     setUsageText('Calculating disk usage…');
     setUsageSignalEnabled(!!settings?.usageSignalEnabled);
@@ -208,116 +279,40 @@ export default function SettingsPanel({ booted = false }: { booted?: boolean }) 
           Settings
         </div>
         <div className="settings-tabs" role="tablist">
-          <button
-            type="button"
-            className={'settings-tab' + (section === 'storage' ? ' active' : '')}
-            id="settings-tab-btn-storage"
-            role="tab"
-            aria-selected={section === 'storage'}
-            onClick={() => setSection('storage')}
-          >
-            Storage
-          </button>
-          <button
-            type="button"
-            className={'settings-tab' + (section === 'audio' ? ' active' : '')}
-            id="settings-tab-btn-audio"
-            role="tab"
-            aria-selected={section === 'audio'}
-            onClick={() => setSection('audio')}
-          >
-            Audio
-          </button>
-          <button
-            type="button"
-            className={'settings-tab' + (section === 'console' ? ' active' : '')}
-            id="settings-tab-btn-console"
-            role="tab"
-            aria-selected={section === 'console'}
-            onClick={() => setSection('console')}
-          >
-            Console
-          </button>
-          <button
-            type="button"
-            className={'settings-tab' + (section === 'about' ? ' active' : '')}
-            id="settings-tab-btn-about"
-            role="tab"
-            aria-selected={section === 'about'}
-            onClick={() => setSection('about')}
-          >
-            About
-          </button>
+          {SETTINGS_SECTIONS.map((name) => (
+            <button
+              key={name}
+              type="button"
+              className={'settings-tab' + (section === name ? ' active' : '')}
+              id={`settings-tab-btn-${name}`}
+              role="tab"
+              aria-selected={section === name}
+              onClick={() => setSection(name)}
+            >
+              {SECTION_LABELS[name]}
+            </button>
+          ))}
         </div>
-        <div className="settings-pane" id="settings-pane-storage" style={{ display: section === 'storage' ? 'flex' : 'none' }}>
-          <label className="ai-field">
-            <span>Storage folder</span>
-            <div className="storage-path-row">
-              <span className="storage-path" id="storage-path">
-                {storagePath}
-              </span>
-              <button type="button" id="storage-change-btn" className="btn btn-secondary sm" data-icon="folder" onClick={() => void handleChooseStorageFolder()}>
-                Change…
-              </button>
+        <div className="settings-pane" id="settings-pane-general" style={{ display: section === 'general' ? 'flex' : 'none' }}>
+          <label className="ai-field" id="grading-profile-field">
+            <span className="ai-field-label">Grading strictness</span>
+            <div className="select-wrap">
+              <select
+                id="grading-profile-select"
+                aria-label="Grading strictness"
+                value={gradingProfile}
+                onChange={(e) => setGradingProfile(e.target.value as 'casual' | 'broadcast')}
+              >
+                <option value="casual">Casual / volunteer</option>
+                <option value="broadcast">Broadcast-ready</option>
+              </select>
+              <span className="select-caret" data-icon="chevron-down" />
             </div>
           </label>
-          <p className="storage-usage" id="storage-usage">
-            {usageText}
-          </p>
-          <p className="storage-unlimited">Unlimited recordings. Stored on your machine.</p>
-          <p className="storage-note" id="storage-note">
-            Record and analyze as much as you want — no limits on any tier. New recordings are saved here; anything
-            you&apos;ve already recorded stays in its current folder.
-          </p>
-          <button
-            type="button"
-            id="storage-reset-btn"
-            className="btn btn-secondary sm"
-            style={{ display: storagePath === defaultPath ? 'none' : undefined }}
-            onClick={() => setPendingDir('')}
-          >
-            Use default
-          </button>
-          <label className="ai-enable-row">
-            <input type="checkbox" id="usage-signal-toggle" checked={usageSignalEnabled} onChange={(e) => setUsageSignalEnabled(e.target.checked)} />
-            Share anonymous usage counts
-          </label>
-          <p className="ai-dialog-note" id="usage-signal-note">
-            Off unless you turn it on. When enabled, Sound Buddy sends only anonymous usage counts — which features get
-            used (app opened, analysis run, report viewed or exported, feedback sent) plus app version, macOS version,
-            platform, an anonymous install/session id, and the hour it happened — never audio, recordings, church or
-            file names, file paths, prompts, or report text. Your audio never leaves your machine.
-          </p>
-          <label className="ai-enable-row">
-            <input type="checkbox" id="crash-reporting-toggle" checked={crashReportingEnabled} onChange={(e) => setCrashReportingEnabled(e.target.checked)} />
-            Send crash reports
-          </label>
-          <p className="ai-dialog-note" id="crash-reporting-note">
-            Off unless you turn it on. When enabled, a crash sends only: app version, macOS version, the error message
-            and stack trace (emails, license keys, and folder paths removed — file names are reduced to their base
-            name), which screen you were on, and the names of recent app actions. Never recordings, audio, full file
-            paths, or anything you typed.
-          </p>
-          <label className="ai-enable-row">
-            <input type="checkbox" id="daw-workspace-toggle" checked={dawWorkspaceEnabled} onChange={(e) => setDawWorkspaceEnabled(e.target.checked)} />
-            Try the experimental DAW-style Live workspace
-          </label>
-          <p className="ai-dialog-note" id="daw-workspace-note">
-            Off unless you turn it on. An early, experimental take on a DAW-style recording workspace for the Live tab.
-            Your current Live Capture workflow stays the default — turn this off anytime to go back.
-          </p>
-          <label className="ai-enable-row">
-            <input
-              type="checkbox"
-              id="live-adjustments-toggle"
-              checked={liveAdjustmentsEnabled}
-              onChange={(e) => setLiveAdjustmentsEnabled(e.target.checked)}
-            />
-            Try experimental live adjustments
-          </label>
-          <p className="ai-dialog-note" id="live-adjustments-note">
-            Off unless you turn it on. An early, experimental area for mix suggestions while you monitor or record in
-            Live Capture. Nothing is analyzed or sent anywhere — turn this off anytime to hide it.
+          <p className="ai-dialog-note" id="grading-profile-note">
+            Casual / volunteer grades against today's thresholds. Broadcast-ready tightens
+            every level, dynamic-range, and balance target — the same recording may grade
+            lower. The report card always shows which profile graded it.
           </p>
           <label className="ai-enable-row">
             <input
@@ -351,26 +346,6 @@ export default function SettingsPanel({ booted = false }: { booted?: boolean }) 
             service day, reminding you to record and grade it. Nothing leaves your machine — no account, no email, no
             server.
           </p>
-          <label className="ai-field" id="grading-profile-field">
-            <span className="ai-field-label">Grading strictness</span>
-            <div className="select-wrap">
-              <select
-                id="grading-profile-select"
-                aria-label="Grading strictness"
-                value={gradingProfile}
-                onChange={(e) => setGradingProfile(e.target.value as 'casual' | 'broadcast')}
-              >
-                <option value="casual">Casual / volunteer</option>
-                <option value="broadcast">Broadcast-ready</option>
-              </select>
-              <span className="select-caret" data-icon="chevron-down" />
-            </div>
-          </label>
-          <p className="ai-dialog-note" id="grading-profile-note">
-            Casual / volunteer grades against today's thresholds. Broadcast-ready tightens
-            every level, dynamic-range, and balance target — the same recording may grade
-            lower. The report card always shows which profile graded it.
-          </p>
           <label className="ai-field" id="share-church-name-field">
             <span className="ai-field-label">Church name (for shared images)</span>
             <input
@@ -388,6 +363,81 @@ export default function SettingsPanel({ booted = false }: { booted?: boolean }) 
           </label>
           <p className="ai-dialog-note" id="share-church-name-note">
             Optional. Leave blank (default) and shared images contain no identifying information.
+          </p>
+        </div>
+        <div className="settings-pane" id="settings-pane-storage" style={{ display: section === 'storage' ? 'flex' : 'none' }}>
+          <label className="ai-field">
+            <span>Storage folder</span>
+            <div className="storage-path-row">
+              <span className="storage-path" id="storage-path">
+                {storagePath}
+              </span>
+              <button type="button" id="storage-change-btn" className="btn btn-secondary sm" data-icon="folder" onClick={() => void handleChooseStorageFolder()}>
+                Change…
+              </button>
+            </div>
+          </label>
+          <p className="storage-usage" id="storage-usage">
+            {usageText}
+          </p>
+          <p className="storage-unlimited">Unlimited recordings. Stored on your machine.</p>
+          <p className="storage-note" id="storage-note">
+            Record and analyze as much as you want — no limits on any tier. New recordings are saved here; anything
+            you&apos;ve already recorded stays in its current folder.
+          </p>
+          <button
+            type="button"
+            id="storage-reset-btn"
+            className="btn btn-secondary sm"
+            style={{ display: storagePath === defaultPath ? 'none' : undefined }}
+            onClick={() => setPendingDir('')}
+          >
+            Use default
+          </button>
+        </div>
+        <div className="settings-pane" id="settings-pane-privacy" style={{ display: section === 'privacy' ? 'flex' : 'none' }}>
+          <label className="ai-enable-row">
+            <input type="checkbox" id="usage-signal-toggle" checked={usageSignalEnabled} onChange={(e) => setUsageSignalEnabled(e.target.checked)} />
+            Share anonymous usage counts
+          </label>
+          <p className="ai-dialog-note" id="usage-signal-note">
+            Off unless you turn it on. When enabled, Sound Buddy sends only anonymous usage counts — which features get
+            used (app opened, analysis run, report viewed or exported, feedback sent) plus app version, macOS version,
+            platform, an anonymous install/session id, and the hour it happened — never audio, recordings, church or
+            file names, file paths, prompts, or report text. Your audio never leaves your machine.
+          </p>
+          <label className="ai-enable-row">
+            <input type="checkbox" id="crash-reporting-toggle" checked={crashReportingEnabled} onChange={(e) => setCrashReportingEnabled(e.target.checked)} />
+            Send crash reports
+          </label>
+          <p className="ai-dialog-note" id="crash-reporting-note">
+            Off unless you turn it on. When enabled, a crash sends only: app version, macOS version, the error message
+            and stack trace (emails, license keys, and folder paths removed — file names are reduced to their base
+            name), which screen you were on, and the names of recent app actions. Never recordings, audio, full file
+            paths, or anything you typed.
+          </p>
+        </div>
+        <div className="settings-pane" id="settings-pane-labs" style={{ display: section === 'labs' ? 'flex' : 'none' }}>
+          <label className="ai-enable-row">
+            <input type="checkbox" id="daw-workspace-toggle" checked={dawWorkspaceEnabled} onChange={(e) => setDawWorkspaceEnabled(e.target.checked)} />
+            Try the experimental DAW-style Live workspace
+          </label>
+          <p className="ai-dialog-note" id="daw-workspace-note">
+            Off unless you turn it on. An early, experimental take on a DAW-style recording workspace for the Live tab.
+            Your current Live Capture workflow stays the default — turn this off anytime to go back.
+          </p>
+          <label className="ai-enable-row">
+            <input
+              type="checkbox"
+              id="live-adjustments-toggle"
+              checked={liveAdjustmentsEnabled}
+              onChange={(e) => setLiveAdjustmentsEnabled(e.target.checked)}
+            />
+            Try experimental live adjustments
+          </label>
+          <p className="ai-dialog-note" id="live-adjustments-note">
+            Off unless you turn it on. An early, experimental area for mix suggestions while you monitor or record in
+            Live Capture. Nothing is analyzed or sent anywhere — turn this off anytime to hide it.
           </p>
         </div>
         <div className="settings-pane" id="settings-pane-audio" style={{ display: section === 'audio' ? 'flex' : 'none' }}>
