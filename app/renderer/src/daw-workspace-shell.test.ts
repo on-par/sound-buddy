@@ -384,6 +384,59 @@ describe('configured track rows render from one shared list (#1043)', () => {
   });
 });
 
+describe('overall-mix row and arrangement status (#1044)', () => {
+  it('live-workspace-view.ts exports the status-line view', () => {
+    expect(workspaceViewTs).toContain('export function dawStatusLineView(');
+  });
+
+  it('dawShellHTML emits the master head and status line, derived from dawStatusLineView', () => {
+    const body = functionBody(workspaceViewTs, 'dawShellHTML');
+    expect(body).toContain('daw-master-head');
+    expect(body).toContain('daw-status-line');
+    expect(body).toContain('dawStatusLineView(state)');
+  });
+
+  it('the master head closes the head column and the status line follows the arrangement', () => {
+    const body = functionBody(workspaceViewTs, 'dawShellHTML');
+    // headHTML is per-track (#1043); masterHeadHTML is the overall-mix row's
+    // head cell (#1044) — this literal interpolation order is what puts the
+    // master head last inside .daw-track-heads.
+    expect(body).toContain('${headHTML}${masterHeadHTML}');
+    expect(body.indexOf('daw-status-line')).toBeGreaterThan(body.indexOf('daw-arrangement'));
+  });
+
+  it('dawStatusLineView derives from the shared track list and the patch view, never a second transportLabel call', () => {
+    const body = functionBody(workspaceViewTs, 'dawStatusLineView');
+    expect(body).toContain('dawTrackRows(');
+    expect(body).toContain('dawShellPatchView(');
+    expect(body).not.toContain('transportLabel(');
+  });
+
+  it('app.css styles the master head and status line', () => {
+    expect(css).toContain('.daw-master-head');
+    expect(css).toContain('.daw-status-line');
+    expect(css).toContain('--daw-master-row-h');
+    expect(css).toContain('--daw-status-line-h');
+  });
+
+  it('the master head and mix lane share one height source, and neither hardcodes a height literal', () => {
+    const masterHeadRule = css.match(/\.daw-master-head\s*\{[^}]*\}/);
+    const mixLaneRule = css.match(/\.daw-mix-lane\s*\{[^}]*\}/);
+    expect(masterHeadRule).not.toBeNull();
+    expect(mixLaneRule).not.toBeNull();
+    expect(masterHeadRule![0]).toMatch(/height:\s*var\(--daw-master-row-h\)/);
+    expect(mixLaneRule![0]).toMatch(/height:\s*var\(--daw-master-row-h\)/);
+    expect(masterHeadRule![0]).not.toMatch(/height:\s*\d/);
+    expect(mixLaneRule![0]).not.toMatch(/height:\s*\d/);
+  });
+
+  it('the status line reads its height from the shared custom property', () => {
+    const statusLineRule = css.match(/\.daw-status-line\s*\{[^}]*\}/);
+    expect(statusLineRule).not.toBeNull();
+    expect(statusLineRule![0]).toMatch(/height:\s*var\(--daw-status-line-h\)/);
+  });
+});
+
 describe('playhead placement derives from the shared timeline geometry (#1034)', () => {
   // Wide enough that no clamp applies anywhere in the default span.
   const UNCLAMPED_WIDTH_PX = dawTimelineX(DAW_TIMELINE_SPAN_SECS) + DAW_TIMELINE_INSET_PX;

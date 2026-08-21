@@ -475,6 +475,38 @@ export function dawShellPatchView(state: LiveWorkspaceViewState): DawShellPatchV
   };
 }
 
+// The overall-mix row's display name — one constant because the row is emitted
+// twice, once per column (ADR-0087), and the two cells must read identically.
+const DAW_MASTER_ROW_NAME = 'Overall mix';
+// Status-line copy for the two "nothing selected/configured yet" cases.
+const DAW_STATUS_NO_TRACKS = 'No tracks';
+const DAW_STATUS_NO_DEVICE = 'No device selected';
+
+/** The arrangement status line's three derived strings (#1044): the track-count
+ *  summary and capture state on the left, the selected device on the right
+ *  (docs/design/session-tab.md, "Vertical structure"). `device` is already
+ *  HTML-escaped — a device name is an OS-supplied string. */
+export interface DawStatusLineView {
+  tracks: string;
+  capture: string;
+  device: string;
+}
+
+/** Pure status-line derivation: the track count comes from the one shared
+ *  dawTrackRows list and the capture label from dawShellPatchView's transport
+ *  chip (ADR-0088), so the status line can never disagree with the head column,
+ *  the lane column, or the transport chip about the same state. No DOM read, no
+ *  store access — everything comes off the supplied snapshot. */
+export function dawStatusLineView(state: LiveWorkspaceViewState): DawStatusLineView {
+  const count = dawTrackRows(state).length;
+  const device = deviceNameFor(state);
+  return {
+    tracks: count === 0 ? DAW_STATUS_NO_TRACKS : `${count} ${count === 1 ? 'track' : 'tracks'}`,
+    capture: dawShellPatchView(state).transportChip,
+    device: device === '' ? DAW_STATUS_NO_DEVICE : escapeHtml(device),
+  };
+}
+
 // Port of renderDawShell's markup builder (the rebuild path, #517/#518/#520):
 // the timeline shell only — the waveform/playhead canvas PAINTING stays inline
 // (slice 6j) and is reachable via the window.dawShellRuntime bridge.
@@ -498,9 +530,21 @@ export function dawShellHTML(state: LiveWorkspaceViewState): string {
       + laneGrid
       + `</div>`).join('')}</div>`
     : `<div class="daw-lane daw-empty-state">Add tracks to see channel lanes</div>`;
+  // The overall-mix row (#1044): emitted like every other row, twice, once per
+  // column, and last in each — it is not a track head/lane, so it never comes
+  // from dawTrackRows and always renders, even with zero configured tracks.
+  const masterHeadHTML = `<div class="daw-master-head">`
+    + `<span class="daw-master-head-name">${DAW_MASTER_ROW_NAME}</span>`
+    + `</div>`;
+  const mixLaneHTML = `<div class="daw-lane daw-mix-lane" data-capture-mode="${captureMode}">`
+    + `<span class="daw-lane-name">${DAW_MASTER_ROW_NAME}</span>`
+    + `<span class="daw-lane-body"><canvas class="daw-mix-waveform"></canvas></span>`
+    + laneGrid
+    + `</div>`;
   const rulerTicks = dawRulerTicks(DAW_TIMELINE_SPAN_SECS)
     .map((tick) => `<span class="daw-ruler-tick" style="left:${tick.xPx}px"></span>`)
     .join('');
+  const status = dawStatusLineView(state);
   return `<div class="daw-shell" style="--daw-head-w:${DAW_TIMELINE_ORIGIN_PX}px">`
     + `<div class="daw-transport">`
     + `<span class="daw-transport-title">Live Workspace</span>`
@@ -511,23 +555,26 @@ export function dawShellHTML(state: LiveWorkspaceViewState): string {
     + `<div class="daw-playhead"></div>`
     // The semantic arrangement frame (#1042): the track-head column and the
     // timeline column that owns the ruler and every lane row. Per-track head
-    // rows come from dawTrackRows (#1043); the overall-mix row and status line
-    // are #1044, the two-column layout is #1028. The ruler and lane rows stay
+    // rows come from dawTrackRows (#1043); the overall-mix row is the last
+    // paired row in each column (#1044, ADR-0087) and the status line below is
+    // shell chrome outside the arrangement, not a third child of it. The
+    // two-column layout is still #1028. The ruler and lane rows stay
     // full-shell-width boxes so their tick/gridline x values remain the
     // shell-local coordinates ADR-0086 defines.
     + `<div class="daw-arrangement">`
-    + `<div class="daw-track-heads">${headHTML}</div>`
+    + `<div class="daw-track-heads">${headHTML}${masterHeadHTML}</div>`
     + `<div class="daw-timeline">`
     + `<div class="daw-ruler">${rulerTicks}</div>`
     + `<div class="daw-lane-column">`
-    + `<div class="daw-lane daw-mix-lane" data-capture-mode="${captureMode}">`
-    + `<span class="daw-lane-name">Overall mix</span>`
-    + `<span class="daw-lane-body"><canvas class="daw-mix-waveform"></canvas></span>`
-    + laneGrid
-    + `</div>`
     + laneHTML
+    + mixLaneHTML
     + `</div>`
     + `</div>`
+    + `</div>`
+    + `<div class="daw-status-line">`
+    + `<span class="daw-status-tracks">${status.tracks}</span>`
+    + `<span class="daw-status-capture">${status.capture}</span>`
+    + `<span class="daw-status-device">${status.device}</span>`
     + `</div>`
     + `</div>`;
 }
