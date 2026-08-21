@@ -37,7 +37,7 @@ import {
 import { escapeHtml } from './spectrum-display';
 import { fmt, iconSvg } from './report-card';
 import type { AppSettings } from '../../electron/ipc/api';
-import { dawRulerTicks, dawLaneGridlines, DAW_TIMELINE_SPAN_SECS, type DawShellRuntime } from './daw-shell-runtime';
+import { dawRulerTicks, dawLaneGridlines, DAW_TIMELINE_SPAN_SECS, DAW_TIMELINE_ORIGIN_PX, type DawShellRuntime } from './daw-shell-runtime';
 
 export type { DawShellRuntime } from './daw-shell-runtime';
 
@@ -478,7 +478,7 @@ export function dawShellHTML(state: LiveWorkspaceViewState): string {
   const rulerTicks = dawRulerTicks(DAW_TIMELINE_SPAN_SECS)
     .map((tick) => `<span class="daw-ruler-tick" style="left:${tick.xPx}px"></span>`)
     .join('');
-  return `<div class="daw-shell">`
+  return `<div class="daw-shell" style="--daw-head-w:${DAW_TIMELINE_ORIGIN_PX}px">`
     + `<div class="daw-transport">`
     + `<span class="daw-transport-title">Live Workspace</span>`
     + `<span class="daw-transport-state daw-transport-state-${transportChip.toLowerCase()}">${transportChip}</span>`
@@ -486,13 +486,26 @@ export function dawShellHTML(state: LiveWorkspaceViewState): string {
     + `<span class="daw-transport-hint">Start and stop recording from the top-bar Record button</span>`
     + `</div>`
     + `<div class="daw-playhead"></div>`
+    // The semantic arrangement frame (#1042): the track-head column and the
+    // timeline column that owns the ruler and every lane row. Per-track head
+    // rows land in #1043, the overall-mix row and status line in #1044, the
+    // two-column layout in #1028. The ruler and lane rows stay full-shell-width
+    // boxes so their tick/gridline x values remain the shell-local coordinates
+    // ADR-0086 defines.
+    + `<div class="daw-arrangement">`
+    + `<div class="daw-track-heads"></div>`
+    + `<div class="daw-timeline">`
     + `<div class="daw-ruler">${rulerTicks}</div>`
+    + `<div class="daw-lane-column">`
     + `<div class="daw-lane daw-mix-lane" data-capture-mode="${captureMode}">`
     + `<span class="daw-lane-name">Overall mix</span>`
     + `<span class="daw-lane-body"><canvas class="daw-mix-waveform"></canvas></span>`
     + laneGrid
     + `</div>`
     + laneHTML
+    + `</div>`
+    + `</div>`
+    + `</div>`
     + `</div>`;
 }
 

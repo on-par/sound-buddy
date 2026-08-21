@@ -23,7 +23,7 @@ import {
 } from './live-workspace-view';
 import type { LiveDevice, StripConfig, ChannelGroup, LiveEvent, LiveMeterChannel } from './live-capture-panel';
 import type { AppSettings } from '../../electron/ipc/api';
-import { dawTimelineX, dawRulerTicks, dawLaneGridlines, DAW_TIMELINE_SPAN_SECS } from './daw-shell-runtime';
+import { dawTimelineX, dawRulerTicks, dawLaneGridlines, DAW_TIMELINE_SPAN_SECS, DAW_TIMELINE_ORIGIN_PX } from './daw-shell-runtime';
 
 // The pure helper classic-scripts the view module reads off `window` — real
 // modules (not hand-rolled stubs), same convention as
@@ -396,6 +396,53 @@ describe('dawShellHTML / dawShellPatchView', () => {
 
   it('points users at the top-bar Record button for capture controls (#757)', () => {
     expect(dawShellHTML(makeState())).toContain('Start and stop recording from the top-bar Record button');
+  });
+
+  it('wraps the ruler and lanes in a semantic arrangement frame (#1042)', () => {
+    const html = dawShellHTML(makeState());
+    expect(html).toContain('<div class="daw-arrangement">');
+    expect(html).toContain('<div class="daw-track-heads"></div>');
+    expect(html).toContain('<div class="daw-timeline">');
+    expect(html).toContain('<div class="daw-lane-column">');
+  });
+
+  it('nests the ruler in the timeline region, not the track-header column (#1042)', () => {
+    const html = dawShellHTML(makeState());
+    const heads = html.indexOf('<div class="daw-track-heads"></div>');
+    const timeline = html.indexOf('<div class="daw-timeline">');
+    const ruler = html.indexOf('<div class="daw-ruler">');
+    const laneColumn = html.indexOf('<div class="daw-lane-column">');
+    // Head column is emitted empty and closed before the timeline region opens,
+    // so the ruler cannot be inside it; inside the timeline the ruler precedes
+    // the lane column, and every lane lives in the lane column.
+    expect(heads).toBeGreaterThan(-1);
+    expect(timeline).toBeGreaterThan(heads);
+    expect(ruler).toBeGreaterThan(timeline);
+    expect(laneColumn).toBeGreaterThan(ruler);
+    expect(html.indexOf('daw-mix-lane')).toBeGreaterThan(laneColumn);
+    expect(html.indexOf('daw-channel-lane')).toBeGreaterThan(laneColumn);
+  });
+
+  it('keeps the empty-state row inside the lane column (#1042)', () => {
+    const html = dawShellHTML(makeState({ channelConfig: [] }));
+    expect(html.indexOf('Add tracks to see channel lanes'))
+      .toBeGreaterThan(html.indexOf('<div class="daw-lane-column">'));
+  });
+
+  it('emits the head-column width from the shared timeline origin so CSS cannot drift (#1042)', () => {
+    expect(dawShellHTML(makeState()))
+      .toContain(`<div class="daw-shell" style="--daw-head-w:${DAW_TIMELINE_ORIGIN_PX}px">`);
+  });
+
+  it('the ruler origin is the lane column time origin — both start at the shared t=0 x (#1042)', () => {
+    const html = dawShellHTML(makeState());
+    expect(html).toContain(`<span class="daw-ruler-tick" style="left:${DAW_TIMELINE_ORIGIN_PX}px"></span>`);
+    expect(html).toContain(`<span class="daw-gridline major" style="left:${DAW_TIMELINE_ORIGIN_PX}px"></span>`);
+    expect(dawTimelineX(0)).toBe(DAW_TIMELINE_ORIGIN_PX);
+  });
+
+  it('is pure — equal state renders an identical frame with no DOM or store reads (#1042)', () => {
+    expect(dawShellHTML(makeState())).toBe(dawShellHTML(makeState()));
   });
 });
 

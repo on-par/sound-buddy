@@ -309,6 +309,40 @@ describe('lane gridlines derive from the shared timeline geometry (#1033)', () =
   });
 });
 
+describe('semantic arrangement frame (#1042)', () => {
+  it('dawShellHTML emits the arrangement container, head column, timeline column and lane column', () => {
+    const builderBody = functionBody(workspaceViewTs, 'dawShellHTML');
+    expect(builderBody).toContain('daw-arrangement');
+    expect(builderBody).toContain('daw-track-heads');
+    expect(builderBody).toContain('daw-timeline');
+    expect(builderBody).toContain('daw-lane-column');
+  });
+
+  it('the ruler is emitted inside the timeline column, ahead of the lane column', () => {
+    const builderBody = functionBody(workspaceViewTs, 'dawShellHTML');
+    const timeline = builderBody.indexOf('daw-timeline');
+    const ruler = builderBody.indexOf('daw-ruler">');
+    const laneColumn = builderBody.indexOf('daw-lane-column');
+    expect(builderBody.indexOf('daw-track-heads')).toBeLessThan(timeline);
+    expect(ruler).toBeGreaterThan(timeline);
+    expect(laneColumn).toBeGreaterThan(ruler);
+  });
+
+  it('the head width is emitted from the shared timeline origin, never hardcoded in the CSS (ADR-0086)', () => {
+    expect(functionBody(workspaceViewTs, 'dawShellHTML')).toContain('--daw-head-w:${DAW_TIMELINE_ORIGIN_PX}px');
+    expect(workspaceViewTs).toMatch(/import \{[^}]*DAW_TIMELINE_ORIGIN_PX[^}]*\} from '\.\/daw-shell-runtime'/s);
+    expect(css).toContain('var(--daw-head-w)');
+    expect(css).not.toMatch(/--daw-head-w:\s*208px/);
+  });
+
+  it('app.css styles the arrangement frame', () => {
+    expect(css).toContain('.daw-arrangement');
+    expect(css).toContain('.daw-track-heads');
+    expect(css).toContain('.daw-timeline');
+    expect(css).toContain('.daw-lane-column');
+  });
+});
+
 describe('playhead placement derives from the shared timeline geometry (#1034)', () => {
   // Wide enough that no clamp applies anywhere in the default span.
   const UNCLAMPED_WIDTH_PX = dawTimelineX(DAW_TIMELINE_SPAN_SECS) + DAW_TIMELINE_INSET_PX;
