@@ -64,7 +64,7 @@ test.describe.serial('License gating (#54)', () => {
     await expect(win.locator('#settings-audio-pro-gate')).toBeVisible();
     await expect(win.locator('#rig-select')).toBeHidden();
     await expect(win.locator('#device-select')).toBeHidden();
-    await win.locator('#settings-dialog-cancel').click();
+    await win.locator('#settings-dialog-done').click();
 
     await win.locator('.mode-tab[data-mode="soundcheck"]').click();
     await expect(win.locator('#tab-soundcheck .pro-gate')).toBeVisible();
@@ -125,7 +125,7 @@ test.describe.serial('License gating (#54)', () => {
     await expect(win.locator('#settings-audio-pro-gate')).toBeHidden();
     await expect(win.locator('#rig-select')).toBeVisible();
     await expect(win.locator('#device-select')).toBeVisible();
-    await win.locator('#settings-dialog-cancel').click();
+    await win.locator('#settings-dialog-done').click();
 
     // And it persisted for the next launch.
     const stored = JSON.parse(fs.readFileSync(path.join(USER_DATA, 'license.json'), 'utf8'));

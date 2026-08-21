@@ -52,7 +52,7 @@ test('smoke: exercise all flows and collect errors', async () => {
   await win.waitForTimeout(600);
   await win.locator('#settings-tab-btn-about').click();
   await win.waitForTimeout(120);
-  await win.locator('#settings-dialog-cancel').click();
+  await win.locator('#settings-dialog-done').click();
 
   // 3. Load + analyze a real fixture (real sox/ffprobe/python — surfaces missing tools)
   const fixture = path.join(__dirname, 'fixtures', 'silence.wav');

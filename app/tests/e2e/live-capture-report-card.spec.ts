@@ -63,7 +63,7 @@ async function startCapture() {
   await window.locator('#settings-btn').click();
   await window.locator('#settings-tab-btn-audio').click();
   await window.locator('#device-refresh-btn').click();
-  await window.locator('#settings-dialog-cancel').click();
+  await window.locator('#settings-dialog-done').click();
   await expect(window.locator('#spectrum-body .live-ch')).toHaveCount(2);
   // #757: the top-bar Record button is the sole transport — an idle press
   // starts monitoring then promotes in place, so every capture here is a

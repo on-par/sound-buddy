@@ -20,8 +20,8 @@ export type InstantSettingKey =
   | 'dawWorkspaceEnabled'
   | 'liveAdjustmentsEnabled';
 
-// Structurally identical to storage-settings.ts's StorageToggles, so
-// handleSave can hand this straight to buildStoragePatch.
+// The render-time projection of the seven instant-apply Settings controls,
+// derived straight from persisted AppSettings.
 export interface InstantSettingValues {
   gradingProfile: 'casual' | 'broadcast';
   weeklyReminderEnabled: boolean;

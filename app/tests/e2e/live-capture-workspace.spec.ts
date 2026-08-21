@@ -22,7 +22,7 @@ async function openAudioSettings(win: Page): Promise<void> {
 }
 
 async function closeSettings(win: Page): Promise<void> {
-  await win.locator('#settings-dialog-cancel').click();
+  await win.locator('#settings-dialog-done').click();
   await expect(win.locator('#settings-dialog')).toBeHidden();
 }
 

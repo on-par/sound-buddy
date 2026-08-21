@@ -8,7 +8,6 @@ import * as fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import SettingsPanel, {
   SETTINGS_SECTIONS,
-  saveAll,
   type SettingsSection,
   commitShareChurchName,
   settingsSectionFor,
@@ -43,42 +42,6 @@ function renderMarkup(booted = false): string {
   const mock = createMockSoundBuddy();
   return renderToString(createElement(ElectronContext.Provider, { value: mock.api }, createElement(SettingsPanel, { booted })));
 }
-
-describe('saveAll', () => {
-  it('applies the storage patch, then closes the dialog', async () => {
-    const mock = createMockSoundBuddy({
-      updateSettings: async (patch) => {
-        mock.calls.push({ method: 'updateSettings', args: [patch] });
-        return {
-          idealProfile: '', customIdealProfiles: [], storageDir: '', rigs: [], activeRigId: null,
-          usageSignalEnabled: false, channelLabels: {}, channelGroups: {}, inputInstrumentProfiles: {},
-          crashReportingEnabled: false, dawWorkspaceEnabled: false, liveAdjustmentsEnabled: false,
-          reportFirstUxEnabled: false, shareChurchName: '', weeklyReminderEnabled: false, weeklyReminderServiceDay: 0,
-          liveEqPaneWidth: 360, measurementDeviceName: '', gradingProfile: 'casual', consoleNetworkConsentGranted: false,
-          soundcheckBuses: [],
-        };
-      },
-    });
-    const store = createSettingsStore(() => mock.api);
-    store.getState().openDialog();
-
-    await saveAll({ storagePatch: { storageDir: '/custom/folder' } }, store);
-
-    expect(store.getState().dialogOpen).toBe(false);
-    expect(mock.calls).toContainEqual({ method: 'updateSettings', args: [{ storageDir: '/custom/folder' }] });
-  });
-
-  it('skips the storage patch call when it is null, but still closes', async () => {
-    const mock = createMockSoundBuddy();
-    const store = createSettingsStore(() => mock.api);
-    store.getState().openDialog();
-
-    await saveAll({ storagePatch: null }, store);
-
-    expect(mock.calls.some((c) => c.method === 'updateSettings')).toBe(false);
-    expect(store.getState().dialogOpen).toBe(false);
-  });
-});
 
 describe('SettingsPanel markup', () => {
   it('renders hidden by default with all top-level rail rows and panes present', () => {
@@ -208,14 +171,13 @@ describe('Settings chrome (#1008)', () => {
     expect(html).toContain('class="settings-panes"');
     const footer = html.match(/<div class="settings-footer">[\s\S]*$/)?.[0] ?? '';
     expect(footer).toContain('id="settings-help-strip"');
-    expect(footer).toContain('id="settings-dialog-cancel"');
-    expect(footer).toContain('id="settings-dialog-save"');
+    expect(footer).toContain('id="settings-dialog-done"');
   });
 
   // Click dispatch needs jsdom (absent from this harness by convention — see
   // the console-consent Revoke test above), so the close control's wiring is
   // asserted in source here and driven for real by settings.spec.ts.
-  it('closes without saving from the backdrop, the title-bar control and Cancel via one handler', () => {
+  it('closes without saving from the backdrop, the title-bar control and Done via one handler', () => {
     const src = fs.readFileSync(fileURLToPath(new URL('./SettingsPanel.tsx', import.meta.url)), 'utf8');
     expect(src).toContain('const closeSettingsDialog = () => useSettingsStore.getState().closeDialog();');
     expect((src.match(/onClick={closeSettingsDialog}/g) ?? []).length).toBe(2);
@@ -498,11 +460,48 @@ describe('debounced church-name persistence (#1020)', () => {
     expect(src).toContain('() => churchNameCommitter.cancel()');
   });
 
-  it('handleSave no longer calls commitShareChurchName directly — it flushes the committer', () => {
+  it('the church-name field commits only through the debounced committer', () => {
     const src = fs.readFileSync(fileURLToPath(new URL('./SettingsPanel.tsx', import.meta.url)), 'utf8');
     const directCallCount = (src.match(/commitShareChurchName\(useSettingsStore, shareChurchName\)/g) ?? []).length;
     expect(directCallCount).toBe(0);
     expect(src).toContain('createChurchNameCommitter({');
+  });
+});
+
+// The Settings dialog's only footer action (#1021) — every control already
+// persists on change (#1018/#1019/#1020), so Done just closes the dialog
+// through the same closeDialog action the backdrop, the title-bar ✕ and
+// Escape already share. No Save/Cancel affordance, no settings patch.
+describe('the Done action (#1021)', () => {
+  it('renders a single Done button and neither a Save nor a Cancel id', () => {
+    const html = renderMarkup();
+    expect(html).toContain('id="settings-dialog-done"');
+    expect(html).toMatch(/id="settings-dialog-done"[^>]*>Done</);
+    expect(html).not.toContain('settings-dialog-save');
+    expect(html).not.toContain('settings-dialog-cancel');
+  });
+
+  it('renders exactly one button inside the footer action area', () => {
+    const html = renderMarkup();
+    const actions = html.split('rig-dialog-actions')[1] ?? '';
+    const footer = actions.split('</div>')[0] + actions.split('</div>')[1];
+    expect((footer.match(/<button/g) ?? []).length).toBe(1);
+  });
+
+  it('wires Done to the shared close handler, not to a save path', () => {
+    const src = fs.readFileSync(fileURLToPath(new URL('./SettingsPanel.tsx', import.meta.url)), 'utf8');
+    expect(src).toMatch(/id="settings-dialog-done"[\s\S]{0,200}onClick=\{closeSettingsDialog\}/);
+    expect(src).not.toContain('function handleSave');
+    expect(src).not.toContain('buildStoragePatch');
+  });
+
+  it('closing the dialog sends no updateSettings patch', async () => {
+    const mock = createMockSoundBuddy();
+    const store = createSettingsStore(() => mock.api);
+    store.setState({ dialogOpen: true });
+    store.getState().closeDialog();
+    expect(store.getState().dialogOpen).toBe(false);
+    expect(mock.calls.filter((c) => c.method === 'updateSettings')).toHaveLength(0);
   });
 });
 
@@ -582,11 +581,6 @@ describe('instant-apply Settings controls (#1018)', () => {
     const src = fs.readFileSync(fileURLToPath(new URL('./SettingsPanel.tsx', import.meta.url)), 'utf8');
     expect(src).not.toContain('pendingDir');
     expect(src).not.toContain('setPendingDir');
-  });
-
-  it('feeds handleSave toggles from the same persisted settings buildStoragePatch diffs against', () => {
-    const src = fs.readFileSync(fileURLToPath(new URL('./SettingsPanel.tsx', import.meta.url)), 'utf8');
-    expect(src).toContain('buildStoragePatch(instantSettingValues(settings), settings)');
   });
 });
 
