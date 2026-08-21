@@ -81,6 +81,10 @@ export function applySpectrumForMode(mode: string): void {
     // in both playing and idle states; it never flips into 'meters'.
     if (useSoundcheckStore.getState().playing) useSpectrumStore.getState().setPanelState('empty', 'Playing — use the waveform playhead to navigate');
     else useSpectrumStore.getState().setPanelState('empty', 'Load a session and press Play to start playback');
+  } else if (mode === 'console') {
+    if (title) title.textContent = SPECTRUM_TITLE.curve;
+    if (!curAnalysis()) useSpectrumStore.getState().setPanelState('empty', 'Select a console to monitor channel state');
+    else useSpectrumStore.getState().setPanelState('populated');
   } else if (mode === 'recent') {
     if (title) title.textContent = SPECTRUM_TITLE.curve;
     if (!curAnalysis()) useSpectrumStore.getState().setPanelState('empty', 'Select a recent analysis to load its report card');

@@ -58,6 +58,7 @@ beforeEach(() => {
     'spectrum-title': makeFakeElement(),
     'reportcard-view': makeFakeElement(),
     'tab-live': makeFakeElement(),
+    'tab-console': makeFakeElement(),
     'tab-recent': makeFakeElement(),
   };
   tabContentEls = [makeFakeElement(), makeFakeElement()];
@@ -146,12 +147,12 @@ describe('applySpectrumForMode', () => {
     expect(useSpectrumStore.getState().panelText).toBe('Load a session and press Play to start playback');
   });
 
-  it.each(['recent', 'guide', 'dir'] as const)('%s: shows a tailored empty state with no analysis', (mode) => {
+  it.each(['recent', 'guide', 'dir', 'console'] as const)('%s: shows a tailored empty state with no analysis', (mode) => {
     applySpectrumForMode(mode);
     expect(useSpectrumStore.getState().panelState).toBe('empty');
   });
 
-  it.each(['recent', 'guide', 'dir'] as const)('%s: shows populated once an analysis exists', (mode) => {
+  it.each(['recent', 'guide', 'dir', 'console'] as const)('%s: shows populated once an analysis exists', (mode) => {
     useAnalysisStore.setState({ currentAnalysis: { sox: {}, spectrum: {}, ffprobe: { format: {} } } as never });
     applySpectrumForMode(mode);
     expect(useSpectrumStore.getState().panelState).toBe('populated');

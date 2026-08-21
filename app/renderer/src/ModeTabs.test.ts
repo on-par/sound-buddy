@@ -16,12 +16,13 @@ function renderMarkup(): string {
 }
 
 describe('ModeTabs', () => {
-  it('renders all 9 tabs with their ids/data-mode', () => {
+  it('renders all 10 tabs with their ids/data-mode', () => {
     const html = renderMarkup();
     expect(html).toContain('id="nav-analyze" data-mode="analyze"');
     expect(html).toContain('id="nav-history" data-mode="history"');
     expect(html).toContain('data-mode="dir"');
     expect(html).toContain('data-mode="live"');
+    expect(html).toContain('data-mode="console"');
     expect(html).toContain('data-mode="soundcheck"');
     expect(html).toContain('data-mode="recent"');
     expect(html).toContain('data-mode="guide"');
@@ -45,8 +46,10 @@ describe('ModeTabs', () => {
     const html = renderMarkup();
     const liveButton = html.slice(html.indexOf('data-mode="live"'), html.indexOf('data-mode="soundcheck"'));
     const dirButton = html.slice(html.indexOf('data-mode="dir"'), html.indexOf('data-mode="live"'));
+    const consoleButton = html.slice(html.indexOf('data-mode="console"'), html.indexOf('data-mode="soundcheck"'));
     expect(liveButton).toContain('class="tab-lock"');
     expect(dirButton).not.toContain('tab-lock');
+    expect(consoleButton).not.toContain('tab-lock');
   });
 
   it('does not mark History active by default (only set via a redirect click)', () => {

@@ -50,6 +50,23 @@ describe('Directory tab batch-analyzes a folder of recordings (#270)', () => {
   });
 });
 
+describe('Console workspace separation (#989)', () => {
+  it('has its own top-level tab content and no console live surface inside the Live tab', () => {
+    expect(markup).toContain('id="tab-console"');
+    const liveTabStart = markup.indexOf('<div class="tab-content" id="tab-live">');
+    const liveTabEnd = markup.indexOf('id="spectrum-header"');
+    const liveTab = markup.slice(liveTabStart, liveTabEnd);
+    expect(liveTab).not.toContain('console-panel-island');
+    expect(liveTab).not.toContain('console-live-error');
+  });
+
+  it('ports ConsolePanel onto the Console workspace, not Live', () => {
+    const appSrc = fs.readFileSync(fileURLToPath(new URL('./App.tsx', import.meta.url)), 'utf8');
+    expect(appSrc).toContain("document.getElementById('tab-console')");
+    expect(appSrc).not.toContain("document.getElementById('console-panel-island')");
+  });
+});
+
 describe('Live monitoring visibly leads to a Report Card (#488)', () => {
   it('shows a pre-start cue that listening builds a live Report Card (LiveSessionOffers.tsx)', () => {
     expect(liveSessionOffersTsx).toContain('id="live-rc-cue"');
@@ -262,9 +279,9 @@ describe('Header live dBFS readout (#767)', () => {
 });
 
 describe('Existing tabs stay intact under the unified Analyze picker (#543)', () => {
-  it('keeps all seven mode tabs, unchanged (now rendered by ModeTabs.tsx, TD-001 slice 6e, #703)', () => {
+  it('keeps all workspace mode tabs available (now rendered by ModeTabs.tsx, TD-001 slice 6e, #703)', () => {
     const modeTabsMarkup = renderToString(createElement(ModeTabs));
-    ['dir', 'live', 'soundcheck', 'recent', 'guide', 'ringout', 'reportcard'].forEach((mode) => {
+    ['dir', 'live', 'console', 'soundcheck', 'recent', 'guide', 'ringout', 'reportcard'].forEach((mode) => {
       expect(modeTabsMarkup).toContain(`data-mode="${mode}"`);
     });
   });

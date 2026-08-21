@@ -1,11 +1,11 @@
 // Copyright (c) 2026 Patrick Robinson (on-par). All rights reserved.
 // Licensed under the Sound Buddy Desktop Application License (app/LICENSE).
 
-// The Live tab's first console-facing surface (#884, #848): scan the network
+// The Console workspace's read-only console-facing surface (#884, #848, #989): scan the network
 // for an M32R, list what answered, and show the selected console's identity
 // (name, model, firmware, IP), with a manual-IP fallback labelled as the
-// secondary path. Portaled by App.tsx onto #console-panel-island inside
-// #tab-live. Every network action routes through consoleStore, which gates
+// secondary path. Portaled by App.tsx into #tab-console. Every network action
+// routes through consoleStore, which gates
 // on useConsoleNetworkConsentStore's requestConsent() (Tier 2, ADR-0006) —
 // per ADR-0006, the consent modal itself (not this panel) is the only path
 // that ever grants consent; this panel only requests it.
@@ -147,7 +147,7 @@ export default function ConsolePanel(): JSX.Element | null {
     sceneDiffError: st.sceneDiffError,
   }));
 
-  if (appMode !== 'live') return null;
+  if (appMode !== 'console') return null;
 
   const linkMessage = consoleLinkMessage(s.link);
   const captureLine = captureStatusLine(s.captureStatus, s.captureDone, s.captureTotal, s.captureFilePath);
