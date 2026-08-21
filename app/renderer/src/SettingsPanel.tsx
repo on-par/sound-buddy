@@ -47,10 +47,11 @@
 // instantSettingValues and commit on change via commitInstantSetting — no
 // local staged state, no Save-gated seeding. The storage folder now persists
 // on change too (#1019, via commitStorageDir/chooseStorageFolder in
-// storage-settings.ts) — only the church-name field and console-network
-// consent keep their own commit paths.
+// storage-settings.ts) — the church-name field now persists on a debounced
+// change too (#1020, via church-name-debounce.ts), leaving console-network
+// consent as the one remaining bespoke commit path.
 
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import type { StoreApi, UseBoundStore } from 'zustand';
 import { useElectron } from './useElectron';
 import { useStoreShallow } from './stores/useStoreShallow';
@@ -66,6 +67,7 @@ import {
   chooseStorageFolder,
 } from './storage-settings';
 import { instantSettingValues, commitInstantSetting } from './settings-instant-apply';
+import { createChurchNameCommitter, type ChurchNameCommitter } from './church-name-debounce';
 import type { UpdateSettingsPatch } from '../../electron/ipc/api';
 import { MAX_CHURCH_NAME_LEN } from './share-card';
 import { iconSvg } from './report-card';
@@ -222,6 +224,25 @@ export default function SettingsPanel({ booted = false }: { booted?: boolean }) 
   // the persisted value — the effect below only re-syncs it on reopen.
   const [shareChurchName, setShareChurchName] = useState(() => settings?.shareChurchName ?? '');
 
+  // One debounced committer per mount (#1020) — typing re-arms the window and
+  // only the settled value reaches settingsStore, so a burst of keystrokes is
+  // a single updateSettings round-trip instead of one per character.
+  const churchNameCommitterRef = useRef<ChurchNameCommitter | null>(null);
+  if (!churchNameCommitterRef.current) {
+    churchNameCommitterRef.current = createChurchNameCommitter({
+      schedule: (cb, ms) => setTimeout(cb, ms),
+      cancel: (handle) => clearTimeout(handle),
+      commit: (value) => void commitShareChurchName(useSettingsStore, value),
+    });
+  }
+  const churchNameCommitter = churchNameCommitterRef.current;
+
+  /* c8 ignore start -- unmount cleanup only; this harness renders with
+     react-dom/server (no jsdom), so effects never run. The cancel() behavior
+     it wires is unit-tested in church-name-debounce.test.ts. */
+  useEffect(() => () => churchNameCommitter.cancel(), [churchNameCommitter]);
+  /* c8 ignore stop */
+
   const [section, setSection] = useState<SettingsSection>('general');
   // The row currently hovered or keyboard-focused (#1007) — drives the
   // footer help strip via resolveSettingsHelp; null means "nothing active",
@@ -283,10 +304,11 @@ export default function SettingsPanel({ booted = false }: { booted?: boolean }) 
   const closeSettingsDialog = () => useSettingsStore.getState().closeDialog();
 
   function handleSave() {
-    // The church-name field commits on blur, but a click straight from the
-    // field to this Save button can beat that blur — flush it explicitly so
-    // Save always captures whatever is currently typed.
-    void commitShareChurchName(useSettingsStore, shareChurchName);
+    // The church-name field commits on a debounce (#1020); a click straight
+    // from the field to this Save button can beat that debounce window, so
+    // flush the committer explicitly — Save always captures whatever is
+    // currently typed, and the debounce never issues a duplicate write.
+    churchNameCommitter.flush();
     // The toggles come from the same persisted settings buildStoragePatch
     // diffs against (#1018); the storage folder no longer flows through Save
     // (#1019, it commits immediately) — the seven instant-apply controls and
@@ -410,8 +432,11 @@ export default function SettingsPanel({ booted = false }: { booted?: boolean }) 
                 maxLength={MAX_CHURCH_NAME_LEN}
                 aria-describedby={settingsHelpNoteId('shareChurchName')}
                 value={shareChurchName}
-                onChange={(e) => setShareChurchName(e.target.value)}
-                onBlur={() => void commitShareChurchName(useSettingsStore, shareChurchName)}
+                onChange={(e) => {
+                  setShareChurchName(e.target.value);
+                  churchNameCommitter.change(e.target.value);
+                }}
+                onBlur={() => churchNameCommitter.flush()}
               />
             </label>
             <SettingsNote control="shareChurchName" />
