@@ -19,11 +19,11 @@ test.describe.serial('macOS titlebar safe area (#362)', () => {
     await app?.close();
   });
 
-  test('header and top banners share the same left inset', async () => {
+  test('header and remaining top banners share the same left inset', async () => {
     await launch();
 
     const paddings = await win.evaluate(() => {
-      const ids = ['header', 'update-banner', 'license-banner', 'trial-banner'];
+      const ids = ['header', 'license-banner', 'trial-banner'];
       for (const id of ids.slice(1)) {
         document.getElementById(id)?.classList.add('show');
       }
@@ -37,7 +37,6 @@ test.describe.serial('macOS titlebar safe area (#362)', () => {
     });
 
     expect(paddings.header).toBeTruthy();
-    expect(paddings['update-banner']).toBe(paddings.header);
     expect(paddings['license-banner']).toBe(paddings.header);
     expect(paddings['trial-banner']).toBe(paddings.header);
   });

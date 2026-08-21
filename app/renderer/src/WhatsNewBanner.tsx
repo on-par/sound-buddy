@@ -5,8 +5,8 @@
 // App.tsx onto #whats-new-banner-island, replacing inline-app.js's
 // initWhatsNew() with a mounted component (same relocation UpdateBanner.tsx
 // already did for initUpdates()). Closes the loop opened by the in-app "Send
-// Feedback" flow (#143/#144): after the user updates, a dismissible,
-// non-blocking banner credits shipped, user-requested items —
+// Feedback" flow (#143/#144): after the user updates, a transient,
+// non-blocking snackbar credits shipped, user-requested items —
 // "You asked, we shipped: …". Bundled with the release and read from disk
 // (never fetched), gated once-per-version by window.whatsNewState +
 // localStorage (mirrors the onboarding "seen once" idiom). Never shows for a
@@ -14,9 +14,8 @@
 // onboarding-state.js stay unchanged classic scripts, read via typed window
 // casts — same pattern UpdateBanner.tsx uses for update-download-state.js.
 
-import { useEffect, useState, type JSX } from 'react';
+import { useEffect, useRef, useState, type JSX } from 'react';
 import { useElectron } from './useElectron';
-import { iconSvg } from './report-card';
 
 interface WhatsNewNote {
   title: string | null;
@@ -42,9 +41,19 @@ export default function WhatsNewBanner(): JSX.Element {
   const [visible, setVisible] = useState(false);
   const [text, setText] = useState('');
   const [version, setVersion] = useState('');
+  const timerRef = useRef<number | null>(null);
+
+  function dismiss(appVersion = version): void {
+    if (appVersion) getWhatsNewState().markSeen(window.localStorage, appVersion);
+    setVisible(false);
+    if (timerRef.current != null) {
+      window.clearTimeout(timerRef.current);
+      timerRef.current = null;
+    }
+  }
 
   /* c8 ignore start -- IPC + localStorage glue, no jsdom in this harness;
-     exercised by tests/e2e/report-card-basics.spec.ts (the banner is dormant
+     exercised by tests/e2e/report-card-basics.spec.ts (the snackbar is dormant
      unless a real bundled changelog + unseen version fire it). */
   useEffect(() => {
     void (async () => {
@@ -76,13 +85,18 @@ export default function WhatsNewBanner(): JSX.Element {
       setText(note.title ? `${note.title}: ${note.items.join(' • ')}` : note.items.join(' • '));
       setVersion(appVersion);
       setVisible(true);
+      if (timerRef.current != null) window.clearTimeout(timerRef.current);
+      timerRef.current = window.setTimeout(() => dismiss(appVersion), 4500);
     })();
+
+    return () => {
+      if (timerRef.current != null) window.clearTimeout(timerRef.current);
+    };
   }, [api]);
   /* c8 ignore stop */
 
   return (
     <div id="whats-new-banner" role="status" className={visible ? 'show' : ''}>
-      <span className="ub-icon" dangerouslySetInnerHTML={{ __html: iconSvg('sparkles', 16) }} />
       <span className="lb-text" id="whats-new-text">{text}</span>
       <button
         type="button"
@@ -90,10 +104,7 @@ export default function WhatsNewBanner(): JSX.Element {
         className="ub-x"
         aria-label="Dismiss"
         /* c8 ignore next -- click dispatch, no jsdom */
-        onClick={() => {
-          if (version) getWhatsNewState().markSeen(window.localStorage, version);
-          setVisible(false);
-        }}
+        onClick={() => dismiss()}
       >
         ✕
       </button>

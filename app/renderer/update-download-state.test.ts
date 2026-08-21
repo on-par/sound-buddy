@@ -3,9 +3,10 @@ import { describe, it, expect } from 'vitest';
 // update-download-state.js is a plain classic script (window.updateDownloadState
 // in the browser, module.exports under Node) so its pure view-model logic is
 // exercised here without a DOM.
-const { BYTES_PER_MB, formatBytes, viewFor } = require('./update-download-state.js') as {
+const { BYTES_PER_MB, formatBytes, roundPercent, viewFor } = require('./update-download-state.js') as {
   BYTES_PER_MB: number;
   formatBytes: (n: number) => string;
+  roundPercent: (n: number) => number;
   viewFor: (
     status:
       | { state: string; receivedBytes?: number; totalBytes?: number; percent?: number; message?: string }
@@ -37,12 +38,25 @@ describe('formatBytes', () => {
   });
 });
 
+describe('roundPercent', () => {
+  it('rounds fractions to whole numbers', () => {
+    expect(roundPercent(37.4)).toBe(37);
+    expect(roundPercent(37.5)).toBe(38);
+  });
+
+  it('clamps invalid and out-of-range values', () => {
+    expect(roundPercent(Number.NaN)).toBe(0);
+    expect(roundPercent(-4)).toBe(0);
+    expect(roundPercent(108)).toBe(100);
+  });
+});
+
 describe('viewFor', () => {
   it('offer view when status is null (update just offered)', () => {
     const view = viewFor(null, INFO);
     expect(view).toEqual({
       text: 'Sound Buddy 1.4.2 is available.',
-      primary: { label: 'Download', action: 'download' },
+      primary: { label: 'Update', action: 'download' },
       showCancel: false,
       showProgress: false,
       percent: 0,
@@ -50,8 +64,8 @@ describe('viewFor', () => {
     });
   });
 
-  it('downloading view with a known total shows percent and byte counts', () => {
-    const status = { state: 'downloading', receivedBytes: 5 * BYTES_PER_MB, totalBytes: 10 * BYTES_PER_MB, percent: 50 };
+  it('downloading view with a known total shows whole-number percent and byte counts', () => {
+    const status = { state: 'downloading', receivedBytes: 5 * BYTES_PER_MB, totalBytes: 10 * BYTES_PER_MB, percent: 50.4 };
     const view = viewFor(status, INFO);
     expect(view).toEqual({
       text: 'Downloading Sound Buddy 1.4.2… 50% (5.0 MB of 10.0 MB)',
@@ -104,7 +118,7 @@ describe('viewFor', () => {
     const view = viewFor({ state: 'cancelled' }, INFO);
     expect(view).toEqual({
       text: 'Sound Buddy 1.4.2 is available.',
-      primary: { label: 'Download', action: 'download' },
+      primary: { label: 'Update', action: 'download' },
       showCancel: false,
       showProgress: false,
       percent: 0,
