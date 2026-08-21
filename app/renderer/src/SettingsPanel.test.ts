@@ -463,24 +463,81 @@ describe('commitShareChurchName', () => {
   });
 });
 
-// Re-homed from inline-app.js's now-deleted openStorageSettings()/
-// saveStorageSettings() (#91, #522) onto SettingsPanel.tsx + storage-settings.ts
-// (#204). The seeding itself lives in the dialog-open effect, which is
-// c8-ignored (no jsdom, exercised by settings.spec.ts) — this asserts the
-// wiring exists in source, same pattern live-adjustments-gate.test.ts used
-// against inline-app.js. buildStoragePatch's per-toggle diff behavior,
-// including liveAdjustmentsEnabled, is covered directly in
-// storage-settings.test.ts.
-describe('storage toggle seeding on dialog open (#522, #204)', () => {
-  const src = fs.readFileSync(fileURLToPath(new URL('./SettingsPanel.tsx', import.meta.url)), 'utf8');
+// Instant-apply Settings controls (#1018, epic #1000): the seven non-storage,
+// non-church-name controls render straight from settingsStore's persisted
+// `settings` (via instantSettingValues) and commit on change (via
+// commitInstantSetting) — no local staged state, no Save-gated seeding.
+// Click dispatch needs jsdom (absent from this harness by convention), so the
+// commit wiring is asserted in source, same pattern the console-consent
+// Revoke button and the storage-toggle-seeding tests used previously.
+describe('instant-apply Settings controls (#1018)', () => {
+  const NON_DEFAULT_SETTINGS = {
+    usageSignalEnabled: true,
+    crashReportingEnabled: true,
+    dawWorkspaceEnabled: true,
+    liveAdjustmentsEnabled: true,
+    weeklyReminderEnabled: true,
+    weeklyReminderServiceDay: 3,
+    gradingProfile: 'broadcast',
+  } as unknown as AppSettings;
 
-  it('seeds every storage toggle from the loaded settings', () => {
-    expect(src).toContain('setUsageSignalEnabled(!!settings?.usageSignalEnabled)');
-    expect(src).toContain('setCrashReportingEnabled(!!settings?.crashReportingEnabled)');
-    expect(src).toContain('setDawWorkspaceEnabled(!!settings?.dawWorkspaceEnabled)');
-    expect(src).toContain('setLiveAdjustmentsEnabled(!!settings?.liveAdjustmentsEnabled)');
-    expect(src).toContain("setGradingProfile(settings?.gradingProfile === 'broadcast' ? 'broadcast' : 'casual')");
-    expect(src).toContain('setConsoleNetworkConsentGranted(!!settings?.consoleNetworkConsentGranted)');
+  it('renders every control checked/selected from persisted non-default settings', () => {
+    useSettingsStore.setState({ settings: NON_DEFAULT_SETTINGS });
+    const html = renderMarkup();
+    for (const id of ['usage-signal-toggle', 'crash-reporting-toggle', 'daw-workspace-toggle', 'live-adjustments-toggle', 'weekly-reminder-toggle']) {
+      expect(html).toMatch(new RegExp(`id="${id}"[^>]*checked=""`));
+    }
+    expect(html).toMatch(/<option[^>]*value="3"[^>]*selected|<option[^>]*selected[^>]*value="3"/);
+    expect(html).toMatch(/<option[^>]*value="broadcast"[^>]*selected|<option[^>]*selected[^>]*value="broadcast"/);
+  });
+
+  it('renders no control checked and the defaults selected when no settings are loaded', () => {
+    const html = renderMarkup();
+    for (const id of ['usage-signal-toggle', 'crash-reporting-toggle', 'daw-workspace-toggle', 'live-adjustments-toggle', 'weekly-reminder-toggle']) {
+      expect(html).not.toMatch(new RegExp(`id="${id}"[^>]*checked=""`));
+    }
+    expect(html).toMatch(/<option[^>]*value="0"[^>]*selected|<option[^>]*selected[^>]*value="0"/);
+    expect(html).toMatch(/<option[^>]*value="casual"[^>]*selected|<option[^>]*selected[^>]*value="casual"/);
+  });
+
+  it('derives control values from instantSettingValues(settings) in source', () => {
+    const src = fs.readFileSync(fileURLToPath(new URL('./SettingsPanel.tsx', import.meta.url)), 'utf8');
+    expect(src).toContain('instantSettingValues(settings)');
+  });
+
+  it('commits each control through commitInstantSetting with its own key', () => {
+    const src = fs.readFileSync(fileURLToPath(new URL('./SettingsPanel.tsx', import.meta.url)), 'utf8');
+    for (const key of [
+      'gradingProfile',
+      'weeklyReminderEnabled',
+      'weeklyReminderServiceDay',
+      'usageSignalEnabled',
+      'crashReportingEnabled',
+      'dawWorkspaceEnabled',
+      'liveAdjustmentsEnabled',
+    ]) {
+      expect(src).toContain(`commitInstantSetting(useSettingsStore, '${key}'`);
+    }
+  });
+
+  it('no longer stages the seven controls in local useState', () => {
+    const src = fs.readFileSync(fileURLToPath(new URL('./SettingsPanel.tsx', import.meta.url)), 'utf8');
+    for (const setter of [
+      'setUsageSignalEnabled',
+      'setCrashReportingEnabled',
+      'setDawWorkspaceEnabled',
+      'setLiveAdjustmentsEnabled',
+      'setWeeklyReminderEnabled',
+      'setWeeklyReminderServiceDay',
+      'setGradingProfile',
+    ]) {
+      expect(src).not.toContain(setter);
+    }
+  });
+
+  it('feeds handleSave toggles from the same persisted settings buildStoragePatch diffs against', () => {
+    const src = fs.readFileSync(fileURLToPath(new URL('./SettingsPanel.tsx', import.meta.url)), 'utf8');
+    expect(src).toContain('buildStoragePatch(pendingDir, instantSettingValues(settings), settings)');
   });
 });
 

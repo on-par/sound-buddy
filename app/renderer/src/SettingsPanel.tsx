@@ -39,6 +39,15 @@
 // `body.not-pro #settings-pane-audio > :not(.pro-gate)` rule (mirroring the
 // #tab-live/#tab-soundcheck rule) hides/shows them exactly like the Live tab
 // always did.
+//
+// Instant-apply Settings controls (#1018, epic #1000): the seven controls
+// covered by settings-instant-apply.ts (grading strictness, weekly reminder
+// + service day, usage signal, crash reporting, DAW workspace, live
+// adjustments) render straight from settingsStore's persisted `settings` via
+// instantSettingValues and commit on change via commitInstantSetting — no
+// local staged state, no Save-gated seeding. The storage folder, the
+// church-name field, and console-network consent keep their own commit
+// paths, unchanged by this slice.
 
 import { useEffect, useState, type ReactNode } from 'react';
 import type { StoreApi, UseBoundStore } from 'zustand';
@@ -48,6 +57,7 @@ import { useSettingsStore, type SettingsState } from './stores/settingsStore';
 import { useLiveCaptureStore } from './stores/liveCaptureStore';
 import { useLicensingStore } from './stores/licensingStore';
 import { DEFAULT_STORAGE_PATH, effectiveStoragePath, loadStorageSeed, buildStoragePatch } from './storage-settings';
+import { instantSettingValues, commitInstantSetting } from './settings-instant-apply';
 import type { UpdateSettingsPatch } from '../../electron/ipc/api';
 import { MAX_CHURCH_NAME_LEN } from './share-card';
 import { iconSvg } from './report-card';
@@ -214,13 +224,6 @@ export default function SettingsPanel({ booted = false }: { booted?: boolean }) 
   const [defaultPath, setDefaultPath] = useState(DEFAULT_STORAGE_PATH);
   const [loadedPath, setLoadedPath] = useState(DEFAULT_STORAGE_PATH);
   const [usageText, setUsageText] = useState('Calculating disk usage…');
-  const [usageSignalEnabled, setUsageSignalEnabled] = useState(false);
-  const [crashReportingEnabled, setCrashReportingEnabled] = useState(false);
-  const [dawWorkspaceEnabled, setDawWorkspaceEnabled] = useState(false);
-  const [liveAdjustmentsEnabled, setLiveAdjustmentsEnabled] = useState(false);
-  const [weeklyReminderEnabled, setWeeklyReminderEnabled] = useState(false);
-  const [weeklyReminderServiceDay, setWeeklyReminderServiceDay] = useState(0);
-  const [gradingProfile, setGradingProfile] = useState<'casual' | 'broadcast'>('casual');
   // Eagerly seeded from the store (like shareChurchName) rather than
   // useState(false) — this is a status display + immediate-commit Revoke
   // button, not a Save-gated form field, so it must reflect the persisted
@@ -239,13 +242,6 @@ export default function SettingsPanel({ booted = false }: { booted?: boolean }) 
     setActiveHelp(null);
     setPendingDir(null);
     setUsageText('Calculating disk usage…');
-    setUsageSignalEnabled(!!settings?.usageSignalEnabled);
-    setCrashReportingEnabled(!!settings?.crashReportingEnabled);
-    setDawWorkspaceEnabled(!!settings?.dawWorkspaceEnabled);
-    setLiveAdjustmentsEnabled(!!settings?.liveAdjustmentsEnabled);
-    setWeeklyReminderEnabled(!!settings?.weeklyReminderEnabled);
-    setWeeklyReminderServiceDay(settings?.weeklyReminderServiceDay ?? 0);
-    setGradingProfile(settings?.gradingProfile === 'broadcast' ? 'broadcast' : 'casual');
     setConsoleNetworkConsentGranted(!!settings?.consoleNetworkConsentGranted);
     let cancelled = false;
     void (async () => {
@@ -293,23 +289,15 @@ export default function SettingsPanel({ booted = false }: { booted?: boolean }) 
     // field to this Save button can beat that blur — flush it explicitly so
     // Save always captures whatever is currently typed.
     void commitShareChurchName(useSettingsStore, shareChurchName);
-    const storagePatch = buildStoragePatch(
-      pendingDir,
-      {
-        usageSignalEnabled,
-        crashReportingEnabled,
-        dawWorkspaceEnabled,
-        liveAdjustmentsEnabled,
-        weeklyReminderEnabled,
-        weeklyReminderServiceDay,
-        gradingProfile,
-      },
-      settings
-    );
+    // The toggles come from the same persisted settings buildStoragePatch
+    // diffs against (#1018), so Save can only ever emit the staged
+    // storageDir — the seven instant-apply controls are already persisted.
+    const storagePatch = buildStoragePatch(pendingDir, instantSettingValues(settings), settings);
     void saveAll({ storagePatch }, useSettingsStore);
   }
 
   const storagePath = effectiveStoragePath(pendingDir, defaultPath, loadedPath);
+  const controlValues = instantSettingValues(settings);
 
   return (
     <div
@@ -367,8 +355,8 @@ export default function SettingsPanel({ booted = false }: { booted?: boolean }) 
                   id="grading-profile-select"
                   aria-label="Grading strictness"
                   aria-describedby={settingsHelpNoteId('gradingProfile')}
-                  value={gradingProfile}
-                  onChange={(e) => setGradingProfile(e.target.value as 'casual' | 'broadcast')}
+                  value={controlValues.gradingProfile}
+                  onChange={(e) => void commitInstantSetting(useSettingsStore, 'gradingProfile', e.target.value as 'casual' | 'broadcast')}
                 >
                   <option value="casual">Casual / volunteer</option>
                   <option value="broadcast">Broadcast-ready</option>
@@ -385,8 +373,8 @@ export default function SettingsPanel({ booted = false }: { booted?: boolean }) 
                 type="checkbox"
                 id="weekly-reminder-toggle"
                 aria-describedby={settingsHelpNoteId('weeklyReminder')}
-                checked={weeklyReminderEnabled}
-                onChange={(e) => setWeeklyReminderEnabled(e.target.checked)}
+                checked={controlValues.weeklyReminderEnabled}
+                onChange={(e) => void commitInstantSetting(useSettingsStore, 'weeklyReminderEnabled', e.target.checked)}
               />
             </label>
             <label className="ai-field" {...helpFor('weeklyReminder')}>
@@ -396,8 +384,8 @@ export default function SettingsPanel({ booted = false }: { booted?: boolean }) 
                   id="weekly-reminder-day"
                   aria-label="Service day"
                   aria-describedby={settingsHelpNoteId('weeklyReminder')}
-                  value={weeklyReminderServiceDay}
-                  onChange={(e) => setWeeklyReminderServiceDay(Number(e.target.value))}
+                  value={controlValues.weeklyReminderServiceDay}
+                  onChange={(e) => void commitInstantSetting(useSettingsStore, 'weeklyReminderServiceDay', Number(e.target.value))}
                 >
                   {DAY_LABELS.map((label, i) => (
                     <option key={label} value={i}>
@@ -474,8 +462,8 @@ export default function SettingsPanel({ booted = false }: { booted?: boolean }) 
                 type="checkbox"
                 id="usage-signal-toggle"
                 aria-describedby={settingsHelpNoteId('usageSignal')}
-                checked={usageSignalEnabled}
-                onChange={(e) => setUsageSignalEnabled(e.target.checked)}
+                checked={controlValues.usageSignalEnabled}
+                onChange={(e) => void commitInstantSetting(useSettingsStore, 'usageSignalEnabled', e.target.checked)}
               />
             </label>
             <SettingsNote control="usageSignal" />
@@ -485,8 +473,8 @@ export default function SettingsPanel({ booted = false }: { booted?: boolean }) 
                 type="checkbox"
                 id="crash-reporting-toggle"
                 aria-describedby={settingsHelpNoteId('crashReporting')}
-                checked={crashReportingEnabled}
-                onChange={(e) => setCrashReportingEnabled(e.target.checked)}
+                checked={controlValues.crashReportingEnabled}
+                onChange={(e) => void commitInstantSetting(useSettingsStore, 'crashReportingEnabled', e.target.checked)}
               />
             </label>
             <SettingsNote control="crashReporting" />
@@ -500,8 +488,8 @@ export default function SettingsPanel({ booted = false }: { booted?: boolean }) 
                 type="checkbox"
                 id="daw-workspace-toggle"
                 aria-describedby={settingsHelpNoteId('dawWorkspace')}
-                checked={dawWorkspaceEnabled}
-                onChange={(e) => setDawWorkspaceEnabled(e.target.checked)}
+                checked={controlValues.dawWorkspaceEnabled}
+                onChange={(e) => void commitInstantSetting(useSettingsStore, 'dawWorkspaceEnabled', e.target.checked)}
               />
             </label>
             <SettingsNote control="dawWorkspace" />
@@ -511,8 +499,8 @@ export default function SettingsPanel({ booted = false }: { booted?: boolean }) 
                 type="checkbox"
                 id="live-adjustments-toggle"
                 aria-describedby={settingsHelpNoteId('liveAdjustments')}
-                checked={liveAdjustmentsEnabled}
-                onChange={(e) => setLiveAdjustmentsEnabled(e.target.checked)}
+                checked={controlValues.liveAdjustmentsEnabled}
+                onChange={(e) => void commitInstantSetting(useSettingsStore, 'liveAdjustmentsEnabled', e.target.checked)}
               />
             </label>
             <SettingsNote control="liveAdjustments" />
