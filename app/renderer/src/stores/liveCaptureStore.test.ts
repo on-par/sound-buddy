@@ -52,6 +52,8 @@ describe('createLiveCaptureStore', () => {
     expect(s.ringout).toEqual({ stepIndex: 0, cut: null });
     expect(s.measurementSource).toBeNull();
     expect(s.selectedChannel).toBeNull();
+    expect(s.mutedChannels).toEqual({});
+    expect(s.soloedChannels).toEqual({});
     expect(s.meterIntervalMs).toBe(100);
     expect(s.windowSecs).toBe(3);
   });
@@ -318,6 +320,99 @@ describe('createLiveCaptureStore', () => {
       });
       store.getState().removeStrip(1);
       expect(store.getState().selectedChannel).toBe(0);
+    });
+  });
+
+  describe('monitor mute / solo (#1054)', () => {
+    it('toggleChannelMute(idx) mutes then unmutes with the key removed', () => {
+      const { store } = makeStore();
+      store.getState().toggleChannelMute(1);
+      expect(store.getState().mutedChannels[1]).toBe(true);
+      store.getState().toggleChannelMute(1);
+      expect(store.getState().mutedChannels).toEqual({});
+    });
+
+    it('muting two different channels keeps both keys; unmuting one leaves the other', () => {
+      const { store } = makeStore();
+      store.getState().toggleChannelMute(0);
+      store.getState().toggleChannelMute(1);
+      expect(store.getState().mutedChannels).toEqual({ 0: true, 1: true });
+      store.getState().toggleChannelMute(0);
+      expect(store.getState().mutedChannels).toEqual({ 1: true });
+    });
+
+    it('toggleChannelSolo(idx) solos, and clearChannelSolo empties the map', () => {
+      const { store } = makeStore();
+      store.getState().toggleChannelSolo(2);
+      expect(store.getState().soloedChannels[2]).toBe(true);
+      expect(Object.keys(store.getState().soloedChannels)).toHaveLength(1);
+      store.getState().clearChannelSolo();
+      expect(Object.keys(store.getState().soloedChannels)).toHaveLength(0);
+    });
+
+    it('toggleChannelSolo twice on the same channel unsolos it', () => {
+      const { store } = makeStore();
+      store.getState().toggleChannelSolo(2);
+      store.getState().toggleChannelSolo(2);
+      expect(store.getState().soloedChannels).toEqual({});
+    });
+
+    it('clearChannelSolo leaves mutedChannels untouched', () => {
+      const { store } = makeStore();
+      store.getState().toggleChannelMute(0);
+      store.getState().clearChannelSolo();
+      expect(store.getState().mutedChannels[0]).toBe(true);
+    });
+
+    it('mute and solo are independent', () => {
+      const { store } = makeStore();
+      store.getState().toggleChannelMute(0);
+      expect(store.getState().soloedChannels).toEqual({});
+      store.getState().toggleChannelSolo(0);
+      expect(store.getState().mutedChannels).toEqual({ 0: true });
+    });
+
+    it('every toggle writes a new mutedChannels object (no mutation)', () => {
+      const { store } = makeStore();
+      const before = store.getState().mutedChannels;
+      store.getState().toggleChannelMute(0);
+      expect(store.getState().mutedChannels).not.toBe(before);
+      expect(before).toEqual({});
+    });
+
+    it('removeStrip reindexes both flag maps, dropping the removed strip and shifting higher ones down', () => {
+      const { store } = makeStore();
+      store.setState({
+        channelConfig: [
+          { kind: 'mono', a: 0, b: 1 },
+          { kind: 'mono', a: 1, b: 2 },
+          { kind: 'mono', a: 2, b: 3 },
+        ],
+      });
+      store.getState().toggleChannelMute(2);
+      store.getState().toggleChannelSolo(2);
+      store.getState().removeStrip(0);
+      expect(store.getState().mutedChannels).toEqual({ 1: true });
+      expect(store.getState().soloedChannels).toEqual({ 1: true });
+    });
+
+    it('selectDevice resets both maps to {}', () => {
+      const { store } = makeStore();
+      store.setState({ devices: DEVICES });
+      store.getState().toggleChannelMute(0);
+      store.getState().selectDevice('0');
+      expect(store.getState().mutedChannels).toEqual({});
+      expect(store.getState().soloedChannels).toEqual({});
+    });
+
+    it('loadDevices resets both maps to {} when it reseeds the config', async () => {
+      const { store } = makeStore({
+        listDevices: async () => ({ success: true, micAccess: 'granted', devices: DEVICES }),
+      });
+      store.getState().toggleChannelMute(0);
+      await store.getState().loadDevices();
+      expect(store.getState().mutedChannels).toEqual({});
+      expect(store.getState().soloedChannels).toEqual({});
     });
   });
 
