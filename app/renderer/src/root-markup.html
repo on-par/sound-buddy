@@ -79,6 +79,11 @@
              from directoryStore, portaled onto this empty node. -->
         <div class="tab-content" id="tab-dir"></div>
 
+        <!-- Console (#989): read-only console discovery, live channel state,
+             meters, and scene tooling. Settings → Console remains only the
+             consent/config pane. ConsolePanel.tsx renders onto this island. -->
+        <div class="tab-content" id="tab-console"></div>
+
         <!-- #tab-live relocated into #spectrum-panel by #727 — the rig picker /
              device / measurement source / secondary measurement device /
              meter cadence sliders that used to live here moved into
@@ -156,11 +161,6 @@
              #rc-not-enough offer rows from liveCaptureStore.sessionOffers/
              liveCueVisible. -->
         <div id="live-session-offers-island"></div>
-        <!-- #console-panel-island: ConsolePanel.tsx (#884), the first
-             console-facing surface — scan the network, list what answered,
-             and read the selected console's identity. Read-only by
-             construction (see the #884 ADR). -->
-        <div id="console-panel-island"></div>
       </div>
       <div id="spectrum-header">
         <span id="spectrum-title">Spectrum · Curve</span>

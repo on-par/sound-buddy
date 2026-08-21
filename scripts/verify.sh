@@ -26,12 +26,21 @@ done
 if [[ "$FAST" -eq 0 ]]; then
   echo "==> npm ci (workspaces)"
   npm ci
+  echo "==> npm rebuild approved install-script packages (workspaces)"
+  npm rebuild esbuild --foreground-scripts
   echo "==> npm ci (app)"
   npm ci --prefix app
+  echo "==> npm rebuild approved install-script packages (app)"
+  npm rebuild electron --prefix app --foreground-scripts
+  if [[ -x app/node_modules/electron/dist/Electron.app/Contents/MacOS/Electron ]]; then
+    printf 'Electron.app/Contents/MacOS/Electron' > app/node_modules/electron/path.txt
+  fi
   echo "==> npm ci (app/renderer)"
   npm ci --prefix app/renderer
   echo "==> npm ci (worker)"
   npm ci --prefix worker
+  echo "==> npm rebuild approved install-script packages (worker)"
+  npm rebuild esbuild workerd --prefix worker --foreground-scripts
 fi
 
 # Positioning-consistency guard (#80): the locked brand phrase must appear

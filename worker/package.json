@@ -25,5 +25,9 @@
   "dependencies": {
     "@sound-buddy/license-policy": "file:../packages/license-policy",
     "stripe": "^22.5.0"
+  },
+  "allowScripts": {
+    "esbuild": true,
+    "workerd@1.20260811.1": true
   }
 }

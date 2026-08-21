@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Patrick Robinson (on-par). All rights reserved.
 // Licensed under the Sound Buddy Desktop Application License (app/LICENSE).
 
-import { describe, it, expect, afterEach } from 'vitest';
+import { describe, it, expect, afterEach, beforeEach } from 'vitest';
 import { createElement } from 'react';
 import { renderToString } from 'react-dom/server';
 import ConsolePanel, {
@@ -71,14 +71,18 @@ function renderMarkup(): string {
   return renderToString(createElement(ConsolePanel));
 }
 
+beforeEach(() => {
+  useLiveCaptureStore.setState({ appMode: 'console' });
+});
+
 afterEach(() => {
   useConsoleStore.setState({ ...CONSOLE_INITIAL_STATE });
-  useLiveCaptureStore.setState({ appMode: 'live' });
+  useLiveCaptureStore.setState({ appMode: 'console' });
 });
 
 describe('ConsolePanel (#884)', () => {
-  it('renders nothing when not on the Live tab', () => {
-    useLiveCaptureStore.setState({ appMode: 'reportcard' });
+  it('renders nothing when not on the Console tab', () => {
+    useLiveCaptureStore.setState({ appMode: 'live' });
 
     const html = renderMarkup();
 
@@ -86,7 +90,7 @@ describe('ConsolePanel (#884)', () => {
   });
 
   it('lists every console the scan found, with IP and model', () => {
-    useLiveCaptureStore.setState({ appMode: 'live' });
+    useLiveCaptureStore.setState({ appMode: 'console' });
     useConsoleStore.setState({ scanStatus: 'done', found: [CONSOLE_A, CONSOLE_B] });
 
     const html = renderMarkup();

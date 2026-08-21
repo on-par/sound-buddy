@@ -4,7 +4,7 @@
 // The #mode-tabs bar (TD-001 slice 6e, #703) — portaled by App.tsx onto
 // #mode-tabs, replacing inline-app.js's static button markup + its
 // .mode-tab click listener with a component driven by
-// liveCaptureStore.appMode. Renders the same 9 buttons root-markup.html used
+// liveCaptureStore.appMode. Renders the same top-level workspace buttons
 // to define (same ids/data-mode/icons), then resolves + applies each click
 // through mode-switch.ts's resolveModeSwitch/switchMode.
 
@@ -29,6 +29,7 @@ const TABS: TabDef[] = [
   { mode: 'history', id: 'nav-history', icon: 'clock', label: 'History' },
   { mode: 'dir', icon: 'folder', label: 'Directory' },
   { mode: 'live', icon: 'radio', label: 'Live', lock: true },
+  { mode: 'console', icon: 'sliders', label: 'Console' },
   { mode: 'soundcheck', icon: 'sliders', label: 'Soundcheck', lock: true },
   { mode: 'recent', icon: 'clock', label: 'Recent' },
   { mode: 'guide', icon: 'clipboard-check', label: 'Build Guide' },

@@ -357,9 +357,8 @@ export default function App() {
           replaces inline-app.js's rigDialog() modal with the same promise API. */}
       {booted && createPortal(<LiveStatusLine />, document.getElementById('live-status-island')!)}
       {booted && createPortal(<LiveSessionOffers />, document.getElementById('live-session-offers-island')!)}
-      {/* #884: the Console panel — scan/found list/identity read — portaled
-          onto the static root-markup island inside #tab-live. */}
-      {booted && createPortal(<ConsolePanel />, document.getElementById('console-panel-island')!)}
+      {/* #989: the Console panel moved to its own workspace, away from Live. */}
+      {booted && createPortal(<ConsolePanel />, document.getElementById('tab-console')!)}
       {booted && createPortal(<WindowBadge />, document.getElementById('window-badge-island')!)}
       {booted && createPortal(<RigDialog />, document.getElementById('rig-dialog-island')!)}
       {booted && <LicenseChrome />}
