@@ -10,9 +10,13 @@ import {
   DAW_TIMELINE_INSET_PX,
   WAVEFORM_COLORS,
   dawTimelineX,
+  dawRulerTicks,
+  DAW_RULER_TICK_INTERVAL_SECS,
+  DAW_RULER_SPAN_SECS,
   type DawShellRuntimeDeps,
   type DawWaveformCanvasLike,
   type WaveformColumn,
+  type DawRulerTick,
 } from './daw-shell-runtime';
 
 /* ── drawDawWaveformLane (pure) ── */
@@ -570,5 +574,59 @@ describe('dawTimelineX', () => {
   it('matches the origin-plus-scale formula for an arbitrary t', () => {
     const t = 12.5;
     expect(dawTimelineX(t)).toBe(DAW_TIMELINE_ORIGIN_PX + t * DAW_TIMELINE_PX_PER_SECOND);
+  });
+});
+
+/* ── dawRulerTicks (#1032) ── */
+
+describe('dawRulerTicks (#1032)', () => {
+  it('first tick is t=0 at the shared timeline origin', () => {
+    const first: DawRulerTick = dawRulerTicks(30)[0];
+    expect(first).toEqual({ timeSecs: 0, xPx: DAW_TIMELINE_ORIGIN_PX });
+  });
+
+  it('yields representative times whose xPx matches the shared geometry', () => {
+    const ticks = dawRulerTicks(30);
+    expect(ticks.map((tick) => tick.timeSecs)).toEqual([0, 5, 10, 15, 20, 25, 30]);
+    expect(ticks[0].xPx).toBe(dawTimelineX(0));
+    expect(ticks[2].xPx).toBe(dawTimelineX(10));
+    expect(ticks[6].xPx).toBe(dawTimelineX(30));
+  });
+
+  it('consecutive ticks differ by one interval of the shared scale', () => {
+    const ticks = dawRulerTicks(30);
+    for (let i = 1; i < ticks.length; i++) {
+      expect(ticks[i].xPx - ticks[i - 1].xPx).toBe(DAW_RULER_TICK_INTERVAL_SECS * DAW_TIMELINE_PX_PER_SECOND);
+    }
+  });
+
+  it('every tick over the default span agrees with dawTimelineX for its own time', () => {
+    expect(dawRulerTicks(DAW_RULER_SPAN_SECS).every((tick) => tick.xPx === dawTimelineX(tick.timeSecs))).toBe(true);
+  });
+
+  it('the last tick of the default span sits at DAW_RULER_SPAN_SECS', () => {
+    const ticks = dawRulerTicks(DAW_RULER_SPAN_SECS);
+    expect(ticks[ticks.length - 1].timeSecs).toBe(DAW_RULER_SPAN_SECS);
+  });
+
+  it('returns exactly one tick at t=0 for a zero span', () => {
+    expect(dawRulerTicks(0)).toEqual([{ timeSecs: 0, xPx: DAW_TIMELINE_ORIGIN_PX }]);
+  });
+
+  it('returns exactly one tick for a span shorter than one interval', () => {
+    expect(dawRulerTicks(3)).toEqual([{ timeSecs: 0, xPx: DAW_TIMELINE_ORIGIN_PX }]);
+  });
+
+  it('returns no ticks for a negative span', () => {
+    expect(dawRulerTicks(-1)).toEqual([]);
+  });
+
+  it('returns no ticks for a non-finite span', () => {
+    expect(dawRulerTicks(NaN)).toEqual([]);
+  });
+
+  it('stops at the last whole interval for a span that is not a multiple of the interval', () => {
+    const ticks = dawRulerTicks(12);
+    expect(ticks.map((tick) => tick.timeSecs)).toEqual([0, 5, 10]);
   });
 });

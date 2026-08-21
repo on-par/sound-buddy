@@ -34,6 +34,41 @@ export const DAW_TIMELINE_ORIGIN_PX = 208;
 export function dawTimelineX(timeSecs: number): number {
   return DAW_TIMELINE_ORIGIN_PX + timeSecs * DAW_TIMELINE_PX_PER_SECOND;
 }
+
+// The ruler's tick division, in seconds. 5s at DAW_TIMELINE_PX_PER_SECOND is
+// exactly the 40px division the ruler painted as a CSS gradient before #1032 —
+// the interval itself is unchanged by this story (docs/design/session-tab.md's
+// 10s labelled ticks are #1028's concern).
+export const DAW_RULER_TICK_INTERVAL_SECS = 5;
+// How much arrangement time the ruler lays ticks over. The ruler row clips its
+// own overflow, so this is a fixed strip rather than a viewport-aware count —
+// a width-aware (and zoomable) tick range lands with the arrangement layout
+// (#1028). 300s covers the widest lane column at the current scale.
+export const DAW_RULER_SPAN_SECS = 300;
+
+/** One ruler tick: the arrangement time it marks and the shell-local x
+ *  coordinate for that time, straight from the shared geometry. */
+export interface DawRulerTick {
+  timeSecs: number;
+  xPx: number;
+}
+
+/** Ruler ticks at every DAW_RULER_TICK_INTERVAL_SECS from t=0 through
+ *  spanSecs inclusive. Pure: each xPx is dawTimelineX(timeSecs), so a tick can
+ *  never disagree with a lane gridline or the playhead about where a time sits.
+ *  Counting in whole intervals (never accumulating a float) keeps the times
+ *  exact — no epsilon comparison needed. A negative or non-finite span yields
+ *  no ticks. */
+export function dawRulerTicks(spanSecs: number): DawRulerTick[] {
+  if (!Number.isFinite(spanSecs) || spanSecs < 0) return [];
+  const count = Math.floor(spanSecs / DAW_RULER_TICK_INTERVAL_SECS) + 1;
+  const ticks: DawRulerTick[] = [];
+  for (let i = 0; i < count; i++) {
+    const timeSecs = i * DAW_RULER_TICK_INTERVAL_SECS;
+    ticks.push({ timeSecs, xPx: dawTimelineX(timeSecs) });
+  }
+  return ticks;
+}
 // Recording-vs-monitoring waveform stroke, matching the transport-chip colors
 // (--issue-text/--gold-text/--text-muted in app.css) — canvas drawing can't
 // read CSS custom properties, so these are named constants (ported verbatim

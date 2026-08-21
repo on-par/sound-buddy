@@ -238,6 +238,36 @@ describe('shared DAW timeline geometry contract (#1031)', () => {
   });
 });
 
+describe('ruler ticks derive from the shared timeline geometry (#1032)', () => {
+  it('dawShellHTML renders ruler ticks built from dawRulerTicks', () => {
+    expect(workspaceViewTs).toContain('dawRulerTicks(');
+    expect(workspaceViewTs).toContain('daw-ruler-tick');
+  });
+
+  it('the ruler tick markup is imported from the shared geometry module, not reimplemented', () => {
+    expect(workspaceViewTs).toMatch(/import \{[^}]*dawRulerTicks[^}]*\} from '\.\/daw-shell-runtime'/s);
+  });
+
+  it('daw-shell-runtime.ts exports the ruler tick geometry', () => {
+    expect(dawShellRuntimeTs).toContain('export function dawRulerTicks(spanSecs: number): DawRulerTick[]');
+    expect(dawShellRuntimeTs).toContain('export const DAW_RULER_TICK_INTERVAL_SECS');
+  });
+
+  it('no ruler-local pixels-per-second value survives in the ruler tick builder or the CSS', () => {
+    const rulerRule = css.match(/\.daw-ruler\s*\{[^}]*\}/);
+    expect(rulerRule).not.toBeNull();
+    expect(rulerRule![0]).not.toContain('repeating-linear-gradient');
+    expect(css).toContain('.daw-ruler-tick');
+    const builderBody = functionBody(workspaceViewTs, 'dawShellHTML');
+    expect(builderBody).toContain('dawRulerTicks');
+    expect(workspaceViewTs).not.toMatch(/PX_PER_SECOND\s*=/);
+  });
+
+  it("dawRulerTicks' body computes each tick's x through the shared dawTimelineX function", () => {
+    expect(functionBody(dawShellRuntimeTs, 'dawRulerTicks')).toContain('dawTimelineX(timeSecs)');
+  });
+});
+
 describe('DAW shell seam consumers unchanged by the 6j migration', () => {
   it('the capture lifecycle still starts the playhead and resets the waveform via the dawShell seam', () => {
     const block = enclosingBlock(lifecycleTs, 'shell?.startPlayhead(Date.now())');

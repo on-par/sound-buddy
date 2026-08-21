@@ -37,7 +37,7 @@ import {
 import { escapeHtml } from './spectrum-display';
 import { fmt, iconSvg } from './report-card';
 import type { AppSettings } from '../../electron/ipc/api';
-import type { DawShellRuntime } from './daw-shell-runtime';
+import { dawRulerTicks, DAW_RULER_SPAN_SECS, type DawShellRuntime } from './daw-shell-runtime';
 
 export type { DawShellRuntime } from './daw-shell-runtime';
 
@@ -471,6 +471,9 @@ export function dawShellHTML(state: LiveWorkspaceViewState): string {
       + `<span class="daw-lane-body"><canvas class="daw-channel-waveform"></canvas></span>`
       + `</div>`).join('')}</div>`
     : `<div class="daw-lane daw-empty-state">Add tracks to see channel lanes</div>`;
+  const rulerTicks = dawRulerTicks(DAW_RULER_SPAN_SECS)
+    .map((tick) => `<span class="daw-ruler-tick" style="left:${tick.xPx}px"></span>`)
+    .join('');
   return `<div class="daw-shell">`
     + `<div class="daw-transport">`
     + `<span class="daw-transport-title">Live Workspace</span>`
@@ -479,7 +482,7 @@ export function dawShellHTML(state: LiveWorkspaceViewState): string {
     + `<span class="daw-transport-hint">Start and stop recording from the top-bar Record button</span>`
     + `</div>`
     + `<div class="daw-playhead"></div>`
-    + `<div class="daw-ruler"></div>`
+    + `<div class="daw-ruler">${rulerTicks}</div>`
     + `<div class="daw-lane daw-mix-lane" data-capture-mode="${captureMode}">`
     + `<span class="daw-lane-name">Overall mix</span>`
     + `<span class="daw-lane-body"><canvas class="daw-mix-waveform"></canvas></span>`
