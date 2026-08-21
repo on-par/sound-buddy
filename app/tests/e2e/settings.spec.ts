@@ -30,7 +30,7 @@ test.describe('Settings dialog (#204)', () => {
     // imperative style write here would fight React's own re-render, so drive
     // it through the real close affordance instead.
     if (await window.locator('#settings-dialog').isVisible()) {
-      await window.locator('#settings-dialog-cancel').click();
+      await window.locator('#settings-dialog-done').click();
     }
   });
 
@@ -71,7 +71,7 @@ test.describe('Settings dialog (#204)', () => {
     // Usage line resolves from the informational IPC (never a limit).
     await expect(window.locator('#storage-usage')).toContainText('no limit');
     await expect(window.locator('#storage-path')).not.toHaveText('');
-    await window.locator('#settings-dialog-cancel').click();
+    await window.locator('#settings-dialog-done').click();
     await expect(window.locator('#settings-dialog')).toBeHidden();
   });
 
@@ -86,7 +86,7 @@ test.describe('Settings dialog (#204)', () => {
     await window.locator('#settings-tab-btn-storage').click();
     await window.locator('#storage-change-btn').click();
     await expect(window.locator('#storage-path')).toHaveText(chosen);
-    await window.locator('#settings-dialog-save').click();
+    await window.locator('#settings-dialog-done').click();
     await expect(window.locator('#settings-dialog')).toBeHidden();
 
     // Reopen: get-storage-usage reflects the persisted folder.
@@ -95,7 +95,7 @@ test.describe('Settings dialog (#204)', () => {
     await expect(window.locator('#storage-path')).toHaveText(chosen);
     // Now that a custom folder is set, the reset action is offered.
     await expect(window.locator('#storage-reset-btn')).toBeVisible();
-    await window.locator('#settings-dialog-cancel').click();
+    await window.locator('#settings-dialog-done').click();
 
     // Restore the default so later specs (and reruns) see a clean setting.
     await electronApp.evaluate(({ ipcMain }) => {
@@ -113,14 +113,14 @@ test.describe('Settings dialog (#204)', () => {
     await expect(window.locator('#usage-signal-toggle')).not.toBeChecked();
     await expect(window.locator('#usage-signal-note')).toContainText('anonymous');
     await expect(window.locator('#usage-signal-note')).toContainText('never audio');
-    await window.locator('#settings-dialog-cancel').click();
+    await window.locator('#settings-dialog-done').click();
   });
 
   test('checking the usage-signal toggle persists across a reopen, then restores to off', async () => {
     await window.locator('#settings-btn').click();
     await window.locator('#settings-tab-btn-privacy').click();
     await window.locator('#usage-signal-toggle').check();
-    await window.locator('#settings-dialog-save').click();
+    await window.locator('#settings-dialog-done').click();
     await expect(window.locator('#settings-dialog')).toBeHidden();
 
     await window.locator('#settings-btn').click();
@@ -129,13 +129,13 @@ test.describe('Settings dialog (#204)', () => {
 
     // Restore the default-OFF state so no ON preference leaks into later tests.
     await window.locator('#usage-signal-toggle').uncheck();
-    await window.locator('#settings-dialog-save').click();
+    await window.locator('#settings-dialog-done').click();
     await expect(window.locator('#settings-dialog')).toBeHidden();
 
     await window.locator('#settings-btn').click();
     await window.locator('#settings-tab-btn-privacy').click();
     await expect(window.locator('#usage-signal-toggle')).not.toBeChecked();
-    await window.locator('#settings-dialog-cancel').click();
+    await window.locator('#settings-dialog-done').click();
   });
 
   // #1010: the compact Settings toggle chrome is CSS-only — the control is
@@ -158,14 +158,14 @@ test.describe('Settings dialog (#204)', () => {
     await window.keyboard.press('Space');
     await expect(toggle).not.toBeChecked();
 
-    // Cancel discards the local edit, so no ON preference leaks to later tests.
-    await window.locator('#settings-dialog-cancel').click();
+    // The toggle now persists on change (#1018) — the two Space presses above
+    // already landed it back on unchecked, so no ON preference leaks to later tests.
+    await window.locator('#settings-dialog-done').click();
   });
 
-  // #204: a storage-folder change persists through the single shared Save
-  // (originally paired with an AI Ollama-model change in the same session —
-  // the AI half was removed by #657, this now covers storage-only).
-  test('a storage-folder change persists through a single Save', async () => {
+  // #204: a storage-folder change persists as soon as it's made (#1019) — the
+  // dialog close below just verifies reopening still shows it.
+  test('a storage-folder change persists through a dialog close', async () => {
     const chosen = '/tmp/sb-e2e-storage-combined';
     await electronApp.evaluate(({ ipcMain }, dir) => {
       ipcMain.removeHandler('open-dir-dialog');
@@ -176,13 +176,13 @@ test.describe('Settings dialog (#204)', () => {
     await window.locator('#settings-tab-btn-storage').click();
     await window.locator('#storage-change-btn').click();
     await expect(window.locator('#storage-path')).toHaveText(chosen);
-    await window.locator('#settings-dialog-save').click();
+    await window.locator('#settings-dialog-done').click();
     await expect(window.locator('#settings-dialog')).toBeHidden();
 
     await window.locator('#settings-btn').click();
     await window.locator('#settings-tab-btn-storage').click();
     await expect(window.locator('#storage-path')).toHaveText(chosen);
-    await window.locator('#settings-dialog-cancel').click();
+    await window.locator('#settings-dialog-done').click();
 
     // Restore the default folder so later specs (and reruns) see a clean setting.
     await electronApp.evaluate(({ ipcMain }) => {
@@ -199,7 +199,7 @@ test.describe('Settings dialog (#204)', () => {
     await window.locator('#settings-tab-btn-labs').click();
     await expect(window.locator('#settings-tab-btn-labs')).toHaveClass(/active/);
     await expect(window.locator('#settings-tab-btn-general')).not.toHaveClass(/active/);
-    await window.locator('#settings-dialog-cancel').click();
+    await window.locator('#settings-dialog-done').click();
   });
 
   test('the card, rail and footer keep their geometry across a section switch', async () => {
@@ -214,8 +214,8 @@ test.describe('Settings dialog (#204)', () => {
     expect(Math.abs(after.card!.height - before.card!.height)).toBeLessThanOrEqual(BOX_EPSILON_PX);
     expect(Math.abs(after.card!.width - before.card!.width)).toBeLessThanOrEqual(BOX_EPSILON_PX);
     expect(Math.abs(after.footer!.y - before.footer!.y)).toBeLessThanOrEqual(BOX_EPSILON_PX);
-    await expect(window.locator('#settings-dialog-save')).toBeVisible();
-    await window.locator('#settings-dialog-cancel').click();
+    await expect(window.locator('#settings-dialog-done')).toBeVisible();
+    await window.locator('#settings-dialog-done').click();
   });
 
   test('the title-bar close control closes the dialog without saving', async () => {
@@ -223,5 +223,34 @@ test.describe('Settings dialog (#204)', () => {
     await expect(window.locator('#settings-dialog-title')).toHaveText('Settings');
     await window.locator('#settings-dialog-close').click();
     await expect(window.locator('#settings-dialog')).toBeHidden();
+  });
+
+  // #1021: the footer's Cancel/Save pair is gone — Done is the only action,
+  // and every control (including one flipped mid-session) is already
+  // persisted by the time Done or Escape closes the dialog.
+  test('Done is the only dialog action and closing keeps persisted values', async () => {
+    await window.locator('#settings-btn').click();
+    await expect(window.locator('#settings-dialog-done')).toHaveText('Done');
+    await expect(window.locator('#settings-dialog-save')).toHaveCount(0);
+    await expect(window.locator('#settings-dialog-cancel')).toHaveCount(0);
+    await window.locator('#settings-tab-btn-privacy').click();
+    await window.locator('#usage-signal-toggle').check();
+    await window.locator('#settings-dialog-done').click();
+    await expect(window.locator('#settings-dialog')).toBeHidden();
+
+    await window.locator('#settings-btn').click();
+    await window.locator('#settings-tab-btn-privacy').click();
+    await expect(window.locator('#usage-signal-toggle')).toBeChecked();
+    // Escape closes without reverting either.
+    await window.keyboard.press('Escape');
+    await expect(window.locator('#settings-dialog')).toBeHidden();
+    await window.locator('#settings-btn').click();
+    await window.locator('#settings-tab-btn-privacy').click();
+    await expect(window.locator('#usage-signal-toggle')).toBeChecked();
+
+    // Restore the default-OFF preference so it cannot leak into later specs.
+    await window.locator('#usage-signal-toggle').uncheck();
+    await expect(window.locator('#usage-signal-toggle')).not.toBeChecked();
+    await window.locator('#settings-dialog-done').click();
   });
 });

@@ -18,7 +18,7 @@ async function enableDawWorkspace(win: Page): Promise<void> {
   await win.locator('#settings-btn').click();
   await win.locator('#settings-tab-btn-labs').click();
   await win.locator('#daw-workspace-toggle').check();
-  await win.locator('#settings-dialog-save').click();
+  await win.locator('#settings-dialog-done').click();
   await expect(win.locator('#settings-dialog')).toBeHidden();
 }
 

@@ -16,7 +16,7 @@ async function refreshDevices(win: Page): Promise<void> {
   await win.locator('#settings-btn').click();
   await win.locator('#settings-tab-btn-audio').click();
   await win.locator('#device-refresh-btn').click();
-  await win.locator('#settings-dialog-cancel').click();
+  await win.locator('#settings-dialog-done').click();
 }
 
 test.describe('Inline track definition (#189)', () => {
@@ -98,7 +98,7 @@ test.describe('Inline track definition (#189)', () => {
     await window.locator('#settings-btn').click();
     await window.locator('#settings-tab-btn-audio').click();
     await expect(window.locator('#settings-audio-capture-lock-note')).toBeVisible();
-    await window.locator('#settings-dialog-cancel').click();
+    await window.locator('#settings-dialog-done').click();
     const kindSels = window.locator('#spectrum-body .live-ch-kind');
     const srcSels = window.locator('#spectrum-body .live-ch-src');
     for (let i = 0; i < await kindSels.count(); i++) await expect(kindSels.nth(i)).toBeDisabled();
