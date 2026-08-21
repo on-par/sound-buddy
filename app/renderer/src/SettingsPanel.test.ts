@@ -14,6 +14,7 @@ import SettingsPanel, {
   settingsSectionFor,
   type SettingsControl,
 } from './SettingsPanel';
+import { SETTINGS_HELP_ENTRIES, SETTINGS_SECTION_HELP } from './settings-help';
 import { ElectronContext } from './useElectron';
 import { createSettingsStore, useSettingsStore } from './stores/settingsStore';
 import { useLiveCaptureStore } from './stores/liveCaptureStore';
@@ -119,7 +120,7 @@ describe('SettingsPanel markup', () => {
   it('wires section tab buttons through the table-driven section list', () => {
     const src = fs.readFileSync(fileURLToPath(new URL('./SettingsPanel.tsx', import.meta.url)), 'utf8');
     expect(src).toContain('SETTINGS_SECTIONS.map((name)');
-    expect(src).toContain('onClick={() => setSection(name)}');
+    expect(src).toContain('setSection(name);');
   });
 
   it('renders the storage pane copy verbatim, including the no-caps guardrail line', () => {
@@ -150,6 +151,83 @@ describe('SettingsPanel markup', () => {
     useSettingsStore.setState({ settings: { shareChurchName: 'Grace Chapel' } as unknown as AppSettings });
     const html = renderMarkup();
     expect(html).toMatch(/id="share-church-name-input"[^>]*value="Grace Chapel"/);
+  });
+});
+
+describe('contextual help strip (#1007)', () => {
+  it('renders every help-table entry as a visually-hidden note with a matching id', () => {
+    const html = renderMarkup();
+    for (const entry of SETTINGS_HELP_ENTRIES) {
+      const re = new RegExp(`class="[^"]*settings-note-hidden[^"]*" id="${entry.noteId}"`);
+      expect(html).toMatch(re);
+    }
+  });
+
+  it('keeps all nine note ids present in the markup', () => {
+    const html = renderMarkup();
+    const noteIds = [
+      'grading-profile-note',
+      'weekly-reminder-note',
+      'share-church-name-note',
+      'storage-note',
+      'usage-signal-note',
+      'crash-reporting-note',
+      'daw-workspace-note',
+      'live-adjustments-note',
+      'console-network-consent-note',
+    ];
+    for (const id of noteIds) {
+      expect(html).toContain(`id="${id}"`);
+    }
+  });
+
+  it('preserves the exact note copy byte-for-byte', () => {
+    const html = renderMarkup();
+    expect(html).toContain('Broadcast-ready tightens');
+    expect(html).toContain('never audio, recordings, church or file names');
+    expect(html).toContain('reduced to their base name');
+    expect(html).toContain('no limits on any tier');
+    expect(html).toContain('Revoking takes effect immediately');
+  });
+
+  it('wires aria-describedby from each control to its note element', () => {
+    const html = renderMarkup();
+    const pairs: [string, string][] = [
+      ['usage-signal-toggle', 'usage-signal-note'],
+      ['crash-reporting-toggle', 'crash-reporting-note'],
+      ['daw-workspace-toggle', 'daw-workspace-note'],
+      ['live-adjustments-toggle', 'live-adjustments-note'],
+      ['grading-profile-select', 'grading-profile-note'],
+      ['weekly-reminder-toggle', 'weekly-reminder-note'],
+      ['weekly-reminder-day', 'weekly-reminder-note'],
+      ['share-church-name-input', 'share-church-name-note'],
+      ['storage-change-btn', 'storage-note'],
+    ];
+    for (const [controlId, noteId] of pairs) {
+      const re = new RegExp(
+        `(id="${controlId}"[^>]*aria-describedby="${noteId}"|aria-describedby="${noteId}"[^>]*id="${controlId}")`
+      );
+      expect(html).toMatch(re);
+    }
+  });
+
+  it('shows the General section description in the strip by default', () => {
+    const html = renderMarkup();
+    expect(html).toContain('id="settings-help-strip"');
+    expect(html).toContain(SETTINGS_SECTION_HELP.general);
+  });
+
+  it('marks the strip aria-hidden', () => {
+    const html = renderMarkup();
+    const re = /(id="settings-help-strip"[^>]*aria-hidden="true"|aria-hidden="true"[^>]*id="settings-help-strip")/;
+    expect(html).toMatch(re);
+  });
+
+  it('wires the row handlers and resolver in source', () => {
+    const src = fs.readFileSync(fileURLToPath(new URL('./SettingsPanel.tsx', import.meta.url)), 'utf8');
+    expect(src).toContain('settingsHelpHandlers(control, setActiveHelp)');
+    expect(src).toContain('resolveSettingsHelp(activeHelp, section)');
+    expect(src).toContain('setActiveHelp(null)');
   });
 });
 

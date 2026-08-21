@@ -21,6 +21,10 @@ const liveCaptureStoreTs = fs.readFileSync(fileURLToPath(new URL('./stores/liveC
 const liveCapturePanelTsx = fs.readFileSync(fileURLToPath(new URL('./LiveCapturePanel.tsx', import.meta.url)), 'utf8');
 const workspaceViewTs = fs.readFileSync(fileURLToPath(new URL('./live-workspace-view.ts', import.meta.url)), 'utf8');
 const settingsPanelTsx = fs.readFileSync(fileURLToPath(new URL('./SettingsPanel.tsx', import.meta.url)), 'utf8');
+// The note's copy moved out of SettingsPanel.tsx into settings-help.ts as the
+// single source of truth (#1007) — the toggle stays inline, but the note id
+// now lives in that table instead.
+const settingsHelpTs = fs.readFileSync(fileURLToPath(new URL('./settings-help.ts', import.meta.url)), 'utf8');
 const css = fs.readFileSync(fileURLToPath(new URL('./styles/app.css', import.meta.url)), 'utf8');
 const appTsx = fs.readFileSync(fileURLToPath(new URL('./App.tsx', import.meta.url)), 'utf8');
 // TD-001 slice 6i (#712): the capture lifecycle (whose onCaptureStarting calls
@@ -123,7 +127,7 @@ describe('Live adjustments gate wiring (#522)', () => {
 
   it('the Settings dialog has the toggle and note elements (#204)', () => {
     expect(settingsPanelTsx).toContain('id="live-adjustments-toggle"');
-    expect(settingsPanelTsx).toContain('id="live-adjustments-note"');
+    expect(settingsHelpTs).toContain("noteId: 'live-adjustments-note'");
   });
 
   it('App.tsx imports and boots live-adjustments-state.js before the inline app script', () => {
