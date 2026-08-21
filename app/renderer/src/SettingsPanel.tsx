@@ -14,7 +14,9 @@
 //
 // Settings-only chrome (#1008, epic #999): the card is a fixed-size frame
 // with a title bar, a left category rail in place of the old horizontal tab
-// strip, and a footer holding #1007's help strip next to Cancel/Save. The
+// strip, and a footer holding #1007's help strip next to the single Done
+// action (#1021): every control persists on change, so closing the dialog
+// writes nothing. The
 // section buttons keep their `settings-tab-btn-<name>` ids and `role="tab"`
 // — ten e2e specs address them — only the presentation classes changed
 // (`.settings-tabs` -> `.settings-rail`, `.settings-tab` ->
@@ -49,7 +51,9 @@
 // on change too (#1019, via commitStorageDir/chooseStorageFolder in
 // storage-settings.ts) — the church-name field now persists on a debounced
 // change too (#1020, via church-name-debounce.ts), leaving console-network
-// consent as the one remaining bespoke commit path.
+// consent as the one remaining bespoke commit path. #1021 removed the
+// footer's Save/Cancel pair and the staged-form diffing machinery that fed
+// it — the dialog's only action is now a close-only Done button.
 
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import type { StoreApi, UseBoundStore } from 'zustand';
@@ -62,13 +66,11 @@ import {
   DEFAULT_STORAGE_PATH,
   storageFolderDisplay,
   loadStorageSeed,
-  buildStoragePatch,
   commitStorageDir,
   chooseStorageFolder,
 } from './storage-settings';
 import { instantSettingValues, commitInstantSetting } from './settings-instant-apply';
 import { createChurchNameCommitter, type ChurchNameCommitter } from './church-name-debounce';
-import type { UpdateSettingsPatch } from '../../electron/ipc/api';
 import { MAX_CHURCH_NAME_LEN } from './share-card';
 import { iconSvg } from './report-card';
 import RigControls from './RigControls';
@@ -157,27 +159,9 @@ const DAY_LABELS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Fri
 
 type SettingsStoreHandle = UseBoundStore<StoreApi<SettingsState>>;
 
-export interface SaveAllFields {
-  storagePatch: UpdateSettingsPatch | null;
-}
-
-// Port of the storage half of inline-app.js's old saveStorageSettings()
-// (#91, #204) — applies the storage patch (if any) and closes the dialog.
-// The AI/LLM save half (hosted-model validation, saveLlmConfig, the
-// aiEnabled fold-in) was removed by #657 along with the rest of the AI
-// Engineer tab; there is no failure path left to gate the close on, so
-// unlike the old combined saveAll this always closes.
-export async function saveAll(fields: SaveAllFields, store: SettingsStoreHandle): Promise<void> {
-  const { storagePatch } = fields;
-  if (storagePatch) {
-    await store.getState().updateSettings(storagePatch);
-  }
-  store.getState().closeDialog();
-}
-
 // Persists the Share Image church-name field (#265) straight through
-// settingsStore — a plain string setting, not gated behind the Save button
-// like the AI provider fields (there's no separate "test" step for it).
+// settingsStore — a plain string setting, committed the moment the debounced
+// church-name committer settles (there's no separate "test" step for it).
 export async function commitShareChurchName(store: SettingsStoreHandle, value: string): Promise<void> {
   await store.getState().updateSettings({ shareChurchName: value });
 }
@@ -253,8 +237,8 @@ export default function SettingsPanel({ booted = false }: { booted?: boolean }) 
   const [usageText, setUsageText] = useState('Calculating disk usage…');
   // Eagerly seeded from the store (like shareChurchName) rather than
   // useState(false) — this is a status display + immediate-commit Revoke
-  // button, not a Save-gated form field, so it must reflect the persisted
-  // value on first render, not just after the dialog-open effect re-syncs it.
+  // button, so it must reflect the persisted value on first render, not just
+  // after the dialog-open effect re-syncs it.
   const [consoleNetworkConsentGranted, setConsoleNetworkConsentGranted] = useState(
     () => !!settings?.consoleNetworkConsentGranted
   );
@@ -299,23 +283,9 @@ export default function SettingsPanel({ booted = false }: { booted?: boolean }) 
   }, []);
   /* c8 ignore stop */
 
-  // Backdrop click, the title-bar close control (#1008) and Cancel all close
-  // without saving — one handler so the three can't drift.
+  // Backdrop click, the title-bar close control (#1008) and Done all close
+  // without writing a patch — one handler so the three can't drift.
   const closeSettingsDialog = () => useSettingsStore.getState().closeDialog();
-
-  function handleSave() {
-    // The church-name field commits on a debounce (#1020); a click straight
-    // from the field to this Save button can beat that debounce window, so
-    // flush the committer explicitly — Save always captures whatever is
-    // currently typed, and the debounce never issues a duplicate write.
-    churchNameCommitter.flush();
-    // The toggles come from the same persisted settings buildStoragePatch
-    // diffs against (#1018); the storage folder no longer flows through Save
-    // (#1019, it commits immediately) — the seven instant-apply controls and
-    // the storage folder are already persisted, so Save can emit null.
-    const storagePatch = buildStoragePatch(instantSettingValues(settings), settings);
-    void saveAll({ storagePatch }, useSettingsStore);
-  }
 
   const storagePath = storageFolderDisplay(settings, defaultPath);
   const controlValues = instantSettingValues(settings);
@@ -622,16 +592,8 @@ export default function SettingsPanel({ booted = false }: { booted?: boolean }) 
             {resolveSettingsHelp(activeHelp, section)}
           </p>
           <div className="rig-dialog-actions">
-          <button
-            type="button"
-            id="settings-dialog-cancel"
-            className="btn btn-secondary sm"
-            onClick={closeSettingsDialog}
-          >
-            Cancel
-          </button>
-          <button type="button" id="settings-dialog-save" className="btn btn-primary sm" onClick={handleSave}>
-            Save
+          <button type="button" id="settings-dialog-done" className="btn btn-primary sm" onClick={closeSettingsDialog}>
+            Done
           </button>
           </div>
         </div>

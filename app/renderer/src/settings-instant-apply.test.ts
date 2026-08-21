@@ -11,9 +11,7 @@ import {
 } from './settings-instant-apply';
 import { createSettingsStore } from './stores/settingsStore';
 import { createMockSoundBuddy } from './mock-sound-buddy';
-import { buildStoragePatch } from './storage-settings';
 import type { AppSettings } from '../../electron/ipc/api';
-import type { StorageToggles } from './storage-settings';
 
 const FULL_SETTINGS: AppSettings = {
   idealProfile: '',
@@ -78,11 +76,6 @@ describe('instantSettingValues', () => {
     const settings = { ...FULL_SETTINGS, usageSignalEnabled: 1 } as unknown as AppSettings;
     expect(instantSettingValues(settings).usageSignalEnabled).toBe(true);
   });
-
-  it('satisfies StorageToggles at compile time', () => {
-    const toggles: StorageToggles = instantSettingValues(null);
-    expect(toggles.gradingProfile).toBe('casual');
-  });
 });
 
 describe('commitInstantSetting', () => {
@@ -123,11 +116,5 @@ describe('commitInstantSetting', () => {
     await commitInstantSetting(store, 'crashReportingEnabled', true);
 
     expect(store.getState().settings).toBe(FULL_SETTINGS);
-  });
-});
-
-describe('Save emits nothing when every control is already persisted', () => {
-  it('returns null when the only diffed toggles come from the same persisted settings', () => {
-    expect(buildStoragePatch(instantSettingValues(FULL_SETTINGS), FULL_SETTINGS)).toBeNull();
   });
 });

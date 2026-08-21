@@ -5,7 +5,6 @@ import { describe, it, expect } from 'vitest';
 import {
   DEFAULT_STORAGE_PATH,
   loadStorageSeed,
-  buildStoragePatch,
   storageFolderDisplay,
   commitStorageDir,
   chooseStorageFolder,
@@ -36,16 +35,6 @@ const LOADED_SETTINGS: AppSettings = {
   gradingProfile: 'casual',
   consoleNetworkConsentGranted: false,
   soundcheckBuses: [],
-};
-
-const NO_TOGGLES = {
-  usageSignalEnabled: false,
-  crashReportingEnabled: false,
-  dawWorkspaceEnabled: false,
-  liveAdjustmentsEnabled: false,
-  weeklyReminderEnabled: false,
-  weeklyReminderServiceDay: 0,
-  gradingProfile: 'casual' as const,
 };
 
 describe('storageFolderDisplay', () => {
@@ -162,92 +151,5 @@ describe('loadStorageSeed', () => {
       },
     });
     expect(seed).toEqual({ defaultPath: DEFAULT_STORAGE_PATH, usageText: '' });
-  });
-});
-
-describe('buildStoragePatch', () => {
-  it('returns null when nothing changed', () => {
-    expect(buildStoragePatch(NO_TOGGLES, LOADED_SETTINGS)).toBeNull();
-  });
-
-  it('includes only usageSignalEnabled when just that toggle changed', () => {
-    expect(buildStoragePatch({ ...NO_TOGGLES, usageSignalEnabled: true }, LOADED_SETTINGS)).toEqual({
-      usageSignalEnabled: true,
-    });
-  });
-
-  it('includes only crashReportingEnabled when just that toggle changed', () => {
-    expect(buildStoragePatch({ ...NO_TOGGLES, crashReportingEnabled: true }, LOADED_SETTINGS)).toEqual({
-      crashReportingEnabled: true,
-    });
-  });
-
-  it('includes only dawWorkspaceEnabled when just that toggle changed', () => {
-    expect(buildStoragePatch({ ...NO_TOGGLES, dawWorkspaceEnabled: true }, LOADED_SETTINGS)).toEqual({
-      dawWorkspaceEnabled: true,
-    });
-  });
-
-  it('includes only liveAdjustmentsEnabled when just that toggle changed', () => {
-    expect(buildStoragePatch({ ...NO_TOGGLES, liveAdjustmentsEnabled: true }, LOADED_SETTINGS)).toEqual({
-      liveAdjustmentsEnabled: true,
-    });
-  });
-
-  it('includes only weeklyReminderEnabled when just that toggle changed', () => {
-    expect(buildStoragePatch({ ...NO_TOGGLES, weeklyReminderEnabled: true }, LOADED_SETTINGS)).toEqual({
-      weeklyReminderEnabled: true,
-    });
-  });
-
-  it('includes only weeklyReminderServiceDay when just the day changed', () => {
-    expect(buildStoragePatch({ ...NO_TOGGLES, weeklyReminderServiceDay: 3 }, LOADED_SETTINGS)).toEqual({
-      weeklyReminderServiceDay: 3,
-    });
-  });
-
-  it('omits weeklyReminderServiceDay when unchanged from the loaded default (0)', () => {
-    expect(buildStoragePatch(NO_TOGGLES, LOADED_SETTINGS)).toBeNull();
-  });
-
-  it('includes only gradingProfile when just the profile changed', () => {
-    expect(buildStoragePatch({ ...NO_TOGGLES, gradingProfile: 'broadcast' }, LOADED_SETTINGS)).toEqual({
-      gradingProfile: 'broadcast',
-    });
-  });
-
-  it('omits gradingProfile when unchanged from the loaded default (casual)', () => {
-    expect(buildStoragePatch(NO_TOGGLES, LOADED_SETTINGS)).toBeNull();
-  });
-
-  it('merges every changed field into a single patch', () => {
-    const patch = buildStoragePatch(
-      {
-        usageSignalEnabled: true,
-        crashReportingEnabled: true,
-        dawWorkspaceEnabled: true,
-        liveAdjustmentsEnabled: true,
-        weeklyReminderEnabled: true,
-        weeklyReminderServiceDay: 5,
-        gradingProfile: 'broadcast',
-      },
-      LOADED_SETTINGS
-    );
-    expect(patch).toEqual({
-      usageSignalEnabled: true,
-      crashReportingEnabled: true,
-      dawWorkspaceEnabled: true,
-      liveAdjustmentsEnabled: true,
-      weeklyReminderEnabled: true,
-      weeklyReminderServiceDay: 5,
-      gradingProfile: 'broadcast',
-    });
-  });
-
-  it('treats a null loaded settings object as all-toggles-off', () => {
-    expect(buildStoragePatch({ ...NO_TOGGLES, usageSignalEnabled: true }, null)).toEqual({
-      usageSignalEnabled: true,
-    });
-    expect(buildStoragePatch(NO_TOGGLES, null)).toBeNull();
   });
 });
