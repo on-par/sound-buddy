@@ -958,14 +958,21 @@
     .daw-transport-hint { margin-left:auto; font:var(--fw-regular) var(--fs-label)/1.3 var(--font-sans); color:var(--text-muted); }
     /* Ticks are absolutely positioned children emitted by dawShellHTML from
        dawRulerTicks() — the ruler carries no spacing value of its own (#1032,
-       ADR-0084). margin-left is 0 so a tick's inline left is shell-local x. */
+       ADR-0086). margin-left is 0 so a tick's inline left is shell-local x. */
     .daw-ruler { position:relative; overflow:hidden; height:20px; margin:8px 0; border-radius:var(--radius-sm); background:var(--surface-inset); }
     .daw-ruler-tick { position:absolute; top:0; bottom:0; width:1px; background:var(--border-subtle); }
     .daw-playhead { position:absolute; top:48px; bottom:8px; left:4px; width:2px; border-radius:1px; background:var(--text-muted); pointer-events:none; }
     .daw-playhead.advancing { background:var(--gold-text); }
-    .daw-lane { display:flex; align-items:center; gap:14px; padding:14px 12px; border-bottom:1px solid var(--border-subtle); }
+    .daw-lane { position:relative; display:flex; align-items:center; gap:14px; padding:14px 12px; border-bottom:1px solid var(--border-subtle); }
     .daw-lane-name { flex:0 0 140px; font:var(--fw-medium) var(--fs-label)/1.3 var(--font-sans); color:var(--text-secondary); }
     .daw-lane-body { flex:1; font:var(--fw-regular) var(--fs-label)/1.3 var(--font-sans); color:var(--text-muted); }
+    /* Gridlines are absolutely positioned children emitted by dawShellHTML from
+       dawLaneGridlines() — the lane carries no spacing value of its own (#1033,
+       ADR-0086). .daw-lane is position:relative with no horizontal offset, so a
+       gridline's inline left is the shared shell-local x from dawTimelineX. */
+    .daw-lane-grid { position:absolute; inset:0; overflow:hidden; pointer-events:none; }
+    .daw-gridline { position:absolute; top:0; bottom:0; width:1px; background:var(--gridline-minor); }
+    .daw-gridline.major { background:var(--gridline-major); }
     .daw-mix-lane { background:var(--surface-raised); }
     .daw-mix-lane .daw-lane-body { height:56px; }
     .daw-mix-waveform { display:block; width:100%; height:100%; }

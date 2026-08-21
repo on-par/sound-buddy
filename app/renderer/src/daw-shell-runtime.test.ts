@@ -12,11 +12,15 @@ import {
   dawTimelineX,
   dawRulerTicks,
   DAW_RULER_TICK_INTERVAL_SECS,
-  DAW_RULER_SPAN_SECS,
+  DAW_TIMELINE_SPAN_SECS,
+  dawLaneGridlines,
+  DAW_LANE_GRID_MINOR_SECS,
+  DAW_LANE_GRID_MAJOR_SECS,
   type DawShellRuntimeDeps,
   type DawWaveformCanvasLike,
   type WaveformColumn,
   type DawRulerTick,
+  type DawLaneGridline,
 } from './daw-shell-runtime';
 
 /* ── drawDawWaveformLane (pure) ── */
@@ -601,12 +605,12 @@ describe('dawRulerTicks (#1032)', () => {
   });
 
   it('every tick over the default span agrees with dawTimelineX for its own time', () => {
-    expect(dawRulerTicks(DAW_RULER_SPAN_SECS).every((tick) => tick.xPx === dawTimelineX(tick.timeSecs))).toBe(true);
+    expect(dawRulerTicks(DAW_TIMELINE_SPAN_SECS).every((tick) => tick.xPx === dawTimelineX(tick.timeSecs))).toBe(true);
   });
 
-  it('the last tick of the default span sits at DAW_RULER_SPAN_SECS', () => {
-    const ticks = dawRulerTicks(DAW_RULER_SPAN_SECS);
-    expect(ticks[ticks.length - 1].timeSecs).toBe(DAW_RULER_SPAN_SECS);
+  it('the last tick of the default span sits at DAW_TIMELINE_SPAN_SECS', () => {
+    const ticks = dawRulerTicks(DAW_TIMELINE_SPAN_SECS);
+    expect(ticks[ticks.length - 1].timeSecs).toBe(DAW_TIMELINE_SPAN_SECS);
   });
 
   it('returns exactly one tick at t=0 for a zero span', () => {
@@ -628,5 +632,61 @@ describe('dawRulerTicks (#1032)', () => {
   it('stops at the last whole interval for a span that is not a multiple of the interval', () => {
     const ticks = dawRulerTicks(12);
     expect(ticks.map((tick) => tick.timeSecs)).toEqual([0, 5, 10]);
+  });
+});
+
+/* ── dawLaneGridlines (#1033) ── */
+
+describe('dawLaneGridlines (#1033)', () => {
+  it('first gridline is t=0 at the shared timeline origin and is major', () => {
+    const first: DawLaneGridline = dawLaneGridlines(30)[0];
+    expect(first).toEqual({ timeSecs: 0, xPx: DAW_TIMELINE_ORIGIN_PX, isMajor: true });
+  });
+
+  it('yields representative times whose xPx matches the shared geometry', () => {
+    const lines = dawLaneGridlines(30);
+    expect(lines.map((line) => line.timeSecs)).toEqual([0, 5, 10, 15, 20, 25, 30]);
+    expect(lines[0].xPx).toBe(dawTimelineX(0));
+    expect(lines[2].xPx).toBe(dawTimelineX(10));
+    expect(lines[6].xPx).toBe(dawTimelineX(30));
+  });
+
+  it('classifies major/minor lines by whole multiples of DAW_LANE_GRID_MAJOR_SECS', () => {
+    const lines = dawLaneGridlines(30);
+    const major = lines.filter((line) => line.isMajor).map((line) => line.timeSecs);
+    const minor = lines.filter((line) => !line.isMajor).map((line) => line.timeSecs);
+    expect(major).toEqual([0, DAW_LANE_GRID_MAJOR_SECS, 20, 30]);
+    expect(minor).toEqual([5, 15, 25]);
+  });
+
+  it('consecutive gridlines differ by exactly one minor interval of the shared scale', () => {
+    const lines = dawLaneGridlines(30);
+    for (let i = 1; i < lines.length; i++) {
+      expect(lines[i].xPx - lines[i - 1].xPx).toBe(DAW_LANE_GRID_MINOR_SECS * DAW_TIMELINE_PX_PER_SECOND);
+    }
+  });
+
+  it('every gridline over the default span agrees with dawTimelineX for its own time', () => {
+    expect(dawLaneGridlines(DAW_TIMELINE_SPAN_SECS).every((line) => line.xPx === dawTimelineX(line.timeSecs))).toBe(true);
+  });
+
+  it('agrees pixel-for-pixel with dawRulerTicks for the same times', () => {
+    expect(dawLaneGridlines(60).map((line) => line.xPx)).toEqual(dawRulerTicks(60).map((tick) => tick.xPx));
+  });
+
+  it('returns exactly one gridline at t=0 for a zero span', () => {
+    expect(dawLaneGridlines(0)).toEqual([{ timeSecs: 0, xPx: DAW_TIMELINE_ORIGIN_PX, isMajor: true }]);
+  });
+
+  it('returns exactly one gridline for a span shorter than one interval', () => {
+    expect(dawLaneGridlines(3)).toEqual([{ timeSecs: 0, xPx: DAW_TIMELINE_ORIGIN_PX, isMajor: true }]);
+  });
+
+  it('returns no gridlines for a negative span', () => {
+    expect(dawLaneGridlines(-1)).toEqual([]);
+  });
+
+  it('returns no gridlines for a non-finite span', () => {
+    expect(dawLaneGridlines(NaN)).toEqual([]);
   });
 });
