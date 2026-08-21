@@ -12,6 +12,16 @@
 // keeps driving the same selectors. The dialog stays permanently in the DOM —
 // `display` toggles via `dialogOpen`.
 //
+// Settings-only chrome (#1008, epic #999): the card is a fixed-size frame
+// with a title bar, a left category rail in place of the old horizontal tab
+// strip, and a footer holding #1007's help strip next to Cancel/Save. The
+// section buttons keep their `settings-tab-btn-<name>` ids and `role="tab"`
+// — ten e2e specs address them — only the presentation classes changed
+// (`.settings-tabs` -> `.settings-rail`, `.settings-tab` ->
+// `.settings-rail-item`). Every new CSS rule is scoped to
+// `.settings-dialog-card` or a `.settings-*` class only this file renders, so
+// the shared `.rig-dialog-card` used by nine other dialogs is untouched.
+//
 // The Audio pane (#726's scaffold) composes RigControls/LiveSourceSettings/
 // SecondaryMeasurementPanel/CaptureCadenceControls directly as JSX (#727) —
 // no createPortal, unlike the Live tab's static-markup islands, since this
@@ -255,6 +265,10 @@ export default function SettingsPanel({ booted = false }: { booted?: boolean }) 
   }, []);
   /* c8 ignore stop */
 
+  // Backdrop click, the title-bar close control (#1008) and Cancel all close
+  // without saving — one handler so the three can't drift.
+  const closeSettingsDialog = () => useSettingsStore.getState().closeDialog();
+
   async function handleChooseStorageFolder() {
     const dir = await api.openDirDialog();
     if (!dir) return;
@@ -293,31 +307,44 @@ export default function SettingsPanel({ booted = false }: { booted?: boolean }) 
       aria-modal="true"
       aria-labelledby="settings-dialog-title"
       onClick={(e) => {
-        if (e.target === e.currentTarget) useSettingsStore.getState().closeDialog();
+        if (e.target === e.currentTarget) closeSettingsDialog();
       }}
     >
       <div className="rig-dialog-card settings-dialog-card">
-        <div className="rig-dialog-title" id="settings-dialog-title">
-          Settings
+        <div className="settings-titlebar">
+          <div className="rig-dialog-title" id="settings-dialog-title">
+            Settings
+          </div>
+          <button
+            type="button"
+            id="settings-dialog-close"
+            className="settings-close-btn"
+            aria-label="Close settings"
+            onClick={closeSettingsDialog}
+          >
+            ✕
+          </button>
         </div>
-        <div className="settings-tabs" role="tablist">
-          {SETTINGS_SECTIONS.map((name) => (
-            <button
-              key={name}
-              type="button"
-              className={'settings-tab' + (section === name ? ' active' : '')}
-              id={`settings-tab-btn-${name}`}
-              role="tab"
-              aria-selected={section === name}
-              onClick={() => {
-                setSection(name);
-                setActiveHelp(null);
-              }}
-            >
-              {SECTION_LABELS[name]}
-            </button>
-          ))}
-        </div>
+        <div className="settings-body">
+          <div className="settings-rail" role="tablist" aria-orientation="vertical">
+            {SETTINGS_SECTIONS.map((name) => (
+              <button
+                key={name}
+                type="button"
+                className={'settings-rail-item' + (section === name ? ' active' : '')}
+                id={`settings-tab-btn-${name}`}
+                role="tab"
+                aria-selected={section === name}
+                onClick={() => {
+                  setSection(name);
+                  setActiveHelp(null);
+                }}
+              >
+                {SECTION_LABELS[name]}
+              </button>
+            ))}
+          </div>
+          <div className="settings-panes">
         <div className="settings-pane" id="settings-pane-general" style={{ display: section === 'general' ? 'flex' : 'none' }}>
           <label className="ai-field" id="grading-profile-field" {...helpFor('gradingProfile')}>
             <span className="ai-field-label">Grading strictness</span>
@@ -526,24 +553,28 @@ export default function SettingsPanel({ booted = false }: { booted?: boolean }) 
           </p>
           <p className="ai-dialog-note">Licensed under the Sound Buddy Desktop Application License.</p>
         </div>
-        {/* Visual-only affordance (#1007) — screen readers already get this
-            copy through each control's aria-describedby, so an announced
-            strip would double-read it on every hover. */}
-        <p className="settings-help-strip" id="settings-help-strip" aria-hidden="true">
-          {resolveSettingsHelp(activeHelp, section)}
-        </p>
-        <div className="rig-dialog-actions">
+          </div>
+        </div>
+        <div className="settings-footer">
+          {/* Visual-only affordance (#1007) — screen readers already get this
+              copy through each control's aria-describedby, so an announced
+              strip would double-read it on every hover. */}
+          <p className="settings-help-strip" id="settings-help-strip" aria-hidden="true">
+            {resolveSettingsHelp(activeHelp, section)}
+          </p>
+          <div className="rig-dialog-actions">
           <button
             type="button"
             id="settings-dialog-cancel"
             className="btn btn-secondary sm"
-            onClick={() => useSettingsStore.getState().closeDialog()}
+            onClick={closeSettingsDialog}
           >
             Cancel
           </button>
           <button type="button" id="settings-dialog-save" className="btn btn-primary sm" onClick={handleSave}>
             Save
           </button>
+          </div>
         </div>
       </div>
     </div>

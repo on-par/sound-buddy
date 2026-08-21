@@ -553,11 +553,29 @@
        same overlay pattern as .rig-dialog */
     #settings-btn { display:flex; align-items:center; justify-content:center; width:30px; height:30px; padding:0; background:transparent; border:none; border-radius:var(--radius-sm); color:var(--text-secondary); cursor:pointer; }
     #settings-btn:hover { color:var(--text-primary); background:var(--surface); }
-    .settings-dialog-card { width:min(520px,calc(100vw - 48px)); }
-    .settings-tabs { display:flex; gap:6px; }
-    .settings-tab { flex:1; height:var(--control-h); border:1px solid var(--border-default); border-radius:var(--radius-md); background:var(--surface); color:var(--text-secondary); font:var(--fw-medium) var(--fs-body-sm)/1 var(--font-sans); cursor:pointer; }
-    .settings-tab.active { border-color:var(--gold-600); background:var(--gold-tint); color:var(--gold-text); }
-    .settings-pane { display:flex; flex-direction:column; gap:12px; max-height:min(72vh, 640px); overflow-y:auto; }
+    /* Settings-only chrome (#1008, epic #999) — a fixed-height card with a
+       left category rail, a title bar and a footer. Every rule here is scoped
+       to .settings-dialog-card or a .settings-* class only SettingsPanel.tsx
+       renders, so the shared .rig-dialog-card (rig name, feedback, guide,
+       phase-doubling, skill tree, onboarding, curve editor, license, console
+       consent) is composed and overridden, never edited. Sizes come from
+       tokens.css, not literals. */
+    .settings-dialog-card { width:var(--settings-card-w); height:var(--settings-card-h); overflow:hidden; }
+    .settings-titlebar { display:flex; align-items:center; justify-content:space-between; gap:8px; }
+    .settings-close-btn { display:flex; align-items:center; justify-content:center; width:var(--control-h-sm); height:var(--control-h-sm); padding:0; background:transparent; border:none; border-radius:var(--radius-sm); color:var(--text-secondary); font:var(--fw-regular) var(--fs-body)/1 var(--font-sans); cursor:pointer; transition:var(--transition-control); }
+    .settings-close-btn:hover { color:var(--text-primary); background:var(--surface); }
+    /* min-height:0 on both flex wrappers: without it the pane's scroll
+       container refuses to shrink below its content and a tall section
+       (Storage, Audio) pushes the footer's Save/Cancel outside the fixed
+       card height, where Playwright sees a permanently un-actionable button. */
+    .settings-body { display:flex; flex:1; min-height:0; gap:16px; }
+    .settings-rail { display:flex; flex-direction:column; flex:0 0 var(--settings-rail-w); width:var(--settings-rail-w); gap:2px; padding-right:8px; border-right:1px solid var(--border-subtle); overflow-y:auto; }
+    .settings-rail-item { display:flex; align-items:center; height:var(--control-h-sm); padding:0 10px; text-align:left; background:transparent; border:1px solid transparent; border-radius:var(--radius-sm); color:var(--text-secondary); font:var(--fw-medium) var(--fs-body-sm)/1 var(--font-sans); cursor:pointer; transition:var(--transition-control); }
+    .settings-rail-item:hover { background:var(--surface); color:var(--text-primary); }
+    .settings-rail-item.active { background:var(--gold-tint); border-color:var(--gold-600); color:var(--gold-text); }
+    .settings-panes { display:flex; flex-direction:column; flex:1; min-width:0; min-height:0; }
+    .settings-pane { display:flex; flex-direction:column; flex:1; min-height:0; gap:12px; overflow-y:auto; }
+    .settings-footer { display:flex; flex-direction:column; gap:10px; }
     /* Storage pane (#91) */
     .storage-path-row { display:flex; align-items:center; gap:10px; margin-top:4px; }
     .storage-path { flex:1; min-width:0; font:var(--fw-regular) var(--fs-label)/1.4 var(--font-mono,monospace); color:var(--text-primary); word-break:break-all; }

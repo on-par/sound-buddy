@@ -72,6 +72,12 @@
       --header-h:52px; --titlebar-safe-left:82px; --panel-w:260px; --rc-panel-w:640px;
       --control-h-sm:28px; --control-h:36px; --control-h-lg:44px;
 
+      /* Settings dialog chrome (#1008) — a fixed frame so the rail, pane and
+         footer keep their geometry across section switches. */
+      --settings-card-w:min(760px,calc(100vw - 48px));
+      --settings-card-h:min(560px,calc(100vh - 96px));
+      --settings-rail-w:176px;
+
       /* Radius */
       --radius-xs:4px; --radius-sm:6px; --radius-md:8px; --radius-lg:12px;
       --radius-xl:16px; --radius-2xl:20px; --radius-pill:999px; --radius-full:50%;
