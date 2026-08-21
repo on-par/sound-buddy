@@ -1,5 +1,5 @@
 import { test, expect, type ElectronApplication, type Page } from '@playwright/test';
-import { launchApp } from './e2e-helpers';
+import { launchApp, stopCaptureIfRunning } from './e2e-helpers';
 
 // Session report card from a live-capture session (#261): Stop Capture builds
 // a card from the whole accumulated *session* window buffer — decoupled from
@@ -51,6 +51,10 @@ async function savedSummaries(electronApp: ElectronApplication): Promise<Array<R
 }
 
 async function startCapture() {
+  // #776: stopping a recording demotes to always-on monitoring. Each test
+  // needs a fully idle setup pass before clicking the refresh button, which
+  // intentionally stays locked while any capture is running.
+  await stopCaptureIfRunning(window);
   await window.locator('.mode-tab[data-mode="live"]').click();
   await expect(window.locator('#tab-live')).toHaveClass(/active/);
   // Re-enumerate against the stubbed 8-channel device so the workspace has

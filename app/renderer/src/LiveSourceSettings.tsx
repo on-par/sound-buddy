@@ -19,14 +19,24 @@ import { useSettingsStore } from './stores/settingsStore';
 import { iconSvg } from './report-card';
 import { deviceOptionLabel, measurementSourceOptionsHTML } from './live-capture-panel';
 import { boardSourceHint } from './measurement-source-hints';
-import { runtime } from './LiveControls';
+import { captureOptsFromCadence } from './measurement-device-state';
+import { runtime, startLiveCapture, stopCaptureIfRunning, type LiveCaptureRuntime } from './LiveControls';
 
 // Device <select> changed: writes the selection into the store (which
 // re-seeds channel config/groups and clears the focused input + last tick
 // snapshot — the deleted inline resetChannelConfig()/
 // window.liveCaptureRuntime.selectDevice wrappers, TD-001 slice 6h #711).
-export function changeDevice(value: string): void {
+export async function changeDevice(value: string, rt: LiveCaptureRuntime | undefined = runtime()): Promise<void> {
+  const live = useLiveCaptureStore.getState();
+  if (live.selectedDevice === value) return;
+  if (!live.isCapturing) {
+    live.selectDevice(value);
+    return;
+  }
+  const opts = captureOptsFromCadence(live.windowSecs, live.meterIntervalMs);
+  await stopCaptureIfRunning(rt);
   useLiveCaptureStore.getState().selectDevice(value);
+  await startLiveCapture(rt, opts.windowSecs, opts.intervalSecs);
 }
 
 export default function LiveSourceSettings() {
@@ -58,9 +68,8 @@ export default function LiveSourceSettings() {
             <select
               id="device-select"
               value={selectedDevice}
-              disabled={isCapturing}
-              aria-disabled={isCapturing}
-              onChange={(e) => changeDevice(e.target.value)}
+              aria-disabled={false}
+              onChange={(e) => { void changeDevice(e.target.value); }}
             >
               {devices.length === 0
                 ? <option value="">{devicePlaceholder}</option>
