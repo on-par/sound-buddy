@@ -365,7 +365,7 @@ export default function App() {
       {booted && <LicenseChrome />}
       {booted && <ConsoleNetworkConsentDialog />}
       {booted && <AnalyzeSourcePicker />}
-      {booted && createPortal(<UpdateBanner />, document.getElementById('update-banner-island')!)}
+      {booted && createPortal(<UpdateBanner />, document.getElementById('update-surface-island')!)}
       {booted && createPortal(<WhatsNewBanner />, document.getElementById('whats-new-banner-island')!)}
     </>
   );

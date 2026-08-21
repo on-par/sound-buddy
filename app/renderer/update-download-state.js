@@ -1,9 +1,9 @@
 // Copyright (c) 2026 Patrick Robinson (on-par). All rights reserved.
 // Licensed under the Sound Buddy Desktop Application License (app/LICENSE).
 
-// Pure banner view-model for the in-app update download (#504): given the
+// Pure update view-model for the in-app update download (#504): given the
 // latest `UpdateDownloadStatus` (or null, meaning "just offered") and the
-// `UpdateInfo` the banner is showing, decides what text/buttons/progress bar
+// `UpdateInfo` the dialog is showing, decides what text/buttons/progress bar
 // to render. Kept DOM-free and IPC-free in a standalone classic script (like
 // upgrade-momentum.js) so it's unit-testable yet shared verbatim with the
 // renderer, which loads it via <script src> and reads it off
@@ -22,8 +22,13 @@
     return (n / BYTES_PER_MB).toFixed(1) + ' MB';
   }
 
+  function roundPercent(n) {
+    if (!Number.isFinite(n)) return 0;
+    return Math.max(0, Math.min(100, Math.round(n)));
+  }
+
   /**
-   * The update-banner view-model for the current download status.
+   * The update dialog view-model for the current download status.
    * @param {{state:string,receivedBytes?:number,totalBytes?:number,percent?:number,message?:string}|null} status
    * @param {{version:string}} info
    * @returns {{text:string, primary:{label:string,action:string}|null, showCancel:boolean, showProgress:boolean, percent:number, indeterminate:boolean}}
@@ -34,7 +39,7 @@
     if (status == null || status.state === 'cancelled') {
       return {
         text: 'Sound Buddy ' + v + ' is available.',
-        primary: { label: 'Download', action: 'download' },
+        primary: { label: 'Update', action: 'download' },
         showCancel: false,
         showProgress: false,
         percent: 0,
@@ -45,7 +50,7 @@
     if (status.state === 'downloading') {
       var totalBytes = status.totalBytes;
       var receivedBytes = status.receivedBytes;
-      var percent = status.percent;
+      var percent = roundPercent(status.percent);
       var text =
         'Downloading Sound Buddy ' +
         v +
@@ -90,6 +95,7 @@
   var api = {
     BYTES_PER_MB: BYTES_PER_MB,
     formatBytes: formatBytes,
+    roundPercent: roundPercent,
     viewFor: viewFor,
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;

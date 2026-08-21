@@ -75,9 +75,9 @@ describe('src/styles/app.css', () => {
     expect(appCss).not.toContain(':root {');
   });
 
-  it('uses the shared titlebar safe-area token for the header and top banners', () => {
+  it('uses the shared titlebar safe-area token for the header and remaining top banners', () => {
     expect(appCss).toContain(
-      '#update-banner,\n    #license-banner,\n    #trial-banner,\n    #whats-new-banner {\n      padding-left:var(--titlebar-safe-left);',
+      '#license-banner,\n    #trial-banner {\n      padding-left:var(--titlebar-safe-left);',
     );
     expect(appCss).toContain('padding-left:var(--titlebar-safe-left);');
   });

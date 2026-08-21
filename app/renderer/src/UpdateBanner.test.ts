@@ -22,14 +22,16 @@ afterEach(() => {
 describe('UpdateBanner', () => {
   it('renders hidden with no update event yet (renderToString never fires effects)', () => {
     const html = renderMarkup();
-    expect(html).toMatch(/id="update-banner" role="status" class=""/);
+    expect(html).toMatch(/id="update-toast" role="status" class=""/);
+    expect(html).toMatch(/id="update-dialog"[^>]*style="display:none"/);
     expect(html).toMatch(/id="update-download-btn"[^>]*hidden=""/);
     expect(html).toMatch(/id="update-progress"[^>]*hidden=""/);
   });
 
-  it('renders the dismiss button and text node', () => {
+  it('renders the cancel button, changelog region, and summary node', () => {
     const html = renderMarkup();
-    expect(html).toContain('id="update-dismiss-btn"');
-    expect(html).toContain('id="update-banner-text"');
+    expect(html).toContain('id="update-cancel-btn"');
+    expect(html).toContain('id="update-dialog-notes"');
+    expect(html).toContain('id="update-dialog-summary"');
   });
 });
