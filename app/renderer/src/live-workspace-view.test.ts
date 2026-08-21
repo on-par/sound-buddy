@@ -338,6 +338,32 @@ describe('dawShellHTML / dawShellPatchView', () => {
     expect(html).toContain('daw-transport-time');
   });
 
+  it('renders one playhead segment per timeline region and none at the shell level (#1049)', () => {
+    const html = dawShellHTML(makeState());
+    expect(html).toContain('<span class="daw-playhead daw-playhead-ruler"></span>');
+    expect(html).toContain('<span class="daw-playhead daw-playhead-lanes"></span>');
+    expect(html.split('class="daw-playhead').length - 1).toBe(2);
+    expect(html).not.toContain('<div class="daw-playhead"></div>');
+  });
+
+  it("the ruler segment is the ruler row's last child, above every tick (#1049)", () => {
+    const html = dawShellHTML(makeState());
+    expect(html.indexOf('daw-playhead-ruler')).toBeGreaterThan(html.lastIndexOf('class="daw-ruler-tick"'));
+    expect(html.indexOf('daw-playhead-ruler')).toBeLessThan(html.indexOf('<div class="daw-lane-column">'));
+  });
+
+  it("the lane segment is the lane column's last child, above every lane (#1049)", () => {
+    const html = dawShellHTML(makeState());
+    expect(html.indexOf('daw-playhead-lanes')).toBeGreaterThan(html.indexOf('daw-mix-lane'));
+    expect(html.indexOf('daw-playhead-lanes')).toBeLessThan(html.indexOf('<div class="daw-status-line">'));
+  });
+
+  it('both segments render with zero configured tracks (#1049)', () => {
+    const html = dawShellHTML(makeState({ channelConfig: [] }));
+    expect(html).toContain('<span class="daw-playhead daw-playhead-ruler"></span>');
+    expect(html).toContain('<span class="daw-playhead daw-playhead-lanes"></span>');
+  });
+
   it('maps one lane per channel config entry with an escaped name', () => {
     const html = dawShellHTML(makeState({ channelConfig: [{ ...CONFIG[0], label: 'Kick <3' }] }));
     expect(html).toContain('data-ch="0"');

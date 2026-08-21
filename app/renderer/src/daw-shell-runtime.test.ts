@@ -113,6 +113,10 @@ function makeFakeLane(ch: string, canvas: ReturnType<typeof makeFakeCanvas> | nu
   };
 }
 
+function makeFakePlayhead() {
+  return { style: {} as Record<string, string>, classList: { toggle: vi.fn() } };
+}
+
 interface FakeShell {
   clientWidth: number;
   querySelector: (sel: string) => unknown;
@@ -122,27 +126,28 @@ interface FakeShell {
 
 function makeFakeShell(opts: {
   timeEl?: { textContent: string } | null;
-  playheadEl?: { style: Record<string, string>; classList: { toggle: ReturnType<typeof vi.fn> } } | null;
+  playheadEls?: ReturnType<typeof makeFakePlayhead>[];
   mixCanvas?: ReturnType<typeof makeFakeCanvas> | null;
   lanes?: ReturnType<typeof makeFakeLane>[];
   clientWidth?: number;
 } = {}): FakeShell {
   const timeEl = opts.timeEl === undefined ? { textContent: '' } : opts.timeEl;
-  const playheadEl = opts.playheadEl === undefined
-    ? { style: {} as Record<string, string>, classList: { toggle: vi.fn() } }
-    : opts.playheadEl;
+  const playheadEls = opts.playheadEls ?? [makeFakePlayhead(), makeFakePlayhead()];
   const mixCanvas = opts.mixCanvas === undefined ? makeFakeCanvas() : opts.mixCanvas;
   const lanes = opts.lanes ?? [];
   return {
     clientWidth: opts.clientWidth ?? 400,
     querySelector: (sel: string) => {
       if (sel === '.daw-transport-time') return timeEl;
-      if (sel === '.daw-playhead') return playheadEl;
       if (sel === '.daw-mix-waveform') return mixCanvas;
       return null;
     },
-    querySelectorAll: (sel: string) => (sel === '.daw-channel-lane' ? lanes : []),
-    el: { timeEl, playheadEl, mixCanvas, lanes },
+    querySelectorAll: (sel: string) => {
+      if (sel === '.daw-channel-lane') return lanes;
+      if (sel === '.daw-playhead') return playheadEls;
+      return [];
+    },
+    el: { timeEl, playheadEls, mixCanvas, lanes },
   };
 }
 
@@ -294,9 +299,9 @@ describe('createDawShellRuntime', () => {
       expect(() => rt.renderPlayhead()).not.toThrow();
     });
 
-    it('patches text but skips the transform when there is no .daw-playhead line', () => {
+    it('patches text but writes no segment when the shell has none', () => {
       const timeEl = { textContent: '' };
-      const shell = makeFakeShell({ timeEl, playheadEl: null });
+      const shell = makeFakeShell({ timeEl, playheadEls: [] });
       const { deps, setShell, setNow } = makeDeps();
       setShell(shell);
       const rt = createDawShellRuntime(deps);
@@ -320,9 +325,9 @@ describe('createDawShellRuntime', () => {
       expect(timeEl.textContent).toBe('0:05');
     });
 
-    it('sets the playhead transform from dawPlayheadX and toggles .advancing while running', () => {
-      const playheadEl = { style: {} as Record<string, string>, classList: { toggle: vi.fn() } };
-      const shell = makeFakeShell({ playheadEl, clientWidth: 400 });
+    it('sets the playhead left from dawPlayheadX and toggles .advancing on both segments while running', () => {
+      const playheadEls = [makeFakePlayhead(), makeFakePlayhead()];
+      const shell = makeFakeShell({ playheadEls, clientWidth: 400 });
       const { deps, setShell, setNow } = makeDeps();
       setShell(shell);
       const rt = createDawShellRuntime(deps);
@@ -330,13 +335,15 @@ describe('createDawShellRuntime', () => {
       rt.startPlayhead(0);
       setNow(1000); // 1s elapsed
       rt.renderPlayhead();
-      expect(playheadEl.style.transform).toBe(`translateX(${dawTimelineX(1)}px)`);
-      expect(playheadEl.classList.toggle).toHaveBeenCalledWith('advancing', true);
+      for (const el of playheadEls) {
+        expect(el.style.left).toBe(`${dawTimelineX(1)}px`);
+        expect(el.classList.toggle).toHaveBeenCalledWith('advancing', true);
+      }
     });
 
-    it("clamps at the shell's right inset", () => {
-      const playheadEl = { style: {} as Record<string, string>, classList: { toggle: vi.fn() } };
-      const shell = makeFakeShell({ playheadEl, clientWidth: 400 });
+    it("clamps at the shell's right inset on every segment", () => {
+      const playheadEls = [makeFakePlayhead(), makeFakePlayhead()];
+      const shell = makeFakeShell({ playheadEls, clientWidth: 400 });
       const { deps, setShell, setNow } = makeDeps();
       setShell(shell);
       const rt = createDawShellRuntime(deps);
@@ -344,12 +351,14 @@ describe('createDawShellRuntime', () => {
       rt.startPlayhead(0);
       setNow(60000); // 60s elapsed — past the shell's right edge
       rt.renderPlayhead();
-      expect(playheadEl.style.transform).toBe(`translateX(${400 - DAW_TIMELINE_INSET_PX}px)`);
+      for (const el of playheadEls) {
+        expect(el.style.left).toBe(`${400 - DAW_TIMELINE_INSET_PX}px`);
+      }
     });
 
-    it('floors at the shared origin for a shell narrower than the head column', () => {
-      const playheadEl = { style: {} as Record<string, string>, classList: { toggle: vi.fn() } };
-      const shell = makeFakeShell({ playheadEl, clientWidth: 20 });
+    it('floors at the shared origin on every segment for a shell narrower than the head column', () => {
+      const playheadEls = [makeFakePlayhead(), makeFakePlayhead()];
+      const shell = makeFakeShell({ playheadEls, clientWidth: 20 });
       const { deps, setShell, setNow } = makeDeps();
       setShell(shell);
       const rt = createDawShellRuntime(deps);
@@ -357,21 +366,41 @@ describe('createDawShellRuntime', () => {
       rt.startPlayhead(0);
       setNow(60000); // 60s elapsed — way past the clamp
       rt.renderPlayhead();
-      expect(playheadEl.style.transform).toBe(`translateX(${DAW_TIMELINE_ORIGIN_PX}px)`);
+      for (const el of playheadEls) {
+        expect(el.style.left).toBe(`${DAW_TIMELINE_ORIGIN_PX}px`);
+      }
     });
 
-    it('toggles .advancing false once stopped', () => {
-      const playheadEl = { style: {} as Record<string, string>, classList: { toggle: vi.fn() } };
-      const shell = makeFakeShell({ playheadEl });
+    it('toggles .advancing false on every segment once stopped', () => {
+      const playheadEls = [makeFakePlayhead(), makeFakePlayhead()];
+      const shell = makeFakeShell({ playheadEls });
       const { deps, setShell, setNow } = makeDeps();
       setShell(shell);
       const rt = createDawShellRuntime(deps);
       setNow(0);
       rt.startPlayhead(0);
       rt.stopPlayhead();
-      (playheadEl.classList.toggle as ReturnType<typeof vi.fn>).mockClear();
+      for (const el of playheadEls) (el.classList.toggle as ReturnType<typeof vi.fn>).mockClear();
       rt.renderPlayhead();
-      expect(playheadEl.classList.toggle).toHaveBeenCalledWith('advancing', false);
+      for (const el of playheadEls) {
+        expect(el.classList.toggle).toHaveBeenCalledWith('advancing', false);
+      }
+    });
+
+    it('writes one identical x to every segment in the same pass (#1049)', () => {
+      const playheadEls = [makeFakePlayhead(), makeFakePlayhead(), makeFakePlayhead()];
+      const shell = makeFakeShell({ playheadEls, clientWidth: 400 });
+      const { deps, setShell, setNow } = makeDeps();
+      setShell(shell);
+      const rt = createDawShellRuntime(deps);
+      setNow(0);
+      rt.startPlayhead(0);
+      setNow(2000); // 2s elapsed
+      rt.renderPlayhead();
+      const expected = `${dawTimelineX(2)}px`;
+      for (const el of playheadEls) {
+        expect(el.style.left).toBe(expected);
+      }
     });
   });
 
