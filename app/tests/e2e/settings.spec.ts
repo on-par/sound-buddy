@@ -1,11 +1,15 @@
 import { test, expect, type ElectronApplication, type Page } from '@playwright/test';
 import { launchApp } from './e2e-helpers';
+import type { SettingsApi, AppSettings, UpdateSettingsPatch } from '../../electron/ipc/api';
 
 // Unified Settings dialog (#204) — combines the AI provider settings (#76)
 // and Storage settings (#91) dialogs into one tabbed modal opened from a
 // single header gear. Split out of e2e.spec.ts as its own file (#225), both
 // sections were already effectively standalone in the original single-file
 // suite; #204 folds them into one describe block sharing one launchApp().
+// #1023 (epic #1000): rewritten around the shipped instant-apply workflow —
+// every persistence scenario changes a control with no Save click and
+// proves the change survives a close + reopen.
 
 let electronApp: ElectronApplication;
 let window: Page;
@@ -14,6 +18,24 @@ let window: Page;
 // not move can differ by a fraction of a pixel, so compare with a tolerance
 // instead of exact equality (constitution: no float compare without epsilon).
 const BOX_EPSILON_PX = 1;
+
+// The preload bridge (app/electron/preload.ts) is injected onto window at
+// runtime; the Playwright process has no ambient type for it, so cast to the
+// real SettingsApi contract rather than to `any`.
+async function persistedSetting(page: Page, key: keyof AppSettings): Promise<unknown> {
+  return page.evaluate(
+    async (k) =>
+      (await (window as unknown as { soundBuddy: SettingsApi }).soundBuddy.getSettings())[k],
+    key,
+  );
+}
+
+async function patchSettings(page: Page, patch: UpdateSettingsPatch): Promise<void> {
+  await page.evaluate(
+    (p) => (window as unknown as { soundBuddy: SettingsApi }).soundBuddy.updateSettings(p),
+    patch,
+  );
+}
 
 test.describe('Settings dialog (#204)', () => {
   test.beforeAll(async () => {
@@ -62,6 +84,103 @@ test.describe('Settings dialog (#204)', () => {
     await expect(window.locator('#ai-dialog-version')).toContainText(/Sound Buddy \d+\.\d+\.\d+/);
   });
 
+  // #1018 (epic #1000): the General tab's select controls persist on change
+  // via settings-instant-apply.ts's commitInstantSetting — no Save click, and
+  // the reopened dialog seeds its value straight from persisted settings.
+  test('a grading-profile change persists with no Save click', async () => {
+    await patchSettings(window, { gradingProfile: 'casual' });
+
+    await window.locator('#settings-btn').click();
+    await expect(window.locator('#settings-pane-general')).toBeVisible();
+    await window.locator('#grading-profile-select').selectOption('broadcast');
+    await expect.poll(() => persistedSetting(window, 'gradingProfile')).toBe('broadcast');
+    await window.locator('#settings-dialog-done').click();
+    await expect(window.locator('#settings-dialog')).toBeHidden();
+
+    await window.locator('#settings-btn').click();
+    await expect(window.locator('#grading-profile-select')).toHaveValue('broadcast');
+
+    // Restore the default so later specs (and reruns) see a clean setting.
+    await window.locator('#grading-profile-select').selectOption('casual');
+    await expect.poll(() => persistedSetting(window, 'gradingProfile')).toBe('casual');
+    await window.locator('#settings-dialog-done').click();
+  });
+
+  // #1019 (epic #1000): storage-folder changes persist instantly in both
+  // directions — choosing a folder and resetting to the default — with no
+  // Save click, and survive a close + reopen.
+  test('the storage folder applies instantly in both directions', async () => {
+    await patchSettings(window, { storageDir: '' });
+    const chosen = '/tmp/sb-e2e-storage';
+    await electronApp.evaluate(({ ipcMain }, dir) => {
+      ipcMain.removeHandler('open-dir-dialog');
+      ipcMain.handle('open-dir-dialog', () => dir);
+    }, chosen);
+
+    await window.locator('#settings-btn').click();
+    await window.locator('#settings-tab-btn-storage').click();
+    const defaultPath = (await window.locator('#storage-path').textContent()) ?? '';
+    expect(defaultPath).not.toBe('');
+    await expect(window.locator('#storage-reset-btn')).toBeHidden();
+
+    await window.locator('#storage-change-btn').click();
+    await expect(window.locator('#storage-path')).toHaveText(chosen);
+    await expect.poll(() => persistedSetting(window, 'storageDir')).toBe(chosen);
+    await window.locator('#settings-dialog-done').click();
+    await expect(window.locator('#settings-dialog')).toBeHidden();
+
+    // Reopen: the folder survived the close, and the reset action is offered
+    // now that a custom folder is set.
+    await window.locator('#settings-btn').click();
+    await window.locator('#settings-tab-btn-storage').click();
+    await expect(window.locator('#storage-path')).toHaveText(chosen);
+    await expect(window.locator('#storage-reset-btn')).toBeVisible();
+
+    // Reset is itself an instant-apply action — no back-door updateSettings
+    // restore is needed after this.
+    await window.locator('#storage-reset-btn').click();
+    await expect(window.locator('#storage-path')).toHaveText(defaultPath);
+    await expect.poll(() => persistedSetting(window, 'storageDir')).toBe('');
+    await window.locator('#settings-dialog-done').click();
+
+    await electronApp.evaluate(({ ipcMain }) => {
+      ipcMain.removeHandler('open-dir-dialog');
+    });
+  });
+
+  // #1020 (epic #1000): the church-name field debounces keystrokes into one
+  // commit on blur — the first e2e coverage of createChurchNameCommitter's
+  // flush() path.
+  test('the church name persists on blur with no Save click', async () => {
+    await patchSettings(window, { shareChurchName: '' });
+
+    await window.locator('#settings-btn').click();
+    await window.locator('#share-church-name-input').fill('E2E Community Chapel');
+    // Blur by clicking the dialog title — fires SettingsPanel's onBlur ->
+    // churchNameCommitter.flush(), which is deterministic. Do NOT wait out
+    // the 400ms CHURCH_NAME_DEBOUNCE_MS timer; that's a flake generator.
+    await window.locator('#settings-dialog-title').click();
+    await expect
+      .poll(() => persistedSetting(window, 'shareChurchName'))
+      .toBe('E2E Community Chapel');
+    await window.locator('#settings-dialog-done').click();
+    await expect(window.locator('#settings-dialog')).toBeHidden();
+
+    // The input's value is seeded by the dialog-open effect in
+    // SettingsPanel.tsx (a snapshot, not a reactive binding), so reopening
+    // before the persisted write above lands would show a stale value that
+    // Playwright's auto-retry can never resolve — the poll above must gate
+    // this reopen.
+    await window.locator('#settings-btn').click();
+    await expect(window.locator('#share-church-name-input')).toHaveValue('E2E Community Chapel');
+
+    // Restore the default so later specs (and reruns) see a clean setting.
+    await window.locator('#share-church-name-input').fill('');
+    await window.locator('#settings-dialog-title').click();
+    await expect.poll(() => persistedSetting(window, 'shareChurchName')).toBe('');
+    await window.locator('#settings-dialog-done').click();
+  });
+
   test('the header button opens the dialog with the no-caps copy and disk usage', async () => {
     await window.locator('#settings-btn').click();
     await expect(window.locator('#settings-dialog')).toBeVisible();
@@ -75,35 +194,6 @@ test.describe('Settings dialog (#204)', () => {
     await expect(window.locator('#settings-dialog')).toBeHidden();
   });
 
-  test('choosing a folder persists storageDir and survives a reopen', async () => {
-    const chosen = '/tmp/sb-e2e-storage';
-    await electronApp.evaluate(({ ipcMain }, dir) => {
-      ipcMain.removeHandler('open-dir-dialog');
-      ipcMain.handle('open-dir-dialog', () => dir);
-    }, chosen);
-
-    await window.locator('#settings-btn').click();
-    await window.locator('#settings-tab-btn-storage').click();
-    await window.locator('#storage-change-btn').click();
-    await expect(window.locator('#storage-path')).toHaveText(chosen);
-    await window.locator('#settings-dialog-done').click();
-    await expect(window.locator('#settings-dialog')).toBeHidden();
-
-    // Reopen: get-storage-usage reflects the persisted folder.
-    await window.locator('#settings-btn').click();
-    await window.locator('#settings-tab-btn-storage').click();
-    await expect(window.locator('#storage-path')).toHaveText(chosen);
-    // Now that a custom folder is set, the reset action is offered.
-    await expect(window.locator('#storage-reset-btn')).toBeVisible();
-    await window.locator('#settings-dialog-done').click();
-
-    // Restore the default so later specs (and reruns) see a clean setting.
-    await electronApp.evaluate(({ ipcMain }) => {
-      ipcMain.removeHandler('open-dir-dialog');
-    });
-    await window.evaluate(() => (window as any).soundBuddy.updateSettings({ storageDir: '' }));
-  });
-
   // Opt-in anonymous usage counts (#145) — default-OFF persisted preference,
   // no collection/network code anywhere. Lives in the same Settings dialog.
   test('usage-signal toggle is off by default with honest copy', async () => {
@@ -113,28 +203,6 @@ test.describe('Settings dialog (#204)', () => {
     await expect(window.locator('#usage-signal-toggle')).not.toBeChecked();
     await expect(window.locator('#usage-signal-note')).toContainText('anonymous');
     await expect(window.locator('#usage-signal-note')).toContainText('never audio');
-    await window.locator('#settings-dialog-done').click();
-  });
-
-  test('checking the usage-signal toggle persists across a reopen, then restores to off', async () => {
-    await window.locator('#settings-btn').click();
-    await window.locator('#settings-tab-btn-privacy').click();
-    await window.locator('#usage-signal-toggle').check();
-    await window.locator('#settings-dialog-done').click();
-    await expect(window.locator('#settings-dialog')).toBeHidden();
-
-    await window.locator('#settings-btn').click();
-    await window.locator('#settings-tab-btn-privacy').click();
-    await expect(window.locator('#usage-signal-toggle')).toBeChecked();
-
-    // Restore the default-OFF state so no ON preference leaks into later tests.
-    await window.locator('#usage-signal-toggle').uncheck();
-    await window.locator('#settings-dialog-done').click();
-    await expect(window.locator('#settings-dialog')).toBeHidden();
-
-    await window.locator('#settings-btn').click();
-    await window.locator('#settings-tab-btn-privacy').click();
-    await expect(window.locator('#usage-signal-toggle')).not.toBeChecked();
     await window.locator('#settings-dialog-done').click();
   });
 
@@ -161,34 +229,6 @@ test.describe('Settings dialog (#204)', () => {
     // The toggle now persists on change (#1018) — the two Space presses above
     // already landed it back on unchecked, so no ON preference leaks to later tests.
     await window.locator('#settings-dialog-done').click();
-  });
-
-  // #204: a storage-folder change persists as soon as it's made (#1019) — the
-  // dialog close below just verifies reopening still shows it.
-  test('a storage-folder change persists through a dialog close', async () => {
-    const chosen = '/tmp/sb-e2e-storage-combined';
-    await electronApp.evaluate(({ ipcMain }, dir) => {
-      ipcMain.removeHandler('open-dir-dialog');
-      ipcMain.handle('open-dir-dialog', () => dir);
-    }, chosen);
-
-    await window.locator('#settings-btn').click();
-    await window.locator('#settings-tab-btn-storage').click();
-    await window.locator('#storage-change-btn').click();
-    await expect(window.locator('#storage-path')).toHaveText(chosen);
-    await window.locator('#settings-dialog-done').click();
-    await expect(window.locator('#settings-dialog')).toBeHidden();
-
-    await window.locator('#settings-btn').click();
-    await window.locator('#settings-tab-btn-storage').click();
-    await expect(window.locator('#storage-path')).toHaveText(chosen);
-    await window.locator('#settings-dialog-done').click();
-
-    // Restore the default folder so later specs (and reruns) see a clean setting.
-    await electronApp.evaluate(({ ipcMain }) => {
-      ipcMain.removeHandler('open-dir-dialog');
-    });
-    await window.evaluate(() => (window as any).soundBuddy.updateSettings({ storageDir: '' }));
   });
 
   test('the dialog navigates via a left rail, with no horizontal tab strip', async () => {
@@ -218,31 +258,47 @@ test.describe('Settings dialog (#204)', () => {
     await window.locator('#settings-dialog-done').click();
   });
 
-  test('the title-bar close control closes the dialog without saving', async () => {
+  // #1021: the footer's Cancel/Save pair is gone — Done is the only action.
+  // Steps 4 and 7 (button count + role/name query) make this resistant to a
+  // Save button reappearing under a new id.
+  test('Done is the only dialog action', async () => {
     await window.locator('#settings-btn').click();
     await expect(window.locator('#settings-dialog-title')).toHaveText('Settings');
-    await window.locator('#settings-dialog-close').click();
-    await expect(window.locator('#settings-dialog')).toBeHidden();
-  });
-
-  // #1021: the footer's Cancel/Save pair is gone — Done is the only action,
-  // and every control (including one flipped mid-session) is already
-  // persisted by the time Done or Escape closes the dialog.
-  test('Done is the only dialog action and closing keeps persisted values', async () => {
-    await window.locator('#settings-btn').click();
     await expect(window.locator('#settings-dialog-done')).toHaveText('Done');
+    await expect(window.locator('#settings-dialog .rig-dialog-actions button')).toHaveCount(1);
     await expect(window.locator('#settings-dialog-save')).toHaveCount(0);
     await expect(window.locator('#settings-dialog-cancel')).toHaveCount(0);
+    await expect(
+      window.locator('#settings-dialog').getByRole('button', { name: /^(Save|Cancel)$/ }),
+    ).toHaveCount(0);
+    await window.locator('#settings-dialog-done').click();
+  });
+
+  // #1021 (epic #1000): every control is already persisted by the time any
+  // close affordance runs, so each of Done, Escape, and the title-bar close
+  // must leave an already-committed change intact.
+  test('every close path keeps an instantly-applied change', async () => {
+    await window.locator('#settings-btn').click();
     await window.locator('#settings-tab-btn-privacy').click();
     await window.locator('#usage-signal-toggle').check();
+    await expect.poll(() => persistedSetting(window, 'usageSignalEnabled')).toBe(true);
+
+    // Done.
     await window.locator('#settings-dialog-done').click();
     await expect(window.locator('#settings-dialog')).toBeHidden();
-
     await window.locator('#settings-btn').click();
     await window.locator('#settings-tab-btn-privacy').click();
     await expect(window.locator('#usage-signal-toggle')).toBeChecked();
-    // Escape closes without reverting either.
+
+    // Escape.
     await window.keyboard.press('Escape');
+    await expect(window.locator('#settings-dialog')).toBeHidden();
+    await window.locator('#settings-btn').click();
+    await window.locator('#settings-tab-btn-privacy').click();
+    await expect(window.locator('#usage-signal-toggle')).toBeChecked();
+
+    // Title-bar close.
+    await window.locator('#settings-dialog-close').click();
     await expect(window.locator('#settings-dialog')).toBeHidden();
     await window.locator('#settings-btn').click();
     await window.locator('#settings-tab-btn-privacy').click();
@@ -250,7 +306,7 @@ test.describe('Settings dialog (#204)', () => {
 
     // Restore the default-OFF preference so it cannot leak into later specs.
     await window.locator('#usage-signal-toggle').uncheck();
-    await expect(window.locator('#usage-signal-toggle')).not.toBeChecked();
+    await expect.poll(() => persistedSetting(window, 'usageSignalEnabled')).toBe(false);
     await window.locator('#settings-dialog-done').click();
   });
 });
