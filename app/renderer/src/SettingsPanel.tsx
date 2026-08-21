@@ -45,9 +45,10 @@
 // + service day, usage signal, crash reporting, DAW workspace, live
 // adjustments) render straight from settingsStore's persisted `settings` via
 // instantSettingValues and commit on change via commitInstantSetting — no
-// local staged state, no Save-gated seeding. The storage folder, the
-// church-name field, and console-network consent keep their own commit
-// paths, unchanged by this slice.
+// local staged state, no Save-gated seeding. The storage folder now persists
+// on change too (#1019, via commitStorageDir/chooseStorageFolder in
+// storage-settings.ts) — only the church-name field and console-network
+// consent keep their own commit paths.
 
 import { useEffect, useState, type ReactNode } from 'react';
 import type { StoreApi, UseBoundStore } from 'zustand';
@@ -56,7 +57,14 @@ import { useStoreShallow } from './stores/useStoreShallow';
 import { useSettingsStore, type SettingsState } from './stores/settingsStore';
 import { useLiveCaptureStore } from './stores/liveCaptureStore';
 import { useLicensingStore } from './stores/licensingStore';
-import { DEFAULT_STORAGE_PATH, effectiveStoragePath, loadStorageSeed, buildStoragePatch } from './storage-settings';
+import {
+  DEFAULT_STORAGE_PATH,
+  storageFolderDisplay,
+  loadStorageSeed,
+  buildStoragePatch,
+  commitStorageDir,
+  chooseStorageFolder,
+} from './storage-settings';
 import { instantSettingValues, commitInstantSetting } from './settings-instant-apply';
 import type { UpdateSettingsPatch } from '../../electron/ipc/api';
 import { MAX_CHURCH_NAME_LEN } from './share-card';
@@ -220,9 +228,7 @@ export default function SettingsPanel({ booted = false }: { booted?: boolean }) 
   // which falls back to the current section's one-line description.
   const [activeHelp, setActiveHelp] = useState<SettingsControl | null>(null);
   const helpFor = (control: SettingsControl) => settingsHelpHandlers(control, setActiveHelp);
-  const [pendingDir, setPendingDir] = useState<string | null>(null);
   const [defaultPath, setDefaultPath] = useState(DEFAULT_STORAGE_PATH);
-  const [loadedPath, setLoadedPath] = useState(DEFAULT_STORAGE_PATH);
   const [usageText, setUsageText] = useState('Calculating disk usage…');
   // Eagerly seeded from the store (like shareChurchName) rather than
   // useState(false) — this is a status display + immediate-commit Revoke
@@ -240,7 +246,6 @@ export default function SettingsPanel({ booted = false }: { booted?: boolean }) 
     if (!dialogOpen) return;
     setSection('general');
     setActiveHelp(null);
-    setPendingDir(null);
     setUsageText('Calculating disk usage…');
     setConsoleNetworkConsentGranted(!!settings?.consoleNetworkConsentGranted);
     let cancelled = false;
@@ -249,7 +254,6 @@ export default function SettingsPanel({ booted = false }: { booted?: boolean }) 
       if (cancelled) return;
       setShareChurchName(settings?.shareChurchName ?? '');
       setDefaultPath(storageSeed.defaultPath);
-      setLoadedPath(storageSeed.loadedPath);
       setUsageText(storageSeed.usageText);
       try {
         const v = await api.getAppVersion();
@@ -278,25 +282,20 @@ export default function SettingsPanel({ booted = false }: { booted?: boolean }) 
   // without saving — one handler so the three can't drift.
   const closeSettingsDialog = () => useSettingsStore.getState().closeDialog();
 
-  async function handleChooseStorageFolder() {
-    const dir = await api.openDirDialog();
-    if (!dir) return;
-    setPendingDir(dir);
-  }
-
   function handleSave() {
     // The church-name field commits on blur, but a click straight from the
     // field to this Save button can beat that blur — flush it explicitly so
     // Save always captures whatever is currently typed.
     void commitShareChurchName(useSettingsStore, shareChurchName);
     // The toggles come from the same persisted settings buildStoragePatch
-    // diffs against (#1018), so Save can only ever emit the staged
-    // storageDir — the seven instant-apply controls are already persisted.
-    const storagePatch = buildStoragePatch(pendingDir, instantSettingValues(settings), settings);
+    // diffs against (#1018); the storage folder no longer flows through Save
+    // (#1019, it commits immediately) — the seven instant-apply controls and
+    // the storage folder are already persisted, so Save can emit null.
+    const storagePatch = buildStoragePatch(instantSettingValues(settings), settings);
     void saveAll({ storagePatch }, useSettingsStore);
   }
 
-  const storagePath = effectiveStoragePath(pendingDir, defaultPath, loadedPath);
+  const storagePath = storageFolderDisplay(settings, defaultPath);
   const controlValues = instantSettingValues(settings);
 
   return (
@@ -432,7 +431,7 @@ export default function SettingsPanel({ booted = false }: { booted?: boolean }) 
                   className="btn btn-secondary sm"
                   data-icon="folder"
                   aria-describedby={settingsHelpNoteId('storageDir')}
-                  onClick={() => void handleChooseStorageFolder()}
+                  onClick={() => void chooseStorageFolder(api, useSettingsStore)}
                 >
                   Change…
                 </button>
@@ -448,7 +447,7 @@ export default function SettingsPanel({ booted = false }: { booted?: boolean }) 
               id="storage-reset-btn"
               className="btn btn-secondary sm"
               style={{ display: storagePath === defaultPath ? 'none' : undefined }}
-              onClick={() => setPendingDir('')}
+              onClick={() => void commitStorageDir(useSettingsStore, '')}
             >
               Use default
             </button>
