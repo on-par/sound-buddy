@@ -5,9 +5,11 @@ import { describe, it, expect, vi } from 'vitest';
 import {
   createDawShellRuntime,
   drawDawWaveformLane,
-  PLAYHEAD_PX_PER_SECOND,
+  DAW_TIMELINE_PX_PER_SECOND,
+  DAW_TIMELINE_ORIGIN_PX,
   DAW_TIMELINE_INSET_PX,
   WAVEFORM_COLORS,
+  dawTimelineX,
   type DawShellRuntimeDeps,
   type DawWaveformCanvasLike,
   type WaveformColumn,
@@ -317,9 +319,9 @@ describe('createDawShellRuntime', () => {
       const rt = createDawShellRuntime(deps);
       setNow(0);
       rt.startPlayhead(0);
-      setNow(1000); // 1s elapsed -> PLAYHEAD_PX_PER_SECOND px, unclamped
+      setNow(1000); // 1s elapsed -> DAW_TIMELINE_PX_PER_SECOND px, unclamped
       rt.renderPlayhead();
-      expect(playheadEl.style.transform).toBe(`translateX(${PLAYHEAD_PX_PER_SECOND}px)`);
+      expect(playheadEl.style.transform).toBe(`translateX(${DAW_TIMELINE_PX_PER_SECOND}px)`);
       expect(playheadEl.classList.toggle).toHaveBeenCalledWith('advancing', true);
     });
 
@@ -547,5 +549,26 @@ describe('createDawShellRuntime', () => {
       handler(peaksFrame([{ id: 'mix', data: encodePairs([64, 192]) }]));
       expect(raf).toHaveBeenCalledTimes(1);
     });
+  });
+});
+
+/* ── dawTimelineX (pure, #1031) ── */
+
+describe('dawTimelineX', () => {
+  it('returns DAW_TIMELINE_ORIGIN_PX at t=0', () => {
+    expect(dawTimelineX(0)).toBe(DAW_TIMELINE_ORIGIN_PX);
+  });
+
+  it('advances by exactly DAW_TIMELINE_PX_PER_SECOND per second', () => {
+    expect(dawTimelineX(3) - dawTimelineX(2)).toBe(DAW_TIMELINE_PX_PER_SECOND);
+  });
+
+  it('is unclamped and returns coordinates left of the origin for negative seconds', () => {
+    expect(dawTimelineX(-1)).toBe(DAW_TIMELINE_ORIGIN_PX - DAW_TIMELINE_PX_PER_SECOND);
+  });
+
+  it('matches the origin-plus-scale formula for an arbitrary t', () => {
+    const t = 12.5;
+    expect(dawTimelineX(t)).toBe(DAW_TIMELINE_ORIGIN_PX + t * DAW_TIMELINE_PX_PER_SECOND);
   });
 });

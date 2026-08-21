@@ -20,8 +20,20 @@
 // registered by App.tsx — inline-app.js's onLiveEvent no longer owns that
 // branch.
 
-export const PLAYHEAD_PX_PER_SECOND = 8; // one 40px ruler division = 5s
+export const DAW_TIMELINE_PX_PER_SECOND = 8; // one 40px ruler division = 5s
 export const DAW_TIMELINE_INSET_PX = 4; // matches the ruler's margin: 8px 4px horizontal inset
+// The shared t=0 edge for the arrangement view's ruler ticks, lane
+// gridlines and playhead (#1026/#1031) — the track-head column's right
+// edge in shell-local pixels (docs/design/session-tab.md's 208px column).
+export const DAW_TIMELINE_ORIGIN_PX = 208;
+
+/** Converts a timeline position in seconds to a shell-local x coordinate in
+ *  pixels. Pure and unclamped — negative seconds return coordinates left of
+ *  the origin; clamping to the visible lane width is the caller's job
+ *  (dawPlayheadState.offsetPx does that for the playhead). */
+export function dawTimelineX(timeSecs: number): number {
+  return DAW_TIMELINE_ORIGIN_PX + timeSecs * DAW_TIMELINE_PX_PER_SECOND;
+}
 // Recording-vs-monitoring waveform stroke, matching the transport-chip colors
 // (--issue-text/--gold-text/--text-muted in app.css) — canvas drawing can't
 // read CSS custom properties, so these are named constants (ported verbatim
@@ -188,13 +200,13 @@ export function createDawShellRuntime(deps: DawShellRuntimeDeps): DawShellRuntim
     const line = shell.querySelector('.daw-playhead') as HTMLElement | null;
     if (line) {
       const maxPx = Math.max(0, shell.clientWidth - DAW_TIMELINE_INSET_PX * 2);
-      line.style.transform = `translateX(${deps.dawPlayheadState.offsetPx(elapsed, PLAYHEAD_PX_PER_SECOND, maxPx)}px)`;
+      line.style.transform = `translateX(${deps.dawPlayheadState.offsetPx(elapsed, DAW_TIMELINE_PX_PER_SECOND, maxPx)}px)`;
       line.classList.toggle('advancing', deps.dawPlayheadState.isAdvancing(playheadState));
     }
   }
 
   // Sizes the canvas to its own `.daw-lane-body` parent (only when changed),
-  // computes the pixel columns at the shared PLAYHEAD_PX_PER_SECOND scale
+  // computes the pixel columns at the shared DAW_TIMELINE_PX_PER_SECOND scale
   // budgeted to the canvas's own drawable width (never the wider shell
   // width — avoids off-canvas clipping, #520), and draws via the pure export.
   function paintLane(canvas: DawCanvasElementLike, pairs: WaveformColumn[], strokeStyle: string): void {
@@ -206,7 +218,7 @@ export function createDawShellRuntime(deps: DawShellRuntimeDeps): DawShellRuntim
 
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
-    const columns = deps.dawWaveformState.columnPeaks(pairs, waveformBucketsPerSec, PLAYHEAD_PX_PER_SECOND, canvas.width);
+    const columns = deps.dawWaveformState.columnPeaks(pairs, waveformBucketsPerSec, DAW_TIMELINE_PX_PER_SECOND, canvas.width);
     drawDawWaveformLane(ctx, columns, canvas.width, canvas.height, strokeStyle);
   }
 
