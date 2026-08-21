@@ -23,7 +23,7 @@ import {
 } from './live-workspace-view';
 import type { LiveDevice, StripConfig, ChannelGroup, LiveEvent, LiveMeterChannel } from './live-capture-panel';
 import type { AppSettings } from '../../electron/ipc/api';
-import { dawTimelineX, dawRulerTicks, DAW_RULER_SPAN_SECS } from './daw-shell-runtime';
+import { dawTimelineX, dawRulerTicks, dawLaneGridlines, DAW_TIMELINE_SPAN_SECS } from './daw-shell-runtime';
 
 // The pure helper classic-scripts the view module reads off `window` — real
 // modules (not hand-rolled stubs), same convention as
@@ -366,8 +366,20 @@ describe('dawShellHTML / dawShellPatchView', () => {
     expect(html).toContain(`style="left:${dawTimelineX(0)}px"`);
     expect(html).toContain(`style="left:${dawTimelineX(10)}px"`);
     const occurrences = html.split('class="daw-ruler-tick"').length - 1;
-    expect(occurrences).toBe(dawRulerTicks(DAW_RULER_SPAN_SECS).length);
+    expect(occurrences).toBe(dawRulerTicks(DAW_TIMELINE_SPAN_SECS).length);
     expect(html).toContain('<div class="daw-ruler">');
+  });
+
+  it('renders lane gridlines from the shared timeline geometry (#1033)', () => {
+    const state = makeState();
+    const html = dawShellHTML(state);
+    expect(html).toContain('class="daw-lane-grid"');
+    expect(html).toContain('class="daw-gridline major"');
+    expect(html).toContain(`<span class="daw-gridline" style="left:${dawTimelineX(5)}px"></span>`);
+    expect(html).toContain(`<span class="daw-gridline major" style="left:${dawTimelineX(10)}px"></span>`);
+    const perLane = dawLaneGridlines(DAW_TIMELINE_SPAN_SECS).length;
+    const total = html.split('class="daw-gridline').length - 1;
+    expect(total).toBe(perLane * (1 + state.channelConfig.length)); // mix lane + one per channel lane
   });
 
   it('seeds the transport time from the bridged playhead elapsed so a rebuild never flashes 0:00', () => {

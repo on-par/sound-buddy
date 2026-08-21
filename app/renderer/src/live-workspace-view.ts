@@ -37,7 +37,7 @@ import {
 import { escapeHtml } from './spectrum-display';
 import { fmt, iconSvg } from './report-card';
 import type { AppSettings } from '../../electron/ipc/api';
-import { dawRulerTicks, DAW_RULER_SPAN_SECS, type DawShellRuntime } from './daw-shell-runtime';
+import { dawRulerTicks, dawLaneGridlines, DAW_TIMELINE_SPAN_SECS, type DawShellRuntime } from './daw-shell-runtime';
 
 export type { DawShellRuntime } from './daw-shell-runtime';
 
@@ -464,14 +464,18 @@ export function dawShellHTML(state: LiveWorkspaceViewState): string {
     escapeHtml(getRigReconcile().resolveStripLabel(strip, liveChannelAt(state, idx), idx)));
   const { transportChip, captureMode } = dawShellPatchView(state);
   const seededElapsed = state.playheadElapsedMs;
+  const laneGrid = `<span class="daw-lane-grid">${dawLaneGridlines(DAW_TIMELINE_SPAN_SECS)
+    .map((line) => `<span class="daw-gridline${line.isMajor ? ' major' : ''}" style="left:${line.xPx}px"></span>`)
+    .join('')}</span>`;
   const laneHTML = state.channelConfig.length > 0
     ? `<div class="daw-channel-lanes">${state.channelConfig.map((strip, idx) =>
       `<div class="daw-lane daw-channel-lane" data-ch="${idx}">`
       + `<span class="daw-lane-name">${laneNames[idx]}</span>`
       + `<span class="daw-lane-body"><canvas class="daw-channel-waveform"></canvas></span>`
+      + laneGrid
       + `</div>`).join('')}</div>`
     : `<div class="daw-lane daw-empty-state">Add tracks to see channel lanes</div>`;
-  const rulerTicks = dawRulerTicks(DAW_RULER_SPAN_SECS)
+  const rulerTicks = dawRulerTicks(DAW_TIMELINE_SPAN_SECS)
     .map((tick) => `<span class="daw-ruler-tick" style="left:${tick.xPx}px"></span>`)
     .join('');
   return `<div class="daw-shell">`
@@ -486,6 +490,7 @@ export function dawShellHTML(state: LiveWorkspaceViewState): string {
     + `<div class="daw-lane daw-mix-lane" data-capture-mode="${captureMode}">`
     + `<span class="daw-lane-name">Overall mix</span>`
     + `<span class="daw-lane-body"><canvas class="daw-mix-waveform"></canvas></span>`
+    + laneGrid
     + `</div>`
     + laneHTML
     + `</div>`;

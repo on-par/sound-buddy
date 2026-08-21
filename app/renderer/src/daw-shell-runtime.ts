@@ -40,11 +40,12 @@ export function dawTimelineX(timeSecs: number): number {
 // the interval itself is unchanged by this story (docs/design/session-tab.md's
 // 10s labelled ticks are #1028's concern).
 export const DAW_RULER_TICK_INTERVAL_SECS = 5;
-// How much arrangement time the ruler lays ticks over. The ruler row clips its
-// own overflow, so this is a fixed strip rather than a viewport-aware count —
-// a width-aware (and zoomable) tick range lands with the arrangement layout
-// (#1028). 300s covers the widest lane column at the current scale.
-export const DAW_RULER_SPAN_SECS = 300;
+// How much arrangement time the ruler ticks and lane gridlines lay out over.
+// The ruler row and lanes clip their own overflow, so this is a fixed strip
+// rather than a viewport-aware count — a width-aware (and zoomable) tick
+// range lands with the arrangement layout (#1028). 300s covers the widest
+// lane column at the current scale.
+export const DAW_TIMELINE_SPAN_SECS = 300;
 
 /** One ruler tick: the arrangement time it marks and the shell-local x
  *  coordinate for that time, straight from the shared geometry. */
@@ -69,6 +70,44 @@ export function dawRulerTicks(spanSecs: number): DawRulerTick[] {
   }
   return ticks;
 }
+
+// Lane gridline divisions, in seconds (docs/design/session-tab.md, "Lane
+// anatomy"): a minor line every 5s, promoted to a major line every 10s. These
+// are time divisions, never pixel spacings — the pixels come from
+// dawTimelineX alone.
+export const DAW_LANE_GRID_MINOR_SECS = 5;
+export const DAW_LANE_GRID_MAJOR_SECS = 10;
+
+/** One lane gridline: the arrangement time it marks, the shell-local x
+ *  coordinate for that time straight from the shared geometry, and whether it
+ *  is a major (10s) rather than minor (5s) division. */
+export interface DawLaneGridline {
+  timeSecs: number;
+  xPx: number;
+  isMajor: boolean;
+}
+
+/** Lane gridlines at every DAW_LANE_GRID_MINOR_SECS from t=0 through spanSecs
+ *  inclusive. Pure: each xPx is dawTimelineX(timeSecs), so a gridline can never
+ *  disagree with a ruler tick or the playhead about where a time sits (ADR-0086).
+ *  Counting in whole intervals means every timeSecs is an exact integer, so the
+ *  major test is exact modulo arithmetic — no epsilon needed. A negative or
+ *  non-finite span yields no gridlines. */
+export function dawLaneGridlines(spanSecs: number): DawLaneGridline[] {
+  if (!Number.isFinite(spanSecs) || spanSecs < 0) return [];
+  const count = Math.floor(spanSecs / DAW_LANE_GRID_MINOR_SECS) + 1;
+  const lines: DawLaneGridline[] = [];
+  for (let i = 0; i < count; i++) {
+    const timeSecs = i * DAW_LANE_GRID_MINOR_SECS;
+    lines.push({
+      timeSecs,
+      xPx: dawTimelineX(timeSecs),
+      isMajor: timeSecs % DAW_LANE_GRID_MAJOR_SECS === 0,
+    });
+  }
+  return lines;
+}
+
 // Recording-vs-monitoring waveform stroke, matching the transport-chip colors
 // (--issue-text/--gold-text/--text-muted in app.css) — canvas drawing can't
 // read CSS custom properties, so these are named constants (ported verbatim

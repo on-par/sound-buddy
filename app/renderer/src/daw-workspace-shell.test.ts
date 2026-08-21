@@ -268,6 +268,37 @@ describe('ruler ticks derive from the shared timeline geometry (#1032)', () => {
   });
 });
 
+describe('lane gridlines derive from the shared timeline geometry (#1033)', () => {
+  it('dawShellHTML renders lane gridlines built from dawLaneGridlines', () => {
+    expect(workspaceViewTs).toContain('dawLaneGridlines(');
+    expect(workspaceViewTs).toContain('daw-gridline');
+  });
+
+  it('the lane gridline markup is imported from the shared geometry module, not reimplemented', () => {
+    expect(workspaceViewTs).toMatch(/import \{[^}]*dawLaneGridlines[^}]*\} from '\.\/daw-shell-runtime'/s);
+  });
+
+  it('daw-shell-runtime.ts exports the lane gridline geometry', () => {
+    expect(dawShellRuntimeTs).toContain('export function dawLaneGridlines(spanSecs: number): DawLaneGridline[]');
+    expect(dawShellRuntimeTs).toContain('export const DAW_LANE_GRID_MINOR_SECS');
+    expect(dawShellRuntimeTs).toContain('export const DAW_LANE_GRID_MAJOR_SECS');
+  });
+
+  it('no lane-local pixels-per-second value survives in the lane gridline builder or the CSS', () => {
+    expect(css).toContain('.daw-gridline');
+    const laneRule = css.match(/\.daw-lane\s*\{[^}]*\}/);
+    expect(laneRule).not.toBeNull();
+    expect(laneRule![0]).not.toContain('repeating-linear-gradient');
+    const builderBody = functionBody(workspaceViewTs, 'dawShellHTML');
+    expect(builderBody).toContain('dawLaneGridlines');
+    expect(workspaceViewTs).not.toMatch(/PX_PER_SECOND\s*=/);
+  });
+
+  it("dawLaneGridlines' body computes each line's x through the shared dawTimelineX function", () => {
+    expect(functionBody(dawShellRuntimeTs, 'dawLaneGridlines')).toContain('dawTimelineX(timeSecs)');
+  });
+});
+
 describe('DAW shell seam consumers unchanged by the 6j migration', () => {
   it('the capture lifecycle still starts the playhead and resets the waveform via the dawShell seam', () => {
     const block = enclosingBlock(lifecycleTs, 'shell?.startPlayhead(Date.now())');
