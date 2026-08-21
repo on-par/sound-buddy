@@ -610,6 +610,33 @@
     .settings-pane .select-wrap select { height:var(--control-h-sm); padding:0 28px 0 10px; font:var(--fw-medium) var(--fs-label)/1 var(--font-sans); }
     .settings-pane .rig-dialog-input { height:var(--control-h-sm); padding:0 10px; }
     .settings-pane .ghost-btn { height:var(--control-h-sm); padding:0 10px; font:var(--fw-medium) var(--fs-label)/1 var(--font-sans); }
+    /* Settings toggles (#1010, epic #999) — every Settings toggle stays a
+       native <input type="checkbox"> so keyboard, assistive tech and
+       Playwright .check()/.uncheck() keep working; only the painting is
+       replaced. Scoped to .settings-pane so FeedbackDialog's
+       #feedback-attach-diagnostics and SoundcheckPanel's #sc-master-toggle keep
+       the native accent-color look — the shared .ai-enable-row base rule is
+       never edited (ADR-0082). */
+    .settings-pane input[type="checkbox"] {
+      appearance:none; -webkit-appearance:none; position:relative; flex:none; margin:0;
+      width:var(--settings-toggle-size); height:var(--settings-toggle-size);
+      background:var(--surface-inset); border:1px solid var(--border-strong); border-radius:var(--radius-xs);
+      cursor:pointer; transition:var(--transition-control);
+    }
+    .settings-pane input[type="checkbox"]:hover:not(:disabled) { border-color:var(--border-focus); }
+    .settings-pane input[type="checkbox"]:checked { background:var(--gold-500); border-color:var(--gold-600); }
+    /* Decorative tick only — the checked state is carried by the fill above,
+       so checked and unchecked stay distinct even if this never paints. */
+    .settings-pane input[type="checkbox"]::after {
+      content:""; position:absolute; left:50%; top:50%;
+      width:calc(var(--settings-toggle-size) / 5); height:calc(var(--settings-toggle-size) / 2.5);
+      border:solid var(--bg-app); border-width:0 2px 2px 0;
+      transform:translate(-50%,-60%) rotate(45deg); opacity:0;
+      transition:opacity var(--dur-fast) var(--ease-out);
+    }
+    .settings-pane input[type="checkbox"]:checked::after { opacity:1; }
+    .settings-pane input[type="checkbox"]:focus-visible { outline:none; border-color:var(--border-focus); box-shadow:var(--glow-focus); }
+    .settings-pane input[type="checkbox"]:disabled { opacity:0.45; cursor:not-allowed; }
     /* Storage pane (#91) */
     .storage-path-row { display:flex; align-items:center; gap:10px; margin-top:4px; }
     .storage-path { flex:1; min-width:0; font:var(--fw-regular) var(--fs-label)/1.4 var(--font-mono,monospace); color:var(--text-primary); word-break:break-all; }

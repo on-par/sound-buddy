@@ -220,3 +220,47 @@ describe('Settings row grid (#1009)', () => {
     expect(block).not.toMatch(/font-size:\d+px/);
   });
 });
+
+describe('Settings toggle chrome (#1010)', () => {
+  it('adds the toggle-size token', () => {
+    expect(tokensCss).toContain('--settings-toggle-size:16px');
+  });
+
+  it('repaints the native checkbox instead of replacing it', () => {
+    expect(appCss).toContain('.settings-pane input[type="checkbox"] {');
+    const match = appCss.match(/\.settings-pane input\[type="checkbox"\]\s*\{[^}]*\}/);
+    expect(match).not.toBeNull();
+    const rule = match ? match[0] : '';
+    expect(rule).toContain('appearance:none');
+    expect(rule).toContain('width:var(--settings-toggle-size)');
+    expect(rule).toContain('height:var(--settings-toggle-size)');
+    expect(rule).toContain('background:var(--surface-inset)');
+    expect(rule).toContain('border:1px solid var(--border-strong)');
+  });
+
+  it('gives checked, focus and disabled each a distinct token-driven state', () => {
+    expect(appCss).toContain(
+      '.settings-pane input[type="checkbox"]:checked { background:var(--gold-500); border-color:var(--gold-600); }',
+    );
+    expect(appCss).toContain(
+      '.settings-pane input[type="checkbox"]:focus-visible { outline:none; border-color:var(--border-focus); box-shadow:var(--glow-focus); }',
+    );
+    expect(appCss).toContain(
+      '.settings-pane input[type="checkbox"]:disabled { opacity:0.45; cursor:not-allowed; }',
+    );
+  });
+
+  it('scopes every toggle rule to the Settings pane', () => {
+    // Each checkbox selector in app.css must be prefixed .settings-pane, so
+    // FeedbackDialog and SoundcheckPanel keep the native look.
+    const selectors = appCss.match(/^[^\n@{]*input\[type="checkbox"\][^\n{]*\{/gm) ?? [];
+    expect(selectors.length).toBeGreaterThan(0);
+    for (const sel of selectors) {
+      expect(sel.trim().startsWith('.settings-pane')).toBe(true);
+    }
+  });
+
+  it('leaves the shared .ai-enable-row checkbox base rule byte-unchanged', () => {
+    expect(appCss).toContain('.ai-enable-row input { accent-color:var(--gold-500); }');
+  });
+});

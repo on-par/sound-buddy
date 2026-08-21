@@ -138,6 +138,30 @@ test.describe('Settings dialog (#204)', () => {
     await window.locator('#settings-dialog-cancel').click();
   });
 
+  // #1010: the compact Settings toggle chrome is CSS-only — the control is
+  // still a native checkbox, so keyboard, AT and Playwright all drive it.
+  test('the usage-signal toggle keeps native checkbox semantics', async () => {
+    await window.locator('#settings-btn').click();
+    await window.locator('#settings-tab-btn-privacy').click();
+    const toggle = window.locator('#usage-signal-toggle');
+    expect(await toggle.evaluate((el) => el.tagName)).toBe('INPUT');
+    expect(await toggle.evaluate((el) => (el as HTMLInputElement).type)).toBe('checkbox');
+
+    // A restyled-but-not-hidden input keeps a real hit target.
+    const box = await toggle.boundingBox();
+    expect(box?.width ?? 0).toBeGreaterThan(0);
+    expect(box?.height ?? 0).toBeGreaterThan(0);
+
+    await toggle.focus();
+    await window.keyboard.press('Space');
+    await expect(toggle).toBeChecked();
+    await window.keyboard.press('Space');
+    await expect(toggle).not.toBeChecked();
+
+    // Cancel discards the local edit, so no ON preference leaks to later tests.
+    await window.locator('#settings-dialog-cancel').click();
+  });
+
   // #204: a storage-folder change persists through the single shared Save
   // (originally paired with an AI Ollama-model change in the same session —
   // the AI half was removed by #657, this now covers storage-only).

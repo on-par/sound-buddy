@@ -83,6 +83,10 @@
       --settings-control-w:260px;
       --settings-row-gap:14px;
 
+      /* Settings toggles (#1010) — one box size for every checkbox in the
+         dialog so toggle rows share the other controls' rhythm. */
+      --settings-toggle-size:16px;
+
       /* Radius */
       --radius-xs:4px; --radius-sm:6px; --radius-md:8px; --radius-lg:12px;
       --radius-xl:16px; --radius-2xl:20px; --radius-pill:999px; --radius-full:50%;
