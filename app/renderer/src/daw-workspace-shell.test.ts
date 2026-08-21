@@ -202,7 +202,7 @@ describe('DAW playhead/waveform painters moved off inline-app.js (TD-001 slice 6
   it('daw-shell-runtime.ts is the new home for the painters, scheduling, and the peaks-event bridge', () => {
     expect(dawShellRuntimeTs).toContain('export function createDawShellRuntime(');
     expect(dawShellRuntimeTs).toContain('WAVEFORM_COLORS');
-    expect(dawShellRuntimeTs).toContain('PLAYHEAD_PX_PER_SECOND');
+    expect(dawShellRuntimeTs).toContain('DAW_TIMELINE_PX_PER_SECOND');
     expect(dawShellRuntimeTs).toContain('DAW_TIMELINE_INSET_PX');
     expect(dawShellRuntimeTs).toContain('export function drawDawWaveformLane(');
     expect(dawShellRuntimeTs).toContain('function scheduleWaveformRender(');
@@ -218,6 +218,23 @@ describe('DAW playhead/waveform painters moved off inline-app.js (TD-001 slice 6
 
   it('LiveCapturePanel.tsx drives the playhead with a requestAnimationFrame loop', () => {
     expect(liveCapturePanelTsx).toContain('requestAnimationFrame(tick)');
+  });
+});
+
+describe('shared DAW timeline geometry contract (#1031)', () => {
+  it('exports exactly one pixels-per-second scale, the shared time origin, and the pure coordinate function', () => {
+    expect(dawShellRuntimeTs).toContain('export const DAW_TIMELINE_PX_PER_SECOND');
+    expect(dawShellRuntimeTs).toContain('export const DAW_TIMELINE_ORIGIN_PX');
+    expect(dawShellRuntimeTs).toContain('export function dawTimelineX(timeSecs: number): number');
+  });
+
+  it('no longer exports the playhead-scoped PLAYHEAD_PX_PER_SECOND name', () => {
+    expect(dawShellRuntimeTs).not.toMatch(/PLAYHEAD_PX_PER_SECOND/);
+  });
+
+  it("dawTimelineX's body derives its result from the shared constants, not a hardcoded numeric literal", () => {
+    const body = enclosingBlock(dawShellRuntimeTs, 'DAW_TIMELINE_ORIGIN_PX + timeSecs * DAW_TIMELINE_PX_PER_SECOND');
+    expect(body).not.toMatch(/\d/);
   });
 });
 
