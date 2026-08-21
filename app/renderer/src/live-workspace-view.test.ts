@@ -23,6 +23,7 @@ import {
 } from './live-workspace-view';
 import type { LiveDevice, StripConfig, ChannelGroup, LiveEvent, LiveMeterChannel } from './live-capture-panel';
 import type { AppSettings } from '../../electron/ipc/api';
+import { dawTimelineX, dawRulerTicks, DAW_RULER_SPAN_SECS } from './daw-shell-runtime';
 
 // The pure helper classic-scripts the view module reads off `window` — real
 // modules (not hand-rolled stubs), same convention as
@@ -357,6 +358,16 @@ describe('dawShellHTML / dawShellPatchView', () => {
     expect(html).toContain('data-capture-mode="recording"');
     expect(dawShellHTML(makeState({ isCapturing: true, liveMode: 'monitor' }))).toContain('daw-transport-state-monitoring');
     expect(dawShellHTML(makeState())).toContain('daw-transport-state-stopped');
+  });
+
+  it('renders ruler ticks from the shared timeline geometry (#1032)', () => {
+    const html = dawShellHTML(makeState());
+    expect(html).toContain('class="daw-ruler-tick"');
+    expect(html).toContain(`style="left:${dawTimelineX(0)}px"`);
+    expect(html).toContain(`style="left:${dawTimelineX(10)}px"`);
+    const occurrences = html.split('class="daw-ruler-tick"').length - 1;
+    expect(occurrences).toBe(dawRulerTicks(DAW_RULER_SPAN_SECS).length);
+    expect(html).toContain('<div class="daw-ruler">');
   });
 
   it('seeds the transport time from the bridged playhead elapsed so a rebuild never flashes 0:00', () => {
