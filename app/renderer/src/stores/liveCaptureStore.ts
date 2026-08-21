@@ -22,6 +22,8 @@ import {
   deviceNameFor,
   usedChannelCount,
   measurementSourceAfterRemove,
+  channelFlagsAfterRemove,
+  type ChannelFlagMap,
   type LiveDevice,
   type DeviceHint,
   type StripConfig,
@@ -277,6 +279,14 @@ export interface LiveCaptureState {
   // becoming the room's measurement source.
   selectedChannel: number | null;
 
+  // Monitor mute/solo, keyed by channelConfig strip index (#1054). Ephemeral,
+  // per-session, never persisted — like focusedInputIndex. A key is present only
+  // while the flag is set (toggling off deletes it), so an active solo is simply
+  // a non-empty soloedChannels. Mute and solo are independent maps; nothing here
+  // sends anything to console hardware.
+  mutedChannels: ChannelFlagMap;
+  soloedChannels: ChannelFlagMap;
+
   // The inline "arm at least one strip" hint near the Start button (#43) —
   // store-owned since TD-001 slice 6h (#711): the 6i capture-lifecycle
   // callbacks write showArmHint/hideArmHint here and LiveArmHint.tsx renders
@@ -371,6 +381,16 @@ export interface LiveCaptureState {
   setMeasurementSource(source: number | null): void;
   setSelectedChannel(source: number | null): void;
 
+  /** Flips channel `idx`'s monitor mute (#1054) — sets the key when muting,
+   *  deletes it when unmuting. Stored as given, like setSelectedChannel: index
+   *  validation happens at call boundaries, not here. */
+  toggleChannelMute(idx: number): void;
+  /** Flips channel `idx`'s monitor solo (#1054) — same set/delete contract as
+   *  toggleChannelMute; solo does not imply mute at this layer. */
+  toggleChannelSolo(idx: number): void;
+  /** Clears every solo, leaving mute untouched (#1054). */
+  clearChannelSolo(): void;
+
   setFocusedInputIndex(idx: number | null): void;
   /** Shows the inline arm hint (beforeStartCapture/promoteToRecording's
    *  blocking reasons surface through it, #43) — replaces the deleted
@@ -451,6 +471,15 @@ function lapDisposeReducer(
   return lap.acknowledgeOutcome(lapCoaching, now);
 }
 
+// Sets `idx` when absent, deletes it when present — the ChannelFlagMap
+// "present iff set" invariant, shared by the mute and solo toggles (#1054).
+function toggledFlags(flags: ChannelFlagMap, idx: number): ChannelFlagMap {
+  const next = { ...flags };
+  if (next[idx]) delete next[idx];
+  else next[idx] = true;
+  return next;
+}
+
 export function createLiveCaptureStore(getApi: () => LiveCaptureApi) {
   return create<LiveCaptureState>()((set, get) => ({
     devices: [],
@@ -484,6 +513,8 @@ export function createLiveCaptureStore(getApi: () => LiveCaptureApi) {
 
     measurementSource: null,
     selectedChannel: null,
+    mutedChannels: {},
+    soloedChannels: {},
     focusedInputIndex: null,
     lapCoaching: null,
     armHint: { visible: false, text: '' },
@@ -511,6 +542,9 @@ export function createLiveCaptureStore(getApi: () => LiveCaptureApi) {
           channelGroups: savedGroupsFor(deviceName),
           measurementSource: null,
           selectedChannel: null,
+          // The re-seeded config invalidates index-keyed monitor flags (#1054).
+          mutedChannels: {},
+          soloedChannels: {},
           // TD-001 slice 6h (#711): the deleted inline resetChannelConfig()
           // wrapper cleared the focused input + last tick snapshot alongside
           // loadDevices' re-seed — absorbed here so the wrappers are fully
@@ -531,6 +565,9 @@ export function createLiveCaptureStore(getApi: () => LiveCaptureApi) {
         channelGroups: savedGroupsFor(deviceName),
         measurementSource: null,
         selectedChannel: null,
+        // The re-seeded config invalidates index-keyed monitor flags (#1054).
+        mutedChannels: {},
+        soloedChannels: {},
         // TD-001 slice 6h (#711): the deleted resetChannelConfig() /
         // window.liveCaptureRuntime.selectDevice wrappers cleared these — see
         // loadDevices above.
@@ -586,6 +623,10 @@ export function createLiveCaptureStore(getApi: () => LiveCaptureApi) {
         // Same reindex contract for the focused input (#525) — it never dangles
         // across a strip removal (mirrors the old inline-app.js handling).
         focusedInputIndex: measurementSourceAfterRemove(state.focusedInputIndex, idx),
+        // Same reindex contract for the monitor flags (#1054) — a mute or solo
+        // never dangles onto the strip that shifted into the removed index.
+        mutedChannels: channelFlagsAfterRemove(state.mutedChannels, idx),
+        soloedChannels: channelFlagsAfterRemove(state.soloedChannels, idx),
       });
       persistGroups(get());
     },
@@ -797,6 +838,18 @@ export function createLiveCaptureStore(getApi: () => LiveCaptureApi) {
     // channelConfig during the TD-001 migration, not necessarily this store's).
     setSelectedChannel(source) {
       set({ selectedChannel: source });
+    },
+
+    toggleChannelMute(idx) {
+      set((state) => ({ mutedChannels: toggledFlags(state.mutedChannels, idx) }));
+    },
+
+    toggleChannelSolo(idx) {
+      set((state) => ({ soloedChannels: toggledFlags(state.soloedChannels, idx) }));
+    },
+
+    clearChannelSolo() {
+      set({ soloedChannels: {} });
     },
 
     // Focused-input selection (#525) — runtime, ephemeral; stored as given

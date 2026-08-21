@@ -47,6 +47,7 @@ import {
   shouldOfferReportCard,
   normalizeMeasurementSource,
   measurementSourceAfterRemove,
+  channelFlagsAfterRemove,
   measurementSourceOptionLabel,
   measurementSourceOptionsHTML,
   measurementChannel,
@@ -752,6 +753,30 @@ describe('measurementSourceAfterRemove', () => {
 
   it('leaves the selection unchanged when a higher strip is removed', () => {
     expect(measurementSourceAfterRemove(1, 2)).toBe(1);
+  });
+});
+
+describe('channelFlagsAfterRemove', () => {
+  it('returns an empty map for an empty map', () => {
+    expect(channelFlagsAfterRemove({}, 1)).toEqual({});
+  });
+
+  it("drops the removed index's own flag", () => {
+    expect(channelFlagsAfterRemove({ 1: true }, 1)).toEqual({});
+  });
+
+  it('shifts higher flags down', () => {
+    expect(channelFlagsAfterRemove({ 2: true }, 0)).toEqual({ 1: true });
+  });
+
+  it('leaves lower flags alone', () => {
+    expect(channelFlagsAfterRemove({ 0: true }, 2)).toEqual({ 0: true });
+  });
+
+  it('does not mutate its input', () => {
+    const input = { 0: true, 2: true };
+    channelFlagsAfterRemove(input, 0);
+    expect(input).toEqual({ 0: true, 2: true });
   });
 });
 

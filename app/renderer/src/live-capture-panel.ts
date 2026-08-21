@@ -602,6 +602,24 @@ export function measurementSourceAfterRemove(source: number | null, removedIdx: 
   return source;
 }
 
+// Per-strip boolean flag map keyed by channelConfig index (#1054). Invariant: a
+// key is present only while its flag is set — clearing a flag deletes the key,
+// so "no channels are flagged" is exactly `Object.keys(map).length === 0`.
+export type ChannelFlagMap = Record<number, boolean>;
+
+// Reindexes a ChannelFlagMap after strip `removedIdx` is deleted: the removed
+// strip's own flag is dropped and every higher strip's flag shifts down one, the
+// same contract measurementSourceAfterRemove applies to single-index state.
+export function channelFlagsAfterRemove(flags: ChannelFlagMap, removedIdx: number): ChannelFlagMap {
+  const next: ChannelFlagMap = {};
+  for (const key of Object.keys(flags)) {
+    const idx = Number(key);
+    if (idx === removedIdx) continue;
+    next[idx > removedIdx ? idx - 1 : idx] = flags[idx];
+  }
+  return next;
+}
+
 export function measurementSourceOptionLabel(strip: StripConfig | null | undefined, idx: number): string {
   const label = strip?.label?.trim();
   return label ? label : `Track ${idx + 1}`;
