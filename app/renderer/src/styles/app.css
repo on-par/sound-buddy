@@ -576,6 +576,40 @@
     .settings-panes { display:flex; flex-direction:column; flex:1; min-width:0; min-height:0; }
     .settings-pane { display:flex; flex-direction:column; flex:1; min-height:0; gap:12px; overflow-y:auto; }
     .settings-footer { display:flex; flex-direction:column; gap:10px; }
+    /* Settings row grid (#1009, epic #999) — Ableton-style aligned rows:
+       label in column 1, control in column 2 at a fixed width, so a pane can
+       be scanned without scrolling. Scoped to .settings-pane/.settings-group
+       descendants because .ai-field, .select-label, .ai-enable-row and
+       .slider are shared with FeedbackDialog, SoundcheckPanel and
+       CurveEditorDialog — those base rules stay untouched. Same compaction
+       pattern #ideal-profile-wrap already uses for its select. */
+    .settings-group { display:flex; flex-direction:column; gap:8px; }
+    .settings-group-title { margin:0; padding-bottom:6px; border-bottom:1px solid var(--border-subtle); font:var(--fw-semibold) var(--fs-micro)/1.4 var(--font-sans); letter-spacing:var(--tracking-caps); text-transform:uppercase; color:var(--text-muted); }
+    .settings-pane .ai-field,
+    .settings-pane .select-label,
+    .settings-pane .ai-enable-row,
+    .settings-pane .slider,
+    .settings-pane .record-row { display:grid; grid-template-columns:1fr var(--settings-control-w); align-items:center; column-gap:var(--settings-row-gap); row-gap:6px; width:100%; }
+    .settings-pane .ai-field-label,
+    .settings-pane .settings-row-label,
+    .settings-pane .select-label > span,
+    .settings-pane .slider-head .lbl { font:var(--fw-medium) var(--fs-label)/1.3 var(--font-sans); color:var(--text-secondary); letter-spacing:var(--tracking-label); }
+    /* Extra prose inside a row container (SecondaryMeasurementPanel's status,
+       warning and source hints) would otherwise auto-place into column 1 and
+       break the alignment — pin it under the control. */
+    .settings-pane .select-label > .device-hint { grid-column:2; margin:0; }
+    .settings-pane .ai-enable-row input[type="checkbox"] { justify-self:start; }
+    .settings-pane .slider-head { grid-column:1; }
+    .settings-pane .record-row .ghost-btn { order:2; }
+    .settings-pane .record-path { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .settings-pane .rig-actions { width:var(--settings-control-w); margin-left:auto; }
+    .settings-pane .storage-path-row { min-width:0; margin-top:0; }
+    .settings-pane .storage-path { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; word-break:normal; }
+    /* Compact controls inside the dialog only (#1009): --control-h-sm, not
+       --control-h. Heights, fonts and radii all come from tokens. */
+    .settings-pane .select-wrap select { height:var(--control-h-sm); padding:0 28px 0 10px; font:var(--fw-medium) var(--fs-label)/1 var(--font-sans); }
+    .settings-pane .rig-dialog-input { height:var(--control-h-sm); padding:0 10px; }
+    .settings-pane .ghost-btn { height:var(--control-h-sm); padding:0 10px; font:var(--fw-medium) var(--fs-label)/1 var(--font-sans); }
     /* Storage pane (#91) */
     .storage-path-row { display:flex; align-items:center; gap:10px; margin-top:4px; }
     .storage-path { flex:1; min-width:0; font:var(--fw-regular) var(--fs-label)/1.4 var(--font-mono,monospace); color:var(--text-primary); word-break:break-all; }

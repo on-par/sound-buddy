@@ -523,3 +523,49 @@ describe('SettingsSection', () => {
     }
   });
 });
+
+describe('Settings row grid (#1009)', () => {
+  it('renders a group header for every ungated group', () => {
+    const html = renderMarkup();
+    for (const title of ['Grading', 'Reminders', 'Sharing', 'Network access', 'Location', 'Diagnostics', 'Experiments', 'Application']) {
+      expect(html).toContain(`<h3 class="settings-group-title">${title}</h3>`);
+    }
+  });
+
+  it('renders a group header for every boot-gated Audio group once booted', () => {
+    const html = renderMarkup(true);
+    for (const title of ['Rig', 'Input', 'Measurement', 'Metering']) {
+      expect(html).toContain(`<h3 class="settings-group-title">${title}</h3>`);
+    }
+  });
+
+  it('wraps groups in a section.settings-group element', () => {
+    const html = renderMarkup();
+    expect(html).toContain('<section class="settings-group">');
+  });
+
+  it('does not render the boot-gated Audio groups before booted', () => {
+    const html = renderMarkup(false);
+    expect(html).not.toContain('<h3 class="settings-group-title">Rig</h3>');
+  });
+
+  it('puts each checkbox row caption before its control, in a settings-row-label span', () => {
+    const html = renderMarkup();
+    expect(html).toContain('<span class="settings-row-label">Share anonymous usage counts</span>');
+    expect(html.indexOf('Share anonymous usage counts')).toBeLessThan(html.indexOf('id="usage-signal-toggle"'));
+    expect(html.indexOf('Send crash reports')).toBeLessThan(html.indexOf('id="crash-reporting-toggle"'));
+    expect(html.indexOf('Try the experimental DAW-style Live workspace')).toBeLessThan(html.indexOf('id="daw-workspace-toggle"'));
+  });
+
+  it('keeps every toggle a real checkbox input', () => {
+    const html = renderMarkup();
+    for (const id of ['weekly-reminder-toggle', 'usage-signal-toggle', 'crash-reporting-toggle', 'daw-workspace-toggle', 'live-adjustments-toggle']) {
+      expect(html).toMatch(new RegExp(`type="checkbox" id="${id}"`));
+    }
+  });
+
+  it('keeps the pro-gate a direct child of the Audio pane', () => {
+    const html = renderMarkup(true);
+    expect(html).toMatch(/id="settings-pane-audio"[^>]*>\s*<div class="pro-gate"/);
+  });
+});
