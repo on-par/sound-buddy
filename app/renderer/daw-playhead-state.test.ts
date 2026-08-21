@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 
 // daw-playhead-state is a plain classic script (window.dawPlayheadState / module.exports).
-const { start, stop, isAdvancing, elapsedMs, formatElapsed, offsetPx } = require('./daw-playhead-state.js') as {
+const { start, stop, isAdvancing, elapsedMs, formatElapsed } = require('./daw-playhead-state.js') as {
   start: (nowMs: number) => { startedAtMs: number; stoppedAtMs: number | null };
   stop: (
     state: { startedAtMs: number; stoppedAtMs: number | null } | null,
@@ -10,7 +10,6 @@ const { start, stop, isAdvancing, elapsedMs, formatElapsed, offsetPx } = require
   isAdvancing: (state: { startedAtMs: number; stoppedAtMs: number | null } | null) => boolean;
   elapsedMs: (state: { startedAtMs: number; stoppedAtMs: number | null } | null, nowMs: number) => number;
   formatElapsed: (ms: number) => string;
-  offsetPx: (elapsedMsVal: number, pxPerSecond: number, maxPx: number) => number;
 };
 
 describe('start', () => {
@@ -80,11 +79,4 @@ describe('formatElapsed', () => {
   it('-5 -> 0:00', () => { expect(formatElapsed(-5)).toBe('0:00'); });
   it('NaN -> 0:00', () => { expect(formatElapsed(NaN)).toBe('0:00'); });
   it('Infinity -> 0:00', () => { expect(formatElapsed(Infinity)).toBe('0:00'); });
-});
-
-describe('offsetPx', () => {
-  it('0 elapsed -> 0px', () => { expect(offsetPx(0, 8, 400)).toBe(0); });
-  it('5000ms at 8px/s -> 40px', () => { expect(offsetPx(5000, 8, 400)).toBe(40); });
-  it('clamps at maxPx', () => { expect(offsetPx(999999, 8, 400)).toBe(400); });
-  it('clamps negative elapsed to 0', () => { expect(offsetPx(-500, 8, 400)).toBe(0); });
 });
