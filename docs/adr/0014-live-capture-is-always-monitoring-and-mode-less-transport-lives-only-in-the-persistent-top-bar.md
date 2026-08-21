@@ -3,6 +3,12 @@
 - Status: Accepted
 - Date: 2026-08-14
 
+> **Partly superseded by [ADR-0080](0080-the-daw-tab-merges-live-and-soundcheck-an-in-tab-transport-drives-the-timeline-supersedes-adr-0014.md)**
+> — merging Virtual Soundcheck into the tab gives it a second, seekable
+> playback timeline, so the in-tab transport prohibition below no longer
+> holds. Always-monitoring, the absence of a Monitor/Record mode toggle,
+> and inline `#arm-hint` preflight all still stand.
+
 ## Context
 
 Sound Buddy's Live tab shipped a Monitor/Record mode toggle plus a
