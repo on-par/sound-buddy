@@ -126,14 +126,8 @@ describe('commitInstantSetting', () => {
   });
 });
 
-describe('Save emits storage only', () => {
+describe('Save emits nothing when every control is already persisted', () => {
   it('returns null when the only diffed toggles come from the same persisted settings', () => {
-    expect(buildStoragePatch(null, instantSettingValues(FULL_SETTINGS), FULL_SETTINGS)).toBeNull();
-  });
-
-  it('returns exactly the staged storageDir when pendingDir is set', () => {
-    expect(buildStoragePatch('/tmp/x', instantSettingValues(FULL_SETTINGS), FULL_SETTINGS)).toEqual({
-      storageDir: '/tmp/x',
-    });
+    expect(buildStoragePatch(instantSettingValues(FULL_SETTINGS), FULL_SETTINGS)).toBeNull();
   });
 });

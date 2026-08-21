@@ -136,6 +136,22 @@ describe('SettingsPanel markup', () => {
     expect(html).toMatch(/id="storage-reset-btn"[^>]*style="display:none"/);
   });
 
+  it('renders the persisted storage folder and shows the reset button when it is not the default', () => {
+    useSettingsStore.setState({
+      settings: {
+        idealProfile: '', customIdealProfiles: [], storageDir: '/Volumes/Audio', rigs: [], activeRigId: null,
+        usageSignalEnabled: false, channelLabels: {}, channelGroups: {}, inputInstrumentProfiles: {},
+        crashReportingEnabled: false, dawWorkspaceEnabled: false, liveAdjustmentsEnabled: false,
+        reportFirstUxEnabled: false, shareChurchName: '', weeklyReminderEnabled: false, weeklyReminderServiceDay: 0,
+        liveEqPaneWidth: 360, measurementDeviceName: '', gradingProfile: 'casual', consoleNetworkConsentGranted: false,
+        soundcheckBuses: [],
+      },
+    });
+    const html = renderMarkup();
+    expect(html).toContain('/Volumes/Audio');
+    expect(html).not.toMatch(/id="storage-reset-btn"[^>]*style="display:none"/);
+  });
+
   it('renders an empty version footer before the app-version fetch resolves', () => {
     const html = renderMarkup();
     expect(html).toMatch(/<p class="ai-dialog-version" id="ai-dialog-version"><\/p>/);
@@ -535,9 +551,15 @@ describe('instant-apply Settings controls (#1018)', () => {
     }
   });
 
+  it('no longer stages the storage folder in local useState (#1019)', () => {
+    const src = fs.readFileSync(fileURLToPath(new URL('./SettingsPanel.tsx', import.meta.url)), 'utf8');
+    expect(src).not.toContain('pendingDir');
+    expect(src).not.toContain('setPendingDir');
+  });
+
   it('feeds handleSave toggles from the same persisted settings buildStoragePatch diffs against', () => {
     const src = fs.readFileSync(fileURLToPath(new URL('./SettingsPanel.tsx', import.meta.url)), 'utf8');
-    expect(src).toContain('buildStoragePatch(pendingDir, instantSettingValues(settings), settings)');
+    expect(src).toContain('buildStoragePatch(instantSettingValues(settings), settings)');
   });
 });
 
