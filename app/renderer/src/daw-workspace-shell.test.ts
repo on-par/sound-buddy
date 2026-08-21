@@ -12,6 +12,7 @@ import {
   DAW_TIMELINE_SPAN_SECS,
   DAW_TIMELINE_INSET_PX,
   DAW_TIMELINE_ORIGIN_PX,
+  DAW_TIMELINE_PX_PER_SECOND,
 } from './daw-shell-runtime';
 
 // DAW-style live workspace shell (#517): when the experimental toggle (#516)
@@ -398,10 +399,11 @@ describe('overall-mix row and arrangement status (#1044)', () => {
 
   it('the master head closes the head column and the status line follows the arrangement', () => {
     const body = functionBody(workspaceViewTs, 'dawShellHTML');
-    // headHTML is per-track (#1043); masterHeadHTML is the overall-mix row's
-    // head cell (#1044) — this literal interpolation order is what puts the
-    // master head last inside .daw-track-heads.
-    expect(body).toContain('${headHTML}${masterHeadHTML}');
+    // headRowsHTML is per-track, or the paired empty head (#1043/#1048);
+    // masterHeadHTML is the overall-mix row's head cell (#1044) — this literal
+    // interpolation order is what puts the master head last inside
+    // .daw-track-heads, after the ruler gutter that opens it (#1048).
+    expect(body).toContain('${rulerGutterHTML}${headRowsHTML}${masterHeadHTML}');
     expect(body.indexOf('daw-status-line')).toBeGreaterThan(body.indexOf('daw-arrangement'));
   });
 
@@ -434,6 +436,88 @@ describe('overall-mix row and arrangement status (#1044)', () => {
     const statusLineRule = css.match(/\.daw-status-line\s*\{[^}]*\}/);
     expect(statusLineRule).not.toBeNull();
     expect(statusLineRule![0]).toMatch(/height:\s*var\(--daw-status-line-h\)/);
+  });
+});
+
+describe('arrangement header and lane-column boundary (#1048)', () => {
+  it('the arrangement lays its two columns out side by side', () => {
+    const rule = css.match(/\.daw-arrangement\s*\{[^}]*\}/);
+    expect(rule).not.toBeNull();
+    expect(rule![0]).toMatch(/flex-direction:\s*row/);
+    expect(rule![0]).not.toMatch(/flex-direction:\s*column/);
+  });
+
+  it('the track-head column is fixed at the shared head width and never hardcodes 208px', () => {
+    const rule = css.match(/\.daw-track-heads\s*\{[^}]*\}/);
+    expect(rule).not.toBeNull();
+    expect(rule![0]).toMatch(/flex:\s*0 0 var\(--daw-head-w\)/);
+    expect(rule![0]).not.toMatch(/width:\s*\d/);
+    expect(css).not.toMatch(/--daw-head-w:\s*208px/);
+  });
+
+  it('the timeline column takes the remaining width and cannot squeeze the head column', () => {
+    const rule = css.match(/\.daw-timeline\s*\{[^}]*\}/);
+    expect(rule).not.toBeNull();
+    expect(rule![0]).toMatch(/flex:\s*1/);
+    expect(rule![0]).toMatch(/min-width:\s*0/);
+  });
+
+  it('one shared rule re-bases every timeline child by exactly one head width, with no numeric offset', () => {
+    const rebase = css.match(/\.daw-ruler-tick\s*,\s*\.daw-gridline\s*\{[^}]*\}/);
+    expect(rebase).not.toBeNull();
+    expect(rebase![0]).toMatch(/transform:\s*translateX\(calc\(-1 \* var\(--daw-head-w\)\)\)/);
+    const tickRule = css.match(/\.daw-ruler-tick\s*\{[^}]*\}/);
+    const gridlineRule = css.match(/\.daw-gridline\s*\{[^}]*\}/);
+    expect(tickRule).not.toBeNull();
+    expect(gridlineRule).not.toBeNull();
+    expect(tickRule![0]).not.toMatch(/transform|left:\s*\d/);
+    expect(gridlineRule![0]).not.toMatch(/transform|left:\s*\d/);
+  });
+
+  it('the playhead is not re-based — its frame is already the shell', () => {
+    const rebase = css.match(/\.daw-ruler-tick\s*,\s*\.daw-gridline\s*\{[^}]*\}/);
+    expect(rebase).not.toBeNull();
+    expect(rebase![0]).not.toContain('daw-playhead');
+  });
+
+  it('the head column opens with a ruler gutter that shares the ruler row height', () => {
+    const body = functionBody(workspaceViewTs, 'dawShellHTML');
+    expect(body).toContain('daw-ruler-gutter');
+    expect(body.indexOf('daw-ruler-gutter')).toBeLessThan(body.indexOf('daw-track-head'));
+    expect(body.indexOf('daw-ruler-gutter')).toBeLessThan(body.indexOf('masterHeadHTML'));
+    const gutterRule = css.match(/\.daw-ruler-gutter\s*\{[^}]*\}/);
+    const rulerRule = css.match(/\.daw-ruler\s*\{[^}]*\}/);
+    expect(gutterRule).not.toBeNull();
+    expect(rulerRule).not.toBeNull();
+    expect(gutterRule![0]).toMatch(/height:\s*var\(--daw-ruler-row-h\)/);
+    expect(rulerRule![0]).toMatch(/height:\s*var\(--daw-ruler-row-h\)/);
+    expect(gutterRule![0]).not.toMatch(/height:\s*\d/);
+    expect(rulerRule![0]).not.toMatch(/height:\s*\d/);
+    expect(css).toMatch(/\.daw-shell\s*\{[^}]*--daw-ruler-row-h:/);
+  });
+
+  it('the zero-track empty state is emitted as a paired head row', () => {
+    const body = functionBody(workspaceViewTs, 'dawShellHTML');
+    expect(body).toContain('daw-empty-head');
+    const rule = css.match(/\.daw-empty-head\s*\{[^}]*\}/);
+    expect(rule).not.toBeNull();
+    expect(rule![0]).toMatch(/height:\s*var\(--daw-track-row-h\)/);
+  });
+
+  it('every ruler tick and lane gridline sits at or right of the lane-column left edge', () => {
+    for (const t of dawRulerTicks(DAW_TIMELINE_SPAN_SECS)) {
+      expect(t.xPx - DAW_TIMELINE_ORIGIN_PX).toBe(t.timeSecs * DAW_TIMELINE_PX_PER_SECOND);
+      expect(t.xPx).toBeGreaterThanOrEqual(DAW_TIMELINE_ORIGIN_PX);
+    }
+    for (const g of dawLaneGridlines(DAW_TIMELINE_SPAN_SECS)) {
+      expect(g.xPx - DAW_TIMELINE_ORIGIN_PX).toBe(g.timeSecs * DAW_TIMELINE_PX_PER_SECOND);
+      expect(g.xPx).toBeGreaterThanOrEqual(DAW_TIMELINE_ORIGIN_PX);
+    }
+  });
+
+  it('the ruler origin and the first gridline of every lane are the same edge', () => {
+    expect(dawRulerTicks(DAW_TIMELINE_SPAN_SECS)[0].xPx).toBe(DAW_TIMELINE_ORIGIN_PX);
+    expect(dawLaneGridlines(DAW_TIMELINE_SPAN_SECS)[0].xPx).toBe(DAW_TIMELINE_ORIGIN_PX);
   });
 });
 
