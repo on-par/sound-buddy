@@ -49,22 +49,47 @@ describe('settingsHelpNoteId', () => {
 });
 
 describe('settingsHelpHandlers', () => {
-  it('onMouseEnter and onFocus activate the control', () => {
+  it('onMouseEnter activates the control synchronously', () => {
     const setActive = vi.fn();
     const handlers = settingsHelpHandlers('usageSignal', setActive);
     handlers.onMouseEnter();
     expect(setActive).toHaveBeenCalledWith('usageSignal');
-    handlers.onFocus();
-    expect(setActive).toHaveBeenCalledWith('usageSignal');
   });
 
-  it('onMouseLeave and onBlur clear the active control', () => {
+  it('onMouseLeave clears the active control synchronously', () => {
     const setActive = vi.fn();
     const handlers = settingsHelpHandlers('usageSignal', setActive);
     handlers.onMouseLeave();
     expect(setActive).toHaveBeenCalledWith(null);
+  });
+
+  // onFocus/onBlur are deferred a tick (not called synchronously) — firing
+  // setActive synchronously from a focus/blur handler races React's discrete
+  // event flush against the browser's native checkbox-toggle default action,
+  // which silently drops the click (reproduced against the built app with
+  // Playwright: "locator.check: Clicking the checkbox did not change its
+  // state" on #usage-signal-toggle once its label carried a synchronous
+  // onFocus). Deferring past the current task avoids the race.
+  it('onFocus activates the control on a deferred tick, not synchronously', () => {
+    vi.useFakeTimers();
+    const setActive = vi.fn();
+    const handlers = settingsHelpHandlers('usageSignal', setActive);
+    handlers.onFocus();
+    expect(setActive).not.toHaveBeenCalled();
+    vi.runAllTimers();
+    expect(setActive).toHaveBeenCalledWith('usageSignal');
+    vi.useRealTimers();
+  });
+
+  it('onBlur clears the active control on a deferred tick, not synchronously', () => {
+    vi.useFakeTimers();
+    const setActive = vi.fn();
+    const handlers = settingsHelpHandlers('usageSignal', setActive);
     handlers.onBlur();
+    expect(setActive).not.toHaveBeenCalled();
+    vi.runAllTimers();
     expect(setActive).toHaveBeenCalledWith(null);
+    vi.useRealTimers();
   });
 });
 

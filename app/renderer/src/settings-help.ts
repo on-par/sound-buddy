@@ -100,5 +100,17 @@ export function settingsHelpHandlers(
 ): SettingsHelpHandlers {
   const activate = () => setActive(control);
   const clear = () => setActive(null);
-  return { onMouseEnter: activate, onMouseLeave: clear, onFocus: activate, onBlur: clear };
+  // onFocus/onBlur are deferred a tick: React flushes focus/blur as discrete
+  // (synchronous) events, so calling setActive directly re-renders the
+  // control mid-click, before the browser's own native checked-toggle has
+  // landed — Playwright (and real users) then see "clicking the checkbox
+  // did not change its state". Deferring past the click's native event
+  // dispatch avoids the race; onMouseEnter/onMouseLeave aren't part of that
+  // dispatch sequence and don't need it.
+  return {
+    onMouseEnter: activate,
+    onMouseLeave: clear,
+    onFocus: () => setTimeout(activate, 0),
+    onBlur: () => setTimeout(clear, 0),
+  };
 }
