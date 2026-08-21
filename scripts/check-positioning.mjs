@@ -33,7 +33,7 @@ const LOCKED = [
     phrase: 'Your audio never leaves your machine',
     required: [
       'site/src/pages/index.astro',         // landing — privacy callout (headline-level)
-      'app/renderer/src/SettingsPanel.tsx', // app — Storage settings privacy note (#204: index.html's static dialog markup was fully absorbed into this React island)
+      'app/renderer/src/settings-help.ts',  // app — usage-signal note copy (#1007 moved the Settings row notes out of SettingsPanel.tsx's JSX into this single-source-of-truth table)
       'README.md',                          // docs — top-level positioning
     ],
     forbidden: [],
