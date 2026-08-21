@@ -11,13 +11,12 @@ import { launchApp, stopCaptureIfRunning } from './e2e-helpers';
 // unit-test harness — see daw-shell-runtime.test.ts for the painter/scheduling
 // unit coverage this spec doesn't re-derive).
 
-let electronApp: ElectronApplication;
+let electronApp: ElectronApplication | undefined;
 let window: Page;
 
-// The daw-workspace-toggle lives in Settings' default (Storage) section — no
-// tab switch needed, unlike #device-refresh-btn (Settings -> Audio).
 async function enableDawWorkspace(win: Page): Promise<void> {
   await win.locator('#settings-btn').click();
+  await win.locator('#settings-tab-btn-labs').click();
   await win.locator('#daw-workspace-toggle').check();
   await win.locator('#settings-dialog-save').click();
   await expect(win.locator('#settings-dialog')).toBeHidden();
@@ -33,6 +32,7 @@ function fullHeightPeaks(buckets: number): string {
 }
 
 async function sendPeaks(lanes: Array<{ id: string; data: string }>): Promise<void> {
+  if (!electronApp) throw new Error('Electron app was not launched');
   await electronApp.evaluate(({ BrowserWindow }, ls) => {
     BrowserWindow.getAllWindows()[0].webContents.send('live-event', { type: 'peaks', ts: 1, lanes: ls });
   }, lanes);
@@ -55,7 +55,7 @@ test.describe('DAW shell playback + waveform rendering (#713)', () => {
   });
 
   test.afterAll(async () => {
-    await electronApp.close();
+    await electronApp?.close();
   });
 
   test.beforeEach(async () => {

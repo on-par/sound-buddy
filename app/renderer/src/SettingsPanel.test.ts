@@ -6,7 +6,14 @@ import { createElement } from 'react';
 import { renderToString } from 'react-dom/server';
 import * as fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import SettingsPanel, { saveAll, type SettingsSection, commitShareChurchName } from './SettingsPanel';
+import SettingsPanel, {
+  SETTINGS_SECTIONS,
+  saveAll,
+  type SettingsSection,
+  commitShareChurchName,
+  settingsSectionFor,
+  type SettingsControl,
+} from './SettingsPanel';
 import { ElectronContext } from './useElectron';
 import { createSettingsStore, useSettingsStore } from './stores/settingsStore';
 import { useLiveCaptureStore } from './stores/liveCaptureStore';
@@ -77,14 +84,10 @@ describe('SettingsPanel markup', () => {
     const html = renderMarkup();
     expect(html).toContain('id="settings-dialog"');
     expect(html).toContain('style="display:none"');
-    expect(html).toContain('id="settings-tab-btn-storage"');
-    expect(html).toContain('id="settings-tab-btn-audio"');
-    expect(html).toContain('id="settings-tab-btn-console"');
-    expect(html).toContain('id="settings-tab-btn-about"');
-    expect(html).toContain('id="settings-pane-storage"');
-    expect(html).toContain('id="settings-pane-audio"');
-    expect(html).toContain('id="settings-pane-console"');
-    expect(html).toContain('id="settings-pane-about"');
+    for (const section of SETTINGS_SECTIONS) {
+      expect(html).toContain(`id="settings-tab-btn-${section}"`);
+      expect(html).toContain(`id="settings-pane-${section}"`);
+    }
   });
 
   it('shows flex display when the dialog is open', () => {
@@ -93,10 +96,11 @@ describe('SettingsPanel markup', () => {
     expect(html).toContain('style="display:flex"');
   });
 
-  it('defaults to the Storage tab active and the About pane hidden', () => {
+  it('defaults to the General tab active and the About pane hidden', () => {
     const html = renderMarkup();
-    expect(html).toContain('id="settings-tab-btn-storage" role="tab" aria-selected="true"');
-    expect(html).toMatch(/id="settings-pane-storage" style="display:flex"/);
+    expect(html).toContain('id="settings-tab-btn-general" role="tab" aria-selected="true"');
+    expect(html).toMatch(/id="settings-pane-general" style="display:flex"/);
+    expect(html).toMatch(/id="settings-pane-storage" style="display:none"/);
     expect(html).toMatch(/id="settings-pane-about" style="display:none"/);
   });
 
@@ -112,14 +116,10 @@ describe('SettingsPanel markup', () => {
     expect(html).toMatch(/id="settings-pane-console" style="display:none"/);
   });
 
-  it('wires the Audio tab button to setSection("audio")', () => {
+  it('wires section tab buttons through the table-driven section list', () => {
     const src = fs.readFileSync(fileURLToPath(new URL('./SettingsPanel.tsx', import.meta.url)), 'utf8');
-    expect(src).toContain("onClick={() => setSection('audio')}");
-  });
-
-  it('wires the Console tab button to setSection("console")', () => {
-    const src = fs.readFileSync(fileURLToPath(new URL('./SettingsPanel.tsx', import.meta.url)), 'utf8');
-    expect(src).toContain("onClick={() => setSection('console')}");
+    expect(src).toContain('SETTINGS_SECTIONS.map((name)');
+    expect(src).toContain('onClick={() => setSection(name)}');
   });
 
   it('renders the storage pane copy verbatim, including the no-caps guardrail line', () => {
@@ -128,10 +128,6 @@ describe('SettingsPanel markup', () => {
     expect(html).toContain('id="storage-path"');
     expect(html).toContain('id="storage-usage"');
     expect(html).toContain('id="storage-change-btn"');
-    expect(html).toContain('id="usage-signal-toggle"');
-    expect(html).toContain('id="crash-reporting-toggle"');
-    expect(html).toContain('id="daw-workspace-toggle"');
-    expect(html).toContain('id="live-adjustments-toggle"');
   });
 
   it('hides the storage reset button when the effective path is the default', () => {
@@ -363,8 +359,37 @@ describe('storage toggle seeding on dialog open (#522, #204)', () => {
 // proof the export still exists post-#657's AI-tab removal, now widened for
 // the #726 Audio tab).
 describe('SettingsSection', () => {
-  it('includes storage, audio, console, and about', () => {
-    const sections: SettingsSection[] = ['storage', 'audio', 'console', 'about'];
-    expect(sections).toEqual(['storage', 'audio', 'console', 'about']);
+  it('includes all seven information-architecture sections', () => {
+    const sections: readonly SettingsSection[] = SETTINGS_SECTIONS;
+    expect(sections).toEqual(['general', 'audio', 'console', 'storage', 'privacy', 'labs', 'about']);
+  });
+
+  it('maps every current Settings control to its target section', () => {
+    const expectations: Record<SettingsControl, SettingsSection> = {
+      gradingProfile: 'general',
+      weeklyReminder: 'general',
+      weeklyReminderServiceDay: 'general',
+      shareChurchName: 'general',
+      rig: 'audio',
+      inputDevice: 'audio',
+      measurementSource: 'audio',
+      secondaryMeasurementDevice: 'audio',
+      meterRate: 'audio',
+      meterWindow: 'audio',
+      preflight: 'audio',
+      consoleNetworkConsent: 'console',
+      storageDir: 'storage',
+      diskUsage: 'storage',
+      usageSignal: 'privacy',
+      crashReporting: 'privacy',
+      dawWorkspace: 'labs',
+      liveAdjustments: 'labs',
+      version: 'about',
+      license: 'about',
+    };
+    for (const [setting, section] of Object.entries(expectations) as [SettingsControl, SettingsSection][]) {
+      expect(settingsSectionFor(setting)).toBe(section);
+      expect(SETTINGS_SECTIONS).toContain(section);
+    }
   });
 });
