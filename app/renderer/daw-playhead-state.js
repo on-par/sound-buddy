@@ -6,7 +6,9 @@
 // mirroring daw-workspace-state.js. Read off window.dawPlayheadState. The
 // clock is injected as a `nowMs` parameter rather than read internally
 // (Architecture standard: side effects injected), so this stays wall-clock
-// time-based, not sample-accurate, per #518's INVEST framing.
+// time-based, not sample-accurate, per #518's INVEST framing. This module
+// owns wall-clock playhead time only — no pixel geometry (#1034, ADR-0086);
+// the shell-local x comes from daw-shell-runtime.ts's dawTimelineX/dawPlayheadX.
 (function (root) {
   'use strict';
 
@@ -47,19 +49,12 @@
     return `${m}:${sec < 10 ? '0' : ''}${sec}`;
   }
 
-  /** Horizontal playhead offset in px, clamped to the timeline width so the
-   *  line parks at the right edge instead of walking off-screen. */
-  function offsetPx(elapsedMsVal, pxPerSecond, maxPx) {
-    return Math.min(maxPx, Math.max(0, (elapsedMsVal / 1000) * pxPerSecond));
-  }
-
   var api = {
     start: start,
     stop: stop,
     isAdvancing: isAdvancing,
     elapsedMs: elapsedMs,
     formatElapsed: formatElapsed,
-    offsetPx: offsetPx,
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.dawPlayheadState = api;

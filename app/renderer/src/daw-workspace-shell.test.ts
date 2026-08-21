@@ -4,6 +4,15 @@
 import { describe, it, expect } from 'vitest';
 import * as fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import {
+  dawPlayheadX,
+  dawTimelineX,
+  dawRulerTicks,
+  dawLaneGridlines,
+  DAW_TIMELINE_SPAN_SECS,
+  DAW_TIMELINE_INSET_PX,
+  DAW_TIMELINE_ORIGIN_PX,
+} from './daw-shell-runtime';
 
 // DAW-style live workspace shell (#517): when the experimental toggle (#516)
 // is on, the Live tab's center pane renders a timeline-oriented shell instead
@@ -32,6 +41,7 @@ const liveCapturePanelTs = fs.readFileSync(fileURLToPath(new URL('./live-capture
 const lifecycleTs = fs.readFileSync(fileURLToPath(new URL('./capture-lifecycle.ts', import.meta.url)), 'utf8');
 // TD-001 slice 6j (#713): the new home for the playhead/waveform painters.
 const dawShellRuntimeTs = fs.readFileSync(fileURLToPath(new URL('./daw-shell-runtime.ts', import.meta.url)), 'utf8');
+const dawPlayheadStateJs = fs.readFileSync(fileURLToPath(new URL('../daw-playhead-state.js', import.meta.url)), 'utf8');
 
 function functionBody(src: string, name: string): string {
   const marker = `function ${name}(`;
@@ -296,6 +306,55 @@ describe('lane gridlines derive from the shared timeline geometry (#1033)', () =
 
   it("dawLaneGridlines' body computes each line's x through the shared dawTimelineX function", () => {
     expect(functionBody(dawShellRuntimeTs, 'dawLaneGridlines')).toContain('dawTimelineX(timeSecs)');
+  });
+});
+
+describe('playhead placement derives from the shared timeline geometry (#1034)', () => {
+  // Wide enough that no clamp applies anywhere in the default span.
+  const UNCLAMPED_WIDTH_PX = dawTimelineX(DAW_TIMELINE_SPAN_SECS) + DAW_TIMELINE_INSET_PX;
+  const MS_PER_SECOND = 1000;
+
+  it('daw-shell-runtime.ts exports the playhead coordinate', () => {
+    expect(dawShellRuntimeTs).toContain('export function dawPlayheadX(elapsedMs: number, shellWidthPx: number): number');
+  });
+
+  it("dawPlayheadX's body computes its x through the shared dawTimelineX function", () => {
+    expect(functionBody(dawShellRuntimeTs, 'dawPlayheadX')).toContain('dawTimelineX(');
+  });
+
+  it('renderPlayhead writes the transform from dawPlayheadX, not a playhead-local offset', () => {
+    const body = functionBody(dawShellRuntimeTs, 'renderPlayhead');
+    expect(body).toContain('dawPlayheadX(elapsed, shell.clientWidth)');
+    expect(dawShellRuntimeTs).not.toMatch(/offsetPx/);
+  });
+
+  it('no playhead-local pixels-per-second value survives in the classic playhead-state script', () => {
+    expect(dawPlayheadStateJs).not.toMatch(/pxPerSecond/);
+    expect(dawPlayheadStateJs).not.toMatch(/offsetPx/);
+  });
+
+  it('the .daw-playhead rule carries no left offset of its own', () => {
+    const rule = css.match(/\.daw-playhead\s*\{[^}]*\}/);
+    expect(rule).not.toBeNull();
+    expect(rule![0]).not.toMatch(/left:\s*[1-9]/);
+  });
+
+  it('the playhead coordinate equals the ruler tick coordinate for every tick time', () => {
+    for (const tick of dawRulerTicks(DAW_TIMELINE_SPAN_SECS)) {
+      expect(dawPlayheadX(tick.timeSecs * MS_PER_SECOND, UNCLAMPED_WIDTH_PX)).toBe(tick.xPx);
+    }
+  });
+
+  it('the playhead coordinate equals the lane gridline coordinate for every gridline time', () => {
+    for (const line of dawLaneGridlines(DAW_TIMELINE_SPAN_SECS)) {
+      expect(dawPlayheadX(line.timeSecs * MS_PER_SECOND, UNCLAMPED_WIDTH_PX)).toBe(line.xPx);
+    }
+  });
+
+  it('the playhead starts at the shared t=0 origin, the same x as the first tick and gridline', () => {
+    expect(dawPlayheadX(0, UNCLAMPED_WIDTH_PX)).toBe(DAW_TIMELINE_ORIGIN_PX);
+    expect(dawRulerTicks(DAW_TIMELINE_SPAN_SECS)[0].xPx).toBe(DAW_TIMELINE_ORIGIN_PX);
+    expect(dawLaneGridlines(DAW_TIMELINE_SPAN_SECS)[0].xPx).toBe(DAW_TIMELINE_ORIGIN_PX);
   });
 });
 

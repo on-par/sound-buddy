@@ -21,7 +21,7 @@
 // branch.
 
 export const DAW_TIMELINE_PX_PER_SECOND = 8; // one 40px ruler division = 5s
-export const DAW_TIMELINE_INSET_PX = 4; // matches the ruler's margin: 8px 4px horizontal inset
+export const DAW_TIMELINE_INSET_PX = 4; // the playhead's right-edge inset (dawPlayheadX) — matches the ruler's margin: 8px 4px horizontal inset
 // The shared t=0 edge for the arrangement view's ruler ticks, lane
 // gridlines and playhead (#1026/#1031) — the track-head column's right
 // edge in shell-local pixels (docs/design/session-tab.md's 208px column).
@@ -30,9 +30,27 @@ export const DAW_TIMELINE_ORIGIN_PX = 208;
 /** Converts a timeline position in seconds to a shell-local x coordinate in
  *  pixels. Pure and unclamped — negative seconds return coordinates left of
  *  the origin; clamping to the visible lane width is the caller's job
- *  (dawPlayheadState.offsetPx does that for the playhead). */
+ *  (dawPlayheadX does that for the playhead). */
 export function dawTimelineX(timeSecs: number): number {
   return DAW_TIMELINE_ORIGIN_PX + timeSecs * DAW_TIMELINE_PX_PER_SECOND;
+}
+
+// Milliseconds per second — the playhead's state clock is in ms, the shared
+// timeline geometry is in seconds.
+const MS_PER_SECOND = 1000;
+
+/** The playhead's shell-local x for an elapsed capture time in ms — the same
+ *  coordinate a ruler tick or lane gridline gets for that instant, because it
+ *  is the same dawTimelineX call (ADR-0086). Clamped to the visible shell: it
+ *  never sits left of the shared t=0 origin and parks at the right inset
+ *  instead of walking off-screen. Non-finite inputs resolve to the origin
+ *  rather than writing NaN into a transform. */
+export function dawPlayheadX(elapsedMs: number, shellWidthPx: number): number {
+  const secs = Number.isFinite(elapsedMs) ? Math.max(0, elapsedMs) / MS_PER_SECOND : 0;
+  const maxX = Number.isFinite(shellWidthPx)
+    ? Math.max(DAW_TIMELINE_ORIGIN_PX, shellWidthPx - DAW_TIMELINE_INSET_PX)
+    : DAW_TIMELINE_ORIGIN_PX;
+  return Math.min(maxX, Math.max(DAW_TIMELINE_ORIGIN_PX, dawTimelineX(secs)));
 }
 
 // The ruler's tick division, in seconds. 5s at DAW_TIMELINE_PX_PER_SECOND is
@@ -171,13 +189,14 @@ export function drawDawWaveformLane(
    classic scripts, structurally typed, mirroring live-workspace-view.ts's
    DawPlayheadStateApi/DawWaveformStateApi accessors) ── */
 
+// daw-playhead-state.js owns wall-clock playhead time only — no pixels.
+// Shell-local geometry (dawTimelineX/dawPlayheadX) lives entirely in this module.
 export interface DawPlayheadStateApi {
   start(nowMs: number): unknown;
   stop(state: unknown, nowMs: number): unknown;
   isAdvancing(state: unknown): boolean;
   elapsedMs(state: unknown, nowMs: number): number;
   formatElapsed(ms: number): string;
-  offsetPx(elapsedMsVal: number, pxPerSecond: number, maxPx: number): number;
 }
 
 export interface DawWaveformStateShape {
@@ -273,8 +292,7 @@ export function createDawShellRuntime(deps: DawShellRuntimeDeps): DawShellRuntim
     if (timeEl && timeEl.textContent !== text) timeEl.textContent = text;
     const line = shell.querySelector('.daw-playhead') as HTMLElement | null;
     if (line) {
-      const maxPx = Math.max(0, shell.clientWidth - DAW_TIMELINE_INSET_PX * 2);
-      line.style.transform = `translateX(${deps.dawPlayheadState.offsetPx(elapsed, DAW_TIMELINE_PX_PER_SECOND, maxPx)}px)`;
+      line.style.transform = `translateX(${dawPlayheadX(elapsed, shell.clientWidth)}px)`;
       line.classList.toggle('advancing', deps.dawPlayheadState.isAdvancing(playheadState));
     }
   }

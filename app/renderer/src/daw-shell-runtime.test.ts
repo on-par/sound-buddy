@@ -10,6 +10,7 @@ import {
   DAW_TIMELINE_INSET_PX,
   WAVEFORM_COLORS,
   dawTimelineX,
+  dawPlayheadX,
   dawRulerTicks,
   DAW_RULER_TICK_INTERVAL_SECS,
   DAW_TIMELINE_SPAN_SECS,
@@ -319,7 +320,7 @@ describe('createDawShellRuntime', () => {
       expect(timeEl.textContent).toBe('0:05');
     });
 
-    it('sets the playhead transform from offsetPx and toggles .advancing while running', () => {
+    it('sets the playhead transform from dawPlayheadX and toggles .advancing while running', () => {
       const playheadEl = { style: {} as Record<string, string>, classList: { toggle: vi.fn() } };
       const shell = makeFakeShell({ playheadEl, clientWidth: 400 });
       const { deps, setShell, setNow } = makeDeps();
@@ -327,24 +328,36 @@ describe('createDawShellRuntime', () => {
       const rt = createDawShellRuntime(deps);
       setNow(0);
       rt.startPlayhead(0);
-      setNow(1000); // 1s elapsed -> DAW_TIMELINE_PX_PER_SECOND px, unclamped
+      setNow(1000); // 1s elapsed
       rt.renderPlayhead();
-      expect(playheadEl.style.transform).toBe(`translateX(${DAW_TIMELINE_PX_PER_SECOND}px)`);
+      expect(playheadEl.style.transform).toBe(`translateX(${dawTimelineX(1)}px)`);
       expect(playheadEl.classList.toggle).toHaveBeenCalledWith('advancing', true);
     });
 
-    it('maxPx clamps to clientWidth minus the timeline inset on both sides', () => {
+    it("clamps at the shell's right inset", () => {
       const playheadEl = { style: {} as Record<string, string>, classList: { toggle: vi.fn() } };
-      const shell = makeFakeShell({ playheadEl, clientWidth: 20 }); // maxPx = max(0, 20 - 2*4) = 12
+      const shell = makeFakeShell({ playheadEl, clientWidth: 400 });
       const { deps, setShell, setNow } = makeDeps();
       setShell(shell);
       const rt = createDawShellRuntime(deps);
       setNow(0);
       rt.startPlayhead(0);
-      setNow(60000); // way past the clamp
+      setNow(60000); // 60s elapsed — past the shell's right edge
       rt.renderPlayhead();
-      const expectedMax = Math.max(0, 20 - DAW_TIMELINE_INSET_PX * 2);
-      expect(playheadEl.style.transform).toBe(`translateX(${expectedMax}px)`);
+      expect(playheadEl.style.transform).toBe(`translateX(${400 - DAW_TIMELINE_INSET_PX}px)`);
+    });
+
+    it('floors at the shared origin for a shell narrower than the head column', () => {
+      const playheadEl = { style: {} as Record<string, string>, classList: { toggle: vi.fn() } };
+      const shell = makeFakeShell({ playheadEl, clientWidth: 20 });
+      const { deps, setShell, setNow } = makeDeps();
+      setShell(shell);
+      const rt = createDawShellRuntime(deps);
+      setNow(0);
+      rt.startPlayhead(0);
+      setNow(60000); // 60s elapsed — way past the clamp
+      rt.renderPlayhead();
+      expect(playheadEl.style.transform).toBe(`translateX(${DAW_TIMELINE_ORIGIN_PX}px)`);
     });
 
     it('toggles .advancing false once stopped', () => {
@@ -578,6 +591,39 @@ describe('dawTimelineX', () => {
   it('matches the origin-plus-scale formula for an arbitrary t', () => {
     const t = 12.5;
     expect(dawTimelineX(t)).toBe(DAW_TIMELINE_ORIGIN_PX + t * DAW_TIMELINE_PX_PER_SECOND);
+  });
+});
+
+/* ── dawPlayheadX (#1034) ── */
+
+describe('dawPlayheadX', () => {
+  it('returns DAW_TIMELINE_ORIGIN_PX at 0 elapsed', () => {
+    expect(dawPlayheadX(0, 4000)).toBe(DAW_TIMELINE_ORIGIN_PX);
+  });
+
+  it('advances at the shared timeline scale', () => {
+    expect(dawPlayheadX(5000, 4000)).toBe(dawTimelineX(5));
+  });
+
+  it("clamps at the shell's right inset", () => {
+    expect(dawPlayheadX(600_000, 400)).toBe(400 - DAW_TIMELINE_INSET_PX);
+  });
+
+  it('floors at the shared origin for a shell narrower than the head column', () => {
+    expect(dawPlayheadX(600_000, 20)).toBe(DAW_TIMELINE_ORIGIN_PX);
+  });
+
+  it('clamps a negative elapsed to the origin', () => {
+    expect(dawPlayheadX(-5000, 4000)).toBe(DAW_TIMELINE_ORIGIN_PX);
+  });
+
+  it('resolves a non-finite elapsed to the origin, never NaN', () => {
+    expect(dawPlayheadX(NaN, 4000)).toBe(DAW_TIMELINE_ORIGIN_PX);
+    expect(dawPlayheadX(Infinity, 4000)).toBe(DAW_TIMELINE_ORIGIN_PX);
+  });
+
+  it('resolves a non-finite shell width to the origin, never NaN', () => {
+    expect(dawPlayheadX(5000, NaN)).toBe(DAW_TIMELINE_ORIGIN_PX);
   });
 });
 
