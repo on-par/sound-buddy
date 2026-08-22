@@ -40,6 +40,7 @@ import { escapeHtml } from './spectrum-display';
 import { fmt, iconSvg } from './report-card';
 import type { AppSettings } from '../../electron/ipc/api';
 import { dawRulerTicks, dawLaneGridlines, DAW_TIMELINE_SPAN_SECS, DAW_TIMELINE_ORIGIN_PX, type DawShellRuntime } from './daw-shell-runtime';
+import { sessionTabSessionPickerHTML, type SessionTabSessionPickerView } from './session-tab-session-picker';
 
 export type { DawShellRuntime } from './daw-shell-runtime';
 
@@ -71,6 +72,7 @@ export interface LiveWorkspaceViewState {
    *  imperatively from the 6j playhead bridge at render time so a mid-capture
    *  rebuild never flashes 0:00 (#518). */
   playheadElapsedMs: number;
+  sessionPicker: SessionTabSessionPickerView | null;
 }
 
 // The slice of liveCaptureStore's state that liveWorkspaceViewState() reads —
@@ -119,6 +121,7 @@ export function liveWorkspaceViewState(
   lc: LiveWorkspaceStoreSlice,
   settings: AppSettings | null,
   playheadElapsedMs = 0,
+  sessionPicker: SessionTabSessionPickerView | null = null,
 ): LiveWorkspaceViewState {
   return {
     channelConfig: lc.channelConfig,
@@ -139,6 +142,7 @@ export function liveWorkspaceViewState(
     settings,
     lapCoaching: lc.lapCoaching,
     playheadElapsedMs,
+    sessionPicker,
   };
 }
 
@@ -602,6 +606,7 @@ export function dawShellHTML(state: LiveWorkspaceViewState): string {
     + `<span class="daw-transport-title">Live Workspace</span>`
     + `<span class="daw-transport-state daw-transport-state-${transportChip.toLowerCase()}">${transportChip}</span>`
     + `<span class="daw-transport-time">${getDawPlayheadState().formatElapsed(seededElapsed)}</span>`
+    + (state.sessionPicker ? sessionTabSessionPickerHTML(state.sessionPicker) : '')
     + `<span class="daw-transport-hint">Start and stop recording from the top-bar Record button</span>`
     + `</div>`
     // The semantic arrangement frame (#1042): the track-head column and the

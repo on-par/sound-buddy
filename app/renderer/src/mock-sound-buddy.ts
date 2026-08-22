@@ -217,6 +217,7 @@ export function createMockSoundBuddy(overrides: Partial<SoundBuddyApi> = {}): Mo
     stopPlayback: invoke('stopPlayback', { success: true }),
     setPlaybackRoutes: invoke('setPlaybackRoutes', { success: true }),
     readSession: invoke('readSession', undefined),
+    listRecordedSessions: invoke('listRecordedSessions', { success: true, sessions: [] }),
     generateSessionPeaks: invoke('generateSessionPeaks', { success: false as const, error: 'not mocked' }),
     onPlaybackEvent: listen<[unknown]>('onPlaybackEvent'),
     onLiveEvent: listen<[unknown]>('onLiveEvent'),

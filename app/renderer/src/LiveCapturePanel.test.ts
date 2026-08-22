@@ -7,6 +7,7 @@ import { renderToString } from 'react-dom/server';
 import LiveCapturePanel, { normalizeGroupName, routeHeaderChannelAction, type HeaderChannelActions } from './LiveCapturePanel';
 import { useLiveCaptureStore } from './stores/liveCaptureStore';
 import { useSettingsStore } from './stores/settingsStore';
+import { useSoundcheckStore } from './stores/soundcheckStore';
 import type { LiveDevice, ChannelWindowData } from './live-capture-panel';
 import type { AppSettings } from '../../electron/ipc/api';
 
@@ -90,12 +91,20 @@ beforeEach(() => {
     demoting: false,
   });
   useSettingsStore.setState({ settings: settings() });
+  useSoundcheckStore.setState({
+    recordedSessions: [], recordedSessionsLoaded: false, sessionDir: null,
+    manifest: null, statusMessage: null,
+  });
 });
 
 afterEach(() => {
   delete (globalThis as { window?: unknown }).window;
   useLiveCaptureStore.setState({ appMode: 'reportcard', isCapturing: false, liveWindows: [], lastTick: null, lastLiveChannels: null });
   useSettingsStore.setState({ settings: null, settingsError: null });
+  useSoundcheckStore.setState({
+    recordedSessions: [], recordedSessionsLoaded: false, sessionDir: null,
+    manifest: null, statusMessage: null,
+  });
 });
 
 describe('LiveCapturePanel', () => {
@@ -178,6 +187,23 @@ describe('LiveCapturePanel', () => {
     expect(html).toContain('daw-mix-lane');
     expect(html).toContain('daw-track-head-arm');
     expect(html).not.toContain('meter-card');
+  });
+
+  it('binds the DAW toolbar picker to the shared soundcheck selection state', () => {
+    useSettingsStore.setState({ settings: settings({ dawWorkspaceEnabled: true }) });
+    useSoundcheckStore.setState({
+      recordedSessions: [{ sessionDir: '/recordings/sunday', name: 'Discovered label' }],
+      recordedSessionsLoaded: true,
+      sessionDir: '/recordings/sunday',
+      manifest: { name: 'Sunday service', tracks: [{ kind: 'mono' }] },
+      statusMessage: 'Could not read session.json.',
+    });
+
+    const html = renderMarkup();
+    expect(html).toContain('daw-session-picker-select');
+    expect(html).toContain('Sunday service');
+    expect(html).toContain('open session folder…');
+    expect(html).toContain('Could not read session.json.');
   });
 
   it('renders the live-adjustments panel when the flag is on, and omits it when off', () => {

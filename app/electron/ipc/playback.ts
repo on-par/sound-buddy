@@ -10,11 +10,55 @@ import * as path from 'path';
 import * as fs from 'fs';
 import { log, logWarn, logError } from '../logger';
 import { isEntitled } from '../license';
-import { pythonBin, childEnv, PLAYBACK_SCRIPT, WAVEFORM_PEAKS_SCRIPT } from './shared';
+import { pythonBin, childEnv, PLAYBACK_SCRIPT, WAVEFORM_PEAKS_SCRIPT, defaultRecordDir } from './shared';
 import { loadEngineParsers, loadEngineUtils } from './engine-loader';
 import { createPythonStreamSlot } from './python-stream';
 import { runWaveformPeaks, peaksSlot } from './waveform-peaks';
-import type { StartPlaybackOpts, SetPlaybackRoutesOpts } from './api';
+import type { RecordedSessionSummary, StartPlaybackOpts, SetPlaybackRoutesOpts } from './api';
+
+type SessionReadResult =
+  | { success: true; manifest: Record<string, unknown> }
+  | { success: false; error: string };
+
+function readSessionManifest(sessionDir: string): SessionReadResult {
+  try {
+    const raw = fs.readFileSync(path.join(sessionDir, 'session.json'), 'utf8');
+    const manifest: unknown = JSON.parse(raw);
+    if (!manifest || typeof manifest !== 'object' || !Array.isArray((manifest as { tracks?: unknown }).tracks)) {
+      return { success: false, error: 'session.json has no tracks.' };
+    }
+    return { success: true, manifest: manifest as Record<string, unknown> };
+  } catch (err) {
+    return { success: false, error: `Could not read session.json: ${(err as Error).message}` };
+  }
+}
+
+function validCreatedAt(manifest: Record<string, unknown>): string | undefined {
+  const createdAt = manifest.createdAt;
+  return typeof createdAt === 'string' && Number.isFinite(Date.parse(createdAt)) ? createdAt : undefined;
+}
+
+function recordedSessionSummaries(recordRoot: string): RecordedSessionSummary[] {
+  if (!fs.existsSync(recordRoot)) return [];
+  const summaries: RecordedSessionSummary[] = [];
+  for (const entry of fs.readdirSync(recordRoot, { withFileTypes: true })) {
+    if (!entry.isDirectory()) continue;
+    const sessionDir = path.join(recordRoot, entry.name);
+    const result = readSessionManifest(sessionDir);
+    if (!result.success) continue;
+    const createdAt = validCreatedAt(result.manifest);
+    summaries.push({
+      sessionDir,
+      name: typeof result.manifest.name === 'string' && result.manifest.name.trim() ? result.manifest.name : entry.name,
+      ...(createdAt ? { createdAt } : {}),
+    });
+  }
+  return summaries.sort((a, b) => {
+    const aTime = a.createdAt ? Date.parse(a.createdAt) : Number.NEGATIVE_INFINITY;
+    const bTime = b.createdAt ? Date.parse(b.createdAt) : Number.NEGATIVE_INFINITY;
+    return bTime - aTime || path.basename(a.sessionDir).localeCompare(path.basename(b.sessionDir));
+  });
+}
 
 // The current virtual-soundcheck playback child (playback.py). Held at module
 // scope — like start-live's liveSlot — so stop-playback can SIGTERM it for a
@@ -43,16 +87,17 @@ export function registerPlaybackHandlers(): void {
   // Virtual Soundcheck UI (#46) can list its tracks. Read-only, renderer-driven.
   ipcMain.handle('read-session', async (_event, sessionDir: string) => {
     if (!sessionDir || typeof sessionDir !== 'string') return { success: false, error: 'No session directory provided.' };
-    try {
-      const raw = fs.readFileSync(path.join(sessionDir, 'session.json'), 'utf8');
-      const manifest = JSON.parse(raw);
-      if (!manifest || !Array.isArray(manifest.tracks)) return { success: false, error: 'session.json has no tracks.' };
-      return { success: true, manifest };
-    } catch (err) {
-      logWarn(`read-session: ${(err as Error).message}`);
-      return { success: false, error: `Could not read session.json: ${(err as Error).message}` };
-    }
+    const result = readSessionManifest(sessionDir);
+    if (!result.success && result.error.startsWith('Could not read session.json:')) logWarn(`read-session: ${result.error.slice('Could not read session.json: '.length)}`);
+    return result;
   });
+
+  // list-recorded-sessions — read-only discovery of valid captured-session
+  // folders directly beneath the effective recording root for the DAW picker.
+  ipcMain.handle('list-recorded-sessions', async () => ({
+    success: true,
+    sessions: recordedSessionSummaries(defaultRecordDir()),
+  }));
 
   // start-playback — virtual soundcheck (#45). Spawn playback.py to play a
   // captured session's stems through the chosen output device with per-track

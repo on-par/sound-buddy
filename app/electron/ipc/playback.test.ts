@@ -21,6 +21,15 @@ vi.mock('electron', () => ({
 
 vi.mock('../logger', () => ({ log: vi.fn(), logWarn: vi.fn(), logError: vi.fn() }));
 
+const defaultRecordDirMock = vi.hoisted(() => vi.fn());
+vi.mock('./shared', () => ({
+  pythonBin: () => 'python3',
+  childEnv: () => ({}),
+  PLAYBACK_SCRIPT: '/fake/playback.py',
+  WAVEFORM_PEAKS_SCRIPT: '/fake/waveform-peaks.py',
+  defaultRecordDir: () => defaultRecordDirMock(),
+}));
+
 const isEntitledMock = vi.hoisted(() => vi.fn(() => true));
 vi.mock('../license', () => ({ isEntitled: isEntitledMock }));
 
@@ -89,6 +98,7 @@ beforeEach(() => {
   handlers.clear();
   openPathMock.mockResolvedValue('');
   isEntitledMock.mockReturnValue(true);
+  defaultRecordDirMock.mockReturnValue(path.join(os.tmpdir(), 'sound-buddy-no-recordings'));
   registerPlaybackHandlers();
 });
 
@@ -156,6 +166,73 @@ describe('read-session', () => {
     expect(result.success).toBe(false);
     expect(result.error).toContain('Could not read session.json');
     expect(logWarn).toHaveBeenCalledWith(expect.stringContaining('read-session'));
+  });
+});
+
+describe('list-recorded-sessions', () => {
+  let recordRoot: string;
+
+  beforeEach(() => {
+    recordRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'sb-recorded-sessions-'));
+    defaultRecordDirMock.mockReturnValue(recordRoot);
+  });
+
+  afterEach(() => {
+    fs.rmSync(recordRoot, { recursive: true, force: true });
+  });
+
+  it('returns an empty successful list when the recording root has not been created', async () => {
+    defaultRecordDirMock.mockReturnValue(path.join(recordRoot, 'missing'));
+
+    const handler = handlers.get('list-recorded-sessions') as Handler;
+    await expect(handler()).resolves.toEqual({ success: true, sessions: [] });
+  });
+
+  it('returns valid manifest summaries newest first with metadata and folder-name fallback', async () => {
+    const named = path.join(recordRoot, 'sunday');
+    const fallback = path.join(recordRoot, 'rehearsal');
+    fs.mkdirSync(named);
+    fs.mkdirSync(fallback);
+    fs.writeFileSync(path.join(named, 'session.json'), JSON.stringify({ tracks: [], name: 'Sunday AM', createdAt: '2026-08-17T10:00:00.000Z' }));
+    fs.writeFileSync(path.join(fallback, 'session.json'), JSON.stringify({ tracks: [], createdAt: '2026-08-18T10:00:00.000Z' }));
+
+    const handler = handlers.get('list-recorded-sessions') as Handler;
+    await expect(handler()).resolves.toEqual({
+      success: true,
+      sessions: [
+        { sessionDir: fallback, name: 'rehearsal', createdAt: '2026-08-18T10:00:00.000Z' },
+        { sessionDir: named, name: 'Sunday AM', createdAt: '2026-08-17T10:00:00.000Z' },
+      ],
+    });
+  });
+
+  it('ignores files and folders without readable valid manifests and orders missing timestamps by directory name', async () => {
+    const alpha = path.join(recordRoot, 'alpha');
+    const zulu = path.join(recordRoot, 'zulu');
+    fs.mkdirSync(alpha);
+    fs.mkdirSync(zulu);
+    fs.mkdirSync(path.join(recordRoot, 'malformed'));
+    fs.mkdirSync(path.join(recordRoot, 'missing'));
+    fs.writeFileSync(path.join(alpha, 'session.json'), JSON.stringify({ tracks: [] }));
+    fs.writeFileSync(path.join(zulu, 'session.json'), JSON.stringify({ tracks: [] }));
+    fs.writeFileSync(path.join(recordRoot, 'malformed', 'session.json'), '{bad json');
+    fs.writeFileSync(path.join(recordRoot, 'plain-file'), 'not a directory');
+
+    const handler = handlers.get('list-recorded-sessions') as Handler;
+    const result = await handler() as { success: boolean; sessions: Array<{ name: string }> };
+    expect(result).toEqual({ success: true, sessions: [{ sessionDir: alpha, name: 'alpha' }, { sessionDir: zulu, name: 'zulu' }] });
+  });
+
+  it('omits invalid creation metadata and falls back from a blank manifest name to the folder name', async () => {
+    const session = path.join(recordRoot, 'fallback-name');
+    fs.mkdirSync(session);
+    fs.writeFileSync(path.join(session, 'session.json'), JSON.stringify({ tracks: [], name: '   ', createdAt: 'not-a-date' }));
+
+    const handler = handlers.get('list-recorded-sessions') as Handler;
+    await expect(handler()).resolves.toEqual({
+      success: true,
+      sessions: [{ sessionDir: session, name: 'fallback-name' }],
+    });
   });
 });
 
