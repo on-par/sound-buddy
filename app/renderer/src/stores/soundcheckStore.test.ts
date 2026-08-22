@@ -76,6 +76,79 @@ describe('createSoundcheckStore', () => {
     });
   });
 
+  describe('recorded session selection', () => {
+    it('hydrates the discovered session list once, including an empty usable root', async () => {
+      const listRecordedSessions = vi.fn(async () => ({ success: true, sessions: [{ sessionDir: '/recordings/sunday', name: 'Sunday AM', createdAt: '2026-08-17T10:00:00.000Z' }] }));
+      const { store } = makeStore({
+        listRecordedSessions,
+      });
+
+      await Promise.all([store.getState().loadRecordedSessions(), store.getState().loadRecordedSessions()]);
+
+      expect(store.getState().recordedSessions).toEqual([{ sessionDir: '/recordings/sunday', name: 'Sunday AM', createdAt: '2026-08-17T10:00:00.000Z' }]);
+      expect(store.getState().recordedSessionsLoaded).toBe(true);
+      expect(listRecordedSessions).toHaveBeenCalledOnce();
+    });
+
+    it('keeps discovery usable with an empty list when the IPC envelope is unsuccessful', async () => {
+      const { store } = makeStore({ listRecordedSessions: async () => ({ success: false }) });
+
+      await store.getState().loadRecordedSessions();
+
+      expect(store.getState().recordedSessions).toEqual([]);
+      expect(store.getState().recordedSessionsLoaded).toBe(true);
+    });
+
+    it('keeps discovery usable when the list IPC rejects', async () => {
+      const { store } = makeStore({ listRecordedSessions: async () => Promise.reject(new Error('recording root unavailable')) });
+
+      await store.getState().loadRecordedSessions();
+
+      expect(store.getState().recordedSessions).toEqual([]);
+      expect(store.getState().recordedSessionsLoaded).toBe(true);
+    });
+
+    it('loads a known session through the shared validated path', async () => {
+      const { store } = makeStore({ readSession: async () => ({ success: true, manifest: MANIFEST }) });
+      store.setState({ recordedSessions: [{ sessionDir: '/recordings/sunday', name: 'Sunday AM' }] });
+
+      await expect(store.getState().loadSession('/recordings/sunday')).resolves.toBe(true);
+      expect(store.getState().sessionDir).toBe('/recordings/sunday');
+      expect(store.getState().manifest).toEqual(MANIFEST);
+    });
+
+    it('loads an external session through the same validated path', async () => {
+      const external: SessionManifest = { name: 'Offsite', createdAt: '2026-08-18T10:00:00.000Z', sampleRate: 48000, tracks: [{ kind: 'mono', frames: 48000 }] };
+      const { store } = makeStore({ readSession: async () => ({ success: true, manifest: external }) });
+
+      await expect(store.getState().loadSession('/external/session')).resolves.toBe(true);
+      expect(store.getState().sessionDir).toBe('/external/session');
+      expect(store.getState().manifest).toEqual(external);
+    });
+
+    it('keeps an existing selection unchanged when the folder dialog is cancelled', async () => {
+      const { store } = makeStore({ openDirDialog: async () => null });
+      store.setState({ sessionDir: '/working', manifest: MANIFEST, routes: [[3], [4, 5]] });
+
+      await store.getState().chooseSession();
+
+      expect(store.getState().sessionDir).toBe('/working');
+      expect(store.getState().manifest).toEqual(MANIFEST);
+      expect(store.getState().routes).toEqual([[3], [4, 5]]);
+    });
+
+    it('retains a loaded session and routes when an invalid folder cannot be read', async () => {
+      const { store } = makeStore({ readSession: async () => ({ success: false, error: 'Could not read session.json: malformed' }) });
+      store.setState({ sessionDir: '/working', manifest: MANIFEST, routes: [[3], [4, 5]] });
+
+      await expect(store.getState().loadSession('/invalid')).resolves.toBe(false);
+      expect(store.getState().sessionDir).toBe('/working');
+      expect(store.getState().manifest).toEqual(MANIFEST);
+      expect(store.getState().routes).toEqual([[3], [4, 5]]);
+      expect(store.getState().statusMessage).toBe('Could not read session.json: malformed');
+    });
+  });
+
   describe('selectDevice', () => {
     it('updates selectedDevice and recomputes deviceChannels', () => {
       const { store } = makeStore();

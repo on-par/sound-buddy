@@ -24,8 +24,10 @@ import {
   eqPaneLevelTilesView,
   selectedEqPaneLevelTilesView,
   boardRunning,
+  liveWorkspaceViewState,
   type LiveWorkspaceViewState,
 } from './live-workspace-view';
+import { sessionTabSessionPickerView } from './session-tab-session-picker';
 import { levelPercent, type LiveDevice, type StripConfig, type ChannelGroup, type LiveEvent, type LiveMeterChannel } from './live-capture-panel';
 import type { AppSettings } from '../../electron/ipc/api';
 import { dawTimelineX, dawRulerTicks, dawLaneGridlines, DAW_TIMELINE_SPAN_SECS, DAW_TIMELINE_ORIGIN_PX } from './daw-shell-runtime';
@@ -100,6 +102,7 @@ function makeState(overrides: Partial<LiveWorkspaceViewState> = {}): LiveWorkspa
     lapCoaching: null,
     playheadElapsedMs: 0,
     ...overrides,
+    sessionPicker: overrides.sessionPicker ?? null,
   };
 }
 
@@ -325,6 +328,25 @@ describe('meterCardHTML', () => {
 });
 
 describe('dawShellHTML / dawShellPatchView', () => {
+  it('composes the supplied session picker into the DAW toolbar', () => {
+    const picker = sessionTabSessionPickerView(
+      [{ sessionDir: '/recordings/sunday', name: 'Sunday AM', createdAt: '2026-08-17T10:00:00.000Z' }],
+      '/recordings/sunday',
+      { name: 'Sunday AM', tracks: [] },
+      'Could not read session.json.',
+    );
+    const html = dawShellHTML(makeState({ sessionPicker: picker }));
+
+    expect(html).toContain('daw-session-picker');
+    expect(html).toContain('Sunday AM');
+    expect(html).toContain('open session folder…');
+    expect(html).toContain('Could not read session.json.');
+  });
+
+  it('leaves the picker null for existing view-state callers', () => {
+    const state = liveWorkspaceViewState({ ...makeState(), demoting: false }, settings());
+    expect(state.sessionPicker).toBeNull();
+  });
   it('derives each header row state and RMS level from the shared snapshot', () => {
     const rows = dawTrackRows(makeState({
       mutedChannels: { 0: true }, soloedChannels: { 1: true },

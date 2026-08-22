@@ -204,6 +204,9 @@ export function createBridge(ipc: IpcRendererLike) {
     // Read a captured session's session.json manifest for the Soundcheck UI (#46).
     readSession: (sessionDir: string) => ipc.invoke('read-session', sessionDir),
 
+    // Discover valid captured-session folders for the Session-tab picker (#1071).
+    listRecordedSessions: () => ipc.invoke('list-recorded-sessions'),
+
     // Soundcheck per-track waveform peaks (#734): decode every stem into
     // ADR-0004 min/max peak buckets (background + disk-cached under userData).
     generateSessionPeaks: (sessionDir: string) => ipc.invoke('generate-session-peaks', sessionDir),

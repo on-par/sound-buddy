@@ -40,6 +40,7 @@ import { useStoreShallow } from './stores/useStoreShallow';
 import { useLiveCaptureStore, MAX_LABEL_LEN, type LapAction } from './stores/liveCaptureStore';
 import { useSettingsStore } from './stores/settingsStore';
 import { useSpectrumStore } from './stores/spectrumStore';
+import { useSoundcheckStore } from './stores/soundcheckStore';
 import { iconSvg } from './report-card';
 import {
   liveAdjustmentsPanelHTML,
@@ -58,6 +59,7 @@ import {
   liveWorkspaceViewState,
   boardRunning,
 } from './live-workspace-view';
+import { sessionTabSessionPickerAction, sessionTabSessionPickerView } from './session-tab-session-picker';
 
 // The still-classic live-setup-state.js accessor's storage contract (a
 // localStorage-like object; a missing/throwing storage is treated as "not
@@ -151,14 +153,25 @@ export default function LiveCapturePanel(): JSX.Element | null {
     liveWindows: st.liveWindows,
   }));
   const settings = useStoreShallow(useSettingsStore, (st) => st.settings);
+  // Only the discrete Session-picker fields are subscribed here. Playback and
+  // waveform data remain outside this render path (ADR-0005).
+  const soundcheck = useStoreShallow(useSoundcheckStore, (st) => ({
+    recordedSessions: st.recordedSessions,
+    recordedSessionsLoaded: st.recordedSessionsLoaded,
+    sessionDir: st.sessionDir,
+    manifest: st.manifest,
+    statusMessage: st.statusMessage,
+  }));
 
   // lastTick/lastLiveChannels are animation-rate values — read imperatively at
   // render time, never via subscription. boardShapeVersion (also subscribed
   // above) is what re-renders the board when a tick's channel count changes.
-  const lc = useLiveCaptureStore.getState();
-  const state = liveWorkspaceViewState(lc, settings, getDawShellRuntime()?.playheadElapsedMs?.() ?? 0);
-
   const showShell = getDawWorkspaceState().showShell(settings, s.appMode);
+  const sessionPicker = showShell
+    ? sessionTabSessionPickerView(soundcheck.recordedSessions, soundcheck.sessionDir, soundcheck.manifest, soundcheck.statusMessage)
+    : null;
+  const lc = useLiveCaptureStore.getState();
+  const state = liveWorkspaceViewState(lc, settings, getDawShellRuntime()?.playheadElapsedMs?.() ?? 0, sessionPicker);
   const laneSignature = showShell ? dawShellPatchView(state).laneSignature : '';
 
   // Drag-reorder source (#483): { type:'group'|'strip', index } set on
@@ -191,6 +204,11 @@ export default function LiveCapturePanel(): JSX.Element | null {
     if (ipWrap) ipWrap.style.display = 'none';
     useSpectrumStore.getState().setPanelState('meters'); // hide #spectrum-island's React curve view while the board renders
   }, [s.appMode, s.isCapturing, s.demoting, showShell]);
+
+  useEffect(() => {
+    if (!showShell || soundcheck.recordedSessionsLoaded) return;
+    void useSoundcheckStore.getState().loadRecordedSessions();
+  }, [showShell, soundcheck.recordedSessionsLoaded]);
 
   // DAW shell (#517/#518/#520): stamp the lane fingerprint (the React
   // rebuild-decision key for same-count rig swaps) and hand the
@@ -421,6 +439,19 @@ export default function LiveCapturePanel(): JSX.Element | null {
 
   function onBoardChange(e: ChangeEvent<HTMLDivElement>): void {
     const target = e.target as Element;
+    const sessionPickerSelect = target.closest('.daw-session-picker-select');
+    if (sessionPickerSelect instanceof HTMLSelectElement) {
+      const action = sessionTabSessionPickerAction(sessionPickerSelect.value);
+      if (action.type === 'select') {
+        void useSoundcheckStore.getState().loadSession(action.sessionDir);
+      } else if (action.type === 'open-folder') {
+        // Restore the current value before the dialog opens so a cancellation
+        // cannot leave the sentinel visibly selected in raw DAW-shell markup.
+        sessionPickerSelect.value = useSoundcheckStore.getState().sessionDir ?? '';
+        void useSoundcheckStore.getState().chooseSession();
+      }
+      return;
+    }
     // Focused-input selector (#525) — ephemeral, so it just re-renders the
     // adjustments panel from the store.
     const focusSel = target.closest('.lap-focus-select');

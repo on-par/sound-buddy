@@ -834,6 +834,13 @@ export interface SessionPeaksDto {
   tracks: TrackPeaksDto[];
 }
 
+/** A validated captured-session folder available beneath the recording root. */
+export interface RecordedSessionSummary {
+  sessionDir: string;
+  name: string;
+  createdAt?: string;
+}
+
 /** The generate-session-peaks envelope. `cached` distinguishes a fresh
  *  on-disk cache hit from a freshly generated document. */
 export type GenerateSessionPeaksResult =
@@ -842,6 +849,7 @@ export type GenerateSessionPeaksResult =
 
 export interface PlaybackApi {
   listOutputDevices(): Promise<unknown>;
+  listRecordedSessions(): Promise<unknown>;
   startPlayback(opts: StartPlaybackOpts): Promise<unknown>;
   stopPlayback(): Promise<OperationResult>;
   // Live re-route while playing (#759) — pushes the full routing spec to the

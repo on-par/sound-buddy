@@ -18,10 +18,14 @@ export interface SessionManifestTrack {
    *  a saved bus can match on the stem basename when the label is blank (#756). */
   file?: string;
   kind: 'mono' | 'stereo';
+  frames?: number;
 }
 
 export interface SessionManifest {
   tracks: SessionManifestTrack[];
+  name?: string;
+  createdAt?: string;
+  sampleRate?: number;
 }
 
 export interface SoundcheckOutputDevice {

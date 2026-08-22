@@ -23,6 +23,7 @@ import type {
   PlaybackApi,
   DialogApi,
   GenerateSessionPeaksResult,
+  RecordedSessionSummary,
   SessionPeaksDto,
 } from '../../../electron/ipc/api';
 import {
@@ -43,6 +44,7 @@ export type SoundcheckApi = Pick<
   | 'stopPlayback'
   | 'setPlaybackRoutes'
   | 'readSession'
+  | 'listRecordedSessions'
   | 'onPlaybackEvent'
   | 'generateSessionPeaks'
 > &
@@ -51,6 +53,8 @@ export type SoundcheckApi = Pick<
 export interface SoundcheckState {
   manifest: SessionManifest | null;
   sessionDir: string | null;
+  recordedSessions: RecordedSessionSummary[];
+  recordedSessionsLoaded: boolean;
   routes: number[][];
   devices: SoundcheckOutputDevice[];
   devicesLoaded: boolean;
@@ -69,7 +73,9 @@ export interface SoundcheckState {
   peaksStatus: 'idle' | 'generating' | 'ready' | 'error';
 
   loadDevices(): Promise<void>;
+  loadRecordedSessions(): Promise<void>;
   selectDevice(value: string): void;
+  loadSession(sessionDir: string): Promise<boolean>;
   chooseSession(): Promise<void>;
   setRoute(trackIndex: number, base: number): void;
   setMaster(master: boolean): void;
@@ -102,6 +108,8 @@ export function createSoundcheckStore(getApi: () => SoundcheckApi) {
   return create<SoundcheckState>()((set, get) => ({
     manifest: null,
     sessionDir: null,
+    recordedSessions: [],
+    recordedSessionsLoaded: false,
     routes: [],
     devices: [],
     devicesLoaded: false,
@@ -128,6 +136,21 @@ export function createSoundcheckStore(getApi: () => SoundcheckApi) {
       });
     },
 
+    async loadRecordedSessions() {
+      if (get().recordedSessionsLoaded) return;
+      // Mark before awaiting so a second render cannot start a duplicate
+      // discovery request while the first one is in flight.
+      set({ recordedSessionsLoaded: true });
+      try {
+        const result = await getApi().listRecordedSessions() as { success?: boolean; sessions?: RecordedSessionSummary[] } | null;
+        set({ recordedSessions: result?.success && Array.isArray(result.sessions) ? result.sessions : [] });
+      } catch {
+        // Discovery is optional picker data; an unavailable root remains an
+        // empty usable picker rather than an error/retry loop.
+        set({ recordedSessions: [] });
+      }
+    },
+
     selectDevice(value) {
       const deviceChannels = deviceChannelsFor(value, get().devices);
       set({
@@ -137,13 +160,11 @@ export function createSoundcheckStore(getApi: () => SoundcheckApi) {
       });
     },
 
-    async chooseSession() {
-      const dir = await getApi().openDirDialog();
-      if (!dir) return;
+    async loadSession(dir) {
       const result = (await getApi().readSession(dir)) as { success?: boolean; error?: string; manifest?: SessionManifest } | null;
       if (!result || !result.success) {
         set({ statusMessage: (result && result.error) || 'Could not read that session.' });
-        return;
+        return false;
       }
       const manifest = result.manifest ?? null;
       const prev = get();
@@ -184,6 +205,13 @@ export function createSoundcheckStore(getApi: () => SoundcheckApi) {
       } else {
         set({ peaksStatus: 'error' });
       }
+      return true;
+    },
+
+    async chooseSession() {
+      const dir = await getApi().openDirDialog();
+      if (!dir) return;
+      await get().loadSession(dir);
     },
 
     setRoute(trackIndex, base) {
