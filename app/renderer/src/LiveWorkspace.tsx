@@ -149,6 +149,20 @@ export default function LiveWorkspace(): JSX.Element {
       },
     });
     controller.start();
+    window.soundBuddy?.onLiveEvent((data) => {
+      const tick = data as (LiveEvent & { error?: string }) | null;
+      if (!tick || tick.error || (tick as { type?: string }).type === 'peaks' || !tick.channels || tick.channels.length === 0) return;
+      const el = document.getElementById('live-level-readout');
+      if (!el) return;
+      const state = useLiveCaptureStore.getState();
+      patchLevelReadout(el, liveLevelReadout({
+        lastTick: tick,
+        isCapturing: true,
+        measurementSource: state.measurementSource,
+        lastMeasurementChannels: state.lastMeasurementChannels,
+        secondaryActive: state.secondaryMeasurement.status === 'active' && state.secondaryWindows.length > 0,
+      }));
+    });
     return () => controller.stop();
   }, []);
 
