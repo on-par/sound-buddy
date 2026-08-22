@@ -314,6 +314,26 @@ describe('createSoundcheckStore', () => {
       expect(store.getState().routes).toEqual([[7], [8, 9]]);
     });
 
+    it('applies changed saved buses only when a different session is loaded (#1091)', async () => {
+      const manifest: SessionManifest = { tracks: [{ kind: 'mono', label: 'Lead Vocal' }] };
+      const { store } = makeStore({ readSession: async () => ({ success: true, manifest }) });
+      useSettingsStore.setState({
+        settings: { ...SEED_SETTINGS, soundcheckBuses: [{ id: 'bus-a', name: 'Lead', pattern: 'lead', outputChannel: 2 }] },
+      });
+
+      await store.getState().loadSession('/tmp/first');
+      expect(store.getState().routes).toEqual([[2]]);
+
+      useSettingsStore.setState({
+        settings: { ...SEED_SETTINGS, soundcheckBuses: [{ id: 'bus-b', name: 'Lead', pattern: 'lead', outputChannel: 5 }] },
+      });
+      await store.getState().loadSession('/tmp/first');
+      expect(store.getState().routes).toEqual([[2]]);
+
+      await store.getState().loadSession('/tmp/second');
+      expect(store.getState().routes).toEqual([[5]]);
+    });
+
     it('triggers generation on a successful read-session and lands peaks in ready state', async () => {
       const peaks: SessionPeaksDto = {
         bucketsPerSecond: 50,
@@ -463,6 +483,21 @@ describe('createSoundcheckStore', () => {
       await store.getState().play();
 
       expect(mock.calls).toContainEqual({ method: 'startPlayback', args: [{ sessionDir: '/tmp/s', route: '0:0' }] });
+    });
+
+    it('passes the enabled master mixdown to playback', async () => {
+      const { store, mock } = makeStore({
+        startPlayback: async (opts) => {
+          mock.calls.push({ method: 'startPlayback', args: [opts] });
+          return { success: true };
+        },
+      });
+      store.setState({ manifest: MANIFEST, sessionDir: '/tmp/s', routes: [[0]] });
+      store.getState().setMaster(true);
+
+      await store.getState().play();
+
+      expect(mock.calls).toContainEqual({ method: 'startPlayback', args: [{ sessionDir: '/tmp/s', route: '0:0', master: true }] });
     });
 
     it('surfaces a status message and stays stopped when playback fails to start', async () => {

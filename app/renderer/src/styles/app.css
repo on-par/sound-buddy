@@ -1111,7 +1111,16 @@
     .daw-routing-output { display:flex; flex-wrap:wrap; gap:4px; }
     .daw-routing-output-cell { padding:3px 6px; border:1px solid var(--border-subtle); border-radius:var(--radius-sm); background:transparent; color:var(--text-muted); font:var(--fw-medium) var(--fs-micro)/1 var(--font-sans); cursor:pointer; }
     .daw-routing-output-cell[aria-pressed="true"] { border-color:var(--gold-text); background:var(--gold-tint); color:var(--gold-text); }
-    .daw-routing-source:focus-visible, .daw-routing-output-cell:focus-visible { outline:none; border-color:var(--border-focus); box-shadow:var(--glow-focus); }
+    .daw-routing-saved-buses { display:flex; flex-direction:column; gap:4px; margin-top:10px; }
+    .daw-routing-saved-buses-title { font:var(--fw-semibold) var(--fs-micro)/1 var(--font-sans); letter-spacing:var(--tracking-caps); text-transform:uppercase; color:var(--text-muted); }
+    .daw-routing-saved-bus { display:grid; grid-template-columns:minmax(100px, 1fr) minmax(100px, 1fr) auto; gap:8px; font:var(--fw-regular) var(--fs-micro)/1.2 var(--font-sans); color:var(--text-muted); }
+    .daw-routing-saved-bus-name { color:var(--text-primary); }
+    .daw-routing-saved-bus-pattern { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .daw-routing-saved-bus-output { color:var(--gold-text); }
+    .daw-routing-saved-bus-empty { margin:0; font:var(--fw-regular) var(--fs-micro)/1.2 var(--font-sans); color:var(--text-muted); }
+    .daw-routing-master-label { display:flex; align-items:center; gap:6px; margin-top:10px; font:var(--fw-medium) var(--fs-label)/1 var(--font-sans); color:var(--text-primary); }
+    .daw-routing-master-mixdown { accent-color:var(--gold-text); }
+    .daw-routing-source:focus-visible, .daw-routing-output-cell:focus-visible, .daw-routing-master-mixdown:focus-visible { outline:none; border-color:var(--border-focus); box-shadow:var(--glow-focus); }
     .daw-routing-source:disabled, .daw-routing-output-cell:disabled { opacity:0.45; cursor:not-allowed; }
 
     /* ══ Live adjustments panel (#522, epic #515) ══

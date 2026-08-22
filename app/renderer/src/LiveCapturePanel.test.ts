@@ -4,7 +4,12 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { createElement } from 'react';
 import { renderToString } from 'react-dom/server';
-import LiveCapturePanel, { normalizeGroupName, routeHeaderChannelAction, type HeaderChannelActions } from './LiveCapturePanel';
+import LiveCapturePanel, {
+  ensureSessionRouting,
+  normalizeGroupName,
+  routeHeaderChannelAction,
+  type HeaderChannelActions,
+} from './LiveCapturePanel';
 import { useLiveCaptureStore } from './stores/liveCaptureStore';
 import { useSettingsStore } from './stores/settingsStore';
 import { useSoundcheckStore } from './stores/soundcheckStore';
@@ -112,6 +117,27 @@ afterEach(() => {
 });
 
 describe('LiveCapturePanel', () => {
+  it('synchronizes master mixdown when switching sessions and restores it when returning', () => {
+    const sessionA = {
+      tracks: [],
+      savedBuses: [],
+      masterMixdown: false,
+    };
+    const sessionB = {
+      tracks: [],
+      savedBuses: [],
+      masterMixdown: false,
+    };
+
+    ensureSessionRouting('session-a', sessionA, useRouteStore.getState(), useSoundcheckStore.getState());
+    useRouteStore.getState().setMasterMixdown('session-a', true);
+    ensureSessionRouting('session-b', sessionB, useRouteStore.getState(), useSoundcheckStore.getState());
+    expect(useSoundcheckStore.getState().master).toBe(false);
+
+    ensureSessionRouting('session-a', sessionA, useRouteStore.getState(), useSoundcheckStore.getState());
+    expect(useSoundcheckStore.getState().master).toBe(true);
+  });
+
   it('renders nothing off the Live tab', () => {
     useLiveCaptureStore.setState({ appMode: 'reportcard' });
     expect(renderMarkup()).toBe('');
@@ -239,8 +265,8 @@ describe('LiveCapturePanel', () => {
         { inputChannels: [1], outputChannels: [2] },
         { inputChannels: [0], outputChannels: [3] },
       ],
-      savedBuses: [],
-      masterMixdown: false,
+      savedBuses: [{ id: 'bus-1', name: 'Lead Vocal', pattern: 'lead', outputChannel: 2 }],
+      masterMixdown: true,
     });
 
     const html = renderMarkup();
@@ -249,6 +275,10 @@ describe('LiveCapturePanel', () => {
     expect(html).toContain('<option value="1" selected>Ch 2</option>');
     expect(html).toContain('data-routing-kind="output" data-routing-track-index="0" data-routing-channels="2"');
     expect(html).toContain('data-routing-channels="2" aria-label="Track 1 output Ch 3" aria-pressed="true"');
+    expect(html).toContain('Lead Vocal');
+    expect(html).toContain('lead');
+    expect(html).toContain('class="daw-routing-master-mixdown"');
+    expect(html).toContain('aria-label="Force stereo master mixdown" checked');
   });
 
   it('renders cached session takes only in their provenance-matched lanes and replaces generation copy when ready', () => {

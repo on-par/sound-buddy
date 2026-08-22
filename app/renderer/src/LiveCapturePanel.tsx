@@ -43,8 +43,14 @@ import { useLiveCaptureStore, MAX_LABEL_LEN, type LapAction } from './stores/liv
 import { useSettingsStore } from './stores/settingsStore';
 import { useSpectrumStore } from './stores/spectrumStore';
 import { useSoundcheckStore } from './stores/soundcheckStore';
-import { useRouteStore } from './stores/routeStore';
-import { applyRoutingDrawerChange, routeStateForSession, routingDrawerHTML } from './routingDrawer';
+import { useRouteStore, type RouteState, type RouteStoreState } from './stores/routeStore';
+import type { SoundcheckState } from './stores/soundcheckStore';
+import {
+  applyRoutingDrawerChange,
+  applyRoutingDrawerMasterMixdownChange,
+  routeStateForSession,
+  routingDrawerHTML,
+} from './routingDrawer';
 import { deviceChannelCount } from './live-capture-panel';
 import { iconSvg } from './report-card';
 import {
@@ -144,6 +150,20 @@ export function normalizeGroupName(raw: string | boolean | null): string | null 
   return trimmed.slice(0, MAX_LABEL_LEN);
 }
 
+/** Seeds (or retrieves) a session's persisted routes and applies its master
+ * setting to playback. The playback store is session-agnostic, so this must
+ * run whenever the active session changes. */
+export function ensureSessionRouting(
+  sessionId: string,
+  initial: RouteState,
+  routes: Pick<RouteStoreState, 'ensureSession'>,
+  soundcheck: Pick<SoundcheckState, 'setMaster'>,
+): RouteState {
+  const current = routes.ensureSession(sessionId, initial);
+  soundcheck.setMaster(current.masterMixdown);
+  return current;
+}
+
 export default function LiveCapturePanel(): JSX.Element | null {
   const [sessionRoutingDrawerOpen, setSessionRoutingDrawerOpen] = useState(false);
   const s = useStoreShallow(useLiveCaptureStore, (st) => ({
@@ -181,6 +201,7 @@ export default function LiveCapturePanel(): JSX.Element | null {
     peaksStatus: st.peaksStatus,
     routes: st.routes,
     deviceChannels: st.deviceChannels,
+    master: st.master,
   }));
   const routesBySession = useStoreShallow(useRouteStore, (st) => st.routesBySession);
 
@@ -188,6 +209,7 @@ export default function LiveCapturePanel(): JSX.Element | null {
   // render time, never via subscription. boardShapeVersion (also subscribed
   // above) is what re-renders the board when a tick's channel count changes.
   const showShell = getDawWorkspaceState().showShell(settings, s.appMode);
+  const savedBuses = settings?.soundcheckBuses;
   const routeState = soundcheck.sessionDir ? routesBySession[soundcheck.sessionDir] ?? null : null;
   const sessionPicker = showShell
     ? sessionTabSessionPickerView(soundcheck.recordedSessions, soundcheck.sessionDir, soundcheck.manifest, soundcheck.statusMessage)
@@ -255,11 +277,13 @@ export default function LiveCapturePanel(): JSX.Element | null {
 
   useEffect(() => {
     if (!showShell || !soundcheck.sessionDir || !soundcheck.manifest) return;
-    useRouteStore.getState().ensureSession(
+    ensureSessionRouting(
       soundcheck.sessionDir,
-      routeStateForSession(s.channelConfig, soundcheck.routes),
+      routeStateForSession(s.channelConfig, soundcheck.routes, savedBuses ?? []),
+      useRouteStore.getState(),
+      useSoundcheckStore.getState(),
     );
-  }, [showShell, soundcheck.sessionDir, soundcheck.manifest, s.channelConfig, soundcheck.routes]);
+  }, [showShell, soundcheck.sessionDir, soundcheck.manifest, s.channelConfig, soundcheck.routes, savedBuses]);
 
   useEffect(() => {
     if (!showShell) return;
@@ -568,6 +592,15 @@ export default function LiveCapturePanel(): JSX.Element | null {
 
   function onBoardChange(e: ChangeEvent<HTMLDivElement>): void {
     const target = e.target as Element;
+    const routingMaster = target.closest('.daw-routing-master-mixdown');
+    if (routingMaster instanceof HTMLInputElement) {
+      const sessionId = useSoundcheckStore.getState().sessionDir ?? '';
+      applyRoutingDrawerMasterMixdownChange(sessionId, routingMaster.checked, {
+        routes: useRouteStore.getState(),
+        soundcheck: useSoundcheckStore.getState(),
+      });
+      return;
+    }
     const routingSource = target.closest('.daw-routing-source');
     if (routingSource instanceof HTMLSelectElement) {
       applyRoutingChange('input', routingSource);

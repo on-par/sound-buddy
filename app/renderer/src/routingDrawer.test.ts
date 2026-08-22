@@ -5,11 +5,14 @@ import { describe, expect, it, vi } from 'vitest';
 import type { StripConfig } from './live-capture-panel';
 import {
   applyRoutingDrawerChange,
+  applyRoutingDrawerMasterMixdownChange,
   routeStateForSession,
   routingDrawerHTML,
   type RoutingDrawerChangeDeps,
 } from './routingDrawer';
 import type { RouteState } from './stores/routeStore';
+
+const SAVED_BUSES = [{ id: 'bus-1', name: 'Lead <Vox>', pattern: 'lead & vox', outputChannel: 3 }];
 
 const TRACKS: StripConfig[] = [
   { kind: 'mono', a: 0, b: 0, label: 'Lead Vocal' },
@@ -33,8 +36,9 @@ function deps(next: RouteState | null = routeState()): RoutingDrawerChangeDeps {
     routes: {
       updateTrackInput: vi.fn(() => next),
       updateTrackOutput: vi.fn(() => next),
+      setMasterMixdown: vi.fn(() => next),
     },
-    soundcheck: { setRoute: vi.fn() },
+    soundcheck: { setRoute: vi.fn(), setMaster: vi.fn() },
   };
 }
 
@@ -42,22 +46,24 @@ describe('routeStateForSession', () => {
   it('seeds cloned mono and stereo inputs plus existing output routes', () => {
     const outputRoutes = [[4], [5, 6]];
 
-    const seeded = routeStateForSession(TRACKS, outputRoutes);
+    const seeded = routeStateForSession(TRACKS, outputRoutes, SAVED_BUSES);
 
     expect(seeded).toEqual({
       tracks: [
         { inputChannels: [0], outputChannels: [4] },
         { inputChannels: [2, 3], outputChannels: [5, 6] },
       ],
-      savedBuses: [],
+      savedBuses: SAVED_BUSES,
       masterMixdown: false,
     });
     expect(seeded.tracks[0].outputChannels).not.toBe(outputRoutes[0]);
+    expect(seeded.savedBuses).not.toBe(SAVED_BUSES);
+    expect(seeded.savedBuses[0]).not.toBe(SAVED_BUSES[0]);
     expect(outputRoutes).toEqual([[4], [5, 6]]);
   });
 
   it('uses an empty output route when playback has none for a track', () => {
-    expect(routeStateForSession(TRACKS, [[4]])).toMatchObject({
+    expect(routeStateForSession(TRACKS, [[4]], [])).toMatchObject({
       tracks: [{ outputChannels: [4] }, { outputChannels: [] }],
     });
   });
@@ -102,6 +108,25 @@ describe('routingDrawerHTML', () => {
 
     expect(html).not.toContain('aria-pressed="true"');
   });
+
+  it('renders read-only escaped saved-bus assignments and an enabled master mixdown control', () => {
+    const html = routingDrawerHTML(TRACKS, routeState({ savedBuses: SAVED_BUSES, masterMixdown: true }), 6, 6);
+
+    expect(html).toContain('Lead &lt;Vox&gt;');
+    expect(html).toContain('lead &amp; vox');
+    expect(html).toContain('Ch 4');
+    expect(html).toContain('class="daw-routing-master-mixdown"');
+    expect(html).toContain('aria-label="Force stereo master mixdown" checked');
+    expect(html).not.toContain('data-routing-bus');
+  });
+
+  it('renders an empty saved-bus assignment section and unchecked master control', () => {
+    const html = routingDrawerHTML(TRACKS, routeState(), 6, 6);
+
+    expect(html).toContain('No saved bus assignments for this session.');
+    expect(html).toContain('class="daw-routing-master-mixdown"');
+    expect(html).not.toContain('aria-label="Force stereo master mixdown" checked');
+  });
 });
 
 describe('applyRoutingDrawerChange', () => {
@@ -123,8 +148,9 @@ describe('applyRoutingDrawerChange', () => {
       routes: {
         updateTrackInput: vi.fn(),
         updateTrackOutput: vi.fn(() => { calls.push('route'); return next; }),
+        setMasterMixdown: vi.fn(),
       },
-      soundcheck: { setRoute: vi.fn(() => calls.push('playback')) },
+      soundcheck: { setRoute: vi.fn(() => calls.push('playback')), setMaster: vi.fn() },
     };
 
     expect(applyRoutingDrawerChange('output', 'session-a', 0, [5], changeDeps)).toBe(next);
@@ -149,5 +175,33 @@ describe('applyRoutingDrawerChange', () => {
     expect(changeDeps.routes.updateTrackInput).not.toHaveBeenCalled();
     expect(changeDeps.routes.updateTrackOutput).not.toHaveBeenCalled();
     expect(changeDeps.soundcheck.setRoute).not.toHaveBeenCalled();
+  });
+});
+
+describe('applyRoutingDrawerMasterMixdownChange', () => {
+  it('updates session state before synchronizing the playback master', () => {
+    const calls: string[] = [];
+    const next = routeState({ masterMixdown: true });
+    const changeDeps: RoutingDrawerChangeDeps = {
+      routes: {
+        updateTrackInput: vi.fn(),
+        updateTrackOutput: vi.fn(),
+        setMasterMixdown: vi.fn(() => { calls.push('route'); return next; }),
+      },
+      soundcheck: { setRoute: vi.fn(), setMaster: vi.fn(() => calls.push('playback')) },
+    };
+
+    expect(applyRoutingDrawerMasterMixdownChange('session-a', true, changeDeps)).toBe(next);
+    expect(changeDeps.routes.setMasterMixdown).toHaveBeenCalledWith('session-a', true);
+    expect(changeDeps.soundcheck.setMaster).toHaveBeenCalledWith(true);
+    expect(calls).toEqual(['route', 'playback']);
+  });
+
+  it('does not update playback for a missing or empty session', () => {
+    const changeDeps = deps(null);
+
+    expect(applyRoutingDrawerMasterMixdownChange('missing', true, changeDeps)).toBeNull();
+    expect(applyRoutingDrawerMasterMixdownChange('', true, changeDeps)).toBeNull();
+    expect(changeDeps.soundcheck.setMaster).not.toHaveBeenCalled();
   });
 });
