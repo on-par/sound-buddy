@@ -32,6 +32,7 @@ import {
   patchLiveChannel,
   patchGroupSummaries,
   patchEqPaneSection,
+  patchEqPaneLevelTiles,
   levelPercent,
   eqPaneView,
   eqPanePatchPlan,
@@ -41,6 +42,7 @@ import {
   stripViewAt,
   currentEqPaneChannels,
   liveStatsRowView,
+  selectedEqPaneLevelTilesView,
   patchStatsRow,
   dawShellPatchView,
   getDawWorkspaceState,
@@ -129,6 +131,8 @@ function applyLiveTick(snap: LiveMeterSnapshot): void {
   if (paneBody) {
     patchEqPaneSection(paneBody.querySelector('.eq-pane-primary'), plan.primary);
     patchEqPaneSection(paneBody.querySelector('.eq-pane-secondary'), plan.secondary);
+    const levelTiles = selectedEqPaneLevelTilesView(tick.channels, state.selectedChannel);
+    patchEqPaneLevelTiles(paneBody.querySelector('.eq-pane-inspector'), levelTiles);
   }
 }
 /* c8 ignore stop */

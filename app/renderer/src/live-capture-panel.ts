@@ -284,7 +284,24 @@ export interface EqPaneInspectorView {
   playbackTrack: SessionManifestTrack | null;
   playbackRoute: number[] | null;
   playbackDeviceChannels: number;
+  levelTiles: EqPaneLevelTilesView | null;
 }
+
+export interface EqPaneLevelTilesView {
+  rms: string;
+  rmsTone: string;
+  peak: string;
+  peakTone: string;
+  headroom: string;
+  headroomTone: string;
+  clip: string;
+  clipTone: string;
+}
+
+const EQ_PANE_UNAVAILABLE_LEVEL_TILES: EqPaneLevelTilesView = {
+  rms: '—', rmsTone: '', peak: '—', peakTone: '',
+  headroom: '—', headroomTone: '', clip: '—', clipTone: '',
+};
 
 const EQ_PANE_INSPECTOR_BAND_CLASSES = [
   'band-0', 'band-1', 'band-2', 'band-3', 'band-4', 'band-5', 'band-6',
@@ -309,6 +326,9 @@ export function eqPaneInspectorHTML(view: EqPaneInspectorView | null): string {
     : `<label class="eq-pane-inspector-field eq-pane-inspector-output-notice">Playback &amp; listen
         <select aria-label="Playback and listen output" disabled><option>Load a soundcheck session with a matching track to choose playback output.</option></select>
       </label>`;
+  const levelTiles = view.levelTiles ?? EQ_PANE_UNAVAILABLE_LEVEL_TILES;
+  const levelTileHTML = (label: string, key: 'rms' | 'peak' | 'headroom' | 'clip', value: string, tone: string): string =>
+    `<div class="eq-pane-level-tile"><span class="eq-pane-level-label">${label}</span><span data-eq-pane-level="${key}" class="eq-pane-level-value${tone ? ` ${tone}` : ''}">${escapeHtml(value)}</span></div>`;
   return `<section class="eq-pane-inspector" data-selected-index="${selectedIndex}" aria-label="Selected channel">
     <div class="eq-pane-header">Selected channel</div>
     <div class="eq-pane-inspector-identity">
@@ -336,6 +356,13 @@ export function eqPaneInspectorHTML(view: EqPaneInspectorView | null): string {
       <select class="eq-pane-inspector-source" data-field="b" aria-label="Right source channel"${disabled}>${channelOptions(strip.b, view.deviceChannels, true)}</select>
     </label>` : ''}
     <button type="button" class="eq-pane-inspector-arm${strip.armed ? ' armed' : ''}" aria-pressed="${!!strip.armed}"${disabled}>${strip.armed ? 'Armed for recording' : 'Arm for recording'}</button>
+    <div class="eq-pane-header">Level</div>
+    <div class="eq-pane-level-grid" aria-label="Selected channel level">
+      ${levelTileHTML('RMS', 'rms', levelTiles.rms, levelTiles.rmsTone)}
+      ${levelTileHTML('Peak', 'peak', levelTiles.peak, levelTiles.peakTone)}
+      ${levelTileHTML('Headroom', 'headroom', levelTiles.headroom, levelTiles.headroomTone)}
+      ${levelTileHTML('Clips', 'clip', levelTiles.clip, levelTiles.clipTone)}
+    </div>
     <div class="eq-pane-header">Playback</div>
     ${outputHTML}
   </section>`;
@@ -557,6 +584,26 @@ export function patchEqPaneSection(sectionEl: Element | null, patch: EqPaneSecti
   }
   if (patch.gridDb) patchGridBarsAndBandLabels(sectionEl, patch.gridDb, patch.loudestIdx);
   else patchBarsAndLabels(sectionEl, patch.curve.db);
+}
+
+// Patches only the inspector's selected-channel level tiles. This stays in
+// the DOM-only coverage boundary above because the renderer harness uses
+// renderToString without jsdom; mounted tick integration/e2e exercises it.
+export function patchEqPaneLevelTiles(sectionEl: Element | null, view: EqPaneLevelTilesView | null): void {
+  if (!sectionEl) return;
+  const levelTiles = view ?? EQ_PANE_UNAVAILABLE_LEVEL_TILES;
+  const values: Array<[keyof EqPaneLevelTilesView, string, string]> = [
+    ['rms', levelTiles.rms, levelTiles.rmsTone],
+    ['peak', levelTiles.peak, levelTiles.peakTone],
+    ['headroom', levelTiles.headroom, levelTiles.headroomTone],
+    ['clip', levelTiles.clip, levelTiles.clipTone],
+  ];
+  values.forEach(([key, value, tone]) => {
+    const el = sectionEl.querySelector(`[data-eq-pane-level="${key}"]`);
+    if (!el) return;
+    el.textContent = value;
+    el.className = `eq-pane-level-value${tone ? ` ${tone}` : ''}`;
+  });
 }
 
 // Refreshes each group header's live summary so a collapsed group still

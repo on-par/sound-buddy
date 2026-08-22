@@ -9,6 +9,7 @@ import { useLiveCaptureStore } from './stores/liveCaptureStore';
 import { useSettingsStore } from './stores/settingsStore';
 import { useSoundcheckStore } from './stores/soundcheckStore';
 import { deviceChannelCount, deviceNameFor, deviceOptionLabel, eqPaneClassificationHTML, eqPaneHTML, eqPaneInspectorHTML, eqPaneView, type EqPaneView } from './live-capture-panel';
+import { currentEqPaneChannels, eqPaneLevelTilesView, liveWorkspaceViewState } from './live-workspace-view';
 import type { LiveEvent } from './live-capture-panel';
 import type { AppSettings } from '../../electron/ipc/api';
 
@@ -93,6 +94,8 @@ function expectedInspectorHTML(): string {
   const selectedIndex = live.selectedChannel;
   const strip = selectedIndex != null && selectedIndex >= 0 ? live.channelConfig[selectedIndex] : null;
   if (!strip || selectedIndex == null) return '';
+  const channel = currentEqPaneChannels(liveWorkspaceViewState(live, useSettingsStore.getState().settings))[selectedIndex];
+  const stats = eqPaneLevelTilesView(channel);
   return eqPaneInspectorHTML({
     selectedIndex,
     strip,
@@ -103,6 +106,12 @@ function expectedInspectorHTML(): string {
     playbackTrack: soundcheck.manifest?.tracks[selectedIndex] ?? null,
     playbackRoute: soundcheck.routes[selectedIndex] ?? [0],
     playbackDeviceChannels: soundcheck.deviceChannels,
+    levelTiles: stats ? {
+      rms: stats.rms, rmsTone: stats.rmsTone,
+      peak: stats.peak, peakTone: stats.peakTone,
+      headroom: stats.headroom, headroomTone: stats.headroomTone,
+      clip: stats.clip, clipTone: stats.clipTone,
+    } : null,
   });
 }
 
@@ -188,6 +197,24 @@ describe('LiveEqPane', () => {
     const html = renderMarkup();
     expect(html).toBe(expectedMarkup());
     expect(html).toContain('Selected — Track 2');
+  });
+
+  it('seeds inspector level tiles from the selected channel, not the Room channel', () => {
+    useLiveCaptureStore.setState({ selectedChannel: 1, measurementSource: 0 });
+    const html = renderMarkup();
+    expect(html).toContain('data-eq-pane-level="rms" class="eq-pane-level-value">-22.0</span>');
+    expect(html).toContain('data-eq-pane-level="peak" class="eq-pane-level-value">-9.0</span>');
+    expect(html).toContain('data-eq-pane-level="headroom" class="eq-pane-level-value">9.0</span>');
+    expect(html).not.toContain('>-18.0</span>');
+  });
+
+  it('renders unavailable level tiles for a selected synthetic idle channel', () => {
+    useLiveCaptureStore.setState({
+      selectedChannel: 1,
+      lastLiveChannels: CONFIG.map(() => trackWorkspace.idleChannel(['sub_bass', 'bass', 'low_mid', 'mid', 'high_mid', 'presence', 'brilliance'])),
+    });
+    const html = renderMarkup();
+    expect(html.match(/class="eq-pane-level-value">—<\/span>/g)).toHaveLength(4);
   });
 
   it('renders the selected channel classification with its group and Auto profile', () => {
