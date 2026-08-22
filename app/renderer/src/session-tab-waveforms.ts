@@ -43,19 +43,28 @@ function isManifestTrack(value: unknown): value is { kind: 'mono' | 'stereo'; so
     && (track.sourceChannels === undefined || Array.isArray(track.sourceChannels));
 }
 
-function isPeakTrack(value: unknown): value is { index: number; kind: 'mono' | 'stereo'; data: string } {
+interface PeakTrack {
+  index: number;
+  kind: 'mono' | 'stereo';
+  bucketCount: number;
+  data: string;
+}
+
+function isPeakTrack(value: unknown): value is PeakTrack {
   if (typeof value !== 'object' || value === null) return false;
-  const track = value as { index?: unknown; kind?: unknown; data?: unknown };
+  const track = value as { index?: unknown; kind?: unknown; bucketCount?: unknown; data?: unknown };
   return Number.isInteger(track.index)
     && (track.kind === 'mono' || track.kind === 'stereo')
+    && Number.isInteger(track.bucketCount)
+    && track.bucketCount >= 0
     && typeof track.data === 'string';
 }
 
 function peakTracksByIndex(
   tracks: unknown[],
   manifestTrackCount: number,
-): Map<number, { index: number; kind: 'mono' | 'stereo'; data: string }> | null {
-  const byIndex = new Map<number, { index: number; kind: 'mono' | 'stereo'; data: string }>();
+): Map<number, PeakTrack> | null {
+  const byIndex = new Map<number, PeakTrack>();
   for (const track of tracks) {
     if (!isPeakTrack(track) || track.index < 0 || track.index >= manifestTrackCount || byIndex.has(track.index)) return null;
     byIndex.set(track.index, track);
@@ -76,18 +85,18 @@ export function sessionTabWaveformView(
   const peakTracks = peakTracksByIndex(peaks.tracks, manifest.tracks.length);
   if (!peakTracks) return { generating, clips: [] };
 
-  const clips: SessionTabWaveformClip[] = [];
+  const candidateClips: SessionTabWaveformClip[] = [];
   for (let trackIndex = 0; trackIndex < manifest.tracks.length; trackIndex++) {
     const manifestTrack = manifest.tracks[trackIndex];
     const peakTrack = peakTracks.get(trackIndex);
     if (!isManifestTrack(manifestTrack) || !peakTrack || peakTrack.kind !== manifestTrack.kind) continue;
     const pairs = decodePeaksPairs(peakTrack.data);
-    if (!pairs) continue;
+    if (!pairs || peakTrack.bucketCount !== pairs.length) continue;
     const matches = channelConfig
       .map((strip, stripIndex) => ({ strip, stripIndex }))
       .filter(({ strip }) => strip.kind === manifestTrack.kind && sameChannels(manifestTrack.sourceChannels, stripSourceChannels(strip)));
     if (matches.length !== 1) continue;
-    clips.push({
+    candidateClips.push({
       trackIndex,
       stripIndex: matches[0].stripIndex,
       leftPx: dawTimelineX(0),
@@ -96,7 +105,11 @@ export function sessionTabWaveformView(
       bucketsPerSecond: peaks.bucketsPerSecond,
     });
   }
-  return { generating, clips };
+  const claimsByStrip = new Map<number, number>();
+  for (const clip of candidateClips) {
+    claimsByStrip.set(clip.stripIndex, (claimsByStrip.get(clip.stripIndex) ?? 0) + 1);
+  }
+  return { generating, clips: candidateClips.filter((clip) => claimsByStrip.get(clip.stripIndex) === 1) };
 }
 
 interface CanvasLike {

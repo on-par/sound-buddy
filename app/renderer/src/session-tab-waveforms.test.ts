@@ -106,6 +106,37 @@ describe('sessionTabWaveformView', () => {
       expect.objectContaining({ trackIndex: 0, stripIndex: 1 }),
     ]);
   });
+
+  it('skips cache tracks whose declared bucket count is invalid or disagrees with decoded pairs', () => {
+    const cachedPeaks = peaks();
+    for (const bucketCount of [undefined, -1, 1.5, 3]) {
+      expect(sessionTabWaveformView(
+        manifest(),
+        { ...cachedPeaks, tracks: [{ ...cachedPeaks.tracks[0], bucketCount }] as unknown as SessionPeaksDto['tracks'] },
+        'ready',
+        config,
+      ).clips).toEqual([]);
+    }
+  });
+
+  it('rejects every clip that competes for the same configured strip', () => {
+    const cachedPeaks = peaks();
+    const duplicateManifest: SessionManifest = {
+      tracks: [
+        { kind: 'mono', sourceChannels: [4] },
+        { kind: 'mono', sourceChannels: [4] },
+      ],
+    };
+    const duplicatePeaks: SessionPeaksDto = {
+      ...cachedPeaks,
+      tracks: [
+        cachedPeaks.tracks[0],
+        { ...cachedPeaks.tracks[0], index: 1 },
+      ],
+    };
+
+    expect(sessionTabWaveformView(duplicateManifest, duplicatePeaks, 'ready', config).clips).toEqual([]);
+  });
 });
 
 describe('paintSessionTabWaveformClips', () => {
