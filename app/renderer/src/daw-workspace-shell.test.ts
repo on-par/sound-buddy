@@ -35,7 +35,6 @@ const appTsx = fs.readFileSync(fileURLToPath(new URL('./App.tsx', import.meta.ur
 const workspaceViewTs = fs.readFileSync(fileURLToPath(new URL('./live-workspace-view.ts', import.meta.url)), 'utf8');
 const recordTransportTs = fs.readFileSync(fileURLToPath(new URL('./record-transport.ts', import.meta.url)), 'utf8');
 const liveCapturePanelTsx = fs.readFileSync(fileURLToPath(new URL('./LiveCapturePanel.tsx', import.meta.url)), 'utf8');
-const liveCapturePanelTs = fs.readFileSync(fileURLToPath(new URL('./live-capture-panel.ts', import.meta.url)), 'utf8');
 // TD-001 slice 6i (#712): the capture lifecycle moved here — its start/stop
 // drives the daw-shell-runtime.ts painters through the window.dawShellRuntime
 // seam (unchanged by 6j — see the "DAW shell seam consumers" describe below).
