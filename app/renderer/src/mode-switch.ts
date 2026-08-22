@@ -27,9 +27,10 @@ export type WorkspaceMode = 'dir' | 'live' | 'console' | 'recent' | 'guide' | 'r
 export type ModeSwitchRequest = WorkspaceMode | 'analyze' | 'history';
 
 const WORKSPACE_MODES: readonly WorkspaceMode[] = ['dir', 'live', 'console', 'recent', 'guide', 'ringout', 'reportcard'];
+const WORKSPACE_MODE_SET = new Set<string>(WORKSPACE_MODES);
 
 export function isWorkspaceMode(mode: string): mode is WorkspaceMode {
-  return WORKSPACE_MODES.includes(mode as WorkspaceMode);
+  return WORKSPACE_MODE_SET.has(mode);
 }
 
 export type ModeSwitchDecision =
