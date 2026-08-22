@@ -8,6 +8,7 @@ import LiveCapturePanel, { normalizeGroupName, routeHeaderChannelAction, type He
 import { useLiveCaptureStore } from './stores/liveCaptureStore';
 import { useSettingsStore } from './stores/settingsStore';
 import { useSoundcheckStore } from './stores/soundcheckStore';
+import { useRouteStore } from './stores/routeStore';
 import type { LiveDevice, ChannelWindowData } from './live-capture-panel';
 import type { AppSettings } from '../../electron/ipc/api';
 
@@ -96,6 +97,7 @@ beforeEach(() => {
     recordedSessions: [], recordedSessionsLoaded: false, sessionDir: null,
     manifest: null, statusMessage: null, playing: false, looping: false, lastElapsedTick: null,
   });
+  useRouteStore.setState({ routesBySession: {} });
 });
 
 afterEach(() => {
@@ -106,6 +108,7 @@ afterEach(() => {
     recordedSessions: [], recordedSessionsLoaded: false, sessionDir: null,
     manifest: null, statusMessage: null, playing: false, looping: false, lastElapsedTick: null,
   });
+  useRouteStore.setState({ routesBySession: {} });
 });
 
 describe('LiveCapturePanel', () => {
@@ -221,6 +224,31 @@ describe('LiveCapturePanel', () => {
 
     useSoundcheckStore.setState({ looping: true });
     expect(renderMarkup()).toContain('id="daw-session-loop" aria-label="Loop recorded session playback" aria-pressed="true"');
+  });
+
+  it('composes shared Session routing state into the DAW drawer', () => {
+    useSettingsStore.setState({ settings: settings({ dawWorkspaceEnabled: true }) });
+    useSoundcheckStore.setState({
+      sessionDir: '/recordings/sunday',
+      manifest: { tracks: [{ kind: 'mono' }, { kind: 'mono' }] },
+      routes: [[2], [3]],
+      deviceChannels: 4,
+    });
+    useRouteStore.getState().ensureSession('/recordings/sunday', {
+      tracks: [
+        { inputChannels: [1], outputChannels: [2] },
+        { inputChannels: [0], outputChannels: [3] },
+      ],
+      savedBuses: [],
+      masterMixdown: false,
+    });
+
+    const html = renderMarkup();
+
+    expect(html).toContain('class="daw-routing-source" data-routing-kind="input" data-routing-track-index="0"');
+    expect(html).toContain('<option value="1" selected>Ch 2</option>');
+    expect(html).toContain('data-routing-kind="output" data-routing-track-index="0" data-routing-channels="2"');
+    expect(html).toContain('data-routing-channels="2" aria-label="Track 1 output Ch 3" aria-pressed="true"');
   });
 
   it('renders cached session takes only in their provenance-matched lanes and replaces generation copy when ready', () => {

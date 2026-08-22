@@ -136,6 +136,36 @@ test.describe('Session tab playback (#1080)', () => {
     await expect(window.locator('.daw-transport-time')).toHaveText('0:03');
   });
 
+  test('routing-mid-playback', async () => {
+    await window.locator('.mode-tab[data-mode="soundcheck"]').click();
+    await window.locator('#sc-device-select').selectOption({ label: 'MOTU 8ch (8ch)' });
+    await window.locator('.mode-tab[data-mode="live"]').click();
+
+    await window.locator('#daw-session-play').click();
+    await expect(window.locator('#daw-session-stop')).toBeVisible();
+    await window.locator('#daw-session-routing-toggle').click();
+
+    const source = window.locator('.daw-routing-source').first();
+    await source.selectOption('1');
+    await expect(source).toHaveValue('1');
+
+    await window.locator('.daw-routing-output-cell[data-routing-track-index="0"][data-routing-channels="2"]').click();
+    await expect(source).toHaveValue('1');
+    await expect.poll(() => electronApp.evaluate(
+      () => (globalThis as Record<string, unknown>).__sessionRoutes,
+    )).toEqual({ route: '0:2,1:1-2' });
+
+    await sendPlaybackEvent({ type: 'progress', elapsed: 3, duration: 10 });
+    await expect(window.locator('.daw-transport-time')).toHaveText('0:03');
+    await expect(window.locator('#daw-session-stop')).toBeEnabled();
+    expect(await electronApp.evaluate(
+      () => (globalThis as Record<string, unknown>).__sessionPlaybackCalls,
+    )).toHaveLength(1);
+    expect(await electronApp.evaluate(
+      () => (globalThis as Record<string, unknown>).__sessionPlaybackStopped,
+    )).not.toBe(true);
+  });
+
   test('opens, closes, and reopens the local Session routing drawer without hiding the timeline (#1089)', async () => {
     const shell = window.locator('.daw-shell');
     const routingToggle = window.locator('#daw-session-routing-toggle');
