@@ -200,6 +200,9 @@ export default function LiveCapturePanel(): JSX.Element | null {
     peaks: st.peaks,
     peaksStatus: st.peaksStatus,
     routes: st.routes,
+    devices: st.devices,
+    devicesLoaded: st.devicesLoaded,
+    selectedDevice: st.selectedDevice,
     deviceChannels: st.deviceChannels,
     master: st.master,
   }));
@@ -274,6 +277,11 @@ export default function LiveCapturePanel(): JSX.Element | null {
     if (!showShell || soundcheck.recordedSessionsLoaded) return;
     void useSoundcheckStore.getState().loadRecordedSessions();
   }, [showShell, soundcheck.recordedSessionsLoaded]);
+
+  useEffect(() => {
+    if (!showShell || soundcheck.devicesLoaded) return;
+    void useSoundcheckStore.getState().loadDevices();
+  }, [showShell, soundcheck.devicesLoaded]);
 
   useEffect(() => {
     if (!showShell || !soundcheck.sessionDir || !soundcheck.manifest) return;
@@ -370,6 +378,8 @@ export default function LiveCapturePanel(): JSX.Element | null {
         routeState,
         deviceChannelCount(s.selectedDevice, s.devices),
         soundcheck.deviceChannels,
+        soundcheck.devices,
+        soundcheck.selectedDevice,
       )
       : '';
     board = routingDrawerContent ? dawShellHTML(state, routingDrawerContent) : dawShellHTML(state);
@@ -592,6 +602,11 @@ export default function LiveCapturePanel(): JSX.Element | null {
 
   function onBoardChange(e: ChangeEvent<HTMLDivElement>): void {
     const target = e.target as Element;
+    const outputDevice = target.closest('#daw-session-output-device');
+    if (outputDevice instanceof HTMLSelectElement) {
+      useSoundcheckStore.getState().selectDevice(outputDevice.value);
+      return;
+    }
     const routingMaster = target.closest('.daw-routing-master-mixdown');
     if (routingMaster instanceof HTMLInputElement) {
       const sessionId = useSoundcheckStore.getState().sessionDir ?? '';

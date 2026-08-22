@@ -70,8 +70,26 @@ describe('routeStateForSession', () => {
 });
 
 describe('routingDrawerHTML', () => {
+  it('renders escaped output choices with the selected device and a default fallback', () => {
+    const html = routingDrawerHTML(
+      TRACKS,
+      routeState(),
+      6,
+      6,
+      [{ index: 1, name: 'MOTU <8ch>', channels: 8 }],
+      '1',
+    );
+
+    expect(html).toContain('id="daw-session-output-device"');
+    expect(html).toContain('<option value="">Default output</option>');
+    expect(html).toContain('<option value="1" selected>MOTU &lt;8ch&gt; (8ch)</option>');
+    expect(routingDrawerHTML(TRACKS, routeState(), 6, 6, [], '')).toContain(
+      '<option value="" selected>Default output</option>',
+    );
+  });
+
   it('renders selected source assignments and exact selected output cells', () => {
-    const html = routingDrawerHTML(TRACKS, routeState(), 6, 6);
+    const html = routingDrawerHTML(TRACKS, routeState(), 6, 6, [], '');
 
     expect(html).toContain('class="daw-routing-source" data-routing-kind="input" data-routing-track-index="0"');
     expect(html).toContain('<option value="1" selected>Ch 2</option>');
@@ -81,7 +99,7 @@ describe('routingDrawerHTML', () => {
   });
 
   it('bounds source options and output matrix choices to known device capacity', () => {
-    const html = routingDrawerHTML(TRACKS, routeState(), 3, 1);
+    const html = routingDrawerHTML(TRACKS, routeState(), 3, 1, [], '');
 
     expect(html).toContain('<option value="0">Ch 1</option>');
     expect(html).not.toContain('value="3"');
@@ -91,7 +109,7 @@ describe('routingDrawerHTML', () => {
   });
 
   it('offers no stereo source option when the input device has fewer than two channels', () => {
-    const html = routingDrawerHTML(TRACKS, routeState(), 1, 1);
+    const html = routingDrawerHTML(TRACKS, routeState(), 1, 1, [], '');
 
     expect(html).toContain('<option value="0">Ch 1</option>');
     expect(html).not.toContain('value="0,1"');
@@ -104,13 +122,13 @@ describe('routingDrawerHTML', () => {
         { inputChannels: [1], outputChannels: [99] },
         { inputChannels: [2, 3], outputChannels: [1, 3] },
       ],
-    }), 6, 6);
+    }), 6, 6, [], '');
 
     expect(html).not.toContain('aria-pressed="true"');
   });
 
   it('renders read-only escaped saved-bus assignments and an enabled master mixdown control', () => {
-    const html = routingDrawerHTML(TRACKS, routeState({ savedBuses: SAVED_BUSES, masterMixdown: true }), 6, 6);
+    const html = routingDrawerHTML(TRACKS, routeState({ savedBuses: SAVED_BUSES, masterMixdown: true }), 6, 6, [], '');
 
     expect(html).toContain('Lead &lt;Vox&gt;');
     expect(html).toContain('lead &amp; vox');
@@ -121,7 +139,7 @@ describe('routingDrawerHTML', () => {
   });
 
   it('renders an empty saved-bus assignment section and unchecked master control', () => {
-    const html = routingDrawerHTML(TRACKS, routeState(), 6, 6);
+    const html = routingDrawerHTML(TRACKS, routeState(), 6, 6, [], '');
 
     expect(html).toContain('No saved bus assignments for this session.');
     expect(html).toContain('class="daw-routing-master-mixdown"');
