@@ -21,6 +21,8 @@ import {
   liveAdjustmentsPanelHTML,
   statsRowView,
   liveStatsRowView,
+  eqPaneLevelTilesView,
+  selectedEqPaneLevelTilesView,
   boardRunning,
   type LiveWorkspaceViewState,
 } from './live-workspace-view';
@@ -780,7 +782,7 @@ describe('statsRowView', () => {
       { spectralCentroid: 1200 },
     );
     expect(view).toEqual({
-      rms: '-8.0', rmsTone: '', peak: '-0.5', peakTone: 'issue',
+      rms: '-8.0', rmsTone: '', peak: '-0.5', peakTone: 'issue', headroom: '0.5', headroomTone: 'issue',
       dr: '12.0', drTone: '', clip: 'No', clipTone: '', centroid: '1,200',
     });
   });
@@ -799,6 +801,12 @@ describe('statsRowView', () => {
   it('renders an em dash centroid when the spectrum carries none', () => {
     expect(statsRowView({ rmsDbfs: -20, peakDbfs: -10, dynamicRangeDb: 10, clipping: false }, {}).centroid).toBe('—');
   });
+
+  it('uses an unavailable neutral headroom when the file peak is non-finite', () => {
+    const view = statsRowView({ rmsDbfs: -20, peakDbfs: Number.POSITIVE_INFINITY, dynamicRangeDb: 10, clipping: false }, {});
+    expect(view.headroom).toBe('—');
+    expect(view.headroomTone).toBe('');
+  });
 });
 
 describe('liveStatsRowView', () => {
@@ -807,6 +815,8 @@ describe('liveStatsRowView', () => {
     expect(view.rms).toBe('-5.0');
     expect(view.rmsTone).toBe('check');
     expect(view.peakTone).toBe('issue');
+    expect(view.headroom).toBe('0.5');
+    expect(view.headroomTone).toBe('issue');
     expect(view.dr).toBe('—');
     expect(view.clip).toBe('CLIP');
     expect(view.clipTone).toBe('issue');
@@ -817,5 +827,26 @@ describe('liveStatsRowView', () => {
     const view = liveStatsRowView({ rms: -20, peak: -10, clipping: false, centroid: undefined, bands: {} } as LiveMeterChannel);
     expect(view.clip).toBe('No');
     expect(view.centroid).toBe('—');
+    expect(view.headroom).toBe('10.0');
+    expect(view.headroomTone).toBe('');
+  });
+
+  it('uses an em dash for headroom when the peak is unavailable', () => {
+    const view = liveStatsRowView({ rms: Number.NaN, peak: Number.POSITIVE_INFINITY, clipping: false, bands: {} } as LiveMeterChannel);
+    expect(view.peak).toBe('-∞');
+    expect(view.headroom).toBe('—');
+    expect(view.headroomTone).toBe('');
+  });
+
+  it('returns null level tiles for an idle or missing selected channel', () => {
+    expect(eqPaneLevelTilesView(null)).toBeNull();
+    expect(eqPaneLevelTilesView({ rms: Number.NEGATIVE_INFINITY, peak: Number.NEGATIVE_INFINITY, clipping: false, bands: {}, idle: true } as LiveMeterChannel)).toBeNull();
+  });
+
+  it('returns unavailable level tiles for an out-of-range selected channel', () => {
+    const channel = { rms: -20, peak: -10, clipping: false, bands: {} } as LiveMeterChannel;
+    expect(selectedEqPaneLevelTilesView([channel], 1)).toBeNull();
+    expect(selectedEqPaneLevelTilesView([channel], -1)).toBeNull();
+    expect(selectedEqPaneLevelTilesView([channel], 1.5)).toBeNull();
   });
 });

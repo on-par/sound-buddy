@@ -69,6 +69,7 @@ import {
   type EqPaneRoomOverride,
   type EqPaneClassificationView,
   type EqPaneInspectorView,
+  type EqPaneLevelTilesView,
 } from './live-capture-panel';
 
 const css = fs.readFileSync(fileURLToPath(new URL('./styles/app.css', import.meta.url)), 'utf8');
@@ -587,6 +588,7 @@ describe('eqPaneInspectorHTML (#1064)', () => {
       playbackTrack: { kind: 'stereo' },
       playbackRoute: [4, 5],
       playbackDeviceChannels: 6,
+      levelTiles: null,
       ...overrides,
     };
   }
@@ -635,6 +637,31 @@ describe('eqPaneInspectorHTML (#1064)', () => {
     const html = eqPaneInspectorHTML(inspector({ playbackRoute: null }));
     expect(html).toContain('class="eq-pane-inspector-output"');
     expect(html).toContain('<option value="0" selected>Ch 1-2</option>');
+  });
+
+  it('renders selected-channel RMS, peak, headroom, and clipping level tiles', () => {
+    const levelTiles: EqPaneLevelTilesView = {
+      rms: '-5.0', rmsTone: 'check',
+      peak: '-0.5', peakTone: 'issue',
+      headroom: '0.5', headroomTone: 'issue',
+      clip: 'CLIP', clipTone: 'issue',
+    };
+    const html = eqPaneInspectorHTML(inspector({ levelTiles }));
+    expect(html).toContain('<div class="eq-pane-header">Level</div>');
+    expect(html).toContain('>RMS<');
+    expect(html).toContain('>Peak<');
+    expect(html).toContain('>Headroom<');
+    expect(html).toContain('>Clips<');
+    expect(html).toContain('data-eq-pane-level="rms" class="eq-pane-level-value check">-5.0</span>');
+    expect(html).toContain('data-eq-pane-level="peak" class="eq-pane-level-value issue">-0.5</span>');
+    expect(html).toContain('data-eq-pane-level="headroom" class="eq-pane-level-value issue">0.5</span>');
+    expect(html).toContain('data-eq-pane-level="clip" class="eq-pane-level-value issue">CLIP</span>');
+  });
+
+  it('renders unavailable level tiles when selected-channel statistics are absent', () => {
+    const html = eqPaneInspectorHTML(inspector({ levelTiles: null }));
+    expect(html.match(/class="eq-pane-level-value">—<\/span>/g)).toHaveLength(4);
+    expect(html).not.toContain('-5.0');
   });
 });
 

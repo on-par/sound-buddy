@@ -34,6 +34,7 @@ import {
 import { roomPaneOverride } from './measurement-device-state';
 import {
   currentEqPaneChannels,
+  selectedEqPaneLevelTilesView,
   getArmState,
   getGroupState,
   getInstrumentProfiles,
@@ -193,6 +194,7 @@ export default function LiveEqPane(): JSX.Element {
   const inspectorHtml = useMemo(() => {
     if (!selectedStrip || s.selectedChannel == null) return eqPaneInspectorHTML(null);
     const selectedIndex = s.selectedChannel;
+    const levelTiles = selectedEqPaneLevelTilesView(currentEqPaneChannels(state), selectedIndex);
     return eqPaneInspectorHTML({
       selectedIndex,
       strip: selectedStrip,
@@ -203,8 +205,9 @@ export default function LiveEqPane(): JSX.Element {
       playbackTrack: soundcheck.manifest?.tracks[selectedIndex] ?? null,
       playbackRoute: soundcheck.routes[selectedIndex] ?? [0],
       playbackDeviceChannels: soundcheck.deviceChannels,
+      levelTiles,
     });
-  }, [selectedStrip, s.selectedChannel, s.selectedDevice, s.devices, liveRunning, soundcheck.manifest, soundcheck.routes, soundcheck.deviceChannels]);
+  }, [selectedStrip, s.selectedChannel, s.selectedDevice, s.devices, liveRunning, soundcheck.manifest, soundcheck.routes, soundcheck.deviceChannels, s.boardShapeVersion]);
 
   function onClassificationChange(e: FormEvent<HTMLDivElement>): void {
     const target = e.target;

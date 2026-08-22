@@ -33,6 +33,7 @@ import {
   type LiveMeterChannel,
   type StripView,
   type PanelView,
+  type EqPaneLevelTilesView,
   type ChannelFlagMap,
 } from './live-capture-panel';
 import { escapeHtml } from './spectrum-display';
@@ -155,12 +156,16 @@ export interface StatsRowView {
   rmsTone: string;
   peak: string;
   peakTone: string;
+  headroom: string;
+  headroomTone: string;
   dr: string;
   drTone: string;
   clip: string;
   clipTone: string;
   centroid: string;
 }
+
+const DBFS_CEILING = 0;
 
 /* ── Typed `window.*` accessors for the pure helper classic-scripts ──
  * Mirrors liveCaptureStore.ts's getArmState()-style pattern: these modules are
@@ -659,6 +664,8 @@ export function statsRowView(sox: unknown, spectrum: unknown): StatsRowView {
     rmsTone: s.rmsDbfs > -6 ? 'check' : '',
     peak: fmt(s.peakDbfs),
     peakTone: s.peakDbfs > -1 ? 'issue' : '',
+    headroom: Number.isFinite(s.peakDbfs) ? fmt(DBFS_CEILING - s.peakDbfs) : '—',
+    headroomTone: Number.isFinite(s.peakDbfs) && s.peakDbfs > -1 ? 'issue' : '',
     dr: fmt(s.dynamicRangeDb),
     drTone: s.dynamicRangeDb < 6 ? 'check' : '',
     clip: s.clipping ? 'YES' : 'No',
@@ -670,17 +677,44 @@ export function statsRowView(sox: unknown, spectrum: unknown): StatsRowView {
 // The live variant (DR reads '—', clip reads 'CLIP') — matches
 // inline-app.js's updateLiveStatsRow exactly.
 export function liveStatsRowView(ch: LiveMeterChannel): StatsRowView {
+  const peakIsFinite = Number.isFinite(ch.peak);
   return {
     rms: fmt(ch.rms),
     rmsTone: ch.rms > -6 ? 'check' : '',
     peak: fmt(ch.peak),
     peakTone: ch.peak > -1 ? 'issue' : '',
+    headroom: peakIsFinite ? fmt(DBFS_CEILING - ch.peak) : '—',
+    headroomTone: peakIsFinite && ch.peak > -1 ? 'issue' : '',
     dr: '—',
     drTone: '',
     clip: ch.clipping ? 'CLIP' : 'No',
     clipTone: ch.clipping ? 'issue' : '',
     centroid: ch.centroid ? Math.round(ch.centroid).toLocaleString() : '—',
   };
+}
+
+// Adapts the shared live-stat formatter for the selected inspector. Synthetic
+// idle channels have no live statistics, so callers use its null result to
+// render or patch the complete unavailable tile set.
+export function eqPaneLevelTilesView(ch: LiveMeterChannel | null | undefined): EqPaneLevelTilesView | null {
+  if (!ch || ch.idle) return null;
+  const stats = liveStatsRowView(ch);
+  return {
+    rms: stats.rms, rmsTone: stats.rmsTone,
+    peak: stats.peak, peakTone: stats.peakTone,
+    headroom: stats.headroom, headroomTone: stats.headroomTone,
+    clip: stats.clip, clipTone: stats.clipTone,
+  };
+}
+
+// Resolves only a valid selected channel from a tick-shaped channel list so
+// an out-of-range selection clears the inspector rather than retaining a
+// previous strip's readings.
+export function selectedEqPaneLevelTilesView(channels: LiveMeterChannel[], selectedIndex: number | null): EqPaneLevelTilesView | null {
+  const selectedChannel = selectedIndex != null && Number.isInteger(selectedIndex) && selectedIndex >= 0
+    ? channels[selectedIndex] ?? null
+    : null;
+  return eqPaneLevelTilesView(selectedChannel);
 }
 
 /* c8 ignore start -- DOM applier, no jsdom in this harness (renderToString
