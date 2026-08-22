@@ -1648,6 +1648,71 @@ describe('eqPaneSignature', () => {
     { kind: 'mono', a: 1, b: 2, label: 'Vocals' },
   ];
 
+  function inspector(overrides: Partial<EqPaneInspectorView> = {}): EqPaneInspectorView {
+    return {
+      selectedIndex: 1,
+      strip: { kind: 'stereo', a: 2, b: 3, armed: true, label: 'Keys' },
+      deviceOptions: [{ value: '', label: 'Default Device' }, { value: '4', label: 'Studio Rack' }],
+      selectedDevice: '4',
+      deviceChannels: 8,
+      disabled: false,
+      playbackTrack: { kind: 'stereo', label: 'Keys playback' },
+      playbackRoute: [4],
+      playbackDeviceChannels: 8,
+      levelTiles: {
+        rms: '-20.0', rmsTone: '', peak: '-4.0', peakTone: '',
+        headroom: '4.0', headroomTone: '', clip: 'OK', clipTone: '',
+      },
+      ...overrides,
+    };
+  }
+
+  it('keeps inspector-aware consecutive meter ticks eligible for arc, bar, and level-tile patches (#1066)', () => {
+    const roomA: LiveMeterChannel = { ...LIVE_CHANNELS[0], bands: { ...LIVE_CHANNELS[0].bands, mid: -24 }, rms: -30 };
+    const roomB: LiveMeterChannel = { ...LIVE_CHANNELS[0], bands: { ...LIVE_CHANNELS[0].bands, mid: -8 }, rms: -12 };
+    const selectedA: LiveMeterChannel = { ...LIVE_CHANNELS[1], bands: { ...LIVE_CHANNELS[1].bands, bass: -30 }, rms: -28 };
+    const selectedB: LiveMeterChannel = { ...LIVE_CHANNELS[1], bands: { ...LIVE_CHANNELS[1].bands, bass: -6 }, rms: -10 };
+    const overrideA: EqPaneRoomOverride = { ch: roomA, label: 'Room Mic' };
+    const overrideB: EqPaneRoomOverride = { ch: roomB, label: 'Room Mic' };
+    const viewA = eqPaneView([roomA, selectedA], config, 0, 1, overrideA, inspector());
+    const viewB = eqPaneView([roomB, selectedB], config, 0, 1, overrideB, inspector({ levelTiles: {
+      rms: '-10.0', rmsTone: 'issue', peak: '-1.0', peakTone: 'issue',
+      headroom: '1.0', headroomTone: 'issue', clip: 'CLIP', clipTone: 'issue',
+    } }));
+
+    expect(eqPaneSignature(viewA)).toBe(eqPaneSignature(viewB));
+    expect(eqPanePatchPlan(viewA).primary!.curve.db).not.toEqual(eqPanePatchPlan(viewB).primary!.curve.db);
+    expect(eqPanePatchPlan(viewA).secondary!.curve.db).not.toEqual(eqPanePatchPlan(viewB).secondary!.curve.db);
+    expect(viewA.inspector?.levelTiles).not.toEqual(viewB.inspector?.levelTiles);
+    expect(viewA.primary).toMatchObject({ idx: EQ_PANE_ROOM_OVERRIDE_IDX, label: 'Room Mic' });
+    expect(viewB.primary).toMatchObject({ idx: EQ_PANE_ROOM_OVERRIDE_IDX, label: 'Room Mic' });
+  });
+
+  it('rebuilds inspector markup for selected strip and rendered binding changes (#1066)', () => {
+    const base = eqPaneView(LIVE_CHANNELS, config, 0, 1, null, inspector());
+    const selected = eqPaneView(LIVE_CHANNELS, config, 0, 0, null, inspector({ selectedIndex: 0 }));
+    const strip = eqPaneView(LIVE_CHANNELS, config, 0, 1, null, inspector({ strip: { kind: 'mono', a: 1, b: 2, armed: false, label: 'Lead Vox' } }));
+    const device = eqPaneView(LIVE_CHANNELS, config, 0, 1, null, inspector({
+      deviceOptions: [{ value: '8', label: 'USB Interface' }], selectedDevice: '8', deviceChannels: 16,
+    }));
+    const playback = eqPaneView(LIVE_CHANNELS, config, 0, 1, null, inspector({
+      playbackTrack: null, playbackRoute: null, playbackDeviceChannels: 0,
+    }));
+    const noPlaybackRoute = eqPaneView(LIVE_CHANNELS, config, 0, 1, null, inspector({
+      playbackTrack: null, playbackRoute: [6], playbackDeviceChannels: 24,
+    }));
+    const disabled = eqPaneView(LIVE_CHANNELS, config, 0, 1, null, inspector({ disabled: true }));
+
+    for (const changed of [selected, strip, device, playback, disabled]) {
+      expect(eqPaneSignature(changed)).not.toBe(eqPaneSignature(base));
+    }
+    expect(eqPaneSignature(noPlaybackRoute)).toBe(eqPaneSignature(playback));
+    expect(eqPaneInspectorHTML(strip.inspector)).toContain('Lead Vox');
+    expect(eqPaneInspectorHTML(device.inspector)).toContain('value="8" selected>USB Interface');
+    expect(eqPaneInspectorHTML(playback.inspector)).toContain('eq-pane-inspector-output-notice');
+    expect(eqPaneInspectorHTML(disabled.inspector)).toContain('Channel name" value="Keys" disabled');
+  });
+
   it('is stable across two views with the same idx/label/flag', () => {
     const a = eqPaneSignature(eqPaneView(LIVE_CHANNELS, config, 0, 1));
     const b = eqPaneSignature(eqPaneView(LIVE_CHANNELS, config, 0, 1));

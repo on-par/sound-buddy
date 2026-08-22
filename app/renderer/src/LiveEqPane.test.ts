@@ -8,7 +8,7 @@ import LiveEqPane, { applyEqPaneClassificationChange, applyEqPaneInspectorChange
 import { useLiveCaptureStore } from './stores/liveCaptureStore';
 import { useSettingsStore } from './stores/settingsStore';
 import { useSoundcheckStore } from './stores/soundcheckStore';
-import { deviceChannelCount, deviceNameFor, deviceOptionLabel, eqPaneClassificationHTML, eqPaneHTML, eqPaneInspectorHTML, eqPaneView, type EqPaneView } from './live-capture-panel';
+import { deviceChannelCount, deviceNameFor, deviceOptionLabel, eqPaneClassificationHTML, eqPaneHTML, eqPaneInspectorHTML, eqPaneView, type EqPaneInspectorView, type EqPaneView } from './live-capture-panel';
 import { currentEqPaneChannels, eqPaneLevelTilesView, liveWorkspaceViewState } from './live-workspace-view';
 import type { LiveEvent } from './live-capture-panel';
 import type { AppSettings } from '../../electron/ipc/api';
@@ -64,7 +64,7 @@ function expectedPaneHTML(): string {
   const override = secondaryActive && s.lastMeasurementChannels
     ? { ch: s.lastMeasurementChannels[0], label: s.secondaryMeasurement.deviceName }
     : null;
-  const view: EqPaneView = eqPaneView(channels, s.channelConfig, s.measurementSource, s.selectedChannel, override);
+  const view: EqPaneView = eqPaneView(channels, s.channelConfig, s.measurementSource, s.selectedChannel, override, expectedInspectorView());
   return eqPaneHTML(view);
 }
 
@@ -88,15 +88,15 @@ function expectedClassificationHTML(): string {
   });
 }
 
-function expectedInspectorHTML(): string {
+function expectedInspectorView(): EqPaneInspectorView | null {
   const live = useLiveCaptureStore.getState();
   const soundcheck = useSoundcheckStore.getState();
   const selectedIndex = live.selectedChannel;
   const strip = selectedIndex != null && selectedIndex >= 0 ? live.channelConfig[selectedIndex] : null;
-  if (!strip || selectedIndex == null) return '';
+  if (!strip || selectedIndex == null) return null;
   const channel = currentEqPaneChannels(liveWorkspaceViewState(live, useSettingsStore.getState().settings))[selectedIndex];
   const stats = eqPaneLevelTilesView(channel);
-  return eqPaneInspectorHTML({
+  return {
     selectedIndex,
     strip,
     deviceOptions: [{ value: '', label: 'Default Device' }, ...live.devices.map((device) => ({ value: String(device.index), label: deviceOptionLabel(device) }))],
@@ -112,7 +112,11 @@ function expectedInspectorHTML(): string {
       headroom: stats.headroom, headroomTone: stats.headroomTone,
       clip: stats.clip, clipTone: stats.clipTone,
     } : null,
-  });
+  };
+}
+
+function expectedInspectorHTML(): string {
+  return eqPaneInspectorHTML(expectedInspectorView());
 }
 
 function expectedMarkup(): string {
@@ -266,6 +270,21 @@ describe('LiveEqPane', () => {
     const html = renderMarkup();
     expect(html).toBe(expectedMarkup());
     expect(html).toContain('Room — Room Mic');
+  });
+
+  it('composes inspector controls with the active secondary Room override (#1066)', () => {
+    useLiveCaptureStore.setState({
+      selectedChannel: 1,
+      secondaryMeasurement: { status: 'active', deviceName: 'Room Mic' },
+      secondaryWindows: [{ type: 'window', window: 1, ts: 0, channels: TICK_CHANNELS, masking: [] } as LiveEvent],
+      lastMeasurementChannels: [TICK_CHANNELS[0]] as never,
+    });
+    const html = renderMarkup();
+    expect(html).toBe(expectedMarkup());
+    expect(html).toContain('eq-pane-inspector');
+    expect(html).toContain('data-selected-index="1"');
+    expect(html).toContain('Room — Room Mic');
+    expect(html).not.toContain('Room — Track 2');
   });
 
   it('keeps the board Room slot byte-identical while the secondary source is merely selected but not active', () => {
