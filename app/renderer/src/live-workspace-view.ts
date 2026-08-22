@@ -731,7 +731,7 @@ export function dawShellHTML(state: LiveWorkspaceViewState, routingDrawerContent
         + laneGrid
         + `</div>`;
     }).join('')}</div>`
-    : `<div class="daw-lane daw-empty-state">Add tracks to see channel lanes</div>`;
+    : `<div class="daw-lane daw-empty-state">Add your first track</div>`;
   // The overall-mix row (#1044): emitted like every other row, twice, once per
   // column, and last in each — it is not a track head/lane, so it never comes
   // from dawTrackRows and always renders, even with zero configured tracks.

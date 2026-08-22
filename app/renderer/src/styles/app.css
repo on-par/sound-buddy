@@ -986,7 +986,7 @@
        and are re-based into the timeline column by the shared translate below
        (ADR-0090). */
     .daw-arrangement { position:relative; display:flex; flex-direction:row; flex:1; min-height:0; }
-    .daw-track-heads { display:flex; flex-direction:column; flex:0 0 var(--daw-head-w); width:var(--daw-head-w); }
+    .daw-track-heads { position:relative; z-index:1; display:flex; flex-direction:column; flex:0 0 var(--daw-head-w); width:var(--daw-head-w); }
     /* The ruler row's head cell: the head column's first child, matching the
        ruler's height from the same --daw-ruler-row-h so every head row sits
        on its lane row (#1048). */
@@ -1014,6 +1014,9 @@
     .daw-track-head-level { grid-area:meter; align-self:center; width:52px; height:4px; overflow:hidden; border-radius:2px; background:var(--border-subtle); }
     .daw-track-head-level-fill { display:block; height:100%; background:var(--gold-text); }
     .daw-track-heads .live-group-head, .daw-lane-group-spacer { flex:0 0 32px; height:32px; box-sizing:border-box; margin:0; padding:0 9px; border-bottom:1px solid var(--border-subtle); }
+    .daw-track-heads .live-group-head { gap:4px; }
+    .daw-track-heads .live-group-name { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .daw-track-heads .live-group-rename, .daw-track-heads .live-group-del { flex:0 0 auto; padding:0 2px; font-size:9px; }
     .daw-lane-group-spacer { pointer-events:none; }
     .daw-lane.group-collapsed { display:none; }
     /* The overall-mix row's head cell (#1044): the arrangement's last paired

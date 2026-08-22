@@ -546,7 +546,7 @@ describe('dawShellHTML / dawShellPatchView', () => {
   });
 
   it('renders the empty-state row with no channels', () => {
-    expect(dawShellHTML(makeState({ channelConfig: [] }))).toContain('Add tracks to see channel lanes');
+    expect(dawShellHTML(makeState({ channelConfig: [] }))).toContain('Add your first track');
   });
 
   it('stamps the transport chip and capture-mode token from live state', () => {
@@ -627,7 +627,7 @@ describe('dawShellHTML / dawShellPatchView', () => {
 
   it('keeps the empty-state row inside the lane column (#1042)', () => {
     const html = dawShellHTML(makeState({ channelConfig: [] }));
-    expect(html.indexOf('Add tracks to see channel lanes'))
+    expect(html.indexOf('Add your first track'))
       .toBeGreaterThan(html.indexOf('<div class="daw-lane-column">'));
   });
 
@@ -779,7 +779,7 @@ describe('dawTrackRows / configured track rows (#1043)', () => {
     const html = dawShellHTML(makeState({ channelConfig: [{ kind: 'mono', a: 3, b: 4, armed: false }], channelGroups: [] }));
     expect(html).toMatch(/class="[^"]*\bdaw-track-head\b[^"]*" data-ch="0"/);
     expect(html).toContain('class="daw-lane daw-channel-lane" data-ch="0"');
-    expect(html).not.toContain('Add tracks to see channel lanes');
+    expect(html).not.toContain('Add your first track');
   });
 
   it('head and lane row counts stay in parity across every supplied view state', () => {
@@ -797,7 +797,7 @@ describe('dawTrackRows / configured track rows (#1043)', () => {
     const html = dawShellHTML(makeState({ channelConfig: [] }));
     expect(countClassToken(html, 'daw-track-head')).toBe(0);
     expect(html).toContain('class="daw-master-head"');
-    expect(html).toContain('Add tracks to see channel lanes');
+    expect(html).toContain('Add your first track');
   });
 
   it('dawShellHTML is pure — equal state renders an identical head column, and changing channelConfig changes it', () => {
@@ -877,7 +877,7 @@ describe('overall-mix row and status line (#1044)', () => {
     const html = dawShellHTML(makeState({ channelConfig: [] }));
     expect(html).toContain('class="daw-master-head"');
     expect(html).toContain('daw-mix-lane');
-    expect(html).toContain('Add tracks to see channel lanes');
+    expect(html).toContain('Add your first track');
   });
 
   it('dawShellHTML stays pure and reflects the supplied snapshot, not fixed markup', () => {

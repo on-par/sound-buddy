@@ -132,7 +132,7 @@ describe('DAW workspace timeline shell markup (#517)', () => {
   });
 
   it('renders a muted empty-state row when channelConfig is empty', () => {
-    expect(workspaceViewTs).toContain('Add tracks to see channel lanes');
+    expect(workspaceViewTs).toContain('Add your first track');
   });
 
   it('composes the shared Session Record control into the transport (#1081)', () => {

@@ -139,12 +139,13 @@ export default function LiveWorkspace(): JSX.Element {
       raf: (cb) => requestAnimationFrame(cb),
       cancelRaf: (handle) => cancelAnimationFrame(handle),
       patch: (snap) => {
+        const freshTick = !!snap.lastTick && snap.lastTick !== lastPatchedTick;
         if (snap.lastTick && snap.lastTick !== lastPatchedTick) {
           lastPatchedTick = snap.lastTick;
           applyLiveTick(snap);
         }
         const el = document.getElementById('live-level-readout');
-        if (el) patchLevelReadout(el, liveLevelReadout(snap));
+        if (el) patchLevelReadout(el, liveLevelReadout(freshTick ? { ...snap, isCapturing: true } : snap));
       },
     });
     controller.start();
