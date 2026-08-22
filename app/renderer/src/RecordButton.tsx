@@ -8,11 +8,10 @@
 // An idle press flows into recordCapture(runtime()), which starts monitoring
 // first when no session is live and then promotes in place (#458) via the
 // same bridged recordCapture helper LiveControls.tsx exports; a Recording
-// press stops via stopLiveCapture. Visible only while the Live tab is the
-// active mode (`appMode === 'live'`) and Pro-gated via the shared body.not-pro
-// CSS hook on #record-button-island (app.css) rather than re-deriving license
-// status here — see the #729 plan's ADR (the #727 postmortem this pattern
-// guards against).
+// press stops via stopLiveCapture. It stays visible off Live through recording
+// and transitions so Stop remains reachable, and is Pro-gated via the shared
+// body.not-pro CSS hook on #record-button-island (app.css) rather than
+// re-deriving license status here.
 
 import type { JSX } from 'react';
 import { useStoreShallow } from './stores/useStoreShallow';
@@ -30,13 +29,14 @@ export default function RecordButton(): JSX.Element | null {
     stopping: s.stopping,
   }));
 
-  if (appMode !== 'live') return null;
+  const phase = window.liveTransitionState.capturePhase({ liveRunning: isCapturing, liveMode, promoting, stopping });
+  const view = recordButtonView(phase);
 
-  const view = recordButtonView({ liveRunning: isCapturing, liveMode, promoting, stopping });
+  if (appMode !== 'live' && view.phase === 'idle') return null;
 
   function onClick() {
-    const action = recordButtonAction(view.phase, view.disabled);
-    if (action === 'promote') void recordCapture(runtime());
+    const action = recordButtonAction(view.phase);
+    if (action === 'record') void recordCapture(runtime());
     else if (action === 'stop') void stopLiveCapture(runtime());
   }
 

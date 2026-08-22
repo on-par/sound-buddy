@@ -27,6 +27,7 @@ const dawWorkspaceState = require('../daw-workspace-state.js');
 const dawPlayheadState = require('../daw-playhead-state.js');
 const dawWaveformState = require('../daw-waveform-state.js');
 const grading = require('../grading.js');
+const liveTransitionState = require('../live-transition-state.js');
 
 function settings(overrides: Partial<AppSettings> = {}): AppSettings {
   return {
@@ -45,7 +46,7 @@ beforeEach(() => {
   (globalThis as { window?: unknown }).window = {
     trackWorkspace, armState, groupState, rigReconcile, instrumentProfiles,
     liveSetupState, liveAdjustmentsState, dawWorkspaceState, dawPlayheadState,
-    dawWaveformState, grading,
+    dawWaveformState, grading, liveTransitionState,
     localStorage: { getItem: () => null, setItem: () => {} },
   };
   useLiveCaptureStore.setState({

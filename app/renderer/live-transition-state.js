@@ -6,8 +6,8 @@
 // toggle and every config control freeze the moment capture starts, so
 // switching to Record requires a full stop/reconfigure/restart — this module
 // models the combined capture phase (idle/monitoring/starting-record/
-// recording) from the existing liveRunning/liveMode runtime flags plus one
-// new transient "promoting" flag, so the transport UI and the promotion
+// recording/stopping) from the existing liveRunning/liveMode runtime flags
+// plus transient "promoting" and "stopping" flags, so the transport UI and the promotion
 // guard can never diverge. No DOM, no globals. Loaded via <script src> and
 // read off window.liveTransitionState.
 (function (root) {
@@ -17,6 +17,7 @@
   var PHASE_MONITORING = 'monitoring';
   var PHASE_STARTING_RECORD = 'starting-record';
   var PHASE_RECORDING = 'recording';
+  var PHASE_STOPPING = 'stopping';
 
   var INDICATOR_REC = { text: 'REC', recording: true };
   var INDICATOR_LIVE = { text: 'LIVE', recording: false };
@@ -30,6 +31,7 @@
 
   /** Combined capture phase from the runtime's raw flags. */
   function capturePhase(view) {
+    if (view && view.stopping) return PHASE_STOPPING;
     var liveRunning = !!(view && view.liveRunning);
     if (!liveRunning) return PHASE_IDLE;
     if (view && view.promoting) return PHASE_STARTING_RECORD;

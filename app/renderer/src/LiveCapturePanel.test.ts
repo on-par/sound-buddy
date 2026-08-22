@@ -24,6 +24,7 @@ const dawWorkspaceState = require('../daw-workspace-state.js');
 const dawPlayheadState = require('../daw-playhead-state.js');
 const dawWaveformState = require('../daw-waveform-state.js');
 const grading = require('../grading.js');
+const liveTransitionState = require('../live-transition-state.js');
 
 const DEVICES: LiveDevice[] = [
   { index: 0, name: 'Scarlett 18i20', channels: 8, default_sr: 48000 },
@@ -65,7 +66,7 @@ beforeEach(() => {
   (globalThis as { window?: unknown }).window = {
     trackWorkspace, groupState, armState, rigReconcile, instrumentProfiles,
     liveSetupState, liveAdjustmentsState, dawWorkspaceState, dawPlayheadState,
-    dawWaveformState, grading,
+    dawWaveformState, grading, liveTransitionState,
     localStorage: storage,
     dawShellRuntime: {
       renderPlayhead: () => {},

@@ -1,23 +1,15 @@
 // Copyright (c) 2026 Patrick Robinson (on-par). All rights reserved.
 // Licensed under the Sound Buddy Desktop Application License (app/LICENSE).
 
-// Pure phase/view/action derivation for the top-bar RecordButton (#729). A
-// fresh module rather than a reuse of live-transition-state.js's
-// capturePhase/recordButtonView — that classic-script model has no
-// "stopping" phase and a different state vocabulary; see the #729 plan's
-// rejected alternatives for the full reasoning. live-transition-state.js
-// stays untouched and still drives inline-app.js's header REC/LIVE
-// indicator.
+// Pure phase/view/action derivation shared by the top-bar RecordButton and
+// the Session toolbar Record control. CapturePhase remains owned by the
+// classic live-transition-state model; neither render target reads raw store
+// flags or derives capture eligibility itself.
 
-export type RecordButtonPhase = 'idle' | 'starting' | 'recording' | 'stopping';
-export type RecordButtonAction = 'promote' | 'stop' | null;
+import type { CapturePhase } from './LiveControls';
 
-export interface RecordButtonInput {
-  liveRunning: boolean;
-  liveMode: 'monitor' | 'record';
-  promoting: boolean;
-  stopping: boolean;
-}
+export type RecordButtonPhase = CapturePhase;
+export type RecordButtonAction = 'record' | 'stop' | null;
 
 // The Record control is a no-text red-circle toggle (#777): no visible label
 // is rendered in any phase — the ariaLabel carries the state for screen
@@ -29,16 +21,8 @@ export interface RecordButtonViewModel {
   ariaLabel: string;
 }
 
-export function recordButtonPhase(input: RecordButtonInput): RecordButtonPhase {
-  if (input.stopping) return 'stopping';
-  if (input.promoting) return 'starting';
-  if (input.liveRunning && input.liveMode === 'record') return 'recording';
-  return 'idle';
-}
-
-export function recordButtonView(input: RecordButtonInput): RecordButtonViewModel {
-  const phase = recordButtonPhase(input);
-  if (phase === 'starting') {
+export function recordButtonView(phase: CapturePhase): RecordButtonViewModel {
+  if (phase === 'starting-record') {
     return { phase, disabled: true, ariaLabel: 'Starting recording' };
   }
   if (phase === 'recording') {
@@ -48,15 +32,21 @@ export function recordButtonView(input: RecordButtonInput): RecordButtonViewMode
     return { phase, disabled: true, ariaLabel: 'Stopping recording' };
   }
   return {
-    phase: 'idle',
+    phase,
     disabled: false,
     ariaLabel: 'Record — press to start recording',
   };
 }
 
-export function recordButtonAction(phase: RecordButtonPhase, disabled: boolean): RecordButtonAction {
-  if (disabled) return null;
-  if (phase === 'idle') return 'promote';
+export function recordButtonAction(phase: RecordButtonPhase): RecordButtonAction {
+  if (phase === 'idle' || phase === 'monitoring') return 'record';
   if (phase === 'recording') return 'stop';
   return null;
+}
+
+/** Raw Session-toolbar adapter over the shared record-control view. */
+export function sessionTabCaptureHTML(view: RecordButtonViewModel): string {
+  const pressed = view.phase === 'recording' || view.phase === 'stopping';
+  const label = view.phase === 'recording' ? 'Stop' : 'Record';
+  return `<button type="button" class="daw-session-record daw-session-record--${view.phase}" id="daw-session-record" aria-label="${view.ariaLabel}" aria-pressed="${pressed}"${view.disabled ? ' disabled' : ''}>${label}</button>`;
 }

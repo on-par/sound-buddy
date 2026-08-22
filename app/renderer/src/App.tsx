@@ -334,7 +334,7 @@ export default function App() {
       {booted && createPortal(<LiveEqPane />, document.getElementById('live-eq-pane-body')!)}
       {/* #757: the Live tab's in-tab controls are gone — no portals to
           LiveControls / LiveTransportControls / PreflightPanel. The top-bar
-          RecordButton portal below is the sole Live-capture surface. */}
+          RecordButton is the persistent cross-tab Stop surface. */}
       {booted && createPortal(<RecordButton />, document.getElementById('record-button-island')!)}
       {booted && createPortal(<SoundcheckPanel />, document.getElementById('soundcheck-island')!)}
       {booted && createPortal(<ModeTabs />, document.getElementById('mode-tabs')!)}

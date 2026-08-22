@@ -1,13 +1,15 @@
 // Copyright (c) 2026 Patrick Robinson (on-par). All rights reserved.
 // Licensed under the Sound Buddy Desktop Application License (app/LICENSE).
 
-import { describe, it, expect, afterEach } from 'vitest';
+import { describe, it, expect, afterEach, beforeEach } from 'vitest';
 import { createElement } from 'react';
 import { renderToString } from 'react-dom/server';
 import * as fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import RecordButton from './RecordButton';
 import { useLiveCaptureStore } from './stores/liveCaptureStore';
+
+const liveTransitionState = require('../live-transition-state.js');
 
 const INITIAL_LIVE_CAPTURE_STATE = useLiveCaptureStore.getInitialState();
 
@@ -19,6 +21,10 @@ afterEach(() => {
     promoting: INITIAL_LIVE_CAPTURE_STATE.promoting,
     stopping: INITIAL_LIVE_CAPTURE_STATE.stopping,
   });
+});
+
+beforeEach(() => {
+  (globalThis as { window?: unknown }).window = { liveTransitionState };
 });
 
 function renderMarkup(): string {
@@ -41,9 +47,34 @@ function expectCircleIcon(html: string) {
 }
 
 describe('RecordButton (#729)', () => {
-  it('renders nothing when appMode is not live', () => {
+  it('renders nothing off Live while the shared view is idle', () => {
     useLiveCaptureStore.setState({ appMode: 'reportcard' });
     expect(renderMarkup()).toBe('');
+  });
+
+  it('keeps an active recording Stop control visible across tabs', () => {
+    useLiveCaptureStore.setState({ appMode: 'soundcheck', isCapturing: true, liveMode: 'record' });
+    const html = renderMarkup();
+    expect(html).toContain('id="record-button"');
+    expect(html).toContain('record-btn--recording');
+  });
+
+  it('keeps the enabled monitoring Record control visible across tabs', () => {
+    useLiveCaptureStore.setState({ appMode: 'soundcheck', isCapturing: true, liveMode: 'monitor' });
+    const html = renderMarkup();
+    expect(html).toContain('id="record-button"');
+    expect(html).toContain('record-btn--monitoring');
+    expect(html).not.toMatch(/id="record-button"[^>]*disabled=""/);
+  });
+
+  it('keeps starting and stopping transitions visible across tabs', () => {
+    useLiveCaptureStore.setState({ appMode: 'soundcheck', isCapturing: true, liveMode: 'monitor', promoting: true });
+    expect(renderMarkup()).toMatch(/record-btn--starting-record[^>]*disabled=""/);
+
+    useLiveCaptureStore.setState({ appMode: 'soundcheck', isCapturing: false, liveMode: 'record', promoting: false, stopping: true });
+    const html = renderMarkup();
+    expect(html).toMatch(/record-btn--stopping[^>]*disabled=""/);
+    expect(html).toContain('aria-pressed="true"');
   });
 
   it('renders an enabled Record button when idle with no monitor session running (press starts capture) (#757)', () => {

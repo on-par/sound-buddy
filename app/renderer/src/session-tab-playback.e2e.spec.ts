@@ -150,4 +150,35 @@ test.describe('Session tab playback (#1080)', () => {
     await sendLiveEvent({ type: 'meter', channels: [{ rms: -12, peak: -3 }] });
     await expect(window.locator('#live-level-rms')).toHaveText('-12.0');
   });
+
+  test('Session Record and the persistent header share capture state across tabs (#1081)', async () => {
+    const sessionRecord = window.locator('#daw-session-record');
+    await expect(sessionRecord).toBeEnabled();
+    await sessionRecord.click();
+    await expect(window.locator('#record-button')).toHaveAttribute('aria-pressed', 'true');
+    await expect(sessionRecord).toHaveAttribute('aria-pressed', 'true');
+    await expect(sessionRecord).toHaveText('Stop');
+
+    await window.locator('.mode-tab[data-mode="dir"]').click();
+    const headerStop = window.locator('#record-button');
+    await expect(headerStop).toBeVisible();
+    await expect(headerStop).toHaveAttribute('aria-pressed', 'true');
+    await headerStop.click();
+
+    await window.locator('.mode-tab[data-mode="live"]').click();
+    await expect(sessionRecord).toBeEnabled();
+    await expect(sessionRecord).toHaveAttribute('aria-pressed', 'false');
+    await expect(sessionRecord).toHaveText('Record');
+  });
+
+  test('Session Record uses the existing blocked-start arm hint (#1081)', async () => {
+    const arms = window.locator('.daw-track-head-arm');
+    for (const arm of await arms.all()) await arm.click();
+    await expect(arms.first()).toHaveAttribute('aria-pressed', 'false');
+
+    await window.locator('#daw-session-record').click();
+    await expect(window.locator('#arm-hint')).toBeVisible();
+    await expect(window.locator('#arm-hint')).toContainText('Arm at least one strip');
+    await expect(window.locator('#daw-session-record')).toHaveAttribute('aria-pressed', 'false');
+  });
 });

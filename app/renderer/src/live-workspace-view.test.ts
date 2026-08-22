@@ -107,6 +107,7 @@ function makeState(overrides: Partial<LiveWorkspaceViewState> = {}): LiveWorkspa
     sessionPicker: overrides.sessionPicker ?? null,
     sessionWaveforms: overrides.sessionWaveforms ?? null,
     sessionPlayback: overrides.sessionPlayback ?? null,
+    capturePhase: overrides.capturePhase ?? 'idle',
   };
 }
 
@@ -549,8 +550,11 @@ describe('dawShellHTML / dawShellPatchView', () => {
     expect(a.laneSignature).toContain('\u0000');
   });
 
-  it('points users at the top-bar Record button for capture controls (#757)', () => {
-    expect(dawShellHTML(makeState())).toContain('Start and stop recording from the top-bar Record button');
+  it('composes the shared Session Record control into the transport', () => {
+    const html = dawShellHTML(makeState({ capturePhase: 'recording' }));
+    expect(html).toContain('id="daw-session-record"');
+    expect(html).toContain('daw-session-record--recording');
+    expect(html).toContain('>Stop</button>');
   });
 
   it('wraps the ruler and lanes in a semantic arrangement frame (#1042)', () => {
