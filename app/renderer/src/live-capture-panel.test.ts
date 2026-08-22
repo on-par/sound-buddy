@@ -28,6 +28,7 @@ import {
   eqPaneView,
   eqPaneHTML,
   eqPaneClassificationHTML,
+  eqPaneInspectorHTML,
   eqPaneSignature,
   eqPanePatchPlan,
   EQ_PANE_ROOM_OVERRIDE_IDX,
@@ -67,6 +68,7 @@ import {
   type WindowData,
   type EqPaneRoomOverride,
   type EqPaneClassificationView,
+  type EqPaneInspectorView,
 } from './live-capture-panel';
 
 const css = fs.readFileSync(fileURLToPath(new URL('./styles/app.css', import.meta.url)), 'utf8');
@@ -570,6 +572,69 @@ describe('eqPaneClassificationHTML', () => {
     }));
     expect(html).toContain('&lt;Drums &amp; Vox&gt;');
     expect(html).toContain('&lt;Bass &amp; &quot;Vocal&quot;&gt;');
+  });
+});
+
+describe('eqPaneInspectorHTML (#1064)', () => {
+  function inspector(overrides: Partial<EqPaneInspectorView> = {}): EqPaneInspectorView {
+    return {
+      selectedIndex: 1,
+      strip: { kind: 'stereo', a: 2, b: 3, armed: true, label: 'Keys' },
+      deviceOptions: [{ value: '', label: 'Default Device' }, { value: '4', label: 'Studio & Rack' }],
+      selectedDevice: '4',
+      deviceChannels: 8,
+      disabled: false,
+      playbackTrack: { kind: 'stereo' },
+      playbackRoute: [4, 5],
+      playbackDeviceChannels: 6,
+      ...overrides,
+    };
+  }
+
+  it('binds a selected stereo strip identity, input, arm state, and matching playback route', () => {
+    const html = eqPaneInspectorHTML(inspector());
+    expect(html).toContain('Keys');
+    expect(html).toContain('Strip 2');
+    expect(html).toContain('eq-pane-inspector-swatch band-1');
+    expect(html).toContain('<option value="stereo" selected>Stereo</option>');
+    expect(html).toContain('<option value="2" selected>3</option>');
+    expect(html).toContain('<option value="3" selected>4</option>');
+    expect(html).toContain('value="4" selected>Studio &amp; Rack');
+    expect(html).toContain('aria-pressed="true"');
+    expect(html).toContain('<option value="4" selected>Ch 5-6</option>');
+  });
+
+  it('escapes strip and output-facing labels and falls back to the track label', () => {
+    const html = eqPaneInspectorHTML(inspector({
+      selectedIndex: 0,
+      strip: { kind: 'mono', a: 0, b: 1, label: '<Lead & "Vox">' },
+      deviceOptions: [{ value: '1', label: '<Output & "Rack">' }],
+      selectedDevice: '1',
+      playbackTrack: { kind: 'mono' },
+      playbackRoute: [0],
+    }));
+    expect(html).toContain('&lt;Lead &amp; &quot;Vox&quot;&gt;');
+    expect(html).toContain('&lt;Output &amp; &quot;Rack&quot;&gt;');
+    expect(eqPaneInspectorHTML(inspector({ strip: { kind: 'mono', a: 0, b: 1 } }))).toContain('Track 2');
+  });
+
+  it('renders a disabled route explanation when the session has no matching track', () => {
+    const html = eqPaneInspectorHTML(inspector({ playbackTrack: null, playbackRoute: null }));
+    expect(html).toContain('eq-pane-inspector-output-notice');
+    expect(html).toContain('Load a soundcheck session with a matching track to choose playback output.');
+    expect(html).toContain('disabled');
+  });
+
+  it('renders nothing for an invalid or absent selection', () => {
+    expect(eqPaneInspectorHTML(null)).toBe('');
+    expect(eqPaneInspectorHTML(inspector({ selectedIndex: -1 }))).toBe('');
+    expect(eqPaneInspectorHTML(inspector({ selectedIndex: 1.5 }))).toBe('');
+  });
+
+  it('uses the soundcheck default output when a matching track has no saved route yet', () => {
+    const html = eqPaneInspectorHTML(inspector({ playbackRoute: null }));
+    expect(html).toContain('class="eq-pane-inspector-output"');
+    expect(html).toContain('<option value="0" selected>Ch 1-2</option>');
   });
 });
 

@@ -4,10 +4,11 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { createElement } from 'react';
 import { renderToString } from 'react-dom/server';
-import LiveEqPane, { applyEqPaneClassificationChange, type ClassificationChangeDeps } from './LiveEqPane';
+import LiveEqPane, { applyEqPaneClassificationChange, applyEqPaneInspectorChange, type ClassificationChangeDeps, type EqPaneInspectorChangeDeps } from './LiveEqPane';
 import { useLiveCaptureStore } from './stores/liveCaptureStore';
 import { useSettingsStore } from './stores/settingsStore';
-import { deviceNameFor, eqPaneClassificationHTML, eqPaneHTML, eqPaneView, type EqPaneView } from './live-capture-panel';
+import { useSoundcheckStore } from './stores/soundcheckStore';
+import { deviceChannelCount, deviceNameFor, deviceOptionLabel, eqPaneClassificationHTML, eqPaneHTML, eqPaneInspectorHTML, eqPaneView, type EqPaneView } from './live-capture-panel';
 import type { LiveEvent } from './live-capture-panel';
 import type { AppSettings } from '../../electron/ipc/api';
 
@@ -86,8 +87,31 @@ function expectedClassificationHTML(): string {
   });
 }
 
+function expectedInspectorHTML(): string {
+  const live = useLiveCaptureStore.getState();
+  const soundcheck = useSoundcheckStore.getState();
+  const selectedIndex = live.selectedChannel;
+  const strip = selectedIndex != null && selectedIndex >= 0 ? live.channelConfig[selectedIndex] : null;
+  if (!strip || selectedIndex == null) return '';
+  return eqPaneInspectorHTML({
+    selectedIndex,
+    strip,
+    deviceOptions: [{ value: '', label: 'Default Device' }, ...live.devices.map((device) => ({ value: String(device.index), label: deviceOptionLabel(device) }))],
+    selectedDevice: live.selectedDevice,
+    deviceChannels: deviceChannelCount(live.selectedDevice, live.devices),
+    disabled: live.isCapturing || live.demoting,
+    playbackTrack: soundcheck.manifest?.tracks[selectedIndex] ?? null,
+    playbackRoute: soundcheck.routes[selectedIndex] ?? [0],
+    playbackDeviceChannels: soundcheck.deviceChannels,
+  });
+}
+
 function expectedMarkup(): string {
-  return `<div><div>${expectedPaneHTML()}</div><div>${expectedClassificationHTML()}</div></div>`;
+  const selected = useLiveCaptureStore.getState().selectedChannel;
+  const pane = selected == null || selected < 0 || !useLiveCaptureStore.getState().channelConfig[selected]
+    ? '<div class="eq-pane-section eq-pane-secondary eq-pane-empty"><div class="eq-pane-empty-hint">Click a channel to inspect it here</div></div>'
+    : expectedPaneHTML();
+  return `<div><div>${expectedInspectorHTML()}</div><div>${expectedClassificationHTML()}</div><div>${pane}</div><footer class="eq-pane-footer">Sound Buddy does not write to your console.</footer></div>`;
 }
 
 beforeEach(() => {
@@ -116,6 +140,7 @@ beforeEach(() => {
     lastMeasurementChannels: null,
   });
   useSettingsStore.setState({ settings: settings() });
+  useSoundcheckStore.setState({ manifest: null, routes: [], deviceChannels: 0 });
 });
 
 afterEach(() => {
@@ -125,22 +150,37 @@ afterEach(() => {
     secondaryMeasurement: { status: 'off', deviceName: '' }, secondaryWindows: [], lastMeasurementChannels: null,
   });
   useSettingsStore.setState({ settings: null, settingsError: null });
+  useSoundcheckStore.setState({ manifest: null, routes: [], deviceChannels: 0 });
 });
 
 describe('LiveEqPane', () => {
-  it('renders the Room section only until a strip is selected (#668)', () => {
+  it('renders only the empty-state guidance and read-only footer until a strip is selected', () => {
     const html = renderMarkup();
     expect(html).toBe(expectedMarkup());
-    expect(html).toContain('eq-pane-primary');
-    expect(html).toContain('Room — Track 1');
     expect(html).toContain('eq-pane-empty-hint');
-    expect(html).not.toContain('eq-pane-secondary">');
+    expect(html).toContain('Sound Buddy does not write to your console.');
+    expect(html).not.toContain('eq-pane-primary');
+    expect(html).not.toContain('eq-pane-classification');
+  });
+
+  it('keeps a stale selected index in the same empty state without Room or inspector markup', () => {
+    useLiveCaptureStore.setState({ selectedChannel: 9 });
+    const html = renderMarkup();
+    expect(html).toBe(expectedMarkup());
+    expect(html).toContain('eq-pane-empty-hint');
+    expect(html).toContain('Sound Buddy does not write to your console.');
+    expect(html).not.toContain('eq-pane-primary');
+    expect(html).not.toContain('eq-pane-inspector');
+    expect(html).not.toContain('eq-pane-classification');
   });
 
   it('adds the Selected section for the clicked strip with the measurement-source suffix when it is also the room', () => {
     useLiveCaptureStore.setState({ selectedChannel: 0 });
+    useSoundcheckStore.setState({ manifest: { tracks: [{ kind: 'mono' }] }, routes: [[1]], deviceChannels: 4 });
     const html = renderMarkup();
     expect(html).toBe(expectedMarkup());
+    expect(html).toContain('eq-pane-inspector');
+    expect(html).toContain('<option value="1" selected>Ch 2</option>');
     expect(html).toContain('Selected — Track 1 · Measurement source');
     expect(html).not.toContain('eq-pane-empty-hint');
   });
@@ -193,6 +233,7 @@ describe('LiveEqPane', () => {
 
   it('swaps the Room slot to the secondary room mic when active (#460)', () => {
     useLiveCaptureStore.setState({
+      selectedChannel: 0,
       secondaryMeasurement: { status: 'active', deviceName: 'Room Mic' },
       secondaryWindows: [{ type: 'window', window: 1, ts: 0, channels: TICK_CHANNELS, masking: [] } as LiveEvent],
       lastMeasurementChannels: [TICK_CHANNELS[0]] as never,
@@ -204,6 +245,7 @@ describe('LiveEqPane', () => {
 
   it('keeps the board Room slot byte-identical while the secondary source is merely selected but not active', () => {
     useLiveCaptureStore.setState({
+      selectedChannel: 0,
       secondaryMeasurement: { status: 'off', deviceName: 'Room Mic' },
       secondaryWindows: [],
       lastMeasurementChannels: null,
@@ -250,5 +292,65 @@ describe('applyEqPaneClassificationChange', () => {
     expect(deps.liveCapture.assignGroup).not.toHaveBeenCalled();
     expect(deps.instrumentProfiles.recordOverride).not.toHaveBeenCalled();
     expect(deps.settings.updateSettings).not.toHaveBeenCalled();
+  });
+});
+
+describe('applyEqPaneInspectorChange (#1064)', () => {
+  function changeDeps(selectedChannel: number | null = 1): EqPaneInspectorChangeDeps {
+    return {
+      liveCapture: {
+        selectedChannel,
+        channelConfig: CONFIG,
+        selectDevice: vi.fn(),
+        setStripLabel: vi.fn(),
+        setStripKind: vi.fn(),
+        setStripSource: vi.fn(),
+        toggleArm: vi.fn(),
+      },
+      soundcheck: { manifest: { tracks: [{ kind: 'mono' }, { kind: 'stereo' }] }, setRoute: vi.fn() },
+    };
+  }
+
+  it.each([
+    ['label', 'Lead Vox', 'setStripLabel', [1, 'Lead Vox']],
+    ['kind', 'stereo', 'setStripKind', [1, 'stereo']],
+    ['source', '3', 'setStripSource', [1, 'a', 3]],
+    ['arm', '', 'toggleArm', [1]],
+    ['device', '4', 'selectDevice', ['4']],
+    ['output', '2', 'setRoute', [1, 2]],
+  ] as const)('routes %s changes through the established store action', (kind, value, action, args) => {
+    const deps = changeDeps();
+    applyEqPaneInspectorChange(kind, value, deps);
+    const target = action === 'setRoute' ? deps.soundcheck.setRoute : deps.liveCapture[action];
+    expect(target).toHaveBeenCalledWith(...args);
+  });
+
+  it('uses the requested stereo leg when source changes carry that field', () => {
+    const deps = changeDeps();
+    applyEqPaneInspectorChange('source', '4:b', deps);
+    expect(deps.liveCapture.setStripSource).toHaveBeenCalledWith(1, 'b', 4);
+  });
+
+  it('rejects malformed or negative source and output values', () => {
+    const deps = changeDeps();
+    applyEqPaneInspectorChange('source', 'bad', deps);
+    applyEqPaneInspectorChange('source', '-1:b', deps);
+    applyEqPaneInspectorChange('source', '3:not-a-leg', deps);
+    applyEqPaneInspectorChange('output', 'bad', deps);
+    applyEqPaneInspectorChange('output', '-1', deps);
+    expect(deps.liveCapture.setStripSource).not.toHaveBeenCalled();
+    expect(deps.soundcheck.setRoute).not.toHaveBeenCalled();
+  });
+
+  it('does not write for null, negative, stale, or route-less selections', () => {
+    for (const selectedChannel of [null, -1, 9]) {
+      const deps = changeDeps(selectedChannel);
+      applyEqPaneInspectorChange('label', 'No write', deps);
+      expect(deps.liveCapture.setStripLabel).not.toHaveBeenCalled();
+    }
+    const noTrack = changeDeps();
+    noTrack.soundcheck.manifest = { tracks: [{ kind: 'mono' }] };
+    applyEqPaneInspectorChange('output', '2', noTrack);
+    expect(noTrack.soundcheck.setRoute).not.toHaveBeenCalled();
   });
 });
