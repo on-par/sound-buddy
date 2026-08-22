@@ -164,6 +164,7 @@ export default function LiveCapturePanel(): JSX.Element | null {
     sessionDir: st.sessionDir,
     manifest: st.manifest,
     playing: st.playing,
+    looping: st.looping,
     statusMessage: st.statusMessage,
     peaks: st.peaks,
     peaksStatus: st.peaksStatus,
@@ -180,7 +181,7 @@ export default function LiveCapturePanel(): JSX.Element | null {
     ? sessionTabWaveformView(soundcheck.manifest, soundcheck.peaks, soundcheck.peaksStatus, s.channelConfig)
     : null;
   const sessionPlayback = showShell
-    ? sessionTabPlaybackView(soundcheck.manifest, soundcheck.playing)
+    ? sessionTabPlaybackView(soundcheck.manifest, soundcheck.playing, soundcheck.looping)
     : null;
   const lc = useLiveCaptureStore.getState();
   const state = liveWorkspaceViewState(lc, settings, getDawShellRuntime()?.playheadElapsedMs?.() ?? 0, sessionPicker, sessionWaveforms, sessionPlayback);
@@ -335,6 +336,8 @@ export default function LiveCapturePanel(): JSX.Element | null {
     const target = e.target as Element;
     if (target.closest('#daw-session-play')) { void useSoundcheckStore.getState().play(); return; }
     if (target.closest('#daw-session-stop')) { void useSoundcheckStore.getState().stop(); return; }
+    if (target.closest('#daw-session-loop')) { useSoundcheckStore.getState().toggleLoop(); return; }
+    if (target.closest('#daw-session-return')) { void useSoundcheckStore.getState().returnToStart(); return; }
     // Guided first-use dismiss (#294): retire the banner permanently. The
     // node is removed directly rather than only via a re-render —
     // renderChannelConfig() early-outs while a capture is running, the same

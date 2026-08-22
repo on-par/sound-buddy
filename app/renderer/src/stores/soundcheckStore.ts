@@ -62,6 +62,7 @@ export interface SoundcheckState {
   deviceChannels: number;
   master: boolean;
   playing: boolean;
+  looping: boolean;
   elapsedText: string | null;
   mixdownNotice: string | null;
   statusMessage: string | null;
@@ -80,6 +81,8 @@ export interface SoundcheckState {
   setRoute(trackIndex: number, base: number): void;
   setMaster(master: boolean): void;
   play(): Promise<void>;
+  toggleLoop(): void;
+  returnToStart(): Promise<void>;
   seekTo(seconds: number): Promise<void>;
   stop(): Promise<void>;
   resetTransport(): void;
@@ -117,6 +120,7 @@ export function createSoundcheckStore(getApi: () => SoundcheckApi) {
     deviceChannels: 0,
     master: false,
     playing: false,
+    looping: false,
     elapsedText: null,
     mixdownNotice: null,
     statusMessage: null,
@@ -195,6 +199,7 @@ export function createSoundcheckStore(getApi: () => SoundcheckApi) {
         routes,
         mixdownNotice: mixdownNoticeText(manifest, routes, prev.deviceChannels, prev.master),
         lastElapsedTick: { elapsed: 0, duration: 0 },
+        looping: false,
       });
 
       // #734: trigger background per-track waveform-peak generation after a
@@ -245,18 +250,35 @@ export function createSoundcheckStore(getApi: () => SoundcheckApi) {
       const state = get();
       if (!state.manifest) return;
       set({ statusMessage: null });
+      const startOffsetSecs = state.lastElapsedTick?.elapsed ?? 0;
       const result = (await getApi().startPlayback({
         sessionDir: state.sessionDir ?? '',
         device: state.selectedDevice || undefined,
         route: getPlaybackRouting().routeSpec(state.routes),
         master: state.master || undefined,
+        ...(startOffsetSecs > 0 ? { startOffsetSecs } : {}),
       })) as { success?: boolean; error?: string } | undefined;
       if (result?.success === false) {
         set({ statusMessage: result.error || 'Could not start playback.' });
         return;
       }
-      set({ playing: true, elapsedText: '0:00 / 0:00', lastElapsedTick: { elapsed: 0, duration: 0 } });
+      set({ playing: true, elapsedText: '0:00 / 0:00', lastElapsedTick: state.lastElapsedTick ?? { elapsed: 0, duration: 0 } });
       useSpectrumStore.getState().setPanelState('empty', 'Buffering…');
+    },
+
+    toggleLoop() {
+      if (!get().manifest) return;
+      set((state) => ({ looping: !state.looping }));
+    },
+
+    async returnToStart() {
+      const state = get();
+      if (!state.manifest) return;
+      if (state.playing) {
+        await get().seekTo(0);
+        return;
+      }
+      set({ lastElapsedTick: { elapsed: 0, duration: state.lastElapsedTick?.duration ?? 0 } });
     },
 
     // #736 scrub-seek: the ONLY seek mechanism is ADR-0013's restart-with-

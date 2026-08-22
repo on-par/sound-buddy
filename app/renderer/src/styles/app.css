@@ -982,6 +982,7 @@
     .daw-transport-time { font:var(--fw-semibold) var(--fs-body)/1 ui-monospace, monospace; font-variant-numeric:tabular-nums; color:var(--text-primary); }
     .daw-session-playback-btn { height:var(--control-h-sm); padding:0 10px; border:1px solid var(--border-subtle); border-radius:var(--radius-sm); background:var(--surface-raised); color:var(--text-primary); font:var(--fw-medium) var(--fs-label)/1 var(--font-sans); cursor:pointer; transition:var(--transition-control); }
     .daw-session-playback-btn:hover:not(:disabled) { border-color:var(--border-focus); }
+    .daw-session-playback-btn.active { border-color:var(--gold-500); background:var(--gold-tint); color:var(--gold-text); box-shadow:var(--glow-focus); }
     .daw-session-playback-btn:disabled { opacity:0.45; cursor:not-allowed; }
     .daw-session-picker { display:flex; align-items:center; gap:6px; min-width:0; }
     .daw-session-picker-select { max-width:220px; min-width:140px; padding:5px 8px; border:1px solid var(--border-subtle); border-radius:var(--radius-sm); background:var(--surface-raised); color:var(--text-primary); font:var(--fw-regular) var(--fs-label)/1 var(--font-sans); }

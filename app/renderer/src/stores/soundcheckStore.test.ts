@@ -52,6 +52,7 @@ describe('createSoundcheckStore', () => {
     expect(s.manifest).toBeNull();
     expect(s.devices).toEqual([]);
     expect(s.playing).toBe(false);
+    expect(s.looping).toBe(false);
     expect(s.elapsedText).toBeNull();
     expect(s.mixdownNotice).toBeNull();
     expect(s.statusMessage).toBeNull();
@@ -110,12 +111,13 @@ describe('createSoundcheckStore', () => {
 
     it('loads a known session through the shared validated path', async () => {
       const { store } = makeStore({ readSession: async () => ({ success: true, manifest: MANIFEST }) });
-      store.setState({ recordedSessions: [{ sessionDir: '/recordings/sunday', name: 'Sunday AM' }] });
+      store.setState({ recordedSessions: [{ sessionDir: '/recordings/sunday', name: 'Sunday AM' }], looping: true });
 
       await expect(store.getState().loadSession('/recordings/sunday')).resolves.toBe(true);
       expect(store.getState().sessionDir).toBe('/recordings/sunday');
       expect(store.getState().manifest).toEqual(MANIFEST);
       expect(store.getState().lastElapsedTick).toEqual({ elapsed: 0, duration: 0 });
+      expect(store.getState().looping).toBe(false);
     });
 
     it('loads an external session through the same validated path', async () => {
@@ -433,6 +435,35 @@ describe('createSoundcheckStore', () => {
       spy.mockRestore();
     });
 
+    it('resumes playback from the retained positive take position', async () => {
+      const { store, mock } = makeStore({
+        startPlayback: async (opts) => {
+          mock.calls.push({ method: 'startPlayback', args: [opts] });
+          return { success: true };
+        },
+      });
+      store.setState({ manifest: MANIFEST, sessionDir: '/tmp/s', routes: [[0], [1, 2]], lastElapsedTick: { elapsed: 5, duration: 60 } });
+
+      await store.getState().play();
+
+      expect(mock.calls).toContainEqual({ method: 'startPlayback', args: [{ sessionDir: '/tmp/s', route: '0:0,1:1-2', startOffsetSecs: 5 }] });
+      expect(store.getState().lastElapsedTick).toEqual({ elapsed: 5, duration: 60 });
+    });
+
+    it('preserves the zero-position playback IPC contract', async () => {
+      const { store, mock } = makeStore({
+        startPlayback: async (opts) => {
+          mock.calls.push({ method: 'startPlayback', args: [opts] });
+          return { success: true };
+        },
+      });
+      store.setState({ manifest: MANIFEST, sessionDir: '/tmp/s', routes: [[0]], lastElapsedTick: { elapsed: 0, duration: 60 } });
+
+      await store.getState().play();
+
+      expect(mock.calls).toContainEqual({ method: 'startPlayback', args: [{ sessionDir: '/tmp/s', route: '0:0' }] });
+    });
+
     it('surfaces a status message and stays stopped when playback fails to start', async () => {
       const { store } = makeStore({ startPlayback: async () => ({ success: false, error: 'device busy' }) });
       store.setState({ manifest: MANIFEST, sessionDir: '/tmp/s', routes: [[0]], lastElapsedTick: { elapsed: 5, duration: 60 } });
@@ -447,6 +478,54 @@ describe('createSoundcheckStore', () => {
       store.setState({ manifest: MANIFEST, sessionDir: '/tmp/s', routes: [[0]] });
       await store.getState().play();
       expect(store.getState().statusMessage).toBe('Could not start playback.');
+    });
+  });
+
+  describe('loop and return transport controls', () => {
+    it('leaves loop and position unchanged without a loaded take', async () => {
+      const { store, mock } = makeStore();
+
+      store.getState().toggleLoop();
+      await store.getState().returnToStart();
+
+      expect(store.getState().looping).toBe(false);
+      expect(store.getState().lastElapsedTick).toBeNull();
+      expect(mock.calls).toEqual([]);
+    });
+
+    it('toggles the loaded take loop state in memory', () => {
+      const { store } = makeStore();
+      store.setState({ manifest: MANIFEST });
+      store.getState().toggleLoop();
+      expect(store.getState().looping).toBe(true);
+      store.getState().toggleLoop();
+      expect(store.getState().looping).toBe(false);
+    });
+
+    it('returns a stopped take to zero while preserving duration', async () => {
+      const { store, mock } = makeStore();
+      store.setState({ manifest: MANIFEST, playing: false, lastElapsedTick: { elapsed: 5, duration: 60 } });
+
+      await store.getState().returnToStart();
+
+      expect(store.getState().playing).toBe(false);
+      expect(store.getState().lastElapsedTick).toEqual({ elapsed: 0, duration: 60 });
+      expect(mock.calls).toEqual([]);
+    });
+
+    it('restarts an active take at zero through the established seek path', async () => {
+      const { store, mock } = makeStore({
+        startPlayback: async (opts) => {
+          mock.calls.push({ method: 'startPlayback', args: [opts] });
+          return { success: true };
+        },
+      });
+      store.setState({ manifest: MANIFEST, sessionDir: '/tmp/s', routes: [[0]], playing: true, lastElapsedTick: { elapsed: 5, duration: 60 } });
+
+      await store.getState().returnToStart();
+
+      expect(mock.calls).toContainEqual({ method: 'startPlayback', args: [{ sessionDir: '/tmp/s', route: '0:0', startOffsetSecs: 0 }] });
+      expect(store.getState().lastElapsedTick).toEqual({ elapsed: 0, duration: 0 });
     });
   });
 
