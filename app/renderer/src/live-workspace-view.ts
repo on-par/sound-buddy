@@ -298,13 +298,11 @@ function liveChannelAt(state: LiveWorkspaceViewState, idx: number): LiveMeterCha
 }
 
 // Port of inline-app.js's stripViewAt (#307 adapter). Resolves a strip's
-// group/token/arm/instrument fields from the snapshot instead of the module
-// vars inline-app.js used to read.
+// group and arm fields from the snapshot instead of the module vars
+// inline-app.js used to read.
 export function stripViewAt(state: LiveWorkspaceViewState, idx: number, ch: LiveMeterChannel): StripView {
   const strip = state.channelConfig[idx] || null;
   const groupIndex = getGroupState().groupOf(state.channelGroups, idx);
-  const token = strip ? getArmState().stripToken(strip) : String(idx);
-  const savedProfiles = savedInstrumentProfilesForDevice(state);
   return {
     strip,
     displayName: getRigReconcile().resolveStripLabel(strip, ch, idx),
@@ -312,8 +310,6 @@ export function stripViewAt(state: LiveWorkspaceViewState, idx: number, ch: Live
     armed: getArmState().isArmed(strip),
     groupIndex,
     groupCollapsed: getGroupState().isGroupCollapsed(state.channelGroups, groupIndex),
-    instrumentProfileId: getInstrumentProfiles().effectiveProfileId(savedProfiles, token, strip && strip.label),
-    instrumentAuto: !(savedProfiles[token] && getInstrumentProfiles().isKnownProfileId(savedProfiles[token])),
   };
 }
 
@@ -327,7 +323,6 @@ export function livePanelView(state: LiveWorkspaceViewState): PanelView {
     // monitoring, #757) — see veqChannelHTML.
     liveMode: state.liveMode,
     groups: state.channelGroups,
-    instrumentProfiles: getInstrumentProfiles().PROFILES.map((p) => ({ id: p.id, label: p.label })),
   };
 }
 

@@ -34,6 +34,14 @@ test.describe('Named channel groups (#41)', () => {
     await window.locator('#rig-dialog-input').fill(name);
     await window.locator('#rig-dialog-ok').click();
   }
+  async function assignGroup(channelIndex: number, groupName: string) {
+    const strip = window.locator('#spectrum-body .live-ch').nth(channelIndex);
+    await strip.click();
+    await expect(strip).toHaveClass(/selected/);
+    const groupSelect = window.locator('.eq-pane-classification-group');
+    await expect(groupSelect).toBeVisible();
+    await groupSelect.selectOption({ label: groupName });
+  }
 
   test.beforeEach(async () => {
     await window.reload();
@@ -51,7 +59,7 @@ test.describe('Named channel groups (#41)', () => {
 
   test('create a group, assign a strip, and it renders grouped in the live board', async () => {
     await makeGroup('Drums');
-    await window.locator('#spectrum-body .live-ch').nth(0).locator('.live-ch-group').selectOption({ label: 'Drums' });
+    await assignGroup(0, 'Drums');
     await tick();
     const board = window.locator('#spectrum-body .sb-live-meters');
     await expect(board.locator('.live-group-head')).toHaveCount(2); // Drums + Ungrouped
@@ -63,7 +71,7 @@ test.describe('Named channel groups (#41)', () => {
 
   test('collapsing a group hides all its members entirely, leaving others alone (#483)', async () => {
     await makeGroup('Drums');
-    await window.locator('#spectrum-body .live-ch').nth(0).locator('.live-ch-group').selectOption({ label: 'Drums' });
+    await assignGroup(0, 'Drums');
     await tick();
     const header = window.locator('.live-group-head').first();
     await header.locator('.live-group-fold').click();
@@ -100,8 +108,8 @@ test.describe('Named channel groups (#41)', () => {
 
   test('keyboard Arrow Up reorders tracks within a group (#483)', async () => {
     await makeGroup('Drums');
-    await window.locator('#spectrum-body .live-ch').nth(0).locator('.live-ch-group').selectOption({ label: 'Drums' });
-    await window.locator('#spectrum-body .live-ch').nth(1).locator('.live-ch-group').selectOption({ label: 'Drums' });
+    await assignGroup(0, 'Drums');
+    await assignGroup(1, 'Drums');
     const chOrder = () => window.locator('#spectrum-body .live-ch').evaluateAll((els) => els.map((el) => el.getAttribute('data-ch')));
     await expect.poll(chOrder).toEqual(['0', '1']);
 
@@ -112,13 +120,14 @@ test.describe('Named channel groups (#41)', () => {
 
   test('removing a strip from config drops it from its group (no dangling ref)', async () => {
     await makeGroup('Drums');
-    await window.locator('#spectrum-body .live-ch').nth(0).locator('.live-ch-group').selectOption({ label: 'Drums' });
-    await window.locator('#spectrum-body .live-ch').nth(1).locator('.live-ch-group').selectOption({ label: 'Drums' });
+    await assignGroup(0, 'Drums');
+    await assignGroup(1, 'Drums');
     await window.locator('#spectrum-body .live-ch').nth(0).locator('.live-ch-x').click(); // remove strip 0
     // One strip remains; former strip 1 remapped to index 0 and is STILL in
     // Drums (value "0" = group index of Drums) — no dangling ref to strip 0.
     await expect(window.locator('#spectrum-body .live-ch')).toHaveCount(1);
-    await expect(window.locator('#spectrum-body .live-ch').nth(0).locator('.live-ch-group')).toHaveValue('0');
+    await window.locator('#spectrum-body .live-ch').nth(0).click();
+    await expect(window.locator('.eq-pane-classification-group')).toHaveValue('0');
     // Live board (one channel now) renders the survivor under Drums, no Ungrouped.
     await electronApp.evaluate(({ BrowserWindow }, chs) => {
       BrowserWindow.getAllWindows()[0].webContents.send('live-event', { type: 'meter', channels: chs });

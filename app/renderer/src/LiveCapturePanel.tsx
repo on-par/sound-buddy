@@ -41,7 +41,6 @@ import { useLiveCaptureStore, MAX_LABEL_LEN, type LapAction } from './stores/liv
 import { useSettingsStore } from './stores/settingsStore';
 import { useSpectrumStore } from './stores/spectrumStore';
 import { iconSvg } from './report-card';
-import { deviceNameFor } from './live-capture-panel';
 import {
   liveAdjustmentsPanelHTML,
   liveSetupStepsHTML,
@@ -56,8 +55,6 @@ import {
   getDawWorkspaceState,
   getDawShellRuntime,
   getGroupState,
-  getArmState,
-  getInstrumentProfiles,
   liveWorkspaceViewState,
   boardRunning,
 } from './live-workspace-view';
@@ -432,8 +429,7 @@ export default function LiveCapturePanel(): JSX.Element | null {
       useLiveCaptureStore.getState().setFocusedInputIndex(value === '' ? null : parseInt(value, 10));
       return;
     }
-    // ── 6h inline track definition (#189) / group assignment (#190) / profile
-    // override (#524) — moved from inline-app.js's #spectrum-body change
+    // ── 6h inline track definition (#189) — moved from inline-app.js's #spectrum-body change
     // listener (TD-001 slice 6h #711). The board re-renders reactively. ──────
     const kindSel = target.closest('.live-ch-kind');
     if (kindSel) {
@@ -454,29 +450,6 @@ export default function LiveCapturePanel(): JSX.Element | null {
         parseInt((e.target as unknown as HTMLSelectElement).value, 10),
       );
       return;
-    }
-    // Per-track group assignment (#190): write through groupState with its
-    // exclusive-membership rules.
-    const grpSel = target.closest('.live-ch-group');
-    if (grpSel) {
-      const idx = parseInt(grpSel.getAttribute('data-idx') ?? '', 10);
-      useLiveCaptureStore.getState().assignGroup(idx, parseInt((e.target as unknown as HTMLSelectElement).value, 10));
-      return;
-    }
-    // Per-input instrument-profile override (#524): write through
-    // recordOverride with its full-map replace discipline, then persist via
-    // settingsStore exactly as the inline listener did.
-    const profileSel = target.closest('.live-ch-profile');
-    if (profileSel) {
-      const idx = parseInt(profileSel.getAttribute('data-idx') ?? '', 10);
-      const lc = useLiveCaptureStore.getState();
-      const strip = lc.channelConfig[idx];
-      if (!strip) return;
-      const all = (useSettingsStore.getState().settings || {}).inputInstrumentProfiles || {};
-      const deviceName = deviceNameFor(lc.selectedDevice, lc.devices);
-      const next = getInstrumentProfiles().recordOverride(
-        all, deviceName, getArmState().stripToken(strip), (e.target as unknown as HTMLSelectElement).value);
-      void useSettingsStore.getState().updateSettings({ inputInstrumentProfiles: next });
     }
   }
   // Keeps the native listener (declared above, before the appMode early

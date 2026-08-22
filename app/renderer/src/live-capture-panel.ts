@@ -61,8 +61,6 @@ export interface StripView {   // per-strip state the caller resolves from its s
   armed: boolean;              // window.armState.isArmed(strip)
   groupIndex: number;          // window.groupState.groupOf(channelGroups, idx); -1 = ungrouped
   groupCollapsed: boolean;     // window.groupState.isGroupCollapsed(channelGroups, groupIndex)
-  instrumentProfileId: string; // window.instrumentProfiles.effectiveProfileId(...) (#524)
-  instrumentAuto: boolean;     // true when no persisted override applies to this strip (#524)
 }
 
 export interface PanelView {
@@ -73,7 +71,6 @@ export interface PanelView {
   // stays live while a monitor session runs. Threaded through livePanelView.
   liveMode: 'monitor' | 'record';
   groups: ChannelGroup[];      // channelGroups
-  instrumentProfiles?: { id: string; label: string }[]; // window.instrumentProfiles.PROFILES (#524)
 }
 
 export interface DeviceOption { value: string; label: string }
@@ -206,35 +203,13 @@ export function veqChannelHTML(ch: LiveMeterChannel, idx: number, stripView: Str
       <select class="live-ch-src${stereo ? ' leg' : ''}" data-idx="${idx}" data-field="a" aria-label="${stereo ? 'Left source channel' : 'Source channel'}" title="${stereo ? 'Left source channel' : 'Source channel'}"${defDisabled}>${channelOptions(strip ? strip.a : 0, n, stereo)}</select>
       ${stereo ? `<select class="live-ch-src leg" data-idx="${idx}" data-field="b" aria-label="Right source channel" title="Right source channel"${defDisabled}>${channelOptions((strip as StripConfig).b, n, true)}</select>` : ''}
     </span>`;
-  // Per-track group assignment (#190): only meaningful once a group exists —
-  // Ungrouped plus every group, writing through window.groupState with its
-  // exclusive-membership rules. Disabled mid-capture like the rest of the
-  // config (#38).
   const grpOf = stripView.groupIndex;
-  const groupHTML = panel.groups.length
-    ? `<select class="live-ch-group" data-idx="${idx}" aria-label="Assign track to group" title="Assign to group"${defDisabled}>`
-      + `<option value="-1"${grpOf === -1 ? ' selected' : ''}>Ungrouped</option>`
-      + panel.groups.map((grp, gi) => `<option value="${gi}"${grpOf === gi ? ' selected' : ''}>${escapeHtml(grp.name)}</option>`).join('')
-      + `</select>`
-    : '';
-  // Per-input instrument profile assignment (#524): defaults from the label
-  // (Auto) or an explicit override, feeding a later per-input analysis pass
-  // an appropriate EQ target instead of one generic curve. Graceful degrade
-  // when the caller has no profile catalog to offer (same spirit as groups).
-  const profiles = panel.instrumentProfiles;
-  const profileAuto = stripView.instrumentAuto;
-  const profileHTML = profiles && profiles.length
-    ? `<select class="live-ch-profile" data-idx="${idx}" aria-label="Instrument profile" title="Instrument profile"${defDisabled}>`
-      + `<option value="auto"${profileAuto ? ' selected' : ''}>Auto — ${(profiles.find((p) => p.id === stripView.instrumentProfileId) || profiles[0]).label}</option>`
-      + profiles.map((p) => `<option value="${p.id}"${!profileAuto && p.id === stripView.instrumentProfileId ? ' selected' : ''}>${p.label}</option>`).join('')
-      + `</select>`
-    : '';
   // The workspace remove control (#188) rides every strip — idle or live — so
   // it stays present-but-disabled through a capture (read-only while running)
   // rather than disappearing, and is allowed down to zero strips so the empty
   // state stays reachable.
   // Per-strip drag handle (#483) only applies within a group — cross-group
-  // moves stay on the .live-ch-group dropdown (#33 follow-up).
+  // moves stay on the inspector's group selector (#33 follow-up).
   const dragHTML = grpOf !== -1
     ? `<button type="button" class="live-ch-drag" draggable="true" aria-label="Reorder track within group — drag, or press Arrow Up/Down" title="Drag to reorder track"${panel.liveRunning ? ' disabled' : ''}>⋮⋮</button>`
     : '';
@@ -244,8 +219,6 @@ export function veqChannelHTML(ch: LiveMeterChannel, idx: number, stripView: Str
       <button type="button" class="live-ch-arm" data-idx="${idx}" aria-pressed="${armed}" aria-label="${armed ? 'Disarm' : 'Arm'} track for recording" title="${armed ? 'Armed for recording — click to disarm' : 'Disarmed — click to arm'}"${panel.liveRunning && panel.liveMode === 'record' ? ' disabled' : ''}></button>
       <span class="live-ch-name${ch.clipping ? ' clip' : ''}" contenteditable="true" spellcheck="false" role="textbox" aria-label="Channel name — click to rename" title="Click to rename">${escapeHtml(displayName)}</span>
       ${defHTML}
-      ${groupHTML}
-      ${profileHTML}
       <span class="live-ch-level" aria-hidden="true"><span class="live-ch-level-fill" style="width:${levelPercent(ch.rms, !!ch.idle)}%"></span></span>
       <span class="live-ch-meta">${ch.idle ? 'Idle' : `RMS ${fmt(ch.rms)} · Peak ${fmt(ch.peak)} dBFS`}</span>
       ${ch.clipping ? '<span class="live-ch-clip">CLIP</span>' : ''}
@@ -288,6 +261,39 @@ export interface EqPaneView {
   primary: EqPaneSection | null;
   secondary: EqPaneSection | null;
   secondaryIsPrimary: boolean;
+}
+
+export interface EqPaneClassificationView {
+  selectedIndex: number;
+  groupIndex: number;
+  groups: ChannelGroup[];
+  profiles: Array<{ id: string; label: string }>;
+  effectiveProfileId: string;
+  instrumentAuto: boolean;
+  disabled: boolean;
+}
+
+// Selected-channel classification stays separate from the analyser markup so
+// the data assembly remains testable and the controls can be React-owned.
+export function eqPaneClassificationHTML(view: EqPaneClassificationView | null): string {
+  if (!view) return '';
+  const effectiveProfile = view.profiles.find((profile) => profile.id === view.effectiveProfileId) ?? view.profiles[0];
+  const disabled = view.disabled ? ' disabled' : '';
+  return `<section class="eq-pane-classification" data-selected-index="${view.selectedIndex}" aria-label="Classification">
+    <div class="eq-pane-header">Classification</div>
+    <label class="eq-pane-classification-field">Instrument profile
+      <select class="eq-pane-classification-profile" aria-label="Instrument profile"${disabled}>
+        <option value="auto"${view.instrumentAuto ? ' selected' : ''}>Auto — ${escapeHtml(effectiveProfile?.label ?? view.effectiveProfileId)}</option>
+        ${view.profiles.map((profile) => `<option value="${escapeHtml(profile.id)}"${!view.instrumentAuto && profile.id === view.effectiveProfileId ? ' selected' : ''}>${escapeHtml(profile.label)}</option>`).join('')}
+      </select>
+    </label>
+    <label class="eq-pane-classification-field">Group
+      <select class="eq-pane-classification-group" aria-label="Assign track to group"${disabled}>
+        <option value="-1"${view.groupIndex === -1 ? ' selected' : ''}>Ungrouped</option>
+        ${view.groups.map((group, index) => `<option value="${index}"${view.groupIndex === index ? ' selected' : ''}>${escapeHtml(group.name)}</option>`).join('')}
+      </select>
+    </label>
+  </section>`;
 }
 
 // #460 (ADR 0003): when the secondary measurement device is active it owns
