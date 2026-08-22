@@ -4,7 +4,12 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { createElement } from 'react';
 import { renderToString } from 'react-dom/server';
-import LiveCapturePanel, { normalizeGroupName, routeHeaderChannelAction, type HeaderChannelActions } from './LiveCapturePanel';
+import LiveCapturePanel, {
+  ensureSessionRouting,
+  normalizeGroupName,
+  routeHeaderChannelAction,
+  type HeaderChannelActions,
+} from './LiveCapturePanel';
 import { useLiveCaptureStore } from './stores/liveCaptureStore';
 import { useSettingsStore } from './stores/settingsStore';
 import { useSoundcheckStore } from './stores/soundcheckStore';
@@ -112,6 +117,27 @@ afterEach(() => {
 });
 
 describe('LiveCapturePanel', () => {
+  it('synchronizes master mixdown when switching sessions and restores it when returning', () => {
+    const sessionA = {
+      tracks: [],
+      savedBuses: [],
+      masterMixdown: false,
+    };
+    const sessionB = {
+      tracks: [],
+      savedBuses: [],
+      masterMixdown: false,
+    };
+
+    ensureSessionRouting('session-a', sessionA, useRouteStore.getState(), useSoundcheckStore.getState());
+    useRouteStore.getState().setMasterMixdown('session-a', true);
+    ensureSessionRouting('session-b', sessionB, useRouteStore.getState(), useSoundcheckStore.getState());
+    expect(useSoundcheckStore.getState().master).toBe(false);
+
+    ensureSessionRouting('session-a', sessionA, useRouteStore.getState(), useSoundcheckStore.getState());
+    expect(useSoundcheckStore.getState().master).toBe(true);
+  });
+
   it('renders nothing off the Live tab', () => {
     useLiveCaptureStore.setState({ appMode: 'reportcard' });
     expect(renderMarkup()).toBe('');

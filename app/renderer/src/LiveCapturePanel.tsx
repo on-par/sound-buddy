@@ -43,7 +43,8 @@ import { useLiveCaptureStore, MAX_LABEL_LEN, type LapAction } from './stores/liv
 import { useSettingsStore } from './stores/settingsStore';
 import { useSpectrumStore } from './stores/spectrumStore';
 import { useSoundcheckStore } from './stores/soundcheckStore';
-import { useRouteStore } from './stores/routeStore';
+import { useRouteStore, type RouteState, type RouteStoreState } from './stores/routeStore';
+import type { SoundcheckState } from './stores/soundcheckStore';
 import {
   applyRoutingDrawerChange,
   applyRoutingDrawerMasterMixdownChange,
@@ -147,6 +148,20 @@ export function normalizeGroupName(raw: string | boolean | null): string | null 
   const trimmed = raw.trim();
   if (!trimmed) return null;
   return trimmed.slice(0, MAX_LABEL_LEN);
+}
+
+/** Seeds (or retrieves) a session's persisted routes and applies its master
+ * setting to playback. The playback store is session-agnostic, so this must
+ * run whenever the active session changes. */
+export function ensureSessionRouting(
+  sessionId: string,
+  initial: RouteState,
+  routes: Pick<RouteStoreState, 'ensureSession'>,
+  soundcheck: Pick<SoundcheckState, 'setMaster'>,
+): RouteState {
+  const current = routes.ensureSession(sessionId, initial);
+  soundcheck.setMaster(current.masterMixdown);
+  return current;
 }
 
 export default function LiveCapturePanel(): JSX.Element | null {
@@ -262,9 +277,11 @@ export default function LiveCapturePanel(): JSX.Element | null {
 
   useEffect(() => {
     if (!showShell || !soundcheck.sessionDir || !soundcheck.manifest) return;
-    useRouteStore.getState().ensureSession(
+    ensureSessionRouting(
       soundcheck.sessionDir,
       routeStateForSession(s.channelConfig, soundcheck.routes, savedBuses ?? []),
+      useRouteStore.getState(),
+      useSoundcheckStore.getState(),
     );
   }, [showShell, soundcheck.sessionDir, soundcheck.manifest, s.channelConfig, soundcheck.routes, savedBuses]);
 
