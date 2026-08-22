@@ -226,6 +226,7 @@ export interface DawShellRuntimeDeps {
 export interface DawShellRuntime {
   startPlayhead(nowMs: number): void;
   stopPlayhead(): void;
+  setPlaybackPosition(position: { elapsed: number; duration: number } | null): void;
   resetWaveform(intervalSecs: number): void;
   renderPlayhead(): void;
   renderWaveform(): void;
@@ -246,6 +247,7 @@ interface DawCanvasElementLike {
 
 export function createDawShellRuntime(deps: DawShellRuntimeDeps): DawShellRuntime {
   let playheadState: unknown = null;
+  let playbackPosition: { elapsed: number; duration: number } | null = null;
   let waveformState: DawWaveformStateShape = deps.dawWaveformState.create();
   // The default bucket rate before any capture has reported its own meter
   // interval via resetWaveform() — 0 is an invalid interval, so the injected
@@ -264,6 +266,10 @@ export function createDawShellRuntime(deps: DawShellRuntimeDeps): DawShellRuntim
   function stopPlayhead(): void {
     playheadState = deps.dawPlayheadState.stop(playheadState, deps.now());
     renderPlayhead(); // paint the frozen time
+  }
+
+  function setPlaybackPosition(position: { elapsed: number; duration: number } | null): void {
+    playbackPosition = position;
   }
 
   function resetWaveform(intervalSecs: number): void {
@@ -286,7 +292,9 @@ export function createDawShellRuntime(deps: DawShellRuntimeDeps): DawShellRuntim
   function renderPlayhead(): void {
     const shell = deps.doc.querySelector('.daw-shell');
     if (!shell) return; // DAW toggle off or not on Live tab
-    const elapsed = deps.dawPlayheadState.elapsedMs(playheadState, deps.now());
+    const elapsed = playbackPosition
+      ? playbackPosition.elapsed * MS_PER_SECOND
+      : deps.dawPlayheadState.elapsedMs(playheadState, deps.now());
     const timeEl = shell.querySelector('.daw-transport-time');
     const text = deps.dawPlayheadState.formatElapsed(elapsed);
     if (timeEl && timeEl.textContent !== text) timeEl.textContent = text;
@@ -297,7 +305,7 @@ export function createDawShellRuntime(deps: DawShellRuntimeDeps): DawShellRuntim
     // because the transform slot belongs to the shared head-width re-base in
     // app.css (ADR-0090).
     const x = dawPlayheadX(elapsed, shell.clientWidth);
-    const advancing = deps.dawPlayheadState.isAdvancing(playheadState);
+    const advancing = playbackPosition !== null || deps.dawPlayheadState.isAdvancing(playheadState);
     const segments = shell.querySelectorAll('.daw-playhead');
     for (let i = 0; i < segments.length; i++) {
       const segment = segments[i] as HTMLElement;
@@ -384,6 +392,7 @@ export function createDawShellRuntime(deps: DawShellRuntimeDeps): DawShellRuntim
   return {
     startPlayhead,
     stopPlayhead,
+    setPlaybackPosition,
     resetWaveform,
     renderPlayhead,
     renderWaveform,

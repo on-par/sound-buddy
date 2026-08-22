@@ -32,6 +32,7 @@ import { levelPercent, type LiveDevice, type StripConfig, type ChannelGroup, typ
 import type { AppSettings } from '../../electron/ipc/api';
 import { dawTimelineX, dawRulerTicks, dawLaneGridlines, DAW_TIMELINE_SPAN_SECS, DAW_TIMELINE_ORIGIN_PX } from './daw-shell-runtime';
 import type { SessionTabWaveformView } from './session-tab-waveforms';
+import { sessionTabPlaybackView } from './session-tab-playback';
 
 // The pure helper classic-scripts the view module reads off `window` — real
 // modules (not hand-rolled stubs), same convention as
@@ -105,6 +106,7 @@ function makeState(overrides: Partial<LiveWorkspaceViewState> = {}): LiveWorkspa
     ...overrides,
     sessionPicker: overrides.sessionPicker ?? null,
     sessionWaveforms: overrides.sessionWaveforms ?? null,
+    sessionPlayback: overrides.sessionPlayback ?? null,
   };
 }
 
@@ -157,6 +159,22 @@ describe('Session take clips (#1072)', () => {
     const html = dawShellHTML(makeState({ sessionWaveforms: { generating: true, clips: [] } }));
     expect(html).toContain('Generating waveforms…');
     expect(html).not.toContain('daw-take-clip');
+  });
+});
+
+describe('Session toolbar playback (#1073)', () => {
+  it('includes the compact Session transport beside the session picker', () => {
+    const html = dawShellHTML(makeState({
+      sessionPlayback: sessionTabPlaybackView({ tracks: [{ kind: 'mono' }] }, false),
+    }));
+
+    expect(html).toContain('id="daw-session-play"');
+    expect(html).toContain('daw-session-playback-btn');
+  });
+
+  it('keeps default callers free of Session playback markup', () => {
+    expect(liveWorkspaceViewState({ ...makeState(), demoting: false }, settings()).sessionPlayback).toBeNull();
+    expect(dawShellHTML(makeState())).not.toContain('daw-session-playback-btn');
   });
 });
 

@@ -54,7 +54,13 @@ export function createSoundcheckTransportController(deps: SoundcheckTransportCon
 
   function onStoreChange(): void {
     const state = deps.getState();
-    if (state.lastElapsedTick) pendingElapsed = state.lastElapsedTick;
+    if (state.lastElapsedTick) {
+      pendingElapsed = state.lastElapsedTick;
+    } else {
+      pendingElapsed = null;
+      if (rafHandle != null) { deps.cancelRaf(rafHandle); rafHandle = null; }
+      scheduled = false;
+    }
     if (pendingElapsed) schedule();
   }
 

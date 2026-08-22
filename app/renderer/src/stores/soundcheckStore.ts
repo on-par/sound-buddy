@@ -285,7 +285,7 @@ export function createSoundcheckStore(getApi: () => SoundcheckApi) {
     },
 
     resetTransport() {
-      set({ playing: false, elapsedText: null });
+      set({ playing: false, elapsedText: null, lastElapsedTick: null });
       if (useLiveCaptureStore.getState().appMode === 'soundcheck') {
         useSpectrumStore.getState().setPanelState('empty', 'Load a session and press Play to start playback');
       }
@@ -307,7 +307,7 @@ export function createSoundcheckStore(getApi: () => SoundcheckApi) {
           return;
         }
         if (evt.type === 'progress') {
-          if (useLiveCaptureStore.getState().appMode === 'soundcheck' && get().playing) {
+          if (get().playing) {
             set({ lastElapsedTick: { elapsed: evt.elapsed ?? 0, duration: evt.duration ?? 0 } });
           }
           return;
