@@ -83,6 +83,15 @@ async function closeSettings(win: Page): Promise<void> {
   await expect(win.locator('#settings-dialog')).toBeHidden();
 }
 
+async function assignGroupFromInspector(win: Page, channelIndex: number, groupName: string): Promise<void> {
+  const strip = win.locator('#spectrum-body .live-ch').nth(channelIndex);
+  await strip.click();
+  await expect(strip).toHaveClass(/selected/);
+  const groupSelect = win.locator('.eq-pane-classification-group');
+  await expect(groupSelect).toBeVisible();
+  await groupSelect.selectOption({ label: groupName });
+}
+
 // Stops any running capture via the renderer's own stop ceremony
 // (LiveControls.tsx's stopCaptureIfRunning, bridged onto
 // window.stopLiveCaptureIfRunning by App.tsx) — phase-agnostic, so it ends
@@ -351,8 +360,8 @@ test.describe.serial('Rigs — save / load / switch', () => {
     await win.locator('#live-ws-new-group').click();
     await win.locator('#rig-dialog-input').fill('Drums');
     await win.locator('#rig-dialog-ok').click();
-    await win.locator('#spectrum-body .live-ch').nth(0).locator('.live-ch-group').selectOption({ label: 'Drums' });
-    await win.locator('#spectrum-body .live-ch').nth(1).locator('.live-ch-group').selectOption({ label: 'Drums' });
+    await assignGroupFromInspector(win, 0, 'Drums');
+    await assignGroupFromInspector(win, 1, 'Drums');
 
     // Save as an active rig; the persisted rig carries the group + members.
     await openAudioSettings(win);
@@ -371,9 +380,10 @@ test.describe.serial('Rigs — save / load / switch', () => {
     await openAudioSettings(win);
     await expect(win.locator('#rig-select option:checked')).toHaveText('Grouped Board');
     await closeSettings(win);
-    const groups = win.locator('#spectrum-body .live-ch .live-ch-group');
-    await expect(groups.nth(0)).toHaveValue('0');
-    await expect(groups.nth(1)).toHaveValue('0');
+    await win.locator('#spectrum-body .live-ch').nth(0).click();
+    await expect(win.locator('.eq-pane-classification-group')).toHaveValue('0');
+    await win.locator('#spectrum-body .live-ch').nth(1).click();
+    await expect(win.locator('.eq-pane-classification-group')).toHaveValue('0');
   });
 
   test('deleting a rig removes it from the picker and from listRigs()', async () => {
