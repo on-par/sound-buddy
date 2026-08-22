@@ -262,6 +262,7 @@ export interface EqPaneView {
   primary: EqPaneSection | null;
   secondary: EqPaneSection | null;
   secondaryIsPrimary: boolean;
+  inspector: EqPaneInspectorView | null;
 }
 
 export interface EqPaneClassificationView {
@@ -416,6 +417,7 @@ export function eqPaneView(
   measurementSource: number | null,
   selectedChannel: number | null,
   roomOverride: EqPaneRoomOverride | null = null,
+  inspector: EqPaneInspectorView | null = null,
 ): EqPaneView {
   let primary: EqPaneSection | null = null;
   if (roomOverride) {
@@ -433,7 +435,7 @@ export function eqPaneView(
     secondary = { idx: selectedChannel, label: measurementSourceOptionLabel(config[selectedChannel], selectedChannel), ch: channels[selectedChannel] };
   }
   const secondaryIsPrimary = !!(primary && secondary && primary.idx === secondary.idx);
-  return { primary, secondary, secondaryIsPrimary };
+  return { primary, secondary, secondaryIsPrimary, inspector };
 }
 
 // Shared, uid-independent per-section work (curve, loudest band, bars/labels
@@ -494,9 +496,10 @@ export function eqPaneHTML(view: EqPaneView): string {
 
 // Cheap identity string the runtime diffs to decide "rebuild the pane's DOM
 // from scratch vs patch the existing arcs in place" — changes exactly when
-// eqPaneHTML's visible content (which channel, which label, the "Measurement
-// source" suffix) would change, and stays stable across ticks that only move
-// the needle (those are patched via eqPanePatchPlan instead).
+// eqPaneHTML/eqPaneInspectorHTML's visible discrete content (which channel,
+// labels, bound controls, the "Measurement source" suffix) would change, and
+// stays stable across ticks that only move a patchable analyser or level value
+// (those are patched via eqPanePatchPlan/patchEqPaneLevelTiles instead).
 // 'g' once a channel carries a 48-point grid curve, 'b' for the 7-band
 // fallback — so a channel gaining/losing `curve` (idle → first live tick, or
 // a stale engine) rebuilds the pane's DOM instead of patching a 48-entry
@@ -507,8 +510,19 @@ function sectionRenderMode(section: EqPaneSection | null): string {
 }
 
 export function eqPaneSignature(view: EqPaneView): string {
-  const { primary, secondary, secondaryIsPrimary } = view;
-  return `${primary?.idx ?? ''}:${primary?.label ?? ''}:${sectionRenderMode(primary)} ${secondary?.idx ?? ''}:${secondary?.label ?? ''}:${secondaryIsPrimary}:${sectionRenderMode(secondary)}`;
+  const { primary, secondary, secondaryIsPrimary, inspector } = view;
+  const inspectorSignature = inspector && Number.isInteger(inspector.selectedIndex) && inspector.selectedIndex >= 0
+    ? JSON.stringify([
+      inspector.selectedIndex,
+      inspector.strip.label ?? '', inspector.strip.kind, inspector.strip.a, inspector.strip.b, !!inspector.strip.armed,
+      inspector.deviceOptions.map(({ value, label }) => [value, label]), inspector.selectedDevice, inspector.deviceChannels,
+      inspector.disabled, inspector.playbackTrack ? inspector.playbackTrack.kind : null,
+      inspector.playbackTrack ? inspector.playbackRoute?.[0] ?? null : null,
+      inspector.playbackTrack ? inspector.playbackDeviceChannels : null,
+    ])
+    : '';
+  const paneSignature = `${primary?.idx ?? ''}:${primary?.label ?? ''}:${sectionRenderMode(primary)} ${secondary?.idx ?? ''}:${secondary?.label ?? ''}:${secondaryIsPrimary}:${sectionRenderMode(secondary)}`;
+  return inspectorSignature ? `${paneSignature} ${inspectorSignature}` : paneSignature;
 }
 
 export interface EqPaneSectionPatch {

@@ -161,11 +161,28 @@ export default function LiveEqPane(): JSX.Element {
   const secondaryActive = s.secondaryMeasurement.status === 'active' && s.secondaryWindows.length > 0;
   const roomOverride = roomPaneOverride(
     secondaryActive, s.secondaryWindows, s.lastMeasurementChannels, s.secondaryMeasurement.deviceName);
-  const view: EqPaneView = eqPaneView(
-    currentEqPaneChannels(state), s.channelConfig, s.measurementSource, s.selectedChannel, roomOverride);
   const selectedStrip = s.selectedChannel != null && s.selectedChannel >= 0
     ? s.channelConfig[s.selectedChannel] ?? null
     : null;
+  // Keep inspector bindings in the pane view's discrete signature while level
+  // tiles remain on the meter controller's imperative patch path.
+  const liveRunning = boardRunning({ isCapturing: s.isCapturing, demoting: s.demoting });
+  const inspector = selectedStrip && s.selectedChannel != null
+    ? {
+      selectedIndex: s.selectedChannel,
+      strip: selectedStrip,
+      deviceOptions: [{ value: '', label: 'Default Device' }, ...s.devices.map((device) => ({ value: String(device.index), label: deviceOptionLabel(device) }))],
+      selectedDevice: s.selectedDevice,
+      deviceChannels: deviceChannelCount(s.selectedDevice, s.devices),
+      disabled: liveRunning,
+      playbackTrack: soundcheck.manifest?.tracks[s.selectedChannel] ?? null,
+      playbackRoute: soundcheck.routes[s.selectedChannel] ?? [0],
+      playbackDeviceChannels: soundcheck.deviceChannels,
+      levelTiles: selectedEqPaneLevelTilesView(currentEqPaneChannels(state), s.selectedChannel),
+    }
+    : null;
+  const view: EqPaneView = eqPaneView(
+    currentEqPaneChannels(state), s.channelConfig, s.measurementSource, s.selectedChannel, roomOverride, inspector);
   const signature = eqPaneSignature(view);
   // Rebuild the innerHTML only when the discrete signature (which channel,
   // which label, the room override, the render mode) changes — the per-tick
@@ -174,7 +191,6 @@ export default function LiveEqPane(): JSX.Element {
   const html = useMemo(() => eqPaneHTML(view), [signature]);
   // Keep configuration locked for the entire record→monitor handoff (#847),
   // including the stop IPC interval where isCapturing is temporarily false.
-  const liveRunning = boardRunning({ isCapturing: s.isCapturing, demoting: s.demoting });
   const classificationHtml = useMemo(() => {
     if (!selectedStrip || s.selectedChannel == null) return eqPaneClassificationHTML(null);
     const profiles = getInstrumentProfiles().PROFILES;
@@ -191,23 +207,7 @@ export default function LiveEqPane(): JSX.Element {
       disabled: liveRunning,
     });
   }, [selectedStrip, s.selectedChannel, s.channelGroups, s.selectedDevice, s.devices, settings?.inputInstrumentProfiles, liveRunning]);
-  const inspectorHtml = useMemo(() => {
-    if (!selectedStrip || s.selectedChannel == null) return eqPaneInspectorHTML(null);
-    const selectedIndex = s.selectedChannel;
-    const levelTiles = selectedEqPaneLevelTilesView(currentEqPaneChannels(state), selectedIndex);
-    return eqPaneInspectorHTML({
-      selectedIndex,
-      strip: selectedStrip,
-      deviceOptions: [{ value: '', label: 'Default Device' }, ...s.devices.map((device) => ({ value: String(device.index), label: deviceOptionLabel(device) }))],
-      selectedDevice: s.selectedDevice,
-      deviceChannels: deviceChannelCount(s.selectedDevice, s.devices),
-      disabled: liveRunning,
-      playbackTrack: soundcheck.manifest?.tracks[selectedIndex] ?? null,
-      playbackRoute: soundcheck.routes[selectedIndex] ?? [0],
-      playbackDeviceChannels: soundcheck.deviceChannels,
-      levelTiles,
-    });
-  }, [selectedStrip, s.selectedChannel, s.selectedDevice, s.devices, liveRunning, soundcheck.manifest, soundcheck.routes, soundcheck.deviceChannels, s.boardShapeVersion]);
+  const inspectorHtml = useMemo(() => eqPaneInspectorHTML(view.inspector), [signature]);
 
   function onClassificationChange(e: FormEvent<HTMLDivElement>): void {
     const target = e.target;
