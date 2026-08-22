@@ -77,6 +77,8 @@ interface StorageLike {
 const nameOriginals = new WeakMap<Element, string>();
 
 export interface HeaderChannelActions {
+  isCapturing: boolean;
+  liveMode: 'monitor' | 'record';
   toggleArm(channelId: number): void;
   hideArmHint(): void;
   removeStrip(channelId: number): void;
@@ -92,6 +94,7 @@ export function routeHeaderChannelAction(
   actions: HeaderChannelActions,
 ): void {
   if (action === 'arm') {
+    if (actions.isCapturing && actions.liveMode === 'record') return;
     actions.toggleArm(channelId);
     actions.hideArmHint();
   } else if (action === 'mute') {
