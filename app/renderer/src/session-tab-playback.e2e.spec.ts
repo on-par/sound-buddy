@@ -100,6 +100,7 @@ test.describe('Session tab playback (#1073)', () => {
 
     await window.locator('#daw-session-stop').click();
     await expect(window.locator('#daw-session-play')).toBeVisible();
+    await expect(window.locator('.daw-transport-time')).toHaveText('0:02');
     expect(await electronApp.evaluate(
       () => (globalThis as Record<string, unknown>).__sessionPlaybackStopped,
     )).toBe(true);
@@ -109,7 +110,7 @@ test.describe('Session tab playback (#1073)', () => {
     await expect(window.locator('.daw-transport-time')).toHaveText('0:03');
     await sendPlaybackEvent({ type: 'ended' });
     await expect(window.locator('#daw-session-play')).toBeVisible();
-    await expect(window.locator('.daw-transport-time')).toHaveText('0:00');
+    await expect(window.locator('.daw-transport-time')).toHaveText('0:03');
   });
 
   test('session-tab-playback-monitoring keeps the live meter updating during take playback', async () => {

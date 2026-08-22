@@ -227,6 +227,7 @@ export interface DawShellRuntime {
   startPlayhead(nowMs: number): void;
   stopPlayhead(): void;
   setPlaybackPosition(position: { elapsed: number; duration: number } | null): void;
+  setPlaybackActive(active: boolean): void;
   resetWaveform(intervalSecs: number): void;
   renderPlayhead(): void;
   renderWaveform(): void;
@@ -248,6 +249,7 @@ interface DawCanvasElementLike {
 export function createDawShellRuntime(deps: DawShellRuntimeDeps): DawShellRuntime {
   let playheadState: unknown = null;
   let playbackPosition: { elapsed: number; duration: number } | null = null;
+  let playbackActive = false;
   let waveformState: DawWaveformStateShape = deps.dawWaveformState.create();
   // The default bucket rate before any capture has reported its own meter
   // interval via resetWaveform() — 0 is an invalid interval, so the injected
@@ -270,6 +272,10 @@ export function createDawShellRuntime(deps: DawShellRuntimeDeps): DawShellRuntim
 
   function setPlaybackPosition(position: { elapsed: number; duration: number } | null): void {
     playbackPosition = position;
+  }
+
+  function setPlaybackActive(active: boolean): void {
+    playbackActive = active;
   }
 
   function resetWaveform(intervalSecs: number): void {
@@ -305,7 +311,9 @@ export function createDawShellRuntime(deps: DawShellRuntimeDeps): DawShellRuntim
     // because the transform slot belongs to the shared head-width re-base in
     // app.css (ADR-0090).
     const x = dawPlayheadX(elapsed, shell.clientWidth);
-    const advancing = playbackPosition !== null || deps.dawPlayheadState.isAdvancing(playheadState);
+    const advancing = playbackPosition !== null
+      ? playbackActive
+      : deps.dawPlayheadState.isAdvancing(playheadState);
     const segments = shell.querySelectorAll('.daw-playhead');
     for (let i = 0; i < segments.length; i++) {
       const segment = segments[i] as HTMLElement;
@@ -393,6 +401,7 @@ export function createDawShellRuntime(deps: DawShellRuntimeDeps): DawShellRuntim
     startPlayhead,
     stopPlayhead,
     setPlaybackPosition,
+    setPlaybackActive,
     resetWaveform,
     renderPlayhead,
     renderWaveform,
