@@ -35,6 +35,7 @@ import {
   type JSX,
   type KeyboardEvent,
   type MouseEvent,
+  type PointerEvent,
 } from 'react';
 import { useStoreShallow } from './stores/useStoreShallow';
 import { useLiveCaptureStore, MAX_LABEL_LEN, type LapAction } from './stores/liveCaptureStore';
@@ -63,6 +64,7 @@ import { sessionTabSessionPickerAction, sessionTabSessionPickerView } from './se
 import { paintSessionTabWaveformClips, sessionTabWaveformView } from './session-tab-waveforms';
 import { sessionTabPlaybackView } from './session-tab-playback';
 import { createSoundcheckTransportController } from './soundcheck-transport-controller';
+import { soundcheckTimelinePreviewFromPointer } from './soundcheck-playhead';
 import { runtime, recordCapture, stopLiveCapture } from './LiveControls';
 import { recordButtonAction } from './record-transport';
 
@@ -442,6 +444,49 @@ export default function LiveCapturePanel(): JSX.Element | null {
     }
   }
 
+  function onBoardPointerDown(e: PointerEvent<HTMLDivElement>): void {
+    if (!soundcheck.playing) return;
+    const target = e.target as Element;
+    const surface = target.closest('.daw-ruler, .daw-lane');
+    if (!surface) return;
+
+    const boardRoot = e.currentTarget;
+    let latestClientX = e.clientX;
+    const previewAt = (clientX: number) => {
+      const durationSecs = useSoundcheckStore.getState().lastElapsedTick?.duration;
+      if (durationSecs === undefined) return null;
+      const preview = soundcheckTimelinePreviewFromPointer(
+        clientX,
+        surface.getBoundingClientRect().left,
+        durationSecs,
+      );
+      if (preview) {
+        document.querySelectorAll<HTMLElement>('.daw-playhead').forEach((playhead) => {
+          playhead.style.left = `${preview.leftPx}px`;
+        });
+      }
+      return preview;
+    };
+    if (!previewAt(latestClientX)) return;
+
+    boardRoot.setPointerCapture(e.pointerId);
+    const onPointerMove = (move: globalThis.PointerEvent): void => {
+      latestClientX = move.clientX;
+      previewAt(latestClientX);
+    };
+    const onPointerUp = (up: globalThis.PointerEvent): void => {
+      window.removeEventListener('pointermove', onPointerMove);
+      window.removeEventListener('pointerup', onPointerUp);
+      if (boardRoot.hasPointerCapture(e.pointerId)) boardRoot.releasePointerCapture(e.pointerId);
+      if (!useSoundcheckStore.getState().playing) return;
+      latestClientX = up.clientX;
+      const preview = previewAt(latestClientX);
+      if (preview) void useSoundcheckStore.getState().seekTo(preview.elapsedSecs);
+    };
+    window.addEventListener('pointermove', onPointerMove);
+    window.addEventListener('pointerup', onPointerUp);
+  }
+
   function onBoardKeyDown(e: KeyboardEvent<HTMLDivElement>): void {
     const target = e.target as Element;
     // Inline rename (#39): Enter commits via blur, Escape restores + blurs.
@@ -691,6 +736,7 @@ export default function LiveCapturePanel(): JSX.Element | null {
       ref={boardRootRef}
       className="live-board-root"
       onClick={onBoardClick}
+      onPointerDown={onBoardPointerDown}
       onKeyDown={onBoardKeyDown}
       onFocus={onNameFocus}
       onBlur={onNameBlur}

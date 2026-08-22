@@ -8,7 +8,11 @@
 // the soundcheck lanes start at the measured name width, not at x=0.
 
 import { describe, it, expect } from 'vitest';
-import { soundcheckPlayheadLeftPx, soundcheckSeekTargetFromClick } from './soundcheck-playhead';
+import {
+  soundcheckPlayheadLeftPx,
+  soundcheckSeekTargetFromClick,
+  soundcheckTimelinePreviewFromPointer,
+} from './soundcheck-playhead';
 
 describe('soundcheckPlayheadLeftPx', () => {
   it('returns null for a non-positive duration', () => {
@@ -72,5 +76,40 @@ describe('soundcheckSeekTargetFromClick', () => {
 
   it('clamps a click past the right edge to the full duration', () => {
     expect(soundcheckSeekTargetFromClick(999, 0, 60, 300, 10)).toBeCloseTo(10, 10);
+  });
+});
+
+describe('soundcheckTimelinePreviewFromPointer', () => {
+  it('returns null for invalid or non-finite pointer geometry or duration', () => {
+    expect(soundcheckTimelinePreviewFromPointer(Number.NaN, 100, 10)).toBeNull();
+    expect(soundcheckTimelinePreviewFromPointer(100, Number.POSITIVE_INFINITY, 10)).toBeNull();
+    expect(soundcheckTimelinePreviewFromPointer(100, 100, Number.NaN)).toBeNull();
+    expect(soundcheckTimelinePreviewFromPointer(100, 100, 0)).toBeNull();
+    expect(soundcheckTimelinePreviewFromPointer(100, 100, -1)).toBeNull();
+  });
+
+  it('maps the ruler or lane left edge to zero and the shared timeline origin', () => {
+    expect(soundcheckTimelinePreviewFromPointer(100, 100, 10)).toEqual({
+      elapsedSecs: 0,
+      leftPx: 208,
+    });
+  });
+
+  it('maps a 32px surface offset to four seconds at the shared 8px-per-second scale', () => {
+    expect(soundcheckTimelinePreviewFromPointer(132, 100, 10)).toEqual({
+      elapsedSecs: 4,
+      leftPx: 240,
+    });
+  });
+
+  it('clamps pointers outside the session range', () => {
+    expect(soundcheckTimelinePreviewFromPointer(50, 100, 10)).toEqual({
+      elapsedSecs: 0,
+      leftPx: 208,
+    });
+    expect(soundcheckTimelinePreviewFromPointer(220, 100, 10)).toEqual({
+      elapsedSecs: 10,
+      leftPx: 288,
+    });
   });
 });

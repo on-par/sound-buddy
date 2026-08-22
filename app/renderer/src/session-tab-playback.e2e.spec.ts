@@ -37,6 +37,7 @@ test.describe('Session tab playback (#1080)', () => {
 
   test.beforeEach(async () => {
     await electronApp.evaluate(({ ipcMain }, dir) => {
+      (globalThis as Record<string, unknown>).__sessionPlaybackCalls = [];
       ipcMain.removeHandler('list-output-devices');
       ipcMain.handle('list-output-devices', () => ({ devices: [{ index: 1, name: 'MOTU 8ch', channels: 8 }] }));
       ipcMain.removeHandler('open-dir-dialog');
@@ -46,6 +47,8 @@ test.describe('Session tab playback (#1080)', () => {
       ipcMain.removeHandler('start-playback');
       ipcMain.handle('start-playback', (_event, opts) => {
         (globalThis as Record<string, unknown>).__sessionPlayback = opts;
+        const calls = ((globalThis as Record<string, unknown>).__sessionPlaybackCalls ??= []) as unknown[];
+        calls.push(opts);
         return { success: true };
       });
       ipcMain.removeHandler('stop-playback');
@@ -130,6 +133,46 @@ test.describe('Session tab playback (#1080)', () => {
     await sendPlaybackEvent({ type: 'ended' });
     await expect(window.locator('#daw-session-play')).toBeVisible();
     await expect(window.locator('.daw-transport-time')).toHaveText('0:03');
+  });
+
+  test('scrubs active Session playback from the ruler and lanes only on pointer release (#1082)', async () => {
+    await window.locator('#daw-session-play').click();
+    await sendPlaybackEvent({ type: 'progress', elapsed: 2, duration: 10 });
+    await expect(window.locator('.daw-transport-time')).toHaveText('0:02');
+
+    const startCalls = async (): Promise<{ startOffsetSecs?: number }[]> => electronApp.evaluate(
+      () => (globalThis as Record<string, unknown>).__sessionPlaybackCalls,
+    ) as Promise<{ startOffsetSecs?: number }[]>;
+    expect(await startCalls()).toHaveLength(1);
+
+    const ruler = window.locator('.daw-ruler');
+    const rulerBox = await ruler.boundingBox();
+    expect(rulerBox).not.toBeNull();
+    await window.mouse.move(rulerBox!.x, rulerBox!.y + rulerBox!.height / 2);
+    await window.mouse.down();
+    await window.mouse.move(rulerBox!.x + 32, rulerBox!.y + rulerBox!.height / 2);
+    await expect(window.locator('.daw-playhead-ruler')).toHaveCSS('left', '240px');
+    await expect(window.locator('.daw-playhead-lanes')).toHaveCSS('left', '240px');
+    expect(await startCalls()).toHaveLength(1);
+    await window.mouse.up();
+    await expect.poll(startCalls).toHaveLength(2);
+    expect((await startCalls())[1].startOffsetSecs).toBe(4);
+    await expect(window.locator('.daw-transport-time')).toHaveText('0:04');
+
+    await sendPlaybackEvent({ type: 'progress', elapsed: 4, duration: 10 });
+    const lane = window.locator('.daw-lane').first();
+    const laneBox = await lane.boundingBox();
+    expect(laneBox).not.toBeNull();
+    await window.mouse.move(laneBox!.x, laneBox!.y + laneBox!.height / 2);
+    await window.mouse.down();
+    await window.mouse.move(laneBox!.x + 48, laneBox!.y + laneBox!.height / 2);
+    await expect(window.locator('.daw-playhead-ruler')).toHaveCSS('left', '256px');
+    await expect(window.locator('.daw-playhead-lanes')).toHaveCSS('left', '256px');
+    expect(await startCalls()).toHaveLength(2);
+    await window.mouse.up();
+    await expect.poll(startCalls).toHaveLength(3);
+    expect((await startCalls())[2].startOffsetSecs).toBe(6);
+    await expect(window.locator('.daw-transport-time')).toHaveText('0:06');
   });
 
   test('session-tab-playback-monitoring keeps the live meter updating during take playback', async () => {
