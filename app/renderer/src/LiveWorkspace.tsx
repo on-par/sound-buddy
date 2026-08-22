@@ -26,16 +26,24 @@ import { useSettingsStore } from './stores/settingsStore';
 import { createLiveMeterController, type LiveMeterSnapshot } from './live-meter-controller';
 import { liveLevelReadout, patchLevelReadout } from './live-level-readout';
 import {
-  levelPercent,
+  eqPanePatchPlan,
+  eqPaneView,
   measurementChannel,
+  patchEqPaneLevelTiles,
+  patchEqPaneSection,
+  patchGroupSummaries,
+  patchLiveChannel,
 } from './live-capture-panel';
 import {
+  currentEqPaneChannels,
   liveStatsRowView,
   patchStatsRow,
   dawShellPatchView,
   getDawShellRuntime,
   liveWorkspaceViewState,
   boardRunning,
+  selectedEqPaneLevelTilesView,
+  stripViewAt,
 } from './live-workspace-view';
 import type { LiveEvent } from './live-capture-panel';
 import LiveCapturePanel from './LiveCapturePanel';
@@ -78,9 +86,19 @@ function applyLiveTick(snap: LiveMeterSnapshot): void {
       mixLane.setAttribute('data-capture-mode', view.captureMode);
     }
     tick.channels.forEach((ch, index) => {
-      const fill = shell.querySelector<HTMLElement>(`.daw-track-head[data-ch="${index}"] .daw-track-head-level-fill`);
-      if (fill) fill.style.width = `${levelPercent(ch.rms, false)}%`;
+      const strip = shell.querySelector(`.sb-live-meters .live-ch[data-ch="${index}"]`);
+      if (strip) patchLiveChannel(strip, ch, index, stripViewAt(state, index, ch), state.isCapturing);
     });
+    patchGroupSummaries(shell, tick.channels, state.channelGroups);
+  }
+  const channels = currentEqPaneChannels(state);
+  const pane = document.getElementById('live-eq-pane');
+  if (pane) {
+    const view = eqPaneView(channels, state.channelConfig, state.measurementSource, state.selectedChannel);
+    const plan = eqPanePatchPlan(view);
+    patchEqPaneSection(pane.querySelector('.eq-pane-primary'), plan.primary);
+    patchEqPaneSection(pane.querySelector('.eq-pane-secondary'), plan.secondary);
+    patchEqPaneLevelTiles(pane.querySelector('.eq-pane-inspector'), selectedEqPaneLevelTilesView(channels, state.selectedChannel));
   }
   getDawShellRuntime()?.renderPlayhead?.();
   getDawShellRuntime()?.renderWaveform?.();

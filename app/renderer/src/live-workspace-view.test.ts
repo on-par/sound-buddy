@@ -50,6 +50,10 @@ const dawPlayheadState = require('../daw-playhead-state.js');
 const dawWaveformState = require('../daw-waveform-state.js');
 const grading = require('../grading.js');
 
+function countClassToken(html: string, token: string): number {
+  return html.match(new RegExp(`<div class="[^"]*\\b${token}\\b`, 'g'))?.length ?? 0;
+}
+
 const DEVICES: LiveDevice[] = [
   { index: 0, name: 'Scarlett 18i20', channels: 8, default_sr: 48000 },
   { index: 1, name: 'Built-in Microphone', channels: 2, default_sr: 44100 },
@@ -647,7 +651,7 @@ describe('dawShellHTML / dawShellPatchView', () => {
     const html = dawShellHTML(makeState());
     const heads = html.indexOf('<div class="daw-track-heads');
     const gutter = html.indexOf('<div class="daw-ruler-gutter"></div>');
-    const firstHead = html.indexOf('class="daw-track-head"');
+    const firstHead = html.search(/class="[^"]*\bdaw-track-head\b/);
     expect(gutter).toBeGreaterThan(heads);
     expect(gutter).toBeLessThan(firstHead);
     expect(html.split('<div class="daw-ruler-gutter"></div>').length - 1).toBe(1);
@@ -722,7 +726,7 @@ describe('dawTrackRows / configured track rows (#1043)', () => {
 
   it('dawShellHTML renders one .daw-track-head per configured channel, in lane order', () => {
     const html = dawShellHTML(makeState({ channelGroups: [] }));
-    expect(html.split('class="daw-track-head"').length - 1).toBe(CONFIG.length);
+    expect(countClassToken(html, 'daw-track-head')).toBe(CONFIG.length);
     const headsSlice = html.slice(html.indexOf('<div class="daw-track-heads'), html.indexOf('<div class="daw-timeline">'));
     expect(headsSlice.indexOf('data-ch="0"')).toBeLessThan(headsSlice.indexOf('data-ch="1"'));
   });
@@ -730,7 +734,7 @@ describe('dawTrackRows / configured track rows (#1043)', () => {
   it('stamps selected state on DAW live strips for the EQ-pane interaction contract', () => {
     const html = dawShellHTML(makeState({ selectedChannel: 1 }));
     expect(html).toMatch(/class="[^"]*\blive-ch\b[^"]*\bselected\b[^"]*" data-ch="1" aria-current="true"/);
-    const first = html.match(/<div class="live-ch[^"]*" data-ch="0"[^>]*>/)?.[0] ?? '';
+    const first = html.match(/<div class="[^"]*\blive-ch\b[^"]*" data-ch="0"[^>]*>/)?.[0] ?? '';
     expect(first).not.toContain('selected');
     expect(first).not.toContain('aria-current');
   });
@@ -755,9 +759,11 @@ describe('dawTrackRows / configured track rows (#1043)', () => {
     expect(headsSlice).toContain('class="live-group-head collapsed" data-group="0"');
     expect(headsSlice.indexOf('data-ch="2"')).toBeLessThan(headsSlice.indexOf('data-ch="0"'));
     expect(headsSlice.indexOf('data-ch="0"')).toBeLessThan(headsSlice.indexOf('class="live-group-head ungrouped"'));
-    expect(headsSlice).toContain('class="live-ch idle group-collapsed" data-ch="2"');
-    expect(headsSlice).toContain('class="live-ch idle group-collapsed" data-ch="0"');
+    expect(headsSlice).toMatch(/class="[^"]*\bdaw-track-head\b[^"]*\blive-ch\b[^"]*\bidle\b[^"]*\bgroup-collapsed\b[^"]*" data-ch="2"/);
+    expect(headsSlice).toMatch(/class="[^"]*\bdaw-track-head\b[^"]*\blive-ch\b[^"]*\bidle\b[^"]*\bgroup-collapsed\b[^"]*" data-ch="0"/);
     expect(headsSlice).toContain('class="live-ch-drag"');
+    expect(html).toContain('class="daw-lane-group-spacer collapsed" data-group="0"');
+    expect(html).toContain('class="daw-lane-group-spacer ungrouped" data-group="-1"');
   });
 
   it('each head row carries a track-header representation with the resolved name and a 1-based displayed index', () => {
@@ -770,8 +776,8 @@ describe('dawTrackRows / configured track rows (#1043)', () => {
   });
 
   it('unarmed configured tracks get both a head row and a lane', () => {
-    const html = dawShellHTML(makeState({ channelConfig: [{ kind: 'mono', a: 3, b: 4, armed: false }] }));
-    expect(html).toContain('class="daw-track-head" data-ch="0"');
+    const html = dawShellHTML(makeState({ channelConfig: [{ kind: 'mono', a: 3, b: 4, armed: false }], channelGroups: [] }));
+    expect(html).toMatch(/class="[^"]*\bdaw-track-head\b[^"]*" data-ch="0"/);
     expect(html).toContain('class="daw-lane daw-channel-lane" data-ch="0"');
     expect(html).not.toContain('Add tracks to see channel lanes');
   });
@@ -779,8 +785,8 @@ describe('dawTrackRows / configured track rows (#1043)', () => {
   it('head and lane row counts stay in parity across every supplied view state', () => {
     for (const length of [0, 1, 2, 3]) {
       const config = Array.from({ length }, () => ({ ...CONFIG[0] }));
-      const html = dawShellHTML(makeState({ channelConfig: config }));
-      const headCount = html.split('class="daw-track-head"').length - 1;
+      const html = dawShellHTML(makeState({ channelConfig: config, channelGroups: [] }));
+      const headCount = countClassToken(html, 'daw-track-head');
       const laneCount = html.split('class="daw-lane daw-channel-lane"').length - 1;
       expect(headCount).toBe(length);
       expect(laneCount).toBe(length);
@@ -789,7 +795,7 @@ describe('dawTrackRows / configured track rows (#1043)', () => {
 
   it('empty config renders a head column with no track rows, only the master row, and still shows the lane empty state (#1044)', () => {
     const html = dawShellHTML(makeState({ channelConfig: [] }));
-    expect(html.split('class="daw-track-head"').length - 1).toBe(0);
+    expect(countClassToken(html, 'daw-track-head')).toBe(0);
     expect(html).toContain('class="daw-master-head"');
     expect(html).toContain('Add tracks to see channel lanes');
   });
@@ -850,7 +856,7 @@ describe('overall-mix row and status line (#1044)', () => {
     const slice = html.slice(html.indexOf('<div class="daw-track-heads'), html.indexOf('<div class="daw-timeline">'));
     expect(slice).toContain('class="daw-master-head"');
     expect(slice).toContain('>Overall mix</span>');
-    expect(slice.indexOf('class="daw-master-head"')).toBeGreaterThan(slice.lastIndexOf('class="daw-track-head"'));
+    expect(slice.indexOf('class="daw-master-head"')).toBeGreaterThan(slice.lastIndexOf('daw-track-head'));
   });
 
   it('the mix lane closes the lane column', () => {
@@ -861,8 +867,8 @@ describe('overall-mix row and status line (#1044)', () => {
   it('the master row is never counted as a track row', () => {
     for (const length of [0, 1, 2, 3]) {
       const config = Array.from({ length }, () => ({ ...CONFIG[0] }));
-      const html = dawShellHTML(makeState({ channelConfig: config }));
-      expect(html.split('class="daw-track-head"').length - 1).toBe(length);
+      const html = dawShellHTML(makeState({ channelConfig: config, channelGroups: [] }));
+      expect(countClassToken(html, 'daw-track-head')).toBe(length);
       expect(html.split('class="daw-master-head"').length - 1).toBe(1);
     }
   });

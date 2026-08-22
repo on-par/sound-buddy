@@ -1055,7 +1055,7 @@ export function patchLiveChannel(
   if (plan.clipping && !clipEl && removeBtn) removeBtn.insertAdjacentHTML('beforebegin', '<span class="live-ch-clip">CLIP</span>');
   else if (!plan.clipping && clipEl) clipEl.remove();
 
-  const levelFill = el.querySelector('.live-ch-level-fill') as HTMLElement | null;
+  const levelFill = el.querySelector('.live-ch-level-fill, .daw-track-head-level-fill') as HTMLElement | null;
   if (levelFill) levelFill.style.width = `${plan.levelPercent}%`;
 }
 /* c8 ignore stop */

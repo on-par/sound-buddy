@@ -620,8 +620,8 @@ export function dawTrackHeaderHTML(row: DawTrackRow): string {
 }
 
 function dawTrackHeadHTML(row: DawTrackRow): string {
-  const stripClass = `live-ch${row.selected ? ' selected' : ''}${row.idle ? ' idle' : ''}${row.groupCollapsed ? ' group-collapsed' : ''}`;
-  return `<div class="daw-track-head" data-ch="${row.index}"><div class="${stripClass}" data-ch="${row.index}"${row.selected ? ' aria-current="true"' : ''} tabindex="0" role="button" aria-label="Select ${row.name} to inspect in the EQ pane">${dawTrackHeaderHTML(row)}</div></div>`;
+  const stripClass = `daw-track-head live-ch${row.selected ? ' selected' : ''}${row.idle ? ' idle' : ''}${row.groupCollapsed ? ' group-collapsed' : ''}`;
+  return `<div class="${stripClass}" data-ch="${row.index}"${row.selected ? ' aria-current="true"' : ''} tabindex="0" role="button" aria-label="Select ${row.name} to inspect in the EQ pane">${dawTrackHeaderHTML(row)}</div>`;
 }
 
 function dawTrackGroupHeaderHTML(header: DawTrackGroupHeader): string {
@@ -718,15 +718,19 @@ export function dawShellHTML(state: LiveWorkspaceViewState, routingDrawerContent
     ? headHTML
     : `<div class="daw-empty-head"></div>`;
   const laneHTML = rows.length > 0
-    ? `<div class="daw-channel-lanes">${entries.filter((entry): entry is DawTrackEntry => entry.type === 'track').map(({ row }) =>
-      `<div class="daw-lane daw-channel-lane${row.monitorActive ? '' : ' daw-channel-lane--dimmed'}" data-ch="${row.index}">`
-      + `<span class="daw-lane-name">${row.name}</span>`
-      + `<span class="daw-lane-body"><canvas class="daw-channel-waveform"></canvas></span>`
-      + (row.takeClip
-        ? `<span class="daw-take-clip" style="left:${row.takeClip.leftPx}px;width:${row.takeClip.widthPx}px"><canvas data-session-track-index="${row.takeClip.trackIndex}"></canvas></span>`
-        : '')
-      + laneGrid
-      + `</div>`).join('')}</div>`
+    ? `<div class="daw-channel-lanes">${entries.map((entry) => {
+      if (entry.type === 'group') return `<div class="daw-lane-group-spacer${entry.collapsed ? ' collapsed' : ''}" data-group="${entry.index}" aria-hidden="true"></div>`;
+      if (entry.type === 'ungrouped') return `<div class="daw-lane-group-spacer ungrouped" data-group="-1" aria-hidden="true"></div>`;
+      const { row } = entry;
+      return `<div class="daw-lane daw-channel-lane${row.monitorActive ? '' : ' daw-channel-lane--dimmed'}${row.groupCollapsed ? ' group-collapsed' : ''}" data-ch="${row.index}">`
+        + `<span class="daw-lane-name">${row.name}</span>`
+        + `<span class="daw-lane-body"><canvas class="daw-channel-waveform"></canvas></span>`
+        + (row.takeClip
+          ? `<span class="daw-take-clip" style="left:${row.takeClip.leftPx}px;width:${row.takeClip.widthPx}px"><canvas data-session-track-index="${row.takeClip.trackIndex}"></canvas></span>`
+          : '')
+        + laneGrid
+        + `</div>`;
+    }).join('')}</div>`
     : `<div class="daw-lane daw-empty-state">Add tracks to see channel lanes</div>`;
   // The overall-mix row (#1044): emitted like every other row, twice, once per
   // column, and last in each — it is not a track head/lane, so it never comes
