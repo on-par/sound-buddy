@@ -28,7 +28,7 @@ const TABS: TabDef[] = [
   { mode: 'analyze', id: 'nav-analyze', icon: 'activity', label: 'Analyze' },
   { mode: 'history', id: 'nav-history', icon: 'clock', label: 'History' },
   { mode: 'dir', icon: 'folder', label: 'Directory' },
-  { mode: 'live', icon: 'radio', label: 'Live', lock: true },
+  { mode: 'live', icon: 'radio', label: 'Session', lock: true },
   { mode: 'console', icon: 'sliders', label: 'Console' },
   { mode: 'soundcheck', icon: 'sliders', label: 'Soundcheck', lock: true },
   { mode: 'recent', icon: 'clock', label: 'Recent' },
