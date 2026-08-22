@@ -63,8 +63,8 @@ import {
 import { sessionTabSessionPickerAction, sessionTabSessionPickerView } from './session-tab-session-picker';
 import { paintSessionTabWaveformClips, sessionTabWaveformView } from './session-tab-waveforms';
 import { sessionTabPlaybackView } from './session-tab-playback';
+import { beginSessionTimelineScrub } from './session-timeline-scrub';
 import { createSoundcheckTransportController } from './soundcheck-transport-controller';
-import { soundcheckTimelinePreviewFromPointer } from './soundcheck-playhead';
 import { runtime, recordCapture, stopLiveCapture } from './LiveControls';
 import { recordButtonAction } from './record-transport';
 
@@ -450,51 +450,21 @@ export default function LiveCapturePanel(): JSX.Element | null {
     const surface = e.target.closest('.daw-ruler, .daw-lane');
     if (!surface) return;
 
-    const boardRoot = e.currentTarget;
-    let latestClientX = e.clientX;
-    const previewAt = (clientX: number) => {
-      const durationSecs = useSoundcheckStore.getState().lastElapsedTick?.duration;
-      if (durationSecs === undefined) return null;
-      const preview = soundcheckTimelinePreviewFromPointer(
-        clientX,
-        surface.getBoundingClientRect().left,
-        durationSecs,
-      );
-      if (preview) {
+    beginSessionTimelineScrub({
+      root: e.currentTarget,
+      surface,
+      windowTarget: window,
+      pointerId: e.pointerId,
+      clientX: e.clientX,
+      getDurationSecs: () => useSoundcheckStore.getState().lastElapsedTick?.duration,
+      isPlaying: () => useSoundcheckStore.getState().playing,
+      previewLeftPx: (leftPx) => {
         document.querySelectorAll<HTMLElement>('.daw-playhead').forEach((playhead) => {
-          playhead.style.left = `${preview.leftPx}px`;
+          playhead.style.left = `${leftPx}px`;
         });
-      }
-      return preview;
-    };
-    if (!previewAt(latestClientX)) return;
-
-    boardRoot.setPointerCapture(e.pointerId);
-    const pointerId = e.pointerId;
-    const onPointerMove = (move: globalThis.PointerEvent): void => {
-      if (move.pointerId !== pointerId) return;
-      latestClientX = move.clientX;
-      previewAt(latestClientX);
-    };
-    const cleanupPointerDrag = (): void => {
-      window.removeEventListener('pointermove', onPointerMove);
-      window.removeEventListener('pointerup', onPointerUp);
-      window.removeEventListener('pointercancel', cleanupPointerDrag);
-      boardRoot.removeEventListener('lostpointercapture', cleanupPointerDrag);
-      if (boardRoot.hasPointerCapture(pointerId)) boardRoot.releasePointerCapture(pointerId);
-    };
-    const onPointerUp = (up: globalThis.PointerEvent): void => {
-      if (up.pointerId !== pointerId) return;
-      cleanupPointerDrag();
-      if (!useSoundcheckStore.getState().playing) return;
-      latestClientX = up.clientX;
-      const preview = previewAt(latestClientX);
-      if (preview) void useSoundcheckStore.getState().seekTo(preview.elapsedSecs);
-    };
-    window.addEventListener('pointermove', onPointerMove);
-    window.addEventListener('pointerup', onPointerUp);
-    window.addEventListener('pointercancel', cleanupPointerDrag);
-    boardRoot.addEventListener('lostpointercapture', cleanupPointerDrag);
+      },
+      seekTo: (elapsedSecs) => useSoundcheckStore.getState().seekTo(elapsedSecs),
+    });
   }
 
   function onBoardKeyDown(e: KeyboardEvent<HTMLDivElement>): void {
