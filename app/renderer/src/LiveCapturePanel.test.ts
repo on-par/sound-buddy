@@ -1,10 +1,10 @@
 // Copyright (c) 2026 Patrick Robinson (on-par). All rights reserved.
 // Licensed under the Sound Buddy Desktop Application License (app/LICENSE).
 
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { createElement } from 'react';
 import { renderToString } from 'react-dom/server';
-import LiveCapturePanel, { normalizeGroupName } from './LiveCapturePanel';
+import LiveCapturePanel, { normalizeGroupName, routeHeaderChannelAction, type HeaderChannelActions } from './LiveCapturePanel';
 import { useLiveCaptureStore } from './stores/liveCaptureStore';
 import { useSettingsStore } from './stores/settingsStore';
 import type { LiveDevice, ChannelWindowData } from './live-capture-panel';
@@ -176,6 +176,7 @@ describe('LiveCapturePanel', () => {
     const html = renderMarkup();
     expect(html).toContain('daw-shell');
     expect(html).toContain('daw-mix-lane');
+    expect(html).toContain('daw-track-head-arm');
     expect(html).not.toContain('meter-card');
   });
 
@@ -191,6 +192,45 @@ describe('LiveCapturePanel', () => {
     expect(html).not.toContain('id="live-mode"');
     expect(html).not.toContain('id="live-start-btn"');
     expect(html).not.toContain('id="live-stop-btn"');
+  });
+});
+
+describe('routeHeaderChannelAction', () => {
+  function actions(): HeaderChannelActions {
+    return {
+      toggleArm: vi.fn(), hideArmHint: vi.fn(), removeStrip: vi.fn(),
+      toggleChannelMute: vi.fn(), toggleChannelSolo: vi.fn(),
+    };
+  }
+
+  it('arms the supplied channel and clears the arm hint', () => {
+    const a = actions();
+    routeHeaderChannelAction('arm', 3, a);
+    expect(a.toggleArm).toHaveBeenCalledWith(3);
+    expect(a.hideArmHint).toHaveBeenCalledOnce();
+  });
+
+  it('removes the supplied channel', () => {
+    const a = actions(); routeHeaderChannelAction('remove', 4, a);
+    expect(a.removeStrip).toHaveBeenCalledWith(4);
+  });
+
+  it('routes mute only to its matching reducer', () => {
+    const a = actions(); routeHeaderChannelAction('mute', 1, a);
+    expect(a.toggleChannelMute).toHaveBeenCalledWith(1);
+    expect(a.toggleChannelSolo).not.toHaveBeenCalled();
+    expect(a.toggleArm).not.toHaveBeenCalled();
+    expect(a.removeStrip).not.toHaveBeenCalled();
+    expect(a.hideArmHint).not.toHaveBeenCalled();
+  });
+
+  it('routes solo only to its matching reducer', () => {
+    const a = actions(); routeHeaderChannelAction('solo', 2, a);
+    expect(a.toggleChannelSolo).toHaveBeenCalledWith(2);
+    expect(a.toggleChannelMute).not.toHaveBeenCalled();
+    expect(a.toggleArm).not.toHaveBeenCalled();
+    expect(a.removeStrip).not.toHaveBeenCalled();
+    expect(a.hideArmHint).not.toHaveBeenCalled();
   });
 });
 

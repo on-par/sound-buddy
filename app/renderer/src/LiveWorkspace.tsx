@@ -32,6 +32,7 @@ import {
   patchLiveChannel,
   patchGroupSummaries,
   patchEqPaneSection,
+  levelPercent,
   eqPaneView,
   eqPanePatchPlan,
   measurementChannel,
@@ -91,6 +92,10 @@ function applyLiveTick(snap: LiveMeterSnapshot): void {
       if (mixLane && mixLane.getAttribute('data-capture-mode') !== view.captureMode) {
         mixLane.setAttribute('data-capture-mode', view.captureMode);
       }
+      tick.channels.forEach((ch, index) => {
+        const fill = shell.querySelector<HTMLElement>(`.daw-track-head[data-ch="${index}"] .daw-track-head-level-fill`);
+        if (fill) fill.style.width = `${levelPercent(ch.rms, false)}%`;
+      });
     }
     getDawShellRuntime()?.renderPlayhead?.();
     getDawShellRuntime()?.renderWaveform?.();
