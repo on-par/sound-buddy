@@ -21,6 +21,7 @@
 
 import {
   LIVE_BAND_KEYS,
+  channelOptions,
   deviceChannelCount,
   usedChannelCount,
   liveMetersHTML,
@@ -467,13 +468,19 @@ export function meterCardHTML(state: LiveWorkspaceViewState): { html: string; id
 // labels are user-entered — so callers interpolate it raw and never re-escape.
 export interface DawTrackRow {
   index: number;
+  strip?: StripConfig;
   name: string;
+  idle?: boolean;
+  clipping?: boolean;
   armed: boolean;
   armDisabled: boolean;
+  configDisabled?: boolean;
+  removeDisabled?: boolean;
   muted: boolean;
   soloed: boolean;
   monitorActive: boolean;
   levelPercent: number;
+  deviceChannels?: number;
   takeClip: SessionTabWaveformClip | null;
 }
 
@@ -493,13 +500,19 @@ export function dawTrackRows(state: LiveWorkspaceViewState): DawTrackRow[] {
     const soloed = state.soloedChannels[idx] === true;
     return {
       index: idx,
+      strip,
       name: escapeHtml(getRigReconcile().resolveStripLabel(strip, channel, idx)),
+      idle: !!channel?.idle,
+      clipping: !!channel?.clipping,
       armed: getArmState().isArmed(strip),
       armDisabled,
+      configDisabled: state.isCapturing,
+      removeDisabled: state.isCapturing,
       muted,
       soloed,
       monitorActive: !muted && (!hasSoloedChannel || soloed),
       levelPercent: levelPercent(channel?.rms ?? Number.NaN, !!channel?.idle),
+      deviceChannels: deviceChannelCount(state.selectedDevice, state.devices),
       takeClip: state.sessionWaveforms?.clips.find((clip) => clip.stripIndex === idx) ?? null,
     };
   });
@@ -508,15 +521,31 @@ export function dawTrackRows(state: LiveWorkspaceViewState): DawTrackRow[] {
 /** Pure inside markup for one arrangement track header. The row is derived
  * once by dawTrackRows, preserving the header/lane ordering contract. */
 export function dawTrackHeaderHTML(row: DawTrackRow): string {
+  const strip = row.strip ?? { kind: 'mono', a: 0 };
+  const stereo = strip.kind === 'stereo';
+  const configDisabled = row.configDisabled ? ' disabled' : '';
+  const sourceA = Number.isInteger(strip.a) ? strip.a : 0;
+  const sourceB = stereo && Number.isInteger((strip as StripConfig).b) ? (strip as StripConfig).b : sourceA + 1;
+  const deviceChannels = row.deviceChannels ?? 8;
+  const definitionHTML = `<span class="live-ch-def">`
+    + `<select class="live-ch-kind" data-idx="${row.index}" aria-label="Mono or stereo"${configDisabled}>`
+    + `<option value="mono"${!stereo ? ' selected' : ''}>Mono</option>`
+    + `<option value="stereo"${stereo ? ' selected' : ''}>Stereo</option>`
+    + `</select>`
+    + `<select class="live-ch-src${stereo ? ' leg' : ''}" data-idx="${row.index}" data-field="a" aria-label="${stereo ? 'Left source channel' : 'Source channel'}" title="${stereo ? 'Left source channel' : 'Source channel'}"${configDisabled}>${channelOptions(sourceA, deviceChannels, stereo)}</select>`
+    + (stereo ? `<select class="live-ch-src leg" data-idx="${row.index}" data-field="b" aria-label="Right source channel" title="Right source channel"${configDisabled}>${channelOptions(sourceB, deviceChannels, true)}</select>` : '')
+    + `</span>`;
   return `<span class="daw-track-head-index">${row.index + 1}</span>`
-    + `<span class="daw-track-head-name">${row.name}</span>`
+    + `<span class="daw-track-head-name live-ch-name${row.clipping ? ' clip' : ''}" contenteditable="true" spellcheck="false" role="textbox" aria-label="Channel name — click to rename" title="Click to rename">${row.name}</span>`
+    + definitionHTML
     + `<span class="daw-track-head-controls">`
-    + `<button type="button" class="daw-track-head-arm" aria-label="${row.armed ? 'Disarm track' : 'Arm track for recording'}" aria-pressed="${row.armed}"${row.armDisabled ? ' disabled' : ''}>Arm</button>`
+    + `<button type="button" class="daw-track-head-arm live-ch-arm" data-idx="${row.index}" aria-label="${row.armed ? 'Disarm track' : 'Arm track for recording'}" aria-pressed="${row.armed}"${row.armDisabled ? ' disabled' : ''}>Arm</button>`
     + `<button type="button" class="daw-track-head-mute" aria-label="${row.muted ? 'Unmute track' : 'Mute track'}" aria-pressed="${row.muted}">M</button>`
     + `<button type="button" class="daw-track-head-solo" aria-label="${row.soloed ? 'Unsolo track' : 'Solo track'}" aria-pressed="${row.soloed}">S</button>`
     + `</span>`
     + `<span class="daw-track-head-level" aria-hidden="true"><span class="daw-track-head-level-fill" style="width:${row.levelPercent}%"></span></span>`
-    + `<button type="button" class="daw-track-head-remove" aria-label="Remove track">×</button>`;
+    + `<span class="live-ch-meta">${row.idle ? 'Idle' : 'Live'}</span>`
+    + `<button type="button" class="daw-track-head-remove live-ch-x" title="Remove track" aria-label="Remove track"${row.removeDisabled ? ' disabled' : ''}>×</button>`;
 }
 
 // The shared DAW-shell patch view (#517): the lane fingerprint (for "did the
@@ -593,7 +622,7 @@ export function dawShellHTML(state: LiveWorkspaceViewState, routingDrawerContent
   const rulerPlayheadHTML = `<span class="daw-playhead daw-playhead-ruler"></span>`;
   const lanePlayheadHTML = `<span class="daw-playhead daw-playhead-lanes"></span>`;
   const headHTML = rows.map((row) =>
-    `<div class="daw-track-head" data-ch="${row.index}">${dawTrackHeaderHTML(row)}</div>`).join('');
+    `<div class="daw-track-head" data-ch="${row.index}"><div class="live-ch${row.idle ? ' idle' : ''}" data-ch="${row.index}" tabindex="0" role="button" aria-label="Select ${row.name} to inspect in the EQ pane">${dawTrackHeaderHTML(row)}</div></div>`).join('');
   const headRowsHTML = rows.length > 0
     ? headHTML
     : `<div class="daw-empty-head"></div>`;
@@ -628,6 +657,7 @@ export function dawShellHTML(state: LiveWorkspaceViewState, routingDrawerContent
     + `<span class="daw-transport-title">Live Workspace</span>`
     + `<span class="daw-transport-state daw-transport-state-${transportChip.toLowerCase()}">${transportChip}</span>`
     + `<span class="daw-transport-time">${getDawPlayheadState().formatElapsed(seededElapsed)}</span>`
+    + liveWorkspaceToolbarHTML(state)
     + (state.sessionPicker ? sessionTabSessionPickerHTML(state.sessionPicker) : '')
     + (state.sessionPlayback ? sessionTabPlaybackHTML(state.sessionPlayback) : '')
     + sessionTabCaptureHTML(recordButtonView(state.capturePhase))

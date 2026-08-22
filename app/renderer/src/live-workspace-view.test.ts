@@ -452,14 +452,14 @@ describe('dawShellHTML / dawShellPatchView', () => {
 
   it('builds an accessible escaped track header with its initial inline level', () => {
     const html = dawTrackHeaderHTML({ index: 0, name: 'Kick &lt;3', armed: true, armDisabled: false, muted: false, soloed: true, monitorActive: true, levelPercent: 70, takeClip: null });
-    expect(html).toContain('class="daw-track-head-arm"');
+    expect(html).toMatch(/class="[^"]*\bdaw-track-head-arm\b[^"]*"/);
     expect(html).toContain('aria-label="Disarm track"');
-    expect(html).toContain('class="daw-track-head-mute"');
+    expect(html).toMatch(/class="[^"]*\bdaw-track-head-mute\b[^"]*"/);
     expect(html).toContain('aria-label="Mute track"');
-    expect(html).toContain('class="daw-track-head-mute" aria-label="Mute track" aria-pressed="false"');
-    expect(html).toContain('class="daw-track-head-solo"');
+    expect(html).toMatch(/class="[^"]*\bdaw-track-head-mute\b[^"]*" aria-label="Mute track" aria-pressed="false"/);
+    expect(html).toMatch(/class="[^"]*\bdaw-track-head-solo\b[^"]*"/);
     expect(html).toContain('aria-label="Unsolo track"');
-    expect(html).toContain('class="daw-track-head-remove"');
+    expect(html).toMatch(/class="[^"]*\bdaw-track-head-remove\b[^"]*"/);
     expect(html).toContain('aria-label="Remove track"');
     expect(html).toContain('aria-pressed="true"');
     expect(html).toContain('style="width:70%"');
@@ -467,14 +467,16 @@ describe('dawShellHTML / dawShellPatchView', () => {
   });
 
   it('disables only track-header Arm controls during an active recording (#1058)', () => {
-    const armButton = (html: string) => html.match(/<button type="button" class="daw-track-head-arm"[^>]*>/)?.[0];
+    const armButton = (html: string) => html.match(/<button type="button" class="[^"]*\bdaw-track-head-arm\b[^"]*"[^>]*>/)?.[0];
     const recordingHTML = dawShellHTML(makeState({ isCapturing: true, liveMode: 'record' }));
     const recordingHeads = recordingHTML.slice(
       recordingHTML.indexOf('<div class="daw-track-heads">'),
       recordingHTML.indexOf('<div class="daw-timeline">'),
     );
     expect(armButton(recordingHeads)).toContain('disabled');
-    expect(recordingHeads.match(/ disabled/g)).toHaveLength(CONFIG.length);
+    expect(recordingHeads.match(/class="[^"]*\bdaw-track-head-arm\b[^"]*"[^>]* disabled/g)).toHaveLength(CONFIG.length);
+    expect(recordingHeads.match(/class="[^"]*\blive-ch-kind\b[^"]*"[^>]* disabled/g)).toHaveLength(CONFIG.length);
+    expect(recordingHeads.match(/class="[^"]*\blive-ch-src\b[^"]*"[^>]* disabled/g)).toHaveLength(CONFIG.length);
     expect(armButton(dawShellHTML(makeState({ isCapturing: true, liveMode: 'monitor' })))).not.toContain('disabled');
     expect(armButton(dawShellHTML(makeState({ isCapturing: false, liveMode: 'record' })))).not.toContain('disabled');
   });
@@ -728,7 +730,7 @@ describe('dawTrackRows / configured track rows (#1043)', () => {
     const html = dawShellHTML(makeState({ channelConfig: [{ ...CONFIG[0], label: 'Kick <3' }] }));
     const headsSlice = html.slice(html.indexOf('<div class="daw-track-heads">'), html.indexOf('<div class="daw-timeline">'));
     expect(headsSlice).toContain('class="daw-track-head-index"');
-    expect(headsSlice).toContain('class="daw-track-head-name"');
+    expect(headsSlice).toMatch(/class="[^"]*\bdaw-track-head-name\b[^"]*"/);
     expect(headsSlice).toContain('>1</span>');
     expect(headsSlice).toContain('>Kick &lt;3</span>');
   });
