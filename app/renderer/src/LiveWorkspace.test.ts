@@ -33,7 +33,7 @@ function settings(overrides: Partial<AppSettings> = {}): AppSettings {
   return {
     idealProfile: '', customIdealProfiles: [], storageDir: '', rigs: [], activeRigId: null,
     usageSignalEnabled: false, channelLabels: {}, channelGroups: {}, inputInstrumentProfiles: {},
-    crashReportingEnabled: false, dawWorkspaceEnabled: false, liveAdjustmentsEnabled: false,
+    crashReportingEnabled: false, liveAdjustmentsEnabled: false,
     reportFirstUxEnabled: false, shareChurchName: '', weeklyReminderEnabled: false,
     weeklyReminderServiceDay: 0, liveEqPaneWidth: 360,
     measurementDeviceName: '', gradingProfile: 'casual', consoleNetworkConsentGranted: false,
@@ -76,10 +76,10 @@ afterEach(() => {
 });
 
 describe('LiveWorkspace', () => {
-  it('renders the LiveCapturePanel board island on the Live tab', () => {
+  it('renders the Session arrangement shell on the Live tab', () => {
     const html = renderToString(createElement(LiveWorkspace));
-    expect(html).toContain('live-meters-toolbar');
-    expect(html).toContain('meter-card sb-live-meters idle');
+    expect(html).toContain('daw-shell');
+    expect(html).not.toContain('meter-card');
   });
 
   it('renders nothing off the Live tab — the board island gates itself on appMode', () => {

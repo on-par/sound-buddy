@@ -17,10 +17,9 @@ export type InstantSettingKey =
   | 'weeklyReminderServiceDay'
   | 'usageSignalEnabled'
   | 'crashReportingEnabled'
-  | 'dawWorkspaceEnabled'
   | 'liveAdjustmentsEnabled';
 
-// The render-time projection of the seven instant-apply Settings controls,
+// The render-time projection of the six instant-apply Settings controls,
 // derived straight from persisted AppSettings.
 export interface InstantSettingValues {
   gradingProfile: 'casual' | 'broadcast';
@@ -28,7 +27,6 @@ export interface InstantSettingValues {
   weeklyReminderServiceDay: number;
   usageSignalEnabled: boolean;
   crashReportingEnabled: boolean;
-  dawWorkspaceEnabled: boolean;
   liveAdjustmentsEnabled: boolean;
 }
 
@@ -45,7 +43,6 @@ export function instantSettingValues(settings: AppSettings | null): InstantSetti
     weeklyReminderServiceDay: settings?.weeklyReminderServiceDay ?? WEEKLY_REMINDER_DEFAULT_DAY,
     usageSignalEnabled: !!settings?.usageSignalEnabled,
     crashReportingEnabled: !!settings?.crashReportingEnabled,
-    dawWorkspaceEnabled: !!settings?.dawWorkspaceEnabled,
     liveAdjustmentsEnabled: !!settings?.liveAdjustmentsEnabled,
   };
 }

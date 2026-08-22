@@ -6,7 +6,7 @@ import * as fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 // Experimental live adjustments area (#522): a placeholder panel gated behind
-// liveAdjustmentsEnabled, mirroring the #516 dawWorkspaceEnabled pattern.
+// liveAdjustmentsEnabled while preserving the Session arrangement.
 // The panel's rendering moved out of inline-app.js (syncLiveAdjustmentsPanel)
 // into the pure live-workspace-view.ts liveAdjustmentsPanelHTML builder + the
 // React LiveCapturePanel island, and the focused-input/coaching state moved

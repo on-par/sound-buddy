@@ -24,7 +24,6 @@ const FULL_SETTINGS: AppSettings = {
   channelGroups: {},
   inputInstrumentProfiles: {},
   crashReportingEnabled: true,
-  dawWorkspaceEnabled: true,
   liveAdjustmentsEnabled: true,
   reportFirstUxEnabled: false,
   shareChurchName: '',
@@ -45,7 +44,6 @@ describe('instantSettingValues', () => {
       weeklyReminderServiceDay: 0,
       usageSignalEnabled: false,
       crashReportingEnabled: false,
-      dawWorkspaceEnabled: false,
       liveAdjustmentsEnabled: false,
     });
   });
@@ -57,7 +55,6 @@ describe('instantSettingValues', () => {
       weeklyReminderServiceDay: 3,
       usageSignalEnabled: true,
       crashReportingEnabled: true,
-      dawWorkspaceEnabled: true,
       liveAdjustmentsEnabled: true,
     });
   });
@@ -85,7 +82,6 @@ describe('commitInstantSetting', () => {
     { key: 'weeklyReminderServiceDay', value: 5 },
     { key: 'usageSignalEnabled', value: true },
     { key: 'crashReportingEnabled', value: true },
-    { key: 'dawWorkspaceEnabled', value: true },
     { key: 'liveAdjustmentsEnabled', value: true },
   ];
 

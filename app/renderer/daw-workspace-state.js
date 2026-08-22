@@ -1,27 +1,10 @@
 // Copyright (c) 2026 Patrick Robinson (on-par). All rights reserved.
 // Licensed under the Sound Buddy Desktop Application License (app/LICENSE).
 
-// Pure, framework-free predicate for the experimental DAW-style Live
-// workspace gate (#516, epic #515). DOM-free so it's unit-testable,
-// mirroring track-workspace.js. Read off window.dawWorkspaceState.
+// Framework-free transport-label helper for the Session arrangement. Read
+// off window.dawWorkspaceState.
 (function (root) {
   'use strict';
-
-  /** Whether the experimental DAW workspace is enabled in app settings.
-   *  Strict: only a literal `true` on a real settings object counts, so a
-   *  null/still-loading store or a hand-edited settings.json string never
-   *  enables an experiment. */
-  function isEnabled(settings) {
-    return !!settings && settings.dawWorkspaceEnabled === true;
-  }
-
-  /** Whether the DAW shell should render in place of the meter workspace —
-   *  only on the Live tab, and only while the experiment is on. Single
-   *  predicate every render gate calls so the two rules can't drift apart
-   *  between call sites. */
-  function showShell(settings, mode) {
-    return isEnabled(settings) && mode === 'live';
-  }
 
   /** Transport chip text for the DAW shell header, driven by the same
    *  liveRunning/liveMode state the existing capture controls use. */
@@ -30,7 +13,7 @@
     return liveMode === 'record' ? 'Recording' : 'Monitoring';
   }
 
-  var api = { isEnabled: isEnabled, showShell: showShell, transportLabel: transportLabel };
+  var api = { transportLabel: transportLabel };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.dawWorkspaceState = api;
 })(typeof globalThis !== 'undefined' ? globalThis : this);

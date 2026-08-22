@@ -483,19 +483,6 @@ function aiEl(id) { return document.getElementById(id); }
   // mode) changes, so toggling it in Settings while on Recent reflows
   // immediately.
   setStore.subscribe(() => window.modeSwitch.applySingleColumnSync());
-  // Experimental DAW workspace gate (#516): body class is the entry point
-  // #517's workspace shell mounts against. Absent by default — the existing
-  // Live Capture UI is untouched until the user opts in.
-  let dawWorkspaceWasEnabled = false;
-  setStore.subscribe((s) => {
-    const nowEnabled = window.dawWorkspaceState.isEnabled(s.settings);
-    document.body.classList.toggle('daw-workspace', nowEnabled);
-    // Re-render the Live pane immediately on an actual flip so the shell swaps
-    // in/out without requiring a tab switch — but not on every settings save,
-    // or an unrelated save with the toggle unchanged would clobber the pane.
-    if (nowEnabled !== dawWorkspaceWasEnabled && lcStore.getState().appMode === 'live') window.modeSwitch.applySpectrumForMode('live');
-    dawWorkspaceWasEnabled = nowEnabled;
-  });
   // Experimental live adjustments gate (#522): re-sync the Live pane on an
   // actual flip so the area appears/disappears without a tab switch.
   let liveAdjustmentsWasEnabled = false;

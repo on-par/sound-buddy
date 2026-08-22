@@ -249,7 +249,6 @@ export interface LiveAdjustmentsStateApi {
   createCoachingState(): unknown;
 }
 export interface DawWorkspaceStateApi {
-  showShell(settings: AppSettings | null, mode: string): boolean;
   transportLabel(liveRunning: boolean, liveMode: string): string;
 }
 export interface DawPlayheadStateApi {

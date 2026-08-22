@@ -8,13 +8,6 @@ let window: Page;
 const SESSION_DIR = path.join(__dirname, '..', '..', 'tests', 'fixtures', 'session');
 const ROUTING_DRAWER_WIDTH_TOLERANCE_PX = 1;
 
-async function enableDawWorkspace(win: Page): Promise<void> {
-  await win.locator('#settings-btn').click();
-  await win.locator('#settings-tab-btn-labs').click();
-  await win.locator('#daw-workspace-toggle').check();
-  await win.locator('#settings-dialog-done').click();
-}
-
 async function sendPlaybackEvent(data: unknown): Promise<void> {
   await electronApp.evaluate(({ BrowserWindow }, event) => {
     BrowserWindow.getAllWindows()[0].webContents.send('playback-event', event);
@@ -67,7 +60,6 @@ test.describe('Session tab playback (#1080)', () => {
     await window.waitForLoadState('domcontentloaded');
     await stopCaptureIfRunning(window);
     await window.locator('.mode-tab[data-mode="live"]').click();
-    await enableDawWorkspace(window);
     await window.locator('.daw-session-picker-select').selectOption({ label: 'open session folder…' });
     await expect(window.locator('#daw-session-play')).toBeEnabled();
   });

@@ -4,9 +4,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { launchApp, stopCaptureIfRunning } from './e2e-helpers';
 
-// DAW playback + waveform rendering (TD-001 slice 6j, #713): with the
-// experimental DAW workspace toggle (#516) on, the Live tab's center pane
-// renders the timeline shell whose playhead/waveform canvases are now painted
+// DAW playback + waveform rendering (TD-001 slice 6j, #713): the Live tab's
+// center pane renders the timeline shell whose playhead/waveform canvases are now painted
 // by daw-shell-runtime.ts (installed onto window.dawShellRuntime by App.tsx)
 // instead of inline-app.js. This is the waveform-render-timing-sensitive
 // surface the issue calls out, and the e2e justification for
@@ -16,14 +15,6 @@ import { launchApp, stopCaptureIfRunning } from './e2e-helpers';
 
 let electronApp: ElectronApplication | undefined;
 let window: Page;
-
-async function enableDawWorkspace(win: Page): Promise<void> {
-  await win.locator('#settings-btn').click();
-  await win.locator('#settings-tab-btn-labs').click();
-  await win.locator('#daw-workspace-toggle').check();
-  await win.locator('#settings-dialog-done').click();
-  await expect(win.locator('#settings-dialog')).toBeHidden();
-}
 
 // Full-height min/max pairs (level 0 -> -1, level 255 -> +1, ADR-0004
 // quantization) so the drawn stroke always crosses the canvas's vertical
@@ -65,7 +56,6 @@ test.describe('DAW shell playback + waveform rendering (#713)', () => {
     await stopCaptureIfRunning(window);
     await window.locator('.mode-tab[data-mode="live"]').click();
     await expect(window.locator('#tab-live')).toHaveClass(/active/);
-    await enableDawWorkspace(window);
   });
 
   test('the shell renders the mix waveform, transport readout, playhead, and one lane per configured strip', async () => {
