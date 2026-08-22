@@ -249,16 +249,19 @@ export default function LiveCapturePanel(): JSX.Element | null {
   }, [s.appMode, s.isCapturing, s.demoting]);
 
   useEffect(() => {
+    if (s.appMode !== 'live') return;
     if (soundcheck.recordedSessionsLoaded) return;
     void useSoundcheckStore.getState().loadRecordedSessions();
-  }, [soundcheck.recordedSessionsLoaded]);
+  }, [s.appMode, soundcheck.recordedSessionsLoaded]);
 
   useEffect(() => {
+    if (s.appMode !== 'live') return;
     if (soundcheck.devicesLoaded) return;
     void useSoundcheckStore.getState().loadDevices();
-  }, [soundcheck.devicesLoaded]);
+  }, [s.appMode, soundcheck.devicesLoaded]);
 
   useEffect(() => {
+    if (s.appMode !== 'live') return;
     if (!soundcheck.sessionDir || !soundcheck.manifest) return;
     ensureSessionRouting(
       soundcheck.sessionDir,
@@ -266,9 +269,10 @@ export default function LiveCapturePanel(): JSX.Element | null {
       useRouteStore.getState(),
       useSoundcheckStore.getState(),
     );
-  }, [soundcheck.sessionDir, soundcheck.manifest, s.channelConfig, soundcheck.routes, savedBuses]);
+  }, [s.appMode, soundcheck.sessionDir, soundcheck.manifest, s.channelConfig, soundcheck.routes, savedBuses]);
 
   useEffect(() => {
+    if (s.appMode !== 'live') return;
     const controller = createSoundcheckTransportController({
       subscribe: useSoundcheckStore.subscribe,
       getState: () => ({ lastElapsedTick: useSoundcheckStore.getState().lastElapsedTick }),
@@ -282,16 +286,17 @@ export default function LiveCapturePanel(): JSX.Element | null {
     });
     controller.start();
     return () => controller.stop();
-  }, []);
+  }, [s.appMode]);
 
   useEffect(() => {
+    if (s.appMode !== 'live') return;
     const runtime = getDawShellRuntime();
     const playbackPosition = useSoundcheckStore.getState().lastElapsedTick;
     if (soundcheck.manifest && playbackPosition) runtime?.setPlaybackPosition?.(playbackPosition);
     else runtime?.setPlaybackPosition?.(null);
     runtime?.setPlaybackActive?.(soundcheck.playing);
     runtime?.renderPlayhead?.();
-  }, [soundcheck.manifest, soundcheck.playing]);
+  }, [s.appMode, soundcheck.manifest, soundcheck.playing]);
 
   // DAW shell (#517/#518/#520): stamp the lane fingerprint (the React
   // rebuild-decision key for same-count rig swaps) and hand the
@@ -299,12 +304,13 @@ export default function LiveCapturePanel(): JSX.Element | null {
   // after every rebuild — the meter controller re-paints them per tick
   // thereafter.
   useEffect(() => {
+    if (s.appMode !== 'live') return;
     const shell = document.getElementById('live-island')?.querySelector('.daw-shell');
     if (shell) shell.setAttribute('data-lane-signature', laneSignature);
     getDawShellRuntime()?.renderPlayhead?.();
     getDawShellRuntime()?.renderWaveform?.();
     if (shell && sessionWaveforms) paintSessionTabWaveformClips(shell, sessionWaveforms.clips);
-  }, [laneSignature, sessionWaveforms]);
+  }, [s.appMode, laneSignature, sessionWaveforms]);
 
   // The playhead ticker (TD-001 slice 6j, #713): a requestAnimationFrame loop
   // driving renderPlayhead every frame while the shell is mounted and
@@ -312,6 +318,7 @@ export default function LiveCapturePanel(): JSX.Element | null {
   // Active during "Connecting…" and whenever meter events stall, exactly like
   // the old interval (but at frame rate), so the playhead never freezes early.
   useEffect(() => {
+    if (s.appMode !== 'live') return;
     if (!s.isCapturing) return;
     let rafHandle = 0;
     const tick = (): void => {
@@ -320,7 +327,7 @@ export default function LiveCapturePanel(): JSX.Element | null {
     };
     rafHandle = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(rafHandle);
-  }, [s.isCapturing]);
+  }, [s.appMode, s.isCapturing]);
 
   // Native 'change' listener (see boardRootRef's comment above) — must stay
   // above the `appMode !== 'live'` early return below (Rules of Hooks: no
