@@ -239,8 +239,8 @@ describe('LiveCapturePanel', () => {
         { inputChannels: [1], outputChannels: [2] },
         { inputChannels: [0], outputChannels: [3] },
       ],
-      savedBuses: [],
-      masterMixdown: false,
+      savedBuses: [{ id: 'bus-1', name: 'Lead Vocal', pattern: 'lead', outputChannel: 2 }],
+      masterMixdown: true,
     });
 
     const html = renderMarkup();
@@ -249,6 +249,10 @@ describe('LiveCapturePanel', () => {
     expect(html).toContain('<option value="1" selected>Ch 2</option>');
     expect(html).toContain('data-routing-kind="output" data-routing-track-index="0" data-routing-channels="2"');
     expect(html).toContain('data-routing-channels="2" aria-label="Track 1 output Ch 3" aria-pressed="true"');
+    expect(html).toContain('Lead Vocal');
+    expect(html).toContain('lead');
+    expect(html).toContain('class="daw-routing-master-mixdown"');
+    expect(html).toContain('aria-label="Force stereo master mixdown" checked');
   });
 
   it('renders cached session takes only in their provenance-matched lanes and replaces generation copy when ready', () => {

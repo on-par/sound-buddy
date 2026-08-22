@@ -6,23 +6,24 @@ import { routingMatrixView } from './routingMatrix';
 import type { RouteState, RouteStoreState } from './stores/routeStore';
 import type { SoundcheckState } from './stores/soundcheckStore';
 import { escapeHtml } from './spectrum-display';
+import type { SoundcheckBus } from '../../electron/ipc/api';
 
 const FIRST_CHANNEL = 0;
 const STEREO_CHANNEL_COUNT = 2;
 const DISPLAY_CHANNEL_OFFSET = 1;
 
 export interface RoutingDrawerChangeDeps {
-  routes: Pick<RouteStoreState, 'updateTrackInput' | 'updateTrackOutput'>;
-  soundcheck: Pick<SoundcheckState, 'setRoute'>;
+  routes: Pick<RouteStoreState, 'updateTrackInput' | 'updateTrackOutput' | 'setMasterMixdown'>;
+  soundcheck: Pick<SoundcheckState, 'setRoute' | 'setMaster'>;
 }
 
-export function routeStateForSession(tracks: StripConfig[], outputRoutes: number[][]): RouteState {
+export function routeStateForSession(tracks: StripConfig[], outputRoutes: number[][], savedBuses: SoundcheckBus[]): RouteState {
   return {
     tracks: tracks.map((track, trackIndex) => ({
       inputChannels: track.kind === 'stereo' ? [track.a, track.b] : [track.a],
       outputChannels: [...(outputRoutes[trackIndex] ?? [])],
     })),
-    savedBuses: [],
+    savedBuses: savedBuses.map((bus) => ({ ...bus })),
     masterMixdown: false,
   };
 }
@@ -34,7 +35,7 @@ export function routingDrawerHTML(
   outputDeviceChannelCount: number,
 ): string {
   const matrix = routingMatrixView(tracks, routeState, outputDeviceChannelCount);
-  return `<div class="daw-routing-list">${tracks.map((track, trackIndex) => {
+  const trackAssignments = `<div class="daw-routing-list">${tracks.map((track, trackIndex) => {
     const label = escapeHtml(track.label || `Track ${trackIndex + DISPLAY_CHANNEL_OFFSET}`);
     const selectedInput = routeState.tracks[trackIndex]?.inputChannels ?? [];
     const sourceOptions = inputOptions(track.kind, selectedInput, inputDeviceChannelCount);
@@ -46,6 +47,18 @@ export function routingDrawerHTML(
         `<button type="button" class="daw-routing-output-cell" data-routing-kind="output" data-routing-track-index="${trackIndex}" data-routing-channels="${choice.channels.join(',')}" aria-label="${label} output ${choice.label}" aria-pressed="${choice.selected}">${choice.label}</button>`).join('')}</div>`
       + `</div>`;
   }).join('')}</div>`;
+  const savedBusAssignments = routeState.savedBuses.length > 0
+    ? routeState.savedBuses.map((bus) => `<div class="daw-routing-saved-bus">`
+      + `<span class="daw-routing-saved-bus-name">${escapeHtml(bus.name)}</span>`
+      + `<span class="daw-routing-saved-bus-pattern">${escapeHtml(bus.pattern)}</span>`
+      + `<span class="daw-routing-saved-bus-output">Ch ${bus.outputChannel + DISPLAY_CHANNEL_OFFSET}</span>`
+      + `</div>`).join('')
+    : '<p class="daw-routing-saved-bus-empty">No saved bus assignments for this session.</p>';
+  const masterChecked = routeState.masterMixdown ? ' checked' : '';
+  return trackAssignments
+    + `<section class="daw-routing-saved-buses" aria-label="Saved bus assignments">`
+    + `<span class="daw-routing-saved-buses-title">Saved buses</span>${savedBusAssignments}</section>`
+    + `<label class="daw-routing-master-label"><input type="checkbox" class="daw-routing-master-mixdown" aria-label="Force stereo master mixdown"${masterChecked}>Force stereo master mixdown</label>`;
 }
 
 export function applyRoutingDrawerChange(
@@ -63,6 +76,18 @@ export function applyRoutingDrawerChange(
 
   const next = deps.routes.updateTrackOutput(sessionId, trackIndex, channels);
   if (next) deps.soundcheck.setRoute(trackIndex, channels[FIRST_CHANNEL]);
+  return next;
+}
+
+export function applyRoutingDrawerMasterMixdownChange(
+  sessionId: string,
+  masterMixdown: boolean,
+  deps: RoutingDrawerChangeDeps,
+): RouteState | null {
+  if (!sessionId) return null;
+
+  const next = deps.routes.setMasterMixdown(sessionId, masterMixdown);
+  if (next) deps.soundcheck.setMaster(masterMixdown);
   return next;
 }
 

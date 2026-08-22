@@ -44,7 +44,12 @@ import { useSettingsStore } from './stores/settingsStore';
 import { useSpectrumStore } from './stores/spectrumStore';
 import { useSoundcheckStore } from './stores/soundcheckStore';
 import { useRouteStore } from './stores/routeStore';
-import { applyRoutingDrawerChange, routeStateForSession, routingDrawerHTML } from './routingDrawer';
+import {
+  applyRoutingDrawerChange,
+  applyRoutingDrawerMasterMixdownChange,
+  routeStateForSession,
+  routingDrawerHTML,
+} from './routingDrawer';
 import { deviceChannelCount } from './live-capture-panel';
 import { iconSvg } from './report-card';
 import {
@@ -181,6 +186,7 @@ export default function LiveCapturePanel(): JSX.Element | null {
     peaksStatus: st.peaksStatus,
     routes: st.routes,
     deviceChannels: st.deviceChannels,
+    master: st.master,
   }));
   const routesBySession = useStoreShallow(useRouteStore, (st) => st.routesBySession);
 
@@ -188,6 +194,7 @@ export default function LiveCapturePanel(): JSX.Element | null {
   // render time, never via subscription. boardShapeVersion (also subscribed
   // above) is what re-renders the board when a tick's channel count changes.
   const showShell = getDawWorkspaceState().showShell(settings, s.appMode);
+  const savedBuses = settings?.soundcheckBuses;
   const routeState = soundcheck.sessionDir ? routesBySession[soundcheck.sessionDir] ?? null : null;
   const sessionPicker = showShell
     ? sessionTabSessionPickerView(soundcheck.recordedSessions, soundcheck.sessionDir, soundcheck.manifest, soundcheck.statusMessage)
@@ -257,9 +264,9 @@ export default function LiveCapturePanel(): JSX.Element | null {
     if (!showShell || !soundcheck.sessionDir || !soundcheck.manifest) return;
     useRouteStore.getState().ensureSession(
       soundcheck.sessionDir,
-      routeStateForSession(s.channelConfig, soundcheck.routes),
+      routeStateForSession(s.channelConfig, soundcheck.routes, savedBuses ?? []),
     );
-  }, [showShell, soundcheck.sessionDir, soundcheck.manifest, s.channelConfig, soundcheck.routes]);
+  }, [showShell, soundcheck.sessionDir, soundcheck.manifest, s.channelConfig, soundcheck.routes, savedBuses]);
 
   useEffect(() => {
     if (!showShell) return;
@@ -568,6 +575,15 @@ export default function LiveCapturePanel(): JSX.Element | null {
 
   function onBoardChange(e: ChangeEvent<HTMLDivElement>): void {
     const target = e.target as Element;
+    const routingMaster = target.closest('.daw-routing-master-mixdown');
+    if (routingMaster instanceof HTMLInputElement) {
+      const sessionId = useSoundcheckStore.getState().sessionDir ?? '';
+      applyRoutingDrawerMasterMixdownChange(sessionId, routingMaster.checked, {
+        routes: useRouteStore.getState(),
+        soundcheck: useSoundcheckStore.getState(),
+      });
+      return;
+    }
     const routingSource = target.closest('.daw-routing-source');
     if (routingSource instanceof HTMLSelectElement) {
       applyRoutingChange('input', routingSource);
