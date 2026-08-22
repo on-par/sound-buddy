@@ -1004,8 +1004,8 @@
     .daw-track-head .live-ch-drag { grid-area:drag; align-self:center; }
     .daw-track-head-index { grid-area:index; align-self:center; font:var(--fw-regular) var(--fs-micro)/1 ui-monospace, monospace; font-variant-numeric:tabular-nums; color:var(--text-muted); }
     .daw-track-head-name { grid-area:name; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font:var(--fw-semibold) var(--fs-body-sm)/1.3 var(--font-sans); color:var(--text-primary); }
-    .daw-track-head .daw-track-head-name { justify-self:start; max-width:58px; }
-    .daw-track-head .live-ch-def { grid-area:def; min-width:0; }
+    .daw-track-head .daw-track-head-name { justify-self:start; max-width:58px; position:relative; z-index:2; }
+    .daw-track-head .live-ch-def { grid-area:def; min-width:0; position:relative; z-index:1; }
     .daw-track-head-controls { grid-area:controls; display:flex; gap:3px; }
     .daw-track-head .live-ch-meta { grid-area:meta; align-self:center; justify-self:end; max-width:78px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
     .daw-track-head-arm, .daw-track-head-mute, .daw-track-head-solo, .daw-track-head-remove { border:1px solid var(--border-subtle); border-radius:var(--radius-sm); background:transparent; color:var(--text-muted); cursor:pointer; font:var(--fw-semibold) var(--fs-micro)/1 var(--font-sans); }

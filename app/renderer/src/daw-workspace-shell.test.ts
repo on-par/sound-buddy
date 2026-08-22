@@ -384,6 +384,17 @@ describe('configured track rows render from one shared list (#1043)', () => {
     expect(css).toContain('.daw-track-head-name');
   });
 
+  it('keeps the editable track name above compact definition controls', () => {
+    const nameRule = css.match(/\.daw-track-head \.daw-track-head-name\s*\{[^}]*\}/);
+    const definitionRule = css.match(/\.daw-track-head \.live-ch-def\s*\{[^}]*\}/);
+    expect(nameRule).not.toBeNull();
+    expect(definitionRule).not.toBeNull();
+    expect(nameRule![0]).toMatch(/position:\s*relative/);
+    expect(definitionRule![0]).toMatch(/position:\s*relative/);
+    expect(nameRule![0]).toMatch(/z-index:\s*2/);
+    expect(definitionRule![0]).toMatch(/z-index:\s*1/);
+  });
+
   it('head and lane rows share one height source, and neither hardcodes a height literal', () => {
     expect(css).toContain('--daw-track-row-h');
     const headRule = css.match(/\.daw-track-head\s*\{[^}]*\}/);
