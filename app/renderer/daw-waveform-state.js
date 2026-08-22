@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Patrick Robinson (on-par). All rights reserved.
 // Licensed under the Sound Buddy Desktop Application License (app/LICENSE).
 
-// Pure, framework-free mix-waveform state for the experimental DAW-style Live
+// Pure, framework-free mix-waveform state for the DAW-style Session
 // workspace shell (#520, epic #515). DOM-free so it's unit-testable, mirroring
 // daw-playhead-state.js. Read off window.dawWaveformState. Decodes the
 // {"type":"peaks", ...} NDJSON frames stream.py emits per ADR 0004

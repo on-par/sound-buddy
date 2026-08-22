@@ -832,7 +832,6 @@ describe('SETTING_SPECS — the single owner of every field invariant (#747)', (
     channelGroups: {},
     inputInstrumentProfiles: {},
     crashReportingEnabled: false,
-    dawWorkspaceEnabled: false,
     liveAdjustmentsEnabled: false,
     reportFirstUxEnabled: false,
     shareChurchName: '',
@@ -961,39 +960,5 @@ describe('legacy secondaryMeasurementEnabled settings retirement (#730)', () => 
     expect(raw[LEGACY_KEY]).toBe(true);
     expect(raw.idealProfile).toBe('concert');
     expect(raw.storageDir).toBe('/tmp/somewhere');
-  });
-});
-
-describe('legacy dawWorkspaceEnabled settings retirement (#1105)', () => {
-  const retiredDawWorkspaceSettings = {
-    dawWorkspaceEnabled: true,
-    idealProfile: 'broadcast',
-    storageDir: '/tmp/somewhere',
-    rigs: [],
-    activeRigId: null,
-  };
-
-  it('loads a pre-retirement settings.json with the stale key cleanly, dropping it from getSettings() while preserving supported settings', () => {
-    writeFile(retiredDawWorkspaceSettings);
-
-    let settings: ReturnType<typeof getSettings> | undefined;
-    expect(() => {
-      settings = getSettings();
-    }).not.toThrow();
-
-    if (!settings) throw new Error('getSettings() should return settings for the persisted fixture');
-    expect('dawWorkspaceEnabled' in settings).toBe(false);
-    expect(settings.idealProfile).toBe('broadcast');
-    expect(settings.storageDir).toBe('/tmp/somewhere');
-    expect(settings.rigs).toEqual([]);
-    expect(settings.activeRigId).toBeNull();
-  });
-
-  it('echoes a current-session update to the retired key without adding it back to getSettings()', () => {
-    const updated = updateSettings({ dawWorkspaceEnabled: true });
-
-    expect(updated.dawWorkspaceEnabled).toBe(true);
-    expect(readFile().dawWorkspaceEnabled).toBe(true);
-    expect('dawWorkspaceEnabled' in getSettings()).toBe(false);
   });
 });

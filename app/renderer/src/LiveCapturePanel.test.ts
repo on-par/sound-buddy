@@ -14,7 +14,7 @@ import { useLiveCaptureStore } from './stores/liveCaptureStore';
 import { useSettingsStore } from './stores/settingsStore';
 import { useSoundcheckStore } from './stores/soundcheckStore';
 import { useRouteStore } from './stores/routeStore';
-import type { LiveDevice, ChannelWindowData } from './live-capture-panel';
+import type { LiveDevice } from './live-capture-panel';
 import type { AppSettings } from '../../electron/ipc/api';
 
 // The pure helper classic-scripts the board reads off `window` — real modules
@@ -41,18 +41,11 @@ const CONFIG = [
   { kind: 'mono' as const, a: 1, b: 2, armed: false },
 ];
 
-const TICK_CHANNELS: ChannelWindowData[] = [
-  { index: 0, name: 'Vocals', rms: -18, peak: -6, clipping: false, centroid: 2400, rolloff: 8000,
-    bands: { sub_bass: -58, bass: -30, low_mid: -24, mid: -12, high_mid: -20, presence: -28, brilliance: -80 } },
-  { index: 1, name: 'Band', rms: -22, peak: -9, clipping: false, centroid: 300, rolloff: 5000,
-    bands: { sub_bass: -20, bass: -10, low_mid: -26, mid: -30, high_mid: -34, presence: -40, brilliance: -50 } },
-];
-
 function settings(overrides: Partial<AppSettings> = {}): AppSettings {
   return {
     idealProfile: '', customIdealProfiles: [], storageDir: '', rigs: [], activeRigId: null,
     usageSignalEnabled: false, channelLabels: {}, channelGroups: {}, inputInstrumentProfiles: {},
-    crashReportingEnabled: false, dawWorkspaceEnabled: false, liveAdjustmentsEnabled: false,
+    crashReportingEnabled: false, liveAdjustmentsEnabled: false,
     reportFirstUxEnabled: false, shareChurchName: '', weeklyReminderEnabled: false,
     weeklyReminderServiceDay: 0, liveEqPaneWidth: 360,
     measurementDeviceName: '', gradingProfile: 'casual', consoleNetworkConsentGranted: false,
@@ -143,75 +136,16 @@ describe('LiveCapturePanel', () => {
     expect(renderMarkup()).toBe('');
   });
 
-  it('renders the idle board: toolbar, cap, and the idle meter card', () => {
+  it('keeps the arrangement transport driven by capture state', () => {
+    useLiveCaptureStore.setState({ isCapturing: true, liveMode: 'record' });
     const html = renderMarkup();
-    expect(html).toContain('id="live-ws-add"');
-    expect(html).toContain('2 / 8 used');
-    expect(html).toContain('meter-card sb-live-meters idle');
-    expect(html).toContain('>1 / 2 armed</span>');
-    expect(html).toContain('Idle');
+    expect(html).toContain('daw-shell');
+    expect(html).toContain('daw-transport-state-recording');
+    expect(html).toContain('Recording');
   });
 
-  it('renders the running card from the latest tick once capturing with a lastTick', () => {
-    useLiveCaptureStore.setState({
-      isCapturing: true,
-      lastTick: { type: 'meter', ts: 0, channels: TICK_CHANNELS },
-      lastLiveChannels: TICK_CHANNELS,
-    });
-    const html = renderMarkup();
-    expect(html).toContain('meter-card sb-live-meters">');
-    expect(html).not.toContain('meter-card sb-live-meters idle');
-    expect(html).toContain('>Vocals</span>');
-    expect(html).toContain('>Band</span>');
-  });
-
-  it('keeps the running board while demoting a record stop back to monitoring (#847)', () => {
-    useLiveCaptureStore.setState({
-      isCapturing: false, // stopCapture() already flipped it
-      demoting: true, // …but the monitor session is about to resume
-      liveMode: 'record',
-      lastTick: { type: 'meter', ts: 0, channels: TICK_CHANNELS },
-      lastLiveChannels: TICK_CHANNELS,
-    });
-    const html = renderMarkup();
-    expect(html).toContain('meter-card sb-live-meters">');
-    expect(html).not.toContain('meter-card sb-live-meters idle'); // no transient idle card
-    expect(html).toContain('id="live-ws-disarm-all" disabled'); // capture-locked controls stay locked
-    expect(html).toContain('id="live-ws-add" disabled');
-  });
-
-  it('renders the guided first-use hero at zero tracks (no toolbar, CTA present)', () => {
-    useLiveCaptureStore.setState({ channelConfig: [] });
-    const html = renderMarkup();
-    expect(html).toContain('live-setup-hero');
-    expect(html).toContain('Set up your live check');
-    expect(html).toContain('id="live-ws-add"');
-    expect(html).toContain('Add your first track');
-    expect(html).not.toContain('live-ws-arm-count');
-  });
-
-  it('marks the selected strip via stripViewAt when a channel is selected (#668)', () => {
-    useLiveCaptureStore.setState({ selectedChannel: 1 });
-    const html = renderMarkup();
-    expect(html).toMatch(/class="live-ch[^"]*\bselected\b[^"]*" data-ch="1"/);
-    expect(html).toMatch(/data-ch="1"[^>]*aria-current="true"/);
-  });
-
-  it('renders the first-use banner above the toolbar until setup is complete', () => {
-    const html = renderMarkup();
-    expect(html).toContain('live-setup-banner');
-    expect(html).toContain('Getting set up');
-    expect(html).toContain('id="live-setup-skip"');
-  });
-
-  it('omits the banner once setup is marked complete', () => {
-    storage.getItem = (k: string) => (k === liveSetupState.KEY ? '1' : null);
-    const html = renderMarkup();
-    expect(html).not.toContain('live-setup-banner');
-  });
-
-  it('renders the DAW shell instead of the meter board when the toggle is on', () => {
-    useSettingsStore.setState({ settings: settings({ dawWorkspaceEnabled: true }) });
+  it('renders the DAW shell instead of the meter board without loaded settings', () => {
+    useSettingsStore.setState({ settings: null });
     const html = renderMarkup();
     expect(html).toContain('daw-shell');
     expect(html).toContain('daw-mix-lane');
@@ -220,7 +154,6 @@ describe('LiveCapturePanel', () => {
   });
 
   it('binds the DAW toolbar picker to the shared soundcheck selection state', () => {
-    useSettingsStore.setState({ settings: settings({ dawWorkspaceEnabled: true }) });
     useSoundcheckStore.setState({
       recordedSessions: [{ sessionDir: '/recordings/sunday', name: 'Discovered label' }],
       recordedSessionsLoaded: true,
@@ -237,7 +170,6 @@ describe('LiveCapturePanel', () => {
   });
 
   it('renders the Session toolbar transport cluster from the loaded take and discrete playback state', () => {
-    useSettingsStore.setState({ settings: settings({ dawWorkspaceEnabled: true }) });
     useSoundcheckStore.setState({ manifest: { tracks: [{ kind: 'mono' }] }, playing: false });
     expect(renderMarkup()).toContain('id="daw-session-play"');
     expect(renderMarkup()).toContain('id="daw-session-loop"');
@@ -253,7 +185,6 @@ describe('LiveCapturePanel', () => {
   });
 
   it('composes shared Session routing state into the DAW drawer', () => {
-    useSettingsStore.setState({ settings: settings({ dawWorkspaceEnabled: true }) });
     useSoundcheckStore.setState({
       sessionDir: '/recordings/sunday',
       manifest: { tracks: [{ kind: 'mono' }, { kind: 'mono' }] },
@@ -282,7 +213,6 @@ describe('LiveCapturePanel', () => {
   });
 
   it('renders cached session takes only in their provenance-matched lanes and replaces generation copy when ready', () => {
-    useSettingsStore.setState({ settings: settings({ dawWorkspaceEnabled: true }) });
     useSoundcheckStore.setState({
       manifest: { tracks: [{ kind: 'mono', sourceChannels: [1] }] },
       peaks: null,

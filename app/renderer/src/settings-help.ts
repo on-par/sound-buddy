@@ -57,11 +57,6 @@ export const SETTINGS_HELP_ENTRIES: readonly SettingsHelpEntry[] = [
     text: 'Off unless you turn it on. When enabled, a crash sends only: app version, macOS version, the error message and stack trace (emails, license keys, and folder paths removed — file names are reduced to their base name), which screen you were on, and the names of recent app actions. Never recordings, audio, full file paths, or anything you typed.',
   },
   {
-    control: 'dawWorkspace',
-    noteId: 'daw-workspace-note',
-    text: 'Off unless you turn it on. An early, experimental take on a DAW-style recording workspace for the Live tab. Your current Live Capture workflow stays the default — turn this off anytime to go back.',
-  },
-  {
     control: 'liveAdjustments',
     noteId: 'live-adjustments-note',
     text: 'Off unless you turn it on. An early, experimental area for mix suggestions while you monitor or record in Live Capture. Nothing is analyzed or sent anywhere — turn this off anytime to hide it.',

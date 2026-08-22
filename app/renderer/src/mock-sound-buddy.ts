@@ -43,7 +43,6 @@ const DEFAULT_APP_SETTINGS: AppSettings = {
   channelGroups: {},
   inputInstrumentProfiles: {},
   crashReportingEnabled: false,
-  dawWorkspaceEnabled: false,
   liveAdjustmentsEnabled: false,
   reportFirstUxEnabled: false,
   shareChurchName: '',

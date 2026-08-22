@@ -282,7 +282,6 @@ describe('installStoreBridge', () => {
     channelGroups: {},
     inputInstrumentProfiles: {},
     crashReportingEnabled: false,
-    dawWorkspaceEnabled: false,
     liveAdjustmentsEnabled: false,
     reportFirstUxEnabled: false,
     shareChurchName: '',

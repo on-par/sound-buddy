@@ -21,9 +21,12 @@
 
 import {
   LIVE_BAND_KEYS,
+  channelOptions,
   deviceChannelCount,
   usedChannelCount,
   liveMetersHTML,
+  groupSummary,
+  groupSummaryText,
   levelPercent,
   measurementSourceOptionLabel,
   type LiveDevice,
@@ -200,6 +203,7 @@ export interface TrackWorkspaceApi {
 }
 export interface GroupStateApi {
   groupOf(groups: ChannelGroup[], idx: number): number;
+  ungrouped(groups: ChannelGroup[], count: number): number[];
   isGroupCollapsed(groups: ChannelGroup[], g: number): boolean;
 }
 export interface ArmStateApi {
@@ -249,7 +253,6 @@ export interface LiveAdjustmentsStateApi {
   createCoachingState(): unknown;
 }
 export interface DawWorkspaceStateApi {
-  showShell(settings: AppSettings | null, mode: string): boolean;
   transportLabel(liveRunning: boolean, liveMode: string): string;
 }
 export interface DawPlayheadStateApi {
@@ -468,13 +471,22 @@ export function meterCardHTML(state: LiveWorkspaceViewState): { html: string; id
 // labels are user-entered — so callers interpolate it raw and never re-escape.
 export interface DawTrackRow {
   index: number;
+  strip?: StripConfig;
   name: string;
+  idle?: boolean;
+  clipping?: boolean;
+  selected?: boolean;
+  groupIndex?: number;
+  groupCollapsed?: boolean;
   armed: boolean;
   armDisabled: boolean;
+  configDisabled?: boolean;
+  removeDisabled?: boolean;
   muted: boolean;
   soloed: boolean;
   monitorActive: boolean;
   levelPercent: number;
+  deviceChannels?: number;
   takeClip: SessionTabWaveformClip | null;
 }
 
@@ -492,32 +504,135 @@ export function dawTrackRows(state: LiveWorkspaceViewState): DawTrackRow[] {
     const channel = liveChannelAt(state, idx);
     const muted = state.mutedChannels[idx] === true;
     const soloed = state.soloedChannels[idx] === true;
+    const groupIndex = getGroupState().groupOf(state.channelGroups, idx);
     return {
       index: idx,
+      strip,
       name: escapeHtml(getRigReconcile().resolveStripLabel(strip, channel, idx)),
+      idle: !channel || !!channel.idle,
+      clipping: !!channel?.clipping,
+      selected: state.selectedChannel === idx,
+      groupIndex,
+      groupCollapsed: getGroupState().isGroupCollapsed(state.channelGroups, groupIndex),
       armed: getArmState().isArmed(strip),
       armDisabled,
+      configDisabled: state.isCapturing,
+      removeDisabled: state.isCapturing,
       muted,
       soloed,
       monitorActive: !muted && (!hasSoloedChannel || soloed),
       levelPercent: levelPercent(channel?.rms ?? Number.NaN, !!channel?.idle),
+      deviceChannels: deviceChannelCount(state.selectedDevice, state.devices),
       takeClip: state.sessionWaveforms?.clips.find((clip) => clip.stripIndex === idx) ?? null,
     };
   });
 }
 
+export interface DawTrackGroupHeader {
+  type: 'group';
+  index: number;
+  name: string;
+  collapsed: boolean;
+  summary: string;
+  clipping: boolean;
+  disabled: boolean;
+}
+
+export interface DawTrackUngroupedHeader {
+  type: 'ungrouped';
+}
+
+export interface DawTrackEntry {
+  type: 'track';
+  row: DawTrackRow;
+}
+
+export type DawTrackListEntry = DawTrackGroupHeader | DawTrackUngroupedHeader | DawTrackEntry;
+
+/** DAW arrangement track-list order mirrors the legacy live board: group order,
+ * each group's manual member order, then any ungrouped strips. */
+export function dawTrackListEntries(state: LiveWorkspaceViewState): DawTrackListEntry[] {
+  const rowsByIndex = new Map(dawTrackRows(state).map((row) => [row.index, row]));
+  if (state.channelGroups.length === 0) return Array.from(rowsByIndex.values()).map((row) => ({ type: 'track', row }));
+
+  const entries: DawTrackListEntry[] = [];
+  const channels = currentEqPaneChannels(state);
+  state.channelGroups.forEach((grp, index) => {
+    const summary = groupSummary(channels, grp.members);
+    entries.push({
+      type: 'group',
+      index,
+      name: escapeHtml(grp.name),
+      collapsed: !!grp.collapsed,
+      summary: escapeHtml(groupSummaryText(summary)),
+      clipping: summary.clipping,
+      disabled: state.isCapturing,
+    });
+    grp.members.forEach((member) => {
+      const row = rowsByIndex.get(member);
+      if (row) entries.push({ type: 'track', row });
+    });
+  });
+
+  const ungrouped = getGroupState().ungrouped(state.channelGroups, state.channelConfig.length);
+  if (ungrouped.length) {
+    entries.push({ type: 'ungrouped' });
+    ungrouped.forEach((idx) => {
+      const row = rowsByIndex.get(idx);
+      if (row) entries.push({ type: 'track', row });
+    });
+  }
+  return entries;
+}
+
 /** Pure inside markup for one arrangement track header. The row is derived
  * once by dawTrackRows, preserving the header/lane ordering contract. */
 export function dawTrackHeaderHTML(row: DawTrackRow): string {
-  return `<span class="daw-track-head-index">${row.index + 1}</span>`
-    + `<span class="daw-track-head-name">${row.name}</span>`
+  const strip = row.strip ?? { kind: 'mono', a: 0 };
+  const stereo = strip.kind === 'stereo';
+  const configDisabled = row.configDisabled ? ' disabled' : '';
+  const sourceA = Number.isInteger(strip.a) ? strip.a : 0;
+  const sourceB = stereo && Number.isInteger((strip as StripConfig).b) ? (strip as StripConfig).b : sourceA + 1;
+  const deviceChannels = row.deviceChannels ?? 8;
+  const definitionHTML = `<span class="live-ch-def">`
+    + `<select class="live-ch-kind" data-idx="${row.index}" aria-label="Mono or stereo"${configDisabled}>`
+    + `<option value="mono"${!stereo ? ' selected' : ''}>Mono</option>`
+    + `<option value="stereo"${stereo ? ' selected' : ''}>Stereo</option>`
+    + `</select>`
+    + `<select class="live-ch-src${stereo ? ' leg' : ''}" data-idx="${row.index}" data-field="a" aria-label="${stereo ? 'Left source channel' : 'Source channel'}" title="${stereo ? 'Left source channel' : 'Source channel'}"${configDisabled}>${channelOptions(sourceA, deviceChannels, stereo)}</select>`
+    + (stereo ? `<select class="live-ch-src leg" data-idx="${row.index}" data-field="b" aria-label="Right source channel" title="Right source channel"${configDisabled}>${channelOptions(sourceB, deviceChannels, true)}</select>` : '')
+    + `</span>`;
+  const dragHTML = (row.groupIndex ?? -1) >= 0
+    ? `<button type="button" class="live-ch-drag" draggable="true" aria-label="Reorder track within group — drag, or press Arrow Up/Down" title="Drag to reorder track"${row.configDisabled ? ' disabled' : ''}>⋮⋮</button>`
+    : '';
+  return dragHTML
+    + `<span class="daw-track-head-index">${row.index + 1}</span>`
+    + `<span class="daw-track-head-name live-ch-name${row.clipping ? ' clip' : ''}" contenteditable="true" spellcheck="false" role="textbox" aria-label="Channel name — click to rename" title="Click to rename">${row.name}</span>`
+    + definitionHTML
     + `<span class="daw-track-head-controls">`
-    + `<button type="button" class="daw-track-head-arm" aria-label="${row.armed ? 'Disarm track' : 'Arm track for recording'}" aria-pressed="${row.armed}"${row.armDisabled ? ' disabled' : ''}>Arm</button>`
+    + `<button type="button" class="daw-track-head-arm live-ch-arm" data-idx="${row.index}" aria-label="${row.armed ? 'Disarm track' : 'Arm track for recording'}" aria-pressed="${row.armed}"${row.armDisabled ? ' disabled' : ''}>Arm</button>`
     + `<button type="button" class="daw-track-head-mute" aria-label="${row.muted ? 'Unmute track' : 'Mute track'}" aria-pressed="${row.muted}">M</button>`
     + `<button type="button" class="daw-track-head-solo" aria-label="${row.soloed ? 'Unsolo track' : 'Solo track'}" aria-pressed="${row.soloed}">S</button>`
     + `</span>`
     + `<span class="daw-track-head-level" aria-hidden="true"><span class="daw-track-head-level-fill" style="width:${row.levelPercent}%"></span></span>`
-    + `<button type="button" class="daw-track-head-remove" aria-label="Remove track">×</button>`;
+    + `<span class="live-ch-meta">${row.idle ? 'Idle' : 'Live'}</span>`
+    + `<button type="button" class="daw-track-head-remove live-ch-x" title="Remove track" aria-label="Remove track"${row.removeDisabled ? ' disabled' : ''}>×</button>`;
+}
+
+function dawTrackHeadHTML(row: DawTrackRow): string {
+  const stripClass = `daw-track-head live-ch${row.selected ? ' selected' : ''}${row.idle ? ' idle' : ''}${row.groupCollapsed ? ' group-collapsed' : ''}`;
+  return `<div class="${stripClass}" data-ch="${row.index}"${row.selected ? ' aria-current="true"' : ''} tabindex="0" role="button" aria-label="Select ${row.name} to inspect in the EQ pane">${dawTrackHeaderHTML(row)}</div>`;
+}
+
+function dawTrackGroupHeaderHTML(header: DawTrackGroupHeader): string {
+  return `<div class="live-group-head${header.collapsed ? ' collapsed' : ''}" data-group="${header.index}">`
+    + `<button type="button" class="live-group-drag" draggable="true" aria-label="Reorder group — drag, or press Arrow Up/Down" title="Drag to reorder group"${header.disabled ? ' disabled' : ''}>⋮⋮</button>`
+    + `<button type="button" class="live-group-fold" aria-label="Collapse or expand group" aria-expanded="${header.collapsed ? 'false' : 'true'}" title="Collapse / expand group">▾</button>`
+    + `<span class="live-group-name">${header.name}</span>`
+    + `<span class="live-group-summary">${header.summary}${header.clipping ? '<span class="live-ch-clip">CLIP</span>' : ''}</span>`
+    + `<button type="button" class="live-group-rename" aria-label="Rename group" title="Rename group"${header.disabled ? ' disabled' : ''}>Rename</button>`
+    + `<button type="button" class="live-group-del" aria-label="Delete group" title="Delete group"${header.disabled ? ' disabled' : ''}>Delete</button>`
+    + `</div>`;
 }
 
 // The shared DAW-shell patch view (#517): the lane fingerprint (for "did the
@@ -576,6 +691,7 @@ export function dawStatusLineView(state: LiveWorkspaceViewState): DawStatusLineV
 // (slice 6j) and is reachable via the window.dawShellRuntime bridge.
 export function dawShellHTML(state: LiveWorkspaceViewState, routingDrawerContent: string = ''): string {
   const rows = dawTrackRows(state);
+  const entries = dawTrackListEntries(state);
   const { transportChip, captureMode } = dawShellPatchView(state);
   const seededElapsed = state.playheadElapsedMs;
   const laneGrid = `<span class="daw-lane-grid">${dawLaneGridlines(DAW_TIMELINE_SPAN_SECS)
@@ -593,22 +709,29 @@ export function dawShellHTML(state: LiveWorkspaceViewState, routingDrawerContent
   // Emitted last in each region so they paint above the ticks and the lanes.
   const rulerPlayheadHTML = `<span class="daw-playhead daw-playhead-ruler"></span>`;
   const lanePlayheadHTML = `<span class="daw-playhead daw-playhead-lanes"></span>`;
-  const headHTML = rows.map((row) =>
-    `<div class="daw-track-head" data-ch="${row.index}">${dawTrackHeaderHTML(row)}</div>`).join('');
+  const headHTML = entries.map((entry) => {
+    if (entry.type === 'group') return dawTrackGroupHeaderHTML(entry);
+    if (entry.type === 'ungrouped') return `<div class="live-group-head ungrouped" data-group="-1"><span class="live-group-name">Ungrouped</span></div>`;
+    return dawTrackHeadHTML(entry.row);
+  }).join('');
   const headRowsHTML = rows.length > 0
     ? headHTML
     : `<div class="daw-empty-head"></div>`;
   const laneHTML = rows.length > 0
-    ? `<div class="daw-channel-lanes">${rows.map((row) =>
-      `<div class="daw-lane daw-channel-lane${row.monitorActive ? '' : ' daw-channel-lane--dimmed'}" data-ch="${row.index}">`
-      + `<span class="daw-lane-name">${row.name}</span>`
-      + `<span class="daw-lane-body"><canvas class="daw-channel-waveform"></canvas></span>`
-      + (row.takeClip
-        ? `<span class="daw-take-clip" style="left:${row.takeClip.leftPx}px;width:${row.takeClip.widthPx}px"><canvas data-session-track-index="${row.takeClip.trackIndex}"></canvas></span>`
-        : '')
-      + laneGrid
-      + `</div>`).join('')}</div>`
-    : `<div class="daw-lane daw-empty-state">Add tracks to see channel lanes</div>`;
+    ? `<div class="daw-channel-lanes">${entries.map((entry) => {
+      if (entry.type === 'group') return `<div class="daw-lane-group-spacer${entry.collapsed ? ' collapsed' : ''}" data-group="${entry.index}" aria-hidden="true"></div>`;
+      if (entry.type === 'ungrouped') return `<div class="daw-lane-group-spacer ungrouped" data-group="-1" aria-hidden="true"></div>`;
+      const { row } = entry;
+      return `<div class="daw-lane daw-channel-lane${row.monitorActive ? '' : ' daw-channel-lane--dimmed'}${row.groupCollapsed ? ' group-collapsed' : ''}" data-ch="${row.index}">`
+        + `<span class="daw-lane-name">${row.name}</span>`
+        + `<span class="daw-lane-body"><canvas class="daw-channel-waveform"></canvas></span>`
+        + (row.takeClip
+          ? `<span class="daw-take-clip" style="left:${row.takeClip.leftPx}px;width:${row.takeClip.widthPx}px"><canvas data-session-track-index="${row.takeClip.trackIndex}"></canvas></span>`
+          : '')
+        + laneGrid
+        + `</div>`;
+    }).join('')}</div>`
+    : `<div class="daw-lane daw-empty-state">Add your first track</div>`;
   // The overall-mix row (#1044): emitted like every other row, twice, once per
   // column, and last in each — it is not a track head/lane, so it never comes
   // from dawTrackRows and always renders, even with zero configured tracks.
@@ -629,6 +752,7 @@ export function dawShellHTML(state: LiveWorkspaceViewState, routingDrawerContent
     + `<span class="daw-transport-title">Live Workspace</span>`
     + `<span class="daw-transport-state daw-transport-state-${transportChip.toLowerCase()}">${transportChip}</span>`
     + `<span class="daw-transport-time">${getDawPlayheadState().formatElapsed(seededElapsed)}</span>`
+    + liveWorkspaceToolbarHTML(state)
     + (state.sessionPicker ? sessionTabSessionPickerHTML(state.sessionPicker) : '')
     + (state.sessionPlayback ? sessionTabPlaybackHTML(state.sessionPlayback) : '')
     + sessionTabCaptureHTML(recordButtonView(state.capturePhase))
@@ -647,7 +771,7 @@ export function dawShellHTML(state: LiveWorkspaceViewState, routingDrawerContent
     // shared CSS translate (ADR-0090). The playhead is two region segments,
     // not a shell child (#1049): one in the ruler, one over the lane column.
     + `<div class="daw-arrangement">`
-    + `<div class="daw-track-heads">${rulerGutterHTML}${headRowsHTML}${masterHeadHTML}</div>`
+    + `<div class="daw-track-heads${rows.length > 0 ? ' sb-live-meters' : ''}">${rulerGutterHTML}${headRowsHTML}${masterHeadHTML}</div>`
     + `<div class="daw-timeline">`
     + `<div class="daw-ruler">${rulerTicks}${rulerPlayheadHTML}</div>`
     + `<div class="daw-lane-column">`

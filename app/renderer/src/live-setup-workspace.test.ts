@@ -19,46 +19,35 @@ import { fileURLToPath } from 'node:url';
 // listener owns the banner anymore.
 
 const liveCapturePanelTsx = fs.readFileSync(fileURLToPath(new URL('./LiveCapturePanel.tsx', import.meta.url)), 'utf8');
+const liveWorkspaceViewTs = fs.readFileSync(fileURLToPath(new URL('./live-workspace-view.ts', import.meta.url)), 'utf8');
 const inlineApp = fs.readFileSync(fileURLToPath(new URL('./inline-app.js', import.meta.url)), 'utf8');
 // TD-001 slice 6i (#712): the capture-start success path (onCaptureStarted →
 // markSetupComplete + banner removal) moved here from inline-app.js.
 const lifecycleTs = fs.readFileSync(fileURLToPath(new URL('./capture-lifecycle.ts', import.meta.url)), 'utf8');
 
 describe('Live tab guided first-use setup (#294)', () => {
-  it('the board island renders an instructional hero when the workspace is empty', () => {
-    // LiveCapturePanel.test.ts asserts the rendered hero; this pins the homes
-    // so the wiring can't silently move back into inline-app.js.
-    expect(liveCapturePanelTsx).toContain('live-setup-hero');
-    expect(liveCapturePanelTsx).toContain('Set up your live check');
+  it('the Live panel always composes the arrangement shell, including with an empty workspace', () => {
+    expect(liveCapturePanelTsx).toContain('dawShellHTML(state');
+    expect(liveCapturePanelTsx).not.toContain('live-setup-hero');
     expect(inlineApp).not.toContain('live-setup-hero');
   });
 
-  it('gates advanced controls (new group / collapse / expand / arm-all) behind showAdvancedControls', () => {
+  it('keeps advanced controls (new group / collapse / expand / arm-all) behind showAdvancedControls', () => {
     // live-workspace-view.test.ts asserts the toolbar drops the cluster at
-    // zero tracks; this pins the call site.
-    expect(liveCapturePanelTsx).toContain('liveWorkspaceToolbarHTML');
+    // zero tracks; this pins the builder call site.
+    expect(liveWorkspaceViewTs).toContain('liveWorkspaceToolbarHTML');
   });
 
-  it('marks setup complete both on dismiss and on first successful capture start', () => {
-    const occurrences =
-      (liveCapturePanelTsx.split('markSetupComplete').length - 1)
-      + (lifecycleTs.split('markSetupComplete').length - 1);
-    expect(occurrences).toBeGreaterThanOrEqual(2);
+  it('marks setup complete on the first successful capture start', () => {
+    expect(lifecycleTs).toContain('markSetupComplete');
   });
 
-  it('offers a dismiss control on the first-use banner', () => {
-    expect(liveCapturePanelTsx).toContain('id="live-setup-skip"');
+  it('does not compose the retired first-use banner in the unconditional arrangement panel', () => {
+    expect(liveCapturePanelTsx).not.toContain('id="live-setup-skip"');
   });
 
-  it('dismiss handler removes the rendered banner directly, not only via a re-render', () => {
-    // renderChannelConfig() early-outs while a capture is running (liveRunning),
-    // so a Dismiss click during Start Capture would leave the banner stuck on
-    // screen until the running board's next tick unless the handler also
-    // removes the DOM node itself — the same fix the capture-start success
-    // path below needs for the same reason.
-    const skipHandler = liveCapturePanelTsx.slice(liveCapturePanelTsx.indexOf("closest('#live-setup-skip')"));
-    expect(skipHandler).toContain('.live-setup-banner');
-    expect(skipHandler).toContain('.remove()');
+  it('does not retain the obsolete banner dismiss listener', () => {
+    expect(liveCapturePanelTsx).not.toContain("closest('#live-setup-skip')");
   });
 
   it('the capture-start success path also removes the rendered banner directly', () => {

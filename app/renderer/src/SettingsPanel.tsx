@@ -42,9 +42,9 @@
 // #tab-live rule) hides/shows them exactly like the Live tab
 // always did.
 //
-// Instant-apply Settings controls (#1018, epic #1000): the seven controls
+// Instant-apply Settings controls (#1018, epic #1000): the six controls
 // covered by settings-instant-apply.ts (grading strictness, weekly reminder
-// + service day, usage signal, crash reporting, DAW workspace, live
+// + service day, usage signal, crash reporting, and live
 // adjustments) render straight from settingsStore's persisted `settings` via
 // instantSettingValues and commit on change via commitInstantSetting — no
 // local staged state, no Save-gated seeding. The storage folder now persists
@@ -119,7 +119,6 @@ export type SettingsControl =
   | 'diskUsage'
   | 'usageSignal'
   | 'crashReporting'
-  | 'dawWorkspace'
   | 'liveAdjustments'
   | 'version'
   | 'license';
@@ -141,7 +140,6 @@ const SETTING_SECTION_TARGETS: readonly { setting: SettingsControl; section: Set
   { setting: 'diskUsage', section: 'storage' },
   { setting: 'usageSignal', section: 'privacy' },
   { setting: 'crashReporting', section: 'privacy' },
-  { setting: 'dawWorkspace', section: 'labs' },
   { setting: 'liveAdjustments', section: 'labs' },
   { setting: 'version', section: 'about' },
   { setting: 'license', section: 'about' },
@@ -472,17 +470,6 @@ export default function SettingsPanel({ booted = false }: { booted?: boolean }) 
         </div>
         <div className="settings-pane" id="settings-pane-labs" style={{ display: section === 'labs' ? 'flex' : 'none' }}>
           <SettingsGroup title="Experiments">
-            <label className="ai-enable-row" {...helpFor('dawWorkspace')}>
-              <span className="settings-row-label">Try the experimental DAW-style Live workspace</span>
-              <input
-                type="checkbox"
-                id="daw-workspace-toggle"
-                aria-describedby={settingsHelpNoteId('dawWorkspace')}
-                checked={controlValues.dawWorkspaceEnabled}
-                onChange={(e) => void commitInstantSetting(useSettingsStore, 'dawWorkspaceEnabled', e.target.checked)}
-              />
-            </label>
-            <SettingsNote control="dawWorkspace" />
             <label className="ai-enable-row" {...helpFor('liveAdjustments')}>
               <span className="settings-row-label">Try experimental live adjustments</span>
               <input

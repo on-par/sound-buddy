@@ -52,23 +52,13 @@ import {
   routingDrawerHTML,
 } from './routingDrawer';
 import { deviceChannelCount } from './live-capture-panel';
-import { iconSvg } from './report-card';
 import {
   liveAdjustmentsPanelHTML,
-  liveSetupStepsHTML,
-  liveSetupStepsView,
-  liveWorkspaceToolbarHTML,
-  meterCardHTML,
   dawShellHTML,
   dawShellPatchView,
-  addTrackDisabled,
-  getTrackWorkspace,
-  getLiveSetupState,
-  getDawWorkspaceState,
   getDawShellRuntime,
   getGroupState,
   liveWorkspaceViewState,
-  boardRunning,
 } from './live-workspace-view';
 import { sessionTabSessionPickerAction, sessionTabSessionPickerView } from './session-tab-session-picker';
 import { paintSessionTabWaveformClips, sessionTabWaveformView } from './session-tab-waveforms';
@@ -77,14 +67,6 @@ import { beginSessionTimelineScrub } from './session-timeline-scrub';
 import { createSoundcheckTransportController } from './soundcheck-transport-controller';
 import { runtime, recordCapture, stopLiveCapture } from './LiveControls';
 import { recordButtonAction } from './record-transport';
-
-// The still-classic live-setup-state.js accessor's storage contract (a
-// localStorage-like object; a missing/throwing storage is treated as "not
-// done" by the classic script itself).
-interface StorageLike {
-  getItem(key: string): string | null;
-  setItem(key: string, value: string): void;
-}
 
 // Per-element "original text" snapshot for the delegated inline rename (#39),
 // keyed by the .live-ch-name element being edited. Survives the element being
@@ -211,18 +193,11 @@ export default function LiveCapturePanel(): JSX.Element | null {
   // lastTick/lastLiveChannels are animation-rate values — read imperatively at
   // render time, never via subscription. boardShapeVersion (also subscribed
   // above) is what re-renders the board when a tick's channel count changes.
-  const showShell = getDawWorkspaceState().showShell(settings, s.appMode);
   const savedBuses = settings?.soundcheckBuses;
   const routeState = soundcheck.sessionDir ? routesBySession[soundcheck.sessionDir] ?? null : null;
-  const sessionPicker = showShell
-    ? sessionTabSessionPickerView(soundcheck.recordedSessions, soundcheck.sessionDir, soundcheck.manifest, soundcheck.statusMessage)
-    : null;
-  const sessionWaveforms = showShell
-    ? sessionTabWaveformView(soundcheck.manifest, soundcheck.peaks, soundcheck.peaksStatus, s.channelConfig)
-    : null;
-  const sessionPlayback = showShell
-    ? sessionTabPlaybackView(soundcheck.manifest, soundcheck.playing, soundcheck.looping)
-    : null;
+  const sessionPicker = sessionTabSessionPickerView(soundcheck.recordedSessions, soundcheck.sessionDir, soundcheck.manifest, soundcheck.statusMessage);
+  const sessionWaveforms = sessionTabWaveformView(soundcheck.manifest, soundcheck.peaks, soundcheck.peaksStatus, s.channelConfig);
+  const sessionPlayback = sessionTabPlaybackView(soundcheck.manifest, soundcheck.playing, soundcheck.looping);
   const lc = useLiveCaptureStore.getState();
   const capturePhase = window.liveTransitionState.capturePhase({
     liveRunning: s.isCapturing,
@@ -240,7 +215,7 @@ export default function LiveCapturePanel(): JSX.Element | null {
     capturePhase,
     sessionRoutingDrawerOpen,
   );
-  const laneSignature = showShell ? dawShellPatchView(state).laneSignature : '';
+  const laneSignature = dawShellPatchView(state).laneSignature;
 
   // Drag-reorder source (#483): { type:'group'|'strip', index } set on
   // dragstart, cleared on drop/dragend. A ref (not state) because dragover/
@@ -267,34 +242,37 @@ export default function LiveCapturePanel(): JSX.Element | null {
   useEffect(() => {
     if (s.appMode !== 'live') return;
     const statsRow = document.getElementById('stats-row');
-    if (statsRow) statsRow.style.display = boardRunning(s) && !showShell ? 'flex' : 'none';
+    if (statsRow) statsRow.style.display = 'none';
     const ipWrap = document.getElementById('ideal-profile-wrap');
     if (ipWrap) ipWrap.style.display = 'none';
     useSpectrumStore.getState().setPanelState('meters'); // hide #spectrum-island's React curve view while the board renders
-  }, [s.appMode, s.isCapturing, s.demoting, showShell]);
+  }, [s.appMode, s.isCapturing, s.demoting]);
 
   useEffect(() => {
-    if (!showShell || soundcheck.recordedSessionsLoaded) return;
+    if (s.appMode !== 'live') return;
+    if (soundcheck.recordedSessionsLoaded) return;
     void useSoundcheckStore.getState().loadRecordedSessions();
-  }, [showShell, soundcheck.recordedSessionsLoaded]);
+  }, [s.appMode, soundcheck.recordedSessionsLoaded]);
 
   useEffect(() => {
-    if (!showShell || soundcheck.devicesLoaded) return;
+    if (s.appMode !== 'live') return;
+    if (soundcheck.devicesLoaded) return;
     void useSoundcheckStore.getState().loadDevices();
-  }, [showShell, soundcheck.devicesLoaded]);
+  }, [s.appMode, soundcheck.devicesLoaded]);
 
   useEffect(() => {
-    if (!showShell || !soundcheck.sessionDir || !soundcheck.manifest) return;
+    if (s.appMode !== 'live') return;
+    if (!soundcheck.sessionDir || !soundcheck.manifest) return;
     ensureSessionRouting(
       soundcheck.sessionDir,
       routeStateForSession(s.channelConfig, soundcheck.routes, savedBuses ?? []),
       useRouteStore.getState(),
       useSoundcheckStore.getState(),
     );
-  }, [showShell, soundcheck.sessionDir, soundcheck.manifest, s.channelConfig, soundcheck.routes, savedBuses]);
+  }, [s.appMode, soundcheck.sessionDir, soundcheck.manifest, s.channelConfig, soundcheck.routes, savedBuses]);
 
   useEffect(() => {
-    if (!showShell) return;
+    if (s.appMode !== 'live') return;
     const controller = createSoundcheckTransportController({
       subscribe: useSoundcheckStore.subscribe,
       getState: () => ({ lastElapsedTick: useSoundcheckStore.getState().lastElapsedTick }),
@@ -308,17 +286,17 @@ export default function LiveCapturePanel(): JSX.Element | null {
     });
     controller.start();
     return () => controller.stop();
-  }, [showShell]);
+  }, [s.appMode]);
 
   useEffect(() => {
-    if (!showShell) return;
+    if (s.appMode !== 'live') return;
     const runtime = getDawShellRuntime();
     const playbackPosition = useSoundcheckStore.getState().lastElapsedTick;
     if (soundcheck.manifest && playbackPosition) runtime?.setPlaybackPosition?.(playbackPosition);
     else runtime?.setPlaybackPosition?.(null);
     runtime?.setPlaybackActive?.(soundcheck.playing);
     runtime?.renderPlayhead?.();
-  }, [showShell, soundcheck.manifest, soundcheck.playing]);
+  }, [s.appMode, soundcheck.manifest, soundcheck.playing]);
 
   // DAW shell (#517/#518/#520): stamp the lane fingerprint (the React
   // rebuild-decision key for same-count rig swaps) and hand the
@@ -326,13 +304,13 @@ export default function LiveCapturePanel(): JSX.Element | null {
   // after every rebuild — the meter controller re-paints them per tick
   // thereafter.
   useEffect(() => {
-    if (!showShell) return;
+    if (s.appMode !== 'live') return;
     const shell = document.getElementById('live-island')?.querySelector('.daw-shell');
     if (shell) shell.setAttribute('data-lane-signature', laneSignature);
     getDawShellRuntime()?.renderPlayhead?.();
     getDawShellRuntime()?.renderWaveform?.();
     if (shell && sessionWaveforms) paintSessionTabWaveformClips(shell, sessionWaveforms.clips);
-  }, [showShell, laneSignature, sessionWaveforms]);
+  }, [s.appMode, laneSignature, sessionWaveforms]);
 
   // The playhead ticker (TD-001 slice 6j, #713): a requestAnimationFrame loop
   // driving renderPlayhead every frame while the shell is mounted and
@@ -340,7 +318,8 @@ export default function LiveCapturePanel(): JSX.Element | null {
   // Active during "Connecting…" and whenever meter events stall, exactly like
   // the old interval (but at frame rate), so the playhead never freezes early.
   useEffect(() => {
-    if (!showShell || !s.isCapturing) return;
+    if (s.appMode !== 'live') return;
+    if (!s.isCapturing) return;
     let rafHandle = 0;
     const tick = (): void => {
       getDawShellRuntime()?.renderPlayhead?.();
@@ -348,7 +327,7 @@ export default function LiveCapturePanel(): JSX.Element | null {
     };
     rafHandle = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(rafHandle);
-  }, [showShell, s.isCapturing]);
+  }, [s.appMode, s.isCapturing]);
 
   // Native 'change' listener (see boardRootRef's comment above) — must stay
   // above the `appMode !== 'live'` early return below (Rules of Hooks: no
@@ -370,41 +349,17 @@ export default function LiveCapturePanel(): JSX.Element | null {
   if (s.appMode !== 'live') return null;
 
   const adjustmentsHtml = liveAdjustmentsPanelHTML(state);
-  let board: string;
-  if (showShell) {
-    const routingDrawerContent = soundcheck.sessionDir && soundcheck.manifest && routeState
-      ? routingDrawerHTML(
-        s.channelConfig,
-        routeState,
-        deviceChannelCount(s.selectedDevice, s.devices),
-        soundcheck.deviceChannels,
-        soundcheck.devices,
-        soundcheck.selectedDevice,
-      )
-      : '';
-    board = routingDrawerContent ? dawShellHTML(state, routingDrawerContent) : dawShellHTML(state);
-  } else if (getTrackWorkspace().isEmpty(s.channelConfig.length)) {
-    // Guided first-use setup (#294): a zero-track workspace shows an
-    // instructional hero (no toolbar) instead of the bare empty state.
-    const heroAddDisabled = addTrackDisabled(state);
-    board = `<div class="live-setup-hero">`
-      + iconSvg('radio', 34)
-      + `<h2 class="lsh-title">Set up your live check</h2>`
-      + `<p class="lsh-sub">Three steps from silence to live meters.</p>`
-      + `<ol class="ls-steps">${liveSetupStepsHTML(liveSetupStepsView(state))}</ol>`
-      + `<button type="button" class="btn btn-primary" id="live-ws-add"${heroAddDisabled ? ' disabled' : ''}>${iconSvg('plus', 16)}Add your first track</button>`
-      + `</div>`;
-  } else {
-    const toolbar = liveWorkspaceToolbarHTML(state);
-    const banner = getLiveSetupState().shouldShowGuide(window.localStorage as unknown as StorageLike)
-      ? `<div class="live-setup-banner" role="note">`
-        + `<span class="lsb-title">Getting set up</span>`
-        + `<ol class="ls-steps compact">${liveSetupStepsHTML(liveSetupStepsView(state))}</ol>`
-        + `<button type="button" class="ghost-btn sm" id="live-setup-skip">Dismiss</button>`
-        + `</div>`
-      : '';
-    board = banner + toolbar + meterCardHTML(state).html;
-  }
+  const routingDrawerContent = soundcheck.sessionDir && soundcheck.manifest && routeState
+    ? routingDrawerHTML(
+      s.channelConfig,
+      routeState,
+      deviceChannelCount(s.selectedDevice, s.devices),
+      soundcheck.deviceChannels,
+      soundcheck.devices,
+      soundcheck.selectedDevice,
+    )
+    : '';
+  const board = routingDrawerContent ? dawShellHTML(state, routingDrawerContent) : dawShellHTML(state);
   const body = board + adjustmentsHtml;
 
   /* c8 ignore start -- delegated interaction handlers, no jsdom in this
@@ -433,16 +388,6 @@ export default function LiveCapturePanel(): JSX.Element | null {
     if (target.closest('#daw-session-stop')) { void useSoundcheckStore.getState().stop(); return; }
     if (target.closest('#daw-session-loop')) { useSoundcheckStore.getState().toggleLoop(); return; }
     if (target.closest('#daw-session-return')) { void useSoundcheckStore.getState().returnToStart(); return; }
-    // Guided first-use dismiss (#294): retire the banner permanently. The
-    // node is removed directly rather than only via a re-render —
-    // renderChannelConfig() early-outs while a capture is running, the same
-    // fix the capture-start success path already relies on.
-    if (target.closest('#live-setup-skip')) {
-      getLiveSetupState().markSetupComplete(window.localStorage as unknown as StorageLike);
-      const skipBanner = document.querySelector('#spectrum-body .live-setup-banner');
-      if (skipBanner) skipBanner.remove();
-      return;
-    }
     // Live coaching dispositions (#613/#614) — engineer control over the card.
     const lapActionBtn = target.closest('[data-lap-action]');
     if (lapActionBtn) {
@@ -502,18 +447,26 @@ export default function LiveCapturePanel(): JSX.Element | null {
     if (gRename) { void renameChannelGroup(parseInt(gRename.closest('.live-group-head')?.getAttribute('data-group') ?? '', 10)); return; }
     const gDel = target.closest('.live-group-del');
     if (gDel) { void deleteChannelGroup(parseInt(gDel.closest('.live-group-head')?.getAttribute('data-group') ?? '', 10)); return; }
-    // Strip selection (#668): clicking anywhere on a strip (but not one of its
-    // interactive controls) inspects it in the docked EQ pane. The selected
-    // class + aria-current derive from stripViewAt's `selected` field, so the
-    // React re-render on selectedChannel handles them — no imperative toggle.
+    // Strip selection (#668): clicking anywhere on a strip (but not buttons,
+    // text edits, or text inputs) inspects it in the docked EQ pane. Header
+    // selects can sit near the row's geometric center in the compact DAW head,
+    // so selecting through them preserves whole-row click behavior.
     const stripEl = target.closest('.live-ch');
-    if (stripEl && !target.closest('button, select, [contenteditable], input')) {
+    if (stripEl && !target.closest('button, [contenteditable], input')) {
       const idx = parseInt((stripEl as HTMLElement).dataset.ch ?? '', 10);
       if (Number.isInteger(idx)) useLiveCaptureStore.getState().setSelectedChannel(idx);
     }
   }
 
   function onBoardPointerDown(e: PointerEvent<HTMLDivElement>): void {
+    if (e.target instanceof Element) {
+      const headerSelect = e.target.closest('.daw-track-head select');
+      const stripEl = headerSelect?.closest('.live-ch');
+      if (stripEl) {
+        const idx = parseInt((stripEl as HTMLElement).dataset.ch ?? '', 10);
+        if (Number.isInteger(idx)) useLiveCaptureStore.getState().setSelectedChannel(idx);
+      }
+    }
     if (!soundcheck.playing) return;
     if (!(e.target instanceof Element)) return;
     const surface = e.target.closest('.daw-ruler, .daw-lane');

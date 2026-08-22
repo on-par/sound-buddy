@@ -15,9 +15,8 @@ import {
   DAW_TIMELINE_PX_PER_SECOND,
 } from './daw-shell-runtime';
 
-// DAW-style live workspace shell (#517): when the experimental toggle (#516)
-// is on, the Live tab's center pane renders a timeline-oriented shell instead
-// of the existing meter workspace. The shell's MARKUP moved out of inline-app.js
+// DAW-style Session shell (#517): the Live tab's center pane renders the
+// timeline-oriented shell. The shell's MARKUP moved out of inline-app.js
 // (renderDawShell) into the pure live-workspace-view.ts dawShellHTML builder
 // + the React LiveCapturePanel island (TD-001 slice 6g, #710) — those markup
 // acceptance criteria are enforced by live-workspace-view.test.ts and
@@ -88,8 +87,8 @@ function enclosingBlock(src: string, marker: string): string {
   throw new Error(`unbalanced braces around marker ${JSON.stringify(marker)}`);
 }
 
-describe('DAW workspace shell gating (#517)', () => {
-  it('dawShellHTML is the shell builder the React island renders (showShell gate covered by LiveCapturePanel.test.ts)', () => {
+describe('DAW workspace shell (#517)', () => {
+  it('dawShellHTML is the shell builder the React island renders unconditionally', () => {
     expect(workspaceViewTs).toContain('export function dawShellHTML(');
     expect(liveCapturePanelTsx).toContain('dawShellHTML(state)');
   });
@@ -133,7 +132,7 @@ describe('DAW workspace timeline shell markup (#517)', () => {
   });
 
   it('renders a muted empty-state row when channelConfig is empty', () => {
-    expect(workspaceViewTs).toContain('Add tracks to see channel lanes');
+    expect(workspaceViewTs).toContain('Add your first track');
   });
 
   it('composes the shared Session Record control into the transport (#1081)', () => {
@@ -175,15 +174,10 @@ describe('DAW shell and shared Record transport (#1081)', () => {
   });
 });
 
-describe('DAW shell re-renders on toggle flip (#517)', () => {
-  it('the settingsStore subscriber re-syncs the Live pane on an actual flip', () => {
-    const subscriberBlock = enclosingBlock(inlineApp, "classList.toggle('daw-workspace'");
-    expect(subscriberBlock).toContain("window.modeSwitch.applySpectrumForMode('live')");
-  });
-
-  it('only re-syncs on an actual flip, not on every settings save', () => {
-    const subscriberBlock = enclosingBlock(inlineApp, "classList.toggle('daw-workspace'");
-    expect(subscriberBlock).toMatch(/nowEnabled !== dawWorkspaceWasEnabled/);
+describe('DAW shell is not settings-gated (#517)', () => {
+  it('inline-app.js has no workspace body-class or Live-pane resync subscriber', () => {
+    expect(inlineApp).not.toContain('daw-workspace');
+    expect(inlineApp).not.toContain('dawWorkspaceState');
   });
 });
 
@@ -388,6 +382,33 @@ describe('configured track rows render from one shared list (#1043)', () => {
     expect(css).toContain('.daw-track-head');
     expect(css).toContain('.daw-track-head-index');
     expect(css).toContain('.daw-track-head-name');
+  });
+
+  it('keeps the editable track name above compact definition controls', () => {
+    const nameRule = css.match(/\.daw-track-head \.daw-track-head-name\s*\{[^}]*\}/);
+    const definitionRule = css.match(/\.daw-track-head \.live-ch-def\s*\{[^}]*\}/);
+    const actionRule = css.match(/\.daw-track-head-arm, \.daw-track-head-mute, \.daw-track-head-solo, \.daw-track-head-remove\s*\{[^}]*\}/);
+    expect(nameRule).not.toBeNull();
+    expect(definitionRule).not.toBeNull();
+    expect(actionRule).not.toBeNull();
+    expect(nameRule![0]).toMatch(/position:\s*relative/);
+    expect(definitionRule![0]).toMatch(/position:\s*relative/);
+    expect(actionRule![0]).toMatch(/position:\s*relative/);
+    expect(nameRule![0]).toMatch(/z-index:\s*2/);
+    expect(definitionRule![0]).toMatch(/z-index:\s*1/);
+    expect(actionRule![0]).toMatch(/z-index:\s*3/);
+  });
+
+  it('allows DAW header select hit targets to still select the strip row', () => {
+    const body = functionBody(liveCapturePanelTsx, 'onBoardClick');
+    expect(body).toContain("!target.closest('button, [contenteditable], input')");
+    expect(body).not.toContain("!target.closest('button, select, [contenteditable], input')");
+  });
+
+  it('selects compact DAW rows on pointer-down before native header selects can consume the click', () => {
+    const body = functionBody(liveCapturePanelTsx, 'onBoardPointerDown');
+    expect(body).toContain("e.target.closest('.daw-track-head select')");
+    expect(body).toContain('useLiveCaptureStore.getState().setSelectedChannel(idx)');
   });
 
   it('head and lane rows share one height source, and neither hardcodes a height literal', () => {

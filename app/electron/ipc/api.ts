@@ -35,7 +35,6 @@ export interface UpdateSettingsPatch {
   channelGroups?: Record<string, PersistedChannelGroup[]>;
   inputInstrumentProfiles?: Record<string, Record<string, string>>;
   crashReportingEnabled?: boolean;
-  dawWorkspaceEnabled?: boolean;
   liveAdjustmentsEnabled?: boolean;
   reportFirstUxEnabled?: boolean;
   shareChurchName?: string;
@@ -291,28 +290,18 @@ export interface AppSettings {
    */
   crashReportingEnabled: boolean;
   /**
-   * Opt-in experimental DAW-style Live workspace (#516, epic #515). Default
-   * false (off). Pure persisted UI gate — when false the existing Live
-   * Capture UI is untouched; when true the renderer may show the
-   * experimental workspace entry point (#517). No env layer: enabling an
-   * experiment must be an explicit user action, same rationale as
-   * crashReportingEnabled.
-   */
-  dawWorkspaceEnabled: boolean;
-  /**
    * Opt-in experimental live adjustment recommendations (#522, epic #515).
    * Default false (off). Pure persisted UI gate — when false, Live Capture
    * shows no live-adjustment area; when true the renderer shows the
    * experimental (placeholder) recommendations area on the Live tab. No env
-   * layer: enabling an experiment must be an explicit user action, same
-   * rationale as dawWorkspaceEnabled.
+   * layer: enabling an experiment must be an explicit user action.
    */
   liveAdjustmentsEnabled: boolean;
   /**
    * Opt-in report-first-ux epic gate (#538, epic e17). Default false (off).
    * Pure UI gate — when false the existing tab/pane UI renders unchanged;
    * when true the renderer takes the report-first-ux branch (e17-00 onward).
-   * Unlike dawWorkspaceEnabled it *does* have an env layer
+   * It has an env layer
    * (SOUND_BUDDY_REPORT_FIRST_UX), so the epic can be dogfooded at launch
    * time without shipping a Settings toggle.
    */
@@ -369,8 +358,7 @@ export interface AppSettings {
    * Can only ever be set to `true` by the first-run
    * ConsoleNetworkConsentDialog's explicit "Allow" click — Settings may only
    * ever set it back to `false` (revoke). No env layer: granting console
-   * network access must be an explicit user action, same rationale as
-   * `dawWorkspaceEnabled`.
+   * network access must be an explicit user action.
    */
   consoleNetworkConsentGranted: boolean;
   /**

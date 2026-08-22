@@ -104,7 +104,7 @@ describe('SettingsPanel markup', () => {
       settings: {
         idealProfile: '', customIdealProfiles: [], storageDir: '/Volumes/Audio', rigs: [], activeRigId: null,
         usageSignalEnabled: false, channelLabels: {}, channelGroups: {}, inputInstrumentProfiles: {},
-        crashReportingEnabled: false, dawWorkspaceEnabled: false, liveAdjustmentsEnabled: false,
+        crashReportingEnabled: false, liveAdjustmentsEnabled: false,
         reportFirstUxEnabled: false, shareChurchName: '', weeklyReminderEnabled: false, weeklyReminderServiceDay: 0,
         liveEqPaneWidth: 360, measurementDeviceName: '', gradingProfile: 'casual', consoleNetworkConsentGranted: false,
         soundcheckBuses: [],
@@ -202,7 +202,6 @@ describe('contextual help strip (#1007)', () => {
       'storage-note',
       'usage-signal-note',
       'crash-reporting-note',
-      'daw-workspace-note',
       'live-adjustments-note',
       'console-network-consent-note',
     ];
@@ -225,7 +224,6 @@ describe('contextual help strip (#1007)', () => {
     const pairs: [string, string][] = [
       ['usage-signal-toggle', 'usage-signal-note'],
       ['crash-reporting-toggle', 'crash-reporting-note'],
-      ['daw-workspace-toggle', 'daw-workspace-note'],
       ['live-adjustments-toggle', 'live-adjustments-note'],
       ['grading-profile-select', 'grading-profile-note'],
       ['weekly-reminder-toggle', 'weekly-reminder-note'],
@@ -519,7 +517,6 @@ describe('instant-apply Settings controls (#1018)', () => {
   const NON_DEFAULT_SETTINGS = {
     usageSignalEnabled: true,
     crashReportingEnabled: true,
-    dawWorkspaceEnabled: true,
     liveAdjustmentsEnabled: true,
     weeklyReminderEnabled: true,
     weeklyReminderServiceDay: 3,
@@ -529,7 +526,7 @@ describe('instant-apply Settings controls (#1018)', () => {
   it('renders every control checked/selected from persisted non-default settings', () => {
     useSettingsStore.setState({ settings: NON_DEFAULT_SETTINGS });
     const html = renderMarkup();
-    for (const id of ['usage-signal-toggle', 'crash-reporting-toggle', 'daw-workspace-toggle', 'live-adjustments-toggle', 'weekly-reminder-toggle']) {
+    for (const id of ['usage-signal-toggle', 'crash-reporting-toggle', 'live-adjustments-toggle', 'weekly-reminder-toggle']) {
       expect(html).toMatch(new RegExp(`id="${id}"[^>]*checked=""`));
     }
     expect(html).toMatch(/<option[^>]*value="3"[^>]*selected|<option[^>]*selected[^>]*value="3"/);
@@ -538,7 +535,7 @@ describe('instant-apply Settings controls (#1018)', () => {
 
   it('renders no control checked and the defaults selected when no settings are loaded', () => {
     const html = renderMarkup();
-    for (const id of ['usage-signal-toggle', 'crash-reporting-toggle', 'daw-workspace-toggle', 'live-adjustments-toggle', 'weekly-reminder-toggle']) {
+    for (const id of ['usage-signal-toggle', 'crash-reporting-toggle', 'live-adjustments-toggle', 'weekly-reminder-toggle']) {
       expect(html).not.toMatch(new RegExp(`id="${id}"[^>]*checked=""`));
     }
     expect(html).toMatch(/<option[^>]*value="0"[^>]*selected|<option[^>]*selected[^>]*value="0"/);
@@ -558,19 +555,17 @@ describe('instant-apply Settings controls (#1018)', () => {
       'weeklyReminderServiceDay',
       'usageSignalEnabled',
       'crashReportingEnabled',
-      'dawWorkspaceEnabled',
       'liveAdjustmentsEnabled',
     ]) {
       expect(src).toContain(`commitInstantSetting(useSettingsStore, '${key}'`);
     }
   });
 
-  it('no longer stages the seven controls in local useState', () => {
+  it('no longer stages the six controls in local useState', () => {
     const src = fs.readFileSync(fileURLToPath(new URL('./SettingsPanel.tsx', import.meta.url)), 'utf8');
     for (const setter of [
       'setUsageSignalEnabled',
       'setCrashReportingEnabled',
-      'setDawWorkspaceEnabled',
       'setLiveAdjustmentsEnabled',
       'setWeeklyReminderEnabled',
       'setWeeklyReminderServiceDay',
@@ -615,7 +610,6 @@ describe('SettingsSection', () => {
       diskUsage: 'storage',
       usageSignal: 'privacy',
       crashReporting: 'privacy',
-      dawWorkspace: 'labs',
       liveAdjustments: 'labs',
       version: 'about',
       license: 'about',
@@ -657,12 +651,13 @@ describe('Settings row grid (#1009)', () => {
     expect(html).toContain('<span class="settings-row-label">Share anonymous usage counts</span>');
     expect(html.indexOf('Share anonymous usage counts')).toBeLessThan(html.indexOf('id="usage-signal-toggle"'));
     expect(html.indexOf('Send crash reports')).toBeLessThan(html.indexOf('id="crash-reporting-toggle"'));
-    expect(html.indexOf('Try the experimental DAW-style Live workspace')).toBeLessThan(html.indexOf('id="daw-workspace-toggle"'));
+    expect(html).not.toContain('daw-workspace-toggle');
+    expect(html).not.toContain('experimental DAW-style Live workspace');
   });
 
   it('keeps every toggle a real checkbox input', () => {
     const html = renderMarkup();
-    for (const id of ['weekly-reminder-toggle', 'usage-signal-toggle', 'crash-reporting-toggle', 'daw-workspace-toggle', 'live-adjustments-toggle']) {
+    for (const id of ['weekly-reminder-toggle', 'usage-signal-toggle', 'crash-reporting-toggle', 'live-adjustments-toggle']) {
       expect(html).toMatch(new RegExp(`type="checkbox" id="${id}"`));
     }
   });
@@ -671,7 +666,7 @@ describe('Settings row grid (#1009)', () => {
     const html = renderMarkup(true);
     expect(html).not.toContain('role="switch"');
     expect(html).not.toContain('role="checkbox"');
-    for (const id of ['weekly-reminder-toggle', 'usage-signal-toggle', 'crash-reporting-toggle', 'daw-workspace-toggle', 'live-adjustments-toggle']) {
+    for (const id of ['weekly-reminder-toggle', 'usage-signal-toggle', 'crash-reporting-toggle', 'live-adjustments-toggle']) {
       expect(html).not.toMatch(new RegExp(`<button[^>]*id="${id}"`));
     }
   });

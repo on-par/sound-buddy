@@ -6,7 +6,7 @@ import * as fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 // Report-first-ux epic gate (#538): a body-class branch point all subsequent
-// e17 slices mount against, mirroring the #516 dawWorkspaceEnabled pattern
+// e17 slices mount against the existing report-first-ux state pattern
 // file-for-file. inline-app.js is coverage-excluded glue (see
 // vitest.config.ts), so its wiring is verified here the same way
 // live-adjustments-gate.test.ts (#522) encodes its acceptance criteria.
