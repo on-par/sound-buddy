@@ -43,6 +43,9 @@ import { useLiveCaptureStore, MAX_LABEL_LEN, type LapAction } from './stores/liv
 import { useSettingsStore } from './stores/settingsStore';
 import { useSpectrumStore } from './stores/spectrumStore';
 import { useSoundcheckStore } from './stores/soundcheckStore';
+import { useRouteStore } from './stores/routeStore';
+import { applyRoutingDrawerChange, routeStateForSession, routingDrawerHTML } from './routingDrawer';
+import { deviceChannelCount } from './live-capture-panel';
 import { iconSvg } from './report-card';
 import {
   liveAdjustmentsPanelHTML,
@@ -176,12 +179,16 @@ export default function LiveCapturePanel(): JSX.Element | null {
     statusMessage: st.statusMessage,
     peaks: st.peaks,
     peaksStatus: st.peaksStatus,
+    routes: st.routes,
+    deviceChannels: st.deviceChannels,
   }));
+  const routesBySession = useStoreShallow(useRouteStore, (st) => st.routesBySession);
 
   // lastTick/lastLiveChannels are animation-rate values — read imperatively at
   // render time, never via subscription. boardShapeVersion (also subscribed
   // above) is what re-renders the board when a tick's channel count changes.
   const showShell = getDawWorkspaceState().showShell(settings, s.appMode);
+  const routeState = soundcheck.sessionDir ? routesBySession[soundcheck.sessionDir] ?? null : null;
   const sessionPicker = showShell
     ? sessionTabSessionPickerView(soundcheck.recordedSessions, soundcheck.sessionDir, soundcheck.manifest, soundcheck.statusMessage)
     : null;
@@ -245,6 +252,14 @@ export default function LiveCapturePanel(): JSX.Element | null {
     if (!showShell || soundcheck.recordedSessionsLoaded) return;
     void useSoundcheckStore.getState().loadRecordedSessions();
   }, [showShell, soundcheck.recordedSessionsLoaded]);
+
+  useEffect(() => {
+    if (!showShell || !soundcheck.sessionDir || !soundcheck.manifest) return;
+    useRouteStore.getState().ensureSession(
+      soundcheck.sessionDir,
+      routeStateForSession(s.channelConfig, soundcheck.routes),
+    );
+  }, [showShell, soundcheck.sessionDir, soundcheck.manifest, s.channelConfig, soundcheck.routes]);
 
   useEffect(() => {
     if (!showShell) return;
@@ -325,7 +340,15 @@ export default function LiveCapturePanel(): JSX.Element | null {
   const adjustmentsHtml = liveAdjustmentsPanelHTML(state);
   let board: string;
   if (showShell) {
-    board = dawShellHTML(state);
+    const routingDrawerContent = soundcheck.sessionDir && soundcheck.manifest && routeState
+      ? routingDrawerHTML(
+        s.channelConfig,
+        routeState,
+        deviceChannelCount(s.selectedDevice, s.devices),
+        soundcheck.deviceChannels,
+      )
+      : '';
+    board = routingDrawerContent ? dawShellHTML(state, routingDrawerContent) : dawShellHTML(state);
   } else if (getTrackWorkspace().isEmpty(s.channelConfig.length)) {
     // Guided first-use setup (#294): a zero-track workspace shows an
     // instructional hero (no toolbar) instead of the bare empty state.
@@ -357,6 +380,11 @@ export default function LiveCapturePanel(): JSX.Element | null {
      coaching/disposition paths. */
   function onBoardClick(e: MouseEvent<HTMLDivElement>): void {
     const target = e.target as Element;
+    const routingOutput = target.closest('.daw-routing-output-cell');
+    if (routingOutput) {
+      applyRoutingChange('output', routingOutput);
+      return;
+    }
     if (target.closest('#daw-session-routing-toggle')) {
       setSessionRoutingDrawerOpen((open) => !open);
       return;
@@ -540,6 +568,11 @@ export default function LiveCapturePanel(): JSX.Element | null {
 
   function onBoardChange(e: ChangeEvent<HTMLDivElement>): void {
     const target = e.target as Element;
+    const routingSource = target.closest('.daw-routing-source');
+    if (routingSource instanceof HTMLSelectElement) {
+      applyRoutingChange('input', routingSource);
+      return;
+    }
     const sessionPickerSelect = target.closest('.daw-session-picker-select');
     if (sessionPickerSelect instanceof HTMLSelectElement) {
       const action = sessionTabSessionPickerAction(sessionPickerSelect.value);
@@ -588,6 +621,22 @@ export default function LiveCapturePanel(): JSX.Element | null {
   // return) calling the current render's onBoardChange instead of a stale
   // closure.
   onBoardChangeRef.current = onBoardChange;
+
+  function applyRoutingChange(kind: 'input' | 'output', control: Element): void {
+    const sessionId = soundcheck.sessionDir;
+    if (!sessionId) return;
+    const trackIndex = Number(control.getAttribute('data-routing-track-index'));
+    const rawChannels = kind === 'input' && control instanceof HTMLSelectElement
+      ? control.value
+      : control.getAttribute('data-routing-channels') ?? '';
+    const channels = rawChannels.split(',').map(Number);
+    if (!Number.isInteger(trackIndex) || trackIndex < 0 || channels.length === 0
+      || !channels.every((channel) => Number.isFinite(channel) && Number.isInteger(channel) && channel >= 0)) return;
+    applyRoutingDrawerChange(kind, sessionId, trackIndex, channels, {
+      routes: useRouteStore.getState(),
+      soundcheck: useSoundcheckStore.getState(),
+    });
+  }
 
   function onNameFocus(e: FocusEvent<HTMLDivElement>): void {
     const name = nameElOf(e.target);

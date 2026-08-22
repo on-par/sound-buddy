@@ -574,7 +574,7 @@ export function dawStatusLineView(state: LiveWorkspaceViewState): DawStatusLineV
 // Port of renderDawShell's markup builder (the rebuild path, #517/#518/#520):
 // the timeline shell only — the waveform/playhead canvas PAINTING stays inline
 // (slice 6j) and is reachable via the window.dawShellRuntime bridge.
-export function dawShellHTML(state: LiveWorkspaceViewState): string {
+export function dawShellHTML(state: LiveWorkspaceViewState, routingDrawerContent: string = ''): string {
   const rows = dawTrackRows(state);
   const { transportChip, captureMode } = dawShellPatchView(state);
   const seededElapsed = state.playheadElapsedMs;
@@ -664,6 +664,7 @@ export function dawShellHTML(state: LiveWorkspaceViewState): string {
     + `</div>`
     + `<section class="daw-session-routing-drawer" id="daw-session-routing-drawer" aria-label="Routing"${state.sessionRoutingDrawerOpen ? '' : ' hidden'}>`
     + `<h2 class="daw-session-routing-title">Routing</h2>`
+    + routingDrawerContent
     + `</section>`
     + `</div>`;
 }

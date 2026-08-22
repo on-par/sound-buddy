@@ -185,6 +185,18 @@ describe('Session toolbar playback (#1073)', () => {
 });
 
 describe('Session routing drawer shell (#1089)', () => {
+  it('places supplied routing content after the drawer heading', () => {
+    const html = dawShellHTML(makeState({ sessionRoutingDrawerOpen: true }), '<div id="routing-controls">Controls</div>');
+
+    const sectionStart = html.indexOf('<section class="daw-session-routing-drawer"');
+    const heading = html.indexOf('<h2 class="daw-session-routing-title">Routing</h2>');
+    const controls = html.indexOf('<div id="routing-controls">Controls</div>');
+    const sectionEnd = html.indexOf('</section>', sectionStart);
+    expect(sectionStart).toBeLessThan(heading);
+    expect(heading).toBeLessThan(controls);
+    expect(controls).toBeLessThan(sectionEnd);
+  });
+
   it('renders an expanded Routing toggle and visible drawer after the arrangement and status line', () => {
     const html = dawShellHTML(makeState({ sessionRoutingDrawerOpen: true }));
 
