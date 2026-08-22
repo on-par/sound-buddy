@@ -350,7 +350,7 @@ describe('dawShellHTML / dawShellPatchView', () => {
   });
 
   it('builds an accessible escaped track header with its initial inline level', () => {
-    const html = dawTrackHeaderHTML({ index: 0, name: 'Kick &lt;3', armed: true, muted: false, soloed: true, levelPercent: 70 });
+    const html = dawTrackHeaderHTML({ index: 0, name: 'Kick &lt;3', armed: true, muted: false, soloed: true, monitorActive: true, levelPercent: 70 });
     expect(html).toContain('class="daw-track-head-arm"');
     expect(html).toContain('aria-label="Disarm track"');
     expect(html).toContain('class="daw-track-head-mute"');
@@ -366,7 +366,7 @@ describe('dawShellHTML / dawShellPatchView', () => {
   });
 
   it('keeps header markup byte-identical for equal rows', () => {
-    const row = { index: 0, name: 'Kick', armed: true, muted: false, soloed: false, levelPercent: 0 };
+    const row = { index: 0, name: 'Kick', armed: true, muted: false, soloed: false, monitorActive: true, levelPercent: 0 };
     expect(dawTrackHeaderHTML(row)).toBe(dawTrackHeaderHTML(row));
   });
 
@@ -563,6 +563,41 @@ describe('dawTrackRows / configured track rows (#1043)', () => {
   it('falls back to the latest tick channel name', () => {
     const rows = dawTrackRows(makeState({ lastLiveChannels: TICK_CHANNELS }));
     expect(rows[0].name).toBe('Vocals');
+  });
+
+  it('derives monitor activity from mute and solo without changing armed state (#1056)', () => {
+    const ordinary = dawTrackRows(makeState());
+    expect(ordinary.map((row) => row.monitorActive)).toEqual([true, true]);
+
+    const muted = dawTrackRows(makeState({ mutedChannels: { 0: true } }));
+    expect(muted[0]).toMatchObject({ armed: true, muted: true, monitorActive: false });
+    expect(muted[1].monitorActive).toBe(true);
+
+    const soloed = dawTrackRows(makeState({ soloedChannels: { 1: true } }));
+    expect(soloed.map((row) => row.monitorActive)).toEqual([false, true]);
+
+    const finalSoloCleared = dawTrackRows(makeState({ soloedChannels: {} }));
+    expect(finalSoloCleared.map((row) => row.monitorActive)).toEqual([true, true]);
+
+    const mutedSolo = dawTrackRows(makeState({ mutedChannels: { 1: true }, soloedChannels: { 1: true } }));
+    expect(mutedSolo[1]).toMatchObject({ muted: true, soloed: true, monitorActive: false });
+  });
+
+  it('marks only dimmed channel lanes and clears that modifier after the final solo (#1056)', () => {
+    const laneAt = (html: string, index: number) => html.match(new RegExp(`<div class="(daw-lane daw-channel-lane[^"]*)" data-ch="${index}">`))?.[1];
+
+    const mutedHTML = dawShellHTML(makeState({ mutedChannels: { 0: true } }));
+    expect(laneAt(mutedHTML, 0)).toContain('daw-channel-lane--dimmed');
+    expect(laneAt(mutedHTML, 1)).not.toContain('daw-channel-lane--dimmed');
+
+    const soloedHTML = dawShellHTML(makeState({ soloedChannels: { 1: true } }));
+    expect(laneAt(soloedHTML, 0)).toContain('daw-channel-lane--dimmed');
+    expect(laneAt(soloedHTML, 1)).not.toContain('daw-channel-lane--dimmed');
+
+    const clearedHTML = dawShellHTML(makeState({ soloedChannels: {} }));
+    expect(laneAt(clearedHTML, 0)).not.toContain('daw-channel-lane--dimmed');
+    expect(laneAt(clearedHTML, 1)).not.toContain('daw-channel-lane--dimmed');
+    expect(clearedHTML).not.toContain('daw-mix-lane daw-channel-lane--dimmed');
   });
 
   it('dawShellHTML renders one .daw-track-head per configured channel, in lane order', () => {
