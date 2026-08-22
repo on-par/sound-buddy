@@ -14,6 +14,7 @@ import {
   addTrackDisabled,
   meterCardHTML,
   dawShellHTML,
+  dawTrackHeaderHTML,
   dawShellPatchView,
   dawTrackRows,
   dawStatusLineView,
@@ -23,7 +24,7 @@ import {
   boardRunning,
   type LiveWorkspaceViewState,
 } from './live-workspace-view';
-import type { LiveDevice, StripConfig, ChannelGroup, LiveEvent, LiveMeterChannel } from './live-capture-panel';
+import { levelPercent, type LiveDevice, type StripConfig, type ChannelGroup, type LiveEvent, type LiveMeterChannel } from './live-capture-panel';
 import type { AppSettings } from '../../electron/ipc/api';
 import { dawTimelineX, dawRulerTicks, dawLaneGridlines, DAW_TIMELINE_SPAN_SECS, DAW_TIMELINE_ORIGIN_PX } from './daw-shell-runtime';
 
@@ -88,6 +89,8 @@ function makeState(overrides: Partial<LiveWorkspaceViewState> = {}): LiveWorkspa
     selectedChannel: null,
     measurementSource: null,
     focusedInputIndex: null,
+    mutedChannels: {},
+    soloedChannels: {},
     lastTick: null,
     lastLiveChannels: null,
     liveWindows: [],
@@ -328,6 +331,51 @@ describe('meterCardHTML', () => {
 });
 
 describe('dawShellHTML / dawShellPatchView', () => {
+  it('derives each header row state and RMS level from the shared snapshot', () => {
+    const rows = dawTrackRows(makeState({
+      mutedChannels: { 0: true }, soloedChannels: { 1: true },
+      lastLiveChannels: TICK_CHANNELS as never,
+    }));
+    expect(rows).toMatchObject([
+      { index: 0, armed: true, muted: true, soloed: false },
+      { index: 1, armed: false, muted: false, soloed: true },
+    ]);
+    expect(rows[0].levelPercent).toBeCloseTo(levelPercent(TICK_CHANNELS[0].rms, false), 10);
+    expect(rows[1].levelPercent).toBeCloseTo(levelPercent(TICK_CHANNELS[1].rms, false), 10);
+  });
+
+  it('uses a zero header level for missing or idle live channels', () => {
+    expect(dawTrackRows(makeState())[0].levelPercent).toBe(0);
+    expect(dawTrackRows(makeState({ lastLiveChannels: [{ ...TICK_CHANNELS[0], idle: true }] as never }))[0].levelPercent).toBe(0);
+  });
+
+  it('builds an accessible escaped track header with its initial inline level', () => {
+    const html = dawTrackHeaderHTML({ index: 0, name: 'Kick &lt;3', armed: true, muted: false, soloed: true, levelPercent: 70 });
+    expect(html).toContain('class="daw-track-head-arm"');
+    expect(html).toContain('aria-label="Disarm track"');
+    expect(html).toContain('class="daw-track-head-mute"');
+    expect(html).toContain('aria-label="Mute track"');
+    expect(html).toContain('class="daw-track-head-mute" aria-label="Mute track" aria-pressed="false"');
+    expect(html).toContain('class="daw-track-head-solo"');
+    expect(html).toContain('aria-label="Unsolo track"');
+    expect(html).toContain('class="daw-track-head-remove"');
+    expect(html).toContain('aria-label="Remove track"');
+    expect(html).toContain('aria-pressed="true"');
+    expect(html).toContain('style="width:70%"');
+    expect(html).toContain('>Kick &lt;3</span>');
+  });
+
+  it('keeps header markup byte-identical for equal rows', () => {
+    const row = { index: 0, name: 'Kick', armed: true, muted: false, soloed: false, levelPercent: 0 };
+    expect(dawTrackHeaderHTML(row)).toBe(dawTrackHeaderHTML(row));
+  });
+
+  it('renders controls once per track but never in the master header', () => {
+    const html = dawShellHTML(makeState());
+    expect(html.split('daw-track-head-arm').length - 1).toBe(CONFIG.length);
+    const master = html.slice(html.indexOf('daw-master-head'));
+    expect(master).not.toContain('daw-track-head-arm');
+  });
   it('renders the transport header, ruler, playhead, and mix lane', () => {
     const html = dawShellHTML(makeState());
     expect(html).toContain('daw-shell');

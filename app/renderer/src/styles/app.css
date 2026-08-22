@@ -994,11 +994,19 @@
     /* Per-track head rows (#1043): the head column and the lane column render
        the same ordered dawTrackRows list, so their rows read one shared height
        — content-sized rows would silently break the head/lane alignment #1028
-       depends on (ADR-0087). Arm/M/S, the colour strip and the inline meter are
-       #992/#993; this is the index + name row only. */
-    .daw-track-head { display:flex; align-items:center; gap:8px; height:var(--daw-track-row-h); box-sizing:border-box; padding:0 9px; border-bottom:1px solid var(--border-subtle); }
-    .daw-track-head-index { flex:0 0 auto; font:var(--fw-regular) var(--fs-micro)/1 ui-monospace, monospace; font-variant-numeric:tabular-nums; color:var(--text-muted); }
-    .daw-track-head-name { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font:var(--fw-semibold) var(--fs-body-sm)/1.3 var(--font-sans); color:var(--text-primary); }
+       depends on (ADR-0087). The compact arm/mute/solo controls and inline
+       meter stay inside this fixed-height header rather than changing lane
+       alignment. */
+    .daw-track-head { display:grid; grid-template-columns:auto minmax(0, 1fr) auto auto; grid-template-areas:'index name remove remove' 'index controls meter remove'; column-gap:6px; row-gap:3px; height:var(--daw-track-row-h); box-sizing:border-box; padding:5px 9px; border-bottom:1px solid var(--border-subtle); }
+    .daw-track-head-index { grid-area:index; align-self:center; font:var(--fw-regular) var(--fs-micro)/1 ui-monospace, monospace; font-variant-numeric:tabular-nums; color:var(--text-muted); }
+    .daw-track-head-name { grid-area:name; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font:var(--fw-semibold) var(--fs-body-sm)/1.3 var(--font-sans); color:var(--text-primary); }
+    .daw-track-head-controls { grid-area:controls; display:flex; gap:3px; }
+    .daw-track-head-arm, .daw-track-head-mute, .daw-track-head-solo, .daw-track-head-remove { border:1px solid var(--border-subtle); border-radius:var(--radius-sm); background:transparent; color:var(--text-muted); cursor:pointer; font:var(--fw-semibold) var(--fs-micro)/1 var(--font-sans); }
+    .daw-track-head-arm, .daw-track-head-mute, .daw-track-head-solo { width:20px; height:16px; padding:0; }
+    .daw-track-head-arm[aria-pressed="true"], .daw-track-head-mute[aria-pressed="true"], .daw-track-head-solo[aria-pressed="true"] { border-color:var(--gold-text); color:var(--gold-text); }
+    .daw-track-head-remove { grid-area:remove; align-self:center; width:18px; height:18px; padding:0; color:var(--issue-text); }
+    .daw-track-head-level { grid-area:meter; align-self:center; width:52px; height:4px; overflow:hidden; border-radius:2px; background:var(--border-subtle); }
+    .daw-track-head-level-fill { display:block; height:100%; background:var(--gold-text); }
     /* The overall-mix row's head cell (#1044): the arrangement's last paired
        row, closing the head column opposite .daw-mix-lane, which closes the
        lane column. Deliberately NOT a .daw-track-head — it carries no track

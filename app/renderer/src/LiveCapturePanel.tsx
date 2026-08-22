@@ -76,6 +76,33 @@ interface StorageLike {
 // for it is garbage-collected and a fresh snapshot is taken on focus).
 const nameOriginals = new WeakMap<Element, string>();
 
+export interface HeaderChannelActions {
+  toggleArm(channelId: number): void;
+  hideArmHint(): void;
+  removeStrip(channelId: number): void;
+  toggleChannelMute(channelId: number): void;
+  toggleChannelSolo(channelId: number): void;
+}
+
+/** Routes an already-resolved DAW header action without coupling its channel
+ * identifier contract to delegated DOM traversal. */
+export function routeHeaderChannelAction(
+  action: 'arm' | 'mute' | 'solo' | 'remove',
+  channelId: number,
+  actions: HeaderChannelActions,
+): void {
+  if (action === 'arm') {
+    actions.toggleArm(channelId);
+    actions.hideArmHint();
+  } else if (action === 'mute') {
+    actions.toggleChannelMute(channelId);
+  } else if (action === 'solo') {
+    actions.toggleChannelSolo(channelId);
+  } else {
+    actions.removeStrip(channelId);
+  }
+}
+
 /* c8 ignore start -- DOM-shape helpers for the delegated interaction handlers
    below; no jsdom in this harness (they need real Element/closest/dataset),
    so they ride the handlers' e2e gates — tests/e2e/live-capture.spec.ts's
@@ -117,6 +144,8 @@ export default function LiveCapturePanel(): JSX.Element | null {
     selectedChannel: st.selectedChannel,
     measurementSource: st.measurementSource,
     focusedInputIndex: st.focusedInputIndex,
+    mutedChannels: st.mutedChannels,
+    soloedChannels: st.soloedChannels,
     lapCoaching: st.lapCoaching,
     boardShapeVersion: st.boardShapeVersion,
     liveWindows: st.liveWindows,
@@ -275,6 +304,17 @@ export default function LiveCapturePanel(): JSX.Element | null {
     // Workspace Add track (#188) + + New group (#190).
     if (target.closest('#live-ws-add')) { useLiveCaptureStore.getState().addStrip(); return; }
     if (target.closest('#live-ws-new-group')) { void createChannelGroup(); return; }
+    const headerAction = target.closest('.daw-track-head-arm, .daw-track-head-mute, .daw-track-head-solo, .daw-track-head-remove');
+    if (headerAction) {
+      const rawChannelId = headerAction.closest('.daw-track-head')?.getAttribute('data-ch');
+      const channelId = rawChannelId && rawChannelId.trim() !== '' ? Number(rawChannelId) : Number.NaN;
+      if (!Number.isInteger(channelId)) return;
+      const action = headerAction.classList.contains('daw-track-head-arm') ? 'arm'
+        : headerAction.classList.contains('daw-track-head-mute') ? 'mute'
+          : headerAction.classList.contains('daw-track-head-solo') ? 'solo' : 'remove';
+      routeHeaderChannelAction(action, channelId, useLiveCaptureStore.getState());
+      return;
+    }
     // Workspace per-row remove (#188).
     const rmBtn = target.closest('.live-ch-x');
     if (rmBtn) {

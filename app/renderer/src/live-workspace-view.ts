@@ -24,6 +24,7 @@ import {
   deviceChannelCount,
   usedChannelCount,
   liveMetersHTML,
+  levelPercent,
   measurementSourceOptionLabel,
   type LiveDevice,
   type StripConfig,
@@ -33,6 +34,7 @@ import {
   type StripView,
   type PanelView,
   type ChannelWindowData,
+  type ChannelFlagMap,
 } from './live-capture-panel';
 import { escapeHtml } from './spectrum-display';
 import { fmt, iconSvg } from './report-card';
@@ -58,6 +60,8 @@ export interface LiveWorkspaceViewState {
   selectedChannel: number | null;
   measurementSource: number | null;
   focusedInputIndex: number | null;
+  mutedChannels: ChannelFlagMap;
+  soloedChannels: ChannelFlagMap;
   lastTick: LiveEvent | null;
   lastLiveChannels: ChannelWindowData[] | null;
   liveWindows: LiveEvent[];
@@ -87,6 +91,8 @@ export interface LiveWorkspaceStoreSlice {
   selectedChannel: number | null;
   measurementSource: number | null;
   focusedInputIndex: number | null;
+  mutedChannels: ChannelFlagMap;
+  soloedChannels: ChannelFlagMap;
   lastTick: LiveEvent | null;
   lastLiveChannels: ChannelWindowData[] | null;
   liveWindows: LiveEvent[];
@@ -125,6 +131,8 @@ export function liveWorkspaceViewState(
     selectedChannel: lc.selectedChannel,
     measurementSource: lc.measurementSource,
     focusedInputIndex: lc.focusedInputIndex,
+    mutedChannels: lc.mutedChannels,
+    soloedChannels: lc.soloedChannels,
     lastTick: lc.lastTick,
     lastLiveChannels: lc.lastLiveChannels,
     liveWindows: lc.liveWindows,
@@ -440,6 +448,10 @@ export function meterCardHTML(state: LiveWorkspaceViewState): { html: string; id
 export interface DawTrackRow {
   index: number;
   name: string;
+  armed: boolean;
+  muted: boolean;
+  soloed: boolean;
+  levelPercent: number;
 }
 
 // The single ordered per-track list both arrangement columns render from
@@ -450,10 +462,31 @@ export interface DawTrackRow {
 // their names differently. Unarmed configured tracks are included: arming
 // governs what records, never what the arrangement shows.
 export function dawTrackRows(state: LiveWorkspaceViewState): DawTrackRow[] {
-  return state.channelConfig.map((strip, idx) => ({
-    index: idx,
-    name: escapeHtml(getRigReconcile().resolveStripLabel(strip, liveChannelAt(state, idx), idx)),
-  }));
+  return state.channelConfig.map((strip, idx) => {
+    const channel = liveChannelAt(state, idx);
+    return {
+      index: idx,
+      name: escapeHtml(getRigReconcile().resolveStripLabel(strip, channel, idx)),
+      armed: getArmState().isArmed(strip),
+      muted: state.mutedChannels[idx] === true,
+      soloed: state.soloedChannels[idx] === true,
+      levelPercent: levelPercent(channel?.rms ?? Number.NaN, !!channel?.idle),
+    };
+  });
+}
+
+/** Pure inside markup for one arrangement track header. The row is derived
+ * once by dawTrackRows, preserving the header/lane ordering contract. */
+export function dawTrackHeaderHTML(row: DawTrackRow): string {
+  return `<span class="daw-track-head-index">${row.index + 1}</span>`
+    + `<span class="daw-track-head-name">${row.name}</span>`
+    + `<span class="daw-track-head-controls">`
+    + `<button type="button" class="daw-track-head-arm" aria-label="${row.armed ? 'Disarm track' : 'Arm track for recording'}" aria-pressed="${row.armed}">Arm</button>`
+    + `<button type="button" class="daw-track-head-mute" aria-label="${row.muted ? 'Unmute track' : 'Mute track'}" aria-pressed="${row.muted}">M</button>`
+    + `<button type="button" class="daw-track-head-solo" aria-label="${row.soloed ? 'Unsolo track' : 'Solo track'}" aria-pressed="${row.soloed}">S</button>`
+    + `</span>`
+    + `<span class="daw-track-head-level" aria-hidden="true"><span class="daw-track-head-level-fill" style="width:${row.levelPercent}%"></span></span>`
+    + `<button type="button" class="daw-track-head-remove" aria-label="Remove track">×</button>`;
 }
 
 // The shared DAW-shell patch view (#517): the lane fingerprint (for "did the
@@ -530,10 +563,7 @@ export function dawShellHTML(state: LiveWorkspaceViewState): string {
   const rulerPlayheadHTML = `<span class="daw-playhead daw-playhead-ruler"></span>`;
   const lanePlayheadHTML = `<span class="daw-playhead daw-playhead-lanes"></span>`;
   const headHTML = rows.map((row) =>
-    `<div class="daw-track-head" data-ch="${row.index}">`
-    + `<span class="daw-track-head-index">${row.index + 1}</span>`
-    + `<span class="daw-track-head-name">${row.name}</span>`
-    + `</div>`).join('');
+    `<div class="daw-track-head" data-ch="${row.index}">${dawTrackHeaderHTML(row)}</div>`).join('');
   const headRowsHTML = rows.length > 0
     ? headHTML
     : `<div class="daw-empty-head"></div>`;
