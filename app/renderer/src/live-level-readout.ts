@@ -47,7 +47,7 @@ export function liveLevelReadout(snap: LiveMeterSnapshot): LiveLevelReadoutView 
 }
 
 /* c8 ignore start -- DOM-patching applier, no jsdom in this harness (same
-   precedent as live-capture-panel.ts's patchLiveChannel and spectrum-display.ts's
+   precedent as live-capture-panel.ts's retired strip DOM applier and spectrum-display.ts's
    patchBarsAndLabels); exercised by the live-capture e2e spec (#767). */
 export function patchLevelReadout(el: Element, view: LiveLevelReadoutView): void {
   el.classList.toggle('clip', view.clipping);

@@ -32,7 +32,6 @@ import {
   patchEqPaneLevelTiles,
   patchEqPaneSection,
   patchGroupSummaries,
-  patchLiveChannel,
 } from './live-capture-panel';
 import {
   currentEqPaneChannels,
@@ -43,7 +42,6 @@ import {
   liveWorkspaceViewState,
   boardRunning,
   selectedEqPaneLevelTilesView,
-  stripViewAt,
 } from './live-workspace-view';
 import type { LiveEvent } from './live-capture-panel';
 import LiveCapturePanel from './LiveCapturePanel';
@@ -61,7 +59,7 @@ function applyLiveTick(snap: LiveMeterSnapshot): void {
   const body = document.getElementById('live-island');
   if (!body) return;
 
-  // Room stats row: the board strip, or the secondary mic when it owns the
+  // Room stats row: the selected track, or the secondary mic when it owns the
   // room (mirrors onLiveEvent/onMeasurementEvent — it updates even while the
   // DAW shell is showing, where the row is display:none).
   if (!snap.secondaryActive) {
@@ -85,10 +83,6 @@ function applyLiveTick(snap: LiveMeterSnapshot): void {
     if (mixLane && mixLane.getAttribute('data-capture-mode') !== view.captureMode) {
       mixLane.setAttribute('data-capture-mode', view.captureMode);
     }
-    tick.channels.forEach((ch, index) => {
-      const strip = shell.querySelector(`.sb-live-meters .live-ch[data-ch="${index}"]`);
-      if (strip) patchLiveChannel(strip, ch, index, stripViewAt(state, index, ch), state.isCapturing);
-    });
     patchGroupSummaries(shell, tick.channels, state.channelGroups);
   }
   const channels = currentEqPaneChannels(state);

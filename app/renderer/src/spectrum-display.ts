@@ -355,7 +355,7 @@ export function bandDbFromSpectrum(spectrum: SpectrumData): number[] {
   return BAND_META.map((b) => { const v = bands[b.key]; return Number.isFinite(v) ? (v as number) : -120; });
 }
 // Bars + value readouts + labels shared by the Live-tab per-channel EQ (#30,
-// veqChannelHTML) and these analysis-view bars — geometry (cols) and levels
+// the retired strip meter) and these analysis-view bars — geometry (cols) and levels
 // (dbArray) differ, everything else (loud/dim/hot styling, markup shape) is
 // identical. cols entries with a `range` get a title tooltip on their bar.
 export function veqBarsAndLabelsHTML(cols: BarColumn[], dbArray: number[], loudestIdx: number): { bars: string; labels: string } {
@@ -612,7 +612,7 @@ export function veqValBottom(pct: number): string { return Math.min(pct, 90).toF
 
 // Patch existing bar/value/label DOM in place (the update-time counterpart of
 // veqBarsAndLabelsHTML above) — shared by the Live-tab per-channel patch
-// (live-capture-panel.ts's patchLiveChannel, TD-001 slice 5, #423) and the
+// (live-capture-panel.ts's retired strip DOM applier, TD-001 slice 5, #423) and the
 // playback-band repaint (inline-app.js's renderPlaybackBands, AW-4) so
 // height/value transitions animate via CSS instead of restarting on every
 // repaint, and the two paint paths can't drift out of sync with each other.

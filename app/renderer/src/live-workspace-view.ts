@@ -24,7 +24,6 @@ import {
   channelOptions,
   deviceChannelCount,
   usedChannelCount,
-  liveMetersHTML,
   groupSummary,
   groupSummaryText,
   levelPercent,
@@ -220,7 +219,7 @@ export interface InstrumentProfilesApi {
   isKnownProfileId(id: string): boolean;
   profileById(id: string): { id: string; label: string; bands: Record<string, number> };
   // TD-001 slice 6h (#711): the per-strip profile override write, reached by
-  // LiveCapturePanel's delegated .live-ch-profile branch (was inline-app.js).
+  // LiveCapturePanel's delegated track-profile branch (was inline-app.js).
   recordOverride(
     all: Record<string, Record<string, string>> | null | undefined,
     deviceName: string,
@@ -350,7 +349,7 @@ export function livePanelView(state: LiveWorkspaceViewState): PanelView {
     liveRunning: state.isCapturing,
     // TD-001 slice 6h (#711): the per-strip arm button's disabled stamp derives
     // from `liveRunning && liveMode === 'record'` (arming stays live while
-    // monitoring, #757) — see veqChannelHTML.
+    // monitoring, #757) — see dawTrackHeaderHTML.
     liveMode: state.liveMode,
     groups: state.channelGroups,
   };
@@ -443,28 +442,6 @@ export function liveSetupStepsHTML(steps: LiveSetupStep[]): string {
     + `<span class="ls-body"><span class="ls-label">${s.label}</span>`
     + (s.active ? `<span class="ls-hint">${s.hint}</span>` : '')
     + `</span></li>`).join('');
-}
-
-// Mirrors window.liveWorkspaceRuntime.renderWorkspace()'s branch (TD-001 slice
-// 6c, #701): when capturing with a fresh tick, the running card from the
-// tick's channels; else the idle card from synthetic placeholder channels.
-export function meterCardHTML(state: LiveWorkspaceViewState): { html: string; idle: boolean } {
-  const runningChannels = state.isCapturing && state.lastTick && state.lastTick.channels && state.lastTick.channels.length > 0
-    ? state.lastTick.channels
-    : null;
-  if (runningChannels) {
-    const stripViews = runningChannels.map((c, i) => stripViewAt(state, i, c));
-    return {
-      html: `<div class="meter-card sb-live-meters">${liveMetersHTML(runningChannels, stripViews, livePanelView(state))}</div>`,
-      idle: false,
-    };
-  }
-  const idleChannels = state.channelConfig.map(() => getTrackWorkspace().idleChannel(LIVE_BAND_KEYS));
-  const stripViews = idleChannels.map((c, i) => stripViewAt(state, i, c));
-  return {
-    html: `<div class="meter-card sb-live-meters idle">${liveMetersHTML(idleChannels, stripViews, livePanelView(state))}</div>`,
-    idle: true,
-  };
 }
 
 // One arrangement track row (#1043). `name` is already HTML-escaped — strip
@@ -594,33 +571,33 @@ export function dawTrackHeaderHTML(row: DawTrackRow): string {
   const sourceA = Number.isInteger(strip.a) ? strip.a : 0;
   const sourceB = stereo && Number.isInteger((strip as StripConfig).b) ? (strip as StripConfig).b : sourceA + 1;
   const deviceChannels = row.deviceChannels ?? 8;
-  const definitionHTML = `<span class="live-ch-def">`
-    + `<select class="live-ch-kind" data-idx="${row.index}" aria-label="Mono or stereo"${configDisabled}>`
+  const definitionHTML = `<span class="daw-track-head-def">`
+    + `<select class="daw-track-head-kind" data-idx="${row.index}" aria-label="Mono or stereo"${configDisabled}>`
     + `<option value="mono"${!stereo ? ' selected' : ''}>Mono</option>`
     + `<option value="stereo"${stereo ? ' selected' : ''}>Stereo</option>`
     + `</select>`
-    + `<select class="live-ch-src${stereo ? ' leg' : ''}" data-idx="${row.index}" data-field="a" aria-label="${stereo ? 'Left source channel' : 'Source channel'}" title="${stereo ? 'Left source channel' : 'Source channel'}"${configDisabled}>${channelOptions(sourceA, deviceChannels, stereo)}</select>`
-    + (stereo ? `<select class="live-ch-src leg" data-idx="${row.index}" data-field="b" aria-label="Right source channel" title="Right source channel"${configDisabled}>${channelOptions(sourceB, deviceChannels, true)}</select>` : '')
+    + `<select class="daw-track-head-src${stereo ? ' leg' : ''}" data-idx="${row.index}" data-field="a" aria-label="${stereo ? 'Left source channel' : 'Source channel'}" title="${stereo ? 'Left source channel' : 'Source channel'}"${configDisabled}>${channelOptions(sourceA, deviceChannels, stereo)}</select>`
+    + (stereo ? `<select class="daw-track-head-src leg" data-idx="${row.index}" data-field="b" aria-label="Right source channel" title="Right source channel"${configDisabled}>${channelOptions(sourceB, deviceChannels, true)}</select>` : '')
     + `</span>`;
   const dragHTML = (row.groupIndex ?? -1) >= 0
-    ? `<button type="button" class="live-ch-drag" draggable="true" aria-label="Reorder track within group — drag, or press Arrow Up/Down" title="Drag to reorder track"${row.configDisabled ? ' disabled' : ''}>⋮⋮</button>`
+    ? `<button type="button" class="daw-track-head-drag" draggable="true" aria-label="Reorder track within group — drag, or press Arrow Up/Down" title="Drag to reorder track"${row.configDisabled ? ' disabled' : ''}>⋮⋮</button>`
     : '';
   return dragHTML
     + `<span class="daw-track-head-index">${row.index + 1}</span>`
-    + `<span class="daw-track-head-name live-ch-name${row.clipping ? ' clip' : ''}" contenteditable="true" spellcheck="false" role="textbox" aria-label="Channel name — click to rename" title="Click to rename">${row.name}</span>`
+    + `<span class="daw-track-head-name${row.clipping ? ' clip' : ''}" contenteditable="true" spellcheck="false" role="textbox" aria-label="Channel name — click to rename" title="Click to rename">${row.name}</span>`
     + definitionHTML
     + `<span class="daw-track-head-controls">`
-    + `<button type="button" class="daw-track-head-arm live-ch-arm" data-idx="${row.index}" aria-label="${row.armed ? 'Disarm track' : 'Arm track for recording'}" aria-pressed="${row.armed}"${row.armDisabled ? ' disabled' : ''}>Arm</button>`
+    + `<button type="button" class="daw-track-head-arm" data-idx="${row.index}" aria-label="${row.armed ? 'Disarm track' : 'Arm track for recording'}" aria-pressed="${row.armed}"${row.armDisabled ? ' disabled' : ''}>Arm</button>`
     + `<button type="button" class="daw-track-head-mute" aria-label="${row.muted ? 'Unmute track' : 'Mute track'}" aria-pressed="${row.muted}">M</button>`
     + `<button type="button" class="daw-track-head-solo" aria-label="${row.soloed ? 'Unsolo track' : 'Solo track'}" aria-pressed="${row.soloed}">S</button>`
     + `</span>`
     + `<span class="daw-track-head-level" aria-hidden="true"><span class="daw-track-head-level-fill" style="width:${row.levelPercent}%"></span></span>`
-    + `<span class="live-ch-meta">${row.idle ? 'Idle' : 'Live'}</span>`
-    + `<button type="button" class="daw-track-head-remove live-ch-x" title="Remove track" aria-label="Remove track"${row.removeDisabled ? ' disabled' : ''}>×</button>`;
+    + `<span class="daw-track-head-meta">${row.idle ? 'Idle' : 'Live'}</span>`
+    + `<button type="button" class="daw-track-head-remove" title="Remove track" aria-label="Remove track"${row.removeDisabled ? ' disabled' : ''}>×</button>`;
 }
 
 function dawTrackHeadHTML(row: DawTrackRow): string {
-  const stripClass = `daw-track-head live-ch${row.selected ? ' selected' : ''}${row.idle ? ' idle' : ''}${row.groupCollapsed ? ' group-collapsed' : ''}`;
+  const stripClass = `daw-track-head${row.selected ? ' selected' : ''}${row.idle ? ' idle' : ''}${row.groupCollapsed ? ' group-collapsed' : ''}`;
   return `<div class="${stripClass}" data-ch="${row.index}"${row.selected ? ' aria-current="true"' : ''} tabindex="0" role="button" aria-label="Select ${row.name} to inspect in the EQ pane">${dawTrackHeaderHTML(row)}</div>`;
 }
 
@@ -629,7 +606,7 @@ function dawTrackGroupHeaderHTML(header: DawTrackGroupHeader): string {
     + `<button type="button" class="live-group-drag" draggable="true" aria-label="Reorder group — drag, or press Arrow Up/Down" title="Drag to reorder group"${header.disabled ? ' disabled' : ''}>⋮⋮</button>`
     + `<button type="button" class="live-group-fold" aria-label="Collapse or expand group" aria-expanded="${header.collapsed ? 'false' : 'true'}" title="Collapse / expand group">▾</button>`
     + `<span class="live-group-name">${header.name}</span>`
-    + `<span class="live-group-summary">${header.summary}${header.clipping ? '<span class="live-ch-clip">CLIP</span>' : ''}</span>`
+    + `<span class="live-group-summary">${header.summary}${header.clipping ? '<span class="live-group-clip">CLIP</span>' : ''}</span>`
     + `<button type="button" class="live-group-rename" aria-label="Rename group" title="Rename group"${header.disabled ? ' disabled' : ''}>Rename</button>`
     + `<button type="button" class="live-group-del" aria-label="Delete group" title="Delete group"${header.disabled ? ' disabled' : ''}>Delete</button>`
     + `</div>`;
@@ -771,7 +748,7 @@ export function dawShellHTML(state: LiveWorkspaceViewState, routingDrawerContent
     // shared CSS translate (ADR-0090). The playhead is two region segments,
     // not a shell child (#1049): one in the ruler, one over the lane column.
     + `<div class="daw-arrangement">`
-    + `<div class="daw-track-heads${rows.length > 0 ? ' sb-live-meters' : ''}">${rulerGutterHTML}${headRowsHTML}${masterHeadHTML}</div>`
+    + `<div class="daw-track-heads">${rulerGutterHTML}${headRowsHTML}${masterHeadHTML}</div>`
     + `<div class="daw-timeline">`
     + `<div class="daw-ruler">${rulerTicks}${rulerPlayheadHTML}</div>`
     + `<div class="daw-lane-column">`
@@ -877,7 +854,7 @@ export function selectedEqPaneLevelTilesView(channels: LiveMeterChannel[], selec
 }
 
 /* c8 ignore start -- DOM applier, no jsdom in this harness (renderToString
-   only) — same precedent as live-capture-panel.ts's patchLiveChannel;
+   only) — same precedent as live-capture-panel.ts's retired strip DOM applier;
    exercised by tests/e2e/live-capture.spec.ts (live ticks drive #stat-*) and
    tests/e2e/report-card-basics.spec.ts (file analysis done transition). */
 function setStat(id: string, value: string, tone: string): void {

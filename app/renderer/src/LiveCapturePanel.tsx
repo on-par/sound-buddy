@@ -69,7 +69,7 @@ import { runtime, recordCapture, stopLiveCapture } from './LiveControls';
 import { recordButtonAction } from './record-transport';
 
 // Per-element "original text" snapshot for the delegated inline rename (#39),
-// keyed by the .live-ch-name element being edited. Survives the element being
+// keyed by the DAW track-name element being edited. Survives the element being
 // replaced between edits (a re-render destroys the node, so the WeakMap entry
 // for it is garbage-collected and a fresh snapshot is taken on focus).
 const nameOriginals = new WeakMap<Element, string>();
@@ -108,15 +108,15 @@ export function routeHeaderChannelAction(
    below; no jsdom in this harness (they need real Element/closest/dataset),
    so they ride the handlers' e2e gates — tests/e2e/live-capture.spec.ts's
    inline-rename case exercises nameElOf/stripIndexIn. */
-// The .live-ch-name element a focused/blurred target belongs to, or null.
+// The DAW track-name element a focused/blurred target belongs to, or null.
 function nameElOf(target: EventTarget | null): Element | null {
   if (!(target instanceof Element)) return null;
-  const name = target.closest('.live-ch-name');
+  const name = target.closest('.daw-track-head-name');
   return name && name.contains(target) ? name : null;
 }
 
 function stripIndexIn(nameEl: Element): number {
-  const strip = nameEl.closest('.live-ch');
+  const strip = nameEl.closest('.daw-track-head');
   return parseInt((strip as HTMLElement | null)?.dataset.ch ?? '', 10);
 }
 /* c8 ignore stop */
@@ -418,20 +418,6 @@ export default function LiveCapturePanel(): JSX.Element | null {
       routeHeaderChannelAction(action, channelId, useLiveCaptureStore.getState());
       return;
     }
-    // Workspace per-row remove (#188).
-    const rmBtn = target.closest('.live-ch-x');
-    if (rmBtn) {
-      useLiveCaptureStore.getState().removeStrip(parseInt(rmBtn.closest('.live-ch')?.getAttribute('data-ch') ?? '', 10));
-      return;
-    }
-    // Workspace per-track arm toggle (#191) — arming clears the arm hint.
-    const armBtn = target.closest('.live-ch-arm');
-    if (armBtn) {
-      const idx = parseInt(armBtn.closest('.live-ch')?.getAttribute('data-ch') ?? '', 10);
-      useLiveCaptureStore.getState().toggleArm(idx);
-      useLiveCaptureStore.getState().hideArmHint();
-      return;
-    }
     // Workspace Arm all / Disarm all (#191).
     if (target.closest('#live-ws-arm-all')) {
       useLiveCaptureStore.getState().setAllArmed(true);
@@ -451,7 +437,7 @@ export default function LiveCapturePanel(): JSX.Element | null {
     // text edits, or text inputs) inspects it in the docked EQ pane. Header
     // selects can sit near the row's geometric center in the compact DAW head,
     // so selecting through them preserves whole-row click behavior.
-    const stripEl = target.closest('.live-ch');
+    const stripEl = target.closest('.daw-track-head');
     if (stripEl && !target.closest('button, [contenteditable], input')) {
       const idx = parseInt((stripEl as HTMLElement).dataset.ch ?? '', 10);
       if (Number.isInteger(idx)) useLiveCaptureStore.getState().setSelectedChannel(idx);
@@ -461,7 +447,7 @@ export default function LiveCapturePanel(): JSX.Element | null {
   function onBoardPointerDown(e: PointerEvent<HTMLDivElement>): void {
     if (e.target instanceof Element) {
       const headerSelect = e.target.closest('.daw-track-head select');
-      const stripEl = headerSelect?.closest('.live-ch');
+      const stripEl = headerSelect?.closest('.daw-track-head');
       if (stripEl) {
         const idx = parseInt((stripEl as HTMLElement).dataset.ch ?? '', 10);
         if (Number.isInteger(idx)) useLiveCaptureStore.getState().setSelectedChannel(idx);
@@ -507,7 +493,7 @@ export default function LiveCapturePanel(): JSX.Element | null {
     // Keyboard strip select (#668): Enter/Space while the strip itself (not
     // one of its interactive children) has focus.
     if (e.key === 'Enter' || e.key === ' ') {
-      const stripEl = target.closest('.live-ch');
+      const stripEl = target.closest('.daw-track-head');
       if (stripEl && target === stripEl) {
         e.preventDefault();
         const idx = parseInt((stripEl as HTMLElement).dataset.ch ?? '', 10);
@@ -535,9 +521,9 @@ export default function LiveCapturePanel(): JSX.Element | null {
       });
       return;
     }
-    const stripHandle = target.closest('.live-ch-drag');
+    const stripHandle = target.closest('.daw-track-head-drag');
     if (stripHandle) {
-      const idx = parseInt(stripHandle.closest('.live-ch')?.getAttribute('data-ch') ?? '', 10);
+      const idx = parseInt(stripHandle.closest('.daw-track-head')?.getAttribute('data-ch') ?? '', 10);
       const groups = useLiveCaptureStore.getState().channelGroups;
       const g = getGroupState().groupOf(groups, idx);
       if (g === -1) return;
@@ -548,7 +534,7 @@ export default function LiveCapturePanel(): JSX.Element | null {
       e.preventDefault();
       useLiveCaptureStore.getState().moveChannelInGroup(g, from, to);
       requestAnimationFrame(() => {
-        document.querySelector<HTMLElement>(`#spectrum-body .live-ch[data-ch="${idx}"] .live-ch-drag`)?.focus();
+        document.querySelector<HTMLElement>(`#spectrum-body .daw-track-head[data-ch="${idx}"] .daw-track-head-drag`)?.focus();
       });
     }
   }
@@ -597,7 +583,7 @@ export default function LiveCapturePanel(): JSX.Element | null {
     }
     // ── 6h inline track definition (#189) — moved from inline-app.js's #spectrum-body change
     // listener (TD-001 slice 6h #711). The board re-renders reactively. ──────
-    const kindSel = target.closest('.live-ch-kind');
+    const kindSel = target.closest('.daw-track-head-kind');
     if (kindSel) {
       const idx = parseInt(kindSel.getAttribute('data-idx') ?? '', 10);
       const lc = useLiveCaptureStore.getState();
@@ -605,7 +591,7 @@ export default function LiveCapturePanel(): JSX.Element | null {
       lc.setStripKind(idx, (e.target as unknown as HTMLSelectElement).value);
       return;
     }
-    const srcSel = target.closest('.live-ch-src');
+    const srcSel = target.closest('.daw-track-head-src');
     if (srcSel) {
       const idx = parseInt(srcSel.getAttribute('data-idx') ?? '', 10);
       const lc = useLiveCaptureStore.getState();
@@ -692,18 +678,18 @@ export default function LiveCapturePanel(): JSX.Element | null {
 
   // ── 6h drag-reorder (#483) — ported from inline-app.js's #spectrum-body
   // drag listeners. Whole groups via .live-group-drag, or tracks within a
-  // group via .live-ch-drag; cross-group moves stay on the .live-ch-group
+  // group via .daw-track-head-drag; cross-group moves stay on the group
   // dropdown. Uses getGroupState().groupOf for same-group validation. ──────
   function onDragStart(e: DragEvent<HTMLDivElement>): void {
     if (useLiveCaptureStore.getState().isCapturing) { e.preventDefault(); return; }
     const target = e.target as Element;
     const groupHandle = target.closest('.live-group-drag');
-    const stripHandle = target.closest('.live-ch-drag');
+    const stripHandle = target.closest('.daw-track-head-drag');
     if (!groupHandle && !stripHandle) return;
     if (groupHandle) {
       liveDragSrc.current = { type: 'group', index: parseInt(groupHandle.closest('.live-group-head')?.getAttribute('data-group') ?? '', 10) };
     } else if (stripHandle) {
-      liveDragSrc.current = { type: 'strip', index: parseInt(stripHandle.closest('.live-ch')?.getAttribute('data-ch') ?? '', 10) };
+      liveDragSrc.current = { type: 'strip', index: parseInt(stripHandle.closest('.daw-track-head')?.getAttribute('data-ch') ?? '', 10) };
     }
     if (!liveDragSrc.current) return;
     e.dataTransfer.effectAllowed = 'move';
@@ -719,7 +705,7 @@ export default function LiveCapturePanel(): JSX.Element | null {
       const head = target.closest('.live-group-head[data-group]');
       if (head && parseInt(head.getAttribute('data-group') ?? '', 10) >= 0) dropTarget = head;
     } else {
-      const strip = target.closest('.live-ch');
+      const strip = target.closest('.daw-track-head');
       if (strip) {
         const groups = useLiveCaptureStore.getState().channelGroups;
         const srcGroup = getGroupState().groupOf(groups, src.index);
@@ -734,7 +720,7 @@ export default function LiveCapturePanel(): JSX.Element | null {
   }
 
   function onDragLeave(e: DragEvent<HTMLDivElement>): void {
-    const el = (e.target as Element).closest('.live-group-head, .live-ch');
+    const el = (e.target as Element).closest('.live-group-head, .daw-track-head');
     if (el) el.classList.remove('drag-over');
   }
 
@@ -751,7 +737,7 @@ export default function LiveCapturePanel(): JSX.Element | null {
       const to = head ? parseInt(head.getAttribute('data-group') ?? '', 10) : -1;
       if (head && to >= 0) lc.moveGroup(src.index, to);
     } else {
-      const strip = target.closest('.live-ch');
+      const strip = target.closest('.daw-track-head');
       if (strip) {
         const g = getGroupState().groupOf(lc.channelGroups, src.index);
         const members = (lc.channelGroups[g] && lc.channelGroups[g].members) || [];
