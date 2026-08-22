@@ -60,6 +60,7 @@ import {
   boardRunning,
 } from './live-workspace-view';
 import { sessionTabSessionPickerAction, sessionTabSessionPickerView } from './session-tab-session-picker';
+import { paintSessionTabWaveformClips, sessionTabWaveformView } from './session-tab-waveforms';
 
 // The still-classic live-setup-state.js accessor's storage contract (a
 // localStorage-like object; a missing/throwing storage is treated as "not
@@ -153,14 +154,16 @@ export default function LiveCapturePanel(): JSX.Element | null {
     liveWindows: st.liveWindows,
   }));
   const settings = useStoreShallow(useSettingsStore, (st) => st.settings);
-  // Only the discrete Session-picker fields are subscribed here. Playback and
-  // waveform data remain outside this render path (ADR-0005).
+  // Only discrete Session selection/cache fields are subscribed here. Live
+  // waveform frames remain outside this render path (ADR-0005).
   const soundcheck = useStoreShallow(useSoundcheckStore, (st) => ({
     recordedSessions: st.recordedSessions,
     recordedSessionsLoaded: st.recordedSessionsLoaded,
     sessionDir: st.sessionDir,
     manifest: st.manifest,
     statusMessage: st.statusMessage,
+    peaks: st.peaks,
+    peaksStatus: st.peaksStatus,
   }));
 
   // lastTick/lastLiveChannels are animation-rate values — read imperatively at
@@ -170,8 +173,11 @@ export default function LiveCapturePanel(): JSX.Element | null {
   const sessionPicker = showShell
     ? sessionTabSessionPickerView(soundcheck.recordedSessions, soundcheck.sessionDir, soundcheck.manifest, soundcheck.statusMessage)
     : null;
+  const sessionWaveforms = showShell
+    ? sessionTabWaveformView(soundcheck.manifest, soundcheck.peaks, soundcheck.peaksStatus, s.channelConfig)
+    : null;
   const lc = useLiveCaptureStore.getState();
-  const state = liveWorkspaceViewState(lc, settings, getDawShellRuntime()?.playheadElapsedMs?.() ?? 0, sessionPicker);
+  const state = liveWorkspaceViewState(lc, settings, getDawShellRuntime()?.playheadElapsedMs?.() ?? 0, sessionPicker, sessionWaveforms);
   const laneSignature = showShell ? dawShellPatchView(state).laneSignature : '';
 
   // Drag-reorder source (#483): { type:'group'|'strip', index } set on
@@ -221,7 +227,8 @@ export default function LiveCapturePanel(): JSX.Element | null {
     if (shell) shell.setAttribute('data-lane-signature', laneSignature);
     getDawShellRuntime()?.renderPlayhead?.();
     getDawShellRuntime()?.renderWaveform?.();
-  }, [showShell, laneSignature]);
+    if (shell && sessionWaveforms) paintSessionTabWaveformClips(shell, sessionWaveforms.clips);
+  }, [showShell, laneSignature, sessionWaveforms]);
 
   // The playhead ticker (TD-001 slice 6j, #713): a requestAnimationFrame loop
   // driving renderPlayhead every frame while the shell is mounted and

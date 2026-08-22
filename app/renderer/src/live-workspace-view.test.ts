@@ -31,6 +31,7 @@ import { sessionTabSessionPickerView } from './session-tab-session-picker';
 import { levelPercent, type LiveDevice, type StripConfig, type ChannelGroup, type LiveEvent, type LiveMeterChannel } from './live-capture-panel';
 import type { AppSettings } from '../../electron/ipc/api';
 import { dawTimelineX, dawRulerTicks, dawLaneGridlines, DAW_TIMELINE_SPAN_SECS, DAW_TIMELINE_ORIGIN_PX } from './daw-shell-runtime';
+import type { SessionTabWaveformView } from './session-tab-waveforms';
 
 // The pure helper classic-scripts the view module reads off `window` — real
 // modules (not hand-rolled stubs), same convention as
@@ -103,6 +104,7 @@ function makeState(overrides: Partial<LiveWorkspaceViewState> = {}): LiveWorkspa
     playheadElapsedMs: 0,
     ...overrides,
     sessionPicker: overrides.sessionPicker ?? null,
+    sessionWaveforms: overrides.sessionWaveforms ?? null,
   };
 }
 
@@ -129,6 +131,32 @@ describe('boardRunning (#847)', () => {
 
   it('returns false when both are false', () => {
     expect(boardRunning({ isCapturing: false, demoting: false })).toBe(false);
+  });
+});
+
+describe('Session take clips (#1072)', () => {
+  const sessionWaveforms: SessionTabWaveformView = {
+    generating: false,
+    clips: [{ trackIndex: 3, stripIndex: 1, leftPx: dawTimelineX(0), widthPx: 16, pairs: [], bucketsPerSecond: 2 }],
+  };
+
+  it('threads the discrete view into one mapped lane and fingerprints its geometry', () => {
+    const state = makeState({ sessionWaveforms });
+    const rows = dawTrackRows(state);
+    const html = dawShellHTML(state);
+
+    expect(rows[0].takeClip).toBeNull();
+    expect(rows[1].takeClip).toEqual(sessionWaveforms.clips[0]);
+    expect((html.match(/data-session-track-index/g) ?? [])).toHaveLength(1);
+    expect(html.indexOf('data-session-track-index="3"')).toBeGreaterThan(html.indexOf('daw-channel-lane" data-ch="1"'));
+    expect(html).toContain(`style="left:${dawTimelineX(0)}px;width:16px"`);
+    expect(dawShellPatchView(state).laneSignature).toContain(`${dawTimelineX(0)}\u000116`);
+  });
+
+  it('shows only the generation hint while a loaded session is generating', () => {
+    const html = dawShellHTML(makeState({ sessionWaveforms: { generating: true, clips: [] } }));
+    expect(html).toContain('Generating waveforms…');
+    expect(html).not.toContain('daw-take-clip');
   });
 });
 
@@ -366,7 +394,7 @@ describe('dawShellHTML / dawShellPatchView', () => {
   });
 
   it('builds an accessible escaped track header with its initial inline level', () => {
-    const html = dawTrackHeaderHTML({ index: 0, name: 'Kick &lt;3', armed: true, armDisabled: false, muted: false, soloed: true, monitorActive: true, levelPercent: 70 });
+    const html = dawTrackHeaderHTML({ index: 0, name: 'Kick &lt;3', armed: true, armDisabled: false, muted: false, soloed: true, monitorActive: true, levelPercent: 70, takeClip: null });
     expect(html).toContain('class="daw-track-head-arm"');
     expect(html).toContain('aria-label="Disarm track"');
     expect(html).toContain('class="daw-track-head-mute"');
@@ -395,7 +423,7 @@ describe('dawShellHTML / dawShellPatchView', () => {
   });
 
   it('keeps header markup byte-identical for equal rows', () => {
-    const row = { index: 0, name: 'Kick', armed: true, armDisabled: false, muted: false, soloed: false, monitorActive: true, levelPercent: 0 };
+    const row = { index: 0, name: 'Kick', armed: true, armDisabled: false, muted: false, soloed: false, monitorActive: true, levelPercent: 0, takeClip: null };
     expect(dawTrackHeaderHTML(row)).toBe(dawTrackHeaderHTML(row));
   });
 

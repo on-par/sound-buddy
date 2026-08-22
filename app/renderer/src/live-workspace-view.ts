@@ -41,6 +41,7 @@ import { fmt, iconSvg } from './report-card';
 import type { AppSettings } from '../../electron/ipc/api';
 import { dawRulerTicks, dawLaneGridlines, DAW_TIMELINE_SPAN_SECS, DAW_TIMELINE_ORIGIN_PX, type DawShellRuntime } from './daw-shell-runtime';
 import { sessionTabSessionPickerHTML, type SessionTabSessionPickerView } from './session-tab-session-picker';
+import type { SessionTabWaveformClip, SessionTabWaveformView } from './session-tab-waveforms';
 
 export type { DawShellRuntime } from './daw-shell-runtime';
 
@@ -73,6 +74,7 @@ export interface LiveWorkspaceViewState {
    *  rebuild never flashes 0:00 (#518). */
   playheadElapsedMs: number;
   sessionPicker: SessionTabSessionPickerView | null;
+  sessionWaveforms: SessionTabWaveformView | null;
 }
 
 // The slice of liveCaptureStore's state that liveWorkspaceViewState() reads —
@@ -122,6 +124,7 @@ export function liveWorkspaceViewState(
   settings: AppSettings | null,
   playheadElapsedMs = 0,
   sessionPicker: SessionTabSessionPickerView | null = null,
+  sessionWaveforms: SessionTabWaveformView | null = null,
 ): LiveWorkspaceViewState {
   return {
     channelConfig: lc.channelConfig,
@@ -143,6 +146,7 @@ export function liveWorkspaceViewState(
     lapCoaching: lc.lapCoaching,
     playheadElapsedMs,
     sessionPicker,
+    sessionWaveforms,
   };
 }
 
@@ -457,6 +461,7 @@ export interface DawTrackRow {
   soloed: boolean;
   monitorActive: boolean;
   levelPercent: number;
+  takeClip: SessionTabWaveformClip | null;
 }
 
 // The single ordered per-track list both arrangement columns render from
@@ -482,6 +487,7 @@ export function dawTrackRows(state: LiveWorkspaceViewState): DawTrackRow[] {
       soloed,
       monitorActive: !muted && (!hasSoloedChannel || soloed),
       levelPercent: levelPercent(channel?.rms ?? Number.NaN, !!channel?.idle),
+      takeClip: state.sessionWaveforms?.clips.find((clip) => clip.stripIndex === idx) ?? null,
     };
   });
 }
@@ -513,7 +519,7 @@ export interface DawShellPatchView {
 
 export function dawShellPatchView(state: LiveWorkspaceViewState): DawShellPatchView {
   return {
-    laneSignature: dawTrackRows(state).map((row) => row.name).join('\u0000'),
+    laneSignature: dawTrackRows(state).map((row) => `${row.name}\u0001${row.takeClip ? `${row.takeClip.trackIndex}\u0001${row.takeClip.leftPx}\u0001${row.takeClip.widthPx}` : ''}`).join('\u0000'),
     transportChip: getDawWorkspaceState().transportLabel(state.isCapturing, state.liveMode),
     captureMode: getDawWaveformState().captureModeToken(state.isCapturing, state.liveMode),
   };
@@ -583,6 +589,9 @@ export function dawShellHTML(state: LiveWorkspaceViewState): string {
       `<div class="daw-lane daw-channel-lane${row.monitorActive ? '' : ' daw-channel-lane--dimmed'}" data-ch="${row.index}">`
       + `<span class="daw-lane-name">${row.name}</span>`
       + `<span class="daw-lane-body"><canvas class="daw-channel-waveform"></canvas></span>`
+      + (row.takeClip
+        ? `<span class="daw-take-clip" style="left:${row.takeClip.leftPx}px;width:${row.takeClip.widthPx}px"><canvas data-session-track-index="${row.takeClip.trackIndex}"></canvas></span>`
+        : '')
       + laneGrid
       + `</div>`).join('')}</div>`
     : `<div class="daw-lane daw-empty-state">Add tracks to see channel lanes</div>`;
@@ -607,6 +616,7 @@ export function dawShellHTML(state: LiveWorkspaceViewState): string {
     + `<span class="daw-transport-state daw-transport-state-${transportChip.toLowerCase()}">${transportChip}</span>`
     + `<span class="daw-transport-time">${getDawPlayheadState().formatElapsed(seededElapsed)}</span>`
     + (state.sessionPicker ? sessionTabSessionPickerHTML(state.sessionPicker) : '')
+    + (state.sessionWaveforms?.generating ? `<span class="daw-session-waveform-hint">Generating waveforms…</span>` : '')
     + `<span class="daw-transport-hint">Start and stop recording from the top-bar Record button</span>`
     + `</div>`
     // The semantic arrangement frame (#1042): the track-head column and the
