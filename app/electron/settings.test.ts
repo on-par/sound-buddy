@@ -243,28 +243,6 @@ describe('crashReportingEnabled (#473 — opt-in crash reporting, default off)',
   });
 });
 
-describe('dawWorkspaceEnabled (#516 — experimental DAW workspace, default off)', () => {
-  it('defaults to false when settings.json is absent', () => {
-    expect(getSettings().dawWorkspaceEnabled).toBe(false);
-  });
-
-  it('defaults to false when the file exists without the key', () => {
-    writeFile({ idealProfile: '' });
-    expect(getSettings().dawWorkspaceEnabled).toBe(false);
-  });
-
-  it('flips on and back off, persisting each value to the raw file and surviving a fresh read', () => {
-    const on = updateSettings({ dawWorkspaceEnabled: true });
-    expect(on.dawWorkspaceEnabled).toBe(true);
-    expect(readFile().dawWorkspaceEnabled).toBe(true);
-    expect(getSettings().dawWorkspaceEnabled).toBe(true);
-
-    const off = updateSettings({ dawWorkspaceEnabled: false });
-    expect(off.dawWorkspaceEnabled).toBe(false);
-    expect(readFile().dawWorkspaceEnabled).toBe(false);
-  });
-});
-
 describe('consoleNetworkConsentGranted (#378 — Tier 2 consent gate, default off)', () => {
   it('defaults to false when settings.json is absent', () => {
     expect(getSettings().consoleNetworkConsentGranted).toBe(false);
@@ -983,5 +961,39 @@ describe('legacy secondaryMeasurementEnabled settings retirement (#730)', () => 
     expect(raw[LEGACY_KEY]).toBe(true);
     expect(raw.idealProfile).toBe('concert');
     expect(raw.storageDir).toBe('/tmp/somewhere');
+  });
+});
+
+describe('legacy dawWorkspaceEnabled settings retirement (#1105)', () => {
+  const retiredDawWorkspaceSettings = {
+    dawWorkspaceEnabled: true,
+    idealProfile: 'broadcast',
+    storageDir: '/tmp/somewhere',
+    rigs: [],
+    activeRigId: null,
+  };
+
+  it('loads a pre-retirement settings.json with the stale key cleanly, dropping it from getSettings() while preserving supported settings', () => {
+    writeFile(retiredDawWorkspaceSettings);
+
+    let settings: ReturnType<typeof getSettings> | undefined;
+    expect(() => {
+      settings = getSettings();
+    }).not.toThrow();
+
+    if (!settings) throw new Error('getSettings() should return settings for the persisted fixture');
+    expect('dawWorkspaceEnabled' in settings).toBe(false);
+    expect(settings.idealProfile).toBe('broadcast');
+    expect(settings.storageDir).toBe('/tmp/somewhere');
+    expect(settings.rigs).toEqual([]);
+    expect(settings.activeRigId).toBeNull();
+  });
+
+  it('echoes a current-session update to the retired key without adding it back to getSettings()', () => {
+    const updated = updateSettings({ dawWorkspaceEnabled: true });
+
+    expect(updated.dawWorkspaceEnabled).toBe(true);
+    expect(readFile().dawWorkspaceEnabled).toBe(true);
+    expect('dawWorkspaceEnabled' in getSettings()).toBe(false);
   });
 });
