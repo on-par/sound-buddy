@@ -440,15 +440,14 @@ export default function LiveCapturePanel(): JSX.Element | null {
   function onBoardChange(e: ChangeEvent<HTMLDivElement>): void {
     const target = e.target as Element;
     const sessionPickerSelect = target.closest('.daw-session-picker-select');
-    if (sessionPickerSelect) {
-      const select = e.target as unknown as HTMLSelectElement;
-      const action = sessionTabSessionPickerAction(select.value);
+    if (sessionPickerSelect instanceof HTMLSelectElement) {
+      const action = sessionTabSessionPickerAction(sessionPickerSelect.value);
       if (action.type === 'select') {
         void useSoundcheckStore.getState().loadSession(action.sessionDir);
       } else if (action.type === 'open-folder') {
         // Restore the current value before the dialog opens so a cancellation
         // cannot leave the sentinel visibly selected in raw DAW-shell markup.
-        select.value = useSoundcheckStore.getState().sessionDir ?? '';
+        sessionPickerSelect.value = useSoundcheckStore.getState().sessionDir ?? '';
         void useSoundcheckStore.getState().chooseSession();
       }
       return;
