@@ -159,7 +159,7 @@ test.describe('Session tab playback (#1080)', () => {
     await expect(sessionRecord).toHaveAttribute('aria-pressed', 'true');
     await expect(sessionRecord).toHaveText('Stop');
 
-    await window.locator('.mode-tab[data-mode="soundcheck"]').click();
+    await window.locator('.mode-tab[data-mode="analyze"]').click();
     const headerStop = window.locator('#record-button');
     await expect(headerStop).toBeVisible();
     await expect(headerStop).toHaveAttribute('aria-pressed', 'true');
