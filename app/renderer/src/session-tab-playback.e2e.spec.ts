@@ -20,6 +20,12 @@ async function sendPlaybackEvent(data: unknown): Promise<void> {
   }, data);
 }
 
+async function sendLiveEvent(data: unknown): Promise<void> {
+  await electronApp.evaluate(({ BrowserWindow }, event) => {
+    BrowserWindow.getAllWindows()[0].webContents.send('live-event', event);
+  }, data);
+}
+
 test.describe('Session tab playback (#1073)', () => {
   test.beforeAll(async () => {
     ({ electronApp, window } = await launchApp());
@@ -104,5 +110,24 @@ test.describe('Session tab playback (#1073)', () => {
     await sendPlaybackEvent({ type: 'ended' });
     await expect(window.locator('#daw-session-play')).toBeVisible();
     await expect(window.locator('.daw-transport-time')).toHaveText('0:00');
+  });
+
+  test('session-tab-playback-monitoring keeps the live meter updating during take playback', async () => {
+    await window.locator('#record-button').click();
+    await expect(window.locator('#live-indicator .live-txt')).toHaveText('REC');
+    await window.locator('#record-button').click();
+    await expect(window.locator('#live-indicator .live-txt')).toHaveText('LIVE');
+
+    await window.locator('.mode-tab[data-mode="soundcheck"]').click();
+    await window.locator('#sc-device-select').selectOption({ label: 'MOTU 8ch (8ch)' });
+    await window.locator('.mode-tab[data-mode="live"]').click();
+    await window.locator('#daw-session-play').click();
+    await sendPlaybackEvent({ type: 'progress', elapsed: 2, duration: 10 });
+    await expect(window.locator('.daw-transport-time')).toHaveText('0:02');
+
+    await sendLiveEvent({ type: 'meter', channels: [{ rms: -18, peak: -6 }] });
+    await expect(window.locator('#live-level-rms')).toHaveText('-18.0');
+    await sendLiveEvent({ type: 'meter', channels: [{ rms: -12, peak: -3 }] });
+    await expect(window.locator('#live-level-rms')).toHaveText('-12.0');
   });
 });

@@ -15,6 +15,7 @@ import { isEntitled } from '../license';
 import { pythonBin, childEnv, STREAM_SCRIPT, defaultRecordDir } from './shared';
 import { loadEngineParsers, loadEngineUtils, type LiveOptions } from './engine-loader';
 import { createPythonStreamSlot } from './python-stream';
+import { stopPlayback } from './playback';
 import type { StartLiveOpts } from './api';
 
 const liveSlot = createPythonStreamSlot({
@@ -212,6 +213,7 @@ export function registerLiveCaptureHandlers(): void {
     log(`start-live: spawned stream.py (device="${opts.device ?? ''}" window=${opts.windowSecs}s interval=${opts.intervalSecs ?? 0.1}s mode=${opts.mode ?? 'monitor'})`);
 
     const wc = event.sender;
+    if (opts.mode === 'record') await stopPlayback();
     liveSlot.start({
       command: pythonBin(),
       args: [STREAM_SCRIPT, ...args],

@@ -70,6 +70,10 @@ const playbackSlot = createPythonStreamSlot({
   readNdjsonLines: (source, onLine) => loadEngineUtils().readNdjsonLines(source, onLine),
 });
 
+export async function stopPlayback(): Promise<void> {
+  await playbackSlot.stop();
+}
+
 export function registerPlaybackHandlers(): void {
   // reveal-path — open a captured session folder in the OS file manager (#43).
   // openPath opens the folder itself; returns '' on success or an error string.
@@ -189,7 +193,7 @@ export function registerPlaybackHandlers(): void {
   // stop-playback — SIGTERM the playback child so playback.py's signal handler
   // closes the output stream cleanly; SIGKILL as a fallback if it doesn't exit.
   ipcMain.handle('stop-playback', async () => {
-    await playbackSlot.stop();
+    await stopPlayback();
     return { success: true };
   });
 
