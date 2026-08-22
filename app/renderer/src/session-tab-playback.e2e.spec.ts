@@ -189,10 +189,10 @@ test.describe('Session tab playback (#1080)', () => {
     expect(rulerBox).not.toBeNull();
     await window.mouse.move(rulerBox!.x, rulerBox!.y + rulerBox!.height / 2);
     await window.mouse.down();
-    await window.evaluate(() => window.dispatchEvent(new PointerEvent('pointercancel', {
+    await window.evaluate(() => document.defaultView!.dispatchEvent(new PointerEvent('pointercancel', {
       pointerId: 1,
     })));
-    await window.evaluate(({ x, y }) => window.dispatchEvent(new PointerEvent('pointerup', {
+    await window.evaluate(({ x, y }) => document.defaultView!.dispatchEvent(new PointerEvent('pointerup', {
       pointerId: 2,
       clientX: x,
       clientY: y,
