@@ -17,12 +17,16 @@ import { useEffect, useMemo, type FormEvent, type JSX } from 'react';
 import { useStoreShallow } from './stores/useStoreShallow';
 import { useLiveCaptureStore, type LiveCaptureState } from './stores/liveCaptureStore';
 import { useSettingsStore, type SettingsState } from './stores/settingsStore';
+import { useSoundcheckStore, type SoundcheckState } from './stores/soundcheckStore';
 import {
   clampEqPaneWidth,
   eqPaneView,
   eqPaneSignature,
   eqPaneHTML,
   eqPaneClassificationHTML,
+  eqPaneInspectorHTML,
+  deviceChannelCount,
+  deviceOptionLabel,
   deviceNameFor,
   EQ_PANE_RESIZE_STEP,
   type EqPaneView,
@@ -44,6 +48,53 @@ export interface ClassificationChangeDeps {
   settings: Pick<SettingsState, 'settings' | 'updateSettings'>;
   instrumentProfiles: Pick<InstrumentProfilesApi, 'recordOverride'>;
   armState: Pick<ArmStateApi, 'stripToken'>;
+}
+
+export interface EqPaneInspectorChangeDeps {
+  liveCapture: Pick<LiveCaptureState,
+    'selectedChannel' | 'channelConfig' | 'selectDevice' | 'setStripLabel' | 'setStripKind' | 'setStripSource' | 'toggleArm'>;
+  soundcheck: Pick<SoundcheckState, 'manifest' | 'setRoute'>;
+}
+
+// Routes inspector edits through the stores that already own capture setup and
+// soundcheck routing. A valid selected live strip is required even for the
+// shared device action, so a stale pane can never mutate unrelated state.
+export function applyEqPaneInspectorChange(
+  kind: 'device' | 'label' | 'kind' | 'source' | 'arm' | 'output',
+  value: string,
+  deps: EqPaneInspectorChangeDeps,
+): void {
+  const selectedIndex = deps.liveCapture.selectedChannel;
+  const strip = selectedIndex != null && selectedIndex >= 0
+    ? deps.liveCapture.channelConfig[selectedIndex]
+    : null;
+  if (!strip || selectedIndex == null) return;
+  if (kind === 'device') {
+    deps.liveCapture.selectDevice(value);
+    return;
+  }
+  if (kind === 'label') {
+    deps.liveCapture.setStripLabel(selectedIndex, value);
+    return;
+  }
+  if (kind === 'kind') {
+    deps.liveCapture.setStripKind(selectedIndex, value);
+    return;
+  }
+  if (kind === 'arm') {
+    deps.liveCapture.toggleArm(selectedIndex);
+    return;
+  }
+  if (kind === 'source') {
+    const [source, field = 'a'] = value.split(':');
+    const channel = Number(source);
+    if (!Number.isInteger(channel) || channel < 0 || (field !== 'a' && field !== 'b')) return;
+    deps.liveCapture.setStripSource(selectedIndex, field, channel);
+    return;
+  }
+  const base = Number(value);
+  if (!Number.isInteger(base) || base < 0 || !deps.soundcheck.manifest?.tracks[selectedIndex]) return;
+  deps.soundcheck.setRoute(selectedIndex, base);
 }
 
 // Applies a React-owned classification selector change using injected store
@@ -89,6 +140,11 @@ export default function LiveEqPane(): JSX.Element {
     lastMeasurementChannels: st.lastMeasurementChannels,
   }));
   const settings = useStoreShallow(useSettingsStore, (st) => st.settings);
+  const soundcheck = useStoreShallow(useSoundcheckStore, (st) => ({
+    manifest: st.manifest,
+    routes: st.routes,
+    deviceChannels: st.deviceChannels,
+  }));
 
   // The pane reads the animation-rate channels imperatively (currentEqPaneChannels
   // falls back to idle placeholders before the first tick); boardShapeVersion
@@ -106,15 +162,15 @@ export default function LiveEqPane(): JSX.Element {
     secondaryActive, s.secondaryWindows, s.lastMeasurementChannels, s.secondaryMeasurement.deviceName);
   const view: EqPaneView = eqPaneView(
     currentEqPaneChannels(state), s.channelConfig, s.measurementSource, s.selectedChannel, roomOverride);
+  const selectedStrip = s.selectedChannel != null && s.selectedChannel >= 0
+    ? s.channelConfig[s.selectedChannel] ?? null
+    : null;
   const signature = eqPaneSignature(view);
   // Rebuild the innerHTML only when the discrete signature (which channel,
   // which label, the room override, the render mode) changes — the per-tick
   // arc/bars patches from the meter controller survive because this memoized
   // string stays the same across ticks.
   const html = useMemo(() => eqPaneHTML(view), [signature]);
-  const selectedStrip = s.selectedChannel != null && s.selectedChannel >= 0
-    ? s.channelConfig[s.selectedChannel] ?? null
-    : null;
   // Keep configuration locked for the entire record→monitor handoff (#847),
   // including the stop IPC interval where isCapturing is temporarily false.
   const liveRunning = boardRunning({ isCapturing: s.isCapturing, demoting: s.demoting });
@@ -134,6 +190,21 @@ export default function LiveEqPane(): JSX.Element {
       disabled: liveRunning,
     });
   }, [selectedStrip, s.selectedChannel, s.channelGroups, s.selectedDevice, s.devices, settings?.inputInstrumentProfiles, liveRunning]);
+  const inspectorHtml = useMemo(() => {
+    if (!selectedStrip || s.selectedChannel == null) return eqPaneInspectorHTML(null);
+    const selectedIndex = s.selectedChannel;
+    return eqPaneInspectorHTML({
+      selectedIndex,
+      strip: selectedStrip,
+      deviceOptions: [{ value: '', label: 'Default Device' }, ...s.devices.map((device) => ({ value: String(device.index), label: deviceOptionLabel(device) }))],
+      selectedDevice: s.selectedDevice,
+      deviceChannels: deviceChannelCount(s.selectedDevice, s.devices),
+      disabled: liveRunning,
+      playbackTrack: soundcheck.manifest?.tracks[selectedIndex] ?? null,
+      playbackRoute: soundcheck.routes[selectedIndex] ?? [0],
+      playbackDeviceChannels: soundcheck.deviceChannels,
+    });
+  }, [selectedStrip, s.selectedChannel, s.selectedDevice, s.devices, liveRunning, soundcheck.manifest, soundcheck.routes, soundcheck.deviceChannels]);
 
   function onClassificationChange(e: FormEvent<HTMLDivElement>): void {
     const target = e.target;
@@ -152,6 +223,31 @@ export default function LiveEqPane(): JSX.Element {
     if (target.closest('.eq-pane-classification-profile')) {
       applyEqPaneClassificationChange('profile', target.value, deps);
     }
+  }
+
+  function inspectorDeps(): EqPaneInspectorChangeDeps {
+    return { liveCapture: useLiveCaptureStore.getState(), soundcheck: useSoundcheckStore.getState() };
+  }
+
+  function onInspectorInput(e: FormEvent<HTMLDivElement>): void {
+    const target = e.target;
+    if (!(target instanceof HTMLInputElement) || !target.classList.contains('eq-pane-inspector-label')) return;
+    applyEqPaneInspectorChange('label', target.value, inspectorDeps());
+  }
+
+  function onInspectorChange(e: FormEvent<HTMLDivElement>): void {
+    const target = e.target;
+    if (!(target instanceof HTMLSelectElement)) return;
+    if (target.classList.contains('eq-pane-inspector-device')) applyEqPaneInspectorChange('device', target.value, inspectorDeps());
+    else if (target.classList.contains('eq-pane-inspector-kind')) applyEqPaneInspectorChange('kind', target.value, inspectorDeps());
+    else if (target.classList.contains('eq-pane-inspector-source')) applyEqPaneInspectorChange('source', `${target.value}:${target.dataset.field ?? 'a'}`, inspectorDeps());
+    else if (target.classList.contains('eq-pane-inspector-output')) applyEqPaneInspectorChange('output', target.value, inspectorDeps());
+  }
+
+  function onInspectorClick(e: FormEvent<HTMLDivElement>): void {
+    const target = e.target;
+    if (!(target instanceof HTMLButtonElement) || !target.classList.contains('eq-pane-inspector-arm')) return;
+    applyEqPaneInspectorChange('arm', '', inspectorDeps());
   }
 
   /* c8 ignore start -- visibility/width + resize wiring, no jsdom in this
@@ -213,7 +309,9 @@ export default function LiveEqPane(): JSX.Element {
   /* c8 ignore stop */
 
   return <div>
-    <div dangerouslySetInnerHTML={{ __html: html }} />
+    <div onInput={onInspectorInput} onChange={onInspectorChange} onClick={onInspectorClick} dangerouslySetInnerHTML={{ __html: inspectorHtml }} />
     <div onInput={onClassificationChange} dangerouslySetInnerHTML={{ __html: classificationHtml }} />
+    <div dangerouslySetInnerHTML={{ __html: html }} />
+    <footer className="eq-pane-footer">Sound Buddy does not write to your console.</footer>
   </div>;
 }

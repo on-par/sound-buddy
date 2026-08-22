@@ -32,6 +32,7 @@ import {
   type SpectrumCurvePaths,
 } from './spectrum-display';
 import { fmt, type ReportCardSource } from './report-card';
+import { soundcheckChannelOptions, type SessionManifestTrack } from './soundcheck-panel';
 import type {
   LiveEvent,
   MeterData,
@@ -271,6 +272,73 @@ export interface EqPaneClassificationView {
   effectiveProfileId: string;
   instrumentAuto: boolean;
   disabled: boolean;
+}
+
+export interface EqPaneInspectorView {
+  selectedIndex: number;
+  strip: StripConfig;
+  deviceOptions: DeviceOption[];
+  selectedDevice: string;
+  deviceChannels: number;
+  disabled: boolean;
+  playbackTrack: SessionManifestTrack | null;
+  playbackRoute: number[] | null;
+  playbackDeviceChannels: number;
+}
+
+const EQ_PANE_INSPECTOR_BAND_CLASSES = [
+  'band-0', 'band-1', 'band-2', 'band-3', 'band-4', 'band-5', 'band-6',
+] as const;
+
+// The selected-strip controls are rendered as pure markup because the pane
+// patches analyser data imperatively between discrete state changes. The view
+// is only constructed for a current configured strip by LiveEqPane.
+export function eqPaneInspectorHTML(view: EqPaneInspectorView | null): string {
+  if (!view || !Number.isInteger(view.selectedIndex) || view.selectedIndex < 0) return '';
+  const { selectedIndex, strip } = view;
+  const stereo = strip.kind === 'stereo';
+  const disabled = view.disabled ? ' disabled' : '';
+  const label = measurementSourceOptionLabel(strip, selectedIndex);
+  const swatch = EQ_PANE_INSPECTOR_BAND_CLASSES[selectedIndex % EQ_PANE_INSPECTOR_BAND_CLASSES.length];
+  const deviceOptions = view.deviceOptions.map((option) =>
+    `<option value="${escapeHtml(option.value)}"${option.value === view.selectedDevice ? ' selected' : ''}>${escapeHtml(option.label)}</option>`).join('');
+  const outputHTML = view.playbackTrack
+    ? `<label class="eq-pane-inspector-field">Playback &amp; listen
+        <select class="eq-pane-inspector-output" aria-label="Playback and listen output"${disabled}>${soundcheckChannelOptions(view.playbackRoute?.[0] ?? 0, view.playbackTrack.kind === 'stereo', view.playbackDeviceChannels).map((option) => `<option value="${option.value}"${option.selected ? ' selected' : ''}>${escapeHtml(option.label)}</option>`).join('')}</select>
+      </label>`
+    : `<label class="eq-pane-inspector-field eq-pane-inspector-output-notice">Playback &amp; listen
+        <select aria-label="Playback and listen output" disabled><option>Load a soundcheck session with a matching track to choose playback output.</option></select>
+      </label>`;
+  return `<section class="eq-pane-inspector" data-selected-index="${selectedIndex}" aria-label="Selected channel">
+    <div class="eq-pane-header">Selected channel</div>
+    <div class="eq-pane-inspector-identity">
+      <span class="eq-pane-inspector-swatch ${swatch}" aria-hidden="true"></span>
+      <span class="eq-pane-inspector-name">${escapeHtml(label)}</span>
+      <span class="eq-pane-inspector-index">Strip ${selectedIndex + 1}</span>
+    </div>
+    <label class="eq-pane-inspector-field">Name
+      <input class="eq-pane-inspector-label" aria-label="Channel name" value="${escapeHtml(label)}"${disabled}>
+    </label>
+    <label class="eq-pane-inspector-field">Mode
+      <select class="eq-pane-inspector-kind" aria-label="Mono or stereo"${disabled}>
+        <option value="mono"${!stereo ? ' selected' : ''}>Mono</option>
+        <option value="stereo"${stereo ? ' selected' : ''}>Stereo</option>
+      </select>
+    </label>
+    <div class="eq-pane-header">Input</div>
+    <label class="eq-pane-inspector-field">Capture device
+      <select class="eq-pane-inspector-device" aria-label="Capture device"${disabled}>${deviceOptions}</select>
+    </label>
+    <label class="eq-pane-inspector-field">${stereo ? 'Left source channel' : 'Source channel'}
+      <select class="eq-pane-inspector-source" data-field="a" aria-label="${stereo ? 'Left source channel' : 'Source channel'}"${disabled}>${channelOptions(strip.a, view.deviceChannels, stereo)}</select>
+    </label>
+    ${stereo ? `<label class="eq-pane-inspector-field">Right source channel
+      <select class="eq-pane-inspector-source" data-field="b" aria-label="Right source channel"${disabled}>${channelOptions(strip.b, view.deviceChannels, true)}</select>
+    </label>` : ''}
+    <button type="button" class="eq-pane-inspector-arm${strip.armed ? ' armed' : ''}" aria-pressed="${!!strip.armed}"${disabled}>${strip.armed ? 'Armed for recording' : 'Arm for recording'}</button>
+    <div class="eq-pane-header">Playback</div>
+    ${outputHTML}
+  </section>`;
 }
 
 // Selected-channel classification stays separate from the analyser markup so

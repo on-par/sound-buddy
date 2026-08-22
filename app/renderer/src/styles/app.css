@@ -822,6 +822,26 @@
     .eq-pane-classification-profile, .eq-pane-classification-group { width:100%; height:var(--control-h-sm); padding:0 6px; border:1px solid var(--border-subtle); border-radius:var(--radius-md); background:var(--surface-raised); color:var(--text-secondary); font:var(--fw-medium) var(--fs-micro)/1 var(--font-sans); }
     .eq-pane-classification-profile:focus, .eq-pane-classification-group:focus { border-color:var(--gold-500); box-shadow:var(--glow-focus); outline:none; }
     .eq-pane-classification-profile:disabled, .eq-pane-classification-group:disabled { opacity:0.4; cursor:not-allowed; }
+    .eq-pane-inspector { display:grid; gap:8px; padding-bottom:2px; }
+    .eq-pane-inspector-identity { display:flex; align-items:center; gap:7px; min-width:0; }
+    .eq-pane-inspector-swatch { width:7px; height:24px; border-radius:var(--radius-sm); flex:none; }
+    .eq-pane-inspector-swatch.band-0 { background:var(--band-sub); }
+    .eq-pane-inspector-swatch.band-1 { background:var(--band-bass); }
+    .eq-pane-inspector-swatch.band-2 { background:var(--band-low-mid); }
+    .eq-pane-inspector-swatch.band-3 { background:var(--band-mid); }
+    .eq-pane-inspector-swatch.band-4 { background:var(--band-high-mid); }
+    .eq-pane-inspector-swatch.band-5 { background:var(--band-presence); }
+    .eq-pane-inspector-swatch.band-6 { background:var(--band-brilliance); }
+    .eq-pane-inspector-name { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--text-primary); font:var(--fw-medium) var(--fs-label)/1 var(--font-sans); }
+    .eq-pane-inspector-index { margin-left:auto; color:var(--text-muted); font:var(--fw-medium) var(--fs-micro)/1 var(--font-sans); }
+    .eq-pane-inspector-field { display:grid; gap:4px; color:var(--text-muted); font:var(--fw-medium) var(--fs-micro)/1 var(--font-sans); letter-spacing:var(--tracking-caps); text-transform:uppercase; }
+    .eq-pane-inspector-field input, .eq-pane-inspector-field select { width:100%; height:var(--control-h-sm); padding:0 6px; border:1px solid var(--border-subtle); border-radius:var(--radius-md); background:var(--surface-raised); color:var(--text-secondary); font:var(--fw-medium) var(--fs-micro)/1 var(--font-sans); }
+    .eq-pane-inspector-field input:focus, .eq-pane-inspector-field select:focus { border-color:var(--gold-500); box-shadow:var(--glow-focus); outline:none; }
+    .eq-pane-inspector-field input:disabled, .eq-pane-inspector-field select:disabled, .eq-pane-inspector-arm:disabled { opacity:0.4; cursor:not-allowed; }
+    .eq-pane-inspector-arm { height:var(--control-h-sm); border:1px solid var(--border-subtle); border-radius:var(--radius-md); background:var(--surface-raised); color:var(--text-muted); cursor:pointer; font:var(--fw-medium) var(--fs-micro)/1 var(--font-sans); letter-spacing:var(--tracking-caps); text-transform:uppercase; }
+    .eq-pane-inspector-arm.armed { border-color:var(--good-border); background:var(--good-tint); color:var(--good-text); }
+    .eq-pane-inspector-output-notice select { color:var(--text-muted); }
+    .eq-pane-footer { padding-top:2px; color:var(--text-muted); font:var(--fw-regular) var(--fs-micro)/1.35 var(--font-sans); }
     #spectrum-header { display:flex; align-items:center; gap:20px; padding:11px 20px; border-bottom:1px solid var(--border-subtle); background:var(--bg-panel); flex-shrink:0; min-height:52px; }
     #spectrum-title { font:var(--fw-semibold) var(--fs-micro)/1 var(--font-sans); letter-spacing:var(--tracking-caps); text-transform:uppercase; color:var(--text-tertiary); }
     #stats-row { margin-left:auto; display:none; gap:26px; }
