@@ -2,7 +2,8 @@ import { defineConfig } from 'vitest/config';
 
 // Unit tests are colocated with the code they cover: main-process logic under
 // electron/, pure renderer helpers under renderer/. The Playwright e2e specs
-// under tests/ are driven by `npm run test:e2e`, not Vitest — keep them out.
+// under tests/ and renderer/src/*.e2e.spec.ts are driven by `npm run test:e2e`,
+// not Vitest — keep them out.
 // Renderer tests are .test.ts by convention; the grading.js suite (#130,
 // split into renderer/grading/*.test.js per #225) is .js, so the renderer
 // glob covers both extensions and recurses into subdirectories.
@@ -42,7 +43,8 @@ export default defineConfig({
   test: {
     // Unit tests are colocated with the code they cover: main-process logic under
     // electron/, pure renderer helpers under renderer/. The Playwright e2e specs
-    // under tests/ are driven by `npm run test:e2e`, not Vitest — keep them out.
+    // under tests/ and renderer/src/*.e2e.spec.ts are driven by `npm run test:e2e`,
+    // not Vitest — keep them out.
     // Renderer tests are .test.ts by convention; the grading.js suite (#130,
     // split into renderer/grading/*.test.js per #225) is .js, so the renderer
     // glob covers both extensions and recurses into subdirectories. '*.test.ts'
@@ -64,6 +66,7 @@ export default defineConfig({
       exclude: [
         'electron/**/*.test.ts',
         'renderer/**/*.test.{ts,js}',
+        'renderer/**/*.e2e.spec.ts',
         '*.test.ts',
         '**/*.config.{ts,js,mjs}',
         '**/dist/**',
