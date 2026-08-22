@@ -31,6 +31,7 @@ import {
   type LiveEvent,
   type WindowData,
   type ChannelWindowData,
+  type LiveMeterChannel,
   type ListDevicesResult,
 } from '../live-capture-panel';
 import {
@@ -257,7 +258,7 @@ export interface LiveCaptureState {
 
   liveWindows: WindowData[];
   lastTick: LiveEvent | null;
-  lastLiveChannels: ChannelWindowData[] | null;
+  lastLiveChannels: LiveMeterChannel[] | null;
   // Bumped whenever a tick's channel count differs from the previous tick's
   // — the island's cue to re-render the board shape instead of patch it.
   boardShapeVersion: number;

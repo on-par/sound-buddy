@@ -68,7 +68,7 @@ function settings(overrides: Partial<AppSettings> = {}): AppSettings {
   };
 }
 
-const TICK_CHANNELS: Array<{ name: string; rms: number; peak: number; clipping: boolean; centroid: number; bands: Record<string, number> }> = [
+const TICK_CHANNELS: LiveMeterChannel[] = [
   { name: 'Vocals', rms: -18, peak: -6, clipping: false, centroid: 2400,
     bands: { sub_bass: -58, bass: -30, low_mid: -24, mid: -12, high_mid: -20, presence: -28, brilliance: -80 } },
   { name: 'Band', rms: -22, peak: -9, clipping: false, centroid: 300,
@@ -191,7 +191,7 @@ describe('lapFocusView', () => {
   it('reports the focused index and every input with its resolved name/profile', () => {
     const view = lapFocusView(makeState({
       focusedInputIndex: 1,
-      lastLiveChannels: TICK_CHANNELS as never,
+      lastLiveChannels: TICK_CHANNELS,
       channelConfig: [{ ...CONFIG[0], label: 'Kick' }],
     }));
     expect(view.focusedIndex).toBe(1);
@@ -227,7 +227,7 @@ describe('lapObservationContext', () => {
 
 describe('currentEqPaneChannels', () => {
   it('returns the latest tick channels once any have arrived', () => {
-    expect(currentEqPaneChannels(makeState({ lastLiveChannels: TICK_CHANNELS as never }))).toBe(TICK_CHANNELS);
+    expect(currentEqPaneChannels(makeState({ lastLiveChannels: TICK_CHANNELS }))).toBe(TICK_CHANNELS);
   });
 
   it('falls back to all-idle placeholder channels before the first tick', () => {
@@ -334,7 +334,7 @@ describe('dawShellHTML / dawShellPatchView', () => {
   it('derives each header row state and RMS level from the shared snapshot', () => {
     const rows = dawTrackRows(makeState({
       mutedChannels: { 0: true }, soloedChannels: { 1: true },
-      lastLiveChannels: TICK_CHANNELS as never,
+      lastLiveChannels: TICK_CHANNELS,
     }));
     expect(rows).toMatchObject([
       { index: 0, armed: true, muted: true, soloed: false },
@@ -346,7 +346,7 @@ describe('dawShellHTML / dawShellPatchView', () => {
 
   it('uses a zero header level for missing or idle live channels', () => {
     expect(dawTrackRows(makeState())[0].levelPercent).toBe(0);
-    expect(dawTrackRows(makeState({ lastLiveChannels: [{ ...TICK_CHANNELS[0], idle: true }] as never }))[0].levelPercent).toBe(0);
+    expect(dawTrackRows(makeState({ lastLiveChannels: [{ ...TICK_CHANNELS[0], idle: true }] }))[0].levelPercent).toBe(0);
   });
 
   it('builds an accessible escaped track header with its initial inline level', () => {
@@ -420,7 +420,7 @@ describe('dawShellHTML / dawShellPatchView', () => {
   });
 
   it('resolves lane names from the latest tick channels while the shell shows (#39)', () => {
-    const html = dawShellHTML(makeState({ lastLiveChannels: TICK_CHANNELS as never }));
+    const html = dawShellHTML(makeState({ lastLiveChannels: TICK_CHANNELS }));
     expect(html).toContain('>Vocals</span>');
   });
 
@@ -561,7 +561,7 @@ describe('dawTrackRows / configured track rows (#1043)', () => {
   });
 
   it('falls back to the latest tick channel name', () => {
-    const rows = dawTrackRows(makeState({ lastLiveChannels: TICK_CHANNELS as never }));
+    const rows = dawTrackRows(makeState({ lastLiveChannels: TICK_CHANNELS }));
     expect(rows[0].name).toBe('Vocals');
   });
 
@@ -721,7 +721,7 @@ describe('liveAdjustmentsPanelHTML', () => {
     const html = liveAdjustmentsPanelHTML(makeState({
       settings: settings({ liveAdjustmentsEnabled: true }),
       liveWindows: [{ type: 'window', window: 1, ts: 0, channels: [], masking: [] } as LiveEvent],
-      lastLiveChannels: TICK_CHANNELS as never,
+      lastLiveChannels: TICK_CHANNELS,
       measurementSource: 1,
       focusedInputIndex: 0,
       lapCoaching: coaching,

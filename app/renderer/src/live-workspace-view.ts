@@ -33,7 +33,6 @@ import {
   type LiveMeterChannel,
   type StripView,
   type PanelView,
-  type ChannelWindowData,
   type ChannelFlagMap,
 } from './live-capture-panel';
 import { escapeHtml } from './spectrum-display';
@@ -63,7 +62,7 @@ export interface LiveWorkspaceViewState {
   mutedChannels: ChannelFlagMap;
   soloedChannels: ChannelFlagMap;
   lastTick: LiveEvent | null;
-  lastLiveChannels: ChannelWindowData[] | null;
+  lastLiveChannels: LiveMeterChannel[] | null;
   liveWindows: LiveEvent[];
   settings: AppSettings | null;
   lapCoaching: unknown;
@@ -94,7 +93,7 @@ export interface LiveWorkspaceStoreSlice {
   mutedChannels: ChannelFlagMap;
   soloedChannels: ChannelFlagMap;
   lastTick: LiveEvent | null;
-  lastLiveChannels: ChannelWindowData[] | null;
+  lastLiveChannels: LiveMeterChannel[] | null;
   liveWindows: LiveEvent[];
   lapCoaching: unknown;
 }

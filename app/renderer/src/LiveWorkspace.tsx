@@ -93,7 +93,7 @@ function applyLiveTick(snap: LiveMeterSnapshot): void {
         mixLane.setAttribute('data-capture-mode', view.captureMode);
       }
       tick.channels.forEach((ch, index) => {
-        const fill = shell.querySelector(`.daw-track-head[data-ch="${index}"] .daw-track-head-level-fill`) as HTMLElement | null;
+        const fill = shell.querySelector<HTMLElement>(`.daw-track-head[data-ch="${index}"] .daw-track-head-level-fill`);
         if (fill) fill.style.width = `${levelPercent(ch.rms, false)}%`;
       });
     }
