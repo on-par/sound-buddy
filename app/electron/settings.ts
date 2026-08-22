@@ -360,6 +360,11 @@ export const SETTING_SPECS: { [K in keyof AppSettings]: SettingSpec<AppSettings[
   },
 };
 
+// #1105 retires the DAW workspace flag from the settings returned to the
+// renderer. Keep the raw-file key untouched so an older install can still
+// round-trip its settings.json without a migration.
+const RETIRED_READ_KEYS = new Set<keyof AppSettings>(['dawWorkspaceEnabled']);
+
 function settingsPath(): string {
   return path.join(app.getPath('userData'), 'settings.json');
 }
@@ -416,6 +421,7 @@ export function getSettings(): AppSettings {
   const file = readSettingsFile('for read');
   const result: Record<string, unknown> = {};
   for (const key of Object.keys(SETTING_SPECS) as Array<keyof AppSettings>) {
+    if (RETIRED_READ_KEYS.has(key)) continue;
     const spec = SETTING_SPECS[key] as SettingSpec<AppSettings[keyof AppSettings]>;
     const fileValue = spec.sanitizeFile(file[key]);
     result[key] = spec.envRead ? spec.envRead(fileValue) : fileValue;
@@ -431,9 +437,16 @@ export function updateSettings(patch: Partial<AppSettings>): AppSettings {
   // settings.json, silently defeating the launch-time-only contract after the
   // env var is removed. Env overrides stay transient (read-time only).
   const file = readSettingsFile('before update');
-  writeSettingsFile({ ...file, ...patch });
+  const nextFile = { ...file, ...patch };
+  writeSettingsFile(nextFile);
   // Return the effective settings (env overrides still apply for reads).
-  return getSettings();
+  const settings = getSettings() as unknown as Record<string, unknown>;
+  for (const key of RETIRED_READ_KEYS) {
+    if (!Object.prototype.hasOwnProperty.call(patch, key)) continue;
+    const spec = SETTING_SPECS[key] as SettingSpec<AppSettings[keyof AppSettings]>;
+    settings[key] = spec.sanitizeFile(nextFile[key]);
+  }
+  return settings as unknown as AppSettings;
 }
 
 /**

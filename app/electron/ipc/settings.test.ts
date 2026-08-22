@@ -345,36 +345,9 @@ describe('update-settings IPC whitelist — crashReportingEnabled (#473)', () =>
 
   it('still passes an existing whitelisted key through (regression guard)', async () => {
     const handler = handlers.get('update-settings');
-    const result = (await handler!(null, { dawWorkspaceEnabled: true })) as { dawWorkspaceEnabled: boolean };
-    expect(result.dawWorkspaceEnabled).toBe(true);
-    expect(readFile().dawWorkspaceEnabled).toBe(true);
-  });
-});
-
-describe('update-settings IPC whitelist — dawWorkspaceEnabled (#516)', () => {
-  it('accepts a boolean and persists it', async () => {
-    const handler = handlers.get('update-settings');
-    const result = (await handler!(null, { dawWorkspaceEnabled: true })) as {
-      dawWorkspaceEnabled: boolean;
-    };
-    expect(result.dawWorkspaceEnabled).toBe(true);
-    expect(readFile().dawWorkspaceEnabled).toBe(true);
-  });
-
-  it('ignores a string value, leaving the setting at its default', async () => {
-    const handler = handlers.get('update-settings');
-    const result = (await handler!(null, { dawWorkspaceEnabled: 'true' })) as {
-      dawWorkspaceEnabled: boolean;
-    };
-    expect(result.dawWorkspaceEnabled).toBe(false);
-  });
-
-  it('ignores a number value, leaving the setting at its default', async () => {
-    const handler = handlers.get('update-settings');
-    const result = (await handler!(null, { dawWorkspaceEnabled: 1 })) as {
-      dawWorkspaceEnabled: boolean;
-    };
-    expect(result.dawWorkspaceEnabled).toBe(false);
+    const result = (await handler!(null, { liveAdjustmentsEnabled: true })) as { liveAdjustmentsEnabled: boolean };
+    expect(result.liveAdjustmentsEnabled).toBe(true);
+    expect(readFile().liveAdjustmentsEnabled).toBe(true);
   });
 });
 
@@ -612,7 +585,6 @@ describe('update-settings whitelist exactness (#747)', () => {
       channelGroups: {},
       inputInstrumentProfiles: {},
       crashReportingEnabled: true,
-      dawWorkspaceEnabled: true,
       liveAdjustmentsEnabled: true,
       reportFirstUxEnabled: true,
       shareChurchName: 'Grace Chapel',
