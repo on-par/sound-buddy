@@ -358,8 +358,7 @@ describe('Audio pane composition (#727)', () => {
 
   // Guards the boundary-violation fix: SettingsPanel must not re-derive Pro
   // status from licenseStatus/badge() — it must reuse the single body.not-pro
-  // gating hook (LicenseChrome.tsx) via the same CSS rule #tab-live and
-  // #tab-soundcheck already use.
+  // gating hook (LicenseChrome.tsx) via the same CSS rule #tab-live uses.
   it('gates the Audio pane via the shared body.not-pro CSS rule, not its own license check', () => {
     const src = fs.readFileSync(fileURLToPath(new URL('./SettingsPanel.tsx', import.meta.url)), 'utf8');
     expect(src).not.toContain('badge(');

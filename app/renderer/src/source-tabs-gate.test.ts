@@ -9,7 +9,7 @@ import { renderToString } from 'react-dom/server';
 import ModeTabs from './ModeTabs';
 
 // Unified source entry point (#544, epic e17): with report-first-ux on, the
-// Directory / Live / Soundcheck buttons in #mode-tabs are hidden — the #543
+// Directory and Live buttons in #mode-tabs are hidden — the #543
 // picker is the single entry point for "where's the audio from?". The
 // buttons stay in the DOM (the picker routes by simulated .click(), and the
 // flag-off shell must be unchanged), so this is a CSS visibility gate, not a
@@ -46,16 +46,14 @@ describe('Source tabs gate (#544)', () => {
   it('app.css hides the old source tabs under report-first-ux', () => {
     expect(appCss).toContain('body.report-first-ux .mode-tab[data-mode="dir"]');
     expect(appCss).toContain('body.report-first-ux .mode-tab[data-mode="live"]');
-    expect(appCss).toContain('body.report-first-ux .mode-tab[data-mode="soundcheck"]');
     const ruleStart = appCss.indexOf('body.report-first-ux .mode-tab[data-mode="dir"]');
     const ruleEnd = appCss.indexOf('}', ruleStart);
     expect(appCss.slice(ruleStart, ruleEnd + 1)).toMatch(/display:\s*none;\s*\}$/);
   });
 
-  it('ModeTabs.tsx keeps all three tab buttons for the flag-off shell', () => {
+  it('ModeTabs.tsx keeps the two source tab buttons for the flag-off shell', () => {
     expect(modeTabsMarkup).toContain('data-mode="dir"');
     expect(modeTabsMarkup).toContain('data-mode="live"');
-    expect(modeTabsMarkup).toContain('data-mode="soundcheck"');
   });
 
   it('every display:none on a source-tab selector is scoped to body.report-first-ux', () => {
@@ -75,19 +73,17 @@ describe('Source tabs gate (#544)', () => {
     expect(hideIdx).toBeGreaterThan(baseIdx);
   });
 
-  it('the three flows stay reachable: routing tabs are in the DOM and the picker routes through switchMode (TD-001 slice 6h, #711)', () => {
+  it('the two flows stay reachable: routing tabs are in the DOM and the picker routes through switchMode (TD-001 slice 6h, #711)', () => {
     expect(modeTabsMarkup).toContain('data-mode="dir"');
     expect(modeTabsMarkup).toContain('data-mode="live"');
-    expect(modeTabsMarkup).toContain('data-mode="soundcheck"');
     // The picker used to simulate a tab click; it now calls switchMode directly
     // (mode-switch.ts) — same destination, one less DOM round trip.
     expect(pickerTsx).toContain('switchMode(mode)');
     expect(pickerTsx).toContain('targetModeFor(id)');
   });
 
-  it('analyze-source-state.js still routes live and soundcheck through targetModeFor', () => {
+  it('analyze-source-state.js still routes live through targetModeFor', () => {
     expect(analyzeSourceState).toContain("case 'live': return 'live';");
-    expect(analyzeSourceState).toContain("case 'soundcheck': return 'soundcheck';");
   });
 
   it('no UI copy names a removed tab by name', () => {

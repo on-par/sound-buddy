@@ -13,23 +13,22 @@
 import type { JSX } from 'react';
 import { useStoreShallow } from './stores/useStoreShallow';
 import { useAnalyzeSourceStore } from './stores/analyzeSourceStore';
-import { switchMode } from './mode-switch';
+import { switchMode, type WorkspaceMode } from './mode-switch';
 import { iconSvg } from './report-card';
 import { chooseAndAnalyzeFile } from './report-card-chrome';
 
 interface AnalyzeSourceStateApi {
-  targetModeFor(id: string): string | null | undefined;
+  targetModeFor(id: string): WorkspaceMode | null | undefined;
 }
 function getAnalyzeSourceState(): AnalyzeSourceStateApi {
   return (window as unknown as { analyzeSourceState: AnalyzeSourceStateApi }).analyzeSourceState;
 }
 
-// The three answers to "where's the audio coming from?" (#543) — mirrors
+// The two answers to "where's the audio coming from?" (#543) — mirrors
 // analyze-source-state.js's ANALYZE_SOURCES labels/hints/icons verbatim.
 const SOURCES = [
   { id: 'file', icon: 'file-audio', label: 'Analyze a file', hint: 'Drop in a recording you already have.' },
   { id: 'live', icon: 'radio', label: 'Start live listening', hint: 'Monitor multi-channel audio from the console right now.' },
-  { id: 'soundcheck', icon: 'sliders', label: 'Load a soundcheck session', hint: 'Play back a captured session and mix without the band.' },
 ];
 
 export default function AnalyzeSourcePicker(): JSX.Element | null {

@@ -53,14 +53,14 @@ describe('RecordButton (#729)', () => {
   });
 
   it('keeps an active recording Stop control visible across tabs', () => {
-    useLiveCaptureStore.setState({ appMode: 'soundcheck', isCapturing: true, liveMode: 'record' });
+    useLiveCaptureStore.setState({ appMode: 'console', isCapturing: true, liveMode: 'record' });
     const html = renderMarkup();
     expect(html).toContain('id="record-button"');
     expect(html).toContain('record-btn--recording');
   });
 
   it('keeps the enabled monitoring Record control visible across tabs', () => {
-    useLiveCaptureStore.setState({ appMode: 'soundcheck', isCapturing: true, liveMode: 'monitor' });
+    useLiveCaptureStore.setState({ appMode: 'console', isCapturing: true, liveMode: 'monitor' });
     const html = renderMarkup();
     expect(html).toContain('id="record-button"');
     expect(html).toContain('record-btn--monitoring');
@@ -68,10 +68,10 @@ describe('RecordButton (#729)', () => {
   });
 
   it('keeps starting and stopping transitions visible across tabs', () => {
-    useLiveCaptureStore.setState({ appMode: 'soundcheck', isCapturing: true, liveMode: 'monitor', promoting: true });
+    useLiveCaptureStore.setState({ appMode: 'console', isCapturing: true, liveMode: 'monitor', promoting: true });
     expect(renderMarkup()).toMatch(/record-btn--starting-record[^>]*disabled=""/);
 
-    useLiveCaptureStore.setState({ appMode: 'soundcheck', isCapturing: false, liveMode: 'record', promoting: false, stopping: true });
+    useLiveCaptureStore.setState({ appMode: 'console', isCapturing: false, liveMode: 'record', promoting: false, stopping: true });
     const html = renderMarkup();
     expect(html).toMatch(/record-btn--stopping[^>]*disabled=""/);
     expect(html).toContain('aria-pressed="true"');
@@ -129,7 +129,7 @@ describe('RecordButton (#729)', () => {
 });
 
 // #record-button-island (#header-right) sits outside #tab-live/
-// #tab-soundcheck/#settings-pane-audio — the only three containers the
+// #settings-pane-audio — the two containers the
 // shared body.not-pro CSS rule covered before this ticket. Without its own
 // entry in that rule, a free-tier user gets a working Record button in the
 // header with no Pro gate, repeating the exact #727 paywall-bypass bug

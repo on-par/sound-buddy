@@ -63,7 +63,6 @@ import CurveEditorDialog from './CurveEditorDialog';
 import RecordButton from './RecordButton';
 import LiveWorkspace from './LiveWorkspace';
 import LiveEqPane from './LiveEqPane';
-import SoundcheckPanel from './SoundcheckPanel';
 import ModeTabs from './ModeTabs';
 import * as modeSwitch from './mode-switch';
 import * as reportCardChrome from './report-card-chrome';
@@ -195,8 +194,8 @@ export default function App() {
     (window as Window & { spectrumDisplay?: unknown }).spectrumDisplay = spectrumDisplay;
     // spectrumChrome's SPECTRUM_TITLE is the single source of truth for the
     // panel's title strings — inline-app.js still writes #spectrum-title
-    // directly for the not-yet-migrated live/soundcheck meter modes (TD-001
-    // slice 6a, #695).
+    // directly for the not-yet-migrated live meter mode (TD-001 slice 6a,
+    // #695).
     (window as Window & { spectrumChrome?: unknown }).spectrumChrome = spectrumChrome;
     (window as Window & { reportCard?: unknown }).reportCard = reportCard;
     // Share Image export (#265) + Export PNG's metadata-stripping guard
@@ -336,7 +335,6 @@ export default function App() {
           LiveControls / LiveTransportControls / PreflightPanel. The top-bar
           RecordButton is the persistent cross-tab Stop surface. */}
       {booted && createPortal(<RecordButton />, document.getElementById('record-button-island')!)}
-      {booted && createPortal(<SoundcheckPanel />, document.getElementById('soundcheck-island')!)}
       {booted && createPortal(<ModeTabs />, document.getElementById('mode-tabs')!)}
       {booted && createPortal(<ReportCardToolbar />, document.getElementById('rc-toolbar')!)}
       {booted && createPortal(<UpgradeMomentum />, document.getElementById('rc-upgrade-island')!)}

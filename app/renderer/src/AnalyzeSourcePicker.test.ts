@@ -25,7 +25,7 @@ describe('AnalyzeSourcePicker (TD-001 slice 6h, #711)', () => {
     expect(renderMarkup()).toBe('');
   });
 
-  it('renders the three data-analyze-source choices plus cancel when open', () => {
+  it('renders the file and live data-analyze-source choices plus cancel when open', () => {
     useAnalyzeSourceStore.getState().open();
     const html = renderMarkup();
     expect(html).toContain('class="source-picker" id="analyze-source-picker"');
@@ -34,17 +34,15 @@ describe('AnalyzeSourcePicker (TD-001 slice 6h, #711)', () => {
     expect(html).toContain('id="source-picker-title"');
     expect(html).toContain('data-analyze-source="file"');
     expect(html).toContain('data-analyze-source="live"');
-    expect(html).toContain('data-analyze-source="soundcheck"');
     expect(html).toContain('id="source-picker-cancel"');
     expect(html).toContain('Analyze a file');
     expect(html).toContain('Start live listening');
-    expect(html).toContain('Load a soundcheck session');
   });
 
-  it('has exactly three data-analyze-source choices', () => {
+  it('has exactly two data-analyze-source choices', () => {
     useAnalyzeSourceStore.getState().open();
     const matches = renderMarkup().match(/data-analyze-source=/g) || [];
-    expect(matches).toHaveLength(3);
+    expect(matches).toHaveLength(2);
   });
 
   it('does not duplicate the Pro gate or tab lock', () => {
