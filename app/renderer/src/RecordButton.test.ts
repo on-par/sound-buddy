@@ -59,6 +59,14 @@ describe('RecordButton (#729)', () => {
     expect(html).toContain('record-btn--recording');
   });
 
+  it('keeps the enabled monitoring Record control visible across tabs', () => {
+    useLiveCaptureStore.setState({ appMode: 'soundcheck', isCapturing: true, liveMode: 'monitor' });
+    const html = renderMarkup();
+    expect(html).toContain('id="record-button"');
+    expect(html).toContain('record-btn--monitoring');
+    expect(html).not.toMatch(/id="record-button"[^>]*disabled=""/);
+  });
+
   it('keeps starting and stopping transitions visible across tabs', () => {
     useLiveCaptureStore.setState({ appMode: 'soundcheck', isCapturing: true, liveMode: 'monitor', promoting: true });
     expect(renderMarkup()).toMatch(/record-btn--starting-record[^>]*disabled=""/);

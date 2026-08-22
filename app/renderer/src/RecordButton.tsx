@@ -32,7 +32,7 @@ export default function RecordButton(): JSX.Element | null {
   const phase = window.liveTransitionState.capturePhase({ liveRunning: isCapturing, liveMode, promoting, stopping });
   const view = recordButtonView(phase);
 
-  if (appMode !== 'live' && (view.phase === 'idle' || view.phase === 'monitoring')) return null;
+  if (appMode !== 'live' && view.phase === 'idle') return null;
 
   function onClick() {
     const action = recordButtonAction(view.phase);
