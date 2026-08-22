@@ -1,13 +1,13 @@
 // Copyright (c) 2026 Patrick Robinson (on-par). All rights reserved.
 // Licensed under the Sound Buddy Desktop Application License (app/LICENSE).
 
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { createElement } from 'react';
 import { renderToString } from 'react-dom/server';
-import LiveEqPane from './LiveEqPane';
+import LiveEqPane, { applyEqPaneClassificationChange, type ClassificationChangeDeps } from './LiveEqPane';
 import { useLiveCaptureStore } from './stores/liveCaptureStore';
 import { useSettingsStore } from './stores/settingsStore';
-import { eqPaneHTML, eqPaneView, type EqPaneView } from './live-capture-panel';
+import { deviceNameFor, eqPaneClassificationHTML, eqPaneHTML, eqPaneView, type EqPaneView } from './live-capture-panel';
 import type { LiveEvent } from './live-capture-panel';
 import type { AppSettings } from '../../electron/ipc/api';
 
@@ -66,6 +66,30 @@ function expectedPaneHTML(): string {
   return eqPaneHTML(view);
 }
 
+function expectedClassificationHTML(): string {
+  const s = useLiveCaptureStore.getState();
+  const selectedIndex = s.selectedChannel;
+  const strip = selectedIndex != null && selectedIndex >= 0 ? s.channelConfig[selectedIndex] : null;
+  if (!strip || selectedIndex == null) return '';
+  const token = armState.stripToken(strip);
+  const allSavedProfiles = (useSettingsStore.getState().settings || {}).inputInstrumentProfiles || {};
+  const savedProfiles = allSavedProfiles[deviceNameFor(s.selectedDevice, s.devices)] || {};
+  const savedProfile = savedProfiles[token];
+  return eqPaneClassificationHTML({
+    selectedIndex,
+    groupIndex: groupState.groupOf(s.channelGroups, selectedIndex),
+    groups: s.channelGroups,
+    profiles: instrumentProfiles.PROFILES,
+    effectiveProfileId: instrumentProfiles.effectiveProfileId(savedProfiles, token, strip.label),
+    instrumentAuto: !(savedProfile && instrumentProfiles.isKnownProfileId(savedProfile)),
+    disabled: s.isCapturing || s.demoting,
+  });
+}
+
+function expectedMarkup(): string {
+  return `<div><div>${expectedPaneHTML()}</div><div>${expectedClassificationHTML()}</div></div>`;
+}
+
 beforeEach(() => {
   (globalThis as { window?: unknown }).window = {
     trackWorkspace, armState, groupState, rigReconcile, instrumentProfiles,
@@ -106,7 +130,7 @@ afterEach(() => {
 describe('LiveEqPane', () => {
   it('renders the Room section only until a strip is selected (#668)', () => {
     const html = renderMarkup();
-    expect(html).toBe(`<div>${expectedPaneHTML()}</div>`);
+    expect(html).toBe(expectedMarkup());
     expect(html).toContain('eq-pane-primary');
     expect(html).toContain('Room — Track 1');
     expect(html).toContain('eq-pane-empty-hint');
@@ -116,7 +140,7 @@ describe('LiveEqPane', () => {
   it('adds the Selected section for the clicked strip with the measurement-source suffix when it is also the room', () => {
     useLiveCaptureStore.setState({ selectedChannel: 0 });
     const html = renderMarkup();
-    expect(html).toBe(`<div>${expectedPaneHTML()}</div>`);
+    expect(html).toBe(expectedMarkup());
     expect(html).toContain('Selected — Track 1 · Measurement source');
     expect(html).not.toContain('eq-pane-empty-hint');
   });
@@ -124,8 +148,40 @@ describe('LiveEqPane', () => {
   it('shows a distinct Selected label for a non-room strip', () => {
     useLiveCaptureStore.setState({ selectedChannel: 1 });
     const html = renderMarkup();
-    expect(html).toBe(`<div>${expectedPaneHTML()}</div>`);
+    expect(html).toBe(expectedMarkup());
     expect(html).toContain('Selected — Track 2');
+  });
+
+  it('renders the selected channel classification with its group and Auto profile', () => {
+    useLiveCaptureStore.setState({
+      selectedChannel: 0,
+      channelGroups: [{ name: 'Drums', members: [0] }],
+    });
+    const html = renderMarkup();
+    expect(html).toContain('eq-pane-classification');
+    expect(html).toContain('<option value="0" selected>Drums</option>');
+    expect(html).toContain('Auto — Generic');
+  });
+
+  it('binds an explicit profile override and ungrouped state to the selected channel', () => {
+    useLiveCaptureStore.setState({ selectedChannel: 1 });
+    useSettingsStore.setState({ settings: settings({ inputInstrumentProfiles: { '': { '1': 'vocal' } } }) });
+    const html = renderMarkup();
+    expect(html).toContain('<option value="-1" selected>Ungrouped</option>');
+    expect(html).toContain('<option value="vocal" selected>Vocal</option>');
+  });
+
+  it('does not render editable classification controls without a selected configured channel', () => {
+    const html = renderMarkup();
+    expect(html).not.toContain('eq-pane-classification-profile');
+    expect(html).not.toContain('eq-pane-classification-group');
+  });
+
+  it('locks classification controls while the live board is running', () => {
+    useLiveCaptureStore.setState({ selectedChannel: 0, isCapturing: true });
+    const html = renderMarkup();
+    expect(html).toContain('eq-pane-classification-profile" aria-label="Instrument profile" disabled');
+    expect(html).toContain('eq-pane-classification-group" aria-label="Assign track to group" disabled');
   });
 
   it('swaps the Room slot to the secondary room mic when active (#460)', () => {
@@ -135,7 +191,7 @@ describe('LiveEqPane', () => {
       lastMeasurementChannels: [TICK_CHANNELS[0]] as never,
     });
     const html = renderMarkup();
-    expect(html).toBe(`<div>${expectedPaneHTML()}</div>`);
+    expect(html).toBe(expectedMarkup());
     expect(html).toContain('Room — Room Mic');
   });
 
@@ -148,5 +204,44 @@ describe('LiveEqPane', () => {
     const html = renderMarkup();
     expect(html).toContain('Room — Track 1');
     expect(html).not.toContain('Room — Room Mic');
+  });
+});
+
+describe('applyEqPaneClassificationChange', () => {
+  function changeDeps(selectedChannel: number | null = 0): ClassificationChangeDeps {
+    return {
+      liveCapture: {
+        selectedChannel,
+        channelConfig: CONFIG,
+        selectedDevice: '',
+        devices: [],
+        assignGroup: vi.fn(),
+      },
+      settings: { settings: settings(), updateSettings: vi.fn() },
+      instrumentProfiles: { recordOverride: vi.fn(() => ({ '': { '0': 'vocal' } })) },
+      armState: { stripToken: vi.fn(() => '0') },
+    };
+  }
+
+  it('assigns the currently selected channel through the existing group action', () => {
+    const deps = changeDeps(1);
+    applyEqPaneClassificationChange('group', '0', deps);
+    expect(deps.liveCapture.assignGroup).toHaveBeenCalledWith(1, 0);
+  });
+
+  it('records a selected channel profile override and persists the full override map', () => {
+    const deps = changeDeps();
+    applyEqPaneClassificationChange('profile', 'vocal', deps);
+    expect(deps.instrumentProfiles.recordOverride).toHaveBeenCalledWith({}, '', '0', 'vocal');
+    expect(deps.settings.updateSettings).toHaveBeenCalledWith({ inputInstrumentProfiles: { '': { '0': 'vocal' } } });
+  });
+
+  it('does not write when a selected channel is stale or missing', () => {
+    const deps = changeDeps(9);
+    applyEqPaneClassificationChange('group', '0', deps);
+    applyEqPaneClassificationChange('profile', 'vocal', deps);
+    expect(deps.liveCapture.assignGroup).not.toHaveBeenCalled();
+    expect(deps.instrumentProfiles.recordOverride).not.toHaveBeenCalled();
+    expect(deps.settings.updateSettings).not.toHaveBeenCalled();
   });
 });

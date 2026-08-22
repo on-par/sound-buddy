@@ -13,24 +13,71 @@
 // static root-markup nodes, so they exist at mount (App.tsx gates the portal
 // on `booted` like every other rootMarkup-injected target).
 
-import { useEffect, useMemo, type JSX } from 'react';
+import { useEffect, useMemo, type FormEvent, type JSX } from 'react';
 import { useStoreShallow } from './stores/useStoreShallow';
-import { useLiveCaptureStore } from './stores/liveCaptureStore';
-import { useSettingsStore } from './stores/settingsStore';
+import { useLiveCaptureStore, type LiveCaptureState } from './stores/liveCaptureStore';
+import { useSettingsStore, type SettingsState } from './stores/settingsStore';
 import {
   clampEqPaneWidth,
   eqPaneView,
   eqPaneSignature,
   eqPaneHTML,
+  eqPaneClassificationHTML,
+  deviceNameFor,
   EQ_PANE_RESIZE_STEP,
   type EqPaneView,
 } from './live-capture-panel';
 import { roomPaneOverride } from './measurement-device-state';
-import { currentEqPaneChannels, liveWorkspaceViewState } from './live-workspace-view';
+import {
+  currentEqPaneChannels,
+  getArmState,
+  getGroupState,
+  getInstrumentProfiles,
+  liveWorkspaceViewState,
+  type ArmStateApi,
+  type InstrumentProfilesApi,
+} from './live-workspace-view';
+
+export interface ClassificationChangeDeps {
+  liveCapture: Pick<LiveCaptureState, 'selectedChannel' | 'channelConfig' | 'selectedDevice' | 'devices' | 'assignGroup'>;
+  settings: Pick<SettingsState, 'settings' | 'updateSettings'>;
+  instrumentProfiles: Pick<InstrumentProfilesApi, 'recordOverride'>;
+  armState: Pick<ArmStateApi, 'stripToken'>;
+}
+
+// Applies a React-owned classification selector change using injected store
+// actions, keeping stale selection guards and persistence behavior testable.
+export function applyEqPaneClassificationChange(
+  kind: 'group' | 'profile',
+  value: string,
+  deps: ClassificationChangeDeps,
+): void {
+  const selectedIndex = deps.liveCapture.selectedChannel;
+  const strip = selectedIndex != null && selectedIndex >= 0
+    ? deps.liveCapture.channelConfig[selectedIndex]
+    : null;
+  if (!strip || selectedIndex == null) return;
+  if (kind === 'group') {
+    deps.liveCapture.assignGroup(selectedIndex, parseInt(value, 10));
+    return;
+  }
+  const all = (deps.settings.settings || {}).inputInstrumentProfiles || {};
+  const next = deps.instrumentProfiles.recordOverride(
+    all,
+    deviceNameFor(deps.liveCapture.selectedDevice, deps.liveCapture.devices),
+    deps.armState.stripToken(strip),
+    value,
+  );
+  void deps.settings.updateSettings({ inputInstrumentProfiles: next });
+}
 
 export default function LiveEqPane(): JSX.Element {
   const s = useStoreShallow(useLiveCaptureStore, (st) => ({
     channelConfig: st.channelConfig,
+    channelGroups: st.channelGroups,
+    devices: st.devices,
+    selectedDevice: st.selectedDevice,
+    isCapturing: st.isCapturing,
     measurementSource: st.measurementSource,
     selectedChannel: st.selectedChannel,
     appMode: st.appMode,
@@ -63,6 +110,43 @@ export default function LiveEqPane(): JSX.Element {
   // arc/bars patches from the meter controller survive because this memoized
   // string stays the same across ticks.
   const html = useMemo(() => eqPaneHTML(view), [signature]);
+  const selectedStrip = s.selectedChannel != null && s.selectedChannel >= 0
+    ? s.channelConfig[s.selectedChannel] ?? null
+    : null;
+  const classificationHtml = useMemo(() => {
+    if (!selectedStrip || s.selectedChannel == null) return eqPaneClassificationHTML(null);
+    const profiles = getInstrumentProfiles().PROFILES;
+    const token = getArmState().stripToken(selectedStrip);
+    const savedProfiles = ((settings || {}).inputInstrumentProfiles || {})[deviceNameFor(s.selectedDevice, s.devices)] || {};
+    const savedProfile = savedProfiles[token];
+    return eqPaneClassificationHTML({
+      selectedIndex: s.selectedChannel,
+      groupIndex: getGroupState().groupOf(s.channelGroups, s.selectedChannel),
+      groups: s.channelGroups,
+      profiles,
+      effectiveProfileId: getInstrumentProfiles().effectiveProfileId(savedProfiles, token, selectedStrip.label),
+      instrumentAuto: !(savedProfile && getInstrumentProfiles().isKnownProfileId(savedProfile)),
+      disabled: state.isCapturing,
+    });
+  }, [selectedStrip, s.selectedChannel, s.channelGroups, s.selectedDevice, s.devices, settings?.inputInstrumentProfiles, state.isCapturing]);
+
+  function onClassificationChange(e: FormEvent<HTMLDivElement>): void {
+    const target = e.target as unknown as HTMLSelectElement;
+    const current = useLiveCaptureStore.getState();
+    const deps: ClassificationChangeDeps = {
+      liveCapture: current,
+      settings: useSettingsStore.getState(),
+      instrumentProfiles: getInstrumentProfiles(),
+      armState: getArmState(),
+    };
+    if (target.closest('.eq-pane-classification-group')) {
+      applyEqPaneClassificationChange('group', target.value, deps);
+      return;
+    }
+    if (target.closest('.eq-pane-classification-profile')) {
+      applyEqPaneClassificationChange('profile', target.value, deps);
+    }
+  }
 
   /* c8 ignore start -- visibility/width + resize wiring, no jsdom in this
      harness (renderToString doesn't run effects) — exercised by
@@ -122,5 +206,8 @@ export default function LiveEqPane(): JSX.Element {
   }, []);
   /* c8 ignore stop */
 
-  return <div dangerouslySetInnerHTML={{ __html: html }} />;
+  return <div>
+    <div dangerouslySetInnerHTML={{ __html: html }} />
+    <div onInput={onClassificationChange} dangerouslySetInnerHTML={{ __html: classificationHtml }} />
+  </div>;
 }

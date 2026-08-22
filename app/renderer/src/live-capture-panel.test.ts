@@ -27,6 +27,7 @@ import {
   levelPercent,
   eqPaneView,
   eqPaneHTML,
+  eqPaneClassificationHTML,
   eqPaneSignature,
   eqPanePatchPlan,
   EQ_PANE_ROOM_OVERRIDE_IDX,
@@ -65,6 +66,7 @@ import {
   type LiveEvent,
   type WindowData,
   type EqPaneRoomOverride,
+  type EqPaneClassificationView,
 } from './live-capture-panel';
 
 const css = fs.readFileSync(fileURLToPath(new URL('./styles/app.css', import.meta.url)), 'utf8');
@@ -82,8 +84,6 @@ function stripView(overrides: Partial<StripView> = {}): StripView {
     armed: false,
     groupIndex: -1,
     groupCollapsed: false,
-    instrumentProfileId: 'generic',
-    instrumentAuto: true,
     ...overrides,
   };
 }
@@ -482,14 +482,11 @@ describe('veqChannelHTML', () => {
     expect(wrapper).toContain('aria-label="Select');
   });
 
-  it('renders a group select with the strip\'s group selected when groups exist, omits it otherwise', () => {
-    const groups: ChannelGroup[] = [{ name: 'Drums', members: [0] }, { name: 'Vox', members: [] }];
-    const html = veqChannelHTML(LIVE_CHANNELS[0], 0, stripView({ groupIndex: 0 }), panelView({ groups }));
-    expect(html).toContain('live-ch-group');
-    expect(html).toContain('<option value="0" selected>Drums</option>');
-
-    const noGroups = veqChannelHTML(LIVE_CHANNELS[0], 0, stripView(), panelView());
-    expect(noGroups).not.toContain('live-ch-group');
+  it('leaves classification selectors out of strips while retaining grouped drag behavior', () => {
+    const html = veqChannelHTML(LIVE_CHANNELS[0], 0, stripView({ groupIndex: 0 }), panelView());
+    expect(html).not.toContain('live-ch-group');
+    expect(html).not.toContain('live-ch-profile');
+    expect(html).toContain('live-ch-drag');
   });
 
   it('stamps data-ch with the channel index', () => {
@@ -522,36 +519,57 @@ describe('veqChannelHTML', () => {
     expect(html).toContain('live-ch-drag" draggable="true" aria-label="Reorder track within group — drag, or press Arrow Up/Down" title="Drag to reorder track" disabled');
   });
 
-  it('renders an instrument-profile select with an Auto option selected when instrumentAuto is true', () => {
-    const profiles = [{ id: 'bass', label: 'Bass' }, { id: 'vocal', label: 'Vocal' }];
-    const html = veqChannelHTML(LIVE_CHANNELS[0], 0, stripView({ instrumentProfileId: 'bass', instrumentAuto: true }), panelView({ instrumentProfiles: profiles }));
-    expect(html).toContain('class="live-ch-profile"');
-    expect(html).toContain('data-idx="0"');
+});
+
+describe('eqPaneClassificationHTML', () => {
+  const profiles = [{ id: 'bass', label: 'Bass' }, { id: 'vocal', label: 'Vocal' }];
+  const groups: ChannelGroup[] = [{ name: 'Drums', members: [0] }, { name: 'Vox', members: [] }];
+  function classification(overrides: Partial<EqPaneClassificationView> = {}): EqPaneClassificationView {
+    return {
+      selectedIndex: 0,
+      groupIndex: 0,
+      groups,
+      profiles,
+      effectiveProfileId: 'bass',
+      instrumentAuto: true,
+      disabled: false,
+      ...overrides,
+    };
+  }
+
+  it('renders selected group and Auto effective profile for a configured channel', () => {
+    const html = eqPaneClassificationHTML(classification());
+    expect(html).toContain('Classification');
+    expect(html).toContain('class="eq-pane-classification-profile"');
     expect(html).toContain('<option value="auto" selected>Auto — Bass</option>');
-    expect(html).toContain('<option value="bass">Bass</option>');
-    expect(html).toContain('<option value="vocal">Vocal</option>');
+    expect(html).toContain('class="eq-pane-classification-group"');
+    expect(html).toContain('<option value="0" selected>Drums</option>');
   });
 
-  it('selects the override option instead of Auto when instrumentAuto is false', () => {
-    const profiles = [{ id: 'bass', label: 'Bass' }, { id: 'vocal', label: 'Vocal' }];
-    const html = veqChannelHTML(LIVE_CHANNELS[0], 0, stripView({ instrumentProfileId: 'vocal', instrumentAuto: false }), panelView({ instrumentProfiles: profiles }));
+  it('renders Ungrouped and selects an explicit profile override', () => {
+    const html = eqPaneClassificationHTML(classification({ groupIndex: -1, effectiveProfileId: 'vocal', instrumentAuto: false }));
+    expect(html).toContain('<option value="-1" selected>Ungrouped</option>');
     expect(html).toContain('<option value="auto">Auto — Vocal</option>');
     expect(html).toContain('<option value="vocal" selected>Vocal</option>');
-    expect(html).toContain('<option value="bass">Bass</option>');
   });
 
-  it('disables the instrument-profile select when liveRunning', () => {
-    const profiles = [{ id: 'bass', label: 'Bass' }];
-    const html = veqChannelHTML(LIVE_CHANNELS[0], 0, stripView(), panelView({ instrumentProfiles: profiles, liveRunning: true }));
-    expect(html).toContain('live-ch-profile" data-idx="0" aria-label="Instrument profile" title="Instrument profile" disabled');
+  it('disables both selectors during a live-running configuration lock', () => {
+    const html = eqPaneClassificationHTML(classification({ disabled: true }));
+    expect(html).toContain('eq-pane-classification-profile" aria-label="Instrument profile" disabled');
+    expect(html).toContain('eq-pane-classification-group" aria-label="Assign track to group" disabled');
   });
 
-  it('omits the instrument-profile select when panel.instrumentProfiles is absent or empty', () => {
-    const absent = veqChannelHTML(LIVE_CHANNELS[0], 0, stripView(), panelView());
-    expect(absent).not.toContain('live-ch-profile');
+  it('omits the section when there is no selected configured channel', () => {
+    expect(eqPaneClassificationHTML(null)).toBe('');
+  });
 
-    const empty = veqChannelHTML(LIVE_CHANNELS[0], 0, stripView(), panelView({ instrumentProfiles: [] }));
-    expect(empty).not.toContain('live-ch-profile');
+  it('escapes group and profile labels', () => {
+    const html = eqPaneClassificationHTML(classification({
+      groups: [{ name: '<Drums & Vox>', members: [0] }],
+      profiles: [{ id: 'bass', label: '<Bass & "Vocal">' }],
+    }));
+    expect(html).toContain('&lt;Drums &amp; Vox&gt;');
+    expect(html).toContain('&lt;Bass &amp; &quot;Vocal&quot;&gt;');
   });
 });
 
@@ -1205,7 +1223,7 @@ describe('liveSessionReportCardSource', () => {
 
 describe('patchLiveChannelPlan', () => {
   function sv(overrides: Partial<StripView> = {}): StripView {
-    return { strip: { kind: 'mono', a: 0, b: 1 }, displayName: 'Ch 1', selected: false, armed: false, groupIndex: -1, groupCollapsed: false, instrumentProfileId: 'generic', instrumentAuto: true, ...overrides };
+    return { strip: { kind: 'mono', a: 0, b: 1 }, displayName: 'Ch 1', selected: false, armed: false, groupIndex: -1, groupCollapsed: false, ...overrides };
   }
 
   it('carries selected/displayName/meta through from the strip view and channel', () => {

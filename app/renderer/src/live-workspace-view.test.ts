@@ -154,27 +154,19 @@ describe('stripViewAt', () => {
     expect(stripViewAt(makeState(), 1, TICK_CHANNELS[1]).armed).toBe(false);
   });
 
-  it('resolves the effective instrument profile and the auto flag (#524)', () => {
-    const auto = stripViewAt(makeState(), 0, TICK_CHANNELS[0]);
-    expect(auto.instrumentProfileId).toBe('generic');
-    expect(auto.instrumentAuto).toBe(true);
-
-    const overridden = stripViewAt(makeState({
-      selectedDevice: '0',
-      settings: settings({ inputInstrumentProfiles: { 'Scarlett 18i20': { '0': 'vocal' } } }),
-    }), 0, TICK_CHANNELS[0]);
-    expect(overridden.instrumentProfileId).toBe('vocal');
-    expect(overridden.instrumentAuto).toBe(false);
+  it('leaves profile derivation to the selected-channel inspector', () => {
+    const view = stripViewAt(makeState(), 0, TICK_CHANNELS[0]);
+    expect(view).not.toHaveProperty('instrumentProfileId');
+    expect(view).not.toHaveProperty('instrumentAuto');
   });
 });
 
 describe('livePanelView', () => {
-  it('maps device channels, live running, groups, and instrument profiles', () => {
+  it('maps device channels, live running, and groups', () => {
     const view = livePanelView(makeState({ selectedDevice: '0', isCapturing: true }));
     expect(view.deviceChannels).toBe(8);
     expect(view.liveRunning).toBe(true);
     expect(view.groups).toBe(GROUPS);
-    expect(view.instrumentProfiles).toEqual(instrumentProfiles.PROFILES.map((p: { id: string; label: string }) => ({ id: p.id, label: p.label })));
   });
 
   it('threads liveMode through — the per-strip arm stamp derives from it (#711)', () => {
