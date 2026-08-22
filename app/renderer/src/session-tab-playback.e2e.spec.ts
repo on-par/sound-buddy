@@ -175,6 +175,34 @@ test.describe('Session tab playback (#1080)', () => {
     await expect(window.locator('.daw-transport-time')).toHaveText('0:06');
   });
 
+  test('cancelling a Session scrub clears it without seeking on a later pointer release (#1082)', async () => {
+    await window.locator('#daw-session-play').click();
+    await sendPlaybackEvent({ type: 'progress', elapsed: 2, duration: 10 });
+
+    const startCalls = async (): Promise<{ startOffsetSecs?: number }[]> => electronApp.evaluate(
+      () => (globalThis as Record<string, unknown>).__sessionPlaybackCalls,
+    ) as Promise<{ startOffsetSecs?: number }[]>;
+    expect(await startCalls()).toHaveLength(1);
+
+    const ruler = window.locator('.daw-ruler');
+    const rulerBox = await ruler.boundingBox();
+    expect(rulerBox).not.toBeNull();
+    await window.mouse.move(rulerBox!.x, rulerBox!.y + rulerBox!.height / 2);
+    await window.mouse.down();
+    await window.evaluate(() => window.dispatchEvent(new PointerEvent('pointercancel', {
+      pointerId: 1,
+    })));
+    await window.evaluate(({ x, y }) => window.dispatchEvent(new PointerEvent('pointerup', {
+      pointerId: 2,
+      clientX: x,
+      clientY: y,
+    })), {
+      x: rulerBox!.x + 32,
+      y: rulerBox!.y + rulerBox!.height / 2,
+    });
+    await expect.poll(startCalls).toHaveLength(1);
+  });
+
   test('session-tab-playback-monitoring keeps the live meter updating during take playback', async () => {
     await window.locator('#record-button').click();
     await expect(window.locator('#live-indicator .live-txt')).toHaveText('REC');

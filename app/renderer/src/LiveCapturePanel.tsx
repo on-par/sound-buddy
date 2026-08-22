@@ -470,14 +470,22 @@ export default function LiveCapturePanel(): JSX.Element | null {
     if (!previewAt(latestClientX)) return;
 
     boardRoot.setPointerCapture(e.pointerId);
+    const pointerId = e.pointerId;
     const onPointerMove = (move: globalThis.PointerEvent): void => {
+      if (move.pointerId !== pointerId) return;
       latestClientX = move.clientX;
       previewAt(latestClientX);
     };
-    const onPointerUp = (up: globalThis.PointerEvent): void => {
+    const cleanupPointerDrag = (): void => {
       window.removeEventListener('pointermove', onPointerMove);
       window.removeEventListener('pointerup', onPointerUp);
-      if (boardRoot.hasPointerCapture(e.pointerId)) boardRoot.releasePointerCapture(e.pointerId);
+      window.removeEventListener('pointercancel', cleanupPointerDrag);
+      boardRoot.removeEventListener('lostpointercapture', cleanupPointerDrag);
+      if (boardRoot.hasPointerCapture(pointerId)) boardRoot.releasePointerCapture(pointerId);
+    };
+    const onPointerUp = (up: globalThis.PointerEvent): void => {
+      if (up.pointerId !== pointerId) return;
+      cleanupPointerDrag();
       if (!useSoundcheckStore.getState().playing) return;
       latestClientX = up.clientX;
       const preview = previewAt(latestClientX);
@@ -485,6 +493,8 @@ export default function LiveCapturePanel(): JSX.Element | null {
     };
     window.addEventListener('pointermove', onPointerMove);
     window.addEventListener('pointerup', onPointerUp);
+    window.addEventListener('pointercancel', cleanupPointerDrag);
+    boardRoot.addEventListener('lostpointercapture', cleanupPointerDrag);
   }
 
   function onBoardKeyDown(e: KeyboardEvent<HTMLDivElement>): void {
