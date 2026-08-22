@@ -577,7 +577,7 @@
        label in column 1, control in column 2 at a fixed width, so a pane can
        be scanned without scrolling. Scoped to .settings-pane/.settings-group
        descendants because .ai-field, .select-label, .ai-enable-row and
-       .slider are shared with FeedbackDialog, SoundcheckPanel and
+       .slider are shared with FeedbackDialog and the Session workspace
        CurveEditorDialog — those base rules stay untouched. Same compaction
        pattern #ideal-profile-wrap already uses for its select. */
     .settings-group { display:flex; flex-direction:column; gap:8px; }
@@ -611,7 +611,7 @@
        native <input type="checkbox"> so keyboard, assistive tech and
        Playwright .check()/.uncheck() keep working; only the painting is
        replaced. Scoped to .settings-pane so FeedbackDialog's
-       #feedback-attach-diagnostics and SoundcheckPanel's #sc-master-toggle keep
+       #feedback-attach-diagnostics and the Session workspace's master toggle keep
        the native accent-color look — the shared .ai-enable-row base rule is
        never edited (ADR-0082). */
     .settings-pane input[type="checkbox"] {
@@ -767,41 +767,6 @@
     .rec-offer { display:flex; align-items:center; gap:10px; margin-top:10px; padding:12px 14px; background:var(--surface-inset); border:1px solid var(--border-subtle); border-radius:var(--radius-lg); }
     .rec-offer .ro-text { flex:1; min-width:0; font:var(--fw-regular) var(--fs-label)/1.3 var(--font-sans); color:var(--text-secondary); }
     .rec-offer .ro-text b { color:var(--text-primary); font-weight:var(--fw-semibold); }
-
-    /* Virtual Soundcheck (#46): session/routing panel + waveform lanes/playhead. */
-    .sc-session-name { font:var(--fw-medium) var(--fs-label)/1.3 var(--font-sans); color:var(--text-primary); word-break:break-all; }
-    .sc-tracks { display:flex; flex-direction:column; gap:6px; margin:6px 0; }
-    .sc-empty { font:var(--fw-regular) var(--fs-micro)/1.3 var(--font-sans); color:var(--text-muted); }
-    .sc-track { display:flex; align-items:center; gap:6px; }
-    .sc-track-name { flex:1 1 60px; min-width:0; font:var(--fw-medium) var(--fs-label)/1 var(--font-sans); color:var(--text-primary); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-    .sc-badge { flex:0 0 auto; font:var(--fw-semibold) var(--fs-micro)/1 var(--font-sans); color:var(--text-muted); border:1px solid var(--border-subtle); border-radius:var(--radius-sm); padding:1px 5px; letter-spacing:0.04em; text-transform:uppercase; }
-    .sc-route { flex:0 0 auto; height:var(--control-h-sm); padding:0 6px; border-radius:var(--radius-md); background:var(--surface-raised); color:var(--text-primary); border:1px solid var(--border-default); font:var(--fw-medium) var(--fs-label)/1 var(--font-sans); }
-    .sc-route:disabled { opacity:0.5; cursor:not-allowed; }
-    .sc-waveforms { position:relative; display:flex; flex-direction:column; gap:8px; margin:8px 0; }
-    .sc-waveforms-hint { font:var(--fw-regular) var(--fs-micro)/1.3 var(--font-sans); color:var(--text-muted); }
-    /* Soundcheck playhead (#736) — overlay line across the waveform lanes. */
-    .sc-playhead { position:absolute; top:0; bottom:0; left:0; width:2px; background:var(--gold-500);
-      box-shadow:0 0 6px var(--gold-glow); pointer-events:none; display:none; }
-    .sc-waveform-lane { display:flex; align-items:center; gap:8px; }
-    .sc-waveform-name { flex:0 0 auto; min-width:52px; font:var(--fw-medium) var(--fs-micro)/1 var(--font-sans); color:var(--text-muted); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-    .sc-waveform-canvas { flex:1 1 auto; width:100%; height:36px; background:var(--surface-inset); border:1px solid var(--border-subtle); border-radius:var(--radius-md); display:block; }
-    .sc-master { display:flex; align-items:center; gap:8px; font:var(--fw-regular) var(--fs-label)/1 var(--font-sans); color:var(--text-secondary); cursor:pointer; }
-    .sc-notice { padding:8px 10px; border-radius:var(--radius-md); background:var(--surface-inset); border:1px solid var(--border-default); color:var(--text-secondary); font:var(--fw-regular) var(--fs-micro)/1.3 var(--font-sans); }
-    .sc-elapsed { text-align:center; font:var(--fw-regular) var(--fs-label)/1 var(--font-mono); color:var(--text-muted); }
-    .sc-status { padding:8px 10px; border-radius:var(--radius-md); border:1px solid var(--issue-500); color:var(--issue-text); font:var(--fw-regular) var(--fs-micro)/1.3 var(--font-sans); text-align:center; }
-
-    /* Saved soundcheck buses (#756): persisted label-pattern → output-channel
-       routing, listed between the tracks & routing list and the master toggle. */
-    .sc-buses { display:flex; flex-direction:column; gap:6px; margin:6px 0; }
-    .sc-bus { display:flex; align-items:center; gap:6px; }
-    .sc-bus-name { flex:1 1 80px; min-width:0; font:var(--fw-medium) var(--fs-label)/1 var(--font-sans); color:var(--text-primary); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-    .sc-bus-pattern { max-width:120px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-    .sc-bus-route { flex:0 0 auto; height:var(--control-h-sm); padding:0 6px; border-radius:var(--radius-md); background:var(--surface-raised); color:var(--text-primary); border:1px solid var(--border-default); font:var(--fw-medium) var(--fs-label)/1 var(--font-sans); }
-    .sc-bus-delete { flex:0 0 auto; }
-    .sc-bus-add { display:flex; align-items:center; gap:6px; margin-top:4px; }
-    .sc-bus-add input { flex:1 1 0; min-width:0; height:var(--control-h-sm); padding:0 8px; border-radius:var(--radius-md); background:var(--surface-raised); color:var(--text-primary); border:1px solid var(--border-default); font:var(--fw-medium) var(--fs-label)/1 var(--font-sans); }
-    .sc-bus-add input::placeholder { color:var(--text-tertiary); }
-    .sc-bus-add select { flex:0 0 auto; height:var(--control-h-sm); padding:0 6px; border-radius:var(--radius-md); background:var(--surface-raised); color:var(--text-primary); border:1px solid var(--border-default); font:var(--fw-medium) var(--fs-label)/1 var(--font-sans); }
 
     /* Spectrum panel */
     #spectrum-panel { flex:1; display:flex; flex-direction:column; min-width:0; overflow:hidden; }
