@@ -109,8 +109,7 @@ describe('Live monitoring visibly leads to a Report Card (#488)', () => {
 
 describe('Live tab reads as always-listening, never capture (#777)', () => {
   // The AC's no-"capture" wording rule covers the Live tab UI (the #tab-live
-  // block) and the Analyze source-picker's live option — NOT the separate
-  // soundcheck copy ("Play back a captured session..."), which stays as-is.
+  // block) and the Analyze source-picker's live option.
   it('purges every user-visible "capture" from the #tab-live block', () => {
     const liveTabStart = markup.indexOf('<div class="tab-content" id="tab-live">');
     const liveTabEnd = markup.indexOf('id="spectrum-header"');
@@ -281,9 +280,14 @@ describe('Header live dBFS readout (#767)', () => {
 describe('Existing tabs stay intact under the unified Analyze picker (#543)', () => {
   it('keeps all workspace mode tabs available (now rendered by ModeTabs.tsx, TD-001 slice 6e, #703)', () => {
     const modeTabsMarkup = renderToString(createElement(ModeTabs));
-    ['dir', 'live', 'console', 'soundcheck', 'recent', 'guide', 'ringout', 'reportcard'].forEach((mode) => {
+    ['dir', 'live', 'console', 'recent', 'guide', 'ringout', 'reportcard'].forEach((mode) => {
       expect(modeTabsMarkup).toContain(`data-mode="${mode}"`);
     });
+  });
+
+  it('has no retired standalone tab or portal island', () => {
+    expect(markup).not.toContain(`tab-${"soundcheck"}`);
+    expect(markup).not.toContain(`${"soundcheck"}-island`);
   });
 
   it('leaves the Directory batch-analysis panel in place (DirectoryPanel.tsx renders onto the empty #tab-dir island)', () => {

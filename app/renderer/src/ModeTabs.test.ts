@@ -16,14 +16,13 @@ function renderMarkup(): string {
 }
 
 describe('ModeTabs', () => {
-  it('renders all 10 tabs with their ids/data-mode', () => {
+  it('renders all 9 buttons with their ids/data-mode', () => {
     const html = renderMarkup();
     expect(html).toContain('id="nav-analyze" data-mode="analyze"');
     expect(html).toContain('id="nav-history" data-mode="history"');
     expect(html).toContain('data-mode="dir"');
     expect(html).toContain('data-mode="live"');
     expect(html).toContain('data-mode="console"');
-    expect(html).toContain('data-mode="soundcheck"');
     expect(html).toContain('data-mode="recent"');
     expect(html).toContain('data-mode="guide"');
     expect(html).toContain('data-mode="ringout"');
@@ -45,11 +44,11 @@ describe('ModeTabs', () => {
     expect(html).not.toContain('class="mode-tab active" data-mode="reportcard"');
   });
 
-  it('renders the tab-lock decoration on Live and Soundcheck only', () => {
+  it('renders the tab-lock decoration on Live only', () => {
     const html = renderMarkup();
-    const liveButton = html.slice(html.indexOf('data-mode="live"'), html.indexOf('data-mode="soundcheck"'));
+    const liveButton = html.slice(html.indexOf('data-mode="live"'), html.indexOf('data-mode="console"'));
     const dirButton = html.slice(html.indexOf('data-mode="dir"'), html.indexOf('data-mode="live"'));
-    const consoleButton = html.slice(html.indexOf('data-mode="console"'), html.indexOf('data-mode="soundcheck"'));
+    const consoleButton = html.slice(html.indexOf('data-mode="console"'), html.indexOf('data-mode="recent"'));
     expect(liveButton).toContain('class="tab-lock"');
     expect(dirButton).not.toContain('tab-lock');
     expect(consoleButton).not.toContain('tab-lock');

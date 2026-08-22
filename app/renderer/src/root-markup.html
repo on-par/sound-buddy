@@ -93,20 +93,6 @@
              sits above the spectrum/EQ area instead of in this now-narrower
              left column. -->
 
-        <!-- Virtual Soundcheck (#46): load a recorded session, route each track to
-             an output, and play it back with waveform lanes + a seeking playhead. -->
-        <div class="tab-content" id="tab-soundcheck">
-          <!-- Pro gate (#54): shown instead of the soundcheck controls when no
-               active Pro license. -->
-          <div class="pro-gate">
-            <span class="pg-icon" data-icon="lock" data-size="22"></span>
-            <span class="pg-title">Virtual soundcheck is a Pro feature</span>
-            <span class="pg-msg">Play back a captured session through your console and mix without the band.</span>
-            <button type="button" class="pg-link" data-license-open>Upgrade — enter a license key</button>
-          </div>
-          <div id="soundcheck-island"></div>
-        </div>
-
         <!-- RECENT (#147) — last 10 persisted report-card summaries, newest-first.
              RecentServicesPanel.tsx (TD-001 slice 6e, #703) renders its content. -->
         <div class="tab-content" id="tab-recent"></div>
@@ -177,7 +163,7 @@
         </div>
       </div>
       <!-- #spectrum-imperative: inline-app.js keeps driving the empty/loading/
-           error/soundcheck/DAW-shell states here (setSpectrumState, …).
+           error/DAW-shell states here (setSpectrumState, …).
            #spectrum-island: React's SpectrumPanel (TD-001 slice 4, #422),
            portaled by App.tsx — the analysis curve/bar view. #live-island:
            React's LiveWorkspace (TD-001 slice 6c, #701) — the live meter

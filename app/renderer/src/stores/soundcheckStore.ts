@@ -17,7 +17,6 @@
 
 import { create } from 'zustand';
 import { getSoundBuddy } from '../useElectron';
-import { useLiveCaptureStore } from './liveCaptureStore';
 import { useSpectrumStore } from './spectrumStore';
 import type {
   PlaybackApi,
@@ -314,9 +313,6 @@ export function createSoundcheckStore(getApi: () => SoundcheckApi) {
 
     resetTransport() {
       set({ playing: false, elapsedText: null });
-      if (useLiveCaptureStore.getState().appMode === 'soundcheck') {
-        useSpectrumStore.getState().setPanelState('empty', 'Load a session and press Play to start playback');
-      }
     },
 
     bindIpcEvents() {

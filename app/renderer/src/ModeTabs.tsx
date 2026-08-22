@@ -12,25 +12,24 @@ import { useState, type JSX } from 'react';
 import { useStoreShallow } from './stores/useStoreShallow';
 import { useLiveCaptureStore } from './stores/liveCaptureStore';
 import { useAnalyzeSourceStore } from './stores/analyzeSourceStore';
-import { resolveModeSwitch, switchMode } from './mode-switch';
+import { resolveModeSwitch, switchMode, type ModeSwitchRequest } from './mode-switch';
 import { iconSvg } from './report-card';
 
 interface TabDef {
-  mode: string;
+  mode: ModeSwitchRequest;
   id?: string;
   icon: string;
   label: string;
   lock?: boolean;
 }
 
-// Verbatim port of root-markup.html:83-96's 9 buttons.
+// Verbatim port of root-markup.html's 9 buttons.
 const TABS: TabDef[] = [
   { mode: 'analyze', id: 'nav-analyze', icon: 'activity', label: 'Analyze' },
   { mode: 'history', id: 'nav-history', icon: 'clock', label: 'History' },
   { mode: 'dir', icon: 'folder', label: 'Directory' },
   { mode: 'live', icon: 'radio', label: 'Session', lock: true },
   { mode: 'console', icon: 'sliders', label: 'Console' },
-  { mode: 'soundcheck', icon: 'sliders', label: 'Soundcheck', lock: true },
   { mode: 'recent', icon: 'clock', label: 'Recent' },
   { mode: 'guide', icon: 'clipboard-check', label: 'Build Guide' },
   { mode: 'ringout', icon: 'waves', label: 'Ring Out' },
@@ -55,7 +54,7 @@ export default function ModeTabs(): JSX.Element {
      tests/e2e/report-first-ux.spec.ts and tests/e2e/momentum.spec.ts, which
      both drive the .mode-tab click idiom. resolveModeSwitch/switchMode
      themselves are exhaustively unit-tested in mode-switch.test.ts. */
-  function handleClick(mode: string): void {
+  function handleClick(mode: ModeSwitchRequest): void {
     const decision = resolveModeSwitch(mode, useLiveCaptureStore.getState().appMode);
     if (decision.type === 'noop') return;
     // TD-001 slice 6h (#711): the picker is analyzeSourceStore-owned now —

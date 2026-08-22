@@ -641,16 +641,16 @@ describe('createSoundcheckStore', () => {
       expect(store.getState().lastElapsedTick).toEqual({ elapsed: 5, duration: 60 });
     });
 
-    it('hands the panel back to the empty hint only while the soundcheck tab is active', () => {
+    it('resets transport without changing the spectrum panel, even for the retired app mode', () => {
       const { store } = makeStore();
       useLiveCaptureStore.setState({ appMode: 'live' });
       const spy = vi.spyOn(useSpectrumStore.getState(), 'setPanelState');
       store.getState().resetTransport();
       expect(spy).not.toHaveBeenCalled();
 
-      useLiveCaptureStore.setState({ appMode: 'soundcheck' });
+      useLiveCaptureStore.setState({ appMode: "soundcheck" });
       store.getState().resetTransport();
-      expect(spy).toHaveBeenCalledWith('empty', 'Load a session and press Play to start playback');
+      expect(spy).not.toHaveBeenCalled();
       spy.mockRestore();
     });
   });
@@ -710,7 +710,7 @@ describe('createSoundcheckStore', () => {
 
   describe('does not touch Live capture (#758)', () => {
     it('play() from an idle Live state leaves capture state and the Record button idle', async () => {
-      useLiveCaptureStore.setState({ appMode: 'soundcheck', isCapturing: false, promoting: false, stopping: false, liveMode: 'monitor' });
+      useLiveCaptureStore.setState({ appMode: 'console', isCapturing: false, promoting: false, stopping: false, liveMode: 'monitor' });
       const { store } = makeStore({ startPlayback: async () => ({ success: true }) });
       store.setState({ manifest: MANIFEST, sessionDir: '/tmp/s', routes: [[0], [2, 3]], devicesLoaded: true });
       await store.getState().play();
@@ -726,7 +726,7 @@ describe('createSoundcheckStore', () => {
     });
 
     it('play() does not stop or mutate an already-running Live capture (criterion #3)', async () => {
-      useLiveCaptureStore.setState({ appMode: 'soundcheck', isCapturing: true, promoting: false, stopping: false, liveMode: 'record' });
+      useLiveCaptureStore.setState({ appMode: 'console', isCapturing: true, promoting: false, stopping: false, liveMode: 'record' });
       const { store } = makeStore({ startPlayback: async () => ({ success: true }) });
       store.setState({ manifest: MANIFEST, sessionDir: '/tmp/s', routes: [[0], [2, 3]], devicesLoaded: true });
       await store.getState().play();
@@ -738,7 +738,7 @@ describe('createSoundcheckStore', () => {
     });
 
     it('a playback event through bindIpcEvents never mutates Live capture state', () => {
-      useLiveCaptureStore.setState({ appMode: 'soundcheck', isCapturing: false, promoting: false, stopping: false });
+      useLiveCaptureStore.setState({ appMode: 'console', isCapturing: false, promoting: false, stopping: false });
       const { store, mock } = makeStore();
       store.getState().bindIpcEvents();
       store.setState({ playing: true });

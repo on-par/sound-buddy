@@ -12,7 +12,7 @@ import { resolveModeSwitch } from './mode-switch';
 // Final nav consolidation (#547, epic e17): the closing slice of e17 — with
 // report-first-ux on, #mode-tabs collapses to exactly two destinations,
 // Analyze (the #543 unified source picker) and History (the #542 full-width
-// Recent list). #544 already hid Directory/Live/Soundcheck and #546 hid
+// Recent list). #544 already hid Directory/Live and #546 hid
 // Build Guide/Ring Out; this slice hides the two remaining legacy tabs
 // (Recent, Report Card) and adds the two new flag-only entries that replace
 // them. inline-app.js is coverage-excluded glue (see vitest.config.ts), so
@@ -50,14 +50,14 @@ describe('Final nav consolidation gate (#547)', () => {
   });
 
   it('exactly two entries survive flag-on: every legacy tab is hidden', () => {
-    const legacyModes = ['dir', 'live', 'soundcheck', 'recent', 'guide', 'ringout', 'reportcard'];
+    const legacyModes = ['dir', 'live', 'recent', 'guide', 'ringout', 'reportcard'];
     for (const mode of legacyModes) {
       expect(appCss).toContain(`body.report-first-ux .mode-tab[data-mode="${mode}"]`);
     }
   });
 
-  it('flag-off shell is unchanged: all seven legacy buttons remain, reportcard still default-active', () => {
-    const legacyModes = ['dir', 'live', 'soundcheck', 'recent', 'guide', 'ringout', 'reportcard'];
+  it('flag-off shell is unchanged: all six legacy buttons remain, reportcard still default-active', () => {
+    const legacyModes = ['dir', 'live', 'recent', 'guide', 'ringout', 'reportcard'];
     for (const mode of legacyModes) {
       expect(modeTabsMarkup).toContain(`data-mode="${mode}"`);
     }

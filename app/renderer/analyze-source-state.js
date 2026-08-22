@@ -7,14 +7,13 @@
 (function (root) {
   'use strict';
 
-  // The three answers to "where's the audio coming from?" (#543, epic e17).
+  // The two answers to "where's the audio coming from?" (#543, epic e17).
   // Directory is deliberately absent: it's a real batch workflow now (#270),
   // but adding it to this unified picker is a separate story — the picker's
-  // acceptance criteria call for exactly these three choices.
+  // acceptance criteria call for exactly these two choices.
   var ANALYZE_SOURCES = [
     { id: 'file', label: 'Analyze a file', hint: 'Drop in a recording you already have.', icon: 'file-audio' },
-    { id: 'live', label: 'Start live listening', hint: 'Monitor multi-channel audio from the console right now.', icon: 'radio' },
-    { id: 'soundcheck', label: 'Load a soundcheck session', hint: 'Play back a captured session and mix without the band.', icon: 'sliders' }
+    { id: 'live', label: 'Start live listening', hint: 'Monitor multi-channel audio from the console right now.', icon: 'radio' }
   ];
 
   /** Whether the unified source picker replaces the bare file dialog.
@@ -29,7 +28,6 @@
     switch (id) {
       case 'file': return null;
       case 'live': return 'live';
-      case 'soundcheck': return 'soundcheck';
       default: return undefined;
     }
   }

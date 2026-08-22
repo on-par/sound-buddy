@@ -39,7 +39,7 @@
 // gating hook), this pane joins that same rule: the pro-gate div and the
 // moved controls are both always rendered when booted, and app.css's
 // `body.not-pro #settings-pane-audio > :not(.pro-gate)` rule (mirroring the
-// #tab-live/#tab-soundcheck rule) hides/shows them exactly like the Live tab
+// #tab-live rule) hides/shows them exactly like the Live tab
 // always did.
 //
 // Instant-apply Settings controls (#1018, epic #1000): the seven controls

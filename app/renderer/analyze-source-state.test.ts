@@ -8,8 +8,8 @@ const { ANALYZE_SOURCES, isPickerEnabled, targetModeFor } = require('./analyze-s
 };
 
 describe('ANALYZE_SOURCES', () => {
-  it('has exactly 3 entries with ids file, live, soundcheck in that order', () => {
-    expect(ANALYZE_SOURCES.map((s) => s.id)).toEqual(['file', 'live', 'soundcheck']);
+  it('has exactly 2 entries with ids file and live in that order', () => {
+    expect(ANALYZE_SOURCES.map((s) => s.id)).toEqual(['file', 'live']);
   });
 
   it.each(ANALYZE_SOURCES.map((s) => s.id))('%s has a non-empty label and hint', (id) => {
@@ -33,7 +33,6 @@ describe('targetModeFor', () => {
   it.each([
     ['file', null],
     ['live', 'live'],
-    ['soundcheck', 'soundcheck'],
   ])('routes %s to %s', (id, expected) => {
     expect(targetModeFor(id)).toBe(expected);
   });

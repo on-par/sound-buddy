@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Patrick Robinson (on-par). All rights reserved.
 // Licensed under the Sound Buddy Desktop Application License (app/LICENSE).
 
-// The #tab-soundcheck Virtual Soundcheck playback controls (TD-001 slice 6d,
+// The legacy standalone Virtual Soundcheck playback controls (TD-001 slice 6d,
 // #702) — session picker, output device, per-track routing, master mixdown,
 // and the Play/Stop transport — portaled by App.tsx onto
 // #soundcheck-island, replacing inline-app.js's scLoadDevices/scChooseSession/

@@ -157,8 +157,8 @@
     #source-panel { width:var(--panel-w); border-right:1px solid var(--border-default); }
 
     /* ── License gating (#54) ─────────────────────────────────────────
-       body.not-pro = no active Pro license. Gated surfaces (Live tab,
-       Soundcheck tab) collapse to an upgrade card (.pro-gate) and their
+       body.not-pro = no active Pro license. The Live tab collapses to an
+       upgrade card (.pro-gate) and its
        tabs carry a small lock glyph. The free tier keeps the full report
        card — the app is never locked. Body starts with .not-pro (no
        flash of Pro UI); boot removes it once the stored key verifies. */
@@ -169,7 +169,7 @@
     .pro-gate .pg-link { background:none; border:none; padding:0; cursor:pointer; color:var(--gold-text); font:var(--fw-medium) var(--fs-label)/1.3 var(--font-sans); text-decoration:underline; text-underline-offset:2px; }
     .pro-gate .pg-link:hover { filter:brightness(1.1); }
 
-    /* Unified "Analyze" source picker (#543, epic e17): the three answers to
+    /* Unified "Analyze" source picker (#543, epic e17): the two answers to
        "where's the audio coming from?", offered as an overlay dialog at the
        moment a new analysis starts. Same layout language as .pro-gate as a
        centered modal panel. Gated behind report-first-ux; `hidden` in the
@@ -206,7 +206,6 @@
        not announced as tabs either. */
     body.report-first-ux .mode-tab[data-mode="dir"],
     body.report-first-ux .mode-tab[data-mode="live"],
-    body.report-first-ux .mode-tab[data-mode="soundcheck"],
     body.report-first-ux .mode-tab[data-mode="guide"],
     body.report-first-ux .mode-tab[data-mode="ringout"] { display:none; }
     /* Final nav consolidation (#547, epic e17): flag-on, the tab bar offers
@@ -224,10 +223,8 @@
     #nav-analyze, #nav-history { display:none; }
     body.report-first-ux #nav-analyze, body.report-first-ux #nav-history { display:inline-flex; }
     body.not-pro #tab-live > :not(.pro-gate),
-    body.not-pro #tab-soundcheck > :not(.pro-gate),
     body.not-pro #settings-pane-audio > :not(.pro-gate) { display:none !important; }
     body.not-pro #tab-live .pro-gate,
-    body.not-pro #tab-soundcheck .pro-gate,
     body.not-pro #settings-pane-audio .pro-gate { display:flex; }
     /* #record-button-island (#729) lives in #header-right, outside all three
        gated containers above — needs its own rule or a free-tier user gets a

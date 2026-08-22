@@ -4,6 +4,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import {
   resolveModeSwitch,
+  isWorkspaceMode,
   switchMode,
   applySpectrumForMode,
   applySingleColumnSync,
@@ -13,7 +14,6 @@ import { useRigStore } from './stores/rigStore';
 import { useSettingsStore } from './stores/settingsStore';
 import { useSpectrumStore } from './stores/spectrumStore';
 import { useAnalysisStore } from './stores/analysisStore';
-import { useSoundcheckStore } from './stores/soundcheckStore';
 import { spectrumTransport } from './spectrum-transport';
 import { createMockSoundBuddy } from './mock-sound-buddy';
 import type { AppSettings } from '../../electron/ipc/api';
@@ -92,7 +92,6 @@ afterEach(() => {
   useRigStore.setState({ activeRigId: null });
   useSettingsStore.setState({ settings: null, settingsError: null });
   useAnalysisStore.setState({ currentAnalysis: null });
-  useSoundcheckStore.setState({ playing: false });
 });
 
 function settings(overrides: Partial<AppSettings> = {}): AppSettings {
@@ -109,6 +108,14 @@ function settings(overrides: Partial<AppSettings> = {}): AppSettings {
 }
 
 describe('resolveModeSwitch', () => {
+  it.each(['dir', 'live', 'console', 'recent', 'guide', 'ringout', 'reportcard'])('%s is a supported workspace mode', (mode) => {
+    expect(isWorkspaceMode(mode)).toBe(true);
+  });
+
+  it('rejects an unsupported workspace mode', () => {
+    expect(isWorkspaceMode("soundcheck")).toBe(false);
+  });
+
   it('opens the source picker for "analyze"', () => {
     expect(resolveModeSwitch('analyze', 'reportcard')).toEqual({ type: 'openPicker' });
   });
@@ -121,8 +128,12 @@ describe('resolveModeSwitch', () => {
     expect(resolveModeSwitch('live', 'live')).toEqual({ type: 'noop' });
   });
 
-  it('switches to any other requested mode', () => {
+  it('switches to a supported workspace mode', () => {
     expect(resolveModeSwitch('live', 'reportcard')).toEqual({ type: 'switch', mode: 'live' });
+  });
+
+  it('no-ops for the retired legacy request', () => {
+    expect(resolveModeSwitch("soundcheck", 'reportcard')).toEqual({ type: 'noop' });
   });
 });
 
@@ -131,20 +142,6 @@ describe('applySpectrumForMode', () => {
     useSettingsStore.setState({ settings: settings({ liveEqPaneWidth: 400 }) });
     applySpectrumForMode('live');
     expect(elements['spectrum-title'].textContent).toBe('Spectrum · Live EQ');
-  });
-
-  it('soundcheck: keeps the panel empty (no meters) while playing', () => {
-    useSoundcheckStore.setState({ playing: true });
-    applySpectrumForMode('soundcheck');
-    expect(elements['spectrum-title'].textContent).toBe('Soundcheck');
-    expect(useSpectrumStore.getState().panelState).toBe('empty');
-    expect(useSpectrumStore.getState().panelText).toBe('Playing — use the waveform playhead to navigate');
-  });
-
-  it('soundcheck: shows an empty prompt when not playing', () => {
-    applySpectrumForMode('soundcheck');
-    expect(useSpectrumStore.getState().panelState).toBe('empty');
-    expect(useSpectrumStore.getState().panelText).toBe('Load a session and press Play to start playback');
   });
 
   it.each(['recent', 'guide', 'dir', 'console'] as const)('%s: shows a tailored empty state with no analysis', (mode) => {
@@ -209,12 +206,9 @@ describe('switchMode', () => {
     expect(spy).toHaveBeenCalledWith('screen.reportcard');
   });
 
-  it('pauses playback when entering live or soundcheck', () => {
+  it('pauses spectrum playback when entering live', () => {
     const spy = vi.spyOn(spectrumTransport, 'pauseIfPlaying');
     switchMode('live');
-    expect(spy).toHaveBeenCalled();
-    spy.mockClear();
-    switchMode('soundcheck');
     expect(spy).toHaveBeenCalled();
   });
 

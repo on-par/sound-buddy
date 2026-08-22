@@ -6,7 +6,7 @@ import * as fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 // Unified "Analyze" source picker gate (#543, epic e17): offers exactly
-// three choices (file / live / soundcheck) at the moment a new analysis
+// two choices (file / live) at the moment a new analysis
 // starts, routing each to the flow the corresponding existing tab already
 // drives, unchanged. Since TD-001 slice 6h (#711) the picker is React-owned
 // (AnalyzeSourcePicker.tsx + analyzeSourceStore.ts, replacing inline-app.js's
@@ -42,17 +42,16 @@ describe('Unified Analyze source picker gate (#543)', () => {
     expect(appTsx).toContain('booted && <AnalyzeSourcePicker />');
   });
 
-  it('AnalyzeSourcePicker has exactly three data-analyze-source choices, one per source', () => {
+  it('AnalyzeSourcePicker has exactly two data-analyze-source choices, one per source', () => {
     // The SOURCES table drives the rendered choices — it carries exactly the
-    // three ids, mapped through one data-analyze-source binding. The rendered
-    // three-button output is pinned by AnalyzeSourcePicker.test.tsx.
+    // two ids, mapped through one data-analyze-source binding. The rendered
+    // two-button output is pinned by AnalyzeSourcePicker.test.tsx.
     expect(pickerTsx).toContain('data-analyze-source={s.id}');
     expect(pickerTsx).toContain("{ id: 'file', icon: 'file-audio'");
     expect(pickerTsx).toContain("{ id: 'live', icon: 'radio'");
-    expect(pickerTsx).toContain("{ id: 'soundcheck', icon: 'sliders'");
-    const ids = ['file', 'live', 'soundcheck'];
+    const ids = ['file', 'live'];
     const sourceLines = (pickerTsx.match(/\{ id: '[a-z]+', icon: '[a-z-]+'/g) || []);
-    expect(sourceLines).toHaveLength(3);
+    expect(sourceLines).toHaveLength(2);
     expect(ids.every((id) => pickerTsx.includes(`id: '${id}'`))).toBe(true);
   });
 

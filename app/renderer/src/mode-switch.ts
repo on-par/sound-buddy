@@ -18,17 +18,26 @@ import { useRigStore } from './stores/rigStore';
 import { useSettingsStore } from './stores/settingsStore';
 import { useSpectrumStore } from './stores/spectrumStore';
 import { useAnalysisStore } from './stores/analysisStore';
-import { useSoundcheckStore } from './stores/soundcheckStore';
 import { SPECTRUM_TITLE } from './spectrum-chrome';
 import { decideLiveAutoStart } from './live-auto-start';
 import { startLiveCapture, runtime } from './LiveControls';
 import { captureOptsFromCadence } from './measurement-device-state';
 
+export type WorkspaceMode = 'dir' | 'live' | 'console' | 'recent' | 'guide' | 'ringout' | 'reportcard';
+export type ModeSwitchRequest = WorkspaceMode | 'analyze' | 'history';
+
+const WORKSPACE_MODES: readonly WorkspaceMode[] = ['dir', 'live', 'console', 'recent', 'guide', 'ringout', 'reportcard'];
+const WORKSPACE_MODE_SET = new Set<string>(WORKSPACE_MODES);
+
+export function isWorkspaceMode(mode: string): mode is WorkspaceMode {
+  return WORKSPACE_MODE_SET.has(mode);
+}
+
 export type ModeSwitchDecision =
   | { type: 'noop' }
   | { type: 'openPicker' }
-  | { type: 'redirect'; mode: string }
-  | { type: 'switch'; mode: string };
+  | { type: 'redirect'; mode: WorkspaceMode }
+  | { type: 'switch'; mode: WorkspaceMode };
 
 // Verbatim port of the special-casing at the top of the old .mode-tab click
 // listener (inline-app.js) — pure, no DOM.
@@ -36,6 +45,7 @@ export function resolveModeSwitch(requestedMode: string, currentMode: string): M
   if (requestedMode === 'analyze') return { type: 'openPicker' };
   if (requestedMode === 'history') return { type: 'redirect', mode: 'recent' };
   if (requestedMode === currentMode) return { type: 'noop' };
+  if (!isWorkspaceMode(requestedMode)) return { type: 'noop' };
   return { type: 'switch', mode: requestedMode };
 }
 
@@ -74,13 +84,6 @@ export function applySpectrumForMode(mode: string): void {
     // The docked EQ pane's visibility/width live in LiveEqPane's own effect
     // (TD-001 slice 6g, #710) — the pane is always mounted and toggles from
     // appMode, so there is nothing to write here.
-  } else if (mode === 'soundcheck') {
-    if (title) title.textContent = 'Soundcheck';
-    // #760: soundcheck playback is tracks + playhead only — the panel stays in
-    // 'empty' (spectrumChromeView → showStats:false hides the header stats-row)
-    // in both playing and idle states; it never flips into 'meters'.
-    if (useSoundcheckStore.getState().playing) useSpectrumStore.getState().setPanelState('empty', 'Playing — use the waveform playhead to navigate');
-    else useSpectrumStore.getState().setPanelState('empty', 'Load a session and press Play to start playback');
   } else if (mode === 'console') {
     if (title) title.textContent = SPECTRUM_TITLE.curve;
     if (!curAnalysis()) useSpectrumStore.getState().setPanelState('empty', 'Select a console to monitor channel state');
@@ -139,15 +142,14 @@ function maybeAutoStartLive(): void {
 
 // Verbatim port of the .mode-tab click listener's body (inline-app.js) minus
 // the tab-active class toggle, which ModeTabs.tsx now owns reactively.
-export function switchMode(mode: string): void {
+export function switchMode(mode: WorkspaceMode): void {
   const sb = getSoundBuddy();
   // Opt-in crash reporting (#473): the current screen is a safe breadcrumb
   // (a name, never content) a crash payload includes as `route`.
   sb.recordAppEvent(`screen.${mode === 'reportcard' ? 'reportcard' : mode}`);
-  // Live/Soundcheck replace the spectrum area with unrelated content and
-  // Soundcheck has its own playback transport — don't leave the analyzed
-  // file playing silently in the background with no visible control (#180).
-  if (mode === 'live' || mode === 'soundcheck') spectrumTransport.pauseIfPlaying();
+  // Live replaces the spectrum area with unrelated content — don't leave the
+  // analyzed file playing silently in the background with no visible control.
+  if (mode === 'live') spectrumTransport.pauseIfPlaying();
 
   useLiveCaptureStore.getState().setAppMode(mode);
 
