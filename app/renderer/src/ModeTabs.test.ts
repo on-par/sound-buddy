@@ -38,7 +38,10 @@ describe('ModeTabs', () => {
   it('marks whichever tab matches appMode as active instead', () => {
     useLiveCaptureStore.setState({ appMode: 'live' });
     const html = renderMarkup();
+    const liveButton = html.slice(html.indexOf('data-mode="live"'), html.indexOf('data-mode="console"'));
     expect(html).toContain('class="mode-tab active" data-mode="live"');
+    expect(liveButton).toContain('data-mode="live"');
+    expect(liveButton).toContain('Session');
     expect(html).not.toContain('class="mode-tab active" data-mode="reportcard"');
   });
 
