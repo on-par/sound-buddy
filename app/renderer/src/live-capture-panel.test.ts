@@ -57,8 +57,6 @@ import {
   type StripConfig,
   type ChannelGroup,
   type LiveMeterChannel,
-  type StripView,
-  type PanelView,
   type LiveEvent,
   type WindowData,
   type EqPaneRoomOverride,
@@ -73,28 +71,6 @@ const devices: LiveDevice[] = [
   { index: 0, name: 'Scarlett 18i20', channels: 18, default_sr: 48000 },
   { index: 1, name: 'Built-in Microphone', channels: 2, default_sr: 44100 },
 ];
-
-function stripView(overrides: Partial<StripView> = {}): StripView {
-  return {
-    strip: { kind: 'mono', a: 0, b: 1 },
-    displayName: 'Ch 1',
-    selected: false,
-    armed: false,
-    groupIndex: -1,
-    groupCollapsed: false,
-    ...overrides,
-  };
-}
-
-function panelView(overrides: Partial<PanelView> = {}): PanelView {
-  return {
-    deviceChannels: 8,
-    liveRunning: false,
-    liveMode: 'monitor',
-    groups: [],
-    ...overrides,
-  };
-}
 
 const LIVE_CHANNELS: LiveMeterChannel[] = [
   { name: 'Vocals', rms: -18, peak: -6, clipping: false, centroid: 2400,

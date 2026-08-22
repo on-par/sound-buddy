@@ -85,8 +85,6 @@ const TICK_CHANNELS: LiveMeterChannel[] = [
     bands: { sub_bass: -20, bass: -10, low_mid: -26, mid: -30, high_mid: -34, presence: -40, brilliance: -50 } },
 ];
 
-const TICK: LiveEvent = { type: 'meter', ts: 0, channels: TICK_CHANNELS } as LiveEvent;
-
 function makeState(overrides: Partial<LiveWorkspaceViewState> = {}): LiveWorkspaceViewState {
   return {
     channelConfig: CONFIG,

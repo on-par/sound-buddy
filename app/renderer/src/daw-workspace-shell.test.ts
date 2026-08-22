@@ -165,11 +165,11 @@ describe('DAW shell and shared Record transport (#1081)', () => {
   it('arm controls stay usable while monitoring and freeze only while recording (#757)', () => {
     const toolbar = functionBody(workspaceViewTs, 'liveWorkspaceToolbarHTML');
     expect(toolbar).toContain("state.isCapturing && state.liveMode === 'record'");
-    // TD-001 slice 6h (#711): the per-strip arm stamp derives from the panel
-    // state (liveRunning && liveMode === 'record') in dawTrackHeaderHTML — the
+    // TD-001 slice 6h (#711): the per-strip arm stamp derives from workspace
+    // state (isCapturing && liveMode === 'record') in dawTrackHeaderHTML — the
     // inline setCaptureControlsLocked armLocked sweep is gone. The behavior is
     // unit-pinned in live-capture-panel.test.ts.
-    expect(liveCapturePanelTs).toContain('panel.liveRunning && panel.liveMode === \'record\'');
+    expect(workspaceViewTs).toContain('state.isCapturing && state.liveMode === \'record\'');
     expect(inlineApp).not.toContain('function setCaptureControlsLocked');
   });
 });
