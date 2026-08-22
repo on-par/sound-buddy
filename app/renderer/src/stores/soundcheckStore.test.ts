@@ -148,6 +148,30 @@ describe('createSoundcheckStore', () => {
       expect(store.getState().routes).toEqual([[3], [4, 5]]);
       expect(store.getState().statusMessage).toBe('Could not read session.json: malformed');
     });
+
+    it('refuses to replace a session while playback is active', async () => {
+      const readSession = vi.fn(async () => ({ success: true, manifest: { tracks: [{ kind: 'mono', label: 'Replacement' }] } }));
+      const { store } = makeStore({ readSession });
+      store.setState({
+        sessionDir: '/working',
+        manifest: MANIFEST,
+        routes: [[3], [4, 5]],
+        playing: true,
+        lastElapsedTick: { elapsed: 12, duration: 60 },
+      });
+
+      await expect(store.getState().loadSession('/replacement')).resolves.toBe(false);
+
+      expect(readSession).not.toHaveBeenCalled();
+      expect(store.getState()).toMatchObject({
+        sessionDir: '/working',
+        manifest: MANIFEST,
+        routes: [[3], [4, 5]],
+        playing: true,
+        lastElapsedTick: { elapsed: 12, duration: 60 },
+        statusMessage: 'Stop playback before loading a different session.',
+      });
+    });
   });
 
   describe('selectDevice', () => {

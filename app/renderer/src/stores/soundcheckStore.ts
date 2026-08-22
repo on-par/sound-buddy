@@ -161,6 +161,10 @@ export function createSoundcheckStore(getApi: () => SoundcheckApi) {
     },
 
     async loadSession(dir) {
+      if (get().playing) {
+        set({ statusMessage: 'Stop playback before loading a different session.' });
+        return false;
+      }
       const result = (await getApi().readSession(dir)) as { success?: boolean; error?: string; manifest?: SessionManifest } | null;
       if (!result || !result.success) {
         set({ statusMessage: (result && result.error) || 'Could not read that session.' });
