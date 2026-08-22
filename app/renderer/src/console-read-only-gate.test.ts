@@ -116,7 +116,7 @@ describe('Console IPC surface is read-only by construction (#884 ADR, #977 ADR, 
   });
 
   it('the live channel rows are display-only — no interactive element inside them', () => {
-    const start = consolePanelTsx.indexOf('id="console-live-channels"');
+    const start = consolePanelTsx.indexOf('id="console-channel-list"');
     expect(start).toBeGreaterThan(-1);
     const block = consolePanelTsx.slice(start, consolePanelTsx.indexOf('</ul>', start));
     expect(block).toContain('console-channel-meter');

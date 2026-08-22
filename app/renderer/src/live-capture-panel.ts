@@ -185,55 +185,12 @@ export function veqArcSVG(curve: SpectrumCurve, centroid: number | undefined, id
   return spectrumCurveSVG(curve, centroid, null, { uid: `live${idx}`, vbH: VEQ_VB_H, yMin: DB_MIN, yMax: DB_MAX, wantPaths });
 }
 
-export function veqChannelHTML(ch: LiveMeterChannel, idx: number, stripView: StripView, panel: PanelView): string {
-  const strip = stripView.strip;
-  const displayName = stripView.displayName;
-  const selected = stripView.selected;
-  const armed = stripView.armed;
-  // Inline track definition (#189): the { kind, a, b } strip, rendered right in
-  // the header so an engineer never has to leave the workspace to define a
-  // track. Disabled mid-capture like every other config control (#38).
-  const stereo = !!(strip && strip.kind === 'stereo');
-  const n = panel.deviceChannels;
-  const defDisabled = panel.liveRunning ? ' disabled' : '';
-  const defHTML = `<span class="live-ch-def">
-      <select class="live-ch-kind" data-idx="${idx}" aria-label="Mono or stereo"${defDisabled}>
-        <option value="mono"${!stereo ? ' selected' : ''}>Mono</option>
-        <option value="stereo"${stereo ? ' selected' : ''}>Stereo</option>
-      </select>
-      <select class="live-ch-src${stereo ? ' leg' : ''}" data-idx="${idx}" data-field="a" aria-label="${stereo ? 'Left source channel' : 'Source channel'}" title="${stereo ? 'Left source channel' : 'Source channel'}"${defDisabled}>${channelOptions(strip ? strip.a : 0, n, stereo)}</select>
-      ${stereo ? `<select class="live-ch-src leg" data-idx="${idx}" data-field="b" aria-label="Right source channel" title="Right source channel"${defDisabled}>${channelOptions((strip as StripConfig).b, n, true)}</select>` : ''}
-    </span>`;
-  const grpOf = stripView.groupIndex;
-  // The workspace remove control (#188) rides every strip — idle or live — so
-  // it stays present-but-disabled through a capture (read-only while running)
-  // rather than disappearing, and is allowed down to zero strips so the empty
-  // state stays reachable.
-  // Per-strip drag handle (#483) only applies within a group — cross-group
-  // moves stay on the inspector's group selector (#33 follow-up).
-  const dragHTML = grpOf !== -1
-    ? `<button type="button" class="live-ch-drag" draggable="true" aria-label="Reorder track within group — drag, or press Arrow Up/Down" title="Drag to reorder track"${panel.liveRunning ? ' disabled' : ''}>⋮⋮</button>`
-    : '';
-  return `<div class="live-ch${selected ? ' selected' : ''}${ch.idle ? ' idle' : ''}${stripView.groupCollapsed ? ' group-collapsed' : ''}" data-ch="${idx}"${selected ? ' aria-current="true"' : ''} tabindex="0" role="button" aria-label="Select ${escapeHtml(displayName)} to inspect in the EQ pane">
-    <div class="live-ch-head">
-      ${dragHTML}
-      <button type="button" class="live-ch-arm" data-idx="${idx}" aria-pressed="${armed}" aria-label="${armed ? 'Disarm' : 'Arm'} track for recording" title="${armed ? 'Armed for recording — click to disarm' : 'Disarmed — click to arm'}"${panel.liveRunning && panel.liveMode === 'record' ? ' disabled' : ''}></button>
-      <span class="live-ch-name${ch.clipping ? ' clip' : ''}" contenteditable="true" spellcheck="false" role="textbox" aria-label="Channel name — click to rename" title="Click to rename">${escapeHtml(displayName)}</span>
-      ${defHTML}
-      <span class="live-ch-level" aria-hidden="true"><span class="live-ch-level-fill" style="width:${levelPercent(ch.rms, !!ch.idle)}%"></span></span>
-      <span class="live-ch-meta">${ch.idle ? 'Idle' : `RMS ${fmt(ch.rms)} · Peak ${fmt(ch.peak)} dBFS`}</span>
-      ${ch.clipping ? '<span class="live-ch-clip">CLIP</span>' : ''}
-      <button type="button" class="live-ch-x" title="Remove track" aria-label="Remove track"${panel.liveRunning ? ' disabled' : ''}>×</button>
-    </div>
-  </div>`;
-}
-
 /* ── Live EQ pane (#668) ──
  * The per-strip chart moved off the compact channel strip and into a single
  * shared pane: a "Room" section (the measurement-source channel, same
  * resolution as measurementChannel()/the header badge) and a "Selected"
- * section (whichever strip an engineer last clicked). levelPercent drives the
- * inline level-bar left behind on the now-chartless strip (veqChannelHTML). */
+ * section (whichever track an engineer last clicked). levelPercent drives the
+ * compact level-bar in the DAW track header. */
 export const EQ_PANE_MIN_W = 260;
 export const EQ_PANE_MAX_W = 640;
 export const EQ_PANE_DEFAULT_W = 360;
@@ -458,7 +415,7 @@ function eqPaneSectionParts(section: EqPaneSection): EqPaneSectionParts {
 }
 
 // Shared by eqPaneHTML's two sections — same .veq/.veq-bars/.veq-labels shape
-// veqChannelHTML used to render per-strip, now rendered once per pane slot.
+// Live EQ pane slots render once per pane.
 // Only the arc SVG is regenerated per call: its uid ('pane-a'/'pane-b') has
 // to differ between the two slots so their element ids don't collide, even
 // when both slots show the same channel.
@@ -538,7 +495,7 @@ export interface EqPanePatchPlan {
 }
 
 // Per-tick "what changed" for the pane's two arcs — mirrors
-// patchLiveChannelPlan's curve/loudestIdx/arc shape (below), just computed
+// the retired strip patch plan's curve/loudestIdx/arc shape, computed
 // for the pane's up-to-two sections instead of once per strip. curve/
 // loudestIdx are reused between slots when secondaryIsPrimary (same channel)
 // — only the uid-scoped arc SVG has to be regenerated per slot.
@@ -571,12 +528,12 @@ export function eqPanePatchPlan(view: EqPaneView): EqPanePatchPlan {
 }
 
 /* c8 ignore start -- DOM-patching appliers, no jsdom in this harness
-   (renderToString only) — same precedent as patchLiveChannel below;
+   (renderToString only) — same precedent as the old strip DOM applier;
    exercised by tests/e2e/live-capture.spec.ts's "a new tick updates bars and
    arc in place" (patchEqPaneSection) and named-channel-groups.spec.ts's
    group-summary assertions (patchGroupSummaries). */
 // Patches one EQ pane section's arc + bars in place — mirrors the exact
-// arc-then-bars patch sequence the old per-strip patchLiveChannel used, just
+// arc-then-bars patch sequence the old per-strip DOM applier used, just
 // applied to the pane's <=2 sections instead of every strip (#668). Port of
 // inline-app.js's patchEqPaneSection (TD-001 slice 6g, #710). eqPanePatchPlan
 // always produces path data (wantPaths: true), so the object/string narrowing
@@ -630,7 +587,7 @@ export function patchGroupSummaries(wrap: Element, channels: LiveMeterChannel[],
     if (!summaryEl) return;
     const summary = groupSummary(channels, grp.members);
     summaryEl.textContent = groupSummaryText(summary);
-    if (summary.clipping) summaryEl.insertAdjacentHTML('beforeend', '<span class="live-ch-clip">CLIP</span>');
+    if (summary.clipping) summaryEl.insertAdjacentHTML('beforeend', '<span class="live-group-clip">CLIP</span>');
   });
 }
 /* c8 ignore stop */
@@ -638,7 +595,7 @@ export function patchGroupSummaries(wrap: Element, channels: LiveMeterChannel[],
 // Group-level summary (#483): a compact "N tracks · Peak X dBFS" readout shown
 // on a collapsed group's header so an engineer can still see the group is
 // live without expanding it. Out-of-range members (a group referencing a
-// since-removed strip) are excluded, mirroring liveMetersHTML's own filter.
+// since-removed strip) are excluded.
 export interface GroupSummary { count: number; peak: number | null; clipping: boolean; idle: boolean }
 export function groupSummary(channels: LiveMeterChannel[], members: number[]): GroupSummary {
   const present = members.filter((m) => m < channels.length).map((m) => channels[m]);
@@ -667,37 +624,6 @@ export function groupSummaryText(s: GroupSummary): string {
 // stopped before the first window has nothing to show.
 export function shouldOfferReportCard(windowCount: number): boolean {
   return windowCount > 0;
-}
-
-// Live board strip HTML grouped under named-group headers (#41); ungrouped strips
-// fall into a trailing default section. Strips keep their original channel index
-// as data-ch so patching/labels/arming stay index-addressed. With no groups this
-// is just the flat strip list (backward-compatible with #40).
-export function liveMetersHTML(channels: LiveMeterChannel[], stripViews: StripView[], panel: PanelView): string {
-  const n = channels.length;
-  let html = '';
-  const rendered = new Set<number>();
-  panel.groups.forEach((grp, g) => {
-    const collapsed = !!grp.collapsed;
-    const summary = groupSummary(channels, grp.members);
-    html += `<div class="live-group-head${collapsed ? ' collapsed' : ''}" data-group="${g}">`
-      + `<button type="button" class="live-group-drag" draggable="true" aria-label="Reorder group — drag, or press Arrow Up/Down" title="Drag to reorder group"${panel.liveRunning ? ' disabled' : ''}>⋮⋮</button>`
-      + `<button type="button" class="live-group-fold" aria-label="Collapse or expand group" aria-expanded="${collapsed ? 'false' : 'true'}" title="Collapse / expand group">▾</button>`
-      + `<span class="live-group-name">${escapeHtml(grp.name)}</span>`
-      + `<span class="live-group-summary">${escapeHtml(groupSummaryText(summary))}${summary.clipping ? '<span class="live-ch-clip">CLIP</span>' : ''}</span>`
-      + `<button type="button" class="live-group-rename" aria-label="Rename group" title="Rename group"${panel.liveRunning ? ' disabled' : ''}>Rename</button>`
-      + `<button type="button" class="live-group-del" aria-label="Delete group" title="Delete group"${panel.liveRunning ? ' disabled' : ''}>Delete</button></div>`;
-    const members = grp.members.filter((m) => m < n);
-    if (!members.length) html += `<div class="live-group-empty">No strips assigned</div>`;
-    members.forEach((m) => { html += veqChannelHTML(channels[m], m, stripViews[m], panel); rendered.add(m); });
-  });
-  const ung: number[] = [];
-  for (let i = 0; i < n; i++) if (!rendered.has(i)) ung.push(i);
-  if (panel.groups.length && ung.length) {
-    html += `<div class="live-group-head ungrouped" data-group="-1"><span class="live-group-name">Ungrouped</span></div>`;
-  }
-  ung.forEach((i) => { html += veqChannelHTML(channels[i], i, stripViews[i], panel); });
-  return html;
 }
 
 /* ── Channel configuration ── */
@@ -986,76 +912,3 @@ export function liveSessionReportCardSource(
     channels: liveChannelContributors(last.win.channels, config),
   };
 }
-
-/* ── Live-tick DOM patching (TD-001 slice 5, #423) ──
- * patchLiveChannelPlan is the pure "what changed" computation (meta text,
- * selected/idle flags, the inline level-bar percentage) — fully unit-tested
- * below. Strips no longer carry their own chart (#668 moved that to the
- * shared EQ pane — see eqPanePatchPlan above), which is the performance win
- * the issue is about: a tick with N strips no longer recomputes N arcs.
- * patchLiveChannel is the thin DOM applier ported verbatim from
- * inline-app.js's patchLiveChannel; it stays c8-ignored for the same reason
- * as spectrum-display.ts's patchBarsAndLabels (no jsdom in this harness) and
- * is exercised by the live-capture-* e2e specs. */
-export interface LiveChannelPatchPlan {
-  selected: boolean;
-  idle: boolean;
-  displayName: string;
-  clipping: boolean;
-  meta: string;
-  removeDisabled: boolean;
-  levelPercent: number;
-}
-
-export function patchLiveChannelPlan(
-  ch: LiveMeterChannel,
-  idx: number,
-  stripView: StripView,
-  isCapturing: boolean
-): LiveChannelPatchPlan {
-  return {
-    selected: stripView.selected,
-    idle: !!ch.idle,
-    displayName: stripView.displayName,
-    clipping: !!ch.clipping,
-    meta: ch.idle ? 'Idle' : `RMS ${fmt(ch.rms)} · Peak ${fmt(ch.peak)} dBFS`,
-    removeDisabled: isCapturing,
-    levelPercent: levelPercent(ch.rms, !!ch.idle),
-  };
-}
-
-/* c8 ignore start -- DOM-patching applier, no jsdom in this harness
-   (renderToString only) — same precedent as spectrum-display.ts's
-   patchBarsAndLabels; exercised by the live-capture-* e2e specs. */
-export function patchLiveChannel(
-  el: Element,
-  ch: LiveMeterChannel,
-  idx: number,
-  stripView: StripView,
-  isCapturing: boolean
-): void {
-  const plan = patchLiveChannelPlan(ch, idx, stripView, isCapturing);
-  el.classList.toggle('selected', plan.selected);
-  if (plan.selected) el.setAttribute('aria-current', 'true');
-  else el.removeAttribute('aria-current');
-  el.classList.toggle('idle', plan.idle); // a real tick landing on a prior idle placeholder graduates it
-  const name = el.querySelector('.live-ch-name');
-  // Don't clobber the field while the engineer is renaming it in place (#39);
-  // the live tick keeps flowing but their caret/text stays put until they commit.
-  if (name && document.activeElement !== name) name.textContent = plan.displayName;
-  if (name) name.classList.toggle('clip', plan.clipping);
-  const meta = el.querySelector('.live-ch-meta');
-  if (meta) meta.textContent = plan.meta;
-  const removeBtn = el.querySelector('.live-ch-x') as HTMLButtonElement | null;
-  if (removeBtn) removeBtn.disabled = plan.removeDisabled;
-  const clipEl = el.querySelector('.live-ch-clip');
-  // Insert just before the remove button (#188) so CLIP lands in the same spot
-  // whether it was there on the first tick (static template order) or shows up
-  // later — .live-ch-x carries the head's margin-left:auto right-alignment.
-  if (plan.clipping && !clipEl && removeBtn) removeBtn.insertAdjacentHTML('beforebegin', '<span class="live-ch-clip">CLIP</span>');
-  else if (!plan.clipping && clipEl) clipEl.remove();
-
-  const levelFill = el.querySelector('.live-ch-level-fill, .daw-track-head-level-fill') as HTMLElement | null;
-  if (levelFill) levelFill.style.width = `${plan.levelPercent}%`;
-}
-/* c8 ignore stop */

@@ -130,7 +130,6 @@
     .sb-pulse { animation:sbpulse var(--dur-pulse) var(--ease-in-out) infinite; }
     @keyframes sbspin { to{transform:rotate(360deg)} }
     @keyframes sblivem { 0%,100%{opacity:1} 50%{opacity:.85} }
-    .sb-live-meters { animation:sblivem 1.2s ease-in-out infinite; }
 
     /* Workspace */
     #workspace { display:flex; flex:1; overflow:hidden; }
@@ -311,7 +310,7 @@
     .console-readonly-note { font:var(--fw-regular) var(--fs-micro)/1.3 var(--font-sans); color:var(--text-muted); }
 
     /* #978: Console panel — live meter state. */
-    #console-live-channels { list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:2px; }
+    #console-channel-list { list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:2px; }
     .console-channel-row { display:flex; align-items:center; gap:8px; font:var(--fw-regular) var(--fs-micro)/1.3 var(--font-sans); color:var(--text-secondary); }
     .console-channel-meter { flex:none; width:72px; height:6px; border-radius:var(--radius-xs); background:var(--surface-inset); border:1px solid var(--border-subtle); overflow:hidden; }
     .console-channel-meter-fill { display:block; height:100%; background:var(--gold-500, #EBB93C); }
@@ -743,14 +742,9 @@
     .chcfg-head .lbl { font:var(--fw-medium) var(--fs-label)/1 var(--font-sans); color:var(--text-tertiary); letter-spacing:var(--tracking-label); }
     .arm-count { font:var(--fw-regular) var(--fs-micro)/1 var(--font-mono); color:var(--text-muted); }
     .arm-hint { margin-top:8px; padding:8px 10px; border-radius:var(--radius-md); background:var(--surface-inset); border:1px solid var(--issue-500); color:var(--issue-text); font:var(--fw-regular) var(--fs-micro)/1.3 var(--font-sans); text-align:center; }
-    /* Arm-toggle look for the workspace's .live-ch-arm (#191) — dot-in-a-box,
+    /* Arm-toggle look for the workspace's DAW track arm (#191) — dot-in-a-box,
        JS-gated (outside #tab-live). */
-    .live-ch-arm { flex:0 0 auto; width:var(--control-h-sm); height:var(--control-h-sm); align-items:center; justify-content:center; align-self:center; padding:0; border:1px solid var(--border-subtle); border-radius:var(--radius-md); background:transparent; cursor:pointer; }
-    .live-ch-arm { display:inline-flex; }
-    .live-ch-arm::before { content:''; width:8px; height:8px; border-radius:50%; background:var(--text-muted); transition:background var(--dur-base) var(--ease-out), box-shadow var(--dur-base) var(--ease-out); }
-    .live-ch-arm[aria-pressed="true"] { border-color:var(--issue-500); }
-    .live-ch-arm[aria-pressed="true"]::before { background:var(--issue-500); box-shadow:0 0 6px -1px var(--issue-500); }
-    .live-ch-arm:disabled { opacity:0.4; cursor:not-allowed; }
+    .daw-track-head-arm { flex:0 0 auto; align-items:center; justify-content:center; align-self:center; padding:0; }
     /* Workspace toolbar's Arm all / Disarm all + count (#191) — always rendered
        now that the mode toggle is gone (#757). */
     .live-ws-arm { display:flex; align-items:center; gap:6px; margin-left:auto; }
@@ -839,44 +833,6 @@
     .stage-row.done .stage-spin { display:none; }
     .stage-row.done .stage-check { display:flex; }
     .meter-card { background:var(--surface-inset); border:1px solid var(--border-subtle); border-radius:var(--radius-xl); box-shadow:var(--elevation-canvas); padding:20px 26px; }
-    .live-ch { padding:14px 0; }
-    .live-ch + .live-ch { border-top:1px solid var(--border-subtle); }
-    .live-ch-head { display:flex; align-items:baseline; gap:10px; margin-bottom:10px; }
-    .live-ch-name { font:var(--fw-semibold) var(--fs-body-sm)/1 var(--font-sans); color:var(--text-primary); border-radius:var(--radius-sm); padding:2px 4px; margin:-2px -4px; outline:none; cursor:text; }
-    .live-ch-name:hover { background:var(--surface-raised); }
-    .live-ch-name:focus { background:var(--surface-raised); box-shadow:var(--glow-focus); }
-    .live-ch-name.clip { color:var(--issue-text); }
-    .live-ch-meta { font:var(--fw-regular) var(--fs-micro)/1 var(--font-mono); color:var(--text-muted); }
-    /* Inline track definition (#189): kind toggle + source picker(s) riding the
-       workspace header, right next to the name — reuses the chcfg-* control
-       tokens (sizing, tone) so it reads as one design system, just denser. */
-    .live-ch-def { display:flex; align-items:center; gap:4px; align-self:center; }
-    .live-ch-def select { flex:0 0 auto; height:var(--control-h-sm); padding:0 6px; border-radius:var(--radius-md); background:var(--surface-raised); color:var(--text-secondary); border:1px solid var(--border-subtle); font:var(--fw-medium) var(--fs-micro)/1 var(--font-sans); }
-    .live-ch-def select:focus { border-color:var(--gold-500); box-shadow:var(--glow-focus); outline:none; }
-    .live-ch-def select:disabled { opacity:0.4; cursor:not-allowed; }
-    .live-ch-kind { width:68px; }
-    .live-ch-src { width:64px; }
-    .live-ch-src.leg { width:40px; font-family:var(--font-mono); text-align:center; }
-    .live-ch-clip { font:var(--fw-semibold) var(--fs-micro)/1 var(--font-sans); color:var(--issue-text); letter-spacing:0.06em; }
-    /* Workspace per-row remove (#188): rides every strip — idle placeholder or
-       live — right-aligned in the head; the clip badge sits just left of it. */
-    .live-ch-x { margin-left:auto; flex:0 0 auto; width:var(--control-h-sm); height:var(--control-h-sm); border:1px solid var(--border-subtle); border-radius:var(--radius-md); background:transparent; color:var(--text-muted); cursor:pointer; font-size:15px; line-height:1; }
-    .live-ch-x:hover:not(:disabled) { color:var(--issue-text); border-color:var(--issue-500); }
-    .live-ch-x:disabled { opacity:0.35; cursor:not-allowed; }
-
-    /* Strip selection (#668): clicking a strip highlights it and drives the
-       docked EQ pane's "Selected" section — replaces the old per-strip
-       collapse/fold (#40), which moved off the strip entirely once the chart
-       moved into the shared pane. */
-    .live-ch.selected { background:var(--surface-raised); border-radius:var(--radius-md); margin:0 -10px; padding:14px 10px; box-shadow:inset 3px 0 0 var(--gold-500); }
-    /* Inline level bar (#668): a compact always-on readout replacing the
-       per-strip chart, so a strip still shows signal at a glance. */
-    .live-ch-level { position:relative; width:48px; height:4px; flex:0 0 auto; align-self:center; border-radius:var(--radius-sm); background:var(--meter-track); overflow:hidden; }
-    .live-ch-level-fill { position:absolute; left:0; top:0; bottom:0; border-radius:var(--radius-sm); background:var(--gold-500); transition:width var(--dur-base) var(--ease-out); }
-    /* Group-level collapse (#483): a collapsed group hides its member strips
-       entirely — strips stay in the DOM so live-tick patching keeps working,
-       CSS just hides them. */
-    .live-ch.group-collapsed { display:none; }
     .live-meters-toolbar { display:flex; align-items:center; gap:8px; margin-bottom:14px; }
     /* Workspace toolbar cap (#188): "N / M used" channel count. */
     .live-meters-toolbar .cap { font:var(--fw-regular) var(--fs-micro)/1 var(--font-mono); color:var(--text-muted); margin-right:auto; }
@@ -914,6 +870,7 @@
        themselves already show live level); surfaces on a collapsed header so
        an engineer can still see the group is live without expanding it. */
     .live-group-summary { display:none; align-items:center; gap:6px; font:var(--fw-regular) var(--fs-micro)/1 var(--font-mono); color:var(--text-muted); }
+    .live-group-clip { font:var(--fw-semibold) var(--fs-micro)/1 var(--font-sans); color:var(--issue-text); letter-spacing:0.06em; }
     .live-group-head.collapsed .live-group-summary { display:inline-flex; }
     /* Group header rename/delete (#190): quiet text buttons, right-aligned. */
     .live-group-rename { margin-left:auto; }
@@ -924,11 +881,11 @@
     .live-group-rename:disabled, .live-group-del:disabled { opacity:0.4; cursor:not-allowed; }
     /* Drag-reorder handles (#483): a grip glyph, quiet like the fold chevron.
        .drag-over is the drop-target insertion cue for both group headers and
-       track strips. */
-    .live-group-drag, .live-ch-drag { background:none; border:none; padding:0 2px; color:var(--text-muted); cursor:grab; font-size:11px; line-height:1; letter-spacing:-1px; }
-    .live-group-drag:hover:not(:disabled), .live-ch-drag:hover:not(:disabled) { color:var(--text-primary); }
-    .live-group-drag:disabled, .live-ch-drag:disabled { opacity:0.35; cursor:not-allowed; }
-    .live-group-head.drag-over, .live-ch.drag-over { outline:1px dashed var(--gold-500); outline-offset:-1px; }
+       track rows. */
+    .live-group-drag, .daw-track-head-drag { background:none; border:none; padding:0 2px; color:var(--text-muted); cursor:grab; font-size:11px; line-height:1; letter-spacing:-1px; }
+    .live-group-drag:hover:not(:disabled), .daw-track-head-drag:hover:not(:disabled) { color:var(--text-primary); }
+    .live-group-drag:disabled, .daw-track-head-drag:disabled { opacity:0.35; cursor:not-allowed; }
+    .live-group-head.drag-over, .daw-track-head.drag-over { outline:1px dashed var(--gold-500); outline-offset:-1px; }
 
     /* ══ DAW workspace shell (#517) ══
        Experimental (#516) timeline-style stand-in for the meter workspace on
@@ -998,16 +955,24 @@
        meter stay inside this fixed-height header rather than changing lane
        alignment. */
     .daw-track-head { display:grid; grid-template-columns:auto auto minmax(0, 1fr) auto auto auto; grid-template-areas:'drag index name def meter remove' 'drag index controls meta meta remove'; column-gap:6px; row-gap:3px; height:var(--daw-track-row-h); box-sizing:border-box; padding:5px 9px; border-bottom:1px solid var(--border-subtle); }
-    .daw-track-head.live-ch { margin:0; border-radius:0; box-shadow:none; }
-    .daw-track-head.live-ch + .daw-track-head.live-ch { border-top:0; }
-    .daw-track-head.live-ch.selected { padding:5px 9px; background:var(--surface-raised); box-shadow:inset 3px 0 0 var(--gold-500); }
-    .daw-track-head .live-ch-drag { grid-area:drag; align-self:center; }
+    .daw-track-head.selected { background:var(--surface-raised); box-shadow:inset 3px 0 0 var(--gold-500); }
+    .daw-track-head.group-collapsed { display:none; }
+    .daw-track-head-drag { grid-area:drag; align-self:center; }
     .daw-track-head-index { grid-area:index; align-self:center; font:var(--fw-regular) var(--fs-micro)/1 ui-monospace, monospace; font-variant-numeric:tabular-nums; color:var(--text-muted); }
-    .daw-track-head-name { grid-area:name; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font:var(--fw-semibold) var(--fs-body-sm)/1.3 var(--font-sans); color:var(--text-primary); }
+    .daw-track-head-name { grid-area:name; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font:var(--fw-semibold) var(--fs-body-sm)/1.3 var(--font-sans); color:var(--text-primary); border-radius:var(--radius-sm); padding:2px 4px; margin:-2px -4px; outline:none; cursor:text; }
+    .daw-track-head-name:hover { background:var(--surface-raised); }
+    .daw-track-head-name:focus { background:var(--surface-raised); box-shadow:var(--glow-focus); }
+    .daw-track-head-name.clip { color:var(--issue-text); }
     .daw-track-head .daw-track-head-name { justify-self:start; max-width:58px; position:relative; z-index:2; }
-    .daw-track-head .live-ch-def { grid-area:def; min-width:0; position:relative; z-index:1; }
+    .daw-track-head-def { grid-area:def; min-width:0; position:relative; z-index:1; display:flex; align-items:center; gap:4px; align-self:center; }
+    .daw-track-head-def select { flex:0 0 auto; height:var(--control-h-sm); padding:0 6px; border-radius:var(--radius-md); background:var(--surface-raised); color:var(--text-secondary); border:1px solid var(--border-subtle); font:var(--fw-medium) var(--fs-micro)/1 var(--font-sans); }
+    .daw-track-head-def select:focus { border-color:var(--gold-500); box-shadow:var(--glow-focus); outline:none; }
+    .daw-track-head-def select:disabled { opacity:0.4; cursor:not-allowed; }
+    .daw-track-head-kind { width:68px; }
+    .daw-track-head-src { width:64px; }
+    .daw-track-head-src.leg { width:40px; font-family:var(--font-mono); text-align:center; }
     .daw-track-head-controls { grid-area:controls; display:flex; gap:3px; }
-    .daw-track-head .live-ch-meta { grid-area:meta; align-self:center; justify-self:end; max-width:78px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .daw-track-head-meta { grid-area:meta; align-self:center; justify-self:end; max-width:78px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font:var(--fw-regular) var(--fs-micro)/1 var(--font-mono); color:var(--text-muted); }
     .daw-track-head-arm, .daw-track-head-mute, .daw-track-head-solo, .daw-track-head-remove { position:relative; z-index:3; border:1px solid var(--border-subtle); border-radius:var(--radius-sm); background:transparent; color:var(--text-muted); cursor:pointer; font:var(--fw-semibold) var(--fs-micro)/1 var(--font-sans); }
     .daw-track-head-arm, .daw-track-head-mute, .daw-track-head-solo { width:20px; height:16px; padding:0; }
     .daw-track-head-arm[aria-pressed="true"], .daw-track-head-mute[aria-pressed="true"], .daw-track-head-solo[aria-pressed="true"] { border-color:var(--gold-text); color:var(--gold-text); }

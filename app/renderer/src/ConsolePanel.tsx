@@ -253,7 +253,7 @@ export default function ConsolePanel(): JSX.Element | null {
       )}
 
       {s.liveChannels.length > 0 && (
-        <ul id="console-live-channels">
+        <ul id="console-channel-list">
           {s.liveChannels.map((c) => {
             // liveMeters is index-0-based over channels 1..32; a frame that has
             // not arrived yet (or a channel past the frame's width) reads as silence.

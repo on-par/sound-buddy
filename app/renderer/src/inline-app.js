@@ -110,8 +110,8 @@ const {
 /* ══ Live-capture panel rendering — extracted to live-capture-panel.ts (#307),
    bridged onto window by App.tsx like spectrumDisplay/reportCard. The 6g
    migration (TD-001 slice 6g, #710) orphaned the board/EQ-pane markup helpers
-   (liveMetersHTML/eqPaneView/eqPaneHTML/eqPaneSignature/eqPanePatchPlan/
-   patchLiveChannel, the group-summary helpers, LIVE_BAND_KEYS/liveBandCurve/
+   (eqPaneView/eqPaneHTML/eqPaneSignature/eqPanePatchPlan/
+   the group-summary helpers, LIVE_BAND_KEYS/liveBandCurve/
    veqArcSVG), the measurement-source label helpers, and
    clampEqPaneWidth/EQ_PANE_RESIZE_STEP (LiveEqPane owns the resize now) — and
    the 6i migration (TD-001 slice 6i, #712) moved the lifecycle + its
@@ -163,7 +163,7 @@ window.seekPlayback = (t) => transport.seek(t);
 // Live-tick coalescing (meter ticks arrive up to ~20/s) is owned by
 // LiveWorkspace.tsx's live-meter-controller (TD-001 slice 6c, #701), driven
 // by liveCaptureStore's lastTick rather than this file's own rAF batching.
-// The per-tick DOM appliers it calls (patchLiveChannel/patchGroupSummaries/
+// The per-tick DOM appliers it calls (group-summary patching/
 // patchEqPaneSection/patchStatsRow) are pure modules, and the DAW
 // waveform/playhead painters are reached via window.dawShellRuntime
 // (daw-shell-runtime.ts, TD-001 slice 6j, #713).
@@ -177,7 +177,7 @@ window.seekPlayback = (t) => transport.seek(t);
 // group CRUD) through its delegated handlers — the #spectrum-body click/
 // change/drag/keydown listeners are gone. Per-tick patching is
 // live-meter-controller.ts's createLiveMeterController (mounted by
-// LiveWorkspace.tsx), which calls the pure appliers (patchLiveChannel/
+// LiveWorkspace.tsx), which calls the pure appliers (group-summary patching/
 // patchGroupSummaries/patchEqPaneSection/patchStatsRow) against the
 // React-rendered DOM and the DAW painters via window.dawShellRuntime. The
 // stats row is pure-module-owned (statsRowView/liveStatsRowView +

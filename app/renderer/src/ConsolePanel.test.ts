@@ -284,7 +284,7 @@ describe('ConsolePanel (#884)', () => {
 
       const html = renderMarkup();
 
-      expect(html).toContain('id="console-live-channels"');
+      expect(html).toContain('id="console-channel-list"');
       expect(html).toContain('Kick');
       expect(html).toContain('-10.5 dB');
       expect(html).toContain('ON');

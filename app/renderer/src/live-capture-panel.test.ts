@@ -38,13 +38,8 @@ import {
   deviceNameFor,
   usedChannelCount,
   channelOptions,
-  liveBandCurve,
-  veqChannelHTML,
-  liveMetersHTML,
-  liveReportCardSource,
-  liveChannelContributors,
-  patchLiveChannelPlan,
-  groupSummary,
+  liveBandCurve,  liveReportCardSource,
+  liveChannelContributors,  groupSummary,
   groupSummaryText,
   shouldOfferReportCard,
   normalizeMeasurementSource,
@@ -374,155 +369,6 @@ describe('veqGridBarsHTML (#667)', () => {
   });
 });
 
-describe('veqChannelHTML', () => {
-  it('renders one source select (no leg selects) for a mono strip', () => {
-    const html = veqChannelHTML(LIVE_CHANNELS[0], 0, stripView({ strip: { kind: 'mono', a: 2, b: 3 } }), panelView());
-    expect((html.match(/live-ch-src/g) || []).length).toBe(1);
-    expect(html).not.toContain('live-ch-src leg');
-    expect(html).toContain('data-ch="0"');
-  });
-
-  it('no longer renders a per-strip chart — that moved to the shared EQ pane (#668)', () => {
-    const html = veqChannelHTML(LIVE_CHANNELS[0], 0, stripView(), panelView());
-    expect(html).not.toContain('class="veq"');
-    expect(html).not.toContain('veq-chart');
-    expect(html).not.toContain('veq-bars');
-    expect(html).not.toContain('veq-labels');
-  });
-
-  it('no longer renders a fold/collapse button (#668 — strips are no longer collapsible)', () => {
-    const html = veqChannelHTML(LIVE_CHANNELS[0], 0, stripView(), panelView());
-    expect(html).not.toContain('live-ch-fold');
-    expect(html).not.toContain('Collapse or expand strip');
-  });
-
-  it('renders an inline level-fill bar sized from levelPercent(rms, idle)', () => {
-    const html = veqChannelHTML(LIVE_CHANNELS[0], 0, stripView(), panelView());
-    expect(html).toContain('<span class="live-ch-level" aria-hidden="true">');
-    expect(html).toContain(`<span class="live-ch-level-fill" style="width:${levelPercent(LIVE_CHANNELS[0].rms, false)}%"></span>`);
-  });
-
-  it('renders a 0% level-fill for an idle channel', () => {
-    const html = veqChannelHTML({ ...LIVE_CHANNELS[0], idle: true }, 0, stripView(), panelView());
-    expect(html).toContain('<span class="live-ch-level-fill" style="width:0%"></span>');
-  });
-
-  it('defaults the source select to channel 0 when the strip is unconfigured', () => {
-    const html = veqChannelHTML(LIVE_CHANNELS[0], 0, stripView({ strip: null }), panelView());
-    expect(html).toContain('<option value="0" selected>Ch 1</option>');
-  });
-
-  it('renders a stereo kind select and two leg selects for a stereo strip', () => {
-    const html = veqChannelHTML(LIVE_CHANNELS[0], 0, stripView({ strip: { kind: 'stereo', a: 2, b: 3 } }), panelView());
-    expect(html).toContain('<option value="stereo" selected>Stereo</option>');
-    expect((html.match(/live-ch-src leg/g) || []).length).toBe(2);
-  });
-
-  it('disables kind/src/remove controls when the panel is live-running', () => {
-    const html = veqChannelHTML(LIVE_CHANNELS[0], 0, stripView(), panelView({ liveRunning: true }));
-    expect(html).toContain('live-ch-kind" data-idx="0" aria-label="Mono or stereo" disabled');
-    expect(html).toContain('live-ch-x" title="Remove track" aria-label="Remove track" disabled');
-  });
-
-  it('renders an arm toggle on every strip regardless of mode (#757)', () => {
-    const armed = veqChannelHTML(LIVE_CHANNELS[0], 0, stripView({ armed: true }), panelView());
-    expect(armed).toContain('live-ch-arm');
-    expect(armed).toContain('aria-pressed="true"');
-    expect(armed).toContain('Disarm track for recording');
-
-    const disarmed = veqChannelHTML(LIVE_CHANNELS[0], 0, stripView({ armed: false }), panelView());
-    expect(disarmed).toContain('aria-pressed="false"');
-    expect(disarmed).toContain('Arm track for recording');
-  });
-
-  // TD-001 slice 6h (#711): the inline setCaptureControlsLocked sweep kept the
-  // arm controls live while a MONITOR session ran (`armLocked = locked &&
-  // liveMode === 'record'`); the per-strip stamp now derives that from the
-  // panel state instead, so the #757 "arming stays live while monitoring" rule
-  // holds without the imperative re-assert.
-  it('keeps the arm toggle enabled while monitoring and disables it only while recording (#757)', () => {
-    const monitoring = veqChannelHTML(LIVE_CHANNELS[0], 0, stripView({ armed: true }), panelView({ liveRunning: true, liveMode: 'monitor' }));
-    expect(monitoring).toContain('live-ch-arm" data-idx="0" aria-pressed="true" aria-label="Disarm track for recording" title="Armed for recording — click to disarm"');
-    expect(monitoring).not.toMatch(/live-ch-arm[^>]*\bdisabled\b/);
-
-    const recording = veqChannelHTML(LIVE_CHANNELS[0], 0, stripView({ armed: true }), panelView({ liveRunning: true, liveMode: 'record' }));
-    expect(recording).toContain('live-ch-arm" data-idx="0" aria-pressed="true" aria-label="Disarm track for recording" title="Armed for recording — click to disarm" disabled');
-  });
-
-  it('adds a clip class and CLIP badge when the channel is clipping', () => {
-    const html = veqChannelHTML({ ...LIVE_CHANNELS[0], clipping: true }, 0, stripView(), panelView());
-    expect(html).toContain('live-ch-name clip');
-    expect(html).toContain('<span class="live-ch-clip">CLIP</span>');
-  });
-
-  it('shows Idle meta for idle channels, RMS/Peak otherwise', () => {
-    const idle = veqChannelHTML({ ...LIVE_CHANNELS[0], idle: true }, 0, stripView(), panelView());
-    expect(idle).toContain('live-ch idle');
-    expect(idle).toContain('<span class="live-ch-meta">Idle</span>');
-
-    const live = veqChannelHTML(LIVE_CHANNELS[0], 0, stripView(), panelView());
-    expect(live).toContain('RMS -18.0 · Peak -6.0 dBFS');
-  });
-
-  it('adds the selected class and aria-current="true" when selected', () => {
-    const html = veqChannelHTML(LIVE_CHANNELS[0], 0, stripView({ selected: true }), panelView());
-    expect(html).toContain('live-ch selected');
-    expect(html).toContain('aria-current="true"');
-  });
-
-  it('omits the selected class and aria-current entirely when not selected', () => {
-    const html = veqChannelHTML(LIVE_CHANNELS[0], 0, stripView({ selected: false }), panelView());
-    const wrapper = html.match(/<div class="live-ch[^"]*"[^>]*>/)?.[0] ?? '';
-    expect(wrapper).not.toContain('selected');
-    expect(wrapper).not.toContain('aria-current');
-  });
-
-  it('is keyboard-focusable so strip selection (#668) is not mouse-only', () => {
-    const html = veqChannelHTML(LIVE_CHANNELS[0], 0, stripView(), panelView());
-    const wrapper = html.match(/<div class="live-ch[^"]*"[^>]*>/)?.[0] ?? '';
-    expect(wrapper).toContain('tabindex="0"');
-    expect(wrapper).toContain('role="button"');
-    expect(wrapper).toContain('aria-label="Select');
-  });
-
-  it('leaves classification selectors out of strips while retaining grouped drag behavior', () => {
-    const html = veqChannelHTML(LIVE_CHANNELS[0], 0, stripView({ groupIndex: 0 }), panelView());
-    expect(html).not.toContain('live-ch-group');
-    expect(html).not.toContain('live-ch-profile');
-    expect(html).toContain('live-ch-drag');
-  });
-
-  it('stamps data-ch with the channel index', () => {
-    const html = veqChannelHTML(LIVE_CHANNELS[1], 3, stripView(), panelView());
-    expect(html).toContain('data-ch="3"');
-  });
-
-  it('adds the group-collapsed class when the owning group is collapsed', () => {
-    const html = veqChannelHTML(LIVE_CHANNELS[0], 0, stripView({ groupIndex: 0, groupCollapsed: true }), panelView());
-    expect(/class="live-ch[^"]*\bgroup-collapsed\b[^"]*"/.test(html)).toBe(true);
-  });
-
-  it('omits the group-collapsed class when not in a collapsed group', () => {
-    const html = veqChannelHTML(LIVE_CHANNELS[0], 0, stripView({ groupIndex: 0, groupCollapsed: false }), panelView());
-    expect(html).not.toContain('group-collapsed');
-  });
-
-  it('renders a drag handle for a grouped strip, absent for an ungrouped one', () => {
-    const grouped = veqChannelHTML(LIVE_CHANNELS[0], 0, stripView({ groupIndex: 0 }), panelView());
-    expect(grouped).toContain('live-ch-drag');
-    expect(grouped).toContain('draggable="true"');
-    expect(grouped).toContain('Reorder track within group');
-
-    const ungrouped = veqChannelHTML(LIVE_CHANNELS[0], 0, stripView({ groupIndex: -1 }), panelView());
-    expect(ungrouped).not.toContain('live-ch-drag');
-  });
-
-  it('disables the strip drag handle when liveRunning', () => {
-    const html = veqChannelHTML(LIVE_CHANNELS[0], 0, stripView({ groupIndex: 0 }), panelView({ liveRunning: true }));
-    expect(html).toContain('live-ch-drag" draggable="true" aria-label="Reorder track within group — drag, or press Arrow Up/Down" title="Drag to reorder track" disabled');
-  });
-
-});
 
 describe('eqPaneClassificationHTML', () => {
   const profiles = [{ id: 'bass', label: 'Bass' }, { id: 'vocal', label: 'Vocal' }];
@@ -734,85 +580,6 @@ describe('shouldOfferReportCard (#488, #757)', () => {
   });
 });
 
-describe('liveMetersHTML', () => {
-  it('renders strips in order with no group headers when there are no groups', () => {
-    const stripViews = LIVE_CHANNELS.map(() => stripView());
-    const html = liveMetersHTML(LIVE_CHANNELS, stripViews, panelView());
-    expect(html).not.toContain('live-group-head');
-    expect(html.indexOf('data-ch="0"')).toBeLessThan(html.indexOf('data-ch="1"'));
-  });
-
-  it('renders a header per group with escaped names, members under it, and leftovers as Ungrouped', () => {
-    const groups: ChannelGroup[] = [{ name: '<b>Drums</b>', members: [1] }, { name: 'Empty', members: [] }];
-    const stripViews = LIVE_CHANNELS.map((_, i) => stripView({ groupIndex: i === 1 ? 0 : -1 }));
-    const html = liveMetersHTML(LIVE_CHANNELS, stripViews, panelView({ groups }));
-
-    expect(html).toContain('&lt;b&gt;Drums&lt;/b&gt;');
-    expect(html).not.toContain('<b>Drums</b>');
-    expect(html).toContain('No strips assigned');
-    expect(html).toContain('Ungrouped');
-    // Group member (idx 1) renders before the trailing ungrouped strip (idx 0).
-    expect(html.indexOf('data-ch="1"')).toBeLessThan(html.indexOf('data-ch="0"'));
-  });
-
-  it('disables group rename/delete when liveRunning', () => {
-    const groups: ChannelGroup[] = [{ name: 'Drums', members: [0] }];
-    const stripViews = LIVE_CHANNELS.map(() => stripView());
-    const html = liveMetersHTML(LIVE_CHANNELS, stripViews, panelView({ groups, liveRunning: true }));
-    expect(html).toContain('live-group-rename" aria-label="Rename group" title="Rename group" disabled');
-    expect(html).toContain('live-group-del" aria-label="Delete group" title="Delete group" disabled');
-  });
-
-  it('marks a collapsed group header with .collapsed, aria-expanded=false, and a visible summary', () => {
-    const groups: ChannelGroup[] = [{ name: 'Drums', members: [0, 1], collapsed: true }];
-    const stripViews = LIVE_CHANNELS.map(() => stripView({ groupIndex: 0, groupCollapsed: true }));
-    const html = liveMetersHTML(LIVE_CHANNELS, stripViews, panelView({ groups }));
-    expect(html).toMatch(/<div class="live-group-head collapsed" data-group="0">/);
-    expect(html).toContain('aria-expanded="false"');
-    expect(html).toContain('live-group-summary');
-    expect(html).toContain('2 tracks');
-  });
-
-  it('does not mark an expanded group header collapsed, and aria-expanded is true', () => {
-    const groups: ChannelGroup[] = [{ name: 'Drums', members: [0] }];
-    const stripViews = LIVE_CHANNELS.map(() => stripView({ groupIndex: 0, groupCollapsed: false }));
-    const html = liveMetersHTML(LIVE_CHANNELS, stripViews, panelView({ groups }));
-    expect(html).toMatch(/<div class="live-group-head" data-group="0">/);
-    expect(html).toContain('aria-expanded="true"');
-  });
-
-  it('renders a group drag handle, disabled while liveRunning', () => {
-    const groups: ChannelGroup[] = [{ name: 'Drums', members: [0] }];
-    const stripViews = LIVE_CHANNELS.map(() => stripView({ groupIndex: 0 }));
-    const html = liveMetersHTML(LIVE_CHANNELS, stripViews, panelView({ groups, liveRunning: true }));
-    expect(html).toContain('live-group-drag" draggable="true" aria-label="Reorder group — drag, or press Arrow Up/Down" title="Drag to reorder group" disabled');
-  });
-
-  it('shows a CLIP badge on the group summary when a member is clipping', () => {
-    const groups: ChannelGroup[] = [{ name: 'Drums', members: [0, 1] }];
-    const stripViews = LIVE_CHANNELS.map(() => stripView({ groupIndex: 0 }));
-    const channels = [{ ...LIVE_CHANNELS[0], clipping: true }, LIVE_CHANNELS[1]];
-    const html = liveMetersHTML(channels, stripViews, panelView({ groups }));
-    expect(html).toContain('live-group-summary');
-    expect(html).toMatch(/live-group-summary">[^<]*<span class="live-ch-clip">CLIP<\/span>/);
-  });
-
-  it('excludes out-of-range members from the summary count', () => {
-    const groups: ChannelGroup[] = [{ name: 'Drums', members: [0, 1, 99] }];
-    const stripViews = LIVE_CHANNELS.map(() => stripView({ groupIndex: 0 }));
-    const html = liveMetersHTML(LIVE_CHANNELS, stripViews, panelView({ groups }));
-    expect(html).toContain('2 tracks');
-  });
-
-  it('is composed of the exact veqChannelHTML output for each channel (markup-identity guard)', () => {
-    const stripViews = LIVE_CHANNELS.map((ch) => stripView({ displayName: ch.name }));
-    const panel = panelView();
-    const html = liveMetersHTML(LIVE_CHANNELS, stripViews, panel);
-    LIVE_CHANNELS.forEach((ch, i) => {
-      expect(html).toContain(veqChannelHTML(ch, i, stripViews[i], panel));
-    });
-  });
-});
 
 describe('normalizeMeasurementSource', () => {
   it('passes through a valid index', () => {
@@ -1313,58 +1080,6 @@ describe('liveSessionReportCardSource', () => {
   });
 });
 
-describe('patchLiveChannelPlan', () => {
-  function sv(overrides: Partial<StripView> = {}): StripView {
-    return { strip: { kind: 'mono', a: 0, b: 1 }, displayName: 'Ch 1', selected: false, armed: false, groupIndex: -1, groupCollapsed: false, ...overrides };
-  }
-
-  it('carries selected/displayName/meta through from the strip view and channel', () => {
-    const plan = patchLiveChannelPlan(LIVE_CHANNELS[0], 0, sv({ displayName: 'Vocals', selected: true }), false);
-    expect(plan.selected).toBe(true);
-    expect(plan.displayName).toBe('Vocals');
-    expect(plan.idle).toBe(false);
-    expect(plan.meta).toBe('RMS -18.0 · Peak -6.0 dBFS');
-    expect(plan.removeDisabled).toBe(false);
-  });
-
-  it('shows Idle meta for idle channels', () => {
-    const plan = patchLiveChannelPlan({ ...LIVE_CHANNELS[0], idle: true }, 0, sv(), false);
-    expect(plan.idle).toBe(true);
-    expect(plan.meta).toBe('Idle');
-  });
-
-  it('reflects clipping', () => {
-    const plan = patchLiveChannelPlan({ ...LIVE_CHANNELS[0], clipping: true }, 0, sv(), false);
-    expect(plan.clipping).toBe(true);
-  });
-
-  it('sets removeDisabled while capturing', () => {
-    const plan = patchLiveChannelPlan(LIVE_CHANNELS[0], 0, sv(), true);
-    expect(plan.removeDisabled).toBe(true);
-  });
-
-  it('is false by default when the strip view is not selected', () => {
-    const plan = patchLiveChannelPlan(LIVE_CHANNELS[0], 0, sv({ selected: false }), false);
-    expect(plan.selected).toBe(false);
-  });
-
-  it('computes levelPercent from the channel rms/idle, matching the pure levelPercent helper', () => {
-    const plan = patchLiveChannelPlan(LIVE_CHANNELS[0], 0, sv(), false);
-    expect(plan.levelPercent).toBe(levelPercent(LIVE_CHANNELS[0].rms, false));
-  });
-
-  it('levelPercent is 0 for an idle channel', () => {
-    const plan = patchLiveChannelPlan({ ...LIVE_CHANNELS[0], idle: true }, 0, sv(), false);
-    expect(plan.levelPercent).toBe(0);
-  });
-
-  it('no longer carries a curve/loudestIdx/arc (#668 — strips no longer chart their own EQ)', () => {
-    const plan = patchLiveChannelPlan(LIVE_CHANNELS[0], 0, sv(), false);
-    expect(plan).not.toHaveProperty('curve');
-    expect(plan).not.toHaveProperty('loudestIdx');
-    expect(plan).not.toHaveProperty('arc');
-  });
-});
 
 describe('EQ_PANE constants (#668)', () => {
   it('defines the width bounds and the default and keyboard-resize step as named px constants', () => {
@@ -1822,7 +1537,7 @@ describe('eqPanePatchPlan', () => {
     expect(withSecondary.secondary!.curve.db).toHaveLength(7);
   });
 
-  it('floors non-finite bands to -120 in the derived curve, same as patchLiveChannelPlan', () => {
+  it('floors non-finite bands to -120 in the derived curve, same as retired strip patch plan', () => {
     const withNaN = [{ ...LIVE_CHANNELS[0], bands: { ...LIVE_CHANNELS[0].bands, sub_bass: NaN } }, LIVE_CHANNELS[1]];
     const plan = eqPanePatchPlan(eqPaneView(withNaN, config, 0, null));
     expect(plan.primary!.curve.db[0]).toBe(-120);

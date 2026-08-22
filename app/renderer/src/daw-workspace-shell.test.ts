@@ -166,7 +166,7 @@ describe('DAW shell and shared Record transport (#1081)', () => {
     const toolbar = functionBody(workspaceViewTs, 'liveWorkspaceToolbarHTML');
     expect(toolbar).toContain("state.isCapturing && state.liveMode === 'record'");
     // TD-001 slice 6h (#711): the per-strip arm stamp derives from the panel
-    // state (liveRunning && liveMode === 'record') in veqChannelHTML — the
+    // state (liveRunning && liveMode === 'record') in dawTrackHeaderHTML — the
     // inline setCaptureControlsLocked armLocked sweep is gone. The behavior is
     // unit-pinned in live-capture-panel.test.ts.
     expect(liveCapturePanelTs).toContain('panel.liveRunning && panel.liveMode === \'record\'');
@@ -386,7 +386,7 @@ describe('configured track rows render from one shared list (#1043)', () => {
 
   it('keeps the editable track name above compact definition controls', () => {
     const nameRule = css.match(/\.daw-track-head \.daw-track-head-name\s*\{[^}]*\}/);
-    const definitionRule = css.match(/\.daw-track-head \.live-ch-def\s*\{[^}]*\}/);
+    const definitionRule = css.match(/\.daw-track-head-def\s*\{[^}]*\}/);
     const actionRule = css.match(/\.daw-track-head-arm, \.daw-track-head-mute, \.daw-track-head-solo, \.daw-track-head-remove\s*\{[^}]*\}/);
     expect(nameRule).not.toBeNull();
     expect(definitionRule).not.toBeNull();

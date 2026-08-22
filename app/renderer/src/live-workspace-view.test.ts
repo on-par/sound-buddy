@@ -12,7 +12,6 @@ import {
   liveSetupStepsView,
   liveSetupStepsHTML,
   addTrackDisabled,
-  meterCardHTML,
   dawShellHTML,
   dawTrackHeaderHTML,
   dawShellPatchView,
@@ -399,23 +398,6 @@ describe('liveSetupStepsView / liveSetupStepsHTML', () => {
   });
 });
 
-describe('meterCardHTML', () => {
-  it('builds the running card from the tick when capturing with a lastTick', () => {
-    const { html, idle } = meterCardHTML(makeState({ isCapturing: true, lastTick: TICK }));
-    expect(idle).toBe(false);
-    expect(html).toContain('<div class="meter-card sb-live-meters">');
-    expect(html).toContain('Vocals');
-    expect(html).not.toContain(' id="live-ws-add"');
-  });
-
-  it('builds the idle card from idle placeholders otherwise', () => {
-    const { html, idle } = meterCardHTML(makeState());
-    expect(idle).toBe(true);
-    expect(html).toContain('<div class="meter-card sb-live-meters idle">');
-    expect(html).toContain('Idle');
-    expect(html).not.toContain('Vocals');
-  });
-});
 
 describe('dawShellHTML / dawShellPatchView', () => {
   it('composes the supplied session picker into the DAW toolbar', () => {
@@ -480,8 +462,8 @@ describe('dawShellHTML / dawShellPatchView', () => {
     );
     expect(armButton(recordingHeads)).toContain('disabled');
     expect(recordingHeads.match(/class="[^"]*\bdaw-track-head-arm\b[^"]*"[^>]* disabled/g)).toHaveLength(CONFIG.length);
-    expect(recordingHeads.match(/class="[^"]*\blive-ch-kind\b[^"]*"[^>]* disabled/g)).toHaveLength(CONFIG.length);
-    expect(recordingHeads.match(/class="[^"]*\blive-ch-src\b[^"]*"[^>]* disabled/g)).toHaveLength(CONFIG.length);
+    expect(recordingHeads.match(/class="[^"]*\bdaw-track-head-kind\b[^"]*"[^>]* disabled/g)).toHaveLength(CONFIG.length);
+    expect(recordingHeads.match(/class="[^"]*\bdaw-track-head-src\b[^"]*"[^>]* disabled/g)).toHaveLength(CONFIG.length);
     expect(armButton(dawShellHTML(makeState({ isCapturing: true, liveMode: 'monitor' })))).not.toContain('disabled');
     expect(armButton(dawShellHTML(makeState({ isCapturing: false, liveMode: 'record' })))).not.toContain('disabled');
   });
@@ -731,17 +713,17 @@ describe('dawTrackRows / configured track rows (#1043)', () => {
     expect(headsSlice.indexOf('data-ch="0"')).toBeLessThan(headsSlice.indexOf('data-ch="1"'));
   });
 
-  it('stamps selected state on DAW live strips for the EQ-pane interaction contract', () => {
+  it('stamps selected state on DAW track heads for the EQ-pane interaction contract', () => {
     const html = dawShellHTML(makeState({ selectedChannel: 1 }));
-    expect(html).toMatch(/class="[^"]*\blive-ch\b[^"]*\bselected\b[^"]*" data-ch="1" aria-current="true"/);
-    const first = html.match(/<div class="[^"]*\blive-ch\b[^"]*" data-ch="0"[^>]*>/)?.[0] ?? '';
+    expect(html).toMatch(/class="[^"]*\bdaw-track-head\b[^"]*\bselected\b[^"]*" data-ch="1" aria-current="true"/);
+    const first = html.match(/<div class="[^"]*\bdaw-track-head\b[^"]*" data-ch="0"[^>]*>/)?.[0] ?? '';
     expect(first).not.toContain('selected');
     expect(first).not.toContain('aria-current');
   });
 
-  it('keeps the legacy sb-live-meters hook only while configured strips exist', () => {
-    expect(dawShellHTML(makeState())).toContain('daw-track-heads sb-live-meters');
-    expect(dawShellHTML(makeState({ channelConfig: [] }))).not.toContain('sb-live-meters');
+  it('uses DAW track heads without the retired meter hook', () => {
+    expect(dawShellHTML(makeState())).toContain('daw-track-heads');
+    expect(dawShellHTML(makeState())).not.toContain('sb-' + 'live-meters');
   });
 
   it('renders DAW track heads in grouped order with group collapse state and drag handles', () => {
@@ -759,9 +741,9 @@ describe('dawTrackRows / configured track rows (#1043)', () => {
     expect(headsSlice).toContain('class="live-group-head collapsed" data-group="0"');
     expect(headsSlice.indexOf('data-ch="2"')).toBeLessThan(headsSlice.indexOf('data-ch="0"'));
     expect(headsSlice.indexOf('data-ch="0"')).toBeLessThan(headsSlice.indexOf('class="live-group-head ungrouped"'));
-    expect(headsSlice).toMatch(/class="[^"]*\bdaw-track-head\b[^"]*\blive-ch\b[^"]*\bidle\b[^"]*\bgroup-collapsed\b[^"]*" data-ch="2"/);
-    expect(headsSlice).toMatch(/class="[^"]*\bdaw-track-head\b[^"]*\blive-ch\b[^"]*\bidle\b[^"]*\bgroup-collapsed\b[^"]*" data-ch="0"/);
-    expect(headsSlice).toContain('class="live-ch-drag"');
+    expect(headsSlice).toMatch(/class="[^"]*\bdaw-track-head\b[^"]*\bidle\b[^"]*\bgroup-collapsed\b[^"]*" data-ch="2"/);
+    expect(headsSlice).toMatch(/class="[^"]*\bdaw-track-head\b[^"]*\bidle\b[^"]*\bgroup-collapsed\b[^"]*" data-ch="0"/);
+    expect(headsSlice).toContain('class="daw-track-head-drag"');
     expect(html).toContain('class="daw-lane-group-spacer collapsed" data-group="0"');
     expect(html).toContain('class="daw-lane-group-spacer ungrouped" data-group="-1"');
   });
