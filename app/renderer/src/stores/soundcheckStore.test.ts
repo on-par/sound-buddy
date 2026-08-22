@@ -115,6 +115,7 @@ describe('createSoundcheckStore', () => {
       await expect(store.getState().loadSession('/recordings/sunday')).resolves.toBe(true);
       expect(store.getState().sessionDir).toBe('/recordings/sunday');
       expect(store.getState().manifest).toEqual(MANIFEST);
+      expect(store.getState().lastElapsedTick).toEqual({ elapsed: 0, duration: 0 });
     });
 
     it('loads an external session through the same validated path', async () => {
@@ -146,6 +147,30 @@ describe('createSoundcheckStore', () => {
       expect(store.getState().manifest).toEqual(MANIFEST);
       expect(store.getState().routes).toEqual([[3], [4, 5]]);
       expect(store.getState().statusMessage).toBe('Could not read session.json: malformed');
+    });
+
+    it('refuses to replace a session while playback is active', async () => {
+      const readSession = vi.fn(async () => ({ success: true, manifest: { tracks: [{ kind: 'mono', label: 'Replacement' }] } }));
+      const { store } = makeStore({ readSession });
+      store.setState({
+        sessionDir: '/working',
+        manifest: MANIFEST,
+        routes: [[3], [4, 5]],
+        playing: true,
+        lastElapsedTick: { elapsed: 12, duration: 60 },
+      });
+
+      await expect(store.getState().loadSession('/replacement')).resolves.toBe(false);
+
+      expect(readSession).not.toHaveBeenCalled();
+      expect(store.getState()).toMatchObject({
+        sessionDir: '/working',
+        manifest: MANIFEST,
+        routes: [[3], [4, 5]],
+        playing: true,
+        lastElapsedTick: { elapsed: 12, duration: 60 },
+        statusMessage: 'Stop playback before loading a different session.',
+      });
     });
   });
 
@@ -403,16 +428,18 @@ describe('createSoundcheckStore', () => {
       await store.getState().play();
       expect(store.getState().playing).toBe(true);
       expect(store.getState().elapsedText).toBe('0:00 / 0:00');
+      expect(store.getState().lastElapsedTick).toEqual({ elapsed: 0, duration: 0 });
       expect(spy).toHaveBeenCalledWith('empty', 'Buffering…');
       spy.mockRestore();
     });
 
     it('surfaces a status message and stays stopped when playback fails to start', async () => {
       const { store } = makeStore({ startPlayback: async () => ({ success: false, error: 'device busy' }) });
-      store.setState({ manifest: MANIFEST, sessionDir: '/tmp/s', routes: [[0]] });
+      store.setState({ manifest: MANIFEST, sessionDir: '/tmp/s', routes: [[0]], lastElapsedTick: { elapsed: 5, duration: 60 } });
       await store.getState().play();
       expect(store.getState().playing).toBe(false);
       expect(store.getState().statusMessage).toBe('device busy');
+      expect(store.getState().lastElapsedTick).toEqual({ elapsed: 5, duration: 60 });
     });
 
     it('falls back to a generic error message when the failure has none', async () => {
@@ -446,6 +473,7 @@ describe('createSoundcheckStore', () => {
       });
       expect(store.getState().playing).toBe(true);
       expect(store.getState().elapsedText).toBe('0:00 / 0:00');
+      expect(store.getState().lastElapsedTick).toEqual({ elapsed: 30, duration: 0 });
       expect(spy).toHaveBeenCalledWith('empty', 'Buffering…');
       spy.mockRestore();
     });
@@ -467,21 +495,23 @@ describe('createSoundcheckStore', () => {
         method: 'startPlayback',
         args: [{ sessionDir: '/tmp/s', route: '0:0', startOffsetSecs: 0 }],
       });
+      expect(store.getState().lastElapsedTick).toEqual({ elapsed: 0, duration: 0 });
       expect(spy).toHaveBeenCalledWith('empty', 'Buffering…');
       spy.mockRestore();
     });
 
     it('surfaces a status message and stays stopped when the restart fails', async () => {
       const { store } = makeStore({ startPlayback: async () => ({ success: false, error: 'device busy' }) });
-      store.setState({ manifest: MANIFEST, sessionDir: '/tmp/s', routes: [[0]] });
+      store.setState({ manifest: MANIFEST, sessionDir: '/tmp/s', routes: [[0]], lastElapsedTick: { elapsed: 5, duration: 60 } });
       await store.getState().seekTo(30);
       expect(store.getState().playing).toBe(false);
       expect(store.getState().statusMessage).toBe('device busy');
+      expect(store.getState().lastElapsedTick).toEqual({ elapsed: 5, duration: 60 });
     });
   });
 
   describe('stop / resetTransport', () => {
-    it('stop() stops playback and resets the transport', async () => {
+    it('stop() stops playback and retains the take position', async () => {
       const { store, mock } = makeStore({
         stopPlayback: async () => {
           mock.calls.push({ method: 'stopPlayback', args: [] });
@@ -493,7 +523,7 @@ describe('createSoundcheckStore', () => {
       expect(mock.calls).toContainEqual({ method: 'stopPlayback', args: [] });
       expect(store.getState().playing).toBe(false);
       expect(store.getState().elapsedText).toBeNull();
-      expect(store.getState().lastElapsedTick).toBeNull();
+      expect(store.getState().lastElapsedTick).toEqual({ elapsed: 5, duration: 60 });
     });
 
     it('hands the panel back to the empty hint only while the soundcheck tab is active', () => {
@@ -517,13 +547,13 @@ describe('createSoundcheckStore', () => {
       return { store, mock };
     }
 
-    it('surfaces an error and resets the transport', () => {
+    it('surfaces an error, stops playback, and retains the take position', () => {
       const { store, mock } = bind();
       store.setState({ playing: true, lastElapsedTick: { elapsed: 5, duration: 60 } });
       mock.emit('onPlaybackEvent', { error: 'stream died' });
       expect(store.getState().statusMessage).toBe('stream died');
       expect(store.getState().playing).toBe(false);
-      expect(store.getState().lastElapsedTick).toBeNull();
+      expect(store.getState().lastElapsedTick).toEqual({ elapsed: 5, duration: 60 });
     });
 
     it('ignores a null event', () => {
@@ -552,14 +582,14 @@ describe('createSoundcheckStore', () => {
       expect(store.getState().lastElapsedTick).toEqual({ elapsed: 5, duration: 60 });
     });
 
-    it('resets the transport when playback ends, regardless of gating', () => {
+    it('stops playback and retains the take position when playback ends, regardless of gating', () => {
       const { store, mock } = bind();
       useLiveCaptureStore.setState({ appMode: 'live' });
-      store.setState({ playing: true, elapsedText: '0:10 / 1:00' });
+      store.setState({ playing: true, elapsedText: '0:10 / 1:00', lastElapsedTick: { elapsed: 10, duration: 60 } });
       mock.emit('onPlaybackEvent', { type: 'ended' });
       expect(store.getState().playing).toBe(false);
       expect(store.getState().elapsedText).toBeNull();
-      expect(store.getState().lastElapsedTick).toBeNull();
+      expect(store.getState().lastElapsedTick).toEqual({ elapsed: 10, duration: 60 });
     });
   });
 

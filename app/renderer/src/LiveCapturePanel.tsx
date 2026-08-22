@@ -240,11 +240,14 @@ export default function LiveCapturePanel(): JSX.Element | null {
   }, [showShell]);
 
   useEffect(() => {
-    if (!showShell || soundcheck.playing) return;
+    if (!showShell) return;
     const runtime = getDawShellRuntime();
-    runtime?.setPlaybackPosition?.(null);
+    const playbackPosition = useSoundcheckStore.getState().lastElapsedTick;
+    if (soundcheck.manifest && playbackPosition) runtime?.setPlaybackPosition?.(playbackPosition);
+    else runtime?.setPlaybackPosition?.(null);
+    runtime?.setPlaybackActive?.(soundcheck.playing);
     runtime?.renderPlayhead?.();
-  }, [showShell, soundcheck.playing]);
+  }, [showShell, soundcheck.manifest, soundcheck.playing]);
 
   // DAW shell (#517/#518/#520): stamp the lane fingerprint (the React
   // rebuild-decision key for same-count rig swaps) and hand the

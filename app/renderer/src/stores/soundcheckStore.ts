@@ -161,6 +161,10 @@ export function createSoundcheckStore(getApi: () => SoundcheckApi) {
     },
 
     async loadSession(dir) {
+      if (get().playing) {
+        set({ statusMessage: 'Stop playback before loading a different session.' });
+        return false;
+      }
       const result = (await getApi().readSession(dir)) as { success?: boolean; error?: string; manifest?: SessionManifest } | null;
       if (!result || !result.success) {
         set({ statusMessage: (result && result.error) || 'Could not read that session.' });
@@ -190,6 +194,7 @@ export function createSoundcheckStore(getApi: () => SoundcheckApi) {
         manifest,
         routes,
         mixdownNotice: mixdownNoticeText(manifest, routes, prev.deviceChannels, prev.master),
+        lastElapsedTick: { elapsed: 0, duration: 0 },
       });
 
       // #734: trigger background per-track waveform-peak generation after a
@@ -250,7 +255,7 @@ export function createSoundcheckStore(getApi: () => SoundcheckApi) {
         set({ statusMessage: result.error || 'Could not start playback.' });
         return;
       }
-      set({ playing: true, elapsedText: '0:00 / 0:00' });
+      set({ playing: true, elapsedText: '0:00 / 0:00', lastElapsedTick: { elapsed: 0, duration: 0 } });
       useSpectrumStore.getState().setPanelState('empty', 'Buffering…');
     },
 
@@ -264,18 +269,19 @@ export function createSoundcheckStore(getApi: () => SoundcheckApi) {
       const state = get();
       if (!state.manifest) return;
       set({ statusMessage: null });
+      const startOffsetSecs = Math.max(0, seconds);
       const result = (await getApi().startPlayback({
         sessionDir: state.sessionDir ?? '',
         device: state.selectedDevice || undefined,
         route: getPlaybackRouting().routeSpec(state.routes),
         master: state.master || undefined,
-        startOffsetSecs: Math.max(0, seconds),
+        startOffsetSecs,
       })) as { success?: boolean; error?: string } | undefined;
       if (result?.success === false) {
         set({ statusMessage: result.error || 'Could not start playback.' });
         return;
       }
-      set({ playing: true, elapsedText: '0:00 / 0:00' });
+      set({ playing: true, elapsedText: '0:00 / 0:00', lastElapsedTick: { elapsed: startOffsetSecs, duration: 0 } });
       useSpectrumStore.getState().setPanelState('empty', 'Buffering…');
     },
 
@@ -285,7 +291,7 @@ export function createSoundcheckStore(getApi: () => SoundcheckApi) {
     },
 
     resetTransport() {
-      set({ playing: false, elapsedText: null, lastElapsedTick: null });
+      set({ playing: false, elapsedText: null });
       if (useLiveCaptureStore.getState().appMode === 'soundcheck') {
         useSpectrumStore.getState().setPanelState('empty', 'Load a session and press Play to start playback');
       }

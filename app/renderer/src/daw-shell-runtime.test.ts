@@ -292,7 +292,7 @@ describe('createDawShellRuntime', () => {
   });
 
   describe('renderPlayhead', () => {
-    it('uses playback progress over the live clock for both segments and resumes the live clock when cleared', () => {
+    it('retains an inactive take position and resumes the live clock only when the take is cleared', () => {
       const timeEl = { textContent: '' };
       const playheadEls = [makeFakePlayhead(), makeFakePlayhead()];
       const shell = makeFakeShell({ timeEl, playheadEls, clientWidth: 400 });
@@ -304,12 +304,21 @@ describe('createDawShellRuntime', () => {
       setNow(10000); // Live capture clock is at ten seconds.
 
       rt.setPlaybackPosition({ elapsed: 3, duration: 60 });
+      rt.setPlaybackActive(true);
       rt.renderPlayhead();
 
       expect(timeEl.textContent).toBe('0:03');
       for (const el of playheadEls) {
         expect(el.style.left).toBe(`${dawTimelineX(3)}px`);
         expect(el.classList.toggle).toHaveBeenCalledWith('advancing', true);
+      }
+
+      rt.setPlaybackActive(false);
+      rt.renderPlayhead();
+      expect(timeEl.textContent).toBe('0:03');
+      for (const el of playheadEls) {
+        expect(el.style.left).toBe(`${dawTimelineX(3)}px`);
+        expect(el.classList.toggle).toHaveBeenCalledWith('advancing', false);
       }
 
       rt.setPlaybackPosition(null);
