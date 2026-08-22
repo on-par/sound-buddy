@@ -1,11 +1,11 @@
 import { test, expect, type ElectronApplication, type Page } from '@playwright/test';
 import * as path from 'path';
-import { launchApp, stopCaptureIfRunning } from './e2e-helpers';
+import { launchApp, stopCaptureIfRunning } from '../../tests/e2e/e2e-helpers';
 
 let electronApp: ElectronApplication;
 let window: Page;
 
-const SESSION_DIR = path.join(__dirname, '..', 'fixtures', 'session');
+const SESSION_DIR = path.join(__dirname, '..', '..', 'tests', 'fixtures', 'session');
 
 async function enableDawWorkspace(win: Page): Promise<void> {
   await win.locator('#settings-btn').click();
