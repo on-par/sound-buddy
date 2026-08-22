@@ -985,3 +985,28 @@ describe('legacy secondaryMeasurementEnabled settings retirement (#730)', () => 
     expect(raw.storageDir).toBe('/tmp/somewhere');
   });
 });
+
+describe('legacy dawWorkspaceEnabled settings retirement (#1105)', () => {
+  const retiredDawWorkspaceSettings = {
+    dawWorkspaceEnabled: true,
+    idealProfile: 'broadcast',
+    storageDir: '/tmp/somewhere',
+    rigs: [],
+    activeRigId: null,
+  };
+
+  it('loads a pre-retirement settings.json with the stale key cleanly, dropping it from getSettings() while preserving supported settings', () => {
+    writeFile(retiredDawWorkspaceSettings);
+
+    let settings: ReturnType<typeof getSettings> | undefined;
+    expect(() => {
+      settings = getSettings();
+    }).not.toThrow();
+
+    expect('dawWorkspaceEnabled' in (settings as object)).toBe(false);
+    expect(settings?.idealProfile).toBe('broadcast');
+    expect(settings?.storageDir).toBe('/tmp/somewhere');
+    expect(settings?.rigs).toEqual([]);
+    expect(settings?.activeRigId).toBeNull();
+  });
+});
