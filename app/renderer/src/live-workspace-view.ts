@@ -81,6 +81,8 @@ export interface LiveWorkspaceViewState {
   sessionPlayback: SessionTabPlaybackView | null;
   /** Discrete shared capture phase for the Session Record control. */
   capturePhase: CapturePhase;
+  /** Transient mounted-Session state for the routing drawer shell. */
+  sessionRoutingDrawerOpen: boolean;
 }
 
 // The slice of liveCaptureStore's state that liveWorkspaceViewState() reads —
@@ -133,6 +135,7 @@ export function liveWorkspaceViewState(
   sessionWaveforms: SessionTabWaveformView | null = null,
   sessionPlayback: SessionTabPlaybackView | null = null,
   capturePhase: CapturePhase = 'idle',
+  sessionRoutingDrawerOpen = false,
 ): LiveWorkspaceViewState {
   return {
     channelConfig: lc.channelConfig,
@@ -157,6 +160,7 @@ export function liveWorkspaceViewState(
     sessionWaveforms,
     sessionPlayback,
     capturePhase,
+    sessionRoutingDrawerOpen,
   };
 }
 
@@ -628,6 +632,7 @@ export function dawShellHTML(state: LiveWorkspaceViewState): string {
     + (state.sessionPicker ? sessionTabSessionPickerHTML(state.sessionPicker) : '')
     + (state.sessionPlayback ? sessionTabPlaybackHTML(state.sessionPlayback) : '')
     + sessionTabCaptureHTML(recordButtonView(state.capturePhase))
+    + `<button type="button" class="daw-session-routing-toggle" id="daw-session-routing-toggle" aria-expanded="${state.sessionRoutingDrawerOpen}" aria-controls="daw-session-routing-drawer">Routing</button>`
     + (state.sessionWaveforms?.generating ? `<span class="daw-session-waveform-hint">Generating waveforms…</span>` : '')
     + `</div>`
     // The semantic arrangement frame (#1042): the track-head column and the
@@ -657,6 +662,9 @@ export function dawShellHTML(state: LiveWorkspaceViewState): string {
     + `<span class="daw-status-capture">${status.capture}</span>`
     + `<span class="daw-status-device">${status.device}</span>`
     + `</div>`
+    + `<section class="daw-session-routing-drawer" id="daw-session-routing-drawer" aria-label="Routing"${state.sessionRoutingDrawerOpen ? '' : ' hidden'}>`
+    + `<h2 class="daw-session-routing-title">Routing</h2>`
+    + `</section>`
     + `</div>`;
 }
 

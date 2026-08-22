@@ -108,6 +108,7 @@ function makeState(overrides: Partial<LiveWorkspaceViewState> = {}): LiveWorkspa
     sessionWaveforms: overrides.sessionWaveforms ?? null,
     sessionPlayback: overrides.sessionPlayback ?? null,
     capturePhase: overrides.capturePhase ?? 'idle',
+    sessionRoutingDrawerOpen: overrides.sessionRoutingDrawerOpen ?? false,
   };
 }
 
@@ -180,6 +181,27 @@ describe('Session toolbar playback (#1073)', () => {
   it('keeps default callers free of Session playback markup', () => {
     expect(liveWorkspaceViewState({ ...makeState(), demoting: false }, settings()).sessionPlayback).toBeNull();
     expect(dawShellHTML(makeState())).not.toContain('daw-session-playback-btn');
+  });
+});
+
+describe('Session routing drawer shell (#1089)', () => {
+  it('renders an expanded Routing toggle and visible drawer after the arrangement and status line', () => {
+    const html = dawShellHTML(makeState({ sessionRoutingDrawerOpen: true }));
+
+    expect(html).toContain('id="daw-session-routing-toggle"');
+    expect(html).toContain('aria-expanded="true"');
+    expect(html).toContain('aria-controls="daw-session-routing-drawer"');
+    expect(html).toContain('<section class="daw-session-routing-drawer" id="daw-session-routing-drawer" aria-label="Routing">');
+    expect(html).not.toContain('daw-session-routing-drawer" id="daw-session-routing-drawer" aria-label="Routing" hidden');
+    expect(html.indexOf('<div class="daw-arrangement">')).toBeLessThan(html.indexOf('<section class="daw-session-routing-drawer"'));
+    expect(html.indexOf('<div class="daw-status-line">')).toBeLessThan(html.indexOf('<section class="daw-session-routing-drawer"'));
+  });
+
+  it('keeps the Routing drawer collapsed for default callers', () => {
+    const html = dawShellHTML(makeState());
+
+    expect(html).toContain('aria-expanded="false"');
+    expect(html).toContain('<section class="daw-session-routing-drawer" id="daw-session-routing-drawer" aria-label="Routing" hidden>');
   });
 });
 

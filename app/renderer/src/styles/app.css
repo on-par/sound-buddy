@@ -973,7 +973,7 @@
        the Live tab: transport bar on top, a placeholder ruler strip, then
        full-width stacked lanes with hairline dividers. UI-only — no real
        waveform/time math in this slice. */
-    .daw-shell { position:relative; display:flex; flex-direction:column; flex:1; min-height:0; --daw-ruler-row-h:26px; --daw-track-row-h:64px; --daw-master-row-h:60px; --daw-status-line-h:26px; --daw-monitor-dim-opacity:0.45; }
+    .daw-shell { position:relative; display:flex; flex-direction:column; flex:1; min-height:0; --daw-ruler-row-h:26px; --daw-track-row-h:64px; --daw-master-row-h:60px; --daw-status-line-h:26px; --daw-routing-drawer-h:180px; --daw-monitor-dim-opacity:0.45; }
     .daw-transport { display:flex; align-items:center; gap:12px; padding:10px 4px; border-bottom:1px solid var(--border-subtle); }
     .daw-transport-title { font:var(--fw-semibold) var(--fs-body)/1 var(--font-sans); color:var(--text-primary); }
     .daw-transport-state { font:var(--fw-medium) var(--fs-micro)/1 var(--font-sans); letter-spacing:var(--tracking-caps); text-transform:uppercase; padding:3px 8px; border-radius:var(--radius-md); background:var(--surface-raised); color:var(--text-muted); }
@@ -984,6 +984,8 @@
     .daw-session-playback-btn:hover:not(:disabled) { border-color:var(--border-focus); }
     .daw-session-playback-btn.active { border-color:var(--gold-500); background:var(--gold-tint); color:var(--gold-text); box-shadow:var(--glow-focus); }
     .daw-session-playback-btn:disabled { opacity:0.45; cursor:not-allowed; }
+    .daw-session-routing-toggle { height:var(--control-h-sm); padding:0 10px; border:1px solid var(--border-subtle); border-radius:var(--radius-sm); background:var(--surface-raised); color:var(--text-primary); font:var(--fw-medium) var(--fs-label)/1 var(--font-sans); cursor:pointer; transition:var(--transition-control); }
+    .daw-session-routing-toggle:hover { border-color:var(--border-focus); }
     .daw-session-picker { display:flex; align-items:center; gap:6px; min-width:0; }
     .daw-session-picker-select { max-width:220px; min-width:140px; padding:5px 8px; border:1px solid var(--border-subtle); border-radius:var(--radius-sm); background:var(--surface-raised); color:var(--text-primary); font:var(--fw-regular) var(--fs-label)/1 var(--font-sans); }
     .daw-session-picker-select:focus-visible { outline:none; border-color:var(--border-focus); box-shadow:var(--glow-focus); }
@@ -1099,6 +1101,8 @@
     .daw-status-line { display:flex; align-items:center; gap:10px; height:var(--daw-status-line-h); box-sizing:border-box; padding:0 9px; border-top:1px solid var(--border-subtle); font:var(--fw-regular) var(--fs-micro)/1 var(--font-sans); color:var(--text-muted); }
     .daw-status-capture { letter-spacing:var(--tracking-caps); text-transform:uppercase; }
     .daw-status-device { margin-left:auto; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .daw-session-routing-drawer { flex:0 0 var(--daw-routing-drawer-h); width:100%; box-sizing:border-box; padding:12px; border-top:1px solid var(--border-subtle); }
+    .daw-session-routing-title { font:var(--fw-semibold) var(--fs-body)/1 var(--font-sans); color:var(--text-primary); }
 
     /* ══ Live adjustments panel (#522, epic #515) ══
        Experimental, static placeholder area gated behind liveAdjustmentsEnabled;

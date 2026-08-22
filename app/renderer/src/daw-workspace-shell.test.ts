@@ -194,6 +194,22 @@ describe('DAW shell styles (#517)', () => {
   });
 });
 
+describe('Session routing drawer layout (#1089)', () => {
+  it('uses a named fixed drawer height while preserving the flexible arrangement timeline', () => {
+    expect(css).toContain('--daw-routing-drawer-h');
+    const drawerRule = css.match(/\.daw-session-routing-drawer\s*\{[^}]*\}/);
+    const arrangementRule = css.match(/\.daw-arrangement\s*\{[^}]*\}/);
+
+    expect(drawerRule).not.toBeNull();
+    expect(drawerRule![0]).toMatch(/flex:\s*0 0 var\(--daw-routing-drawer-h\)/);
+    expect(drawerRule![0]).toMatch(/width:\s*100%/);
+    expect(drawerRule![0]).toMatch(/box-sizing:\s*border-box/);
+    expect(arrangementRule).not.toBeNull();
+    expect(arrangementRule![0]).toMatch(/flex:\s*1/);
+    expect(arrangementRule![0]).toMatch(/min-height:\s*0/);
+  });
+});
+
 describe('DAW playhead/waveform painters moved off inline-app.js (TD-001 slice 6j, #713)', () => {
   it('inline-app.js no longer owns any part of the playhead/waveform painting surface', () => {
     expect(inlineApp).not.toMatch(/function renderDawPlayhead\(/);
