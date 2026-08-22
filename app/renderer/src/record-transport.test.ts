@@ -2,46 +2,11 @@
 // Licensed under the Sound Buddy Desktop Application License (app/LICENSE).
 
 import { describe, it, expect } from 'vitest';
-import { recordButtonPhase, recordButtonView, recordButtonAction, type RecordButtonInput } from './record-transport';
-
-function input(overrides: Partial<RecordButtonInput> = {}): RecordButtonInput {
-  return {
-    liveRunning: false,
-    liveMode: 'monitor',
-    promoting: false,
-    stopping: false,
-    ...overrides,
-  };
-}
-
-describe('recordButtonPhase', () => {
-  it('is idle when nothing is running', () => {
-    expect(recordButtonPhase(input())).toBe('idle');
-  });
-
-  it('is idle while monitoring (liveRunning, mode monitor)', () => {
-    expect(recordButtonPhase(input({ liveRunning: true, liveMode: 'monitor' }))).toBe('idle');
-  });
-
-  it('is starting while promoting, regardless of liveRunning/liveMode', () => {
-    expect(recordButtonPhase(input({ promoting: true }))).toBe('starting');
-    expect(recordButtonPhase(input({ liveRunning: true, liveMode: 'record', promoting: true }))).toBe('starting');
-  });
-
-  it('is recording when liveRunning and mode is record', () => {
-    expect(recordButtonPhase(input({ liveRunning: true, liveMode: 'record' }))).toBe('recording');
-  });
-
-  it('is stopping when the stopping flag is set, taking priority over every other flag', () => {
-    expect(recordButtonPhase(input({ stopping: true }))).toBe('stopping');
-    expect(recordButtonPhase(input({ stopping: true, promoting: true }))).toBe('stopping');
-    expect(recordButtonPhase(input({ stopping: true, liveRunning: true, liveMode: 'record' }))).toBe('stopping');
-  });
-});
+import { recordButtonView, recordButtonAction, sessionTabCaptureHTML } from './record-transport';
 
 describe('recordButtonView', () => {
-  it('idle-enabled with no monitor session running (press starts capture) (#757)', () => {
-    const view = recordButtonView(input());
+  it('maps idle and monitoring to enabled Record controls', () => {
+    const view = recordButtonView('idle');
     // The record button is a no-text red-circle toggle (#777): the view model
     // no longer carries a visible label, only the a11y label.
     expect(view).toEqual({
@@ -49,28 +14,24 @@ describe('recordButtonView', () => {
       disabled: false,
       ariaLabel: 'Record — press to start recording',
     });
-  });
-
-  it('idle-enabled while monitoring, same view (the button is never idle-disabled on the Live tab)', () => {
-    const view = recordButtonView(input({ liveRunning: true, liveMode: 'monitor' }));
-    expect(view).toEqual({
-      phase: 'idle',
+    expect(recordButtonView('monitoring')).toEqual({
+      phase: 'monitoring',
       disabled: false,
       ariaLabel: 'Record — press to start recording',
     });
   });
 
-  it('starting: promoting the monitor session', () => {
-    const view = recordButtonView(input({ liveRunning: true, promoting: true }));
+  it('maps starting-record to a disabled Record control', () => {
+    const view = recordButtonView('starting-record');
     expect(view).toEqual({
-      phase: 'starting',
+      phase: 'starting-record',
       disabled: true,
       ariaLabel: 'Starting recording',
     });
   });
 
-  it('recording: liveRunning and mode is record', () => {
-    const view = recordButtonView(input({ liveRunning: true, liveMode: 'record' }));
+  it('maps recording to an enabled Stop control', () => {
+    const view = recordButtonView('recording');
     expect(view).toEqual({
       phase: 'recording',
       disabled: false,
@@ -78,8 +39,8 @@ describe('recordButtonView', () => {
     });
   });
 
-  it('stopping: the transient stopping flag', () => {
-    const view = recordButtonView(input({ liveRunning: true, liveMode: 'record', stopping: true }));
+  it('maps stopping to a disabled pressed control', () => {
+    const view = recordButtonView('stopping');
     expect(view).toEqual({
       phase: 'stopping',
       disabled: true,
@@ -89,23 +50,41 @@ describe('recordButtonView', () => {
 });
 
 describe('recordButtonAction', () => {
-  it('returns null whenever disabled, regardless of phase', () => {
-    expect(recordButtonAction('idle', true)).toBeNull();
-    expect(recordButtonAction('starting', true)).toBeNull();
-    expect(recordButtonAction('recording', true)).toBeNull();
-    expect(recordButtonAction('stopping', true)).toBeNull();
+  it('returns record for enabled idle or monitoring phases', () => {
+    expect(recordButtonAction('idle')).toBe('record');
+    expect(recordButtonAction('monitoring')).toBe('record');
   });
 
-  it('returns promote for idle when enabled', () => {
-    expect(recordButtonAction('idle', false)).toBe('promote');
+  it('returns stop for recording', () => {
+    expect(recordButtonAction('recording')).toBe('stop');
   });
 
-  it('returns stop for recording when enabled', () => {
-    expect(recordButtonAction('recording', false)).toBe('stop');
+  it('returns null for transitional phases', () => {
+    expect(recordButtonAction('starting-record')).toBeNull();
+    expect(recordButtonAction('stopping')).toBeNull();
+  });
+});
+
+describe('sessionTabCaptureHTML', () => {
+  it('renders the shared Record view with stable, accessible markup', () => {
+    expect(sessionTabCaptureHTML(recordButtonView('monitoring'))).toContain('id="daw-session-record"');
+    expect(sessionTabCaptureHTML(recordButtonView('monitoring'))).toContain('aria-label="Record — press to start recording"');
+    expect(sessionTabCaptureHTML(recordButtonView('monitoring'))).toContain('aria-pressed="false"');
   });
 
-  it('returns null for starting/stopping even when enabled (not a real reachable state, but no action either way)', () => {
-    expect(recordButtonAction('starting', false)).toBeNull();
-    expect(recordButtonAction('stopping', false)).toBeNull();
+  it('renders pressed Stop and disabled transition states from the same view', () => {
+    expect(sessionTabCaptureHTML(recordButtonView('recording'))).toContain('aria-pressed="true"');
+    expect(sessionTabCaptureHTML(recordButtonView('recording'))).toContain('>Stop<');
+    const stopping = sessionTabCaptureHTML(recordButtonView('stopping'));
+    expect(stopping).toContain('daw-session-record--stopping');
+    expect(stopping).toContain('aria-label="Stopping recording"');
+    expect(stopping).toContain('aria-pressed="true"');
+    expect(stopping).toContain(' disabled');
+
+    const starting = sessionTabCaptureHTML(recordButtonView('starting-record'));
+    expect(starting).toContain('daw-session-record--starting-record');
+    expect(starting).toContain('aria-label="Starting recording"');
+    expect(starting).toContain('aria-pressed="false"');
+    expect(starting).toContain(' disabled');
   });
 });

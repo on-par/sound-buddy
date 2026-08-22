@@ -127,22 +127,22 @@ afterEach(() => {
 
 describe('liveIndicatorView (TD-001 slice 6i, #712)', () => {
   it('idle is hidden with no text', () => {
-    const view = liveIndicatorView(liveTransitionState, { isCapturing: false, liveMode: 'monitor', promoting: false });
+    const view = liveIndicatorView(liveTransitionState, { isCapturing: false, liveMode: 'monitor', promoting: false, stopping: false });
     expect(view).toEqual({ visible: false, text: '', recording: false });
   });
 
   it('monitoring shows LIVE', () => {
-    const view = liveIndicatorView(liveTransitionState, { isCapturing: true, liveMode: 'monitor', promoting: false });
+    const view = liveIndicatorView(liveTransitionState, { isCapturing: true, liveMode: 'monitor', promoting: false, stopping: false });
     expect(view).toEqual({ visible: true, text: 'LIVE', recording: false });
   });
 
   it('recording shows REC', () => {
-    const view = liveIndicatorView(liveTransitionState, { isCapturing: true, liveMode: 'record', promoting: false });
+    const view = liveIndicatorView(liveTransitionState, { isCapturing: true, liveMode: 'record', promoting: false, stopping: false });
     expect(view).toEqual({ visible: true, text: 'REC', recording: true });
   });
 
   it('starting-record shows REC', () => {
-    const view = liveIndicatorView(liveTransitionState, { isCapturing: true, liveMode: 'monitor', promoting: true });
+    const view = liveIndicatorView(liveTransitionState, { isCapturing: true, liveMode: 'monitor', promoting: true, stopping: false });
     expect(view).toEqual({ visible: true, text: 'REC', recording: true });
   });
 });

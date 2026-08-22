@@ -14,6 +14,7 @@ import type { AppSettings, SessionPeaksDto } from '../../../electron/ipc/api';
 // playback-routing.js is a real, pure classic-script module — same
 // convention as liveCaptureStore.test.ts's armState/groupState requires.
 const playbackRouting = require('../../playback-routing.js');
+const liveTransitionState = require('../../live-transition-state.js');
 
 beforeEach(() => {
   (globalThis as { window?: unknown }).window = { playbackRouting };
@@ -685,7 +686,8 @@ describe('createSoundcheckStore', () => {
       expect(useLiveCaptureStore.getState().stopping).toBe(false);
 
       const { isCapturing, liveMode, promoting, stopping } = useLiveCaptureStore.getState();
-      expect(recordButtonView({ liveRunning: isCapturing, liveMode, promoting, stopping }).phase).toBe('idle');
+      const phase = liveTransitionState.capturePhase({ liveRunning: isCapturing, liveMode, promoting, stopping });
+      expect(recordButtonView(phase).phase).toBe('idle');
     });
 
     it('play() does not stop or mutate an already-running Live capture (criterion #3)', async () => {

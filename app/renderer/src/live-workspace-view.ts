@@ -43,6 +43,8 @@ import { dawRulerTicks, dawLaneGridlines, DAW_TIMELINE_SPAN_SECS, DAW_TIMELINE_O
 import { sessionTabSessionPickerHTML, type SessionTabSessionPickerView } from './session-tab-session-picker';
 import type { SessionTabWaveformClip, SessionTabWaveformView } from './session-tab-waveforms';
 import { sessionTabPlaybackHTML, type SessionTabPlaybackView } from './session-tab-playback';
+import { sessionTabCaptureHTML, recordButtonView } from './record-transport';
+import type { CapturePhase } from './LiveControls';
 
 export type { DawShellRuntime } from './daw-shell-runtime';
 
@@ -77,6 +79,8 @@ export interface LiveWorkspaceViewState {
   sessionPicker: SessionTabSessionPickerView | null;
   sessionWaveforms: SessionTabWaveformView | null;
   sessionPlayback: SessionTabPlaybackView | null;
+  /** Discrete shared capture phase for the Session Record control. */
+  capturePhase: CapturePhase;
 }
 
 // The slice of liveCaptureStore's state that liveWorkspaceViewState() reads —
@@ -128,6 +132,7 @@ export function liveWorkspaceViewState(
   sessionPicker: SessionTabSessionPickerView | null = null,
   sessionWaveforms: SessionTabWaveformView | null = null,
   sessionPlayback: SessionTabPlaybackView | null = null,
+  capturePhase: CapturePhase = 'idle',
 ): LiveWorkspaceViewState {
   return {
     channelConfig: lc.channelConfig,
@@ -151,6 +156,7 @@ export function liveWorkspaceViewState(
     sessionPicker,
     sessionWaveforms,
     sessionPlayback,
+    capturePhase,
   };
 }
 
@@ -621,8 +627,8 @@ export function dawShellHTML(state: LiveWorkspaceViewState): string {
     + `<span class="daw-transport-time">${getDawPlayheadState().formatElapsed(seededElapsed)}</span>`
     + (state.sessionPicker ? sessionTabSessionPickerHTML(state.sessionPicker) : '')
     + (state.sessionPlayback ? sessionTabPlaybackHTML(state.sessionPlayback) : '')
+    + sessionTabCaptureHTML(recordButtonView(state.capturePhase))
     + (state.sessionWaveforms?.generating ? `<span class="daw-session-waveform-hint">Generating waveforms…</span>` : '')
-    + `<span class="daw-transport-hint">Start and stop recording from the top-bar Record button</span>`
     + `</div>`
     // The semantic arrangement frame (#1042): the track-head column and the
     // timeline column that owns the ruler and every lane row. Per-track head

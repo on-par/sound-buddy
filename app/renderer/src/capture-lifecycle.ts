@@ -101,9 +101,9 @@ declare global {
 // alternatives).
 export function liveIndicatorView(
   liveTransition: LiveTransitionState,
-  state: { isCapturing: boolean; liveMode: 'monitor' | 'record'; promoting: boolean },
+  state: { isCapturing: boolean; liveMode: 'monitor' | 'record'; promoting: boolean; stopping: boolean },
 ): { visible: boolean; text: string; recording: boolean } {
-  const phase = liveTransition.capturePhase({ liveRunning: state.isCapturing, liveMode: state.liveMode, promoting: state.promoting });
+  const phase = liveTransition.capturePhase({ liveRunning: state.isCapturing, liveMode: state.liveMode, promoting: state.promoting, stopping: state.stopping });
   const indicator = liveTransition.captureIndicator(phase);
   return { visible: state.isCapturing, text: indicator.text, recording: indicator.recording };
 }
@@ -130,8 +130,8 @@ export function createCaptureLifecycle(deps: CaptureLifecycleDeps): {
   // The store's combined capture phase — the liveTransitionState pure model
   // computed from store fields instead of inline-app.js's module vars.
   function capturePhaseFromStore(): CapturePhase {
-    const { isCapturing, liveMode, promoting } = deps.getLc();
-    return deps.liveTransition().capturePhase({ liveRunning: isCapturing, liveMode, promoting });
+    const { isCapturing, liveMode, promoting, stopping } = deps.getLc();
+    return deps.liveTransition().capturePhase({ liveRunning: isCapturing, liveMode, promoting, stopping });
   }
 
   // Store-driven applier for the static header #live-indicator pill — replaces
@@ -142,6 +142,7 @@ export function createCaptureLifecycle(deps: CaptureLifecycleDeps): {
       isCapturing: lc.isCapturing,
       liveMode: lc.liveMode,
       promoting: lc.promoting,
+      stopping: lc.stopping,
     });
     const indicator = deps.doc.getElementById('live-indicator');
     if (!indicator) return;

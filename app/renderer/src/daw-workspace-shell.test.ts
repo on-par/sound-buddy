@@ -34,6 +34,7 @@ const markup = fs.readFileSync(fileURLToPath(new URL('./root-markup.html', impor
 const css = fs.readFileSync(fileURLToPath(new URL('./styles/app.css', import.meta.url)), 'utf8');
 const appTsx = fs.readFileSync(fileURLToPath(new URL('./App.tsx', import.meta.url)), 'utf8');
 const workspaceViewTs = fs.readFileSync(fileURLToPath(new URL('./live-workspace-view.ts', import.meta.url)), 'utf8');
+const recordTransportTs = fs.readFileSync(fileURLToPath(new URL('./record-transport.ts', import.meta.url)), 'utf8');
 const liveCapturePanelTsx = fs.readFileSync(fileURLToPath(new URL('./LiveCapturePanel.tsx', import.meta.url)), 'utf8');
 const liveCapturePanelTs = fs.readFileSync(fileURLToPath(new URL('./live-capture-panel.ts', import.meta.url)), 'utf8');
 // TD-001 slice 6i (#712): the capture lifecycle moved here — its start/stop
@@ -135,13 +136,14 @@ describe('DAW workspace timeline shell markup (#517)', () => {
     expect(workspaceViewTs).toContain('Add tracks to see channel lanes');
   });
 
-  it('points users at the top-bar Record button for capture controls (#757)', () => {
-    expect(workspaceViewTs).toContain('Start and stop recording from the top-bar Record button');
+  it('composes the shared Session Record control into the transport (#1081)', () => {
+    expect(workspaceViewTs).toContain('sessionTabCaptureHTML(recordButtonView(state.capturePhase))');
+    expect(recordTransportTs).toContain('sessionTabCaptureHTML');
   });
 });
 
-describe('DAW shell and the sole top-bar Record transport (#757)', () => {
-  it('root-markup.html no longer carries the in-tab capture-control islands; the top-bar Record button is the sole surface', () => {
+describe('DAW shell and shared Record transport (#1081)', () => {
+  it('root-markup.html no longer carries the retired in-tab capture-control islands while the Session control is shell-owned', () => {
     expect(markup).not.toContain('id="live-controls-island"');
     expect(markup).not.toContain('id="live-transport-island"');
     expect(markup).not.toContain('id="live-mode"');

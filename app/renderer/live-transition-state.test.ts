@@ -12,7 +12,7 @@ const {
   statusLabel,
   canPromoteToRecording,
 } = require('./live-transition-state.js') as {
-  capturePhase: (view: { liveRunning: boolean; liveMode: string; promoting: boolean }) => string;
+  capturePhase: (view: { liveRunning: boolean; liveMode: string; promoting: boolean; stopping: boolean }) => string;
   captureIndicator: (phase: string) => { text: string; recording: boolean };
   recordButtonView: (phase: string) => { visible: boolean; disabled: boolean; label: string };
   statusLabel: (phase: string, meterRate: number) => string;
@@ -26,19 +26,23 @@ const {
 
 describe('capturePhase', () => {
   it('is idle when not running', () => {
-    expect(capturePhase({ liveRunning: false, liveMode: 'monitor', promoting: false })).toBe('idle');
+    expect(capturePhase({ liveRunning: false, liveMode: 'monitor', promoting: false, stopping: false })).toBe('idle');
   });
   it('is idle when not running even if promoting/record are set (liveRunning wins)', () => {
-    expect(capturePhase({ liveRunning: false, liveMode: 'record', promoting: true })).toBe('idle');
+    expect(capturePhase({ liveRunning: false, liveMode: 'record', promoting: true, stopping: false })).toBe('idle');
   });
   it('is starting-record when promoting, regardless of liveMode', () => {
-    expect(capturePhase({ liveRunning: true, liveMode: 'monitor', promoting: true })).toBe('starting-record');
+    expect(capturePhase({ liveRunning: true, liveMode: 'monitor', promoting: true, stopping: false })).toBe('starting-record');
   });
   it('is recording when liveMode is record and not promoting', () => {
-    expect(capturePhase({ liveRunning: true, liveMode: 'record', promoting: false })).toBe('recording');
+    expect(capturePhase({ liveRunning: true, liveMode: 'record', promoting: false, stopping: false })).toBe('recording');
   });
   it('is monitoring when liveMode is monitor and not promoting', () => {
-    expect(capturePhase({ liveRunning: true, liveMode: 'monitor', promoting: false })).toBe('monitoring');
+    expect(capturePhase({ liveRunning: true, liveMode: 'monitor', promoting: false, stopping: false })).toBe('monitoring');
+  });
+  it('is stopping while a stop is pending, even after liveRunning clears', () => {
+    expect(capturePhase({ liveRunning: false, liveMode: 'record', promoting: false, stopping: true })).toBe('stopping');
+    expect(capturePhase({ liveRunning: true, liveMode: 'record', promoting: true, stopping: true })).toBe('stopping');
   });
 });
 

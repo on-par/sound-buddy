@@ -63,6 +63,8 @@ import { sessionTabSessionPickerAction, sessionTabSessionPickerView } from './se
 import { paintSessionTabWaveformClips, sessionTabWaveformView } from './session-tab-waveforms';
 import { sessionTabPlaybackView } from './session-tab-playback';
 import { createSoundcheckTransportController } from './soundcheck-transport-controller';
+import { runtime, recordCapture, stopLiveCapture } from './LiveControls';
+import { recordButtonAction } from './record-transport';
 
 // The still-classic live-setup-state.js accessor's storage contract (a
 // localStorage-like object; a missing/throwing storage is treated as "not
@@ -143,6 +145,8 @@ export default function LiveCapturePanel(): JSX.Element | null {
     devices: st.devices,
     selectedDevice: st.selectedDevice,
     isCapturing: st.isCapturing,
+    promoting: st.promoting,
+    stopping: st.stopping,
     demoting: st.demoting,
     liveMode: st.liveMode,
     appMode: st.appMode,
@@ -184,7 +188,21 @@ export default function LiveCapturePanel(): JSX.Element | null {
     ? sessionTabPlaybackView(soundcheck.manifest, soundcheck.playing, soundcheck.looping)
     : null;
   const lc = useLiveCaptureStore.getState();
-  const state = liveWorkspaceViewState(lc, settings, getDawShellRuntime()?.playheadElapsedMs?.() ?? 0, sessionPicker, sessionWaveforms, sessionPlayback);
+  const capturePhase = window.liveTransitionState.capturePhase({
+    liveRunning: s.isCapturing,
+    liveMode: s.liveMode,
+    promoting: s.promoting,
+    stopping: s.stopping,
+  });
+  const state = liveWorkspaceViewState(
+    lc,
+    settings,
+    getDawShellRuntime()?.playheadElapsedMs?.() ?? 0,
+    sessionPicker,
+    sessionWaveforms,
+    sessionPlayback,
+    capturePhase,
+  );
   const laneSignature = showShell ? dawShellPatchView(state).laneSignature : '';
 
   // Drag-reorder source (#483): { type:'group'|'strip', index } set on
@@ -334,6 +352,12 @@ export default function LiveCapturePanel(): JSX.Element | null {
      coaching/disposition paths. */
   function onBoardClick(e: MouseEvent<HTMLDivElement>): void {
     const target = e.target as Element;
+    if (target.closest('#daw-session-record')) {
+      const action = recordButtonAction(capturePhase);
+      if (action === 'record') void recordCapture(runtime());
+      else if (action === 'stop') void stopLiveCapture(runtime());
+      return;
+    }
     if (target.closest('#daw-session-play')) { void useSoundcheckStore.getState().play(); return; }
     if (target.closest('#daw-session-stop')) { void useSoundcheckStore.getState().stop(); return; }
     if (target.closest('#daw-session-loop')) { useSoundcheckStore.getState().toggleLoop(); return; }

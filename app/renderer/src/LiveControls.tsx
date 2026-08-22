@@ -5,8 +5,9 @@
 // slice 6c, #701, narrowed by #727, #729). The #tab-live Mode toggle
 // (LiveControls) and the Start/Stop transport (LiveTransportControls) are
 // GONE (#757): the Live tab is permanently monitor-mode and the top-bar
-// Record button (#729, RecordButton.tsx / #record-button-island) is the sole
-// capture transport, so the old in-tab control components no longer exist.
+// RecordButton.tsx and the Session toolbar are paired capture affordances over
+// these same lifecycle commands; the old in-tab control components no longer
+// exist.
 // What remains is the window.liveCaptureRuntime bridge type + accessor
 // (runtime()), the extracted startLiveCapture/stopLiveCapture ordering
 // helpers, and recordCapture — the promote-in-place orchestration (#458) the
@@ -63,13 +64,13 @@ export interface LiveCaptureRuntime {
   afterSecondaryMeasurementChange?(): void;
 }
 
-export type CapturePhase = 'idle' | 'monitoring' | 'starting-record' | 'recording';
+export type CapturePhase = 'idle' | 'monitoring' | 'starting-record' | 'recording' | 'stopping';
 
 // Typed accessor for the pure live-transition-state.js classic-script (boot-
 // injected onto `window` by App.tsx, read the same way liveCaptureStore.ts
 // reads armState/groupState/rigKind — see that file's header comment).
 export interface LiveTransitionState {
-  capturePhase(view: { liveRunning: boolean; liveMode: string; promoting: boolean }): CapturePhase;
+  capturePhase(view: { liveRunning: boolean; liveMode: string; promoting: boolean; stopping: boolean }): CapturePhase;
   captureIndicator(phase: CapturePhase): { text: string; recording: boolean };
   recordButtonView(phase: CapturePhase): { visible: boolean; disabled: boolean; label: string };
   statusLabel(phase: CapturePhase, meterRate: number): string;
