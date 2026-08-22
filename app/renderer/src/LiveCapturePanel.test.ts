@@ -206,6 +206,25 @@ describe('LiveCapturePanel', () => {
     expect(html).toContain('Could not read session.json.');
   });
 
+  it('renders cached session takes only in their provenance-matched lanes and replaces generation copy when ready', () => {
+    useSettingsStore.setState({ settings: settings({ dawWorkspaceEnabled: true }) });
+    useSoundcheckStore.setState({
+      manifest: { tracks: [{ kind: 'mono', sourceChannels: [1] }] },
+      peaks: null,
+      peaksStatus: 'generating',
+    });
+    expect(renderMarkup()).toContain('Generating waveforms…');
+
+    useSoundcheckStore.setState({
+      peaksStatus: 'ready',
+      peaks: { bucketsPerSecond: 2, tracks: [{ index: 0, label: 'Band', kind: 'mono', bucketCount: 2, data: btoa(String.fromCharCode(0, 255)) }] },
+    });
+    const html = renderMarkup();
+    expect(html).not.toContain('Generating waveforms…');
+    expect((html.match(/data-session-track-index/g) ?? [])).toHaveLength(1);
+    expect(html.indexOf('data-session-track-index="0"')).toBeGreaterThan(html.indexOf('daw-channel-lane" data-ch="1"'));
+  });
+
   it('renders the live-adjustments panel when the flag is on, and omits it when off', () => {
     useSettingsStore.setState({ settings: settings({ liveAdjustmentsEnabled: true }) });
     expect(renderMarkup()).toContain('live-adjustments-panel');

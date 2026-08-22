@@ -18,6 +18,8 @@ export interface SessionManifestTrack {
    *  a saved bus can match on the stem basename when the label is blank (#756). */
   file?: string;
   kind: 'mono' | 'stereo';
+  /** Captured input provenance from session.json; ordered for stereo stems. */
+  sourceChannels?: number[];
   frames?: number;
 }
 

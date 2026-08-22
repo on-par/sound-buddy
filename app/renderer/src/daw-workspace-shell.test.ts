@@ -463,15 +463,19 @@ describe('arrangement header and lane-column boundary (#1048)', () => {
   });
 
   it('one shared rule re-bases every timeline child by exactly one head width, with no numeric offset', () => {
-    const rebase = css.match(/\.daw-ruler-tick\s*,\s*\.daw-gridline\s*,\s*\.daw-playhead\s*\{[^}]*\}/);
+    const rebase = css.match(/\.daw-ruler-tick\s*,\s*\.daw-gridline\s*,\s*\.daw-playhead\s*,\s*\.daw-take-clip\s*\{[^}]*\}/);
     expect(rebase).not.toBeNull();
     expect(rebase![0]).toMatch(/transform:\s*translateX\(calc\(-1 \* var\(--daw-head-w\)\)\)/);
     const tickRule = css.match(/\.daw-ruler-tick\s*\{[^}]*\}/);
     const gridlineRule = css.match(/\.daw-gridline\s*\{[^}]*\}/);
+    const takeClipRule = css.match(/\.daw-take-clip\s*\{[^}]*\}/);
     expect(tickRule).not.toBeNull();
     expect(gridlineRule).not.toBeNull();
+    expect(takeClipRule).not.toBeNull();
     expect(tickRule![0]).not.toMatch(/transform|left:\s*\d/);
     expect(gridlineRule![0]).not.toMatch(/transform|left:\s*\d/);
+    expect(takeClipRule![0]).not.toMatch(/left:\s*\d/);
+    expect(css).toMatch(/\.daw-take-clip\s*\{[^}]*overflow:\s*hidden[^}]*pointer-events:\s*none/);
   });
 
   it('the head column opens with a ruler gutter that shares the ruler row height', () => {
@@ -524,7 +528,7 @@ describe('the arrangement playhead spans both timeline regions (#1049)', () => {
   });
 
   it('the playhead re-bases through the same shared rule as the ticks and gridlines', () => {
-    const rebase = css.match(/\.daw-ruler-tick\s*,\s*\.daw-gridline\s*,\s*\.daw-playhead\s*\{[^}]*\}/);
+    const rebase = css.match(/\.daw-ruler-tick\s*,\s*\.daw-gridline\s*,\s*\.daw-playhead\s*,\s*\.daw-take-clip\s*\{[^}]*\}/);
     expect(rebase).not.toBeNull();
     expect(rebase![0]).toMatch(/transform:\s*translateX\(calc\(-1 \* var\(--daw-head-w\)\)\)/);
     // A playhead-local transform would shadow the shared re-base.
@@ -532,6 +536,7 @@ describe('the arrangement playhead spans both timeline regions (#1049)', () => {
     expect(rule).not.toBeNull();
     expect(rule![0]).not.toContain('transform');
     expect(rule![0]).not.toMatch(/left:\s*[1-9]/);
+    expect(rule![0]).toMatch(/z-index:\s*2/);
   });
 
   it('each segment spans its own region, not a shell-relative offset', () => {

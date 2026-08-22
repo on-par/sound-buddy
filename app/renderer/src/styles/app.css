@@ -1001,7 +1001,7 @@
        ruler tick or a gridline carries; the transform slot belongs to the shared
        re-base below (ADR-0090), so this rule must never add a transform or a
        numeric left of its own. */
-    .daw-playhead { position:absolute; top:0; bottom:0; left:0; width:2px; border-radius:1px; background:var(--text-muted); pointer-events:none; }
+    .daw-playhead { position:absolute; top:0; bottom:0; left:0; width:2px; border-radius:1px; background:var(--text-muted); pointer-events:none; z-index:2; }
     .daw-playhead.advancing { background:var(--gold-text); }
     /* Arrangement frame (#1042/#1048): the semantic structure the arrangement
        view is built from — a track-head column (filled per track by #1043)
@@ -1064,7 +1064,7 @@
        column too, so their frame is the timeline column, same as a tick or a
        gridline. Any future absolutely positioned ruler/lane child joins this
        selector list — never its own offset. */
-    .daw-ruler-tick, .daw-gridline, .daw-playhead { transform:translateX(calc(-1 * var(--daw-head-w))); }
+    .daw-ruler-tick, .daw-gridline, .daw-playhead, .daw-take-clip { transform:translateX(calc(-1 * var(--daw-head-w))); }
     .daw-mix-lane { height:var(--daw-master-row-h); box-sizing:border-box; border-top:1px solid var(--border-strong); background:var(--surface-raised); }
     .daw-mix-lane .daw-lane-body { height:100%; }
     .daw-mix-waveform { display:block; width:100%; height:100%; }
@@ -1074,6 +1074,8 @@
     .daw-mix-lane[data-capture-mode="monitoring"] .daw-lane-name { color:var(--gold-text); }
     .daw-channel-lanes { display:flex; flex-direction:column; }
     .daw-channel-lane { height:var(--daw-track-row-h); box-sizing:border-box; }
+    .daw-take-clip { position:absolute; top:0; bottom:0; overflow:hidden; pointer-events:none; z-index:1; }
+    .daw-take-clip canvas { display:block; width:100%; height:100%; }
     .daw-channel-lane--dimmed { opacity:var(--daw-monitor-dim-opacity); }
     .daw-channel-lane .daw-lane-body { height:100%; }
     .daw-channel-waveform { display:block; width:100%; height:100%; }
