@@ -152,6 +152,7 @@ describe('changeDevice', () => {
       onCaptureStopping: vi.fn(),
       onCaptureStopped: vi.fn(),
       promoteToRecording: vi.fn(async () => {}),
+      stopPlaybackIfRunning: vi.fn(async () => {}),
     };
   }
 

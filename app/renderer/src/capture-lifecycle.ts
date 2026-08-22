@@ -83,6 +83,8 @@ export interface CaptureLifecycleDeps {
     normalizeMeasurementSource(v: number | null | undefined, n: number): number | null;
   };
   reportCardChrome: { persistSummary(src: ReportCardSource, kind: 'live'): void };
+  /** Stops active Session playback before a capture starts or promotes. */
+  stopPlaybackIfRunning(): Promise<void>;
   dawShell(): DawShellSeam | null;
   doc: Pick<Document, 'getElementById'>;
 }
@@ -409,6 +411,7 @@ export function createCaptureLifecycle(deps: CaptureLifecycleDeps): {
       resumeMonitoringStart = true;
     },
     promoteToRecording,
+    stopPlaybackIfRunning: deps.stopPlaybackIfRunning,
     // #460: the Room badge is MeasurementBadge.tsx (reactive) now — documented
     // no-op until slice 6k removes this from the runtime; kept so
     // SecondaryMeasurementPanel.tsx's optional call stays green.

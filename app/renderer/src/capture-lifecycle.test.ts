@@ -72,6 +72,7 @@ function makeLifecycle(overrides: Partial<CaptureLifecycleDeps> = {}) {
   };
   const dawShell = { startPlayhead: vi.fn(), stopPlayhead: vi.fn(), resetWaveform: vi.fn() };
   const reportCardChrome = { persistSummary: vi.fn() };
+  const stopPlaybackIfRunning = vi.fn(async () => {});
   const liveSetupState = { markSetupComplete: vi.fn(), hasCompletedSetup: vi.fn(), shouldShowGuide: vi.fn(), setupSteps: vi.fn(), showAdvancedControls: vi.fn() };
   const storage = {} as Storage;
   const deps: CaptureLifecycleDeps = {
@@ -88,12 +89,13 @@ function makeLifecycle(overrides: Partial<CaptureLifecycleDeps> = {}) {
     storage,
     liveCapturePanelApi: { shouldOfferReportCard, liveSessionReportCardSource, normalizeMeasurementSource },
     reportCardChrome,
+    stopPlaybackIfRunning,
     dawShell: () => dawShell,
     doc: doc as unknown as Pick<Document, 'getElementById'>,
     ...overrides,
   };
   const lifecycle = createCaptureLifecycle(deps);
-  return { lifecycle, deps, doc, sb, dawShell, reportCardChrome, liveSetupState };
+  return { lifecycle, deps, doc, sb, dawShell, reportCardChrome, liveSetupState, stopPlaybackIfRunning };
 }
 
 beforeEach(() => {
@@ -552,6 +554,14 @@ describe('createCaptureLifecycle — runtime members', () => {
     sb.openDirDialog.mockResolvedValue(null);
     await lifecycle.runtime.chooseRecordFolder();
     expect(useLiveCaptureStore.getState().recordDir).toBe('/tmp/rec');
+  });
+
+  it('exposes the injected playback stop command through the capture runtime', async () => {
+    const { lifecycle, stopPlaybackIfRunning } = makeLifecycle();
+
+    await lifecycle.runtime.stopPlaybackIfRunning();
+
+    expect(stopPlaybackIfRunning).toHaveBeenCalledTimes(1);
   });
 
   it('onResumeMonitoringStart + a fresh start clears offers (the one-way flag)', () => {
