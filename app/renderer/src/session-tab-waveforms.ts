@@ -55,6 +55,7 @@ function isPeakTrack(value: unknown): value is PeakTrack {
   const track = value as { index?: unknown; kind?: unknown; bucketCount?: unknown; data?: unknown };
   return Number.isInteger(track.index)
     && (track.kind === 'mono' || track.kind === 'stereo')
+    && typeof track.bucketCount === 'number'
     && Number.isInteger(track.bucketCount)
     && track.bucketCount >= 0
     && typeof track.data === 'string';

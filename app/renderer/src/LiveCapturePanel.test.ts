@@ -217,7 +217,7 @@ describe('LiveCapturePanel', () => {
 
     useSoundcheckStore.setState({
       peaksStatus: 'ready',
-      peaks: { bucketsPerSecond: 2, tracks: [{ index: 0, label: 'Band', kind: 'mono', bucketCount: 2, data: btoa(String.fromCharCode(0, 255)) }] },
+      peaks: { bucketsPerSecond: 2, tracks: [{ index: 0, label: 'Band', kind: 'mono', bucketCount: 1, data: btoa(String.fromCharCode(0, 255)) }] },
     });
     const html = renderMarkup();
     expect(html).not.toContain('Generating waveforms…');
