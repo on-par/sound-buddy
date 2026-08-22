@@ -107,11 +107,7 @@ function expectedInspectorHTML(): string {
 }
 
 function expectedMarkup(): string {
-  const selected = useLiveCaptureStore.getState().selectedChannel;
-  const pane = selected == null || selected < 0 || !useLiveCaptureStore.getState().channelConfig[selected]
-    ? '<div class="eq-pane-section eq-pane-secondary eq-pane-empty"><div class="eq-pane-empty-hint">Click a channel to inspect it here</div></div>'
-    : expectedPaneHTML();
-  return `<div><div>${expectedInspectorHTML()}</div><div>${expectedClassificationHTML()}</div><div>${pane}</div><footer class="eq-pane-footer">Sound Buddy does not write to your console.</footer></div>`;
+  return `<div><div>${expectedInspectorHTML()}</div><div>${expectedClassificationHTML()}</div><div>${expectedPaneHTML()}</div><footer class="eq-pane-footer">Sound Buddy does not write to your console.</footer></div>`;
 }
 
 beforeEach(() => {
@@ -154,22 +150,24 @@ afterEach(() => {
 });
 
 describe('LiveEqPane', () => {
-  it('renders only the empty-state guidance and read-only footer until a strip is selected', () => {
+  it('renders the Room section, empty selected guidance, and read-only footer until a strip is selected', () => {
     const html = renderMarkup();
     expect(html).toBe(expectedMarkup());
+    expect(html).toContain('eq-pane-primary');
+    expect(html).toContain('Room — Track 1');
     expect(html).toContain('eq-pane-empty-hint');
     expect(html).toContain('Sound Buddy does not write to your console.');
-    expect(html).not.toContain('eq-pane-primary');
     expect(html).not.toContain('eq-pane-classification');
   });
 
-  it('keeps a stale selected index in the same empty state without Room or inspector markup', () => {
+  it('keeps a stale selected index in the Room-plus-empty-selected state without inspector markup', () => {
     useLiveCaptureStore.setState({ selectedChannel: 9 });
     const html = renderMarkup();
     expect(html).toBe(expectedMarkup());
+    expect(html).toContain('eq-pane-primary');
+    expect(html).toContain('Room — Track 1');
     expect(html).toContain('eq-pane-empty-hint');
     expect(html).toContain('Sound Buddy does not write to your console.');
-    expect(html).not.toContain('eq-pane-primary');
     expect(html).not.toContain('eq-pane-inspector');
     expect(html).not.toContain('eq-pane-classification');
   });

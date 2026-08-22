@@ -170,9 +170,7 @@ export default function LiveEqPane(): JSX.Element {
   // which label, the room override, the render mode) changes — the per-tick
   // arc/bars patches from the meter controller survive because this memoized
   // string stays the same across ticks.
-  const html = useMemo(() => selectedStrip
-    ? eqPaneHTML(view)
-    : '<div class="eq-pane-section eq-pane-secondary eq-pane-empty"><div class="eq-pane-empty-hint">Click a channel to inspect it here</div></div>', [signature, selectedStrip]);
+  const html = useMemo(() => eqPaneHTML(view), [signature]);
   // Keep configuration locked for the entire record→monitor handoff (#847),
   // including the stop IPC interval where isCapturing is temporarily false.
   const liveRunning = boardRunning({ isCapturing: s.isCapturing, demoting: s.demoting });
