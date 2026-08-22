@@ -86,7 +86,6 @@ import { useLiveCaptureStore } from './stores/liveCaptureStore';
 import { useAnalysisStore } from './stores/analysisStore';
 import { useSpectrumStore } from './stores/spectrumStore';
 import { useRigStore } from './stores/rigStore';
-import { useSoundcheckStore } from './stores/soundcheckStore';
 import { getSoundBuddy } from './useElectron';
 import FeedbackDialog from './FeedbackDialog';
 import GradeOwnGuideDialog from './GradeOwnGuideDialog';
@@ -101,7 +100,7 @@ import LiveStatusLine from './LiveStatusLine';
 import LiveSessionOffers from './LiveSessionOffers';
 import WindowBadge from './WindowBadge';
 import RigDialog from './RigDialog';
-import { stopPlaybackIfRunning, type LiveCaptureRuntime, type LiveTransitionState } from './LiveControls';
+import type { LiveCaptureRuntime, LiveTransitionState } from './LiveControls';
 import type { LiveSetupStepsApi } from './live-workspace-view';
 
 // Boot scripts in their original document order (#303): the 33 UMD helpers
@@ -278,7 +277,6 @@ export default function App() {
       storage: window.localStorage,
       liveCapturePanelApi: liveCapturePanel,
       reportCardChrome,
-      stopPlaybackIfRunning: () => stopPlaybackIfRunning(useSoundcheckStore.getState()),
       dawShell: () => (window as unknown as { dawShellRuntime?: DawShellSeam }).dawShellRuntime ?? null,
       doc: document,
     });

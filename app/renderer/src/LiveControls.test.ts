@@ -2,7 +2,7 @@
 // Licensed under the Sound Buddy Desktop Application License (app/LICENSE).
 
 import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest';
-import { startLiveCapture, stopLiveCapture, stopCaptureIfRunning, recordCapture, stopPlaybackIfRunning, type LiveCaptureRuntime } from './LiveControls';
+import { startLiveCapture, stopLiveCapture, stopCaptureIfRunning, recordCapture, type LiveCaptureRuntime } from './LiveControls';
 import { useLiveCaptureStore } from './stores/liveCaptureStore';
 import { useSettingsStore } from './stores/settingsStore';
 
@@ -52,7 +52,6 @@ describe('startLiveCapture / stopLiveCapture / recordCapture', () => {
       onCaptureStopping: vi.fn(),
       onCaptureStopped: vi.fn(),
       promoteToRecording: vi.fn(async () => {}),
-      stopPlaybackIfRunning: vi.fn(async () => {}),
       ...overrides,
     };
   }
@@ -390,19 +389,6 @@ describe('startLiveCapture / stopLiveCapture / recordCapture', () => {
     expect(rt.promoteToRecording).toHaveBeenCalledTimes(1);
   });
 
-  it('recordCapture stops active soundcheck playback before promoting to recording', async () => {
-    const order: string[] = [];
-    const rt = mockRuntime({
-      stopPlaybackIfRunning: vi.fn(async () => { order.push('stop playback'); }),
-      promoteToRecording: vi.fn(async () => { order.push('promote recording'); }),
-    });
-    useLiveCaptureStore.setState({ isCapturing: true, liveMode: 'monitor' });
-
-    await recordCapture(rt);
-
-    expect(order).toEqual(['stop playback', 'promote recording']);
-  });
-
   it('recordCapture starts monitoring first, then promotes, when idle (#757)', async () => {
     const rt = mockRuntime();
     useLiveCaptureStore.setState({
@@ -466,17 +452,5 @@ describe('startLiveCapture / stopLiveCapture / recordCapture', () => {
     await expect(recordCapture(undefined)).resolves.toBeUndefined();
 
     expect(useLiveCaptureStore.getState().isCapturing).toBe(true);
-  });
-});
-
-describe('stopPlaybackIfRunning', () => {
-  it('stops only active Session playback', async () => {
-    const stop = vi.fn(async () => {});
-
-    await stopPlaybackIfRunning({ playing: false, stop });
-    expect(stop).not.toHaveBeenCalled();
-
-    await stopPlaybackIfRunning({ playing: true, stop });
-    expect(stop).toHaveBeenCalledTimes(1);
   });
 });

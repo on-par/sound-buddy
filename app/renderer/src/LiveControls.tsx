@@ -56,8 +56,6 @@ export interface LiveCaptureRuntime {
   onResumeMonitoringStart?(): void;
   /** Promotes a running monitor session to a recording in place (#458) — its own guard/orchestration stays bridged. */
   promoteToRecording(): Promise<void>;
-  /** Stops an active Session playback before capture claims the audio path. */
-  stopPlaybackIfRunning(): Promise<void>;
   /** Repaints the Room badge after a secondary-measurement device selection/
    *  start/stop/reconnect (#460, #724) — the badge is MeasurementBadge.tsx
    *  (reactive) now, so this is a documented no-op until slice 6k removes it
@@ -169,11 +167,6 @@ export async function stopCaptureIfRunning(rt: LiveCaptureRuntime | undefined): 
   await runStopCeremony(rt);
 }
 
-/** Stops Session playback only when it is active, preserving a paused take's position. */
-export async function stopPlaybackIfRunning(playback: { playing: boolean; stop(): Promise<void> }): Promise<void> {
-  if (playback.playing) await playback.stop();
-}
-
 // The top-bar Record button's promote action (#729, #757): promotes a running
 // monitor session to a recording in place (#458). With the Live tab's mode
 // toggle gone, an idle press (nothing live) starts monitoring FIRST — the tab
@@ -183,7 +176,6 @@ export async function stopPlaybackIfRunning(playback: { playing: boolean; stop()
 // beforeStartCapture's #arm-hint guard means a blocked start (e.g. an empty
 // channel config) returns without ever touching promoteToRecording.
 export async function recordCapture(rt: LiveCaptureRuntime | undefined): Promise<void> {
-  await rt?.stopPlaybackIfRunning();
   const live = useLiveCaptureStore.getState();
   if (!live.isCapturing) {
     if (live.liveMode !== 'monitor') useLiveCaptureStore.getState().setLiveMode('monitor');
