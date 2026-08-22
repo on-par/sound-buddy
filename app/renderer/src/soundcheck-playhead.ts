@@ -8,8 +8,8 @@
 // auto, min 52px) sits before each canvas, so the time axis starts at the
 // measured name width, not x=0 — hence both helpers take nameWidthPx and
 // canvasWidthPx as measured parameters (ADR-0005: pure math, side effects
-// injected as args; the DOM appliers that measure them live in SoundcheckPanel
-// and are e2e-gated). Both delegate their fraction/clamp to the #695
+// injected as args; the Session workspace owns the DOM measurements and is
+// e2e-gated). Both delegate their fraction/clamp to the #695
 // spectrum-transport helpers.
 
 import { playheadPercent, seekTimeFromBarClick } from './spectrum-transport';

@@ -86,11 +86,25 @@ describe('Source tabs gate (#544)', () => {
     expect(analyzeSourceState).toContain("case 'live': return 'live';");
   });
 
-  it('no UI copy names a removed tab by name', () => {
+  it('the merged Session shell has one workspace Pro card with the established #tab-live cascade', () => {
+    const tabLiveStart = rootMarkup.indexOf('<div class="tab-content" id="tab-live">');
+    const tabLiveEnd = rootMarkup.indexOf('<div id="spectrum-header">', tabLiveStart);
+    const tabLiveMarkup = rootMarkup.slice(tabLiveStart, tabLiveEnd);
+
+    expect(tabLiveStart).toBeGreaterThan(-1);
+    expect(tabLiveEnd).toBeGreaterThan(tabLiveStart);
+    expect(tabLiveMarkup.match(/<div class="pro-gate">/g)).toHaveLength(1);
+    expect(appCss).toContain('body.not-pro #tab-live > :not(.pro-gate)');
+    expect(appCss).toContain('body.not-pro #tab-live .pro-gate');
+    expect(appCss.indexOf('body.not-pro #tab-live > :not(.pro-gate)'))
+      .toBeLessThan(appCss.indexOf('body.not-pro #tab-live .pro-gate'));
+  });
+
+  it('no UI copy names a removed source tab by name', () => {
     const strippedIndexHtml = stripComments(indexHtml);
     const strippedRootMarkup = stripComments(rootMarkup);
     const strippedUpgradeMomentum = stripComments(upgradeMomentum);
-    for (const banned of ['Live tab', 'Directory tab', 'Soundcheck tab']) {
+    for (const banned of ['Live tab', 'Directory tab']) {
       expect(strippedIndexHtml).not.toContain(banned);
       expect(strippedRootMarkup).not.toContain(banned);
       expect(strippedUpgradeMomentum).not.toContain(banned);

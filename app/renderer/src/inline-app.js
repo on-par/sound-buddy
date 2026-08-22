@@ -204,10 +204,6 @@ window.seekPlayback = (t) => transport.seek(t);
 // applySingleColumnSync for the remaining call sites below that aren't
 // inside switchMode() itself.
 
-// Virtual Soundcheck (#46): fully React/store-owned (SoundcheckPanel.tsx,
-// stores/soundcheckStore.ts, TD-001 slice 6d, #702).
-window.rendererStores.soundcheck.getState().loadDevices(); // populate the output picker at startup
-
 /* ══ File mode ══
    The dropzone (click/drag/drop) and the Analyze button now live in
    ReportCardIsland (React), wired straight to analysisStore (TD-001 slice 4,
