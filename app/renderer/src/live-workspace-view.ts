@@ -450,6 +450,7 @@ export interface DawTrackRow {
   armed: boolean;
   muted: boolean;
   soloed: boolean;
+  monitorActive: boolean;
   levelPercent: number;
 }
 
@@ -461,14 +462,18 @@ export interface DawTrackRow {
 // their names differently. Unarmed configured tracks are included: arming
 // governs what records, never what the arrangement shows.
 export function dawTrackRows(state: LiveWorkspaceViewState): DawTrackRow[] {
+  const hasSoloedChannel = Object.values(state.soloedChannels).some((soloed) => soloed === true);
   return state.channelConfig.map((strip, idx) => {
     const channel = liveChannelAt(state, idx);
+    const muted = state.mutedChannels[idx] === true;
+    const soloed = state.soloedChannels[idx] === true;
     return {
       index: idx,
       name: escapeHtml(getRigReconcile().resolveStripLabel(strip, channel, idx)),
       armed: getArmState().isArmed(strip),
-      muted: state.mutedChannels[idx] === true,
-      soloed: state.soloedChannels[idx] === true,
+      muted,
+      soloed,
+      monitorActive: !muted && (!hasSoloedChannel || soloed),
       levelPercent: levelPercent(channel?.rms ?? Number.NaN, !!channel?.idle),
     };
   });
@@ -568,7 +573,7 @@ export function dawShellHTML(state: LiveWorkspaceViewState): string {
     : `<div class="daw-empty-head"></div>`;
   const laneHTML = rows.length > 0
     ? `<div class="daw-channel-lanes">${rows.map((row) =>
-      `<div class="daw-lane daw-channel-lane" data-ch="${row.index}">`
+      `<div class="daw-lane daw-channel-lane${row.monitorActive ? '' : ' daw-channel-lane--dimmed'}" data-ch="${row.index}">`
       + `<span class="daw-lane-name">${row.name}</span>`
       + `<span class="daw-lane-body"><canvas class="daw-channel-waveform"></canvas></span>`
       + laneGrid

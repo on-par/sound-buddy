@@ -948,7 +948,7 @@
        the Live tab: transport bar on top, a placeholder ruler strip, then
        full-width stacked lanes with hairline dividers. UI-only — no real
        waveform/time math in this slice. */
-    .daw-shell { position:relative; display:flex; flex-direction:column; flex:1; min-height:0; --daw-ruler-row-h:26px; --daw-track-row-h:64px; --daw-master-row-h:60px; --daw-status-line-h:26px; }
+    .daw-shell { position:relative; display:flex; flex-direction:column; flex:1; min-height:0; --daw-ruler-row-h:26px; --daw-track-row-h:64px; --daw-master-row-h:60px; --daw-status-line-h:26px; --daw-monitor-dim-opacity:0.45; }
     .daw-transport { display:flex; align-items:center; gap:12px; padding:10px 4px; border-bottom:1px solid var(--border-subtle); }
     .daw-transport-title { font:var(--fw-semibold) var(--fs-body)/1 var(--font-sans); color:var(--text-primary); }
     .daw-transport-state { font:var(--fw-medium) var(--fs-micro)/1 var(--font-sans); letter-spacing:var(--tracking-caps); text-transform:uppercase; padding:3px 8px; border-radius:var(--radius-md); background:var(--surface-raised); color:var(--text-muted); }
@@ -1045,6 +1045,7 @@
     .daw-mix-lane[data-capture-mode="monitoring"] .daw-lane-name { color:var(--gold-text); }
     .daw-channel-lanes { display:flex; flex-direction:column; }
     .daw-channel-lane { height:var(--daw-track-row-h); box-sizing:border-box; }
+    .daw-channel-lane--dimmed { opacity:var(--daw-monitor-dim-opacity); }
     .daw-channel-lane .daw-lane-body { height:100%; }
     .daw-channel-waveform { display:block; width:100%; height:100%; }
     .daw-empty-state { height:var(--daw-track-row-h); box-sizing:border-box; color:var(--text-muted); font:var(--fw-regular) var(--fs-label)/1.3 var(--font-sans); justify-content:center; text-align:center; }

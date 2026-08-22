@@ -1,4 +1,7 @@
 import { test, expect, type ElectronApplication, type Page } from '@playwright/test';
+import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { launchApp, stopCaptureIfRunning } from './e2e-helpers';
 
 // DAW playback + waveform rendering (TD-001 slice 6j, #713): with the
@@ -73,6 +76,63 @@ test.describe('DAW shell playback + waveform rendering (#713)', () => {
     await expect(window.locator('.daw-playhead-lanes')).toBeVisible();
     // The fake device boots with the 2-strip device default (#188).
     await expect(window.locator('.daw-channel-lane')).toHaveCount(2);
+  });
+
+  test('solo dims non-soloed lanes and clearing the final solo restores them (#1056)', async () => {
+    const firstLane = window.locator('.daw-channel-lane[data-ch="0"]');
+    const secondLane = window.locator('.daw-channel-lane[data-ch="1"]');
+    const secondSolo = window.locator('.daw-track-head[data-ch="1"] .daw-track-head-solo');
+
+    await secondSolo.click();
+    await expect(secondLane).not.toHaveClass(/daw-channel-lane--dimmed/);
+    await expect(firstLane).toHaveClass(/daw-channel-lane--dimmed/);
+
+    await secondSolo.click();
+    await expect(firstLane).not.toHaveClass(/daw-channel-lane--dimmed/);
+    await expect(secondLane).not.toHaveClass(/daw-channel-lane--dimmed/);
+  });
+
+  test('a muted armed lane still writes its record stem (#1056)', async () => {
+    const sessionDir = await mkdtemp(join(tmpdir(), 'sound-buddy-daw-shell-'));
+    try {
+      await electronApp!.evaluate(({ ipcMain }, directory) => {
+        // This callback is serialized into Electron's main process, so the
+        // test-local fake loads its Node dependency inside that process.
+        const fs: { writeFileSync(path: string, data: string): void } = require('node:fs');
+        ipcMain.removeHandler('start-live');
+        ipcMain.handle('start-live', (_event, opts: { mode?: string; arm?: string[] }) => {
+          if (opts.mode === 'record') {
+            for (const token of opts.arm ?? []) fs.writeFileSync(`${directory}/${token}.wav`, 'fake stem');
+            (globalThis as Record<string, unknown>).__recordStart = opts;
+          }
+          return { success: true };
+        });
+        ipcMain.removeHandler('stop-live');
+        ipcMain.handle('stop-live', () => ({ success: true, sessionDir: directory }));
+      }, sessionDir);
+
+      await window.locator('.daw-track-head[data-ch="0"] .daw-track-head-mute').click();
+      await expect(window.locator('.daw-channel-lane[data-ch="0"]')).toHaveClass(/daw-channel-lane--dimmed/);
+      await window.locator('#record-button').click();
+      await expect(window.locator('#live-indicator .live-txt')).toHaveText('REC');
+      await window.locator('#record-button').click();
+      await expect(window.locator('#record-button')).toBeEnabled();
+
+      const recordStart = (await electronApp!.evaluate(
+        () => (globalThis as Record<string, unknown>).__recordStart,
+      )) as { arm?: string[] };
+      expect(recordStart.arm).toContain('0');
+      await expect(readFile(join(sessionDir, '0.wav'), 'utf8')).resolves.toBe('fake stem');
+    } finally {
+      await electronApp!.evaluate(({ ipcMain }) => {
+        ipcMain.removeHandler('start-live');
+        ipcMain.handle('start-live', () => ({ success: true }));
+        ipcMain.removeHandler('stop-live');
+        ipcMain.handle('stop-live', () => ({ success: true, sessionDir: '/tmp/sound-buddy-20260702-101500' }));
+        delete (globalThis as Record<string, unknown>).__recordStart;
+      });
+      await rm(sessionDir, { recursive: true, force: true });
+    }
   });
 
   test('starting a capture advances the transport time and moves the playhead', async () => {

@@ -705,6 +705,26 @@ describe('createLiveCaptureStore', () => {
       expect((call!.args[0] as { arm: string[] }).arm).toEqual(['0']);
     });
 
+    it('keeps muted and soloed armed strips in the record arm payload without sending monitor maps (#1056)', async () => {
+      const { store, mock } = makeStore({
+        startLive: async (opts) => {
+          mock.calls.push({ method: 'startLive', args: [opts] });
+          return { success: true };
+        },
+      });
+      store.setState({
+        channelConfig: [{ kind: 'mono', a: 0, b: 1, armed: true }, { kind: 'mono', a: 1, b: 2, armed: false }],
+        liveMode: 'record',
+        mutedChannels: { 0: true },
+        soloedChannels: { 0: true },
+      });
+      await store.getState().startCapture({ windowSecs: 3, intervalSecs: 0.1 });
+      const payload = mock.calls.find((call) => call.method === 'startLive')!.args[0] as { arm?: string[] };
+      expect(payload.arm).toEqual(['0']);
+      expect(payload).not.toHaveProperty('mutedChannels');
+      expect(payload).not.toHaveProperty('soloedChannels');
+    });
+
     it('record mode: labels payload is aligned index-for-index with channelConfig (#482)', async () => {
       const { store, mock } = makeStore({
         startLive: async (opts) => {
