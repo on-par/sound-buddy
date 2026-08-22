@@ -79,15 +79,38 @@ describe('createRouteStore', () => {
     const store = makeStore();
     store.getState().ensureSession('session-a', INITIAL_ROUTE_STATE);
     const mutated = store.getState().updateTrackInput('session-a', 0, [7]);
-    const other: RouteState = { tracks: [], savedBuses: [], masterMixdown: true };
+    const sameShape: RouteState = {
+      tracks: [
+        { inputChannels: [9], outputChannels: [] },
+        { inputChannels: [10, 11], outputChannels: [] },
+      ],
+      savedBuses: [],
+      masterMixdown: true,
+    };
 
-    const reseeded = store.getState().ensureSession('session-a', other);
-    const otherSeeded = store.getState().ensureSession('session-b', other);
+    const reseeded = store.getState().ensureSession('session-a', sameShape);
+    const otherSeeded = store.getState().ensureSession('session-b', sameShape);
 
     expect(reseeded).toEqual(mutated);
     expect(store.getState().getRouteState('session-a')).toEqual(mutated);
-    expect(otherSeeded).toEqual(other);
-    expect(store.getState().getRouteState('session-b')).toEqual(other);
+    expect(otherSeeded).toEqual(sameShape);
+    expect(store.getState().getRouteState('session-b')).toEqual(sameShape);
+  });
+
+  it('reseeds a session when its reloaded track shape changes', () => {
+    const store = makeStore();
+    store.getState().ensureSession('session-a', INITIAL_ROUTE_STATE);
+    store.getState().updateTrackOutput('session-a', 0, [7]);
+    const reloaded: RouteState = {
+      tracks: [{ inputChannels: [0, 1], outputChannels: [2] }],
+      savedBuses: [],
+      masterMixdown: true,
+    };
+
+    const reseeded = store.getState().ensureSession('session-a', reloaded);
+
+    expect(reseeded).toEqual(reloaded);
+    expect(store.getState().getRouteState('session-a')).toEqual(reloaded);
   });
 
   it('treats a prototype-collision string as an opaque session identity', () => {

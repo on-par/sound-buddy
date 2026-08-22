@@ -41,6 +41,15 @@ function cloneRouteState(state: RouteState): RouteState {
   };
 }
 
+// A session's routing is only compatible with the recorded track layout when
+// both the number of tracks and each track's mono/stereo input width match.
+// Output assignments are intentionally excluded: they are user edits that
+// must survive re-opening the same session.
+function hasSameTrackShape(existing: RouteState, initial: RouteState): boolean {
+  return existing.tracks.length === initial.tracks.length
+    && existing.tracks.every((track, index) => track.inputChannels.length === initial.tracks[index].inputChannels.length);
+}
+
 function isValidChannel(channel: number, deviceChannelCount: number): boolean {
   return Number.isInteger(channel)
     && channel >= FIRST_DEVICE_CHANNEL
@@ -76,7 +85,7 @@ export function createRouteStore(): UseBoundStore<StoreApi<RouteStoreState>> {
 
     ensureSession(sessionId, initial) {
       const existing = get().getRouteState(sessionId);
-      if (existing) return existing;
+      if (existing && hasSameTrackShape(existing, initial)) return existing;
 
       const seeded = cloneRouteState(initial);
       set((state) => ({
