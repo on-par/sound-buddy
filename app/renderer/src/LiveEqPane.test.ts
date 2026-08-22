@@ -184,6 +184,13 @@ describe('LiveEqPane', () => {
     expect(html).toContain('eq-pane-classification-group" aria-label="Assign track to group" disabled');
   });
 
+  it('keeps classification controls locked while a record capture demotes to monitoring (#847)', () => {
+    useLiveCaptureStore.setState({ selectedChannel: 0, isCapturing: false, demoting: true });
+    const html = renderMarkup();
+    expect(html).toContain('eq-pane-classification-profile" aria-label="Instrument profile" disabled');
+    expect(html).toContain('eq-pane-classification-group" aria-label="Assign track to group" disabled');
+  });
+
   it('swaps the Room slot to the secondary room mic when active (#460)', () => {
     useLiveCaptureStore.setState({
       secondaryMeasurement: { status: 'active', deviceName: 'Room Mic' },

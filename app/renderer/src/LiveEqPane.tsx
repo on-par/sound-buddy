@@ -33,6 +33,7 @@ import {
   getArmState,
   getGroupState,
   getInstrumentProfiles,
+  boardRunning,
   liveWorkspaceViewState,
   type ArmStateApi,
   type InstrumentProfilesApi,
@@ -78,6 +79,7 @@ export default function LiveEqPane(): JSX.Element {
     devices: st.devices,
     selectedDevice: st.selectedDevice,
     isCapturing: st.isCapturing,
+    demoting: st.demoting,
     measurementSource: st.measurementSource,
     selectedChannel: st.selectedChannel,
     appMode: st.appMode,
@@ -113,6 +115,9 @@ export default function LiveEqPane(): JSX.Element {
   const selectedStrip = s.selectedChannel != null && s.selectedChannel >= 0
     ? s.channelConfig[s.selectedChannel] ?? null
     : null;
+  // Keep configuration locked for the entire record→monitor handoff (#847),
+  // including the stop IPC interval where isCapturing is temporarily false.
+  const liveRunning = boardRunning({ isCapturing: s.isCapturing, demoting: s.demoting });
   const classificationHtml = useMemo(() => {
     if (!selectedStrip || s.selectedChannel == null) return eqPaneClassificationHTML(null);
     const profiles = getInstrumentProfiles().PROFILES;
@@ -126,9 +131,9 @@ export default function LiveEqPane(): JSX.Element {
       profiles,
       effectiveProfileId: getInstrumentProfiles().effectiveProfileId(savedProfiles, token, selectedStrip.label),
       instrumentAuto: !(savedProfile && getInstrumentProfiles().isKnownProfileId(savedProfile)),
-      disabled: state.isCapturing,
+      disabled: liveRunning,
     });
-  }, [selectedStrip, s.selectedChannel, s.channelGroups, s.selectedDevice, s.devices, settings?.inputInstrumentProfiles, state.isCapturing]);
+  }, [selectedStrip, s.selectedChannel, s.channelGroups, s.selectedDevice, s.devices, settings?.inputInstrumentProfiles, liveRunning]);
 
   function onClassificationChange(e: FormEvent<HTMLDivElement>): void {
     const target = e.target;
