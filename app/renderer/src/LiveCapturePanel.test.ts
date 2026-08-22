@@ -200,6 +200,7 @@ describe('routeHeaderChannelAction', () => {
     return {
       toggleArm: vi.fn(), hideArmHint: vi.fn(), removeStrip: vi.fn(),
       toggleChannelMute: vi.fn(), toggleChannelSolo: vi.fn(),
+      isCapturing: false, liveMode: 'monitor',
     };
   }
 
@@ -208,6 +209,17 @@ describe('routeHeaderChannelAction', () => {
     routeHeaderChannelAction('arm', 3, a);
     expect(a.toggleArm).toHaveBeenCalledWith(3);
     expect(a.hideArmHint).toHaveBeenCalledOnce();
+  });
+
+  it('does not change an arm or clear its hint during an active recording (#1058)', () => {
+    const a = actions();
+    a.isCapturing = true;
+    a.liveMode = 'record';
+
+    routeHeaderChannelAction('arm', 3, a);
+
+    expect(a.toggleArm).not.toHaveBeenCalled();
+    expect(a.hideArmHint).not.toHaveBeenCalled();
   });
 
   it('removes the supplied channel', () => {

@@ -367,6 +367,20 @@ describe('createCaptureLifecycle — promoteToRecording', () => {
     expect(useLiveCaptureStore.getState().liveCueVisible).toBe(false);
   });
 
+  it('preserves monitor mute and solo maps when promoting to recording (#1058)', async () => {
+    const { lifecycle } = makeLifecycle();
+    recordReadyState();
+    const mutedChannels = { 0: true, 2: true };
+    const soloedChannels = { 1: true };
+    useLiveCaptureStore.setState({ mutedChannels, soloedChannels });
+
+    await lifecycle.runtime.promoteToRecording();
+
+    expect(useLiveCaptureStore.getState().liveMode).toBe('record');
+    expect(useLiveCaptureStore.getState().mutedChannels).toEqual(mutedChannels);
+    expect(useLiveCaptureStore.getState().soloedChannels).toEqual(soloedChannels);
+  });
+
   it('a failed promote demotes to monitor, shows the error, and stops the session', async () => {
     const { lifecycle, sb } = makeLifecycle();
     sb.startLive.mockResolvedValue({ success: false, error: 'boom' });

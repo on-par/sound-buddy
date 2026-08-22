@@ -183,6 +183,35 @@ describe('startLiveCapture / stopLiveCapture / recordCapture', () => {
     expect(rt.onResumeMonitoringStart).toHaveBeenCalledTimes(1);
   });
 
+  it('preserves monitor mute and solo maps when a recording resumes monitoring (#1058)', async () => {
+    const rt = mockRuntime();
+    const mutedChannels = { 0: true, 2: true };
+    const soloedChannels = { 1: true };
+    useLiveCaptureStore.setState({
+      liveMode: 'record',
+      isCapturing: true,
+      windowSecs: 3,
+      meterIntervalMs: 100,
+      mutedChannels,
+      soloedChannels,
+      stopCapture: vi.fn(async () => {
+        useLiveCaptureStore.setState({ isCapturing: false });
+        return { success: true, sessionDir: '/tmp/session' };
+      }),
+      startCapture: vi.fn(async () => {
+        useLiveCaptureStore.setState({ isCapturing: true });
+        return { success: true };
+      }),
+    });
+
+    await stopLiveCapture(rt);
+
+    expect(useLiveCaptureStore.getState().liveMode).toBe('monitor');
+    expect(useLiveCaptureStore.getState().isCapturing).toBe(true);
+    expect(useLiveCaptureStore.getState().mutedChannels).toEqual(mutedChannels);
+    expect(useLiveCaptureStore.getState().soloedChannels).toEqual(soloedChannels);
+  });
+
   // Defensive branch: RecordButton only ever issues 'stop' for a record
   // session, so stopping a monitor session must stay a plain full stop — no
   // resume, no startCapture call (#776).

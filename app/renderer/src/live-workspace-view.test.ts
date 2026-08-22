@@ -350,7 +350,7 @@ describe('dawShellHTML / dawShellPatchView', () => {
   });
 
   it('builds an accessible escaped track header with its initial inline level', () => {
-    const html = dawTrackHeaderHTML({ index: 0, name: 'Kick &lt;3', armed: true, muted: false, soloed: true, monitorActive: true, levelPercent: 70 });
+    const html = dawTrackHeaderHTML({ index: 0, name: 'Kick &lt;3', armed: true, armDisabled: false, muted: false, soloed: true, monitorActive: true, levelPercent: 70 });
     expect(html).toContain('class="daw-track-head-arm"');
     expect(html).toContain('aria-label="Disarm track"');
     expect(html).toContain('class="daw-track-head-mute"');
@@ -365,8 +365,21 @@ describe('dawShellHTML / dawShellPatchView', () => {
     expect(html).toContain('>Kick &lt;3</span>');
   });
 
+  it('disables only track-header Arm controls during an active recording (#1058)', () => {
+    const armButton = (html: string) => html.match(/<button type="button" class="daw-track-head-arm"[^>]*>/)?.[0];
+    const recordingHTML = dawShellHTML(makeState({ isCapturing: true, liveMode: 'record' }));
+    const recordingHeads = recordingHTML.slice(
+      recordingHTML.indexOf('<div class="daw-track-heads">'),
+      recordingHTML.indexOf('<div class="daw-timeline">'),
+    );
+    expect(armButton(recordingHeads)).toContain('disabled');
+    expect(recordingHeads.match(/ disabled/g)).toHaveLength(CONFIG.length);
+    expect(armButton(dawShellHTML(makeState({ isCapturing: true, liveMode: 'monitor' })))).not.toContain('disabled');
+    expect(armButton(dawShellHTML(makeState({ isCapturing: false, liveMode: 'record' })))).not.toContain('disabled');
+  });
+
   it('keeps header markup byte-identical for equal rows', () => {
-    const row = { index: 0, name: 'Kick', armed: true, muted: false, soloed: false, monitorActive: true, levelPercent: 0 };
+    const row = { index: 0, name: 'Kick', armed: true, armDisabled: false, muted: false, soloed: false, monitorActive: true, levelPercent: 0 };
     expect(dawTrackHeaderHTML(row)).toBe(dawTrackHeaderHTML(row));
   });
 

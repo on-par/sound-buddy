@@ -448,6 +448,7 @@ export interface DawTrackRow {
   index: number;
   name: string;
   armed: boolean;
+  armDisabled: boolean;
   muted: boolean;
   soloed: boolean;
   monitorActive: boolean;
@@ -463,6 +464,7 @@ export interface DawTrackRow {
 // governs what records, never what the arrangement shows.
 export function dawTrackRows(state: LiveWorkspaceViewState): DawTrackRow[] {
   const hasSoloedChannel = Object.values(state.soloedChannels).some((soloed) => soloed === true);
+  const armDisabled = state.isCapturing && state.liveMode === 'record';
   return state.channelConfig.map((strip, idx) => {
     const channel = liveChannelAt(state, idx);
     const muted = state.mutedChannels[idx] === true;
@@ -471,6 +473,7 @@ export function dawTrackRows(state: LiveWorkspaceViewState): DawTrackRow[] {
       index: idx,
       name: escapeHtml(getRigReconcile().resolveStripLabel(strip, channel, idx)),
       armed: getArmState().isArmed(strip),
+      armDisabled,
       muted,
       soloed,
       monitorActive: !muted && (!hasSoloedChannel || soloed),
@@ -485,7 +488,7 @@ export function dawTrackHeaderHTML(row: DawTrackRow): string {
   return `<span class="daw-track-head-index">${row.index + 1}</span>`
     + `<span class="daw-track-head-name">${row.name}</span>`
     + `<span class="daw-track-head-controls">`
-    + `<button type="button" class="daw-track-head-arm" aria-label="${row.armed ? 'Disarm track' : 'Arm track for recording'}" aria-pressed="${row.armed}">Arm</button>`
+    + `<button type="button" class="daw-track-head-arm" aria-label="${row.armed ? 'Disarm track' : 'Arm track for recording'}" aria-pressed="${row.armed}"${row.armDisabled ? ' disabled' : ''}>Arm</button>`
     + `<button type="button" class="daw-track-head-mute" aria-label="${row.muted ? 'Unmute track' : 'Mute track'}" aria-pressed="${row.muted}">M</button>`
     + `<button type="button" class="daw-track-head-solo" aria-label="${row.soloed ? 'Unsolo track' : 'Solo track'}" aria-pressed="${row.soloed}">S</button>`
     + `</span>`
