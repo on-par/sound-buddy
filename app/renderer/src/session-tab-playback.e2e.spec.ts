@@ -26,7 +26,7 @@ async function sendLiveEvent(data: unknown): Promise<void> {
   }, data);
 }
 
-test.describe('Session tab playback (#1073)', () => {
+test.describe('Session tab playback (#1080)', () => {
   test.beforeAll(async () => {
     ({ electronApp, window } = await launchApp());
   });
@@ -99,11 +99,30 @@ test.describe('Session tab playback (#1073)', () => {
     await expect(window.locator('#daw-session-stop')).toBeVisible();
 
     await window.locator('#daw-session-stop').click();
-    await expect(window.locator('#daw-session-play')).toBeVisible();
+    await expect(window.locator('#daw-session-play')).toBeEnabled();
     await expect(window.locator('.daw-transport-time')).toHaveText('0:02');
     expect(await electronApp.evaluate(
       () => (globalThis as Record<string, unknown>).__sessionPlaybackStopped,
     )).toBe(true);
+
+    await window.locator('#daw-session-play').click();
+    const resumedStart = (await electronApp.evaluate(
+      () => (globalThis as Record<string, unknown>).__sessionPlayback,
+    )) as { startOffsetSecs?: number };
+    expect(resumedStart.startOffsetSecs).toBe(2);
+
+    await window.locator('#daw-session-loop').click();
+    await expect(window.locator('#daw-session-loop')).toHaveAttribute('aria-pressed', 'true');
+
+    await window.locator('#daw-session-return').click();
+    const returnedStart = (await electronApp.evaluate(
+      () => (globalThis as Record<string, unknown>).__sessionPlayback,
+    )) as { startOffsetSecs?: number };
+    expect(returnedStart.startOffsetSecs).toBe(0);
+
+    await window.locator('#daw-session-stop').click();
+    await window.locator('#daw-session-return').click();
+    await expect(window.locator('.daw-transport-time')).toHaveText('0:00');
 
     await window.locator('#daw-session-play').click();
     await sendPlaybackEvent({ type: 'progress', elapsed: 3, duration: 10 });

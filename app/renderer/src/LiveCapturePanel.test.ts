@@ -93,7 +93,7 @@ beforeEach(() => {
   useSettingsStore.setState({ settings: settings() });
   useSoundcheckStore.setState({
     recordedSessions: [], recordedSessionsLoaded: false, sessionDir: null,
-    manifest: null, statusMessage: null, playing: false, lastElapsedTick: null,
+    manifest: null, statusMessage: null, playing: false, looping: false, lastElapsedTick: null,
   });
 });
 
@@ -103,7 +103,7 @@ afterEach(() => {
   useSettingsStore.setState({ settings: null, settingsError: null });
   useSoundcheckStore.setState({
     recordedSessions: [], recordedSessionsLoaded: false, sessionDir: null,
-    manifest: null, statusMessage: null, playing: false, lastElapsedTick: null,
+    manifest: null, statusMessage: null, playing: false, looping: false, lastElapsedTick: null,
   });
 });
 
@@ -206,15 +206,20 @@ describe('LiveCapturePanel', () => {
     expect(html).toContain('Could not read session.json.');
   });
 
-  it('renders the Session toolbar Play/Stop control from the loaded take and discrete playback state', () => {
+  it('renders the Session toolbar transport cluster from the loaded take and discrete playback state', () => {
     useSettingsStore.setState({ settings: settings({ dawWorkspaceEnabled: true }) });
     useSoundcheckStore.setState({ manifest: { tracks: [{ kind: 'mono' }] }, playing: false });
     expect(renderMarkup()).toContain('id="daw-session-play"');
+    expect(renderMarkup()).toContain('id="daw-session-loop"');
+    expect(renderMarkup()).toContain('id="daw-session-return"');
 
     useSoundcheckStore.setState({ playing: true });
     const html = renderMarkup();
     expect(html).toContain('id="daw-session-stop"');
-    expect(html).not.toContain('id="daw-session-play"');
+    expect(html).toContain('id="daw-session-play" aria-label="Play recorded session" disabled');
+
+    useSoundcheckStore.setState({ looping: true });
+    expect(renderMarkup()).toContain('id="daw-session-loop" aria-label="Loop recorded session playback" aria-pressed="true"');
   });
 
   it('renders cached session takes only in their provenance-matched lanes and replaces generation copy when ready', () => {

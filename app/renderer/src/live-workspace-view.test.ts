@@ -165,10 +165,14 @@ describe('Session take clips (#1072)', () => {
 describe('Session toolbar playback (#1073)', () => {
   it('includes the compact Session transport beside the session picker', () => {
     const html = dawShellHTML(makeState({
-      sessionPlayback: sessionTabPlaybackView({ tracks: [{ kind: 'mono' }] }, false),
+      sessionPlayback: sessionTabPlaybackView({ tracks: [{ kind: 'mono' }] }, false, true),
     }));
 
     expect(html).toContain('id="daw-session-play"');
+    expect(html).toContain('id="daw-session-stop"');
+    expect(html).toContain('id="daw-session-loop"');
+    expect(html).toContain('aria-pressed="true"');
+    expect(html).toContain('id="daw-session-return"');
     expect(html).toContain('daw-session-playback-btn');
   });
 
