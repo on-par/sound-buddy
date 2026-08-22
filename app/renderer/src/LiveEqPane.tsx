@@ -131,7 +131,8 @@ export default function LiveEqPane(): JSX.Element {
   }, [selectedStrip, s.selectedChannel, s.channelGroups, s.selectedDevice, s.devices, settings?.inputInstrumentProfiles, state.isCapturing]);
 
   function onClassificationChange(e: FormEvent<HTMLDivElement>): void {
-    const target = e.target as unknown as HTMLSelectElement;
+    const target = e.target;
+    if (!(target instanceof HTMLSelectElement)) return;
     const current = useLiveCaptureStore.getState();
     const deps: ClassificationChangeDeps = {
       liveCapture: current,
