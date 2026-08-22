@@ -6,6 +6,7 @@ let electronApp: ElectronApplication;
 let window: Page;
 
 const SESSION_DIR = path.join(__dirname, '..', '..', 'tests', 'fixtures', 'session');
+const ROUTING_DRAWER_WIDTH_TOLERANCE_PX = 1;
 
 async function enableDawWorkspace(win: Page): Promise<void> {
   await win.locator('#settings-btn').click();
@@ -133,6 +134,34 @@ test.describe('Session tab playback (#1080)', () => {
     await sendPlaybackEvent({ type: 'ended' });
     await expect(window.locator('#daw-session-play')).toBeVisible();
     await expect(window.locator('.daw-transport-time')).toHaveText('0:03');
+  });
+
+  test('opens, closes, and reopens the local Session routing drawer without hiding the timeline (#1089)', async () => {
+    const shell = window.locator('.daw-shell');
+    const routingToggle = window.locator('#daw-session-routing-toggle');
+    const drawer = window.locator('#daw-session-routing-drawer');
+    const arrangement = window.locator('.daw-arrangement');
+
+    await expect(routingToggle).toHaveAttribute('aria-expanded', 'false');
+    await expect(drawer).toBeHidden();
+
+    await routingToggle.click();
+    await expect(routingToggle).toHaveAttribute('aria-expanded', 'true');
+    await expect(drawer).toBeVisible();
+    await expect(arrangement).toBeVisible();
+    const drawerBox = (await drawer.boundingBox())!;
+    const shellBox = (await shell.boundingBox())!;
+    const arrangementBox = (await arrangement.boundingBox())!;
+    expect(Math.abs(drawerBox.width - shellBox.width))
+      .toBeLessThanOrEqual(ROUTING_DRAWER_WIDTH_TOLERANCE_PX);
+    expect(arrangementBox.y + arrangementBox.height)
+      .toBeLessThanOrEqual(drawerBox.y + ROUTING_DRAWER_WIDTH_TOLERANCE_PX);
+
+    await routingToggle.click();
+    await expect(drawer).toBeHidden();
+
+    await routingToggle.click();
+    await expect(drawer).toBeVisible();
   });
 
   test('scrubs active Session playback from the ruler and lanes only on pointer release (#1082)', async () => {

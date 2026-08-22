@@ -29,6 +29,7 @@
 import {
   useEffect,
   useRef,
+  useState,
   type ChangeEvent,
   type DragEvent,
   type FocusEvent,
@@ -141,6 +142,7 @@ export function normalizeGroupName(raw: string | boolean | null): string | null 
 }
 
 export default function LiveCapturePanel(): JSX.Element | null {
+  const [sessionRoutingDrawerOpen, setSessionRoutingDrawerOpen] = useState(false);
   const s = useStoreShallow(useLiveCaptureStore, (st) => ({
     channelConfig: st.channelConfig,
     channelGroups: st.channelGroups,
@@ -204,6 +206,7 @@ export default function LiveCapturePanel(): JSX.Element | null {
     sessionWaveforms,
     sessionPlayback,
     capturePhase,
+    sessionRoutingDrawerOpen,
   );
   const laneSignature = showShell ? dawShellPatchView(state).laneSignature : '';
 
@@ -354,6 +357,10 @@ export default function LiveCapturePanel(): JSX.Element | null {
      coaching/disposition paths. */
   function onBoardClick(e: MouseEvent<HTMLDivElement>): void {
     const target = e.target as Element;
+    if (target.closest('#daw-session-routing-toggle')) {
+      setSessionRoutingDrawerOpen((open) => !open);
+      return;
+    }
     if (target.closest('#daw-session-record')) {
       const action = recordButtonAction(capturePhase);
       if (action === 'record') void recordCapture(runtime());
