@@ -75,15 +75,12 @@ async function assertRendererGated(): Promise<void> {
   await expect(win.locator('#license-badge')).toHaveText('FREE');
   await expect(win.locator('body')).toHaveClass(/not-pro/);
   await expect(win.locator('.mode-tab[data-mode="live"] .tab-lock')).toBeVisible();
-  await expect(win.locator('.mode-tab[data-mode="soundcheck"] .tab-lock')).toBeVisible();
+  await expect(win.locator('.mode-tab[data-mode="soundcheck"]')).toHaveCount(0);
+  await expect(win.locator('#tab-soundcheck')).toHaveCount(0);
 
   await win.locator('.mode-tab[data-mode="live"]').click();
   await expect(win.locator('#tab-live .pro-gate')).toBeVisible();
   await expect(win.locator('#record-button')).toBeHidden();
-
-  await win.locator('.mode-tab[data-mode="soundcheck"]').click();
-  await expect(win.locator('#tab-soundcheck .pro-gate')).toBeVisible();
-  await expect(win.locator('#sc-play-btn')).toBeHidden();
 
   // The free funnel is untouched: report card stays reachable.
   await win.locator('.mode-tab[data-mode="reportcard"]').click();

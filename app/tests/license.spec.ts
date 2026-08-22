@@ -48,9 +48,10 @@ test.describe.serial('License gating (#54)', () => {
     await expect(win.locator('#license-badge')).toHaveText('FREE');
     await expect(win.locator('body')).toHaveClass(/not-pro/);
 
-    // Gated tabs carry a lock glyph and open to an upgrade card, not controls.
+    // The remaining gated workspace carries a lock glyph and opens to an upgrade card, not controls.
     await expect(win.locator('.mode-tab[data-mode="live"] .tab-lock')).toBeVisible();
-    await expect(win.locator('.mode-tab[data-mode="soundcheck"] .tab-lock')).toBeVisible();
+    await expect(win.locator('.mode-tab[data-mode="soundcheck"]')).toHaveCount(0);
+    await expect(win.locator('#tab-soundcheck')).toHaveCount(0);
     await win.locator('.mode-tab[data-mode="live"]').click();
     await expect(win.locator('#tab-live .pro-gate')).toBeVisible();
     await expect(win.locator('#record-button')).toBeHidden();
@@ -65,10 +66,6 @@ test.describe.serial('License gating (#54)', () => {
     await expect(win.locator('#rig-select')).toBeHidden();
     await expect(win.locator('#device-select')).toBeHidden();
     await win.locator('#settings-dialog-done').click();
-
-    await win.locator('.mode-tab[data-mode="soundcheck"]').click();
-    await expect(win.locator('#tab-soundcheck .pro-gate')).toBeVisible();
-    await expect(win.locator('#sc-play-btn')).toBeHidden();
 
     // The free funnel is untouched: file input + Report Card fully work.
     await win.locator('.mode-tab[data-mode="reportcard"]').click();
