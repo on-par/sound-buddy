@@ -13,6 +13,13 @@
 // spectrum-transport helpers.
 
 import { playheadPercent, seekTimeFromBarClick } from './spectrum-transport';
+import { DAW_TIMELINE_PX_PER_SECOND, dawTimelineX } from './daw-shell-runtime';
+
+/** A clamped Session arrangement position and its shared shell-local x coordinate. */
+export interface SoundcheckTimelinePreview {
+  elapsedSecs: number;
+  leftPx: number;
+}
 
 // Px position of the absolute playhead overlay relative to the #sc-waveforms
 // container: the time axis starts at the (measured) track-name column edge and
@@ -44,4 +51,23 @@ export function soundcheckSeekTargetFromClick(
   const boxLeft = containerLeft + nameWidthPx;
   if (clientX < boxLeft) return null;
   return seekTimeFromBarClick(clientX, boxLeft, canvasWidthPx, durationSecs);
+}
+
+/**
+ * Maps a ruler or lane pointer position into the fixed-scale Session
+ * arrangement coordinate space. Unlike the legacy Soundcheck panel, every
+ * arrangement surface shares the DAW timeline scale and shell-local origin.
+ */
+export function soundcheckTimelinePreviewFromPointer(
+  clientX: number,
+  timelineLeftPx: number,
+  durationSecs: number,
+): SoundcheckTimelinePreview | null {
+  if (!Number.isFinite(clientX) || !Number.isFinite(timelineLeftPx)
+    || !Number.isFinite(durationSecs) || durationSecs <= 0) return null;
+  const elapsedSecs = Math.min(
+    durationSecs,
+    Math.max(0, (clientX - timelineLeftPx) / DAW_TIMELINE_PX_PER_SECOND),
+  );
+  return { elapsedSecs, leftPx: dawTimelineX(elapsedSecs) };
 }

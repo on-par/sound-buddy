@@ -35,6 +35,7 @@ import {
   type JSX,
   type KeyboardEvent,
   type MouseEvent,
+  type PointerEvent,
 } from 'react';
 import { useStoreShallow } from './stores/useStoreShallow';
 import { useLiveCaptureStore, MAX_LABEL_LEN, type LapAction } from './stores/liveCaptureStore';
@@ -62,6 +63,7 @@ import {
 import { sessionTabSessionPickerAction, sessionTabSessionPickerView } from './session-tab-session-picker';
 import { paintSessionTabWaveformClips, sessionTabWaveformView } from './session-tab-waveforms';
 import { sessionTabPlaybackView } from './session-tab-playback';
+import { beginSessionTimelineScrub } from './session-timeline-scrub';
 import { createSoundcheckTransportController } from './soundcheck-transport-controller';
 import { runtime, recordCapture, stopLiveCapture } from './LiveControls';
 import { recordButtonAction } from './record-transport';
@@ -442,6 +444,29 @@ export default function LiveCapturePanel(): JSX.Element | null {
     }
   }
 
+  function onBoardPointerDown(e: PointerEvent<HTMLDivElement>): void {
+    if (!soundcheck.playing) return;
+    if (!(e.target instanceof Element)) return;
+    const surface = e.target.closest('.daw-ruler, .daw-lane');
+    if (!surface) return;
+
+    beginSessionTimelineScrub({
+      root: e.currentTarget,
+      surface,
+      windowTarget: window,
+      pointerId: e.pointerId,
+      clientX: e.clientX,
+      getDurationSecs: () => useSoundcheckStore.getState().lastElapsedTick?.duration,
+      isPlaying: () => useSoundcheckStore.getState().playing,
+      previewLeftPx: (leftPx) => {
+        document.querySelectorAll<HTMLElement>('.daw-playhead').forEach((playhead) => {
+          playhead.style.left = `${leftPx}px`;
+        });
+      },
+      seekTo: (elapsedSecs) => useSoundcheckStore.getState().seekTo(elapsedSecs),
+    });
+  }
+
   function onBoardKeyDown(e: KeyboardEvent<HTMLDivElement>): void {
     const target = e.target as Element;
     // Inline rename (#39): Enter commits via blur, Escape restores + blurs.
@@ -691,6 +716,7 @@ export default function LiveCapturePanel(): JSX.Element | null {
       ref={boardRootRef}
       className="live-board-root"
       onClick={onBoardClick}
+      onPointerDown={onBoardPointerDown}
       onKeyDown={onBoardKeyDown}
       onFocus={onNameFocus}
       onBlur={onNameBlur}
