@@ -97,10 +97,12 @@ test.describe('DAW shell playback + waveform rendering (#713)', () => {
     if (!app) throw new Error('Electron app was not launched; unable to verify record stems');
     const sessionDir = await mkdtemp(join(tmpdir(), 'sound-buddy-daw-shell-'));
     try {
-      await app.evaluate(async ({ ipcMain }, directory) => {
+      await app.evaluate(({ ipcMain }, directory) => {
         // This callback is serialized into Electron's main process, so the
         // test-local fake loads its Node dependency inside that process.
-        const fs = await import('node:fs');
+        const fs = (process.mainModule?.require('node:fs') ?? process.getBuiltinModule('node:fs')) as {
+          writeFileSync(path: string, data: string): void;
+        };
         ipcMain.removeHandler('start-live');
         ipcMain.handle('start-live', (_event, opts: { mode?: string; arm?: string[] }) => {
           if (opts.mode === 'record') {
