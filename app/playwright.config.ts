@@ -16,7 +16,10 @@ const MEDIA_SPECS = [
 ];
 
 export default defineConfig({
-  testDir: './tests',
+  testDir: '.',
+  // Keep renderer-owned E2E coverage colocated while excluding Vitest unit
+  // tests from Playwright discovery.
+  testMatch: ['tests/**/*.spec.ts', 'renderer/src/**/*.e2e.spec.ts'],
   testIgnore: process.env.SB_E2E_STUBBED_ONLY ? MEDIA_SPECS : [],
   timeout: 30_000,
   expect: { timeout: 5_000 },

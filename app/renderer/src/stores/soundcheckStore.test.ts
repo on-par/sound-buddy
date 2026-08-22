@@ -488,11 +488,12 @@ describe('createSoundcheckStore', () => {
           return { success: true };
         },
       });
-      store.setState({ playing: true, elapsedText: '0:05 / 1:00' });
+      store.setState({ playing: true, elapsedText: '0:05 / 1:00', lastElapsedTick: { elapsed: 5, duration: 60 } });
       await store.getState().stop();
       expect(mock.calls).toContainEqual({ method: 'stopPlayback', args: [] });
       expect(store.getState().playing).toBe(false);
       expect(store.getState().elapsedText).toBeNull();
+      expect(store.getState().lastElapsedTick).toBeNull();
     });
 
     it('hands the panel back to the empty hint only while the soundcheck tab is active', () => {
@@ -518,10 +519,11 @@ describe('createSoundcheckStore', () => {
 
     it('surfaces an error and resets the transport', () => {
       const { store, mock } = bind();
-      store.setState({ playing: true });
+      store.setState({ playing: true, lastElapsedTick: { elapsed: 5, duration: 60 } });
       mock.emit('onPlaybackEvent', { error: 'stream died' });
       expect(store.getState().statusMessage).toBe('stream died');
       expect(store.getState().playing).toBe(false);
+      expect(store.getState().lastElapsedTick).toBeNull();
     });
 
     it('ignores a null event', () => {
@@ -538,14 +540,10 @@ describe('createSoundcheckStore', () => {
       expect(store.getState().mixdownNotice).toBe('Stereo master mixdown — routing needed 4 channels, device has 2.');
     });
 
-    it('ingests a progress tick only while the soundcheck tab is active and playing', () => {
+    it('ingests a progress tick while playback is active, including the Session workspace', () => {
       const { store, mock } = bind();
       useLiveCaptureStore.setState({ appMode: 'live' });
       store.setState({ playing: true });
-      mock.emit('onPlaybackEvent', { type: 'progress', elapsed: 5, duration: 60 });
-      expect(store.getState().lastElapsedTick).toBeNull();
-
-      useLiveCaptureStore.setState({ appMode: 'soundcheck' });
       mock.emit('onPlaybackEvent', { type: 'progress', elapsed: 5, duration: 60 });
       expect(store.getState().lastElapsedTick).toEqual({ elapsed: 5, duration: 60 });
 
@@ -561,6 +559,7 @@ describe('createSoundcheckStore', () => {
       mock.emit('onPlaybackEvent', { type: 'ended' });
       expect(store.getState().playing).toBe(false);
       expect(store.getState().elapsedText).toBeNull();
+      expect(store.getState().lastElapsedTick).toBeNull();
     });
   });
 

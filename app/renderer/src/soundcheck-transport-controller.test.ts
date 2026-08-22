@@ -34,6 +34,7 @@ function makeFakeDeps(overrides: Partial<SoundcheckTransportControllerDeps> = {}
     raf,
     cancelRaf,
     notifyElapsed(tick: ElapsedTick) { lastElapsedTick = tick; listeners.forEach((l) => l()); },
+    notifyClear() { lastElapsedTick = null; listeners.forEach((l) => l()); },
     notifyUnrelated() { listeners.forEach((l) => l()); },
     flushRaf() { const cb = queued; queued = null; if (cb) cb(); },
     listenerCount: () => listeners.size,
@@ -82,6 +83,18 @@ describe('createSoundcheckTransportController', () => {
     controller.start();
     notifyUnrelated();
     expect(raf).not.toHaveBeenCalled();
+  });
+
+  it('discards a scheduled tick when playback resets before the animation frame', () => {
+    const { deps, notifyElapsed, notifyClear, cancelRaf, flushRaf, patchElapsed } = makeFakeDeps();
+    const controller = createSoundcheckTransportController(deps);
+    controller.start();
+    notifyElapsed({ elapsed: 5, duration: 60 });
+    notifyClear();
+
+    expect(cancelRaf).toHaveBeenCalledWith(1);
+    flushRaf();
+    expect(patchElapsed).not.toHaveBeenCalled();
   });
 
   it('start() is idempotent — a second call does not double-subscribe', () => {

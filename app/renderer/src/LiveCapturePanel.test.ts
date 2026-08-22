@@ -93,7 +93,7 @@ beforeEach(() => {
   useSettingsStore.setState({ settings: settings() });
   useSoundcheckStore.setState({
     recordedSessions: [], recordedSessionsLoaded: false, sessionDir: null,
-    manifest: null, statusMessage: null,
+    manifest: null, statusMessage: null, playing: false, lastElapsedTick: null,
   });
 });
 
@@ -103,7 +103,7 @@ afterEach(() => {
   useSettingsStore.setState({ settings: null, settingsError: null });
   useSoundcheckStore.setState({
     recordedSessions: [], recordedSessionsLoaded: false, sessionDir: null,
-    manifest: null, statusMessage: null,
+    manifest: null, statusMessage: null, playing: false, lastElapsedTick: null,
   });
 });
 
@@ -204,6 +204,17 @@ describe('LiveCapturePanel', () => {
     expect(html).toContain('Sunday service');
     expect(html).toContain('open session folder…');
     expect(html).toContain('Could not read session.json.');
+  });
+
+  it('renders the Session toolbar Play/Stop control from the loaded take and discrete playback state', () => {
+    useSettingsStore.setState({ settings: settings({ dawWorkspaceEnabled: true }) });
+    useSoundcheckStore.setState({ manifest: { tracks: [{ kind: 'mono' }] }, playing: false });
+    expect(renderMarkup()).toContain('id="daw-session-play"');
+
+    useSoundcheckStore.setState({ playing: true });
+    const html = renderMarkup();
+    expect(html).toContain('id="daw-session-stop"');
+    expect(html).not.toContain('id="daw-session-play"');
   });
 
   it('renders cached session takes only in their provenance-matched lanes and replaces generation copy when ready', () => {

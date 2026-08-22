@@ -42,6 +42,7 @@ import type { AppSettings } from '../../electron/ipc/api';
 import { dawRulerTicks, dawLaneGridlines, DAW_TIMELINE_SPAN_SECS, DAW_TIMELINE_ORIGIN_PX, type DawShellRuntime } from './daw-shell-runtime';
 import { sessionTabSessionPickerHTML, type SessionTabSessionPickerView } from './session-tab-session-picker';
 import type { SessionTabWaveformClip, SessionTabWaveformView } from './session-tab-waveforms';
+import { sessionTabPlaybackHTML, type SessionTabPlaybackView } from './session-tab-playback';
 
 export type { DawShellRuntime } from './daw-shell-runtime';
 
@@ -75,6 +76,7 @@ export interface LiveWorkspaceViewState {
   playheadElapsedMs: number;
   sessionPicker: SessionTabSessionPickerView | null;
   sessionWaveforms: SessionTabWaveformView | null;
+  sessionPlayback: SessionTabPlaybackView | null;
 }
 
 // The slice of liveCaptureStore's state that liveWorkspaceViewState() reads —
@@ -125,6 +127,7 @@ export function liveWorkspaceViewState(
   playheadElapsedMs = 0,
   sessionPicker: SessionTabSessionPickerView | null = null,
   sessionWaveforms: SessionTabWaveformView | null = null,
+  sessionPlayback: SessionTabPlaybackView | null = null,
 ): LiveWorkspaceViewState {
   return {
     channelConfig: lc.channelConfig,
@@ -147,6 +150,7 @@ export function liveWorkspaceViewState(
     playheadElapsedMs,
     sessionPicker,
     sessionWaveforms,
+    sessionPlayback,
   };
 }
 
@@ -616,6 +620,7 @@ export function dawShellHTML(state: LiveWorkspaceViewState): string {
     + `<span class="daw-transport-state daw-transport-state-${transportChip.toLowerCase()}">${transportChip}</span>`
     + `<span class="daw-transport-time">${getDawPlayheadState().formatElapsed(seededElapsed)}</span>`
     + (state.sessionPicker ? sessionTabSessionPickerHTML(state.sessionPicker) : '')
+    + (state.sessionPlayback ? sessionTabPlaybackHTML(state.sessionPlayback) : '')
     + (state.sessionWaveforms?.generating ? `<span class="daw-session-waveform-hint">Generating waveforms…</span>` : '')
     + `<span class="daw-transport-hint">Start and stop recording from the top-bar Record button</span>`
     + `</div>`

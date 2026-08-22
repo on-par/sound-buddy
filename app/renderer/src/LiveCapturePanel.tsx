@@ -61,6 +61,8 @@ import {
 } from './live-workspace-view';
 import { sessionTabSessionPickerAction, sessionTabSessionPickerView } from './session-tab-session-picker';
 import { paintSessionTabWaveformClips, sessionTabWaveformView } from './session-tab-waveforms';
+import { sessionTabPlaybackView } from './session-tab-playback';
+import { createSoundcheckTransportController } from './soundcheck-transport-controller';
 
 // The still-classic live-setup-state.js accessor's storage contract (a
 // localStorage-like object; a missing/throwing storage is treated as "not
@@ -161,6 +163,7 @@ export default function LiveCapturePanel(): JSX.Element | null {
     recordedSessionsLoaded: st.recordedSessionsLoaded,
     sessionDir: st.sessionDir,
     manifest: st.manifest,
+    playing: st.playing,
     statusMessage: st.statusMessage,
     peaks: st.peaks,
     peaksStatus: st.peaksStatus,
@@ -176,8 +179,11 @@ export default function LiveCapturePanel(): JSX.Element | null {
   const sessionWaveforms = showShell
     ? sessionTabWaveformView(soundcheck.manifest, soundcheck.peaks, soundcheck.peaksStatus, s.channelConfig)
     : null;
+  const sessionPlayback = showShell
+    ? sessionTabPlaybackView(soundcheck.manifest, soundcheck.playing)
+    : null;
   const lc = useLiveCaptureStore.getState();
-  const state = liveWorkspaceViewState(lc, settings, getDawShellRuntime()?.playheadElapsedMs?.() ?? 0, sessionPicker, sessionWaveforms);
+  const state = liveWorkspaceViewState(lc, settings, getDawShellRuntime()?.playheadElapsedMs?.() ?? 0, sessionPicker, sessionWaveforms, sessionPlayback);
   const laneSignature = showShell ? dawShellPatchView(state).laneSignature : '';
 
   // Drag-reorder source (#483): { type:'group'|'strip', index } set on
@@ -215,6 +221,30 @@ export default function LiveCapturePanel(): JSX.Element | null {
     if (!showShell || soundcheck.recordedSessionsLoaded) return;
     void useSoundcheckStore.getState().loadRecordedSessions();
   }, [showShell, soundcheck.recordedSessionsLoaded]);
+
+  useEffect(() => {
+    if (!showShell) return;
+    const controller = createSoundcheckTransportController({
+      subscribe: useSoundcheckStore.subscribe,
+      getState: () => ({ lastElapsedTick: useSoundcheckStore.getState().lastElapsedTick }),
+      raf: (cb) => requestAnimationFrame(cb),
+      cancelRaf: (handle) => cancelAnimationFrame(handle),
+      patchElapsed: (tick) => {
+        const runtime = getDawShellRuntime();
+        runtime?.setPlaybackPosition?.(tick);
+      },
+      patchPlayhead: () => getDawShellRuntime()?.renderPlayhead?.(),
+    });
+    controller.start();
+    return () => controller.stop();
+  }, [showShell]);
+
+  useEffect(() => {
+    if (!showShell || soundcheck.playing) return;
+    const runtime = getDawShellRuntime();
+    runtime?.setPlaybackPosition?.(null);
+    runtime?.renderPlayhead?.();
+  }, [showShell, soundcheck.playing]);
 
   // DAW shell (#517/#518/#520): stamp the lane fingerprint (the React
   // rebuild-decision key for same-count rig swaps) and hand the
@@ -300,6 +330,8 @@ export default function LiveCapturePanel(): JSX.Element | null {
      coaching/disposition paths. */
   function onBoardClick(e: MouseEvent<HTMLDivElement>): void {
     const target = e.target as Element;
+    if (target.closest('#daw-session-play')) { void useSoundcheckStore.getState().play(); return; }
+    if (target.closest('#daw-session-stop')) { void useSoundcheckStore.getState().stop(); return; }
     // Guided first-use dismiss (#294): retire the banner permanently. The
     // node is removed directly rather than only via a re-render —
     // renderChannelConfig() early-outs while a capture is running, the same
