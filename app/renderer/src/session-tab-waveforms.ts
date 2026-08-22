@@ -43,10 +43,24 @@ function isManifestTrack(value: unknown): value is { kind: 'mono' | 'stereo'; so
     && (track.sourceChannels === undefined || Array.isArray(track.sourceChannels));
 }
 
-function isPeakTrack(value: unknown): value is { kind: 'mono' | 'stereo'; data: string } {
+function isPeakTrack(value: unknown): value is { index: number; kind: 'mono' | 'stereo'; data: string } {
   if (typeof value !== 'object' || value === null) return false;
-  const track = value as { kind?: unknown; data?: unknown };
-  return (track.kind === 'mono' || track.kind === 'stereo') && typeof track.data === 'string';
+  const track = value as { index?: unknown; kind?: unknown; data?: unknown };
+  return Number.isInteger(track.index)
+    && (track.kind === 'mono' || track.kind === 'stereo')
+    && typeof track.data === 'string';
+}
+
+function peakTracksByIndex(
+  tracks: unknown[],
+  manifestTrackCount: number,
+): Map<number, { index: number; kind: 'mono' | 'stereo'; data: string }> | null {
+  const byIndex = new Map<number, { index: number; kind: 'mono' | 'stereo'; data: string }>();
+  for (const track of tracks) {
+    if (!isPeakTrack(track) || track.index < 0 || track.index >= manifestTrackCount || byIndex.has(track.index)) return null;
+    byIndex.set(track.index, track);
+  }
+  return byIndex;
 }
 
 export function sessionTabWaveformView(
@@ -59,12 +73,14 @@ export function sessionTabWaveformView(
   if (!manifest || !Array.isArray(manifest.tracks) || !peaks || !Array.isArray(peaks.tracks) || !Number.isFinite(peaks.bucketsPerSecond) || peaks.bucketsPerSecond <= 0) {
     return { generating, clips: [] };
   }
+  const peakTracks = peakTracksByIndex(peaks.tracks, manifest.tracks.length);
+  if (!peakTracks) return { generating, clips: [] };
 
   const clips: SessionTabWaveformClip[] = [];
   for (let trackIndex = 0; trackIndex < manifest.tracks.length; trackIndex++) {
     const manifestTrack = manifest.tracks[trackIndex];
-    const peakTrack = peaks.tracks[trackIndex];
-    if (!isManifestTrack(manifestTrack) || !isPeakTrack(peakTrack) || peakTrack.kind !== manifestTrack.kind) continue;
+    const peakTrack = peakTracks.get(trackIndex);
+    if (!isManifestTrack(manifestTrack) || !peakTrack || peakTrack.kind !== manifestTrack.kind) continue;
     const pairs = decodePeaksPairs(peakTrack.data);
     if (!pairs) continue;
     const matches = channelConfig

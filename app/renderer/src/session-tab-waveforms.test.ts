@@ -37,7 +37,13 @@ const config: StripConfig[] = [
 
 describe('sessionTabWaveformView', () => {
   it('maps reordered captured stems to matching configured strips at the shared origin and scale', () => {
-    const view = sessionTabWaveformView(manifest(), peaks(), 'ready', config);
+    const cachedPeaks = peaks();
+    const view = sessionTabWaveformView(
+      manifest(),
+      { ...cachedPeaks, tracks: [cachedPeaks.tracks[1], cachedPeaks.tracks[0]] },
+      'ready',
+      config,
+    );
 
     expect(view.generating).toBe(false);
     expect(view.clips).toEqual([
@@ -69,6 +75,36 @@ describe('sessionTabWaveformView', () => {
       'ready',
       [...config, { kind: 'mono', a: 4, b: 7 }],
     ).clips).toEqual([]);
+  });
+
+  it('rejects duplicate, out-of-range, and malformed cache indices before joining peak tracks', () => {
+    const cachedPeaks = peaks();
+    expect(sessionTabWaveformView(
+      manifest(),
+      { ...cachedPeaks, tracks: [{ ...cachedPeaks.tracks[0] }, { ...cachedPeaks.tracks[1], index: 0 }] },
+      'ready',
+      config,
+    ).clips).toEqual([]);
+    expect(sessionTabWaveformView(
+      manifest(),
+      { ...cachedPeaks, tracks: [{ ...cachedPeaks.tracks[0], index: 2 }] },
+      'ready',
+      config,
+    ).clips).toEqual([]);
+    expect(sessionTabWaveformView(
+      manifest(),
+      { ...cachedPeaks, tracks: [{ ...cachedPeaks.tracks[0], index: 0.5 }] },
+      'ready',
+      config,
+    ).clips).toEqual([]);
+    expect(sessionTabWaveformView(
+      manifest(),
+      { ...cachedPeaks, tracks: [cachedPeaks.tracks[0]] },
+      'ready',
+      config,
+    ).clips).toEqual([
+      expect.objectContaining({ trackIndex: 0, stripIndex: 1 }),
+    ]);
   });
 });
 
