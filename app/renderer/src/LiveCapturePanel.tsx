@@ -452,7 +452,7 @@ export default function LiveCapturePanel(): JSX.Element | null {
     // class + aria-current derive from stripViewAt's `selected` field, so the
     // React re-render on selectedChannel handles them — no imperative toggle.
     const stripEl = target.closest('.live-ch');
-    if (stripEl && !target.closest('button, select, input')) {
+    if (stripEl && !target.closest('button, select, [contenteditable], input')) {
       const idx = parseInt((stripEl as HTMLElement).dataset.ch ?? '', 10);
       if (Number.isInteger(idx)) useLiveCaptureStore.getState().setSelectedChannel(idx);
     }
