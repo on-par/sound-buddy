@@ -1008,7 +1008,7 @@
     .daw-track-head .live-ch-def { grid-area:def; min-width:0; position:relative; z-index:1; }
     .daw-track-head-controls { grid-area:controls; display:flex; gap:3px; }
     .daw-track-head .live-ch-meta { grid-area:meta; align-self:center; justify-self:end; max-width:78px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-    .daw-track-head-arm, .daw-track-head-mute, .daw-track-head-solo, .daw-track-head-remove { border:1px solid var(--border-subtle); border-radius:var(--radius-sm); background:transparent; color:var(--text-muted); cursor:pointer; font:var(--fw-semibold) var(--fs-micro)/1 var(--font-sans); }
+    .daw-track-head-arm, .daw-track-head-mute, .daw-track-head-solo, .daw-track-head-remove { position:relative; z-index:3; border:1px solid var(--border-subtle); border-radius:var(--radius-sm); background:transparent; color:var(--text-muted); cursor:pointer; font:var(--fw-semibold) var(--fs-micro)/1 var(--font-sans); }
     .daw-track-head-arm, .daw-track-head-mute, .daw-track-head-solo { width:20px; height:16px; padding:0; }
     .daw-track-head-arm[aria-pressed="true"], .daw-track-head-mute[aria-pressed="true"], .daw-track-head-solo[aria-pressed="true"] { border-color:var(--gold-text); color:var(--gold-text); }
     .daw-track-head-remove { grid-area:remove; align-self:center; width:18px; height:18px; padding:0; color:var(--issue-text); }

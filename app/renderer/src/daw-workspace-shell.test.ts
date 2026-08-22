@@ -387,12 +387,22 @@ describe('configured track rows render from one shared list (#1043)', () => {
   it('keeps the editable track name above compact definition controls', () => {
     const nameRule = css.match(/\.daw-track-head \.daw-track-head-name\s*\{[^}]*\}/);
     const definitionRule = css.match(/\.daw-track-head \.live-ch-def\s*\{[^}]*\}/);
+    const actionRule = css.match(/\.daw-track-head-arm, \.daw-track-head-mute, \.daw-track-head-solo, \.daw-track-head-remove\s*\{[^}]*\}/);
     expect(nameRule).not.toBeNull();
     expect(definitionRule).not.toBeNull();
+    expect(actionRule).not.toBeNull();
     expect(nameRule![0]).toMatch(/position:\s*relative/);
     expect(definitionRule![0]).toMatch(/position:\s*relative/);
+    expect(actionRule![0]).toMatch(/position:\s*relative/);
     expect(nameRule![0]).toMatch(/z-index:\s*2/);
     expect(definitionRule![0]).toMatch(/z-index:\s*1/);
+    expect(actionRule![0]).toMatch(/z-index:\s*3/);
+  });
+
+  it('allows DAW header select hit targets to still select the strip row', () => {
+    const body = functionBody(liveCapturePanelTsx, 'onBoardClick');
+    expect(body).toContain("!target.closest('button, [contenteditable], input')");
+    expect(body).not.toContain("!target.closest('button, select, [contenteditable], input')");
   });
 
   it('head and lane rows share one height source, and neither hardcodes a height literal', () => {

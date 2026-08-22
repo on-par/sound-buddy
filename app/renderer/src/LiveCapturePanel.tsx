@@ -447,12 +447,12 @@ export default function LiveCapturePanel(): JSX.Element | null {
     if (gRename) { void renameChannelGroup(parseInt(gRename.closest('.live-group-head')?.getAttribute('data-group') ?? '', 10)); return; }
     const gDel = target.closest('.live-group-del');
     if (gDel) { void deleteChannelGroup(parseInt(gDel.closest('.live-group-head')?.getAttribute('data-group') ?? '', 10)); return; }
-    // Strip selection (#668): clicking anywhere on a strip (but not one of its
-    // interactive controls) inspects it in the docked EQ pane. The selected
-    // class + aria-current derive from stripViewAt's `selected` field, so the
-    // React re-render on selectedChannel handles them — no imperative toggle.
+    // Strip selection (#668): clicking anywhere on a strip (but not buttons,
+    // text edits, or text inputs) inspects it in the docked EQ pane. Header
+    // selects can sit near the row's geometric center in the compact DAW head,
+    // so selecting through them preserves whole-row click behavior.
     const stripEl = target.closest('.live-ch');
-    if (stripEl && !target.closest('button, select, [contenteditable], input')) {
+    if (stripEl && !target.closest('button, [contenteditable], input')) {
       const idx = parseInt((stripEl as HTMLElement).dataset.ch ?? '', 10);
       if (Number.isInteger(idx)) useLiveCaptureStore.getState().setSelectedChannel(idx);
     }
