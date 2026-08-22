@@ -17,6 +17,7 @@ import {
   dawTrackHeaderHTML,
   dawShellPatchView,
   dawTrackRows,
+  dawTrackListEntries,
   dawStatusLineView,
   liveAdjustmentsPanelHTML,
   statsRowView,
@@ -470,7 +471,7 @@ describe('dawShellHTML / dawShellPatchView', () => {
     const armButton = (html: string) => html.match(/<button type="button" class="[^"]*\bdaw-track-head-arm\b[^"]*"[^>]*>/)?.[0];
     const recordingHTML = dawShellHTML(makeState({ isCapturing: true, liveMode: 'record' }));
     const recordingHeads = recordingHTML.slice(
-      recordingHTML.indexOf('<div class="daw-track-heads">'),
+      recordingHTML.indexOf('<div class="daw-track-heads'),
       recordingHTML.indexOf('<div class="daw-timeline">'),
     );
     expect(armButton(recordingHeads)).toContain('disabled');
@@ -596,7 +597,7 @@ describe('dawShellHTML / dawShellPatchView', () => {
   it('wraps the ruler and lanes in a semantic arrangement frame (#1042)', () => {
     const html = dawShellHTML(makeState());
     expect(html).toContain('<div class="daw-arrangement">');
-    expect(html).toContain('<div class="daw-track-heads">');
+    expect(html).toContain('<div class="daw-track-heads');
     expect(html).toContain('<div class="daw-timeline">');
     expect(html).toContain('<div class="daw-lane-column">');
   });
@@ -605,7 +606,7 @@ describe('dawShellHTML / dawShellPatchView', () => {
     const html = dawShellHTML(makeState());
     // The head column is now populated (#1043), so anchor on its opening tag
     // rather than the #1042 empty-column literal.
-    const heads = html.indexOf('<div class="daw-track-heads">');
+    const heads = html.indexOf('<div class="daw-track-heads');
     const timeline = html.indexOf('<div class="daw-timeline">');
     const ruler = html.indexOf('<div class="daw-ruler">');
     const laneColumn = html.indexOf('<div class="daw-lane-column">');
@@ -644,7 +645,7 @@ describe('dawShellHTML / dawShellPatchView', () => {
 
   it('opens the head column with a ruler gutter, ahead of any track head (#1048)', () => {
     const html = dawShellHTML(makeState());
-    const heads = html.indexOf('<div class="daw-track-heads">');
+    const heads = html.indexOf('<div class="daw-track-heads');
     const gutter = html.indexOf('<div class="daw-ruler-gutter"></div>');
     const firstHead = html.indexOf('class="daw-track-head"');
     expect(gutter).toBeGreaterThan(heads);
@@ -656,7 +657,7 @@ describe('dawShellHTML / dawShellPatchView', () => {
 
   it('pairs the zero-track empty state with an empty head cell (#1048)', () => {
     const html = dawShellHTML(makeState({ channelConfig: [] }));
-    const headsSlice = html.slice(html.indexOf('<div class="daw-track-heads">'), html.indexOf('<div class="daw-timeline">'));
+    const headsSlice = html.slice(html.indexOf('<div class="daw-track-heads'), html.indexOf('<div class="daw-timeline">'));
     expect(headsSlice.split('class="daw-empty-head"').length - 1).toBe(1);
     expect(html.split('daw-empty-state').length - 1).toBe(1);
     expect(html).toContain('class="daw-master-head"');
@@ -720,15 +721,48 @@ describe('dawTrackRows / configured track rows (#1043)', () => {
   });
 
   it('dawShellHTML renders one .daw-track-head per configured channel, in lane order', () => {
-    const html = dawShellHTML(makeState());
+    const html = dawShellHTML(makeState({ channelGroups: [] }));
     expect(html.split('class="daw-track-head"').length - 1).toBe(CONFIG.length);
-    const headsSlice = html.slice(html.indexOf('<div class="daw-track-heads">'), html.indexOf('<div class="daw-timeline">'));
+    const headsSlice = html.slice(html.indexOf('<div class="daw-track-heads'), html.indexOf('<div class="daw-timeline">'));
     expect(headsSlice.indexOf('data-ch="0"')).toBeLessThan(headsSlice.indexOf('data-ch="1"'));
+  });
+
+  it('stamps selected state on DAW live strips for the EQ-pane interaction contract', () => {
+    const html = dawShellHTML(makeState({ selectedChannel: 1 }));
+    expect(html).toMatch(/class="[^"]*\blive-ch\b[^"]*\bselected\b[^"]*" data-ch="1" aria-current="true"/);
+    const first = html.match(/<div class="live-ch[^"]*" data-ch="0"[^>]*>/)?.[0] ?? '';
+    expect(first).not.toContain('selected');
+    expect(first).not.toContain('aria-current');
+  });
+
+  it('keeps the legacy sb-live-meters hook only while configured strips exist', () => {
+    expect(dawShellHTML(makeState())).toContain('daw-track-heads sb-live-meters');
+    expect(dawShellHTML(makeState({ channelConfig: [] }))).not.toContain('sb-live-meters');
+  });
+
+  it('renders DAW track heads in grouped order with group collapse state and drag handles', () => {
+    const state = makeState({
+      channelConfig: [...CONFIG, { kind: 'mono', a: 2, b: 3, armed: true }],
+      channelGroups: [
+        { name: 'Drums', members: [2, 0], collapsed: true },
+      ],
+    });
+    const entries = dawTrackListEntries(state);
+    expect(entries.map((entry) => entry.type === 'track' ? entry.row.index : entry.type)).toEqual(['group', 2, 0, 'ungrouped', 1]);
+
+    const html = dawShellHTML(state);
+    const headsSlice = html.slice(html.indexOf('<div class="daw-track-heads'), html.indexOf('<div class="daw-timeline">'));
+    expect(headsSlice).toContain('class="live-group-head collapsed" data-group="0"');
+    expect(headsSlice.indexOf('data-ch="2"')).toBeLessThan(headsSlice.indexOf('data-ch="0"'));
+    expect(headsSlice.indexOf('data-ch="0"')).toBeLessThan(headsSlice.indexOf('class="live-group-head ungrouped"'));
+    expect(headsSlice).toContain('class="live-ch idle group-collapsed" data-ch="2"');
+    expect(headsSlice).toContain('class="live-ch idle group-collapsed" data-ch="0"');
+    expect(headsSlice).toContain('class="live-ch-drag"');
   });
 
   it('each head row carries a track-header representation with the resolved name and a 1-based displayed index', () => {
     const html = dawShellHTML(makeState({ channelConfig: [{ ...CONFIG[0], label: 'Kick <3' }] }));
-    const headsSlice = html.slice(html.indexOf('<div class="daw-track-heads">'), html.indexOf('<div class="daw-timeline">'));
+    const headsSlice = html.slice(html.indexOf('<div class="daw-track-heads'), html.indexOf('<div class="daw-timeline">'));
     expect(headsSlice).toContain('class="daw-track-head-index"');
     expect(headsSlice).toMatch(/class="[^"]*\bdaw-track-head-name\b[^"]*"/);
     expect(headsSlice).toContain('>1</span>');
@@ -813,7 +847,7 @@ describe('overall-mix row and status line (#1044)', () => {
 
   it('the overall-mix head cell closes the head column', () => {
     const html = dawShellHTML(makeState());
-    const slice = html.slice(html.indexOf('<div class="daw-track-heads">'), html.indexOf('<div class="daw-timeline">'));
+    const slice = html.slice(html.indexOf('<div class="daw-track-heads'), html.indexOf('<div class="daw-timeline">'));
     expect(slice).toContain('class="daw-master-head"');
     expect(slice).toContain('>Overall mix</span>');
     expect(slice.indexOf('class="daw-master-head"')).toBeGreaterThan(slice.lastIndexOf('class="daw-track-head"'));
