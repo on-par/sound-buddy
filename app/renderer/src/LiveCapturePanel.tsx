@@ -446,8 +446,8 @@ export default function LiveCapturePanel(): JSX.Element | null {
 
   function onBoardPointerDown(e: PointerEvent<HTMLDivElement>): void {
     if (!soundcheck.playing) return;
-    const target = e.target as Element;
-    const surface = target.closest('.daw-ruler, .daw-lane');
+    if (!(e.target instanceof Element)) return;
+    const surface = e.target.closest('.daw-ruler, .daw-lane');
     if (!surface) return;
 
     const boardRoot = e.currentTarget;
