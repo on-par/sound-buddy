@@ -73,11 +73,8 @@ test.describe('Session tab playback (#1080)', () => {
   });
 
   test('plays the selected Session take, patches its timeline, hot-swaps routes, and stops', async () => {
-    // Output routing remains owned by the shared soundcheck store. Select the
-    // existing Playback & listen device before returning to the Session shell.
-    await window.locator('.mode-tab[data-mode="soundcheck"]').click();
-    await window.locator('#sc-device-select').selectOption({ label: 'MOTU 8ch (8ch)' });
-    await window.locator('.mode-tab[data-mode="live"]').click();
+    await window.locator('#daw-session-routing-toggle').click();
+    await window.locator('#daw-session-output-device').selectOption({ label: 'MOTU 8ch (8ch)' });
 
     await window.locator('#daw-session-play').click();
     await expect(window.locator('#daw-session-stop')).toBeVisible();
@@ -93,13 +90,11 @@ test.describe('Session tab playback (#1080)', () => {
     await expect(window.locator('.daw-playhead-ruler')).toHaveCSS('left', '224px');
     await expect(window.locator('.daw-playhead-lanes')).toHaveCSS('left', '224px');
 
-    await window.locator('.mode-tab[data-mode="soundcheck"]').click();
-    await window.locator('#sc-tracks .sc-track').first().locator('.sc-route').selectOption('1');
+    await window.locator('.daw-routing-output-cell[data-routing-track-index="0"][data-routing-channels="1"]').click();
     const routes = (await electronApp.evaluate(
       () => (globalThis as Record<string, unknown>).__sessionRoutes,
     )) as { route?: string };
     expect(routes.route).toBe('0:1,1:1-2');
-    await window.locator('.mode-tab[data-mode="live"]').click();
     await expect(window.locator('#daw-session-stop')).toBeVisible();
 
     await window.locator('#daw-session-stop').click();
@@ -137,13 +132,10 @@ test.describe('Session tab playback (#1080)', () => {
   });
 
   test('routing-mid-playback', async () => {
-    await window.locator('.mode-tab[data-mode="soundcheck"]').click();
-    await window.locator('#sc-device-select').selectOption({ label: 'MOTU 8ch (8ch)' });
-    await window.locator('.mode-tab[data-mode="live"]').click();
-
+    await window.locator('#daw-session-routing-toggle').click();
+    await window.locator('#daw-session-output-device').selectOption({ label: 'MOTU 8ch (8ch)' });
     await window.locator('#daw-session-play').click();
     await expect(window.locator('#daw-session-stop')).toBeVisible();
-    await window.locator('#daw-session-routing-toggle').click();
 
     const source = window.locator('.daw-routing-source').first();
     await source.selectOption('1');
@@ -268,9 +260,8 @@ test.describe('Session tab playback (#1080)', () => {
     await window.locator('#record-button').click();
     await expect(window.locator('#live-indicator .live-txt')).toHaveText('LIVE');
 
-    await window.locator('.mode-tab[data-mode="soundcheck"]').click();
-    await window.locator('#sc-device-select').selectOption({ label: 'MOTU 8ch (8ch)' });
-    await window.locator('.mode-tab[data-mode="live"]').click();
+    await window.locator('#daw-session-routing-toggle').click();
+    await window.locator('#daw-session-output-device').selectOption({ label: 'MOTU 8ch (8ch)' });
     await window.locator('#daw-session-play').click();
     await sendPlaybackEvent({ type: 'progress', elapsed: 2, duration: 10 });
     await expect(window.locator('.daw-transport-time')).toHaveText('0:02');

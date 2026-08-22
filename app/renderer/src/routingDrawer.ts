@@ -5,6 +5,7 @@ import type { StripConfig } from './live-capture-panel';
 import { routingMatrixView } from './routingMatrix';
 import type { RouteState, RouteStoreState } from './stores/routeStore';
 import type { SoundcheckState } from './stores/soundcheckStore';
+import type { SoundcheckOutputDevice } from './soundcheck-panel';
 import { escapeHtml } from './spectrum-display';
 import type { SoundcheckBus } from '../../electron/ipc/api';
 
@@ -33,6 +34,8 @@ export function routingDrawerHTML(
   routeState: RouteState,
   inputDeviceChannelCount: number,
   outputDeviceChannelCount: number,
+  outputDevices: SoundcheckOutputDevice[],
+  selectedOutputDevice: string,
 ): string {
   const matrix = routingMatrixView(tracks, routeState, outputDeviceChannelCount);
   const trackAssignments = `<div class="daw-routing-list">${tracks.map((track, trackIndex) => {
@@ -55,7 +58,13 @@ export function routingDrawerHTML(
       + `</div>`).join('')
     : '<p class="daw-routing-saved-bus-empty">No saved bus assignments for this session.</p>';
   const masterChecked = routeState.masterMixdown ? ' checked' : '';
-  return trackAssignments
+  const outputOptions = outputDevices.map((device) => {
+    const selected = String(device.index) === selectedOutputDevice ? ' selected' : '';
+    return `<option value="${device.index}"${selected}>${escapeHtml(device.name)} (${device.channels}ch)</option>`;
+  }).join('');
+  const outputDevice = `<label class="daw-session-output-device-label">Playback output <select id="daw-session-output-device" aria-label="Playback output"><option value=""${selectedOutputDevice === '' ? ' selected' : ''}>Default output</option>${outputOptions}</select></label>`;
+  return outputDevice
+    + trackAssignments
     + `<section class="daw-routing-saved-buses" aria-label="Saved bus assignments">`
     + `<span class="daw-routing-saved-buses-title">Saved buses</span>${savedBusAssignments}</section>`
     + `<label class="daw-routing-master-label"><input type="checkbox" class="daw-routing-master-mixdown" aria-label="Force stereo master mixdown"${masterChecked}>Force stereo master mixdown</label>`;
