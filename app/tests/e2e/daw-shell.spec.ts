@@ -93,9 +93,11 @@ test.describe('DAW shell playback + waveform rendering (#713)', () => {
   });
 
   test('a muted armed lane still writes its record stem (#1056)', async () => {
+    const app = electronApp;
+    if (!app) throw new Error('Electron app was not launched; unable to verify record stems');
     const sessionDir = await mkdtemp(join(tmpdir(), 'sound-buddy-daw-shell-'));
     try {
-      await electronApp!.evaluate(({ ipcMain }, directory) => {
+      await app.evaluate(({ ipcMain }, directory) => {
         // This callback is serialized into Electron's main process, so the
         // test-local fake loads its Node dependency inside that process.
         const fs: { writeFileSync(path: string, data: string): void } = require('node:fs');
@@ -118,13 +120,13 @@ test.describe('DAW shell playback + waveform rendering (#713)', () => {
       await window.locator('#record-button').click();
       await expect(window.locator('#record-button')).toBeEnabled();
 
-      const recordStart = (await electronApp!.evaluate(
+      const recordStart = (await app.evaluate(
         () => (globalThis as Record<string, unknown>).__recordStart,
       )) as { arm?: string[] };
       expect(recordStart.arm).toContain('0');
       await expect(readFile(join(sessionDir, '0.wav'), 'utf8')).resolves.toBe('fake stem');
     } finally {
-      await electronApp!.evaluate(({ ipcMain }) => {
+      await app.evaluate(({ ipcMain }) => {
         ipcMain.removeHandler('start-live');
         ipcMain.handle('start-live', () => ({ success: true }));
         ipcMain.removeHandler('stop-live');
