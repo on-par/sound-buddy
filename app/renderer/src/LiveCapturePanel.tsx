@@ -459,6 +459,14 @@ export default function LiveCapturePanel(): JSX.Element | null {
   }
 
   function onBoardPointerDown(e: PointerEvent<HTMLDivElement>): void {
+    if (e.target instanceof Element) {
+      const headerSelect = e.target.closest('.daw-track-head select');
+      const stripEl = headerSelect?.closest('.live-ch');
+      if (stripEl) {
+        const idx = parseInt((stripEl as HTMLElement).dataset.ch ?? '', 10);
+        if (Number.isInteger(idx)) useLiveCaptureStore.getState().setSelectedChannel(idx);
+      }
+    }
     if (!soundcheck.playing) return;
     if (!(e.target instanceof Element)) return;
     const surface = e.target.closest('.daw-ruler, .daw-lane');

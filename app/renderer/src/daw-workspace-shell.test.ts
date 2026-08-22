@@ -405,6 +405,12 @@ describe('configured track rows render from one shared list (#1043)', () => {
     expect(body).not.toContain("!target.closest('button, select, [contenteditable], input')");
   });
 
+  it('selects compact DAW rows on pointer-down before native header selects can consume the click', () => {
+    const body = functionBody(liveCapturePanelTsx, 'onBoardPointerDown');
+    expect(body).toContain("e.target.closest('.daw-track-head select')");
+    expect(body).toContain('useLiveCaptureStore.getState().setSelectedChannel(idx)');
+  });
+
   it('head and lane rows share one height source, and neither hardcodes a height literal', () => {
     expect(css).toContain('--daw-track-row-h');
     const headRule = css.match(/\.daw-track-head\s*\{[^}]*\}/);
