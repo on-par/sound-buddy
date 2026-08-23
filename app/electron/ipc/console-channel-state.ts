@@ -23,6 +23,7 @@ const { parseChannelStrips, parseNodeReplyLine } = loadConsoleModule();
 export const CONSOLE_CHANNEL_COUNT = 32; // M32R input channels
 export const DEFAULT_CHANNEL_POLL_INTERVAL_MS = 1000;
 const CHANNEL_INDEX_PAD = 2; // /ch/01, not /ch/1
+const INITIAL_CHANNEL_CONFIG_READ_ATTEMPTS = 2; // queryConsole has already exhausted its per-datagram retries
 
 /** One input channel as the board currently has it. `faderDb` is engineering
  *  units straight from the console's own text (R1b) — -Infinity when the
@@ -62,16 +63,31 @@ export async function readChannelStates(
   const lines: string[] = [];
   for (const path of paths) {
     try {
-      const line = await queryConsole(deps, ip, '/node', (m) => parseNodeReplyLine(path, m), {
-        ...options?.queryOptions,
-        requestArgs: [{ type: 's', value: path }],
-      });
+      const attempts = path === paths[0] ? INITIAL_CHANNEL_CONFIG_READ_ATTEMPTS : 1;
+      let line = '';
+      for (let attempt = 0; attempt < attempts; attempt++) {
+        try {
+          line = await queryConsole(deps, ip, '/node', (m) => parseNodeReplyLine(path, m), {
+            ...options?.queryOptions,
+            requestArgs: [{ type: 's', value: path }],
+          });
+          break;
+        } catch (err) {
+          if (attempt === attempts - 1) throw err;
+        }
+      }
       lines.push(line);
     } catch (err) {
+      const diagnostic =
+        lines.length === 0
+          ? `the console at ${ip} did not answer the channel-state /node read/protocol path "${path}" ` +
+            `(${lines.length} of ${paths.length} reads completed). Verify the console's OSC/remote-control path ` +
+            `before trying Watch again.`
+          : `the console at ${ip} did not answer "${path}" ` +
+            `(${lines.length} of ${paths.length} reads completed). Check the console is still ` +
+            `powered on and reachable on the network, then start watching again.`;
       throw new Error(
-        `Couldn't read channel state: the console at ${ip} did not answer "${path}" ` +
-          `(${lines.length} of ${paths.length} reads completed). Check the console is still ` +
-          `powered on and reachable on the network, then start watching again.`,
+        `Couldn't read channel state: ${diagnostic}`,
         { cause: err }
       );
     }

@@ -90,6 +90,24 @@ describe('readChannelStates', () => {
     expect(queryConsoleMock).toHaveBeenCalledTimes(2);
   });
 
+  it('reports an exhausted first channel-state /node read as a protocol failure with its path and progress', async () => {
+    const cause = new Error('timeout');
+    queryConsoleMock.mockRejectedValue(cause);
+
+    try {
+      await readChannelStates(deps(), GRANTED, IP, { channelCount: 1 });
+      throw new Error('Expected readChannelStates to reject');
+    } catch (error) {
+      expect(error).toBeInstanceOf(Error);
+      expect((error as Error).message).toMatch(/channel-state \/node read\/protocol path/);
+      expect((error as Error).message).toContain('/ch/01/config');
+      expect((error as Error).message).toContain('0 of 2');
+      expect((error as Error).message).toMatch(/verify the console's OSC\/remote-control path before trying Watch again/i);
+      expect((error as Error).cause).toBe(cause);
+    }
+    expect(queryConsoleMock).toHaveBeenCalledTimes(2);
+  });
+
   it('rejects when consent is not granted, before any queryConsole call', async () => {
     assertConsoleNetworkConsentMock.mockImplementation(() => {
       throw new Error('Console network access requires consent');
@@ -129,6 +147,29 @@ describe('startChannelStateSubscription', () => {
 
     await vi.advanceTimersByTimeAsync(1000);
     expect(onSnapshot).toHaveBeenCalledTimes(2);
+
+    handle.stop();
+  });
+
+  it('retries a rejected first channel config read and emits the recovered snapshot without an error', async () => {
+    vi.useFakeTimers();
+    queryConsoleMock
+      .mockRejectedValueOnce(new Error('transient /node miss'))
+      .mockResolvedValueOnce('/ch/01/config "Kick" 1 RD 1')
+      .mockResolvedValueOnce('/ch/01/mix ON -10.5 OFF +0');
+    const onSnapshot = vi.fn();
+    const onError = vi.fn();
+
+    const handle = startChannelStateSubscription(deps(), GRANTED, IP, onSnapshot, onError, {
+      channelCount: 1,
+      pollIntervalMs: 1000,
+    });
+
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(onSnapshot).toHaveBeenCalledWith([{ index: 1, name: 'Kick', faderDb: -10.5, on: true }]);
+    expect(onError).not.toHaveBeenCalled();
+    expect(queryConsoleMock).toHaveBeenCalledTimes(3);
 
     handle.stop();
   });
