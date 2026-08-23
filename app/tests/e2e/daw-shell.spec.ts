@@ -60,12 +60,16 @@ test.describe('DAW shell playback + waveform rendering (#713)', () => {
 
   test('the shell renders the mix waveform, transport readout, playhead, and one lane per configured strip', async () => {
     await expect(window.locator('.daw-shell')).toBeVisible();
+    await expect(window.locator('.daw-mix-waveform')).toHaveCount(0);
+    await window.locator('#daw-session-record').click();
+    await expect(window.locator('#live-indicator .live-txt')).toHaveText('REC');
     await expect(window.locator('.daw-mix-waveform')).toBeVisible();
     await expect(window.locator('.daw-transport-time')).toHaveText('0:00');
     await expect(window.locator('.daw-playhead-ruler')).toBeVisible();
     await expect(window.locator('.daw-playhead-lanes')).toBeVisible();
     // The fake device boots with the 2-strip device default (#188).
     await expect(window.locator('.daw-channel-lane')).toHaveCount(2);
+    await window.locator('#daw-session-record').click(); // stop -> monitoring resumes (#776)
   });
 
   test('solo dims non-soloed lanes and clearing the final solo restores them (#1056)', async () => {
@@ -143,6 +147,9 @@ test.describe('DAW shell playback + waveform rendering (#713)', () => {
   });
 
   test('pushed peaks frames paint the mix and per-channel waveform canvases', async () => {
+    await window.locator('#daw-session-record').click();
+    await expect(window.locator('#live-indicator .live-txt')).toHaveText('REC');
+
     const bucket = fullHeightPeaks(4);
     await sendPeaks([
       { id: 'mix', data: bucket },
@@ -156,6 +163,8 @@ test.describe('DAW shell playback + waveform rendering (#713)', () => {
     await expect(async () => {
       expect(await canvasPaintedAtMidpoint(window, '.daw-channel-lane[data-ch="0"] .daw-channel-waveform')).toBe(true);
     }).toPass({ timeout: 3000 });
+
+    await window.locator('#daw-session-record').click(); // stop -> monitoring resumes (#776)
   });
 
   test('stopping a capture freezes the transport time', async () => {
