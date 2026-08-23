@@ -292,6 +292,26 @@ describe('createDawShellRuntime', () => {
   });
 
   describe('renderPlayhead', () => {
+    it('session-timeline-monitoring keeps an unstarted monitoring playhead stationary', () => {
+      const MONITORING_ELAPSED_MS = 2_000;
+      const timeEl = { textContent: '' };
+      const playheadEls = [makeFakePlayhead(), makeFakePlayhead()];
+      const shell = makeFakeShell({ timeEl, playheadEls, clientWidth: 400 });
+      const { deps, setShell, setNow } = makeDeps();
+      setShell(shell);
+      const rt = createDawShellRuntime(deps);
+
+      rt.renderPlayhead();
+      setNow(MONITORING_ELAPSED_MS);
+      rt.renderPlayhead();
+
+      expect(timeEl.textContent).toBe('0:00');
+      for (const el of playheadEls) {
+        expect(el.style.left).toBe(`${dawTimelineX(0)}px`);
+        expect(el.classList.toggle).toHaveBeenLastCalledWith('advancing', false);
+      }
+    });
+
     it('retains an inactive take position and resumes the live clock only when the take is cleared', () => {
       const timeEl = { textContent: '' };
       const playheadEls = [makeFakePlayhead(), makeFakePlayhead()];

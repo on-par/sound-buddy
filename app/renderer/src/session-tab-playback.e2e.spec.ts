@@ -7,6 +7,7 @@ let window: Page;
 
 const SESSION_DIR = path.join(__dirname, '..', '..', 'tests', 'fixtures', 'session');
 const ROUTING_DRAWER_WIDTH_TOLERANCE_PX = 1;
+const MONITORING_ELAPSED_ASSERTION_WAIT_MS = 1_100;
 
 async function sendPlaybackEvent(data: unknown): Promise<void> {
   await electronApp.evaluate(({ BrowserWindow }, event) => {
@@ -260,6 +261,34 @@ test.describe('Session tab playback (#1080)', () => {
 
     await sendLiveEvent({ type: 'meter', channels: [{ rms: -18, peak: -6 }] });
     await expect(window.locator('.daw-track-head-level-fill').first()).toHaveAttribute('style', 'width:78.26086956521739%');
+  });
+
+  test('session-timeline-monitoring', async () => {
+    await window.locator('#daw-session-record').click();
+    await expect(window.locator('#live-indicator .live-txt')).toHaveText('REC');
+    await window.locator('#daw-session-record').click();
+    await expect(window.locator('#live-indicator .live-txt')).toHaveText('LIVE');
+
+    const rulerPlayhead = window.locator('.daw-playhead-ruler');
+    const lanePlayhead = window.locator('.daw-playhead-lanes');
+    const transport = window.locator('.daw-transport-time');
+    const timeline = window.locator('.daw-timeline');
+    const [rulerLeft, laneLeft, transportText, timelineScrollLeft] = await Promise.all([
+      rulerPlayhead.evaluate((element) => (element as HTMLElement).style.left),
+      lanePlayhead.evaluate((element) => (element as HTMLElement).style.left),
+      transport.textContent(),
+      timeline.evaluate((element) => (element as HTMLElement).scrollLeft),
+    ]);
+
+    await sendLiveEvent({ type: 'meter', channels: [{ rms: -18, peak: -6 }] });
+    await window.waitForTimeout(MONITORING_ELAPSED_ASSERTION_WAIT_MS);
+
+    await expect(rulerPlayhead).toHaveCSS('left', rulerLeft);
+    await expect(lanePlayhead).toHaveCSS('left', laneLeft);
+    await expect(transport).toHaveText(transportText ?? '');
+    expect(await timeline.evaluate((element) => (element as HTMLElement).scrollLeft)).toBe(timelineScrollLeft);
+    await expect(rulerPlayhead).not.toHaveClass(/advancing/);
+    await expect(lanePlayhead).not.toHaveClass(/advancing/);
   });
 
   test('Session Record and the persistent header share capture state across tabs (#1081)', async () => {
