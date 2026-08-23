@@ -25,8 +25,7 @@ unzip, and drag **Sound Buddy.app** to `/Applications`. The app is **fully self-
 `ffmpeg`/`ffprobe`, and a Python runtime with the audio libraries are bundled inside, so
 there's no Homebrew or `pip` setup. Apple Silicon (M1+), macOS 26+. First launch is
 blocked as unsigned — open **System Settings → Privacy & Security**, then click
-**Open Anyway** in the Security section (or run
-`xattr -dr com.apple.quarantine "/Applications/Sound Buddy.app"`). See the
+**Open Anyway** in the Security section. See the
 [install walkthrough](https://soundbuddy.online/#install-walkthrough) for the full
 steps. It also checks Releases for newer versions and shows a banner when one is
 available (Help ▸ Check for Updates… to check manually); on a signed build, clicking
