@@ -21,7 +21,6 @@
 
 import {
   LIVE_BAND_KEYS,
-  channelOptions,
   deviceChannelCount,
   usedChannelCount,
   groupSummary,
@@ -562,22 +561,78 @@ export function dawTrackListEntries(state: LiveWorkspaceViewState): DawTrackList
   return entries;
 }
 
+export function dawTrackInputValue(strip: StripConfig): string {
+  if (strip.kind === 'stereo') {
+    const left = Number.isInteger(strip.a) ? strip.a : 0;
+    const right = Number.isInteger(strip.b) ? strip.b : left + 1;
+    return `stereo:${left},${right}`;
+  }
+  const source = Number.isInteger(strip.a) ? strip.a : 0;
+  return `mono:${source}`;
+}
+
+export interface DawTrackInputOption {
+  value: string;
+  label: string;
+  kind: 'mono' | 'stereo';
+  sources: readonly [number] | readonly [number, number];
+}
+
+export function dawTrackInputOptions(deviceChannels: number): DawTrackInputOption[] {
+  const count = Number.isInteger(deviceChannels) && deviceChannels > 0 ? deviceChannels : 8;
+  const options: DawTrackInputOption[] = [];
+  for (let left = 0; left + 1 < count; left += 2) {
+    options.push({
+      value: `stereo:${left},${left + 1}`,
+      label: `${left + 1}/${left + 2}`,
+      kind: 'stereo',
+      sources: [left, left + 1],
+    });
+  }
+  for (let source = 0; source < count; source += 1) {
+    options.push({
+      value: `mono:${source}`,
+      label: `${source + 1}`,
+      kind: 'mono',
+      sources: [source],
+    });
+  }
+  return options;
+}
+
+export function parseDawTrackInputValue(value: string): DawTrackInputOption | null {
+  const [kind, rawSources = ''] = value.split(':');
+  if (kind !== 'mono' && kind !== 'stereo') return null;
+  const sources = rawSources.split(',').map((source) => parseInt(source, 10));
+  if (sources.some((source) => !Number.isInteger(source))) return null;
+  if (kind === 'mono' && sources.length === 1) {
+    const [source] = sources;
+    return { value, label: `${source + 1}`, kind, sources: [source] };
+  }
+  if (kind === 'stereo' && sources.length === 2) {
+    const [left, right] = sources;
+    return { value, label: `${left + 1}/${right + 1}`, kind, sources: [left, right] };
+  }
+  return null;
+}
+
+export function dawTrackInputOptionsHTML(selectedValue: string, deviceChannels: number): string {
+  return dawTrackInputOptions(deviceChannels)
+    .map((option) => `<option value="${option.value}"${option.value === selectedValue ? ' selected' : ''}>${option.label}</option>`)
+    .join('');
+}
+
 /** Pure inside markup for one arrangement track header. The row is derived
  * once by dawTrackRows, preserving the header/lane ordering contract. */
 export function dawTrackHeaderHTML(row: DawTrackRow): string {
-  const strip = row.strip ?? { kind: 'mono', a: 0 };
-  const stereo = strip.kind === 'stereo';
+  const strip = row.strip ?? { kind: 'mono', a: 0, b: 1 };
   const configDisabled = row.configDisabled ? ' disabled' : '';
-  const sourceA = Number.isInteger(strip.a) ? strip.a : 0;
-  const sourceB = stereo && Number.isInteger((strip as StripConfig).b) ? (strip as StripConfig).b : sourceA + 1;
   const deviceChannels = row.deviceChannels ?? 8;
+  const inputValue = dawTrackInputValue(strip);
   const definitionHTML = `<span class="daw-track-head-def">`
-    + `<select class="daw-track-head-kind" data-idx="${row.index}" aria-label="Mono or stereo"${configDisabled}>`
-    + `<option value="mono"${!stereo ? ' selected' : ''}>Mono</option>`
-    + `<option value="stereo"${stereo ? ' selected' : ''}>Stereo</option>`
+    + `<select class="daw-track-head-input" data-idx="${row.index}" aria-label="Track input" title="Track input"${configDisabled}>`
+    + dawTrackInputOptionsHTML(inputValue, deviceChannels)
     + `</select>`
-    + `<select class="daw-track-head-src${stereo ? ' leg' : ''}" data-idx="${row.index}" data-field="a" aria-label="${stereo ? 'Left source channel' : 'Source channel'}" title="${stereo ? 'Left source channel' : 'Source channel'}"${configDisabled}>${channelOptions(sourceA, deviceChannels, stereo)}</select>`
-    + (stereo ? `<select class="daw-track-head-src leg" data-idx="${row.index}" data-field="b" aria-label="Right source channel" title="Right source channel"${configDisabled}>${channelOptions(sourceB, deviceChannels, true)}</select>` : '')
     + `</span>`;
   const dragHTML = (row.groupIndex ?? -1) >= 0
     ? `<button type="button" class="daw-track-head-drag" draggable="true" aria-label="Reorder track within group — drag, or press Arrow Up/Down" title="Drag to reorder track"${row.configDisabled ? ' disabled' : ''}>⋮⋮</button>`
