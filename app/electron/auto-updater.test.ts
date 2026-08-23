@@ -42,6 +42,7 @@ function makeDeps(updater: FakeUpdater = makeFakeUpdater()): AutoUpdaterDeps {
     updater,
     send: vi.fn(),
     currentVersion: vi.fn(() => '1.0.0'),
+    quitApp: vi.fn(),
     log: vi.fn(),
     logWarn: vi.fn(),
   };
@@ -307,12 +308,13 @@ describe('downloadUpdate', () => {
 });
 
 describe('installUpdate', () => {
-  it('calls quitAndInstall', () => {
+  it('calls quitAndInstall and quits the app', () => {
     const updater = makeFakeUpdater();
     const deps = makeDeps(updater);
 
     installUpdate(deps);
 
-    expect(updater.quitAndInstall).toHaveBeenCalledTimes(1);
+    expect(updater.quitAndInstall).toHaveBeenCalledWith(false, true);
+    expect(deps.quitApp).toHaveBeenCalledTimes(1);
   });
 });

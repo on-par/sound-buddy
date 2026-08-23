@@ -16,8 +16,7 @@ export const UNSIGNED_STEPS =
   '2. First launch is blocked by Gatekeeper ("Apple could not verify Sound Buddy").\n' +
   '   Open **System Settings → Privacy & Security**, scroll to the **Security** section,\n' +
   '   and click **Open Anyway** next to the Sound Buddy message.\n' +
-  '3. Confirm **Open Anyway** and authenticate.\n' +
-  '   Power-user alternative: `xattr -dr com.apple.quarantine "/Applications/Sound Buddy.app"`'
+  '3. Confirm **Open Anyway** and authenticate.'
 
 export function buildReleaseNotes({ version, signed, highlights }: BuildReleaseNotesOptions): string {
   const zipName = `Sound.Buddy-${version}-arm64-mac.zip`

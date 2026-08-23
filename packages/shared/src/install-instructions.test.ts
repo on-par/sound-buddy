@@ -2,11 +2,11 @@ import { describe, expect, it } from 'vitest';
 import { buildReleaseNotes, INSTALL_INTRO, UNSIGNED_STEPS } from './install-instructions.js';
 
 describe('buildReleaseNotes', () => {
-  it('unsigned build includes the macOS 26 Privacy & Security flow and xattr fallback, not right-click', () => {
+  it('unsigned build includes the macOS 26 Privacy & Security flow without xattr or right-click fallbacks', () => {
     const notes = buildReleaseNotes({ version: '0.4.2', signed: false });
     expect(notes).toContain('Privacy & Security');
     expect(notes).toContain('Open Anyway');
-    expect(notes).toContain('xattr -dr com.apple.quarantine "/Applications/Sound Buddy.app"');
+    expect(notes).not.toContain('xattr');
     expect(notes).not.toContain('right-click');
   });
 
@@ -41,6 +41,7 @@ describe('buildReleaseNotes', () => {
     expect(UNSIGNED_STEPS.length).toBeGreaterThan(0);
     expect(INSTALL_INTRO).not.toContain('right-click');
     expect(UNSIGNED_STEPS).not.toContain('right-click');
+    expect(UNSIGNED_STEPS).not.toContain('xattr');
   });
 
   it('renders a What\'s new section above install steps when highlights are provided', () => {

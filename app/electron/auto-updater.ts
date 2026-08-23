@@ -35,7 +35,7 @@ export interface AutoUpdaterLike {
   on(event: string, listener: (...args: any[]) => void): unknown;
   checkForUpdates(): Promise<unknown>;
   downloadUpdate(): Promise<unknown>;
-  quitAndInstall(): void;
+  quitAndInstall(isSilent?: boolean, isForceRunAfter?: boolean): void;
 }
 
 export interface AutoUpdaterDeps {
@@ -43,6 +43,7 @@ export interface AutoUpdaterDeps {
   /** win.webContents.send, guarded against a null/destroyed window. */
   send: (channel: string, payload: unknown) => void;
   currentVersion: () => string;
+  quitApp: () => void;
   log: (m: string) => void;
   logWarn: (m: string) => void;
 }
@@ -158,5 +159,6 @@ export async function downloadUpdate(deps: AutoUpdaterDeps): Promise<{ success: 
 }
 
 export function installUpdate(deps: AutoUpdaterDeps): void {
-  deps.updater.quitAndInstall();
+  deps.updater.quitAndInstall(false, true);
+  deps.quitApp();
 }

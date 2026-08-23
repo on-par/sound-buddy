@@ -203,6 +203,7 @@ const updaterDeps: AutoUpdaterDeps = {
     if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send(channel, payload);
   },
   currentVersion: () => app.getVersion(),
+  quitApp: () => app.quit(),
   log,
   logWarn,
 };
