@@ -138,6 +138,11 @@ describe('Live tab reads as always-listening, never capture (#777)', () => {
 });
 
 describe('Always-monitoring Live tab with Session-owned transport (#757/#1112)', () => {
+  it('does not pre-activate the Report Card side pane in the static shell', () => {
+    expect(markup).toContain('<div id="reportcard-view">');
+    expect(markup).not.toContain('<div id="reportcard-view" class="active">');
+  });
+
   it('removes the in-tab Mode toggle, preflight gate, and Start/Stop transport from #tab-live', () => {
     expect(markup).not.toContain('id="live-controls-island"');
     expect(markup).not.toContain('id="live-transport-island"');
