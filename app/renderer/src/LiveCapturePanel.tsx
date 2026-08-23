@@ -59,6 +59,7 @@ import {
   getDawShellRuntime,
   getGroupState,
   liveWorkspaceViewState,
+  parseDawTrackInputValue,
 } from './live-workspace-view';
 import { sessionTabSessionPickerAction, sessionTabSessionPickerView } from './session-tab-session-picker';
 import { paintSessionTabWaveformClips, sessionTabWaveformView } from './session-tab-waveforms';
@@ -101,6 +102,32 @@ export function routeHeaderChannelAction(
     actions.toggleChannelSolo(channelId);
   } else {
     actions.removeStrip(channelId);
+  }
+}
+
+export interface HeaderTrackInputActions {
+  channelConfig: unknown[];
+  setStripKind(index: number, kind: 'mono' | 'stereo'): void;
+  setStripSource(index: number, field: 'a' | 'b', source: number): void;
+}
+
+export function applyHeaderTrackInputSelection(
+  trackIndex: number,
+  value: string,
+  actions: HeaderTrackInputActions,
+): void {
+  if (!actions.channelConfig[trackIndex]) return;
+  const option = parseDawTrackInputValue(value);
+  if (!option) return;
+  const sourceA = option.sources[0];
+  if (typeof sourceA !== 'number') return;
+  actions.setStripKind(trackIndex, option.kind);
+  actions.setStripSource(trackIndex, 'a', sourceA);
+  if (option.kind === 'stereo') {
+    const sourceB = option.sources[1];
+    if (typeof sourceB === 'number') {
+      actions.setStripSource(trackIndex, 'b', sourceB);
+    }
   }
 }
 
@@ -581,26 +608,13 @@ export default function LiveCapturePanel(): JSX.Element | null {
       useLiveCaptureStore.getState().setFocusedInputIndex(value === '' ? null : parseInt(value, 10));
       return;
     }
-    // ── 6h inline track definition (#189) — moved from inline-app.js's #spectrum-body change
-    // listener (TD-001 slice 6h #711). The board re-renders reactively. ──────
-    const kindSel = target.closest('.daw-track-head-kind');
-    if (kindSel) {
-      const idx = parseInt(kindSel.getAttribute('data-idx') ?? '', 10);
-      const lc = useLiveCaptureStore.getState();
-      if (!lc.channelConfig[idx]) return;
-      lc.setStripKind(idx, (e.target as unknown as HTMLSelectElement).value);
-      return;
-    }
-    const srcSel = target.closest('.daw-track-head-src');
-    if (srcSel) {
-      const idx = parseInt(srcSel.getAttribute('data-idx') ?? '', 10);
-      const lc = useLiveCaptureStore.getState();
-      if (!lc.channelConfig[idx]) return;
-      lc.setStripSource(
-        idx,
-        srcSel.getAttribute('data-field') as 'a' | 'b',
-        parseInt((e.target as unknown as HTMLSelectElement).value, 10),
-      );
+    // ── Session track input selector (#1115): one DAW-style source control
+    // owns both mono/stereo kind and channel assignment so the header stays
+    // compact.
+    const inputSel = target.closest('.daw-track-head-input');
+    if (inputSel instanceof HTMLSelectElement) {
+      const idx = parseInt(inputSel.getAttribute('data-idx') ?? '', 10);
+      applyHeaderTrackInputSelection(idx, inputSel.value, useLiveCaptureStore.getState());
       return;
     }
   }
