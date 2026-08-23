@@ -83,6 +83,27 @@ export function releaseNoteLines(notes: string): string[] {
     .slice(0, 8);
 }
 
+export function UpdatePrimaryAction({
+  primary,
+  onAction,
+}: {
+  primary: UpdateDownloadStateView['primary'];
+  onAction: (action: UpdateAction) => void;
+}): JSX.Element | null {
+  if (primary === null) return null;
+
+  return (
+    <button
+      type="button"
+      id="update-download-btn"
+      className="btn btn-primary sm"
+      onClick={() => onAction(primary.action)}
+    >
+      {primary.label}
+    </button>
+  );
+}
+
 export default function UpdateBanner(): JSX.Element {
   const api = useElectron();
   const [dialogVisible, setDialogVisible] = useState(false);
@@ -190,19 +211,14 @@ export default function UpdateBanner(): JSX.Element {
             >
               Cancel
             </button>
-            <button
-              type="button"
-              id="update-download-btn"
-              className="btn btn-primary sm"
-              hidden={primary == null}
+            <UpdatePrimaryAction
+              primary={primary}
               /* c8 ignore next -- click dispatch, no jsdom */
-              onClick={() => {
-                if (primary?.action === 'install') void api.installUpdate();
+              onAction={(action) => {
+                if (action === 'install') void api.installUpdate();
                 else void api.downloadUpdate();
               }}
-            >
-              {primary?.label ?? ''}
-            </button>
+            />
           </div>
         </div>
       </div>
