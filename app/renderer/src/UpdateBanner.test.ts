@@ -4,7 +4,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { createElement } from 'react';
 import { renderToString } from 'react-dom/server';
-import UpdateBanner from './UpdateBanner';
+import UpdateBanner, { releaseNoteLines } from './UpdateBanner';
 import { createMockSoundBuddy } from './mock-sound-buddy';
 
 function renderMarkup(): string {
@@ -33,5 +33,19 @@ describe('UpdateBanner', () => {
     expect(html).toContain('id="update-cancel-btn"');
     expect(html).toContain('id="update-dialog-notes"');
     expect(html).toContain('id="update-dialog-summary"');
+  });
+
+  it('normalizes GitHub HTML release notes for the changelog list', () => {
+    expect(releaseNoteLines(`
+      <h2>What's new in 0.8.23</h2>
+      <ul>
+        <li><strong>Post-update notes are a snackbar</strong>: the top &quot;What's new&quot; bar fades.</li>
+        <li><strong>Update checks use a modal</strong>: available updates show the changelog.</li>
+      </ul>
+    `)).toEqual([
+      "What's new in 0.8.23",
+      'Post-update notes are a snackbar: the top "What\'s new" bar fades.',
+      'Update checks use a modal: available updates show the changelog.',
+    ]);
   });
 });

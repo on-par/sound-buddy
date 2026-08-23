@@ -31,9 +31,28 @@ function getUpdateDownloadState(): UpdateDownloadStateApi {
 
 const MARKDOWN_RUN = /(\*\*|`)/g;
 const HTML_COMMENT_LINE = /^<!--[\s\S]*?-->$/;
+const HTML_TAG = /<[^>]+>/g;
 
-function releaseNoteLines(notes: string): string[] {
-  return notes
+function decodeReleaseNoteEntities(text: string): string {
+  return text
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&amp;/gi, '&')
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;|&apos;/gi, "'");
+}
+
+function releaseNoteText(notes: string): string {
+  return decodeReleaseNoteEntities(notes)
+    .replace(/<\/?(h[1-6]|p|ul|ol|div|section|article|br)\b[^>]*>/gi, '\n')
+    .replace(/<li\b[^>]*>/gi, '\n')
+    .replace(/<\/li>/gi, '\n')
+    .replace(HTML_TAG, '');
+}
+
+export function releaseNoteLines(notes: string): string[] {
+  return releaseNoteText(notes)
     .split(/\r?\n/)
     .map((line) => line.trim())
     .filter((line) => line !== '' && !HTML_COMMENT_LINE.test(line))

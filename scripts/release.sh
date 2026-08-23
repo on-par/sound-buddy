@@ -293,10 +293,10 @@ if [[ "$SIGNED" == "true" ]]; then
   # past submission's id with: xcrun notarytool history --keychain-profile $NOTARY_PROFILE
   ( cd "$APP" && SOUND_BUDDY_SIGNING_IDENTITY="$IDENTITY" SOUND_BUDDY_NOTARY_PROFILE="$NOTARY_PROFILE" \
       APPLE_KEYCHAIN_PROFILE="$NOTARY_PROFILE" \
-      npm run dist -- -c.mac.identity="$IDENTITY_NAME" -c.mac.notarize=true ) \
+      npm run dist -- -c.mac.identity="$IDENTITY_NAME" -c.mac.notarize=true -c.releaseInfo.releaseNotes="$NOTES" ) \
     || die "signed build failed during signing, notarization, or stapling — check the output above for the exact error. If Apple rejected the notarization, find the submission id there and read the full log with: xcrun notarytool log <submission-id> --keychain-profile $NOTARY_PROFILE"
 else
-  ( cd "$APP" && npm run dist >/dev/null )
+  ( cd "$APP" && npm run dist -- -c.releaseInfo.releaseNotes="$NOTES" >/dev/null )
 fi
 
 ZIP="$APP/release/$ZIP_ASSET_NAME"
