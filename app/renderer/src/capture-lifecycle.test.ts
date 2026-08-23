@@ -204,9 +204,9 @@ describe('createCaptureLifecycle — onCaptureStarting', () => {
     expect(doc.els['spectrum-title'].textContent).toBe(SPECTRUM_TITLE.live);
   });
 
-  it('calls dawShell.startPlayhead with now and resetWaveform with the meter interval', () => {
+  it('starts the DAW playhead for a record capture and resets the waveform with the meter interval', () => {
     const { lifecycle, dawShell } = makeLifecycle();
-    useLiveCaptureStore.setState({ meterIntervalMs: 200, isCapturing: true });
+    useLiveCaptureStore.setState({ meterIntervalMs: 200, isCapturing: true, liveMode: 'record' });
     const now = Date.now();
     vi.spyOn(Date, 'now').mockReturnValue(now);
     try {
@@ -215,6 +215,16 @@ describe('createCaptureLifecycle — onCaptureStarting', () => {
       vi.restoreAllMocks();
     }
     expect(dawShell.startPlayhead).toHaveBeenCalledWith(now);
+    expect(dawShell.resetWaveform).toHaveBeenCalledWith(0.2);
+  });
+
+  it('keeps the DAW playhead stopped for a monitor capture while resetting the waveform', () => {
+    const { lifecycle, dawShell } = makeLifecycle();
+    useLiveCaptureStore.setState({ meterIntervalMs: 200, isCapturing: true, liveMode: 'monitor' });
+
+    lifecycle.runtime.onCaptureStarting();
+
+    expect(dawShell.startPlayhead).not.toHaveBeenCalled();
     expect(dawShell.resetWaveform).toHaveBeenCalledWith(0.2);
   });
 
@@ -344,10 +354,16 @@ describe('createCaptureLifecycle — promoteToRecording', () => {
   });
 
   it('promotes an active monitor session with the exact record payload', async () => {
-    const { lifecycle, sb } = makeLifecycle();
+    const { lifecycle, sb, dawShell } = makeLifecycle();
     recordReadyState();
+    const now = Date.now();
+    vi.spyOn(Date, 'now').mockReturnValue(now);
 
-    await lifecycle.runtime.promoteToRecording();
+    try {
+      await lifecycle.runtime.promoteToRecording();
+    } finally {
+      vi.restoreAllMocks();
+    }
 
     expect(sb.startLive).toHaveBeenCalledWith({
       device: '0',
@@ -365,6 +381,7 @@ describe('createCaptureLifecycle — promoteToRecording', () => {
     // #776 stale-offer clear before the promote.
     expect(useLiveCaptureStore.getState().sessionOffers).toEqual({ sessionDir: null, reportCard: false, notEnoughData: false });
     expect(useLiveCaptureStore.getState().liveCueVisible).toBe(false);
+    expect(dawShell.startPlayhead).toHaveBeenCalledWith(now);
   });
 
   it('preserves monitor mute and solo maps when promoting to recording (#1058)', async () => {

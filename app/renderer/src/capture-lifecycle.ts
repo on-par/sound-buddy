@@ -179,7 +179,7 @@ export function createCaptureLifecycle(deps: CaptureLifecycleDeps): {
     const lc = deps.getLc();
     const intervalSecs = lc.meterIntervalMs / 1000;
     const shell = deps.dawShell();
-    shell?.startPlayhead(Date.now());
+    if (lc.liveMode === 'record') shell?.startPlayhead(Date.now());
     shell?.resetWaveform(intervalSecs);
     sessionWindows = [];
     // A new capture must not inherit the previous session's cooldowns or
@@ -290,6 +290,7 @@ export function createCaptureLifecycle(deps: CaptureLifecycleDeps): {
 
     lc.setPromoting(true);
     lc.setLiveMode('record');
+    deps.dawShell()?.startPlayhead(Date.now());
     syncLiveIndicator();
     // #757: arming stays live while monitoring, so flipping to 'record' is
     // what freezes the arm controls — the board re-renders from
