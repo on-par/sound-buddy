@@ -84,8 +84,8 @@ async function closeSettings(win: Page): Promise<void> {
 }
 
 async function assignGroupFromInspector(win: Page, channelIndex: number, groupName: string): Promise<void> {
-  const strip = win.locator('#spectrum-body .live-ch').nth(channelIndex);
-  await strip.click();
+  const strip = win.locator('#spectrum-body .daw-track-head').nth(channelIndex);
+  await strip.locator('.daw-track-head-index').click();
   await expect(strip).toHaveClass(/selected/);
   const groupSelect = win.locator('.eq-pane-classification-group');
   await expect(groupSelect).toBeVisible();
@@ -184,7 +184,7 @@ test.describe.serial('Rigs — save / load / switch', () => {
       set('window-secs', '5');
     });
     await closeSettings(win);
-    await win.locator('.live-ch-kind').first().selectOption('stereo');
+    await win.locator('.daw-track-head-kind').first().selectOption('stereo');
 
     await openAudioSettings(win);
     await win.locator('#rig-saveas-btn').click();
@@ -281,7 +281,7 @@ test.describe.serial('Rigs — save / load / switch', () => {
 
     await expect(win.locator('#live-status')).toContainText('out of range');
     // Both strips still render (nothing thrown); the stereo legs were clamped.
-    await expect(win.locator('#spectrum-body .live-ch')).toHaveCount(2);
+    await expect(win.locator('#spectrum-body .daw-track-head')).toHaveCount(2);
 
     await openAudioSettings(win);
     await expect(win.locator('#rig-select option:checked')).toHaveText('Big Board');
@@ -304,11 +304,11 @@ test.describe.serial('Rigs — save / load / switch', () => {
     // Pick the real device before labelling (a device change re-seeds the config).
     await win.locator('#device-select').selectOption('0');
     await closeSettings(win);
-    await expect(win.locator('#spectrum-body .live-ch')).toHaveCount(2);
+    await expect(win.locator('#spectrum-body .daw-track-head')).toHaveCount(2);
 
     // Name both strips (contenteditable workspace header), then save as a new,
     // active rig.
-    const names = win.locator('#spectrum-body .live-ch .live-ch-name');
+    const names = win.locator('#spectrum-body .daw-track-head .daw-track-head-name');
     async function renameHeader(idx: number, value: string) {
       await names.nth(idx).click();
       await win.keyboard.press('ControlOrMeta+A');
@@ -336,7 +336,7 @@ test.describe.serial('Rigs — save / load / switch', () => {
     await openAudioSettings(win);
     await expect(win.locator('#rig-select option:checked')).toHaveText('Labeled Board');
     await closeSettings(win);
-    const restored = win.locator('#spectrum-body .live-ch .live-ch-name');
+    const restored = win.locator('#spectrum-body .daw-track-head .daw-track-head-name');
     await expect(restored.nth(0)).toHaveText('Kick');
     await expect(restored.nth(1)).toHaveText('SL Vox');
   });
@@ -354,7 +354,7 @@ test.describe.serial('Rigs — save / load / switch', () => {
     await win.locator('#device-refresh-btn').click();
     await win.locator('#device-select').selectOption('0');
     await closeSettings(win);
-    await expect(win.locator('#spectrum-body .live-ch')).toHaveCount(2);
+    await expect(win.locator('#spectrum-body .daw-track-head')).toHaveCount(2);
 
     // Create a group and assign both strips to it.
     await win.locator('#live-ws-new-group').click();
@@ -380,9 +380,9 @@ test.describe.serial('Rigs — save / load / switch', () => {
     await openAudioSettings(win);
     await expect(win.locator('#rig-select option:checked')).toHaveText('Grouped Board');
     await closeSettings(win);
-    await win.locator('#spectrum-body .live-ch').nth(0).click();
+    await win.locator('#spectrum-body .daw-track-head').nth(0).locator('.daw-track-head-index').click();
     await expect(win.locator('.eq-pane-classification-group')).toHaveValue('0');
-    await win.locator('#spectrum-body .live-ch').nth(1).click();
+    await win.locator('#spectrum-body .daw-track-head').nth(1).locator('.daw-track-head-index').click();
     await expect(win.locator('.eq-pane-classification-group')).toHaveValue('0');
   });
 
@@ -464,7 +464,7 @@ test.describe.serial('Rigs — save / load / switch', () => {
     }
     await expect(win.locator('#settings-audio-capture-lock-note')).toBeVisible();
     await closeSettings(win);
-    await expect(win.locator('#spectrum-body .live-ch-kind').first()).toBeDisabled();
+    await expect(win.locator('#spectrum-body .daw-track-head-kind').first()).toBeDisabled();
     // The workspace toolbar's Add track is rebuilt by Start's React board
     // re-render (TD-001 slice 6h, #711) — the rebuilt markup bakes in
     // `disabled` (derived from isCapturing) but not aria-disabled, so only
@@ -509,7 +509,7 @@ test.describe.serial('Rigs — save / load / switch', () => {
     await win.locator('#record-button').click();
     // Start's React board rebuild bakes in `disabled` (via the store-derived
     // stamps) but not aria-disabled, so only `disabled` is asserted here.
-    await expect(win.locator('#spectrum-body .live-ch-kind').first()).toBeDisabled();
+    await expect(win.locator('#spectrum-body .daw-track-head-kind').first()).toBeDisabled();
     // Every config mutator funnels through the store; the board re-renders with
     // the disabled stamps re-derived from liveCaptureStore.isCapturing at render
     // time (TD-001 slice 6h, #711) — the old window.renderChannelConfig()
@@ -517,7 +517,7 @@ test.describe.serial('Rigs — save / load / switch', () => {
     await win.evaluate(() => {
       (window as unknown as { rendererStores: { liveCapture: { getState: () => { setStripKind: (idx: number, kind: string) => void } } } }).rendererStores.liveCapture.getState().setStripKind(0, 'stereo');
     });
-    await expect(win.locator('#spectrum-body .live-ch-kind').first()).toBeDisabled();
+    await expect(win.locator('#spectrum-body .daw-track-head-kind').first()).toBeDisabled();
     await win.locator('#record-button').click();
   });
 });

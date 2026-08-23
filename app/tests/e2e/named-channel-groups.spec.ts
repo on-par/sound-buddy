@@ -35,8 +35,8 @@ test.describe('Named channel groups (#41)', () => {
     await window.locator('#rig-dialog-ok').click();
   }
   async function assignGroup(channelIndex: number, groupName: string) {
-    const strip = window.locator('#spectrum-body .live-ch').nth(channelIndex);
-    await strip.click();
+    const strip = window.locator('#spectrum-body .daw-track-head').nth(channelIndex);
+    await strip.locator('.daw-track-head-index').click();
     await expect(strip).toHaveClass(/selected/);
     const groupSelect = window.locator('.eq-pane-classification-group');
     await expect(groupSelect).toBeVisible();
@@ -57,16 +57,16 @@ test.describe('Named channel groups (#41)', () => {
     }
   });
 
-  test('create a group, assign a strip, and it renders grouped in the live board', async () => {
+  test('create a group, assign a strip, and it renders grouped in the DAW arrangement', async () => {
     await makeGroup('Drums');
     await assignGroup(0, 'Drums');
     await tick();
-    const board = window.locator('#spectrum-body .sb-live-meters');
+    const board = window.locator('#spectrum-body .daw-track-heads');
     await expect(board.locator('.live-group-head')).toHaveCount(2); // Drums + Ungrouped
     await expect(board.locator('.live-group-head').first().locator('.live-group-name')).toHaveText('Drums');
     await expect(board.locator('.live-group-head.ungrouped .live-group-name')).toHaveText('Ungrouped');
     // The assigned strip (idx 0) sits before the Ungrouped header; idx 1 after.
-    await expect(board.locator('.live-ch')).toHaveCount(2);
+    await expect(board.locator('.daw-track-head')).toHaveCount(2);
   });
 
   test('collapsing a group hides all its members entirely, leaving others alone (#483)', async () => {
@@ -79,16 +79,16 @@ test.describe('Named channel groups (#41)', () => {
     await expect(header).toHaveClass(/collapsed/);
     await expect(header.locator('.live-group-fold')).toHaveAttribute('aria-expanded', 'false');
     await expect(header.locator('.live-group-summary')).toBeVisible();
-    await expect(window.locator('#spectrum-body .live-ch[data-ch="0"]')).toHaveClass(/group-collapsed/);
-    await expect(window.locator('#spectrum-body .live-ch[data-ch="0"]')).not.toBeVisible();
+    await expect(window.locator('#spectrum-body .daw-track-head[data-ch="0"]')).toHaveClass(/group-collapsed/);
+    await expect(window.locator('#spectrum-body .daw-track-head[data-ch="0"]')).not.toBeVisible();
     // The other (ungrouped) strip is untouched — still visible, no group-collapsed class.
-    await expect(window.locator('#spectrum-body .live-ch[data-ch="1"]')).toBeVisible();
-    await expect(window.locator('#spectrum-body .live-ch[data-ch="1"]')).not.toHaveClass(/group-collapsed/);
+    await expect(window.locator('#spectrum-body .daw-track-head[data-ch="1"]')).toBeVisible();
+    await expect(window.locator('#spectrum-body .daw-track-head[data-ch="1"]')).not.toHaveClass(/group-collapsed/);
 
     // Clicking again restores visibility.
     await header.locator('.live-group-fold').click();
     await expect(header).not.toHaveClass(/collapsed/);
-    await expect(window.locator('#spectrum-body .live-ch[data-ch="0"]')).toBeVisible();
+    await expect(window.locator('#spectrum-body .daw-track-head[data-ch="0"]')).toBeVisible();
   });
 
   test('keyboard Arrow Up reorders groups, and the order persists across reload (#483)', async () => {
@@ -110,10 +110,10 @@ test.describe('Named channel groups (#41)', () => {
     await makeGroup('Drums');
     await assignGroup(0, 'Drums');
     await assignGroup(1, 'Drums');
-    const chOrder = () => window.locator('#spectrum-body .live-ch').evaluateAll((els) => els.map((el) => el.getAttribute('data-ch')));
+    const chOrder = () => window.locator('#spectrum-body .daw-track-head').evaluateAll((els) => els.map((el) => el.getAttribute('data-ch')));
     await expect.poll(chOrder).toEqual(['0', '1']);
 
-    await window.locator('#spectrum-body .live-ch[data-ch="1"] .live-ch-drag').focus();
+    await window.locator('#spectrum-body .daw-track-head[data-ch="1"] .daw-track-head-drag').focus();
     await window.keyboard.press('ArrowUp');
     await expect.poll(chOrder).toEqual(['1', '0']);
   });
@@ -122,18 +122,18 @@ test.describe('Named channel groups (#41)', () => {
     await makeGroup('Drums');
     await assignGroup(0, 'Drums');
     await assignGroup(1, 'Drums');
-    await window.locator('#spectrum-body .live-ch').nth(0).locator('.live-ch-x').click(); // remove strip 0
+    await window.locator('#spectrum-body .daw-track-head').nth(0).locator('.daw-track-head-remove').click(); // remove strip 0
     // One strip remains; former strip 1 remapped to index 0 and is STILL in
     // Drums (value "0" = group index of Drums) — no dangling ref to strip 0.
-    await expect(window.locator('#spectrum-body .live-ch')).toHaveCount(1);
-    await window.locator('#spectrum-body .live-ch').nth(0).click();
+    await expect(window.locator('#spectrum-body .daw-track-head')).toHaveCount(1);
+    await window.locator('#spectrum-body .daw-track-head').nth(0).locator('.daw-track-head-index').click();
     await expect(window.locator('.eq-pane-classification-group')).toHaveValue('0');
-    // Live board (one channel now) renders the survivor under Drums, no Ungrouped.
+    // DAW arrangement (one channel now) renders the survivor under Drums, no Ungrouped.
     await electronApp.evaluate(({ BrowserWindow }, chs) => {
       BrowserWindow.getAllWindows()[0].webContents.send('live-event', { type: 'meter', channels: chs });
     }, [CH[0]]);
-    const board = window.locator('#spectrum-body .sb-live-meters');
-    await expect(board.locator('.live-ch')).toHaveCount(1);
+    const board = window.locator('#spectrum-body .daw-track-heads');
+    await expect(board.locator('.daw-track-head')).toHaveCount(1);
     await expect(board.locator('.live-group-head.ungrouped')).toHaveCount(0);
   });
 });

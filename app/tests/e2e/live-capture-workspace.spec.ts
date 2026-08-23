@@ -66,7 +66,7 @@ test.describe('Live capture (PRD 06) — workspace controls', () => {
     await openAudioSettings(window);
     await window.locator('#device-refresh-btn').click();
     await closeSettings(window);
-    await expect(window.locator('#spectrum-body .live-ch')).toHaveCount(2);
+    await expect(window.locator('#spectrum-body .daw-track-head')).toHaveCount(2);
   });
 
   // Workspace arm controls (#191): the record-arm cluster lives on the
@@ -75,14 +75,14 @@ test.describe('Live capture (PRD 06) — workspace controls', () => {
   // Drives #spectrum-body's controls directly.
   test.describe('Workspace arm controls (#191)', () => {
     test('per-track arm toggles and the Arm all toolbar render unconditionally (#757)', async () => {
-      await expect(window.locator('#spectrum-body .live-ch-arm')).toHaveCount(2);
+      await expect(window.locator('#spectrum-body .daw-track-head-arm')).toHaveCount(2);
       await expect(window.locator('#live-ws-arm-all')).toBeVisible();
       await expect(window.locator('#live-ws-disarm-all')).toBeVisible();
       await expect(window.locator('#live-ws-arm-count')).toContainText('2 / 2 armed');
     });
 
     test('arming a single track from the workspace flips aria-pressed', async () => {
-      const wsArm = window.locator('#spectrum-body .live-ch-arm').first();
+      const wsArm = window.locator('#spectrum-body .daw-track-head-arm').first();
       await expect(wsArm).toHaveAttribute('aria-pressed', 'true');
 
       await wsArm.click(); // disarm
@@ -95,7 +95,7 @@ test.describe('Live capture (PRD 06) — workspace controls', () => {
     });
 
     test('workspace Arm all / Disarm all', async () => {
-      const arms = window.locator('#spectrum-body .live-ch-arm');
+      const arms = window.locator('#spectrum-body .daw-track-head-arm');
 
       await window.locator('#live-ws-disarm-all').click();
       for (const arm of await arms.all()) await expect(arm).toHaveAttribute('aria-pressed', 'false');
@@ -127,7 +127,7 @@ test.describe('Live capture (PRD 06) — workspace controls', () => {
       await expect(window.locator('#live-indicator .live-txt')).toHaveText('REC');
       await sendLiveTick(LIVE_CHANNELS);
 
-      const arms = window.locator('#spectrum-body .live-ch-arm');
+      const arms = window.locator('#spectrum-body .daw-track-head-arm');
       await expect(arms).toHaveCount(2);
       for (const arm of await arms.all()) await expect(arm).toBeDisabled();
       await expect(window.locator('#live-ws-arm-all')).toBeDisabled();
@@ -143,7 +143,7 @@ test.describe('Live capture (PRD 06) — workspace controls', () => {
   // Add/remove available right there (not just the left rail).
   test.describe('Persistent track workspace (#188)', () => {
     test('configured tracks render as idle placeholders, not the "start capture" copy', async () => {
-      const tracks = window.locator('#spectrum-body .sb-live-meters .live-ch');
+      const tracks = window.locator('#spectrum-body .daw-track-head');
       await expect(tracks).toHaveCount(2);
       await expect(window.locator('#spectrum-body')).not.toContainText('Start live capture to see the meters');
       await expect(window.locator('#live-ws-cap')).toHaveText('2 / 8 used');
@@ -151,21 +151,21 @@ test.describe('Live capture (PRD 06) — workspace controls', () => {
 
     test('workspace Add track adds a strip', async () => {
       await window.locator('#live-ws-add').click();
-      await expect(window.locator('#spectrum-body .sb-live-meters .live-ch')).toHaveCount(3);
+      await expect(window.locator('#spectrum-body .daw-track-head')).toHaveCount(3);
       await expect(window.locator('#live-ws-cap')).toHaveText('3 / 8 used');
     });
 
     test('a workspace row remove prunes the strip', async () => {
-      // removeChannelStrip() is the function .live-ch-x calls (pruneStrip
+      // removeChannelStrip() is the function .daw-track-head-remove calls (pruneStrip
       // unit-tested in group-state.test.ts) — this also proves no dangling
       // group reference survives the removal.
-      await window.locator('.sb-live-meters .live-ch .live-ch-x').first().click();
-      await expect(window.locator('#spectrum-body .sb-live-meters .live-ch')).toHaveCount(1);
+      await window.locator('.daw-track-head .daw-track-head-remove').first().click();
+      await expect(window.locator('#spectrum-body .daw-track-head')).toHaveCount(1);
     });
 
     test('removing every track reveals the "Add your first track" empty state', async () => {
-      const removeBtn = window.locator('.sb-live-meters .live-ch .live-ch-x').first();
-      const tracks = window.locator('.sb-live-meters .live-ch');
+      const removeBtn = window.locator('.daw-track-head .daw-track-head-remove').first();
+      const tracks = window.locator('.daw-track-head');
       await removeBtn.click();
       // Wait for the first removal's re-render before firing the second click —
       // otherwise removeBtn (re-queried as .first() at click time) can still
@@ -173,7 +173,7 @@ test.describe('Live capture (PRD 06) — workspace controls', () => {
       // of the second one, leaving one track stuck forever (#188 flake).
       await expect(tracks).toHaveCount(1);
       await removeBtn.click();
-      await expect(window.locator('#spectrum-body .sb-live-meters')).toHaveCount(0);
+      await expect(window.locator('#spectrum-body .daw-track-head')).toHaveCount(0);
       await expect(window.locator('#spectrum-body')).toContainText('Add your first track');
       await expect(window.locator('#live-ws-add')).toBeVisible();
       await expect(window.locator('#live-ws-add')).toBeEnabled();
@@ -195,7 +195,7 @@ test.describe('Live capture (PRD 06) — workspace controls', () => {
     test('workspace Add / remove are read-only while a capture is running', async () => {
       await window.locator('#record-button').click();
       await expect(window.locator('#live-ws-add')).toBeDisabled();
-      await expect(window.locator('.sb-live-meters .live-ch .live-ch-x').first()).toBeDisabled();
+      await expect(window.locator('.daw-track-head .daw-track-head-remove').first()).toBeDisabled();
       await openAudioSettings(window);
       await expect(window.locator('#settings-audio-capture-lock-note')).toBeVisible();
       await closeSettings(window);

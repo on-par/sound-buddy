@@ -162,7 +162,7 @@ export async function loadAndAnalyze(window: Page, fp: string) {
   }, fp);
 }
 
-// Commit a new name into a workspace track header (contenteditable .live-ch-name).
+// Commit a new name into a workspace track header (contenteditable .daw-track-head-name).
 export async function renameHeader(window: Page, head: Locator, value: string) {
   await head.click();
   await window.keyboard.press('ControlOrMeta+A');

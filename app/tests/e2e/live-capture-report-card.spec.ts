@@ -64,7 +64,7 @@ async function startCapture() {
   await window.locator('#settings-tab-btn-audio').click();
   await window.locator('#device-refresh-btn').click();
   await window.locator('#settings-dialog-done').click();
-  await expect(window.locator('#spectrum-body .live-ch')).toHaveCount(2);
+  await expect(window.locator('#spectrum-body .daw-track-head')).toHaveCount(2);
   // #757: the top-bar Record button is the sole transport — an idle press
   // starts monitoring then promotes in place, so every capture here is a
   // record session (the report-card offer fires for those too now).

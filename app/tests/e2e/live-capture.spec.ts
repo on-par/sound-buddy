@@ -50,7 +50,7 @@ test.describe('Live capture (PRD 06)', () => {
     await openAudioSettings(window);
     await window.locator('#device-refresh-btn').click();
     await closeSettings(window);
-    await expect(window.locator('#spectrum-body .live-ch')).toHaveCount(2);
+    await expect(window.locator('#spectrum-body .daw-track-head')).toHaveCount(2);
   });
 
   // The rail's channel list/add/group/arm controls now live solely in the
@@ -85,7 +85,7 @@ test.describe('Live capture (PRD 06)', () => {
   });
 
   test('channel picker adds up to the device channel count, with mono/stereo', async () => {
-    const rows = window.locator('#spectrum-body .live-ch');
+    const rows = window.locator('#spectrum-body .daw-track-head');
     await expect(rows).toHaveCount(2);
     await expect(window.locator('#live-ws-cap')).toHaveText('2 / 8 used');
 
@@ -94,12 +94,12 @@ test.describe('Live capture (PRD 06)', () => {
     await expect(rows).toHaveCount(3);
 
     // Make the first strip stereo — a second channel select appears in the row.
-    await rows.first().locator('.live-ch-kind').selectOption('stereo');
-    await expect(rows.first().locator('.live-ch-src[data-field="b"]')).toBeVisible();
+    await rows.first().locator('.daw-track-head-kind').selectOption('stereo');
+    await expect(rows.first().locator('.daw-track-head-src[data-field="b"]')).toBeVisible();
     await expect(window.locator('#live-ws-cap')).toHaveText('4 / 8 used');
 
     // Remove a strip.
-    await rows.nth(2).locator('.live-ch-x').click();
+    await rows.nth(2).locator('.daw-track-head-remove').click();
     await expect(rows).toHaveCount(2);
   });
 
@@ -124,10 +124,10 @@ test.describe('Live capture (PRD 06)', () => {
     await sendLiveTick(LIVE_CHANNELS);
 
     await expect(window.locator('#spectrum-title')).toHaveText('Spectrum · Live EQ');
-    const channels = window.locator('.sb-live-meters .live-ch');
+    const channels = window.locator('#spectrum-body .daw-track-head');
     await expect(channels).toHaveCount(2);
-    await expect(channels.first().locator('.live-ch-name')).toHaveText('Vocals');
-    await expect(channels.nth(1).locator('.live-ch-name')).toHaveText('Band');
+    await expect(channels.first().locator('.daw-track-head-name')).toHaveText('Vocals');
+    await expect(channels.nth(1).locator('.daw-track-head-name')).toHaveText('Band');
 
     // The strips themselves carry no chart (#668) — the docked EQ pane's
     // "Room" section (defaults to channel 0, Vocals) does. 7 upright bars,
@@ -162,14 +162,14 @@ test.describe('Live capture (PRD 06)', () => {
     await expect(window.locator('#live-eq-pane .eq-pane-empty-hint')).toBeVisible();
     await expect(window.locator('#live-eq-pane .eq-pane-empty-hint')).toHaveText('Click a channel to inspect it here');
     // Strips themselves never carry a chart anymore.
-    await expect(window.locator('.live-ch .veq')).toHaveCount(0);
+    await expect(window.locator('.daw-track-head .veq')).toHaveCount(0);
   });
 
   test('clicking a strip adds a Selected section to the EQ pane', async () => {
     await sendLiveTick(LIVE_CHANNELS);
-    await window.locator('.live-ch[data-ch="1"] .live-ch-meta').click();
-    await expect(window.locator('.live-ch[data-ch="1"]')).toHaveClass(/selected/);
-    await expect(window.locator('.live-ch[data-ch="1"]')).toHaveAttribute('aria-current', 'true');
+    await window.locator('.daw-track-head[data-ch="1"] .daw-track-head-index').click();
+    await expect(window.locator('.daw-track-head[data-ch="1"]')).toHaveClass(/selected/);
+    await expect(window.locator('.daw-track-head[data-ch="1"]')).toHaveAttribute('aria-current', 'true');
     await expect(window.locator('#live-eq-pane .veq')).toHaveCount(2);
     // No explicit label was set on strip 1 — the pane's header falls back to
     // "Track 2" (1-indexed), which is unique to the channel that was clicked.
@@ -178,10 +178,10 @@ test.describe('Live capture (PRD 06)', () => {
 
   test('removing the selected strip returns the EQ pane to just the Room section', async () => {
     await sendLiveTick(LIVE_CHANNELS);
-    await window.locator('.live-ch[data-ch="1"] .live-ch-meta').click();
+    await window.locator('.daw-track-head[data-ch="1"] .daw-track-head-index').click();
     await expect(window.locator('#live-eq-pane .veq')).toHaveCount(2);
 
-    await window.locator('.live-ch[data-ch="1"] .live-ch-x').click();
+    await window.locator('.daw-track-head[data-ch="1"] .daw-track-head-remove').click();
     await expect(window.locator('#live-eq-pane .veq')).toHaveCount(1);
     await expect(window.locator('#live-eq-pane .eq-pane-empty-hint')).toBeVisible();
   });
@@ -192,7 +192,7 @@ test.describe('Live capture (PRD 06)', () => {
     // bars before this tick lands, so a bare bar-count check wouldn't wait for
     // the real data — wait on the strip name (idle placeholders read "Ch 1")
     // first, then read the pane's Room section (channel 0, the default).
-    await expect(window.locator('.live-ch[data-ch="0"] .live-ch-name')).toHaveText('Vocals');
+    await expect(window.locator('.daw-track-head[data-ch="0"] .daw-track-head-name')).toHaveText('Vocals');
     const pane = window.locator('#live-eq-pane .eq-pane-primary');
     await expect(pane.locator('.veq-bar')).toHaveCount(7);
 
@@ -222,7 +222,7 @@ test.describe('Live capture (PRD 06)', () => {
     // establish it, then select the second strip too, so the pane shows both
     // sections (14 bars).
     await sendLiveTick(LIVE_CHANNELS);
-    await window.locator('.live-ch[data-ch="1"] .live-ch-meta').click();
+    await window.locator('.daw-track-head[data-ch="1"] .daw-track-head-index').click();
     const silent = LIVE_CHANNELS.map(ch => ({
       ...ch,
       bands: Object.fromEntries(Object.keys(ch.bands).map(k => [k, -120])),
@@ -240,7 +240,7 @@ test.describe('Live capture (PRD 06)', () => {
   test('each channel has its own independent arc and loudest band', async () => {
     await sendLiveTick(LIVE_CHANNELS);
     // Select the second (bass-heavy) strip so its data lands in "Selected".
-    await window.locator('.live-ch[data-ch="1"] .live-ch-meta').click();
+    await window.locator('.daw-track-head[data-ch="1"] .daw-track-head-index').click();
     await expect(window.locator('#live-eq-pane .eq-pane-secondary .veq-bar.loud')).toHaveAttribute('data-band', 'bass');
     // "Room" still reads channel 0 — mid-heavy.
     await expect(window.locator('#live-eq-pane .eq-pane-primary .veq-bar.loud')).toHaveAttribute('data-band', 'mid');
@@ -263,7 +263,7 @@ test.describe('Live capture (PRD 06)', () => {
       { ...LIVE_CHANNELS[1], name: 'USB Audio 2' },
     ];
     await sendLiveTick(named);
-    const heads = window.locator('.sb-live-meters .live-ch-name');
+    const heads = window.locator('#spectrum-body .daw-track-head-name');
 
     // With no label set, the header falls back to the backend device name.
     await expect(heads.first()).toHaveText('USB Audio 1');
@@ -421,7 +421,7 @@ test.describe('Live capture (PRD 06)', () => {
       });
     });
     await window.locator('#live-ws-arm-all').click();
-    const arms = window.locator('#spectrum-body .live-ch-arm');
+    const arms = window.locator('#spectrum-body .daw-track-head-arm');
     const total = await arms.count();
     await arms.first().click(); // disarm strip 0
     await expect(arms.first()).toHaveAttribute('aria-pressed', 'false');
@@ -445,7 +445,7 @@ test.describe('Live capture (PRD 06)', () => {
     });
   });
 
-  // #767/#776: the top-right dBFS readout is a live board meter, so it shows
+  // #767/#776: the top-right dBFS readout is a DAW live meter, so it shows
   // while capturing (recording) and STAYS visible after a record stop —
   // monitoring resumes (ADR-0014 always-monitoring), the readout is not a
   // record-only artifact.
