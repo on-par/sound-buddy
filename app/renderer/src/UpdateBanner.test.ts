@@ -48,4 +48,10 @@ describe('UpdateBanner', () => {
       'Update checks use a modal: available updates show the changelog.',
     ]);
   });
+
+  it('does not decode encoded tags or ampersands while normalizing release notes', () => {
+    expect(releaseNoteLines('<p>Safe &amp; sound &lt;script&gt;alert(1)&lt;/script&gt;</p>')).toEqual([
+      'Safe &amp; sound &lt;script&gt;alert(1)&lt;/script&gt;',
+    ]);
+  });
 });
