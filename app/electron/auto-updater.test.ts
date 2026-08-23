@@ -308,13 +308,13 @@ describe('downloadUpdate', () => {
 });
 
 describe('installUpdate', () => {
-  it('calls quitAndInstall and quits the app', () => {
+  it('lets electron-updater own quit/install/relaunch', () => {
     const updater = makeFakeUpdater();
     const deps = makeDeps(updater);
 
     installUpdate(deps);
 
     expect(updater.quitAndInstall).toHaveBeenCalledWith(false, true);
-    expect(deps.quitApp).toHaveBeenCalledTimes(1);
+    expect(deps.quitApp).not.toHaveBeenCalled();
   });
 });

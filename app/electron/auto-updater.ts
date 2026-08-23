@@ -160,5 +160,4 @@ export async function downloadUpdate(deps: AutoUpdaterDeps): Promise<{ success: 
 
 export function installUpdate(deps: AutoUpdaterDeps): void {
   deps.updater.quitAndInstall(false, true);
-  deps.quitApp();
 }
