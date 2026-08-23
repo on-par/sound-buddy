@@ -7,7 +7,7 @@ import { launchApp, stopCaptureIfRunning } from './e2e-helpers';
 // context (#208) use — grades it, and persists it to history tagged as a
 // live-capture source. Split into its own file (following report-card-basics
 // .spec.ts / live-capture.spec.ts's pattern) so it can run as a standalone
-// Electron session. #757: the top-bar Record button is the sole transport, and
+// Electron session. #757: the Session Record button is the sole transport, and
 // the report-card offer now fires after a record session too.
 
 let electronApp: ElectronApplication;
@@ -65,11 +65,11 @@ async function startCapture() {
   await window.locator('#device-refresh-btn').click();
   await window.locator('#settings-dialog-done').click();
   await expect(window.locator('#spectrum-body .daw-track-head')).toHaveCount(2);
-  // #757: the top-bar Record button is the sole transport — an idle press
+  // #757: the Session Record button is the sole transport — an idle press
   // starts monitoring then promotes in place, so every capture here is a
   // record session (the report-card offer fires for those too now).
   await window.locator('#live-ws-arm-all').click();
-  await window.locator('#record-button').click();
+  await window.locator('#daw-session-record').click();
   await expect(window.locator('#live-indicator .live-txt')).toHaveText('REC');
 }
 
@@ -90,8 +90,8 @@ test.describe('Live-capture session report card (#261)', () => {
     await sendWindowTick(electronApp, 2);
     await sendWindowTick(electronApp, 3);
 
-    await window.locator('#record-button').click();
-    await expect(window.locator('#record-button')).toBeEnabled();
+    await window.locator('#daw-session-record').click();
+    await expect(window.locator('#daw-session-record')).toBeEnabled();
 
     await expect(window.locator('#rc-offer')).toBeVisible();
     await window.locator('#rc-offer-btn').click();
@@ -141,8 +141,8 @@ test.describe('Live-capture session report card (#261)', () => {
     await sendWindowTick(electronApp, 2, -40);
     for (let n = 3; n <= 12; n++) await sendWindowTick(electronApp, n, -18);
 
-    await window.locator('#record-button').click();
-    await expect(window.locator('#record-button')).toBeEnabled();
+    await window.locator('#daw-session-record').click();
+    await expect(window.locator('#daw-session-record')).toBeEnabled();
     await expect(window.locator('#rc-offer')).toBeVisible();
     await window.locator('#rc-offer-btn').click();
     await expect(window.locator('#rc-content')).toBeVisible();
@@ -160,8 +160,8 @@ test.describe('Live-capture session report card (#261)', () => {
 
     await sendWindowTick(electronApp, 1);
 
-    await window.locator('#record-button').click();
-    await expect(window.locator('#record-button')).toBeEnabled();
+    await window.locator('#daw-session-record').click();
+    await expect(window.locator('#daw-session-record')).toBeEnabled();
 
     await expect(window.locator('#rc-not-enough')).toBeVisible();
     await expect(window.locator('#rc-not-enough')).toContainText('Not enough data');
@@ -169,9 +169,9 @@ test.describe('Live-capture session report card (#261)', () => {
     expect(await savedSummaries(electronApp)).toHaveLength(0);
 
     // The app is still responsive — starting a fresh capture clears the state.
-    await window.locator('#record-button').click();
+    await window.locator('#daw-session-record').click();
     await expect(window.locator('#live-indicator .live-txt')).toHaveText('REC');
     await expect(window.locator('#rc-not-enough')).toBeHidden();
-    await window.locator('#record-button').click();
+    await window.locator('#daw-session-record').click();
   });
 });

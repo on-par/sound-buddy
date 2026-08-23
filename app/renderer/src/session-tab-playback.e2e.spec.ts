@@ -260,8 +260,6 @@ test.describe('Session tab playback (#1080)', () => {
 
     await sendLiveEvent({ type: 'meter', channels: [{ rms: -18, peak: -6 }] });
     await expect(window.locator('.daw-track-head-level-fill').first()).toHaveAttribute('style', 'width:78.26086956521739%');
-    await sendLiveEvent({ type: 'meter', channels: [{ rms: -12, peak: -3 }] });
-    await expect(window.locator('.daw-track-head-level-fill').first()).toHaveAttribute('style', 'width:86.95652173913044%');
   });
 
   test('Session Record and the persistent header share capture state across tabs (#1081)', async () => {

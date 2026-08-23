@@ -108,7 +108,7 @@ test.describe('Live capture (PRD 06) — workspace controls', () => {
 
     test('starting with nothing armed is blocked from the workspace controls too', async () => {
       await window.locator('#live-ws-disarm-all').click();
-      await window.locator('#record-button').click();
+      await window.locator('#daw-session-record').click();
       await expect(window.locator('#arm-hint')).toBeVisible();
       await expect(window.locator('#arm-hint')).toContainText('Arm at least one strip');
       await expect(window.locator('#live-indicator .live-txt')).toHaveText('LIVE');
@@ -116,14 +116,14 @@ test.describe('Live capture (PRD 06) — workspace controls', () => {
       // The stop demotes back to monitoring (#776); the beforeEach's
       // stopCaptureIfRunning reset fully stops the board for the next test.
       await window.locator('#live-ws-arm-all').click();
-      await window.locator('#record-button').click();
+      await window.locator('#daw-session-record').click();
       await expect(window.locator('#live-indicator .live-txt')).toHaveText('REC');
-      await window.locator('#record-button').click(); // stop → monitoring resumes
-      await expect(window.locator('#record-button')).toBeEnabled();
+      await window.locator('#daw-session-record').click(); // stop → monitoring resumes
+      await expect(window.locator('#daw-session-record')).toBeEnabled();
     });
 
     test('workspace arm controls lock while a capture is running', async () => {
-      await window.locator('#record-button').click();
+      await window.locator('#daw-session-record').click();
       await expect(window.locator('#live-indicator .live-txt')).toHaveText('REC');
       await sendLiveTick(LIVE_CHANNELS);
 
@@ -133,8 +133,8 @@ test.describe('Live capture (PRD 06) — workspace controls', () => {
       await expect(window.locator('#live-ws-arm-all')).toBeDisabled();
       await expect(window.locator('#live-ws-disarm-all')).toBeDisabled();
 
-      await window.locator('#record-button').click(); // stop → monitoring resumes
-      await expect(window.locator('#record-button')).toBeEnabled();
+      await window.locator('#daw-session-record').click(); // stop → monitoring resumes
+      await expect(window.locator('#daw-session-record')).toBeEnabled();
     });
   });
 
@@ -178,12 +178,12 @@ test.describe('Live capture (PRD 06) — workspace controls', () => {
       await expect(window.locator('#live-ws-add')).toBeVisible();
       await expect(window.locator('#live-ws-add')).toBeEnabled();
 
-      // The top-bar Record button must refuse an empty config rather than let
+      // The Session Record button must refuse an empty config rather than let
       // stream.py silently fall back to its own default channels (#188).
-      await window.locator('#record-button').click();
+      await window.locator('#daw-session-record').click();
       await expect(window.locator('#arm-hint')).toBeVisible();
       await expect(window.locator('#arm-hint')).toContainText('Add at least one track');
-      await expect(window.locator('#record-button')).toBeEnabled();
+      await expect(window.locator('#daw-session-record')).toBeEnabled();
     });
 
     test('workspace Add disables at the device channel cap', async () => {
@@ -193,14 +193,14 @@ test.describe('Live capture (PRD 06) — workspace controls', () => {
     });
 
     test('workspace Add / remove are read-only while a capture is running', async () => {
-      await window.locator('#record-button').click();
+      await window.locator('#daw-session-record').click();
       await expect(window.locator('#live-ws-add')).toBeDisabled();
       await expect(window.locator('.daw-track-head .daw-track-head-remove').first()).toBeDisabled();
       await openAudioSettings(window);
       await expect(window.locator('#settings-audio-capture-lock-note')).toBeVisible();
       await closeSettings(window);
 
-      await window.locator('#record-button').click(); // stop → monitoring resumes (#776)
+      await window.locator('#daw-session-record').click(); // stop → monitoring resumes (#776)
       // #776: always-monitoring — a record stop keeps the board live, so Add
       // stays read-only (config capture-locked while monitoring) instead of
       // re-enabling the way the old full stop did.

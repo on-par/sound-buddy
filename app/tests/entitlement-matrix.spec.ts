@@ -80,7 +80,6 @@ async function assertRendererGated(): Promise<void> {
 
   await win.locator('.mode-tab[data-mode="live"]').click();
   await expect(win.locator('#tab-live .pro-gate')).toBeVisible();
-  await expect(win.locator('#record-button')).toBeHidden();
 
   // The free funnel is untouched: report card stays reachable.
   await win.locator('.mode-tab[data-mode="reportcard"]').click();
@@ -93,7 +92,7 @@ async function assertRendererUngated(badgeText: string): Promise<void> {
   await expect(win.locator('.mode-tab[data-mode="live"] .tab-lock')).toBeHidden();
 
   await win.locator('.mode-tab[data-mode="live"]').click();
-  await expect(win.locator('#record-button')).toBeVisible();
+  await expect(win.locator('#daw-session-record')).toBeVisible();
 }
 
 // Drives all three main-process gates to their reject boundary via

@@ -107,10 +107,10 @@ test.describe('DAW shell playback + waveform rendering (#713)', () => {
 
       await window.locator('.daw-track-head[data-ch="0"] .daw-track-head-mute').click();
       await expect(window.locator('.daw-channel-lane[data-ch="0"]')).toHaveClass(/daw-channel-lane--dimmed/);
-      await window.locator('#record-button').click();
+      await window.locator('#daw-session-record').click();
       await expect(window.locator('#live-indicator .live-txt')).toHaveText('REC');
-      await window.locator('#record-button').click();
-      await expect(window.locator('#record-button')).toBeEnabled();
+      await window.locator('#daw-session-record').click();
+      await expect(window.locator('#daw-session-record')).toBeEnabled();
 
       const recordStart = (await app.evaluate(
         () => (globalThis as Record<string, unknown>).__recordStart,
@@ -130,7 +130,7 @@ test.describe('DAW shell playback + waveform rendering (#713)', () => {
   });
 
   test('starting a capture advances the transport time and moves the playhead', async () => {
-    await window.locator('#record-button').click();
+    await window.locator('#daw-session-record').click();
     await expect(window.locator('.daw-transport-time')).not.toHaveText('0:00', { timeout: 5000 });
 
     const firstLeft = await window.locator('.daw-playhead-lanes').evaluate((el) => (el as HTMLElement).style.left);
@@ -139,7 +139,7 @@ test.describe('DAW shell playback + waveform rendering (#713)', () => {
       expect(left).not.toBe(firstLeft);
     }).toPass({ timeout: 3000 });
 
-    await window.locator('#record-button').click(); // stop -> monitoring resumes (#776)
+    await window.locator('#daw-session-record').click(); // stop -> monitoring resumes (#776)
   });
 
   test('pushed peaks frames paint the mix and per-channel waveform canvases', async () => {
@@ -159,10 +159,10 @@ test.describe('DAW shell playback + waveform rendering (#713)', () => {
   });
 
   test('stopping a capture freezes the transport time', async () => {
-    await window.locator('#record-button').click();
+    await window.locator('#daw-session-record').click();
     await expect(window.locator('.daw-transport-time')).not.toHaveText('0:00', { timeout: 5000 });
 
-    await window.locator('#record-button').click(); // stop -> monitoring resumes (#776)
+    await window.locator('#daw-session-record').click(); // stop -> monitoring resumes (#776)
     const frozen = await window.locator('.daw-transport-time').textContent();
     // Stable across a poll window — a still-running ticker would keep advancing it.
     await window.waitForTimeout(300);

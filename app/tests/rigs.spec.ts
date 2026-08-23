@@ -98,7 +98,7 @@ async function assignGroupFromInspector(win: Page, channelIndex: number, groupNa
 // both a monitor session (auto-start) and a record session, and never takes
 // stopLiveCapture's post-record resume-to-monitoring branch. Calls the one
 // production implementation of that ordering rather than re-deriving it here
-// — used instead of clicking #record-button, whose idle press *promotes* a
+// — used instead of clicking #daw-session-record, whose idle press *promotes* a
 // monitor session instead of stopping it (#757).
 async function stopCaptureIfRunning(win: Page): Promise<void> {
   await win.evaluate(async () => {
@@ -136,7 +136,7 @@ test.describe.serial('Rigs — save / load / switch', () => {
   test.afterEach(async () => {
     if (!win || win.isClosed()) return;
     try {
-      // #757: the top-bar Record button is the sole transport, and its idle
+      // #757: the Session Record button is the sole transport, and its idle
       // press *promotes* a running monitor session rather than stopping it —
       // so cleanup can't just click Stop (an idle press would start
       // recording). Instead it drives the exact stopLiveCapture()
@@ -184,7 +184,7 @@ test.describe.serial('Rigs — save / load / switch', () => {
       set('window-secs', '5');
     });
     await closeSettings(win);
-    await win.locator('.daw-track-head-kind').first().selectOption('stereo');
+    await win.locator('.daw-track-head-input').first().selectOption('stereo:0,1');
 
     await openAudioSettings(win);
     await win.locator('#rig-saveas-btn').click();
@@ -243,10 +243,10 @@ test.describe.serial('Rigs — save / load / switch', () => {
     await win.locator('.mode-tab[data-mode="live"]').click();
 
     await expect(win.locator('#live-status')).toContainText('not found');
-    // Not auto-started: no capture running, so the top-bar Record button is
+    // Not auto-started: no capture running, so the Session Record button is
     // idle and enabled.
     await expect(win.locator('#live-indicator')).toBeHidden();
-    await expect(win.locator('#record-button')).toBeEnabled();
+    await expect(win.locator('#daw-session-record')).toBeEnabled();
 
     await openAudioSettings(win);
     await expect(win.locator('#rig-select option:checked')).toHaveText('Scarlett Rig');
@@ -416,7 +416,7 @@ test.describe.serial('Rigs — save / load / switch', () => {
     await win.waitForLoadState('domcontentloaded');
     await win.locator('.mode-tab[data-mode="live"]').click();
 
-    await win.locator('#record-button').click();
+    await win.locator('#daw-session-record').click();
     await openAudioSettings(win);
     await expect(win.locator('#rig-select')).toBeDisabled();
     await expect(win.locator('#rig-saveas-btn')).toBeDisabled();
@@ -425,7 +425,7 @@ test.describe.serial('Rigs — save / load / switch', () => {
     // #776: a Record-button stop only demotes back to monitoring (rig picker
     // stays locked) — drive the stop ceremony directly for a genuinely full
     // stop, then the controls unlock.
-    await win.locator('#record-button').click();
+    await win.locator('#daw-session-record').click();
     await stopCaptureIfRunning(win);
     await openAudioSettings(win);
     await expect(win.locator('#rig-select')).toBeEnabled();
@@ -454,7 +454,7 @@ test.describe.serial('Rigs — save / load / switch', () => {
     await stubCapture(true);
     const locked = ['#device-refresh-btn', '#record-folder-btn', '#meter-interval', '#window-secs'];
 
-    await win.locator('#record-button').click();
+    await win.locator('#daw-session-record').click();
     await openAudioSettings(win);
     await expect(win.locator('#device-select')).toBeEnabled();
     await expect(win.locator('#device-select')).toHaveAttribute('aria-disabled', 'false');
@@ -464,7 +464,7 @@ test.describe.serial('Rigs — save / load / switch', () => {
     }
     await expect(win.locator('#settings-audio-capture-lock-note')).toBeVisible();
     await closeSettings(win);
-    await expect(win.locator('#spectrum-body .daw-track-head-kind').first()).toBeDisabled();
+    await expect(win.locator('#spectrum-body .daw-track-head-input').first()).toBeDisabled();
     // The workspace toolbar's Add track is rebuilt by Start's React board
     // re-render (TD-001 slice 6h, #711) — the rebuilt markup bakes in
     // `disabled` (derived from isCapturing) but not aria-disabled, so only
@@ -475,7 +475,7 @@ test.describe.serial('Rigs — save / load / switch', () => {
     // #776: a Record-button stop only demotes back to monitoring (config stays
     // capture-locked) — drive the stop ceremony directly for a genuinely full
     // stop before asserting the controls re-enable.
-    await win.locator('#record-button').click();
+    await win.locator('#daw-session-record').click();
     await stopCaptureIfRunning(win);
     await openAudioSettings(win);
     for (const sel of locked) {
@@ -490,7 +490,7 @@ test.describe.serial('Rigs — save / load / switch', () => {
 
   test('a failed Start re-enables the config controls (no stuck lock)', async () => {
     await stubCapture(false);
-    await win.locator('#record-button').click();
+    await win.locator('#daw-session-record').click();
     // The idle Record press starts monitoring; startLive resolves
     // { success:false } → stopLive() runs → controls unlocked and the promote
     // never happens. (The failed start also swaps #spectrum-body to the error
@@ -501,15 +501,15 @@ test.describe.serial('Rigs — save / load / switch', () => {
     await expect(win.locator('#meter-interval')).toBeEnabled();
     await expect(win.locator('#settings-audio-capture-lock-note')).toBeHidden();
     await closeSettings(win);
-    await expect(win.locator('#record-button')).toBeEnabled();
+    await expect(win.locator('#daw-session-record')).toBeEnabled();
   });
 
   test('the capture lock derives from store state on every re-render (no imperative re-assert needed)', async () => {
     await stubCapture(true);
-    await win.locator('#record-button').click();
+    await win.locator('#daw-session-record').click();
     // Start's React board rebuild bakes in `disabled` (via the store-derived
     // stamps) but not aria-disabled, so only `disabled` is asserted here.
-    await expect(win.locator('#spectrum-body .daw-track-head-kind').first()).toBeDisabled();
+    await expect(win.locator('#spectrum-body .daw-track-head-input').first()).toBeDisabled();
     // Every config mutator funnels through the store; the board re-renders with
     // the disabled stamps re-derived from liveCaptureStore.isCapturing at render
     // time (TD-001 slice 6h, #711) — the old window.renderChannelConfig()
@@ -517,7 +517,7 @@ test.describe.serial('Rigs — save / load / switch', () => {
     await win.evaluate(() => {
       (window as unknown as { rendererStores: { liveCapture: { getState: () => { setStripKind: (idx: number, kind: string) => void } } } }).rendererStores.liveCapture.getState().setStripKind(0, 'stereo');
     });
-    await expect(win.locator('#spectrum-body .daw-track-head-kind').first()).toBeDisabled();
-    await win.locator('#record-button').click();
+    await expect(win.locator('#spectrum-body .daw-track-head-input').first()).toBeDisabled();
+    await win.locator('#daw-session-record').click();
   });
 });
