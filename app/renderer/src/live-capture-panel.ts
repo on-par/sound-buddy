@@ -243,8 +243,6 @@ export interface EqPaneClassificationView {
 export interface EqPaneInspectorView {
   selectedIndex: number;
   strip: StripConfig;
-  deviceOptions: DeviceOption[];
-  selectedDevice: string;
   deviceChannels: number;
   disabled: boolean;
   playbackTrack: SessionManifestTrack | null;
@@ -283,8 +281,6 @@ export function eqPaneInspectorHTML(view: EqPaneInspectorView | null): string {
   const disabled = view.disabled ? ' disabled' : '';
   const label = measurementSourceOptionLabel(strip, selectedIndex);
   const swatch = EQ_PANE_INSPECTOR_BAND_CLASSES[selectedIndex % EQ_PANE_INSPECTOR_BAND_CLASSES.length];
-  const deviceOptions = view.deviceOptions.map((option) =>
-    `<option value="${escapeHtml(option.value)}"${option.value === view.selectedDevice ? ' selected' : ''}>${escapeHtml(option.label)}</option>`).join('');
   const outputHTML = view.playbackTrack
     ? `<label class="eq-pane-inspector-field">Playback &amp; listen
         <select class="eq-pane-inspector-output" aria-label="Playback and listen output"${disabled}>${soundcheckChannelOptions(view.playbackRoute?.[0] ?? 0, view.playbackTrack.kind === 'stereo', view.playbackDeviceChannels).map((option) => `<option value="${option.value}"${option.selected ? ' selected' : ''}>${escapeHtml(option.label)}</option>`).join('')}</select>
@@ -312,9 +308,6 @@ export function eqPaneInspectorHTML(view: EqPaneInspectorView | null): string {
       </select>
     </label>
     <div class="eq-pane-header">Input</div>
-    <label class="eq-pane-inspector-field">Capture device
-      <select class="eq-pane-inspector-device" aria-label="Capture device"${disabled}>${deviceOptions}</select>
-    </label>
     <label class="eq-pane-inspector-field">${stereo ? 'Left source channel' : 'Source channel'}
       <select class="eq-pane-inspector-source" data-field="a" aria-label="${stereo ? 'Left source channel' : 'Source channel'}"${disabled}>${channelOptions(strip.a, view.deviceChannels, stereo)}</select>
     </label>
@@ -481,7 +474,7 @@ export function eqPaneSignature(view: EqPaneView): string {
     ? JSON.stringify([
       inspector.selectedIndex,
       inspector.strip.label ?? '', inspector.strip.kind, inspector.strip.a, inspector.strip.b, !!inspector.strip.armed,
-      inspector.deviceOptions.map(({ value, label }) => [value, label]), inspector.selectedDevice, inspector.deviceChannels,
+      inspector.deviceChannels,
       inspector.disabled, inspector.playbackTrack ? inspector.playbackTrack.kind : null,
       inspector.playbackTrack ? inspector.playbackRoute?.[0] ?? null : null,
       inspector.playbackTrack ? inspector.playbackDeviceChannels : null,

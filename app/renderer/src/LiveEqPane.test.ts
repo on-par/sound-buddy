@@ -8,7 +8,7 @@ import LiveEqPane, { applyEqPaneClassificationChange, applyEqPaneInspectorChange
 import { useLiveCaptureStore } from './stores/liveCaptureStore';
 import { useSettingsStore } from './stores/settingsStore';
 import { useSoundcheckStore } from './stores/soundcheckStore';
-import { deviceChannelCount, deviceNameFor, deviceOptionLabel, eqPaneClassificationHTML, eqPaneHTML, eqPaneInspectorHTML, eqPaneView, type EqPaneInspectorView, type EqPaneView } from './live-capture-panel';
+import { deviceChannelCount, deviceNameFor, eqPaneClassificationHTML, eqPaneHTML, eqPaneInspectorHTML, eqPaneView, type EqPaneInspectorView, type EqPaneView } from './live-capture-panel';
 import { currentEqPaneChannels, eqPaneLevelTilesView, liveWorkspaceViewState } from './live-workspace-view';
 import type { LiveEvent } from './live-capture-panel';
 import type { AppSettings } from '../../electron/ipc/api';
@@ -99,8 +99,6 @@ function expectedInspectorView(): EqPaneInspectorView | null {
   return {
     selectedIndex,
     strip,
-    deviceOptions: [{ value: '', label: 'Default Device' }, ...live.devices.map((device) => ({ value: String(device.index), label: deviceOptionLabel(device) }))],
-    selectedDevice: live.selectedDevice,
     deviceChannels: deviceChannelCount(live.selectedDevice, live.devices),
     disabled: live.isCapturing || live.demoting,
     playbackTrack: soundcheck.manifest?.tracks[selectedIndex] ?? null,
@@ -194,6 +192,14 @@ describe('LiveEqPane', () => {
     expect(html).toContain('<option value="1" selected>Ch 2</option>');
     expect(html).toContain('Selected — Track 1 · Measurement source');
     expect(html).not.toContain('eq-pane-empty-hint');
+  });
+
+  it('keeps capture-device controls out of a selected strip inspector (#1133)', () => {
+    useLiveCaptureStore.setState({ selectedChannel: 0 });
+    const html = renderMarkup();
+    expect(html).not.toContain('Capture device');
+    expect(html).not.toContain('aria-label="Capture device"');
+    expect(html).not.toContain('eq-pane-inspector-device');
   });
 
   it('shows a distinct Selected label for a non-room strip', () => {
@@ -352,7 +358,6 @@ describe('applyEqPaneInspectorChange (#1064)', () => {
       liveCapture: {
         selectedChannel,
         channelConfig: CONFIG,
-        selectDevice: vi.fn(),
         setStripLabel: vi.fn(),
         setStripKind: vi.fn(),
         setStripSource: vi.fn(),
@@ -367,7 +372,6 @@ describe('applyEqPaneInspectorChange (#1064)', () => {
     ['kind', 'stereo', 'setStripKind', [1, 'stereo']],
     ['source', '3', 'setStripSource', [1, 'a', 3]],
     ['arm', '', 'toggleArm', [1]],
-    ['device', '4', 'selectDevice', ['4']],
     ['output', '2', 'setRoute', [1, 2]],
   ] as const)('routes %s changes through the established store action', (kind, value, action, args) => {
     const deps = changeDeps();

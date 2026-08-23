@@ -403,8 +403,6 @@ describe('eqPaneInspectorHTML (#1064)', () => {
     return {
       selectedIndex: 1,
       strip: { kind: 'stereo', a: 2, b: 3, armed: true, label: 'Keys' },
-      deviceOptions: [{ value: '', label: 'Default Device' }, { value: '4', label: 'Studio & Rack' }],
-      selectedDevice: '4',
       deviceChannels: 8,
       disabled: false,
       playbackTrack: { kind: 'stereo' },
@@ -423,22 +421,18 @@ describe('eqPaneInspectorHTML (#1064)', () => {
     expect(html).toContain('<option value="stereo" selected>Stereo</option>');
     expect(html).toContain('<option value="2" selected>3</option>');
     expect(html).toContain('<option value="3" selected>4</option>');
-    expect(html).toContain('value="4" selected>Studio &amp; Rack');
     expect(html).toContain('aria-pressed="true"');
     expect(html).toContain('<option value="4" selected>Ch 5-6</option>');
   });
 
-  it('escapes strip and output-facing labels and falls back to the track label', () => {
+  it('escapes strip labels and falls back to the track label', () => {
     const html = eqPaneInspectorHTML(inspector({
       selectedIndex: 0,
       strip: { kind: 'mono', a: 0, b: 1, label: '<Lead & "Vox">' },
-      deviceOptions: [{ value: '1', label: '<Output & "Rack">' }],
-      selectedDevice: '1',
       playbackTrack: { kind: 'mono' },
       playbackRoute: [0],
     }));
     expect(html).toContain('&lt;Lead &amp; &quot;Vox&quot;&gt;');
-    expect(html).toContain('&lt;Output &amp; &quot;Rack&quot;&gt;');
     expect(eqPaneInspectorHTML(inspector({ strip: { kind: 'mono', a: 0, b: 1 } }))).toContain('Track 2');
   });
 
@@ -1346,8 +1340,6 @@ describe('eqPaneSignature', () => {
     return {
       selectedIndex: 1,
       strip: { kind: 'stereo', a: 2, b: 3, armed: true, label: 'Keys' },
-      deviceOptions: [{ value: '', label: 'Default Device' }, { value: '4', label: 'Studio Rack' }],
-      selectedDevice: '4',
       deviceChannels: 8,
       disabled: false,
       playbackTrack: { kind: 'stereo', label: 'Keys playback' },
@@ -1386,9 +1378,7 @@ describe('eqPaneSignature', () => {
     const base = eqPaneView(LIVE_CHANNELS, config, 0, 1, null, inspector());
     const selected = eqPaneView(LIVE_CHANNELS, config, 0, 0, null, inspector({ selectedIndex: 0 }));
     const strip = eqPaneView(LIVE_CHANNELS, config, 0, 1, null, inspector({ strip: { kind: 'mono', a: 1, b: 2, armed: false, label: 'Lead Vox' } }));
-    const device = eqPaneView(LIVE_CHANNELS, config, 0, 1, null, inspector({
-      deviceOptions: [{ value: '8', label: 'USB Interface' }], selectedDevice: '8', deviceChannels: 16,
-    }));
+    const deviceChannels = eqPaneView(LIVE_CHANNELS, config, 0, 1, null, inspector({ deviceChannels: 16 }));
     const playback = eqPaneView(LIVE_CHANNELS, config, 0, 1, null, inspector({
       playbackTrack: null, playbackRoute: null, playbackDeviceChannels: 0,
     }));
@@ -1397,12 +1387,12 @@ describe('eqPaneSignature', () => {
     }));
     const disabled = eqPaneView(LIVE_CHANNELS, config, 0, 1, null, inspector({ disabled: true }));
 
-    for (const changed of [selected, strip, device, playback, disabled]) {
+    for (const changed of [selected, strip, deviceChannels, playback, disabled]) {
       expect(eqPaneSignature(changed)).not.toBe(eqPaneSignature(base));
     }
     expect(eqPaneSignature(noPlaybackRoute)).toBe(eqPaneSignature(playback));
     expect(eqPaneInspectorHTML(strip.inspector)).toContain('Lead Vox');
-    expect(eqPaneInspectorHTML(device.inspector)).toContain('value="8" selected>USB Interface');
+    expect(eqPaneInspectorHTML(deviceChannels.inspector)).toContain('<option value="15">16</option>');
     expect(eqPaneInspectorHTML(playback.inspector)).toContain('eq-pane-inspector-output-notice');
     expect(eqPaneInspectorHTML(disabled.inspector)).toContain('Channel name" value="Keys" disabled');
   });
