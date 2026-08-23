@@ -31,24 +31,46 @@ function getUpdateDownloadState(): UpdateDownloadStateApi {
 
 const MARKDOWN_RUN = /(\*\*|`)/g;
 const HTML_COMMENT_LINE = /^<!--[\s\S]*?-->$/;
-const HTML_TAG = /<[^>]+>/g;
+const RELEASE_NOTE_BREAK_TAGS = new Set(['article', 'br', 'div', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'li', 'ol', 'p', 'section', 'ul']);
 
 function decodeReleaseNoteEntities(text: string): string {
   return text
     .replace(/&nbsp;/gi, ' ')
-    .replace(/&amp;/gi, '&')
-    .replace(/&lt;/gi, '<')
-    .replace(/&gt;/gi, '>')
     .replace(/&quot;/gi, '"')
     .replace(/&#39;|&apos;/gi, "'");
 }
 
+function releaseNotePlainText(notes: string): string {
+  let plainText = '';
+  let cursor = 0;
+
+  while (cursor < notes.length) {
+    const tagStart = notes.indexOf('<', cursor);
+    if (tagStart === -1) {
+      plainText += notes.slice(cursor);
+      break;
+    }
+
+    plainText += notes.slice(cursor, tagStart);
+    const tagEnd = notes.indexOf('>', tagStart + 1);
+    if (tagEnd === -1) {
+      plainText += notes.slice(tagStart);
+      break;
+    }
+
+    const tagText = notes.slice(tagStart + 1, tagEnd).trim();
+    const tagName = tagText.replace(/^\//, '').split(/\s+/, 1)[0]?.toLowerCase();
+    if (tagName != null && RELEASE_NOTE_BREAK_TAGS.has(tagName)) {
+      plainText += '\n';
+    }
+    cursor = tagEnd + 1;
+  }
+
+  return plainText;
+}
+
 function releaseNoteText(notes: string): string {
-  return decodeReleaseNoteEntities(notes)
-    .replace(/<\/?(h[1-6]|p|ul|ol|div|section|article|br)\b[^>]*>/gi, '\n')
-    .replace(/<li\b[^>]*>/gi, '\n')
-    .replace(/<\/li>/gi, '\n')
-    .replace(HTML_TAG, '');
+  return decodeReleaseNoteEntities(releaseNotePlainText(notes));
 }
 
 export function releaseNoteLines(notes: string): string[] {

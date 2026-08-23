@@ -957,7 +957,7 @@
     .daw-track-head-name.clip { color:var(--issue-text); }
     .daw-track-head .daw-track-head-name { justify-self:stretch; max-width:100%; position:relative; z-index:2; }
     .daw-track-head-def { grid-area:def; min-width:0; position:relative; z-index:1; display:flex; align-items:center; gap:4px; align-self:center; }
-    .daw-track-head-def select { flex:0 0 auto; height:var(--control-h-sm); padding:0 6px; border-radius:var(--radius-md); background:var(--surface-raised); color:var(--text-secondary); border:1px solid var(--border-subtle); font:var(--fw-medium) var(--fs-micro)/1 var(--font-sans); }
+    .daw-track-head-def select { flex:0 0 auto; height:var(--control-h-sm); padding:0 6px; border-radius:0; background:var(--surface); color:var(--text-secondary); border:1px solid var(--border-subtle); cursor:pointer; font:var(--fw-medium) var(--fs-micro)/1 var(--font-sans); }
     .daw-track-head-def select:focus { border-color:var(--gold-500); box-shadow:var(--glow-focus); outline:none; }
     .daw-track-head-def select:disabled { opacity:0.4; cursor:not-allowed; }
     .daw-track-head-input { width:46px; font-family:var(--font-mono); text-align:center; }

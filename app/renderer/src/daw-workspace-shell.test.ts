@@ -407,6 +407,7 @@ describe('configured track rows render from one shared list (#1043)', () => {
     const levelRule = css.match(/\.daw-track-head-level\s*\{[^}]*\}/);
     const nameRule = css.match(/\.daw-track-head \.daw-track-head-name\s*\{[^}]*\}/);
     const inputRule = css.match(/\.daw-track-head-input\s*\{[^}]*\}/);
+    const inputSelectRule = css.match(/\.daw-track-head-def select\s*\{[^}]*\}/);
     const armIconRule = css.match(/\.daw-track-head-arm::before\s*\{[^}]*\}/);
 
     expect(headRule).not.toBeNull();
@@ -414,10 +415,16 @@ describe('configured track rows render from one shared list (#1043)', () => {
     expect(levelRule).not.toBeNull();
     expect(nameRule).not.toBeNull();
     expect(inputRule).not.toBeNull();
+    expect(inputSelectRule).not.toBeNull();
     expect(armIconRule).not.toBeNull();
     expect(headRule![0]).toContain("grid-template-areas:'drag def name remove' 'index controls meter meta'");
     expect(headRule![0]).toMatch(/grid-template-columns:\s*auto auto minmax\(0,\s*1fr\) auto/);
     expect(inputRule![0]).toMatch(/width:\s*46px/);
+    expect(inputSelectRule![0]).toMatch(/border-radius:\s*0/);
+    expect(inputSelectRule![0]).toMatch(/background:\s*var\(--surface\)/);
+    expect(inputSelectRule![0]).toMatch(/border:\s*1px solid var\(--border-subtle\)/);
+    expect(inputSelectRule![0]).toMatch(/font:\s*var\(--fw-medium\) var\(--fs-micro\)\/1 var\(--font-sans\)/);
+    expect(inputSelectRule![0]).toMatch(/cursor:\s*pointer/);
     expect(armIconRule![0]).toMatch(/border-radius:\s*50%/);
     expect(controlsRule![0]).toMatch(/gap:\s*4px/);
     expect(levelRule![0]).toMatch(/justify-self:\s*stretch/);
