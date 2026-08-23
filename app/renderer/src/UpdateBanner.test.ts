@@ -2,7 +2,7 @@
 // Licensed under the Sound Buddy Desktop Application License (app/LICENSE).
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { createElement, type ReactElement } from 'react';
+import { createElement } from 'react';
 import { renderToString } from 'react-dom/server';
 import UpdateBanner, { releaseNoteLines, UpdatePrimaryAction } from './UpdateBanner';
 import { createMockSoundBuddy } from './mock-sound-buddy';
@@ -101,8 +101,10 @@ describe('UpdatePrimaryAction', () => {
     const button = UpdatePrimaryAction({
       primary: { label: 'Retry', action: 'retry' },
       onAction: (action) => actions.push(action),
-    }) as ReactElement<{ onClick: () => void }>;
+    });
 
+    expect(button).not.toBeNull();
+    if (button === null) throw new Error('Expected a primary action button');
     button.props.onClick();
 
     expect(actions).toEqual(['retry']);
