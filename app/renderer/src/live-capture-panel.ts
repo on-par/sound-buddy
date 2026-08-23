@@ -107,6 +107,14 @@ export const VEQ_BANDS = BAND_META.map((b, i) => {
   const bx0 = veqLogPos(b.lo) + VEQ_GAP, bx1 = veqLogPos(b.hi) - VEQ_GAP;
   return { key: b.key, label: b.label, short: b.short, color: b.color, left: bx0.toFixed(2), width: (bx1 - bx0).toFixed(2), center: veqLogPos(VEQ_FREQS[i]).toFixed(2) };
 });
+export const VEQ_DB_TICKS = [-60, -48, -36, -24, -12, -6];
+
+export function veqDbScaleHTML(): string {
+  return `<div class="veq-db-scale" style="${VEQ_INSET}" aria-label="dBFS scale">`
+    + VEQ_DB_TICKS.map((db) =>
+      `<span class="veq-db-tick" style="top:${(100 - toPct(db)).toFixed(2)}%">${db} dB</span>`).join('')
+    + `</div>`;
+}
 
 /* ── Granular analyzer grid (#667) ──
  * Replaces the 7 wildly-unequal-span bars with one equal-width bar per point
@@ -424,6 +432,7 @@ function eqPaneSectionHTML(section: EqPaneSection, headerHTML: string, uid: stri
     <div class="veq">
       <div class="veq-chart">${veqArcSVG(parts.curve, section.ch.centroid, uid)}</div>
       <div class="veq-bars" style="${VEQ_INSET}">${parts.bars}</div>
+      ${veqDbScaleHTML()}
     </div>
     <div class="veq-labels" style="${VEQ_LABEL_MARGIN}">${parts.labels}</div>`;
 }

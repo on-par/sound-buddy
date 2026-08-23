@@ -1242,6 +1242,9 @@ describe('eqPaneHTML', () => {
     expect(html).toContain('class="veq"');
     expect(html).toContain('veq-chart');
     expect(html).toContain('veq-bars');
+    expect(html).toContain('veq-db-scale');
+    expect(html).toContain('-60 dB');
+    expect(html).toContain('-6 dB');
     expect(html).toContain('veq-labels');
   });
 
