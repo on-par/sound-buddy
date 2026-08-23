@@ -293,6 +293,8 @@ export default function App() {
     // #report-card/#spectrum-island now exist (just injected above) —
     // trigger the second render that portals ReportCardIsland/SpectrumPanel
     // onto them (TD-001 slice 4, #422).
+    const initialMode = useLiveCaptureStore.getState().appMode;
+    if (modeSwitch.isWorkspaceMode(initialMode)) modeSwitch.switchMode(initialMode);
     setBooted(true);
   }, []);
 
