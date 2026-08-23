@@ -38,6 +38,7 @@ import {
   liveStatsRowView,
   patchStatsRow,
   dawShellPatchView,
+  dawTrackRows,
   getDawShellRuntime,
   liveWorkspaceViewState,
   boardRunning,
@@ -82,6 +83,14 @@ function applyLiveTick(snap: LiveMeterSnapshot): void {
     const mixLane = shell.querySelector('.daw-mix-lane');
     if (mixLane && mixLane.getAttribute('data-capture-mode') !== view.captureMode) {
       mixLane.setAttribute('data-capture-mode', view.captureMode);
+    }
+    for (const row of dawTrackRows(state)) {
+      const headName = shell.querySelector(`.daw-track-head[data-ch="${row.index}"] .daw-track-head-name`);
+      if (headName && document.activeElement !== headName && headName.innerHTML !== row.name) {
+        headName.innerHTML = row.name;
+      }
+      const laneName = shell.querySelector(`.daw-channel-lane[data-ch="${row.index}"] .daw-lane-name`);
+      if (laneName && laneName.innerHTML !== row.name) laneName.innerHTML = row.name;
     }
     patchGroupSummaries(shell, tick.channels, state.channelGroups);
   }
