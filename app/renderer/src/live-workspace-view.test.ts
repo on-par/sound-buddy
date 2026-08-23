@@ -526,18 +526,17 @@ describe('dawShellHTML / dawShellPatchView', () => {
     const master = html.slice(html.indexOf('daw-master-head'));
     expect(master).not.toContain('daw-track-head-arm');
   });
-  it('renders the transport header, ruler, playhead, and mix lane', () => {
+  it('renders the transport header, ruler, and mix lane', () => {
     const html = dawShellHTML(makeState());
     expect(html).toContain('daw-shell');
     expect(html).toContain('daw-transport');
     expect(html).toContain('daw-ruler');
-    expect(html).toContain('daw-playhead');
     expect(html).toContain('daw-mix-lane');
     expect(html).toContain('daw-transport-time');
   });
 
-  it('renders one playhead segment per timeline region and none at the shell level (#1049)', () => {
-    const html = dawShellHTML(makeState());
+  it('renders one playhead segment per timeline region while recording and none at the shell level (#1049)', () => {
+    const html = dawShellHTML(makeState({ isCapturing: true, liveMode: 'record' }));
     expect(html).toContain('<span class="daw-playhead daw-playhead-ruler"></span>');
     expect(html).toContain('<span class="daw-playhead daw-playhead-lanes"></span>');
     expect(html.split('class="daw-playhead').length - 1).toBe(2);
@@ -545,25 +544,52 @@ describe('dawShellHTML / dawShellPatchView', () => {
   });
 
   it("the ruler segment is the ruler row's last child, above every tick (#1049)", () => {
-    const html = dawShellHTML(makeState());
+    const html = dawShellHTML(makeState({ isCapturing: true, liveMode: 'record' }));
     expect(html.indexOf('daw-playhead-ruler')).toBeGreaterThan(html.lastIndexOf('class="daw-ruler-tick"'));
     expect(html.indexOf('daw-playhead-ruler')).toBeLessThan(html.indexOf('<div class="daw-lane-column">'));
   });
 
   it("the lane segment is the lane column's last child, above every lane (#1049)", () => {
-    const html = dawShellHTML(makeState());
+    const html = dawShellHTML(makeState({ isCapturing: true, liveMode: 'record' }));
     expect(html.indexOf('daw-playhead-lanes')).toBeGreaterThan(html.indexOf('daw-mix-lane'));
     expect(html.indexOf('daw-playhead-lanes')).toBeLessThan(html.indexOf('<div class="daw-status-line">'));
   });
 
-  it('both segments render with zero configured tracks (#1049)', () => {
-    const html = dawShellHTML(makeState({ channelConfig: [] }));
+  it('both segments render while recording with zero configured tracks (#1049)', () => {
+    const html = dawShellHTML(makeState({ channelConfig: [], isCapturing: true, liveMode: 'record' }));
     expect(html).toContain('<span class="daw-playhead daw-playhead-ruler"></span>');
     expect(html).toContain('<span class="daw-playhead daw-playhead-lanes"></span>');
   });
 
+  it('omits recording playhead and generated waveform canvases while monitoring (#1124)', () => {
+    const html = dawShellHTML(makeState({ isCapturing: true, liveMode: 'monitor' }));
+    expect(html).toContain('daw-transport-state-monitoring');
+    expect(html).not.toContain('daw-playhead');
+    expect(html).not.toContain('daw-channel-waveform');
+    expect(html).not.toContain('daw-mix-waveform');
+    expect(html).toContain('daw-channel-lane');
+    expect(html).toContain('daw-lane-grid');
+  });
+
+  it('keeps the recording playhead and waveform canvases while recording (#1124)', () => {
+    const html = dawShellHTML(makeState({ isCapturing: true, liveMode: 'record' }));
+    expect(html).toContain('daw-transport-state-recording');
+    expect(html).toContain('daw-playhead');
+    expect(html).toContain('daw-channel-waveform');
+    expect(html).toContain('daw-mix-waveform');
+  });
+
+  it('keeps a timeline playhead for recorded-session playback without live waveform canvases (#1124)', () => {
+    const html = dawShellHTML(makeState({
+      sessionPlayback: sessionTabPlaybackView({ tracks: [{ kind: 'mono' }] }, false, true),
+    }));
+    expect(html).toContain('daw-playhead');
+    expect(html).not.toContain('daw-channel-waveform');
+    expect(html).not.toContain('daw-mix-waveform');
+  });
+
   it('maps one lane per channel config entry with an escaped name', () => {
-    const html = dawShellHTML(makeState({ channelConfig: [{ ...CONFIG[0], label: 'Kick <3' }] }));
+    const html = dawShellHTML(makeState({ channelConfig: [{ ...CONFIG[0], label: 'Kick <3' }], isCapturing: true, liveMode: 'record' }));
     expect(html).toContain('data-ch="0"');
     expect(html).toContain('>Kick &lt;3</span>');
     expect(html).toContain('daw-channel-waveform');

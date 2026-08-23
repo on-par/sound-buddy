@@ -726,6 +726,10 @@ export function dawShellHTML(state: LiveWorkspaceViewState, routingDrawerContent
   const entries = dawTrackListEntries(state);
   const { transportChip, captureMode } = dawShellPatchView(state);
   const seededElapsed = state.playheadElapsedMs;
+  const recordingTimelineActive = state.isCapturing && state.liveMode === 'record';
+  const playheadVisible = recordingTimelineActive || state.sessionPlayback !== null;
+  const liveWaveformCanvasHTML = recordingTimelineActive ? `<canvas class="daw-channel-waveform"></canvas>` : '';
+  const mixWaveformCanvasHTML = recordingTimelineActive ? `<canvas class="daw-mix-waveform"></canvas>` : '';
   const laneGrid = `<span class="daw-lane-grid">${dawLaneGridlines(DAW_TIMELINE_SPAN_SECS)
     .map((line) => `<span class="daw-gridline${line.isMajor ? ' major' : ''}" style="left:${line.xPx}px"></span>`)
     .join('')}</span>`;
@@ -739,8 +743,8 @@ export function dawShellHTML(state: LiveWorkspaceViewState, routingDrawerContent
   // renderPlayhead writes the SAME shell-local x to both in one pass, and both
   // re-base into the timeline column through the one shared translate (ADR-0090).
   // Emitted last in each region so they paint above the ticks and the lanes.
-  const rulerPlayheadHTML = `<span class="daw-playhead daw-playhead-ruler"></span>`;
-  const lanePlayheadHTML = `<span class="daw-playhead daw-playhead-lanes"></span>`;
+  const rulerPlayheadHTML = playheadVisible ? `<span class="daw-playhead daw-playhead-ruler"></span>` : '';
+  const lanePlayheadHTML = playheadVisible ? `<span class="daw-playhead daw-playhead-lanes"></span>` : '';
   const headHTML = entries.map((entry) => {
     if (entry.type === 'group') return dawTrackGroupHeaderHTML(entry);
     if (entry.type === 'ungrouped') return `<div class="live-group-head ungrouped" data-group="-1"><span class="live-group-name">Ungrouped</span></div>`;
@@ -756,7 +760,7 @@ export function dawShellHTML(state: LiveWorkspaceViewState, routingDrawerContent
       const { row } = entry;
       return `<div class="daw-lane daw-channel-lane${row.monitorActive ? '' : ' daw-channel-lane--dimmed'}${row.groupCollapsed ? ' group-collapsed' : ''}" data-ch="${row.index}">`
         + `<span class="daw-lane-name">${row.name}</span>`
-        + `<span class="daw-lane-body"><canvas class="daw-channel-waveform"></canvas></span>`
+        + `<span class="daw-lane-body">${liveWaveformCanvasHTML}</span>`
         + (row.takeClip
           ? `<span class="daw-take-clip" style="left:${row.takeClip.leftPx}px;width:${row.takeClip.widthPx}px"><canvas data-session-track-index="${row.takeClip.trackIndex}"></canvas></span>`
           : '')
@@ -772,7 +776,7 @@ export function dawShellHTML(state: LiveWorkspaceViewState, routingDrawerContent
     + `</div>`;
   const mixLaneHTML = `<div class="daw-lane daw-mix-lane" data-capture-mode="${captureMode}">`
     + `<span class="daw-lane-name">${DAW_MASTER_ROW_NAME}</span>`
-    + `<span class="daw-lane-body"><canvas class="daw-mix-waveform"></canvas></span>`
+    + `<span class="daw-lane-body">${mixWaveformCanvasHTML}</span>`
     + laneGrid
     + `</div>`;
   const rulerTicks = dawRulerTicks(DAW_TIMELINE_SPAN_SECS)

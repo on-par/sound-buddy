@@ -884,7 +884,7 @@
        the Live tab: transport bar on top, a placeholder ruler strip, then
        full-width stacked lanes with hairline dividers. UI-only — no real
        waveform/time math in this slice. */
-    .daw-shell { position:relative; display:flex; flex-direction:column; flex:1; min-height:0; --daw-ruler-row-h:26px; --daw-track-row-h:64px; --daw-master-row-h:60px; --daw-status-line-h:26px; --daw-routing-drawer-h:180px; --daw-monitor-dim-opacity:0.45; }
+    .daw-shell { position:relative; display:flex; flex-direction:column; flex:1; min-height:0; --daw-ruler-row-h:26px; --daw-track-row-h:72px; --daw-master-row-h:60px; --daw-status-line-h:26px; --daw-routing-drawer-h:180px; --daw-monitor-dim-opacity:0.45; }
     .daw-transport { display:flex; align-items:center; gap:8px; flex-wrap:wrap; padding:8px 4px; border-bottom:1px solid var(--border-subtle); }
     .daw-transport-title { font:var(--fw-semibold) var(--fs-body)/1 var(--font-sans); color:var(--text-primary); }
     .daw-transport-state { font:var(--fw-medium) var(--fs-micro)/1 var(--font-sans); letter-spacing:var(--tracking-caps); text-transform:uppercase; padding:3px 8px; border-radius:var(--radius-md); background:var(--surface-raised); color:var(--text-muted); }
@@ -946,7 +946,7 @@
        depends on (ADR-0087). The compact arm/mute/solo controls and inline
        meter stay inside this fixed-height header rather than changing lane
        alignment. */
-    .daw-track-head { display:grid; grid-template-columns:auto auto minmax(0, 1fr) auto auto auto; grid-template-areas:'drag index name def meter remove' 'drag index controls meta meta remove'; column-gap:6px; row-gap:3px; height:var(--daw-track-row-h); box-sizing:border-box; padding:6px 9px; border-bottom:1px solid var(--border-subtle); }
+    .daw-track-head { display:grid; grid-template-columns:auto minmax(0, 1fr) auto; grid-template-areas:'drag name remove' 'index def meta' 'controls meter meter'; column-gap:7px; row-gap:4px; height:var(--daw-track-row-h); box-sizing:border-box; padding:7px 9px; border-bottom:1px solid var(--border-subtle); }
     .daw-track-head.selected { background:var(--surface-raised); box-shadow:inset 3px 0 0 var(--gold-500); }
     .daw-track-head.group-collapsed { display:none; }
     .daw-track-head-drag { grid-area:drag; align-self:center; }
@@ -955,19 +955,19 @@
     .daw-track-head-name:hover { background:var(--surface-raised); }
     .daw-track-head-name:focus { background:var(--surface-raised); box-shadow:var(--glow-focus); }
     .daw-track-head-name.clip { color:var(--issue-text); }
-    .daw-track-head .daw-track-head-name { justify-self:start; max-width:58px; position:relative; z-index:2; }
+    .daw-track-head .daw-track-head-name { justify-self:stretch; max-width:100%; position:relative; z-index:2; }
     .daw-track-head-def { grid-area:def; min-width:0; position:relative; z-index:1; display:flex; align-items:center; gap:4px; align-self:center; }
     .daw-track-head-def select { flex:0 0 auto; height:var(--control-h-sm); padding:0 6px; border-radius:var(--radius-md); background:var(--surface-raised); color:var(--text-secondary); border:1px solid var(--border-subtle); font:var(--fw-medium) var(--fs-micro)/1 var(--font-sans); }
     .daw-track-head-def select:focus { border-color:var(--gold-500); box-shadow:var(--glow-focus); outline:none; }
     .daw-track-head-def select:disabled { opacity:0.4; cursor:not-allowed; }
     .daw-track-head-input { width:58px; font-family:var(--font-mono); text-align:center; }
-    .daw-track-head-controls { grid-area:controls; display:flex; gap:3px; }
+    .daw-track-head-controls { grid-area:controls; display:flex; align-self:center; gap:4px; }
     .daw-track-head-meta { grid-area:meta; align-self:center; justify-self:end; max-width:78px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font:var(--fw-regular) var(--fs-micro)/1 var(--font-mono); color:var(--text-muted); }
     .daw-track-head-arm, .daw-track-head-mute, .daw-track-head-solo, .daw-track-head-remove { position:relative; z-index:3; border:1px solid var(--border-subtle); border-radius:var(--radius-sm); background:transparent; color:var(--text-muted); cursor:pointer; font:var(--fw-semibold) var(--fs-micro)/1 var(--font-sans); }
-    .daw-track-head-arm, .daw-track-head-mute, .daw-track-head-solo { width:20px; height:16px; padding:0; }
+    .daw-track-head-arm, .daw-track-head-mute, .daw-track-head-solo { width:24px; height:18px; padding:0; }
     .daw-track-head-arm[aria-pressed="true"], .daw-track-head-mute[aria-pressed="true"], .daw-track-head-solo[aria-pressed="true"] { border-color:var(--gold-text); color:var(--gold-text); }
     .daw-track-head-remove { grid-area:remove; align-self:center; width:18px; height:18px; padding:0; color:var(--issue-text); }
-    .daw-track-head-level { grid-area:meter; align-self:center; width:52px; height:4px; overflow:hidden; border-radius:2px; background:var(--border-subtle); }
+    .daw-track-head-level { grid-area:meter; align-self:center; justify-self:stretch; min-width:72px; height:4px; overflow:hidden; border-radius:2px; background:var(--border-subtle); }
     .daw-track-head-level-fill { display:block; height:100%; background:var(--gold-text); }
     .daw-track-heads .live-group-head, .daw-lane-group-spacer { flex:0 0 32px; height:32px; box-sizing:border-box; margin:0; padding:0 9px; border-bottom:1px solid var(--border-subtle); }
     .daw-track-heads .live-group-head { gap:4px; }

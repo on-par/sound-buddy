@@ -398,6 +398,23 @@ describe('configured track rows render from one shared list (#1043)', () => {
     expect(actionRule![0]).toMatch(/z-index:\s*3/);
   });
 
+  it('de-crowds the fixed-height channel strip into separate name, input/status, and control/meter rows (#1125)', () => {
+    const headRule = css.match(/\.daw-track-head\s*\{[^}]*\}/);
+    const controlsRule = css.match(/\.daw-track-head-controls\s*\{[^}]*\}/);
+    const levelRule = css.match(/\.daw-track-head-level\s*\{[^}]*\}/);
+    const nameRule = css.match(/\.daw-track-head \.daw-track-head-name\s*\{[^}]*\}/);
+
+    expect(headRule).not.toBeNull();
+    expect(controlsRule).not.toBeNull();
+    expect(levelRule).not.toBeNull();
+    expect(nameRule).not.toBeNull();
+    expect(headRule![0]).toContain("grid-template-areas:'drag name remove' 'index def meta' 'controls meter meter'");
+    expect(headRule![0]).toMatch(/grid-template-columns:\s*auto minmax\(0,\s*1fr\) auto/);
+    expect(controlsRule![0]).toMatch(/gap:\s*4px/);
+    expect(levelRule![0]).toMatch(/justify-self:\s*stretch/);
+    expect(nameRule![0]).toMatch(/max-width:\s*100%/);
+  });
+
   it('allows DAW header select hit targets to still select the strip row', () => {
     const body = functionBody(liveCapturePanelTsx, 'onBoardClick');
     expect(body).toContain("!target.closest('button, [contenteditable], input')");
