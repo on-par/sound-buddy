@@ -247,8 +247,8 @@ sb.onAnalysisProgress((data) => {
 
 /* ── Mode is internal now (#757) ──
    The Source-panel Mode toggle is GONE — the Live tab is permanently
-   monitor-mode and the top-bar Record button is the sole transport. liveMode
-   still feeds the backend startLive({ mode, arm, labels }) contract and the
+   monitor-mode and Session/header Record affordances share the capture
+   lifecycle. liveMode still feeds the backend startLive({ mode, arm, labels }) contract and the
    header REC/LIVE indicator (capturePhase), and rig-apply writes it as part
    of applyRigPatch's returned patch (rig-panel.ts, TD-001 slice 6d, #702) —
    it just has no UI of its own anymore. recordCapture (LiveControls.tsx)

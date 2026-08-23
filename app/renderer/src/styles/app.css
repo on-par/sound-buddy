@@ -112,20 +112,6 @@
     #live-indicator .live-txt { color:var(--issue-text); }
     #window-badge, #measurement-badge { color:var(--text-muted); font-family:var(--font-mono); }
 
-    /* #767 header live-level readout — rightmost in #header-right; relative
-       dBFS until calibrated SPL (reference mic) lands. Patched by
-       live-level-readout.ts at animation rate, not React-rendered. Display is
-       owned by the inline style + patchLevelReadout's flex/none flip. */
-    .live-level { align-items:baseline; gap:6px; font-family:var(--font-mono);
-      font-size:13px; line-height:1; color:var(--text-secondary); }
-    .live-level .live-level-note { font:var(--fw-semibold) 10px/1 var(--font-sans);
-      letter-spacing:0.06em; color:var(--text-muted); }
-    .live-level .live-level-rms { font-weight:var(--fw-semibold); font-size:17px; }
-    .live-level .live-level-unit { font:var(--fw-regular) 10px/1 var(--font-sans); color:var(--text-muted); }
-    .live-level .live-level-peak { font-size:11px; color:var(--text-muted); }
-    .live-level .live-level-rel { font:var(--fw-regular) 9px/1 var(--font-sans);
-      letter-spacing:0.05em; color:var(--text-tertiary); }
-
     @keyframes sbpulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:.45;transform:scale(.6)} }
     .sb-pulse { animation:sbpulse var(--dur-pulse) var(--ease-in-out) infinite; }
     @keyframes sbspin { to{transform:rotate(360deg)} }
@@ -228,9 +214,11 @@
     /* #record-button-island (#729) lives in #header-right, outside all three
        gated containers above — needs its own rule or a free-tier user gets a
        working Record button in the header with no Pro gate (the exact class
-       of bug the #727 follow-up fixed for #settings-pane-audio). See
-       RecordButton.test.ts's "gates the top-bar Record button..." test. */
+       of bug the #727 follow-up fixed for #settings-pane-audio). The Session
+       workspace owns the active in-tab Record control, so the header copy is
+       hidden while Live/Session is active. */
     body.not-pro #record-button-island { display:none !important; }
+    body.live-active #record-button-island { display:none !important; }
 
     /* Free/Pro badge in the header (click to manage the license). */
     #license-badge {
@@ -813,13 +801,17 @@
     .stat .stat-num.good { color:var(--good-text); } .stat .stat-num.check { color:var(--check-text); } .stat .stat-num.issue { color:var(--issue-text); }
     .stat .stat-unit { font:var(--fw-medium) var(--fs-label)/1 var(--font-mono); color:var(--text-tertiary); }
 
-    #spectrum-body { flex:1; padding:24px; overflow:auto; background:var(--bg-app); display:flex; flex-direction:column; }
+    #spectrum-body { flex:1; min-height:0; padding:16px 20px 14px; overflow:auto; background:var(--bg-app); display:flex; flex-direction:column; }
     /* #spectrum-imperative (inline-driven empty/loading/error/live states) and
        #spectrum-island (React's SpectrumPanel, TD-001 slice 4, #422) share
        #spectrum-body's own flex/column layout so their children lay out
        identically to when they were direct #spectrum-body children; inline-app.js
        toggles `display` between the two per mode/analysis state. */
     #spectrum-imperative, #spectrum-island { flex:1; display:flex; flex-direction:column; }
+    #live-island { flex:1; min-height:0; flex-direction:column; }
+    body.live-active #spectrum-imperative,
+    body.live-active #spectrum-island { display:none !important; }
+    body.live-active #live-island { display:flex !important; }
     .spectrum-empty { flex:1; min-height:360px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:14px; color:var(--text-muted); text-align:center; }
     .spectrum-empty p { font:var(--fw-regular) var(--fs-body)/1 var(--font-sans); margin:0; }
     .spectrum-empty .spin { width:34px; height:34px; border-radius:50%; border:3px solid var(--surface-raised); border-top-color:var(--gold-500); animation:sbspin 0.8s linear infinite; }
@@ -893,7 +885,7 @@
        full-width stacked lanes with hairline dividers. UI-only — no real
        waveform/time math in this slice. */
     .daw-shell { position:relative; display:flex; flex-direction:column; flex:1; min-height:0; --daw-ruler-row-h:26px; --daw-track-row-h:64px; --daw-master-row-h:60px; --daw-status-line-h:26px; --daw-routing-drawer-h:180px; --daw-monitor-dim-opacity:0.45; }
-    .daw-transport { display:flex; align-items:center; gap:12px; padding:10px 4px; border-bottom:1px solid var(--border-subtle); }
+    .daw-transport { display:flex; align-items:center; gap:8px; flex-wrap:wrap; padding:8px 4px; border-bottom:1px solid var(--border-subtle); }
     .daw-transport-title { font:var(--fw-semibold) var(--fs-body)/1 var(--font-sans); color:var(--text-primary); }
     .daw-transport-state { font:var(--fw-medium) var(--fs-micro)/1 var(--font-sans); letter-spacing:var(--tracking-caps); text-transform:uppercase; padding:3px 8px; border-radius:var(--radius-md); background:var(--surface-raised); color:var(--text-muted); }
     .daw-transport-state-recording { color:var(--issue-text); background:var(--issue-tint); }
@@ -906,7 +898,7 @@
     .daw-session-routing-toggle { height:var(--control-h-sm); padding:0 10px; border:1px solid var(--border-subtle); border-radius:var(--radius-sm); background:var(--surface-raised); color:var(--text-primary); font:var(--fw-medium) var(--fs-label)/1 var(--font-sans); cursor:pointer; transition:var(--transition-control); }
     .daw-session-routing-toggle:hover { border-color:var(--border-focus); }
     .daw-session-picker { display:flex; align-items:center; gap:6px; min-width:0; }
-    .daw-session-picker-select { max-width:220px; min-width:140px; padding:5px 8px; border:1px solid var(--border-subtle); border-radius:var(--radius-sm); background:var(--surface-raised); color:var(--text-primary); font:var(--fw-regular) var(--fs-label)/1 var(--font-sans); }
+    .daw-session-picker-select { width:clamp(150px, 18vw, 240px); min-width:0; padding:5px 8px; border:1px solid var(--border-subtle); border-radius:var(--radius-sm); background:var(--surface-raised); color:var(--text-primary); font:var(--fw-regular) var(--fs-label)/1 var(--font-sans); }
     .daw-session-picker-select:focus-visible { outline:none; border-color:var(--border-focus); box-shadow:var(--glow-focus); }
     .daw-session-picker-status { color:var(--issue-text); font:var(--fw-regular) var(--fs-label)/1.2 var(--font-sans); }
     .daw-transport-hint { margin-left:auto; font:var(--fw-regular) var(--fs-label)/1.3 var(--font-sans); color:var(--text-muted); }

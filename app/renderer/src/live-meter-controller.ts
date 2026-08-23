@@ -1,16 +1,15 @@
 // Copyright (c) 2026 Patrick Robinson (on-par). All rights reserved.
 // Licensed under the Sound Buddy Desktop Application License (app/LICENSE).
 
-// Live-meter per-tick patch controller (TD-001 slice 6c, #701; widened to a
-// store-snapshot contract by #767): a factory mirroring spectrum-transport.ts's
+// Live-meter per-tick patch controller (TD-001 slice 6c, #701): a factory
+// mirroring spectrum-transport.ts's
 // createSpectrumTransport — injected deps so the rAF-coalescing math is
 // unit-tested without a DOM or a real requestAnimationFrame. Ports inline-app.js's
 // old scheduleLiveMeters/pendingLiveWin/liveRenderScheduled coalescing (meter
 // ticks arrive up to ~20/s; the board only needs to repaint once per animation
-// frame), now driven by liveCaptureStore. It coalesces ANY store change — a
-// capture start/stop visibility flip for the header level readout (#767)
-// included — into one patch per animation frame, read via getState() on every
-// notification; liveCaptureStore.bindIpcEvents() already owns tick ingestion
+// frame), now driven by liveCaptureStore. It coalesces ANY store change into
+// one patch per animation frame, read via getState() on every notification;
+// liveCaptureStore.bindIpcEvents() already owns tick ingestion
 // (single source of truth, ADR-0005: per-tick values never round-trip through
 // the store's own React subscribers — this controller reads the store directly
 // and patches the DOM itself, bypassing React state).
@@ -65,10 +64,9 @@ export function createLiveMeterController(deps: LiveMeterControllerDeps): LiveMe
     rafHandle = deps.raf(flush);
   }
 
-  // Every store change is scheduled — capture start/stop flips the header
-  // readout's visibility even when no tick is in flight (#767). Consumers gate
-  // their own DOM writes on the snapshot (the board repaint stays gated on
-  // isCapturing && lastTick, mirroring renderWorkspace's own guard).
+  // Every store change is scheduled. Consumers gate their own DOM writes on
+  // the snapshot (the board repaint stays gated on isCapturing && lastTick,
+  // mirroring renderWorkspace's own guard).
   function onStoreChange(): void {
     schedule(deps.getState());
   }

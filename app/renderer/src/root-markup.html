@@ -36,7 +36,9 @@
       <button type="button" id="settings-btn" data-icon="settings" data-size="17" aria-label="Settings" title="Settings"></button>
       <!-- LicenseChrome.tsx (TD-001 slice 6e, #703) renders the badge. -->
       <div id="license-badge-island"></div>
-      <!-- RecordButton.tsx (#729) — gated Pro via body.not-pro #record-button-island in app.css. -->
+      <!-- RecordButton.tsx (#729) — gated Pro via body.not-pro #record-button-island in app.css.
+           Hidden while the Session workspace is active; Session owns its in-tab
+           recording affordance there. -->
       <div id="record-button-island"></div>
       <div id="live-indicator">
         <div class="pulse sb-pulse"></div>
@@ -49,19 +51,6 @@
              #711), portaled onto this island; it renders the span reactively
              from liveCaptureStore via measurementBadgeView. -->
         <span id="measurement-badge-island"></span>
-      </div>
-      <!-- #767: live dB readout, top-right — relative/dBFS until a calibrated
-           reference mic enables true SPL (follow-on). React-agnostic; patched at
-           animation rate by live-level-readout.ts via LiveWorkspace's
-           live-meter-controller (ADR-0005). -->
-      <div id="live-level-readout" class="live-level" style="display:none"
-           role="meter" aria-valuemin="-120" aria-valuemax="0" aria-valuenow="-120"
-           title="Relative level in dBFS — not calibrated SPL. A calibrated reference microphone is required for true SPL readings.">
-        <span class="live-level-note">LEVEL</span>
-        <span class="live-level-rms" id="live-level-rms">—</span>
-        <span class="live-level-unit">dBFS</span>
-        <span class="live-level-peak" id="live-level-peak">pk —</span>
-        <span class="live-level-rel">relative</span>
       </div>
     </div>
   </div>
@@ -128,10 +117,10 @@
           <button type="button" class="pg-link" data-license-open>Upgrade — enter a license key</button>
         </div>
 
-        <!-- #757: no in-tab capture controls. The Live tab is always
-             monitoring; the top-bar Record button (RecordButton.tsx →
-             #record-button-island) is the sole transport, and the preflight
-             checklist / Save baseline live in Settings → Audio
+        <!-- #757/#1112: no legacy in-tab capture controls. The Session DAW
+             transport owns recording while this workspace is active; the
+             header RecordButton remains mounted for other tabs, and the
+             preflight checklist / Save baseline live in Settings → Audio
              (PreflightSettings.tsx). What stays here: the #live-status line,
              the report-card cue + post-capture offer rows (all React islands
              now, TD-001 slice 6i #712 — LiveStatusLine.tsx and

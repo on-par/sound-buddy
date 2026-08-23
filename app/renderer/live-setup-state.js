@@ -64,7 +64,7 @@
       {
         key: 'start',
         label: liveMode === 'record' ? 'Start recording' : 'Start monitoring',
-        hint: 'Press the top-bar Record button when you’re ready.',
+        hint: 'Press the Session Record button when you’re ready.',
         done: false,
       },
     ];

@@ -247,9 +247,9 @@ test.describe('Session tab playback (#1080)', () => {
   });
 
   test('session-tab-playback-monitoring keeps the live meter updating during take playback', async () => {
-    await window.locator('#record-button').click();
+    await window.locator('#daw-session-record').click();
     await expect(window.locator('#live-indicator .live-txt')).toHaveText('REC');
-    await window.locator('#record-button').click();
+    await window.locator('#daw-session-record').click();
     await expect(window.locator('#live-indicator .live-txt')).toHaveText('LIVE');
 
     await window.locator('#daw-session-routing-toggle').click();
@@ -259,16 +259,16 @@ test.describe('Session tab playback (#1080)', () => {
     await expect(window.locator('.daw-transport-time')).toHaveText('0:02');
 
     await sendLiveEvent({ type: 'meter', channels: [{ rms: -18, peak: -6 }] });
-    await expect(window.locator('#live-level-rms')).toHaveText('-18.0');
+    await expect(window.locator('.daw-track-head-level-fill').first()).toHaveAttribute('style', 'width:78.26086956521739%');
     await sendLiveEvent({ type: 'meter', channels: [{ rms: -12, peak: -3 }] });
-    await expect(window.locator('#live-level-rms')).toHaveText('-12.0');
+    await expect(window.locator('.daw-track-head-level-fill').first()).toHaveAttribute('style', 'width:86.95652173913044%');
   });
 
   test('Session Record and the persistent header share capture state across tabs (#1081)', async () => {
     const sessionRecord = window.locator('#daw-session-record');
     await expect(sessionRecord).toBeEnabled();
     await sessionRecord.click();
-    await expect(window.locator('#record-button')).toHaveAttribute('aria-pressed', 'true');
+    await expect(window.locator('#record-button-island')).toBeHidden();
     await expect(sessionRecord).toHaveAttribute('aria-pressed', 'true');
     await expect(sessionRecord).toHaveText('Stop');
 

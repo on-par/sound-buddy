@@ -95,10 +95,9 @@ declare global {
 
 // Pure port of inline-app.js's capturePhase + captureIndicator + the pill's
 // visibility — the header #live-indicator stays a static node driven by
-// syncLiveIndicator (a React island can't own it: the measurement badge + the
-// #767 level readout nest inside the pill and sibling App-portal containers
-// can't be resolved during App's own render pass — see the plan's rejected
-// alternatives).
+// syncLiveIndicator (a React island can't own it: the measurement badge and
+// sibling App-portal containers can't be resolved during App's own render
+// pass — see the plan's rejected alternatives).
 export function liveIndicatorView(
   liveTransition: LiveTransitionState,
   state: { isCapturing: boolean; liveMode: 'monitor' | 'record'; promoting: boolean; stopping: boolean },
