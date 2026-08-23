@@ -276,6 +276,10 @@ describe('contextual help strip (#1007)', () => {
 // split itself is covered live by app/tests/license.spec.ts and
 // app/tests/entitlement-matrix.spec.ts, not here.
 describe('Audio pane composition (#727)', () => {
+  it('keeps the global input-device selector in the booted Audio pane (#1133)', () => {
+    expect(renderMarkup(true)).toContain('id="device-select"');
+  });
+
   it('renders the moved controls when booted', () => {
     const html = renderMarkup(true);
     expect(html).toContain('id="rig-select"');

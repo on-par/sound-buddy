@@ -26,7 +26,6 @@ import {
   eqPaneClassificationHTML,
   eqPaneInspectorHTML,
   deviceChannelCount,
-  deviceOptionLabel,
   deviceNameFor,
   EQ_PANE_RESIZE_STEP,
   type EqPaneView,
@@ -53,15 +52,15 @@ export interface ClassificationChangeDeps {
 
 export interface EqPaneInspectorChangeDeps {
   liveCapture: Pick<LiveCaptureState,
-    'selectedChannel' | 'channelConfig' | 'selectDevice' | 'setStripLabel' | 'setStripKind' | 'setStripSource' | 'toggleArm'>;
+    'selectedChannel' | 'channelConfig' | 'setStripLabel' | 'setStripKind' | 'setStripSource' | 'toggleArm'>;
   soundcheck: Pick<SoundcheckState, 'manifest' | 'setRoute'>;
 }
 
-// Routes inspector edits through the stores that already own capture setup and
-// soundcheck routing. A valid selected live strip is required even for the
-// shared device action, so a stale pane can never mutate unrelated state.
+// Routes strip-scoped inspector edits through the stores that own strip setup
+// and soundcheck routing. A valid selected live strip is required, so a stale
+// pane can never mutate unrelated state.
 export function applyEqPaneInspectorChange(
-  kind: 'device' | 'label' | 'kind' | 'source' | 'arm' | 'output',
+  kind: 'label' | 'kind' | 'source' | 'arm' | 'output',
   value: string,
   deps: EqPaneInspectorChangeDeps,
 ): void {
@@ -70,10 +69,6 @@ export function applyEqPaneInspectorChange(
     ? deps.liveCapture.channelConfig[selectedIndex]
     : null;
   if (!strip || selectedIndex == null) return;
-  if (kind === 'device') {
-    deps.liveCapture.selectDevice(value);
-    return;
-  }
   if (kind === 'label') {
     deps.liveCapture.setStripLabel(selectedIndex, value);
     return;
@@ -171,8 +166,6 @@ export default function LiveEqPane(): JSX.Element {
     ? {
       selectedIndex: s.selectedChannel,
       strip: selectedStrip,
-      deviceOptions: [{ value: '', label: 'Default Device' }, ...s.devices.map((device) => ({ value: String(device.index), label: deviceOptionLabel(device) }))],
-      selectedDevice: s.selectedDevice,
       deviceChannels: deviceChannelCount(s.selectedDevice, s.devices),
       disabled: liveRunning,
       playbackTrack: soundcheck.manifest?.tracks[s.selectedChannel] ?? null,
@@ -241,8 +234,7 @@ export default function LiveEqPane(): JSX.Element {
   function onInspectorChange(e: FormEvent<HTMLDivElement>): void {
     const target = e.target;
     if (!(target instanceof HTMLSelectElement)) return;
-    if (target.classList.contains('eq-pane-inspector-device')) applyEqPaneInspectorChange('device', target.value, inspectorDeps());
-    else if (target.classList.contains('eq-pane-inspector-kind')) applyEqPaneInspectorChange('kind', target.value, inspectorDeps());
+    if (target.classList.contains('eq-pane-inspector-kind')) applyEqPaneInspectorChange('kind', target.value, inspectorDeps());
     else if (target.classList.contains('eq-pane-inspector-source')) applyEqPaneInspectorChange('source', `${target.value}:${target.dataset.field ?? 'a'}`, inspectorDeps());
     else if (target.classList.contains('eq-pane-inspector-output')) applyEqPaneInspectorChange('output', target.value, inspectorDeps());
   }
