@@ -1009,8 +1009,6 @@
     .daw-mix-waveform { display:block; width:100%; height:100%; }
     .daw-mix-lane[data-capture-mode="recording"] { border-left:2px solid var(--issue-text); }
     .daw-mix-lane[data-capture-mode="recording"] .daw-lane-name { color:var(--issue-text); }
-    .daw-mix-lane[data-capture-mode="monitoring"] { border-left:2px solid var(--gold-text); }
-    .daw-mix-lane[data-capture-mode="monitoring"] .daw-lane-name { color:var(--gold-text); }
     .daw-channel-lanes { display:flex; flex-direction:column; }
     .daw-channel-lane { height:var(--daw-track-row-h); box-sizing:border-box; }
     .daw-take-clip { position:absolute; top:0; bottom:0; overflow:hidden; pointer-events:none; z-index:1; }

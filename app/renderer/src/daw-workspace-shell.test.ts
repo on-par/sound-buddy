@@ -603,6 +603,11 @@ describe('the arrangement playhead spans both timeline regions (#1049)', () => {
     expect(laneColumn![0]).toMatch(/position:\s*relative/);
   });
 
+  it('monitoring mode does not paint the mix lane with the gold timeline accent', () => {
+    expect(css).not.toMatch(/\.daw-mix-lane\[data-capture-mode="monitoring"\]\s*\{[^}]*border-left/);
+    expect(css).not.toMatch(/\.daw-mix-lane\[data-capture-mode="monitoring"\]\s+\.daw-lane-name\s*\{[^}]*gold/);
+  });
+
   it('renderPlayhead computes one x and writes it to every segment', () => {
     const body = functionBody(dawShellRuntimeTs, 'renderPlayhead');
     expect(body).toContain("querySelectorAll('.daw-playhead')");

@@ -312,9 +312,9 @@ export default function LiveEqPane(): JSX.Element {
   /* c8 ignore stop */
 
   return <div>
+    <div dangerouslySetInnerHTML={{ __html: html }} />
     <div onInput={onInspectorInput} onChange={onInspectorChange} onClick={onInspectorClick} dangerouslySetInnerHTML={{ __html: inspectorHtml }} />
     <div onInput={onClassificationChange} dangerouslySetInnerHTML={{ __html: classificationHtml }} />
-    <div dangerouslySetInnerHTML={{ __html: html }} />
     <footer className="eq-pane-footer">Sound Buddy does not write to your console.</footer>
   </div>;
 }

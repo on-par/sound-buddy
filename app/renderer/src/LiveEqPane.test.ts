@@ -120,7 +120,7 @@ function expectedInspectorHTML(): string {
 }
 
 function expectedMarkup(): string {
-  return `<div><div>${expectedInspectorHTML()}</div><div>${expectedClassificationHTML()}</div><div>${expectedPaneHTML()}</div><footer class="eq-pane-footer">Sound Buddy does not write to your console.</footer></div>`;
+  return `<div><div>${expectedPaneHTML()}</div><div>${expectedInspectorHTML()}</div><div>${expectedClassificationHTML()}</div><footer class="eq-pane-footer">Sound Buddy does not write to your console.</footer></div>`;
 }
 
 beforeEach(() => {
@@ -201,6 +201,13 @@ describe('LiveEqPane', () => {
     const html = renderMarkup();
     expect(html).toBe(expectedMarkup());
     expect(html).toContain('Selected — Track 2');
+  });
+
+  it('keeps the analyser sections above selected-channel controls', () => {
+    useLiveCaptureStore.setState({ selectedChannel: 1 });
+    const html = renderMarkup();
+    expect(html.indexOf('eq-pane-primary')).toBeLessThan(html.indexOf('eq-pane-inspector'));
+    expect(html.indexOf('eq-pane-secondary')).toBeLessThan(html.indexOf('eq-pane-classification'));
   });
 
   it('seeds inspector level tiles from the selected channel, not the Room channel', () => {
