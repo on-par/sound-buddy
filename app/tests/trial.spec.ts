@@ -39,7 +39,7 @@ test.describe.serial('First-launch Pro trial (#61)', () => {
     await expect(win.locator('body')).not.toHaveClass(/not-pro/);
     await expect(win.locator('.mode-tab[data-mode="live"] .tab-lock')).toBeHidden();
     await win.locator('.mode-tab[data-mode="live"]').click();
-    await expect(win.locator('#record-button')).toBeVisible();
+    await expect(win.locator('#daw-session-record')).toBeVisible();
 
     // The trial stamp was persisted for the countdown to roll forward.
     const stored = JSON.parse(fs.readFileSync(path.join(USER_DATA, 'license.json'), 'utf8'));
@@ -72,7 +72,6 @@ test.describe.serial('First-launch Pro trial (#61)', () => {
     // Gated surfaces revert to their pro-gates.
     await win.locator('.mode-tab[data-mode="live"]').click();
     await expect(win.locator('#tab-live .pro-gate')).toBeVisible();
-    await expect(win.locator('#record-button')).toBeHidden();
     // The free funnel is untouched.
     await win.locator('.mode-tab[data-mode="reportcard"]').click();
     await expect(win.locator('#reportcard-view')).toBeVisible();

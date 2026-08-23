@@ -42,31 +42,24 @@ test.describe('Inline track definition (#189)', () => {
     await expect(ch0.locator('.daw-track-head-name')).toHaveText('Kick');
   });
 
-  test('toggling the header kind select to stereo reveals a second source picker, defaulted to the next free channel', async () => {
+  test('selecting a stereo pair updates the compact input selector', async () => {
     const ch0 = window.locator('.daw-track-head[data-ch="0"]');
-    await expect(ch0.locator('.daw-track-head-src')).toHaveCount(1);
-    await ch0.locator('.daw-track-head-kind').selectOption('stereo');
-    await expect(ch0.locator('.daw-track-head-src')).toHaveCount(2);
-    await expect(ch0.locator('.daw-track-head-src').nth(0)).toHaveValue('0');
-    await expect(ch0.locator('.daw-track-head-src').nth(1)).toHaveValue('1');
+    await expect(ch0.locator('.daw-track-head-input')).toHaveValue('mono:0');
+    await ch0.locator('.daw-track-head-input').selectOption('stereo:0,1');
+    await expect(ch0.locator('.daw-track-head-input')).toHaveValue('stereo:0,1');
   });
 
-  test('toggling back to mono collapses to a single source picker, preserving the source channel', async () => {
+  test('selecting a mono input preserves the chosen source channel', async () => {
     const ch0 = window.locator('.daw-track-head[data-ch="0"]');
-    await ch0.locator('.daw-track-head-kind').selectOption('stereo');
-    // Stereo legs use compact numeric labels, so match by {value} explicitly
-    // — a bare string matches both value and label and "2" collides with the
-    // option one channel over (value="1", label "2").
-    await ch0.locator('.daw-track-head-src').nth(0).selectOption({ value: '2' });
-    await ch0.locator('.daw-track-head-kind').selectOption('mono');
-    await expect(ch0.locator('.daw-track-head-src')).toHaveCount(1);
-    await expect(ch0.locator('.daw-track-head-src')).toHaveValue('2');
+    await ch0.locator('.daw-track-head-input').selectOption('stereo:2,3');
+    await ch0.locator('.daw-track-head-input').selectOption('mono:2');
+    await expect(ch0.locator('.daw-track-head-input')).toHaveValue('mono:2');
   });
 
   test('setting a source channel from the header updates the strip', async () => {
     const ch0 = window.locator('.daw-track-head[data-ch="0"]');
-    await ch0.locator('.daw-track-head-src[data-field="a"]').selectOption('5');
-    await expect(ch0.locator('.daw-track-head-src[data-field="a"]')).toHaveValue('5');
+    await ch0.locator('.daw-track-head-input').selectOption('mono:5');
+    await expect(ch0.locator('.daw-track-head-input')).toHaveValue('mono:5');
   });
 
   test('the source picker is bounded by the device channel count', async () => {
@@ -80,7 +73,7 @@ test.describe('Inline track definition (#189)', () => {
     });
     await refreshDevices(window);
     await expect(window.locator('#spectrum-body .daw-track-head')).toHaveCount(2);
-    await expect(window.locator('.daw-track-head[data-ch="0"] .daw-track-head-src option')).toHaveCount(4);
+    await expect(window.locator('.daw-track-head[data-ch="0"] .daw-track-head-input option')).toHaveCount(6);
 
     // Restore the 8ch stub other tests in the file rely on.
     await electronApp.evaluate(({ ipcMain }) => {
@@ -94,20 +87,18 @@ test.describe('Inline track definition (#189)', () => {
   });
 
   test('the header kind and source controls freeze while a capture is running', async () => {
-    await window.locator('#record-button').click();
+    await window.locator('#daw-session-record').click();
     await window.locator('#settings-btn').click();
     await window.locator('#settings-tab-btn-audio').click();
     await expect(window.locator('#settings-audio-capture-lock-note')).toBeVisible();
     await window.locator('#settings-dialog-done').click();
-    const kindSels = window.locator('#spectrum-body .daw-track-head-kind');
-    const srcSels = window.locator('#spectrum-body .daw-track-head-src');
-    for (let i = 0; i < await kindSels.count(); i++) await expect(kindSels.nth(i)).toBeDisabled();
-    for (let i = 0; i < await srcSels.count(); i++) await expect(srcSels.nth(i)).toBeDisabled();
+    const inputSels = window.locator('#spectrum-body .daw-track-head-input');
+    for (let i = 0; i < await inputSels.count(); i++) await expect(inputSels.nth(i)).toBeDisabled();
 
-    await window.locator('#record-button').click(); // stop → monitoring resumes (#776)
+    await window.locator('#daw-session-record').click(); // stop → monitoring resumes (#776)
     // #776: always-monitoring — a record stop keeps the board live, so the
     // header kind stays disabled (monitoring locks config) instead of
     // re-enabling the way the old full stop did.
-    await expect(window.locator('.daw-track-head[data-ch="0"] .daw-track-head-kind')).toBeDisabled();
+    await expect(window.locator('.daw-track-head[data-ch="0"] .daw-track-head-input')).toBeDisabled();
   });
 });

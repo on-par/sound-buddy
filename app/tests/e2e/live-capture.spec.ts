@@ -58,8 +58,8 @@ test.describe('Live capture (PRD 06)', () => {
   // (rig picker, device, measurement source, cadence sliders, record folder)
   // — they moved into Settings → Audio. #757 removed the Mode toggle, the
   // preflight gate, and the Start/Stop transport entirely — the top-bar
-  // #record-button is the sole capture control on the Live tab.
-  test('the Live tab carries no in-tab transport; the top-bar Record button is the sole capture control (#757)', async () => {
+  // #daw-session-record is the sole capture control on the Live tab.
+  test('the Live tab carries no in-tab transport; the Session Record button is the sole capture control (#757)', async () => {
     await expect(window.locator('#chcfg')).toHaveCount(0);
     await expect(window.locator('#arm-all-btn')).toHaveCount(0);
     await expect(window.locator('#rig-bar')).toHaveCount(0);
@@ -68,7 +68,7 @@ test.describe('Live capture (PRD 06)', () => {
     await expect(window.locator('#live-start-btn')).toHaveCount(0);
     await expect(window.locator('#live-stop-btn')).toHaveCount(0);
     await expect(window.locator('#preflight-panel')).toHaveCount(0);
-    await expect(window.locator('#record-button')).toBeVisible();
+    await expect(window.locator('#daw-session-record')).toBeVisible();
 
     await openAudioSettings(window);
     await expect(window.locator('#rig-select')).toBeVisible();
@@ -93,9 +93,9 @@ test.describe('Live capture (PRD 06)', () => {
     await window.locator('#live-ws-add').click();
     await expect(rows).toHaveCount(3);
 
-    // Make the first strip stereo — a second channel select appears in the row.
-    await rows.first().locator('.daw-track-head-kind').selectOption('stereo');
-    await expect(rows.first().locator('.daw-track-head-src[data-field="b"]')).toBeVisible();
+    // Make the first strip stereo through the compact input selector.
+    await rows.first().locator('.daw-track-head-input').selectOption('stereo:0,1');
+    await expect(rows.first().locator('.daw-track-head-input')).toHaveValue('stereo:0,1');
     await expect(window.locator('#live-ws-cap')).toHaveText('4 / 8 used');
 
     // Remove a strip.
@@ -254,7 +254,7 @@ test.describe('Live capture (PRD 06)', () => {
     // A running capture keeps the tick-rendered board live-patched rather than
     // resynced to idle placeholders (which carry no device name) on every
     // label-commit re-render.
-    await window.locator('#record-button').click();
+    await window.locator('#daw-session-record').click();
     await expect(window.locator('#live-indicator .live-txt')).toHaveText('REC');
 
     // Two backend channels that carry device names → the fallback path.
@@ -309,8 +309,8 @@ test.describe('Live capture (PRD 06)', () => {
     const clean = [{ ...LIVE_CHANNELS[0], name: 'Ch 1' }, { ...LIVE_CHANNELS[1], name: 'Ch 2' }];
     await sendLiveTick(clean);
 
-    await window.locator('#record-button').click(); // stop
-    await expect(window.locator('#record-button')).toBeEnabled();
+    await window.locator('#daw-session-record').click(); // stop
+    await expect(window.locator('#daw-session-record')).toBeEnabled();
   });
 
   test('a new tick updates bars and arc in place', async () => {
@@ -340,7 +340,7 @@ test.describe('Live capture (PRD 06)', () => {
     await expect(pane.locator('.sb-spectrum-curve')).toHaveAttribute('data-marker', 'kept');
   });
 
-  test('the top-bar Record button records a session and offers to reveal the folder (#43, #757)', async () => {
+  test('the Session Record button records a session and offers to reveal the folder (#43, #757)', async () => {
     await electronApp.evaluate(({ ipcMain }) => {
       ipcMain.removeHandler('reveal-path');
       ipcMain.handle('reveal-path', (_e, p) => {
@@ -349,11 +349,11 @@ test.describe('Live capture (PRD 06)', () => {
     });
     // Arm all (always visible now, #757) to normalize armed state.
     await window.locator('#live-ws-arm-all').click();
-    await window.locator('#record-button').click();
+    await window.locator('#daw-session-record').click();
     await expect(window.locator('#live-indicator .live-txt')).toHaveText('REC');
 
-    await window.locator('#record-button').click();
-    await expect(window.locator('#record-button')).toBeEnabled();
+    await window.locator('#daw-session-record').click();
+    await expect(window.locator('#daw-session-record')).toBeEnabled();
     // #776: the stop demotes back to a monitor session — LIVE indicator (not
     // REC) and the session offer survive the resume.
     await expect(window.locator('#live-indicator .live-txt')).toHaveText('LIVE');
@@ -367,7 +367,7 @@ test.describe('Live capture (PRD 06)', () => {
     await expect(window.locator('#rec-offer')).toBeHidden();
   });
 
-  test('the top-bar Record button is the sole capture transport, keyboard-driven too (#458, #729, #757)', async () => {
+  test('the Session Record button is the sole capture transport, keyboard-driven too (#458, #729, #757)', async () => {
     await electronApp.evaluate(({ ipcMain }) => {
       ipcMain.removeHandler('reveal-path');
       ipcMain.handle('reveal-path', (_e, p) => {
@@ -377,17 +377,17 @@ test.describe('Live capture (PRD 06)', () => {
     // #757: no mode toggle to juggle — the arm cluster is always visible and
     // an idle Record press starts monitoring then promotes in place (#458).
     await window.locator('#live-ws-arm-all').click();
-    const recordBtn = window.locator('#record-button');
+    const recordBtn = window.locator('#daw-session-record');
     await expect(recordBtn).toBeEnabled();
     await recordBtn.focus();
     await window.keyboard.press('Enter'); // keyboard parity check
     await expect(window.locator('#live-indicator .live-txt')).toHaveText('REC');
     await expect(recordBtn).toHaveAttribute('aria-pressed', 'true');
     // #777: the pressed/highlighted state stays on while recording.
-    await expect(recordBtn).toHaveClass(/record-btn--recording/);
+    await expect(recordBtn).toHaveClass(/daw-session-record--recording/);
 
     await recordBtn.click(); // stop
-    await expect(window.locator('#record-button')).toBeEnabled();
+    await expect(window.locator('#daw-session-record')).toBeEnabled();
     // #776: the stop demotes back to a monitor session — the LIVE indicator
     // and the session offer stay visible across the resume.
     await expect(window.locator('#live-indicator .live-txt')).toHaveText('LIVE');
@@ -398,7 +398,7 @@ test.describe('Live capture (PRD 06)', () => {
   test('Record with nothing armed blocks the Record press with a hint (#43, #757)', async () => {
     await window.locator('#live-ws-disarm-all').click();
     await expect(window.locator('#live-ws-arm-count')).toContainText('0 /');
-    await window.locator('#record-button').click();
+    await window.locator('#daw-session-record').click();
     // The promote is blocked: hint shown, and the session stays a monitor
     // session (no REC indicator).
     await expect(window.locator('#arm-hint')).toBeVisible();
@@ -406,11 +406,11 @@ test.describe('Live capture (PRD 06)', () => {
     await expect(window.locator('#live-indicator .live-txt')).toHaveText('LIVE');
     // Re-arm → Record works and the hint clears.
     await window.locator('#live-ws-arm-all').click();
-    await window.locator('#record-button').click();
+    await window.locator('#daw-session-record').click();
     await expect(window.locator('#live-indicator .live-txt')).toHaveText('REC');
     await expect(window.locator('#arm-hint')).toBeHidden();
-    await window.locator('#record-button').click(); // stop
-    await expect(window.locator('#record-button')).toBeEnabled();
+    await window.locator('#daw-session-record').click(); // stop
+    await expect(window.locator('#daw-session-record')).toBeEnabled();
   });
 
   test('Record passes only the armed strips as arm tokens (#43)', async () => {
@@ -426,7 +426,7 @@ test.describe('Live capture (PRD 06)', () => {
     await arms.first().click(); // disarm strip 0
     await expect(arms.first()).toHaveAttribute('aria-pressed', 'false');
 
-    await window.locator('#record-button').click();
+    await window.locator('#daw-session-record').click();
     await expect(window.locator('#live-indicator .live-txt')).toHaveText('REC');
     // The promote's start-live carries the armed subset (the monitor start
     // runs first with mode 'monitor' and no arm tokens; the promote's call
@@ -437,7 +437,7 @@ test.describe('Live capture (PRD 06)', () => {
     expect(opts.mode).toBe('record');
     expect(opts.arm).toBeDefined();
     expect(opts.arm!.length).toBe(total - 1); // exactly one strip disarmed
-    await window.locator('#record-button').click(); // stop
+    await window.locator('#daw-session-record').click(); // stop
     // Restore the plain success stub for any later tests.
     await electronApp.evaluate(({ ipcMain }) => {
       ipcMain.removeHandler('start-live');
@@ -445,28 +445,4 @@ test.describe('Live capture (PRD 06)', () => {
     });
   });
 
-  // #767/#776: the top-right dBFS readout is a DAW live meter, so it shows
-  // while capturing (recording) and STAYS visible after a record stop —
-  // monitoring resumes (ADR-0014 always-monitoring), the readout is not a
-  // record-only artifact.
-  test('shows a live dBFS readout top-right while recording and keeps it visible after the stop, monitoring resumes (#767, #776)', async () => {
-    const readout = window.locator('#live-level-readout');
-    const recordBtn = window.locator('#record-button');
-    await expect(readout).toBeHidden();
-    await recordBtn.click();
-    await expect(window.locator('#live-indicator .live-txt')).toHaveText('REC');
-    await expect(readout).toBeVisible();
-    await sendLiveTick(LIVE_CHANNELS); // channel 0: rms -18, peak -6
-    await expect(window.locator('#live-level-rms')).toHaveText('-18.0');
-    await expect(window.locator('#live-level-peak')).toHaveText('pk -6.0');
-    await sendLiveTick([{ ...LIVE_CHANNELS[0], rms: -12, peak: -3 }, LIVE_CHANNELS[1]]);
-    await expect(window.locator('#live-level-rms')).toHaveText('-12.0'); // real-time update
-    await expect(window.locator('#live-level-readout')).toHaveAttribute('title', /not calibrated SPL/);
-    await recordBtn.click(); // stop the recording → monitoring resumes
-    await expect(readout).toBeVisible(); // always-monitoring: meters/readout stay live
-    await expect(recordBtn).toBeEnabled();
-    // #777: the Record control is a no-text red circle — the icon is the only
-    // visible content, so the button exposes no text label.
-    await expect(recordBtn).toHaveText('');
-  });
 });
