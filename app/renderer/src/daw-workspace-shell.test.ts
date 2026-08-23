@@ -383,7 +383,7 @@ describe('configured track rows render from one shared list (#1043)', () => {
     expect(css).toContain('.daw-track-head-name');
   });
 
-  it('keeps the editable track name above compact definition controls', () => {
+  it('keeps the compact definition selector before the editable track name', () => {
     const nameRule = css.match(/\.daw-track-head \.daw-track-head-name\s*\{[^}]*\}/);
     const definitionRule = css.match(/\.daw-track-head-def\s*\{[^}]*\}/);
     const actionRule = css.match(/\.daw-track-head-arm, \.daw-track-head-mute, \.daw-track-head-solo, \.daw-track-head-remove\s*\{[^}]*\}/);
@@ -396,20 +396,29 @@ describe('configured track rows render from one shared list (#1043)', () => {
     expect(nameRule![0]).toMatch(/z-index:\s*2/);
     expect(definitionRule![0]).toMatch(/z-index:\s*1/);
     expect(actionRule![0]).toMatch(/z-index:\s*3/);
+    expect(functionBody(workspaceViewTs, 'dawTrackHeaderHTML').indexOf('definitionHTML')).toBeLessThan(
+      functionBody(workspaceViewTs, 'dawTrackHeaderHTML').indexOf('daw-track-head-name'),
+    );
   });
 
-  it('de-crowds the fixed-height channel strip into separate name, input/status, and control/meter rows (#1125)', () => {
+  it('de-crowds the fixed-height channel strip into a compact input/title row and control/meter row (#1125)', () => {
     const headRule = css.match(/\.daw-track-head\s*\{[^}]*\}/);
     const controlsRule = css.match(/\.daw-track-head-controls\s*\{[^}]*\}/);
     const levelRule = css.match(/\.daw-track-head-level\s*\{[^}]*\}/);
     const nameRule = css.match(/\.daw-track-head \.daw-track-head-name\s*\{[^}]*\}/);
+    const inputRule = css.match(/\.daw-track-head-input\s*\{[^}]*\}/);
+    const armIconRule = css.match(/\.daw-track-head-arm::before\s*\{[^}]*\}/);
 
     expect(headRule).not.toBeNull();
     expect(controlsRule).not.toBeNull();
     expect(levelRule).not.toBeNull();
     expect(nameRule).not.toBeNull();
-    expect(headRule![0]).toContain("grid-template-areas:'drag name remove' 'index def meta' 'controls meter meter'");
-    expect(headRule![0]).toMatch(/grid-template-columns:\s*auto minmax\(0,\s*1fr\) auto/);
+    expect(inputRule).not.toBeNull();
+    expect(armIconRule).not.toBeNull();
+    expect(headRule![0]).toContain("grid-template-areas:'drag def name remove' 'index controls meter meta'");
+    expect(headRule![0]).toMatch(/grid-template-columns:\s*auto auto minmax\(0,\s*1fr\) auto/);
+    expect(inputRule![0]).toMatch(/width:\s*46px/);
+    expect(armIconRule![0]).toMatch(/border-radius:\s*50%/);
     expect(controlsRule![0]).toMatch(/gap:\s*4px/);
     expect(levelRule![0]).toMatch(/justify-self:\s*stretch/);
     expect(nameRule![0]).toMatch(/max-width:\s*100%/);

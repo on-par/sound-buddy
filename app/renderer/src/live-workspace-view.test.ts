@@ -441,6 +441,8 @@ describe('dawShellHTML / dawShellPatchView', () => {
     const html = dawTrackHeaderHTML({ index: 0, name: 'Kick &lt;3', armed: true, armDisabled: false, muted: false, soloed: true, monitorActive: true, levelPercent: 70, takeClip: null });
     expect(html).toMatch(/class="[^"]*\bdaw-track-head-arm\b[^"]*"/);
     expect(html).toContain('aria-label="Disarm track"');
+    expect(html).toContain('title="Disarm track"');
+    expect(html).not.toContain('>Arm</button>');
     expect(html).toMatch(/class="[^"]*\bdaw-track-head-mute\b[^"]*"/);
     expect(html).toContain('aria-label="Mute track"');
     expect(html).toMatch(/class="[^"]*\bdaw-track-head-mute\b[^"]*" aria-label="Mute track" aria-pressed="false"/);
@@ -451,6 +453,11 @@ describe('dawShellHTML / dawShellPatchView', () => {
     expect(html).toContain('aria-pressed="true"');
     expect(html).toContain('style="width:70%"');
     expect(html).toContain('>Kick &lt;3</span>');
+  });
+
+  it('puts the compact input selector to the left of the channel title', () => {
+    const html = dawTrackHeaderHTML({ index: 0, name: 'Vox 1', armed: false, armDisabled: false, muted: false, soloed: false, monitorActive: true, levelPercent: 0, takeClip: null });
+    expect(html.indexOf('daw-track-head-def')).toBeLessThan(html.indexOf('daw-track-head-name'));
   });
 
   it('orders the compact track input selector as stereo pairs, then mono inputs', () => {
@@ -509,6 +516,7 @@ describe('dawShellHTML / dawShellPatchView', () => {
       recordingHTML.indexOf('<div class="daw-timeline">'),
     );
     expect(armButton(recordingHeads)).toContain('disabled');
+    expect(armButton(recordingHeads)).toContain('title="Disarm track"');
     expect(recordingHeads.match(/class="[^"]*\bdaw-track-head-arm\b[^"]*"[^>]* disabled/g)).toHaveLength(CONFIG.length);
     expect(recordingHeads.match(/class="[^"]*\bdaw-track-head-input\b[^"]*"[^>]* disabled/g)).toHaveLength(CONFIG.length);
     expect(armButton(dawShellHTML(makeState({ isCapturing: true, liveMode: 'monitor' })))).not.toContain('disabled');
