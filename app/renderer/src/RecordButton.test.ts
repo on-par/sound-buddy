@@ -136,11 +136,12 @@ describe('RecordButton (#729)', () => {
 // SettingsPanel.test.ts's "gates the Audio pane..." test already guards
 // against (see that file, and the #729 plan's ADR).
 describe('Pro gating (#729)', () => {
-  it('gates the top-bar Record button via the shared body.not-pro CSS rule, not its own license check', () => {
+  it('gates the top-bar Record button via CSS, not its own license check', () => {
     const src = fs.readFileSync(fileURLToPath(new URL('./RecordButton.tsx', import.meta.url)), 'utf8');
     expect(src).not.toContain('badge(');
     expect(src).not.toContain('licenseStatus');
     const css = fs.readFileSync(fileURLToPath(new URL('./styles/app.css', import.meta.url)), 'utf8');
     expect(css).toContain('body.not-pro #record-button-island { display:none !important; }');
+    expect(css).toContain('body.live-active #record-button-island { display:none !important; }');
   });
 });

@@ -3,7 +3,7 @@
 
 // The pre-service Preflight checklist (TD-001 slice 6d, #702), relocated from
 // the Live tab's PreflightPanel into Settings → Audio (#757) — the Live tab
-// is now always-monitoring with a top-bar-only Record transport, so the
+// is now always-monitoring with Session/header Record affordances, so the
 // full-screen gate is gone and the checklist lives next to the rig/device
 // controls it validates. Rendered directly as JSX inside SettingsPanel.tsx
 // (no createPortal — see that file's header for why), reusing ADR-0007's

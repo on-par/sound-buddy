@@ -391,7 +391,7 @@ describe('liveSetupStepsView / liveSetupStepsHTML', () => {
     expect(html).toContain('<li class="ls-step done');
     expect(html).toContain('<li class="ls-step active"');
     expect(html).toContain('svg');
-    expect(html).toContain('Press the top-bar Record button when you’re ready.');
+    expect(html).toContain('Press the Session Record button when you’re ready.');
     expect(html).toContain('>3</span>');
   });
 });

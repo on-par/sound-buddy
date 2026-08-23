@@ -118,8 +118,8 @@ export default function LiveSourceSettings() {
       <p className="device-hint" id="measurement-source-hint">{boardSourceHint().copy}</p>
 
       {/* The record-folder row renders always (#757) — the mode toggle that
-          used to gate it is gone, and the top-bar Record button records to
-          this folder regardless of mode. */}
+          used to gate it is gone, and recording uses this folder regardless
+          of which Record affordance starts it. */}
       <div className="record-row" id="record-folder-row">
         <button
           type="button"

@@ -137,7 +137,7 @@ describe('Live tab reads as always-listening, never capture (#777)', () => {
   });
 });
 
-describe('Always-monitoring Live tab with a top-bar-only transport (#757)', () => {
+describe('Always-monitoring Live tab with Session-owned transport (#757/#1112)', () => {
   it('removes the in-tab Mode toggle, preflight gate, and Start/Stop transport from #tab-live', () => {
     expect(markup).not.toContain('id="live-controls-island"');
     expect(markup).not.toContain('id="live-transport-island"');
@@ -146,7 +146,7 @@ describe('Always-monitoring Live tab with a top-bar-only transport (#757)', () =
     expect(markup).not.toContain('id="preflight-island"');
   });
 
-  it('keeps the top-bar Record button island and the React-owned status/offer/window-badge islands', () => {
+  it('keeps the header island mount points and the React-owned status/offer/window-badge islands', () => {
     expect(markup).toContain('id="record-button-island"');
     expect(markup).toContain('id="live-status-island"');
     expect(markup).toContain('id="live-session-offers-island"');
@@ -159,6 +159,18 @@ describe('Always-monitoring Live tab with a top-bar-only transport (#757)', () =
     expect(liveSessionOffersTsx).toContain('id="rec-offer"');
     expect(liveSessionOffersTsx).toContain('id="rc-offer"');
     expect(windowBadgeTsx).toContain('id="window-badge"');
+  });
+
+  it('hides the top-bar Record button while the Session workspace is active', () => {
+    const css = fs.readFileSync(fileURLToPath(new URL('./styles/app.css', import.meta.url)), 'utf8');
+    expect(css).toContain('body.live-active #record-button-island { display:none !important; }');
+  });
+
+  it('collapses inactive spectrum surfaces so the Session workspace owns the panel height', () => {
+    const css = fs.readFileSync(fileURLToPath(new URL('./styles/app.css', import.meta.url)), 'utf8');
+    expect(css).toContain('body.live-active #spectrum-imperative,');
+    expect(css).toContain('body.live-active #spectrum-island { display:none !important; }');
+    expect(css).toContain('body.live-active #live-island { display:flex !important; }');
   });
 
   it('no longer references the removed in-tab controls in App.tsx', () => {
@@ -250,30 +262,15 @@ describe('Secondary measurement device source (#460, React-owned per #724)', () 
   });
 });
 
-describe('Header live dBFS readout (#767)', () => {
-  it('renders #live-level-readout at the right end of #header-right, after #live-indicator', () => {
+describe('Header live dBFS readout removed from top chrome (#1113)', () => {
+  it('does not render the variable-width live level readout in the header', () => {
     const headerRightIdx = markup.indexOf('id="header-right"');
-    const liveIndicatorIdx = markup.indexOf('id="live-indicator"');
-    const readoutIdx = markup.indexOf('id="live-level-readout"');
-    expect(headerRightIdx).toBeGreaterThan(-1);
-    expect(liveIndicatorIdx).toBeGreaterThan(headerRightIdx);
-    expect(readoutIdx).toBeGreaterThan(liveIndicatorIdx);
-  });
-
-  it('starts hidden — patched visible only while an input device is actively monitoring', () => {
-    expect(markup).toMatch(/id="live-level-readout"[^>]*style="display:none"/);
-  });
-
-  it('is persistently labeled relative/dBFS and carries the calibrated-SPL honesty title', () => {
-    expect(markup).toContain('dBFS');
-    expect(markup).toContain('relative');
-    expect(markup).toContain('not calibrated SPL');
-    expect(markup).toContain('A calibrated reference microphone is required for true SPL readings.');
-  });
-
-  it('has value slots for the rms and peak readouts', () => {
-    expect(markup).toContain('id="live-level-rms"');
-    expect(markup).toContain('id="live-level-peak"');
+    const headerEndIdx = markup.indexOf('</div>\n  </div>\n\n  <!-- ══ Stage', headerRightIdx);
+    const headerRight = markup.slice(headerRightIdx, headerEndIdx);
+    expect(headerRight).not.toContain('id="live-level-readout"');
+    expect(headerRight).not.toContain('id="live-level-rms"');
+    expect(headerRight).not.toContain('id="live-level-peak"');
+    expect(headerRight).not.toContain('relative');
   });
 });
 

@@ -4,15 +4,14 @@
 // The Live-capture runtime bridge + capture orchestration helpers (TD-001
 // slice 6c, #701, narrowed by #727, #729). The #tab-live Mode toggle
 // (LiveControls) and the Start/Stop transport (LiveTransportControls) are
-// GONE (#757): the Live tab is permanently monitor-mode and the top-bar
-// RecordButton.tsx and the Session toolbar are paired capture affordances over
-// these same lifecycle commands; the old in-tab control components no longer
-// exist.
+// GONE (#757): the Live tab is permanently monitor-mode, and RecordButton.tsx
+// plus the Session toolbar are paired capture affordances over these same
+// lifecycle commands; the old in-tab control components no longer exist.
 // What remains is the window.liveCaptureRuntime bridge type + accessor
 // (runtime()), the extracted startLiveCapture/stopLiveCapture ordering
-// helpers, and recordCapture — the promote-in-place orchestration (#458) the
-// top-bar Record button's idle press flows into (starting monitoring first
-// when nothing is live, #757). #arm-hint is liveCaptureStore.armHint written
+// helpers, and recordCapture — the promote-in-place orchestration (#458) each
+// Record affordance flows into (starting monitoring first when nothing is
+// live, #757). #arm-hint is liveCaptureStore.armHint written
 // by the runtime's beforeStartCapture/promoteToRecording and rendered by
 // LiveArmHint.tsx (TD-001 slice 6h, #711).
 //
@@ -167,10 +166,10 @@ export async function stopCaptureIfRunning(rt: LiveCaptureRuntime | undefined): 
   await runStopCeremony(rt);
 }
 
-// The top-bar Record button's promote action (#729, #757): promotes a running
-// monitor session to a recording in place (#458). With the Live tab's mode
-// toggle gone, an idle press (nothing live) starts monitoring FIRST — the tab
-// is always-monitoring, so the button never needs to be disabled — then
+// The shared Record promote action (#729, #757): promotes a running monitor
+// session to a recording in place (#458). With the Live tab's mode toggle
+// gone, an idle press (nothing live) starts monitoring FIRST — the tab is
+// always-monitoring, so the button never needs to be disabled — then
 // promotes. liveMode is normalized back to 'monitor' before that start so a
 // stopped record session can be recorded again, and honoring
 // beforeStartCapture's #arm-hint guard means a blocked start (e.g. an empty

@@ -24,7 +24,6 @@ import { useStoreShallow } from './stores/useStoreShallow';
 import { useLiveCaptureStore } from './stores/liveCaptureStore';
 import { useSettingsStore } from './stores/settingsStore';
 import { createLiveMeterController, type LiveMeterSnapshot } from './live-meter-controller';
-import { liveLevelReadout, patchLevelReadout } from './live-level-readout';
 import {
   eqPanePatchPlan,
   eqPaneView,
@@ -115,11 +114,7 @@ export default function LiveWorkspace(): JSX.Element {
      harness (renderToString doesn't run effects) — exercised by
      tests/e2e/live-capture.spec.ts. createLiveMeterController's own
      coalescing logic is exhaustively unit-tested in
-     live-meter-controller.test.ts against fake deps. The header level readout
-     (#767) is a second patched surface: the same coalesced store snapshot
-     drives the board repaint (applyLiveTick, gated to fresh tick objects so
-     capture-state notifications cannot repaint stale data over the idle
-     workspace) and liveLevelReadout/patchLevelReadout for #live-level-readout. */
+     live-meter-controller.test.ts against fake deps. */
   useEffect(() => {
     let lastPatchedTick: LiveEvent | null = null;
     const controller = createLiveMeterController({
@@ -128,9 +123,8 @@ export default function LiveWorkspace(): JSX.Element {
         const s = useLiveCaptureStore.getState();
         return {
           lastTick: s.lastTick,
-          // #847: hold the header #live-level-readout visible across a
-          // record-stop demote (ADR-0013/ADR-0014 put the readout on this
-          // snapshot) — see boardRunning() in live-workspace-view.ts.
+          // #847: hold the workspace live across a record-stop demote — see
+          // boardRunning() in live-workspace-view.ts.
           isCapturing: boardRunning(s),
           measurementSource: s.measurementSource,
           lastMeasurementChannels: s.lastMeasurementChannels,
@@ -142,30 +136,13 @@ export default function LiveWorkspace(): JSX.Element {
       raf: (cb) => requestAnimationFrame(cb),
       cancelRaf: (handle) => cancelAnimationFrame(handle),
       patch: (snap) => {
-        const freshTick = !!snap.lastTick && snap.lastTick !== lastPatchedTick;
         if (snap.lastTick && snap.lastTick !== lastPatchedTick) {
           lastPatchedTick = snap.lastTick;
           applyLiveTick(snap);
         }
-        const el = document.getElementById('live-level-readout');
-        if (el) patchLevelReadout(el, liveLevelReadout(freshTick ? { ...snap, isCapturing: true } : snap));
       },
     });
     controller.start();
-    window.soundBuddy?.onLiveEvent((data) => {
-      const tick = data as (LiveEvent & { error?: string }) | null;
-      if (!tick || tick.error || (tick as { type?: string }).type === 'peaks' || !tick.channels || tick.channels.length === 0) return;
-      const el = document.getElementById('live-level-readout');
-      if (!el) return;
-      const state = useLiveCaptureStore.getState();
-      patchLevelReadout(el, liveLevelReadout({
-        lastTick: tick,
-        isCapturing: true,
-        measurementSource: state.measurementSource,
-        lastMeasurementChannels: state.lastMeasurementChannels,
-        secondaryActive: state.secondaryMeasurement.status === 'active' && state.secondaryWindows.length > 0,
-      }));
-    });
     return () => controller.stop();
   }, []);
 
