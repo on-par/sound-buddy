@@ -23,12 +23,14 @@ import type { AppSettings } from '../../electron/ipc/api';
 
 // PreflightSettings (composed into the Audio pane, #757) reads the pure
 // classic scripts window.rigReconcile/window.preflight — real modules, same
-// convention as PreflightSettings.test.ts.
+// convention as PreflightSettings.test.ts. SettingsPlanStatus (composed into
+// the About pane, #1191) likewise reads window.upgradePrompt.
 const rigReconcile = require('../rig-reconcile.js');
 const preflight = require('../preflight.js');
+const upgradePrompt = require('../upgrade-prompt.js');
 
 beforeEach(() => {
-  (globalThis as { window?: unknown }).window = { rigReconcile, preflight };
+  (globalThis as { window?: unknown }).window = { rigReconcile, preflight, upgradePrompt };
 });
 
 afterEach(() => {

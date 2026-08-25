@@ -30,6 +30,7 @@ import trackWorkspaceSrc from '../track-workspace.js?raw';
 import playbackRoutingSrc from '../playback-routing.js?raw';
 import licenseStateSrc from '../license-state.js?raw';
 import upgradeMomentumSrc from '../upgrade-momentum.js?raw';
+import upgradePromptSrc from '../upgrade-prompt.js?raw';
 import onboardingStateSrc from '../onboarding-state.js?raw';
 import whatsNewStateSrc from '../whats-new-state.js?raw';
 import liveSetupStateSrc from '../live-setup-state.js?raw';
@@ -131,6 +132,7 @@ const BOOT_SCRIPTS = [
   playbackRoutingSrc,
   licenseStateSrc,
   upgradeMomentumSrc,
+  upgradePromptSrc,
   onboardingStateSrc,
   whatsNewStateSrc,
   liveSetupStateSrc,

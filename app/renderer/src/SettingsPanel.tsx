@@ -78,6 +78,7 @@ import LiveSourceSettings from './LiveSourceSettings';
 import SecondaryMeasurementPanel from './SecondaryMeasurementPanel';
 import CaptureCadenceControls from './CaptureCadenceControls';
 import PreflightSettings from './PreflightSettings';
+import SettingsPlanStatus from './SettingsPlanStatus';
 import { SETTINGS_HELP_ENTRIES, resolveSettingsHelp, settingsHelpHandlers, settingsHelpNoteId } from './settings-help';
 
 export type SettingsSection = 'general' | 'audio' | 'console' | 'storage' | 'privacy' | 'labs' | 'about';
@@ -563,6 +564,11 @@ export default function SettingsPanel({ booted = false }: { booted?: boolean }) 
             </p>
             <p className="ai-dialog-note">Licensed under the Sound Buddy Desktop Application License.</p>
           </SettingsGroup>
+          {booted && (
+            <SettingsGroup title="Plan">
+              <SettingsPlanStatus />
+            </SettingsGroup>
+          )}
         </div>
           </div>
         </div>
