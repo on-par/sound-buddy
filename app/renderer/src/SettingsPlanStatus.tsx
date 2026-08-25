@@ -32,7 +32,8 @@ function getUpgradePrompt(): UpgradePromptApi {
 
 export default function SettingsPlanStatus(): JSX.Element {
   const licenseStatus = useStoreShallow(useLicensingStore, (s) => s.licenseStatus);
-  const view = getUpgradePrompt().planStatusView(licenseStatus ?? { tier: 'free', status: 'none' }, new Date());
+  const up = getUpgradePrompt();
+  const view = up.planStatusView(licenseStatus ?? { tier: 'free', status: 'none' }, new Date());
 
   return (
     <div id="settings-plan-status" className="settings-plan-status">
@@ -44,11 +45,11 @@ export default function SettingsPlanStatus(): JSX.Element {
           className="btn btn-primary sm"
           /* c8 ignore next -- click dispatch, no jsdom */
           onClick={() => {
-            try { getSoundBuddy().openCheckout(getUpgradePrompt().UPGRADE_CTA_PLAN)?.catch(() => {}); }
+            try { getSoundBuddy().openCheckout(up.UPGRADE_CTA_PLAN)?.catch(() => {}); }
             catch { /* preload missing */ }
           }}
         >
-          {getUpgradePrompt().UPGRADE_CTA_LABEL}
+          {up.UPGRADE_CTA_LABEL}
         </button>
       )}
     </div>

@@ -360,6 +360,24 @@ describe('Audio pane composition (#727)', () => {
     expect(src).toContain('useLicensingStore.getState().openDialog()');
   });
 
+  // #1191: the audio pro-gate's checkout CTA sits before the license-key
+  // link (both always rendered when booted, per the pro-gate's own
+  // body.not-pro CSS gating), and opens Stripe checkout directly.
+  it('renders a checkout CTA in the Audio pro-gate before the license-key link', () => {
+    const html = renderMarkup(true);
+    expect(html).toContain('id="settings-audio-checkout"');
+    expect(html).toContain('data-checkout-open="true"');
+    const gate = html.match(/<div class="pro-gate" id="settings-audio-pro-gate">[\s\S]*?<\/div>/)?.[0] ?? '';
+    expect(gate.indexOf('id="settings-audio-checkout"')).toBeGreaterThan(-1);
+    expect(gate.indexOf('id="settings-audio-checkout"')).toBeLessThan(gate.indexOf('Upgrade — enter a license key'));
+  });
+
+  it('wires the Settings Audio-pane checkout CTA to open Stripe checkout', () => {
+    const src = fs.readFileSync(fileURLToPath(new URL('./SettingsPanel.tsx', import.meta.url)), 'utf8');
+    expect(src).toContain('id="settings-audio-checkout"');
+    expect(src).toContain("getSoundBuddy().openCheckout('monthly')");
+  });
+
   // Guards the boundary-violation fix: SettingsPanel must not re-derive Pro
   // status from licenseStatus/badge() — it must reuse the single body.not-pro
   // gating hook (LicenseChrome.tsx) via the same CSS rule #tab-live uses.
