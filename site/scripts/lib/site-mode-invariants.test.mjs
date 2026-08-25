@@ -21,13 +21,14 @@ describe('collectAnchorHrefs', () => {
 describe('checkWaitlistHomeInvariants', () => {
   const okHtml = `
     <nav>
+      <a href="/refund">Refunds</a>
       <a href="/terms">Terms</a>
       <a href="/privacy">Privacy</a>
       <a href="mailto:support@soundbuddy.online">Support</a>
     </nav>
   `;
 
-  it('passes on a fixture with /terms + /privacy and no download/pricing', () => {
+  it('passes on a fixture with /refund + /terms + /privacy and no download/pricing', () => {
     expect(checkWaitlistHomeInvariants(okHtml)).toEqual([]);
   });
 
@@ -67,6 +68,12 @@ describe('checkWaitlistHomeInvariants', () => {
     expect(problems.some((p) => p.includes('/privacy'))).toBe(true);
   });
 
+  it('flags a missing /refund link', () => {
+    const html = `<a href="/terms">Terms</a><a href="/privacy">Privacy</a>`;
+    const problems = checkWaitlistHomeInvariants(html);
+    expect(problems.some((p) => p.includes('/refund'))).toBe(true);
+  });
+
   it('flags an href="/download?src=nav" (query-string case)', () => {
     const html = `${okHtml}<a href="/download?src=nav">Download</a>`;
     const problems = checkWaitlistHomeInvariants(html);
@@ -85,12 +92,13 @@ describe('checkLiveHomeInvariants', () => {
     <nav>
       <a href="/download">Download</a>
       <a href="#pricing">Pricing</a>
+      <a href="/refund">Refunds</a>
       <a href="/terms">Terms</a>
       <a href="/privacy">Privacy</a>
     </nav>
   `;
 
-  it('passes on a fixture containing all four required hrefs', () => {
+  it('passes on a fixture containing all five required hrefs', () => {
     expect(checkLiveHomeInvariants(okHtml)).toEqual([]);
   });
 
@@ -118,8 +126,14 @@ describe('checkLiveHomeInvariants', () => {
     expect(problems.some((p) => p.includes('/privacy'))).toBe(true);
   });
 
+  it('flags a missing /refund href', () => {
+    const html = `<a href="/download">Download</a><a href="#pricing">Pricing</a><a href="/terms">Terms</a><a href="/privacy">Privacy</a>`;
+    const problems = checkLiveHomeInvariants(html);
+    expect(problems.some((p) => p.includes('/refund'))).toBe(true);
+  });
+
   it('passes when Download/Pricing links carry a query string or prefix variant', () => {
-    const html = `<a href="/download/mac">Download</a><a href="/#pricing">Pricing</a><a href="/terms">Terms</a><a href="/privacy">Privacy</a>`;
+    const html = `<a href="/download/mac">Download</a><a href="/#pricing">Pricing</a><a href="/refund">Refunds</a><a href="/terms">Terms</a><a href="/privacy">Privacy</a>`;
     expect(checkLiveHomeInvariants(html)).toEqual([]);
   });
 });

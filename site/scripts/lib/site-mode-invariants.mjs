@@ -40,8 +40,8 @@ function isPricingAnchorHref(href) {
 
 /**
  * Check the waitlist homepage's built HTML (#601): no Download link, no
- * Pricing link/anchor, but Terms and Privacy stay linked. Returns an array
- * of human-readable problem strings (empty === OK).
+ * Pricing link/anchor, but all three legal pages stay linked. Returns an
+ * array of human-readable problem strings (empty === OK).
  */
 export function checkWaitlistHomeInvariants(html) {
   const problems = [];
@@ -60,7 +60,7 @@ export function checkWaitlistHomeInvariants(html) {
     }
   }
 
-  for (const path of ['/terms', '/privacy']) {
+  for (const path of LEGAL_PAGE_PATHS) {
     if (!hrefs.includes(path)) {
       problems.push(
         `Waitlist homepage is missing the ${path} link — legal pages must stay linked in waitlist mode (#601).`,
@@ -85,7 +85,7 @@ export function checkLiveHomeInvariants(html) {
 
   if (!hrefs.some(isDownloadHref)) problems.push(missingLink(DOWNLOAD_PATH));
   if (!hrefs.some(isPricingAnchorHref)) problems.push(missingLink(PRICING_ANCHOR));
-  for (const path of ['/terms', '/privacy']) {
+  for (const path of LEGAL_PAGE_PATHS) {
     if (!hrefs.includes(path)) problems.push(missingLink(path));
   }
 
