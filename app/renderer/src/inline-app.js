@@ -438,6 +438,12 @@ sb.onMenuOpenFile((fp) => {
 document.querySelectorAll('[data-license-open]').forEach((el) =>
   el.addEventListener('click', () => licStore.getState().openDialog()));
 
+// [data-checkout-open] (#1191): the static pro-gate's "Upgrade to Pro" button
+// opens Stripe checkout directly, alongside the "enter a license key" link
+// above. 'monthly' mirrors upgrade-prompt.js's UPGRADE_CTA_PLAN.
+document.querySelectorAll('[data-checkout-open]').forEach((el) =>
+  el.addEventListener('click', () => { try { sb.openCheckout('monthly')?.catch(() => {}); } catch { /* preload missing */ } }));
+
 // initUpdates() is gone — UpdateBanner.tsx (TD-001 slice 6e, #703) ports it
 // verbatim as a mounted component instead of an IIFE that runs once at
 // script load.

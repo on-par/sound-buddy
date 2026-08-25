@@ -57,7 +57,7 @@
 
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import type { StoreApi, UseBoundStore } from 'zustand';
-import { useElectron } from './useElectron';
+import { useElectron, getSoundBuddy } from './useElectron';
 import { useStoreShallow } from './stores/useStoreShallow';
 import { useSettingsStore, type SettingsState } from './stores/settingsStore';
 import { useLiveCaptureStore } from './stores/liveCaptureStore';
@@ -489,6 +489,21 @@ export default function SettingsPanel({ booted = false }: { booted?: boolean }) 
             <span className="pg-icon" dangerouslySetInnerHTML={{ __html: iconSvg('lock', 22) }} />
             <span className="pg-title">Live monitoring is a Pro feature</span>
             <span className="pg-msg">Capture and monitor multi-channel audio in real time, with saved rigs.</span>
+            <button
+              type="button"
+              id="settings-audio-checkout"
+              className="btn btn-primary sm pg-cta"
+              data-checkout-open
+              /* c8 ignore next -- click dispatch, no jsdom */
+              onClick={() => {
+                // 'monthly' mirrors upgrade-prompt.js's UPGRADE_CTA_PLAN — the
+                // low-friction plan every gate/Settings checkout CTA opens.
+                try { getSoundBuddy().openCheckout('monthly')?.catch(() => {}); }
+                catch { /* preload missing */ }
+              }}
+            >
+              Upgrade to Pro
+            </button>
             <button
               type="button"
               className="pg-link"
