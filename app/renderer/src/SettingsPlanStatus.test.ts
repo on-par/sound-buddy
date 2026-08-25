@@ -11,7 +11,6 @@ import type { LicenseState } from '../../electron/ipc/api';
 // upgrade-prompt.js is a classic script loaded via BOOT_SCRIPTS in the real
 // app; here it's read straight off require() and hung on window, matching
 // UpgradeMomentum.test.ts's pattern for its sibling module.
-// eslint-disable-next-line @typescript-eslint/no-require-imports
 const upgradePromptApi = require('../upgrade-prompt.js');
 
 function renderMarkup(): string {
