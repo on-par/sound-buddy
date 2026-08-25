@@ -50,6 +50,15 @@ MCowBQYDK2VwAyEA19ANezS8KTFwY4NWqH/V8A3qyKR+28cEqXb7018NEWk=
 -----END PUBLIC KEY-----`;
 const RETIRED_DEV_KEY_B64 = 'MCowBQYDK2VwAyEA19ANezS8KTFwY4NWqH/V8A3qyKR+28cEqXb7018NEWk=';
 
+// A real license SIGNED BY THE PRODUCTION PRIVATE KEY (#1163) — the safety net
+// ADR-0016 calls for. It is an ALREADY-EXPIRED subscription (expiresAt
+// 2026-02-01), so the signature is authentic yet the key grants no Pro tier and
+// cannot be redeemed from the repo. If EMBEDDED_PUBLIC_KEY_PEM is ever pasted
+// wrong, this vector stops verifying and this test fails — which is the point.
+// Rotating the signing key (ADR-0016 config append) means regenerating this.
+const PRODUCTION_SIGNED_VECTOR =
+  'SB1.eyJraW5kIjoic3Vic2NyaXB0aW9uIiwiZW1haWwiOiJzYW1wbGVAc291bmRidWRkeS5pbnZhbGlkIiwiaXNzdWVkQXQiOiIyMDI2LTAxLTAxVDAwOjAwOjAwLjAwMFoiLCJleHBpcmVzQXQiOiIyMDI2LTAyLTAxVDAwOjAwOjAwLjAwMFoiLCJpc3MiOiJzb3VuZGJ1ZGR5Lm9ubGluZSIsImtpZCI6InNiLXNpZ24tMjAyNi0wOCIsImp0aSI6IjAwMDAwMDAwLTAwMDAtNDAwMC04MDAwLTAwMDAwMDAwMDAwMCIsInN1YiI6InN1Yl9zYW1wbGVfZXhwaXJlZCJ9.VmvpJZbaPsKJCLHPANMpcU-Gm2YRX_Q8eJnzmvwTwWtF2gctT3IWJgF7F4WtT7fLngJpileTLZ3cpPk-TdstAg';
+
 // Test signing keypair — the module verifies against it via the
 // SOUND_BUDDY_LICENSE_PUBKEY override (same override the e2e specs use).
 const { publicKey: testPub, privateKey: testPriv } = generateKeyPairSync('ed25519');
@@ -104,6 +113,21 @@ describe('licensePublicKey', () => {
   it('parses a PEM-formatted env override, not just base64 DER', () => {
     process.env.SOUND_BUDDY_LICENSE_PUBKEY = testPub.export({ type: 'spki', format: 'pem' }).toString();
     expect(licensePublicKey().asymmetricKeyType).toBe('ed25519');
+  });
+
+  it('the embedded production key verifies a production-signed license (#1163)', () => {
+    // Force the embedded production key path (no test-key override), then verify a
+    // license actually signed by the production private key. "Verification succeeds"
+    // means the Ed25519 signature checks out — proven by the resolved status being
+    // 'expired' (decode + signature-verify + payload-parse all passed, then resolved
+    // past grace), NOT 'invalid' (what a wrong embedded key or tampered signature
+    // gives via invalid('Invalid signature')). The vector is deliberately expired so
+    // it is authentic without being a redeemable Pro key.
+    delete process.env.SOUND_BUDDY_LICENSE_PUBKEY;
+    const state = verifyLicenseKey(PRODUCTION_SIGNED_VECTOR, NOW);
+    expect(state.status).toBe('expired');
+    expect(state.tier).toBe('free');
+    expect(state.error).toBeUndefined();
   });
 });
 
