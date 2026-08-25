@@ -13,6 +13,7 @@ import { fileURLToPath } from 'url';
 // packages/* directory.
 const appRoot = path.resolve(fileURLToPath(new URL('.', import.meta.url)), '..');
 const repoRoot = path.resolve(appRoot, '..');
+const hasMonorepo = fs.existsSync(path.join(repoRoot, 'packages'));
 
 const read = (...parts: string[]) => fs.readFileSync(path.join(repoRoot, ...parts), 'utf8');
 const readPkg = (...parts: string[]) => JSON.parse(read(...parts, 'package.json'));
@@ -62,7 +63,9 @@ describe('#1186 AC2 — app/ is proprietary, everything else is MIT', () => {
     const pkg = JSON.parse(fs.readFileSync(path.join(appRoot, 'package.json'), 'utf8'));
     expect(pkg.license).toBe('SEE LICENSE IN LICENSE');
   });
+});
 
+describe.runIf(hasMonorepo)('#1186 AC2 — everything outside app/ is MIT', () => {
   it('root LICENSE grants MIT and root package.json is MIT', () => {
     const text = read('LICENSE');
     expect(text).toContain('MIT License');
@@ -71,11 +74,13 @@ describe('#1186 AC2 — app/ is proprietary, everything else is MIT', () => {
   });
 
   const packagesRoot = path.join(repoRoot, 'packages');
-  const realPackages = fs
-    .readdirSync(packagesRoot, { withFileTypes: true })
-    .filter((entry) => entry.isDirectory())
-    .map((entry) => entry.name)
-    .filter((name) => fs.existsSync(path.join(packagesRoot, name, 'package.json')));
+  const realPackages = hasMonorepo
+    ? fs
+        .readdirSync(packagesRoot, { withFileTypes: true })
+        .filter((entry) => entry.isDirectory())
+        .map((entry) => entry.name)
+        .filter((name) => fs.existsSync(path.join(packagesRoot, name, 'package.json')))
+    : [];
 
   it.each(realPackages)('packages/%s is MIT in both LICENSE and package.json', (name) => {
     const text = read('packages', name, 'LICENSE');
