@@ -23,12 +23,14 @@ import type { AppSettings } from '../../electron/ipc/api';
 
 // PreflightSettings (composed into the Audio pane, #757) reads the pure
 // classic scripts window.rigReconcile/window.preflight — real modules, same
-// convention as PreflightSettings.test.ts.
+// convention as PreflightSettings.test.ts. SettingsPlanStatus (composed into
+// the About pane, #1191) likewise reads window.upgradePrompt.
 const rigReconcile = require('../rig-reconcile.js');
 const preflight = require('../preflight.js');
+const upgradePrompt = require('../upgrade-prompt.js');
 
 beforeEach(() => {
-  (globalThis as { window?: unknown }).window = { rigReconcile, preflight };
+  (globalThis as { window?: unknown }).window = { rigReconcile, preflight, upgradePrompt };
 });
 
 afterEach(() => {
@@ -356,6 +358,24 @@ describe('Audio pane composition (#727)', () => {
     const src = fs.readFileSync(fileURLToPath(new URL('./SettingsPanel.tsx', import.meta.url)), 'utf8');
     expect(src).toContain('id="settings-audio-pro-gate"');
     expect(src).toContain('useLicensingStore.getState().openDialog()');
+  });
+
+  // #1191: the audio pro-gate's checkout CTA sits before the license-key
+  // link (both always rendered when booted, per the pro-gate's own
+  // body.not-pro CSS gating), and opens Stripe checkout directly.
+  it('renders a checkout CTA in the Audio pro-gate before the license-key link', () => {
+    const html = renderMarkup(true);
+    expect(html).toContain('id="settings-audio-checkout"');
+    expect(html).toContain('data-checkout-open="true"');
+    const gate = html.match(/<div class="pro-gate" id="settings-audio-pro-gate">[\s\S]*?<\/div>/)?.[0] ?? '';
+    expect(gate.indexOf('id="settings-audio-checkout"')).toBeGreaterThan(-1);
+    expect(gate.indexOf('id="settings-audio-checkout"')).toBeLessThan(gate.indexOf('Upgrade — enter a license key'));
+  });
+
+  it('wires the Settings Audio-pane checkout CTA to open Stripe checkout', () => {
+    const src = fs.readFileSync(fileURLToPath(new URL('./SettingsPanel.tsx', import.meta.url)), 'utf8');
+    expect(src).toContain('id="settings-audio-checkout"');
+    expect(src).toContain("getSoundBuddy().openCheckout('monthly')");
   });
 
   // Guards the boundary-violation fix: SettingsPanel must not re-derive Pro
