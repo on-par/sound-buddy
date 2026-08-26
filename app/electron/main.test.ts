@@ -424,6 +424,16 @@ describe('lifecycle (whenReady callback)', () => {
     expect(dialog.showErrorBox).toHaveBeenCalledWith('Checkout unavailable', 'boom-config');
   });
 
+  it('open-checkout handler stringifies a non-Error throw for the dialog message', () => {
+    vi.mocked(checkoutUrl).mockImplementationOnce(() => {
+      throw 'boom-string';
+    });
+    const calls = (ipcMain.handle as ReturnType<typeof vi.fn>).mock.calls;
+    const handler = calls.find((c) => c[0] === 'open-checkout')?.[1];
+    handler(undefined, 'monthly');
+    expect(dialog.showErrorBox).toHaveBeenCalledWith('Checkout unavailable', 'boom-string');
+  });
+
   it('reveal-diagnostics handler calls revealDiagnosticLog', () => {
     const calls = (ipcMain.handle as ReturnType<typeof vi.fn>).mock.calls;
     const handler = calls.find((c) => c[0] === 'reveal-diagnostics')?.[1];
