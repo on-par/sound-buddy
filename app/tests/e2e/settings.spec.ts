@@ -309,4 +309,34 @@ test.describe('Settings dialog (#204)', () => {
     await expect.poll(() => persistedSetting(window, 'usageSignalEnabled')).toBe(false);
     await window.locator('#settings-dialog-done').click();
   });
+
+  // #1181: the footer contextual help strip (settings-help.ts, shipped via
+  // #1007) shows the hovered/focused row's help, falling back to the section
+  // description when nothing is active. These three tests exercise that
+  // wiring end-to-end; resolveSettingsHelp's own hit/miss/fallback logic is
+  // already unit-tested in settings-help.test.ts.
+  test('hovering a row shows its help in the footer strip', async () => {
+    await window.locator('#settings-btn').click();
+    await window.locator('#grading-profile-field').hover();
+    await expect(window.locator('#settings-help-strip')).toContainText('Casual / volunteer');
+    await window.locator('#settings-dialog-done').click();
+  });
+
+  test('keyboard-focusing a row shows the same help as hovering it', async () => {
+    await window.locator('#settings-btn').click();
+    await window.locator('#grading-profile-select').focus();
+    await expect(window.locator('#settings-help-strip')).toContainText('Casual / volunteer');
+    await window.locator('#settings-dialog-done').click();
+  });
+
+  test('the strip falls back to the section description once hover leaves the row', async () => {
+    await window.locator('#settings-btn').click();
+    await window.locator('#grading-profile-field').hover();
+    await expect(window.locator('#settings-help-strip')).toContainText('Casual / volunteer');
+    await window.locator('#settings-dialog-done').hover();
+    await expect(window.locator('#settings-help-strip')).toContainText(
+      'what appears on shared images',
+    );
+    await window.locator('#settings-dialog-done').click();
+  });
 });
