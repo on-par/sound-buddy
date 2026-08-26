@@ -79,9 +79,10 @@ Grounded in `worker/src/handlers/charge-refunded.ts`:
 | 2 | License state unaffected | Reopening the packaged build | Previously activated license still valid, Pro features still unlocked (state change, if any, matches the no-entitlement-action behavior documented above) | PENDING | |
 
 Legend: `PASS` / `FAIL`. Replace `PENDING` with the observed outcome during
-the real run. A `FAIL` is recorded here and its fix tracked as a follow-up in
-its originating story — this runbook is not the place to fix bugs it
-uncovers.
+the real run. A `FAIL` here is a gate failure — record it, then follow
+[`live-launch-gate-failure-policy.md`](./live-launch-gate-failure-policy.md):
+hold all public launch posts and file a P0 issue before any retry. This
+runbook is not the place to fix bugs it uncovers.
 
 ## Recording & sign-off
 
@@ -97,4 +98,5 @@ Out of scope:
 Cross-links: [`live-purchase-verification-plan.md`](./live-purchase-verification-plan.md),
 [`live-mode-prerequisites-checklist.md`](./live-mode-prerequisites-checklist.md),
 [`live-provisioning.md`](./live-provisioning.md),
-[`sandbox-e2e-test-plan.md`](./sandbox-e2e-test-plan.md).
+[`sandbox-e2e-test-plan.md`](./sandbox-e2e-test-plan.md),
+[`live-launch-gate-failure-policy.md`](./live-launch-gate-failure-policy.md).
