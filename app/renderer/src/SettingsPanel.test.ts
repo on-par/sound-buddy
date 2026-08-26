@@ -13,7 +13,7 @@ import SettingsPanel, {
   settingsSectionFor,
   type SettingsControl,
 } from './SettingsPanel';
-import { SETTINGS_HELP_ENTRIES, SETTINGS_SECTION_HELP } from './settings-help';
+import { SETTINGS_HELP_ENTRIES, SETTINGS_SECTION_HELP, resolveSettingsHelp } from './settings-help';
 import { ElectronContext } from './useElectron';
 import { createSettingsStore, useSettingsStore } from './stores/settingsStore';
 import { useLiveCaptureStore } from './stores/liveCaptureStore';
@@ -43,6 +43,27 @@ afterEach(() => {
 function renderMarkup(booted = false): string {
   const mock = createMockSoundBuddy();
   return renderToString(createElement(ElectronContext.Provider, { value: mock.api }, createElement(SettingsPanel, { booted })));
+}
+
+// The five HTML entities React's server renderer escapes in text children —
+// note copy contains apostrophes and no others, but this documents the full
+// set rather than special-casing one.
+const NOTE_ENTITY_DECODE: Record<string, string> = {
+  '&amp;': '&',
+  '&lt;': '<',
+  '&gt;': '>',
+  '&quot;': '"',
+  '&#x27;': "'",
+};
+
+function decodeNoteText(s: string): string {
+  return Object.entries(NOTE_ENTITY_DECODE).reduce((acc, [entity, char]) => acc.split(entity).join(char), s);
+}
+
+function extractNoteText(html: string, noteId: string): string {
+  const match = html.match(new RegExp(`<p[^>]*id="${noteId}"[^>]*>(.*?)</p>`));
+  if (!match) throw new Error(`#${noteId} not rendered — SettingsNote/SETTINGS_HELP_ENTRIES drift`);
+  return decodeNoteText(match[1]);
 }
 
 describe('SettingsPanel markup', () => {
@@ -258,6 +279,17 @@ describe('contextual help strip (#1007)', () => {
     expect(src).toContain('settingsHelpHandlers(control, setActiveHelp)');
     expect(src).toContain('resolveSettingsHelp(activeHelp, section)');
     expect(src).toContain('setActiveHelp(null)');
+  });
+});
+
+describe('help strip and hidden note share source copy (#1182)', () => {
+  it('renders each note element with text exactly equal to its resolved help-strip copy', () => {
+    const html = renderMarkup();
+    for (const entry of SETTINGS_HELP_ENTRIES) {
+      const section = settingsSectionFor(entry.control);
+      const resolved = resolveSettingsHelp(entry.control, section);
+      expect(extractNoteText(html, entry.noteId)).toBe(resolved);
+    }
   });
 });
 
