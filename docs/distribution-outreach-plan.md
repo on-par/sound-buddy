@@ -101,3 +101,9 @@ weekly analytics review against the 200 target.
 
 Outreach continues, with phase mix adjusted at each weekly review, until the
 200-engineer report-card-moment target is met.
+
+Public launch posts in this schedule are held on any #285 live-mode launch
+gate failure, per
+[`worker/docs/live-launch-gate-failure-policy.md`](../worker/docs/live-launch-gate-failure-policy.md)
+— no new public post goes out until the failure is resolved and its P0 issue
+is filed.

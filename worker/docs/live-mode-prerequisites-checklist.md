@@ -86,9 +86,11 @@ outcome during a real run.
 ## Blocking rule + sign-off
 
 The #285 purchase gate begins **only** when all three rows above read
-`CONFIRMED`. Any `MISSING` row **blocks** the gate — do not start the manual
-purchase. Instead, flag the missing item as a follow-up in its originating
-story:
+`CONFIRMED`. Any `MISSING` row is a gate failure governed by
+[`live-launch-gate-failure-policy.md`](./live-launch-gate-failure-policy.md):
+it **blocks** the gate — do not start the manual purchase — and holds all
+public launch posts and requires a P0 issue to be filed before any retry.
+Also flag the missing item as a follow-up in its originating story:
 
 - Live-mode Stripe missing → `worker/docs/live-provisioning.md` §10 (#564).
 - Signing-key custody missing → `worker/docs/live-provisioning.md` §5/§6

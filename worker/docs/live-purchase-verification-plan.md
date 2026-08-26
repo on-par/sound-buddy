@@ -68,9 +68,10 @@ Additional preconditions:
 | 2 | Packaged build unlocks Pro | Manual — key entered into the packaged (non-dev) build | Build activates without error; Pro-only UI visible and usable | PENDING | |
 
 Legend: `PASS` / `FAIL`. Replace `PENDING` with the observed outcome during
-the real run. A `FAIL` is recorded here and its fix tracked as a follow-up in
-its originating story — this runbook is not the place to fix bugs it
-uncovers.
+the real run. A `FAIL` here is a gate failure — record it, then follow
+[`live-launch-gate-failure-policy.md`](./live-launch-gate-failure-policy.md):
+hold all public launch posts and file a P0 issue before any retry. This
+runbook is not the place to fix bugs it uncovers.
 
 ## Recording & sign-off
 
@@ -86,4 +87,5 @@ Out of scope:
 
 Cross-links: [`live-mode-prerequisites-checklist.md`](./live-mode-prerequisites-checklist.md),
 [`live-provisioning.md`](./live-provisioning.md),
-[`sandbox-e2e-test-plan.md`](./sandbox-e2e-test-plan.md).
+[`sandbox-e2e-test-plan.md`](./sandbox-e2e-test-plan.md),
+[`live-launch-gate-failure-policy.md`](./live-launch-gate-failure-policy.md).
