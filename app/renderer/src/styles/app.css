@@ -641,7 +641,7 @@
        (and a real pointer mid-click) sees that as the button never settling.
        Full copy is still reachable via aria-describedby on the control; the
        strip is a visual affordance only (aria-hidden below). */
-    .settings-help-strip { height:62px; margin:4px 0 0; padding-top:10px; border-top:1px solid var(--border-subtle); font:var(--fw-regular) var(--fs-label)/1.4 var(--font-sans); color:var(--text-tertiary); overflow:hidden; display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical; }
+    .settings-help-strip { height:var(--settings-help-strip-h); margin:4px 0 0; padding-top:10px; border-top:1px solid var(--border-subtle); font:var(--fw-regular) var(--fs-label)/1.4 var(--font-sans); color:var(--text-tertiary); overflow:hidden; display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical; }
     .ai-dialog-version { font:var(--fw-regular) var(--fs-micro)/1.4 var(--font-mono); color:var(--text-muted); margin:6px 0 0; text-align:center; }
     /* "Grade your own service" guide dialog (#142, actionable rework #295) */
     .guide-dialog-card { width:min(480px,calc(100vw - 48px)); }
