@@ -134,6 +134,6 @@ this plan is not the place to fix bugs it uncovers.
    output. A failed assertion can print raw values, so treat all failure
    output as sensitive and redact before sharing.
 
-This plan is executed by a human with sandbox access. Per MEMORY, the factory
-needs Patrick's explicit go before anything touching the Stripe launch moves
+This plan is executed by a human with sandbox access. The factory needs
+Patrick's explicit go-ahead before anything touching the Stripe launch moves
 forward.
