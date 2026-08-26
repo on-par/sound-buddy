@@ -56,8 +56,8 @@ const NOTE_ENTITY_DECODE: Record<string, string> = {
   '&#x27;': "'",
 };
 
-function decodeNoteText(s: string): string {
-  return Object.entries(NOTE_ENTITY_DECODE).reduce((acc, [entity, char]) => acc.split(entity).join(char), s);
+function decodeNoteText(text: string): string {
+  return Object.entries(NOTE_ENTITY_DECODE).reduce((acc, [entity, char]) => acc.split(entity).join(char), text);
 }
 
 function extractNoteText(html: string, noteId: string): string {
