@@ -38,9 +38,14 @@ export interface SessionRecord {
   kind: "lifetime";
 }
 
+/** Prefix for a Checkout Session's KV metadata key. Also the exact prefix
+ *  `founding-count.ts` (#1170) counts minted founding licenses by, so the
+ *  written key shape and the counted prefix can never drift. */
+export const SESSION_RECORD_PREFIX = "sess:";
+
 /** KV key for a Checkout Session's lifetime-key metadata. Retrieved by #112. */
 export const sessionRecordKey = (sessionId: string): string =>
-  `sess:${sessionId}`;
+  `${SESSION_RECORD_PREFIX}${sessionId}`;
 
 /** Injectable seams so tests never hit the live Stripe API. */
 export interface CheckoutCompletedDeps {
