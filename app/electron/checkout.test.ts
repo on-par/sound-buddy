@@ -37,9 +37,11 @@ describe('checkoutUrl', () => {
     );
     expect(() => checkoutUrl('monthly', undefined, {})).toThrow(/live-provisioning\.md/);
     expect(() => checkoutUrl('annual', undefined, {})).toThrow(/SOUND_BUDDY_CHECKOUT_ANNUAL_URL/);
+    expect(() => checkoutUrl('annual', undefined, {})).toThrow(/live-provisioning\.md/);
     expect(() => checkoutUrl('founding', undefined, {})).toThrow(
       /SOUND_BUDDY_CHECKOUT_FOUNDING_URL/,
     );
+    expect(() => checkoutUrl('founding', undefined, {})).toThrow(/live-provisioning\.md/);
   });
 
   it('treats a blank/whitespace-only env value as missing', () => {
