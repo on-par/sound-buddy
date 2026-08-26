@@ -37,18 +37,36 @@ function refreshDisabled(): boolean {
 }
 
 /**
- * Pure predicate: should an automatic (non-forced) refresh fire right now?
- * Only a `subscription` key already in grace, or valid but within the
- * `GRACE_DAYS` window of `expiresAt`, qualifies — never `lifetime`, any
- * trial status, `expired`, `invalid`, `none`, or a missing/unparseable expiry.
+ * Resolve the pre-expiry refresh window in days. Defaults to GRACE_DAYS; an operator can
+ * widen or narrow it post-launch with SOUND_BUDDY_LICENSE_REFRESH_WINDOW_DAYS. Honored
+ * unconditionally (even packaged), like the kill switch, so it works as a support knob;
+ * a missing/non-numeric/non-positive/non-finite value falls back to GRACE_DAYS.
  */
-export function shouldAutoRefresh(state: LicenseState, now: Date): boolean {
+function refreshWindowDays(): number {
+  const raw = process.env.SOUND_BUDDY_LICENSE_REFRESH_WINDOW_DAYS?.trim();
+  if (!raw) return GRACE_DAYS;
+  const n = Number(raw);
+  return Number.isFinite(n) && n > 0 ? n : GRACE_DAYS;
+}
+
+/**
+ * Pure predicate: should an automatic (non-forced) refresh fire right now?
+ * Only a `subscription` key already in grace, or valid but within
+ * `windowDays` of `expiresAt` (defaults to `GRACE_DAYS`), qualifies — never
+ * `lifetime`, any trial status, `expired`, `invalid`, `none`, or a
+ * missing/unparseable expiry.
+ */
+export function shouldAutoRefresh(
+  state: LicenseState,
+  now: Date,
+  windowDays: number = GRACE_DAYS,
+): boolean {
   if (state.kind !== 'subscription') return false;
   if (state.status === 'grace') return true;
   if (state.status !== 'valid') return false;
   const expiresMs = Date.parse(state.expiresAt ?? '');
   if (Number.isNaN(expiresMs)) return false;
-  return expiresMs - now.getTime() <= GRACE_DAYS * DAY_MS;
+  return expiresMs - now.getTime() <= windowDays * DAY_MS;
 }
 
 // Dedupes concurrent calls (the main-process launch trigger and a renderer's
@@ -77,7 +95,7 @@ export async function maybeRefreshLicense(
   if (!key) return current;
 
   if (!opts.force) {
-    if (!shouldAutoRefresh(current, now)) return current;
+    if (!shouldAutoRefresh(current, now, refreshWindowDays())) return current;
   } else if (current.kind !== 'subscription') {
     return current;
   }

@@ -34,6 +34,7 @@ beforeEach(() => {
 afterEach(() => {
   delete process.env.SOUND_BUDDY_LICENSE_PUBKEY;
   delete process.env.SOUND_BUDDY_DISABLE_LICENSE_REFRESH;
+  delete process.env.SOUND_BUDDY_LICENSE_REFRESH_WINDOW_DAYS;
   vi.unstubAllGlobals();
   fs.rmSync(userDataDir, { recursive: true, force: true });
 });
@@ -81,6 +82,13 @@ describe('shouldAutoRefresh', () => {
         NOW,
       ),
     ).toBe(false);
+  });
+
+  it('honors an explicit windowDays override, wider than the GRACE_DAYS default', () => {
+    const expiresAt = new Date(NOW.getTime() + 20 * DAY_MS).toISOString();
+    const state = { tier: 'pro' as const, status: 'valid' as const, kind: 'subscription' as const, expiresAt };
+    expect(shouldAutoRefresh(state, NOW)).toBe(false);
+    expect(shouldAutoRefresh(state, NOW, 25)).toBe(true);
   });
 });
 
@@ -333,5 +341,56 @@ describe('maybeRefreshLicense', () => {
     vi.stubGlobal('fetch', fetchMock2);
     await maybeRefreshLicense({ force: true }, NOW);
     expect(fetchMock2).toHaveBeenCalledTimes(1);
+  });
+
+  it('honors a SOUND_BUDDY_LICENSE_REFRESH_WINDOW_DAYS override that widens the window', async () => {
+    process.env.SOUND_BUDDY_LICENSE_REFRESH_WINDOW_DAYS = String(GRACE_DAYS + 5);
+    const expiresAt = new Date(NOW.getTime() + (GRACE_DAYS + 3) * DAY_MS).toISOString();
+    const currentKey = makeKey({ kind: 'subscription', expiresAt });
+    activateLicense(currentKey, NOW);
+
+    const newerExpiresAt = new Date(NOW.getTime() + 60 * DAY_MS).toISOString();
+    const newerKey = makeKey({ kind: 'subscription', expiresAt: newerExpiresAt });
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ key: newerKey }),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const state = await maybeRefreshLicense({}, NOW);
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(state.expiresAt).toBe(newerExpiresAt);
+  });
+
+  it('makes no fetch call for the same just-outside-GRACE_DAYS expiry without the override', async () => {
+    const expiresAt = new Date(NOW.getTime() + (GRACE_DAYS + 3) * DAY_MS).toISOString();
+    activateLicense(makeKey({ kind: 'subscription', expiresAt }), NOW);
+
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+
+    const state = await maybeRefreshLicense({}, NOW);
+
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(state.expiresAt).toBe(expiresAt);
+  });
+
+  it('ignores a non-numeric or zero SOUND_BUDDY_LICENSE_REFRESH_WINDOW_DAYS and falls back to GRACE_DAYS', async () => {
+    const expiresAt = new Date(NOW.getTime() + (GRACE_DAYS + 3) * DAY_MS).toISOString();
+
+    for (const invalid of ['not-a-number', '0']) {
+      process.env.SOUND_BUDDY_LICENSE_REFRESH_WINDOW_DAYS = invalid;
+      activateLicense(makeKey({ kind: 'subscription', expiresAt }), NOW);
+
+      const fetchMock = vi.fn();
+      vi.stubGlobal('fetch', fetchMock);
+
+      const state = await maybeRefreshLicense({}, NOW);
+
+      expect(fetchMock).not.toHaveBeenCalled();
+      expect(state.expiresAt).toBe(expiresAt);
+    }
   });
 });
