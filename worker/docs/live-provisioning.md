@@ -65,10 +65,11 @@ For each Price, **More** → **Create payment link**; keep the auto-generated
 
 All three set **after_completion → redirect** to
 `https://soundbuddy.online/activate?session_id={CHECKOUT_SESSION_ID}` — the
-Worker's `/activate` page polls `/api/license?session_id=` with that id (the
-placeholder `https://buy.stripe.com/sound-buddy-...` URLs currently shipped in
-`app/electron/checkout.ts` and `site/src/lib/founding-urgency.ts` are inert until
-these real links exist).
+Worker's `/activate` page polls `/api/license?session_id=` with that id.
+`app/electron/checkout.ts` has no baked-in URL for any plan — it resolves each
+SKU solely from its `SOUND_BUDDY_CHECKOUT_*_URL` build env (section 8) and
+throws an actionable error if that env var is unset, so the app's upgrade CTAs
+are inert (loudly, not silently) until these real links are wired in.
 
 Copy all three `buy.stripe.com/...` URLs. They are not secrets, but keep them out
 of the repo — they are wired via release-build env (section 9), never committed.
@@ -193,17 +194,20 @@ Rules (normative):
 ## 8. Wire the live URLs (site + app build env)
 
 The real Payment-Link URLs from section 2 are wired via **build env**, not
-committed defaults — do **not** bake them into `app/electron/checkout.ts`
-`DEFAULT_URLS` or `site/src/lib/founding-urgency.ts` `PLACEHOLDER_FOUNDING_URL`.
-Replacing the placeholder would regress the site's `isCheckoutLive()` gate (#560),
-which keys off `override !== placeholder`.
+committed defaults — do **not** bake them into `app/electron/checkout.ts` or
+`site/src/lib/founding-urgency.ts` `PLACEHOLDER_FOUNDING_URL`.
+Replacing the site's placeholder would regress the site's `isCheckoutLive()`
+gate (#560), which keys off `override !== placeholder`; `checkout.ts` has no
+placeholder to replace — it throws when its env var is unset.
 
 - **Site build env:** `PUBLIC_FOUNDING_CHECKOUT_URL` = the Founding Payment Link
   from section 2 (+ `PUBLIC_SITE_MODE=live` is already set in CI). This kills the
   HTTP-403 founding link live.
 - **App release build env:** `SOUND_BUDDY_CHECKOUT_MONTHLY_URL` /
-  `SOUND_BUDDY_CHECKOUT_ANNUAL_URL` = the two Pro Payment Links from section 2
-  (the app resolves them via `app/electron/checkout.ts` env overrides first).
+  `SOUND_BUDDY_CHECKOUT_ANNUAL_URL` / `SOUND_BUDDY_CHECKOUT_FOUNDING_URL` = the
+  three Payment Links from section 2 (the app resolves each SKU solely from its
+  own env var via `app/electron/checkout.ts`; a missing/blank var throws
+  instead of opening a broken link).
 
 ## 9. Verify in test mode
 
@@ -287,7 +291,7 @@ to do it.
 - [ ] Routes confirmed for `/api/stripe/*`, `/api/license`, `/api/license/refresh`, `/activate`; `npm run deploy` (§6)
 - [ ] Resend live key; `hello@` and `support@soundbuddy.online` domains verified (§7)
 - [ ] `PUBLIC_FOUNDING_CHECKOUT_URL` = live Founding link; `PUBLIC_SITE_MODE=live` (§8)
-- [ ] `SOUND_BUDDY_CHECKOUT_MONTHLY_URL` / `SOUND_BUDDY_CHECKOUT_ANNUAL_URL` = live Pro links in the app release build (§8)
+- [ ] `SOUND_BUDDY_CHECKOUT_MONTHLY_URL` / `SOUND_BUDDY_CHECKOUT_ANNUAL_URL` / `SOUND_BUDDY_CHECKOUT_FOUNDING_URL` = live Payment Links in the app release build (§8)
 - [ ] URLs stay env-driven — no Payment-Link URLs baked into `checkout.ts` or `founding-urgency.ts` (§8)
 - [ ] `.env.local` + `worker/.dev.vars` carry the production key + `sk_test` secrets; sandbox e2e passes (§9)
 - [ ] App purchase-path gate passes against a real test-minted key (§9)
