@@ -297,12 +297,21 @@ app.whenReady().then(() => {
 
   // Upgrade CTA (#58): open the hosted Stripe checkout for a plan in the user's
   // browser. Sound Buddy never handles card data; the real Payment Links are
-  // provisioned in #56 (checkout.ts holds the placeholder/override mapping).
-  // The customer email known to the local license store is passed along so a
+  // provisioned per-environment via build env (checkout.ts resolves them from
+  // SOUND_BUDDY_CHECKOUT_*_URL — see worker/docs/live-provisioning.md §8). The
+  // customer email known to the local license store is passed along so a
   // lapsed subscriber re-upgrading lands in Stripe with their address pre-filled
-  // (#56) — a user with no stored email gets the plain link.
+  // (#56) — a user with no stored email gets the plain link. A misconfigured
+  // (missing/blank) URL for the selected plan makes checkoutUrl throw (#1164);
+  // that's surfaced via a native error dialog instead of opening a broken link.
   ipcMain.handle('open-checkout', (_event, plan?: string) => {
-    void shell.openExternal(checkoutUrl(plan, getLicenseState().email));
+    try {
+      void shell.openExternal(checkoutUrl(plan, getLicenseState().email));
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      logWarn(`open-checkout: ${message}`);
+      dialog.showErrorBox('Checkout unavailable', message);
+    }
   });
   ipcMain.handle('open-feedback', () => openFeedback());
   ipcMain.handle('submit-feedback', async (_event, input) => {
