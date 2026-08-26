@@ -264,3 +264,39 @@ describe('Settings toggle chrome (#1010)', () => {
     expect(appCss).toContain('.ai-enable-row input { accent-color:var(--gold-500); }');
   });
 });
+
+describe('Settings chrome token audit (#1183)', () => {
+  it('introduces no new hardcoded color, height, radius or font-size literal in the #1008 chrome block', () => {
+    const start = appCss.indexOf('/* Settings-only chrome (#1008');
+    const end = appCss.indexOf('/* Settings row grid (#1009');
+    expect(start).toBeGreaterThan(-1);
+    expect(end).toBeGreaterThan(start);
+    // Strip comments before scanning — the block's own header comment
+    // references issue numbers like "#1008"/"#999", which are not CSS color
+    // values but would otherwise false-positive the hex check.
+    const block = appCss.slice(start, end).replace(/\/\*[\s\S]*?\*\//g, '');
+    expect(block).not.toMatch(/#[0-9a-fA-F]{3,8}\b/);
+    expect(block).not.toMatch(/rgba?\(/);
+    expect(block).not.toMatch(/height:\d+px/);
+    expect(block).not.toMatch(/border-radius:\d+px/);
+    expect(block).not.toMatch(/font-size:\d+px/);
+  });
+
+  it('tokenizes the footer help-strip height instead of a hardcoded literal', () => {
+    expect(tokensCss).toContain('--settings-help-strip-h:62px');
+    const match = appCss.match(/\.settings-help-strip\s*\{[^}]*\}/);
+    expect(match).not.toBeNull();
+    const rule = match ? match[0] : '';
+    expect(rule).toContain('height:var(--settings-help-strip-h)');
+    expect(rule).not.toMatch(/height:\d+px/);
+    expect(rule).not.toMatch(/#[0-9a-fA-F]{3,8}\b/);
+    expect(rule).not.toMatch(/rgba?\(/);
+  });
+
+  it('keeps the global reduced-motion guard that neutralizes the chrome transitions', () => {
+    expect(appCss).toContain('@media (prefers-reduced-motion:reduce)');
+    expect(appCss).toMatch(
+      /@media \(prefers-reduced-motion:reduce\)\s*\{[\s\S]*?transition-duration:\.01ms!important;[\s\S]*?\}/,
+    );
+  });
+});
