@@ -13,6 +13,7 @@ import { handleStripeWebhook } from "./webhook";
 import { handleGetLicense } from "./handlers/license";
 import { handleRefreshLicense } from "./handlers/license-refresh";
 import { handleActivate } from "./handlers/activate";
+import { handleFoundingCount } from "./handlers/founding-count";
 import { handleIngestEvent } from "./handlers/ingest";
 import { handleWaitlistSignup } from "./handlers/waitlist";
 import { handleInvite, handleListInvitees } from "./handlers/waitlist-invite";
@@ -119,6 +120,7 @@ const health: RouteHandler = () => json({ status: "ok", service: "sound-buddy-ap
 // handlers without touching the dispatcher below.
 const routes: Route[] = [
   { method: "GET", path: "/api/stripe/health", handler: health },
+  { method: "GET", path: "/api/stripe/founding-count", handler: handleFoundingCount },
   { method: "POST", path: "/api/stripe/webhook", handler: handleStripeWebhook },
   { method: "GET", path: "/api/license", handler: handleGetLicense },
   { method: "POST", path: "/api/license/refresh", handler: handleRefreshLicense },

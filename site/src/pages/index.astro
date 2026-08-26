@@ -355,6 +355,7 @@ const tiers = [
           <p class="fc-copy">Limited to {FOUNDING_CAP} founding licenses — one-time $199, then Founding closes.</p>
         </div>
       )}
+      <p class="founding-remaining" data-founding-remaining hidden></p>
       <a class="guarantee" href={REFUND_PATH}>
         <span class="guarantee-icon" aria-hidden="true">✓</span>
         <span class="guarantee-copy">{GUARANTEE_BADGE}</span>
@@ -526,6 +527,29 @@ const tiers = [
   }
 </script>
 
+<script>
+  import {
+    FOUNDING_COUNT_ENDPOINT,
+    parseFoundingCount,
+    foundingRemainingLabel,
+  } from '../lib/founding-count';
+
+  const remainingEl = document.querySelector<HTMLElement>('[data-founding-remaining]');
+  if (remainingEl) {
+    fetch(FOUNDING_COUNT_ENDPOINT)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((body) => {
+        const count = parseFoundingCount(body);
+        if (!count) return; // leave hidden on a bad/failed response — no empty claim
+        remainingEl.textContent = foundingRemainingLabel(count);
+        remainingEl.hidden = false;
+      })
+      .catch(() => {
+        /* network error — leave the element hidden */
+      });
+  }
+</script>
+
 <style>
   /* ── Header ── */
   .site-header { position: sticky; top: 0; z-index: 10; background: color-mix(in srgb, var(--bg-app) 88%, transparent); backdrop-filter: blur(12px); border-bottom: 1px solid var(--border-subtle); }
@@ -625,6 +649,7 @@ const tiers = [
     margin: 18px auto 0; padding: 10px 16px; max-width: max-content;
     background: var(--info-tint); border: 1px solid var(--info-border); border-radius: var(--radius-pill); }
   .fc-copy { font: var(--fw-medium) var(--fs-body-sm)/var(--lh-snug) var(--font-sans); color: var(--info-text); }
+  .founding-remaining { margin: 10px auto 0; text-align: center; font: var(--fw-medium) var(--fs-body-sm)/var(--lh-snug) var(--font-sans); color: var(--text-tertiary); }
   .fc-copy strong { font-weight: var(--fw-semibold); font-variant-numeric: tabular-nums; }
   .fc-pulse { width: 8px; height: 8px; border-radius: 50%; background: var(--info-500);
     flex-shrink: 0; animation: fc-pulse 2s var(--ease-out) infinite; }
