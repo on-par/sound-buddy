@@ -41,7 +41,7 @@ vi.mock('electron', () => {
     },
     BrowserWindow,
     Menu: { buildFromTemplate: vi.fn((t) => t), setApplicationMenu: vi.fn() },
-    dialog: { showOpenDialog: vi.fn().mockResolvedValue({ filePaths: [] }) },
+    dialog: { showOpenDialog: vi.fn().mockResolvedValue({ filePaths: [] }), showErrorBox: vi.fn() },
     ipcMain: { handle: vi.fn() },
     shell: { openExternal: vi.fn() },
   };
@@ -90,9 +90,9 @@ vi.mock('./license', () => ({
 vi.mock('./license-refresh', () => ({ maybeRefreshLicense: vi.fn().mockResolvedValue(undefined) }));
 vi.mock('./weekly-reminder', () => ({ scheduleWeeklyReminder: vi.fn() }));
 
-import { app, BrowserWindow, Menu, ipcMain, shell } from 'electron';
+import { app, BrowserWindow, Menu, ipcMain, shell, dialog } from 'electron';
 import { registerIpcHandlers } from './ipc';
-import { initLogging, attachWindowLogging, setCrashSink } from './logger';
+import { initLogging, attachWindowLogging, setCrashSink, logWarn } from './logger';
 import { captureMainError, flushPendingCrashReport, handleRendererErrorReport, recordAppEvent } from './crash-reporting';
 import { recordTelemetryEvent } from './telemetry';
 import { openReleasePage } from './updater';
@@ -409,6 +409,19 @@ describe('lifecycle (whenReady callback)', () => {
     } finally {
       vi.mocked(getLicenseState).mockReturnValue({ email: 'pro@test.local' });
     }
+  });
+
+  it('open-checkout handler shows an actionable error dialog instead of opening a link when checkoutUrl throws', () => {
+    vi.mocked(checkoutUrl).mockImplementationOnce(() => {
+      throw new Error('boom-config');
+    });
+    const openExternalCallsBefore = (shell.openExternal as ReturnType<typeof vi.fn>).mock.calls.length;
+    const calls = (ipcMain.handle as ReturnType<typeof vi.fn>).mock.calls;
+    const handler = calls.find((c) => c[0] === 'open-checkout')?.[1];
+    handler(undefined, 'monthly');
+    expect(shell.openExternal).toHaveBeenCalledTimes(openExternalCallsBefore);
+    expect(logWarn).toHaveBeenCalledWith(expect.stringContaining('boom-config'));
+    expect(dialog.showErrorBox).toHaveBeenCalledWith('Checkout unavailable', 'boom-config');
   });
 
   it('reveal-diagnostics handler calls revealDiagnosticLog', () => {
