@@ -53,11 +53,24 @@ notarization with `--apple-id`/`--team-id`/`--password` instead of
 randomly-named keychain** at the start of the job, then deletes it at the end
 (even on failure). The login keychain is never touched.
 
-electron-builder 24's `.app` notarization never reads `APPLE_TEAM_ID` from the
-environment when `mac.notarize` is boolean, so the workflow passes the team id
-explicitly via `-c.mac.notarize.teamId="$APPLE_TEAM_ID"`; the bare
-`-c.mac.notarize=true` form is only valid on the local keychain-profile route
-used by `scripts/release.sh`, and `release-workflow.ts` audits for this (#646).
+Under electron-builder 26 `mac.notarize` is a plain **boolean** — the 24-era
+object form that carried a `teamId` is gone (#1225). Both routes therefore pass
+the same bare `-c.mac.notarize=true`, and the credentials come from the
+environment, first match wins:
+
+1. `APPLE_ID` + `APPLE_APP_SPECIFIC_PASSWORD` + `APPLE_TEAM_ID` — the CI route.
+   All three are required together; builder throws if one is missing.
+2. `APPLE_API_KEY` + `APPLE_API_KEY_ID` + `APPLE_API_ISSUER` — App Store Connect
+   API key. Unused here.
+3. `APPLE_KEYCHAIN_PROFILE` (plus an optional `APPLE_KEYCHAIN`) — the local
+   route `scripts/release.sh` uses.
+
+Because the Apple-ID route is checked first, do **not** leave a stray `APPLE_ID`
+set in the shell when running the local keychain-profile route: builder would
+take route 1 and fail on the missing password instead of falling through to the
+notarytool profile. `release-workflow.ts` audits the workflow for the boolean
+flag, rejects the dead `-c.mac.notarize.teamId=` form, and checks that
+`APPLE_TEAM_ID` is still exported to the job (#1225, superseding #646).
 
 Set these five repository secrets under **Settings → Secrets and variables →
 Actions**:
@@ -123,9 +136,11 @@ Given both env vars, `scripts/release.sh`:
 
 ## The signed, notarized DMG (#622)
 
-electron-builder 24 notarizes and staples only the `.app` — its
+electron-builder notarizes and staples only the `.app` — its
 `notarizeIfProvided()` call runs inside the sign phase, before any target
-(zip, dmg) is built, and is passed the `.app` path only. The DMG built
+(zip, dmg) is built, and is passed the `.app` path only. (Unchanged in
+electron-builder 26: `packMacTargets` awaits `doPack` — which runs `afterPack`,
+signing and notarization — before `packageInDistributableFormat`.) The DMG built
 afterwards therefore contains a stapled app but carries no notarization
 ticket of its own, so `xcrun stapler validate` against the `.dmg` fails
 unless something submits and staples the DMG separately.

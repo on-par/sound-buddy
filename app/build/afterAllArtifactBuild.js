@@ -1,15 +1,19 @@
 // electron-builder afterAllArtifactBuild hook (#622).
 //
-// electron-builder 24's notarizeIfProvided() is called with the .app path
-// only, inside the sign phase — it notarizes + staples the .app, then builds
-// the mac targets (zip, dmg) from that already-stapled bundle. The dmg
-// therefore CONTAINS a stapled app but carries no ticket of its own, so
-// `xcrun stapler validate` against the .dmg fails until something submits +
-// staples the dmg itself. That "something" is this hook: it runs after every
-// artifact is built, plans the work with the pure, tested
-// planDmgNotarization(), and executes it. All decision logic (whether to
-// notarize, which files, what args) lives in packages/shared — this file is
-// deliberately a thin shell, same as afterPack.js.
+// electron-builder's notarizeIfProvided() is called with the .app path only,
+// inside the sign phase — it notarizes + staples the .app, then builds the mac
+// targets (zip, dmg) from that already-stapled bundle. The dmg therefore
+// CONTAINS a stapled app but carries no ticket of its own, so `xcrun stapler
+// validate` against the .dmg fails until something submits + staples the dmg
+// itself. (Re-verified on electron-builder 26, #1225: packMacTargets still
+// awaits doPack — afterPack, sign, notarize — before
+// packageInDistributableFormat.)
+//
+// That "something" is this hook: it runs after every artifact is built, plans
+// the work with the pure, tested planDmgNotarization(), and executes it. All
+// decision logic (whether to notarize, which files, what args) lives in
+// packages/shared — this file is deliberately a thin shell, same as
+// afterPack.js.
 //
 // No try/catch: a notarization/staple failure here must abort the build so
 // release.sh's `|| die` reports it — a release must never ship an unstapled

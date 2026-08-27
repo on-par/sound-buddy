@@ -171,6 +171,14 @@ jobs:
       - name: Install app dependencies
         run: npm ci --prefix app
 
+      # Electron 44 ships no postinstall script (#1225): `npm ci` lays down the
+      # JS shim only. The platform binary comes from install.js, which
+      # index.js would otherwise run lazily the first time Playwright requires
+      # 'electron' — inside a 30 s test timeout. Fetch it as its own step so a
+      # slow download fails here, visibly, instead of as a spec timeout.
+      - name: Install the Electron binary
+        run: node app/node_modules/electron/install.js
+
       - name: Install renderer dependencies
         run: npm ci --prefix app/renderer
 

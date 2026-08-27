@@ -179,23 +179,31 @@ test.describe('playback transport (#180)', () => {
 
     await expect(seekBar).toBeVisible();
 
+    // Read the playhead by polling, never with a single immediate evaluate:
+    // seeking pins the nearest frame, which re-renders the heatmap's
+    // dangerouslySetInnerHTML and drops the inline `left` the transport's
+    // synchronous notify() had just written. The <audio> element's own
+    // timeupdate repaints it a frame or two later, so an immediate read can
+    // legitimately catch the empty string (NaN) in between.
+    const playheadLeft = (): Promise<number> =>
+      playhead.evaluate((el) => parseFloat((el as HTMLElement).style.left));
+
     // Click the seek bar at ~75% width while paused — the playhead jumps
     // there and playback stays idle (the click alone must not start it).
     const box = await seekBar.boundingBox();
     await seekBar.click({ position: { x: Math.round(box!.width * 0.75), y: Math.round(box!.height / 2) } });
     await expect(playBtn).toHaveAttribute('aria-label', 'Play');
-    const leftAfterClick = await playhead.evaluate((el) => parseFloat((el as HTMLElement).style.left));
-    expect(leftAfterClick).toBeGreaterThan(60);
+    await expect.poll(playheadLeft).toBeGreaterThan(60);
+    const leftAfterClick = await playheadLeft();
 
     // ArrowLeft nudges the playhead backward by SEEK_NUDGE_SEC.
     await window.locator('body').press('ArrowLeft');
-    const leftAfterLeft = await playhead.evaluate((el) => parseFloat((el as HTMLElement).style.left));
-    expect(leftAfterLeft).toBeLessThan(leftAfterClick);
+    await expect.poll(playheadLeft).toBeLessThan(leftAfterClick);
+    const leftAfterLeft = await playheadLeft();
 
     // ArrowRight nudges the playhead forward again.
     await window.locator('body').press('ArrowRight');
-    const leftAfterRight = await playhead.evaluate((el) => parseFloat((el as HTMLElement).style.left));
-    expect(leftAfterRight).toBeGreaterThan(leftAfterLeft);
+    await expect.poll(playheadLeft).toBeGreaterThan(leftAfterLeft);
 
     // Reset to the start, then start playback and scrub via the seek bar —
     // the click seeks without leaving the playing state.

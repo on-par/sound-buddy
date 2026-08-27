@@ -33,6 +33,13 @@ test.describe('Session tab playback (#1080)', () => {
   test.beforeEach(async () => {
     await electronApp.evaluate(({ ipcMain }, dir) => {
       (globalThis as Record<string, unknown>).__sessionPlaybackCalls = [];
+      // Reset alongside the call log: this lives on the MAIN-process global,
+      // which survives window.reload() and every test in the file. Left
+      // sticky, the first test's stop-playback click made
+      // 'routing-mid-playback' below fail on its first attempt forever —
+      // masked on CI only because playwright.config.ts retries twice in a
+      // FRESH worker (new Electron app, clean globals).
+      (globalThis as Record<string, unknown>).__sessionPlaybackStopped = false;
       ipcMain.removeHandler('list-output-devices');
       ipcMain.handle('list-output-devices', () => ({ devices: [{ index: 1, name: 'MOTU 8ch', channels: 8 }] }));
       ipcMain.removeHandler('open-dir-dialog');
