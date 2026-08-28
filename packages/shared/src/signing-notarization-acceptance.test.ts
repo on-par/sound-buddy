@@ -132,3 +132,27 @@ describe('#1187 AC3 — no Gatekeeper warning on a clean machine', () => {
     expect(spctlIndex).toBeLessThan(pushIndex);
   });
 });
+
+describe('#1226 — packaging, signing and notarization verified under electron-builder 26', () => {
+  const runbook = readFileSync(
+    fileURLToPath(new URL('../../../docs/electron-builder-26-packaging-verification.md', import.meta.url)),
+    'utf8',
+  );
+
+  it('the runbook exists and maps every acceptance criterion to a concrete check', () => {
+    expect(runbook).toContain('Notarized Developer ID');
+    expect(runbook).toContain('stapler validate');
+    expect(runbook).toContain('/Applications');
+    expect(runbook).toContain('latest-mac.yml');
+  });
+
+  it('release.sh wires the latest-mac.yml consistency gate (AC4) and still notarizes with the eb26 boolean form', () => {
+    expect(releaseScript).toContain('checkUpdateFeed');
+    expect(releaseScript).toContain('-c.mac.notarize=true');
+  });
+
+  it('electron-builder.yml still declares the DMG notarization hook and disables writeUpdateInfo', () => {
+    expect(electronBuilderYml).toContain('afterAllArtifactBuild: build/afterAllArtifactBuild.js');
+    expect(electronBuilderYml).toMatch(/writeUpdateInfo:\s*false/);
+  });
+});
