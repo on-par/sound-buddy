@@ -225,14 +225,19 @@ export default function LiveEqPane(): JSX.Element {
     return { liveCapture: useLiveCaptureStore.getState(), soundcheck: useSoundcheckStore.getState() };
   }
 
+  // Bound to onInput (not onChange) for both the text field and the selects:
+  // these selects are raw dangerouslySetInnerHTML markup, and React's select
+  // onChange listens for the native 'change' event, which — unlike 'input' —
+  // does not reliably reach a React-delegated handler for a select outside
+  // React's own controlled-value tracking. 'input' fires for select value
+  // changes too and does propagate correctly (matches onClassificationChange
+  // below, which was already onInput-driven).
   function onInspectorInput(e: FormEvent<HTMLDivElement>): void {
     const target = e.target;
-    if (!(target instanceof HTMLInputElement) || !target.classList.contains('eq-pane-inspector-label')) return;
-    applyEqPaneInspectorChange('label', target.value, inspectorDeps());
-  }
-
-  function onInspectorChange(e: FormEvent<HTMLDivElement>): void {
-    const target = e.target;
+    if (target instanceof HTMLInputElement) {
+      if (target.classList.contains('eq-pane-inspector-label')) applyEqPaneInspectorChange('label', target.value, inspectorDeps());
+      return;
+    }
     if (!(target instanceof HTMLSelectElement)) return;
     if (target.classList.contains('eq-pane-inspector-kind')) applyEqPaneInspectorChange('kind', target.value, inspectorDeps());
     else if (target.classList.contains('eq-pane-inspector-source')) applyEqPaneInspectorChange('source', `${target.value}:${target.dataset.field ?? 'a'}`, inspectorDeps());
@@ -305,7 +310,7 @@ export default function LiveEqPane(): JSX.Element {
 
   return <div>
     <div dangerouslySetInnerHTML={{ __html: html }} />
-    <div onInput={onInspectorInput} onChange={onInspectorChange} onClick={onInspectorClick} dangerouslySetInnerHTML={{ __html: inspectorHtml }} />
+    <div onInput={onInspectorInput} onClick={onInspectorClick} dangerouslySetInnerHTML={{ __html: inspectorHtml }} />
     <div onInput={onClassificationChange} dangerouslySetInnerHTML={{ __html: classificationHtml }} />
     <footer className="eq-pane-footer">Sound Buddy does not write to your console.</footer>
   </div>;

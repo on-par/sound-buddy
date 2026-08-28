@@ -960,7 +960,7 @@
        depends on (ADR-0087). The compact arm/mute/solo controls and inline
        meter stay inside this fixed-height header rather than changing lane
        alignment. */
-    .daw-track-head { display:grid; grid-template-columns:auto auto minmax(0, 1fr) auto; grid-template-areas:'drag def name remove' 'index controls meter meta'; column-gap:6px; row-gap:5px; height:var(--daw-track-row-h); box-sizing:border-box; padding:6px 8px; border-bottom:1px solid var(--border-subtle); }
+    .daw-track-head { display:grid; grid-template-columns:auto auto minmax(0, 1fr) auto; grid-template-areas:'drag name name remove' 'index controls meter meta'; column-gap:6px; row-gap:5px; height:var(--daw-track-row-h); box-sizing:border-box; padding:6px 8px; border-bottom:1px solid var(--border-subtle); }
     .daw-track-head.selected { background:var(--surface-raised); box-shadow:inset 3px 0 0 var(--gold-500); }
     .daw-track-head.group-collapsed { display:none; }
     .daw-track-head-drag { grid-area:drag; align-self:center; }
@@ -970,11 +970,6 @@
     .daw-track-head-name:focus { background:var(--surface-raised); box-shadow:var(--glow-focus); }
     .daw-track-head-name.clip { color:var(--issue-text); }
     .daw-track-head .daw-track-head-name { justify-self:stretch; max-width:100%; position:relative; z-index:2; }
-    .daw-track-head-def { grid-area:def; min-width:0; position:relative; z-index:1; display:flex; align-items:center; gap:4px; align-self:center; }
-    .daw-track-head-def select { flex:0 0 auto; height:var(--control-h-sm); padding:0 6px; border-radius:0; background:var(--surface); color:var(--text-secondary); border:1px solid var(--border-subtle); cursor:pointer; font:var(--fw-medium) var(--fs-micro)/1 var(--font-sans); }
-    .daw-track-head-def select:focus { border-color:var(--gold-500); box-shadow:var(--glow-focus); outline:none; }
-    .daw-track-head-def select:disabled { opacity:0.4; cursor:not-allowed; }
-    .daw-track-head-input { width:46px; font-family:var(--font-mono); text-align:center; }
     .daw-track-head-controls { grid-area:controls; display:flex; align-self:center; gap:4px; }
     .daw-track-head-meta { grid-area:meta; align-self:center; justify-self:end; max-width:78px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font:var(--fw-regular) var(--fs-micro)/1 var(--font-mono); color:var(--text-muted); }
     .daw-track-head-arm, .daw-track-head-mute, .daw-track-head-solo, .daw-track-head-remove { position:relative; z-index:3; border:1px solid var(--border-subtle); border-radius:var(--radius-sm); background:transparent; color:var(--text-muted); cursor:pointer; font:var(--fw-semibold) var(--fs-micro)/1 var(--font-sans); }
