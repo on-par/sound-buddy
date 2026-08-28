@@ -19,7 +19,6 @@
 import { MAX_NOTE_LENGTH } from '../../electron/ipc/api';
 import type { AnalysisPayload } from '@sound-buddy/shared';
 import { evaluateRules, gradeSymptoms, type GradeSymptom } from '@sound-buddy/audio-engine/dist/analyze/rules.js';
-import type { SpectrumCurve } from '@sound-buddy/audio-engine/dist/types.js';
 import {
   escapeHtml, toPct, DIM_DB, HOT_DB, GRID, BAND_META,
   heatmapSVG, miniCurveSVG, fmtDur, classLabel, pickRepresentativeFrames,
@@ -553,10 +552,7 @@ export function reportCardSourceFromAnalysis(analysis: AnalysisPayload): ReportC
     centroid: spectrum.spectralCentroid,
     bands: { ...(spectrum.bands || {}) },
     curve: spectrum.curve || null,
-    // spectrum.curve is AnalysisPayloadCurve ({freqs, db}), structurally
-    // identical to audio-engine's SpectrumCurve (#1246) — a narrow cast, not
-    // an `any`, since evaluateRules only reads those two array fields.
-    symptoms: gradeSymptoms(evaluateRules(spectrum.curve as SpectrumCurve | undefined)),
+    symptoms: gradeSymptoms(evaluateRules(spectrum.curve)),
     contentType: spectrum.contentType || null,
     segments: spectrum.segments || null,
     frames: spectrum.frames,
