@@ -2,6 +2,11 @@
 // No I/O, no process.exit — mirrors the lib/pricing-invariants.mjs seam (#558).
 
 const EXPECTED_FAQ_COUNT = 8;
+// #1234: the shipped build is Developer ID-signed and notarized, so the install answer must
+// say so — and the old Gatekeeper-bypass copy must never come back anywhere on the page.
+// The unsigned wording survives only in packages/shared's buildReleaseNotes({ signed: false }).
+const SIGNED_INSTALL_MARKERS = ['Developer ID', 'notarized'];
+const UNSIGNED_BYPASS_MARKERS = ['Open Anyway', 'Gatekeeper', 'Apple could not verify', 'com.apple.quarantine'];
 const EXPECTED_FAQ_IDS = [
   'faq-privacy',
   'faq-unsigned-install',
@@ -75,25 +80,28 @@ export function checkFaqInvariants(html) {
       );
     }
 
-    const gatekeeperIdx = faqBlock.indexOf('Gatekeeper');
-    const openAnywayIdx = faqBlock.indexOf('Open Anyway');
-    if (gatekeeperIdx === -1 || openAnywayIdx === -1) {
-      problems.push(
-        'The unsigned-install answer (Gatekeeper / Open Anyway) must appear inside the FAQ, not only in the footer walkthrough (#558).',
-      );
+    for (const marker of SIGNED_INSTALL_MARKERS) {
+      if (!faqBlock.includes(marker)) {
+        problems.push(
+          `The install answer must state the app is signed and notarized — "${marker}" is missing from the FAQ block (#1234).`,
+        );
+      }
     }
   }
 
   if (installIdx !== -1) {
-    const gatekeeperBeforeInstall = html.indexOf('Gatekeeper');
-    const openAnywayBeforeInstall = html.indexOf('Open Anyway');
-    if (
-      gatekeeperBeforeInstall === -1 ||
-      openAnywayBeforeInstall === -1 ||
-      !(gatekeeperBeforeInstall < installIdx && openAnywayBeforeInstall < installIdx)
-    ) {
+    const notarizedIdx = html.indexOf('notarized');
+    if (notarizedIdx === -1 || !(notarizedIdx < installIdx)) {
       problems.push(
-        'Gatekeeper / Open Anyway copy must appear before #install-walkthrough — the unsigned-install answer cannot be buried only in the footer (#558).',
+        'The signed-install answer must appear before #install-walkthrough — it cannot be buried only in the footer (#558, #1234).',
+      );
+    }
+  }
+
+  for (const marker of UNSIGNED_BYPASS_MARKERS) {
+    if (html.includes(marker)) {
+      problems.push(
+        `Unsigned-install bypass copy "${marker}" found in the built HTML — the shipped build is signed and notarized (#1234).`,
       );
     }
   }

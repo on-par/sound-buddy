@@ -1,5 +1,14 @@
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { buildReleaseNotes, INSTALL_INTRO, UNSIGNED_STEPS } from './install-instructions.js';
+
+const releaseSh = readFileSync(fileURLToPath(new URL('../../../scripts/release.sh', import.meta.url)), 'utf8');
+const ciManifest = readFileSync(
+  fileURLToPath(new URL('../../../scripts/ci-release-manifest.mjs', import.meta.url)),
+  'utf8',
+);
+const readme = readFileSync(fileURLToPath(new URL('../../../README.md', import.meta.url)), 'utf8');
 
 describe('buildReleaseNotes', () => {
   it('unsigned build includes the macOS 26 Privacy & Security flow without xattr or right-click fallbacks', () => {
@@ -62,5 +71,28 @@ describe('buildReleaseNotes', () => {
       expect(notes).not.toContain("What's new");
       expect(notes).toContain('## Download & install');
     }
+  });
+});
+
+describe('#1234 — the shipped install copy tells the signed truth', () => {
+  it('release.sh previews the notes with signed: true', () => {
+    expect(releaseSh).toMatch(/signed:\s*true/);
+    expect(releaseSh).not.toMatch(/SOUND_BUDDY_SIGNING_IDENTITY/);
+  });
+
+  it('ci-release-manifest.mjs publishes the notes with signed: true', () => {
+    expect(ciManifest).toMatch(/buildReleaseNotes\(\{[^)]*signed:\s*true/);
+  });
+
+  it('the notes those scripts generate carry the one-step signed install', () => {
+    const notes = buildReleaseNotes({ version: '0.8.31', signed: true });
+    expect(notes).toContain('drag **Sound Buddy.app** to **/Applications**, and launch it');
+    expect(notes).not.toContain('Open Anyway');
+  });
+
+  it('README describes launching directly, with no Gatekeeper override', () => {
+    expect(readme).not.toContain('Open Anyway');
+    expect(readme).not.toContain('Privacy & Security');
+    expect(readme).toContain('notarized');
   });
 });

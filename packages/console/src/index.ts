@@ -203,10 +203,27 @@ export type {
 } from './channel-strip.js'
 export {
   parseChannelStrips,
+  parseFaderToken,
   buildChannelFaderPath,
   buildHeadampGainPath,
   buildDcaFaderPath,
 } from './channel-strip.js'
+export type {
+  ConsoleSurfaces,
+  MixStrip,
+  MixStripKind,
+  DcaStrip,
+  FxSlot,
+} from './console-surfaces.js'
+export {
+  parseConsoleSurfaces,
+  buildBusFaderPath,
+  buildMatrixFaderPath,
+  buildMainFaderPath,
+  buildAuxInFaderPath,
+  buildFxReturnFaderPath,
+  buildFxParamPath,
+} from './console-surfaces.js'
 export {
   oscToOnState,
   oscToPan,

@@ -24,8 +24,8 @@ function goodFaqSection() {
     if (id === 'faq-unsigned-install') {
       return faqItem(
         id,
-        'Unsigned?',
-        '<summary><h3>The app isn\'t signed. Is it safe?</h3></summary><div class="faq-answer"><p>Gatekeeper blocks it. Click Open Anyway.</p></div>',
+        'Signed?',
+        '<summary><h3>Is the app signed by Apple?</h3></summary><div class="faq-answer"><p>Signed with an Apple Developer ID and notarized by Apple.</p></div>',
       );
     }
     return faqItem(id, `Question ${id}?`);
@@ -37,7 +37,7 @@ function buildHtml({ faqSection = goodFaqSection(), extraTail = '' } = {}) {
   return `
     <div id="pricing">Pricing block</div>
     ${faqSection}
-    <div id="install-walkthrough">Walkthrough: Gatekeeper, Open Anyway</div>
+    <div id="install-walkthrough">Walkthrough: drag it over and double-click.</div>
     ${extraTail}
   `;
 }
@@ -54,7 +54,7 @@ describe('checkFaqInvariants', () => {
   });
 
   it('flags a FAQ section that renders after #install-walkthrough', () => {
-    const html = `<div id="pricing"></div><div id="install-walkthrough">Gatekeeper Open Anyway</div>${goodFaqSection()}`;
+    const html = `<div id="pricing"></div><div id="install-walkthrough">notarized Developer ID</div>${goodFaqSection()}`;
     const problems = checkFaqInvariants(html);
     expect(problems.some((p) => /before the sysreq/.test(p))).toBe(true);
   });
@@ -86,16 +86,30 @@ describe('checkFaqInvariants', () => {
     expect(problems.some((p) => /real <h3>/.test(p))).toBe(true);
   });
 
-  it('flags Gatekeeper/Open Anyway copy that only appears after #install-walkthrough (buried in the footer)', () => {
+  it('flags signed-install copy that only appears after #install-walkthrough', () => {
     const items = FAQ_IDS.map((id) => faqItem(id, `Question ${id}?`)).join('');
     const faqSection = `<section id="faq" class="section faq"><div class="container">${items}</div></section>`;
     const html = `
       <div id="pricing"></div>
       ${faqSection}
-      <div id="install-walkthrough">Walkthrough: Gatekeeper, Open Anyway</div>
+      <div id="install-walkthrough">Signed with an Apple Developer ID and notarized.</div>
     `;
     const problems = checkFaqInvariants(html);
     expect(problems.some((p) => /buried only in the footer/.test(p))).toBe(true);
+  });
+
+  it('flags a FAQ block missing the signed/notarized wording', () => {
+    const items = FAQ_IDS.map((id) => faqItem(id, `Question ${id}?`)).join('');
+    const faqSection = `<section id="faq" class="section faq"><div class="container">${items}</div></section>`;
+    const problems = checkFaqInvariants(buildHtml({ faqSection }));
+    expect(problems.some((p) => /signed and notarized/.test(p))).toBe(true);
+  });
+
+  it('flags Gatekeeper-bypass copy anywhere in the built HTML (#1234)', () => {
+    for (const marker of ['Open Anyway', 'Gatekeeper', 'Apple could not verify', 'com.apple.quarantine']) {
+      const problems = checkFaqInvariants(buildHtml({ extraTail: `<p>${marker}</p>` }));
+      expect(problems.some((p) => /bypass copy/.test(p))).toBe(true);
+    }
   });
 
   it('flags a "14-day money-back" string anywhere in the built HTML', () => {

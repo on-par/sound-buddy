@@ -66,6 +66,11 @@ export const SETTINGS_HELP_ENTRIES: readonly SettingsHelpEntry[] = [
     noteId: 'console-network-consent-note',
     text: 'Granted only when you explicitly allow it from the prompt shown the first time a live-console feature is turned on — there is no toggle here to turn it on. Revoking takes effect immediately and blocks further console reads until you grant it again.',
   },
+  {
+    control: 'splCalibration',
+    noteId: 'spl-calibration-note',
+    text: 'Optional. Hold a handheld SPL meter where the room is measured, read it while Sound Buddy shows its live room level, and enter the meter’s number. Sound Buddy stores the difference and shows estimated dB SPL from then on. This is an uncalibrated estimate with no A/C weighting — it drifts if you change input gain or move the microphone, so recalibrate when either changes. Reset returns the readout to relative dBFS.',
+  },
 ];
 
 export const SETTINGS_SECTION_HELP: Record<SettingsSection, string> = {

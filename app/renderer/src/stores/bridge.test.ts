@@ -292,6 +292,7 @@ describe('installStoreBridge', () => {
     gradingProfile: 'casual',
     consoleNetworkConsentGranted: false,
     soundcheckBuses: [],
+    splCalibrationOffsetDb: null,
   };
 
   it('seeds idealProfilesStore from settings once they first load, and pushes the resolved profile into spectrumStore', () => {

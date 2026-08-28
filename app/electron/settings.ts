@@ -62,6 +62,12 @@ const MAX_MEASUREMENT_DEVICE_NAME_LEN = 128;
 // matching Date.prototype.getDay().
 const MIN_SERVICE_DAY = 0;
 const MAX_SERVICE_DAY = 6;
+// Valid range for splCalibrationOffsetDb (#846). An offset is
+// meterSPL − appdBFS: a 30-150 dB SPL meter reading minus a dBFS value in
+// [-120, 0] can only land inside these bounds, so anything outside is a
+// corrupt file or a bad patch, not a real calibration.
+const MIN_SPL_OFFSET_DB = 0;
+const MAX_SPL_OFFSET_DB = 300;
 // Cap on a saved soundcheck bus name (#756) — mirrors MAX_GROUP_NAME_LEN's
 // cap/rationale; a bus name is a short display label, not prose.
 export const MAX_BUS_NAME_LEN = 40;
@@ -352,6 +358,20 @@ export const SETTING_SPECS: { [K in keyof AppSettings]: SettingSpec<AppSettings[
     default: [],
     sanitizeFile: (v) => sanitizeSoundcheckBuses(v) ?? [],
     sanitizePatch: (v) => sanitizeSoundcheckBuses(v) ?? undefined,
+  },
+  splCalibrationOffsetDb: {
+    default: null,
+    sanitizeFile: (v) =>
+      typeof v === 'number' && Number.isFinite(v) && v >= MIN_SPL_OFFSET_DB && v <= MAX_SPL_OFFSET_DB
+        ? v
+        : SETTING_SPECS.splCalibrationOffsetDb.default,
+    // null is the explicit "reset to uncalibrated" patch and must survive.
+    sanitizePatch: (v) =>
+      v === null
+        ? null
+        : typeof v === 'number' && Number.isFinite(v) && v >= MIN_SPL_OFFSET_DB && v <= MAX_SPL_OFFSET_DB
+          ? v
+          : undefined,
   },
 };
 

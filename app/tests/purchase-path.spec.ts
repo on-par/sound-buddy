@@ -1,5 +1,5 @@
 import { test, expect, type ElectronApplication, type Page } from '@playwright/test';
-import { _electron as electron } from 'playwright';
+import { launchElectron } from './launch-electron';
 import * as path from 'path';
 import * as fs from 'fs';
 import { NO_TRIAL_ENV, makeLicenseKey, seedProLicense } from './license-fixture';
@@ -52,7 +52,7 @@ let app: ElectronApplication;
 let win: Page;
 
 async function launch(userDataDir: string = USER_DATA): Promise<void> {
-  app = await electron.launch({
+  app = await launchElectron({
     args: [MAIN, `--user-data-dir=${userDataDir}`],
     env: { ...process.env, ...NO_TRIAL_ENV, ...CHECKOUT_ENV },
   });

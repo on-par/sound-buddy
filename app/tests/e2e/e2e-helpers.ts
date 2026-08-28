@@ -1,7 +1,7 @@
-import { _electron as electron } from 'playwright';
 import type { ElectronApplication, Page, Locator } from '@playwright/test';
 import * as path from 'path';
 import { LICENSE_ENV, seedProLicense } from '../license-fixture';
+import { launchElectron } from '../launch-electron';
 
 // Shared fixtures + launch helper for the e2e.spec.ts split (#225 — the
 // original 1693-line file was split by user flow into app/tests/e2e/*.spec.ts).
@@ -12,6 +12,15 @@ import { LICENSE_ENV, seedProLicense } from '../license-fixture';
 // A 48-point log-spaced frequency-response curve (20 Hz–20 kHz), tilted bass-heavy
 // so the acceptance "curve is higher at low frequencies" holds. Mirrors the shape
 // spectrum.py emits so the renderer is exercised the same way as in production.
+//
+// The tilt is capped at 16 dB end-to-end (not steeper) so this fixture stays
+// tonally "clean" under packages/audio-engine's RULE_TABLE (#1246): a steeper
+// tilt pushes the 60–250 Hz band more than 6 dB over the 500 Hz–2 kHz
+// reference band, which crosses the "muddy" rule's minExcessDb and makes
+// every report-card test built on this curve carry an unintended "Tonal
+// symptom: Muddy" deduction. At 16 dB the excess is ~4.5 dB — comfortably
+// under every RULE_TABLE threshold (verified against harsh/edgy/muddy/cymbal)
+// while the curve is still visibly bass-heavy for the bar/overlay tests.
 export const CURVE = (() => {
   const N = 48;
   const freqs: number[] = [];
@@ -19,8 +28,8 @@ export const CURVE = (() => {
   for (let i = 0; i < N; i++) {
     const f = 20 * Math.pow(20000 / 20, i / (N - 1));
     freqs.push(Math.round(f));
-    // ~ -18 dB at 20 Hz sloping down to ~ -48 dB at 20 kHz, with a little ripple.
-    db.push(-18 - 30 * (i / (N - 1)) + Math.sin(i / 2) * 1.5);
+    // ~ -18 dB at 20 Hz sloping down to ~ -34 dB at 20 kHz, with a little ripple.
+    db.push(-18 - 16 * (i / (N - 1)) + Math.sin(i / 2) * 1.5);
   }
   return { freqs, db };
 })();
@@ -233,7 +242,7 @@ export async function launchApp(): Promise<{ electronApp: ElectronApplication; w
   // Live/soundcheck flows are Pro features (#54): seed a license so their UI
   // is unlocked. The dedicated license.spec.ts covers the free tier + gating.
   seedProLicense(userDataDir);
-  const electronApp = await electron.launch({
+  const electronApp = await launchElectron({
     args: [path.join(__dirname, '..', '..', 'dist', 'electron', 'main.js'), `--user-data-dir=${userDataDir}`],
     env: { ...process.env, ...LICENSE_ENV },
   });

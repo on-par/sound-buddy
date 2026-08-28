@@ -38,6 +38,7 @@ function settings(overrides: Partial<AppSettings> = {}): AppSettings {
     weeklyReminderServiceDay: 0, liveEqPaneWidth: 360,
     measurementDeviceName: '', gradingProfile: 'casual', consoleNetworkConsentGranted: false,
     soundcheckBuses: [],
+    splCalibrationOffsetDb: null,
     ...overrides,
   };
 }

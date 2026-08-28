@@ -220,6 +220,16 @@
     body.not-pro #record-button-island { display:none !important; }
     body.live-active #record-button-island { display:none !important; }
 
+    /* #live-island (the Session/DAW workspace) and #live-eq-pane both live
+       outside #tab-live — #live-island inside #spectrum-body (the deliberate
+       #727 exception), #live-eq-pane as a sibling <aside> — so the
+       direct-child gate above cannot reach either (#1245). Without these,
+       switching to Session as a free user sets body.live-active and the
+       force-show rule below renders the entire arrangement view next to the
+       lock card. Same bug class as #record-button-island above. */
+    body.not-pro #live-island,
+    body.not-pro #live-eq-pane { display:none !important; }
+
     /* Free/Pro badge in the header (click to manage the license). */
     #license-badge {
       display:inline-flex; align-items:center; gap:5px; height:22px; padding:0 9px;
@@ -811,7 +821,11 @@
     #live-island { flex:1; min-height:0; flex-direction:column; }
     body.live-active #spectrum-imperative,
     body.live-active #spectrum-island { display:none !important; }
-    body.live-active #live-island { display:flex !important; }
+    /* :not(.not-pro) so this !important never competes with the #1245 Pro
+       gate — the two rules are mutually exclusive rather than resolved by
+       source order (both are specificity (1,1,1) and this one is ~590 lines
+       later, so an unscoped version would silently win). */
+    body.live-active:not(.not-pro) #live-island { display:flex !important; }
     .spectrum-empty { flex:1; min-height:360px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:14px; color:var(--text-muted); text-align:center; }
     .spectrum-empty p { font:var(--fw-regular) var(--fs-body)/1 var(--font-sans); margin:0; }
     .spectrum-empty .spin { width:34px; height:34px; border-radius:50%; border:3px solid var(--surface-raised); border-top-color:var(--gold-500); animation:sbspin 0.8s linear infinite; }
@@ -946,7 +960,7 @@
        depends on (ADR-0087). The compact arm/mute/solo controls and inline
        meter stay inside this fixed-height header rather than changing lane
        alignment. */
-    .daw-track-head { display:grid; grid-template-columns:auto auto minmax(0, 1fr) auto; grid-template-areas:'drag def name remove' 'index controls meter meta'; column-gap:6px; row-gap:5px; height:var(--daw-track-row-h); box-sizing:border-box; padding:6px 8px; border-bottom:1px solid var(--border-subtle); }
+    .daw-track-head { display:grid; grid-template-columns:auto auto minmax(0, 1fr) auto; grid-template-areas:'drag name name remove' 'index controls meter meta'; column-gap:6px; row-gap:5px; height:var(--daw-track-row-h); box-sizing:border-box; padding:6px 8px; border-bottom:1px solid var(--border-subtle); }
     .daw-track-head.selected { background:var(--surface-raised); box-shadow:inset 3px 0 0 var(--gold-500); }
     .daw-track-head.group-collapsed { display:none; }
     .daw-track-head-drag { grid-area:drag; align-self:center; }
@@ -956,11 +970,6 @@
     .daw-track-head-name:focus { background:var(--surface-raised); box-shadow:var(--glow-focus); }
     .daw-track-head-name.clip { color:var(--issue-text); }
     .daw-track-head .daw-track-head-name { justify-self:stretch; max-width:100%; position:relative; z-index:2; }
-    .daw-track-head-def { grid-area:def; min-width:0; position:relative; z-index:1; display:flex; align-items:center; gap:4px; align-self:center; }
-    .daw-track-head-def select { flex:0 0 auto; height:var(--control-h-sm); padding:0 6px; border-radius:0; background:var(--surface); color:var(--text-secondary); border:1px solid var(--border-subtle); cursor:pointer; font:var(--fw-medium) var(--fs-micro)/1 var(--font-sans); }
-    .daw-track-head-def select:focus { border-color:var(--gold-500); box-shadow:var(--glow-focus); outline:none; }
-    .daw-track-head-def select:disabled { opacity:0.4; cursor:not-allowed; }
-    .daw-track-head-input { width:46px; font-family:var(--font-mono); text-align:center; }
     .daw-track-head-controls { grid-area:controls; display:flex; align-self:center; gap:4px; }
     .daw-track-head-meta { grid-area:meta; align-self:center; justify-self:end; max-width:78px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font:var(--fw-regular) var(--fs-micro)/1 var(--font-mono); color:var(--text-muted); }
     .daw-track-head-arm, .daw-track-head-mute, .daw-track-head-solo, .daw-track-head-remove { position:relative; z-index:3; border:1px solid var(--border-subtle); border-radius:var(--radius-sm); background:transparent; color:var(--text-muted); cursor:pointer; font:var(--fw-semibold) var(--fs-micro)/1 var(--font-sans); }

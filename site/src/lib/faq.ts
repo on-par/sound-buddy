@@ -27,12 +27,15 @@ export const FAQ_ENTRIES: FaqEntry[] = [
     ],
     link: { href: '/privacy', label: 'Read the full Privacy Policy →' },
   },
+  // Slug kept stable — `#faq-unsigned-install` is a published deep-link anchor (#558).
+  // The shipped build is Developer ID-signed and notarized as of #1234; the wording,
+  // not the id, is what changed.
   {
     id: 'unsigned-install',
-    question: "The app isn't signed by Apple. Is it safe to install?",
+    question: 'Is the app signed by Apple?',
     answer: [
-      'Sound Buddy is currently distributed unsigned, so macOS Gatekeeper blocks the first launch with "Apple could not verify Sound Buddy." That\'s a notarization gap, not a virus warning — every build ships from our public GitHub releases.',
-      'To open it: unzip, drag Sound Buddy.app to /Applications, then go to System Settings → Privacy & Security, scroll to Security, and click Open Anyway next to the Sound Buddy message. You only do this once.',
+      'Yes. Sound Buddy is signed with an Apple Developer ID and notarized by Apple, so it opens like any other Mac app — unzip it, drag it to /Applications, and double-click. There is no security override to click through and nothing to approve in System Settings.',
+      'The notarization ticket is stapled to the app itself, so macOS can verify it even when your Mac is offline. Every build ships from our public GitHub releases.',
     ],
     link: { href: '#install-walkthrough', label: 'See the step-by-step walkthrough →' },
   },
