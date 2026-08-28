@@ -6,10 +6,20 @@ import { resolveSigningConfig, parseSpctlAssessment, parseStaplerValidation } fr
 // #1187 (decomposed from #63) pins the three acceptance criteria for the
 // Developer ID signing + notarization pipeline that already ships on main
 // (#53/#619-#646). No production code changes — this suite reads the same
-// release-pipeline config release-notarization.test.ts already reads and
-// exercises the same pure decision logic signing.test.ts already covers,
-// but maps each assertion directly to an AC so a future regression fails
-// loudly against the issue, not just against an unrelated unit test.
+// pipeline config release-notarization.test.ts already reads
+// (.github/workflows/release.yml, #1237) and exercises the same pure decision
+// logic signing.test.ts already covers, but maps each assertion directly to
+// an AC so a future regression fails loudly against the issue, not just
+// against an unrelated unit test.
+//
+// #1237: the signing/notarization pipeline assertions read the CI workflow,
+// which is the file that signs — scripts/release.sh loses its build in #1239.
+const releaseWorkflow = readFileSync(
+  fileURLToPath(new URL('../../../.github/workflows/release.yml', import.meta.url)),
+  'utf8',
+);
+// Retained only for the checkUpdateFeed feed-gate assertion (AC4) — feed
+// verification is slice 2 (#1238) and has not been ported to release.yml yet.
 const releaseScript = readFileSync(fileURLToPath(new URL('../../../scripts/release.sh', import.meta.url)), 'utf8');
 const electronBuilderYml = readFileSync(
   fileURLToPath(new URL('../../../app/electron-builder.yml', import.meta.url)),
@@ -44,8 +54,8 @@ describe('#1187 AC1 — signed build produced (codesign --verify reports no erro
     ).toThrow(/docs\/signing-and-notarization\.md/);
   });
 
-  it('release.sh verifies the signature with codesign --verify and dies on failure', () => {
-    expect(releaseScript).toContain('codesign --verify --deep --strict');
+  it('release.yml verifies the signature with codesign --verify and fails the job', () => {
+    expect(releaseWorkflow).toContain('codesign --verify --deep --strict');
   });
 
   it('electron-builder.yml enables hardened runtime and wires the entitlements file', () => {
@@ -54,8 +64,8 @@ describe('#1187 AC1 — signed build produced (codesign --verify reports no erro
     expect(electronBuilderYml).toMatch(/^\s+identity: null$/m);
   });
 
-  it('release.sh overrides the default null identity with -c.mac.identity when signing', () => {
-    expect(releaseScript).toContain('-c.mac.identity=');
+  it('release.yml overrides the default null identity with -c.mac.identity when signing', () => {
+    expect(releaseWorkflow).toContain('-c.mac.identity=');
   });
 
   it('entitlements grant the hardened-runtime keys a notarizable signed build needs', () => {
@@ -94,14 +104,20 @@ describe('#1187 AC2 — notarization succeeds (ticket stapled, spctl accepted)',
     expect(verdict.error).toBeTruthy();
   });
 
-  it('release.sh submits for notarization and validates the stapled ticket before publishing', () => {
-    expect(releaseScript).toContain('-c.mac.notarize=true');
-    expect(releaseScript).toMatch(/APPLE_KEYCHAIN_PROFILE="\$NOTARY_PROFILE"/);
-    const staplerIndex = releaseScript.indexOf('xcrun stapler validate');
-    const releaseCreateIndex = releaseScript.indexOf('gh release create');
+  it('release.yml submits for notarization and validates the stapled ticket before publishing', () => {
+    expect(releaseWorkflow).toContain('-c.mac.notarize=true');
+    // CI has no stored notarytool keychain profile; electron-builder 26 reads
+    // these three from the environment instead (#1225).
+    expect(releaseWorkflow).toMatch(/^\s*APPLE_ID: \$\{\{ secrets\.APPLE_ID \}\}$/m);
+    expect(releaseWorkflow).toMatch(/^\s*APPLE_TEAM_ID: \$\{\{ secrets\.APPLE_TEAM_ID \}\}$/m);
+    expect(releaseWorkflow).toMatch(
+      /^\s*APPLE_APP_SPECIFIC_PASSWORD: \$\{\{ secrets\.APPLE_APP_SPECIFIC_PASSWORD \}\}$/m,
+    );
+    const staplerIndex = releaseWorkflow.indexOf('xcrun stapler validate');
+    const publishIndex = releaseWorkflow.indexOf('uses: softprops/action-gh-release@v2');
     expect(staplerIndex).toBeGreaterThan(-1);
-    expect(releaseCreateIndex).toBeGreaterThan(-1);
-    expect(staplerIndex).toBeLessThan(releaseCreateIndex);
+    expect(publishIndex).toBeGreaterThan(-1);
+    expect(staplerIndex).toBeLessThan(publishIndex);
   });
 
   it('electron-builder.yml keeps notarization off by default and wires the DMG notarization hook', () => {
@@ -119,17 +135,18 @@ describe('#1187 AC3 — no Gatekeeper warning on a clean machine', () => {
     expect(parseStaplerValidation('The validate action failed! Error 65').stapled).toBe(false);
   });
 
-  it('release.sh asserts Gatekeeper acceptance on both the .app and the .dmg', () => {
-    expect(releaseScript).toContain('spctl --assess --type execute');
-    expect(releaseScript).toContain('spctl --assess --type open --context context:primary-signature');
+  it('release.yml asserts Gatekeeper acceptance on both the .app and the .dmg', () => {
+    expect(releaseWorkflow).toContain('spctl --assess --type execute');
+    expect(releaseWorkflow).toContain('spctl --assess --type open --context context:primary-signature');
   });
 
-  it('a rejected build is never pushed or published — spctl runs before git push', () => {
-    const spctlIndex = releaseScript.indexOf('spctl --assess');
-    const pushIndex = releaseScript.indexOf('git -C "$ROOT" push');
+  it('a rejected build is never uploaded or published — spctl runs before both', () => {
+    const spctlIndex = releaseWorkflow.indexOf('spctl --assess');
+    const uploadIndex = releaseWorkflow.indexOf('uses: actions/upload-artifact@v4');
+    const publishIndex = releaseWorkflow.indexOf('uses: softprops/action-gh-release@v2');
     expect(spctlIndex).toBeGreaterThan(-1);
-    expect(pushIndex).toBeGreaterThan(-1);
-    expect(spctlIndex).toBeLessThan(pushIndex);
+    expect(spctlIndex).toBeLessThan(uploadIndex);
+    expect(spctlIndex).toBeLessThan(publishIndex);
   });
 });
 
@@ -146,9 +163,15 @@ describe('#1226 — packaging, signing and notarization verified under electron-
     expect(runbook).toContain('latest-mac.yml');
   });
 
-  it('release.sh wires the latest-mac.yml consistency gate (AC4) and still notarizes with the eb26 boolean form', () => {
+  it('release.sh still wires the latest-mac.yml consistency gate (AC4)', () => {
+    // Feed verification is slice 2 of #1236 (#1238) — it has not been ported
+    // to release.yml yet, and it is not a signing or notarization property,
+    // so #1237 deliberately leaves this one reading the script.
     expect(releaseScript).toContain('checkUpdateFeed');
-    expect(releaseScript).toContain('-c.mac.notarize=true');
+  });
+
+  it('release.yml still notarizes with the eb26 boolean form', () => {
+    expect(releaseWorkflow).toContain('-c.mac.notarize=true');
   });
 
   it('electron-builder.yml still declares the DMG notarization hook and disables writeUpdateInfo', () => {
