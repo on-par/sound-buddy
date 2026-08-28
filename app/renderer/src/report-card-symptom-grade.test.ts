@@ -57,7 +57,6 @@ function buildAnalysis(db: number[]): AnalysisPayload {
       dynamicRange: 10,
       bands: { subBass: -30, bass: -30, lowMid: -30, mid: -30, highMid: -30, presence: -30, brilliance: -30 },
       curve: { freqs: FREQS, db },
-      contentType: null,
       segments: [],
       frames: [],
     },
