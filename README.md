@@ -23,9 +23,9 @@ npx @sound-buddy/cli analyze --scene before.scn --scene after.scn --audio record
 [on-par/sound-buddy-releases](https://github.com/on-par/sound-buddy-releases/releases/latest),
 unzip, and drag **Sound Buddy.app** to `/Applications`. The app is **fully self-contained** — `sox`,
 `ffmpeg`/`ffprobe`, and a Python runtime with the audio libraries are bundled inside, so
-there's no Homebrew or `pip` setup. Apple Silicon (M1+), macOS 26+. First launch is
-blocked as unsigned — open **System Settings → Privacy & Security**, then click
-**Open Anyway** in the Security section. See the
+there's no Homebrew or `pip` setup. Apple Silicon (M1+), macOS 26+. The build is signed with an Apple
+Developer ID and notarized by Apple, so it launches straight from `/Applications` with no
+security override. See the
 [install walkthrough](https://soundbuddy.online/#install-walkthrough) for the full
 steps. It also checks Releases for newer versions and shows a banner when one is
 available (Help ▸ Check for Updates… to check manually); on a signed build, clicking
