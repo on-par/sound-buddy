@@ -91,17 +91,15 @@ source repo stays private. To cut a release, just run:
 ```bash
 scripts/release.sh            # patch bump (0.2.1 -> 0.2.2)
 scripts/release.sh minor      # or: minor / major / an explicit x.y.z
-scripts/release.sh --dry-run  # preflight + gate only, no changes
+scripts/release.sh --dry-run  # preflight + gate only, no tag, no changes
 ```
 
-It bumps the version, runs the gate, builds the self-contained `.app`, tags this repo, and
-publishes the zip to the public repo — using your local `gh` auth, so there's no token to
-store. Needs the build tools on your machine (`brew install sox ffmpeg dylibbundler`).
-
-CI mirror (optional): pushing a `vX.Y.Z` tag also runs the `Release` workflow, which builds
-the same zip and uploads it as a workflow artifact; it additionally publishes to the public
-repo only if a **`RELEASES_TOKEN`** secret (fine-grained PAT, `contents: write` on the
-releases repo) is configured.
+The script bumps the version, runs the gate, and pushes the tag — using your local `gh` auth,
+so there's no token to store locally. `.github/workflows/release.yml` is the only thing that
+builds, signs, notarizes, verifies `latest-mac.yml`, and publishes to the public repo (as a
+draft it promotes last). The script then waits on that run and exits non-zero naming it if it
+fails. `RELEASES_TOKEN` (fine-grained PAT, `contents: write` on the releases repo) plus the
+five `APPLE_*` signing/notarization secrets are required on the CI side, not optional.
 
 ### Release smoke check (before announcing)
 
@@ -116,8 +114,7 @@ It proves the release channel is reachable through all four layers and exits non
 naming whichever layer is broken:
 
 - **`manifest`** — the stable `latest.json` reports this tag's version, artifact, checksum,
-  and release notes. Fix: re-run the `latest.json` upload steps from `scripts/release.sh`'s
-  output.
+  and release notes. Fix: re-run the `Release` workflow for that tag from the Actions tab.
 - **`artifact`** — the release zip is downloadable and its size/sha256 match the manifest.
   Fix: delete the release asset and re-run the release.
 - **`site-route`** — the site's `/download` route 302-redirects to that same artifact. Fix:
