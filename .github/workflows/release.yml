@@ -149,6 +149,13 @@ jobs:
             console.log("spctl: dmg accepted");
           ' "$DMG_SPCTL_OUT"
 
+      # Mirrors scripts/release.sh's Phase A feed gate (#1238). CI is the authoritative
+      # publisher, so nothing may be published until latest-mac.yml provably describes the
+      # artifacts this same build produced — a sha512 or filename mismatch here breaks
+      # auto-update for every installed user.
+      - name: Verify the update feed (latest-mac.yml)
+        run: node scripts/ci-update-feed.mjs
+
       # Always available from the run, even when no publish token is configured.
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
@@ -165,13 +172,19 @@ jobs:
         if: ${{ env.RELEASES_TOKEN != '' }}
         run: node scripts/ci-release-manifest.mjs "$GITHUB_REF_NAME"
 
+      # Created as a draft — nothing user-visible until the "Promote the draft
+      # release" step (the job's last step) flips it public, which only runs
+      # if the update-feed verification above and every step since have
+      # succeeded (#1238).
       - name: Publish to public releases repo
         if: ${{ env.RELEASES_TOKEN != '' }}
+        id: publish
         uses: softprops/action-gh-release@v2
         with:
           repository: on-par/sound-buddy-releases
           token: ${{ secrets.RELEASES_TOKEN }}
           tag_name: ${{ github.ref_name }}
+          draft: true
           # The dmg is what humans download; the zip + latest-mac.yml are
           # electron-updater's feed; latest.json is the site/update manifest.
           # Publishing without the dmg would ship a release nobody can install
@@ -193,3 +206,20 @@ jobs:
             rm -f "$KEYCHAIN_PATH"
           fi
           rm -f "$RUNNER_TEMP"/cert-*.p12
+
+      # The release becomes public only here — after the feed check, the artifact upload and
+      # the draft publish all succeeded. No `if: always()`: the implicit success() gate is
+      # what keeps a failed verification from ever going live (#1238).
+      - name: Promote the draft release
+        if: ${{ env.RELEASES_TOKEN != '' }}
+        env:
+          GH_TOKEN: ${{ secrets.RELEASES_TOKEN }}
+          RELEASE_ID: ${{ steps.publish.outputs.id }}
+        run: |
+          set -euo pipefail
+          if [ -z "$RELEASE_ID" ]; then
+            echo "error: the publish step produced no release id — find the draft at https://github.com/on-par/sound-buddy-releases/releases and promote it with: gh api -X PATCH repos/on-par/sound-buddy-releases/releases/<id> -F draft=false" >&2
+            exit 1
+          fi
+          gh api -X PATCH "repos/on-par/sound-buddy-releases/releases/$RELEASE_ID" -F draft=false --silent
+          echo "promoted release $RELEASE_ID to public"
