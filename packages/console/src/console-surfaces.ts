@@ -144,8 +144,13 @@ const DCA_LEVEL_RE = /^\/dca\/(\d)\s+(ON|OFF)\s+(\S+)\s*$/
 const DCA_CONFIG_RE = /^\/dca\/(\d)\/config\s+"([^"]*)"/
 
 const FX_TYPE_RE = /^\/fx\/(\d)\s+(\S+)\s*$/
-const FX_SOURCE_RE = /^\/fx\/(\d)\/source\s+(.+)$/
-const FX_PAR_RE = /^\/fx\/(\d)\/par\s+(.+)$/
+// \S.* (not .+) after the separating \s+ so the two quantifiers can't both
+// claim the same whitespace — CodeQL flags \s+(.+) as polynomial-redos
+// since ' ' matches both. The rest of the line is always non-empty,
+// non-whitespace-led token data (see console-surfaces.test.ts), so this
+// doesn't change what matches in practice.
+const FX_SOURCE_RE = /^\/fx\/(\d)\/source\s+(\S.*)$/
+const FX_PAR_RE = /^\/fx\/(\d)\/par\s+(\S.*)$/
 
 export function parseConsoleSurfaces(captureText: string): ConsoleSurfaces {
   const surfaces: ConsoleSurfaces = {
