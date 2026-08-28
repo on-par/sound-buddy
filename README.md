@@ -2,7 +2,7 @@
 
 Audio analysis and coaching tool for church sound engineers. Analyze recordings, get report cards, and receive actionable EQ recommendations.
 
-**Your audio never leaves your machine.** Analysis runs fully local on your Mac — no cloud uploads, no accounts, no telemetry.
+**Your audio never leaves your machine.** Analysis runs fully local on your Mac — no cloud uploads, no accounts. The app checks GitHub for updates and refreshes a Pro subscription key; usage counts and crash reports are opt-in and off by default. See the [privacy policy](https://soundbuddy.online/privacy) for the full list.
 
 **Unlimited recordings. Stored on your machine.** No usage caps on any tier — no recording-count, length, or storage limits. Recordings live in a folder you choose (Settings ▸ Storage); point it inside iCloud Drive, Dropbox, or Google Drive if you want your own sync.
 

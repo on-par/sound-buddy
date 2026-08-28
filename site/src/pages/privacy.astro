@@ -4,8 +4,8 @@ import LegalLayout from '../layouts/LegalLayout.astro';
 
 <LegalLayout
   title="Privacy Policy"
-  description="Sound Buddy is local-first. Your audio never leaves your machine. No telemetry from the app, no accounts, no cross-site tracking. Here's exactly what we do and don't collect."
-  updated="July 20, 2026"
+  description="Sound Buddy is local-first. Your audio never leaves your machine. Here's exactly what the app sends — update checks, license refresh, and opt-in diagnostics that are off by default — and what it never sends."
+  updated="August 27, 2026"
 >
   <p>
     Sound Buddy is built local-first, and privacy is the whole point. This policy explains — in plain
@@ -36,13 +36,52 @@ import LegalLayout from '../layouts/LegalLayout.astro';
     provider you picked, under that provider's own terms.
   </p>
 
-  <h2>No telemetry from the app, no accounts</h2>
+  <h2>What the app sends — and what it never does</h2>
+  <p>
+    Sound Buddy is local-first, but it is not offline. Here is every outbound connection the app
+    makes, what it carries, and what turns it on. If you watch it with Little Snitch, this list
+    should match what you see — if it doesn't, tell us and we'll fix the list.
+  </p>
+  <h3>Always on</h3>
   <ul>
-    <li>We don't collect usage analytics or telemetry from the app.</li>
+    <li><strong>Update check.</strong> On launch, and when you pick Help ▸ Check for Updates…,
+      the app asks GitHub whether a newer build exists by reading the public release feed for
+      <a href="https://github.com/on-par/sound-buddy-releases" rel="noopener"
+        >on-par/sound-buddy-releases</a>. It sends no identifiers of any kind — it's the same
+      request your browser would make.</li>
+    <li><strong>License refresh.</strong> If you hold a monthly Pro subscription, the app posts
+      your already-signed license key — and nothing else — to
+      <code>https://soundbuddy.online/api/license/refresh</code> so your key renews without you
+      re-pasting it. It runs at launch, when a Pro feature is evaluated, and when you click
+      Refresh license. Never on a timer, and never if you don't have a subscription key stored.</li>
+  </ul>
+  <h3>Off by default — you turn these on</h3>
+  <p>
+    All three live under Settings ▸ Privacy (feedback is a dialog you open). Each posts to
+    <code>https://soundbuddy.online/api/ingest</code>. Leave them off and the app never contacts
+    that endpoint at all.
+  </p>
+  <ul>
+    <li><strong>Share anonymous usage counts</strong> — off by default. When on, the app records
+      a fixed, published list of seven event names (things like "app opened" and "analysis
+      completed"), stamped to the hour, with a random install identifier that is not derived from
+      you, your machine, or your license. No file names, no audio, no free text.</li>
+    <li><strong>Send crash reports</strong> — off by default. When on, a crash sends the error
+      message, stack trace, app and macOS version, and the recent screen names. Email addresses,
+      license keys, and your file paths are stripped before it leaves your Mac, and stripped
+      again when it arrives.</li>
+    <li><strong>Feedback you send us</strong> — never automatic. It sends only what you type,
+      plus your app and macOS version, and only when you click Send. If you tick "attach
+      diagnostics", a short, redacted tail of the local log goes with it.</li>
+  </ul>
+  <h3>What the app never sends</h3>
+  <ul>
+    <li>None of these ever carries your audio. Recordings, stems, analysis results, and report
+      cards stay on your Mac, always, with every setting on.</li>
     <li>There are no accounts to create and no profiles to track you across the web.</li>
     <li>This website uses Cloudflare Web Analytics, which is cookieless: it sets no cookies,
       stores no device identifiers, and cannot follow you to other sites. It records aggregate
-      page views and referrers only. The Sound Buddy app itself still sends nothing.</li>
+      page views and referrers only — and it runs on the website, not in the app.</li>
   </ul>
 
   <h2>The waitlist</h2>
