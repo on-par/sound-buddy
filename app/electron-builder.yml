@@ -17,11 +17,12 @@ publish:
 # and a relocatable Python with the audio deps, so it runs with no Homebrew /
 # system python. Requires sox, ffmpeg, dylibbundler on the build machine.
 afterPack: build/afterPack.js
-# electron-builder 24 notarizes + staples only the .app (macPackager's
-# notarizeIfProvided() runs inside the sign phase, before any target is
-# built), so the DMG built afterwards contains a stapled app but carries no
-# ticket of its own. This hook submits + staples the DMG separately, once all
-# artifacts are built (see mac.notarize above and dmg: below).
+# electron-builder notarizes + staples only the .app (MacTargetHelper's
+# notarizeIfProvided() runs inside the sign phase, which packMacTargets
+# finishes before it builds any target), so the DMG built afterwards contains
+# a stapled app but carries no ticket of its own. This hook submits + staples
+# the DMG separately, once all artifacts are built (see mac.notarize below and
+# dmg: below). Re-verified against electron-builder 26 (#1225) — same ordering.
 afterAllArtifactBuild: build/afterAllArtifactBuild.js
 # Only ship the compiled app + the built renderer bundle. node_modules is
 # dev-only (electron itself is provided by the builder), so it's excluded
@@ -113,14 +114,21 @@ mac:
   # Notarization + stapling are performed natively by electron-builder (#621):
   # it submits to Apple inside its sign phase, staples the returned ticket to the
   # .app, and only then builds the zip target — so the shipped zip always contains
-  # a stapled app (no post-hoc staple + re-zip dance). Off by default so unsigned
-  # dev/CI builds never touch the notary service; release.sh (local, via
-  # APPLE_KEYCHAIN_PROFILE) turns it on with -c.mac.notarize=true, exactly
-  # mirroring how it overrides `identity` above. .github/workflows/release.yml
-  # (CI, via APPLE_ID/APPLE_TEAM_ID/APPLE_APP_SPECIFIC_PASSWORD — a fresh
-  # runner has no stored notarytool profile) instead passes
-  # -c.mac.notarize.teamId="$APPLE_TEAM_ID", because electron-builder 24 never
-  # reads APPLE_TEAM_ID from the env for password-auth notarization (#646).
+  # a stapled app (no post-hoc staple + re-zip dance).
+  #
+  # In electron-builder 26 this key is a plain BOOLEAN (#1225) — the 24-era
+  # object form carrying a teamId is gone, and `false` is the only value that
+  # turns notarization off. Credentials come exclusively from the environment,
+  # first match wins: APPLE_ID + APPLE_APP_SPECIFIC_PASSWORD + APPLE_TEAM_ID,
+  # then APPLE_API_KEY + APPLE_API_KEY_ID + APPLE_API_ISSUER, then
+  # APPLE_KEYCHAIN_PROFILE (+ optional APPLE_KEYCHAIN).
+  #
+  # Kept explicitly false here so unsigned dev/CI builds never touch the notary
+  # service. Both release paths flip it with the same bare flag, exactly
+  # mirroring how they override `identity` above: scripts/release.sh (local,
+  # via APPLE_KEYCHAIN_PROFILE) and .github/workflows/release.yml (CI, via
+  # APPLE_ID/APPLE_APP_SPECIFIC_PASSWORD/APPLE_TEAM_ID — a fresh runner has no
+  # stored notarytool profile) both pass -c.mac.notarize=true.
   notarize: false
   # Hardened runtime + entitlements are required for notarization (#53). They
   # are inert for unsigned dev/CI builds (identity: null skips the sign step);

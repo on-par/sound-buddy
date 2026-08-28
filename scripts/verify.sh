@@ -30,11 +30,16 @@ if [[ "$FAST" -eq 0 ]]; then
   npm rebuild esbuild --foreground-scripts
   echo "==> npm ci (app)"
   npm ci --prefix app
-  echo "==> npm rebuild approved install-script packages (app)"
-  npm rebuild electron --prefix app --foreground-scripts
-  if [[ -x app/node_modules/electron/dist/Electron.app/Contents/MacOS/Electron ]]; then
-    printf 'Electron.app/Contents/MacOS/Electron' > app/node_modules/electron/path.txt
-  fi
+  # Electron 44 ships no postinstall script (#1225): `npm ci` lays down the JS
+  # shim only, and the platform binary is fetched by
+  # node_modules/electron/install.js — run explicitly here, or lazily by
+  # index.js the first time anything requires('electron'). Fetch it up front so
+  # the Playwright e2e below never pays a ~100 MB download inside a 30 s test
+  # timeout. install.js is a no-op once dist/ matches package.json's version,
+  # and re-downloads by itself if the bundle is missing, so no path.txt repair
+  # is needed any more.
+  echo "==> install the Electron binary (app)"
+  node app/node_modules/electron/install.js
   echo "==> npm ci (app/renderer)"
   npm ci --prefix app/renderer
   echo "==> npm ci (worker)"

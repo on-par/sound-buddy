@@ -3,7 +3,8 @@
 // in app/electron/ci-required-checks.test.ts. Enforces the security
 // properties CI signing depends on: certs land in a temporary keychain that
 // gets deleted even on failure, secrets never reach the log, and the signed +
-// notarized build flags are actually passed.
+// notarized build flags are actually passed (the notarize flag shape tracks
+// electron-builder 26, where mac.notarize is boolean-only — #1225).
 
 export interface ReleaseWorkflowAudit {
   ok: boolean;
@@ -18,6 +19,7 @@ const DELETE_KEYCHAIN_PATTERN = /security delete-keychain\b/;
 const ALWAYS_GUARD_PATTERN = /if:\s*always\(\)/;
 const NOTARIZE_TEAM_ID_FLAG = '-c.mac.notarize.teamId=';
 const BARE_NOTARIZE_FLAG = '-c.mac.notarize=true';
+const TEAM_ID_ENV_PATTERN = /^\s*APPLE_TEAM_ID:\s*\$\{\{\s*secrets\.APPLE_TEAM_ID\s*\}\}\s*$/m;
 const IDENTITY_FLAG_PATTERN = /-c\.mac\.identity=/;
 const APPLE_VAR_PATTERN = /\bAPPLE_(CERT_P12_BASE64|CERT_PASSWORD|ID|TEAM_ID|APP_SPECIFIC_PASSWORD)\b/;
 const ECHO_PRINTF_PATTERN = /\b(echo|printf)\b/;
@@ -66,14 +68,19 @@ export function auditReleaseWorkflow(yml: string): ReleaseWorkflowAudit {
     problems.push('the "security delete-keychain" step is not guarded by "if: always()"');
   }
 
-  if (!yml.includes(NOTARIZE_TEAM_ID_FLAG)) {
+  if (!yml.includes(BARE_NOTARIZE_FLAG)) {
     problems.push(
-      `the build step is missing "${NOTARIZE_TEAM_ID_FLAG}" — electron-builder 24 never reads APPLE_TEAM_ID from the env for the .app notarization, so the team id must be passed via config (#646)`,
+      `the build step is missing "${BARE_NOTARIZE_FLAG}" — without it electron-builder never submits the .app to the notary service (#1225)`,
     );
   }
-  if (yml.includes(BARE_NOTARIZE_FLAG)) {
+  if (yml.includes(NOTARIZE_TEAM_ID_FLAG)) {
     problems.push(
-      `the build step passes bare "${BARE_NOTARIZE_FLAG}" — with Apple-ID/password auth electron-builder 24 drops the teamId and @electron/notarize rejects the submission; use ${NOTARIZE_TEAM_ID_FLAG}"$APPLE_TEAM_ID" instead (#646)`,
+      `the build step passes "${NOTARIZE_TEAM_ID_FLAG}" — electron-builder 26's mac.notarize is a plain boolean and it reads the credentials from APPLE_ID / APPLE_APP_SPECIFIC_PASSWORD / APPLE_TEAM_ID in the env instead, so an object here silently contributes nothing; use "${BARE_NOTARIZE_FLAG}" (#1225)`,
+    );
+  }
+  if (!TEAM_ID_ENV_PATTERN.test(yml)) {
+    problems.push(
+      'does not export APPLE_TEAM_ID from secrets — electron-builder 26 reads the notarization team id from the environment, and the submission is rejected without it (#1225)',
     );
   }
   if (!IDENTITY_FLAG_PATTERN.test(yml)) {
