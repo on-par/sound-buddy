@@ -32,7 +32,8 @@ const RUN_BLOCK_PATTERN = /run:\s*\|[+-]?\n([\s\S]*)/;
 const PUBLISH_ACTION_PATTERN = /uses:\s*softprops\/action-gh-release/;
 const DRAFT_TRUE_PATTERN = /^\s*draft:\s*true\s*$/m;
 const FEED_VERIFY_PATTERN = /scripts\/ci-update-feed\.mjs|checkUpdateFeed/;
-const PROMOTE_PATTERN = /gh api\s+-X\s+PATCH[\s\S]*?-F\s+draft=false/;
+const PROMOTE_INVOCATION_PATTERN = /gh api\s+-X\s+PATCH\b/;
+const PROMOTE_DRAFT_FALSE_FLAG = '-F draft=false';
 
 /** Splits a workflow's `steps:` list (6-space-indented `- ` items) into per-step text chunks. */
 function splitSteps(yml: string): string[] {
@@ -134,7 +135,9 @@ export function auditReleaseWorkflow(yml: string): ReleaseWorkflowAudit {
 
   const publishIndex = steps.findIndex((step) => PUBLISH_ACTION_PATTERN.test(step));
   const feedVerifyIndex = steps.findIndex((step) => FEED_VERIFY_PATTERN.test(step));
-  const promoteIndex = steps.findIndex((step) => PROMOTE_PATTERN.test(step));
+  const promoteIndex = steps.findIndex(
+    (step) => PROMOTE_INVOCATION_PATTERN.test(step) && step.includes(PROMOTE_DRAFT_FALSE_FLAG),
+  );
 
   if (publishIndex === -1) {
     problems.push(
