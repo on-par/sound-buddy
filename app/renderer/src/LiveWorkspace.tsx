@@ -27,7 +27,6 @@ import { createLiveMeterController, type LiveMeterSnapshot } from './live-meter-
 import {
   eqPanePatchPlan,
   eqPaneView,
-  measurementChannel,
   patchEqPaneLevelTiles,
   patchEqPaneSection,
   patchGroupSummaries,
@@ -43,6 +42,8 @@ import {
   boardRunning,
   selectedEqPaneLevelTilesView,
 } from './live-workspace-view';
+import { roomLevelChannel } from './spl-calibration';
+import { fmt } from './report-card';
 import type { LiveEvent } from './live-capture-panel';
 import LiveCapturePanel from './LiveCapturePanel';
 
@@ -61,13 +62,15 @@ function applyLiveTick(snap: LiveMeterSnapshot): void {
 
   // Room stats row: the selected track, or the secondary mic when it owns the
   // room (mirrors onLiveEvent/onMeasurementEvent — it updates even while the
-  // DAW shell is showing, where the row is display:none).
-  if (!snap.secondaryActive) {
-    const statsCh = measurementChannel(tick.channels, snap.measurementSource);
-    if (statsCh) patchStatsRow(liveStatsRowView(statsCh));
-  } else if (snap.lastMeasurementChannels && snap.lastMeasurementChannels[0]) {
-    patchStatsRow(liveStatsRowView(snap.lastMeasurementChannels[0]));
-  }
+  // DAW shell is showing, where the row is display:none). #846: converts to
+  // dB SPL when the user has calibrated the room offset.
+  const splOffsetDb = state.settings?.splCalibrationOffsetDb ?? null;
+  const roomCh = roomLevelChannel(snap);
+  if (roomCh) patchStatsRow(liveStatsRowView(roomCh, splOffsetDb));
+  // Settings → Audio's calibration panel reads the same Room signal, patched
+  // here rather than subscribed in React (ADR-0005).
+  const calLive = document.getElementById('spl-cal-live-level');
+  if (calLive) calLive.textContent = roomCh ? fmt(roomCh.rms) : '—';
 
   // The Session arrangement owns the pane, so the transport chip and the
   // waveform/playhead painters refresh on every live tick.
