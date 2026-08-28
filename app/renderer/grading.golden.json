@@ -364,5 +364,49 @@
       "deductions": [],
       "notMeasured": []
     }
+  },
+  {
+    "name": "muddy symptom drops the grade (#1246)",
+    "case": "symptom_muddy_drop",
+    "source": {
+      "rms": -17,
+      "peak": -6,
+      "dynamicRange": 10,
+      "clipping": false,
+      "centroid": 2000,
+      "contentType": null,
+      "bands": {
+        "subBass": -30,
+        "bass": -30,
+        "lowMid": -30,
+        "mid": -30,
+        "highMid": -30,
+        "presence": -30,
+        "brilliance": -30
+      },
+      "symptoms": [
+        {
+          "ruleId": "muddy",
+          "symptom": "Muddy",
+          "instruction": "Highpass below ~100 Hz and cut ~250 Hz",
+          "excessDb": 8.7,
+          "minExcessDb": 6
+        }
+      ]
+    },
+    "expected": {
+      "grade": "B",
+      "score": 89,
+      "recommendations": ["Muddy: Highpass below ~100 Hz and cut ~250 Hz"],
+      "deductions": [
+        {
+          "rule": "Tonal symptom: Muddy",
+          "measured": "+8.7 dB over reference",
+          "target": "< +6 dB over reference",
+          "letterImpact": "Drops one letter"
+        }
+      ],
+      "notMeasured": []
+    }
   }
 ]

@@ -5,7 +5,7 @@ Sound Buddy uses test-driven development with gated coverage ratchets.
 ## Test Framework
 
 - **Unit tests:** [Vitest](https://vitest.dev/) — colocated with source (`foo.ts` → `foo.test.ts`)
-- **E2E tests:** [Playwright](https://playwright.dev/) — headless, separate script
+- **E2E tests:** [Playwright](https://playwright.dev/) — headless by default, separate script
 - **Python tests:** `packages/audio-engine/scripts/test_stream.py`, `test_playback.py`
 
 ## Running Tests
@@ -18,8 +18,22 @@ npm run test:coverage --workspaces --if-present && npm run test:coverage --prefi
                             # per-package coverage gates; CI's gated step runs the same
                             # two halves but continues to the app half even if the
                             # workspaces half fails, so every report uploads
-npm run test:e2e            # Playwright e2e (headless)
+npm run test:e2e            # Playwright e2e (headless; SB_E2E_HEADED=1 for a visible window)
 ```
+
+### E2E headless
+
+Every spec launches through `app/tests/launch-electron.ts`, which sets
+`SB_E2E_HEADLESS=1` for the launched app. `app/electron/main.ts`'s
+`getWindowOptions` then builds the BrowserWindow positioned off-screen
+(`x`/`y` far outside any real display), so no window is visible in practice
+(though the macOS Dock icon still does appear) while it's still a normal,
+fully-composited `show: true` window — a genuinely hidden (`show: false`)
+window stops ticking `requestAnimationFrame`, which broke every
+meter/transport spec (see ADR-0099). `SB_E2E_HEADED=1 npm run test:e2e
+--prefix app` opts back into an on-screen window for debugging. New specs
+must call `launchElectron`, which `app/electron/e2e-headless.test.ts`
+enforces.
 
 ## Coverage
 

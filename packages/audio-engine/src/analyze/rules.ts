@@ -58,6 +58,28 @@ export interface FiredRule {
 }
 
 /**
+ * The grade-facing projection of a fired rule (#1246). The report card's
+ * grading engine (app/renderer/grading.js) is a classic script with no module
+ * loader in the renderer, so it can never import RULE_TABLE. Instead it is
+ * handed this small serializable shape and renders `minExcessDb` verbatim —
+ * which keeps the band-excess threshold defined exactly once, here in
+ * RULE_TABLE, while the dependency still flows app -> packages (ADR-0027).
+ */
+export interface GradeSymptom {
+  /** HarshnessRule.id, e.g. "muddy". */
+  ruleId: string;
+  /** HarshnessRule.symptom, e.g. "Muddy". */
+  symptom: string;
+  /** The rule's EQ instruction, e.g. "Highpass below ~100 Hz and cut ~250 Hz". */
+  instruction: string;
+  /** Measured dB the band exceeded its reference by. */
+  excessDb: number;
+  /** The rule's own firing threshold — the single definition of the band
+   *  threshold, rendered by the grade's deduction target string. */
+  minExcessDb: number;
+}
+
+/**
  * Static symptom-to-frequency table. Each row is data: the symptom, the
  * instruments it applies to ([] = every instrument), a band-vs-reference
  * condition, and the EQ suggestion (move + target band). Adding a rule is
@@ -202,4 +224,19 @@ export function evaluateRules(curve: SpectrumCurve | undefined, instrumentId?: s
   }
   // Stable sort — ties keep table order, so the most obvious problem leads.
   return fired.sort((a, b) => b.excessDb - a.excessDb);
+}
+
+/**
+ * Projects evaluateRules' output onto the grade-facing GradeSymptom[] (#1246),
+ * preserving evaluateRules' excessDb-descending order so the leading symptom is
+ * the most obvious problem. Pure; an empty input yields an empty array.
+ */
+export function gradeSymptoms(fired: FiredRule[]): GradeSymptom[] {
+  return fired.map((hit) => ({
+    ruleId: hit.rule.id,
+    symptom: hit.rule.symptom,
+    instruction: hit.rule.suggestion.instruction,
+    excessDb: hit.excessDb,
+    minExcessDb: hit.rule.condition.minExcessDb,
+  }));
 }

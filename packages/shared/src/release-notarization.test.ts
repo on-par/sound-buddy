@@ -4,11 +4,17 @@ import { describe, expect, it } from 'vitest';
 
 // Regression guard for #621: electron-builder does notarization + stapling
 // natively (inside its sign phase, before the zip target is built), so
-// release.sh must not hand-roll notarytool submit / stapler staple / a
+// the pipeline must not hand-roll notarytool submit / stapler staple / a
 // post-hoc re-zip. It still verifies the result (stapler validate + spctl)
 // before anything is pushed or published.
-const releaseScript = readFileSync(
-  fileURLToPath(new URL('../../../scripts/release.sh', import.meta.url)),
+//
+// #1237: the guards below used to read scripts/release.sh. #1236 slice 3
+// (#1239) reduces that script to tag-and-wait, so the file that actually
+// signs, notarizes, staples and Gatekeeper-verifies is the CI workflow —
+// these assert against it, unchanged in strength, so they keep biting once
+// CI is the authoritative publisher.
+const releaseWorkflow = readFileSync(
+  fileURLToPath(new URL('../../../.github/workflows/release.yml', import.meta.url)),
   'utf8',
 );
 
@@ -17,49 +23,60 @@ const electronBuilderYml = readFileSync(
   'utf8',
 );
 
-describe('release.sh notarization (#621)', () => {
+describe('release.yml notarization (#621, retargeted #1237)', () => {
   it('does not hand-roll notarytool submit', () => {
-    expect(releaseScript).not.toMatch(/notarytool submit/);
+    expect(releaseWorkflow).not.toMatch(/notarytool submit/);
   });
 
   it('does not hand-roll stapler staple', () => {
-    expect(releaseScript).not.toMatch(/stapler staple/);
+    expect(releaseWorkflow).not.toMatch(/stapler staple/);
   });
 
   it('does not re-zip the app with ditto', () => {
-    expect(releaseScript).not.toMatch(/ditto -c/);
+    expect(releaseWorkflow).not.toMatch(/ditto -c/);
   });
 
-  it('passes -c.mac.notarize=true in the signed build branch', () => {
-    expect(releaseScript).toContain('-c.mac.notarize=true');
+  it('passes -c.mac.notarize=true in the signed build step', () => {
+    expect(releaseWorkflow).toContain('-c.mac.notarize=true');
   });
 
-  it('exports APPLE_KEYCHAIN_PROFILE in the signed build branch', () => {
-    expect(releaseScript).toMatch(/APPLE_KEYCHAIN_PROFILE="\$NOTARY_PROFILE"/);
+  it('wires the notary credentials electron-builder 26 reads from the environment', () => {
+    // release.sh authenticated notarytool with a stored keychain profile
+    // (APPLE_KEYCHAIN_PROFILE). A fresh CI runner has no stored profile, so the
+    // workflow passes the same credentials as APPLE_ID / APPLE_TEAM_ID /
+    // APPLE_APP_SPECIFIC_PASSWORD, which electron-builder 26 reads directly
+    // (#1225). Same property — the notary submission is authenticated.
+    expect(releaseWorkflow).toMatch(/^\s*APPLE_ID: \$\{\{ secrets\.APPLE_ID \}\}$/m);
+    expect(releaseWorkflow).toMatch(/^\s*APPLE_TEAM_ID: \$\{\{ secrets\.APPLE_TEAM_ID \}\}$/m);
+    expect(releaseWorkflow).toMatch(
+      /^\s*APPLE_APP_SPECIFIC_PASSWORD: \$\{\{ secrets\.APPLE_APP_SPECIFIC_PASSWORD \}\}$/m,
+    );
   });
 
   it('still validates the stapled ticket', () => {
-    expect(releaseScript).toContain('xcrun stapler validate');
+    expect(releaseWorkflow).toContain('xcrun stapler validate');
   });
 
   it('still assesses with Gatekeeper', () => {
-    expect(releaseScript).toContain('spctl --assess --type execute');
+    expect(releaseWorkflow).toContain('spctl --assess --type execute');
   });
 
-  it('runs the stapler + spctl verification before pushing to the source repo', () => {
-    const spctlIndex = releaseScript.indexOf('spctl --assess');
-    const pushIndex = releaseScript.indexOf('git -C "$ROOT" push');
+  it('runs the stapler + spctl verification before the build artifact leaves the job', () => {
+    // The CI counterpart of release.sh's "verify before git push": the workflow
+    // artifact upload is the first step where a binary escapes the build.
+    const spctlIndex = releaseWorkflow.indexOf('spctl --assess');
+    const uploadIndex = releaseWorkflow.indexOf('uses: actions/upload-artifact@v4');
     expect(spctlIndex).toBeGreaterThan(-1);
-    expect(pushIndex).toBeGreaterThan(-1);
-    expect(spctlIndex).toBeLessThan(pushIndex);
+    expect(uploadIndex).toBeGreaterThan(-1);
+    expect(spctlIndex).toBeLessThan(uploadIndex);
   });
 
   it('runs the stapler + spctl verification before publishing the release', () => {
-    const spctlIndex = releaseScript.indexOf('spctl --assess');
-    const releaseIndex = releaseScript.indexOf('gh release create');
+    const spctlIndex = releaseWorkflow.indexOf('spctl --assess');
+    const publishIndex = releaseWorkflow.indexOf('uses: softprops/action-gh-release@v2');
     expect(spctlIndex).toBeGreaterThan(-1);
-    expect(releaseIndex).toBeGreaterThan(-1);
-    expect(spctlIndex).toBeLessThan(releaseIndex);
+    expect(publishIndex).toBeGreaterThan(-1);
+    expect(spctlIndex).toBeLessThan(publishIndex);
   });
 
   it('electron-builder.yml declares mac.notarize off by default', () => {
@@ -67,40 +84,45 @@ describe('release.sh notarization (#621)', () => {
   });
 });
 
-describe('release.sh dmg publishing (#622)', () => {
+describe('release.yml dmg publishing (#622, retargeted #1237)', () => {
   it('defines DMG=', () => {
-    expect(releaseScript).toMatch(/^DMG="/m);
+    expect(releaseWorkflow).toMatch(/^\s*DMG="\$\(ls app\/release\/\*\.dmg\)"$/m);
   });
 
-  it('dies when the expected dmg is missing', () => {
-    expect(releaseScript).toMatch(/\[\[ -f "\$DMG" \]\] \|\| die/);
+  it('fails the job when the expected dmg is missing', () => {
+    // The verify step's `set -euo pipefail` makes the failing `ls` kill the
+    // step; the publish step separately refuses an unmatched glob.
+    expect(releaseWorkflow).toMatch(/^\s*DMG="\$\(ls app\/release\/\*\.dmg\)"$/m);
+    expect(releaseWorkflow).toContain('fail_on_unmatched_files: true');
   });
 
   it('validates the stapled ticket on the dmg with xcrun stapler validate', () => {
-    expect(releaseScript).toMatch(/xcrun stapler validate "\$DMG"/);
+    expect(releaseWorkflow).toMatch(/xcrun stapler validate "\$DMG"/);
   });
 
-  it('passes both the zip and the dmg to gh release create', () => {
-    expect(releaseScript).toMatch(/gh release create "\$TAG" "\$ZIP" "\$DMG"/);
+  it('publishes both the zip and the dmg to the releases repo', () => {
+    expect(releaseWorkflow).toMatch(
+      /files:\s*\|\n\s+app\/release\/\*-arm64\.dmg\n\s+app\/release\/\*-arm64-mac\.zip/,
+    );
   });
 
-  it('runs the dmg verification before pushing to the source repo', () => {
-    const dmgStaplerIndex = releaseScript.indexOf('xcrun stapler validate "$DMG"');
-    const pushIndex = releaseScript.indexOf('git -C "$ROOT" push');
+  it('runs the dmg verification before the build artifact leaves the job', () => {
+    const dmgStaplerIndex = releaseWorkflow.indexOf('xcrun stapler validate "$DMG"');
+    const uploadIndex = releaseWorkflow.indexOf('uses: actions/upload-artifact@v4');
     expect(dmgStaplerIndex).toBeGreaterThan(-1);
-    expect(pushIndex).toBeGreaterThan(-1);
-    expect(dmgStaplerIndex).toBeLessThan(pushIndex);
+    expect(uploadIndex).toBeGreaterThan(-1);
+    expect(dmgStaplerIndex).toBeLessThan(uploadIndex);
   });
 
   it('runs the dmg verification before publishing the release', () => {
-    const dmgStaplerIndex = releaseScript.indexOf('xcrun stapler validate "$DMG"');
-    const releaseIndex = releaseScript.indexOf('gh release create');
+    const dmgStaplerIndex = releaseWorkflow.indexOf('xcrun stapler validate "$DMG"');
+    const publishIndex = releaseWorkflow.indexOf('uses: softprops/action-gh-release@v2');
     expect(dmgStaplerIndex).toBeGreaterThan(-1);
-    expect(releaseIndex).toBeGreaterThan(-1);
-    expect(dmgStaplerIndex).toBeLessThan(releaseIndex);
+    expect(publishIndex).toBeGreaterThan(-1);
+    expect(dmgStaplerIndex).toBeLessThan(publishIndex);
   });
 
-  it('ASSET_NAME still ends in .zip (manifest contract unchanged)', () => {
-    expect(releaseScript).toMatch(/ASSET_NAME="Sound\.Buddy-\$NEXT-arm64-mac\.zip"/);
+  it('the published zip asset is still an arm64-mac .zip (manifest contract unchanged)', () => {
+    expect(releaseWorkflow).toMatch(/^\s*path: app\/release\/\*-arm64-mac\.zip$/m);
   });
 });

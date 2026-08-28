@@ -93,9 +93,9 @@ test.describe('Live capture (PRD 06)', () => {
     await window.locator('#live-ws-add').click();
     await expect(rows).toHaveCount(3);
 
-    // Make the first strip stereo through the compact input selector.
-    await rows.first().locator('.daw-track-head-input').selectOption('stereo:0,1');
-    await expect(rows.first().locator('.daw-track-head-input')).toHaveValue('stereo:0,1');
+    // Make the first strip stereo through the selection pane (#849).
+    await rows.first().locator('.daw-track-head-index').click();
+    await window.locator('#live-eq-pane .eq-pane-inspector-kind').selectOption('stereo');
     await expect(window.locator('#live-ws-cap')).toHaveText('4 / 8 used');
 
     // Remove a strip.

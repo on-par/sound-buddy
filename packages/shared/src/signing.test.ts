@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   CODESIGN_BATCH_SIZE,
   isMachOBinary,
+  NOTARIZED_SPCTL_SOURCE,
   parseCodesigningIdentity,
   parseSpctlAssessment,
   parseStaplerValidation,
@@ -283,9 +284,9 @@ describe('parseStaplerValidation', () => {
 });
 
 describe('parseSpctlAssessment', () => {
-  it('accepts output containing a line ending ": accepted"', () => {
+  it('accepts output containing a line ending ": accepted" and reports the notarized source', () => {
     const output = 'Sound Buddy.app: accepted\nsource=Notarized Developer ID';
-    expect(parseSpctlAssessment(output)).toEqual({ accepted: true });
+    expect(parseSpctlAssessment(output)).toEqual({ accepted: true, source: NOTARIZED_SPCTL_SOURCE });
   });
 
   it('rejects output without an ": accepted" line, quoting the output', () => {
@@ -304,6 +305,26 @@ describe('parseSpctlAssessment', () => {
     expect(verdict.accepted).toBe(false);
     if (verdict.accepted) throw new Error('expected rejection');
     expect(verdict.error).toMatch(/Gatekeeper/i);
+  });
+
+  it('rejects an accepted-but-not-notarized source (#1226 AC1)', () => {
+    const output = 'Sound Buddy.app: accepted\nsource=Developer ID\norigin=Developer ID Application: On PAR (Q7LB49TPBS)';
+    const verdict = parseSpctlAssessment(output);
+    expect(verdict.accepted).toBe(false);
+    if (verdict.accepted) throw new Error('expected rejection');
+    expect(verdict.source).toBe('Developer ID');
+    expect(verdict.error).toContain('Developer ID');
+    expect(verdict.error).toMatch(/notariz/i);
+  });
+
+  it('stays accepted with source undefined when accepted but no source= line is present (format-drift tolerance)', () => {
+    const verdict = parseSpctlAssessment('Sound Buddy.app: accepted');
+    expect(verdict).toEqual({ accepted: true, source: undefined });
+  });
+
+  it('trims trailing whitespace from the source line before comparing', () => {
+    const output = 'Sound Buddy.app: accepted\nsource=Notarized Developer ID   ';
+    expect(parseSpctlAssessment(output)).toEqual({ accepted: true, source: NOTARIZED_SPCTL_SOURCE });
   });
 });
 

@@ -2,7 +2,7 @@
 
 Audio analysis and coaching tool for church sound engineers. Analyze recordings, get report cards, and receive actionable EQ recommendations.
 
-**Your audio never leaves your machine.** Analysis runs fully local on your Mac — no cloud uploads, no accounts, no telemetry.
+**Your audio never leaves your machine.** Analysis runs fully local on your Mac — no cloud uploads, no accounts. The app checks GitHub for updates and refreshes a Pro subscription key; usage counts and crash reports are opt-in and off by default. See the [privacy policy](https://soundbuddy.online/privacy) for the full list.
 
 **Unlimited recordings. Stored on your machine.** No usage caps on any tier — no recording-count, length, or storage limits. Recordings live in a folder you choose (Settings ▸ Storage); point it inside iCloud Drive, Dropbox, or Google Drive if you want your own sync.
 
@@ -23,9 +23,9 @@ npx @sound-buddy/cli analyze --scene before.scn --scene after.scn --audio record
 [on-par/sound-buddy-releases](https://github.com/on-par/sound-buddy-releases/releases/latest),
 unzip, and drag **Sound Buddy.app** to `/Applications`. The app is **fully self-contained** — `sox`,
 `ffmpeg`/`ffprobe`, and a Python runtime with the audio libraries are bundled inside, so
-there's no Homebrew or `pip` setup. Apple Silicon (M1+), macOS 26+. First launch is
-blocked as unsigned — open **System Settings → Privacy & Security**, then click
-**Open Anyway** in the Security section. See the
+there's no Homebrew or `pip` setup. Apple Silicon (M1+), macOS 26+. The build is signed with an Apple
+Developer ID and notarized by Apple, so it launches straight from `/Applications` with no
+security override. See the
 [install walkthrough](https://soundbuddy.online/#install-walkthrough) for the full
 steps. It also checks Releases for newer versions and shows a banner when one is
 available (Help ▸ Check for Updates… to check manually); on a signed build, clicking
@@ -91,17 +91,15 @@ source repo stays private. To cut a release, just run:
 ```bash
 scripts/release.sh            # patch bump (0.2.1 -> 0.2.2)
 scripts/release.sh minor      # or: minor / major / an explicit x.y.z
-scripts/release.sh --dry-run  # preflight + gate only, no changes
+scripts/release.sh --dry-run  # preflight + gate only, no tag, no changes
 ```
 
-It bumps the version, runs the gate, builds the self-contained `.app`, tags this repo, and
-publishes the zip to the public repo — using your local `gh` auth, so there's no token to
-store. Needs the build tools on your machine (`brew install sox ffmpeg dylibbundler`).
-
-CI mirror (optional): pushing a `vX.Y.Z` tag also runs the `Release` workflow, which builds
-the same zip and uploads it as a workflow artifact; it additionally publishes to the public
-repo only if a **`RELEASES_TOKEN`** secret (fine-grained PAT, `contents: write` on the
-releases repo) is configured.
+The script bumps the version, runs the gate, and pushes the tag — using your local `gh` auth,
+so there's no token to store locally. `.github/workflows/release.yml` is the only thing that
+builds, signs, notarizes, verifies `latest-mac.yml`, and publishes to the public repo (as a
+draft it promotes last). The script then waits on that run and exits non-zero naming it if it
+fails. `RELEASES_TOKEN` (fine-grained PAT, `contents: write` on the releases repo) plus the
+five `APPLE_*` signing/notarization secrets are required on the CI side, not optional.
 
 ### Release smoke check (before announcing)
 
@@ -116,8 +114,7 @@ It proves the release channel is reachable through all four layers and exits non
 naming whichever layer is broken:
 
 - **`manifest`** — the stable `latest.json` reports this tag's version, artifact, checksum,
-  and release notes. Fix: re-run the `latest.json` upload steps from `scripts/release.sh`'s
-  output.
+  and release notes. Fix: re-run the `Release` workflow for that tag from the Actions tab.
 - **`artifact`** — the release zip is downloadable and its size/sha256 match the manifest.
   Fix: delete the release asset and re-run the release.
 - **`site-route`** — the site's `/download` route 302-redirects to that same artifact. Fix:

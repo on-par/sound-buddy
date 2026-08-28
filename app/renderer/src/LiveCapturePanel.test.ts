@@ -5,12 +5,10 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { createElement } from 'react';
 import { renderToString } from 'react-dom/server';
 import LiveCapturePanel, {
-  applyHeaderTrackInputSelection,
   ensureSessionRouting,
   normalizeGroupName,
   routeHeaderChannelAction,
   type HeaderChannelActions,
-  type HeaderTrackInputActions,
 } from './LiveCapturePanel';
 import { useLiveCaptureStore } from './stores/liveCaptureStore';
 import { useSettingsStore } from './stores/settingsStore';
@@ -52,6 +50,7 @@ function settings(overrides: Partial<AppSettings> = {}): AppSettings {
     weeklyReminderServiceDay: 0, liveEqPaneWidth: 360,
     measurementDeviceName: '', gradingProfile: 'casual', consoleNetworkConsentGranted: false,
     soundcheckBuses: [],
+    splCalibrationOffsetDb: null,
     ...overrides,
   };
 }
@@ -295,41 +294,6 @@ describe('routeHeaderChannelAction', () => {
     expect(a.toggleArm).not.toHaveBeenCalled();
     expect(a.removeStrip).not.toHaveBeenCalled();
     expect(a.hideArmHint).not.toHaveBeenCalled();
-  });
-});
-
-describe('applyHeaderTrackInputSelection', () => {
-  function actions(): HeaderTrackInputActions {
-    return {
-      channelConfig: [{ kind: 'mono', a: 0, b: 1 }],
-      setStripKind: vi.fn(),
-      setStripSource: vi.fn(),
-    };
-  }
-
-  it('applies a stereo pair as one selection', () => {
-    const a = actions();
-    applyHeaderTrackInputSelection(0, 'stereo:2,3', a);
-    expect(a.setStripKind).toHaveBeenCalledWith(0, 'stereo');
-    expect(a.setStripSource).toHaveBeenNthCalledWith(1, 0, 'a', 2);
-    expect(a.setStripSource).toHaveBeenNthCalledWith(2, 0, 'b', 3);
-  });
-
-  it('applies a mono source without writing the right leg', () => {
-    const a = actions();
-    applyHeaderTrackInputSelection(0, 'mono:4', a);
-    expect(a.setStripKind).toHaveBeenCalledWith(0, 'mono');
-    expect(a.setStripSource).toHaveBeenCalledOnce();
-    expect(a.setStripSource).toHaveBeenCalledWith(0, 'a', 4);
-  });
-
-  it('ignores invalid or stale selections', () => {
-    const a = actions();
-    applyHeaderTrackInputSelection(2, 'stereo:0,1', a);
-    applyHeaderTrackInputSelection(0, 'bogus:0', a);
-    applyHeaderTrackInputSelection(0, 'mono:nope', a);
-    expect(a.setStripKind).not.toHaveBeenCalled();
-    expect(a.setStripSource).not.toHaveBeenCalled();
   });
 });
 
