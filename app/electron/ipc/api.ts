@@ -45,6 +45,7 @@ export interface UpdateSettingsPatch {
   gradingProfile?: 'casual' | 'broadcast';
   consoleNetworkConsentGranted?: boolean;
   soundcheckBuses?: SoundcheckBus[];
+  splCalibrationOffsetDb?: number | null;
 }
 
 export interface AnalyzeFileOpts {
@@ -369,6 +370,16 @@ export interface AppSettings {
    * order wins). Default []. No env layer — pure persisted data, like `rigs`.
    */
   soundcheckBuses: SoundcheckBus[];
+  /**
+   * Room-level SPL calibration offset in dB (#846), or null when uncalibrated
+   * (default). Set by the user comparing a handheld SPL meter against the live
+   * Room dBFS reading: offset = meterSPL − appdBFS. When non-null the Live Room
+   * stats row shows fmt(dBFS + offset) labelled "dB SPL"; when null it shows
+   * relative dBFS exactly as #767 shipped it. One room-level value only — see
+   * the SPL-calibration ADR. No env layer: calibrating is an explicit,
+   * measured user action, never a launch-time override.
+   */
+  splCalibrationOffsetDb: number | null;
 }
 
 // ─── Analysis / storage DTOs (AnalysisSummary moved from electron/storage.ts) ─

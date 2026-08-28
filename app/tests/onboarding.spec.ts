@@ -1,5 +1,5 @@
 import { test, expect, type ElectronApplication, type Page } from '@playwright/test';
-import { _electron as electron } from 'playwright';
+import { launchElectron } from './launch-electron';
 import * as path from 'path';
 import * as fs from 'fs';
 
@@ -16,7 +16,7 @@ let app: ElectronApplication;
 let win: Page;
 
 async function launch(): Promise<void> {
-  app = await electron.launch({ args: [MAIN, `--user-data-dir=${USER_DATA}`] });
+  app = await launchElectron({ args: [MAIN, `--user-data-dir=${USER_DATA}`] });
   win = await app.firstWindow();
   await win.waitForLoadState('domcontentloaded');
 }

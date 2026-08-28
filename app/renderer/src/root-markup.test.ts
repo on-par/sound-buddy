@@ -175,7 +175,8 @@ describe('Always-monitoring Live tab with Session-owned transport (#757/#1112)',
     const css = fs.readFileSync(fileURLToPath(new URL('./styles/app.css', import.meta.url)), 'utf8');
     expect(css).toContain('body.live-active #spectrum-imperative,');
     expect(css).toContain('body.live-active #spectrum-island { display:none !important; }');
-    expect(css).toContain('body.live-active #live-island { display:flex !important; }');
+    // #1245: :not(.not-pro)-scoped so the Pro gate can't be overridden.
+    expect(css).toContain('body.live-active:not(.not-pro) #live-island { display:flex !important; }');
   });
 
   it('no longer references the removed in-tab controls in App.tsx', () => {
@@ -276,6 +277,17 @@ describe('Header live dBFS readout removed from top chrome (#1113)', () => {
     expect(headerRight).not.toContain('id="live-level-rms"');
     expect(headerRight).not.toContain('id="live-level-peak"');
     expect(headerRight).not.toContain('relative');
+  });
+});
+
+describe('Stats-row RMS/Peak unit spans carry ids for SPL calibration (#846)', () => {
+  it('gives the RMS and Peak .stat-unit spans ids so patchStatsRow can write to them', () => {
+    expect(markup).toContain('<span class="stat-unit" id="stat-rms-unit">dBFS</span>');
+    expect(markup).toContain('<span class="stat-unit" id="stat-peak-unit">dBFS</span>');
+  });
+
+  it('still does not revive the deleted header live-level readout (#1113 stays gone)', () => {
+    expect(markup).not.toContain('id="live-level-readout"');
   });
 });
 

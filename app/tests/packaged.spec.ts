@@ -1,5 +1,5 @@
 import { test, expect, type ElectronApplication, type Page } from '@playwright/test';
-import { _electron as electron } from 'playwright';
+import { launchElectron } from './launch-electron';
 import { execSync } from 'child_process';
 import * as path from 'path';
 import * as fs from 'fs';
@@ -23,7 +23,7 @@ test('packaged app analyzes a file with no external tools on PATH', async () => 
   const exe = path.join(workdir, 'Sound Buddy.app', 'Contents', 'MacOS', 'Sound Buddy');
 
   const mainOut: string[] = [];
-  const app: ElectronApplication = await electron.launch({
+  const app: ElectronApplication = await launchElectron({
     executablePath: exe,
     args: [],
     // Clean-machine PATH: only the OS defaults, nothing from Homebrew. Suppress

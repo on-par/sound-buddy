@@ -1,5 +1,5 @@
 import { test, expect, type ElectronApplication, type Page } from '@playwright/test';
-import { _electron as electron } from 'playwright';
+import { launchElectron } from './launch-electron';
 import * as path from 'path';
 import * as fs from 'fs';
 import { LICENSE_ENV, seedProLicense } from './license-fixture';
@@ -50,7 +50,7 @@ async function stubDevices(app: ElectronApplication, devices: unknown): Promise<
 async function launch(devices: unknown): Promise<{ app: ElectronApplication; win: Page }> {
   // Rigs are a Pro feature (#54): seed a license so the Live-tab UI is unlocked.
   seedProLicense(USER_DATA);
-  const app = await electron.launch({
+  const app = await launchElectron({
     args: [MAIN, `--user-data-dir=${USER_DATA}`],
     env: { ...process.env, ...LICENSE_ENV },
   });
@@ -184,7 +184,8 @@ test.describe.serial('Rigs — save / load / switch', () => {
       set('window-secs', '5');
     });
     await closeSettings(win);
-    await win.locator('.daw-track-head-input').first().selectOption('stereo:0,1');
+    await win.locator('.daw-track-head[data-ch="0"] .daw-track-head-index').click();
+    await win.locator('#live-eq-pane .eq-pane-inspector-kind').selectOption('stereo');
 
     await openAudioSettings(win);
     await win.locator('#rig-saveas-btn').click();
@@ -464,7 +465,8 @@ test.describe.serial('Rigs — save / load / switch', () => {
     }
     await expect(win.locator('#settings-audio-capture-lock-note')).toBeVisible();
     await closeSettings(win);
-    await expect(win.locator('#spectrum-body .daw-track-head-input').first()).toBeDisabled();
+    await win.locator('.daw-track-head[data-ch="0"] .daw-track-head-index').click();
+    await expect(win.locator('#live-eq-pane .eq-pane-inspector-kind')).toBeDisabled();
     // The workspace toolbar's Add track is rebuilt by Start's React board
     // re-render (TD-001 slice 6h, #711) — the rebuilt markup bakes in
     // `disabled` (derived from isCapturing) but not aria-disabled, so only
@@ -509,7 +511,8 @@ test.describe.serial('Rigs — save / load / switch', () => {
     await win.locator('#daw-session-record').click();
     // Start's React board rebuild bakes in `disabled` (via the store-derived
     // stamps) but not aria-disabled, so only `disabled` is asserted here.
-    await expect(win.locator('#spectrum-body .daw-track-head-input').first()).toBeDisabled();
+    await win.locator('.daw-track-head[data-ch="0"] .daw-track-head-index').click();
+    await expect(win.locator('#live-eq-pane .eq-pane-inspector-kind')).toBeDisabled();
     // Every config mutator funnels through the store; the board re-renders with
     // the disabled stamps re-derived from liveCaptureStore.isCapturing at render
     // time (TD-001 slice 6h, #711) — the old window.renderChannelConfig()
@@ -517,7 +520,7 @@ test.describe.serial('Rigs — save / load / switch', () => {
     await win.evaluate(() => {
       (window as unknown as { rendererStores: { liveCapture: { getState: () => { setStripKind: (idx: number, kind: string) => void } } } }).rendererStores.liveCapture.getState().setStripKind(0, 'stereo');
     });
-    await expect(win.locator('#spectrum-body .daw-track-head-input').first()).toBeDisabled();
+    await expect(win.locator('#live-eq-pane .eq-pane-inspector-kind')).toBeDisabled();
     await win.locator('#daw-session-record').click();
   });
 });

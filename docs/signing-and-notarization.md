@@ -2,8 +2,8 @@
 
 Publishing a Developer ID-signed, notarized build requires a one-time human
 setup (Apple Developer Program enrollment, certificate creation, notary
-credentials), documented below. Once done, every future `scripts/release.sh`
-run produces a signed, notarized, stapled build automatically.
+credentials), documented below. Once done, every tagged CI run produces a
+signed, notarized, stapled build automatically.
 
 ## One-time setup
 
@@ -32,15 +32,20 @@ run produces a signed, notarized, stapled build automatically.
 
 ## Releasing signed
 
+Signing is CI's job (#1239) — `.github/workflows/release.yml` signs and notarizes every
+tagged release; cutting a release is `scripts/release.sh` (preflight, gate, tag, push) plus
+the tagged CI run it waits on. `SOUND_BUDDY_SIGNING_IDENTITY` and `SOUND_BUDDY_NOTARY_PROFILE`
+only matter for a manual, unpublished local build during development:
+
 ```bash
 SOUND_BUDDY_SIGNING_IDENTITY="Developer ID Application: <Your Name> (<TEAMID>)" \
 SOUND_BUDDY_NOTARY_PROFILE=sound-buddy-notary \
-scripts/release.sh
+npm run dist --prefix app
 ```
 
-Both variables must be set together — set one without the other and
-`scripts/release.sh` fails fast with an actionable message. Leave both unset
-to build the existing unsigned, self-contained flow unchanged.
+Both variables must be set together — set one without the other and `resolveSigningConfig`
+fails fast with an actionable message. Leave both unset to build the existing unsigned,
+self-contained flow unchanged.
 
 ## Signing in CI (#624)
 
@@ -103,7 +108,7 @@ guaranteed cleanup, no secret ever logged) so a future edit to
 
 ## What the pipeline does automatically
 
-Given both env vars, `scripts/release.sh`:
+On a `v*` tag, `.github/workflows/release.yml`:
 
 1. Confirms the certificate is present in the keychain before spending time
    on a build.
@@ -127,12 +132,16 @@ Given both env vars, `scripts/release.sh`:
 4. Verifies the signature (`codesign --verify --deep --strict`).
 5. electron-builder submits the signed `.app` to Apple's notary service and
    staples the returned ticket itself (`mac.notarize`, credentials passed as
-   `APPLE_KEYCHAIN_PROFILE`) — this happens inside its sign phase, before the
-   zip target is built, so the shipped zip always contains a stapled app (#621).
+   `APPLE_ID`/`APPLE_TEAM_ID`/`APPLE_APP_SPECIFIC_PASSWORD` on the CI route) —
+   this happens inside its sign phase, before the zip target is built, so the
+   shipped zip always contains a stapled app (#621).
 6. Validates the stapled ticket (`xcrun stapler validate`) and aborts if it
    isn't there.
 7. Assesses the result with Gatekeeper (`spctl --assess --verbose=4`) and
-   aborts the release if it isn't accepted.
+   aborts the release if it isn't accepted. The Gatekeeper assessment now also
+   requires `source=Notarized Developer ID` — a signed-but-unnotarized build
+   (`source=Developer ID`) fails the gate even though spctl reports `accepted`
+   (#1226).
 
 ## The signed, notarized DMG (#622)
 
@@ -155,9 +164,9 @@ the hook itself is a thin shell, mirroring the `signing.ts` ⇄ `afterPack.js`
 split. Unsigned builds (no `APPLE_KEYCHAIN_PROFILE`) skip this step silently
 — the DMG still builds, just unnotarized.
 
-`scripts/release.sh` verifies the result the same way it verifies the app:
-`xcrun stapler validate` and `spctl --assess --type open --context
-context:primary-signature` against the `.dmg`, before pushing or publishing.
+The workflow's *Verify the signed artifact* step verifies the result the same way it verifies
+the app: `xcrun stapler validate` and `spctl --assess --type open --context
+context:primary-signature` against the `.dmg`, before anything is published.
 
 ## Manual verification (acceptance criteria)
 
@@ -177,15 +186,22 @@ On a fresh macOS install (or a machine that has never opened this app):
 6. `xcrun stapler validate "Sound Buddy-<version>-arm64.dmg"` prints "The
    validate action worked!".
 
+See [`docs/electron-builder-26-packaging-verification.md`](./electron-builder-26-packaging-verification.md)
+for the one-time toolchain-upgrade runbook that walks through these checks after an
+Electron/electron-builder version bump.
+
 ## Troubleshooting
 
 If notarization comes back `Invalid` or `Rejected`, electron-builder prints the
-submission id and the failure output directly, and `scripts/release.sh`'s
-`die` message repeats the exact command to see why:
+submission id and the failure output directly; the failed run's log carries
+the submission id; read the full log with:
 
 ```bash
 xcrun notarytool log <submission-id> --keychain-profile sound-buddy-notary
 ```
+
+(the CI route authenticates with `--apple-id`/`--team-id`/`--password` instead
+of `--keychain-profile` — see "Signing in CI" above).
 
 The most common cause is an unsigned nested Mach-O binary. `afterPack.js`
 signs everything under `Contents/Resources/bin`, `lib`, and `python` — if a

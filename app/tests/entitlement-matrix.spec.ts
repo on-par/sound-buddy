@@ -1,5 +1,5 @@
 import { test, expect, type ElectronApplication, type Page } from '@playwright/test';
-import { _electron as electron } from 'playwright';
+import { launchElectron } from './launch-electron';
 import * as path from 'path';
 import * as fs from 'fs';
 import { MATRIX_ENV, MATRIX_FREE_ENV, seedTrial, seedSubscription, seedProLicense } from './license-fixture';
@@ -28,7 +28,7 @@ let win: Page;
 let requests: string[] = [];
 
 async function launch(env: Record<string, string>): Promise<void> {
-  app = await electron.launch({
+  app = await launchElectron({
     args: [MAIN, `--user-data-dir=${USER_DATA}`],
     env: { ...process.env, ...env },
   });
@@ -80,6 +80,11 @@ async function assertRendererGated(): Promise<void> {
 
   await win.locator('.mode-tab[data-mode="live"]').click();
   await expect(win.locator('#tab-live .pro-gate')).toBeVisible();
+  // #1245: the Session workspace lives in #live-island (inside #spectrum-body,
+  // outside #tab-live) — the CSS gate must reach it, or a free user gets the
+  // whole arrangement view beside the lock card.
+  await expect(win.locator('#live-island')).toBeHidden();
+  await expect(win.locator('#daw-session-record')).toBeHidden();
 
   // The free funnel is untouched: report card stays reachable.
   await win.locator('.mode-tab[data-mode="reportcard"]').click();

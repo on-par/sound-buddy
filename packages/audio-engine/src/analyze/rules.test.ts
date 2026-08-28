@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { evaluateRules, rulesForInstrument, RULE_TABLE } from "./rules.js";
+import { evaluateRules, rulesForInstrument, gradeSymptoms, RULE_TABLE } from "./rules.js";
 import type { FiredRule } from "./rules.js";
 import type { SpectrumCurve } from "../types.js";
 
@@ -196,6 +196,47 @@ describe("evaluateRules", () => {
       expect(hits[0].excessDb).toBeGreaterThanOrEqual(hits[1].excessDb);
       expect(hits[1].excessDb).toBeGreaterThanOrEqual(hits[2].excessDb);
     });
+  });
+});
+
+describe("gradeSymptoms", () => {
+  it("returns [] for an empty input", () => {
+    expect(gradeSymptoms([])).toEqual([]);
+  });
+
+  it("projects a fired `muddy` hit onto its grade-facing fields", () => {
+    const c = curve([-10, -10, -30, -30, -30, -30, -30, -30, -30, -30]);
+    const hits = evaluateRules(c);
+    const symptoms = gradeSymptoms(hits);
+    const muddyHit = firedFor(hits, "muddy");
+    expect(symptoms).toEqual([
+      {
+        ruleId: "muddy",
+        symptom: "Muddy",
+        instruction: "Highpass below ~100 Hz and cut ~250 Hz",
+        excessDb: muddyHit.excessDb,
+        minExcessDb: 6,
+      },
+    ]);
+  });
+
+  it("preserves evaluateRules' excessDb-descending order for multiple hits", () => {
+    const c = curve([-22, -22, -30, -30, -30, -18, -30, -30, -30, -30]);
+    const hits = evaluateRules(c);
+    const symptoms = gradeSymptoms(hits);
+    expect(symptoms.map((s) => s.ruleId)).toEqual(hits.map((h) => h.rule.id));
+    expect(symptoms).toHaveLength(hits.length);
+  });
+
+  it("renders minExcessDb from each hit's own RULE_TABLE row — the single definition of the threshold", () => {
+    const c = curve([-22, -22, -30, -30, -30, -18, -30, -30, -30, -30]);
+    const hits = evaluateRules(c);
+    const symptoms = gradeSymptoms(hits);
+    for (const symptom of symptoms) {
+      const rule = RULE_TABLE.find((r) => r.id === symptom.ruleId);
+      expect(rule).toBeDefined();
+      expect(symptom.minExcessDb).toBe(rule?.condition.minExcessDb);
+    }
   });
 });
 

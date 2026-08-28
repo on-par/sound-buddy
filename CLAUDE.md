@@ -40,10 +40,12 @@ cd app && npm run dev  # dev mode (Electron app)
 
 **Releasing:**
 ```bash
-scripts/release.sh             # patch bump, build, publish to releases repo
+scripts/release.sh             # patch bump, tag, wait for the CI build
 scripts/release.sh minor       # minor or major bump
-scripts/release.sh --dry-run   # preflight only
+scripts/release.sh --dry-run   # preflight only (no tag pushed)
 ```
+CI (`.github/workflows/release.yml`) is the only producer — the script never builds or
+uploads artifacts.
 
 ## Conventions
 

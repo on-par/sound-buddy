@@ -64,7 +64,10 @@ function getOrCreateChannelStrip(strips: ChannelStrip[], index: number): Channel
   return strip
 }
 
-function parseFader(token: string): number {
+// -oo is the console's "fader all the way down" token. It must map to
+// -Infinity, never NaN — shared by parseChannelStrips and parseConsoleSurfaces
+// so the rule cannot drift between the two.
+export function parseFaderToken(token: string): number {
   return token === '-oo' ? -Infinity : parseFloat(token)
 }
 
@@ -93,7 +96,7 @@ export function parseChannelStrips(captureText: string): ChannelStrip[] {
     if (m) {
       const strip = getOrCreateChannelStrip(strips, parseInt(m[1], 10))
       strip.on = m[2] === 'ON'
-      strip.fader = parseFader(m[3])
+      strip.fader = parseFaderToken(m[3])
       strip.pan = parseInt(m[4], 10)
       continue
     }

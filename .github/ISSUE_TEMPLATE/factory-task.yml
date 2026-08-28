@@ -1,0 +1,62 @@
+name: Factory task
+description: One INVEST-sized slice of value the factory can ship autonomously
+body:
+  - type: textarea
+    id: problem-statement
+    attributes:
+      label: Problem statement
+      description: >
+        Lead with the user story, then the context. What is broken or missing,
+        and why does it matter?
+      value: |
+        As a <role>, I want <capability> so that <benefit>.
+    validations:
+      required: true
+  - type: textarea
+    id: in-scope
+    attributes:
+      label: In scope
+      description: >
+        What this change does. Five bullets maximum — more than that and this
+        has stopped being one slice, so split it and hang both off an epic.
+    validations:
+      required: true
+  - type: textarea
+    id: out-of-scope
+    attributes:
+      label: Out of scope
+      description: What this change explicitly does not do.
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance-criteria
+    attributes:
+      label: Acceptance criteria (Gherkin)
+      description: >
+        Checkbox list, one independently verifiable scenario per item, written
+        Given / When / Then. Five maximum — more than that and this is really
+        several issues.
+      value: |
+        - [ ] Given <context>, when <action>, then <observable outcome>.
+    validations:
+      required: true
+  - type: textarea
+    id: files-touched
+    attributes:
+      label: Files or modules likely touched
+    validations:
+      required: false
+  - type: textarea
+    id: verification
+    attributes:
+      label: Verification
+      description: The exact command that proves it works
+      placeholder: ./scripts/verify.sh --fast
+    validations:
+      required: true
+  - type: input
+    id: design-artifact
+    attributes:
+      label: Design artifact link
+    validations:
+      required: false

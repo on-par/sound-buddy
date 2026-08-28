@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest'
 import { readFileSync } from 'node:fs'
 import {
   parseChannelStrips,
+  parseFaderToken,
   buildChannelFaderPath,
   buildHeadampGainPath,
   buildDcaFaderPath,
@@ -113,6 +114,20 @@ describe('parseChannelStrips', () => {
     const strips = parseChannelStrips(captureText)
     expect(strips).toHaveLength(32)
     strips.forEach((strip, i) => assertNoNaN(strip, `strips[${i}]`))
+  })
+})
+
+describe('parseFaderToken', () => {
+  it('maps "-oo" to -Infinity', () => {
+    expect(parseFaderToken('-oo')).toBe(-Infinity)
+  })
+
+  it('parses a negative decimal token', () => {
+    expect(parseFaderToken('-7.4')).toBe(-7.4)
+  })
+
+  it('parses a positive-signed decimal token', () => {
+    expect(parseFaderToken('+0.1')).toBe(0.1)
   })
 })
 

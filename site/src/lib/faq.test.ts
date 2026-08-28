@@ -58,13 +58,14 @@ describe('refund entry', () => {
   });
 });
 
-describe('unsigned-install entry', () => {
-  it('mentions Gatekeeper and Open Anyway, and links to #install-walkthrough', () => {
+describe('install entry (signed, #1234)', () => {
+  it('mentions Developer ID and notarized, never Gatekeeper/Open Anyway/xattr, and links to #install-walkthrough', () => {
     const entry = FAQ_ENTRIES.find((e) => e.id === 'unsigned-install');
     expect(entry).toBeDefined();
     const text = entry!.answer.join(' ');
-    expect(text).toContain('Gatekeeper');
-    expect(text).toContain('Open Anyway');
+    expect(text).toContain('Developer ID');
+    expect(text).toContain('notarized');
+    expect(text).not.toMatch(/Open Anyway|Gatekeeper|xattr/);
     expect(entry!.link?.href).toBe('#install-walkthrough');
   });
 });
@@ -94,7 +95,11 @@ describe('copy-drift guard', () => {
 
   it('index.astro does not hardcode FAQ question copy', () => {
     expect(indexAstroSource).not.toContain("Is my church's audio really private?");
-    expect(indexAstroSource).not.toContain('The app isn\'t signed by Apple. Is it safe to install?');
+    expect(indexAstroSource).not.toContain('Is the app signed by Apple?');
+  });
+
+  it('index.astro walkthrough copy no longer instructs a Gatekeeper override', () => {
+    expect(indexAstroSource).not.toMatch(/Open Anyway|xattr -dr/);
   });
 });
 

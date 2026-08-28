@@ -2,7 +2,7 @@
 // Ed25519 keypair per test run, signs keys the way scripts/license-keygen.mjs
 // does, and lets a spec seed a Pro license.json into its --user-data-dir.
 // The app verifies against the matching public key via the
-// SOUND_BUDDY_LICENSE_PUBKEY env override — pass LICENSE_ENV to electron.launch.
+// SOUND_BUDDY_LICENSE_PUBKEY env override — pass LICENSE_ENV to launchElectron.
 
 import { generateKeyPairSync, sign as cryptoSign, type KeyObject } from 'crypto';
 import * as fs from 'fs';
@@ -11,7 +11,7 @@ import * as path from 'path';
 const { publicKey, privateKey } = generateKeyPairSync('ed25519');
 
 /**
- * Spread into electron.launch's env so the app trusts this run's keypair. Also
+ * Spread into launchElectron's env so the app trusts this run's keypair. Also
  * suppresses the first-run onboarding overlay (#69) — its modal scrim would
  * otherwise intercept the tab/button clicks these specs make on a fresh
  * --user-data-dir. onboarding.spec.ts deliberately omits this to exercise the

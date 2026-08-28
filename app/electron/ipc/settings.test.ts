@@ -623,6 +623,35 @@ describe('update-settings whitelist exactness (#747)', () => {
   });
 });
 
+describe('splCalibrationOffsetDb via update-settings (#846)', () => {
+  it('persists a valid offset, then a null patch resets it to uncalibrated', async () => {
+    const handler = handlers.get('update-settings');
+
+    const calibrated = (await handler!(null, { splCalibrationOffsetDb: 111.4 })) as {
+      splCalibrationOffsetDb: number | null;
+    };
+    expect(calibrated.splCalibrationOffsetDb).toBe(111.4);
+    expect(readFile().splCalibrationOffsetDb).toBe(111.4);
+
+    const reset = (await handler!(null, { splCalibrationOffsetDb: null })) as {
+      splCalibrationOffsetDb: number | null;
+    };
+    expect(reset.splCalibrationOffsetDb).toBeNull();
+    expect(readFile().splCalibrationOffsetDb).toBeNull();
+  });
+
+  it('rejects an out-of-range patch, leaving the previously stored offset untouched', async () => {
+    const handler = handlers.get('update-settings');
+    await handler!(null, { splCalibrationOffsetDb: 111.4 });
+
+    const after = (await handler!(null, { splCalibrationOffsetDb: 999 })) as {
+      splCalibrationOffsetDb: number | null;
+    };
+    expect(after.splCalibrationOffsetDb).toBe(111.4);
+    expect(readFile().splCalibrationOffsetDb).toBe(111.4);
+  });
+});
+
 describe('sanitizeShareChurchName (#265)', () => {
   it('returns null for a non-string value (patch key ignored)', () => {
     expect(sanitizeShareChurchName(42)).toBeNull();

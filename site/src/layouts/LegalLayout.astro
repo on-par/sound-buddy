@@ -102,6 +102,8 @@ const canonical = new URL(current, Astro.site).href;
   .prose { margin-top: 32px; color: var(--text-secondary); font: var(--fw-regular) var(--fs-body-lg)/var(--lh-relaxed) var(--font-sans); }
   .prose :global(h2) { font: var(--fw-semibold) var(--fs-h2)/var(--lh-snug) var(--font-sans); color: var(--text-primary); margin: 36px 0 12px; letter-spacing: var(--tracking-tight); }
   .prose :global(h2:first-child) { margin-top: 0; }
+  .prose :global(h3) { font: var(--fw-semibold) var(--fs-body-lg)/var(--lh-snug) var(--font-sans); color: var(--text-primary); margin: 24px 0 8px; }
+  .prose :global(code) { font: var(--fw-medium) 0.9em/1.4 var(--font-mono); color: var(--text-primary); background: var(--neutral-1000); padding: 2px 6px; border-radius: var(--radius-sm); }
   .prose :global(p) { margin: 0 0 16px; }
   .prose :global(ul) { margin: 0 0 16px; padding-left: 0; list-style: none; display: flex; flex-direction: column; gap: 10px; }
   .prose :global(li) { position: relative; padding-left: 22px; }

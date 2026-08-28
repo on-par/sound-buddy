@@ -44,8 +44,12 @@ export type {
 export {
   resolveSigningConfig, isMachOBinary, parseSpctlAssessment, parseStaplerValidation,
   planCodesignBatches, CODESIGN_BATCH_SIZE, parseCodesigningIdentity, redactSecrets, REDACTED,
+  NOTARIZED_SPCTL_SOURCE,
 } from './signing.js'
 export type { SigningConfig, SpctlVerdict, StaplerVerdict, NotaryAuth } from './signing.js'
+
+export { parseLatestMacYml, checkUpdateFeed } from './update-feed.js'
+export type { UpdateFeed, UpdateFeedFileEntry, BuiltArtifact, UpdateFeedVerdict } from './update-feed.js'
 
 export {
   isPrunablePythonDir, isPrunablePythonFile, PYTHON_PRUNE_VERSION,
@@ -73,15 +77,15 @@ export type { ReleaseWorkflowAudit } from './release-workflow.js'
 
 export {
   planReleasePublish, evaluateReleasePreflight, formatPublishFailure, resumeCommand, classifyWorkingTree,
-  planUpdateInfoUpload, selectReleaseByTag,
-  findReleaseAssetId, buildReleaseAssetUploadUrl, releaseAssetApiPath, auditReleaseScriptResolution,
+  selectReleaseByTag, verifyPublishedRelease, auditLocalReleaseScript,
+  auditReleaseScriptResolution,
   PUBLISH_STEPS,
 } from './release-publish.js'
 export type {
   PublishStep, PublishState, ExistingRelease, PublishTargets, PublishStepPlan, PublishPlan,
-  PreflightVerdict, PublishOutcomeInput, TreeState, UpdateInfoUploadPlan,
+  PreflightVerdict, PublishOutcomeInput, TreeState, PublishedVerdict,
   ReleaseListEntry, SelectedRelease,
-  ReleaseAssetRef, ReleaseScriptAudit,
+  ReleaseScriptAudit,
 } from './release-publish.js'
 
 export interface EQBand {

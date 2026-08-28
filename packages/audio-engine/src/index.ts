@@ -53,8 +53,8 @@ export type { SpectralPeak, FindPeaksOptions } from "./analyze/spectral.js";
 
 // Harshness rules engine (#381): data-driven symptom-to-frequency rules over
 // the shared spectral core. Renderer/narrative consumption is #375.
-export { RULE_TABLE, evaluateRules, rulesForInstrument } from "./analyze/rules.js";
-export type { HarshnessRule, RuleSuggestion, BandCondition, FiredRule, RuleMove } from "./analyze/rules.js";
+export { RULE_TABLE, evaluateRules, rulesForInstrument, gradeSymptoms } from "./analyze/rules.js";
+export type { HarshnessRule, RuleSuggestion, BandCondition, FiredRule, RuleMove, GradeSymptom } from "./analyze/rules.js";
 
 // Rule-narrative templating layer (#834): deterministic rule-type-keyed
 // template registry + pure placeholder renderer. Stories 2-5 register their

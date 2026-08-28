@@ -17,8 +17,6 @@ import {
   dawShellPatchView,
   dawTrackRows,
   dawTrackListEntries,
-  dawTrackInputOptions,
-  dawTrackInputOptionsHTML,
   dawStatusLineView,
   liveAdjustmentsPanelHTML,
   statsRowView,
@@ -76,6 +74,7 @@ function settings(overrides: Partial<AppSettings> = {}): AppSettings {
     weeklyReminderServiceDay: 0, liveEqPaneWidth: 360,
     measurementDeviceName: '', gradingProfile: 'casual', consoleNetworkConsentGranted: false,
     soundcheckBuses: [],
+    splCalibrationOffsetDb: null,
     ...overrides,
   };
 }
@@ -455,57 +454,19 @@ describe('dawShellHTML / dawShellPatchView', () => {
     expect(html).toContain('>Kick &lt;3</span>');
   });
 
-  it('puts the compact input selector to the left of the channel title', () => {
+  it('renders an overview-only head row with no per-channel setting controls (#849)', () => {
     const html = dawTrackHeaderHTML({ index: 0, name: 'Vox 1', armed: false, armDisabled: false, muted: false, soloed: false, monitorActive: true, levelPercent: 0, takeClip: null });
-    expect(html.indexOf('daw-track-head-def')).toBeLessThan(html.indexOf('daw-track-head-name'));
-  });
-
-  it('orders the compact track input selector as stereo pairs, then mono inputs', () => {
-    expect(dawTrackInputOptions(6)).toEqual([
-      { value: 'stereo:0,1', label: '1/2', kind: 'stereo', sources: [0, 1] },
-      { value: 'stereo:2,3', label: '3/4', kind: 'stereo', sources: [2, 3] },
-      { value: 'stereo:4,5', label: '5/6', kind: 'stereo', sources: [4, 5] },
-      { value: 'mono:0', label: '1', kind: 'mono', sources: [0] },
-      { value: 'mono:1', label: '2', kind: 'mono', sources: [1] },
-      { value: 'mono:2', label: '3', kind: 'mono', sources: [2] },
-      { value: 'mono:3', label: '4', kind: 'mono', sources: [3] },
-      { value: 'mono:4', label: '5', kind: 'mono', sources: [4] },
-      { value: 'mono:5', label: '6', kind: 'mono', sources: [5] },
-    ]);
-
-    const html = dawTrackInputOptionsHTML('mono:2', 6);
-    expect([...html.matchAll(/<option value="([^"]+)"[^>]*>([^<]+)<\/option>/g)].map((match) => [match[1], match[2]])).toEqual([
-      ['stereo:0,1', '1/2'],
-      ['stereo:2,3', '3/4'],
-      ['stereo:4,5', '5/6'],
-      ['mono:0', '1'],
-      ['mono:1', '2'],
-      ['mono:2', '3'],
-      ['mono:3', '4'],
-      ['mono:4', '5'],
-      ['mono:5', '6'],
-    ]);
-    expect(html).toContain('<option value="mono:2" selected>3</option>');
-  });
-
-  it('renders one compact input selector instead of separate kind and source selectors', () => {
-    const html = dawTrackHeaderHTML({
-      index: 0,
-      strip: { kind: 'stereo', a: 2, b: 3, armed: true },
-      name: 'Keys',
-      armed: true,
-      armDisabled: false,
-      muted: false,
-      soloed: false,
-      monitorActive: true,
-      levelPercent: 0,
-      deviceChannels: 6,
-      takeClip: null,
-    });
-    expect(html).toContain('class="daw-track-head-input"');
-    expect(html).toContain('<option value="stereo:2,3" selected>3/4</option>');
-    expect(html).not.toContain('daw-track-head-kind');
-    expect(html).not.toContain('daw-track-head-src');
+    expect(html).not.toContain('<select');
+    expect(html).not.toContain('daw-track-head-def');
+    expect(html).not.toContain('daw-track-head-input');
+    expect(html).toContain('daw-track-head-index');
+    expect(html).toContain('daw-track-head-name');
+    expect(html).toContain('daw-track-head-arm');
+    expect(html).toContain('daw-track-head-mute');
+    expect(html).toContain('daw-track-head-solo');
+    expect(html).toContain('daw-track-head-level');
+    expect(html).toContain('daw-track-head-meta');
+    expect(html).toContain('daw-track-head-remove');
   });
 
   it('disables only track-header Arm controls during an active recording (#1058)', () => {
@@ -518,7 +479,7 @@ describe('dawShellHTML / dawShellPatchView', () => {
     expect(armButton(recordingHeads)).toContain('disabled');
     expect(armButton(recordingHeads)).toContain('title="Disarm track"');
     expect(recordingHeads.match(/class="[^"]*\bdaw-track-head-arm\b[^"]*"[^>]* disabled/g)).toHaveLength(CONFIG.length);
-    expect(recordingHeads.match(/class="[^"]*\bdaw-track-head-input\b[^"]*"[^>]* disabled/g)).toHaveLength(CONFIG.length);
+    expect(recordingHeads).not.toContain('<select');
     expect(armButton(dawShellHTML(makeState({ isCapturing: true, liveMode: 'monitor' })))).not.toContain('disabled');
     expect(armButton(dawShellHTML(makeState({ isCapturing: false, liveMode: 'record' })))).not.toContain('disabled');
   });
@@ -534,6 +495,13 @@ describe('dawShellHTML / dawShellPatchView', () => {
     const master = html.slice(html.indexOf('daw-master-head'));
     expect(master).not.toContain('daw-track-head-arm');
   });
+
+  it('keeps no <select> anywhere in the track-head column (#849)', () => {
+    const html = dawShellHTML(makeState());
+    const headColumn = html.slice(html.indexOf('<div class="daw-track-heads'), html.indexOf('<div class="daw-timeline">'));
+    expect(headColumn).not.toContain('<select');
+  });
+
   it('renders the transport header, ruler, and mix lane', () => {
     const html = dawShellHTML(makeState());
     expect(html).toContain('daw-shell');
@@ -997,9 +965,15 @@ describe('statsRowView', () => {
       { spectralCentroid: 1200 },
     );
     expect(view).toEqual({
-      rms: '-8.0', rmsTone: '', peak: '-0.5', peakTone: 'issue', headroom: '0.5', headroomTone: 'issue',
+      rms: '-8.0', rmsUnit: 'dBFS', rmsTone: '', peak: '-0.5', peakUnit: 'dBFS', peakTone: 'issue', headroom: '0.5', headroomTone: 'issue',
       dr: '12.0', drTone: '', clip: 'No', clipTone: '', centroid: '1,200',
     });
+  });
+
+  it('always returns dBFS units regardless of any live calibration state (#846 — file analysis never converts to SPL)', () => {
+    const view = statsRowView({ rmsDbfs: -8, peakDbfs: -0.5, dynamicRangeDb: 12, clipping: false }, {});
+    expect(view.rmsUnit).toBe('dBFS');
+    expect(view.peakUnit).toBe('dBFS');
   });
 
   it('flags a hot RMS and a crushed DR as checks', () => {
@@ -1051,6 +1025,34 @@ describe('liveStatsRowView', () => {
     expect(view.peak).toBe('-∞');
     expect(view.headroom).toBe('—');
     expect(view.headroomTone).toBe('');
+  });
+
+  it('with no offset argument stays on dBFS units (regression guard for #767 uncalibrated behavior)', () => {
+    const ch = { rms: -5, peak: -0.5, clipping: true, centroid: 3000, bands: {} } as LiveMeterChannel;
+    const view = liveStatsRowView(ch);
+    expect(view.rms).toBe('-5.0');
+    expect(view.rmsUnit).toBe('dBFS');
+    expect(view.peak).toBe('-0.5');
+    expect(view.peakUnit).toBe('dBFS');
+  });
+
+  it('with an offset converts rms/peak to dB SPL and labels the units accordingly (#846)', () => {
+    const ch = { rms: -5, peak: -0.5, clipping: true, centroid: 3000, bands: {} } as LiveMeterChannel;
+    const view = liveStatsRowView(ch, 111.4);
+    expect(view.rms).toBe('106.4');
+    expect(view.rmsUnit).toBe('dB SPL');
+    expect(view.peak).toBe('110.9');
+    expect(view.peakUnit).toBe('dB SPL');
+  });
+
+  it('leaves tone/headroom thresholds on raw dBFS regardless of calibration (#846 — clip proximity, not loudness)', () => {
+    const ch = { rms: -5, peak: -0.5, clipping: true, centroid: 3000, bands: {} } as LiveMeterChannel;
+    const uncalibrated = liveStatsRowView(ch);
+    const calibrated = liveStatsRowView(ch, 111.4);
+    expect(calibrated.rmsTone).toBe(uncalibrated.rmsTone);
+    expect(calibrated.peakTone).toBe(uncalibrated.peakTone);
+    expect(calibrated.headroom).toBe(uncalibrated.headroom);
+    expect(calibrated.headroomTone).toBe(uncalibrated.headroomTone);
   });
 
   it('returns null level tiles for an idle or missing selected channel', () => {

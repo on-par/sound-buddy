@@ -18,6 +18,7 @@
 
 import { MAX_NOTE_LENGTH } from '../../electron/ipc/api';
 import type { AnalysisPayload } from '@sound-buddy/shared';
+import { evaluateRules, gradeSymptoms, type GradeSymptom } from '@sound-buddy/audio-engine/dist/analyze/rules.js';
 import {
   escapeHtml, toPct, DIM_DB, HOT_DB, GRID, BAND_META,
   heatmapSVG, miniCurveSVG, fmtDur, classLabel, pickRepresentativeFrames,
@@ -89,6 +90,14 @@ export interface ReportCardSource {
   // Absent on file analyses and on history entries predating this feature.
   channels?: Array<{ label?: string; name?: string; bands: Record<string, number> }>;
   curve?: unknown;
+  // Tonal symptoms fired by the audio-engine rules engine over `curve` (#1246).
+  // Attached here, on the source, because four separate call sites derive a
+  // grade from a ReportCardSource (ReportCardIsland, ReportCardToolbar,
+  // report-card-chrome, buildAnalysisSummaryInput) — anywhere else and the
+  // persisted history score would disagree with the displayed grade. Absent on
+  // live-capture sources and on history entries predating this feature, which
+  // simply take no symptom deduction.
+  symptoms?: GradeSymptom[];
   contentType?: string | null;
   segments?: unknown;
   frames?: unknown;
@@ -543,6 +552,7 @@ export function reportCardSourceFromAnalysis(analysis: AnalysisPayload): ReportC
     centroid: spectrum.spectralCentroid,
     bands: { ...(spectrum.bands || {}) },
     curve: spectrum.curve || null,
+    symptoms: gradeSymptoms(evaluateRules(spectrum.curve)),
     contentType: spectrum.contentType || null,
     segments: spectrum.segments || null,
     frames: spectrum.frames,

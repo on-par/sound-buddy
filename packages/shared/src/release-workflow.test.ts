@@ -41,11 +41,27 @@ jobs:
           set -euo pipefail
           npm run dist --prefix app -- -c.mac.identity="$IDENTITY_NAME" -c.mac.notarize=true
 
+      - name: Verify the update feed (latest-mac.yml)
+        run: node scripts/ci-update-feed.mjs
+
+      - name: Publish to public releases repo
+        id: publish
+        uses: softprops/action-gh-release@v2
+        with:
+          repository: on-par/sound-buddy-releases
+          tag_name: \${{ github.ref_name }}
+          draft: true
+
       - name: Delete the temporary keychain
         if: always()
         run: |
           set -euo pipefail
           security delete-keychain "$KEYCHAIN_PATH" || true
+
+      - name: Promote the draft release
+        run: |
+          set -euo pipefail
+          gh api -X PATCH "repos/on-par/sound-buddy-releases/releases/$RELEASE_ID" -F draft=false --silent
 `;
 
 describe('auditReleaseWorkflow', () => {
@@ -189,6 +205,122 @@ describe('auditReleaseWorkflow', () => {
     const result = auditReleaseWorkflow('name: Empty\non: push\n');
     expect(result.ok).toBe(false);
     expect(result.problems.length).toBeGreaterThan(0);
+  });
+
+  it('flags a missing publish step (no softprops/action-gh-release)', () => {
+    const yml = CLEAN_WORKFLOW.replace(
+      `      - name: Publish to public releases repo
+        id: publish
+        uses: softprops/action-gh-release@v2
+        with:
+          repository: on-par/sound-buddy-releases
+          tag_name: \${{ github.ref_name }}
+          draft: true
+
+`,
+      '',
+    );
+    const result = auditReleaseWorkflow(yml);
+    expect(result.ok).toBe(false);
+    expect(result.problems).toContainEqual(expect.stringMatching(/softprops\/action-gh-release/));
+  });
+
+  it('flags a publish step that does not set draft: true', () => {
+    const yml = CLEAN_WORKFLOW.replace('          draft: true', '          draft: false');
+    const result = auditReleaseWorkflow(yml);
+    expect(result.ok).toBe(false);
+    expect(result.problems).toContainEqual(expect.stringMatching(/draft: true/));
+  });
+
+  it('flags a missing update-feed verification step', () => {
+    const yml = CLEAN_WORKFLOW.replace(
+      `      - name: Verify the update feed (latest-mac.yml)
+        run: node scripts/ci-update-feed.mjs
+
+`,
+      '',
+    );
+    const result = auditReleaseWorkflow(yml);
+    expect(result.ok).toBe(false);
+    expect(result.problems).toContainEqual(expect.stringMatching(/latest-mac\.yml against the built artifacts/));
+  });
+
+  it('flags an update-feed verification step that runs after the publish step', () => {
+    const yml = CLEAN_WORKFLOW.replace(
+      `      - name: Verify the update feed (latest-mac.yml)
+        run: node scripts/ci-update-feed.mjs
+
+      - name: Publish to public releases repo
+        id: publish
+        uses: softprops/action-gh-release@v2
+        with:
+          repository: on-par/sound-buddy-releases
+          tag_name: \${{ github.ref_name }}
+          draft: true
+
+`,
+      `      - name: Publish to public releases repo
+        id: publish
+        uses: softprops/action-gh-release@v2
+        with:
+          repository: on-par/sound-buddy-releases
+          tag_name: \${{ github.ref_name }}
+          draft: true
+
+      - name: Verify the update feed (latest-mac.yml)
+        run: node scripts/ci-update-feed.mjs
+
+`,
+    );
+    const result = auditReleaseWorkflow(yml);
+    expect(result.ok).toBe(false);
+    expect(result.problems).toContainEqual(expect.stringMatching(/after the publish step/));
+  });
+
+  it('flags a missing promote step', () => {
+    const yml = CLEAN_WORKFLOW.replace(
+      `
+
+      - name: Promote the draft release
+        run: |
+          set -euo pipefail
+          gh api -X PATCH "repos/on-par/sound-buddy-releases/releases/$RELEASE_ID" -F draft=false --silent
+`,
+      '\n',
+    );
+    const result = auditReleaseWorkflow(yml);
+    expect(result.ok).toBe(false);
+    expect(result.problems).toContainEqual(expect.stringMatching(/gh api/));
+  });
+
+  it('flags a promote step that is not the last step in the job', () => {
+    const yml = CLEAN_WORKFLOW.replace(
+      `      - name: Delete the temporary keychain
+        if: always()
+        run: |
+          set -euo pipefail
+          security delete-keychain "$KEYCHAIN_PATH" || true
+
+      - name: Promote the draft release
+        run: |
+          set -euo pipefail
+          gh api -X PATCH "repos/on-par/sound-buddy-releases/releases/$RELEASE_ID" -F draft=false --silent
+`,
+      `      - name: Promote the draft release
+        run: |
+          set -euo pipefail
+          gh api -X PATCH "repos/on-par/sound-buddy-releases/releases/$RELEASE_ID" -F draft=false --silent
+
+      - name: Delete the temporary keychain
+        if: always()
+        run: |
+          set -euo pipefail
+          security delete-keychain "$KEYCHAIN_PATH" || true
+`,
+    );
+    const result = auditReleaseWorkflow(yml);
+    expect(result.ok).toBe(false);
+    expect(result.problems).toContainEqual(expect.stringMatching(/last step in the job/));
   });
 
   it('falls back to "unnamed step" when the offending run: block has no name:', () => {
