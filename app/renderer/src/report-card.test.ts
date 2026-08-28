@@ -597,6 +597,7 @@ describe('reportCardSourceFromAnalysis', () => {
       centroid: 1200,
       bands: { subBass: -30, bass: -18, lowMid: -20, mid: -16, highMid: -19, presence: -21, brilliance: -23 },
       curve: { freqs: [100], db: [-10] },
+      symptoms: [],
       contentType: 'speech',
       segments: [{ start: 0, end: 1, class: 'speech' }],
       frames: [{ t: 0, db: [-10], rms: -18, class: 'speech' }],
@@ -604,6 +605,20 @@ describe('reportCardSourceFromAnalysis', () => {
       loudnessRange: 5,
       truePeakDbtp: -1,
     });
+  });
+
+  it('populates symptoms from a curve that fires a rules-engine rule (#1246)', () => {
+    const muddyCurve = {
+      freqs: [80, 200, 400, 800, 1600, 3000, 4200, 5000, 7000, 10000],
+      db: [-21.3, -21.3, -30, -30, -30, -30, -30, -30, -30, -30],
+    };
+    const src = reportCardSourceFromAnalysis({
+      ...analysis,
+      spectrum: { ...analysis.spectrum, curve: muddyCurve },
+    });
+    expect(src?.symptoms).toEqual([
+      expect.objectContaining({ ruleId: 'muddy', symptom: 'Muddy' }),
+    ]);
   });
 
   it('defaults loudness fields to null when the analysis has no loudness block', () => {
