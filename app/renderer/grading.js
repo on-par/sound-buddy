@@ -30,7 +30,10 @@
   // user is scored by. packages/audio-engine/src/report.ts's CLI
   // "[ COMPUTED OBSERVATIONS ]" prose is intentionally non-normative and may use
   // different wording/thresholds; it must never be treated as the grade, and
-  // thresholds are never copied between the two.
+  // thresholds are never copied between the two. #1246: the audio-engine rules
+  // engine now supplies a MEASUREMENT (fired symptoms, via src.symptoms) that
+  // this module grades — report.ts's CLI prose remains non-normative and is
+  // still never a threshold source.
   const CONFIG = {
     // RMS "average level" in dBFS. [acceptableMin, acceptableMax] is the band
     // the grade treats as passing (no deduction); the pill calls it "good".
@@ -67,6 +70,12 @@
   // constant applied uniformly, per the issue's "fixed, documented offset" —
   // not a bespoke delta per metric.
   const BROADCAST_STRICTNESS_OFFSET_DB = 2;
+
+  // #1246 — the score cost of a firing tonal symptom, matched to the level /
+  // true-peak deductions (both -9) so a symptom is weighted like any other
+  // single-letter miss. Named rather than inline because it is a graded
+  // threshold, not a formatting number.
+  const SYMPTOM_SCORE_PENALTY = 9;
 
   // Immutable snapshot of the casual/default thresholds, captured once at
   // module load before any profile is ever applied. configForProfile always
@@ -184,6 +193,45 @@
   // (> ceiling) can never be true for -Infinity.
   function fmtLufs(v) { return Number.isFinite(v) ? v.toFixed(1) : (v > 0 ? '∞' : '-∞'); }
 
+  // #1246 — the highest-excess valid symptom on src.symptoms, or null. Shared
+  // by symptomDeduction and computeRecommendations so "which symptom names the
+  // deduction" is decided in exactly one place.
+  function topSymptom(src) {
+    const symptoms = Array.isArray(src.symptoms) ? src.symptoms : [];
+    let top = null;
+    for (const s of symptoms) {
+      if (!s || typeof s.symptom !== 'string' || s.symptom === '') continue;
+      if (!Number.isFinite(s.excessDb) || !Number.isFinite(s.minExcessDb)) continue;
+      if (top === null || s.excessDb > top.excessDb) top = s;
+    }
+    return top;
+  }
+
+  // #1246 — the one seam between the grade and the report card's Troubleshooting
+  // section. src.symptoms is the audio-engine rules engine's output
+  // (gradeSymptoms(evaluateRules(curve)), attached by
+  // reportCardSourceFromAnalysis), so a symptom the card names in prose always
+  // costs the grade something — "No deductions" and a named symptom can no
+  // longer co-occur. All co-firing symptoms cost exactly ONE letter (the
+  // highest-excess one names the deduction): this aligns the two engines
+  // without retuning the grading curve, which #1246 puts out of scope.
+  //
+  // The target string renders the symptom's own minExcessDb. That number is
+  // defined once, in packages/audio-engine's RULE_TABLE, and is never declared
+  // in CONFIG — grading.js must never grow a band-excess threshold of its own.
+  // Note this also means the broadcast profile's strictness offset does not
+  // tighten it (see the #1246 ADR).
+  function symptomDeduction(src) {
+    const top = topSymptom(src);
+    if (top === null) return null;
+    return {
+      rule: 'Tonal symptom: ' + top.symptom,
+      measured: '+' + top.excessDb.toFixed(1) + ' dB over reference',
+      target: '< +' + top.minExcessDb + ' dB over reference',
+      letterImpact: 'Drops one letter',
+    };
+  }
+
   function analyzeRecordingType(src) {
     if (src.clipping || src.peak >= -0.5) return { type: 'clipping', label: 'Clipping', note: 'Signal is clipping. Reduce input gain immediately.', tone: 'issue' };
     if (src.peak > -3 && src.rms > -12) return { type: 'hot', label: 'Hot', note: 'Recording level is very hot. Consider reducing gain.', tone: 'check' };
@@ -206,6 +254,7 @@
     const recType = analyzeRecordingType(src);
     // #135 — true-peak ceiling rule: applies to all recording types.
     if (measuredLoudness(src.truePeakDbtp) && src.truePeakDbtp > CONFIG.truePeak.ceiling) drop();
+    if (symptomDeduction(src)) drop();
     if (recType.type === 'low_gain') {
       if (src.dynamicRange != null && src.dynamicRange < CONFIG.dynamicRange.check) drop();
       if (Object.keys(src.bands).some(k => bandDiffFromOthers(src.bands, k) > CONFIG.bandBalance.severeHotDiff)) drop();
@@ -303,6 +352,9 @@
       });
     }
 
+    const symptom = symptomDeduction(src);
+    if (symptom) deductions.push(symptom);
+
     if (recType.type === 'low_gain') {
       // Low-gain takes carry their own rule set (RMS ignored, DR floor relaxed
       // to the "check" threshold), matching computeGrade's low_gain branch.
@@ -364,6 +416,7 @@
     const rt = analyzeRecordingType(src);
     if (src.clipping) score -= 45;
     if (measuredLoudness(src.truePeakDbtp) && src.truePeakDbtp > CONFIG.truePeak.ceiling) score -= 9;
+    if (symptomDeduction(src)) score -= SYMPTOM_SCORE_PENALTY;
     if (rt.type !== 'low_gain' && rt.type !== 'dynamic_service') {
       if (measuredLoudness(src.lufsIntegrated)) {
         if (src.lufsIntegrated < CONFIG.lufs.acceptableMin || src.lufsIntegrated > CONFIG.lufs.acceptableMax) score -= 9;
@@ -400,6 +453,14 @@
       }
     }
     if (src.bands.brilliance < -40) recs.push('Mix lacks air and brightness. Boost 2-3 dB above 8kHz.');
+    // #1246 — a named symptom must never sit beside "Great job! No major issues
+    // detected". The fix text is the rule's own suggestion.instruction, so the
+    // advice here and in the Troubleshooting section come from one table row.
+    const top = topSymptom(src);
+    if (top) {
+      const fix = typeof top.instruction === 'string' && top.instruction !== '' ? ': ' + top.instruction : '';
+      recs.push(top.symptom + fix);
+    }
     if (recs.length === 0) recs.push('Great job! No major issues detected — levels and balance are solid.');
     return recs.slice(0, 5);
   }
@@ -489,6 +550,7 @@
     explainGrade: explainGrade,
     computeScore: computeScore,
     computeRecommendations: computeRecommendations,
+    symptomDeduction: symptomDeduction,
     rcRmsStatus: rcRmsStatus,
     rcPeakStatus: rcPeakStatus,
     rcDrStatus: rcDrStatus,
