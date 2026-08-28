@@ -81,7 +81,10 @@ describe('#1187 AC2 — notarization succeeds (ticket stapled, spctl accepted)',
   });
 
   it('parseSpctlAssessment accepts output with an ": accepted" line', () => {
-    expect(parseSpctlAssessment('/path: accepted\nsource=Notarized Developer ID')).toEqual({ accepted: true });
+    expect(parseSpctlAssessment('/path: accepted\nsource=Notarized Developer ID')).toEqual({
+      accepted: true,
+      source: 'Notarized Developer ID',
+    });
   });
 
   it('parseSpctlAssessment reports an actionable error on rejection', () => {

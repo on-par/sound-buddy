@@ -148,21 +148,47 @@ export function planCodesignBatches(paths: readonly string[], batchSize = CODESI
 export interface SpctlVerdict {
   accepted: boolean;
   error?: string;
+  /** The `source=` line spctl printed, when it printed one. */
+  source?: string;
 }
 
 const SPCTL_ACCEPTED_LINE = /:\s*accepted\s*$/m;
+const SPCTL_SOURCE_LINE = /^source=(.+)$/m;
+
+// The only `source=` value that means "notarized by Apple and the ticket is stapled". A signed
+// build that never reached the notary service reports `source=Developer ID`; #1226 AC1 requires
+// this exact string on the DMG assessment.
+export const NOTARIZED_SPCTL_SOURCE = 'Notarized Developer ID';
 
 export function parseSpctlAssessment(output: string): SpctlVerdict {
-  if (SPCTL_ACCEPTED_LINE.test(output)) {
-    return { accepted: true };
+  const sourceMatch = SPCTL_SOURCE_LINE.exec(output);
+  const source = sourceMatch ? sourceMatch[1].trim() : undefined;
+
+  if (!SPCTL_ACCEPTED_LINE.test(output)) {
+    return {
+      accepted: false,
+      source,
+      error:
+        `Gatekeeper did not accept the build — it will be blocked on a fresh macOS install. Check that ` +
+        `notarization and stapling completed. spctl output:\n${output}`,
+    };
   }
 
-  return {
-    accepted: false,
-    error:
-      `Gatekeeper did not accept the build — it will be blocked on a fresh macOS install. Check that ` +
-      `notarization and stapling completed. spctl output:\n${output}`,
-  };
+  // An absent source line keeps today's behavior — tolerate a future spctl output-format change
+  // rather than block every release on a line we no longer know how to parse.
+  if (source !== undefined && source !== NOTARIZED_SPCTL_SOURCE) {
+    return {
+      accepted: false,
+      source,
+      error:
+        `Gatekeeper accepted the build but its source is "${source}", not "${NOTARIZED_SPCTL_SOURCE}" — the ` +
+        `build was signed but never notarized. Confirm -c.mac.notarize=true reached electron-builder and that ` +
+        `the notary credentials in the environment are the ones docs/signing-and-notarization.md describes, ` +
+        `then re-run the build. spctl output:\n${output}`,
+    };
+  }
+
+  return { accepted: true, source };
 }
 
 export interface StaplerVerdict {

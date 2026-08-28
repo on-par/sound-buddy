@@ -44,6 +44,7 @@ export type {
 export {
   resolveSigningConfig, isMachOBinary, parseSpctlAssessment, parseStaplerValidation,
   planCodesignBatches, CODESIGN_BATCH_SIZE, parseCodesigningIdentity, redactSecrets, REDACTED,
+  NOTARIZED_SPCTL_SOURCE,
 } from './signing.js'
 export type { SigningConfig, SpctlVerdict, StaplerVerdict, NotaryAuth } from './signing.js'
 
