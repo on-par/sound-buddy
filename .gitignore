@@ -33,3 +33,10 @@ site/.wrangler/
 # packages/console/src is allowed in this public repo, and git history is
 # permanent. Name any local raw capture `*.local.scn`.
 *.local.scn
+
+# Software factory runtime state is local to each machine (queue, logs, events,
+# cost ledger, plans, port leases). The constitution is the deliberate exception:
+# factory 2.0 resolves the consumer repo's own .factory/constitution.md as its
+# authoritative standards instance, so it belongs in version control.
+.factory/*
+!.factory/constitution.md
