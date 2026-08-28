@@ -1,7 +1,7 @@
-import { _electron as electron } from 'playwright';
 import type { ElectronApplication, Page, Locator } from '@playwright/test';
 import * as path from 'path';
 import { LICENSE_ENV, seedProLicense } from '../license-fixture';
+import { launchElectron } from '../launch-electron';
 
 // Shared fixtures + launch helper for the e2e.spec.ts split (#225 — the
 // original 1693-line file was split by user flow into app/tests/e2e/*.spec.ts).
@@ -242,7 +242,7 @@ export async function launchApp(): Promise<{ electronApp: ElectronApplication; w
   // Live/soundcheck flows are Pro features (#54): seed a license so their UI
   // is unlocked. The dedicated license.spec.ts covers the free tier + gating.
   seedProLicense(userDataDir);
-  const electronApp = await electron.launch({
+  const electronApp = await launchElectron({
     args: [path.join(__dirname, '..', '..', 'dist', 'electron', 'main.js'), `--user-data-dir=${userDataDir}`],
     env: { ...process.env, ...LICENSE_ENV },
   });

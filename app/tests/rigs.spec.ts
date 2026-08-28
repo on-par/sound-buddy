@@ -1,5 +1,5 @@
 import { test, expect, type ElectronApplication, type Page } from '@playwright/test';
-import { _electron as electron } from 'playwright';
+import { launchElectron } from './launch-electron';
 import * as path from 'path';
 import * as fs from 'fs';
 import { LICENSE_ENV, seedProLicense } from './license-fixture';
@@ -50,7 +50,7 @@ async function stubDevices(app: ElectronApplication, devices: unknown): Promise<
 async function launch(devices: unknown): Promise<{ app: ElectronApplication; win: Page }> {
   // Rigs are a Pro feature (#54): seed a license so the Live-tab UI is unlocked.
   seedProLicense(USER_DATA);
-  const app = await electron.launch({
+  const app = await launchElectron({
     args: [MAIN, `--user-data-dir=${USER_DATA}`],
     env: { ...process.env, ...LICENSE_ENV },
   });

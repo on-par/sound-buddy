@@ -49,7 +49,25 @@ export function getPreloadPath(baseDir: string): string {
   return path.join(baseDir, 'preload.js');
 }
 
-export function getWindowOptions(preloadPath: string): Electron.BrowserWindowConstructorOptions {
+/** Set only by app/tests/launch-electron.ts (#1249) — never in production. */
+const HEADLESS_E2E_ENV = 'SB_E2E_HEADLESS';
+
+export function getWindowOptions(
+  preloadPath: string,
+  env: NodeJS.ProcessEnv = process.env,
+): Electron.BrowserWindowConstructorOptions {
+  // Headless e2e (#1249): the window is placed off-screen rather than made
+  // with show:false. A show:false window never gets a real compositor
+  // surface, so requestAnimationFrame stops ticking regardless of
+  // backgroundThrottling — that setting only relaxes setTimeout/setInterval
+  // clamping, not compositor paint scheduling. That silently broke every
+  // meter/transport spec whose assertions depend on an rAF-driven UI loop
+  // (reproduced under the same ubuntu-latest + xvfb combination CI uses).
+  // A window positioned off-screen is a normal, fully-composited, show:true
+  // window, so rAF ticks exactly as it did before this feature existed — it
+  // just never lands inside a real display's visible bounds, so it doesn't
+  // steal focus or flash on top of other work during a local run.
+  const headless = env[HEADLESS_E2E_ENV] === '1';
   return {
     width: 1200,
     height: 800,
@@ -57,6 +75,7 @@ export function getWindowOptions(preloadPath: string): Electron.BrowserWindowCon
     minHeight: 600,
     backgroundColor: '#0d0d0d',
     titleBarStyle: 'hiddenInset',
+    ...(headless ? { x: -10000, y: -10000 } : {}),
     webPreferences: {
       contextIsolation: true,
       nodeIntegration: false,

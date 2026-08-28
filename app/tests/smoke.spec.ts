@@ -1,5 +1,5 @@
 import { test, expect, type ElectronApplication, type Page } from '@playwright/test';
-import { _electron as electron } from 'playwright';
+import { launchElectron } from './launch-electron';
 import * as path from 'path';
 import * as fs from 'fs';
 
@@ -15,7 +15,7 @@ test('smoke: exercise all flows and collect errors', async () => {
   const pageErrors: string[] = [];
   const mainOut: string[] = [];
 
-  const app: ElectronApplication = await electron.launch({
+  const app: ElectronApplication = await launchElectron({
     args: [path.join(__dirname, '..', 'dist', 'electron', 'main.js')],
     // Suppress the first-run onboarding overlay (#69) so its scrim doesn't
     // intercept the tab/analyze clicks this smoke run makes on a fresh profile.
