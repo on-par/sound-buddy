@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 
 const grading = require('../grading.js');
-const { flatBands, makeSrc } = require('./fixtures.js');
+const { makeSrc } = require('./fixtures.js');
 
 const muddySymptom = (over = {}) => ({
   ruleId: 'muddy',
