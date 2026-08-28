@@ -61,6 +61,11 @@ describe('parseLatestMacYml', () => {
     expect(feed.path).toBe('Sound.Buddy-0.8.31-arm64-mac.zip');
   });
 
+  it('ignores an indented line outside of a files entry (e.g. nested config electron-builder adds later)', () => {
+    const feed = parseLatestMacYml('version: 0.8.31\n  nestedExtra: value\npath: x.zip\n');
+    expect(feed).toEqual({ version: '0.8.31', path: 'x.zip', files: [] });
+  });
+
   it('does not treat a single-character value as quoted', () => {
     const feed = parseLatestMacYml('version: 5\n');
     expect(feed.version).toBe('5');

@@ -26,10 +26,21 @@ export interface BuiltArtifact {
 
 export type UpdateFeedVerdict = { ok: true } | { ok: false; problems: string[] };
 
-const TOP_LEVEL_KEY_LINE = /^(version|path|sha512):\s*(.*)$/;
-const FILE_URL_LINE = /^\s*-\s*url:\s*(.*)$/;
-const FILE_SHA512_LINE = /^\s*sha512:\s*(.*)$/;
-const FILE_SIZE_LINE = /^\s*size:\s*(.*)$/;
+const TOP_LEVEL_KEYS = ['version', 'path', 'sha512'] as const;
+
+/**
+ * Plain-string prefix match, not a regex — a `^\s*key:\s*` style pattern here would give CodeQL's
+ * polynomial-redos check something to flag on adversarial whitespace, and buys nothing over
+ * `trimStart` + `startsWith` for a format this fixed.
+ */
+function matchPrefix(line: string, prefix: string): string | undefined {
+  const trimmed = line.trimStart();
+  return trimmed.startsWith(prefix) ? trimmed.slice(prefix.length) : undefined;
+}
+
+function isIndented(line: string): boolean {
+  return line.length > 0 && (line[0] === ' ' || line[0] === '\t');
+}
 
 function unquote(value: string): string {
   const trimmed = value.trim();
@@ -55,23 +66,23 @@ export function parseLatestMacYml(text: string): UpdateFeed {
   let inFilesBlock = false;
 
   for (const rawLine of text.split('\n')) {
-    const urlMatch = FILE_URL_LINE.exec(rawLine);
-    if (urlMatch) {
+    const urlValue = matchPrefix(rawLine, '- url:');
+    if (urlValue !== undefined) {
       inFilesBlock = true;
-      currentFile = { url: unquote(urlMatch[1]), sha512: '' };
+      currentFile = { url: unquote(urlValue), sha512: '' };
       feed.files.push(currentFile);
       continue;
     }
 
-    if (inFilesBlock && currentFile && /^\s+/.test(rawLine)) {
-      const sha512Match = FILE_SHA512_LINE.exec(rawLine);
-      if (sha512Match) {
-        currentFile.sha512 = unquote(sha512Match[1]);
+    if (inFilesBlock && currentFile && isIndented(rawLine)) {
+      const sha512Value = matchPrefix(rawLine, 'sha512:');
+      if (sha512Value !== undefined) {
+        currentFile.sha512 = unquote(sha512Value);
         continue;
       }
-      const sizeMatch = FILE_SIZE_LINE.exec(rawLine);
-      if (sizeMatch) {
-        const parsed = Number.parseInt(unquote(sizeMatch[1]), 10);
+      const sizeValue = matchPrefix(rawLine, 'size:');
+      if (sizeValue !== undefined) {
+        const parsed = Number.parseInt(unquote(sizeValue), 10);
         currentFile.size = Number.isFinite(parsed) ? parsed : undefined;
         continue;
       }
@@ -86,10 +97,14 @@ export function parseLatestMacYml(text: string): UpdateFeed {
       continue;
     }
 
-    const topLevelMatch = TOP_LEVEL_KEY_LINE.exec(rawLine);
-    if (topLevelMatch) {
-      const [, key, value] = topLevelMatch;
-      feed[key as 'version' | 'path' | 'sha512'] = unquote(value);
+    if (isIndented(rawLine)) continue;
+
+    for (const key of TOP_LEVEL_KEYS) {
+      const value = matchPrefix(rawLine, `${key}:`);
+      if (value !== undefined) {
+        feed[key] = unquote(value);
+        break;
+      }
     }
   }
 
