@@ -287,7 +287,20 @@ const FORBIDDEN_LOCAL_RELEASE_PATTERNS: readonly { pattern: RegExp; problem: str
   { pattern: /uploads\.github\.com/, problem: 'uploads a release asset — CI uploads every asset (#1239)' },
   { pattern: /-F draft=false/, problem: 'promotes the release out of draft — CI promotes as its last step (#1239)' },
 ];
-const CI_RUN_WAIT_PATTERN = /gh run watch[^\n]*--exit-status/;
+// Deliberately not a regex. `/gh run watch[^\n]*--exit-status/` backtracks
+// polynomially on a script containing many "gh run watch" occurrences without
+// the flag: the engine restarts the `[^\n]*` scan at every occurrence
+// (CodeQL js/polynomial-redos). A literal scan is linear and reads clearer.
+const CI_RUN_WAIT_COMMAND = 'gh run watch';
+const CI_RUN_WAIT_FLAG = '--exit-status';
+
+/** True when some line runs `gh run watch` with `--exit-status` after it. */
+function waitsOnTaggedCiRun(scriptText: string): boolean {
+  return scriptText.split('\n').some((line) => {
+    const start = line.indexOf(CI_RUN_WAIT_COMMAND);
+    return start !== -1 && line.includes(CI_RUN_WAIT_FLAG, start + CI_RUN_WAIT_COMMAND.length);
+  });
+}
 
 /** Forbids the local build/publish path from reappearing in release.sh, and requires it to wait on the tagged CI run (#1239). */
 export function auditLocalReleaseScript(scriptText: string): ReleaseScriptAudit {
@@ -300,7 +313,7 @@ export function auditLocalReleaseScript(scriptText: string): ReleaseScriptAudit 
       }
     }
   });
-  if (!CI_RUN_WAIT_PATTERN.test(scriptText)) {
+  if (!waitsOnTaggedCiRun(scriptText)) {
     problems.push(
       'does not wait on the tagged CI run with "gh run watch … --exit-status" — a release must not be reported ' +
         'as done before CI has finished (#1239)',

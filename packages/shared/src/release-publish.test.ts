@@ -190,7 +190,27 @@ describe('auditLocalReleaseScript', () => {
     const script = `gh api -X POST "https://uploads.github.com/repos/$PUBLIC_REPO/releases/$RELEASE_ID/assets?name=x" --silent\n${CI_WAIT}`;
     const result = auditLocalReleaseScript(script);
     expect(result.ok).toBe(false);
-    expect(result.problems.some((p) => p.includes('uploads.github.com'))).toBe(true);
+    // Assert the audit's own problem text, not the echoed URL: matching a host
+    // substring here reads as URL sanitization to CodeQL
+    // (js/incomplete-url-substring-sanitization), and the message is the
+    // stronger assertion anyway.
+    expect(result.problems.some((p) => p.includes('uploads a release asset'))).toBe(true);
+  });
+
+  it('detects the CI wait regardless of where it sits on the line', () => {
+    const script = 'set -e && gh run watch "$RUN_ID" --exit-status';
+    expect(auditLocalReleaseScript(script).problems.some((p) => p.includes('gh run watch'))).toBe(false);
+  });
+
+  it('stays linear on many gh-run-watch occurrences without the flag', () => {
+    // Regression for CodeQL js/polynomial-redos: the old
+    // /gh run watch[^\n]*--exit-status/ restarted its scan at every occurrence.
+    const script = `${'gh run watch '.repeat(20_000)}x`;
+    const started = process.hrtime.bigint();
+    const result = auditLocalReleaseScript(script);
+    const elapsedMs = Number(process.hrtime.bigint() - started) / 1e6;
+    expect(result.ok).toBe(false);
+    expect(elapsedMs).toBeLessThan(1_000);
   });
 
   it('flags a -F draft=false promote', () => {
