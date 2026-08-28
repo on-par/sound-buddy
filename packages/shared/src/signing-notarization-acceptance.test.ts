@@ -18,9 +18,6 @@ const releaseWorkflow = readFileSync(
   fileURLToPath(new URL('../../../.github/workflows/release.yml', import.meta.url)),
   'utf8',
 );
-// Retained only for the checkUpdateFeed feed-gate assertion (AC4) — feed
-// verification is slice 2 (#1238) and has not been ported to release.yml yet.
-const releaseScript = readFileSync(fileURLToPath(new URL('../../../scripts/release.sh', import.meta.url)), 'utf8');
 const electronBuilderYml = readFileSync(
   fileURLToPath(new URL('../../../app/electron-builder.yml', import.meta.url)),
   'utf8',
@@ -163,11 +160,10 @@ describe('#1226 — packaging, signing and notarization verified under electron-
     expect(runbook).toContain('latest-mac.yml');
   });
 
-  it('release.sh still wires the latest-mac.yml consistency gate (AC4)', () => {
-    // Feed verification is slice 2 of #1236 (#1238) — it has not been ported
-    // to release.yml yet, and it is not a signing or notarization property,
-    // so #1237 deliberately leaves this one reading the script.
-    expect(releaseScript).toContain('checkUpdateFeed');
+  it('release.yml wires the latest-mac.yml consistency gate (AC4)', () => {
+    // Slice 2 (#1238) moved the feed-verification gate into CI; slice 3
+    // (#1239) removed the local one from scripts/release.sh entirely.
+    expect(releaseWorkflow).toContain('scripts/ci-update-feed.mjs');
   });
 
   it('release.yml still notarizes with the eb26 boolean form', () => {
