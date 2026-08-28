@@ -175,7 +175,8 @@ describe('Always-monitoring Live tab with Session-owned transport (#757/#1112)',
     const css = fs.readFileSync(fileURLToPath(new URL('./styles/app.css', import.meta.url)), 'utf8');
     expect(css).toContain('body.live-active #spectrum-imperative,');
     expect(css).toContain('body.live-active #spectrum-island { display:none !important; }');
-    expect(css).toContain('body.live-active #live-island { display:flex !important; }');
+    // #1245: :not(.not-pro)-scoped so the Pro gate can't be overridden.
+    expect(css).toContain('body.live-active:not(.not-pro) #live-island { display:flex !important; }');
   });
 
   it('no longer references the removed in-tab controls in App.tsx', () => {
