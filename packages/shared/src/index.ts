@@ -48,6 +48,9 @@ export {
 } from './signing.js'
 export type { SigningConfig, SpctlVerdict, StaplerVerdict, NotaryAuth } from './signing.js'
 
+export { parseLatestMacYml, checkUpdateFeed } from './update-feed.js'
+export type { UpdateFeed, UpdateFeedFileEntry, BuiltArtifact, UpdateFeedVerdict } from './update-feed.js'
+
 export {
   isPrunablePythonDir, isPrunablePythonFile, PYTHON_PRUNE_VERSION,
 } from './python-prune.js'
