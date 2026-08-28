@@ -39,6 +39,7 @@ import {
 } from './live-capture-panel';
 import { escapeHtml } from './spectrum-display';
 import { fmt, iconSvg } from './report-card';
+import { levelDisplay } from './spl-calibration';
 import type { AppSettings } from '../../electron/ipc/api';
 import { dawRulerTicks, dawLaneGridlines, DAW_TIMELINE_SPAN_SECS, DAW_TIMELINE_ORIGIN_PX, type DawShellRuntime } from './daw-shell-runtime';
 import { sessionTabSessionPickerHTML, type SessionTabSessionPickerView } from './session-tab-session-picker';
@@ -176,8 +177,12 @@ export interface LapFocusView {
 
 export interface StatsRowView {
   rms: string;
+  // #846: 'dBFS' unconditionally for file analysis; 'dB SPL' for the live Room
+  // row once splCalibrationOffsetDb is set.
+  rmsUnit: string;
   rmsTone: string;
   peak: string;
+  peakUnit: string;
   peakTone: string;
   headroom: string;
   headroomTone: string;
@@ -782,8 +787,10 @@ export function statsRowView(sox: unknown, spectrum: unknown): StatsRowView {
   const sp = spectrum as FileAnalysisSpectrum;
   return {
     rms: fmt(s.rmsDbfs),
+    rmsUnit: 'dBFS',
     rmsTone: s.rmsDbfs > -6 ? 'check' : '',
     peak: fmt(s.peakDbfs),
+    peakUnit: 'dBFS',
     peakTone: s.peakDbfs > -1 ? 'issue' : '',
     headroom: Number.isFinite(s.peakDbfs) ? fmt(DBFS_CEILING - s.peakDbfs) : '—',
     headroomTone: Number.isFinite(s.peakDbfs) && s.peakDbfs > -1 ? 'issue' : '',
@@ -796,13 +803,20 @@ export function statsRowView(sox: unknown, spectrum: unknown): StatsRowView {
 }
 
 // The live variant (DR reads '—', clip reads 'CLIP') — matches
-// inline-app.js's updateLiveStatsRow exactly.
-export function liveStatsRowView(ch: LiveMeterChannel): StatsRowView {
+// inline-app.js's updateLiveStatsRow exactly, widened by #846's optional
+// splOffsetDb: the tone thresholds and headroom stay derived from the raw
+// dBFS values regardless of calibration — they measure digital-clip
+// proximity, not loudness, so a calibrated offset must not shift them.
+export function liveStatsRowView(ch: LiveMeterChannel, splOffsetDb: number | null = null): StatsRowView {
   const peakIsFinite = Number.isFinite(ch.peak);
+  const rmsLevel = levelDisplay(ch.rms, splOffsetDb);
+  const peakLevel = levelDisplay(ch.peak, splOffsetDb);
   return {
-    rms: fmt(ch.rms),
+    rms: rmsLevel.value,
+    rmsUnit: rmsLevel.unit,
     rmsTone: ch.rms > -6 ? 'check' : '',
-    peak: fmt(ch.peak),
+    peak: peakLevel.value,
+    peakUnit: peakLevel.unit,
     peakTone: ch.peak > -1 ? 'issue' : '',
     headroom: peakIsFinite ? fmt(DBFS_CEILING - ch.peak) : '—',
     headroomTone: peakIsFinite && ch.peak > -1 ? 'issue' : '',
@@ -816,7 +830,10 @@ export function liveStatsRowView(ch: LiveMeterChannel): StatsRowView {
 
 // Adapts the shared live-stat formatter for the selected inspector. Synthetic
 // idle channels have no live statistics, so callers use its null result to
-// render or patch the complete unavailable tile set.
+// render or patch the complete unavailable tile set. No splOffsetDb argument
+// here (defaults to uncalibrated dBFS) — the #846 room-level SPL offset is
+// deliberately not applied to per-channel EQ-pane tiles, only the Room stats
+// row (see the SPL-calibration ADR).
 export function eqPaneLevelTilesView(ch: LiveMeterChannel | null | undefined): EqPaneLevelTilesView | null {
   if (!ch || ch.idle) return null;
   const stats = liveStatsRowView(ch);
@@ -858,5 +875,11 @@ export function patchStatsRow(view: StatsRowView): void {
   setStat('stat-clip', view.clip, view.clipTone);
   const centroid = document.getElementById('stat-centroid');
   if (centroid) centroid.textContent = view.centroid;
+  // #846: the RMS/Peak unit labels flip to 'dB SPL' once the Room readout is
+  // calibrated.
+  const rmsUnit = document.getElementById('stat-rms-unit');
+  if (rmsUnit) rmsUnit.textContent = view.rmsUnit;
+  const peakUnit = document.getElementById('stat-peak-unit');
+  if (peakUnit) peakUnit.textContent = view.peakUnit;
 }
 /* c8 ignore stop */

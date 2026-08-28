@@ -280,6 +280,17 @@ describe('Header live dBFS readout removed from top chrome (#1113)', () => {
   });
 });
 
+describe('Stats-row RMS/Peak unit spans carry ids for SPL calibration (#846)', () => {
+  it('gives the RMS and Peak .stat-unit spans ids so patchStatsRow can write to them', () => {
+    expect(markup).toContain('<span class="stat-unit" id="stat-rms-unit">dBFS</span>');
+    expect(markup).toContain('<span class="stat-unit" id="stat-peak-unit">dBFS</span>');
+  });
+
+  it('still does not revive the deleted header live-level readout (#1113 stays gone)', () => {
+    expect(markup).not.toContain('id="live-level-readout"');
+  });
+});
+
 describe('Existing tabs stay intact under the unified Analyze picker (#543)', () => {
   it('keeps all workspace mode tabs available (now rendered by ModeTabs.tsx, TD-001 slice 6e, #703)', () => {
     const modeTabsMarkup = renderToString(createElement(ModeTabs));

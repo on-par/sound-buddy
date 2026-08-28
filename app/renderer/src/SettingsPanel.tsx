@@ -77,6 +77,7 @@ import RigControls from './RigControls';
 import LiveSourceSettings from './LiveSourceSettings';
 import SecondaryMeasurementPanel from './SecondaryMeasurementPanel';
 import CaptureCadenceControls from './CaptureCadenceControls';
+import SplCalibrationPanel from './SplCalibrationPanel';
 import PreflightSettings from './PreflightSettings';
 import SettingsPlanStatus from './SettingsPlanStatus';
 import { SETTINGS_HELP_ENTRIES, resolveSettingsHelp, settingsHelpHandlers, settingsHelpNoteId } from './settings-help';
@@ -115,6 +116,7 @@ export type SettingsControl =
   | 'meterRate'
   | 'meterWindow'
   | 'preflight'
+  | 'splCalibration'
   | 'consoleNetworkConsent'
   | 'storageDir'
   | 'diskUsage'
@@ -136,6 +138,7 @@ const SETTING_SECTION_TARGETS: readonly { setting: SettingsControl; section: Set
   { setting: 'meterRate', section: 'audio' },
   { setting: 'meterWindow', section: 'audio' },
   { setting: 'preflight', section: 'audio' },
+  { setting: 'splCalibration', section: 'audio' },
   { setting: 'consoleNetworkConsent', section: 'console' },
   { setting: 'storageDir', section: 'storage' },
   { setting: 'diskUsage', section: 'storage' },
@@ -540,6 +543,14 @@ export default function SettingsPanel({ booted = false }: { booted?: boolean }) 
               <CaptureCadenceControls />
             </SettingsGroup>
           )}
+          <SettingsGroup title="Calibration">
+            {booted && (
+              <div aria-describedby={settingsHelpNoteId('splCalibration')} {...helpFor('splCalibration')}>
+                <SplCalibrationPanel />
+              </div>
+            )}
+            <SettingsNote control="splCalibration" />
+          </SettingsGroup>
           {/* Preflight checklist + Save baseline (#757): relocated here from the
               Live tab's PreflightPanel — same view-model the old panel used. */}
           {booted && <PreflightSettings />}

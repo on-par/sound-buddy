@@ -33,7 +33,7 @@ const SEED_SETTINGS: AppSettings = {
   crashReportingEnabled: false, liveAdjustmentsEnabled: false,
   reportFirstUxEnabled: false, shareChurchName: '', weeklyReminderEnabled: false,
   weeklyReminderServiceDay: 0, liveEqPaneWidth: 360, measurementDeviceName: '',
-  gradingProfile: 'casual', consoleNetworkConsentGranted: false, soundcheckBuses: [],
+  gradingProfile: 'casual', consoleNetworkConsentGranted: false, soundcheckBuses: [], splCalibrationOffsetDb: null,
 };
 
 function makeStore(overrides: Partial<Parameters<typeof createMockSoundBuddy>[0]> = {}) {

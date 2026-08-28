@@ -369,6 +369,35 @@ describe('weeklyReminderEnabled / weeklyReminderServiceDay (#268 — opt-in loca
   );
 });
 
+describe('splCalibrationOffsetDb (#846 — user-set SPL calibration offset, default uncalibrated)', () => {
+  it('defaults to null when settings.json is absent', () => {
+    expect(getSettings().splCalibrationOffsetDb).toBeNull();
+  });
+
+  it('reads back a persisted offset across a fresh read (survives an app restart)', () => {
+    writeFile({ splCalibrationOffsetDb: 111.4 });
+    expect(getSettings().splCalibrationOffsetDb).toBe(111.4);
+  });
+
+  it.each(['loud', NaN, -5, 500])(
+    'hydrates a corrupted splCalibrationOffsetDb value (%p) back to null',
+    (corrupted) => {
+      writeFile({ splCalibrationOffsetDb: corrupted });
+      expect(getSettings().splCalibrationOffsetDb).toBeNull();
+    },
+  );
+
+  it('recalibrate then reset leaves null on disk', () => {
+    const calibrated = updateSettings({ splCalibrationOffsetDb: 111.4 });
+    expect(calibrated.splCalibrationOffsetDb).toBe(111.4);
+    expect(readFile().splCalibrationOffsetDb).toBe(111.4);
+
+    const reset = updateSettings({ splCalibrationOffsetDb: null });
+    expect(reset.splCalibrationOffsetDb).toBeNull();
+    expect(readFile().splCalibrationOffsetDb).toBeNull();
+  });
+});
+
 describe('liveEqPaneWidth (#668 — persisted Live EQ pane width, renderer clamps, main only sanitizes)', () => {
   it('defaults to 360 when settings.json is absent', () => {
     expect(getSettings().liveEqPaneWidth).toBe(360);
@@ -842,6 +871,7 @@ describe('SETTING_SPECS — the single owner of every field invariant (#747)', (
     gradingProfile: 'casual',
     consoleNetworkConsentGranted: false,
     soundcheckBuses: [],
+    splCalibrationOffsetDb: null,
   };
 
   it('covers every AppSettings key — and no extras (compile-time + runtime set equality)', () => {

@@ -131,6 +131,7 @@ describe('SettingsPanel markup', () => {
         reportFirstUxEnabled: false, shareChurchName: '', weeklyReminderEnabled: false, weeklyReminderServiceDay: 0,
         liveEqPaneWidth: 360, measurementDeviceName: '', gradingProfile: 'casual', consoleNetworkConsentGranted: false,
         soundcheckBuses: [],
+        splCalibrationOffsetDb: null,
       },
     });
     const html = renderMarkup();
@@ -322,6 +323,9 @@ describe('Audio pane composition (#727)', () => {
     expect(html).toContain('id="secondary-measurement-device"');
     expect(html).toContain('id="meter-interval"');
     expect(html).toContain('id="window-secs"');
+    expect(html).toContain('id="spl-cal-live-level"');
+    expect(html).toContain('id="spl-cal-meter-input"');
+    expect(html).toContain('id="spl-cal-apply"');
   });
 
   it('renders the secondary-measurement device select even with no settings loaded, defaulted to None', () => {
@@ -345,6 +349,8 @@ describe('Audio pane composition (#727)', () => {
     expect(html).not.toContain('id="window-secs"');
     expect(html).not.toContain('id="preflight-save-btn"');
     expect(html).not.toContain('id="preflight-list"');
+    expect(html).not.toContain('id="spl-cal-live-level"');
+    expect(html).not.toContain('id="spl-cal-meter-input"');
   });
 
   it('composes the preflight checklist + Save baseline in the Audio pane when booted (#757)', () => {
@@ -661,6 +667,7 @@ describe('SettingsSection', () => {
       meterRate: 'audio',
       meterWindow: 'audio',
       preflight: 'audio',
+      splCalibration: 'audio',
       consoleNetworkConsent: 'console',
       storageDir: 'storage',
       diskUsage: 'storage',
@@ -687,7 +694,7 @@ describe('Settings row grid (#1009)', () => {
 
   it('renders a group header for every boot-gated Audio group once booted', () => {
     const html = renderMarkup(true);
-    for (const title of ['Rig', 'Input', 'Measurement', 'Metering']) {
+    for (const title of ['Rig', 'Input', 'Measurement', 'Metering', 'Calibration']) {
       expect(html).toContain(`<h3 class="settings-group-title">${title}</h3>`);
     }
   });

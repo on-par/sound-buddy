@@ -74,6 +74,7 @@ function settings(overrides: Partial<AppSettings> = {}): AppSettings {
     weeklyReminderServiceDay: 0, liveEqPaneWidth: 360,
     measurementDeviceName: '', gradingProfile: 'casual', consoleNetworkConsentGranted: false,
     soundcheckBuses: [],
+    splCalibrationOffsetDb: null,
     ...overrides,
   };
 }
@@ -964,9 +965,15 @@ describe('statsRowView', () => {
       { spectralCentroid: 1200 },
     );
     expect(view).toEqual({
-      rms: '-8.0', rmsTone: '', peak: '-0.5', peakTone: 'issue', headroom: '0.5', headroomTone: 'issue',
+      rms: '-8.0', rmsUnit: 'dBFS', rmsTone: '', peak: '-0.5', peakUnit: 'dBFS', peakTone: 'issue', headroom: '0.5', headroomTone: 'issue',
       dr: '12.0', drTone: '', clip: 'No', clipTone: '', centroid: '1,200',
     });
+  });
+
+  it('always returns dBFS units regardless of any live calibration state (#846 — file analysis never converts to SPL)', () => {
+    const view = statsRowView({ rmsDbfs: -8, peakDbfs: -0.5, dynamicRangeDb: 12, clipping: false }, {});
+    expect(view.rmsUnit).toBe('dBFS');
+    expect(view.peakUnit).toBe('dBFS');
   });
 
   it('flags a hot RMS and a crushed DR as checks', () => {
@@ -1018,6 +1025,34 @@ describe('liveStatsRowView', () => {
     expect(view.peak).toBe('-∞');
     expect(view.headroom).toBe('—');
     expect(view.headroomTone).toBe('');
+  });
+
+  it('with no offset argument stays on dBFS units (regression guard for #767 uncalibrated behavior)', () => {
+    const ch = { rms: -5, peak: -0.5, clipping: true, centroid: 3000, bands: {} } as LiveMeterChannel;
+    const view = liveStatsRowView(ch);
+    expect(view.rms).toBe('-5.0');
+    expect(view.rmsUnit).toBe('dBFS');
+    expect(view.peak).toBe('-0.5');
+    expect(view.peakUnit).toBe('dBFS');
+  });
+
+  it('with an offset converts rms/peak to dB SPL and labels the units accordingly (#846)', () => {
+    const ch = { rms: -5, peak: -0.5, clipping: true, centroid: 3000, bands: {} } as LiveMeterChannel;
+    const view = liveStatsRowView(ch, 111.4);
+    expect(view.rms).toBe('106.4');
+    expect(view.rmsUnit).toBe('dB SPL');
+    expect(view.peak).toBe('110.9');
+    expect(view.peakUnit).toBe('dB SPL');
+  });
+
+  it('leaves tone/headroom thresholds on raw dBFS regardless of calibration (#846 — clip proximity, not loudness)', () => {
+    const ch = { rms: -5, peak: -0.5, clipping: true, centroid: 3000, bands: {} } as LiveMeterChannel;
+    const uncalibrated = liveStatsRowView(ch);
+    const calibrated = liveStatsRowView(ch, 111.4);
+    expect(calibrated.rmsTone).toBe(uncalibrated.rmsTone);
+    expect(calibrated.peakTone).toBe(uncalibrated.peakTone);
+    expect(calibrated.headroom).toBe(uncalibrated.headroom);
+    expect(calibrated.headroomTone).toBe(uncalibrated.headroomTone);
   });
 
   it('returns null level tiles for an idle or missing selected channel', () => {
