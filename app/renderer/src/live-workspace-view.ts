@@ -447,7 +447,6 @@ export function liveSetupStepsHTML(steps: LiveSetupStep[]): string {
 // labels are user-entered — so callers interpolate it raw and never re-escape.
 export interface DawTrackRow {
   index: number;
-  strip?: StripConfig;
   name: string;
   idle?: boolean;
   clipping?: boolean;
@@ -462,7 +461,6 @@ export interface DawTrackRow {
   soloed: boolean;
   monitorActive: boolean;
   levelPercent: number;
-  deviceChannels?: number;
   takeClip: SessionTabWaveformClip | null;
 }
 
@@ -483,7 +481,6 @@ export function dawTrackRows(state: LiveWorkspaceViewState): DawTrackRow[] {
     const groupIndex = getGroupState().groupOf(state.channelGroups, idx);
     return {
       index: idx,
-      strip,
       name: escapeHtml(getRigReconcile().resolveStripLabel(strip, channel, idx)),
       idle: !channel || !!channel.idle,
       clipping: !!channel?.clipping,
@@ -498,7 +495,6 @@ export function dawTrackRows(state: LiveWorkspaceViewState): DawTrackRow[] {
       soloed,
       monitorActive: !muted && (!hasSoloedChannel || soloed),
       levelPercent: levelPercent(channel?.rms ?? Number.NaN, !!channel?.idle),
-      deviceChannels: deviceChannelCount(state.selectedDevice, state.devices),
       takeClip: state.sessionWaveforms?.clips.find((clip) => clip.stripIndex === idx) ?? null,
     };
   });
@@ -561,85 +557,15 @@ export function dawTrackListEntries(state: LiveWorkspaceViewState): DawTrackList
   return entries;
 }
 
-export function dawTrackInputValue(strip: StripConfig): string {
-  if (strip.kind === 'stereo') {
-    const left = Number.isInteger(strip.a) ? strip.a : 0;
-    const right = Number.isInteger(strip.b) ? strip.b : left + 1;
-    return `stereo:${left},${right}`;
-  }
-  const source = Number.isInteger(strip.a) ? strip.a : 0;
-  return `mono:${source}`;
-}
-
-export interface DawTrackInputOption {
-  value: string;
-  label: string;
-  kind: 'mono' | 'stereo';
-  sources: readonly [number] | readonly [number, number];
-}
-
-export function dawTrackInputOptions(deviceChannels: number): DawTrackInputOption[] {
-  const count = Number.isInteger(deviceChannels) && deviceChannels > 0 ? deviceChannels : 8;
-  const options: DawTrackInputOption[] = [];
-  for (let left = 0; left + 1 < count; left += 2) {
-    options.push({
-      value: `stereo:${left},${left + 1}`,
-      label: `${left + 1}/${left + 2}`,
-      kind: 'stereo',
-      sources: [left, left + 1],
-    });
-  }
-  for (let source = 0; source < count; source += 1) {
-    options.push({
-      value: `mono:${source}`,
-      label: `${source + 1}`,
-      kind: 'mono',
-      sources: [source],
-    });
-  }
-  return options;
-}
-
-export function parseDawTrackInputValue(value: string): DawTrackInputOption | null {
-  const [kind, rawSources = ''] = value.split(':');
-  if (kind !== 'mono' && kind !== 'stereo') return null;
-  const sources = rawSources.split(',').map((source) => parseInt(source, 10));
-  if (sources.some((source) => !Number.isInteger(source))) return null;
-  if (kind === 'mono' && sources.length === 1) {
-    const [source] = sources;
-    return { value, label: `${source + 1}`, kind, sources: [source] };
-  }
-  if (kind === 'stereo' && sources.length === 2) {
-    const [left, right] = sources;
-    return { value, label: `${left + 1}/${right + 1}`, kind, sources: [left, right] };
-  }
-  return null;
-}
-
-export function dawTrackInputOptionsHTML(selectedValue: string, deviceChannels: number): string {
-  return dawTrackInputOptions(deviceChannels)
-    .map((option) => `<option value="${option.value}"${option.value === selectedValue ? ' selected' : ''}>${option.label}</option>`)
-    .join('');
-}
-
 /** Pure inside markup for one arrangement track header. The row is derived
- * once by dawTrackRows, preserving the header/lane ordering contract. */
+ * once by dawTrackRows, preserving the header/lane ordering contract.
+ * Overview-only: per-channel settings live in the selection pane (#849). */
 export function dawTrackHeaderHTML(row: DawTrackRow): string {
-  const strip = row.strip ?? { kind: 'mono', a: 0, b: 1 };
-  const configDisabled = row.configDisabled ? ' disabled' : '';
-  const deviceChannels = row.deviceChannels ?? 8;
-  const inputValue = dawTrackInputValue(strip);
-  const definitionHTML = `<span class="daw-track-head-def">`
-    + `<select class="daw-track-head-input" data-idx="${row.index}" aria-label="Track input" title="Track input"${configDisabled}>`
-    + dawTrackInputOptionsHTML(inputValue, deviceChannels)
-    + `</select>`
-    + `</span>`;
   const dragHTML = (row.groupIndex ?? -1) >= 0
     ? `<button type="button" class="daw-track-head-drag" draggable="true" aria-label="Reorder track within group — drag, or press Arrow Up/Down" title="Drag to reorder track"${row.configDisabled ? ' disabled' : ''}>⋮⋮</button>`
     : '';
   return dragHTML
     + `<span class="daw-track-head-index">${row.index + 1}</span>`
-    + definitionHTML
     + `<span class="daw-track-head-name${row.clipping ? ' clip' : ''}" contenteditable="true" spellcheck="false" role="textbox" aria-label="Channel name — click to rename" title="Click to rename">${row.name}</span>`
     + `<span class="daw-track-head-controls">`
     + `<button type="button" class="daw-track-head-arm" data-idx="${row.index}" aria-label="${row.armed ? 'Disarm track' : 'Arm track for recording'}" title="${row.armed ? 'Disarm track' : 'Arm track for recording'}" aria-pressed="${row.armed}"${row.armDisabled ? ' disabled' : ''}></button>`

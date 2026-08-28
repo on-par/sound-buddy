@@ -479,6 +479,25 @@ describe('eqPaneInspectorHTML (#1064)', () => {
     expect(html.match(/class="eq-pane-level-value">—<\/span>/g)).toHaveLength(4);
     expect(html).not.toContain('-5.0');
   });
+
+  it('keeps mode, source, group and instrument profile in the selection pane (#849)', () => {
+    const html = eqPaneInspectorHTML(inspector());
+    expect(html).toContain('eq-pane-inspector-kind');
+    expect(html).toContain('eq-pane-inspector-source');
+    const classificationHTML = eqPaneClassificationHTML({
+      selectedIndex: 0,
+      groupIndex: -1,
+      groups: [{ name: 'Drums', members: [0] }],
+      profiles: [{ id: 'vox', label: 'Vocal' }],
+      effectiveProfileId: 'vox',
+      instrumentAuto: true,
+      disabled: false,
+    });
+    expect(classificationHTML).toContain('eq-pane-classification-group');
+    expect(classificationHTML).toContain('eq-pane-classification-profile');
+    const disabledHTML = eqPaneInspectorHTML(inspector({ disabled: true }));
+    expect(disabledHTML).toContain('class="eq-pane-inspector-kind" aria-label="Mono or stereo" disabled');
+  });
 });
 
 describe('groupSummary', () => {

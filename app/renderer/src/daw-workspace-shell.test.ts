@@ -383,48 +383,20 @@ describe('configured track rows render from one shared list (#1043)', () => {
     expect(css).toContain('.daw-track-head-name');
   });
 
-  it('keeps the compact definition selector before the editable track name', () => {
-    const nameRule = css.match(/\.daw-track-head \.daw-track-head-name\s*\{[^}]*\}/);
-    const definitionRule = css.match(/\.daw-track-head-def\s*\{[^}]*\}/);
-    const actionRule = css.match(/\.daw-track-head-arm, \.daw-track-head-mute, \.daw-track-head-solo, \.daw-track-head-remove\s*\{[^}]*\}/);
-    expect(nameRule).not.toBeNull();
-    expect(definitionRule).not.toBeNull();
-    expect(actionRule).not.toBeNull();
-    expect(nameRule![0]).toMatch(/position:\s*relative/);
-    expect(definitionRule![0]).toMatch(/position:\s*relative/);
-    expect(actionRule![0]).toMatch(/position:\s*relative/);
-    expect(nameRule![0]).toMatch(/z-index:\s*2/);
-    expect(definitionRule![0]).toMatch(/z-index:\s*1/);
-    expect(actionRule![0]).toMatch(/z-index:\s*3/);
-    expect(functionBody(workspaceViewTs, 'dawTrackHeaderHTML').indexOf('definitionHTML')).toBeLessThan(
-      functionBody(workspaceViewTs, 'dawTrackHeaderHTML').indexOf('daw-track-head-name'),
-    );
-  });
-
   it('de-crowds the fixed-height channel strip into a compact input/title row and control/meter row (#1125)', () => {
     const headRule = css.match(/\.daw-track-head\s*\{[^}]*\}/);
     const controlsRule = css.match(/\.daw-track-head-controls\s*\{[^}]*\}/);
     const levelRule = css.match(/\.daw-track-head-level\s*\{[^}]*\}/);
     const nameRule = css.match(/\.daw-track-head \.daw-track-head-name\s*\{[^}]*\}/);
-    const inputRule = css.match(/\.daw-track-head-input\s*\{[^}]*\}/);
-    const inputSelectRule = css.match(/\.daw-track-head-def select\s*\{[^}]*\}/);
     const armIconRule = css.match(/\.daw-track-head-arm::before\s*\{[^}]*\}/);
 
     expect(headRule).not.toBeNull();
     expect(controlsRule).not.toBeNull();
     expect(levelRule).not.toBeNull();
     expect(nameRule).not.toBeNull();
-    expect(inputRule).not.toBeNull();
-    expect(inputSelectRule).not.toBeNull();
     expect(armIconRule).not.toBeNull();
-    expect(headRule![0]).toContain("grid-template-areas:'drag def name remove' 'index controls meter meta'");
+    expect(headRule![0]).toContain("grid-template-areas:'drag name name remove' 'index controls meter meta'");
     expect(headRule![0]).toMatch(/grid-template-columns:\s*auto auto minmax\(0,\s*1fr\) auto/);
-    expect(inputRule![0]).toMatch(/width:\s*46px/);
-    expect(inputSelectRule![0]).toMatch(/border-radius:\s*0/);
-    expect(inputSelectRule![0]).toMatch(/background:\s*var\(--surface\)/);
-    expect(inputSelectRule![0]).toMatch(/border:\s*1px solid var\(--border-subtle\)/);
-    expect(inputSelectRule![0]).toMatch(/font:\s*var\(--fw-medium\) var\(--fs-micro\)\/1 var\(--font-sans\)/);
-    expect(inputSelectRule![0]).toMatch(/cursor:\s*pointer/);
     expect(armIconRule![0]).toMatch(/border-radius:\s*50%/);
     expect(controlsRule![0]).toMatch(/gap:\s*4px/);
     expect(levelRule![0]).toMatch(/justify-self:\s*stretch/);
@@ -437,10 +409,10 @@ describe('configured track rows render from one shared list (#1043)', () => {
     expect(body).not.toContain("!target.closest('button, select, [contenteditable], input')");
   });
 
-  it('selects compact DAW rows on pointer-down before native header selects can consume the click', () => {
-    const body = functionBody(liveCapturePanelTsx, 'onBoardPointerDown');
-    expect(body).toContain("e.target.closest('.daw-track-head select')");
-    expect(body).toContain('useLiveCaptureStore.getState().setSelectedChannel(idx)');
+  it('keeps per-channel setting controls out of the head row (#849)', () => {
+    expect(functionBody(workspaceViewTs, 'dawTrackHeaderHTML')).not.toContain('<select');
+    expect(liveCapturePanelTsx).not.toContain('.daw-track-head-input');
+    expect(liveCapturePanelTsx).not.toContain("closest('.daw-track-head select')");
   });
 
   it('head and lane rows share one height source, and neither hardcodes a height literal', () => {

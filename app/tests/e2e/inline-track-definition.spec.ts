@@ -7,6 +7,8 @@ import { launchApp, renameHeader } from './e2e-helpers';
 // channelConfig/strip kind in ways that would otherwise leak into these tests
 // if they shared a describe/session, so this stayed isolated even in the
 // original single-file test suite.
+// Per-channel input configuration moved out of the row into the right pane
+// (#849) — these specs select a channel, then drive the pane's inspector.
 
 let electronApp: ElectronApplication;
 let window: Page;
@@ -19,7 +21,7 @@ async function refreshDevices(win: Page): Promise<void> {
   await win.locator('#settings-dialog-done').click();
 }
 
-test.describe('Inline track definition (#189)', () => {
+test.describe('Selected-channel input settings (#189, moved to the right pane in #849)', () => {
   test.beforeAll(async () => {
     ({ electronApp, window } = await launchApp());
   });
@@ -36,30 +38,41 @@ test.describe('Inline track definition (#189)', () => {
     await expect(window.locator('#spectrum-body .daw-track-head')).toHaveCount(2);
   });
 
-  test('header label still round-trips with the definition cluster present', async () => {
+  const selectCh0 = () => window.locator('.daw-track-head[data-ch="0"] .daw-track-head-index').click();
+  const pane = () => window.locator('#live-eq-pane');
+
+  test('header label still round-trips', async () => {
     const ch0 = window.locator('.daw-track-head[data-ch="0"]');
     await renameHeader(window, ch0.locator('.daw-track-head-name'), 'Kick');
     await expect(ch0.locator('.daw-track-head-name')).toHaveText('Kick');
   });
 
-  test('selecting a stereo pair updates the compact input selector', async () => {
-    const ch0 = window.locator('.daw-track-head[data-ch="0"]');
-    await expect(ch0.locator('.daw-track-head-input')).toHaveValue('mono:0');
-    await ch0.locator('.daw-track-head-input').selectOption('stereo:0,1');
-    await expect(ch0.locator('.daw-track-head-input')).toHaveValue('stereo:0,1');
+  test('selecting a stereo pair updates the right pane', async () => {
+    await selectCh0();
+    await expect(pane().locator('.eq-pane-inspector-kind')).toHaveValue('mono');
+    await expect(pane().locator('.eq-pane-inspector-source[data-field="a"]')).toHaveValue('0');
+    await pane().locator('.eq-pane-inspector-kind').selectOption('stereo');
+    await expect(pane().locator('.eq-pane-inspector-kind')).toHaveValue('stereo');
+    await expect(pane().locator('.eq-pane-inspector-source')).toHaveCount(2);
   });
 
   test('selecting a mono input preserves the chosen source channel', async () => {
-    const ch0 = window.locator('.daw-track-head[data-ch="0"]');
-    await ch0.locator('.daw-track-head-input').selectOption('stereo:2,3');
-    await ch0.locator('.daw-track-head-input').selectOption('mono:2');
-    await expect(ch0.locator('.daw-track-head-input')).toHaveValue('mono:2');
+    await selectCh0();
+    await pane().locator('.eq-pane-inspector-kind').selectOption('stereo');
+    // Index-based (not value '2'): with a=0 already selected in field 'a',
+    // Playwright's value-string matching against a select that shares its
+    // option value range with a sibling select (field 'b') is unreliable in
+    // this Electron/headless combination — index matching is not.
+    await pane().locator('.eq-pane-inspector-source[data-field="a"]').selectOption({ index: 2 });
+    await pane().locator('.eq-pane-inspector-kind').selectOption('mono');
+    await expect(pane().locator('.eq-pane-inspector-source[data-field="a"]')).toHaveValue('2');
   });
 
-  test('setting a source channel from the header updates the strip', async () => {
-    const ch0 = window.locator('.daw-track-head[data-ch="0"]');
-    await ch0.locator('.daw-track-head-input').selectOption('mono:5');
-    await expect(ch0.locator('.daw-track-head-input')).toHaveValue('mono:5');
+  test('setting a source channel from the pane updates the strip', async () => {
+    await selectCh0();
+    await pane().locator('.eq-pane-inspector-source[data-field="a"]').selectOption('5');
+    await expect(pane().locator('.eq-pane-inspector-source[data-field="a"]')).toHaveValue('5');
+    await expect(pane().locator('.eq-pane-inspector-name')).not.toBeEmpty();
   });
 
   test('the source picker is bounded by the device channel count', async () => {
@@ -73,7 +86,8 @@ test.describe('Inline track definition (#189)', () => {
     });
     await refreshDevices(window);
     await expect(window.locator('#spectrum-body .daw-track-head')).toHaveCount(2);
-    await expect(window.locator('.daw-track-head[data-ch="0"] .daw-track-head-input option')).toHaveCount(6);
+    await selectCh0();
+    await expect(pane().locator('.eq-pane-inspector-source[data-field="a"] option')).toHaveCount(4);
 
     // Restore the 8ch stub other tests in the file rely on.
     await electronApp.evaluate(({ ipcMain }) => {
@@ -86,19 +100,21 @@ test.describe('Inline track definition (#189)', () => {
     });
   });
 
-  test('the header kind and source controls freeze while a capture is running', async () => {
+  test('the pane kind and source controls freeze while a capture is running', async () => {
+    await selectCh0();
     await window.locator('#daw-session-record').click();
     await window.locator('#settings-btn').click();
     await window.locator('#settings-tab-btn-audio').click();
     await expect(window.locator('#settings-audio-capture-lock-note')).toBeVisible();
     await window.locator('#settings-dialog-done').click();
-    const inputSels = window.locator('#spectrum-body .daw-track-head-input');
-    for (let i = 0; i < await inputSels.count(); i++) await expect(inputSels.nth(i)).toBeDisabled();
+    await expect(pane().locator('.eq-pane-inspector-kind')).toBeDisabled();
+    await expect(pane().locator('.eq-pane-inspector-source').first()).toBeDisabled();
 
     await window.locator('#daw-session-record').click(); // stop → monitoring resumes (#776)
     // #776: always-monitoring — a record stop keeps the board live, so the
-    // header kind stays disabled (monitoring locks config) instead of
-    // re-enabling the way the old full stop did.
-    await expect(window.locator('.daw-track-head[data-ch="0"] .daw-track-head-input')).toBeDisabled();
+    // pane's kind/source selects stay disabled (monitoring locks config)
+    // instead of re-enabling the way the old full stop did.
+    await expect(pane().locator('.eq-pane-inspector-kind')).toBeDisabled();
+    await expect(pane().locator('.eq-pane-inspector-source').first()).toBeDisabled();
   });
 });
