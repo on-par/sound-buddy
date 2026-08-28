@@ -220,6 +220,16 @@
     body.not-pro #record-button-island { display:none !important; }
     body.live-active #record-button-island { display:none !important; }
 
+    /* #live-island (the Session/DAW workspace) and #live-eq-pane both live
+       outside #tab-live — #live-island inside #spectrum-body (the deliberate
+       #727 exception), #live-eq-pane as a sibling <aside> — so the
+       direct-child gate above cannot reach either (#1245). Without these,
+       switching to Session as a free user sets body.live-active and the
+       force-show rule below renders the entire arrangement view next to the
+       lock card. Same bug class as #record-button-island above. */
+    body.not-pro #live-island,
+    body.not-pro #live-eq-pane { display:none !important; }
+
     /* Free/Pro badge in the header (click to manage the license). */
     #license-badge {
       display:inline-flex; align-items:center; gap:5px; height:22px; padding:0 9px;
@@ -811,7 +821,11 @@
     #live-island { flex:1; min-height:0; flex-direction:column; }
     body.live-active #spectrum-imperative,
     body.live-active #spectrum-island { display:none !important; }
-    body.live-active #live-island { display:flex !important; }
+    /* :not(.not-pro) so this !important never competes with the #1245 Pro
+       gate — the two rules are mutually exclusive rather than resolved by
+       source order (both are specificity (1,1,1) and this one is ~590 lines
+       later, so an unscoped version would silently win). */
+    body.live-active:not(.not-pro) #live-island { display:flex !important; }
     .spectrum-empty { flex:1; min-height:360px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:14px; color:var(--text-muted); text-align:center; }
     .spectrum-empty p { font:var(--fw-regular) var(--fs-body)/1 var(--font-sans); margin:0; }
     .spectrum-empty .spin { width:34px; height:34px; border-radius:50%; border:3px solid var(--surface-raised); border-top-color:var(--gold-500); animation:sbspin 0.8s linear infinite; }
