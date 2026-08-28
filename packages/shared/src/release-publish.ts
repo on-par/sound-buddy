@@ -3,14 +3,13 @@
 // on the result, mirroring the signing.ts ⇄ afterPack.js and dmg-notarization.ts
 // ⇄ afterAllArtifactBuild.js precedent.
 //
-// The core property this module protects: a draft GitHub release is never
-// `releases/latest`, so update discovery (latest.json) stays untouched until
-// `promote` — the single step in PUBLISH_STEPS that flips the release visible.
-// Every step before it is safe to retry or resume after a failure.
+// The core property this module protects: the tag push is the only mutation
+// this script makes; .github/workflows/release.yml is the sole producer and
+// publisher, and it stages a draft it promotes last (ADR-0095).
 
 import { ELECTRON_UPDATER_MANIFEST_FILENAME, RELEASE_MANIFEST_FILENAME, RELEASES_REPO } from './release-manifest.js';
 
-export const PUBLISH_STEPS = ['tag-push', 'draft-release', 'checksum-verify', 'manifest-upload', 'promote'] as const;
+export const PUBLISH_STEPS = ['tag-push', 'ci-build', 'verify-published'] as const;
 export type PublishStep = (typeof PUBLISH_STEPS)[number];
 
 /** Observed state, gathered by release.sh before the publish phase. */
@@ -93,48 +92,65 @@ export function planReleasePublish(state: PublishState, targets: PublishTargets)
 
   const hasZip = state.assetNames.includes(targets.zipAssetName);
   const hasDmg = state.assetNames.includes(targets.dmgAssetName);
-  const draftAction: 'run' | 'skip' = state.release !== null && hasZip && hasDmg ? 'skip' : 'run';
-  let draftReason: string;
-  if (draftAction === 'skip') {
-    draftReason = `release ${targets.tag} already has ${targets.zipAssetName} and ${targets.dmgAssetName}`;
-  } else if (state.release === null) {
-    draftReason = `creating draft release ${targets.tag}`;
+  const published = state.release !== null && state.release.isDraft === false && hasZip && hasDmg;
+  if (published) {
+    steps.push({ step: 'ci-build', action: 'skip', reason: `CI already built and published ${targets.tag}` });
   } else {
-    const missing = [!hasZip ? targets.zipAssetName : null, !hasDmg ? targets.dmgAssetName : null].filter(
-      (name): name is string => name !== null,
-    );
-    draftReason = `re-using existing draft, uploading missing assets: ${missing.join(', ')}`;
+    steps.push({
+      step: 'ci-build',
+      action: 'run',
+      reason: `waiting for the tagged CI run to build, sign, notarize and publish ${targets.tag}`,
+    });
   }
-  steps.push({ step: 'draft-release', action: draftAction, reason: draftReason });
-
-  // checksum-verify only has a meaningful comparison to make when draft-release
-  // just uploaded THIS run's local build: a resumed run rebuilds from scratch
-  // (no artifact caching, by design) and a signed build's notarization ticket
-  // is not byte-reproducible across submissions, so comparing a fresh rebuild
-  // against bytes a *previous* run already uploaded would be a false mismatch,
-  // not a real corruption signal — permanently deadlocking every resume.
-  steps.push({
-    step: 'checksum-verify',
-    action: draftAction,
-    reason:
-      draftAction === 'run'
-        ? 'verifying the artifact just uploaded to the draft matches the local build byte-for-byte — the safety property in AC3'
-        : `${targets.zipAssetName} was uploaded in a previous run and is not being re-uploaded — re-verifying a fresh, non-reproducible rebuild against it would be a false mismatch`,
-  });
 
   steps.push({
-    step: 'manifest-upload',
+    step: 'verify-published',
     action: 'run',
-    reason: 'manifest-upload is idempotent (--clobber) and always re-runs to guarantee latest.json matches the uploaded artifact',
+    reason:
+      `confirming ${targets.tag} is published on ${RELEASES_REPO} with ${targets.zipAssetName}, ` +
+      `${targets.dmgAssetName}, ${RELEASE_MANIFEST_FILENAME} and ${ELECTRON_UPDATER_MANIFEST_FILENAME}`,
   });
-
-  if (state.release !== null && state.release.isDraft === false) {
-    steps.push({ step: 'promote', action: 'skip', reason: `release ${targets.tag} is already published` });
-  } else {
-    steps.push({ step: 'promote', action: 'run', reason: `promoting release ${targets.tag} out of draft` });
-  }
 
   return { ok: true, steps, resumed: steps.some((s) => s.action === 'skip') };
+}
+
+export type PublishedVerdict = { ok: true; notice: string } | { ok: false; error: string };
+
+/** Judges what CI actually published for `targets.tag`, after the tagged Release workflow run has succeeded. */
+export function verifyPublishedRelease(state: PublishState, targets: PublishTargets): PublishedVerdict {
+  if (state.release === null) {
+    return {
+      ok: false,
+      error:
+        `no release for ${targets.tag} exists on ${RELEASES_REPO} even though the CI run succeeded — check that ` +
+        `the run had RELEASES_TOKEN configured, then inspect https://github.com/${RELEASES_REPO}/releases`,
+    };
+  }
+
+  if (state.release.isDraft) {
+    return {
+      ok: false,
+      error:
+        `release ${targets.tag} is still a draft — CI's promote step did not run; inspect the run, then finish it with ` +
+        `gh api -X PATCH repos/${RELEASES_REPO}/releases/${state.release.id} -F draft=false`,
+    };
+  }
+
+  const required = [targets.zipAssetName, targets.dmgAssetName, RELEASE_MANIFEST_FILENAME, ELECTRON_UPDATER_MANIFEST_FILENAME];
+  const missing = required.filter((name) => !state.assetNames.includes(name));
+  if (missing.length > 0) {
+    return {
+      ok: false,
+      error:
+        `published release ${targets.tag} is missing ${missing.join(', ')} — auto-update and the download button read ` +
+        `those assets; re-run the Release workflow for ${targets.tag} from the Actions tab`,
+    };
+  }
+
+  return {
+    ok: true,
+    notice: `published ${targets.tag} on ${RELEASES_REPO} with ${targets.zipAssetName}, ${targets.dmgAssetName}, latest.json and latest-mac.yml`,
+  };
 }
 
 export type PreflightVerdict = { ok: true; mode: 'fresh' | 'resume'; notice: string } | { ok: false; error: string };
@@ -215,13 +231,13 @@ export function formatPublishFailure(input: PublishOutcomeInput): string {
   }
   lines.push('');
 
-  if (completed.includes('promote')) {
+  if (completed.includes('tag-push') || skipped.includes('tag-push')) {
     lines.push(
-      'WARNING: promote already ran and the release was published, but a later step failed — this violates ' +
-        'the expected publish order (promote must be last); investigate immediately.',
+      'NOTE: the tag is already pushed, so the CI release run may still be building or may already ' +
+        'have published this version — check the run before re-running.',
     );
   } else {
-    lines.push('latest.json / latest-mac.yml / update discovery is unchanged — no users are affected.');
+    lines.push('Nothing was pushed — no CI run was triggered and no release exists.');
   }
   lines.push('');
   lines.push(`Resume with: ${resumeCommand(targets.version)}`);
@@ -231,67 +247,6 @@ export function formatPublishFailure(input: PublishOutcomeInput): string {
 
 export function resumeCommand(version: string): string {
   return `scripts/release.sh ${version} --yes`;
-}
-
-export type UpdateInfoUploadPlan =
-  | { action: 'upload'; reason: string }
-  | { action: 'skip'; reason: string }
-  | { action: 'fail'; error: string };
-
-/**
- * Decides whether this run may upload its locally-generated latest-mac.yml.
- * The sha512 in latest-mac.yml describes THIS run's local build. When
- * draft-release was skipped, the release already carries a *different*
- * build's zip (Phase A has no artifact caching and a notarized build is not
- * byte-reproducible), so uploading a fresh latest-mac.yml would advertise a
- * checksum the published artifact does not have — AC5's exact failure mode.
- */
-export function planUpdateInfoUpload(
-  draftReleaseRan: boolean,
-  updateInfoAlreadyUploaded: boolean,
-): UpdateInfoUploadPlan {
-  if (draftReleaseRan) {
-    return {
-      action: 'upload',
-      reason: 'draft-release ran this run — the local build is the asset latest-mac.yml describes',
-    };
-  }
-
-  if (updateInfoAlreadyUploaded) {
-    return {
-      action: 'skip',
-      reason: 'latest-mac.yml is already uploaded and matches the already-uploaded zip from a previous run',
-    };
-  }
-
-  return {
-    action: 'fail',
-    error:
-      'latest-mac.yml is missing from this release but its zip was uploaded by an earlier run, so this ' +
-      "run's rebuild does not match it (notarized builds are not byte-reproducible). Delete the release " +
-      'assets and re-run: scripts/release.sh <version> --yes',
-  };
-}
-
-/** One entry of a release's `assets` array as returned by GET repos/{repo}/releases/{id}. */
-export interface ReleaseAssetRef {
-  id: number;
-  name: string;
-}
-
-/** Exact-name lookup of an asset's numeric id on the id-resolved release; null when absent. */
-export function findReleaseAssetId(assets: readonly ReleaseAssetRef[], name: string): number | null {
-  return assets.find((a) => a.name === name)?.id ?? null;
-}
-
-/** POST target for uploading an asset to a release by numeric id (uploads.github.com, not api.github.com). */
-export function buildReleaseAssetUploadUrl(repo: string, releaseId: number, assetName: string): string {
-  return `https://uploads.github.com/repos/${repo}/releases/${releaseId}/assets?name=${encodeURIComponent(assetName)}`;
-}
-
-/** API path for one asset by numeric id — used for both DELETE (clobber) and octet-stream GET (download). */
-export function releaseAssetApiPath(repo: string, assetId: number): string {
-  return `repos/${repo}/releases/assets/${assetId}`;
 }
 
 export interface ReleaseScriptAudit {
@@ -319,6 +274,51 @@ export function auditReleaseScriptResolution(scriptText: string): ReleaseScriptA
       );
     }
   });
+  return { ok: problems.length === 0, problems };
+}
+
+// #1239: the local build/publish path was the second producer that raced CI
+// and could make an unsigned or superseded zip `releases/latest`. These
+// patterns must never reappear in scripts/release.sh — the tagged Release
+// workflow is now the only producer and the only publisher.
+const FORBIDDEN_LOCAL_RELEASE_PATTERNS: readonly { pattern: RegExp; problem: string }[] = [
+  { pattern: /\bnpm run dist\b/, problem: 'builds artifacts locally — CI is the only producer (#1239)' },
+  { pattern: /\bgh release create\b/, problem: 'creates the GitHub release — CI publishes it (#1239)' },
+  { pattern: /uploads\.github\.com/, problem: 'uploads a release asset — CI uploads every asset (#1239)' },
+  { pattern: /-F draft=false/, problem: 'promotes the release out of draft — CI promotes as its last step (#1239)' },
+];
+// Deliberately not a regex. `/gh run watch[^\n]*--exit-status/` backtracks
+// polynomially on a script containing many "gh run watch" occurrences without
+// the flag: the engine restarts the `[^\n]*` scan at every occurrence
+// (CodeQL js/polynomial-redos). A literal scan is linear and reads clearer.
+const CI_RUN_WAIT_COMMAND = 'gh run watch';
+const CI_RUN_WAIT_FLAG = '--exit-status';
+
+/** True when some line runs `gh run watch` with `--exit-status` after it. */
+function waitsOnTaggedCiRun(scriptText: string): boolean {
+  return scriptText.split('\n').some((line) => {
+    const start = line.indexOf(CI_RUN_WAIT_COMMAND);
+    return start !== -1 && line.includes(CI_RUN_WAIT_FLAG, start + CI_RUN_WAIT_COMMAND.length);
+  });
+}
+
+/** Forbids the local build/publish path from reappearing in release.sh, and requires it to wait on the tagged CI run (#1239). */
+export function auditLocalReleaseScript(scriptText: string): ReleaseScriptAudit {
+  const problems: string[] = [];
+  const lines = scriptText.split('\n');
+  lines.forEach((line, i) => {
+    for (const { pattern, problem } of FORBIDDEN_LOCAL_RELEASE_PATTERNS) {
+      if (pattern.test(line)) {
+        problems.push(`line ${i + 1}: ${problem}: ${line.trim()}`);
+      }
+    }
+  });
+  if (!waitsOnTaggedCiRun(scriptText)) {
+    problems.push(
+      'does not wait on the tagged CI run with "gh run watch … --exit-status" — a release must not be reported ' +
+        'as done before CI has finished (#1239)',
+    );
+  }
   return { ok: problems.length === 0, problems };
 }
 

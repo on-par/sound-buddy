@@ -1,47 +1,33 @@
 #!/usr/bin/env bash
 #
-# Publish a new self-contained macOS release of Sound Buddy to the PUBLIC
-# download repo (on-par/sound-buddy-releases).
+# Cut a new Sound Buddy release by pushing a tag. `.github/workflows/release.yml`
+# is the only thing that builds, signs, notarizes, verifies the update feed, and
+# publishes to the public download repo (on-par/sound-buddy-releases) — it stages
+# a draft it promotes last (ADR-0095). This script builds nothing and uploads
+# nothing.
 #
-# No stored tokens, no CI secret — it uses your local `gh` auth. It bumps the
-# version, builds the self-contained .app, tags the source repo, and publishes
-# the zip to the public repo.
-#
-# Publishing is two-phase and resumable (#623):
-#   Phase A (build + verify) does not mutate anything outward-facing.
-#   Phase B (publish) stages the release as a GitHub *draft* first — a draft
-#   is never `releases/latest`, so update discovery (latest.json and
-#   electron-updater's latest-mac.yml, #625) keeps serving the previous good
-#   release until the final `promote` step flips it. Both manifests are
-#   staged on the draft before promote, so neither ever advertises a version
-#   before the artifact backing it is live. Every Phase B step before
-#   `promote` is safe to retry: re-running the same version converges instead
-#   of double-publishing. If a step fails, the script prints exactly which
-#   steps completed and the one command to resume (re-run with the explicit
-#   version, e.g. `scripts/release.sh 0.8.6 --yes`).
+# It runs preflight and the local quality gate, bumps the version, previews the
+# release notes, commits/tags/pushes, then blocks on the tagged CI run and
+# verifies what CI published.
 #
 # Usage:
 #   scripts/release.sh              # patch bump  (0.2.1 -> 0.2.2)
 #   scripts/release.sh minor        # minor bump  (0.2.1 -> 0.3.0)
 #   scripts/release.sh major        # major bump  (0.2.1 -> 1.0.0)
 #   scripts/release.sh 0.5.0        # explicit version (also how you resume a failed run)
-#   scripts/release.sh patch --dry-run   # do everything except mutate/publish
+#   scripts/release.sh patch --dry-run   # preflight + gate only, no tag, no changes
 #   scripts/release.sh --yes        # skip the confirmation prompt
 #
-# Set SOUND_BUDDY_SIGNING_IDENTITY + SOUND_BUDDY_NOTARY_PROFILE (both, or
-# neither) to produce a Developer ID-signed, notarized, stapled release — see
-# docs/signing-and-notarization.md for one-time setup.
+# See docs/signing-and-notarization.md § CI for how the workflow signs and
+# notarizes the build.
 #
 set -euo pipefail
 
-# Ensure the macOS system tool dirs are on PATH. codesign/xcrun live in
-# /usr/bin (usually present), but spctl lives in /usr/sbin, which is NOT on
-# PATH under some launchers (e.g. a detached tmux/agent shell). Without this the
-# Gatekeeper assessment step dies with "spctl: command not found" *after* a
-# successful ~1h notarization — treating a tooling gap as a build rejection.
-export PATH="/usr/bin:/bin:/usr/sbin:/sbin:$PATH"
-
 PUBLIC_REPO="on-par/sound-buddy-releases"
+SOURCE_REPO="on-par/sound-buddy"
+RELEASE_WORKFLOW="release.yml"
+RUN_LOOKUP_ATTEMPTS=40          # 40 × 15s = 10 minutes for the tag push to register a run
+RUN_LOOKUP_INTERVAL_SECS=15
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 APP="$ROOT/app"
 
@@ -65,8 +51,8 @@ die() { printf '\033[1;31merror:\033[0m %s\n' "$*" >&2; exit 1; }
 
 # ── Preflight ────────────────────────────────────────────────────────────────
 say "Checking prerequisites"
-for tool in gh node npm git sox ffmpeg ffprobe dylibbundler curl; do
-  command -v "$tool" >/dev/null 2>&1 || die "missing '$tool'. Build tools: brew install sox ffmpeg dylibbundler"
+for tool in gh node npm git; do
+  command -v "$tool" >/dev/null 2>&1 || die "missing '$tool'"
 done
 gh auth status >/dev/null 2>&1 || die "not logged in to GitHub — run: gh auth login"
 gh repo view "$PUBLIC_REPO" >/dev/null 2>&1 || die "can't reach $PUBLIC_REPO (permissions?)"
@@ -121,7 +107,7 @@ say "New version     : $NEXT   (tag $TAG)"
 say "Publishes to    : $RELEASE_URL"
 
 # Build the frozen PublishTargets JSON once — reused by preflight, the
-# --dry-run plan preview, and Phase B.
+# --dry-run plan preview, and the tag-and-wait phase.
 targets_json() {
   node -e '
     const [version, tag, zipAssetName, dmgAssetName] = process.argv.slice(1);
@@ -195,28 +181,6 @@ say "Running gate (build, lint, test)"
   || die "gate failed — fix build/lint/test before releasing"
 say "Gate passed"
 
-# Signing is env-driven (#53): set SOUND_BUDDY_SIGNING_IDENTITY and
-# SOUND_BUDDY_NOTARY_PROFILE to produce a Developer ID-signed, notarized,
-# stapled release; leave both unset for an unsigned build. Resolution +
-# validation live in packages/shared (resolveSigningConfig) so the
-# both-or-neither rule is tested.
-SIGNING_JSON="$(node --input-type=module -e '
-  import { resolveSigningConfig } from "'"$ROOT"'/packages/shared/dist/index.js";
-  try { console.log(JSON.stringify(resolveSigningConfig(process.env))); }
-  catch (e) { console.error(e.message); process.exit(1); }
-')" || die "signing configuration invalid — see error above"
-SIGNED="$(node -pe 'JSON.parse(process.argv[1]).signed' "$SIGNING_JSON")"
-IDENTITY="$(node -pe 'JSON.parse(process.argv[1]).identity ?? ""' "$SIGNING_JSON")"
-IDENTITY_NAME="$(node -pe 'JSON.parse(process.argv[1]).identityName ?? ""' "$SIGNING_JSON")"
-NOTARY_PROFILE="$(node -pe 'JSON.parse(process.argv[1]).notaryProfile ?? ""' "$SIGNING_JSON")"
-say "Release notes: $([ "$SIGNED" = "true" ] && echo "signed" || echo "unsigned") build"
-
-if [[ "$SIGNED" == "true" ]]; then
-  security find-identity -v -p codesigning | grep -Fq "$IDENTITY" \
-    || die "certificate \"$IDENTITY\" not found in the keychain — open Keychain Access and confirm the Developer ID Application certificate + private key are installed (docs/signing-and-notarization.md)"
-  command -v xcrun >/dev/null 2>&1 || die "xcrun not found — install Xcode Command Line Tools: xcode-select --install"
-fi
-
 HIGHLIGHTS=""
 # The leading HTML comment is an editor-only instruction — strip it so it
 # never ships as literal text in the published release notes (GitHub hides
@@ -229,30 +193,37 @@ HIGHLIGHTS=""
 # Leave it empty / delete it for a build with nothing to announce. It ships
 # automatically via electron-builder's `assets` extraResources mapping, so no
 # script logic here needs to change.
+#
+# Both RELEASE_HIGHLIGHTS.md and app/assets/whats-new.md must be committed
+# before the tag is pushed — CI reads them from the tagged checkout, not from
+# the working tree this script runs in.
 
+# CI always signs (scripts/ci-release-manifest.mjs passes signed: true for the
+# published manifest) — this is a notes preview only; nothing here passes it to
+# a build or a release.
 NOTES="$(node --input-type=module -e '
   import { buildReleaseNotes } from "'"$ROOT"'/packages/shared/dist/index.js";
   process.stdout.write(buildReleaseNotes({
     version: process.argv[1],
-    signed: process.argv[2] === "true",
-    highlights: process.argv[3] || undefined,
+    signed: true,
+    highlights: process.argv[2] || undefined,
   }));
-' "$NEXT" "$SIGNED" "$HIGHLIGHTS")"
+' "$NEXT" "$HIGHLIGHTS")"
 
 if [[ "$DRY_RUN" == 1 ]]; then
-  say "Dry run — manifest that would be published as latest.json:"
+  say "Dry run — manifest that CI would publish as latest.json:"
   node --input-type=module -e '
     import { buildReleaseManifestPreview, RELEASE_MANIFEST_URL } from "'"$ROOT"'/packages/shared/dist/index.js";
-    const [version, notes, releaseUrl, artifactUrl, signed] = process.argv.slice(1);
+    const [version, notes, releaseUrl, artifactUrl] = process.argv.slice(1);
     const preview = buildReleaseManifestPreview({
-      version, notes, releaseUrl, artifactUrl, signed: signed === "true",
+      version, notes, releaseUrl, artifactUrl, signed: true,
     });
     console.log(JSON.stringify(preview, null, 2));
     console.log(`\nStable download URL: ${RELEASE_MANIFEST_URL}`);
-  ' "$NEXT" "$NOTES" "$RELEASE_URL" "$ARTIFACT_URL" "$SIGNED" \
+  ' "$NEXT" "$NOTES" "$RELEASE_URL" "$ARTIFACT_URL" \
     || die "manifest preview failed — see error above"
 
-  say "Dry run — latest-mac.yml (electron-updater's feed manifest, #625) would be generated by the build itself and uploaded alongside latest.json in the manifest-upload step."
+  say "Dry run — latest-mac.yml and latest.json are generated and uploaded by .github/workflows/release.yml; this script uploads nothing."
 
   say "Dry run — publish plan for the observed state (what a real run would do):"
   node --input-type=module -e '
@@ -264,7 +235,7 @@ if [[ "$DRY_RUN" == 1 ]]; then
   ' "$STATE_JSON" "$TARGETS_JSON" \
     || die "publish plan preview failed — see error above"
 
-  say "Dry run — stopping before version bump / build / publish."
+  say "Dry run — stopping before version bump / tag push."
   exit 0
 fi
 
@@ -274,120 +245,9 @@ if [[ "$ASSUME_YES" != 1 ]]; then
   [[ "$reply" =~ ^[Yy]$ ]] || die "aborted"
 fi
 
-# ── Phase A: build + verify (nothing published yet) ─────────────────────────
-say "── Phase A: build + verify (nothing published yet) ──"
-
-say "Bumping version to $NEXT"
-( cd "$APP" && npm version "$NEXT" --no-git-tag-version --allow-same-version >/dev/null )
-# npm version touches package.json (and package-lock.json if present).
-
-say "Building self-contained app (this takes a minute)"
-if [[ "$SIGNED" == "true" ]]; then
-  # Two formats, one cert: afterPack/codesign wants the full "Developer ID Application: …"
-  # string; electron-builder rejects that prefix and wants the bare name (#619).
-  # APPLE_KEYCHAIN_PROFILE is how electron-builder hands our notarytool keychain profile to
-  # @electron/notarize — it submits, waits, and staples the ticket before zipping (#621).
-  # Output is NOT silenced here: any signing/notarization/staple failure and its full error
-  # text land directly in this log. @electron/notarize does not print the Apple submission id
-  # on a successful run (only on failure, and only into its own debug channel) — look up a
-  # past submission's id with: xcrun notarytool history --keychain-profile $NOTARY_PROFILE
-  ( cd "$APP" && SOUND_BUDDY_SIGNING_IDENTITY="$IDENTITY" SOUND_BUDDY_NOTARY_PROFILE="$NOTARY_PROFILE" \
-      APPLE_KEYCHAIN_PROFILE="$NOTARY_PROFILE" \
-      npm run dist -- -c.mac.identity="$IDENTITY_NAME" -c.mac.notarize=true -c.releaseInfo.releaseNotes="$NOTES" ) \
-    || die "signed build failed during signing, notarization, or stapling — check the output above for the exact error. If Apple rejected the notarization, find the submission id there and read the full log with: xcrun notarytool log <submission-id> --keychain-profile $NOTARY_PROFILE"
-else
-  ( cd "$APP" && npm run dist -- -c.releaseInfo.releaseNotes="$NOTES" >/dev/null )
-fi
-
-ZIP="$APP/release/$ZIP_ASSET_NAME"
-[[ -f "$ZIP" ]] || die "expected zip not found: $ZIP"
-DMG="$APP/release/$DMG_ASSET_NAME"
-[[ -f "$DMG" ]] || die "expected dmg not found: $DMG — check the dmg target in app/electron-builder.yml"
-UPDATE_INFO_PATH="$APP/release/latest-mac.yml"
-[[ -f "$UPDATE_INFO_PATH" ]] || die "electron-builder did not generate latest-mac.yml — confirm the publish: block in app/electron-builder.yml still names provider github / owner on-par / repo sound-buddy-releases, then re-run"
-
-say "Verifying latest-mac.yml matches the artifacts this build produced"
-node --input-type=module -e '
-  import { readFileSync, statSync } from "node:fs";
-  import { createHash } from "node:crypto";
-  import { basename } from "node:path";
-  import { parseLatestMacYml, checkUpdateFeed } from "'"$ROOT"'/packages/shared/dist/index.js";
-  const [feedPath, version, ...files] = process.argv.slice(1);
-  const artifacts = files.map((f) => ({
-    name: basename(f),
-    sizeBytes: statSync(f).size,
-    sha512Base64: createHash("sha512").update(readFileSync(f)).digest("base64"),
-  }));
-  const verdict = checkUpdateFeed(parseLatestMacYml(readFileSync(feedPath, "utf8")), artifacts, version);
-  if (!verdict.ok) { console.error(verdict.problems.join("\n")); process.exit(1); }
-  console.log("latest-mac.yml: consistent with the built artifacts");
-' "$UPDATE_INFO_PATH" "$NEXT" "$ZIP" "$DMG" \
-  || die "latest-mac.yml does not describe this build's artifacts — electron-updater would fail with a signature/sha512 error; see above (#1226)"
-
-# Sanity: the bundle must actually be self-contained.
-APP_RES="$APP/release/mac-arm64/Sound Buddy.app/Contents/Resources"
-[[ -x "$APP_RES/bin/sox" && -x "$APP_RES/python/bin/python3" ]] || die "bundle is missing sox/python — build problem"
-say "Built $(basename "$ZIP") ($(du -h "$ZIP" | cut -f1)), $(basename "$DMG") ($(du -h "$DMG" | cut -f1))"
-
-# electron-builder already submitted to Apple, stapled the ticket, and *then*
-# zipped the stapled .app (#621). Everything below is verification only — no
-# mutation of the artifact, so $ZIP stays exactly what gets uploaded.
-if [[ "$SIGNED" == "true" ]]; then
-  APP_BUNDLE="$APP/release/mac-arm64/Sound Buddy.app"
-
-  say "Verifying Developer ID signature"
-  codesign --verify --deep --strict "$APP_BUNDLE" \
-    || die "codesign verification failed — a nested binary is unsigned or the seal is broken; run: codesign --verify --deep --strict --verbose=4 \"$APP_BUNDLE\""
-
-  say "Validating the stapled notarization ticket"
-  STAPLER_OUT="$(xcrun stapler validate "$APP_BUNDLE" 2>&1 || true)"
-  node --input-type=module -e '
-    import { parseStaplerValidation } from "'"$ROOT"'/packages/shared/dist/index.js";
-    const v = parseStaplerValidation(process.argv[1]);
-    if (!v.stapled) { console.error(v.error); process.exit(1); }
-    console.log("stapler: valid ticket stapled");
-  ' "$STAPLER_OUT" || die "stapled-ticket validation failed — the build must not ship; see error above"
-
-  say "Assessing with Gatekeeper (spctl)"
-  SPCTL_OUT="$(spctl --assess --type execute --verbose=4 "$APP_BUNDLE" 2>&1 || true)"
-  node --input-type=module -e '
-    import { parseSpctlAssessment } from "'"$ROOT"'/packages/shared/dist/index.js";
-    const v = parseSpctlAssessment(process.argv[1]);
-    if (!v.accepted) { console.error(v.error); process.exit(1); }
-    console.log(`spctl: accepted (source=${v.source ?? "not reported"})`);
-  ' "$SPCTL_OUT" || die "Gatekeeper assessment failed — the build must not ship; see error above"
-
-  # electron-builder does not notarize the dmg itself (#622) —
-  # app/build/afterAllArtifactBuild.js submitted + stapled it separately
-  # during the build above. Verify that ticket landed before publishing.
-  say "Validating the stapled DMG notarization ticket"
-  DMG_STAPLER_OUT="$(xcrun stapler validate "$DMG" 2>&1 || true)"
-  node --input-type=module -e '
-    import { parseStaplerValidation } from "'"$ROOT"'/packages/shared/dist/index.js";
-    const v = parseStaplerValidation(process.argv[1]);
-    if (!v.stapled) { console.error(v.error); process.exit(1); }
-    console.log("stapler: valid ticket stapled to dmg");
-  ' "$DMG_STAPLER_OUT" || die "DMG stapled-ticket validation failed — the build must not ship; see error above"
-
-  say "Assessing the DMG with Gatekeeper (spctl)"
-  DMG_SPCTL_OUT="$(spctl --assess --type open --context context:primary-signature --verbose=4 "$DMG" 2>&1 || true)"
-  node --input-type=module -e '
-    import { parseSpctlAssessment } from "'"$ROOT"'/packages/shared/dist/index.js";
-    const v = parseSpctlAssessment(process.argv[1]);
-    if (!v.accepted) { console.error(v.error); process.exit(1); }
-    console.log(`spctl: dmg accepted (source=${v.source ?? "not reported"})`);
-  ' "$DMG_SPCTL_OUT" || die "DMG Gatekeeper assessment failed — the build must not ship; see error above"
-fi
-
-say "Phase A complete — nothing user-visible has changed yet (no push, no GitHub release)."
-
-# ── Phase B: publish (idempotent) ────────────────────────────────────────────
-say "── Phase B: publish (idempotent) ──"
-
-# The tag/release/assets may already exist from an earlier, partially-completed
-# attempt at this same version — re-observe state right before publishing.
+# The tag/release may already exist from an earlier, partially-completed
+# attempt at this same version — re-observe state right before acting.
 STATE_JSON="$(gather_publish_state)"
-RELEASE_ID="$(node -pe 'JSON.parse(process.argv[1]).release?.id ?? ""' "$STATE_JSON")"
 PLAN_JSON="$(node --input-type=module -e '
   import { planReleasePublish } from "'"$ROOT"'/packages/shared/dist/index.js";
   const [stateJson, targetsJson] = process.argv.slice(1);
@@ -401,68 +261,15 @@ step_action() {
 step_reason() {
   node -pe 'JSON.parse(process.argv[1]).steps.find((s) => s.step === process.argv[2]).reason' "$PLAN_JSON" "$1"
 }
-for step in tag-push draft-release checksum-verify manifest-upload promote; do
+for step in tag-push ci-build verify-published; do
   say "  [$(step_action "$step")] $step — $(step_reason "$step")"
 done
 
 TAG_PUSH_ACTION="$(step_action tag-push)"
-DRAFT_RELEASE_ACTION="$(step_action draft-release)"
-CHECKSUM_VERIFY_ACTION="$(step_action checksum-verify)"
-PROMOTE_ACTION="$(step_action promote)"
-RELEASE_EXISTS="$(node -pe 'JSON.parse(process.argv[1]).release !== null' "$STATE_JSON")"
+CI_BUILD_ACTION="$(step_action ci-build)"
 
 to_json_array() {
   node -e 'process.stdout.write(JSON.stringify(process.argv.slice(1)))' "$@"
-}
-
-# #648: every asset read/write after draft creation must key off the id-resolved
-# $RELEASE_ID, never "$TAG" — the tag-resolving asset upload/download
-# subcommands can silently target a DIFFERENT draft than selectReleaseByTag's
-# pick when duplicate drafts share a tag_name (the real v0.8.0 case).
-
-# Print the numeric id of the named asset on release $RELEASE_ID ("" if absent).
-release_asset_id() {
-  local name="$1" assets_json
-  [[ -n "$RELEASE_ID" ]] || { echo "internal error: RELEASE_ID is empty — re-run: scripts/release.sh $NEXT --yes" >&2; return 1; }
-  assets_json="$(gh api "repos/$PUBLIC_REPO/releases/$RELEASE_ID" --jq '[.assets[] | {id, name}]')" || return 1
-  node --input-type=module -e '
-    import { findReleaseAssetId } from "'"$ROOT"'/packages/shared/dist/index.js";
-    const [assetsJson, name] = process.argv.slice(1);
-    const id = findReleaseAssetId(JSON.parse(assetsJson), name);
-    process.stdout.write(id === null ? "" : String(id));
-  ' "$assets_json" "$name"
-}
-
-# Upload one file to release $RELEASE_ID, replacing any same-named asset first —
-# mirrors the old tag-resolved upload's --clobber behavior, but keyed by id
-# instead of tag. A raw POST of a duplicate name would 422, so clobber =
-# DELETE existing + POST.
-upload_release_asset() {
-  local file="$1" name existing_id upload_url
-  name="$(basename "$file")"
-  existing_id="$(release_asset_id "$name")" || return 1
-  if [[ -n "$existing_id" ]]; then
-    gh api -X DELETE "$(node --input-type=module -e '
-      import { releaseAssetApiPath } from "'"$ROOT"'/packages/shared/dist/index.js";
-      process.stdout.write(releaseAssetApiPath(process.argv[1], Number(process.argv[2])));
-    ' "$PUBLIC_REPO" "$existing_id")" --silent || return 1
-  fi
-  upload_url="$(node --input-type=module -e '
-    import { buildReleaseAssetUploadUrl } from "'"$ROOT"'/packages/shared/dist/index.js";
-    process.stdout.write(buildReleaseAssetUploadUrl(process.argv[1], Number(process.argv[2]), process.argv[3]));
-  ' "$PUBLIC_REPO" "$RELEASE_ID" "$name")"
-  gh api -X POST "$upload_url" -H "Content-Type: application/octet-stream" --input "$file" --silent
-}
-
-# Stream the named asset's bytes from release $RELEASE_ID to stdout.
-download_release_asset() {
-  local name="$1" asset_id
-  asset_id="$(release_asset_id "$name")" || return 1
-  [[ -n "$asset_id" ]] || { echo "asset $name not found on release id $RELEASE_ID — check https://github.com/$PUBLIC_REPO/releases and re-run: scripts/release.sh $NEXT --yes" >&2; return 1; }
-  gh api -H "Accept: application/octet-stream" "$(node --input-type=module -e '
-    import { releaseAssetApiPath } from "'"$ROOT"'/packages/shared/dist/index.js";
-    process.stdout.write(releaseAssetApiPath(process.argv[1], Number(process.argv[2])));
-  ' "$PUBLIC_REPO" "$asset_id")"
 }
 
 COMPLETED=()
@@ -493,6 +300,10 @@ publish_fail() {
 
 # ── tag-push ──
 if [[ "$TAG_PUSH_ACTION" == "run" ]]; then
+  say "Bumping version to $NEXT"
+  ( cd "$APP" && npm version "$NEXT" --no-git-tag-version --allow-same-version >/dev/null )
+  # npm version touches package.json (and package-lock.json if present).
+
   HEAD_VERSION="$(head_committed_version)"
   if [[ "$HEAD_VERSION" != "$NEXT" ]]; then
     git -C "$ROOT" add "$APP/package.json" "$APP/package-lock.json" || publish_fail tag-push "git add failed"
@@ -514,147 +325,42 @@ else
   SKIPPED+=("tag-push")
 fi
 
-# ── draft-release ──
-if [[ "$DRAFT_RELEASE_ACTION" == "run" ]]; then
-  if [[ "$RELEASE_EXISTS" != "true" ]]; then
-    gh release create "$TAG" "$ZIP" "$DMG" -R "$PUBLIC_REPO" \
-      --draft \
-      --title "Sound Buddy $TAG (macOS Apple Silicon)" \
-      --notes "$NOTES" \
-      || publish_fail draft-release "gh release create --draft failed"
-    # A freshly-created draft is untagged on GitHub until published (#645) — its
-    # id isn't known yet. Re-resolve it by tag_name via the list endpoint.
-    STATE_JSON="$(gather_publish_state)"
-    RELEASE_ID="$(node -pe 'JSON.parse(process.argv[1]).release?.id ?? ""' "$STATE_JSON")"
-    [[ -n "$RELEASE_ID" ]] \
-      || publish_fail draft-release "draft was created but could not be found by tag_name $TAG in repos/$PUBLIC_REPO/releases — check https://github.com/$PUBLIC_REPO/releases and re-run: scripts/release.sh $NEXT --yes"
-  else
-    # Re-using an existing draft from a prior attempt — upload only what's missing.
-    MISSING_ASSETS=()
-    [[ "$(node -pe 'JSON.parse(process.argv[1]).assetNames.includes(process.argv[2])' "$STATE_JSON" "$ZIP_ASSET_NAME")" == "true" ]] \
-      || MISSING_ASSETS+=("$ZIP")
-    [[ "$(node -pe 'JSON.parse(process.argv[1]).assetNames.includes(process.argv[2])' "$STATE_JSON" "$DMG_ASSET_NAME")" == "true" ]] \
-      || MISSING_ASSETS+=("$DMG")
-    for asset in "${MISSING_ASSETS[@]+"${MISSING_ASSETS[@]}"}"; do
-      upload_release_asset "$asset" \
-        || publish_fail draft-release "upload of $(basename "$asset") to release id $RELEASE_ID failed"
-    done
-  fi
-  COMPLETED+=("draft-release")
+# ── ci-build ──
+if [[ "$CI_BUILD_ACTION" == "run" ]]; then
+  say "Waiting for the CI release run for $TAG (build + notarization typically takes 15-40 minutes)"
+  RUN_JSON="[]"
+  attempt=1
+  while [[ "$attempt" -le "$RUN_LOOKUP_ATTEMPTS" ]]; do
+    RUN_JSON="$(gh run list -R "$SOURCE_REPO" --workflow "$RELEASE_WORKFLOW" --branch "$TAG" --limit 1 --json databaseId,url 2>/dev/null || echo '[]')"
+    [[ "$(node -pe 'JSON.parse(process.argv[1]).length' "$RUN_JSON")" == "1" ]] && break
+    sleep "$RUN_LOOKUP_INTERVAL_SECS"
+    attempt=$((attempt + 1))
+  done
+  [[ "$(node -pe 'JSON.parse(process.argv[1]).length' "$RUN_JSON")" == "1" ]] \
+    || publish_fail ci-build "no Release workflow run appeared for $TAG within $((RUN_LOOKUP_ATTEMPTS * RUN_LOOKUP_INTERVAL_SECS))s — check https://github.com/$SOURCE_REPO/actions/workflows/$RELEASE_WORKFLOW"
+  RUN_ID="$(node -pe 'JSON.parse(process.argv[1])[0].databaseId' "$RUN_JSON")"
+  RUN_URL="$(node -pe 'JSON.parse(process.argv[1])[0].url' "$RUN_JSON")"
+  say "CI run: $RUN_URL"
+  gh run watch "$RUN_ID" -R "$SOURCE_REPO" --exit-status \
+    || publish_fail ci-build "the CI release run failed: $RUN_URL — inspect it with: gh run view $RUN_ID -R $SOURCE_REPO --log-failed. Nothing is public: the release is still a draft or was never created."
+  COMPLETED+=("ci-build")
 else
-  SKIPPED+=("draft-release")
+  say "CI build skipped — $(step_reason ci-build)"
+  SKIPPED+=("ci-build")
 fi
 
-# ── artifact facts (what is ACTUALLY attached to the release right now) ──
-# When draft-release just uploaded this run's local build, that local file IS
-# the release asset. When draft-release was skipped (assets already present
-# from an earlier run), the local rebuild is a *different* build — Phase A has
-# no artifact caching and a signed build's notarization ticket is not
-# byte-reproducible across submissions — so latest.json must describe the
-# remote asset's real facts, not a fresh local rebuild that was never uploaded.
-if [[ "$DRAFT_RELEASE_ACTION" == "run" ]]; then
-  ZIP_SHA256="$(shasum -a 256 "$ZIP" | cut -d' ' -f1)"
-  ZIP_SIZE="$(stat -f%z "$ZIP")"
-else
-  REMOTE_ZIP_JSON="$(gh api "repos/$PUBLIC_REPO/releases/$RELEASE_ID" \
-    --jq ".assets[] | select(.name == \"$ZIP_ASSET_NAME\")")"
-  ZIP_SIZE="$(node -pe 'JSON.parse(process.argv[1]).size' "$REMOTE_ZIP_JSON")"
-  REMOTE_DIGEST="$(node -pe 'JSON.parse(process.argv[1]).digest ?? ""' "$REMOTE_ZIP_JSON")"
-  if [[ -n "$REMOTE_DIGEST" ]]; then
-    ZIP_SHA256="${REMOTE_DIGEST#sha256:}"
-  else
-    # Older GitHub deployments may not expose asset digests — fall back to
-    # downloading the uploaded bytes and hashing them locally. Fetching by
-    # asset id via `gh api` with `Accept: application/octet-stream` works
-    # against drafts for authenticated users.
-    ZIP_SHA256="$(download_release_asset "$ZIP_ASSET_NAME" | shasum -a 256 | cut -d' ' -f1)"
-  fi
+# ── verify-published ──
+say "Verifying what CI published"
+STATE_JSON="$(gather_publish_state)"
+VERIFY_JSON="$(node --input-type=module -e '
+  import { verifyPublishedRelease } from "'"$ROOT"'/packages/shared/dist/index.js";
+  const [stateJson, targetsJson] = process.argv.slice(1);
+  process.stdout.write(JSON.stringify(verifyPublishedRelease(JSON.parse(stateJson), JSON.parse(targetsJson))));
+' "$STATE_JSON" "$TARGETS_JSON")"
+if [[ "$(node -pe 'JSON.parse(process.argv[1]).ok' "$VERIFY_JSON")" != "true" ]]; then
+  publish_fail verify-published "$(node -pe 'JSON.parse(process.argv[1]).error' "$VERIFY_JSON")"
 fi
-
-# ── checksum-verify (only meaningful when draft-release just uploaded THIS
-#    run's build — re-verifying a fresh rebuild against bytes a *previous* run
-#    already uploaded would be a false mismatch, not a real corruption signal,
-#    and would permanently deadlock every resume) ──
-if [[ "$CHECKSUM_VERIFY_ACTION" == "run" ]]; then
-  UPLOADED_DIGEST="$(gh api "repos/$PUBLIC_REPO/releases/$RELEASE_ID" \
-    --jq ".assets[] | select(.name == \"$ZIP_ASSET_NAME\") | .digest // \"\"")"
-  if [[ -z "$UPLOADED_DIGEST" ]]; then
-    UPLOADED_DIGEST="$(download_release_asset "$ZIP_ASSET_NAME" | shasum -a 256 | cut -d' ' -f1)"
-  fi
-  CHECKSUM_JSON="$(node --input-type=module -e '
-    import { verifyUploadedArtifactChecksum } from "'"$ROOT"'/packages/shared/dist/index.js";
-    const [expected, actual] = process.argv.slice(1);
-    process.stdout.write(JSON.stringify(verifyUploadedArtifactChecksum(expected, actual)));
-  ' "$ZIP_SHA256" "$UPLOADED_DIGEST")"
-  if [[ "$(node -pe 'JSON.parse(process.argv[1]).ok' "$CHECKSUM_JSON")" != "true" ]]; then
-    publish_fail checksum-verify "$(node -pe 'JSON.parse(process.argv[1]).error' "$CHECKSUM_JSON")"
-  fi
-  say "Checksum verified: uploaded artifact matches the local build"
-  COMPLETED+=("checksum-verify")
-else
-  say "Checksum verify skipped — $ZIP_ASSET_NAME was already uploaded and verified in a previous run"
-  SKIPPED+=("checksum-verify")
-fi
-
-# ── manifest-upload (always runs — idempotent via upload_release_asset's
-#    delete-then-upload replace) ──
-PUBLISHED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-MANIFEST_PATH="$APP/release/latest.json"
-node --input-type=module -e '
-  import { writeFileSync } from "node:fs";
-  import { buildReleaseManifest } from "'"$ROOT"'/packages/shared/dist/index.js";
-  const [version, notes, releaseUrl, artifactUrl, size, sha256, publishedAt, out, signed] = process.argv.slice(1);
-  const manifest = buildReleaseManifest({
-    version, notes, releaseUrl, artifactUrl,
-    artifactSizeBytes: Number(size), sha256, publishedAt,
-    signed: signed === "true",
-  });
-  writeFileSync(out, JSON.stringify(manifest, null, 2) + "\n");
-' "$NEXT" "$NOTES" "$RELEASE_URL" "$ARTIFACT_URL" "$ZIP_SIZE" "$ZIP_SHA256" "$PUBLISHED_AT" "$MANIFEST_PATH" "$SIGNED" \
-  || publish_fail manifest-upload "manifest generation failed"
-upload_release_asset "$MANIFEST_PATH" || publish_fail manifest-upload "upload of latest.json to release id $RELEASE_ID failed"
-say "Manifest → https://github.com/$PUBLIC_REPO/releases/latest/download/latest.json"
-say "Update feed → https://github.com/$PUBLIC_REPO/releases/latest/download/latest-mac.yml"
-
-# electron-updater's manifest (#625) — only safe to (re-)upload when this
-# run's local build is the asset the release actually carries; see
-# planUpdateInfoUpload's doc comment.
-UPDATE_INFO_UPLOADED="$(node -pe 'JSON.parse(process.argv[1]).assetNames.includes("latest-mac.yml")' "$STATE_JSON")"
-UPDATE_INFO_PLAN="$(node --input-type=module -e '
-  import { planUpdateInfoUpload } from "'"$ROOT"'/packages/shared/dist/index.js";
-  const [ran, uploaded] = process.argv.slice(1);
-  process.stdout.write(JSON.stringify(planUpdateInfoUpload(ran === "run", uploaded === "true")));
-' "$DRAFT_RELEASE_ACTION" "$UPDATE_INFO_UPLOADED")"
-UPDATE_INFO_ACTION="$(node -pe 'JSON.parse(process.argv[1]).action' "$UPDATE_INFO_PLAN")"
-case "$UPDATE_INFO_ACTION" in
-  fail)
-    publish_fail manifest-upload "$(node -pe 'JSON.parse(process.argv[1]).error' "$UPDATE_INFO_PLAN")"
-    ;;
-  upload)
-    upload_release_asset "$UPDATE_INFO_PATH" || publish_fail manifest-upload "upload of latest-mac.yml to release id $RELEASE_ID failed"
-    ;;
-  skip)
-    say "$(node -pe 'JSON.parse(process.argv[1]).reason' "$UPDATE_INFO_PLAN")"
-    ;;
-esac
-COMPLETED+=("manifest-upload")
-
-# ── promote (the only user-visible flip) ──
-# Promote by numeric id, not by tag — an untagged draft has no
-# releases/tags/$TAG endpoint to edit (#645). Publishing an untagged draft
-# makes GitHub create the $TAG git tag itself; verify that lands (AC1).
-if [[ "$PROMOTE_ACTION" == "run" ]]; then
-  gh api -X PATCH "repos/$PUBLIC_REPO/releases/$RELEASE_ID" -F draft=false --silent \
-    || publish_fail promote "PATCH releases/$RELEASE_ID draft=false failed — the release is fully staged as a draft with all assets; one command finishes it: gh api -X PATCH repos/$PUBLIC_REPO/releases/$RELEASE_ID -F draft=false"
-  # The PATCH above is the actual user-visible flip — record it as completed
-  # before the read-only check below, so a failure there (e.g. transient
-  # read-after-write lag) reports via formatPublishFailure's "promote already
-  # ran" warning instead of the misleading "no users are affected" message.
-  COMPLETED+=("promote")
-  gh api "repos/$PUBLIC_REPO/releases/tags/$TAG" --jq .id >/dev/null \
-    || publish_fail promote "release was un-drafted but is not reachable at tag $TAG on $PUBLIC_REPO — inspect https://github.com/$PUBLIC_REPO/releases"
-else
-  SKIPPED+=("promote")
-fi
+say "$(node -pe 'JSON.parse(process.argv[1]).notice' "$VERIFY_JSON")"
+COMPLETED+=("verify-published")
 
 say "Done → $RELEASE_URL"
