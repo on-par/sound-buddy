@@ -305,6 +305,25 @@ DMG="$APP/release/$DMG_ASSET_NAME"
 [[ -f "$DMG" ]] || die "expected dmg not found: $DMG — check the dmg target in app/electron-builder.yml"
 UPDATE_INFO_PATH="$APP/release/latest-mac.yml"
 [[ -f "$UPDATE_INFO_PATH" ]] || die "electron-builder did not generate latest-mac.yml — confirm the publish: block in app/electron-builder.yml still names provider github / owner on-par / repo sound-buddy-releases, then re-run"
+
+say "Verifying latest-mac.yml matches the artifacts this build produced"
+node --input-type=module -e '
+  import { readFileSync, statSync } from "node:fs";
+  import { createHash } from "node:crypto";
+  import { basename } from "node:path";
+  import { parseLatestMacYml, checkUpdateFeed } from "'"$ROOT"'/packages/shared/dist/index.js";
+  const [feedPath, version, ...files] = process.argv.slice(1);
+  const artifacts = files.map((f) => ({
+    name: basename(f),
+    sizeBytes: statSync(f).size,
+    sha512Base64: createHash("sha512").update(readFileSync(f)).digest("base64"),
+  }));
+  const verdict = checkUpdateFeed(parseLatestMacYml(readFileSync(feedPath, "utf8")), artifacts, version);
+  if (!verdict.ok) { console.error(verdict.problems.join("\n")); process.exit(1); }
+  console.log("latest-mac.yml: consistent with the built artifacts");
+' "$UPDATE_INFO_PATH" "$NEXT" "$ZIP" "$DMG" \
+  || die "latest-mac.yml does not describe this build's artifacts — electron-updater would fail with a signature/sha512 error; see above (#1226)"
+
 # Sanity: the bundle must actually be self-contained.
 APP_RES="$APP/release/mac-arm64/Sound Buddy.app/Contents/Resources"
 [[ -x "$APP_RES/bin/sox" && -x "$APP_RES/python/bin/python3" ]] || die "bundle is missing sox/python — build problem"
@@ -335,7 +354,7 @@ if [[ "$SIGNED" == "true" ]]; then
     import { parseSpctlAssessment } from "'"$ROOT"'/packages/shared/dist/index.js";
     const v = parseSpctlAssessment(process.argv[1]);
     if (!v.accepted) { console.error(v.error); process.exit(1); }
-    console.log("spctl: accepted");
+    console.log(`spctl: accepted (source=${v.source ?? "not reported"})`);
   ' "$SPCTL_OUT" || die "Gatekeeper assessment failed — the build must not ship; see error above"
 
   # electron-builder does not notarize the dmg itself (#622) —
@@ -356,7 +375,7 @@ if [[ "$SIGNED" == "true" ]]; then
     import { parseSpctlAssessment } from "'"$ROOT"'/packages/shared/dist/index.js";
     const v = parseSpctlAssessment(process.argv[1]);
     if (!v.accepted) { console.error(v.error); process.exit(1); }
-    console.log("spctl: dmg accepted");
+    console.log(`spctl: dmg accepted (source=${v.source ?? "not reported"})`);
   ' "$DMG_SPCTL_OUT" || die "DMG Gatekeeper assessment failed — the build must not ship; see error above"
 fi
 

@@ -132,7 +132,10 @@ Given both env vars, `scripts/release.sh`:
 6. Validates the stapled ticket (`xcrun stapler validate`) and aborts if it
    isn't there.
 7. Assesses the result with Gatekeeper (`spctl --assess --verbose=4`) and
-   aborts the release if it isn't accepted.
+   aborts the release if it isn't accepted. The Gatekeeper assessment now also
+   requires `source=Notarized Developer ID` — a signed-but-unnotarized build
+   (`source=Developer ID`) fails the gate even though spctl reports `accepted`
+   (#1226).
 
 ## The signed, notarized DMG (#622)
 
@@ -176,6 +179,10 @@ On a fresh macOS install (or a machine that has never opened this app):
    prompt.
 6. `xcrun stapler validate "Sound Buddy-<version>-arm64.dmg"` prints "The
    validate action worked!".
+
+See [`docs/electron-builder-26-packaging-verification.md`](./electron-builder-26-packaging-verification.md)
+for the one-time toolchain-upgrade runbook that walks through these checks after an
+Electron/electron-builder version bump.
 
 ## Troubleshooting
 
