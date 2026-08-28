@@ -178,30 +178,39 @@ describe('getWindowOptions', () => {
     });
   });
 
-  it('hides the window and disables background throttling under SB_E2E_HEADLESS', () => {
+  it('places the window off-screen under SB_E2E_HEADLESS, still shown/composited', () => {
     const options = getWindowOptions('/p/preload.js', { SB_E2E_HEADLESS: '1' });
 
-    expect(options.show).toBe(false);
+    // show:false was tried and reverted (#1249 follow-up): a never-shown
+    // window gets no real compositor surface, so requestAnimationFrame stops
+    // ticking regardless of backgroundThrottling, silently breaking every
+    // meter/transport spec. Off-screen positioning keeps it a normal,
+    // fully-composited, show:true window.
+    expect(options.show).toBeUndefined();
+    expect(options.x).toBe(-10000);
+    expect(options.y).toBe(-10000);
     expect(options.width).toBe(1200);
     expect(options.height).toBe(800);
     expect(options.titleBarStyle).toBe('hiddenInset');
-    expect(options.webPreferences).toMatchObject({
+    expect(options.webPreferences).toEqual({
+      contextIsolation: true,
+      nodeIntegration: false,
       preload: '/p/preload.js',
-      backgroundThrottling: false,
     });
   });
 
   it('only honors an exact "1"', () => {
     for (const env of [{ SB_E2E_HEADLESS: '0' }, { SB_E2E_HEADLESS: 'true' }]) {
       const options = getWindowOptions('/p/preload.js', env);
-      expect(options.show).toBeUndefined();
-      expect(options.webPreferences?.backgroundThrottling).toBeUndefined();
+      expect(options.x).toBeUndefined();
+      expect(options.y).toBeUndefined();
     }
   });
 
-  it('defaults to a visible window when the flag is absent', () => {
+  it('defaults to an on-screen window when the flag is absent', () => {
     const options = getWindowOptions('/p/preload.js', {});
-    expect(options.show).toBeUndefined();
+    expect(options.x).toBeUndefined();
+    expect(options.y).toBeUndefined();
   });
 });
 
