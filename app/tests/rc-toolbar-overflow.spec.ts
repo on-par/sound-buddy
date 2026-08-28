@@ -1,5 +1,5 @@
 import { test, expect, type ElectronApplication, type Page } from '@playwright/test';
-import { _electron as electron } from 'playwright';
+import { launchElectron } from './launch-electron';
 import * as path from 'path';
 
 const MAIN = path.join(__dirname, '..', 'dist', 'electron', 'main.js');
@@ -21,7 +21,7 @@ let app: ElectronApplication;
 let win: Page;
 
 async function launch(): Promise<void> {
-  app = await electron.launch({ args: [MAIN] });
+  app = await launchElectron({ args: [MAIN] });
   win = await app.firstWindow();
   await win.waitForLoadState('domcontentloaded');
   await expect(win.locator('#rc-toolbar')).toBeVisible();

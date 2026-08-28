@@ -1,5 +1,5 @@
 import { test, expect, type ElectronApplication, type Page } from '@playwright/test';
-import { _electron as electron } from 'playwright';
+import { launchElectron } from './launch-electron';
 import * as path from 'path';
 import * as fs from 'fs';
 import { MATRIX_ENV, MATRIX_FREE_ENV, seedTrial, seedSubscription, seedProLicense } from './license-fixture';
@@ -28,7 +28,7 @@ let win: Page;
 let requests: string[] = [];
 
 async function launch(env: Record<string, string>): Promise<void> {
-  app = await electron.launch({
+  app = await launchElectron({
     args: [MAIN, `--user-data-dir=${USER_DATA}`],
     env: { ...process.env, ...env },
   });

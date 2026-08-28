@@ -1,5 +1,5 @@
 import { test, expect, type ElectronApplication, type Page } from '@playwright/test';
-import { _electron as electron } from 'playwright';
+import { launchElectron } from './launch-electron';
 import { execSync } from 'child_process';
 import * as path from 'path';
 import * as fs from 'fs';
@@ -35,7 +35,7 @@ test('a first-run user reaches a report card from the packaged .app via the onbo
     const mainOut: string[] = [];
     // Brand-new profile, no sb-onboarding-seen-v1 — the overlay must show.
     const userData = path.join(workdir, 'userdata');
-    app = await electron.launch({
+    app = await launchElectron({
       executablePath: exe,
       args: [`--user-data-dir=${userData}`],
       // Clean-machine PATH: only the OS defaults, nothing from Homebrew. Unlike

@@ -49,7 +49,18 @@ export function getPreloadPath(baseDir: string): string {
   return path.join(baseDir, 'preload.js');
 }
 
-export function getWindowOptions(preloadPath: string): Electron.BrowserWindowConstructorOptions {
+/** Set only by app/tests/launch-electron.ts (#1249) — never in production. */
+const HEADLESS_E2E_ENV = 'SB_E2E_HEADLESS';
+
+export function getWindowOptions(
+  preloadPath: string,
+  env: NodeJS.ProcessEnv = process.env,
+): Electron.BrowserWindowConstructorOptions {
+  // Headless e2e (#1249): the window is created and painted (Electron's
+  // paintWhenInitiallyHidden default) so Playwright can drive it, but it is
+  // never shown. backgroundThrottling stays on in production and is disabled
+  // here so a hidden window's rAF/timers keep running for meter/transport specs.
+  const headless = env[HEADLESS_E2E_ENV] === '1';
   return {
     width: 1200,
     height: 800,
@@ -57,10 +68,12 @@ export function getWindowOptions(preloadPath: string): Electron.BrowserWindowCon
     minHeight: 600,
     backgroundColor: '#0d0d0d',
     titleBarStyle: 'hiddenInset',
+    ...(headless ? { show: false } : {}),
     webPreferences: {
       contextIsolation: true,
       nodeIntegration: false,
       preload: preloadPath,
+      ...(headless ? { backgroundThrottling: false } : {}),
     },
   };
 }

@@ -177,6 +177,32 @@ describe('getWindowOptions', () => {
       preload: '/p/preload.js',
     });
   });
+
+  it('hides the window and disables background throttling under SB_E2E_HEADLESS', () => {
+    const options = getWindowOptions('/p/preload.js', { SB_E2E_HEADLESS: '1' });
+
+    expect(options.show).toBe(false);
+    expect(options.width).toBe(1200);
+    expect(options.height).toBe(800);
+    expect(options.titleBarStyle).toBe('hiddenInset');
+    expect(options.webPreferences).toMatchObject({
+      preload: '/p/preload.js',
+      backgroundThrottling: false,
+    });
+  });
+
+  it('only honors an exact "1"', () => {
+    for (const env of [{ SB_E2E_HEADLESS: '0' }, { SB_E2E_HEADLESS: 'true' }]) {
+      const options = getWindowOptions('/p/preload.js', env);
+      expect(options.show).toBeUndefined();
+      expect(options.webPreferences?.backgroundThrottling).toBeUndefined();
+    }
+  });
+
+  it('defaults to a visible window when the flag is absent', () => {
+    const options = getWindowOptions('/p/preload.js', {});
+    expect(options.show).toBeUndefined();
+  });
 });
 
 describe('getMenuTemplate', () => {
