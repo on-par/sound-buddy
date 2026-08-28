@@ -77,15 +77,15 @@ export type { ReleaseWorkflowAudit } from './release-workflow.js'
 
 export {
   planReleasePublish, evaluateReleasePreflight, formatPublishFailure, resumeCommand, classifyWorkingTree,
-  planUpdateInfoUpload, selectReleaseByTag,
-  findReleaseAssetId, buildReleaseAssetUploadUrl, releaseAssetApiPath, auditReleaseScriptResolution,
+  selectReleaseByTag, verifyPublishedRelease, auditLocalReleaseScript,
+  auditReleaseScriptResolution,
   PUBLISH_STEPS,
 } from './release-publish.js'
 export type {
   PublishStep, PublishState, ExistingRelease, PublishTargets, PublishStepPlan, PublishPlan,
-  PreflightVerdict, PublishOutcomeInput, TreeState, UpdateInfoUploadPlan,
+  PreflightVerdict, PublishOutcomeInput, TreeState, PublishedVerdict,
   ReleaseListEntry, SelectedRelease,
-  ReleaseAssetRef, ReleaseScriptAudit,
+  ReleaseScriptAudit,
 } from './release-publish.js'
 
 export interface EQBand {
