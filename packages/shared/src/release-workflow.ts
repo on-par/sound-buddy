@@ -29,6 +29,11 @@ const ENV_MAPPING_LINE_PATTERN = /^\s*[A-Za-z0-9_]+:\s*\$\{\{\s*secrets\.APPLE_[
 const STEPS_MARKER = '\n    steps:\n';
 const STEP_START_PATTERN = /\n(?= {6}- )/;
 const RUN_BLOCK_PATTERN = /run:\s*\|[+-]?\n([\s\S]*)/;
+const PUBLISH_ACTION_PATTERN = /uses:\s*softprops\/action-gh-release/;
+const DRAFT_TRUE_PATTERN = /^\s*draft:\s*true\s*$/m;
+const FEED_VERIFY_PATTERN = /scripts\/ci-update-feed\.mjs|checkUpdateFeed/;
+const PROMOTE_INVOCATION_PATTERN = /gh api\s+-X\s+PATCH\b/;
+const PROMOTE_DRAFT_FALSE_FLAG = '-F draft=false';
 
 /** Splits a workflow's `steps:` list (6-space-indented `- ` items) into per-step text chunks. */
 function splitSteps(yml: string): string[] {
@@ -126,6 +131,42 @@ export function auditReleaseWorkflow(yml: string): ReleaseWorkflowAudit {
         `the "${stepName(step)}" run: block touches "security" but is missing "set -euo pipefail" as its first line`,
       );
     }
+  }
+
+  const publishIndex = steps.findIndex((step) => PUBLISH_ACTION_PATTERN.test(step));
+  const feedVerifyIndex = steps.findIndex((step) => FEED_VERIFY_PATTERN.test(step));
+  const promoteIndex = steps.findIndex(
+    (step) => PROMOTE_INVOCATION_PATTERN.test(step) && step.includes(PROMOTE_DRAFT_FALSE_FLAG),
+  );
+
+  if (publishIndex === -1) {
+    problems.push(
+      'no publish step uses softprops/action-gh-release — CI is the authoritative publisher and must create the release itself (#1238)',
+    );
+  } else if (!DRAFT_TRUE_PATTERN.test(steps[publishIndex])) {
+    problems.push(
+      `the "${stepName(steps[publishIndex])}" publish step does not set "draft: true" — a non-draft release is public the instant it is created, before its update feed has been verified (#1238)`,
+    );
+  }
+
+  if (feedVerifyIndex === -1) {
+    problems.push(
+      'no step verifies latest-mac.yml against the built artifacts (expected "node scripts/ci-update-feed.mjs") — an unverified feed breaks auto-update for every installed user (#1238)',
+    );
+  } else if (publishIndex !== -1 && feedVerifyIndex > publishIndex) {
+    problems.push(
+      'the update-feed verification step runs after the publish step — it must run before anything is published (#1238)',
+    );
+  }
+
+  if (promoteIndex === -1) {
+    problems.push(
+      'no promote step runs "gh api -X PATCH … -F draft=false" — the draft would never become public (#1238)',
+    );
+  } else if (promoteIndex !== steps.length - 1) {
+    problems.push(
+      'the promote step is not the last step in the job — promoting before every verification and upload step has run defeats the draft-first publish (#1238)',
+    );
   }
 
   return { ok: problems.length === 0, problems };
