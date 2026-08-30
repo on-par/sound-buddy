@@ -40,6 +40,7 @@ import { timelineBpmControlView, TIMELINE_BPM_REJECTED_MESSAGE } from './timelin
 import { TIMELINE_OVERVIEW_MIN_DURATION_SECS } from './timeline-overview';
 import { formatRulerElapsed } from './timeline-ruler-labels';
 import { createTimelineZoomModel, applyTimelineZoom, timelineZoomControlsView, TIMELINE_ZOOM_BUTTON_IDS } from './timeline-zoom-controls';
+import { applyTimelineFollowEvent, createTimelineFollowModel, timelineFollowView, TIMELINE_FOLLOW_BUTTON_ID } from './timeline-follow-scroll';
 
 // The pure helper classic-scripts the view module reads off `window` — real
 // modules (not hand-rolled stubs), same convention as
@@ -121,6 +122,7 @@ function makeState(overrides: Partial<LiveWorkspaceViewState> = {}): LiveWorkspa
     sessionRoutingDrawerOpen: overrides.sessionRoutingDrawerOpen ?? false,
     timelineBpm: overrides.timelineBpm ?? null,
     timelineZoom: overrides.timelineZoom ?? null,
+    timelineFollow: overrides.timelineFollow ?? null,
   };
 }
 
@@ -286,6 +288,25 @@ describe('Session zoom/fit controls (#1284)', () => {
     expect(liveWorkspaceViewState({ ...makeState(), demoting: false }, settings()).timelineZoom).toBeNull();
     const html = dawShellHTML(makeState());
     expect(html).toContain('0:00 - 0:01');
+  });
+});
+
+describe('Session follow-scroll toggle (#1286)', () => {
+  it('emits the toggle pressed inside the transport row, after the zoom cluster, when a paused view is supplied', () => {
+    const view = timelineFollowView(applyTimelineFollowEvent(createTimelineFollowModel(), 'manual-scroll'));
+    const html = dawShellHTML(makeState({ timelineFollow: view }));
+
+    expect(html).toContain(`id="${TIMELINE_FOLLOW_BUTTON_ID}"`);
+    expect(html).toContain('aria-pressed="false"');
+    const followIndex = html.indexOf(`id="${TIMELINE_FOLLOW_BUTTON_ID}"`);
+    expect(followIndex).toBeGreaterThan(html.indexOf('class="daw-transport-zoom"'));
+    expect(followIndex).toBeLessThan(html.indexOf('live-meters-toolbar'));
+  });
+
+  it('falls back to the default following toggle (aria-pressed="true") when no follow view is supplied', () => {
+    expect(liveWorkspaceViewState({ ...makeState(), demoting: false }, settings()).timelineFollow).toBeNull();
+    const html = dawShellHTML(makeState());
+    expect(html).toContain(`id="${TIMELINE_FOLLOW_BUTTON_ID}" aria-pressed="true"`);
   });
 });
 

@@ -37,6 +37,7 @@ import {
   type KeyboardEvent,
   type MouseEvent,
   type PointerEvent,
+  type WheelEvent,
 } from 'react';
 import { useStoreShallow } from './stores/useStoreShallow';
 import { useLiveCaptureStore, MAX_LABEL_LEN, type LapAction } from './stores/liveCaptureStore';
@@ -76,6 +77,15 @@ import {
   type TimelineZoomContext,
   type TimelineZoomModel,
 } from './timeline-zoom-controls';
+import {
+  applyTimelineFollowEvent,
+  createTimelineFollowModel,
+  timelineFollowEventForWheel,
+  timelineFollowView,
+  TIMELINE_FOLLOW_BUTTON_ID,
+  TIMELINE_FOLLOW_SURFACE_SELECTOR,
+  type TimelineFollowModel,
+} from './timeline-follow-scroll';
 import { beginSessionTimelineScrub } from './session-timeline-scrub';
 import {
   SESSION_SCRUB_SURFACE_SELECTOR,
@@ -177,6 +187,9 @@ export default function LiveCapturePanel(): JSX.Element | null {
   // navigation, not capture or session data. It self-heals against a changing
   // duration - applyTimelineZoom normalizes the stored range every call.
   const [timelineZoom, setTimelineZoom] = useState<TimelineZoomModel>(() => createTimelineZoomModel(0));
+  // Follow-scroll state (#1286). Local view state like timelineZoom above - it is
+  // navigation, not capture or session data, and is not persisted.
+  const [timelineFollow, setTimelineFollow] = useState<TimelineFollowModel>(createTimelineFollowModel);
   const s = useStoreShallow(useLiveCaptureStore, (st) => ({
     channelConfig: st.channelConfig,
     channelGroups: st.channelGroups,
@@ -259,6 +272,7 @@ export default function LiveCapturePanel(): JSX.Element | null {
     sessionRoutingDrawerOpen,
     timelineBpm,
     timelineZoomView,
+    timelineFollowView(timelineFollow),
   );
   const laneSignature = dawShellPatchView(state).laneSignature;
 
@@ -448,10 +462,25 @@ export default function LiveCapturePanel(): JSX.Element | null {
       else if (action === 'stop') void stopLiveCapture(runtime());
       return;
     }
-    if (target.closest('#daw-session-play')) { void useSoundcheckStore.getState().play(); return; }
+    if (target.closest('#daw-session-play')) {
+      setTimelineFollow((m) => applyTimelineFollowEvent(m, 'play'));
+      void useSoundcheckStore.getState().play();
+      return;
+    }
     if (target.closest('#daw-session-stop')) { void useSoundcheckStore.getState().stop(); return; }
     if (target.closest('#daw-session-loop')) { useSoundcheckStore.getState().toggleLoop(); return; }
-    if (target.closest('#daw-session-return')) { void useSoundcheckStore.getState().returnToStart(); return; }
+    if (target.closest('#daw-session-return')) {
+      setTimelineFollow((m) => applyTimelineFollowEvent(m, 'seek'));
+      void useSoundcheckStore.getState().returnToStart();
+      return;
+    }
+    // Follow-scroll toggle (#1286): flips the pause/resume state directly. Placed
+    // before the .daw-zoom-btn branch as insurance — it intentionally does NOT
+    // carry the daw-zoom-btn class, so that branch cannot swallow it either way.
+    if (target.closest(`#${TIMELINE_FOLLOW_BUTTON_ID}`)) {
+      setTimelineFollow((m) => applyTimelineFollowEvent(m, 'toggle'));
+      return;
+    }
     // Session zoom/fit controls (#1284): id -> action -> the pure reducer.
     // zoomContext is captured from the current render, which is correct here
     // for the same reason the BPM branch captures timelineTempo: the handler
@@ -459,7 +488,10 @@ export default function LiveCapturePanel(): JSX.Element | null {
     const zoomBtn = target.closest('.daw-zoom-btn');
     if (zoomBtn) {
       const action = timelineZoomActionForId(zoomBtn.id);
-      if (action) setTimelineZoom((model) => applyTimelineZoom(model, action, zoomContext));
+      if (action) {
+        setTimelineZoom((model) => applyTimelineZoom(model, action, zoomContext));
+        setTimelineFollow((m) => applyTimelineFollowEvent(m, 'navigate'));
+      }
       return;
     }
     // Live coaching dispositions (#613/#614) — engineer control over the card.
@@ -551,8 +583,21 @@ export default function LiveCapturePanel(): JSX.Element | null {
           playhead.style.left = `${leftPx}px`;
         });
       },
-      seekTo: (elapsedSecs) => useSoundcheckStore.getState().seekTo(elapsedSecs),
+      seekTo: (elapsedSecs) => {
+        setTimelineFollow((m) => applyTimelineFollowEvent(m, 'seek'));
+        return useSoundcheckStore.getState().seekTo(elapsedSecs);
+      },
     });
+  }
+
+  // Manual time navigation pauses follow-scroll (#1286). Detection only - moving
+  // the visible range on a gesture is #1283. Never preventDefault: this handler
+  // observes the wheel, it does not consume it.
+  function onBoardWheel(e: WheelEvent<HTMLDivElement>): void {
+    if (!(e.target instanceof Element)) return;
+    if (!e.target.closest(TIMELINE_FOLLOW_SURFACE_SELECTOR)) return;
+    const event = timelineFollowEventForWheel(e);
+    if (event) setTimelineFollow((m) => applyTimelineFollowEvent(m, event));
   }
 
   function onBoardKeyDown(e: KeyboardEvent<HTMLDivElement>): void {
@@ -828,6 +873,7 @@ export default function LiveCapturePanel(): JSX.Element | null {
       className="live-board-root"
       onClick={onBoardClick}
       onPointerDown={onBoardPointerDown}
+      onWheel={onBoardWheel}
       onKeyDown={onBoardKeyDown}
       onFocus={onNameFocus}
       onBlur={onNameBlur}

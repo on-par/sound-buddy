@@ -251,6 +251,17 @@ test.describe('Session tab playback (#1080)', () => {
     expect((await startCalls())[0].startOffsetSecs).toBe(0.5);
   });
 
+  test('pauses follow-scroll on a manual timeline wheel and resumes it on Play (#1286)', async () => {
+    const followToggle = window.locator('#daw-follow-toggle');
+    await expect(followToggle).toHaveAttribute('aria-pressed', 'true');
+
+    await window.locator('.daw-timeline').dispatchEvent('wheel', { deltaX: 120, deltaY: 0, bubbles: true });
+    await expect(followToggle).toHaveAttribute('aria-pressed', 'false');
+
+    await window.locator('#daw-session-play').click();
+    await expect(followToggle).toHaveAttribute('aria-pressed', 'true');
+  });
+
   test('cancelling a Session scrub clears it without seeking on a later pointer release (#1082)', async () => {
     await window.locator('#daw-session-play').click();
     await sendPlaybackEvent({ type: 'progress', elapsed: 2, duration: 10 });
