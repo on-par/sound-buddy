@@ -520,7 +520,7 @@ describe('arrangement header and lane-column boundary (#1048)', () => {
   });
 
   it('one shared rule re-bases every timeline child by exactly one head width, with no numeric offset', () => {
-    const rebase = css.match(/\.daw-ruler-tick\s*,\s*\.daw-gridline\s*,\s*\.daw-playhead\s*,\s*\.daw-take-clip\s*\{[^}]*\}/);
+    const rebase = css.match(/\.daw-ruler-tick\s*,\s*\.daw-ruler-label\s*,\s*\.daw-gridline\s*,\s*\.daw-playhead\s*,\s*\.daw-take-clip\s*\{[^}]*\}/);
     expect(rebase).not.toBeNull();
     expect(rebase![0]).toMatch(/transform:\s*translateX\(calc\(-1 \* var\(--daw-head-w\)\)\)/);
     const tickRule = css.match(/\.daw-ruler-tick\s*\{[^}]*\}/);
@@ -533,6 +533,23 @@ describe('arrangement header and lane-column boundary (#1048)', () => {
     expect(gridlineRule![0]).not.toMatch(/transform|left:\s*\d/);
     expect(takeClipRule![0]).not.toMatch(/left:\s*\d/);
     expect(css).toMatch(/\.daw-take-clip\s*\{[^}]*overflow:\s*hidden[^}]*pointer-events:\s*none/);
+    const labelRule = css.match(/\.daw-ruler-label\s*\{[^}]*\}/);
+    expect(labelRule).not.toBeNull();
+    expect(labelRule![0]).not.toMatch(/transform|left:\s*\d/);
+  });
+
+  it('the ruler label re-bases through the shared rule and carries no numeric offset (#1275)', () => {
+    const rebase = css.match(/\.daw-ruler-tick\s*,\s*\.daw-ruler-label\s*,\s*\.daw-gridline\s*,\s*\.daw-playhead\s*,\s*\.daw-take-clip\s*\{[^}]*\}/);
+    expect(rebase).not.toBeNull();
+    const labelRule = css.match(/\.daw-ruler-label\s*\{[^}]*\}/);
+    expect(labelRule).not.toBeNull();
+    expect(labelRule![0]).toMatch(/position:\s*absolute/);
+    expect(labelRule![0]).toMatch(/pointer-events:\s*none/);
+    expect(labelRule![0]).not.toMatch(/transform|left:\s*\d/);
+    const barsRule = css.match(/\.daw-ruler-label-bars\s*\{[^}]*\}/);
+    const timeRule = css.match(/\.daw-ruler-label-time\s*\{[^}]*\}/);
+    expect(barsRule).not.toBeNull();
+    expect(timeRule).not.toBeNull();
   });
 
   it('the head column opens with a ruler gutter that shares the ruler row height', () => {
@@ -585,7 +602,7 @@ describe('the arrangement playhead spans both timeline regions (#1049)', () => {
   });
 
   it('the playhead re-bases through the same shared rule as the ticks and gridlines', () => {
-    const rebase = css.match(/\.daw-ruler-tick\s*,\s*\.daw-gridline\s*,\s*\.daw-playhead\s*,\s*\.daw-take-clip\s*\{[^}]*\}/);
+    const rebase = css.match(/\.daw-ruler-tick\s*,\s*\.daw-ruler-label\s*,\s*\.daw-gridline\s*,\s*\.daw-playhead\s*,\s*\.daw-take-clip\s*\{[^}]*\}/);
     expect(rebase).not.toBeNull();
     expect(rebase![0]).toMatch(/transform:\s*translateX\(calc\(-1 \* var\(--daw-head-w\)\)\)/);
     // A playhead-local transform would shadow the shared re-base.
