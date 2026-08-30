@@ -974,6 +974,14 @@
        numeric left of its own. */
     .daw-playhead { position:absolute; top:0; bottom:0; left:0; width:2px; border-radius:1px; background:var(--text-muted); pointer-events:none; z-index:2; }
     .daw-playhead.advancing { background:var(--gold-text); }
+    /* The insert marker (#1301): where a play/edit action would START, as opposed to the
+       playhead's "where audio IS". Distinguished on three axes so the two are never
+       confused — a 1px azure line against the playhead's 2px muted/gold bar, plus a
+       triangular flag head on the ruler segment. Like the playhead it carries no left
+       offset and no transform of its own: the x comes from renderInsertMarker and the
+       re-base from the one shared rule below (ADR-0090). */
+    .daw-insert-marker { position:absolute; top:0; bottom:0; left:0; width:1px; background:var(--info-text); pointer-events:none; z-index:2; }
+    .daw-insert-marker-ruler::after { content:''; position:absolute; top:0; left:0; width:0; height:0; border-left:6px solid var(--info-text); border-bottom:6px solid transparent; }
     /* Arrangement frame (#1042/#1048): the semantic structure the arrangement
        view is built from — a track-head column (filled per track by #1043)
        beside the timeline column that owns the ruler and the lane rows. The
@@ -1055,7 +1063,7 @@
        this one rule alongside the head-width re-basing. Any future absolutely
        positioned ruler/lane child joins this selector list — never its own
        offset, and never a scroll offset of its own. */
-    .daw-ruler-tick, .daw-ruler-label, .daw-gridline, .daw-playhead, .daw-take-clip { transform:translateX(calc(-1 * (var(--daw-head-w) + var(--daw-scroll-x, 0px)))); }
+    .daw-ruler-tick, .daw-ruler-label, .daw-gridline, .daw-playhead, .daw-insert-marker, .daw-take-clip { transform:translateX(calc(-1 * (var(--daw-head-w) + var(--daw-scroll-x, 0px)))); }
     .daw-mix-lane { height:var(--daw-master-row-h); box-sizing:border-box; border-top:1px solid var(--border-strong); background:var(--surface-raised); }
     .daw-mix-lane .daw-lane-body { height:100%; }
     .daw-mix-waveform { display:block; width:100%; height:100%; }

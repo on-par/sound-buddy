@@ -648,9 +648,12 @@ describe('arrangement header and lane-column boundary (#1048)', () => {
   });
 
   it('one shared rule re-bases every timeline child by exactly one head width, with no numeric offset', () => {
-    const rebase = css.match(/\.daw-ruler-tick\s*,\s*\.daw-ruler-label\s*,\s*\.daw-gridline\s*,\s*\.daw-playhead\s*,\s*\.daw-take-clip\s*\{[^}]*\}/);
+    const rebase = css.match(/\.daw-ruler-tick\s*,[^{]*\{[^}]*\}/);
     expect(rebase).not.toBeNull();
     expect(rebase![0]).toMatch(/transform:\s*translateX\(calc\(-1 \* \(var\(--daw-head-w\) \+ var\(--daw-scroll-x, 0px\)\)\)\)/);
+    for (const cls of ['.daw-ruler-tick', '.daw-ruler-label', '.daw-gridline', '.daw-playhead', '.daw-insert-marker', '.daw-take-clip']) {
+      expect(rebase![0]).toContain(cls);
+    }
     const tickRule = css.match(/\.daw-ruler-tick\s*\{[^}]*\}/);
     const gridlineRule = css.match(/\.daw-gridline\s*\{[^}]*\}/);
     const takeClipRule = css.match(/\.daw-take-clip\s*\{[^}]*\}/);
@@ -667,7 +670,7 @@ describe('arrangement header and lane-column boundary (#1048)', () => {
   });
 
   it('the ruler label re-bases through the shared rule and carries no numeric offset (#1275)', () => {
-    const rebase = css.match(/\.daw-ruler-tick\s*,\s*\.daw-ruler-label\s*,\s*\.daw-gridline\s*,\s*\.daw-playhead\s*,\s*\.daw-take-clip\s*\{[^}]*\}/);
+    const rebase = css.match(/\.daw-ruler-tick\s*,[^{]*\{[^}]*\}/);
     expect(rebase).not.toBeNull();
     const labelRule = css.match(/\.daw-ruler-label\s*\{[^}]*\}/);
     expect(labelRule).not.toBeNull();
@@ -730,7 +733,7 @@ describe('the arrangement playhead spans both timeline regions (#1049)', () => {
   });
 
   it('the playhead re-bases through the same shared rule as the ticks and gridlines', () => {
-    const rebase = css.match(/\.daw-ruler-tick\s*,\s*\.daw-ruler-label\s*,\s*\.daw-gridline\s*,\s*\.daw-playhead\s*,\s*\.daw-take-clip\s*\{[^}]*\}/);
+    const rebase = css.match(/\.daw-ruler-tick\s*,[^{]*\{[^}]*\}/);
     expect(rebase).not.toBeNull();
     expect(rebase![0]).toMatch(/transform:\s*translateX\(calc\(-1 \* \(var\(--daw-head-w\) \+ var\(--daw-scroll-x, 0px\)\)\)\)/);
     // A playhead-local transform would shadow the shared re-base.
@@ -772,6 +775,61 @@ describe('the arrangement playhead spans both timeline regions (#1049)', () => {
     for (const line of dawLaneGridlines(DAW_TIMELINE_SPAN_SECS)) {
       expect(dawPlayheadX(line.timeSecs * MS, wide)).toBe(line.xPx);
     }
+  });
+});
+
+describe('the arrangement insert marker is distinct from the playhead (#1301)', () => {
+  it('dawShellHTML emits the two insert-marker region segments', () => {
+    const body = functionBody(workspaceViewTs, 'dawShellHTML');
+    expect(body).toContain('daw-insert-marker daw-insert-marker-ruler');
+    expect(body).toContain('daw-insert-marker daw-insert-marker-lanes');
+  });
+
+  it('both marker segments are emitted before their region\'s playhead segment', () => {
+    const body = functionBody(workspaceViewTs, 'dawShellHTML');
+    expect(body.indexOf('daw-insert-marker-ruler')).toBeLessThan(body.indexOf('daw-playhead-ruler'));
+    expect(body.indexOf('daw-insert-marker-lanes')).toBeLessThan(body.indexOf('daw-playhead-lanes'));
+  });
+
+  it('the marker renders unconditionally, unlike the playhead', () => {
+    const body = functionBody(workspaceViewTs, 'dawShellHTML');
+    expect(body).not.toContain('playheadVisible ? `<span class="daw-insert-marker');
+  });
+
+  it('the .daw-insert-marker rule exists and carries no offset of its own', () => {
+    const rule = css.match(/\.daw-insert-marker\s*\{[^}]*\}/);
+    expect(rule).not.toBeNull();
+    expect(rule![0]).toMatch(/position:\s*absolute/);
+    expect(rule![0]).toMatch(/pointer-events:\s*none/);
+    expect(rule![0]).not.toContain('transform');
+    expect(rule![0]).not.toMatch(/left:\s*[1-9]/);
+  });
+
+  it('is distinguished from the playhead by width and background (AC #2)', () => {
+    const markerRule = css.match(/\.daw-insert-marker\s*\{[^}]*\}/);
+    const playheadRule = css.match(/\.daw-playhead\s*\{[^}]*\}/);
+    expect(markerRule).not.toBeNull();
+    expect(playheadRule).not.toBeNull();
+    const markerWidth = markerRule![0].match(/width:\s*([^;]+);/)?.[1];
+    const playheadWidth = playheadRule![0].match(/width:\s*([^;]+);/)?.[1];
+    const markerBg = markerRule![0].match(/background:\s*([^;]+);/)?.[1];
+    const playheadBg = playheadRule![0].match(/background:\s*([^;]+);/)?.[1];
+    expect(markerWidth).not.toBe(playheadWidth);
+    expect(markerBg).not.toBe(playheadBg);
+    expect(css).toMatch(/\.daw-insert-marker-ruler::after\s*\{[^}]*\}/);
+  });
+
+  it('renderInsertMarker computes its x through the shared geometry', () => {
+    const body = functionBody(dawShellRuntimeTs, 'renderInsertMarker');
+    expect(body).toContain('dawPlayheadX(');
+    expect(body).toContain("querySelectorAll('.daw-insert-marker')");
+    expect(body).toContain('style.left');
+    expect(body).not.toContain('style.transform');
+  });
+
+  it('renderPlayhead still contains exactly one dawPlayheadX( call', () => {
+    const body = functionBody(dawShellRuntimeTs, 'renderPlayhead');
+    expect((body.match(/dawPlayheadX\(/g) ?? []).length).toBe(1);
   });
 });
 

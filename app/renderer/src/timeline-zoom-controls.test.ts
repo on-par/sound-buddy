@@ -116,6 +116,19 @@ describe('applyTimelineZoom - zoom-to-selection', () => {
     expect((next.range.startSecs + next.range.endSecs) / 2).toBeCloseTo(50);
   });
 
+  it('centres on the real insert marker, not the playhead, when both are supplied (#1301)', () => {
+    const model = createTimelineZoomModel(200);
+    const next = applyTimelineZoom(model, 'zoom-to-selection', ctx({ durationSecs: 200, playheadSecs: 5, insertMarkerSecs: 40, selection: null }));
+    expect(next.range.endSecs - next.range.startSecs).toBeCloseTo(TIMELINE_ZOOM_INSERT_SPAN_SECS);
+    expect((next.range.startSecs + next.range.endSecs) / 2).toBeCloseTo(40);
+  });
+
+  it('falls back to the playhead when insertMarkerSecs is omitted (#1301, back-compat)', () => {
+    const model = createTimelineZoomModel(200);
+    const next = applyTimelineZoom(model, 'zoom-to-selection', ctx({ durationSecs: 200, playheadSecs: 50, selection: null }));
+    expect((next.range.startSecs + next.range.endSecs) / 2).toBeCloseTo(50);
+  });
+
   it('falls back to centring the insert-marker window on 0 when the playhead itself is non-finite', () => {
     const model = createTimelineZoomModel(200);
     const next = applyTimelineZoom(model, 'zoom-to-selection', ctx({ durationSecs: 200, playheadSecs: Number.NaN, selection: null }));

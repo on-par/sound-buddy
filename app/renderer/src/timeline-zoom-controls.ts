@@ -50,10 +50,14 @@ export interface TimelineZoomModel {
 export interface TimelineZoomContext {
   /** The whole loaded/recording timeline, from timelineOverviewDurationSecs (#1282). */
   durationSecs: number;
-  /** Anchor for zoom-in/zoom-out and for the insert-marker selection fallback. */
+  /** Anchor for zoom-in/zoom-out (ADR-0113). No longer the insert-marker
+   *  selection fallback — see insertMarkerSecs below. */
   playheadSecs: number;
   /** The selected time span, or null when nothing is selected. */
   selection: TimelineVisibleRange | null;
+  /** Where an insert-point action starts (#1301) — distinct from the playhead. Optional:
+   *  a caller that supplies none falls back to the playhead, which is pre-#1301 behaviour. */
+  insertMarkerSecs?: number;
 }
 
 export interface TimelineZoomControlsView {
@@ -70,7 +74,8 @@ function selectionRange(ctx: TimelineZoomContext, fullSecs: number): TimelineVis
   if (sel !== null && Number.isFinite(sel.startSecs) && Number.isFinite(sel.endSecs) && sel.endSecs > sel.startSecs) {
     return clampVisibleRange(sel, fullSecs);
   }
-  return visibleRangeOfSpan(Number.isFinite(ctx.playheadSecs) ? ctx.playheadSecs : 0, TIMELINE_ZOOM_INSERT_SPAN_SECS, fullSecs);
+  const insertSecs = ctx.insertMarkerSecs ?? ctx.playheadSecs;
+  return visibleRangeOfSpan(Number.isFinite(insertSecs) ? insertSecs : 0, TIMELINE_ZOOM_INSERT_SPAN_SECS, fullSecs);
 }
 
 export function createTimelineZoomModel(durationSecs: number): TimelineZoomModel {

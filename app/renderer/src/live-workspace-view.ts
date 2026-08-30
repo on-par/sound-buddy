@@ -740,6 +740,12 @@ export function dawShellHTML(state: LiveWorkspaceViewState, routingDrawerContent
   // renderPlayhead writes the SAME shell-local x to both in one pass, and both
   // re-base into the timeline column through the one shared translate (ADR-0090).
   // Emitted last in each region so they paint above the ticks and the lanes.
+  // The insert marker's two region segments (#1301): unlike the playhead these render
+  // unconditionally — the arrangement always has a defined insert point (default t=0), even
+  // with nothing loaded and nothing playing. Emitted BEFORE the playhead in each region so
+  // the playhead paints over it when the two coincide.
+  const rulerInsertMarkerHTML = `<span class="daw-insert-marker daw-insert-marker-ruler"></span>`;
+  const laneInsertMarkerHTML = `<span class="daw-insert-marker daw-insert-marker-lanes"></span>`;
   const rulerPlayheadHTML = playheadVisible ? `<span class="daw-playhead daw-playhead-ruler"></span>` : '';
   const lanePlayheadHTML = playheadVisible ? `<span class="daw-playhead daw-playhead-lanes"></span>` : '';
   const headHTML = entries.map((entry) => {
@@ -820,10 +826,11 @@ export function dawShellHTML(state: LiveWorkspaceViewState, routingDrawerContent
     + `<div class="daw-arrangement">`
     + `<div class="daw-track-heads">${rulerGutterHTML}${headRowsHTML}${masterHeadHTML}</div>`
     + `<div class="daw-timeline">`
-    + `<div class="daw-ruler">${rulerTicks}${rulerLabels}${rulerPlayheadHTML}</div>`
+    + `<div class="daw-ruler">${rulerTicks}${rulerLabels}${rulerInsertMarkerHTML}${rulerPlayheadHTML}</div>`
     + `<div class="daw-lane-column">`
     + laneHTML
     + mixLaneHTML
+    + laneInsertMarkerHTML
     + lanePlayheadHTML
     + `</div>`
     + `</div>`

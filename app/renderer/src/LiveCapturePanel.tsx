@@ -77,6 +77,7 @@ import {
   type TimelineZoomContext,
   type TimelineZoomModel,
 } from './timeline-zoom-controls';
+import { sessionTimelineMarks } from './timeline-state';
 import {
   applyTimelineFollowEvent,
   createTimelineFollowModel,
@@ -255,8 +256,9 @@ export default function LiveCapturePanel(): JSX.Element | null {
     playheadSecs: elapsedSecs,
     // No time-selection surface exists yet (#1283/#1285), so the loaded take's
     // span is the selection; with no take, applyTimelineZoom falls back to an
-    // insert-marker window at the playhead.
+    // insert-marker window at the real insert marker (#1301), not the playhead.
     selection: takeSecs > 0 ? { startSecs: 0, endSecs: takeSecs } : null,
+    insertMarkerSecs: sessionTimelineMarks.getInsertMarkerSecs(),
   };
   const timelineZoomView = timelineZoomControlsView(timelineZoom, zoomContext);
   const lc = useLiveCaptureStore.getState();
@@ -338,6 +340,15 @@ export default function LiveCapturePanel(): JSX.Element | null {
     void useSoundcheckStore.getState().loadDevices();
   }, [s.appMode, soundcheck.devicesLoaded]);
 
+  // The insert marker's default position (#1301): loading (or switching) a session parks
+  // the insert point at the top of the arrangement. Imperative, not store state — the
+  // marker rides the shared marks model, never React state (ADR-0005).
+  useEffect(() => {
+    if (s.appMode !== 'live') return;
+    sessionTimelineMarks.resetForSession();
+    getDawShellRuntime()?.renderInsertMarker?.();
+  }, [s.appMode, soundcheck.sessionDir]);
+
   useEffect(() => {
     if (s.appMode !== 'live') return;
     if (!soundcheck.sessionDir || !soundcheck.manifest) return;
@@ -386,6 +397,7 @@ export default function LiveCapturePanel(): JSX.Element | null {
     const shell = document.getElementById('live-island')?.querySelector('.daw-shell');
     if (shell) shell.setAttribute('data-lane-signature', laneSignature);
     getDawShellRuntime()?.renderPlayhead?.();
+    getDawShellRuntime()?.renderInsertMarker?.();
     getDawShellRuntime()?.renderWaveform?.();
     if (shell && sessionWaveforms) paintSessionTabWaveformClips(shell, sessionWaveforms.clips);
     patchOverview(shell ?? null);

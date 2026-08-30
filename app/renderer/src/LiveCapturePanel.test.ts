@@ -154,6 +154,12 @@ describe('LiveCapturePanel', () => {
     expect(html).not.toContain('meter-card');
   });
 
+  it('renders the insert marker segments in both arrangement regions (#1301)', () => {
+    const html = renderMarkup();
+    expect(html).toContain('daw-insert-marker-ruler');
+    expect(html).toContain('daw-insert-marker-lanes');
+  });
+
   it('binds the DAW toolbar picker to the shared soundcheck selection state', () => {
     useSoundcheckStore.setState({
       recordedSessions: [{ sessionDir: '/recordings/sunday', name: 'Discovered label' }],
