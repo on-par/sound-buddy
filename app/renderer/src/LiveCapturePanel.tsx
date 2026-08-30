@@ -86,6 +86,11 @@ import {
   TIMELINE_FOLLOW_SURFACE_SELECTOR,
   type TimelineFollowModel,
 } from './timeline-follow-scroll';
+import {
+  applyTimelineScroll,
+  patchTimelineScrollOffset,
+  timelineScrollOffsetPx,
+} from './timeline-scroll-gesture';
 import { beginSessionTimelineScrub } from './session-timeline-scrub';
 import {
   SESSION_SCRUB_SURFACE_SELECTOR,
@@ -385,6 +390,17 @@ export default function LiveCapturePanel(): JSX.Element | null {
     patchOverview(shell ?? null);
   }, [s.appMode, laneSignature, sessionWaveforms]);
 
+  // The visible range's horizontal pan (#1292): one custom property, read by
+  // app.css's shared re-basing translate, so the ruler, labels, gridlines,
+  // clips and both playhead segments pan together (see this story's ADR).
+  // No dep array: the shell's markup — and with it the element's inline style —
+  // is rebuilt on every render.
+  useEffect(() => {
+    if (s.appMode !== 'live') return;
+    const shell = document.getElementById('live-island')?.querySelector('.daw-shell');
+    patchTimelineScrollOffset(shell as HTMLElement | null, timelineScrollOffsetPx(timelineZoom.range, SESSION_TIMELINE_SCALE.pxPerSecond));
+  });
+
   // The playhead ticker (TD-001 slice 6j, #713): a requestAnimationFrame loop
   // driving renderPlayhead every frame while the shell is mounted and
   // capturing — replaces the old 100ms setInterval owned by inline-app.js.
@@ -598,6 +614,17 @@ export default function LiveCapturePanel(): JSX.Element | null {
     if (!e.target.closest(TIMELINE_FOLLOW_SURFACE_SELECTOR)) return;
     const event = timelineFollowEventForWheel(e);
     if (event) setTimelineFollow((m) => applyTimelineFollowEvent(m, event));
+    // Horizontal pan (#1292): moves the ONE shared visible range React holds.
+    // Snapshot the event fields first so the state updater never reads a live
+    // synthetic event.
+    const wheel = { deltaX: e.deltaX, deltaY: e.deltaY, deltaMode: e.deltaMode, ctrlKey: e.ctrlKey, metaKey: e.metaKey };
+    const scrollCtx = { pxPerSecond: SESSION_TIMELINE_SCALE.pxPerSecond, durationSecs: zoomContext.durationSecs };
+    setTimelineZoom((m) => {
+      const next = applyTimelineScroll(m.range, wheel, scrollCtx);
+      // Same reference back => not a pan, or already clamped at a bound: return
+      // the model itself so React bails out instead of re-rendering the board.
+      return next === m.range ? m : { range: next, previousRange: null };
+    });
   }
 
   function onBoardKeyDown(e: KeyboardEvent<HTMLDivElement>): void {

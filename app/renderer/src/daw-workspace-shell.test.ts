@@ -53,6 +53,7 @@ const sessionTabPlaybackTs = fs.readFileSync(fileURLToPath(new URL('./session-ta
 const timelineFollowScrollTs = fs.readFileSync(fileURLToPath(new URL('./timeline-follow-scroll.ts', import.meta.url)), 'utf8');
 const timelineVisibleRangeTs = fs.readFileSync(fileURLToPath(new URL('./timeline-visible-range.ts', import.meta.url)), 'utf8');
 const timelineRulerLabelsTs = fs.readFileSync(fileURLToPath(new URL('./timeline-ruler-labels.ts', import.meta.url)), 'utf8');
+const timelineScrollGestureTs = fs.readFileSync(fileURLToPath(new URL('./timeline-scroll-gesture.ts', import.meta.url)), 'utf8');
 
 function functionBody(src: string, name: string): string {
   const marker = `function ${name}(`;
@@ -266,6 +267,26 @@ describe('Session follow-scroll toggle wiring (#1286)', () => {
     expect(timelineFollowScrollTs).not.toMatch(/from '\.\/daw-shell-runtime'/);
     expect(timelineFollowScrollTs).not.toMatch(/from '\.\/timeline-bpm'/);
     expect(timelineFollowScrollTs).not.toMatch(/from '\.\/stores\//);
+  });
+});
+
+describe('Session horizontal scroll gestures (#1292)', () => {
+  it('LiveCapturePanel applies the scroll gesture, patches the offset, and resolves it from the range', () => {
+    expect(liveCapturePanelTsx).toContain('applyTimelineScroll(');
+    expect(liveCapturePanelTsx).toContain('patchTimelineScrollOffset(');
+    expect(liveCapturePanelTsx).toContain('timelineScrollOffsetPx(');
+  });
+
+  it('app.css gives --daw-scroll-x a 0px default and the shared re-basing translate applies both terms', () => {
+    expect(css).toContain('--daw-scroll-x:0px');
+    expect(css).toMatch(/translateX\(calc\(-1 \* \(var\(--daw-head-w\) \+ var\(--daw-scroll-x, 0px\)\)\)\)/);
+  });
+
+  it('the gesture module owns no clamp and no scale of its own (ADR)', () => {
+    expect(timelineScrollGestureTs).toMatch(/from '\.\/timeline-visible-range'/);
+    expect(timelineScrollGestureTs).toMatch(/from '\.\/timeline-scale'/);
+    expect(timelineScrollGestureTs).not.toMatch(/from '\.\/daw-shell-runtime'/);
+    expect(timelineScrollGestureTs).not.toMatch(/from '\.\/stores\//);
   });
 });
 
@@ -608,7 +629,7 @@ describe('arrangement header and lane-column boundary (#1048)', () => {
   it('one shared rule re-bases every timeline child by exactly one head width, with no numeric offset', () => {
     const rebase = css.match(/\.daw-ruler-tick\s*,\s*\.daw-ruler-label\s*,\s*\.daw-gridline\s*,\s*\.daw-playhead\s*,\s*\.daw-take-clip\s*\{[^}]*\}/);
     expect(rebase).not.toBeNull();
-    expect(rebase![0]).toMatch(/transform:\s*translateX\(calc\(-1 \* var\(--daw-head-w\)\)\)/);
+    expect(rebase![0]).toMatch(/transform:\s*translateX\(calc\(-1 \* \(var\(--daw-head-w\) \+ var\(--daw-scroll-x, 0px\)\)\)\)/);
     const tickRule = css.match(/\.daw-ruler-tick\s*\{[^}]*\}/);
     const gridlineRule = css.match(/\.daw-gridline\s*\{[^}]*\}/);
     const takeClipRule = css.match(/\.daw-take-clip\s*\{[^}]*\}/);
@@ -690,7 +711,7 @@ describe('the arrangement playhead spans both timeline regions (#1049)', () => {
   it('the playhead re-bases through the same shared rule as the ticks and gridlines', () => {
     const rebase = css.match(/\.daw-ruler-tick\s*,\s*\.daw-ruler-label\s*,\s*\.daw-gridline\s*,\s*\.daw-playhead\s*,\s*\.daw-take-clip\s*\{[^}]*\}/);
     expect(rebase).not.toBeNull();
-    expect(rebase![0]).toMatch(/transform:\s*translateX\(calc\(-1 \* var\(--daw-head-w\)\)\)/);
+    expect(rebase![0]).toMatch(/transform:\s*translateX\(calc\(-1 \* \(var\(--daw-head-w\) \+ var\(--daw-scroll-x, 0px\)\)\)\)/);
     // A playhead-local transform would shadow the shared re-base.
     const rule = css.match(/\.daw-playhead\s*\{[^}]*\}/);
     expect(rule).not.toBeNull();
@@ -852,6 +873,7 @@ describe('BPM stays out of every coordinate owner (#1277, ADR-0104)', () => {
     ['session-ruler-scrub.ts', sessionRulerScrubTs],
     ['session-tab-playback.ts', sessionTabPlaybackTs],
     ['timeline-follow-scroll.ts', timelineFollowScrollTs],
+    ['timeline-scroll-gesture.ts', timelineScrollGestureTs],
   ];
 
   it.each(coordinateOwners)('%s does not import ./timeline-bpm', (_name, src) => {
