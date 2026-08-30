@@ -48,6 +48,7 @@ const sessionTabWaveformsTs = fs.readFileSync(fileURLToPath(new URL('./session-t
 const soundcheckWaveformTs = fs.readFileSync(fileURLToPath(new URL('./soundcheck-waveform.ts', import.meta.url)), 'utf8');
 const soundcheckPlayheadTs = fs.readFileSync(fileURLToPath(new URL('./soundcheck-playhead.ts', import.meta.url)), 'utf8');
 const sessionTimelineScrubTs = fs.readFileSync(fileURLToPath(new URL('./session-timeline-scrub.ts', import.meta.url)), 'utf8');
+const sessionRulerScrubTs = fs.readFileSync(fileURLToPath(new URL('./session-ruler-scrub.ts', import.meta.url)), 'utf8');
 const sessionTabPlaybackTs = fs.readFileSync(fileURLToPath(new URL('./session-tab-playback.ts', import.meta.url)), 'utf8');
 const timelineRulerLabelsTs = fs.readFileSync(fileURLToPath(new URL('./timeline-ruler-labels.ts', import.meta.url)), 'utf8');
 
@@ -815,6 +816,7 @@ describe('BPM stays out of every coordinate owner (#1277, ADR-0104)', () => {
     ['soundcheck-waveform.ts', soundcheckWaveformTs],
     ['soundcheck-playhead.ts', soundcheckPlayheadTs],
     ['session-timeline-scrub.ts', sessionTimelineScrubTs],
+    ['session-ruler-scrub.ts', sessionRulerScrubTs],
     ['session-tab-playback.ts', sessionTabPlaybackTs],
   ];
 

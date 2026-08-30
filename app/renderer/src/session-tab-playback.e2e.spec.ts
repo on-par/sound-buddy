@@ -226,6 +226,31 @@ test.describe('Session tab playback (#1080)', () => {
     await expect(window.locator('.daw-transport-time')).toHaveText('0:06');
   });
 
+  test('jumps stopped Session playback from the ruler scrub zone with nothing selected (#1285)', async () => {
+    const startCalls = async (): Promise<{ startOffsetSecs?: number }[]> => electronApp.evaluate(
+      () => (globalThis as Record<string, unknown>).__sessionPlaybackCalls,
+    ) as Promise<{ startOffsetSecs?: number }[]>;
+    expect(await startCalls()).toHaveLength(0);
+
+    const ruler = window.locator('.daw-ruler');
+    await expect(ruler).toHaveCSS('cursor', 'ew-resize');
+    const rulerBox = await ruler.boundingBox();
+    expect(rulerBox).not.toBeNull();
+
+    await window.mouse.move(rulerBox!.x, rulerBox!.y + rulerBox!.height / 2);
+    await window.mouse.down();
+    await window.mouse.move(rulerBox!.x + 4, rulerBox!.y + rulerBox!.height / 2);
+    await expect(window.locator('.daw-playhead-ruler')).toHaveCSS('left', '212px');
+    await expect(window.locator('.daw-playhead-lanes')).toHaveCSS('left', '212px');
+    expect(await startCalls()).toHaveLength(0);
+
+    await expect(window.locator('.daw-track-head.selected')).toHaveCount(0);
+
+    await window.mouse.up();
+    await expect.poll(startCalls).toHaveLength(1);
+    expect((await startCalls())[0].startOffsetSecs).toBe(0.5);
+  });
+
   test('cancelling a Session scrub clears it without seeking on a later pointer release (#1082)', async () => {
     await window.locator('#daw-session-play').click();
     await sendPlaybackEvent({ type: 'progress', elapsed: 2, duration: 10 });

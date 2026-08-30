@@ -946,8 +946,10 @@
        dawRulerTicks() — the ruler carries no spacing value of its own (#1032,
        ADR-0086). margin-left is 0 so a tick's inline left is shell-local x.
        The row's height comes from the shared --daw-ruler-row-h (#1048), also
-       read by .daw-ruler-gutter, so the two paired rows never drift. */
-    .daw-ruler { position:relative; overflow:hidden; height:var(--daw-ruler-row-h); box-sizing:border-box; border-radius:var(--radius-sm); background:var(--surface-inset); }
+       read by .daw-ruler-gutter, so the two paired rows never drift. The
+       ruler is the #1285 scrub zone — it advertises a horizontal-drag cursor;
+       ticks/labels stay pointer-events:none so the whole row is one hit target. */
+    .daw-ruler { position:relative; overflow:hidden; height:var(--daw-ruler-row-h); box-sizing:border-box; border-radius:var(--radius-sm); background:var(--surface-inset); cursor:ew-resize; }
     .daw-ruler-tick { position:absolute; top:0; bottom:0; width:1px; background:var(--border-subtle); }
     /* The ruler's dual readout (#1275): one absolutely positioned label per
        labelled tick, carrying BOTH the bars/beats and the elapsed-time text as

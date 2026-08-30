@@ -31,7 +31,10 @@ export interface SessionTimelineScrubDeps {
   pointerId: number;
   clientX: number;
   getDurationSecs(): number | undefined;
-  isPlaying(): boolean;
+  /** Asked on pointer release, not the transport flag — the scrub zone's
+   *  policy (session-ruler-scrub.ts) decides whether a stopped ruler scrub
+   *  may commit (#1285). */
+  canCommitSeek(): boolean;
   previewLeftPx(leftPx: number): void;
   seekTo(elapsedSecs: number): void | Promise<void>;
 }
@@ -67,7 +70,7 @@ export function beginSessionTimelineScrub(deps: SessionTimelineScrubDeps): boole
   const onPointerUp = (up: PointerEvent): void => {
     if (up.pointerId !== deps.pointerId) return;
     cleanup();
-    if (!deps.isPlaying()) return;
+    if (!deps.canCommitSeek()) return;
     latestClientX = up.clientX;
     const preview = previewAt(latestClientX);
     if (preview) void deps.seekTo(preview.elapsedSecs);

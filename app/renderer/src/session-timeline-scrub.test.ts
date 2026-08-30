@@ -52,7 +52,7 @@ describe('beginSessionTimelineScrub', () => {
       pointerId: 7,
       clientX: 100,
       getDurationSecs: () => 10,
-      isPlaying: () => true,
+      canCommitSeek: () => true,
       previewLeftPx: (leftPx) => previews.push(leftPx),
       seekTo: (elapsedSecs) => { seeks.push(elapsedSecs); },
     })).toBe(true);
@@ -84,7 +84,7 @@ describe('beginSessionTimelineScrub', () => {
       pointerId: 1,
       clientX: 100,
       getDurationSecs: () => undefined,
-      isPlaying: () => true,
+      canCommitSeek: () => true,
       previewLeftPx: (leftPx) => previews.push(leftPx),
       seekTo: () => { throw new Error('unexpected seek'); },
     })).toBe(false);
@@ -105,7 +105,7 @@ describe('beginSessionTimelineScrub', () => {
       pointerId: 3,
       clientX: 132,
       getDurationSecs: () => 10,
-      isPlaying: () => true,
+      canCommitSeek: () => true,
       previewLeftPx: () => undefined,
       seekTo: (elapsedSecs) => { seeks.push(elapsedSecs); },
     })).toBe(true);
@@ -114,5 +114,52 @@ describe('beginSessionTimelineScrub', () => {
     win.up(pointer(3, 148));
     expect(seeks).toEqual([]);
     expect(root.captured.has(3)).toBe(false);
+  });
+
+  it('commits a seek while playback is stopped when the zone allows it', () => {
+    const root = fakeRoot();
+    const win = fakeWindow();
+    const seeks: number[] = [];
+
+    expect(beginSessionTimelineScrub({
+      root,
+      windowTarget: win,
+      surface: { getBoundingClientRect: () => ({ left: 100 }) },
+      pointerId: 5,
+      clientX: 100,
+      getDurationSecs: () => 10,
+      canCommitSeek: () => true,
+      previewLeftPx: () => undefined,
+      seekTo: (elapsedSecs) => { seeks.push(elapsedSecs); },
+    })).toBe(true);
+
+    win.up(pointer(5, 148));
+    expect(seeks).toEqual([6]);
+  });
+
+  it('does not commit when the zone refuses on release', () => {
+    const root = fakeRoot();
+    const win = fakeWindow();
+    const seeks: number[] = [];
+    const previews: number[] = [];
+
+    expect(beginSessionTimelineScrub({
+      root,
+      windowTarget: win,
+      surface: { getBoundingClientRect: () => ({ left: 100 }) },
+      pointerId: 9,
+      clientX: 100,
+      getDurationSecs: () => 10,
+      canCommitSeek: () => false,
+      previewLeftPx: (leftPx) => previews.push(leftPx),
+      seekTo: (elapsedSecs) => { seeks.push(elapsedSecs); },
+    })).toBe(true);
+
+    win.move(pointer(9, 132));
+    expect(previews).toEqual([208, 240]);
+
+    win.up(pointer(9, 148));
+    expect(seeks).toEqual([]);
+    expect(root.captured.has(9)).toBe(false);
   });
 });
