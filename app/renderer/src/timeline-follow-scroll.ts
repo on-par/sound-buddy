@@ -7,11 +7,12 @@
 // timeline pause it, every explicit playback/navigation control resumes it.
 // This module is pure: no DOM, no store, no React import. It MUST NOT import
 // './timeline-bpm' (ADR-0104/0107 - no coordinate is computed through the
-// tempo model) and models time in seconds only (ADR-0109). Moving the
-// viewport itself is #1283's job; this module only decides state and derives
-// the paged-follow range #1283's viewport wiring will call.
+// tempo model) and models time in seconds only, per the shared visible-range
+// model in ./timeline-visible-range (#1290, ADR-0109). Moving the viewport
+// itself is #1283's job; this module only decides state and derives the
+// paged-follow range #1283's viewport wiring will call.
 
-import type { TimelineVisibleRange } from './timeline-zoom-controls';
+import type { TimelineVisibleRange } from './timeline-visible-range';
 
 /** Why follow is paused, so the toggle can explain itself and #1283 can log it. */
 export type TimelineFollowPause = 'scroll' | 'zoom' | 'manual';

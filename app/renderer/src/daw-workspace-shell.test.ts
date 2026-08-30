@@ -51,6 +51,7 @@ const sessionTimelineScrubTs = fs.readFileSync(fileURLToPath(new URL('./session-
 const sessionRulerScrubTs = fs.readFileSync(fileURLToPath(new URL('./session-ruler-scrub.ts', import.meta.url)), 'utf8');
 const sessionTabPlaybackTs = fs.readFileSync(fileURLToPath(new URL('./session-tab-playback.ts', import.meta.url)), 'utf8');
 const timelineFollowScrollTs = fs.readFileSync(fileURLToPath(new URL('./timeline-follow-scroll.ts', import.meta.url)), 'utf8');
+const timelineVisibleRangeTs = fs.readFileSync(fileURLToPath(new URL('./timeline-visible-range.ts', import.meta.url)), 'utf8');
 const timelineRulerLabelsTs = fs.readFileSync(fileURLToPath(new URL('./timeline-ruler-labels.ts', import.meta.url)), 'utf8');
 
 function functionBody(src: string, name: string): string {
@@ -234,6 +235,13 @@ describe('Session zoom/fit control wiring (#1284)', () => {
     const zoomControlsTs = fs.readFileSync(fileURLToPath(new URL('./timeline-zoom-controls.ts', import.meta.url)), 'utf8');
     expect(zoomControlsTs).not.toMatch(/from '\.\/daw-shell-runtime'/);
     expect(zoomControlsTs).not.toContain("'px'");
+  });
+
+  it('the shared visible-range model (#1290) never imports the shell runtime, the tempo model, the store, or computes a pixel value (ADR)', () => {
+    expect(timelineVisibleRangeTs).not.toMatch(/from '\.\/daw-shell-runtime'/);
+    expect(timelineVisibleRangeTs).not.toContain("'px'");
+    expect(timelineVisibleRangeTs).not.toMatch(/from '\.\/timeline-bpm'/);
+    expect(timelineVisibleRangeTs).not.toMatch(/from '\.\/stores\//);
   });
 });
 
