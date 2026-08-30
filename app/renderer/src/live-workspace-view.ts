@@ -46,6 +46,7 @@ import { createTimelineScale } from './timeline-scale';
 import { createTimelineTempo } from './timeline-bpm';
 import { timelineRulerLabels } from './timeline-ruler-labels';
 import { timelineBpmControlHTML, timelineBpmControlView, type TimelineBpmControlView } from './timeline-bpm-control';
+import { timelineZoomControlsHTML, timelineZoomControlsView, createTimelineZoomModel, type TimelineZoomControlsView } from './timeline-zoom-controls';
 import { sessionTabSessionPickerHTML, type SessionTabSessionPickerView } from './session-tab-session-picker';
 import { sessionTakeDurationSecs, type SessionTabWaveformClip, type SessionTabWaveformView } from './session-tab-waveforms';
 import { timelineOverviewHTML, timelineOverviewView } from './timeline-overview';
@@ -93,6 +94,9 @@ export interface LiveWorkspaceViewState {
   /** The Session toolbar's BPM control state (#1276). null for callers that do
    *  not own it — dawShellHTML then falls back to the documented default tempo. */
   timelineBpm: TimelineBpmControlView | null;
+  /** The Session toolbar's zoom/fit control state (#1284). null for callers that do
+   *  not own it - dawShellHTML then falls back to a full-range model at duration 0. */
+  timelineZoom: TimelineZoomControlsView | null;
 }
 
 // The slice of liveCaptureStore's state that liveWorkspaceViewState() reads —
@@ -147,6 +151,7 @@ export function liveWorkspaceViewState(
   capturePhase: CapturePhase = 'idle',
   sessionRoutingDrawerOpen = false,
   timelineBpm: TimelineBpmControlView | null = null,
+  timelineZoom: TimelineZoomControlsView | null = null,
 ): LiveWorkspaceViewState {
   return {
     channelConfig: lc.channelConfig,
@@ -173,6 +178,7 @@ export function liveWorkspaceViewState(
     capturePhase,
     sessionRoutingDrawerOpen,
     timelineBpm,
+    timelineZoom,
   };
 }
 
@@ -696,6 +702,11 @@ export function dawShellHTML(state: LiveWorkspaceViewState, routingDrawerContent
   // documented default. BPM still reaches text alone (ADR-0104).
   const bpmControl = state.timelineBpm ?? timelineBpmControlView(createTimelineTempo());
   const timelineTempo = bpmControl.tempo;
+  // The Session zoom/fit controls (#1284). The model lives in LiveCapturePanel;
+  // a caller that owns none renders a full-range cluster. This changes no pixel -
+  // the visible range does not resolve to a scale until #1283 adds scroll.
+  const zoomControls = state.timelineZoom
+    ?? timelineZoomControlsView(createTimelineZoomModel(0), { durationSecs: 0, playheadSecs: 0, selection: null });
   // The overview strip (#1282): the whole session duration in one fixed-width
   // band with a visible-range box. Percent-of-duration space, NOT shell-local
   // px — see the #1282 ADR. shellWidthPx is 0 here because a string builder
@@ -776,6 +787,7 @@ export function dawShellHTML(state: LiveWorkspaceViewState, routingDrawerContent
     + `<span class="daw-transport-state daw-transport-state-${transportChip.toLowerCase()}">${transportChip}</span>`
     + `<span class="daw-transport-time">${getDawPlayheadState().formatElapsed(seededElapsed)}</span>`
     + timelineBpmControlHTML(bpmControl)
+    + timelineZoomControlsHTML(zoomControls)
     + liveWorkspaceToolbarHTML(state)
     + (state.sessionPicker ? sessionTabSessionPickerHTML(state.sessionPicker) : '')
     + (state.sessionPlayback ? sessionTabPlaybackHTML(state.sessionPlayback) : '')
