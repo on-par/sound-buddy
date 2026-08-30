@@ -42,6 +42,14 @@ const lifecycleTs = fs.readFileSync(fileURLToPath(new URL('./capture-lifecycle.t
 // TD-001 slice 6j (#713): the new home for the playhead/waveform painters.
 const dawShellRuntimeTs = fs.readFileSync(fileURLToPath(new URL('./daw-shell-runtime.ts', import.meta.url)), 'utf8');
 const dawPlayheadStateJs = fs.readFileSync(fileURLToPath(new URL('../daw-playhead-state.js', import.meta.url)), 'utf8');
+// #1277 / ADR-0104: BPM/real-seconds isolation guard — the coordinate owners below.
+const timelineScaleTs = fs.readFileSync(fileURLToPath(new URL('./timeline-scale.ts', import.meta.url)), 'utf8');
+const sessionTabWaveformsTs = fs.readFileSync(fileURLToPath(new URL('./session-tab-waveforms.ts', import.meta.url)), 'utf8');
+const soundcheckWaveformTs = fs.readFileSync(fileURLToPath(new URL('./soundcheck-waveform.ts', import.meta.url)), 'utf8');
+const soundcheckPlayheadTs = fs.readFileSync(fileURLToPath(new URL('./soundcheck-playhead.ts', import.meta.url)), 'utf8');
+const sessionTimelineScrubTs = fs.readFileSync(fileURLToPath(new URL('./session-timeline-scrub.ts', import.meta.url)), 'utf8');
+const sessionTabPlaybackTs = fs.readFileSync(fileURLToPath(new URL('./session-tab-playback.ts', import.meta.url)), 'utf8');
+const timelineRulerLabelsTs = fs.readFileSync(fileURLToPath(new URL('./timeline-ruler-labels.ts', import.meta.url)), 'utf8');
 
 function functionBody(src: string, name: string): string {
   const marker = `function ${name}(`;
@@ -761,5 +769,32 @@ describe('DAW shell seam consumers unchanged by the 6j migration', () => {
     expect(inlineIdx).toBeGreaterThan(-1);
     expect(playheadIdx).toBeLessThan(inlineIdx);
     expect(waveformIdx).toBeLessThan(inlineIdx);
+  });
+});
+
+describe('BPM stays out of every coordinate owner (#1277, ADR-0104)', () => {
+  // ADR-0104: the Session timeline's BPM is display-only — it labels the
+  // bars/beats ruler and never participates in a coordinate, a transport
+  // position, a scrub seek target, a clip duration, or a waveform bucket.
+  // A future quantize/snap/warp feature must land in a new module with its
+  // own ADR amending this list — it may not arrive by importing the tempo
+  // model into one of the modules below.
+  const coordinateOwners: [name: string, src: string][] = [
+    ['timeline-scale.ts', timelineScaleTs],
+    ['daw-shell-runtime.ts', dawShellRuntimeTs],
+    ['session-tab-waveforms.ts', sessionTabWaveformsTs],
+    ['soundcheck-waveform.ts', soundcheckWaveformTs],
+    ['soundcheck-playhead.ts', soundcheckPlayheadTs],
+    ['session-timeline-scrub.ts', sessionTimelineScrubTs],
+    ['session-tab-playback.ts', sessionTabPlaybackTs],
+  ];
+
+  it.each(coordinateOwners)('%s does not import ./timeline-bpm', (_name, src) => {
+    expect(src).not.toMatch(/from '\.\/timeline-bpm'/);
+  });
+
+  it('the ban is a live constraint, not a vacuous grep: timeline-ruler-labels.ts really does import both models', () => {
+    expect(timelineRulerLabelsTs).toMatch(/from '\.\/timeline-bpm'/);
+    expect(timelineRulerLabelsTs).toMatch(/from '\.\/timeline-scale'/);
   });
 });
