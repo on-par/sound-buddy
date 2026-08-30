@@ -10,15 +10,29 @@ import type { StripConfig } from './live-capture-panel';
 import type { SessionManifest } from './soundcheck-panel';
 import type { SoundcheckState } from './stores/soundcheckStore';
 import { decodePeaksPairs, waveformColumns, type WaveformPeakPair } from './soundcheck-waveform';
-import { DAW_TIMELINE_PX_PER_SECOND, WAVEFORM_COLORS, dawTimelineX, drawDawWaveformLane, type DawWaveformCanvasLike } from './daw-shell-runtime';
+import { WAVEFORM_COLORS, drawDawWaveformLane, type DawWaveformCanvasLike } from './daw-shell-runtime';
+import { createTimelineScale, type TimelineScale } from './timeline-scale';
 
 export type SessionPeakStatus = SoundcheckState['peaksStatus'];
+
+// The fixed scale every current caller gets. createTimelineScale('default') is provably
+// identical to dawTimelineX (ADR-0100), so this is a wiring change, not a behavior change.
+const DEFAULT_TIMELINE_SCALE = createTimelineScale('default');
+
+// A cached take always begins at the session's t=0 edge — its first peak bucket is the
+// first frame of the recording. Named so the clip's start/end geometry reads as two
+// time-to-x conversions rather than one conversion and a bare literal.
+const LOADED_TAKE_START_SECS = 0;
 
 export interface SessionTabWaveformClip {
   trackIndex: number;
   stripIndex: number;
   leftPx: number;
   widthPx: number;
+  /** The scale this clip's leftPx/widthPx were derived at. The painter aggregates the
+   *  clip's peak buckets at exactly this value, so columns can never be sized at a
+   *  different scale than the clip that contains them. */
+  pxPerSecond: number;
   pairs: WaveformPeakPair[];
   bucketsPerSecond: number;
 }
@@ -78,6 +92,7 @@ export function sessionTabWaveformView(
   peaks: SessionPeaksDto | null,
   peaksStatus: SessionPeakStatus,
   channelConfig: StripConfig[],
+  scale: TimelineScale = DEFAULT_TIMELINE_SCALE,
 ): SessionTabWaveformView {
   const generating = manifest !== null && peaksStatus === 'generating';
   if (!manifest || !Array.isArray(manifest.tracks) || !peaks || !Array.isArray(peaks.tracks) || !Number.isFinite(peaks.bucketsPerSecond) || peaks.bucketsPerSecond <= 0) {
@@ -97,11 +112,13 @@ export function sessionTabWaveformView(
       .map((strip, stripIndex) => ({ strip, stripIndex }))
       .filter(({ strip }) => strip.kind === manifestTrack.kind && sameChannels(manifestTrack.sourceChannels, stripSourceChannels(strip)));
     if (matches.length !== 1) continue;
+    const endSecs = LOADED_TAKE_START_SECS + pairs.length / peaks.bucketsPerSecond;
     candidateClips.push({
       trackIndex,
       stripIndex: matches[0].stripIndex,
-      leftPx: dawTimelineX(0),
-      widthPx: (pairs.length / peaks.bucketsPerSecond) * DAW_TIMELINE_PX_PER_SECOND,
+      leftPx: scale.timeToX(LOADED_TAKE_START_SECS),
+      widthPx: scale.timeToX(endSecs) - scale.timeToX(LOADED_TAKE_START_SECS),
+      pxPerSecond: scale.pxPerSecond,
       pairs,
       bucketsPerSecond: peaks.bucketsPerSecond,
     });
@@ -128,6 +145,9 @@ function isCanvasLike(value: unknown): value is CanvasLike {
   return typeof canvas.getBoundingClientRect === 'function' && typeof canvas.getContext === 'function';
 }
 
+// Aggregates each clip's cached peaks at clip.pxPerSecond — the scale the clip was sized
+// at — never a module constant, so the painted columns can never disagree with the width
+// the same resolved scale produced.
 export function paintSessionTabWaveformClips(root: ParentNode, clips: SessionTabWaveformClip[]): void {
   for (const clip of clips) {
     const canvas = root.querySelector(`[data-session-track-index="${clip.trackIndex}"]`);
@@ -137,7 +157,7 @@ export function paintSessionTabWaveformClips(root: ParentNode, clips: SessionTab
     canvas.height = Math.max(MIN_CANVAS_DIMENSION, Math.floor(bounds.height));
     const ctx = canvas.getContext('2d');
     if (!ctx) continue;
-    const columns = waveformColumns(clip.pairs, clip.bucketsPerSecond, DAW_TIMELINE_PX_PER_SECOND, canvas.width);
+    const columns = waveformColumns(clip.pairs, clip.bucketsPerSecond, clip.pxPerSecond, canvas.width);
     drawDawWaveformLane(ctx, columns, canvas.width, canvas.height, WAVEFORM_COLORS.stopped);
   }
 }
