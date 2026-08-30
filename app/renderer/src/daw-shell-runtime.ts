@@ -20,6 +20,13 @@
 // registered by App.tsx — inline-app.js's onLiveEvent no longer owns that
 // branch.
 
+// The shared arrangement scale (#1263, epic #1254). Imported TYPE-ONLY on
+// purpose: timeline-scale.ts imports DAW_TIMELINE_ORIGIN_PX and
+// DAW_TIMELINE_PX_PER_SECOND from this module, so a runtime import back would
+// close an ESM cycle. Callers construct the scale (createTimelineScale) and
+// inject it; this module only ever reads its timeToX.
+import type { TimelineScale } from './timeline-scale';
+
 export const DAW_TIMELINE_PX_PER_SECOND = 8; // one 40px ruler division = 5s
 export const DAW_TIMELINE_INSET_PX = 4; // The playhead's right-edge inset — the arrangement's right margin, the x the playhead parks at instead of walking off the timeline column (kept, not retired: the timeline column's right edge is the shell's right edge)
 // The shared t=0 edge for the arrangement view's ruler ticks, lane
@@ -72,19 +79,29 @@ export interface DawRulerTick {
   xPx: number;
 }
 
+/** Resolves the time-to-x conversion a tick/gridline builder should use: the
+ *  injected shared scale's when one is supplied, the fixed default geometry
+ *  (dawTimelineX) otherwise. The no-scale branch is exactly the pre-#1263
+ *  behavior, which is why an un-injected caller renders identical pixels. */
+function timelineTimeToX(scale: TimelineScale | undefined): (timeSecs: number) => number {
+  return scale ? (timeSecs: number) => scale.timeToX(timeSecs) : dawTimelineX;
+}
+
 /** Ruler ticks at every DAW_RULER_TICK_INTERVAL_SECS from t=0 through
- *  spanSecs inclusive. Pure: each xPx is dawTimelineX(timeSecs), so a tick can
- *  never disagree with a lane gridline or the playhead about where a time sits.
- *  Counting in whole intervals (never accumulating a float) keeps the times
- *  exact — no epsilon comparison needed. A negative or non-finite span yields
- *  no ticks. */
-export function dawRulerTicks(spanSecs: number): DawRulerTick[] {
+ *  spanSecs inclusive. Pure: each xPx comes from the injected TimelineScale's
+ *  timeToX, or from dawTimelineX when no scale is injected — so a tick can
+ *  never disagree with a lane gridline or the playhead about where a time
+ *  sits. Counting in whole intervals (never accumulating a float) keeps the
+ *  times exact — no epsilon comparison needed. A negative or non-finite span
+ *  yields no ticks. */
+export function dawRulerTicks(spanSecs: number, scale?: TimelineScale): DawRulerTick[] {
   if (!Number.isFinite(spanSecs) || spanSecs < 0) return [];
+  const timeToX = timelineTimeToX(scale);
   const count = Math.floor(spanSecs / DAW_RULER_TICK_INTERVAL_SECS) + 1;
   const ticks: DawRulerTick[] = [];
   for (let i = 0; i < count; i++) {
     const timeSecs = i * DAW_RULER_TICK_INTERVAL_SECS;
-    ticks.push({ timeSecs, xPx: dawTimelineX(timeSecs) });
+    ticks.push({ timeSecs, xPx: timeToX(timeSecs) });
   }
   return ticks;
 }
@@ -106,20 +123,22 @@ export interface DawLaneGridline {
 }
 
 /** Lane gridlines at every DAW_LANE_GRID_MINOR_SECS from t=0 through spanSecs
- *  inclusive. Pure: each xPx is dawTimelineX(timeSecs), so a gridline can never
- *  disagree with a ruler tick or the playhead about where a time sits (ADR-0086).
- *  Counting in whole intervals means every timeSecs is an exact integer, so the
- *  major test is exact modulo arithmetic — no epsilon needed. A negative or
- *  non-finite span yields no gridlines. */
-export function dawLaneGridlines(spanSecs: number): DawLaneGridline[] {
+ *  inclusive. Pure: each xPx comes from the injected TimelineScale's timeToX,
+ *  or from dawTimelineX when no scale is injected — so a gridline can never
+ *  disagree with a ruler tick or the playhead about where a time sits
+ *  (ADR-0086). Counting in whole intervals means every timeSecs is an exact
+ *  integer, so the major test is exact modulo arithmetic — no epsilon needed.
+ *  A negative or non-finite span yields no gridlines. */
+export function dawLaneGridlines(spanSecs: number, scale?: TimelineScale): DawLaneGridline[] {
   if (!Number.isFinite(spanSecs) || spanSecs < 0) return [];
+  const timeToX = timelineTimeToX(scale);
   const count = Math.floor(spanSecs / DAW_LANE_GRID_MINOR_SECS) + 1;
   const lines: DawLaneGridline[] = [];
   for (let i = 0; i < count; i++) {
     const timeSecs = i * DAW_LANE_GRID_MINOR_SECS;
     lines.push({
       timeSecs,
-      xPx: dawTimelineX(timeSecs),
+      xPx: timeToX(timeSecs),
       isMajor: timeSecs % DAW_LANE_GRID_MAJOR_SECS === 0,
     });
   }

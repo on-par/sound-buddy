@@ -23,6 +23,7 @@ import {
   type DawRulerTick,
   type DawLaneGridline,
 } from './daw-shell-runtime';
+import { createTimelineScale, TIMELINE_SCALE_MAX_PX_PER_SECOND } from './timeline-scale';
 
 /* ── drawDawWaveformLane (pure) ── */
 
@@ -818,5 +819,67 @@ describe('dawLaneGridlines (#1033)', () => {
 
   it('returns no gridlines for a non-finite span', () => {
     expect(dawLaneGridlines(NaN)).toEqual([]);
+  });
+});
+
+/* ── scale-aware ruler ticks and lane gridlines (#1263) ── */
+
+describe('scale-aware ruler ticks and lane gridlines (#1263)', () => {
+  it('dawRulerTicks with the default scale injected is byte-identical to no scale', () => {
+    expect(dawRulerTicks(60, createTimelineScale('default'))).toEqual(dawRulerTicks(60));
+  });
+
+  it('dawLaneGridlines with the default scale injected is byte-identical to no scale', () => {
+    expect(dawLaneGridlines(60, createTimelineScale('default'))).toEqual(dawLaneGridlines(60));
+  });
+
+  it('every ruler tick at a non-default scale matches the injected scale timeToX', () => {
+    const scale = createTimelineScale('zoomed-in');
+    for (const tick of dawRulerTicks(60, scale)) {
+      expect(tick.xPx).toBe(scale.timeToX(tick.timeSecs));
+    }
+  });
+
+  it('every lane gridline at a non-default scale matches the injected scale timeToX', () => {
+    const scale = createTimelineScale('zoomed-in');
+    for (const line of dawLaneGridlines(60, scale)) {
+      expect(line.xPx).toBe(scale.timeToX(line.timeSecs));
+    }
+  });
+
+  it('at zoomed-in, consecutive ticks differ by one interval at the zoomed scale and diverge from the default xPx', () => {
+    const scale = createTimelineScale('zoomed-in');
+    const zoomedTicks = dawRulerTicks(60, scale);
+    const defaultTicks = dawRulerTicks(60);
+    for (let i = 1; i < zoomedTicks.length; i++) {
+      expect(zoomedTicks[i].xPx - zoomedTicks[i - 1].xPx).toBe(DAW_RULER_TICK_INTERVAL_SECS * TIMELINE_SCALE_MAX_PX_PER_SECOND);
+    }
+    for (let i = 1; i < zoomedTicks.length; i++) {
+      expect(zoomedTicks[i].xPx).not.toBe(defaultTicks[i].xPx);
+    }
+  });
+
+  it('at zoomed-out, gridline times and isMajor classification match the default scale while x differs', () => {
+    const scale = createTimelineScale('zoomed-out');
+    const zoomedLines = dawLaneGridlines(60, scale);
+    const defaultLines = dawLaneGridlines(60);
+    expect(zoomedLines.map((line) => line.timeSecs)).toEqual(defaultLines.map((line) => line.timeSecs));
+    expect(zoomedLines.map((line) => line.isMajor)).toEqual(defaultLines.map((line) => line.isMajor));
+    for (let i = 1; i < zoomedLines.length; i++) {
+      expect(zoomedLines[i].xPx).not.toBe(defaultLines[i].xPx);
+    }
+  });
+
+  it('ticks and gridlines agree pixel-for-pixel at the same non-default scale', () => {
+    const scale = createTimelineScale('zoomed-in');
+    expect(dawLaneGridlines(60, scale).map((line) => line.xPx)).toEqual(dawRulerTicks(60, scale).map((tick) => tick.xPx));
+  });
+
+  it('span guards are unchanged with a scale injected', () => {
+    const scale = createTimelineScale('zoomed-in');
+    expect(dawRulerTicks(-1, scale)).toEqual([]);
+    expect(dawLaneGridlines(NaN, scale)).toEqual([]);
+    const ticks = dawRulerTicks(3, scale);
+    expect(ticks).toEqual([{ timeSecs: 0, xPx: scale.timeToX(0) }]);
   });
 });
