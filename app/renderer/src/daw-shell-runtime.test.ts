@@ -17,8 +17,12 @@ import {
   dawLaneGridlines,
   DAW_LANE_GRID_MINOR_SECS,
   DAW_LANE_GRID_MAJOR_SECS,
+  DAW_WAVEFORM_COLUMN_WIDTH_PX,
+  dawWaveformColumnTimeSecs,
+  dawWaveformColumnX,
   type DawShellRuntimeDeps,
   type DawWaveformCanvasLike,
+  type DawWaveformStateApi,
   type WaveformColumn,
   type DawRulerTick,
   type DawLaneGridline,
@@ -881,5 +885,103 @@ describe('scale-aware ruler ticks and lane gridlines (#1263)', () => {
     expect(dawLaneGridlines(NaN, scale)).toEqual([]);
     const ticks = dawRulerTicks(3, scale);
     expect(ticks).toEqual([{ timeSecs: 0, xPx: scale.timeToX(0) }]);
+  });
+});
+
+/* ── live waveform columns follow the shared timeline scale (#1265) ── */
+
+describe('live waveform columns follow the shared timeline scale (#1265)', () => {
+  it('with no scale injected, column time is at the fixed default geometry', () => {
+    expect(dawWaveformColumnTimeSecs(8)).toBe(8 / DAW_TIMELINE_PX_PER_SECOND);
+    expect(dawWaveformColumnTimeSecs(8, createTimelineScale('default'))).toBe(dawWaveformColumnTimeSecs(8));
+  });
+
+  it('a column is exactly DAW_WAVEFORM_COLUMN_WIDTH_PX (1px) wide', () => {
+    expect(DAW_WAVEFORM_COLUMN_WIDTH_PX).toBe(1);
+    expect(dawWaveformColumnX(5)).toBe(5);
+  });
+
+  it('column x-position matches the injected scale\'s time-to-x at fit, default, zoomed-in and zoomed-out', () => {
+    const scales = [
+      createTimelineScale('fit', { durationSecs: 10, viewportWidthPx: 160 }),
+      createTimelineScale('default'),
+      createTimelineScale('zoomed-in'),
+      createTimelineScale('zoomed-out'),
+    ];
+    for (const scale of scales) {
+      for (const columnIndex of [0, 1, 7, 64]) {
+        const expected = scale.timeToX(dawWaveformColumnTimeSecs(columnIndex, scale)) - scale.timeToX(0);
+        expect(dawWaveformColumnX(columnIndex)).toBe(expected);
+      }
+    }
+  });
+
+  it('column selection across zoom levels covers the same time range, just resampled', () => {
+    const dawWaveformState = require('../daw-waveform-state.js') as DawWaveformStateApi;
+    const pairs: WaveformColumn[] = Array.from({ length: 80 }, () => ({ min: -0.5, max: 0.5 }));
+    const bucketsPerSecond = 8; // 80 buckets at 8/s = 10s of peaks
+    const widthPx = 400;
+
+    const expectations: Array<{ scale: ReturnType<typeof createTimelineScale>; columns: number }> = [
+      { scale: createTimelineScale('fit', { durationSecs: 10, viewportWidthPx: 160 }), columns: 160 },
+      { scale: createTimelineScale('default'), columns: 80 },
+      { scale: createTimelineScale('zoomed-in'), columns: 320 },
+      { scale: createTimelineScale('zoomed-out'), columns: 20 },
+    ];
+
+    for (const { scale, columns } of expectations) {
+      const result = dawWaveformState.columnPeaks(pairs, bucketsPerSecond, scale.pxPerSecond, widthPx);
+      expect(result.length).toBe(columns);
+      expect(dawWaveformColumnTimeSecs(result.length, scale)).toBe(10);
+    }
+  });
+
+  it('the runtime downsamples at the injected scale', () => {
+    const real = require('../daw-waveform-state.js') as DawWaveformStateApi;
+    const seen: number[] = [];
+    const recordingWaveformState: DawWaveformStateApi = {
+      ...real,
+      columnPeaks: (pairs, bucketsPerSec, pxPerSecond, maxPx) => {
+        seen.push(pxPerSecond);
+        return real.columnPeaks(pairs, bucketsPerSec, pxPerSecond, maxPx);
+      },
+    };
+    const shell = makeFakeShell();
+    const { deps, setShell, flushRaf } = makeDeps({
+      dawWaveformState: recordingWaveformState,
+      getTimelineScale: () => createTimelineScale('zoomed-in'),
+    });
+    setShell(shell);
+    const rt = createDawShellRuntime(deps);
+    rt.ingestPeaks(peaksFrame([{ id: 'mix', data: encodePairs([64, 192]) }]));
+    flushRaf();
+    expect(seen.length).toBeGreaterThan(0);
+    expect(seen.every((px) => px === TIMELINE_SCALE_MAX_PX_PER_SECOND)).toBe(true);
+  });
+
+  it('no default-scale regression: an un-injected runtime paints identical columns', () => {
+    const real = require('../daw-waveform-state.js') as DawWaveformStateApi;
+    const seen: number[] = [];
+    const recordingWaveformState: DawWaveformStateApi = {
+      ...real,
+      columnPeaks: (pairs, bucketsPerSec, pxPerSecond, maxPx) => {
+        seen.push(pxPerSecond);
+        return real.columnPeaks(pairs, bucketsPerSec, pxPerSecond, maxPx);
+      },
+    };
+    const shell = makeFakeShell();
+    const { deps, setShell, flushRaf } = makeDeps({ dawWaveformState: recordingWaveformState });
+    setShell(shell);
+    const rt = createDawShellRuntime(deps);
+    rt.ingestPeaks(peaksFrame([{ id: 'mix', data: encodePairs([64, 192, 0, 255]) }]));
+    flushRaf();
+    expect(seen.length).toBeGreaterThan(0);
+    expect(seen.every((px) => px === DAW_TIMELINE_PX_PER_SECOND)).toBe(true);
+
+    const mixCanvas = shell.el.mixCanvas as ReturnType<typeof makeFakeCanvas>;
+    expect(mixCanvas.ctx.calls.moveTo[0]).toEqual([0.5, expect.any(Number)]);
+    if (mixCanvas.ctx.calls.moveTo.length > 1) {
+      expect(mixCanvas.ctx.calls.moveTo[1][0]).toBe(1.5);
+    }
   });
 });

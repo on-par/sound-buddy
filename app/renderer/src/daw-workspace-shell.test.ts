@@ -236,6 +236,7 @@ describe('DAW playhead/waveform painters moved off inline-app.js (TD-001 slice 6
     expect(appTsx).toContain('createDawShellRuntime({');
     expect(appTsx).toContain('.dawShellRuntime = dawShellRuntime;');
     expect(appTsx).toContain('dawShellRuntime.bindLiveEvents()');
+    expect(appTsx).toContain('getTimelineScale:');
   });
 
   it('LiveCapturePanel.tsx drives the playhead with a requestAnimationFrame loop', () => {
