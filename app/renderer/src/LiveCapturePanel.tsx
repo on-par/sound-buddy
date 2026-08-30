@@ -60,6 +60,7 @@ import {
   getGroupState,
   liveWorkspaceViewState,
   SESSION_TIMELINE_SCALE,
+  MS_PER_SECOND,
 } from './live-workspace-view';
 import { sessionTabSessionPickerAction, sessionTabSessionPickerView } from './session-tab-session-picker';
 import { paintSessionTabWaveformClips, sessionTabWaveformView, sessionTakeDurationSecs } from './session-tab-waveforms';
@@ -257,7 +258,7 @@ export default function LiveCapturePanel(): JSX.Element | null {
   const patchOverview = (shell: TimelineOverviewShellLike | null): void => {
     patchTimelineOverview(shell, {
       loadedDurationSecs: sessionTakeDurationSecs(sessionWaveforms),
-      recordedElapsedSecs: (getDawShellRuntime()?.playheadElapsedMs?.() ?? 0) / 1000,
+      recordedElapsedSecs: (getDawShellRuntime()?.playheadElapsedMs?.() ?? 0) / MS_PER_SECOND,
       pxPerSecond: SESSION_TIMELINE_SCALE.pxPerSecond,
     });
   };
@@ -352,7 +353,11 @@ export default function LiveCapturePanel(): JSX.Element | null {
     };
     rafHandle = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(rafHandle);
-  }, [s.appMode, s.isCapturing]);
+    // sessionWaveforms is a dep (not just appMode/isCapturing) so tick's
+    // patchOverview closure never goes stale: loading a different recorded
+    // session while capturing must not freeze the overview's loaded-duration
+    // reading at whatever it was when this effect last (re)started.
+  }, [s.appMode, s.isCapturing, sessionWaveforms]);
 
   // Native 'change' listener (see boardRootRef's comment above) — must stay
   // above the `appMode !== 'live'` early return below (Rules of Hooks: no

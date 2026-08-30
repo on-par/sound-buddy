@@ -206,8 +206,10 @@ export interface StatsRowView {
 const DBFS_CEILING = 0;
 
 // Milliseconds per second — playheadElapsedMs is in ms, the overview strip's
-// duration rule (and every other timeline surface) works in seconds.
-const MS_PER_SECOND_LOCAL = 1000;
+// duration rule (and every other timeline surface) works in seconds. Exported
+// so LiveCapturePanel's patchOverview helper shares this one conversion
+// instead of a second bare-1000 literal.
+export const MS_PER_SECOND = 1000;
 
 /** The arrangement's horizontal scale (#1263). Exported so dawShellHTML and
  *  LiveCapturePanel's overview patch read ONE value — a strip built at one
@@ -701,7 +703,7 @@ export function dawShellHTML(state: LiveWorkspaceViewState, routingDrawerContent
   // and LiveCapturePanel patches it after mount.
   const overviewHTML = timelineOverviewHTML(timelineOverviewView({
     loadedDurationSecs: sessionTakeDurationSecs(state.sessionWaveforms),
-    recordedElapsedSecs: state.playheadElapsedMs / MS_PER_SECOND_LOCAL,
+    recordedElapsedSecs: state.playheadElapsedMs / MS_PER_SECOND,
     pxPerSecond: timelineScale.pxPerSecond,
     shellWidthPx: 0,
   }));
