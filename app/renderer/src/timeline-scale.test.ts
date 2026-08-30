@@ -10,6 +10,8 @@ import {
   timelineScaleValue,
   timelineXAt,
   timelineTimeAt,
+  timelineSpanSecsAt,
+  timelineSpanPxAt,
   createTimelineScale,
   type TimelineZoomState,
 } from './timeline-scale';
@@ -211,6 +213,45 @@ describe('timelineTimeAt / TimelineScale.xToTime', () => {
     const scale = createTimelineScale('default');
     expect(Object.isFrozen(scale)).toBe(true);
     expect(typeof scale.xToTime).toBe('function');
+  });
+});
+
+describe('timelineSpanSecsAt / timelineSpanPxAt (#1292)', () => {
+  it('round-trip a span through both directions', () => {
+    expect(timelineSpanSecsAt(8, timelineSpanPxAt(8, 12.5))).toBeCloseTo(12.5);
+  });
+
+  it('are origin-free — a span of 0 px is 0 s, unlike timelineTimeAt at x=0', () => {
+    expect(timelineSpanSecsAt(8, 0)).toBe(0);
+    expect(timelineTimeAt(8, 0)).not.toBe(0);
+  });
+
+  it('timelineSpanSecsAt: a non-finite span resolves to 0', () => {
+    expect(timelineSpanSecsAt(8, NaN)).toBe(0);
+    expect(timelineSpanSecsAt(8, Number.POSITIVE_INFINITY)).toBe(0);
+  });
+
+  it('timelineSpanSecsAt: a non-finite scale resolves to 0', () => {
+    expect(timelineSpanSecsAt(NaN, 80)).toBe(0);
+  });
+
+  it('timelineSpanSecsAt: a zero/negative scale resolves to 0', () => {
+    expect(timelineSpanSecsAt(0, 80)).toBe(0);
+    expect(timelineSpanSecsAt(-8, 80)).toBe(0);
+  });
+
+  it('timelineSpanPxAt: a non-finite span resolves to 0', () => {
+    expect(timelineSpanPxAt(8, NaN)).toBe(0);
+    expect(timelineSpanPxAt(8, Number.POSITIVE_INFINITY)).toBe(0);
+  });
+
+  it('timelineSpanPxAt: a non-finite scale resolves to 0', () => {
+    expect(timelineSpanPxAt(NaN, 10)).toBe(0);
+  });
+
+  it('timelineSpanPxAt: a zero/negative scale resolves to 0', () => {
+    expect(timelineSpanPxAt(0, 10)).toBe(0);
+    expect(timelineSpanPxAt(-8, 10)).toBe(0);
   });
 });
 

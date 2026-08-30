@@ -898,7 +898,7 @@
        the Live tab: transport bar on top, a placeholder ruler strip, then
        full-width stacked lanes with hairline dividers. UI-only — no real
        waveform/time math in this slice. */
-    .daw-shell { position:relative; display:flex; flex-direction:column; flex:1; min-height:0; --daw-ruler-row-h:26px; --daw-track-row-h:72px; --daw-master-row-h:60px; --daw-status-line-h:26px; --daw-routing-drawer-h:180px; --daw-monitor-dim-opacity:0.45; --daw-overview-h:22px; }
+    .daw-shell { position:relative; display:flex; flex-direction:column; flex:1; min-height:0; --daw-ruler-row-h:26px; --daw-track-row-h:72px; --daw-master-row-h:60px; --daw-status-line-h:26px; --daw-routing-drawer-h:180px; --daw-monitor-dim-opacity:0.45; --daw-overview-h:22px; --daw-scroll-x:0px; }
     .daw-transport { display:flex; align-items:center; gap:8px; flex-wrap:wrap; padding:8px 4px; border-bottom:1px solid var(--border-subtle); }
     .daw-transport-title { font:var(--fw-semibold) var(--fs-body)/1 var(--font-sans); color:var(--text-primary); }
     .daw-transport-state { font:var(--fw-medium) var(--fs-micro)/1 var(--font-sans); letter-spacing:var(--tracking-caps); text-transform:uppercase; padding:3px 8px; border-radius:var(--radius-md); background:var(--surface-raised); color:var(--text-muted); }
@@ -1049,9 +1049,13 @@
        timeline child back into the shell frame (ADR-0090). The playhead joins
        this list (#1049): its two region segments now live inside the timeline
        column too, so their frame is the timeline column, same as a tick or a
-       gridline. Any future absolutely positioned ruler/lane child joins this
-       selector list — never its own offset. */
-    .daw-ruler-tick, .daw-ruler-label, .daw-gridline, .daw-playhead, .daw-take-clip { transform:translateX(calc(-1 * var(--daw-head-w))); }
+       gridline. The second term, var(--daw-scroll-x, 0px), is the visible
+       range's scroll offset (#1292), patched by patchTimelineScrollOffset — the
+       shared model's startSecs resolves to exactly one pixel offset, applied in
+       this one rule alongside the head-width re-basing. Any future absolutely
+       positioned ruler/lane child joins this selector list — never its own
+       offset, and never a scroll offset of its own. */
+    .daw-ruler-tick, .daw-ruler-label, .daw-gridline, .daw-playhead, .daw-take-clip { transform:translateX(calc(-1 * (var(--daw-head-w) + var(--daw-scroll-x, 0px)))); }
     .daw-mix-lane { height:var(--daw-master-row-h); box-sizing:border-box; border-top:1px solid var(--border-strong); background:var(--surface-raised); }
     .daw-mix-lane .daw-lane-body { height:100%; }
     .daw-mix-waveform { display:block; width:100%; height:100%; }

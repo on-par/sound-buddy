@@ -92,6 +92,25 @@ export function timelineTimeAt(pxPerSecond: number, xPx: number): number {
   return (xPx - DAW_TIMELINE_ORIGIN_PX) / pxPerSecond;
 }
 
+/** A span in seconds at the given scale, from a span in pixels. Origin-free —
+ *  the inverse of timelineSpanPxAt, and the conversion a scroll DELTA needs
+ *  (timelineTimeAt subtracts the shared origin, which a delta must not do).
+ *  A non-finite span, or a non-finite/non-positive scale, resolves to 0. */
+export function timelineSpanSecsAt(pxPerSecond: number, spanPx: number): number {
+  if (!Number.isFinite(spanPx)) return 0;
+  if (!Number.isFinite(pxPerSecond) || pxPerSecond <= 0) return 0;
+  return spanPx / pxPerSecond;
+}
+
+/** A span in pixels at the given scale, from a span in seconds. Origin-free —
+ *  the inverse of timelineSpanSecsAt. A non-finite span, or a non-finite/
+ *  non-positive scale, resolves to 0 rather than writing NaN into a style. */
+export function timelineSpanPxAt(pxPerSecond: number, spanSecs: number): number {
+  if (!Number.isFinite(spanSecs)) return 0;
+  if (!Number.isFinite(pxPerSecond) || pxPerSecond <= 0) return 0;
+  return spanSecs * pxPerSecond;
+}
+
 /** Resolves a zoom state into a frozen TimelineScale carrying its pxPerSecond and
  *  a timeToX/xToTime pair of conversions closed over that value. */
 export function createTimelineScale(state: TimelineZoomState, fit?: TimelineFitRequest): TimelineScale {
