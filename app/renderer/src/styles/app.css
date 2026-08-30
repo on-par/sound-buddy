@@ -898,7 +898,7 @@
        the Live tab: transport bar on top, a placeholder ruler strip, then
        full-width stacked lanes with hairline dividers. UI-only — no real
        waveform/time math in this slice. */
-    .daw-shell { position:relative; display:flex; flex-direction:column; flex:1; min-height:0; --daw-ruler-row-h:26px; --daw-track-row-h:72px; --daw-master-row-h:60px; --daw-status-line-h:26px; --daw-routing-drawer-h:180px; --daw-monitor-dim-opacity:0.45; }
+    .daw-shell { position:relative; display:flex; flex-direction:column; flex:1; min-height:0; --daw-ruler-row-h:26px; --daw-track-row-h:72px; --daw-master-row-h:60px; --daw-status-line-h:26px; --daw-routing-drawer-h:180px; --daw-monitor-dim-opacity:0.45; --daw-overview-h:22px; }
     .daw-transport { display:flex; align-items:center; gap:8px; flex-wrap:wrap; padding:8px 4px; border-bottom:1px solid var(--border-subtle); }
     .daw-transport-title { font:var(--fw-semibold) var(--fs-body)/1 var(--font-sans); color:var(--text-primary); }
     .daw-transport-state { font:var(--fw-medium) var(--fs-micro)/1 var(--font-sans); letter-spacing:var(--tracking-caps); text-transform:uppercase; padding:3px 8px; border-radius:var(--radius-md); background:var(--surface-raised); color:var(--text-muted); }
@@ -915,6 +915,13 @@
     .daw-transport-bpm.invalid .daw-transport-bpm-input { border-color:var(--issue-border); color:var(--issue-text); }
     .daw-transport-bpm-hint { font:var(--fw-regular) var(--fs-micro)/1.3 var(--font-sans); color:var(--issue-text); }
     .daw-transport-bpm-hint:empty { display:none; }
+    /* The Session overview strip (#1282): the WHOLE session duration in one fixed-width
+       band, with a box marking the slice the zoomed timeline column is showing. Its
+       children are positioned in PERCENT OF DURATION, not shell-local px — so this
+       selector must never be added to the shared head-width translate below (ADR-0090). */
+    .daw-overview { position:relative; display:flex; align-items:center; height:var(--daw-overview-h); box-sizing:border-box; margin:0 4px 6px; border:1px solid var(--border-subtle); border-radius:var(--radius-sm); background:var(--surface-inset); overflow:hidden; }
+    .daw-overview-range { position:absolute; top:0; bottom:0; left:0; width:100%; box-sizing:border-box; border:1px solid var(--gold-500); border-radius:var(--radius-sm); background:var(--gold-tint); pointer-events:none; }
+    .daw-overview-total { position:relative; margin-left:auto; padding:0 6px; font:var(--fw-regular) var(--fs-micro)/1 var(--font-mono); font-variant-numeric:tabular-nums; color:var(--text-muted); pointer-events:none; }
     .daw-session-playback-btn { height:var(--control-h-sm); padding:0 10px; border:1px solid var(--border-subtle); border-radius:var(--radius-sm); background:var(--surface-raised); color:var(--text-primary); font:var(--fw-medium) var(--fs-label)/1 var(--font-sans); cursor:pointer; transition:var(--transition-control); }
     .daw-session-playback-btn:hover:not(:disabled) { border-color:var(--border-focus); }
     .daw-session-playback-btn.active { border-color:var(--gold-500); background:var(--gold-tint); color:var(--gold-text); box-shadow:var(--glow-focus); }

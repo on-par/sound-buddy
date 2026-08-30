@@ -47,7 +47,8 @@ import { createTimelineTempo } from './timeline-bpm';
 import { timelineRulerLabels } from './timeline-ruler-labels';
 import { timelineBpmControlHTML, timelineBpmControlView, type TimelineBpmControlView } from './timeline-bpm-control';
 import { sessionTabSessionPickerHTML, type SessionTabSessionPickerView } from './session-tab-session-picker';
-import type { SessionTabWaveformClip, SessionTabWaveformView } from './session-tab-waveforms';
+import { sessionTakeDurationSecs, type SessionTabWaveformClip, type SessionTabWaveformView } from './session-tab-waveforms';
+import { timelineOverviewHTML, timelineOverviewView } from './timeline-overview';
 import { sessionTabPlaybackHTML, type SessionTabPlaybackView } from './session-tab-playback';
 import { sessionTabCaptureHTML, recordButtonView } from './record-transport';
 import type { CapturePhase } from './LiveControls';
@@ -203,6 +204,17 @@ export interface StatsRowView {
 }
 
 const DBFS_CEILING = 0;
+
+// Milliseconds per second — playheadElapsedMs is in ms, the overview strip's
+// duration rule (and every other timeline surface) works in seconds. Exported
+// so LiveCapturePanel's patchOverview helper shares this one conversion
+// instead of a second bare-1000 literal.
+export const MS_PER_SECOND = 1000;
+
+/** The arrangement's horizontal scale (#1263). Exported so dawShellHTML and
+ *  LiveCapturePanel's overview patch read ONE value — a strip built at one
+ *  scale and patched at another would disagree about the visible range. */
+export const SESSION_TIMELINE_SCALE = createTimelineScale('default');
 
 /* ── Typed `window.*` accessors for the pure helper classic-scripts ──
  * Mirrors liveCaptureStore.ts's getArmState()-style pattern: these modules are
@@ -674,7 +686,9 @@ export function dawShellHTML(state: LiveWorkspaceViewState, routingDrawerContent
   // geometry, so this changes no pixel — it makes the ruler and the lanes read
   // their x from the one shared scale model instead of the fixed constant, so
   // a zoom state can move both together (#1254). Zoom UI is not this story.
-  const timelineScale = createTimelineScale('default');
+  // Hoisted to SESSION_TIMELINE_SCALE so the overview strip below and
+  // LiveCapturePanel's patch calls provably read the one value.
+  const timelineScale = SESSION_TIMELINE_SCALE;
   // The ruler's display-only tempo (#1276): the toolbar BPM control owns it now
   // — dawShellHTML no longer constructs one, so the number the control shows and
   // the number the ruler labels from are the same value by construction. A caller
@@ -682,6 +696,17 @@ export function dawShellHTML(state: LiveWorkspaceViewState, routingDrawerContent
   // documented default. BPM still reaches text alone (ADR-0104).
   const bpmControl = state.timelineBpm ?? timelineBpmControlView(createTimelineTempo());
   const timelineTempo = bpmControl.tempo;
+  // The overview strip (#1282): the whole session duration in one fixed-width
+  // band with a visible-range box. Percent-of-duration space, NOT shell-local
+  // px — see the #1282 ADR. shellWidthPx is 0 here because a string builder
+  // cannot measure the DOM; the unmeasured branch renders a full-width box
+  // and LiveCapturePanel patches it after mount.
+  const overviewHTML = timelineOverviewHTML(timelineOverviewView({
+    loadedDurationSecs: sessionTakeDurationSecs(state.sessionWaveforms),
+    recordedElapsedSecs: state.playheadElapsedMs / MS_PER_SECOND,
+    pxPerSecond: timelineScale.pxPerSecond,
+    shellWidthPx: 0,
+  }));
   const laneGrid = `<span class="daw-lane-grid">${dawLaneGridlines(DAW_TIMELINE_SPAN_SECS, timelineScale)
     .map((line) => `<span class="daw-gridline${line.isMajor ? ' major' : ''}" style="left:${line.xPx}px"></span>`)
     .join('')}</span>`;
@@ -758,6 +783,7 @@ export function dawShellHTML(state: LiveWorkspaceViewState, routingDrawerContent
     + `<button type="button" class="daw-session-routing-toggle" id="daw-session-routing-toggle" aria-expanded="${state.sessionRoutingDrawerOpen}" aria-controls="daw-session-routing-drawer">Routing</button>`
     + (state.sessionWaveforms?.generating ? `<span class="daw-session-waveform-hint">Generating waveforms…</span>` : '')
     + `</div>`
+    + overviewHTML
     // The semantic arrangement frame (#1042): the track-head column and the
     // timeline column that owns the ruler and every lane row. Per-track head
     // rows come from dawTrackRows (#1043); the overall-mix row is the last

@@ -59,9 +59,12 @@ import {
   getDawShellRuntime,
   getGroupState,
   liveWorkspaceViewState,
+  SESSION_TIMELINE_SCALE,
+  MS_PER_SECOND,
 } from './live-workspace-view';
 import { sessionTabSessionPickerAction, sessionTabSessionPickerView } from './session-tab-session-picker';
-import { paintSessionTabWaveformClips, sessionTabWaveformView } from './session-tab-waveforms';
+import { paintSessionTabWaveformClips, sessionTabWaveformView, sessionTakeDurationSecs } from './session-tab-waveforms';
+import { patchTimelineOverview, type TimelineOverviewShellLike } from './timeline-overview';
 import { sessionTabPlaybackView } from './session-tab-playback';
 import { createTimelineTempo, type TimelineTempo } from './timeline-bpm';
 import { commitTimelineBpmEntry, timelineBpmControlView, TIMELINE_BPM_INPUT_ID } from './timeline-bpm-control';
@@ -247,6 +250,19 @@ export default function LiveCapturePanel(): JSX.Element | null {
      tests/e2e/live-capture.spec.ts (stats row shows while capturing, spectrum
      panel stays in meters mode), live-capture-workspace.spec.ts, and (the
      rAF playhead-ticker hook below) daw-shell.spec.ts. */
+
+  // The overview strip's visible-range box + total readout (#1282). Patched
+  // imperatively from the measured shell, exactly like the playhead
+  // (ADR-0005): the box depends on clientWidth and on the still-growing
+  // recording time, neither of which belongs in store state.
+  const patchOverview = (shell: TimelineOverviewShellLike | null): void => {
+    patchTimelineOverview(shell, {
+      loadedDurationSecs: sessionTakeDurationSecs(sessionWaveforms),
+      recordedElapsedSecs: (getDawShellRuntime()?.playheadElapsedMs?.() ?? 0) / MS_PER_SECOND,
+      pxPerSecond: SESSION_TIMELINE_SCALE.pxPerSecond,
+    });
+  };
+
   useEffect(() => {
     if (s.appMode !== 'live') return;
     const statsRow = document.getElementById('stats-row');
@@ -318,6 +334,7 @@ export default function LiveCapturePanel(): JSX.Element | null {
     getDawShellRuntime()?.renderPlayhead?.();
     getDawShellRuntime()?.renderWaveform?.();
     if (shell && sessionWaveforms) paintSessionTabWaveformClips(shell, sessionWaveforms.clips);
+    patchOverview(shell ?? null);
   }, [s.appMode, laneSignature, sessionWaveforms]);
 
   // The playhead ticker (TD-001 slice 6j, #713): a requestAnimationFrame loop
@@ -331,11 +348,16 @@ export default function LiveCapturePanel(): JSX.Element | null {
     let rafHandle = 0;
     const tick = (): void => {
       getDawShellRuntime()?.renderPlayhead?.();
+      patchOverview(document.getElementById('live-island')?.querySelector('.daw-shell') ?? null);
       rafHandle = requestAnimationFrame(tick);
     };
     rafHandle = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(rafHandle);
-  }, [s.appMode, s.isCapturing]);
+    // sessionWaveforms is a dep (not just appMode/isCapturing) so tick's
+    // patchOverview closure never goes stale: loading a different recorded
+    // session while capturing must not freeze the overview's loaded-duration
+    // reading at whatever it was when this effect last (re)started.
+  }, [s.appMode, s.isCapturing, sessionWaveforms]);
 
   // Native 'change' listener (see boardRootRef's comment above) — must stay
   // above the `appMode !== 'live'` early return below (Rules of Hooks: no

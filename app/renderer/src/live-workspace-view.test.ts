@@ -34,9 +34,11 @@ import { dawTimelineX, dawRulerTicks, dawLaneGridlines, DAW_TIMELINE_SPAN_SECS, 
 import { createTimelineScale } from './timeline-scale';
 import { createTimelineTempo } from './timeline-bpm';
 import { timelineRulerLabels } from './timeline-ruler-labels';
-import type { SessionTabWaveformView } from './session-tab-waveforms';
+import type { SessionTabWaveformClip, SessionTabWaveformView } from './session-tab-waveforms';
 import { sessionTabPlaybackView } from './session-tab-playback';
 import { timelineBpmControlView, TIMELINE_BPM_REJECTED_MESSAGE } from './timeline-bpm-control';
+import { TIMELINE_OVERVIEW_MIN_DURATION_SECS } from './timeline-overview';
+import { formatRulerElapsed } from './timeline-ruler-labels';
 
 // The pure helper classic-scripts the view module reads off `window` — real
 // modules (not hand-rolled stubs), same convention as
@@ -457,6 +459,35 @@ describe('dawShellHTML / dawShellPatchView', () => {
     const state = liveWorkspaceViewState({ ...makeState(), demoting: false }, settings());
     expect(state.sessionPicker).toBeNull();
   });
+
+  it('AC1: renders the overview strip between the transport and the arrangement', () => {
+    const html = dawShellHTML(makeState());
+    expect(html).toContain('class="daw-overview"');
+    expect(html).toMatch(/class="daw-overview-range" style="left:\d+%;width:\d+%"/);
+    const overviewIndex = html.indexOf('daw-overview');
+    expect(overviewIndex).toBeGreaterThan(html.indexOf('daw-transport'));
+    expect(overviewIndex).toBeLessThan(html.indexOf('daw-arrangement'));
+  });
+
+  it('grows the overview total readout once recorded elapsed time passes the floor', () => {
+    const defaultHtml = dawShellHTML(makeState());
+    const longHtml = dawShellHTML(makeState({ playheadElapsedMs: (TIMELINE_OVERVIEW_MIN_DURATION_SECS + 500) * 1000 }));
+    expect(longHtml).toContain(`class="daw-overview-total">${formatRulerElapsed(TIMELINE_OVERVIEW_MIN_DURATION_SECS + 500)}</span>`);
+    expect(defaultHtml).toContain(`class="daw-overview-total">${formatRulerElapsed(TIMELINE_OVERVIEW_MIN_DURATION_SECS)}</span>`);
+    expect(longHtml).not.toContain(`class="daw-overview-total">${formatRulerElapsed(TIMELINE_OVERVIEW_MIN_DURATION_SECS)}</span>`);
+  });
+
+  it('renders the loaded take duration label when a cached clip exceeds the floor', () => {
+    const clip: SessionTabWaveformClip = {
+      trackIndex: 0, stripIndex: 0, leftPx: 0,
+      widthPx: (TIMELINE_OVERVIEW_MIN_DURATION_SECS + 200) * DAW_TIMELINE_PX_PER_SECOND,
+      pxPerSecond: DAW_TIMELINE_PX_PER_SECOND, pairs: [], bucketsPerSecond: 2,
+    };
+    const sessionWaveforms: SessionTabWaveformView = { generating: false, clips: [clip] };
+    const html = dawShellHTML(makeState({ sessionWaveforms }));
+    expect(html).toContain(`class="daw-overview-total">${formatRulerElapsed(TIMELINE_OVERVIEW_MIN_DURATION_SECS + 200)}</span>`);
+  });
+
   it('derives each header row state and RMS level from the shared snapshot', () => {
     const rows = dawTrackRows(makeState({
       mutedChannels: { 0: true }, soloedChannels: { 1: true },

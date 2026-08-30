@@ -3,12 +3,21 @@
 
 import { describe, expect, it } from 'vitest';
 import { DAW_TIMELINE_PX_PER_SECOND, dawTimelineX } from './daw-shell-runtime';
-import { paintSessionTabWaveformClips, sessionTabWaveformView } from './session-tab-waveforms';
+import { paintSessionTabWaveformClips, sessionTabWaveformView, sessionTakeDurationSecs } from './session-tab-waveforms';
 import { createTimelineScale } from './timeline-scale';
 import { waveformColumns } from './soundcheck-waveform';
 import type { SessionPeaksDto } from '../../electron/ipc/api';
 import type { SessionManifest } from './soundcheck-panel';
 import type { StripConfig } from './live-capture-panel';
+import type { SessionTabWaveformClip } from './session-tab-waveforms';
+
+function clip(overrides: Partial<SessionTabWaveformClip> = {}): SessionTabWaveformClip {
+  return {
+    trackIndex: 0, stripIndex: 0, leftPx: 0, widthPx: 80, pxPerSecond: DAW_TIMELINE_PX_PER_SECOND,
+    pairs: [], bucketsPerSecond: 2,
+    ...overrides,
+  };
+}
 
 const pairData = btoa(String.fromCharCode(0, 255, 64, 192));
 
@@ -250,5 +259,31 @@ describe('paintSessionTabWaveformClips', () => {
       strokeCounts.push(strokes.length);
     }
     expect(strokeCounts[0]).not.toBe(strokeCounts[1]);
+  });
+});
+
+describe('sessionTakeDurationSecs', () => {
+  it('returns 0 for a null view', () => {
+    expect(sessionTakeDurationSecs(null)).toBe(0);
+  });
+
+  it('returns 0 for an empty clips array', () => {
+    expect(sessionTakeDurationSecs({ generating: false, clips: [] })).toBe(0);
+  });
+
+  it('returns the longest clip\'s widthPx / pxPerSecond', () => {
+    const shorter = clip({ widthPx: 40, pxPerSecond: 8 });
+    const longer = clip({ widthPx: 400, pxPerSecond: 8 });
+    expect(sessionTakeDurationSecs({ generating: false, clips: [shorter, longer] })).toBeCloseTo(50, 6);
+  });
+
+  it('skips a clip with pxPerSecond 0 rather than producing Infinity', () => {
+    const zeroScale = clip({ widthPx: 100, pxPerSecond: 0 });
+    expect(sessionTakeDurationSecs({ generating: false, clips: [zeroScale] })).toBe(0);
+  });
+
+  it('skips a clip with a non-finite widthPx rather than producing NaN', () => {
+    const nonFinite = clip({ widthPx: Number.NaN, pxPerSecond: 8 });
+    expect(sessionTakeDurationSecs({ generating: false, clips: [nonFinite] })).toBe(0);
   });
 });
