@@ -96,6 +96,7 @@ import MeasurementBadge from './MeasurementBadge';
 import { installStoreBridge } from './stores/bridge';
 import { createCaptureLifecycle, type DawShellSeam, type PreflightApi, type RigReconcileApi, type ArmStateApi } from './capture-lifecycle';
 import { createDawShellRuntime, type DawShellRuntime, type DawPlayheadStateApi, type DawWaveformStateApi } from './daw-shell-runtime';
+import { createTimelineScale } from './timeline-scale';
 import LiveStatusLine from './LiveStatusLine';
 import LiveSessionOffers from './LiveSessionOffers';
 import WindowBadge from './WindowBadge';
@@ -121,6 +122,12 @@ import type { LiveSetupStepsApi } from './live-workspace-view';
 // helper (#382) — read by stores/skillTreeStore.ts + SkillTreeDialog.tsx.
 // No BOOT_SCRIPTS entry is removed and no app/renderer/*.js classic script
 // is deleted.
+// The Live arrangement's horizontal scale (#1265). 'default' is today's fixed
+// geometry, so this changes no pixel — it makes the live waveform lanes bucket at
+// the one shared scale model, the same one live-workspace-view.ts hands the ruler
+// and gridlines. Built once: the accessor below runs on every lane paint.
+const DAW_LIVE_TIMELINE_SCALE = createTimelineScale('default');
+
 const BOOT_SCRIPTS = [
   rigReconcileSrc,
   armStateSrc,
@@ -253,6 +260,7 @@ export default function App() {
       },
       dawPlayheadState: (window as unknown as { dawPlayheadState: DawPlayheadStateApi }).dawPlayheadState,
       dawWaveformState: (window as unknown as { dawWaveformState: DawWaveformStateApi }).dawWaveformState,
+      getTimelineScale: () => DAW_LIVE_TIMELINE_SCALE,
     });
     (window as unknown as { dawShellRuntime?: DawShellRuntime }).dawShellRuntime = dawShellRuntime;
     dawShellRuntime.bindLiveEvents();

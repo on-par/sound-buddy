@@ -87,6 +87,14 @@ function timelineTimeToX(scale: TimelineScale | undefined): (timeSecs: number) =
   return scale ? (timeSecs: number) => scale.timeToX(timeSecs) : dawTimelineX;
 }
 
+/** Resolves the pixels-per-second a waveform downsampler should bucket at: the
+ *  injected shared scale's when one is supplied, the fixed default geometry
+ *  otherwise. The no-scale branch is exactly the pre-#1265 constant, which is
+ *  why an un-injected runtime paints identical columns. */
+function timelineScalePxPerSecond(scale: TimelineScale | undefined): number {
+  return scale ? scale.pxPerSecond : DAW_TIMELINE_PX_PER_SECOND;
+}
+
 /** Ruler ticks at every DAW_RULER_TICK_INTERVAL_SECS from t=0 through
  *  spanSecs inclusive. Pure: each xPx comes from the injected TimelineScale's
  *  timeToX, or from dawTimelineX when no scale is injected — so a tick can
@@ -204,6 +212,32 @@ export function drawDawWaveformLane(
   }
 }
 
+/** A waveform column is exactly one device pixel wide at EVERY zoom state
+ *  (ADR: live lane waveform columns are one pixel wide at every zoom).
+ *  drawDawWaveformLane strokes one 1px line per column, so the scale changes how
+ *  much TIME a column covers — never its width. */
+export const DAW_WAVEFORM_COLUMN_WIDTH_PX = 1;
+
+/** The arrangement time, in seconds, at the left edge of waveform column
+ *  `columnIndex` when the lane is downsampled at `scale` — the inverse of the
+ *  column budget columnPeaks buckets with. With no scale it is the fixed
+ *  default geometry, i.e. the pre-#1265 behavior. */
+export function dawWaveformColumnTimeSecs(columnIndex: number, scale?: TimelineScale): number {
+  return (columnIndex * DAW_WAVEFORM_COLUMN_WIDTH_PX) / timelineScalePxPerSecond(scale);
+}
+
+/** The x offset, in pixels, of waveform column `columnIndex` from its lane's own
+ *  t=0 edge — the coordinate drawDawWaveformLane strokes at. It carries no scale
+ *  argument on purpose: columns are pixels, so this must equal the shared scale's
+ *  own time-to-x offset for dawWaveformColumnTimeSecs(columnIndex, scale) at every
+ *  zoom state, and daw-shell-runtime.test.ts asserts exactly that. Note the lane
+ *  canvas's left edge is NOT DAW_TIMELINE_ORIGIN_PX — a live lane body sits inside
+ *  the lane row's padding and name cell — so this is a lane-local offset, never a
+ *  shell-local x. */
+export function dawWaveformColumnX(columnIndex: number): number {
+  return columnIndex * DAW_WAVEFORM_COLUMN_WIDTH_PX;
+}
+
 /* ── Deps + seam interfaces (the daw-playhead-state.js/daw-waveform-state.js
    classic scripts, structurally typed, mirroring live-workspace-view.ts's
    DawPlayheadStateApi/DawWaveformStateApi accessors) ── */
@@ -240,6 +274,10 @@ export interface DawShellRuntimeDeps {
   getCaptureState(): { isCapturing: boolean; liveMode: 'monitor' | 'record' };
   dawPlayheadState: DawPlayheadStateApi;
   dawWaveformState: DawWaveformStateApi;
+  /** The arrangement's current horizontal scale (#1265, epic #1254), read once per
+   *  lane paint so a future zoom state reaches the painter with no signature change.
+   *  Optional: an un-injected runtime falls back to the fixed default geometry. */
+  getTimelineScale?(): TimelineScale;
 }
 
 export interface DawShellRuntime {
@@ -342,9 +380,11 @@ export function createDawShellRuntime(deps: DawShellRuntimeDeps): DawShellRuntim
   }
 
   // Sizes the canvas to its own `.daw-lane-body` parent (only when changed),
-  // computes the pixel columns at the shared DAW_TIMELINE_PX_PER_SECOND scale
-  // budgeted to the canvas's own drawable width (never the wider shell
-  // width — avoids off-canvas clipping, #520), and draws via the pure export.
+  // computes the pixel columns at the injected TimelineScale's pxPerSecond
+  // (#1265; falls back to DAW_TIMELINE_PX_PER_SECOND when no scale is
+  // injected) budgeted to the canvas's own drawable width (never the wider
+  // shell width — avoids off-canvas clipping, #520), and draws via the pure
+  // export.
   function paintLane(canvas: DawCanvasElementLike, pairs: WaveformColumn[], strokeStyle: string): void {
     const laneBody = canvas.parentElement;
     const width = laneBody ? laneBody.clientWidth : 0;
@@ -354,7 +394,8 @@ export function createDawShellRuntime(deps: DawShellRuntimeDeps): DawShellRuntim
 
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
-    const columns = deps.dawWaveformState.columnPeaks(pairs, waveformBucketsPerSec, DAW_TIMELINE_PX_PER_SECOND, canvas.width);
+    const pxPerSecond = timelineScalePxPerSecond(deps.getTimelineScale?.());
+    const columns = deps.dawWaveformState.columnPeaks(pairs, waveformBucketsPerSec, pxPerSecond, canvas.width);
     drawDawWaveformLane(ctx, columns, canvas.width, canvas.height, strokeStyle);
   }
 
