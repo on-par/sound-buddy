@@ -130,6 +130,21 @@ export function sessionTabWaveformView(
   return { generating, clips: candidateClips.filter((clip) => claimsByStrip.get(clip.stripIndex) === 1) };
 }
 
+/** The loaded take's duration in seconds — the widest cached clip's width
+ *  converted back through the pxPerSecond that clip was sized at (ADR-0102),
+ *  so it can never disagree with the clip geometry on screen. 0 when nothing
+ *  is loaded, or when every clip's geometry is degenerate. */
+export function sessionTakeDurationSecs(view: SessionTabWaveformView | null): number {
+  if (!view) return 0;
+  let longest = 0;
+  for (const clip of view.clips) {
+    if (!Number.isFinite(clip.widthPx) || !Number.isFinite(clip.pxPerSecond) || clip.pxPerSecond <= 0) continue;
+    const secs = clip.widthPx / clip.pxPerSecond;
+    if (secs > longest) longest = secs;
+  }
+  return longest;
+}
+
 interface CanvasLike {
   width: number;
   height: number;
