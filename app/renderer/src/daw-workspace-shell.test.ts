@@ -346,8 +346,12 @@ describe('lane gridlines derive from the shared timeline geometry (#1033)', () =
 
   it('dawShellHTML injects the shared timeline scale into both builders (#1263)', () => {
     expect(workspaceViewTs).toMatch(/import \{[^}]*createTimelineScale[^}]*\} from '\.\/timeline-scale'/s);
+    // #1282 hoists the resolved scale to a module-level SESSION_TIMELINE_SCALE
+    // (exported so LiveCapturePanel's overview patch reads the same value the
+    // builder used) instead of calling createTimelineScale('default') inline.
+    expect(workspaceViewTs).toContain("export const SESSION_TIMELINE_SCALE = createTimelineScale('default');");
     const builderBody = functionBody(workspaceViewTs, 'dawShellHTML');
-    expect(builderBody).toContain("createTimelineScale('default')");
+    expect(builderBody).toContain('const timelineScale = SESSION_TIMELINE_SCALE;');
     expect(builderBody).toContain('dawRulerTicks(DAW_TIMELINE_SPAN_SECS, timelineScale)');
     expect(builderBody).toContain('dawLaneGridlines(DAW_TIMELINE_SPAN_SECS, timelineScale)');
   });
