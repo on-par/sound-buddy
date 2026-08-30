@@ -42,6 +42,7 @@ import { fmt, iconSvg } from './report-card';
 import { levelDisplay } from './spl-calibration';
 import type { AppSettings } from '../../electron/ipc/api';
 import { dawRulerTicks, dawLaneGridlines, DAW_TIMELINE_SPAN_SECS, DAW_TIMELINE_ORIGIN_PX, type DawShellRuntime } from './daw-shell-runtime';
+import { createTimelineScale } from './timeline-scale';
 import { sessionTabSessionPickerHTML, type SessionTabSessionPickerView } from './session-tab-session-picker';
 import type { SessionTabWaveformClip, SessionTabWaveformView } from './session-tab-waveforms';
 import { sessionTabPlaybackHTML, type SessionTabPlaybackView } from './session-tab-playback';
@@ -661,7 +662,12 @@ export function dawShellHTML(state: LiveWorkspaceViewState, routingDrawerContent
   const playheadVisible = recordingTimelineActive || state.sessionPlayback !== null;
   const liveWaveformCanvasHTML = recordingTimelineActive ? `<canvas class="daw-channel-waveform"></canvas>` : '';
   const mixWaveformCanvasHTML = recordingTimelineActive ? `<canvas class="daw-mix-waveform"></canvas>` : '';
-  const laneGrid = `<span class="daw-lane-grid">${dawLaneGridlines(DAW_TIMELINE_SPAN_SECS)
+  // The arrangement's horizontal scale (#1263). 'default' is today's fixed
+  // geometry, so this changes no pixel — it makes the ruler and the lanes read
+  // their x from the one shared scale model instead of the fixed constant, so
+  // a zoom state can move both together (#1254). Zoom UI is not this story.
+  const timelineScale = createTimelineScale('default');
+  const laneGrid = `<span class="daw-lane-grid">${dawLaneGridlines(DAW_TIMELINE_SPAN_SECS, timelineScale)
     .map((line) => `<span class="daw-gridline${line.isMajor ? ' major' : ''}" style="left:${line.xPx}px"></span>`)
     .join('')}</span>`;
   // The ruler row's head cell (#1048): the head column's first child, holding
@@ -710,7 +716,7 @@ export function dawShellHTML(state: LiveWorkspaceViewState, routingDrawerContent
     + `<span class="daw-lane-body">${mixWaveformCanvasHTML}</span>`
     + laneGrid
     + `</div>`;
-  const rulerTicks = dawRulerTicks(DAW_TIMELINE_SPAN_SECS)
+  const rulerTicks = dawRulerTicks(DAW_TIMELINE_SPAN_SECS, timelineScale)
     .map((tick) => `<span class="daw-ruler-tick" style="left:${tick.xPx}px"></span>`)
     .join('');
   const status = dawStatusLineView(state);

@@ -31,6 +31,7 @@ import { sessionTabSessionPickerView } from './session-tab-session-picker';
 import { levelPercent, type LiveDevice, type StripConfig, type ChannelGroup, type LiveEvent, type LiveMeterChannel } from './live-capture-panel';
 import type { AppSettings } from '../../electron/ipc/api';
 import { dawTimelineX, dawRulerTicks, dawLaneGridlines, DAW_TIMELINE_SPAN_SECS, DAW_TIMELINE_ORIGIN_PX } from './daw-shell-runtime';
+import { createTimelineScale } from './timeline-scale';
 import type { SessionTabWaveformView } from './session-tab-waveforms';
 import { sessionTabPlaybackView } from './session-tab-playback';
 
@@ -593,6 +594,9 @@ describe('dawShellHTML / dawShellPatchView', () => {
     expect(html).toContain('class="daw-ruler-tick"');
     expect(html).toContain(`style="left:${dawTimelineX(0)}px"`);
     expect(html).toContain(`style="left:${dawTimelineX(10)}px"`);
+    const scale = createTimelineScale('default');
+    expect(html).toContain(`style="left:${scale.timeToX(0)}px"`);
+    expect(html).toContain(`style="left:${scale.timeToX(10)}px"`);
     const occurrences = html.split('class="daw-ruler-tick"').length - 1;
     expect(occurrences).toBe(dawRulerTicks(DAW_TIMELINE_SPAN_SECS).length);
     expect(html).toContain('<div class="daw-ruler">');
@@ -605,9 +609,22 @@ describe('dawShellHTML / dawShellPatchView', () => {
     expect(html).toContain('class="daw-gridline major"');
     expect(html).toContain(`<span class="daw-gridline" style="left:${dawTimelineX(5)}px"></span>`);
     expect(html).toContain(`<span class="daw-gridline major" style="left:${dawTimelineX(10)}px"></span>`);
+    const scale = createTimelineScale('default');
+    expect(html).toContain(`style="left:${scale.timeToX(5)}px"`);
+    expect(html).toContain(`style="left:${scale.timeToX(10)}px"`);
     const perLane = dawLaneGridlines(DAW_TIMELINE_SPAN_SECS).length;
     const total = html.split('class="daw-gridline').length - 1;
     expect(total).toBe(perLane * (1 + state.channelConfig.length)); // mix lane + one per channel lane
+  });
+
+  it('emits ruler-tick and gridline left values unchanged from the pre-#1263 fixed-scale rendering (#1263)', () => {
+    const html = dawShellHTML(makeState());
+    for (const tick of dawRulerTicks(DAW_TIMELINE_SPAN_SECS)) {
+      expect(html).toContain(`<span class="daw-ruler-tick" style="left:${dawTimelineX(tick.timeSecs)}px"></span>`);
+    }
+    for (const line of dawLaneGridlines(DAW_TIMELINE_SPAN_SECS)) {
+      expect(html).toContain(`style="left:${dawTimelineX(line.timeSecs)}px"`);
+    }
   });
 
   it('seeds the transport time from the bridged playhead elapsed so a rebuild never flashes 0:00', () => {

@@ -271,7 +271,7 @@ describe('ruler ticks derive from the shared timeline geometry (#1032)', () => {
   });
 
   it('daw-shell-runtime.ts exports the ruler tick geometry', () => {
-    expect(dawShellRuntimeTs).toContain('export function dawRulerTicks(spanSecs: number): DawRulerTick[]');
+    expect(dawShellRuntimeTs).toContain('export function dawRulerTicks(spanSecs: number, scale?: TimelineScale): DawRulerTick[]');
     expect(dawShellRuntimeTs).toContain('export const DAW_RULER_TICK_INTERVAL_SECS');
   });
 
@@ -285,8 +285,8 @@ describe('ruler ticks derive from the shared timeline geometry (#1032)', () => {
     expect(workspaceViewTs).not.toMatch(/PX_PER_SECOND\s*=/);
   });
 
-  it("dawRulerTicks' body computes each tick's x through the shared dawTimelineX function", () => {
-    expect(functionBody(dawShellRuntimeTs, 'dawRulerTicks')).toContain('dawTimelineX(timeSecs)');
+  it("dawRulerTicks' body computes each tick's x through the resolved shared time-to-x function", () => {
+    expect(functionBody(dawShellRuntimeTs, 'dawRulerTicks')).toContain('timeToX(timeSecs)');
   });
 });
 
@@ -301,7 +301,7 @@ describe('lane gridlines derive from the shared timeline geometry (#1033)', () =
   });
 
   it('daw-shell-runtime.ts exports the lane gridline geometry', () => {
-    expect(dawShellRuntimeTs).toContain('export function dawLaneGridlines(spanSecs: number): DawLaneGridline[]');
+    expect(dawShellRuntimeTs).toContain('export function dawLaneGridlines(spanSecs: number, scale?: TimelineScale): DawLaneGridline[]');
     expect(dawShellRuntimeTs).toContain('export const DAW_LANE_GRID_MINOR_SECS');
     expect(dawShellRuntimeTs).toContain('export const DAW_LANE_GRID_MAJOR_SECS');
   });
@@ -316,8 +316,21 @@ describe('lane gridlines derive from the shared timeline geometry (#1033)', () =
     expect(workspaceViewTs).not.toMatch(/PX_PER_SECOND\s*=/);
   });
 
-  it("dawLaneGridlines' body computes each line's x through the shared dawTimelineX function", () => {
-    expect(functionBody(dawShellRuntimeTs, 'dawLaneGridlines')).toContain('dawTimelineX(timeSecs)');
+  it("dawLaneGridlines' body computes each line's x through the resolved shared time-to-x function", () => {
+    expect(functionBody(dawShellRuntimeTs, 'dawLaneGridlines')).toContain('timeToX(timeSecs)');
+  });
+
+  it('dawShellHTML injects the shared timeline scale into both builders (#1263)', () => {
+    expect(workspaceViewTs).toMatch(/import \{[^}]*createTimelineScale[^}]*\} from '\.\/timeline-scale'/s);
+    const builderBody = functionBody(workspaceViewTs, 'dawShellHTML');
+    expect(builderBody).toContain("createTimelineScale('default')");
+    expect(builderBody).toContain('dawRulerTicks(DAW_TIMELINE_SPAN_SECS, timelineScale)');
+    expect(builderBody).toContain('dawLaneGridlines(DAW_TIMELINE_SPAN_SECS, timelineScale)');
+  });
+
+  it('daw-shell-runtime.ts imports the scale type-only, keeping the module graph acyclic (#1263)', () => {
+    expect(dawShellRuntimeTs).toContain("import type { TimelineScale } from './timeline-scale'");
+    expect(dawShellRuntimeTs).not.toMatch(/^import \{[^}]*\} from '\.\/timeline-scale'/m);
   });
 });
 
