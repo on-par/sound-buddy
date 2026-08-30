@@ -35,6 +35,8 @@ export interface TimelineScale {
   readonly state: TimelineZoomState;
   readonly pxPerSecond: number;
   timeToX(timeSecs: number): number;
+  /** The exact inverse of timeToX at this scale. */
+  xToTime(xPx: number): number;
 }
 
 /** Clamps a requested pixels-per-second value into the supported zoom range. A
@@ -79,13 +81,25 @@ export function timelineXAt(pxPerSecond: number, timeSecs: number): number {
   return DAW_TIMELINE_ORIGIN_PX + timeSecs * pxPerSecond;
 }
 
+/** The inverse of timelineXAt: the arrangement time in seconds at a shell-local x
+ *  coordinate, measured from the same DAW_TIMELINE_ORIGIN_PX t=0 edge. Unclamped in time —
+ *  an x left of the origin legitimately returns negative seconds, exactly as timelineXAt
+ *  accepts negative seconds. A non-finite x, or a non-finite or non-positive scale,
+ *  resolves to 0 rather than producing NaN or Infinity in a seek target. */
+export function timelineTimeAt(pxPerSecond: number, xPx: number): number {
+  if (!Number.isFinite(xPx)) return 0;
+  if (!Number.isFinite(pxPerSecond) || pxPerSecond <= 0) return 0;
+  return (xPx - DAW_TIMELINE_ORIGIN_PX) / pxPerSecond;
+}
+
 /** Resolves a zoom state into a frozen TimelineScale carrying its pxPerSecond and
- *  a timeToX conversion closed over that value. */
+ *  a timeToX/xToTime pair of conversions closed over that value. */
 export function createTimelineScale(state: TimelineZoomState, fit?: TimelineFitRequest): TimelineScale {
   const pxPerSecond = timelineScaleValue(state, fit);
   return Object.freeze({
     state,
     pxPerSecond,
     timeToX: (timeSecs: number) => timelineXAt(pxPerSecond, timeSecs),
+    xToTime: (xPx: number) => timelineTimeAt(pxPerSecond, xPx),
   });
 }

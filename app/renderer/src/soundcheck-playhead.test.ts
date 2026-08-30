@@ -13,6 +13,7 @@ import {
   soundcheckSeekTargetFromClick,
   soundcheckTimelinePreviewFromPointer,
 } from './soundcheck-playhead';
+import { createTimelineScale, TIMELINE_SCALE_MAX_PX_PER_SECOND } from './timeline-scale';
 
 describe('soundcheckPlayheadLeftPx', () => {
   it('returns null for a non-positive duration', () => {
@@ -111,5 +112,49 @@ describe('soundcheckTimelinePreviewFromPointer', () => {
       elapsedSecs: 10,
       leftPx: 288,
     });
+  });
+
+  it('the default x comes from the shared scale', () => {
+    const scale = createTimelineScale('default');
+    for (const offset of [0, 32, 80]) {
+      const preview = soundcheckTimelinePreviewFromPointer(100 + offset, 100, 10);
+      expect(preview).not.toBeNull();
+      expect(preview!.leftPx).toBe(scale.timeToX(preview!.elapsedSecs));
+    }
+  });
+
+  it('the scrub target is an exact round-trip through the shared scale', () => {
+    const scale = createTimelineScale('default');
+    for (const offset of [0, 32, 80]) {
+      const preview = soundcheckTimelinePreviewFromPointer(100 + offset, 100, 10);
+      expect(preview).not.toBeNull();
+      expect(scale.xToTime(preview!.leftPx)).toBeCloseTo(preview!.elapsedSecs, 10);
+    }
+  });
+
+  it('a non-default scale moves both the elapsed time and the pixel together', () => {
+    const scale = createTimelineScale('zoomed-in');
+    expect(scale.pxPerSecond).toBe(TIMELINE_SCALE_MAX_PX_PER_SECOND);
+    const preview = soundcheckTimelinePreviewFromPointer(132, 100, 10, scale);
+    expect(preview).toEqual({ elapsedSecs: 1, leftPx: 240 });
+    expect(scale.xToTime(240)).toBeCloseTo(1, 10);
+  });
+
+  it('clamping still applies at a non-default scale', () => {
+    const scale = createTimelineScale('zoomed-in');
+    expect(soundcheckTimelinePreviewFromPointer(50, 100, 10, scale)).toEqual({
+      elapsedSecs: 0,
+      leftPx: 208,
+    });
+    const farRight = soundcheckTimelinePreviewFromPointer(5000, 100, 10, scale);
+    expect(farRight).not.toBeNull();
+    expect(farRight!.elapsedSecs).toBe(10);
+    expect(farRight!.leftPx).toBe(scale.timeToX(10));
+  });
+
+  it('an explicit "default" scale equals the omitted-argument call', () => {
+    expect(soundcheckTimelinePreviewFromPointer(132, 100, 10, createTimelineScale('default'))).toEqual(
+      soundcheckTimelinePreviewFromPointer(132, 100, 10)
+    );
   });
 });

@@ -13,7 +13,8 @@
 // spectrum-transport helpers.
 
 import { playheadPercent, seekTimeFromBarClick } from './spectrum-transport';
-import { DAW_TIMELINE_PX_PER_SECOND, dawTimelineX } from './daw-shell-runtime';
+import { DAW_TIMELINE_ORIGIN_PX } from './daw-shell-runtime';
+import { createTimelineScale, type TimelineScale } from './timeline-scale';
 
 /** A clamped Session arrangement position and its shared shell-local x coordinate. */
 export interface SoundcheckTimelinePreview {
@@ -53,21 +54,27 @@ export function soundcheckSeekTargetFromClick(
   return seekTimeFromBarClick(clientX, boxLeft, canvasWidthPx, durationSecs);
 }
 
+// The fixed scale every current caller gets. createTimelineScale('default') is provably
+// identical to dawTimelineX (ADR-0100), so this is a wiring change, not a behavior change.
+const DEFAULT_TIMELINE_SCALE = createTimelineScale('default');
+
 /**
- * Maps a ruler or lane pointer position into the fixed-scale Session
- * arrangement coordinate space. Unlike the legacy Soundcheck panel, every
- * arrangement surface shares the DAW timeline scale and shell-local origin.
+ * Maps a ruler or lane pointer position into the Session arrangement coordinate space at
+ * the given horizontal scale (ADR-0100). The pointer offset is measured from the timeline
+ * column's left edge, which is the shared t=0 edge, so it is re-based into shell-local
+ * coordinates by DAW_TIMELINE_ORIGIN_PX before the scale converts it — that keeps
+ * scale.xToTime(preview.leftPx) === preview.elapsedSecs for any in-range pointer. Omitting
+ * the scale yields today's fixed geometry.
  */
 export function soundcheckTimelinePreviewFromPointer(
   clientX: number,
   timelineLeftPx: number,
   durationSecs: number,
+  scale: TimelineScale = DEFAULT_TIMELINE_SCALE,
 ): SoundcheckTimelinePreview | null {
   if (!Number.isFinite(clientX) || !Number.isFinite(timelineLeftPx)
     || !Number.isFinite(durationSecs) || durationSecs <= 0) return null;
-  const elapsedSecs = Math.min(
-    durationSecs,
-    Math.max(0, (clientX - timelineLeftPx) / DAW_TIMELINE_PX_PER_SECOND),
-  );
-  return { elapsedSecs, leftPx: dawTimelineX(elapsedSecs) };
+  const shellX = DAW_TIMELINE_ORIGIN_PX + (clientX - timelineLeftPx);
+  const elapsedSecs = Math.min(durationSecs, Math.max(0, scale.xToTime(shellX)));
+  return { elapsedSecs, leftPx: scale.timeToX(elapsedSecs) };
 }
