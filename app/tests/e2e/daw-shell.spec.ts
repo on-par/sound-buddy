@@ -72,6 +72,31 @@ test.describe('DAW shell playback + waveform rendering (#713)', () => {
     await window.locator('#daw-session-record').click(); // stop -> monitoring resumes (#776)
   });
 
+  test('ruler dual readout shows bars/beats beside elapsed time, aligned to the tick x (#1275)', async () => {
+    const labels = window.locator('.daw-ruler .daw-ruler-label');
+    await expect(labels.first()).toBeVisible();
+    await expect(labels.first().locator('.daw-ruler-label-bars')).toHaveText('1.1');
+    await expect(labels.first().locator('.daw-ruler-label-time')).toHaveText('0:00');
+    await expect(labels.nth(1).locator('.daw-ruler-label-bars')).toHaveText('6.1');
+    await expect(labels.nth(1).locator('.daw-ruler-label-time')).toHaveText('0:10');
+
+    // Both readouts are children of one positioned element, so they point at one
+    // underlying position: bars sits at the label's left edge, elapsed to its right.
+    const box = await labels.first().boundingBox();
+    const barsBox = await labels.first().locator('.daw-ruler-label-bars').boundingBox();
+    const timeBox = await labels.first().locator('.daw-ruler-label-time').boundingBox();
+    expect(barsBox!.x).toBeGreaterThanOrEqual(box!.x);
+    expect(timeBox!.x).toBeGreaterThan(barsBox!.x);
+
+    // Every label sits at a ruler tick's x — the shared timeline scale, not a
+    // second geometry.
+    const tickLefts = await window.locator('.daw-ruler .daw-ruler-tick')
+      .evaluateAll((els) => els.map((el) => (el as HTMLElement).style.left));
+    const labelLefts = await labels.evaluateAll((els) => els.map((el) => (el as HTMLElement).style.left));
+    expect(labelLefts.length).toBeGreaterThan(1);
+    for (const left of labelLefts) expect(tickLefts).toContain(left);
+  });
+
   test('solo dims non-soloed lanes and clearing the final solo restores them (#1056)', async () => {
     const firstLane = window.locator('.daw-channel-lane[data-ch="0"]');
     const secondLane = window.locator('.daw-channel-lane[data-ch="1"]');
