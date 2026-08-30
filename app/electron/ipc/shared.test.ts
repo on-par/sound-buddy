@@ -58,6 +58,10 @@ describe('childEnv', () => {
     expect(childEnv().SOUND_BUDDY_TEST_PASSTHROUGH).toBe('keep-me');
     delete process.env.SOUND_BUDDY_TEST_PASSTHROUGH;
   });
+
+  it('prevents Python subprocesses from writing bytecode into the signed app bundle', () => {
+    expect(childEnv().PYTHONDONTWRITEBYTECODE).toBe('1');
+  });
 });
 
 describe('toolBin', () => {

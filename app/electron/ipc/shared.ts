@@ -99,7 +99,8 @@ const AI_KEY_ENV_VARS = ['OPENAI_API_KEY', 'ANTHROPIC_API_KEY', 'GEMINI_API_KEY'
 // fallback (m4a/aac decode) finds it without a system install. Also strips
 // any AI-provider API key that may be set on process.env — these
 // audio-analysis subprocesses have nothing to do with the AI narrative
-// feature and must never inherit its secrets.
+// feature and must never inherit its secrets. Python bytecode writes are
+// disabled so packaged analysis cannot mutate the signed app bundle.
 export function childEnv(): NodeJS.ProcessEnv {
   // c8 ignore: packaged-app path resolution; vitest always runs unpackaged
   // (BUNDLED_BIN_DIR is always null), so this branch is unreachable in tests.
@@ -108,6 +109,7 @@ export function childEnv(): NodeJS.ProcessEnv {
     ? { ...process.env, PATH: `${BUNDLED_BIN_DIR}${path.delimiter}${process.env.PATH ?? ''}` }
     : /* c8 ignore stop */ { ...process.env };
   for (const key of AI_KEY_ENV_VARS) delete env[key];
+  env.PYTHONDONTWRITEBYTECODE = '1';
   return env;
 }
 

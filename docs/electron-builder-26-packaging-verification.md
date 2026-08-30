@@ -71,10 +71,10 @@ only.
 
 | AC | Command | Result (PASS/FAIL) | Notes |
 | --- | --- | --- | --- |
-| AC1 — DMG spctl reports `source=Notarized Developer ID` | `spctl -a -vvv -t open "Sound.Buddy-<version>-arm64.dmg"` | | |
-| AC2 — stapler validate on the `.app` | `xcrun stapler validate "Sound Buddy.app"` | | |
-| AC3 — clean launch from `/Applications` + one analysis | manual install + launch + analysis | | |
-| AC4 — updater feed resolves with no signature/sha512 error | `scripts/release.sh --dry-run` (reads `latest-mac.yml: consistent with the built artifacts`) + in-app update check | | |
+| AC1 — DMG spctl reports `source=Notarized Developer ID` | `spctl --assess --type open --context context:primary-signature --verbose=4 "app/release/Sound.Buddy-0.8.30-arm64.dmg"` | PASS | 2026-08-30 on the mini: `accepted`, `source=Notarized Developer ID`. |
+| AC2 — stapler validate on the `.app` | `xcrun stapler validate "app/release/mac-arm64/Sound Buddy.app"` | PASS | 2026-08-30 on the mini: `The validate action worked!`. |
+| AC3 — clean launch from `/Applications` + one analysis | `npx playwright test --config=playwright.config.ts tests/packaged.spec.ts` | PASS | 2026-08-30 on the mini: packaged app extracted from release zip, launched with Homebrew/system tools removed from `PATH`, analyzed `silence.wav`, and confirmed no Python bytecode was written into the signed bundle. |
+| AC4 — updater feed resolves with no signature/sha512 error | `node scripts/ci-update-feed.mjs` and `scripts/release.sh 0.9.0 --dry-run` | PASS | 2026-08-30 on the mini: `latest-mac.yml: consistent with the built artifacts (4 checked)`; `v0.9.0` release dry run passed. |
 
 ## electron-builder 26 configuration changes required
 
@@ -84,6 +84,11 @@ A change lands in one of:
 - `app/electron-builder.yml`
 - `app/build/afterPack.js`
 - `app/build/afterAllArtifactBuild.js`
+
+2026-08-30 result: `app/build/afterPack.js` now prunes Python bytecode from the copied app
+resources on every build, and spawned Python subprocesses set `PYTHONDONTWRITEBYTECODE=1`.
+The packaged-app smoke test now fails if analysis leaves `__pycache__` or `.pyc` files in the
+signed bundle.
 
 ## Blocking rule + sign-off
 

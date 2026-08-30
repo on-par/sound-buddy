@@ -152,6 +152,10 @@ module.exports = async function afterPack(context) {
   fs.rmSync(pyDest, { recursive: true, force: true });
   // cp -R preserves symlinks/permissions/signatures of the standalone build.
   sh(`cp -R "${pyCache}" "${pyDest}"`);
+  const removedBytecode =
+    prunePythonBytecode(pyDest) +
+    prunePythonBytecode(path.join(resources, RESOURCE_LAYOUT.scripts.resourcesSubdir));
+  if (removedBytecode > 0) log(`removed ${removedBytecode} Python bytecode entries from app resources`);
 
   // ── 3. Re-seal the bundle so the added Resources are covered ───────────────
   if (!signing.signed) {
@@ -355,6 +359,30 @@ function prunePythonRuntime(rootDir, shared) {
           walk(entryPath);
         }
       } else if (entry.isFile() && shared.isPrunablePythonFile(rel)) {
+        fs.rmSync(entryPath);
+        removed++;
+      }
+    }
+  };
+  walk(rootDir);
+  return removed;
+}
+
+function prunePythonBytecode(rootDir) {
+  if (!fs.existsSync(rootDir)) return 0;
+  let removed = 0;
+  const walk = (dir) => {
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      const entryPath = path.join(dir, entry.name);
+      if (entry.isSymbolicLink()) continue;
+      if (entry.isDirectory()) {
+        if (entry.name === '__pycache__') {
+          fs.rmSync(entryPath, { recursive: true, force: true });
+          removed++;
+        } else {
+          walk(entryPath);
+        }
+      } else if (entry.isFile() && /\.(?:pyc|pyo)$/.test(entry.name)) {
         fs.rmSync(entryPath);
         removed++;
       }

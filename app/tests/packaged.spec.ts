@@ -51,8 +51,12 @@ test('packaged app analyzes a file with no external tools on PATH', async () => 
 
   const joined = mainOut.join('');
   await app.close();
+  const pycacheEntries = execSync(`find "${path.join(workdir, 'Sound Buddy.app')}" \\( -name __pycache__ -o -name '*.pyc' \\) -print`, {
+    encoding: 'utf8',
+  }).trim();
   fs.rmSync(workdir, { recursive: true, force: true });
 
   expect(joined).toContain('analyze-file ok');
   expect(joined).not.toContain('ENOENT');
+  expect(pycacheEntries).toBe('');
 });
