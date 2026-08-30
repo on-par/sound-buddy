@@ -254,6 +254,129 @@ test.describe('Session tab playback (#1080)', () => {
     await expect.poll(startCalls).toHaveLength(1);
   });
 
+  test('BPM change does not affect playback, scrub, waveform, or clip state (#1277)', async () => {
+    // Render a take clip: swap the empty-peaks stub for a real mono track so
+    // .daw-take-clip renders on channel 0 (session.json track 0 is mono,
+    // sourceChannels [0], matching the default channelConfig's a = index seed).
+    const BUCKETS_PER_SECOND = 50;
+    const CLIP_SECS = 10;
+    const bucketCount = BUCKETS_PER_SECOND * CLIP_SECS; // 500 buckets -> 10s
+    const bytes: number[] = [];
+    for (let i = 0; i < bucketCount; i++) {
+      const amplitude = Math.round(120 * Math.abs(Math.sin(i / 12))); // shaped so the canvas isn't flat
+      bytes.push(127 - amplitude, 128 + amplitude);
+    }
+    const peaks = {
+      bucketsPerSecond: BUCKETS_PER_SECOND,
+      tracks: [{ index: 0, kind: 'mono', bucketCount, data: Buffer.from(bytes).toString('base64') }],
+    };
+    await electronApp.evaluate(({ ipcMain }, doc) => {
+      ipcMain.removeHandler('generate-session-peaks');
+      ipcMain.handle('generate-session-peaks', () => ({ success: true, cached: false, peaks: doc }));
+    }, peaks);
+    await window.locator('.daw-session-picker-select').selectOption({ label: 'open session folder…' });
+    const clip = window.locator('.daw-channel-lane[data-ch="0"] .daw-take-clip');
+    await expect(clip).toHaveCount(1);
+
+    // Seed a real-seconds transport position.
+    await window.locator('#daw-session-play').click();
+    await sendPlaybackEvent({ type: 'progress', elapsed: 2, duration: 10 });
+    await expect(window.locator('.daw-transport-time')).toHaveText('0:02');
+    // DAW_TIMELINE_ORIGIN_PX (208) + 2s * DAW_TIMELINE_PX_PER_SECOND (8) = 224px.
+    await expect(window.locator('.daw-playhead-ruler')).toHaveCSS('left', '224px');
+    await expect(window.locator('.daw-playhead-lanes')).toHaveCSS('left', '224px');
+
+    // Capture the real-seconds baseline.
+    const readTickLefts = async (): Promise<string[]> => window.locator('.daw-ruler .daw-ruler-tick')
+      .evaluateAll((els) => els.map((el) => (el as HTMLElement).style.left));
+    const readLabelLefts = async (): Promise<string[]> => window.locator('.daw-ruler .daw-ruler-label')
+      .evaluateAll((els) => els.map((el) => (el as HTMLElement).style.left));
+    const readLabelTimes = async (): Promise<string[]> => window.locator('.daw-ruler .daw-ruler-label .daw-ruler-label-time')
+      .evaluateAll((els) => els.map((el) => el.textContent));
+    const readClipCanvas = async (): Promise<{ width: number; height: number; dataUrl: string }> => clip
+      .locator('canvas')
+      .evaluate((el) => {
+        const canvas = el as HTMLCanvasElement;
+        return { width: canvas.width, height: canvas.height, dataUrl: canvas.toDataURL() };
+      });
+    const canvasPaintedAtMidpoint = async (): Promise<boolean> => clip.locator('canvas').evaluate((el) => {
+      const canvas = el as HTMLCanvasElement;
+      if (canvas.width === 0 || canvas.height === 0) return false;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return false;
+      const { data } = ctx.getImageData(Math.floor(canvas.width / 2), Math.floor(canvas.height / 2), 1, 1);
+      return data[3] > 0;
+    });
+
+    const baselineTickLefts = await readTickLefts();
+    const baselineLabelLefts = await readLabelLefts();
+    const baselineLabelTimes = await readLabelTimes();
+    await expect(clip).toHaveCSS('width', '80px');
+    await expect.poll(canvasPaintedAtMidpoint).toBe(true);
+    const baselineClipCanvas = await readClipCanvas();
+    expect(baselineClipCanvas.width).toBeGreaterThan(0);
+    expect(baselineClipCanvas.height).toBeGreaterThan(0);
+
+    const rulerLabels = window.locator('.daw-ruler .daw-ruler-label');
+    await expect(rulerLabels.nth(0).locator('.daw-ruler-label-bars')).toHaveText('1.1');
+    await expect(rulerLabels.nth(1).locator('.daw-ruler-label-bars')).toHaveText('6.1');
+    await expect(rulerLabels.nth(1).locator('.daw-ruler-label-time')).toHaveText('0:10');
+
+    // Scrub #1 (the "before" seek target).
+    const startCalls = async (): Promise<{ startOffsetSecs?: number }[]> => electronApp.evaluate(
+      () => (globalThis as Record<string, unknown>).__sessionPlaybackCalls,
+    ) as Promise<{ startOffsetSecs?: number }[]>;
+    const rulerBox = (await window.locator('.daw-ruler').boundingBox())!;
+    await window.mouse.move(rulerBox.x, rulerBox.y + rulerBox.height / 2);
+    await window.mouse.down();
+    // 26px right of the ruler's left edge -> 26 / 8 = 3.25s. Exact in binary
+    // floating point, so toBe is correct here — no epsilon needed.
+    await window.mouse.move(rulerBox.x + 26, rulerBox.y + rulerBox.height / 2);
+    await window.mouse.up();
+    await expect.poll(startCalls).toHaveLength(2);
+    expect((await startCalls())[1].startOffsetSecs).toBe(3.25);
+
+    // Restore the position baseline so the post-change comparison is apples-to-apples.
+    await sendPlaybackEvent({ type: 'progress', elapsed: 2, duration: 10 });
+    await expect(window.locator('.daw-transport-time')).toHaveText('0:02');
+    await expect(window.locator('.daw-playhead-ruler')).toHaveCSS('left', '224px');
+    await expect(window.locator('.daw-playhead-lanes')).toHaveCSS('left', '224px');
+
+    // Change the BPM. 173 is deliberately not a divisor of 60: at 173 BPM one
+    // beat is 60/173 ≈ 0.3468s, so the 3.25s seek target below cannot be a
+    // snapped beat boundary.
+    await window.locator('#daw-session-bpm').fill('173');
+    await window.locator('#daw-session-bpm').press('Tab');
+    await expect(window.locator('#daw-session-bpm')).toHaveValue('173');
+    await expect(window.locator('#daw-session-bpm')).toHaveAttribute('aria-invalid', 'false');
+
+    // Acceptance criterion 1: the ruler re-labels.
+    await expect(rulerLabels.nth(1).locator('.daw-ruler-label-bars')).toHaveText('8.1');
+    await expect(rulerLabels.nth(0).locator('.daw-ruler-label-bars')).toHaveText('1.1');
+
+    // Acceptance criterion 2: every real-seconds value is unchanged, despite
+    // the BPM commit rebuilding LiveCapturePanel's entire board markup.
+    await expect(window.locator('.daw-transport-time')).toHaveText('0:02');
+    await expect(window.locator('.daw-playhead-ruler')).toHaveCSS('left', '224px');
+    await expect(window.locator('.daw-playhead-lanes')).toHaveCSS('left', '224px');
+    expect(await readTickLefts()).toEqual(baselineTickLefts);
+    expect(await readLabelLefts()).toEqual(baselineLabelLefts);
+    expect(await readLabelTimes()).toEqual(baselineLabelTimes);
+    await expect(clip).toHaveCSS('width', '80px');
+    await expect.poll(readClipCanvas).toEqual(baselineClipCanvas);
+
+    // Scrub #2 (the "after" seek target) — identical gesture, identical
+    // unrounded offset: the observational proof that no quantize/snap/warp
+    // path ran.
+    await window.mouse.move(rulerBox.x, rulerBox.y + rulerBox.height / 2);
+    await window.mouse.down();
+    await window.mouse.move(rulerBox.x + 26, rulerBox.y + rulerBox.height / 2);
+    await window.mouse.up();
+    await expect.poll(startCalls).toHaveLength(3);
+    expect((await startCalls())[2].startOffsetSecs).toBe(3.25);
+    await expect(window.locator('.daw-transport-time')).toHaveText('0:03');
+  });
+
   test('session-tab-playback-monitoring keeps the live meter updating during take playback', async () => {
     await window.locator('#daw-session-record').click();
     await expect(window.locator('#live-indicator .live-txt')).toHaveText('REC');
