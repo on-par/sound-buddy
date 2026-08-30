@@ -28,6 +28,7 @@ import {
   type DawLaneGridline,
 } from './daw-shell-runtime';
 import { createTimelineScale, TIMELINE_SCALE_MAX_PX_PER_SECOND } from './timeline-scale';
+import { createTimelineMarksModel } from './timeline-state';
 
 /* ── drawDawWaveformLane (pure) ── */
 
@@ -132,12 +133,14 @@ interface FakeShell {
 function makeFakeShell(opts: {
   timeEl?: { textContent: string } | null;
   playheadEls?: ReturnType<typeof makeFakePlayhead>[];
+  insertMarkerEls?: ReturnType<typeof makeFakePlayhead>[];
   mixCanvas?: ReturnType<typeof makeFakeCanvas> | null;
   lanes?: ReturnType<typeof makeFakeLane>[];
   clientWidth?: number;
 } = {}): FakeShell {
   const timeEl = opts.timeEl === undefined ? { textContent: '' } : opts.timeEl;
   const playheadEls = opts.playheadEls ?? [makeFakePlayhead(), makeFakePlayhead()];
+  const insertMarkerEls = opts.insertMarkerEls ?? [makeFakePlayhead(), makeFakePlayhead()];
   const mixCanvas = opts.mixCanvas === undefined ? makeFakeCanvas() : opts.mixCanvas;
   const lanes = opts.lanes ?? [];
   return {
@@ -150,9 +153,10 @@ function makeFakeShell(opts: {
     querySelectorAll: (sel: string) => {
       if (sel === '.daw-channel-lane') return lanes;
       if (sel === '.daw-playhead') return playheadEls;
+      if (sel === '.daw-insert-marker') return insertMarkerEls;
       return [];
     },
-    el: { timeEl, playheadEls, mixCanvas, lanes },
+    el: { timeEl, playheadEls, insertMarkerEls, mixCanvas, lanes },
   };
 }
 
@@ -461,6 +465,87 @@ describe('createDawShellRuntime', () => {
       for (const el of playheadEls) {
         expect(el.style.left).toBe(expected);
       }
+    });
+
+    it('writes the painted instant into an injected timelineMarks model (#1301)', () => {
+      const playheadEls = [makeFakePlayhead(), makeFakePlayhead()];
+      const shell = makeFakeShell({ playheadEls, clientWidth: 400 });
+      const timelineMarks = createTimelineMarksModel();
+      const { deps, setShell, setNow } = makeDeps({ timelineMarks });
+      setShell(shell);
+      const rt = createDawShellRuntime(deps);
+      setNow(0);
+      rt.startPlayhead(0);
+      setNow(4000);
+      rt.renderPlayhead();
+      expect(timelineMarks.getPlayheadSecs()).toBe(4);
+    });
+
+    it('writes the playback TICK elapsed, not the wall clock, while a session is playing (#1301)', () => {
+      const playheadEls = [makeFakePlayhead(), makeFakePlayhead()];
+      const shell = makeFakeShell({ playheadEls, clientWidth: 400 });
+      const timelineMarks = createTimelineMarksModel();
+      const { deps, setShell, setNow } = makeDeps({ timelineMarks });
+      setShell(shell);
+      const rt = createDawShellRuntime(deps);
+      setNow(9999); // the wall clock is far from the tick -- must not be used
+      rt.setPlaybackPosition({ elapsed: 12.5, duration: 60 });
+      rt.setPlaybackActive(true);
+      rt.renderPlayhead();
+      expect(timelineMarks.getPlayheadSecs()).toBe(12.5);
+    });
+
+    it('leaves getInsertMarkerSecs at 0 after a playhead paint (#1301)', () => {
+      const playheadEls = [makeFakePlayhead(), makeFakePlayhead()];
+      const shell = makeFakeShell({ playheadEls, clientWidth: 400 });
+      const timelineMarks = createTimelineMarksModel();
+      const { deps, setShell, setNow } = makeDeps({ timelineMarks });
+      setShell(shell);
+      const rt = createDawShellRuntime(deps);
+      setNow(0);
+      rt.startPlayhead(0);
+      setNow(4000);
+      rt.renderPlayhead();
+      expect(timelineMarks.getInsertMarkerSecs()).toBe(0);
+    });
+  });
+
+  describe('renderInsertMarker (#1301)', () => {
+    it('writes dawPlayheadX(secs * 1000, shell.clientWidth) to every .daw-insert-marker segment', () => {
+      const insertMarkerEls = [makeFakePlayhead(), makeFakePlayhead()];
+      const shell = makeFakeShell({ insertMarkerEls, clientWidth: 400 });
+      const timelineMarks = createTimelineMarksModel();
+      timelineMarks.setInsertMarkerSecs(7.5);
+      const { deps, setShell } = makeDeps({ timelineMarks });
+      setShell(shell);
+      const rt = createDawShellRuntime(deps);
+      rt.renderInsertMarker();
+      const expected = `${dawPlayheadX(7.5 * 1000, 400)}px`;
+      for (const el of insertMarkerEls) {
+        expect(el.style.left).toBe(expected);
+      }
+    });
+
+    it('is a no-op when there is no .daw-shell', () => {
+      const { deps, setShell } = makeDeps();
+      setShell(null);
+      const rt = createDawShellRuntime(deps);
+      expect(() => rt.renderInsertMarker()).not.toThrow();
+    });
+
+    it('paints the default position when no timelineMarks dep is injected, and renderPlayhead still works', () => {
+      const insertMarkerEls = [makeFakePlayhead(), makeFakePlayhead()];
+      const playheadEls = [makeFakePlayhead(), makeFakePlayhead()];
+      const shell = makeFakeShell({ insertMarkerEls, playheadEls, clientWidth: 400 });
+      const { deps, setShell } = makeDeps();
+      setShell(shell);
+      const rt = createDawShellRuntime(deps);
+      rt.renderInsertMarker();
+      const expected = `${dawPlayheadX(0, 400)}px`;
+      for (const el of insertMarkerEls) {
+        expect(el.style.left).toBe(expected);
+      }
+      expect(() => rt.renderPlayhead()).not.toThrow();
     });
   });
 

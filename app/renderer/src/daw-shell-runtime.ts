@@ -26,6 +26,12 @@
 // close an ESM cycle. Callers construct the scale (createTimelineScale) and
 // inject it; this module only ever reads its timeToX.
 import type { TimelineScale } from './timeline-scale';
+// The arrangement's shared playhead/insert-marker model (#1301). Imported
+// type-only for the same reason as TimelineScale above; TIMELINE_INSERT_MARKER_DEFAULT_SECS
+// is imported separately as a value below (a plain constant, not a type — it
+// creates no cycle).
+import type { TimelineMarksModel } from './timeline-state';
+import { TIMELINE_INSERT_MARKER_DEFAULT_SECS } from './timeline-state';
 
 export const DAW_TIMELINE_PX_PER_SECOND = 8; // one 40px ruler division = 5s
 export const DAW_TIMELINE_INSET_PX = 4; // The playhead's right-edge inset — the arrangement's right margin, the x the playhead parks at instead of walking off the timeline column (kept, not retired: the timeline column's right edge is the shell's right edge)
@@ -278,6 +284,10 @@ export interface DawShellRuntimeDeps {
    *  lane paint so a future zoom state reaches the painter with no signature change.
    *  Optional: an un-injected runtime falls back to the fixed default geometry. */
   getTimelineScale?(): TimelineScale;
+  /** The arrangement's shared playhead/insert-marker positions (#1301). Optional: an
+   *  un-injected runtime paints the marker at the default position and writes nowhere,
+   *  which is exactly the pre-#1301 behaviour. */
+  timelineMarks?: TimelineMarksModel;
 }
 
 export interface DawShellRuntime {
@@ -287,6 +297,7 @@ export interface DawShellRuntime {
   setPlaybackActive(active: boolean): void;
   resetWaveform(intervalSecs: number): void;
   renderPlayhead(): void;
+  renderInsertMarker(): void;
   renderWaveform(): void;
   playheadElapsedMs(): number;
   ingestPeaks(data: unknown): void;
@@ -377,6 +388,26 @@ export function createDawShellRuntime(deps: DawShellRuntimeDeps): DawShellRuntim
       segment.style.left = `${x}px`;
       segment.classList.toggle('advancing', advancing);
     }
+    // The playhead's single writer (#1301): this is the one place the arrangement resolves
+    // "the instant being shown" — the playback tick when a session is playing, the wall
+    // clock otherwise — so the shared value can never disagree with the painted pixels.
+    deps.timelineMarks?.setPlayheadSecs(elapsed / MS_PER_SECOND);
+    renderInsertMarker();
+  }
+
+  // The insert marker (#1301): where a play/edit action would start, painted from the same
+  // shared geometry as the playhead so the two can never disagree about where a second
+  // sits. Separate from renderPlayhead so it stays off the per-frame path in spirit (it
+  // only moves on load or an explicit edit) and so renderPlayhead keeps its one-x guard.
+  function renderInsertMarker(): void {
+    const shell = deps.doc.querySelector('.daw-shell');
+    if (!shell) return;
+    const secs = deps.timelineMarks?.getInsertMarkerSecs() ?? TIMELINE_INSERT_MARKER_DEFAULT_SECS;
+    const markerX = dawPlayheadX(secs * MS_PER_SECOND, shell.clientWidth);
+    const segments = shell.querySelectorAll('.daw-insert-marker');
+    for (let i = 0; i < segments.length; i++) {
+      (segments[i] as HTMLElement).style.left = `${markerX}px`;
+    }
   }
 
   // Sizes the canvas to its own `.daw-lane-body` parent (only when changed),
@@ -464,6 +495,7 @@ export function createDawShellRuntime(deps: DawShellRuntimeDeps): DawShellRuntim
     setPlaybackActive,
     resetWaveform,
     renderPlayhead,
+    renderInsertMarker,
     renderWaveform,
     playheadElapsedMs,
     ingestPeaks,
