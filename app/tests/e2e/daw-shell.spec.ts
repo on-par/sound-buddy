@@ -97,6 +97,44 @@ test.describe('DAW shell playback + waveform rendering (#713)', () => {
     for (const left of labelLefts) expect(tickLefts).toContain(left);
   });
 
+  test('BPM control shows the tempo, stores a valid edit, and rejects invalid entry (#1276)', async () => {
+    const input = window.locator('#daw-session-bpm');
+    const hint = window.locator('#daw-session-bpm-hint');
+    const secondLabelBars = window.locator('.daw-ruler .daw-ruler-label').nth(1).locator('.daw-ruler-label-bars');
+
+    await expect(input).toHaveValue('120');
+    await expect(hint).toHaveText('');
+    await expect(secondLabelBars).toHaveText('6.1');
+
+    // Valid edit: commits on blur, stores the value, relabels the ruler.
+    await input.fill('240');
+    await input.press('Tab');
+    await expect(input).toHaveValue('240');
+    await expect(input).toHaveAttribute('aria-invalid', 'false');
+    await expect(hint).toHaveText('');
+    await expect(secondLabelBars).toHaveText('11.1');
+
+    // Out of range: clamped visibly, feedback shown.
+    await window.locator('#daw-session-bpm').fill('900');
+    await window.locator('#daw-session-bpm').press('Tab');
+    await expect(window.locator('#daw-session-bpm')).toHaveValue('300');
+    await expect(window.locator('#daw-session-bpm')).toHaveAttribute('aria-invalid', 'true');
+    await expect(window.locator('#daw-session-bpm-hint')).toContainText('300');
+
+    // Non-numeric: rejected, the stored value is untouched.
+    await window.locator('#daw-session-bpm').fill('abc');
+    await window.locator('#daw-session-bpm').press('Tab');
+    await expect(window.locator('#daw-session-bpm')).toHaveValue('300');
+    await expect(window.locator('#daw-session-bpm-hint')).toContainText('Enter a number');
+
+    // Restore the default so the sibling 'ruler dual readout' case still sees
+    // 120 BPM — this describe shares one app instance and beforeEach does not
+    // reset React state.
+    await window.locator('#daw-session-bpm').fill('120');
+    await window.locator('#daw-session-bpm').press('Tab');
+    await expect(window.locator('.daw-ruler .daw-ruler-label').nth(1).locator('.daw-ruler-label-bars')).toHaveText('6.1');
+  });
+
   test('solo dims non-soloed lanes and clearing the final solo restores them (#1056)', async () => {
     const firstLane = window.locator('.daw-channel-lane[data-ch="0"]');
     const secondLane = window.locator('.daw-channel-lane[data-ch="1"]');

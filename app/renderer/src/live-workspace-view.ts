@@ -45,6 +45,7 @@ import { dawRulerTicks, dawLaneGridlines, DAW_TIMELINE_SPAN_SECS, DAW_TIMELINE_O
 import { createTimelineScale } from './timeline-scale';
 import { createTimelineTempo } from './timeline-bpm';
 import { timelineRulerLabels } from './timeline-ruler-labels';
+import { timelineBpmControlHTML, timelineBpmControlView, type TimelineBpmControlView } from './timeline-bpm-control';
 import { sessionTabSessionPickerHTML, type SessionTabSessionPickerView } from './session-tab-session-picker';
 import type { SessionTabWaveformClip, SessionTabWaveformView } from './session-tab-waveforms';
 import { sessionTabPlaybackHTML, type SessionTabPlaybackView } from './session-tab-playback';
@@ -88,6 +89,9 @@ export interface LiveWorkspaceViewState {
   capturePhase: CapturePhase;
   /** Transient mounted-Session state for the routing drawer shell. */
   sessionRoutingDrawerOpen: boolean;
+  /** The Session toolbar's BPM control state (#1276). null for callers that do
+   *  not own it — dawShellHTML then falls back to the documented default tempo. */
+  timelineBpm: TimelineBpmControlView | null;
 }
 
 // The slice of liveCaptureStore's state that liveWorkspaceViewState() reads —
@@ -141,6 +145,7 @@ export function liveWorkspaceViewState(
   sessionPlayback: SessionTabPlaybackView | null = null,
   capturePhase: CapturePhase = 'idle',
   sessionRoutingDrawerOpen = false,
+  timelineBpm: TimelineBpmControlView | null = null,
 ): LiveWorkspaceViewState {
   return {
     channelConfig: lc.channelConfig,
@@ -166,6 +171,7 @@ export function liveWorkspaceViewState(
     sessionPlayback,
     capturePhase,
     sessionRoutingDrawerOpen,
+    timelineBpm,
   };
 }
 
@@ -669,10 +675,13 @@ export function dawShellHTML(state: LiveWorkspaceViewState, routingDrawerContent
   // their x from the one shared scale model instead of the fixed constant, so
   // a zoom state can move both together (#1254). Zoom UI is not this story.
   const timelineScale = createTimelineScale('default');
-  // The ruler's display-only tempo (#1275, #1273): labels musical time on the
-  // ruler and never reaches a coordinate. A user-settable BPM is a later
-  // slice of #1260.
-  const timelineTempo = createTimelineTempo();
+  // The ruler's display-only tempo (#1276): the toolbar BPM control owns it now
+  // — dawShellHTML no longer constructs one, so the number the control shows and
+  // the number the ruler labels from are the same value by construction. A caller
+  // that owns no control (LiveWorkspace/LiveEqPane/the store snapshot) gets the
+  // documented default. BPM still reaches text alone (ADR-0104).
+  const bpmControl = state.timelineBpm ?? timelineBpmControlView(createTimelineTempo());
+  const timelineTempo = bpmControl.tempo;
   const laneGrid = `<span class="daw-lane-grid">${dawLaneGridlines(DAW_TIMELINE_SPAN_SECS, timelineScale)
     .map((line) => `<span class="daw-gridline${line.isMajor ? ' major' : ''}" style="left:${line.xPx}px"></span>`)
     .join('')}</span>`;
@@ -741,6 +750,7 @@ export function dawShellHTML(state: LiveWorkspaceViewState, routingDrawerContent
     + `<span class="daw-transport-title">Live Workspace</span>`
     + `<span class="daw-transport-state daw-transport-state-${transportChip.toLowerCase()}">${transportChip}</span>`
     + `<span class="daw-transport-time">${getDawPlayheadState().formatElapsed(seededElapsed)}</span>`
+    + timelineBpmControlHTML(bpmControl)
     + liveWorkspaceToolbarHTML(state)
     + (state.sessionPicker ? sessionTabSessionPickerHTML(state.sessionPicker) : '')
     + (state.sessionPlayback ? sessionTabPlaybackHTML(state.sessionPlayback) : '')

@@ -187,6 +187,21 @@ describe('DAW shell styles (#517)', () => {
   });
 });
 
+describe('Session BPM control wiring (#1276)', () => {
+  it('dawShellHTML sources the ruler tempo from the control, not an unconditional createTimelineTempo() call', () => {
+    expect(workspaceViewTs).toContain('timelineBpmControlHTML(');
+    expect(workspaceViewTs).not.toContain('createTimelineTempo();');
+  });
+
+  it('LiveCapturePanel commits BPM entries through the pure commit rule', () => {
+    expect(liveCapturePanelTsx).toContain('commitTimelineBpmEntry(');
+  });
+
+  it('app.css styles the BPM control', () => {
+    expect(css).toContain('.daw-transport-bpm-input');
+  });
+});
+
 describe('Session routing drawer layout (#1089)', () => {
   it('uses a named fixed drawer height while preserving the flexible arrangement timeline', () => {
     expect(css).toContain('--daw-routing-drawer-h');

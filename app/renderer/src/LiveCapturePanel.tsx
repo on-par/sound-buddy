@@ -63,6 +63,8 @@ import {
 import { sessionTabSessionPickerAction, sessionTabSessionPickerView } from './session-tab-session-picker';
 import { paintSessionTabWaveformClips, sessionTabWaveformView } from './session-tab-waveforms';
 import { sessionTabPlaybackView } from './session-tab-playback';
+import { createTimelineTempo, type TimelineTempo } from './timeline-bpm';
+import { commitTimelineBpmEntry, timelineBpmControlView, TIMELINE_BPM_INPUT_ID } from './timeline-bpm-control';
 import { beginSessionTimelineScrub } from './session-timeline-scrub';
 import { createSoundcheckTransportController } from './soundcheck-transport-controller';
 import { runtime, recordCapture, stopLiveCapture } from './LiveControls';
@@ -148,6 +150,10 @@ export function ensureSessionRouting(
 
 export default function LiveCapturePanel(): JSX.Element | null {
   const [sessionRoutingDrawerOpen, setSessionRoutingDrawerOpen] = useState(false);
+  // Session tempo (#1276). Transient render state, like the routing drawer flag
+  // above — persistence across restarts is not in this slice's scope.
+  const [timelineTempo, setTimelineTempo] = useState<TimelineTempo>(createTimelineTempo);
+  const [bpmMessage, setBpmMessage] = useState('');
   const s = useStoreShallow(useLiveCaptureStore, (st) => ({
     channelConfig: st.channelConfig,
     channelGroups: st.channelGroups,
@@ -205,6 +211,7 @@ export default function LiveCapturePanel(): JSX.Element | null {
     promoting: s.promoting,
     stopping: s.stopping,
   });
+  const timelineBpm = timelineBpmControlView(timelineTempo, bpmMessage);
   const state = liveWorkspaceViewState(
     lc,
     settings,
@@ -214,6 +221,7 @@ export default function LiveCapturePanel(): JSX.Element | null {
     sessionPlayback,
     capturePhase,
     sessionRoutingDrawerOpen,
+    timelineBpm,
   );
   const laneSignature = dawShellPatchView(state).laneSignature;
 
@@ -533,6 +541,16 @@ export default function LiveCapturePanel(): JSX.Element | null {
 
   function onBoardChange(e: ChangeEvent<HTMLDivElement>): void {
     const target = e.target as Element;
+    const bpmInput = target.closest(`#${TIMELINE_BPM_INPUT_ID}`);
+    if (bpmInput instanceof HTMLInputElement) {
+      // 'change' fires on blur/Enter, never per keystroke — the shell is raw
+      // markup under dangerouslySetInnerHTML, so a per-keystroke state write
+      // would destroy the element being typed into.
+      const entry = commitTimelineBpmEntry(bpmInput.value, timelineTempo);
+      setTimelineTempo(entry.tempo);
+      setBpmMessage(entry.message);
+      return;
+    }
     const outputDevice = target.closest('#daw-session-output-device');
     if (outputDevice instanceof HTMLSelectElement) {
       useSoundcheckStore.getState().selectDevice(outputDevice.value);
