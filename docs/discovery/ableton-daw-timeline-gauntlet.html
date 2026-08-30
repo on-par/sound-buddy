@@ -1,0 +1,484 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Sound Buddy 0.9.1 DAW Timeline Gauntlet</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #0d1017;
+      --panel: #151a23;
+      --panel-2: #10141c;
+      --line: #2b3342;
+      --line-2: #3b4557;
+      --text: #e8ecf3;
+      --muted: #9aa4b3;
+      --gold: #f3ca5e;
+      --red: #f26d71;
+      --green: #70d49b;
+      --blue: #74a8ff;
+      --cyan: #6ddad8;
+      --purple: #b58cff;
+      --track-head: 208px;
+    }
+
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background: var(--bg);
+      color: var(--text);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      letter-spacing: 0;
+    }
+
+    main {
+      width: min(1180px, calc(100vw - 32px));
+      margin: 0 auto;
+      padding: 24px 0 40px;
+    }
+
+    h1, h2, h3, p { margin: 0; }
+    h1 { font-size: 24px; font-weight: 720; line-height: 1.18; }
+    h2 { font-size: 14px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
+    h3 { font-size: 14px; font-weight: 700; }
+    p, li { font-size: 13px; line-height: 1.48; color: var(--muted); }
+    code { font-family: "SFMono-Regular", ui-monospace, Menlo, monospace; font-size: 12px; color: var(--cyan); }
+
+    .topbar {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 16px;
+      align-items: end;
+      margin-bottom: 18px;
+    }
+
+    .subtitle { margin-top: 7px; max-width: 760px; }
+    .badge-row { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+    .badge {
+      border: 1px solid var(--line);
+      background: var(--panel);
+      color: var(--muted);
+      border-radius: 6px;
+      padding: 6px 8px;
+      font-size: 12px;
+      white-space: nowrap;
+    }
+
+    .daw-shell {
+      border: 1px solid var(--line);
+      background: var(--panel-2);
+      min-height: 452px;
+      display: grid;
+      grid-template-rows: 44px 26px 1fr 60px 26px;
+      overflow: hidden;
+    }
+
+    .transport {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 0 12px;
+      border-bottom: 1px solid var(--line);
+      background: #171d27;
+    }
+
+    .btn {
+      height: 26px;
+      min-width: 28px;
+      border: 1px solid var(--line-2);
+      border-radius: 5px;
+      background: #222937;
+      color: var(--text);
+      font-size: 12px;
+      font-weight: 650;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 0 8px;
+    }
+
+    .btn.active { color: #141414; background: var(--gold); border-color: var(--gold); }
+    .clock { font: 700 16px/1 "SFMono-Regular", ui-monospace, Menlo, monospace; color: var(--gold); margin-right: 8px; }
+    .select {
+      height: 26px;
+      border: 1px solid var(--line-2);
+      border-radius: 5px;
+      background: #10151f;
+      color: var(--text);
+      font-size: 12px;
+      padding: 0 8px;
+      min-width: 150px;
+    }
+    .spacer { flex: 1; }
+    .zoom {
+      display: grid;
+      grid-template-columns: auto 110px auto;
+      align-items: center;
+      gap: 7px;
+      color: var(--muted);
+      font-size: 12px;
+    }
+    .slider {
+      height: 4px;
+      border-radius: 999px;
+      background: linear-gradient(90deg, var(--blue) 0 62%, #30394a 62% 100%);
+    }
+
+    .ruler-row, .track-row, .master-row {
+      display: grid;
+      grid-template-columns: var(--track-head) minmax(0, 1fr);
+    }
+    .ruler-gutter, .track-head, .master-head {
+      border-right: 1px solid var(--line);
+      background: #171c26;
+    }
+    .ruler {
+      position: relative;
+      background: #111721;
+      border-bottom: 1px solid var(--line);
+      overflow: hidden;
+    }
+    .tick {
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      width: 1px;
+      background: var(--line-2);
+    }
+    .tick span {
+      position: absolute;
+      top: 5px;
+      left: 5px;
+      color: var(--muted);
+      font: 11px/1 "SFMono-Regular", ui-monospace, Menlo, monospace;
+    }
+    .scrub-zone {
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      left: 224px;
+      width: 82px;
+      background: rgba(243, 202, 94, .08);
+      border-left: 1px solid rgba(243, 202, 94, .45);
+      border-right: 1px solid rgba(243, 202, 94, .45);
+    }
+
+    .tracks {
+      overflow: hidden;
+      background: #0f141d;
+    }
+    .track-row {
+      min-height: 64px;
+      border-bottom: 1px solid var(--line);
+    }
+    .track-head {
+      display: grid;
+      grid-template-columns: 3px 1fr;
+      min-width: 0;
+    }
+    .color { width: 3px; background: var(--blue); }
+    .track-head-body {
+      padding: 9px;
+      min-width: 0;
+    }
+    .track-title {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      min-width: 0;
+    }
+    .idx { color: var(--muted); font: 11px/1 "SFMono-Regular", ui-monospace, Menlo, monospace; }
+    .name {
+      color: var(--text);
+      font-size: 13px;
+      font-weight: 700;
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .meter {
+      width: 42px;
+      height: 4px;
+      border-radius: 999px;
+      margin-left: auto;
+      background: linear-gradient(90deg, var(--green) 0 66%, var(--red) 66% 78%, #30394a 78% 100%);
+    }
+    .track-controls { display: flex; gap: 5px; margin-top: 9px; align-items: center; }
+    .mini {
+      width: 22px;
+      height: 18px;
+      border-radius: 4px;
+      border: 1px solid var(--line-2);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 10px;
+      font-weight: 800;
+      color: var(--muted);
+      background: #111722;
+    }
+    .mini.on { color: #131313; background: var(--gold); border-color: var(--gold); }
+    .input { margin-left: auto; color: var(--muted); font: 11px/1 "SFMono-Regular", ui-monospace, Menlo, monospace; }
+    .lane {
+      position: relative;
+      overflow: hidden;
+      background-image:
+        linear-gradient(90deg, transparent 0, transparent 39px, rgba(255,255,255,.07) 40px),
+        linear-gradient(90deg, transparent 0, transparent 79px, rgba(255,255,255,.12) 80px);
+      background-size: 40px 100%, 80px 100%;
+      background-color: #101620;
+    }
+    .clip {
+      position: absolute;
+      top: 8px;
+      bottom: 8px;
+      left: 224px;
+      width: 380px;
+      border: 1px solid rgba(116, 168, 255, .62);
+      background: rgba(116, 168, 255, .10);
+      border-radius: 4px;
+      overflow: hidden;
+    }
+    .clip:before {
+      content: "";
+      position: absolute;
+      inset: 7px 8px;
+      background:
+        repeating-linear-gradient(90deg,
+          transparent 0 9px,
+          rgba(232, 236, 243, .45) 9px 10px,
+          transparent 10px 15px);
+      clip-path: polygon(0 48%, 4% 27%, 8% 54%, 12% 18%, 16% 74%, 20% 22%, 24% 64%, 28% 38%, 32% 52%, 36% 29%, 40% 67%, 44% 35%, 48% 56%, 52% 24%, 56% 78%, 60% 32%, 64% 62%, 68% 21%, 72% 70%, 76% 38%, 80% 58%, 84% 26%, 88% 72%, 92% 40%, 96% 53%, 100% 45%, 100% 55%, 96% 47%, 92% 60%, 88% 28%, 84% 74%, 80% 42%, 76% 62%, 72% 30%, 68% 79%, 64% 38%, 60% 68%, 56% 22%, 52% 76%, 48% 44%, 44% 65%, 40% 33%, 36% 71%, 32% 48%, 28% 62%, 24% 36%, 20% 78%, 16% 26%, 12% 82%, 8% 46%, 4% 73%, 0 52%);
+      opacity: .85;
+    }
+    .clip.short { width: 260px; left: 304px; border-color: rgba(109, 218, 216, .62); background: rgba(109, 218, 216, .09); }
+    .playhead {
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      left: 352px;
+      width: 2px;
+      background: var(--gold);
+      box-shadow: 0 0 0 1px rgba(0,0,0,.35), 0 0 16px rgba(243,202,94,.25);
+      z-index: 5;
+    }
+    .playhead:before {
+      content: "";
+      position: absolute;
+      top: 0;
+      left: -5px;
+      border-left: 6px solid transparent;
+      border-right: 6px solid transparent;
+      border-top: 8px solid var(--gold);
+    }
+
+    .master-row {
+      border-top: 1px solid var(--line-2);
+      background: #121822;
+    }
+    .master-head { padding: 12px; font-weight: 760; font-size: 13px; }
+    .status {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 0 12px;
+      border-top: 1px solid var(--line);
+      color: var(--muted);
+      font-size: 12px;
+      background: #151a23;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 12px;
+      margin-top: 18px;
+    }
+    .panel {
+      border: 1px solid var(--line);
+      background: var(--panel);
+      border-radius: 7px;
+      padding: 14px;
+      min-width: 0;
+    }
+    .panel h2 { margin-bottom: 10px; }
+    ul { margin: 0; padding-left: 18px; }
+    li + li { margin-top: 7px; }
+    .issue-list {
+      display: grid;
+      gap: 8px;
+      margin-top: 10px;
+    }
+    .issue {
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      padding: 10px;
+      background: #101620;
+    }
+    .issue b { display: block; font-size: 13px; margin-bottom: 4px; }
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      height: 20px;
+      padding: 0 6px;
+      border-radius: 999px;
+      border: 1px solid var(--line-2);
+      color: var(--muted);
+      font-size: 11px;
+      margin-right: 4px;
+      margin-top: 6px;
+    }
+
+    @media (max-width: 900px) {
+      main { width: calc(100vw - 20px); padding-top: 14px; }
+      .topbar { grid-template-columns: 1fr; }
+      .badge-row { justify-content: flex-start; }
+      .grid { grid-template-columns: 1fr; }
+      .daw-shell { --track-head: 168px; }
+      .select { min-width: 120px; }
+      .zoom { display: none; }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <section class="topbar">
+      <div>
+        <h1>Sound Buddy 0.9.1 DAW Timeline Gauntlet</h1>
+        <p class="subtitle">Ableton-inspired issue map for making Session playback feel like a normal DAW: tracks stay pinned, clips show waveform content, the ruler owns time, and zoom compresses or expands the same time model everywhere.</p>
+      </div>
+      <div class="badge-row">
+        <span class="badge">research: Ableton Live 12 manual</span>
+        <span class="badge">repo anchor: Session tab</span>
+        <span class="badge">scope: 0.9.1 follow-ups</span>
+        <span class="badge">BPM display only, no quantization</span>
+      </div>
+    </section>
+
+    <section class="daw-shell" aria-label="Ableton-inspired Sound Buddy Session mockup">
+      <div class="transport">
+        <button class="btn active">Play</button>
+        <button class="btn">Stop</button>
+        <button class="btn active">Loop</button>
+        <span class="clock">1:24.3</span>
+        <select class="select"><option>Sunday AM - Take 03</option></select>
+        <button class="btn">BPM 72</button>
+        <span class="spacer"></span>
+        <div class="zoom"><span>Fit</span><span class="slider"></span><span>Zoom 4x</span></div>
+      </div>
+      <div class="ruler-row">
+        <div class="ruler-gutter"></div>
+        <div class="ruler">
+          <div class="scrub-zone"></div>
+          <div class="tick" style="left: 0"><span>0:00</span></div>
+          <div class="tick" style="left: 80px"><span>0:10</span></div>
+          <div class="tick" style="left: 160px"><span>0:20</span></div>
+          <div class="tick" style="left: 240px"><span>0:30</span></div>
+          <div class="tick" style="left: 320px"><span>0:40</span></div>
+          <div class="tick" style="left: 400px"><span>0:50</span></div>
+          <div class="playhead"></div>
+        </div>
+      </div>
+      <div class="tracks">
+        <div class="track-row">
+          <div class="track-head"><span class="color" style="background: var(--blue)"></span><div class="track-head-body"><div class="track-title"><span class="idx">01</span><span class="name">Kick In</span><span class="meter"></span></div><div class="track-controls"><span class="mini on">A</span><span class="mini">M</span><span class="mini">S</span><span class="input">USB 1</span></div></div></div>
+          <div class="lane"><div class="clip"></div><div class="playhead"></div></div>
+        </div>
+        <div class="track-row">
+          <div class="track-head"><span class="color" style="background: var(--cyan)"></span><div class="track-head-body"><div class="track-title"><span class="idx">02</span><span class="name">Snare Top</span><span class="meter"></span></div><div class="track-controls"><span class="mini on">A</span><span class="mini">M</span><span class="mini">S</span><span class="input">USB 2</span></div></div></div>
+          <div class="lane"><div class="clip short"></div><div class="playhead"></div></div>
+        </div>
+        <div class="track-row">
+          <div class="track-head"><span class="color" style="background: var(--purple)"></span><div class="track-head-body"><div class="track-title"><span class="idx">07</span><span class="name">Lead Vocal</span><span class="meter"></span></div><div class="track-controls"><span class="mini on">A</span><span class="mini">M</span><span class="mini on">S</span><span class="input">USB 7</span></div></div></div>
+          <div class="lane"><div class="clip" style="left: 184px; width: 440px"></div><div class="playhead"></div></div>
+        </div>
+      </div>
+      <div class="master-row">
+        <div class="master-head">Master</div>
+        <div class="lane"><div class="clip" style="left: 224px; width: 520px; border-color: rgba(243,202,94,.62); background: rgba(243,202,94,.08)"></div><div class="playhead"></div></div>
+      </div>
+      <div class="status"><span>24 tracks / loaded take / follow paused while user scrolls</span><span>CoreAudio Aggregate</span></div>
+    </section>
+
+    <section class="grid">
+      <article class="panel">
+        <h2>Borrow From Ableton</h2>
+        <ul>
+          <li>Arrangement is a left-to-right time surface: ruler above, stacked tracks below, clips positioned by time.</li>
+          <li>The global playhead, insert marker, time selection, and selected clip are separate states with different click targets.</li>
+          <li>Horizontal zoom changes how much time the same pixels represent; waveform rendering, clip width, gridlines, scrub hit testing, beat/time ruler labels, and playhead x all share that scale.</li>
+          <li>Loop is a visible global brace with start and length, not only a hidden toolbar toggle.</li>
+        </ul>
+      </article>
+
+      <article class="panel">
+        <h2>Current Gaps</h2>
+        <ul>
+          <li><code>DAW_TIMELINE_PX_PER_SECOND = 8</code> is fixed, so the UI cannot compress or expand time.</li>
+          <li>There is no BPM-backed bars/beats ruler yet; elapsed seconds are available, but musical time is not displayed like Ableton.</li>
+          <li>Waveform clip widths and live waveform columns use the fixed scale, so zoom would currently drift or require duplicate math.</li>
+          <li>Playback has Play/Stop/Loop/Return, but no DAW-grade insert marker, loop brace, or visible scrub zone.</li>
+          <li>Follow-scroll exists as completed work, but needs a regression gauntlet across recording, loaded playback, manual scroll, and zoom.</li>
+        </ul>
+      </article>
+
+      <article class="panel">
+        <h2>Gauntlet</h2>
+        <ul>
+          <li>At every zoom level, the same time maps to the same x for ruler tick, gridline, waveform clip edge, scrub target, and playhead.</li>
+          <li>Loaded takes and live recording both keep waveform content aligned with elapsed time after resize and scroll.</li>
+          <li>Click background sets a play position; click clip selects it; drag ruler/scrub area seeks without accidentally changing track selection.</li>
+          <li>Loop on/off, loop start, and loop length are visible and testable; Return resets position without losing the loop range.</li>
+        </ul>
+      </article>
+    </section>
+
+    <section class="grid">
+      <article class="panel" style="grid-column: 1 / -1;">
+        <h2>Proposed GitHub Issues</h2>
+        <div class="issue-list">
+          <div class="issue">
+            <b>epic: DAW-grade Session timeline polish for 0.9.1</b>
+            <p>Umbrella tying Ableton-inspired behavior to the existing Session architecture, without reopening #990 or #732.</p>
+            <span class="pill">epic</span><span class="pill">area:ui</span><span class="pill">playback</span><span class="pill">factory:lane:daw</span>
+          </div>
+          <div class="issue">
+            <b>feat: Shared zoomable timeline scale for ruler, playhead, gridlines, clips, and waveforms</b>
+            <p>Replace the fixed px/sec constant with a single view-scale model and prove every renderer consumes it.</p>
+            <span class="pill">P0</span><span class="pill">tdd</span><span class="pill">effort:m</span>
+          </div>
+          <div class="issue">
+            <b>feat: Add DAW-style overview, scrub zone, and fit/zoom controls</b>
+            <p>Expose fit-full, zoom-to-selection, zoom-back, and ruler/overview gestures so time navigation feels normal.</p>
+            <span class="pill">P1</span><span class="pill">area:renderer</span><span class="pill">effort:m</span>
+          </div>
+          <div class="issue">
+            <b>feat: Add BPM-backed beats/time ruler display without quantization</b>
+            <p>Use BPM to label bars/beats alongside elapsed time while leaving playback, scrub, and waveform timing in real seconds.</p>
+            <span class="pill">P1</span><span class="pill">playback</span><span class="pill">no quantization</span>
+          </div>
+          <div class="issue">
+            <b>feat: Separate insert marker, playhead, time selection, and clip selection</b>
+            <p>Make click targets DAW-correct: track background sets time, clip selects clip, ruler/scrub seeks, drag selects time.</p>
+            <span class="pill">P1</span><span class="pill">playback</span><span class="pill">effort:l</span>
+          </div>
+          <div class="issue">
+            <b>feat: Render and edit a visible Arrangement loop brace</b>
+            <p>Turn Loop into a time range with a brace, draggable body, draggable edges, and loop-from-selection behavior.</p>
+            <span class="pill">P1</span><span class="pill">playback</span><span class="pill">effort:m</span>
+          </div>
+          <div class="issue">
+            <b>test(e2e): Session timeline alignment gauntlet across zoom, scroll, playback, recording, and resize</b>
+            <p>Pin the behavior that makes the DAW feel trustworthy: no ruler/playhead/waveform drift under real user navigation.</p>
+            <span class="pill">P0</span><span class="pill">e2e</span><span class="pill">effort:m</span>
+          </div>
+        </div>
+      </article>
+    </section>
+  </main>
+</body>
+</html>
