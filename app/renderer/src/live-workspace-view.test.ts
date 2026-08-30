@@ -36,6 +36,7 @@ import { createTimelineTempo } from './timeline-bpm';
 import { timelineRulerLabels } from './timeline-ruler-labels';
 import type { SessionTabWaveformView } from './session-tab-waveforms';
 import { sessionTabPlaybackView } from './session-tab-playback';
+import { timelineBpmControlView, TIMELINE_BPM_REJECTED_MESSAGE } from './timeline-bpm-control';
 
 // The pure helper classic-scripts the view module reads off `window` — real
 // modules (not hand-rolled stubs), same convention as
@@ -115,6 +116,7 @@ function makeState(overrides: Partial<LiveWorkspaceViewState> = {}): LiveWorkspa
     sessionPlayback: overrides.sessionPlayback ?? null,
     capturePhase: overrides.capturePhase ?? 'idle',
     sessionRoutingDrawerOpen: overrides.sessionRoutingDrawerOpen ?? false,
+    timelineBpm: overrides.timelineBpm ?? null,
   };
 }
 
@@ -220,6 +222,40 @@ describe('Session routing drawer shell (#1089)', () => {
 
     expect(html).toContain('aria-expanded="false"');
     expect(html).toContain('<section class="daw-session-routing-drawer" id="daw-session-routing-drawer" aria-label="Routing" hidden>');
+  });
+});
+
+describe('Session BPM control (#1276)', () => {
+  it('renders the default 120 BPM control inside the transport row', () => {
+    const html = dawShellHTML(makeState());
+
+    expect(html).toContain('id="daw-session-bpm"');
+    expect(html).toContain('value="120"');
+    const bpmIndex = html.indexOf('id="daw-session-bpm"');
+    expect(bpmIndex).toBeGreaterThan(html.indexOf('daw-transport-time'));
+    expect(bpmIndex).toBeLessThan(html.indexOf('live-meters-toolbar'));
+  });
+
+  it("sources the ruler's bars/beats labels from the supplied BPM control tempo", () => {
+    const html240 = dawShellHTML(makeState({ timelineBpm: timelineBpmControlView(createTimelineTempo(240)) }));
+    expect(html240).toContain('value="240"');
+    expect(html240).toContain('>11.1<');
+
+    const htmlDefault = dawShellHTML(makeState());
+    expect(htmlDefault).toContain('>6.1<');
+  });
+
+  it('shows invalid feedback from the supplied control view', () => {
+    const html = dawShellHTML(makeState({
+      timelineBpm: timelineBpmControlView(createTimelineTempo(), TIMELINE_BPM_REJECTED_MESSAGE),
+    }));
+
+    expect(html).toContain('aria-invalid="true"');
+    expect(html).toContain(TIMELINE_BPM_REJECTED_MESSAGE);
+  });
+
+  it('leaves default callers with no BPM control', () => {
+    expect(liveWorkspaceViewState({ ...makeState(), demoting: false }, settings()).timelineBpm).toBeNull();
   });
 });
 
