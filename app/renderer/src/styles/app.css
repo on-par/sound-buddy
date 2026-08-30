@@ -921,6 +921,8 @@
     .daw-zoom-btn { min-width:28px; height:var(--control-h-sm); padding:0 8px; border:1px solid var(--border-subtle); border-radius:var(--radius-sm); background:var(--surface-raised); color:var(--text-primary); font:var(--fw-medium) var(--fs-label)/1 var(--font-sans); cursor:pointer; transition:var(--transition-control); }
     .daw-zoom-btn:disabled { opacity:0.45; cursor:default; }
     .daw-transport-zoom-range { padding:0 4px; font:var(--fw-regular) var(--fs-micro)/1 var(--font-mono); font-variant-numeric:tabular-nums; color:var(--text-muted); }
+    .daw-follow-btn { min-width:28px; height:var(--control-h-sm); padding:0 8px; border:1px solid var(--border-subtle); border-radius:var(--radius-sm); background:var(--surface-raised); color:var(--text-primary); font:var(--fw-medium) var(--fs-label)/1 var(--font-sans); cursor:pointer; transition:var(--transition-control); }
+    .daw-follow-btn.active { border-color:var(--gold-500); background:var(--gold-tint); color:var(--gold-text); }
     /* The Session overview strip (#1282): the WHOLE session duration in one fixed-width
        band, with a box marking the slice the zoomed timeline column is showing. Its
        children are positioned in PERCENT OF DURATION, not shell-local px — so this

@@ -50,6 +50,7 @@ const soundcheckPlayheadTs = fs.readFileSync(fileURLToPath(new URL('./soundcheck
 const sessionTimelineScrubTs = fs.readFileSync(fileURLToPath(new URL('./session-timeline-scrub.ts', import.meta.url)), 'utf8');
 const sessionRulerScrubTs = fs.readFileSync(fileURLToPath(new URL('./session-ruler-scrub.ts', import.meta.url)), 'utf8');
 const sessionTabPlaybackTs = fs.readFileSync(fileURLToPath(new URL('./session-tab-playback.ts', import.meta.url)), 'utf8');
+const timelineFollowScrollTs = fs.readFileSync(fileURLToPath(new URL('./timeline-follow-scroll.ts', import.meta.url)), 'utf8');
 const timelineRulerLabelsTs = fs.readFileSync(fileURLToPath(new URL('./timeline-ruler-labels.ts', import.meta.url)), 'utf8');
 
 function functionBody(src: string, name: string): string {
@@ -233,6 +234,30 @@ describe('Session zoom/fit control wiring (#1284)', () => {
     const zoomControlsTs = fs.readFileSync(fileURLToPath(new URL('./timeline-zoom-controls.ts', import.meta.url)), 'utf8');
     expect(zoomControlsTs).not.toMatch(/from '\.\/daw-shell-runtime'/);
     expect(zoomControlsTs).not.toContain("'px'");
+  });
+});
+
+describe('Session follow-scroll toggle wiring (#1286)', () => {
+  it('dawShellHTML emits the Follow toggle', () => {
+    expect(workspaceViewTs).toContain('timelineFollowButtonHTML(');
+  });
+
+  it('LiveCapturePanel pauses on a manual timeline wheel and resumes from play/seek/navigate', () => {
+    expect(liveCapturePanelTsx).toContain('timelineFollowEventForWheel(');
+    expect(liveCapturePanelTsx).toContain("applyTimelineFollowEvent(m, 'play')");
+    expect(liveCapturePanelTsx).toContain("applyTimelineFollowEvent(m, 'seek')");
+    expect(liveCapturePanelTsx).toContain("applyTimelineFollowEvent(m, 'navigate')");
+    expect(liveCapturePanelTsx).toContain("applyTimelineFollowEvent(m, 'toggle')");
+  });
+
+  it('app.css styles the follow toggle', () => {
+    expect(css).toContain('.daw-follow-btn');
+  });
+
+  it('the follow model never imports the shell runtime, the store, or the tempo model (ADR-0104/0107)', () => {
+    expect(timelineFollowScrollTs).not.toMatch(/from '\.\/daw-shell-runtime'/);
+    expect(timelineFollowScrollTs).not.toMatch(/from '\.\/timeline-bpm'/);
+    expect(timelineFollowScrollTs).not.toMatch(/from '\.\/stores\//);
   });
 });
 
@@ -818,6 +843,7 @@ describe('BPM stays out of every coordinate owner (#1277, ADR-0104)', () => {
     ['session-timeline-scrub.ts', sessionTimelineScrubTs],
     ['session-ruler-scrub.ts', sessionRulerScrubTs],
     ['session-tab-playback.ts', sessionTabPlaybackTs],
+    ['timeline-follow-scroll.ts', timelineFollowScrollTs],
   ];
 
   it.each(coordinateOwners)('%s does not import ./timeline-bpm', (_name, src) => {

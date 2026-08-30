@@ -47,6 +47,7 @@ import { createTimelineTempo } from './timeline-bpm';
 import { timelineRulerLabels } from './timeline-ruler-labels';
 import { timelineBpmControlHTML, timelineBpmControlView, type TimelineBpmControlView } from './timeline-bpm-control';
 import { timelineZoomControlsHTML, timelineZoomControlsView, createTimelineZoomModel, type TimelineZoomControlsView } from './timeline-zoom-controls';
+import { createTimelineFollowModel, timelineFollowButtonHTML, timelineFollowView, type TimelineFollowView } from './timeline-follow-scroll';
 import { sessionTabSessionPickerHTML, type SessionTabSessionPickerView } from './session-tab-session-picker';
 import { sessionTakeDurationSecs, type SessionTabWaveformClip, type SessionTabWaveformView } from './session-tab-waveforms';
 import { timelineOverviewHTML, timelineOverviewView } from './timeline-overview';
@@ -97,6 +98,9 @@ export interface LiveWorkspaceViewState {
   /** The Session toolbar's zoom/fit control state (#1284). null for callers that do
    *  not own it - dawShellHTML then falls back to a full-range model at duration 0. */
   timelineZoom: TimelineZoomControlsView | null;
+  /** The Session toolbar's follow-scroll state (#1286). null for callers that do
+   *  not own it - dawShellHTML then falls back to the default (following) model. */
+  timelineFollow: TimelineFollowView | null;
 }
 
 // The slice of liveCaptureStore's state that liveWorkspaceViewState() reads —
@@ -152,6 +156,7 @@ export function liveWorkspaceViewState(
   sessionRoutingDrawerOpen = false,
   timelineBpm: TimelineBpmControlView | null = null,
   timelineZoom: TimelineZoomControlsView | null = null,
+  timelineFollow: TimelineFollowView | null = null,
 ): LiveWorkspaceViewState {
   return {
     channelConfig: lc.channelConfig,
@@ -179,6 +184,7 @@ export function liveWorkspaceViewState(
     sessionRoutingDrawerOpen,
     timelineBpm,
     timelineZoom,
+    timelineFollow,
   };
 }
 
@@ -707,6 +713,9 @@ export function dawShellHTML(state: LiveWorkspaceViewState, routingDrawerContent
   // the visible range does not resolve to a scale until #1283 adds scroll.
   const zoomControls = state.timelineZoom
     ?? timelineZoomControlsView(createTimelineZoomModel(0), { durationSecs: 0, playheadSecs: 0, selection: null });
+  // The follow-scroll toggle (#1286). A caller that owns no model renders the
+  // default: follow on. The viewport it will eventually move is #1283.
+  const followControl = state.timelineFollow ?? timelineFollowView(createTimelineFollowModel());
   // The overview strip (#1282): the whole session duration in one fixed-width
   // band with a visible-range box. Percent-of-duration space, NOT shell-local
   // px — see the #1282 ADR. shellWidthPx is 0 here because a string builder
@@ -788,6 +797,7 @@ export function dawShellHTML(state: LiveWorkspaceViewState, routingDrawerContent
     + `<span class="daw-transport-time">${getDawPlayheadState().formatElapsed(seededElapsed)}</span>`
     + timelineBpmControlHTML(bpmControl)
     + timelineZoomControlsHTML(zoomControls)
+    + timelineFollowButtonHTML(followControl)
     + liveWorkspaceToolbarHTML(state)
     + (state.sessionPicker ? sessionTabSessionPickerHTML(state.sessionPicker) : '')
     + (state.sessionPlayback ? sessionTabPlaybackHTML(state.sessionPlayback) : '')
