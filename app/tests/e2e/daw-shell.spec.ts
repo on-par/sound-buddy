@@ -135,6 +135,19 @@ test.describe('DAW shell playback + waveform rendering (#713)', () => {
     await expect(window.locator('.daw-ruler .daw-ruler-label').nth(1).locator('.daw-ruler-label-bars')).toHaveText('6.1');
   });
 
+  test('fit/zoom controls narrow, widen, and restore the visible range (#1284)', async () => {
+    const readout = window.locator('#daw-zoom-range');
+    await window.locator('#daw-zoom-fit').click();
+    const full = await readout.textContent();
+    await window.locator('#daw-zoom-in').click();
+    await expect(readout).not.toHaveText(full ?? '');
+    await window.locator('#daw-zoom-out').click();
+    await expect(readout).toHaveText(full ?? '');
+    await window.locator('#daw-zoom-selection').click();
+    await window.locator('#daw-zoom-back').click();
+    await expect(readout).toHaveText(full ?? '');
+  });
+
   test('solo dims non-soloed lanes and clearing the final solo restores them (#1056)', async () => {
     const firstLane = window.locator('.daw-channel-lane[data-ch="0"]');
     const secondLane = window.locator('.daw-channel-lane[data-ch="1"]');

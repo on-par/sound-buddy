@@ -64,10 +64,18 @@ import {
 } from './live-workspace-view';
 import { sessionTabSessionPickerAction, sessionTabSessionPickerView } from './session-tab-session-picker';
 import { paintSessionTabWaveformClips, sessionTabWaveformView, sessionTakeDurationSecs } from './session-tab-waveforms';
-import { patchTimelineOverview, type TimelineOverviewShellLike } from './timeline-overview';
+import { patchTimelineOverview, timelineOverviewDurationSecs, type TimelineOverviewShellLike } from './timeline-overview';
 import { sessionTabPlaybackView } from './session-tab-playback';
 import { createTimelineTempo, type TimelineTempo } from './timeline-bpm';
 import { commitTimelineBpmEntry, timelineBpmControlView, TIMELINE_BPM_INPUT_ID } from './timeline-bpm-control';
+import {
+  applyTimelineZoom,
+  createTimelineZoomModel,
+  timelineZoomActionForId,
+  timelineZoomControlsView,
+  type TimelineZoomContext,
+  type TimelineZoomModel,
+} from './timeline-zoom-controls';
 import { beginSessionTimelineScrub } from './session-timeline-scrub';
 import { createSoundcheckTransportController } from './soundcheck-transport-controller';
 import { runtime, recordCapture, stopLiveCapture } from './LiveControls';
@@ -157,6 +165,10 @@ export default function LiveCapturePanel(): JSX.Element | null {
   // above — persistence across restarts is not in this slice's scope.
   const [timelineTempo, setTimelineTempo] = useState<TimelineTempo>(createTimelineTempo);
   const [bpmMessage, setBpmMessage] = useState('');
+  // The Session zoom/fit model (#1284). Local state, not the store: it is view
+  // navigation, not capture or session data. It self-heals against a changing
+  // duration - applyTimelineZoom normalizes the stored range every call.
+  const [timelineZoom, setTimelineZoom] = useState<TimelineZoomModel>(() => createTimelineZoomModel(0));
   const s = useStoreShallow(useLiveCaptureStore, (st) => ({
     channelConfig: st.channelConfig,
     channelGroups: st.channelGroups,
@@ -207,6 +219,19 @@ export default function LiveCapturePanel(): JSX.Element | null {
   const sessionPicker = sessionTabSessionPickerView(soundcheck.recordedSessions, soundcheck.sessionDir, soundcheck.manifest, soundcheck.statusMessage);
   const sessionWaveforms = sessionTabWaveformView(soundcheck.manifest, soundcheck.peaks, soundcheck.peaksStatus, s.channelConfig);
   const sessionPlayback = sessionTabPlaybackView(soundcheck.manifest, soundcheck.playing, soundcheck.looping);
+  // The Session zoom/fit context (#1284). Reuses the two values patchOverview
+  // already reads so fit-full and the overview strip agree by construction.
+  const elapsedSecs = (getDawShellRuntime()?.playheadElapsedMs?.() ?? 0) / MS_PER_SECOND;
+  const takeSecs = sessionTakeDurationSecs(sessionWaveforms);
+  const zoomContext: TimelineZoomContext = {
+    durationSecs: timelineOverviewDurationSecs(takeSecs, elapsedSecs),
+    playheadSecs: elapsedSecs,
+    // No time-selection surface exists yet (#1283/#1285), so the loaded take's
+    // span is the selection; with no take, applyTimelineZoom falls back to an
+    // insert-marker window at the playhead.
+    selection: takeSecs > 0 ? { startSecs: 0, endSecs: takeSecs } : null,
+  };
+  const timelineZoomView = timelineZoomControlsView(timelineZoom, zoomContext);
   const lc = useLiveCaptureStore.getState();
   const capturePhase = window.liveTransitionState.capturePhase({
     liveRunning: s.isCapturing,
@@ -225,6 +250,7 @@ export default function LiveCapturePanel(): JSX.Element | null {
     capturePhase,
     sessionRoutingDrawerOpen,
     timelineBpm,
+    timelineZoomView,
   );
   const laneSignature = dawShellPatchView(state).laneSignature;
 
@@ -418,6 +444,16 @@ export default function LiveCapturePanel(): JSX.Element | null {
     if (target.closest('#daw-session-stop')) { void useSoundcheckStore.getState().stop(); return; }
     if (target.closest('#daw-session-loop')) { useSoundcheckStore.getState().toggleLoop(); return; }
     if (target.closest('#daw-session-return')) { void useSoundcheckStore.getState().returnToStart(); return; }
+    // Session zoom/fit controls (#1284): id -> action -> the pure reducer.
+    // zoomContext is captured from the current render, which is correct here
+    // for the same reason the BPM branch captures timelineTempo: the handler
+    // is re-created every render.
+    const zoomBtn = target.closest('.daw-zoom-btn');
+    if (zoomBtn) {
+      const action = timelineZoomActionForId(zoomBtn.id);
+      if (action) setTimelineZoom((model) => applyTimelineZoom(model, action, zoomContext));
+      return;
+    }
     // Live coaching dispositions (#613/#614) — engineer control over the card.
     const lapActionBtn = target.closest('[data-lap-action]');
     if (lapActionBtn) {

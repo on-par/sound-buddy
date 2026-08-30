@@ -210,6 +210,31 @@ describe('Session BPM control wiring (#1276)', () => {
   });
 });
 
+describe('Session zoom/fit control wiring (#1284)', () => {
+  it('dawShellHTML emits the compact zoom/fit cluster', () => {
+    expect(workspaceViewTs).toContain('timelineZoomControlsHTML(');
+  });
+
+  it('LiveCapturePanel dispatches clicks through the pure id lookup and reducer', () => {
+    expect(liveCapturePanelTsx).toContain('applyTimelineZoom(');
+    expect(liveCapturePanelTsx).toContain('timelineZoomActionForId(');
+  });
+
+  it("fit-full shares the overview strip's duration rule, not a second one", () => {
+    expect(liveCapturePanelTsx).toContain('timelineOverviewDurationSecs(');
+  });
+
+  it('app.css styles the zoom/fit cluster', () => {
+    expect(css).toContain('.daw-transport-zoom');
+  });
+
+  it('the visible-range model never imports the shell runtime or computes a pixel value (ADR)', () => {
+    const zoomControlsTs = fs.readFileSync(fileURLToPath(new URL('./timeline-zoom-controls.ts', import.meta.url)), 'utf8');
+    expect(zoomControlsTs).not.toMatch(/from '\.\/daw-shell-runtime'/);
+    expect(zoomControlsTs).not.toContain("'px'");
+  });
+});
+
 describe('Session routing drawer layout (#1089)', () => {
   it('uses a named fixed drawer height while preserving the flexible arrangement timeline', () => {
     expect(css).toContain('--daw-routing-drawer-h');

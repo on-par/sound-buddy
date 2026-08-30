@@ -39,6 +39,7 @@ import { sessionTabPlaybackView } from './session-tab-playback';
 import { timelineBpmControlView, TIMELINE_BPM_REJECTED_MESSAGE } from './timeline-bpm-control';
 import { TIMELINE_OVERVIEW_MIN_DURATION_SECS } from './timeline-overview';
 import { formatRulerElapsed } from './timeline-ruler-labels';
+import { createTimelineZoomModel, applyTimelineZoom, timelineZoomControlsView, TIMELINE_ZOOM_BUTTON_IDS } from './timeline-zoom-controls';
 
 // The pure helper classic-scripts the view module reads off `window` — real
 // modules (not hand-rolled stubs), same convention as
@@ -119,6 +120,7 @@ function makeState(overrides: Partial<LiveWorkspaceViewState> = {}): LiveWorkspa
     capturePhase: overrides.capturePhase ?? 'idle',
     sessionRoutingDrawerOpen: overrides.sessionRoutingDrawerOpen ?? false,
     timelineBpm: overrides.timelineBpm ?? null,
+    timelineZoom: overrides.timelineZoom ?? null,
   };
 }
 
@@ -258,6 +260,32 @@ describe('Session BPM control (#1276)', () => {
 
   it('leaves default callers with no BPM control', () => {
     expect(liveWorkspaceViewState({ ...makeState(), demoting: false }, settings()).timelineBpm).toBeNull();
+  });
+});
+
+describe('Session zoom/fit controls (#1284)', () => {
+  it('renders the compact five-button cluster and range readout inside the transport row', () => {
+    const html = dawShellHTML(makeState());
+
+    expect(html).toContain('class="daw-transport-zoom"');
+    for (const id of Object.values(TIMELINE_ZOOM_BUTTON_IDS)) expect(html).toContain(`id="${id}"`);
+    const zoomIndex = html.indexOf('class="daw-transport-zoom"');
+    expect(zoomIndex).toBeGreaterThan(html.indexOf('daw-transport-time'));
+    expect(zoomIndex).toBeLessThan(html.indexOf('live-meters-toolbar'));
+  });
+
+  it("renders the supplied zoom view's rangeLabel when one is passed via liveWorkspaceViewState", () => {
+    const model = applyTimelineZoom(createTimelineZoomModel(180), 'zoom-in', { durationSecs: 180, playheadSecs: 0, selection: null });
+    const view = timelineZoomControlsView(model, { durationSecs: 180, playheadSecs: 0, selection: null });
+    const html = dawShellHTML(makeState({ timelineZoom: view }));
+
+    expect(html).toContain(view.rangeLabel);
+  });
+
+  it('falls back to a full-range cluster when no zoom view is supplied', () => {
+    expect(liveWorkspaceViewState({ ...makeState(), demoting: false }, settings()).timelineZoom).toBeNull();
+    const html = dawShellHTML(makeState());
+    expect(html).toContain('0:00 - 0:01');
   });
 });
 
