@@ -397,8 +397,8 @@ export default function LiveCapturePanel(): JSX.Element | null {
   // is rebuilt on every render.
   useEffect(() => {
     if (s.appMode !== 'live') return;
-    const shell = document.getElementById('live-island')?.querySelector('.daw-shell');
-    patchTimelineScrollOffset(shell as HTMLElement | null, timelineScrollOffsetPx(timelineZoom.range, SESSION_TIMELINE_SCALE.pxPerSecond));
+    const shell = document.getElementById('live-island')?.querySelector<HTMLElement>('.daw-shell') ?? null;
+    patchTimelineScrollOffset(shell, timelineScrollOffsetPx(timelineZoom.range, SESSION_TIMELINE_SCALE.pxPerSecond));
   });
 
   // The playhead ticker (TD-001 slice 6j, #713): a requestAnimationFrame loop
