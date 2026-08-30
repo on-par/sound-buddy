@@ -4,6 +4,8 @@
 import { describe, expect, it } from 'vitest';
 import { DAW_TIMELINE_PX_PER_SECOND, dawTimelineX } from './daw-shell-runtime';
 import { paintSessionTabWaveformClips, sessionTabWaveformView } from './session-tab-waveforms';
+import { createTimelineScale } from './timeline-scale';
+import { waveformColumns } from './soundcheck-waveform';
 import type { SessionPeaksDto } from '../../electron/ipc/api';
 import type { SessionManifest } from './soundcheck-panel';
 import type { StripConfig } from './live-capture-panel';
@@ -137,6 +139,35 @@ describe('sessionTabWaveformView', () => {
 
     expect(sessionTabWaveformView(duplicateManifest, duplicatePeaks, 'ready', config).clips).toEqual([]);
   });
+
+  it('derives clip width and left from the injected shared scale at every zoom state', () => {
+    const cases = [
+      createTimelineScale('fit', { durationSecs: 1, viewportWidthPx: 20 }),
+      createTimelineScale('default'),
+      createTimelineScale('zoomed-in'),
+      createTimelineScale('zoomed-out'),
+    ];
+    const widths: number[] = [];
+    for (const scale of cases) {
+      const [clip] = sessionTabWaveformView(manifest(), peaks(), 'ready', config, scale).clips;
+      const endSecs = clip.pairs.length / clip.bucketsPerSecond;
+      expect(clip.leftPx).toBe(scale.timeToX(0));
+      expect(clip.widthPx).toBeCloseTo(scale.timeToX(endSecs) - scale.timeToX(0));
+      expect(clip.pxPerSecond).toBe(scale.pxPerSecond);
+      widths.push(clip.widthPx);
+    }
+    expect(new Set(widths).size).toBe(4);
+  });
+
+  it('defaults to the fixed scale so pre-existing callers get byte-identical geometry', () => {
+    expect(sessionTabWaveformView(manifest(), peaks(), 'ready', config, createTimelineScale('default')))
+      .toEqual(sessionTabWaveformView(manifest(), peaks(), 'ready', config));
+
+    const [clip] = sessionTabWaveformView(manifest(), peaks(), 'ready', config).clips;
+    expect(clip.leftPx).toBe(dawTimelineX(0));
+    expect(clip.widthPx).toBe(DAW_TIMELINE_PX_PER_SECOND);
+    expect(clip.pxPerSecond).toBe(DAW_TIMELINE_PX_PER_SECOND);
+  });
 });
 
 describe('paintSessionTabWaveformClips', () => {
@@ -175,5 +206,49 @@ describe('paintSessionTabWaveformClips', () => {
     paintSessionTabWaveformClips(root as unknown as ParentNode, [clip]);
     expect(canvas.width).toBe(0);
     expect(canvas.height).toBe(0);
+  });
+
+  function recordingCanvas(widthPx: number) {
+    const strokes: Array<{ x: number; yTop: number; yBottom: number }> = [];
+    let pending = { x: 0, yTop: 0 };
+    const ctx = {
+      strokeStyle: '', lineWidth: 0,
+      clearRect: () => {}, beginPath: () => {},
+      moveTo: (x: number, y: number) => { pending = { x, yTop: y }; },
+      lineTo: (_x: number, y: number) => { strokes.push({ ...pending, yBottom: y }); },
+      stroke: () => {},
+    };
+    return {
+      strokes,
+      canvas: { width: 0, height: 0, getBoundingClientRect: () => ({ width: widthPx, height: 24 }), getContext: () => ctx },
+    };
+  }
+
+  it('aggregates painted columns at the clip\'s own carried scale, not a module constant', () => {
+    const fourBucketManifest: SessionManifest = { tracks: [{ kind: 'mono', sourceChannels: [4] }] };
+    const fourBucketData = btoa(String.fromCharCode(0, 255, 64, 192, 255, 0, 32, 96));
+    const fourBucketPeaks: SessionPeaksDto = {
+      bucketsPerSecond: 2,
+      tracks: [{ index: 0, label: 'Vocal', kind: 'mono', bucketCount: 4, data: fourBucketData }],
+    };
+
+    const strokeCounts: number[] = [];
+    for (const state of ['default', 'zoomed-out'] as const) {
+      const scale = createTimelineScale(state);
+      const [clip] = sessionTabWaveformView(fourBucketManifest, fourBucketPeaks, 'ready', config, scale).clips;
+      const { strokes, canvas } = recordingCanvas(8);
+      const root = { querySelector: () => canvas };
+
+      paintSessionTabWaveformClips(root as unknown as ParentNode, [clip]);
+
+      const expected = waveformColumns(clip.pairs, clip.bucketsPerSecond, clip.pxPerSecond, 8);
+      expect(strokes.map((s) => s.x)).toEqual(expected.map((_, x) => x + 0.5));
+      expected.forEach((column, x) => {
+        expect(strokes[x].yTop).toBeCloseTo(12 - column.max * 12);
+      });
+      expect(strokes.length).toBeLessThanOrEqual(Math.ceil(clip.widthPx));
+      strokeCounts.push(strokes.length);
+    }
+    expect(strokeCounts[0]).not.toBe(strokeCounts[1]);
   });
 });

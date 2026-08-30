@@ -30,7 +30,7 @@ import {
 import { sessionTabSessionPickerView } from './session-tab-session-picker';
 import { levelPercent, type LiveDevice, type StripConfig, type ChannelGroup, type LiveEvent, type LiveMeterChannel } from './live-capture-panel';
 import type { AppSettings } from '../../electron/ipc/api';
-import { dawTimelineX, dawRulerTicks, dawLaneGridlines, DAW_TIMELINE_SPAN_SECS, DAW_TIMELINE_ORIGIN_PX } from './daw-shell-runtime';
+import { dawTimelineX, dawRulerTicks, dawLaneGridlines, DAW_TIMELINE_SPAN_SECS, DAW_TIMELINE_ORIGIN_PX, DAW_TIMELINE_PX_PER_SECOND } from './daw-shell-runtime';
 import { createTimelineScale } from './timeline-scale';
 import type { SessionTabWaveformView } from './session-tab-waveforms';
 import { sessionTabPlaybackView } from './session-tab-playback';
@@ -145,7 +145,7 @@ describe('boardRunning (#847)', () => {
 describe('Session take clips (#1072)', () => {
   const sessionWaveforms: SessionTabWaveformView = {
     generating: false,
-    clips: [{ trackIndex: 3, stripIndex: 1, leftPx: dawTimelineX(0), widthPx: 16, pairs: [], bucketsPerSecond: 2 }],
+    clips: [{ trackIndex: 3, stripIndex: 1, leftPx: dawTimelineX(0), widthPx: 16, pxPerSecond: DAW_TIMELINE_PX_PER_SECOND, pairs: [], bucketsPerSecond: 2 }],
   };
 
   it('threads the discrete view into one mapped lane and fingerprints its geometry', () => {
