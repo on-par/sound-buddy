@@ -91,6 +91,7 @@ import {
   patchTimelineScrollOffset,
   timelineScrollOffsetPx,
 } from './timeline-scroll-gesture';
+import { applyTimelineZoomGesture } from './timeline-zoom-gesture';
 import { beginSessionTimelineScrub } from './session-timeline-scrub';
 import {
   SESSION_SCRUB_SURFACE_SELECTOR,
@@ -619,10 +620,17 @@ export default function LiveCapturePanel(): JSX.Element | null {
     // synthetic event.
     const wheel = { deltaX: e.deltaX, deltaY: e.deltaY, deltaMode: e.deltaMode, ctrlKey: e.ctrlKey, metaKey: e.metaKey };
     const scrollCtx = { pxPerSecond: SESSION_TIMELINE_SCALE.pxPerSecond, durationSecs: zoomContext.durationSecs };
+    // Zoom (#1291) and pan (#1292) both move the ONE shared visible range React
+    // holds. The two gesture predicates are exact complements (ctrl/meta =>
+    // zoom), so at most one of them ever fires for a given wheel.
+    const zoomCtx = { durationSecs: zoomContext.durationSecs, playheadSecs: zoomContext.playheadSecs };
     setTimelineZoom((m) => {
+      const zoomed = applyTimelineZoomGesture(m.range, wheel, zoomCtx);
+      if (zoomed !== m.range) return { range: zoomed, previousRange: null };
       const next = applyTimelineScroll(m.range, wheel, scrollCtx);
-      // Same reference back => not a pan, or already clamped at a bound: return
-      // the model itself so React bails out instead of re-rendering the board.
+      // Same reference back => not a gesture, or already clamped at a bound:
+      // return the model itself so React bails out instead of re-rendering the
+      // board.
       return next === m.range ? m : { range: next, previousRange: null };
     });
   }
