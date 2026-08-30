@@ -9,6 +9,7 @@ import {
   clampTimelineScale,
   timelineScaleValue,
   timelineXAt,
+  timelineTimeAt,
   createTimelineScale,
   type TimelineZoomState,
 } from './timeline-scale';
@@ -159,6 +160,57 @@ describe('timelineXAt / TimelineScale.timeToX', () => {
   it('a non-finite time resolves to the origin', () => {
     expect(timelineXAt(8, NaN)).toBe(DAW_TIMELINE_ORIGIN_PX);
     expect(timelineXAt(8, Number.POSITIVE_INFINITY)).toBe(DAW_TIMELINE_ORIGIN_PX);
+  });
+});
+
+describe('timelineTimeAt / TimelineScale.xToTime', () => {
+  it('at the shared origin resolves to exactly 0', () => {
+    expect(timelineTimeAt(DAW_TIMELINE_PX_PER_SECOND, DAW_TIMELINE_ORIGIN_PX)).toBe(0);
+  });
+
+  it('is the exact inverse of timelineXAt at the default scale', () => {
+    expect(timelineTimeAt(DAW_TIMELINE_PX_PER_SECOND, DAW_TIMELINE_ORIGIN_PX + 32)).toBe(4);
+  });
+
+  it('is unclamped in time — an x left of the origin returns negative seconds', () => {
+    expect(timelineTimeAt(8, DAW_TIMELINE_ORIGIN_PX - 8)).toBe(-1);
+  });
+
+  it('a non-finite x resolves to 0', () => {
+    expect(timelineTimeAt(DAW_TIMELINE_PX_PER_SECOND, NaN)).toBe(0);
+    expect(timelineTimeAt(DAW_TIMELINE_PX_PER_SECOND, Number.POSITIVE_INFINITY)).toBe(0);
+  });
+
+  it('a non-finite scale resolves to 0', () => {
+    expect(timelineTimeAt(NaN, 300)).toBe(0);
+  });
+
+  it('a non-positive scale resolves to 0', () => {
+    expect(timelineTimeAt(0, 300)).toBe(0);
+    expect(timelineTimeAt(-8, 300)).toBe(0);
+  });
+
+  it('round-trips through timeToX at every zoom state', () => {
+    const states: TimelineZoomState[] = ['fit', 'default', 'zoomed-in', 'zoomed-out'];
+    for (const state of states) {
+      const scale = createTimelineScale(state, { durationSecs: 100, viewportWidthPx: 1000 });
+      for (const t of [0, 1, 2.5, 12.5, 60]) {
+        expect(scale.xToTime(scale.timeToX(t))).toBeCloseTo(t, 10);
+      }
+    }
+  });
+
+  it('round-trips x-first at the default scale', () => {
+    const scale = createTimelineScale('default');
+    for (const x of [208, 240, 288]) {
+      expect(scale.timeToX(scale.xToTime(x))).toBeCloseTo(x, 10);
+    }
+  });
+
+  it("createTimelineScale('default') exposes xToTime as a function on a frozen object", () => {
+    const scale = createTimelineScale('default');
+    expect(Object.isFrozen(scale)).toBe(true);
+    expect(typeof scale.xToTime).toBe('function');
   });
 });
 
