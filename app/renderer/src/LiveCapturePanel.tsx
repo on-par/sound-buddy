@@ -77,6 +77,14 @@ import {
   type TimelineZoomModel,
 } from './timeline-zoom-controls';
 import { beginSessionTimelineScrub } from './session-timeline-scrub';
+import {
+  SESSION_SCRUB_SURFACE_SELECTOR,
+  canBeginSessionScrub,
+  sessionManifestDurationSecs,
+  sessionScrubDurationSecs,
+  sessionScrubSurfaceKind,
+  type SessionScrubGate,
+} from './session-ruler-scrub';
 import { createSoundcheckTransportController } from './soundcheck-transport-controller';
 import { runtime, recordCapture, stopLiveCapture } from './LiveControls';
 import { recordButtonAction } from './record-transport';
@@ -511,19 +519,33 @@ export default function LiveCapturePanel(): JSX.Element | null {
   }
 
   function onBoardPointerDown(e: PointerEvent<HTMLDivElement>): void {
-    if (!soundcheck.playing) return;
     if (!(e.target instanceof Element)) return;
-    const surface = e.target.closest('.daw-ruler, .daw-lane');
-    if (!surface) return;
+    const surfaceEl = e.target.closest(SESSION_SCRUB_SURFACE_SELECTOR);
+    if (!surfaceEl) return;
+    const kind = sessionScrubSurfaceKind(surfaceEl);
+    const gate = (): SessionScrubGate => {
+      const sc = useSoundcheckStore.getState();
+      const lcState = useLiveCaptureStore.getState();
+      return {
+        playing: sc.playing,
+        hasSession: sc.manifest !== null,
+        recording: lcState.isCapturing && lcState.liveMode === 'record',
+      };
+    };
+    if (!canBeginSessionScrub(kind, gate())) return;
 
     beginSessionTimelineScrub({
       root: e.currentTarget,
-      surface,
+      surface: surfaceEl,
       windowTarget: window,
       pointerId: e.pointerId,
       clientX: e.clientX,
-      getDurationSecs: () => useSoundcheckStore.getState().lastElapsedTick?.duration,
-      isPlaying: () => useSoundcheckStore.getState().playing,
+      getDurationSecs: () => sessionScrubDurationSecs({
+        tickDurationSecs: useSoundcheckStore.getState().lastElapsedTick?.duration,
+        takeDurationSecs: takeSecs,
+        manifestDurationSecs: sessionManifestDurationSecs(useSoundcheckStore.getState().manifest),
+      }),
+      canCommitSeek: () => canBeginSessionScrub(kind, gate()),
       previewLeftPx: (leftPx) => {
         document.querySelectorAll<HTMLElement>('.daw-playhead').forEach((playhead) => {
           playhead.style.left = `${leftPx}px`;
