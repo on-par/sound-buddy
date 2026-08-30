@@ -32,6 +32,8 @@ import { levelPercent, type LiveDevice, type StripConfig, type ChannelGroup, typ
 import type { AppSettings } from '../../electron/ipc/api';
 import { dawTimelineX, dawRulerTicks, dawLaneGridlines, DAW_TIMELINE_SPAN_SECS, DAW_TIMELINE_ORIGIN_PX, DAW_TIMELINE_PX_PER_SECOND } from './daw-shell-runtime';
 import { createTimelineScale } from './timeline-scale';
+import { createTimelineTempo } from './timeline-bpm';
+import { timelineRulerLabels } from './timeline-ruler-labels';
 import type { SessionTabWaveformView } from './session-tab-waveforms';
 import { sessionTabPlaybackView } from './session-tab-playback';
 
@@ -624,6 +626,46 @@ describe('dawShellHTML / dawShellPatchView', () => {
     }
     for (const line of dawLaneGridlines(DAW_TIMELINE_SPAN_SECS)) {
       expect(html).toContain(`style="left:${dawTimelineX(line.timeSecs)}px"`);
+    }
+  });
+
+  it('renders a bars/beats and an elapsed-time readout on the ruler (#1275)', () => {
+    const html = dawShellHTML(makeState());
+    expect(html).toContain('class="daw-ruler-label"');
+    expect(html).toContain('class="daw-ruler-label-bars"');
+    expect(html).toContain('class="daw-ruler-label-time"');
+    expect(html).toContain('>1.1</span>');
+    expect(html).toContain('>0:00</span>');
+    const expectedLabels = timelineRulerLabels(DAW_TIMELINE_SPAN_SECS, createTimelineScale('default'), createTimelineTempo());
+    const occurrences = html.split('class="daw-ruler-label"').length - 1;
+    expect(occurrences).toBe(expectedLabels.length);
+  });
+
+  it('both readouts share one positioned element at the tick x (#1275)', () => {
+    const html = dawShellHTML(makeState());
+    const scale = createTimelineScale('default');
+    const labels = timelineRulerLabels(DAW_TIMELINE_SPAN_SECS, scale, createTimelineTempo());
+    for (const label of labels) {
+      expect(label.xPx).toBe(scale.timeToX(label.timeSecs));
+      expect(html).toContain(
+        `<span class="daw-ruler-label" style="left:${label.xPx}px">`
+          + `<span class="daw-ruler-label-bars">${label.bars}</span>`
+          + `<span class="daw-ruler-label-time">${label.elapsed}</span>`
+          + `</span>`
+      );
+    }
+  });
+
+  it('labels sit between the ruler ticks and the ruler playhead (#1275)', () => {
+    const html = dawShellHTML(makeState({ isCapturing: true, liveMode: 'record' }));
+    expect(html.indexOf('daw-ruler-label')).toBeGreaterThan(html.lastIndexOf('class="daw-ruler-tick"'));
+    expect(html.indexOf('daw-ruler-label')).toBeLessThan(html.indexOf('daw-playhead-ruler'));
+  });
+
+  it('leaves every ruler tick and gridline pixel unchanged (#1275)', () => {
+    const html = dawShellHTML(makeState());
+    for (const tick of dawRulerTicks(DAW_TIMELINE_SPAN_SECS)) {
+      expect(html).toContain(`<span class="daw-ruler-tick" style="left:${tick.xPx}px"></span>`);
     }
   });
 

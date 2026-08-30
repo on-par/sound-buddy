@@ -43,6 +43,8 @@ import { levelDisplay } from './spl-calibration';
 import type { AppSettings } from '../../electron/ipc/api';
 import { dawRulerTicks, dawLaneGridlines, DAW_TIMELINE_SPAN_SECS, DAW_TIMELINE_ORIGIN_PX, type DawShellRuntime } from './daw-shell-runtime';
 import { createTimelineScale } from './timeline-scale';
+import { createTimelineTempo } from './timeline-bpm';
+import { timelineRulerLabels } from './timeline-ruler-labels';
 import { sessionTabSessionPickerHTML, type SessionTabSessionPickerView } from './session-tab-session-picker';
 import type { SessionTabWaveformClip, SessionTabWaveformView } from './session-tab-waveforms';
 import { sessionTabPlaybackHTML, type SessionTabPlaybackView } from './session-tab-playback';
@@ -667,6 +669,10 @@ export function dawShellHTML(state: LiveWorkspaceViewState, routingDrawerContent
   // their x from the one shared scale model instead of the fixed constant, so
   // a zoom state can move both together (#1254). Zoom UI is not this story.
   const timelineScale = createTimelineScale('default');
+  // The ruler's display-only tempo (#1275, #1273): labels musical time on the
+  // ruler and never reaches a coordinate. A user-settable BPM is a later
+  // slice of #1260.
+  const timelineTempo = createTimelineTempo();
   const laneGrid = `<span class="daw-lane-grid">${dawLaneGridlines(DAW_TIMELINE_SPAN_SECS, timelineScale)
     .map((line) => `<span class="daw-gridline${line.isMajor ? ' major' : ''}" style="left:${line.xPx}px"></span>`)
     .join('')}</span>`;
@@ -719,6 +725,16 @@ export function dawShellHTML(state: LiveWorkspaceViewState, routingDrawerContent
   const rulerTicks = dawRulerTicks(DAW_TIMELINE_SPAN_SECS, timelineScale)
     .map((tick) => `<span class="daw-ruler-tick" style="left:${tick.xPx}px"></span>`)
     .join('');
+  // The ruler's dual readout (#1275): bars/beats beside elapsed time. Both live
+  // inside ONE positioned span per labelled time, so they share one shell-local x
+  // and cannot drift apart — the x is the same scale.timeToX the tick at that time
+  // used. BPM labels text only; no coordinate is computed through it (ADR-0104).
+  const rulerLabels = timelineRulerLabels(DAW_TIMELINE_SPAN_SECS, timelineScale, timelineTempo)
+    .map((label) => `<span class="daw-ruler-label" style="left:${label.xPx}px">`
+      + `<span class="daw-ruler-label-bars">${label.bars}</span>`
+      + `<span class="daw-ruler-label-time">${label.elapsed}</span>`
+      + `</span>`)
+    .join('');
   const status = dawStatusLineView(state);
   return `<div class="daw-shell" style="--daw-head-w:${DAW_TIMELINE_ORIGIN_PX}px">`
     + `<div class="daw-transport">`
@@ -746,7 +762,7 @@ export function dawShellHTML(state: LiveWorkspaceViewState, routingDrawerContent
     + `<div class="daw-arrangement">`
     + `<div class="daw-track-heads">${rulerGutterHTML}${headRowsHTML}${masterHeadHTML}</div>`
     + `<div class="daw-timeline">`
-    + `<div class="daw-ruler">${rulerTicks}${rulerPlayheadHTML}</div>`
+    + `<div class="daw-ruler">${rulerTicks}${rulerLabels}${rulerPlayheadHTML}</div>`
     + `<div class="daw-lane-column">`
     + laneHTML
     + mixLaneHTML

@@ -926,6 +926,16 @@
        read by .daw-ruler-gutter, so the two paired rows never drift. */
     .daw-ruler { position:relative; overflow:hidden; height:var(--daw-ruler-row-h); box-sizing:border-box; border-radius:var(--radius-sm); background:var(--surface-inset); }
     .daw-ruler-tick { position:absolute; top:0; bottom:0; width:1px; background:var(--border-subtle); }
+    /* The ruler's dual readout (#1275): one absolutely positioned label per
+       labelled tick, carrying BOTH the bars/beats and the elapsed-time text as
+       children — so the two readouts share one shell-local x and cannot drift
+       apart at any zoom state. `left` is exactly the tick's x; the visual gap
+       off the tick line comes from padding, never from a numeric left, so the
+       shared re-base below still applies (ADR-0090). Text is non-interactive
+       and never wraps; the ruler row's own overflow:hidden clips it. */
+    .daw-ruler-label { position:absolute; top:0; bottom:0; display:flex; align-items:center; gap:5px; padding:0 0 0 4px; pointer-events:none; white-space:nowrap; }
+    .daw-ruler-label-bars { font:var(--fw-semibold) var(--fs-micro)/1 var(--font-mono); font-variant-numeric:tabular-nums; color:var(--text-secondary); }
+    .daw-ruler-label-time { font:var(--fw-regular) var(--fs-micro)/1 var(--font-mono); font-variant-numeric:tabular-nums; color:var(--text-muted); }
     /* The playhead's two region segments (#1049): one anchored in the ruler row,
        one over the lane column, so the arrangement shows one vertically aligned
        indicator across both. Each segment spans its OWN region (top:0; bottom:0) —
@@ -1014,7 +1024,7 @@
        column too, so their frame is the timeline column, same as a tick or a
        gridline. Any future absolutely positioned ruler/lane child joins this
        selector list — never its own offset. */
-    .daw-ruler-tick, .daw-gridline, .daw-playhead, .daw-take-clip { transform:translateX(calc(-1 * var(--daw-head-w))); }
+    .daw-ruler-tick, .daw-ruler-label, .daw-gridline, .daw-playhead, .daw-take-clip { transform:translateX(calc(-1 * var(--daw-head-w))); }
     .daw-mix-lane { height:var(--daw-master-row-h); box-sizing:border-box; border-top:1px solid var(--border-strong); background:var(--surface-raised); }
     .daw-mix-lane .daw-lane-body { height:100%; }
     .daw-mix-waveform { display:block; width:100%; height:100%; }
