@@ -7,6 +7,7 @@ import {
   timelineFullDurationSecs,
   visibleRangeSpanSecs,
   visibleRangeOfSpan,
+  visibleRangeAnchorSecs,
   clampVisibleRange,
   createTimelineVisibleRangeModel,
   type TimelineVisibleRange,
@@ -66,6 +67,24 @@ describe('visibleRangeOfSpan', () => {
 
   it('resolves a non-finite spanSecs to the full range', () => {
     expect(visibleRangeOfSpan(100, Number.NaN, 200)).toEqual({ startSecs: 0, endSecs: 200 });
+  });
+});
+
+describe('visibleRangeAnchorSecs (#1291)', () => {
+  it('returns the playhead when it is inside the range', () => {
+    expect(visibleRangeAnchorSecs({ startSecs: 0, endSecs: 300 }, 150)).toBe(150);
+  });
+
+  it('returns the range centre when the playhead is below startSecs', () => {
+    expect(visibleRangeAnchorSecs({ startSecs: 100, endSecs: 200 }, 10)).toBe(150);
+  });
+
+  it('returns the range centre when the playhead is above endSecs', () => {
+    expect(visibleRangeAnchorSecs({ startSecs: 0, endSecs: 100 }, 900)).toBe(50);
+  });
+
+  it('returns the range centre for a non-finite playhead', () => {
+    expect(visibleRangeAnchorSecs({ startSecs: 0, endSecs: 100 }, Number.NaN)).toBe(50);
   });
 });
 

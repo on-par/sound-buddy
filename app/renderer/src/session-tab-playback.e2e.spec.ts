@@ -262,6 +262,41 @@ test.describe('Session tab playback (#1080)', () => {
     await expect(followToggle).toHaveAttribute('aria-pressed', 'true');
   });
 
+  test('a ctrl-modified timeline wheel zooms the shared visible range and clamps at the bounds (#1291)', async () => {
+    const rangeReadout = window.locator('#daw-zoom-range');
+    // The zoom model boots at createTimelineZoomModel(0) (LiveCapturePanel.tsx)
+    // and nothing auto-fits it to the loaded session's duration, so the range
+    // starts already pinned at TIMELINE_MIN_VISIBLE_SPAN_SECS - the readout
+    // below is the minimum-span bound, not an arbitrary starting value.
+    const before = await rangeReadout.textContent();
+
+    // Zoom in from the min-span bound: already clamped, so the gesture is a
+    // documented no-op - the readout does not change.
+    await window.locator('.daw-timeline').dispatchEvent('wheel', { deltaX: 0, deltaY: -240, ctrlKey: true, bubbles: true });
+    await expect(rangeReadout).toHaveText(before ?? '');
+
+    // Zoom out: the visible range widens, so the readout changes.
+    await window.locator('.daw-timeline').dispatchEvent('wheel', { deltaX: 0, deltaY: 240, ctrlKey: true, bubbles: true });
+    await expect(rangeReadout).not.toHaveText(before ?? '');
+
+    // Zoom out far past the bound: TIMELINE_ZOOM_MAX_STEP_FACTOR bounds each
+    // wheel EVENT to one 4x span step (by design - see timeline-zoom-gesture.ts),
+    // so reaching the full-session bound from here takes a few large events,
+    // not one. Repeat until the readout stops moving, then confirm the range
+    // clamps back to the full session and stops there — a further identical
+    // gesture changes nothing.
+    for (let i = 0; i < 6; i += 1) {
+      await window.locator('.daw-timeline').dispatchEvent('wheel', { deltaX: 0, deltaY: 5000, ctrlKey: true, bubbles: true });
+    }
+    const clamped = await rangeReadout.textContent();
+    await window.locator('.daw-timeline').dispatchEvent('wheel', { deltaX: 0, deltaY: 5000, ctrlKey: true, bubbles: true });
+    await expect(rangeReadout).toHaveText(clamped ?? '');
+
+    // Alignment invariant: ruler and lane playhead segments still carry the same x.
+    const rulerLeft = await window.locator('.daw-playhead-ruler').evaluate((el) => getComputedStyle(el).left);
+    await expect(window.locator('.daw-playhead-lanes')).toHaveCSS('left', rulerLeft);
+  });
+
   test('cancelling a Session scrub clears it without seeking on a later pointer release (#1082)', async () => {
     await window.locator('#daw-session-play').click();
     await sendPlaybackEvent({ type: 'progress', elapsed: 2, duration: 10 });

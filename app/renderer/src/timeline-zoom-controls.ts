@@ -17,6 +17,7 @@ import { formatRulerElapsed } from './timeline-ruler-labels';
 import {
   clampVisibleRange,
   timelineFullDurationSecs,
+  visibleRangeAnchorSecs,
   visibleRangeOfSpan,
   TIMELINE_MIN_VISIBLE_SPAN_SECS,
   type TimelineVisibleRange,
@@ -64,13 +65,6 @@ export interface TimelineZoomControlsView {
   canZoomBack: boolean;
 }
 
-/** "around a fixed center or playhead" from the issue: the playhead when it is
- *  finite and inside the current range, otherwise the range's own centre. */
-function anchorSecs(cur: TimelineVisibleRange, playheadSecs: number): number {
-  if (Number.isFinite(playheadSecs) && playheadSecs >= cur.startSecs && playheadSecs <= cur.endSecs) return playheadSecs;
-  return (cur.startSecs + cur.endSecs) / 2;
-}
-
 function selectionRange(ctx: TimelineZoomContext, fullSecs: number): TimelineVisibleRange {
   const sel = ctx.selection;
   if (sel !== null && Number.isFinite(sel.startSecs) && Number.isFinite(sel.endSecs) && sel.endSecs > sel.startSecs) {
@@ -90,9 +84,9 @@ export function applyTimelineZoom(model: TimelineZoomModel, action: TimelineZoom
     case 'fit-full':
       return { range: { startSecs: 0, endSecs: fullSecs }, previousRange: null };
     case 'zoom-in':
-      return { range: visibleRangeOfSpan(anchorSecs(cur, ctx.playheadSecs), (cur.endSecs - cur.startSecs) / TIMELINE_ZOOM_CONTROL_FACTOR, fullSecs), previousRange: null };
+      return { range: visibleRangeOfSpan(visibleRangeAnchorSecs(cur, ctx.playheadSecs), (cur.endSecs - cur.startSecs) / TIMELINE_ZOOM_CONTROL_FACTOR, fullSecs), previousRange: null };
     case 'zoom-out':
-      return { range: visibleRangeOfSpan(anchorSecs(cur, ctx.playheadSecs), (cur.endSecs - cur.startSecs) * TIMELINE_ZOOM_CONTROL_FACTOR, fullSecs), previousRange: null };
+      return { range: visibleRangeOfSpan(visibleRangeAnchorSecs(cur, ctx.playheadSecs), (cur.endSecs - cur.startSecs) * TIMELINE_ZOOM_CONTROL_FACTOR, fullSecs), previousRange: null };
     case 'zoom-to-selection':
       return { range: selectionRange(ctx, fullSecs), previousRange: cur };
     case 'zoom-back':

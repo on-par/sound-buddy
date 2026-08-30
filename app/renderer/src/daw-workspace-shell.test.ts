@@ -54,6 +54,7 @@ const timelineFollowScrollTs = fs.readFileSync(fileURLToPath(new URL('./timeline
 const timelineVisibleRangeTs = fs.readFileSync(fileURLToPath(new URL('./timeline-visible-range.ts', import.meta.url)), 'utf8');
 const timelineRulerLabelsTs = fs.readFileSync(fileURLToPath(new URL('./timeline-ruler-labels.ts', import.meta.url)), 'utf8');
 const timelineScrollGestureTs = fs.readFileSync(fileURLToPath(new URL('./timeline-scroll-gesture.ts', import.meta.url)), 'utf8');
+const timelineZoomGestureTs = fs.readFileSync(fileURLToPath(new URL('./timeline-zoom-gesture.ts', import.meta.url)), 'utf8');
 
 function functionBody(src: string, name: string): string {
   const marker = `function ${name}(`;
@@ -287,6 +288,26 @@ describe('Session horizontal scroll gestures (#1292)', () => {
     expect(timelineScrollGestureTs).toMatch(/from '\.\/timeline-scale'/);
     expect(timelineScrollGestureTs).not.toMatch(/from '\.\/daw-shell-runtime'/);
     expect(timelineScrollGestureTs).not.toMatch(/from '\.\/stores\//);
+  });
+});
+
+describe('Session zoom gestures (#1291)', () => {
+  it('LiveCapturePanel applies the zoom gesture on the timeline wheel', () => {
+    expect(liveCapturePanelTsx).toContain('applyTimelineZoomGesture(');
+  });
+
+  it('the gesture module owns no clamp, no scale and no second unit conversion of its own (ADR)', () => {
+    expect(timelineZoomGestureTs).toMatch(/from '\.\/timeline-visible-range'/);
+    expect(timelineZoomGestureTs).toMatch(/from '\.\/timeline-scroll-gesture'/);
+    expect(timelineZoomGestureTs).not.toMatch(/from '\.\/daw-shell-runtime'/);
+    expect(timelineZoomGestureTs).not.toMatch(/from '\.\/timeline-bpm'/);
+    expect(timelineZoomGestureTs).not.toMatch(/from '\.\/stores\//);
+  });
+
+  it('the buttons and the gesture share ONE anchor rule', () => {
+    const zoomControlsTs = fs.readFileSync(fileURLToPath(new URL('./timeline-zoom-controls.ts', import.meta.url)), 'utf8');
+    expect(zoomControlsTs).toContain('visibleRangeAnchorSecs(');
+    expect(zoomControlsTs).not.toMatch(/function anchorSecs\(/);
   });
 });
 

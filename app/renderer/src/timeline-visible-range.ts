@@ -10,7 +10,9 @@
 // MUST NOT import './daw-shell-runtime' or compute an x. Per ADR-0104/0107 it
 // MUST NOT import './timeline-bpm' — no coordinate is computed through the
 // tempo model. Gesture wiring (reading the current playhead, dispatching
-// scroll/zoom events) is #1291/#1292's job, not this module's.
+// scroll/zoom events) is #1291/#1292's job, not this module's — #1291's
+// timeline-zoom-gesture.ts and timeline-zoom-controls.ts's toolbar both read
+// the shared anchor rule from this module's visibleRangeAnchorSecs below.
 
 /** The narrowest visible span the timeline may ever show. */
 export const TIMELINE_MIN_VISIBLE_SPAN_SECS = 1;
@@ -60,6 +62,15 @@ export function visibleRangeOfSpan(centerSecs: number, spanSecs: number, duratio
   const span = clamp(safeSpanSecs, TIMELINE_MIN_VISIBLE_SPAN_SECS, fullSecs);
   const startSecs = clamp(safeCenterSecs - span / 2, 0, fullSecs - span);
   return Object.freeze({ startSecs, endSecs: startSecs + span });
+}
+
+/** The fixed point a zoom keeps in view: the playhead when it is finite and
+ *  inside the range, the range's own centre otherwise. Exported here (rather
+ *  than duplicated) so the #1284 toolbar buttons and the #1291 gesture are
+ *  provably the same rule. */
+export function visibleRangeAnchorSecs(range: TimelineVisibleRange, playheadSecs: number): number {
+  if (Number.isFinite(playheadSecs) && playheadSecs >= range.startSecs && playheadSecs <= range.endSecs) return playheadSecs;
+  return (range.startSecs + range.endSecs) / 2;
 }
 
 export function clampVisibleRange(range: TimelineVisibleRange | null, durationSecs: number): TimelineVisibleRange {
