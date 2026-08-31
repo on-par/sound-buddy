@@ -26,6 +26,9 @@ export const TIMELINE_A11Y_TIME_SELECTION_CLASS = 'daw-a11y-time-selection';
 /** Seconds in a minute — the m:ss formatter's one divisor (no magic numbers). */
 const SECONDS_PER_MINUTE = 60;
 
+/** Zero-based channel index → the one-based number the visible UI shows (#1345: `Ch N`). */
+const DISPLAY_CHANNEL_OFFSET = 1;
+
 /** A snapshot of the arrangement's four states, in real seconds from t=0. Deliberately
  *  structural (not the model interfaces) so this module imports nothing. */
 export interface TimelineAccessibilityState {
@@ -33,6 +36,10 @@ export interface TimelineAccessibilityState {
   insertMarkerSecs: number;
   /** The selected lane's channel index, or null when no clip is selected. */
   selectedClipChannel: number | null;
+  /** The selected lane's track name, when it carries a custom one (#1345). Preferred over the
+   *  channel number so the announcement matches the visible UI. A null, absent, or blank value
+   *  is treated as no name and falls back to the one-based channel label. */
+  selectedClipTrackName?: string | null;
   /** The selected span, or null when nothing is selected. */
   timeSelection: { startSecs: number; endSecs: number } | null;
 }
@@ -57,9 +64,14 @@ export function formatAccessibleTime(timeSecs: number): string {
 }
 
 export function timelineAccessibilityLabels(state: TimelineAccessibilityState): TimelineAccessibilityLabels {
-  const { selectedClipChannel, timeSelection } = state;
+  const { selectedClipChannel, selectedClipTrackName, timeSelection } = state;
+  // #1345: announce what the visible UI shows — a named track by its name, otherwise the
+  // one-based channel number (`Ch N`), never the internal zero-based index.
+  const trackName = typeof selectedClipTrackName === 'string' ? selectedClipTrackName.trim() : '';
   const clipSelection = selectedClipChannel !== null && Number.isInteger(selectedClipChannel) && selectedClipChannel >= 0
-    ? `Clip selected on channel ${selectedClipChannel}`
+    ? trackName !== ''
+      ? `Clip selected on ${trackName}`
+      : `Clip selected on channel ${selectedClipChannel + DISPLAY_CHANNEL_OFFSET}`
     : 'No clip selected';
   const timeSelectionLabel = timeSelection && Number.isFinite(timeSelection.startSecs) && Number.isFinite(timeSelection.endSecs)
     ? `Time selection from ${formatAccessibleTime(timeSelection.startSecs)} to ${formatAccessibleTime(timeSelection.endSecs)}`
