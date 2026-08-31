@@ -60,6 +60,8 @@ const clipClickTs = fs.readFileSync(fileURLToPath(new URL('./clip-click.ts', imp
 const clipSelectionTs = fs.readFileSync(fileURLToPath(new URL('./clip-selection.ts', import.meta.url)), 'utf8');
 const timeSelectionTs = fs.readFileSync(fileURLToPath(new URL('./time-selection.ts', import.meta.url)), 'utf8');
 const timeSelectionDragTs = fs.readFileSync(fileURLToPath(new URL('./time-selection-drag.ts', import.meta.url)), 'utf8');
+// #1306: the arrangement's accessible state labels.
+const timelineAccessibilityLabelsTs = fs.readFileSync(fileURLToPath(new URL('./timeline-accessibility-labels.ts', import.meta.url)), 'utf8');
 
 function functionBody(src: string, name: string): string {
   const marker = `function ${name}(`;
@@ -1094,5 +1096,72 @@ describe('scrub/seek selection preservation (#1305)', () => {
     expect(sessionTimelineScrubTs).not.toMatch(/from '\.\/time-selection'/);
     expect(sessionTimelineScrubTs).not.toContain('selectClip');
     expect(sessionTimelineScrubTs).not.toContain('clearSelection');
+  });
+});
+
+describe('arrangement accessibility labels (#1306)', () => {
+  it('timeline-accessibility-labels.ts is a leaf module with no relative imports', () => {
+    expect(timelineAccessibilityLabelsTs).not.toMatch(/from '\.\//);
+  });
+
+  it('dawShellHTML emits the hidden region and its four state spans, sourced from the shared constants', () => {
+    const body = functionBody(workspaceViewTs, 'dawShellHTML');
+    expect(body).toContain('${TIMELINE_A11Y_REGION_CLASS}');
+    expect(body).toContain('role="group"');
+    expect(body).toContain('aria-label="${TIMELINE_A11Y_REGION_LABEL}"');
+    expect(body).toContain('${TIMELINE_A11Y_INSERT_MARKER_CLASS}');
+    expect(body).toContain('${TIMELINE_A11Y_PLAYHEAD_CLASS}');
+    expect(body).toContain('${TIMELINE_A11Y_CLIP_SELECTION_CLASS}');
+    expect(body).toContain('${TIMELINE_A11Y_TIME_SELECTION_CLASS}');
+    // The class/id constants live in timeline-accessibility-labels.ts, so markup and
+    // painter read the same values and cannot drift.
+    expect(timelineAccessibilityLabelsTs).toContain("TIMELINE_A11Y_REGION_CLASS = 'daw-arrangement-a11y'");
+    expect(timelineAccessibilityLabelsTs).toContain("TIMELINE_A11Y_INSERT_MARKER_CLASS = 'daw-a11y-insert-marker'");
+    expect(timelineAccessibilityLabelsTs).toContain("TIMELINE_A11Y_PLAYHEAD_CLASS = 'daw-a11y-playhead'");
+    expect(timelineAccessibilityLabelsTs).toContain("TIMELINE_A11Y_CLIP_SELECTION_CLASS = 'daw-a11y-clip-selection'");
+    expect(timelineAccessibilityLabelsTs).toContain("TIMELINE_A11Y_TIME_SELECTION_CLASS = 'daw-a11y-time-selection'");
+  });
+
+  it('the region sits inside .daw-arrangement, after the lane column and before the status line', () => {
+    const body = functionBody(workspaceViewTs, 'dawShellHTML');
+    expect(body.lastIndexOf('arrangementA11yHTML')).toBeGreaterThan(body.indexOf('daw-lane-column'));
+    expect(body.lastIndexOf('arrangementA11yHTML')).toBeLessThan(body.indexOf('daw-status-line'));
+  });
+
+  it('adds no visible copy: the region is visually hidden, not display:none', () => {
+    const rule = css.match(/\.daw-arrangement-a11y\s*\{[^}]*\}/);
+    expect(rule).not.toBeNull();
+    expect(rule![0]).toMatch(/width:\s*1px/);
+    expect(rule![0]).toMatch(/clip-path:\s*inset\(50%\)/);
+    expect(rule![0]).not.toMatch(/display:\s*none/);
+  });
+
+  it('adds no visible copy: the label strings appear only in timeline-accessibility-labels.ts', () => {
+    for (const phrase of [
+      'Insert marker at', 'Playhead at', 'Clip selected on channel',
+      'Time selection from', 'No clip selected', 'No time selection',
+    ]) {
+      expect(timelineAccessibilityLabelsTs).toContain(phrase);
+      expect(workspaceViewTs).not.toContain(phrase);
+    }
+  });
+
+  it('the six decorative segments are hidden from assistive tech', () => {
+    expect(workspaceViewTs).toMatch(/daw-insert-marker daw-insert-marker-ruler"[^>]*aria-hidden="true"/);
+    expect(workspaceViewTs).toMatch(/daw-insert-marker daw-insert-marker-lanes"[^>]*aria-hidden="true"/);
+    expect(workspaceViewTs).toMatch(/daw-time-selection-ruler"[^>]*aria-hidden="true"/);
+    expect(workspaceViewTs).toMatch(/daw-time-selection-lanes"[^>]*aria-hidden="true"/);
+    expect(workspaceViewTs).toMatch(/daw-playhead daw-playhead-ruler"[^>]*aria-hidden="true"/);
+    expect(workspaceViewTs).toMatch(/daw-playhead daw-playhead-lanes"[^>]*aria-hidden="true"/);
+  });
+
+  it('the shell runtime is the region\'s single writer, and the region is never an aria-live region', () => {
+    expect(dawShellRuntimeTs).toContain('querySelector(`.${TIMELINE_A11Y_REGION_CLASS}`)');
+    expect(dawShellRuntimeTs).toContain('renderAccessibilityLabels');
+    expect(dawShellRuntimeTs).not.toContain('aria-live');
+    const body = functionBody(workspaceViewTs, 'dawShellHTML');
+    expect(body).not.toContain('aria-live');
+    expect(body).not.toContain('role="status"');
+    expect(body).not.toContain('role="alert"');
   });
 });

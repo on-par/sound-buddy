@@ -632,8 +632,8 @@ describe('dawShellHTML / dawShellPatchView', () => {
 
   it('renders one playhead segment per timeline region while recording and none at the shell level (#1049)', () => {
     const html = dawShellHTML(makeState({ isCapturing: true, liveMode: 'record' }));
-    expect(html).toContain('<span class="daw-playhead daw-playhead-ruler"></span>');
-    expect(html).toContain('<span class="daw-playhead daw-playhead-lanes"></span>');
+    expect(html).toContain('<span class="daw-playhead daw-playhead-ruler" aria-hidden="true"></span>');
+    expect(html).toContain('<span class="daw-playhead daw-playhead-lanes" aria-hidden="true"></span>');
     expect(html.split('class="daw-playhead').length - 1).toBe(2);
     expect(html).not.toContain('<div class="daw-playhead"></div>');
   });
@@ -652,8 +652,8 @@ describe('dawShellHTML / dawShellPatchView', () => {
 
   it('both segments render while recording with zero configured tracks (#1049)', () => {
     const html = dawShellHTML(makeState({ channelConfig: [], isCapturing: true, liveMode: 'record' }));
-    expect(html).toContain('<span class="daw-playhead daw-playhead-ruler"></span>');
-    expect(html).toContain('<span class="daw-playhead daw-playhead-lanes"></span>');
+    expect(html).toContain('<span class="daw-playhead daw-playhead-ruler" aria-hidden="true"></span>');
+    expect(html).toContain('<span class="daw-playhead daw-playhead-lanes" aria-hidden="true"></span>');
   });
 
   it('omits recording playhead and generated waveform canvases while monitoring (#1124)', () => {

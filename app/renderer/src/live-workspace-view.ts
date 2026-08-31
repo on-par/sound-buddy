@@ -56,6 +56,14 @@ import { sessionTabCaptureHTML, recordButtonView } from './record-transport';
 import type { CapturePhase } from './LiveControls';
 import { LANE_TAKE_CLIP_CLASS } from './lane-background-click';
 import { TIME_SELECTION_CLASS } from './time-selection';
+import {
+  TIMELINE_A11Y_REGION_CLASS,
+  TIMELINE_A11Y_REGION_LABEL,
+  TIMELINE_A11Y_INSERT_MARKER_CLASS,
+  TIMELINE_A11Y_PLAYHEAD_CLASS,
+  TIMELINE_A11Y_CLIP_SELECTION_CLASS,
+  TIMELINE_A11Y_TIME_SELECTION_CLASS,
+} from './timeline-accessibility-labels';
 
 export type { DawShellRuntime } from './daw-shell-runtime';
 
@@ -746,15 +754,28 @@ export function dawShellHTML(state: LiveWorkspaceViewState, routingDrawerContent
   // unconditionally — the arrangement always has a defined insert point (default t=0), even
   // with nothing loaded and nothing playing. Emitted BEFORE the playhead in each region so
   // the playhead paints over it when the two coincide.
-  const rulerInsertMarkerHTML = `<span class="daw-insert-marker daw-insert-marker-ruler"></span>`;
-  const laneInsertMarkerHTML = `<span class="daw-insert-marker daw-insert-marker-lanes"></span>`;
+  // aria-hidden (#1306): these segments are pixels only — the arrangement's accessible
+  // state lives in arrangementA11yHTML below, so the decorative spans must contribute no
+  // empty nodes to the accessibility tree.
+  const rulerInsertMarkerHTML = `<span class="daw-insert-marker daw-insert-marker-ruler" aria-hidden="true"></span>`;
+  const laneInsertMarkerHTML = `<span class="daw-insert-marker daw-insert-marker-lanes" aria-hidden="true"></span>`;
   // The time selection's two region segments (#1304), mirroring the insert marker's pair.
   // Hidden until renderTimeSelection paints a real range, and emitted BEFORE the insert
   // marker in each region so the marker and playhead paint above the band.
-  const rulerTimeSelectionHTML = `<span class="${TIME_SELECTION_CLASS} daw-time-selection-ruler" style="display:none"></span>`;
-  const laneTimeSelectionHTML = `<span class="${TIME_SELECTION_CLASS} daw-time-selection-lanes" style="display:none"></span>`;
-  const rulerPlayheadHTML = playheadVisible ? `<span class="daw-playhead daw-playhead-ruler"></span>` : '';
-  const lanePlayheadHTML = playheadVisible ? `<span class="daw-playhead daw-playhead-lanes"></span>` : '';
+  const rulerTimeSelectionHTML = `<span class="${TIME_SELECTION_CLASS} daw-time-selection-ruler" style="display:none" aria-hidden="true"></span>`;
+  const laneTimeSelectionHTML = `<span class="${TIME_SELECTION_CLASS} daw-time-selection-lanes" style="display:none" aria-hidden="true"></span>`;
+  const rulerPlayheadHTML = playheadVisible ? `<span class="daw-playhead daw-playhead-ruler" aria-hidden="true"></span>` : '';
+  const lanePlayheadHTML = playheadVisible ? `<span class="daw-playhead daw-playhead-lanes" aria-hidden="true"></span>` : '';
+  // The arrangement's accessible state (#1306): four spans, one per state, inside one
+  // visually-hidden group. Deliberately carries no live-announcing role — renderPlayhead
+  // reaches the painter at animation rate (see this story's ADR). Seeded empty; the shell
+  // runtime's renderAccessibilityLabels fills it on the first paint after every rebuild.
+  const arrangementA11yHTML = `<div class="${TIMELINE_A11Y_REGION_CLASS}" role="group" aria-label="${TIMELINE_A11Y_REGION_LABEL}">`
+    + `<span class="${TIMELINE_A11Y_INSERT_MARKER_CLASS}"></span>`
+    + `<span class="${TIMELINE_A11Y_PLAYHEAD_CLASS}"></span>`
+    + `<span class="${TIMELINE_A11Y_CLIP_SELECTION_CLASS}"></span>`
+    + `<span class="${TIMELINE_A11Y_TIME_SELECTION_CLASS}"></span>`
+    + `</div>`;
   const headHTML = entries.map((entry) => {
     if (entry.type === 'group') return dawTrackGroupHeaderHTML(entry);
     if (entry.type === 'ungrouped') return `<div class="live-group-head ungrouped" data-group="-1"><span class="live-group-name">Ungrouped</span></div>`;
@@ -842,6 +863,7 @@ export function dawShellHTML(state: LiveWorkspaceViewState, routingDrawerContent
     + lanePlayheadHTML
     + `</div>`
     + `</div>`
+    + arrangementA11yHTML
     + `</div>`
     + `<div class="daw-status-line">`
     + `<span class="daw-status-tracks">${status.tracks}</span>`
