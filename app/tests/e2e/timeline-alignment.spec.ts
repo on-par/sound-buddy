@@ -136,11 +136,15 @@ const FOLLOW_PLAYBACK_DURATION_SECS = 60;
 // view to track something off-screen.
 const FOLLOW_BEYOND_RANGE_SECS = 50;
 const FOLLOW_BEYOND_RANGE_TRANSPORT = '0:50';
-// Where the [0,30] visible range (zoom-fit then zoom-in) pages to when following and the
-// playhead reaches FOLLOW_BEYOND_RANGE_SECS in a 60s session: startSecs clamps to
-// duration - span = 30, i.e. 30s at TIMELINE_PX_PER_SECOND. Load-bearing so the follow
-// assertion proves the range paged to a specific place, not merely that some offset appeared.
-const FOLLOW_PAGED_START_SECS = FOLLOW_PLAYBACK_DURATION_SECS / 2; // 60s duration - 30s span
+// The visible span the follow cases page from: zoom-fit lands the full [0,60] range, then one
+// zoom-in halves it to [0,30] (a 30s span).
+const FOLLOW_PAGED_SPAN_SECS = FOLLOW_PLAYBACK_DURATION_SECS / 2;
+// Where that [0,30] range pages to when following and the playhead reaches
+// FOLLOW_BEYOND_RANGE_SECS in a 60s session: startSecs clamps to duration - span (= 30), i.e.
+// 30s at TIMELINE_PX_PER_SECOND. Derived as duration - span (not hardcoded) so it can never
+// silently diverge from the seeded span. Load-bearing so the follow assertion proves the range
+// paged to a specific place, not merely that some offset appeared.
+const FOLLOW_PAGED_START_SECS = FOLLOW_PLAYBACK_DURATION_SECS - FOLLOW_PAGED_SPAN_SECS;
 const FOLLOW_PAGED_SCROLL_OFFSET_PX = FOLLOW_PAGED_START_SECS * TIMELINE_PX_PER_SECOND;
 
 // Full-height min/max pairs (level 0 -> -1, level 255 -> +1, ADR-0004 quantization),
@@ -731,6 +735,42 @@ test.describe('Timeline alignment invariant (#1325)', () => {
     await expect(window.locator('#daw-session-stop')).toBeVisible();
 
     await expectViewportAdvancesWhileFollowing('following during playback');
+
+    await sendPlaybackEnded();
+    await expect(window.locator('#daw-session-play')).toBeVisible();
+  });
+
+  test('follow resumes auto-tracking the playhead after a manual-scroll pause (#1343)', async () => {
+    // AC3: "Given the user resumes Follow, when playback continues, then the viewport auto-tracks
+    // again." Composes the two proven contracts — the #1328 manual-scroll pause and the #1343
+    // following-page above — around a resume, so it exercises the full pause -> resume -> track arc
+    // that neither existing case covers on its own.
+    await window.locator('#daw-zoom-fit').click();
+    await window.locator('#daw-zoom-in').click();
+    const followToggle = window.locator('#daw-follow-toggle');
+    await expect(followToggle).toHaveAttribute('aria-pressed', 'true');
+
+    await window.locator('#daw-session-play').click();
+    await expect(window.locator('#daw-session-stop')).toBeVisible();
+
+    // Pause: a manual horizontal scroll pans the viewport and pauses follow (the #1328 contract),
+    // and a paused follow then leaves the viewport pinned while the head walks off its right edge.
+    const rulerBox = (await window.locator('.daw-ruler').boundingBox())!;
+    await window.mouse.move(rulerBox.x + rulerBox.width / 2, rulerBox.y + rulerBox.height / 2);
+    await window.mouse.wheel(SCROLL_DELTA_PX, 0);
+    await expect(followToggle).toHaveAttribute('aria-pressed', 'false');
+    await expectViewportPinnedWhilePaused('before resume');
+
+    // Resume: the toggle fires 'toggle' -> following. The head is already off-screen, but follow
+    // pages only on a playhead tick, so nothing moves yet.
+    await followToggle.click();
+    await expect(followToggle).toHaveAttribute('aria-pressed', 'true');
+    await expect(followToggle).toHaveAttribute('title', FOLLOW_FOLLOWING_TITLE);
+
+    // The next progress tick auto-tracks again: the paged offset is clamp-invariant to where the
+    // manual pan left the range, so it lands at the same FOLLOW_PAGED_SCROLL_OFFSET_PX as the
+    // never-paused case above.
+    await expectViewportAdvancesWhileFollowing('after resume');
 
     await sendPlaybackEnded();
     await expect(window.locator('#daw-session-play')).toBeVisible();
