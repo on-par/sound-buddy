@@ -46,7 +46,7 @@ jobs:
 
       - name: Publish to public releases repo
         id: publish
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           repository: on-par/sound-buddy-releases
           tag_name: \${{ github.ref_name }}
@@ -211,7 +211,7 @@ describe('auditReleaseWorkflow', () => {
     const yml = CLEAN_WORKFLOW.replace(
       `      - name: Publish to public releases repo
         id: publish
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           repository: on-par/sound-buddy-releases
           tag_name: \${{ github.ref_name }}
@@ -252,7 +252,7 @@ describe('auditReleaseWorkflow', () => {
 
       - name: Publish to public releases repo
         id: publish
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           repository: on-par/sound-buddy-releases
           tag_name: \${{ github.ref_name }}
@@ -261,7 +261,7 @@ describe('auditReleaseWorkflow', () => {
 `,
       `      - name: Publish to public releases repo
         id: publish
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           repository: on-par/sound-buddy-releases
           tag_name: \${{ github.ref_name }}

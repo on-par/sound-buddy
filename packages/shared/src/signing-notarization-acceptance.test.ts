@@ -111,7 +111,7 @@ describe('#1187 AC2 — notarization succeeds (ticket stapled, spctl accepted)',
       /^\s*APPLE_APP_SPECIFIC_PASSWORD: \$\{\{ secrets\.APPLE_APP_SPECIFIC_PASSWORD \}\}$/m,
     );
     const staplerIndex = releaseWorkflow.indexOf('xcrun stapler validate');
-    const publishIndex = releaseWorkflow.indexOf('uses: softprops/action-gh-release@v2');
+    const publishIndex = releaseWorkflow.indexOf('uses: softprops/action-gh-release@v3');
     expect(staplerIndex).toBeGreaterThan(-1);
     expect(publishIndex).toBeGreaterThan(-1);
     expect(staplerIndex).toBeLessThan(publishIndex);
@@ -140,7 +140,7 @@ describe('#1187 AC3 — no Gatekeeper warning on a clean machine', () => {
   it('a rejected build is never uploaded or published — spctl runs before both', () => {
     const spctlIndex = releaseWorkflow.indexOf('spctl --assess');
     const uploadIndex = releaseWorkflow.indexOf('uses: actions/upload-artifact@v7');
-    const publishIndex = releaseWorkflow.indexOf('uses: softprops/action-gh-release@v2');
+    const publishIndex = releaseWorkflow.indexOf('uses: softprops/action-gh-release@v3');
     expect(spctlIndex).toBeGreaterThan(-1);
     expect(spctlIndex).toBeLessThan(uploadIndex);
     expect(spctlIndex).toBeLessThan(publishIndex);

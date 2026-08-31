@@ -73,7 +73,7 @@ describe('release.yml notarization (#621, retargeted #1237)', () => {
 
   it('runs the stapler + spctl verification before publishing the release', () => {
     const spctlIndex = releaseWorkflow.indexOf('spctl --assess');
-    const publishIndex = releaseWorkflow.indexOf('uses: softprops/action-gh-release@v2');
+    const publishIndex = releaseWorkflow.indexOf('uses: softprops/action-gh-release@v3');
     expect(spctlIndex).toBeGreaterThan(-1);
     expect(publishIndex).toBeGreaterThan(-1);
     expect(spctlIndex).toBeLessThan(publishIndex);
@@ -116,7 +116,7 @@ describe('release.yml dmg publishing (#622, retargeted #1237)', () => {
 
   it('runs the dmg verification before publishing the release', () => {
     const dmgStaplerIndex = releaseWorkflow.indexOf('xcrun stapler validate "$DMG"');
-    const publishIndex = releaseWorkflow.indexOf('uses: softprops/action-gh-release@v2');
+    const publishIndex = releaseWorkflow.indexOf('uses: softprops/action-gh-release@v3');
     expect(dmgStaplerIndex).toBeGreaterThan(-1);
     expect(publishIndex).toBeGreaterThan(-1);
     expect(dmgStaplerIndex).toBeLessThan(publishIndex);
