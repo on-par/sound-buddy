@@ -149,6 +149,11 @@ export function registerSettingsHandlers(): void {
   // hidden until this resolves at boot, so there's no scrim flash either way.
   ipcMain.handle('onboarding-disabled', () => process.env.SOUND_BUDDY_DISABLE_ONBOARDING === '1');
 
+  // test-hooks-enabled — dev/e2e switch (SOUND_BUDDY_TEST_HOOKS) gating renderer
+  // test hooks (currently window.__soundBuddyTimelineScale, #1294). Same shape as
+  // onboarding-disabled above; never set in a shipped build.
+  ipcMain.handle('test-hooks-enabled', () => process.env.SOUND_BUDDY_TEST_HOOKS === '1');
+
   // open-file-dialog
   ipcMain.handle('open-file-dialog', async () => {
     const win = BrowserWindow.getFocusedWindow();

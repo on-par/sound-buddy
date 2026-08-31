@@ -203,6 +203,7 @@ export function createMockSoundBuddy(overrides: Partial<SoundBuddyApi> = {}): Mo
     cancelConsoleSceneCapture: invoke('cancelConsoleSceneCapture', { success: true }),
     onConsoleSceneCaptureProgress: listen<[{ done: number; total: number }]>('onConsoleSceneCaptureProgress'),
     isOnboardingDisabled: invoke('isOnboardingDisabled', false),
+    areTestHooksEnabled: invoke('areTestHooksEnabled', false),
     listDevices: invoke('listDevices', undefined),
     listOutputDevices: invoke('listOutputDevices', undefined),
     openFileDialog: invoke('openFileDialog', null),

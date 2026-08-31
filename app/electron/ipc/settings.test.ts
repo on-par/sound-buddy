@@ -188,6 +188,18 @@ describe('list-rigs / set-active-rig / onboarding-disabled', () => {
       delete process.env.SOUND_BUDDY_DISABLE_ONBOARDING;
     }
   });
+
+  it('test-hooks-enabled reflects SOUND_BUDDY_TEST_HOOKS', async () => {
+    const handler = handlers.get('test-hooks-enabled')!;
+    expect(await handler(null)).toBe(false);
+
+    process.env.SOUND_BUDDY_TEST_HOOKS = '1';
+    try {
+      expect(await handler(null)).toBe(true);
+    } finally {
+      delete process.env.SOUND_BUDDY_TEST_HOOKS;
+    }
+  });
 });
 
 describe('save-rig / delete-rig Pro gating', () => {
