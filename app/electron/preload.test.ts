@@ -114,6 +114,7 @@ const INVOKE_TABLE: Array<{ method: BridgeKey; channel: string; args: unknown[] 
   { method: 'startConsoleSceneCapture', channel: 'start-console-scene-capture', args: ['192.168.1.50'] },
   { method: 'cancelConsoleSceneCapture', channel: 'cancel-console-scene-capture', args: [] },
   { method: 'isOnboardingDisabled', channel: 'onboarding-disabled', args: [] },
+  { method: 'areTestHooksEnabled', channel: 'test-hooks-enabled', args: [] },
   { method: 'listDevices', channel: 'list-devices', args: [] },
   { method: 'listOutputDevices', channel: 'list-output-devices', args: [] },
   { method: 'openFileDialog', channel: 'open-file-dialog', args: [] },

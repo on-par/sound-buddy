@@ -748,6 +748,7 @@ export interface AppInfoApi {
   getAppVersion(): Promise<string>;
   toFileUrl(filePath: string): Promise<string>;
   isOnboardingDisabled(): Promise<boolean>;
+  areTestHooksEnabled(): Promise<boolean>;
 }
 
 export interface SettingsApi {

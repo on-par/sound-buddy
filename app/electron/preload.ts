@@ -156,6 +156,9 @@ export function createBridge(ipc: IpcRendererLike) {
     // Dev/e2e switch (SOUND_BUDDY_DISABLE_ONBOARDING) for the first-run overlay (#69).
     isOnboardingDisabled: () => ipc.invoke('onboarding-disabled'),
 
+    // Dev/e2e switch (SOUND_BUDDY_TEST_HOOKS) gating renderer test hooks (#1294).
+    areTestHooksEnabled: () => ipc.invoke('test-hooks-enabled'),
+
     listDevices: () => ipc.invoke('list-devices'),
 
     // Playback (output) devices for virtual-soundcheck (#44). No micAccess field —
