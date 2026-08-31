@@ -14,6 +14,7 @@ import {
   type TimelineFollowModel,
   type TimelineFollowContext,
 } from './timeline-follow-scroll';
+import { TIMELINE_MIN_VISIBLE_SPAN_SECS } from './timeline-visible-range';
 
 function ctx(overrides: Partial<TimelineFollowContext> = {}): TimelineFollowContext {
   return { playheadSecs: 0, durationSecs: 200, ...overrides };
@@ -185,6 +186,23 @@ describe('timelineFollowZoom', () => {
     const following = createTimelineFollowModel();
     const settled = timelineFollowZoom(zoom, following, ctx({ playheadSecs: 15 }));
     expect(settled.previousRange).toBe(zoom.previousRange);
+  });
+
+  it('never pages the un-framed minimum-span boot placeholder, even far off-range', () => {
+    // The zoom model boots at [0, TIMELINE_MIN_VISIBLE_SPAN_SECS] (createTimelineZoomModel(0))
+    // and is not re-derived to the real duration until a zoom/fit frames a view (#1343): a
+    // playhead well past that 1s window must NOT drag the viewport into a per-tick thrash.
+    const bootZoom = { range: { startSecs: 0, endSecs: TIMELINE_MIN_VISIBLE_SPAN_SECS }, previousRange: null };
+    const following = createTimelineFollowModel();
+    expect(timelineFollowZoom(bootZoom, following, ctx({ playheadSecs: 45, durationSecs: 200 }))).toBe(bootZoom);
+  });
+
+  it('pages once the framed span exceeds the minimum', () => {
+    const framed = { range: { startSecs: 0, endSecs: TIMELINE_MIN_VISIBLE_SPAN_SECS + 9 }, previousRange: null };
+    const following = createTimelineFollowModel();
+    const next = timelineFollowZoom(framed, following, ctx({ playheadSecs: 45, durationSecs: 200 }));
+    expect(next).not.toBe(framed);
+    expect(next.range.startSecs).toBe(45);
   });
 });
 

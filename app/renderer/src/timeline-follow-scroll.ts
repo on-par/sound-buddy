@@ -12,7 +12,7 @@
 // itself is #1283's job; this module only decides state and derives the
 // paged-follow range #1283's viewport wiring will call.
 
-import type { TimelineVisibleRange } from './timeline-visible-range';
+import { TIMELINE_MIN_VISIBLE_SPAN_SECS, visibleRangeSpanSecs, type TimelineVisibleRange } from './timeline-visible-range';
 
 /** Why follow is paused, so the toggle can explain itself and #1283 can log it. */
 export type TimelineFollowPause = 'scroll' | 'zoom' | 'manual';
@@ -132,6 +132,14 @@ export function timelineFollowZoom(
   model: TimelineFollowModel,
   ctx: TimelineFollowContext,
 ): TimelineFollowZoomState {
+  // Do NOT auto-page against the un-framed boot placeholder (#1343). LiveCapturePanel
+  // seeds the zoom model at the minimum visible span (createTimelineZoomModel(0) →
+  // [0, TIMELINE_MIN_VISIBLE_SPAN_SECS]) and nothing re-derives it against the loaded
+  // session's real duration until a zoom/fit/scroll frames a real view (#1284, parked).
+  // At that sub-scale the whole take still fits the physical lane column, so paging a
+  // 1-second window would thrash the viewport every tick during ordinary playback; the
+  // view only auto-tracks once the user has framed a wider range.
+  if (visibleRangeSpanSecs(zoom.range) <= TIMELINE_MIN_VISIBLE_SPAN_SECS) return zoom;
   const next = timelineFollowRange(model, zoom.range, ctx);
   return next === zoom.range ? zoom : { range: next, previousRange: null };
 }
