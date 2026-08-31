@@ -15,9 +15,12 @@ import { launchApp, stopCaptureIfRunning } from './e2e-helpers';
 // that makes the ruler/lane scrub scroll-aware). It is IPC-stubbed (open-dir-dialog,
 // generate-session-peaks, list-output-devices, start-playback), so it needs no
 // sox/ffprobe/python and no packaged .app, and is deliberately NOT added to
-// playwright.config.ts's MEDIA_SPECS. Playback, follow-scroll, and loop-brace/time-selection
-// coverage of the same invariant are out of scope here and land in the sibling slices of
-// epic #1258.
+// playwright.config.ts's MEDIA_SPECS. Playback and live-recording coverage of the same
+// invariant landed here in #1327: the playback playhead is pinned by 'playback-event'
+// progress ticks (no clock involved), while the wall-clock record head is sampled through a
+// synchronous renderPlayhead() repaint so the paint and the clock read share one instant.
+// Follow-scroll and loop-brace/time-selection coverage of the same invariant remain out of
+// scope here and land in the sibling slices of epic #1258.
 
 let electronApp: ElectronApplication;
 let window: Page;
@@ -54,6 +57,32 @@ const SCROLL_DELTA_PX = 40;
 // Narrow enough to force the toolbar into its compact layout's reflow, wide enough that
 // the timeline column still has room to paint all five surfaces under test.
 const RESIZED_WIDTH_PX = 1000;
+
+// The three timestamps the playback case samples at. All multiples of both
+// RULER_TICK_INTERVAL_SECS and the lane grid's 5s minor division, so a ruler tick and a
+// gridline exist at each one; the transport text is the per-sample synchronisation gate
+// (the soundcheck transport controller coalesces progress ticks onto a rAF).
+const PLAYBACK_SAMPLES = [
+  { secs: 5, transport: '0:05' },
+  { secs: 10, transport: '0:10' },
+  { secs: 15, transport: '0:15' },
+];
+// Reported on every progress tick. Larger than the last sample so no sample is a
+// past-the-end position; the fixture's own 1s stems are irrelevant here because playback is
+// stubbed and the clip's painted span comes from the peaks document.
+const PLAYBACK_DURATION_SECS = 20;
+// How many points the recording case samples, and the real time between them. 700ms is
+// 5.6px of record-head travel at TIMELINE_PX_PER_SECOND — comfortably above
+// RECORD_HEAD_MIN_ADVANCE_PX, so "the head moved" is never a rounding artifact.
+const RECORD_SAMPLE_COUNT = 3;
+const RECORD_SAMPLE_INTERVAL_MS = 700;
+// The floor for per-sample record-head travel. Deliberately far below the 5.6px expected at
+// RECORD_SAMPLE_INTERVAL_MS: scheduling delay can only make the real travel larger, so this
+// proves the head is advancing without pinning the test to the machine's timing.
+const RECORD_HEAD_MIN_ADVANCE_PX = 2;
+// The take clip's painted span, from the PEAK_BUCKETS fixture above: 500 buckets at
+// PEAKS_BUCKETS_PER_SECOND is exactly ALIGNMENT_TIME_SECS of arrangement time.
+const CLIP_SPAN_SECS = ALIGNMENT_TIME_SECS;
 
 // Full-height min/max pairs (level 0 -> -1, level 255 -> +1, ADR-0004 quantization),
 // mirroring daw-shell.spec.ts's helper of the same name.
@@ -129,6 +158,138 @@ async function assertFiveSurfacesAlignAt10s(): Promise<number> {
     .toBeLessThanOrEqual(SEEK_TOLERANCE_SECS);
 
   return scrollOffsetPx;
+}
+
+// One atomic reading of every time-positioned surface under test, plus the wall-clock
+// playhead time and the shell's scroll offset. Every x is a viewport bounding-box x, so
+// the shared ADR-0090 translate cancels out of every comparison.
+interface TimelineGeometrySample {
+  // dawPlayheadState's wall-clock elapsed, in seconds. 0 unless a recording is running.
+  playheadElapsedSecs: number;
+  laneHeadX: number;
+  rulerHeadX: number;
+  laneHeadAdvancing: boolean;
+  tickZeroX: number;
+  tickPxPerSecond: number;
+  gridZeroX: number;
+  gridPxPerSecond: number;
+  // NaN when no take clip is painted (the recording case).
+  clipZeroX: number;
+  clipPxPerSecond: number;
+  scrollOffsetPx: number;
+}
+
+// The renderer bridge App.tsx installs on window (#1301) — a structural cast, not `any`.
+type DawShellRuntimeBridge = { renderPlayhead(): void; playheadElapsedMs(): number };
+
+async function sampleTimelineGeometry(repaint: boolean): Promise<TimelineGeometrySample> {
+  return window.evaluate(
+    ({ repaint, tickIndex, timeSecs, clipSpanSecs }) => {
+      const runtime = (window as unknown as { dawShellRuntime: DawShellRuntimeBridge }).dawShellRuntime;
+      // The FIRST statement: writes style.left onto every .daw-playhead segment synchronously,
+      // the same painter LiveWorkspace's applyLiveTick and the soundcheck transport
+      // controller call. The getBoundingClientRect() reads below force layout in this same
+      // turn, and playheadElapsedMs() is read in this same turn too, so the paint and the
+      // clock read share one Date.now() — the whole reason the recording case can use a
+      // 1px tolerance despite the head being wall-clock driven.
+      if (repaint) runtime.renderPlayhead();
+      const playheadElapsedSecs = runtime.playheadElapsedMs() / 1000;
+
+      const shell = document.querySelector('.daw-shell') as HTMLElement;
+      const scrollOffsetPx = parseFloat(getComputedStyle(shell).getPropertyValue('--daw-scroll-x'));
+
+      const ticks = Array.from(document.querySelectorAll('.daw-ruler .daw-ruler-tick'));
+      const tick0Box = ticks[0].getBoundingClientRect();
+      const tickAtBox = ticks[tickIndex].getBoundingClientRect();
+      const tickZeroX = tick0Box.x;
+      const tickPxPerSecond = (tickAtBox.x - tick0Box.x) / timeSecs;
+
+      const gridlines = Array.from(
+        document.querySelectorAll('.daw-channel-lane[data-ch="0"] .daw-lane-grid .daw-gridline'),
+      );
+      const grid0Box = gridlines[0].getBoundingClientRect();
+      const gridAtBox = gridlines[tickIndex].getBoundingClientRect();
+      const gridZeroX = grid0Box.x;
+      const gridPxPerSecond = (gridAtBox.x - grid0Box.x) / timeSecs;
+
+      const clipEl = document.querySelector('.daw-channel-lane[data-ch="0"] .daw-take-clip');
+      const clipBox = clipEl ? clipEl.getBoundingClientRect() : null;
+      const clipZeroX = clipBox ? clipBox.x : NaN;
+      const clipPxPerSecond = clipBox ? clipBox.width / clipSpanSecs : NaN;
+
+      const laneHead = document.querySelector('.daw-playhead-lanes') as HTMLElement;
+      const rulerHead = document.querySelector('.daw-playhead-ruler') as HTMLElement;
+
+      return {
+        playheadElapsedSecs,
+        laneHeadX: laneHead.getBoundingClientRect().x,
+        rulerHeadX: rulerHead.getBoundingClientRect().x,
+        laneHeadAdvancing: laneHead.classList.contains('advancing'),
+        tickZeroX,
+        tickPxPerSecond,
+        gridZeroX,
+        gridPxPerSecond,
+        clipZeroX,
+        clipPxPerSecond,
+        scrollOffsetPx,
+      };
+    },
+    { repaint, tickIndex: ALIGNMENT_TICK_INDEX, timeSecs: ALIGNMENT_TIME_SECS, clipSpanSecs: CLIP_SPAN_SECS },
+  );
+}
+
+// Pure: asserts a sample's surfaces all resolve timeSecs to the same x. No hardcoded pixel
+// value — every expected x is derived from the sample's own measured ruler/gridline/clip
+// origin and px-per-second, so a future change to DAW_TIMELINE_PX_PER_SECOND or
+// DAW_TIMELINE_ORIGIN_PX cannot make this pass for the wrong reason or fail spuriously.
+function expectHeadTracksTimelineAt(sample: TimelineGeometrySample, timeSecs: number, label: string): void {
+  expect(Math.abs(sample.tickPxPerSecond - TIMELINE_PX_PER_SECOND))
+    .toBeLessThanOrEqual(ALIGNMENT_TOLERANCE_PX / ALIGNMENT_TIME_SECS);
+  expect(Math.abs(sample.gridPxPerSecond - TIMELINE_PX_PER_SECOND))
+    .toBeLessThanOrEqual(ALIGNMENT_TOLERANCE_PX / ALIGNMENT_TIME_SECS);
+
+  expect(Math.abs(sample.gridZeroX - sample.tickZeroX)).toBeLessThanOrEqual(ALIGNMENT_TOLERANCE_PX);
+  if (Number.isFinite(sample.clipZeroX)) {
+    expect(Math.abs(sample.clipZeroX - sample.tickZeroX)).toBeLessThanOrEqual(ALIGNMENT_TOLERANCE_PX);
+  }
+
+  const rulerX = sample.tickZeroX + timeSecs * sample.tickPxPerSecond;
+  const gridX = sample.gridZeroX + timeSecs * sample.gridPxPerSecond;
+  // Past the clip's right edge this extrapolates the clip's OWN scale — that scale agreeing
+  // with the ruler's is precisely the invariant under test.
+  const clipX = Number.isFinite(sample.clipZeroX) ? sample.clipZeroX + timeSecs * sample.clipPxPerSecond : NaN;
+
+  const expectAligned = (surfaceLabel: string, x: number, reference: number) => {
+    expect(Math.abs(x - reference), `${label}: ${surfaceLabel} is ${x}px, expected ${reference}px`)
+      .toBeLessThanOrEqual(ALIGNMENT_TOLERANCE_PX);
+  };
+  expectAligned('lane playhead vs ruler tick', sample.laneHeadX, rulerX);
+  expectAligned('ruler playhead vs ruler tick', sample.rulerHeadX, rulerX);
+  expectAligned('lane playhead vs lane gridline', sample.laneHeadX, gridX);
+  if (Number.isFinite(clipX)) {
+    expectAligned('lane playhead vs take clip', sample.laneHeadX, clipX);
+  }
+
+  expect(sample.scrollOffsetPx).toBe(0);
+}
+
+// Mirrors sendPlaybackEvent/sendLiveEvent in session-tab-playback.e2e.spec.ts.
+async function sendPlaybackProgress(elapsedSecs: number): Promise<void> {
+  await electronApp.evaluate(({ BrowserWindow }, evt) => {
+    BrowserWindow.getAllWindows()[0].webContents.send('playback-event', evt);
+  }, { type: 'progress', elapsed: elapsedSecs, duration: PLAYBACK_DURATION_SECS });
+}
+
+async function sendPlaybackEnded(): Promise<void> {
+  await electronApp.evaluate(({ BrowserWindow }, evt) => {
+    BrowserWindow.getAllWindows()[0].webContents.send('playback-event', evt);
+  }, { type: 'ended' });
+}
+
+async function sendLiveMeterTick(): Promise<void> {
+  await electronApp.evaluate(({ BrowserWindow }, evt) => {
+    BrowserWindow.getAllWindows()[0].webContents.send('live-event', evt);
+  }, { type: 'meter', channels: [{ rms: -18, peak: -6 }] });
 }
 
 test.describe('Timeline alignment invariant (#1325)', () => {
@@ -268,5 +429,118 @@ test.describe('Timeline alignment invariant (#1325)', () => {
       }, originalSize);
       await window.waitForFunction((w) => window.innerWidth >= w, originalSize[0]);
     }
+  });
+
+  test('ruler tick, lane gridline, take clip and the playhead share one x at multiple timestamps during loaded-take playback (#1327)', async () => {
+    // Load-bearing: soundcheckStore's playback-event handler drops progress ticks unless
+    // playing is true. start-playback is already stubbed in the shared beforeEach.
+    await window.locator('#daw-session-play').click();
+    await expect(window.locator('#daw-session-stop')).toBeVisible();
+
+    for (const { secs, transport } of PLAYBACK_SAMPLES) {
+      await sendPlaybackProgress(secs);
+      // The synchronisation gate for the rAF-coalesced transport controller repaint.
+      await expect(window.locator('.daw-transport-time')).toHaveText(transport);
+      // No repaint: this path is already deterministic (the head's x is a pure function of
+      // the last progress tick), so the test measures exactly what the production painter
+      // left on screen.
+      const sample = await sampleTimelineGeometry(false);
+      // Proves the PLAYBACK path painted this, not a stray wall-clock record head.
+      expect(sample.playheadElapsedSecs).toBe(0);
+      expectHeadTracksTimelineAt(sample, secs, `playback t=${secs}s`);
+      expect(sample.laneHeadAdvancing).toBe(true);
+    }
+
+    await sendPlaybackEnded();
+    await expect(window.locator('#daw-session-play')).toBeVisible();
+  });
+
+});
+
+// The frozen #1327 plan expected the record head's live-recording case to share this
+// describe's beforeEach (a loaded take clip alongside a running recording). That does not
+// hold in this checkout: LiveCapturePanel.tsx's session-load effect (~line 398) calls
+// `runtime.setPlaybackPosition(lastElapsedTick)` whenever `soundcheck.manifest` is set —
+// soundcheckStore.loadSession seeds `lastElapsedTick` to `{ elapsed: 0, duration: 0 }` (a
+// truthy object) the moment a session loads, before playback ever starts, and there is no
+// UI action that clears it afterwards (`daw-session-picker-select`'s empty option is a
+// documented no-op in LiveCapturePanel.tsx's click handler). renderPlayhead()'s `elapsed`
+// is `playbackPosition ? playbackPosition.elapsed * 1000 : wall clock` — so once a session
+// is loaded the arrangement's single playhead is pinned to the loaded take's (frozen)
+// position for the rest of the test, and a live recording's wall clock can never reach the
+// screen, regardless of live-event ticks. tests/e2e/daw-shell.spec.ts's "starting a capture
+// advances the transport time and moves the playhead" proves the wall-clock path only with
+// no session loaded, confirming this is a real precondition of the checkout, not a flake.
+// This describe therefore mirrors the shared beforeEach's device/lane setup WITHOUT the
+// session-load step, so the record head's own case is exercised the same way #1327's design
+// intended (clipZeroX legitimately NaN throughout, exactly as the frozen plan's grounding
+// notes anticipated) instead of silently degrading into a no-op re-assertion of the
+// playback path. No production code changes — this is a test-file-only divergence.
+test.describe('Timeline alignment invariant during live recording (#1327)', () => {
+  test.beforeAll(async () => {
+    ({ electronApp, window } = await launchApp());
+  });
+
+  test.afterAll(async () => {
+    await electronApp?.close();
+  });
+
+  test.beforeEach(async () => {
+    await electronApp.evaluate(({ ipcMain }) => {
+      ipcMain.removeHandler('list-output-devices');
+      ipcMain.handle('list-output-devices', () => ({ devices: [{ index: 1, name: 'MOTU 8ch', channels: 8 }] }));
+    });
+    await window.reload();
+    await window.waitForLoadState('domcontentloaded');
+    await stopCaptureIfRunning(window);
+    await window.locator('.mode-tab[data-mode="live"]').click();
+    // Seed channelConfig so lanes (and their gridlines) exist — same dance the sibling
+    // describe's beforeEach performs, minus the session-load step (see the comment above).
+    await window.locator('#settings-btn').click();
+    await window.locator('#settings-tab-btn-audio').click();
+    await window.locator('#device-refresh-btn').click();
+    await window.locator('#settings-dialog-done').click();
+    await expect(window.locator('.daw-channel-lane')).toHaveCount(2);
+    await stopCaptureIfRunning(window);
+  });
+
+  test('ruler tick, lane gridline and the record head share one x at multiple points during live recording (#1327)', async () => {
+    // One click promotes idle -> monitoring -> recording (capture-lifecycle.ts's
+    // startPlayhead(Date.now())); start-live/stop-live are stubbed by launchApp(), so no real
+    // capture runs. The shared beforeEach leaves both strips armed, so #arm-hint cannot block.
+    await window.locator('#daw-session-record').click();
+    await expect(window.locator('#live-indicator .live-txt')).toHaveText('REC');
+    await expect(window.locator('.daw-playhead-lanes')).toBeVisible();
+
+    const headLeft = () => window.locator('.daw-playhead-lanes').evaluate((el) => (el as HTMLElement).style.left);
+
+    const samples: TimelineGeometrySample[] = [];
+    for (let i = 0; i < RECORD_SAMPLE_COUNT; i++) {
+      const before = await headLeft();
+      await window.waitForTimeout(RECORD_SAMPLE_INTERVAL_MS);
+      await sendLiveMeterTick();
+      // Load-bearing: proves the PRODUCTION per-frame path (live tick -> rAF meter
+      // controller -> renderPlayhead) is what advances the record head, so the sampler's own
+      // repaint below is only a measurement instrument, not the behaviour under test.
+      await expect.poll(headLeft).not.toBe(before);
+
+      const sample = await sampleTimelineGeometry(true);
+      expect(sample.laneHeadAdvancing).toBe(true);
+      expect(sample.playheadElapsedSecs).toBeGreaterThan(0);
+      expectHeadTracksTimelineAt(sample, sample.playheadElapsedSecs, `recording sample ${i}`);
+      samples.push(sample);
+    }
+
+    // Real motion between consecutive samples — without this the test would still pass
+    // against a frozen head that happens to sit at x=origin.
+    for (let i = 1; i < samples.length; i++) {
+      expect(samples[i].playheadElapsedSecs).toBeGreaterThan(samples[i - 1].playheadElapsedSecs);
+      expect(samples[i].laneHeadX - samples[i - 1].laneHeadX).toBeGreaterThanOrEqual(RECORD_HEAD_MIN_ADVANCE_PX);
+    }
+
+    // Leave the next beforeEach a known board (#776: stop -> monitoring resumes).
+    await window.locator('#daw-session-record').click();
+    await expect(window.locator('#live-indicator .live-txt')).toHaveText('LIVE');
+    await stopCaptureIfRunning(window);
   });
 });
