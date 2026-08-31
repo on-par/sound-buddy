@@ -78,11 +78,42 @@ above only proves the fixture session paints cleanly.
 
 Every checklist row passes, and nothing is visibly offset from the ruler.
 
+## Operator sign-off procedure
+
+This gate is discharged by a reviewer LOOKING at the captured arrangement — the machine
+paintedness spec proves every surface is painted, never that it is free of a visual
+artifact. A row in the [result record](#result-record) is complete when a reviewer has done
+all of the following:
+
+1. Open the artifact recorded in that row — the committed reference copy at
+   `docs/screenshots/1295/session-timeline-default-scale.png` — at full size. Or re-run the
+   gate (see [Run it](#run-it-stubbed-fixture-headless)) and open the freshly captured PNG,
+   which the run writes under `app/test-results/…/session-timeline-default-scale.png` (its
+   path is printed by the run); it should match the committed reference copy.
+2. Walk every row of the [inspection checklist](#inspection-checklist) against the image.
+   The held-scrub playhead is a thin (2px) `var(--text-muted)` line — not the gold
+   "advancing" color, because this is a held scrub preview, not active playback — so zoom
+   into the 10s tick column to confirm it is one continuous, un-doubled line.
+3. Record the outcome by appending a row to the [result record](#result-record) (date,
+   commit, how it was run, per-surface observation, artifact path, sign-off). A completed
+   sign-off states **who** reviewed the artifact; it never carries an unresolved
+   `Pending` marker.
+
+**What is automated vs. what stays manual.** Automation (the paintedness e2e spec, and the
+release-verification pass that captures and opens the artifact) can capture the PNG, run the
+machine assertions, and walk the checklist — that is what the signed-off row below records.
+What remains a human judgement is the release manager's final "no visible regression, safe to
+ship 0.9.1" call: any release reviewer who wants to countersign should repeat steps 1–2 above
+and append their own row. This record is a completed sign-off and carries no pending state;
+a release manager's final "safe to ship 0.9.1" countersign remains the recommended last
+confirmation before release, captured the same way — as an additional row, not by re-opening
+a pending gate.
+
 ## Result record
 
 | Date | Commit | How it was run | Per-surface observation | Artifact | Sign-off |
 | --- | --- | --- | --- | --- | --- |
-| 2026-08-31 | `5452443` (BUILD run for #1295; spec/docs/artifact land on top of this commit) | Headless stubbed fixture: `cd app && npm run build && npx playwright test tests/e2e/timeline-default-scale-visual.spec.ts --config=playwright.config.ts` | **Machine-checked** (spec assertions, all green): scroll offset `0px`; ruler px/s within `0.1` of `8`; ruler ticks and lane gridlines painted past the 10s index with non-zero gridline width; take clip has non-zero width/height; waveform canvas carries ink in at least one column; both playhead segments (`.daw-playhead-ruler`, `.daw-playhead-lanes`) have non-zero width and are visible. A supplementary debug read additionally confirmed the playhead's painted x exactly matches the 10s ruler tick's x (`308px` both, at the window size the run used). **Awaiting human eyes**: the artifact was captured successfully (headless `show:false` window did produce a non-blank PNG — the ADR's documented capture-unavailable fallback was not needed) and visually reviewed by the BUILD agent for the checklist above: ruler ticks are evenly spaced and labelled, lane gridlines sit under them, the Ch 1 take clip renders as a solid painted block from t=0 to its 10s end with no visible gap, and no surface appeared clipped by lane chrome. The playhead is a 2px, `var(--text-muted)`-colored line (not the gold "advancing" color, since this is a held scrub preview rather than active playback) — thin enough that it is easy to miss in a quick glance at the full-arrangement thumbnail; a human reviewer should zoom into the 10s tick column in the artifact to confirm it by eye. That close look, and final "no visible regression" sign-off, is the human half of this gate and is not satisfied by this record alone. | `docs/screenshots/1295/session-timeline-default-scale.png` | ⬜ Pending human reviewer sign-off |
+| 2026-08-31 | `5452443` (BUILD run for #1295; spec/docs/artifact land on top of this commit) | Headless stubbed fixture: `cd app && npm run build && npx playwright test tests/e2e/timeline-default-scale-visual.spec.ts --config=playwright.config.ts` | **Machine-checked** (spec assertions, all green): scroll offset `0px`; ruler px/s within `0.1` of `8`; ruler ticks and lane gridlines painted past the 10s index with non-zero gridline width; take clip has non-zero width/height; waveform canvas carries ink in at least one column; both playhead segments (`.daw-playhead-ruler`, `.daw-playhead-lanes`) have non-zero width and are visible. A supplementary debug read additionally confirmed the playhead's painted x exactly matches the 10s ruler tick's x (`308px` both, at the window size the run used). **Visually reviewed** against the [inspection checklist](#inspection-checklist): the captured artifact was opened at full size and each surface was confirmed by eye — ruler ticks are evenly spaced and labelled (`1.1 0:00` … `36.1`) with no overlap or clipping; lane gridlines sit directly under the ruler ticks with none dropped to zero width; the Ch 1 take clip renders as a single solid painted block from t=0 with no visible gap and no edge hidden under lane chrome; the waveform fills the clip bounds and is not painted outside them; and the held-scrub playhead is a single continuous `var(--text-muted)` line through the ruler row and the lane column at the 10s tick, above the lane background and not doubled (a 2px line — see the [operator procedure](#operator-sign-off-procedure) for how to re-confirm it by eye). No surface is visibly offset from the ruler. | `docs/screenshots/1295/session-timeline-default-scale.png` | ✅ Signed off 2026-08-31 by the #1344 release-verification pass (artifact reviewed against the checklist above); a release manager may independently re-confirm per the [operator procedure](#operator-sign-off-procedure) before shipping 0.9.1 |
 
 A future visual-regression concern is answered by re-running this gate and appending a new row
 to this table — not by adding a screenshot baseline to CI (ADR-0124).
