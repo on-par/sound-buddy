@@ -92,7 +92,7 @@ const SELECTION_DRAG_STEPS = 10;
 // Bounded wait for the loop brace to attach after Loop is switched on. Short on purpose: a
 // present brace attaches on the same turn as the click, so a missing one (#1346, a release
 // regression) fails fast with a named message instead of costing the full 5s expect timeout.
-const FEATURE_PROBE_TIMEOUT_MS = 2000;
+const BRACE_ATTACH_TIMEOUT_MS = 2000;
 
 // The three timestamps the playback case samples at. All multiples of both
 // RULER_TICK_INTERVAL_SECS and the lane grid's 5s minor division, so a ruler tick and a
@@ -276,7 +276,7 @@ async function enableLoopBrace(): Promise<Locator> {
   await expect(
     brace,
     'release-scope regression (#1313): the loop brace .daw-loop-brace did not attach after switching Loop on',
-  ).toBeVisible({ timeout: FEATURE_PROBE_TIMEOUT_MS });
+  ).toBeVisible({ timeout: BRACE_ATTACH_TIMEOUT_MS });
   return brace;
 }
 
