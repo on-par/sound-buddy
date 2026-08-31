@@ -27,6 +27,13 @@ export interface SessionTimelineScrubWindow {
 export interface SessionTimelineScrubDeps {
   root: SessionTimelineScrubRoot;
   surface: SessionTimelineScrubSurface;
+  /** The visible range's horizontal scroll offset in pixels (timelineScrollOffsetPx).
+   *  app.css's shared re-basing translate shifts every painted surface left by this,
+   *  but the pressed .daw-ruler / .daw-lane element's own box does not move — so the
+   *  painted t=0 client x is the surface's left edge MINUS this offset. Required, not
+   *  optional: a scroll-unaware scrub call site is the #1326 defect, and requiring the
+   *  field makes a future one fail to compile. */
+  scrollOffsetPx: number;
   windowTarget: SessionTimelineScrubWindow;
   pointerId: number;
   clientX: number;
@@ -39,6 +46,14 @@ export interface SessionTimelineScrubDeps {
   seekTo(elapsedSecs: number): void | Promise<void>;
 }
 
+/** The painted t=0 client x for a scrub surface: its own left edge re-based by the
+ *  visible range's scroll offset. A non-finite offset is treated as 0 rather than
+ *  propagating NaN into a seek target — the same guard laneBackgroundInsertMarkerSecs
+ *  applies to its own scrollOffsetPx. */
+export function scrubTimelineLeftPx(surfaceLeftPx: number, scrollOffsetPx: number): number {
+  return surfaceLeftPx - (Number.isFinite(scrollOffsetPx) ? scrollOffsetPx : 0);
+}
+
 export function beginSessionTimelineScrub(deps: SessionTimelineScrubDeps): boolean {
   let latestClientX = deps.clientX;
 
@@ -47,7 +62,7 @@ export function beginSessionTimelineScrub(deps: SessionTimelineScrubDeps): boole
     if (durationSecs === undefined) return null;
     const preview = soundcheckTimelinePreviewFromPointer(
       clientX,
-      deps.surface.getBoundingClientRect().left,
+      scrubTimelineLeftPx(deps.surface.getBoundingClientRect().left, deps.scrollOffsetPx),
       durationSecs,
     );
     if (preview) deps.previewLeftPx(preview.leftPx);
