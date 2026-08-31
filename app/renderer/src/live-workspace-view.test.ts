@@ -270,9 +270,9 @@ describe('Session zoom/fit controls (#1284)', () => {
   it('renders the compact five-button cluster and range readout inside the transport row', () => {
     const html = dawShellHTML(makeState());
 
-    expect(html).toContain('class="daw-transport-zoom"');
+    expect(html).toContain('class="daw-transport-zoom daw-transport-group"');
     for (const id of Object.values(TIMELINE_ZOOM_BUTTON_IDS)) expect(html).toContain(`id="${id}"`);
-    const zoomIndex = html.indexOf('class="daw-transport-zoom"');
+    const zoomIndex = html.indexOf('class="daw-transport-zoom daw-transport-group"');
     expect(zoomIndex).toBeGreaterThan(html.indexOf('daw-transport-time'));
     expect(zoomIndex).toBeLessThan(html.indexOf('live-meters-toolbar'));
   });
@@ -300,7 +300,7 @@ describe('Session follow-scroll toggle (#1286)', () => {
     expect(html).toContain(`id="${TIMELINE_FOLLOW_BUTTON_ID}"`);
     expect(html).toContain('aria-pressed="false"');
     const followIndex = html.indexOf(`id="${TIMELINE_FOLLOW_BUTTON_ID}"`);
-    expect(followIndex).toBeGreaterThan(html.indexOf('class="daw-transport-zoom"'));
+    expect(followIndex).toBeGreaterThan(html.indexOf('class="daw-transport-zoom daw-transport-group"'));
     expect(followIndex).toBeLessThan(html.indexOf('live-meters-toolbar'));
   });
 
