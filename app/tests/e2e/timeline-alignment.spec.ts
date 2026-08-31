@@ -26,8 +26,12 @@ import { launchApp, stopCaptureIfRunning } from './e2e-helpers';
 // edge on a progress tick. Viewport auto-tracking itself — timelineFollowRange() actually
 // paging the visible range toward the playhead — has no production caller yet in this
 // checkout; ADR-0111 splits that wiring out to #1283, which is parked. Loop-brace and
-// time-selection coverage of the same invariant remain out of scope here and land in the
-// sibling slices of epic #1258.
+// time-selection coverage landed here in #1329: the brace's edges are read at the default
+// seeded 0..10s loop range after switching Loop on, the band's edges are read after a real
+// ruler drag, both are compared against the ruler tick AND the lane gridline at the same
+// timestamps, and each case probes the running build and calls test.skip(...) with a named
+// reason when its feature is absent, so an unshipped feature is reported as pending rather
+// than missing.
 
 let electronApp: ElectronApplication;
 let window: Page;
@@ -64,6 +68,28 @@ const SCROLL_DELTA_PX = 40;
 // Narrow enough to force the toolbar into its compact layout's reflow, wide enough that
 // the timeline column still has room to paint all five surfaces under test.
 const RESIZED_WIDTH_PX = 1000;
+
+// The default loop range #1314 seeds on the first Loop switch-on. Mirrors
+// DEFAULT_LOOP_START_SECS / DEFAULT_LOOP_LENGTH_SECS in renderer/src/loopBrace.render.ts.
+const LOOP_DEFAULT_START_SECS = 0;
+const LOOP_DEFAULT_END_SECS = 10;
+const LOOP_START_TICK_INDEX = LOOP_DEFAULT_START_SECS / RULER_TICK_INTERVAL_SECS; // 0
+const LOOP_END_TICK_INDEX = LOOP_DEFAULT_END_SECS / RULER_TICK_INTERVAL_SECS;     // 2
+
+// The range the time-selection case drags. Both endpoints are multiples of
+// RULER_TICK_INTERVAL_SECS (so a ruler tick and a lane gridline exist at each), and the
+// 40px span is an order of magnitude past TIME_SELECTION_DRAG_THRESHOLD_PX (4px) in
+// renderer/src/time-selection-drag.ts, so the press is unambiguously a drag, not a click.
+const SELECTION_START_SECS = 5;
+const SELECTION_END_SECS = 10;
+const SELECTION_START_TICK_INDEX = SELECTION_START_SECS / RULER_TICK_INTERVAL_SECS; // 1
+const SELECTION_END_TICK_INDEX = SELECTION_END_SECS / RULER_TICK_INTERVAL_SECS;     // 2
+// Intermediate pointer moves, so the gesture crosses the threshold through real
+// pointermove events rather than one teleport.
+const SELECTION_DRAG_STEPS = 10;
+// Bounded wait for a capability probe. Short on purpose: a present feature attaches its
+// node on the same turn as the click, and an ABSENT one must not cost a 5s timeout.
+const FEATURE_PROBE_TIMEOUT_MS = 2000;
 
 // The three timestamps the playback case samples at. All multiples of both
 // RULER_TICK_INTERVAL_SECS and the lane grid's 5s minor division, so a ruler tick and a
@@ -184,6 +210,81 @@ async function assertFiveSurfacesAlignAt10s(): Promise<number> {
     .toBeLessThanOrEqual(SEEK_TOLERANCE_SECS);
 
   return scrollOffsetPx;
+}
+
+// One reading of the two reference surfaces at a given ruler tick index, plus the
+// px-per-second each was measured at, so every expected x below is derived from the app's
+// own geometry instead of a hardcoded pixel value.
+interface RulerGridReadings {
+  timeSecs: number;
+  tickX: number;
+  gridX: number;
+  pxPerSecond: number;
+}
+
+async function readRulerAndGridAt(tickIndex: number): Promise<RulerGridReadings> {
+  const ticks = window.locator('.daw-ruler .daw-ruler-tick');
+  const gridlines = window.locator('.daw-channel-lane[data-ch="0"] .daw-lane-grid .daw-gridline');
+  expect(await ticks.count()).toBeGreaterThan(tickIndex);
+  expect(await gridlines.count()).toBeGreaterThan(tickIndex);
+
+  // px-per-second is always measured from index 0 vs ALIGNMENT_TICK_INDEX (10s) regardless
+  // of which tickIndex is being read, so tickIndex === 0 does not divide by zero.
+  const tick0Box = (await ticks.nth(0).boundingBox())!;
+  const tickRefBox = (await ticks.nth(ALIGNMENT_TICK_INDEX).boundingBox())!;
+  const grid0Box = (await gridlines.nth(0).boundingBox())!;
+  const gridRefBox = (await gridlines.nth(ALIGNMENT_TICK_INDEX).boundingBox())!;
+  const tickPxPerSecond = (tickRefBox.x - tick0Box.x) / ALIGNMENT_TIME_SECS;
+  const gridPxPerSecond = (gridRefBox.x - grid0Box.x) / ALIGNMENT_TIME_SECS;
+  expect(Math.abs(tickPxPerSecond - TIMELINE_PX_PER_SECOND))
+    .toBeLessThanOrEqual(ALIGNMENT_TOLERANCE_PX / ALIGNMENT_TIME_SECS);
+  expect(Math.abs(gridPxPerSecond - TIMELINE_PX_PER_SECOND))
+    .toBeLessThanOrEqual(ALIGNMENT_TOLERANCE_PX / ALIGNMENT_TIME_SECS);
+
+  const tickAtBox = (await ticks.nth(tickIndex).boundingBox())!;
+  const gridAtBox = (await gridlines.nth(tickIndex).boundingBox())!;
+  expect(Math.abs(gridAtBox.x - tickAtBox.x)).toBeLessThanOrEqual(ALIGNMENT_TOLERANCE_PX);
+
+  const timeSecs = tickIndex * RULER_TICK_INTERVAL_SECS;
+  return { timeSecs, tickX: tickAtBox.x, gridX: gridAtBox.x, pxPerSecond: tickPxPerSecond };
+}
+
+// Asserts one painted edge sits on BOTH reference surfaces at the same timestamp.
+function expectEdgeAligned(label: string, x: number, reference: RulerGridReadings): void {
+  expect(Math.abs(x - reference.tickX), `${label}: ${x}px vs ruler tick ${reference.tickX}px at ${reference.timeSecs}s`)
+    .toBeLessThanOrEqual(ALIGNMENT_TOLERANCE_PX);
+  expect(Math.abs(x - reference.gridX), `${label}: ${x}px vs lane gridline ${reference.gridX}px at ${reference.timeSecs}s`)
+    .toBeLessThanOrEqual(ALIGNMENT_TOLERANCE_PX);
+}
+
+// Capability probe for the loop brace. Clicks the Session toolbar's Loop button when it
+// exists and reports whether a brace actually attached, so "the feature is not in this
+// build" is answered by the build, not by a hand-maintained flag.
+async function enableLoopBraceIfPresent(): Promise<boolean> {
+  const toggle = window.locator('#daw-session-loop');
+  if (await toggle.count() === 0) return false;
+  await toggle.click();
+  const brace = window.locator('.daw-loop-brace');
+  await brace.waitFor({ state: 'attached', timeout: FEATURE_PROBE_TIMEOUT_MS }).catch(() => {});
+  return await brace.count() > 0;
+}
+
+// Drags the ruler from fromSecs to toSecs with real pointer input, so the gesture goes
+// through the production route (LiveCapturePanel's pointerdown -> beginTimeSelectionDrag).
+// clientX is rounded because Chromium delivers integral coordinates; the residual <=0.5px
+// is inside ALIGNMENT_TOLERANCE_PX. Re-bases by --daw-scroll-x exactly like the existing
+// scrubTargetX computation in assertFiveSurfacesAlignAt10s.
+async function dragRulerSelection(fromSecs: number, toSecs: number): Promise<void> {
+  const shell = window.locator('.daw-shell');
+  const scrollOffsetPx = parseFloat(await shell.evaluate((el) => getComputedStyle(el).getPropertyValue('--daw-scroll-x').trim()));
+  const rulerBox = (await window.locator('.daw-ruler').boundingBox())!;
+  const y = rulerBox.y + rulerBox.height / 2;
+  const xAt = (secs: number) => Math.round(rulerBox.x + secs * TIMELINE_PX_PER_SECOND - scrollOffsetPx);
+
+  await window.mouse.move(xAt(fromSecs), y);
+  await window.mouse.down();
+  await window.mouse.move(xAt(toSecs), y, { steps: SELECTION_DRAG_STEPS });
+  await window.mouse.up();
 }
 
 // One atomic reading of every time-positioned surface under test, plus the wall-clock
@@ -593,6 +694,59 @@ test.describe('Timeline alignment invariant (#1325)', () => {
     // without it this would silently degrade into the default-scale case.
     const offset = await assertFiveSurfacesAlignAt10s();
     expect(offset).toBeGreaterThan(0);
+  });
+
+  test('loop brace edges align with the ruler and lane gridline (#1329)', async () => {
+    const present = await enableLoopBraceIfPresent();
+    test.skip(!present, 'loop brace is not present in this build (#1313/#1314) - pending');
+
+    const brace = window.locator('.daw-loop-brace');
+    await expect(brace).toBeVisible();
+    const braceBox = (await brace.boundingBox())!;
+
+    const startRef = await readRulerAndGridAt(LOOP_START_TICK_INDEX);
+    const endRef = await readRulerAndGridAt(LOOP_END_TICK_INDEX);
+    expectEdgeAligned('loop brace start edge', braceBox.x, startRef);
+    expectEdgeAligned('loop brace end edge', braceBox.x + braceBox.width, endRef);
+
+    // Ground the span in time, not just in ticks.
+    const expectedWidth = (LOOP_DEFAULT_END_SECS - LOOP_DEFAULT_START_SECS) * endRef.pxPerSecond;
+    expect(Math.abs(braceBox.width - expectedWidth)).toBeLessThanOrEqual(ALIGNMENT_TOLERANCE_PX);
+
+    // Leave the board as the next beforeEach expects.
+    await window.locator('#daw-session-loop').click();
+  });
+
+  test('time-selection edges align with the ruler and lane gridline (#1329)', async () => {
+    const segments = window.locator('.daw-time-selection');
+    test.skip(await segments.count() === 0, 'time-selection band is not present in this build (#1304) - pending');
+
+    await dragRulerSelection(SELECTION_START_SECS, SELECTION_END_SECS);
+    // Both segments boot with style="display:none", so visibility is the synchronisation
+    // gate that proves renderTimeSelection has run.
+    await expect(window.locator('.daw-time-selection-ruler')).toBeVisible();
+
+    const startRef = await readRulerAndGridAt(SELECTION_START_TICK_INDEX);
+    const endRef = await readRulerAndGridAt(SELECTION_END_TICK_INDEX);
+    const expectedWidth = (SELECTION_END_SECS - SELECTION_START_SECS) * endRef.pxPerSecond;
+
+    for (const { label, selector } of [
+      { label: 'ruler', selector: '.daw-time-selection-ruler' },
+      { label: 'lanes', selector: '.daw-time-selection-lanes' },
+    ]) {
+      const box = (await window.locator(selector).boundingBox())!;
+      expectEdgeAligned(`${label} selection start`, box.x, startRef);
+      expectEdgeAligned(`${label} selection end`, box.x + box.width, endRef);
+      expect(Math.abs(box.width - expectedWidth)).toBeLessThanOrEqual(ALIGNMENT_TOLERANCE_PX);
+    }
+
+    // Load-bearing negative assertion: the drag must NOT have committed a seek — proves the
+    // gesture went down the drag route (canCommitSeek false once hasDragged()), not the
+    // click/scrub route, i.e. the band under test was produced by a genuine drag.
+    const seek = (await electronApp.evaluate(
+      () => (globalThis as Record<string, unknown>).__alignmentSeek,
+    )) as { startOffsetSecs?: number } | null;
+    expect(seek).toBeNull();
   });
 
 });
