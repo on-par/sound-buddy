@@ -71,6 +71,8 @@ const loopBraceEdgeDragTs = fs.readFileSync(fileURLToPath(new URL('./loopBrace.e
 const loopFromSelectionTs = fs.readFileSync(fileURLToPath(new URL('./loopFromSelection.ts', import.meta.url)), 'utf8');
 // #1306: the arrangement's accessible state labels.
 const timelineAccessibilityLabelsTs = fs.readFileSync(fileURLToPath(new URL('./timeline-accessibility-labels.ts', import.meta.url)), 'utf8');
+// #1318: return-to-start must stay position-only — it may not reach the loop model.
+const soundcheckStoreTs = fs.readFileSync(fileURLToPath(new URL('./stores/soundcheckStore.ts', import.meta.url)), 'utf8');
 
 function functionBody(src: string, name: string): string {
   const marker = `function ${name}(`;
@@ -1352,5 +1354,23 @@ describe('loop-from-selection wiring (#1317)', () => {
 
   it('session-tab-playback.ts renders the Loop Selection button', () => {
     expect(sessionTabPlaybackTs).toContain('id="daw-session-loop-selection"');
+  });
+});
+
+describe('return-to-start preserves the loop range (#1318)', () => {
+  it('the #daw-session-return branch writes nothing to the loop region', () => {
+    const start = liveCapturePanelTsx.indexOf("closest('#daw-session-return')");
+    expect(start).toBeGreaterThan(-1);
+    const next = liveCapturePanelTsx.indexOf('target.closest(', start + 1);
+    const branch = liveCapturePanelTsx.slice(start, next > -1 ? next : undefined);
+    expect(branch).toContain('returnToStart()');
+    expect(branch).not.toContain('sessionLoopRegion');
+    expect(branch).not.toContain('resetForSession');
+    expect(branch).not.toContain('toggleLoop');
+  });
+
+  it('soundcheckStore.ts does not import the loop-region model (ADR guard)', () => {
+    expect(soundcheckStoreTs).not.toContain("from '../loopBrace.render'");
+    expect(soundcheckStoreTs).not.toContain('sessionLoopRegion');
   });
 });
