@@ -66,6 +66,7 @@ const loopBraceRenderTs = fs.readFileSync(fileURLToPath(new URL('./loopBrace.ren
 const loopToggleTs = fs.readFileSync(fileURLToPath(new URL('./loopToggle.ts', import.meta.url)), 'utf8');
 // #1315: the loop brace body drag gesture.
 const loopBraceBodyDragTs = fs.readFileSync(fileURLToPath(new URL('./loopBrace.bodyDrag.ts', import.meta.url)), 'utf8');
+const loopBraceEdgeDragTs = fs.readFileSync(fileURLToPath(new URL('./loopBrace.edgeDrag.ts', import.meta.url)), 'utf8');
 // #1306: the arrangement's accessible state labels.
 const timelineAccessibilityLabelsTs = fs.readFileSync(fileURLToPath(new URL('./timeline-accessibility-labels.ts', import.meta.url)), 'utf8');
 
@@ -1272,5 +1273,54 @@ describe('loop brace body drag routing (#1315)', () => {
 
   it('daw-shell-runtime.ts exposes previewLoopBrace on the runtime it returns', () => {
     expect(dawShellRuntimeTs).toContain('previewLoopBrace,');
+  });
+});
+
+describe('loop brace edge drag routing (#1316)', () => {
+  it('loopBrace.edgeDrag.ts is a leaf module importing only loopBrace.render (type) and timeline-scale', () => {
+    expect(loopBraceEdgeDragTs.match(/from '\.\/[^']+'/g)).toEqual([
+      "from './loopBrace.render'",
+      "from './timeline-scale'",
+    ]);
+  });
+
+  it('loopBrace.edgeDrag.ts does not import the shell runtime or the BPM module', () => {
+    expect(loopBraceEdgeDragTs).not.toMatch(/from '\.\/daw-shell-runtime'/);
+    expect(loopBraceEdgeDragTs).not.toMatch(/from '\.\/timeline-bpm'/);
+  });
+
+  it('onBoardPointerDown wires the loop edge drag BEFORE the body drag and the scrub surface lookup', () => {
+    const body = functionBody(liveCapturePanelTsx, 'onBoardPointerDown');
+    const edgeIdx = body.indexOf('beginLoopEdgeDrag(');
+    const bodyIdx = body.indexOf('beginLoopBodyDrag(');
+    const surfaceIdx = body.indexOf('e.target.closest(SESSION_SCRUB_SURFACE_SELECTOR)');
+    expect(edgeIdx).toBeGreaterThanOrEqual(0);
+    expect(bodyIdx).toBeGreaterThan(-1);
+    expect(surfaceIdx).toBeGreaterThan(-1);
+    expect(edgeIdx).toBeLessThan(bodyIdx);
+    expect(bodyIdx).toBeLessThan(surfaceIdx);
+  });
+
+  it('the loop edge drag branch returns before falling through to the body drag or the scrub/time-selection routes', () => {
+    const body = functionBody(liveCapturePanelTsx, 'onBoardPointerDown');
+    const edgeBranchIdx = body.indexOf('LOOP_HANDLE_START_SELECTOR');
+    const returnIdx = body.indexOf('return;', edgeBranchIdx);
+    const bodyIdx = body.indexOf('beginLoopBodyDrag(');
+    expect(edgeBranchIdx).toBeGreaterThanOrEqual(0);
+    expect(returnIdx).toBeGreaterThan(edgeBranchIdx);
+    expect(returnIdx).toBeLessThan(bodyIdx);
+  });
+
+  it('the loop edge drag previews through previewLoopBrace and commits through sessionLoopRegion.setRegion', () => {
+    const body = functionBody(liveCapturePanelTsx, 'onBoardPointerDown');
+    const edgeBranchIdx = body.indexOf('const loopHandleEl');
+    const bodyBranchIdx = body.indexOf('if (e.target.closest(LOOP_BRACE_BODY_SELECTOR))');
+    const edgeBody = body.slice(edgeBranchIdx, bodyBranchIdx);
+    expect(edgeBody).toContain('previewLoopBrace?.(region)');
+    expect(edgeBody).toContain('sessionLoopRegion.setRegion(region.startSecs, region.endSecs)');
+  });
+
+  it('the CSS gives the loop handles a resize cursor', () => {
+    expect(css).toMatch(/\.daw-loop-handle\s*\{[^}]*cursor:\s*ew-resize[^}]*\}/);
   });
 });
