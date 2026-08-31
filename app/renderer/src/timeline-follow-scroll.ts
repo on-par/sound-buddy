@@ -110,6 +110,22 @@ export function timelineFollowRange(model: TimelineFollowModel, range: TimelineV
   return { startSecs, endSecs: startSecs + span };
 }
 
+/** One follow step for a single animation frame: the paged range when this frame
+ *  actually moved the view, or null when nothing should be committed. Pure —
+ *  timelineFollowRange returns the caller's OWN reference whenever the model is
+ *  paused, the inputs are unusable, or the playhead is already inside the range,
+ *  so reference identity is the "nothing moved" signal (never a float compare).
+ *  Its null result is what keeps follow off the per-frame React path (ADR-0005):
+ *  a frame that returns null schedules no state update at all. */
+export function timelineFollowPage(
+  model: TimelineFollowModel,
+  range: TimelineVisibleRange,
+  ctx: TimelineFollowContext,
+): TimelineVisibleRange | null {
+  const next = timelineFollowRange(model, range, ctx);
+  return next === range ? null : next;
+}
+
 export function timelineFollowView(model: TimelineFollowModel): TimelineFollowView {
   return {
     following: model.following,

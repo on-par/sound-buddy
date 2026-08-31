@@ -187,6 +187,11 @@ test.describe('Session tab playback (#1080)', () => {
   });
 
   test('scrubs active Session playback from the ruler and lanes on a plain click; a drag past the #1304 threshold suppresses the commit instead (#1082/#1304)', async () => {
+    // Fit to the full session range first (#1343): the boot-pinned min-span model (see the
+    // #1291 test's note above) is narrower than this progress tick, and follow is on by
+    // default, so without this the tick would page the viewport and shift every pixel
+    // assertion below by an offset unrelated to what this test is proving.
+    await window.locator('#daw-zoom-fit').click();
     await window.locator('#daw-session-play').click();
     await sendPlaybackEvent({ type: 'progress', elapsed: 2, duration: 10 });
     await expect(window.locator('.daw-transport-time')).toHaveText('0:02');
@@ -320,6 +325,10 @@ test.describe('Session tab playback (#1080)', () => {
   });
 
   test('cancelling a Session scrub clears it without seeking on a later pointer release (#1082)', async () => {
+    // Fit to the full session range first (#1343): the boot-pinned min-span model is
+    // narrower than this progress tick, and follow is on by default, so without this the
+    // tick pages the viewport and re-renders the board out from under the ruler lookup below.
+    await window.locator('#daw-zoom-fit').click();
     await window.locator('#daw-session-play').click();
     await sendPlaybackEvent({ type: 'progress', elapsed: 2, duration: 10 });
 
@@ -370,6 +379,11 @@ test.describe('Session tab playback (#1080)', () => {
     await window.locator('.daw-session-picker-select').selectOption({ label: 'open session folder…' });
     const clip = window.locator('.daw-channel-lane[data-ch="0"] .daw-take-clip');
     await expect(clip).toHaveCount(1);
+
+    // Fit to the full session range first (#1343): the boot-pinned min-span model is
+    // narrower than the progress tick below, and follow is on by default, so without this
+    // the tick would page the viewport and shift the scrub pixel math this test relies on.
+    await window.locator('#daw-zoom-fit').click();
 
     // Seed a real-seconds transport position.
     await window.locator('#daw-session-play').click();

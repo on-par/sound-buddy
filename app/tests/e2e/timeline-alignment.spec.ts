@@ -23,9 +23,9 @@ import { launchApp, stopCaptureIfRunning } from './e2e-helpers';
 // #daw-follow-toggle's aria-pressed and title (the only DOM the follow model reaches), and
 // "stops auto-tracking" is observed as the manually-set viewport (--daw-scroll-x and
 // #daw-zoom-range) staying pinned while the playhead walks past its visible range's right
-// edge on a progress tick. Viewport auto-tracking itself — timelineFollowRange() actually
-// paging the visible range toward the playhead — has no production caller yet in this
-// checkout; ADR-0111 splits that wiring out to #1283, which is parked. Loop-brace and
+// edge on a progress tick. Follow now pages the shared visible range from the playback
+// progress frame (#1343), so both halves of the contract are covered here — a following
+// viewport advances to keep the playhead in view, a paused one stays pinned. Loop-brace and
 // time-selection coverage landed here in #1329: the brace's edges are read at the default
 // seeded 0..10s loop range after switching Loop on, the band's edges are read after a real
 // ruler drag, both are compared against the ruler tick AND the lane gridline at the same
@@ -135,6 +135,16 @@ const FOLLOW_PLAYBACK_DURATION_SECS = 60;
 // view to track something off-screen.
 const FOLLOW_BEYOND_RANGE_SECS = 50;
 const FOLLOW_BEYOND_RANGE_TRANSPORT = '0:50';
+// Where a following viewport lands after the FOLLOW_BEYOND_RANGE_SECS tick: the [0,30] range
+// left by fit + one zoom-in pages toward the playhead and clamps to the 60s timeline's end, so
+// the start is durationSecs - span = 30 and the playhead at 0:50 is back in view.
+const FOLLOW_PAGED_START_SECS = 30;
+const FOLLOW_PAGED_SCROLL_PX = `${FOLLOW_PAGED_START_SECS * TIMELINE_PX_PER_SECOND}px`;
+const FOLLOW_PAGED_RANGE_TEXT = '0:30 - 1:00';
+// A second position past the same viewport, used to prove a RESUMED follow re-acquires the
+// playhead on the next tick rather than only on the tick that happened to pause it.
+const FOLLOW_RESUME_TICK_SECS = 51;
+const FOLLOW_RESUME_TICK_TRANSPORT = '0:51';
 
 // Full-height min/max pairs (level 0 -> -1, level 255 -> +1, ADR-0004 quantization),
 // mirroring daw-shell.spec.ts's helper of the same name.
@@ -420,14 +430,9 @@ async function sendLiveMeterTick(): Promise<void> {
 }
 
 // The observable form of "follow stopped auto-tracking the playhead" in THIS checkout.
-// timelineFollowRange() — the pure function that would page the visible range after the
-// playhead — has no production caller: ADR-0111 split the policy (#1286, landed) from the
-// viewport wiring (#1283, parked), so no range in the app chases the playhead yet, in either
-// follow state. Asserting "following moves the range" would therefore fail against correct
-// code. What IS assertable, and is exactly the contract #1283 must not break, is that a
-// paused follow leaves the range the user set alone while the playhead walks off the right
-// edge of it: --daw-scroll-x and the #daw-zoom-range readout are byte-identical before and
-// after a progress tick at FOLLOW_BEYOND_RANGE_SECS, and the toggle is still paused.
+// A PAUSED follow must leave the user's range byte-identical while the playhead walks off
+// its right edge: --daw-scroll-x and the #daw-zoom-range readout are byte-identical before
+// and after a progress tick at FOLLOW_BEYOND_RANGE_SECS, and the toggle is still paused.
 async function expectViewportPinnedWhilePaused(label: string): Promise<void> {
   const shell = window.locator('.daw-shell');
   const scrollBefore = await shell.evaluate((el) => getComputedStyle(el).getPropertyValue('--daw-scroll-x').trim());
@@ -583,6 +588,11 @@ test.describe('Timeline alignment invariant (#1325)', () => {
   });
 
   test('ruler tick, lane gridline, take clip and the playhead share one x at multiple timestamps during loaded-take playback (#1327)', async () => {
+    // Fit to the real [0, 60] range first (#1343): the boot-pinned [0, 1] model (see the
+    // #1326 note above) is narrower than every PLAYBACK_SAMPLES tick, and follow is on by
+    // default, so without this the very first tick would page the viewport and break this
+    // case's scrollOffsetPx===0 assumption below for a reason unrelated to what it tests.
+    await window.locator('#daw-zoom-fit').click();
     // Load-bearing: soundcheckStore's playback-event handler drops progress ticks unless
     // playing is true. start-playback is already stubbed in the shared beforeEach.
     await window.locator('#daw-session-play').click();
@@ -667,6 +677,63 @@ test.describe('Timeline alignment invariant (#1325)', () => {
     await expect(window.locator('#daw-session-play')).toBeVisible();
   });
 
+  test('follow-scroll advances the viewport when the playhead leaves the visible range (#1343)', async () => {
+    // Fit to the real [0, 60] timeline, then one zoom-in for a [0, 30] viewport the 0:50 tick
+    // is provably outside. Both clicks fire 'navigate', so follow is ON before the tick.
+    await window.locator('#daw-zoom-fit').click();
+    await window.locator('#daw-zoom-in').click();
+    const followToggle = window.locator('#daw-follow-toggle');
+    await expect(followToggle).toHaveAttribute('aria-pressed', 'true');
+    await expect(followToggle).toHaveAttribute('title', FOLLOW_FOLLOWING_TITLE);
+
+    const shell = window.locator('.daw-shell');
+    expect(await shell.evaluate((el) => getComputedStyle(el).getPropertyValue('--daw-scroll-x').trim())).toBe('0px');
+
+    await window.locator('#daw-session-play').click();
+    await expect(window.locator('#daw-session-stop')).toBeVisible();
+
+    await sendPlaybackProgress(FOLLOW_BEYOND_RANGE_SECS, FOLLOW_PLAYBACK_DURATION_SECS);
+    await expect(window.locator('.daw-transport-time')).toHaveText(FOLLOW_BEYOND_RANGE_TRANSPORT);
+
+    // The viewport actually moved, through the one shared offset every surface re-bases on.
+    await expect.poll(() => shell.evaluate((el) => getComputedStyle(el).getPropertyValue('--daw-scroll-x').trim()))
+      .toBe(FOLLOW_PAGED_SCROLL_PX);
+    await expect(window.locator('#daw-zoom-range')).toHaveText(FOLLOW_PAGED_RANGE_TEXT);
+    // Auto-tracking is not a pause: the toggle is still following afterwards.
+    await expect(followToggle).toHaveAttribute('aria-pressed', 'true');
+
+    await sendPlaybackEnded();
+    await expect(window.locator('#daw-session-play')).toBeVisible();
+  });
+
+  test('a resumed follow re-acquires the playhead on the next progress tick (#1343)', async () => {
+    await window.locator('#daw-zoom-fit').click();
+    await window.locator('#daw-zoom-in').click();
+    const followToggle = window.locator('#daw-follow-toggle');
+    await window.locator('#daw-session-play').click();
+    await expect(window.locator('#daw-session-stop')).toBeVisible();
+
+    // Pause via the toggle, then prove the user-pinned viewport survives a tick past its edge.
+    await followToggle.click();
+    await expect(followToggle).toHaveAttribute('aria-pressed', 'false');
+    await expect(followToggle).toHaveAttribute('title', FOLLOW_PAUSED_TITLE);
+    await expectViewportPinnedWhilePaused('follow toggle');
+
+    // The resume under test: the very next progress tick pages the viewport.
+    await followToggle.click();
+    await expect(followToggle).toHaveAttribute('aria-pressed', 'true');
+    await sendPlaybackProgress(FOLLOW_RESUME_TICK_SECS, FOLLOW_PLAYBACK_DURATION_SECS);
+    await expect(window.locator('.daw-transport-time')).toHaveText(FOLLOW_RESUME_TICK_TRANSPORT);
+
+    const shell = window.locator('.daw-shell');
+    await expect.poll(() => shell.evaluate((el) => getComputedStyle(el).getPropertyValue('--daw-scroll-x').trim()))
+      .toBe(FOLLOW_PAGED_SCROLL_PX);
+    await expect(window.locator('#daw-zoom-range')).toHaveText(FOLLOW_PAGED_RANGE_TEXT);
+
+    await sendPlaybackEnded();
+    await expect(window.locator('#daw-session-play')).toBeVisible();
+  });
+
   test('alignment holds immediately after follow-scroll resumes on a panned viewport (#1328)', async () => {
     // No playback here: assertFiveSurfacesAlignAt10s() holds a ruler scrub, and a running
     // transport's rAF repaint would overwrite its playhead preview — the same hazard the shared
@@ -682,9 +749,10 @@ test.describe('Timeline alignment invariant (#1325)', () => {
     const followToggle = window.locator('#daw-follow-toggle');
     await expect(followToggle).toHaveAttribute('aria-pressed', 'false');
 
-    // The resume under test. Follow has no viewport to move yet (#1283, see the helper's note),
-    // so the pan stays put across the resume — which is exactly why the invariant is measurable
-    // here at a non-zero offset instead of collapsing back to the default scale.
+    // The resume under test. No transport is running in this case, so the resume itself moves
+    // nothing — paging happens on the next progress tick (see the #1343 cases below) — which is
+    // exactly why the invariant is measurable here at a non-zero offset instead of collapsing
+    // back to the default scale.
     await followToggle.click();
     await expect(followToggle).toHaveAttribute('aria-pressed', 'true');
     await expect(followToggle).toHaveAttribute('title', FOLLOW_FOLLOWING_TITLE);
