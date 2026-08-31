@@ -122,3 +122,38 @@ export function createTimelineScale(state: TimelineZoomState, fit?: TimelineFitR
     xToTime: (xPx: number) => timelineTimeAt(pxPerSecond, xPx),
   });
 }
+
+/** The zoom state a range-derived scale reports (#1342): a continuous visible-range
+ *  scale is not one of the four named states, so a non-default one borrows the
+ *  'zoomed-in' label (it only affects TimelineScale.state, never a coordinate). */
+const TIMELINE_SCALE_RANGE_STATE: TimelineZoomState = 'zoomed-in';
+
+/** Builds a frozen TimelineScale from an already-resolved pixels-per-second (#1342),
+ *  clamping it into the supported zoom range first — the range-derived sibling of
+ *  createTimelineScale(state). Its timeToX/xToTime close over the clamped value, so a
+ *  caller can never observe an out-of-bounds coordinate. A non-finite request falls
+ *  back to the default geometry via clampTimelineScale rather than propagating NaN. */
+export function createTimelineScaleFromPxPerSecond(pxPerSecond: number): TimelineScale {
+  const clamped = clampTimelineScale(pxPerSecond);
+  return Object.freeze({
+    state: clamped === DAW_TIMELINE_PX_PER_SECOND ? 'default' : TIMELINE_SCALE_RANGE_STATE,
+    pxPerSecond: clamped,
+    timeToX: (timeSecs: number) => timelineXAt(clamped, timeSecs),
+    xToTime: (xPx: number) => timelineTimeAt(clamped, xPx),
+  });
+}
+
+/** The painted pixels-per-second the Session timeline should use for a visible range
+ *  of `spanSecs` out of a full timeline of `fullDurationSecs` (#1342): the base scale
+ *  magnified by how many times narrower than the full timeline the visible span is
+ *  (full span → the base scale; half the span → twice the scale), clamped into the
+ *  supported zoom range. This is what makes the toolbar zoom controls drive real
+ *  magnification rather than only a horizontal pan: narrowing the visible range raises
+ *  the painted scale, and fit/full restores the base geometry (so the default view is
+ *  provably DAW_TIMELINE_PX_PER_SECOND, ADR-0086). A non-finite or non-positive span or
+ *  duration resolves to the base scale rather than producing NaN. */
+export function sessionTimelineScalePxPerSecond(spanSecs: number, fullDurationSecs: number): number {
+  if (!Number.isFinite(spanSecs) || spanSecs <= 0) return DAW_TIMELINE_PX_PER_SECOND;
+  if (!Number.isFinite(fullDurationSecs) || fullDurationSecs <= 0) return DAW_TIMELINE_PX_PER_SECOND;
+  return clampTimelineScale(DAW_TIMELINE_PX_PER_SECOND * (fullDurationSecs / spanSecs));
+}

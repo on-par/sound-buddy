@@ -187,11 +187,10 @@ test.describe('Session tab playback (#1080)', () => {
   });
 
   test('scrubs active Session playback from the ruler and lanes on a plain click; a drag past the #1304 threshold suppresses the commit instead (#1082/#1304)', async () => {
-    // Fit to the full session range first (#1343): the boot-pinned min-span model (see the
-    // #1291 test's note above) is narrower than this progress tick, and follow is on by
-    // default, so without this the tick would page the viewport and shift every pixel
-    // assertion below by an offset unrelated to what this test is proving.
-    await window.locator('#daw-zoom-fit').click();
+    // #1342 boots the zoom model at the full session range (superseding the old min-span
+    // pin the #1343 Fit-click here worked around), so a mid-session progress tick stays
+    // inside the visible range and follow never pages the viewport — no Fit-click needed
+    // (Fit boots disabled at the full range anyway).
     await window.locator('#daw-session-play').click();
     await sendPlaybackEvent({ type: 'progress', elapsed: 2, duration: 10 });
     await expect(window.locator('.daw-transport-time')).toHaveText('0:02');
@@ -289,24 +288,23 @@ test.describe('Session tab playback (#1080)', () => {
     await expect(followToggle).toHaveAttribute('aria-pressed', 'true');
   });
 
-  test('a ctrl-modified timeline wheel zooms the shared visible range and clamps at the bounds (#1291)', async () => {
+  test('a ctrl-modified timeline wheel zooms the shared visible range and clamps at the bounds (#1291/#1342)', async () => {
     const rangeReadout = window.locator('#daw-zoom-range');
-    // The zoom model boots at createTimelineZoomModel(0) (LiveCapturePanel.tsx)
-    // and nothing auto-fits it to the loaded session's duration, so the range
-    // starts already pinned at TIMELINE_MIN_VISIBLE_SPAN_SECS - the readout
-    // below is the minimum-span bound, not an arbitrary starting value.
-    const before = await rangeReadout.textContent();
+    // #1342 boots the zoom model at the loaded session's full range (not the old
+    // createTimelineZoomModel(0) minimum-span pin), so the readout starts at the full
+    // session and the range can only be zoomed IN from here.
+    const full = await rangeReadout.textContent();
 
-    // Zoom in from the min-span bound: already clamped, so the gesture is a
+    // Zoom out from the full range: already at the maximum span, so the gesture is a
     // documented no-op - the readout does not change.
-    await window.locator('.daw-timeline').dispatchEvent('wheel', { deltaX: 0, deltaY: -240, ctrlKey: true, bubbles: true });
-    await expect(rangeReadout).toHaveText(before ?? '');
-
-    // Zoom out: the visible range widens, so the readout changes.
     await window.locator('.daw-timeline').dispatchEvent('wheel', { deltaX: 0, deltaY: 240, ctrlKey: true, bubbles: true });
-    await expect(rangeReadout).not.toHaveText(before ?? '');
+    await expect(rangeReadout).toHaveText(full ?? '');
 
-    // Zoom out far past the bound: TIMELINE_ZOOM_MAX_STEP_FACTOR bounds each
+    // Zoom in: the visible range narrows, so the readout changes.
+    await window.locator('.daw-timeline').dispatchEvent('wheel', { deltaX: 0, deltaY: -240, ctrlKey: true, bubbles: true });
+    await expect(rangeReadout).not.toHaveText(full ?? '');
+
+    // Zoom back out far past the bound: TIMELINE_ZOOM_MAX_STEP_FACTOR bounds each
     // wheel EVENT to one 4x span step (by design - see timeline-zoom-gesture.ts),
     // so reaching the full-session bound from here takes a few large events,
     // not one. Repeat until the readout stops moving, then confirm the range
@@ -316,6 +314,7 @@ test.describe('Session tab playback (#1080)', () => {
       await window.locator('.daw-timeline').dispatchEvent('wheel', { deltaX: 0, deltaY: 5000, ctrlKey: true, bubbles: true });
     }
     const clamped = await rangeReadout.textContent();
+    expect(clamped).toBe(full);
     await window.locator('.daw-timeline').dispatchEvent('wheel', { deltaX: 0, deltaY: 5000, ctrlKey: true, bubbles: true });
     await expect(rangeReadout).toHaveText(clamped ?? '');
 
@@ -325,10 +324,9 @@ test.describe('Session tab playback (#1080)', () => {
   });
 
   test('cancelling a Session scrub clears it without seeking on a later pointer release (#1082)', async () => {
-    // Fit to the full session range first (#1343): the boot-pinned min-span model is
-    // narrower than this progress tick, and follow is on by default, so without this the
-    // tick pages the viewport and re-renders the board out from under the ruler lookup below.
-    await window.locator('#daw-zoom-fit').click();
+    // #1342 boots the zoom model at the full session range, so the mid-session progress tick
+    // stays inside the visible range and follow never pages the viewport out from under the
+    // ruler lookup below — no Fit-click needed (Fit boots disabled at the full range).
     await window.locator('#daw-session-play').click();
     await sendPlaybackEvent({ type: 'progress', elapsed: 2, duration: 10 });
 
@@ -380,10 +378,9 @@ test.describe('Session tab playback (#1080)', () => {
     const clip = window.locator('.daw-channel-lane[data-ch="0"] .daw-take-clip');
     await expect(clip).toHaveCount(1);
 
-    // Fit to the full session range first (#1343): the boot-pinned min-span model is
-    // narrower than the progress tick below, and follow is on by default, so without this
-    // the tick would page the viewport and shift the scrub pixel math this test relies on.
-    await window.locator('#daw-zoom-fit').click();
+    // #1342 boots the zoom model at the full session range, so the mid-session progress tick
+    // stays inside the visible range and follow never pages the viewport — the scrub pixel
+    // math below holds without a Fit-click (Fit boots disabled at the full range).
 
     // Seed a real-seconds transport position.
     await window.locator('#daw-session-play').click();

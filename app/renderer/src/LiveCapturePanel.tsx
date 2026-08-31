@@ -60,9 +60,9 @@ import {
   getDawShellRuntime,
   getGroupState,
   liveWorkspaceViewState,
-  SESSION_TIMELINE_SCALE,
   MS_PER_SECOND,
 } from './live-workspace-view';
+import { setSessionTimelineScale, sessionTimelineScaleForRange } from './session-timeline-scale';
 import { sessionTabSessionPickerAction, sessionTabSessionPickerView } from './session-tab-session-picker';
 import { paintSessionTabWaveformClips, sessionTabWaveformView, sessionTakeDurationSecs } from './session-tab-waveforms';
 import { patchTimelineOverview, timelineOverviewDurationSecs, type TimelineOverviewShellLike } from './timeline-overview';
@@ -72,6 +72,7 @@ import { commitTimelineBpmEntry, timelineBpmControlView, TIMELINE_BPM_INPUT_ID }
 import {
   applyTimelineZoom,
   createTimelineZoomModel,
+  nextDurationTrackedZoom,
   timelineZoomActionForId,
   timelineZoomControlsView,
   type TimelineZoomContext,
@@ -201,10 +202,17 @@ export default function LiveCapturePanel(): JSX.Element | null {
   // above — persistence across restarts is not in this slice's scope.
   const [timelineTempo, setTimelineTempo] = useState<TimelineTempo>(createTimelineTempo);
   const [bpmMessage, setBpmMessage] = useState('');
-  // The Session zoom/fit model (#1284). Local state, not the store: it is view
-  // navigation, not capture or session data. It self-heals against a changing
-  // duration - applyTimelineZoom normalizes the stored range every call.
-  const [timelineZoom, setTimelineZoom] = useState<TimelineZoomModel>(() => createTimelineZoomModel(0));
+  // The Session zoom/fit model (#1284/#1342). Local state, not the store: it is
+  // view navigation, not capture or session data. Seeded at the full timeline range
+  // (the TIMELINE_OVERVIEW_MIN_DURATION_SECS floor before any session/recording is
+  // known) rather than createTimelineZoomModel(0)'s stuck 1-second minimum, so a
+  // loaded session's zoom-in control is available immediately without a Fit-click
+  // workaround (#1342 AC1). A loaded session re-derives it to its real full range
+  // (the session-load effect below); every zoom action re-clamps to the current
+  // duration via applyTimelineZoom.
+  const [timelineZoom, setTimelineZoom] = useState<TimelineZoomModel>(
+    () => createTimelineZoomModel(timelineOverviewDurationSecs(0, 0)),
+  );
   // Follow-scroll state (#1286). Local view state like timelineZoom above - it is
   // navigation, not capture or session data, and is not persisted.
   const [timelineFollow, setTimelineFollow] = useState<TimelineFollowModel>(createTimelineFollowModel);
@@ -256,12 +264,17 @@ export default function LiveCapturePanel(): JSX.Element | null {
   const savedBuses = settings?.soundcheckBuses;
   const routeState = soundcheck.sessionDir ? routesBySession[soundcheck.sessionDir] ?? null : null;
   const sessionPicker = sessionTabSessionPickerView(soundcheck.recordedSessions, soundcheck.sessionDir, soundcheck.manifest, soundcheck.statusMessage);
-  const sessionWaveforms = sessionTabWaveformView(soundcheck.manifest, soundcheck.peaks, soundcheck.peaksStatus, s.channelConfig);
   const sessionPlayback = sessionTabPlaybackView(soundcheck.manifest, soundcheck.playing, soundcheck.looping);
   // The Session zoom/fit context (#1284). Reuses the two values patchOverview
   // already reads so fit-full and the overview strip agree by construction.
   const elapsedSecs = (getDawShellRuntime()?.playheadElapsedMs?.() ?? 0) / MS_PER_SECOND;
-  const takeSecs = sessionTakeDurationSecs(sessionWaveforms);
+  // The loaded take's duration is scale-invariant (sessionTakeDurationSecs inverts
+  // widthPx / pxPerSecond), so a default-scale view recovers it before the paint scale
+  // is known — which breaks the derive-scale cycle: the scale needs the full duration,
+  // the duration needs the take, the take clip's pixels need the scale (#1342).
+  const takeSecs = sessionTakeDurationSecs(
+    sessionTabWaveformView(soundcheck.manifest, soundcheck.peaks, soundcheck.peaksStatus, s.channelConfig),
+  );
   const zoomContext: TimelineZoomContext = {
     durationSecs: timelineOverviewDurationSecs(takeSecs, elapsedSecs),
     playheadSecs: elapsedSecs,
@@ -272,6 +285,16 @@ export default function LiveCapturePanel(): JSX.Element | null {
     insertMarkerSecs: sessionTimelineMarks.getInsertMarkerSecs(),
   };
   const timelineZoomView = timelineZoomControlsView(timelineZoom, zoomContext);
+  // The one shared production paint scale (#1342): derived from the current visible
+  // range and published BEFORE the shell markup is built, so dawShellHTML's ruler,
+  // gridline and clip builders and the daw-shell-runtime painters all resolve a time
+  // to one x at this scale. A full-range view resolves to the base 8px/s (default/fit
+  // paints identically to pre-#1342); narrowing the range magnifies every surface.
+  const timelineScale = sessionTimelineScaleForRange(timelineZoomView.range, zoomContext.durationSecs);
+  setSessionTimelineScale(timelineScale);
+  // The take clips are sized at the same scale so their painted geometry — and the
+  // waveform columns inside them (ADR-0102) — line up with the ruler at any zoom.
+  const sessionWaveforms = sessionTabWaveformView(soundcheck.manifest, soundcheck.peaks, soundcheck.peaksStatus, s.channelConfig, timelineScale);
   const lc = useLiveCaptureStore.getState();
   const capturePhase = window.liveTransitionState.capturePhase({
     liveRunning: s.isCapturing,
@@ -300,6 +323,14 @@ export default function LiveCapturePanel(): JSX.Element | null {
   // drop fire on whatever element is under the pointer, not the element that
   // started the drag — no re-render is wanted mid-drag either.
   const liveDragSrc = useRef<{ type: 'group' | 'strip'; index: number } | null>(null);
+
+  // Whether the user has actively zoomed the Session timeline since the current session
+  // loaded (#1342). While false, the visible range auto-tracks the full timeline as its
+  // duration settles/grows (so a newly loaded take, or a growing recording, shows
+  // end-to-end at the base scale); an explicit zoom-in/out/selection or a zoom wheel sets
+  // it true so that auto-tracking never clobbers the range the user chose, and fit-full
+  // clears it again. A ref, not state: it gates an effect, it must not itself re-render.
+  const zoomManuallyChanged = useRef(false);
 
   // Board root ref + native 'change' listener (TD-001 slice 6h, #711 fix):
   // React's onChange prop never fires for a native change event bubbling from
@@ -331,7 +362,7 @@ export default function LiveCapturePanel(): JSX.Element | null {
     patchTimelineOverview(shell, {
       loadedDurationSecs: sessionTakeDurationSecs(sessionWaveforms),
       recordedElapsedSecs: (getDawShellRuntime()?.playheadElapsedMs?.() ?? 0) / MS_PER_SECOND,
-      pxPerSecond: SESSION_TIMELINE_SCALE.pxPerSecond,
+      pxPerSecond: timelineScale.pxPerSecond,
     });
   };
 
@@ -372,6 +403,28 @@ export default function LiveCapturePanel(): JSX.Element | null {
     getDawShellRuntime()?.renderTimeSelection?.();
     getDawShellRuntime()?.renderLoopBrace?.();
   }, [s.appMode, soundcheck.sessionDir]);
+
+  // The Session timeline's initial visible range (#1342 AC1): loading (or switching) a
+  // session re-derives the zoom model to that session's full timeline, so the take shows
+  // end-to-end at the base scale and zoom-in is available without the old Fit-click
+  // workaround (the pre-#1342 createTimelineZoomModel(0) seed pinned the range at the
+  // 1-second minimum, booting zoom-in disabled). Resets the manual-zoom latch too, so the
+  // duration-tracking effect below may re-expand the range as this session's real duration
+  // arrives after its folder is selected.
+  useEffect(() => {
+    if (s.appMode !== 'live') return;
+    zoomManuallyChanged.current = false;
+    setTimelineZoom(createTimelineZoomModel(zoomContext.durationSecs));
+  }, [s.appMode, soundcheck.sessionDir]);
+
+  // Keep an un-zoomed range spanning the full timeline as its duration settles or grows
+  // (#1342): a session's real duration arrives a render or two after its folder is
+  // selected, and a live recording's timeline lengthens as it runs. Once the user has
+  // zoomed (zoomManuallyChanged), their range is left alone until the next session load.
+  useEffect(() => {
+    if (s.appMode !== 'live') return;
+    setTimelineZoom((model) => nextDurationTrackedZoom(model, zoomContext.durationSecs, zoomManuallyChanged.current));
+  }, [s.appMode, zoomContext.durationSecs]);
 
   useEffect(() => {
     if (s.appMode !== 'live') return;
@@ -444,7 +497,7 @@ export default function LiveCapturePanel(): JSX.Element | null {
   useEffect(() => {
     if (s.appMode !== 'live') return;
     const shell = document.getElementById('live-island')?.querySelector<HTMLElement>('.daw-shell') ?? null;
-    patchTimelineScrollOffset(shell, timelineScrollOffsetPx(timelineZoom.range, SESSION_TIMELINE_SCALE.pxPerSecond));
+    patchTimelineScrollOffset(shell, timelineScrollOffsetPx(timelineZoomView.range, timelineScale.pxPerSecond));
     // The shell's markup — and with it the brace's inline left/width (#1313) — is
     // rebuilt on every render, so the brace is repainted on every render for the
     // same reason the scroll offset is.
@@ -581,6 +634,10 @@ export default function LiveCapturePanel(): JSX.Element | null {
     if (zoomBtn) {
       const action = timelineZoomActionForId(zoomBtn.id);
       if (action) {
+        // Latch manual zoom so the duration-tracking effect leaves this range alone
+        // (#1342). Fit-full is the "show everything" control, so it clears the latch and
+        // lets the range auto-track the full timeline again.
+        zoomManuallyChanged.current = action !== 'fit-full';
         setTimelineZoom((model) => applyTimelineZoom(model, action, {
           ...zoomContext,
           insertMarkerSecs: sessionTimelineMarks.getInsertMarkerSecs(),
@@ -658,7 +715,7 @@ export default function LiveCapturePanel(): JSX.Element | null {
         {
           button: e.button,
           clientX: e.clientX,
-          pxPerSecond: SESSION_TIMELINE_SCALE.pxPerSecond,
+          pxPerSecond: timelineScale.pxPerSecond,
           maxSecs: sessionScrubDurationSecs({
             tickDurationSecs: useSoundcheckStore.getState().lastElapsedTick?.duration,
             takeDurationSecs: takeSecs,
@@ -690,7 +747,7 @@ export default function LiveCapturePanel(): JSX.Element | null {
         {
           button: e.button,
           clientX: e.clientX,
-          pxPerSecond: SESSION_TIMELINE_SCALE.pxPerSecond,
+          pxPerSecond: timelineScale.pxPerSecond,
           maxSecs: sessionScrubDurationSecs({
             tickDurationSecs: useSoundcheckStore.getState().lastElapsedTick?.duration,
             takeDurationSecs: takeSecs,
@@ -729,8 +786,8 @@ export default function LiveCapturePanel(): JSX.Element | null {
       button: e.button,
       clientX: e.clientX,
       laneLeftPx: surfaceEl.getBoundingClientRect().left,
-      scrollOffsetPx: timelineScrollOffsetPx(timelineZoom.range, SESSION_TIMELINE_SCALE.pxPerSecond),
-      pxPerSecond: SESSION_TIMELINE_SCALE.pxPerSecond,
+      scrollOffsetPx: timelineScrollOffsetPx(timelineZoomView.range, timelineScale.pxPerSecond),
+      pxPerSecond: timelineScale.pxPerSecond,
     };
     if (kind === 'lane') {
       const geometry = {
@@ -803,6 +860,9 @@ export default function LiveCapturePanel(): JSX.Element | null {
       root: e.currentTarget,
       surface: surfaceEl,
       scrollOffsetPx: pressGeometry.scrollOffsetPx,
+      // Map the pointer at the active zoom scale so the scrub preview and the committed
+      // seek stay on the ruler after a zoom (#1342).
+      scale: timelineScale,
       windowTarget: window,
       pointerId: e.pointerId,
       clientX: e.clientX,
@@ -832,11 +892,15 @@ export default function LiveCapturePanel(): JSX.Element | null {
     if (!e.target.closest(TIMELINE_FOLLOW_SURFACE_SELECTOR)) return;
     const event = timelineFollowEventForWheel(e);
     if (event) setTimelineFollow((m) => applyTimelineFollowEvent(m, event));
+    // A zoom or pan wheel is a manual navigation, so latch it the same way the toolbar
+    // zoom buttons do (#1342): the duration-tracking effect must not re-expand the range
+    // out from under a user who has scrolled or pinch-zoomed the timeline.
+    if (event === 'manual-zoom' || event === 'manual-scroll') zoomManuallyChanged.current = true;
     // Horizontal pan (#1292): moves the ONE shared visible range React holds.
     // Snapshot the event fields first so the state updater never reads a live
     // synthetic event.
     const wheel = { deltaX: e.deltaX, deltaY: e.deltaY, deltaMode: e.deltaMode, ctrlKey: e.ctrlKey, metaKey: e.metaKey };
-    const scrollCtx = { pxPerSecond: SESSION_TIMELINE_SCALE.pxPerSecond, durationSecs: zoomContext.durationSecs };
+    const scrollCtx = { pxPerSecond: timelineScale.pxPerSecond, durationSecs: zoomContext.durationSecs };
     // Zoom (#1291) and pan (#1292) both move the ONE shared visible range React
     // holds. The two gesture predicates are exact complements (ctrl/meta =>
     // zoom), so at most one of them ever fires for a given wheel.

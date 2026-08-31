@@ -42,7 +42,7 @@ import { fmt, iconSvg } from './report-card';
 import { levelDisplay } from './spl-calibration';
 import type { AppSettings } from '../../electron/ipc/api';
 import { dawRulerTicks, dawLaneGridlines, DAW_TIMELINE_SPAN_SECS, DAW_TIMELINE_ORIGIN_PX, type DawShellRuntime } from './daw-shell-runtime';
-import { createTimelineScale } from './timeline-scale';
+import { getSessionTimelineScale } from './session-timeline-scale';
 import { createTimelineTempo } from './timeline-bpm';
 import { timelineRulerLabels } from './timeline-ruler-labels';
 import { timelineBpmControlHTML, timelineBpmControlView, type TimelineBpmControlView } from './timeline-bpm-control';
@@ -235,10 +235,6 @@ const DBFS_CEILING = 0;
 // instead of a second bare-1000 literal.
 export const MS_PER_SECOND = 1000;
 
-/** The arrangement's horizontal scale (#1263). Exported so dawShellHTML and
- *  LiveCapturePanel's overview patch read ONE value — a strip built at one
- *  scale and patched at another would disagree about the visible range. */
-export const SESSION_TIMELINE_SCALE = createTimelineScale('default');
 
 /* ── Typed `window.*` accessors for the pure helper classic-scripts ──
  * Mirrors liveCaptureStore.ts's getArmState()-style pattern: these modules are
@@ -706,13 +702,16 @@ export function dawShellHTML(state: LiveWorkspaceViewState, routingDrawerContent
   const playheadVisible = recordingTimelineActive || state.sessionPlayback !== null;
   const liveWaveformCanvasHTML = recordingTimelineActive ? `<canvas class="daw-channel-waveform"></canvas>` : '';
   const mixWaveformCanvasHTML = recordingTimelineActive ? `<canvas class="daw-mix-waveform"></canvas>` : '';
-  // The arrangement's horizontal scale (#1263). 'default' is today's fixed
-  // geometry, so this changes no pixel — it makes the ruler and the lanes read
-  // their x from the one shared scale model instead of the fixed constant, so
-  // a zoom state can move both together (#1254). Zoom UI is not this story.
-  // Hoisted to SESSION_TIMELINE_SCALE so the overview strip below and
-  // LiveCapturePanel's patch calls provably read the one value.
-  const timelineScale = SESSION_TIMELINE_SCALE;
+  // The arrangement's horizontal scale (#1263/#1342). Read from the one shared
+  // production paint scale (session-timeline-scale.ts) that LiveCapturePanel
+  // derives from the current visible range each render and writes before it
+  // builds this markup — so the ruler, lane gridlines, take clips and overview
+  // strip all lay out at the SAME pixels-per-second the runtime painters use,
+  // and a toolbar zoom state moves every surface together (ADR-0086/0090). A
+  // full-range view resolves to the base 8px/s, so the default view is
+  // unchanged. A caller that never sets the scale (a store snapshot) reads the
+  // default instance.
+  const timelineScale = getSessionTimelineScale();
   // The ruler's display-only tempo (#1276): the toolbar BPM control owns it now
   // — dawShellHTML no longer constructs one, so the number the control shows and
   // the number the ruler labels from are the same value by construction. A caller

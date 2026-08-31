@@ -53,8 +53,9 @@ const ALIGNMENT_TIME_SECS = 10;
 const ALIGNMENT_TICK_INDEX = ALIGNMENT_TIME_SECS / RULER_TICK_INTERVAL_SECS; // 2
 // Same tolerance loopBrace.alignment.spec.ts uses: sub-pixel layout rounding only.
 const ALIGNMENT_TOLERANCE_PX = 1;
-// One pixel's worth of seconds — the epsilon for the committed seek time.
-const SEEK_TOLERANCE_SECS = ALIGNMENT_TOLERANCE_PX / TIMELINE_PX_PER_SECOND;
+// One pixel's worth of seconds is the committed-seek epsilon; #1342 derives it from the
+// MEASURED px-per-second (ALIGNMENT_TOLERANCE_PX / measuredPxPerSecond) inside the helper,
+// since a zoomed-in scale means one pixel is fewer seconds — so no fixed constant here.
 // ADR-0014's peaks document: 50 buckets/sec, one interleaved min/max u8 pair per bucket.
 // 500 buckets => the take clip spans exactly ALIGNMENT_TIME_SECS, so its RIGHT edge is the
 // 10s tick. Track 0 of tests/fixtures/session/session.json is mono sourceChannels [0],
@@ -139,10 +140,15 @@ const FOLLOW_PLAYBACK_DURATION_SECS = 60;
 const FOLLOW_BEYOND_RANGE_SECS = 50;
 const FOLLOW_BEYOND_RANGE_TRANSPORT = '0:50';
 // Where a following viewport lands after the FOLLOW_BEYOND_RANGE_SECS tick: the [0,30] range
-// left by fit + one zoom-in pages toward the playhead and clamps to the 60s timeline's end, so
-// the start is durationSecs - span = 30 and the playhead at 0:50 is back in view.
+// left by one zoom-in pages toward the playhead and clamps to the 60s timeline's end, so the
+// start is durationSecs - span = 30 and the playhead at 0:50 is back in view.
 const FOLLOW_PAGED_START_SECS = 30;
-const FOLLOW_PAGED_SCROLL_PX = `${FOLLOW_PAGED_START_SECS * TIMELINE_PX_PER_SECOND}px`;
+// #1342 wired the zoom state into the painted scale: one zoom-in from the full [0,60] range
+// halves the span to 30s, which DOUBLES the painted pixels-per-second (a narrower visible
+// range magnifies — sessionTimelineScalePxPerSecond). So the paged viewport's scroll offset is
+// start(30s) * 16px/s = 480px, not the base 8px/s * 30s the pre-#1342 fixed scale gave.
+const FOLLOW_PAGED_PX_PER_SECOND = TIMELINE_PX_PER_SECOND * 2;
+const FOLLOW_PAGED_SCROLL_PX = `${FOLLOW_PAGED_START_SECS * FOLLOW_PAGED_PX_PER_SECOND}px`;
 const FOLLOW_PAGED_RANGE_TEXT = '0:30 - 1:00';
 // A second position past the same viewport, used to prove a RESUMED follow re-acquires the
 // playhead on the next tick rather than only on the tick that happened to pause it.
@@ -161,7 +167,23 @@ function fullHeightPeaks(buckets: number): string {
 // a case that pans the visible range asserts against the offset the app actually applied
 // rather than a number this test hardcoded. Returns the offset so a caller can prove its
 // interaction really moved the range.
-async function assertFiveSurfacesAlignAt10s(): Promise<number> {
+// The painted pixels-per-second, measured straight off the ruler ticks (#1342): the ruler
+// tick at ALIGNMENT_TIME_SECS minus the t=0 tick, over ALIGNMENT_TIME_SECS. This is the
+// production scale the shell actually renders at, so a change here proves a zoom control
+// drove the paint, not just the model.
+async function measurePaintedPxPerSecond(): Promise<number> {
+  const ticks = window.locator('.daw-ruler .daw-ruler-tick');
+  const tick0 = (await ticks.nth(0).boundingBox())!;
+  const tickAt = (await ticks.nth(ALIGNMENT_TICK_INDEX).boundingBox())!;
+  return (tickAt.x - tick0.x) / ALIGNMENT_TIME_SECS;
+}
+
+// #1342 wired the toolbar zoom state into the painted scale, so px-per-second is no
+// longer a fixed 8 after a zoom: this helper MEASURES it from the ruler ticks and derives
+// every expected x from the measured value, so it stays honest at any zoom. A caller that
+// wants to pin the scale (the default-scale case) passes expectedPxPerSecond; the zoom
+// cases omit it and assert only that all six surfaces agree at whatever scale is painted.
+async function assertFiveSurfacesAlignAt10s(expectedPxPerSecond?: number): Promise<number> {
   const shell = window.locator('.daw-shell');
   const scrollOffsetPx = parseFloat(await shell.evaluate((el) => getComputedStyle(el).getPropertyValue('--daw-scroll-x').trim()));
   expect(Number.isFinite(scrollOffsetPx)).toBe(true);
@@ -170,8 +192,11 @@ async function assertFiveSurfacesAlignAt10s(): Promise<number> {
   const tick0 = (await ticks.nth(0).boundingBox())!;
   const tickAt = (await ticks.nth(ALIGNMENT_TICK_INDEX).boundingBox())!;
   const measuredPxPerSecond = (tickAt.x - tick0.x) / ALIGNMENT_TIME_SECS;
-  expect(Math.abs(measuredPxPerSecond - TIMELINE_PX_PER_SECOND))
-    .toBeLessThanOrEqual(ALIGNMENT_TOLERANCE_PX / ALIGNMENT_TIME_SECS);
+  expect(measuredPxPerSecond).toBeGreaterThan(0);
+  if (expectedPxPerSecond !== undefined) {
+    expect(Math.abs(measuredPxPerSecond - expectedPxPerSecond))
+      .toBeLessThanOrEqual(ALIGNMENT_TOLERANCE_PX / ALIGNMENT_TIME_SECS);
+  }
 
   // Reading 1 — ruler tick x: tickAt.x (the reference every other reading is compared to).
 
@@ -188,11 +213,11 @@ async function assertFiveSurfacesAlignAt10s(): Promise<number> {
   // Reading 4 — scrub target x: the pointer position the scrub maps to ALIGNMENT_TIME_SECS.
   // beginSessionTimelineScrub measures from the pressed surface's own left edge re-based by
   // the visible range's scroll offset (scrubTimelineLeftPx, #1326), which is the shared t=0
-  // edge at any pan.
+  // edge at any pan. Derived from the MEASURED scale so it stays correct after a zoom (#1342).
   const rulerBox = (await window.locator('.daw-ruler').boundingBox())!;
   // Rounded because Chromium delivers integral clientX to the page; the residual <=0.5px
   // is absorbed by ALIGNMENT_TOLERANCE_PX.
-  const scrubTargetX = Math.round(rulerBox.x + ALIGNMENT_TIME_SECS * TIMELINE_PX_PER_SECOND - scrollOffsetPx);
+  const scrubTargetX = Math.round(rulerBox.x + ALIGNMENT_TIME_SECS * measuredPxPerSecond - scrollOffsetPx);
 
   // Reading 5 — playhead x: hold a ruler scrub at the scrub target. The scrub's
   // previewLeftPx writes the one shared shell-local x onto every .daw-playhead segment,
@@ -214,13 +239,14 @@ async function assertFiveSurfacesAlignAt10s(): Promise<number> {
   expectAligned('ruler playhead', playheadRulerX);
 
   // Commit the scrub and prove the target means 10 seconds, not just this many pixels.
+  // One pixel's worth of seconds is the epsilon, at the scale actually painted (#1342).
   await window.mouse.up();
   const seek = (await electronApp.evaluate(
     () => (globalThis as Record<string, unknown>).__alignmentSeek,
   )) as { startOffsetSecs?: number } | null;
   expect(seek).not.toBeNull();
   expect(Math.abs((seek!.startOffsetSecs ?? NaN) - ALIGNMENT_TIME_SECS))
-    .toBeLessThanOrEqual(SEEK_TOLERANCE_SECS);
+    .toBeLessThanOrEqual(ALIGNMENT_TOLERANCE_PX / measuredPxPerSecond);
 
   return scrollOffsetPx;
 }
@@ -518,50 +544,53 @@ test.describe('Timeline alignment invariant (#1325)', () => {
     // DAW_TIMELINE_PX_PER_SECOND/DAW_RULER_TICK_INTERVAL_SECS.
     const shell = window.locator('.daw-shell');
     expect(await shell.evaluate((el) => getComputedStyle(el).getPropertyValue('--daw-scroll-x').trim())).toBe('0px');
-    expect(await assertFiveSurfacesAlignAt10s()).toBe(0);
+    // Pin px-per-second at the base scale: at the boot full range the painted scale is
+    // provably DAW_TIMELINE_PX_PER_SECOND (#1342, sessionTimelineScalePxPerSecond), which
+    // also guards the local TIMELINE_PX_PER_SECOND constant against drift.
+    expect(await assertFiveSurfacesAlignAt10s(TIMELINE_PX_PER_SECOND)).toBe(0);
   });
 
-  // The frozen #1326 plan expected the zoom model to boot at the full [0, 60] range, with
-  // only #daw-zoom-out and #daw-zoom-fit disabled. That does not hold in this checkout:
-  // LiveCapturePanel seeds `timelineZoom` with `createTimelineZoomModel(0)` once at mount
-  // (LiveCapturePanel.tsx ~line 206), which pins model.range at the 1-second minimum span
-  // (timelineFullDurationSecs(0) === TIMELINE_MIN_VISIBLE_SPAN_SECS). Nothing re-derives
-  // that state from the loaded session's real duration, so `#daw-zoom-in` boots disabled
-  // (span - MIN_SPAN is 0, not > epsilon) even once a 60s session is loaded — only
-  // `#daw-zoom-fit` is enabled (its own range isn't the full duration yet). Every case
-  // below clicks `#daw-zoom-fit` first to move the model onto the real [0, 60] full range
-  // before exercising zoom-in/zoom-out, which the original plan did not anticipate.
-  test('alignment holds after a toolbar zoom-in (#1326)', async () => {
-    await window.locator('#daw-zoom-fit').click();
+  // #1342 fixed the boot-pinned zoom model: LiveCapturePanel now seeds `timelineZoom` from
+  // the timeline's real (floored) duration and re-derives it to the loaded session's full
+  // range on load, so `#daw-zoom-in` is available immediately (AC1) and `#daw-zoom-fit`
+  // boots DISABLED (the range already spans the full timeline). The cases below therefore no
+  // longer click `#daw-zoom-fit` first to unstick the model — the pre-#1342 workaround the
+  // frozen #1326 plan needed — and, because a zoom now changes the painted scale (AC2),
+  // assertFiveSurfacesAlignAt10s() measures px-per-second from the DOM instead of pinning 8.
+  test('alignment holds after a toolbar zoom-in (#1326/#1342)', async () => {
     const rangeReadout = window.locator('#daw-zoom-range');
     const before = await rangeReadout.textContent();
+    // The painted scale is the base scale at the boot full range.
+    expect(Math.abs(await measurePaintedPxPerSecond() - TIMELINE_PX_PER_SECOND))
+      .toBeLessThanOrEqual(ALIGNMENT_TOLERANCE_PX / ALIGNMENT_TIME_SECS);
     await window.locator('#daw-zoom-in').click();
     await expect.poll(() => rangeReadout.textContent()).not.toBe(before);
+    // Load-bearing for #1342 AC2: zoom-in must magnify the PAINTED scale, not only pan —
+    // the ruler ticks are now measurably further apart than the base scale.
+    expect(await measurePaintedPxPerSecond()).toBeGreaterThan(TIMELINE_PX_PER_SECOND + 1);
     expect(await assertFiveSurfacesAlignAt10s()).toBe(0);
   });
 
-  test('alignment holds after a toolbar zoom-out (#1326)', async () => {
-    await window.locator('#daw-zoom-fit').click();
+  test('alignment holds after a toolbar zoom-out (#1326/#1342)', async () => {
     await window.locator('#daw-zoom-in').click();
     await expect(window.locator('#daw-zoom-out')).toBeEnabled();
     await window.locator('#daw-zoom-out').click();
     expect(await assertFiveSurfacesAlignAt10s()).toBe(0);
   });
 
-  test('alignment holds after fit-full (#1326)', async () => {
-    // The first fit-full click only unsticks the boot-pinned model (see note above); zoom
-    // in to leave the full range so the SECOND fit-full click below is the one under test.
-    await window.locator('#daw-zoom-fit').click();
+  test('alignment holds after fit-full (#1326/#1342)', async () => {
+    // Zoom in to leave the full range (so #daw-zoom-fit re-enables), then fit-full is the
+    // control under test: it returns to the full range and disables itself again.
     await window.locator('#daw-zoom-in').click();
     await expect(window.locator('#daw-zoom-fit')).toBeEnabled();
     await window.locator('#daw-zoom-fit').click();
     await expect(window.locator('#daw-zoom-fit')).toBeDisabled();
-    expect(await assertFiveSurfacesAlignAt10s()).toBe(0);
+    // Back at the full range, the painted scale is the base scale again (#1342).
+    expect(await assertFiveSurfacesAlignAt10s(TIMELINE_PX_PER_SECOND)).toBe(0);
   });
 
-  test('alignment holds after a horizontal scroll (#1326)', async () => {
-    // Zoom in first so the visible range is [0, 30] and the pan below has room to move.
-    await window.locator('#daw-zoom-fit').click();
+  test('alignment holds after a horizontal scroll (#1326/#1342)', async () => {
+    // Zoom in first so the visible range narrows and the pan below has room to move.
     await window.locator('#daw-zoom-in').click();
     await expect(window.locator('#daw-zoom-out')).toBeEnabled();
 
@@ -599,11 +628,10 @@ test.describe('Timeline alignment invariant (#1325)', () => {
   });
 
   test('ruler tick, lane gridline, take clip and the playhead share one x at multiple timestamps during loaded-take playback (#1327)', async () => {
-    // Fit to the real [0, 60] range first (#1343): the boot-pinned [0, 1] model (see the
-    // #1326 note above) is narrower than every PLAYBACK_SAMPLES tick, and follow is on by
-    // default, so without this the very first tick would page the viewport and break this
-    // case's scrollOffsetPx===0 assumption below for a reason unrelated to what it tests.
-    await window.locator('#daw-zoom-fit').click();
+    // #1342 boots the zoom model at the full [0, 60] range (superseding the old [0, 1] pin
+    // the #1343 Fit-click here worked around), so every PLAYBACK_SAMPLES tick stays inside
+    // the visible range, follow never pages the viewport, and scrollOffsetPx stays 0 — no
+    // Fit-click needed (Fit boots disabled at the full range).
     // Load-bearing: soundcheckStore's playback-event handler drops progress ticks unless
     // playing is true. start-playback is already stubbed in the shared beforeEach.
     await window.locator('#daw-session-play').click();
@@ -628,10 +656,9 @@ test.describe('Timeline alignment invariant (#1325)', () => {
   });
 
   test('follow-scroll pauses on a manual horizontal scroll and leaves the viewport pinned (#1328)', async () => {
-    // Move the boot-pinned zoom model onto the real [0, 60] range, then narrow to [0, 30] so a
-    // pan has somewhere to go — the same dance the #1326 scroll case documents. Both clicks fire
-    // 'navigate', so follow is provably ON before the gesture under test.
-    await window.locator('#daw-zoom-fit').click();
+    // Narrow the range so a pan has somewhere to go (#1342 boots at the full range, so no
+    // Fit-click is needed first). Zoom-in fires 'navigate', so follow is provably ON before
+    // the gesture under test.
     await window.locator('#daw-zoom-in').click();
     const followToggle = window.locator('#daw-follow-toggle');
     await expect(followToggle).toHaveAttribute('aria-pressed', 'true');
@@ -662,7 +689,8 @@ test.describe('Timeline alignment invariant (#1325)', () => {
   });
 
   test('follow-scroll pauses on a manual zoom wheel and leaves the viewport pinned (#1328)', async () => {
-    await window.locator('#daw-zoom-fit').click();
+    // #1342 boots at the full range, so the range readout starts at the full session and no
+    // Fit-click is needed before the zoom wheel narrows it.
     const followToggle = window.locator('#daw-follow-toggle');
     await expect(followToggle).toHaveAttribute('aria-pressed', 'true');
 
@@ -689,9 +717,9 @@ test.describe('Timeline alignment invariant (#1325)', () => {
   });
 
   test('follow-scroll advances the viewport when the playhead leaves the visible range (#1343)', async () => {
-    // Fit to the real [0, 60] timeline, then one zoom-in for a [0, 30] viewport the 0:50 tick
-    // is provably outside. Both clicks fire 'navigate', so follow is ON before the tick.
-    await window.locator('#daw-zoom-fit').click();
+    // #1342 boots at the full [0, 60] timeline, so one zoom-in gives the [0, 30] viewport the
+    // 0:50 tick is provably outside (no Fit-click first — Fit boots disabled at the full
+    // range). Zoom-in fires 'navigate', so follow is ON before the tick.
     await window.locator('#daw-zoom-in').click();
     const followToggle = window.locator('#daw-follow-toggle');
     await expect(followToggle).toHaveAttribute('aria-pressed', 'true');
@@ -718,7 +746,7 @@ test.describe('Timeline alignment invariant (#1325)', () => {
   });
 
   test('a resumed follow re-acquires the playhead on the next progress tick (#1343)', async () => {
-    await window.locator('#daw-zoom-fit').click();
+    // #1342 boots at the full range, so one zoom-in narrows the viewport (no Fit-click first).
     await window.locator('#daw-zoom-in').click();
     const followToggle = window.locator('#daw-follow-toggle');
     await window.locator('#daw-session-play').click();
@@ -749,7 +777,7 @@ test.describe('Timeline alignment invariant (#1325)', () => {
     // No playback here: assertFiveSurfacesAlignAt10s() holds a ruler scrub, and a running
     // transport's rAF repaint would overwrite its playhead preview — the same hazard the shared
     // beforeEach already documents when it calls stopCaptureIfRunning before loading the session.
-    await window.locator('#daw-zoom-fit').click();
+    // #1342 boots at the full range, so zoom-in alone narrows it (no Fit-click first).
     await window.locator('#daw-zoom-in').click();
     await expect(window.locator('#daw-zoom-out')).toBeEnabled();
 
