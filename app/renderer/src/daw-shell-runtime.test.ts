@@ -753,6 +753,49 @@ describe('createDawShellRuntime', () => {
     });
   });
 
+  describe('previewLoopBrace (#1315)', () => {
+    it('writes the same left/width/display to every .daw-loop-brace element that renderLoopBrace would for the same region', () => {
+      const loopBraceEls = [makeFakePlayhead(), makeFakePlayhead()];
+      const shell = makeFakeShell({ loopBraceEls, clientWidth: 400 });
+      const { deps, setShell } = makeDeps();
+      setShell(shell);
+      const rt = createDawShellRuntime(deps);
+      rt.previewLoopBrace({ startSecs: 2, endSecs: 6 });
+      const leftX = dawPlayheadX(2 * 1000, 400);
+      const rightX = dawPlayheadX(6 * 1000, 400);
+      for (const el of loopBraceEls) {
+        expect(el.style.left).toBe(`${leftX}px`);
+        expect(el.style.width).toBe(`${rightX - leftX}px`);
+        expect(el.style.display).toBe('');
+      }
+    });
+
+    it('paints the passed region even when the injected loopRegion model holds a different range, and leaves the model unchanged', () => {
+      const loopBraceEls = [makeFakePlayhead(), makeFakePlayhead()];
+      const shell = makeFakeShell({ loopBraceEls, clientWidth: 400 });
+      const loopRegion = createLoopRegionModel();
+      loopRegion.setRegion(0, 10);
+      const { deps, setShell } = makeDeps({ loopRegion });
+      setShell(shell);
+      const rt = createDawShellRuntime(deps);
+      rt.previewLoopBrace({ startSecs: 2, endSecs: 6 });
+      const leftX = dawPlayheadX(2 * 1000, 400);
+      const rightX = dawPlayheadX(6 * 1000, 400);
+      for (const el of loopBraceEls) {
+        expect(el.style.left).toBe(`${leftX}px`);
+        expect(el.style.width).toBe(`${rightX - leftX}px`);
+      }
+      expect(loopRegion.getRegion()).toEqual({ startSecs: 0, endSecs: 10 });
+    });
+
+    it('does not throw when there is no .daw-shell', () => {
+      const { deps, setShell } = makeDeps();
+      setShell(null);
+      const rt = createDawShellRuntime(deps);
+      expect(() => rt.previewLoopBrace({ startSecs: 2, endSecs: 6 })).not.toThrow();
+    });
+  });
+
   describe('arrangement accessibility labels (#1306)', () => {
     it('renderAccessibilityLabels writes all four spans from the injected models', () => {
       const shell = makeFakeShell();

@@ -64,6 +64,8 @@ const timeSelectionDragTs = fs.readFileSync(fileURLToPath(new URL('./time-select
 const loopBraceRenderTs = fs.readFileSync(fileURLToPath(new URL('./loopBrace.render.ts', import.meta.url)), 'utf8');
 // #1314: the Loop toggle's pure policy.
 const loopToggleTs = fs.readFileSync(fileURLToPath(new URL('./loopToggle.ts', import.meta.url)), 'utf8');
+// #1315: the loop brace body drag gesture.
+const loopBraceBodyDragTs = fs.readFileSync(fileURLToPath(new URL('./loopBrace.bodyDrag.ts', import.meta.url)), 'utf8');
 // #1306: the arrangement's accessible state labels.
 const timelineAccessibilityLabelsTs = fs.readFileSync(fileURLToPath(new URL('./timeline-accessibility-labels.ts', import.meta.url)), 'utf8');
 
@@ -1175,8 +1177,8 @@ describe('loop brace rendering (#1313)', () => {
     expect(loopBraceRenderTs).not.toMatch(/from '\.\//);
   });
 
-  it('the brace CSS rule is non-interactive, and the shared re-base translate lists it', () => {
-    expect(css).toMatch(/\.daw-loop-brace\s*\{[^}]*pointer-events:\s*none[^}]*\}/);
+  it('the brace CSS rule accepts pointer events for the body drag (#1315), and the shared re-base translate lists it', () => {
+    expect(css).toMatch(/\.daw-loop-brace\s*\{[^}]*pointer-events:\s*auto[^}]*\}/);
     expect(css).toMatch(/\.daw-ruler-tick,[^{]*\.daw-loop-brace,[^{]*\{/);
   });
 
@@ -1227,5 +1229,48 @@ describe('Loop toggle wiring (#1314)', () => {
 
   it('loopBrace.render.ts carries no enablement concept (ADR guard)', () => {
     expect(loopBraceRenderTs).not.toMatch(/setEnabled|\benabled\b/);
+  });
+});
+
+describe('loop brace body drag routing (#1315)', () => {
+  it('loopBrace.bodyDrag.ts is a leaf module importing only loopBrace.render (type) and timeline-scale', () => {
+    expect(loopBraceBodyDragTs.match(/from '\.\/[^']+'/g)).toEqual([
+      "from './loopBrace.render'",
+      "from './timeline-scale'",
+    ]);
+  });
+
+  it('loopBrace.bodyDrag.ts does not import the shell runtime or the BPM module', () => {
+    expect(loopBraceBodyDragTs).not.toMatch(/from '\.\/daw-shell-runtime'/);
+    expect(loopBraceBodyDragTs).not.toMatch(/from '\.\/timeline-bpm'/);
+  });
+
+  it('onBoardPointerDown wires the loop body drag BEFORE it resolves SESSION_SCRUB_SURFACE_SELECTOR', () => {
+    const body = functionBody(liveCapturePanelTsx, 'onBoardPointerDown');
+    const braceIdx = body.indexOf('beginLoopBodyDrag(');
+    const surfaceIdx = body.indexOf('e.target.closest(SESSION_SCRUB_SURFACE_SELECTOR)');
+    expect(braceIdx).toBeGreaterThanOrEqual(0);
+    expect(surfaceIdx).toBeGreaterThan(-1);
+    expect(braceIdx).toBeLessThan(surfaceIdx);
+  });
+
+  it('the loop body drag branch returns before falling through to the scrub/time-selection routes', () => {
+    const body = functionBody(liveCapturePanelTsx, 'onBoardPointerDown');
+    const braceBranchIdx = body.indexOf('closest(LOOP_BRACE_BODY_SELECTOR)');
+    const returnIdx = body.indexOf('return;', braceBranchIdx);
+    const surfaceIdx = body.indexOf('e.target.closest(SESSION_SCRUB_SURFACE_SELECTOR)');
+    expect(braceBranchIdx).toBeGreaterThanOrEqual(0);
+    expect(returnIdx).toBeGreaterThan(braceBranchIdx);
+    expect(returnIdx).toBeLessThan(surfaceIdx);
+  });
+
+  it('the loop body drag previews through previewLoopBrace and commits through sessionLoopRegion.setRegion', () => {
+    const body = functionBody(liveCapturePanelTsx, 'onBoardPointerDown');
+    expect(body).toContain('previewLoopBrace?.(region)');
+    expect(body).toContain('sessionLoopRegion.setRegion(region.startSecs, region.endSecs)');
+  });
+
+  it('daw-shell-runtime.ts exposes previewLoopBrace on the runtime it returns', () => {
+    expect(dawShellRuntimeTs).toContain('previewLoopBrace,');
   });
 });
