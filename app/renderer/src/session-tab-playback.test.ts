@@ -11,11 +11,11 @@ describe('sessionTabPlaybackView', () => {
     const html = sessionTabPlaybackHTML(sessionTabPlaybackView(null, false, false));
 
     expect(sessionTabPlaybackView(null, false, false)).toEqual({ available: false, playing: false, looping: false });
-    for (const id of ['play', 'stop', 'loop', 'return']) expect(html).toContain(`id="daw-session-${id}"`);
-    expect((html.match(/ disabled/g) ?? [])).toHaveLength(4);
+    for (const id of ['play', 'stop', 'loop', 'loop-selection', 'return']) expect(html).toContain(`id="daw-session-${id}"`);
+    expect((html.match(/ disabled/g) ?? [])).toHaveLength(5);
   });
 
-  it('renders Play, Stop, Loop, and Return with stopped-state availability', () => {
+  it('renders Play, Stop, Loop, Loop Selection, and Return with stopped-state availability', () => {
     const html = sessionTabPlaybackHTML(sessionTabPlaybackView(MANIFEST, false, false));
 
     expect(html).toContain('id="daw-session-play"');
@@ -25,6 +25,8 @@ describe('sessionTabPlaybackView', () => {
     expect(html).toContain('aria-label="Stop recorded session playback" disabled');
     expect(html).toContain('id="daw-session-loop"');
     expect(html).toContain('aria-label="Loop recorded session playback" aria-pressed="false"');
+    expect(html).toContain('id="daw-session-loop-selection"');
+    expect(html).toContain('aria-label="Set the loop range to the time selection"');
     expect(html).toContain('id="daw-session-return"');
     expect(html).toContain('aria-label="Return recorded session playback to start"');
   });

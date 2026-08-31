@@ -67,6 +67,8 @@ const loopToggleTs = fs.readFileSync(fileURLToPath(new URL('./loopToggle.ts', im
 // #1315: the loop brace body drag gesture.
 const loopBraceBodyDragTs = fs.readFileSync(fileURLToPath(new URL('./loopBrace.bodyDrag.ts', import.meta.url)), 'utf8');
 const loopBraceEdgeDragTs = fs.readFileSync(fileURLToPath(new URL('./loopBrace.edgeDrag.ts', import.meta.url)), 'utf8');
+// #1317: promoting a time selection to the loop range.
+const loopFromSelectionTs = fs.readFileSync(fileURLToPath(new URL('./loopFromSelection.ts', import.meta.url)), 'utf8');
 // #1306: the arrangement's accessible state labels.
 const timelineAccessibilityLabelsTs = fs.readFileSync(fileURLToPath(new URL('./timeline-accessibility-labels.ts', import.meta.url)), 'utf8');
 
@@ -1322,5 +1324,33 @@ describe('loop brace edge drag routing (#1316)', () => {
 
   it('the CSS gives the loop handles a resize cursor', () => {
     expect(css).toMatch(/\.daw-loop-handle\s*\{[^}]*cursor:\s*ew-resize[^}]*\}/);
+  });
+});
+
+describe('loop-from-selection wiring (#1317)', () => {
+  it('loopFromSelection.ts imports only from ./loopBrace.render and ./time-selection', () => {
+    expect(loopFromSelectionTs.match(/from '\.\/[^']+'/g)).toEqual([
+      "from './loopBrace.render'",
+      "from './time-selection'",
+    ]);
+  });
+
+  it('loopFromSelection.ts does not import the shell runtime or a store', () => {
+    expect(loopFromSelectionTs).not.toMatch(/from '\.\/daw-shell-runtime'|from '\.\/stores\//);
+  });
+
+  it('the delegated click handler routes the button through the pure policy and repaints', () => {
+    expect(liveCapturePanelTsx).toContain('promoteSelectionToLoop(');
+    expect(liveCapturePanelTsx).toContain('LOOP_FROM_SELECTION_BUTTON_ID');
+  });
+
+  it('the promotion branch sits after the Loop-toggle branch', () => {
+    expect(liveCapturePanelTsx.indexOf("closest('#daw-session-loop')")).toBeLessThan(
+      liveCapturePanelTsx.indexOf('promoteSelectionToLoop('),
+    );
+  });
+
+  it('session-tab-playback.ts renders the Loop Selection button', () => {
+    expect(sessionTabPlaybackTs).toContain('id="daw-session-loop-selection"');
   });
 });
