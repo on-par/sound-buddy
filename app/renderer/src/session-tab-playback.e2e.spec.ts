@@ -186,7 +186,7 @@ test.describe('Session tab playback (#1080)', () => {
     await expect(drawer).toBeVisible();
   });
 
-  test('scrubs active Session playback from the ruler and lanes only on pointer release (#1082)', async () => {
+  test('scrubs active Session playback from the ruler and lanes on a plain click; a drag past the #1304 threshold suppresses the commit instead (#1082/#1304)', async () => {
     await window.locator('#daw-session-play').click();
     await sendPlaybackEvent({ type: 'progress', elapsed: 2, duration: 10 });
     await expect(window.locator('.daw-transport-time')).toHaveText('0:02');
@@ -199,12 +199,25 @@ test.describe('Session tab playback (#1080)', () => {
     const ruler = window.locator('.daw-ruler');
     const rulerBox = await ruler.boundingBox();
     expect(rulerBox).not.toBeNull();
+    // A drag (#1304): the scrub still previews the pointer while moving (ADR-0110's move
+    // behaviour is unchanged), but release no longer commits a seek — the movement past
+    // TIME_SELECTION_DRAG_THRESHOLD_PX made this a time-selection drag instead of a click,
+    // and the playhead is repainted back to its true (unchanged) position on release.
     await window.mouse.move(rulerBox!.x, rulerBox!.y + rulerBox!.height / 2);
     await window.mouse.down();
     await window.mouse.move(rulerBox!.x + 32, rulerBox!.y + rulerBox!.height / 2);
     await expect(window.locator('.daw-playhead-ruler')).toHaveCSS('left', '240px');
     await expect(window.locator('.daw-playhead-lanes')).toHaveCSS('left', '240px');
     expect(await startCalls()).toHaveLength(1);
+    await window.mouse.up();
+    await expect(window.locator('.daw-playhead-ruler')).toHaveCSS('left', '224px');
+    await expect(window.locator('.daw-playhead-lanes')).toHaveCSS('left', '224px');
+    expect(await startCalls()).toHaveLength(1);
+    await expect(window.locator('.daw-transport-time')).toHaveText('0:02');
+
+    // A plain click (no movement past the threshold) still seeks in one gesture.
+    await window.mouse.move(rulerBox!.x + 32, rulerBox!.y + rulerBox!.height / 2);
+    await window.mouse.down();
     await window.mouse.up();
     await expect.poll(startCalls).toHaveLength(2);
     expect((await startCalls())[1].startOffsetSecs).toBe(4);
@@ -220,6 +233,13 @@ test.describe('Session tab playback (#1080)', () => {
     await expect(window.locator('.daw-playhead-ruler')).toHaveCSS('left', '256px');
     await expect(window.locator('.daw-playhead-lanes')).toHaveCSS('left', '256px');
     expect(await startCalls()).toHaveLength(2);
+    await window.mouse.up();
+    await expect(window.locator('.daw-playhead-ruler')).toHaveCSS('left', '240px');
+    await expect(window.locator('.daw-playhead-lanes')).toHaveCSS('left', '240px');
+    expect(await startCalls()).toHaveLength(2);
+
+    await window.mouse.move(laneBox!.x + 48, laneBox!.y + laneBox!.height / 2);
+    await window.mouse.down();
     await window.mouse.up();
     await expect.poll(startCalls).toHaveLength(3);
     expect((await startCalls())[2].startOffsetSecs).toBe(6);
@@ -237,18 +257,20 @@ test.describe('Session tab playback (#1080)', () => {
     const rulerBox = await ruler.boundingBox();
     expect(rulerBox).not.toBeNull();
 
+    // A move below TIME_SELECTION_DRAG_THRESHOLD_PX (#1304) keeps this gesture a click,
+    // so the pre-existing single-seek-on-release behaviour (#1285) is unchanged.
     await window.mouse.move(rulerBox!.x, rulerBox!.y + rulerBox!.height / 2);
     await window.mouse.down();
-    await window.mouse.move(rulerBox!.x + 4, rulerBox!.y + rulerBox!.height / 2);
-    await expect(window.locator('.daw-playhead-ruler')).toHaveCSS('left', '212px');
-    await expect(window.locator('.daw-playhead-lanes')).toHaveCSS('left', '212px');
+    await window.mouse.move(rulerBox!.x + 2, rulerBox!.y + rulerBox!.height / 2);
+    await expect(window.locator('.daw-playhead-ruler')).toHaveCSS('left', '210px');
+    await expect(window.locator('.daw-playhead-lanes')).toHaveCSS('left', '210px');
     expect(await startCalls()).toHaveLength(0);
 
     await expect(window.locator('.daw-track-head.selected')).toHaveCount(0);
 
     await window.mouse.up();
     await expect.poll(startCalls).toHaveLength(1);
-    expect((await startCalls())[0].startOffsetSecs).toBe(0.5);
+    expect((await startCalls())[0].startOffsetSecs).toBe(0.25);
   });
 
   test('pauses follow-scroll on a manual timeline wheel and resumes it on Play (#1286)', async () => {
@@ -398,11 +420,11 @@ test.describe('Session tab playback (#1080)', () => {
       () => (globalThis as Record<string, unknown>).__sessionPlaybackCalls,
     ) as Promise<{ startOffsetSecs?: number }[]>;
     const rulerBox = (await window.locator('.daw-ruler').boundingBox())!;
-    await window.mouse.move(rulerBox.x, rulerBox.y + rulerBox.height / 2);
-    await window.mouse.down();
-    // 26px right of the ruler's left edge -> 26 / 8 = 3.25s. Exact in binary
-    // floating point, so toBe is correct here — no epsilon needed.
+    // A plain click (no movement past the #1304 drag threshold) at 26px right of the
+    // ruler's left edge -> 26 / 8 = 3.25s. Exact in binary floating point, so toBe is
+    // correct here — no epsilon needed.
     await window.mouse.move(rulerBox.x + 26, rulerBox.y + rulerBox.height / 2);
+    await window.mouse.down();
     await window.mouse.up();
     await expect.poll(startCalls).toHaveLength(2);
     expect((await startCalls())[1].startOffsetSecs).toBe(3.25);
@@ -439,9 +461,8 @@ test.describe('Session tab playback (#1080)', () => {
     // Scrub #2 (the "after" seek target) — identical gesture, identical
     // unrounded offset: the observational proof that no quantize/snap/warp
     // path ran.
-    await window.mouse.move(rulerBox.x, rulerBox.y + rulerBox.height / 2);
-    await window.mouse.down();
     await window.mouse.move(rulerBox.x + 26, rulerBox.y + rulerBox.height / 2);
+    await window.mouse.down();
     await window.mouse.up();
     await expect.poll(startCalls).toHaveLength(3);
     expect((await startCalls())[2].startOffsetSecs).toBe(3.25);

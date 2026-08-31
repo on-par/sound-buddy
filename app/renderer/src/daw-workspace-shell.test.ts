@@ -58,6 +58,8 @@ const timelineZoomGestureTs = fs.readFileSync(fileURLToPath(new URL('./timeline-
 // #1303: the clip-press routing gates below.
 const clipClickTs = fs.readFileSync(fileURLToPath(new URL('./clip-click.ts', import.meta.url)), 'utf8');
 const clipSelectionTs = fs.readFileSync(fileURLToPath(new URL('./clip-selection.ts', import.meta.url)), 'utf8');
+const timeSelectionTs = fs.readFileSync(fileURLToPath(new URL('./time-selection.ts', import.meta.url)), 'utf8');
+const timeSelectionDragTs = fs.readFileSync(fileURLToPath(new URL('./time-selection-drag.ts', import.meta.url)), 'utf8');
 
 function functionBody(src: string, name: string): string {
   const marker = `function ${name}(`;
@@ -1034,5 +1036,54 @@ describe('clip click routing (#1303)', () => {
   it('the selected clip is painted with an inset shadow, and the base take-clip rule is unchanged', () => {
     expect(css).toMatch(/\.daw-channel-lane\.clip-selected \.daw-take-clip\s*\{[^}]*box-shadow:\s*inset[^}]*var\(--gold-500\)/);
     expect(css).toMatch(/\.daw-take-clip\s*\{[^}]*overflow:\s*hidden[^}]*pointer-events:\s*none/);
+  });
+});
+
+describe('time-selection drag routing (#1304)', () => {
+  it('time-selection.ts is a leaf module with no relative imports', () => {
+    expect(timeSelectionTs).not.toMatch(/from '\.\//);
+  });
+
+  it('time-selection-drag.ts cannot select a clip', () => {
+    expect(timeSelectionDragTs).not.toContain('selectClip');
+    expect(timeSelectionDragTs).not.toMatch(/from '\.\/clip-selection'/);
+  });
+
+  it('time-selection-drag.ts does not import the painter or the BPM module', () => {
+    expect(timeSelectionDragTs).not.toMatch(/from '\.\/daw-shell-runtime'/);
+    expect(timeSelectionDragTs).not.toMatch(/from '\.\/timeline-bpm'/);
+  });
+
+  it('onBoardPointerDown wires the drag, and does so BEFORE the scrub gate', () => {
+    const body = functionBody(liveCapturePanelTsx, 'onBoardPointerDown');
+    const dragIdx = body.indexOf('beginTimeSelectionDrag(');
+    const gateIdx = body.indexOf('canBeginSessionScrub(kind, gate())');
+    expect(dragIdx).toBeGreaterThanOrEqual(0);
+    expect(dragIdx).toBeLessThan(gateIdx);
+  });
+
+  it("the scrub's commit is suppressed by a drag", () => {
+    const body = functionBody(liveCapturePanelTsx, 'onBoardPointerDown');
+    expect(body).toContain('!(timeDrag?.hasDragged() ?? false)');
+  });
+
+  it('onBoardPointerDown still contains no setSelectedChannel (#1302 gate stays green)', () => {
+    const body = functionBody(liveCapturePanelTsx, 'onBoardPointerDown');
+    expect(body).not.toContain('setSelectedChannel');
+  });
+
+  it('live-workspace-view.ts emits both band segments from the shared constant', () => {
+    expect(workspaceViewTs).toContain('TIME_SELECTION_CLASS');
+    expect(workspaceViewTs).toContain('daw-time-selection-ruler');
+    expect(workspaceViewTs).toContain('daw-time-selection-lanes');
+  });
+
+  it('the band CSS rule is non-interactive, and the shared re-base translate lists it', () => {
+    expect(css).toMatch(/\.daw-time-selection\s*\{[^}]*pointer-events:\s*none[^}]*\}/);
+    expect(css).toMatch(/\.daw-ruler-tick,[^{]*\.daw-time-selection,[^{]*\{/);
+  });
+
+  it('App.tsx injects the shared time-selection model', () => {
+    expect(appTsx).toContain('timeSelection: sessionTimeSelection');
   });
 });

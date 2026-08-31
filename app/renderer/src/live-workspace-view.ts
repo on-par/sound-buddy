@@ -55,6 +55,7 @@ import { sessionTabPlaybackHTML, type SessionTabPlaybackView } from './session-t
 import { sessionTabCaptureHTML, recordButtonView } from './record-transport';
 import type { CapturePhase } from './LiveControls';
 import { LANE_TAKE_CLIP_CLASS } from './lane-background-click';
+import { TIME_SELECTION_CLASS } from './time-selection';
 
 export type { DawShellRuntime } from './daw-shell-runtime';
 
@@ -747,6 +748,11 @@ export function dawShellHTML(state: LiveWorkspaceViewState, routingDrawerContent
   // the playhead paints over it when the two coincide.
   const rulerInsertMarkerHTML = `<span class="daw-insert-marker daw-insert-marker-ruler"></span>`;
   const laneInsertMarkerHTML = `<span class="daw-insert-marker daw-insert-marker-lanes"></span>`;
+  // The time selection's two region segments (#1304), mirroring the insert marker's pair.
+  // Hidden until renderTimeSelection paints a real range, and emitted BEFORE the insert
+  // marker in each region so the marker and playhead paint above the band.
+  const rulerTimeSelectionHTML = `<span class="${TIME_SELECTION_CLASS} daw-time-selection-ruler" style="display:none"></span>`;
+  const laneTimeSelectionHTML = `<span class="${TIME_SELECTION_CLASS} daw-time-selection-lanes" style="display:none"></span>`;
   const rulerPlayheadHTML = playheadVisible ? `<span class="daw-playhead daw-playhead-ruler"></span>` : '';
   const lanePlayheadHTML = playheadVisible ? `<span class="daw-playhead daw-playhead-lanes"></span>` : '';
   const headHTML = entries.map((entry) => {
@@ -827,10 +833,11 @@ export function dawShellHTML(state: LiveWorkspaceViewState, routingDrawerContent
     + `<div class="daw-arrangement">`
     + `<div class="daw-track-heads">${rulerGutterHTML}${headRowsHTML}${masterHeadHTML}</div>`
     + `<div class="daw-timeline">`
-    + `<div class="daw-ruler">${rulerTicks}${rulerLabels}${rulerInsertMarkerHTML}${rulerPlayheadHTML}</div>`
+    + `<div class="daw-ruler">${rulerTicks}${rulerLabels}${rulerTimeSelectionHTML}${rulerInsertMarkerHTML}${rulerPlayheadHTML}</div>`
     + `<div class="daw-lane-column">`
     + laneHTML
     + mixLaneHTML
+    + laneTimeSelectionHTML
     + laneInsertMarkerHTML
     + lanePlayheadHTML
     + `</div>`
