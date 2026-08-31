@@ -1087,3 +1087,12 @@ describe('time-selection drag routing (#1304)', () => {
     expect(appTsx).toContain('timeSelection: sessionTimeSelection');
   });
 });
+
+describe('scrub/seek selection preservation (#1305)', () => {
+  it('session-timeline-scrub.ts is structurally incapable of touching selection state', () => {
+    expect(sessionTimelineScrubTs).not.toMatch(/from '\.\/clip-selection'/);
+    expect(sessionTimelineScrubTs).not.toMatch(/from '\.\/time-selection'/);
+    expect(sessionTimelineScrubTs).not.toContain('selectClip');
+    expect(sessionTimelineScrubTs).not.toContain('clearSelection');
+  });
+});

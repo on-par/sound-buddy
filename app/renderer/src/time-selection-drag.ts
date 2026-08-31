@@ -45,6 +45,10 @@ export interface TimeSelectionDragDeps {
   windowTarget: TimeSelectionDragWindow;
   pointerId: number;
   setSelection(range: TimeSelectionRange): void;
+  /** Reachable only from a gesture that crossed TIME_SELECTION_DRAG_THRESHOLD_PX — a
+   *  degenerate range mid-drag, or a cancel after dragging. A click (a press that never
+   *  crosses the threshold) never calls this (#1305): a scrub/seek must leave the
+   *  time selection untouched. */
   clearSelection(): void;
   /** Repaint the band. Called after every selection change. */
   repaint(): void;
@@ -112,18 +116,23 @@ export function beginTimeSelectionDrag(
   const onPointerUp = (up: PointerEvent): void => {
     if (up.pointerId !== deps.pointerId) return;
     cleanup();
+    // A press that never crossed the threshold is a click, and a click is a
+    // scrub/seek (ADR-0110): it must leave BOTH selections exactly as it found
+    // them (#1305). `update()` already returns early while !dragged, so a click
+    // reaches no selection dep at all.
     update(up.clientX);
-    if (!dragged) {
-      deps.clearSelection();
-      deps.repaint();
-    }
     deps.onDragEnd(dragged);
   };
 
   const onPointerCancel = (): void => {
     cleanup();
-    deps.clearSelection();
-    deps.repaint();
+    // Only a gesture that already crossed the threshold has overwritten the
+    // selection, so only that one aborts to cleared. A cancel before the
+    // threshold wrote nothing and must destroy nothing (#1305).
+    if (dragged) {
+      deps.clearSelection();
+      deps.repaint();
+    }
     deps.onDragEnd(dragged);
   };
 
