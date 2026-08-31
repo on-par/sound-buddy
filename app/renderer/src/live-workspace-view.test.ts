@@ -882,7 +882,7 @@ describe('dawShellHTML / dawShellPatchView', () => {
 describe('Session loop brace (#1313)', () => {
   it('renders the loop brace and its handles inside the ruler when a recorded session is loaded', () => {
     const html = dawShellHTML(makeState({
-      sessionPlayback: sessionTabPlaybackView({ tracks: [{ kind: 'mono' }] }, false, false),
+      sessionPlayback: sessionTabPlaybackView({ tracks: [{ kind: 'mono' }] }, false, true),
     }));
     expect(html).toContain(LOOP_BRACE_CLASS);
     expect(html).toContain('daw-loop-brace-ruler');
@@ -900,12 +900,12 @@ describe('Session loop brace (#1313)', () => {
     expect(html).not.toContain('daw-loop-brace');
   });
 
-  it('is gated by availability, not the looping enable flag', () => {
+  it('#1314: emitted only while the Loop toggle is on', () => {
     const manifest = { tracks: [{ kind: 'mono' as const }] };
     const loopingOn = dawShellHTML(makeState({ sessionPlayback: sessionTabPlaybackView(manifest, false, true) }));
     const loopingOff = dawShellHTML(makeState({ sessionPlayback: sessionTabPlaybackView(manifest, false, false) }));
     expect(loopingOn).toContain('daw-loop-brace-ruler');
-    expect(loopingOff).toContain('daw-loop-brace-ruler');
+    expect(loopingOff).not.toContain('daw-loop-brace');
   });
 });
 

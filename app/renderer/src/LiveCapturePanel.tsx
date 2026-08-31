@@ -100,6 +100,7 @@ import { sessionClipSelection } from './clip-selection';
 import { sessionTimeSelection } from './time-selection';
 import { beginTimeSelectionDrag } from './time-selection-drag';
 import { sessionLoopRegion } from './loopBrace.render';
+import { seedLoopRegionOnToggle } from './loopToggle';
 import {
   SESSION_SCRUB_SURFACE_SELECTOR,
   canBeginSessionScrub,
@@ -518,7 +519,15 @@ export default function LiveCapturePanel(): JSX.Element | null {
       return;
     }
     if (target.closest('#daw-session-stop')) { void useSoundcheckStore.getState().stop(); return; }
-    if (target.closest('#daw-session-loop')) { useSoundcheckStore.getState().toggleLoop(); return; }
+    if (target.closest('#daw-session-loop')) {
+      const sc = useSoundcheckStore.getState();
+      // #1314: seed the default range on the first switch-on for this session, before the
+      // store flips, so the brace always appears somewhere sensible. A range already set is
+      // left alone — that is what makes toggling Loop off and on lossless.
+      seedLoopRegionOnToggle(sessionLoopRegion, { available: sc.manifest !== null, looping: sc.looping }, takeSecs);
+      sc.toggleLoop();
+      return;
+    }
     if (target.closest('#daw-session-return')) {
       setTimelineFollow((m) => applyTimelineFollowEvent(m, 'seek'));
       void useSoundcheckStore.getState().returnToStart();

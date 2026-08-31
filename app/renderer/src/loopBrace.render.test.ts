@@ -118,6 +118,56 @@ describe('createLoopRegionModel', () => {
   });
 });
 
+describe('applyDefaultIfUnseeded (#1314)', () => {
+  it('seeds and notifies once on an unseeded model', () => {
+    const model = createLoopRegionModel();
+    const listener = vi.fn();
+    model.subscribe(listener);
+    expect(model.applyDefaultIfUnseeded({ startSecs: 0, endSecs: 4 })).toEqual({ startSecs: 0, endSecs: 4 });
+    expect(model.getRegion()).toEqual({ startSecs: 0, endSecs: 4 });
+    expect(listener).toHaveBeenCalledTimes(1);
+  });
+
+  it('a second call with a different region returns the first and notifies nothing', () => {
+    const model = createLoopRegionModel();
+    model.applyDefaultIfUnseeded({ startSecs: 0, endSecs: 4 });
+    const listener = vi.fn();
+    model.subscribe(listener);
+    expect(model.applyDefaultIfUnseeded({ startSecs: 20, endSecs: 30 })).toEqual({ startSecs: 0, endSecs: 4 });
+    expect(model.getRegion()).toEqual({ startSecs: 0, endSecs: 4 });
+    expect(listener).not.toHaveBeenCalled();
+  });
+
+  it('a zero-width region is ignored and the current region stands', () => {
+    const model = createLoopRegionModel();
+    const before = model.getRegion();
+    expect(model.applyDefaultIfUnseeded({ startSecs: 5, endSecs: 5 })).toEqual(before);
+    expect(model.getRegion()).toEqual(before);
+  });
+
+  it('a model that has had setRegion called is already seeded, so applyDefaultIfUnseeded is a no-op', () => {
+    const model = createLoopRegionModel();
+    model.setRegion(20, 30);
+    expect(model.applyDefaultIfUnseeded({ startSecs: 0, endSecs: 4 })).toEqual({ startSecs: 20, endSecs: 30 });
+    expect(model.getRegion()).toEqual({ startSecs: 20, endSecs: 30 });
+  });
+
+  it('resetForSession() clears the seeded flag so a following applyDefaultIfUnseeded applies again', () => {
+    const model = createLoopRegionModel();
+    model.setRegion(20, 30);
+    model.resetForSession();
+    expect(model.applyDefaultIfUnseeded({ startSecs: 0, endSecs: 4 })).toEqual({ startSecs: 0, endSecs: 4 });
+    expect(model.getRegion()).toEqual({ startSecs: 0, endSecs: 4 });
+  });
+
+  it('a rejected setRegion (zero-width) does not mark the model seeded', () => {
+    const model = createLoopRegionModel();
+    model.setRegion(5, 5);
+    expect(model.applyDefaultIfUnseeded({ startSecs: 0, endSecs: 4 })).toEqual({ startSecs: 0, endSecs: 4 });
+    expect(model.getRegion()).toEqual({ startSecs: 0, endSecs: 4 });
+  });
+});
+
 describe('sessionLoopRegion', () => {
   it('is a shared LoopRegionModel instance exposing the default region', () => {
     expect(sessionLoopRegion.resetForSession()).toEqual({ startSecs: DEFAULT_LOOP_START_SECS, endSecs: DEFAULT_LOOP_LENGTH_SECS });

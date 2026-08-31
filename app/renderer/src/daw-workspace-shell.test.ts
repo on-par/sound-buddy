@@ -62,6 +62,8 @@ const timeSelectionTs = fs.readFileSync(fileURLToPath(new URL('./time-selection.
 const timeSelectionDragTs = fs.readFileSync(fileURLToPath(new URL('./time-selection-drag.ts', import.meta.url)), 'utf8');
 // #1313: the arrangement loop region.
 const loopBraceRenderTs = fs.readFileSync(fileURLToPath(new URL('./loopBrace.render.ts', import.meta.url)), 'utf8');
+// #1314: the Loop toggle's pure policy.
+const loopToggleTs = fs.readFileSync(fileURLToPath(new URL('./loopToggle.ts', import.meta.url)), 'utf8');
 // #1306: the arrangement's accessible state labels.
 const timelineAccessibilityLabelsTs = fs.readFileSync(fileURLToPath(new URL('./timeline-accessibility-labels.ts', import.meta.url)), 'utf8');
 
@@ -1192,7 +1194,7 @@ describe('loop brace rendering (#1313)', () => {
     expect(workspaceViewTs).toContain('daw-loop-brace-ruler');
     expect(workspaceViewTs).toContain('LOOP_HANDLE_START_CLASS');
     expect(workspaceViewTs).toContain('LOOP_HANDLE_END_CLASS');
-    expect(workspaceViewTs).toContain('sessionPlayback?.available === true');
+    expect(workspaceViewTs).toContain('loopBraceVisible(state.sessionPlayback)');
   });
 
   it('the brace carries aria-hidden, like every other decorative segment', () => {
@@ -1206,5 +1208,24 @@ describe('loop brace rendering (#1313)', () => {
 
   it('daw-shell-runtime.ts exposes renderLoopBrace on the runtime it returns', () => {
     expect(dawShellRuntimeTs).toContain('renderLoopBrace,');
+  });
+});
+
+describe('Loop toggle wiring (#1314)', () => {
+  it('loopToggle.ts imports only from ./loopBrace.render', () => {
+    expect(loopToggleTs.match(/from '\.\/[^']+'/g)).toEqual(["from './loopBrace.render'"]);
+  });
+
+  it('the delegated click handler seeds the default range before flipping looping', () => {
+    expect(liveCapturePanelTsx).toContain('seedLoopRegionOnToggle(sessionLoopRegion');
+    const seedIndex = liveCapturePanelTsx.indexOf('seedLoopRegionOnToggle(sessionLoopRegion');
+    const toggleIndex = liveCapturePanelTsx.indexOf('toggleLoop()');
+    expect(seedIndex).toBeGreaterThan(-1);
+    expect(toggleIndex).toBeGreaterThan(-1);
+    expect(seedIndex).toBeLessThan(toggleIndex);
+  });
+
+  it('loopBrace.render.ts carries no enablement concept (ADR guard)', () => {
+    expect(loopBraceRenderTs).not.toMatch(/setEnabled|\benabled\b/);
   });
 });
