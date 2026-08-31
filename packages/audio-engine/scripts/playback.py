@@ -89,6 +89,51 @@ QUEUE_BLOCKS = 20
 TARGET_PEAK = 10 ** (-1.0 / 20.0)  # ≈ 0.8913
 
 
+def flush_and_exit(code: int, exit_fn=os._exit) -> None:
+    """
+    Terminate immediately, after flushing the NDJSON streams.
+
+    playback.py keeps a daemon thread parked in a blocking read on stdin for its
+    whole life (the #759 command channel), and the app always spawns it with
+    stdin piped and held open. A daemon thread inside a buffered read holds that
+    reader's lock, and CPython's interpreter finalization has to take the same
+    lock to close sys.stdin — so a plain sys.exit() can wedge or abort the
+    process at shutdown instead of exiting. os._exit() skips finalization, which
+    makes the exit code deterministic on every host; the explicit flushes keep
+    the stdout/stderr contract that os._exit() would otherwise discard.
+    `exit_fn` is injected so the behavior is unit-testable.
+
+    Note: os._exit() skips atexit hooks and `finally` blocks. Any cleanup
+    playback.py ever needs must run before this call, not in a `finally`.
+    """
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.flush()
+        except Exception:
+            # A closed/broken pipe on the way out must not change the exit code
+            # — the caller's exit status is the contract, not the flush.
+            pass
+    exit_fn(code)
+
+
+def install_stop_handlers(on_stop, register=signal.signal) -> None:
+    """
+    Point SIGTERM and SIGINT at `on_stop`.
+
+    Electron stops playback with SIGTERM (#1340). Registered as the first thing
+    main() does — before the manifest read, the stem opens and the device query
+    — so a stop can never fall through to the default disposition and kill the
+    process with -15. Re-registered by _run_output_stream once a stream exists
+    so the stop becomes a graceful unwind. `register` is injected so the wiring
+    is unit-testable.
+    """
+    def _handler(*_args):
+        on_stop()
+
+    register(signal.SIGTERM, _handler)
+    register(signal.SIGINT, _handler)
+
+
 def load_manifest(session_dir: str) -> dict:
     """
     Read <session_dir>/session.json into the shape playback needs.
@@ -489,12 +534,17 @@ def _run_output_stream(handles, tracks, routes, n_out, master, gain,
             shared_routes[:] = [list(r) for r in new_routes]
 
     def stdin_listener():
-        # Daemon: blocks on read; dies with the process on exit. When stdin is
-        # a TTY or EOF the thread simply blocks/dies harmlessly.
-        for line in sys.stdin:
-            if stop.is_set():
-                break
-            apply_command(line)
+        # Daemon: blocks on read; dies with the process on exit (main() exits via
+        # flush_and_exit so this thread can never wedge interpreter shutdown).
+        # When stdin is a TTY, /dev/null or already closed the loop simply
+        # blocks or ends harmlessly.
+        try:
+            for line in sys.stdin:
+                if stop.is_set():
+                    break
+                apply_command(line)
+        except (ValueError, OSError):
+            return
 
     def callback(outdata, frames, time_info, status):
         if stop.is_set():
@@ -520,15 +570,11 @@ def _run_output_stream(handles, tracks, routes, n_out, master, gain,
         outdata[:] = block
         played["frames"] += frames
 
-    def finalize():
-        stop.set()
-
-    def _on_signal(*_args):
-        finalize()
-        sys.exit(0)
-
-    signal.signal(signal.SIGTERM, _on_signal)
-    signal.signal(signal.SIGINT, _on_signal)
+    # Re-point the process-wide stop handlers (installed in main()) at the
+    # graceful path now that a stream exists: setting `stop` unwinds the `with
+    # sd.OutputStream(...)` block, so the device closes and the natural-end
+    # marker is correctly suppressed before main() exits the process.
+    install_stop_handlers(stop.set)
 
     prod_thread = threading.Thread(target=producer, daemon=True)
     prod_thread.start()
@@ -552,8 +598,10 @@ def _run_output_stream(handles, tracks, routes, n_out, master, gain,
             if now - next_tick > interval_secs:
                 next_tick = now
             sleep = next_tick - now
-            if sleep > 0:
-                time.sleep(sleep)
+            # Event.wait (not time.sleep) so a stop signal breaks the loop at
+            # once instead of after the remainder of the current --interval.
+            if stop.wait(sleep if sleep > 0 else 0):
+                break
 
             elapsed = session_elapsed(start_secs, played["frames"], sample_rate, duration)
             print(json.dumps({
@@ -575,6 +623,11 @@ def _run_output_stream(handles, tracks, routes, n_out, master, gain,
 
 
 def main():
+    # Before any work that can block (manifest read, stem opens, device query):
+    # until #1340 the handlers went up inside _run_output_stream, so a SIGTERM
+    # during startup used the default disposition and exited -15.
+    install_stop_handlers(lambda: flush_and_exit(0))
+
     args = sys.argv[1:]
 
     device_arg = ""
@@ -602,7 +655,7 @@ def main():
 
     if not positional:
         print(json.dumps({"error": "usage: playback.py <session_dir> --device D --route SPEC"}), flush=True)
-        sys.exit(1)
+        flush_and_exit(1)
     session_dir = positional[0]
 
     if interval_secs <= 0:
@@ -612,7 +665,7 @@ def main():
         device_index = find_output_device(device_arg)
         if device_index is None:
             print(json.dumps({"error": f"output device not found: {device_arg}"}), flush=True)
-            sys.exit(1)
+            flush_and_exit(1)
     else:
         device_index = sd.default.device[1]
         if device_index is None or device_index < 0:
@@ -622,15 +675,16 @@ def main():
             )
             if device_index is None:
                 print(json.dumps({"error": "no output device found"}), flush=True)
-                sys.exit(1)
+                flush_and_exit(1)
 
     try:
         play_session(session_dir, device_index, route_spec, interval_secs, force_master, start_secs)
     except ValueError as e:
         print(json.dumps({"error": str(e)}), flush=True)
-        sys.exit(1)
+        flush_and_exit(1)
     except KeyboardInterrupt:
-        sys.exit(0)
+        flush_and_exit(0)
+    flush_and_exit(0)
 
 
 if __name__ == "__main__":
