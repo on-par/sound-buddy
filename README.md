@@ -101,13 +101,18 @@ draft it promotes last). The script then waits on that run and exits non-zero na
 fails. `RELEASES_TOKEN` (fine-grained PAT, `contents: write` on the releases repo) plus the
 five `APPLE_*` signing/notarization secrets are required on the CI side, not optional.
 
+If the version bump for the release is already committed (an RC head, e.g.
+`app/package.json` at `0.9.1`), pass that exact version — `scripts/release.sh 0.9.1` —
+otherwise the default patch bump computes the *next* version and skips the one you
+prepared.
+
 ### Release smoke check (before announcing)
 
 After `scripts/release.sh` finishes, and before you announce the release, run the
 end-to-end smoke check against the tag it just published:
 
 ```bash
-npm run smoke:release -- v0.3.0
+npm run smoke:release -- v0.9.1
 ```
 
 It proves the release channel is reachable through all four layers and exits non-zero

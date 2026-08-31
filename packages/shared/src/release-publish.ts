@@ -7,7 +7,12 @@
 // this script makes; .github/workflows/release.yml is the sole producer and
 // publisher, and it stages a draft it promotes last (ADR-0095).
 
-import { ELECTRON_UPDATER_MANIFEST_FILENAME, RELEASE_MANIFEST_FILENAME, RELEASES_REPO } from './release-manifest.js';
+import {
+  ELECTRON_UPDATER_MANIFEST_FILENAME,
+  RELEASE_MANIFEST_FILENAME,
+  RELEASES_REPO,
+  SEMVER_PATTERN,
+} from './release-manifest.js';
 
 export const PUBLISH_STEPS = ['tag-push', 'ci-build', 'verify-published'] as const;
 export type PublishStep = (typeof PUBLISH_STEPS)[number];
@@ -337,4 +342,60 @@ export function classifyWorkingTree(porcelain: string): TreeState {
 
   const files = lines.map((line) => line.slice(PORCELAIN_STATUS_WIDTH));
   return files.every((file) => VERSION_BUMP_FILES.has(file)) ? 'version-bump-only' : 'dirty';
+}
+
+/** Version sources a release tag must agree with, gathered by scripts/ci-release-manifest.mjs. */
+export interface ReleaseVersionSources {
+  /** The tag CI was triggered by, e.g. "v0.9.1". */
+  tag: string;
+  /** app/package.json's version field. */
+  appVersion: string;
+  /** app/package-lock.json's top-level version field. */
+  lockVersion: string;
+  /** app/package-lock.json's packages[""].version field. */
+  lockRootPackageVersion: string;
+}
+
+export type ReleaseVersionVerdict = { ok: true; version: string } | { ok: false; errors: string[] };
+
+const TAG_PATTERN = /^v\d+\.\d+\.\d+$/;
+
+/**
+ * A tag that disagrees with the committed version would publish a manifest advertising a
+ * version nobody can download (#1339), and a lockfile left at the previous version makes
+ * `npm ci` dirty the tree mid-release. Fail before anything ships.
+ */
+export function checkReleaseVersionSources(sources: ReleaseVersionSources): ReleaseVersionVerdict {
+  const { tag, appVersion, lockVersion, lockRootPackageVersion } = sources;
+  const errors: string[] = [];
+
+  if (!TAG_PATTERN.test(tag)) {
+    errors.push(`tag ${JSON.stringify(tag)} is malformed — expected e.g. v0.9.1`);
+  }
+  if (!SEMVER_PATTERN.test(appVersion)) {
+    errors.push(
+      `app/package.json version ${JSON.stringify(appVersion)} is not MAJOR.MINOR.PATCH — ` +
+        'set it with: (cd app && npm version <x.y.z> --no-git-tag-version)',
+    );
+  }
+  if (errors.length === 0 && tag !== `v${appVersion}`) {
+    errors.push(
+      `tag ${tag} does not match app/package.json version ${appVersion} — ` +
+        `bump it with: (cd app && npm version ${tag.slice(1)} --no-git-tag-version) and commit before tagging`,
+    );
+  }
+  for (const [field, value] of [
+    ['version', lockVersion],
+    ['packages[""].version', lockRootPackageVersion],
+  ] as const) {
+    if (value !== appVersion) {
+      errors.push(
+        `app/package-lock.json ${field} is ${JSON.stringify(value)} but app/package.json is ` +
+          `${JSON.stringify(appVersion)} — re-run: (cd app && npm version ${appVersion} --no-git-tag-version)`,
+      );
+    }
+  }
+
+  if (errors.length > 0) return { ok: false, errors };
+  return { ok: true, version: appVersion };
 }
