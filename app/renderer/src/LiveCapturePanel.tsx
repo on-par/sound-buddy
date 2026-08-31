@@ -100,6 +100,7 @@ import { sessionClipSelection } from './clip-selection';
 import { sessionTimeSelection } from './time-selection';
 import { beginTimeSelectionDrag } from './time-selection-drag';
 import { beginLoopBodyDrag, LOOP_BRACE_BODY_SELECTOR } from './loopBrace.bodyDrag';
+import { beginLoopEdgeDrag, LOOP_HANDLE_END_SELECTOR, LOOP_HANDLE_START_SELECTOR, type LoopEdge } from './loopBrace.edgeDrag';
 import { sessionLoopRegion } from './loopBrace.render';
 import { seedLoopRegionOnToggle } from './loopToggle';
 import {
@@ -616,6 +617,38 @@ export default function LiveCapturePanel(): JSX.Element | null {
 
   function onBoardPointerDown(e: PointerEvent<HTMLDivElement>): void {
     if (!(e.target instanceof Element)) return;
+    // The loop brace edge resize (#1316): a press on either handle moves ONLY that edge.
+    // It must precede the body-drag branch — the handles are children of .daw-loop-brace,
+    // so closest(LOOP_BRACE_BODY_SELECTOR) matches a handle press too. Previews imperatively
+    // and commits once on release, like the body drag (ADR-0121).
+    const loopHandleEl = e.target.closest(`${LOOP_HANDLE_START_SELECTOR}, ${LOOP_HANDLE_END_SELECTOR}`);
+    if (loopHandleEl) {
+      const edge: LoopEdge = loopHandleEl.matches(LOOP_HANDLE_END_SELECTOR) ? 'end' : 'start';
+      beginLoopEdgeDrag(
+        {
+          button: e.button,
+          clientX: e.clientX,
+          pxPerSecond: SESSION_TIMELINE_SCALE.pxPerSecond,
+          maxSecs: sessionScrubDurationSecs({
+            tickDurationSecs: useSoundcheckStore.getState().lastElapsedTick?.duration,
+            takeDurationSecs: takeSecs,
+            manifestDurationSecs: sessionManifestDurationSecs(useSoundcheckStore.getState().manifest),
+          }),
+          edge,
+        },
+        {
+          windowTarget: window,
+          pointerId: e.pointerId,
+          region: sessionLoopRegion.getRegion(),
+          previewRegion: (region) => { getDawShellRuntime()?.previewLoopBrace?.(region); },
+          commitRegion: (region) => {
+            sessionLoopRegion.setRegion(region.startSecs, region.endSecs);
+            getDawShellRuntime()?.renderLoopBrace?.();
+          },
+        },
+      );
+      return;
+    }
     // The loop brace body drag (#1315): a press on the brace moves the loop range and
     // nothing else — it returns before the scrub and the time-selection drag, so a drag
     // that starts on the brace can never seek or draw a selection. The brace lives inside
