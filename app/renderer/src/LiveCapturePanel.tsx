@@ -99,6 +99,7 @@ import { applyClipClick } from './clip-click';
 import { sessionClipSelection } from './clip-selection';
 import { sessionTimeSelection } from './time-selection';
 import { beginTimeSelectionDrag } from './time-selection-drag';
+import { beginLoopBodyDrag, LOOP_BRACE_BODY_SELECTOR } from './loopBrace.bodyDrag';
 import { sessionLoopRegion } from './loopBrace.render';
 import { seedLoopRegionOnToggle } from './loopToggle';
 import {
@@ -615,6 +616,37 @@ export default function LiveCapturePanel(): JSX.Element | null {
 
   function onBoardPointerDown(e: PointerEvent<HTMLDivElement>): void {
     if (!(e.target instanceof Element)) return;
+    // The loop brace body drag (#1315): a press on the brace moves the loop range and
+    // nothing else — it returns before the scrub and the time-selection drag, so a drag
+    // that starts on the brace can never seek or draw a selection. The brace lives inside
+    // .daw-ruler, so this branch MUST come first: closest(SESSION_SCRUB_SURFACE_SELECTOR)
+    // would otherwise resolve a brace press to the ruler. The in-flight range is painted
+    // imperatively and committed once on release (this story's ADR).
+    if (e.target.closest(LOOP_BRACE_BODY_SELECTOR)) {
+      beginLoopBodyDrag(
+        {
+          button: e.button,
+          clientX: e.clientX,
+          pxPerSecond: SESSION_TIMELINE_SCALE.pxPerSecond,
+          maxSecs: sessionScrubDurationSecs({
+            tickDurationSecs: useSoundcheckStore.getState().lastElapsedTick?.duration,
+            takeDurationSecs: takeSecs,
+            manifestDurationSecs: sessionManifestDurationSecs(useSoundcheckStore.getState().manifest),
+          }),
+        },
+        {
+          windowTarget: window,
+          pointerId: e.pointerId,
+          region: sessionLoopRegion.getRegion(),
+          previewRegion: (region) => { getDawShellRuntime()?.previewLoopBrace?.(region); },
+          commitRegion: (region) => {
+            sessionLoopRegion.setRegion(region.startSecs, region.endSecs);
+            getDawShellRuntime()?.renderLoopBrace?.();
+          },
+        },
+      );
+      return;
+    }
     const surfaceEl = e.target.closest(SESSION_SCRUB_SURFACE_SELECTOR);
     if (!surfaceEl) return;
     const kind = sessionScrubSurfaceKind(surfaceEl);

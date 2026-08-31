@@ -993,7 +993,8 @@
        Non-interactive until the drag slice re-enables pointer events on the handles.
        Geometry comes from renderLoopBrace; the head-width / scroll re-base comes from
        the one shared translate below (ADR-0090). */
-    .daw-loop-brace { position:absolute; top:0; left:0; width:0; height:6px; background:var(--gold-text); opacity:0.55; border-radius:2px; pointer-events:none; z-index:1; }
+    .daw-loop-brace { position:absolute; top:0; left:0; width:0; height:6px; background:var(--gold-text); opacity:0.55; border-radius:2px; pointer-events:auto; cursor:grab; z-index:1; }
+    .daw-loop-brace:active { cursor:grabbing; }
     .daw-loop-handle { position:absolute; top:0; width:6px; height:6px; background:var(--gold-text); border-radius:1px; }
     .daw-loop-handle-start { left:0; }
     .daw-loop-handle-end { right:0; }
