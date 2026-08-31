@@ -661,7 +661,9 @@ export default function LiveCapturePanel(): JSX.Element | null {
 
     // The time-selection drag (#1304): armed on every ruler / lane-background press and
     // upgraded to a real selection only once the pointer clears the 4px threshold, so a
-    // click keeps ADR-0110's seek and ADR-0115's insert marker untouched. Armed BEFORE the
+    // click keeps ADR-0110's seek and ADR-0115's insert marker untouched. A click also
+    // leaves the time selection and the clip selection untouched (#1305): a scrub/seek
+    // moves playback position only, it can never clobber selection state. Armed BEFORE the
     // scrub gate on purpose — a selection must be drawable on a stopped session and on a
     // lane where the scrub's playing-only gate refuses. Its deps carry no selectClip, so
     // the route cannot select a clip (see this story's ADR).

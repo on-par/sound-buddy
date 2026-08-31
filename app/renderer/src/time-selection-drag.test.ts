@@ -169,14 +169,27 @@ describe('beginTimeSelectionDrag', () => {
     expect(deps.setSelection).not.toHaveBeenCalled();
   });
 
-  it('pointerup without ever crossing the threshold calls clearSelection + repaint, and onDragEnd(false)', () => {
+  it('pointerup without ever crossing the threshold touches no selection dep — a click is a seek and must preserve the selection (#1305)', () => {
     const win = fakeWindow();
     const deps = makeDeps(win);
     beginTimeSelectionDrag(baseInput({ clientX: 100 }), deps);
     win.up(pointer(1, 101));
-    expect(deps.clearSelection).toHaveBeenCalledTimes(1);
-    expect(deps.repaint).toHaveBeenCalledTimes(1);
+    expect(deps.clearSelection).not.toHaveBeenCalled();
+    expect(deps.setSelection).not.toHaveBeenCalled();
+    expect(deps.repaint).not.toHaveBeenCalled();
     expect(deps.onDragEnd).toHaveBeenCalledWith(false);
+  });
+
+  it('a sub-threshold move then release still touches no selection dep (#1305)', () => {
+    const win = fakeWindow();
+    const deps = makeDeps(win);
+    const handle = beginTimeSelectionDrag(baseInput({ clientX: 100 }), deps);
+    win.move(pointer(1, 102));
+    win.up(pointer(1, 102));
+    expect(deps.setSelection).not.toHaveBeenCalled();
+    expect(deps.clearSelection).not.toHaveBeenCalled();
+    expect(deps.onDragEnd).toHaveBeenCalledWith(false);
+    expect(handle!.hasDragged()).toBe(false);
   });
 
   it('pointerup after a drag calls onDragEnd(true), does not call clearSelection, and removes all three listeners', () => {
@@ -198,16 +211,28 @@ describe('beginTimeSelectionDrag', () => {
     expect(deps.onDragEnd).not.toHaveBeenCalled();
   });
 
-  it('pointercancel clears the selection, repaints and calls onDragEnd once; a pointerup arriving after cleanup does not fire onDragEnd again', () => {
+  it('pointercancel before the threshold touches no selection dep, still calls onDragEnd(false) once; a pointerup arriving after cleanup does not fire onDragEnd again (#1305)', () => {
     const win = fakeWindow();
     const deps = makeDeps(win);
     beginTimeSelectionDrag(baseInput({ clientX: 100 }), deps);
     win.cancel();
-    expect(deps.clearSelection).toHaveBeenCalledTimes(1);
-    expect(deps.repaint).toHaveBeenCalledTimes(1);
+    expect(deps.clearSelection).not.toHaveBeenCalled();
+    expect(deps.repaint).not.toHaveBeenCalled();
     expect(deps.onDragEnd).toHaveBeenCalledTimes(1);
+    expect(deps.onDragEnd).toHaveBeenCalledWith(false);
     win.up(pointer(1, 101));
     expect(deps.onDragEnd).toHaveBeenCalledTimes(1);
+  });
+
+  it('pointercancel AFTER the drag threshold still clears the partial selection', () => {
+    const win = fakeWindow();
+    const deps = makeDeps(win);
+    beginTimeSelectionDrag(baseInput({ clientX: 100, laneLeftPx: 100, pxPerSecond: 8 }), deps);
+    win.move(pointer(1, 140));
+    win.cancel();
+    expect(deps.clearSelection).toHaveBeenCalledTimes(1);
+    expect(deps.repaint).toHaveBeenCalledTimes(2);
+    expect(deps.onDragEnd).toHaveBeenCalledWith(true);
   });
 });
 
