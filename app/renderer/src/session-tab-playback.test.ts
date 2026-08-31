@@ -15,7 +15,15 @@ describe('sessionTabPlaybackView', () => {
     expect((html.match(/ disabled/g) ?? [])).toHaveLength(5);
   });
 
-  it('renders Play, Stop, Loop, Loop Selection, and Return with stopped-state availability', () => {
+  it('wraps the transport in one named group so it reads as a single cluster (#1347)', () => {
+    const html = sessionTabPlaybackHTML(sessionTabPlaybackView(MANIFEST, false, false));
+
+    expect(html).toContain('class="daw-transport-playback daw-transport-group"');
+    expect(html).toContain('role="group"');
+    expect(html).toContain('aria-label="Session playback"');
+  });
+
+  it('renders Play, Stop, Loop, Loop sel, and To start with stopped-state availability', () => {
     const html = sessionTabPlaybackHTML(sessionTabPlaybackView(MANIFEST, false, false));
 
     expect(html).toContain('id="daw-session-play"');
@@ -26,9 +34,15 @@ describe('sessionTabPlaybackView', () => {
     expect(html).toContain('id="daw-session-loop"');
     expect(html).toContain('aria-label="Loop recorded session playback" aria-pressed="false"');
     expect(html).toContain('id="daw-session-loop-selection"');
+    // #1347: the descriptive aria-label is unchanged; only the crowded visible
+    // text shrinks to `Loop sel`, kept clear by the neighbouring Loop toggle.
     expect(html).toContain('aria-label="Set the loop range to the time selection"');
+    expect(html).toMatch(/id="daw-session-loop-selection"[^>]*>Loop sel</);
     expect(html).toContain('id="daw-session-return"');
+    // #1347: `Return` was ambiguous ("return what?"); `To start` names the
+    // destination, aria-label unchanged.
     expect(html).toContain('aria-label="Return recorded session playback to start"');
+    expect(html).toMatch(/id="daw-session-return"[^>]*>To start</);
   });
 
   it('disables Play and enables Stop while playback is active', () => {
