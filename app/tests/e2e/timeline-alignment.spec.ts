@@ -1,4 +1,4 @@
-import { test, expect, type ElectronApplication, type Page } from '@playwright/test';
+import { test, expect, type ElectronApplication, type Page, type Locator } from '@playwright/test';
 import * as path from 'path';
 import { launchApp, stopCaptureIfRunning } from './e2e-helpers';
 
@@ -28,10 +28,12 @@ import { launchApp, stopCaptureIfRunning } from './e2e-helpers';
 // viewport advances to keep the playhead in view, a paused one stays pinned. Loop-brace and
 // time-selection coverage landed here in #1329: the brace's edges are read at the default
 // seeded 0..10s loop range after switching Loop on, the band's edges are read after a real
-// ruler drag, both are compared against the ruler tick AND the lane gridline at the same
-// timestamps, and each case probes the running build and calls test.skip(...) with a named
-// reason when its feature is absent, so an unshipped feature is reported as pending rather
-// than missing.
+// ruler drag, and both are compared against the ruler tick AND the lane gridline at the same
+// timestamps. #1346 removed the dynamic test.skip these two cases used to guard their DOM:
+// the loop brace (#1313/#1314) and the time-selection band (#1304) are in the 0.9.1 release
+// scope, so an absent node is a shipped-feature regression that must FAIL the release gate,
+// not a "pending" skip that lets 0.9.1 pass silently. Each case now asserts its required
+// setup with a message naming the missing node instead of skipping.
 
 let electronApp: ElectronApplication;
 let window: Page;
@@ -87,9 +89,10 @@ const SELECTION_END_TICK_INDEX = SELECTION_END_SECS / RULER_TICK_INTERVAL_SECS; 
 // Intermediate pointer moves, so the gesture crosses the threshold through real
 // pointermove events rather than one teleport.
 const SELECTION_DRAG_STEPS = 10;
-// Bounded wait for a capability probe. Short on purpose: a present feature attaches its
-// node on the same turn as the click, and an ABSENT one must not cost a 5s timeout.
-const FEATURE_PROBE_TIMEOUT_MS = 2000;
+// Bounded wait for the loop brace to attach after Loop is switched on. Short on purpose: a
+// present brace attaches on the same turn as the click, so a missing one (#1346, a release
+// regression) fails fast with a named message instead of costing the full 5s expect timeout.
+const BRACE_ATTACH_TIMEOUT_MS = 2000;
 
 // The three timestamps the playback case samples at. All multiples of both
 // RULER_TICK_INTERVAL_SECS and the lane grid's 5s minor division, so a ruler tick and a
@@ -267,16 +270,24 @@ function expectEdgeAligned(label: string, x: number, reference: RulerGridReading
     .toBeLessThanOrEqual(ALIGNMENT_TOLERANCE_PX);
 }
 
-// Capability probe for the loop brace. Clicks the Session toolbar's Loop button when it
-// exists and reports whether a brace actually attached, so "the feature is not in this
-// build" is answered by the build, not by a hand-maintained flag.
-async function enableLoopBraceIfPresent(): Promise<boolean> {
+// Required setup for the loop brace (#1346). The Loop toggle (#1314) and the brace it
+// attaches (#1313) are in the 0.9.1 release scope, so this performs the switch-on and
+// ASSERTS the brace appeared — a missing toggle or brace fails the release gate with a
+// message naming the absent node, rather than skipping the case as "pending". Replaces the
+// former capability probe (#1329) that returned a boolean for test.skip.
+async function enableLoopBrace(): Promise<Locator> {
   const toggle = window.locator('#daw-session-loop');
-  if (await toggle.count() === 0) return false;
+  await expect(
+    toggle,
+    'release-scope regression (#1314): the Session Loop toggle #daw-session-loop is missing, so the loop brace cannot be shown',
+  ).toHaveCount(1);
   await toggle.click();
   const brace = window.locator('.daw-loop-brace');
-  await brace.waitFor({ state: 'attached', timeout: FEATURE_PROBE_TIMEOUT_MS }).catch(() => {});
-  return await brace.count() > 0;
+  await expect(
+    brace,
+    'release-scope regression (#1313): the loop brace .daw-loop-brace did not attach after switching Loop on',
+  ).toBeVisible({ timeout: BRACE_ATTACH_TIMEOUT_MS });
+  return brace;
 }
 
 // Drags the ruler from fromSecs to toSecs with real pointer input, so the gesture goes
@@ -765,11 +776,10 @@ test.describe('Timeline alignment invariant (#1325)', () => {
   });
 
   test('loop brace edges align with the ruler and lane gridline (#1329)', async () => {
-    const present = await enableLoopBraceIfPresent();
-    test.skip(!present, 'loop brace is not present in this build (#1313/#1314) - pending');
-
-    const brace = window.locator('.daw-loop-brace');
-    await expect(brace).toBeVisible();
+    // #1346: required setup, not a capability probe. enableLoopBrace asserts the Loop toggle
+    // and the brace it shows are present (both in the 0.9.1 release scope), failing with a
+    // node-naming message if either is missing instead of skipping the case as pending.
+    const brace = await enableLoopBrace();
     const braceBox = (await brace.boundingBox())!;
 
     const startRef = await readRulerAndGridAt(LOOP_START_TICK_INDEX);
@@ -786,13 +796,24 @@ test.describe('Timeline alignment invariant (#1325)', () => {
   });
 
   test('time-selection edges align with the ruler and lane gridline (#1329)', async () => {
+    // #1346: the time-selection band (#1304) is in the 0.9.1 release scope. Both segments
+    // render up-front as display:none spans (renderTimeSelection reveals them on drag), so an
+    // absent segment means the feature was dropped — assert their presence and fail with a
+    // node-naming message rather than skipping the case as pending.
     const segments = window.locator('.daw-time-selection');
-    test.skip(await segments.count() === 0, 'time-selection band is not present in this build (#1304) - pending');
+    await expect(
+      segments,
+      'release-scope regression (#1304): the time-selection band .daw-time-selection (ruler + lanes segments) is not rendered',
+    ).toHaveCount(2);
 
     await dragRulerSelection(SELECTION_START_SECS, SELECTION_END_SECS);
     // Both segments boot with style="display:none", so visibility is the synchronisation
-    // gate that proves renderTimeSelection has run.
-    await expect(window.locator('.daw-time-selection-ruler')).toBeVisible();
+    // gate that proves renderTimeSelection has run. #1346: name the required setup on failure
+    // so a band that never reveals reads as a release-scope regression, not a bare timeout.
+    await expect(
+      window.locator('.daw-time-selection-ruler'),
+      'release-scope regression (#1304): the time-selection band .daw-time-selection-ruler did not reveal after a ruler drag (renderTimeSelection did not run)',
+    ).toBeVisible();
 
     const startRef = await readRulerAndGridAt(SELECTION_START_TICK_INDEX);
     const endRef = await readRulerAndGridAt(SELECTION_END_TICK_INDEX);
