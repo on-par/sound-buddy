@@ -94,6 +94,7 @@ import {
 } from './timeline-scroll-gesture';
 import { applyTimelineZoomGesture } from './timeline-zoom-gesture';
 import { beginSessionTimelineScrub } from './session-timeline-scrub';
+import { applyLaneBackgroundClick, LANE_TAKE_CLIP_SELECTOR } from './lane-background-click';
 import {
   SESSION_SCRUB_SURFACE_SELECTOR,
   canBeginSessionScrub,
@@ -513,12 +514,16 @@ export default function LiveCapturePanel(): JSX.Element | null {
     // Session zoom/fit controls (#1284): id -> action -> the pure reducer.
     // zoomContext is captured from the current render, which is correct here
     // for the same reason the BPM branch captures timelineTempo: the handler
-    // is re-created every render.
+    // is re-created every render — EXCEPT insertMarkerSecs, which #1302 lets
+    // move on a lane press without a render, so it is re-read live here.
     const zoomBtn = target.closest('.daw-zoom-btn');
     if (zoomBtn) {
       const action = timelineZoomActionForId(zoomBtn.id);
       if (action) {
-        setTimelineZoom((model) => applyTimelineZoom(model, action, zoomContext));
+        setTimelineZoom((model) => applyTimelineZoom(model, action, {
+          ...zoomContext,
+          insertMarkerSecs: sessionTimelineMarks.getInsertMarkerSecs(),
+        }));
         setTimelineFollow((m) => applyTimelineFollowEvent(m, 'navigate'));
       }
       return;
@@ -584,6 +589,26 @@ export default function LiveCapturePanel(): JSX.Element | null {
     const surfaceEl = e.target.closest(SESSION_SCRUB_SURFACE_SELECTOR);
     if (!surfaceEl) return;
     const kind = sessionScrubSurfaceKind(surfaceEl);
+    // Lane-background press (#1302): places the insert marker at the pressed time and
+    // does nothing else. Runs before the scrub gate — an engineer places the edit point
+    // whether or not the transport is running. Clips are pointer-events:none, so the
+    // hit-test reads their laid-out rects, never the event target (see this story's ADR).
+    if (kind === 'lane') {
+      applyLaneBackgroundClick(
+        {
+          button: e.button,
+          clientX: e.clientX,
+          laneLeftPx: surfaceEl.getBoundingClientRect().left,
+          scrollOffsetPx: timelineScrollOffsetPx(timelineZoom.range, SESSION_TIMELINE_SCALE.pxPerSecond),
+          pxPerSecond: SESSION_TIMELINE_SCALE.pxPerSecond,
+          clipRects: Array.from(surfaceEl.querySelectorAll(LANE_TAKE_CLIP_SELECTOR), (clip) => clip.getBoundingClientRect()),
+        },
+        {
+          setInsertMarkerSecs: (secs) => { sessionTimelineMarks.setInsertMarkerSecs(secs); },
+          repaintInsertMarker: () => { getDawShellRuntime()?.renderInsertMarker?.(); },
+        },
+      );
+    }
     const gate = (): SessionScrubGate => {
       const sc = useSoundcheckStore.getState();
       const lcState = useLiveCaptureStore.getState();

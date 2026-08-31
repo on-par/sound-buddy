@@ -54,6 +54,7 @@ import { timelineOverviewHTML, timelineOverviewView } from './timeline-overview'
 import { sessionTabPlaybackHTML, type SessionTabPlaybackView } from './session-tab-playback';
 import { sessionTabCaptureHTML, recordButtonView } from './record-transport';
 import type { CapturePhase } from './LiveControls';
+import { LANE_TAKE_CLIP_CLASS } from './lane-background-click';
 
 export type { DawShellRuntime } from './daw-shell-runtime';
 
@@ -765,7 +766,7 @@ export function dawShellHTML(state: LiveWorkspaceViewState, routingDrawerContent
         + `<span class="daw-lane-name">${row.name}</span>`
         + `<span class="daw-lane-body">${liveWaveformCanvasHTML}</span>`
         + (row.takeClip
-          ? `<span class="daw-take-clip" style="left:${row.takeClip.leftPx}px;width:${row.takeClip.widthPx}px"><canvas data-session-track-index="${row.takeClip.trackIndex}"></canvas></span>`
+          ? `<span class="${LANE_TAKE_CLIP_CLASS}" style="left:${row.takeClip.leftPx}px;width:${row.takeClip.widthPx}px"><canvas data-session-track-index="${row.takeClip.trackIndex}"></canvas></span>`
           : '')
         + laneGrid
         + `</div>`;
