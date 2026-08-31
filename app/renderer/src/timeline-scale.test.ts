@@ -13,6 +13,8 @@ import {
   timelineSpanSecsAt,
   timelineSpanPxAt,
   createTimelineScale,
+  createTimelineScaleFromPxPerSecond,
+  sessionTimelineScalePxPerSecond,
   type TimelineZoomState,
 } from './timeline-scale';
 
@@ -278,5 +280,60 @@ describe('createTimelineScale', () => {
   it('the returned object is frozen', () => {
     const scale = createTimelineScale('default');
     expect(Object.isFrozen(scale)).toBe(true);
+  });
+});
+
+describe('createTimelineScaleFromPxPerSecond (#1342)', () => {
+  it('carries the requested pixels-per-second and a matching timeToX', () => {
+    const scale = createTimelineScaleFromPxPerSecond(16);
+    expect(scale.pxPerSecond).toBe(16);
+    expect(scale.timeToX(10)).toBe(timelineXAt(16, 10));
+    expect(scale.xToTime(scale.timeToX(10))).toBeCloseTo(10);
+  });
+
+  it('reports the default state only when the resolved scale is the base geometry', () => {
+    expect(createTimelineScaleFromPxPerSecond(DAW_TIMELINE_PX_PER_SECOND).state).toBe('default');
+    expect(createTimelineScaleFromPxPerSecond(16).state).not.toBe('default');
+  });
+
+  it('clamps an over-range request into the supported bounds', () => {
+    expect(createTimelineScaleFromPxPerSecond(1000).pxPerSecond).toBe(TIMELINE_SCALE_MAX_PX_PER_SECOND);
+    expect(createTimelineScaleFromPxPerSecond(0.1).pxPerSecond).toBe(TIMELINE_SCALE_MIN_PX_PER_SECOND);
+  });
+
+  it('falls back to the default scale for a non-finite request', () => {
+    expect(createTimelineScaleFromPxPerSecond(Number.NaN).pxPerSecond).toBe(DAW_TIMELINE_PX_PER_SECOND);
+  });
+
+  it('returns a frozen object', () => {
+    expect(Object.isFrozen(createTimelineScaleFromPxPerSecond(16))).toBe(true);
+  });
+});
+
+describe('sessionTimelineScalePxPerSecond (#1342)', () => {
+  it('is exactly the base scale when the visible span is the full duration (default/fit)', () => {
+    expect(sessionTimelineScalePxPerSecond(60, 60)).toBe(DAW_TIMELINE_PX_PER_SECOND);
+    expect(sessionTimelineScalePxPerSecond(300, 300)).toBe(DAW_TIMELINE_PX_PER_SECOND);
+  });
+
+  it('magnifies by how many times narrower than full the span is', () => {
+    expect(sessionTimelineScalePxPerSecond(30, 60)).toBe(DAW_TIMELINE_PX_PER_SECOND * 2); // 16
+    expect(sessionTimelineScalePxPerSecond(15, 60)).toBe(DAW_TIMELINE_PX_PER_SECOND * 4); // 32
+  });
+
+  it('clamps the magnified scale to the zoomed-in bound', () => {
+    // 8 * (60 / 1) = 480, clamped to the max.
+    expect(sessionTimelineScalePxPerSecond(1, 60)).toBe(TIMELINE_SCALE_MAX_PX_PER_SECOND);
+  });
+
+  it('never resolves below the base scale (the visible span is never wider than the full duration)', () => {
+    expect(sessionTimelineScalePxPerSecond(60, 60)).toBeGreaterThanOrEqual(DAW_TIMELINE_PX_PER_SECOND);
+  });
+
+  it('resolves a non-finite or non-positive span or duration to the base scale', () => {
+    expect(sessionTimelineScalePxPerSecond(0, 60)).toBe(DAW_TIMELINE_PX_PER_SECOND);
+    expect(sessionTimelineScalePxPerSecond(Number.NaN, 60)).toBe(DAW_TIMELINE_PX_PER_SECOND);
+    expect(sessionTimelineScalePxPerSecond(30, 0)).toBe(DAW_TIMELINE_PX_PER_SECOND);
+    expect(sessionTimelineScalePxPerSecond(30, Number.NaN)).toBe(DAW_TIMELINE_PX_PER_SECOND);
   });
 });

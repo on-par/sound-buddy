@@ -137,7 +137,10 @@ test.describe('DAW shell playback + waveform rendering (#713)', () => {
 
   test('fit/zoom controls narrow, widen, and restore the visible range (#1284)', async () => {
     const readout = window.locator('#daw-zoom-range');
-    await window.locator('#daw-zoom-fit').click();
+    // #1342 boots the zoom model at the full timeline range, so #daw-zoom-fit starts
+    // DISABLED (nothing to fit) and the readout already shows the full range — no Fit
+    // click first (that was the pre-#1342 unstick workaround for the min-span boot pin).
+    await expect(window.locator('#daw-zoom-fit')).toBeDisabled();
     const full = await readout.textContent();
     await window.locator('#daw-zoom-in').click();
     await expect(readout).not.toHaveText(full ?? '');

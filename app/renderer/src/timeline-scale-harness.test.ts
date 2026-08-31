@@ -3,7 +3,7 @@
 
 import { describe, it, expect, vi } from 'vitest';
 import { createTimelineScale, TIMELINE_SCALE_MAX_PX_PER_SECOND } from './timeline-scale';
-import { SESSION_TIMELINE_SCALE } from './live-workspace-view';
+import { getSessionTimelineScale } from './session-timeline-scale';
 import {
   TIMELINE_SCALE_STATES,
   TIMELINE_SCALE_DEFAULT_STATE,
@@ -24,10 +24,11 @@ describe('createTimelineScaleModel', () => {
     });
   });
 
-  it('the default state matches SESSION_TIMELINE_SCALE (live-workspace-view.ts) — the shell must never drift from the harness default', () => {
+  it('the default state matches the shell paint scale before any render (session-timeline-scale.ts) — the shell must never drift from the harness default', () => {
     const model = createTimelineScaleModel();
-    expect(model.getScale().state).toBe(SESSION_TIMELINE_SCALE.state);
-    expect(model.getScale().pxPerSecond).toBe(SESSION_TIMELINE_SCALE.pxPerSecond);
+    const shellDefault = getSessionTimelineScale();
+    expect(model.getScale().state).toBe(shellDefault.state);
+    expect(model.getScale().pxPerSecond).toBe(shellDefault.pxPerSecond);
   });
 
   it.each(['zoomed-in', 'zoomed-out', 'default'] as const)('setState(%s) matches createTimelineScale', (state) => {

@@ -4,6 +4,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   createTimelineZoomModel,
+  nextDurationTrackedZoom,
   applyTimelineZoom,
   timelineZoomControlsView,
   timelineZoomControlsHTML,
@@ -29,6 +30,33 @@ describe('createTimelineZoomModel', () => {
     expect(createTimelineZoomModel(0).range.endSecs).toBe(TIMELINE_ZOOM_MIN_SPAN_SECS);
     expect(createTimelineZoomModel(Number.NaN).range.endSecs).toBe(TIMELINE_ZOOM_MIN_SPAN_SECS);
     expect(createTimelineZoomModel(-5).range.endSecs).toBe(TIMELINE_ZOOM_MIN_SPAN_SECS);
+  });
+});
+
+describe('nextDurationTrackedZoom (#1342)', () => {
+  it('re-expands an un-zoomed range to the new full duration as it grows', () => {
+    const model = createTimelineZoomModel(60);
+    const next = nextDurationTrackedZoom(model, 120, false);
+    expect(next.range).toEqual({ startSecs: 0, endSecs: 120 });
+  });
+
+  it('returns the SAME reference when the range already spans the full duration (no re-render)', () => {
+    const model = createTimelineZoomModel(60);
+    expect(nextDurationTrackedZoom(model, 60, false)).toBe(model);
+  });
+
+  it('leaves a manually zoomed range untouched, returning the same reference', () => {
+    const model = applyTimelineZoom(createTimelineZoomModel(60), 'zoom-in', ctx({ durationSecs: 60 }));
+    expect(nextDurationTrackedZoom(model, 120, true)).toBe(model);
+  });
+
+  it('does not treat a model carrying zoom-back memory as already-full even at the full span', () => {
+    // A model whose range spans the full duration but still holds previousRange must be
+    // re-derived (dropping the memory), not bailed out on.
+    const withMemory: TimelineZoomModel = { range: { startSecs: 0, endSecs: 60 }, previousRange: { startSecs: 10, endSecs: 20 } };
+    const next = nextDurationTrackedZoom(withMemory, 60, false);
+    expect(next).not.toBe(withMemory);
+    expect(next.previousRange).toBeNull();
   });
 });
 

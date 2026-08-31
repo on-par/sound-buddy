@@ -3,6 +3,7 @@
 
 import { describe, expect, it } from 'vitest';
 import { beginSessionTimelineScrub, scrubTimelineLeftPx, type SessionTimelineScrubRoot, type SessionTimelineScrubWindow } from './session-timeline-scrub';
+import { createTimelineScaleFromPxPerSecond } from './timeline-scale';
 
 function pointer(pointerId: number, clientX: number): PointerEvent {
   return { pointerId, clientX } as PointerEvent;
@@ -190,6 +191,35 @@ describe('beginSessionTimelineScrub', () => {
     expect(previews).toEqual([288]);
     win.up(pointer(11, 140));
     expect(seeks).toEqual([10]);
+  });
+
+  it('maps the pointer to a time at the injected zoom scale (#1342)', () => {
+    // At the base 8px/s a pointer 64px past t=0 is 8s; at the injected 16px/s it is 4s —
+    // the scrub must commit the time the ACTIVE scale resolves, not the default geometry.
+    const root = fakeRoot();
+    const win = fakeWindow();
+    const previews: number[] = [];
+    const seeks: number[] = [];
+
+    expect(beginSessionTimelineScrub({
+      root,
+      windowTarget: win,
+      surface: { getBoundingClientRect: () => ({ left: 100 }) },
+      scrollOffsetPx: 0,
+      scale: createTimelineScaleFromPxPerSecond(16),
+      pointerId: 13,
+      clientX: 100,
+      getDurationSecs: () => 20,
+      canCommitSeek: () => true,
+      previewLeftPx: (leftPx) => previews.push(leftPx),
+      seekTo: (elapsedSecs) => { seeks.push(elapsedSecs); },
+    })).toBe(true);
+
+    // Preview px round-trips to the pressed shell-local x regardless of scale (origin 208).
+    expect(previews).toEqual([208]);
+    // Release 64px past t=0: at 16px/s that is 4s, not the 8s the base scale would give.
+    win.up(pointer(13, 164));
+    expect(seeks).toEqual([4]);
   });
 });
 

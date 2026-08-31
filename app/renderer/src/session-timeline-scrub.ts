@@ -2,6 +2,7 @@
 // Licensed under the Sound Buddy Desktop Application License (app/LICENSE).
 
 import { soundcheckTimelinePreviewFromPointer } from './soundcheck-playhead';
+import type { TimelineScale } from './timeline-scale';
 
 export interface SessionTimelineScrubSurface {
   getBoundingClientRect(): { left: number };
@@ -34,6 +35,11 @@ export interface SessionTimelineScrubDeps {
    *  optional: a scroll-unaware scrub call site is the #1326 defect, and requiring the
    *  field makes a future one fail to compile. */
   scrollOffsetPx: number;
+  /** The active Session timeline paint scale (#1342): the scrub must map a pointer to
+   *  a time — and back to the previewed playhead x — at the SAME pixels-per-second the
+   *  ruler, gridlines and playhead painter use, or a zoomed-in scrub desyncs from the
+   *  ruler. Optional: an omitted scale is the base geometry, the pre-#1342 behaviour. */
+  scale?: TimelineScale;
   windowTarget: SessionTimelineScrubWindow;
   pointerId: number;
   clientX: number;
@@ -64,6 +70,7 @@ export function beginSessionTimelineScrub(deps: SessionTimelineScrubDeps): boole
       clientX,
       scrubTimelineLeftPx(deps.surface.getBoundingClientRect().left, deps.scrollOffsetPx),
       durationSecs,
+      deps.scale,
     );
     if (preview) deps.previewLeftPx(preview.leftPx);
     return preview;

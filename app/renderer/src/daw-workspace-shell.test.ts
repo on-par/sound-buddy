@@ -6,6 +6,7 @@ import * as fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import {
   dawPlayheadX,
+  dawPlayheadXAt,
   dawTimelineX,
   dawRulerTicks,
   dawLaneGridlines,
@@ -463,14 +464,16 @@ describe('lane gridlines derive from the shared timeline geometry (#1033)', () =
     expect(functionBody(dawShellRuntimeTs, 'dawLaneGridlines')).toContain('timeToX(timeSecs)');
   });
 
-  it('dawShellHTML injects the shared timeline scale into both builders (#1263)', () => {
-    expect(workspaceViewTs).toMatch(/import \{[^}]*createTimelineScale[^}]*\} from '\.\/timeline-scale'/s);
-    // #1282 hoists the resolved scale to a module-level SESSION_TIMELINE_SCALE
-    // (exported so LiveCapturePanel's overview patch reads the same value the
-    // builder used) instead of calling createTimelineScale('default') inline.
-    expect(workspaceViewTs).toContain("export const SESSION_TIMELINE_SCALE = createTimelineScale('default');");
+  it('dawShellHTML injects the shared timeline scale into both builders (#1263/#1342)', () => {
+    // #1342 unparks the zoom-into-paint wiring (ADR-0111): the resolved scale is no
+    // longer a fixed module-level SESSION_TIMELINE_SCALE but the ONE shared production
+    // paint scale (session-timeline-scale.ts) LiveCapturePanel derives from the current
+    // visible range each render, so the builders lay out at the same pixels-per-second the
+    // runtime painters use and a toolbar zoom state moves every surface together.
+    expect(workspaceViewTs).toMatch(/import \{[^}]*getSessionTimelineScale[^}]*\} from '\.\/session-timeline-scale'/s);
+    expect(workspaceViewTs).not.toContain('SESSION_TIMELINE_SCALE');
     const builderBody = functionBody(workspaceViewTs, 'dawShellHTML');
-    expect(builderBody).toContain('const timelineScale = SESSION_TIMELINE_SCALE;');
+    expect(builderBody).toContain('const timelineScale = getSessionTimelineScale();');
     expect(builderBody).toContain('dawRulerTicks(DAW_TIMELINE_SPAN_SECS, timelineScale)');
     expect(builderBody).toContain('dawLaneGridlines(DAW_TIMELINE_SPAN_SECS, timelineScale)');
   });
@@ -781,7 +784,8 @@ describe('the arrangement playhead spans both timeline regions (#1049)', () => {
     expect(body).toContain("querySelectorAll('.daw-playhead')");
     expect(body).toContain('style.left');
     expect(body).not.toContain('style.transform');
-    expect((body.match(/dawPlayheadX\(/g) ?? []).length).toBe(1);
+    // One x, at the active Session zoom scale (#1342): the scale-aware dawPlayheadXAt.
+    expect((body.match(/dawPlayheadXAt\(/g) ?? []).length).toBe(1);
   });
 
   it('the one shared x lands on the ruler tick and the lane gridline for the same instant', () => {
@@ -839,15 +843,16 @@ describe('the arrangement insert marker is distinct from the playhead (#1301)', 
 
   it('renderInsertMarker computes its x through the shared geometry', () => {
     const body = functionBody(dawShellRuntimeTs, 'renderInsertMarker');
-    expect(body).toContain('dawPlayheadX(');
+    // The scale-aware shared geometry (#1342): dawPlayheadXAt at the active zoom scale.
+    expect(body).toContain('dawPlayheadXAt(');
     expect(body).toContain("querySelectorAll('.daw-insert-marker')");
     expect(body).toContain('style.left');
     expect(body).not.toContain('style.transform');
   });
 
-  it('renderPlayhead still contains exactly one dawPlayheadX( call', () => {
+  it('renderPlayhead still contains exactly one dawPlayheadXAt( call', () => {
     const body = functionBody(dawShellRuntimeTs, 'renderPlayhead');
-    expect((body.match(/dawPlayheadX\(/g) ?? []).length).toBe(1);
+    expect((body.match(/dawPlayheadXAt\(/g) ?? []).length).toBe(1);
   });
 });
 
@@ -860,13 +865,19 @@ describe('playhead placement derives from the shared timeline geometry (#1034)',
     expect(dawShellRuntimeTs).toContain('export function dawPlayheadX(elapsedMs: number, shellWidthPx: number): number');
   });
 
-  it("dawPlayheadX's body computes its x through the shared dawTimelineX function", () => {
-    expect(functionBody(dawShellRuntimeTs, 'dawPlayheadX')).toContain('dawTimelineX(');
+  it("dawPlayheadX delegates to the scale-aware dawPlayheadXAt at the base scale (#1342)", () => {
+    // dawPlayheadX is now the base-scale sugar over dawPlayheadXAt (the scale-aware
+    // generalization the zoom paint path uses), so it derives its x from the shared
+    // DAW_TIMELINE_PX_PER_SECOND rather than reimplementing the coordinate.
+    const body = functionBody(dawShellRuntimeTs, 'dawPlayheadX');
+    expect(body).toContain('dawPlayheadXAt(elapsedMs, shellWidthPx, DAW_TIMELINE_PX_PER_SECOND)');
+    // dawPlayheadXAt itself computes x from the shared t=0 origin plus seconds * scale.
+    expect(functionBody(dawShellRuntimeTs, 'dawPlayheadXAt')).toContain('DAW_TIMELINE_ORIGIN_PX + secs * scale');
   });
 
-  it('renderPlayhead writes the transform from dawPlayheadX, not a playhead-local offset', () => {
+  it('renderPlayhead writes the transform from the scale-aware playhead x, not a playhead-local offset', () => {
     const body = functionBody(dawShellRuntimeTs, 'renderPlayhead');
-    expect(body).toContain('dawPlayheadX(elapsed, shell.clientWidth)');
+    expect(body).toContain('dawPlayheadXAt(elapsed, shell.clientWidth, timelineScalePxPerSecond(deps.getTimelineScale?.()))');
     expect(dawShellRuntimeTs).not.toMatch(/offsetPx/);
   });
 
@@ -897,6 +908,39 @@ describe('playhead placement derives from the shared timeline geometry (#1034)',
     expect(dawPlayheadX(0, UNCLAMPED_WIDTH_PX)).toBe(DAW_TIMELINE_ORIGIN_PX);
     expect(dawRulerTicks(DAW_TIMELINE_SPAN_SECS)[0].xPx).toBe(DAW_TIMELINE_ORIGIN_PX);
     expect(dawLaneGridlines(DAW_TIMELINE_SPAN_SECS)[0].xPx).toBe(DAW_TIMELINE_ORIGIN_PX);
+  });
+});
+
+describe('dawPlayheadXAt magnifies with the Session zoom scale (#1342)', () => {
+  const UNCLAMPED_WIDTH_PX = dawTimelineX(DAW_TIMELINE_SPAN_SECS) + DAW_TIMELINE_INSET_PX;
+  const MS = 1000;
+
+  it('equals dawPlayheadX exactly at the base scale', () => {
+    for (const secs of [0, 5, 10, 30, 100]) {
+      expect(dawPlayheadXAt(secs * MS, UNCLAMPED_WIDTH_PX, DAW_TIMELINE_PX_PER_SECOND))
+        .toBe(dawPlayheadX(secs * MS, UNCLAMPED_WIDTH_PX));
+    }
+  });
+
+  it('places a time twice as far from the origin at twice the scale', () => {
+    const secs = 10;
+    const base = dawPlayheadXAt(secs * MS, UNCLAMPED_WIDTH_PX, DAW_TIMELINE_PX_PER_SECOND) - DAW_TIMELINE_ORIGIN_PX;
+    const zoomed = dawPlayheadXAt(secs * MS, UNCLAMPED_WIDTH_PX, DAW_TIMELINE_PX_PER_SECOND * 2) - DAW_TIMELINE_ORIGIN_PX;
+    expect(zoomed).toBe(base * 2);
+  });
+
+  it('falls back to the base scale for a non-finite or non-positive scale, never NaN', () => {
+    const base = dawPlayheadXAt(10 * MS, UNCLAMPED_WIDTH_PX, DAW_TIMELINE_PX_PER_SECOND);
+    expect(dawPlayheadXAt(10 * MS, UNCLAMPED_WIDTH_PX, Number.NaN)).toBe(base);
+    expect(dawPlayheadXAt(10 * MS, UNCLAMPED_WIDTH_PX, 0)).toBe(base);
+    expect(dawPlayheadXAt(10 * MS, UNCLAMPED_WIDTH_PX, -8)).toBe(base);
+  });
+
+  it('still clamps to the shared origin and the right-edge inset', () => {
+    // Left of t=0 clamps to the origin; far past the shell width parks at width - inset.
+    expect(dawPlayheadXAt(-5 * MS, UNCLAMPED_WIDTH_PX, 16)).toBe(DAW_TIMELINE_ORIGIN_PX);
+    const narrow = DAW_TIMELINE_ORIGIN_PX + 100;
+    expect(dawPlayheadXAt(10_000 * MS, narrow, 16)).toBe(narrow - DAW_TIMELINE_INSET_PX);
   });
 });
 

@@ -96,7 +96,7 @@ import MeasurementBadge from './MeasurementBadge';
 import { installStoreBridge } from './stores/bridge';
 import { createCaptureLifecycle, type DawShellSeam, type PreflightApi, type RigReconcileApi, type ArmStateApi } from './capture-lifecycle';
 import { createDawShellRuntime, type DawShellRuntime, type DawPlayheadStateApi, type DawWaveformStateApi } from './daw-shell-runtime';
-import { createTimelineScale } from './timeline-scale';
+import { getSessionTimelineScale } from './session-timeline-scale';
 import { sessionTimelineMarks } from './timeline-state';
 import { installTimelineScaleTestHook } from './timeline-scale-harness';
 import { sessionClipSelection } from './clip-selection';
@@ -127,12 +127,6 @@ import type { LiveSetupStepsApi } from './live-workspace-view';
 // helper (#382) — read by stores/skillTreeStore.ts + SkillTreeDialog.tsx.
 // No BOOT_SCRIPTS entry is removed and no app/renderer/*.js classic script
 // is deleted.
-// The Live arrangement's horizontal scale (#1265). 'default' is today's fixed
-// geometry, so this changes no pixel — it makes the live waveform lanes bucket at
-// the one shared scale model, the same one live-workspace-view.ts hands the ruler
-// and gridlines. Built once: the accessor below runs on every lane paint.
-const DAW_LIVE_TIMELINE_SCALE = createTimelineScale('default');
-
 const BOOT_SCRIPTS = [
   rigReconcileSrc,
   armStateSrc,
@@ -265,7 +259,11 @@ export default function App() {
       },
       dawPlayheadState: (window as unknown as { dawPlayheadState: DawPlayheadStateApi }).dawPlayheadState,
       dawWaveformState: (window as unknown as { dawWaveformState: DawWaveformStateApi }).dawWaveformState,
-      getTimelineScale: () => DAW_LIVE_TIMELINE_SCALE,
+      // The live waveform lanes bucket at the SAME shared production paint scale
+      // (session-timeline-scale.ts) the ruler, gridlines, clips and position
+      // painters resolve x through (#1342), read fresh on every lane paint so a
+      // toolbar zoom state reaches the painter with no re-wiring.
+      getTimelineScale: () => getSessionTimelineScale(),
       timelineMarks: sessionTimelineMarks,
       clipSelection: sessionClipSelection,
       timeSelection: sessionTimeSelection,

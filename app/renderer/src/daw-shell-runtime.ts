@@ -78,11 +78,23 @@ const MS_PER_SECOND = 1000;
  *  instead of walking off-screen. Non-finite inputs resolve to the origin
  *  rather than writing NaN into a transform. */
 export function dawPlayheadX(elapsedMs: number, shellWidthPx: number): number {
+  return dawPlayheadXAt(elapsedMs, shellWidthPx, DAW_TIMELINE_PX_PER_SECOND);
+}
+
+/** The playhead's shell-local x at an arbitrary horizontal scale (#1342) — the
+ *  scale-aware generalization of dawPlayheadX, so the playhead, insert marker,
+ *  time-selection band and loop brace all magnify with the active Session zoom scale
+ *  instead of the fixed DAW_TIMELINE_PX_PER_SECOND. The origin, right-edge clamp and
+ *  non-finite handling are identical to dawPlayheadX; only the pixels-per-second the
+ *  time is converted through changes. At DAW_TIMELINE_PX_PER_SECOND it is byte-identical
+ *  to dawPlayheadX, which is why an un-scaled runtime paints the pre-#1342 geometry. */
+export function dawPlayheadXAt(elapsedMs: number, shellWidthPx: number, pxPerSecond: number): number {
   const secs = Number.isFinite(elapsedMs) ? Math.max(0, elapsedMs) / MS_PER_SECOND : 0;
+  const scale = Number.isFinite(pxPerSecond) && pxPerSecond > 0 ? pxPerSecond : DAW_TIMELINE_PX_PER_SECOND;
   const maxX = Number.isFinite(shellWidthPx)
     ? Math.max(DAW_TIMELINE_ORIGIN_PX, shellWidthPx - DAW_TIMELINE_INSET_PX)
     : DAW_TIMELINE_ORIGIN_PX;
-  return Math.min(maxX, Math.max(DAW_TIMELINE_ORIGIN_PX, dawTimelineX(secs)));
+  return Math.min(maxX, Math.max(DAW_TIMELINE_ORIGIN_PX, DAW_TIMELINE_ORIGIN_PX + secs * scale));
 }
 
 // The ruler's tick division, in seconds. 5s at DAW_TIMELINE_PX_PER_SECOND is
@@ -411,7 +423,7 @@ export function createDawShellRuntime(deps: DawShellRuntimeDeps): DawShellRuntim
     // The x rides `left` — the same property a ruler tick or gridline carries —
     // because the transform slot belongs to the shared head-width re-base in
     // app.css (ADR-0090).
-    const x = dawPlayheadX(elapsed, shell.clientWidth);
+    const x = dawPlayheadXAt(elapsed, shell.clientWidth, timelineScalePxPerSecond(deps.getTimelineScale?.()));
     const advancing = playbackPosition !== null
       ? playbackActive
       : deps.dawPlayheadState.isAdvancing(playheadState);
@@ -436,7 +448,7 @@ export function createDawShellRuntime(deps: DawShellRuntimeDeps): DawShellRuntim
     const shell = deps.doc.querySelector('.daw-shell');
     if (!shell) return;
     const secs = deps.timelineMarks?.getInsertMarkerSecs() ?? TIMELINE_INSERT_MARKER_DEFAULT_SECS;
-    const markerX = dawPlayheadX(secs * MS_PER_SECOND, shell.clientWidth);
+    const markerX = dawPlayheadXAt(secs * MS_PER_SECOND, shell.clientWidth, timelineScalePxPerSecond(deps.getTimelineScale?.()));
     const segments = shell.querySelectorAll('.daw-insert-marker');
     for (let i = 0; i < segments.length; i++) {
       (segments[i] as HTMLElement).style.left = `${markerX}px`;
@@ -473,8 +485,9 @@ export function createDawShellRuntime(deps: DawShellRuntimeDeps): DawShellRuntim
     for (let i = 0; i < segments.length; i++) {
       const segment = segments[i] as HTMLElement;
       if (!range) { segment.style.display = 'none'; continue; }
-      const leftX = dawPlayheadX(range.startSecs * MS_PER_SECOND, shell.clientWidth);
-      const rightX = dawPlayheadX(range.endSecs * MS_PER_SECOND, shell.clientWidth);
+      const pxPerSecond = timelineScalePxPerSecond(deps.getTimelineScale?.());
+      const leftX = dawPlayheadXAt(range.startSecs * MS_PER_SECOND, shell.clientWidth, pxPerSecond);
+      const rightX = dawPlayheadXAt(range.endSecs * MS_PER_SECOND, shell.clientWidth, pxPerSecond);
       segment.style.display = '';
       segment.style.left = `${leftX}px`;
       segment.style.width = `${Math.max(0, rightX - leftX)}px`;
@@ -494,8 +507,9 @@ export function createDawShellRuntime(deps: DawShellRuntimeDeps): DawShellRuntim
     for (let i = 0; i < segments.length; i++) {
       const segment = segments[i] as HTMLElement;
       if (!region) { segment.style.display = 'none'; continue; }
-      const leftX = dawPlayheadX(region.startSecs * MS_PER_SECOND, shell.clientWidth);
-      const rightX = dawPlayheadX(region.endSecs * MS_PER_SECOND, shell.clientWidth);
+      const pxPerSecond = timelineScalePxPerSecond(deps.getTimelineScale?.());
+      const leftX = dawPlayheadXAt(region.startSecs * MS_PER_SECOND, shell.clientWidth, pxPerSecond);
+      const rightX = dawPlayheadXAt(region.endSecs * MS_PER_SECOND, shell.clientWidth, pxPerSecond);
       segment.style.display = '';
       segment.style.left = `${leftX}px`;
       segment.style.width = `${Math.max(0, rightX - leftX)}px`;

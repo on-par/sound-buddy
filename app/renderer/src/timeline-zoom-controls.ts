@@ -82,6 +82,23 @@ export function createTimelineZoomModel(durationSecs: number): TimelineZoomModel
   return { range: { startSecs: 0, endSecs: timelineFullDurationSecs(durationSecs) }, previousRange: null };
 }
 
+/** The zoom model an un-zoomed Session timeline should hold as its full duration settles
+ *  or grows (#1342): while the user has not manually zoomed, the visible range tracks the
+ *  full timeline, so a newly loaded take or a lengthening recording shows end-to-end at the
+ *  base scale. Returns the SAME model reference — never an equal-but-new object — when the
+ *  user has zoomed (manuallyChanged) or the range already spans the full timeline, so a
+ *  React caller can bail out of a re-render. The already-full test is an exact compare, not
+ *  an epsilon one: both ranges come from this module's own createTimelineZoomModel clamp
+ *  (the same rationale createTimelineVisibleRangeModel's commit documents). */
+export function nextDurationTrackedZoom(model: TimelineZoomModel, fullDurationSecs: number, manuallyChanged: boolean): TimelineZoomModel {
+  if (manuallyChanged) return model;
+  const full = createTimelineZoomModel(fullDurationSecs);
+  if (model.previousRange === null
+    && model.range.startSecs === full.range.startSecs
+    && model.range.endSecs === full.range.endSecs) return model;
+  return full;
+}
+
 export function applyTimelineZoom(model: TimelineZoomModel, action: TimelineZoomAction, ctx: TimelineZoomContext): TimelineZoomModel {
   const fullSecs = timelineFullDurationSecs(ctx.durationSecs);
   const cur = clampVisibleRange(model.range, fullSecs);

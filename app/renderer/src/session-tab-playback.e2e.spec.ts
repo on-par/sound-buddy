@@ -284,24 +284,23 @@ test.describe('Session tab playback (#1080)', () => {
     await expect(followToggle).toHaveAttribute('aria-pressed', 'true');
   });
 
-  test('a ctrl-modified timeline wheel zooms the shared visible range and clamps at the bounds (#1291)', async () => {
+  test('a ctrl-modified timeline wheel zooms the shared visible range and clamps at the bounds (#1291/#1342)', async () => {
     const rangeReadout = window.locator('#daw-zoom-range');
-    // The zoom model boots at createTimelineZoomModel(0) (LiveCapturePanel.tsx)
-    // and nothing auto-fits it to the loaded session's duration, so the range
-    // starts already pinned at TIMELINE_MIN_VISIBLE_SPAN_SECS - the readout
-    // below is the minimum-span bound, not an arbitrary starting value.
-    const before = await rangeReadout.textContent();
+    // #1342 boots the zoom model at the loaded session's full range (not the old
+    // createTimelineZoomModel(0) minimum-span pin), so the readout starts at the full
+    // session and the range can only be zoomed IN from here.
+    const full = await rangeReadout.textContent();
 
-    // Zoom in from the min-span bound: already clamped, so the gesture is a
+    // Zoom out from the full range: already at the maximum span, so the gesture is a
     // documented no-op - the readout does not change.
-    await window.locator('.daw-timeline').dispatchEvent('wheel', { deltaX: 0, deltaY: -240, ctrlKey: true, bubbles: true });
-    await expect(rangeReadout).toHaveText(before ?? '');
-
-    // Zoom out: the visible range widens, so the readout changes.
     await window.locator('.daw-timeline').dispatchEvent('wheel', { deltaX: 0, deltaY: 240, ctrlKey: true, bubbles: true });
-    await expect(rangeReadout).not.toHaveText(before ?? '');
+    await expect(rangeReadout).toHaveText(full ?? '');
 
-    // Zoom out far past the bound: TIMELINE_ZOOM_MAX_STEP_FACTOR bounds each
+    // Zoom in: the visible range narrows, so the readout changes.
+    await window.locator('.daw-timeline').dispatchEvent('wheel', { deltaX: 0, deltaY: -240, ctrlKey: true, bubbles: true });
+    await expect(rangeReadout).not.toHaveText(full ?? '');
+
+    // Zoom back out far past the bound: TIMELINE_ZOOM_MAX_STEP_FACTOR bounds each
     // wheel EVENT to one 4x span step (by design - see timeline-zoom-gesture.ts),
     // so reaching the full-session bound from here takes a few large events,
     // not one. Repeat until the readout stops moving, then confirm the range
@@ -311,6 +310,7 @@ test.describe('Session tab playback (#1080)', () => {
       await window.locator('.daw-timeline').dispatchEvent('wheel', { deltaX: 0, deltaY: 5000, ctrlKey: true, bubbles: true });
     }
     const clamped = await rangeReadout.textContent();
+    expect(clamped).toBe(full);
     await window.locator('.daw-timeline').dispatchEvent('wheel', { deltaX: 0, deltaY: 5000, ctrlKey: true, bubbles: true });
     await expect(rangeReadout).toHaveText(clamped ?? '');
 
