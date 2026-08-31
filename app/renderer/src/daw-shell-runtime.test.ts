@@ -813,7 +813,8 @@ describe('createDawShellRuntime', () => {
       const spans = shell.el.a11ySpans as ReturnType<typeof makeFakeA11ySpan> & Record<string, { textContent: string }>;
       expect((spans as unknown as { insertMarker: { textContent: string } }).insertMarker.textContent).toBe('Insert marker at 0:20');
       expect((spans as unknown as { playhead: { textContent: string } }).playhead.textContent).toBe('Playhead at 0:10');
-      expect((spans as unknown as { clipSelection: { textContent: string } }).clipSelection.textContent).toBe('Clip selected on channel 2');
+      // #1345: the label is one-based (channel index 2 → "channel 3"), matching the visible `Ch N`.
+      expect((spans as unknown as { clipSelection: { textContent: string } }).clipSelection.textContent).toBe('Clip selected on channel 3');
       expect((spans as unknown as { timeSelection: { textContent: string } }).timeSelection.textContent).toBe('Time selection from 0:10 to 0:20');
     });
 
@@ -838,7 +839,8 @@ describe('createDawShellRuntime', () => {
       expect(spans.insertMarker.textContent).toBe('Insert marker at 0:07');
 
       rt.renderClipSelection();
-      expect(spans.clipSelection.textContent).toBe('Clip selected on channel 1');
+      // #1345: one-based (channel index 1 → "channel 2").
+      expect(spans.clipSelection.textContent).toBe('Clip selected on channel 2');
 
       rt.renderTimeSelection();
       expect(spans.timeSelection.textContent).toBe('Time selection from 0:01 to 0:04');

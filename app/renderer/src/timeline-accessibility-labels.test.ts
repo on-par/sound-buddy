@@ -67,13 +67,58 @@ describe('timelineAccessibilityLabels', () => {
       }).clipSelection).toBe('No clip selected');
     });
 
-    it('reads "Clip selected on channel N" for a non-negative integer channel', () => {
+    // #1345: the announced channel is one-based, matching the visible UI's `Ch N`, so
+    // the first channel reads "channel 1", never the confusing zero-based "channel 0".
+    it('reads a one-based "Clip selected on channel N" for a non-negative integer channel', () => {
       expect(timelineAccessibilityLabels({
         playheadSecs: 0, insertMarkerSecs: 0, selectedClipChannel: 0, timeSelection: null,
-      }).clipSelection).toBe('Clip selected on channel 0');
+      }).clipSelection).toBe('Clip selected on channel 1');
       expect(timelineAccessibilityLabels({
         playheadSecs: 0, insertMarkerSecs: 0, selectedClipChannel: 3, timeSelection: null,
+      }).clipSelection).toBe('Clip selected on channel 4');
+    });
+
+    // #1345: a named track is announced by name, matching what the visible UI shows.
+    it('prefers the track name when one is present', () => {
+      expect(timelineAccessibilityLabels({
+        playheadSecs: 0, insertMarkerSecs: 0, selectedClipChannel: 0, timeSelection: null,
+        selectedClipTrackName: 'Lead Vocal',
+      }).clipSelection).toBe('Clip selected on Lead Vocal');
+      expect(timelineAccessibilityLabels({
+        playheadSecs: 0, insertMarkerSecs: 0, selectedClipChannel: 5, timeSelection: null,
+        selectedClipTrackName: 'Kick',
+      }).clipSelection).toBe('Clip selected on Kick');
+    });
+
+    // #1345: an absent or blank track name is not a name — fall back to the one-based channel.
+    it('falls back to the one-based channel for an empty or whitespace track name', () => {
+      expect(timelineAccessibilityLabels({
+        playheadSecs: 0, insertMarkerSecs: 0, selectedClipChannel: 0, timeSelection: null,
+        selectedClipTrackName: '',
+      }).clipSelection).toBe('Clip selected on channel 1');
+      expect(timelineAccessibilityLabels({
+        playheadSecs: 0, insertMarkerSecs: 0, selectedClipChannel: 2, timeSelection: null,
+        selectedClipTrackName: '   ',
       }).clipSelection).toBe('Clip selected on channel 3');
+      expect(timelineAccessibilityLabels({
+        playheadSecs: 0, insertMarkerSecs: 0, selectedClipChannel: 1, timeSelection: null,
+        selectedClipTrackName: null,
+      }).clipSelection).toBe('Clip selected on channel 2');
+    });
+
+    // #1345: a surrounding-whitespace name is trimmed to stay concise.
+    it('trims surrounding whitespace from a track name', () => {
+      expect(timelineAccessibilityLabels({
+        playheadSecs: 0, insertMarkerSecs: 0, selectedClipChannel: 0, timeSelection: null,
+        selectedClipTrackName: '  Snare Top  ',
+      }).clipSelection).toBe('Clip selected on Snare Top');
+    });
+
+    it('ignores a track name when no clip is selected', () => {
+      expect(timelineAccessibilityLabels({
+        playheadSecs: 0, insertMarkerSecs: 0, selectedClipChannel: null, timeSelection: null,
+        selectedClipTrackName: 'Lead Vocal',
+      }).clipSelection).toBe('No clip selected');
     });
 
     it('falls back to "No clip selected" for an invalid channel', () => {
@@ -82,6 +127,15 @@ describe('timelineAccessibilityLabels', () => {
       }).clipSelection).toBe('No clip selected');
       expect(timelineAccessibilityLabels({
         playheadSecs: 0, insertMarkerSecs: 0, selectedClipChannel: 1.5, timeSelection: null,
+      }).clipSelection).toBe('No clip selected');
+    });
+
+    // #1345: an invalid channel with a real track name still has no clip to announce —
+    // the name never rescues a selection the model reports as invalid.
+    it('falls back to "No clip selected" for an invalid channel even with a track name', () => {
+      expect(timelineAccessibilityLabels({
+        playheadSecs: 0, insertMarkerSecs: 0, selectedClipChannel: -1, timeSelection: null,
+        selectedClipTrackName: 'Lead Vocal',
       }).clipSelection).toBe('No clip selected');
     });
   });
