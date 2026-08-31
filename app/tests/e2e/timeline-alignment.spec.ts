@@ -140,10 +140,15 @@ const FOLLOW_PLAYBACK_DURATION_SECS = 60;
 const FOLLOW_BEYOND_RANGE_SECS = 50;
 const FOLLOW_BEYOND_RANGE_TRANSPORT = '0:50';
 // Where a following viewport lands after the FOLLOW_BEYOND_RANGE_SECS tick: the [0,30] range
-// left by fit + one zoom-in pages toward the playhead and clamps to the 60s timeline's end, so
-// the start is durationSecs - span = 30 and the playhead at 0:50 is back in view.
+// left by one zoom-in pages toward the playhead and clamps to the 60s timeline's end, so the
+// start is durationSecs - span = 30 and the playhead at 0:50 is back in view.
 const FOLLOW_PAGED_START_SECS = 30;
-const FOLLOW_PAGED_SCROLL_PX = `${FOLLOW_PAGED_START_SECS * TIMELINE_PX_PER_SECOND}px`;
+// #1342 wired the zoom state into the painted scale: one zoom-in from the full [0,60] range
+// halves the span to 30s, which DOUBLES the painted pixels-per-second (a narrower visible
+// range magnifies — sessionTimelineScalePxPerSecond). So the paged viewport's scroll offset is
+// start(30s) * 16px/s = 480px, not the base 8px/s * 30s the pre-#1342 fixed scale gave.
+const FOLLOW_PAGED_PX_PER_SECOND = TIMELINE_PX_PER_SECOND * 2;
+const FOLLOW_PAGED_SCROLL_PX = `${FOLLOW_PAGED_START_SECS * FOLLOW_PAGED_PX_PER_SECOND}px`;
 const FOLLOW_PAGED_RANGE_TEXT = '0:30 - 1:00';
 // A second position past the same viewport, used to prove a RESUMED follow re-acquires the
 // playhead on the next tick rather than only on the tick that happened to pause it.
@@ -623,11 +628,10 @@ test.describe('Timeline alignment invariant (#1325)', () => {
   });
 
   test('ruler tick, lane gridline, take clip and the playhead share one x at multiple timestamps during loaded-take playback (#1327)', async () => {
-    // Fit to the real [0, 60] range first (#1343): the boot-pinned [0, 1] model (see the
-    // #1326 note above) is narrower than every PLAYBACK_SAMPLES tick, and follow is on by
-    // default, so without this the very first tick would page the viewport and break this
-    // case's scrollOffsetPx===0 assumption below for a reason unrelated to what it tests.
-    await window.locator('#daw-zoom-fit').click();
+    // #1342 boots the zoom model at the full [0, 60] range (superseding the old [0, 1] pin
+    // the #1343 Fit-click here worked around), so every PLAYBACK_SAMPLES tick stays inside
+    // the visible range, follow never pages the viewport, and scrollOffsetPx stays 0 — no
+    // Fit-click needed (Fit boots disabled at the full range).
     // Load-bearing: soundcheckStore's playback-event handler drops progress ticks unless
     // playing is true. start-playback is already stubbed in the shared beforeEach.
     await window.locator('#daw-session-play').click();
@@ -713,9 +717,9 @@ test.describe('Timeline alignment invariant (#1325)', () => {
   });
 
   test('follow-scroll advances the viewport when the playhead leaves the visible range (#1343)', async () => {
-    // Fit to the real [0, 60] timeline, then one zoom-in for a [0, 30] viewport the 0:50 tick
-    // is provably outside. Both clicks fire 'navigate', so follow is ON before the tick.
-    await window.locator('#daw-zoom-fit').click();
+    // #1342 boots at the full [0, 60] timeline, so one zoom-in gives the [0, 30] viewport the
+    // 0:50 tick is provably outside (no Fit-click first — Fit boots disabled at the full
+    // range). Zoom-in fires 'navigate', so follow is ON before the tick.
     await window.locator('#daw-zoom-in').click();
     const followToggle = window.locator('#daw-follow-toggle');
     await expect(followToggle).toHaveAttribute('aria-pressed', 'true');
@@ -742,7 +746,7 @@ test.describe('Timeline alignment invariant (#1325)', () => {
   });
 
   test('a resumed follow re-acquires the playhead on the next progress tick (#1343)', async () => {
-    await window.locator('#daw-zoom-fit').click();
+    // #1342 boots at the full range, so one zoom-in narrows the viewport (no Fit-click first).
     await window.locator('#daw-zoom-in').click();
     const followToggle = window.locator('#daw-follow-toggle');
     await window.locator('#daw-session-play').click();
