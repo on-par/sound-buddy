@@ -790,6 +790,7 @@ export default function LiveCapturePanel(): JSX.Element | null {
     beginSessionTimelineScrub({
       root: e.currentTarget,
       surface: surfaceEl,
+      scrollOffsetPx: pressGeometry.scrollOffsetPx,
       windowTarget: window,
       pointerId: e.pointerId,
       clientX: e.clientX,

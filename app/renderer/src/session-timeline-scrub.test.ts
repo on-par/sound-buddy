@@ -2,7 +2,7 @@
 // Licensed under the Sound Buddy Desktop Application License (app/LICENSE).
 
 import { describe, expect, it } from 'vitest';
-import { beginSessionTimelineScrub, type SessionTimelineScrubRoot, type SessionTimelineScrubWindow } from './session-timeline-scrub';
+import { beginSessionTimelineScrub, scrubTimelineLeftPx, type SessionTimelineScrubRoot, type SessionTimelineScrubWindow } from './session-timeline-scrub';
 
 function pointer(pointerId: number, clientX: number): PointerEvent {
   return { pointerId, clientX } as PointerEvent;
@@ -49,6 +49,7 @@ describe('beginSessionTimelineScrub', () => {
       root,
       windowTarget: win,
       surface: { getBoundingClientRect: () => ({ left: 100 }) },
+      scrollOffsetPx: 0,
       pointerId: 7,
       clientX: 100,
       getDurationSecs: () => 10,
@@ -81,6 +82,7 @@ describe('beginSessionTimelineScrub', () => {
       root,
       windowTarget: win,
       surface: { getBoundingClientRect: () => ({ left: 100 }) },
+      scrollOffsetPx: 0,
       pointerId: 1,
       clientX: 100,
       getDurationSecs: () => undefined,
@@ -102,6 +104,7 @@ describe('beginSessionTimelineScrub', () => {
       root,
       windowTarget: win,
       surface: { getBoundingClientRect: () => ({ left: 100 }) },
+      scrollOffsetPx: 0,
       pointerId: 3,
       clientX: 132,
       getDurationSecs: () => 10,
@@ -125,6 +128,7 @@ describe('beginSessionTimelineScrub', () => {
       root,
       windowTarget: win,
       surface: { getBoundingClientRect: () => ({ left: 100 }) },
+      scrollOffsetPx: 0,
       pointerId: 5,
       clientX: 100,
       getDurationSecs: () => 10,
@@ -147,6 +151,7 @@ describe('beginSessionTimelineScrub', () => {
       root,
       windowTarget: win,
       surface: { getBoundingClientRect: () => ({ left: 100 }) },
+      scrollOffsetPx: 0,
       pointerId: 9,
       clientX: 100,
       getDurationSecs: () => 10,
@@ -161,5 +166,43 @@ describe('beginSessionTimelineScrub', () => {
     win.up(pointer(9, 148));
     expect(seeks).toEqual([]);
     expect(root.captured.has(9)).toBe(false);
+  });
+
+  it('re-bases the preview and seek target by a nonzero scroll offset', () => {
+    const root = fakeRoot();
+    const win = fakeWindow();
+    const previews: number[] = [];
+    const seeks: number[] = [];
+
+    expect(beginSessionTimelineScrub({
+      root,
+      windowTarget: win,
+      surface: { getBoundingClientRect: () => ({ left: 100 }) },
+      scrollOffsetPx: 40,
+      pointerId: 11,
+      clientX: 140,
+      getDurationSecs: () => 10,
+      canCommitSeek: () => true,
+      previewLeftPx: (leftPx) => previews.push(leftPx),
+      seekTo: (elapsedSecs) => { seeks.push(elapsedSecs); },
+    })).toBe(true);
+
+    expect(previews).toEqual([288]);
+    win.up(pointer(11, 140));
+    expect(seeks).toEqual([10]);
+  });
+});
+
+describe('scrubTimelineLeftPx', () => {
+  it('re-bases the surface left edge by the scroll offset', () => {
+    expect(scrubTimelineLeftPx(100, 40)).toBe(60);
+  });
+
+  it('leaves the surface left edge unchanged at zero offset', () => {
+    expect(scrubTimelineLeftPx(100, 0)).toBe(100);
+  });
+
+  it('treats a non-finite offset as zero', () => {
+    expect(scrubTimelineLeftPx(100, NaN)).toBe(100);
   });
 });
