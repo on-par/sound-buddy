@@ -1192,7 +1192,7 @@ describe('loop brace rendering (#1313)', () => {
     expect(workspaceViewTs).toContain('daw-loop-brace-ruler');
     expect(workspaceViewTs).toContain('LOOP_HANDLE_START_CLASS');
     expect(workspaceViewTs).toContain('LOOP_HANDLE_END_CLASS');
-    expect(workspaceViewTs).toContain('sessionPlayback?.available === true');
+    expect(workspaceViewTs).toContain('loopBraceVisible(state.sessionPlayback)');
   });
 
   it('the brace carries aria-hidden, like every other decorative segment', () => {

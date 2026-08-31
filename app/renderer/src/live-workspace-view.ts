@@ -57,6 +57,7 @@ import type { CapturePhase } from './LiveControls';
 import { LANE_TAKE_CLIP_CLASS } from './lane-background-click';
 import { TIME_SELECTION_CLASS } from './time-selection';
 import { LOOP_BRACE_CLASS, LOOP_HANDLE_CLASS, LOOP_HANDLE_START_CLASS, LOOP_HANDLE_END_CLASS } from './loopBrace.render';
+import { loopBraceVisible } from './loopToggle';
 import {
   TIMELINE_A11Y_REGION_CLASS,
   TIMELINE_A11Y_REGION_LABEL,
@@ -765,13 +766,16 @@ export function dawShellHTML(state: LiveWorkspaceViewState, routingDrawerContent
   // marker in each region so the marker and playhead paint above the band.
   const rulerTimeSelectionHTML = `<span class="${TIME_SELECTION_CLASS} daw-time-selection-ruler" style="display:none" aria-hidden="true"></span>`;
   const laneTimeSelectionHTML = `<span class="${TIME_SELECTION_CLASS} daw-time-selection-lanes" style="display:none" aria-hidden="true"></span>`;
-  // The loop brace (#1313): ruler-only (see this story's ADR), rendered ONLY when looping is
-  // available — a recorded session is loaded. Hidden until renderLoopBrace paints a real
-  // range, exactly like the time-selection band. The two handles are children, so they ride
-  // the brace's own geometry and cannot drift from its edges. aria-hidden for the same reason
-  // as every other decorative segment (#1306).
-  const loopAvailable = state.sessionPlayback?.available === true;
-  const rulerLoopBraceHTML = loopAvailable
+  // The loop brace (#1313) is the Loop toggle's visible state (#1314): ruler-only (see this
+  // story's ADR), emitted only while a recorded session is loaded AND looping is on. Switching
+  // Loop off removes the brace from the DOM rather than hiding it from the painter; the range
+  // lives in sessionLoopRegion, untouched by the toggle, so it is preserved across it by
+  // construction. Hidden until renderLoopBrace paints a real range, exactly like the
+  // time-selection band. The two handles are children, so they ride the brace's own geometry
+  // and cannot drift from its edges. aria-hidden for the same reason as every other decorative
+  // segment (#1306).
+  const loopVisible = loopBraceVisible(state.sessionPlayback);
+  const rulerLoopBraceHTML = loopVisible
     ? `<span class="${LOOP_BRACE_CLASS} daw-loop-brace-ruler" style="display:none" aria-hidden="true">`
       + `<span class="${LOOP_HANDLE_CLASS} ${LOOP_HANDLE_START_CLASS}"></span>`
       + `<span class="${LOOP_HANDLE_CLASS} ${LOOP_HANDLE_END_CLASS}"></span>`
