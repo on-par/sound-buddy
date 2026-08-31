@@ -103,6 +103,7 @@ import { beginLoopBodyDrag, LOOP_BRACE_BODY_SELECTOR } from './loopBrace.bodyDra
 import { beginLoopEdgeDrag, LOOP_HANDLE_END_SELECTOR, LOOP_HANDLE_START_SELECTOR, type LoopEdge } from './loopBrace.edgeDrag';
 import { sessionLoopRegion } from './loopBrace.render';
 import { seedLoopRegionOnToggle } from './loopToggle';
+import { LOOP_FROM_SELECTION_BUTTON_ID, promoteSelectionToLoop } from './loopFromSelection';
 import {
   SESSION_SCRUB_SURFACE_SELECTOR,
   canBeginSessionScrub,
@@ -528,6 +529,23 @@ export default function LiveCapturePanel(): JSX.Element | null {
       // left alone — that is what makes toggling Loop off and on lossless.
       seedLoopRegionOnToggle(sessionLoopRegion, { available: sc.manifest !== null, looping: sc.looping }, takeSecs);
       sc.toggleLoop();
+      return;
+    }
+    // #1317: promote the current time selection to the loop range. A press with no
+    // selection is a deliberate no-op (promoteSelectionToLoop returns null and writes
+    // nothing). Loop is switched on only when it was off, so the promoted brace is
+    // visible without a second press and an already-looping session is not toggled off.
+    if (target.closest(`#${LOOP_FROM_SELECTION_BUTTON_ID}`)) {
+      const sc = useSoundcheckStore.getState();
+      const promoted = promoteSelectionToLoop(
+        sessionLoopRegion,
+        sessionTimeSelection.getSelection(),
+        { available: sc.manifest !== null, looping: sc.looping },
+      );
+      if (promoted) {
+        if (promoted.enableLooping) sc.toggleLoop();
+        getDawShellRuntime()?.renderLoopBrace?.();
+      }
       return;
     }
     if (target.closest('#daw-session-return')) {

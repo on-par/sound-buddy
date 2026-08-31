@@ -25,5 +25,6 @@ export function sessionTabPlaybackHTML(view: SessionTabPlaybackView): string {
   return `<button type="button" class="daw-session-playback-btn" id="daw-session-play" aria-label="Play recorded session"${playDisabled ? ' disabled' : ''}>Play</button>`
     + `<button type="button" class="daw-session-playback-btn" id="daw-session-stop" aria-label="Stop recorded session playback"${stopDisabled ? ' disabled' : ''}>Stop</button>`
     + `<button type="button" class="daw-session-playback-btn${view.looping ? ' active' : ''}" id="daw-session-loop" aria-label="Loop recorded session playback" aria-pressed="${view.looping}"${unavailable}>Loop</button>`
+    + `<button type="button" class="daw-session-playback-btn" id="daw-session-loop-selection" aria-label="Set the loop range to the time selection"${unavailable}>Loop Selection</button>`
     + `<button type="button" class="daw-session-playback-btn" id="daw-session-return" aria-label="Return recorded session playback to start"${unavailable}>Return</button>`;
 }
