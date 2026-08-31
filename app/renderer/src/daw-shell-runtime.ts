@@ -40,7 +40,7 @@ import { CLIP_SELECTED_LANE_CLASS, type ClipSelectionModel } from './clip-select
 import { TIME_SELECTION_CLASS, type TimeSelectionModel } from './time-selection';
 // The arrangement's loop region (#1313). loopBrace.render.ts is a leaf module
 // (imports nothing), so a value import here creates no ESM cycle.
-import { LOOP_BRACE_CLASS, type LoopRegionModel } from './loopBrace.render';
+import { LOOP_BRACE_CLASS, type LoopRegion, type LoopRegionModel } from './loopBrace.render';
 // The arrangement's accessible state labels (#1306). Leaf module (imports nothing), so a
 // value import here creates no ESM cycle — same rationale as clip-selection.ts.
 import {
@@ -329,6 +329,7 @@ export interface DawShellRuntime {
   renderClipSelection(): void;
   renderTimeSelection(): void;
   renderLoopBrace(): void;
+  previewLoopBrace(region: LoopRegion): void;
   renderAccessibilityLabels(): void;
   renderWaveform(): void;
   playheadElapsedMs(): number;
@@ -486,10 +487,9 @@ export function createDawShellRuntime(deps: DawShellRuntimeDeps): DawShellRuntim
   // the ruler says a second sits. The handles are CSS children of the brace, so they inherit
   // this geometry. Off the per-frame path, like renderInsertMarker — renderPlayhead must NOT
   // call it.
-  function renderLoopBrace(): void {
+  function paintLoopBrace(region: LoopRegion | null): void {
     const shell = deps.doc.querySelector('.daw-shell');
     if (!shell) return;
-    const region = deps.loopRegion?.getRegion() ?? null;
     const segments = shell.querySelectorAll(`.${LOOP_BRACE_CLASS}`);
     for (let i = 0; i < segments.length; i++) {
       const segment = segments[i] as HTMLElement;
@@ -501,6 +501,14 @@ export function createDawShellRuntime(deps: DawShellRuntimeDeps): DawShellRuntim
       segment.style.width = `${Math.max(0, rightX - leftX)}px`;
     }
   }
+
+  function renderLoopBrace(): void { paintLoopBrace(deps.loopRegion?.getRegion() ?? null); }
+
+  // The in-flight brace during a body drag (#1315): painted through the SAME
+  // paintLoopBrace as the committed range, so a previewed brace can never drift
+  // from the ruler ticks. Writes nothing to the shared model — the drag commits
+  // on release (this story's ADR).
+  function previewLoopBrace(region: LoopRegion): void { paintLoopBrace(region); }
 
   // The arrangement's accessible state (#1306): the four hidden spans, patched from the
   // SAME shared models the pixels are painted from, so the announced state can never
@@ -619,6 +627,7 @@ export function createDawShellRuntime(deps: DawShellRuntimeDeps): DawShellRuntim
     renderClipSelection,
     renderTimeSelection,
     renderLoopBrace,
+    previewLoopBrace,
     renderAccessibilityLabels,
     renderWaveform,
     playheadElapsedMs,
