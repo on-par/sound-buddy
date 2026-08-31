@@ -1073,6 +1073,9 @@
     .daw-channel-lane { height:var(--daw-track-row-h); box-sizing:border-box; }
     .daw-take-clip { position:absolute; top:0; bottom:0; overflow:hidden; pointer-events:none; z-index:1; }
     .daw-take-clip canvas { display:block; width:100%; height:100%; }
+    /* The selected clip (#1303): the accent rides an inset shadow, not an outline, so it
+       stays inside the clip's overflow:hidden box and adds no layout. */
+    .daw-channel-lane.clip-selected .daw-take-clip { box-shadow:inset 0 0 0 1px var(--gold-500); }
     .daw-channel-lane--dimmed { opacity:var(--daw-monitor-dim-opacity); }
     .daw-channel-lane .daw-lane-body { height:100%; }
     .daw-channel-waveform { display:block; width:100%; height:100%; }

@@ -39,8 +39,9 @@ export type ClipClickDecision =
   | { kind: 'select'; channelIndex: number }
   | { kind: 'select-and-seek'; channelIndex: number; secs: number };
 
-/** The whole effect surface of a clip press. Deliberately three members and NO
- *  setInsertMarkerSecs: the route is structurally incapable of moving the insert marker. */
+/** The whole effect surface of a clip press. Deliberately three members with no
+ *  insert-marker setter of any kind: the route is structurally incapable of
+ *  moving the insert marker (contrast lane-background-click.ts's LaneBackgroundClickDeps). */
 export interface ClipClickDeps {
   selectClip(channelIndex: number): void;
   repaintClipSelection(): void;

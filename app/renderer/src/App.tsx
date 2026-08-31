@@ -98,6 +98,7 @@ import { createCaptureLifecycle, type DawShellSeam, type PreflightApi, type RigR
 import { createDawShellRuntime, type DawShellRuntime, type DawPlayheadStateApi, type DawWaveformStateApi } from './daw-shell-runtime';
 import { createTimelineScale } from './timeline-scale';
 import { sessionTimelineMarks } from './timeline-state';
+import { sessionClipSelection } from './clip-selection';
 import LiveStatusLine from './LiveStatusLine';
 import LiveSessionOffers from './LiveSessionOffers';
 import WindowBadge from './WindowBadge';
@@ -263,6 +264,7 @@ export default function App() {
       dawWaveformState: (window as unknown as { dawWaveformState: DawWaveformStateApi }).dawWaveformState,
       getTimelineScale: () => DAW_LIVE_TIMELINE_SCALE,
       timelineMarks: sessionTimelineMarks,
+      clipSelection: sessionClipSelection,
     });
     (window as unknown as { dawShellRuntime?: DawShellRuntime }).dawShellRuntime = dawShellRuntime;
     dawShellRuntime.bindLiveEvents();

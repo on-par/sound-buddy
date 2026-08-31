@@ -20,7 +20,7 @@ function baseInput(overrides: Partial<ClipClickInput> = {}): ClipClickInput {
   };
 }
 
-function makeDeps(): ClipClickDeps & { selectClip: ReturnType<typeof vi.fn>; repaintClipSelection: ReturnType<typeof vi.fn>; seekTo: ReturnType<typeof vi.fn> } {
+function makeDeps() {
   return {
     selectClip: vi.fn(),
     repaintClipSelection: vi.fn(),

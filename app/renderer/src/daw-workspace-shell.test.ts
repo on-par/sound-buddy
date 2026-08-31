@@ -55,6 +55,9 @@ const timelineVisibleRangeTs = fs.readFileSync(fileURLToPath(new URL('./timeline
 const timelineRulerLabelsTs = fs.readFileSync(fileURLToPath(new URL('./timeline-ruler-labels.ts', import.meta.url)), 'utf8');
 const timelineScrollGestureTs = fs.readFileSync(fileURLToPath(new URL('./timeline-scroll-gesture.ts', import.meta.url)), 'utf8');
 const timelineZoomGestureTs = fs.readFileSync(fileURLToPath(new URL('./timeline-zoom-gesture.ts', import.meta.url)), 'utf8');
+// #1303: the clip-press routing gates below.
+const clipClickTs = fs.readFileSync(fileURLToPath(new URL('./clip-click.ts', import.meta.url)), 'utf8');
+const clipSelectionTs = fs.readFileSync(fileURLToPath(new URL('./clip-selection.ts', import.meta.url)), 'utf8');
 
 function functionBody(src: string, name: string): string {
   const marker = `function ${name}(`;
@@ -990,5 +993,46 @@ describe('lane-background click routing (#1302)', () => {
   it('live-workspace-view.ts paints the take-clip class from the shared constant, not a duplicated literal', () => {
     expect(workspaceViewTs).toContain('LANE_TAKE_CLIP_CLASS');
     expect(workspaceViewTs).not.toContain('class="daw-take-clip"');
+  });
+});
+
+describe('clip click routing (#1303)', () => {
+  it("onBoardPointerDown wires applyClipClick before an early return, and it runs BEFORE applyLaneBackgroundClick", () => {
+    const body = functionBody(liveCapturePanelTsx, 'onBoardPointerDown');
+    expect(body).toContain('applyClipClick(');
+    expect(body).toContain("if (clipDecision.kind !== 'none') return;");
+    const clipIdx = body.indexOf('applyClipClick(');
+    const backgroundIdx = body.indexOf('applyLaneBackgroundClick(');
+    expect(clipIdx).toBeGreaterThan(-1);
+    expect(backgroundIdx).toBeGreaterThan(-1);
+    expect(clipIdx).toBeLessThan(backgroundIdx);
+  });
+
+  it('onBoardPointerDown still contains no setSelectedChannel (#1302 gate stays green)', () => {
+    const body = functionBody(liveCapturePanelTsx, 'onBoardPointerDown');
+    expect(body).not.toContain('setSelectedChannel');
+  });
+
+  it('the panel passes the real Option/Alt modifier as the seek override', () => {
+    const body = functionBody(liveCapturePanelTsx, 'onBoardPointerDown');
+    expect(body).toContain('overrideHeld: e.altKey');
+  });
+
+  it('clip-click.ts cannot reach the insert marker — no setInsertMarkerSecs, no timeline-state import', () => {
+    expect(clipClickTs).not.toContain('setInsertMarkerSecs');
+    expect(clipClickTs).not.toMatch(/from '\.\/timeline-state'/);
+  });
+
+  it("clip-click.ts reuses ADR-0115's hit-test rather than re-implementing it", () => {
+    expect(clipClickTs).toMatch(/laneClipHitAt.*from '\.\/lane-background-click'/);
+  });
+
+  it('clip-selection.ts is a leaf module with no relative imports', () => {
+    expect(clipSelectionTs).not.toMatch(/from '\.\//);
+  });
+
+  it('the selected clip is painted with an inset shadow, and the base take-clip rule is unchanged', () => {
+    expect(css).toMatch(/\.daw-channel-lane\.clip-selected \.daw-take-clip\s*\{[^}]*box-shadow:\s*inset[^}]*var\(--gold-500\)/);
+    expect(css).toMatch(/\.daw-take-clip\s*\{[^}]*overflow:\s*hidden[^}]*pointer-events:\s*none/);
   });
 });
