@@ -82,6 +82,7 @@ import {
   applyTimelineFollowEvent,
   createTimelineFollowModel,
   timelineFollowEventForWheel,
+  timelineFollowPage,
   timelineFollowView,
   TIMELINE_FOLLOW_BUTTON_ID,
   TIMELINE_FOLLOW_SURFACE_SELECTOR,
@@ -310,6 +311,11 @@ export default function LiveCapturePanel(): JSX.Element | null {
   // per-element tracking — so only 'change' needs this native listener.
   const boardRootRef = useRef<HTMLDivElement>(null);
   const onBoardChangeRef = useRef<(e: ChangeEvent<HTMLDivElement>) => void>(() => {});
+  // Follow auto-tracking (#1343). Same always-current-closure trick as
+  // onBoardChangeRef above: the transport controller's rAF callback is created once
+  // per effect run, but it must read the follow model, the visible range and the
+  // duration from the LATEST render.
+  const followTickRef = useRef<(playheadSecs: number) => void>(() => {});
 
   /* c8 ignore start -- effect wiring + imperative chrome, no jsdom in this
      harness (renderToString doesn't run effects) — exercised by
@@ -389,7 +395,13 @@ export default function LiveCapturePanel(): JSX.Element | null {
         const runtime = getDawShellRuntime();
         runtime?.setPlaybackPosition?.(tick);
       },
-      patchPlayhead: () => getDawShellRuntime()?.renderPlayhead?.(),
+      patchPlayhead: (tick) => {
+        getDawShellRuntime()?.renderPlayhead?.();
+        // #1343: one follow step per coalesced progress frame, from the SAME elapsed
+        // seconds renderPlayhead just painted (playheadElapsedMs() is the wall-clock
+        // record head, not the playback position — see daw-shell-runtime.renderPlayhead).
+        followTickRef.current(tick.elapsed);
+      },
     });
     controller.start();
     return () => controller.stop();
@@ -961,6 +973,22 @@ export default function LiveCapturePanel(): JSX.Element | null {
   // return) calling the current render's onBoardChange instead of a stale
   // closure.
   onBoardChangeRef.current = onBoardChange;
+
+  // Follow auto-tracking (#1343): ADR-0111's paged-follow derivation, run per playback
+  // frame and COMMITTED discretely. The pre-check off the rendered range means the common
+  // case (playhead inside the viewport) schedules no React update at all; the functional
+  // updater re-derives against React's authoritative range, so a second frame arriving
+  // before the re-render cannot commit the same page twice. previousRange is cleared for
+  // the same reason every other range-moving path clears it — this is not a zoom-back step.
+  function followTick(playheadSecs: number): void {
+    const followCtx = { playheadSecs, durationSecs: zoomContext.durationSecs };
+    if (timelineFollowPage(timelineFollow, timelineZoom.range, followCtx) === null) return;
+    setTimelineZoom((m) => {
+      const paged = timelineFollowPage(timelineFollow, m.range, followCtx);
+      return paged === null ? m : { range: paged, previousRange: null };
+    });
+  }
+  followTickRef.current = followTick;
 
   function applyRoutingChange(kind: 'input' | 'output', control: Element): void {
     const sessionId = soundcheck.sessionDir;
