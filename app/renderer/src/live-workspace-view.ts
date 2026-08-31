@@ -52,6 +52,7 @@ import { sessionTabSessionPickerHTML, type SessionTabSessionPickerView } from '.
 import { sessionTakeDurationSecs, type SessionTabWaveformClip, type SessionTabWaveformView } from './session-tab-waveforms';
 import { timelineOverviewHTML, timelineOverviewView } from './timeline-overview';
 import { sessionTabPlaybackHTML, type SessionTabPlaybackView } from './session-tab-playback';
+import { sessionToolbarGroupHTML } from './session-toolbar-groups';
 import { sessionTabCaptureHTML, recordButtonView } from './record-transport';
 import type { CapturePhase } from './LiveControls';
 import { LANE_TAKE_CLIP_CLASS } from './lane-background-click';
@@ -843,18 +844,24 @@ export function dawShellHTML(state: LiveWorkspaceViewState, routingDrawerContent
   const status = dawStatusLineView(state);
   return `<div class="daw-shell" style="--daw-head-w:${DAW_TIMELINE_ORIGIN_PX}px">`
     + `<div class="daw-transport">`
-    + `<span class="daw-transport-title">Live Workspace</span>`
-    + `<span class="daw-transport-state daw-transport-state-${transportChip.toLowerCase()}">${transportChip}</span>`
-    + `<span class="daw-transport-time">${getDawPlayheadState().formatElapsed(seededElapsed)}</span>`
-    + timelineBpmControlHTML(bpmControl)
-    + timelineZoomControlsHTML(zoomControls)
-    + timelineFollowButtonHTML(followControl)
-    + liveWorkspaceToolbarHTML(state)
-    + (state.sessionPicker ? sessionTabSessionPickerHTML(state.sessionPicker) : '')
-    + (state.sessionPlayback ? sessionTabPlaybackHTML(state.sessionPlayback) : '')
-    + sessionTabCaptureHTML(recordButtonView(state.capturePhase))
-    + `<button type="button" class="daw-session-routing-toggle" id="daw-session-routing-toggle" aria-expanded="${state.sessionRoutingDrawerOpen}" aria-controls="daw-session-routing-drawer">Routing</button>`
-    + (state.sessionWaveforms?.generating ? `<span class="daw-session-waveform-hint">Generating waveforms…</span>` : '')
+    // Session toolbar grouping (#1347): every control below is emitted inside
+    // one of the six named groups, never as a bare child of .daw-transport —
+    // the row wraps only at group boundaries. A new control goes inside an
+    // existing group, or behind a new SessionToolbarGroupKey.
+    + sessionToolbarGroupHTML('transport',
+      `<span class="daw-transport-title">Live Workspace</span>`
+      + `<span class="daw-transport-state daw-transport-state-${transportChip.toLowerCase()}">${transportChip}</span>`
+      + `<span class="daw-transport-time">${getDawPlayheadState().formatElapsed(seededElapsed)}</span>`)
+    + sessionToolbarGroupHTML('tempo', timelineBpmControlHTML(bpmControl))
+    + sessionToolbarGroupHTML('view', timelineZoomControlsHTML(zoomControls) + timelineFollowButtonHTML(followControl))
+    + sessionToolbarGroupHTML('tracks', liveWorkspaceToolbarHTML(state))
+    + sessionToolbarGroupHTML('session',
+      (state.sessionPicker ? sessionTabSessionPickerHTML(state.sessionPicker) : '')
+      + (state.sessionPlayback ? sessionTabPlaybackHTML(state.sessionPlayback) : ''))
+    + sessionToolbarGroupHTML('capture',
+      sessionTabCaptureHTML(recordButtonView(state.capturePhase))
+      + `<button type="button" class="daw-session-routing-toggle" id="daw-session-routing-toggle" aria-expanded="${state.sessionRoutingDrawerOpen}" aria-controls="daw-session-routing-drawer">Routing</button>`
+      + (state.sessionWaveforms?.generating ? `<span class="daw-session-waveform-hint">Generating waveforms…</span>` : ''))
     + `</div>`
     + overviewHTML
     // The semantic arrangement frame (#1042): the track-head column and the

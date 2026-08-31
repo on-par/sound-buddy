@@ -63,6 +63,15 @@ describe('iconSvg', () => {
     const svg = iconSvg('info'); // 'M12 22a...zM12 16v-4M12 8h.01' has 3 M segments
     expect(svg.match(/<path /g)?.length).toBe(3);
   });
+
+  it('resolves the five #1347 Session-toolbar glyphs to real svg paths', () => {
+    for (const name of ['scan', 'corner-up-left', 'repeat', 'brackets', 'skip-back']) {
+      const svg = iconSvg(name);
+      expect(svg.startsWith('<svg')).toBe(true);
+      expect(svg).toContain('aria-hidden="true"');
+      expect(svg).toMatch(/<path d="M/);
+    }
+  });
 });
 
 describe('fmt', () => {

@@ -1358,7 +1358,7 @@ describe('loop-from-selection wiring (#1317)', () => {
   });
 
   it('session-tab-playback.ts renders the Loop Selection button', () => {
-    expect(sessionTabPlaybackTs).toContain('id="daw-session-loop-selection"');
+    expect(sessionTabPlaybackTs).toContain("id: 'daw-session-loop-selection'");
   });
 });
 
@@ -1377,5 +1377,23 @@ describe('return-to-start preserves the loop range (#1318)', () => {
   it('soundcheckStore.ts does not import the loop-region model (ADR guard)', () => {
     expect(soundcheckStoreTs).not.toContain("from '../loopBrace.render'");
     expect(soundcheckStoreTs).not.toContain('sessionLoopRegion');
+  });
+});
+
+describe('Session toolbar grouping (#1347)', () => {
+  it('dawShellHTML wraps every transport cluster in a named group', () => {
+    const body = functionBody(workspaceViewTs, 'dawShellHTML');
+    for (const key of ['transport', 'tempo', 'view', 'tracks', 'session', 'capture']) {
+      expect(body).toContain(`sessionToolbarGroupHTML('${key}',`);
+    }
+  });
+
+  it('app.css styles the group container and its divider', () => {
+    expect(css).toContain('.daw-transport-group');
+    expect(css).toContain('.daw-transport-group + .daw-transport-group');
+  });
+
+  it('app.css styles the icon-only Session playback buttons', () => {
+    expect(css).toContain('.daw-session-playback-btn--icon');
   });
 });

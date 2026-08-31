@@ -14,6 +14,7 @@
 // delegates to that shared model instead of keeping its own copy.
 
 import { formatRulerElapsed } from './timeline-ruler-labels';
+import { iconSvg } from './report-card';
 import {
   clampVisibleRange,
   timelineFullDurationSecs,
@@ -137,16 +138,17 @@ interface ZoomButtonSpec {
   action: TimelineZoomAction;
   label: string;
   title: string;
+  icon: string | null;
   disabled: boolean;
 }
 
 function buttonSpecs(view: TimelineZoomControlsView): ZoomButtonSpec[] {
   return [
-    { action: 'fit-full', label: 'Fit', title: 'Fit the whole session in view', disabled: !view.canFitFull },
-    { action: 'zoom-out', label: '-', title: 'Zoom out', disabled: !view.canZoomOut },
-    { action: 'zoom-in', label: '+', title: 'Zoom in', disabled: !view.canZoomIn },
-    { action: 'zoom-to-selection', label: 'Sel', title: 'Zoom to the selected time range', disabled: false },
-    { action: 'zoom-back', label: 'Back', title: 'Back to the range before Zoom to selection', disabled: !view.canZoomBack },
+    { action: 'fit-full', label: 'Fit', title: 'Fit the whole session in view', icon: null, disabled: !view.canFitFull },
+    { action: 'zoom-out', label: '-', title: 'Zoom out', icon: null, disabled: !view.canZoomOut },
+    { action: 'zoom-in', label: '+', title: 'Zoom in', icon: null, disabled: !view.canZoomIn },
+    { action: 'zoom-to-selection', label: 'Sel', title: 'Zoom to the selected time range', icon: 'scan', disabled: false },
+    { action: 'zoom-back', label: 'Back', title: 'Back to the range before Zoom to selection', icon: 'corner-up-left', disabled: !view.canZoomBack },
   ];
 }
 
@@ -156,7 +158,9 @@ function buttonSpecs(view: TimelineZoomControlsView): ZoomButtonSpec[] {
 export function timelineZoomControlsHTML(view: TimelineZoomControlsView): string {
   const buttonsHTML = buttonSpecs(view).map((spec) => {
     const id = TIMELINE_ZOOM_BUTTON_IDS[spec.action];
-    return `<button type="button" class="ghost-btn sm daw-zoom-btn" id="${id}" title="${spec.title}" aria-label="${spec.title}"${spec.disabled ? ' disabled' : ''}>${spec.label}</button>`;
+    const cls = `ghost-btn sm daw-zoom-btn${spec.icon !== null ? ' daw-zoom-btn--icon' : ''}`;
+    const body = spec.icon ? iconSvg(spec.icon, 15) : spec.label;
+    return `<button type="button" class="${cls}" id="${id}" title="${spec.title}" aria-label="${spec.title}"${spec.disabled ? ' disabled' : ''}>${body}</button>`;
   }).join('');
   return `<span class="daw-transport-zoom">${buttonsHTML}`
     + `<span class="daw-transport-zoom-range" id="${TIMELINE_ZOOM_RANGE_ID}" role="status">${view.rangeLabel}</span>`

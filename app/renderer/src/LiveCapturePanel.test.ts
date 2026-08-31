@@ -185,10 +185,10 @@ describe('LiveCapturePanel', () => {
     useSoundcheckStore.setState({ playing: true });
     const html = renderMarkup();
     expect(html).toContain('id="daw-session-stop"');
-    expect(html).toContain('id="daw-session-play" aria-label="Play recorded session" disabled');
+    expect(html).toContain('id="daw-session-play" aria-label="Play recorded session" title="Play recorded session" disabled');
 
     useSoundcheckStore.setState({ looping: true });
-    expect(renderMarkup()).toContain('id="daw-session-loop" aria-label="Loop recorded session playback" aria-pressed="true"');
+    expect(renderMarkup()).toContain('id="daw-session-loop" aria-label="Loop recorded session playback" title="Loop recorded session playback" aria-pressed="true"');
   });
 
   it('composes shared Session routing state into the DAW drawer', () => {

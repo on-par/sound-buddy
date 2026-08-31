@@ -244,6 +244,29 @@ describe('timelineZoomControlsHTML', () => {
     expect(html.match(new RegExp(`id="${TIMELINE_ZOOM_BUTTON_IDS['zoom-to-selection']}"[^>]*disabled`))).toBeNull();
     expect(html).toMatch(new RegExp(`id="${TIMELINE_ZOOM_BUTTON_IDS['zoom-back']}"[^>]*disabled`));
   });
+
+  it('renders zoom-to-selection and zoom-back as icon-only buttons that keep their title/aria-label; Fit/-/+ stay text (#1347)', () => {
+    const model = createTimelineZoomModel(200);
+    const view = timelineZoomControlsView(model, ctx({ durationSecs: 200 }));
+    const html = timelineZoomControlsHTML(view);
+
+    const selId = TIMELINE_ZOOM_BUTTON_IDS['zoom-to-selection'];
+    const backId = TIMELINE_ZOOM_BUTTON_IDS['zoom-back'];
+    const selMatch = html.match(new RegExp(`<button[^>]*id="${selId}"[^>]*>([^]*?)</button>`));
+    const backMatch = html.match(new RegExp(`<button[^>]*id="${backId}"[^>]*>([^]*?)</button>`));
+    expect(selMatch?.[1].startsWith('<svg')).toBe(true);
+    expect(backMatch?.[1].startsWith('<svg')).toBe(true);
+    expect(html).toContain(`id="${selId}" title="Zoom to the selected time range" aria-label="Zoom to the selected time range"`);
+    expect(html).toContain(`id="${backId}" title="Back to the range before Zoom to selection" aria-label="Back to the range before Zoom to selection"`);
+    expect(html).toContain('daw-zoom-btn--icon');
+
+    const fitId = TIMELINE_ZOOM_BUTTON_IDS['fit-full'];
+    const outId = TIMELINE_ZOOM_BUTTON_IDS['zoom-out'];
+    const inId = TIMELINE_ZOOM_BUTTON_IDS['zoom-in'];
+    expect(html.match(new RegExp(`<button[^>]*id="${fitId}"[^>]*>([^]*?)</button>`))?.[1]).toBe('Fit');
+    expect(html.match(new RegExp(`<button[^>]*id="${outId}"[^>]*>([^]*?)</button>`))?.[1]).toBe('-');
+    expect(html.match(new RegExp(`<button[^>]*id="${inId}"[^>]*>([^]*?)</button>`))?.[1]).toBe('+');
+  });
 });
 
 describe('timelineZoomActionForId', () => {
