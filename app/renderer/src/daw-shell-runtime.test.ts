@@ -31,6 +31,7 @@ import { createTimelineScale, TIMELINE_SCALE_MAX_PX_PER_SECOND } from './timelin
 import { createTimelineMarksModel } from './timeline-state';
 import { CLIP_SELECTED_LANE_CLASS, createClipSelectionModel } from './clip-selection';
 import { createTimeSelectionModel } from './time-selection';
+import { createLoopRegionModel } from './loopBrace.render';
 import {
   TIMELINE_A11Y_INSERT_MARKER_CLASS,
   TIMELINE_A11Y_PLAYHEAD_CLASS,
@@ -165,6 +166,7 @@ function makeFakeShell(opts: {
   playheadEls?: ReturnType<typeof makeFakePlayhead>[];
   insertMarkerEls?: ReturnType<typeof makeFakePlayhead>[];
   timeSelectionEls?: ReturnType<typeof makeFakePlayhead>[];
+  loopBraceEls?: ReturnType<typeof makeFakePlayhead>[];
   mixCanvas?: ReturnType<typeof makeFakeCanvas> | null;
   lanes?: ReturnType<typeof makeFakeLane>[];
   clientWidth?: number;
@@ -179,6 +181,7 @@ function makeFakeShell(opts: {
   const playheadEls = opts.playheadEls ?? [makeFakePlayhead(), makeFakePlayhead()];
   const insertMarkerEls = opts.insertMarkerEls ?? [makeFakePlayhead(), makeFakePlayhead()];
   const timeSelectionEls = opts.timeSelectionEls ?? [makeFakePlayhead(), makeFakePlayhead()];
+  const loopBraceEls = opts.loopBraceEls ?? [makeFakePlayhead(), makeFakePlayhead()];
   const mixCanvas = opts.mixCanvas === undefined ? makeFakeCanvas() : opts.mixCanvas;
   const lanes = opts.lanes ?? [];
   const a11ySpans = opts.a11ySpans === undefined
@@ -198,9 +201,10 @@ function makeFakeShell(opts: {
       if (sel === '.daw-playhead') return playheadEls;
       if (sel === '.daw-insert-marker') return insertMarkerEls;
       if (sel === '.daw-time-selection') return timeSelectionEls;
+      if (sel === '.daw-loop-brace') return loopBraceEls;
       return [];
     },
-    el: { timeEl, playheadEls, insertMarkerEls, timeSelectionEls, mixCanvas, lanes, a11ySpans },
+    el: { timeEl, playheadEls, insertMarkerEls, timeSelectionEls, loopBraceEls, mixCanvas, lanes, a11ySpans },
   };
 }
 
@@ -691,6 +695,61 @@ describe('createDawShellRuntime', () => {
       rt.renderInsertMarker();
       rt.renderTimeSelection();
       expect(timeSelectionEls[0].style.left).toBe(insertMarkerEls[0].style.left);
+    });
+  });
+
+  describe('renderLoopBrace (#1313)', () => {
+    it('writes the same left and width to both segments and shows them', () => {
+      const loopBraceEls = [makeFakePlayhead(), makeFakePlayhead()];
+      const shell = makeFakeShell({ loopBraceEls, clientWidth: 400 });
+      const loopRegion = createLoopRegionModel();
+      loopRegion.setRegion(2, 6);
+      const { deps, setShell } = makeDeps({ loopRegion });
+      setShell(shell);
+      const rt = createDawShellRuntime(deps);
+      rt.renderLoopBrace();
+      const leftX = dawPlayheadX(2 * 1000, 400);
+      const rightX = dawPlayheadX(6 * 1000, 400);
+      for (const el of loopBraceEls) {
+        expect(el.style.left).toBe(`${leftX}px`);
+        expect(el.style.width).toBe(`${rightX - leftX}px`);
+        expect(el.style.display).toBe('');
+      }
+    });
+
+    it('hides both segments and does not throw when no loopRegion dep is injected', () => {
+      const loopBraceEls = [makeFakePlayhead(), makeFakePlayhead()];
+      const shell = makeFakeShell({ loopBraceEls, clientWidth: 400 });
+      const { deps, setShell } = makeDeps();
+      setShell(shell);
+      const rt = createDawShellRuntime(deps);
+      expect(() => rt.renderLoopBrace()).not.toThrow();
+      for (const el of loopBraceEls) {
+        expect(el.style.display).toBe('none');
+      }
+    });
+
+    it('is a no-op when there is no .daw-shell', () => {
+      const { deps, setShell } = makeDeps();
+      setShell(null);
+      const rt = createDawShellRuntime(deps);
+      expect(() => rt.renderLoopBrace()).not.toThrow();
+    });
+
+    it("the brace's left equals renderInsertMarker's left for the same startSecs — the same-geometry guarantee", () => {
+      const insertMarkerEls = [makeFakePlayhead()];
+      const loopBraceEls = [makeFakePlayhead()];
+      const shell = makeFakeShell({ insertMarkerEls, loopBraceEls, clientWidth: 400 });
+      const timelineMarks = createTimelineMarksModel();
+      timelineMarks.setInsertMarkerSecs(3);
+      const loopRegion = createLoopRegionModel();
+      loopRegion.setRegion(3, 8);
+      const { deps, setShell } = makeDeps({ timelineMarks, loopRegion });
+      setShell(shell);
+      const rt = createDawShellRuntime(deps);
+      rt.renderInsertMarker();
+      rt.renderLoopBrace();
+      expect(loopBraceEls[0].style.left).toBe(insertMarkerEls[0].style.left);
     });
   });
 

@@ -60,6 +60,8 @@ const clipClickTs = fs.readFileSync(fileURLToPath(new URL('./clip-click.ts', imp
 const clipSelectionTs = fs.readFileSync(fileURLToPath(new URL('./clip-selection.ts', import.meta.url)), 'utf8');
 const timeSelectionTs = fs.readFileSync(fileURLToPath(new URL('./time-selection.ts', import.meta.url)), 'utf8');
 const timeSelectionDragTs = fs.readFileSync(fileURLToPath(new URL('./time-selection-drag.ts', import.meta.url)), 'utf8');
+// #1313: the arrangement loop region.
+const loopBraceRenderTs = fs.readFileSync(fileURLToPath(new URL('./loopBrace.render.ts', import.meta.url)), 'utf8');
 // #1306: the arrangement's accessible state labels.
 const timelineAccessibilityLabelsTs = fs.readFileSync(fileURLToPath(new URL('./timeline-accessibility-labels.ts', import.meta.url)), 'utf8');
 
@@ -1163,5 +1165,46 @@ describe('arrangement accessibility labels (#1306)', () => {
     expect(body).not.toContain('aria-live');
     expect(body).not.toContain('role="status"');
     expect(body).not.toContain('role="alert"');
+  });
+});
+
+describe('loop brace rendering (#1313)', () => {
+  it('loopBrace.render.ts is a leaf module with no relative imports', () => {
+    expect(loopBraceRenderTs).not.toMatch(/from '\.\//);
+  });
+
+  it('the brace CSS rule is non-interactive, and the shared re-base translate lists it', () => {
+    expect(css).toMatch(/\.daw-loop-brace\s*\{[^}]*pointer-events:\s*none[^}]*\}/);
+    expect(css).toMatch(/\.daw-ruler-tick,[^{]*\.daw-loop-brace,[^{]*\{/);
+  });
+
+  it('.daw-loop-handle is not itself listed in the shared re-base translate (it is a child of the brace)', () => {
+    const translateRule = css.match(/\.daw-ruler-tick,[^{]*\{[^}]*\}/)?.[0] ?? '';
+    expect(translateRule).not.toContain('.daw-loop-handle');
+  });
+
+  it('App.tsx injects the shared loop-region model', () => {
+    expect(appTsx).toContain('loopRegion: sessionLoopRegion');
+  });
+
+  it('live-workspace-view.ts emits the brace and its handles from the shared constants, gated on availability', () => {
+    expect(workspaceViewTs).toContain('LOOP_BRACE_CLASS');
+    expect(workspaceViewTs).toContain('daw-loop-brace-ruler');
+    expect(workspaceViewTs).toContain('LOOP_HANDLE_START_CLASS');
+    expect(workspaceViewTs).toContain('LOOP_HANDLE_END_CLASS');
+    expect(workspaceViewTs).toContain('sessionPlayback?.available === true');
+  });
+
+  it('the brace carries aria-hidden, like every other decorative segment', () => {
+    expect(workspaceViewTs).toMatch(/daw-loop-brace-ruler"[^>]*aria-hidden="true"/);
+  });
+
+  it("renderPlayhead's body does not call renderLoopBrace — the brace stays off the per-frame path", () => {
+    const body = functionBody(dawShellRuntimeTs, 'renderPlayhead');
+    expect(body).not.toContain('renderLoopBrace');
+  });
+
+  it('daw-shell-runtime.ts exposes renderLoopBrace on the runtime it returns', () => {
+    expect(dawShellRuntimeTs).toContain('renderLoopBrace,');
   });
 });

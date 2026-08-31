@@ -100,6 +100,7 @@ import { createTimelineScale } from './timeline-scale';
 import { sessionTimelineMarks } from './timeline-state';
 import { sessionClipSelection } from './clip-selection';
 import { sessionTimeSelection } from './time-selection';
+import { sessionLoopRegion } from './loopBrace.render';
 import LiveStatusLine from './LiveStatusLine';
 import LiveSessionOffers from './LiveSessionOffers';
 import WindowBadge from './WindowBadge';
@@ -267,6 +268,7 @@ export default function App() {
       timelineMarks: sessionTimelineMarks,
       clipSelection: sessionClipSelection,
       timeSelection: sessionTimeSelection,
+      loopRegion: sessionLoopRegion,
     });
     (window as unknown as { dawShellRuntime?: DawShellRuntime }).dawShellRuntime = dawShellRuntime;
     dawShellRuntime.bindLiveEvents();
