@@ -65,7 +65,7 @@ describe('release.yml notarization (#621, retargeted #1237)', () => {
     // The CI counterpart of release.sh's "verify before git push": the workflow
     // artifact upload is the first step where a binary escapes the build.
     const spctlIndex = releaseWorkflow.indexOf('spctl --assess');
-    const uploadIndex = releaseWorkflow.indexOf('uses: actions/upload-artifact@v4');
+    const uploadIndex = releaseWorkflow.indexOf('uses: actions/upload-artifact@v7');
     expect(spctlIndex).toBeGreaterThan(-1);
     expect(uploadIndex).toBeGreaterThan(-1);
     expect(spctlIndex).toBeLessThan(uploadIndex);
@@ -108,7 +108,7 @@ describe('release.yml dmg publishing (#622, retargeted #1237)', () => {
 
   it('runs the dmg verification before the build artifact leaves the job', () => {
     const dmgStaplerIndex = releaseWorkflow.indexOf('xcrun stapler validate "$DMG"');
-    const uploadIndex = releaseWorkflow.indexOf('uses: actions/upload-artifact@v4');
+    const uploadIndex = releaseWorkflow.indexOf('uses: actions/upload-artifact@v7');
     expect(dmgStaplerIndex).toBeGreaterThan(-1);
     expect(uploadIndex).toBeGreaterThan(-1);
     expect(dmgStaplerIndex).toBeLessThan(uploadIndex);

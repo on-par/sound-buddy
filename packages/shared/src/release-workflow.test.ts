@@ -23,7 +23,7 @@ jobs:
   release:
     runs-on: macos-14
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Verify signing secrets
         run: node scripts/ci-signing.mjs check-secrets

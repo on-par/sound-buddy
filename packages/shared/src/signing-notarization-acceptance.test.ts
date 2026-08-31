@@ -139,7 +139,7 @@ describe('#1187 AC3 — no Gatekeeper warning on a clean machine', () => {
 
   it('a rejected build is never uploaded or published — spctl runs before both', () => {
     const spctlIndex = releaseWorkflow.indexOf('spctl --assess');
-    const uploadIndex = releaseWorkflow.indexOf('uses: actions/upload-artifact@v4');
+    const uploadIndex = releaseWorkflow.indexOf('uses: actions/upload-artifact@v7');
     const publishIndex = releaseWorkflow.indexOf('uses: softprops/action-gh-release@v2');
     expect(spctlIndex).toBeGreaterThan(-1);
     expect(spctlIndex).toBeLessThan(uploadIndex);

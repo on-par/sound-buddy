@@ -29,7 +29,7 @@ jobs:
       security-events: write # only exercised if GHAS is enabled on this repo
       actions: read # codeql-action checks the Actions cache for an overlay-base database
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Initialize CodeQL
         uses: github/codeql-action/init@v4
@@ -70,7 +70,7 @@ jobs:
 
       - name: Upload SARIF as a workflow artifact
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: codeql-results
           path: codeql-results
