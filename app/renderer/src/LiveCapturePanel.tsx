@@ -95,6 +95,8 @@ import {
 import { applyTimelineZoomGesture } from './timeline-zoom-gesture';
 import { beginSessionTimelineScrub } from './session-timeline-scrub';
 import { applyLaneBackgroundClick, LANE_TAKE_CLIP_SELECTOR } from './lane-background-click';
+import { applyClipClick } from './clip-click';
+import { sessionClipSelection } from './clip-selection';
 import {
   SESSION_SCRUB_SURFACE_SELECTOR,
   canBeginSessionScrub,
@@ -343,11 +345,14 @@ export default function LiveCapturePanel(): JSX.Element | null {
 
   // The insert marker's default position (#1301): loading (or switching) a session parks
   // the insert point at the top of the arrangement. Imperative, not store state — the
-  // marker rides the shared marks model, never React state (ADR-0005).
+  // marker rides the shared marks model, never React state (ADR-0005). Loading or
+  // switching a session also clears the clip selection (#1303), for the same reason.
   useEffect(() => {
     if (s.appMode !== 'live') return;
     sessionTimelineMarks.resetForSession();
+    sessionClipSelection.clearSelection();
     getDawShellRuntime()?.renderInsertMarker?.();
+    getDawShellRuntime()?.renderClipSelection?.();
   }, [s.appMode, soundcheck.sessionDir]);
 
   useEffect(() => {
@@ -399,6 +404,7 @@ export default function LiveCapturePanel(): JSX.Element | null {
     if (shell) shell.setAttribute('data-lane-signature', laneSignature);
     getDawShellRuntime()?.renderPlayhead?.();
     getDawShellRuntime()?.renderInsertMarker?.();
+    getDawShellRuntime()?.renderClipSelection?.();
     getDawShellRuntime()?.renderWaveform?.();
     if (shell && sessionWaveforms) paintSessionTabWaveformClips(shell, sessionWaveforms.clips);
     patchOverview(shell ?? null);
@@ -589,26 +595,6 @@ export default function LiveCapturePanel(): JSX.Element | null {
     const surfaceEl = e.target.closest(SESSION_SCRUB_SURFACE_SELECTOR);
     if (!surfaceEl) return;
     const kind = sessionScrubSurfaceKind(surfaceEl);
-    // Lane-background press (#1302): places the insert marker at the pressed time and
-    // does nothing else. Runs before the scrub gate — an engineer places the edit point
-    // whether or not the transport is running. Clips are pointer-events:none, so the
-    // hit-test reads their laid-out rects, never the event target (see this story's ADR).
-    if (kind === 'lane') {
-      applyLaneBackgroundClick(
-        {
-          button: e.button,
-          clientX: e.clientX,
-          laneLeftPx: surfaceEl.getBoundingClientRect().left,
-          scrollOffsetPx: timelineScrollOffsetPx(timelineZoom.range, SESSION_TIMELINE_SCALE.pxPerSecond),
-          pxPerSecond: SESSION_TIMELINE_SCALE.pxPerSecond,
-          clipRects: Array.from(surfaceEl.querySelectorAll(LANE_TAKE_CLIP_SELECTOR), (clip) => clip.getBoundingClientRect()),
-        },
-        {
-          setInsertMarkerSecs: (secs) => { sessionTimelineMarks.setInsertMarkerSecs(secs); },
-          repaintInsertMarker: () => { getDawShellRuntime()?.renderInsertMarker?.(); },
-        },
-      );
-    }
     const gate = (): SessionScrubGate => {
       const sc = useSoundcheckStore.getState();
       const lcState = useLiveCaptureStore.getState();
@@ -618,6 +604,48 @@ export default function LiveCapturePanel(): JSX.Element | null {
         recording: lcState.isCapturing && lcState.liveMode === 'record',
       };
     };
+    if (kind === 'lane') {
+      const geometry = {
+        button: e.button,
+        clientX: e.clientX,
+        laneLeftPx: surfaceEl.getBoundingClientRect().left,
+        scrollOffsetPx: timelineScrollOffsetPx(timelineZoom.range, SESSION_TIMELINE_SCALE.pxPerSecond),
+        pxPerSecond: SESSION_TIMELINE_SCALE.pxPerSecond,
+        clipRects: Array.from(surfaceEl.querySelectorAll(LANE_TAKE_CLIP_SELECTOR), (clip) => clip.getBoundingClientRect()),
+      };
+      // Clip press (#1303): selects the clip, leaves the insert marker alone by construction, and
+      // seeks only with the Option/Alt override held. A clip press is fully handled here — it
+      // reaches neither the background route nor the scrub.
+      const clipDecision = applyClipClick(
+        {
+          ...geometry,
+          channelIndex: Number.parseInt(surfaceEl.getAttribute('data-ch') ?? '', 10),
+          overrideHeld: e.altKey,
+          canSeek: canBeginSessionScrub('ruler', gate()),
+        },
+        {
+          selectClip: (channelIndex) => { sessionClipSelection.selectClip(channelIndex); },
+          repaintClipSelection: () => { getDawShellRuntime()?.renderClipSelection?.(); },
+          seekTo: (secs) => {
+            setTimelineFollow((m) => applyTimelineFollowEvent(m, 'seek'));
+            void useSoundcheckStore.getState().seekTo(secs);
+          },
+        },
+      );
+      if (clipDecision.kind !== 'none') return;
+      // Lane-background press (#1302): places the insert marker at the pressed time and
+      // does nothing else. Runs before the scrub gate — an engineer places the edit point
+      // whether or not the transport is running. Clips are pointer-events:none, so the
+      // hit-test reads their laid-out rects, never the event target (see this story's ADR).
+      // Unreachable for a clip press — applyClipClick already returned above.
+      applyLaneBackgroundClick(
+        geometry,
+        {
+          setInsertMarkerSecs: (secs) => { sessionTimelineMarks.setInsertMarkerSecs(secs); },
+          repaintInsertMarker: () => { getDawShellRuntime()?.renderInsertMarker?.(); },
+        },
+      );
+    }
     if (!canBeginSessionScrub(kind, gate())) return;
 
     beginSessionTimelineScrub({

@@ -32,6 +32,9 @@ import type { TimelineScale } from './timeline-scale';
 // creates no cycle).
 import type { TimelineMarksModel } from './timeline-state';
 import { TIMELINE_INSERT_MARKER_DEFAULT_SECS } from './timeline-state';
+// The arrangement's clip selection (#1303). clip-selection.ts is a leaf module
+// (imports nothing), so a value import here creates no ESM cycle.
+import { CLIP_SELECTED_LANE_CLASS, type ClipSelectionModel } from './clip-selection';
 
 export const DAW_TIMELINE_PX_PER_SECOND = 8; // one 40px ruler division = 5s
 export const DAW_TIMELINE_INSET_PX = 4; // The playhead's right-edge inset — the arrangement's right margin, the x the playhead parks at instead of walking off the timeline column (kept, not retired: the timeline column's right edge is the shell's right edge)
@@ -288,6 +291,9 @@ export interface DawShellRuntimeDeps {
    *  un-injected runtime paints the marker at the default position and writes nowhere,
    *  which is exactly the pre-#1301 behaviour. */
   timelineMarks?: TimelineMarksModel;
+  /** The arrangement's clip selection (#1303). Optional: an un-injected runtime paints
+   *  nothing selected, exactly the pre-#1303 behaviour. */
+  clipSelection?: ClipSelectionModel;
 }
 
 export interface DawShellRuntime {
@@ -298,6 +304,7 @@ export interface DawShellRuntime {
   resetWaveform(intervalSecs: number): void;
   renderPlayhead(): void;
   renderInsertMarker(): void;
+  renderClipSelection(): void;
   renderWaveform(): void;
   playheadElapsedMs(): number;
   ingestPeaks(data: unknown): void;
@@ -410,6 +417,23 @@ export function createDawShellRuntime(deps: DawShellRuntimeDeps): DawShellRuntim
     }
   }
 
+  // The clip selection (#1303): toggles CLIP_SELECTED_LANE_CLASS on the lane whose
+  // data-ch matches the selection. A press-time and post-rebuild painter, never a
+  // per-frame one — like renderInsertMarker, it stays off the animation path.
+  function renderClipSelection(): void {
+    const shell = deps.doc.querySelector('.daw-shell');
+    if (!shell) return;
+    const selected = deps.clipSelection?.getSelectedChannel() ?? null;
+    const lanes = shell.querySelectorAll('.daw-channel-lane');
+    for (let i = 0; i < lanes.length; i++) {
+      const lane = lanes[i] as HTMLElement;
+      lane.classList.toggle(
+        CLIP_SELECTED_LANE_CLASS,
+        selected !== null && lane.getAttribute('data-ch') === String(selected),
+      );
+    }
+  }
+
   // Sizes the canvas to its own `.daw-lane-body` parent (only when changed),
   // computes the pixel columns at the injected TimelineScale's pxPerSecond
   // (#1265; falls back to DAW_TIMELINE_PX_PER_SECOND when no scale is
@@ -496,6 +520,7 @@ export function createDawShellRuntime(deps: DawShellRuntimeDeps): DawShellRuntim
     resetWaveform,
     renderPlayhead,
     renderInsertMarker,
+    renderClipSelection,
     renderWaveform,
     playheadElapsedMs,
     ingestPeaks,
