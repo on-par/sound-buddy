@@ -98,6 +98,7 @@ import { createCaptureLifecycle, type DawShellSeam, type PreflightApi, type RigR
 import { createDawShellRuntime, type DawShellRuntime, type DawPlayheadStateApi, type DawWaveformStateApi } from './daw-shell-runtime';
 import { createTimelineScale } from './timeline-scale';
 import { sessionTimelineMarks } from './timeline-state';
+import { installTimelineScaleTestHook } from './timeline-scale-harness';
 import { sessionClipSelection } from './clip-selection';
 import { sessionTimeSelection } from './time-selection';
 import { sessionLoopRegion } from './loopBrace.render';
@@ -305,6 +306,12 @@ export default function App() {
     // same ordering guarantee the old `void initOnboarding()` tail call in
     // inline-app.js relied on.
     void useOnboardingStore.getState().init();
+    // Renderer test hooks (#1294) — window.__soundBuddyTimelineScale exists only when the
+    // app was launched with SOUND_BUDDY_TEST_HOOKS=1. catch → false so a build whose preload
+    // predates this method boots normally with no hook.
+    void getSoundBuddy().areTestHooksEnabled()
+      .catch(() => false)
+      .then((enabled) => { installTimelineScaleTestHook(window as unknown as Record<string, unknown>, enabled); });
     // Skill-tree onboarding (#382): hydrates progress after BOOT_SCRIPTS so
     // window.skillTreeState exists — same ordering guarantee as onboarding.
     useSkillTreeStore.getState().init();
