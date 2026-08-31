@@ -1001,6 +1001,10 @@
        and are re-based into the timeline column by the shared translate below
        (ADR-0090). */
     .daw-arrangement { position:relative; display:flex; flex-direction:row; flex:1; min-height:0; }
+    /* #1306 — the arrangement's four state labels stay in the DOM and in the
+       a11y tree; only their pixels go away. Canonical visually-hidden recipe;
+       position:absolute keeps the region out of .daw-arrangement's flex row. */
+    .daw-arrangement-a11y { position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip:rect(0 0 0 0); clip-path:inset(50%); white-space:nowrap; border:0; }
     .daw-track-heads { position:relative; z-index:1; display:flex; flex-direction:column; flex:0 0 var(--daw-head-w); width:var(--daw-head-w); }
     /* The ruler row's head cell: the head column's first child, matching the
        ruler's height from the same --daw-ruler-row-h so every head row sits

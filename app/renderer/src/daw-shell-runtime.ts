@@ -478,8 +478,8 @@ export function createDawShellRuntime(deps: DawShellRuntimeDeps): DawShellRuntim
   // SAME shared models the pixels are painted from, so the announced state can never
   // disagree with the screen. Writes only on a real text change — renderPlayhead reaches
   // this every frame via renderInsertMarker, and the labels are second-granularity, so a
-  // playing session performs at most one write per span per second. The region is not an
-  // aria-live region and must never become one (this story's ADR).
+  // playing session performs at most one write per span per second. The region carries no
+  // live-announcing role and must never gain one (this story's ADR).
   function patchAccessibilityLabel(region: Element, className: string, text: string): void {
     const el = region.querySelector(`.${className}`);
     if (el && el.textContent !== text) el.textContent = text;
