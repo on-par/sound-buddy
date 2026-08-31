@@ -38,6 +38,16 @@ import { CLIP_SELECTED_LANE_CLASS, type ClipSelectionModel } from './clip-select
 // The arrangement's time-range selection (#1304). time-selection.ts is a leaf
 // module (imports nothing), so a value import here creates no ESM cycle.
 import { TIME_SELECTION_CLASS, type TimeSelectionModel } from './time-selection';
+// The arrangement's accessible state labels (#1306). Leaf module (imports nothing), so a
+// value import here creates no ESM cycle — same rationale as clip-selection.ts.
+import {
+  timelineAccessibilityLabels,
+  TIMELINE_A11Y_REGION_CLASS,
+  TIMELINE_A11Y_INSERT_MARKER_CLASS,
+  TIMELINE_A11Y_PLAYHEAD_CLASS,
+  TIMELINE_A11Y_CLIP_SELECTION_CLASS,
+  TIMELINE_A11Y_TIME_SELECTION_CLASS,
+} from './timeline-accessibility-labels';
 
 export const DAW_TIMELINE_PX_PER_SECOND = 8; // one 40px ruler division = 5s
 export const DAW_TIMELINE_INSET_PX = 4; // The playhead's right-edge inset — the arrangement's right margin, the x the playhead parks at instead of walking off the timeline column (kept, not retired: the timeline column's right edge is the shell's right edge)
@@ -312,6 +322,7 @@ export interface DawShellRuntime {
   renderInsertMarker(): void;
   renderClipSelection(): void;
   renderTimeSelection(): void;
+  renderAccessibilityLabels(): void;
   renderWaveform(): void;
   playheadElapsedMs(): number;
   ingestPeaks(data: unknown): void;
@@ -422,6 +433,7 @@ export function createDawShellRuntime(deps: DawShellRuntimeDeps): DawShellRuntim
     for (let i = 0; i < segments.length; i++) {
       (segments[i] as HTMLElement).style.left = `${markerX}px`;
     }
+    renderAccessibilityLabels();
   }
 
   // The clip selection (#1303): toggles CLIP_SELECTED_LANE_CLASS on the lane whose
@@ -439,6 +451,7 @@ export function createDawShellRuntime(deps: DawShellRuntimeDeps): DawShellRuntim
         selected !== null && lane.getAttribute('data-ch') === String(selected),
       );
     }
+    renderAccessibilityLabels();
   }
 
   // The time selection band (#1304): painted through the SAME dawPlayheadX geometry as
@@ -458,6 +471,35 @@ export function createDawShellRuntime(deps: DawShellRuntimeDeps): DawShellRuntim
       segment.style.left = `${leftX}px`;
       segment.style.width = `${Math.max(0, rightX - leftX)}px`;
     }
+    renderAccessibilityLabels();
+  }
+
+  // The arrangement's accessible state (#1306): the four hidden spans, patched from the
+  // SAME shared models the pixels are painted from, so the announced state can never
+  // disagree with the screen. Writes only on a real text change — renderPlayhead reaches
+  // this every frame via renderInsertMarker, and the labels are second-granularity, so a
+  // playing session performs at most one write per span per second. The region is not an
+  // aria-live region and must never become one (this story's ADR).
+  function patchAccessibilityLabel(region: Element, className: string, text: string): void {
+    const el = region.querySelector(`.${className}`);
+    if (el && el.textContent !== text) el.textContent = text;
+  }
+
+  function renderAccessibilityLabels(): void {
+    const shell = deps.doc.querySelector('.daw-shell');
+    if (!shell) return;
+    const region = shell.querySelector(`.${TIMELINE_A11Y_REGION_CLASS}`);
+    if (!region) return;
+    const labels = timelineAccessibilityLabels({
+      playheadSecs: deps.timelineMarks?.getPlayheadSecs() ?? 0,
+      insertMarkerSecs: deps.timelineMarks?.getInsertMarkerSecs() ?? TIMELINE_INSERT_MARKER_DEFAULT_SECS,
+      selectedClipChannel: deps.clipSelection?.getSelectedChannel() ?? null,
+      timeSelection: deps.timeSelection?.getSelection() ?? null,
+    });
+    patchAccessibilityLabel(region, TIMELINE_A11Y_INSERT_MARKER_CLASS, labels.insertMarker);
+    patchAccessibilityLabel(region, TIMELINE_A11Y_PLAYHEAD_CLASS, labels.playhead);
+    patchAccessibilityLabel(region, TIMELINE_A11Y_CLIP_SELECTION_CLASS, labels.clipSelection);
+    patchAccessibilityLabel(region, TIMELINE_A11Y_TIME_SELECTION_CLASS, labels.timeSelection);
   }
 
   // Sizes the canvas to its own `.daw-lane-body` parent (only when changed),
@@ -548,6 +590,7 @@ export function createDawShellRuntime(deps: DawShellRuntimeDeps): DawShellRuntim
     renderInsertMarker,
     renderClipSelection,
     renderTimeSelection,
+    renderAccessibilityLabels,
     renderWaveform,
     playheadElapsedMs,
     ingestPeaks,

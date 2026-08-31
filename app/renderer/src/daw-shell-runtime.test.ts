@@ -31,6 +31,12 @@ import { createTimelineScale, TIMELINE_SCALE_MAX_PX_PER_SECOND } from './timelin
 import { createTimelineMarksModel } from './timeline-state';
 import { CLIP_SELECTED_LANE_CLASS, createClipSelectionModel } from './clip-selection';
 import { createTimeSelectionModel } from './time-selection';
+import {
+  TIMELINE_A11Y_INSERT_MARKER_CLASS,
+  TIMELINE_A11Y_PLAYHEAD_CLASS,
+  TIMELINE_A11Y_CLIP_SELECTION_CLASS,
+  TIMELINE_A11Y_TIME_SELECTION_CLASS,
+} from './timeline-accessibility-labels';
 
 /* ── drawDawWaveformLane (pure) ── */
 
@@ -126,6 +132,27 @@ function makeFakePlayhead() {
   return { style: {} as Record<string, string>, classList: { toggle: vi.fn() } };
 }
 
+function makeFakeA11ySpan() {
+  return { textContent: '' };
+}
+
+function makeFakeA11yRegion(spans: {
+  insertMarker: ReturnType<typeof makeFakeA11ySpan>;
+  playhead: ReturnType<typeof makeFakeA11ySpan>;
+  clipSelection: ReturnType<typeof makeFakeA11ySpan>;
+  timeSelection: ReturnType<typeof makeFakeA11ySpan>;
+}) {
+  return {
+    querySelector: (sel: string) => {
+      if (sel === `.${TIMELINE_A11Y_INSERT_MARKER_CLASS}`) return spans.insertMarker;
+      if (sel === `.${TIMELINE_A11Y_PLAYHEAD_CLASS}`) return spans.playhead;
+      if (sel === `.${TIMELINE_A11Y_CLIP_SELECTION_CLASS}`) return spans.clipSelection;
+      if (sel === `.${TIMELINE_A11Y_TIME_SELECTION_CLASS}`) return spans.timeSelection;
+      return null;
+    },
+  };
+}
+
 interface FakeShell {
   clientWidth: number;
   querySelector: (sel: string) => unknown;
@@ -141,6 +168,12 @@ function makeFakeShell(opts: {
   mixCanvas?: ReturnType<typeof makeFakeCanvas> | null;
   lanes?: ReturnType<typeof makeFakeLane>[];
   clientWidth?: number;
+  a11ySpans?: {
+    insertMarker: ReturnType<typeof makeFakeA11ySpan>;
+    playhead: ReturnType<typeof makeFakeA11ySpan>;
+    clipSelection: ReturnType<typeof makeFakeA11ySpan>;
+    timeSelection: ReturnType<typeof makeFakeA11ySpan>;
+  } | null;
 } = {}): FakeShell {
   const timeEl = opts.timeEl === undefined ? { textContent: '' } : opts.timeEl;
   const playheadEls = opts.playheadEls ?? [makeFakePlayhead(), makeFakePlayhead()];
@@ -148,11 +181,16 @@ function makeFakeShell(opts: {
   const timeSelectionEls = opts.timeSelectionEls ?? [makeFakePlayhead(), makeFakePlayhead()];
   const mixCanvas = opts.mixCanvas === undefined ? makeFakeCanvas() : opts.mixCanvas;
   const lanes = opts.lanes ?? [];
+  const a11ySpans = opts.a11ySpans === undefined
+    ? { insertMarker: makeFakeA11ySpan(), playhead: makeFakeA11ySpan(), clipSelection: makeFakeA11ySpan(), timeSelection: makeFakeA11ySpan() }
+    : opts.a11ySpans;
+  const a11yRegion = a11ySpans ? makeFakeA11yRegion(a11ySpans) : null;
   return {
     clientWidth: opts.clientWidth ?? 400,
     querySelector: (sel: string) => {
       if (sel === '.daw-transport-time') return timeEl;
       if (sel === '.daw-mix-waveform') return mixCanvas;
+      if (sel === '.daw-arrangement-a11y') return a11yRegion;
       return null;
     },
     querySelectorAll: (sel: string) => {
@@ -162,7 +200,7 @@ function makeFakeShell(opts: {
       if (sel === '.daw-time-selection') return timeSelectionEls;
       return [];
     },
-    el: { timeEl, playheadEls, insertMarkerEls, timeSelectionEls, mixCanvas, lanes },
+    el: { timeEl, playheadEls, insertMarkerEls, timeSelectionEls, mixCanvas, lanes, a11ySpans },
   };
 }
 
@@ -653,6 +691,126 @@ describe('createDawShellRuntime', () => {
       rt.renderInsertMarker();
       rt.renderTimeSelection();
       expect(timeSelectionEls[0].style.left).toBe(insertMarkerEls[0].style.left);
+    });
+  });
+
+  describe('arrangement accessibility labels (#1306)', () => {
+    it('renderAccessibilityLabels writes all four spans from the injected models', () => {
+      const shell = makeFakeShell();
+      const timelineMarks = createTimelineMarksModel();
+      timelineMarks.setPlayheadSecs(10);
+      timelineMarks.setInsertMarkerSecs(20);
+      const clipSelection = createClipSelectionModel();
+      clipSelection.selectClip(2);
+      const timeSelection = createTimeSelectionModel();
+      timeSelection.setSelection(10, 20);
+      const { deps, setShell } = makeDeps({ timelineMarks, clipSelection, timeSelection });
+      setShell(shell);
+      const rt = createDawShellRuntime(deps);
+      rt.renderAccessibilityLabels();
+      const spans = shell.el.a11ySpans as ReturnType<typeof makeFakeA11ySpan> & Record<string, { textContent: string }>;
+      expect((spans as unknown as { insertMarker: { textContent: string } }).insertMarker.textContent).toBe('Insert marker at 0:20');
+      expect((spans as unknown as { playhead: { textContent: string } }).playhead.textContent).toBe('Playhead at 0:10');
+      expect((spans as unknown as { clipSelection: { textContent: string } }).clipSelection.textContent).toBe('Clip selected on channel 2');
+      expect((spans as unknown as { timeSelection: { textContent: string } }).timeSelection.textContent).toBe('Time selection from 0:10 to 0:20');
+    });
+
+    it('renderInsertMarker, renderClipSelection and renderTimeSelection each refresh the labels', () => {
+      const shell = makeFakeShell();
+      const timelineMarks = createTimelineMarksModel();
+      timelineMarks.setInsertMarkerSecs(7);
+      const clipSelection = createClipSelectionModel();
+      clipSelection.selectClip(1);
+      const timeSelection = createTimeSelectionModel();
+      timeSelection.setSelection(1, 4);
+      const { deps, setShell } = makeDeps({ timelineMarks, clipSelection, timeSelection });
+      setShell(shell);
+      const rt = createDawShellRuntime(deps);
+      const spans = shell.el.a11ySpans as unknown as {
+        insertMarker: { textContent: string };
+        clipSelection: { textContent: string };
+        timeSelection: { textContent: string };
+      };
+
+      rt.renderInsertMarker();
+      expect(spans.insertMarker.textContent).toBe('Insert marker at 0:07');
+
+      rt.renderClipSelection();
+      expect(spans.clipSelection.textContent).toBe('Clip selected on channel 1');
+
+      rt.renderTimeSelection();
+      expect(spans.timeSelection.textContent).toBe('Time selection from 0:01 to 0:04');
+    });
+
+    it('renderPlayhead refreshes the playhead label without touching the insert-marker label', () => {
+      const shell = makeFakeShell();
+      const timelineMarks = createTimelineMarksModel();
+      timelineMarks.setInsertMarkerSecs(3);
+      const { deps, setShell, setNow } = makeDeps({ timelineMarks });
+      setShell(shell);
+      const rt = createDawShellRuntime(deps);
+      const spans = shell.el.a11ySpans as unknown as { insertMarker: { textContent: string }; playhead: { textContent: string } };
+      setNow(0);
+      rt.startPlayhead(0);
+      setNow(5000);
+      rt.renderPlayhead();
+      expect(spans.playhead.textContent).toBe('Playhead at 0:05');
+      expect(spans.insertMarker.textContent).toBe('Insert marker at 0:03');
+      setNow(9000);
+      rt.renderPlayhead();
+      expect(spans.playhead.textContent).toBe('Playhead at 0:09');
+      expect(spans.insertMarker.textContent).toBe('Insert marker at 0:03');
+    });
+
+    it('does not rewrite a span whose text is unchanged', () => {
+      const shell = makeFakeShell();
+      const timelineMarks = createTimelineMarksModel();
+      timelineMarks.setInsertMarkerSecs(5);
+      const { deps, setShell } = makeDeps({ timelineMarks });
+      setShell(shell);
+      const rt = createDawShellRuntime(deps);
+      rt.renderAccessibilityLabels();
+      const span = (shell.el.a11ySpans as unknown as { insertMarker: { textContent: string } }).insertMarker;
+      expect(span.textContent).toBe('Insert marker at 0:05');
+      // Mutate the span's text to something else, then render again with the same
+      // underlying state: the guard only skips a write when the text is ALREADY
+      // correct, so this second call must restore it exactly once.
+      span.textContent = 'stale';
+      rt.renderAccessibilityLabels();
+      expect(span.textContent).toBe('Insert marker at 0:05');
+    });
+
+    it('is a no-op when there is no .daw-shell', () => {
+      const { deps, setShell } = makeDeps();
+      setShell(null);
+      const rt = createDawShellRuntime(deps);
+      expect(() => rt.renderAccessibilityLabels()).not.toThrow();
+    });
+
+    it('is a no-op when the shell has no accessibility region', () => {
+      const shell = makeFakeShell({ a11ySpans: null });
+      const { deps, setShell } = makeDeps();
+      setShell(shell);
+      const rt = createDawShellRuntime(deps);
+      expect(() => rt.renderAccessibilityLabels()).not.toThrow();
+    });
+
+    it('falls back to defaults when no timelineMarks/clipSelection/timeSelection deps are injected', () => {
+      const shell = makeFakeShell();
+      const { deps, setShell } = makeDeps();
+      setShell(shell);
+      const rt = createDawShellRuntime(deps);
+      rt.renderAccessibilityLabels();
+      const spans = shell.el.a11ySpans as unknown as {
+        insertMarker: { textContent: string };
+        playhead: { textContent: string };
+        clipSelection: { textContent: string };
+        timeSelection: { textContent: string };
+      };
+      expect(spans.insertMarker.textContent).toBe('Insert marker at 0:00');
+      expect(spans.playhead.textContent).toBe('Playhead at 0:00');
+      expect(spans.clipSelection.textContent).toBe('No clip selected');
+      expect(spans.timeSelection.textContent).toBe('No time selection');
     });
   });
 
