@@ -110,6 +110,32 @@ export function timelineFollowRange(model: TimelineFollowModel, range: TimelineV
   return { startSecs, endSecs: startSecs + span };
 }
 
+/** The minimal slice of the #1284 zoom model this policy pages — a structural
+ *  type, so this pure module pairs timelineFollowRange with the zoom model's
+ *  {range, previousRange} shape WITHOUT importing timeline-zoom-controls.ts
+ *  (which would couple the follow policy to the whole zoom reducer). The real
+ *  TimelineZoomModel satisfies it by structure. */
+export interface TimelineFollowZoomState {
+  readonly range: TimelineVisibleRange;
+  readonly previousRange: TimelineVisibleRange | null;
+}
+
+/** Advances a zoom model's visible range to keep the playhead in view while
+ *  follow is active (#1343): the ONE production caller of timelineFollowRange.
+ *  Returns the IDENTICAL zoom reference when nothing pages — while follow is
+ *  paused, or the playhead is still inside the range — so the per-frame
+ *  setTimelineZoom that drives this bails out of a re-render. A real page clears
+ *  previousRange, exactly like a manual scroll (#1292): the pre-zoom range a
+ *  "zoom back" would restore no longer bounds the paged window. */
+export function timelineFollowZoom(
+  zoom: TimelineFollowZoomState,
+  model: TimelineFollowModel,
+  ctx: TimelineFollowContext,
+): TimelineFollowZoomState {
+  const next = timelineFollowRange(model, zoom.range, ctx);
+  return next === zoom.range ? zoom : { range: next, previousRange: null };
+}
+
 export function timelineFollowView(model: TimelineFollowModel): TimelineFollowView {
   return {
     following: model.following,

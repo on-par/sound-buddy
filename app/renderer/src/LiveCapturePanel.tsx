@@ -83,6 +83,7 @@ import {
   createTimelineFollowModel,
   timelineFollowEventForWheel,
   timelineFollowView,
+  timelineFollowZoom,
   TIMELINE_FOLLOW_BUTTON_ID,
   TIMELINE_FOLLOW_SURFACE_SELECTOR,
   type TimelineFollowModel,
@@ -271,6 +272,15 @@ export default function LiveCapturePanel(): JSX.Element | null {
     insertMarkerSecs: sessionTimelineMarks.getInsertMarkerSecs(),
   };
   const timelineZoomView = timelineZoomControlsView(timelineZoom, zoomContext);
+  // Follow auto-tracking (#1343) is driven from the imperative playhead
+  // callbacks below (the transport controller and the capture rAF ticker),
+  // which capture their closures once. Mirror the live follow model and the
+  // arrangement duration into refs updated every render so those callbacks page
+  // the visible range against the current values, never a stale snapshot.
+  const timelineFollowRef = useRef(timelineFollow);
+  timelineFollowRef.current = timelineFollow;
+  const followDurationRef = useRef(zoomContext.durationSecs);
+  followDurationRef.current = zoomContext.durationSecs;
   const lc = useLiveCaptureStore.getState();
   const capturePhase = window.liveTransitionState.capturePhase({
     liveRunning: s.isCapturing,
@@ -327,6 +337,20 @@ export default function LiveCapturePanel(): JSX.Element | null {
       recordedElapsedSecs: (getDawShellRuntime()?.playheadElapsedMs?.() ?? 0) / MS_PER_SECOND,
       pxPerSecond: SESSION_TIMELINE_SCALE.pxPerSecond,
     });
+  };
+
+  // The ONE production driver of follow auto-tracking (#1343): pages the shared
+  // visible range React holds (timelineZoom) to keep the playhead in view.
+  // timelineFollowZoom returns the SAME model while follow is paused or the head
+  // is already in view, so this setState bails out of a re-render on every frame
+  // that does not cross a viewport edge — only a page (the head leaving the
+  // range) re-renders the board. Reads the follow model and duration through the
+  // live refs above, so the callbacks the effects capture once never go stale.
+  const followPlayheadToSecs = (playheadSecs: number): void => {
+    setTimelineZoom((m) => timelineFollowZoom(m, timelineFollowRef.current, {
+      playheadSecs,
+      durationSecs: followDurationRef.current,
+    }));
   };
 
   useEffect(() => {
@@ -389,7 +413,13 @@ export default function LiveCapturePanel(): JSX.Element | null {
         const runtime = getDawShellRuntime();
         runtime?.setPlaybackPosition?.(tick);
       },
-      patchPlayhead: () => getDawShellRuntime()?.renderPlayhead?.(),
+      patchPlayhead: (tick) => {
+        getDawShellRuntime()?.renderPlayhead?.();
+        // Follow the playback playhead (#1343): tick.elapsed is exactly the
+        // instant renderPlayhead just painted, so the paged range can never
+        // disagree with the head's position.
+        followPlayheadToSecs(tick.elapsed);
+      },
     });
     controller.start();
     return () => controller.stop();
@@ -450,6 +480,11 @@ export default function LiveCapturePanel(): JSX.Element | null {
     let rafHandle = 0;
     const tick = (): void => {
       getDawShellRuntime()?.renderPlayhead?.();
+      // Follow the record head (#1343): renderPlayhead has just written the
+      // painted instant to sessionTimelineMarks, so reading it back pages the
+      // range against the exact position on screen — the wall clock while
+      // recording, the loaded take's frozen position otherwise.
+      followPlayheadToSecs(sessionTimelineMarks.getPlayheadSecs());
       patchOverview(document.getElementById('live-island')?.querySelector('.daw-shell') ?? null);
       rafHandle = requestAnimationFrame(tick);
     };

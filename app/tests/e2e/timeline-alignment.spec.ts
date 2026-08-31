@@ -21,11 +21,12 @@ import { launchApp, stopCaptureIfRunning } from './e2e-helpers';
 // synchronous renderPlayhead() repaint so the paint and the clock read share one instant.
 // Follow-scroll pause/resume coverage landed here in #1328: pause is observed on
 // #daw-follow-toggle's aria-pressed and title (the only DOM the follow model reaches), and
-// "stops auto-tracking" is observed as the manually-set viewport (--daw-scroll-x and
-// #daw-zoom-range) staying pinned while the playhead walks past its visible range's right
-// edge on a progress tick. Viewport auto-tracking itself — timelineFollowRange() actually
-// paging the visible range toward the playhead — has no production caller yet in this
-// checkout; ADR-0111 splits that wiring out to #1283, which is parked. Loop-brace and
+// a paused follow is observed as the manually-set viewport (--daw-scroll-x and #daw-zoom-range)
+// staying pinned while the playhead walks past its visible range's right edge on a progress
+// tick. Viewport auto-tracking itself landed in #1343: LiveCapturePanel now pages the shared
+// visible range on every playhead tick via timelineFollowZoom(), so while following, that same
+// progress tick advances --daw-scroll-x and #daw-zoom-range to keep the head in view (the
+// following case, asserted alongside the paused case above). Loop-brace and
 // time-selection coverage landed here in #1329: the brace's edges are read at the default
 // seeded 0..10s loop range after switching Loop on, the band's edges are read after a real
 // ruler drag, both are compared against the ruler tick AND the lane gridline at the same
@@ -135,6 +136,12 @@ const FOLLOW_PLAYBACK_DURATION_SECS = 60;
 // view to track something off-screen.
 const FOLLOW_BEYOND_RANGE_SECS = 50;
 const FOLLOW_BEYOND_RANGE_TRANSPORT = '0:50';
+// Where the [0,30] visible range (zoom-fit then zoom-in) pages to when following and the
+// playhead reaches FOLLOW_BEYOND_RANGE_SECS in a 60s session: startSecs clamps to
+// duration - span = 30, i.e. 30s at TIMELINE_PX_PER_SECOND. Load-bearing so the follow
+// assertion proves the range paged to a specific place, not merely that some offset appeared.
+const FOLLOW_PAGED_START_SECS = FOLLOW_PLAYBACK_DURATION_SECS / 2; // 60s duration - 30s span
+const FOLLOW_PAGED_SCROLL_OFFSET_PX = FOLLOW_PAGED_START_SECS * TIMELINE_PX_PER_SECOND;
 
 // Full-height min/max pairs (level 0 -> -1, level 255 -> +1, ADR-0004 quantization),
 // mirroring daw-shell.spec.ts's helper of the same name.
@@ -419,15 +426,13 @@ async function sendLiveMeterTick(): Promise<void> {
   }, { type: 'meter', channels: [{ rms: -18, peak: -6 }] });
 }
 
-// The observable form of "follow stopped auto-tracking the playhead" in THIS checkout.
-// timelineFollowRange() — the pure function that would page the visible range after the
-// playhead — has no production caller: ADR-0111 split the policy (#1286, landed) from the
-// viewport wiring (#1283, parked), so no range in the app chases the playhead yet, in either
-// follow state. Asserting "following moves the range" would therefore fail against correct
-// code. What IS assertable, and is exactly the contract #1283 must not break, is that a
-// paused follow leaves the range the user set alone while the playhead walks off the right
-// edge of it: --daw-scroll-x and the #daw-zoom-range readout are byte-identical before and
-// after a progress tick at FOLLOW_BEYOND_RANGE_SECS, and the toggle is still paused.
+// The observable form of "follow is paused, so the viewport stays user-pinned" (#1343 AC2).
+// timelineFollowRange() now HAS a production caller (LiveCapturePanel pages the shared visible
+// range on every playhead tick — see expectViewportAdvancesWhileFollowing below for the
+// following case), so the contract this asserts is the OTHER half: a paused follow leaves the
+// range the user set alone while the playhead walks off the right edge of it. --daw-scroll-x
+// and the #daw-zoom-range readout are byte-identical before and after a progress tick at
+// FOLLOW_BEYOND_RANGE_SECS, and the toggle is still paused.
 async function expectViewportPinnedWhilePaused(label: string): Promise<void> {
   const shell = window.locator('.daw-shell');
   const scrollBefore = await shell.evaluate((el) => getComputedStyle(el).getPropertyValue('--daw-scroll-x').trim());
@@ -441,6 +446,43 @@ async function expectViewportPinnedWhilePaused(label: string): Promise<void> {
   expect(await shell.evaluate((el) => getComputedStyle(el).getPropertyValue('--daw-scroll-x').trim()), `${label}: scroll offset moved while follow was paused`).toBe(scrollBefore);
   expect(await window.locator('#daw-zoom-range').textContent(), `${label}: visible range moved while follow was paused`).toBe(rangeBefore);
   await expect(window.locator('#daw-follow-toggle')).toHaveAttribute('aria-pressed', 'false');
+}
+
+// Reads --daw-scroll-x off the shell as a number (empty / unset resolves to 0).
+async function scrollOffsetPx(): Promise<number> {
+  const raw = await window.locator('.daw-shell').evaluate((el) => getComputedStyle(el).getPropertyValue('--daw-scroll-x').trim());
+  return raw ? parseFloat(raw) : 0;
+}
+
+// The observable form of "Follow keeps the timeline tracking the playhead" (#1343 AC1): while
+// following, a progress tick that carries the playhead past the visible range's right edge
+// pages the shared visible range forward, so --daw-scroll-x and the #daw-zoom-range readout
+// both advance and the head stays inside the timeline column. Callers set up a [0,30] range
+// (zoom-fit then zoom-in) before playing, so the paged offset is exactly
+// FOLLOW_PAGED_SCROLL_OFFSET_PX — load-bearing, so this proves the range paged to a specific
+// place, not merely that some offset appeared.
+async function expectViewportAdvancesWhileFollowing(label: string): Promise<void> {
+  const scrollBefore = await scrollOffsetPx();
+  const rangeBefore = await window.locator('#daw-zoom-range').textContent();
+
+  await sendPlaybackProgress(FOLLOW_BEYOND_RANGE_SECS, FOLLOW_PLAYBACK_DURATION_SECS);
+  // The same synchronisation gate the paused helper uses: once the transport reads 0:50 the
+  // playhead is past the visible range's end and the follow page has run in the same repaint.
+  await expect(window.locator('.daw-transport-time')).toHaveText(FOLLOW_BEYOND_RANGE_TRANSPORT);
+
+  // The viewport advanced to a specific place, and the range readout moved with it.
+  await expect.poll(scrollOffsetPx, `${label}: scroll offset did not advance while following`).toBeGreaterThan(scrollBefore);
+  expect(Math.abs(await scrollOffsetPx() - FOLLOW_PAGED_SCROLL_OFFSET_PX), `${label}: paged to the wrong offset`).toBeLessThanOrEqual(ALIGNMENT_TOLERANCE_PX);
+  expect(await window.locator('#daw-zoom-range').textContent(), `${label}: visible range readout did not move while following`).not.toBe(rangeBefore);
+
+  // Follow is still engaged — a page must not pause it.
+  await expect(window.locator('#daw-follow-toggle')).toHaveAttribute('aria-pressed', 'true');
+
+  // The head is in view: its painted x sits inside the timeline column's horizontal bounds.
+  const timelineBox = (await window.locator('.daw-timeline').boundingBox())!;
+  const headBox = (await window.locator('.daw-playhead-lanes').boundingBox())!;
+  expect(headBox.x, `${label}: head left of the timeline column`).toBeGreaterThanOrEqual(timelineBox.x - ALIGNMENT_TOLERANCE_PX);
+  expect(headBox.x, `${label}: head right of the timeline column`).toBeLessThanOrEqual(timelineBox.x + timelineBox.width + ALIGNMENT_TOLERANCE_PX);
 }
 
 test.describe('Timeline alignment invariant (#1325)', () => {
@@ -667,6 +709,33 @@ test.describe('Timeline alignment invariant (#1325)', () => {
     await expect(window.locator('#daw-session-play')).toBeVisible();
   });
 
+  test('following pages the visible range to keep the playhead in view during playback (#1343)', async () => {
+    // Move the boot-pinned zoom model onto the real [0, 60] range, then narrow to [0, 30] so a
+    // page has somewhere to go — the same dance the pause cases document. Both clicks fire
+    // 'navigate', so follow is provably ON (not merely still at its boot default) before the
+    // tick under test.
+    await window.locator('#daw-zoom-fit').click();
+    await window.locator('#daw-zoom-in').click();
+    const followToggle = window.locator('#daw-follow-toggle');
+    await expect(followToggle).toHaveAttribute('aria-pressed', 'true');
+    await expect(followToggle).toHaveAttribute('title', FOLLOW_FOLLOWING_TITLE);
+
+    // The viewport is user-pinned at the start (zoom-in from [0,60] anchors on the t=0 playhead,
+    // so the range is [0,30] at offset 0) — load-bearing, so the advance below is a genuine move.
+    expect(await scrollOffsetPx()).toBe(0);
+
+    // Playback must be running before the progress tick: soundcheckStore drops progress events
+    // unless `playing` is true. Play fires 'play' (a resume), which leaves follow ON. start-playback
+    // is stubbed by the shared beforeEach.
+    await window.locator('#daw-session-play').click();
+    await expect(window.locator('#daw-session-stop')).toBeVisible();
+
+    await expectViewportAdvancesWhileFollowing('following during playback');
+
+    await sendPlaybackEnded();
+    await expect(window.locator('#daw-session-play')).toBeVisible();
+  });
+
   test('alignment holds immediately after follow-scroll resumes on a panned viewport (#1328)', async () => {
     // No playback here: assertFiveSurfacesAlignAt10s() holds a ruler scrub, and a running
     // transport's rAF repaint would overwrite its playhead preview — the same hazard the shared
@@ -682,9 +751,10 @@ test.describe('Timeline alignment invariant (#1325)', () => {
     const followToggle = window.locator('#daw-follow-toggle');
     await expect(followToggle).toHaveAttribute('aria-pressed', 'false');
 
-    // The resume under test. Follow has no viewport to move yet (#1283, see the helper's note),
-    // so the pan stays put across the resume — which is exactly why the invariant is measurable
-    // here at a non-zero offset instead of collapsing back to the default scale.
+    // The resume under test. Follow pages the range only on a playhead tick (#1343), and there is
+    // no playback here to drive one, so the pan stays put across the resume — which is exactly why
+    // the invariant is measurable here at a non-zero offset instead of collapsing back to the
+    // default scale.
     await followToggle.click();
     await expect(followToggle).toHaveAttribute('aria-pressed', 'true');
     await expect(followToggle).toHaveAttribute('title', FOLLOW_FOLLOWING_TITLE);

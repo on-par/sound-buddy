@@ -7,6 +7,7 @@ import {
   applyTimelineFollowEvent,
   timelineFollowEventForWheel,
   timelineFollowRange,
+  timelineFollowZoom,
   timelineFollowView,
   timelineFollowButtonHTML,
   TIMELINE_FOLLOW_BUTTON_ID,
@@ -152,6 +153,38 @@ describe('timelineFollowRange', () => {
     const following = createTimelineFollowModel();
     const zeroWidth = { startSecs: 10, endSecs: 10 };
     expect(timelineFollowRange(following, zeroWidth, ctx({ playheadSecs: 45 }))).toBe(zeroWidth);
+  });
+});
+
+describe('timelineFollowZoom', () => {
+  const zoom = { range: { startSecs: 10, endSecs: 20 }, previousRange: { startSecs: 0, endSecs: 60 } };
+
+  it('returns the identical zoom reference while paused, so a setState bails out', () => {
+    const paused: TimelineFollowModel = { following: false, pausedBy: 'scroll' };
+    expect(timelineFollowZoom(zoom, paused, ctx({ playheadSecs: 50 }))).toBe(zoom);
+  });
+
+  it('returns the identical zoom reference when the playhead is already in view', () => {
+    const following = createTimelineFollowModel();
+    expect(timelineFollowZoom(zoom, following, ctx({ playheadSecs: 15 }))).toBe(zoom);
+  });
+
+  it('pages the range to keep the playhead in view, span preserved', () => {
+    const following = createTimelineFollowModel();
+    const next = timelineFollowZoom(zoom, following, ctx({ playheadSecs: 45, durationSecs: 200 }));
+    expect(next.range).toEqual({ startSecs: 45, endSecs: 55 });
+  });
+
+  it('clears previousRange on a page, matching a manual scroll (#1292)', () => {
+    const following = createTimelineFollowModel();
+    const next = timelineFollowZoom(zoom, following, ctx({ playheadSecs: 45, durationSecs: 200 }));
+    expect(next.previousRange).toBeNull();
+  });
+
+  it('leaves previousRange untouched when nothing pages (identical reference)', () => {
+    const following = createTimelineFollowModel();
+    const settled = timelineFollowZoom(zoom, following, ctx({ playheadSecs: 15 }));
+    expect(settled.previousRange).toBe(zoom.previousRange);
   });
 });
 
