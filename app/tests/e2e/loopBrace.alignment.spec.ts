@@ -2,10 +2,12 @@ import { test, expect, type ElectronApplication, type Page, type Locator } from 
 import * as path from 'path';
 import { launchApp, stopCaptureIfRunning } from './e2e-helpers';
 
-// The loop brace (#1313): a render-only ruler affordance whose left/right edges must
-// stay pixel-aligned with the 0s and 10s ruler ticks (the default seeded loop range)
+// The loop brace (#1313): a ruler affordance whose left/right edges must stay
+// pixel-aligned with the 0s and 10s ruler ticks (the default seeded loop range)
 // through both a horizontal scroll and a zoom-in — proving the brace and the ruler
-// share the exact same geometry (dawPlayheadX) at any pan/zoom. IPC-stubbed only (no
+// share the exact same geometry (dawPlayheadX) at any pan/zoom. #1314 wired the brace
+// to the Session toolbar's Loop button: it is absent until Loop is switched on, and a
+// second test below proves the range survives a toggle-off/on. IPC-stubbed only (no
 // sox/ffprobe/python, no packaged .app), so this spec is NOT added to MEDIA_SPECS.
 
 let electronApp: ElectronApplication;
@@ -50,6 +52,7 @@ test.describe('Loop brace ruler alignment (#1313)', () => {
 
   test('the brace and its handles are visible and aligned with the 0s/10s ruler ticks across scroll and zoom', async () => {
     const brace = window.locator('.daw-loop-brace');
+    await window.locator('#daw-session-loop').click();
     await expect(brace).toBeVisible();
     await expect(brace.locator('.daw-loop-handle-start')).toHaveCount(1);
     await expect(brace.locator('.daw-loop-handle-end')).toHaveCount(1);
@@ -70,6 +73,21 @@ test.describe('Loop brace ruler alignment (#1313)', () => {
     await window.locator('.daw-timeline').dispatchEvent('wheel', { deltaX: 0, deltaY: 240, ctrlKey: true, bubbles: true });
     await expect(window.locator('#daw-zoom-in')).toBeEnabled();
     await window.locator('#daw-zoom-in').click();
+    await assertBraceAligned(brace, ticks);
+  });
+
+  test('#1314: toggling Loop off removes the brace and toggling it back on restores the same range', async () => {
+    const brace = window.locator('.daw-loop-brace');
+    const ticks = window.locator('.daw-ruler .daw-ruler-tick');
+
+    await window.locator('#daw-session-loop').click();
+    await expect(brace).toHaveCount(1);
+
+    await window.locator('#daw-session-loop').click();
+    await expect(window.locator('.daw-loop-brace')).toHaveCount(0);
+
+    await window.locator('#daw-session-loop').click();
+    await expect(brace).toBeVisible();
     await assertBraceAligned(brace, ticks);
   });
 });
