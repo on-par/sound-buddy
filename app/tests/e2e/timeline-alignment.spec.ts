@@ -1,4 +1,4 @@
-import { test, expect, type ElectronApplication, type Page } from '@playwright/test';
+import { test, expect, type ElectronApplication, type Page, type Locator } from '@playwright/test';
 import * as path from 'path';
 import { launchApp, stopCaptureIfRunning } from './e2e-helpers';
 
@@ -23,15 +23,17 @@ import { launchApp, stopCaptureIfRunning } from './e2e-helpers';
 // #daw-follow-toggle's aria-pressed and title (the only DOM the follow model reaches), and
 // "stops auto-tracking" is observed as the manually-set viewport (--daw-scroll-x and
 // #daw-zoom-range) staying pinned while the playhead walks past its visible range's right
-// edge on a progress tick. Viewport auto-tracking itself — timelineFollowRange() actually
-// paging the visible range toward the playhead — has no production caller yet in this
-// checkout; ADR-0111 splits that wiring out to #1283, which is parked. Loop-brace and
+// edge on a progress tick. Follow now pages the shared visible range from the playback
+// progress frame (#1343), so both halves of the contract are covered here — a following
+// viewport advances to keep the playhead in view, a paused one stays pinned. Loop-brace and
 // time-selection coverage landed here in #1329: the brace's edges are read at the default
 // seeded 0..10s loop range after switching Loop on, the band's edges are read after a real
-// ruler drag, both are compared against the ruler tick AND the lane gridline at the same
-// timestamps, and each case probes the running build and calls test.skip(...) with a named
-// reason when its feature is absent, so an unshipped feature is reported as pending rather
-// than missing.
+// ruler drag, and both are compared against the ruler tick AND the lane gridline at the same
+// timestamps. #1346 removed the dynamic test.skip these two cases used to guard their DOM:
+// the loop brace (#1313/#1314) and the time-selection band (#1304) are in the 0.9.1 release
+// scope, so an absent node is a shipped-feature regression that must FAIL the release gate,
+// not a "pending" skip that lets 0.9.1 pass silently. Each case now asserts its required
+// setup with a message naming the missing node instead of skipping.
 
 let electronApp: ElectronApplication;
 let window: Page;
@@ -88,9 +90,10 @@ const SELECTION_END_TICK_INDEX = SELECTION_END_SECS / RULER_TICK_INTERVAL_SECS; 
 // Intermediate pointer moves, so the gesture crosses the threshold through real
 // pointermove events rather than one teleport.
 const SELECTION_DRAG_STEPS = 10;
-// Bounded wait for a capability probe. Short on purpose: a present feature attaches its
-// node on the same turn as the click, and an ABSENT one must not cost a 5s timeout.
-const FEATURE_PROBE_TIMEOUT_MS = 2000;
+// Bounded wait for the loop brace to attach after Loop is switched on. Short on purpose: a
+// present brace attaches on the same turn as the click, so a missing one (#1346, a release
+// regression) fails fast with a named message instead of costing the full 5s expect timeout.
+const BRACE_ATTACH_TIMEOUT_MS = 2000;
 
 // The three timestamps the playback case samples at. All multiples of both
 // RULER_TICK_INTERVAL_SECS and the lane grid's 5s minor division, so a ruler tick and a
@@ -136,6 +139,16 @@ const FOLLOW_PLAYBACK_DURATION_SECS = 60;
 // view to track something off-screen.
 const FOLLOW_BEYOND_RANGE_SECS = 50;
 const FOLLOW_BEYOND_RANGE_TRANSPORT = '0:50';
+// Where a following viewport lands after the FOLLOW_BEYOND_RANGE_SECS tick: the [0,30] range
+// left by fit + one zoom-in pages toward the playhead and clamps to the 60s timeline's end, so
+// the start is durationSecs - span = 30 and the playhead at 0:50 is back in view.
+const FOLLOW_PAGED_START_SECS = 30;
+const FOLLOW_PAGED_SCROLL_PX = `${FOLLOW_PAGED_START_SECS * TIMELINE_PX_PER_SECOND}px`;
+const FOLLOW_PAGED_RANGE_TEXT = '0:30 - 1:00';
+// A second position past the same viewport, used to prove a RESUMED follow re-acquires the
+// playhead on the next tick rather than only on the tick that happened to pause it.
+const FOLLOW_RESUME_TICK_SECS = 51;
+const FOLLOW_RESUME_TICK_TRANSPORT = '0:51';
 
 // Full-height min/max pairs (level 0 -> -1, level 255 -> +1, ADR-0004 quantization),
 // mirroring daw-shell.spec.ts's helper of the same name.
@@ -278,16 +291,24 @@ function expectEdgeAligned(label: string, x: number, reference: RulerGridReading
     .toBeLessThanOrEqual(ALIGNMENT_TOLERANCE_PX);
 }
 
-// Capability probe for the loop brace. Clicks the Session toolbar's Loop button when it
-// exists and reports whether a brace actually attached, so "the feature is not in this
-// build" is answered by the build, not by a hand-maintained flag.
-async function enableLoopBraceIfPresent(): Promise<boolean> {
+// Required setup for the loop brace (#1346). The Loop toggle (#1314) and the brace it
+// attaches (#1313) are in the 0.9.1 release scope, so this performs the switch-on and
+// ASSERTS the brace appeared — a missing toggle or brace fails the release gate with a
+// message naming the absent node, rather than skipping the case as "pending". Replaces the
+// former capability probe (#1329) that returned a boolean for test.skip.
+async function enableLoopBrace(): Promise<Locator> {
   const toggle = window.locator('#daw-session-loop');
-  if (await toggle.count() === 0) return false;
+  await expect(
+    toggle,
+    'release-scope regression (#1314): the Session Loop toggle #daw-session-loop is missing, so the loop brace cannot be shown',
+  ).toHaveCount(1);
   await toggle.click();
   const brace = window.locator('.daw-loop-brace');
-  await brace.waitFor({ state: 'attached', timeout: FEATURE_PROBE_TIMEOUT_MS }).catch(() => {});
-  return await brace.count() > 0;
+  await expect(
+    brace,
+    'release-scope regression (#1313): the loop brace .daw-loop-brace did not attach after switching Loop on',
+  ).toBeVisible({ timeout: BRACE_ATTACH_TIMEOUT_MS });
+  return brace;
 }
 
 // Drags the ruler from fromSecs to toSecs with real pointer input, so the gesture goes
@@ -441,14 +462,9 @@ async function sendLiveMeterTick(): Promise<void> {
 }
 
 // The observable form of "follow stopped auto-tracking the playhead" in THIS checkout.
-// timelineFollowRange() — the pure function that would page the visible range after the
-// playhead — has no production caller: ADR-0111 split the policy (#1286, landed) from the
-// viewport wiring (#1283, parked), so no range in the app chases the playhead yet, in either
-// follow state. Asserting "following moves the range" would therefore fail against correct
-// code. What IS assertable, and is exactly the contract #1283 must not break, is that a
-// paused follow leaves the range the user set alone while the playhead walks off the right
-// edge of it: --daw-scroll-x and the #daw-zoom-range readout are byte-identical before and
-// after a progress tick at FOLLOW_BEYOND_RANGE_SECS, and the toggle is still paused.
+// A PAUSED follow must leave the user's range byte-identical while the playhead walks off
+// its right edge: --daw-scroll-x and the #daw-zoom-range readout are byte-identical before
+// and after a progress tick at FOLLOW_BEYOND_RANGE_SECS, and the toggle is still paused.
 async function expectViewportPinnedWhilePaused(label: string): Promise<void> {
   const shell = window.locator('.daw-shell');
   const scrollBefore = await shell.evaluate((el) => getComputedStyle(el).getPropertyValue('--daw-scroll-x').trim());
@@ -607,6 +623,11 @@ test.describe('Timeline alignment invariant (#1325)', () => {
   });
 
   test('ruler tick, lane gridline, take clip and the playhead share one x at multiple timestamps during loaded-take playback (#1327)', async () => {
+    // Fit to the real [0, 60] range first (#1343): the boot-pinned [0, 1] model (see the
+    // #1326 note above) is narrower than every PLAYBACK_SAMPLES tick, and follow is on by
+    // default, so without this the very first tick would page the viewport and break this
+    // case's scrollOffsetPx===0 assumption below for a reason unrelated to what it tests.
+    await window.locator('#daw-zoom-fit').click();
     // Load-bearing: soundcheckStore's playback-event handler drops progress ticks unless
     // playing is true. start-playback is already stubbed in the shared beforeEach.
     await window.locator('#daw-session-play').click();
@@ -691,6 +712,63 @@ test.describe('Timeline alignment invariant (#1325)', () => {
     await expect(window.locator('#daw-session-play')).toBeVisible();
   });
 
+  test('follow-scroll advances the viewport when the playhead leaves the visible range (#1343)', async () => {
+    // Fit to the real [0, 60] timeline, then one zoom-in for a [0, 30] viewport the 0:50 tick
+    // is provably outside. Both clicks fire 'navigate', so follow is ON before the tick.
+    await window.locator('#daw-zoom-fit').click();
+    await window.locator('#daw-zoom-in').click();
+    const followToggle = window.locator('#daw-follow-toggle');
+    await expect(followToggle).toHaveAttribute('aria-pressed', 'true');
+    await expect(followToggle).toHaveAttribute('title', FOLLOW_FOLLOWING_TITLE);
+
+    const shell = window.locator('.daw-shell');
+    expect(await shell.evaluate((el) => getComputedStyle(el).getPropertyValue('--daw-scroll-x').trim())).toBe('0px');
+
+    await window.locator('#daw-session-play').click();
+    await expect(window.locator('#daw-session-stop')).toBeVisible();
+
+    await sendPlaybackProgress(FOLLOW_BEYOND_RANGE_SECS, FOLLOW_PLAYBACK_DURATION_SECS);
+    await expect(window.locator('.daw-transport-time')).toHaveText(FOLLOW_BEYOND_RANGE_TRANSPORT);
+
+    // The viewport actually moved, through the one shared offset every surface re-bases on.
+    await expect.poll(() => shell.evaluate((el) => getComputedStyle(el).getPropertyValue('--daw-scroll-x').trim()))
+      .toBe(FOLLOW_PAGED_SCROLL_PX);
+    await expect(window.locator('#daw-zoom-range')).toHaveText(FOLLOW_PAGED_RANGE_TEXT);
+    // Auto-tracking is not a pause: the toggle is still following afterwards.
+    await expect(followToggle).toHaveAttribute('aria-pressed', 'true');
+
+    await sendPlaybackEnded();
+    await expect(window.locator('#daw-session-play')).toBeVisible();
+  });
+
+  test('a resumed follow re-acquires the playhead on the next progress tick (#1343)', async () => {
+    await window.locator('#daw-zoom-fit').click();
+    await window.locator('#daw-zoom-in').click();
+    const followToggle = window.locator('#daw-follow-toggle');
+    await window.locator('#daw-session-play').click();
+    await expect(window.locator('#daw-session-stop')).toBeVisible();
+
+    // Pause via the toggle, then prove the user-pinned viewport survives a tick past its edge.
+    await followToggle.click();
+    await expect(followToggle).toHaveAttribute('aria-pressed', 'false');
+    await expect(followToggle).toHaveAttribute('title', FOLLOW_PAUSED_TITLE);
+    await expectViewportPinnedWhilePaused('follow toggle');
+
+    // The resume under test: the very next progress tick pages the viewport.
+    await followToggle.click();
+    await expect(followToggle).toHaveAttribute('aria-pressed', 'true');
+    await sendPlaybackProgress(FOLLOW_RESUME_TICK_SECS, FOLLOW_PLAYBACK_DURATION_SECS);
+    await expect(window.locator('.daw-transport-time')).toHaveText(FOLLOW_RESUME_TICK_TRANSPORT);
+
+    const shell = window.locator('.daw-shell');
+    await expect.poll(() => shell.evaluate((el) => getComputedStyle(el).getPropertyValue('--daw-scroll-x').trim()))
+      .toBe(FOLLOW_PAGED_SCROLL_PX);
+    await expect(window.locator('#daw-zoom-range')).toHaveText(FOLLOW_PAGED_RANGE_TEXT);
+
+    await sendPlaybackEnded();
+    await expect(window.locator('#daw-session-play')).toBeVisible();
+  });
+
   test('alignment holds immediately after follow-scroll resumes on a panned viewport (#1328)', async () => {
     // No playback here: assertFiveSurfacesAlignAt10s() holds a ruler scrub, and a running
     // transport's rAF repaint would overwrite its playhead preview — the same hazard the shared
@@ -706,9 +784,10 @@ test.describe('Timeline alignment invariant (#1325)', () => {
     const followToggle = window.locator('#daw-follow-toggle');
     await expect(followToggle).toHaveAttribute('aria-pressed', 'false');
 
-    // The resume under test. Follow has no viewport to move yet (#1283, see the helper's note),
-    // so the pan stays put across the resume — which is exactly why the invariant is measurable
-    // here at a non-zero offset instead of collapsing back to the default scale.
+    // The resume under test. No transport is running in this case, so the resume itself moves
+    // nothing — paging happens on the next progress tick (see the #1343 cases below) — which is
+    // exactly why the invariant is measurable here at a non-zero offset instead of collapsing
+    // back to the default scale.
     await followToggle.click();
     await expect(followToggle).toHaveAttribute('aria-pressed', 'true');
     await expect(followToggle).toHaveAttribute('title', FOLLOW_FOLLOWING_TITLE);
@@ -721,11 +800,10 @@ test.describe('Timeline alignment invariant (#1325)', () => {
   });
 
   test('loop brace edges align with the ruler and lane gridline (#1329)', async () => {
-    const present = await enableLoopBraceIfPresent();
-    test.skip(!present, 'loop brace is not present in this build (#1313/#1314) - pending');
-
-    const brace = window.locator('.daw-loop-brace');
-    await expect(brace).toBeVisible();
+    // #1346: required setup, not a capability probe. enableLoopBrace asserts the Loop toggle
+    // and the brace it shows are present (both in the 0.9.1 release scope), failing with a
+    // node-naming message if either is missing instead of skipping the case as pending.
+    const brace = await enableLoopBrace();
     const braceBox = (await brace.boundingBox())!;
 
     const startRef = await readRulerAndGridAt(LOOP_START_TICK_INDEX);
@@ -742,13 +820,24 @@ test.describe('Timeline alignment invariant (#1325)', () => {
   });
 
   test('time-selection edges align with the ruler and lane gridline (#1329)', async () => {
+    // #1346: the time-selection band (#1304) is in the 0.9.1 release scope. Both segments
+    // render up-front as display:none spans (renderTimeSelection reveals them on drag), so an
+    // absent segment means the feature was dropped — assert their presence and fail with a
+    // node-naming message rather than skipping the case as pending.
     const segments = window.locator('.daw-time-selection');
-    test.skip(await segments.count() === 0, 'time-selection band is not present in this build (#1304) - pending');
+    await expect(
+      segments,
+      'release-scope regression (#1304): the time-selection band .daw-time-selection (ruler + lanes segments) is not rendered',
+    ).toHaveCount(2);
 
     await dragRulerSelection(SELECTION_START_SECS, SELECTION_END_SECS);
     // Both segments boot with style="display:none", so visibility is the synchronisation
-    // gate that proves renderTimeSelection has run.
-    await expect(window.locator('.daw-time-selection-ruler')).toBeVisible();
+    // gate that proves renderTimeSelection has run. #1346: name the required setup on failure
+    // so a band that never reveals reads as a release-scope regression, not a bare timeout.
+    await expect(
+      window.locator('.daw-time-selection-ruler'),
+      'release-scope regression (#1304): the time-selection band .daw-time-selection-ruler did not reveal after a ruler drag (renderTimeSelection did not run)',
+    ).toBeVisible();
 
     const startRef = await readRulerAndGridAt(SELECTION_START_TICK_INDEX);
     const endRef = await readRulerAndGridAt(SELECTION_END_TICK_INDEX);

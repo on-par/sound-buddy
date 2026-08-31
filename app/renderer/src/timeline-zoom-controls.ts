@@ -162,8 +162,11 @@ function buttonSpecs(view: TimelineZoomControlsView): ZoomButtonSpec[] {
     { action: 'fit-full', label: 'Fit', title: 'Fit the whole session in view', disabled: !view.canFitFull },
     { action: 'zoom-out', label: '-', title: 'Zoom out', disabled: !view.canZoomOut },
     { action: 'zoom-in', label: '+', title: 'Zoom in', disabled: !view.canZoomIn },
-    { action: 'zoom-to-selection', label: 'Sel', title: 'Zoom to the selected time range', disabled: false },
-    { action: 'zoom-back', label: 'Back', title: 'Back to the range before Zoom to selection', disabled: !view.canZoomBack },
+    // #1347: `Sel`/`Back` read as cryptic in the packed toolbar. The verbs
+    // `Fit sel`/`Prev` are self-explanatory beside the `Fit` button and inside
+    // the "Timeline zoom" group; the full description stays in title/aria-label.
+    { action: 'zoom-to-selection', label: 'Fit sel', title: 'Zoom to the selected time range', disabled: false },
+    { action: 'zoom-back', label: 'Prev', title: 'Back to the range before Zoom to selection', disabled: !view.canZoomBack },
   ];
 }
 
@@ -175,7 +178,10 @@ export function timelineZoomControlsHTML(view: TimelineZoomControlsView): string
     const id = TIMELINE_ZOOM_BUTTON_IDS[spec.action];
     return `<button type="button" class="ghost-btn sm daw-zoom-btn" id="${id}" title="${spec.title}" aria-label="${spec.title}"${spec.disabled ? ' disabled' : ''}>${spec.label}</button>`;
   }).join('');
-  return `<span class="daw-transport-zoom">${buttonsHTML}`
+  // #1347: role="group" + a label names the cluster so it reads as one
+  // "Timeline zoom" unit rather than five loose buttons, and so the compact
+  // button labels are scannable in context.
+  return `<span class="daw-transport-zoom daw-transport-group" role="group" aria-label="Timeline zoom">${buttonsHTML}`
     + `<span class="daw-transport-zoom-range" id="${TIMELINE_ZOOM_RANGE_ID}" role="status">${view.rangeLabel}</span>`
     + `</span>`;
 }

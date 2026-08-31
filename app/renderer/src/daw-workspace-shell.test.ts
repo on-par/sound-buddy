@@ -288,6 +288,11 @@ describe('Session follow-scroll toggle wiring (#1286)', () => {
     expect(timelineFollowScrollTs).not.toMatch(/from '\.\/timeline-bpm'/);
     expect(timelineFollowScrollTs).not.toMatch(/from '\.\/stores\//);
   });
+
+  it('LiveCapturePanel pages the visible range from the playback frame (#1343)', () => {
+    expect(liveCapturePanelTsx).toContain('timelineFollowPage(');
+    expect(liveCapturePanelTsx).toContain('followTickRef.current(tick.elapsed)');
+  });
 });
 
 describe('Session horizontal scroll gestures (#1292)', () => {

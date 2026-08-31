@@ -7,6 +7,7 @@ import {
   applyTimelineFollowEvent,
   timelineFollowEventForWheel,
   timelineFollowRange,
+  timelineFollowPage,
   timelineFollowView,
   timelineFollowButtonHTML,
   TIMELINE_FOLLOW_BUTTON_ID,
@@ -152,6 +153,70 @@ describe('timelineFollowRange', () => {
     const following = createTimelineFollowModel();
     const zeroWidth = { startSecs: 10, endSecs: 10 };
     expect(timelineFollowRange(following, zeroWidth, ctx({ playheadSecs: 45 }))).toBe(zeroWidth);
+  });
+});
+
+describe('timelineFollowPage', () => {
+  const range = { startSecs: 10, endSecs: 20 };
+
+  it('returns null while the model is paused, even with the playhead far outside the range', () => {
+    const paused: TimelineFollowModel = { following: false, pausedBy: 'manual' };
+    expect(timelineFollowPage(paused, range, ctx({ playheadSecs: 50 }))).toBeNull();
+  });
+
+  it('returns null when the playhead is already inside the range (interior and both edges)', () => {
+    const following = createTimelineFollowModel();
+    expect(timelineFollowPage(following, range, ctx({ playheadSecs: 15 }))).toBeNull();
+    expect(timelineFollowPage(following, range, ctx({ playheadSecs: 10 }))).toBeNull();
+    expect(timelineFollowPage(following, range, ctx({ playheadSecs: 20 }))).toBeNull();
+  });
+
+  it('returns the paged range when the playhead is past the right edge, span preserved', () => {
+    const following = createTimelineFollowModel();
+    const next = timelineFollowPage(following, range, ctx({ playheadSecs: 45, durationSecs: 200 }));
+    expect(next).toEqual({ startSecs: 45, endSecs: 55 });
+  });
+
+  it('returns the paged range when the playhead is before startSecs', () => {
+    const following = createTimelineFollowModel();
+    const next = timelineFollowPage(following, range, ctx({ playheadSecs: 2, durationSecs: 200 }));
+    expect(next).toEqual({ startSecs: 2, endSecs: 12 });
+  });
+
+  it('returns a range clamped so endSecs <= durationSecs', () => {
+    const following = createTimelineFollowModel();
+    const next = timelineFollowPage(following, range, ctx({ playheadSecs: 198, durationSecs: 200 }));
+    expect(next).not.toBeNull();
+    expect(next!.endSecs).toBeLessThanOrEqual(200);
+    expect(next!.endSecs - next!.startSecs).toBeCloseTo(10);
+  });
+
+  it('returns null for a non-finite playhead', () => {
+    const following = createTimelineFollowModel();
+    expect(timelineFollowPage(following, range, ctx({ playheadSecs: Number.NaN }))).toBeNull();
+  });
+
+  it('returns null for a non-finite duration', () => {
+    const following = createTimelineFollowModel();
+    expect(timelineFollowPage(following, range, ctx({ playheadSecs: 45, durationSecs: Number.NaN }))).toBeNull();
+  });
+
+  it('returns null for a non-positive duration', () => {
+    const following = createTimelineFollowModel();
+    expect(timelineFollowPage(following, range, ctx({ playheadSecs: 45, durationSecs: 0 }))).toBeNull();
+  });
+
+  it('returns null for a zero-width range', () => {
+    const following = createTimelineFollowModel();
+    const zeroWidth = { startSecs: 10, endSecs: 10 };
+    expect(timelineFollowPage(following, zeroWidth, ctx({ playheadSecs: 45 }))).toBeNull();
+  });
+
+  it('calling it again with the range it just returned yields null (idempotence)', () => {
+    const following = createTimelineFollowModel();
+    const paged = timelineFollowPage(following, range, ctx({ playheadSecs: 45, durationSecs: 200 }));
+    expect(paged).not.toBeNull();
+    expect(timelineFollowPage(following, paged!, ctx({ playheadSecs: 45, durationSecs: 200 }))).toBeNull();
   });
 });
 

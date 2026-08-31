@@ -259,10 +259,28 @@ describe('timelineZoomControlsHTML', () => {
     const view = timelineZoomControlsView(model, ctx({ durationSecs: 200 }));
     const html = timelineZoomControlsHTML(view);
 
-    expect(html).toContain('class="daw-transport-zoom"');
+    expect(html).toContain('class="daw-transport-zoom daw-transport-group"');
     for (const id of Object.values(TIMELINE_ZOOM_BUTTON_IDS)) expect(html).toContain(`id="${id}"`);
     expect(html).toContain(`id="${TIMELINE_ZOOM_RANGE_ID}" role="status"`);
     expect(html).toContain(view.rangeLabel);
+
+    // #1347: the cluster is a named group so a screen-reader user hears one
+    // "Timeline zoom" grouping instead of five loose buttons, and the label
+    // makes the shortened button text scannable in context.
+    expect(html).toContain('role="group"');
+    expect(html).toContain('aria-label="Timeline zoom"');
+
+    // #1347: the two cryptic labels (`Sel`, `Back`) are replaced with clearer
+    // compact text; every button still carries its descriptive aria-label so
+    // the accessible name is unchanged.
+    expect(html).toContain(`id="${TIMELINE_ZOOM_BUTTON_IDS['zoom-to-selection']}" title="Zoom to the selected time range" aria-label="Zoom to the selected time range"`);
+    expect(html).toMatch(new RegExp(`id="${TIMELINE_ZOOM_BUTTON_IDS['zoom-to-selection']}"[^>]*>Fit sel<`));
+    expect(html).toMatch(new RegExp(`id="${TIMELINE_ZOOM_BUTTON_IDS['zoom-back']}"[^>]*aria-label="[^"]+"`));
+    expect(html).toMatch(new RegExp(`id="${TIMELINE_ZOOM_BUTTON_IDS['zoom-back']}"[^>]*>Prev<`));
+    // Every zoom button keeps a non-empty accessible name (#1347 a11y guard).
+    for (const id of Object.values(TIMELINE_ZOOM_BUTTON_IDS)) {
+      expect(html).toMatch(new RegExp(`id="${id}"[^>]*aria-label="[^"]+"`));
+    }
 
     // canFitFull true (not at full range), canZoomIn false (min span), canZoomOut
     // true, canZoomBack false (no previousRange) - Sel is never disabled.

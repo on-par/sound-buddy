@@ -35,10 +35,17 @@ try {
 }
 
 const { version } = JSON.parse(readFileSync('app/package.json', 'utf8'));
+const lock = JSON.parse(readFileSync('app/package-lock.json', 'utf8'));
 // A tag that disagrees with the committed version would publish a manifest
 // advertising a version nobody can download — fail before anything ships.
-if (tag !== `v${version}`) {
-  console.error(`error: tag ${tag} does not match app/package.json version ${version}`);
+const versionCheck = shared.checkReleaseVersionSources({
+  tag,
+  appVersion: version,
+  lockVersion: lock.version,
+  lockRootPackageVersion: lock.packages['']?.version,
+});
+if (!versionCheck.ok) {
+  for (const err of versionCheck.errors) console.error(`error: ${err}`);
   process.exit(1);
 }
 

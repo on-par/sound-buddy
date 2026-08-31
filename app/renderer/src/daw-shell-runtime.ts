@@ -535,15 +535,35 @@ export function createDawShellRuntime(deps: DawShellRuntimeDeps): DawShellRuntim
     if (el && el.textContent !== text) el.textContent = text;
   }
 
+  // The selected lane's on-screen name (#1345): the SAME `.daw-lane-name` the eye reads —
+  // a custom track name, or the one-based `Ch N` the rig fallback renders — so the
+  // announcement never disagrees with the visible label. Returns null when nothing is
+  // selected or the lane DOM has not been built yet, and the labeller then falls back to
+  // the one-based channel number.
+  function selectedLaneName(shell: Element, selectedChannel: number | null): string | null {
+    if (selectedChannel === null) return null;
+    const lanes = shell.querySelectorAll('.daw-channel-lane');
+    for (let i = 0; i < lanes.length; i++) {
+      const lane = lanes[i];
+      if (lane.getAttribute('data-ch') === String(selectedChannel)) {
+        const name = lane.querySelector('.daw-lane-name')?.textContent?.trim() ?? '';
+        return name !== '' ? name : null;
+      }
+    }
+    return null;
+  }
+
   function renderAccessibilityLabels(): void {
     const shell = deps.doc.querySelector('.daw-shell');
     if (!shell) return;
     const region = shell.querySelector(`.${TIMELINE_A11Y_REGION_CLASS}`);
     if (!region) return;
+    const selectedClipChannel = deps.clipSelection?.getSelectedChannel() ?? null;
     const labels = timelineAccessibilityLabels({
       playheadSecs: deps.timelineMarks?.getPlayheadSecs() ?? 0,
       insertMarkerSecs: deps.timelineMarks?.getInsertMarkerSecs() ?? TIMELINE_INSERT_MARKER_DEFAULT_SECS,
-      selectedClipChannel: deps.clipSelection?.getSelectedChannel() ?? null,
+      selectedClipChannel,
+      selectedClipTrackName: selectedLaneName(shell, selectedClipChannel),
       timeSelection: deps.timeSelection?.getSelection() ?? null,
     });
     patchAccessibilityLabel(region, TIMELINE_A11Y_INSERT_MARKER_CLASS, labels.insertMarker);

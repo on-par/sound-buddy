@@ -19,6 +19,7 @@ import signal
 import contextlib
 import tempfile
 import subprocess
+import threading
 import unittest
 import importlib.util
 
@@ -298,6 +299,46 @@ class StartOffsetHelpers(unittest.TestCase):
         )
 
 
+class StopHandlers(unittest.TestCase):
+    """install_stop_handlers and flush_and_exit (#1340): both have their side
+    effects injected (`register`/`exit_fn`) so the SIGTERM/SIGINT wiring and
+    the shutdown path are unit-testable without signalling or killing the test
+    process."""
+
+    def test_registers_both_signals(self):
+        registered = []
+        playback.install_stop_handlers(lambda: None, register=lambda sig, handler: registered.append((sig, handler)))
+        self.assertEqual({sig for sig, _handler in registered}, {signal.SIGTERM, signal.SIGINT})
+
+    def test_handler_invokes_on_stop(self):
+        calls = []
+        registered = []
+        playback.install_stop_handlers(lambda: calls.append(1), register=lambda sig, handler: registered.append((sig, handler)))
+        _sig, handler = next(r for r in registered if r[0] == signal.SIGTERM)
+        handler(signal.SIGTERM, None)
+        self.assertEqual(calls, [1])
+
+    def test_flush_and_exit_uses_injected_exit_fn(self):
+        calls = []
+        with contextlib.redirect_stdout(io.StringIO()):
+            playback.flush_and_exit(3, exit_fn=calls.append)
+        self.assertEqual(calls, [3])
+
+    def test_flush_and_exit_survives_a_broken_stream(self):
+        class _BrokenStream:
+            def flush(self):
+                raise ValueError("I/O operation on closed file")
+
+        calls = []
+        old_stdout = sys.stdout
+        sys.stdout = _BrokenStream()
+        try:
+            playback.flush_and_exit(3, exit_fn=calls.append)
+        finally:
+            sys.stdout = old_stdout
+        self.assertEqual(calls, [3])
+
+
 @unittest.skipUnless(HAVE_SOUNDFILE, "soundfile not installed")
 class LoadManifest(unittest.TestCase):
     def setUp(self):
@@ -374,6 +415,72 @@ def _make_session(session_dir, sample_rate=48000, frames=4096, ramp_kick=False):
         json.dump(manifest, f)
 
 
+class _LineReader:
+    """
+    Background drain of one subprocess pipe.
+
+    Every integration test needs two things from the same pipe: a readiness gate
+    that blocks until the child reaches a known state, and the full text
+    afterwards. A single blocking read cannot do both, and an undrained pipe can
+    fill — so a daemon thread accumulates every line and the test queries the
+    accumulated list. This replaces the fixed time.sleep() gates that made the
+    suite fail whenever a cold import made 0.3s too short (#1340), mirroring the
+    poll-until-ready discipline test_stream.py already uses.
+    """
+
+    def __init__(self, stream):
+        self._stream = stream
+        self._lines = []
+        self._lock = threading.Lock()
+        self._thread = threading.Thread(target=self._run, daemon=True)
+        self._thread.start()
+
+    def _run(self):
+        try:
+            for raw in self._stream:
+                with self._lock:
+                    self._lines.append(raw.decode(errors="replace"))
+        except (ValueError, OSError):
+            return
+
+    def lines(self):
+        with self._lock:
+            return list(self._lines)
+
+    def text(self):
+        return "".join(self.lines())
+
+    def events(self):
+        out = []
+        for line in self.lines():
+            try:
+                out.append(json.loads(line))
+            except ValueError:
+                continue
+        return out
+
+    def wait_for(self, pred, timeout: float = 10.0) -> dict:
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            for ev in self.events():
+                if pred(ev):
+                    return ev
+            time.sleep(0.02)
+        raise AssertionError(f"timed out waiting for event; saw:\n{self.text()[:2000]}")
+
+    def wait_for_text(self, needle: str, timeout: float = 10.0) -> str:
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            text = self.text()
+            if needle in text:
+                return text
+            time.sleep(0.02)
+        raise AssertionError(f"timed out waiting for {needle!r}; saw:\n{self.text()[:2000]}")
+
+    def join(self, timeout=5.0):
+        self._thread.join(timeout)
+
+
 # A PortAudio-free sounddevice whose OutputStream pulls the callback from a
 # background thread and captures every frame it writes, so a real playback.py
 # subprocess can be driven and its routed output inspected.
@@ -384,12 +491,19 @@ import numpy as np
 
 CAPTURE_PATH = os.environ["PLAYBACK_CAPTURE"]
 DEVICE_CHANNELS = int(os.environ.get("FAKE_DEVICE_CHANNELS", "8"))
+QUERY_DELAY = float(os.environ.get("FAKE_QUERY_DELAY", "0"))
+QUERY_MARKER = os.environ.get("FAKE_QUERY_MARKER", "")
 
 _INFO = {"name": "Fake Output", "max_input_channels": 0,
          "max_output_channels": DEVICE_CHANNELS, "default_samplerate": 48000}
 
 
 def query_devices(index=None):
+    if QUERY_DELAY:
+        if QUERY_MARKER:
+            with open(QUERY_MARKER, "w") as f:
+                f.write("1")
+        time.sleep(QUERY_DELAY)
     return _INFO if index is not None else [_INFO]
 
 
@@ -470,6 +584,10 @@ class PlaybackIntegration(unittest.TestCase):
         env["FAKE_DEVICE_CHANNELS"] = str(device_channels)
         proc = subprocess.run(
             [sys.executable, os.path.join(_HERE, "playback.py"), session_dir, *args],
+            # No command channel in these cases: DEVNULL gives the #759 stdin
+            # listener an immediate EOF instead of parking it on whatever stdin
+            # the harness inherited, which made shutdown environment-dependent.
+            stdin=subprocess.DEVNULL,
             stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env, timeout=timeout,
         )
         lines = [json.loads(l) for l in proc.stdout.decode().splitlines() if l.strip()]
@@ -628,6 +746,42 @@ class PlaybackIntegration(unittest.TestCase):
         first_nz = int(np.argmax(np.abs(out[:, 0]) > 0))
         self.assertAlmostEqual(float(out[first_nz, 0]), 0.0, delta=0.01)
 
+    def test_exits_zero_with_stdin_pipe_held_open(self):
+        """A child whose stdin pipe stays open for its whole life must still exit
+        0 at the natural end of playback — the app always spawns playback.py with
+        stdin piped (#759), and a daemon listener parked in that read used to be
+        able to wedge interpreter shutdown (#1340)."""
+        work = tempfile.mkdtemp()
+        session_dir = os.path.join(work, "session")
+        _make_session(session_dir, frames=4096)
+        fake_dir = os.path.join(work, "fake")
+        os.makedirs(fake_dir)
+        with open(os.path.join(fake_dir, "sounddevice.py"), "w") as f:
+            f.write(_FAKE_SOUNDDEVICE)
+        env = dict(os.environ)
+        env["PYTHONPATH"] = fake_dir + os.pathsep + env.get("PYTHONPATH", "")
+        env["PLAYBACK_CAPTURE"] = os.path.join(work, "capture.npy")
+        env["FAKE_DEVICE_CHANNELS"] = "8"
+        proc = subprocess.Popen(
+            [sys.executable, os.path.join(_HERE, "playback.py"), session_dir,
+             "--device", "0", "--route", "0:0,1:2-3", "--interval", "0.02"],
+            stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env,
+        )
+        # Never write to and never close stdin — the exact shape the app uses
+        # in production (#759) — to prove the daemon listener parked on it
+        # cannot wedge interpreter shutdown.
+        reader = _LineReader(proc.stdout)
+        try:
+            self.assertEqual(proc.wait(timeout=15), 0)
+            reader.wait_for(lambda e: e.get("type") == "ended")
+        finally:
+            for stream in (proc.stdin, proc.stdout, proc.stderr):
+                if stream is not None:
+                    stream.close()
+            if proc.poll() is None:
+                proc.kill()
+            shutil.rmtree(work, ignore_errors=True)
+
 
 @unittest.skipUnless(HAVE_SOUNDFILE, "soundfile not installed")
 class SigtermFinalizes(unittest.TestCase):
@@ -652,15 +806,63 @@ class SigtermFinalizes(unittest.TestCase):
              "--device", "0", "--route", "0:0,1:2-3", "--interval", "0.05"],
             stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env,
         )
+        reader = _LineReader(proc.stdout)
         try:
-            # Let it get well into playback, then confirm it's still running.
-            time.sleep(0.5)
+            # A `progress` event is emitted only from inside the stream loop,
+            # i.e. strictly after the stop handlers are installed — a real
+            # happens-before, not a sleep.
+            reader.wait_for(lambda e: e.get("type") == "progress")
             self.assertIsNone(proc.poll(), "process exited before SIGTERM")
             proc.send_signal(signal.SIGTERM)
             self.assertEqual(proc.wait(timeout=5), 0)
             # A SIGTERM stop must NOT emit the natural-end marker.
-            out = proc.stdout.read().decode()
-            self.assertNotIn('"type": "ended"', out)
+            reader.join()
+            self.assertNotIn('"type": "ended"', reader.text())
+        finally:
+            proc.stdout.close()
+            proc.stderr.close()
+            if proc.poll() is None:
+                proc.kill()
+            shutil.rmtree(work, ignore_errors=True)
+
+    def test_sigterm_during_startup_exits_zero(self):
+        """A SIGTERM that lands before the output stream exists — while the
+        fake device query is still running — must exit 0, not -15. Before
+        #1340 the signal handlers were installed inside _run_output_stream,
+        deep after the manifest load, stem opens and device query, so a
+        SIGTERM in that window fell through to the default disposition."""
+        work = tempfile.mkdtemp()
+        session_dir = os.path.join(work, "session")
+        # The delay (not the session length) holds the child in the pre-stream
+        # startup window, so a short session is enough here.
+        _make_session(session_dir, frames=4096)
+        fake_dir = os.path.join(work, "fake")
+        os.makedirs(fake_dir)
+        with open(os.path.join(fake_dir, "sounddevice.py"), "w") as f:
+            f.write(_FAKE_SOUNDDEVICE)
+        marker = os.path.join(work, "queried")
+        env = dict(os.environ)
+        env["PYTHONPATH"] = fake_dir + os.pathsep + env.get("PYTHONPATH", "")
+        env["PLAYBACK_CAPTURE"] = os.path.join(work, "capture.npy")
+        env["FAKE_DEVICE_CHANNELS"] = "8"
+        env["FAKE_QUERY_DELAY"] = "5"
+        env["FAKE_QUERY_MARKER"] = marker
+        proc = subprocess.Popen(
+            [sys.executable, os.path.join(_HERE, "playback.py"), session_dir,
+             "--device", "0", "--route", "0:0,1:2-3", "--interval", "0.05"],
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env,
+        )
+        try:
+            # Wait for the fake device query to start — imports are done and
+            # the child is in the pre-stream startup window, the exact window
+            # in which SIGTERM used to hit the default disposition and exit
+            # -15.
+            deadline = time.monotonic() + 15.0
+            while time.monotonic() < deadline and not os.path.exists(marker):
+                time.sleep(0.02)
+            self.assertTrue(os.path.exists(marker), "child never reached the device query")
+            proc.send_signal(signal.SIGTERM)
+            self.assertEqual(proc.wait(timeout=10), 0)
         finally:
             proc.stdout.close()
             proc.stderr.close()
@@ -693,7 +895,9 @@ class LiveStdinReroute(unittest.TestCase):
              "--device", "0", "--route", "0:0,1:2-3", "--interval", "0.05"],
             stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env,
         )
-        return proc, env["PLAYBACK_CAPTURE"]
+        out_reader = _LineReader(proc.stdout)
+        err_reader = _LineReader(proc.stderr)
+        return proc, env["PLAYBACK_CAPTURE"], out_reader, err_reader
 
     def _teardown(self, proc, work):
         for stream in (proc.stdin, proc.stdout, proc.stderr):
@@ -705,24 +909,26 @@ class LiveStdinReroute(unittest.TestCase):
 
     def test_stdin_reroute_moves_kick_to_ch1_live(self):
         work = tempfile.mkdtemp()
-        proc, capture = self._spawn(work)
+        proc, capture, out_reader, err_reader = self._spawn(work)
         try:
-            # Let playback get well underway, then confirm the process is live.
-            time.sleep(0.3)
+            out_reader.wait_for(lambda e: e.get("type") == "progress")
             self.assertIsNone(proc.poll(), "process exited before re-route")
             # Push the full routing spec over stdin: Kick mono → ch1, OH → ch2-3.
+            mark = out_reader.wait_for(lambda e: e.get("type") == "progress")["elapsed"]
             proc.stdin.write(b'{"type":"set-routes","spec":"0:1,1:2-3"}\n')
             proc.stdin.flush()
-            # A re-route only applies to blocks the producer hasn't mixed yet, and
-            # up to QUEUE_BLOCKS (20) already-mixed blocks — ~427ms of audio,
-            # draining at ~1 block/10ms wall time — may still be in flight on the
-            # old routing. Wait past that worst case so the post-swap capture
-            # reliably contains at least one re-routed block.
-            time.sleep(0.6)
+            # A re-route only reaches blocks the producer has not mixed yet; up
+            # to QUEUE_BLOCKS already-mixed blocks stay on the old map. Gate on
+            # the *audio position* advancing past that backlog rather than
+            # guessing a wall-clock sleep.
+            drain = (playback.QUEUE_BLOCKS + 4) * playback.BLOCKSIZE / 48000.0
+            out_reader.wait_for(
+                lambda e: e.get("type") == "progress" and e["elapsed"] >= mark + drain,
+                timeout=15.0,
+            )
             proc.send_signal(signal.SIGTERM)
             self.assertEqual(proc.wait(timeout=5), 0)
-            out = proc.stdout.read().decode()
-            self.assertNotIn('"type": "ended"', out)
+            self.assertNotIn('"type": "ended"', out_reader.text())
             captured = np.load(capture)
             # Kick reached ch0 (pre-swap phase) AND ch1 (post-swap phase), while
             # OH never left ch2-3 — the re-route hit the live mix graph.
@@ -735,17 +941,16 @@ class LiveStdinReroute(unittest.TestCase):
 
     def test_garbage_stdin_line_is_ignored(self):
         work = tempfile.mkdtemp()
-        proc, capture = self._spawn(work)
+        proc, capture, out_reader, err_reader = self._spawn(work)
         try:
-            time.sleep(0.3)
+            out_reader.wait_for(lambda e: e.get("type") == "progress")
             proc.stdin.write(b"this is not json\n")
             proc.stdin.flush()
-            time.sleep(0.3)
+            err_reader.wait_for_text("route update rejected", timeout=5.0)
             self.assertIsNone(proc.poll(), "process died on a bad command")
             proc.send_signal(signal.SIGTERM)
             self.assertEqual(proc.wait(timeout=5), 0)
-            err = proc.stderr.read().decode()
-            self.assertIn("route update rejected", err)
+            self.assertIn("route update rejected", err_reader.text())
             captured = np.load(capture)
             # No swap happened: Kick stayed on ch0, ch1 stayed silent.
             self.assertAlmostEqual(float(np.max(captured[:, 0])), 0.5, delta=0.01)

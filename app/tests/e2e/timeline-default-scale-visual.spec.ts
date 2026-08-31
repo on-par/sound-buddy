@@ -14,8 +14,9 @@ import { launchApp, stopCaptureIfRunning } from './e2e-helpers';
 // ADR-0124, alignment stays the exclusive property of those DOM-geometry specs — this file
 // asserts PAINTEDNESS only (attached, visible, non-zero extent, the waveform canvas carries
 // ink) and then captures a PNG of the arrangement for a human reviewer, documented as the
-// human gate in docs/session-timeline-default-scale-visual-verification.md. It never compares
-// images and never gains a toHaveScreenshot baseline.
+// human gate in docs/session-timeline-default-scale-visual-verification.md — see that doc's
+// "Where the reviewed artifact lives" section for where the capture is parked. It never
+// compares images and never gains a toHaveScreenshot baseline.
 //
 // IPC-stubbed only (open-dir-dialog, generate-session-peaks, list-output-devices,
 // start-playback) — no sox/ffprobe/python, no packaged .app — so it is deliberately NOT
@@ -236,6 +237,11 @@ test.describe('Default-scale Session timeline visual verification (#1295)', () =
         const outPath = testInfo.outputPath('session-timeline-default-scale.png');
         fs.writeFileSync(outPath, png);
         console.log(`session-timeline-default-scale.png written to ${outPath}`);
+        console.log(
+          'To record this capture for release review: cp "' + outPath +
+          '" docs/screenshots/<issue#>/session-timeline-default-scale.png, then append a row to ' +
+          'docs/session-timeline-default-scale-visual-verification.md (see "Where the reviewed artifact lives").',
+        );
       } catch (err) {
         testInfo.annotations.push({
           type: 'capture-unavailable',
