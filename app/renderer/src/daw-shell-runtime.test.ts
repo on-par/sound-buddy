@@ -29,6 +29,7 @@ import {
 } from './daw-shell-runtime';
 import { createTimelineScale, TIMELINE_SCALE_MAX_PX_PER_SECOND } from './timeline-scale';
 import { createTimelineMarksModel } from './timeline-state';
+import { CLIP_SELECTED_LANE_CLASS, createClipSelectionModel } from './clip-selection';
 
 /* ── drawDawWaveformLane (pure) ── */
 
@@ -116,6 +117,7 @@ function makeFakeLane(ch: string, canvas: ReturnType<typeof makeFakeCanvas> | nu
   return {
     getAttribute: (name: string) => (name === 'data-ch' ? ch : null),
     querySelector: (sel: string) => (sel === '.daw-channel-waveform' ? canvas : null),
+    classList: { toggle: vi.fn() },
   };
 }
 
@@ -546,6 +548,39 @@ describe('createDawShellRuntime', () => {
         expect(el.style.left).toBe(expected);
       }
       expect(() => rt.renderPlayhead()).not.toThrow();
+    });
+  });
+
+  describe('renderClipSelection (#1303)', () => {
+    it('toggles clip-selected true on the lane matching the selection and false on every other lane', () => {
+      const lanes = [makeFakeLane('0', null), makeFakeLane('1', null), makeFakeLane('2', null)];
+      const shell = makeFakeShell({ lanes });
+      const clipSelection = createClipSelectionModel();
+      clipSelection.selectClip(1);
+      const { deps, setShell } = makeDeps({ clipSelection });
+      setShell(shell);
+      const rt = createDawShellRuntime(deps);
+      rt.renderClipSelection();
+      expect(lanes[0].classList.toggle).toHaveBeenCalledWith(CLIP_SELECTED_LANE_CLASS, false);
+      expect(lanes[1].classList.toggle).toHaveBeenCalledWith(CLIP_SELECTED_LANE_CLASS, true);
+      expect(lanes[2].classList.toggle).toHaveBeenCalledWith(CLIP_SELECTED_LANE_CLASS, false);
+    });
+
+    it('toggles false on every lane and does not throw when no clipSelection dep is injected', () => {
+      const lanes = [makeFakeLane('0', null)];
+      const shell = makeFakeShell({ lanes });
+      const { deps, setShell } = makeDeps();
+      setShell(shell);
+      const rt = createDawShellRuntime(deps);
+      expect(() => rt.renderClipSelection()).not.toThrow();
+      expect(lanes[0].classList.toggle).toHaveBeenCalledWith(CLIP_SELECTED_LANE_CLASS, false);
+    });
+
+    it('is a no-op when there is no .daw-shell', () => {
+      const { deps, setShell } = makeDeps();
+      setShell(null);
+      const rt = createDawShellRuntime(deps);
+      expect(() => rt.renderClipSelection()).not.toThrow();
     });
   });
 
