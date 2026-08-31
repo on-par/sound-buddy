@@ -5,6 +5,7 @@ import {
   PUBLISH_STEPS,
   auditLocalReleaseScript,
   auditReleaseScriptResolution,
+  checkReleaseVersionSources,
   classifyWorkingTree,
   evaluateReleasePreflight,
   formatPublishFailure,
@@ -514,8 +515,101 @@ describe('auditReleaseScriptResolution', () => {
   });
 });
 
+describe('checkReleaseVersionSources (#1339)', () => {
+  it('the reported failure: tag v0.9.1 vs app/package.json still at 0.9.0', () => {
+    const verdict = checkReleaseVersionSources({
+      tag: 'v0.9.1',
+      appVersion: '0.9.0',
+      lockVersion: '0.9.0',
+      lockRootPackageVersion: '0.9.0',
+    });
+    expect(verdict.ok).toBe(false);
+    if (verdict.ok) throw new Error('unreachable');
+    expect(verdict.errors).toHaveLength(1);
+    expect(verdict.errors[0]).toContain('tag v0.9.1 does not match app/package.json version 0.9.0');
+    expect(verdict.errors[0]).toContain('npm version 0.9.1 --no-git-tag-version');
+  });
+
+  it('agreeing sources: ok true with the version', () => {
+    const verdict = checkReleaseVersionSources({
+      tag: 'v0.9.1',
+      appVersion: '0.9.1',
+      lockVersion: '0.9.1',
+      lockRootPackageVersion: '0.9.1',
+    });
+    expect(verdict).toEqual({ ok: true, version: '0.9.1' });
+  });
+
+  it('lock drift, top-level version: names the field and both values', () => {
+    const verdict = checkReleaseVersionSources({
+      tag: 'v0.9.1',
+      appVersion: '0.9.1',
+      lockVersion: '0.9.0',
+      lockRootPackageVersion: '0.9.1',
+    });
+    expect(verdict.ok).toBe(false);
+    if (verdict.ok) throw new Error('unreachable');
+    expect(verdict.errors.some((e) => e.includes('version') && e.includes('0.9.0') && e.includes('0.9.1'))).toBe(true);
+  });
+
+  it('lock drift, packages[""].version: names that field', () => {
+    const verdict = checkReleaseVersionSources({
+      tag: 'v0.9.1',
+      appVersion: '0.9.1',
+      lockVersion: '0.9.1',
+      lockRootPackageVersion: '0.9.0',
+    });
+    expect(verdict.ok).toBe(false);
+    if (verdict.ok) throw new Error('unreachable');
+    expect(verdict.errors.some((e) => e.includes('packages[""].version'))).toBe(true);
+  });
+
+  it('malformed tag: reports only the malformed-tag error, not the derived mismatch', () => {
+    const verdict = checkReleaseVersionSources({
+      tag: '0.9.1',
+      appVersion: '0.9.1',
+      lockVersion: '0.9.1',
+      lockRootPackageVersion: '0.9.1',
+    });
+    expect(verdict.ok).toBe(false);
+    if (verdict.ok) throw new Error('unreachable');
+    expect(verdict.errors).toHaveLength(1);
+    expect(verdict.errors[0]).toContain('malformed');
+  });
+
+  it('malformed app version: names app/package.json', () => {
+    const verdict = checkReleaseVersionSources({
+      tag: 'v0.9.1',
+      appVersion: '0.9',
+      lockVersion: '0.9',
+      lockRootPackageVersion: '0.9',
+    });
+    expect(verdict.ok).toBe(false);
+    if (verdict.ok) throw new Error('unreachable');
+    expect(verdict.errors.some((e) => e.includes('app/package.json'))).toBe(true);
+  });
+});
+
 const releaseScriptPath = fileURLToPath(new URL('../../../scripts/release.sh', import.meta.url));
 const hasReleaseScript = existsSync(releaseScriptPath);
+
+const appPackageJsonPath = fileURLToPath(new URL('../../../app/package.json', import.meta.url));
+const appPackageLockPath = fileURLToPath(new URL('../../../app/package-lock.json', import.meta.url));
+const hasAppPackageFiles = existsSync(appPackageJsonPath) && existsSync(appPackageLockPath);
+
+describe.runIf(hasAppPackageFiles)('the committed app/package.json and app/package-lock.json (#1339)', () => {
+  it('agree with each other', () => {
+    const pkg = JSON.parse(readFileSync(appPackageJsonPath, 'utf8'));
+    const lock = JSON.parse(readFileSync(appPackageLockPath, 'utf8'));
+    const verdict = checkReleaseVersionSources({
+      tag: `v${pkg.version}`,
+      appVersion: pkg.version,
+      lockVersion: lock.version,
+      lockRootPackageVersion: lock.packages[''].version,
+    });
+    expect(verdict.ok).toBe(true);
+  });
+});
 
 describe.runIf(hasReleaseScript)('the real scripts/release.sh (#648)', () => {
   it('contains no tag-resolved gh release subcommands', () => {
