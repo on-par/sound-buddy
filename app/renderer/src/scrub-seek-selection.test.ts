@@ -75,6 +75,7 @@ function arm(downX: number) {
   beginSessionTimelineScrub({
     root,
     surface,
+    scrollOffsetPx: 0,
     windowTarget: win,
     pointerId: 1,
     clientX: downX,
