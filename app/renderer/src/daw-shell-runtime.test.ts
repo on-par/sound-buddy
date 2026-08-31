@@ -121,10 +121,15 @@ function makeFakeCanvas(overrides: Record<string, unknown> = {}) {
   };
 }
 
-function makeFakeLane(ch: string, canvas: ReturnType<typeof makeFakeCanvas> | null) {
+function makeFakeLane(ch: string, canvas: ReturnType<typeof makeFakeCanvas> | null, laneName?: string) {
+  const nameEl = laneName === undefined ? null : { textContent: laneName };
   return {
     getAttribute: (name: string) => (name === 'data-ch' ? ch : null),
-    querySelector: (sel: string) => (sel === '.daw-channel-waveform' ? canvas : null),
+    querySelector: (sel: string) => {
+      if (sel === '.daw-channel-waveform') return canvas;
+      if (sel === '.daw-lane-name') return nameEl;
+      return null;
+    },
     classList: { toggle: vi.fn() },
   };
 }
@@ -844,6 +849,54 @@ describe('createDawShellRuntime', () => {
 
       rt.renderTimeSelection();
       expect(spans.timeSelection.textContent).toBe('Time selection from 0:01 to 0:04');
+    });
+
+    // #1345: the announcement uses the SELECTED lane's on-screen name, so a named track
+    // is announced by name — matching the visible `.daw-lane-name`, not a bare channel number.
+    it('announces the selected lane\'s track name when the lane carries one', () => {
+      const clipSelection = createClipSelectionModel();
+      clipSelection.selectClip(1);
+      const a11ySpans = { insertMarker: makeFakeA11ySpan(), playhead: makeFakeA11ySpan(), clipSelection: makeFakeA11ySpan(), timeSelection: makeFakeA11ySpan() };
+      const shell = makeFakeShell({
+        a11ySpans,
+        lanes: [makeFakeLane('0', null, 'Kick'), makeFakeLane('1', null, 'Lead Vocal')],
+      });
+      const { deps, setShell } = makeDeps({ clipSelection });
+      setShell(shell);
+      const rt = createDawShellRuntime(deps);
+      rt.renderAccessibilityLabels();
+      expect(a11ySpans.clipSelection.textContent).toBe('Clip selected on Lead Vocal');
+    });
+
+    // #1345: an unnamed track's lane shows the one-based `Ch N`, so that is what is announced —
+    // never the internal zero-based index.
+    it('announces the selected lane\'s one-based Ch label for an unnamed track', () => {
+      const clipSelection = createClipSelectionModel();
+      clipSelection.selectClip(0);
+      const a11ySpans = { insertMarker: makeFakeA11ySpan(), playhead: makeFakeA11ySpan(), clipSelection: makeFakeA11ySpan(), timeSelection: makeFakeA11ySpan() };
+      const shell = makeFakeShell({
+        a11ySpans,
+        lanes: [makeFakeLane('0', null, 'Ch 1'), makeFakeLane('1', null, 'Ch 2')],
+      });
+      const { deps, setShell } = makeDeps({ clipSelection });
+      setShell(shell);
+      const rt = createDawShellRuntime(deps);
+      rt.renderAccessibilityLabels();
+      expect(a11ySpans.clipSelection.textContent).toBe('Clip selected on Ch 1');
+    });
+
+    // #1345: with no lane matching the selection (e.g. the lane DOM has not been built yet),
+    // the label falls back to the pure one-based channel number.
+    it('falls back to the one-based channel number when no lane matches the selection', () => {
+      const clipSelection = createClipSelectionModel();
+      clipSelection.selectClip(2);
+      const a11ySpans = { insertMarker: makeFakeA11ySpan(), playhead: makeFakeA11ySpan(), clipSelection: makeFakeA11ySpan(), timeSelection: makeFakeA11ySpan() };
+      const shell = makeFakeShell({ a11ySpans, lanes: [] });
+      const { deps, setShell } = makeDeps({ clipSelection });
+      setShell(shell);
+      const rt = createDawShellRuntime(deps);
+      rt.renderAccessibilityLabels();
+      expect(a11ySpans.clipSelection.textContent).toBe('Clip selected on channel 3');
     });
 
     it('renderPlayhead refreshes the playhead label without touching the insert-marker label', () => {
