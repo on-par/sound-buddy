@@ -167,6 +167,31 @@ describe('read-session', () => {
     expect(result.error).toContain('Could not read session.json');
     expect(logWarn).toHaveBeenCalledWith(expect.stringContaining('read-session'));
   });
+
+  // The on-disk fixture every Session-timeline e2e spec loads. Held to the same
+  // key contract write_session_manifest emits (see
+  // docs/session-file-format-verification.md) so a timeline spec can never be made
+  // to pass by inventing a manifest field.
+  const MANIFEST_TRACK_KEYS = ['id', 'label', 'kind', 'sourceChannels', 'file', 'frames'];
+
+  it('reads the real e2e fixture manifest and its tracks carry only writer-emitted keys', async () => {
+    const fixtureDir = path.join(__dirname, '..', '..', 'tests', 'fixtures', 'session');
+    const handler = handlers.get('read-session') as Handler;
+    const result = (await handler(null, fixtureDir)) as {
+      success: boolean;
+      manifest: { sampleRate: number; tracks: Record<string, unknown>[] };
+    };
+    expect(result.success).toBe(true);
+    expect(result.manifest.sampleRate).toBe(48000);
+    expect(result.manifest.tracks).toHaveLength(2);
+    for (const track of result.manifest.tracks) {
+      expect(Object.keys(track).every((k) => MANIFEST_TRACK_KEYS.includes(k))).toBe(true);
+      expect(typeof track.kind).toBe('string');
+      expect(Array.isArray(track.sourceChannels)).toBe(true);
+      expect(typeof track.file).toBe('string');
+      expect(path.isAbsolute(track.file as string)).toBe(false);
+    }
+  });
 });
 
 describe('list-recorded-sessions', () => {
