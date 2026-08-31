@@ -230,7 +230,9 @@ export async function withRetry<T>(fn: () => Promise<T>): Promise<T> {
  * start-live/stop-live are no-ops that hand back a fixed session dir. Each
  * split spec file calls this in its own beforeAll so it can run standalone.
  */
-export async function launchApp(): Promise<{ electronApp: ElectronApplication; window: Page }> {
+export async function launchApp(
+  extraEnv: NodeJS.ProcessEnv = {},
+): Promise<{ electronApp: ElectronApplication; window: Page }> {
   // Isolate the app's userData so persisting the ideal-profile choice (PRD 05)
   // writes to a throwaway settings.json rather than the developer's real one,
   // and so this launch never collides with another spec file's instance.
@@ -244,7 +246,7 @@ export async function launchApp(): Promise<{ electronApp: ElectronApplication; w
   seedProLicense(userDataDir);
   const electronApp = await launchElectron({
     args: [path.join(__dirname, '..', '..', 'dist', 'electron', 'main.js'), `--user-data-dir=${userDataDir}`],
-    env: { ...process.env, ...LICENSE_ENV },
+    env: { ...process.env, ...LICENSE_ENV, ...extraEnv },
   });
   const window = await electronApp.firstWindow();
   await window.waitForLoadState('domcontentloaded');
