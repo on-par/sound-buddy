@@ -99,6 +99,7 @@ import { applyClipClick } from './clip-click';
 import { sessionClipSelection } from './clip-selection';
 import { sessionTimeSelection } from './time-selection';
 import { beginTimeSelectionDrag } from './time-selection-drag';
+import { sessionLoopRegion } from './loopBrace.render';
 import {
   SESSION_SCRUB_SURFACE_SELECTOR,
   canBeginSessionScrub,
@@ -349,15 +350,17 @@ export default function LiveCapturePanel(): JSX.Element | null {
   // the insert point at the top of the arrangement. Imperative, not store state — the
   // marker rides the shared marks model, never React state (ADR-0005). Loading or
   // switching a session also clears the clip selection (#1303) and the time selection
-  // (#1304), for the same reason.
+  // (#1304), and resets the loop region (#1313) to its default range, for the same reason.
   useEffect(() => {
     if (s.appMode !== 'live') return;
     sessionTimelineMarks.resetForSession();
     sessionClipSelection.clearSelection();
     sessionTimeSelection.clearSelection();
+    sessionLoopRegion.resetForSession();
     getDawShellRuntime()?.renderInsertMarker?.();
     getDawShellRuntime()?.renderClipSelection?.();
     getDawShellRuntime()?.renderTimeSelection?.();
+    getDawShellRuntime()?.renderLoopBrace?.();
   }, [s.appMode, soundcheck.sessionDir]);
 
   useEffect(() => {
@@ -411,6 +414,7 @@ export default function LiveCapturePanel(): JSX.Element | null {
     getDawShellRuntime()?.renderInsertMarker?.();
     getDawShellRuntime()?.renderClipSelection?.();
     getDawShellRuntime()?.renderTimeSelection?.();
+    getDawShellRuntime()?.renderLoopBrace?.();
     getDawShellRuntime()?.renderWaveform?.();
     if (shell && sessionWaveforms) paintSessionTabWaveformClips(shell, sessionWaveforms.clips);
     patchOverview(shell ?? null);
@@ -425,6 +429,10 @@ export default function LiveCapturePanel(): JSX.Element | null {
     if (s.appMode !== 'live') return;
     const shell = document.getElementById('live-island')?.querySelector<HTMLElement>('.daw-shell') ?? null;
     patchTimelineScrollOffset(shell, timelineScrollOffsetPx(timelineZoom.range, SESSION_TIMELINE_SCALE.pxPerSecond));
+    // The shell's markup — and with it the brace's inline left/width (#1313) — is
+    // rebuilt on every render, so the brace is repainted on every render for the
+    // same reason the scroll offset is.
+    getDawShellRuntime()?.renderLoopBrace?.();
   });
 
   // The playhead ticker (TD-001 slice 6j, #713): a requestAnimationFrame loop

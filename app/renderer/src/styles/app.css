@@ -989,6 +989,14 @@
        opacity is safe. Geometry comes from renderTimeSelection; the head-width /
        scroll re-base comes from the one shared translate below (ADR-0090). */
     .daw-time-selection { position:absolute; top:0; bottom:0; left:0; width:0; background:var(--info-text); opacity:0.18; pointer-events:none; z-index:1; }
+    /* The loop brace (#1313): a ruler-row affordance for the arrangement loop range.
+       Non-interactive until the drag slice re-enables pointer events on the handles.
+       Geometry comes from renderLoopBrace; the head-width / scroll re-base comes from
+       the one shared translate below (ADR-0090). */
+    .daw-loop-brace { position:absolute; top:0; left:0; width:0; height:6px; background:var(--gold-text); opacity:0.55; border-radius:2px; pointer-events:none; z-index:1; }
+    .daw-loop-handle { position:absolute; top:0; width:6px; height:6px; background:var(--gold-text); border-radius:1px; }
+    .daw-loop-handle-start { left:0; }
+    .daw-loop-handle-end { right:0; }
     /* Arrangement frame (#1042/#1048): the semantic structure the arrangement
        view is built from — a track-head column (filled per track by #1043)
        beside the timeline column that owns the ruler and the lane rows. The
@@ -1074,7 +1082,7 @@
        this one rule alongside the head-width re-basing. Any future absolutely
        positioned ruler/lane child joins this selector list — never its own
        offset, and never a scroll offset of its own. */
-    .daw-ruler-tick, .daw-ruler-label, .daw-gridline, .daw-playhead, .daw-insert-marker, .daw-time-selection, .daw-take-clip { transform:translateX(calc(-1 * (var(--daw-head-w) + var(--daw-scroll-x, 0px)))); }
+    .daw-ruler-tick, .daw-ruler-label, .daw-gridline, .daw-playhead, .daw-insert-marker, .daw-time-selection, .daw-loop-brace, .daw-take-clip { transform:translateX(calc(-1 * (var(--daw-head-w) + var(--daw-scroll-x, 0px)))); }
     .daw-mix-lane { height:var(--daw-master-row-h); box-sizing:border-box; border-top:1px solid var(--border-strong); background:var(--surface-raised); }
     .daw-mix-lane .daw-lane-body { height:100%; }
     .daw-mix-waveform { display:block; width:100%; height:100%; }

@@ -36,6 +36,7 @@ import { createTimelineTempo } from './timeline-bpm';
 import { timelineRulerLabels } from './timeline-ruler-labels';
 import type { SessionTabWaveformClip, SessionTabWaveformView } from './session-tab-waveforms';
 import { sessionTabPlaybackView } from './session-tab-playback';
+import { LOOP_BRACE_CLASS, LOOP_HANDLE_START_CLASS, LOOP_HANDLE_END_CLASS } from './loopBrace.render';
 import { timelineBpmControlView, TIMELINE_BPM_REJECTED_MESSAGE } from './timeline-bpm-control';
 import { TIMELINE_OVERVIEW_MIN_DURATION_SECS } from './timeline-overview';
 import { formatRulerElapsed } from './timeline-ruler-labels';
@@ -875,6 +876,36 @@ describe('dawShellHTML / dawShellPatchView', () => {
 
   it('emits no empty head cell when tracks are configured (#1048)', () => {
     expect(dawShellHTML(makeState())).not.toContain('daw-empty-head');
+  });
+});
+
+describe('Session loop brace (#1313)', () => {
+  it('renders the loop brace and its handles inside the ruler when a recorded session is loaded', () => {
+    const html = dawShellHTML(makeState({
+      sessionPlayback: sessionTabPlaybackView({ tracks: [{ kind: 'mono' }] }, false, false),
+    }));
+    expect(html).toContain(LOOP_BRACE_CLASS);
+    expect(html).toContain('daw-loop-brace-ruler');
+    expect(html).toContain(LOOP_HANDLE_START_CLASS);
+    expect(html).toContain(LOOP_HANDLE_END_CLASS);
+    const rulerStart = html.indexOf('<div class="daw-ruler">');
+    const laneColumnStart = html.indexOf('<div class="daw-lane-column">');
+    const braceIndex = html.indexOf(LOOP_BRACE_CLASS);
+    expect(braceIndex).toBeGreaterThan(rulerStart);
+    expect(braceIndex).toBeLessThan(laneColumnStart);
+  });
+
+  it('emits no loop brace with no session loaded', () => {
+    const html = dawShellHTML(makeState({ sessionPlayback: null }));
+    expect(html).not.toContain('daw-loop-brace');
+  });
+
+  it('is gated by availability, not the looping enable flag', () => {
+    const manifest = { tracks: [{ kind: 'mono' as const }] };
+    const loopingOn = dawShellHTML(makeState({ sessionPlayback: sessionTabPlaybackView(manifest, false, true) }));
+    const loopingOff = dawShellHTML(makeState({ sessionPlayback: sessionTabPlaybackView(manifest, false, false) }));
+    expect(loopingOn).toContain('daw-loop-brace-ruler');
+    expect(loopingOff).toContain('daw-loop-brace-ruler');
   });
 });
 

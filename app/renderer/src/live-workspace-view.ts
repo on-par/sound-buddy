@@ -56,6 +56,7 @@ import { sessionTabCaptureHTML, recordButtonView } from './record-transport';
 import type { CapturePhase } from './LiveControls';
 import { LANE_TAKE_CLIP_CLASS } from './lane-background-click';
 import { TIME_SELECTION_CLASS } from './time-selection';
+import { LOOP_BRACE_CLASS, LOOP_HANDLE_CLASS, LOOP_HANDLE_START_CLASS, LOOP_HANDLE_END_CLASS } from './loopBrace.render';
 import {
   TIMELINE_A11Y_REGION_CLASS,
   TIMELINE_A11Y_REGION_LABEL,
@@ -764,6 +765,18 @@ export function dawShellHTML(state: LiveWorkspaceViewState, routingDrawerContent
   // marker in each region so the marker and playhead paint above the band.
   const rulerTimeSelectionHTML = `<span class="${TIME_SELECTION_CLASS} daw-time-selection-ruler" style="display:none" aria-hidden="true"></span>`;
   const laneTimeSelectionHTML = `<span class="${TIME_SELECTION_CLASS} daw-time-selection-lanes" style="display:none" aria-hidden="true"></span>`;
+  // The loop brace (#1313): ruler-only (see this story's ADR), rendered ONLY when looping is
+  // available — a recorded session is loaded. Hidden until renderLoopBrace paints a real
+  // range, exactly like the time-selection band. The two handles are children, so they ride
+  // the brace's own geometry and cannot drift from its edges. aria-hidden for the same reason
+  // as every other decorative segment (#1306).
+  const loopAvailable = state.sessionPlayback?.available === true;
+  const rulerLoopBraceHTML = loopAvailable
+    ? `<span class="${LOOP_BRACE_CLASS} daw-loop-brace-ruler" style="display:none" aria-hidden="true">`
+      + `<span class="${LOOP_HANDLE_CLASS} ${LOOP_HANDLE_START_CLASS}"></span>`
+      + `<span class="${LOOP_HANDLE_CLASS} ${LOOP_HANDLE_END_CLASS}"></span>`
+      + `</span>`
+    : '';
   const rulerPlayheadHTML = playheadVisible ? `<span class="daw-playhead daw-playhead-ruler" aria-hidden="true"></span>` : '';
   const lanePlayheadHTML = playheadVisible ? `<span class="daw-playhead daw-playhead-lanes" aria-hidden="true"></span>` : '';
   // The arrangement's accessible state (#1306): four spans, one per state, inside one
@@ -854,7 +867,7 @@ export function dawShellHTML(state: LiveWorkspaceViewState, routingDrawerContent
     + `<div class="daw-arrangement">`
     + `<div class="daw-track-heads">${rulerGutterHTML}${headRowsHTML}${masterHeadHTML}</div>`
     + `<div class="daw-timeline">`
-    + `<div class="daw-ruler">${rulerTicks}${rulerLabels}${rulerTimeSelectionHTML}${rulerInsertMarkerHTML}${rulerPlayheadHTML}</div>`
+    + `<div class="daw-ruler">${rulerTicks}${rulerLabels}${rulerLoopBraceHTML}${rulerTimeSelectionHTML}${rulerInsertMarkerHTML}${rulerPlayheadHTML}</div>`
     + `<div class="daw-lane-column">`
     + laneHTML
     + mixLaneHTML

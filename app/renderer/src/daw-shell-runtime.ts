@@ -38,6 +38,9 @@ import { CLIP_SELECTED_LANE_CLASS, type ClipSelectionModel } from './clip-select
 // The arrangement's time-range selection (#1304). time-selection.ts is a leaf
 // module (imports nothing), so a value import here creates no ESM cycle.
 import { TIME_SELECTION_CLASS, type TimeSelectionModel } from './time-selection';
+// The arrangement's loop region (#1313). loopBrace.render.ts is a leaf module
+// (imports nothing), so a value import here creates no ESM cycle.
+import { LOOP_BRACE_CLASS, type LoopRegionModel } from './loopBrace.render';
 // The arrangement's accessible state labels (#1306). Leaf module (imports nothing), so a
 // value import here creates no ESM cycle — same rationale as clip-selection.ts.
 import {
@@ -310,6 +313,9 @@ export interface DawShellRuntimeDeps {
   /** The arrangement's time selection (#1304). Optional: an un-injected runtime paints
    *  no band, exactly the pre-#1304 behaviour. */
   timeSelection?: TimeSelectionModel;
+  /** The arrangement's loop region (#1313). Optional: an un-injected runtime paints no
+   *  brace, exactly the pre-#1313 behaviour. */
+  loopRegion?: LoopRegionModel;
 }
 
 export interface DawShellRuntime {
@@ -322,6 +328,7 @@ export interface DawShellRuntime {
   renderInsertMarker(): void;
   renderClipSelection(): void;
   renderTimeSelection(): void;
+  renderLoopBrace(): void;
   renderAccessibilityLabels(): void;
   renderWaveform(): void;
   playheadElapsedMs(): number;
@@ -474,6 +481,27 @@ export function createDawShellRuntime(deps: DawShellRuntimeDeps): DawShellRuntim
     renderAccessibilityLabels();
   }
 
+  // The loop brace (#1313): painted through the SAME dawPlayheadX geometry as the playhead,
+  // insert marker and time-selection band, so the brace's edges can never disagree with where
+  // the ruler says a second sits. The handles are CSS children of the brace, so they inherit
+  // this geometry. Off the per-frame path, like renderInsertMarker — renderPlayhead must NOT
+  // call it.
+  function renderLoopBrace(): void {
+    const shell = deps.doc.querySelector('.daw-shell');
+    if (!shell) return;
+    const region = deps.loopRegion?.getRegion() ?? null;
+    const segments = shell.querySelectorAll(`.${LOOP_BRACE_CLASS}`);
+    for (let i = 0; i < segments.length; i++) {
+      const segment = segments[i] as HTMLElement;
+      if (!region) { segment.style.display = 'none'; continue; }
+      const leftX = dawPlayheadX(region.startSecs * MS_PER_SECOND, shell.clientWidth);
+      const rightX = dawPlayheadX(region.endSecs * MS_PER_SECOND, shell.clientWidth);
+      segment.style.display = '';
+      segment.style.left = `${leftX}px`;
+      segment.style.width = `${Math.max(0, rightX - leftX)}px`;
+    }
+  }
+
   // The arrangement's accessible state (#1306): the four hidden spans, patched from the
   // SAME shared models the pixels are painted from, so the announced state can never
   // disagree with the screen. Writes only on a real text change — renderPlayhead reaches
@@ -590,6 +618,7 @@ export function createDawShellRuntime(deps: DawShellRuntimeDeps): DawShellRuntim
     renderInsertMarker,
     renderClipSelection,
     renderTimeSelection,
+    renderLoopBrace,
     renderAccessibilityLabels,
     renderWaveform,
     playheadElapsedMs,
