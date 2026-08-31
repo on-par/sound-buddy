@@ -14,6 +14,7 @@ import sys
 import time
 import json
 import types
+import select
 import shutil
 import signal
 import contextlib
@@ -449,13 +450,138 @@ class OutputStream:
 '''
 
 
+# Session sample rate used by _make_session; --start-at cases reason in seconds,
+# so keeping this handy lets them convert offsets to frames without a magic number.
+_SESSION_SR = 48000
+
+# --start-at integration sessions are deliberately short (one second). They only
+# need to prove second-granularity offset/clamp/duration behavior, and the fake
+# device drains in wall-clock real time (~one paced block per callback), so a
+# ten-second session took ~real-time to play out and timed out on a loaded host.
+# One second is a few dozen blocks — accurate and quick under load. Offsets in
+# these tests are expressed as a fraction of this duration.
+_START_AT_FRAMES = _SESSION_SR  # 1.0 s at 48 kHz
+
+# Live-interaction sessions (SIGTERM, stdin reroute) must still be playing all the
+# way through the "start → inject → observe → signal" window. They are sized in
+# blocks, not seconds, and the tests below pace themselves on the process's own
+# progress output rather than wall-clock sleeps, so this only has to be safely
+# longer than the ~QUEUE_BLOCKS+margin blocks those tests wait to drain.
+_LIVE_FRAMES = _SESSION_SR * 4  # ~4 s of audio; SIGTERM'd long before it ends
+
+# One os.read() from a subprocess pipe. 64 KiB comfortably holds a burst of the
+# small JSON lines playback.py emits without a second syscall in the common case.
+_READ_CHUNK = 65536
+
+# Extra blocks to drain past the QUEUE_BLOCKS producer look-ahead before checking
+# a live re-route reached the capture — headroom so the assertion never races the
+# exact swap boundary.
+_DRAIN_MARGIN_BLOCKS = 15
+
+
+def _pump_stdout(proc, sink, want, timeout):
+    """Read newline-delimited JSON from ``proc`` stdout until a parsed object
+    satisfies ``want(obj)`` (returned) or ``timeout`` elapses / stdout closes
+    (returns None). Every decoded line is appended to ``sink`` so a later
+    "did it ever print X?" assertion can inspect the full transcript.
+
+    Reads are non-blocking (select + os.read) so a wedged subprocess can never
+    hang the whole suite — the caller bounds the wait — and so playback progress,
+    not the host's scheduling latency, drives the test's timing.
+    """
+    fd = proc.stdout.fileno()
+    os.set_blocking(fd, False)
+    deadline = time.monotonic() + timeout
+    buf = b""
+    while True:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            return None
+        readable, _, _ = select.select([fd], [], [], remaining)
+        if not readable:
+            return None
+        chunk = os.read(fd, _READ_CHUNK)
+        if not chunk:
+            return None  # EOF: the process closed stdout
+        buf += chunk
+        while b"\n" in buf:
+            raw, buf = buf.split(b"\n", 1)
+            sink.append(raw.decode(errors="replace") + "\n")
+            try:
+                obj = json.loads(raw)
+            except ValueError:
+                continue
+            if want(obj):
+                return obj
+
+
+def _await_playing(proc, sink, timeout=30.0):
+    """Block until playback is genuinely live — the first progress tick, which
+    the audio loop only emits *after* installing the SIGTERM/SIGINT handlers.
+    Waiting for it (instead of a fixed sleep) removes the startup race that
+    otherwise let a signal hit the default handler and kill the process with -15
+    on a slow-to-start, loaded host. Returns the tick (with its `elapsed`), or
+    None if the process exited first."""
+    return _pump_stdout(
+        proc, sink, lambda o: o.get("type") == "progress", timeout)
+
+
+def _drain_stdout(proc, sink):
+    """Append whatever remains on stdout to ``sink`` after the process has exited
+    (non-blocking, to EOF). Lets an assertion see the complete transcript even
+    though earlier ticks were already consumed by _pump_stdout."""
+    fd = proc.stdout.fileno()
+    os.set_blocking(fd, False)
+    while True:
+        try:
+            chunk = os.read(fd, _READ_CHUNK)
+        except BlockingIOError:
+            break
+        if not chunk:
+            break
+        sink.append(chunk.decode(errors="replace"))
+
+
+def _await_stderr_contains(proc, needle, sink, timeout=30.0):
+    """Wait until ``needle`` appears on ``proc`` stderr, draining stdout into
+    ``sink`` meanwhile so the child never blocks on a full stdout pipe. Returns
+    the stderr text seen (which may lack ``needle`` on timeout/EOF)."""
+    out_fd = proc.stdout.fileno()
+    err_fd = proc.stderr.fileno()
+    os.set_blocking(out_fd, False)
+    os.set_blocking(err_fd, False)
+    deadline = time.monotonic() + timeout
+    seen = ""
+    while needle not in seen:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            break
+        readable, _, _ = select.select([out_fd, err_fd], [], [], remaining)
+        if not readable:
+            break
+        progressed = False
+        if err_fd in readable:
+            chunk = os.read(err_fd, _READ_CHUNK)
+            if chunk:
+                seen += chunk.decode(errors="replace")
+                progressed = True
+        if out_fd in readable:
+            chunk = os.read(out_fd, _READ_CHUNK)
+            if chunk:
+                sink.append(chunk.decode(errors="replace"))
+                progressed = True
+        if not progressed:
+            break  # both streams at EOF — the process closed them
+    return seen
+
+
 @unittest.skipUnless(HAVE_SOUNDFILE, "soundfile not installed")
 class PlaybackIntegration(unittest.TestCase):
     """End-to-end: a real playback.py subprocess (fed by a fake sounddevice)
     routes each track to its output channel, emits the JSON envelope, and folds
     to stereo master when the device is too small."""
 
-    def _run(self, args, device_channels=8, timeout=15, frames=4096, ramp_kick=False):
+    def _run(self, args, device_channels=8, timeout=45, frames=4096, ramp_kick=False):
         work = tempfile.mkdtemp()
         session_dir = os.path.join(work, "session")
         _make_session(session_dir, frames=frames, ramp_kick=ramp_kick)
@@ -539,25 +665,27 @@ class PlaybackIntegration(unittest.TestCase):
         self.assertTrue(any("error" in l for l in lines))
 
     def test_start_at_offsets_audio_and_elapsed(self):
-        # A 10s session with a ramp kick: --start-at 5 must begin audio at the
-        # ramp's midpoint (frame 240000 ≈ 0.5), not 0:00, and report elapsed
-        # from 5.0 from the first tick through ~10.0 at the end.
+        # A 1s session with a ramp kick: --start-at 0.5 must begin audio at the
+        # ramp's midpoint (frame 24000 ≈ 0.5), not 0:00, and report elapsed from
+        # 0.5 from the first tick through ~1.0 at the end.
         interval = 0.02
         proc, lines, out = self._run(
             ["--device", "0", "--route", "0:0,1:2-3", "--interval", str(interval),
-             "--start-at", "5"],
-            frames=480000, ramp_kick=True,
+             "--start-at", "0.5"],
+            frames=_START_AT_FRAMES, ramp_kick=True,
         )
         self.assertEqual(proc.returncode, 0, proc.stderr.decode())
         types_seen = [l.get("type") for l in lines]
         self.assertIn("ended", types_seen)
         progress = [l for l in lines if l.get("type") == "progress"]
         self.assertTrue(progress)
-        # First tick already reflects the offset (never 0:00).
-        self.assertGreaterEqual(progress[0]["elapsed"], 5.0)
-        self.assertLessEqual(progress[0]["elapsed"], 5.0 + interval + 0.1)
+        # First tick already reflects the offset (never 0:00), within one tick
+        # plus slack for the few blocks a loaded host may drain before it fires
+        # (measured worst case ~3 blocks ≈ 0.06s, well inside this bound).
+        self.assertGreaterEqual(progress[0]["elapsed"], 0.5)
+        self.assertLessEqual(progress[0]["elapsed"], 0.5 + interval + 0.1)
         # Last tick lands on the full-session duration.
-        self.assertAlmostEqual(progress[-1]["elapsed"], 10.0, delta=0.1)
+        self.assertAlmostEqual(progress[-1]["elapsed"], 1.0, delta=0.1)
         self.assertGreater(out.shape[0], 0)
         # The fake device may capture a leading under-run silence block before
         # the first real block and zero-pads the final short block — restrict
@@ -575,19 +703,19 @@ class PlaybackIntegration(unittest.TestCase):
         # The same ramp session with no --start-at must begin at 0:00 (sample 0).
         _proc, lines, out = self._run(
             ["--device", "0", "--route", "0:0,1:2-3", "--interval", "0.02"],
-            frames=480000, ramp_kick=True,
+            frames=_START_AT_FRAMES, ramp_kick=True,
         )
         self.assertGreater(out.shape[0], 0)
         first_nz = int(np.argmax(np.abs(out[:, 0]) > 0))
         self.assertAlmostEqual(float(out[first_nz, 0]), 0.0, delta=0.01)
 
     def test_start_at_near_end_ends_promptly(self):
-        # 9.999s into a 10s session leaves ~48 frames: playback ends quickly
-        # with a natural `ended` and almost no captured output.
+        # 0.999s into a 1s session leaves ~48 frames: playback ends quickly with a
+        # natural `ended` and almost no captured output.
         proc, lines, out = self._run(
             ["--device", "0", "--route", "0:0,1:2-3", "--interval", "0.02",
-             "--start-at", "9.999"],
-            frames=480000, ramp_kick=True,
+             "--start-at", "0.999"],
+            frames=_START_AT_FRAMES, ramp_kick=True,
         )
         self.assertEqual(proc.returncode, 0, proc.stderr.decode())
         types_seen = [l.get("type") for l in lines]
@@ -602,8 +730,8 @@ class PlaybackIntegration(unittest.TestCase):
         # drains nothing, and emits a natural `ended`.
         proc, lines, _out = self._run(
             ["--device", "0", "--route", "0:0,1:2-3", "--interval", "0.02",
-             "--start-at", "15"],
-            frames=480000,
+             "--start-at", "1.5"],
+            frames=_START_AT_FRAMES,
         )
         self.assertEqual(proc.returncode, 0, proc.stderr.decode())
         types_seen = [l.get("type") for l in lines]
@@ -616,13 +744,15 @@ class PlaybackIntegration(unittest.TestCase):
         # and audio must start at sample 0, same as no --start-at at all.
         proc, lines, out = self._run(
             ["--device", "0", "--route", "0:0,1:2-3", "--interval", "0.02",
-             "--start-at", "-3"],
-            frames=480000, ramp_kick=True,
+             "--start-at", "-0.3"],
+            frames=_START_AT_FRAMES, ramp_kick=True,
         )
         self.assertEqual(proc.returncode, 0, proc.stderr.decode())
         progress = [l for l in lines if l.get("type") == "progress"]
         self.assertTrue(progress)
         self.assertGreaterEqual(progress[0]["elapsed"], 0.0)
+        # Near 0:00 — one tick plus the few blocks a loaded host may drain first
+        # — proving the negative offset was clamped away, not applied.
         self.assertLessEqual(progress[0]["elapsed"], 0.02 + 0.1)
         self.assertGreater(out.shape[0], 0)
         first_nz = int(np.argmax(np.abs(out[:, 0]) > 0))
@@ -636,9 +766,8 @@ class SigtermFinalizes(unittest.TestCase):
     def test_sigterm_exits_clean(self):
         work = tempfile.mkdtemp()
         session_dir = os.path.join(work, "session")
-        # A long session (fake stream drains ~1 block/10ms) so the process is
-        # still playing when we signal it.
-        _make_session(session_dir, frames=48000 * 10)
+        # A multi-second session so the process is still playing when we signal it.
+        _make_session(session_dir, frames=_LIVE_FRAMES)
         fake_dir = os.path.join(work, "fake")
         os.makedirs(fake_dir)
         with open(os.path.join(fake_dir, "sounddevice.py"), "w") as f:
@@ -652,15 +781,20 @@ class SigtermFinalizes(unittest.TestCase):
              "--device", "0", "--route", "0:0,1:2-3", "--interval", "0.05"],
             stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env,
         )
+        stdout_text: list[str] = []
         try:
-            # Let it get well into playback, then confirm it's still running.
-            time.sleep(0.5)
+            # Wait for the first progress tick — playback is live and the signal
+            # handlers are installed — instead of a fixed sleep that a slow-to-
+            # start, loaded host could outrun (leaving SIGTERM to hit the default
+            # handler and exit -15).
+            self.assertIsNotNone(_await_playing(proc, stdout_text),
+                                 "playback never started")
             self.assertIsNone(proc.poll(), "process exited before SIGTERM")
             proc.send_signal(signal.SIGTERM)
-            self.assertEqual(proc.wait(timeout=5), 0)
+            self.assertEqual(proc.wait(timeout=30), 0)
             # A SIGTERM stop must NOT emit the natural-end marker.
-            out = proc.stdout.read().decode()
-            self.assertNotIn('"type": "ended"', out)
+            _drain_stdout(proc, stdout_text)
+            self.assertNotIn('"type": "ended"', "".join(stdout_text))
         finally:
             proc.stdout.close()
             proc.stderr.close()
@@ -676,10 +810,11 @@ class LiveStdinReroute(unittest.TestCase):
 
     def _spawn(self, work):
         session_dir = os.path.join(work, "session")
-        # A long session (fake stream drains ~1 block/10ms) so the process is
-        # still playing when we push a re-route, and stays playing long enough
-        # for both the pre-swap and post-swap phases to reach the capture.
-        _make_session(session_dir, frames=48000 * 10)
+        # A multi-second session so the process is still playing when we push a
+        # re-route, and stays playing long enough for both the pre-swap and
+        # post-swap phases to reach the capture. The tests pace themselves on the
+        # process's own progress output, not wall-clock sleeps.
+        _make_session(session_dir, frames=_LIVE_FRAMES)
         fake_dir = os.path.join(work, "fake")
         os.makedirs(fake_dir)
         with open(os.path.join(fake_dir, "sounddevice.py"), "w") as f:
@@ -706,23 +841,32 @@ class LiveStdinReroute(unittest.TestCase):
     def test_stdin_reroute_moves_kick_to_ch1_live(self):
         work = tempfile.mkdtemp()
         proc, capture = self._spawn(work)
+        stdout_text: list[str] = []
         try:
-            # Let playback get well underway, then confirm the process is live.
-            time.sleep(0.3)
-            self.assertIsNone(proc.poll(), "process exited before re-route")
+            # Wait for the first progress tick — playback is live — then re-route.
+            live = _await_playing(proc, stdout_text)
+            self.assertIsNotNone(live, "process exited before re-route")
+            base = live["elapsed"]
             # Push the full routing spec over stdin: Kick mono → ch1, OH → ch2-3.
             proc.stdin.write(b'{"type":"set-routes","spec":"0:1,1:2-3"}\n')
             proc.stdin.flush()
             # A re-route only applies to blocks the producer hasn't mixed yet, and
-            # up to QUEUE_BLOCKS (20) already-mixed blocks — ~427ms of audio,
-            # draining at ~1 block/10ms wall time — may still be in flight on the
-            # old routing. Wait past that worst case so the post-swap capture
-            # reliably contains at least one re-routed block.
-            time.sleep(0.6)
+            # up to QUEUE_BLOCKS already-mixed blocks are still queued on the old
+            # routing. Rather than guess a wall-clock wait (which under-drains on
+            # a loaded host and never reaches a re-routed block), watch the
+            # process's own progress until it has *played* past that worst case —
+            # session-relative time, so it's independent of how slowly the host
+            # drains the fake device.
+            drain = (playback.QUEUE_BLOCKS + _DRAIN_MARGIN_BLOCKS) * playback.BLOCKSIZE / _SESSION_SR
+            reached = _pump_stdout(
+                proc, stdout_text,
+                lambda o: o.get("type") == "progress" and o["elapsed"] >= base + drain,
+                timeout=60.0)
+            self.assertIsNotNone(reached, "playback never drained past the re-route")
             proc.send_signal(signal.SIGTERM)
-            self.assertEqual(proc.wait(timeout=5), 0)
-            out = proc.stdout.read().decode()
-            self.assertNotIn('"type": "ended"', out)
+            self.assertEqual(proc.wait(timeout=30), 0)
+            _drain_stdout(proc, stdout_text)
+            self.assertNotIn('"type": "ended"', "".join(stdout_text))
             captured = np.load(capture)
             # Kick reached ch0 (pre-swap phase) AND ch1 (post-swap phase), while
             # OH never left ch2-3 — the re-route hit the live mix graph.
@@ -736,16 +880,20 @@ class LiveStdinReroute(unittest.TestCase):
     def test_garbage_stdin_line_is_ignored(self):
         work = tempfile.mkdtemp()
         proc, capture = self._spawn(work)
+        stdout_text: list[str] = []
         try:
-            time.sleep(0.3)
+            self.assertIsNotNone(_await_playing(proc, stdout_text),
+                                 "process exited before the bad command")
             proc.stdin.write(b"this is not json\n")
             proc.stdin.flush()
-            time.sleep(0.3)
+            # The listener logs the rejection synchronously as it reads the line;
+            # wait for that evidence (draining stdout meanwhile) instead of a
+            # fixed sleep the host could outrun.
+            err = _await_stderr_contains(proc, "route update rejected", stdout_text)
+            self.assertIn("route update rejected", err)
             self.assertIsNone(proc.poll(), "process died on a bad command")
             proc.send_signal(signal.SIGTERM)
-            self.assertEqual(proc.wait(timeout=5), 0)
-            err = proc.stderr.read().decode()
-            self.assertIn("route update rejected", err)
+            self.assertEqual(proc.wait(timeout=30), 0)
             captured = np.load(capture)
             # No swap happened: Kick stayed on ch0, ch1 stayed silent.
             self.assertAlmostEqual(float(np.max(captured[:, 0])), 0.5, delta=0.01)
