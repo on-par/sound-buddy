@@ -740,8 +740,12 @@ test.describe('Timeline alignment invariant (#1325)', () => {
 
     await dragRulerSelection(SELECTION_START_SECS, SELECTION_END_SECS);
     // Both segments boot with style="display:none", so visibility is the synchronisation
-    // gate that proves renderTimeSelection has run.
-    await expect(window.locator('.daw-time-selection-ruler')).toBeVisible();
+    // gate that proves renderTimeSelection has run. #1346: name the required setup on failure
+    // so a band that never reveals reads as a release-scope regression, not a bare timeout.
+    await expect(
+      window.locator('.daw-time-selection-ruler'),
+      'release-scope regression (#1304): the time-selection band .daw-time-selection-ruler did not reveal after a ruler drag (renderTimeSelection did not run)',
+    ).toBeVisible();
 
     const startRef = await readRulerAndGridAt(SELECTION_START_TICK_INDEX);
     const endRef = await readRulerAndGridAt(SELECTION_END_TICK_INDEX);
