@@ -30,6 +30,7 @@ import {
 import { createTimelineScale, TIMELINE_SCALE_MAX_PX_PER_SECOND } from './timeline-scale';
 import { createTimelineMarksModel } from './timeline-state';
 import { CLIP_SELECTED_LANE_CLASS, createClipSelectionModel } from './clip-selection';
+import { createTimeSelectionModel } from './time-selection';
 
 /* ── drawDawWaveformLane (pure) ── */
 
@@ -136,6 +137,7 @@ function makeFakeShell(opts: {
   timeEl?: { textContent: string } | null;
   playheadEls?: ReturnType<typeof makeFakePlayhead>[];
   insertMarkerEls?: ReturnType<typeof makeFakePlayhead>[];
+  timeSelectionEls?: ReturnType<typeof makeFakePlayhead>[];
   mixCanvas?: ReturnType<typeof makeFakeCanvas> | null;
   lanes?: ReturnType<typeof makeFakeLane>[];
   clientWidth?: number;
@@ -143,6 +145,7 @@ function makeFakeShell(opts: {
   const timeEl = opts.timeEl === undefined ? { textContent: '' } : opts.timeEl;
   const playheadEls = opts.playheadEls ?? [makeFakePlayhead(), makeFakePlayhead()];
   const insertMarkerEls = opts.insertMarkerEls ?? [makeFakePlayhead(), makeFakePlayhead()];
+  const timeSelectionEls = opts.timeSelectionEls ?? [makeFakePlayhead(), makeFakePlayhead()];
   const mixCanvas = opts.mixCanvas === undefined ? makeFakeCanvas() : opts.mixCanvas;
   const lanes = opts.lanes ?? [];
   return {
@@ -156,9 +159,10 @@ function makeFakeShell(opts: {
       if (sel === '.daw-channel-lane') return lanes;
       if (sel === '.daw-playhead') return playheadEls;
       if (sel === '.daw-insert-marker') return insertMarkerEls;
+      if (sel === '.daw-time-selection') return timeSelectionEls;
       return [];
     },
-    el: { timeEl, playheadEls, insertMarkerEls, mixCanvas, lanes },
+    el: { timeEl, playheadEls, insertMarkerEls, timeSelectionEls, mixCanvas, lanes },
   };
 }
 
@@ -581,6 +585,74 @@ describe('createDawShellRuntime', () => {
       setShell(null);
       const rt = createDawShellRuntime(deps);
       expect(() => rt.renderClipSelection()).not.toThrow();
+    });
+  });
+
+  describe('renderTimeSelection (#1304)', () => {
+    it('writes the same left and width to both segments and shows them', () => {
+      const timeSelectionEls = [makeFakePlayhead(), makeFakePlayhead()];
+      const shell = makeFakeShell({ timeSelectionEls, clientWidth: 400 });
+      const timeSelection = createTimeSelectionModel();
+      timeSelection.setSelection(2, 6);
+      const { deps, setShell } = makeDeps({ timeSelection });
+      setShell(shell);
+      const rt = createDawShellRuntime(deps);
+      rt.renderTimeSelection();
+      const leftX = dawPlayheadX(2 * 1000, 400);
+      const rightX = dawPlayheadX(6 * 1000, 400);
+      for (const el of timeSelectionEls) {
+        expect(el.style.left).toBe(`${leftX}px`);
+        expect(el.style.width).toBe(`${rightX - leftX}px`);
+        expect(el.style.display).toBe('');
+      }
+    });
+
+    it('hides both segments when the selection is null', () => {
+      const timeSelectionEls = [makeFakePlayhead(), makeFakePlayhead()];
+      const shell = makeFakeShell({ timeSelectionEls, clientWidth: 400 });
+      const timeSelection = createTimeSelectionModel();
+      const { deps, setShell } = makeDeps({ timeSelection });
+      setShell(shell);
+      const rt = createDawShellRuntime(deps);
+      rt.renderTimeSelection();
+      for (const el of timeSelectionEls) {
+        expect(el.style.display).toBe('none');
+      }
+    });
+
+    it('hides both segments and does not throw when no timeSelection dep is injected', () => {
+      const timeSelectionEls = [makeFakePlayhead(), makeFakePlayhead()];
+      const shell = makeFakeShell({ timeSelectionEls, clientWidth: 400 });
+      const { deps, setShell } = makeDeps();
+      setShell(shell);
+      const rt = createDawShellRuntime(deps);
+      expect(() => rt.renderTimeSelection()).not.toThrow();
+      for (const el of timeSelectionEls) {
+        expect(el.style.display).toBe('none');
+      }
+    });
+
+    it('is a no-op when there is no .daw-shell', () => {
+      const { deps, setShell } = makeDeps();
+      setShell(null);
+      const rt = createDawShellRuntime(deps);
+      expect(() => rt.renderTimeSelection()).not.toThrow();
+    });
+
+    it("the band's left equals renderInsertMarker's left for the same startSecs — the same-geometry guarantee", () => {
+      const insertMarkerEls = [makeFakePlayhead()];
+      const timeSelectionEls = [makeFakePlayhead()];
+      const shell = makeFakeShell({ insertMarkerEls, timeSelectionEls, clientWidth: 400 });
+      const timelineMarks = createTimelineMarksModel();
+      timelineMarks.setInsertMarkerSecs(3);
+      const timeSelection = createTimeSelectionModel();
+      timeSelection.setSelection(3, 8);
+      const { deps, setShell } = makeDeps({ timelineMarks, timeSelection });
+      setShell(shell);
+      const rt = createDawShellRuntime(deps);
+      rt.renderInsertMarker();
+      rt.renderTimeSelection();
+      expect(timeSelectionEls[0].style.left).toBe(insertMarkerEls[0].style.left);
     });
   });
 
