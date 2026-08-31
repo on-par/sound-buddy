@@ -30,6 +30,10 @@ export interface LoopRegionModel {
   /** A non-finite or zero-width pair is IGNORED — the current region stands. */
   setRegion(startSecs: number, endSecs: number): LoopRegion;
   resetForSession(): LoopRegion;
+  /** Places `region` only when nothing has set a range since the last resetForSession
+   *  (#1314's first-switch-on seed). A seeded or user-set range is returned untouched, which
+   *  is what makes a Loop toggle-off/on lossless. A zero-width or non-finite region is ignored. */
+  applyDefaultIfUnseeded(region: LoopRegion): LoopRegion;
   /** Returns an unsubscribe function. Listeners fire only on a real change. */
   subscribe(listener: (region: LoopRegion) => void): () => void;
 }
@@ -53,6 +57,10 @@ const DEFAULT_LOOP_REGION: LoopRegion = Object.freeze({
 
 export function createLoopRegionModel(): LoopRegionModel {
   let region: LoopRegion = DEFAULT_LOOP_REGION;
+  // #1314: has anything set a range since the last resetForSession? Lets
+  // applyDefaultIfUnseeded seed exactly once per session and leave a user-set (or
+  // already-seeded) range alone on every later Loop toggle-on.
+  let seeded = false;
   const listeners = new Set<(region: LoopRegion) => void>();
 
   // Exact-value comparison, not epsilon: `region` only ever holds a range this
@@ -72,9 +80,21 @@ export function createLoopRegionModel(): LoopRegionModel {
     getRegion: () => region,
     setRegion: (startSecs, endSecs) => {
       const next = normalizeLoopRegion(startSecs, endSecs);
-      return next ? commit(next) : region;
+      if (!next) return region;
+      seeded = true;
+      return commit(next);
     },
-    resetForSession: () => commit(DEFAULT_LOOP_REGION),
+    resetForSession: () => {
+      seeded = false;
+      return commit(DEFAULT_LOOP_REGION);
+    },
+    applyDefaultIfUnseeded: (next) => {
+      if (seeded) return region;
+      const normalized = normalizeLoopRegion(next.startSecs, next.endSecs);
+      if (!normalized) return region;
+      seeded = true;
+      return commit(normalized);
+    },
     subscribe: (listener) => {
       listeners.add(listener);
       return () => { listeners.delete(listener); };
