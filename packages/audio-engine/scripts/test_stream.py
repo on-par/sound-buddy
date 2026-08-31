@@ -686,6 +686,135 @@ class SessionRecording(unittest.TestCase):
             manifest = json.load(f)
         self.assertEqual(manifest["tracks"][0]["frames"], 0)
 
+    def test_no_new_persisted_artifacts_beside_the_stems_and_manifest(self):
+        # A finalized session folder is the customer's durable artifact; a future
+        # change that drops a view-state file, a peaks cache, or any sidecar in
+        # beside the stems must be a deliberate, test-updating act.
+        self._record(_mono_stereo_groups())
+        self.assertEqual(sorted(os.listdir(self.dir)),
+                          ["01-ch01.wav", "02-ch03-ch04.wav", "03-ch02.wav", "session.json"])
+
+
+# The customer-facing on-disk format for session.json. Changing it means changing
+# files already sitting in customers' record folders, so this golden literal is
+# updated only together with write_session_manifest and a new row in
+# docs/session-file-format-verification.md (see the format-pinning ADR).
+GOLDEN_SESSION_JSON = '''{
+  "name": "take-1",
+  "createdAt": "2026-08-31T12:00:00.000Z",
+  "sampleRate": 48000,
+  "tracks": [
+    {
+      "id": "t1",
+      "label": "Kick",
+      "kind": "mono",
+      "sourceChannels": [
+        0
+      ],
+      "file": "01-kick.wav",
+      "frames": 96000
+    },
+    {
+      "id": "t2",
+      "label": "OH",
+      "kind": "stereo",
+      "sourceChannels": [
+        2,
+        3
+      ],
+      "file": "02-oh.wav",
+      "frames": 96000
+    }
+  ]
+}'''
+
+
+def _contract_strip_writers():
+    # The `writer` key is present in production strip_writers dicts but is
+    # unread by write_session_manifest, so it's omitted here.
+    return [
+        {"id": "t1", "label": "Kick", "group": {"kind": "mono", "indices": [0]},
+         "file": "01-kick.wav"},
+        {"id": "t2", "label": "OH", "group": {"kind": "stereo", "indices": [2, 3]},
+         "file": "02-oh.wav"},
+    ]
+
+
+class SessionManifestFormatContract(unittest.TestCase):
+    """Pins the exact serialized shape of session.json — the one durable
+    customer artifact stream.py writes. Runs on any host with numpy:
+    write_session_manifest is pure dict -> json.dump and does not need
+    soundfile (that's only imported lazily inside SessionRecorder.__init__)."""
+
+    def setUp(self):
+        self.dir = tempfile.mkdtemp()
+
+    def tearDown(self):
+        shutil.rmtree(self.dir, ignore_errors=True)
+
+    def test_serialized_manifest_matches_the_pinned_golden_text(self):
+        session_dir = os.path.join(self.dir, "take-1")
+        os.makedirs(session_dir)
+        stream.write_session_manifest(session_dir, "2026-08-31T12:00:00.000Z", 48000,
+                                       _contract_strip_writers(), 96000)
+        with open(os.path.join(session_dir, "session.json")) as f:
+            text = f.read()
+        self.assertEqual(text, GOLDEN_SESSION_JSON)
+
+    def test_key_order_is_pinned_at_both_levels(self):
+        # A reader that key-order-diffs two manifests (the manual before/after
+        # procedure in docs/session-file-format-verification.md) must not see
+        # spurious differences from dict ordering.
+        session_dir = os.path.join(self.dir, "take-1")
+        os.makedirs(session_dir)
+        stream.write_session_manifest(session_dir, "2026-08-31T12:00:00.000Z", 48000,
+                                       _contract_strip_writers(), 96000)
+        with open(os.path.join(session_dir, "session.json")) as f:
+            manifest = json.load(f)
+        self.assertEqual(list(manifest), ["name", "createdAt", "sampleRate", "tracks"])
+        for track in manifest["tracks"]:
+            self.assertEqual(list(track), ["id", "label", "kind", "sourceChannels", "file", "frames"])
+
+    def test_numeric_fields_serialize_as_json_integers(self):
+        # The real failure mode the int(...) casts in write_session_manifest
+        # exist to prevent: a numpy scalar leaking into the manifest as 48000.0
+        # in a customer's session.json.
+        session_dir = os.path.join(self.dir, "take-1")
+        os.makedirs(session_dir)
+        stream.write_session_manifest(session_dir, "2026-08-31T12:00:00.000Z", np.int32(48000),
+                                       _contract_strip_writers(), np.int64(96000))
+        with open(os.path.join(session_dir, "session.json")) as f:
+            text = f.read()
+        self.assertIn('"sampleRate": 48000', text)
+        self.assertIn('"frames": 96000', text)
+        self.assertNotIn("48000.0", text)
+        self.assertNotIn("96000.0", text)
+        parsed = json.loads(text)
+        self.assertIsInstance(parsed["sampleRate"], int)
+        self.assertIsInstance(parsed["tracks"][0]["frames"], int)
+
+    def test_file_paths_stay_directory_relative(self):
+        # A manifest must never leak an absolute path off the user's machine
+        # into a shareable session folder (privacy claim in the constitution).
+        session_dir = os.path.join(self.dir, "take-1")
+        os.makedirs(session_dir)
+        stream.write_session_manifest(session_dir, "2026-08-31T12:00:00.000Z", 48000,
+                                       _contract_strip_writers(), 96000)
+        with open(os.path.join(session_dir, "session.json")) as f:
+            manifest = json.load(f)
+        for track, sw in zip(manifest["tracks"], _contract_strip_writers()):
+            self.assertEqual(track["file"], sw["file"])
+            self.assertFalse(os.path.isabs(track["file"]))
+
+    def test_name_falls_back_when_the_session_dir_has_a_trailing_separator(self):
+        session_dir = os.path.join(self.dir, "take-2") + os.sep
+        os.makedirs(session_dir)
+        stream.write_session_manifest(session_dir, "2026-08-31T12:00:00.000Z", 48000,
+                                       _contract_strip_writers(), 96000)
+        with open(os.path.join(os.path.join(self.dir, "take-2"), "session.json")) as f:
+            manifest = json.load(f)
+        self.assertEqual(manifest["name"], "take-2")
+
 
 @unittest.skipUnless(HAVE_SOUNDFILE, "soundfile not installed")
 class SessionRecordingWithLabels(unittest.TestCase):
