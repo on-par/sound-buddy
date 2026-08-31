@@ -964,3 +964,31 @@ describe('BPM stays out of every coordinate owner (#1277, ADR-0104)', () => {
     expect(timelineRulerLabelsTs).toMatch(/from '\.\/timeline-scale'/);
   });
 });
+
+describe('lane-background click routing (#1302)', () => {
+  it('LiveCapturePanel.tsx wires the lane-background route into onBoardPointerDown', () => {
+    expect(liveCapturePanelTsx).toContain('applyLaneBackgroundClick(');
+  });
+
+  it('onBoardClick\'s only setSelectedChannel call sits inside its .daw-track-head branch', () => {
+    const body = functionBody(liveCapturePanelTsx, 'onBoardClick');
+    const occurrences = body.match(/setSelectedChannel/g);
+    expect(occurrences).not.toBeNull();
+    expect(occurrences!.length).toBe(1);
+    const stripBranchIdx = body.indexOf("const stripEl = target.closest('.daw-track-head')");
+    const callIdx = body.indexOf('setSelectedChannel');
+    expect(stripBranchIdx).toBeGreaterThan(-1);
+    expect(stripBranchIdx).toBeLessThan(callIdx);
+  });
+
+  it('the lane-background pointerdown route cannot reach setSelectedChannel — its entire effect surface is applyLaneBackgroundClick', () => {
+    const body = functionBody(liveCapturePanelTsx, 'onBoardPointerDown');
+    expect(body).toContain('applyLaneBackgroundClick(');
+    expect(body).not.toContain('setSelectedChannel');
+  });
+
+  it('live-workspace-view.ts paints the take-clip class from the shared constant, not a duplicated literal', () => {
+    expect(workspaceViewTs).toContain('LANE_TAKE_CLIP_CLASS');
+    expect(workspaceViewTs).not.toContain('class="daw-take-clip"');
+  });
+});
