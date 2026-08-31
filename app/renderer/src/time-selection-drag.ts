@@ -38,9 +38,9 @@ export interface TimeSelectionDragWindow {
   removeEventListener(type: 'pointercancel', listener: () => void): void;
 }
 
-/** The whole effect surface of a time-selection drag. Deliberately carries NO
- *  selectClip and no insert-marker setter: the route is structurally incapable of
- *  selecting a clip (ADR-0115/0116's discipline). */
+/** The whole effect surface of a time-selection drag. Deliberately carries no clip
+ *  selector and no insert-marker setter: the route is structurally incapable of
+ *  touching clip selection (ADR-0115/0116's discipline). */
 export interface TimeSelectionDragDeps {
   windowTarget: TimeSelectionDragWindow;
   pointerId: number;

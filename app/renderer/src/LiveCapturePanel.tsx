@@ -97,6 +97,8 @@ import { beginSessionTimelineScrub } from './session-timeline-scrub';
 import { applyLaneBackgroundClick, LANE_TAKE_CLIP_SELECTOR } from './lane-background-click';
 import { applyClipClick } from './clip-click';
 import { sessionClipSelection } from './clip-selection';
+import { sessionTimeSelection } from './time-selection';
+import { beginTimeSelectionDrag } from './time-selection-drag';
 import {
   SESSION_SCRUB_SURFACE_SELECTOR,
   canBeginSessionScrub,
@@ -346,13 +348,16 @@ export default function LiveCapturePanel(): JSX.Element | null {
   // The insert marker's default position (#1301): loading (or switching) a session parks
   // the insert point at the top of the arrangement. Imperative, not store state — the
   // marker rides the shared marks model, never React state (ADR-0005). Loading or
-  // switching a session also clears the clip selection (#1303), for the same reason.
+  // switching a session also clears the clip selection (#1303) and the time selection
+  // (#1304), for the same reason.
   useEffect(() => {
     if (s.appMode !== 'live') return;
     sessionTimelineMarks.resetForSession();
     sessionClipSelection.clearSelection();
+    sessionTimeSelection.clearSelection();
     getDawShellRuntime()?.renderInsertMarker?.();
     getDawShellRuntime()?.renderClipSelection?.();
+    getDawShellRuntime()?.renderTimeSelection?.();
   }, [s.appMode, soundcheck.sessionDir]);
 
   useEffect(() => {
@@ -405,6 +410,7 @@ export default function LiveCapturePanel(): JSX.Element | null {
     getDawShellRuntime()?.renderPlayhead?.();
     getDawShellRuntime()?.renderInsertMarker?.();
     getDawShellRuntime()?.renderClipSelection?.();
+    getDawShellRuntime()?.renderTimeSelection?.();
     getDawShellRuntime()?.renderWaveform?.();
     if (shell && sessionWaveforms) paintSessionTabWaveformClips(shell, sessionWaveforms.clips);
     patchOverview(shell ?? null);
@@ -604,13 +610,19 @@ export default function LiveCapturePanel(): JSX.Element | null {
         recording: lcState.isCapturing && lcState.liveMode === 'record',
       };
     };
+    // One press geometry for every route (#1302/#1303/#1304): the pressed surface's own
+    // left edge is the arrangement's shared t=0 edge, whether that surface is the ruler
+    // or a lane.
+    const pressGeometry = {
+      button: e.button,
+      clientX: e.clientX,
+      laneLeftPx: surfaceEl.getBoundingClientRect().left,
+      scrollOffsetPx: timelineScrollOffsetPx(timelineZoom.range, SESSION_TIMELINE_SCALE.pxPerSecond),
+      pxPerSecond: SESSION_TIMELINE_SCALE.pxPerSecond,
+    };
     if (kind === 'lane') {
       const geometry = {
-        button: e.button,
-        clientX: e.clientX,
-        laneLeftPx: surfaceEl.getBoundingClientRect().left,
-        scrollOffsetPx: timelineScrollOffsetPx(timelineZoom.range, SESSION_TIMELINE_SCALE.pxPerSecond),
-        pxPerSecond: SESSION_TIMELINE_SCALE.pxPerSecond,
+        ...pressGeometry,
         clipRects: Array.from(surfaceEl.querySelectorAll(LANE_TAKE_CLIP_SELECTOR), (clip) => clip.getBoundingClientRect()),
       };
       // Clip press (#1303): selects the clip, leaves the insert marker alone by construction, and
@@ -646,6 +658,31 @@ export default function LiveCapturePanel(): JSX.Element | null {
         },
       );
     }
+
+    // The time-selection drag (#1304): armed on every ruler / lane-background press and
+    // upgraded to a real selection only once the pointer clears the 4px threshold, so a
+    // click keeps ADR-0110's seek and ADR-0115's insert marker untouched. Armed BEFORE the
+    // scrub gate on purpose — a selection must be drawable on a stopped session and on a
+    // lane where the scrub's playing-only gate refuses. Its deps carry no selectClip, so
+    // the route cannot select a clip (see this story's ADR).
+    const timeDrag = beginTimeSelectionDrag(pressGeometry, {
+      windowTarget: window,
+      pointerId: e.pointerId,
+      setSelection: (range) => {
+        sessionTimeSelection.setSelection(range.startSecs, range.endSecs);
+        sessionClipSelection.clearSelection();
+      },
+      clearSelection: () => { sessionTimeSelection.clearSelection(); },
+      repaint: () => {
+        const runtime = getDawShellRuntime();
+        runtime?.renderTimeSelection?.();
+        runtime?.renderClipSelection?.();
+      },
+      // A suppressed scrub leaves its playhead preview at the pointer's last x, and the
+      // rAF playhead loop only runs while capturing — repaint it back to the truth.
+      onDragEnd: (dragged) => { if (dragged) getDawShellRuntime()?.renderPlayhead?.(); },
+    });
+
     if (!canBeginSessionScrub(kind, gate())) return;
 
     beginSessionTimelineScrub({
@@ -659,7 +696,7 @@ export default function LiveCapturePanel(): JSX.Element | null {
         takeDurationSecs: takeSecs,
         manifestDurationSecs: sessionManifestDurationSecs(useSoundcheckStore.getState().manifest),
       }),
-      canCommitSeek: () => canBeginSessionScrub(kind, gate()),
+      canCommitSeek: () => canBeginSessionScrub(kind, gate()) && !(timeDrag?.hasDragged() ?? false),
       previewLeftPx: (leftPx) => {
         document.querySelectorAll<HTMLElement>('.daw-playhead').forEach((playhead) => {
           playhead.style.left = `${leftPx}px`;
