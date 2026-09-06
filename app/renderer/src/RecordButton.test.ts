@@ -20,6 +20,7 @@ afterEach(() => {
     isCapturing: INITIAL_LIVE_CAPTURE_STATE.isCapturing,
     promoting: INITIAL_LIVE_CAPTURE_STATE.promoting,
     stopping: INITIAL_LIVE_CAPTURE_STATE.stopping,
+    demoting: INITIAL_LIVE_CAPTURE_STATE.demoting,
   });
 });
 
@@ -125,6 +126,26 @@ describe('RecordButton (#729)', () => {
     expectCircleIcon(html);
     expect(html).toContain('aria-pressed="true"');
     expect(html).toContain('aria-label="Stopping recording"');
+  });
+
+  it('renders the monitor-only Record control, not Recording, across the post-stop demote (#1384)', () => {
+    useLiveCaptureStore.setState({ appMode: 'live', isCapturing: false, liveMode: 'record', stopping: false, demoting: true });
+    const html = renderMarkup();
+    expect(html).toContain('record-btn--monitoring');
+    expect(html).not.toContain('record-btn--recording');
+    expect(html).not.toContain('record-btn--idle');
+    expect(html).not.toMatch(/id="record-button"[^>]*disabled=""/);
+    expect(html).toContain('aria-pressed="false"');
+    expect(html).toContain('aria-label="Record — press to start recording"');
+    expectNoVisibleText(html);
+    expectCircleIcon(html);
+  });
+
+  it('keeps the Record control mounted off Live across the post-stop demote', () => {
+    useLiveCaptureStore.setState({ appMode: 'console', isCapturing: false, liveMode: 'record', demoting: true });
+    const html = renderMarkup();
+    expect(html).not.toBe('');
+    expect(html).toContain('id="record-button"');
   });
 });
 
