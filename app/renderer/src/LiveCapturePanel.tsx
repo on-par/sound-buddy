@@ -310,6 +310,7 @@ export default function LiveCapturePanel(): JSX.Element | null {
     liveMode: s.liveMode,
     promoting: s.promoting,
     stopping: s.stopping,
+    demoting: s.demoting,
   });
   const timelineBpm = timelineBpmControlView(timelineTempo, bpmMessage);
   const state = liveWorkspaceViewState(
