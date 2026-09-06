@@ -38,6 +38,9 @@ import { CLIP_SELECTED_LANE_CLASS, type ClipSelectionModel } from './clip-select
 // The arrangement's time-range selection (#1304). time-selection.ts is a leaf
 // module (imports nothing), so a value import here creates no ESM cycle.
 import { TIME_SELECTION_CLASS, type TimeSelectionModel } from './time-selection';
+// The arrangement's single-playhead clock precedence (#1377). Leaf module
+// (imports nothing), so a value import here creates no ESM cycle.
+import { resolvePlayheadInstant } from './playhead-instant';
 // The arrangement's loop region (#1313). loopBrace.render.ts is a leaf module
 // (imports nothing), so a value import here creates no ESM cycle.
 import { LOOP_BRACE_CLASS, type LoopRegion, type LoopRegionModel } from './loopBrace.render';
@@ -411,9 +414,18 @@ export function createDawShellRuntime(deps: DawShellRuntimeDeps): DawShellRuntim
   function renderPlayhead(): void {
     const shell = deps.doc.querySelector('.daw-shell');
     if (!shell) return; // DAW toggle off or not on Live tab
-    const elapsed = playbackPosition
-      ? playbackPosition.elapsed * MS_PER_SECOND
-      : deps.dawPlayheadState.elapsedMs(playheadState, deps.now());
+    // #1377: an advancing RECORD clock outranks a playback position. soundcheckStore
+    // seeds lastElapsedTick to a truthy { elapsed: 0, duration: 0 } on session load and
+    // never clears it, so the old `playbackPosition ? ... : wall clock` ternary pinned a
+    // live recording's head to the loaded take's frozen position. The precedence lives in
+    // one pure, unit-tested rule (this story's ADR) — never inline here again.
+    const instant = resolvePlayheadInstant({
+      playbackPosition,
+      playbackActive,
+      recordAdvancing: deps.dawPlayheadState.isAdvancing(playheadState),
+      recordElapsedMs: deps.dawPlayheadState.elapsedMs(playheadState, deps.now()),
+    });
+    const elapsed = instant.elapsedMs;
     const timeEl = shell.querySelector('.daw-transport-time');
     const text = deps.dawPlayheadState.formatElapsed(elapsed);
     if (timeEl && timeEl.textContent !== text) timeEl.textContent = text;
@@ -424,9 +436,7 @@ export function createDawShellRuntime(deps: DawShellRuntimeDeps): DawShellRuntim
     // because the transform slot belongs to the shared head-width re-base in
     // app.css (ADR-0090).
     const x = dawPlayheadXAt(elapsed, shell.clientWidth, timelineScalePxPerSecond(deps.getTimelineScale?.()));
-    const advancing = playbackPosition !== null
-      ? playbackActive
-      : deps.dawPlayheadState.isAdvancing(playheadState);
+    const advancing = instant.advancing;
     const segments = shell.querySelectorAll('.daw-playhead');
     for (let i = 0; i < segments.length; i++) {
       const segment = segments[i] as HTMLElement;
