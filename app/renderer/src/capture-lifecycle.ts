@@ -129,8 +129,8 @@ export function createCaptureLifecycle(deps: CaptureLifecycleDeps): {
   // The store's combined capture phase — the liveTransitionState pure model
   // computed from store fields instead of inline-app.js's module vars.
   function capturePhaseFromStore(): CapturePhase {
-    const { isCapturing, liveMode, promoting, stopping } = deps.getLc();
-    return deps.liveTransition().capturePhase({ liveRunning: isCapturing, liveMode, promoting, stopping });
+    const { isCapturing, liveMode, promoting, stopping, demoting } = deps.getLc();
+    return deps.liveTransition().capturePhase({ liveRunning: isCapturing, liveMode, promoting, stopping, demoting });
   }
 
   // Store-driven applier for the static header #live-indicator pill — replaces
