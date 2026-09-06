@@ -250,6 +250,15 @@ describe('LiveCapturePanel', () => {
     expect(html).not.toContain('id="live-start-btn"');
     expect(html).not.toContain('id="live-stop-btn"');
   });
+
+  it('renders the monitor-only Session toolbar Record control across the post-stop demote (#1384)', () => {
+    useLiveCaptureStore.setState({ appMode: 'live', isCapturing: false, liveMode: 'record', demoting: true });
+    const html = renderMarkup();
+    expect(html).toContain('class="daw-session-record daw-session-record--monitoring" id="daw-session-record"');
+    expect(html).toMatch(/id="daw-session-record"[^>]*>Record</);
+    expect(html).not.toContain('daw-session-record--recording');
+    expect(html).not.toMatch(/id="daw-session-record"[^>]*>Stop</);
+  });
 });
 
 describe('recording board markup stability (#1376)', () => {

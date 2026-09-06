@@ -69,7 +69,7 @@ export type CapturePhase = 'idle' | 'monitoring' | 'starting-record' | 'recordin
 // injected onto `window` by App.tsx, read the same way liveCaptureStore.ts
 // reads armState/groupState/rigKind — see that file's header comment).
 export interface LiveTransitionState {
-  capturePhase(view: { liveRunning: boolean; liveMode: string; promoting: boolean; stopping: boolean }): CapturePhase;
+  capturePhase(view: { liveRunning: boolean; liveMode: string; promoting: boolean; stopping: boolean; demoting?: boolean }): CapturePhase;
   captureIndicator(phase: CapturePhase): { text: string; recording: boolean };
   recordButtonView(phase: CapturePhase): { visible: boolean; disabled: boolean; label: string };
   statusLabel(phase: CapturePhase, meterRate: number): string;

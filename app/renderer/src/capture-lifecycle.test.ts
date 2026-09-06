@@ -110,7 +110,7 @@ afterEach(() => {
   delete (globalThis as { window?: unknown }).window;
   useLiveCaptureStore.setState({
     devices: [], deviceHint: null, selectedDevice: '', channelConfig: [], channelGroups: [],
-    liveMode: 'monitor', recordDir: '', isCapturing: false, promoting: false, stopping: false,
+    liveMode: 'monitor', recordDir: '', isCapturing: false, promoting: false, stopping: false, demoting: false,
     measurementSource: null, appMode: 'reportcard', meterIntervalMs: 100, windowSecs: 3,
     liveWindows: [], sessionOffers: { sessionDir: null, reportCard: false, notEnoughData: false },
     liveCueVisible: true, liveStatusText: null, armHint: { visible: false, text: '' },
@@ -298,6 +298,15 @@ describe('createCaptureLifecycle — onCaptureStarted', () => {
     expect(doc.els['spectrum-body'].querySelector).toHaveBeenCalledWith('.live-setup-banner');
     expect(banner.remove).toHaveBeenCalled();
     expect(liveSetupState.markSetupComplete).toHaveBeenCalledWith(deps.storage);
+  });
+
+  it('reports the monitoring status, not blank, across the post-stop demote (#1384)', () => {
+    const { lifecycle } = makeLifecycle();
+    useLiveCaptureStore.setState({ isCapturing: false, liveMode: 'record', demoting: true });
+
+    lifecycle.runtime.onCaptureStarted({ success: true }, 10);
+
+    expect(useLiveCaptureStore.getState().liveStatusText).toBe('Monitoring · meters 10/s');
   });
 });
 

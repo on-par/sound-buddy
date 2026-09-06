@@ -21,15 +21,16 @@ import { runtime, recordCapture, stopLiveCapture } from './LiveControls';
 import { recordButtonView, recordButtonAction } from './record-transport';
 
 export default function RecordButton(): JSX.Element | null {
-  const { appMode, liveMode, isCapturing, promoting, stopping } = useStoreShallow(useLiveCaptureStore, (s) => ({
+  const { appMode, liveMode, isCapturing, promoting, stopping, demoting } = useStoreShallow(useLiveCaptureStore, (s) => ({
     appMode: s.appMode,
     liveMode: s.liveMode,
     isCapturing: s.isCapturing,
     promoting: s.promoting,
     stopping: s.stopping,
+    demoting: s.demoting,
   }));
 
-  const phase = window.liveTransitionState.capturePhase({ liveRunning: isCapturing, liveMode, promoting, stopping });
+  const phase = window.liveTransitionState.capturePhase({ liveRunning: isCapturing, liveMode, promoting, stopping, demoting });
   const view = recordButtonView(phase);
 
   if (appMode !== 'live' && view.phase === 'idle') return null;
