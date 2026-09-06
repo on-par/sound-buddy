@@ -5,6 +5,7 @@ import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest';
 import { startLiveCapture, stopLiveCapture, stopCaptureIfRunning, recordCapture, type LiveCaptureRuntime } from './LiveControls';
 import { useLiveCaptureStore } from './stores/liveCaptureStore';
 import { useSettingsStore } from './stores/settingsStore';
+import { recordButtonAction } from './record-transport';
 
 // The pure classic scripts liveTransitionState/armState/groupState/rigKind/
 // channelLabels — real modules (not hand-rolled stubs), same convention as
@@ -581,6 +582,139 @@ describe('startLiveCapture / stopLiveCapture / recordCapture', () => {
       await stopLiveCapture(rt);
 
       expect(stopCapture).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  // #1385: regression guard for "Stop silently fails to end an active
+  // recording" (#1381), fixed by #1386 (single-flight, fail-open stop
+  // ceremony) and #1387 (demote-window capture phase). These tests assert the
+  // user-visible invariant — the derived capture phase, the one the transport
+  // itself renders from — rather than call counts or store flags alone.
+  describe('Stop during an active recording (#1385)', () => {
+    // The phase the transport actually renders from — derived with the
+    // production live-transition-state model over the live store flags,
+    // never re-derived here (ADR-0131 / #1384: capturePhase is the single
+    // source of truth).
+    function phaseNow(): string {
+      const s = useLiveCaptureStore.getState();
+      return liveTransitionState.capturePhase({
+        liveRunning: s.isCapturing, liveMode: s.liveMode,
+        promoting: s.promoting, stopping: s.stopping, demoting: s.demoting,
+      });
+    }
+
+    it('a Stop press during an active recording ends the take and never leaves the phase recording (#1385)', async () => {
+      const rt = mockRuntime();
+      const phases: string[] = [];
+      useLiveCaptureStore.setState({
+        liveMode: 'record',
+        isCapturing: true,
+        windowSecs: 3,
+        meterIntervalMs: 100,
+        stopCapture: vi.fn(async () => {
+          phases.push(phaseNow());
+          useLiveCaptureStore.setState({ isCapturing: false });
+          return { success: true, sessionDir: '/tmp/session' };
+        }),
+        // This resume runs inside the demote window (demoting true,
+        // isCapturing false, liveMode still 'record') — precisely the state
+        // #1387 fixed; pre-fix this phase read 'idle' instead of 'monitoring'.
+        startCapture: vi.fn(async () => {
+          phases.push(phaseNow());
+          useLiveCaptureStore.setState({ isCapturing: true });
+          return { success: true };
+        }),
+      });
+
+      await stopLiveCapture(rt);
+
+      expect(phases).not.toContain('recording');
+      expect(phases).toContain('monitoring');
+      expect(phaseNow()).toBe('monitoring');
+      expect(useLiveCaptureStore.getState().liveMode).toBe('monitor');
+      expect(rt.onCaptureStopped).toHaveBeenCalledWith({ success: true, sessionDir: '/tmp/session' });
+    });
+
+    it('two Stop presses during one recording stop the take exactly once (#1385)', async () => {
+      const rt = mockRuntime();
+      let resolveStop!: (result: { success: boolean; sessionDir: string | null }) => void;
+      const stopCapture = vi.fn(
+        () =>
+          new Promise<{ success: boolean; sessionDir: string | null }>((resolve) => {
+            resolveStop = resolve;
+          }),
+      );
+      useLiveCaptureStore.setState({
+        liveMode: 'record',
+        isCapturing: true,
+        windowSecs: 3,
+        meterIntervalMs: 100,
+        stopCapture,
+        startCapture: vi.fn(async () => {
+          useLiveCaptureStore.setState({ isCapturing: true });
+          return { success: true };
+        }),
+      });
+
+      const first = stopLiveCapture(rt);
+      const second = stopLiveCapture(rt);
+      resolveStop({ success: true, sessionDir: '/tmp/session' });
+      await Promise.all([first, second]);
+
+      expect(stopCapture).toHaveBeenCalledTimes(1);
+      expect(rt.onCaptureStopped).toHaveBeenCalledTimes(1);
+      // Pre-#1386 the second ceremony's own resume tail killed the monitor
+      // session the first ceremony had just restarted, landing on 'idle'.
+      expect(phaseNow()).toBe('monitoring');
+      expect(useLiveCaptureStore.getState().isCapturing).toBe(true);
+    });
+
+    it('a Stop that fails leaves the transport pressable instead of wedged in stopping (#1385)', async () => {
+      const rt = mockRuntime();
+      useLiveCaptureStore.setState({
+        liveMode: 'record',
+        isCapturing: true,
+        windowSecs: 3,
+        meterIntervalMs: 100,
+        // Mirrors the real store's failed-stop shape: the child never actually
+        // stopped, so isCapturing stays true.
+        stopCapture: vi.fn(async () => ({ success: false, sessionDir: null })),
+        startCapture: vi.fn(async () => {
+          useLiveCaptureStore.setState({ isCapturing: true });
+          return { success: true };
+        }),
+      });
+
+      await stopLiveCapture(rt);
+
+      // The take really is still recording — 'recording' is the CORRECT phase
+      // here, not a bug: a stop that never reached the child must not paint an
+      // idle/monitoring board over a live take. Pre-#1386 the phase stayed
+      // pinned to 'stopping', whose recordButtonAction is null (disabled).
+      expect(phaseNow()).not.toBe('stopping');
+      expect(recordButtonAction(phaseNow() as never)).toBe('stop');
+      expect(rt.onCaptureStopped).not.toHaveBeenCalled();
+      expect(useLiveCaptureStore.getState().startCapture).not.toHaveBeenCalled();
+    });
+
+    it('stopCaptureIfRunning drives an active recording fully idle (#1385)', async () => {
+      const rt = mockRuntime();
+      useLiveCaptureStore.setState({
+        liveMode: 'record',
+        isCapturing: true,
+        stopCapture: vi.fn(async () => {
+          useLiveCaptureStore.setState({ isCapturing: false });
+          return { success: true, sessionDir: '/tmp/session' };
+        }),
+      });
+      const startCapture = vi.spyOn(useLiveCaptureStore.getState(), 'startCapture');
+
+      await stopCaptureIfRunning(rt);
+
+      expect(useLiveCaptureStore.getState().isCapturing).toBe(false);
+      expect(phaseNow()).toBe('idle');
+      expect(useLiveCaptureStore.getState().stopping).toBe(false);
+      expect(startCapture).not.toHaveBeenCalled();
     });
   });
 });
