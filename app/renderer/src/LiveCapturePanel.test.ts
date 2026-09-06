@@ -252,6 +252,42 @@ describe('LiveCapturePanel', () => {
   });
 });
 
+describe('recording board markup stability (#1376)', () => {
+  let elapsed = 0;
+
+  beforeEach(() => {
+    (globalThis as unknown as { window: { dawShellRuntime: { playheadElapsedMs: () => number } } }).window.dawShellRuntime.playheadElapsedMs = () => elapsed;
+    useLiveCaptureStore.setState({ isCapturing: true, liveMode: 'record', appMode: 'live' });
+  });
+
+  afterEach(() => {
+    elapsed = 0;
+    useLiveCaptureStore.setState({ isCapturing: false, liveMode: 'monitor', appMode: 'live' });
+  });
+
+  it('does not rewrite the board markup between two sub-second renders while recording', () => {
+    // Values above the 60s TIMELINE_OVERVIEW_MIN_DURATION_SECS floor on purpose: below it the
+    // overview duration is pinned and this would pass on main too. On main this fails because
+    // the un-quantized duration changes the derived paint scale (and therefore every
+    // ruler-tick/gridline `left:` in the string).
+    elapsed = 61_200;
+    const first = renderMarkup();
+    elapsed = 61_800;
+    const second = renderMarkup();
+    expect(second).toBe(first);
+  });
+
+  it('still advances the transport readout when the second rolls over', () => {
+    elapsed = 61_200;
+    const first = renderMarkup();
+    elapsed = 62_200;
+    const second = renderMarkup();
+    expect(second).not.toBe(first);
+    expect(first).toContain('1:01');
+    expect(second).toContain('1:02');
+  });
+});
+
 describe('routeHeaderChannelAction', () => {
   function actions(): HeaderChannelActions {
     return {

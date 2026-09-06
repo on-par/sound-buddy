@@ -966,6 +966,15 @@ describe('DAW shell seam consumers unchanged by the 6j migration', () => {
     expect(liveCapturePanelTsx).toContain('renderWaveform');
   });
 
+  it('re-paints the rebuilt shell in a LAYOUT effect so no blank canvas frame reaches the screen (#1376)', () => {
+    const idx = liveCapturePanelTsx.indexOf('getDawShellRuntime()?.renderWaveform?.();');
+    expect(idx).toBeGreaterThan(-1);
+    const layoutOpener = liveCapturePanelTsx.lastIndexOf('useLayoutEffect(() => {', idx);
+    const anyOpener = liveCapturePanelTsx.lastIndexOf('Effect(() => {', idx);
+    expect(layoutOpener).toBeGreaterThan(-1);
+    expect(anyOpener).toBe(layoutOpener + 'useLayout'.length); // the nearest enclosing effect IS the layout one
+  });
+
   it('live-workspace-view.ts still builds the shell markup and seeds the transport time from state', () => {
     expect(workspaceViewTs).toContain('export function dawShellHTML(');
     expect(workspaceViewTs).toContain('export function dawShellPatchView(');

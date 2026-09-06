@@ -28,6 +28,7 @@
 
 import {
   useEffect,
+  useLayoutEffect,
   useRef,
   useState,
   type ChangeEvent,
@@ -63,6 +64,7 @@ import {
   MS_PER_SECOND,
 } from './live-workspace-view';
 import { setSessionTimelineScale, sessionTimelineScaleForRange } from './session-timeline-scale';
+import { renderStableElapsedMs } from './recording-elapsed';
 import { sessionTabSessionPickerAction, sessionTabSessionPickerView } from './session-tab-session-picker';
 import { paintSessionTabWaveformClips, sessionTabWaveformView, sessionTakeDurationSecs } from './session-tab-waveforms';
 import { patchTimelineOverview, timelineOverviewDurationSecs, type TimelineOverviewShellLike } from './timeline-overview';
@@ -267,7 +269,14 @@ export default function LiveCapturePanel(): JSX.Element | null {
   const sessionPlayback = sessionTabPlaybackView(soundcheck.manifest, soundcheck.playing, soundcheck.looping);
   // The Session zoom/fit context (#1284). Reuses the two values patchOverview
   // already reads so fit-full and the overview strip agree by construction.
-  const elapsedSecs = (getDawShellRuntime()?.playheadElapsedMs?.() ?? 0) / MS_PER_SECOND;
+  // Quantized at the render boundary (#1376): the raw wall clock changes on every render, and
+  // this value reaches the board markup string (the seeded M:SS transport readout) and
+  // zoomContext.durationSecs, so an un-floored read rewrites the board's innerHTML — destroying
+  // every waveform canvas — on every render, and past the 60s overview floor makes the
+  // duration-tracked-zoom effect below set state every render (an unbounded rebuild loop).
+  // patchOverview and the rAF playhead ticker keep reading the raw clock (ADR-0005).
+  const elapsedMs = renderStableElapsedMs(getDawShellRuntime()?.playheadElapsedMs?.() ?? 0);
+  const elapsedSecs = elapsedMs / MS_PER_SECOND;
   // The loaded take's duration is scale-invariant (sessionTakeDurationSecs inverts
   // widthPx / pxPerSecond), so a default-scale view recovers it before the paint scale
   // is known — which breaks the derive-scale cycle: the scale needs the full duration,
@@ -306,7 +315,7 @@ export default function LiveCapturePanel(): JSX.Element | null {
   const state = liveWorkspaceViewState(
     lc,
     settings,
-    getDawShellRuntime()?.playheadElapsedMs?.() ?? 0,
+    elapsedMs,
     sessionPicker,
     sessionWaveforms,
     sessionPlayback,
@@ -474,8 +483,12 @@ export default function LiveCapturePanel(): JSX.Element | null {
   // rebuild-decision key for same-count rig swaps) and hand the
   // daw-shell-runtime.ts painters (TD-001 slice 6j, #713) the shell to paint
   // after every rebuild — the meter controller re-paints them per tick
-  // thereafter.
-  useEffect(() => {
+  // thereafter. This MUST be a layout effect, not a passive one (#1376): a
+  // passive effect is flushed after the browser has already painted, so a
+  // board rebuild (dangerouslySetInnerHTML swap) would put one blank-canvas
+  // frame on screen before this repaint ever ran. useLayoutEffect runs in the
+  // same commit as the DOM swap, so no blank frame can reach the screen.
+  useLayoutEffect(() => {
     if (s.appMode !== 'live') return;
     const shell = document.getElementById('live-island')?.querySelector('.daw-shell');
     if (shell) shell.setAttribute('data-lane-signature', laneSignature);
