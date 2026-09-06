@@ -869,24 +869,22 @@ test.describe('Timeline alignment invariant (#1325)', () => {
 });
 
 // The frozen #1327 plan expected the record head's live-recording case to share this
-// describe's beforeEach (a loaded take clip alongside a running recording). That does not
-// hold in this checkout: LiveCapturePanel.tsx's session-load effect (~line 398) calls
-// `runtime.setPlaybackPosition(lastElapsedTick)` whenever `soundcheck.manifest` is set —
-// soundcheckStore.loadSession seeds `lastElapsedTick` to `{ elapsed: 0, duration: 0 }` (a
-// truthy object) the moment a session loads, before playback ever starts, and there is no
+// describe's beforeEach (a loaded take clip alongside a running recording). Before #1377
+// that did not hold in this checkout: LiveCapturePanel.tsx's session-load effect (~line 398)
+// calls `runtime.setPlaybackPosition(lastElapsedTick)` whenever `soundcheck.manifest` is
+// set — soundcheckStore.loadSession seeds `lastElapsedTick` to `{ elapsed: 0, duration: 0 }`
+// (a truthy object) the moment a session loads, before playback ever starts, and there is no
 // UI action that clears it afterwards (`daw-session-picker-select`'s empty option is a
 // documented no-op in LiveCapturePanel.tsx's click handler). renderPlayhead()'s `elapsed`
-// is `playbackPosition ? playbackPosition.elapsed * 1000 : wall clock` — so once a session
-// is loaded the arrangement's single playhead is pinned to the loaded take's (frozen)
-// position for the rest of the test, and a live recording's wall clock can never reach the
-// screen, regardless of live-event ticks. tests/e2e/daw-shell.spec.ts's "starting a capture
-// advances the transport time and moves the playhead" proves the wall-clock path only with
-// no session loaded, confirming this is a real precondition of the checkout, not a flake.
-// This describe therefore mirrors the shared beforeEach's device/lane setup WITHOUT the
-// session-load step, so the record head's own case is exercised the same way #1327's design
-// intended (clipZeroX legitimately NaN throughout, exactly as the frozen plan's grounding
-// notes anticipated) instead of silently degrading into a no-op re-assertion of the
-// playback path. No production code changes — this is a test-file-only divergence.
+// used to be `playbackPosition ? playbackPosition.elapsed * 1000 : wall clock` — so once a
+// session was loaded the arrangement's single playhead was pinned to the loaded take's
+// (frozen) position for the rest of the test, and a live recording's wall clock could never
+// reach the screen, regardless of live-event ticks. #1377 fixed this: renderPlayhead() now
+// resolves its instant through resolvePlayheadInstant() (playhead-instant.ts), whose
+// precedence makes an advancing record session always outrank a playback position. The case
+// below ("the record head tracks the record clock with a session loaded (#1377)") loads a
+// session before recording and proves the fix; the beforeEach here is kept session-load-free
+// so the sibling case above still exercises the record head in isolation too.
 test.describe('Timeline alignment invariant during live recording (#1327)', () => {
   test.beforeAll(async () => {
     ({ electronApp, window } = await launchApp());
@@ -897,9 +895,19 @@ test.describe('Timeline alignment invariant during live recording (#1327)', () =
   });
 
   test.beforeEach(async () => {
-    await electronApp.evaluate(({ ipcMain }) => {
+    await electronApp.evaluate(({ ipcMain }, fixture) => {
       ipcMain.removeHandler('list-output-devices');
       ipcMain.handle('list-output-devices', () => ({ devices: [{ index: 1, name: 'MOTU 8ch', channels: 8 }] }));
+      ipcMain.removeHandler('open-dir-dialog');
+      ipcMain.handle('open-dir-dialog', () => fixture.dir);
+      ipcMain.removeHandler('generate-session-peaks');
+      ipcMain.handle('generate-session-peaks', () => ({ success: true, cached: false, peaks: fixture.peaks }));
+    }, {
+      dir: SESSION_DIR,
+      peaks: {
+        bucketsPerSecond: PEAKS_BUCKETS_PER_SECOND,
+        tracks: [{ index: 0, kind: 'mono', bucketCount: PEAK_BUCKETS, data: fullHeightPeaks(PEAK_BUCKETS) }],
+      },
     });
     await window.reload();
     await window.waitForLoadState('domcontentloaded');
@@ -944,6 +952,46 @@ test.describe('Timeline alignment invariant during live recording (#1327)', () =
 
     // Real motion between consecutive samples — without this the test would still pass
     // against a frozen head that happens to sit at x=origin.
+    for (let i = 1; i < samples.length; i++) {
+      expect(samples[i].playheadElapsedSecs).toBeGreaterThan(samples[i - 1].playheadElapsedSecs);
+      expect(samples[i].laneHeadX - samples[i - 1].laneHeadX).toBeGreaterThanOrEqual(RECORD_HEAD_MIN_ADVANCE_PX);
+    }
+
+    // Leave the next beforeEach a known board (#776: stop -> monitoring resumes).
+    await window.locator('#daw-session-record').click();
+    await expect(window.locator('#live-indicator .live-txt')).toHaveText('LIVE');
+    await stopCaptureIfRunning(window);
+  });
+
+  test('the record head tracks the record clock with a session loaded (#1377)', async () => {
+    // Load a session first — soundcheckStore.loadSession seeds a truthy, frozen
+    // lastElapsedTick the moment this resolves, which is the exact precondition #1377 fixed.
+    await window.locator('.daw-session-picker-select').selectOption({ label: 'open session folder…' });
+    await expect(window.locator('#daw-session-play')).toBeEnabled();
+    await expect(window.locator('.daw-take-clip')).toHaveCount(1);
+
+    await window.locator('#daw-session-record').click();
+    await expect(window.locator('#live-indicator .live-txt')).toHaveText('REC');
+    await expect(window.locator('.daw-playhead-lanes')).toBeVisible();
+
+    const headLeft = () => window.locator('.daw-playhead-lanes').evaluate((el) => (el as HTMLElement).style.left);
+
+    const samples: TimelineGeometrySample[] = [];
+    for (let i = 0; i < RECORD_SAMPLE_COUNT; i++) {
+      const before = await headLeft();
+      await window.waitForTimeout(RECORD_SAMPLE_INTERVAL_MS);
+      await sendLiveMeterTick();
+      // On the pre-#1377 code the head sits frozen at the loaded take's 0s and this poll
+      // never resolves — this case fails loudly without the fix.
+      await expect.poll(headLeft).not.toBe(before);
+
+      const sample = await sampleTimelineGeometry(true);
+      expect(sample.laneHeadAdvancing).toBe(true);
+      expect(sample.playheadElapsedSecs).toBeGreaterThan(0);
+      expectHeadTracksTimelineAt(sample, sample.playheadElapsedSecs, `recording-with-session sample ${i}`);
+      samples.push(sample);
+    }
+
     for (let i = 1; i < samples.length; i++) {
       expect(samples[i].playheadElapsedSecs).toBeGreaterThan(samples[i - 1].playheadElapsedSecs);
       expect(samples[i].laneHeadX - samples[i - 1].laneHeadX).toBeGreaterThanOrEqual(RECORD_HEAD_MIN_ADVANCE_PX);
