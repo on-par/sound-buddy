@@ -50,7 +50,7 @@
     "FOUNDING_CAP": "10",
     "FROM_EMAIL": "hello@soundbuddy.online",
     "SUPPORT_EMAIL": "support@soundbuddy.online",
-    "CUSTOMER_PORTAL_URL": "REPLACE_WITH_STRIPE_CUSTOMER_PORTAL_URL",
+    "CUSTOMER_PORTAL_URL": "https://billing.stripe.com/p/login/eVq28refH1f46VadbYawo00",
     "APP_ORIGIN": "https://soundbuddy.online",
     // Signing-key id stamped into every minted key's `kid` claim (#109/#110).
     // Informational only — the app verifies against its embedded public key and
