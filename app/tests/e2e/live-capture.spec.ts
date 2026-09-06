@@ -1,5 +1,5 @@
 import { test, expect, type ElectronApplication, type Page } from '@playwright/test';
-import { launchApp, renameHeader, stopCaptureIfRunning } from './e2e-helpers';
+import { launchApp, renameHeader, stopCaptureIfRunning, captureSnapshot } from './e2e-helpers';
 
 // Live capture (PRD 06) — split out of e2e.spec.ts as its own file (#225).
 // Covers the rail, channel picker, per-strip meters, and Record-mode capture
@@ -443,6 +443,32 @@ test.describe('Live capture (PRD 06)', () => {
       ipcMain.removeHandler('start-live');
       ipcMain.handle('start-live', () => ({ success: true }));
     });
+  });
+
+  // #1385: regression guard for "Stop silently fails to end an active recording"
+  // (#1381 / fixed by #1386 + #1387). Asserts the phase the transport actually
+  // renders from, not just the indicator text — the DOM-only assertions in the
+  // tests above are what let this class of bug through.
+  test('stop during recording ends the take and never leaves the transport recording (#1385)', async () => {
+    await window.locator('#live-ws-arm-all').click();
+    await window.locator('#daw-session-record').click();
+    await expect(window.locator('#live-indicator .live-txt')).toHaveText('REC');
+    await expect.poll(async () => (await captureSnapshot(window)).phase).toBe('recording');
+
+    await window.locator('#daw-session-record').click(); // Stop
+
+    // ADR-0014/ADR-0015: a record stop demotes to a monitor session — the take
+    // ends (phase leaves 'recording', liveMode returns to 'monitor') while the
+    // always-monitoring board stays live and both Stop affordances stay usable.
+    await expect(window.locator('#live-indicator .live-txt')).toHaveText('LIVE');
+    await expect(window.locator('#daw-session-record')).toBeEnabled();
+    await expect.poll(async () => (await captureSnapshot(window)).phase).toBe('monitoring');
+    expect((await captureSnapshot(window)).liveMode).toBe('monitor');
+
+    // …and the automation stop ceremony still drives the board genuinely idle.
+    await stopCaptureIfRunning(window);
+    await expect.poll(async () => (await captureSnapshot(window)).isCapturing).toBe(false);
+    expect((await captureSnapshot(window)).phase).toBe('idle');
   });
 
 });
