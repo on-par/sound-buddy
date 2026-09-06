@@ -290,7 +290,15 @@ export function createCaptureLifecycle(deps: CaptureLifecycleDeps): {
 
     lc.setPromoting(true);
     lc.setLiveMode('record');
-    deps.dawShell()?.startPlayhead(Date.now());
+    // #1378: the peak buffer has been accumulating since the monitor session started
+    // (ingestPeaks appends in every mode; the lane canvases only exist while recording),
+    // so a promote that restarts the playhead at t=0 without resetting it paints
+    // pre-press monitor audio at the head of the recording timeline. Reset at the same
+    // instant as startPlayhead so the waveform origin and playhead origin are one press.
+    const intervalSecs = lc.meterIntervalMs / 1000;
+    const shell = deps.dawShell();
+    shell?.startPlayhead(Date.now());
+    shell?.resetWaveform(intervalSecs);
     syncLiveIndicator();
     // #757: arming stays live while monitoring, so flipping to 'record' is
     // what freezes the arm controls — the board re-renders from
@@ -298,7 +306,6 @@ export function createCaptureLifecycle(deps: CaptureLifecycleDeps): {
 
     const device = lc.selectedDevice || undefined;
     const windowSecs = lc.windowSecs;
-    const intervalSecs = lc.meterIntervalMs / 1000;
     const channels = deps.armState().allTokens(lc.channelConfig);
 
     const payload: StartLiveOpts = {

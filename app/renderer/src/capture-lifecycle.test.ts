@@ -384,6 +384,47 @@ describe('createCaptureLifecycle — promoteToRecording', () => {
     expect(dawShell.startPlayhead).toHaveBeenCalledWith(now);
   });
 
+  it('resets the waveform buffer at the record press so no pre-press monitor audio is shown (#1378)', async () => {
+    const { lifecycle, dawShell } = makeLifecycle();
+    recordReadyState();
+
+    await lifecycle.runtime.promoteToRecording();
+
+    expect(dawShell.resetWaveform).toHaveBeenCalledWith(0.1);
+    expect(dawShell.resetWaveform).toHaveBeenCalledTimes(1);
+  });
+
+  it('resets the waveform at the same press instant as the playhead restart (#1378)', async () => {
+    const { lifecycle, sb, dawShell } = makeLifecycle();
+    recordReadyState();
+    const now = Date.now();
+    vi.spyOn(Date, 'now').mockReturnValue(now);
+
+    try {
+      await lifecycle.runtime.promoteToRecording();
+    } finally {
+      vi.restoreAllMocks();
+    }
+
+    expect(dawShell.startPlayhead).toHaveBeenCalledWith(now);
+    expect(dawShell.resetWaveform).toHaveBeenCalledWith(0.1);
+    expect(sb.startLive).toHaveBeenCalledWith(expect.objectContaining({ intervalSecs: 0.1 }));
+  });
+
+  it('does not reset the waveform when the promote is blocked (#1378)', async () => {
+    const { lifecycle, dawShell } = makeLifecycle();
+    useLiveCaptureStore.setState({
+      devices: DEVICES, selectedDevice: '0',
+      channelConfig: [{ kind: 'mono', a: 0, b: 1, armed: true }],
+      isCapturing: false, liveMode: 'monitor',
+    });
+
+    await lifecycle.runtime.promoteToRecording();
+
+    expect(dawShell.resetWaveform).not.toHaveBeenCalled();
+    expect(dawShell.startPlayhead).not.toHaveBeenCalled();
+  });
+
   it('preserves monitor mute and solo maps when promoting to recording (#1058)', async () => {
     const { lifecycle } = makeLifecycle();
     recordReadyState();

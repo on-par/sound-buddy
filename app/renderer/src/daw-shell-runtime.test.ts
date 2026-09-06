@@ -351,6 +351,19 @@ describe('createDawShellRuntime', () => {
       rt.resetWaveform(0.25);
       expect(cancelRaf).not.toHaveBeenCalled();
     });
+
+    it('wipes every per-strip lane state, not just the mix lane', () => {
+      const canvas0 = makeFakeCanvas();
+      const lanes = [makeFakeLane('0', canvas0)];
+      const shell = makeFakeShell({ lanes });
+      const { deps, setShell } = makeDeps();
+      setShell(shell);
+      const rt = createDawShellRuntime(deps);
+      rt.ingestPeaks(peaksFrame([{ id: 'strip0', data: encodePairs([64, 192]) }]));
+      rt.resetWaveform(0.25);
+      rt.renderWaveform();
+      expect(canvas0.ctx.calls.beginPath).toBe(0); // cleared, no columns drawn
+    });
   });
 
   describe('renderPlayhead', () => {
