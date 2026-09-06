@@ -791,6 +791,33 @@ describe('createLiveCaptureStore', () => {
       expect(store.getState().isCapturing).toBe(false);
       expect(result).toEqual({ success: true, sessionDir: '/tmp/session' });
       expect(mock.calls.some((c) => c.method === 'stopLive')).toBe(true);
+      expect(store.getState().lastError).toBeNull();
+    });
+
+    it('restores isCapturing and records an actionable lastError when stopLive rejects (#1383)', async () => {
+      const { store } = makeStore({
+        startLive: async () => ({ success: true }),
+        stopLive: async () => {
+          throw new Error('ipc gone');
+        },
+      });
+      await store.getState().startCapture({ windowSecs: 3, intervalSecs: 0.1 });
+      const result = await store.getState().stopCapture();
+      expect(result).toEqual({ success: false, sessionDir: null });
+      expect(store.getState().isCapturing).toBe(true);
+      expect(store.getState().lastError).toContain('Could not stop live capture');
+    });
+
+    it('restores isCapturing and records lastError when stopLive reports failure (#1383)', async () => {
+      const { store } = makeStore({
+        startLive: async () => ({ success: true }),
+        stopLive: async () => ({ success: false, sessionDir: null }),
+      });
+      await store.getState().startCapture({ windowSecs: 3, intervalSecs: 0.1 });
+      const result = await store.getState().stopCapture();
+      expect(result).toEqual({ success: false, sessionDir: null });
+      expect(store.getState().isCapturing).toBe(true);
+      expect(store.getState().lastError).toContain('Could not stop live capture');
     });
   });
 
