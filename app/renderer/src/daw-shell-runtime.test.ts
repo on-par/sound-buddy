@@ -387,7 +387,43 @@ describe('createDawShellRuntime', () => {
       }
     });
 
-    it('retains an inactive take position and resumes the live clock only when the take is cleared', () => {
+    it('a recording clock outranks a loaded take position (#1377)', () => {
+      const timeEl = { textContent: '' };
+      const playheadEls = [makeFakePlayhead(), makeFakePlayhead()];
+      const shell = makeFakeShell({ timeEl, playheadEls, clientWidth: 400 });
+      const { deps, setShell, setNow } = makeDeps();
+      setShell(shell);
+      const rt = createDawShellRuntime(deps);
+      setNow(0);
+      rt.startPlayhead(0);
+      setNow(10000); // Live record clock is at ten seconds.
+
+      rt.setPlaybackPosition({ elapsed: 3, duration: 60 }); // a loaded take's frozen position
+      rt.setPlaybackActive(false);
+      rt.renderPlayhead();
+
+      expect(timeEl.textContent).toBe('0:10');
+      for (const el of playheadEls) {
+        expect(el.style.left).toBe(`${dawTimelineX(10)}px`);
+        expect(el.classList.toggle).toHaveBeenLastCalledWith('advancing', true);
+      }
+
+      // An ACTIVE playback position still does not steal a running record head.
+      rt.setPlaybackActive(true);
+      rt.renderPlayhead();
+      expect(timeEl.textContent).toBe('0:10');
+      for (const el of playheadEls) {
+        expect(el.style.left).toBe(`${dawTimelineX(10)}px`);
+      }
+
+      // Once the recording stops (freezing the record clock), the take position wins.
+      rt.stopPlayhead();
+      rt.renderPlayhead();
+      expect(timeEl.textContent).toBe('0:03');
+      for (const el of playheadEls) expect(el.style.left).toBe(`${dawTimelineX(3)}px`);
+    });
+
+    it('retains an inactive take position while no recording is advancing, and falls back to the frozen clock when the take is cleared', () => {
       const timeEl = { textContent: '' };
       const playheadEls = [makeFakePlayhead(), makeFakePlayhead()];
       const shell = makeFakeShell({ timeEl, playheadEls, clientWidth: 400 });
@@ -397,6 +433,7 @@ describe('createDawShellRuntime', () => {
       setNow(0);
       rt.startPlayhead(0);
       setNow(10000); // Live capture clock is at ten seconds.
+      rt.stopPlayhead(); // freezes the record clock — no recording is advancing
 
       rt.setPlaybackPosition({ elapsed: 3, duration: 60 });
       rt.setPlaybackActive(true);
@@ -559,6 +596,22 @@ describe('createDawShellRuntime', () => {
       rt.setPlaybackActive(true);
       rt.renderPlayhead();
       expect(timelineMarks.getPlayheadSecs()).toBe(12.5);
+    });
+
+    it('writes the RECORD clock to the shared playhead mark while a recording is advancing (#1377)', () => {
+      const playheadEls = [makeFakePlayhead(), makeFakePlayhead()];
+      const shell = makeFakeShell({ playheadEls, clientWidth: 400 });
+      const timelineMarks = createTimelineMarksModel();
+      const { deps, setShell, setNow } = makeDeps({ timelineMarks });
+      setShell(shell);
+      const rt = createDawShellRuntime(deps);
+      setNow(0);
+      rt.startPlayhead(0);
+      setNow(4000);
+      rt.setPlaybackPosition({ elapsed: 12.5, duration: 60 });
+      rt.setPlaybackActive(true);
+      rt.renderPlayhead();
+      expect(timelineMarks.getPlayheadSecs()).toBe(4);
     });
 
     it('leaves getInsertMarkerSecs at 0 after a playhead paint (#1301)', () => {
