@@ -32,6 +32,15 @@
   /** Combined capture phase from the runtime's raw flags. */
   function capturePhase(view) {
     if (view && view.stopping) return PHASE_STOPPING;
+    // #1384: the record->monitor demote window (#847's `demoting`, set by
+    // stopLiveCapture for the whole stop+resume span). liveMode is still
+    // 'record' and liveRunning is false in here, so without this branch the
+    // phase collapses to 'idle' — a fully idle transport over a board that is
+    // still rendering live (ADR-0014/ADR-0015 always-monitoring). Reading
+    // boardRunning() as liveRunning instead would return 'recording' and paint
+    // the stale Stop control this fixes. Ordered after `stopping` so the stop
+    // IPC in flight still owns the disabled "Stopping…" state.
+    if (view && view.demoting) return PHASE_MONITORING;
     var liveRunning = !!(view && view.liveRunning);
     if (!liveRunning) return PHASE_IDLE;
     if (view && view.promoting) return PHASE_STARTING_RECORD;

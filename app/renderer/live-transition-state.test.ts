@@ -12,7 +12,7 @@ const {
   statusLabel,
   canPromoteToRecording,
 } = require('./live-transition-state.js') as {
-  capturePhase: (view: { liveRunning: boolean; liveMode: string; promoting: boolean; stopping: boolean }) => string;
+  capturePhase: (view: { liveRunning: boolean; liveMode: string; promoting: boolean; stopping: boolean; demoting?: boolean }) => string;
   captureIndicator: (phase: string) => { text: string; recording: boolean };
   recordButtonView: (phase: string) => { visible: boolean; disabled: boolean; label: string };
   statusLabel: (phase: string, meterRate: number) => string;
@@ -43,6 +43,18 @@ describe('capturePhase', () => {
   it('is stopping while a stop is pending, even after liveRunning clears', () => {
     expect(capturePhase({ liveRunning: false, liveMode: 'record', promoting: false, stopping: true })).toBe('stopping');
     expect(capturePhase({ liveRunning: true, liveMode: 'record', promoting: true, stopping: true })).toBe('stopping');
+  });
+  it('is monitoring across the record->monitor demote window (#1384)', () => {
+    expect(capturePhase({ liveRunning: false, liveMode: 'record', promoting: false, stopping: false, demoting: true })).toBe('monitoring');
+  });
+  it('keeps the stopping phase while the stop IPC is still in flight during a demote', () => {
+    expect(capturePhase({ liveRunning: false, liveMode: 'record', promoting: false, stopping: true, demoting: true })).toBe('stopping');
+  });
+  it('is monitoring, never recording, when demoting before isCapturing clears', () => {
+    expect(capturePhase({ liveRunning: true, liveMode: 'record', promoting: false, stopping: false, demoting: true })).toBe('monitoring');
+  });
+  it('is unchanged when demoting is false or absent', () => {
+    expect(capturePhase({ liveRunning: false, liveMode: 'record', promoting: false, stopping: false, demoting: false })).toBe('idle');
   });
 });
 
