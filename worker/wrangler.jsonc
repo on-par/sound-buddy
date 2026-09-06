@@ -15,10 +15,11 @@
   // (H4); build and test never deploy, so these are inert here.
   "routes": [
     { "pattern": "soundbuddy.online/api/stripe/*", "zone_name": "soundbuddy.online" },
-    { "pattern": "soundbuddy.online/api/license", "zone_name": "soundbuddy.online" },
-    // Sub-path of /api/license — the exact-match pattern above does NOT cover it.
-    { "pattern": "soundbuddy.online/api/license/refresh", "zone_name": "soundbuddy.online" },
-    { "pattern": "soundbuddy.online/activate", "zone_name": "soundbuddy.online" },
+    // Cloudflare matches the full URL, including ?session_id=...; a trailing
+    // wildcard is required for checkout redirects and license lookups. The
+    // Worker router still validates exact pathnames (including /license/refresh).
+    { "pattern": "soundbuddy.online/api/license*", "zone_name": "soundbuddy.online" },
+    { "pattern": "soundbuddy.online/activate*", "zone_name": "soundbuddy.online" },
     // Exact-match pattern — does not cover sub-paths of /api/ingest.
     { "pattern": "soundbuddy.online/api/ingest", "zone_name": "soundbuddy.online" },
     // Exact-match pattern — does not cover sub-paths of /api/waitlist.
