@@ -112,21 +112,65 @@ export async function startLiveCapture(
   rt?.onCaptureStarted(result, Math.round(1 / intervalSecs));
 }
 
+// #1383: exactly one stop ceremony at a time. Both Stop affordances — the
+// top-bar RecordButton (#record-button) and the Session toolbar's
+// #daw-session-record, and stopCaptureIfRunning's automation path — call in
+// here, and none of them can disable itself until React commits the `stopping`
+// flag. Two presses inside one frame previously ran the whole ceremony twice:
+// two stop-live IPCs, two onCaptureStopped hooks (duplicate session offers +
+// a duplicate report-card persist), and two resume-to-monitoring tails whose
+// second startLiveCapture hits startCapture()'s already-capturing no-op,
+// returns undefined, and drives capture-lifecycle's onCaptureStarted failure
+// branch into stopLive() — killing the monitor session that just resumed.
+// A press made while one is in flight joins the running ceremony.
+let stopCeremonyInFlight: Promise<StopCaptureResult | undefined> | null = null;
+
 // The stop half of stopLiveCapture's ordering (flip stopping -> stopCapture()
 // -> bridged before/after hooks -> clear stopping), split out so
 // stopCaptureIfRunning below can run exactly this and stop short of
-// stopLiveCapture's post-record resume-to-monitoring tail.
+// stopLiveCapture's post-record resume-to-monitoring tail. Single-flight
+// (#1383) and fail-open: `stopping` always clears via `finally`, so a
+// rejected stop-live IPC or a throwing bridge hook can never wedge the
+// transport in the disabled 'stopping' phase.
 async function runStopCeremony(rt: LiveCaptureRuntime | undefined): Promise<StopCaptureResult | undefined> {
-  useLiveCaptureStore.getState().setStopping(true);
-  const stopPromise = useLiveCaptureStore.getState().stopCapture();
-  rt?.onCaptureStopping();
-  const result = await stopPromise;
-  rt?.onCaptureStopped(result);
-  useLiveCaptureStore.getState().setStopping(false);
-  return result;
+  if (stopCeremonyInFlight) return stopCeremonyInFlight;
+  const ceremony = (async () => {
+    useLiveCaptureStore.getState().setStopping(true);
+    try {
+      const stopPromise = useLiveCaptureStore.getState().stopCapture();
+      rt?.onCaptureStopping();
+      const result = await stopPromise;
+      // #1383: a stop that explicitly failed did NOT end the capture — running
+      // the post-stop hooks would unlock the rig, retitle the panel "stopped",
+      // and offer a session folder for a take that is still recording. The
+      // store's lastError surfaces the failure instead. An `undefined` result
+      // (a caller that stubbed stopCapture) keeps the old unconditional path.
+      if (!result || result.success) rt?.onCaptureStopped(result);
+      return result;
+    } finally {
+      // #1383: capturePhase returns 'stopping' first, and
+      // recordButtonView('stopping') is disabled with recordButtonAction()
+      // === null — so leaving this flag set on a rejected stop IPC or a
+      // throwing bridge hook kills BOTH Stop affordances permanently while
+      // stream.py keeps capturing. Fail open, never closed.
+      useLiveCaptureStore.getState().setStopping(false);
+    }
+  })();
+  stopCeremonyInFlight = ceremony;
+  try {
+    return await ceremony;
+  } finally {
+    stopCeremonyInFlight = null;
+  }
 }
 
 export async function stopLiveCapture(rt: LiveCaptureRuntime | undefined): Promise<void> {
+  // #1383: a second Stop press while a ceremony is running must not run a
+  // second demote/resume tail — join the ceremony already in flight and stop.
+  if (stopCeremonyInFlight) {
+    await stopCeremonyInFlight;
+    return;
+  }
   const live = useLiveCaptureStore.getState();
   const stopIsRecordStop = live.liveMode === 'record' && live.isCapturing;
   // #847: hold the board's running shape across the stop IPC — stopCapture()
@@ -136,13 +180,17 @@ export async function stopLiveCapture(rt: LiveCaptureRuntime | undefined): Promi
   // readout before the monitor session restarts.
   if (stopIsRecordStop) useLiveCaptureStore.getState().setDemoting(true);
   try {
-    await runStopCeremony(rt);
+    const result = await runStopCeremony(rt);
     // #776: the Live tab is always-monitoring (ADR-0014) — stopping a record
     // returns to a live monitor session (Record button idle, meters running)
     // instead of ending capture entirely. Mirrors recordCapture's normalize-
     // then-start shape; onResumeMonitoringStart keeps the just-shown session
     // offers on screen across the restart.
     if (!stopIsRecordStop) return;
+    // #1383: the stop failed — the record child is still live. Starting a
+    // monitor session on top of it would spawn a second stream.py and leave
+    // the original orphaned. lastError already carries the actionable message.
+    if (result && !result.success) return;
     const next = useLiveCaptureStore.getState();
     if (next.liveMode !== 'monitor') useLiveCaptureStore.getState().setLiveMode('monitor');
     rt?.onResumeMonitoringStart?.();
@@ -160,7 +208,9 @@ export async function stopLiveCapture(rt: LiveCaptureRuntime | undefined): Promi
 // unlocked, readout hidden) call this instead of re-deriving the stop
 // ceremony themselves. Runs the same runStopCeremony as stopLiveCapture but
 // never takes its post-record resume-to-monitoring branch. Bridged onto
-// window by App.tsx so Playwright's page.evaluate() can reach it.
+// window by App.tsx so Playwright's page.evaluate() can reach it. Shares
+// the same single-flight ceremony (#1383) as stopLiveCapture, so it safely
+// joins a stop already triggered by either Stop affordance.
 export async function stopCaptureIfRunning(rt: LiveCaptureRuntime | undefined): Promise<void> {
   if (!useLiveCaptureStore.getState().isCapturing) return;
   await runStopCeremony(rt);

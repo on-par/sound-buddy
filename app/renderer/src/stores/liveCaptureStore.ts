@@ -247,7 +247,9 @@ export interface LiveCaptureState {
   // Transient: true only for the duration of stopLiveCapture's stopCapture()
   // await (#729) — mirrors `promoting` for the same reason, giving the
   // top-bar RecordButton (and #live-stop-btn) a genuine "Stopping…" state
-  // instead of jumping straight from recording to idle.
+  // instead of jumping straight from recording to idle. Cleared in a
+  // `finally` by runStopCeremony (#1383) so a rejected stop-live IPC or a
+  // throwing bridge hook can never wedge the transport in this phase.
   stopping: boolean;
   // Transient: true for the whole record→monitor demote (#847) — from just
   // before stopLiveCapture's stopCapture() until the resumed monitor session
@@ -751,9 +753,30 @@ export function createLiveCaptureStore(getApi: () => LiveCaptureApi) {
     },
 
     async stopCapture() {
+      // #1383: isCapturing flips false synchronously (the bridged
+      // onCaptureStopping side effects are ordered against that flip), but a
+      // stop that never reached the child must not leave the renderer
+      // claiming an idle board over a live stream.py process — restore the
+      // flag and report it instead.
+      const wasCapturing = get().isCapturing;
       set({ isCapturing: false });
-      const result = (await getApi().stopLive()) as StopCaptureResult;
-      return result;
+      try {
+        const result = (await getApi().stopLive()) as StopCaptureResult;
+        if (!result?.success) {
+          set({
+            isCapturing: wasCapturing,
+            lastError: 'Could not stop live capture. Press Stop again; if the meters keep running, quit and reopen Sound Buddy.',
+          });
+          return { success: false, sessionDir: null };
+        }
+        return result;
+      } catch (err) {
+        set({
+          isCapturing: wasCapturing,
+          lastError: `Could not stop live capture: ${String(err)}. Press Stop again; if the meters keep running, quit and reopen Sound Buddy.`,
+        });
+        return { success: false, sessionDir: null };
+      }
     },
 
     setRunning(running) {

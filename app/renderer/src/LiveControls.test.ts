@@ -453,4 +453,134 @@ describe('startLiveCapture / stopLiveCapture / recordCapture', () => {
 
     expect(useLiveCaptureStore.getState().isCapturing).toBe(true);
   });
+
+  // #1383: the stop ceremony must fail open — a rejected stop-live IPC or a
+  // throwing bridge hook must never leave `stopping` (and therefore both
+  // Stop affordances) wedged, because every test here awaits its ceremonies
+  // to settle before the next one runs, the module-level in-flight handle
+  // never needs an explicit reset between tests.
+  describe('stop ceremony hardening (#1383)', () => {
+    it('stopLiveCapture clears the stopping flag even when the stop IPC rejects (#1383)', async () => {
+      const rt = mockRuntime();
+      useLiveCaptureStore.setState({
+        liveMode: 'monitor',
+        isCapturing: true,
+        stopCapture: vi.fn(async () => {
+          throw new Error('ipc gone');
+        }),
+      });
+
+      await expect(stopLiveCapture(rt)).rejects.toThrow('ipc gone');
+
+      expect(useLiveCaptureStore.getState().stopping).toBe(false);
+      expect(useLiveCaptureStore.getState().demoting).toBe(false);
+    });
+
+    it('stopLiveCapture clears the stopping flag when a bridged post-stop hook throws (#1383)', async () => {
+      const rt = mockRuntime({
+        onCaptureStopped: vi.fn(() => {
+          throw new Error('boom');
+        }),
+      });
+      useLiveCaptureStore.setState({
+        liveMode: 'monitor',
+        isCapturing: true,
+        stopCapture: vi.fn(async () => ({ success: true, sessionDir: null })),
+      });
+
+      await expect(stopLiveCapture(rt)).rejects.toThrow('boom');
+
+      expect(useLiveCaptureStore.getState().stopping).toBe(false);
+    });
+
+    it('stopLiveCapture runs the stop ceremony exactly once for two overlapping Stop presses (#1383)', async () => {
+      const rt = mockRuntime();
+      let resolveStop!: (result: { success: boolean; sessionDir: string | null }) => void;
+      const stopCapture = vi.fn(
+        () =>
+          new Promise<{ success: boolean; sessionDir: string | null }>((resolve) => {
+            resolveStop = resolve;
+          }),
+      );
+      useLiveCaptureStore.setState({
+        liveMode: 'record',
+        isCapturing: true,
+        windowSecs: 3,
+        meterIntervalMs: 100,
+        stopCapture,
+        startCapture: vi.fn(async () => {
+          useLiveCaptureStore.setState({ isCapturing: true });
+          return { success: true };
+        }),
+      });
+
+      const first = stopLiveCapture(rt);
+      const second = stopLiveCapture(rt);
+      resolveStop({ success: true, sessionDir: '/tmp/session' });
+      await Promise.all([first, second]);
+
+      expect(stopCapture).toHaveBeenCalledTimes(1);
+      expect(rt.onCaptureStopping).toHaveBeenCalledTimes(1);
+      expect(rt.onCaptureStopped).toHaveBeenCalledTimes(1);
+      expect(useLiveCaptureStore.getState().startCapture).toHaveBeenCalledTimes(1);
+    });
+
+    it('stopCaptureIfRunning joins an in-flight ceremony instead of issuing a second stop (#1383)', async () => {
+      const rt = mockRuntime();
+      let resolveStop!: (result: { success: boolean; sessionDir: string | null }) => void;
+      const stopCapture = vi.fn(
+        () =>
+          new Promise<{ success: boolean; sessionDir: string | null }>((resolve) => {
+            resolveStop = resolve;
+          }),
+      );
+      useLiveCaptureStore.setState({
+        liveMode: 'monitor',
+        isCapturing: true,
+        stopCapture,
+      });
+
+      const first = stopLiveCapture(rt);
+      const second = stopCaptureIfRunning(rt);
+      resolveStop({ success: true, sessionDir: null });
+      await Promise.all([first, second]);
+
+      expect(stopCapture).toHaveBeenCalledTimes(1);
+    });
+
+    it('stopLiveCapture does not resume monitoring when the stop failed (#1383)', async () => {
+      const rt = mockRuntime({ onResumeMonitoringStart: vi.fn() });
+      useLiveCaptureStore.setState({
+        liveMode: 'record',
+        isCapturing: true,
+        stopCapture: vi.fn(async () => ({ success: false, sessionDir: null })),
+        startCapture: vi.fn(async () => {
+          useLiveCaptureStore.setState({ isCapturing: true });
+          return { success: true };
+        }),
+      });
+
+      await stopLiveCapture(rt);
+
+      expect(useLiveCaptureStore.getState().startCapture).not.toHaveBeenCalled();
+      expect(rt.onResumeMonitoringStart).not.toHaveBeenCalled();
+      expect(rt.onCaptureStopped).not.toHaveBeenCalled();
+    });
+
+    it('a Stop press after a completed ceremony starts a fresh one (#1383)', async () => {
+      const rt = mockRuntime();
+      const stopCapture = vi.fn(async () => ({ success: true, sessionDir: null }));
+      useLiveCaptureStore.setState({
+        liveMode: 'monitor',
+        isCapturing: true,
+        stopCapture,
+      });
+
+      await stopLiveCapture(rt);
+      useLiveCaptureStore.setState({ liveMode: 'monitor', isCapturing: true });
+      await stopLiveCapture(rt);
+
+      expect(stopCapture).toHaveBeenCalledTimes(2);
+    });
+  });
 });
