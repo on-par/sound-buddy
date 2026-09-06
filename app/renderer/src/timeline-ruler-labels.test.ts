@@ -6,11 +6,18 @@ import {
   RULER_LABEL_MIN_SPACING_PX,
   RULER_LABEL_INTERVAL_CHOICES_SECS,
   rulerLabelIntervalSecs,
+  secondsToMusicalPosition,
+  formatMusicalPosition,
   barsBeatsAt,
   formatRulerElapsed,
   timelineRulerLabels,
 } from './timeline-ruler-labels';
-import { TIMELINE_DEFAULT_BPM, createTimelineTempo } from './timeline-bpm';
+import {
+  TIMELINE_DEFAULT_BPM,
+  TIMELINE_MIN_BPM,
+  TIMELINE_MAX_BPM,
+  createTimelineTempo,
+} from './timeline-bpm';
 import {
   createTimelineScale,
   TIMELINE_SCALE_MIN_PX_PER_SECOND,
@@ -83,6 +90,40 @@ describe('barsBeatsAt', () => {
   it('non-finite or non-positive bpm falls back to the exported default, not a fresh literal', () => {
     expect(barsBeatsAt(10, NaN)).toBe(barsBeatsAt(10, TIMELINE_DEFAULT_BPM));
     expect(barsBeatsAt(10, 0)).toBe(barsBeatsAt(10, TIMELINE_DEFAULT_BPM));
+  });
+});
+
+describe('secondsToMusicalPosition', () => {
+  it('returns the 1-based origin and formats it as a conventional position', () => {
+    const position = secondsToMusicalPosition(0, TIMELINE_DEFAULT_BPM);
+    expect(position).toEqual({ bar: 1, beat: 1, subdivision: 1 });
+    expect(formatMusicalPosition(position)).toBe('1.1.1');
+  });
+
+  it('steps through sixteenth, beat, and bar boundaries at the default tempo', () => {
+    expect(secondsToMusicalPosition(0.125, TIMELINE_DEFAULT_BPM)).toEqual({ bar: 1, beat: 1, subdivision: 2 });
+    expect(secondsToMusicalPosition(0.5, TIMELINE_DEFAULT_BPM)).toEqual({ bar: 1, beat: 2, subdivision: 1 });
+    expect(secondsToMusicalPosition(2, TIMELINE_DEFAULT_BPM)).toEqual({ bar: 2, beat: 1, subdivision: 1 });
+    expect(formatMusicalPosition(secondsToMusicalPosition(2, TIMELINE_DEFAULT_BPM))).toBe('2.1.1');
+  });
+
+  it.each([
+    [TIMELINE_MIN_BPM, 3, '1.2.1'],
+    [TIMELINE_DEFAULT_BPM, 3, '2.3.1'],
+    [TIMELINE_MAX_BPM, 3, '4.4.1'],
+    [175, 2.4, '2.4.1'],
+  ])('formats %s BPM at %s seconds', (bpm, timeSecs, expected) => {
+    expect(formatMusicalPosition(secondsToMusicalPosition(timeSecs, bpm))).toBe(expected);
+  });
+
+  it('normalizes invalid time to the origin and invalid BPM to the shared default', () => {
+    for (const timeSecs of [-5, NaN, Infinity]) {
+      expect(formatMusicalPosition(secondsToMusicalPosition(timeSecs, TIMELINE_DEFAULT_BPM))).toBe('1.1.1');
+    }
+    for (const bpm of [NaN, Infinity, 0, -5]) {
+      expect(formatMusicalPosition(secondsToMusicalPosition(1, bpm)))
+        .toBe(formatMusicalPosition(secondsToMusicalPosition(1, TIMELINE_DEFAULT_BPM)));
+    }
   });
 });
 
@@ -159,12 +200,19 @@ describe('timelineRulerLabels', () => {
     for (const label of labels) expect(tickXs.has(label.xPx)).toBe(true);
   });
 
-  it('BPM never reaches geometry — xPx is identical across tempos while bars differ', () => {
-    const scale = createTimelineScale('default');
-    const slow = timelineRulerLabels(DAW_TIMELINE_SPAN_SECS, scale, createTimelineTempo(60));
-    const fast = timelineRulerLabels(DAW_TIMELINE_SPAN_SECS, scale, createTimelineTempo(200));
-    expect(slow.map((l) => l.xPx)).toEqual(fast.map((l) => l.xPx));
-    expect(slow.map((l) => l.bars)).not.toEqual(fast.map((l) => l.bars));
+  it('BPM never reaches geometry at any zoom state — positions retain their spacing while labels change', () => {
+    const states: readonly TimelineZoomState[] = ['fit', 'default', 'zoomed-in', 'zoomed-out'];
+    for (const state of states) {
+      const scale = state === 'fit'
+        ? createTimelineScale('fit', { durationSecs: DAW_TIMELINE_SPAN_SECS, viewportWidthPx: 900 })
+        : createTimelineScale(state);
+      const slow = timelineRulerLabels(DAW_TIMELINE_SPAN_SECS, scale, createTimelineTempo(60));
+      const fast = timelineRulerLabels(DAW_TIMELINE_SPAN_SECS, scale, createTimelineTempo(200));
+      expect(slow.map((label) => label.xPx)).toEqual(fast.map((label) => label.xPx));
+      for (const label of slow) expect(label.xPx).toBe(scale.timeToX(label.timeSecs));
+      for (const label of fast) expect(label.xPx).toBe(scale.timeToX(label.timeSecs));
+      expect(slow.map((label) => label.bars)).not.toEqual(fast.map((label) => label.bars));
+    }
   });
 
   it('is pure — equal inputs produce a deep-equal result', () => {
