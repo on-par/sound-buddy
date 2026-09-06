@@ -7,8 +7,8 @@
 // Since #56 the resolved link also carries the customer's `prefilled_email`
 // when one is known, so a lapsed subscriber re-upgrading from the momentum
 // card lands in Stripe with their address already filled in. Each SKU's URL
-// is resolved solely from its own env var, injected at build time by the
-// live-provisioning runbook (worker/docs/live-provisioning.md) — there is no
+// is resolved from its own configuration entry. Packaging persists build-time
+// env values into signed resources (packaged-checkout.ts) — there is no
 // baked-in placeholder default, so a missing/misconfigured URL fails loudly
 // (see checkoutUrl) instead of silently opening a broken link.
 //
@@ -22,7 +22,7 @@ const PREFILLED_EMAIL_PARAM = 'prefilled_email';
 
 // Per-SKU env var naming the live Stripe Payment Link URL. Injected at build
 // time (worker/docs/live-provisioning.md §8) — never baked into source.
-const CHECKOUT_URL_ENV_VARS: Record<CheckoutPlan, string> = {
+export const CHECKOUT_URL_ENV_VARS: Record<CheckoutPlan, string> = {
   monthly: 'SOUND_BUDDY_CHECKOUT_MONTHLY_URL',
   annual: 'SOUND_BUDDY_CHECKOUT_ANNUAL_URL',
   founding: 'SOUND_BUDDY_CHECKOUT_FOUNDING_URL',

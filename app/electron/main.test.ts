@@ -77,6 +77,9 @@ vi.mock('./checkout', () => ({
       `https://example.com/checkout/${plan}${email ? `?prefilled_email=${email}` : ''}`,
   ),
 }));
+vi.mock('./packaged-checkout', () => ({
+  packagedCheckoutUrl: vi.fn((_resources: string, plan?: string, email?: string) => checkoutUrl(plan, email)),
+}));
 vi.mock('./capture-guide', () => ({ captureGuideUrl: vi.fn(() => 'https://example.com/guide') }));
 vi.mock('./feedback', () => ({
   openFeedback: vi.fn(),
@@ -98,6 +101,7 @@ import { recordTelemetryEvent } from './telemetry';
 import { openReleasePage } from './updater';
 import { wireAutoUpdater, checkForUpdates, downloadUpdate, installUpdate } from './auto-updater';
 import { checkoutUrl } from './checkout';
+import { packagedCheckoutUrl } from './packaged-checkout';
 import { captureGuideUrl } from './capture-guide';
 import { openFeedback, revealDiagnosticLog, submitFeedback } from './feedback';
 import { ensureTrialStarted, getLicenseState } from './license';
@@ -432,6 +436,14 @@ describe('lifecycle (whenReady callback)', () => {
     const handler = calls.find((c) => c[0] === 'open-checkout')?.[1];
     handler(undefined, 'monthly');
     expect(shell.openExternal).toHaveBeenCalledWith(checkoutUrl('monthly', 'pro@test.local'));
+  });
+
+  it('installed checkout opens the URL from packaged resources', () => {
+    vi.mocked(packagedCheckoutUrl).mockReturnValueOnce('https://buy.stripe.com/packaged-annual');
+    const handler = vi.mocked(ipcMain.handle).mock.calls.find(c => c[0] === 'open-checkout')?.[1];
+    handler?.(undefined, 'annual');
+    expect(shell.openExternal).toHaveBeenLastCalledWith('https://buy.stripe.com/packaged-annual');
+    expect(packagedCheckoutUrl).toHaveBeenCalledWith(process.resourcesPath, 'annual', 'pro@test.local');
   });
 
   it('open-checkout handler passes no email when the license store has none', () => {

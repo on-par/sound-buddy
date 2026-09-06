@@ -90,7 +90,7 @@ describe('remainingLabel', () => {
 });
 
 describe('FOUNDING_CAP', () => {
-  it('is 300', () => {
-    expect(FOUNDING_CAP).toBe(300);
+  it('limits the founding pilot to ten churches', () => {
+    expect(FOUNDING_CAP).toBe(10);
   });
 });

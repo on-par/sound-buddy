@@ -80,9 +80,9 @@ describe('No pricing change and dark/gold system preserved (#193 AC5)', () => {
     expect(indexSrc).toContain("price: '$0'");
   });
 
-  it('pins the founding cap at 300 licenses', () => {
-    expect(FOUNDING_CAP).toBe(300);
-    expect(indexSrc).toContain('300');
+  it('pins the founding cap at ten church licenses', () => {
+    expect(FOUNDING_CAP).toBe(10);
+    expect(indexSrc).toContain('{FOUNDING_CAP}');
   });
 
   it('preserves the gold accent token', () => {

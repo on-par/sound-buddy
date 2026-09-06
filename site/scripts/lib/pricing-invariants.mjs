@@ -5,7 +5,7 @@
  * Check the Founding urgency block in the built pricing HTML. The block is
  * now conditional on a live checkout URL (#560): when a countdown ships, the
  * original #377 guarantees still hold; when it doesn't, the countdown must be
- * fully absent (no half-rendered state) and the 300-cap framing must still be
+ * fully absent (no half-rendered state) and the 10-cap framing must still be
  * visible. The retired "now live — final licenses going fast" claim may never
  * appear either way. Returns an array of human-readable problem strings
  * (empty === OK).
@@ -45,8 +45,8 @@ export function checkFoundingUrgencyInvariants(html) {
     if (/left to claim/i.test(html)) {
       problems.push('Countdown timer copy ("left to claim") present without a live countdown (#560).');
     }
-    if (!html.includes('300')) {
-      problems.push('300-cap framing missing from the built HTML when the countdown is not live (#560).');
+    if (!html.includes('10')) {
+      problems.push('10-cap framing missing from the built HTML when the countdown is not live (#560).');
     }
   }
 

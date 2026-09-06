@@ -15,10 +15,11 @@
   // (H4); build and test never deploy, so these are inert here.
   "routes": [
     { "pattern": "soundbuddy.online/api/stripe/*", "zone_name": "soundbuddy.online" },
-    { "pattern": "soundbuddy.online/api/license", "zone_name": "soundbuddy.online" },
-    // Sub-path of /api/license — the exact-match pattern above does NOT cover it.
-    { "pattern": "soundbuddy.online/api/license/refresh", "zone_name": "soundbuddy.online" },
-    { "pattern": "soundbuddy.online/activate", "zone_name": "soundbuddy.online" },
+    // Cloudflare matches the full URL, including ?session_id=...; a trailing
+    // wildcard is required for checkout redirects and license lookups. The
+    // Worker router still validates exact pathnames (including /license/refresh).
+    { "pattern": "soundbuddy.online/api/license*", "zone_name": "soundbuddy.online" },
+    { "pattern": "soundbuddy.online/activate*", "zone_name": "soundbuddy.online" },
     // Exact-match pattern — does not cover sub-paths of /api/ingest.
     { "pattern": "soundbuddy.online/api/ingest", "zone_name": "soundbuddy.online" },
     // Exact-match pattern — does not cover sub-paths of /api/waitlist.
@@ -47,10 +48,10 @@
   // GITHUB_ISSUES_TOKEN (#929)) are set out-of-band (H4) via
   // `wrangler secret put` and never appear in this file.
   "vars": {
-    "FOUNDING_CAP": "300",
+    "FOUNDING_CAP": "10",
     "FROM_EMAIL": "hello@soundbuddy.online",
     "SUPPORT_EMAIL": "support@soundbuddy.online",
-    "CUSTOMER_PORTAL_URL": "REPLACE_WITH_STRIPE_CUSTOMER_PORTAL_URL",
+    "CUSTOMER_PORTAL_URL": "https://billing.stripe.com/p/login/eVq28refH1f46VadbYawo00",
     "APP_ORIGIN": "https://soundbuddy.online",
     // Signing-key id stamped into every minted key's `kid` claim (#109/#110).
     // Informational only — the app verifies against its embedded public key and
