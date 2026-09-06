@@ -279,6 +279,8 @@ export interface LiveSetupStepsApi {
   showAdvancedControls(trackCount: number): boolean;
 }
 export interface LiveAdjustmentsStateApi {
+  isEnabled(settings: AppSettings | null): boolean;
+  coachingView(state: unknown, now: number): { candidate: unknown };
   panelHTML(
     settings: AppSettings | null,
     mode: string,

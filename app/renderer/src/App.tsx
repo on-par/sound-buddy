@@ -105,6 +105,7 @@ import { sessionLoopRegion } from './loopBrace.render';
 import LiveStatusLine from './LiveStatusLine';
 import LiveSessionOffers from './LiveSessionOffers';
 import WindowBadge from './WindowBadge';
+import LiveMixAlert from './LiveMixAlert';
 import RigDialog from './RigDialog';
 import type { LiveCaptureRuntime, LiveTransitionState } from './LiveControls';
 import type { LiveSetupStepsApi } from './live-workspace-view';
@@ -383,6 +384,7 @@ export default function App() {
       {/* #989: the Console panel moved to its own workspace, away from Live. */}
       {booted && createPortal(<ConsolePanel />, document.getElementById('tab-console')!)}
       {booted && createPortal(<WindowBadge />, document.getElementById('window-badge-island')!)}
+      {booted && createPortal(<LiveMixAlert />, document.getElementById('live-mix-alert-island')!)}
       {booted && createPortal(<RigDialog />, document.getElementById('rig-dialog-island')!)}
       {booted && <LicenseChrome />}
       {booted && <ConsoleNetworkConsentDialog />}
