@@ -25,7 +25,7 @@ const REQUIREMENT_LINE = 'Apple Silicon · macOS 26+';
 const REQUIREMENT_TOOLTIP = `Requires ${REQUIREMENT_LINE}`;
 
 // ── Founding countdown, synced to the demo video drop (#377) ──────────────
-// The 300-cap Founding run's urgency is pinned to the demo video release so peak
+// The 10-cap Founding run's urgency is pinned to the demo video release so peak
 // scarcity lands in the launch-week share window. This DEMO_VIDEO_DROP constant is
 // the single source of truth — update this one line when GTM locks the drop date.
 // The countdown itself is now gated on a live checkout URL (#560) — see
@@ -83,7 +83,7 @@ const tiers = [
     ctaHref: FOUNDING_URL,
     ctaVariant: 'primary',
     founding: true,
-    features: ['Everything in Pro, forever', 'One payment — no subscription', 'Lifetime license key (offline, never expires)', 'All future Pro features included', 'Limited founding run — 300 licenses'],
+    features: ['Everything in Pro, forever', 'One payment — no subscription', 'Lifetime license key (offline, never expires)', 'All future Pro features included', `Limited founding run — ${FOUNDING_CAP} church licenses`],
   },
   {
     name: 'Pro Monthly',
@@ -338,7 +338,7 @@ const tiers = [
     <div class="container">
       <span class="eyebrow">Pricing</span>
       <h2 class="h2">Founding Lifetime — pay $199 once, own Pro forever.</h2>
-      <p class="lede">First 300 churches only, through July. Prefer to pay as you go? $9/mo or $79/yr below — 14-day Pro trial on first launch, no card, no account.</p>
+      <p class="lede">First {FOUNDING_CAP} churches only. Prefer to pay as you go? $9/mo or $79/yr below — 14-day Pro trial on first launch, no card, no account.</p>
       {urgency.mode === 'countdown' && (
         <div class="founding-countdown" data-drop-deadline={dropDeadlineIso}>
           <span class="fc-pulse" aria-hidden="true"></span>
@@ -363,7 +363,7 @@ const tiers = [
       <div class="tiers">
         {tiers.map((t) => (
           <div class={`tier card ${t.founding ? 'founding' : ''}`}>
-            {t.founding && <span class="tier-flag">Founding &middot; first 300 &middot; through July</span>}
+            {t.founding && <span class="tier-flag">Founding &middot; first {FOUNDING_CAP} churches</span>}
             <h3>{t.name}</h3>
             <div class="tier-price"><span class="price">{t.price}</span><span class="cadence">{t.cadence}</span></div>
             <p class="tier-blurb">{t.blurb}</p>

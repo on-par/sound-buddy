@@ -34,6 +34,11 @@ env:
   APPLE_ID: ${{ secrets.APPLE_ID }}
   APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
   APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+  # Public URLs only. afterPack persists them into signed app resources so
+  # installed apps need no developer environment variables.
+  SOUND_BUDDY_CHECKOUT_MONTHLY_URL: ${{ vars.SOUND_BUDDY_CHECKOUT_MONTHLY_URL }}
+  SOUND_BUDDY_CHECKOUT_ANNUAL_URL: ${{ vars.SOUND_BUDDY_CHECKOUT_ANNUAL_URL }}
+  SOUND_BUDDY_CHECKOUT_FOUNDING_URL: ${{ vars.SOUND_BUDDY_CHECKOUT_FOUNDING_URL }}
 
 jobs:
   release:

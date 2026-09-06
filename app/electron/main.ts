@@ -15,6 +15,7 @@ import {
   type AutoUpdaterDeps,
 } from './auto-updater';
 import { checkoutUrl } from './checkout';
+import { packagedCheckoutUrl } from './packaged-checkout';
 import { captureGuideUrl } from './capture-guide';
 import { openFeedback, revealDiagnosticLog, submitFeedback } from './feedback';
 import {
@@ -315,9 +316,8 @@ app.whenReady().then(() => {
   ipcMain.handle('install-update', () => installUpdate(updaterDeps));
 
   // Upgrade CTA (#58): open the hosted Stripe checkout for a plan in the user's
-  // browser. Sound Buddy never handles card data; the real Payment Links are
-  // provisioned per-environment via build env (checkout.ts resolves them from
-  // SOUND_BUDDY_CHECKOUT_*_URL — see worker/docs/live-provisioning.md §8). The
+  // browser. Sound Buddy never handles card data; release builds read public
+  // Payment Links from signed resources, written by afterPack from build env. The
   // customer email known to the local license store is passed along so a
   // lapsed subscriber re-upgrading lands in Stripe with their address pre-filled
   // (#56) — a user with no stored email gets the plain link. A misconfigured
@@ -325,7 +325,11 @@ app.whenReady().then(() => {
   // that's surfaced via a native error dialog instead of opening a broken link.
   ipcMain.handle('open-checkout', (_event, plan?: string) => {
     try {
-      void shell.openExternal(checkoutUrl(plan, getLicenseState().email));
+      const email = getLicenseState().email;
+      const url = app.isPackaged
+        ? packagedCheckoutUrl(process.resourcesPath, plan, email)
+        : checkoutUrl(plan, email);
+      void shell.openExternal(url);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       logWarn(`open-checkout: ${message}`);

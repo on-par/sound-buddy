@@ -2,7 +2,7 @@
 // countdown on a live checkout URL: a placeholder Payment Link is a dead
 // purchase path, so no urgency may render above it until a real link is
 // wired in via PUBLIC_FOUNDING_CHECKOUT_URL.
-export const FOUNDING_CAP = 300;
+export const FOUNDING_CAP = 10;
 
 /** Placeholder Payment Link — mirrors app/electron/checkout.ts's convention.
  *  Real link arrives with #56/#116. */

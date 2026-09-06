@@ -20,8 +20,8 @@ describe('Founding tier renders (#1168 AC1)', () => {
     expect(foundingBlock).toContain("price: '$199'");
   });
 
-  it('carries limited-run 300-cap copy', () => {
-    expect(indexSrc).toContain('300');
+  it('carries limited-run ten-church cap copy', () => {
+    expect(indexSrc).toContain('{FOUNDING_CAP}');
     expect(indexSrc).toContain('Limited founding run');
   });
 

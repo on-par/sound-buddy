@@ -43,8 +43,8 @@ if (!/expense/i.test(html) || !/no recurring vendor approval/i.test(html)) {
   );
 }
 
-if (!html.includes('300')) {
-  problems.push('300-cap framing missing from the built HTML.');
+if (!html.includes('10')) {
+  problems.push('10-cap framing missing from the built HTML.');
 }
 
 const downloadCtaIdx = html.indexOf('href="/download"');

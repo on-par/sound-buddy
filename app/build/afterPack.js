@@ -59,6 +59,9 @@ module.exports = async function afterPack(context) {
   const appName = `${context.packager.appInfo.productFilename}.app`;
   const appPath = path.join(context.appOutDir, appName);
   const resources = path.join(appPath, 'Contents', 'Resources');
+  // Persist only public Payment Links before signing. Missing/test links fail
+  // packaging here, before any expensive native-tool or Python bundling work.
+  require('../dist/electron/packaged-checkout').writePackagedCheckoutConfig(resources, process.env);
   const binDir = path.join(resources, RESOURCE_LAYOUT.bin.resourcesSubdir);
   const libDir = path.join(resources, RESOURCE_LAYOUT.lib.resourcesSubdir);
   const scriptsDir = path.join(__dirname, '..', '..', 'packages', 'audio-engine', 'scripts');

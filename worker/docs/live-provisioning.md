@@ -59,7 +59,7 @@ For each Price, **More** → **Create payment link**; keep the auto-generated
 1. **Pro Monthly** — from `sound_buddy_pro_monthly`.
 2. **Pro Annual** — from `sound_buddy_pro_annual`.
 3. **Founding Lifetime** — from `sound_buddy_founding_lifetime`, with
-   `restrictions.completed_sessions.limit = 300` (== `FOUNDING_CAP`,
+   `restrictions.completed_sessions.limit = 10` (== `FOUNDING_CAP`,
    `site/src/lib/founding-urgency.ts` and `worker/wrangler.jsonc`).
    Only this link gets the cap; the Pro links need none.
 
@@ -205,9 +205,11 @@ placeholder to replace — it throws when its env var is unset.
   HTTP-403 founding link live.
 - **App release build env:** `SOUND_BUDDY_CHECKOUT_MONTHLY_URL` /
   `SOUND_BUDDY_CHECKOUT_ANNUAL_URL` / `SOUND_BUDDY_CHECKOUT_FOUNDING_URL` = the
-  three Payment Links from section 2 (the app resolves each SKU solely from its
-  own env var via `app/electron/checkout.ts`; a missing/blank var throws
-  instead of opening a broken link).
+  three Payment Links from section 2. Set these as GitHub repository variables;
+  `release.yml` passes them into `afterPack`, which writes only these public URLs
+  to `Contents/Resources/checkout-urls.json` before signing. Installed apps read
+  this file and need no shell environment. Missing, test-mode, or non-Stripe URLs
+  stop packaging before a broken checkout can ship.
 
 ## 9. Verify in test mode
 
@@ -247,7 +249,7 @@ placeholder to replace — it throws when its env var is unset.
    + bank account for payouts (this is irreversible — real money).
 2. **Replicate** the three Products/Prices and three Payment Links to **Live**
    mode (repeat sections 1–2 with the dashboard toggle off), keeping the same
-   lookup keys, prices, the 300-completed-session cap on the Founding link, and
+   lookup keys, prices, the 10-completed-session cap on the Founding link, and
    the `/activate` redirect.
 3. **Register the live webhook** (repeat section 3 with the live endpoint) and
    store its live `whsec_...`.
@@ -279,7 +281,7 @@ to do it.
 - [ ] Dedicated account `acct_1Tv0wcF8DNgPKMma` used throughout; isolated from `acct_1TblkbFCwPak9879` (§0)
 - [ ] Product `Sound Buddy Pro` with `sound_buddy_pro_monthly` ($9/mo) and `sound_buddy_pro_annual` ($79/yr) prices (§1)
 - [ ] Product `Sound Buddy Founding Lifetime` with one-time `sound_buddy_founding_lifetime` ($199) price (§1)
-- [ ] Three Payment Links created; Founding link capped at 300 completed sessions (§2)
+- [ ] Three Payment Links created; Founding link capped at 10 completed sessions (§2)
 - [ ] All three links redirect after_completion to `https://soundbuddy.online/activate?session_id={CHECKOUT_SESSION_ID}` (§2)
 - [ ] Webhook registered at `https://soundbuddy.online/api/stripe/webhook` with the six events (§3)
 - [ ] `STRIPE_WEBHOOK_SECRET` set via `wrangler secret put` (test then live) (§3)

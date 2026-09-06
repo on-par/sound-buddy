@@ -47,7 +47,7 @@
   // GITHUB_ISSUES_TOKEN (#929)) are set out-of-band (H4) via
   // `wrangler secret put` and never appear in this file.
   "vars": {
-    "FOUNDING_CAP": "300",
+    "FOUNDING_CAP": "10",
     "FROM_EMAIL": "hello@soundbuddy.online",
     "SUPPORT_EMAIL": "support@soundbuddy.online",
     "CUSTOMER_PORTAL_URL": "REPLACE_WITH_STRIPE_CUSTOMER_PORTAL_URL",
