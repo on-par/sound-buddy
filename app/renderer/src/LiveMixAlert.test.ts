@@ -102,7 +102,7 @@ describe('liveMixAlertView (#1373)', () => {
     ['the active candidate is unrelated', true, true, { ...LOW_END, id: 'harshness', title: 'Possible harshness', action: 'Consider a gentle cut in the 2–6 kHz range.' }],
     ['the active candidate is input-scoped low-end cleanup', true, true, { ...LOW_END, id: 'input-low-cleanup', scope: 'input' }],
   ])('returns null when %s', (_reason, isCapturing, enabled, candidate) => {
-    expect(lowEndMixAlertView(isCapturing, enabled as boolean, candidate)).toBeNull();
+    expect(lowEndMixAlertView(isCapturing, enabled, candidate)).toBeNull();
   });
 
   it('stays absent for a pending low-end candidate, then appears only after reducer persistence settles it', () => {

@@ -14,7 +14,7 @@ export interface LiveMixAlertView {
 
 export function lowEndMixAlertView(
   isCapturing: boolean,
-  liveAdjustmentsEnabled: boolean,
+  liveAdjustmentsEnabled: unknown,
   candidate: unknown,
 ): LiveMixAlertView | null {
   if (
