@@ -179,6 +179,39 @@ export async function renameHeader(window: Page, head: Locator, value: string) {
   await window.keyboard.press('Enter');
 }
 
+// #1385: the live capture phase as the transport itself computes it — the
+// liveCapture store flags off window.rendererStores (App.tsx's
+// installStoreBridge) run through the production
+// window.liveTransitionState.capturePhase model, so a spec can assert
+// "the recording ended" without re-deriving the phase from DOM strings.
+// Returns phase 'idle' before the bridge is installed (nothing can be
+// capturing then), so it is safe right after launchApp().
+export interface CaptureSnapshot {
+  isCapturing: boolean;
+  liveMode: string;
+  phase: string;
+}
+
+export async function captureSnapshot(window: Page): Promise<CaptureSnapshot> {
+  return window.evaluate(() => {
+    type LiveFlags = {
+      isCapturing: boolean; liveMode: string;
+      promoting: boolean; stopping: boolean; demoting: boolean;
+    };
+    const w = window as unknown as {
+      rendererStores?: { liveCapture?: { getState(): LiveFlags } };
+      liveTransitionState?: { capturePhase(v: LiveFlags & { liveRunning: boolean }): string };
+    };
+    const s = w.rendererStores?.liveCapture?.getState();
+    if (!s || !w.liveTransitionState) return { isCapturing: false, liveMode: 'monitor', phase: 'idle' };
+    return {
+      isCapturing: s.isCapturing,
+      liveMode: s.liveMode,
+      phase: w.liveTransitionState.capturePhase({ ...s, liveRunning: s.isCapturing }),
+    };
+  });
+}
+
 // #776: the always-monitoring Live tab has no button that fully stops capture —
 // a Record-button stop only demotes a record session back to a monitor session.
 // Tests/automation that need a genuinely idle board (config unlocked, readout
