@@ -52,7 +52,7 @@ export { findSpectralPeaks, bandEnergy, localEnvelope } from "./analyze/spectral
 export type { SpectralPeak, FindPeaksOptions } from "./analyze/spectral.js";
 
 // Mains-hum eligibility policy (#1390): caller-owned completed-window state
-// for a later live-analysis consumer; it does not extract spectrum peaks.
+// for a later live-analysis consumer.
 export {
   MAINS_HUM_SILENCE_THRESHOLD_DBFS,
   MAINS_HUM_MIN_PEAK_PROMINENCE_DB,
@@ -60,8 +60,10 @@ export {
   MAINS_HUM_REQUIRED_CONSECUTIVE_WINDOWS,
   isQualifyingMainsHumWindow,
   advanceMainsHumEligibility,
+  extractMainsHumWindow,
+  classifyMainsHum,
 } from "./analyze/mains-hum.js";
-export type { MainsHumWindow, MainsHumEligibility } from "./analyze/mains-hum.js";
+export type { MainsHumWindow, MainsHumEligibility, MainsHumDetectionResult } from "./analyze/mains-hum.js";
 
 // Harshness rules engine (#381): data-driven symptom-to-frequency rules over
 // the shared spectral core. Renderer/narrative consumption is #375.
