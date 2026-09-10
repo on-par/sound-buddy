@@ -103,6 +103,7 @@ import { applyClipClick } from './clip-click';
 import { sessionClipSelection } from './clip-selection';
 import { sessionTimeSelection } from './time-selection';
 import { beginTimeSelectionDrag } from './time-selection-drag';
+import { zoomSelectionAtAction } from './zoomFromSelection';
 import { beginLoopBodyDrag, LOOP_BRACE_BODY_SELECTOR } from './loopBrace.bodyDrag';
 import { beginLoopEdgeDrag, LOOP_HANDLE_END_SELECTOR, LOOP_HANDLE_START_SELECTOR, type LoopEdge } from './loopBrace.edgeDrag';
 import { sessionLoopRegion } from './loopBrace.render';
@@ -287,10 +288,12 @@ export default function LiveCapturePanel(): JSX.Element | null {
   const zoomContext: TimelineZoomContext = {
     durationSecs: timelineOverviewDurationSecs(takeSecs, elapsedSecs),
     playheadSecs: elapsedSecs,
-    // No time-selection surface exists yet (#1283/#1285), so the loaded take's
-    // span is the selection; with no take, applyTimelineZoom falls back to an
-    // insert-marker window at the real insert marker (#1301), not the playhead.
-    selection: takeSecs > 0 ? { startSecs: 0, endSecs: takeSecs } : null,
+    // The drawn time selection (#1395), falling back to the loaded take's full span, or
+    // with no take to null so applyTimelineZoom falls back to an insert-marker window at
+    // the real insert marker (#1301), not the playhead. The .daw-zoom-btn branch below
+    // re-derives this live at click time instead of trusting this render-time value — see
+    // the comment there.
+    selection: zoomSelectionAtAction(sessionTimeSelection, takeSecs),
     insertMarkerSecs: sessionTimelineMarks.getInsertMarkerSecs(),
   };
   const timelineZoomView = timelineZoomControlsView(timelineZoom, zoomContext);
@@ -643,7 +646,9 @@ export default function LiveCapturePanel(): JSX.Element | null {
     // zoomContext is captured from the current render, which is correct here
     // for the same reason the BPM branch captures timelineTempo: the handler
     // is re-created every render — EXCEPT insertMarkerSecs, which #1302 lets
-    // move on a lane press without a render, so it is re-read live here.
+    // move on a lane press without a render, so it is re-read live here, and
+    // selection, which a drag gesture can likewise change without a render
+    // (#1395) — zoomSelectionAtAction re-reads sessionTimeSelection live.
     const zoomBtn = target.closest('.daw-zoom-btn');
     if (zoomBtn) {
       const action = timelineZoomActionForId(zoomBtn.id);
@@ -654,6 +659,7 @@ export default function LiveCapturePanel(): JSX.Element | null {
         zoomManuallyChanged.current = action !== 'fit-full';
         setTimelineZoom((model) => applyTimelineZoom(model, action, {
           ...zoomContext,
+          selection: zoomSelectionAtAction(sessionTimeSelection, takeSecs),
           insertMarkerSecs: sessionTimelineMarks.getInsertMarkerSecs(),
         }));
         setTimelineFollow((m) => applyTimelineFollowEvent(m, 'navigate'));
