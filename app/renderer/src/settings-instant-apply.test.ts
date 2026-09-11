@@ -34,7 +34,7 @@ const FULL_SETTINGS: AppSettings = {
   gradingProfile: 'broadcast',
   consoleNetworkConsentGranted: false,
   soundcheckBuses: [],
-  splCalibrationOffsetDb: null,
+  splCalibrationOffsetDb: null, lastAppMode: '',
 };
 
 describe('instantSettingValues', () => {

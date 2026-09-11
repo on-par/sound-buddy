@@ -461,6 +461,37 @@ describe('measurementDeviceName (#460 — persisted preferred device, matched by
   });
 });
 
+describe('lastAppMode (#1405 — persisted last-active workspace mode, default empty)', () => {
+  it('defaults to empty when settings.json is absent', () => {
+    expect(getSettings().lastAppMode).toBe('');
+  });
+
+  it('defaults to empty when the file exists without the key', () => {
+    writeFile({ idealProfile: '' });
+    expect(getSettings().lastAppMode).toBe('');
+  });
+
+  it('round-trips a value through updateSettings, the raw file, and a fresh read', () => {
+    const updated = updateSettings({ lastAppMode: 'live' });
+    expect(updated.lastAppMode).toBe('live');
+    expect(readFile().lastAppMode).toBe('live');
+    expect(getSettings().lastAppMode).toBe('live');
+  });
+
+  it.each([42, null, {}, ['a']])(
+    'hydrates a corrupted lastAppMode value (%p) back to the default empty string',
+    (corrupted) => {
+      writeFile({ lastAppMode: corrupted });
+      expect(getSettings().lastAppMode).toBe('');
+    },
+  );
+
+  it('has no env layer — a stored mode is pure persisted data', () => {
+    updateSettings({ lastAppMode: 'live' });
+    expect(getSettings().lastAppMode).toBe('live');
+  });
+});
+
 describe('gradingProfile (#266 — grading-strictness profile, default casual)', () => {
   it("defaults to 'casual' when settings.json is absent", () => {
     expect(getSettings().gradingProfile).toBe('casual');
@@ -871,7 +902,7 @@ describe('SETTING_SPECS — the single owner of every field invariant (#747)', (
     gradingProfile: 'casual',
     consoleNetworkConsentGranted: false,
     soundcheckBuses: [],
-    splCalibrationOffsetDb: null,
+    splCalibrationOffsetDb: null, lastAppMode: '',
   };
 
   it('covers every AppSettings key — and no extras (compile-time + runtime set equality)', () => {

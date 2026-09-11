@@ -83,6 +83,7 @@ import SkillTreeDialog from './SkillTreeDialog';
 import { useOnboardingStore } from './stores/onboardingStore';
 import { useSkillTreeStore } from './stores/skillTreeStore';
 import { useLiveCaptureStore } from './stores/liveCaptureStore';
+import { useSettingsStore } from './stores/settingsStore';
 import { useAnalysisStore } from './stores/analysisStore';
 import { useSpectrumStore } from './stores/spectrumStore';
 import { useRigStore } from './stores/rigStore';
@@ -317,7 +318,16 @@ export default function App() {
     // trigger the second render that portals ReportCardIsland/SpectrumPanel
     // onto them (TD-001 slice 4, #422).
     const initialMode = useLiveCaptureStore.getState().appMode;
-    if (modeSwitch.isWorkspaceMode(initialMode)) modeSwitch.switchMode(initialMode);
+    if (modeSwitch.isWorkspaceMode(initialMode)) modeSwitch.switchMode(initialMode, { boot: true });
+    // #1405: restore the last-active mode (persisted by non-boot switchMode
+    // calls) once settings + device/rig hydration have both settled —
+    // window.rendererHydration is installed by inline-app.js's Init IIFE,
+    // right after it kicks off loadSettings()/loadDevices().then(loadRigs).
+    void modeSwitch.restoreBootMode({
+      hydration: (window as unknown as { rendererHydration?: Promise<unknown> }).rendererHydration ?? Promise.resolve(),
+      getLastAppMode: () => useSettingsStore.getState().settings?.lastAppMode,
+      getCurrentMode: () => useLiveCaptureStore.getState().appMode,
+    });
     setBooted(true);
   }, []);
 

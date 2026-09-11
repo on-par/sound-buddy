@@ -58,6 +58,10 @@ export const MAX_SHARE_CHURCH_NAME_LEN = 40;
 // names are short; the cap only guards a hand-crafted settings.json payload
 // from bloating the stored preference.
 const MAX_MEASUREMENT_DEVICE_NAME_LEN = 128;
+// Cap on the persisted last-active app mode string (#1405). Every real
+// WorkspaceMode name (mode-switch.ts) is well under this; it only guards a
+// hand-crafted settings.json payload, same rationale as the device-name cap.
+const MAX_LAST_APP_MODE_LEN = 20;
 // Valid range for weeklyReminderServiceDay (#268) — 0 = Sunday … 6 = Saturday,
 // matching Date.prototype.getDay().
 const MIN_SERVICE_DAY = 0;
@@ -269,6 +273,11 @@ export const SETTING_SPECS: { [K in keyof AppSettings]: SettingSpec<AppSettings[
   activeRigId: {
     default: null,
     sanitizeFile: (v) => ((v ?? SETTING_SPECS.activeRigId.default) as string | null),
+  },
+  lastAppMode: {
+    default: '',
+    sanitizeFile: (v) => (typeof v === 'string' ? v : SETTING_SPECS.lastAppMode.default),
+    sanitizePatch: (v) => (typeof v === 'string' ? v.trim().slice(0, MAX_LAST_APP_MODE_LEN) : undefined),
   },
   usageSignalEnabled: {
     default: false,
