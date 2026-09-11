@@ -201,10 +201,13 @@ test.describe('Live capture (PRD 06) — workspace controls', () => {
       await closeSettings(window);
 
       await window.locator('#daw-session-record').click(); // stop → monitoring resumes (#776)
-      // #776: always-monitoring — a record stop keeps the board live, so Add
-      // stays read-only (config capture-locked while monitoring) instead of
-      // re-enabling the way the old full stop did.
-      await expect(window.locator('#live-ws-add')).toBeDisabled();
+      // #1403: a record stop resumes monitoring, and monitoring no longer
+      // locks the capture set — Add re-enables (remove stays boardRunning-
+      // gated, so it is not asserted here). Clicking it proves an add while
+      // monitoring actually lands a track.
+      await expect(window.locator('#live-ws-add')).toBeEnabled();
+      await window.locator('#live-ws-add').click();
+      await expect(window.locator('#spectrum-body .daw-track-head')).toHaveCount(3);
     });
   });
 

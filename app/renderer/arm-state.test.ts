@@ -35,6 +35,16 @@ describe('allTokens / armedTokens', () => {
   it('allTokens covers every strip', () => expect(allTokens(CFG)).toEqual(['0', '2-3', '4']));
   it('armedTokens drops the disarmed strip, keeps default-armed', () => expect(armedTokens(CFG)).toEqual(['0', '4']));
   it('empty/null config → no tokens', () => { expect(armedTokens(null)).toEqual([]); expect(allTokens(null)).toEqual([]); });
+
+  it('#1403: keeps duplicate tokens positional (one entry per strip, no dedupe)', () => {
+    const duplicated: Strip[] = [
+      { kind: 'mono', a: 3, b: 3 },
+      { kind: 'mono', a: 3, b: 3 },
+      { kind: 'stereo', a: 3, b: 3 },
+    ];
+    expect(allTokens(duplicated)).toEqual(['3', '3', '3']);
+    expect(allTokens(duplicated)).toHaveLength(duplicated.length);
+  });
 });
 
 describe('armedCount', () => {

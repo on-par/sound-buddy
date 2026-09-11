@@ -94,6 +94,14 @@ class ParseChannelGroups(unittest.TestCase):
         with self.assertRaises(ValueError):
             stream.parse_channel_groups("1-2-3", 8)
 
+    def test_duplicate_tokens_keep_one_group_per_token(self):
+        # #1403: two strips routed to the same input(s) must each keep their
+        # own group — no dedupe collapsing the positional strip<->group
+        # mapping the renderer relies on.
+        groups = stream.parse_channel_groups("3,3,1-2,1-2", 4)
+        self.assertEqual(len(groups), 4)
+        self.assertEqual([g["indices"] for g in groups], [[3], [3], [1, 2], [1, 2]])
+
 
 class AnalyzeGroups(unittest.TestCase):
     def setUp(self):

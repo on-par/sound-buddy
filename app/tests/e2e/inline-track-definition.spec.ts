@@ -100,7 +100,7 @@ test.describe('Selected-channel input settings (#189, moved to the right pane in
     });
   });
 
-  test('the pane kind and source controls freeze while a capture is running', async () => {
+  test('the pane kind and source controls freeze while recording and re-enable when monitoring resumes', async () => {
     await selectCh0();
     await window.locator('#daw-session-record').click();
     await window.locator('#settings-btn').click();
@@ -111,10 +111,9 @@ test.describe('Selected-channel input settings (#189, moved to the right pane in
     await expect(pane().locator('.eq-pane-inspector-source').first()).toBeDisabled();
 
     await window.locator('#daw-session-record').click(); // stop → monitoring resumes (#776)
-    // #776: always-monitoring — a record stop keeps the board live, so the
-    // pane's kind/source selects stay disabled (monitoring locks config)
-    // instead of re-enabling the way the old full stop did.
-    await expect(pane().locator('.eq-pane-inspector-kind')).toBeDisabled();
-    await expect(pane().locator('.eq-pane-inspector-source').first()).toBeDisabled();
+    // #1403: a record stop resumes monitoring, and monitoring no longer locks
+    // the capture set — kind/source re-enable.
+    await expect(pane().locator('.eq-pane-inspector-kind')).toBeEnabled();
+    await expect(pane().locator('.eq-pane-inspector-source').first()).toBeEnabled();
   });
 });

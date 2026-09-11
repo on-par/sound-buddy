@@ -20,7 +20,6 @@ import {
   deviceListView,
   deviceChannelCount,
   deviceNameFor,
-  usedChannelCount,
   measurementSourceAfterRemove,
   channelFlagsAfterRemove,
   type ChannelFlagMap,
@@ -39,6 +38,7 @@ import {
   applyStartResult,
   applyStreamEnded,
   reconnectDecision,
+  captureOptsFromCadence,
   DEFAULT_METER_INTERVAL_MS,
   DEFAULT_WINDOW_SECS,
   type SecondaryMeasurementState,
@@ -48,6 +48,7 @@ import {
   lapFocusView,
   lapObservationContext,
   liveWorkspaceViewState,
+  monitorRestartAllowed,
   type LiveWorkspaceViewState,
 } from '../live-workspace-view';
 import type { AppSettings } from '../../../electron/ipc/api';
@@ -154,6 +155,11 @@ interface GroupStateApi {
 interface RigKindApi {
   switchKind(strip: StripConfig, kind: string, maxChannels: number): StripConfig;
 }
+// #1403: addStrip's landing-channel pick — read via the same typed-accessor
+// pattern as armState/groupState/rigKind above.
+interface TrackWorkspaceApi {
+  nextUnusedChannel(cfg: StripConfig[], total: number): number;
+}
 function getArmState(): ArmStateApi {
   return (window as unknown as { armState: ArmStateApi }).armState;
 }
@@ -165,6 +171,9 @@ function getGroupState(): GroupStateApi {
 }
 function getRigKind(): RigKindApi {
   return (window as unknown as { rigKind: RigKindApi }).rigKind;
+}
+function getTrackWorkspace(): TrackWorkspaceApi {
+  return (window as unknown as { trackWorkspace: TrackWorkspaceApi }).trackWorkspace;
 }
 
 // The live-adjustments classic script (#522) — the coaching state machine and
@@ -360,6 +369,12 @@ export interface LiveCaptureState {
 
   startCapture(opts: StartCaptureOpts): Promise<StartCaptureResult | undefined>;
   stopCapture(): Promise<StopCaptureResult | undefined>;
+  // #1403: apply a channel-set edit (Mode/Source/Add track) to a RUNNING
+  // monitor session by bouncing stream.py with the current tokens. Never runs
+  // the LiveControls stop/start ceremony or the capture-lifecycle hooks —
+  // this is a routing edit, not a session boundary. No-op unless
+  // monitorRestartAllowed(); overlapping calls coalesce to one follow-up.
+  restartMonitorCapture(): Promise<StartCaptureResult | undefined>;
   // Direct setter for isCapturing (TD-001 slice 6c, #701) — used by the
   // still-inline capture orchestration (playhead/waveform/rig side effects
   // that can't yet route through the async startCapture/stopCapture actions)
@@ -484,6 +499,13 @@ function toggledFlags(flags: ChannelFlagMap, idx: number): ChannelFlagMap {
 }
 
 export function createLiveCaptureStore(getApi: () => LiveCaptureApi) {
+  // #1403: restartMonitorCapture's in-flight promise + a "one more please" flag
+  // — closure state (not store state) so overlapping restart requests coalesce
+  // to at most one follow-up run instead of racing stopLive/startLive pairs.
+  let monitorRestart: Promise<StartCaptureResult | undefined> | null = null;
+  let monitorRestartQueued = false;
+  const RESTART_STOP_FAILED = 'Could not apply the routing change: the live stream did not stop. Press Record then Stop, or quit and reopen Sound Buddy.';
+  const RESTART_START_FAILED = 'Could not restart live monitoring after the routing change. Press the Record button to start again.';
   return create<LiveCaptureState>()((set, get) => ({
     devices: [],
     deviceHint: null,
@@ -605,13 +627,14 @@ export function createLiveCaptureStore(getApi: () => LiveCaptureApi) {
     addStrip() {
       const state = get();
       const n = deviceChannelCount(state.selectedDevice, state.devices);
-      const next = Math.min(usedChannelCount(state.channelConfig), n - 1);
+      const next = getTrackWorkspace().nextUnusedChannel(state.channelConfig, n);
       set({
         channelConfig: [
           ...state.channelConfig,
           { kind: 'mono', a: next, b: Math.min(next + 1, n - 1), armed: true },
         ],
       });
+      void get().restartMonitorCapture();
     },
 
     removeStrip(idx) {
@@ -641,6 +664,7 @@ export function createLiveCaptureStore(getApi: () => LiveCaptureApi) {
       const n = deviceChannelCount(state.selectedDevice, state.devices);
       const updated = getRigKind().switchKind(strip, kind, n);
       set({ channelConfig: state.channelConfig.map((s, i) => (i === idx ? updated : s)) });
+      void get().restartMonitorCapture();
     },
 
     setStripSource(idx, field, channel) {
@@ -649,6 +673,7 @@ export function createLiveCaptureStore(getApi: () => LiveCaptureApi) {
       set({
         channelConfig: state.channelConfig.map((s, i) => (i === idx ? { ...s, [field]: channel } : s)),
       });
+      void get().restartMonitorCapture();
     },
 
     setStripLabel(idx, label) {
@@ -777,6 +802,43 @@ export function createLiveCaptureStore(getApi: () => LiveCaptureApi) {
         });
         return { success: false, sessionDir: null };
       }
+    },
+
+    async restartMonitorCapture() {
+      if (monitorRestart) { monitorRestartQueued = true; return monitorRestart; }
+      const run = async (): Promise<StartCaptureResult | undefined> => {
+        let result: StartCaptureResult | undefined;
+        do {
+          monitorRestartQueued = false;
+          const state = get();
+          if (!monitorRestartAllowed(state)) return undefined;
+          const stop = (await getApi().stopLive()) as StopCaptureResult | undefined;
+          if (stop && !stop.success) {
+            set({ lastError: RESTART_STOP_FAILED });
+            return { success: false, error: RESTART_STOP_FAILED };
+          }
+          const next = get();
+          const opts = captureOptsFromCadence(next.windowSecs, next.meterIntervalMs);
+          set({ liveWindows: [], lastLiveChannels: null });
+          result = (await getApi().startLive({
+            device: next.selectedDevice || undefined,
+            channels: getArmState().allTokens(next.channelConfig),
+            windowSecs: opts.windowSecs,
+            intervalSecs: opts.intervalSecs,
+            mode: 'monitor',
+            recordDir: next.recordDir || undefined,
+            arm: undefined,
+            labels: undefined,
+          })) as StartCaptureResult;
+          if (!result.success) {
+            set({ isCapturing: false, lastError: result.error || RESTART_START_FAILED });
+            return result;
+          }
+        } while (monitorRestartQueued);
+        return result;
+      };
+      monitorRestart = run().finally(() => { monitorRestart = null; monitorRestartQueued = false; });
+      return monitorRestart;
     },
 
     setRunning(running) {
