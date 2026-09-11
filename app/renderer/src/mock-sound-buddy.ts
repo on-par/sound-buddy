@@ -53,7 +53,7 @@ const DEFAULT_APP_SETTINGS: AppSettings = {
   gradingProfile: 'casual',
   consoleNetworkConsentGranted: false,
   soundcheckBuses: [],
-  splCalibrationOffsetDb: null,
+  splCalibrationOffsetDb: null, lastAppMode: '',
 };
 
 const DEFAULT_LICENSE_STATE: LicenseState = { tier: 'free', status: 'none' };

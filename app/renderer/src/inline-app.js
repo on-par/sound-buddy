@@ -500,7 +500,7 @@ function aiEl(id) { return document.getElementById(id); }
 })();
 
 /* ══ Init ══ */
-(async () => {
+const settingsHydrated = (async () => {
   await setStore.getState().loadSettings();
   // idealProfilesStore hydration (idealProfileId/customIdealProfiles) now
   // flows from bridge.ts's settings subscription (TD-001 slice 6b, #700). The
@@ -520,10 +520,19 @@ specStore.getState().setPanelState('empty'); // store default text ('Load a file
 // Load devices first so a saved rig can reconcile its device by name and clamp
 // channels against the real device list; then apply the active rig (if any).
 // Device loading is a store action now (TD-001 slice 6h, #711).
-lcStore.getState().loadDevices().then(
+const devicesThenRigsHydrated = lcStore.getState().loadDevices().then(
   window.rendererStores.rig.getState().loadRigs,
   window.rendererStores.rig.getState().loadRigs,
 );
+
+// #1405: App.tsx's boot effect (mode-switch.ts's restoreBootMode) awaits this
+// to know when it's safe to restore the last-active mode / run the live
+// auto-start decision — before both promises above settle, settings/devices/
+// rigs may not be hydrated yet, so switching to Live earlier would run
+// decideLiveAutoStart against a still-empty rigStore and skip it for the
+// wrong reason. allSettled (not all) so a settings-load failure still lets
+// the device/rig branch finish, and vice versa.
+window.rendererHydration = Promise.allSettled([settingsHydrated, devicesThenRigsHydrated]);
 
 // First-run onboarding (#69) is now App.tsx's
 // `void useOnboardingStore.getState().init();` boot call (TD-001 slice 6f, #704).

@@ -42,6 +42,7 @@ export interface UpdateSettingsPatch {
   weeklyReminderServiceDay?: number;
   liveEqPaneWidth?: number;
   measurementDeviceName?: string;
+  lastAppMode?: string;
   gradingProfile?: 'casual' | 'broadcast';
   consoleNetworkConsentGranted?: boolean;
   soundcheckBuses?: SoundcheckBus[];
@@ -254,6 +255,15 @@ export interface AppSettings {
   rigs: CaptureRig[];
   /** Id of the currently selected rig, or null when none. Default null. */
   activeRigId: string | null;
+  /**
+   * The workspace mode (WorkspaceMode, mode-switch.ts) active when the app
+   * last closed (#1405), e.g. 'live' or 'reportcard'. Default '' (= no
+   * preference, boots on Report Card as before). Typed as a plain string
+   * here rather than a union so the runtime mode list stays solely owned by
+   * mode-switch.ts's isWorkspaceMode — an unrecognized or stale value is
+   * just ignored at restore time, never rejected at the settings layer.
+   */
+  lastAppMode: string;
   /**
    * Opt-in anonymous usage counts (#145). Default false (off). This is a
    * persisted preference ONLY — no collection, batching, or network code
