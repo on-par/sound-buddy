@@ -211,6 +211,45 @@ test.describe('Live capture (PRD 06) — workspace controls', () => {
     });
   });
 
+  // Track-head channel badge + picker (#1404): change any track's hardware
+  // channel (mono or stereo pair) from the track itself, without selecting
+  // the strip or opening the EQ pane inspector.
+  test.describe('Track channel badge/picker (#1404)', () => {
+    test('shows each track\'s current channel assignment as a compact badge', async () => {
+      // Default device seeding (defaultChannelConfig): track 1 -> Ch1, track 2 -> Ch2.
+      await expect(window.locator('.daw-track-head[data-ch="0"] .daw-track-head-channel-badge')).toHaveText('1');
+      await expect(window.locator('.daw-track-head[data-ch="1"] .daw-track-head-channel-badge')).toHaveText('2');
+    });
+
+    test('changes a track to a stereo pair from the badge picker, and Escape closes it', async () => {
+      const track2 = window.locator('.daw-track-head[data-ch="1"]');
+      const badge = track2.locator('.daw-track-head-channel-badge');
+      const picker = track2.locator('.daw-track-channel-picker');
+
+      await badge.click();
+      await expect(picker).toBeVisible();
+      await expect(badge).toHaveAttribute('aria-expanded', 'true');
+
+      await picker.locator('.daw-track-channel-picker-kind').selectOption('stereo');
+      await expect(picker.locator('.daw-track-channel-picker-source[data-field="b"]')).toBeVisible();
+
+      await picker.locator('.daw-track-channel-picker-source[data-field="a"]').selectOption('4'); // Ch 5
+      await picker.locator('.daw-track-channel-picker-source[data-field="b"]').selectOption('5'); // Ch 6
+      await expect(badge).toHaveText('5/6');
+
+      // Escape closes the still-open picker with no further change.
+      await picker.locator('.daw-track-channel-picker-kind').press('Escape');
+      await expect(picker).toBeHidden();
+      await expect(badge).toHaveText('5/6');
+
+      // The EQ pane inspector for the same track stays in sync (same store action).
+      await track2.locator('.daw-track-head-index').click();
+      await expect(window.locator('.eq-pane-inspector-kind')).toHaveValue('stereo');
+      await expect(window.locator('.eq-pane-inspector-source[data-field="a"]')).toHaveValue('4');
+      await expect(window.locator('.eq-pane-inspector-source[data-field="b"]')).toHaveValue('5');
+    });
+  });
+
   // Docked live EQ pane resize (#668): a draggable handle on the pane's left
   // edge, clamped to [EQ_PANE_MIN_W, EQ_PANE_MAX_W] (live-capture-panel.ts).
   test.describe('EQ pane resize (#668)', () => {

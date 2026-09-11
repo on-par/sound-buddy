@@ -201,6 +201,11 @@ export function ensureSessionRouting(
 
 export default function LiveCapturePanel(): JSX.Element | null {
   const [sessionRoutingDrawerOpen, setSessionRoutingDrawerOpen] = useState(false);
+  // #1404: which track's channel-routing picker is open on the head row, or
+  // null. Transient view state like the routing drawer flag above, not store
+  // data — surviving a board rebuild (dangerouslySetInnerHTML swap) is exactly
+  // why it lives in React state rather than being derived from the DOM.
+  const [channelPickerIndex, setChannelPickerIndex] = useState<number | null>(null);
   // Session tempo (#1276). Transient render state, like the routing drawer flag
   // above — persistence across restarts is not in this slice's scope.
   const [timelineTempo, setTimelineTempo] = useState<TimelineTempo>(createTimelineTempo);
@@ -328,6 +333,7 @@ export default function LiveCapturePanel(): JSX.Element | null {
     timelineBpm,
     timelineZoomView,
     timelineFollowView(timelineFollow),
+    channelPickerIndex,
   );
   const laneSignature = dawShellPatchView(state).laneSignature;
 
@@ -696,6 +702,20 @@ export default function LiveCapturePanel(): JSX.Element | null {
       routeHeaderChannelAction(action, channelId, useLiveCaptureStore.getState());
       return;
     }
+    // #1404: the channel-routing badge opens/closes its own track's picker.
+    // Clicking a different track's badge switches which one is open rather
+    // than stacking two — only one picker is ever open at a time.
+    const channelBadge = target.closest('.daw-track-head-channel-badge');
+    if (channelBadge) {
+      const idx = parseInt(channelBadge.closest('.daw-track-head')?.getAttribute('data-ch') ?? '', 10);
+      if (Number.isInteger(idx)) setChannelPickerIndex((open) => (open === idx ? null : idx));
+      return;
+    }
+    // #1404: a click anywhere inside the open picker (its selects, in
+    // particular) must not fall through to strip selection below — that
+    // would rewrite the board's innerHTML mid-interaction and destroy the
+    // native <select> before the browser commits the click (ADR-0133).
+    if (target.closest('.daw-track-channel-picker')) return;
     // Workspace Arm all / Disarm all (#191).
     if (target.closest('#live-ws-arm-all')) {
       useLiveCaptureStore.getState().setAllArmed(true);
@@ -938,6 +958,14 @@ export default function LiveCapturePanel(): JSX.Element | null {
 
   function onBoardKeyDown(e: KeyboardEvent<HTMLDivElement>): void {
     const target = e.target as Element;
+    // #1404: Escape closes the open channel-routing picker with no change to
+    // channelConfig — the picker's own selects only ever write on 'change',
+    // so closing here never needs to undo anything.
+    if (e.key === 'Escape' && target.closest('.daw-track-channel-picker')) {
+      e.preventDefault();
+      setChannelPickerIndex(null);
+      return;
+    }
     // Inline rename (#39): Enter commits via blur, Escape restores + blurs.
     const name = nameElOf(target);
     if (name) {
@@ -1015,6 +1043,24 @@ export default function LiveCapturePanel(): JSX.Element | null {
     const outputDevice = target.closest('#daw-session-output-device');
     if (outputDevice instanceof HTMLSelectElement) {
       useSoundcheckStore.getState().selectDevice(outputDevice.value);
+      return;
+    }
+    // #1404: the track-head channel picker's Mode/Source selects route into
+    // the same store actions the EQ pane inspector uses, so both stay in
+    // sync (setStripKind/setStripSource restart the monitor stream on their
+    // own — ADR-0132 — this handler does not need to).
+    const pickerKind = target.closest('.daw-track-channel-picker-kind');
+    if (pickerKind instanceof HTMLSelectElement) {
+      const idx = parseInt(pickerKind.closest('.daw-track-head')?.getAttribute('data-ch') ?? '', 10);
+      if (Number.isInteger(idx)) useLiveCaptureStore.getState().setStripKind(idx, pickerKind.value);
+      return;
+    }
+    const pickerSource = target.closest('.daw-track-channel-picker-source');
+    if (pickerSource instanceof HTMLSelectElement) {
+      const idx = parseInt(pickerSource.closest('.daw-track-head')?.getAttribute('data-ch') ?? '', 10);
+      const field = pickerSource.dataset.field === 'b' ? 'b' : 'a';
+      const channel = parseInt(pickerSource.value, 10);
+      if (Number.isInteger(idx) && Number.isInteger(channel)) useLiveCaptureStore.getState().setStripSource(idx, field, channel);
       return;
     }
     const routingMaster = target.closest('.daw-routing-master-mixdown');

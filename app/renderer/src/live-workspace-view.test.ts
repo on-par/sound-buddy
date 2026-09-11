@@ -127,6 +127,7 @@ function makeState(overrides: Partial<LiveWorkspaceViewState> = {}): LiveWorkspa
     timelineBpm: overrides.timelineBpm ?? null,
     timelineZoom: overrides.timelineZoom ?? null,
     timelineFollow: overrides.timelineFollow ?? null,
+    channelPickerIndex: overrides.channelPickerIndex ?? null,
   };
 }
 
@@ -311,6 +312,12 @@ describe('Session follow-scroll toggle (#1286)', () => {
     expect(liveWorkspaceViewState({ ...makeState(), demoting: false, mainsHum: { eligibility: {}, warnings: {} } }, settings()).timelineFollow).toBeNull();
     const html = dawShellHTML(makeState());
     expect(html).toContain(`id="${TIMELINE_FOLLOW_BUTTON_ID}" aria-pressed="true"`);
+  });
+});
+
+describe('Track channel picker open index (#1404)', () => {
+  it('defaults to every picker closed when no open index is supplied', () => {
+    expect(liveWorkspaceViewState({ ...makeState(), demoting: false, mainsHum: { eligibility: {}, warnings: {} } }, settings()).channelPickerIndex).toBeNull();
   });
 });
 
@@ -715,6 +722,17 @@ describe('dawShellHTML / dawShellPatchView', () => {
     expect(headColumn).not.toContain('<select');
   });
 
+  it('every track head shows a channel badge, and only the open index also shows a picker (#1404, ADR-0133)', () => {
+    const rows = dawTrackRows(makeState({ channelPickerIndex: 1 }));
+    const htmls = rows.map((row) => dawTrackHeaderHTML(row));
+    expect(htmls[0]).toContain('daw-track-head-channel-badge');
+    expect(htmls[0]).not.toContain('daw-track-channel-picker');
+    expect(htmls[0]).not.toContain('<select');
+    expect(htmls[1]).toContain('daw-track-head-channel-badge');
+    expect(htmls[1]).toContain('daw-track-channel-picker');
+    expect(htmls[1]).toContain('<select');
+  });
+
   it('renders the transport header, ruler, and mix lane', () => {
     const html = dawShellHTML(makeState());
     expect(html).toContain('daw-shell');
@@ -1050,6 +1068,24 @@ describe('dawTrackRows / configured track rows (#1043)', () => {
 
     const mutedSolo = dawTrackRows(makeState({ mutedChannels: { 1: true }, soloedChannels: { 1: true } }));
     expect(mutedSolo[1]).toMatchObject({ muted: true, soloed: true, monitorActive: false });
+  });
+
+  it('derives each row\'s channel picker from the strip, device channel count, and open index (#1404)', () => {
+    const rows = dawTrackRows(makeState());
+    expect(rows[0].channelPicker).toMatchObject({ index: 0, open: false, locked: false, badgeText: '1', kind: 'mono', a: 0, deviceChannels: 8 });
+    expect(rows[1].channelPicker).toMatchObject({ index: 1, open: false, badgeText: '2' });
+
+    const opened = dawTrackRows(makeState({ channelPickerIndex: 1 }));
+    expect(opened[0].channelPicker?.open).toBe(false);
+    expect(opened[1].channelPicker?.open).toBe(true);
+  });
+
+  it('locks the channel picker only during an active recording, never while merely monitoring (#1404, ADR-0132/0133)', () => {
+    const monitoring = dawTrackRows(makeState({ isCapturing: true, liveMode: 'monitor' }));
+    expect(monitoring[0].channelPicker?.locked).toBe(false);
+
+    const recording = dawTrackRows(makeState({ isCapturing: true, liveMode: 'record' }));
+    expect(recording[0].channelPicker?.locked).toBe(true);
   });
 
   it('marks only dimmed channel lanes and clears that modifier after the final solo (#1056)', () => {

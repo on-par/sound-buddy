@@ -1045,7 +1045,7 @@
     .daw-track-head-name:focus { background:var(--surface-raised); box-shadow:var(--glow-focus); }
     .daw-track-head-name.clip { color:var(--issue-text); }
     .daw-track-head .daw-track-head-name { justify-self:stretch; max-width:100%; position:relative; z-index:2; }
-    .daw-track-head-controls { grid-area:controls; display:flex; align-self:center; gap:4px; }
+    .daw-track-head-controls { grid-area:controls; display:flex; align-self:center; gap:4px; position:relative; }
     .daw-track-head-meta { grid-area:meta; align-self:center; justify-self:end; max-width:78px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font:var(--fw-regular) var(--fs-micro)/1 var(--font-mono); color:var(--text-muted); }
     .daw-track-head-meta-warn { color:var(--issue-text); }
     .daw-track-head-arm, .daw-track-head-mute, .daw-track-head-solo, .daw-track-head-remove { position:relative; z-index:3; border:1px solid var(--border-subtle); border-radius:var(--radius-sm); background:transparent; color:var(--text-muted); cursor:pointer; font:var(--fw-semibold) var(--fs-micro)/1 var(--font-sans); }
@@ -1056,6 +1056,17 @@
     .daw-track-head-remove { grid-area:remove; align-self:center; width:18px; height:18px; padding:0; color:var(--issue-text); }
     .daw-track-head-level { grid-area:meter; align-self:center; justify-self:stretch; min-width:72px; height:4px; overflow:hidden; border-radius:2px; background:var(--border-subtle); }
     .daw-track-head-level-fill { display:block; height:100%; background:var(--gold-text); }
+    /* #1404: the channel-routing badge + its popover (ADR-0133) — the one
+       control in the head row that opens a per-channel picker. */
+    .daw-track-head-channel-badge { position:relative; z-index:3; height:18px; padding:0 5px; border:1px solid var(--border-subtle); border-radius:var(--radius-sm); background:transparent; color:var(--text-muted); cursor:pointer; font:var(--fw-semibold) var(--fs-micro)/1 var(--font-mono); }
+    .daw-track-head-channel-badge:hover:not(:disabled) { color:var(--text-primary); border-color:var(--text-muted); }
+    .daw-track-head-channel-badge:disabled { opacity:0.4; cursor:not-allowed; }
+    .daw-track-head-channel-badge[aria-expanded="true"] { border-color:var(--gold-text); color:var(--gold-text); }
+    .daw-track-channel-picker { position:absolute; top:100%; left:0; z-index:20; margin-top:4px; display:grid; gap:6px; padding:8px; min-width:120px; background:var(--surface-raised); border:1px solid var(--border-default); border-radius:var(--radius-md); box-shadow:var(--shadow-lg); }
+    .daw-track-channel-picker-field { display:grid; gap:4px; color:var(--text-muted); font:var(--fw-medium) var(--fs-micro)/1 var(--font-sans); letter-spacing:var(--tracking-caps); text-transform:uppercase; }
+    .daw-track-channel-picker-field select { width:100%; height:var(--control-h-sm); padding:0 6px; border:1px solid var(--border-subtle); border-radius:var(--radius-md); background:var(--surface); color:var(--text-secondary); font:var(--fw-medium) var(--fs-micro)/1 var(--font-sans); }
+    .daw-track-channel-picker-field select:focus { border-color:var(--gold-500); box-shadow:var(--glow-focus); outline:none; }
+    .daw-track-channel-picker-field select:disabled { opacity:0.4; cursor:not-allowed; }
     .daw-track-heads .live-group-head, .daw-lane-group-spacer { flex:0 0 32px; height:32px; box-sizing:border-box; margin:0; padding:0 9px; border-bottom:1px solid var(--border-subtle); }
     .daw-track-heads .live-group-head { gap:4px; }
     .daw-track-heads .live-group-name { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }

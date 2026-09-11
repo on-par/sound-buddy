@@ -67,6 +67,7 @@ import {
   TIMELINE_A11Y_TIME_SELECTION_CLASS,
 } from './timeline-accessibility-labels';
 import { mainsHumBadgeText, mainsHumWarningText, type MainsHumFrequencyHz, type MainsHumTracker, type MainsHumWarningMap } from './mains-hum-warnings';
+import { trackChannelPickerView, trackChannelPickerHTML, type TrackChannelPickerView } from './track-channel-picker';
 
 export type { DawShellRuntime } from './daw-shell-runtime';
 
@@ -116,6 +117,11 @@ export interface LiveWorkspaceViewState {
   /** The Session toolbar's follow-scroll state (#1286). null for callers that do
    *  not own it - dawShellHTML then falls back to the default (following) model. */
   timelineFollow: TimelineFollowView | null;
+  /** #1404: the index of the track whose channel-routing picker is open on the
+   *  head row, or null when every picker is closed. React state, like
+   *  sessionRoutingDrawerOpen above — survives a board rebuild so an open
+   *  popover is not destroyed by the next store write. */
+  channelPickerIndex: number | null;
 }
 
 // The slice of liveCaptureStore's state that liveWorkspaceViewState() reads —
@@ -188,6 +194,7 @@ export function liveWorkspaceViewState(
   timelineBpm: TimelineBpmControlView | null = null,
   timelineZoom: TimelineZoomControlsView | null = null,
   timelineFollow: TimelineFollowView | null = null,
+  channelPickerIndex: number | null = null,
 ): LiveWorkspaceViewState {
   return {
     channelConfig: lc.channelConfig,
@@ -217,6 +224,7 @@ export function liveWorkspaceViewState(
     timelineBpm,
     timelineZoom,
     timelineFollow,
+    channelPickerIndex,
   };
 }
 
@@ -532,6 +540,10 @@ export interface DawTrackRow {
   /** #1392: the detected mains-hum frequency while this strip qualifies, or
    *  null/undefined otherwise. Only ever set while the board is capturing. */
   mainsHumHz?: MainsHumFrequencyHz | null;
+  /** #1404: the channel-routing badge/picker view for this track. Always set
+   *  by dawTrackRows; optional here only so hand-built DawTrackRow fixtures
+   *  (existing dawTrackHeaderHTML unit tests) don't have to carry one. */
+  channelPicker?: TrackChannelPickerView;
 }
 
 // The single ordered per-track list both arrangement columns render from
@@ -543,7 +555,12 @@ export interface DawTrackRow {
 // governs what records, never what the arrangement shows.
 export function dawTrackRows(state: LiveWorkspaceViewState): DawTrackRow[] {
   const hasSoloedChannel = Object.values(state.soloedChannels).some((soloed) => soloed === true);
+  // #1404: the channel picker locks with captureConfigLocked's rule (an active
+  // recording, or the demote window — see ADR-0133), which this expression
+  // already equals given state.isCapturing folds in `demoting` (boardRunning) —
+  // same reasoning as armDisabled just below.
   const armDisabled = state.isCapturing && state.liveMode === 'record';
+  const deviceChannels = deviceChannelCount(state.selectedDevice, state.devices);
   return state.channelConfig.map((strip, idx) => {
     const channel = liveChannelAt(state, idx);
     const muted = state.mutedChannels[idx] === true;
@@ -561,6 +578,7 @@ export function dawTrackRows(state: LiveWorkspaceViewState): DawTrackRow[] {
       armDisabled,
       configDisabled: state.isCapturing,
       removeDisabled: state.isCapturing,
+      channelPicker: trackChannelPickerView(idx, strip, deviceChannels, state.channelPickerIndex, armDisabled),
       muted,
       soloed,
       monitorActive: !muted && (!hasSoloedChannel || soloed),
@@ -630,7 +648,10 @@ export function dawTrackListEntries(state: LiveWorkspaceViewState): DawTrackList
 
 /** Pure inside markup for one arrangement track header. The row is derived
  * once by dawTrackRows, preserving the header/lane ordering contract.
- * Overview-only: per-channel settings live in the selection pane (#849). */
+ * Overview-only: per-channel settings live in the selection pane (#849), with
+ * one sanctioned exception — the #1404 channel-routing badge/picker, owned by
+ * track-channel-picker.ts and rendered via trackChannelPickerHTML (ADR-0133),
+ * so no <select> is ever inlined in this function's own body. */
 export function dawTrackHeaderHTML(row: DawTrackRow): string {
   const dragHTML = (row.groupIndex ?? -1) >= 0
     ? `<button type="button" class="daw-track-head-drag" draggable="true" aria-label="Reorder track within group — drag, or press Arrow Up/Down" title="Drag to reorder track"${row.configDisabled ? ' disabled' : ''}>⋮⋮</button>`
@@ -639,6 +660,7 @@ export function dawTrackHeaderHTML(row: DawTrackRow): string {
     + `<span class="daw-track-head-index">${row.index + 1}</span>`
     + `<span class="daw-track-head-name${row.clipping ? ' clip' : ''}" contenteditable="true" spellcheck="false" role="textbox" aria-label="Channel name — click to rename" title="Click to rename">${row.name}</span>`
     + `<span class="daw-track-head-controls">`
+    + (row.channelPicker ? trackChannelPickerHTML(row.channelPicker) : '')
     + `<button type="button" class="daw-track-head-arm" data-idx="${row.index}" aria-label="${row.armed ? 'Disarm track' : 'Arm track for recording'}" title="${row.armed ? 'Disarm track' : 'Arm track for recording'}" aria-pressed="${row.armed}"${row.armDisabled ? ' disabled' : ''}></button>`
     + `<button type="button" class="daw-track-head-mute" aria-label="${row.muted ? 'Unmute track' : 'Mute track'}" aria-pressed="${row.muted}">M</button>`
     + `<button type="button" class="daw-track-head-solo" aria-label="${row.soloed ? 'Unsolo track' : 'Solo track'}" aria-pressed="${row.soloed}">S</button>`

@@ -634,12 +634,18 @@ export function shouldOfferReportCard(windowCount: number): boolean {
 }
 
 /* ── Channel configuration ── */
-export function channelOptions(selected: number, max: number, compact = false): string {
+// `exclude` (#1404) drops one channel index from the list entirely — the
+// track-head channel picker uses it so a stereo pair's two source selects can
+// never both resolve to the same channel (a === b stays unselectable).
+export function channelOptions(selected: number, max: number, compact = false, exclude?: number): string {
   let html = '';
   // Compact (numeric-only) labels for the two stereo legs, which share the row
   // with the kind select; roomy "Ch N" for the single mono select.
   const label = (i: number) => (compact ? `${i + 1}` : `Ch ${i + 1}`);
-  for (let i = 0; i < max; i++) html += `<option value="${i}"${i === selected ? ' selected' : ''}>${label(i)}</option>`;
+  for (let i = 0; i < max; i++) {
+    if (i === exclude) continue;
+    html += `<option value="${i}"${i === selected ? ' selected' : ''}>${label(i)}</option>`;
+  }
   return html;
 }
 
