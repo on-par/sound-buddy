@@ -74,6 +74,9 @@ const loopFromSelectionTs = fs.readFileSync(fileURLToPath(new URL('./loopFromSel
 const timelineAccessibilityLabelsTs = fs.readFileSync(fileURLToPath(new URL('./timeline-accessibility-labels.ts', import.meta.url)), 'utf8');
 // #1318: return-to-start must stay position-only — it may not reach the loop model.
 const soundcheckStoreTs = fs.readFileSync(fileURLToPath(new URL('./stores/soundcheckStore.ts', import.meta.url)), 'utf8');
+// #1404: the track-head channel-routing badge/picker — the one sanctioned
+// exception to #849's overview-only head (ADR-0133).
+const trackChannelPickerTs = fs.readFileSync(fileURLToPath(new URL('./track-channel-picker.ts', import.meta.url)), 'utf8');
 
 function functionBody(src: string, name: string): string {
   const marker = `function ${name}(`;
@@ -577,8 +580,17 @@ describe('configured track rows render from one shared list (#1043)', () => {
     expect(body).not.toContain("!target.closest('button, select, [contenteditable], input')");
   });
 
-  it('keeps per-channel setting controls out of the head row (#849)', () => {
-    expect(functionBody(workspaceViewTs, 'dawTrackHeaderHTML')).not.toContain('<select');
+  it('keeps per-channel setting controls out of the head row, with one named #1404 carve-out', () => {
+    // #849's rule stays binding: dawTrackHeaderHTML's own markup never inlines a
+    // <select>. #1404 needs one — the channel-routing badge's popover — so the
+    // exception is explicit here rather than dodged by moving the markup into an
+    // imported function and leaving this guard passing by accident (ADR-0133):
+    // dawTrackHeaderHTML must call trackChannelPickerHTML, and that function (in
+    // track-channel-picker.ts, not this one) is where the <select> actually lives.
+    const headerBody = functionBody(workspaceViewTs, 'dawTrackHeaderHTML');
+    expect(headerBody).not.toContain('<select');
+    expect(headerBody).toContain('trackChannelPickerHTML(');
+    expect(trackChannelPickerTs).toContain('<select');
     expect(liveCapturePanelTsx).not.toContain('.daw-track-head-input');
     expect(liveCapturePanelTsx).not.toContain("closest('.daw-track-head select')");
   });

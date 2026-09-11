@@ -196,6 +196,15 @@ describe('channelOptions', () => {
     const html = channelOptions(0, 2, true);
     expect(html).toBe('<option value="0" selected>1</option><option value="1">2</option>');
   });
+
+  it('drops the excluded index entirely (#1404) so it is not a selectable option', () => {
+    const html = channelOptions(0, 3, false, 1);
+    expect(html).toBe('<option value="0" selected>Ch 1</option><option value="2">Ch 3</option>');
+  });
+
+  it('is unaffected by an out-of-range exclude', () => {
+    expect(channelOptions(1, 3, false, -1)).toBe(channelOptions(1, 3));
+  });
 });
 
 describe('liveBandCurve', () => {
