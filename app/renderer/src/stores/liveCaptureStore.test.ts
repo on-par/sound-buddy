@@ -12,6 +12,28 @@ import {
 import { createMockSoundBuddy } from '../mock-sound-buddy';
 import { useSettingsStore } from './settingsStore';
 import type { StripConfig, LiveDevice } from '../live-capture-panel';
+import { GRID_FREQS } from '@sound-buddy/audio-engine/dist/profiles/index.js';
+
+// Local mains-hum curve fixture (#1392) — duplicated rather than shared with
+// mains-hum-warnings.test.ts per this repo's test-colocation convention.
+function nearestGridIndexToFrequency(targetHz: number): number {
+  let bestIndex = 0;
+  let bestDiff = Infinity;
+  GRID_FREQS.forEach((f, i) => {
+    const diff = Math.abs(f - targetHz);
+    if (diff < bestDiff) {
+      bestDiff = diff;
+      bestIndex = i;
+    }
+  });
+  return bestIndex;
+}
+const GRID_INDEX_NEAREST_60HZ = nearestGridIndexToFrequency(60);
+function curveWithPeakAt60Hz(): number[] {
+  const db = new Array(GRID_FREQS.length).fill(-60);
+  db[GRID_INDEX_NEAREST_60HZ] = -48;
+  return db;
+}
 
 // The pure helper classic-scripts the store reads off `window` — real modules
 // (not hand-rolled stubs), same convention as arm-state.test.ts/group-state.test.ts.
@@ -56,6 +78,7 @@ describe('createLiveCaptureStore', () => {
     expect(s.soloedChannels).toEqual({});
     expect(s.meterIntervalMs).toBe(100);
     expect(s.windowSecs).toBe(3);
+    expect(s.mainsHum).toEqual({ eligibility: {}, warnings: {} });
   });
 
   describe('capture cadence (#725)', () => {
@@ -775,6 +798,15 @@ describe('createLiveCaptureStore', () => {
       expect(mock.calls.filter((c) => c.method === 'startLive')).toHaveLength(0);
     });
 
+    it('resets mainsHum to a fresh tracker (#1392, no leak across sessions)', async () => {
+      const { store } = makeStore({ startLive: async () => ({ success: true }) });
+      store.setState({
+        mainsHum: { eligibility: { 0: { consecutiveQualifyingWindows: 3, eligible: true } }, warnings: { 0: { channelIndex: 0, channelName: 'Bass DI', frequencyHz: 60 } } },
+      });
+      await store.getState().startCapture({ windowSecs: 3, intervalSecs: 0.1 });
+      expect(store.getState().mainsHum).toEqual({ eligibility: {}, warnings: {} });
+    });
+
   });
 
   describe('stopCapture', () => {
@@ -836,6 +868,15 @@ describe('createLiveCaptureStore', () => {
       store.setState({ lastLiveChannels: [{ index: 0, name: 'Ch 1', rms: -20, peak: -6, clipping: false, centroid: 0, rolloff: 0, bands: {} }] });
       store.getState().clearLastLiveChannels();
       expect(store.getState().lastLiveChannels).toBeNull();
+    });
+
+    it('resets mainsHum to a fresh tracker (#1392, a device switch must not leak a stale warning onto the new device\'s strips)', () => {
+      const { store } = makeStore();
+      store.setState({
+        mainsHum: { eligibility: { 0: { consecutiveQualifyingWindows: 3, eligible: true } }, warnings: { 0: { channelIndex: 0, channelName: 'Bass DI', frequencyHz: 60 } } },
+      });
+      store.getState().clearLastLiveChannels();
+      expect(store.getState().mainsHum).toEqual({ eligibility: {}, warnings: {} });
     });
   });
 
@@ -910,6 +951,67 @@ describe('createLiveCaptureStore', () => {
       const tick = { type: 'window', window: 1, ts: 0, channels: [{ index: 0, name: 'A', bands: {}, rms: -10, peak: -5, clipping: false, centroid: 100, rolloff: 200 }], masking: [] };
       mock.emit('onLiveEvent', tick);
       expect(store.getState().channelGroups).toEqual([{ name: 'Drums', members: [0, 1], collapsed: true }]);
+    });
+
+    describe('mains-hum tracking (#1392)', () => {
+      function qualifyingWindowTick(windowIndex: number) {
+        return {
+          type: 'window',
+          window: windowIndex,
+          ts: windowIndex,
+          channels: [
+            { index: 0, name: 'Ch 0', bands: {}, rms: -70, peak: -40, clipping: false, centroid: 0, rolloff: 0 },
+            { index: 1, name: 'Bass DI', bands: {}, rms: -70, peak: -40, clipping: false, centroid: 0, rolloff: 0, curve: curveWithPeakAt60Hz() },
+          ],
+          masking: [],
+        };
+      }
+
+      it('publishes mainsHum.warnings[1] after three qualifying window ticks, with no entry for channel 0', () => {
+        const { store, mock } = makeStore();
+        store.getState().bindIpcEvents();
+        mock.emit('onLiveEvent', qualifyingWindowTick(0));
+        mock.emit('onLiveEvent', qualifyingWindowTick(1));
+        expect(store.getState().mainsHum.warnings).toEqual({});
+        mock.emit('onLiveEvent', qualifyingWindowTick(2));
+        expect(store.getState().mainsHum.warnings).toEqual({
+          1: { channelIndex: 1, channelName: 'Bass DI', frequencyHz: 60 },
+        });
+        expect(store.getState().mainsHum.warnings[0]).toBeUndefined();
+      });
+
+      it('a meter tick in between does not advance mainsHum', () => {
+        const { store, mock } = makeStore();
+        store.getState().bindIpcEvents();
+        mock.emit('onLiveEvent', qualifyingWindowTick(0));
+        mock.emit('onLiveEvent', { type: 'meter', ts: 0, channels: qualifyingWindowTick(0).channels });
+        mock.emit('onLiveEvent', qualifyingWindowTick(1));
+        mock.emit('onLiveEvent', qualifyingWindowTick(2));
+        expect(store.getState().mainsHum.warnings).toEqual({
+          1: { channelIndex: 1, channelName: 'Bass DI', frequencyHz: 60 },
+        });
+      });
+
+      it('a subsequent non-qualifying window clears the warning', () => {
+        const { store, mock } = makeStore();
+        store.getState().bindIpcEvents();
+        mock.emit('onLiveEvent', qualifyingWindowTick(0));
+        mock.emit('onLiveEvent', qualifyingWindowTick(1));
+        mock.emit('onLiveEvent', qualifyingWindowTick(2));
+        expect(store.getState().mainsHum.warnings[1]).toBeDefined();
+
+        mock.emit('onLiveEvent', {
+          type: 'window',
+          window: 3,
+          ts: 3,
+          channels: [
+            { index: 0, name: 'Ch 0', bands: {}, rms: -70, peak: -40, clipping: false, centroid: 0, rolloff: 0 },
+            { index: 1, name: 'Bass DI', bands: {}, rms: -20, peak: -6, clipping: false, centroid: 0, rolloff: 0, curve: curveWithPeakAt60Hz() },
+          ],
+          masking: [],
+        });
+        expect(store.getState().mainsHum.warnings[1]).toBeUndefined();
+      });
     });
   });
 
