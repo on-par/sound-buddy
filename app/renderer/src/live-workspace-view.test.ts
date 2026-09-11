@@ -116,6 +116,7 @@ function makeState(overrides: Partial<LiveWorkspaceViewState> = {}): LiveWorkspa
     liveWindows: [],
     settings: settings(),
     lapCoaching: null,
+    mainsHumWarnings: {},
     playheadElapsedMs: 0,
     ...overrides,
     sessionPicker: overrides.sessionPicker ?? null,
@@ -196,7 +197,7 @@ describe('Session toolbar playback (#1073)', () => {
   });
 
   it('keeps default callers free of Session playback markup', () => {
-    expect(liveWorkspaceViewState({ ...makeState(), demoting: false }, settings()).sessionPlayback).toBeNull();
+    expect(liveWorkspaceViewState({ ...makeState(), demoting: false, mainsHum: { eligibility: {}, warnings: {} } }, settings()).sessionPlayback).toBeNull();
     expect(dawShellHTML(makeState())).not.toContain('daw-session-playback-btn');
   });
 });
@@ -264,7 +265,7 @@ describe('Session BPM control (#1276)', () => {
   });
 
   it('leaves default callers with no BPM control', () => {
-    expect(liveWorkspaceViewState({ ...makeState(), demoting: false }, settings()).timelineBpm).toBeNull();
+    expect(liveWorkspaceViewState({ ...makeState(), demoting: false, mainsHum: { eligibility: {}, warnings: {} } }, settings()).timelineBpm).toBeNull();
   });
 });
 
@@ -288,7 +289,7 @@ describe('Session zoom/fit controls (#1284)', () => {
   });
 
   it('falls back to a full-range cluster when no zoom view is supplied', () => {
-    expect(liveWorkspaceViewState({ ...makeState(), demoting: false }, settings()).timelineZoom).toBeNull();
+    expect(liveWorkspaceViewState({ ...makeState(), demoting: false, mainsHum: { eligibility: {}, warnings: {} } }, settings()).timelineZoom).toBeNull();
     const html = dawShellHTML(makeState());
     expect(html).toContain('0:00 - 0:01');
   });
@@ -307,7 +308,7 @@ describe('Session follow-scroll toggle (#1286)', () => {
   });
 
   it('falls back to the default following toggle (aria-pressed="true") when no follow view is supplied', () => {
-    expect(liveWorkspaceViewState({ ...makeState(), demoting: false }, settings()).timelineFollow).toBeNull();
+    expect(liveWorkspaceViewState({ ...makeState(), demoting: false, mainsHum: { eligibility: {}, warnings: {} } }, settings()).timelineFollow).toBeNull();
     const html = dawShellHTML(makeState());
     expect(html).toContain(`id="${TIMELINE_FOLLOW_BUTTON_ID}" aria-pressed="true"`);
   });
@@ -569,8 +570,14 @@ describe('dawShellHTML / dawShellPatchView', () => {
   });
 
   it('leaves the picker null for existing view-state callers', () => {
-    const state = liveWorkspaceViewState({ ...makeState(), demoting: false }, settings());
+    const state = liveWorkspaceViewState({ ...makeState(), demoting: false, mainsHum: { eligibility: {}, warnings: {} } }, settings());
     expect(state.sessionPicker).toBeNull();
+  });
+
+  it('copies lc.mainsHum.warnings into mainsHumWarnings (#1392)', () => {
+    const warnings = { 1: { channelIndex: 1, channelName: 'Bass DI', frequencyHz: 60 as const } };
+    const state = liveWorkspaceViewState({ ...makeState(), demoting: false, mainsHum: { eligibility: {}, warnings } }, settings());
+    expect(state.mainsHumWarnings).toBe(warnings);
   });
 
   it('AC1: renders the overview strip between the transport and the arrangement', () => {
@@ -670,6 +677,29 @@ describe('dawShellHTML / dawShellPatchView', () => {
   it('keeps header markup byte-identical for equal rows', () => {
     const row = { index: 0, name: 'Kick', armed: true, armDisabled: false, muted: false, soloed: false, monitorActive: true, levelPercent: 0, takeClip: null };
     expect(dawTrackHeaderHTML(row)).toBe(dawTrackHeaderHTML(row));
+  });
+
+  it('renders a mains-hum warning badge in the meta slot when mainsHumHz is set (#1392)', () => {
+    const html = dawTrackHeaderHTML({
+      index: 0, name: 'Kick &lt;3', armed: true, armDisabled: false, muted: false, soloed: false,
+      monitorActive: true, levelPercent: 0, takeClip: null, mainsHumHz: 60,
+    });
+    expect(html).toContain('class="daw-track-head-meta daw-track-head-meta-warn"');
+    expect(html).toContain('role="status"');
+    expect(html).toContain('>60 Hz hum</span>');
+    expect(html).not.toContain('>Live</span>');
+    const title = html.match(/daw-track-head-meta-warn"[^>]*title="([^"]*)"/)?.[1] ?? '';
+    expect(title).toContain('Kick &lt;3');
+    expect(title).toContain('60 Hz');
+  });
+
+  it('renders the unflagged meta span unchanged when mainsHumHz is absent', () => {
+    const html = dawTrackHeaderHTML({
+      index: 0, name: 'Kick', armed: true, armDisabled: false, muted: false, soloed: false,
+      monitorActive: true, levelPercent: 0, takeClip: null,
+    });
+    expect(html).toContain('<span class="daw-track-head-meta">Live</span>');
+    expect(html).not.toContain('daw-track-head-meta-warn');
   });
 
   it('renders controls once per track but never in the master header', () => {
@@ -987,6 +1017,21 @@ describe('dawTrackRows / configured track rows (#1043)', () => {
   it('falls back to the latest tick channel name', () => {
     const rows = dawTrackRows(makeState({ lastLiveChannels: TICK_CHANNELS }));
     expect(rows[0].name).toBe('Vocals');
+  });
+
+  it('sets mainsHumHz only on the flagged row, and only while capturing (#1392)', () => {
+    const capturing = dawTrackRows(makeState({
+      isCapturing: true,
+      mainsHumWarnings: { 1: { channelIndex: 1, channelName: 'B', frequencyHz: 50 } },
+    }));
+    expect(capturing[0].mainsHumHz).toBeNull();
+    expect(capturing[1].mainsHumHz).toBe(50);
+
+    const idle = dawTrackRows(makeState({
+      isCapturing: false,
+      mainsHumWarnings: { 1: { channelIndex: 1, channelName: 'B', frequencyHz: 50 } },
+    }));
+    expect(idle.every((row) => row.mainsHumHz === null)).toBe(true);
   });
 
   it('derives monitor activity from mute and solo without changing armed state (#1056)', () => {

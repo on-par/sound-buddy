@@ -52,6 +52,7 @@ import {
   type LiveWorkspaceViewState,
 } from '../live-workspace-view';
 import type { AppSettings } from '../../../electron/ipc/api';
+import { createMainsHumTracker, advanceMainsHumTracker, type MainsHumTracker } from '../mains-hum-warnings';
 
 export type { StartCaptureOpts };
 // deviceNameFor lives in live-capture-panel.ts (TD-001 slice 6h, #711) so the
@@ -270,6 +271,10 @@ export interface LiveCaptureState {
   liveWindows: WindowData[];
   lastTick: LiveEvent | null;
   lastLiveChannels: LiveMeterChannel[] | null;
+  // Per-strip mains-hum persistence + published warnings (#1392), advanced
+  // once per window tick, never per meter tick — see bindIpcEvents' window
+  // branch and mains-hum-warnings.ts.
+  mainsHum: MainsHumTracker;
   // Bumped whenever a tick's channel count differs from the previous tick's
   // — the island's cue to re-render the board shape instead of patch it.
   boardShapeVersion: number;
@@ -529,6 +534,7 @@ export function createLiveCaptureStore(getApi: () => LiveCaptureApi) {
     liveWindows: [],
     lastTick: null,
     lastLiveChannels: null,
+    mainsHum: createMainsHumTracker(),
     boardShapeVersion: 0,
     lastError: null,
 
@@ -752,7 +758,7 @@ export function createLiveCaptureStore(getApi: () => LiveCaptureApi) {
 
     async startCapture(opts) {
       if (get().isCapturing) return undefined;
-      set({ isCapturing: true, liveWindows: [] });
+      set({ isCapturing: true, liveWindows: [], mainsHum: createMainsHumTracker() });
       const state = get();
       const arm = getArmState();
       const payload: StartLiveOpts = {
@@ -862,7 +868,7 @@ export function createLiveCaptureStore(getApi: () => LiveCaptureApi) {
     },
 
     clearLastLiveChannels() {
-      set({ lastLiveChannels: null });
+      set({ lastLiveChannels: null, mainsHum: createMainsHumTracker() });
     },
 
     bindIpcEvents() {
@@ -899,7 +905,10 @@ export function createLiveCaptureStore(getApi: () => LiveCaptureApi) {
           set((state) => {
             const next = [...state.liveWindows, windowTick];
             if (next.length > LIVE_WINDOWS_CAP) next.shift();
-            return { liveWindows: next };
+            return {
+              liveWindows: next,
+              mainsHum: advanceMainsHumTracker(state.mainsHum, windowTick.channels ?? []),
+            };
           });
         }
       });
