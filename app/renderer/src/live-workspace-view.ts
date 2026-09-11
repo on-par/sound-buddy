@@ -66,6 +66,7 @@ import {
   TIMELINE_A11Y_CLIP_SELECTION_CLASS,
   TIMELINE_A11Y_TIME_SELECTION_CLASS,
 } from './timeline-accessibility-labels';
+import { mainsHumBadgeText, mainsHumWarningText, type MainsHumFrequencyHz, type MainsHumTracker, type MainsHumWarningMap } from './mains-hum-warnings';
 
 export type { DawShellRuntime } from './daw-shell-runtime';
 
@@ -93,6 +94,8 @@ export interface LiveWorkspaceViewState {
   liveWindows: LiveEvent[];
   settings: AppSettings | null;
   lapCoaching: unknown;
+  /** #1392 per-strip mains-hum warnings, keyed by strip index. */
+  mainsHumWarnings: MainsHumWarningMap;
   /** Seeded elapsed time (ms) for the DAW shell's transport readout — read
    *  imperatively from the 6j playhead bridge at render time so a mid-capture
    *  rebuild never flashes 0:00 (#518). */
@@ -139,6 +142,7 @@ export interface LiveWorkspaceStoreSlice {
   lastLiveChannels: LiveMeterChannel[] | null;
   liveWindows: LiveEvent[];
   lapCoaching: unknown;
+  mainsHum: MainsHumTracker;
 }
 
 // #847: "should the Live surface render as live". True while a capture is
@@ -188,6 +192,7 @@ export function liveWorkspaceViewState(
     liveWindows: lc.liveWindows,
     settings,
     lapCoaching: lc.lapCoaching,
+    mainsHumWarnings: lc.mainsHum.warnings,
     playheadElapsedMs,
     sessionPicker,
     sessionWaveforms,
@@ -508,6 +513,9 @@ export interface DawTrackRow {
   monitorActive: boolean;
   levelPercent: number;
   takeClip: SessionTabWaveformClip | null;
+  /** #1392: the detected mains-hum frequency while this strip qualifies, or
+   *  null/undefined otherwise. Only ever set while the board is capturing. */
+  mainsHumHz?: MainsHumFrequencyHz | null;
 }
 
 // The single ordered per-track list both arrangement columns render from
@@ -542,6 +550,7 @@ export function dawTrackRows(state: LiveWorkspaceViewState): DawTrackRow[] {
       monitorActive: !muted && (!hasSoloedChannel || soloed),
       levelPercent: levelPercent(channel?.rms ?? Number.NaN, !!channel?.idle),
       takeClip: state.sessionWaveforms?.clips.find((clip) => clip.stripIndex === idx) ?? null,
+      mainsHumHz: state.isCapturing ? (state.mainsHumWarnings[idx]?.frequencyHz ?? null) : null,
     };
   });
 }
@@ -619,7 +628,9 @@ export function dawTrackHeaderHTML(row: DawTrackRow): string {
     + `<button type="button" class="daw-track-head-solo" aria-label="${row.soloed ? 'Unsolo track' : 'Solo track'}" aria-pressed="${row.soloed}">S</button>`
     + `</span>`
     + `<span class="daw-track-head-level" aria-hidden="true"><span class="daw-track-head-level-fill" style="width:${row.levelPercent}%"></span></span>`
-    + `<span class="daw-track-head-meta">${row.idle ? 'Idle' : 'Live'}</span>`
+    + (row.mainsHumHz
+      ? `<span class="daw-track-head-meta daw-track-head-meta-warn" role="status" title="${mainsHumWarningText(row.name, row.mainsHumHz)}">${mainsHumBadgeText(row.mainsHumHz)}</span>`
+      : `<span class="daw-track-head-meta">${row.idle ? 'Idle' : 'Live'}</span>`)
     + `<button type="button" class="daw-track-head-remove" title="Remove track" aria-label="Remove track"${row.removeDisabled ? ' disabled' : ''}>×</button>`;
 }
 
