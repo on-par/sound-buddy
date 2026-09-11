@@ -12,6 +12,7 @@ import {
 import { createMockSoundBuddy } from '../mock-sound-buddy';
 import { useSettingsStore } from './settingsStore';
 import type { StripConfig, LiveDevice } from '../live-capture-panel';
+import { dawTrackRows, dawTrackHeaderHTML, liveWorkspaceViewState } from '../live-workspace-view';
 import { GRID_FREQS } from '@sound-buddy/audio-engine/dist/profiles/index.js';
 
 // Local mains-hum curve fixture (#1392) — duplicated rather than shared with
@@ -1278,6 +1279,55 @@ describe('createLiveCaptureStore', () => {
       store.setState({ channelConfig: [{ kind: 'mono', a: 0, b: 1 }], focusedInputIndex: 0 });
       store.getState().removeStrip(0);
       expect(store.getState().focusedInputIndex).toBeNull();
+    });
+
+    it('publishes, labels, isolates, and clears a channel-specific mains-hum badge end to end (#1392)', () => {
+      const { store, mock } = makeStore();
+      store.setState({
+        channelConfig: [
+          { kind: 'mono', a: 0, b: 1 },
+          { kind: 'mono', a: 1, b: 2, label: 'Vocals' },
+        ],
+      });
+      store.getState().setRunning(true);
+      store.getState().bindIpcEvents();
+
+      const qualifyingTick = (windowIndex: number) => ({
+        type: 'window',
+        window: windowIndex,
+        ts: windowIndex,
+        channels: [
+          { index: 0, name: 'Ch 0', bands: {}, rms: -70, peak: -40, clipping: false, centroid: 0, rolloff: 0 },
+          { index: 1, name: 'Vocals', bands: {}, rms: -70, peak: -40, clipping: false, centroid: 0, rolloff: 0, curve: curveWithPeakAt60Hz() },
+        ],
+        masking: [],
+      });
+      mock.emit('onLiveEvent', qualifyingTick(0));
+      mock.emit('onLiveEvent', qualifyingTick(1));
+      mock.emit('onLiveEvent', qualifyingTick(2));
+
+      const rows = dawTrackRows(liveWorkspaceViewState(store.getState(), null));
+      expect(rows[0].mainsHumHz).toBeNull();
+      expect(rows[1].mainsHumHz).toBe(60);
+      const headerHTML = dawTrackHeaderHTML(rows[1]);
+      expect(headerHTML).toContain('Vocals');
+      expect(headerHTML).toContain('60 Hz');
+      expect(headerHTML).toContain('daw-track-head-meta-warn');
+
+      mock.emit('onLiveEvent', {
+        type: 'window',
+        window: 3,
+        ts: 3,
+        channels: [
+          { index: 0, name: 'Ch 0', bands: {}, rms: -70, peak: -40, clipping: false, centroid: 0, rolloff: 0 },
+          { index: 1, name: 'Vocals', bands: {}, rms: -20, peak: -6, clipping: false, centroid: 0, rolloff: 0, curve: curveWithPeakAt60Hz() },
+        ],
+        masking: [],
+      });
+
+      const clearedRows = dawTrackRows(liveWorkspaceViewState(store.getState(), null));
+      expect(clearedRows[1].mainsHumHz).toBeNull();
+      expect(dawTrackHeaderHTML(clearedRows[1])).not.toContain('daw-track-head-meta-warn');
     });
 
     it('resetLapCoaching seeds a fresh coaching state from liveAdjustmentsState', () => {
