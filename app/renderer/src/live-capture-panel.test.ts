@@ -405,6 +405,7 @@ describe('eqPaneInspectorHTML (#1064)', () => {
       strip: { kind: 'stereo', a: 2, b: 3, armed: true, label: 'Keys' },
       deviceChannels: 8,
       disabled: false,
+      configLocked: false,
       playbackTrack: { kind: 'stereo' },
       playbackRoute: [4, 5],
       playbackDeviceChannels: 6,
@@ -495,8 +496,46 @@ describe('eqPaneInspectorHTML (#1064)', () => {
     });
     expect(classificationHTML).toContain('eq-pane-classification-group');
     expect(classificationHTML).toContain('eq-pane-classification-profile');
-    const disabledHTML = eqPaneInspectorHTML(inspector({ disabled: true }));
-    expect(disabledHTML).toContain('class="eq-pane-inspector-kind" aria-label="Mono or stereo" disabled');
+    const lockedHTML = eqPaneInspectorHTML(inspector({ configLocked: true }));
+    expect(lockedHTML).toContain('class="eq-pane-inspector-kind" aria-label="Mono or stereo" disabled');
+  });
+});
+
+describe('eqPaneInspectorHTML configLocked vs disabled (#1403)', () => {
+  function inspector(overrides: Partial<EqPaneInspectorView> = {}): EqPaneInspectorView {
+    return {
+      selectedIndex: 1,
+      strip: { kind: 'stereo', a: 2, b: 3, armed: true, label: 'Keys' },
+      deviceChannels: 8,
+      disabled: false,
+      configLocked: false,
+      playbackTrack: { kind: 'stereo' },
+      playbackRoute: [4, 5],
+      playbackDeviceChannels: 6,
+      levelTiles: null,
+      ...overrides,
+    };
+  }
+
+  it('locks Name/Mode/Source/Arm but not Playback output when configLocked (monitoring is not board-live)', () => {
+    const html = eqPaneInspectorHTML(inspector({ configLocked: true, disabled: false }));
+    expect(html).toContain('class="eq-pane-inspector-label" aria-label="Channel name" value="Keys" disabled');
+    expect(html).toContain('class="eq-pane-inspector-kind" aria-label="Mono or stereo" disabled');
+    expect(html).toContain('data-field="a" aria-label="Left source channel" disabled');
+    expect(html).toContain('data-field="b" aria-label="Right source channel" disabled');
+    expect(html).toMatch(/class="eq-pane-inspector-arm[^"]*" aria-pressed="true" disabled/);
+    expect(html).toContain('class="eq-pane-inspector-output"');
+    expect(html).not.toMatch(/class="eq-pane-inspector-output"[^>]*disabled/);
+  });
+
+  it('locks Playback output but not Name/Mode/Source/Arm when disabled (board live) without configLocked', () => {
+    const html = eqPaneInspectorHTML(inspector({ configLocked: false, disabled: true }));
+    expect(html).toContain('class="eq-pane-inspector-label" aria-label="Channel name" value="Keys">');
+    expect(html).toContain('class="eq-pane-inspector-kind" aria-label="Mono or stereo">');
+    expect(html).toContain('data-field="a" aria-label="Left source channel">');
+    expect(html).toContain('data-field="b" aria-label="Right source channel">');
+    expect(html).toMatch(/class="eq-pane-inspector-arm[^"]*" aria-pressed="true">/);
+    expect(html).toMatch(/class="eq-pane-inspector-output"[^>]*disabled/);
   });
 });
 
@@ -1361,6 +1400,7 @@ describe('eqPaneSignature', () => {
       strip: { kind: 'stereo', a: 2, b: 3, armed: true, label: 'Keys' },
       deviceChannels: 8,
       disabled: false,
+      configLocked: false,
       playbackTrack: { kind: 'stereo', label: 'Keys playback' },
       playbackRoute: [4],
       playbackDeviceChannels: 8,
@@ -1371,6 +1411,12 @@ describe('eqPaneSignature', () => {
       ...overrides,
     };
   }
+
+  it('#1403: differs between configLocked true/false for the same inspector', () => {
+    const view = eqPaneView(LIVE_CHANNELS, config, 0, 1, null, inspector({ configLocked: false }));
+    const lockedView = eqPaneView(LIVE_CHANNELS, config, 0, 1, null, inspector({ configLocked: true }));
+    expect(eqPaneSignature(view)).not.toBe(eqPaneSignature(lockedView));
+  });
 
   it('keeps inspector-aware consecutive meter ticks eligible for arc, bar, and level-tile patches (#1066)', () => {
     const roomA: LiveMeterChannel = { ...LIVE_CHANNELS[0], bands: { ...LIVE_CHANNELS[0].bands, mid: -24 }, rms: -30 };
@@ -1405,15 +1451,17 @@ describe('eqPaneSignature', () => {
       playbackTrack: null, playbackRoute: [6], playbackDeviceChannels: 24,
     }));
     const disabled = eqPaneView(LIVE_CHANNELS, config, 0, 1, null, inspector({ disabled: true }));
+    const configLocked = eqPaneView(LIVE_CHANNELS, config, 0, 1, null, inspector({ configLocked: true }));
 
-    for (const changed of [selected, strip, deviceChannels, playback, disabled]) {
+    for (const changed of [selected, strip, deviceChannels, playback, disabled, configLocked]) {
       expect(eqPaneSignature(changed)).not.toBe(eqPaneSignature(base));
     }
     expect(eqPaneSignature(noPlaybackRoute)).toBe(eqPaneSignature(playback));
     expect(eqPaneInspectorHTML(strip.inspector)).toContain('Lead Vox');
     expect(eqPaneInspectorHTML(deviceChannels.inspector)).toContain('<option value="15">16</option>');
     expect(eqPaneInspectorHTML(playback.inspector)).toContain('eq-pane-inspector-output-notice');
-    expect(eqPaneInspectorHTML(disabled.inspector)).toContain('Channel name" value="Keys" disabled');
+    expect(eqPaneInspectorHTML(disabled.inspector)).toMatch(/class="eq-pane-inspector-output"[^>]*disabled/);
+    expect(eqPaneInspectorHTML(configLocked.inspector)).toContain('Channel name" value="Keys" disabled');
   });
 
   it('is stable across two views with the same idx/label/flag', () => {

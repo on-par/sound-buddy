@@ -24,6 +24,8 @@ import {
   eqPaneLevelTilesView,
   selectedEqPaneLevelTilesView,
   boardRunning,
+  captureConfigLocked,
+  monitorRestartAllowed,
   liveWorkspaceViewState,
   type LiveWorkspaceViewState,
 } from './live-workspace-view';
@@ -421,12 +423,66 @@ describe('addTrackDisabled', () => {
     expect(addTrackDisabled(makeState({ channelConfig: full }))).toBe(true);
   });
 
-  it('disables while a capture is running', () => {
-    expect(addTrackDisabled(makeState({ isCapturing: true }))).toBe(true);
+  it('#1403: enables while monitoring — the tab is always-monitoring, so a capture running alone must not lock it', () => {
+    expect(addTrackDisabled(makeState({ isCapturing: true, liveMode: 'monitor' }))).toBe(false);
+  });
+
+  it('disables while an active recording is running', () => {
+    expect(addTrackDisabled(makeState({ isCapturing: true, liveMode: 'record' }))).toBe(true);
   });
 
   it('enables otherwise', () => {
     expect(addTrackDisabled(makeState())).toBe(false);
+  });
+});
+
+describe('captureConfigLocked', () => {
+  it('is false while monitoring', () => {
+    expect(captureConfigLocked({ isCapturing: true, liveMode: 'monitor' })).toBe(false);
+  });
+
+  it('is true while an active recording is running', () => {
+    expect(captureConfigLocked({ isCapturing: true, liveMode: 'record' })).toBe(true);
+  });
+
+  it('is true during the record→monitor demote window (#847)', () => {
+    expect(captureConfigLocked({ isCapturing: false, liveMode: 'record', demoting: true })).toBe(true);
+  });
+
+  it('is false while idle', () => {
+    expect(captureConfigLocked({ isCapturing: false, liveMode: 'monitor' })).toBe(false);
+  });
+
+  it('treats an omitted demoting as false', () => {
+    expect(captureConfigLocked({ isCapturing: false, liveMode: 'record' })).toBe(false);
+  });
+});
+
+describe('monitorRestartAllowed', () => {
+  const base = { isCapturing: true, liveMode: 'monitor' as const, promoting: false, stopping: false, demoting: false };
+
+  it('is true only for a plain running monitor session', () => {
+    expect(monitorRestartAllowed(base)).toBe(true);
+  });
+
+  it('is false while recording', () => {
+    expect(monitorRestartAllowed({ ...base, liveMode: 'record' })).toBe(false);
+  });
+
+  it('is false while promoting', () => {
+    expect(monitorRestartAllowed({ ...base, promoting: true })).toBe(false);
+  });
+
+  it('is false while stopping', () => {
+    expect(monitorRestartAllowed({ ...base, stopping: true })).toBe(false);
+  });
+
+  it('is false while demoting', () => {
+    expect(monitorRestartAllowed({ ...base, demoting: true })).toBe(false);
+  });
+
+  it('is false while idle', () => {
+    expect(monitorRestartAllowed({ ...base, isCapturing: false })).toBe(false);
   });
 });
 
@@ -460,6 +516,13 @@ describe('liveWorkspaceToolbarHTML', () => {
     expect(recording).toMatch(/id="live-ws-disarm-all"[^>]*disabled/);
     const monitoring = liveWorkspaceToolbarHTML(makeState({ isCapturing: true, liveMode: 'monitor' }));
     expect(monitoring).not.toMatch(/id="live-ws-arm-all"[^>]*disabled/);
+  });
+
+  it('#1403: renders Add track enabled while monitoring and disabled while recording', () => {
+    const monitoring = liveWorkspaceToolbarHTML(makeState({ isCapturing: true, liveMode: 'monitor' }));
+    expect(monitoring).toContain('id="live-ws-add">');
+    const recording = liveWorkspaceToolbarHTML(makeState({ isCapturing: true, liveMode: 'record' }));
+    expect(recording).toMatch(/id="live-ws-add"[^>]*disabled/);
   });
 });
 

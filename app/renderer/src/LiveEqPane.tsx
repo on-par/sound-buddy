@@ -12,6 +12,11 @@
 // so the pane owns its own chrome. #live-eq-pane-body and #live-eq-resize are
 // static root-markup nodes, so they exist at mount (App.tsx gates the portal
 // on `booted` like every other rootMarkup-injected target).
+// #1403: the inspector's Name/Mode/Source/Arm controls lock on
+// captureConfigLocked (an active recording or the demote window), not on
+// boardRunning — the tab is always-monitoring, so config edits must stay
+// live while merely monitoring. Playback output and classification keep the
+// boardRunning() lock.
 
 import { useEffect, useMemo, type FormEvent, type JSX } from 'react';
 import { useStoreShallow } from './stores/useStoreShallow';
@@ -38,6 +43,7 @@ import {
   getGroupState,
   getInstrumentProfiles,
   boardRunning,
+  captureConfigLocked,
   liveWorkspaceViewState,
   type ArmStateApi,
   type InstrumentProfilesApi,
@@ -127,6 +133,7 @@ export default function LiveEqPane(): JSX.Element {
     selectedDevice: st.selectedDevice,
     isCapturing: st.isCapturing,
     demoting: st.demoting,
+    liveMode: st.liveMode,
     measurementSource: st.measurementSource,
     selectedChannel: st.selectedChannel,
     appMode: st.appMode,
@@ -162,12 +169,14 @@ export default function LiveEqPane(): JSX.Element {
   // Keep inspector bindings in the pane view's discrete signature while level
   // tiles remain on the meter controller's imperative patch path.
   const liveRunning = boardRunning({ isCapturing: s.isCapturing, demoting: s.demoting });
+  const configLocked = captureConfigLocked({ isCapturing: s.isCapturing, liveMode: s.liveMode, demoting: s.demoting });
   const inspector = selectedStrip && s.selectedChannel != null
     ? {
       selectedIndex: s.selectedChannel,
       strip: selectedStrip,
       deviceChannels: deviceChannelCount(s.selectedDevice, s.devices),
       disabled: liveRunning,
+      configLocked,
       playbackTrack: soundcheck.manifest?.tracks[s.selectedChannel] ?? null,
       playbackRoute: soundcheck.routes[s.selectedChannel] ?? [0],
       playbackDeviceChannels: soundcheck.deviceChannels,

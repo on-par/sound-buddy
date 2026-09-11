@@ -9,7 +9,7 @@ import { useLiveCaptureStore } from './stores/liveCaptureStore';
 import { useSettingsStore } from './stores/settingsStore';
 import { useSoundcheckStore } from './stores/soundcheckStore';
 import { deviceChannelCount, deviceNameFor, eqPaneClassificationHTML, eqPaneHTML, eqPaneInspectorHTML, eqPaneView, type EqPaneInspectorView, type EqPaneView } from './live-capture-panel';
-import { currentEqPaneChannels, eqPaneLevelTilesView, liveWorkspaceViewState } from './live-workspace-view';
+import { captureConfigLocked, currentEqPaneChannels, eqPaneLevelTilesView, liveWorkspaceViewState } from './live-workspace-view';
 import type { LiveEvent } from './live-capture-panel';
 import type { AppSettings } from '../../electron/ipc/api';
 
@@ -102,6 +102,7 @@ function expectedInspectorView(): EqPaneInspectorView | null {
     strip,
     deviceChannels: deviceChannelCount(live.selectedDevice, live.devices),
     disabled: live.isCapturing || live.demoting,
+    configLocked: captureConfigLocked({ isCapturing: live.isCapturing, liveMode: live.liveMode, demoting: live.demoting }),
     playbackTrack: soundcheck.manifest?.tracks[selectedIndex] ?? null,
     playbackRoute: soundcheck.routes[selectedIndex] ?? [0],
     playbackDeviceChannels: soundcheck.deviceChannels,
@@ -156,6 +157,7 @@ afterEach(() => {
   useLiveCaptureStore.setState({
     appMode: 'reportcard', selectedChannel: null, measurementSource: null, lastLiveChannels: null,
     secondaryMeasurement: { status: 'off', deviceName: '' }, secondaryWindows: [], lastMeasurementChannels: null,
+    liveMode: 'monitor', demoting: false,
   });
   useSettingsStore.setState({ settings: null, settingsError: null });
   useSoundcheckStore.setState({ manifest: null, routes: [], deviceChannels: 0 });
@@ -272,6 +274,30 @@ describe('LiveEqPane', () => {
     const html = renderMarkup();
     expect(html).toContain('eq-pane-classification-profile" aria-label="Instrument profile" disabled');
     expect(html).toContain('eq-pane-classification-group" aria-label="Assign track to group" disabled');
+  });
+
+  it('keeps Mode/Source/Arm editable while monitoring (#1403)', () => {
+    useSoundcheckStore.setState({ manifest: { tracks: [{ kind: 'mono' }] }, routes: [[0]], deviceChannels: 4 });
+    useLiveCaptureStore.setState({ selectedChannel: 0, isCapturing: true, liveMode: 'monitor' });
+    const html = renderMarkup();
+    expect(html).toBe(expectedMarkup());
+    expect(html).toContain('eq-pane-inspector-kind" aria-label="Mono or stereo">');
+    // Playback output stays gated on board-live (boardRunning), not on configLocked.
+    expect(html).toMatch(/class="eq-pane-inspector-output"[^>]*disabled/);
+  });
+
+  it('locks them while recording', () => {
+    useLiveCaptureStore.setState({ selectedChannel: 0, isCapturing: true, liveMode: 'record' });
+    const html = renderMarkup();
+    expect(html).toBe(expectedMarkup());
+    expect(html).toContain('eq-pane-inspector-kind" aria-label="Mono or stereo" disabled');
+  });
+
+  it('locks them across the demote window (#847)', () => {
+    useLiveCaptureStore.setState({ selectedChannel: 0, isCapturing: false, liveMode: 'record', demoting: true });
+    const html = renderMarkup();
+    expect(html).toBe(expectedMarkup());
+    expect(html).toContain('eq-pane-inspector-kind" aria-label="Mono or stereo" disabled');
   });
 
   it('swaps the Room slot to the secondary room mic when active (#460)', () => {

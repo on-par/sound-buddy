@@ -155,6 +155,21 @@ export function boardRunning(lc: { isCapturing: boolean; demoting: boolean }): b
   return lc.isCapturing || lc.demoting;
 }
 
+// #1403: "may the capture SET be edited" is a different question from "is the
+// board live" (boardRunning). The tab is always-monitoring (ADR-0080), so a
+// monitoring board must keep Mode/Source/Arm/Add track editable; only an
+// active recording — or the record→monitor demote window (#847), during which
+// liveMode is still 'record' — locks them.
+export function captureConfigLocked(lc: { isCapturing: boolean; liveMode: 'monitor' | 'record'; demoting?: boolean }): boolean {
+  return (lc.isCapturing && lc.liveMode === 'record') || !!lc.demoting;
+}
+
+// #1403: may liveCaptureStore.restartMonitorCapture() bounce the stream right
+// now — only a plain running monitor session, never mid-promote/stop/demote.
+export function monitorRestartAllowed(lc: { isCapturing: boolean; liveMode: 'monitor' | 'record'; promoting: boolean; stopping: boolean; demoting: boolean }): boolean {
+  return lc.isCapturing && lc.liveMode === 'monitor' && !lc.promoting && !lc.stopping && !lc.demoting;
+}
+
 // The one builder for LiveWorkspaceViewState (#710 shotgun-surgery fix):
 // LiveWorkspace.tsx's applyLiveTick, LiveCapturePanel.tsx, and LiveEqPane.tsx
 // each read the same liveCaptureStore fields (a mix of subscribed-for-rerender
@@ -436,12 +451,13 @@ export function currentEqPaneChannels(state: LiveWorkspaceViewState): LiveMeterC
   return state.lastLiveChannels || state.channelConfig.map(() => getTrackWorkspace().idleChannel(LIVE_BAND_KEYS));
 }
 
-// Port of inline-app.js's addTrackDisabled — device channel cap or a capture
-// running (#38), used by both the toolbar's Add track and the guided hero's CTA.
+// Port of inline-app.js's addTrackDisabled — device channel cap or an active
+// recording (#38, #1403), used by both the toolbar's Add track and the guided
+// hero's CTA. Monitoring alone no longer locks it (#1403).
 export function addTrackDisabled(state: LiveWorkspaceViewState): boolean {
   const used = usedChannelCount(state.channelConfig);
   const total = deviceChannelCount(state.selectedDevice, state.devices);
-  return !getTrackWorkspace().addEnabled(used, total, state.isCapturing);
+  return !getTrackWorkspace().addEnabled(used, total, captureConfigLocked(state));
 }
 
 // Port of inline-app.js's liveWorkspaceToolbarHTML (#188): Add track + a
