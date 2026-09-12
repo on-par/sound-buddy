@@ -19,6 +19,9 @@ import { fileURLToPath } from 'node:url';
 const inlineApp = fs.readFileSync(fileURLToPath(new URL('./inline-app.js', import.meta.url)), 'utf8');
 const liveCaptureStoreTs = fs.readFileSync(fileURLToPath(new URL('./stores/liveCaptureStore.ts', import.meta.url)), 'utf8');
 const liveCapturePanelTsx = fs.readFileSync(fileURLToPath(new URL('./LiveCapturePanel.tsx', import.meta.url)), 'utf8');
+// #1411: liveAdjustmentsPanelHTML moved off LiveCapturePanel onto its own leaf,
+// LiveAdjustmentsPanel — see that file's assertion below.
+const liveAdjustmentsPanelTsx = fs.readFileSync(fileURLToPath(new URL('./LiveAdjustmentsPanel.tsx', import.meta.url)), 'utf8');
 const workspaceViewTs = fs.readFileSync(fileURLToPath(new URL('./live-workspace-view.ts', import.meta.url)), 'utf8');
 const settingsPanelTsx = fs.readFileSync(fileURLToPath(new URL('./SettingsPanel.tsx', import.meta.url)), 'utf8');
 // The note's copy moved out of SettingsPanel.tsx into settings-help.ts as the
@@ -92,8 +95,8 @@ function methodBody(src: string, signature: string): string {
 }
 
 describe('Live adjustments gate wiring (#522)', () => {
-  it('the board island renders the panel from liveAdjustmentsPanelHTML (render coverage in LiveCapturePanel.test.ts)', () => {
-    expect(liveCapturePanelTsx).toContain('liveAdjustmentsPanelHTML(state)');
+  it('the board island renders the panel from liveAdjustmentsPanelHTML (render coverage in LiveAdjustmentsPanel.test.ts)', () => {
+    expect(liveAdjustmentsPanelTsx).toContain('liveAdjustmentsPanelHTML(');
     expect(workspaceViewTs).toContain('export function liveAdjustmentsPanelHTML(');
   });
 
