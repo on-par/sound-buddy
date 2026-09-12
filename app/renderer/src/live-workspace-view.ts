@@ -707,6 +707,39 @@ export function dawShellPatchView(state: LiveWorkspaceViewState): DawShellPatchV
   };
 }
 
+/** #1411: one track head's level-meter fill. Derived from the SAME dawTrackRows
+ *  list the markup builder uses, so the patched width can never disagree with
+ *  the rendered one. */
+export interface TrackHeadLevelPatch {
+  index: number;
+  levelPercent: number;
+}
+
+/** Structural shapes so a plain object satisfies the patcher in tests — same
+ *  convention as timeline-overview.ts's TimelineOverviewShellLike. */
+interface TrackHeadLevelNodeLike {
+  style: { width: string };
+}
+export interface TrackHeadLevelShellLike {
+  querySelector(selector: string): TrackHeadLevelNodeLike | null;
+}
+
+export function dawTrackLevelPatchView(state: LiveWorkspaceViewState): TrackHeadLevelPatch[] {
+  return dawTrackRows(state).map((row) => ({ index: row.index, levelPercent: row.levelPercent }));
+}
+
+/** Writes each track head's level-meter width in place (#1411). Before this,
+ *  the fill was refreshed only as a side effect of the per-window board
+ *  rebuild; now that window ticks no longer rebuild the board, the meter is
+ *  patched from the tick like every other animation-rate value (ADR-0005). */
+export function patchTrackHeadLevels(shell: TrackHeadLevelShellLike | null, patches: TrackHeadLevelPatch[]): void {
+  if (!shell) return;
+  for (const patch of patches) {
+    const fill = shell.querySelector(`.daw-track-head[data-ch="${patch.index}"] .daw-track-head-level-fill`);
+    if (fill) fill.style.width = `${patch.levelPercent}%`;
+  }
+}
+
 // The overall-mix row's display name — one constant because the row is emitted
 // twice, once per column (ADR-0087), and the two cells must read identically.
 const DAW_MASTER_ROW_NAME = 'Overall mix';

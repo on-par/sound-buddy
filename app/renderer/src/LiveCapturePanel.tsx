@@ -41,7 +41,7 @@ import {
   type WheelEvent,
 } from 'react';
 import { useStoreShallow } from './stores/useStoreShallow';
-import { useLiveCaptureStore, MAX_LABEL_LEN, type LapAction } from './stores/liveCaptureStore';
+import { useLiveCaptureStore, MAX_LABEL_LEN, type LapAction, type LiveCaptureState } from './stores/liveCaptureStore';
 import { useSettingsStore } from './stores/settingsStore';
 import { useSpectrumStore } from './stores/spectrumStore';
 import { useSoundcheckStore } from './stores/soundcheckStore';
@@ -53,9 +53,8 @@ import {
   routeStateForSession,
   routingDrawerHTML,
 } from './routingDrawer';
-import { deviceChannelCount } from './live-capture-panel';
+import { deviceChannelCount, type StripConfig, type ChannelGroup, type LiveDevice, type ChannelFlagMap } from './live-capture-panel';
 import {
-  liveAdjustmentsPanelHTML,
   dawShellHTML,
   dawShellPatchView,
   getDawShellRuntime,
@@ -63,6 +62,8 @@ import {
   liveWorkspaceViewState,
   MS_PER_SECOND,
 } from './live-workspace-view';
+import LiveAdjustmentsPanel from './LiveAdjustmentsPanel';
+import { mainsHumWarningsSignature } from './mains-hum-warnings';
 import { setSessionTimelineScale, sessionTimelineScaleForRange } from './session-timeline-scale';
 import { registerLiveFrameHook } from './live-frame-hooks';
 import { renderStableElapsedMs } from './recording-elapsed';
@@ -200,6 +201,57 @@ export function ensureSessionRouting(
   return current;
 }
 
+/** #1411: the board shell's subscription, as a pure exported function so its
+ *  stability is unit-testable. ONLY discrete board-SHAPE values belong here —
+ *  see this story's ADR. Never add lastTick, lastLiveChannels, liveWindows,
+ *  lapCoaching, secondaryWindows, or the mainsHum tracker object: liveCaptureStore
+ *  replaces those on every tick, and any of them here rebuilds the whole board
+ *  (and every waveform canvas) at tick rate. A window-rate value that must reach
+ *  the board markup enters as a value-stable primitive fingerprint, like
+ *  mainsHumSignature below. */
+export interface LiveBoardSelection {
+  channelConfig: StripConfig[];
+  channelGroups: ChannelGroup[];
+  devices: LiveDevice[];
+  selectedDevice: string;
+  isCapturing: boolean;
+  promoting: boolean;
+  stopping: boolean;
+  demoting: boolean;
+  liveMode: 'monitor' | 'record';
+  appMode: string;
+  selectedChannel: number | null;
+  measurementSource: number | null;
+  focusedInputIndex: number | null;
+  mutedChannels: ChannelFlagMap;
+  soloedChannels: ChannelFlagMap;
+  boardShapeVersion: number;
+  /** #1407 hum badges stay fresh without subscribing to the per-tick tracker. */
+  mainsHumSignature: string;
+}
+
+export function liveBoardSelection(st: LiveCaptureState): LiveBoardSelection {
+  return {
+    channelConfig: st.channelConfig,
+    channelGroups: st.channelGroups,
+    devices: st.devices,
+    selectedDevice: st.selectedDevice,
+    isCapturing: st.isCapturing,
+    promoting: st.promoting,
+    stopping: st.stopping,
+    demoting: st.demoting,
+    liveMode: st.liveMode,
+    appMode: st.appMode,
+    selectedChannel: st.selectedChannel,
+    measurementSource: st.measurementSource,
+    focusedInputIndex: st.focusedInputIndex,
+    mutedChannels: st.mutedChannels,
+    soloedChannels: st.soloedChannels,
+    boardShapeVersion: st.boardShapeVersion,
+    mainsHumSignature: mainsHumWarningsSignature(st.mainsHum.warnings),
+  };
+}
+
 export default function LiveCapturePanel(): JSX.Element | null {
   const [sessionRoutingDrawerOpen, setSessionRoutingDrawerOpen] = useState(false);
   // #1404: which track's channel-routing picker is open on the head row, or
@@ -225,26 +277,7 @@ export default function LiveCapturePanel(): JSX.Element | null {
   // Follow-scroll state (#1286). Local view state like timelineZoom above - it is
   // navigation, not capture or session data, and is not persisted.
   const [timelineFollow, setTimelineFollow] = useState<TimelineFollowModel>(createTimelineFollowModel);
-  const s = useStoreShallow(useLiveCaptureStore, (st) => ({
-    channelConfig: st.channelConfig,
-    channelGroups: st.channelGroups,
-    devices: st.devices,
-    selectedDevice: st.selectedDevice,
-    isCapturing: st.isCapturing,
-    promoting: st.promoting,
-    stopping: st.stopping,
-    demoting: st.demoting,
-    liveMode: st.liveMode,
-    appMode: st.appMode,
-    selectedChannel: st.selectedChannel,
-    measurementSource: st.measurementSource,
-    focusedInputIndex: st.focusedInputIndex,
-    mutedChannels: st.mutedChannels,
-    soloedChannels: st.soloedChannels,
-    lapCoaching: st.lapCoaching,
-    boardShapeVersion: st.boardShapeVersion,
-    liveWindows: st.liveWindows,
-  }));
+  const s = useStoreShallow(useLiveCaptureStore, liveBoardSelection);
   const settings = useStoreShallow(useSettingsStore, (st) => st.settings);
   // Only discrete Session selection/cache fields are subscribed here. Live
   // waveform frames remain outside this render path (ADR-0005).
@@ -570,7 +603,6 @@ export default function LiveCapturePanel(): JSX.Element | null {
 
   if (s.appMode !== 'live') return null;
 
-  const adjustmentsHtml = liveAdjustmentsPanelHTML(state);
   const routingDrawerContent = soundcheck.sessionDir && soundcheck.manifest && routeState
     ? routingDrawerHTML(
       s.channelConfig,
@@ -582,7 +614,6 @@ export default function LiveCapturePanel(): JSX.Element | null {
     )
     : '';
   const board = routingDrawerContent ? dawShellHTML(state, routingDrawerContent) : dawShellHTML(state);
-  const body = board + adjustmentsHtml;
 
   /* c8 ignore start -- delegated interaction handlers, no jsdom in this
      harness (renderToString doesn't dispatch events) — exercised by
@@ -1282,7 +1313,9 @@ export default function LiveCapturePanel(): JSX.Element | null {
       onDragLeave={onDragLeave}
       onDrop={onDrop}
       onDragEnd={onDragEnd}
-      dangerouslySetInnerHTML={{ __html: body }}
-    />
+    >
+      <div className="live-board-shell" dangerouslySetInnerHTML={{ __html: board }} />
+      <LiveAdjustmentsPanel />
+    </div>
   );
 }

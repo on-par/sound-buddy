@@ -7,7 +7,9 @@ import {
   advanceMainsHumTracker,
   mainsHumBadgeText,
   mainsHumWarningText,
+  mainsHumWarningsSignature,
   type MainsHumTracker,
+  type MainsHumWarningMap,
 } from './mains-hum-warnings';
 import type { ChannelWindowData } from './live-capture-panel';
 import { GRID_FREQS } from '@sound-buddy/audio-engine/dist/profiles/index.js';
@@ -148,5 +150,40 @@ describe('mainsHumWarningText', () => {
     expect(text).toContain('Kick');
     expect(text).toContain('50 Hz');
     expect(text).toContain('check');
+  });
+});
+
+describe('mainsHumWarningsSignature (#1411)', () => {
+  it('returns an empty string for an empty warning map', () => {
+    expect(mainsHumWarningsSignature({})).toBe('');
+  });
+
+  it('encodes channelIndex and frequencyHz for a single warning', () => {
+    const warnings: MainsHumWarningMap = { 1: { channelIndex: 1, channelName: 'B', frequencyHz: 60 } };
+    expect(mainsHumWarningsSignature(warnings)).toBe('1:60');
+  });
+
+  it('is order-independent — descending and ascending key insertion produce the same string', () => {
+    const descending: MainsHumWarningMap = {
+      2: { channelIndex: 2, channelName: 'B', frequencyHz: 50 },
+      0: { channelIndex: 0, channelName: 'A', frequencyHz: 60 },
+    };
+    const ascending: MainsHumWarningMap = {
+      0: { channelIndex: 0, channelName: 'A', frequencyHz: 60 },
+      2: { channelIndex: 2, channelName: 'B', frequencyHz: 50 },
+    };
+    expect(mainsHumWarningsSignature(descending)).toBe(mainsHumWarningsSignature(ascending));
+  });
+
+  it('changes when a frequency changes', () => {
+    const before: MainsHumWarningMap = { 1: { channelIndex: 1, channelName: 'B', frequencyHz: 60 } };
+    const after: MainsHumWarningMap = { 1: { channelIndex: 1, channelName: 'B', frequencyHz: 50 } };
+    expect(mainsHumWarningsSignature(before)).not.toBe(mainsHumWarningsSignature(after));
+  });
+
+  it('does not change when only channelName changes', () => {
+    const before: MainsHumWarningMap = { 1: { channelIndex: 1, channelName: 'B', frequencyHz: 60 } };
+    const after: MainsHumWarningMap = { 1: { channelIndex: 1, channelName: 'Renamed', frequencyHz: 60 } };
+    expect(mainsHumWarningsSignature(before)).toBe(mainsHumWarningsSignature(after));
   });
 });

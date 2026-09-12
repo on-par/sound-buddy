@@ -27,7 +27,10 @@ import {
   captureConfigLocked,
   monitorRestartAllowed,
   liveWorkspaceViewState,
+  dawTrackLevelPatchView,
+  patchTrackHeadLevels,
   type LiveWorkspaceViewState,
+  type TrackHeadLevelShellLike,
 } from './live-workspace-view';
 import { sessionTabSessionPickerView } from './session-tab-session-picker';
 import { levelPercent, type LiveDevice, type StripConfig, type ChannelGroup, type LiveEvent, type LiveMeterChannel } from './live-capture-panel';
@@ -1186,6 +1189,41 @@ describe('dawTrackRows / configured track rows (#1043)', () => {
     const withTracks = dawShellHTML(makeState());
     const withoutTracks = dawShellHTML(makeState({ channelConfig: [] }));
     expect(withTracks).not.toBe(withoutTracks);
+  });
+});
+
+describe('dawTrackLevelPatchView / patchTrackHeadLevels (#1411)', () => {
+  it('dawTrackLevelPatchView returns one entry per configured strip, matching dawTrackRows\' levelPercent', () => {
+    const state = makeState({ lastLiveChannels: TICK_CHANNELS });
+    const rows = dawTrackRows(state);
+    const patches = dawTrackLevelPatchView(state);
+    expect(patches).toEqual(rows.map((row) => ({ index: row.index, levelPercent: row.levelPercent })));
+    expect(patches[0].levelPercent).toBeCloseTo(levelPercent(TICK_CHANNELS[0].rms, false), 10);
+  });
+
+  function fakeShell(nodes: Record<string, { style: { width: string } }>): TrackHeadLevelShellLike {
+    return { querySelector: (selector: string) => nodes[selector] ?? null };
+  }
+
+  it('writes each patch\'s levelPercent onto its selected node', () => {
+    const fill = { style: { width: '' } };
+    const shell = fakeShell({ '.daw-track-head[data-ch="0"] .daw-track-head-level-fill': fill });
+    patchTrackHeadLevels(shell, [{ index: 0, levelPercent: 70 }]);
+    expect(fill.style.width).toBe('70%');
+  });
+
+  it('leaves other fills patched when one selector resolves to null', () => {
+    const fill1 = { style: { width: '' } };
+    const shell = fakeShell({ '.daw-track-head[data-ch="1"] .daw-track-head-level-fill': fill1 });
+    expect(() => patchTrackHeadLevels(shell, [
+      { index: 0, levelPercent: 10 },
+      { index: 1, levelPercent: 55 },
+    ])).not.toThrow();
+    expect(fill1.style.width).toBe('55%');
+  });
+
+  it('is a no-op for a null shell', () => {
+    expect(() => patchTrackHeadLevels(null, [{ index: 0, levelPercent: 10 }])).not.toThrow();
   });
 });
 

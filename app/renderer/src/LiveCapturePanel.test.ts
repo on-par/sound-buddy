@@ -4,10 +4,12 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { createElement } from 'react';
 import { renderToString } from 'react-dom/server';
+import { shallow } from 'zustand/shallow';
 import LiveCapturePanel, {
   ensureSessionRouting,
   normalizeGroupName,
   routeHeaderChannelAction,
+  liveBoardSelection,
   type HeaderChannelActions,
 } from './LiveCapturePanel';
 import { useLiveCaptureStore } from './stores/liveCaptureStore';
@@ -90,6 +92,7 @@ beforeEach(() => {
     lastTick: null,
     lastLiveChannels: null,
     demoting: false,
+    mainsHum: { eligibility: {}, warnings: {} },
   });
   useSettingsStore.setState({ settings: settings() });
   useSoundcheckStore.setState({
@@ -258,6 +261,50 @@ describe('LiveCapturePanel', () => {
     expect(html).toMatch(/id="daw-session-record"[^>]*>Record</);
     expect(html).not.toContain('daw-session-record--recording');
     expect(html).not.toMatch(/id="daw-session-record"[^>]*>Stop</);
+  });
+});
+
+describe('board selector stability (#1411)', () => {
+  it('is unaffected by ten liveWindows pushes and a lapCoaching swap with an unchanged track shape (AC1, AC2)', () => {
+    const before = liveBoardSelection(useLiveCaptureStore.getState());
+    let windows = useLiveCaptureStore.getState().liveWindows;
+    for (let i = 0; i < 10; i++) {
+      windows = [...windows, { type: 'window' as const, window: i, ts: i, masking: [], channels: [] }];
+      useLiveCaptureStore.setState({ liveWindows: windows, lapCoaching: { active: null, seq: i } as unknown as ReturnType<typeof useLiveCaptureStore.getState>['lapCoaching'] });
+    }
+    const after = liveBoardSelection(useLiveCaptureStore.getState());
+    expect(shallow(before, after)).toBe(true);
+  });
+
+  it('changes when a mains-hum warning appears, exposing the value-stable signature (AC3)', () => {
+    const before = liveBoardSelection(useLiveCaptureStore.getState());
+    useLiveCaptureStore.setState({
+      mainsHum: { eligibility: {}, warnings: { 1: { channelIndex: 1, channelName: 'B', frequencyHz: 60 } } },
+    });
+    const after = liveBoardSelection(useLiveCaptureStore.getState());
+    expect(shallow(before, after)).toBe(false);
+    expect(after.mainsHumSignature).toBe('1:60');
+  });
+
+  it('stays stable when the mainsHum tracker is replaced with a NEW object carrying identical warnings (value, not reference, stability)', () => {
+    useLiveCaptureStore.setState({
+      mainsHum: { eligibility: {}, warnings: { 1: { channelIndex: 1, channelName: 'B', frequencyHz: 60 } } },
+    });
+    const before = liveBoardSelection(useLiveCaptureStore.getState());
+    useLiveCaptureStore.setState({
+      mainsHum: { eligibility: {}, warnings: { 1: { channelIndex: 1, channelName: 'B', frequencyHz: 60 } } },
+    });
+    const after = liveBoardSelection(useLiveCaptureStore.getState());
+    expect(shallow(before, after)).toBe(true);
+  });
+
+  it('exposes no liveWindows/lapCoaching/lastTick/lastLiveChannels key (ADR guard rail)', () => {
+    const selection = liveBoardSelection(useLiveCaptureStore.getState());
+    const keys = Object.keys(selection);
+    expect(keys).not.toContain('liveWindows');
+    expect(keys).not.toContain('lapCoaching');
+    expect(keys).not.toContain('lastTick');
+    expect(keys).not.toContain('lastLiveChannels');
   });
 });
 

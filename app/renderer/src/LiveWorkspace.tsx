@@ -38,6 +38,8 @@ import {
   patchStatsRow,
   dawShellPatchView,
   dawTrackRows,
+  dawTrackLevelPatchView,
+  patchTrackHeadLevels,
   getDawShellRuntime,
   liveWorkspaceViewState,
   boardRunning,
@@ -95,6 +97,13 @@ function applyLiveTick(snap: LiveMeterSnapshot): void {
       const laneName = shell.querySelector(`.daw-channel-lane[data-ch="${row.index}"] .daw-lane-name`);
       if (laneName && laneName.innerHTML !== row.name) laneName.innerHTML = row.name;
     }
+    // #1411: the per-window board rebuild used to refresh these implicitly.
+    // LiveCapturePanel no longer re-renders on a window tick, so the head
+    // meters are patched here like every other animation-rate value.
+    patchTrackHeadLevels(
+      { querySelector: (selector) => shell.querySelector<HTMLElement>(selector) },
+      dawTrackLevelPatchView(state),
+    );
     patchGroupSummaries(shell, tick.channels, state.channelGroups);
   }
   const channels = currentEqPaneChannels(state);

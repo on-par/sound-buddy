@@ -62,3 +62,19 @@ export function mainsHumBadgeText(frequencyHz: MainsHumFrequencyHz): string {
 export function mainsHumWarningText(channelLabel: string, frequencyHz: MainsHumFrequencyHz): string {
   return `Mains hum at ${frequencyHz} Hz on ${channelLabel} — check that input's cable, DI box, or ground loop.`;
 }
+
+/** #1411: a value-stable fingerprint of the per-strip mains-hum warnings.
+ *  advanceMainsHumTracker builds a FRESH warnings object on every window tick,
+ *  so subscribing to the object itself rebuilds the board at tick rate; this
+ *  string only changes when the set of flagged strips or a detected frequency
+ *  actually changes. Index-sorted so the value cannot depend on key insertion
+ *  order. Only channelIndex + frequencyHz are encoded because those are the
+ *  only fields dawTrackRows reads (the badge's title text uses the row's own
+ *  resolved name, not warning.channelName). */
+export function mainsHumWarningsSignature(warnings: MainsHumWarningMap): string {
+  return Object.keys(warnings)
+    .map((key) => Number(key))
+    .sort((a, b) => a - b)
+    .map((index) => `${index}:${warnings[index].frequencyHz}`)
+    .join(',');
+}
