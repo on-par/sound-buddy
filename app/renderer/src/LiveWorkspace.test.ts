@@ -4,6 +4,8 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { createElement } from 'react';
 import { renderToString } from 'react-dom/server';
+import * as fs from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import LiveWorkspace from './LiveWorkspace';
 import { useLiveCaptureStore } from './stores/liveCaptureStore';
 import { useSettingsStore } from './stores/settingsStore';
@@ -86,5 +88,17 @@ describe('LiveWorkspace', () => {
   it('renders nothing off the Live tab — the board island gates itself on appMode', () => {
     useLiveCaptureStore.setState({ appMode: 'reportcard' });
     expect(renderToString(createElement(LiveWorkspace))).toBe('');
+  });
+});
+
+describe('applyLiveTick patches track-head level fills (#1411)', () => {
+  // applyLiveTick is DOM-patching code under a /* c8 ignore */ block with no
+  // jsdom in this harness — gated structurally, like live-adjustments-gate.test.ts
+  // does elsewhere. The behavior itself is covered by the patchTrackHeadLevels /
+  // dawTrackLevelPatchView unit tests in live-workspace-view.test.ts.
+  it('calls patchTrackHeadLevels with dawTrackLevelPatchView(state)', () => {
+    const src = fs.readFileSync(fileURLToPath(new URL('./LiveWorkspace.tsx', import.meta.url)), 'utf8');
+    expect(src).toContain('patchTrackHeadLevels(');
+    expect(src).toContain('dawTrackLevelPatchView(state)');
   });
 });
