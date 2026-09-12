@@ -122,6 +122,7 @@ import {
 import { createSoundcheckTransportController } from './soundcheck-transport-controller';
 import { runtime, recordCapture, stopLiveCapture } from './LiveControls';
 import { recordButtonAction } from './record-transport';
+import { liveFrameProbe } from './live-frame-probe';
 
 // Per-element "original text" snapshot for the delegated inline rename (#39),
 // keyed by the DAW track-name element being edited. Survives the element being
@@ -614,6 +615,10 @@ export default function LiveCapturePanel(): JSX.Element | null {
     )
     : '';
   const board = routingDrawerContent ? dawShellHTML(state, routingDrawerContent) : dawShellHTML(state);
+  // #1414: a changed board string IS the dangerouslySetInnerHTML rebuild below —
+  // cheapest place to count it without a render-keyed effect (board is computed
+  // after the appMode early return, so no hook can depend on it).
+  liveFrameProbe.noteBoardHtml(board);
 
   /* c8 ignore start -- delegated interaction handlers, no jsdom in this
      harness (renderToString doesn't dispatch events) — exercised by

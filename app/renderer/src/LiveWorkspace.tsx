@@ -51,6 +51,7 @@ import { roomLevelChannel } from './spl-calibration';
 import { fmt } from './report-card';
 import type { LiveEvent } from './live-capture-panel';
 import LiveCapturePanel from './LiveCapturePanel';
+import { liveFrameProbe } from './live-frame-probe';
 
 // #1413: one cache instance for the life of the app — applyLiveTick fires on
 // every mounted controller's rAF, and createTrackNodeCache's own scope() call
@@ -64,6 +65,11 @@ const trackNodeCache = createTrackNodeCache<HTMLElement>();
    (in-place tick patch with the surviving data-marker, stats row, EQ-pane
    arcs) and named-channel-groups.spec.ts (group-summary refresh). */
 function applyLiveTick(snap: LiveMeterSnapshot): void {
+  // #1414: dev frame-time probe — beginTick()/endTick() bracket the whole
+  // function so its duration covers every patch below. A null probeStart
+  // (disabled) costs one boolean check; an early return below skips endTick
+  // entirely, so a no-op tick records no sample and can't drag p50 down.
+  const probeStart = liveFrameProbe.beginTick();
   const lc = useLiveCaptureStore.getState();
   const tick = snap.lastTick;
   if (!tick || !tick.channels || tick.channels.length === 0) return;
@@ -129,6 +135,7 @@ function applyLiveTick(snap: LiveMeterSnapshot): void {
   }
   getDawShellRuntime()?.renderPlayhead?.();
   getDawShellRuntime()?.renderWaveform?.();
+  liveFrameProbe.endTick(probeStart);
 }
 /* c8 ignore stop */
 
