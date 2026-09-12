@@ -459,6 +459,23 @@ export function currentEqPaneChannels(state: LiveWorkspaceViewState): LiveMeterC
   return state.lastLiveChannels || state.channelConfig.map(() => getTrackWorkspace().idleChannel(LIVE_BAND_KEYS));
 }
 
+/** Structural shape for the #live-eq-pane element — same convention as
+ *  TrackHeadLevelShellLike, sized to just the field this check reads. */
+export interface EqPaneVisibilityLike {
+  style: { display: string };
+}
+
+/** #1413: whether a live tick should spend time patching the EQ pane at all.
+ *  Reads the inline `style.display` LiveEqPane's own visibility effect
+ *  already writes ('none' off the Live tab, 'flex' on it) rather than
+ *  offsetParent/getComputedStyle/checkVisibility — each of those would force
+ *  a layout flush inside the rAF patch callback, costing more than the patch
+ *  they'd guard. Class-based hiding (body.not-pro, single-column) leaves this
+ *  inline style at 'flex' and is a known non-goal (ADR-0136). */
+export function eqPaneTickPatchEnabled(pane: EqPaneVisibilityLike | null): boolean {
+  return !!pane && pane.style.display !== 'none';
+}
+
 // Port of inline-app.js's addTrackDisabled — device channel cap or an active
 // recording (#38, #1403), used by both the toolbar's Add track and the guided
 // hero's CTA. Monitoring alone no longer locks it (#1403).
@@ -738,6 +755,47 @@ export function patchTrackHeadLevels(shell: TrackHeadLevelShellLike | null, patc
     const fill = shell.querySelector(`.daw-track-head[data-ch="${patch.index}"] .daw-track-head-level-fill`);
     if (fill) fill.style.width = `${patch.levelPercent}%`;
   }
+}
+
+/** Structural query-selector shape, generic over the returned node type — same
+ *  querySelector(selector) contract as TrackHeadLevelShellLike above, reused
+ *  here so createTrackNodeCache's memoized scope stays a drop-in stand-in for
+ *  any *ShellLike consumer (patchTrackHeadLevels included). */
+export interface QuerySelectorLike<T> {
+  querySelector(selector: string): T | null;
+}
+
+/** #1413: memoizes per-track DOM node lookups (head name, lane name,
+ *  level-fill) across live ticks so an unchanged board reuses last frame's
+ *  queried nodes instead of re-querying every track every frame.
+ *
+ *  Keyed on `(root, boardShapeVersion)` together, not boardShapeVersion
+ *  alone: LiveCapturePanel re-renders the whole `.daw-shell` from one
+ *  dangerouslySetInnerHTML string on any discrete change (rename, selection,
+ *  mute/solo, hum badge) without bumping boardShapeVersion, which would
+ *  leave a version-keyed cache pointing at detached nodes. Comparing the
+ *  freshly re-queried `.daw-shell` root's identity against the cached one
+ *  catches that rebuild for free — callers already re-resolve `.daw-shell`
+ *  once per tick before reaching this cache (ADR-0136). */
+export function createTrackNodeCache<T>(): { scope(root: QuerySelectorLike<T>, boardShapeVersion: number): QuerySelectorLike<T> } {
+  let cachedRoot: QuerySelectorLike<T> | null = null;
+  let cachedVersion: number | null = null;
+  let nodes = new Map<string, T | null>();
+  return {
+    scope(root, boardShapeVersion) {
+      if (root !== cachedRoot || boardShapeVersion !== cachedVersion) {
+        cachedRoot = root;
+        cachedVersion = boardShapeVersion;
+        nodes = new Map();
+      }
+      return {
+        querySelector(selector) {
+          if (!nodes.has(selector)) nodes.set(selector, root.querySelector(selector));
+          return nodes.get(selector) ?? null;
+        },
+      };
+    },
+  };
 }
 
 // The overall-mix row's display name — one constant because the row is emitted

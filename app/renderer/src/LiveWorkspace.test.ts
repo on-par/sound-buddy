@@ -102,3 +102,26 @@ describe('applyLiveTick patches track-head level fills (#1411)', () => {
     expect(src).toContain('dawTrackLevelPatchView(state)');
   });
 });
+
+describe('applyLiveTick caches per-track DOM lookups (#1413)', () => {
+  // Same DOM-patching/no-jsdom constraint as above — createTrackNodeCache's
+  // invalidation logic is exhaustively unit-tested in live-workspace-view.test.ts
+  // against plain-object fakes; this test only pins that applyLiveTick wires it in.
+  it('scopes the shell through the module-level track node cache, keyed on boardShapeVersion, before querying track nodes', () => {
+    const src = fs.readFileSync(fileURLToPath(new URL('./LiveWorkspace.tsx', import.meta.url)), 'utf8');
+    expect(src).toContain('createTrackNodeCache<HTMLElement>()');
+    expect(src).toContain('trackNodeCache.scope(shell, lc.boardShapeVersion)');
+    expect(src).toContain('cachedShell.querySelector(`.daw-track-head[data-ch="${row.index}"] .daw-track-head-name`)');
+    expect(src).toContain('patchTrackHeadLevels(cachedShell, dawTrackLevelPatchView(state))');
+  });
+});
+
+describe('applyLiveTick skips EQ-pane patch work while the pane is hidden (#1413)', () => {
+  // Same DOM-patching/no-jsdom constraint as above — eqPaneTickPatchEnabled's
+  // visibility rule is exhaustively unit-tested in live-workspace-view.test.ts
+  // against plain-object fakes; this test only pins that applyLiveTick gates on it.
+  it('gates the EQ-pane patch-plan work on eqPaneTickPatchEnabled', () => {
+    const src = fs.readFileSync(fileURLToPath(new URL('./LiveWorkspace.tsx', import.meta.url)), 'utf8');
+    expect(src).toContain('if (pane && eqPaneTickPatchEnabled(pane))');
+  });
+});

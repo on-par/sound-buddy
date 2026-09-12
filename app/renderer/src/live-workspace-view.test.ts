@@ -29,8 +29,11 @@ import {
   liveWorkspaceViewState,
   dawTrackLevelPatchView,
   patchTrackHeadLevels,
+  createTrackNodeCache,
+  eqPaneTickPatchEnabled,
   type LiveWorkspaceViewState,
   type TrackHeadLevelShellLike,
+  type QuerySelectorLike,
 } from './live-workspace-view';
 import { sessionTabSessionPickerView } from './session-tab-session-picker';
 import { levelPercent, type LiveDevice, type StripConfig, type ChannelGroup, type LiveEvent, type LiveMeterChannel } from './live-capture-panel';
@@ -1453,5 +1456,74 @@ describe('liveStatsRowView', () => {
     expect(selectedEqPaneLevelTilesView([channel], 1)).toBeNull();
     expect(selectedEqPaneLevelTilesView([channel], -1)).toBeNull();
     expect(selectedEqPaneLevelTilesView([channel], 1.5)).toBeNull();
+  });
+});
+
+describe('createTrackNodeCache (#1413)', () => {
+  function fakeRoot(nodes: Record<string, { id: string } | null>): { root: QuerySelectorLike<{ id: string }>; calls: string[] } {
+    const calls: string[] = [];
+    return {
+      calls,
+      root: {
+        querySelector: (selector: string) => {
+          calls.push(selector);
+          return nodes[selector] ?? null;
+        },
+      },
+    };
+  }
+
+  it('reuses a node across ticks that share the same root and boardShapeVersion', () => {
+    const node = { id: 'a' };
+    const { root, calls } = fakeRoot({ '.a': node });
+    const cache = createTrackNodeCache<{ id: string }>();
+    const first = cache.scope(root, 1).querySelector('.a');
+    const second = cache.scope(root, 1).querySelector('.a');
+    expect(first).toBe(node);
+    expect(second).toBe(node);
+    expect(calls).toEqual(['.a']);
+  });
+
+  it('re-queries once boardShapeVersion changes, even with the same root', () => {
+    const { root, calls } = fakeRoot({ '.a': { id: 'a' } });
+    const cache = createTrackNodeCache<{ id: string }>();
+    cache.scope(root, 1).querySelector('.a');
+    cache.scope(root, 2).querySelector('.a');
+    expect(calls).toEqual(['.a', '.a']);
+  });
+
+  it('re-queries once the root identity changes, even with an unchanged boardShapeVersion (a discrete-change board rebuild)', () => {
+    const first = fakeRoot({ '.a': { id: 'a' } });
+    const second = fakeRoot({ '.a': { id: 'b' } });
+    const cache = createTrackNodeCache<{ id: string }>();
+    const firstResult = cache.scope(first.root, 1).querySelector('.a');
+    const secondResult = cache.scope(second.root, 1).querySelector('.a');
+    expect(firstResult).toEqual({ id: 'a' });
+    expect(secondResult).toEqual({ id: 'b' });
+    expect(first.calls).toEqual(['.a']);
+    expect(second.calls).toEqual(['.a']);
+  });
+
+  it('caches a null lookup instead of re-querying every call within the same scope', () => {
+    const { root, calls } = fakeRoot({});
+    const cache = createTrackNodeCache<{ id: string }>();
+    const scoped = cache.scope(root, 1);
+    expect(scoped.querySelector('.missing')).toBeNull();
+    expect(scoped.querySelector('.missing')).toBeNull();
+    expect(calls).toEqual(['.missing']);
+  });
+});
+
+describe('eqPaneTickPatchEnabled (#1413)', () => {
+  it('is false when the pane is unavailable', () => {
+    expect(eqPaneTickPatchEnabled(null)).toBe(false);
+  });
+
+  it('is false when the pane\'s inline display is none', () => {
+    expect(eqPaneTickPatchEnabled({ style: { display: 'none' } })).toBe(false);
+  });
+
+  it('is true once the pane\'s inline display is set to flex again', () => {
+    expect(eqPaneTickPatchEnabled({ style: { display: 'flex' } })).toBe(true);
   });
 });

@@ -44,11 +44,19 @@ import {
   liveWorkspaceViewState,
   boardRunning,
   selectedEqPaneLevelTilesView,
+  createTrackNodeCache,
+  eqPaneTickPatchEnabled,
 } from './live-workspace-view';
 import { roomLevelChannel } from './spl-calibration';
 import { fmt } from './report-card';
 import type { LiveEvent } from './live-capture-panel';
 import LiveCapturePanel from './LiveCapturePanel';
+
+// #1413: one cache instance for the life of the app — applyLiveTick fires on
+// every mounted controller's rAF, and createTrackNodeCache's own scope() call
+// is what invalidates it per tick (root identity + boardShapeVersion), so a
+// module-level singleton is safe here (see live-workspace-view.ts).
+const trackNodeCache = createTrackNodeCache<HTMLElement>();
 
 /* c8 ignore start -- DOM-patching meter-tick applier, no jsdom in this
    harness (renderToString doesn't run effects, and the patch only fires on
@@ -89,26 +97,30 @@ function applyLiveTick(snap: LiveMeterSnapshot): void {
     if (mixLane && mixLane.getAttribute('data-capture-mode') !== view.captureMode) {
       mixLane.setAttribute('data-capture-mode', view.captureMode);
     }
+    // #1413: scope this tick's node lookups through the cache — an unchanged
+    // board (same shell root, same boardShapeVersion) reuses last frame's
+    // queried nodes instead of re-querying every track.
+    const cachedShell = trackNodeCache.scope(shell, lc.boardShapeVersion);
     for (const row of dawTrackRows(state)) {
-      const headName = shell.querySelector(`.daw-track-head[data-ch="${row.index}"] .daw-track-head-name`);
+      const headName = cachedShell.querySelector(`.daw-track-head[data-ch="${row.index}"] .daw-track-head-name`);
       if (headName && document.activeElement !== headName && headName.innerHTML !== row.name) {
         headName.innerHTML = row.name;
       }
-      const laneName = shell.querySelector(`.daw-channel-lane[data-ch="${row.index}"] .daw-lane-name`);
+      const laneName = cachedShell.querySelector(`.daw-channel-lane[data-ch="${row.index}"] .daw-lane-name`);
       if (laneName && laneName.innerHTML !== row.name) laneName.innerHTML = row.name;
     }
     // #1411: the per-window board rebuild used to refresh these implicitly.
     // LiveCapturePanel no longer re-renders on a window tick, so the head
     // meters are patched here like every other animation-rate value.
-    patchTrackHeadLevels(
-      { querySelector: (selector) => shell.querySelector<HTMLElement>(selector) },
-      dawTrackLevelPatchView(state),
-    );
+    patchTrackHeadLevels(cachedShell, dawTrackLevelPatchView(state));
     patchGroupSummaries(shell, tick.channels, state.channelGroups);
   }
-  const channels = currentEqPaneChannels(state);
   const pane = document.getElementById('live-eq-pane');
-  if (pane) {
+  // #1413: the pane's own visibility effect (LiveEqPane.tsx) writes this
+  // inline style off the Live tab — skip the patch-plan work entirely rather
+  // than computing arcs/tiles nobody can see.
+  if (pane && eqPaneTickPatchEnabled(pane)) {
+    const channels = currentEqPaneChannels(state);
     const view = eqPaneView(channels, state.channelConfig, state.measurementSource, state.selectedChannel);
     const plan = eqPanePatchPlan(view);
     patchEqPaneSection(pane.querySelector('.eq-pane-primary'), plan.primary);
