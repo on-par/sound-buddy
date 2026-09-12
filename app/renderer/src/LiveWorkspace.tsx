@@ -45,6 +45,7 @@ import {
   boardRunning,
   selectedEqPaneLevelTilesView,
   createTrackNodeCache,
+  eqPaneTickPatchEnabled,
 } from './live-workspace-view';
 import { roomLevelChannel } from './spl-calibration';
 import { fmt } from './report-card';
@@ -114,9 +115,12 @@ function applyLiveTick(snap: LiveMeterSnapshot): void {
     patchTrackHeadLevels(cachedShell, dawTrackLevelPatchView(state));
     patchGroupSummaries(shell, tick.channels, state.channelGroups);
   }
-  const channels = currentEqPaneChannels(state);
   const pane = document.getElementById('live-eq-pane');
-  if (pane) {
+  // #1413: the pane's own visibility effect (LiveEqPane.tsx) writes this
+  // inline style off the Live tab — skip the patch-plan work entirely rather
+  // than computing arcs/tiles nobody can see.
+  if (pane && eqPaneTickPatchEnabled(pane)) {
+    const channels = currentEqPaneChannels(state);
     const view = eqPaneView(channels, state.channelConfig, state.measurementSource, state.selectedChannel);
     const plan = eqPanePatchPlan(view);
     patchEqPaneSection(pane.querySelector('.eq-pane-primary'), plan.primary);

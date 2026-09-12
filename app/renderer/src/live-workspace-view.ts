@@ -459,6 +459,23 @@ export function currentEqPaneChannels(state: LiveWorkspaceViewState): LiveMeterC
   return state.lastLiveChannels || state.channelConfig.map(() => getTrackWorkspace().idleChannel(LIVE_BAND_KEYS));
 }
 
+/** Structural shape for the #live-eq-pane element — same convention as
+ *  TrackHeadLevelShellLike, sized to just the field this check reads. */
+export interface EqPaneVisibilityLike {
+  style: { display: string };
+}
+
+/** #1413: whether a live tick should spend time patching the EQ pane at all.
+ *  Reads the inline `style.display` LiveEqPane's own visibility effect
+ *  already writes ('none' off the Live tab, 'flex' on it) rather than
+ *  offsetParent/getComputedStyle/checkVisibility — each of those would force
+ *  a layout flush inside the rAF patch callback, costing more than the patch
+ *  they'd guard. Class-based hiding (body.not-pro, single-column) leaves this
+ *  inline style at 'flex' and is a known non-goal (ADR-0136). */
+export function eqPaneTickPatchEnabled(pane: EqPaneVisibilityLike | null): boolean {
+  return !!pane && pane.style.display !== 'none';
+}
+
 // Port of inline-app.js's addTrackDisabled — device channel cap or an active
 // recording (#38, #1403), used by both the toolbar's Add track and the guided
 // hero's CTA. Monitoring alone no longer locks it (#1403).

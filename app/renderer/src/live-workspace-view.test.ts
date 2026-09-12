@@ -30,6 +30,7 @@ import {
   dawTrackLevelPatchView,
   patchTrackHeadLevels,
   createTrackNodeCache,
+  eqPaneTickPatchEnabled,
   type LiveWorkspaceViewState,
   type TrackHeadLevelShellLike,
   type QuerySelectorLike,
@@ -1510,5 +1511,19 @@ describe('createTrackNodeCache (#1413)', () => {
     expect(scoped.querySelector('.missing')).toBeNull();
     expect(scoped.querySelector('.missing')).toBeNull();
     expect(calls).toEqual(['.missing']);
+  });
+});
+
+describe('eqPaneTickPatchEnabled (#1413)', () => {
+  it('is false when the pane is unavailable', () => {
+    expect(eqPaneTickPatchEnabled(null)).toBe(false);
+  });
+
+  it('is false when the pane\'s inline display is none', () => {
+    expect(eqPaneTickPatchEnabled({ style: { display: 'none' } })).toBe(false);
+  });
+
+  it('is true once the pane\'s inline display is set to flex again', () => {
+    expect(eqPaneTickPatchEnabled({ style: { display: 'flex' } })).toBe(true);
   });
 });
