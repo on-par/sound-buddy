@@ -740,6 +740,47 @@ export function patchTrackHeadLevels(shell: TrackHeadLevelShellLike | null, patc
   }
 }
 
+/** Structural query-selector shape, generic over the returned node type — same
+ *  querySelector(selector) contract as TrackHeadLevelShellLike above, reused
+ *  here so createTrackNodeCache's memoized scope stays a drop-in stand-in for
+ *  any *ShellLike consumer (patchTrackHeadLevels included). */
+export interface QuerySelectorLike<T> {
+  querySelector(selector: string): T | null;
+}
+
+/** #1413: memoizes per-track DOM node lookups (head name, lane name,
+ *  level-fill) across live ticks so an unchanged board reuses last frame's
+ *  queried nodes instead of re-querying every track every frame.
+ *
+ *  Keyed on `(root, boardShapeVersion)` together, not boardShapeVersion
+ *  alone: LiveCapturePanel re-renders the whole `.daw-shell` from one
+ *  dangerouslySetInnerHTML string on any discrete change (rename, selection,
+ *  mute/solo, hum badge) without bumping boardShapeVersion, which would
+ *  leave a version-keyed cache pointing at detached nodes. Comparing the
+ *  freshly re-queried `.daw-shell` root's identity against the cached one
+ *  catches that rebuild for free — callers already re-resolve `.daw-shell`
+ *  once per tick before reaching this cache (ADR-0136). */
+export function createTrackNodeCache<T>(): { scope(root: QuerySelectorLike<T>, boardShapeVersion: number): QuerySelectorLike<T> } {
+  let cachedRoot: QuerySelectorLike<T> | null = null;
+  let cachedVersion: number | null = null;
+  let nodes = new Map<string, T | null>();
+  return {
+    scope(root, boardShapeVersion) {
+      if (root !== cachedRoot || boardShapeVersion !== cachedVersion) {
+        cachedRoot = root;
+        cachedVersion = boardShapeVersion;
+        nodes = new Map();
+      }
+      return {
+        querySelector(selector) {
+          if (!nodes.has(selector)) nodes.set(selector, root.querySelector(selector));
+          return nodes.get(selector) ?? null;
+        },
+      };
+    },
+  };
+}
+
 // The overall-mix row's display name — one constant because the row is emitted
 // twice, once per column (ADR-0087), and the two cells must read identically.
 const DAW_MASTER_ROW_NAME = 'Overall mix';
