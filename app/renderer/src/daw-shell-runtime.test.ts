@@ -1203,6 +1203,49 @@ describe('createDawShellRuntime', () => {
       rt.ingestPeaks(peaksFrame([{ id: 'mix', data: encodePairs([64, 192]) }]));
       expect(raf).toHaveBeenCalledTimes(2);
     });
+
+    // #1412: while the Live tab's shared frame loop is running, ingestPeaks must not
+    // schedule a second, competing rAF of its own — the loop's flushWaveform
+    // per-frame hook drains the repaint instead.
+    it('does not schedule its own rAF when isFrameLoopActive reports the shared loop is running', () => {
+      const { deps, raf } = makeDeps({ isFrameLoopActive: () => true });
+      const rt = createDawShellRuntime(deps);
+      rt.ingestPeaks(peaksFrame([{ id: 'mix', data: encodePairs([64, 192]) }]));
+      expect(raf).not.toHaveBeenCalled();
+    });
+
+    it('still self-schedules when isFrameLoopActive reports the shared loop is idle', () => {
+      const { deps, raf } = makeDeps({ isFrameLoopActive: () => false });
+      const rt = createDawShellRuntime(deps);
+      rt.ingestPeaks(peaksFrame([{ id: 'mix', data: encodePairs([64, 192]) }]));
+      expect(raf).toHaveBeenCalledTimes(1);
+    });
+
+    it('appends the ingested data even when piggybacking on the shared loop (no self-scheduled rAF)', () => {
+      const shell = makeFakeShell();
+      const { deps, setShell } = makeDeps({ isFrameLoopActive: () => true });
+      setShell(shell);
+      const rt = createDawShellRuntime(deps);
+      rt.ingestPeaks(peaksFrame([{ id: 'mix', data: encodePairs([64, 192]) }]));
+      rt.flushWaveform();
+      const mixCanvas = shell.el.mixCanvas as ReturnType<typeof makeFakeCanvas>;
+      expect(mixCanvas.ctx.calls.stroke).toBeGreaterThan(0);
+    });
+  });
+
+  describe('flushWaveform', () => {
+    it('repaints immediately, with no rAF scheduling', () => {
+      const shell = makeFakeShell();
+      const { deps, setShell, raf } = makeDeps();
+      setShell(shell);
+      const rt = createDawShellRuntime(deps);
+      rt.ingestPeaks(peaksFrame([{ id: 'mix', data: encodePairs([64, 192]) }]));
+      raf.mockClear();
+      rt.flushWaveform();
+      const mixCanvas = shell.el.mixCanvas as ReturnType<typeof makeFakeCanvas>;
+      expect(mixCanvas.ctx.calls.stroke).toBeGreaterThan(0);
+      expect(raf).not.toHaveBeenCalled();
+    });
   });
 
   describe('bindLiveEvents', () => {

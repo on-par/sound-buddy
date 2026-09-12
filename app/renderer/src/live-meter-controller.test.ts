@@ -2,7 +2,12 @@
 // Licensed under the Sound Buddy Desktop Application License (app/LICENSE).
 
 import { describe, it, expect, vi } from 'vitest';
-import { createLiveMeterController, type LiveMeterControllerDeps, type LiveMeterSnapshot } from './live-meter-controller';
+import {
+  createLiveMeterController,
+  liveMeterSnapshotChanged,
+  type LiveMeterControllerDeps,
+  type LiveMeterSnapshot,
+} from './live-meter-controller';
 import type { LiveEvent } from './live-capture-panel';
 
 function makeTick(window: number): LiveEvent {
@@ -32,6 +37,8 @@ function makeFakeDeps(overrides: Partial<LiveMeterControllerDeps> = {}) {
   const listeners = new Set<() => void>();
   const patch = vi.fn();
   const cancelRaf = vi.fn();
+  const runFrameHooks = vi.fn();
+  const setFrameLoopActive = vi.fn();
   const raf = vi.fn((cb: () => void) => {
     queued = cb;
     return nextHandle++;
@@ -42,6 +49,8 @@ function makeFakeDeps(overrides: Partial<LiveMeterControllerDeps> = {}) {
     raf,
     cancelRaf,
     patch,
+    runFrameHooks,
+    setFrameLoopActive,
     ...overrides,
   };
   return {
@@ -49,6 +58,8 @@ function makeFakeDeps(overrides: Partial<LiveMeterControllerDeps> = {}) {
     patch,
     raf,
     cancelRaf,
+    runFrameHooks,
+    setFrameLoopActive,
     setState(next: LiveMeterSnapshot) { state = next; },
     notify() { listeners.forEach((l) => l()); },
     flushRaf() { const cb = queued; queued = null; if (cb) cb(); },
@@ -152,5 +163,194 @@ describe('createLiveMeterController', () => {
     flushRaf();
     expect(patch).toHaveBeenCalledWith(makeSnapshot({ lastTick: makeTick(9) }));
     expect(raf).toHaveBeenCalledTimes(1);
+  });
+
+  // #1412 AC3: an idle board (not capturing, no live/playback loop needing frames)
+  // must arm no rAF when an unrelated store mutation fires — only a change to a
+  // meter-visible field schedules a frame.
+  it('does not arm a frame for a store notification that changes nothing meter-visible (AC3)', () => {
+    const { deps, notify, setState, raf, flushRaf } = makeFakeDeps();
+    const controller = createLiveMeterController(deps);
+    controller.start();
+    // First notification establishes a baseline (lastSeen was unset) — always arms.
+    setState(makeSnapshot());
+    notify();
+    expect(raf).toHaveBeenCalledTimes(1);
+    flushRaf();
+    // A second notification carrying the exact same snapshot moves nothing.
+    setState(makeSnapshot());
+    notify();
+    expect(raf).toHaveBeenCalledTimes(1);
+  });
+
+  it('arms a frame when only a non-tick meter-visible field changes (e.g. secondaryActive)', () => {
+    const { deps, notify, setState, raf, flushRaf } = makeFakeDeps();
+    const controller = createLiveMeterController(deps);
+    controller.start();
+    setState(makeSnapshot());
+    notify();
+    flushRaf();
+    setState(makeSnapshot({ secondaryActive: true }));
+    notify();
+    expect(raf).toHaveBeenCalledTimes(2);
+  });
+
+  // #1412 AC2: the loop stays free-running (self-re-arming) while isCapturing is
+  // true, so the playhead keeps advancing every frame even when nothing further
+  // notifies the store (a stalled meter tick).
+  it('keeps re-arming itself every frame while isCapturing is true, with no further store notifications', () => {
+    const { deps, notify, setState, raf, flushRaf, patch } = makeFakeDeps();
+    const controller = createLiveMeterController(deps);
+    controller.start();
+    setState(makeSnapshot({ isCapturing: true }));
+    notify();
+    flushRaf(); // frame 1: patches, then self-re-arms because isCapturing is true
+    flushRaf(); // frame 2: fires with no intervening notify() at all
+    flushRaf(); // frame 3
+    expect(patch).toHaveBeenCalledTimes(3);
+    // One initial arm from notify() plus one self-re-arm after each of the 3 frames.
+    expect(raf).toHaveBeenCalledTimes(4);
+  });
+
+  it('stops re-arming once isCapturing flips back to false', () => {
+    const { deps, notify, setState, raf, flushRaf } = makeFakeDeps();
+    const controller = createLiveMeterController(deps);
+    controller.start();
+    setState(makeSnapshot({ isCapturing: true }));
+    notify();
+    flushRaf(); // self-re-arms
+    setState(makeSnapshot({ isCapturing: false }));
+    flushRaf(); // reads the now-idle state, does not re-arm
+    expect(raf).toHaveBeenCalledTimes(2);
+  });
+
+  it('runs every registered per-frame hook once per frame fired', () => {
+    const { deps, notify, setState, flushRaf, runFrameHooks } = makeFakeDeps();
+    const controller = createLiveMeterController(deps);
+    controller.start();
+    setState(makeSnapshot({ lastTick: makeTick(1) }));
+    notify();
+    flushRaf();
+    expect(runFrameHooks).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not run frame hooks or patch for a frame that fires after stop()', () => {
+    const { deps, notify, setState, flushRaf, runFrameHooks, patch } = makeFakeDeps();
+    const controller = createLiveMeterController(deps);
+    controller.start();
+    setState(makeSnapshot({ lastTick: makeTick(1) }));
+    notify();
+    controller.stop();
+    flushRaf();
+    expect(runFrameHooks).not.toHaveBeenCalled();
+    expect(patch).not.toHaveBeenCalled();
+  });
+
+  it('reports the loop becoming active when a frame is armed and inactive once it settles idle', () => {
+    const { deps, notify, setState, flushRaf, setFrameLoopActive } = makeFakeDeps();
+    const controller = createLiveMeterController(deps);
+    controller.start();
+    setState(makeSnapshot({ lastTick: makeTick(1) }));
+    notify();
+    expect(setFrameLoopActive).toHaveBeenLastCalledWith(true);
+    flushRaf(); // isCapturing false, so this frame does not re-arm
+    expect(setFrameLoopActive).toHaveBeenLastCalledWith(false);
+  });
+
+  it('reports the loop inactive on stop() even mid-flight', () => {
+    const { deps, notify, setState, setFrameLoopActive } = makeFakeDeps();
+    const controller = createLiveMeterController(deps);
+    controller.start();
+    setState(makeSnapshot({ lastTick: makeTick(1) }));
+    notify();
+    controller.stop();
+    expect(setFrameLoopActive).toHaveBeenLastCalledWith(false);
+  });
+
+  // Before #1412 the meter patch and the playhead ticker were two independent rAF
+  // loops, so a throw in one could never stop the other. Consolidating them into one
+  // frame() must not accidentally couple their failure modes back together.
+  describe('resilience to a throwing patch or frame hook (#1412)', () => {
+    it('a throwing patch does not prevent the registered frame hooks from running the same frame', () => {
+      const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+      const { deps, notify, setState, flushRaf, runFrameHooks } = makeFakeDeps({
+        patch: vi.fn(() => { throw new Error('boom'); }),
+      });
+      const controller = createLiveMeterController(deps);
+      controller.start();
+      setState(makeSnapshot({ lastTick: makeTick(1) }));
+      notify();
+      flushRaf();
+      expect(runFrameHooks).toHaveBeenCalledTimes(1);
+      errorSpy.mockRestore();
+    });
+
+    it('a throwing patch does not stop the loop from self-re-arming while isCapturing', () => {
+      const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+      const { deps, notify, setState, flushRaf, raf } = makeFakeDeps({
+        patch: vi.fn(() => { throw new Error('boom'); }),
+      });
+      const controller = createLiveMeterController(deps);
+      controller.start();
+      setState(makeSnapshot({ isCapturing: true }));
+      notify();
+      flushRaf(); // throws inside patch, but must still self-re-arm
+      expect(raf).toHaveBeenCalledTimes(2);
+      errorSpy.mockRestore();
+    });
+
+    it('a throwing frame hook does not stop the loop from self-re-arming while isCapturing', () => {
+      const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+      const { deps, notify, setState, flushRaf, raf } = makeFakeDeps({
+        runFrameHooks: vi.fn(() => { throw new Error('boom'); }),
+      });
+      const controller = createLiveMeterController(deps);
+      controller.start();
+      setState(makeSnapshot({ isCapturing: true }));
+      notify();
+      flushRaf();
+      expect(raf).toHaveBeenCalledTimes(2);
+      errorSpy.mockRestore();
+    });
+
+    it('logs a throwing patch instead of letting it propagate out of the rAF callback', () => {
+      const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+      const { deps, notify, setState, flushRaf } = makeFakeDeps({
+        patch: vi.fn(() => { throw new Error('boom'); }),
+      });
+      const controller = createLiveMeterController(deps);
+      controller.start();
+      setState(makeSnapshot({ lastTick: makeTick(1) }));
+      notify();
+      expect(() => flushRaf()).not.toThrow();
+      expect(errorSpy).toHaveBeenCalled();
+      errorSpy.mockRestore();
+    });
+  });
+});
+
+describe('liveMeterSnapshotChanged', () => {
+  it('is false for two snapshots with identical field values', () => {
+    expect(liveMeterSnapshotChanged(makeSnapshot(), makeSnapshot())).toBe(false);
+  });
+
+  it('is true when lastTick differs', () => {
+    expect(liveMeterSnapshotChanged(makeSnapshot(), makeSnapshot({ lastTick: makeTick(1) }))).toBe(true);
+  });
+
+  it('is true when isCapturing differs', () => {
+    expect(liveMeterSnapshotChanged(makeSnapshot(), makeSnapshot({ isCapturing: true }))).toBe(true);
+  });
+
+  it('is true when measurementSource differs', () => {
+    expect(liveMeterSnapshotChanged(makeSnapshot(), makeSnapshot({ measurementSource: 2 }))).toBe(true);
+  });
+
+  it('is true when lastMeasurementChannels differs', () => {
+    expect(liveMeterSnapshotChanged(makeSnapshot(), makeSnapshot({ lastMeasurementChannels: [] }))).toBe(true);
+  });
+
+  it('is true when secondaryActive differs', () => {
+    expect(liveMeterSnapshotChanged(makeSnapshot(), makeSnapshot({ secondaryActive: true }))).toBe(true);
   });
 });

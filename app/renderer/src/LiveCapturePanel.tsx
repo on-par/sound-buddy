@@ -64,6 +64,7 @@ import {
   MS_PER_SECOND,
 } from './live-workspace-view';
 import { setSessionTimelineScale, sessionTimelineScaleForRange } from './session-timeline-scale';
+import { registerLiveFrameHook } from './live-frame-hooks';
 import { renderStableElapsedMs } from './recording-elapsed';
 import { sessionTabSessionPickerAction, sessionTabSessionPickerView } from './session-tab-session-picker';
 import { paintSessionTabWaveformClips, sessionTabWaveformView, sessionTakeDurationSecs } from './session-tab-waveforms';
@@ -527,26 +528,27 @@ export default function LiveCapturePanel(): JSX.Element | null {
     getDawShellRuntime()?.renderLoopBrace?.();
   });
 
-  // The playhead ticker (TD-001 slice 6j, #713): a requestAnimationFrame loop
-  // driving renderPlayhead every frame while the shell is mounted and
-  // capturing — replaces the old 100ms setInterval owned by inline-app.js.
-  // Active during "Connecting…" and whenever meter events stall, exactly like
-  // the old interval (but at frame rate), so the playhead never freezes early.
+  // The playhead ticker (TD-001 slice 6j, #713; consolidated into the shared Live
+  // frame loop, #1412 — this story's ADR-0134): drives renderPlayhead every frame
+  // while the shell is mounted and capturing — replaces the old 100ms setInterval
+  // owned by inline-app.js. Registers into live-frame-hooks.ts rather than running
+  // its own requestAnimationFrame loop, so LiveWorkspace.tsx's createLiveMeterController
+  // stays the Live tab's one rAF owner; that controller free-runs while its own
+  // isCapturing snapshot is true (a superset of s.isCapturing — see #847's
+  // boardRunning), so this hook keeps firing every frame — active during
+  // "Connecting…" and whenever meter events stall, exactly like the old interval
+  // (but at frame rate), so the playhead never freezes early.
   useEffect(() => {
     if (s.appMode !== 'live') return;
     if (!s.isCapturing) return;
-    let rafHandle = 0;
-    const tick = (): void => {
+    return registerLiveFrameHook(() => {
       getDawShellRuntime()?.renderPlayhead?.();
       patchOverview(document.getElementById('live-island')?.querySelector('.daw-shell') ?? null);
-      rafHandle = requestAnimationFrame(tick);
-    };
-    rafHandle = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(rafHandle);
-    // sessionWaveforms is a dep (not just appMode/isCapturing) so tick's
+    });
+    // sessionWaveforms is a dep (not just appMode/isCapturing) so the hook's
     // patchOverview closure never goes stale: loading a different recorded
     // session while capturing must not freeze the overview's loaded-duration
-    // reading at whatever it was when this effect last (re)started.
+    // reading at whatever it was when this effect last (re)registered.
   }, [s.appMode, s.isCapturing, sessionWaveforms]);
 
   // Native 'change' listener (see boardRootRef's comment above) — must stay
