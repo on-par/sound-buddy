@@ -98,6 +98,7 @@ import { installStoreBridge } from './stores/bridge';
 import { createCaptureLifecycle, type DawShellSeam, type PreflightApi, type RigReconcileApi, type ArmStateApi } from './capture-lifecycle';
 import { createDawShellRuntime, type DawShellRuntime, type DawPlayheadStateApi, type DawWaveformStateApi } from './daw-shell-runtime';
 import { getSessionTimelineScale } from './session-timeline-scale';
+import { registerLiveFrameHook, isLiveFrameLoopActive } from './live-frame-hooks';
 import { sessionTimelineMarks } from './timeline-state';
 import { installTimelineScaleTestHook } from './timeline-scale-harness';
 import { sessionClipSelection } from './clip-selection';
@@ -269,9 +270,18 @@ export default function App() {
       clipSelection: sessionClipSelection,
       timeSelection: sessionTimeSelection,
       loopRegion: sessionLoopRegion,
+      // #1412: lets ingestPeaks tell whether the Live tab's shared frame loop
+      // (live-meter-controller.ts, mirrored via live-frame-hooks.ts) is already
+      // running, so it piggybacks on that loop's flushWaveform hook (registered
+      // right below) instead of scheduling a second, competing rAF.
+      isFrameLoopActive: () => isLiveFrameLoopActive(),
     });
     (window as unknown as { dawShellRuntime?: DawShellRuntime }).dawShellRuntime = dawShellRuntime;
     dawShellRuntime.bindLiveEvents();
+    // #1412: the shared Live frame loop's per-frame waveform work — drains whatever
+    // ingestPeaks appended since the last frame, coalesced by the loop itself rather
+    // than by a second rAF owned here.
+    registerLiveFrameHook(() => dawShellRuntime.flushWaveform());
     // TD-001 slice 6i (#712): install the capture-lifecycle module's runtime
     // onto window.liveCaptureRuntime (the identical LiveCaptureRuntime bridge
     // LiveControls.tsx's startLiveCapture/stopLiveCapture/recordCapture and

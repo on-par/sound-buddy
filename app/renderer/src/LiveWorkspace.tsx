@@ -24,6 +24,7 @@ import { useStoreShallow } from './stores/useStoreShallow';
 import { useLiveCaptureStore } from './stores/liveCaptureStore';
 import { useSettingsStore } from './stores/settingsStore';
 import { createLiveMeterController, type LiveMeterSnapshot } from './live-meter-controller';
+import { runLiveFrameHooks, setLiveFrameLoopActive } from './live-frame-hooks';
 import {
   eqPanePatchPlan,
   eqPaneView,
@@ -144,6 +145,11 @@ export default function LiveWorkspace(): JSX.Element {
           applyLiveTick(snap);
         }
       },
+      // #1412: this controller is the Live tab's one rAF loop — LiveCapturePanel's
+      // playhead ticker and daw-shell-runtime's waveform flush ride its frames via
+      // live-frame-hooks.ts instead of scheduling their own.
+      runFrameHooks: () => runLiveFrameHooks(),
+      setFrameLoopActive: (isActive) => setLiveFrameLoopActive(isActive),
     });
     controller.start();
     return () => controller.stop();
