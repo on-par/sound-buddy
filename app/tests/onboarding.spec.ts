@@ -21,6 +21,14 @@ async function launch(): Promise<void> {
   await win.waitForLoadState('domcontentloaded');
 }
 
+async function launchWithAdvancedEnvOverrideCleared(): Promise<void> {
+  const env = { ...process.env };
+  delete env.SOUND_BUDDY_ADVANCED_FEATURES;
+  app = await launchElectron({ args: [MAIN, `--user-data-dir=${USER_DATA}`], env });
+  win = await app.firstWindow();
+  await win.waitForLoadState('domcontentloaded');
+}
+
 test.describe.serial('First-run onboarding (#69)', () => {
   test.afterEach(async () => {
     await app?.close();
@@ -71,6 +79,19 @@ test.describe.serial('First-run onboarding (#69)', () => {
     // No analysis ran, and the seen flag persisted so it won't reappear.
     const ls = await win.evaluate(() => localStorage.getItem('sb-onboarding-seen-v1'));
     expect(ls).toBe('1');
+  });
+
+  test('Simple mode onboarding points users at the Report Card dropzone or Analyze', async () => {
+    fs.rmSync(USER_DATA, { recursive: true, force: true });
+    fs.mkdirSync(USER_DATA, { recursive: true });
+    fs.writeFileSync(path.join(USER_DATA, 'settings.json'), JSON.stringify({ advancedFeaturesEnabled: false }, null, 2));
+    await launchWithAdvancedEnvOverrideCleared();
+
+    const copy = win.locator('#onboarding-copy');
+    await expect(copy).toHaveText("Drop last Sunday's recording on the Report Card panel - or click Analyze - and Sound Buddy hands back a report card telling you what to fix.");
+    await expect(copy).toContainText('report card');
+    await expect(copy).toContainText('Report Card');
+    await expect(copy).toContainText('Analyze');
   });
 
   test('Simple mode hides advanced tabs but leaves their buttons mounted', async () => {
