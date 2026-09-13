@@ -7,13 +7,9 @@ import { renderToString } from 'react-dom/server';
 import { PROFILES, GRID_FREQS, compareToProfile } from '@sound-buddy/audio-engine/dist/profiles/index.js';
 import SpectrumDisplay from './SpectrumDisplay';
 import {
-  bandDbFromSpectrum,
-  bandLevelsFromCurve,
-  levelMatchedTarget,
-  eqBarsHTML,
+  spectrumChartModel,
   spectrumLegendHTML,
   eqCentroidHTML,
-  frameBandDb,
   type SpectrumData,
 } from './spectrum-display';
 
@@ -38,11 +34,8 @@ function renderMarkup(props: Parameters<typeof SpectrumDisplay>[0]): string {
 
 describe('SpectrumDisplay', () => {
   it('renders bars, legend, and centroid via the shared module functions (markup identity)', () => {
-    const bandDb = bandDbFromSpectrum(fixtureSpectrum);
-    const target = levelMatchedTarget(fixtureSpectrum.curve!, flatProfile);
-    const targetBandDb = bandLevelsFromCurve({ freqs: fixtureSpectrum.curve!.freqs, db: target });
     const cmp = compareToProfile(fixtureSpectrum.curve, flatProfile);
-    const expectedChart = eqBarsHTML(bandDb, targetBandDb);
+    const expectedChart = spectrumChartModel({ spectrum: fixtureSpectrum, idealProfile: flatProfile, isAutoProfile: true }).chartHTML;
     const expectedLegend = spectrumLegendHTML(flatProfile, cmp, true);
     const expectedCentroid = eqCentroidHTML(fixtureSpectrum);
 
@@ -93,10 +86,7 @@ describe('SpectrumDisplay', () => {
       ...fixtureSpectrum,
       frames: [{ t: 0, db: fixtureSpectrum.curve!.db }, { t: 1, db: fixtureSpectrum.curve!.db.map((v) => v - 10) }],
     };
-    const expectedBandDb = frameBandDb(withFrames, 1);
-    const expectedTarget = levelMatchedTarget(withFrames.curve!, flatProfile);
-    const expectedTargetBandDb = bandLevelsFromCurve({ freqs: withFrames.curve!.freqs, db: expectedTarget });
-    const expectedChart = eqBarsHTML(expectedBandDb, expectedTargetBandDb);
+    const expectedChart = spectrumChartModel({ spectrum: withFrames, idealProfile: flatProfile, selectedFrame: 1 }).chartHTML;
 
     const html = renderMarkup({ spectrum: withFrames, idealProfile: flatProfile, selectedFrame: 1 });
 

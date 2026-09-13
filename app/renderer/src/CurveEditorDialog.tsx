@@ -22,6 +22,8 @@ import {
   type LiveMeterChannel,
 } from './live-capture-panel';
 import {
+  analyzerStyleHTML,
+  bandCurveFromDb,
   BAND_META,
   liveCurveComparisonModel,
   type IdealProfileLike,
@@ -83,9 +85,17 @@ function CurveEditorLiveComparison({ editor }: { editor: CurveEditorState }) {
     </div>
   );
 }
-
 export default function CurveEditorDialog() {
   const { editor } = useStoreShallow(useIdealProfilesStore, (s) => ({ editor: s.editor }));
+  const previewDb = editor.bands.map((db) => -36 + (Number.isFinite(db) ? db : 0));
+  const previewHTML = analyzerStyleHTML({
+    curve: bandCurveFromDb(previewDb),
+    bandDb: previewDb,
+    targetDb: BAND_META.map(() => -36),
+    compact: true,
+    uid: 'curve-editor',
+    className: 'sb-analyzer-curve-editor',
+  });
 
   /* c8 ignore start -- document-level Escape close + name-field autofocus, same
      pattern as SettingsPanel.tsx; no jsdom in this harness to exercise DOM
@@ -140,6 +150,11 @@ export default function CurveEditorDialog() {
             }}
           />
         </label>
+        <div
+          className="curve-editor-preview"
+          id="curve-editor-preview"
+          dangerouslySetInnerHTML={{ __html: previewHTML }}
+        />
         <div className="curve-editor-grid" id="curve-editor-grid">
           {BAND_META.map((b, i) => (
             <div className="curve-row" key={b.key}>

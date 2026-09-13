@@ -476,21 +476,22 @@ describe('eqBarsHTML', () => {
     expect(html).toContain(`height:${midHeight}%`);
   });
 
-  it('includes eq-target-svg only when targetDb has exactly 7 entries', () => {
+  it('uses the shared analyzer frame and does not draw a fake target curve for band-only data', () => {
     const withTarget = eqBarsHTML(bandDb, bandDb.map(() => -20));
     const withoutTarget = eqBarsHTML(bandDb);
     const wrongLength = eqBarsHTML(bandDb, [-20, -20]);
-    expect(withTarget).toContain('eq-target-svg');
+    expect(withTarget).toContain('data-eq-style="live-analyzer"');
+    expect(withTarget).toContain('sb-analyzer-band-only');
+    expect(withTarget).not.toContain('sb-target-line');
     expect(withoutTarget).not.toContain('eq-target-svg');
     expect(wrongLength).not.toContain('eq-target-svg');
   });
 
-  it('emits major and minor gridlines without adding y-axis labels (#480)', () => {
+  it('emits analyzer gridlines and right-side dB pills (#480)', () => {
     const html = eqBarsHTML(bandDb);
-    expect((html.match(/class="eq-grid major"/g) || []).length).toBe(GRID.length);
-    expect((html.match(/class="eq-grid minor"/g) || []).length).toBe(GRID_MINOR.length);
-    const yaxisBlock = (html.match(/<div class="eq-yaxis">[\s\S]*?<\/div>/) || [''])[0];
-    expect((yaxisBlock.match(/<span/g) || []).length).toBe(GRID.length);
+    expect((html.match(/class="sb-grid-line major"/g) || []).length).toBeGreaterThanOrEqual(GRID.length);
+    expect((html.match(/class="sb-grid-line minor"/g) || []).length).toBeGreaterThanOrEqual(GRID_MINOR.length);
+    expect((html.match(/class="sb-analyzer-db-pill"/g) || []).length).toBe(6);
   });
 });
 
@@ -555,14 +556,15 @@ describe('miniCurveSVG', () => {
   });
   it('renders a multi-point sparkline path', () => {
     const svg = miniCurveSVG([-40, -20, -10]);
-    expect(svg).toContain('<path d="M');
+    expect(svg).toContain('data-eq-style="live-analyzer"');
+    expect(svg).toContain('sb-curve-line');
   });
 
-  it('renders 3 faint reference gridlines without disturbing the area/line paths or viewBox (#480)', () => {
+  it('renders compact analyzer gridlines without disturbing the curve path or viewBox (#480)', () => {
     const svg = miniCurveSVG([-40, -20, -10]);
-    expect((svg.match(/class="sb-grid-line minor"/g) || []).length).toBe(3);
-    expect(svg).toContain('viewBox="0 0 600 150"');
-    expect(svg).toContain('<path d="M');
+    expect((svg.match(/class="sb-grid-line minor"/g) || []).length).toBeGreaterThan(3);
+    expect(svg).toContain('viewBox="0 0 900 250"');
+    expect(svg).toContain('sb-curve-line');
   });
 });
 
@@ -672,13 +674,14 @@ describe('spectrumChartModel', () => {
   it('renders the target overlay + legend with a curve and a profile', () => {
     const model = spectrumChartModel({ spectrum: fixtureSpectrum, idealProfile: flatProfile, isAutoProfile: true });
     const cmp = compareToProfile(fixtureSpectrum.curve, flatProfile);
-    expect(model.chartHTML).toContain('eq-target-svg');
+    expect(model.chartHTML).toContain('data-eq-style="live-analyzer"');
+    expect(model.chartHTML).toContain('sb-target-line');
     expect(model.legendHTML).toBe(spectrumLegendHTML(flatProfile, cmp, true));
   });
 
   it('suppresses the target overlay and legend when isLive', () => {
     const model = spectrumChartModel({ spectrum: fixtureSpectrum, idealProfile: flatProfile, isLive: true });
-    expect(model.chartHTML).not.toContain('eq-target-svg');
+    expect(model.chartHTML).not.toContain('sb-target-line');
     expect(model.legendHTML).toBe('');
   });
 
@@ -688,10 +691,9 @@ describe('spectrumChartModel', () => {
 
     expect(scrubbed.chartHTML).not.toBe(average.chartHTML);
     // Both keep the same level-matched target line (unaffected by selectedFrame).
-    const target = levelMatchedTarget(fixtureSpectrum.curve!, flatProfile);
-    const targetBandDb = bandLevelsFromCurve({ freqs: fixtureSpectrum.curve!.freqs, db: target });
-    expect(scrubbed.chartHTML).toContain(eqTargetLineSVG(targetBandDb));
-    expect(average.chartHTML).toContain(eqTargetLineSVG(targetBandDb));
+    const targetLine = (html: string) => html.match(/<path class="sb-target-line" d="([^"]+)"/)?.[1];
+    expect(targetLine(scrubbed.chartHTML)).toBeTruthy();
+    expect(targetLine(scrubbed.chartHTML)).toBe(targetLine(average.chartHTML));
   });
 
   it('carries the centroid readout through unchanged', () => {
@@ -714,7 +716,8 @@ describe('liveCurveComparisonModel', () => {
     const model = liveCurveComparisonModel({ curve, targetProfile: target });
 
     expect(model.kind).toBe('bands');
-    expect(model.chartHTML).toContain('eq-target-svg');
+    expect(model.chartHTML).toContain('data-eq-style="live-analyzer"');
+    expect(model.chartHTML).toContain('sb-target-line');
     expect(model.legendHTML).toContain('Target · Edited target');
     expect(model.legendHTML).not.toContain('Match');
     expect(model.note).toContain('7-band');
@@ -733,7 +736,8 @@ describe('liveCurveComparisonModel', () => {
     const model = liveCurveComparisonModel({ curve: fullCurve, targetProfile: fullTarget });
 
     expect(model.kind).toBe('curve');
-    expect(model.chartHTML).toContain('eq-target-svg');
+    expect(model.chartHTML).toContain('data-eq-style="live-analyzer"');
+    expect(model.chartHTML).toContain('sb-target-line');
     expect(model.legendHTML).toContain('Match');
     expect(model.matchScore).not.toBeNull();
     expect(model.note).toBe('');

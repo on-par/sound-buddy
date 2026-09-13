@@ -145,14 +145,16 @@ describe('fmtDev', () => {
 });
 
 describe('deviationMiniCurve', () => {
-  it('renders devbar-over rects for positive deviations and devbar-under for negative', () => {
+  it('renders the shared analyzer style with measured and target curves', () => {
     const svg = deviationMiniCurve([2, -3, 0]);
-    expect(svg).toContain('devbar-over');
-    expect(svg).toContain('devbar-under');
+    expect(svg).toContain('data-eq-style="live-analyzer"');
+    expect(svg).toContain('sb-analyzer-profile-match');
+    expect(svg).toContain('sb-curve-line');
+    expect(svg).toContain('sb-target-line');
   });
-  it('always renders exactly one zero line', () => {
+  it('always renders exactly one target line', () => {
     const svg = deviationMiniCurve([1, -1, 4, -4]);
-    expect(svg.match(/class="zero"/g)?.length).toBe(1);
+    expect(svg.match(/class="sb-target-line"/g)?.length).toBe(1);
   });
 });
 
@@ -691,7 +693,9 @@ describe('bandBreakdownHTML', () => {
   it('renders one row per BAND_META band with a balanced/hot/quiet verdict', () => {
     const bands = { subBass: -20, bass: -10, lowMid: -30, mid: -20, highMid: -20, presence: -20, brilliance: -20 };
     const html = bandBreakdownHTML(bands, g);
-    expect(html.match(/rc-band-row/g)).toHaveLength(7);
+    expect(html).toContain('data-eq-style="live-analyzer"');
+    expect(html).toContain('sb-analyzer-band-breakdown');
+    expect(html.match(/rc-band-verdict /g)).toHaveLength(7);
     expect(html).toContain('rc-band-verdict hot');
     expect(html).toContain('Too Hot');
     expect(html).toContain('rc-band-verdict quiet');

@@ -29,9 +29,9 @@ test.describe('Sound Buddy E2E — report card grading', () => {
     await electronApp.close();
   });
 
-  test('missing spectrum curve degrades to the same uniform-width bars without error', async () => {
+  test('missing spectrum curve degrades to the analyzer-style band bars without error', async () => {
     // Render a spectrum with no `curve` — the fallback path must not throw, and
-    // (AW-2) must render the same bar visualization as the curve path.
+    // must render the same analyzer frame without drawing a fake curve.
     const errors: string[] = [];
     window.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
     await window.evaluate(() => {
@@ -42,9 +42,11 @@ test.describe('Sound Buddy E2E — report card grading', () => {
     });
     const bars = window.locator('#spectrum-chart .veq-bar');
     await expect(bars).toHaveCount(7);
-    const widths = await bars.evaluateAll(els => els.map(el => Math.round((el as HTMLElement).getBoundingClientRect().width)));
-    for (const w of widths) expect(w).toBe(widths[0]);
-    await expect(window.locator('#spectrum-body svg.sb-spectrum-curve')).toHaveCount(0);
+    const boxes = await bars.evaluateAll(els => els.map(el => (el as HTMLElement).getBoundingClientRect()));
+    for (let i = 1; i < boxes.length; i++) expect(boxes[i].left).toBeGreaterThan(boxes[i - 1].left);
+    await expect(window.locator('#spectrum-chart [data-eq-style="live-analyzer"]')).toBeVisible();
+    await expect(window.locator('#spectrum-chart .sb-analyzer-band-only')).toBeVisible();
+    await expect(window.locator('#spectrum-chart .sb-curve-line')).toHaveCount(0);
     // Header falls back to the meters label so it matches the fallback view.
     await expect(window.locator('#spectrum-title')).toHaveText('Spectrum · Meters');
     expect(errors).toEqual([]);
