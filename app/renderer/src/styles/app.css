@@ -60,6 +60,11 @@
     .ub-x:hover { opacity:1; }
     @keyframes sbtoastin { from{opacity:0;transform:translateY(8px)} to{opacity:1;transform:translateY(0)} }
 
+    #live-mix-alert-island { position:fixed; top:calc(var(--header-h) + 12px); left:50%; z-index:110; width:min(620px,calc(100vw - 40px)); transform:translateX(-50%); pointer-events:none; }
+    .live-mix-alert { display:flex; align-items:baseline; gap:10px; padding:11px 14px; background:var(--issue-tint); border:1px solid var(--issue-border); border-radius:var(--radius-md); box-shadow:var(--shadow-lg); color:var(--text-primary); }
+    .live-mix-alert-title { flex:none; color:var(--issue-text); font:var(--fw-semibold) var(--fs-label)/1.35 var(--font-sans); }
+    .live-mix-alert-action { color:var(--text-primary); font:var(--fw-regular) var(--fs-label)/1.35 var(--font-sans); }
+
     /* Header */
     #header {
       display:flex; align-items:center; gap:18px; height:var(--header-h); padding:0 16px;
@@ -174,6 +179,7 @@
        workspace owns the active in-tab Record control, so the header copy is
        hidden while Live/Session is active. */
     body.not-pro #record-button-island { display:none !important; }
+    body.not-pro #live-mix-alert-island { display:none !important; }
     body.live-active #record-button-island { display:none !important; }
 
     /* #live-island (the Session/DAW workspace) and #live-eq-pane both live

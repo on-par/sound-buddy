@@ -25,6 +25,14 @@ const liveStatusLineTsx = fs.readFileSync(fileURLToPath(new URL('./LiveStatusLin
 const liveSessionOffersTsx = fs.readFileSync(fileURLToPath(new URL('./LiveSessionOffers.tsx', import.meta.url)), 'utf8');
 const windowBadgeTsx = fs.readFileSync(fileURLToPath(new URL('./WindowBadge.tsx', import.meta.url)), 'utf8');
 
+describe('Live mix alert shell wiring (#1373)', () => {
+  it('mounts the external Live alert island before the header and portals the alert onto it', () => {
+    expect(markup.indexOf('id="live-mix-alert-island"')).toBeLessThan(markup.indexOf('id="header"'));
+    const appTsx = fs.readFileSync(fileURLToPath(new URL('./App.tsx', import.meta.url)), 'utf8');
+    expect(appTsx).toContain("createPortal(<LiveMixAlert />, document.getElementById('live-mix-alert-island')!)");
+  });
+});
+
 describe('Directory tab batch-analyzes a folder of recordings (#270)', () => {
   it('has a real folder picker, Analyze All CTA, and results list — now rendered by DirectoryPanel.tsx onto the empty #tab-dir island (TD-001 slice 6h, #711)', () => {
     const directoryPanel = fs.readFileSync(fileURLToPath(new URL('./DirectoryPanel.tsx', import.meta.url)), 'utf8');
