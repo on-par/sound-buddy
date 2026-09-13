@@ -10,7 +10,7 @@
 // driving the same selectors. Icons render inline (dangerouslySetInnerHTML)
 // rather than via `data-icon` — see IdealProfileSelect.tsx's note.
 
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { iconSvg } from './report-card';
 import { useStoreShallow } from './stores/useStoreShallow';
 import { useIdealProfilesStore, type CurveEditorState } from './stores/idealProfilesStore';
@@ -25,7 +25,13 @@ import {
   analyzerStyleHTML,
   bandCurveFromDb,
   BAND_META,
+  CURVE_VB,
+  ANALYZER_VB_H,
+  DB_MAX,
+  DB_MIN,
+  analyzerLogPos,
   liveCurveComparisonModel,
+  toPct,
   type IdealProfileLike,
   type SpectrumCurve,
 } from './spectrum-display';
@@ -34,6 +40,15 @@ import type { IdealCurvesApi } from './ideal-profiles';
 // Editor range: matches ideal-curves.js's clampDb (±24 dB) so a captured live
 // mix's tilt is editable without being clipped by the slider.
 export const EDITOR_MAX_ABS_DB = 24;
+const EDITOR_BASE_DB = -36;
+const EDITOR_STEP_DB = 0.5;
+
+const PLOT_INSET_STYLE = {
+  left: `${(CURVE_VB.ml / CURVE_VB.w * 100).toFixed(2)}%`,
+  right: `${(CURVE_VB.mr / CURVE_VB.w * 100).toFixed(2)}%`,
+  top: `${(CURVE_VB.mt / ANALYZER_VB_H * 100).toFixed(2)}%`,
+  bottom: `${(CURVE_VB.mb / ANALYZER_VB_H * 100).toFixed(2)}%`,
+};
 
 function getIdealCurves(): Pick<IdealCurvesApi, 'profileFromBands'> | null {
   if (typeof window === 'undefined') return null;
@@ -90,9 +105,29 @@ function CurveEditorLiveComparison({ editor }: { editor: CurveEditorState }) {
   );
 }
 
+function pointForBand(index: number, offsetDb: number): { x: number; y: number; absDb: number } {
+  const band = BAND_META[index];
+  const absDb = EDITOR_BASE_DB + (Number.isFinite(offsetDb) ? offsetDb : 0);
+  return {
+    x: analyzerLogPos(Math.sqrt(band.lo * band.hi)),
+    y: 100 - toPct(absDb),
+    absDb,
+  };
+}
+
+function offsetFromPointerY(clientY: number, rect: DOMRect): number {
+  const yPct = Math.max(0, Math.min(1, (clientY - rect.top) / (rect.height || 1)));
+  const absDb = DB_MAX - yPct * (DB_MAX - DB_MIN);
+  return Math.round((absDb - EDITOR_BASE_DB) / EDITOR_STEP_DB) * EDITOR_STEP_DB;
+}
+
 export default function CurveEditorDialog() {
   const { editor } = useStoreShallow(useIdealProfilesStore, (s) => ({ editor: s.editor }));
+  const overlayRef = useRef<HTMLDivElement | null>(null);
+  const draggingBandRef = useRef<number | null>(null);
   const previewDb = editor.bands.map((db) => -36 + (Number.isFinite(db) ? db : 0));
+  const points = BAND_META.map((_, i) => pointForBand(i, editor.bands[i] ?? 0));
+  const curvePoints = points.map((p) => `${p.x.toFixed(2)},${p.y.toFixed(2)}`).join(' ');
   const previewHTML = analyzerStyleHTML({
     curve: bandCurveFromDb(previewDb),
     bandDb: previewDb,
@@ -101,7 +136,14 @@ export default function CurveEditorDialog() {
     uid: 'curve-editor',
     className: 'sb-analyzer-curve-editor',
     bandLayout: 'session',
+    fixedRange: true,
   });
+
+  function setBandFromPointer(index: number, clientY: number) {
+    const rect = overlayRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    useIdealProfilesStore.getState().setEditorBand(index, offsetFromPointerY(clientY, rect));
+  }
 
   /* c8 ignore start -- document-level Escape close + name-field autofocus, same
      pattern as SettingsPanel.tsx; no jsdom in this harness to exercise DOM
@@ -156,39 +198,67 @@ export default function CurveEditorDialog() {
             }}
           />
         </label>
-        <div
-          className="curve-editor-preview"
-          id="curve-editor-preview"
-          dangerouslySetInnerHTML={{ __html: previewHTML }}
-        />
-        <div className="curve-editor-grid" id="curve-editor-grid">
-          {BAND_META.map((b, i) => (
-            <div className="curve-row" key={b.key}>
-              <label htmlFor={`curve-band-${i}`}>{b.label}</label>
-              <input
-                id={`curve-band-${i}`}
-                className="sb-slider curve-band-range"
-                data-i={i}
-                type="range"
-                min={-EDITOR_MAX_ABS_DB}
-                max={EDITOR_MAX_ABS_DB}
-                step={0.5}
-                value={editor.bands[i] ?? 0}
-                onChange={(e) => useIdealProfilesStore.getState().setEditorBand(i, Number(e.target.value))}
-              />
-              <input
-                className="curve-band-num"
-                data-i={i}
-                type="number"
-                min={-EDITOR_MAX_ABS_DB}
-                max={EDITOR_MAX_ABS_DB}
-                step={0.5}
-                aria-label={`${b.label} offset dB`}
-                value={(editor.bands[i] ?? 0).toFixed(1)}
-                onChange={(e) => useIdealProfilesStore.getState().setEditorBand(i, Number(e.target.value))}
-              />
-            </div>
-          ))}
+        <div className="curve-editor-preview" id="curve-editor-preview">
+          <div dangerouslySetInnerHTML={{ __html: previewHTML }} />
+          <div
+            className="curve-editor-eq-overlay"
+            ref={overlayRef}
+            style={PLOT_INSET_STYLE}
+            onPointerMove={(e) => {
+              if (draggingBandRef.current == null) return;
+              e.preventDefault();
+              setBandFromPointer(draggingBandRef.current, e.clientY);
+            }}
+            onPointerUp={(e) => {
+              draggingBandRef.current = null;
+              (e.currentTarget as HTMLElement).releasePointerCapture?.(e.pointerId);
+            }}
+            onPointerCancel={(e) => {
+              draggingBandRef.current = null;
+              (e.currentTarget as HTMLElement).releasePointerCapture?.(e.pointerId);
+            }}
+          >
+            <svg className="curve-editor-eq-line" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
+              <polyline points={curvePoints} />
+            </svg>
+            {points.map((p, i) => {
+              const band = BAND_META[i];
+              const value = editor.bands[i] ?? 0;
+              return (
+                <button
+                  key={band.key}
+                  type="button"
+                  className="curve-editor-eq-node"
+                  style={{ left: `${p.x}%`, top: `${p.y}%`, ['--band-color' as string]: band.color }}
+                  aria-label={`${band.label} ideal curve ${value.toFixed(1)} dB`}
+                  title={`${band.label}: ${value.toFixed(1)} dB`}
+                  onPointerDown={(e) => {
+                    draggingBandRef.current = i;
+                    (e.currentTarget.parentElement as HTMLElement | null)?.setPointerCapture?.(e.pointerId);
+                    setBandFromPointer(i, e.clientY);
+                  }}
+                  onKeyDown={(e) => {
+                    const current = editor.bands[i] ?? 0;
+                    if (e.key === 'ArrowUp' || e.key === 'ArrowRight') {
+                      e.preventDefault();
+                      useIdealProfilesStore.getState().setEditorBand(i, current + EDITOR_STEP_DB);
+                    } else if (e.key === 'ArrowDown' || e.key === 'ArrowLeft') {
+                      e.preventDefault();
+                      useIdealProfilesStore.getState().setEditorBand(i, current - EDITOR_STEP_DB);
+                    } else if (e.key === 'Home') {
+                      e.preventDefault();
+                      useIdealProfilesStore.getState().setEditorBand(i, -EDITOR_MAX_ABS_DB);
+                    } else if (e.key === 'End') {
+                      e.preventDefault();
+                      useIdealProfilesStore.getState().setEditorBand(i, EDITOR_MAX_ABS_DB);
+                    }
+                  }}
+                >
+                  <span>{value.toFixed(1)}</span>
+                </button>
+              );
+            })}
+          </div>
         </div>
         {editor.open ? <CurveEditorLiveComparison editor={editor} /> : null}
         <div className="ai-test-row">
