@@ -76,6 +76,7 @@ test.describe('Sound Buddy E2E — report card grading', () => {
     // the acceptable band; Clipping has no config target so it renders an em dash.
     await expect(metricRows.nth(0)).toContainText('Target -20 to -14 dBFS'); // RMS Level
     await expect(metricRows.nth(4)).toContainText('Target No clipping'); // Clipping
+    await expect(window.locator('#rc-metric-rows')).toContainText('-18.0 dBFS');
 
     const recCount = await window.locator('#rc-recommendations .rc-rec').count();
     expect(recCount).toBeGreaterThanOrEqual(1);
