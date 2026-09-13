@@ -90,6 +90,33 @@
 
   let activeGradingProfileId = 'casual';
 
+  // User rubric overrides: a flat map of CONFIG leaf paths ("rms.acceptableMin")
+  // to ABSOLUTE values, layered on top of the strictness profile so a user can
+  // tune one threshold without forking the whole table. Every leaf of
+  // BASE_CONFIG is overridable; the Settings UI exposes the graded subset.
+  // Held separately from CONFIG so a profile switch re-derives cleanly
+  // (profile shift first, then overrides) and never compounds.
+  let rubricOverrides = {};
+
+  // Every "section.key" path of BASE_CONFIG — the set of accepted override
+  // paths, derived from the table itself so it can never drift.
+  const RUBRIC_PATHS = Object.keys(BASE_CONFIG).reduce((paths, section) => {
+    Object.keys(BASE_CONFIG[section]).forEach((key) => { paths.push(section + '.' + key); });
+    return paths;
+  }, []);
+
+  // Keeps only accepted paths with finite numeric values; everything else is
+  // dropped (never thrown — a corrupted setting must not break grading).
+  function normalizeRubricOverrides(raw) {
+    const clean = {};
+    if (!raw || typeof raw !== 'object') return clean;
+    RUBRIC_PATHS.forEach((path) => {
+      const v = raw[path];
+      if (typeof v === 'number' && Number.isFinite(v)) clean[path] = v;
+    });
+    return clean;
+  }
+
   // Pure: returns a NEW config object, never mutates BASE_CONFIG or CONFIG.
   // Unknown profileId falls back to 'casual' (BASE_CONFIG unshifted).
   // centroid and bandBalance.quietDiff are left unchanged for both profiles —
@@ -97,7 +124,9 @@
   // report card's tonal-balance pill via rcCentroidStatus; quietDiff only
   // feeds report-card.ts's cosmetic "Too Quiet" band verdict) — shifting them
   // would be silent scope creep beyond e2-03's graded rule set.
-  function configForProfile(profileId) {
+  // `overrides` (default: the active rubric overrides) are applied last, as
+  // absolute values, so an overridden key ignores the profile's shift.
+  function configForProfile(profileId, overrides) {
     const cfg = JSON.parse(JSON.stringify(BASE_CONFIG));
     if (profileId === 'broadcast') {
       const d = BROADCAST_STRICTNESS_OFFSET_DB;
@@ -110,7 +139,25 @@
       cfg.truePeak.ceiling -= d;
       cfg.peak.issueAbove -= d; cfg.peak.checkAbove -= d;
     }
+    const o = normalizeRubricOverrides(overrides === undefined ? rubricOverrides : overrides);
+    Object.keys(o).forEach((path) => {
+      const [section, key] = path.split('.');
+      cfg[section][key] = o[path];
+    });
     return cfg;
+  }
+
+  // The profile's thresholds with NO overrides applied, flattened to the same
+  // "section.key" paths setRubricOverrides accepts — what the Settings rubric
+  // editor shows as each field's default / placeholder.
+  function rubricDefaults(profileId) {
+    const cfg = configForProfile(profileId, null);
+    const flat = {};
+    RUBRIC_PATHS.forEach((path) => {
+      const [section, key] = path.split('.');
+      flat[path] = cfg[section][key];
+    });
+    return flat;
   }
 
   // Merges the profile's shifted values into CONFIG's EXISTING nested objects
@@ -118,16 +165,35 @@
   // its nested objects — every function in this file, and report-card.ts's
   // direct `grading.CONFIG.bandBalance.*` reads, re-read CONFIG fresh on every
   // call, so this is the one place that needs to change for the whole app to
-  // pick up the active profile.
-  function setGradingProfile(profileId) {
-    const id = profileId === 'broadcast' ? 'broadcast' : 'casual';
-    const next = configForProfile(id);
+  // pick up the active profile and rubric.
+  function applyActiveConfig() {
+    const next = configForProfile(activeGradingProfileId);
     Object.keys(next).forEach((key) => { Object.assign(CONFIG[key], next[key]); });
-    activeGradingProfileId = id;
+  }
+
+  function setGradingProfile(profileId) {
+    activeGradingProfileId = profileId === 'broadcast' ? 'broadcast' : 'casual';
+    applyActiveConfig();
   }
 
   function getGradingProfile() {
     return GRADING_PROFILES[activeGradingProfileId];
+  }
+
+  // Replaces the whole override set (null/undefined/{} clears it) and
+  // re-derives CONFIG from the active profile + the new overrides.
+  function setRubricOverrides(overrides) {
+    rubricOverrides = normalizeRubricOverrides(overrides);
+    applyActiveConfig();
+  }
+
+  function getRubricOverrides() {
+    return Object.assign({}, rubricOverrides);
+  }
+
+  function getRubricSummary() {
+    const count = Object.keys(rubricOverrides).length;
+    return { customized: count > 0, count: count };
   }
 
   // Band label + frequency metadata used to phrase the "too much energy in X"
@@ -142,11 +208,39 @@
     brilliance: { label: 'Brilliance', freq: '6-20kHz' },
   };
 
-  function bandDiffFromOthers(bands, key) {
+  // Per-band level vs. the mean of the other bands, in dB — measured on the
+  // DEVIATION from `targets` when given (the active ideal curve's relative
+  // 7-band shape), so a mix whose bands follow the ideal tilt reads as 0 in
+  // every band regardless of level. No targets (or a band without one) means
+  // a 0 dB target, i.e. the original flat reference.
+  function bandDiffFromOthers(bands, key, targets) {
+    const target = (k) => {
+      const t = targets && typeof targets === 'object' ? targets[k] : undefined;
+      return typeof t === 'number' && Number.isFinite(t) ? t : 0;
+    };
     const keys = Object.keys(bands);
-    const others = keys.filter(k => k !== key).map(k => bands[k]);
+    const others = keys.filter(k => k !== key).map(k => bands[k] - target(k));
     const avgOthers = others.reduce((a, b) => a + b, 0) / others.length;
-    return bands[key] - avgOthers;
+    return (bands[key] - target(key)) - avgOthers;
+  }
+
+  // The ideal-curve baseline a source was resolved against — `src.baseline`
+  // carries { label, bandTargets } (report-card.ts attaches it from the
+  // active ideal profile, so every grade consumer sees the same baseline).
+  // Null when the source has none: the flat-reference behaviour.
+  function baselineTargets(src) {
+    const b = src && src.baseline;
+    return b && b.bandTargets && typeof b.bandTargets === 'object' ? b.bandTargets : null;
+  }
+  function baselineLabel(src) {
+    const b = src && src.baseline;
+    return baselineTargets(src) && typeof b.label === 'string' && b.label ? b.label : null;
+  }
+  function srcBandDiff(src, key) {
+    return bandDiffFromOthers(src.bands, key, baselineTargets(src));
+  }
+  function maxSrcBandDiff(src) {
+    return Object.keys(src.bands).reduce((m, k) => Math.max(m, srcBandDiff(src, k)), 0);
   }
 
   // Fallback label for a live channel with no saved label and no engine-supplied
@@ -257,7 +351,7 @@
     if (symptomDeduction(src)) drop();
     if (recType.type === 'low_gain') {
       if (src.dynamicRange != null && src.dynamicRange < CONFIG.dynamicRange.check) drop();
-      if (Object.keys(src.bands).some(k => bandDiffFromOthers(src.bands, k) > CONFIG.bandBalance.severeHotDiff)) drop();
+      if (maxSrcBandDiff(src) > CONFIG.bandBalance.severeHotDiff) drop();
       return letters[idx];
     }
     const rmsExempt = recType.type === 'dynamic_service';
@@ -269,7 +363,7 @@
       drop();
     }
     if (src.dynamicRange != null && src.dynamicRange < CONFIG.dynamicRange.good) drop();
-    if (Object.keys(src.bands).some(k => bandDiffFromOthers(src.bands, k) > CONFIG.bandBalance.severeHotDiff)) drop();
+    if (maxSrcBandDiff(src) > CONFIG.bandBalance.severeHotDiff) drop();
     return letters[idx];
   }
 
@@ -333,13 +427,14 @@
 
     const deductions = [];
     const recType = analyzeRecordingType(src);
-    const maxBandDiff = Object.keys(src.bands).reduce(
-      (m, k) => Math.max(m, bandDiffFromOthers(src.bands, k)), 0,
-    );
+    const maxBandDiff = maxSrcBandDiff(src);
+    // Against an ideal curve the deduction names the curve, so the reason
+    // reads "vs. Worship service" rather than the flat "vs. other bands".
+    const vs = baselineLabel(src) ? ' vs. ' + baselineLabel(src) : '';
     const bandImbalanceDeduction = () => ({
       rule: 'Band imbalance',
-      measured: '+' + maxBandDiff.toFixed(1) + ' dB',
-      target: '≤ +' + CONFIG.bandBalance.severeHotDiff + ' dB vs. other bands',
+      measured: '+' + maxBandDiff.toFixed(1) + ' dB' + vs,
+      target: '≤ +' + CONFIG.bandBalance.severeHotDiff + ' dB vs. ' + (baselineLabel(src) || 'other bands'),
       letterImpact: 'Drops one letter',
     });
 
@@ -427,8 +522,7 @@
       }
     }
     if (src.dynamicRange != null) { if (src.dynamicRange < CONFIG.dynamicRange.check) score -= 15; else if (src.dynamicRange < CONFIG.dynamicRange.good) score -= 8; }
-    let maxDiff = 0;
-    for (const k of Object.keys(src.bands)) maxDiff = Math.max(maxDiff, bandDiffFromOthers(src.bands, k));
+    const maxDiff = maxSrcBandDiff(src);
     if (maxDiff > CONFIG.bandBalance.severeHotDiff) score -= 14; else if (maxDiff > CONFIG.bandBalance.hotDiff) score -= 7;
     const [lo, hi] = bands[grade];
     return Math.round(Math.max(lo, Math.min(hi, score)));
@@ -444,7 +538,7 @@
     if (src.dynamicRange != null && src.dynamicRange < CONFIG.dynamicRange.check) recs.push('Dynamic range is very compressed. Mix may sound lifeless.');
     if (src.bands.subBass > -10) recs.push('Too much sub-bass energy. Apply a high-pass filter below 80Hz.');
     for (const k of Object.keys(src.bands)) {
-      const diff = bandDiffFromOthers(src.bands, k);
+      const diff = srcBandDiff(src, k);
       if (diff > CONFIG.bandBalance.hotDiff) {
         const info = RC_BAND_INFO[k];
         const base = `Too much energy in ${info.label} (${info.freq}). Cut ${Math.min(diff, 10).toFixed(1)} dB around this range.`;
@@ -452,7 +546,11 @@
         recs.push(contributor ? `${base} Mostly coming from "${contributor.label}".` : base);
       }
     }
-    if (src.bands.brilliance < -40) recs.push('Mix lacks air and brightness. Boost 2-3 dB above 8kHz.');
+    // "Lacks air" is a balance judgment, so it reads the same baseline-relative
+    // diff as the band verdicts (the old absolute -40 dBFS cutoff fired on every
+    // normally-levelled recording — brilliance density always sits far below
+    // -40 dBFS in a real mix).
+    if (srcBandDiff(src, 'brilliance') < CONFIG.bandBalance.quietDiff) recs.push('Mix lacks air and brightness. Boost 2-3 dB above 8kHz.');
     // #1246 — a named symptom must never sit beside "Great job! No major issues
     // detected". The fix text is the rule's own suggestion.instruction, so the
     // advice here and in the Troubleshooting section come from one table row.
@@ -543,7 +641,14 @@
     configForProfile: configForProfile,
     setGradingProfile: setGradingProfile,
     getGradingProfile: getGradingProfile,
+    RUBRIC_PATHS: RUBRIC_PATHS,
+    rubricDefaults: rubricDefaults,
+    setRubricOverrides: setRubricOverrides,
+    getRubricOverrides: getRubricOverrides,
+    getRubricSummary: getRubricSummary,
     bandDiffFromOthers: bandDiffFromOthers,
+    baselineTargets: baselineTargets,
+    baselineLabel: baselineLabel,
     loudestBandContributor: loudestBandContributor,
     analyzeRecordingType: analyzeRecordingType,
     computeGrade: computeGrade,

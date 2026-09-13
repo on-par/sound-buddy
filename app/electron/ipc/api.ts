@@ -44,10 +44,43 @@ export interface UpdateSettingsPatch {
   measurementDeviceName?: string;
   lastAppMode?: string;
   gradingProfile?: 'casual' | 'broadcast';
+  gradingRubric?: GradingRubricOverrides;
   consoleNetworkConsentGranted?: boolean;
   soundcheckBuses?: SoundcheckBus[];
   splCalibrationOffsetDb?: number | null;
 }
+
+/**
+ * The user-editable grading rubric (Settings ▸ Grading ▸ Rubric). Each key is a
+ * grading.js CONFIG leaf path ("section.key") — the graded thresholds the
+ * Settings editor exposes — plus `symptoms.thresholdOffsetDb`, a uniform dB
+ * shift applied to every rules-engine symptom threshold (the rules engine keeps
+ * owning the per-rule numbers, per ADR-0098). Values are ABSOLUTE thresholds
+ * layered over the active strictness profile; an absent key means "use the
+ * profile's default". The list is the single source both the main-process
+ * sanitizer and the renderer editor iterate, so the two can never drift.
+ */
+export const GRADING_RUBRIC_KEYS = [
+  'rms.acceptableMin',
+  'rms.acceptableMax',
+  'lufs.acceptableMin',
+  'lufs.acceptableMax',
+  'truePeak.ceiling',
+  'dynamicRange.good',
+  'dynamicRange.check',
+  'bandBalance.hotDiff',
+  'bandBalance.severeHotDiff',
+  'bandBalance.quietDiff',
+  'centroid.min',
+  'centroid.max',
+  'symptoms.thresholdOffsetDb',
+] as const;
+export type GradingRubricKey = (typeof GRADING_RUBRIC_KEYS)[number];
+export type GradingRubricOverrides = Partial<Record<GradingRubricKey, number>>;
+/** Every rubric value is a dB / dBFS / LUFS / Hz number; anything outside this
+ *  span is a corrupted setting, not a real threshold. */
+export const GRADING_RUBRIC_MIN_VALUE = -120;
+export const GRADING_RUBRIC_MAX_VALUE = 20000;
 
 export interface AnalyzeFileOpts {
   filePath: string;
@@ -364,6 +397,12 @@ export interface AppSettings {
    * measurementDeviceName.
    */
   gradingProfile: 'casual' | 'broadcast';
+  /**
+   * User rubric overrides layered over `gradingProfile` (see
+   * GradingRubricOverrides). Default {} (= every threshold at the profile's
+   * default). No env layer — pure persisted preference, like gradingProfile.
+   */
+  gradingRubric: GradingRubricOverrides;
   /**
    * Tier 2 (console-network / OSC-UDP) consent (#378). Default false (off).
    * Can only ever be set to `true` by the first-run

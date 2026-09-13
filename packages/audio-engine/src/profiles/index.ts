@@ -12,7 +12,7 @@
 // and is the single source of truth mirrored by the renderer's inline copy.
 
 import type { ContentType } from "../types.js";
-import { BAND_METADATA } from "../bands.js";
+import { BAND_METADATA, type BandKey } from "../bands.js";
 
 export interface IdealProfile {
   id: string;
@@ -174,6 +174,87 @@ export function defaultProfileForContentType(ct: ContentType | undefined): strin
     default:
       return "flat";
   }
+}
+
+/**
+ * Default profile for a LIVE capture, which carries no content classifier (the
+ * stream path never runs the speech/music classifier). Before this, Auto fell
+ * through defaultProfileForContentType(undefined) to "flat", so a live mix was
+ * judged against a flat reference — and any full-range music reads bass-heavy
+ * against flat. A church's live feed is a worship service, so Auto resolves to
+ * the same target Auto already picks for music/mixed files.
+ */
+export const LIVE_CAPTURE_DEFAULT_PROFILE_ID = "worship-service";
+
+export function defaultProfileForLiveCapture(): string {
+  return LIVE_CAPTURE_DEFAULT_PROFILE_ID;
+}
+
+// ── 7-band targets ────────────────────────────────────────────────────────────
+
+/** Relative target level per legacy meter band (dB), derived from a profile. */
+export type BandTargets = Record<BandKey, number>;
+
+/** Linear-frequency samples taken per band when reducing a profile to a band
+ *  target. The measured band levels are mean power over the FFT's uniformly
+ *  spaced bins, so the profile is sampled the same way (uniform in Hz) rather
+ *  than on its own log grid — otherwise a wide band like brilliance would be
+ *  weighted toward its low edge. */
+const BAND_TARGET_SAMPLES = 256;
+
+/** Linear interpolation of a profile's dB shape in log-frequency, clamped to the
+ *  grid's end values outside it. Non-finite offsets are skipped (treated as a
+ *  gap), mirroring finiteMean's tolerance for silence floors. */
+function profileDbAt(profile: { freqs: number[]; dbOffsets: number[] }, hz: number): number | null {
+  const { freqs, dbOffsets } = profile;
+  const n = freqs.length;
+  if (hz <= freqs[0]) return Number.isFinite(dbOffsets[0]) ? dbOffsets[0] : null;
+  if (hz >= freqs[n - 1]) return Number.isFinite(dbOffsets[n - 1]) ? dbOffsets[n - 1] : null;
+  let i = 1;
+  while (i < n - 1 && freqs[i] < hz) i += 1;
+  const a = dbOffsets[i - 1];
+  const b = dbOffsets[i];
+  if (!Number.isFinite(a) || !Number.isFinite(b)) return Number.isFinite(a) ? a : Number.isFinite(b) ? b : null;
+  const t = (log2(hz) - log2(freqs[i - 1])) / (log2(freqs[i]) - log2(freqs[i - 1]));
+  return a + (b - a) * t;
+}
+
+/**
+ * Reduce a profile's relative shape to one target level per legacy 7-band meter
+ * band, so the report card's band-balance rule can judge the measured bands
+ * against an ideal curve instead of a flat reference. Each band is the
+ * power-domain mean of the profile shape sampled uniformly in Hz across the
+ * band — the same reduction the measured band levels use. The flat profile
+ * yields all zeros (the pre-existing flat-reference behaviour); a missing,
+ * empty, or grid-mismatched profile is treated as flat.
+ */
+export function bandTargetsFromProfile(
+  profile: { freqs: number[]; dbOffsets: number[] } | null | undefined,
+): BandTargets {
+  const zero = Object.fromEntries(BAND_METADATA.map((b) => [b.key, 0])) as BandTargets;
+  if (
+    !profile ||
+    !Array.isArray(profile.freqs) ||
+    !Array.isArray(profile.dbOffsets) ||
+    profile.freqs.length === 0 ||
+    profile.freqs.length !== profile.dbOffsets.length
+  ) {
+    return zero;
+  }
+  const out = { ...zero };
+  for (const band of BAND_METADATA) {
+    let powerSum = 0;
+    let n = 0;
+    for (let k = 0; k < BAND_TARGET_SAMPLES; k++) {
+      const hz = band.lo + ((band.hi - band.lo) * (k + 0.5)) / BAND_TARGET_SAMPLES;
+      const db = profileDbAt(profile, hz);
+      if (db === null) continue;
+      powerSum += Math.pow(10, db / 10);
+      n += 1;
+    }
+    out[band.key] = n > 0 ? 10 * Math.log10(powerSum / n) : 0;
+  }
+  return out;
 }
 
 // ── Comparison ────────────────────────────────────────────────────────────────

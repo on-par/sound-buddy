@@ -598,6 +598,7 @@ describe('reportCardSourceFromAnalysis', () => {
       bands: { subBass: -30, bass: -18, lowMid: -20, mid: -16, highMid: -19, presence: -21, brilliance: -23 },
       curve: { freqs: [100], db: [-10] },
       symptoms: [],
+      baseline: null,
       contentType: 'speech',
       segments: [{ start: 0, end: 1, class: 'speech' }],
       frames: [{ t: 0, db: [-10], rms: -18, class: 'speech' }],
@@ -936,5 +937,163 @@ describe('buildAnalysisSummaryInput', () => {
   it('passes through source "file"', () => {
     const input = buildAnalysisSummaryInput(src, fakeGrading(), 'file');
     expect(input.source).toBe('file');
+  });
+});
+
+/* ── Grading baseline (ideal EQ curve) ── */
+import {
+  gradeBaselineFor,
+  symptomOptionsFor,
+  gradeBaselineLabel,
+  symptomThresholdOffsetFrom,
+  targetMetaForSource,
+  reportCardSourceFromAnalysis as sourceFromAnalysisWithCtx,
+  bandBreakdownHTML as bandBreakdownWithBaseline,
+  buildScoreRows as buildScoreRowsWithBaseline,
+  type GradeBaseline,
+} from './report-card';
+import { PROFILES, GRID_FREQS as GRID48, getProfile } from '@sound-buddy/audio-engine/dist/profiles/index.js';
+
+describe('gradeBaselineFor', () => {
+  it('is null without a context or without a profile (flat reference)', () => {
+    expect(gradeBaselineFor(undefined)).toBeNull();
+    expect(gradeBaselineFor(null)).toBeNull();
+    expect(gradeBaselineFor({})).toBeNull();
+    expect(gradeBaselineFor({ idealProfile: null })).toBeNull();
+    expect(gradeBaselineFor({ idealProfile: { id: 'x', label: 'X', freqs: [], dbOffsets: [] } })).toBeNull();
+  });
+
+  it('carries the profile label/id/auto flag and its 7-band targets', () => {
+    const worship = getProfile('worship-service')!;
+    const b = gradeBaselineFor({ idealProfile: worship, isAutoProfile: true })!;
+    expect(b.label).toBe('Worship service');
+    expect(b.profileId).toBe('worship-service');
+    expect(b.isAuto).toBe(true);
+    expect(Object.keys(b.bandTargets).sort()).toEqual(['bass', 'brilliance', 'highMid', 'lowMid', 'mid', 'presence', 'subBass']);
+    expect(b.bandTargets.subBass).toBeGreaterThan(b.bandTargets.brilliance);
+  });
+
+  it('reads a freqs-less 48-point shape on the engine grid, and rejects a freqs-less shape of any other length', () => {
+    const worship = getProfile('worship-service')!;
+    const slim = gradeBaselineFor({ idealProfile: { label: 'Slim', dbOffsets: worship.dbOffsets } })!;
+    expect(slim.bandTargets).toEqual(gradeBaselineFor({ idealProfile: worship })!.bandTargets);
+    expect(gradeBaselineFor({ idealProfile: { label: 'Short', dbOffsets: [1, 2, 3] } })).toBeNull();
+    expect(symptomOptionsFor({ idealProfile: { label: 'Slim', dbOffsets: worship.dbOffsets } }).baseline).toEqual({ freqs: GRID48, dbOffsets: worship.dbOffsets });
+    expect(symptomOptionsFor({ idealProfile: { label: 'Short', dbOffsets: [1, 2, 3] } }).baseline).toBeNull();
+  });
+
+  it('the flat profile yields all-zero targets — identical to the legacy flat reference', () => {
+    const b = gradeBaselineFor({ idealProfile: getProfile('flat')! })!;
+    expect(Object.values(b.bandTargets).every((v) => v === 0)).toBe(true);
+    expect(b.isAuto).toBe(false);
+  });
+});
+
+describe('symptomOptionsFor', () => {
+  it('passes the profile as the rules-engine baseline and a finite offset, defaulting to flat/0', () => {
+    expect(symptomOptionsFor(undefined)).toEqual({ baseline: null, thresholdOffsetDb: 0 });
+    expect(symptomOptionsFor({ symptomThresholdOffsetDb: Number.NaN })).toEqual({ baseline: null, thresholdOffsetDb: 0 });
+    const worship = getProfile('worship-service')!;
+    expect(symptomOptionsFor({ idealProfile: worship, symptomThresholdOffsetDb: 2 })).toEqual({ baseline: { freqs: worship.freqs, dbOffsets: worship.dbOffsets }, thresholdOffsetDb: 2 });
+  });
+});
+
+describe('gradeBaselineLabel', () => {
+  it('renders "Target: <label>" with an (auto) suffix when auto-picked, else null', () => {
+    expect(gradeBaselineLabel(null)).toBeNull();
+    expect(gradeBaselineLabel({})).toBeNull();
+    expect(gradeBaselineLabel({ baseline: { label: '', bandTargets: {} } })).toBeNull();
+    expect(gradeBaselineLabel({ baseline: { label: 'Worship service', isAuto: true, bandTargets: {} } })).toBe('Target: Worship service (auto)');
+    expect(gradeBaselineLabel({ baseline: { label: 'My room', bandTargets: {} } })).toBe('Target: My room');
+  });
+});
+
+describe('reportCardSourceFromAnalysis with a GradeContext', () => {
+  const worship = PROFILES.find((p) => p.id === 'worship-service')!;
+  // A mix whose fine curve IS the worship shape (at -60 dB): against a flat
+  // reference the bass region runs ~10 dB over the body and "Muddy" fires;
+  // against the worship baseline it is exactly on target.
+  const analysis = {
+    sox: { rmsDbfs: -18, peakDbfs: -6, dynamicRangeDb: 10, clipping: false },
+    spectrum: {
+      bands: { subBass: -40, bass: -45, lowMid: -52, mid: -55, highMid: -66, presence: -70, brilliance: -74 },
+      spectralCentroid: 1200,
+      curve: { freqs: GRID48, db: worship.dbOffsets.map((v) => v - 60) },
+      contentType: 'music',
+    },
+    ffprobe: { format: { filename: '/x/service.wav' } },
+  } as unknown as AnalysisPayload;
+
+  it('without a context: no baseline, symptoms against the flat reference (Muddy fires)', () => {
+    const src = sourceFromAnalysisWithCtx(analysis)!;
+    expect(src.baseline).toBeNull();
+    expect(src.symptoms?.map((s) => s.ruleId)).toContain('muddy');
+  });
+
+  it('with the worship profile: baseline attached, symptoms measured over the ideal curve (nothing fires)', () => {
+    const src = sourceFromAnalysisWithCtx(analysis, { idealProfile: worship, isAutoProfile: true })!;
+    expect(src.baseline?.label).toBe('Worship service');
+    expect(src.baseline?.isAuto).toBe(true);
+    expect(src.symptoms).toEqual([]);
+  });
+
+  it('honours the rubric symptom offset (a large positive offset silences every rule)', () => {
+    const src = sourceFromAnalysisWithCtx(analysis, { symptomThresholdOffsetDb: 50 })!;
+    expect(src.symptoms).toEqual([]);
+    const lowered = sourceFromAnalysisWithCtx(analysis, { symptomThresholdOffsetDb: -2 })!;
+    expect(lowered.symptoms?.[0]?.minExcessDb).toBe(4);
+  });
+});
+
+describe('bandBreakdownHTML / buildScoreRows against a baseline', () => {
+  const pink = { subBass: -60, bass: -64.9, lowMid: -69.7, mid: -74, highMid: -78.8, presence: -81, brilliance: -84.8 };
+  const baseline: GradeBaseline = {
+    label: 'Worship service',
+    bandTargets: { subBass: 12, bass: 7.1, lowMid: 2.3, mid: -2, highMid: -6.8, presence: -9, brilliance: -12.8 },
+  };
+
+  it('flips the verdicts from hot/quiet to Balanced once the baseline is applied', () => {
+    const flat = bandBreakdownWithBaseline(pink, grading);
+    expect(flat).toContain('Too Hot');
+    const relative = bandBreakdownWithBaseline(pink, grading, baseline);
+    expect(relative).not.toContain('Too Hot');
+    expect(relative).not.toContain('Too Quiet');
+    expect(relative.match(/Balanced/g)).toHaveLength(7);
+  });
+
+  it('names the baseline in the Band Balance score row and reads "good"', () => {
+    const src = makeSrc({ bands: pink, baseline });
+    const row = buildScoreRowsWithBaseline(src, grading, grading.explainGrade(src)).find((r) => r.name === 'Band Balance')!;
+    expect(row.tone).toBe('good');
+    expect(row.note).toBe('vs. Worship service');
+    expect(row.detail.measured).toMatch(/vs\. Worship service$/);
+    expect(row.detail.target).toBe('≤ +15 dB vs. Worship service');
+  });
+
+  it('keeps the flat wording and note for a source without a baseline', () => {
+    const src = makeSrc({ bands: pink });
+    const row = buildScoreRowsWithBaseline(src, grading, grading.explainGrade(src)).find((r) => r.name === 'Band Balance')!;
+    expect(row.tone).toBe('issue');
+    expect(row.note).toBeNull();
+    expect(row.detail.target).toBe('≤ +15 dB vs. other bands');
+  });
+});
+
+describe('symptomThresholdOffsetFrom', () => {
+  it('reads the rubric offset and defaults to 0', () => {
+    expect(symptomThresholdOffsetFrom(null)).toBe(0);
+    expect(symptomThresholdOffsetFrom({})).toBe(0);
+    expect(symptomThresholdOffsetFrom({ gradingRubric: null })).toBe(0);
+    expect(symptomThresholdOffsetFrom({ gradingRubric: { 'symptoms.thresholdOffsetDb': Number.NaN } })).toBe(0);
+    expect(symptomThresholdOffsetFrom({ gradingRubric: { 'symptoms.thresholdOffsetDb': -1.5 } })).toBe(-1.5);
+  });
+});
+
+describe('targetMetaForSource', () => {
+  it('strips the live window / session suffix so one channel maps to one target id', () => {
+    expect(targetMetaForSource({ filename: 'Live capture — Crowd Mic (window #135)' }).id)
+      .toBe(targetMetaForSource({ filename: 'Live capture — Crowd Mic (window #136)' }).id);
+    expect(targetMetaForSource({ filename: 'Live capture — Crowd Mic (12 windows)' }).label).toBe('Target from Live capture — Crowd Mic');
+    expect(targetMetaForSource({ filename: 'service.wav' })).toEqual(strongMixTargetMeta('service.wav'));
   });
 });

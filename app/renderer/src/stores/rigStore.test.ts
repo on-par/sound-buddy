@@ -65,7 +65,7 @@ function fakeSettings(overrides: Partial<AppSettings> = {}): AppSettings {
     crashReportingEnabled: false, liveAdjustmentsEnabled: false,
     reportFirstUxEnabled: false, shareChurchName: '', weeklyReminderEnabled: false,
     weeklyReminderServiceDay: 0, liveEqPaneWidth: 360,
-    measurementDeviceName: '', gradingProfile: 'casual', consoleNetworkConsentGranted: false,
+    measurementDeviceName: '', gradingProfile: 'casual', gradingRubric: {}, consoleNetworkConsentGranted: false,
     soundcheckBuses: [],
     splCalibrationOffsetDb: null, lastAppMode: '',
     ...overrides,

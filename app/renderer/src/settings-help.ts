@@ -32,6 +32,16 @@ export const SETTINGS_HELP_ENTRIES: readonly SettingsHelpEntry[] = [
     text: "Casual / volunteer grades against today's thresholds. Broadcast-ready tightens every level, dynamic-range, and balance target — the same recording may grade lower. The report card always shows which profile graded it.",
   },
   {
+    control: 'gradingBaseline',
+    noteId: 'grading-baseline-note',
+    text: 'The ideal EQ curve every band rule grades against — Too Hot / Too Quiet, the band-balance deduction, cut recommendations, and tonal symptoms measure the mix against this shape, not a flat line. Auto picks Worship service for live capture and by content type for files. Capture your best mix as a curve, or edit one by band.',
+  },
+  {
+    control: 'gradingRubric',
+    noteId: 'grading-rubric-note',
+    text: 'Each threshold shows the active strictness profile\'s default until you change it. Edited values are absolute and stay put when you switch profiles; clear a field or press Reset to defaults to return to the profile. Changes re-grade the report card on screen immediately.',
+  },
+  {
     control: 'weeklyReminder',
     noteId: 'weekly-reminder-note',
     text: 'Off unless you turn it on. Sound Buddy shows a local notification on this Mac the evening before your service day, reminding you to record and grade it. Nothing leaves your machine — no account, no email, no server.',

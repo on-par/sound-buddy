@@ -47,6 +47,7 @@ describe('grading golden fixtures (#137)', () => {
       'true_peak_over_ceiling_drop',
       'true_peak_within_tolerance_hot_sample_peak',
       'symptom_muddy_drop',
+      'baseline_worship_live',
     ]) {
       expect(cases.has(requiredCase)).toBe(true);
     }

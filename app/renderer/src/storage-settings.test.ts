@@ -31,7 +31,7 @@ const LOADED_SETTINGS: AppSettings = {
   weeklyReminderServiceDay: 0,
   liveEqPaneWidth: 360,
   measurementDeviceName: '',
-  gradingProfile: 'casual',
+  gradingProfile: 'casual', gradingRubric: {},
   consoleNetworkConsentGranted: false,
   soundcheckBuses: [],
   splCalibrationOffsetDb: null, lastAppMode: '',

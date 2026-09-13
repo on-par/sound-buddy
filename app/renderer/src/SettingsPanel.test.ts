@@ -129,7 +129,7 @@ describe('SettingsPanel markup', () => {
         usageSignalEnabled: false, channelLabels: {}, channelGroups: {}, inputInstrumentProfiles: {},
         crashReportingEnabled: false, liveAdjustmentsEnabled: false,
         reportFirstUxEnabled: false, shareChurchName: '', weeklyReminderEnabled: false, weeklyReminderServiceDay: 0,
-        liveEqPaneWidth: 360, measurementDeviceName: '', gradingProfile: 'casual', consoleNetworkConsentGranted: false,
+        liveEqPaneWidth: 360, measurementDeviceName: '', gradingProfile: 'casual', gradingRubric: {}, consoleNetworkConsentGranted: false,
         soundcheckBuses: [],
         splCalibrationOffsetDb: null, lastAppMode: '',
       },
@@ -221,6 +221,8 @@ describe('contextual help strip (#1007)', () => {
     const html = renderMarkup();
     const noteIds = [
       'grading-profile-note',
+      'grading-baseline-note',
+      'grading-rubric-note',
       'weekly-reminder-note',
       'share-church-name-note',
       'storage-note',
@@ -250,6 +252,7 @@ describe('contextual help strip (#1007)', () => {
       ['crash-reporting-toggle', 'crash-reporting-note'],
       ['live-adjustments-toggle', 'live-adjustments-note'],
       ['grading-profile-select', 'grading-profile-note'],
+      ['grading-baseline-select', 'grading-baseline-note'],
       ['weekly-reminder-toggle', 'weekly-reminder-note'],
       ['weekly-reminder-day', 'weekly-reminder-note'],
       ['share-church-name-input', 'share-church-name-note'],
@@ -657,6 +660,8 @@ describe('SettingsSection', () => {
   it('maps every current Settings control to its target section', () => {
     const expectations: Record<SettingsControl, SettingsSection> = {
       gradingProfile: 'general',
+      gradingBaseline: 'general',
+      gradingRubric: 'general',
       weeklyReminder: 'general',
       weeklyReminderServiceDay: 'general',
       shareChurchName: 'general',

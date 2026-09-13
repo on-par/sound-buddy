@@ -32,6 +32,7 @@ const FULL_SETTINGS: AppSettings = {
   liveEqPaneWidth: 360,
   measurementDeviceName: '',
   gradingProfile: 'broadcast',
+  gradingRubric: {},
   consoleNetworkConsentGranted: false,
   soundcheckBuses: [],
   splCalibrationOffsetDb: null, lastAppMode: '',

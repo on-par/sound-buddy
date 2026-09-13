@@ -73,7 +73,7 @@ describe('CurveEditorDialog', () => {
     expect(html).toContain('aria-label="Sub Bass offset dB"');
   });
 
-  it('disables Use current analysis when canCapture is false, and Delete when canDelete is false', () => {
+  it('disables Use current mix when canCapture is false, and Delete when canDelete is false', () => {
     useIdealProfilesStore.setState({
       editor: { ...CLOSED_EDITOR, open: true, canCapture: false, canDelete: false },
     });
@@ -84,7 +84,7 @@ describe('CurveEditorDialog', () => {
     expect(html).toMatch(/id="curve-delete-btn"[^>]*disabled=""/);
   });
 
-  it('enables Use current analysis and Delete when the editor allows it', () => {
+  it('enables Use current mix and Delete when the editor allows it', () => {
     useIdealProfilesStore.setState({
       editor: { ...CLOSED_EDITOR, open: true, canCapture: true, canDelete: true },
     });

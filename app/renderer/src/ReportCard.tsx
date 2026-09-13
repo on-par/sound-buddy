@@ -49,6 +49,8 @@ export interface GradeResult {
   recommendations: string[];
   metrics: MetricRow[];
   gradingProfileLabel: string;
+  /** "Target: Worship service (auto)" — the ideal curve the band rules were graded against; null = flat reference. */
+  baselineLabel?: string | null;
 }
 
 export interface PhaseDoublingView {
@@ -196,6 +198,9 @@ export default function ReportCard({
           dangerouslySetInnerHTML={{ __html: recTypePillHTML(grade.recType) }}
         />
         <div className="rc-rectype pill" id="rc-grading-profile">{grade.gradingProfileLabel}</div>
+        {grade.baselineLabel && (
+          <div className="rc-rectype pill" id="rc-grade-baseline">{grade.baselineLabel}</div>
+        )}
         {delta && (
           <div id="rc-delta" className={`rc-delta ${delta.direction}`}>{delta.text}</div>
         )}
@@ -271,7 +276,7 @@ export default function ReportCard({
           <div
             className="rc-bands"
             id="rc-bands"
-            dangerouslySetInnerHTML={{ __html: bandBreakdownHTML(analysis.bands, bandDiffApi) }}
+            dangerouslySetInnerHTML={{ __html: bandBreakdownHTML(analysis.bands, bandDiffApi, analysis.baseline) }}
           />
         </div>
       )}

@@ -18,7 +18,15 @@ import type { AppSettings, CustomIdealProfile, UpdateSettingsPatch } from '../..
 import { GRID_FREQS } from '@sound-buddy/audio-engine/dist/profiles/index.js';
 import type { IdealProfileLike, SpectrumCurve, SpectrumData } from '../spectrum-display';
 import { hasUsableCurve } from '../spectrum-display';
-import { resolveActiveProfile, isAutoSelected, curveEditorInit, CUSTOM_PREFIX, type IdealCurvesApi } from '../ideal-profiles';
+import {
+  resolveActiveProfile,
+  isAutoSelected,
+  curveEditorInit,
+  bandOffsetsFromMeasuredBands,
+  hasUsableLiveBands,
+  CUSTOM_PREFIX,
+  type IdealCurvesApi,
+} from '../ideal-profiles';
 import { useAnalysisStore } from './analysisStore';
 import { extractSpectrum, useSpectrumStore } from './spectrumStore';
 
@@ -48,8 +56,15 @@ export interface IdealProfilesDeps {
   updateSettings(patch: UpdateSettingsPatch): Promise<unknown>;
   getCurves(): IdealCurvesApi;
   getCurrentSpectrum(): SpectrumData | null;
+  /** The live-capture card's 7-band levels when a live source (and no file
+   *  analysis) is showing — the capture-from-live input. Optional so existing
+   *  callers/tests that never capture from live need no change. */
+  getCurrentLiveBands?(): Record<string, number> | null;
   pushActiveProfile(profile: IdealProfileLike, isAuto: boolean): void;
 }
+
+export const LIVE_CAPTURE_TARGET_NAME = 'Live capture target';
+export const NO_CAPTURE_SOURCE_TEXT = 'Analyze a file or start a live capture first.';
 
 export interface IdealProfilesState {
   selectedId: string;
@@ -67,6 +82,8 @@ export interface IdealProfilesState {
   capture(): Promise<void>;
   remove(): Promise<void>;
   saveMeasured(curve: SpectrumCurve | undefined, meta: { id?: string; label: string; description?: string; createdAt?: string }): Promise<boolean>;
+  /** Save a live capture's 7-band levels as a custom curve (the live "save this mix as your target" path). */
+  saveMeasuredBands(bands: Record<string, number> | null | undefined, meta: { id?: string; label: string; description?: string; createdAt?: string }): Promise<boolean>;
 }
 
 export function createIdealProfilesStore(deps: IdealProfilesDeps): UseBoundStore<StoreApi<IdealProfilesState>> {
@@ -86,6 +103,10 @@ export function createIdealProfilesStore(deps: IdealProfilesDeps): UseBoundStore
       }
       get().syncActiveProfile();
       return true;
+    }
+
+    function liveBands(): Record<string, number> | null {
+      return deps.getCurrentLiveBands ? deps.getCurrentLiveBands() : null;
     }
 
     // The custom profile the open editor is editing (undefined for a new
@@ -126,7 +147,7 @@ export function createIdealProfilesStore(deps: IdealProfilesDeps): UseBoundStore
 
       openEditor() {
         const { selectedId, customProfiles } = get();
-        const init = curveEditorInit(selectedId, customProfiles, deps.getCurrentSpectrum(), deps.getCurves());
+        const init = curveEditorInit(selectedId, customProfiles, deps.getCurrentSpectrum(), deps.getCurves(), liveBands());
         set({
           editor: {
             open: true,
@@ -184,18 +205,29 @@ export function createIdealProfilesStore(deps: IdealProfilesDeps): UseBoundStore
       async capture() {
         const { editor, customProfiles } = get();
         const spectrum = deps.getCurrentSpectrum();
-        if (!(spectrum && hasUsableCurve(spectrum))) {
-          set({ editor: { ...editor, status: { text: 'Analyze a file with spectrum data first.', kind: 'err' } } });
-          return;
-        }
         const curves = deps.getCurves();
         const existing = editingProfile();
-        const name = editor.name.trim() || 'Current analysis target';
-        const profile = curves.profileFromMeasuredCurve(spectrum.curve, GRID_FREQS, {
-          id: editor.editingId ?? existing?.id,
-          label: name,
-          createdAt: existing?.createdAt,
-        });
+        const fileCurve = !!(spectrum && hasUsableCurve(spectrum));
+        const bands = fileCurve ? null : liveBands();
+        if (!fileCurve && !hasUsableLiveBands(bands)) {
+          set({ editor: { ...editor, status: { text: NO_CAPTURE_SOURCE_TEXT, kind: 'err' } } });
+          return;
+        }
+        const name = editor.name.trim() || (fileCurve ? 'Current analysis target' : LIVE_CAPTURE_TARGET_NAME);
+        // A file analysis captures its fine 48-point curve; a live capture has
+        // only the seven band levels, so its target is built from those.
+        const profile = fileCurve
+          ? curves.profileFromMeasuredCurve(spectrum!.curve, GRID_FREQS, {
+              id: editor.editingId ?? existing?.id,
+              label: name,
+              createdAt: existing?.createdAt,
+            })
+          : curves.profileFromBands(bandOffsetsFromMeasuredBands(bands), GRID_FREQS, {
+              id: editor.editingId ?? existing?.id,
+              label: name,
+              description: 'Captured from a live capture',
+              createdAt: existing?.createdAt,
+            });
         if (!profile) {
           set({ editor: { ...editor, status: { text: 'This analysis cannot be used as a target.', kind: 'err' } } });
           return;
@@ -219,6 +251,17 @@ export function createIdealProfilesStore(deps: IdealProfilesDeps): UseBoundStore
         const next = curves.upsertProfile(get().customProfiles, profile);
         return persist(next, `${CUSTOM_PREFIX}${profile.id}`);
       },
+
+      async saveMeasuredBands(bands, meta) {
+        if (!hasUsableLiveBands(bands)) return false;
+        const curves = deps.getCurves();
+        const profile = curves.profileFromBands(bandOffsetsFromMeasuredBands(bands), GRID_FREQS, {
+          ...meta,
+          description: meta.description ?? 'Captured from a live capture',
+        });
+        const next = curves.upsertProfile(get().customProfiles, profile);
+        return persist(next, `${CUSTOM_PREFIX}${profile.id}`);
+      },
     };
   });
 }
@@ -231,5 +274,10 @@ export const useIdealProfilesStore = createIdealProfilesStore({
   updateSettings: (patch) => getSoundBuddy().updateSettings(patch),
   getCurves: getIdealCurves,
   getCurrentSpectrum: () => extractSpectrum(useAnalysisStore.getState().currentAnalysis),
+  // Only while the LIVE card is showing (no file analysis wins over it).
+  getCurrentLiveBands: () => {
+    const { currentAnalysis, liveSource } = useAnalysisStore.getState();
+    return !currentAnalysis && liveSource ? liveSource.bands : null;
+  },
   pushActiveProfile: (profile, isAuto) => useSpectrumStore.getState().setIdealProfile(profile, isAuto),
 });

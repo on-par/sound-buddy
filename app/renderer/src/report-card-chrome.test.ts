@@ -155,6 +155,14 @@ describe('getReportCardSource', () => {
     expect(getReportCardSource(ANALYSIS, null)).toMatchObject({ filename: 'service.wav' });
   });
 
+  it('grades a file analysis against the resolved ideal-curve baseline (Auto → by content type)', () => {
+    const src = getReportCardSource({ ...ANALYSIS, spectrum: { ...ANALYSIS.spectrum, contentType: 'music' } } as AnalysisPayload, null);
+    expect(src?.baseline?.label).toBe('Worship service');
+    expect(src?.baseline?.isAuto).toBe(true);
+    const { chromeSource } = resolveReportCardChromeSource({ currentAnalysis: ANALYSIS, liveSource: null, historySummary: null });
+    expect(chromeSource?.baseline).not.toBeNull();
+  });
+
   it('returns liveSource verbatim with no currentAnalysis', () => {
     const liveSource = makeLiveSource('Live capture');
     expect(getReportCardSource(null, liveSource)).toBe(liveSource);

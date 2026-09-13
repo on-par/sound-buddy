@@ -517,6 +517,29 @@ describe('createCaptureLifecycle — onCaptureStopped', () => {
     expect(useLiveCaptureStore.getState().sessionOffers).toEqual({ sessionDir: '/tmp/session', reportCard: false, notEnoughData: false });
   });
 
+  it('grades the session card against the injected ideal-curve baseline', () => {
+    const baseline = { label: 'Worship service', isAuto: true, bandTargets: { subBass: 16, bass: 13, lowMid: 6, mid: 3, highMid: -9, presence: -14, brilliance: -17 } };
+    const liveSessionReportCardSourceSpy = vi.fn(liveSessionReportCardSource);
+    const { lifecycle } = makeLifecycle({
+      gradeBaseline: () => baseline,
+      liveCapturePanelApi: { shouldOfferReportCard, liveSessionReportCardSource: liveSessionReportCardSourceSpy, normalizeMeasurementSource },
+    });
+    useLiveCaptureStore.setState({
+      liveWindows: [windowTick(1), windowTick(2), windowTick(3)],
+      measurementSource: 0,
+      channelConfig: [{ kind: 'mono', a: 0, b: 1 }],
+      isCapturing: false,
+    });
+    lifecycle.onWindowTick(windowTick(1));
+    lifecycle.onWindowTick(windowTick(2));
+    lifecycle.onWindowTick(windowTick(3));
+
+    lifecycle.runtime.onCaptureStopped({ success: true, sessionDir: null });
+
+    expect(liveSessionReportCardSourceSpy).toHaveBeenCalledWith(expect.any(Array), 0, [{ kind: 'mono', a: 0, b: 1 }], baseline);
+    expect((useAnalysisStore.getState().liveSource as { baseline?: unknown } | null)?.baseline).toEqual(baseline);
+  });
+
   it('builds the session report-card offer from the whole sessionWindows buffer', () => {
     const { lifecycle, reportCardChrome } = makeLifecycle();
     useLiveCaptureStore.setState({

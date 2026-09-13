@@ -6,6 +6,9 @@ import {
   getProfile,
   defaultProfileForContentType,
   compareToProfile,
+  bandTargetsFromProfile,
+  defaultProfileForLiveCapture,
+  LIVE_CAPTURE_DEFAULT_PROFILE_ID,
 } from "./index.js";
 
 describe("ideal profiles", () => {
@@ -107,5 +110,70 @@ describe("compareToProfile", () => {
     const cmp = compareToProfile({ freqs: GRID_FREQS, db: measured }, flat)!;
     expect(cmp.topOver?.band).toBe("presence");
     expect(cmp.topUnder?.band).toBe("subBass");
+  });
+});
+
+describe("bandTargetsFromProfile", () => {
+  const KEYS = ["subBass", "bass", "lowMid", "mid", "highMid", "presence", "brilliance"] as const;
+
+  it("is all zeros for the flat profile (today's flat band-balance reference)", () => {
+    const targets = bandTargetsFromProfile(getProfile("flat"));
+    expect(Object.keys(targets).sort()).toEqual([...KEYS].sort());
+    for (const k of KEYS) expect(targets[k]).toBe(0);
+  });
+
+  it("returns the constant for a profile that is a constant offset everywhere", () => {
+    const targets = bandTargetsFromProfile({ freqs: GRID_FREQS, dbOffsets: GRID_FREQS.map(() => 4) });
+    for (const k of KEYS) expect(targets[k]).toBeCloseTo(4, 6);
+  });
+
+  it("orders the seven targets by the profile's tilt (a falling shape yields falling targets)", () => {
+    const worship = getProfile("worship-service")!;
+    const t = bandTargetsFromProfile(worship);
+    // The worship-service shape rises through the bass, then falls to -18 dB at the top.
+    expect(t.subBass).toBeGreaterThan(t.mid);
+    expect(t.bass).toBeGreaterThan(t.mid);
+    expect(t.mid).toBeGreaterThan(t.highMid);
+    expect(t.highMid).toBeGreaterThan(t.presence);
+    expect(t.presence).toBeGreaterThan(t.brilliance);
+    expect(t.brilliance).toBeCloseTo(-18, 0);
+    for (const k of KEYS) {
+      expect(t[k]).toBeLessThanOrEqual(18);
+      expect(t[k]).toBeGreaterThanOrEqual(-18);
+    }
+  });
+
+  it("averages power, not dB, across a band (a half-band +10 dB step lands above the dB midpoint)", () => {
+    // +10 dB over the top half of the mid band (1–2 kHz), 0 dB elsewhere.
+    const dbOffsets = GRID_FREQS.map((f) => (f >= 1000 && f < 2000 ? 10 : 0));
+    const t = bandTargetsFromProfile({ freqs: GRID_FREQS, dbOffsets });
+    // Linear-frequency power mean of the mid band: 500–1000 Hz at 0 dB, 1–2 kHz at
+    // +10 dB → (500·1 + 1000·10) / 1500 ≈ 7 → 8.45 dB. A dB mean would give ~5.
+    expect(t.mid).toBeGreaterThan(7);
+    expect(t.mid).toBeLessThan(10);
+  });
+
+  it("treats a missing or grid-mismatched profile as flat", () => {
+    for (const k of KEYS) {
+      expect(bandTargetsFromProfile(undefined)[k]).toBe(0);
+      expect(bandTargetsFromProfile(null)[k]).toBe(0);
+      expect(bandTargetsFromProfile({ freqs: [100, 1000], dbOffsets: [3] })[k]).toBe(0);
+      expect(bandTargetsFromProfile({ freqs: [], dbOffsets: [] })[k]).toBe(0);
+    }
+  });
+
+  it("skips non-finite offsets rather than poisoning the band", () => {
+    const dbOffsets = GRID_FREQS.map((f, i) => (i === 10 ? Number.NaN : f < 250 ? 6 : 0));
+    const t = bandTargetsFromProfile({ freqs: GRID_FREQS, dbOffsets });
+    expect(Number.isFinite(t.bass)).toBe(true);
+    expect(t.bass).toBeGreaterThan(3);
+  });
+});
+
+describe("defaultProfileForLiveCapture", () => {
+  it("is the worship-service target — a live capture has no content classifier, and Auto must not fall to flat", () => {
+    expect(LIVE_CAPTURE_DEFAULT_PROFILE_ID).toBe("worship-service");
+    expect(defaultProfileForLiveCapture()).toBe("worship-service");
+    expect(getProfile(defaultProfileForLiveCapture())).toBeDefined();
   });
 });

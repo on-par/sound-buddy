@@ -26,6 +26,9 @@ import { useSceneDiffStore } from './stores/sceneDiffStore';
 import { usePhaseDoublingStore } from './stores/phaseDoublingStore';
 import { useRingoutStore } from './stores/ringoutStore';
 import { useIdealProfilesStore } from './stores/idealProfilesStore';
+import { gradeContext } from './stores/gradeContext';
+import { extractSpectrum } from './stores/spectrumStore';
+import { hasUsableLiveBands } from './ideal-profiles';
 import { switchMode } from './mode-switch';
 import ReportCard, { type GradeResult } from './ReportCard';
 import SceneChanges from './SceneChanges';
@@ -37,13 +40,15 @@ import {
   buildMetricRows,
   buildScoreRows,
   reportCardSourceFromAnalysis,
+  gradeBaselineLabel,
+  symptomOptionsFor,
+  targetMetaForSource,
   contentTypeView,
   reportCardFramesView,
   reportDeltaView,
   noteSubmitPayload,
   commitReportCardNote,
   isStrongGrade,
-  strongMixTargetMeta,
   type ReportCardSource,
   type ProfileComparison,
   type RecordingType,
@@ -354,8 +359,13 @@ export default function ReportCardIsland() {
   const reportViewedRef = useRef(false);
 
   const isHistoryCard = !!historySummary && !currentAnalysis && !liveSource;
+  // The ideal-curve baseline + rubric symptom offset the file card is graded
+  // with (the live card's baseline is attached by the bridge when the live
+  // source is derived). Resolved here, in render, so a selector or rubric
+  // change re-grades on the next render with no extra state.
+  const gradeCtx = currentAnalysis ? gradeContext.forSpectrum(extractSpectrum(currentAnalysis)) : null;
   const source: ReportCardSource | null = currentAnalysis
-    ? reportCardSourceFromAnalysis(currentAnalysis)
+    ? reportCardSourceFromAnalysis(currentAnalysis, gradeCtx)
     : ((liveSource as ReportCardSource | null) ?? null);
 
   let grade: GradeResult | null = null;
@@ -380,6 +390,7 @@ export default function ReportCardIsland() {
       recommendations: grading.computeRecommendations(source),
       metrics: buildMetricRows(source, grading),
       gradingProfileLabel: grading.getGradingProfile().label,
+      baselineLabel: gradeBaselineLabel(source),
     };
 
     scoreRows = reportFirstUxOn ? buildScoreRows(source, grading, grade.explain) : null;
@@ -392,21 +403,25 @@ export default function ReportCardIsland() {
     feedbackPeak = getFeedbackRingout().detectFeedbackSignal(source.curve || null, getFindSpectralPeaks());
     feedbackCallout = getFeedbackRingout().reportCardCallout(feedbackPeak);
 
-    // "Save this mix as your target" CTA (#263) — surfaces the existing free
-    // profileFromMeasuredCurve path after a strong (A/B) grade with a usable
-    // curve. "Saved" is derived from the active idealProfile rather than local
-    // state: after the save, the newly-created custom profile becomes active
-    // via the bridge, so this flips to true with no extra effect/state.
-    showSaveTarget = !!grade && isStrongGrade(grade.letter) && hasUsableCurve(source.curve);
-    const targetMeta = showSaveTarget ? strongMixTargetMeta(source.filename) : null;
+    // "Save this mix as your target" CTA (#263) — surfaces the free capture
+    // path after a strong (A/B) grade: a file with a usable fine curve
+    // (profileFromMeasuredCurve), or a live capture with its seven band
+    // levels (profileFromBands via saveMeasuredBands). "Saved" is derived from
+    // the active idealProfile rather than local state: after the save, the
+    // newly-created custom profile becomes active via the bridge, so this
+    // flips to true with no extra effect/state.
+    const liveCapturable = !currentAnalysis && !!liveSource && hasUsableLiveBands(source.bands);
+    showSaveTarget = !!grade && isStrongGrade(grade.letter) && (hasUsableCurve(source.curve) || liveCapturable);
+    const targetMeta = showSaveTarget ? targetMetaForSource(source) : null;
     const ip = idealProfile as { id?: string; source?: string } | null;
     saveTargetSaved = !!targetMeta && ip?.source === 'custom' && ip.id === targetMeta.id;
 
     // Deterministic Troubleshooting section (#862, story 2 of #839): fired
     // harshness-rule hits from the curve render through the #861 rule-narrative
     // store — no usable curve (or none firing) means no section, never an error.
+    // Evaluated against the same baseline/offset as the graded symptoms.
     const curve = hasUsableCurve(source.curve) ? source.curve : null;
-    troubleshooting = curve ? troubleshootingSectionView(evaluateRules(curve)) : null;
+    troubleshooting = curve ? troubleshootingSectionView(evaluateRules(curve, undefined, symptomOptionsFor(gradeCtx))) : null;
   }
 
   // "vs. last time" delta (#259) — only for the fresh file-analysis card and
@@ -494,11 +509,16 @@ export default function ReportCardIsland() {
           /* c8 ignore start -- interaction-only glue; no jsdom in this harness to
              click the button (renderToString doesn't run DOM events). */
           onSaveAsTarget={() => {
-            // Reproduces the old saveMixAsTarget()'s exact gate: it only ever acted on
-            // curAnalysis() (a file analysis), never liveSource, even though
-            // showSaveTarget above is source-generic — preserve that, don't widen it.
-            if (!currentAnalysis || !source || !hasUsableCurve(source.curve)) return;
-            void useIdealProfilesStore.getState().saveMeasured(source.curve, strongMixTargetMeta(source.filename));
+            if (!source) return;
+            // A file analysis saves its fine curve; a live card (no file
+            // analysis showing) saves its seven band levels — the ideal curve
+            // is then the grading baseline for the next capture.
+            if (currentAnalysis) {
+              if (!hasUsableCurve(source.curve)) return;
+              void useIdealProfilesStore.getState().saveMeasured(source.curve, targetMetaForSource(source));
+              return;
+            }
+            void useIdealProfilesStore.getState().saveMeasuredBands(source.bands, targetMetaForSource(source));
           }}
           /* c8 ignore stop */
           contextualLinks={reportFirstUxOn}

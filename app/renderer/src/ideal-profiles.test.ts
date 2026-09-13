@@ -10,6 +10,8 @@ import {
   profileSelectOptions,
   selectedCustomProfile,
   curveEditorInit,
+  bandOffsetsFromMeasuredBands,
+  hasUsableLiveBands,
   type IdealCurvesApi,
 } from './ideal-profiles';
 import type { CustomIdealProfile } from '../../electron/ipc/api';
@@ -80,8 +82,13 @@ describe('resolveActiveProfile', () => {
     expect(result.id).toBe('broadcast');
   });
 
-  it('falls back to flat when there is no spectrum and no selection', () => {
-    expect(resolveActiveProfile('', [], null).id).toBe('flat');
+  it('resolves Auto to the live default (worship service) when there is no spectrum — a live capture has no content type', () => {
+    expect(resolveActiveProfile('', [], null).id).toBe('worship-service');
+  });
+
+  it('still honours an explicit pick with no spectrum', () => {
+    expect(resolveActiveProfile('flat', [], null).id).toBe('flat');
+    expect(resolveActiveProfile('speech-podcast', [], null).id).toBe('speech-podcast');
   });
 });
 
@@ -130,8 +137,13 @@ describe('curveEditorInit', () => {
     expect(init.bands).toHaveLength(7);
   });
 
-  it('starts a new curve named "Copy of Flat / neutral" with no spectrum and no selection', () => {
+  it('starts a new curve named after the live default ("Copy of Worship service") with no spectrum and no selection', () => {
     const init = curveEditorInit('', [], null, curves);
+    expect(init.name).toBe('Copy of Worship service');
+  });
+
+  it('starts a new curve named "Copy of Flat / neutral" when flat is explicitly selected', () => {
+    const init = curveEditorInit('flat', [], null, curves);
     expect(init.name).toBe('Copy of Flat / neutral');
   });
 
@@ -157,5 +169,42 @@ describe('curveEditorInit', () => {
   it('blocks capture when the spectrum has no usable curve', () => {
     const init = curveEditorInit('', [], { contentType: 'speech' }, curves);
     expect(init.canCapture).toBe(false);
+  });
+
+  it('allows capture from live-capture band levels when there is no file spectrum', () => {
+    const live = { subBass: -61, bass: -63, lowMid: -71, mid: -77, highMid: -96, presence: -93, brilliance: -104 };
+    expect(curveEditorInit('', [], null, curves, live).canCapture).toBe(true);
+    expect(curveEditorInit('', [], null, curves, { subBass: -61 }).canCapture).toBe(false);
+    expect(curveEditorInit('', [], null, curves, null).canCapture).toBe(false);
+  });
+});
+
+describe('bandOffsetsFromMeasuredBands', () => {
+  it('returns level-matched offsets in editor band order, summing to zero', () => {
+    const live = { subBass: -61, bass: -63, lowMid: -71, mid: -77, highMid: -96, presence: -93, brilliance: -104 };
+    const offsets = bandOffsetsFromMeasuredBands(live);
+    expect(offsets).toHaveLength(7);
+    expect(offsets.reduce((a, b) => a + b, 0)).toBeCloseTo(0, 1);
+    expect(offsets[0]).toBeCloseTo(-61 - (-80.714), 1);
+    expect(offsets[0]).toBeGreaterThan(offsets[6]);
+    // Level-invariant: the same shape 20 dB louder yields the same offsets.
+    const louder = Object.fromEntries(Object.entries(live).map(([k, v]) => [k, v + 20]));
+    expect(bandOffsetsFromMeasuredBands(louder)).toEqual(offsets);
+  });
+
+  it('treats a missing or non-finite band as on-mean and an empty table as flat', () => {
+    expect(bandOffsetsFromMeasuredBands({ subBass: -10, bass: -20, mid: Number.NaN })).toEqual([5, -5, 0, 0, 0, 0, 0]);
+    expect(bandOffsetsFromMeasuredBands(null)).toEqual([0, 0, 0, 0, 0, 0, 0]);
+    expect(bandOffsetsFromMeasuredBands({})).toEqual([0, 0, 0, 0, 0, 0, 0]);
+  });
+});
+
+describe('hasUsableLiveBands', () => {
+  it('needs at least two finite bands', () => {
+    expect(hasUsableLiveBands(null)).toBe(false);
+    expect(hasUsableLiveBands({})).toBe(false);
+    expect(hasUsableLiveBands({ mid: -20 })).toBe(false);
+    expect(hasUsableLiveBands({ mid: -20, bass: Number.NaN })).toBe(false);
+    expect(hasUsableLiveBands({ mid: -20, bass: -10 })).toBe(true);
   });
 });

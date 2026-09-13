@@ -19,6 +19,7 @@
 import { MAX_NOTE_LENGTH } from '../../electron/ipc/api';
 import type { AnalysisPayload } from '@sound-buddy/shared';
 import { evaluateRules, gradeSymptoms, type GradeSymptom } from '@sound-buddy/audio-engine/dist/analyze/rules.js';
+import { bandTargetsFromProfile, GRID_FREQS } from '@sound-buddy/audio-engine/dist/profiles/index.js';
 import {
   escapeHtml, toPct, DIM_DB, HOT_DB, GRID, BAND_META,
   heatmapSVG, miniCurveSVG, fmtDur, classLabel, pickRepresentativeFrames,
@@ -76,6 +77,86 @@ export interface ProfileComparison {
   topUnder?: ProfileRegion | null;
 }
 
+/* ── Grading baseline (ideal EQ curve) ──
+   The band-balance rule, the Too Hot / Too Quiet verdicts, the "too much
+   energy in X" recommendations, and the rules-engine tonal symptoms are all
+   measured against the ACTIVE IDEAL CURVE (the Ideal selector: Auto, a
+   built-in, or a user-captured/edited custom curve) instead of a flat
+   reference. A real music mix's band levels fall ~30–40 dB from sub-bass to
+   brilliance (power density), so the flat reference read every full-range mix
+   as bass-heavy and docked it a letter. The baseline rides on the source
+   object because four call sites derive a grade from a ReportCardSource
+   (ReportCardIsland, ReportCardToolbar, report-card-chrome,
+   buildAnalysisSummaryInput) — attached anywhere else, the displayed grade and
+   the persisted history score would drift apart (same reasoning as
+   `symptoms`, ADR-0098). */
+export interface GradeBaseline {
+  /** The ideal profile's label, rendered in the deduction ("vs. Worship service"). */
+  label: string;
+  profileId?: string;
+  /** True when the profile was auto-picked (content type / live default), not chosen by the user. */
+  isAuto?: boolean;
+  /** Relative target level per legacy 7-band key (dB), from bandTargetsFromProfile. */
+  bandTargets: Record<string, number>;
+}
+
+/** What a source builder needs from the app to grade against the user's rubric:
+ *  the resolved ideal profile (null = flat reference) and the rubric's symptom
+ *  sensitivity offset. Pure data — callers (the stores) resolve it. */
+export interface GradeContext {
+  /** The resolved ideal profile (IdealProfileLike shape: `freqs` may be absent
+   *  on the renderer's slimmed profile objects — a 48-point shape is then read
+   *  on the engine's GRID_FREQS). */
+  idealProfile?: { id?: string; label: string; freqs?: number[]; dbOffsets: number[] } | null;
+  isAutoProfile?: boolean;
+  symptomThresholdOffsetDb?: number;
+}
+
+/** A context's profile on an explicit grid, or null when it has none / is unusable. */
+function profileCurve(ctx: GradeContext | null | undefined): { freqs: number[]; dbOffsets: number[] } | null {
+  const profile = ctx?.idealProfile;
+  if (!profile || !Array.isArray(profile.dbOffsets) || profile.dbOffsets.length === 0) return null;
+  const freqs = Array.isArray(profile.freqs) && profile.freqs.length === profile.dbOffsets.length
+    ? profile.freqs
+    : profile.dbOffsets.length === GRID_FREQS.length ? GRID_FREQS : null;
+  return freqs ? { freqs, dbOffsets: profile.dbOffsets } : null;
+}
+
+/** The baseline for a context, or null when there is no profile (flat reference). */
+export function gradeBaselineFor(ctx: GradeContext | null | undefined): GradeBaseline | null {
+  const curve = profileCurve(ctx);
+  const profile = ctx?.idealProfile;
+  if (!curve || !profile) return null;
+  return {
+    label: profile.label,
+    profileId: profile.id,
+    isAuto: !!ctx?.isAutoProfile,
+    bandTargets: bandTargetsFromProfile(curve),
+  };
+}
+
+/** The evaluateRules options for a context — baseline-relative symptoms with the rubric's sensitivity offset. */
+export function symptomOptionsFor(ctx: GradeContext | null | undefined): { baseline: { freqs: number[]; dbOffsets: number[] } | null; thresholdOffsetDb: number } {
+  const offset = ctx?.symptomThresholdOffsetDb;
+  return {
+    baseline: profileCurve(ctx),
+    thresholdOffsetDb: typeof offset === 'number' && Number.isFinite(offset) ? offset : 0,
+  };
+}
+
+/** The rubric's symptom sensitivity offset (dB) from persisted settings — 0 when unset. */
+export function symptomThresholdOffsetFrom(settings: { gradingRubric?: Record<string, number> | null } | null | undefined): number {
+  const v = settings?.gradingRubric?.['symptoms.thresholdOffsetDb'];
+  return typeof v === 'number' && Number.isFinite(v) ? v : 0;
+}
+
+/** "Target: Worship service (auto)" — the baseline pill text, or null without one. */
+export function gradeBaselineLabel(src: { baseline?: GradeBaseline | null } | null | undefined): string | null {
+  const b = src?.baseline;
+  if (!b || !b.label) return null;
+  return `Target: ${b.label}${b.isAuto ? ' (auto)' : ''}`;
+}
+
 // The getReportCardSource() shape (inline-app.js:2414–2446).
 export interface ReportCardSource {
   filename: string;
@@ -98,6 +179,10 @@ export interface ReportCardSource {
   // live-capture sources and on history entries predating this feature, which
   // simply take no symptom deduction.
   symptoms?: GradeSymptom[];
+  // The ideal-curve baseline the band rules were judged against. Absent (or
+  // null) on history entries predating this feature and on any source built
+  // without a GradeContext, which grade against the flat reference as before.
+  baseline?: GradeBaseline | null;
   contentType?: string | null;
   segments?: unknown;
   frames?: unknown;
@@ -391,16 +476,19 @@ export function buildScoreRows(
     rows.push({ name: 'Dynamic Range', note: null, value, tone, hardFail: false, detail, extra: null });
   }
 
-  // 4. Band Balance
+  // 4. Band Balance — measured against the source's ideal-curve baseline when
+  // it has one (the same targets grading.js's deduction used), else flat.
   {
-    const maxDiff = Object.keys(src.bands).reduce((m, k) => Math.max(m, g.bandDiffFromOthers(src.bands, k)), 0);
+    const targets = src.baseline?.bandTargets ?? null;
+    const vs = src.baseline?.label || 'other bands';
+    const maxDiff = Object.keys(src.bands).reduce((m, k) => Math.max(m, g.bandDiffFromOthers(src.bands, k, targets)), 0);
     const value = fmtDev(maxDiff);
     const d = ded(DEDUCTION_RULES.bandImbalance);
     const tone: PillTone = d ? 'issue' : maxDiff > g.CONFIG.bandBalance.hotDiff ? 'check' : 'good';
     const detail: ScoreRowDetail = d
       ? { measured: d.measured, target: d.target, impact: d.letterImpact }
-      : { measured: fmtDev(maxDiff) + ' vs. other bands', target: '≤ +' + g.CONFIG.bandBalance.severeHotDiff + ' dB vs. other bands', impact: 'No impact' };
-    rows.push({ name: 'Band Balance', note: null, value, tone, hardFail: false, detail, extra: null });
+      : { measured: fmtDev(maxDiff) + ' vs. ' + vs, target: '≤ +' + g.CONFIG.bandBalance.severeHotDiff + ' dB vs. ' + vs, impact: 'No impact' };
+    rows.push({ name: 'Band Balance', note: src.baseline?.label ? 'vs. ' + src.baseline.label : null, value, tone, hardFail: false, detail, extra: null });
   }
 
   // 5. Clipping
@@ -539,7 +627,7 @@ export function recListHTML(recs: string[], escapeText: boolean): string {
 // below are runtime-only defense against producer/disk drift now that the
 // param is typed — the analyzer never emits null here, but a stale payload on
 // disk or a future producer change still can.
-export function reportCardSourceFromAnalysis(analysis: AnalysisPayload): ReportCardSource | null {
+export function reportCardSourceFromAnalysis(analysis: AnalysisPayload, ctx?: GradeContext | null): ReportCardSource | null {
   if (typeof analysis !== 'object' || analysis === null) return null;
   if (!analysis.sox || !analysis.spectrum) return null;
   const { sox, spectrum, ffprobe, loudness } = analysis;
@@ -552,7 +640,8 @@ export function reportCardSourceFromAnalysis(analysis: AnalysisPayload): ReportC
     centroid: spectrum.spectralCentroid,
     bands: { ...(spectrum.bands || {}) },
     curve: spectrum.curve || null,
-    symptoms: gradeSymptoms(evaluateRules(spectrum.curve)),
+    symptoms: gradeSymptoms(evaluateRules(spectrum.curve, undefined, symptomOptionsFor(ctx))),
+    baseline: gradeBaselineFor(ctx),
     contentType: spectrum.contentType || null,
     segments: spectrum.segments || null,
     frames: spectrum.frames,
@@ -656,17 +745,19 @@ export function bandMeterHTML(label: string, range: string, db: number, opts: Ba
    a threshold change moves the verdict with the grade — injected via the
    narrow BandDiffApi rather than importing grading.js globally. */
 export interface BandDiffApi {
-  bandDiffFromOthers(bands: Record<string, number>, key: string): number;
+  /** `targets` (the baseline's 7-band relative targets) makes the diff baseline-relative; omitted = flat reference. */
+  bandDiffFromOthers(bands: Record<string, number>, key: string, targets?: Record<string, number> | null): number;
   // severeHotDiff (#540) is the ceiling the score-circle Band Balance row's
   // clean-target string reads — type-only widening, runtime window.grading
   // already carries it (grading.js's CONFIG.bandBalance).
   CONFIG: { bandBalance: { hotDiff: number; quietDiff: number; severeHotDiff: number } };
 }
 
-export function bandBreakdownHTML(bands: Record<string, number>, g: BandDiffApi): string {
+export function bandBreakdownHTML(bands: Record<string, number>, g: BandDiffApi, baseline?: GradeBaseline | null): string {
+  const targets = baseline?.bandTargets ?? null;
   return BAND_META.map((b) => {
     const db = bands[b.key];
-    const diff = g.bandDiffFromOthers(bands, b.key);
+    const diff = g.bandDiffFromOthers(bands, b.key, targets);
     let vc: 'ok' | 'hot' | 'quiet' = 'ok';
     let vt = 'Balanced';
     if (diff > g.CONFIG.bandBalance.hotDiff) { vc = 'hot'; vt = 'Too Hot'; }
@@ -811,6 +902,13 @@ export function strongMixTargetMeta(filename: string): StrongMixTargetMeta {
     label: `Target from ${name}`.slice(0, 60),
     description: 'Saved from a strong-grading mix',
   };
+}
+
+// The live card's filename carries a per-window / per-session suffix
+// ("Live capture — Crowd Mic (window #135)"); strip it so re-saving the same
+// channel's mix as a target upserts one profile instead of one per window.
+export function targetMetaForSource(src: { filename: string }): StrongMixTargetMeta {
+  return strongMixTargetMeta(String(src.filename || '').replace(/\s*\((window #\d+|\d+ windows)\)\s*$/, ''));
 }
 
 /* ── Handoff note (#267) ──

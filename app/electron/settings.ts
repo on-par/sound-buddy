@@ -21,7 +21,9 @@ import type {
   CustomIdealProfile,
   PersistedChannelGroup,
   SoundcheckBus,
+  GradingRubricOverrides,
 } from './ipc/api';
+import { GRADING_RUBRIC_KEYS, GRADING_RUBRIC_MIN_VALUE, GRADING_RUBRIC_MAX_VALUE } from './ipc/api';
 
 // These DTOs are homed in ipc/api.ts (TD-011, #405) — the renderer-safe
 // boundary type both tsc programs share — and re-exported here so existing
@@ -223,6 +225,24 @@ export function sanitizeSoundcheckBuses(value: unknown): SoundcheckBus[] | null 
 }
 
 /**
+ * Rubric overrides (Settings ▸ Grading ▸ Rubric): keep only the keys in
+ * GRADING_RUBRIC_KEYS whose value is a finite number inside the sane span, drop
+ * everything else silently. Returns null for a non-object so the file layer can
+ * repair to {} and the patch layer can reject the write.
+ */
+export function sanitizeGradingRubric(value: unknown): GradingRubricOverrides | null {
+  if (!isPlainObject(value)) return null;
+  const clean: GradingRubricOverrides = {};
+  for (const key of GRADING_RUBRIC_KEYS) {
+    const v = (value as Record<string, unknown>)[key];
+    if (typeof v !== 'number' || !Number.isFinite(v)) continue;
+    if (v < GRADING_RUBRIC_MIN_VALUE || v > GRADING_RUBRIC_MAX_VALUE) continue;
+    clean[key] = v;
+  }
+  return clean;
+}
+
+/**
  * Per-field spec describing one AppSettings field's invariants (#747): its
  * default value, its file-layer sanitizer, its (optional) IPC-patch
  * sanitizer, and its (optional) read-time env layering. SETTING_SPECS is the
@@ -350,6 +370,15 @@ export const SETTING_SPECS: { [K in keyof AppSettings]: SettingSpec<AppSettings[
     default: 'casual',
     sanitizeFile: (v) => (v === 'casual' || v === 'broadcast' ? v : SETTING_SPECS.gradingProfile.default),
     sanitizePatch: (v) => (v === 'casual' || v === 'broadcast' ? v : undefined),
+  },
+  gradingRubric: {
+    // Fresh object per read so callers can never mutate a shared default. A
+    // corrupted file value repairs to {} (every threshold back to the profile
+    // default); a patch that is not a plain object is dropped, and {} is the
+    // explicit "reset to defaults" patch.
+    default: {},
+    sanitizeFile: (v) => sanitizeGradingRubric(v) ?? {},
+    sanitizePatch: (v) => sanitizeGradingRubric(v) ?? undefined,
   },
   // Tier 2 (console-network) consent (#378 / ADR-0006). sanitizeFile is
   // unchanged from today so updateSettings({ consoleNetworkConsentGranted:

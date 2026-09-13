@@ -28,7 +28,7 @@ import type { SpectrumState } from './stores/spectrumStore';
 import type { RigState } from './stores/rigStore';
 import type { LiveEvent, StripConfig, LiveDevice } from './live-capture-panel';
 import { deviceChannelCount, deviceNameFor } from './live-capture-panel';
-import type { ReportCardSource } from './report-card';
+import type { ReportCardSource, GradeBaseline } from './report-card';
 import type { SoundBuddyApi, StartLiveOpts, PreflightBaseline } from '../../electron/ipc/api';
 import type { PreflightChecklistItem, PreflightSnapshot } from './rig-panel';
 import { SPECTRUM_TITLE } from './spectrum-chrome';
@@ -79,9 +79,11 @@ export interface CaptureLifecycleDeps {
   storage: Storage;
   liveCapturePanelApi: {
     shouldOfferReportCard(windows: number): boolean;
-    liveSessionReportCardSource(win: LiveEvent[], src: number | null, cfg: StripConfig[]): ReportCardSource | null;
+    liveSessionReportCardSource(win: LiveEvent[], src: number | null, cfg: StripConfig[], baseline?: GradeBaseline | null): ReportCardSource | null;
     normalizeMeasurementSource(v: number | null | undefined, n: number): number | null;
   };
+  /** The ideal-curve baseline the session card grades against (gradeContext.liveBaseline()); absent = flat reference. */
+  gradeBaseline?(): GradeBaseline | null;
   reportCardChrome: { persistSummary(src: ReportCardSource, kind: 'live'): void };
   dawShell(): DawShellSeam | null;
   doc: Pick<Document, 'getElementById'>;
@@ -363,7 +365,8 @@ export function createCaptureLifecycle(deps: CaptureLifecycleDeps): {
     // short/silent to produce usable windows degrades to the "not enough data"
     // state instead of a nonsensical grade.
     if (deps.liveCapturePanelApi.shouldOfferReportCard(lc.liveWindows.length)) {
-      const sessionSrc = deps.liveCapturePanelApi.liveSessionReportCardSource(sessionWindows, lc.measurementSource, lc.channelConfig);
+      const sessionSrc = deps.liveCapturePanelApi.liveSessionReportCardSource(
+        sessionWindows, lc.measurementSource, lc.channelConfig, deps.gradeBaseline ? deps.gradeBaseline() : null);
       if (sessionSrc) {
         deps.getAna().setLiveSource(sessionSrc); // freeze the session card onto the Report Card tab
         frozenLiveSourceForResume = sessionSrc; // #776: survive the auto-resume's liveWindows reset (see onCaptureStarting)

@@ -49,12 +49,33 @@ export interface HarshnessRule {
 
 export interface FiredRule {
   rule: HarshnessRule;
-  /** Mean dB of the measured band (from bandEnergy). */
+  /** Mean dB of the measured band (from bandEnergy), baseline-relative when
+   *  an ideal-curve baseline was supplied. */
   measuredDb: number;
-  /** Mean dB of the reference band (from bandEnergy). */
+  /** Mean dB of the reference band (from bandEnergy), baseline-relative when
+   *  an ideal-curve baseline was supplied. */
   referenceDb: number;
   /** measuredDb - referenceDb. */
   excessDb: number;
+  /** The threshold this rule actually fired against: the row's minExcessDb
+   *  plus the caller's thresholdOffsetDb (floored at 0). */
+  thresholdDb: number;
+}
+
+/**
+ * Optional evaluation context. `baseline` is an ideal-curve profile on the
+ * same grid as the curve (PRD 05 shape: relative dB offsets); when supplied
+ * and grid-matched, every band is measured on `curve.db - baseline.dbOffsets`,
+ * so a rule fires on excess OVER the ideal shape rather than over a flat
+ * reference — a normal pink-tilted music mix no longer reads as "Muddy". A
+ * missing/mismatched baseline is treated as flat (byte-identical to the
+ * pre-baseline behaviour). `thresholdOffsetDb` shifts every rule's
+ * minExcessDb uniformly (the user's rubric sensitivity); the effective
+ * threshold never drops below 0 and a non-finite offset is ignored.
+ */
+export interface EvaluateRulesOptions {
+  baseline?: { freqs: number[]; dbOffsets: number[] } | null;
+  thresholdOffsetDb?: number;
 }
 
 /**
@@ -74,8 +95,9 @@ export interface GradeSymptom {
   instruction: string;
   /** Measured dB the band exceeded its reference by. */
   excessDb: number;
-  /** The rule's own firing threshold — the single definition of the band
-   *  threshold, rendered by the grade's deduction target string. */
+  /** The threshold the rule fired against (its RULE_TABLE minExcessDb plus
+   *  any rubric offset) — the single definition of the band threshold,
+   *  rendered by the grade's deduction target string. */
   minExcessDb: number;
 }
 
@@ -210,20 +232,46 @@ export function rulesForInstrument(instrumentId?: string): HarshnessRule[] {
  * fire. An undefined curve yields [] directly; mismatched/empty curves yield
  * [] via bandEnergy's own guards.
  */
-export function evaluateRules(curve: SpectrumCurve | undefined, instrumentId?: string): FiredRule[] {
+export function evaluateRules(
+  curve: SpectrumCurve | undefined,
+  instrumentId?: string,
+  options: EvaluateRulesOptions = {},
+): FiredRule[] {
   if (!curve) return [];
+  const relative = baselineRelativeCurve(curve, options.baseline);
+  const offset = Number.isFinite(options.thresholdOffsetDb) ? (options.thresholdOffsetDb as number) : 0;
   const fired: FiredRule[] = [];
   for (const rule of rulesForInstrument(instrumentId)) {
-    const measuredDb = bandEnergy(curve, rule.condition.band.lowHz, rule.condition.band.highHz);
-    const referenceDb = bandEnergy(curve, rule.condition.reference.lowHz, rule.condition.reference.highHz);
+    const measuredDb = bandEnergy(relative, rule.condition.band.lowHz, rule.condition.band.highHz);
+    const referenceDb = bandEnergy(relative, rule.condition.reference.lowHz, rule.condition.reference.highHz);
     if (!Number.isFinite(measuredDb) || !Number.isFinite(referenceDb)) continue;
     const excessDb = measuredDb - referenceDb;
-    if (excessDb >= rule.condition.minExcessDb - EXCESS_EPSILON) {
-      fired.push({ rule, measuredDb, referenceDb, excessDb });
+    const thresholdDb = Math.max(0, rule.condition.minExcessDb + offset);
+    if (excessDb >= thresholdDb - EXCESS_EPSILON) {
+      fired.push({ rule, measuredDb, referenceDb, excessDb, thresholdDb });
     }
   }
   // Stable sort — ties keep table order, so the most obvious problem leads.
   return fired.sort((a, b) => b.excessDb - a.excessDb);
+}
+
+/** The curve with the baseline's shape removed (grid-matched by length, the
+ *  same test compareToProfile applies), or the curve itself when there is no
+ *  usable baseline. Level is irrelevant: every rule is a band-vs-band
+ *  difference, so a constant offset cancels. */
+function baselineRelativeCurve(
+  curve: SpectrumCurve,
+  baseline: EvaluateRulesOptions["baseline"],
+): SpectrumCurve {
+  if (
+    !baseline ||
+    !Array.isArray(baseline.dbOffsets) ||
+    !Array.isArray(curve.db) ||
+    baseline.dbOffsets.length !== curve.db.length
+  ) {
+    return curve;
+  }
+  return { freqs: curve.freqs, db: curve.db.map((db, i) => db - baseline.dbOffsets[i]) };
 }
 
 /**
@@ -237,6 +285,6 @@ export function gradeSymptoms(fired: FiredRule[]): GradeSymptom[] {
     symptom: hit.rule.symptom,
     instruction: hit.rule.suggestion.instruction,
     excessDb: hit.excessDb,
-    minExcessDb: hit.rule.condition.minExcessDb,
+    minExcessDb: hit.thresholdDb,
   }));
 }

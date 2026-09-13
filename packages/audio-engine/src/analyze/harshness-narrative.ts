@@ -22,7 +22,9 @@ export function harshnessNarrativeData(fired: FiredRule): RuleNarrativeData {
     band: formatBandRange(fired.rule.condition.band.lowHz, fired.rule.condition.band.highHz),
     reference: formatBandRange(fired.rule.condition.reference.lowHz, fired.rule.condition.reference.highHz),
     excessDb: fmt(fired.excessDb, 1),
-    thresholdDb: fmt(fired.rule.condition.minExcessDb, 0),
+    // The effective threshold (RULE_TABLE's minExcessDb plus any rubric
+    // sensitivity offset), so the prose matches the grade's deduction target.
+    thresholdDb: fmt(fired.thresholdDb, 0),
     instruction: fired.rule.suggestion.instruction,
   };
 }

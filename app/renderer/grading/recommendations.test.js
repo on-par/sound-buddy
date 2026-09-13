@@ -40,9 +40,14 @@ describe('computeRecommendations', () => {
     expect(recs).toContain('Too much energy in Mid (500Hz-2kHz). Cut 10.0 dB around this range.');
   });
 
-  it('warns about a dull mix lacking brilliance', () => {
-    const recs = grading.computeRecommendations(makeSrc({ bands: { ...flatBands(-30), brilliance: -45 } }));
+  it('warns about a dull mix whose brilliance sits well below the other bands', () => {
+    const recs = grading.computeRecommendations(makeSrc({ bands: { ...flatBands(-30), brilliance: -50 } }));
     expect(recs).toContain('Mix lacks air and brightness. Boost 2-3 dB above 8kHz.');
+  });
+
+  it('does not call a balanced-but-quiet recording dull (the verdict is relative, not an absolute level)', () => {
+    const recs = grading.computeRecommendations(makeSrc({ bands: flatBands(-70) }));
+    expect(recs).not.toContain('Mix lacks air and brightness. Boost 2-3 dB above 8kHz.');
   });
 
   it('congratulates a clean recording when nothing is wrong', () => {

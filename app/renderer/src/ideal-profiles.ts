@@ -14,6 +14,7 @@ import {
   PROFILES as AE_PROFILES,
   GRID_FREQS,
   defaultProfileForContentType as aeDefaultForContentType,
+  defaultProfileForLiveCapture as aeDefaultForLiveCapture,
 } from '@sound-buddy/audio-engine/dist/profiles/index.js';
 import { hasUsableCurve, type IdealProfileLike, type SpectrumData } from './spectrum-display';
 import type { CustomIdealProfile } from '../../electron/ipc/api';
@@ -53,7 +54,10 @@ export function isAutoSelected(selectedId: string): boolean {
   return !selectedId;
 }
 
-/** Resolve the profile to compare against: an explicit pick, else auto by content type. Port of inline `activeProfile`. */
+/** Resolve the profile to compare (and grade) against: an explicit pick, else
+ *  auto by content type. Port of inline `activeProfile`. With NO file spectrum
+ *  (a live capture, which has no content classifier) Auto resolves to the live
+ *  default (worship service) rather than flat — see LIVE_CAPTURE_DEFAULT_PROFILE_ID. */
 export function resolveActiveProfile(
   selectedId: string,
   customProfiles: CustomIdealProfile[],
@@ -66,8 +70,33 @@ export function resolveActiveProfile(
     // the CustomIdealProfile shape (mirrors inline's `{...custom, source:'custom'}`).
     if (custom) return { ...custom, source: 'custom' } as IdealProfileLike & { source: 'custom' };
   }
-  const id = selectedId || aeDefaultForContentType(spectrum?.contentType as Parameters<typeof aeDefaultForContentType>[0]);
+  const auto = spectrum
+    ? aeDefaultForContentType(spectrum.contentType as Parameters<typeof aeDefaultForContentType>[0])
+    : aeDefaultForLiveCapture();
+  const id = selectedId || auto;
   return IP_BY_ID.get(id) ?? (IP_BY_ID.get('flat') as IdealProfileLike);
+}
+
+/** The seven legacy band keys in editor order — the order profileFromBands /
+ *  bandOffsetsFromProfile use (ideal-curves.js's BAND_KEYS). */
+export const EDITOR_BAND_KEYS = ['subBass', 'bass', 'lowMid', 'mid', 'highMid', 'presence', 'brilliance'] as const;
+
+/** Level-matched relative offsets (dB) from a measured 7-band table — the live
+ *  capture's equivalent of profileFromMeasuredCurve: subtract the mean of the
+ *  finite bands so the shape is level-invariant, treat a missing/non-finite
+ *  band as on-mean (0). Feeds profileFromBands to capture a live mix as an
+ *  ideal curve. */
+export function bandOffsetsFromMeasuredBands(bands: Record<string, number> | null | undefined): number[] {
+  const values = EDITOR_BAND_KEYS.map((k) => (bands ? bands[k] : undefined));
+  const finite = values.filter((v): v is number => typeof v === 'number' && Number.isFinite(v));
+  const mean = finite.length ? finite.reduce((a, b) => a + b, 0) / finite.length : 0;
+  return values.map((v) => (typeof v === 'number' && Number.isFinite(v) ? Math.round((v - mean) * 100) / 100 : 0));
+}
+
+/** Whether a live-capture 7-band table has enough finite bands to capture. */
+export function hasUsableLiveBands(bands: Record<string, number> | null | undefined): boolean {
+  if (!bands) return false;
+  return EDITOR_BAND_KEYS.filter((k) => typeof bands[k] === 'number' && Number.isFinite(bands[k])).length >= 2;
 }
 
 /** The option model for #ideal-profile-select. Port of inline `initIdealProfileSelect`'s innerHTML. */
@@ -102,7 +131,8 @@ export function curveEditorInit(
   selectedId: string,
   customProfiles: CustomIdealProfile[],
   spectrum: SpectrumData | null,
-  curves: IdealCurvesApi
+  curves: IdealCurvesApi,
+  liveBands: Record<string, number> | null = null,
 ): { editingId: string | null; title: string; name: string; canDelete: boolean; canCapture: boolean; bands: number[] } {
   const custom = selectedCustomProfile(selectedId, customProfiles);
   const base = curveEditorProfileBase(selectedId, customProfiles, spectrum);
@@ -111,7 +141,9 @@ export function curveEditorInit(
     title: custom ? 'Edit Ideal Curve' : 'Create Ideal Curve',
     name: custom ? custom.label : `Copy of ${base ? base.label : 'Flat / neutral'}`,
     canDelete: !!custom,
-    canCapture: !!(spectrum && hasUsableCurve(spectrum)),
+    // A file analysis with a fine curve, or a live capture with band levels —
+    // either can be captured as the target.
+    canCapture: !!(spectrum && hasUsableCurve(spectrum)) || hasUsableLiveBands(liveBands),
     bands: curves.bandOffsetsFromProfile(base, GRID_FREQS),
   };
 }

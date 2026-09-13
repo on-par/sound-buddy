@@ -78,6 +78,15 @@ describe('ideal curve helpers', () => {
     }
   });
 
+  it('clampDb keeps a captured live tilt up to ±24 dB and clips beyond it, on a half-dB grid', () => {
+    expect(curves.MAX_ABS_DB).toBe(24);
+    expect(curves.clampDb(23.3)).toBe(23.5);
+    expect(curves.clampDb(-22.9)).toBe(-23);
+    expect(curves.clampDb(40)).toBe(24);
+    expect(curves.clampDb(-40)).toBe(-24);
+    expect(curves.clampDb('nope')).toBe(0);
+  });
+
   it('bandOffsetsFromProfile returns all-zero offsets for a null/mismatched profile', () => {
     expect(curves.bandOffsetsFromProfile(null as unknown as CustomProfile, freqs)).toEqual([
       0, 0, 0, 0, 0, 0, 0,

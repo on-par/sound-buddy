@@ -29,10 +29,15 @@
       .slice(0, 36) || 'custom-curve';
   }
 
+  // ±24 dB: a captured live mix's level-matched band offsets span up to ~±23 dB
+  // (a room/crowd mic falls ~45 dB from sub-bass to brilliance), so the old ±18
+  // clip flattened the very tilt a captured target exists to encode. Existing
+  // curves (all within ±18) are unaffected.
+  var MAX_ABS_DB = 24;
   function clampDb(v) {
     var n = Number(v);
     if (!Number.isFinite(n)) return 0;
-    return Math.max(-18, Math.min(18, Math.round(n * 2) / 2));
+    return Math.max(-MAX_ABS_DB, Math.min(MAX_ABS_DB, Math.round(n * 2) / 2));
   }
 
   function safeId(id, fallbackLabel) {
@@ -143,6 +148,7 @@
   }
 
   var api = {
+    MAX_ABS_DB: MAX_ABS_DB,
     BAND_KEYS: BAND_KEYS,
     BAND_CENTERS: BAND_CENTERS,
     clampDb: clampDb,
